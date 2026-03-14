@@ -1,0 +1,102 @@
+import { Command } from "commander";
+import { Scheduler, createLLMClient } from "@actalk/inkos-core";
+import { loadConfig, findProjectRoot, log, logError } from "../utils.js";
+import { writeFile, readFile, unlink } from "node:fs/promises";
+import { join } from "node:path";
+
+const PID_FILE = "inkos.pid";
+
+export const upCommand = new Command("up")
+  .description("Start the InkOS daemon (autonomous mode)")
+  .action(async () => {
+    try {
+      const config = await loadConfig();
+      const client = createLLMClient(config.llm);
+      const root = findProjectRoot();
+
+      // Check if already running
+      const pidPath = join(root, PID_FILE);
+      try {
+        const existingPid = await readFile(pidPath, "utf-8");
+        logError(`Daemon already running (PID: ${existingPid.trim()}). Run 'inkos down' first.`);
+        process.exit(1);
+      } catch {
+        // No PID file, good
+      }
+
+      log("Starting InkOS daemon...");
+      log(`  Write cycle: ${config.daemon.schedule.writeCron}`);
+      log(`  Radar scan: ${config.daemon.schedule.radarCron}`);
+      log(`  Max concurrent books: ${config.daemon.maxConcurrentBooks}`);
+      log("");
+
+      // Write PID file
+      await writeFile(pidPath, String(process.pid), "utf-8");
+
+      const scheduler = new Scheduler({
+        client,
+        model: config.llm.model,
+        projectRoot: root,
+        notifyChannels: config.notify,
+        modelOverrides: config.modelOverrides,
+        radarCron: config.daemon.schedule.radarCron,
+        writeCron: config.daemon.schedule.writeCron,
+        maxConcurrentBooks: config.daemon.maxConcurrentBooks,
+        chaptersPerCycle: config.daemon.chaptersPerCycle,
+        retryDelayMs: config.daemon.retryDelayMs,
+        cooldownAfterChapterMs: config.daemon.cooldownAfterChapterMs,
+        maxChaptersPerDay: config.daemon.maxChaptersPerDay,
+        onChapterComplete: (bookId, chapter, status) => {
+          const icon = status === "approved" ? "+" : "!";
+          log(`  [${icon}] ${bookId} Ch.${chapter} — ${status}`);
+        },
+        onError: (bookId, error) => {
+          logError(`${bookId}: ${error.message}`);
+        },
+      });
+
+      // Handle shutdown
+      const shutdown = async () => {
+        log("\nShutting down daemon...");
+        scheduler.stop();
+        try {
+          await unlink(pidPath);
+        } catch {
+          // ignore
+        }
+        process.exit(0);
+      };
+
+      process.on("SIGINT", shutdown);
+      process.on("SIGTERM", shutdown);
+
+      await scheduler.start();
+      log("Daemon running. Press Ctrl+C to stop.");
+
+      // Keep process alive
+      await new Promise(() => {});
+    } catch (e) {
+      logError(`Failed to start daemon: ${e}`);
+      process.exit(1);
+    }
+  });
+
+export const downCommand = new Command("down")
+  .description("Stop the InkOS daemon")
+  .action(async () => {
+    const root = findProjectRoot();
+    const pidPath = join(root, PID_FILE);
+
+    try {
+      const pid = (await readFile(pidPath, "utf-8")).trim();
+      try {
+        process.kill(parseInt(pid, 10), "SIGTERM");
+        log(`Daemon (PID: ${pid}) stopped.`);
+      } catch {
+        log(`Daemon (PID: ${pid}) not found. Cleaning up.`);
+      }
+      await unlink(pidPath);
+    } catch {
+      log("No daemon running.");
+    }
+  });
