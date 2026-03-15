@@ -15,7 +15,12 @@ export function buildWriterSystemPrompt(
   styleGuide: string,
   styleFingerprint?: string,
   chapterNumber?: number,
+  mode: "full" | "creative" = "full",
 ): string {
+  const outputSection = mode === "creative"
+    ? buildCreativeOutputFormat(book, genreProfile)
+    : buildOutputFormat(book, genreProfile);
+
   const sections = [
     buildGenreIntro(book, genreProfile),
     buildCoreRules(book),
@@ -33,7 +38,7 @@ export function buildWriterSystemPrompt(
     buildStyleGuide(styleGuide),
     buildStyleFingerprint(styleFingerprint),
     buildPreWriteChecklist(book, genreProfile),
-    buildOutputFormat(book, genreProfile),
+    outputSection,
   ];
 
   return sections.filter(Boolean).join("\n\n");
@@ -419,6 +424,41 @@ function buildPreWriteChecklist(book: BookConfig, gp: GenreProfile): string {
   );
 
   return lines.join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// Creative-only output format (no settlement blocks)
+// ---------------------------------------------------------------------------
+
+function buildCreativeOutputFormat(book: BookConfig, gp: GenreProfile): string {
+  const resourceRow = gp.numericalSystem
+    ? "| 当前资源总量 | X | 与账本一致 |\n| 本章预计增量 | +X（来源） | 无增量写+0 |"
+    : "";
+
+  const preWriteTable = `=== PRE_WRITE_CHECK ===
+（必须输出Markdown表格）
+| 检查项 | 本章记录 | 备注 |
+|--------|----------|------|
+| 大纲锚定 | 当前卷名/阶段 + 本章应推进的具体节点 | 严禁跳过节点或提前消耗后续剧情 |
+| 上下文范围 | 第X章至第Y章 / 状态卡 / 设定文件 | |
+| 当前锚点 | 地点 / 对手 / 收益目标 | 锚点必须具体 |
+${resourceRow}| 待回收伏笔 | Hook-A / Hook-B | 与伏笔池一致 |
+| 本章冲突 | 一句话概括 | |
+| 章节类型 | ${gp.chapterTypes.join("/")} | |
+| 风险扫描 | OOC/信息越界/设定冲突${gp.powerScaling ? "/战力崩坏" : ""}/节奏/词汇疲劳 | |`;
+
+  return `## 输出格式（严格遵守）
+
+${preWriteTable}
+
+=== CHAPTER_TITLE ===
+(章节标题，不含"第X章")
+
+=== CHAPTER_CONTENT ===
+(正文内容，${book.chapterWordCount}字左右)
+
+【重要】本次只需输出以上三个区块（PRE_WRITE_CHECK、CHAPTER_TITLE、CHAPTER_CONTENT）。
+状态卡、伏笔池、摘要等追踪文件将由后续结算阶段处理，请勿输出。`;
 }
 
 // ---------------------------------------------------------------------------

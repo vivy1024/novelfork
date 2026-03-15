@@ -1,6 +1,35 @@
 import type { GenreProfile } from "../models/genre-profile.js";
 import type { WriteChapterOutput } from "./writer.js";
 
+export interface CreativeOutput {
+  readonly title: string;
+  readonly content: string;
+  readonly wordCount: number;
+  readonly preWriteCheck: string;
+}
+
+export function parseCreativeOutput(
+  chapterNumber: number,
+  content: string,
+): CreativeOutput {
+  const extract = (tag: string): string => {
+    const regex = new RegExp(
+      `=== ${tag} ===\\s*([\\s\\S]*?)(?==== [A-Z_]+ ===|$)`,
+    );
+    const match = content.match(regex);
+    return match?.[1]?.trim() ?? "";
+  };
+
+  const chapterContent = extract("CHAPTER_CONTENT");
+
+  return {
+    title: extract("CHAPTER_TITLE") || `第${chapterNumber}章`,
+    content: chapterContent,
+    wordCount: chapterContent.length,
+    preWriteCheck: extract("PRE_WRITE_CHECK"),
+  };
+}
+
 export type ParsedWriterOutput = Omit<WriteChapterOutput, "postWriteErrors" | "postWriteWarnings">;
 
 /**
