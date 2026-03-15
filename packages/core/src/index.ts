@@ -27,12 +27,15 @@ export { detectAIContent, type DetectionResult } from "./agents/detector.js";
 export { analyzeStyle } from "./agents/style-analyzer.js";
 export { analyzeDetectionInsights } from "./agents/detection-insights.js";
 export { validatePostWrite, type PostWriteViolation } from "./agents/post-write-validator.js";
+export { ChapterAnalyzerAgent, type AnalyzeChapterInput, type AnalyzeChapterOutput } from "./agents/chapter-analyzer.js";
+export { parseWriterOutput, type ParsedWriterOutput } from "./agents/writer-parser.js";
 
 // Utils
 export { fetchUrl } from "./utils/web-search.js";
+export { splitChapters, type SplitChapter } from "./utils/chapter-splitter.js";
 
 // Pipeline
-export { PipelineRunner, type PipelineConfig, type ChapterPipelineResult, type DraftResult, type ReviseResult, type TruthFiles, type BookStatusInfo } from "./pipeline/runner.js";
+export { PipelineRunner, type PipelineConfig, type ChapterPipelineResult, type DraftResult, type ReviseResult, type TruthFiles, type BookStatusInfo, type ImportChaptersInput, type ImportChaptersResult } from "./pipeline/runner.js";
 export { Scheduler, type SchedulerConfig } from "./pipeline/scheduler.js";
 export { runAgentLoop, AGENT_TOOLS as AGENT_TOOLS, type AgentLoopOptions } from "./pipeline/agent.js";
 export { detectChapter, detectAndRewrite, loadDetectionHistory, type DetectChapterResult, type DetectAndRewriteResult } from "./pipeline/detection-runner.js";

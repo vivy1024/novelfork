@@ -12,6 +12,7 @@ export const ChapterStatusSchema = z.enum([
   "approved",
   "rejected",
   "published",
+  "imported",
 ]);
 export type ChapterStatus = z.infer<typeof ChapterStatusSchema>;
 

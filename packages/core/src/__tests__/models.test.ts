@@ -257,8 +257,8 @@ describe("ChapterStatusSchema", () => {
     expect(ChapterStatusSchema.parse(value)).toBe(value);
   });
 
-  it("has exactly 11 valid statuses", () => {
-    expect(ChapterStatusSchema.options).toHaveLength(11);
+  it("has exactly 12 valid statuses", () => {
+    expect(ChapterStatusSchema.options).toHaveLength(12);
   });
 
   it("rejects unknown status", () => {

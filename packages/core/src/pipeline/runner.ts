@@ -6,6 +6,7 @@ import type { NotifyChannel } from "../models/project.js";
 import type { GenreProfile } from "../models/genre-profile.js";
 import { ArchitectAgent } from "../agents/architect.js";
 import { WriterAgent } from "../agents/writer.js";
+import { ChapterAnalyzerAgent } from "../agents/chapter-analyzer.js";
 import { ContinuityAuditor } from "../agents/continuity.js";
 import { ReviserAgent, type ReviseMode } from "../agents/reviser.js";
 import { RadarAgent } from "../agents/radar.js";
@@ -74,6 +75,19 @@ export interface BookStatusInfo {
   readonly totalWords: number;
   readonly nextChapter: number;
   readonly chapters: ReadonlyArray<ChapterMeta>;
+}
+
+export interface ImportChaptersInput {
+  readonly bookId: string;
+  readonly chapters: ReadonlyArray<{ readonly title: string; readonly content: string }>;
+  readonly resumeFrom?: number;
+}
+
+export interface ImportChaptersResult {
+  readonly bookId: string;
+  readonly importedCount: number;
+  readonly totalWords: number;
+  readonly nextChapter: number;
 }
 
 export class PipelineRunner {
@@ -796,6 +810,114 @@ ${matrix}`,
 
     await writeFile(join(storyDir, "parent_canon.md"), canon, "utf-8");
     return canon;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Chapter import (for continuation writing from existing chapters)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Import existing chapters into a book. Reverse-engineers all truth files
+   * via sequential replay so the Writer and Auditor can continue naturally.
+   *
+   * Step 1: Generate foundation (story_bible, volume_outline, book_rules) from all chapters.
+   * Step 2: Sequentially replay each chapter through ChapterAnalyzer to build truth files.
+   */
+  async importChapters(input: ImportChaptersInput): Promise<ImportChaptersResult> {
+    const releaseLock = await this.state.acquireBookLock(input.bookId);
+    try {
+      const book = await this.state.loadBookConfig(input.bookId);
+      const bookDir = this.state.bookDir(input.bookId);
+      const { profile: gp } = await this.loadGenreProfile(book.genre);
+
+      const startFrom = input.resumeFrom ?? 1;
+
+      // Step 1: Generate foundation on first run (not on resume)
+      if (startFrom === 1) {
+        process.stderr.write(`[import] Step 1: Generating foundation from ${input.chapters.length} chapters...\n`);
+        const allText = input.chapters.map((c, i) =>
+          `第${i + 1}章 ${c.title}\n\n${c.content}`,
+        ).join("\n\n---\n\n");
+
+        const architect = new ArchitectAgent(this.agentCtxFor("architect", input.bookId));
+        const foundation = await architect.generateFoundationFromImport(book, allText);
+        await architect.writeFoundationFiles(bookDir, foundation, gp.numericalSystem);
+        await this.state.saveChapterIndex(input.bookId, []);
+        process.stderr.write(`[import] Foundation generated.\n`);
+      }
+
+      // Step 2: Sequential replay
+      process.stderr.write(`[import] Step 2: Sequential replay from chapter ${startFrom}...\n`);
+      const analyzer = new ChapterAnalyzerAgent(this.agentCtxFor("chapter-analyzer", input.bookId));
+      const writer = new WriterAgent(this.agentCtxFor("writer", input.bookId));
+      let totalWords = 0;
+
+      for (let i = startFrom - 1; i < input.chapters.length; i++) {
+        const ch = input.chapters[i]!;
+        const chapterNumber = i + 1;
+
+        process.stderr.write(`[import] Analyzing chapter ${chapterNumber}/${input.chapters.length}: ${ch.title}...\n`);
+
+        // Analyze chapter to get truth file updates
+        const output = await analyzer.analyzeChapter({
+          book,
+          bookDir,
+          chapterNumber,
+          chapterContent: ch.content,
+          chapterTitle: ch.title,
+        });
+
+        // Save chapter file + core truth files (state, ledger, hooks)
+        await writer.saveChapter(bookDir, {
+          ...output,
+          postWriteErrors: [],
+          postWriteWarnings: [],
+        }, gp.numericalSystem);
+
+        // Save extended truth files (summaries, subplots, emotional arcs, character matrix)
+        await writer.saveNewTruthFiles(bookDir, {
+          ...output,
+          postWriteErrors: [],
+          postWriteWarnings: [],
+        });
+
+        // Update chapter index
+        const existingIndex = await this.state.loadChapterIndex(input.bookId);
+        const now = new Date().toISOString();
+        const newEntry: ChapterMeta = {
+          number: chapterNumber,
+          title: output.title,
+          status: "imported",
+          wordCount: ch.content.length,
+          createdAt: now,
+          updatedAt: now,
+          auditIssues: [],
+        };
+        // Replace if exists (resume case), otherwise append
+        const existingIdx = existingIndex.findIndex((e) => e.number === chapterNumber);
+        const updatedIndex = existingIdx >= 0
+          ? existingIndex.map((e, idx) => idx === existingIdx ? newEntry : e)
+          : [...existingIndex, newEntry];
+        await this.state.saveChapterIndex(input.bookId, updatedIndex);
+
+        // Snapshot state after each chapter for rollback + resume support
+        await this.state.snapshotState(input.bookId, chapterNumber);
+
+        totalWords += ch.content.length;
+      }
+
+      const nextChapter = input.chapters.length + 1;
+      process.stderr.write(`[import] Done. ${input.chapters.length} chapters imported, ${totalWords} chars. Next chapter: ${nextChapter}\n`);
+
+      return {
+        bookId: input.bookId,
+        importedCount: input.chapters.length,
+        totalWords,
+        nextChapter,
+      };
+    } finally {
+      await releaseLock();
+    }
   }
 
   // ---------------------------------------------------------------------------

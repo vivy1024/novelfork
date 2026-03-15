@@ -1,5 +1,7 @@
 import { Command } from "commander";
-import { PipelineRunner } from "@actalk/inkos-core";
+import { PipelineRunner, splitChapters } from "@actalk/inkos-core";
+import { readFile, readdir, stat } from "node:fs/promises";
+import { join, resolve } from "node:path";
 import { loadConfig, createClient, findProjectRoot, resolveBookId, log, logError } from "../utils.js";
 
 export const importCommand = new Command("import")
@@ -43,6 +45,95 @@ importCommand
         log(JSON.stringify({ error: String(e) }));
       } else {
         logError(`Canon import failed: ${e}`);
+      }
+      process.exit(1);
+    }
+  });
+
+importCommand
+  .command("chapters")
+  .description("Import existing chapters for continuation writing. Reverse-engineers all truth files.")
+  .argument("[book-id]", "Target book ID (auto-detected if only one book)")
+  .requiredOption("--from <path>", "Path to a text file (auto-split) or directory of .md/.txt files")
+  .option("--split <regex>", "Custom regex for chapter splitting (single-file mode)")
+  .option("--resume-from <n>", "Resume from chapter N (for interrupted imports)", parseInt)
+  .option("--json", "Output JSON")
+  .action(async (bookIdArg: string | undefined, opts) => {
+    try {
+      const root = findProjectRoot();
+      const bookId = await resolveBookId(bookIdArg, root);
+      const config = await loadConfig();
+      const client = createClient(config);
+
+      const fromPath = resolve(opts.from);
+      const fromStat = await stat(fromPath);
+
+      let chapters: Array<{ title: string; content: string }>;
+
+      if (fromStat.isDirectory()) {
+        // Directory mode: read each .md/.txt file in sorted order
+        const entries = await readdir(fromPath);
+        const textFiles = entries
+          .filter((f) => f.endsWith(".md") || f.endsWith(".txt"))
+          .sort();
+
+        if (textFiles.length === 0) {
+          throw new Error(`No .md or .txt files found in ${fromPath}`);
+        }
+
+        chapters = await Promise.all(
+          textFiles.map(async (f) => {
+            const content = await readFile(join(fromPath, f), "utf-8");
+            const title = f.replace(/\.(md|txt)$/, "").replace(/^\d+[_\-\s]*/, "");
+            return { title, content };
+          }),
+        );
+      } else {
+        // Single file mode: split by chapter pattern
+        const text = await readFile(fromPath, "utf-8");
+        chapters = [...splitChapters(text, opts.split)];
+
+        if (chapters.length === 0) {
+          throw new Error(
+            `No chapters found in ${fromPath}. ` +
+            `Default pattern matches "第X章". Use --split to provide a custom regex.`,
+          );
+        }
+      }
+
+      if (!opts.json) {
+        log(`Found ${chapters.length} chapters to import into "${bookId}".`);
+        if (opts.resumeFrom) {
+          log(`Resuming from chapter ${opts.resumeFrom}.`);
+        }
+      }
+
+      const pipeline = new PipelineRunner({
+        client,
+        model: config.llm.model,
+        projectRoot: root,
+      });
+
+      const result = await pipeline.importChapters({
+        bookId,
+        chapters,
+        resumeFrom: opts.resumeFrom,
+      });
+
+      if (opts.json) {
+        log(JSON.stringify(result, null, 2));
+      } else {
+        log(`Import complete:`);
+        log(`  Chapters imported: ${result.importedCount}`);
+        log(`  Total characters: ${result.totalWords}`);
+        log(`  Next chapter number: ${result.nextChapter}`);
+        log(`\nRun "inkos write next ${bookId}" to continue writing.`);
+      }
+    } catch (e) {
+      if (opts.json) {
+        log(JSON.stringify({ error: String(e) }));
+      } else {
+        logError(`Chapter import failed: ${e}`);
       }
       process.exit(1);
     }

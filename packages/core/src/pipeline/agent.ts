@@ -142,6 +142,19 @@ const TOOLS: ReadonlyArray<ToolDefinition> = [
       required: ["targetBookId", "parentBookId"],
     },
   },
+  {
+    name: "import_chapters",
+    description: "导入已有章节。从文本中分割章节并逐章分析，反推所有真相文件。导入后可用 write_draft 续写。",
+    parameters: {
+      type: "object",
+      properties: {
+        bookId: { type: "string", description: "目标书籍ID" },
+        text: { type: "string", description: "包含多章的完整文本" },
+        splitPattern: { type: "string", description: "章节分割正则（可选，默认匹配'第X章'）" },
+      },
+      required: ["bookId", "text"],
+    },
+  },
 ];
 
 export interface AgentLoopOptions {
@@ -181,6 +194,7 @@ export async function runAgentLoop(
 | web_fetch | 抓取指定URL的文本内容 |
 | import_style | 从参考文本生成文风指南（统计+LLM分析） |
 | import_canon | 从正传导入正典参照，启用番外模式 |
+| import_chapters | 导入已有章节，反推所有真相文件，支持续写 |
 
 ## 长期记忆
 
@@ -205,7 +219,8 @@ export async function runAgentLoop(
 - 用户说了书名/bookId → 直接操作，不需要先 list_books
 - 每完成一步，简要汇报进展
 - 仿写流程：用户提供参考文本 → import_style → 生成 style_guide.md，后续写作自动参照
-- 番外流程：先 create_book 建番外书 → import_canon 导入正传正典 → 然后正常 write_draft`,
+- 番外流程：先 create_book 建番外书 → import_canon 导入正传正典 → 然后正常 write_draft
+- 续写流程：用户提供已有章节 → import_chapters → 然后 write_draft 续写`,
     },
     { role: "user", content: instruction },
   ];
@@ -384,6 +399,22 @@ async function executeTool(
         output: "story/parent_canon.md",
         canonPreview: canon.slice(0, 500),
       });
+    }
+
+    case "import_chapters": {
+      const { splitChapters } = await import("../utils/chapter-splitter.js");
+      const chapters = splitChapters(
+        args.text as string,
+        args.splitPattern as string | undefined,
+      );
+      if (chapters.length === 0) {
+        return JSON.stringify({ error: "No chapters found. Check text format or provide a splitPattern." });
+      }
+      const result = await pipeline.importChapters({
+        bookId: args.bookId as string,
+        chapters: [...chapters],
+      });
+      return JSON.stringify(result);
     }
 
     default:

@@ -210,6 +210,153 @@ ${eraBlock}
     await Promise.all(writes);
   }
 
+  /**
+   * Reverse-engineer foundation from existing chapters.
+   * Reads all chapters as a single text block and asks LLM to extract story_bible,
+   * volume_outline, book_rules, current_state, and pending_hooks.
+   */
+  async generateFoundationFromImport(
+    book: BookConfig,
+    chaptersText: string,
+    externalContext?: string,
+  ): Promise<ArchitectOutput> {
+    const { profile: gp, body: genreBody } =
+      await readGenreProfile(this.ctx.projectRoot, book.genre);
+
+    const contextBlock = externalContext
+      ? `\n\n## 外部指令\n${externalContext}\n`
+      : "";
+
+    const numericalBlock = gp.numericalSystem
+      ? `- 有明确的数值/资源体系可追踪
+- 在 book_rules 中定义 numericalSystemOverrides（hardCap、resourceTypes）`
+      : "- 本题材无数值系统，不需要资源账本";
+
+    const powerBlock = gp.powerScaling
+      ? "- 有明确的战力等级体系"
+      : "";
+
+    const eraBlock = gp.eraResearch
+      ? "- 需要年代考据支撑（在 book_rules 中设置 eraConstraints）"
+      : "";
+
+    const systemPrompt = `你是一个专业的网络小说架构师。你的任务是从已有的小说正文中反向推导完整的基础设定。${contextBlock}
+
+## 工作模式
+
+这不是从零创建，而是从已有正文中提取和推导。你需要：
+1. 从正文中提取世界观、势力、角色、力量体系 → 生成 story_bible
+2. 从叙事结构推断卷纲 → 生成 volume_outline（已有章节的回顾 + 预测后续方向）
+3. 从角色行为推断主角锁定和禁忌 → 生成 book_rules
+4. 从最新章节状态推断 current_state（反映最后一章结束时的状态）
+5. 从正文中识别已埋伏笔 → 生成 pending_hooks
+
+## 书籍信息
+
+- 标题：${book.title}
+- 平台：${book.platform}
+- 题材：${gp.name}（${book.genre}）
+- 目标章数：${book.targetChapters}章
+- 每章字数：${book.chapterWordCount}字
+
+## 题材特征
+
+${genreBody}
+
+## 生成要求
+
+你需要生成以下内容，每个部分用 === SECTION: <name> === 分隔：
+
+=== SECTION: story_bible ===
+从正文中提取，用结构化二级标题组织：
+## 01_世界观
+从正文中提取的世界观设定、核心规则体系
+
+## 02_主角
+从正文中推断的主角设定（身份/金手指/性格底色/行为边界）
+
+## 03_势力与人物
+从正文中出现的势力分布、重要配角（每人：名字、身份、动机、与主角关系、独立目标）
+
+## 04_地理与环境
+从正文中出现的地图/场景设定、环境特色
+
+## 05_书名与简介
+保留原书名"${book.title}"，根据正文内容生成简介
+
+=== SECTION: volume_outline ===
+基于已有正文反推卷纲：
+- 已有章节部分：根据实际内容回顾每卷的结构
+- 后续预测部分：基于已有伏笔和剧情走向预测未来方向
+每卷包含：卷名、章节范围、核心冲突、关键转折
+
+=== SECTION: book_rules ===
+从正文中角色行为反推 book_rules.md 格式的 YAML frontmatter + 叙事指导：
+\`\`\`
+---
+version: "1.0"
+protagonist:
+  name: (从正文提取主角名)
+  personalityLock: [(从行为推断3-5个性格关键词)]
+  behavioralConstraints: [(从行为推断3-5条行为约束)]
+genreLock:
+  primary: ${book.genre}
+  forbidden: [(2-3种禁止混入的文风)]
+${gp.numericalSystem ? `numericalSystemOverrides:
+  hardCap: (从正文推断)
+  resourceTypes: [(从正文提取核心资源类型)]` : ""}
+prohibitions:
+  - (从正文推断3-5条本书禁忌)
+chapterTypesOverride: []
+fatigueWordsOverride: []
+additionalAuditDimensions: []
+enableFullCastTracking: false
+---
+
+## 叙事视角
+(从正文推断本书叙事视角和风格)
+
+## 核心冲突驱动
+(从正文推断本书的核心矛盾和驱动力)
+\`\`\`
+
+=== SECTION: current_state ===
+反映最后一章结束时的状态卡：
+| 字段 | 值 |
+|------|-----|
+| 当前章节 | (最后一章章节号) |
+| 当前位置 | (最后一章结束时的位置) |
+| 主角状态 | (最后一章结束时的状态) |
+| 当前目标 | (当前目标) |
+| 当前限制 | (当前限制) |
+| 当前敌我 | (当前敌我关系) |
+| 当前冲突 | (当前冲突) |
+
+=== SECTION: pending_hooks ===
+从正文中识别的所有伏笔（Markdown表格）：
+| hook_id | 起始章节 | 类型 | 状态 | 最近推进 | 预期回收 | 备注 |
+
+## 关键原则
+
+1. 一切从正文出发，不要臆造正文中没有的设定
+2. 伏笔识别要完整：悬而未决的线索、暗示、预告都算
+3. 角色推断要准确：从对话和行为推断性格，不要想当然
+4. 准确性优先，宁可详细也不要遗漏
+${numericalBlock}
+${powerBlock}
+${eraBlock}`;
+
+    const response = await this.chat([
+      { role: "system", content: systemPrompt },
+      {
+        role: "user",
+        content: `以下是《${book.title}》的全部已有正文，请从中反向推导完整基础设定：\n\n${chaptersText}`,
+      },
+    ], { maxTokens: 16384, temperature: 0.5 });
+
+    return this.parseSections(response.content);
+  }
+
   private parseSections(content: string): ArchitectOutput {
     const extract = (name: string): string => {
       const regex = new RegExp(
