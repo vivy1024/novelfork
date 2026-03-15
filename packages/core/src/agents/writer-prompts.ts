@@ -396,6 +396,7 @@ function buildPreWriteChecklist(book: BookConfig, gp: GenreProfile): string {
   const lines = [
     "## 动笔前必须自问",
     "",
+    `${idx++}. 【大纲锚定】本章对应卷纲中的哪个节点/阶段？本章必须推进该节点的剧情，不得跳过或提前消耗后续节点。如果卷纲指定了章节范围，严格遵守节奏。`,
     `${idx++}. 主角此刻利益最大化的选择是什么？`,
     `${idx++}. 这场冲突是谁先动手，为什么非做不可？`,
     `${idx++}. 配角/反派是否有明确诉求、恐惧和反制？行为是否由"过往经历+当前利益+性格底色"驱动？`,
@@ -433,6 +434,7 @@ function buildOutputFormat(book: BookConfig, gp: GenreProfile): string {
 （必须输出Markdown表格）
 | 检查项 | 本章记录 | 备注 |
 |--------|----------|------|
+| 大纲锚定 | 当前卷名/阶段 + 本章应推进的具体节点 | 严禁跳过节点或提前消耗后续剧情 |
 | 上下文范围 | 第X章至第Y章 / 状态卡 / 设定文件 | |
 | 当前锚点 | 地点 / 对手 / 收益目标 | 锚点必须具体 |
 ${resourceRow}| 待回收伏笔 | Hook-A / Hook-B | 与伏笔池一致 |

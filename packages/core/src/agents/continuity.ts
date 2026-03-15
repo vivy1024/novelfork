@@ -52,6 +52,7 @@ const DIMENSION_MAP: Record<number, string> = {
   30: "世界规则跨书一致性",
   31: "番外伏笔隔离",
   32: "读者期待管理",
+  33: "大纲偏离检测",
 };
 
 function buildDimensionList(
@@ -92,6 +93,7 @@ function buildDimensionList(
 
   // Always-active dimensions
   activeIds.add(32); // 读者期待管理 — universal
+  activeIds.add(33); // 大纲偏离检测 — universal
 
   // Conditional overrides
   if (gp.eraResearch || bookRules?.eraConstraints?.enabled) {
@@ -154,6 +156,9 @@ function buildDimensionList(
     if (id === 32) {
       note = "检查：章尾是否有钩子？最近3-5章内是否有爽点落地？是否存在超过3章的情绪压制无释放？读者的情绪缺口是否在积累或被满足？";
     }
+    if (id === 33) {
+      note = "对照 volume_outline：本章内容是否对应卷纲中当前章节范围的剧情节点？是否跳过了节点或提前消耗了后续节点？剧情推进速度是否与卷纲规划的章节跨度匹配？如果卷纲规划某段剧情跨N章但实际1-2章就讲完→critical";
+    }
 
     dims.push({ id, name, note });
   }
@@ -173,7 +178,7 @@ export class ContinuityAuditor extends BaseAgent {
     genre?: string,
     options?: { temperature?: number },
   ): Promise<AuditResult> {
-    const [currentState, ledger, hooks, styleGuideRaw, subplotBoard, emotionalArcs, characterMatrix, chapterSummaries, parentCanon] =
+    const [currentState, ledger, hooks, styleGuideRaw, subplotBoard, emotionalArcs, characterMatrix, chapterSummaries, parentCanon, volumeOutline] =
       await Promise.all([
         this.readFileSafe(join(bookDir, "story/current_state.md")),
         this.readFileSafe(join(bookDir, "story/particle_ledger.md")),
@@ -184,6 +189,7 @@ export class ContinuityAuditor extends BaseAgent {
         this.readFileSafe(join(bookDir, "story/character_matrix.md")),
         this.readFileSafe(join(bookDir, "story/chapter_summaries.md")),
         this.readFileSafe(join(bookDir, "story/parent_canon.md")),
+        this.readFileSafe(join(bookDir, "story/volume_outline.md")),
       ]);
 
     const hasParentCanon = parentCanon !== "(文件不存在)";
@@ -254,6 +260,10 @@ ${dimList}
       ? `\n## 正传正典参照（番外审查专用）\n${parentCanon}\n`
       : "";
 
+    const outlineBlock = volumeOutline !== "(文件不存在)"
+      ? `\n## 卷纲（用于大纲偏离检测）\n${volumeOutline}\n`
+      : "";
+
     const userPrompt = `请审查第${chapterNumber}章。
 
 ## 当前状态卡
@@ -261,7 +271,7 @@ ${currentState}
 ${ledgerBlock}
 ## 伏笔池
 ${hooks}
-${subplotBlock}${emotionalBlock}${matrixBlock}${summariesBlock}${canonBlock}
+${subplotBlock}${emotionalBlock}${matrixBlock}${summariesBlock}${canonBlock}${outlineBlock}
 ## 文风指南
 ${styleGuide}
 
