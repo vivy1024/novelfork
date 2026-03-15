@@ -29,6 +29,8 @@ export { analyzeDetectionInsights } from "./agents/detection-insights.js";
 export { validatePostWrite, type PostWriteViolation } from "./agents/post-write-validator.js";
 export { ChapterAnalyzerAgent, type AnalyzeChapterInput, type AnalyzeChapterOutput } from "./agents/chapter-analyzer.js";
 export { parseWriterOutput, type ParsedWriterOutput } from "./agents/writer-parser.js";
+export { buildSettlerSystemPrompt, buildSettlerUserPrompt } from "./agents/settler-prompts.js";
+export { parseSettlementOutput, type SettlementOutput } from "./agents/settler-parser.js";
 
 // Utils
 export { fetchUrl } from "./utils/web-search.js";
