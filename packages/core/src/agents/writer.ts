@@ -3,10 +3,12 @@ import type { BookConfig } from "../models/book.js";
 import type { GenreProfile } from "../models/genre-profile.js";
 import type { BookRules } from "../models/book-rules.js";
 import { buildWriterSystemPrompt } from "./writer-prompts.js";
+import { buildSettlerSystemPrompt, buildSettlerUserPrompt } from "./settler-prompts.js";
+import { parseSettlementOutput } from "./settler-parser.js";
 import { readGenreProfile, readBookRules } from "./rules-reader.js";
 import { validatePostWrite, type PostWriteViolation } from "./post-write-validator.js";
 import { analyzeAITells } from "./ai-tells.js";
-import { parseWriterOutput } from "./writer-parser.js";
+import { parseCreativeOutput } from "./writer-parser.js";
 import { readFile, writeFile, mkdir, readdir } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -75,17 +77,18 @@ export class WriterAgent extends BaseAgent {
 
     const styleFingerprint = this.buildStyleFingerprint(styleProfileRaw);
 
-    const systemPrompt = buildWriterSystemPrompt(
-      book, genreProfile, bookRules, bookRulesBody, genreBody, styleGuide, styleFingerprint,
-      chapterNumber,
-    );
-
     const dialogueFingerprints = this.extractDialogueFingerprints(recentChapters, storyBible);
     const relevantSummaries = this.findRelevantSummaries(chapterSummaries, volumeOutline, chapterNumber);
 
     const hasParentCanon = parentCanon !== "(文件尚未创建)";
 
-    const userPrompt = this.buildUserPrompt({
+    // ── Phase 1: Creative writing (temperature 0.7) ──
+    const creativeSystemPrompt = buildWriterSystemPrompt(
+      book, genreProfile, bookRules, bookRulesBody, genreBody, styleGuide, styleFingerprint,
+      chapterNumber, "creative",
+    );
+
+    const creativeUserPrompt = this.buildUserPrompt({
       chapterNumber,
       storyBible,
       volumeOutline,
@@ -104,21 +107,43 @@ export class WriterAgent extends BaseAgent {
       parentCanon: hasParentCanon ? parentCanon : undefined,
     });
 
-    const temperature = input.temperatureOverride ?? 0.7;
+    const creativeTemperature = input.temperatureOverride ?? 0.7;
 
-    const response = await this.chat(
+    process.stderr.write(`[writer] Phase 1: creative writing for chapter ${chapterNumber}\n`);
+
+    const creativeResponse = await this.chat(
       [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
+        { role: "system", content: creativeSystemPrompt },
+        { role: "user", content: creativeUserPrompt },
       ],
-      { maxTokens: 16384, temperature },
+      { maxTokens: 8192, temperature: creativeTemperature },
     );
 
-    const output = this.parseOutput(chapterNumber, response.content, genreProfile);
+    const creative = parseCreativeOutput(chapterNumber, creativeResponse.content);
 
-    // #4: Post-write validation (regex + rule-based, zero LLM cost)
-    const ruleViolations = validatePostWrite(output.content, genreProfile, bookRules);
-    const aiTellIssues = analyzeAITells(output.content).issues;
+    // ── Phase 2: State settlement (temperature 0.3) ──
+    process.stderr.write(`[writer] Phase 2: state settlement for chapter ${chapterNumber} (${creative.wordCount} chars)\n`);
+
+    const settlement = await this.settle({
+      book,
+      genreProfile,
+      bookRules,
+      chapterNumber,
+      title: creative.title,
+      content: creative.content,
+      currentState,
+      ledger: genreProfile.numericalSystem ? ledger : "",
+      hooks,
+      chapterSummaries,
+      subplotBoard,
+      emotionalArcs,
+      characterMatrix,
+      volumeOutline,
+    });
+
+    // ── Post-write validation (regex + rule-based, zero LLM cost) ──
+    const ruleViolations = validatePostWrite(creative.content, genreProfile, bookRules);
+    const aiTellIssues = analyzeAITells(creative.content).issues;
 
     const postWriteErrors = ruleViolations.filter(v => v.severity === "error");
     const postWriteWarnings = ruleViolations.filter(v => v.severity === "warning");
@@ -140,7 +165,69 @@ export class WriterAgent extends BaseAgent {
       }
     }
 
-    return { ...output, postWriteErrors, postWriteWarnings };
+    // ── Merge into WriteChapterOutput (interface unchanged) ──
+    return {
+      chapterNumber,
+      title: creative.title,
+      content: creative.content,
+      wordCount: creative.wordCount,
+      preWriteCheck: creative.preWriteCheck,
+      postSettlement: settlement.postSettlement,
+      updatedState: settlement.updatedState,
+      updatedLedger: settlement.updatedLedger,
+      updatedHooks: settlement.updatedHooks,
+      chapterSummary: settlement.chapterSummary,
+      updatedSubplots: settlement.updatedSubplots,
+      updatedEmotionalArcs: settlement.updatedEmotionalArcs,
+      updatedCharacterMatrix: settlement.updatedCharacterMatrix,
+      postWriteErrors,
+      postWriteWarnings,
+    };
+  }
+
+  private async settle(params: {
+    readonly book: BookConfig;
+    readonly genreProfile: GenreProfile;
+    readonly bookRules: BookRules | null;
+    readonly chapterNumber: number;
+    readonly title: string;
+    readonly content: string;
+    readonly currentState: string;
+    readonly ledger: string;
+    readonly hooks: string;
+    readonly chapterSummaries: string;
+    readonly subplotBoard: string;
+    readonly emotionalArcs: string;
+    readonly characterMatrix: string;
+    readonly volumeOutline: string;
+  }) {
+    const settlerSystem = buildSettlerSystemPrompt(
+      params.book, params.genreProfile, params.bookRules,
+    );
+
+    const settlerUser = buildSettlerUserPrompt({
+      chapterNumber: params.chapterNumber,
+      title: params.title,
+      content: params.content,
+      currentState: params.currentState,
+      ledger: params.ledger,
+      hooks: params.hooks,
+      chapterSummaries: params.chapterSummaries,
+      subplotBoard: params.subplotBoard,
+      emotionalArcs: params.emotionalArcs,
+      characterMatrix: params.characterMatrix,
+      volumeOutline: params.volumeOutline,
+    });
+
+    const response = await this.chat(
+      [
+        { role: "system", content: settlerSystem },
+        { role: "user", content: settlerUser },
+      ],
+      { maxTokens: 8192, temperature: 0.3 },
+    );
+
+    return parseSettlementOutput(response.content, params.genreProfile);
   }
 
   async saveChapter(
@@ -257,8 +344,8 @@ ${params.volumeOutline}
 
 要求：
 - 正文不少于${params.wordCount}字
-- 写完后更新状态卡${params.ledger ? "、资源账本" : ""}、伏笔池、章节摘要、支线进度板、情感弧线、角色交互矩阵
-- 先输出写作自检表，再写正文`;
+- 先输出写作自检表，再写正文
+- 只需输出 PRE_WRITE_CHECK、CHAPTER_TITLE、CHAPTER_CONTENT 三个区块`;
   }
 
   private async loadRecentChapters(
@@ -294,14 +381,6 @@ ${params.volumeOutline}
     } catch {
       return "(文件尚未创建)";
     }
-  }
-
-  private parseOutput(
-    chapterNumber: number,
-    content: string,
-    genreProfile: GenreProfile,
-  ): Omit<WriteChapterOutput, "postWriteErrors" | "postWriteWarnings"> {
-    return parseWriterOutput(chapterNumber, content, genreProfile);
   }
 
   /** Save new truth files (summaries, subplots, emotional arcs, character matrix). */

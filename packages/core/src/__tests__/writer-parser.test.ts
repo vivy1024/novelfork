@@ -1,6 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { WriterAgent } from "../agents/writer.js";
-import type { WriteChapterOutput } from "../agents/writer.js";
+import { parseWriterOutput, type ParsedWriterOutput } from "../agents/writer-parser.js";
 import type { GenreProfile } from "../models/genre-profile.js";
 
 const defaultGenreProfile: GenreProfile = {
@@ -16,18 +15,12 @@ const defaultGenreProfile: GenreProfile = {
   auditDimensions: [],
 };
 
-/**
- * WriterAgent.parseOutput is private, so we access it via prototype to test
- * the extraction logic directly without needing to mock the full LLM pipeline.
- */
 function callParseOutput(
   chapterNumber: number,
   content: string,
   genreProfile: GenreProfile = defaultGenreProfile,
-): WriteChapterOutput {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const proto = WriterAgent.prototype as any;
-  return proto.parseOutput.call(null, chapterNumber, content, genreProfile);
+): ParsedWriterOutput {
+  return parseWriterOutput(chapterNumber, content, genreProfile);
 }
 
 // ---------------------------------------------------------------------------
