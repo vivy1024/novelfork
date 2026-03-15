@@ -392,6 +392,9 @@ inkos up                          # Daemon mode
 | `inkos config set-global` | Set global LLM config (~/.inkos/.env) |
 | `inkos config show-global` | Show global config |
 | `inkos config set/show` | View/update project config |
+| `inkos config set-model <agent> <model>` | Set model override for a specific agent |
+| `inkos config remove-model <agent>` | Remove agent model override (fall back to default) |
+| `inkos config show-models` | Show current model routing |
 | `inkos doctor` | Diagnose setup issues (includes API connectivity test) |
 | `inkos detect [id] [n]` | AIGC detection (`--all` for all chapters, `--stats` for statistics) |
 | `inkos style analyze <file>` | Analyze reference text to extract style fingerprint |
@@ -476,7 +479,7 @@ TypeScript monorepo managed with pnpm workspaces.
 - [x] Webhook notifications + smart scheduler (quality gates)
 - [x] Cross-chapter coherence (chapter summaries + subplot/emotion/character matrices)
 - [ ] `packages/studio` Web UI for review and editing
-- [ ] Multi-model routing (different models for different agents)
+- [x] Multi-model routing (different models for different agents, `inkos config set-model`)
 - [ ] Custom agent plugin system
 - [ ] Platform-specific export (Qidian, Tomato, etc.)
 

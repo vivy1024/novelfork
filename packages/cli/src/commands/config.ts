@@ -111,3 +111,97 @@ configCommand
       process.exit(1);
     }
   });
+
+const KNOWN_AGENTS = ["writer", "auditor", "reviser", "architect", "radar", "chapter-analyzer"] as const;
+
+configCommand
+  .command("set-model")
+  .description("Set model override for a specific agent")
+  .argument("<agent>", `Agent name (${KNOWN_AGENTS.join(", ")})`)
+  .argument("<model>", "Model name (e.g., gpt-4o, claude-sonnet-4-20250514)")
+  .action(async (agent: string, model: string) => {
+    if (!KNOWN_AGENTS.includes(agent as typeof KNOWN_AGENTS[number])) {
+      logError(`Unknown agent "${agent}". Valid agents: ${KNOWN_AGENTS.join(", ")}`);
+      process.exit(1);
+    }
+
+    const root = findProjectRoot();
+    const configPath = join(root, "inkos.json");
+
+    try {
+      const raw = await readFile(configPath, "utf-8");
+      const config = JSON.parse(raw);
+      const overrides = config.modelOverrides ?? {};
+      config.modelOverrides = { ...overrides, [agent]: model };
+      await writeFile(configPath, JSON.stringify(config, null, 2), "utf-8");
+      log(`Model override: ${agent} → ${model}`);
+    } catch (e) {
+      logError(`Failed to update config: ${e}`);
+      process.exit(1);
+    }
+  });
+
+configCommand
+  .command("remove-model")
+  .description("Remove model override for a specific agent (falls back to default)")
+  .argument("<agent>", "Agent name")
+  .action(async (agent: string) => {
+    const root = findProjectRoot();
+    const configPath = join(root, "inkos.json");
+
+    try {
+      const raw = await readFile(configPath, "utf-8");
+      const config = JSON.parse(raw);
+      const overrides = config.modelOverrides;
+      if (!overrides || !(agent in overrides)) {
+        log(`No model override for "${agent}".`);
+        return;
+      }
+      const { [agent]: _, ...rest } = overrides;
+      config.modelOverrides = Object.keys(rest).length > 0 ? rest : undefined;
+      await writeFile(configPath, JSON.stringify(config, null, 2), "utf-8");
+      log(`Removed model override for ${agent}. Will use default model.`);
+    } catch (e) {
+      logError(`Failed to update config: ${e}`);
+      process.exit(1);
+    }
+  });
+
+configCommand
+  .command("show-models")
+  .description("Show model routing for all agents")
+  .option("--json", "Output JSON")
+  .action(async (opts) => {
+    const root = findProjectRoot();
+    const configPath = join(root, "inkos.json");
+
+    try {
+      const raw = await readFile(configPath, "utf-8");
+      const config = JSON.parse(raw);
+      const defaultModel = config.llm?.model ?? "(not set)";
+      const overrides: Record<string, string> = config.modelOverrides ?? {};
+
+      if (opts.json) {
+        log(JSON.stringify({ defaultModel, overrides }, null, 2));
+        return;
+      }
+
+      log(`Default model: ${defaultModel}\n`);
+      if (Object.keys(overrides).length === 0) {
+        log("No agent-specific overrides. All agents use the default model.");
+        return;
+      }
+      log("Agent overrides:");
+      for (const [agent, model] of Object.entries(overrides)) {
+        log(`  ${agent} → ${model}`);
+      }
+      log("");
+      const usingDefault = KNOWN_AGENTS.filter((a) => !(a in overrides));
+      if (usingDefault.length > 0) {
+        log(`Using default: ${usingDefault.join(", ")}`);
+      }
+    } catch (e) {
+      logError(`Failed to read config: ${e}`);
+      process.exit(1);
+    }
+  });

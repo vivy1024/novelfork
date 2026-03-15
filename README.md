@@ -392,6 +392,9 @@ inkos up                       # 守护进程模式
 | `inkos config set-global` | 设置全局 LLM 配置（~/.inkos/.env） |
 | `inkos config show-global` | 查看全局配置 |
 | `inkos config set/show` | 查看/更新项目配置 |
+| `inkos config set-model <agent> <model>` | 为指定 agent 设置模型覆盖 |
+| `inkos config remove-model <agent>` | 移除 agent 模型覆盖（回退到默认） |
+| `inkos config show-models` | 查看当前模型路由 |
 | `inkos doctor` | 诊断配置问题（含 API 连通性测试） |
 | `inkos detect [id] [n]` | AIGC 检测（`--all` 全部章节，`--stats` 统计） |
 | `inkos style analyze <file>` | 分析参考文本提取文风指纹 |
@@ -494,7 +497,7 @@ TypeScript 单仓库，pnpm workspaces 管理。
 - [x] 写后验证器（11 条硬规则 + 自动 spot-fix）
 - [x] 审计-修订闭环加固（AI 标记守卫 + 温度锁）
 - [ ] `packages/studio` Web UI 审阅编辑界面
-- [ ] 多模型路由（不同 agent 用不同模型）
+- [x] 多模型路由（不同 agent 用不同模型，`inkos config set-model`）
 - [ ] 自定义 agent 插件系统
 - [ ] 平台格式导出（起点、番茄等）
 
