@@ -308,7 +308,7 @@ inkos agent "写下一章，重点写师徒矛盾"
 inkos agent "先扫描市场趋势，然后根据结果创建一本新书"
 ```
 
-内置 12 个工具（write_draft、audit_chapter、revise_chapter、scan_market、create_book、get_book_status、read_truth_files、list_books、write_full_pipeline、web_fetch、import_style、import_canon），LLM 通过 tool-use 决定调用顺序。
+内置 13 个工具（write_draft、audit_chapter、revise_chapter、scan_market、create_book、get_book_status、read_truth_files、list_books、write_full_pipeline、web_fetch、import_style、import_canon、import_chapters），LLM 通过 tool-use 决定调用顺序。
 
 ## 快速开始
 

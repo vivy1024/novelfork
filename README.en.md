@@ -63,10 +63,19 @@ The Writer reads the style guide every chapter; the Auditor cross-checks against
 
 11 deterministic rules, zero LLM cost, fires immediately after each chapter:
 
-- Banned sentence patterns, dash prohibition, transition word density limits
-- High-fatigue word caps, meta-narration detection, report terminology in prose
-- Author sermonizing, collective shock cliches, consecutive "le" (了) character runs
-- Paragraph length checks (mobile-reading friendly), book-level prohibitions
+| Rule | Description |
+|------|-------------|
+| Banned Patterns | "not X… but Y…" sentence structure |
+| Dash Prohibition | em-dash "——" |
+| Transition Word Density | "as if" / "suddenly" / "unexpectedly" — max 1 per 3,000 words |
+| High-Fatigue Words | Genre fatigue words: max 1 per word per chapter |
+| Meta-Narration | Screenwriter-style commentary |
+| Report Terminology | Analytical framework terms banned from prose |
+| Author Sermonizing | "obviously" / "needless to say" etc. |
+| Collective Shock | "the whole crowd was stunned" cliches |
+| Consecutive "le" (了) | ≥ 4 consecutive sentences containing "了" |
+| Paragraph Length | ≥ 2 paragraphs over 300 characters |
+| Book Prohibitions | Custom bans from book_rules.md |
 
 When the validator finds error-level violations, it auto-triggers `spot-fix` mode for targeted repair before the LLM audit even runs.
 
@@ -81,7 +90,8 @@ Real testing showed `rewrite` mode introduces 6x more AI markers than the origin
 
 ### Other v0.4 Changes
 
-- Audit dimensions expanded from 26 to 32 (+4 spinoff dims + sensitive word check + reader expectation management)
+- Audit dimensions expanded from 26 to 33 (+4 spinoff dims + dim 27 sensitive words + dim 32 reader expectation management + dim 33 outline adherence detection)
+- All 5 genres now activate dims 24-26 (subplot stagnation / flat emotional arc / monotonous pacing)
 - Auditor web search: era-research genres can verify real events/people/geography online (native search)
 - Scheduler rewrite: AI-paced (15min cycles), parallel book processing, immediate retry, daily cap
 - New `spot-fix` revise mode (targeted repair)
@@ -181,13 +191,13 @@ fatigueWordsOverride: ["pupils constricted", "disbelief"]   # Override genre def
 
 Protagonist personality lock, numerical caps, custom prohibitions, fatigue word overrides — each book's rules are independent, without affecting the genre template.
 
-### 32-Dimension Audit
+### 33-Dimension Audit
 
-Auditing is broken down into 32 dimensions, with genre-appropriate subsets auto-enabled:
+Auditing is broken down into 33 dimensions, with genre-appropriate subsets auto-enabled:
 
-OOC check, timeline, setting conflicts, foreshadowing, pacing, writing style, information leaking, vocabulary fatigue, broken interest chains, side character intelligence drops, side character tool-ification, hollow payoffs, dialogue authenticity, padding detection, knowledge base contamination, POV consistency, power scaling collapse, numerical verification, era research, paragraph uniformity, hedge word density, formulaic transitions, list-like structure, subplot stagnation, flat emotional arc, monotonous pacing
+OOC check, timeline, setting conflicts, power scaling collapse, numerical verification, foreshadowing, pacing, writing style, information leaking, vocabulary fatigue, broken interest chains, era research, side character intelligence drops, side character tool-ification, hollow payoffs, dialogue authenticity, padding detection, knowledge base contamination, POV consistency, paragraph uniformity, hedge word density, formulaic transitions, list-like structure, subplot stagnation, flat emotional arc, monotonous pacing, sensitive word check, canon event conflict, future info leak, cross-book world consistency, spinoff foreshadowing isolation, reader expectation management, outline adherence detection
 
-Dims 20-23 (AI-tell detection) + dim 27 (sensitive words) use a pure rule engine — no LLM calls. Dims 28-31 (spinoff) auto-activate when `parent_canon.md` is detected. Dim 32 (reader expectation management) is always on.
+Dims 20-23 (AI-tell detection) + dim 27 (sensitive words) use a pure rule engine — no LLM calls. Dims 28-31 (spinoff) auto-activate when `parent_canon.md` is detected. Dim 32 (reader expectation management) and dim 33 (outline adherence detection) are always on.
 
 ### De-AI-ification
 
@@ -298,7 +308,7 @@ inkos agent "Write the next chapter, focus on master-disciple conflict"
 inkos agent "Scan market trends first, then create a new book based on results"
 ```
 
-12 built-in tools (write_draft, audit_chapter, revise_chapter, scan_market, create_book, get_book_status, read_truth_files, list_books, write_full_pipeline, web_fetch, import_style, import_canon), with the LLM deciding call order via tool-use.
+13 built-in tools (write_draft, audit_chapter, revise_chapter, scan_market, create_book, get_book_status, read_truth_files, list_books, write_full_pipeline, web_fetch, import_style, import_canon, import_chapters), with the LLM deciding call order via tool-use.
 
 ## Quick Start
 
@@ -428,7 +438,7 @@ Atomic commands + `--json` output make InkOS callable by OpenClaw and other AI a
 inkos/
 ├── packages/
 │   ├── core/              # Agent runtime, pipeline, state management
-│   │   ├── agents/        # architect, writer, continuity, reviser, radar, ai-tells, detector, style-analyzer
+│   │   ├── agents/        # architect, writer, continuity, reviser, radar, ai-tells, post-write-validator, sensitive-words, detector, style-analyzer
 │   │   ├── pipeline/      # runner, agent (tool-use), scheduler, detection-runner
 │   │   ├── state/         # File-based state manager (7 truth files + snapshots)
 │   │   ├── llm/           # OpenAI + Anthropic dual SDK (streaming)
@@ -455,7 +465,7 @@ TypeScript monorepo managed with pnpm workspaces.
 - [x] Pluggable radar (RadarSource interface)
 - [x] External agent integration (OpenClaw, etc.)
 - [x] Genre customization + per-book rules (genre CLI + book_rules.md)
-- [x] 32-dimension continuity audit (including AI-tell detection + spinoff dims)
+- [x] 33-dimension continuity audit (including AI-tell detection + spinoff dims + outline adherence)
 - [x] De-AI-ification rules + style fingerprint injection
 - [x] Spinoff writing (canon import + 4 audit dimensions + info boundary control)
 - [x] Style cloning (statistical fingerprint + LLM style guide + Writer injection)
