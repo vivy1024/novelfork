@@ -1,6 +1,6 @@
 {
   "name": "@actalk/inkos",
-  "version": "0.4.1",
+  "version": "0.4.3",
   "description": "InkOS CLI — multi-agent novel production system",
   "type": "module",
   "bin": {
@@ -18,7 +18,6 @@
   },
   "scripts": {
     "prepack": "node ../../scripts/prepare-package-for-publish.mjs",
-    "prepublishOnly": "node ../../scripts/verify-no-workspace-protocol.mjs",
     "postpack": "node ../../scripts/restore-package-json.mjs",
     "build": "tsc",
     "dev": "tsc --watch",

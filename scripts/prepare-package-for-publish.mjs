@@ -7,7 +7,7 @@
  * Expects process.cwd() to be the package directory (npm/pnpm guarantee this).
  */
 
-import { readFile, writeFile, copyFile } from "node:fs/promises";
+import { readFile, writeFile, copyFile, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 const packageDir = process.cwd();
@@ -99,6 +99,31 @@ async function main() {
 
   await writeFile(packageJsonPath, `${JSON.stringify(pkg, null, 2)}\n`, "utf-8");
   process.stderr.write(`[prepack] Replaced workspace:* deps in ${pkg.name}\n`);
+
+  // Verify: re-read and confirm no workspace: references remain
+  const verifyRaw = await readFile(packageJsonPath, "utf-8");
+  const verifyPkg = JSON.parse(verifyRaw);
+  const violations = [];
+  for (const field of ["dependencies", "optionalDependencies", "peerDependencies"]) {
+    const deps = verifyPkg[field];
+    if (!deps) continue;
+    for (const [name, specifier] of Object.entries(deps)) {
+      if (typeof specifier === "string" && specifier.startsWith("workspace:")) {
+        violations.push(`  ${field}.${name}: ${specifier}`);
+      }
+    }
+  }
+  if (violations.length > 0) {
+    process.stderr.write(
+      `[prepack] FATAL: workspace: references remain after replacement!\n` +
+      `${violations.join("\n")}\n`,
+    );
+    // Restore backup before aborting
+    const original = await readFile(backupPath, "utf-8");
+    await writeFile(packageJsonPath, original, "utf-8");
+    await rm(backupPath, { force: true });
+    process.exit(1);
+  }
 }
 
 await main();

@@ -1,40 +1,46 @@
 /**
- * prepublishOnly guard — aborts publish if package.json still contains workspace: protocol.
+ * Standalone verification: checks that no workspace: protocol remains in package.json.
  *
- * This runs AFTER prepack (which replaces workspace:* with real versions)
- * but BEFORE the actual upload. If prepack was skipped or failed silently,
- * this script catches it and prevents a broken publish.
+ * Usage:
+ *   node scripts/verify-no-workspace-protocol.mjs packages/cli packages/core
  *
- * Usage in each publishable package:
- *   "prepublishOnly": "node ../../scripts/verify-no-workspace-protocol.mjs"
+ * Used by CI and as a pre-publish sanity check. The prepack script also runs
+ * this check inline after replacement, but this script catches the case where
+ * prepack is skipped entirely.
  */
 
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-const packageJsonPath = join(process.cwd(), "package.json");
-const raw = await readFile(packageJsonPath, "utf-8");
-const pkg = JSON.parse(raw);
+const dirs = process.argv.slice(2);
+if (dirs.length === 0) {
+  process.stderr.write("Usage: node verify-no-workspace-protocol.mjs <pkg-dir> [<pkg-dir>...]\n");
+  process.exit(1);
+}
 
-const violations = [];
+let failed = false;
 
-for (const field of ["dependencies", "optionalDependencies", "peerDependencies"]) {
-  const deps = pkg[field];
-  if (!deps) continue;
-  for (const [name, specifier] of Object.entries(deps)) {
-    if (typeof specifier === "string" && specifier.startsWith("workspace:")) {
-      violations.push(`  ${field}.${name}: ${specifier}`);
+for (const dir of dirs) {
+  const packageJsonPath = join(dir, "package.json");
+  const raw = await readFile(packageJsonPath, "utf-8");
+  const pkg = JSON.parse(raw);
+
+  for (const field of ["dependencies", "optionalDependencies", "peerDependencies"]) {
+    const deps = pkg[field];
+    if (!deps) continue;
+    for (const [name, specifier] of Object.entries(deps)) {
+      if (typeof specifier === "string" && specifier.startsWith("workspace:")) {
+        process.stderr.write(`FAIL: ${dir} — ${field}.${name}: ${specifier}\n`);
+        failed = true;
+      }
     }
+  }
+
+  if (!failed) {
+    process.stderr.write(`OK: ${dir}\n`);
   }
 }
 
-if (violations.length > 0) {
-  process.stderr.write(
-    `\n[ERROR] Cannot publish: package.json still contains workspace: protocol references.\n` +
-    `This means the prepack script did not run or failed silently.\n\n` +
-    `Violations:\n${violations.join("\n")}\n\n` +
-    `Fix: run "node ../../scripts/prepare-package-for-publish.mjs" manually,\n` +
-    `or check that "prepack" is configured in package.json scripts.\n\n`,
-  );
+if (failed) {
   process.exit(1);
 }
