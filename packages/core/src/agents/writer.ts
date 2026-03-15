@@ -358,7 +358,7 @@ ${params.volumeOutline}
       const mdFiles = files
         .filter((f) => f.endsWith(".md") && !f.startsWith("index"))
         .sort()
-        .slice(-3);
+        .slice(-1);
 
       if (mdFiles.length === 0) return "";
 
