@@ -530,6 +530,7 @@ TypeScript monorepo managed with pnpm workspaces.
 - [ ] EPUB export (`inkos export --format epub`, read on phone/Kindle)
 - [ ] Partial chapter intervention (rewrite half a chapter + cascade truth file updates)
 - [ ] Empty chapter / truncation fix (local model parsing tolerance + timeout reconnection)
+- [ ] Full English novel support (English genre profiles, prompts, audit rules, post-write validator)
 - [ ] Custom agent plugin system
 - [ ] Platform-specific export (Qidian, Tomato, etc.)
 

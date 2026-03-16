@@ -548,6 +548,7 @@ TypeScript 单仓库，pnpm workspaces 管理。
 - [ ] EPUB 导出（`inkos export --format epub`，手机/Kindle 阅读）
 - [ ] 局部干预（重写半章 + 级联更新后续 truth 文件）
 - [ ] 空章节/断章修复（本地小模型解析容错 + 超时重连）
+- [ ] 英文小说全面适配（English genre profiles, prompts, audit rules, post-write validator）
 - [ ] 自定义 agent 插件系统
 - [ ] 平台格式导出（起点、番茄等）
 
