@@ -22,7 +22,20 @@ Open-source multi-agent system that autonomously writes, audits, and revises nov
 
 ## v0.4 Update
 
-Spinoff writing + style cloning + post-write validator + audit-revise hardening.
+Continuation writing + spinoff writing + style cloning + multi-provider routing + post-write validator + audit-revise hardening.
+
+### Continuation Writing (Import Existing Work)
+
+Import an existing novel (single file or chapter directory) into InkOS. The system auto-splits chapters, reverse-engineers all truth files (world state, hooks, character matrix, etc.), then seamlessly continues writing.
+
+```bash
+inkos import chapters my-book --from chapters/          # Import from directory
+inkos import chapters my-book --from novel.txt           # Import from single file (auto-splits on "第X章")
+inkos import chapters my-book --from novel.txt --split "Chapter\\s+\\d+"  # Custom split regex
+inkos write next my-book                                 # Continue writing seamlessly
+```
+
+Single-file mode splits on `第X章` by default. Use `--split <regex>` for custom patterns. Interrupted imports can resume with `--resume-from <n>`.
 
 ### Spinoff Writing
 
@@ -73,7 +86,7 @@ The Writer reads the style guide every chapter; the Auditor cross-checks against
 | Report Terminology | Analytical framework terms banned from prose |
 | Author Sermonizing | "obviously" / "needless to say" etc. |
 | Collective Shock | "the whole crowd was stunned" cliches |
-| Consecutive "le" (了) | ≥ 4 consecutive sentences containing "了" |
+| Consecutive "le" (了) | ≥ 6 consecutive sentences containing "了" |
 | Paragraph Length | ≥ 2 paragraphs over 300 characters |
 | Book Prohibitions | Custom bans from book_rules.md |
 
@@ -88,6 +101,32 @@ Real testing showed `rewrite` mode introduces 6x more AI markers than the origin
 - Re-audit temperature locked to 0 (deterministic pass/fail gating)
 - `polish` mode boundaries strengthened (no adding paragraphs, renaming entities, or changing causality)
 
+### Multi-Provider Agent Routing
+
+Different agents can use completely different API providers — not just different model names, but different API endpoints and keys. For example, use a cheap model for drafting and a strong model for auditing:
+
+```bash
+inkos config set-model writer gpt-4o-mini                                    # Simple model override
+inkos config set-model auditor gemini-2.5-flash \
+  --base-url https://generativelanguage.googleapis.com/v1beta/openai \
+  --provider openai \
+  --api-key-env GEMINI_API_KEY                                                # Route to Gemini API
+inkos config set-model reviser claude-sonnet-4-20250514 \
+  --base-url https://api.anthropic.com \
+  --provider anthropic \
+  --api-key-env ANTHROPIC_API_KEY                                             # Route to Anthropic API
+inkos config show-models                                                      # View full routing
+```
+
+Each agent independently configurable with `--base-url`, `--provider`, `--api-key-env`, `--no-stream`. Unconfigured agents use the project default.
+
+### Analytics
+
+```bash
+inkos analytics my-book          # Audit pass rate, top issue categories, chapters with most issues
+inkos analytics my-book --json   # Structured output
+```
+
 ### Other v0.4 Changes
 
 - Audit dimensions expanded from 26 to 33 (+4 spinoff dims + dim 27 sensitive words + dim 32 reader expectation management + dim 33 outline adherence detection)
@@ -96,6 +135,9 @@ Real testing showed `rewrite` mode introduces 6x more AI markers than the origin
 - Scheduler rewrite: AI-paced (15min cycles), parallel book processing, immediate retry, daily cap
 - New `spot-fix` revise mode (targeted repair)
 - `additionalAuditDimensions` in `book_rules.md` now supports name-string matching
+- `inkos export` supports `--format md`, `--output <path>`, `--approved-only`
+- Post-write validator consecutive "了" threshold raised from 4 to 6 (reduces false positives in Chinese prose)
+- Safety hardening: `init`/`book create`/`import chapters` overwrite guards, `config set` type coercion + key validation, `update` downgrade prevention, `doctor` works outside projects, consistent status display, `genre show` rejects invalid IDs
 
 ---
 
@@ -374,12 +416,12 @@ inkos up                          # Daemon mode
 | Command | Description |
 |---------|-------------|
 | `inkos init [name]` | Initialize project (omit name to init current directory) |
-| `inkos book create` | Create a new book (`--chapter-words` to set word count) |
+| `inkos book create` | Create a new book (`--genre`, `--platform`, `--chapter-words`, `--target-chapters`, `--context`) |
 | `inkos book update [id]` | Update book settings (`--chapter-words`, `--target-chapters`, `--status`) |
 | `inkos book list` | List all books |
 | `inkos genre list/show/copy/create` | View, copy, or create genres |
 | `inkos write next [id]` | Full pipeline: write next chapter (`--words` to override, `--count` for batch) |
-| `inkos write rewrite [id] <n>` | Rewrite chapter N (restores state snapshot, requires confirmation) |
+| `inkos write rewrite [id] <n>` | Rewrite chapter N (restores state snapshot, `--force` to skip confirmation, `--words` to override) |
 | `inkos draft [id]` | Write draft only (`--words` to override word count) |
 | `inkos audit [id] [n]` | Audit a specific chapter |
 | `inkos revise [id] [n]` | Revise a specific chapter |
@@ -387,12 +429,12 @@ inkos up                          # Daemon mode
 | `inkos review list [id]` | Review drafts |
 | `inkos review approve-all [id]` | Batch approve |
 | `inkos status [id]` | Project status |
-| `inkos export [id]` | Export book to txt/md |
+| `inkos export [id]` | Export book (`--format md`, `--output <path>`, `--approved-only`) |
 | `inkos radar scan` | Scan platform trends |
 | `inkos config set-global` | Set global LLM config (~/.inkos/.env) |
 | `inkos config show-global` | Show global config |
 | `inkos config set/show` | View/update project config |
-| `inkos config set-model <agent> <model>` | Set model override for a specific agent |
+| `inkos config set-model <agent> <model>` | Set model override for a specific agent (`--base-url`, `--provider`, `--api-key-env` for multi-provider routing) |
 | `inkos config remove-model <agent>` | Remove agent model override (fall back to default) |
 | `inkos config show-models` | Show current model routing |
 | `inkos doctor` | Diagnose setup issues (includes API connectivity test) |
@@ -400,6 +442,8 @@ inkos up                          # Daemon mode
 | `inkos style analyze <file>` | Analyze reference text to extract style fingerprint |
 | `inkos style import <file> [id]` | Import style fingerprint into a book |
 | `inkos import canon [id] --from <parent>` | Import parent canon for spinoff writing |
+| `inkos import chapters [id] --from <path>` | Import existing chapters for continuation (`--split`, `--resume-from`) |
+| `inkos analytics [id]` | Book analytics (audit pass rate, top issues, chapter ranking) |
 | `inkos update` | Update to latest version |
 | `inkos up / down` | Start/stop daemon |
 
@@ -447,7 +491,7 @@ inkos/
 │   │   ├── llm/           # OpenAI + Anthropic dual SDK (streaming)
 │   │   ├── notify/        # Telegram, Feishu, WeCom, Webhook
 │   │   └── models/        # Zod schema validation
-│   └── cli/               # Commander.js CLI (20 commands)
+│   └── cli/               # Commander.js CLI (22 commands)
 │       └── commands/      # init, book, write, draft, audit, revise, agent, review, detect, style...
 └── (planned) studio/      # Web UI for review and editing
 ```
@@ -459,7 +503,7 @@ TypeScript monorepo managed with pnpm workspaces.
 - [x] Full pipeline (radar → architect → writer → auditor → reviser)
 - [x] Canonical truth files + continuity audit
 - [x] Built-in writing rule system
-- [x] Full CLI (20 commands)
+- [x] Full CLI (22 commands)
 - [x] State snapshots + chapter rewrite
 - [x] Daemon mode
 - [x] Notifications (Telegram / Feishu / WeCom)
@@ -478,8 +522,14 @@ TypeScript monorepo managed with pnpm workspaces.
 - [x] AIGC detection + anti-detect rewrite pipeline
 - [x] Webhook notifications + smart scheduler (quality gates)
 - [x] Cross-chapter coherence (chapter summaries + subplot/emotion/character matrices)
-- [ ] `packages/studio` Web UI for review and editing
-- [x] Multi-model routing (different models for different agents, `inkos config set-model`)
+- [x] Continuation writing (import chapters + auto reverse-engineer truth files + resumable import)
+- [x] Multi-provider agent routing (different agents use different API endpoints and keys, `inkos config set-model --base-url --provider`)
+- [x] Analytics (`inkos analytics`: audit pass rate, top issues, chapter ranking)
+- [ ] `packages/studio` Web UI for review and editing (Vite + React + Hono)
+- [ ] Cost tracking + runtime dashboard (per-chapter token usage, API cost, audit rounds, `inkos stats`)
+- [ ] EPUB export (`inkos export --format epub`, read on phone/Kindle)
+- [ ] Partial chapter intervention (rewrite half a chapter + cascade truth file updates)
+- [ ] Empty chapter / truncation fix (local model parsing tolerance + timeout reconnection)
 - [ ] Custom agent plugin system
 - [ ] Platform-specific export (Qidian, Tomato, etc.)
 
