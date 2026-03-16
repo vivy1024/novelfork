@@ -21,6 +21,7 @@ export interface LLMMessage {
 export interface LLMClient {
   readonly provider: "openai" | "anthropic";
   readonly apiFormat: "chat" | "responses";
+  readonly stream: boolean;
   readonly _openai?: OpenAI;
   readonly _anthropic?: Anthropic;
   readonly defaults: {
@@ -65,6 +66,7 @@ export function createLLMClient(config: LLMConfig): LLMClient {
   };
 
   const apiFormat = config.apiFormat ?? "chat";
+  const stream = config.stream ?? true;
 
   if (config.provider === "anthropic") {
     // Anthropic SDK appends /v1/ internally — strip if user included it
@@ -72,6 +74,7 @@ export function createLLMClient(config: LLMConfig): LLMClient {
     return {
       provider: "anthropic",
       apiFormat,
+      stream,
       _anthropic: new Anthropic({ apiKey: config.apiKey, baseURL }),
       defaults,
     };
@@ -80,6 +83,7 @@ export function createLLMClient(config: LLMConfig): LLMClient {
   return {
     provider: "openai",
     apiFormat,
+    stream,
     _openai: new OpenAI({ apiKey: config.apiKey, baseURL: config.baseUrl }),
     defaults,
   };
@@ -129,12 +133,18 @@ export async function chatCompletion(
       maxTokens: options?.maxTokens ?? client.defaults.maxTokens,
     };
     if (client.provider === "anthropic") {
-      return await chatCompletionAnthropic(client._anthropic!, model, messages, resolved, client.defaults.thinkingBudget);
+      return client.stream
+        ? await chatCompletionAnthropic(client._anthropic!, model, messages, resolved, client.defaults.thinkingBudget)
+        : await chatCompletionAnthropicSync(client._anthropic!, model, messages, resolved, client.defaults.thinkingBudget);
     }
     if (client.apiFormat === "responses") {
-      return await chatCompletionOpenAIResponses(client._openai!, model, messages, resolved, options?.webSearch);
+      return client.stream
+        ? await chatCompletionOpenAIResponses(client._openai!, model, messages, resolved, options?.webSearch)
+        : await chatCompletionOpenAIResponsesSync(client._openai!, model, messages, resolved, options?.webSearch);
     }
-    return await chatCompletionOpenAIChat(client._openai!, model, messages, resolved, options?.webSearch);
+    return client.stream
+      ? await chatCompletionOpenAIChat(client._openai!, model, messages, resolved, options?.webSearch)
+      : await chatCompletionOpenAIChatSync(client._openai!, model, messages, resolved, options?.webSearch);
   } catch (error) {
     throw wrapLLMError(error);
   }
@@ -157,6 +167,7 @@ export async function chatWithTools(
       temperature: options?.temperature ?? client.defaults.temperature,
       maxTokens: options?.maxTokens ?? client.defaults.maxTokens,
     };
+    // Tool-calling always uses streaming (only used by agent loop, not by writer/auditor)
     if (client.provider === "anthropic") {
       return await chatWithToolsAnthropic(client._anthropic!, model, messages, tools, resolved, client.defaults.thinkingBudget);
     }
@@ -212,6 +223,34 @@ async function chatCompletionOpenAIChat(
       promptTokens: inputTokens,
       completionTokens: outputTokens,
       totalTokens: inputTokens + outputTokens,
+    },
+  };
+}
+
+async function chatCompletionOpenAIChatSync(
+  client: OpenAI,
+  model: string,
+  messages: ReadonlyArray<LLMMessage>,
+  options: { readonly temperature: number; readonly maxTokens: number },
+  _webSearch?: boolean,
+): Promise<LLMResponse> {
+  const response = await client.chat.completions.create({
+    model,
+    messages: messages.map((m) => ({ role: m.role, content: m.content })),
+    temperature: options.temperature,
+    max_tokens: options.maxTokens,
+    stream: false,
+  });
+
+  const content = response.choices[0]?.message?.content ?? "";
+  if (!content) throw new Error("LLM returned empty response");
+
+  return {
+    content,
+    usage: {
+      promptTokens: response.usage?.prompt_tokens ?? 0,
+      completionTokens: response.usage?.completion_tokens ?? 0,
+      totalTokens: response.usage?.total_tokens ?? 0,
     },
   };
 }
@@ -363,6 +402,45 @@ async function chatCompletionOpenAIResponses(
   };
 }
 
+async function chatCompletionOpenAIResponsesSync(
+  client: OpenAI,
+  model: string,
+  messages: ReadonlyArray<LLMMessage>,
+  options: { readonly temperature: number; readonly maxTokens: number },
+  _webSearch?: boolean,
+): Promise<LLMResponse> {
+  const input: OpenAI.Responses.ResponseInputItem[] = messages.map((m) => ({
+    role: m.role as "system" | "user" | "assistant",
+    content: m.content,
+  }));
+
+  const response = await client.responses.create({
+    model,
+    input,
+    temperature: options.temperature,
+    max_output_tokens: options.maxTokens,
+    stream: false,
+  });
+
+  const content = response.output
+    .filter((item): item is OpenAI.Responses.ResponseOutputMessage => item.type === "message")
+    .flatMap((item) => item.content)
+    .filter((block): block is OpenAI.Responses.ResponseOutputText => block.type === "output_text")
+    .map((block) => block.text)
+    .join("");
+
+  if (!content) throw new Error("LLM returned empty response");
+
+  return {
+    content,
+    usage: {
+      promptTokens: response.usage?.input_tokens ?? 0,
+      completionTokens: response.usage?.output_tokens ?? 0,
+      totalTokens: (response.usage?.input_tokens ?? 0) + (response.usage?.output_tokens ?? 0),
+    },
+  };
+}
+
 async function chatWithToolsOpenAIResponses(
   client: OpenAI,
   model: string,
@@ -503,6 +581,49 @@ async function chatCompletionAnthropic(
       promptTokens: inputTokens,
       completionTokens: outputTokens,
       totalTokens: inputTokens + outputTokens,
+    },
+  };
+}
+
+async function chatCompletionAnthropicSync(
+  client: Anthropic,
+  model: string,
+  messages: ReadonlyArray<LLMMessage>,
+  options: { readonly temperature: number; readonly maxTokens: number },
+  thinkingBudget: number = 0,
+): Promise<LLMResponse> {
+  const systemText = messages
+    .filter((m) => m.role === "system")
+    .map((m) => m.content)
+    .join("\n\n");
+  const nonSystem = messages.filter((m) => m.role !== "system");
+
+  const response = await client.messages.create({
+    model,
+    ...(systemText ? { system: systemText } : {}),
+    messages: nonSystem.map((m) => ({
+      role: m.role as "user" | "assistant",
+      content: m.content,
+    })),
+    ...(thinkingBudget > 0
+      ? { thinking: { type: "enabled" as const, budget_tokens: thinkingBudget } }
+      : { temperature: options.temperature }),
+    max_tokens: options.maxTokens,
+  });
+
+  const content = response.content
+    .filter((block): block is Anthropic.Messages.TextBlock => block.type === "text")
+    .map((block) => block.text)
+    .join("");
+
+  if (!content) throw new Error("LLM returned empty response");
+
+  return {
+    content,
+    usage: {
+      promptTokens: response.usage?.input_tokens ?? 0,
+      completionTokens: response.usage?.output_tokens ?? 0,
+      totalTokens: (response.usage?.input_tokens ?? 0) + (response.usage?.output_tokens ?? 0),
     },
   };
 }
