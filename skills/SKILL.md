@@ -1,7 +1,7 @@
 ---
 name: inkos
-description: Autonomous novel writing CLI agent - use for creative fiction writing, novel generation, style imitation, chapter continuation, and AIGC detection. Supports Chinese web novel genres (xuanhuan, xianxia, urban, horror, other) with multi-agent pipeline and advanced auditing.
-version: 1.0.0
+description: Autonomous novel writing CLI agent - use for creative fiction writing, novel generation, style imitation, chapter continuation/import, and AIGC detection. Supports Chinese web novel genres (xuanhuan, xianxia, urban, horror, other) with multi-agent pipeline, two-phase writer (creative + settlement), and 33-dimension auditing.
+version: 1.1.0
 metadata: { "openclaw": { "emoji": "📖", "requires": { "bins": ["inkos", "node"], "env": [] }, "primaryEnv": "", "homepage": "https://github.com/Narcooo/inkos", "install": [{ "id": "npm", "kind": "node", "package": "@actalk/inkos", "label": "Install InkOS (npm)" }] } }
 ---
 
@@ -9,14 +9,18 @@ metadata: { "openclaw": { "emoji": "📖", "requires": { "bins": ["inkos", "node
 
 InkOS is a CLI tool for autonomous fiction writing powered by LLM agents. It orchestrates a 5-agent pipeline (Radar → Architect → Writer → Auditor → Reviser) to generate, audit, and revise novel content with style consistency and quality control.
 
+The Writer uses a two-phase architecture: Phase 1 (creative writing, temp 0.7) produces the chapter text, then Phase 2 (state settlement, temp 0.3) updates all truth files for long-term consistency.
+
 ## When to Use InkOS
 
 - **Novel writing**: Create and continue writing novels/books in Chinese web novel genres
 - **Batch chapter generation**: Generate multiple chapters with consistent quality
+- **Import & continue**: Import existing chapters from a text file, reverse-engineer truth files, and continue writing
 - **Style imitation**: Analyze and adopt writing styles from reference texts
 - **Spinoff writing**: Write prequels/sequels/spinoffs while maintaining parent canon
-- **Quality auditing**: Detect AI-generated content and perform 32-dimension quality checks
+- **Quality auditing**: Detect AI-generated content and perform 33-dimension quality checks
 - **Genre exploration**: Explore trends and create custom genre rules
+- **Analytics**: Track word count, audit pass rate, and issue distribution per book
 
 ## Initial Setup
 
@@ -87,7 +91,37 @@ inkos status
    inkos review approve-all
    ```
 
-### Workflow 3: Style Imitation
+### Workflow 3: Import Existing Chapters & Continue
+
+Use this when you have an existing novel (or partial novel) and want InkOS to pick up where it left off.
+
+1. **Import from a single text file** (auto-splits by chapter headings):
+   ```bash
+   inkos import chapters book-id --from novel.txt
+   ```
+   - Automatically splits by `第X章` pattern
+   - Custom split pattern: `--split "Chapter\\s+\\d+"`
+
+2. **Import from a directory** of separate chapter files:
+   ```bash
+   inkos import chapters book-id --from ./chapters/
+   ```
+   - Reads `.md` and `.txt` files in sorted order
+
+3. **Resume interrupted import**:
+   ```bash
+   inkos import chapters book-id --from novel.txt --resume-from 15
+   ```
+
+4. **Continue writing** from the imported chapters:
+   ```bash
+   inkos write next book-id --count 3
+   ```
+   - InkOS reverse-engineers all 7 truth files from the imported chapters
+   - Generates a style guide from the existing text
+   - New chapters maintain consistency with imported content
+
+### Workflow 4: Style Imitation
 
 1. **Analyze reference text**:
    ```bash
@@ -102,7 +136,7 @@ inkos status
    - All future chapters adopt this style profile
    - Style rules become part of the Reviser's audit criteria
 
-### Workflow 4: Spinoff/Prequel Writing
+### Workflow 5: Spinoff/Prequel Writing
 
 1. **Import parent canon**:
    ```bash
@@ -115,10 +149,8 @@ inkos status
    ```bash
    inkos write next spinoff-book-id --count 3 --context "alternate timeline after Chapter 20"
    ```
-   - Generator respects parent canon constraints
-   - All revisions maintain canon compliance
 
-### Workflow 5: Fine-Grained Control (Draft → Audit → Revise)
+### Workflow 6: Fine-Grained Control (Draft → Audit → Revise)
 
 If you need separate control over each pipeline stage:
 
@@ -127,11 +159,11 @@ If you need separate control over each pipeline stage:
    inkos draft book-id --words 3000 --context "protagonist escapes" --json
    ```
 
-2. **Audit the chapter** (32-dimension quality check):
+2. **Audit the chapter** (33-dimension quality check):
    ```bash
    inkos audit book-id chapter-1 --json
    ```
-   - Returns metrics for pacing, dialogue, description, world-building, etc.
+   - Returns metrics across 33 dimensions including pacing, dialogue, world-building, outline adherence, and more
 
 3. **Revise with specific mode**:
    ```bash
@@ -139,7 +171,7 @@ If you need separate control over each pipeline stage:
    ```
    - Modes: `polish` (minor), `spot-fix` (targeted), `rewrite` (major), `rework` (structure), `anti-detect` (reduce AI traces)
 
-### Workflow 6: Monitor Platform Trends
+### Workflow 7: Monitor Platform Trends
 
 ```bash
 inkos radar scan
@@ -147,7 +179,7 @@ inkos radar scan
 - Analyzes trending genres, tropes, and reader preferences
 - Informs Architect recommendations for new books
 
-### Workflow 7: Detect AI-Generated Content
+### Workflow 8: Detect AI-Generated Content
 
 ```bash
 # Detect AIGC in a specific chapter
@@ -158,6 +190,15 @@ inkos detect book-id --all
 ```
 - Uses 11 deterministic rules (zero LLM cost) + optional LLM validation
 - Returns detection confidence and problematic passages
+
+### Workflow 9: View Analytics
+
+```bash
+inkos analytics book-id --json
+```
+- Total chapters, word count, average words per chapter
+- Audit pass rate and top issue categories
+- Chapters with most issues, status distribution
 
 ## Advanced: Natural Language Agent Mode
 
@@ -197,7 +238,14 @@ InkOS maintains 7 files per book for coherence:
 - **Emotional Arcs**: Character emotional progression
 - **Pending Hooks**: Unresolved cliffhangers and promises to reader
 
-All agents reference these to maintain long-term consistency.
+All agents reference these to maintain long-term consistency. During `import chapters`, these files are reverse-engineered from existing content via the ChapterAnalyzerAgent.
+
+### Two-Phase Writer Architecture
+The Writer agent operates in two phases:
+- **Phase 1 (Creative)**: Generates the chapter text at temperature 0.7 for creative expression. Only outputs chapter title and content.
+- **Phase 2 (Settlement)**: Updates all truth files at temperature 0.3 for precise state tracking. Ensures world state, character arcs, and plot hooks stay consistent.
+
+This separation allows creative freedom in writing while maintaining rigorous continuity tracking.
 
 ### Context Guidance
 The `--context` parameter provides directional hints to the Writer and Architect:
@@ -234,17 +282,20 @@ inkos genre copy xuanhuan --name "dark-xuanhuan" --rules "darker tone, more viol
 | `inkos book list` | List all books | Shows IDs, statuses |
 | `inkos write next` | Full pipeline (draft→audit→revise) | Primary workflow command |
 | `inkos draft` | Generate draft only | No auditing/revision |
-| `inkos audit` | 32-dimension quality check | Standalone evaluation |
+| `inkos audit` | 33-dimension quality check | Standalone evaluation |
 | `inkos revise` | Revise chapter | Modes: polish/spot-fix/rewrite/rework/anti-detect |
 | `inkos agent` | Natural language interface | Flexible requests |
 | `inkos style analyze` | Analyze reference text | Extracts style profile |
 | `inkos style import` | Apply style to book | Makes style permanent |
 | `inkos import canon` | Link spinoff to parent | For prequels/sequels |
+| `inkos import chapters` | Import existing chapters | Reverse-engineers truth files for continuation |
 | `inkos detect` | AIGC detection | Flags AI-generated passages |
 | `inkos export` | Export finished book | Outputs formatted manuscript |
+| `inkos analytics` | View book statistics | Word count, audit rates, issues |
 | `inkos radar scan` | Platform trend analysis | Informs new book ideas |
-| `inkos config set-global` | Configure LLM provider | Openai/Anthropic/compatible |
+| `inkos config set-global` | Configure LLM provider | OpenAI/Anthropic/compatible |
 | `inkos doctor` | Diagnose issues | Check installation |
+| `inkos update` | Update to latest version | Self-update |
 | `inkos up/down` | Daemon mode | Background processing |
 | `inkos review list/approve-all` | Manage chapter approvals | Quality gate |
 
@@ -269,6 +320,10 @@ inkos genre copy xuanhuan --name "dark-xuanhuan" --rules "darker tone, more viol
 - Ensure chapter-words matches actual word count
 - Try `inkos revise` with `--mode rewrite`
 
+**"Book already has chapters" (import)**
+- Use `--resume-from <n>` to append to existing chapters
+- Or delete existing chapters first
+
 ### Running Daemon Mode
 
 For long-running operations:
@@ -286,11 +341,13 @@ inkos down
 
 1. **Provide rich context**: The more guidance in `--context`, the more coherent the narrative
 2. **Start with style**: If imitating an author, run `inkos style import` before generation
-3. **Review regularly**: Use `inkos review` to catch issues early
-4. **Monitor audits**: Check `inkos audit` metrics to understand quality bottlenecks
-5. **Use spinoffs strategically**: Import canon before writing prequels/sequels
-6. **Batch generation**: Generate multiple chapters together (better continuity)
-7. **Export frequently**: Keep backups with `inkos export`
+3. **Import first**: For existing novels, use `inkos import chapters` to bootstrap truth files before continuing
+4. **Review regularly**: Use `inkos review` to catch issues early
+5. **Monitor audits**: Check `inkos audit` metrics to understand quality bottlenecks
+6. **Use spinoffs strategically**: Import canon before writing prequels/sequels
+7. **Batch generation**: Generate multiple chapters together (better continuity)
+8. **Check analytics**: Use `inkos analytics` to track quality trends over time
+9. **Export frequently**: Keep backups with `inkos export`
 
 ## Support & Resources
 
