@@ -49,11 +49,15 @@ export class ReviserAgent extends BaseAgent {
     mode: ReviseMode = "rewrite",
     genre?: string,
   ): Promise<ReviseOutput> {
-    const [currentState, ledger, hooks, styleGuideRaw] = await Promise.all([
+    const [currentState, ledger, hooks, styleGuideRaw, volumeOutline, storyBible, characterMatrix, chapterSummaries] = await Promise.all([
       this.readFileSafe(join(bookDir, "story/current_state.md")),
       this.readFileSafe(join(bookDir, "story/particle_ledger.md")),
       this.readFileSafe(join(bookDir, "story/pending_hooks.md")),
       this.readFileSafe(join(bookDir, "story/style_guide.md")),
+      this.readFileSafe(join(bookDir, "story/volume_outline.md")),
+      this.readFileSafe(join(bookDir, "story/story_bible.md")),
+      this.readFileSafe(join(bookDir, "story/character_matrix.md")),
+      this.readFileSafe(join(bookDir, "story/chapter_summaries.md")),
     ]);
 
     // Load genre profile and book rules
@@ -108,6 +112,18 @@ ${gp.numericalSystem ? "\n=== UPDATED_LEDGER ===\n(更新后的完整资源账�
     const ledgerBlock = gp.numericalSystem
       ? `\n## 资源账本\n${ledger}`
       : "";
+    const outlineBlock = volumeOutline !== "(文件不存在)"
+      ? `\n## 卷纲\n${volumeOutline}\n`
+      : "";
+    const bibleBlock = storyBible !== "(文件不存在)"
+      ? `\n## 世界观设定\n${storyBible}\n`
+      : "";
+    const matrixBlock = characterMatrix !== "(文件不存在)"
+      ? `\n## 角色交互矩阵\n${characterMatrix}\n`
+      : "";
+    const summariesBlock = chapterSummaries !== "(文件不存在)"
+      ? `\n## 章节摘要\n${chapterSummaries}\n`
+      : "";
 
     const userPrompt = `请修正第${chapterNumber}章。
 
@@ -119,7 +135,7 @@ ${currentState}
 ${ledgerBlock}
 ## 伏笔池
 ${hooks}
-
+${outlineBlock}${bibleBlock}${matrixBlock}${summariesBlock}
 ## 文风指南
 ${styleGuide}
 
