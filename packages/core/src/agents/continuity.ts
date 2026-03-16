@@ -2,7 +2,7 @@ import { BaseAgent } from "./base.js";
 import type { GenreProfile } from "../models/genre-profile.js";
 import type { BookRules } from "../models/book-rules.js";
 import { readGenreProfile, readBookRules } from "./rules-reader.js";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 
 export interface AuditResult {
@@ -194,6 +194,9 @@ export class ContinuityAuditor extends BaseAgent {
 
     const hasParentCanon = parentCanon !== "(文件不存在)";
 
+    // Load last chapter full text for fine-grained continuity checking
+    const previousChapter = await this.loadPreviousChapter(bookDir, chapterNumber);
+
     // Load genre profile and book rules
     const genreId = genre ?? "other";
     const { profile: gp } = await readGenreProfile(this.ctx.projectRoot, genreId);
@@ -264,6 +267,10 @@ ${dimList}
       ? `\n## 卷纲（用于大纲偏离检测）\n${volumeOutline}\n`
       : "";
 
+    const prevChapterBlock = previousChapter
+      ? `\n## 上一章全文（用于衔接检查）\n${previousChapter}\n`
+      : "";
+
     const userPrompt = `请审查第${chapterNumber}章。
 
 ## 当前状态卡
@@ -271,7 +278,7 @@ ${currentState}
 ${ledgerBlock}
 ## 伏笔池
 ${hooks}
-${subplotBlock}${emotionalBlock}${matrixBlock}${summariesBlock}${canonBlock}${outlineBlock}
+${subplotBlock}${emotionalBlock}${matrixBlock}${summariesBlock}${canonBlock}${outlineBlock}${prevChapterBlock}
 ## 文风指南
 ${styleGuide}
 
@@ -282,7 +289,7 @@ ${chapterContent}`;
       { role: "system" as const, content: systemPrompt },
       { role: "user" as const, content: userPrompt },
     ];
-    const chatOptions = { temperature: options?.temperature ?? 0.3, maxTokens: 4096 };
+    const chatOptions = { temperature: options?.temperature ?? 0.3, maxTokens: 8192 };
 
     // Use web search for fact verification when eraResearch is enabled
     const response = gp.eraResearch
@@ -329,6 +336,20 @@ ${chapterContent}`;
         ],
         summary: "审稿 JSON 解析失败",
       };
+    }
+  }
+
+  private async loadPreviousChapter(bookDir: string, currentChapter: number): Promise<string> {
+    if (currentChapter <= 1) return "";
+    const chaptersDir = join(bookDir, "chapters");
+    try {
+      const files = await readdir(chaptersDir);
+      const paddedPrev = String(currentChapter - 1).padStart(4, "0");
+      const prevFile = files.find((f) => f.startsWith(paddedPrev) && f.endsWith(".md"));
+      if (!prevFile) return "";
+      return await readFile(join(chaptersDir, prevFile), "utf-8");
+    } catch {
+      return "";
     }
   }
 
