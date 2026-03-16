@@ -34,6 +34,12 @@ export interface PipelineConfig {
   readonly modelOverrides?: Record<string, string | AgentLLMOverride>;
 }
 
+export interface TokenUsageSummary {
+  readonly promptTokens: number;
+  readonly completionTokens: number;
+  readonly totalTokens: number;
+}
+
 export interface ChapterPipelineResult {
   readonly chapterNumber: number;
   readonly title: string;
@@ -41,6 +47,7 @@ export interface ChapterPipelineResult {
   readonly auditResult: AuditResult;
   readonly revised: boolean;
   readonly status: "ready-for-review" | "audit-failed";
+  readonly tokenUsage?: TokenUsageSummary;
 }
 
 // Atomic operation results
@@ -49,6 +56,7 @@ export interface DraftResult {
   readonly title: string;
   readonly wordCount: number;
   readonly filePath: string;
+  readonly tokenUsage?: TokenUsageSummary;
 }
 
 export interface ReviseResult {
@@ -224,6 +232,7 @@ export class PipelineRunner {
         createdAt: now,
         updatedAt: now,
         auditIssues: [],
+        ...(output.tokenUsage ? { tokenUsage: output.tokenUsage } : {}),
       };
       await this.state.saveChapterIndex(bookId, [...existingIndex, newEntry]);
 
@@ -235,7 +244,7 @@ export class PipelineRunner {
         wordCount: output.wordCount,
       });
 
-      return { chapterNumber, title: output.title, wordCount: output.wordCount, filePath };
+      return { chapterNumber, title: output.title, wordCount: output.wordCount, filePath, tokenUsage: output.tokenUsage };
     } finally {
       await releaseLock();
     }
@@ -464,6 +473,9 @@ export class PipelineRunner {
       ...(temperatureOverride ? { temperatureOverride } : {}),
     });
 
+    // Token usage accumulator
+    let totalUsage: TokenUsageSummary = output.tokenUsage ?? { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+
     // 2a. Post-write error gate: if deterministic rules found errors, auto-fix before LLM audit
     let finalContent = output.content;
     let finalWordCount = output.wordCount;
@@ -488,6 +500,7 @@ export class PipelineRunner {
         "spot-fix",
         book.genre,
       );
+      totalUsage = PipelineRunner.addUsage(totalUsage, fixResult.tokenUsage);
       if (fixResult.revisedContent.length > 0) {
         finalContent = fixResult.revisedContent;
         finalWordCount = fixResult.wordCount;
@@ -503,6 +516,7 @@ export class PipelineRunner {
       chapterNumber,
       book.genre,
     );
+    totalUsage = PipelineRunner.addUsage(totalUsage, llmAudit.tokenUsage);
     const aiTellsResult = analyzeAITells(finalContent);
     const sensitiveWriteResult = analyzeSensitiveWords(finalContent);
     const hasBlockedWriteWords = sensitiveWriteResult.found.some((f) => f.severity === "block");
@@ -527,6 +541,7 @@ export class PipelineRunner {
           "spot-fix",
           book.genre,
         );
+        totalUsage = PipelineRunner.addUsage(totalUsage, reviseOutput.tokenUsage);
 
         if (reviseOutput.revisedContent.length > 0) {
           // Guard: reject revision if AI markers increased
@@ -551,6 +566,7 @@ export class PipelineRunner {
             book.genre,
             { temperature: 0 },
           );
+          totalUsage = PipelineRunner.addUsage(totalUsage, reAudit.tokenUsage);
           const reAITells = analyzeAITells(finalContent);
           const reSensitive = analyzeSensitiveWords(finalContent);
           const reHasBlocked = reSensitive.found.some((f) => f.severity === "block");
@@ -608,6 +624,7 @@ export class PipelineRunner {
       auditIssues: auditResult.issues.map(
         (i) => `[${i.severity}] ${i.description}`,
       ),
+      tokenUsage: totalUsage,
     };
     await this.state.saveChapterIndex(bookId, [...existingIndex, newEntry]);
 
@@ -646,6 +663,7 @@ export class PipelineRunner {
       auditResult,
       revised,
       status: auditResult.passed ? "ready-for-review" : "audit-failed",
+      tokenUsage: totalUsage,
     };
   }
 
@@ -953,6 +971,18 @@ ${matrix}`,
     } finally {
       await releaseLock();
     }
+  }
+
+  private static addUsage(
+    a: TokenUsageSummary,
+    b?: { readonly promptTokens: number; readonly completionTokens: number; readonly totalTokens: number },
+  ): TokenUsageSummary {
+    if (!b) return a;
+    return {
+      promptTokens: a.promptTokens + b.promptTokens,
+      completionTokens: a.completionTokens + b.completionTokens,
+      totalTokens: a.totalTokens + b.totalTokens,
+    };
   }
 
   // ---------------------------------------------------------------------------
