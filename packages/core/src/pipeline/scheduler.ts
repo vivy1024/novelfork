@@ -201,7 +201,7 @@ export class Scheduler {
 
       const result = await this.pipeline.writeNextChapter(bookId, undefined, tempOverride);
 
-      if (result.status === "approved") {
+      if (result.status === "ready-for-review") {
         this.consecutiveFailures.delete(bookId);
         this.recordChapterWritten();
 

@@ -40,7 +40,7 @@ export interface ChapterPipelineResult {
   readonly wordCount: number;
   readonly auditResult: AuditResult;
   readonly revised: boolean;
-  readonly status: "approved" | "needs-review";
+  readonly status: "ready-for-review" | "audit-failed";
 }
 
 // Atomic operation results
@@ -644,7 +644,7 @@ export class PipelineRunner {
       wordCount: finalWordCount,
       auditResult,
       revised,
-      status: auditResult.passed ? "approved" : "needs-review",
+      status: auditResult.passed ? "ready-for-review" : "audit-failed",
     };
   }
 

@@ -42,7 +42,7 @@ export const upCommand = new Command("up")
         cooldownAfterChapterMs: config.daemon.cooldownAfterChapterMs,
         maxChaptersPerDay: config.daemon.maxChaptersPerDay,
         onChapterComplete: (bookId, chapter, status) => {
-          const icon = status === "approved" ? "+" : "!";
+          const icon = status === "ready-for-review" ? "+" : "!";
           log(`  [${icon}] ${bookId} Ch.${chapter} — ${status}`);
         },
         onError: (bookId, error) => {
@@ -90,7 +90,7 @@ export const downCommand = new Command("down")
       } catch {
         log(`Daemon (PID: ${pid}) not found. Cleaning up.`);
       }
-      await unlink(pidPath);
+      try { await unlink(pidPath); } catch { /* already cleaned up by daemon */ }
     } catch {
       log("No daemon running.");
     }
