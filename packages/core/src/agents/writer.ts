@@ -111,12 +111,16 @@ export class WriterAgent extends BaseAgent {
 
     process.stderr.write(`[writer] Phase 1: creative writing for chapter ${chapterNumber}\n`);
 
+    // Scale maxTokens to chapter word count (Chinese ≈ 1.5 tokens/char)
+    const targetWords = input.wordCountOverride ?? book.chapterWordCount;
+    const creativeMaxTokens = Math.max(8192, Math.ceil(targetWords * 2));
+
     const creativeResponse = await this.chat(
       [
         { role: "system", content: creativeSystemPrompt },
         { role: "user", content: creativeUserPrompt },
       ],
-      { maxTokens: 8192, temperature: creativeTemperature },
+      { maxTokens: creativeMaxTokens, temperature: creativeTemperature },
     );
 
     const creative = parseCreativeOutput(chapterNumber, creativeResponse.content);
@@ -219,12 +223,15 @@ export class WriterAgent extends BaseAgent {
       volumeOutline: params.volumeOutline,
     });
 
+    // Settler outputs all truth files — scale with content size
+    const settlerMaxTokens = Math.max(8192, Math.ceil(params.content.length * 0.8));
+
     const response = await this.chat(
       [
         { role: "system", content: settlerSystem },
         { role: "user", content: settlerUser },
       ],
-      { maxTokens: 8192, temperature: 0.3 },
+      { maxTokens: settlerMaxTokens, temperature: 0.3 },
     );
 
     return parseSettlementOutput(response.content, params.genreProfile);
@@ -559,13 +566,12 @@ ${params.volumeOutline}
       return false;
     });
 
-    // Skip rows for the current chapter and recent chapters (they're already in context)
-    const recentCutoff = Math.max(1, chapterNumber - 3);
+    // Skip only the last chapter (its full text is already in context via loadRecentChapters)
     const filteredRows = matchedRows.filter((row) => {
       const chNumMatch = row.match(/\|\s*(\d+)\s*\|/);
       if (!chNumMatch) return true;
       const num = parseInt(chNumMatch[1]!, 10);
-      return num < recentCutoff;
+      return num < chapterNumber - 1;
     });
 
     return filteredRows.length > 0 ? filteredRows.join("\n") : "";
