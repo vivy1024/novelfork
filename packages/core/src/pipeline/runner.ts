@@ -317,8 +317,8 @@ export class PipelineRunner {
       const auditor = new ContinuityAuditor(this.agentCtxFor("auditor", bookId));
       const auditResult = await auditor.auditChapter(bookDir, content, targetChapter, book.genre);
 
-      if (auditResult.passed) {
-        return { chapterNumber: targetChapter, wordCount: content.length, fixedIssues: ["No issues to fix"] };
+      if (auditResult.passed && auditResult.issues.filter(i => i.severity === "warning" || i.severity === "critical").length === 0) {
+        return { chapterNumber: targetChapter, wordCount: content.length, fixedIssues: [] };
       }
 
       const { profile: gp } = await this.loadGenreProfile(book.genre);
@@ -337,13 +337,14 @@ export class PipelineRunner {
       const files = await readdir(chaptersDir);
       const paddedNum = String(targetChapter).padStart(4, "0");
       const existingFile = files.find((f) => f.startsWith(paddedNum) && f.endsWith(".md"));
-      if (existingFile) {
-        await writeFile(
-          join(chaptersDir, existingFile),
-          `# 第${targetChapter}章 ${chapterMeta.title}\n\n${reviseOutput.revisedContent}`,
-          "utf-8",
-        );
+      if (!existingFile) {
+        throw new Error(`Chapter ${targetChapter} file not found in ${chaptersDir} (expected filename starting with ${paddedNum})`);
       }
+      await writeFile(
+        join(chaptersDir, existingFile),
+        `# 第${targetChapter}章 ${chapterMeta.title}\n\n${reviseOutput.revisedContent}`,
+        "utf-8",
+      );
 
       // Update truth files
       const storyDir = join(bookDir, "story");

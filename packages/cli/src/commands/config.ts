@@ -30,13 +30,25 @@ configCommand
         "daemon.maxChaptersPerDay",
       ]);
       if (!KNOWN_KEYS.has(key)) {
-        // Find closest match for typo suggestion
+        // Find closest match by edit distance on the last segment
         const candidates = [...KNOWN_KEYS];
-        const suggestion = candidates.find(k => {
+        const inputParts = key.split(".");
+        const samePrefixCandidates = candidates.filter(k => {
           const parts = k.split(".");
-          const inputParts = key.split(".");
-          return parts.length === inputParts.length && parts[0] === inputParts[0];
+          return parts.length === inputParts.length && parts.slice(0, -1).join(".") === inputParts.slice(0, -1).join(".");
         });
+        const editDist = (a: string, b: string): number => {
+          const m = a.length, n = b.length;
+          const dp = Array.from({ length: m + 1 }, (_, i) => Array.from({ length: n + 1 }, (_, j) => i === 0 ? j : j === 0 ? i : 0));
+          for (let i = 1; i <= m; i++) for (let j = 1; j <= n; j++)
+            dp[i]![j] = Math.min(dp[i-1]![j]! + 1, dp[i]![j-1]! + 1, dp[i-1]![j-1]! + (a[i-1] !== b[j-1] ? 1 : 0));
+          return dp[m]![n]!;
+        };
+        const inputLast = inputParts[inputParts.length - 1]!;
+        const suggestion = samePrefixCandidates
+          .map(k => ({ k, d: editDist(k.split(".").pop()!, inputLast) }))
+          .sort((a, b) => a.d - b.d)
+          .find(x => x.d <= 3)?.k;
         logError(`Unknown config key "${key}".${suggestion ? ` Did you mean "${suggestion}"?` : ""}`);
         log(`Known keys: ${candidates.join(", ")}`);
         process.exit(1);

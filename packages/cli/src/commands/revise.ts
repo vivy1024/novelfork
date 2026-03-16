@@ -32,14 +32,14 @@ export const reviseCommand = new Command("revise")
 
       if (opts.json) {
         log(JSON.stringify(result, null, 2));
+      } else if (result.fixedIssues.length === 0) {
+        log(`  Chapter ${result.chapterNumber}: no issues to fix (audit passed)`);
       } else {
         log(`  Chapter ${result.chapterNumber} revised`);
         log(`  Words: ${result.wordCount}`);
-        if (result.fixedIssues.length > 0) {
-          log("  Fixed:");
-          for (const fix of result.fixedIssues) {
-            log(`    - ${fix}`);
-          }
+        log("  Fixed:");
+        for (const fix of result.fixedIssues) {
+          log(`    - ${fix}`);
         }
       }
     } catch (e) {

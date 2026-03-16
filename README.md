@@ -540,7 +540,7 @@ TypeScript 单仓库，pnpm workspaces 管理。
 - [x] 文风仿写（统计指纹 + LLM 风格指南 + 写手注入）
 - [x] 写后验证器（11 条硬规则 + 自动 spot-fix）
 - [x] 审计-修订闭环加固（AI 标记守卫 + 温度锁）
-- [x] 续写接盘（import chapters + 自动逆向真相文件 + 断点续导）
+- [x] 续写已有作品（import chapters + 自动逆向真相文件 + 断点续导）
 - [x] 多 Provider 路由（不同 agent 走不同 API 地址和 Key，`inkos config set-model --base-url --provider`）
 - [x] 数据分析（`inkos analytics`：审计通过率、高频问题、章节排名）
 - [ ] `packages/studio` Web UI 审阅编辑界面（Vite + React + Hono）
