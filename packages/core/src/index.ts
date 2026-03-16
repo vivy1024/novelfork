@@ -14,7 +14,7 @@ export { createLLMClient, chatCompletion, chatWithTools, type LLMClient, type LL
 // Agents
 export { BaseAgent, type AgentContext } from "./agents/base.js";
 export { ArchitectAgent, type ArchitectOutput } from "./agents/architect.js";
-export { WriterAgent, type WriteChapterInput, type WriteChapterOutput } from "./agents/writer.js";
+export { WriterAgent, type WriteChapterInput, type WriteChapterOutput, type TokenUsage } from "./agents/writer.js";
 export { ContinuityAuditor, type AuditResult, type AuditIssue } from "./agents/continuity.js";
 export { ReviserAgent, type ReviseOutput, type ReviseMode } from "./agents/reviser.js";
 export { RadarAgent, type RadarResult, type RadarRecommendation } from "./agents/radar.js";
@@ -37,7 +37,7 @@ export { fetchUrl } from "./utils/web-search.js";
 export { splitChapters, type SplitChapter } from "./utils/chapter-splitter.js";
 
 // Pipeline
-export { PipelineRunner, type PipelineConfig, type ChapterPipelineResult, type DraftResult, type ReviseResult, type TruthFiles, type BookStatusInfo, type ImportChaptersInput, type ImportChaptersResult } from "./pipeline/runner.js";
+export { PipelineRunner, type PipelineConfig, type ChapterPipelineResult, type DraftResult, type ReviseResult, type TruthFiles, type BookStatusInfo, type ImportChaptersInput, type ImportChaptersResult, type TokenUsageSummary } from "./pipeline/runner.js";
 export { Scheduler, type SchedulerConfig } from "./pipeline/scheduler.js";
 export { runAgentLoop, AGENT_TOOLS as AGENT_TOOLS, type AgentLoopOptions } from "./pipeline/agent.js";
 export { detectChapter, detectAndRewrite, loadDetectionHistory, type DetectChapterResult, type DetectAndRewriteResult } from "./pipeline/detection-runner.js";

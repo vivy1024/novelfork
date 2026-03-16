@@ -21,6 +21,12 @@ export interface WriteChapterInput {
   readonly temperatureOverride?: number;
 }
 
+export interface TokenUsage {
+  readonly promptTokens: number;
+  readonly completionTokens: number;
+  readonly totalTokens: number;
+}
+
 export interface WriteChapterOutput {
   readonly chapterNumber: number;
   readonly title: string;
@@ -37,6 +43,7 @@ export interface WriteChapterOutput {
   readonly updatedCharacterMatrix: string;
   readonly postWriteErrors: ReadonlyArray<PostWriteViolation>;
   readonly postWriteWarnings: ReadonlyArray<PostWriteViolation>;
+  readonly tokenUsage?: TokenUsage;
 }
 
 export class WriterAgent extends BaseAgent {
@@ -122,13 +129,14 @@ export class WriterAgent extends BaseAgent {
       ],
       { maxTokens: creativeMaxTokens, temperature: creativeTemperature },
     );
+    const creativeUsage = creativeResponse.usage;
 
     const creative = parseCreativeOutput(chapterNumber, creativeResponse.content);
 
     // ── Phase 2: State settlement (temperature 0.3) ──
     process.stderr.write(`[writer] Phase 2: state settlement for chapter ${chapterNumber} (${creative.wordCount} chars)\n`);
 
-    const settlement = await this.settle({
+    const settleResult = await this.settle({
       book,
       genreProfile,
       bookRules,
@@ -144,6 +152,8 @@ export class WriterAgent extends BaseAgent {
       characterMatrix,
       volumeOutline,
     });
+    const settlement = settleResult.settlement;
+    const settleUsage = settleResult.usage;
 
     // ── Post-write validation (regex + rule-based, zero LLM cost) ──
     const ruleViolations = validatePostWrite(creative.content, genreProfile, bookRules);
@@ -169,7 +179,13 @@ export class WriterAgent extends BaseAgent {
       }
     }
 
-    // ── Merge into WriteChapterOutput (interface unchanged) ──
+    // ── Merge into WriteChapterOutput ──
+    const tokenUsage: TokenUsage = {
+      promptTokens: creativeUsage.promptTokens + settleUsage.promptTokens,
+      completionTokens: creativeUsage.completionTokens + settleUsage.completionTokens,
+      totalTokens: creativeUsage.totalTokens + settleUsage.totalTokens,
+    };
+
     return {
       chapterNumber,
       title: creative.title,
@@ -186,6 +202,7 @@ export class WriterAgent extends BaseAgent {
       updatedCharacterMatrix: settlement.updatedCharacterMatrix,
       postWriteErrors,
       postWriteWarnings,
+      tokenUsage,
     };
   }
 
@@ -204,7 +221,7 @@ export class WriterAgent extends BaseAgent {
     readonly emotionalArcs: string;
     readonly characterMatrix: string;
     readonly volumeOutline: string;
-  }) {
+  }): Promise<{ settlement: ReturnType<typeof parseSettlementOutput>; usage: TokenUsage }> {
     const settlerSystem = buildSettlerSystemPrompt(
       params.book, params.genreProfile, params.bookRules,
     );
@@ -234,7 +251,10 @@ export class WriterAgent extends BaseAgent {
       { maxTokens: settlerMaxTokens, temperature: 0.3 },
     );
 
-    return parseSettlementOutput(response.content, params.genreProfile);
+    return {
+      settlement: parseSettlementOutput(response.content, params.genreProfile),
+      usage: response.usage,
+    };
   }
 
   async saveChapter(

@@ -15,6 +15,11 @@ export interface ReviseOutput {
   readonly updatedState: string;
   readonly updatedLedger: string;
   readonly updatedHooks: string;
+  readonly tokenUsage?: {
+    readonly promptTokens: number;
+    readonly completionTokens: number;
+    readonly totalTokens: number;
+  };
 }
 
 const MODE_DESCRIPTIONS: Record<ReviseMode, string> = {
@@ -152,7 +157,8 @@ ${chapterContent}`;
       { temperature: 0.3, maxTokens },
     );
 
-    return this.parseOutput(response.content, gp);
+    const output = this.parseOutput(response.content, gp);
+    return { ...output, tokenUsage: response.usage };
   }
 
   private parseOutput(content: string, gp: GenreProfile): ReviseOutput {
