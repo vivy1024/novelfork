@@ -78,21 +78,47 @@ export const doctorCommand = new Command("doctor")
 
     // 6. API connectivity test
     try {
-      const { createLLMClient, chatCompletion } = await import("@actalk/inkos-core");
+      const { createLLMClient, chatCompletion, LLMConfigSchema } = await import("@actalk/inkos-core");
       const { loadConfig } = await import("../utils.js");
-      const config = await loadConfig();
-      const client = createLLMClient(config.llm);
 
-      log("\n  [..] Testing API connectivity...");
-      const response = await chatCompletion(client, config.llm.model, [
-        { role: "user", content: "Say OK" },
-      ], { maxTokens: 16 });
+      let llmConfig;
+      try {
+        const config = await loadConfig();
+        llmConfig = config.llm;
+      } catch {
+        // No project config — try building from global env
+        const { config: loadDotenv } = await import("dotenv");
+        loadDotenv({ path: GLOBAL_ENV_PATH });
+        const env = process.env;
+        if (env.INKOS_LLM_API_KEY && env.INKOS_LLM_BASE_URL && env.INKOS_LLM_MODEL) {
+          llmConfig = LLMConfigSchema.parse({
+            provider: env.INKOS_LLM_PROVIDER ?? "custom",
+            baseUrl: env.INKOS_LLM_BASE_URL,
+            apiKey: env.INKOS_LLM_API_KEY,
+            model: env.INKOS_LLM_MODEL,
+          });
+        }
+      }
 
-      checks.push({
-        name: "API Connectivity",
-        ok: true,
-        detail: `OK (model: ${config.llm.model}, tokens: ${response.usage.totalTokens})`,
-      });
+      if (!llmConfig) {
+        checks.push({
+          name: "API Connectivity",
+          ok: false,
+          detail: "No LLM config available (no project config or global .env)",
+        });
+      } else {
+        const client = createLLMClient(llmConfig);
+        log("\n  [..] Testing API connectivity...");
+        const response = await chatCompletion(client, llmConfig.model, [
+          { role: "user", content: "Say OK" },
+        ], { maxTokens: 16 });
+
+        checks.push({
+          name: "API Connectivity",
+          ok: true,
+          detail: `OK (model: ${llmConfig.model}, tokens: ${response.usage.totalTokens})`,
+        });
+      }
     } catch (e) {
       checks.push({
         name: "API Connectivity",

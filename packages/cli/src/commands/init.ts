@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { access, readFile, writeFile, mkdir } from "node:fs/promises";
 import { join, basename } from "node:path";
 import { log, logError, GLOBAL_ENV_PATH } from "../utils.js";
 
@@ -21,6 +21,17 @@ export const initCommand = new Command("init")
 
     try {
       await mkdir(projectDir, { recursive: true });
+
+      // Check if inkos.json already exists
+      const configPath = join(projectDir, "inkos.json");
+      try {
+        await access(configPath);
+        throw new Error(`inkos.json already exists in ${projectDir}. Use a different directory or delete the existing project.`);
+      } catch (e) {
+        if (e instanceof Error && e.message.includes("already exists")) throw e;
+        // File doesn't exist, good
+      }
+
       await mkdir(join(projectDir, "books"), { recursive: true });
       await mkdir(join(projectDir, "radar"), { recursive: true });
 

@@ -39,6 +39,12 @@ genreCommand
   .action(async (id: string) => {
     try {
       const root = findProjectRoot();
+      const genres = await listAvailableGenres(root);
+      const exactMatch = genres.some(g => g.id === id);
+      if (!exactMatch) {
+        logError(`Genre "${id}" not found. Available: ${genres.map(g => g.id).join(", ")}`);
+        process.exit(1);
+      }
       const { profile, body } = await readGenreProfile(root, id);
 
       log(`Genre: ${profile.name} (${profile.id})\n`);
