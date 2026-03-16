@@ -116,10 +116,15 @@ const KNOWN_AGENTS = ["writer", "auditor", "reviser", "architect", "radar", "cha
 
 configCommand
   .command("set-model")
-  .description("Set model override for a specific agent")
+  .description("Set model override for a specific agent (with optional provider routing)")
   .argument("<agent>", `Agent name (${KNOWN_AGENTS.join(", ")})`)
-  .argument("<model>", "Model name (e.g., gpt-4o, claude-sonnet-4-20250514)")
-  .action(async (agent: string, model: string) => {
+  .argument("<model>", "Model name (e.g., gpt-4o, gemini-2.5-flash)")
+  .option("--base-url <url>", "API base URL (for different provider)")
+  .option("--provider <provider>", "Provider type (openai / anthropic / custom)")
+  .option("--api-key-env <envVar>", "Env variable name for API key (e.g., PACKYAPI_KEY)")
+  .option("--stream", "Enable streaming (default)")
+  .option("--no-stream", "Disable streaming")
+  .action(async (agent: string, model: string, opts: { baseUrl?: string; provider?: string; apiKeyEnv?: string; stream?: boolean }) => {
     if (!KNOWN_AGENTS.includes(agent as typeof KNOWN_AGENTS[number])) {
       logError(`Unknown agent "${agent}". Valid agents: ${KNOWN_AGENTS.join(", ")}`);
       process.exit(1);
@@ -132,9 +137,21 @@ configCommand
       const raw = await readFile(configPath, "utf-8");
       const config = JSON.parse(raw);
       const overrides = config.modelOverrides ?? {};
-      config.modelOverrides = { ...overrides, [agent]: model };
+
+      const hasProviderOpts = opts.baseUrl || opts.provider || opts.apiKeyEnv || opts.stream === false;
+      if (hasProviderOpts) {
+        const override: Record<string, unknown> = { model };
+        if (opts.baseUrl) override.baseUrl = opts.baseUrl;
+        if (opts.provider) override.provider = opts.provider;
+        if (opts.apiKeyEnv) override.apiKeyEnv = opts.apiKeyEnv;
+        if (opts.stream === false) override.stream = false;
+        config.modelOverrides = { ...overrides, [agent]: override };
+      } else {
+        config.modelOverrides = { ...overrides, [agent]: model };
+      }
+
       await writeFile(configPath, JSON.stringify(config, null, 2), "utf-8");
-      log(`Model override: ${agent} → ${model}`);
+      log(`Model override: ${agent} → ${model}${opts.baseUrl ? ` (${opts.baseUrl})` : ""}`);
     } catch (e) {
       logError(`Failed to update config: ${e}`);
       process.exit(1);
@@ -179,7 +196,7 @@ configCommand
       const raw = await readFile(configPath, "utf-8");
       const config = JSON.parse(raw);
       const defaultModel = config.llm?.model ?? "(not set)";
-      const overrides: Record<string, string> = config.modelOverrides ?? {};
+      const overrides: Record<string, unknown> = config.modelOverrides ?? {};
 
       if (opts.json) {
         log(JSON.stringify({ defaultModel, overrides }, null, 2));
@@ -192,8 +209,16 @@ configCommand
         return;
       }
       log("Agent overrides:");
-      for (const [agent, model] of Object.entries(overrides)) {
-        log(`  ${agent} → ${model}`);
+      for (const [agent, value] of Object.entries(overrides)) {
+        if (typeof value === "string") {
+          log(`  ${agent} → ${value}`);
+        } else {
+          const o = value as Record<string, unknown>;
+          const parts = [o.model as string];
+          if (o.baseUrl) parts.push(`@ ${o.baseUrl}`);
+          if (o.stream === false) parts.push("[no-stream]");
+          log(`  ${agent} → ${parts.join(" ")}`);
+        }
       }
       log("");
       const usingDefault = KNOWN_AGENTS.filter((a) => !(a in overrides));

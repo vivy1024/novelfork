@@ -2,7 +2,7 @@ import { readFile, access } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { config as loadEnv } from "dotenv";
-import { createLLMClient, StateManager, type ProjectConfig, ProjectConfigSchema } from "@actalk/inkos-core";
+import { createLLMClient, StateManager, type ProjectConfig, ProjectConfigSchema, type PipelineConfig } from "@actalk/inkos-core";
 
 export const GLOBAL_CONFIG_DIR = join(homedir(), ".inkos");
 export const GLOBAL_ENV_PATH = join(GLOBAL_CONFIG_DIR, ".env");
@@ -85,6 +85,23 @@ export async function loadConfig(): Promise<ProjectConfig> {
 
 export function createClient(config: ProjectConfig) {
   return createLLMClient(config.llm);
+}
+
+export function buildPipelineConfig(
+  config: ProjectConfig,
+  root: string,
+  extra?: Partial<Pick<PipelineConfig, "notifyChannels" | "radarSources" | "externalContext">>,
+): PipelineConfig {
+  return {
+    client: createLLMClient(config.llm),
+    model: config.llm.model,
+    projectRoot: root,
+    defaultLLMConfig: config.llm,
+    modelOverrides: config.modelOverrides,
+    notifyChannels: extra?.notifyChannels ?? config.notify,
+    radarSources: extra?.radarSources,
+    externalContext: extra?.externalContext,
+  };
 }
 
 export function log(message: string): void {

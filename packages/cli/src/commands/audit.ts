@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import { PipelineRunner } from "@actalk/inkos-core";
-import { loadConfig, createClient, findProjectRoot, resolveBookId, log, logError } from "../utils.js";
+import { loadConfig, buildPipelineConfig, findProjectRoot, resolveBookId, log, logError } from "../utils.js";
 
 export const auditCommand = new Command("audit")
   .description("Audit a chapter for continuity issues")
@@ -10,7 +10,6 @@ export const auditCommand = new Command("audit")
   .action(async (bookIdArg: string | undefined, chapterStr: string | undefined, opts) => {
     try {
       const config = await loadConfig();
-      const client = createClient(config);
       const root = findProjectRoot();
 
       // If first arg looks like a number, treat it as chapter (auto-detect book)
@@ -24,11 +23,7 @@ export const auditCommand = new Command("audit")
         chapterNumber = chapterStr ? parseInt(chapterStr, 10) : undefined;
       }
 
-      const pipeline = new PipelineRunner({
-        client,
-        model: config.llm.model,
-        projectRoot: root,
-      });
+      const pipeline = new PipelineRunner(buildPipelineConfig(config, root));
 
       if (!opts.json) log(`Auditing "${bookId}"${chapterNumber ? ` chapter ${chapterNumber}` : " (latest)"}...`);
 

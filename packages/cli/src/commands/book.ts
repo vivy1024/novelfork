@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import { PipelineRunner, StateManager, type BookConfig } from "@actalk/inkos-core";
-import { loadConfig, createClient, findProjectRoot, resolveContext, resolveBookId, log, logError } from "../utils.js";
+import { loadConfig, buildPipelineConfig, findProjectRoot, resolveContext, resolveBookId, log, logError } from "../utils.js";
 
 export const bookCommand = new Command("book")
   .description("Manage books");
@@ -19,7 +19,6 @@ bookCommand
   .action(async (opts) => {
     try {
       const config = await loadConfig();
-      const client = createClient(config);
       const root = findProjectRoot();
 
       const bookId = opts.title
@@ -45,12 +44,7 @@ bookCommand
 
       const context = await resolveContext(opts);
 
-      const pipeline = new PipelineRunner({
-        client,
-        model: config.llm.model,
-        projectRoot: root,
-        ...(context ? { externalContext: context } : {}),
-      });
+      const pipeline = new PipelineRunner(buildPipelineConfig(config, root, { externalContext: context }));
 
       await pipeline.initBook(book);
 

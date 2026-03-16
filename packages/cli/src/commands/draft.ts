@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import { PipelineRunner } from "@actalk/inkos-core";
-import { loadConfig, createClient, findProjectRoot, resolveContext, resolveBookId, log, logError } from "../utils.js";
+import { loadConfig, buildPipelineConfig, findProjectRoot, resolveContext, resolveBookId, log, logError } from "../utils.js";
 
 export const draftCommand = new Command("draft")
   .description("Write a draft chapter (no audit/revise)")
@@ -12,16 +12,11 @@ export const draftCommand = new Command("draft")
   .action(async (bookIdArg: string | undefined, opts) => {
     try {
       const config = await loadConfig();
-      const client = createClient(config);
       const root = findProjectRoot();
       const bookId = await resolveBookId(bookIdArg, root);
       const context = await resolveContext(opts);
 
-      const pipeline = new PipelineRunner({
-        client,
-        model: config.llm.model,
-        projectRoot: root,
-      });
+      const pipeline = new PipelineRunner(buildPipelineConfig(config, root));
 
       const wordCount = opts.words ? parseInt(opts.words, 10) : undefined;
 

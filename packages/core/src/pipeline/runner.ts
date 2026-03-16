@@ -1,8 +1,8 @@
 import type { LLMClient } from "../llm/provider.js";
-import { chatCompletion } from "../llm/provider.js";
+import { chatCompletion, createLLMClient } from "../llm/provider.js";
 import type { BookConfig } from "../models/book.js";
 import type { ChapterMeta } from "../models/chapter.js";
-import type { NotifyChannel } from "../models/project.js";
+import type { NotifyChannel, LLMConfig, AgentLLMOverride } from "../models/project.js";
 import type { GenreProfile } from "../models/genre-profile.js";
 import { ArchitectAgent } from "../agents/architect.js";
 import { WriterAgent } from "../agents/writer.js";
@@ -27,10 +27,11 @@ export interface PipelineConfig {
   readonly client: LLMClient;
   readonly model: string;
   readonly projectRoot: string;
+  readonly defaultLLMConfig?: LLMConfig;
   readonly notifyChannels?: ReadonlyArray<NotifyChannel>;
   readonly radarSources?: ReadonlyArray<RadarSource>;
   readonly externalContext?: string;
-  readonly modelOverrides?: Record<string, string>;
+  readonly modelOverrides?: Record<string, string | AgentLLMOverride>;
 }
 
 export interface ChapterPipelineResult {
@@ -93,6 +94,7 @@ export interface ImportChaptersResult {
 export class PipelineRunner {
   private readonly state: StateManager;
   private readonly config: PipelineConfig;
+  private readonly agentClients = new Map<string, LLMClient>();
 
   constructor(config: PipelineConfig) {
     this.config = config;
@@ -108,14 +110,46 @@ export class PipelineRunner {
     };
   }
 
-  private modelFor(agentName: string): string {
-    return this.config.modelOverrides?.[agentName] ?? this.config.model;
+  private resolveOverride(agentName: string): { model: string; client: LLMClient } {
+    const override = this.config.modelOverrides?.[agentName];
+    if (!override) {
+      return { model: this.config.model, client: this.config.client };
+    }
+    if (typeof override === "string") {
+      return { model: override, client: this.config.client };
+    }
+    // Full override — needs its own client if baseUrl differs
+    if (!override.baseUrl) {
+      return { model: override.model, client: this.config.client };
+    }
+    const cacheKey = `${override.baseUrl}:${override.provider ?? "custom"}`;
+    let client = this.agentClients.get(cacheKey);
+    if (!client) {
+      const base = this.config.defaultLLMConfig;
+      const apiKey = override.apiKeyEnv
+        ? process.env[override.apiKeyEnv] ?? ""
+        : base?.apiKey ?? "";
+      client = createLLMClient({
+        provider: override.provider ?? base?.provider ?? "custom",
+        baseUrl: override.baseUrl,
+        apiKey,
+        model: override.model,
+        temperature: base?.temperature ?? 0.7,
+        maxTokens: base?.maxTokens ?? 8192,
+        thinkingBudget: base?.thinkingBudget ?? 0,
+        apiFormat: base?.apiFormat ?? "chat",
+        stream: override.stream ?? base?.stream ?? true,
+      });
+      this.agentClients.set(cacheKey, client);
+    }
+    return { model: override.model, client };
   }
 
   private agentCtxFor(agent: string, bookId?: string): AgentContext {
+    const { model, client } = this.resolveOverride(agent);
     return {
-      client: this.config.client,
-      model: this.modelFor(agent),
+      client,
+      model,
       projectRoot: this.config.projectRoot,
       bookId,
     };

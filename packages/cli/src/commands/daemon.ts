@@ -1,6 +1,6 @@
 import { Command } from "commander";
-import { Scheduler, createLLMClient } from "@actalk/inkos-core";
-import { loadConfig, findProjectRoot, log, logError } from "../utils.js";
+import { Scheduler } from "@actalk/inkos-core";
+import { loadConfig, findProjectRoot, buildPipelineConfig, log, logError } from "../utils.js";
 import { writeFile, readFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -11,7 +11,6 @@ export const upCommand = new Command("up")
   .action(async () => {
     try {
       const config = await loadConfig();
-      const client = createLLMClient(config.llm);
       const root = findProjectRoot();
 
       // Check if already running
@@ -34,11 +33,7 @@ export const upCommand = new Command("up")
       await writeFile(pidPath, String(process.pid), "utf-8");
 
       const scheduler = new Scheduler({
-        client,
-        model: config.llm.model,
-        projectRoot: root,
-        notifyChannels: config.notify,
-        modelOverrides: config.modelOverrides,
+        ...buildPipelineConfig(config, root),
         radarCron: config.daemon.schedule.radarCron,
         writeCron: config.daemon.schedule.writeCron,
         maxConcurrentBooks: config.daemon.maxConcurrentBooks,

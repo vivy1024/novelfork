@@ -2,7 +2,7 @@ import { Command } from "commander";
 import { PipelineRunner, splitChapters } from "@actalk/inkos-core";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { loadConfig, createClient, findProjectRoot, resolveBookId, log, logError } from "../utils.js";
+import { loadConfig, buildPipelineConfig, findProjectRoot, resolveBookId, log, logError } from "../utils.js";
 
 export const importCommand = new Command("import")
   .description("Import external data into a book");
@@ -18,13 +18,8 @@ importCommand
       const root = findProjectRoot();
       const targetBookId = await resolveBookId(targetBookIdArg, root);
       const config = await loadConfig();
-      const client = createClient(config);
 
-      const pipeline = new PipelineRunner({
-        client,
-        model: config.llm.model,
-        projectRoot: root,
-      });
+      const pipeline = new PipelineRunner(buildPipelineConfig(config, root));
 
       if (!opts.json) log(`Importing canon from "${opts.from}" into "${targetBookId}"...`);
 
@@ -63,7 +58,6 @@ importCommand
       const root = findProjectRoot();
       const bookId = await resolveBookId(bookIdArg, root);
       const config = await loadConfig();
-      const client = createClient(config);
 
       const fromPath = resolve(opts.from);
       const fromStat = await stat(fromPath);
@@ -108,11 +102,7 @@ importCommand
         }
       }
 
-      const pipeline = new PipelineRunner({
-        client,
-        model: config.llm.model,
-        projectRoot: root,
-      });
+      const pipeline = new PipelineRunner(buildPipelineConfig(config, root));
 
       const result = await pipeline.importChapters({
         bookId,

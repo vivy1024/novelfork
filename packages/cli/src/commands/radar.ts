@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import { PipelineRunner } from "@actalk/inkos-core";
-import { loadConfig, createClient, findProjectRoot, log, logError } from "../utils.js";
+import { loadConfig, buildPipelineConfig, findProjectRoot, log, logError } from "../utils.js";
 import { writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -14,14 +14,9 @@ radarCommand
   .action(async (opts) => {
     try {
       const config = await loadConfig();
-      const client = createClient(config);
       const root = findProjectRoot();
 
-      const pipeline = new PipelineRunner({
-        client,
-        model: config.llm.model,
-        projectRoot: root,
-      });
+      const pipeline = new PipelineRunner(buildPipelineConfig(config, root));
 
       if (!opts.json) log("Scanning market...");
 

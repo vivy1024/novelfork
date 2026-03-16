@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import { PipelineRunner, type ReviseMode } from "@actalk/inkos-core";
-import { loadConfig, createClient, findProjectRoot, resolveBookId, log, logError } from "../utils.js";
+import { loadConfig, buildPipelineConfig, findProjectRoot, resolveBookId, log, logError } from "../utils.js";
 
 export const reviseCommand = new Command("revise")
   .description("Revise a chapter based on audit issues")
@@ -11,7 +11,6 @@ export const reviseCommand = new Command("revise")
   .action(async (bookIdArg: string | undefined, chapterStr: string | undefined, opts) => {
     try {
       const config = await loadConfig();
-      const client = createClient(config);
       const root = findProjectRoot();
 
       let bookId: string;
@@ -24,11 +23,7 @@ export const reviseCommand = new Command("revise")
         chapterNumber = chapterStr ? parseInt(chapterStr, 10) : undefined;
       }
 
-      const pipeline = new PipelineRunner({
-        client,
-        model: config.llm.model,
-        projectRoot: root,
-      });
+      const pipeline = new PipelineRunner(buildPipelineConfig(config, root));
 
       const mode = opts.mode as ReviseMode;
       if (!opts.json) log(`Revising "${bookId}"${chapterNumber ? ` chapter ${chapterNumber}` : " (latest)"} [mode: ${mode}]...`);

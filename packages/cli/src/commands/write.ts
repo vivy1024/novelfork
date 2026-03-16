@@ -3,7 +3,7 @@ import { PipelineRunner, StateManager } from "@actalk/inkos-core";
 import { readdir, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
-import { loadConfig, createClient, findProjectRoot, resolveContext, resolveBookId, log, logError } from "../utils.js";
+import { loadConfig, buildPipelineConfig, findProjectRoot, resolveContext, resolveBookId, log, logError } from "../utils.js";
 
 export const writeCommand = new Command("write")
   .description("Write chapters");
@@ -20,18 +20,11 @@ writeCommand
   .action(async (bookIdArg: string | undefined, opts) => {
     try {
       const config = await loadConfig();
-      const client = createClient(config);
       const root = findProjectRoot();
       const bookId = await resolveBookId(bookIdArg, root);
       const context = await resolveContext(opts);
 
-      const pipeline = new PipelineRunner({
-        client,
-        model: config.llm.model,
-        projectRoot: root,
-        notifyChannels: config.notify,
-        ...(context ? { externalContext: context } : {}),
-      });
+      const pipeline = new PipelineRunner(buildPipelineConfig(config, root, { externalContext: context }));
 
       const count = parseInt(opts.count, 10);
       const wordCount = opts.words ? parseInt(opts.words, 10) : undefined;
@@ -88,7 +81,6 @@ writeCommand
   .action(async (args: ReadonlyArray<string>, opts) => {
     try {
       const config = await loadConfig();
-      const client = createClient(config);
       const root = findProjectRoot();
 
       let bookId: string;
@@ -159,12 +151,7 @@ writeCommand
 
       const wordCount = opts.words ? parseInt(opts.words, 10) : undefined;
 
-      const pipeline = new PipelineRunner({
-        client,
-        model: config.llm.model,
-        projectRoot: root,
-        notifyChannels: config.notify,
-      });
+      const pipeline = new PipelineRunner(buildPipelineConfig(config, root));
 
       const result = await pipeline.writeNextChapter(bookId, wordCount);
 

@@ -58,13 +58,25 @@ export const QualityGatesSchema = z.object({
 
 export type QualityGates = z.infer<typeof QualityGatesSchema>;
 
+export const AgentLLMOverrideSchema = z.object({
+  model: z.string().min(1),
+  provider: z.enum(["anthropic", "openai", "custom"]).optional(),
+  baseUrl: z.string().url().optional(),
+  apiKeyEnv: z.string().optional(),
+  stream: z.boolean().optional(),
+});
+
+export type AgentLLMOverride = z.infer<typeof AgentLLMOverrideSchema>;
+
+const ModelOverrideValueSchema = z.union([z.string(), AgentLLMOverrideSchema]);
+
 export const ProjectConfigSchema = z.object({
   name: z.string().min(1),
   version: z.literal("0.1.0"),
   llm: LLMConfigSchema,
   notify: z.array(NotifyChannelSchema).default([]),
   detection: DetectionConfigSchema.optional(),
-  modelOverrides: z.record(z.string(), z.string()).optional(),
+  modelOverrides: z.record(z.string(), ModelOverrideValueSchema).optional(),
   daemon: z.object({
     schedule: z.object({
       radarCron: z.string().default("0 */6 * * *"),
