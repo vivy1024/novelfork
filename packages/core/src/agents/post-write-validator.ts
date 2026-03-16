@@ -193,7 +193,7 @@ export function validatePostWrite(
       consecutiveLe = 0;
     }
   }
-  if (maxConsecutiveLe >= 4) {
+  if (maxConsecutiveLe >= 6) {
     violations.push({
       rule: "连续了字",
       severity: "warning",

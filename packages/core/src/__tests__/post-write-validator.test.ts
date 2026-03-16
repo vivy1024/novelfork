@@ -94,7 +94,7 @@ describe("validatePostWrite", () => {
   });
 
   it("detects consecutive '了' sentences", () => {
-    const content = "他走了过去。他拿了杯子。他喝了一口。他放了下来。他转了身。";
+    const content = "他走了过去。他拿了杯子。他喝了一口。他放了下来。他转了身。他叹了口气。他摇了摇头。";
     const result = validatePostWrite(content, baseProfile, null);
     const v = findRule(result, "连续了字");
     expect(v).toBeDefined();

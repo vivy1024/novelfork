@@ -7,3 +7,7 @@ dist/
 .DS_Store
 coverage/
 .turbo/
+_notes/
+_tmp_*
+test-project/
+.venv*/
