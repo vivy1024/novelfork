@@ -1,7 +1,7 @@
 ---
 name: inkos
-description: Autonomous novel writing CLI agent - use for creative fiction writing, novel generation, style imitation, chapter continuation/import, and AIGC detection. Supports Chinese web novel genres (xuanhuan, xianxia, urban, horror, other) with multi-agent pipeline, two-phase writer (creative + settlement), and 33-dimension auditing.
-version: 1.1.0
+description: Autonomous novel writing CLI agent - use for creative fiction writing, novel generation, style imitation, chapter continuation/import, EPUB export, and AIGC detection. Supports Chinese web novel genres (xuanhuan, xianxia, urban, horror, other) with multi-agent pipeline, two-phase writer (creative + settlement), 33-dimension auditing, and token usage analytics.
+version: 1.3.0
 metadata: { "openclaw": { "emoji": "📖", "requires": { "bins": ["inkos", "node"], "env": [] }, "primaryEnv": "", "homepage": "https://github.com/Narcooo/inkos", "install": [{ "id": "npm", "kind": "node", "package": "@actalk/inkos", "label": "Install InkOS (npm)" }] } }
 ---
 
@@ -67,9 +67,10 @@ inkos status
    inkos review approve-all book-id
    ```
 
-4. **Export the book**:
+4. **Export the book** (supports txt, md, epub):
    ```bash
    inkos export book-id
+   inkos export book-id --format epub
    ```
 
 ### Workflow 2: Continue Writing Existing Novel
@@ -195,10 +196,13 @@ inkos detect book-id --all
 
 ```bash
 inkos analytics book-id --json
+# Shorthand alias
+inkos stats book-id --json
 ```
 - Total chapters, word count, average words per chapter
 - Audit pass rate and top issue categories
 - Chapters with most issues, status distribution
+- **Token usage stats**: total prompt/completion tokens, avg tokens per chapter, recent trend
 
 ## Advanced: Natural Language Agent Mode
 
@@ -290,8 +294,8 @@ inkos genre copy xuanhuan --name "dark-xuanhuan" --rules "darker tone, more viol
 | `inkos import canon` | Link spinoff to parent | For prequels/sequels |
 | `inkos import chapters` | Import existing chapters | Reverse-engineers truth files for continuation |
 | `inkos detect` | AIGC detection | Flags AI-generated passages |
-| `inkos export` | Export finished book | Outputs formatted manuscript |
-| `inkos analytics` | View book statistics | Word count, audit rates, issues |
+| `inkos export` | Export finished book | Formats: txt, md, epub |
+| `inkos analytics` / `inkos stats` | View book statistics | Word count, audit rates, token usage |
 | `inkos radar scan` | Platform trend analysis | Informs new book ideas |
 | `inkos config set-global` | Configure LLM provider | OpenAI/Anthropic/compatible |
 | `inkos doctor` | Diagnose issues | Check installation |

@@ -45,7 +45,15 @@ bookCommand
       const bookDir = join(root, "books", bookId);
       try {
         await access(bookDir);
-        throw new Error(`Book "${bookId}" already exists at books/${bookId}/. Use a different title or delete the existing book first.`);
+        // Directory exists — check if it's a complete book or an interrupted init
+        try {
+          await access(join(bookDir, "story", "story_bible.md"));
+          throw new Error(`Book "${bookId}" already exists at books/${bookId}/. Use a different title or delete the existing book first.`);
+        } catch (inner) {
+          if (inner instanceof Error && inner.message.includes("already exists")) throw inner;
+          // story_bible.md missing → incomplete init, allow re-run
+          if (!opts.json) log(`Resuming incomplete book creation for "${bookId}"...`);
+        }
       } catch (e) {
         if (e instanceof Error && e.message.includes("already exists")) throw e;
         // Directory doesn't exist, good

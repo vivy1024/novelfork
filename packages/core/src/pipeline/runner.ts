@@ -186,6 +186,9 @@ export class PipelineRunner {
     const { profile: gp } = await this.loadGenreProfile(book.genre);
     const foundation = await architect.generateFoundation(book, this.config.externalContext);
     await architect.writeFoundationFiles(bookDir, foundation, gp.numericalSystem);
+
+    // Ensure chapters directory exists (prevents ENOENT if init was previously interrupted)
+    await mkdir(join(bookDir, "chapters"), { recursive: true });
     await this.state.saveChapterIndex(book.id, []);
   }
 
