@@ -9,11 +9,6 @@ export interface AuditResult {
   readonly passed: boolean;
   readonly issues: ReadonlyArray<AuditIssue>;
   readonly summary: string;
-  readonly tokenUsage?: {
-    readonly promptTokens: number;
-    readonly completionTokens: number;
-    readonly totalTokens: number;
-  };
 }
 
 export interface AuditIssue {
@@ -301,8 +296,7 @@ ${chapterContent}`;
       ? await this.chatWithSearch(chatMessages, chatOptions)
       : await this.chat(chatMessages, chatOptions);
 
-    const result = this.parseAuditResult(response.content);
-    return { ...result, tokenUsage: response.usage };
+    return this.parseAuditResult(response.content);
   }
 
   private parseAuditResult(content: string): AuditResult {

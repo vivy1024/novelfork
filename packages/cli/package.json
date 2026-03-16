@@ -27,9 +27,7 @@
   "dependencies": {
     "@actalk/inkos-core": "workspace:*",
     "commander": "^13.0.0",
-    "dotenv": "^16.4.0",
-    "epub-gen-memory": "^1.0.10",
-    "marked": "^15.0.0"
+    "dotenv": "^16.4.0"
   },
   "devDependencies": {
     "typescript": "^5.8.0",
