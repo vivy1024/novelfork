@@ -22,7 +22,7 @@ Open-source multi-agent system that autonomously writes, audits, and revises nov
 
 ## v0.4 Update
 
-Spinoff writing + style cloning + post-write validator + audit-revise hardening.
+Spinoff writing + style cloning + post-write validator + audit-revise hardening + Writer two-phase split + multi-provider routing.
 
 ### Spinoff Writing
 
@@ -88,6 +88,23 @@ Real testing showed `rewrite` mode introduces 6x more AI markers than the origin
 - Re-audit temperature locked to 0 (deterministic pass/fail gating)
 - `polish` mode boundaries strengthened (no adding paragraphs, renaming entities, or changing causality)
 
+### Writer Two-Phase Split
+
+Writer LLM calls are split into two phases: creative (temp 0.7, 8192 tokens) outputs prose only, settlement (temp 0.3, 8192 tokens) updates truth files only. Higher temperature for creativity, lower for factual accuracy. Chapter context compressed from last 3 chapters to last 1 + historical summaries.
+
+### Multi-Provider Routing
+
+Different agents can use different LLM providers (different baseUrl, API key, streaming settings). Use expensive models for Writer quality, cheap models for Auditor cost savings:
+
+```bash
+inkos config set-model auditor gemini-2.5-flash \
+  --base-url https://www.packyapi.com/v1 \
+  --api-key-env PACKYAPI_KEY \
+  --no-stream
+
+inkos config show-models   # View routing
+```
+
 ### Other v0.4 Changes
 
 - Audit dimensions expanded from 26 to 33 (+4 spinoff dims + dim 27 sensitive words + dim 32 reader expectation management + dim 33 outline adherence detection)
@@ -96,6 +113,9 @@ Real testing showed `rewrite` mode introduces 6x more AI markers than the origin
 - Scheduler rewrite: AI-paced (15min cycles), parallel book processing, immediate retry, daily cap
 - New `spot-fix` revise mode (targeted repair)
 - `additionalAuditDimensions` in `book_rules.md` now supports name-string matching
+- Non-streaming LLM support (per-provider `stream: false`)
+- Error diagnostics: no longer swallows all exceptions as "inkos.json not found"
+- CLI version dynamically read from package.json
 
 ---
 
@@ -392,7 +412,7 @@ inkos up                          # Daemon mode
 | `inkos config set-global` | Set global LLM config (~/.inkos/.env) |
 | `inkos config show-global` | Show global config |
 | `inkos config set/show` | View/update project config |
-| `inkos config set-model <agent> <model>` | Set model override for a specific agent |
+| `inkos config set-model <agent> <model>` | Set model override for a specific agent (`--base-url`/`--provider`/`--api-key-env`/`--no-stream`) |
 | `inkos config remove-model <agent>` | Remove agent model override (fall back to default) |
 | `inkos config show-models` | Show current model routing |
 | `inkos doctor` | Diagnose setup issues (includes API connectivity test) |
@@ -474,7 +494,7 @@ TypeScript monorepo managed with pnpm workspaces.
 - [x] Style cloning (statistical fingerprint + LLM style guide + Writer injection)
 - [x] Post-write validator (11 hard rules + auto spot-fix)
 - [x] Audit-revise loop hardening (AI marker guard + temperature lock)
-- [x] Multi-LLM provider (OpenAI + Anthropic + compatible endpoints)
+- [x] Multi-LLM provider (OpenAI + Anthropic + compatible endpoints + per-agent provider routing)
 - [x] AIGC detection + anti-detect rewrite pipeline
 - [x] Webhook notifications + smart scheduler (quality gates)
 - [x] Cross-chapter coherence (chapter summaries + subplot/emotion/character matrices)
