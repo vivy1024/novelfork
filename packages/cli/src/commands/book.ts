@@ -1,4 +1,6 @@
 import { Command } from "commander";
+import { access } from "node:fs/promises";
+import { join } from "node:path";
 import { PipelineRunner, StateManager, type BookConfig } from "@actalk/inkos-core";
 import { loadConfig, buildPipelineConfig, findProjectRoot, resolveContext, resolveBookId, log, logError } from "../utils.js";
 
@@ -39,6 +41,15 @@ bookCommand
         createdAt: now,
         updatedAt: now,
       };
+
+      const bookDir = join(root, "books", bookId);
+      try {
+        await access(bookDir);
+        throw new Error(`Book "${bookId}" already exists at books/${bookId}/. Use a different title or delete the existing book first.`);
+      } catch (e) {
+        if (e instanceof Error && e.message.includes("already exists")) throw e;
+        // Directory doesn't exist, good
+      }
 
       if (!opts.json) log(`Creating book "${book.title}" (${book.genre} / ${book.platform})...`);
 

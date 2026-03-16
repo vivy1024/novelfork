@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { PipelineRunner, splitChapters } from "@actalk/inkos-core";
+import { PipelineRunner, StateManager, splitChapters } from "@actalk/inkos-core";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { loadConfig, buildPipelineConfig, findProjectRoot, resolveBookId, log, logError } from "../utils.js";
@@ -58,6 +58,15 @@ importCommand
       const root = findProjectRoot();
       const bookId = await resolveBookId(bookIdArg, root);
       const config = await loadConfig();
+
+      const state = new StateManager(root);
+      const existingChapterCount = (await state.getNextChapterNumber(bookId)) - 1;
+      if (existingChapterCount > 0 && !opts.resumeFrom) {
+        throw new Error(
+          `Book "${bookId}" already has ${existingChapterCount} chapter(s). ` +
+          `Use --resume-from <n> to append, or delete existing chapters first.`
+        );
+      }
 
       const fromPath = resolve(opts.from);
       const fromStat = await stat(fromPath);
