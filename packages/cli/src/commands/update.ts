@@ -6,26 +6,37 @@ export const updateCommand = new Command("update")
   .description("Update InkOS to the latest version")
   .action(async () => {
     try {
-      log("Checking for updates...");
-
-      const current = execSync("npm list -g @actalk/inkos --depth=0 --json 2>/dev/null", {
-        encoding: "utf-8",
-      });
-      const currentVersion = JSON.parse(current)?.dependencies?.["@actalk/inkos"]?.version ?? "unknown";
+      const { createRequire } = await import("node:module");
+      const require = createRequire(import.meta.url);
+      const { version: currentVersion } = require("../../package.json") as { version: string };
 
       log(`Current version: ${currentVersion}`);
-      log("Installing latest version...");
+      log("Checking npm registry...");
 
-      execSync("npm install -g @actalk/inkos@latest", {
-        stdio: "inherit",
-      });
+      const remoteVersion = execSync("npm view @actalk/inkos version", {
+        encoding: "utf-8",
+      }).trim();
 
-      const updated = execSync("inkos --version", { encoding: "utf-8" }).trim();
-      if (updated === currentVersion) {
-        log(`Already up to date (${updated}).`);
-      } else {
-        log(`Updated: ${currentVersion} → ${updated}`);
+      if (currentVersion === remoteVersion) {
+        log(`Already up to date (${currentVersion}).`);
+        return;
       }
+
+      // Don't downgrade development versions
+      const current = currentVersion.split(".").map(Number);
+      const remote = remoteVersion.split(".").map(Number);
+      const isNewer = current[0]! > remote[0]! ||
+        (current[0] === remote[0] && current[1]! > remote[1]!) ||
+        (current[0] === remote[0] && current[1] === remote[1] && current[2]! > remote[2]!);
+
+      if (isNewer) {
+        log(`You're running a newer development version (${currentVersion} > ${remoteVersion}). Skipping.`);
+        return;
+      }
+
+      log(`Updating: ${currentVersion} → ${remoteVersion}`);
+      execSync("npm install -g @actalk/inkos@latest", { stdio: "inherit" });
+      log(`Updated to ${remoteVersion}.`);
     } catch (e) {
       logError(`Update failed: ${e}`);
       log("You can also update manually: npm install -g @actalk/inkos@latest");
