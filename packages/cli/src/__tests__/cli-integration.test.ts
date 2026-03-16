@@ -114,9 +114,9 @@ describe("CLI integration", () => {
   });
 
   describe("inkos config set", () => {
-    it("sets a top-level config value", () => {
-      const output = run(["config", "set", "name", "test-project"]);
-      expect(output).toContain("Set name = test-project");
+    it("sets a known config value", () => {
+      const output = run(["config", "set", "llm.provider", "anthropic"]);
+      expect(output).toContain("Set llm.provider = anthropic");
     });
 
     it("sets a nested config value", async () => {
@@ -126,11 +126,10 @@ describe("CLI integration", () => {
       expect(config.llm.model).toBe("gpt-5");
     });
 
-    it("creates intermediate keys for deep paths", async () => {
-      run(["config", "set", "custom.nested.key", "value"]);
-      const raw = await readFile(join(projectDir, "inkos.json"), "utf-8");
-      const config = JSON.parse(raw);
-      expect(config.custom.nested.key).toBe("value");
+    it("rejects unknown config keys", () => {
+      expect(() => {
+        run(["config", "set", "custom.nested.key", "value"]);
+      }).toThrow();
     });
   });
 
@@ -138,7 +137,6 @@ describe("CLI integration", () => {
     it("shows current config as JSON", () => {
       const output = run(["config", "show"]);
       const config = JSON.parse(output);
-      expect(config.name).toBe("test-project");
       expect(config.llm.model).toBe("gpt-5");
     });
   });

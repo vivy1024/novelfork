@@ -20,6 +20,28 @@ configCommand
       const config = JSON.parse(raw);
 
       const keys = key.split(".");
+
+      const KNOWN_KEYS = new Set([
+        "llm.provider", "llm.baseUrl", "llm.model", "llm.temperature",
+        "llm.maxTokens", "llm.thinkingBudget", "llm.apiFormat", "llm.stream",
+        "daemon.schedule.radarCron", "daemon.schedule.writeCron",
+        "daemon.maxConcurrentBooks", "daemon.chaptersPerCycle",
+        "daemon.retryDelayMs", "daemon.cooldownAfterChapterMs",
+        "daemon.maxChaptersPerDay",
+      ]);
+      if (!KNOWN_KEYS.has(key)) {
+        // Find closest match for typo suggestion
+        const candidates = [...KNOWN_KEYS];
+        const suggestion = candidates.find(k => {
+          const parts = k.split(".");
+          const inputParts = key.split(".");
+          return parts.length === inputParts.length && parts[0] === inputParts[0];
+        });
+        logError(`Unknown config key "${key}".${suggestion ? ` Did you mean "${suggestion}"?` : ""}`);
+        log(`Known keys: ${candidates.join(", ")}`);
+        process.exit(1);
+      }
+
       let target = config;
       for (let i = 0; i < keys.length - 1; i++) {
         const k = keys[i]!;
@@ -28,7 +50,17 @@ configCommand
         }
         target = target[k];
       }
-      target[keys[keys.length - 1]!] = value;
+      const finalKey = keys[keys.length - 1]!;
+      // Auto-coerce types: numbers and booleans shouldn't be stored as strings
+      if (/^\d+(\.\d+)?$/.test(value)) {
+        target[finalKey] = parseFloat(value);
+      } else if (value === "true") {
+        target[finalKey] = true;
+      } else if (value === "false") {
+        target[finalKey] = false;
+      } else {
+        target[finalKey] = value;
+      }
 
       await writeFile(configPath, JSON.stringify(config, null, 2), "utf-8");
       log(`Set ${key} = ${value}`);
