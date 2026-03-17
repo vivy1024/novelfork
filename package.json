@@ -14,7 +14,8 @@
     "test": "pnpm -r test",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
-    "release": "pnpm build && pnpm test && pnpm -r --filter './packages/*' publish --no-git-checks"
+    "verify:publish-manifests": "node scripts/verify-no-workspace-protocol.mjs packages/core packages/cli",
+    "release": "pnpm build && pnpm test && pnpm verify:publish-manifests"
   },
   "engines": {
     "node": ">=20.0.0",

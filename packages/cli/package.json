@@ -19,13 +19,14 @@
   "scripts": {
     "prepack": "node ../../scripts/prepare-package-for-publish.mjs",
     "postpack": "node ../../scripts/restore-package-json.mjs",
+    "prepublishOnly": "node ../../scripts/verify-no-workspace-protocol.mjs .",
     "build": "tsc",
     "dev": "tsc --watch",
     "test": "vitest run --passWithNoTests",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@actalk/inkos-core": "workspace:*",
+    "@actalk/inkos-core": "0.4.6",
     "commander": "^13.0.0",
     "dotenv": "^16.4.0",
     "epub-gen-memory": "^1.0.10",
