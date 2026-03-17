@@ -59,6 +59,26 @@ jobs:
       - name: Smoke test — core import
         run: node -e "import('@actalk/inkos-core').then(m => { if (!m.PipelineRunner) throw new Error('missing PipelineRunner'); console.log('core import OK') })"
 
+      - name: Smoke test — verify no workspace:* in tarballs
+        run: |
+          set -euo pipefail
+          for pkg in packages/core packages/cli; do
+            echo "--- Checking $pkg ---"
+            cd "$pkg"
+            PACKDIR=$(mktemp -d)
+            npm pack --pack-destination "$PACKDIR" 2>/dev/null
+            TGZ=$(ls "$PACKDIR"/*.tgz)
+            PACKED_PKG=$(tar -xOf "$TGZ" package/package.json)
+            if echo "$PACKED_PKG" | grep -q '"workspace:'; then
+              echo "FAIL: $pkg tarball still contains workspace: protocol"
+              echo "$PACKED_PKG" | grep 'workspace:'
+              exit 1
+            fi
+            echo "OK: $pkg tarball is clean"
+            rm -rf "$PACKDIR"
+            cd - >/dev/null
+          done
+
   publish:
     runs-on: ubuntu-latest
     needs: smoke-test
@@ -77,9 +97,37 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
-      - run: pnpm -r publish --no-git-checks
+
+      # Use npm publish (not pnpm) to ensure prepack hook replaces workspace:*
+      - name: Publish core
+        working-directory: packages/core
+        run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish CLI
+        working-directory: packages/cli
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # Post-publish verification: install from npm and check it works
+      - name: Verify published package
+        run: |
+          TMPDIR=$(mktemp -d)
+          cd "$TMPDIR"
+          npm init -y
+          npm install @actalk/inkos@latest
+          # Must not contain workspace: in installed package.json
+          if grep -q '"workspace:' node_modules/@actalk/inkos/package.json; then
+            echo "FATAL: published package still contains workspace: protocol"
+            cat node_modules/@actalk/inkos/package.json | grep workspace
+            exit 1
+          fi
+          # Must be runnable
+          npx inkos --version
+          echo "Post-publish verification passed"
+          rm -rf "$TMPDIR"
 
   github-release:
     runs-on: ubuntu-latest
