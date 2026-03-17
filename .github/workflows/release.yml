@@ -57,7 +57,7 @@ jobs:
           node packages/cli/dist/index.js --version
 
       - name: Smoke test — core import
-        run: node -e "import('@actalk/inkos-core').then(m => { if (!m.PipelineRunner) throw new Error('missing PipelineRunner'); console.log('core import OK') })"
+        run: node -e "import('./packages/core/dist/index.js').then(m => { if (!m.PipelineRunner) throw new Error('missing PipelineRunner'); console.log('core import OK') })"
 
       - name: Smoke test — verify no workspace:* in tarballs
         run: |
