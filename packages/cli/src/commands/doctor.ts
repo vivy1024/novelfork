@@ -107,6 +107,12 @@ export const doctorCommand = new Command("doctor")
           detail: "No LLM config available (no project config or global .env)",
         });
       } else {
+        checks.push({
+          name: "LLM Config",
+          ok: true,
+          detail: `provider=${llmConfig.provider} model=${llmConfig.model} stream=${llmConfig.stream ?? true} baseUrl=${llmConfig.baseUrl}`,
+        });
+
         const client = createLLMClient(llmConfig);
         log("\n  [..] Testing API connectivity...");
         const response = await chatCompletion(client, llmConfig.model, [
@@ -120,11 +126,31 @@ export const doctorCommand = new Command("doctor")
         });
       }
     } catch (e) {
+      const errMsg = String(e);
+      const hints: string[] = [];
+
+      if (errMsg.includes("Connection error") || errMsg.includes("ECONNREFUSED") || errMsg.includes("fetch failed")) {
+        hints.push("baseUrl 可能不正确，检查 INKOS_LLM_BASE_URL 是否包含完整路径（如 /v1）");
+      }
+      if (errMsg.includes("400")) {
+        hints.push("尝试在 inkos.json 中设置 \"stream\": false");
+        hints.push("检查模型名称是否正确（INKOS_LLM_MODEL）");
+      }
+      if (errMsg.includes("401")) {
+        hints.push("API Key 无效，检查 INKOS_LLM_API_KEY");
+      }
+
       checks.push({
         name: "API Connectivity",
         ok: false,
-        detail: String(e).split("\n")[0]!,
+        detail: errMsg.split("\n")[0]!,
       });
+
+      if (hints.length > 0) {
+        for (const hint of hints) {
+          checks.push({ name: "  Hint", ok: false, detail: hint });
+        }
+      }
     }
 
     // Output

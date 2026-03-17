@@ -156,25 +156,47 @@ const MIN_SALVAGEABLE_CHARS = 500;
 
 // === Error Wrapping ===
 
-function wrapLLMError(error: unknown): Error {
+function wrapLLMError(error: unknown, context?: { readonly baseUrl?: string; readonly model?: string }): Error {
   const msg = String(error);
+  const ctxLine = context
+    ? `\n  (baseUrl: ${context.baseUrl}, model: ${context.model})`
+    : "";
+
+  if (msg.includes("400")) {
+    return new Error(
+      `API 返回 400 (请求参数错误)。可能原因：\n` +
+      `  1. 模型名称不正确（检查 INKOS_LLM_MODEL）\n` +
+      `  2. 提供方不支持某些参数（如 max_tokens、stream）\n` +
+      `  3. 消息格式不兼容（部分提供方不支持 system role）\n` +
+      `  建议：在 inkos.json 中设置 "stream": false 试试，或检查提供方文档${ctxLine}`,
+    );
+  }
   if (msg.includes("403")) {
     return new Error(
       `API 返回 403 (请求被拒绝)。可能原因：\n` +
       `  1. API Key 无效或过期\n` +
       `  2. API 提供方的内容审查拦截了请求（公益/免费 API 常见）\n` +
       `  3. 账户余额不足\n` +
-      `  建议：用 inkos doctor 测试 API 连通性，或换一个不限制内容的 API 提供方`,
+      `  建议：用 inkos doctor 测试 API 连通性，或换一个不限制内容的 API 提供方${ctxLine}`,
     );
   }
   if (msg.includes("401")) {
     return new Error(
-      `API 返回 401 (未授权)。请检查 .env 中的 INKOS_LLM_API_KEY 是否正确。`,
+      `API 返回 401 (未授权)。请检查 .env 中的 INKOS_LLM_API_KEY 是否正确。${ctxLine}`,
     );
   }
   if (msg.includes("429")) {
     return new Error(
-      `API 返回 429 (请求过多)。请稍后重试，或检查 API 配额。`,
+      `API 返回 429 (请求过多)。请稍后重试，或检查 API 配额。${ctxLine}`,
+    );
+  }
+  if (msg.includes("Connection error") || msg.includes("ECONNREFUSED") || msg.includes("ENOTFOUND") || msg.includes("fetch failed")) {
+    return new Error(
+      `无法连接到 API 服务。可能原因：\n` +
+      `  1. baseUrl 地址不正确（当前：${context?.baseUrl ?? "未知"}）\n` +
+      `  2. 网络不通或被防火墙拦截\n` +
+      `  3. API 服务暂时不可用\n` +
+      `  建议：检查 INKOS_LLM_BASE_URL 是否包含完整路径（如 /v1）`,
     );
   }
   return error instanceof Error ? error : new Error(msg);
@@ -193,12 +215,14 @@ export async function chatCompletion(
     readonly onStreamProgress?: OnStreamProgress;
   },
 ): Promise<LLMResponse> {
+  const resolved = {
+    temperature: options?.temperature ?? client.defaults.temperature,
+    maxTokens: options?.maxTokens ?? client.defaults.maxTokens,
+  };
+  const onStreamProgress = options?.onStreamProgress;
+  const errorCtx = { baseUrl: client._openai?.baseURL ?? "(anthropic)", model };
+
   try {
-    const resolved = {
-      temperature: options?.temperature ?? client.defaults.temperature,
-      maxTokens: options?.maxTokens ?? client.defaults.maxTokens,
-    };
-    const onStreamProgress = options?.onStreamProgress;
     if (client.provider === "anthropic") {
       return client.stream
         ? await chatCompletionAnthropic(client._anthropic!, model, messages, resolved, client.defaults.thinkingBudget, onStreamProgress)
@@ -220,8 +244,45 @@ export async function chatCompletion(
         usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
       };
     }
-    throw wrapLLMError(error);
+
+    // Auto-fallback: if streaming failed, retry with sync (many proxies don't support SSE)
+    if (client.stream) {
+      const isStreamRelated = isLikelyStreamError(error);
+      if (isStreamRelated) {
+        try {
+          if (client.provider === "anthropic") {
+            return await chatCompletionAnthropicSync(client._anthropic!, model, messages, resolved, client.defaults.thinkingBudget);
+          }
+          if (client.apiFormat === "responses") {
+            return await chatCompletionOpenAIResponsesSync(client._openai!, model, messages, resolved, options?.webSearch);
+          }
+          return await chatCompletionOpenAIChatSync(client._openai!, model, messages, resolved, options?.webSearch);
+        } catch (syncError) {
+          throw wrapLLMError(syncError, errorCtx);
+        }
+      }
+    }
+
+    throw wrapLLMError(error, errorCtx);
   }
+}
+
+function isLikelyStreamError(error: unknown): boolean {
+  const msg = String(error).toLowerCase();
+  // Common indicators that streaming specifically is the problem:
+  // - SSE parse errors, chunked transfer issues, content-type mismatches
+  // - Some proxies return 400/415 when stream=true
+  // - "stream" mentioned in error, or generic network errors during streaming
+  return (
+    msg.includes("stream") ||
+    msg.includes("text/event-stream") ||
+    msg.includes("chunked") ||
+    msg.includes("unexpected end") ||
+    msg.includes("premature close") ||
+    msg.includes("terminated") ||
+    msg.includes("econnreset") ||
+    (msg.includes("400") && !msg.includes("content"))
+  );
 }
 
 // === Tool-calling Chat (used by agent loop) ===
