@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import { Scheduler } from "@actalk/inkos-core";
 import { loadConfig, findProjectRoot, buildPipelineConfig, log, logError } from "../utils.js";
+import { createWriteStream, type WriteStream } from "node:fs";
 import { writeFile, readFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -8,7 +9,9 @@ const PID_FILE = "inkos.pid";
 
 export const upCommand = new Command("up")
   .description("Start the InkOS daemon (autonomous mode)")
-  .action(async () => {
+  .option("-q, --quiet", "Suppress console output")
+  .action(async (opts) => {
+    let logStream: WriteStream | undefined;
     try {
       const config = await loadConfig();
       const root = findProjectRoot();
@@ -32,8 +35,12 @@ export const upCommand = new Command("up")
       // Write PID file
       await writeFile(pidPath, String(process.pid), "utf-8");
 
+      // File logging for daemon
+      const logPath = join(root, "inkos.log");
+      logStream = createWriteStream(logPath, { flags: "a" });
+
       const scheduler = new Scheduler({
-        ...buildPipelineConfig(config, root),
+        ...buildPipelineConfig(config, root, { logFile: logStream, quiet: opts.quiet }),
         radarCron: config.daemon.schedule.radarCron,
         writeCron: config.daemon.schedule.writeCron,
         maxConcurrentBooks: config.daemon.maxConcurrentBooks,
@@ -54,6 +61,7 @@ export const upCommand = new Command("up")
       const shutdown = async () => {
         log("\nShutting down daemon...");
         scheduler.stop();
+        logStream?.end();
         try {
           await unlink(pidPath);
         } catch {
@@ -71,6 +79,7 @@ export const upCommand = new Command("up")
       // Keep process alive
       await new Promise(() => {});
     } catch (e) {
+      logStream?.end();
       logError(`Failed to start daemon: ${e}`);
       process.exit(1);
     }

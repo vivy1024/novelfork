@@ -2,7 +2,7 @@ import { readFile, access } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { config as loadEnv } from "dotenv";
-import { createLLMClient, StateManager, type ProjectConfig, ProjectConfigSchema, type PipelineConfig } from "@actalk/inkos-core";
+import { createLLMClient, StateManager, createLogger, createStderrSink, createJsonLineSink, type ProjectConfig, ProjectConfigSchema, type PipelineConfig, type LogSink } from "@actalk/inkos-core";
 
 export const GLOBAL_CONFIG_DIR = join(homedir(), ".inkos");
 export const GLOBAL_ENV_PATH = join(GLOBAL_CONFIG_DIR, ".env");
@@ -90,8 +90,32 @@ export function createClient(config: ProjectConfig) {
 export function buildPipelineConfig(
   config: ProjectConfig,
   root: string,
-  extra?: Partial<Pick<PipelineConfig, "notifyChannels" | "radarSources" | "externalContext">>,
+  extra?: Partial<Pick<PipelineConfig, "notifyChannels" | "radarSources" | "externalContext">> & {
+    readonly quiet?: boolean;
+    readonly logFile?: NodeJS.WritableStream;
+  },
 ): PipelineConfig {
+  const sinks: LogSink[] = [];
+  if (!extra?.quiet) {
+    sinks.push(createStderrSink({ minLevel: "info" }));
+  }
+  if (extra?.logFile) {
+    sinks.push(createJsonLineSink(extra.logFile));
+  }
+
+  const hasLogging = sinks.length > 0;
+  const logger = hasLogging ? createLogger({ tag: "inkos", sinks }) : undefined;
+
+  const onStreamProgress = hasLogging
+    ? (progress: { readonly elapsedMs: number; readonly totalChars: number; readonly chineseChars: number; readonly status: string }) => {
+        if (progress.status === "streaming") {
+          logger?.info(
+            `streaming ${Math.round(progress.elapsedMs / 1000)}s, ${progress.totalChars} chars (${progress.chineseChars} CJK)`,
+          );
+        }
+      }
+    : undefined;
+
   return {
     client: createLLMClient(config.llm),
     model: config.llm.model,
@@ -101,6 +125,8 @@ export function buildPipelineConfig(
     notifyChannels: extra?.notifyChannels ?? config.notify,
     radarSources: extra?.radarSources,
     externalContext: extra?.externalContext,
+    logger,
+    onStreamProgress,
   };
 }
 

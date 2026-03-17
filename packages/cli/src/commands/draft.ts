@@ -9,6 +9,7 @@ export const draftCommand = new Command("draft")
   .option("--context <text>", "Creative guidance (natural language)")
   .option("--context-file <path>", "Read guidance from file")
   .option("--json", "Output JSON")
+  .option("-q, --quiet", "Suppress console output")
   .action(async (bookIdArg: string | undefined, opts) => {
     try {
       const config = await loadConfig();
@@ -16,7 +17,7 @@ export const draftCommand = new Command("draft")
       const bookId = await resolveBookId(bookIdArg, root);
       const context = await resolveContext(opts);
 
-      const pipeline = new PipelineRunner(buildPipelineConfig(config, root));
+      const pipeline = new PipelineRunner(buildPipelineConfig(config, root, { quiet: opts.quiet }));
 
       const wordCount = opts.words ? parseInt(opts.words, 10) : undefined;
 

@@ -1,8 +1,8 @@
 import { Command } from "commander";
-import { access } from "node:fs/promises";
-import { join } from "node:path";
+import { access, readFile } from "node:fs/promises";
+import { join, resolve } from "node:path";
 import { PipelineRunner, StateManager, type BookConfig } from "@actalk/inkos-core";
-import { loadConfig, buildPipelineConfig, findProjectRoot, resolveContext, resolveBookId, log, logError } from "../utils.js";
+import { loadConfig, buildPipelineConfig, findProjectRoot, resolveBookId, log, logError } from "../utils.js";
 
 export const bookCommand = new Command("book")
   .description("Manage books");
@@ -15,8 +15,7 @@ bookCommand
   .option("--platform <platform>", "Target platform", "tomato")
   .option("--target-chapters <n>", "Target chapter count", "200")
   .option("--chapter-words <n>", "Words per chapter", "3000")
-  .option("--context <text>", "External context / instructions (natural language)")
-  .option("--context-file <path>", "Read external context from file")
+  .option("--brief <path>", "Path to creative brief file (.md/.txt) — Architect builds from your ideas instead of generating from scratch")
   .option("--json", "Output JSON")
   .action(async (opts) => {
     try {
@@ -61,9 +60,11 @@ bookCommand
 
       if (!opts.json) log(`Creating book "${book.title}" (${book.genre} / ${book.platform})...`);
 
-      const context = await resolveContext(opts);
+      const brief = opts.brief
+        ? await readFile(resolve(opts.brief), "utf-8")
+        : undefined;
 
-      const pipeline = new PipelineRunner(buildPipelineConfig(config, root, { externalContext: context }));
+      const pipeline = new PipelineRunner(buildPipelineConfig(config, root, { externalContext: brief }));
 
       await pipeline.initBook(book);
 

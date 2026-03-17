@@ -17,6 +17,7 @@ writeCommand
   .option("--context <text>", "Creative guidance (natural language)")
   .option("--context-file <path>", "Read guidance from file")
   .option("--json", "Output JSON")
+  .option("-q, --quiet", "Suppress console output")
   .action(async (bookIdArg: string | undefined, opts) => {
     try {
       const config = await loadConfig();
@@ -24,7 +25,7 @@ writeCommand
       const bookId = await resolveBookId(bookIdArg, root);
       const context = await resolveContext(opts);
 
-      const pipeline = new PipelineRunner(buildPipelineConfig(config, root, { externalContext: context }));
+      const pipeline = new PipelineRunner(buildPipelineConfig(config, root, { externalContext: context, quiet: opts.quiet }));
 
       const count = parseInt(opts.count, 10);
       const wordCount = opts.words ? parseInt(opts.words, 10) : undefined;
@@ -137,14 +138,13 @@ writeCommand
         if (!opts.json) log(`Removed later chapter: ${f}`);
       }
 
-      // Restore state to previous chapter's end-state
-      if (chapter > 1) {
-        const restored = await state.restoreState(bookId, chapter - 1);
-        if (restored) {
-          if (!opts.json) log(`State restored from chapter ${chapter - 1} snapshot.`);
-        } else {
-          if (!opts.json) log(`Warning: no snapshot for chapter ${chapter - 1}. Using current state.`);
-        }
+      // Restore state to previous chapter's end-state (chapter 1 uses snapshot-0 from initBook)
+      const restoreFrom = chapter - 1;
+      const restored = await state.restoreState(bookId, restoreFrom);
+      if (restored) {
+        if (!opts.json) log(`State restored from chapter ${restoreFrom} snapshot.`);
+      } else {
+        if (!opts.json) log(`Warning: no snapshot for chapter ${restoreFrom}. Using current state.`);
       }
 
       if (!opts.json) log(`Regenerating chapter ${chapter}...`);
