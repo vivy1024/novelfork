@@ -1,6 +1,6 @@
 {
   "name": "@actalk/inkos",
-  "version": "0.4.8",
+  "version": "0.4.9",
   "description": "InkOS CLI — multi-agent novel production system",
   "type": "module",
   "bin": {
