@@ -83,6 +83,19 @@ INKOS_LLM_MODEL=                                   # 模型名
 
 项目 `.env` 会覆盖全局配置。不需要覆盖时可以不写。
 
+**方式三：多模型路由（可选）**
+
+给不同 Agent 分配不同模型，按需平衡质量与成本：
+
+```bash
+# Writer 用 Claude（创意强），Auditor 用 GPT-4o（便宜快速）
+inkos config set-model writer claude-sonnet-4-20250514 --provider anthropic --base-url https://api.anthropic.com --api-key-env ANTHROPIC_API_KEY
+inkos config set-model auditor gpt-4o --provider openai
+inkos config show-models        # 查看当前路由
+```
+
+未单独配置的 Agent 自动使用全局模型。
+
 ### 写第一本书
 
 ```bash

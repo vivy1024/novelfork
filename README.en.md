@@ -83,6 +83,19 @@ INKOS_LLM_MODEL=                                   # Model name
 
 Project `.env` overrides global config. Skip it if no override needed.
 
+**Option 3: Multi-model routing (optional)**
+
+Assign different models to different agents — balance quality and cost:
+
+```bash
+# Writer uses Claude (stronger creative), Auditor uses GPT-4o (cheaper & fast)
+inkos config set-model writer claude-sonnet-4-20250514 --provider anthropic --base-url https://api.anthropic.com --api-key-env ANTHROPIC_API_KEY
+inkos config set-model auditor gpt-4o --provider openai
+inkos config show-models        # View current routing
+```
+
+Agents without explicit overrides fall back to the global model.
+
 ### Write Your First Book
 
 ```bash
