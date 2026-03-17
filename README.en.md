@@ -28,7 +28,7 @@ Open-source CLI agent that autonomously writes, audits, and revises novels — w
 npm i -g @actalk/inkos
 ```
 
-### Use via OpenClaw
+### Use via OpenClaw 🦞
 
 InkOS is published as an [OpenClaw](https://clawhub.ai) Skill, callable by any compatible agent (Claude Code, OpenClaw, etc.):
 
@@ -36,9 +36,9 @@ InkOS is published as an [OpenClaw](https://clawhub.ai) Skill, callable by any c
 clawhub install inkos          # Install from ClawHub
 ```
 
-If you installed via npm or cloned the repo, `skills/SKILL.md` is already included — your agent can read it directly without a separate ClawHub install.
+If you installed via npm or cloned the repo, `skills/SKILL.md` is already included — 🦞 can read it directly without a separate ClawHub install.
 
-Once installed, agents can invoke all InkOS atomic commands (`draft`/`audit`/`revise`/`write next`) via `exec`, with `--json` output for structured decision-making. You can also browse it on [ClawHub](https://clawhub.ai) by searching `inkos`.
+Once installed, Claw can invoke all InkOS atomic commands (`draft`/`audit`/`revise`/`write next`) via `exec`, with `--json` output for structured decision-making. You can also browse it on [ClawHub](https://clawhub.ai) by searching `inkos`.
 
 ### Configure
 
