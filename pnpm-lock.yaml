@@ -11,8 +11,8 @@ importers:
   packages/cli:
     dependencies:
       '@actalk/inkos-core':
-        specifier: workspace:*
-        version: link:../core
+        specifier: 0.4.6
+        version: 0.4.6
       commander:
         specifier: ^13.0.0
         version: 13.1.0
@@ -62,6 +62,9 @@ importers:
         version: 3.2.4(@types/node@22.19.15)
 
 packages:
+
+  '@actalk/inkos-core@0.4.6':
+    resolution: {integrity: sha512-poCvxlM2kcR+yhH2XHyP7Q7bVtNHSyrD1kEmrrRBRBS4FEPcwY1k39JzwdXpDzCeC99b0rMR0G3lDrRfNLLdBQ==}
 
   '@anthropic-ai/sdk@0.78.0':
     resolution: {integrity: sha512-PzQhR715td/m1UaaN5hHXjYB8Gl2lF9UVhrrGrZeysiF6Rb74Wc9GCB8hzLdzmQtBd1qe89F9OptgB9Za1Ib5w==}
@@ -963,6 +966,16 @@ packages:
     resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
 
 snapshots:
+
+  '@actalk/inkos-core@0.4.6':
+    dependencies:
+      '@anthropic-ai/sdk': 0.78.0(zod@3.25.76)
+      js-yaml: 4.1.1
+      openai: 4.104.0(zod@3.25.76)
+      zod: 3.25.76
+    transitivePeerDependencies:
+      - encoding
+      - ws
 
   '@anthropic-ai/sdk@0.78.0(zod@3.25.76)':
     dependencies:
