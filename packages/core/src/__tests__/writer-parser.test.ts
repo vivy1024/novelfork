@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseWriterOutput, type ParsedWriterOutput } from "../agents/writer-parser.js";
+import { parseWriterOutput, parseCreativeOutput, type ParsedWriterOutput } from "../agents/writer-parser.js";
 import type { GenreProfile } from "../models/genre-profile.js";
 
 const defaultGenreProfile: GenreProfile = {
@@ -217,5 +217,65 @@ describe("WriterAgent parseOutput", () => {
     const result = callParseOutput(1, output);
     // wordCount is content.length which counts each character (including punctuation)
     expect(result.wordCount).toBe(chineseContent.length);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Fallback parsing for local/small models (#13)
+// ---------------------------------------------------------------------------
+
+describe("parseCreativeOutput fallback", () => {
+  it("extracts content from markdown heading when tags are missing", () => {
+    const raw = `# 第1章 觉醒之日
+
+林风缓缓睁开了眼睛，映入眼帘的是一片陌生的天花板。他的脑海中充斥着混乱的记忆碎片，${"一段很长的正文内容".repeat(30)}完。`;
+
+    const result = parseCreativeOutput(1, raw);
+    expect(result.title).toBe("觉醒之日");
+    expect(result.content.length).toBeGreaterThan(100);
+    expect(result.content).toContain("林风");
+  });
+
+  it("extracts content from 正文 label when tags are missing", () => {
+    const raw = `章节标题：暗夜追踪
+
+正文：
+${"黑暗中一道身影掠过屋顶，无声无息。".repeat(20)}`;
+
+    const result = parseCreativeOutput(5, raw);
+    expect(result.title).toBe("暗夜追踪");
+    expect(result.content.length).toBeGreaterThan(100);
+  });
+
+  it("falls back to longest prose block when no structure is found", () => {
+    const prose = "这是一段完整的小说正文，描述了主角在黑暗中探索未知世界的经历。".repeat(10);
+    const raw = `PRE_WRITE_CHECK: 已完成自检
+CHAPTER_TITLE: 探索
+
+${prose}`;
+
+    const result = parseCreativeOutput(3, raw);
+    expect(result.content.length).toBeGreaterThan(100);
+  });
+
+  it("returns empty content when raw output is too short", () => {
+    const result = parseCreativeOutput(1, "太短了");
+    expect(result.content).toBe("");
+    expect(result.title).toBe("第1章");
+  });
+
+  it("still works with proper === TAG === format", () => {
+    const raw = `=== PRE_WRITE_CHECK ===
+自检完成
+
+=== CHAPTER_TITLE ===
+正常标题
+
+=== CHAPTER_CONTENT ===
+正常的章节内容，这里是完整的正文。`;
+
+    const result = parseCreativeOutput(1, raw);
+    expect(result.title).toBe("正常标题");
+    expect(result.content).toBe("正常的章节内容，这里是完整的正文。");
   });
 });
