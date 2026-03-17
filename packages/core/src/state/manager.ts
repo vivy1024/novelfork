@@ -145,9 +145,11 @@ export class StateManager {
       "chapter_summaries.md", "subplot_board.md", "emotional_arcs.md", "character_matrix.md",
     ];
     try {
-      // The first 3 files are required; the rest are optional (may not exist in older snapshots)
-      const requiredFiles = files.slice(0, 3);
-      const optionalFiles = files.slice(3);
+      // current_state.md and pending_hooks.md are required;
+      // particle_ledger.md is optional (numericalSystem=false genres don't have it)
+      // the rest are optional (may not exist in older snapshots)
+      const requiredFiles = ["current_state.md", "pending_hooks.md"];
+      const optionalFiles = files.filter((f) => !requiredFiles.includes(f));
 
       await Promise.all(
         requiredFiles.map(async (f) => {
@@ -162,7 +164,7 @@ export class StateManager {
             const content = await readFile(join(snapshotDir, f), "utf-8");
             await writeFile(join(storyDir, f), content, "utf-8");
           } catch {
-            // Optional file missing in older snapshots — skip
+            // Optional file missing — skip
           }
         }),
       );
