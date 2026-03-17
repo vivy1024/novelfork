@@ -36,12 +36,7 @@ InkOS is published as an [OpenClaw](https://clawhub.ai) Skill, callable by any c
 clawhub install inkos          # Install from ClawHub
 ```
 
-If you've already cloned this repo, the skill file is at `skills/SKILL.md` — your agent can read it directly without installing:
-
-```bash
-# For cloned repo users: point your agent to the local skill
-clawhub install ./skills       # Or just let your agent read skills/SKILL.md
-```
+If you installed via npm or cloned the repo, `skills/SKILL.md` is already included — your agent can read it directly without a separate ClawHub install.
 
 Once installed, agents can invoke all InkOS atomic commands (`draft`/`audit`/`revise`/`write next`) via `exec`, with `--json` output for structured decision-making. You can also browse it on [ClawHub](https://clawhub.ai) by searching `inkos`.
 

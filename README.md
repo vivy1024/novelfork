@@ -36,12 +36,7 @@ InkOS 已发布为 [OpenClaw](https://clawhub.ai) Skill，可被任何兼容 Age
 clawhub install inkos          # 从 ClawHub 安装 InkOS Skill
 ```
 
-如果你已克隆本项目，Skill 文件已在 `skills/SKILL.md`，Agent 可直接读取——无需额外安装：
-
-```bash
-# 已克隆项目的用户：告诉你的 Agent 读取本地 skill
-clawhub install ./skills       # 或直接让 Agent 读取 skills/SKILL.md
-```
+通过 npm 安装或克隆本项目的用户，`skills/SKILL.md` 已包含在内，Agent 可直接读取——无需额外从 ClawHub 安装。
 
 安装后，Agent 可通过 `exec` 调用 InkOS 的所有原子命令（`draft`/`audit`/`revise`/`write next`），`--json` 输出结构化数据供 Agent 解析决策。也可以在 [ClawHub](https://clawhub.ai) 搜索 `inkos` 在线查看。
 
