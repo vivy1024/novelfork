@@ -1,11 +1,14 @@
-import type { LLMClient, LLMMessage, LLMResponse } from "../llm/provider.js";
+import type { LLMClient, LLMMessage, LLMResponse, OnStreamProgress } from "../llm/provider.js";
 import { chatCompletion } from "../llm/provider.js";
+import type { Logger } from "../utils/logger.js";
 
 export interface AgentContext {
   readonly client: LLMClient;
   readonly model: string;
   readonly projectRoot: string;
   readonly bookId?: string;
+  readonly logger?: Logger;
+  readonly onStreamProgress?: OnStreamProgress;
 }
 
 export abstract class BaseAgent {
@@ -19,7 +22,10 @@ export abstract class BaseAgent {
     messages: ReadonlyArray<LLMMessage>,
     options?: { readonly temperature?: number; readonly maxTokens?: number },
   ): Promise<LLMResponse> {
-    return chatCompletion(this.ctx.client, this.ctx.model, messages, options);
+    return chatCompletion(this.ctx.client, this.ctx.model, messages, {
+      ...options,
+      onStreamProgress: this.ctx.onStreamProgress,
+    });
   }
 
   /**
@@ -35,6 +41,7 @@ export abstract class BaseAgent {
     return chatCompletion(this.ctx.client, this.ctx.model, messages, {
       ...options,
       webSearch: true,
+      onStreamProgress: this.ctx.onStreamProgress,
     });
   }
 

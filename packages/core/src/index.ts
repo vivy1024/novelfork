@@ -9,7 +9,7 @@ export { type DetectionHistoryEntry, type DetectionStats } from "./models/detect
 export { type StyleProfile } from "./models/style-profile.js";
 
 // LLM
-export { createLLMClient, chatCompletion, chatWithTools, type LLMClient, type LLMResponse, type LLMMessage, type ToolDefinition, type ToolCall, type AgentMessage, type ChatWithToolsResult } from "./llm/provider.js";
+export { createLLMClient, chatCompletion, chatWithTools, createStreamMonitor, PartialResponseError, type LLMClient, type LLMResponse, type LLMMessage, type ToolDefinition, type ToolCall, type AgentMessage, type ChatWithToolsResult, type StreamProgress, type OnStreamProgress } from "./llm/provider.js";
 
 // Agents
 export { BaseAgent, type AgentContext } from "./agents/base.js";
@@ -35,6 +35,7 @@ export { parseSettlementOutput, type SettlementOutput } from "./agents/settler-p
 // Utils
 export { fetchUrl } from "./utils/web-search.js";
 export { splitChapters, type SplitChapter } from "./utils/chapter-splitter.js";
+export { createLogger, createStderrSink, createJsonLineSink, nullSink, type Logger, type LogSink, type LogLevel, type LogEntry } from "./utils/logger.js";
 
 // Pipeline
 export { PipelineRunner, type PipelineConfig, type ChapterPipelineResult, type DraftResult, type ReviseResult, type TruthFiles, type BookStatusInfo, type ImportChaptersInput, type ImportChaptersResult, type TokenUsageSummary } from "./pipeline/runner.js";

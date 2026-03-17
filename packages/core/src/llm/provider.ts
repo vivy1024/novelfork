@@ -2,6 +2,57 @@ import OpenAI from "openai";
 import Anthropic from "@anthropic-ai/sdk";
 import type { LLMConfig } from "../models/project.js";
 
+// === Streaming Monitor Types ===
+
+export interface StreamProgress {
+  readonly elapsedMs: number;
+  readonly totalChars: number;
+  readonly chineseChars: number;
+  readonly status: "streaming" | "done";
+}
+
+export type OnStreamProgress = (progress: StreamProgress) => void;
+
+export function createStreamMonitor(
+  onProgress?: OnStreamProgress,
+  intervalMs: number = 30000,
+): { readonly onChunk: (text: string) => void; readonly stop: () => void } {
+  let totalChars = 0;
+  let chineseChars = 0;
+  const startTime = Date.now();
+  let timer: ReturnType<typeof setInterval> | undefined;
+
+  if (onProgress) {
+    timer = setInterval(() => {
+      onProgress({
+        elapsedMs: Date.now() - startTime,
+        totalChars,
+        chineseChars,
+        status: "streaming",
+      });
+    }, intervalMs);
+  }
+
+  return {
+    onChunk(text: string): void {
+      totalChars += text.length;
+      chineseChars += (text.match(/[\u4e00-\u9fff]/g) || []).length;
+    },
+    stop(): void {
+      if (timer !== undefined) {
+        clearInterval(timer);
+        timer = undefined;
+      }
+      onProgress?.({
+        elapsedMs: Date.now() - startTime,
+        totalChars,
+        chineseChars,
+        status: "done",
+      });
+    },
+  };
+}
+
 // === Shared Types ===
 
 export interface LLMResponse {
@@ -89,6 +140,20 @@ export function createLLMClient(config: LLMConfig): LLMClient {
   };
 }
 
+// === Partial Response (stream interrupted but usable content received) ===
+
+export class PartialResponseError extends Error {
+  readonly partialContent: string;
+  constructor(partialContent: string, cause: unknown) {
+    super(`Stream interrupted after ${partialContent.length} chars: ${String(cause)}`);
+    this.name = "PartialResponseError";
+    this.partialContent = partialContent;
+  }
+}
+
+/** Minimum chars to consider a partial response salvageable (Chinese ~2 chars/word → 500 chars ≈ 250 words) */
+const MIN_SALVAGEABLE_CHARS = 500;
+
 // === Error Wrapping ===
 
 function wrapLLMError(error: unknown): Error {
@@ -125,6 +190,7 @@ export async function chatCompletion(
     readonly temperature?: number;
     readonly maxTokens?: number;
     readonly webSearch?: boolean;
+    readonly onStreamProgress?: OnStreamProgress;
   },
 ): Promise<LLMResponse> {
   try {
@@ -132,20 +198,28 @@ export async function chatCompletion(
       temperature: options?.temperature ?? client.defaults.temperature,
       maxTokens: options?.maxTokens ?? client.defaults.maxTokens,
     };
+    const onStreamProgress = options?.onStreamProgress;
     if (client.provider === "anthropic") {
       return client.stream
-        ? await chatCompletionAnthropic(client._anthropic!, model, messages, resolved, client.defaults.thinkingBudget)
+        ? await chatCompletionAnthropic(client._anthropic!, model, messages, resolved, client.defaults.thinkingBudget, onStreamProgress)
         : await chatCompletionAnthropicSync(client._anthropic!, model, messages, resolved, client.defaults.thinkingBudget);
     }
     if (client.apiFormat === "responses") {
       return client.stream
-        ? await chatCompletionOpenAIResponses(client._openai!, model, messages, resolved, options?.webSearch)
+        ? await chatCompletionOpenAIResponses(client._openai!, model, messages, resolved, options?.webSearch, onStreamProgress)
         : await chatCompletionOpenAIResponsesSync(client._openai!, model, messages, resolved, options?.webSearch);
     }
     return client.stream
-      ? await chatCompletionOpenAIChat(client._openai!, model, messages, resolved, options?.webSearch)
+      ? await chatCompletionOpenAIChat(client._openai!, model, messages, resolved, options?.webSearch, onStreamProgress)
       : await chatCompletionOpenAIChatSync(client._openai!, model, messages, resolved, options?.webSearch);
   } catch (error) {
+    // Stream interrupted but partial content is usable — return truncated response
+    if (error instanceof PartialResponseError) {
+      return {
+        content: error.partialContent,
+        usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+      };
+    }
     throw wrapLLMError(error);
   }
 }
@@ -188,6 +262,7 @@ async function chatCompletionOpenAIChat(
   messages: ReadonlyArray<LLMMessage>,
   options: { readonly temperature: number; readonly maxTokens: number },
   webSearch?: boolean,
+  onStreamProgress?: OnStreamProgress,
 ): Promise<LLMResponse> {
   const stream = await client.chat.completions.create({
     model,
@@ -204,14 +279,29 @@ async function chatCompletionOpenAIChat(
   const chunks: string[] = [];
   let inputTokens = 0;
   let outputTokens = 0;
+  const monitor = createStreamMonitor(onStreamProgress);
 
-  for await (const chunk of stream) {
-    const delta = chunk.choices[0]?.delta?.content;
-    if (delta) chunks.push(delta);
-    if (chunk.usage) {
-      inputTokens = chunk.usage.prompt_tokens ?? 0;
-      outputTokens = chunk.usage.completion_tokens ?? 0;
+  try {
+    for await (const chunk of stream) {
+      const delta = chunk.choices[0]?.delta?.content;
+      if (delta) {
+        chunks.push(delta);
+        monitor.onChunk(delta);
+      }
+      if (chunk.usage) {
+        inputTokens = chunk.usage.prompt_tokens ?? 0;
+        outputTokens = chunk.usage.completion_tokens ?? 0;
+      }
     }
+  } catch (streamError) {
+    monitor.stop();
+    const partial = chunks.join("");
+    if (partial.length >= MIN_SALVAGEABLE_CHARS) {
+      throw new PartialResponseError(partial, streamError);
+    }
+    throw streamError;
+  } finally {
+    monitor.stop();
   }
 
   const content = chunks.join("");
@@ -356,6 +446,7 @@ async function chatCompletionOpenAIResponses(
   messages: ReadonlyArray<LLMMessage>,
   options: { readonly temperature: number; readonly maxTokens: number },
   webSearch?: boolean,
+  onStreamProgress?: OnStreamProgress,
 ): Promise<LLMResponse> {
   const input: OpenAI.Responses.ResponseInputItem[] = messages.map((m) => ({
     role: m.role as "system" | "user" | "assistant",
@@ -378,15 +469,28 @@ async function chatCompletionOpenAIResponses(
   const chunks: string[] = [];
   let inputTokens = 0;
   let outputTokens = 0;
+  const monitor = createStreamMonitor(onStreamProgress);
 
-  for await (const event of stream) {
-    if (event.type === "response.output_text.delta") {
-      chunks.push(event.delta);
+  try {
+    for await (const event of stream) {
+      if (event.type === "response.output_text.delta") {
+        chunks.push(event.delta);
+        monitor.onChunk(event.delta);
+      }
+      if (event.type === "response.completed") {
+        inputTokens = event.response.usage?.input_tokens ?? 0;
+        outputTokens = event.response.usage?.output_tokens ?? 0;
+      }
     }
-    if (event.type === "response.completed") {
-      inputTokens = event.response.usage?.input_tokens ?? 0;
-      outputTokens = event.response.usage?.output_tokens ?? 0;
+  } catch (streamError) {
+    monitor.stop();
+    const partial = chunks.join("");
+    if (partial.length >= MIN_SALVAGEABLE_CHARS) {
+      throw new PartialResponseError(partial, streamError);
     }
+    throw streamError;
+  } finally {
+    monitor.stop();
   }
 
   const content = chunks.join("");
@@ -535,6 +639,7 @@ async function chatCompletionAnthropic(
   messages: ReadonlyArray<LLMMessage>,
   options: { readonly temperature: number; readonly maxTokens: number },
   thinkingBudget: number = 0,
+  onStreamProgress?: OnStreamProgress,
 ): Promise<LLMResponse> {
   const systemText = messages
     .filter((m) => m.role === "system")
@@ -559,17 +664,30 @@ async function chatCompletionAnthropic(
   const chunks: string[] = [];
   let inputTokens = 0;
   let outputTokens = 0;
+  const monitor = createStreamMonitor(onStreamProgress);
 
-  for await (const event of stream) {
-    if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
-      chunks.push(event.delta.text);
+  try {
+    for await (const event of stream) {
+      if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+        chunks.push(event.delta.text);
+        monitor.onChunk(event.delta.text);
+      }
+      if (event.type === "message_start") {
+        inputTokens = event.message.usage?.input_tokens ?? 0;
+      }
+      if (event.type === "message_delta") {
+        outputTokens = ((event as unknown as { usage?: { output_tokens?: number } }).usage?.output_tokens) ?? 0;
+      }
     }
-    if (event.type === "message_start") {
-      inputTokens = event.message.usage?.input_tokens ?? 0;
+  } catch (streamError) {
+    monitor.stop();
+    const partial = chunks.join("");
+    if (partial.length >= MIN_SALVAGEABLE_CHARS) {
+      throw new PartialResponseError(partial, streamError);
     }
-    if (event.type === "message_delta") {
-      outputTokens = ((event as unknown as { usage?: { output_tokens?: number } }).usage?.output_tokens) ?? 0;
-    }
+    throw streamError;
+  } finally {
+    monitor.stop();
   }
 
   const content = chunks.join("");
