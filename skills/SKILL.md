@@ -1,7 +1,7 @@
 ---
 name: inkos
-description: Autonomous novel writing CLI agent - use for creative fiction writing, novel generation, style imitation, chapter continuation/import, EPUB export, and AIGC detection. Supports Chinese web novel genres (xuanhuan, xianxia, urban, horror, other) with multi-agent pipeline, two-phase writer (creative + settlement), 33-dimension auditing, and token usage analytics.
-version: 1.3.0
+description: Autonomous novel writing CLI agent - use for creative fiction writing, novel generation, style imitation, chapter continuation/import, EPUB export, and AIGC detection. Supports Chinese web novel genres (xuanhuan, xianxia, urban, horror, other) with multi-agent pipeline, two-phase writer (creative + settlement), 33-dimension auditing, token usage analytics, creative brief input, structured logging (JSON Lines), and custom OpenAI-compatible provider support.
+version: 1.4.0
 metadata: { "openclaw": { "emoji": "📖", "requires": { "bins": ["inkos", "node"], "env": [] }, "primaryEnv": "", "homepage": "https://github.com/Narcooo/inkos", "install": [{ "id": "npm", "kind": "node", "package": "@actalk/inkos", "label": "Install InkOS (npm)" }] } }
 ---
 
@@ -29,8 +29,10 @@ The Writer uses a two-phase architecture: Phase 1 (creative writing, temp 0.7) p
 # Initialize a project directory (creates config structure)
 inkos init my-writing-project
 
-# Configure your LLM provider (OpenAI, Anthropic, or compatible)
+# Configure your LLM provider (OpenAI, Anthropic, or any OpenAI-compatible API)
 inkos config set-global --provider openai --base-url https://api.openai.com/v1 --api-key sk-xxx --model gpt-4o
+# For compatible/proxy endpoints, use --provider custom:
+# inkos config set-global --provider custom --base-url https://your-proxy.com/v1 --api-key sk-xxx --model gpt-4o
 ```
 
 ### View System Status
@@ -49,6 +51,8 @@ inkos status
 1. **Initialize and create book**:
    ```bash
    inkos book create --title "My Novel Title" --genre xuanhuan --chapter-words 3000
+   # Or with a creative brief (your worldbuilding doc / ideas):
+   inkos book create --title "My Novel Title" --genre xuanhuan --chapter-words 3000 --brief my-ideas.md
    ```
    - Genres: `xuanhuan` (cultivation), `xianxia` (immortal), `urban` (city), `horror`, `other`
    - Returns a `book-id` for all subsequent operations
@@ -282,7 +286,7 @@ inkos genre copy xuanhuan --name "dark-xuanhuan" --rules "darker tone, more viol
 | Command | Purpose | Notes |
 |---------|---------|-------|
 | `inkos init [name]` | Initialize project | One-time setup |
-| `inkos book create` | Create new book | Returns book-id |
+| `inkos book create` | Create new book | Returns book-id. `--brief <file>` for creative brief |
 | `inkos book list` | List all books | Shows IDs, statuses |
 | `inkos write next` | Full pipeline (draft→audit→revise) | Primary workflow command |
 | `inkos draft` | Generate draft only | No auditing/revision |
@@ -297,10 +301,10 @@ inkos genre copy xuanhuan --name "dark-xuanhuan" --rules "darker tone, more viol
 | `inkos export` | Export finished book | Formats: txt, md, epub |
 | `inkos analytics` / `inkos stats` | View book statistics | Word count, audit rates, token usage |
 | `inkos radar scan` | Platform trend analysis | Informs new book ideas |
-| `inkos config set-global` | Configure LLM provider | OpenAI/Anthropic/compatible |
+| `inkos config set-global` | Configure LLM provider | OpenAI/Anthropic/custom (any OpenAI-compatible) |
 | `inkos doctor` | Diagnose issues | Check installation |
 | `inkos update` | Update to latest version | Self-update |
-| `inkos up/down` | Daemon mode | Background processing |
+| `inkos up/down` | Daemon mode | Background processing. Logs to `inkos.log` (JSON Lines). `-q` for quiet mode |
 | `inkos review list/approve-all` | Manage chapter approvals | Quality gate |
 
 ## Error Handling

@@ -28,6 +28,23 @@ Open-source CLI agent that autonomously writes, audits, and revises novels — w
 npm i -g @actalk/inkos
 ```
 
+### Use via OpenClaw
+
+InkOS is published as an [OpenClaw](https://clawhub.ai) Skill, callable by any compatible agent (Claude Code, OpenClaw, etc.):
+
+```bash
+clawhub install inkos          # Install from ClawHub
+```
+
+If you've already cloned this repo, the skill file is at `skills/SKILL.md` — your agent can read it directly without installing:
+
+```bash
+# For cloned repo users: point your agent to the local skill
+clawhub install ./skills       # Or just let your agent read skills/SKILL.md
+```
+
+Once installed, agents can invoke all InkOS atomic commands (`draft`/`audit`/`revise`/`write next`) via `exec`, with `--json` output for structured decision-making. You can also browse it on [ClawHub](https://clawhub.ai) by searching `inkos`.
+
 ### Configure
 
 **Option 1: Global config (recommended, one-time setup)**
@@ -164,7 +181,7 @@ inkos audit my-book 31 --json
 inkos revise my-book 31 --json
 ```
 
-Each command performs a single operation independently. `--json` outputs structured data. Can be called by OpenClaw or other AI agents via `exec`, or used in scripts.
+Each command performs a single operation independently. `--json` outputs structured data. Can be called by external AI agents via `exec`, or used in scripts.
 
 ### 3. Natural Language Agent Mode
 
@@ -242,7 +259,7 @@ Telegram, Feishu, WeCom, and Webhook. In daemon mode, get notified on your phone
 
 ### External Agent Integration
 
-Atomic commands + `--json` output make InkOS callable by OpenClaw and other AI agents. OpenClaw executes `inkos draft`/`audit`/`revise` via `exec`, reads JSON results, and decides next steps.
+Atomic commands + `--json` output make InkOS callable by external AI agents (OpenClaw, Claude Code, etc.). Agents execute `inkos draft`/`audit`/`revise` via `exec`, read JSON results, and decide next steps.
 
 ## Architecture
 

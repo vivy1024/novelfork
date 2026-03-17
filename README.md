@@ -28,6 +28,23 @@ Agent 写小说。写、审、改，全程接管。
 npm i -g @actalk/inkos
 ```
 
+### 通过 OpenClaw 使用
+
+InkOS 已发布为 [OpenClaw](https://clawhub.ai) Skill，可被任何兼容 Agent（Claude Code、OpenClaw 等）直接调用：
+
+```bash
+clawhub install inkos          # 从 ClawHub 安装 InkOS Skill
+```
+
+如果你已克隆本项目，Skill 文件已在 `skills/SKILL.md`，Agent 可直接读取——无需额外安装：
+
+```bash
+# 已克隆项目的用户：告诉你的 Agent 读取本地 skill
+clawhub install ./skills       # 或直接让 Agent 读取 skills/SKILL.md
+```
+
+安装后，Agent 可通过 `exec` 调用 InkOS 的所有原子命令（`draft`/`audit`/`revise`/`write next`），`--json` 输出结构化数据供 Agent 解析决策。也可以在 [ClawHub](https://clawhub.ai) 搜索 `inkos` 在线查看。
+
 ### 配置
 
 **方式一：全局配置（推荐，只需一次）**
@@ -164,7 +181,7 @@ inkos audit 吞天魔帝 31 --json
 inkos revise 吞天魔帝 31 --json
 ```
 
-每个命令独立执行单一操作，`--json` 输出结构化数据。可被 OpenClaw 等 AI Agent 通过 `exec` 调用，也可用于脚本编排。
+每个命令独立执行单一操作，`--json` 输出结构化数据。可被外部 AI Agent 通过 `exec` 调用，也可用于脚本编排。
 
 ### 3. 自然语言 Agent 模式
 
@@ -260,7 +277,7 @@ inkos agent "先扫描市场趋势，然后根据结果创建一本新书"
 
 ### 外部 Agent 集成
 
-原子命令 + `--json` 输出让 InkOS 可以被 OpenClaw 等 AI Agent 调用。OpenClaw 通过 `exec` 工具执行 `inkos draft`/`audit`/`revise`，读取 JSON 结果决定下一步操作。
+原子命令 + `--json` 输出让 InkOS 可以被外部 AI Agent（如 OpenClaw、Claude Code 等）调用。Agent 通过 `exec` 执行 `inkos draft`/`audit`/`revise`，读取 JSON 结果决定下一步操作。
 
 ## 项目结构
 
