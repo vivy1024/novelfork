@@ -1,9 +1,11 @@
 /**
- * Standalone verification for publishable package manifests.
+ * Standalone verification for publish-time package manifests.
  *
  * Usage:
  *   node scripts/verify-no-workspace-protocol.mjs packages/cli packages/core
  *   node ../../scripts/verify-no-workspace-protocol.mjs .
+ *
+ * Run this only after publish versions have been rewritten.
  *
  * Checks two invariants before publish:
  * 1. publishable dependency fields must not contain workspace: specifiers

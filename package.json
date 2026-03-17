@@ -15,7 +15,7 @@
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
     "verify:publish-manifests": "node scripts/verify-no-workspace-protocol.mjs packages/core packages/cli",
-    "release": "pnpm build && pnpm test && pnpm verify:publish-manifests"
+    "release": "pnpm build && pnpm test"
   },
   "engines": {
     "node": ">=20.0.0",

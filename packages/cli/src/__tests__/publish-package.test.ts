@@ -53,7 +53,7 @@ describe("publish packaging", () => {
             name: "@actalk/inkos",
             version: "0.4.6",
             dependencies: {
-              "@actalk/inkos-core": "0.4.6",
+              "@actalk/inkos-core": "workspace:*",
               commander: "^13.0.0",
             },
           },
@@ -85,14 +85,10 @@ describe("publish packaging", () => {
     }
   });
 
-  it("keeps publishable CLI dependencies installable in source package.json", async () => {
+  it("keeps source CLI dependencies linked through the workspace protocol", async () => {
     const cliPackageJson = JSON.parse(await readFile(resolve(cliDir, "package.json"), "utf-8"));
-    const corePackageJson = JSON.parse(
-      await readFile(resolve(workspaceRoot, "packages/core/package.json"), "utf-8"),
-    );
 
-    expect(cliPackageJson.dependencies["@actalk/inkos-core"]).toBe(corePackageJson.version);
-    expect(cliPackageJson.dependencies["@actalk/inkos-core"]).not.toMatch(/^workspace:/);
+    expect(cliPackageJson.dependencies["@actalk/inkos-core"]).toBe("workspace:*");
   });
 
   it("verifies publishable manifests before npm publish runs", async () => {

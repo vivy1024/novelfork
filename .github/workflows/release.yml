@@ -32,7 +32,6 @@ jobs:
       - run: pnpm --filter @actalk/inkos-core typecheck
       - run: pnpm --filter @actalk/inkos typecheck
       - run: pnpm test
-      - run: pnpm verify:publish-manifests
 
   smoke-test:
     runs-on: ubuntu-latest
@@ -51,7 +50,6 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
-      - run: pnpm verify:publish-manifests
 
       - name: Smoke test — CLI help and version
         run: |
@@ -102,7 +100,6 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
-      - run: pnpm verify:publish-manifests
 
       - name: Derive release versions
         id: versions
@@ -196,7 +193,6 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
-      - run: pnpm verify:publish-manifests
 
       - name: Rewrite package versions for final publish
         run: |
