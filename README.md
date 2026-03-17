@@ -34,10 +34,17 @@ npm i -g @actalk/inkos
 
 ```bash
 inkos config set-global \
-  --provider openai \
-  --base-url https://api.openai.com/v1 \
-  --api-key sk-xxx \
-  --model gpt-4o
+  --provider <openai|anthropic|custom> \
+  --base-url <API 地址> \
+  --api-key <你的 API Key> \
+  --model <模型名>
+
+# 示例：OpenAI
+# inkos config set-global --provider openai --base-url https://api.openai.com/v1 --api-key sk-xxx --model gpt-4o
+# 示例：国内中转站 / 兼容接口
+# inkos config set-global --provider custom --base-url https://your-proxy.com/v1 --api-key sk-xxx --model gpt-4o
+# 示例：Anthropic
+# inkos config set-global --provider anthropic --base-url https://api.anthropic.com --api-key sk-ant-xxx --model claude-sonnet-4-20250514
 ```
 
 配置保存在 `~/.inkos/.env`，所有项目共享。之后新建项目不用再配。
@@ -51,10 +58,10 @@ inkos init my-novel     # 初始化项目
 
 ```bash
 # 必填
-INKOS_LLM_PROVIDER=openai                        # openai / anthropic
-INKOS_LLM_BASE_URL=https://api.openai.com/v1     # API 地址（支持中转站）
-INKOS_LLM_API_KEY=sk-xxx                          # API Key
-INKOS_LLM_MODEL=gpt-4o                            # 模型名
+INKOS_LLM_PROVIDER=                               # openai / anthropic / custom（兼容 OpenAI 接口的都选 custom）
+INKOS_LLM_BASE_URL=                               # API 地址（支持中转站、智谱、Gemini 等）
+INKOS_LLM_API_KEY=                                 # API Key
+INKOS_LLM_MODEL=                                   # 模型名
 
 # 可选
 # INKOS_LLM_TEMPERATURE=0.7                       # 温度

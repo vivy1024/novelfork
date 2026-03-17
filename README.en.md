@@ -34,10 +34,17 @@ npm i -g @actalk/inkos
 
 ```bash
 inkos config set-global \
-  --provider openai \
-  --base-url https://api.openai.com/v1 \
-  --api-key sk-xxx \
-  --model gpt-4o
+  --provider <openai|anthropic|custom> \
+  --base-url <API endpoint> \
+  --api-key <your API key> \
+  --model <model name>
+
+# Example: OpenAI
+# inkos config set-global --provider openai --base-url https://api.openai.com/v1 --api-key sk-xxx --model gpt-4o
+# Example: Any OpenAI-compatible endpoint (proxies, Zhipu, Gemini, local models)
+# inkos config set-global --provider custom --base-url https://your-proxy.com/v1 --api-key sk-xxx --model gpt-4o
+# Example: Anthropic
+# inkos config set-global --provider anthropic --base-url https://api.anthropic.com --api-key sk-ant-xxx --model claude-sonnet-4-20250514
 ```
 
 Saved to `~/.inkos/.env`, shared by all projects. New projects just work without extra config.
@@ -51,10 +58,10 @@ inkos init my-novel     # Initialize project
 
 ```bash
 # Required
-INKOS_LLM_PROVIDER=openai                        # openai / anthropic
-INKOS_LLM_BASE_URL=https://api.openai.com/v1     # API endpoint (proxy-friendly)
-INKOS_LLM_API_KEY=sk-xxx                          # API Key
-INKOS_LLM_MODEL=gpt-4o                            # Model name
+INKOS_LLM_PROVIDER=                               # openai / anthropic / custom (use custom for any OpenAI-compatible API)
+INKOS_LLM_BASE_URL=                               # API endpoint (proxies, Zhipu, Gemini, local models all supported)
+INKOS_LLM_API_KEY=                                 # API Key
+INKOS_LLM_MODEL=                                   # Model name
 
 # Optional
 # INKOS_LLM_TEMPERATURE=0.7                       # Temperature
