@@ -116,7 +116,7 @@ export class WriterAgent extends BaseAgent {
 
     const creativeTemperature = input.temperatureOverride ?? 0.7;
 
-    process.stderr.write(`[writer] Phase 1: creative writing for chapter ${chapterNumber}\n`);
+    this.ctx.logger?.info(`Phase 1: creative writing for chapter ${chapterNumber}`);
 
     // Scale maxTokens to chapter word count (Chinese ≈ 1.5 tokens/char)
     const targetWords = input.wordCountOverride ?? book.chapterWordCount;
@@ -134,7 +134,7 @@ export class WriterAgent extends BaseAgent {
     const creative = parseCreativeOutput(chapterNumber, creativeResponse.content);
 
     // ── Phase 2: State settlement (temperature 0.3) ──
-    process.stderr.write(`[writer] Phase 2: state settlement for chapter ${chapterNumber} (${creative.wordCount} chars)\n`);
+    this.ctx.logger?.info(`Phase 2: state settlement for chapter ${chapterNumber} (${creative.wordCount} chars)`);
 
     const settleResult = await this.settle({
       book,
@@ -163,19 +163,19 @@ export class WriterAgent extends BaseAgent {
     const postWriteWarnings = ruleViolations.filter(v => v.severity === "warning");
 
     if (ruleViolations.length > 0) {
-      process.stderr.write(
-        `[writer] Post-write: ${postWriteErrors.length} errors, ${postWriteWarnings.length} warnings in chapter ${chapterNumber}\n`,
+      this.ctx.logger?.warn(
+        `Post-write: ${postWriteErrors.length} errors, ${postWriteWarnings.length} warnings in chapter ${chapterNumber}`,
       );
       for (const v of ruleViolations) {
-        process.stderr.write(`  [${v.severity}] ${v.rule}: ${v.description}\n`);
+        this.ctx.logger?.warn(`[${v.severity}] ${v.rule}: ${v.description}`);
       }
     }
     if (aiTellIssues.length > 0) {
-      process.stderr.write(
-        `[writer] AI-tell check: ${aiTellIssues.length} issues in chapter ${chapterNumber}\n`,
+      this.ctx.logger?.warn(
+        `AI-tell check: ${aiTellIssues.length} issues in chapter ${chapterNumber}`,
       );
       for (const issue of aiTellIssues) {
-        process.stderr.write(`  [${issue.severity}] ${issue.category}: ${issue.description}\n`);
+        this.ctx.logger?.warn(`[${issue.severity}] ${issue.category}: ${issue.description}`);
       }
     }
 

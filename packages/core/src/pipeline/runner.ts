@@ -1,5 +1,6 @@
-import type { LLMClient } from "../llm/provider.js";
+import type { LLMClient, OnStreamProgress } from "../llm/provider.js";
 import { chatCompletion, createLLMClient } from "../llm/provider.js";
+import type { Logger } from "../utils/logger.js";
 import type { BookConfig } from "../models/book.js";
 import type { ChapterMeta } from "../models/chapter.js";
 import type { NotifyChannel, LLMConfig, AgentLLMOverride } from "../models/project.js";
@@ -32,6 +33,8 @@ export interface PipelineConfig {
   readonly radarSources?: ReadonlyArray<RadarSource>;
   readonly externalContext?: string;
   readonly modelOverrides?: Record<string, string | AgentLLMOverride>;
+  readonly logger?: Logger;
+  readonly onStreamProgress?: OnStreamProgress;
 }
 
 export interface TokenUsageSummary {
@@ -115,6 +118,8 @@ export class PipelineRunner {
       model: this.config.model,
       projectRoot: this.config.projectRoot,
       bookId,
+      logger: this.config.logger,
+      onStreamProgress: this.config.onStreamProgress,
     };
   }
 
@@ -160,6 +165,8 @@ export class PipelineRunner {
       model,
       projectRoot: this.config.projectRoot,
       bookId,
+      logger: this.config.logger?.child(agent),
+      onStreamProgress: this.config.onStreamProgress,
     };
   }
 
@@ -190,6 +197,9 @@ export class PipelineRunner {
     // Ensure chapters directory exists (prevents ENOENT if init was previously interrupted)
     await mkdir(join(bookDir, "chapters"), { recursive: true });
     await this.state.saveChapterIndex(book.id, []);
+
+    // Snapshot initial state so rewrite of chapter 1 can restore to pre-chapter state
+    await this.state.snapshotState(book.id, 0);
   }
 
   /** Write a single draft chapter. Saves chapter file + truth files + index + snapshot. */
@@ -485,8 +495,8 @@ export class PipelineRunner {
     let revised = false;
 
     if (output.postWriteErrors.length > 0) {
-      process.stderr.write(
-        `[pipeline] ${output.postWriteErrors.length} post-write errors detected, triggering spot-fix before audit\n`,
+      this.config.logger?.warn(
+        `${output.postWriteErrors.length} post-write errors detected, triggering spot-fix before audit`,
       );
       const reviser = new ReviserAgent(this.agentCtxFor("reviser", bookId));
       const spotFixIssues = output.postWriteErrors.map((v) => ({
@@ -888,9 +898,11 @@ ${matrix}`,
 
       const startFrom = input.resumeFrom ?? 1;
 
+      const log = this.config.logger?.child("import");
+
       // Step 1: Generate foundation on first run (not on resume)
       if (startFrom === 1) {
-        process.stderr.write(`[import] Step 1: Generating foundation from ${input.chapters.length} chapters...\n`);
+        log?.info(`Step 1: Generating foundation from ${input.chapters.length} chapters...`);
         const allText = input.chapters.map((c, i) =>
           `第${i + 1}章 ${c.title}\n\n${c.content}`,
         ).join("\n\n---\n\n");
@@ -899,11 +911,11 @@ ${matrix}`,
         const foundation = await architect.generateFoundationFromImport(book, allText);
         await architect.writeFoundationFiles(bookDir, foundation, gp.numericalSystem);
         await this.state.saveChapterIndex(input.bookId, []);
-        process.stderr.write(`[import] Foundation generated.\n`);
+        log?.info("Foundation generated.");
       }
 
       // Step 2: Sequential replay
-      process.stderr.write(`[import] Step 2: Sequential replay from chapter ${startFrom}...\n`);
+      log?.info(`Step 2: Sequential replay from chapter ${startFrom}...`);
       const analyzer = new ChapterAnalyzerAgent(this.agentCtxFor("chapter-analyzer", input.bookId));
       const writer = new WriterAgent(this.agentCtxFor("writer", input.bookId));
       let totalWords = 0;
@@ -912,7 +924,7 @@ ${matrix}`,
         const ch = input.chapters[i]!;
         const chapterNumber = i + 1;
 
-        process.stderr.write(`[import] Analyzing chapter ${chapterNumber}/${input.chapters.length}: ${ch.title}...\n`);
+        log?.info(`Analyzing chapter ${chapterNumber}/${input.chapters.length}: ${ch.title}...`);
 
         // Analyze chapter to get truth file updates
         const output = await analyzer.analyzeChapter({
@@ -963,7 +975,7 @@ ${matrix}`,
       }
 
       const nextChapter = input.chapters.length + 1;
-      process.stderr.write(`[import] Done. ${input.chapters.length} chapters imported, ${totalWords} chars. Next chapter: ${nextChapter}\n`);
+      log?.info(`Done. ${input.chapters.length} chapters imported, ${totalWords} chars. Next chapter: ${nextChapter}`);
 
       return {
         bookId: input.bookId,
