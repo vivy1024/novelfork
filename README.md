@@ -28,7 +28,7 @@ Agent 写小说。写、审、改，全程接管。
 npm i -g @actalk/inkos
 ```
 
-### 通过 OpenClaw 使用
+### 通过 OpenClaw 使用 🦞
 
 InkOS 已发布为 [OpenClaw](https://clawhub.ai) Skill，可被任何兼容 Agent（Claude Code、OpenClaw 等）直接调用：
 
@@ -36,9 +36,9 @@ InkOS 已发布为 [OpenClaw](https://clawhub.ai) Skill，可被任何兼容 Age
 clawhub install inkos          # 从 ClawHub 安装 InkOS Skill
 ```
 
-通过 npm 安装或克隆本项目的用户，`skills/SKILL.md` 已包含在内，Agent 可直接读取——无需额外从 ClawHub 安装。
+通过 npm 安装或克隆本项目时，`skills/SKILL.md` 已包含在内，🦞 可直接读取——无需额外从 ClawHub 安装。
 
-安装后，Agent 可通过 `exec` 调用 InkOS 的所有原子命令（`draft`/`audit`/`revise`/`write next`），`--json` 输出结构化数据供 Agent 解析决策。也可以在 [ClawHub](https://clawhub.ai) 搜索 `inkos` 在线查看。
+安装后，Claw 可通过 `exec` 调用 InkOS 的所有原子命令（`draft`/`audit`/`revise`/`write next`），`--json` 输出结构化数据供 Claw 解析决策。也可以在 [ClawHub](https://clawhub.ai) 搜索 `inkos` 在线查看。
 
 ### 配置
 
