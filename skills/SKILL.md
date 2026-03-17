@@ -35,6 +35,15 @@ inkos config set-global --provider openai --base-url https://api.openai.com/v1 -
 # inkos config set-global --provider custom --base-url https://your-proxy.com/v1 --api-key sk-xxx --model gpt-4o
 ```
 
+### Multi-Model Routing (Optional)
+```bash
+# Assign different models to different agents — balance quality and cost
+inkos config set-model writer claude-sonnet-4-20250514 --provider anthropic --base-url https://api.anthropic.com --api-key-env ANTHROPIC_API_KEY
+inkos config set-model auditor gpt-4o --provider openai
+inkos config show-models
+```
+Agents without explicit overrides fall back to the global model.
+
 ### View System Status
 ```bash
 # Check installation and configuration
@@ -302,6 +311,8 @@ inkos genre copy xuanhuan --name "dark-xuanhuan" --rules "darker tone, more viol
 | `inkos analytics` / `inkos stats` | View book statistics | Word count, audit rates, token usage |
 | `inkos radar scan` | Platform trend analysis | Informs new book ideas |
 | `inkos config set-global` | Configure LLM provider | OpenAI/Anthropic/custom (any OpenAI-compatible) |
+| `inkos config set-model <agent> <model>` | Set model override for a specific agent | `--provider`, `--base-url`, `--api-key-env` for multi-provider routing |
+| `inkos config show-models` | Show current model routing | View per-agent model assignments |
 | `inkos doctor` | Diagnose issues | Check installation |
 | `inkos update` | Update to latest version | Self-update |
 | `inkos up/down` | Daemon mode | Background processing. Logs to `inkos.log` (JSON Lines). `-q` for quiet mode |
