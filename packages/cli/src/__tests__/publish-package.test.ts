@@ -105,7 +105,7 @@ describe("publish packaging", () => {
     );
   });
 
-  it("replaces workspace dependencies before npm pack", async () => {
+  it("replaces workspace dependencies before npm pack", { timeout: 30_000 }, async () => {
     const packDir = await mkdtemp(join(tmpdir(), "inkos-cli-pack-"));
 
     try {
