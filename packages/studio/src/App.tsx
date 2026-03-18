@@ -32,8 +32,9 @@ export function App() {
   const sse = useSSE();
   const { theme, setTheme } = useTheme();
   const { t } = useI18n();
-  const { data: project } = useApi<{ language: string }>("/project");
-  const [languageSet, setLanguageSet] = useState<boolean | null>(null);
+  const { data: project, refetch: refetchProject } = useApi<{ language: string; languageExplicit: boolean }>("/project");
+  const [showLanguageSelector, setShowLanguageSelector] = useState(false);
+  const [ready, setReady] = useState(false);
 
   const isDark = theme === "dark";
 
@@ -41,9 +42,13 @@ export function App() {
     document.documentElement.classList.toggle("dark", isDark);
   }, [isDark]);
 
+  // Check if language needs to be set (first-time flow)
   useEffect(() => {
     if (project) {
-      setLanguageSet(true);
+      if (!project.languageExplicit) {
+        setShowLanguageSelector(true);
+      }
+      setReady(true);
     }
   }, [project]);
 
@@ -65,8 +70,24 @@ export function App() {
       ? `book:${(route as { bookId: string }).bookId}`
       : route.page;
 
-  if (languageSet === null) {
+  if (!ready) {
     return <div className="min-h-screen bg-background" />;
+  }
+
+  if (showLanguageSelector) {
+    return (
+      <LanguageSelector
+        onSelect={async (lang) => {
+          await fetch("/api/project/language", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ language: lang }),
+          });
+          setShowLanguageSelector(false);
+          refetchProject();
+        }}
+      />
+    );
   }
 
   return (

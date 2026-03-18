@@ -93,8 +93,18 @@ export function createStudioServer(config: ProjectConfig, root: string) {
   // --- Genres ---
 
   app.get("/api/genres", async (c) => {
-    const { listAvailableGenres } = await import("@actalk/inkos-core");
-    const genres = await listAvailableGenres(root);
+    const { listAvailableGenres, readGenreProfile } = await import("@actalk/inkos-core");
+    const rawGenres = await listAvailableGenres(root);
+    const genres = await Promise.all(
+      rawGenres.map(async (g) => {
+        try {
+          const { profile } = await readGenreProfile(root, g.id);
+          return { ...g, language: profile.language ?? "zh" };
+        } catch {
+          return { ...g, language: "zh" };
+        }
+      }),
+    );
     return c.json({ genres });
   });
 
@@ -297,10 +307,15 @@ export function createStudioServer(config: ProjectConfig, root: string) {
 
   // --- Project info ---
 
-  app.get("/api/project", (c) => {
+  app.get("/api/project", async (c) => {
+    // Check if language was explicitly set in inkos.json (not just the schema default)
+    const raw = JSON.parse(await readFile(join(root, "inkos.json"), "utf-8"));
+    const languageExplicit = "language" in raw && raw.language !== "";
+
     return c.json({
       name: config.name,
       language: config.language,
+      languageExplicit,
       model: config.llm.model,
       provider: config.llm.provider,
       baseUrl: config.llm.baseUrl,
