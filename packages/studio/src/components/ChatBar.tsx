@@ -118,7 +118,7 @@ export function ChatBar({ t, sse }: {
     : "Tell InkOS what to do...";
 
   return (
-    <div className="border-t border-border/20 bg-card/60 backdrop-blur-md">
+    <div className="border-t border-border/20 bg-card/60 backdrop-blur-md mx-4 mb-3 rounded-lg">
       {/* Expanded message area */}
       {expanded && messages.length > 0 && (
         <div className="max-w-3xl mx-auto">
