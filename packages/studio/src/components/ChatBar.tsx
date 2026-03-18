@@ -118,7 +118,7 @@ export function ChatBar({ t, sse }: {
     : "Tell InkOS what to do...";
 
   return (
-    <div className="border-t border-border/20 bg-card/60 backdrop-blur-md mx-4 mb-3 rounded-lg">
+    <div className="border border-border bg-card/60 backdrop-blur-md mx-4 mb-3 rounded-lg">
       {/* Expanded message area */}
       {expanded && messages.length > 0 && (
         <div className="max-w-3xl mx-auto">
@@ -129,7 +129,7 @@ export function ChatBar({ t, sse }: {
             {messages.map((msg, i) => (
               <div
                 key={i}
-                className={`text-[13px] leading-relaxed ${
+                className={`text-sm leading-relaxed ${
                   msg.role === "user"
                     ? "text-foreground"
                     : msg.content.startsWith("✗")
@@ -139,12 +139,12 @@ export function ChatBar({ t, sse }: {
                         : "text-primary"
                 }`}
               >
-                {msg.role === "user" && <span className="text-muted-foreground/40 mr-2">›</span>}
+                {msg.role === "user" && <span className="text-muted-foreground mr-2">›</span>}
                 {msg.content}
               </div>
             ))}
             {loading && !messages.some((m) => m.content.startsWith("⋯")) && (
-              <div className="text-[13px] text-muted-foreground animate-pulse">⋯</div>
+              <div className="text-sm text-muted-foreground animate-pulse">⋯</div>
             )}
           </div>
         </div>
@@ -162,14 +162,14 @@ export function ChatBar({ t, sse }: {
             onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
             placeholder={chatPlaceholder}
             disabled={loading}
-            className="w-full bg-transparent text-[13px] text-foreground placeholder:text-muted-foreground/25 focus:outline-none disabled:opacity-50"
+            className="w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none disabled:opacity-50"
           />
         </div>
         <div className="flex items-center gap-3 shrink-0">
           {expanded && messages.length > 0 && (
             <button
               onClick={() => { setExpanded(false); setMessages([]); }}
-              className="text-[10px] text-muted-foreground/30 hover:text-muted-foreground transition-colors"
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
             >
               Clear
             </button>

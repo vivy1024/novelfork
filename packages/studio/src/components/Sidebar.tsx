@@ -27,7 +27,7 @@ export function Sidebar({ nav, activePage, t }: {
   const { data: daemon } = useApi<{ running: boolean }>("/daemon");
 
   return (
-    <aside className="w-[220px] shrink-0 border-r border-border/30 bg-card/30 flex flex-col h-full overflow-y-auto">
+    <aside className="w-[230px] shrink-0 border-r border-border bg-card/40 flex flex-col h-full overflow-y-auto">
       {/* Logo — generous vertical breathing room */}
       <div className="px-6 pt-7 pb-6">
         <button onClick={nav.toDashboard} className="flex items-baseline gap-0.5 hover:opacity-70 transition-opacity">
@@ -39,10 +39,10 @@ export function Sidebar({ nav, activePage, t }: {
       {/* Books section */}
       <div className="flex-1 px-4">
         <div className="px-2 mb-3 flex items-center justify-between">
-          <span className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground/60 font-medium">{t("nav.books")}</span>
+          <span className="text-xs uppercase tracking-[0.12em] text-muted-foreground font-medium">{t("nav.books")}</span>
           <button
             onClick={nav.toBookCreate}
-            className="w-5 h-5 flex items-center justify-center rounded text-[11px] text-muted-foreground/40 hover:text-primary hover:bg-primary/10 transition-all"
+            className="w-6 h-6 flex items-center justify-center rounded text-sm text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all"
           >
             +
           </button>
@@ -72,7 +72,7 @@ export function Sidebar({ nav, activePage, t }: {
       </div>
 
       {/* System nav — generous spacing from book list */}
-      <div className="border-t border-border/20 mt-4 pt-4 pb-5 px-4 space-y-1">
+      <div className="border-t border-border mt-4 pt-4 pb-5 px-4 space-y-1">
         <SidebarItem
           label={t("nav.config")}
           icon="⚙"
@@ -115,9 +115,9 @@ function SidebarItem({ label, icon, active, onClick, badge, badgeColor }: {
           : "text-foreground/50 hover:text-foreground hover:bg-muted/40"
       }`}
     >
-      <span className="text-xs w-4 text-center opacity-50">{icon}</span>
+      <span className="text-sm w-4 text-center opacity-60">{icon}</span>
       <span className="flex-1">{label}</span>
-      {badge && <span className={`text-[9px] ${badgeColor ?? ""}`}>{badge}</span>}
+      {badge && <span className={`text-xs ${badgeColor ?? ""}`}>{badge}</span>}
     </button>
   );
 }

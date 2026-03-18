@@ -37,7 +37,7 @@ export function LogViewer({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunct
         <h1 className="font-serif text-3xl">Logs</h1>
         <button
           onClick={() => refetch()}
-          className={`px-3 py-2 text-xs rounded-md ${c.btnSecondary}`}
+          className={`px-4 py-2.5 text-sm rounded-md ${c.btnSecondary}`}
         >
           Refresh
         </button>
@@ -46,11 +46,11 @@ export function LogViewer({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunct
       <div className={`border ${c.cardStatic} rounded-lg overflow-hidden`}>
         <div className="p-4 max-h-[600px] overflow-y-auto">
           {data?.entries && data.entries.length > 0 ? (
-            <div className="space-y-0.5 font-mono text-[12px] leading-relaxed">
+            <div className="space-y-1 font-mono text-sm leading-relaxed">
               {data.entries.map((entry, i) => (
                 <div key={i} className="flex gap-2">
                   {entry.timestamp && (
-                    <span className="text-muted-foreground/40 shrink-0 w-20 tabular-nums">
+                    <span className="text-muted-foreground shrink-0 w-20 tabular-nums">
                       {new Date(entry.timestamp).toLocaleTimeString()}
                     </span>
                   )}
@@ -60,21 +60,21 @@ export function LogViewer({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunct
                     </span>
                   )}
                   {entry.tag && (
-                    <span className="text-primary/40 shrink-0">[{entry.tag}]</span>
+                    <span className="text-primary/70 shrink-0">[{entry.tag}]</span>
                   )}
                   <span className="text-foreground/80">{entry.message}</span>
                 </div>
               ))}
             </div>
           ) : (
-            <div className="text-muted-foreground/40 text-sm italic py-12 text-center">
+            <div className="text-muted-foreground text-sm italic py-12 text-center">
               No log entries. Logs appear after running write/draft/daemon operations.
             </div>
           )}
         </div>
       </div>
 
-      <p className="text-xs text-muted-foreground/50">
+      <p className="text-sm text-muted-foreground">
         Showing last 100 entries from <code className="font-mono bg-muted/50 px-1 rounded">inkos.log</code>
       </p>
     </div>

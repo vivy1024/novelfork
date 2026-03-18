@@ -75,15 +75,15 @@ export function App() {
 
       <div className="flex-1 flex flex-col min-w-0">
         {/* Thin utility strip — pushed inward */}
-        <div className="h-12 shrink-0 border-b border-border/20 flex items-center justify-end px-8 gap-4">
+        <div className="h-12 shrink-0 border-b border-border flex items-center justify-end px-8 gap-4">
           <button
             onClick={() => setTheme(isDark ? "light" : "dark")}
-            className="w-7 h-7 flex items-center justify-center rounded-full bg-secondary/40 text-muted-foreground/60 hover:text-foreground hover:bg-secondary transition-all text-xs"
+            className="w-8 h-8 flex items-center justify-center rounded-full bg-secondary text-muted-foreground hover:text-foreground hover:bg-secondary/80 transition-all text-sm"
           >
             {isDark ? "☀" : "☽"}
           </button>
           {sse.connected && (
-            <span className="text-[10px] text-muted-foreground/30 uppercase tracking-[0.15em]">
+            <span className="text-xs text-muted-foreground uppercase tracking-wide">
               {t("nav.connected")}
             </span>
           )}

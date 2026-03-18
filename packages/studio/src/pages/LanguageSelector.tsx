@@ -15,7 +15,7 @@ export function LanguageSelector({ onSelect }: { onSelect: (lang: "zh" | "en") =
         <div className="flex gap-6">
           <button
             onClick={() => onSelect("zh")}
-            className="group w-64 border border-border/60 rounded-lg p-8 hover:border-primary/40 transition-all duration-300 text-left"
+            className="group w-72 border border-border rounded-lg p-10 hover:border-primary/50 transition-all duration-300 text-left"
           >
             <div className="font-serif text-2xl mb-2">中文创作</div>
             <div className="text-sm text-muted-foreground leading-relaxed">
@@ -28,7 +28,7 @@ export function LanguageSelector({ onSelect }: { onSelect: (lang: "zh" | "en") =
 
           <button
             onClick={() => onSelect("en")}
-            className="group w-64 border border-border/60 rounded-lg p-8 hover:border-primary/40 transition-all duration-300 text-left"
+            className="group w-72 border border-border rounded-lg p-10 hover:border-primary/50 transition-all duration-300 text-left"
           >
             <div className="font-serif text-2xl mb-2 italic">English Writing</div>
             <div className="text-sm text-muted-foreground leading-relaxed">

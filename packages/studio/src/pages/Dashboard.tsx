@@ -93,7 +93,7 @@ export function Dashboard({ nav, sse, theme, t }: { nav: Nav; sse: { messages: R
                   >
                     {book.title}
                   </button>
-                  <div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground">
+                  <div className="flex items-center gap-3 mt-2 text-sm text-muted-foreground">
                     <span className="uppercase tracking-wider">{book.genre}</span>
                     <span className="text-border">|</span>
                     <span>{book.chaptersWritten} {t("dash.chapters")}</span>
@@ -114,7 +114,7 @@ export function Dashboard({ nav, sse, theme, t }: { nav: Nav; sse: { messages: R
                   <button
                     onClick={() => postApi(`/books/${book.id}/write-next`)}
                     disabled={isWriting}
-                    className={`px-3 py-2 text-xs rounded-md transition-all ${
+                    className={`px-4 py-2.5 text-sm rounded-md transition-all ${
                       isWriting
                         ? "bg-primary/20 text-primary cursor-wait"
                         : "bg-secondary text-secondary-foreground hover:bg-secondary/80"
@@ -124,7 +124,7 @@ export function Dashboard({ nav, sse, theme, t }: { nav: Nav; sse: { messages: R
                   </button>
                   <button
                     onClick={() => nav.toAnalytics(book.id)}
-                    className="px-3 py-2 text-xs rounded-md bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors"
+                    className="px-4 py-2.5 text-sm rounded-md bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors"
                   >
                     {t("dash.stats")}
                   </button>
@@ -142,9 +142,9 @@ export function Dashboard({ nav, sse, theme, t }: { nav: Nav; sse: { messages: R
 
       {/* Live writing progress panel */}
       {writingBooks.size > 0 && logEvents.length > 0 && (
-        <div className="border border-primary/20 bg-primary/5 rounded-lg p-5">
-          <h3 className="text-xs uppercase tracking-widest text-primary/70 mb-3">{t("dash.writingProgress")}</h3>
-          <div className="space-y-1 text-[13px] font-mono text-muted-foreground">
+        <div className="border border-primary/30 bg-primary/5 rounded-lg p-6">
+          <h3 className="text-sm uppercase tracking-wide text-primary font-medium mb-4">{t("dash.writingProgress")}</h3>
+          <div className="space-y-1.5 text-sm font-mono text-muted-foreground">
             {logEvents.map((msg, i) => {
               const d = msg.data as { tag?: string; message?: string };
               return (

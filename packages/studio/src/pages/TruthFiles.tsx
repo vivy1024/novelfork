@@ -48,8 +48,8 @@ export function TruthFiles({ bookId, nav, theme, t }: { bookId: string; nav: Nav
                   : "hover:bg-muted/30 text-muted-foreground"
               }`}
             >
-              <div className="font-mono text-xs truncate">{f.name}</div>
-              <div className="text-[11px] text-muted-foreground/60 mt-0.5">{f.size.toLocaleString()} chars</div>
+              <div className="font-mono text-sm truncate">{f.name}</div>
+              <div className="text-xs text-muted-foreground mt-0.5">{f.size.toLocaleString()} chars</div>
             </button>
           ))}
           {(!data?.files || data.files.length === 0) && (

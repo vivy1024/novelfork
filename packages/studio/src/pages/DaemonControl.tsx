@@ -55,7 +55,7 @@ export function DaemonControl({ nav, theme, t, sse }: { nav: Nav; theme: Theme; 
       <div className="flex items-baseline justify-between">
         <h1 className="font-serif text-3xl">Daemon</h1>
         <div className="flex items-center gap-3">
-          <span className={`text-xs uppercase tracking-widest ${isRunning ? "text-emerald-500" : "text-muted-foreground/50"}`}>
+          <span className={`text-sm uppercase tracking-wide font-medium ${isRunning ? "text-emerald-500" : "text-muted-foreground"}`}>
             {isRunning ? "Running" : "Stopped"}
           </span>
           {isRunning ? (
@@ -80,12 +80,12 @@ export function DaemonControl({ nav, theme, t, sse }: { nav: Nav; theme: Theme; 
 
       {/* Daemon event log */}
       <div className={`border ${c.cardStatic} rounded-lg`}>
-        <div className="px-4 py-3 border-b border-border/40">
-          <span className="text-xs uppercase tracking-widest text-muted-foreground">Event Log</span>
+        <div className="px-5 py-3.5 border-b border-border">
+          <span className="text-sm uppercase tracking-wide text-muted-foreground font-medium">Event Log</span>
         </div>
         <div className="p-4 max-h-[500px] overflow-y-auto">
           {daemonEvents.length > 0 ? (
-            <div className="space-y-1 font-mono text-[13px]">
+            <div className="space-y-1.5 font-mono text-sm">
               {daemonEvents.map((msg, i) => {
                 const d = msg.data as Record<string, unknown>;
                 return (
@@ -98,7 +98,7 @@ export function DaemonControl({ nav, theme, t, sse }: { nav: Nav; theme: Theme; 
               })}
             </div>
           ) : (
-            <div className="text-muted-foreground/40 text-sm italic py-8 text-center">
+            <div className="text-muted-foreground text-sm italic py-8 text-center">
               {isRunning ? "Waiting for events..." : "Start the daemon to see events"}
             </div>
           )}
