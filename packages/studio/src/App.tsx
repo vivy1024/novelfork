@@ -5,6 +5,9 @@ import { BookCreate } from "./pages/BookCreate";
 import { ChapterReader } from "./pages/ChapterReader";
 import { Analytics } from "./pages/Analytics";
 import { ConfigView } from "./pages/ConfigView";
+import { TruthFiles } from "./pages/TruthFiles";
+import { DaemonControl } from "./pages/DaemonControl";
+import { LogViewer } from "./pages/LogViewer";
 import { useSSE } from "./hooks/use-sse";
 import { useTheme } from "./hooks/use-theme";
 import { useI18n } from "./hooks/use-i18n";
@@ -15,7 +18,10 @@ type Route =
   | { page: "book-create" }
   | { page: "chapter"; bookId: string; chapterNumber: number }
   | { page: "analytics"; bookId: string }
-  | { page: "config" };
+  | { page: "config" }
+  | { page: "truth"; bookId: string }
+  | { page: "daemon" }
+  | { page: "logs" };
 
 export function App() {
   const [route, setRoute] = useState<Route>({ page: "dashboard" });
@@ -37,11 +43,21 @@ export function App() {
       setRoute({ page: "chapter", bookId, chapterNumber }),
     toAnalytics: (bookId: string) => setRoute({ page: "analytics", bookId }),
     toConfig: () => setRoute({ page: "config" }),
+    toTruth: (bookId: string) => setRoute({ page: "truth", bookId }),
+    toDaemon: () => setRoute({ page: "daemon" }),
+    toLogs: () => setRoute({ page: "logs" }),
   };
+
+  const navItems = [
+    { label: t("nav.books"), action: nav.toDashboard, active: route.page === "dashboard" || route.page === "book" || route.page === "chapter" },
+    { label: t("nav.newBook"), action: nav.toBookCreate, active: route.page === "book-create" },
+    { label: "Daemon", action: nav.toDaemon, active: route.page === "daemon" },
+    { label: "Logs", action: nav.toLogs, active: route.page === "logs" },
+    { label: t("nav.config"), action: nav.toConfig, active: route.page === "config" },
+  ];
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      {/* Header — thin, literary, warm */}
       <header className="sticky top-0 z-10 border-b border-border/60 bg-background/90 backdrop-blur-md">
         <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-8">
@@ -54,11 +70,7 @@ export function App() {
             </button>
 
             <nav className="flex gap-1 text-[13px] text-muted-foreground">
-              {([
-                { label: t("nav.books"), action: nav.toDashboard, active: route.page === "dashboard" },
-                { label: t("nav.newBook"), action: nav.toBookCreate, active: route.page === "book-create" },
-                { label: t("nav.config"), action: nav.toConfig, active: route.page === "config" },
-              ] as const).map((item) => (
+              {navItems.map((item) => (
                 <button
                   key={item.label}
                   onClick={item.action}
@@ -97,6 +109,9 @@ export function App() {
         {route.page === "chapter" && <ChapterReader bookId={route.bookId} chapterNumber={route.chapterNumber} nav={nav} theme={theme} t={t} />}
         {route.page === "analytics" && <Analytics bookId={route.bookId} nav={nav} theme={theme} t={t} />}
         {route.page === "config" && <ConfigView nav={nav} theme={theme} t={t} />}
+        {route.page === "truth" && <TruthFiles bookId={route.bookId} nav={nav} theme={theme} t={t} />}
+        {route.page === "daemon" && <DaemonControl nav={nav} theme={theme} t={t} sse={sse} />}
+        {route.page === "logs" && <LogViewer nav={nav} theme={theme} t={t} />}
       </main>
     </div>
   );

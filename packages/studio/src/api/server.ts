@@ -303,7 +303,119 @@ export function createStudioServer(config: ProjectConfig, root: string) {
       language: config.language,
       model: config.llm.model,
       provider: config.llm.provider,
+      baseUrl: config.llm.baseUrl,
+      stream: config.llm.stream,
+      temperature: config.llm.temperature,
+      maxTokens: config.llm.maxTokens,
     });
+  });
+
+  // --- Config editing ---
+
+  app.put("/api/project", async (c) => {
+    const updates = await c.req.json<Record<string, unknown>>();
+    const configPath = join(root, "inkos.json");
+    try {
+      const raw = await readFile(configPath, "utf-8");
+      const existing = JSON.parse(raw);
+      // Merge LLM settings
+      if (updates.temperature !== undefined) existing.llm.temperature = updates.temperature;
+      if (updates.maxTokens !== undefined) existing.llm.maxTokens = updates.maxTokens;
+      if (updates.stream !== undefined) existing.llm.stream = updates.stream;
+      if (updates.language !== undefined) existing.language = updates.language;
+      const { writeFile: writeFileFs } = await import("node:fs/promises");
+      await writeFileFs(configPath, JSON.stringify(existing, null, 2), "utf-8");
+      return c.json({ ok: true });
+    } catch (e) {
+      return c.json({ error: String(e) }, 500);
+    }
+  });
+
+  // --- Truth files browser ---
+
+  app.get("/api/books/:id/truth", async (c) => {
+    const id = c.req.param("id");
+    const bookDir = state.bookDir(id);
+    const storyDir = join(bookDir, "story");
+    try {
+      const files = await readdir(storyDir);
+      const mdFiles = files.filter((f) => f.endsWith(".md") || f.endsWith(".json"));
+      const result = await Promise.all(
+        mdFiles.map(async (f) => {
+          const content = await readFile(join(storyDir, f), "utf-8");
+          return { name: f, size: content.length, preview: content.slice(0, 200) };
+        }),
+      );
+      return c.json({ files: result });
+    } catch {
+      return c.json({ files: [] });
+    }
+  });
+
+  // --- Daemon control ---
+
+  let schedulerInstance: import("@actalk/inkos-core").Scheduler | null = null;
+
+  app.get("/api/daemon", (c) => {
+    return c.json({
+      running: schedulerInstance?.isRunning ?? false,
+    });
+  });
+
+  app.post("/api/daemon/start", async (c) => {
+    if (schedulerInstance?.isRunning) {
+      return c.json({ error: "Daemon already running" }, 400);
+    }
+    try {
+      const { Scheduler } = await import("@actalk/inkos-core");
+      schedulerInstance = new Scheduler({
+        ...buildPipelineConfig(),
+        radarCron: config.daemon.schedule.radarCron,
+        writeCron: config.daemon.schedule.writeCron,
+        maxConcurrentBooks: config.daemon.maxConcurrentBooks,
+        chaptersPerCycle: config.daemon.chaptersPerCycle,
+        retryDelayMs: config.daemon.retryDelayMs,
+        cooldownAfterChapterMs: config.daemon.cooldownAfterChapterMs,
+        maxChaptersPerDay: config.daemon.maxChaptersPerDay,
+        onChapterComplete: (bookId, chapter, status) => {
+          broadcast("daemon:chapter", { bookId, chapter, status });
+        },
+        onError: (bookId, error) => {
+          broadcast("daemon:error", { bookId, error: error.message });
+        },
+      });
+      await schedulerInstance.start();
+      broadcast("daemon:started", {});
+      return c.json({ ok: true, running: true });
+    } catch (e) {
+      return c.json({ error: String(e) }, 500);
+    }
+  });
+
+  app.post("/api/daemon/stop", (c) => {
+    if (!schedulerInstance?.isRunning) {
+      return c.json({ error: "Daemon not running" }, 400);
+    }
+    schedulerInstance.stop();
+    schedulerInstance = null;
+    broadcast("daemon:stopped", {});
+    return c.json({ ok: true, running: false });
+  });
+
+  // --- Logs ---
+
+  app.get("/api/logs", async (c) => {
+    const logPath = join(root, "inkos.log");
+    try {
+      const content = await readFile(logPath, "utf-8");
+      const lines = content.trim().split("\n").slice(-100);
+      const entries = lines.map((line) => {
+        try { return JSON.parse(line); } catch { return { message: line }; }
+      });
+      return c.json({ entries });
+    } catch {
+      return c.json({ entries: [] });
+    }
   });
 
   return app;

@@ -130,6 +130,12 @@ export function BookDetail({ bookId, nav, theme, t }: { bookId: string; nav: Nav
             </button>
           )}
           <button
+            onClick={() => (nav as { toTruth?: (id: string) => void }).toTruth?.(bookId)}
+            className={`px-4 py-2 text-sm ${c.btnSecondary} rounded-md transition-colors`}
+          >
+            Truth Files
+          </button>
+          <button
             onClick={() => nav.toAnalytics(bookId)}
             className={`px-4 py-2 text-sm ${c.btnSecondary} rounded-md transition-colors`}
           >

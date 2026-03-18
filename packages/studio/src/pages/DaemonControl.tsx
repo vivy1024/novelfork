@@ -1,0 +1,109 @@
+import { useApi, postApi } from "../hooks/use-api";
+import { useState } from "react";
+import type { Theme } from "../hooks/use-theme";
+import type { TFunction } from "../hooks/use-i18n";
+import { useColors } from "../hooks/use-colors";
+import type { SSEMessage } from "../hooks/use-sse";
+
+interface Nav {
+  toDashboard: () => void;
+}
+
+export function DaemonControl({ nav, theme, t, sse }: { nav: Nav; theme: Theme; t: TFunction; sse: { messages: ReadonlyArray<SSEMessage> } }) {
+  const c = useColors(theme);
+  const { data, refetch } = useApi<{ running: boolean }>("/daemon");
+  const [loading, setLoading] = useState(false);
+
+  const daemonEvents = sse.messages
+    .filter((m) => m.event.startsWith("daemon:") || m.event === "log")
+    .slice(-20);
+
+  const handleStart = async () => {
+    setLoading(true);
+    try {
+      await postApi("/daemon/start");
+      refetch();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleStop = async () => {
+    setLoading(true);
+    try {
+      await postApi("/daemon/stop");
+      refetch();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const isRunning = data?.running ?? false;
+
+  return (
+    <div className="space-y-8">
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <button onClick={nav.toDashboard} className={c.link}>{t("bread.home")}</button>
+        <span className="text-border">/</span>
+        <span className="text-foreground">Daemon</span>
+      </div>
+
+      <div className="flex items-baseline justify-between">
+        <h1 className="font-serif text-3xl">Daemon</h1>
+        <div className="flex items-center gap-3">
+          <span className={`text-xs uppercase tracking-widest ${isRunning ? "text-emerald-500" : "text-muted-foreground/50"}`}>
+            {isRunning ? "Running" : "Stopped"}
+          </span>
+          {isRunning ? (
+            <button
+              onClick={handleStop}
+              disabled={loading}
+              className={`px-4 py-2.5 text-sm rounded-md ${c.btnDanger} disabled:opacity-50`}
+            >
+              {loading ? "Stopping..." : "Stop"}
+            </button>
+          ) : (
+            <button
+              onClick={handleStart}
+              disabled={loading}
+              className={`px-4 py-2.5 text-sm rounded-md ${c.btnPrimary} disabled:opacity-50`}
+            >
+              {loading ? "Starting..." : "Start"}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Daemon event log */}
+      <div className={`border ${c.cardStatic} rounded-lg`}>
+        <div className="px-4 py-3 border-b border-border/40">
+          <span className="text-xs uppercase tracking-widest text-muted-foreground">Event Log</span>
+        </div>
+        <div className="p-4 max-h-[500px] overflow-y-auto">
+          {daemonEvents.length > 0 ? (
+            <div className="space-y-1 font-mono text-[13px]">
+              {daemonEvents.map((msg, i) => {
+                const d = msg.data as Record<string, unknown>;
+                return (
+                  <div key={i} className="leading-relaxed text-muted-foreground">
+                    <span className="text-primary/50">{msg.event}</span>
+                    <span className="text-border mx-1.5">›</span>
+                    <span>{d.message ?? d.bookId ?? JSON.stringify(d)}</span>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="text-muted-foreground/40 text-sm italic py-8 text-center">
+              {isRunning ? "Waiting for events..." : "Start the daemon to see events"}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
