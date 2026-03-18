@@ -49,10 +49,10 @@ export function Dashboard({ nav, sse, theme, t }: { nav: Nav; sse: { messages: R
   if (error) return <div className="text-red-400">Error: {error}</div>;
   if (!data?.books.length) {
     return (
-      <div className={`text-center py-20 ${c.muted}`}>
-        <p className="text-xl mb-2">{t("dash.noBooks")}</p>
-        <p className="text-sm mb-4">{t("dash.createFirst")}</p>
-        <button onClick={nav.toBookCreate} className={`px-4 py-2 rounded-md text-sm ${c.btnPrimary}`}>
+      <div className={`text-center py-24 ${c.muted}`}>
+        <p className="text-2xl mb-3 font-medium text-foreground/60">{t("dash.noBooks")}</p>
+        <p className="text-sm mb-6">{t("dash.createFirst")}</p>
+        <button onClick={nav.toBookCreate} className={`px-6 py-3 rounded-lg text-sm font-medium ${c.btnPrimary}`}>
           {t("nav.newBook")}
         </button>
       </div>

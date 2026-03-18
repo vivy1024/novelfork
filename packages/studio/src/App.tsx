@@ -59,7 +59,7 @@ export function App() {
               <button
                 key={item.label}
                 onClick={item.action}
-                className={`px-3 py-1.5 rounded-md transition-colors ${
+                className={`px-3 py-2.5 rounded-md transition-colors ${
                   item.active
                     ? "bg-secondary text-foreground"
                     : "hover:bg-secondary/50 hover:text-foreground"
@@ -73,7 +73,7 @@ export function App() {
         <div className="flex items-center gap-3">
           <button
             onClick={() => setTheme(isDark ? "light" : "dark")}
-            className="px-2.5 py-1 rounded-md text-xs font-medium bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+            className="px-3 py-2 rounded-md text-xs font-medium bg-secondary text-muted-foreground hover:text-foreground transition-colors"
           >
             {isDark ? "☀️" : "🌙"}
           </button>
