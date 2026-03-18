@@ -63,19 +63,19 @@
 /* ── Dark: midnight study ── */
 .dark {
   --background: oklch(0.14 0.01 55);
-  --foreground: oklch(0.92 0.015 75);
+  --foreground: oklch(0.95 0.01 75);
   --card: oklch(0.18 0.012 55);
-  --card-foreground: oklch(0.92 0.015 75);
+  --card-foreground: oklch(0.95 0.01 75);
   --popover: oklch(0.18 0.012 55);
-  --popover-foreground: oklch(0.92 0.015 75);
+  --popover-foreground: oklch(0.95 0.01 75);
   --primary: oklch(0.75 0.15 65);
   --primary-foreground: oklch(0.12 0.01 55);
   --secondary: oklch(0.24 0.015 55);
-  --secondary-foreground: oklch(0.88 0.02 75);
+  --secondary-foreground: oklch(0.92 0.015 75);
   --muted: oklch(0.24 0.012 55);
-  --muted-foreground: oklch(0.68 0.02 70);
+  --muted-foreground: oklch(0.75 0.015 70);
   --accent: oklch(0.26 0.018 55);
-  --accent-foreground: oklch(0.90 0.02 75);
+  --accent-foreground: oklch(0.93 0.015 75);
   --destructive: oklch(0.62 0.2 25);
   --destructive-foreground: oklch(0.98 0 0);
   --border: oklch(0.35 0.02 55);
