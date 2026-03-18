@@ -112,7 +112,7 @@ export function BookCreate({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunc
           <select
             value={genre}
             onChange={(e) => setGenre(e.target.value)}
-            className={`w-full ${c.input} rounded-md px-3 py-2 focus:outline-none`}
+            className={`w-full ${c.input} rounded-md px-3 py-2.5 focus:outline-none appearance-none cursor-pointer`}
           >
             {genres.map((g) => (
               <option key={g.id} value={g.id}>
