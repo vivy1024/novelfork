@@ -25,7 +25,6 @@ export function App() {
 
   const isDark = theme === "dark";
 
-  // Toggle dark class on root for CSS variable switching
   useEffect(() => {
     document.documentElement.classList.toggle("dark", isDark);
   }, [isDark]);
@@ -42,49 +41,56 @@ export function App() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <header className="sticky top-0 z-10 backdrop-blur-sm border-b border-border bg-background/80 px-6 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-6">
-          <button
-            onClick={nav.toDashboard}
-            className="text-lg font-bold tracking-tight hover:opacity-80 transition-opacity"
-          >
-            <span className={isDark ? "text-blue-400" : "text-blue-600"}>Ink</span>OS Studio
-          </button>
-          <nav className="flex gap-1 text-sm text-muted-foreground">
-            {([
-              { label: t("nav.books"), action: nav.toDashboard, active: route.page === "dashboard" },
-              { label: t("nav.newBook"), action: nav.toBookCreate, active: route.page === "book-create" },
-              { label: t("nav.config"), action: nav.toConfig, active: route.page === "config" },
-            ] as const).map((item) => (
-              <button
-                key={item.label}
-                onClick={item.action}
-                className={`px-3 py-2.5 rounded-md transition-colors ${
-                  item.active
-                    ? "bg-secondary text-foreground"
-                    : "hover:bg-secondary/50 hover:text-foreground"
-                }`}
-              >
-                {item.label}
-              </button>
-            ))}
-          </nav>
-        </div>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => setTheme(isDark ? "light" : "dark")}
-            className="px-3 py-2 rounded-md text-xs font-medium bg-secondary text-muted-foreground hover:text-foreground transition-colors"
-          >
-            {isDark ? "☀️" : "🌙"}
-          </button>
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <span className={`inline-block w-1.5 h-1.5 rounded-full ${sse.connected ? "bg-emerald-500" : "bg-zinc-400"}`} />
-            {sse.connected ? t("nav.connected") : t("nav.disconnected")}
+      {/* Header — thin, literary, warm */}
+      <header className="sticky top-0 z-10 border-b border-border/60 bg-background/90 backdrop-blur-md">
+        <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-8">
+            <button
+              onClick={nav.toDashboard}
+              className="group flex items-baseline gap-0.5 hover:opacity-80 transition-opacity"
+            >
+              <span className="font-serif text-xl italic text-primary">Ink</span>
+              <span className="text-lg font-medium tracking-tight">OS</span>
+            </button>
+
+            <nav className="flex gap-1 text-[13px] text-muted-foreground">
+              {([
+                { label: t("nav.books"), action: nav.toDashboard, active: route.page === "dashboard" },
+                { label: t("nav.newBook"), action: nav.toBookCreate, active: route.page === "book-create" },
+                { label: t("nav.config"), action: nav.toConfig, active: route.page === "config" },
+              ] as const).map((item) => (
+                <button
+                  key={item.label}
+                  onClick={item.action}
+                  className={`px-3 py-2 rounded-md transition-all duration-200 ${
+                    item.active
+                      ? "text-foreground bg-secondary"
+                      : "hover:text-foreground hover:bg-secondary/50"
+                  }`}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </nav>
+          </div>
+
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => setTheme(isDark ? "light" : "dark")}
+              className="w-8 h-8 flex items-center justify-center rounded-full bg-secondary text-muted-foreground hover:text-foreground transition-colors text-xs"
+            >
+              {isDark ? "☀" : "☽"}
+            </button>
+            {sse.connected && (
+              <span className="text-[11px] text-muted-foreground/60 tracking-wide uppercase">
+                {t("nav.connected")}
+              </span>
+            )}
           </div>
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto px-6 py-8">
+      <main className="max-w-5xl mx-auto px-6 py-10">
         {route.page === "dashboard" && <Dashboard nav={nav} sse={sse} theme={theme} t={t} />}
         {route.page === "book" && <BookDetail bookId={route.bookId} nav={nav} theme={theme} t={t} />}
         {route.page === "book-create" && <BookCreate nav={nav} theme={theme} t={t} />}

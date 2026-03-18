@@ -26,7 +26,6 @@ export function Dashboard({ nav, sse, theme, t }: { nav: Nav; sse: { messages: R
   const { data, loading, error, refetch } = useApi<{ books: ReadonlyArray<BookSummary> }>("/books");
   const [writingBooks, setWritingBooks] = useState<Set<string>>(new Set());
 
-  const recentEvents = sse.messages.filter((m) => m.event !== "ping" && m.event !== "llm:progress");
   const logEvents = sse.messages.filter((m) => m.event === "log").slice(-8);
   const progressEvent = sse.messages.filter((m) => m.event === "llm:progress").slice(-1)[0];
 
@@ -45,95 +44,124 @@ export function Dashboard({ nav, sse, theme, t }: { nav: Nav; sse: { messages: R
     }
   }, [sse.messages.length]);
 
-  if (loading) return <div className={c.muted}>Loading...</div>;
-  if (error) return <div className="text-red-400">Error: {error}</div>;
+  if (loading) return <div className="text-muted-foreground py-20 text-center text-sm">Loading...</div>;
+  if (error) return <div className="text-destructive py-20 text-center">Error: {error}</div>;
+
+  /* ── Empty state ── */
   if (!data?.books.length) {
     return (
-      <div className={`text-center py-24 ${c.muted}`}>
-        <p className="text-2xl mb-3 font-medium text-foreground/60">{t("dash.noBooks")}</p>
-        <p className="text-sm mb-6">{t("dash.createFirst")}</p>
-        <button onClick={nav.toBookCreate} className={`px-6 py-3 rounded-lg text-sm font-medium ${c.btnPrimary}`}>
+      <div className="flex flex-col items-center justify-center py-32">
+        <div className="text-6xl mb-6 opacity-20">✦</div>
+        <h2 className="font-serif text-3xl italic text-foreground/50 mb-3">{t("dash.noBooks")}</h2>
+        <p className="text-sm text-muted-foreground mb-8">{t("dash.createFirst")}</p>
+        <button
+          onClick={nav.toBookCreate}
+          className="px-6 py-3 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
+        >
           {t("nav.newBook")}
         </button>
       </div>
     );
   }
 
+  /* ── Book list ── */
   return (
-    <div className="space-y-8">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">{t("dash.title")}</h1>
-        <button onClick={nav.toBookCreate} className={`px-3 py-1.5 text-sm rounded-md ${c.btnPrimary}`}>
+    <div className="space-y-10">
+      <div className="flex items-baseline justify-between">
+        <h1 className="font-serif text-3xl">{t("dash.title")}</h1>
+        <button
+          onClick={nav.toBookCreate}
+          className="px-4 py-2.5 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
+        >
           {t("nav.newBook")}
         </button>
       </div>
 
-      <div className="grid gap-4">
+      <div className="space-y-3">
         {data.books.map((book) => {
           const isWriting = writingBooks.has(book.id);
           return (
-            <div key={book.id} className={`border rounded-lg p-5 transition-colors ${c.card}`}>
-              <div className="flex items-start justify-between">
-                <div>
-                  <button onClick={() => nav.toBook(book.id)} className={`text-lg font-medium ${c.link} transition-colors text-left`}>
+            <div
+              key={book.id}
+              className={`group border ${c.card} rounded-lg overflow-hidden`}
+            >
+              <div className="px-5 py-4 flex items-start justify-between">
+                <div className="min-w-0">
+                  <button
+                    onClick={() => nav.toBook(book.id)}
+                    className="font-serif text-lg hover:text-primary transition-colors text-left truncate block"
+                  >
                     {book.title}
                   </button>
-                  <div className={`flex gap-3 mt-1 text-sm ${c.muted}`}>
-                    <span>{book.genre}</span>
+                  <div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground">
+                    <span className="uppercase tracking-wider">{book.genre}</span>
+                    <span className="text-border">|</span>
                     <span>{book.chaptersWritten} {t("dash.chapters")}</span>
-                    <span className={book.status === "active" ? c.active : book.status === "paused" ? c.paused : c.subtle}>
+                    <span className="text-border">|</span>
+                    <span className={
+                      book.status === "active" ? "text-emerald-500" :
+                      book.status === "paused" ? "text-amber-500" :
+                      "text-muted-foreground"
+                    }>
                       {book.status}
                     </span>
-                    {book.language === "en" && <span className="text-blue-400">EN</span>}
-                    {book.fanficMode && <span className="text-purple-400">fanfic:{book.fanficMode}</span>}
+                    {book.language === "en" && <span className="text-primary/70">EN</span>}
+                    {book.fanficMode && <span className="text-purple-400">{book.fanficMode}</span>}
                   </div>
                 </div>
-                <div className="flex gap-2">
+
+                <div className="flex gap-2 shrink-0 ml-4">
                   <button
                     onClick={() => postApi(`/books/${book.id}/write-next`)}
                     disabled={isWriting}
-                    className={`px-3 py-1.5 text-sm rounded-md transition-colors disabled:opacity-50 disabled:cursor-wait ${c.btnSecondary}`}
+                    className={`px-3 py-2 text-xs rounded-md transition-all ${
+                      isWriting
+                        ? "bg-primary/20 text-primary cursor-wait"
+                        : "bg-secondary text-secondary-foreground hover:bg-secondary/80"
+                    }`}
                   >
                     {isWriting ? t("dash.writing") : t("dash.writeNext")}
                   </button>
-                  <button onClick={() => nav.toAnalytics(book.id)} className={`px-3 py-1.5 text-sm rounded-md transition-colors ${c.btnSecondary}`}>
+                  <button
+                    onClick={() => nav.toAnalytics(book.id)}
+                    className="px-3 py-2 text-xs rounded-md bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors"
+                  >
                     {t("dash.stats")}
                   </button>
                 </div>
               </div>
+
+              {/* Writing progress bar for active writes */}
+              {isWriting && (
+                <div className="h-0.5 bg-gradient-to-r from-primary/0 via-primary to-primary/0 animate-pulse" />
+              )}
             </div>
           );
         })}
       </div>
 
+      {/* Live writing progress panel */}
       {writingBooks.size > 0 && logEvents.length > 0 && (
-        <div className={`border rounded-lg p-4 ${c.info}`}>
-          <h2 className="text-sm font-medium mb-3">{t("dash.writingProgress")}</h2>
-          <div className={`space-y-1 text-sm ${c.mono} ${c.subtle}`}>
+        <div className="border border-primary/20 bg-primary/5 rounded-lg p-5">
+          <h3 className="text-xs uppercase tracking-widest text-primary/70 mb-3">{t("dash.writingProgress")}</h3>
+          <div className="space-y-1 text-[13px] font-mono text-muted-foreground">
             {logEvents.map((msg, i) => {
               const d = msg.data as { tag?: string; message?: string };
-              return <div key={i}><span className={c.muted}>[{d.tag}]</span> {d.message}</div>;
+              return (
+                <div key={i} className="leading-relaxed">
+                  <span className="text-primary/50">{d.tag}</span>
+                  <span className="text-border mx-1.5">›</span>
+                  <span>{d.message}</span>
+                </div>
+              );
             })}
             {progressEvent && (
-              <div className="text-blue-400 mt-2">
-                LLM streaming: {Math.round(((progressEvent.data as { elapsedMs?: number })?.elapsedMs ?? 0) / 1000)}s,{" "}
+              <div className="text-primary mt-3 pt-3 border-t border-primary/10">
+                streaming {Math.round(((progressEvent.data as { elapsedMs?: number })?.elapsedMs ?? 0) / 1000)}s
+                <span className="text-border mx-1.5">·</span>
                 {((progressEvent.data as { totalChars?: number })?.totalChars ?? 0).toLocaleString()} chars
               </div>
             )}
-          </div>
-        </div>
-      )}
-
-      {writingBooks.size === 0 && recentEvents.length > 0 && (
-        <div className={`border rounded-lg p-4 ${c.cardStatic}`}>
-          <h2 className={`text-sm font-medium ${c.subtle} mb-3`}>{t("dash.recentEvents")}</h2>
-          <div className={`space-y-1 text-sm ${c.mono} ${c.muted}`}>
-            {recentEvents.slice(-5).map((msg, i) => (
-              <div key={i}>
-                <span className={c.muted}>{new Date(msg.timestamp).toLocaleTimeString()}</span>{" "}
-                <span>{msg.event}</span> {JSON.stringify(msg.data)}
-              </div>
-            ))}
           </div>
         </div>
       )}
