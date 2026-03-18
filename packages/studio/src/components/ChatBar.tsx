@@ -113,9 +113,47 @@ export function ChatBar({ t, sse }: {
     }
   };
 
-  const chatPlaceholder = t("nav.connected") === "已连接"
-    ? "告诉 InkOS 你想做什么..."
-    : "Tell InkOS what to do...";
+  const isZh = t("nav.connected") === "已连接";
+
+  const TIPS_ZH = [
+    "试试：写下一章",
+    "试试：审计第5章",
+    "试试：帮我创建一本都市修仙小说",
+    "试试：扫描市场趋势",
+    "试试：导出全书为 epub",
+    "试试：分析这篇文章的文风 → 导入到我的书",
+    "试试：导入已有章节续写",
+    "试试：创建一个玄幻题材的同人",
+    "试试：查看第3章的审计问题",
+    "试试：修订第5章，用 spot-fix 模式",
+  ];
+
+  const TIPS_EN = [
+    "Try: write next chapter",
+    "Try: audit chapter 5",
+    "Try: create a LitRPG novel about a programmer",
+    "Try: scan market trends",
+    "Try: export book as epub",
+    "Try: analyze this text's style → import to my book",
+    "Try: import existing chapters to continue",
+    "Try: create a progression fantasy fanfic",
+    "Try: show audit issues for chapter 3",
+    "Try: revise chapter 5 with spot-fix mode",
+  ];
+
+  const tips = isZh ? TIPS_ZH : TIPS_EN;
+  const [tipIndex, setTipIndex] = useState(() => Math.floor(Math.random() * tips.length));
+
+  // Rotate tips every 8 seconds when idle
+  useEffect(() => {
+    if (input || expanded) return;
+    const timer = setInterval(() => {
+      setTipIndex((i) => (i + 1) % tips.length);
+    }, 8000);
+    return () => clearInterval(timer);
+  }, [input, expanded, tips.length]);
+
+  const chatPlaceholder = tips[tipIndex]!;
 
   return (
     <div className="border border-border/60 bg-card/40 mx-6 mb-3 rounded-md">
