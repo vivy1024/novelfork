@@ -141,6 +141,13 @@ export function BookDetail({ bookId, nav, theme, t }: { bookId: string; nav: Nav
           >
             {t("book.analytics")}
           </button>
+          <a
+            href={`/api/books/${bookId}/export?format=txt`}
+            download
+            className={`px-4 py-2 text-sm ${c.btnSecondary} rounded-md transition-colors inline-flex items-center`}
+          >
+            Export
+          </a>
         </div>
       </div>
 
@@ -172,22 +179,59 @@ export function BookDetail({ bookId, nav, theme, t }: { bookId: string; nav: Nav
                   {ch.status}
                 </td>
                 <td className="px-4 py-3 text-right">
-                  {ch.status === "ready-for-review" && (
-                    <div className="flex gap-1 justify-end">
-                      <button
-                        onClick={async () => { await postApi(`/books/${bookId}/chapters/${ch.number}/approve`); refetch(); }}
-                        className={`px-2 py-1 text-xs ${c.btnSuccess} rounded`}
-                      >
-                        {t("book.approve")}
-                      </button>
-                      <button
-                        onClick={async () => { await postApi(`/books/${bookId}/chapters/${ch.number}/reject`); refetch(); }}
-                        className={`px-2 py-1 text-xs ${c.btnDanger} rounded`}
-                      >
-                        {t("book.reject")}
-                      </button>
-                    </div>
-                  )}
+                  <div className="flex gap-1 justify-end">
+                    {ch.status === "ready-for-review" && (
+                      <>
+                        <button
+                          onClick={async () => { await postApi(`/books/${bookId}/chapters/${ch.number}/approve`); refetch(); }}
+                          className={`px-2 py-1 text-xs ${c.btnSuccess} rounded`}
+                        >
+                          {t("book.approve")}
+                        </button>
+                        <button
+                          onClick={async () => { await postApi(`/books/${bookId}/chapters/${ch.number}/reject`); refetch(); }}
+                          className={`px-2 py-1 text-xs ${c.btnDanger} rounded`}
+                        >
+                          {t("book.reject")}
+                        </button>
+                      </>
+                    )}
+                    <button
+                      onClick={async () => {
+                        const r = await fetch(`/api/books/${bookId}/audit/${ch.number}`, { method: "POST" });
+                        const data = await r.json();
+                        alert(data.passed ? "Audit passed" : `Audit failed: ${data.issues?.length ?? 0} issues`);
+                        refetch();
+                      }}
+                      className={`px-2 py-1 text-xs ${c.btnSecondary} rounded`}
+                    >
+                      Audit
+                    </button>
+                    <button
+                      onClick={async () => {
+                        await fetch(`/api/books/${bookId}/revise/${ch.number}`, {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ mode: "spot-fix" }),
+                        });
+                        alert("Revision started");
+                        refetch();
+                      }}
+                      className={`px-2 py-1 text-xs ${c.btnSecondary} rounded`}
+                    >
+                      Revise
+                    </button>
+                    <button
+                      onClick={async () => {
+                        const r = await fetch(`/api/books/${bookId}/detect/${ch.number}`, { method: "POST" });
+                        const data = await r.json();
+                        alert(`AI-tell: ${data.issues?.length ?? 0} issues found`);
+                      }}
+                      className={`px-2 py-1 text-xs ${c.btnSecondary} rounded`}
+                    >
+                      Detect
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}

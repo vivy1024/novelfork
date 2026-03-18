@@ -16,6 +16,7 @@ interface Nav {
   toConfig: () => void;
   toDaemon: () => void;
   toLogs: () => void;
+  toGenres: () => void;
 }
 
 export function Sidebar({ nav, activePage, t }: {
@@ -73,6 +74,12 @@ export function Sidebar({ nav, activePage, t }: {
 
       {/* System nav — generous spacing from book list */}
       <div className="border-t border-border mt-4 pt-4 pb-5 px-4 space-y-1">
+        <SidebarItem
+          label={t("create.genre")}
+          icon="◈"
+          active={activePage === "genres"}
+          onClick={nav.toGenres}
+        />
         <SidebarItem
           label={t("nav.config")}
           icon="⚙"

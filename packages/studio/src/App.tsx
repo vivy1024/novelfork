@@ -10,6 +10,7 @@ import { ConfigView } from "./pages/ConfigView";
 import { TruthFiles } from "./pages/TruthFiles";
 import { DaemonControl } from "./pages/DaemonControl";
 import { LogViewer } from "./pages/LogViewer";
+import { GenreManager } from "./pages/GenreManager";
 import { LanguageSelector } from "./pages/LanguageSelector";
 import { useSSE } from "./hooks/use-sse";
 import { useTheme } from "./hooks/use-theme";
@@ -25,7 +26,8 @@ type Route =
   | { page: "config" }
   | { page: "truth"; bookId: string }
   | { page: "daemon" }
-  | { page: "logs" };
+  | { page: "logs" }
+  | { page: "genres" };
 
 export function App() {
   const [route, setRoute] = useState<Route>({ page: "dashboard" });
@@ -63,6 +65,7 @@ export function App() {
     toTruth: (bookId: string) => setRoute({ page: "truth", bookId }),
     toDaemon: () => setRoute({ page: "daemon" }),
     toLogs: () => setRoute({ page: "logs" }),
+    toGenres: () => setRoute({ page: "genres" }),
   };
 
   const activePage =
@@ -122,6 +125,7 @@ export function App() {
             {route.page === "truth" && <TruthFiles bookId={route.bookId} nav={nav} theme={theme} t={t} />}
             {route.page === "daemon" && <DaemonControl nav={nav} theme={theme} t={t} sse={sse} />}
             {route.page === "logs" && <LogViewer nav={nav} theme={theme} t={t} />}
+            {route.page === "genres" && <GenreManager nav={nav} theme={theme} t={t} />}
           </div>
         </div>
 

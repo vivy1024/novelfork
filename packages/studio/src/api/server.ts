@@ -484,6 +484,226 @@ export function createStudioServer(config: ProjectConfig, root: string) {
     }
   });
 
+  // --- Audit ---
+
+  app.post("/api/books/:id/audit/:chapter", async (c) => {
+    const id = c.req.param("id");
+    const chapterNum = parseInt(c.req.param("chapter"), 10);
+    const bookDir = state.bookDir(id);
+
+    broadcast("audit:start", { bookId: id, chapter: chapterNum });
+    try {
+      const book = await state.loadBookConfig(id);
+      const chaptersDir = join(bookDir, "chapters");
+      const files = await readdir(chaptersDir);
+      const paddedNum = String(chapterNum).padStart(4, "0");
+      const match = files.find((f) => f.startsWith(paddedNum) && f.endsWith(".md"));
+      if (!match) return c.json({ error: "Chapter not found" }, 404);
+
+      const content = await readFile(join(chaptersDir, match), "utf-8");
+      const { ContinuityAuditor } = await import("@actalk/inkos-core");
+      const auditor = new ContinuityAuditor({
+        client: createLLMClient(config.llm),
+        model: config.llm.model,
+        projectRoot: root,
+        bookId: id,
+      });
+      const result = await auditor.auditChapter(bookDir, content, chapterNum, book.genre);
+      broadcast("audit:complete", { bookId: id, chapter: chapterNum, passed: result.passed });
+      return c.json(result);
+    } catch (e) {
+      broadcast("audit:error", { bookId: id, error: String(e) });
+      return c.json({ error: String(e) }, 500);
+    }
+  });
+
+  // --- Revise ---
+
+  app.post("/api/books/:id/revise/:chapter", async (c) => {
+    const id = c.req.param("id");
+    const chapterNum = parseInt(c.req.param("chapter"), 10);
+    const bookDir = state.bookDir(id);
+    const body = await c.req.json<{ mode?: string }>().catch(() => ({ mode: "spot-fix" }));
+
+    broadcast("revise:start", { bookId: id, chapter: chapterNum });
+    try {
+      const book = await state.loadBookConfig(id);
+      const chaptersDir = join(bookDir, "chapters");
+      const files = await readdir(chaptersDir);
+      const paddedNum = String(chapterNum).padStart(4, "0");
+      const match = files.find((f) => f.startsWith(paddedNum) && f.endsWith(".md"));
+      if (!match) return c.json({ error: "Chapter not found" }, 404);
+
+      const content = await readFile(join(chaptersDir, match), "utf-8");
+
+      // Get audit issues first
+      const index = await state.loadChapterIndex(id);
+      const chapterMeta = index.find((ch) => ch.number === chapterNum);
+      const issues = (chapterMeta?.auditIssues ?? []).map((desc) => ({
+        severity: "warning" as const,
+        category: "general",
+        description: desc,
+        suggestion: "",
+      }));
+
+      const { ReviserAgent } = await import("@actalk/inkos-core");
+      const reviser = new ReviserAgent({
+        client: createLLMClient(config.llm),
+        model: config.llm.model,
+        projectRoot: root,
+        bookId: id,
+      });
+      const result = await reviser.reviseChapter(
+        bookDir, content, chapterNum, issues,
+        (body.mode ?? "spot-fix") as "spot-fix",
+        book.genre,
+      );
+      broadcast("revise:complete", { bookId: id, chapter: chapterNum });
+      return c.json(result);
+    } catch (e) {
+      broadcast("revise:error", { bookId: id, error: String(e) });
+      return c.json({ error: String(e) }, 500);
+    }
+  });
+
+  // --- Export ---
+
+  app.get("/api/books/:id/export", async (c) => {
+    const id = c.req.param("id");
+    const format = (c.req.query("format") ?? "txt") as string;
+    const bookDir = state.bookDir(id);
+    const chaptersDir = join(bookDir, "chapters");
+
+    try {
+      const files = await readdir(chaptersDir);
+      const mdFiles = files.filter((f) => f.endsWith(".md") && !f.startsWith("index")).sort();
+      const contents = await Promise.all(
+        mdFiles.map((f) => readFile(join(chaptersDir, f), "utf-8")),
+      );
+
+      if (format === "md") {
+        const body = contents.join("\n\n---\n\n");
+        return new Response(body, {
+          headers: {
+            "Content-Type": "text/markdown; charset=utf-8",
+            "Content-Disposition": `attachment; filename="${id}.md"`,
+          },
+        });
+      }
+      // Default: txt
+      const body = contents.join("\n\n");
+      return new Response(body, {
+        headers: {
+          "Content-Type": "text/plain; charset=utf-8",
+          "Content-Disposition": `attachment; filename="${id}.txt"`,
+        },
+      });
+    } catch {
+      return c.json({ error: "Export failed" }, 500);
+    }
+  });
+
+  // --- Genre detail + copy ---
+
+  app.get("/api/genres/:id", async (c) => {
+    const genreId = c.req.param("id");
+    try {
+      const { readGenreProfile } = await import("@actalk/inkos-core");
+      const { profile, body } = await readGenreProfile(root, genreId);
+      return c.json({ profile, body });
+    } catch (e) {
+      return c.json({ error: String(e) }, 404);
+    }
+  });
+
+  app.post("/api/genres/:id/copy", async (c) => {
+    const genreId = c.req.param("id");
+    try {
+      const { getBuiltinGenresDir } = await import("@actalk/inkos-core");
+      const { mkdir: mkdirFs, copyFile } = await import("node:fs/promises");
+      const builtinDir = getBuiltinGenresDir();
+      const projectGenresDir = join(root, "genres");
+      await mkdirFs(projectGenresDir, { recursive: true });
+      await copyFile(join(builtinDir, `${genreId}.md`), join(projectGenresDir, `${genreId}.md`));
+      return c.json({ ok: true, path: `genres/${genreId}.md` });
+    } catch (e) {
+      return c.json({ error: String(e) }, 500);
+    }
+  });
+
+  // --- Model overrides ---
+
+  app.get("/api/project/model-overrides", async (c) => {
+    const raw = JSON.parse(await readFile(join(root, "inkos.json"), "utf-8"));
+    return c.json({ overrides: raw.modelOverrides ?? {} });
+  });
+
+  app.put("/api/project/model-overrides", async (c) => {
+    const { overrides } = await c.req.json<{ overrides: Record<string, unknown> }>();
+    const configPath = join(root, "inkos.json");
+    const raw = JSON.parse(await readFile(configPath, "utf-8"));
+    raw.modelOverrides = overrides;
+    const { writeFile: writeFileFs } = await import("node:fs/promises");
+    await writeFileFs(configPath, JSON.stringify(raw, null, 2), "utf-8");
+    return c.json({ ok: true });
+  });
+
+  // --- Notify channels ---
+
+  app.get("/api/project/notify", async (c) => {
+    const raw = JSON.parse(await readFile(join(root, "inkos.json"), "utf-8"));
+    return c.json({ channels: raw.notify ?? [] });
+  });
+
+  app.put("/api/project/notify", async (c) => {
+    const { channels } = await c.req.json<{ channels: unknown[] }>();
+    const configPath = join(root, "inkos.json");
+    const raw = JSON.parse(await readFile(configPath, "utf-8"));
+    raw.notify = channels;
+    const { writeFile: writeFileFs } = await import("node:fs/promises");
+    await writeFileFs(configPath, JSON.stringify(raw, null, 2), "utf-8");
+    return c.json({ ok: true });
+  });
+
+  // --- AIGC Detection ---
+
+  app.post("/api/books/:id/detect/:chapter", async (c) => {
+    const id = c.req.param("id");
+    const chapterNum = parseInt(c.req.param("chapter"), 10);
+    const bookDir = state.bookDir(id);
+
+    try {
+      const chaptersDir = join(bookDir, "chapters");
+      const files = await readdir(chaptersDir);
+      const paddedNum = String(chapterNum).padStart(4, "0");
+      const match = files.find((f) => f.startsWith(paddedNum) && f.endsWith(".md"));
+      if (!match) return c.json({ error: "Chapter not found" }, 404);
+
+      const content = await readFile(join(chaptersDir, match), "utf-8");
+      const { analyzeAITells } = await import("@actalk/inkos-core");
+      const result = analyzeAITells(content);
+      return c.json({ chapterNumber: chapterNum, ...result });
+    } catch (e) {
+      return c.json({ error: String(e) }, 500);
+    }
+  });
+
+  // --- Truth file edit ---
+
+  app.put("/api/books/:id/truth/:file", async (c) => {
+    const id = c.req.param("id");
+    const file = c.req.param("file");
+    if (!TRUTH_FILES.includes(file)) {
+      return c.json({ error: "Invalid truth file" }, 400);
+    }
+    const { content } = await c.req.json<{ content: string }>();
+    const bookDir = state.bookDir(id);
+    const { writeFile: writeFileFs, mkdir: mkdirFs } = await import("node:fs/promises");
+    await mkdirFs(join(bookDir, "story"), { recursive: true });
+    await writeFileFs(join(bookDir, "story", file), content, "utf-8");
+    return c.json({ ok: true });
+  });
+
   return app;
 }
 
