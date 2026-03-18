@@ -418,6 +418,57 @@ export function createStudioServer(config: ProjectConfig, root: string) {
     }
   });
 
+  // --- Agent chat ---
+
+  app.post("/api/agent", async (c) => {
+    const { instruction } = await c.req.json<{ instruction: string }>();
+    if (!instruction?.trim()) {
+      return c.json({ error: "No instruction provided" }, 400);
+    }
+
+    broadcast("agent:start", { instruction });
+
+    try {
+      const { runAgentLoop, AGENT_TOOLS } = await import("@actalk/inkos-core");
+      const agentCtx = {
+        client: createLLMClient(config.llm),
+        model: config.llm.model,
+        projectRoot: root,
+      };
+
+      const result = await runAgentLoop({
+        ...agentCtx,
+        tools: AGENT_TOOLS,
+        instruction,
+        pipelineConfig: buildPipelineConfig(),
+      });
+
+      broadcast("agent:complete", { instruction, response: result.summary });
+      return c.json({ response: result.summary });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      broadcast("agent:error", { instruction, error: msg });
+      return c.json({ response: msg });
+    }
+  });
+
+  // --- Language setup ---
+
+  app.post("/api/project/language", async (c) => {
+    const { language } = await c.req.json<{ language: "zh" | "en" }>();
+    const configPath = join(root, "inkos.json");
+    try {
+      const raw = await readFile(configPath, "utf-8");
+      const existing = JSON.parse(raw);
+      existing.language = language;
+      const { writeFile: writeFileFs } = await import("node:fs/promises");
+      await writeFileFs(configPath, JSON.stringify(existing, null, 2), "utf-8");
+      return c.json({ ok: true, language });
+    } catch (e) {
+      return c.json({ error: String(e) }, 500);
+    }
+  });
+
   return app;
 }
 

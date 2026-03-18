@@ -1,4 +1,6 @@
 import { useState, useEffect } from "react";
+import { Sidebar } from "./components/Sidebar";
+import { ChatBar } from "./components/ChatBar";
 import { Dashboard } from "./pages/Dashboard";
 import { BookDetail } from "./pages/BookDetail";
 import { BookCreate } from "./pages/BookCreate";
@@ -8,9 +10,11 @@ import { ConfigView } from "./pages/ConfigView";
 import { TruthFiles } from "./pages/TruthFiles";
 import { DaemonControl } from "./pages/DaemonControl";
 import { LogViewer } from "./pages/LogViewer";
+import { LanguageSelector } from "./pages/LanguageSelector";
 import { useSSE } from "./hooks/use-sse";
 import { useTheme } from "./hooks/use-theme";
 import { useI18n } from "./hooks/use-i18n";
+import { useApi } from "./hooks/use-api";
 
 type Route =
   | { page: "dashboard" }
@@ -28,12 +32,23 @@ export function App() {
   const sse = useSSE();
   const { theme, setTheme } = useTheme();
   const { t } = useI18n();
+  const { data: project } = useApi<{ language: string }>("/project");
+  const [languageSet, setLanguageSet] = useState<boolean | null>(null);
 
   const isDark = theme === "dark";
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", isDark);
   }, [isDark]);
+
+  // Check if language has been set
+  useEffect(() => {
+    if (project) {
+      setLanguageSet(!!project.language && project.language !== "zh" ? true : true);
+      // For now, always consider language "set" — the selector is for first-time experience
+      // In a real implementation, we'd check a "hasCompletedSetup" flag
+    }
+  }, [project]);
 
   const nav = {
     toDashboard: () => setRoute({ page: "dashboard" }),
@@ -48,71 +63,57 @@ export function App() {
     toLogs: () => setRoute({ page: "logs" }),
   };
 
-  const navItems = [
-    { label: t("nav.books"), action: nav.toDashboard, active: route.page === "dashboard" || route.page === "book" || route.page === "chapter" },
-    { label: t("nav.newBook"), action: nav.toBookCreate, active: route.page === "book-create" },
-    { label: "Daemon", action: nav.toDaemon, active: route.page === "daemon" },
-    { label: "Logs", action: nav.toLogs, active: route.page === "logs" },
-    { label: t("nav.config"), action: nav.toConfig, active: route.page === "config" },
-  ];
+  // Derive active page for sidebar highlighting
+  const activePage =
+    route.page === "book" || route.page === "chapter" || route.page === "truth" || route.page === "analytics"
+      ? `book:${(route as { bookId: string }).bookId}`
+      : route.page;
+
+  // Language selector for first-time setup
+  if (languageSet === null) {
+    return <div className="min-h-screen bg-background" />; // Loading
+  }
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <header className="sticky top-0 z-10 border-b border-border/60 bg-background/90 backdrop-blur-md">
-        <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-8">
-            <button
-              onClick={nav.toDashboard}
-              className="group flex items-baseline gap-0.5 hover:opacity-80 transition-opacity"
-            >
-              <span className="font-serif text-xl italic text-primary">Ink</span>
-              <span className="text-lg font-medium tracking-tight">OS</span>
-            </button>
+    <div className="h-screen bg-background text-foreground flex overflow-hidden">
+      {/* Sidebar */}
+      <Sidebar nav={nav} activePage={activePage} t={t} />
 
-            <nav className="flex gap-1 text-[13px] text-muted-foreground">
-              {navItems.map((item) => (
-                <button
-                  key={item.label}
-                  onClick={item.action}
-                  className={`px-3 py-2 rounded-md transition-all duration-200 ${
-                    item.active
-                      ? "text-foreground bg-secondary"
-                      : "hover:text-foreground hover:bg-secondary/50"
-                  }`}
-                >
-                  {item.label}
-                </button>
-              ))}
-            </nav>
-          </div>
+      {/* Main area + Chat bar */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Header strip */}
+        <div className="h-11 shrink-0 border-b border-border/30 flex items-center justify-end px-4 gap-3">
+          <button
+            onClick={() => setTheme(isDark ? "light" : "dark")}
+            className="w-7 h-7 flex items-center justify-center rounded-full bg-secondary/50 text-muted-foreground hover:text-foreground transition-colors text-xs"
+          >
+            {isDark ? "☀" : "☽"}
+          </button>
+          {sse.connected && (
+            <span className="text-[10px] text-muted-foreground/40 uppercase tracking-wider">
+              {t("nav.connected")}
+            </span>
+          )}
+        </div>
 
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => setTheme(isDark ? "light" : "dark")}
-              className="w-8 h-8 flex items-center justify-center rounded-full bg-secondary text-muted-foreground hover:text-foreground transition-colors text-xs"
-            >
-              {isDark ? "☀" : "☽"}
-            </button>
-            {sse.connected && (
-              <span className="text-[11px] text-muted-foreground/60 tracking-wide uppercase">
-                {t("nav.connected")}
-              </span>
-            )}
+        {/* Scrollable main content */}
+        <div className="flex-1 overflow-y-auto">
+          <div className="max-w-4xl mx-auto px-6 py-8">
+            {route.page === "dashboard" && <Dashboard nav={nav} sse={sse} theme={theme} t={t} />}
+            {route.page === "book" && <BookDetail bookId={route.bookId} nav={nav} theme={theme} t={t} />}
+            {route.page === "book-create" && <BookCreate nav={nav} theme={theme} t={t} />}
+            {route.page === "chapter" && <ChapterReader bookId={route.bookId} chapterNumber={route.chapterNumber} nav={nav} theme={theme} t={t} />}
+            {route.page === "analytics" && <Analytics bookId={route.bookId} nav={nav} theme={theme} t={t} />}
+            {route.page === "config" && <ConfigView nav={nav} theme={theme} t={t} />}
+            {route.page === "truth" && <TruthFiles bookId={route.bookId} nav={nav} theme={theme} t={t} />}
+            {route.page === "daemon" && <DaemonControl nav={nav} theme={theme} t={t} sse={sse} />}
+            {route.page === "logs" && <LogViewer nav={nav} theme={theme} t={t} />}
           </div>
         </div>
-      </header>
 
-      <main className="max-w-5xl mx-auto px-6 py-10">
-        {route.page === "dashboard" && <Dashboard nav={nav} sse={sse} theme={theme} t={t} />}
-        {route.page === "book" && <BookDetail bookId={route.bookId} nav={nav} theme={theme} t={t} />}
-        {route.page === "book-create" && <BookCreate nav={nav} theme={theme} t={t} />}
-        {route.page === "chapter" && <ChapterReader bookId={route.bookId} chapterNumber={route.chapterNumber} nav={nav} theme={theme} t={t} />}
-        {route.page === "analytics" && <Analytics bookId={route.bookId} nav={nav} theme={theme} t={t} />}
-        {route.page === "config" && <ConfigView nav={nav} theme={theme} t={t} />}
-        {route.page === "truth" && <TruthFiles bookId={route.bookId} nav={nav} theme={theme} t={t} />}
-        {route.page === "daemon" && <DaemonControl nav={nav} theme={theme} t={t} sse={sse} />}
-        {route.page === "logs" && <LogViewer nav={nav} theme={theme} t={t} />}
-      </main>
+        {/* Chat bar - always at bottom */}
+        <ChatBar t={t} sse={sse} />
+      </div>
     </div>
   );
 }
