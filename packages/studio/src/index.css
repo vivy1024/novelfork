@@ -60,29 +60,29 @@
   --amber-foreground: oklch(0.25 0.05 55);
 }
 
-/* ── Dark: midnight study ── */
+/* ── Dark: neutral charcoal + amber accent ── */
 .dark {
-  --background: oklch(0.14 0.01 55);
-  --foreground: oklch(0.95 0.01 75);
-  --card: oklch(0.18 0.012 55);
-  --card-foreground: oklch(0.95 0.01 75);
-  --popover: oklch(0.18 0.012 55);
-  --popover-foreground: oklch(0.95 0.01 75);
-  --primary: oklch(0.75 0.15 65);
-  --primary-foreground: oklch(0.12 0.01 55);
-  --secondary: oklch(0.24 0.015 55);
-  --secondary-foreground: oklch(0.92 0.015 75);
-  --muted: oklch(0.24 0.012 55);
-  --muted-foreground: oklch(0.75 0.015 70);
-  --accent: oklch(0.26 0.018 55);
-  --accent-foreground: oklch(0.93 0.015 75);
-  --destructive: oklch(0.62 0.2 25);
-  --destructive-foreground: oklch(0.98 0 0);
-  --border: oklch(0.35 0.02 55);
-  --input: oklch(0.30 0.018 55);
-  --ring: oklch(0.75 0.15 65);
-  --amber: oklch(0.75 0.15 65);
-  --amber-foreground: oklch(0.12 0.01 55);
+  --background: #111111;
+  --foreground: #e8e6e3;
+  --card: #191919;
+  --card-foreground: #e8e6e3;
+  --popover: #191919;
+  --popover-foreground: #e8e6e3;
+  --primary: #d4a046;
+  --primary-foreground: #111111;
+  --secondary: #252525;
+  --secondary-foreground: #d4d0cb;
+  --muted: #252525;
+  --muted-foreground: #a09a93;
+  --accent: #2a2826;
+  --accent-foreground: #d4d0cb;
+  --destructive: #e5584f;
+  --destructive-foreground: #ffffff;
+  --border: #333333;
+  --input: #2a2a2a;
+  --ring: #d4a046;
+  --amber: #d4a046;
+  --amber-foreground: #111111;
 }
 
 body {
