@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Dashboard } from "./pages/Dashboard";
 import { BookDetail } from "./pages/BookDetail";
 import { BookCreate } from "./pages/BookCreate";
@@ -25,6 +25,11 @@ export function App() {
 
   const isDark = theme === "dark";
 
+  // Toggle dark class on root for CSS variable switching
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", isDark);
+  }, [isDark]);
+
   const nav = {
     toDashboard: () => setRoute({ page: "dashboard" }),
     toBook: (bookId: string) => setRoute({ page: "book", bookId }),
@@ -36,10 +41,8 @@ export function App() {
   };
 
   return (
-    <div className={`min-h-screen ${isDark ? "bg-zinc-950 text-zinc-100" : "bg-zinc-50 text-zinc-900"}`}>
-      <header className={`sticky top-0 z-10 backdrop-blur-sm border-b px-6 py-3 flex items-center justify-between ${
-        isDark ? "bg-zinc-950/80 border-zinc-800" : "bg-white/80 border-zinc-200"
-      }`}>
+    <div className="min-h-screen bg-background text-foreground">
+      <header className="sticky top-0 z-10 backdrop-blur-sm border-b border-border bg-background/80 px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-6">
           <button
             onClick={nav.toDashboard}
@@ -47,7 +50,7 @@ export function App() {
           >
             <span className={isDark ? "text-blue-400" : "text-blue-600"}>Ink</span>OS Studio
           </button>
-          <nav className={`flex gap-1 text-sm ${isDark ? "text-zinc-400" : "text-zinc-500"}`}>
+          <nav className="flex gap-1 text-sm text-muted-foreground">
             {([
               { label: t("nav.books"), action: nav.toDashboard, active: route.page === "dashboard" },
               { label: t("nav.newBook"), action: nav.toBookCreate, active: route.page === "book-create" },
@@ -58,8 +61,8 @@ export function App() {
                 onClick={item.action}
                 className={`px-3 py-1.5 rounded-md transition-colors ${
                   item.active
-                    ? isDark ? "bg-zinc-800 text-zinc-100" : "bg-zinc-100 text-zinc-900"
-                    : isDark ? "hover:bg-zinc-800/50 hover:text-zinc-200" : "hover:bg-zinc-100 hover:text-zinc-700"
+                    ? "bg-secondary text-foreground"
+                    : "hover:bg-secondary/50 hover:text-foreground"
                 }`}
               >
                 {item.label}
@@ -70,13 +73,11 @@ export function App() {
         <div className="flex items-center gap-3">
           <button
             onClick={() => setTheme(isDark ? "light" : "dark")}
-            className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
-              isDark ? "bg-zinc-800 text-zinc-400 hover:text-zinc-200" : "bg-zinc-100 text-zinc-500 hover:text-zinc-700"
-            }`}
+            className="px-2.5 py-1 rounded-md text-xs font-medium bg-secondary text-muted-foreground hover:text-foreground transition-colors"
           >
             {isDark ? "☀️" : "🌙"}
           </button>
-          <div className={`flex items-center gap-1.5 text-xs ${isDark ? "text-zinc-500" : "text-zinc-400"}`}>
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <span className={`inline-block w-1.5 h-1.5 rounded-full ${sse.connected ? "bg-emerald-500" : "bg-zinc-400"}`} />
             {sse.connected ? t("nav.connected") : t("nav.disconnected")}
           </div>

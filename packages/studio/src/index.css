@@ -1,21 +1,81 @@
 @import "tailwindcss";
-
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  --radius: 0.5rem;
+  --background: oklch(0.98 0 0);
+  --foreground: oklch(0.14 0.005 285);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.14 0.005 285);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.14 0.005 285);
+  --primary: oklch(0.55 0.2 260);
+  --primary-foreground: oklch(0.98 0 0);
+  --secondary: oklch(0.94 0.005 285);
+  --secondary-foreground: oklch(0.2 0.01 285);
+  --muted: oklch(0.94 0.005 285);
+  --muted-foreground: oklch(0.45 0.01 285);
+  --accent: oklch(0.94 0.005 285);
+  --accent-foreground: oklch(0.2 0.01 285);
+  --destructive: oklch(0.55 0.2 27);
+  --destructive-foreground: oklch(0.98 0 0);
+  --border: oklch(0.88 0.005 285);
+  --input: oklch(0.88 0.005 285);
+  --ring: oklch(0.55 0.2 260);
+}
+
+.dark {
+  --background: oklch(0.1 0.005 285);
+  --foreground: oklch(0.9 0.005 285);
+  --card: oklch(0.14 0.005 285);
+  --card-foreground: oklch(0.9 0.005 285);
+  --popover: oklch(0.14 0.005 285);
+  --popover-foreground: oklch(0.9 0.005 285);
+  --primary: oklch(0.6 0.2 260);
+  --primary-foreground: oklch(0.98 0 0);
+  --secondary: oklch(0.22 0.01 285);
+  --secondary-foreground: oklch(0.9 0.005 285);
+  --muted: oklch(0.22 0.01 285);
+  --muted-foreground: oklch(0.55 0.01 285);
+  --accent: oklch(0.22 0.01 285);
+  --accent-foreground: oklch(0.9 0.005 285);
+  --destructive: oklch(0.55 0.2 27);
+  --destructive-foreground: oklch(0.98 0 0);
+  --border: oklch(0.28 0.01 285);
+  --input: oklch(0.28 0.01 285);
+  --ring: oklch(0.6 0.2 260);
+}
 
 body {
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-}
-
-/* Smooth theme transitions */
-* {
-  transition-property: background-color, border-color, color;
-  transition-duration: 150ms;
-  transition-timing-function: ease-out;
-}
-
-/* Override for elements that shouldn't animate */
-input, textarea, select {
-  transition: border-color 150ms ease-out, box-shadow 150ms ease-out;
+  background-color: var(--background);
+  color: var(--foreground);
 }
