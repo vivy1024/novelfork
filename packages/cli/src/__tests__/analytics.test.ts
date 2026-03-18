@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeAnalytics } from "../commands/analytics.js";
+import { computeAnalytics } from "@actalk/inkos-core";
 
 describe("computeAnalytics", () => {
   it("returns zeros for empty chapters", () => {

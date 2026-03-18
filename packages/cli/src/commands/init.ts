@@ -15,7 +15,8 @@ async function hasGlobalConfig(): Promise<boolean> {
 export const initCommand = new Command("init")
   .description("Initialize an InkOS project (current directory by default)")
   .argument("[name]", "Project name (creates subdirectory). Omit to init current directory.")
-  .action(async (name?: string) => {
+  .option("--lang <language>", "Default writing language: zh (Chinese) or en (English)", "zh")
+  .action(async (name: string | undefined, opts: { lang?: string }) => {
     const projectDir = name ? join(process.cwd(), name) : process.cwd();
     const projectName = name ?? basename(projectDir);
 
@@ -38,6 +39,7 @@ export const initCommand = new Command("init")
       const config = {
         name: projectName,
         version: "0.1.0",
+        language: opts.lang ?? "zh",
         llm: {
           provider: process.env.INKOS_LLM_PROVIDER ?? "openai",
           baseUrl: process.env.INKOS_LLM_BASE_URL ?? "https://api.openai.com/v1",

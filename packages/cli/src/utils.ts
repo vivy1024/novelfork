@@ -1,11 +1,8 @@
-import { readFile, access } from "node:fs/promises";
-import { homedir } from "node:os";
-import { join, resolve } from "node:path";
-import { config as loadEnv } from "dotenv";
-import { createLLMClient, StateManager, createLogger, createStderrSink, createJsonLineSink, type ProjectConfig, ProjectConfigSchema, type PipelineConfig, type LogSink } from "@actalk/inkos-core";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
+import { createLLMClient, StateManager, createLogger, createStderrSink, createJsonLineSink, loadProjectConfig, GLOBAL_CONFIG_DIR, GLOBAL_ENV_PATH, type ProjectConfig, type PipelineConfig, type LogSink } from "@actalk/inkos-core";
 
-export const GLOBAL_CONFIG_DIR = join(homedir(), ".inkos");
-export const GLOBAL_ENV_PATH = join(GLOBAL_CONFIG_DIR, ".env");
+export { GLOBAL_CONFIG_DIR, GLOBAL_ENV_PATH };
 
 export async function resolveContext(opts: {
   readonly context?: string;
@@ -32,55 +29,7 @@ export function findProjectRoot(): string {
 }
 
 export async function loadConfig(): Promise<ProjectConfig> {
-  const root = findProjectRoot();
-
-  // Load global ~/.inkos/.env first, then project .env overrides
-  loadEnv({ path: GLOBAL_ENV_PATH });
-  loadEnv({ path: join(root, ".env"), override: true });
-
-  const configPath = join(root, "inkos.json");
-
-  // Step 1: Check file exists — give a clear message if not
-  try {
-    await access(configPath);
-  } catch {
-    throw new Error(
-      `inkos.json not found in ${root}.\nMake sure you are inside an InkOS project directory (cd into the project created by 'inkos init').`,
-    );
-  }
-
-  // Step 2: Read and parse — surface real errors instead of swallowing them
-  const raw = await readFile(configPath, "utf-8");
-
-  let config: Record<string, unknown>;
-  try {
-    config = JSON.parse(raw);
-  } catch {
-    throw new Error(`inkos.json in ${root} is not valid JSON. Check the file for syntax errors.`);
-  }
-
-  // .env overrides inkos.json for LLM settings
-  const env = process.env;
-  const llm = (config.llm ?? {}) as Record<string, unknown>;
-  if (env.INKOS_LLM_PROVIDER) llm.provider = env.INKOS_LLM_PROVIDER;
-  if (env.INKOS_LLM_BASE_URL) llm.baseUrl = env.INKOS_LLM_BASE_URL;
-  if (env.INKOS_LLM_MODEL) llm.model = env.INKOS_LLM_MODEL;
-  if (env.INKOS_LLM_TEMPERATURE) llm.temperature = parseFloat(env.INKOS_LLM_TEMPERATURE);
-  if (env.INKOS_LLM_MAX_TOKENS) llm.maxTokens = parseInt(env.INKOS_LLM_MAX_TOKENS, 10);
-  if (env.INKOS_LLM_THINKING_BUDGET) llm.thinkingBudget = parseInt(env.INKOS_LLM_THINKING_BUDGET, 10);
-  if (env.INKOS_LLM_API_FORMAT) llm.apiFormat = env.INKOS_LLM_API_FORMAT;
-  config.llm = llm;
-
-  // API key ONLY from env — never stored in inkos.json
-  const apiKey = env.INKOS_LLM_API_KEY;
-  if (!apiKey) {
-    throw new Error(
-      "INKOS_LLM_API_KEY not set. Run 'inkos config set-global' or add it to project .env file.",
-    );
-  }
-  llm.apiKey = apiKey;
-
-  return ProjectConfigSchema.parse(config);
+  return loadProjectConfig(findProjectRoot());
 }
 
 export function createClient(config: ProjectConfig) {
