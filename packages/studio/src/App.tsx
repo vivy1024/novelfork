@@ -75,7 +75,7 @@ export function App() {
 
       <div className="flex-1 flex flex-col min-w-0">
         {/* Thin utility strip — pushed inward */}
-        <div className="h-12 shrink-0 border-b border-border flex items-center justify-end px-8 gap-4">
+        <div className="h-12 shrink-0 flex items-center justify-end px-8 gap-4">
           <button
             onClick={() => setTheme(isDark ? "light" : "dark")}
             className="w-8 h-8 flex items-center justify-center rounded-full bg-secondary text-muted-foreground hover:text-foreground hover:bg-secondary/80 transition-all text-sm"

@@ -118,7 +118,7 @@ export function ChatBar({ t, sse }: {
     : "Tell InkOS what to do...";
 
   return (
-    <div className="border border-border bg-card/60 backdrop-blur-md mx-4 mb-3 rounded-lg">
+    <div className="border border-border/60 bg-card/40 mx-6 mb-4 rounded-md">
       {/* Expanded message area */}
       {expanded && messages.length > 0 && (
         <div className="max-w-3xl mx-auto">
@@ -151,7 +151,7 @@ export function ChatBar({ t, sse }: {
       )}
 
       {/* Input bar — centered to match main content */}
-      <div className="max-w-3xl mx-auto px-10 py-3.5 flex items-center gap-4">
+      <div className="max-w-3xl mx-auto px-4 py-2.5 flex items-center gap-3">
         <div className="flex-1 relative">
           <input
             ref={inputRef}

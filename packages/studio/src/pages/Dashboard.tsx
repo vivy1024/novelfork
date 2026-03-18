@@ -52,8 +52,8 @@ export function Dashboard({ nav, sse, theme, t }: { nav: Nav; sse: { messages: R
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh]">
         <div className="text-5xl mb-8 opacity-15 select-none">✦</div>
-        <h2 className="font-serif text-3xl italic text-foreground/40 mb-3">{t("dash.noBooks")}</h2>
-        <p className="text-sm text-muted-foreground/60 mb-10">{t("dash.createFirst")}</p>
+        <h2 className="font-serif text-3xl italic text-foreground/70 mb-3">{t("dash.noBooks")}</h2>
+        <p className="text-sm text-muted-foreground mb-10">{t("dash.createFirst")}</p>
         <button
           onClick={nav.toBookCreate}
           className="px-7 py-3 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
