@@ -27,36 +27,36 @@ export function Sidebar({ nav, activePage, t }: {
   const { data: daemon } = useApi<{ running: boolean }>("/daemon");
 
   return (
-    <aside className="w-[200px] shrink-0 border-r border-border/40 bg-card/50 flex flex-col h-full overflow-y-auto">
-      {/* Logo */}
-      <div className="px-4 py-5 border-b border-border/30">
-        <button onClick={nav.toDashboard} className="flex items-baseline gap-0.5 hover:opacity-80 transition-opacity">
-          <span className="font-serif text-xl italic text-primary">Ink</span>
-          <span className="text-base font-semibold tracking-tight">OS</span>
+    <aside className="w-[220px] shrink-0 border-r border-border/30 bg-card/30 flex flex-col h-full overflow-y-auto">
+      {/* Logo — generous vertical breathing room */}
+      <div className="px-6 pt-7 pb-6">
+        <button onClick={nav.toDashboard} className="flex items-baseline gap-0.5 hover:opacity-70 transition-opacity">
+          <span className="font-serif text-2xl italic text-primary">Ink</span>
+          <span className="text-lg font-semibold tracking-tight">OS</span>
         </button>
       </div>
 
       {/* Books section */}
-      <div className="flex-1 py-3">
-        <div className="px-4 mb-2 flex items-center justify-between">
-          <span className="text-[10px] uppercase tracking-widest text-muted-foreground/50">{t("nav.books")}</span>
+      <div className="flex-1 px-4">
+        <div className="px-2 mb-3 flex items-center justify-between">
+          <span className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground/40 font-medium">{t("nav.books")}</span>
           <button
             onClick={nav.toBookCreate}
-            className="text-[10px] text-primary/60 hover:text-primary transition-colors"
+            className="w-5 h-5 flex items-center justify-center rounded text-[11px] text-muted-foreground/40 hover:text-primary hover:bg-primary/10 transition-all"
           >
             +
           </button>
         </div>
 
-        <div className="space-y-0.5 px-2">
+        <div className="space-y-1">
           {data?.books.map((book) => (
             <button
               key={book.id}
               onClick={() => nav.toBook(book.id)}
-              className={`w-full text-left px-2 py-1.5 rounded text-[13px] truncate transition-colors ${
+              className={`w-full text-left px-3 py-2 rounded-md text-[13px] truncate transition-all duration-150 ${
                 activePage === `book:${book.id}`
-                  ? "bg-primary/10 text-primary"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted/30"
+                  ? "bg-primary/10 text-primary font-medium"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
               }`}
             >
               {book.title}
@@ -64,15 +64,15 @@ export function Sidebar({ nav, activePage, t }: {
           ))}
 
           {(!data?.books || data.books.length === 0) && (
-            <div className="px-2 py-3 text-[11px] text-muted-foreground/40 italic">
+            <div className="px-3 py-4 text-[11px] text-muted-foreground/30 italic leading-relaxed">
               {t("dash.noBooks")}
             </div>
           )}
         </div>
       </div>
 
-      {/* System nav */}
-      <div className="border-t border-border/30 py-3 px-2 space-y-0.5">
+      {/* System nav — generous spacing from book list */}
+      <div className="border-t border-border/20 mt-4 pt-4 pb-5 px-4 space-y-1">
         <SidebarItem
           label={t("nav.config")}
           icon="⚙"
@@ -109,15 +109,15 @@ function SidebarItem({ label, icon, active, onClick, badge, badgeColor }: {
   return (
     <button
       onClick={onClick}
-      className={`w-full text-left px-2 py-1.5 rounded text-[13px] flex items-center gap-2 transition-colors ${
+      className={`w-full text-left px-3 py-2 rounded-md text-[13px] flex items-center gap-2.5 transition-all duration-150 ${
         active
-          ? "bg-secondary text-foreground"
-          : "text-muted-foreground hover:text-foreground hover:bg-muted/30"
+          ? "bg-secondary text-foreground font-medium"
+          : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
       }`}
     >
-      <span className="text-xs w-4 text-center opacity-50">{icon}</span>
+      <span className="text-[11px] w-4 text-center opacity-40">{icon}</span>
       <span className="flex-1">{label}</span>
-      {badge && <span className={`text-[10px] ${badgeColor ?? ""}`}>{badge}</span>}
+      {badge && <span className={`text-[9px] ${badgeColor ?? ""}`}>{badge}</span>}
     </button>
   );
 }

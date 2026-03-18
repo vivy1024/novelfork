@@ -47,16 +47,16 @@ export function Dashboard({ nav, sse, theme, t }: { nav: Nav; sse: { messages: R
   if (loading) return <div className="text-muted-foreground py-20 text-center text-sm">Loading...</div>;
   if (error) return <div className="text-destructive py-20 text-center">Error: {error}</div>;
 
-  /* ── Empty state ── */
+  /* ── Empty state — vertically centered in the available viewport ── */
   if (!data?.books.length) {
     return (
-      <div className="flex flex-col items-center justify-center py-32">
-        <div className="text-6xl mb-6 opacity-20">✦</div>
-        <h2 className="font-serif text-3xl italic text-foreground/50 mb-3">{t("dash.noBooks")}</h2>
-        <p className="text-sm text-muted-foreground mb-8">{t("dash.createFirst")}</p>
+      <div className="flex flex-col items-center justify-center min-h-[60vh]">
+        <div className="text-5xl mb-8 opacity-15 select-none">✦</div>
+        <h2 className="font-serif text-3xl italic text-foreground/40 mb-3">{t("dash.noBooks")}</h2>
+        <p className="text-sm text-muted-foreground/60 mb-10">{t("dash.createFirst")}</p>
         <button
           onClick={nav.toBookCreate}
-          className="px-6 py-3 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
+          className="px-7 py-3 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
         >
           {t("nav.newBook")}
         </button>
@@ -85,7 +85,7 @@ export function Dashboard({ nav, sse, theme, t }: { nav: Nav; sse: { messages: R
               key={book.id}
               className={`group border ${c.card} rounded-lg overflow-hidden`}
             >
-              <div className="px-5 py-4 flex items-start justify-between">
+              <div className="px-6 py-5 flex items-start justify-between">
                 <div className="min-w-0">
                   <button
                     onClick={() => nav.toBook(book.id)}

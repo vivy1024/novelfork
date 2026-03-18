@@ -118,38 +118,40 @@ export function ChatBar({ t, sse }: {
     : "Tell InkOS what to do...";
 
   return (
-    <div className="border-t border-border/40 bg-card/80 backdrop-blur-sm">
+    <div className="border-t border-border/20 bg-card/60 backdrop-blur-md">
       {/* Expanded message area */}
       {expanded && messages.length > 0 && (
-        <div
-          ref={scrollRef}
-          className="max-h-[200px] overflow-y-auto px-4 py-3 space-y-2 border-b border-border/20"
-        >
-          {messages.map((msg, i) => (
-            <div
-              key={i}
-              className={`text-[13px] leading-relaxed ${
-                msg.role === "user"
-                  ? "text-foreground"
-                  : msg.content.startsWith("✗")
-                    ? "text-destructive"
-                    : msg.content.startsWith("⋯")
-                      ? "text-muted-foreground"
-                      : "text-primary"
-              }`}
-            >
-              {msg.role === "user" && <span className="text-muted-foreground/50 mr-1.5">›</span>}
-              {msg.content}
-            </div>
-          ))}
-          {loading && !messages.some((m) => m.content.startsWith("⋯")) && (
-            <div className="text-[13px] text-muted-foreground animate-pulse">⋯</div>
-          )}
+        <div className="max-w-3xl mx-auto">
+          <div
+            ref={scrollRef}
+            className="max-h-[200px] overflow-y-auto px-10 py-4 space-y-2.5"
+          >
+            {messages.map((msg, i) => (
+              <div
+                key={i}
+                className={`text-[13px] leading-relaxed ${
+                  msg.role === "user"
+                    ? "text-foreground"
+                    : msg.content.startsWith("✗")
+                      ? "text-destructive"
+                      : msg.content.startsWith("⋯")
+                        ? "text-muted-foreground"
+                        : "text-primary"
+                }`}
+              >
+                {msg.role === "user" && <span className="text-muted-foreground/40 mr-2">›</span>}
+                {msg.content}
+              </div>
+            ))}
+            {loading && !messages.some((m) => m.content.startsWith("⋯")) && (
+              <div className="text-[13px] text-muted-foreground animate-pulse">⋯</div>
+            )}
+          </div>
         </div>
       )}
 
-      {/* Input bar */}
-      <div className="px-4 py-2.5 flex items-center gap-3">
+      {/* Input bar — centered to match main content */}
+      <div className="max-w-3xl mx-auto px-10 py-3.5 flex items-center gap-4">
         <div className="flex-1 relative">
           <input
             ref={inputRef}
@@ -160,14 +162,14 @@ export function ChatBar({ t, sse }: {
             onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
             placeholder={chatPlaceholder}
             disabled={loading}
-            className="w-full bg-transparent text-[13px] text-foreground placeholder:text-muted-foreground/30 focus:outline-none disabled:opacity-50"
+            className="w-full bg-transparent text-[13px] text-foreground placeholder:text-muted-foreground/25 focus:outline-none disabled:opacity-50"
           />
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-3 shrink-0">
           {expanded && messages.length > 0 && (
             <button
               onClick={() => { setExpanded(false); setMessages([]); }}
-              className="text-[10px] text-muted-foreground/40 hover:text-muted-foreground transition-colors"
+              className="text-[10px] text-muted-foreground/30 hover:text-muted-foreground transition-colors"
             >
               Clear
             </button>
@@ -175,7 +177,7 @@ export function ChatBar({ t, sse }: {
           <button
             onClick={handleSubmit}
             disabled={!input.trim() || loading}
-            className="w-6 h-6 rounded bg-primary/80 text-primary-foreground flex items-center justify-center text-xs hover:bg-primary transition-colors disabled:opacity-20"
+            className="w-7 h-7 rounded-md bg-primary/70 text-primary-foreground flex items-center justify-center text-xs hover:bg-primary transition-all disabled:opacity-15"
           >
             ↑
           </button>
