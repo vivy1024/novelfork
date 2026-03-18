@@ -5,6 +5,7 @@ import { findProjectRoot, log, logError } from "../utils.js";
 export const statusCommand = new Command("status")
   .description("Show project status")
   .argument("[book-id]", "Book ID (optional, shows all if omitted)")
+  .option("--chapters", "Show per-chapter status and issues")
   .option("--json", "Output JSON")
   .action(async (bookIdArg: string | undefined, opts) => {
     try {
@@ -56,6 +57,15 @@ export const statusCommand = new Command("status")
           approved,
           pending,
           failed,
+          ...(opts.chapters ? {
+            chapterList: index.map((ch) => ({
+              number: ch.number,
+              title: ch.title,
+              status: ch.status,
+              wordCount: ch.wordCount,
+              ...(ch.status === "audit-failed" ? { issues: ch.auditIssues } : {}),
+            })),
+          } : {}),
         });
 
         if (!opts.json) {
@@ -65,6 +75,26 @@ export const statusCommand = new Command("status")
           log(`    Chapters: ${nextChapter - 1} / ${book.targetChapters}`);
           log(`    Words: ${totalWords.toLocaleString()} (avg ${avgWords}/ch)`);
           log(`    Approved: ${approved} | Pending: ${pending} | Failed: ${failed}`);
+
+          if (opts.chapters && index.length > 0) {
+            log("");
+            for (const ch of index) {
+              const icon = ch.status === "approved" ? "+" : ch.status === "audit-failed" ? "!" : "~";
+              log(`    [${icon}] Ch.${ch.number} "${ch.title}" | ${ch.wordCount}字 | ${ch.status}`);
+              if (ch.status === "audit-failed" && ch.auditIssues.length > 0) {
+                const criticals = ch.auditIssues.filter((i: string) => i.startsWith("[critical]"));
+                const warnings = ch.auditIssues.filter((i: string) => i.startsWith("[warning]"));
+                if (criticals.length > 0) {
+                  for (const issue of criticals) {
+                    log(`        ${issue}`);
+                  }
+                }
+                if (warnings.length > 0) {
+                  log(`        + ${warnings.length} warning(s)`);
+                }
+              }
+            }
+          }
           log("");
         }
       }
