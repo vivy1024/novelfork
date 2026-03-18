@@ -1,6 +1,14 @@
-import type { BookConfig } from "../models/book.js";
+import type { BookConfig, FanficMode } from "../models/book.js";
 import type { GenreProfile } from "../models/genre-profile.js";
 import type { BookRules } from "../models/book-rules.js";
+import { buildFanficCanonSection, buildCharacterVoiceProfiles, buildFanficModeInstructions } from "./fanfic-prompt-sections.js";
+import { buildEnglishCoreRules, buildEnglishAntiAIRules, buildEnglishCharacterMethod, buildEnglishPreWriteChecklist, buildEnglishGenreIntro } from "./en-prompt-sections.js";
+
+export interface FanficContext {
+  readonly fanficCanon: string;
+  readonly fanficMode: FanficMode;
+  readonly allowedDeviations: ReadonlyArray<string>;
+}
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -16,30 +24,54 @@ export function buildWriterSystemPrompt(
   styleFingerprint?: string,
   chapterNumber?: number,
   mode: "full" | "creative" = "full",
+  fanficContext?: FanficContext,
+  languageOverride?: "zh" | "en",
 ): string {
+  const isEnglish = (languageOverride ?? genreProfile.language) === "en";
+
   const outputSection = mode === "creative"
     ? buildCreativeOutputFormat(book, genreProfile)
     : buildOutputFormat(book, genreProfile);
 
-  const sections = [
-    buildGenreIntro(book, genreProfile),
-    buildCoreRules(book),
-    buildAntiAIExamples(),
-    buildCharacterPsychologyMethod(),
-    buildSupportingCharacterMethod(),
-    buildReaderPsychologyMethod(),
-    buildEmotionalPacingMethod(),
-    buildImmersionTechniques(),
-    buildGoldenChaptersRules(chapterNumber),
-    bookRules?.enableFullCastTracking ? buildFullCastTracking() : "",
-    buildGenreRules(genreProfile, genreBody),
-    buildProtagonistRules(bookRules),
-    buildBookRulesBody(bookRulesBody),
-    buildStyleGuide(styleGuide),
-    buildStyleFingerprint(styleFingerprint),
-    buildPreWriteChecklist(book, genreProfile),
-    outputSection,
-  ];
+  const sections = isEnglish
+    ? [
+        buildEnglishGenreIntro(book, genreProfile),
+        buildEnglishCoreRules(book),
+        buildEnglishAntiAIRules(),
+        buildEnglishCharacterMethod(),
+        buildGenreRules(genreProfile, genreBody),
+        buildProtagonistRules(bookRules),
+        buildBookRulesBody(bookRulesBody),
+        buildStyleGuide(styleGuide),
+        buildStyleFingerprint(styleFingerprint),
+        fanficContext ? buildFanficCanonSection(fanficContext.fanficCanon, fanficContext.fanficMode) : "",
+        fanficContext ? buildCharacterVoiceProfiles(fanficContext.fanficCanon) : "",
+        fanficContext ? buildFanficModeInstructions(fanficContext.fanficMode, fanficContext.allowedDeviations) : "",
+        buildEnglishPreWriteChecklist(book, genreProfile),
+        outputSection,
+      ]
+    : [
+        buildGenreIntro(book, genreProfile),
+        buildCoreRules(book),
+        buildAntiAIExamples(),
+        buildCharacterPsychologyMethod(),
+        buildSupportingCharacterMethod(),
+        buildReaderPsychologyMethod(),
+        buildEmotionalPacingMethod(),
+        buildImmersionTechniques(),
+        buildGoldenChaptersRules(chapterNumber),
+        bookRules?.enableFullCastTracking ? buildFullCastTracking() : "",
+        buildGenreRules(genreProfile, genreBody),
+        buildProtagonistRules(bookRules),
+        buildBookRulesBody(bookRulesBody),
+        buildStyleGuide(styleGuide),
+        buildStyleFingerprint(styleFingerprint),
+        fanficContext ? buildFanficCanonSection(fanficContext.fanficCanon, fanficContext.fanficMode) : "",
+        fanficContext ? buildCharacterVoiceProfiles(fanficContext.fanficCanon) : "",
+        fanficContext ? buildFanficModeInstructions(fanficContext.fanficMode, fanficContext.allowedDeviations) : "",
+        buildPreWriteChecklist(book, genreProfile),
+        outputSection,
+      ];
 
   return sections.filter(Boolean).join("\n\n");
 }

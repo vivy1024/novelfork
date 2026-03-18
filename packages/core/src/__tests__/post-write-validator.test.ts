@@ -5,6 +5,7 @@ import type { GenreProfile } from "../models/genre-profile.js";
 const baseProfile: GenreProfile = {
   id: "test",
   name: "测试",
+  language: "zh",
   chapterTypes: [],
   fatigueWords: [],
   pacingRule: "",
@@ -118,6 +119,7 @@ describe("validatePostWrite", () => {
       fatigueWordsOverride: [],
       additionalAuditDimensions: [],
       enableFullCastTracking: false,
+      allowedDeviations: [],
     };
     const content = "他一脸跪舔的样子让人恶心。";
     const result = validatePostWrite(content, baseProfile, bookRules);

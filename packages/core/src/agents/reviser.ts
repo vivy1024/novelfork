@@ -54,7 +54,7 @@ export class ReviserAgent extends BaseAgent {
     mode: ReviseMode = "rewrite",
     genre?: string,
   ): Promise<ReviseOutput> {
-    const [currentState, ledger, hooks, styleGuideRaw, volumeOutline, storyBible, characterMatrix, chapterSummaries] = await Promise.all([
+    const [currentState, ledger, hooks, styleGuideRaw, volumeOutline, storyBible, characterMatrix, chapterSummaries, parentCanon, fanficCanon] = await Promise.all([
       this.readFileSafe(join(bookDir, "story/current_state.md")),
       this.readFileSafe(join(bookDir, "story/particle_ledger.md")),
       this.readFileSafe(join(bookDir, "story/pending_hooks.md")),
@@ -63,6 +63,8 @@ export class ReviserAgent extends BaseAgent {
       this.readFileSafe(join(bookDir, "story/story_bible.md")),
       this.readFileSafe(join(bookDir, "story/character_matrix.md")),
       this.readFileSafe(join(bookDir, "story/chapter_summaries.md")),
+      this.readFileSafe(join(bookDir, "story/parent_canon.md")),
+      this.readFileSafe(join(bookDir, "story/fanfic_canon.md")),
     ]);
 
     // Load genre profile and book rules
@@ -130,6 +132,17 @@ ${gp.numericalSystem ? "\n=== UPDATED_LEDGER ===\n(更新后的完整资源账�
       ? `\n## 章节摘要\n${chapterSummaries}\n`
       : "";
 
+    const hasParentCanon = parentCanon !== "(文件不存在)";
+    const hasFanficCanon = fanficCanon !== "(文件不存在)";
+
+    const canonBlock = hasParentCanon
+      ? `\n## 正传正典参照（修稿专用）\n本书为番外作品。修改时参照正典约束，不可改变正典事实。\n${parentCanon}\n`
+      : "";
+
+    const fanficCanonBlock = hasFanficCanon
+      ? `\n## 同人正典参照（修稿专用）\n本书为同人作品。修改时参照正典角色档案和世界规则，不可违反正典事实。角色对话必须保留原作语癖。\n${fanficCanon}\n`
+      : "";
+
     const userPrompt = `请修正第${chapterNumber}章。
 
 ## 审稿问题
@@ -140,7 +153,7 @@ ${currentState}
 ${ledgerBlock}
 ## 伏笔池
 ${hooks}
-${outlineBlock}${bibleBlock}${matrixBlock}${summariesBlock}
+${outlineBlock}${bibleBlock}${matrixBlock}${summariesBlock}${canonBlock}${fanficCanonBlock}
 ## 文风指南
 ${styleGuide}
 

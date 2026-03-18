@@ -1,5 +1,5 @@
 import { BaseAgent } from "./base.js";
-import type { BookConfig } from "../models/book.js";
+import type { BookConfig, FanficMode } from "../models/book.js";
 import type { GenreProfile } from "../models/genre-profile.js";
 import { readGenreProfile } from "./rules-reader.js";
 import { writeFile, mkdir } from "node:fs/promises";
@@ -353,6 +353,84 @@ ${eraBlock}`;
         content: `以下是《${book.title}》的全部已有正文，请从中反向推导完整基础设定：\n\n${chaptersText}`,
       },
     ], { maxTokens: 16384, temperature: 0.5 });
+
+    return this.parseSections(response.content);
+  }
+
+  async generateFanficFoundation(
+    book: BookConfig,
+    fanficCanon: string,
+    fanficMode: FanficMode,
+  ): Promise<ArchitectOutput> {
+    const { profile: gp, body: genreBody } =
+      await readGenreProfile(this.ctx.projectRoot, book.genre);
+
+    const MODE_INSTRUCTIONS: Record<FanficMode, string> = {
+      canon: "剧情发生在原作空白期或未详述的角度。不可改变原作已确立的事实。",
+      au: "标注AU设定与原作的关键分歧点，分歧后的世界线自由发展。保留角色核心性格。",
+      ooc: "标注角色性格偏离的起点和驱动事件。偏离必须有逻辑驱动。",
+      cp: "以配对角色的关系线为主线规划卷纲。每卷必须有关系推进节点。",
+    };
+
+    const systemPrompt = `你是一个专业的同人小说架构师。你的任务是基于原作正典为同人小说生成基础设定。
+
+## 同人模式：${fanficMode}
+${MODE_INSTRUCTIONS[fanficMode]}
+
+## 原作正典
+${fanficCanon}
+
+## 题材特征
+${genreBody}
+
+## 关键原则
+1. **不发明主要角色** — 主要角色必须来自原作正典的角色档案
+2. 可以添加原创配角，但必须在 story_bible 中标注为"原创角色"
+3. story_bible 保留原作世界观，标注同人的改动/扩展部分
+4. volume_outline 以原作事件为锚点，标注哪些是原作事件、哪些是同人原创
+5. book_rules 的 fanficMode 必须设为 "${fanficMode}"
+6. 主角设定来自原作角色档案中的第一个角色（或用户在标题中暗示的角色）
+
+你需要生成以下内容，每个部分用 === SECTION: <name> === 分隔：
+
+=== SECTION: story_bible ===
+世界观（基于原作正典）+ 角色列表（原作角色标注来源，原创角色标注"原创"）
+
+=== SECTION: volume_outline ===
+卷纲规划。每卷标注：卷名、章节范围、核心事件（标注原作/原创）、关系发展节点
+
+=== SECTION: book_rules ===
+\`\`\`
+---
+version: "1.0"
+protagonist:
+  name: (从原作角色中选择)
+  personalityLock: [(从正典角色档案提取)]
+  behavioralConstraints: [(基于原作行为模式)]
+genreLock:
+  primary: ${book.genre}
+  forbidden: []
+fanficMode: "${fanficMode}"
+allowedDeviations: []
+prohibitions:
+  - (3-5条同人特有禁忌)
+---
+(叙事视角和风格指导)
+\`\`\`
+
+=== SECTION: current_state ===
+初始状态卡（基于正典起始点）
+
+=== SECTION: pending_hooks ===
+初始伏笔池（从正典关键事件和关系中提取）`;
+
+    const response = await this.chat([
+      { role: "system", content: systemPrompt },
+      {
+        role: "user",
+        content: `请为标题为"${book.title}"的${fanficMode}模式同人小说生成基础设定。目标${book.targetChapters}章，每章${book.chapterWordCount}字。`,
+      },
+    ], { maxTokens: 16384, temperature: 0.7 });
 
     return this.parseSections(response.content);
   }

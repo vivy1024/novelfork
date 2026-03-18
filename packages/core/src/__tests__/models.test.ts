@@ -69,10 +69,9 @@ describe("BookConfigSchema", () => {
     ).toThrow();
   });
 
-  it("rejects invalid genre", () => {
-    expect(() =>
-      BookConfigSchema.parse({ ...validBook, genre: "romance" }),
-    ).toThrow();
+  it("accepts custom genre (string)", () => {
+    const config = BookConfigSchema.parse({ ...validBook, genre: "romance" });
+    expect(config.genre).toBe("romance");
   });
 
   it("rejects invalid status", () => {
@@ -132,8 +131,13 @@ describe("GenreSchema", () => {
     expect(GenreSchema.parse(value)).toBe(value);
   });
 
-  it("rejects unknown genre", () => {
-    expect(() => GenreSchema.parse("scifi")).toThrow();
+  it("accepts custom genre strings", () => {
+    expect(GenreSchema.parse("scifi")).toBe("scifi");
+    expect(GenreSchema.parse("my-custom-genre")).toBe("my-custom-genre");
+  });
+
+  it("rejects empty genre", () => {
+    expect(() => GenreSchema.parse("")).toThrow();
   });
 });
 

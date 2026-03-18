@@ -1,5 +1,5 @@
 // Models
-export { type BookConfig, type Platform, type Genre, type BookStatus, BookConfigSchema, PlatformSchema, GenreSchema, BookStatusSchema } from "./models/book.js";
+export { type BookConfig, type Platform, type Genre, type BookStatus, type FanficMode, BookConfigSchema, PlatformSchema, GenreSchema, BookStatusSchema, FanficModeSchema } from "./models/book.js";
 export { type ChapterMeta, type ChapterStatus, ChapterMetaSchema, ChapterStatusSchema } from "./models/chapter.js";
 export { type ProjectConfig, type LLMConfig, type NotifyChannel, type DetectionConfig, type QualityGates, type AgentLLMOverride, ProjectConfigSchema, LLMConfigSchema, AgentLLMOverrideSchema, DetectionConfigSchema, QualityGatesSchema } from "./models/project.js";
 export { type CurrentState, type ParticleLedger, type PendingHooks, type PendingHook, type LedgerEntry } from "./models/state.js";
@@ -31,11 +31,16 @@ export { ChapterAnalyzerAgent, type AnalyzeChapterInput, type AnalyzeChapterOutp
 export { parseWriterOutput, parseCreativeOutput, type ParsedWriterOutput, type CreativeOutput } from "./agents/writer-parser.js";
 export { buildSettlerSystemPrompt, buildSettlerUserPrompt } from "./agents/settler-prompts.js";
 export { parseSettlementOutput, type SettlementOutput } from "./agents/settler-parser.js";
+export { FanficCanonImporter, type FanficCanonOutput } from "./agents/fanfic-canon-importer.js";
+export { getFanficDimensionConfig, FANFIC_DIMENSIONS, type FanficDimensionConfig } from "./agents/fanfic-dimensions.js";
+export { buildFanficCanonSection, buildCharacterVoiceProfiles, buildFanficModeInstructions } from "./agents/fanfic-prompt-sections.js";
 
 // Utils
 export { fetchUrl } from "./utils/web-search.js";
 export { splitChapters, type SplitChapter } from "./utils/chapter-splitter.js";
 export { createLogger, createStderrSink, createJsonLineSink, nullSink, type Logger, type LogSink, type LogLevel, type LogEntry } from "./utils/logger.js";
+export { loadProjectConfig, GLOBAL_CONFIG_DIR, GLOBAL_ENV_PATH } from "./utils/config-loader.js";
+export { computeAnalytics, type AnalyticsData, type TokenStats } from "./utils/analytics.js";
 
 // Pipeline
 export { PipelineRunner, type PipelineConfig, type ChapterPipelineResult, type DraftResult, type ReviseResult, type TruthFiles, type BookStatusInfo, type ImportChaptersInput, type ImportChaptersResult, type TokenUsageSummary } from "./pipeline/runner.js";

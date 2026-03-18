@@ -1,7 +1,7 @@
 import type { LLMClient, OnStreamProgress } from "../llm/provider.js";
 import { chatCompletion, createLLMClient } from "../llm/provider.js";
 import type { Logger } from "../utils/logger.js";
-import type { BookConfig } from "../models/book.js";
+import type { BookConfig, FanficMode } from "../models/book.js";
 import type { ChapterMeta } from "../models/chapter.js";
 import type { NotifyChannel, LLMConfig, AgentLLMOverride } from "../models/project.js";
 import type { GenreProfile } from "../models/genre-profile.js";
@@ -199,6 +199,51 @@ export class PipelineRunner {
     await this.state.saveChapterIndex(book.id, []);
 
     // Snapshot initial state so rewrite of chapter 1 can restore to pre-chapter state
+    await this.state.snapshotState(book.id, 0);
+  }
+
+  /** Import external source material and generate fanfic_canon.md */
+  async importFanficCanon(
+    bookId: string,
+    sourceText: string,
+    sourceName: string,
+    fanficMode: FanficMode,
+  ): Promise<string> {
+    const { FanficCanonImporter } = await import("../agents/fanfic-canon-importer.js");
+    const importer = new FanficCanonImporter(this.agentCtxFor("fanfic-canon-importer", bookId));
+    const result = await importer.importFromText(sourceText, sourceName, fanficMode);
+
+    const bookDir = this.state.bookDir(bookId);
+    const storyDir = join(bookDir, "story");
+    await mkdir(storyDir, { recursive: true });
+    await writeFile(join(storyDir, "fanfic_canon.md"), result.fullDocument, "utf-8");
+
+    return result.fullDocument;
+  }
+
+  /** One-step fanfic book creation: create book + import canon + generate foundation */
+  async initFanficBook(
+    book: BookConfig,
+    sourceText: string,
+    sourceName: string,
+    fanficMode: FanficMode,
+  ): Promise<void> {
+    const bookDir = this.state.bookDir(book.id);
+
+    await this.state.saveBookConfig(book.id, book);
+
+    // Step 1: Import source material → fanfic_canon.md
+    const fanficCanon = await this.importFanficCanon(book.id, sourceText, sourceName, fanficMode);
+
+    // Step 2: Generate foundation from fanfic canon (not from scratch)
+    const architect = new ArchitectAgent(this.agentCtxFor("architect", book.id));
+    const { profile: gp } = await this.loadGenreProfile(book.genre);
+    const foundation = await architect.generateFanficFoundation(book, fanficCanon, fanficMode);
+    await architect.writeFoundationFiles(bookDir, foundation, gp.numericalSystem);
+
+    // Step 3: Initialize chapters directory + snapshot
+    await mkdir(join(bookDir, "chapters"), { recursive: true });
+    await this.state.saveChapterIndex(book.id, []);
     await this.state.snapshotState(book.id, 0);
   }
 

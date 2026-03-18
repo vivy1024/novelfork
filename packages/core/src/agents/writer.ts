@@ -2,7 +2,7 @@ import { BaseAgent } from "./base.js";
 import type { BookConfig } from "../models/book.js";
 import type { GenreProfile } from "../models/genre-profile.js";
 import type { BookRules } from "../models/book-rules.js";
-import { buildWriterSystemPrompt } from "./writer-prompts.js";
+import { buildWriterSystemPrompt, type FanficContext } from "./writer-prompts.js";
 import { buildSettlerSystemPrompt, buildSettlerUserPrompt } from "./settler-prompts.js";
 import { parseSettlementOutput } from "./settler-parser.js";
 import { readGenreProfile, readBookRules } from "./rules-reader.js";
@@ -57,7 +57,7 @@ export class WriterAgent extends BaseAgent {
     const [
       storyBible, volumeOutline, styleGuide, currentState, ledger, hooks,
       chapterSummaries, subplotBoard, emotionalArcs, characterMatrix, styleProfileRaw,
-      parentCanon,
+      parentCanon, fanficCanonRaw,
     ] = await Promise.all([
         this.readFileOrDefault(join(bookDir, "story/story_bible.md")),
         this.readFileOrDefault(join(bookDir, "story/volume_outline.md")),
@@ -71,6 +71,7 @@ export class WriterAgent extends BaseAgent {
         this.readFileOrDefault(join(bookDir, "story/character_matrix.md")),
         this.readFileOrDefault(join(bookDir, "story/style_profile.json")),
         this.readFileOrDefault(join(bookDir, "story/parent_canon.md")),
+        this.readFileOrDefault(join(bookDir, "story/fanfic_canon.md")),
       ]);
 
     const recentChapters = await this.loadRecentChapters(bookDir, chapterNumber);
@@ -88,11 +89,22 @@ export class WriterAgent extends BaseAgent {
     const relevantSummaries = this.findRelevantSummaries(chapterSummaries, volumeOutline, chapterNumber);
 
     const hasParentCanon = parentCanon !== "(文件尚未创建)";
+    const hasFanficCanon = fanficCanonRaw !== "(文件尚未创建)";
+
+    // Build fanfic context if fanfic_canon.md exists
+    const fanficContext: FanficContext | undefined = hasFanficCanon && bookRules?.fanficMode
+      ? {
+          fanficCanon: fanficCanonRaw,
+          fanficMode: bookRules.fanficMode,
+          allowedDeviations: bookRules.allowedDeviations ?? [],
+        }
+      : undefined;
 
     // ── Phase 1: Creative writing (temperature 0.7) ──
+    const resolvedLanguage = book.language ?? genreProfile.language;
     const creativeSystemPrompt = buildWriterSystemPrompt(
       book, genreProfile, bookRules, bookRulesBody, genreBody, styleGuide, styleFingerprint,
-      chapterNumber, "creative",
+      chapterNumber, "creative", fanficContext, resolvedLanguage,
     );
 
     const creativeUserPrompt = this.buildUserPrompt({
@@ -112,6 +124,7 @@ export class WriterAgent extends BaseAgent {
       dialogueFingerprints,
       relevantSummaries,
       parentCanon: hasParentCanon ? parentCanon : undefined,
+      language: book.language ?? genreProfile.language,
     });
 
     const creativeTemperature = input.temperatureOverride ?? 0.7;
@@ -307,6 +320,7 @@ export class WriterAgent extends BaseAgent {
     readonly dialogueFingerprints?: string;
     readonly relevantSummaries?: string;
     readonly parentCanon?: string;
+    readonly language?: "zh" | "en";
   }): string {
     const contextBlock = params.externalContext
       ? `\n## 外部指令\n以下是来自外部系统的创作指令，请在本章中融入：\n\n${params.externalContext}\n`
@@ -345,6 +359,36 @@ export class WriterAgent extends BaseAgent {
 本书是番外作品。以下正典约束不可违反，角色不得引用超出其信息边界的信息。
 ${params.parentCanon}\n`
       : "";
+
+    if (params.language === "en") {
+      return `Write chapter ${params.chapterNumber}.
+${contextBlock}
+## Current State
+${params.currentState}
+${ledgerBlock}
+## Plot Threads
+${params.hooks}
+${summariesBlock}${subplotBlock}${emotionalBlock}${matrixBlock}${fingerprintBlock}${relevantBlock}${canonBlock}
+## Recent Chapters
+${params.recentChapters || "(This is the first chapter, no previous text)"}
+
+## Worldbuilding
+${params.storyBible}
+
+## Volume Outline (Hard Constraint — Must Follow)
+${params.volumeOutline}
+
+[Outline Rules]
+- This chapter must advance the plot points assigned to it in the volume outline. Do not skip ahead or consume future plot points.
+- If the outline specifies an event for chapter N, do not resolve it early.
+- Pacing must match the outline's chapter span: if 5 chapters are planned for an arc, do not compress into 1-2.
+- PRE_WRITE_CHECK must identify which outline node this chapter covers.
+
+Requirements:
+- Chapter body must be at least ${params.wordCount} words
+- Output PRE_WRITE_CHECK first, then the chapter
+- Output only PRE_WRITE_CHECK, CHAPTER_TITLE, and CHAPTER_CONTENT blocks`;
+    }
 
     return `请续写第${params.chapterNumber}章。
 ${contextBlock}

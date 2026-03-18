@@ -1,7 +1,9 @@
 import { BaseAgent } from "./base.js";
 import type { GenreProfile } from "../models/genre-profile.js";
 import type { BookRules } from "../models/book-rules.js";
+import type { FanficMode } from "../models/book.js";
 import { readGenreProfile, readBookRules } from "./rules-reader.js";
+import { getFanficDimensionConfig, FANFIC_DIMENSIONS } from "./fanfic-dimensions.js";
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -58,12 +60,17 @@ const DIMENSION_MAP: Record<number, string> = {
   31: "番外伏笔隔离",
   32: "读者期待管理",
   33: "大纲偏离检测",
+  34: "角色还原度",
+  35: "世界规则遵守",
+  36: "关系动态",
+  37: "正典事件一致性",
 };
 
 function buildDimensionList(
   gp: GenreProfile,
   bookRules: BookRules | null,
   hasParentCanon = false,
+  fanficMode?: FanficMode,
 ): ReadonlyArray<{ readonly id: number; readonly name: string; readonly note: string }> {
   const activeIds = new Set(gp.auditDimensions);
 
@@ -105,12 +112,24 @@ function buildDimensionList(
     activeIds.add(12);
   }
 
-  // Spinoff dimensions — activated when parent_canon.md exists
-  if (hasParentCanon) {
+  // Spinoff dimensions — activated when parent_canon.md exists (but NOT in fanfic mode)
+  if (hasParentCanon && !fanficMode) {
     activeIds.add(28); // 正传事件冲突
     activeIds.add(29); // 未来信息泄露
     activeIds.add(30); // 世界规则跨书一致性
     activeIds.add(31); // 番外伏笔隔离
+  }
+
+  // Fanfic dimensions — replace spinoff dims with fanfic-specific checks
+  let fanficConfig: ReturnType<typeof getFanficDimensionConfig> | undefined;
+  if (fanficMode) {
+    fanficConfig = getFanficDimensionConfig(fanficMode, bookRules?.allowedDeviations);
+    for (const id of fanficConfig.activeIds) {
+      activeIds.add(id);
+    }
+    for (const id of fanficConfig.deactivatedIds) {
+      activeIds.delete(id);
+    }
   }
 
   const dims: Array<{ id: number; name: string; note: string }> = [];
@@ -165,6 +184,11 @@ function buildDimensionList(
       note = "对照 volume_outline：本章内容是否对应卷纲中当前章节范围的剧情节点？是否跳过了节点或提前消耗了后续节点？剧情推进速度是否与卷纲规划的章节跨度匹配？如果卷纲规划某段剧情跨N章但实际1-2章就讲完→critical";
     }
 
+    // Fanfic dimension notes (34-37) — mode-aware
+    if (fanficConfig?.notes.has(id)) {
+      note = fanficConfig.notes.get(id)!;
+    }
+
     dims.push({ id, name, note });
   }
 
@@ -183,7 +207,7 @@ export class ContinuityAuditor extends BaseAgent {
     genre?: string,
     options?: { temperature?: number },
   ): Promise<AuditResult> {
-    const [currentState, ledger, hooks, styleGuideRaw, subplotBoard, emotionalArcs, characterMatrix, chapterSummaries, parentCanon, volumeOutline] =
+    const [currentState, ledger, hooks, styleGuideRaw, subplotBoard, emotionalArcs, characterMatrix, chapterSummaries, parentCanon, fanficCanon, volumeOutline] =
       await Promise.all([
         this.readFileSafe(join(bookDir, "story/current_state.md")),
         this.readFileSafe(join(bookDir, "story/particle_ledger.md")),
@@ -194,10 +218,12 @@ export class ContinuityAuditor extends BaseAgent {
         this.readFileSafe(join(bookDir, "story/character_matrix.md")),
         this.readFileSafe(join(bookDir, "story/chapter_summaries.md")),
         this.readFileSafe(join(bookDir, "story/parent_canon.md")),
+        this.readFileSafe(join(bookDir, "story/fanfic_canon.md")),
         this.readFileSafe(join(bookDir, "story/volume_outline.md")),
       ]);
 
     const hasParentCanon = parentCanon !== "(文件不存在)";
+    const hasFanficCanon = fanficCanon !== "(文件不存在)";
 
     // Load last chapter full text for fine-grained continuity checking
     const previousChapter = await this.loadPreviousChapter(bookDir, chapterNumber);
@@ -213,7 +239,8 @@ export class ContinuityAuditor extends BaseAgent {
       ? styleGuideRaw
       : (parsedRules?.body ?? "(无文风指南)");
 
-    const dimensions = buildDimensionList(gp, bookRules, hasParentCanon);
+    const fanficMode = hasFanficCanon ? (bookRules?.fanficMode as FanficMode | undefined) : undefined;
+    const dimensions = buildDimensionList(gp, bookRules, hasParentCanon, fanficMode);
     const dimList = dimensions
       .map((d) => `${d.id}. ${d.name}${d.note ? `（${d.note}）` : ""}`)
       .join("\n");
@@ -268,6 +295,10 @@ ${dimList}
       ? `\n## 正传正典参照（番外审查专用）\n${parentCanon}\n`
       : "";
 
+    const fanficCanonBlock = hasFanficCanon
+      ? `\n## 同人正典参照（同人审查专用）\n${fanficCanon}\n`
+      : "";
+
     const outlineBlock = volumeOutline !== "(文件不存在)"
       ? `\n## 卷纲（用于大纲偏离检测）\n${volumeOutline}\n`
       : "";
@@ -283,7 +314,7 @@ ${currentState}
 ${ledgerBlock}
 ## 伏笔池
 ${hooks}
-${subplotBlock}${emotionalBlock}${matrixBlock}${summariesBlock}${canonBlock}${outlineBlock}${prevChapterBlock}
+${subplotBlock}${emotionalBlock}${matrixBlock}${summariesBlock}${canonBlock}${fanficCanonBlock}${outlineBlock}${prevChapterBlock}
 ## 文风指南
 ${styleGuide}
 
