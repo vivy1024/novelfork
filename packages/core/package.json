@@ -1,0 +1,46 @@
+{
+  "name": "@actalk/inkos-core",
+  "version": "0.5.1",
+  "description": "InkOS core: models, agents, pipeline, LLM integration",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "!dist/__tests__",
+    "genres"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Narcooo/inkos.git",
+    "directory": "packages/core"
+  },
+  "scripts": {
+    "prepack": "node ../../scripts/prepare-package-for-publish.mjs",
+    "postpack": "node ../../scripts/restore-package-json.mjs",
+    "prepublishOnly": "node ../../scripts/verify-no-workspace-protocol.mjs .",
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.78.0",
+    "dotenv": "^16.4.0",
+    "js-yaml": "^4.1.1",
+    "openai": "^4.80.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "typescript": "^5.8.0",
+    "vitest": "^3.0.0"
+  }
+}

@@ -1,0 +1,122 @@
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { execFileSync } from "node:child_process";
+import { describe, expect, it } from "vitest";
+
+const testDir = dirname(fileURLToPath(import.meta.url));
+const cliDir = resolve(testDir, "..", "..");
+const workspaceRoot = resolve(cliDir, "..", "..");
+
+async function extractPackedPackageJson(packDir: string) {
+  execFileSync("npm", ["pack", "--pack-destination", packDir], {
+    cwd: cliDir,
+    env: process.env,
+    encoding: "utf-8",
+  });
+
+  const tgzFiles = (await readdir(packDir)).filter((name) => name.endsWith(".tgz"));
+  if (tgzFiles.length !== 1) {
+    throw new Error(`Expected exactly one tarball in ${packDir}, found ${tgzFiles.length}`);
+  }
+
+  return execFileSync("tar", ["-xOf", join(packDir, tgzFiles[0]), "package/package.json"], {
+    cwd: workspaceRoot,
+    encoding: "utf-8",
+  });
+}
+
+describe("publish packaging", () => {
+  it("rewrites workspace package versions for canary publishing", async () => {
+    const tempRoot = await mkdtemp(join(tmpdir(), "inkos-version-script-"));
+    const tempPackagesDir = join(tempRoot, "packages");
+    const tempCoreDir = join(tempPackagesDir, "core");
+    const tempCliDir = join(tempPackagesDir, "cli");
+
+    try {
+      await mkdir(tempCoreDir, { recursive: true });
+      await mkdir(tempCliDir, { recursive: true });
+
+      await writeFile(
+        join(tempRoot, "package.json"),
+        `${JSON.stringify({ name: "inkos", version: "0.4.6" }, null, 2)}\n`,
+      );
+      await writeFile(
+        join(tempCoreDir, "package.json"),
+        `${JSON.stringify({ name: "@actalk/inkos-core", version: "0.4.6" }, null, 2)}\n`,
+      );
+      await writeFile(
+        join(tempCliDir, "package.json"),
+        `${JSON.stringify(
+          {
+            name: "@actalk/inkos",
+            version: "0.4.6",
+            dependencies: {
+              "@actalk/inkos-core": "workspace:*",
+              commander: "^13.0.0",
+            },
+          },
+          null,
+          2,
+        )}\n`,
+      );
+
+      execFileSync(
+        "node",
+        [resolve(workspaceRoot, "scripts/set-package-versions.mjs"), "0.4.8-canary.7", "--root", tempRoot],
+        {
+          cwd: workspaceRoot,
+          env: process.env,
+          encoding: "utf-8",
+        },
+      );
+
+      const rootPackageJson = JSON.parse(await readFile(join(tempRoot, "package.json"), "utf-8"));
+      const corePackageJson = JSON.parse(await readFile(join(tempCoreDir, "package.json"), "utf-8"));
+      const cliPackageJson = JSON.parse(await readFile(join(tempCliDir, "package.json"), "utf-8"));
+
+      expect(rootPackageJson.version).toBe("0.4.8-canary.7");
+      expect(corePackageJson.version).toBe("0.4.8-canary.7");
+      expect(cliPackageJson.version).toBe("0.4.8-canary.7");
+      expect(cliPackageJson.dependencies["@actalk/inkos-core"]).toBe("0.4.8-canary.7");
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps source CLI dependencies linked through the workspace protocol", async () => {
+    const cliPackageJson = JSON.parse(await readFile(resolve(cliDir, "package.json"), "utf-8"));
+
+    expect(cliPackageJson.dependencies["@actalk/inkos-core"]).toBe("workspace:*");
+  });
+
+  it("verifies publishable manifests before npm publish runs", async () => {
+    const cliPackageJson = JSON.parse(await readFile(resolve(cliDir, "package.json"), "utf-8"));
+    const corePackageJson = JSON.parse(
+      await readFile(resolve(workspaceRoot, "packages/core/package.json"), "utf-8"),
+    );
+
+    expect(cliPackageJson.scripts.prepublishOnly).toBe(
+      "node ../../scripts/verify-no-workspace-protocol.mjs .",
+    );
+    expect(corePackageJson.scripts.prepublishOnly).toBe(
+      "node ../../scripts/verify-no-workspace-protocol.mjs .",
+    );
+  });
+
+  it("replaces workspace dependencies before npm pack", { timeout: 30_000 }, async () => {
+    const packDir = await mkdtemp(join(tmpdir(), "inkos-cli-pack-"));
+
+    try {
+      const packedPackageJson = JSON.parse(await extractPackedPackageJson(packDir));
+      const corePackageJson = JSON.parse(
+        await readFile(resolve(workspaceRoot, "packages/core/package.json"), "utf-8"),
+      );
+
+      expect(packedPackageJson.dependencies["@actalk/inkos-core"]).toBe(corePackageJson.version);
+    } finally {
+      await rm(packDir, { recursive: true, force: true });
+    }
+  });
+});

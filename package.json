@@ -1,0 +1,24 @@
+{
+  "name": "inkos",
+  "version": "0.5.1",
+  "private": true,
+  "description": "Multi-agent novel production system",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Narcooo/inkos"
+  },
+  "scripts": {
+    "build": "pnpm -r build",
+    "dev": "pnpm -r dev",
+    "test": "pnpm -r test",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "verify:publish-manifests": "node scripts/verify-no-workspace-protocol.mjs packages/core packages/cli",
+    "release": "pnpm build && pnpm test"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  }
+}

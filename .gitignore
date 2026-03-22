@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.env
+.env.local
+.npmrc
+*.tgz
+.DS_Store
+coverage/
+.turbo/
+_notes/
+_tmp_*
+test-project/
+.venv*/
+.gstack/
+docs/
+novel-to-comic-research.docx
