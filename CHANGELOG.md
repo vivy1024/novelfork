@@ -1,5 +1,50 @@
 # Changelog
 
+## v0.6
+
+结构化状态 + 伏笔治理 + 字数治理。
+
+重点解决三个长篇写作的系统性问题：**20+ 章后上下文膨胀导致写作变慢甚至 400 报错**、**伏笔只加不收、回收率接近 0%**、**字数偏差 50%+ 且 normalizer 可能毁章**。
+
+### 架构
+
+- 管线升级为 10-agent：新增 Planner、Composer、Observer、Reflector、Normalizer
+- 真相文件迁移到 `story/state/*.json`（Zod 校验），Settler 输出 JSON delta 而非全量 markdown，旧书自动迁移
+- Node 22+ 启用 SQLite 时序记忆数据库（`story/memory.db`），按相关性检索历史事实
+- `createRequire` 修复 ESM 下 node:sqlite 加载
+
+### 伏笔治理
+
+- Planner 生成 `hookAgenda`（mustAdvance / eligibleResolve / staleDebt），排班伏笔推进与回收
+- Settler working set 扩展为 `selected ∪ recent ∪ agenda ∪ dormant debt`，堵住检索盲区
+- hookOps 新增 `mention` 语义——"只是被提到"不再更新 `lastAdvancedChapter`，防止假推进
+- `analyzeHookHealth`：active 超上限 / 连续无推进 / stale 未处置 / 新开不回收 → 审计 warning
+- `evaluateHookAdmission`：重复 hook 家族自动拦截，防止伏笔膨胀
+
+### 字数治理
+
+- `LengthSpec`（target / softMin-softMax / hardMin-hardMax）+ `countingMode`（zh_chars / en_words）
+- 审计前 + 修订后各一次归一化机会，不暴力截断
+- 安全网：归一化结果 <25% 原文直接拒绝，`stripCommonWrappers` 删超 50% 回退原文
+
+### 质量
+
+- 跨章重复检测（中文 6 字 ngram / 英文 3 词短语）
+- 对话驱动引导（互动场景优先对话交锋）
+- English variance brief（反重复短语/开头/结尾注入）
+- 多角色场景阻力要求（至少一轮带阻力的直接交锋）
+
+### Bug 修复
+
+- 用户 `INKOS_LLM_MAX_TOKENS` 作为全局上限生效（#87）
+- `stripReservedKeys` 防止 `llm.extra` 覆盖 max_tokens / temperature
+- 章节摘要去重：append 前去重 + bootstrap 加载时去重 + JSON 自动修复
+- `consolidate` 正则支持全角括号卷边界格式
+- 双语 CLI 输出和日志
+- Runtime state 中毒恢复
+
+---
+
 ## v0.5.0
 
 英文原生写作 + 系统稳定性修复。
