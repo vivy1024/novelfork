@@ -815,6 +815,13 @@ describe("Runtime state schemas", () => {
         resolve: [],
         defer: [],
       },
+      newHookCandidates: [
+        {
+          type: "source-risk",
+          expectedPayoff: "Reveal what the anonymous source already knew",
+          notes: "A new unresolved thread opens around the source's prior knowledge.",
+        },
+      ],
       chapterSummary: {
         chapter: 12,
         title: "River Ledger",
@@ -831,6 +838,7 @@ describe("Runtime state schemas", () => {
     expect(result.chapter).toBe(12);
     expect(result.hookOps.upsert[0]?.hookId).toBe("mentor-debt");
     expect(result.hookOps.mention).toEqual(["ledger-whisper"]);
+    expect(result.newHookCandidates[0]?.type).toBe("source-risk");
   });
 
   it("rejects natural-language numeric drift in runtime-state delta hooks", () => {

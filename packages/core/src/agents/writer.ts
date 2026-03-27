@@ -307,14 +307,15 @@ export class WriterAgent extends BaseAgent {
       settlement.runtimeStateDelta,
       resolvedLanguage,
     );
+    const resolvedRuntimeStateDelta = runtimeStateArtifacts?.resolvedDelta ?? settlement.runtimeStateDelta;
     const priorHookIds = new Set(parsePendingHooksMarkdown(hooks).map((hook) => hook.hookId));
-    const hookHealthIssues = settlement.runtimeStateDelta
+    const hookHealthIssues = resolvedRuntimeStateDelta
       && (runtimeStateArtifacts?.snapshot ?? settlement.runtimeStateSnapshot)
       ? analyzeHookHealth({
           language: resolvedLanguage,
           chapterNumber,
           hooks: (runtimeStateArtifacts?.snapshot ?? settlement.runtimeStateSnapshot)!.hooks.hooks,
-          delta: settlement.runtimeStateDelta,
+          delta: resolvedRuntimeStateDelta,
           existingHookIds: [...priorHookIds],
         })
       : [];
@@ -371,13 +372,13 @@ export class WriterAgent extends BaseAgent {
       wordCount: creative.wordCount,
       preWriteCheck: creative.preWriteCheck,
       postSettlement: settlement.postSettlement,
-      runtimeStateDelta: settlement.runtimeStateDelta,
+      runtimeStateDelta: resolvedRuntimeStateDelta,
       runtimeStateSnapshot: runtimeStateArtifacts?.snapshot ?? settlement.runtimeStateSnapshot,
       updatedState: runtimeStateArtifacts?.currentStateMarkdown ?? settlement.updatedState,
       updatedLedger: settlement.updatedLedger,
       updatedHooks: runtimeStateArtifacts?.hooksMarkdown ?? settlement.updatedHooks,
-      chapterSummary: settlement.runtimeStateDelta
-        ? this.renderDeltaSummaryRow(settlement.runtimeStateDelta)
+      chapterSummary: resolvedRuntimeStateDelta
+        ? this.renderDeltaSummaryRow(resolvedRuntimeStateDelta)
         : settlement.chapterSummary,
       updatedChapterSummaries: runtimeStateArtifacts?.chapterSummariesMarkdown,
       updatedSubplots: settlement.updatedSubplots,
@@ -955,6 +956,7 @@ ${overrides}\n`;
     ) {
       return {
         snapshot: output.runtimeStateSnapshot,
+        resolvedDelta: output.runtimeStateDelta,
         currentStateMarkdown: output.updatedState,
         hooksMarkdown: output.updatedHooks,
         chapterSummariesMarkdown: output.updatedChapterSummaries,

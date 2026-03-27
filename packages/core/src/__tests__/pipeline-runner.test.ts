@@ -1802,6 +1802,7 @@ describe("PipelineRunner", () => {
             resolve: [],
             defer: [],
           },
+          newHookCandidates: [],
           chapterSummary: {
             chapter: 1,
             title: "River Ledger",

@@ -23,6 +23,7 @@ export function buildSettlerSystemPrompt(
 - 推进伏笔：已有伏笔在本章出现了新的事实、证据、关系变化、风险升级或范围收缩 → **必须**更新"最近推进"列为当前章节号，更新状态和备注
 - 回收伏笔：伏笔在本章被明确揭示、解决、或不再成立 → 状态改为"已回收"，备注回收方式
 - 延后伏笔：超过5章未推进 → 标注"延后"，备注原因
+- brand-new unresolved thread：不要直接发明新的 hookId。把候选放进 newHookCandidates，由系统决定它是映射到旧 hook、变成真正新 hook，还是被拒绝为重述
 - **铁律**：不要把“再次提到”“换个说法重述”“抽象复盘”当成推进。只有状态真的变了，才更新最近推进。只是出现过的旧 hook，放进 mention 数组。`;
 
   const fullCastBlock = bookRules?.enableFullCastTracking
@@ -110,6 +111,13 @@ function buildSettlerOutputFormat(gp: GenreProfile): string {
     "resolve": ["已回收的 hookId"],
     "defer": ["需要标记延后的 hookId"]
   },
+  "newHookCandidates": [
+    {
+      "type": "mystery",
+      "expectedPayoff": "新伏笔未来要回收到哪里",
+      "notes": "本章为什么会形成新的未解问题"
+    }
+  ],
   "chapterSummary": {
     "chapter": 12,
     "title": "本章标题",
@@ -130,10 +138,12 @@ function buildSettlerOutputFormat(gp: GenreProfile): string {
 规则：
 1. 只输出增量，不要重写完整 truth files
 2. 所有章节号字段都必须是整数，不能写自然语言
-3. 如果旧 hook 只是被提到、没有真实状态变化，把它放进 mention，不要更新 lastAdvancedChapter
-4. 如果本章推进了旧 hook，lastAdvancedChapter 必须等于当前章号
-5. 如果回收或延后 hook，必须放在 resolve / defer 数组里
-6. chapterSummary.chapter 必须等于当前章节号`;
+3. hookOps.upsert 里只能写“当前伏笔池里已经存在”的 hookId，不允许发明新的 hookId
+4. brand-new unresolved thread 一律写进 newHookCandidates，不要自造 hookId
+5. 如果旧 hook 只是被提到、没有真实状态变化，把它放进 mention，不要更新 lastAdvancedChapter
+6. 如果本章推进了旧 hook，lastAdvancedChapter 必须等于当前章号
+7. 如果回收或延后 hook，必须放在 resolve / defer 数组里
+8. chapterSummary.chapter 必须等于当前章节号`;
 }
 
 export function buildSettlerUserPrompt(params: {

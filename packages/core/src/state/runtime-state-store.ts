@@ -12,9 +12,11 @@ import { bootstrapStructuredStateFromMarkdown, parseCurrentStateFacts } from "./
 import { renderChapterSummariesProjection, renderCurrentStateProjection, renderHooksProjection } from "./state-projections.js";
 import { applyRuntimeStateDelta, type RuntimeStateSnapshot } from "./state-reducer.js";
 import { validateRuntimeState } from "./state-validator.js";
+import { arbitrateRuntimeStateDeltaHooks } from "../utils/hook-arbiter.js";
 
 export interface RuntimeStateArtifacts {
   readonly snapshot: RuntimeStateSnapshot;
+  readonly resolvedDelta: RuntimeStateDelta;
   readonly currentStateMarkdown: string;
   readonly hooksMarkdown: string;
   readonly chapterSummariesMarkdown: string;
@@ -60,13 +62,18 @@ export async function buildRuntimeStateArtifacts(params: {
   readonly language: "zh" | "en";
 }): Promise<RuntimeStateArtifacts> {
   const snapshot = await loadRuntimeStateSnapshot(params.bookDir);
+  const { resolvedDelta } = arbitrateRuntimeStateDeltaHooks({
+    hooks: snapshot.hooks.hooks,
+    delta: params.delta,
+  });
   const next = applyRuntimeStateDelta({
     snapshot,
-    delta: params.delta,
+    delta: resolvedDelta,
   });
 
   return {
     snapshot: next,
+    resolvedDelta,
     currentStateMarkdown: renderCurrentStateProjection(next.currentState, params.language),
     hooksMarkdown: renderHooksProjection(next.hooks, params.language),
     chapterSummariesMarkdown: renderChapterSummariesProjection(next.chapterSummaries, params.language),

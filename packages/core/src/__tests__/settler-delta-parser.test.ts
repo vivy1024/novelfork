@@ -98,4 +98,36 @@ describe("parseSettlerDeltaOutput", () => {
     expect(result.runtimeStateDelta.hookOps.resolve).toEqual(["old-seal"]);
     expect(result.runtimeStateDelta.hookOps.defer).toEqual(["guild-route"]);
   });
+
+  it("parses new hook candidates separately from existing hook ops", () => {
+    const result = parseSettlerDeltaOutput([
+      "=== RUNTIME_STATE_DELTA ===",
+      "```json",
+      JSON.stringify({
+        chapter: 21,
+        hookOps: {
+          upsert: [],
+          mention: ["mentor-oath"],
+          resolve: [],
+          defer: [],
+        },
+        newHookCandidates: [
+          {
+            type: "source-risk",
+            expectedPayoff: "Reveal what the anonymous source already knew about the route and address",
+            notes: "This chapter opens a fresh unresolved question about source knowledge.",
+          },
+        ],
+        notes: [],
+      }),
+      "```",
+    ].join("\n"));
+
+    expect(result.runtimeStateDelta.hookOps.upsert).toEqual([]);
+    expect(result.runtimeStateDelta.newHookCandidates).toEqual([
+      expect.objectContaining({
+        type: "source-risk",
+      }),
+    ]);
+  });
 });

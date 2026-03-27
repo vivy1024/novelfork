@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  buildRuntimeStateArtifacts,
   loadNarrativeMemorySeed,
   loadRuntimeStateSnapshot,
   loadSnapshotCurrentStateFacts,
@@ -214,5 +215,82 @@ describe("runtime-state-store memory helpers", () => {
     const snapshot = await loadRuntimeStateSnapshot(bookDir);
     expect(snapshot.chapterSummaries.rows).toHaveLength(1);
     expect(snapshot.chapterSummaries.rows[0]?.title).toBe("重复河埠对账");
+  });
+
+  it("arbitrates new hook candidates before applying structured state updates", async () => {
+    root = await mkdtemp(join(tmpdir(), "inkos-runtime-state-arbiter-"));
+    const bookDir = join(root, "book");
+    const storyDir = join(bookDir, "story");
+    const stateDir = join(storyDir, "state");
+    await mkdir(stateDir, { recursive: true });
+
+    await Promise.all([
+      writeFile(join(stateDir, "manifest.json"), JSON.stringify({
+        schemaVersion: 2,
+        language: "en",
+        lastAppliedChapter: 11,
+        projectionVersion: 1,
+        migrationWarnings: [],
+      }, null, 2), "utf-8"),
+      writeFile(join(stateDir, "current_state.json"), JSON.stringify({
+        chapter: 11,
+        facts: [],
+      }, null, 2), "utf-8"),
+      writeFile(join(stateDir, "hooks.json"), JSON.stringify({
+        hooks: [
+          {
+            hookId: "anonymous-source-scope",
+            startChapter: 3,
+            type: "source-risk",
+            status: "open",
+            lastAdvancedChapter: 8,
+            expectedPayoff: "Reveal how much the anonymous source already knew about the route.",
+            notes: "The source knowledge question remains unresolved.",
+          },
+        ],
+      }, null, 2), "utf-8"),
+      writeFile(join(stateDir, "chapter_summaries.json"), JSON.stringify({
+        rows: [],
+      }, null, 2), "utf-8"),
+      writeFile(join(storyDir, "pending_hooks.md"), "", "utf-8"),
+      writeFile(join(storyDir, "chapter_summaries.md"), "", "utf-8"),
+    ]);
+
+    const artifacts = await buildRuntimeStateArtifacts({
+      bookDir,
+      language: "en",
+      delta: {
+        chapter: 12,
+        hookOps: {
+          upsert: [],
+          mention: [],
+          resolve: [],
+          defer: [],
+        },
+        newHookCandidates: [
+          {
+            type: "source-risk",
+            expectedPayoff: "Reveal how much the anonymous source already knew about the route and address.",
+            notes: "This chapter adds the address angle to the anonymous source question.",
+          },
+        ],
+        notes: [],
+        subplotOps: [],
+        emotionalArcOps: [],
+        characterMatrixOps: [],
+      },
+    });
+
+    expect(artifacts.resolvedDelta.hookOps.upsert).toEqual([
+      expect.objectContaining({
+        hookId: "anonymous-source-scope",
+        lastAdvancedChapter: 12,
+      }),
+    ]);
+    expect(artifacts.snapshot.hooks.hooks).toHaveLength(1);
+    expect(artifacts.snapshot.hooks.hooks[0]).toEqual(expect.objectContaining({
+      hookId: "anonymous-source-scope",
+      lastAdvancedChapter: 12,
+    }));
   });
 });

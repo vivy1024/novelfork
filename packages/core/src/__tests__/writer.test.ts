@@ -377,6 +377,145 @@ describe("WriterAgent", () => {
     }
   });
 
+  it("returns the arbiter-resolved delta instead of raw new-hook candidates", async () => {
+    const root = await mkdtemp(join(tmpdir(), "inkos-writer-arbiter-test-"));
+    const bookDir = join(root, "book");
+    const storyDir = join(bookDir, "story");
+    await mkdir(storyDir, { recursive: true });
+
+    await Promise.all([
+      writeFile(join(storyDir, "story_bible.md"), "# Story Bible\n\n- Anonymous messages keep steering the debt trail.\n", "utf-8"),
+      writeFile(join(storyDir, "volume_outline.md"), "# Volume Outline\n\n## Chapter 3\nThe anonymous source widens from route to address.\n", "utf-8"),
+      writeFile(join(storyDir, "style_guide.md"), "# Style Guide\n\n- Keep the prose restrained.\n", "utf-8"),
+      writeFile(join(storyDir, "current_state.md"), [
+        "# Current State",
+        "",
+        "| Field | Value |",
+        "| --- | --- |",
+        "| Current Chapter | 2 |",
+        "| Current Goal | Find who fed the route to the anonymous source |",
+        "",
+      ].join("\n"), "utf-8"),
+      writeFile(join(storyDir, "pending_hooks.md"), [
+        "| hook_id | start_chapter | type | status | last_advanced | expected_payoff | notes |",
+        "| --- | --- | --- | --- | --- | --- | --- |",
+        "| anonymous-source-scope | 1 | source-risk | open | 2 | Reveal how much the anonymous source already knew about the route. | The source knowledge question remains unresolved. |",
+        "",
+      ].join("\n"), "utf-8"),
+      writeFile(join(storyDir, "chapter_summaries.md"), [
+        "| chapter | title | characters | events | stateChanges | hookActivity | mood | chapterType |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- |",
+        "| 2 | Route Leak | Lin Yue | An anonymous source already knew the route | Suspicion sharpens | anonymous-source-scope advanced | tense | mainline |",
+        "",
+      ].join("\n"), "utf-8"),
+    ]);
+
+    const agent = new WriterAgent({
+      client: {
+        provider: "openai",
+        apiFormat: "chat",
+        stream: false,
+        defaults: {
+          temperature: 0.7,
+          maxTokens: 4096,
+          thinkingBudget: 0, maxTokensCap: null,
+          extra: {},
+        },
+      },
+      model: "test-model",
+      projectRoot: root,
+    });
+
+    vi.spyOn(WriterAgent.prototype as never, "chat" as never)
+      .mockResolvedValueOnce({
+        content: [
+          "=== CHAPTER_TITLE ===",
+          "Address Leak",
+          "",
+          "=== CHAPTER_CONTENT ===",
+          "Lin Yue realizes the anonymous source knew the address, not just the route.",
+          "",
+          "=== PRE_WRITE_CHECK ===",
+          "- ok",
+        ].join("\n"),
+        usage: ZERO_USAGE,
+      })
+      .mockResolvedValueOnce({
+        content: "=== OBSERVATIONS ===\n- observed",
+        usage: ZERO_USAGE,
+      })
+      .mockResolvedValueOnce({
+        content: [
+          "=== POST_SETTLEMENT ===",
+          "- source scope widens",
+          "",
+          "=== RUNTIME_STATE_DELTA ===",
+          "```json",
+          JSON.stringify({
+            chapter: 3,
+            hookOps: {
+              upsert: [],
+              mention: [],
+              resolve: [],
+              defer: [],
+            },
+            newHookCandidates: [
+              {
+                type: "source-risk",
+                expectedPayoff: "Reveal how much the anonymous source already knew about the route and address.",
+                notes: "This chapter adds the address angle to the anonymous source question.",
+              },
+            ],
+            chapterSummary: {
+              chapter: 3,
+              title: "Address Leak",
+              characters: "Lin Yue",
+              events: "Lin Yue realizes the anonymous source knew the address.",
+              stateChanges: "The source knowledge question widens.",
+              hookActivity: "anonymous-source-scope advanced",
+              mood: "tight",
+              chapterType: "investigation",
+            },
+            notes: [],
+          }, null, 2),
+          "```",
+        ].join("\n"),
+        usage: ZERO_USAGE,
+      });
+
+    try {
+      const output = await agent.writeChapter({
+        book: {
+          id: "writer-book",
+          title: "Writer Book",
+          platform: "tomato",
+          genre: "other",
+          status: "active",
+          targetChapters: 20,
+          chapterWordCount: 2200,
+          language: "en",
+          createdAt: "2026-03-27T00:00:00.000Z",
+          updatedAt: "2026-03-27T00:00:00.000Z",
+        },
+        bookDir,
+        chapterNumber: 3,
+        lengthSpec: buildLengthSpec(2200, "en"),
+      });
+
+      expect(output.runtimeStateDelta?.hookOps.upsert).toEqual([
+        expect.objectContaining({
+          hookId: "anonymous-source-scope",
+          lastAdvancedChapter: 3,
+        }),
+      ]);
+      expect(output.runtimeStateDelta?.newHookCandidates).toEqual([]);
+      expect(output.updatedHooks).toContain("anonymous-source-scope");
+      expect(output.updatedHooks).toContain("| anonymous-source-scope | 1 | source-risk | progressing | 3 |");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("logs localized phase messages for Chinese books", async () => {
     const root = await mkdtemp(join(tmpdir(), "inkos-writer-test-"));
     const bookDir = join(root, "book");

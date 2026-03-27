@@ -27,6 +27,7 @@ function createDelta(overrides: Partial<RuntimeStateDelta> = {}): RuntimeStateDe
       resolve: overrides.hookOps?.resolve ?? [],
       defer: overrides.hookOps?.defer ?? [],
     },
+    newHookCandidates: overrides.newHookCandidates ?? [],
     subplotOps: overrides.subplotOps ?? [],
     emotionalArcOps: overrides.emotionalArcOps ?? [],
     characterMatrixOps: overrides.characterMatrixOps ?? [],

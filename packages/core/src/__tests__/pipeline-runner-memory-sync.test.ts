@@ -234,6 +234,7 @@ describe("PipelineRunner structured-state memory sync", () => {
           resolve: [],
           defer: [],
         },
+        newHookCandidates: [],
         chapterSummary: {
           chapter: 1,
           title: "Structured Summary",

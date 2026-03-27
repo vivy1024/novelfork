@@ -91,6 +91,14 @@ export const HookOpsSchema = z.object({
 
 export type HookOps = z.infer<typeof HookOpsSchema>;
 
+export const NewHookCandidateSchema = z.object({
+  type: z.string().min(1),
+  expectedPayoff: z.string().default(""),
+  notes: z.string().default(""),
+});
+
+export type NewHookCandidate = z.infer<typeof NewHookCandidateSchema>;
+
 const LooseOpSchema = z.record(z.string(), z.unknown());
 
 export const RuntimeStateDeltaSchema = z.object({
@@ -102,6 +110,7 @@ export const RuntimeStateDeltaSchema = z.object({
     resolve: [],
     defer: [],
   }),
+  newHookCandidates: z.array(NewHookCandidateSchema).default([]),
   chapterSummary: ChapterSummaryRowSchema.optional(),
   subplotOps: z.array(LooseOpSchema).default([]),
   emotionalArcOps: z.array(LooseOpSchema).default([]),

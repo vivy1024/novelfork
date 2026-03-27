@@ -20,6 +20,7 @@ export {
   type CurrentStateState,
   type CurrentStatePatch,
   type HookOps,
+  type NewHookCandidate,
   type RuntimeStateDelta,
   RuntimeStateLanguageSchema,
   StateManifestSchema,
@@ -32,6 +33,7 @@ export {
   CurrentStateStateSchema,
   CurrentStatePatchSchema,
   HookOpsSchema,
+  NewHookCandidateSchema,
   RuntimeStateDeltaSchema,
 } from "./models/runtime-state.js";
 export {
@@ -111,6 +113,7 @@ export {
   type HookAdmissionDecision,
   type HookDisposition,
 } from "./utils/hook-governance.js";
+export { arbitrateRuntimeStateDeltaHooks, type HookArbiterDecision } from "./utils/hook-arbiter.js";
 export { analyzeHookHealth } from "./utils/hook-health.js";
 
 // Pipeline
