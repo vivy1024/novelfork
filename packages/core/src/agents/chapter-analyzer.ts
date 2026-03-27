@@ -1,8 +1,15 @@
 import { BaseAgent } from "./base.js";
 import type { BookConfig } from "../models/book.js";
 import type { GenreProfile } from "../models/genre-profile.js";
+import type { ContextPackage, RuleStack } from "../models/input-governance.js";
 import { readGenreProfile, readBookRules } from "./rules-reader.js";
 import { parseWriterOutput, type ParsedWriterOutput } from "./writer-parser.js";
+import { buildGovernedMemoryEvidenceBlocks } from "../utils/governed-context.js";
+import {
+  buildGovernedCharacterMatrixWorkingSet,
+  buildGovernedHookWorkingSet,
+} from "../utils/governed-working-set.js";
+import { filterEmotionalArcs, filterSubplots } from "../utils/context-filter.js";
 import { countChapterLength, resolveLengthCountingMode } from "../utils/length-metrics.js";
 import { retrieveMemorySelection } from "../utils/memory-retrieval.js";
 import { readFile } from "node:fs/promises";
@@ -14,6 +21,9 @@ export interface AnalyzeChapterInput {
   readonly chapterNumber: number;
   readonly chapterContent: string;
   readonly chapterTitle?: string;
+  readonly chapterIntent?: string;
+  readonly contextPackage?: ContextPackage;
+  readonly ruleStack?: RuleStack;
 }
 
 export type AnalyzeChapterOutput = ParsedWriterOutput;
@@ -46,6 +56,8 @@ export class ChapterAnalyzerAgent extends BaseAgent {
     ]);
     const parsedBookRules = await readBookRules(bookDir);
     const bookRulesBody = parsedBookRules?.body ?? "";
+    const bookRules = parsedBookRules?.rules;
+    const governedMode = Boolean(input.chapterIntent && input.contextPackage && input.ruleStack);
     const memorySelection = await retrieveMemorySelection({
       bookDir,
       chapterNumber,
@@ -56,6 +68,35 @@ export class ChapterAnalyzerAgent extends BaseAgent {
       memorySelection.summaries,
       resolvedLanguage,
     );
+    const governedMemoryBlocks = input.contextPackage
+      ? buildGovernedMemoryEvidenceBlocks(input.contextPackage, resolvedLanguage)
+      : undefined;
+    const hooksWorkingSet = governedMode && input.contextPackage
+      ? buildGovernedHookWorkingSet({
+          hooksMarkdown: hooks,
+          contextPackage: input.contextPackage,
+          chapterIntent: input.chapterIntent,
+          chapterNumber,
+          language: resolvedLanguage,
+        })
+      : hooks;
+    const subplotWorkingSet = governedMode
+      ? filterSubplots(subplotBoard)
+      : subplotBoard;
+    const emotionalWorkingSet = governedMode
+      ? filterEmotionalArcs(emotionalArcs, chapterNumber)
+      : emotionalArcs;
+    const matrixWorkingSet = governedMode && input.chapterIntent && input.contextPackage
+      ? buildGovernedCharacterMatrixWorkingSet({
+          matrixMarkdown: characterMatrix,
+          chapterIntent: input.chapterIntent,
+          contextPackage: input.contextPackage,
+          protagonistName: bookRules?.protagonist?.name,
+        })
+      : characterMatrix;
+    const reducedControlBlock = governedMode && input.chapterIntent && input.contextPackage && input.ruleStack
+      ? this.buildReducedControlBlock(input.chapterIntent, input.contextPackage, input.ruleStack, resolvedLanguage)
+      : "";
 
     const systemPrompt = this.buildSystemPrompt(
       book,
@@ -70,15 +111,57 @@ export class ChapterAnalyzerAgent extends BaseAgent {
       chapterNumber,
       chapterContent,
       chapterTitle,
-      storyBible,
-      volumeOutline,
       currentState,
       ledger: genreProfile.numericalSystem ? ledger : "",
-      hooks,
+      hooks: hooksWorkingSet,
       chapterSummaries,
-      subplotBoard,
-      emotionalArcs,
-      characterMatrix,
+      subplotBoard: subplotWorkingSet,
+      emotionalArcs: emotionalWorkingSet,
+      characterMatrix: matrixWorkingSet,
+      bibleBlock: !governedMode && storyBible !== this.missingFilePlaceholder(resolvedLanguage)
+        ? resolvedLanguage === "en"
+          ? `\n## Story Bible\n${storyBible}\n`
+          : `\n## 世界观设定\n${storyBible}\n`
+        : "",
+      outlineOrControlBlock: reducedControlBlock || (
+        volumeOutline !== this.missingFilePlaceholder(resolvedLanguage)
+          ? resolvedLanguage === "en"
+            ? `\n## Volume Outline\n${volumeOutline}\n`
+            : `\n## 卷纲\n${volumeOutline}\n`
+          : ""
+      ),
+      hooksBlock: governedMemoryBlocks?.hooksBlock
+        ?? (
+          hooksWorkingSet !== this.missingFilePlaceholder(resolvedLanguage)
+            ? resolvedLanguage === "en"
+              ? `\n## Current Hooks\n${hooksWorkingSet}\n`
+              : `\n## 当前伏笔池\n${hooksWorkingSet}\n`
+            : ""
+        ),
+      summariesBlock: governedMemoryBlocks?.summariesBlock
+        ?? (
+          chapterSummaries !== this.missingFilePlaceholder(resolvedLanguage)
+            ? resolvedLanguage === "en"
+              ? `\n## Existing Chapter Summaries\n${chapterSummaries}\n`
+              : `\n## 已有章节摘要\n${chapterSummaries}\n`
+            : ""
+        ),
+      volumeSummariesBlock: governedMemoryBlocks?.volumeSummariesBlock ?? "",
+      subplotBlock: subplotWorkingSet !== this.missingFilePlaceholder(resolvedLanguage)
+        ? resolvedLanguage === "en"
+          ? `\n## Current Subplot Board\n${subplotWorkingSet}\n`
+          : `\n## 当前支线进度板\n${subplotWorkingSet}\n`
+        : "",
+      emotionalBlock: emotionalWorkingSet !== this.missingFilePlaceholder(resolvedLanguage)
+        ? resolvedLanguage === "en"
+          ? `\n## Current Emotional Arcs\n${emotionalWorkingSet}\n`
+          : `\n## 当前情感弧线\n${emotionalWorkingSet}\n`
+        : "",
+      matrixBlock: matrixWorkingSet !== this.missingFilePlaceholder(resolvedLanguage)
+        ? resolvedLanguage === "en"
+          ? `\n## Current Character Matrix\n${matrixWorkingSet}\n`
+          : `\n## 当前角色交互矩阵\n${matrixWorkingSet}\n`
+        : "",
     });
 
     const response = await this.chat(
@@ -317,8 +400,6 @@ ${bookRulesBody ? `## 本书规则\n\n${bookRulesBody}` : ""}
     readonly chapterNumber: number;
     readonly chapterContent: string;
     readonly chapterTitle?: string;
-    readonly storyBible: string;
-    readonly volumeOutline: string;
     readonly currentState: string;
     readonly ledger: string;
     readonly hooks: string;
@@ -326,6 +407,14 @@ ${bookRulesBody ? `## 本书规则\n\n${bookRulesBody}` : ""}
     readonly subplotBoard: string;
     readonly emotionalArcs: string;
     readonly characterMatrix: string;
+    readonly hooksBlock: string;
+    readonly summariesBlock: string;
+    readonly volumeSummariesBlock: string;
+    readonly subplotBlock: string;
+    readonly emotionalBlock: string;
+    readonly matrixBlock: string;
+    readonly bibleBlock: string;
+    readonly outlineOrControlBlock: string;
   }): string {
     if (params.language === "en") {
       const titleLine = params.chapterTitle
@@ -334,22 +423,6 @@ ${bookRulesBody ? `## 本书规则\n\n${bookRulesBody}` : ""}
 
       const ledgerBlock = params.ledger
         ? `\n## Current Resource Ledger\n${params.ledger}\n`
-        : "";
-
-      const summariesBlock = params.chapterSummaries !== this.missingFilePlaceholder("en")
-        ? `\n## Existing Chapter Summaries\n${params.chapterSummaries}\n`
-        : "";
-
-      const subplotBlock = params.subplotBoard !== this.missingFilePlaceholder("en")
-        ? `\n## Current Subplot Board\n${params.subplotBoard}\n`
-        : "";
-
-      const emotionalBlock = params.emotionalArcs !== this.missingFilePlaceholder("en")
-        ? `\n## Current Emotional Arcs\n${params.emotionalArcs}\n`
-        : "";
-
-      const matrixBlock = params.characterMatrix !== this.missingFilePlaceholder("en")
-        ? `\n## Current Character Matrix\n${params.characterMatrix}\n`
         : "";
 
       return `Analyze chapter ${params.chapterNumber} and update all tracking files.
@@ -361,14 +434,7 @@ ${params.chapterContent}
 ## Current State
 ${params.currentState}
 ${ledgerBlock}
-## Current Hooks
-${params.hooks}
-${summariesBlock}${subplotBlock}${emotionalBlock}${matrixBlock}
-## Story Bible
-${params.storyBible}
-
-## Volume Outline
-${params.volumeOutline}
+${params.hooksBlock}${params.volumeSummariesBlock}${params.subplotBlock}${params.emotionalBlock}${params.matrixBlock}${params.summariesBlock}${params.outlineOrControlBlock}${params.bibleBlock}
 
 Please return the result strictly in the === TAG === format.`;
     }
@@ -381,22 +447,6 @@ Please return the result strictly in the === TAG === format.`;
       ? `\n## 当前资源账本\n${params.ledger}\n`
       : "";
 
-    const summariesBlock = params.chapterSummaries !== "(文件尚未创建)"
-      ? `\n## 已有章节摘要\n${params.chapterSummaries}\n`
-      : "";
-
-    const subplotBlock = params.subplotBoard !== "(文件尚未创建)"
-      ? `\n## 当前支线进度板\n${params.subplotBoard}\n`
-      : "";
-
-    const emotionalBlock = params.emotionalArcs !== "(文件尚未创建)"
-      ? `\n## 当前情感弧线\n${params.emotionalArcs}\n`
-      : "";
-
-    const matrixBlock = params.characterMatrix !== "(文件尚未创建)"
-      ? `\n## 当前角色交互矩阵\n${params.characterMatrix}\n`
-      : "";
-
     return `请分析第${params.chapterNumber}章正文，更新所有追踪文件。
 ${titleLine}
 ## 正文内容
@@ -406,16 +456,53 @@ ${params.chapterContent}
 ## 当前状态卡
 ${params.currentState}
 ${ledgerBlock}
-## 当前伏笔池
-${params.hooks}
-${summariesBlock}${subplotBlock}${emotionalBlock}${matrixBlock}
-## 世界观设定
-${params.storyBible}
-
-## 卷纲
-${params.volumeOutline}
+${params.hooksBlock}${params.volumeSummariesBlock}${params.subplotBlock}${params.emotionalBlock}${params.matrixBlock}${params.summariesBlock}${params.outlineOrControlBlock}${params.bibleBlock}
 
 请严格按照 === TAG === 格式输出分析结果。`;
+  }
+
+  private buildReducedControlBlock(
+    chapterIntent: string,
+    contextPackage: ContextPackage,
+    ruleStack: RuleStack,
+    language: "zh" | "en",
+  ): string {
+    const selectedContext = contextPackage.selectedContext
+      .map((entry) => `- ${entry.source}: ${entry.reason}${entry.excerpt ? ` | ${entry.excerpt}` : ""}`)
+      .join("\n");
+    const overrides = ruleStack.activeOverrides.length > 0
+      ? ruleStack.activeOverrides
+        .map((override) => `- ${override.from} -> ${override.to}: ${override.reason} (${override.target})`)
+        .join("\n")
+      : "- none";
+
+    return language === "en"
+      ? `\n## Chapter Control Inputs (compiled by Planner/Composer)
+${chapterIntent}
+
+### Selected Context
+${selectedContext || "- none"}
+
+### Rule Stack
+- Hard guardrails: ${ruleStack.sections.hard.join(", ") || "(none)"}
+- Soft constraints: ${ruleStack.sections.soft.join(", ") || "(none)"}
+- Diagnostic rules: ${ruleStack.sections.diagnostic.join(", ") || "(none)"}
+
+### Active Overrides
+${overrides}\n`
+      : `\n## 本章控制输入（由 Planner/Composer 编译）
+${chapterIntent}
+
+### 已选上下文
+${selectedContext || "- none"}
+
+### 规则栈
+- 硬护栏：${ruleStack.sections.hard.join("、") || "(无)"}
+- 软约束：${ruleStack.sections.soft.join("、") || "(无)"}
+- 诊断规则：${ruleStack.sections.diagnostic.join("、") || "(无)"}
+
+### 当前覆盖
+${overrides}\n`;
   }
 
   private buildMemoryGoal(chapterTitle: string | undefined, chapterContent: string): string {

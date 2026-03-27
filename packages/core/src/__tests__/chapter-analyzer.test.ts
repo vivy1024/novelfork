@@ -396,4 +396,179 @@ describe("ChapterAnalyzerAgent", () => {
       await rm(bookDir, { recursive: true, force: true });
     }
   });
+
+  it("uses governed control inputs instead of old broad truth-file blocks when provided", async () => {
+    const bookDir = await mkdtemp(join(tmpdir(), "inkos-chapter-analyzer-governed-"));
+    const storyDir = join(bookDir, "story");
+    await mkdir(storyDir, { recursive: true });
+
+    await Promise.all([
+      writeFile(join(storyDir, "story_bible.md"), "# Story Bible\n\n- Full bible should stay out of governed analyzer prompts.\n", "utf-8"),
+      writeFile(join(storyDir, "volume_outline.md"), "# Volume Outline\n\n## Chapter 100\nReturn to the mentor oath conflict.\n", "utf-8"),
+      writeFile(join(storyDir, "current_state.md"), "# Current State\n\n- Lin Yue still carries the oath token.\n", "utf-8"),
+      writeFile(join(storyDir, "pending_hooks.md"), [
+        "# Pending Hooks",
+        "",
+        "| hook_id | start_chapter | type | status | last_advanced_chapter | expected_payoff | notes |",
+        "| --- | --- | --- | --- | --- | --- | --- |",
+        "| guild-route | 1 | mystery | open | 2 | 6 | Merchant guild trail |",
+        "| mentor-oath | 8 | relationship | open | 99 | 101 | Mentor oath debt |",
+        "",
+      ].join("\n"), "utf-8"),
+      writeFile(join(storyDir, "subplot_board.md"), [
+        "# Subplot Board",
+        "",
+        "| subplot | status | last_update | notes |",
+        "| --- | --- | --- | --- |",
+        "| Guild trail | open | 99 | Still active |",
+        "| Harbor tax | resolved | 40 | Closed long ago |",
+        "",
+      ].join("\n"), "utf-8"),
+      writeFile(join(storyDir, "emotional_arcs.md"), [
+        "# Emotional Arcs",
+        "",
+        "| chapter | character | emotion | trigger | direction |",
+        "| --- | --- | --- | --- | --- |",
+        "| 95 | Lin Yue | grief | mentor silence | down |",
+        "| 100 | Lin Yue | resolve | oath token | up |",
+        "",
+      ].join("\n"), "utf-8"),
+      writeFile(join(storyDir, "character_matrix.md"), [
+        "# Character Matrix",
+        "",
+        "### Character Profiles",
+        "| character | role | status | notes |",
+        "| --- | --- | --- | --- |",
+        "| Lin Yue | protagonist | active | carries oath token |",
+        "| Mentor Shen | mentor | missing | tied to oath debt |",
+        "| Harbor Clerk | clerk | inactive | old tax subplot |",
+        "",
+      ].join("\n"), "utf-8"),
+    ]);
+
+    const agent = new ChapterAnalyzerAgent({
+      client: {
+        provider: "openai",
+        apiFormat: "chat",
+        stream: false,
+        defaults: {
+          temperature: 0.7,
+          maxTokens: 4096,
+          thinkingBudget: 0, maxTokensCap: null,
+          extra: {},
+        },
+      },
+      model: "test-model",
+      projectRoot: process.cwd(),
+    });
+
+    const chat = vi.spyOn(agent as unknown as { chat: (...args: unknown[]) => Promise<unknown> }, "chat")
+      .mockResolvedValue({
+        content: [
+          "=== CHAPTER_TITLE ===",
+          "Mentor Oath Returns",
+          "",
+          "=== CHAPTER_CONTENT ===",
+          "Lin Yue returned to the mentor oath and the missing explanation.",
+          "",
+          "=== PRE_WRITE_CHECK ===",
+          "",
+          "=== POST_SETTLEMENT ===",
+          "",
+          "=== UPDATED_STATE ===",
+          "| Field | Value |",
+          "| --- | --- |",
+          "| Current Chapter | 100 |",
+          "",
+          "=== UPDATED_LEDGER ===",
+          "",
+          "=== UPDATED_HOOKS ===",
+          "| hook_id | status |",
+          "| --- | --- |",
+          "| h1 | open |",
+          "",
+          "=== CHAPTER_SUMMARY ===",
+          "| 100 | Mentor Oath Returns |",
+          "",
+          "=== UPDATED_SUBPLOTS ===",
+          "",
+          "=== UPDATED_EMOTIONAL_ARCS ===",
+          "",
+          "=== UPDATED_CHARACTER_MATRIX ===",
+          "",
+        ].join("\n"),
+        usage: ZERO_USAGE,
+      });
+
+    const book: BookConfig = {
+      id: "english-book",
+      title: "English Book",
+      platform: "other",
+      genre: "other",
+      status: "active",
+      targetChapters: 120,
+      chapterWordCount: 2200,
+      language: "en",
+      createdAt: "2026-03-22T00:00:00.000Z",
+      updatedAt: "2026-03-22T00:00:00.000Z",
+    };
+
+    try {
+      await agent.analyzeChapter({
+        book,
+        bookDir,
+        chapterNumber: 100,
+        chapterTitle: "Mentor Oath Returns",
+        chapterContent: "Lin Yue returned to the mentor oath and the missing explanation.",
+        chapterIntent: "# Chapter Intent\n\n## Goal\nBring the focus back to the mentor oath conflict.\n",
+        contextPackage: {
+          chapter: 100,
+          selectedContext: [
+            {
+              source: "story/pending_hooks.md#mentor-oath",
+              reason: "Primary hook for this chapter",
+              excerpt: "mentor-oath remains unresolved",
+            },
+            {
+              source: "story/chapter_summaries.md#99",
+              reason: "Closest relevant summary",
+              excerpt: "Mentor oath debt sharpened",
+            },
+          ],
+        },
+        ruleStack: {
+          layers: [
+            { id: "L1", name: "Global", precedence: 1, scope: "global" },
+            { id: "L2", name: "Book", precedence: 2, scope: "book" },
+          ],
+          sections: {
+            hard: ["story_bible"],
+            soft: ["author_intent"],
+            diagnostic: ["anti_ai_checks"],
+          },
+          overrideEdges: [],
+          activeOverrides: [
+            {
+              from: "brief",
+              to: "current_focus",
+              reason: "Keep the chapter on the oath debt",
+              target: "focus",
+            },
+          ],
+        },
+      });
+
+      const messages = chat.mock.calls[0]?.[0] as Array<{ role: string; content: string }>;
+      const userPrompt = messages[1]?.content ?? "";
+
+      expect(userPrompt).toContain("## Chapter Control Inputs (compiled by Planner/Composer)");
+      expect(userPrompt).toContain("story/pending_hooks.md#mentor-oath");
+      expect(userPrompt).toContain("Selected Hook Evidence");
+      expect(userPrompt).not.toContain("## Story Bible");
+      expect(userPrompt).not.toContain("Full bible should stay out of governed analyzer prompts");
+      expect(userPrompt).not.toContain("guild-route");
+    } finally {
+      await rm(bookDir, { recursive: true, force: true });
+    }
+  });
 });

@@ -1317,6 +1317,71 @@ describe("PipelineRunner", () => {
     }
   });
 
+  it("passes governed control inputs into final truth rebuild in v2 mode", async () => {
+    const { root, runner, state, bookId } = await createRunnerFixture({
+      inputGovernanceMode: "v2",
+    });
+
+    await Promise.all([
+      writeFile(join(state.bookDir(bookId), "story", "current_focus.md"), "# Current Focus\n\nBring focus back to the mentor conflict.\n", "utf-8"),
+      writeFile(join(state.bookDir(bookId), "story", "volume_outline.md"), "# Volume Outline\n\n## Chapter 1\nTrack the merchant guild trail.\n", "utf-8"),
+      writeFile(join(state.bookDir(bookId), "story", "current_state.md"), "# Current State\n\n- Lin Yue still hides the broken oath token.\n", "utf-8"),
+      writeFile(join(state.bookDir(bookId), "story", "story_bible.md"), "# Story Bible\n\n- The jade seal cannot be destroyed.\n", "utf-8"),
+      writeFile(join(state.bookDir(bookId), "story", "pending_hooks.md"), "# Pending Hooks\n\n- Why the mentor vanished after the trial.\n", "utf-8"),
+    ]);
+
+    vi.spyOn(WriterAgent.prototype, "writeChapter").mockResolvedValue(
+      createWriterOutput({
+        chapterNumber: 1,
+        content: "Original draft body.",
+        wordCount: "Original draft body.".length,
+      }),
+    );
+    vi.spyOn(ContinuityAuditor.prototype, "auditChapter")
+      .mockResolvedValueOnce(
+        createAuditResult({
+          passed: false,
+          issues: [CRITICAL_ISSUE],
+          summary: "needs revision",
+        }),
+      )
+      .mockResolvedValueOnce(
+        createAuditResult({
+          passed: true,
+          issues: [],
+          summary: "clean",
+        }),
+      );
+    vi.spyOn(ReviserAgent.prototype, "reviseChapter").mockResolvedValue(
+      createReviseOutput({
+        revisedContent: "Governed revised body.",
+        wordCount: "Governed revised body.".length,
+      }),
+    );
+    const analyzeChapter = vi.spyOn(ChapterAnalyzerAgent.prototype, "analyzeChapter").mockResolvedValue(
+      createAnalyzedOutput({
+        content: "Governed revised body.",
+        wordCount: "Governed revised body.".length,
+      }),
+    );
+
+    try {
+      await runner.writeNextChapter(bookId, 220);
+
+      expect(analyzeChapter.mock.calls[0]?.[0]).toMatchObject({
+        chapterIntent: expect.stringContaining("# Chapter Intent"),
+        contextPackage: expect.objectContaining({
+          selectedContext: expect.any(Array),
+        }),
+        ruleStack: expect.objectContaining({
+          activeOverrides: expect.any(Array),
+        }),
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("normalizes revised output once before re-audit when it leaves the target band", async () => {
     const { root, runner, bookId } = await createRunnerFixture();
     const writerDraft = "中段正文。".repeat(40);
@@ -2506,6 +2571,63 @@ describe("PipelineRunner", () => {
         "分析章节 1/1：第一章...",
         "完成。已导入 1 章，共 5字。下一章：2",
       ]));
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("passes governed control inputs into import replay analyzer in v2 mode", async () => {
+    const { root, runner, bookId } = await createRunnerFixture();
+
+    vi.spyOn(ArchitectAgent.prototype, "generateFoundationFromImport").mockResolvedValue({
+      storyBible: "# Story Bible\n\n- Keep the harbor search grounded in the missing captain thread.\n",
+      volumeOutline: "# Volume Outline\n\n## Volume 1\n- Chapter 1: Mara arrives at the harbor with the sealed letter.\n",
+      bookRules: "---\nversion: \"1.0\"\n---\n\n# Book Rules\n\n- Stay close to Mara's viewpoint.\n",
+      currentState: createStateCard({
+        chapter: 0,
+        location: "Harbor gate",
+        protagonistState: "Mara arrives carrying a sealed letter.",
+        goal: "Enter the harbor unnoticed.",
+        conflict: "The harbor watch is hunting the captain's courier.",
+      }),
+      pendingHooks: [
+        "# Pending Hooks",
+        "",
+        "| hook_id | start_chapter | type | status | last_advanced_chapter | expected_payoff | notes |",
+        "| --- | --- | --- | --- | --- | --- | --- |",
+        "| captain-letter | 1 | mystery | open | 0 | The captain's disappearance is explained. | The sealed letter points to the missing captain. |",
+        "",
+      ].join("\n"),
+    });
+
+    const analyzeChapter = vi.spyOn(ChapterAnalyzerAgent.prototype, "analyzeChapter").mockResolvedValue(
+      createAnalyzedOutput({
+        chapterNumber: 1,
+        title: "Prelude",
+        content: "A cold wind crossed the harbor.",
+        wordCount: countChapterLength("A cold wind crossed the harbor.", "en_words"),
+      }),
+    );
+    vi.spyOn(WriterAgent.prototype, "saveChapter").mockResolvedValue(undefined);
+    vi.spyOn(WriterAgent.prototype, "saveNewTruthFiles").mockResolvedValue(undefined);
+
+    try {
+      await runner.importChapters({
+        bookId,
+        chapters: [
+          { title: "Prelude", content: "A cold wind crossed the harbor." },
+        ],
+      });
+
+      expect(analyzeChapter.mock.calls[0]?.[0]).toMatchObject({
+        chapterIntent: expect.stringContaining("# Chapter Intent"),
+        contextPackage: expect.objectContaining({
+          selectedContext: expect.any(Array),
+        }),
+        ruleStack: expect.objectContaining({
+          activeOverrides: expect.any(Array),
+        }),
+      });
     } finally {
       await rm(root, { recursive: true, force: true });
     }

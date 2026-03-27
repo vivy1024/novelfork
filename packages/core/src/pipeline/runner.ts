@@ -1108,6 +1108,7 @@ export class PipelineRunner {
       output,
       finalContent,
       lengthSpec.countingMode,
+      reducedControlInput,
     );
     const longSpanFatigue = await analyzeLongSpanFatigue({
       bookDir,
@@ -1547,6 +1548,7 @@ ${matrix}`,
       for (let i = startFrom - 1; i < input.chapters.length; i++) {
         const ch = input.chapters[i]!;
         const chapterNumber = i + 1;
+        const governedInput = await this.prepareWriteInput(book, bookDir, chapterNumber);
 
         log?.info(this.localize(resolvedLanguage, {
           zh: `分析章节 ${chapterNumber}/${input.chapters.length}：${ch.title}...`,
@@ -1560,6 +1562,9 @@ ${matrix}`,
           chapterNumber,
           chapterContent: ch.content,
           chapterTitle: ch.title,
+          chapterIntent: governedInput.chapterIntent,
+          contextPackage: governedInput.contextPackage,
+          ruleStack: governedInput.ruleStack,
         });
 
         // Save chapter file + core truth files (state, ledger, hooks)
@@ -1648,6 +1653,11 @@ ${matrix}`,
     output: WriteChapterOutput,
     finalContent: string,
     countingMode: Parameters<typeof countChapterLength>[1],
+    reducedControlInput?: {
+      chapterIntent: string;
+      contextPackage: ContextPackage;
+      ruleStack: RuleStack;
+    },
   ): Promise<WriteChapterOutput> {
     if (finalContent === output.content) {
       return output;
@@ -1660,6 +1670,9 @@ ${matrix}`,
       chapterNumber,
       chapterContent: finalContent,
       chapterTitle: output.title,
+      chapterIntent: reducedControlInput?.chapterIntent,
+      contextPackage: reducedControlInput?.contextPackage,
+      ruleStack: reducedControlInput?.ruleStack,
     });
 
     return {
