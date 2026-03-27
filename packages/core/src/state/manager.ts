@@ -2,7 +2,7 @@ import { readFile, writeFile, mkdir, readdir, stat, unlink, open } from "node:fs
 import { join } from "node:path";
 import type { BookConfig } from "../models/book.js";
 import type { ChapterMeta } from "../models/chapter.js";
-import { bootstrapStructuredStateFromMarkdown } from "./state-bootstrap.js";
+import { bootstrapStructuredStateFromMarkdown, resolveDurableStoryProgress } from "./state-bootstrap.js";
 
 export class StateManager {
   constructor(private readonly projectRoot: string) {}
@@ -195,9 +195,18 @@ export class StateManager {
 
   async getNextChapterNumber(bookId: string): Promise<number> {
     const index = await this.loadChapterIndex(bookId);
-    if (index.length === 0) return 1;
-    const maxNum = Math.max(...index.map((ch) => ch.number));
-    return maxNum + 1;
+    const indexedChapter = index.length > 0
+      ? Math.max(...index.map((ch) => ch.number))
+      : 0;
+    const runtimeState = await bootstrapStructuredStateFromMarkdown({
+      bookDir: this.bookDir(bookId),
+      fallbackChapter: indexedChapter,
+    });
+    const durableChapter = await resolveDurableStoryProgress({
+      bookDir: this.bookDir(bookId),
+      fallbackChapter: indexedChapter,
+    });
+    return Math.max(indexedChapter, durableChapter, runtimeState.manifest.lastAppliedChapter) + 1;
   }
 
   async loadChapterIndex(bookId: string): Promise<ReadonlyArray<ChapterMeta>> {

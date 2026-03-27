@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   ChapterSummariesStateSchema,
@@ -18,6 +18,13 @@ export interface BootstrapStructuredStateResult {
   readonly manifest: StateManifest;
 }
 
+interface MarkdownBootstrapState {
+  readonly summariesState: ChapterSummariesState;
+  readonly hooksState: { readonly hooks: ReadonlyArray<StoredHook> };
+  readonly currentState: CurrentStateState;
+  readonly durableStoryProgress: number;
+}
+
 export async function bootstrapStructuredStateFromMarkdown(params: {
   readonly bookDir: string;
   readonly fallbackChapter?: number;
@@ -35,41 +42,52 @@ export async function bootstrapStructuredStateFromMarkdown(params: {
   const warnings: string[] = [];
   const existingManifest = await loadJsonIfValid(manifestPath, StateManifestSchema, warnings, "manifest.json");
   const language = existingManifest?.language ?? await resolveRuntimeLanguage(params.bookDir);
+  const markdownState = await loadMarkdownBootstrapState({
+    bookDir: params.bookDir,
+    storyDir,
+    fallbackChapter: params.fallbackChapter ?? 0,
+    warnings,
+  });
 
   const summariesState = await loadOrBootstrapSummaries({
     storyDir,
     statePath: summariesPath,
     createdFiles,
     warnings,
+    bootstrapState: markdownState.summariesState,
   });
   const hooksState = await loadOrBootstrapHooks({
     storyDir,
     statePath: hooksPath,
     createdFiles,
     warnings,
+    bootstrapState: markdownState.hooksState,
   });
-  const inferredFallbackChapter = Math.max(
-    params.fallbackChapter ?? 0,
-    maxSummaryChapter(summariesState),
-    maxHookChapter(hooksState.hooks),
-  );
   const currentState = await loadOrBootstrapCurrentState({
     storyDir,
     statePath: currentStatePath,
-    fallbackChapter: inferredFallbackChapter,
+    fallbackChapter: markdownState.durableStoryProgress,
     createdFiles,
     warnings,
+    bootstrapState: markdownState.currentState,
   });
+  const derivedProgress = Math.max(
+    markdownState.durableStoryProgress,
+    currentState.chapter,
+    maxSummaryChapter(summariesState),
+    maxHookChapter(hooksState.hooks),
+  );
+  if ((existingManifest?.lastAppliedChapter ?? 0) > derivedProgress) {
+    appendWarning(
+      warnings,
+      `manifest lastAppliedChapter normalized from ${existingManifest?.lastAppliedChapter ?? 0} to ${derivedProgress}`,
+    );
+  }
 
   const manifest = StateManifestSchema.parse({
     schemaVersion: 2,
     language,
-    lastAppliedChapter: Math.max(
-      existingManifest?.lastAppliedChapter ?? 0,
-      currentState.chapter,
-      maxSummaryChapter(summariesState),
-      maxHookChapter(hooksState.hooks),
-    ),
+    lastAppliedChapter: derivedProgress,
     projectionVersion: existingManifest?.projectionVersion ?? 1,
     migrationWarnings: uniqueStrings([
       ...(existingManifest?.migrationWarnings ?? []),
@@ -105,29 +123,21 @@ export async function rewriteStructuredStateFromMarkdown(params: {
   const warnings: string[] = [];
   const existingManifest = await loadJsonIfValid(manifestPath, StateManifestSchema, warnings, "manifest.json");
   const language = existingManifest?.language ?? await resolveRuntimeLanguage(params.bookDir);
-
-  const summariesMarkdown = await readFile(join(storyDir, "chapter_summaries.md"), "utf-8").catch(() => "");
-  const summariesState = ChapterSummariesStateSchema.parse({
-    rows: parseChapterSummariesMarkdown(summariesMarkdown),
+  const markdownState = await loadMarkdownBootstrapState({
+    bookDir: params.bookDir,
+    storyDir,
+    fallbackChapter: params.fallbackChapter ?? 0,
+    warnings,
   });
-
-  const hooksMarkdown = await readFile(join(storyDir, "pending_hooks.md"), "utf-8").catch(() => "");
-  const hooksState = parsePendingHooksStateMarkdown(hooksMarkdown, warnings);
-
-  const inferredFallbackChapter = Math.max(
-    params.fallbackChapter ?? 0,
-    maxSummaryChapter(summariesState),
-    maxHookChapter(hooksState.hooks),
-  );
-  const currentStateMarkdown = await readFile(join(storyDir, "current_state.md"), "utf-8").catch(() => "");
-  const currentState = parseCurrentStateStateMarkdown(currentStateMarkdown, inferredFallbackChapter, warnings);
+  const summariesState = markdownState.summariesState;
+  const hooksState = markdownState.hooksState;
+  const currentState = markdownState.currentState;
 
   const manifest = StateManifestSchema.parse({
     schemaVersion: 2,
     language,
     lastAppliedChapter: Math.max(
-      existingManifest?.lastAppliedChapter ?? 0,
-      inferredFallbackChapter,
+      markdownState.durableStoryProgress,
       currentState.chapter,
       maxSummaryChapter(summariesState),
       maxHookChapter(hooksState.hooks),
@@ -217,21 +227,31 @@ async function loadOrBootstrapCurrentState(params: {
   readonly fallbackChapter: number;
   readonly createdFiles: string[];
   readonly warnings: string[];
+  readonly bootstrapState?: CurrentStateState;
+  readonly forceBootstrapFromMarkdown?: boolean;
 }): Promise<CurrentStateState> {
-  const existing = await loadJsonIfValid(
-    params.statePath,
-    CurrentStateStateSchema,
-    params.warnings,
-    "current_state.json",
-  );
-  if (existing) {
-    return existing;
+  if (!params.forceBootstrapFromMarkdown) {
+    const existing = await loadJsonIfValid(
+      params.statePath,
+      CurrentStateStateSchema,
+      params.warnings,
+      "current_state.json",
+    );
+    if (existing) {
+      return existing;
+    }
   }
 
-  const markdown = await readFile(join(params.storyDir, "current_state.md"), "utf-8").catch(() => "");
-  const currentState = parseCurrentStateStateMarkdown(markdown, params.fallbackChapter, params.warnings);
+  const currentState = params.bootstrapState ?? await loadMarkdownCurrentState({
+    storyDir: params.storyDir,
+    fallbackChapter: params.fallbackChapter,
+    warnings: params.warnings,
+  });
+  const existed = await pathExists(params.statePath);
   await writeFile(params.statePath, JSON.stringify(currentState, null, 2), "utf-8");
-  params.createdFiles.push("current_state.json");
+  if (!existed) {
+    params.createdFiles.push("current_state.json");
+  }
   return currentState;
 }
 
@@ -240,21 +260,30 @@ async function loadOrBootstrapHooks(params: {
   readonly statePath: string;
   readonly createdFiles: string[];
   readonly warnings: string[];
+  readonly bootstrapState?: { readonly hooks: ReadonlyArray<StoredHook> };
+  readonly forceBootstrapFromMarkdown?: boolean;
 }) {
-  const existing = await loadJsonIfValid(
-    params.statePath,
-    HooksStateSchema,
-    params.warnings,
-    "hooks.json",
-  );
-  if (existing) {
-    return existing;
+  if (!params.forceBootstrapFromMarkdown) {
+    const existing = await loadJsonIfValid(
+      params.statePath,
+      HooksStateSchema,
+      params.warnings,
+      "hooks.json",
+    );
+    if (existing) {
+      return existing;
+    }
   }
 
-  const markdown = await readFile(join(params.storyDir, "pending_hooks.md"), "utf-8").catch(() => "");
-  const hooksState = parsePendingHooksStateMarkdown(markdown, params.warnings);
+  const hooksState = params.bootstrapState ?? await loadMarkdownHooksState({
+    storyDir: params.storyDir,
+    warnings: params.warnings,
+  });
+  const existed = await pathExists(params.statePath);
   await writeFile(params.statePath, JSON.stringify(hooksState, null, 2), "utf-8");
-  params.createdFiles.push("hooks.json");
+  if (!existed) {
+    params.createdFiles.push("hooks.json");
+  }
   return hooksState;
 }
 
@@ -263,31 +292,34 @@ async function loadOrBootstrapSummaries(params: {
   readonly statePath: string;
   readonly createdFiles: string[];
   readonly warnings: string[];
+  readonly bootstrapState?: ChapterSummariesState;
+  readonly forceBootstrapFromMarkdown?: boolean;
 }): Promise<ChapterSummariesState> {
-  const existing = await loadJsonIfValid(
-    params.statePath,
-    ChapterSummariesStateSchema,
-    params.warnings,
-    "chapter_summaries.json",
-  );
-  if (existing) {
-    // Always deduplicate even when loading from JSON (stale data may have duplicates)
-    const dedupedExisting = deduplicateSummaryRows(existing.rows);
-    if (dedupedExisting.length < existing.rows.length) {
-      const repaired = ChapterSummariesStateSchema.parse({ rows: dedupedExisting });
-      await writeFile(params.statePath, JSON.stringify(repaired, null, 2), "utf-8");
-      return repaired;
+  if (!params.forceBootstrapFromMarkdown) {
+    const existing = await loadJsonIfValid(
+      params.statePath,
+      ChapterSummariesStateSchema,
+      params.warnings,
+      "chapter_summaries.json",
+    );
+    if (existing) {
+      // Always deduplicate even when loading from JSON (stale data may have duplicates)
+      const dedupedExisting = deduplicateSummaryRows(existing.rows);
+      if (dedupedExisting.length < existing.rows.length) {
+        const repaired = ChapterSummariesStateSchema.parse({ rows: dedupedExisting });
+        await writeFile(params.statePath, JSON.stringify(repaired, null, 2), "utf-8");
+        return repaired;
+      }
+      return existing;
     }
-    return existing;
   }
 
-  const markdown = await readFile(join(params.storyDir, "chapter_summaries.md"), "utf-8").catch(() => "");
-  const rawRows = parseChapterSummariesMarkdown(markdown);
-  const summariesState = ChapterSummariesStateSchema.parse({
-    rows: deduplicateSummaryRows(rawRows),
-  });
+  const summariesState = params.bootstrapState ?? await loadMarkdownSummariesState(params.storyDir);
+  const existed = await pathExists(params.statePath);
   await writeFile(params.statePath, JSON.stringify(summariesState, null, 2), "utf-8");
-  params.createdFiles.push("chapter_summaries.json");
+  if (!existed) {
+    params.createdFiles.push("chapter_summaries.json");
+  }
   return summariesState;
 }
 
@@ -403,6 +435,20 @@ async function resolveRuntimeLanguage(bookDir: string): Promise<"zh" | "en"> {
   }
 }
 
+export async function resolveDurableStoryProgress(params: {
+  readonly bookDir: string;
+  readonly fallbackChapter?: number;
+}): Promise<number> {
+  const storyDir = join(params.bookDir, "story");
+  const state = await loadMarkdownBootstrapState({
+    bookDir: params.bookDir,
+    storyDir,
+    fallbackChapter: params.fallbackChapter ?? 0,
+    warnings: [],
+  });
+  return state.durableStoryProgress;
+}
+
 async function loadJsonIfValid<T>(
   path: string,
   schema: { parse(value: unknown): T },
@@ -418,6 +464,99 @@ async function loadJsonIfValid<T>(
       appendWarning(warnings, `${fileLabel} invalid, rebuilt from markdown`);
     }
     return null;
+  }
+}
+
+async function loadMarkdownBootstrapState(params: {
+  readonly bookDir: string;
+  readonly storyDir: string;
+  readonly fallbackChapter: number;
+  readonly warnings: string[];
+}): Promise<MarkdownBootstrapState> {
+  const summariesState = await loadMarkdownSummariesState(params.storyDir);
+  const hooksState = await loadMarkdownHooksState({
+    storyDir: params.storyDir,
+    warnings: params.warnings,
+  });
+  const durableArtifactProgress = await maxDurableArtifactChapter(params.bookDir);
+  const inferredFallbackChapter = Math.max(
+    params.fallbackChapter,
+    durableArtifactProgress,
+    maxSummaryChapter(summariesState),
+    maxHookChapter(hooksState.hooks),
+  );
+  const currentState = await loadMarkdownCurrentState({
+    storyDir: params.storyDir,
+    fallbackChapter: inferredFallbackChapter,
+    warnings: params.warnings,
+  });
+
+  return {
+    summariesState,
+    hooksState,
+    currentState,
+    durableStoryProgress: Math.max(
+      inferredFallbackChapter,
+      currentState.chapter,
+    ),
+  };
+}
+
+async function loadMarkdownSummariesState(storyDir: string): Promise<ChapterSummariesState> {
+  const markdown = await readFile(join(storyDir, "chapter_summaries.md"), "utf-8").catch(() => "");
+  const rawRows = parseChapterSummariesMarkdown(markdown);
+  return ChapterSummariesStateSchema.parse({
+    rows: deduplicateSummaryRows(rawRows),
+  });
+}
+
+async function loadMarkdownHooksState(params: {
+  readonly storyDir: string;
+  readonly warnings: string[];
+}) {
+  const markdown = await readFile(join(params.storyDir, "pending_hooks.md"), "utf-8").catch(() => "");
+  return parsePendingHooksStateMarkdown(markdown, params.warnings);
+}
+
+async function loadMarkdownCurrentState(params: {
+  readonly storyDir: string;
+  readonly fallbackChapter: number;
+  readonly warnings: string[];
+}): Promise<CurrentStateState> {
+  const markdown = await readFile(join(params.storyDir, "current_state.md"), "utf-8").catch(() => "");
+  return parseCurrentStateStateMarkdown(markdown, params.fallbackChapter, params.warnings);
+}
+
+async function maxDurableArtifactChapter(bookDir: string): Promise<number> {
+  const chaptersDir = join(bookDir, "chapters");
+  const indexPath = join(chaptersDir, "index.json");
+  const [indexChapter, fileChapter] = await Promise.all([
+    readFile(indexPath, "utf-8")
+      .then((raw) => {
+        const parsed = JSON.parse(raw) as Array<{ number?: unknown }>;
+        return parsed.reduce((max, entry) => (
+          typeof entry?.number === "number"
+            ? Math.max(max, entry.number)
+            : max
+        ), 0);
+      })
+      .catch(() => 0),
+    readdir(chaptersDir)
+      .then((entries) => entries.reduce((max, entry) => {
+        const match = entry.match(/^(\d+)_/);
+        return match ? Math.max(max, parseInt(match[1]!, 10)) : max;
+      }, 0))
+      .catch(() => 0),
+  ]);
+  return Math.max(indexChapter, fileChapter);
+}
+
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await stat(path);
+    return true;
+  } catch {
+    return false;
   }
 }
 

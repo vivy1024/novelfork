@@ -169,6 +169,61 @@ describe("StateManager", () => {
       const next = await manager.getNextChapterNumber("book-y");
       expect(next).toBe(2);
     });
+
+    it("uses durable story progress when chapter index lags behind persisted chapter files", async () => {
+      const bookId = "stale-index-book";
+      const bookDir = manager.bookDir(bookId);
+      const chaptersDir = join(bookDir, "chapters");
+      const storyDir = join(bookDir, "story");
+      await mkdir(chaptersDir, { recursive: true });
+      await mkdir(storyDir, { recursive: true });
+      await Promise.all([
+        manager.saveChapterIndex(bookId, [
+          {
+            number: 1,
+            title: "Ch1",
+            status: "ready-for-review",
+            wordCount: 3000,
+            createdAt: "2026-01-01T00:00:00Z",
+            updatedAt: "2026-01-01T00:00:00Z",
+            auditIssues: [],
+            lengthWarnings: [],
+          },
+          {
+            number: 2,
+            title: "Ch2",
+            status: "ready-for-review",
+            wordCount: 3000,
+            createdAt: "2026-01-02T00:00:00Z",
+            updatedAt: "2026-01-02T00:00:00Z",
+            auditIssues: [],
+            lengthWarnings: [],
+          },
+        ]),
+        writeFile(
+          join(chaptersDir, "0003_Lantern_Vault.md"),
+          "# Chapter 3: Lantern Vault\n\nPersisted body.",
+          "utf-8",
+        ),
+        writeFile(
+          join(storyDir, "current_state.md"),
+          [
+            "# Current State",
+            "",
+            "| Field | Value |",
+            "| --- | --- |",
+            "| Current Chapter | 3 |",
+            "| Current Goal | Enter the vault without alerting the wardens |",
+            "",
+          ].join("\n"),
+          "utf-8",
+        ),
+      ]);
+
+      const next = await manager.getNextChapterNumber(bookId);
+
+      expect(next).toBe(4);
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -653,6 +708,128 @@ describe("StateManager", () => {
       ) as { lastAppliedChapter: number };
 
       expect(manifest.lastAppliedChapter).toBe(1);
+    });
+
+    it("repairs poisoned manifest chapter when it runs ahead of persisted runtime state", async () => {
+      const bookId = "runtime-state-poisoned-book";
+      const storyDir = join(manager.bookDir(bookId), "story");
+      const stateDir = join(storyDir, "state");
+      await mkdir(stateDir, { recursive: true });
+      await Promise.all([
+        writeFile(
+          join(storyDir, "current_state.md"),
+          [
+            "# Current State",
+            "",
+            "| Field | Value |",
+            "| --- | --- |",
+            "| Current Chapter | 2 |",
+            "| Current Goal | Reach the ledger vault |",
+            "",
+          ].join("\n"),
+          "utf-8",
+        ),
+        writeFile(
+          join(storyDir, "pending_hooks.md"),
+          [
+            "| hook_id | start_chapter | type | status | last_advanced | expected_payoff | notes |",
+            "| --- | --- | --- | --- | --- | --- | --- |",
+            "| vault-ledger | 1 | mystery | progressing | 2 | 4 | Ledger trail remains open |",
+            "",
+          ].join("\n"),
+          "utf-8",
+        ),
+        writeFile(
+          join(storyDir, "chapter_summaries.md"),
+          [
+            "| chapter | title | characters | events | stateChanges | hookActivity | mood | chapterType |",
+            "| --- | --- | --- | --- | --- | --- | --- | --- |",
+            "| 1 | Harbor Ash | Lin Yue | Survives the harbor fallout | Debt line opens | vault-ledger seeded | tense | opening |",
+            "| 2 | Lantern Wharf | Lin Yue | Tracks the ledger to the wharf | Goal narrows to the vault | vault-ledger advanced | wary | investigation |",
+            "",
+          ].join("\n"),
+          "utf-8",
+        ),
+        writeFile(join(stateDir, "manifest.json"), JSON.stringify({
+          schemaVersion: 2,
+          language: "en",
+          lastAppliedChapter: 3,
+          projectionVersion: 1,
+          migrationWarnings: [],
+        }, null, 2), "utf-8"),
+        writeFile(join(stateDir, "current_state.json"), JSON.stringify({
+          chapter: 2,
+          facts: [
+            {
+              subject: "protagonist",
+              predicate: "Current Goal",
+              object: "Reach the ledger vault",
+              validFromChapter: 2,
+              validUntilChapter: null,
+              sourceChapter: 2,
+            },
+          ],
+        }, null, 2), "utf-8"),
+        writeFile(join(stateDir, "hooks.json"), JSON.stringify({
+          hooks: [
+            {
+              hookId: "vault-ledger",
+              startChapter: 1,
+              type: "mystery",
+              status: "progressing",
+              lastAdvancedChapter: 2,
+              expectedPayoff: "4",
+              notes: "Persisted structured hook state",
+            },
+          ],
+        }, null, 2), "utf-8"),
+        writeFile(join(stateDir, "chapter_summaries.json"), JSON.stringify({
+          rows: [
+            {
+              chapter: 1,
+              title: "Harbor Ash",
+              characters: "Lin Yue",
+              events: "Survives the harbor fallout",
+              stateChanges: "Debt line opens",
+              hookActivity: "vault-ledger seeded",
+              mood: "tense",
+              chapterType: "opening",
+            },
+            {
+              chapter: 2,
+              title: "Lantern Wharf",
+              characters: "Lin Yue",
+              events: "Tracks the ledger to the wharf",
+              stateChanges: "Goal narrows to the vault",
+              hookActivity: "vault-ledger advanced",
+              mood: "wary",
+              chapterType: "investigation",
+            },
+          ],
+        }, null, 2), "utf-8"),
+      ]);
+
+      await manager.ensureRuntimeState(bookId, 2);
+
+      const manifest = JSON.parse(
+        await readFile(join(stateDir, "manifest.json"), "utf-8"),
+      ) as { lastAppliedChapter: number };
+      const currentState = JSON.parse(
+        await readFile(join(stateDir, "current_state.json"), "utf-8"),
+      ) as { chapter: number; facts: Array<{ object: string }> };
+      const hooks = JSON.parse(
+        await readFile(join(stateDir, "hooks.json"), "utf-8"),
+      ) as { hooks: Array<{ lastAdvancedChapter: number }> };
+      const summaries = JSON.parse(
+        await readFile(join(stateDir, "chapter_summaries.json"), "utf-8"),
+      ) as { rows: Array<{ chapter: number; title: string }> };
+
+      expect(manifest.lastAppliedChapter).toBe(2);
+      expect(currentState.chapter).toBe(2);
+      expect(currentState.facts[0]?.object).toBe("Reach the ledger vault");
+      expect(hooks.hooks[0]?.lastAdvancedChapter).toBe(2);
+      expect(summaries.rows.map((row) => row.chapter)).toEqual([1, 2]);
+      expect(summaries.rows.at(-1)?.title).toBe("Lantern Wharf");
     });
   });
 });
