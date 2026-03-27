@@ -2,7 +2,19 @@
   "name": "inkos",
   "version": "0.6.1",
   "private": true,
-  "description": "Multi-agent novel production system",
+  "description": "Autonomous AI novel writing CLI agent — 10-agent pipeline that writes, audits, and revises novels with continuity tracking",
+  "keywords": [
+    "ai-novel-writing",
+    "ai-writing-agent",
+    "novel-generator",
+    "autonomous-writing",
+    "litrpg",
+    "progression-fantasy",
+    "multi-agent",
+    "creative-writing-ai",
+    "openclaw-skill",
+    "cli"
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",

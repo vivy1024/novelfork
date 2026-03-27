@@ -1,7 +1,24 @@
 {
   "name": "@actalk/inkos",
   "version": "0.6.1",
-  "description": "InkOS CLI — multi-agent novel production system",
+  "description": "Autonomous AI novel writing CLI agent — 10-agent pipeline that writes, audits, and revises novels with continuity tracking. Supports LitRPG, Progression Fantasy, Isekai, Romantasy, Sci-Fi and more.",
+  "keywords": [
+    "ai-novel-writing",
+    "ai-writing-agent",
+    "novel-generator",
+    "autonomous-writing",
+    "litrpg",
+    "progression-fantasy",
+    "ai-fiction",
+    "multi-agent",
+    "creative-writing-ai",
+    "novel-writing-tool",
+    "ai-storytelling",
+    "openclaw-skill",
+    "cli",
+    "epub",
+    "continuity-tracking"
+  ],
   "type": "module",
   "bin": {
     "inkos": "dist/index.js"

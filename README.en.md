@@ -3,7 +3,7 @@
   <img src="assets/inkos-text.svg" width="240" height="65" alt="InkOS">
 </p>
 
-<h1 align="center">Autonomous Novel Writing Cli AI Agent</h1>
+<h1 align="center">Autonomous Novel Writing CLI AI Agent</h1>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/@actalk/inkos"><img src="https://img.shields.io/npm/v/@actalk/inkos.svg?color=cb3837&logo=npm" alt="npm version"></a>
@@ -18,9 +18,9 @@
 
 ---
 
-Open-source CLI agent that autonomously writes, audits, and revises novels — with human review gates that keep you in control. Supports LitRPG, Progression Fantasy, Isekai, Romantasy, Sci-Fi, and more. Continuation, spinoff, fanfic, and style imitation workflows built in.
+Open-source AI agent that autonomously writes, audits, and revises novels from the command line. A pipeline of 10 specialized AI agents handles planning, writing, fact-extraction, state management, continuity auditing (33 dimensions), and revision — with human review gates that keep you in control.
 
-**Native English novel writing now supported！** — 10 built-in English genre profiles with dedicated pacing rules, fatigue word lists, and audit dimensions. Set `--lang en` and go.
+Supports LitRPG, Progression Fantasy, Isekai, Romantasy, Sci-Fi, and 10 more genres. Continuation, spinoff, fanfic, and style imitation workflows built in. Published as an [OpenClaw](https://clawhub.ai) skill.
 
 ## Quick Start
 
@@ -100,23 +100,6 @@ inkos config show-models        # View current routing
 
 Agents without explicit overrides fall back to the global model.
 
-### v0.6 Update
-
-**Structured State + Hook Governance + Length Governance**
-
-Addresses three systemic long-form writing problems: **context bloat after 20+ chapters causing slowdowns and 400 errors** (Settler full injection → JSON delta + selective retrieval), **hooks only accumulate, never resolve, ~0% payoff rate** (Planner scheduling + Settler blind spot fix + audit debt tracking), **word count deviation 50%+ and normalizer destroying chapters** (LengthSpec + safety net).
-
-- Pipeline upgraded to 10 agents: adds Planner, Composer, Observer, Reflector, Normalizer
-- Truth files moved to `story/state/*.json` (Zod validated); Settler outputs JSON delta instead of full markdown; legacy books auto-migrate
-- SQLite temporal memory database on Node 22+ for relevance-based retrieval
-- Planner generates `hookAgenda` to schedule hook advancement and payoff; Settler working set expanded to cover dormant debt
-- New `mention` semantics prevents fake hook advancement; `analyzeHookHealth` audits hook debt; `evaluateHookAdmission` blocks duplicate hooks
-- Length governance: `LengthSpec` + Normalizer single-pass correction with safety net against destructive normalization
-- User `INKOS_LLM_MAX_TOKENS` acts as global cap; reserved keys in `llm.extra` auto-stripped
-- Cross-chapter repetition detection, dialogue-driven guidance, English variance brief, multi-character scene resistance
-- Chapter summary dedup, ESM node:sqlite fix, consolidate full-width parenthesis support
-- Bilingual CLI output and logging
-
 ### Write Your First Book
 
 English is the default for English genre profiles. Pick a genre and go:
@@ -163,11 +146,25 @@ Every genre includes a **fatigue word list** (e.g., "delve", "tapestry", "testam
 
 ## Key Features
 
+### 10-Agent Pipeline
+
+Each chapter is produced by 10 specialized AI agents in sequence: Radar → Planner → Composer → Architect → Writer → Observer → Reflector → Normalizer → Continuity Auditor → Reviser. Each agent has one job. Failed audits trigger automatic revise → re-audit loops until all critical issues are resolved.
+
 ### 33-Dimension Audit + De-AI-ification
 
-The Continuity Auditor checks every draft across 33 dimensions: character memory, resource continuity, hook payoff, outline adherence, narrative pacing, emotional arcs, and more. Built-in AI-tell detection automatically catches "LLM voice" — overused words, monotonous sentence patterns, excessive summarization. Failed audits trigger an automatic revision loop.
+The Continuity Auditor agent checks every draft across 33 dimensions: character memory, resource continuity, hook payoff, outline adherence, narrative pacing, emotional arcs, and more. Built-in AI-tell detection automatically catches "LLM voice" — overused words, monotonous sentence patterns, excessive summarization. Failed audits trigger an automatic revision loop.
 
 De-AI-ification rules are baked into the Writer agent's prompts: fatigue word lists, banned patterns, style fingerprint injection — reducing AI traces at the source. `revise --mode anti-detect` runs dedicated anti-detection rewriting on existing chapters.
+
+### Structured State + Temporal Memory (v0.6)
+
+Truth files are stored as Zod-validated JSON (`story/state/*.json`). The Reflector agent outputs JSON deltas — not full markdown rewrites — applied immutably with structural validation. Corrupted data is rejected, not propagated.
+
+On Node 22+, a SQLite temporal memory database (`story/memory.db`) enables relevance-based retrieval of historical facts, hooks, and chapter summaries — preventing context bloat that causes slowdowns and 400 errors after 20+ chapters.
+
+### Hook Governance (v0.6)
+
+The Planner agent generates a `hookAgenda` to schedule hook advancement and payoff. `analyzeHookHealth` audits hook debt, `evaluateHookAdmission` blocks duplicate hooks, and `mention` semantics prevents fake advancement. Hooks now actually resolve instead of accumulating to 40+ open threads.
 
 ### Style Cloning
 
