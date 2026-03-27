@@ -78,9 +78,10 @@ export function analyzeHookHealth(params: {
 
   if (params.delta) {
     const existingHookIds = new Set(params.existingHookIds ?? []);
+    const resultingHookIds = new Set(params.hooks.map((hook) => hook.hookId));
     const newHookIds = params.delta.hookOps.upsert
       .map((hook) => hook.hookId)
-      .filter((hookId) => !existingHookIds.has(hookId));
+      .filter((hookId) => !existingHookIds.has(hookId) && resultingHookIds.has(hookId));
 
     if (newHookIds.length >= newHookBurstThreshold && params.delta.hookOps.resolve.length === 0) {
       issues.push(warning(

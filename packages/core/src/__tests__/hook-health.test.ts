@@ -112,4 +112,30 @@ describe("analyzeHookHealth", () => {
 
     expect(issues.some((issue) => issue.description.includes("Opened 2 new hooks"))).toBe(true);
   });
+
+  it("does not count absorbed duplicate-family upserts as genuinely new hooks", () => {
+    const issues = analyzeHookHealth({
+      language: "en",
+      chapterNumber: 20,
+      hooks: [
+        createHook({ hookId: "old-debt", lastAdvancedChapter: 20 }),
+      ],
+      delta: createDelta({
+        chapter: 20,
+        hookOps: {
+          upsert: [
+            createHook({ hookId: "duplicate-restated", lastAdvancedChapter: 20 }),
+            createHook({ hookId: "second-duplicate", lastAdvancedChapter: 20 }),
+          ],
+          mention: [],
+          resolve: [],
+          defer: [],
+        },
+      }),
+      existingHookIds: ["old-debt"],
+      newHookBurstThreshold: 2,
+    });
+
+    expect(issues.some((issue) => issue.description.includes("Opened 2 new hooks"))).toBe(false);
+  });
 });

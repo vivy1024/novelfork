@@ -6,6 +6,35 @@ import { ProjectConfigSchema, type ProjectConfig } from "../models/project.js";
 export const GLOBAL_CONFIG_DIR = join(homedir(), ".inkos");
 export const GLOBAL_ENV_PATH = join(GLOBAL_CONFIG_DIR, ".env");
 
+export function isApiKeyOptionalForEndpoint(params: {
+  readonly provider?: string | undefined;
+  readonly baseUrl?: string | undefined;
+}): boolean {
+  if (params.provider === "anthropic") {
+    return false;
+  }
+  if (!params.baseUrl) {
+    return false;
+  }
+
+  try {
+    const url = new URL(params.baseUrl);
+    const hostname = url.hostname.toLowerCase();
+
+    return (
+      hostname === "localhost"
+      || hostname === "127.0.0.1"
+      || hostname === "::1"
+      || hostname === "0.0.0.0"
+      || hostname === "host.docker.internal"
+      || hostname.endsWith(".local")
+      || isPrivateIpv4(hostname)
+    );
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Load project config from inkos.json with .env overrides.
  * Shared by CLI and Studio — single source of truth for config loading.
@@ -73,7 +102,11 @@ export async function loadProjectConfig(
 
   // API key ONLY from env — never stored in inkos.json
   const apiKey = env.INKOS_LLM_API_KEY;
-  if (!apiKey && options?.requireApiKey !== false) {
+  const provider = typeof llm.provider === "string" ? llm.provider : undefined;
+  const baseUrl = typeof llm.baseUrl === "string" ? llm.baseUrl : undefined;
+  const apiKeyOptional = isApiKeyOptionalForEndpoint({ provider, baseUrl });
+
+  if (!apiKey && options?.requireApiKey !== false && !apiKeyOptional) {
     throw new Error(
       "INKOS_LLM_API_KEY not set. Run 'inkos config set-global' or add it to project .env file.",
     );
@@ -92,4 +125,16 @@ export async function loadProjectConfig(
   llm.apiKey = apiKey ?? "";
 
   return ProjectConfigSchema.parse(config);
+}
+
+function isPrivateIpv4(hostname: string): boolean {
+  const parts = hostname.split(".").map((segment) => Number.parseInt(segment, 10));
+  if (parts.length !== 4 || parts.some((part) => Number.isNaN(part) || part < 0 || part > 255)) {
+    return false;
+  }
+
+  if (parts[0] === 10) return true;
+  if (parts[0] === 192 && parts[1] === 168) return true;
+  if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
+  return false;
 }

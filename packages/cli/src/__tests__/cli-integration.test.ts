@@ -25,12 +25,12 @@ function run(args: string[], options?: { env?: Record<string, string> }): string
   });
 }
 
-function runStderr(args: string[]): { stdout: string; stderr: string; exitCode: number } {
+function runStderr(args: string[], options?: { env?: Record<string, string> }): { stdout: string; stderr: string; exitCode: number } {
   try {
     const stdout = execFileSync("node", [cliEntry, ...args], {
       cwd: projectDir,
       encoding: "utf-8",
-      env: { ...process.env, HOME: projectDir },
+      env: { ...process.env, HOME: projectDir, ...options?.env },
       timeout: 10_000,
     });
     return { stdout, stderr: "", exitCode: 0 };
@@ -309,6 +309,41 @@ describe("CLI integration", () => {
 
       await expect(readFile(join(projectDir, ".nvmrc"), "utf-8")).resolves.toBe("22\n");
       await expect(readFile(join(projectDir, ".node-version"), "utf-8")).resolves.toBe("22\n");
+    });
+
+    it("treats localhost OpenAI-compatible endpoints as API-key optional", async () => {
+      await stat(join(projectDir, "inkos.json")).catch(() => {
+        run(["init"]);
+      });
+      const configPath = join(projectDir, "inkos.json");
+      const envPath = join(projectDir, ".env");
+      const originalConfig = await readFile(configPath, "utf-8");
+      const originalEnv = await readFile(envPath, "utf-8");
+
+      try {
+        const config = JSON.parse(originalConfig);
+        config.llm.provider = "openai";
+        config.llm.baseUrl = "http://127.0.0.1:11434/v1";
+        config.llm.model = "gpt-oss:20b";
+        await writeFile(configPath, JSON.stringify(config, null, 2), "utf-8");
+        await writeFile(envPath, [
+          "INKOS_LLM_PROVIDER=openai",
+          "INKOS_LLM_BASE_URL=http://127.0.0.1:11434/v1",
+          "INKOS_LLM_MODEL=gpt-oss:20b",
+          "",
+        ].join("\n"), "utf-8");
+
+        const { stdout } = runStderr(["doctor"], {
+          env: { INKOS_LLM_API_KEY: "" },
+        });
+        expect(stdout).toContain("LLM API Key");
+        expect(stdout).toContain("Optional for local/self-hosted endpoint");
+        expect(stdout).toContain("LLM Config");
+        expect(stdout).not.toContain("No LLM config available");
+      } finally {
+        await writeFile(configPath, originalConfig, "utf-8");
+        await writeFile(envPath, originalEnv, "utf-8");
+      }
     });
   });
 

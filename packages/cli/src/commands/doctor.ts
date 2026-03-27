@@ -75,15 +75,31 @@ export const doctorCommand = new Command("doctor")
 
     // 5. Check LLM API key (global + project .env)
     {
+      const { loadConfig } = await import("../utils.js");
       const { config: loadDotenv } = await import("dotenv");
       loadDotenv({ path: GLOBAL_ENV_PATH });
       loadDotenv({ path: join(root, ".env"), override: true });
+      const { isApiKeyOptionalForEndpoint } = await import("@actalk/inkos-core");
+      let provider = process.env.INKOS_LLM_PROVIDER;
+      let baseUrl = process.env.INKOS_LLM_BASE_URL;
+      try {
+        const config = await loadConfig({ requireApiKey: false });
+        provider = config.llm.provider;
+        baseUrl = config.llm.baseUrl;
+      } catch {
+        // Fall back to raw env inspection only.
+      }
       const apiKey = process.env.INKOS_LLM_API_KEY;
-      const hasKey = !!apiKey && apiKey.length > 10 && apiKey !== "your-api-key-here";
+      const apiKeyOptional = isApiKeyOptionalForEndpoint({ provider, baseUrl });
+      const hasKey = apiKeyOptional || (!!apiKey && apiKey.length > 10 && apiKey !== "your-api-key-here");
       checks.push({
         name: "LLM API Key",
         ok: hasKey,
-        detail: hasKey ? "Configured" : "Missing — run 'inkos config set-global' or add to project .env",
+        detail: apiKeyOptional
+          ? "Optional for local/self-hosted endpoint"
+          : hasKey
+            ? "Configured"
+            : "Missing — run 'inkos config set-global' or add to project .env",
       });
     }
 
@@ -103,7 +119,7 @@ export const doctorCommand = new Command("doctor")
 
     // 6. API connectivity test
     try {
-      const { createLLMClient, chatCompletion, LLMConfigSchema } = await import("@actalk/inkos-core");
+      const { createLLMClient, chatCompletion, LLMConfigSchema, isApiKeyOptionalForEndpoint } = await import("@actalk/inkos-core");
       const { loadConfig } = await import("../utils.js");
 
       let llmConfig;
@@ -115,11 +131,15 @@ export const doctorCommand = new Command("doctor")
         const { config: loadDotenv } = await import("dotenv");
         loadDotenv({ path: GLOBAL_ENV_PATH });
         const env = process.env;
-        if (env.INKOS_LLM_API_KEY && env.INKOS_LLM_BASE_URL && env.INKOS_LLM_MODEL) {
+        const apiKeyOptional = isApiKeyOptionalForEndpoint({
+          provider: env.INKOS_LLM_PROVIDER,
+          baseUrl: env.INKOS_LLM_BASE_URL,
+        });
+        if ((env.INKOS_LLM_API_KEY || apiKeyOptional) && env.INKOS_LLM_BASE_URL && env.INKOS_LLM_MODEL) {
           llmConfig = LLMConfigSchema.parse({
             provider: env.INKOS_LLM_PROVIDER ?? "custom",
             baseUrl: env.INKOS_LLM_BASE_URL,
-            apiKey: env.INKOS_LLM_API_KEY,
+            apiKey: env.INKOS_LLM_API_KEY ?? "",
             model: env.INKOS_LLM_MODEL,
           });
         }
@@ -158,7 +178,7 @@ export const doctorCommand = new Command("doctor")
         hints.push("baseUrl 可能不正确，检查 INKOS_LLM_BASE_URL 是否包含完整路径（如 /v1）");
       }
       if (errMsg.includes("400")) {
-        hints.push("尝试在 inkos.json 中设置 \"stream\": false");
+        hints.push("检查提供方文档，确认该接口要求 stream=true、stream=false，还是根本不支持 stream");
         hints.push("检查模型名称是否正确（INKOS_LLM_MODEL）");
       }
       if (errMsg.includes("401")) {

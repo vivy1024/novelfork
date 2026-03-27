@@ -4,6 +4,7 @@ import {
   HooksStateSchema,
   RuntimeStateDeltaSchema,
   StateManifestSchema,
+  type HookRecord,
   type ChapterSummariesState,
   type CurrentStateState,
   type HooksState,
@@ -88,7 +89,13 @@ function applyHookOps(hooksState: HooksState, delta: RuntimeStateDelta): HooksSt
       });
 
       if (!admission.admit && admission.reason === "duplicate_family") {
-        throw new Error(`duplicate active hook family: ${hook.hookId} overlaps ${admission.matchedHookId}`);
+        const matchedHookId = admission.matchedHookId;
+        const existing = matchedHookId ? hooksById.get(matchedHookId) : undefined;
+        if (!existing) {
+          throw new Error(`duplicate active hook family: ${hook.hookId} overlaps ${admission.matchedHookId}`);
+        }
+        hooksById.set(existing.hookId, mergeDuplicateHookFamily(existing, hook));
+        continue;
       }
     }
 
@@ -126,6 +133,37 @@ function applyHookOps(hooksState: HooksState, delta: RuntimeStateDelta): HooksSt
       || left.hookId.localeCompare(right.hookId)
     )),
   };
+}
+
+function mergeDuplicateHookFamily(existing: HookRecord, incoming: HookRecord): HookRecord {
+  const expectedPayoff = preferRicherText(existing.expectedPayoff, incoming.expectedPayoff);
+  const notes = preferRicherText(existing.notes, incoming.notes);
+  const advanced = Math.max(existing.lastAdvancedChapter, incoming.lastAdvancedChapter);
+  const progressed = advanced > existing.lastAdvancedChapter;
+
+  return {
+    ...existing,
+    startChapter: Math.min(existing.startChapter, incoming.startChapter),
+    type: preferRicherText(existing.type, incoming.type),
+    status: progressed
+      ? "progressing"
+      : existing.status === "progressing" || incoming.status === "progressing"
+        ? "progressing"
+        : existing.status,
+    lastAdvancedChapter: advanced,
+    expectedPayoff,
+    notes,
+  };
+}
+
+function preferRicherText(primary: string, fallback: string): string {
+  const left = primary.trim();
+  const right = fallback.trim();
+
+  if (!left) return right;
+  if (!right) return left;
+  if (left === right) return left;
+  return right.length > left.length ? right : left;
 }
 
 function applyCurrentStatePatch(
