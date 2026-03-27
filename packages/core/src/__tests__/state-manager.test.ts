@@ -831,5 +831,54 @@ describe("StateManager", () => {
       expect(summaries.rows.map((row) => row.chapter)).toEqual([1, 2]);
       expect(summaries.rows.at(-1)?.title).toBe("Lantern Wharf");
     });
+
+    it("normalizes emphasized hook ids when bootstrapping structured runtime state from markdown", async () => {
+      const bookId = "runtime-state-emphasized-hook-book";
+      const storyDir = join(manager.bookDir(bookId), "story");
+      await mkdir(storyDir, { recursive: true });
+      await Promise.all([
+        writeFile(
+          join(storyDir, "current_state.md"),
+          [
+            "# Current State",
+            "",
+            "| Field | Value |",
+            "| --- | --- |",
+            "| Current Chapter | 3 |",
+            "| Current Goal | Follow the ledger trail |",
+            "",
+          ].join("\n"),
+          "utf-8",
+        ),
+        writeFile(
+          join(storyDir, "pending_hooks.md"),
+          [
+            "| hook_id | start_chapter | type | status | last_advanced | expected_payoff | notes |",
+            "| --- | --- | --- | --- | --- | --- | --- |",
+            "| **H009** | 3 | mystery | open | 3 | 9 | Bold markdown leaked into hook id |",
+            "",
+          ].join("\n"),
+          "utf-8",
+        ),
+        writeFile(
+          join(storyDir, "chapter_summaries.md"),
+          [
+            "| chapter | title | characters | events | stateChanges | hookActivity | mood | chapterType |",
+            "| --- | --- | --- | --- | --- | --- | --- | --- |",
+            "| 3 | Lantern Wharf | Lin Yue | Follows the ledger trail | Goal narrows to the ledger trail | H009 advanced | wary | investigation |",
+            "",
+          ].join("\n"),
+          "utf-8",
+        ),
+      ]);
+
+      await manager.ensureRuntimeState(bookId, 3);
+
+      const hooks = JSON.parse(
+        await readFile(join(manager.stateDir(bookId), "hooks.json"), "utf-8"),
+      ) as { hooks: Array<{ hookId: string }> };
+
+      expect(hooks.hooks.map((hook) => hook.hookId)).toEqual(["H009"]);
+    });
   });
 });

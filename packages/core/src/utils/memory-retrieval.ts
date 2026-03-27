@@ -9,7 +9,7 @@ import {
   type HookStatus,
 } from "../models/runtime-state.js";
 import { MemoryDB, type Fact, type StoredHook, type StoredSummary } from "../state/memory-db.js";
-import { bootstrapStructuredStateFromMarkdown } from "../state/state-bootstrap.js";
+import { bootstrapStructuredStateFromMarkdown, normalizeHookId } from "../state/state-bootstrap.js";
 import { collectStaleHookDebt } from "./hook-governance.js";
 
 export interface MemorySelection {
@@ -386,9 +386,9 @@ export function parsePendingHooksMarkdown(markdown: string): StoredHook[] {
 
   if (tableRows.length > 0) {
     return tableRows
-      .filter((row) => (row[0] ?? "").length > 0)
+      .filter((row) => normalizeHookId(row[0]).length > 0)
       .map((row) => ({
-        hookId: row[0] ?? "",
+        hookId: normalizeHookId(row[0]),
         startChapter: parseInteger(row[1]),
         type: row[2] ?? "",
         status: row[3] ?? "open",

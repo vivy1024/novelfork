@@ -1072,3 +1072,17 @@ describe("retrieveMemorySelection", () => {
     expect(result.hooks.map((hook) => hook.hookId)).not.toContain("old-seal");
   });
 });
+
+describe("parsePendingHooksMarkdown", () => {
+  it("strips markdown emphasis from hook ids in pending hooks tables", () => {
+    const hooks = memoryRetrieval.parsePendingHooksMarkdown([
+      "| hook_id | start_chapter | type | status | last_advanced | expected_payoff | notes |",
+      "| --- | --- | --- | --- | --- | --- | --- |",
+      "| **H009** | 3 | mystery | open | 3 | 9 | Bold markdown leaked into hook id |",
+      "| **H010** | 3 | threat | open | 3 | 6 | Another emphasized hook id |",
+      "",
+    ].join("\n"));
+
+    expect(hooks.map((hook) => hook.hookId)).toEqual(["H009", "H010"]);
+  });
+});

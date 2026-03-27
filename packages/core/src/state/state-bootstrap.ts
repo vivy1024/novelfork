@@ -185,9 +185,9 @@ export function parsePendingHooksMarkdown(markdown: string): StoredHook[] {
 
   if (tableRows.length > 0) {
     return tableRows
-      .filter((row) => (row[0] ?? "").length > 0)
+      .filter((row) => normalizeHookId(row[0]).length > 0)
       .map((row) => ({
-        hookId: row[0] ?? "",
+        hookId: normalizeHookId(row[0]),
         startChapter: parseInteger(row[1]),
         type: row[2] ?? "",
         status: row[3] ?? "open",
@@ -330,9 +330,9 @@ function parsePendingHooksStateMarkdown(markdown: string, warnings: string[]) {
   if (tableRows.length > 0) {
     return HooksStateSchema.parse({
       hooks: tableRows
-        .filter((row) => (row[0] ?? "").length > 0)
+        .filter((row) => normalizeHookId(row[0]).length > 0)
         .map((row) => {
-          const hookId = row[0] ?? "";
+          const hookId = normalizeHookId(row[0]);
           return {
             hookId,
             startChapter: parseIntegerWithWarning(row[1], warnings, `${hookId}:startChapter`),
@@ -579,6 +579,24 @@ function maxHookChapter(hooks: ReadonlyArray<StoredHook>): number {
     (max, hook) => Math.max(max, hook.lastAdvancedChapter),
     0,
   );
+}
+
+export function normalizeHookId(value: string | undefined): string {
+  let normalized = (value ?? "").trim();
+  let previous = "";
+  while (normalized && normalized !== previous) {
+    previous = normalized;
+    normalized = normalized
+      .replace(/^\[(.+?)\]\([^)]+\)$/u, "$1")
+      .replace(/^\*\*(.+)\*\*$/u, "$1")
+      .replace(/^__(.+)__$/u, "$1")
+      .replace(/^\*(.+)\*$/u, "$1")
+      .replace(/^_(.+)_$/u, "$1")
+      .replace(/^`(.+)`$/u, "$1")
+      .replace(/^~~(.+)~~$/u, "$1")
+      .trim();
+  }
+  return normalized;
 }
 
 function normalizeHookStatus(value: string | undefined, warnings: string[], hookId: string): HookStatus {
