@@ -183,7 +183,7 @@ function wrapLLMError(error: unknown, context?: { readonly baseUrl?: string; rea
       `  1. 模型名称不正确（检查 INKOS_LLM_MODEL）\n` +
       `  2. 提供方不支持某些参数（如 max_tokens、stream）\n` +
       `  3. 消息格式不兼容（部分提供方不支持 system role）\n` +
-      `  建议：在 inkos.json 中设置 "stream": false 试试，或检查提供方文档${ctxLine}`,
+      `  建议：检查提供方文档，确认该接口要求流式开启、流式关闭，还是根本不支持 stream${ctxLine}`,
     );
   }
   if (msg.includes("403")) {
@@ -215,6 +215,23 @@ function wrapLLMError(error: unknown, context?: { readonly baseUrl?: string; rea
     );
   }
   return error instanceof Error ? error : new Error(msg);
+}
+
+function wrapStreamRequiredError(
+  streamError: unknown,
+  syncError: unknown,
+  context?: { readonly baseUrl?: string; readonly model?: string },
+): Error {
+  const ctxLine = context
+    ? `\n  (baseUrl: ${context.baseUrl}, model: ${context.model})`
+    : "";
+  return new Error(
+    `API 提供方要求使用流式请求（stream:true），不能回退到同步模式。` +
+    `\n  这次失败不是模型名错误，而是前一次流式请求先失败了，随后同步回退又被提供方拒绝。` +
+    `\n  建议：保持 stream:true，并检查该提供方/代理的 SSE 流是否稳定。` +
+    `\n  原始流式错误：${String(streamError)}` +
+    `\n  同步回退错误：${String(syncError)}${ctxLine}`,
+  );
 }
 
 // === Simple Chat (used by all agents via BaseAgent.chat()) ===
@@ -276,6 +293,9 @@ export async function chatCompletion(
           }
           return await chatCompletionOpenAIChatSync(client._openai!, model, messages, resolved, options?.webSearch);
         } catch (syncError) {
+          if (isStreamRequiredError(syncError)) {
+            throw wrapStreamRequiredError(error, syncError, errorCtx);
+          }
           throw wrapLLMError(syncError, errorCtx);
         }
       }
@@ -300,6 +320,15 @@ function isLikelyStreamError(error: unknown): boolean {
     msg.includes("terminated") ||
     msg.includes("econnreset") ||
     (msg.includes("400") && !msg.includes("content"))
+  );
+}
+
+function isStreamRequiredError(error: unknown): boolean {
+  const msg = String(error).toLowerCase();
+  return (
+    msg.includes("stream must be set to true") ||
+    (msg.includes("stream") && msg.includes("must be set to true")) ||
+    (msg.includes("stream") && msg.includes("required"))
   );
 }
 
