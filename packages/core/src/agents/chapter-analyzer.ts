@@ -3,7 +3,7 @@ import type { BookConfig } from "../models/book.js";
 import type { GenreProfile } from "../models/genre-profile.js";
 import { readGenreProfile, readBookRules } from "./rules-reader.js";
 import { parseWriterOutput, type ParsedWriterOutput } from "./writer-parser.js";
-import { resolveLengthCountingMode } from "../utils/length-metrics.js";
+import { countChapterLength, resolveLengthCountingMode } from "../utils/length-metrics.js";
 import { retrieveMemorySelection } from "../utils/memory-retrieval.js";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -91,6 +91,8 @@ export class ChapterAnalyzerAgent extends BaseAgent {
 
     const countingMode = resolveLengthCountingMode(book.language ?? genreProfile.language);
     const output = parseWriterOutput(chapterNumber, response.content, genreProfile, countingMode);
+    const canonicalContent = chapterContent;
+    const canonicalWordCount = countChapterLength(canonicalContent, countingMode);
 
     // If LLM didn't return a title, use the one from input or derive from chapter number
     if (
@@ -100,10 +102,19 @@ export class ChapterAnalyzerAgent extends BaseAgent {
         || output.title === `第${chapterNumber}章`
       )
     ) {
-      return { ...output, title: chapterTitle };
+      return {
+        ...output,
+        title: chapterTitle,
+        content: canonicalContent,
+        wordCount: canonicalWordCount,
+      };
     }
 
-    return output;
+    return {
+      ...output,
+      content: canonicalContent,
+      wordCount: canonicalWordCount,
+    };
   }
 
   private buildSystemPrompt(

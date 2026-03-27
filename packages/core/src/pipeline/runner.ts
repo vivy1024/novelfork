@@ -33,7 +33,7 @@ import { analyzeLongSpanFatigue } from "../utils/long-span-fatigue.js";
 import { loadNarrativeMemorySeed, loadSnapshotCurrentStateFacts } from "../state/runtime-state-store.js";
 import { rewriteStructuredStateFromMarkdown } from "../state/state-bootstrap.js";
 import { readFile, readdir, writeFile, mkdir, rm } from "node:fs/promises";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 
 export interface PipelineConfig {
   readonly client: LLMClient;
@@ -1005,6 +1005,7 @@ export class PipelineRunner {
     finalContent = normalizedBeforeAudit.content;
     finalWordCount = normalizedBeforeAudit.wordCount;
     normalizeApplied = normalizeApplied || normalizedBeforeAudit.applied;
+    this.assertChapterContentNotEmpty(finalContent, chapterNumber, "draft generation");
 
     // 2b. LLM audit
     const auditor = new ContinuityAuditor(this.agentCtxFor("auditor", bookId));
@@ -1072,6 +1073,7 @@ export class PipelineRunner {
             finalContent = normalizedRevision.content;
             finalWordCount = normalizedRevision.wordCount;
             revised = true;
+            this.assertChapterContentNotEmpty(finalContent, chapterNumber, "revision");
           }
 
           // Re-audit the (possibly revised) content
@@ -1105,6 +1107,7 @@ export class PipelineRunner {
       chapterNumber,
       output,
       finalContent,
+      lengthSpec.countingMode,
     );
     const longSpanFatigue = await analyzeLongSpanFatigue({
       bookDir,
@@ -1138,35 +1141,38 @@ export class PipelineRunner {
     });
     this.logLengthWarnings(lengthWarnings);
 
-    // 4.1 Validate settler output before writing (non-blocking)
+    // 4.1 Validate settler output before writing
+    this.logStage(stageLanguage, { zh: "校验真相文件变更", en: "validating truth file updates" });
+    const storyDir = join(bookDir, "story");
+    const [oldState, oldHooks] = await Promise.all([
+      readFile(join(storyDir, "current_state.md"), "utf-8").catch(() => ""),
+      readFile(join(storyDir, "pending_hooks.md"), "utf-8").catch(() => ""),
+    ]);
+    const validator = new StateValidatorAgent(this.agentCtxFor("state-validator", bookId));
+    let validation;
     try {
-      this.logStage(stageLanguage, { zh: "校验真相文件变更", en: "validating truth file updates" });
-      const storyDir = join(bookDir, "story");
-      const [oldState, oldHooks] = await Promise.all([
-        readFile(join(storyDir, "current_state.md"), "utf-8").catch(() => ""),
-        readFile(join(storyDir, "pending_hooks.md"), "utf-8").catch(() => ""),
-      ]);
-      const validator = new StateValidatorAgent(this.agentCtxFor("state-validator", bookId));
-      const validation = await validator.validate(
+      validation = await validator.validate(
         finalContent, chapterNumber,
         oldState, persistenceOutput.updatedState,
         oldHooks, persistenceOutput.updatedHooks,
         pipelineLang,
       );
-      if (validation.warnings.length > 0) {
-        this.logWarn(pipelineLang, {
-          zh: `状态校验：第${chapterNumber}章发现 ${validation.warnings.length} 条警告`,
-          en: `State validation: ${validation.warnings.length} warning(s) for chapter ${chapterNumber}`,
-        });
-        for (const w of validation.warnings) {
-          this.config.logger?.warn(`  [${w.category}] ${w.description}`);
-        }
-      }
-    } catch (e) {
+    } catch (error) {
+      throw new Error(`State validation failed for chapter ${chapterNumber}: ${String(error)}`);
+    }
+
+    if (validation.warnings.length > 0) {
       this.logWarn(pipelineLang, {
-        zh: `状态校验已跳过：${String(e)}`,
-        en: `State validation skipped: ${String(e)}`,
+        zh: `状态校验：第${chapterNumber}章发现 ${validation.warnings.length} 条警告`,
+        en: `State validation: ${validation.warnings.length} warning(s) for chapter ${chapterNumber}`,
       });
+      for (const w of validation.warnings) {
+        this.config.logger?.warn(`  [${w.category}] ${w.description}`);
+      }
+    }
+    if (!validation.passed) {
+      const reason = validation.warnings[0]?.description ?? "validator reported contradictions";
+      throw new Error(`State validation failed for chapter ${chapterNumber}: ${reason}`);
     }
 
     await writer.saveChapter(bookDir, persistenceOutput, gp.numericalSystem, pipelineLang);
@@ -1641,6 +1647,7 @@ ${matrix}`,
     chapterNumber: number,
     output: WriteChapterOutput,
     finalContent: string,
+    countingMode: Parameters<typeof countChapterLength>[1],
   ): Promise<WriteChapterOutput> {
     if (finalContent === output.content) {
       return output;
@@ -1657,6 +1664,8 @@ ${matrix}`,
 
     return {
       ...analyzed,
+      content: finalContent,
+      wordCount: countChapterLength(finalContent, countingMode),
       postWriteErrors: [],
       postWriteWarnings: [],
       hookHealthIssues: output.hookHealthIssues,
@@ -1837,6 +1846,11 @@ ${matrix}`,
       applied: normalized.applied,
       tokenUsage: normalized.tokenUsage,
     };
+  }
+
+  private assertChapterContentNotEmpty(content: string, chapterNumber: number, stage: string): void {
+    if (content.trim().length > 0) return;
+    throw new Error(`Chapter ${chapterNumber} has empty chapter content after ${stage}`);
   }
 
   private async syncCurrentStateFactHistory(bookId: string, uptoChapter: number): Promise<void> {
@@ -2387,8 +2401,7 @@ ${matrix}`,
   }
 
   private relativeToBookDir(bookDir: string, absolutePath: string): string {
-    const prefix = `${bookDir}/`;
-    return absolutePath.startsWith(prefix) ? absolutePath.slice(prefix.length) : absolutePath;
+    return relative(bookDir, absolutePath).replaceAll("\\", "/");
   }
 
   private async emitWebhook(

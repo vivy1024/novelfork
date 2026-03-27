@@ -13,7 +13,7 @@ export interface ValidationResult {
 /**
  * Validates Settler output by comparing old and new truth files via LLM.
  * Catches contradictions, missing state changes, and temporal inconsistencies.
- * Non-blocking: returns warnings but does not prevent truth file writes.
+ * Fail-closed: validator execution/format failures must surface to the pipeline.
  */
 export class StateValidatorAgent extends BaseAgent {
   get name(): string {
@@ -84,10 +84,9 @@ ${chapterContent.slice(0, 6000)}`;
       );
 
       return this.parseResult(response.content);
-    } catch (e) {
-      // Validation failure should never block the pipeline
-      this.log?.warn(`State validation failed: ${e}`);
-      return { warnings: [], passed: true };
+    } catch (error) {
+      this.log?.warn(`State validation failed: ${error}`);
+      throw error;
     }
   }
 
@@ -109,19 +108,38 @@ ${chapterContent.slice(0, 6000)}`;
   }
 
   private parseResult(content: string): ValidationResult {
+    const trimmed = content.trim();
+    if (!trimmed) {
+      throw new Error("LLM returned empty response");
+    }
+
+    const jsonMatch = trimmed.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      throw new Error("State validator returned invalid JSON");
+    }
+
     try {
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) return { warnings: [], passed: true };
-      const parsed = JSON.parse(jsonMatch[0]) as { warnings?: Array<{ category?: string; description?: string }>; passed?: boolean };
+      const parsed = JSON.parse(jsonMatch[0]) as {
+        warnings?: Array<{ category?: string; description?: string }>;
+        passed?: boolean;
+      };
+      if (typeof parsed.passed !== "boolean") {
+        throw new Error("missing boolean 'passed' field");
+      }
+
+      if (parsed.warnings !== undefined && !Array.isArray(parsed.warnings)) {
+        throw new Error("'warnings' must be an array");
+      }
+
       return {
         warnings: (parsed.warnings ?? []).map((w) => ({
           category: w.category ?? "unknown",
           description: w.description ?? "",
         })),
-        passed: parsed.passed !== false,
+        passed: parsed.passed,
       };
-    } catch {
-      return { warnings: [], passed: true };
+    } catch (error) {
+      throw new Error(`State validator returned invalid response: ${String(error)}`);
     }
   }
 }

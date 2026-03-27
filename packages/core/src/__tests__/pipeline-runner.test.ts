@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createRequire } from "node:module";
-import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PipelineRunner } from "../pipeline/runner.js";
@@ -13,6 +13,7 @@ import { LengthNormalizerAgent } from "../agents/length-normalizer.js";
 import { ContinuityAuditor, type AuditIssue, type AuditResult } from "../agents/continuity.js";
 import { ReviserAgent, type ReviseOutput } from "../agents/reviser.js";
 import { ChapterAnalyzerAgent } from "../agents/chapter-analyzer.js";
+import { StateValidatorAgent } from "../agents/state-validator.js";
 import type { BookConfig } from "../models/book.js";
 import type { ChapterMeta } from "../models/chapter.js";
 import { MemoryDB } from "../state/memory-db.js";
@@ -206,6 +207,10 @@ describe("PipelineRunner", () => {
         tokenUsage: ZERO_USAGE,
       }),
     );
+    vi.spyOn(StateValidatorAgent.prototype, "validate").mockResolvedValue({
+      warnings: [],
+      passed: true,
+    });
   });
 
   afterEach(() => {
@@ -1998,6 +2003,90 @@ describe("PipelineRunner", () => {
 
     await expect(readFile(join(storyDir, "current_state.md"), "utf-8")).resolves.toBe(beforeState);
     await expect(readFile(join(storyDir, "state", "manifest.json"), "utf-8")).resolves.toBe(beforeManifest);
+
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it("does not persist chapter files or index entries when state validation errors before save", async () => {
+    const { root, runner, state, bookId } = await createRunnerFixture({
+      inputGovernanceMode: "legacy",
+    });
+    const chaptersDir = join(state.bookDir(bookId), "chapters");
+
+    vi.spyOn(WriterAgent.prototype, "writeChapter").mockResolvedValue(
+      createWriterOutput({
+        content: "Healthy chapter body.",
+        wordCount: "Healthy chapter body.".length,
+      }),
+    );
+    vi.spyOn(ContinuityAuditor.prototype, "auditChapter").mockResolvedValue(
+      createAuditResult({
+        passed: true,
+        issues: [],
+        summary: "clean",
+      }),
+    );
+    vi.spyOn(StateValidatorAgent.prototype, "validate").mockRejectedValue(
+      new Error("LLM returned empty response"),
+    );
+
+    await expect(runner.writeNextChapter(bookId)).rejects.toThrow("LLM returned empty response");
+    await expect(readdir(chaptersDir)).resolves.toEqual([]);
+    await expect(state.loadChapterIndex(bookId)).resolves.toEqual([]);
+
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it("preserves the revised chapter content when final truth rebuild omits CHAPTER_CONTENT", async () => {
+    const { root, runner, state, bookId } = await createRunnerFixture({
+      inputGovernanceMode: "legacy",
+    });
+    const chaptersDir = join(state.bookDir(bookId), "chapters");
+    const revisedBody = "Final revised body that should never be replaced by an empty chapter.";
+
+    vi.spyOn(WriterAgent.prototype, "writeChapter").mockResolvedValue(
+      createWriterOutput({
+        content: "Original draft body.",
+        wordCount: "Original draft body.".length,
+      }),
+    );
+    vi.spyOn(ContinuityAuditor.prototype, "auditChapter")
+      .mockResolvedValueOnce(
+        createAuditResult({
+          passed: false,
+          issues: [CRITICAL_ISSUE],
+          summary: "needs revision",
+        }),
+      )
+      .mockResolvedValueOnce(
+        createAuditResult({
+          passed: true,
+          issues: [],
+          summary: "clean",
+        }),
+      );
+    vi.spyOn(ReviserAgent.prototype, "reviseChapter").mockResolvedValue(
+      createReviseOutput({
+        revisedContent: revisedBody,
+        wordCount: revisedBody.length,
+      }),
+    );
+    vi.spyOn(ChapterAnalyzerAgent.prototype, "analyzeChapter").mockResolvedValue(
+      createAnalyzedOutput({
+        content: "",
+        wordCount: 0,
+      }),
+    );
+
+    const result = await runner.writeNextChapter(bookId);
+    const savedChapter = await readFile(join(chaptersDir, "0001_Test_Chapter.md"), "utf-8");
+    const savedIndex = await state.loadChapterIndex(bookId);
+    const expectedCount = countChapterLength(revisedBody, "zh_chars");
+
+    expect(result.wordCount).toBe(expectedCount);
+    expect(savedChapter).toContain(revisedBody);
+    expect(savedIndex[0]?.wordCount).toBe(expectedCount);
+    expect(savedIndex[0]?.status).toBe("ready-for-review");
 
     await rm(root, { recursive: true, force: true });
   });

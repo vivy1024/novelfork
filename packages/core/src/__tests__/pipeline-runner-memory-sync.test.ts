@@ -142,6 +142,7 @@ describe("PipelineRunner structured-state memory sync", () => {
     const { StateManager } = await import("../state/manager.js");
     const { WriterAgent } = await import("../agents/writer.js");
     const { ContinuityAuditor } = await import("../agents/continuity.js");
+    const { StateValidatorAgent } = await import("../agents/state-validator.js");
 
     root = await mkdtemp(join(tmpdir(), "inkos-runner-memory-sync-"));
     const state = new StateManager(root);
@@ -256,6 +257,10 @@ describe("PipelineRunner structured-state memory sync", () => {
       issues: [],
       summary: "clean",
       tokenUsage: ZERO_USAGE,
+    });
+    vi.spyOn(StateValidatorAgent.prototype, "validate").mockResolvedValue({
+      warnings: [],
+      passed: true,
     });
     vi.spyOn(WriterAgent.prototype, "saveChapter").mockImplementation(async function (
       this: InstanceType<typeof WriterAgent>,

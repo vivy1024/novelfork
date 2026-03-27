@@ -313,4 +313,87 @@ describe("ChapterAnalyzerAgent", () => {
       await rm(bookDir, { recursive: true, force: true });
     }
   });
+
+  it("preserves the supplied chapter content when the model omits CHAPTER_CONTENT", async () => {
+    const bookDir = await mkdtemp(join(tmpdir(), "inkos-chapter-analyzer-fallback-"));
+    const chapterContent = "Lin Yue stepped into the archive and kept the real ledger hidden inside his sleeve.";
+    const agent = new ChapterAnalyzerAgent({
+      client: {
+        provider: "openai",
+        apiFormat: "chat",
+        stream: false,
+        defaults: {
+          temperature: 0.7,
+          maxTokens: 4096,
+          thinkingBudget: 0, maxTokensCap: null,
+          extra: {},
+        },
+      },
+      model: "test-model",
+      projectRoot: process.cwd(),
+    });
+
+    const book: BookConfig = {
+      id: "english-book",
+      title: "English Book",
+      platform: "other",
+      genre: "other",
+      status: "active",
+      targetChapters: 10,
+      chapterWordCount: 2200,
+      language: "en",
+      createdAt: "2026-03-22T00:00:00.000Z",
+      updatedAt: "2026-03-22T00:00:00.000Z",
+    };
+
+    vi.spyOn(agent as unknown as { chat: (...args: unknown[]) => Promise<unknown> }, "chat")
+      .mockResolvedValue({
+        content: [
+          "=== CHAPTER_TITLE ===",
+          "Archive Entry",
+          "",
+          "=== PRE_WRITE_CHECK ===",
+          "",
+          "=== POST_SETTLEMENT ===",
+          "",
+          "=== UPDATED_STATE ===",
+          "| Field | Value |",
+          "| --- | --- |",
+          "| Current Chapter | 1 |",
+          "",
+          "=== UPDATED_LEDGER ===",
+          "",
+          "=== UPDATED_HOOKS ===",
+          "| hook_id | status |",
+          "| --- | --- |",
+          "| h1 | open |",
+          "",
+          "=== CHAPTER_SUMMARY ===",
+          "| 1 | Archive Entry |",
+          "",
+          "=== UPDATED_SUBPLOTS ===",
+          "",
+          "=== UPDATED_EMOTIONAL_ARCS ===",
+          "",
+          "=== UPDATED_CHARACTER_MATRIX ===",
+          "",
+        ].join("\n"),
+        usage: ZERO_USAGE,
+      });
+
+    try {
+      const output = await agent.analyzeChapter({
+        book,
+        bookDir,
+        chapterNumber: 1,
+        chapterTitle: "Archive Entry",
+        chapterContent,
+      });
+
+      expect(output.content).toBe(chapterContent);
+      expect(output.wordCount).toBe(countChapterLength(chapterContent, "en_words"));
+    } finally {
+      await rm(bookDir, { recursive: true, force: true });
+    }
+  });
 });
