@@ -1,5 +1,28 @@
 # Changelog
 
+## v0.6.2
+
+### Bug Fixes
+
+- **伏笔崩溃** (#99/#101/#104) — duplicate active hook family 不再崩溃，改为自动吸收合并；新增 hook 仲裁机制降低重复频率
+- **本地 LLM** (#100) — 本地/self-hosted OpenAI-compatible 端点（Ollama 等）不再要求 API key
+- **0 字章节** (#105) — truth rebuild 不再覆盖最终章节内容
+- **章号错误** (#108/#98) — poisoned manifest 在 bootstrap 时自动归一化到真实进度
+- **坏章节写入** (#88) — state validator 空响应直接报错，章节文件保存移到校验通过之后
+- **Provider 400** (#91) — streaming provider fallback 错误提示优化
+
+### Improvements
+
+- **段落质量** (#90) — 新增短段落检测和段落密度漂移 warning
+- **Agent 工具约束** (#92/#93) — agent 工具描述加强边界约束，system prompt 新增禁止性规则
+- Windows 兼容：tar 命令加 --force-local
+- README 描述更新，OpenClaw 链接指向 skill 页面
+
+## v0.6.1
+
+- 修复 emphasized hook id 标准化
+- 修复 poisoned runtime state 恢复
+
 ## v0.6
 
 结构化状态 + 伏笔治理 + 字数治理。
