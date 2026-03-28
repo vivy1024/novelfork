@@ -32,7 +32,7 @@ npm i -g @actalk/inkos
 
 ### Use via OpenClaw 🦞
 
-InkOS is published as an [OpenClaw](https://clawhub.ai) Skill, callable by any compatible agent (Claude Code, OpenClaw, etc.):
+InkOS is published as an [OpenClaw](https://clawhub.ai/narcooo/inkos) Skill, callable by any compatible agent (Claude Code, OpenClaw, etc.):
 
 ```bash
 clawhub install inkos          # Install from ClawHub
@@ -165,7 +165,7 @@ Every genre includes a **fatigue word list** (e.g., "delve", "tapestry", "testam
 
 ### 33-Dimension Audit + De-AI-ification
 
-The Continuity Auditor checks every draft across 33 dimensions: character memory, resource continuity, hook payoff, outline adherence, narrative pacing, emotional arcs, and more. Built-in AI-tell detection automatically catches "LLM voice" — overused words, monotonous sentence patterns, excessive summarization. Failed audits trigger an automatic revision loop.
+The Continuity Auditor agent checks every draft across 33 dimensions: character memory, resource continuity, hook payoff, outline adherence, narrative pacing, emotional arcs, and more. Built-in AI-tell detection automatically catches "LLM voice" — overused words, monotonous sentence patterns, excessive summarization. Failed audits trigger an automatic revision loop.
 
 De-AI-ification rules are baked into the Writer agent's prompts: fatigue word lists, banned patterns, style fingerprint injection — reducing AI traces at the source. `revise --mode anti-detect` runs dedicated anti-detection rewriting on existing chapters.
 
