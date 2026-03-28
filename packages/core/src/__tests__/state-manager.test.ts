@@ -430,11 +430,11 @@ describe("StateManager", () => {
       await writeFile(join(chapDir, "0001_ch1.md"), "# Chapter 1\nContent 1", "utf-8");
       await writeFile(join(chapDir, "0002_ch2.md"), "# Chapter 2\nContent 2", "utf-8");
       await writeFile(join(chapDir, "0003_ch3.md"), "# Chapter 3\nContent 3", "utf-8");
-      const fullIndex = [
-        { number: 1, title: "Ch1", status: "approved", wordCount: 100, createdAt: "", updatedAt: "", auditIssues: [] },
-        { number: 2, title: "Ch2", status: "approved", wordCount: 100, createdAt: "", updatedAt: "", auditIssues: [] },
-        { number: 3, title: "Ch3", status: "approved", wordCount: 100, createdAt: "", updatedAt: "", auditIssues: [] },
-      ];
+      const mkEntry = (n: number) => ({
+        number: n, title: `Ch${n}`, status: "approved" as const, wordCount: 100,
+        createdAt: "", updatedAt: "", auditIssues: [] as string[], lengthWarnings: [] as string[],
+      });
+      const fullIndex = [mkEntry(1), mkEntry(2), mkEntry(3)];
       await manager.saveChapterIndex(rwBookId, fullIndex);
 
       // Snapshot state at chapter 1 (before chapter 2)

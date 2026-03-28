@@ -117,6 +117,36 @@ export const doctorCommand = new Command("doctor")
       checks.push({ name: "Books", ok: true, detail: "0 books" });
     }
 
+    // 5b. Check version migration status
+    {
+      const { existsSync } = await import("node:fs");
+      const hasStructuredState = existsSync(join(root, "books"));
+      if (hasStructuredState) {
+        const { StateManager } = await import("@actalk/inkos-core");
+        const sm = new StateManager(root);
+        const bookIds = await sm.listBooks();
+        let legacyCount = 0;
+        for (const bid of bookIds) {
+          const stateDir = join(sm.bookDir(bid), "story", "state");
+          const hasNewState = existsSync(stateDir);
+          if (!hasNewState) legacyCount++;
+        }
+        if (legacyCount > 0) {
+          checks.push({
+            name: "Version Migration",
+            ok: false,
+            detail: `${legacyCount} book(s) using legacy format (pre-v0.6). Run 'inkos write next' on each to auto-migrate, or re-init with 'inkos init'.`,
+          });
+        } else if (bookIds.length > 0) {
+          checks.push({
+            name: "Version Migration",
+            ok: true,
+            detail: "All books use current format",
+          });
+        }
+      }
+    }
+
     // 6. API connectivity test
     try {
       const { createLLMClient, chatCompletion, LLMConfigSchema, isApiKeyOptionalForEndpoint } = await import("@actalk/inkos-core");
