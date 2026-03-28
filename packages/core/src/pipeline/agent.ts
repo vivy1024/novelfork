@@ -7,7 +7,7 @@ import { DEFAULT_REVISE_MODE, type ReviseMode } from "../agents/reviser.js";
 const TOOLS: ReadonlyArray<ToolDefinition> = [
   {
     name: "write_draft",
-    description: "写一章草稿。生成正文、更新状态卡/账本/伏笔池、保存章节文件。",
+    description: "写【下一章】草稿。只能续写最新章之后的下一章，不能指定章节号，不能补历史空章。生成正文、更新状态卡/账本/伏笔池、保存章节文件。",
     parameters: {
       type: "object",
       properties: {
@@ -55,7 +55,7 @@ const TOOLS: ReadonlyArray<ToolDefinition> = [
   },
   {
     name: "revise_chapter",
-    description: "修订指定章节。根据审计问题修正。默认使用 spot-fix 定点修复；也支持 polish(润色)、rewrite(改写)、rework(重写)、anti-detect。",
+    description: "修订指定章节的文字质量。根据审计问题做局部修正，不改变剧情走向。默认 spot-fix（定点修复最小改动）；也支持 polish(润色)、rewrite(改写)、rework(重写)、anti-detect。注意：不能用来补缺失章节、不能改章节号、不能替代 write_draft。",
     parameters: {
       type: "object",
       properties: {
@@ -192,7 +192,7 @@ const TOOLS: ReadonlyArray<ToolDefinition> = [
   },
   {
     name: "import_chapters",
-    description: "导入已有章节。从文本中分割章节并逐章分析，反推所有真相文件。导入后可用 write_draft 续写。",
+    description: "【整书重导】导入已有章节。从完整文本中自动分割所有章节，逐章分析并重建全部真相文件。这是整书级操作，不是补某一章的工具。导入后可用 write_draft 续写。",
     parameters: {
       type: "object",
       properties: {
@@ -205,7 +205,7 @@ const TOOLS: ReadonlyArray<ToolDefinition> = [
   },
   {
     name: "write_truth_file",
-    description: "直接修改书的真相文件（如 volume_outline.md、story_bible.md、book_rules.md、current_state.md 等）。用于扩展大纲、修改世界观、调整规则等操作。",
+    description: "【整文件覆盖】直接替换书的真相文件内容。用于扩展大纲、修改世界观、调整规则。注意：这是整文件覆盖写入，不是追加；不要用来改 current_state.md 的章节进度指针或 hack 章节号；不要用来补空章节。",
     parameters: {
       type: "object",
       properties: {
@@ -249,9 +249,9 @@ export async function runAgentLoop(
 | create_book | 建书，生成世界观、卷纲、本书规则（自动加载题材 genre profile） |
 | plan_chapter | 先生成 chapter intent，确认本章目标/冲突/优先级 |
 | compose_chapter | 再生成 runtime context/rule stack，确认实际输入 |
-| write_draft | 写一章草稿（自动加载 genre profile + book_rules） |
+| write_draft | 写【下一章】草稿（只能续写最新章之后，不能补历史章） |
 | audit_chapter | 审计章节（32维度，按题材条件启用，含AI痕迹+敏感词检测） |
-| revise_chapter | 修订章节（支持 polish/rewrite/rework/spot-fix/anti-detect 五种模式） |
+| revise_chapter | 修订章节文字质量（不能补空章/改章号，五种模式） |
 | update_author_intent | 更新书级长期意图 author_intent.md |
 | update_current_focus | 更新当前关注点 current_focus.md |
 | write_full_pipeline | 完整管线：写 → 审 → 改（如需要） |
@@ -259,8 +259,8 @@ export async function runAgentLoop(
 | web_fetch | 抓取指定URL的文本内容 |
 | import_style | 从参考文本生成文风指南（统计+LLM分析） |
 | import_canon | 从正传导入正典参照，启用番外模式 |
-| import_chapters | 导入已有章节，反推所有真相文件，支持续写 |
-| write_truth_file | 直接修改真相文件（大纲、世界观、规则、状态等），用于扩展/调整设定 |
+| import_chapters | 【整书重导】导入全部已有章节并重建真相文件 |
+| write_truth_file | 【整文件覆盖】替换真相文件内容，不能用来改章节进度 |
 
 ## 长期记忆
 
@@ -291,7 +291,16 @@ export async function runAgentLoop(
 - 当用户要求“先把注意力拉回某条线”时，优先 update_current_focus，然后 plan_chapter / compose_chapter，再决定是否 write_draft 或 write_full_pipeline
 - 仿写流程：用户提供参考文本 → import_style → 生成 style_guide.md，后续写作自动参照
 - 番外流程：先 create_book 建番外书 → import_canon 导入正传正典 → 然后正常 write_draft
-- 续写流程：用户提供已有章节 → import_chapters → 然后 write_draft 续写`,
+- 续写流程：用户提供已有章节 → import_chapters → 然后 write_draft 续写
+
+## 禁止事项（严格遵守）
+
+- 不要用 write_draft 补历史中间章节。write_draft 只能写【当前最新章之后的下一章】
+- 不要用 import_chapters 修补某一个空章。import_chapters 是整书级重导工具
+- 不要用 write_truth_file 修改 current_state.md 的章节进度来"骗"系统跳到某一章
+- 不要用 revise_chapter 补缺失章节或改章节号。revise 只做文字质量修订
+- 用户说"补第 N 章"或"第 N 章是空的"时，先用 get_book_status 和 read_truth_files 判断真实状态，再决定用哪个工具
+- 不要在没有确认书籍状态的情况下直接调用写作工具`,
     },
     { role: "user", content: instruction },
   ];
