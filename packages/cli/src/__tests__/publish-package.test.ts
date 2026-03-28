@@ -24,7 +24,8 @@ async function extractPackedPackageJson(packDir: string) {
     throw new Error(`Expected exactly one tarball in ${packDir}, found ${tgzFiles.length}`);
   }
 
-  return execFileSync("tar", ["--force-local", "-xOf", join(packDir, tgzFiles[0]), "package/package.json"], {
+  const tarArgs = process.platform === "win32" ? ["--force-local", "-xOf"] : ["-xOf"];
+  return execFileSync("tar", [...tarArgs, join(packDir, tgzFiles[0]), "package/package.json"], {
     cwd: workspaceRoot,
     encoding: "utf-8",
   });
