@@ -544,3 +544,47 @@ const ENGLISH_NAME_STOP_WORDS = new Set([
   "Then",
   "They",
 ]);
+
+/**
+ * Detect duplicate or near-duplicate chapter titles.
+ * Compares the new title against existing chapter titles from index.
+ */
+export function detectDuplicateTitle(
+  newTitle: string,
+  existingTitles: ReadonlyArray<string>,
+): ReadonlyArray<PostWriteViolation> {
+  if (!newTitle.trim()) return [];
+
+  const normalized = newTitle.trim().toLowerCase();
+  const violations: PostWriteViolation[] = [];
+
+  for (const existing of existingTitles) {
+    const existingNorm = existing.trim().toLowerCase();
+    if (!existingNorm) continue;
+
+    // Exact match
+    if (normalized === existingNorm) {
+      violations.push({
+        rule: "duplicate-title",
+        severity: "warning",
+        description: `章节标题"${newTitle}"与已有章节标题完全相同`,
+        suggestion: "更换一个不同的章节标题",
+      });
+      break;
+    }
+
+    // Near-duplicate: one is substring of the other, or only differs by punctuation/numbers
+    const stripPunct = (s: string) => s.replace(/[^\p{L}\p{N}]/gu, "");
+    if (stripPunct(normalized) === stripPunct(existingNorm)) {
+      violations.push({
+        rule: "near-duplicate-title",
+        severity: "warning",
+        description: `章节标题"${newTitle}"与已有标题"${existing}"高度相似`,
+        suggestion: "避免使用相似的章节标题",
+      });
+      break;
+    }
+  }
+
+  return violations;
+}

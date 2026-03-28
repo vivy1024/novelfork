@@ -1204,6 +1204,28 @@ export class PipelineRunner {
       }
     }
 
+    // 4.3 Title dedup check
+    {
+      const { detectDuplicateTitle } = await import("../agents/post-write-validator.js");
+      const chapterIndex = await this.state.loadChapterIndex(bookId);
+      const existingTitles = chapterIndex.map((ch) => ch.title);
+      const titleIssues = detectDuplicateTitle(persistenceOutput.title, existingTitles);
+      if (titleIssues.length > 0) {
+        for (const issue of titleIssues) {
+          this.config.logger?.warn(`[title] ${issue.description}`);
+        }
+        auditResult = {
+          ...auditResult,
+          issues: [...auditResult.issues, ...titleIssues.map((v) => ({
+            severity: v.severity as "warning",
+            category: "title-dedup",
+            description: v.description,
+            suggestion: v.suggestion,
+          }))],
+        };
+      }
+    }
+
     await writer.saveChapter(bookDir, persistenceOutput, gp.numericalSystem, pipelineLang);
     await writer.saveNewTruthFiles(bookDir, persistenceOutput, pipelineLang);
     await this.syncLegacyStructuredStateFromMarkdown(bookDir, chapterNumber, persistenceOutput);

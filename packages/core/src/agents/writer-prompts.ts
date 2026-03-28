@@ -535,7 +535,7 @@ ${resourceRow}| 待回收伏笔 | Hook-A / Hook-B | 与伏笔池一致 |
 ${preWriteTable}
 
 === CHAPTER_TITLE ===
-(章节标题，不含"第X章")
+(章节标题，不含"第X章"。标题必须与已有章节标题不同，不要重复使用相同或相似的标题)
 
 === CHAPTER_CONTENT ===
 (正文内容，目标${lengthSpec.target}字，允许区间${lengthSpec.softMin}-${lengthSpec.softMax}字)
@@ -588,7 +588,7 @@ ${resourceRow}| 待回收伏笔 | Hook-A / Hook-B | 与伏笔池一致 |
 ${preWriteTable}
 
 === CHAPTER_TITLE ===
-(章节标题，不含"第X章")
+(章节标题，不含"第X章"。标题必须与已有章节标题不同，不要重复使用相同或相似的标题)
 
 === CHAPTER_CONTENT ===
 (正文内容，目标${lengthSpec.target}字，允许区间${lengthSpec.softMin}-${lengthSpec.softMax}字)
