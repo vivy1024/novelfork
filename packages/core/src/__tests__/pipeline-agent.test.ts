@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -115,5 +115,69 @@ describe("agent pipeline tools", () => {
       .resolves.toContain("colder revenge story");
     await expect(readFile(join(state.bookDir(bookId), "story", "current_focus.md"), "utf-8"))
       .resolves.toContain("mentor fallout");
+  });
+
+  it("blocks write_full_pipeline when runtime progress is ahead of the chapter index", async () => {
+    const stateDir = join(state.bookDir(bookId), "story", "state");
+    await mkdir(stateDir, { recursive: true });
+    await state.saveChapterIndex(bookId, [{
+      number: 1,
+      title: "Existing Chapter",
+      status: "approved",
+      wordCount: 120,
+      createdAt: "2026-03-22T00:00:00.000Z",
+      updatedAt: "2026-03-22T00:00:00.000Z",
+      auditIssues: [],
+      lengthWarnings: [],
+    }]);
+    await writeFile(join(stateDir, "manifest.json"), JSON.stringify({
+      schemaVersion: 2,
+      language: "zh",
+      lastAppliedChapter: 3,
+      projectionVersion: 1,
+      migrationWarnings: [],
+    }, null, 2), "utf-8");
+    await writeFile(join(stateDir, "current_state.json"), JSON.stringify({
+      chapter: 3,
+      facts: [],
+    }, null, 2), "utf-8");
+
+    const writeNextChapter = vi.spyOn(pipeline, "writeNextChapter").mockResolvedValue({
+      bookId,
+      chapterNumber: 4,
+      title: "Should Not Run",
+      wordCount: 100,
+      filePath: "books/agent-book/chapters/0004_Should_Not_Run.md",
+      auditResult: { passed: true, issues: [], summary: "ok" },
+      revised: false,
+      status: "ready-for-review",
+    } as Awaited<ReturnType<typeof pipeline.writeNextChapter>>);
+
+    const result = JSON.parse(await executeAgentTool(
+      pipeline,
+      state,
+      config,
+      "write_full_pipeline",
+      { bookId, count: 1 },
+    ));
+
+    expect(result.error).toContain("write_full_pipeline");
+    expect(writeNextChapter).not.toHaveBeenCalled();
+  });
+
+  it("blocks write_truth_file from hacking chapter progress inside current_state.md", async () => {
+    const result = JSON.parse(await executeAgentTool(
+      pipeline,
+      state,
+      config,
+      "write_truth_file",
+      {
+        bookId,
+        fileName: "current_state.md",
+        content: "# Current State\n\n| Current Chapter | 999 |\n",
+      },
+    ));
+
+    expect(result.error).toContain("章节进度");
   });
 });

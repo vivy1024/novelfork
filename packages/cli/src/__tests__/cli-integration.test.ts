@@ -4,6 +4,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { StateManager } from "@actalk/inkos-core";
 
 const testDir = dirname(fileURLToPath(import.meta.url));
 const cliDir = resolve(testDir, "..", "..");
@@ -39,6 +40,13 @@ function runStderr(args: string[], options?: { env?: Record<string, string> }): 
     return { stdout: err.stdout ?? "", stderr: err.stderr ?? "", exitCode: err.status ?? 1 };
   }
 }
+
+const failingLlmEnv = {
+  INKOS_LLM_PROVIDER: "openai",
+  INKOS_LLM_BASE_URL: "http://127.0.0.1:9/v1",
+  INKOS_LLM_MODEL: "test-model",
+  INKOS_LLM_API_KEY: "test-key",
+};
 
 describe("CLI integration", () => {
   beforeAll(async () => {
@@ -278,6 +286,34 @@ describe("CLI integration", () => {
       expect(output).toContain('Ch.1 "A Quiet Sky" | 7 words | ready-for-review');
       expect(output).not.toContain("7字");
     });
+
+    it("shows a migration hint for legacy pre-v0.6 books", async () => {
+      const bookDir = join(projectDir, "books", "legacy-status-hint");
+      const storyDir = join(bookDir, "story");
+      await mkdir(join(bookDir, "chapters"), { recursive: true });
+      await mkdir(storyDir, { recursive: true });
+      await writeFile(
+        join(bookDir, "book.json"),
+        JSON.stringify({
+          id: "legacy-status-hint",
+          title: "Legacy Status Hint",
+          platform: "other",
+          genre: "other",
+          status: "active",
+          targetChapters: 10,
+          chapterWordCount: 2200,
+          createdAt: "2026-03-22T00:00:00.000Z",
+          updatedAt: "2026-03-22T00:00:00.000Z",
+        }, null, 2),
+        "utf-8",
+      );
+      await writeFile(join(bookDir, "chapters", "index.json"), "[]", "utf-8");
+      await writeFile(join(storyDir, "current_state.md"), "# Current State\n\nLegacy state.\n", "utf-8");
+      await writeFile(join(storyDir, "pending_hooks.md"), "# Pending Hooks\n\n", "utf-8");
+
+      const output = run(["status", "legacy-status-hint"]);
+      expect(output).toContain("legacy format");
+    });
   });
 
   describe("inkos doctor", () => {
@@ -344,6 +380,133 @@ describe("CLI integration", () => {
         await writeFile(configPath, originalConfig, "utf-8");
         await writeFile(envPath, originalEnv, "utf-8");
       }
+    });
+
+    it("reports legacy books in the version migration check", async () => {
+      const bookDir = join(projectDir, "books", "legacy-doctor-hint");
+      const storyDir = join(bookDir, "story");
+      await mkdir(join(bookDir, "chapters"), { recursive: true });
+      await mkdir(storyDir, { recursive: true });
+      await writeFile(
+        join(bookDir, "book.json"),
+        JSON.stringify({
+          id: "legacy-doctor-hint",
+          title: "Legacy Doctor Hint",
+          platform: "other",
+          genre: "other",
+          status: "active",
+          targetChapters: 10,
+          chapterWordCount: 2200,
+          createdAt: "2026-03-22T00:00:00.000Z",
+          updatedAt: "2026-03-22T00:00:00.000Z",
+        }, null, 2),
+        "utf-8",
+      );
+      await writeFile(join(bookDir, "chapters", "index.json"), "[]", "utf-8");
+      await writeFile(join(storyDir, "current_state.md"), "# Current State\n\nLegacy state.\n", "utf-8");
+      await writeFile(join(storyDir, "pending_hooks.md"), "# Pending Hooks\n\n", "utf-8");
+
+      const { stdout } = runStderr(["doctor"]);
+      expect(stdout).toContain("Version Migration");
+      expect(stdout).toContain("legacy format");
+    });
+  });
+
+  describe("inkos write", () => {
+    it("warns before writing when the target book still uses legacy format", async () => {
+      const bookDir = join(projectDir, "books", "legacy-write-hint");
+      const storyDir = join(bookDir, "story");
+      await mkdir(join(bookDir, "chapters"), { recursive: true });
+      await mkdir(storyDir, { recursive: true });
+      await writeFile(
+        join(bookDir, "book.json"),
+        JSON.stringify({
+          id: "legacy-write-hint",
+          title: "Legacy Write Hint",
+          platform: "other",
+          genre: "other",
+          status: "active",
+          targetChapters: 10,
+          chapterWordCount: 2200,
+          createdAt: "2026-03-22T00:00:00.000Z",
+          updatedAt: "2026-03-22T00:00:00.000Z",
+        }, null, 2),
+        "utf-8",
+      );
+      await writeFile(join(bookDir, "chapters", "index.json"), "[]", "utf-8");
+      await writeFile(join(storyDir, "current_state.md"), "# Current State\n\nLegacy state.\n", "utf-8");
+      await writeFile(join(storyDir, "pending_hooks.md"), "# Pending Hooks\n\n", "utf-8");
+
+      const { stdout, stderr } = runStderr(["write", "next", "legacy-write-hint"], {
+        env: failingLlmEnv,
+      });
+      expect(`${stdout}\n${stderr}`).toContain("legacy format");
+    });
+
+    it("keeps next chapter at 2 after rewrite 2 trims later chapters, even if regeneration fails", async () => {
+      const state = new StateManager(projectDir);
+      const bookId = "rewrite-cli";
+      const bookDir = join(projectDir, "books", bookId);
+      const storyDir = join(bookDir, "story");
+      const chaptersDir = join(bookDir, "chapters");
+      const stateDir = join(storyDir, "state");
+
+      await mkdir(chaptersDir, { recursive: true });
+      await mkdir(stateDir, { recursive: true });
+      await writeFile(
+        join(bookDir, "book.json"),
+        JSON.stringify({
+          id: bookId,
+          title: "Rewrite CLI",
+          platform: "other",
+          genre: "other",
+          status: "active",
+          targetChapters: 10,
+          chapterWordCount: 2200,
+          createdAt: "2026-03-22T00:00:00.000Z",
+          updatedAt: "2026-03-22T00:00:00.000Z",
+        }, null, 2),
+        "utf-8",
+      );
+      await writeFile(join(storyDir, "current_state.md"), "State at ch1", "utf-8");
+      await writeFile(join(storyDir, "pending_hooks.md"), "Hooks at ch1", "utf-8");
+      await writeFile(join(chaptersDir, "0001_ch1.md"), "# Chapter 1\n\nContent 1", "utf-8");
+      await writeFile(join(chaptersDir, "0002_ch2.md"), "# Chapter 2\n\nContent 2", "utf-8");
+      await writeFile(join(chaptersDir, "0003_ch3.md"), "# Chapter 3\n\nContent 3", "utf-8");
+      await writeFile(
+        join(chaptersDir, "index.json"),
+        JSON.stringify([
+          { number: 1, title: "Ch1", status: "approved", wordCount: 100, createdAt: "", updatedAt: "", auditIssues: [], lengthWarnings: [] },
+          { number: 2, title: "Ch2", status: "approved", wordCount: 100, createdAt: "", updatedAt: "", auditIssues: [], lengthWarnings: [] },
+          { number: 3, title: "Ch3", status: "approved", wordCount: 100, createdAt: "", updatedAt: "", auditIssues: [], lengthWarnings: [] },
+        ], null, 2),
+        "utf-8",
+      );
+
+      await state.snapshotState(bookId, 1);
+
+      await writeFile(join(storyDir, "current_state.md"), "State at ch3", "utf-8");
+      await writeFile(join(stateDir, "manifest.json"), JSON.stringify({
+        schemaVersion: 2,
+        language: "en",
+        lastAppliedChapter: 4,
+        projectionVersion: 1,
+        migrationWarnings: [],
+      }, null, 2), "utf-8");
+      await writeFile(join(stateDir, "current_state.json"), JSON.stringify({
+        chapter: 3,
+        facts: [],
+      }, null, 2), "utf-8");
+
+      const { exitCode, stdout, stderr } = runStderr(["write", "rewrite", bookId, "2", "--force"], {
+        env: failingLlmEnv,
+      });
+      expect(exitCode).not.toBe(0);
+      expect(`${stdout}\n${stderr}`).toContain("Regenerating chapter 2");
+
+      const next = await state.getNextChapterNumber(bookId);
+      expect(next).toBe(2);
+      await expect(readFile(join(storyDir, "current_state.md"), "utf-8")).resolves.toBe("State at ch1");
     });
   });
 

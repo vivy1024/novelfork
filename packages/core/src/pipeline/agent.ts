@@ -370,12 +370,10 @@ export async function executeAgentTool(
     }
 
     case "write_draft": {
-      // Guard: write_draft only writes the next sequential chapter
       const bookId = args.bookId as string;
-      const nextNum = await state.getNextChapterNumber(bookId);
-      const index = await state.loadChapterIndex(bookId);
-      if (index.length > 0 && index[index.length - 1]!.number !== nextNum - 1) {
-        return JSON.stringify({ error: `write_draft 只能续写下一章（第${nextNum}章）。如果中间有空缺，请先用 get_book_status 确认状态。` });
+      const writeGuardError = await getSequentialWriteGuardError(state, bookId, "write_draft");
+      if (writeGuardError) {
+        return JSON.stringify({ error: writeGuardError });
       }
       const result = await pipeline.writeDraft(
         bookId,
@@ -494,10 +492,15 @@ export async function executeAgentTool(
     }
 
     case "write_full_pipeline": {
+      const bookId = args.bookId as string;
+      const writeGuardError = await getSequentialWriteGuardError(state, bookId, "write_full_pipeline");
+      if (writeGuardError) {
+        return JSON.stringify({ error: writeGuardError });
+      }
       const count = (args.count as number) ?? 1;
       const results = [];
       for (let i = 0; i < count; i++) {
-        const result = await pipeline.writeNextChapter(args.bookId as string);
+        const result = await pipeline.writeNextChapter(bookId);
         results.push(result);
       }
       return JSON.stringify(results);
@@ -573,11 +576,8 @@ export async function executeAgentTool(
       }
 
       // Guard: block chapter progress manipulation via current_state.md
-      if (fileName === "current_state.md") {
-        const progressPatterns = /(?:lastAppliedChapter|chapter.*:\s*\d+|当前章.*[:：]\s*\d+|进度.*[:：]\s*\d+)/i;
-        if (progressPatterns.test(content)) {
-          return JSON.stringify({ error: "不允许通过 write_truth_file 修改 current_state.md 中的章节进度。章节进度由系统自动管理。" });
-        }
+      if (fileName === "current_state.md" && containsProgressManipulation(content)) {
+        return JSON.stringify({ error: "不允许通过 write_truth_file 修改 current_state.md 中的章节进度。章节进度由系统自动管理。" });
       }
 
       const { writeFile, mkdir } = await import("node:fs/promises");
@@ -608,6 +608,32 @@ async function executeTool(
   args: Record<string, unknown>,
 ): Promise<string> {
   return executeAgentTool(pipeline, state, config, name, args);
+}
+
+async function getSequentialWriteGuardError(
+  state: import("../state/manager.js").StateManager,
+  bookId: string,
+  toolName: "write_draft" | "write_full_pipeline",
+): Promise<string | null> {
+  const nextNum = await state.getNextChapterNumber(bookId);
+  const index = await state.loadChapterIndex(bookId);
+  if (index.length === 0) return null;
+  const lastIndexedChapter = index[index.length - 1]!.number;
+  if (lastIndexedChapter === nextNum - 1) return null;
+  return `${toolName} 只能续写下一章（当前应写第${nextNum}章）。检测到章节索引与运行时进度不一致，请先用 get_book_status 确认状态。`;
+}
+
+function containsProgressManipulation(content: string): boolean {
+  const patterns = [
+    /\blastAppliedChapter\b/i,
+    /\|\s*Current Chapter\s*\|\s*\d+\s*\|/i,
+    /\|\s*当前章(?:节)?\s*\|\s*\d+\s*\|/,
+    /\bCurrent Chapter\b\s*[:：]\s*\d+/i,
+    /当前章(?:节)?\s*[:：]\s*\d+/,
+    /\bprogress\b\s*[:：]\s*\d+/i,
+    /进度\s*[:：]\s*\d+/,
+  ];
+  return patterns.some((pattern) => pattern.test(content));
 }
 
 /** Export tool definitions so external systems can reference them. */

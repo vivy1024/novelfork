@@ -1100,16 +1100,53 @@ export class PipelineRunner {
     // 4. Save the final chapter and truth files from a single persistence source
     this.logStage(stageLanguage, { zh: "落盘最终章节", en: "persisting final chapter" });
     this.logStage(stageLanguage, { zh: "生成最终真相文件", en: "rebuilding final truth files" });
-    const persistenceOutput = await this.buildPersistenceOutput(
+    const chapterIndexBeforePersist = await this.state.loadChapterIndex(bookId);
+    const { resolveDuplicateTitle } = await import("../agents/post-write-validator.js");
+    const initialTitleResolution = resolveDuplicateTitle(
+      output.title,
+      chapterIndexBeforePersist.map((chapter) => chapter.title),
+      pipelineLang,
+    );
+    let persistenceOutput = await this.buildPersistenceOutput(
       bookId,
       book,
       bookDir,
       chapterNumber,
-      output,
+      initialTitleResolution.title === output.title
+        ? output
+        : { ...output, title: initialTitleResolution.title },
       finalContent,
       lengthSpec.countingMode,
       reducedControlInput,
     );
+    const finalTitleResolution = resolveDuplicateTitle(
+      persistenceOutput.title,
+      chapterIndexBeforePersist.map((chapter) => chapter.title),
+      pipelineLang,
+    );
+    if (finalTitleResolution.title !== persistenceOutput.title) {
+      persistenceOutput = {
+        ...persistenceOutput,
+        title: finalTitleResolution.title,
+      };
+    }
+    if (persistenceOutput.title !== output.title) {
+      const description = pipelineLang === "en"
+        ? `Duplicate chapter title "${output.title}" was auto-renamed to "${persistenceOutput.title}".`
+        : `章节标题"${output.title}"与已有标题重复，已自动改为"${persistenceOutput.title}"。`;
+      this.config.logger?.warn(`[title] ${description}`);
+      auditResult = {
+        ...auditResult,
+        issues: [...auditResult.issues, {
+          severity: "warning",
+          category: "title-dedup",
+          description,
+          suggestion: pipelineLang === "en"
+            ? "If the auto-renamed title is weak, revise the chapter title manually."
+            : "如果自动改名不理想，可以在后续手动修订章节标题。",
+        }],
+      };
+    }
     const longSpanFatigue = await analyzeLongSpanFatigue({
       bookDir,
       chapterNumber,
@@ -1178,7 +1215,10 @@ export class PipelineRunner {
 
     // 4.2 Final paragraph shape check on persisted content (post-normalize, post-revise)
     {
-      const { detectParagraphLengthDrift } = await import("../agents/post-write-validator.js");
+      const {
+        detectParagraphLengthDrift,
+        detectParagraphShapeWarnings,
+      } = await import("../agents/post-write-validator.js");
       const chapDir = join(bookDir, "chapters");
       const recentFiles = (await readdir(chapDir).catch(() => [] as string[]))
         .filter((f) => f.endsWith(".md") && /^\d{4}/.test(f))
@@ -1187,7 +1227,10 @@ export class PipelineRunner {
       const recentContent = (await Promise.all(
         recentFiles.map((f) => readFile(join(chapDir, f), "utf-8").catch(() => "")),
       )).join("\n\n");
-      const paragraphIssues = detectParagraphLengthDrift(finalContent, recentContent, pipelineLang);
+      const paragraphIssues = [
+        ...detectParagraphShapeWarnings(finalContent, pipelineLang),
+        ...detectParagraphLengthDrift(finalContent, recentContent, pipelineLang),
+      ];
       if (paragraphIssues.length > 0) {
         for (const issue of paragraphIssues) {
           this.config.logger?.warn(`[paragraph] ${issue.description}`);
@@ -1197,28 +1240,6 @@ export class PipelineRunner {
           issues: [...auditResult.issues, ...paragraphIssues.map((v) => ({
             severity: v.severity as "warning",
             category: "paragraph-shape",
-            description: v.description,
-            suggestion: v.description,
-          }))],
-        };
-      }
-    }
-
-    // 4.3 Title dedup check
-    {
-      const { detectDuplicateTitle } = await import("../agents/post-write-validator.js");
-      const chapterIndex = await this.state.loadChapterIndex(bookId);
-      const existingTitles = chapterIndex.map((ch) => ch.title);
-      const titleIssues = detectDuplicateTitle(persistenceOutput.title, existingTitles);
-      if (titleIssues.length > 0) {
-        for (const issue of titleIssues) {
-          this.config.logger?.warn(`[title] ${issue.description}`);
-        }
-        auditResult = {
-          ...auditResult,
-          issues: [...auditResult.issues, ...titleIssues.map((v) => ({
-            severity: v.severity as "warning",
-            category: "title-dedup",
             description: v.description,
             suggestion: v.suggestion,
           }))],

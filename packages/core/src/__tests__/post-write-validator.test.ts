@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
+  detectDuplicateTitle,
   detectParagraphLengthDrift,
+  detectParagraphShapeWarnings,
   validatePostWrite,
   type PostWriteViolation,
 } from "../agents/post-write-validator.js";
@@ -216,5 +218,30 @@ describe("validatePostWrite", () => {
     const result = detectParagraphLengthDrift(current, recent, "zh");
     expect(findRule(result, "段落密度漂移")).toBeDefined();
     expect(findRule(result, "段落密度漂移")?.severity).toBe("warning");
+  });
+
+  it("exposes paragraph shape warnings for final-stage reuse", () => {
+    const current = [
+      "他停下。",
+      "先看门。",
+      "又看窗。",
+      "没人说话。",
+      "他这才进去。",
+      "屋里很冷。",
+    ].join("\n\n");
+
+    const result = detectParagraphShapeWarnings(current, "zh");
+    expect(findRule(result, "段落过碎")).toBeDefined();
+    expect(findRule(result, "连续短段")).toBeDefined();
+  });
+
+  it("detects duplicate chapter titles", () => {
+    const result = detectDuplicateTitle("回声", ["旧路", "回声"]);
+    expect(findRule(result, "duplicate-title")).toBeDefined();
+  });
+
+  it("detects near-duplicate chapter titles", () => {
+    const result = detectDuplicateTitle("Echo-2", ["Echo 2"]);
+    expect(findRule(result, "near-duplicate-title")).toBeDefined();
   });
 });

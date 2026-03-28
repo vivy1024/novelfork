@@ -1,4 +1,4 @@
-import { readFile, writeFile, mkdir, readdir, stat, unlink, open } from "node:fs/promises";
+import { readFile, writeFile, mkdir, readdir, rm, stat, unlink, open } from "node:fs/promises";
 import { join } from "node:path";
 import type { BookConfig } from "../models/book.js";
 import type { ChapterMeta } from "../models/chapter.js";
@@ -303,11 +303,13 @@ export class StateManager {
         }),
       );
 
+      const stateDir = this.stateDir(bookId);
+      let restoredStructuredState = false;
       try {
         const snapshotStateDir = join(snapshotDir, "state");
         const stateFiles = await readdir(snapshotStateDir);
         if (stateFiles.length > 0) {
-          const stateDir = this.stateDir(bookId);
+          restoredStructuredState = true;
           await mkdir(stateDir, { recursive: true });
           await Promise.all(
             stateFiles.map(async (fileName) => {
@@ -318,6 +320,9 @@ export class StateManager {
         }
       } catch {
         // snapshot structured state missing — skip
+      }
+      if (!restoredStructuredState) {
+        await rm(stateDir, { recursive: true, force: true });
       }
 
       return true;

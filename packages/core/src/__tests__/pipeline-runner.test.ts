@@ -3012,6 +3012,151 @@ describe("PipelineRunner", () => {
     }
   });
 
+  it("adds final paragraph fragmentation warnings from revised content before persist", async () => {
+    const { root, runner, state, bookId } = await createRunnerFixture();
+    const storyDir = join(state.bookDir(bookId), "story");
+    const draftBody = "林越先把门推开一条缝，再侧耳去听墙后的动静。屋里的灯没有亮，但桌角还有没散的热气，说明人刚离开不久。";
+    const revisedBody = [
+      "门开了。",
+      "他没进去。",
+      "先听了一下。",
+      "里面没有声响。",
+      "他这才抬脚。",
+      "屋里很冷。",
+    ].join("\n\n");
+
+    await Promise.all([
+      writeFile(join(storyDir, "current_state.md"), createStateCard({
+        chapter: 0,
+        location: "Ashen ferry crossing",
+        protagonistState: "Lin Yue still hides the oath token.",
+        goal: "Find the vanished mentor.",
+        conflict: "The debt trail keeps narrowing.",
+      }), "utf-8"),
+      writeFile(join(storyDir, "pending_hooks.md"), "# Pending Hooks\n", "utf-8"),
+    ]);
+
+    vi.spyOn(WriterAgent.prototype, "writeChapter").mockResolvedValue(
+      createWriterOutput({
+        chapterNumber: 1,
+        title: "雾线",
+        content: draftBody,
+        wordCount: draftBody.length,
+      }),
+    );
+    vi.spyOn(ContinuityAuditor.prototype, "auditChapter")
+      .mockResolvedValueOnce(
+        createAuditResult({
+          passed: false,
+          issues: [CRITICAL_ISSUE],
+          summary: "needs revision",
+        }),
+      )
+      .mockResolvedValueOnce(
+        createAuditResult({
+          passed: true,
+          issues: [],
+          summary: "clean",
+        }),
+      );
+    vi.spyOn(ReviserAgent.prototype, "reviseChapter").mockResolvedValue(
+      createReviseOutput({
+        revisedContent: revisedBody,
+        wordCount: revisedBody.length,
+        updatedState: createStateCard({
+          chapter: 1,
+          location: "Ashen ferry crossing",
+          protagonistState: "Lin Yue still hides the oath token.",
+          goal: "Find the vanished mentor.",
+          conflict: "He steps into the empty room.",
+        }),
+        updatedHooks: "# Pending Hooks\n",
+      }),
+    );
+    vi.spyOn(ChapterAnalyzerAgent.prototype, "analyzeChapter").mockResolvedValue(
+      createAnalyzedOutput({
+        title: "雾线",
+        content: revisedBody,
+        wordCount: revisedBody.length,
+        chapterSummary: "| 1 | 雾线 | 林越 | 进入空屋 | 状态推进 | 无 | 紧绷 | 过渡 |",
+      }),
+    );
+
+    try {
+      const result = await runner.writeNextChapter(bookId, 120);
+
+      expect(result.auditResult.issues).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            category: "paragraph-shape",
+            description: expect.stringContaining("段落被切得过碎"),
+          }),
+          expect.objectContaining({
+            category: "paragraph-shape",
+            description: expect.stringContaining("连续出现"),
+          }),
+        ]),
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("resolves duplicate chapter titles before persist", async () => {
+    const { root, runner, state, bookId } = await createRunnerFixture();
+    const storyDir = join(state.bookDir(bookId), "story");
+    const chaptersDir = join(state.bookDir(bookId), "chapters");
+    const now = "2026-03-19T00:00:00.000Z";
+
+    await Promise.all([
+      writeFile(join(chaptersDir, "0001_回声.md"), "# 第1章 回声\n\n旧章节。", "utf-8"),
+      writeFile(join(storyDir, "current_state.md"), createStateCard({
+        chapter: 1,
+        location: "Ashen ferry crossing",
+        protagonistState: "Lin Yue still hides the oath token.",
+        goal: "Find the vanished mentor.",
+        conflict: "The debt trail keeps narrowing.",
+      }), "utf-8"),
+      writeFile(join(storyDir, "pending_hooks.md"), "# Pending Hooks\n", "utf-8"),
+    ]);
+    await state.saveChapterIndex(bookId, [{
+      number: 1,
+      title: "回声",
+      status: "ready-for-review",
+      wordCount: 12,
+      createdAt: now,
+      updatedAt: now,
+      auditIssues: [],
+      lengthWarnings: [],
+    }]);
+
+    vi.spyOn(WriterAgent.prototype, "writeChapter").mockResolvedValue(
+      createWriterOutput({
+        chapterNumber: 2,
+        title: "回声",
+        content: "这次的正文完全不同，只是标题碰巧重复了。",
+        wordCount: "这次的正文完全不同，只是标题碰巧重复了。".length,
+      }),
+    );
+    vi.spyOn(ContinuityAuditor.prototype, "auditChapter").mockResolvedValue(
+      createAuditResult({
+        passed: true,
+        issues: [],
+        summary: "clean",
+      }),
+    );
+
+    try {
+      const result = await runner.writeNextChapter(bookId, 120);
+      const index = await state.loadChapterIndex(bookId);
+
+      expect(result.title).toBe("回声（2）");
+      expect(index.at(-1)?.title).toBe("回声（2）");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("defaults manual reviseDraft to spot-fix when mode is omitted", async () => {
     const { root, runner, state, bookId } = await createRunnerFixture();
     const storyDir = join(state.bookDir(bookId), "story");

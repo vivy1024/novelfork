@@ -235,7 +235,7 @@ export function validatePostWrite(
     });
   }
 
-  appendParagraphShapeWarnings(violations, content, "zh");
+  violations.push(...detectParagraphShapeWarnings(content, "zh"));
 
   // 11. Book-level prohibitions
   // Short prohibitions (2-30 chars): exact substring match
@@ -398,7 +398,7 @@ function validatePostWriteEnglish(
     });
   }
 
-  appendParagraphShapeWarnings(violations, content, "en");
+  violations.push(...detectParagraphShapeWarnings(content, "en"));
 
   // 2.5. Multi-character scene with almost no direct exchange
   const quotedLines = content.match(/"[^"]+"/g) ?? [];
@@ -494,6 +494,15 @@ function appendParagraphShapeWarnings(
   }
 }
 
+export function detectParagraphShapeWarnings(
+  content: string,
+  language: "zh" | "en" = "zh",
+): ReadonlyArray<PostWriteViolation> {
+  const violations: PostWriteViolation[] = [];
+  appendParagraphShapeWarnings(violations, content, language);
+  return violations;
+}
+
 function analyzeParagraphShape(content: string, language: "zh" | "en"): ParagraphShape {
   const paragraphs = extractParagraphs(content);
   const shortThreshold = language === "en" ? 120 : 35;
@@ -587,4 +596,36 @@ export function detectDuplicateTitle(
   }
 
   return violations;
+}
+
+export function resolveDuplicateTitle(
+  newTitle: string,
+  existingTitles: ReadonlyArray<string>,
+  language: "zh" | "en" = "zh",
+): {
+  readonly title: string;
+  readonly issues: ReadonlyArray<PostWriteViolation>;
+} {
+  const trimmed = newTitle.trim();
+  if (!trimmed) {
+    return { title: newTitle, issues: [] };
+  }
+
+  const issues = detectDuplicateTitle(trimmed, existingTitles);
+  if (issues.length === 0) {
+    return { title: trimmed, issues: [] };
+  }
+
+  let counter = 2;
+  while (counter < 100) {
+    const candidate = language === "en"
+      ? `${trimmed} (${counter})`
+      : `${trimmed}（${counter}）`;
+    if (detectDuplicateTitle(candidate, existingTitles).length === 0) {
+      return { title: candidate, issues };
+    }
+    counter++;
+  }
+
+  return { title: trimmed, issues };
 }

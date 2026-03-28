@@ -3,7 +3,7 @@ import { PipelineRunner, StateManager } from "@actalk/inkos-core";
 import { readdir, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
-import { loadConfig, buildPipelineConfig, findProjectRoot, resolveContext, resolveBookId, log, logError } from "../utils.js";
+import { loadConfig, buildPipelineConfig, findProjectRoot, getLegacyMigrationHint, resolveContext, resolveBookId, log, logError } from "../utils.js";
 import { formatWriteNextComplete, formatWriteNextProgress, formatWriteNextResultLines, resolveCliLanguage } from "../localization.js";
 
 export const writeCommand = new Command("write")
@@ -21,13 +21,17 @@ writeCommand
   .option("-q, --quiet", "Suppress console output")
   .action(async (bookIdArg: string | undefined, opts) => {
     try {
-      const config = await loadConfig();
       const root = findProjectRoot();
       const bookId = await resolveBookId(bookIdArg, root);
       const context = await resolveContext(opts);
       const state = new StateManager(root);
       const book = await state.loadBookConfig(bookId);
       const language = resolveCliLanguage(book.language);
+      const migrationHint = await getLegacyMigrationHint(root, bookId);
+      if (migrationHint && !opts.json) {
+        log(`[migration] ${migrationHint}`);
+      }
+      const config = await loadConfig();
 
       const pipeline = new PipelineRunner(buildPipelineConfig(config, root, { externalContext: context, quiet: opts.quiet }));
 
@@ -81,7 +85,6 @@ writeCommand
   .option("--json", "Output JSON")
   .action(async (args: ReadonlyArray<string>, opts) => {
     try {
-      const config = await loadConfig();
       const root = findProjectRoot();
 
       let bookId: string;
@@ -113,6 +116,10 @@ writeCommand
       const state = new StateManager(root);
       const bookDir = state.bookDir(bookId);
       const chaptersDir = join(bookDir, "chapters");
+      const migrationHint = await getLegacyMigrationHint(root, bookId);
+      if (migrationHint && !opts.json) {
+        log(`[migration] ${migrationHint}`);
+      }
 
       // Remove existing chapter file
       const files = await readdir(chaptersDir);
@@ -151,6 +158,7 @@ writeCommand
 
       const wordCount = opts.words ? parseInt(opts.words, 10) : undefined;
 
+      const config = await loadConfig();
       const pipeline = new PipelineRunner(buildPipelineConfig(config, root));
 
       const result = await pipeline.writeNextChapter(bookId, wordCount);

@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import { StateManager, formatLengthCount, readGenreProfile, resolveLengthCountingMode } from "@actalk/inkos-core";
-import { findProjectRoot, log, logError } from "../utils.js";
+import { findProjectRoot, getLegacyMigrationHint, log, logError } from "../utils.js";
 
 export const statusCommand = new Command("status")
   .description("Show project status")
@@ -32,6 +32,7 @@ export const statusCommand = new Command("status")
       for (const id of bookIds) {
         const book = await state.loadBookConfig(id);
         const index = await state.loadChapterIndex(id);
+        const migrationHint = await getLegacyMigrationHint(root, id);
         const nextChapter = await state.getNextChapterNumber(id);
         const { profile: genreProfile } = await readGenreProfile(root, book.genre);
         const countingMode = resolveLengthCountingMode(book.language ?? genreProfile.language);
@@ -59,6 +60,7 @@ export const statusCommand = new Command("status")
           approved,
           pending,
           failed,
+          ...(migrationHint ? { migrationHint } : {}),
           ...(opts.chapters ? {
             chapterList: index.map((ch) => ({
               number: ch.number,
@@ -77,6 +79,9 @@ export const statusCommand = new Command("status")
           log(`    Chapters: ${nextChapter - 1} / ${book.targetChapters}`);
           log(`    Words: ${totalWords.toLocaleString()} (avg ${avgWords}/ch)`);
           log(`    Approved: ${approved} | Pending: ${pending} | Failed: ${failed}`);
+          if (migrationHint) {
+            log(`    Migration: ${migrationHint}`);
+          }
 
           if (opts.chapters && index.length > 0) {
             log("");

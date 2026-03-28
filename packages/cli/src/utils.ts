@@ -1,5 +1,5 @@
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { readFile, stat } from "node:fs/promises";
+import { join, resolve } from "node:path";
 import { createLLMClient, StateManager, createLogger, createStderrSink, createJsonLineSink, loadProjectConfig, GLOBAL_CONFIG_DIR, GLOBAL_ENV_PATH, type ProjectConfig, type PipelineConfig, type LogSink } from "@actalk/inkos-core";
 import { formatSqliteMemorySupportWarning } from "./runtime-requirements.js";
 
@@ -131,4 +131,21 @@ export async function resolveBookId(
   throw new Error(
     `Multiple books found: ${books.join(", ")}\nPlease specify a book-id.`,
   );
+}
+
+export async function getLegacyMigrationHint(
+  root: string,
+  bookId: string,
+): Promise<string | null> {
+  const state = new StateManager(root);
+  const stateDir = join(state.bookDir(bookId), "story", "state");
+  try {
+    const info = await stat(stateDir);
+    if (info.isDirectory()) {
+      return null;
+    }
+  } catch {
+    return `Book "${bookId}" uses legacy format (pre-v0.6). The next write will auto-migrate its state files.`;
+  }
+  return `Book "${bookId}" uses legacy format (pre-v0.6). The next write will auto-migrate its state files.`;
 }

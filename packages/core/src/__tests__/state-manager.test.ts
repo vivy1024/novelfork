@@ -454,6 +454,52 @@ describe("StateManager", () => {
       const next = await manager.getNextChapterNumber(rwBookId);
       expect(next).toBe(2);
     });
+
+    it("rewrite restore drops poisoned live structured state when the snapshot only has markdown truth files", async () => {
+      const rwBookId = "rewrite-book-markdown-only";
+      const chapDir = join(manager.bookDir(rwBookId), "chapters");
+      const storyDir = join(manager.bookDir(rwBookId), "story");
+      const stateDir = join(storyDir, "state");
+      await mkdir(chapDir, { recursive: true });
+      await mkdir(storyDir, { recursive: true });
+
+      await writeFile(join(chapDir, "0001_ch1.md"), "# Chapter 1\nContent 1", "utf-8");
+      await writeFile(join(chapDir, "0002_ch2.md"), "# Chapter 2\nContent 2", "utf-8");
+      await writeFile(join(chapDir, "0003_ch3.md"), "# Chapter 3\nContent 3", "utf-8");
+      const mkEntry = (n: number) => ({
+        number: n, title: `Ch${n}`, status: "approved" as const, wordCount: 100,
+        createdAt: "", updatedAt: "", auditIssues: [] as string[], lengthWarnings: [] as string[],
+      });
+      const fullIndex = [mkEntry(1), mkEntry(2), mkEntry(3)];
+      await manager.saveChapterIndex(rwBookId, fullIndex);
+
+      await writeFile(join(storyDir, "current_state.md"), "State at ch1", "utf-8");
+      await writeFile(join(storyDir, "pending_hooks.md"), "Hooks at ch1", "utf-8");
+      await manager.snapshotState(rwBookId, 1);
+
+      await mkdir(stateDir, { recursive: true });
+      await writeFile(join(stateDir, "manifest.json"), JSON.stringify({
+        schemaVersion: 2,
+        language: "en",
+        lastAppliedChapter: 4,
+        projectionVersion: 1,
+        migrationWarnings: [],
+      }, null, 2), "utf-8");
+      await writeFile(join(stateDir, "current_state.json"), JSON.stringify({
+        chapter: 3,
+        facts: [],
+      }, null, 2), "utf-8");
+
+      const trimmed = fullIndex.filter((ch) => ch.number < 2);
+      await manager.saveChapterIndex(rwBookId, trimmed);
+      const { rm } = await import("node:fs/promises");
+      await rm(join(chapDir, "0002_ch2.md"));
+      await rm(join(chapDir, "0003_ch3.md"));
+      await manager.restoreState(rwBookId, 1);
+
+      const next = await manager.getNextChapterNumber(rwBookId);
+      expect(next).toBe(2);
+    });
   });
 
   // -------------------------------------------------------------------------
