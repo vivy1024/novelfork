@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { validatePostWrite, type PostWriteViolation } from "../agents/post-write-validator.js";
+import {
+  detectParagraphLengthDrift,
+  validatePostWrite,
+  type PostWriteViolation,
+} from "../agents/post-write-validator.js";
 import type { GenreProfile } from "../models/genre-profile.js";
 
 const baseProfile: GenreProfile = {
@@ -123,6 +127,35 @@ describe("validatePostWrite", () => {
     expect(findRule(result, "段落过长")).toBeDefined();
   });
 
+  it("detects fragmented short paragraphs in Chinese prose", () => {
+    const content = [
+      "门开了。",
+      "他没进去。",
+      "先听了一下。",
+      "里面没有声响。",
+      "他才把手按上去。",
+      "冷意顺着门缝钻出来。",
+    ].join("\n\n");
+
+    const result = validatePostWrite(content, baseProfile, null);
+    expect(findRule(result, "段落过碎")).toBeDefined();
+    expect(findRule(result, "段落过碎")?.severity).toBe("warning");
+  });
+
+  it("detects runs of consecutive short paragraphs", () => {
+    const content = [
+      "他绕过柜台，把灯挪到门边，先看了一眼地上的水印，确认脚印是新的。",
+      "门虚掩着。",
+      "风从外面钻进来。",
+      "他没有立刻追出去。",
+      "他先低头，看见门槛上沾了一点灰黑色的泥。",
+    ].join("\n\n");
+
+    const result = validatePostWrite(content, baseProfile, null);
+    expect(findRule(result, "连续短段")).toBeDefined();
+    expect(findRule(result, "连续短段")?.severity).toBe("warning");
+  });
+
   it("detects book-level prohibitions", () => {
     const bookRules = {
       version: "1",
@@ -157,5 +190,31 @@ describe("validatePostWrite", () => {
     const result = validatePostWrite(content, baseProfile, null, "en");
     expect(findRule(result, "Dialogue pressure")).toBeDefined();
     expect(findRule(result, "Dialogue pressure")?.severity).toBe("warning");
+  });
+
+  it("detects paragraph density drift against recent chapters", () => {
+    const recent = [
+      "他把伞挂在门边，又低头看了一眼鞋底带进来的泥。柜台后的热水壶正轻轻作响，白气沿着玻璃慢慢爬上去。林越没有急着开口，只先把屋里的灯都扫了一遍，确认少了一盏。",
+      "",
+      "姜敏把账本推过来时，手指还压在封皮边上，没有立刻松开。她先问他是不是又去找过旧港的人，然后才把下午听到的消息一点点拆开说，连谁在门口停过脚都没漏掉。",
+      "",
+      "---",
+      "",
+      "他靠着墙站了半分钟，才把那张折过三次的纸重新摊开。纸上的字不多，但每一行都像故意留了半截，逼着他把前后几天听到的话重新拼回去。",
+      "",
+      "外面的雨势已经压下来，棚顶被打得一阵紧一阵。林越没有马上下楼，而是先把窗推开一条缝，让冷风吹进来，把刚才在屋里积住的闷气慢慢散掉。",
+    ].join("\n\n");
+    const current = [
+      "他停下。",
+      "先看门。",
+      "又看窗。",
+      "没人说话。",
+      "他这才进去。",
+      "屋里很冷。",
+    ].join("\n\n");
+
+    const result = detectParagraphLengthDrift(current, recent, "zh");
+    expect(findRule(result, "段落密度漂移")).toBeDefined();
+    expect(findRule(result, "段落密度漂移")?.severity).toBe("warning");
   });
 });

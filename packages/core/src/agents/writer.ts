@@ -8,7 +8,12 @@ import { buildObserverSystemPrompt, buildObserverUserPrompt } from "./observer-p
 import { parseSettlerDeltaOutput } from "./settler-delta-parser.js";
 import { parseSettlementOutput } from "./settler-parser.js";
 import { readGenreProfile, readBookRules } from "./rules-reader.js";
-import { validatePostWrite, detectCrossChapterRepetition, type PostWriteViolation } from "./post-write-validator.js";
+import {
+  detectCrossChapterRepetition,
+  detectParagraphLengthDrift,
+  validatePostWrite,
+  type PostWriteViolation,
+} from "./post-write-validator.js";
 import { analyzeAITells } from "./ai-tells.js";
 import type { ChapterTrace, ContextPackage, RuleStack } from "../models/input-governance.js";
 import type { LengthSpec } from "../models/length-governance.js";
@@ -324,6 +329,7 @@ export class WriterAgent extends BaseAgent {
     const ruleViolations = [
       ...validatePostWrite(creative.content, genreProfile, bookRules, resolvedLanguage),
       ...detectCrossChapterRepetition(creative.content, fingerprintChapters, resolvedLanguage),
+      ...detectParagraphLengthDrift(creative.content, fingerprintChapters, resolvedLanguage),
     ];
     const aiTellIssues = analyzeAITells(creative.content).issues;
 

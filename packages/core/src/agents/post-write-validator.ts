@@ -15,6 +15,15 @@ export interface PostWriteViolation {
   readonly suggestion: string;
 }
 
+interface ParagraphShape {
+  readonly paragraphs: ReadonlyArray<string>;
+  readonly shortThreshold: number;
+  readonly shortParagraphs: ReadonlyArray<string>;
+  readonly shortRatio: number;
+  readonly averageLength: number;
+  readonly maxConsecutiveShort: number;
+}
+
 // --- Marker word lists ---
 
 /** AI转折/惊讶标记词 */
@@ -226,6 +235,8 @@ export function validatePostWrite(
     });
   }
 
+  appendParagraphShapeWarnings(violations, content, "zh");
+
   // 11. Book-level prohibitions
   // Short prohibitions (2-30 chars): exact substring match
   // Long prohibitions (>30 chars): skip — these are conceptual rules for prompt-level enforcement only
@@ -313,6 +324,45 @@ export function detectCrossChapterRepetition(
   return violations;
 }
 
+export function detectParagraphLengthDrift(
+  currentContent: string,
+  recentChaptersContent: string,
+  language: "zh" | "en" = "zh",
+): ReadonlyArray<PostWriteViolation> {
+  if (!recentChaptersContent || recentChaptersContent.trim().length === 0) return [];
+
+  const current = analyzeParagraphShape(currentContent, language);
+  const recent = analyzeParagraphShape(recentChaptersContent, language);
+
+  if (current.paragraphs.length < 4 || recent.paragraphs.length < 4) return [];
+  if (recent.averageLength <= 0 || current.averageLength <= 0) return [];
+
+  const shrinkRatio = current.averageLength / recent.averageLength;
+  const shortRatioDelta = current.shortRatio - recent.shortRatio;
+
+  if (shrinkRatio >= 0.6 || current.shortRatio < 0.5 || shortRatioDelta < 0.25) {
+    return [];
+  }
+
+  const dropPercent = Math.round((1 - shrinkRatio) * 100);
+
+  return [
+    language === "en"
+      ? {
+          rule: "Paragraph density drift",
+          severity: "warning",
+          description: `Average paragraph length dropped from ${Math.round(recent.averageLength)} to ${Math.round(current.averageLength)} characters (${dropPercent}% shorter) compared with recent chapters.`,
+          suggestion: "Let action, observation, and reaction share paragraphs more often instead of cutting every beat into a single short line.",
+        }
+      : {
+          rule: "段落密度漂移",
+          severity: "warning",
+          description: `当前章平均段长从近期章节的${Math.round(recent.averageLength)}字降到${Math.round(current.averageLength)}字，缩短了${dropPercent}%。`,
+          suggestion: "不要把每个动作都切成单独短句；适当把动作、观察和反应并入同一段，恢复段落层次。",
+        },
+  ];
+}
+
 /** English-specific post-write validation rules. */
 function validatePostWriteEnglish(
   content: string,
@@ -347,6 +397,8 @@ function validatePostWriteEnglish(
       suggestion: "Break into shorter paragraphs for readability",
     });
   }
+
+  appendParagraphShapeWarnings(violations, content, "en");
 
   // 2.5. Multi-character scene with almost no direct exchange
   const quotedLines = content.match(/"[^"]+"/g) ?? [];
@@ -395,6 +447,89 @@ function validatePostWriteEnglish(
   }
 
   return violations;
+}
+
+function appendParagraphShapeWarnings(
+  violations: PostWriteViolation[],
+  content: string,
+  language: "zh" | "en",
+): void {
+  const shape = analyzeParagraphShape(content, language);
+  if (shape.paragraphs.length < 4) return;
+
+  if (shape.shortParagraphs.length >= 4 && shape.shortRatio >= 0.6) {
+    violations.push(
+      language === "en"
+        ? {
+            rule: "Paragraph fragmentation",
+            severity: "warning",
+            description: `${shape.shortParagraphs.length} of ${shape.paragraphs.length} paragraphs are shorter than ${shape.shortThreshold} characters.`,
+            suggestion: "Merge adjacent action, observation, and reaction beats so the chapter does not collapse into one-line paragraphs.",
+          }
+        : {
+            rule: "段落过碎",
+            severity: "warning",
+            description: `${shape.paragraphs.length}个段落里有${shape.shortParagraphs.length}个不足${shape.shortThreshold}字，段落被切得过碎。`,
+            suggestion: "把相邻的动作、观察、反应适当并段，不要每句话都单独起段。",
+          },
+    );
+  }
+
+  if (shape.maxConsecutiveShort >= 3) {
+    violations.push(
+      language === "en"
+        ? {
+            rule: "Consecutive short paragraphs",
+            severity: "warning",
+            description: `${shape.maxConsecutiveShort} short paragraphs appear back to back.`,
+            suggestion: "Break the one-beat-per-paragraph rhythm by folding connected beats into fuller paragraphs.",
+          }
+        : {
+            rule: "连续短段",
+            severity: "warning",
+            description: `连续出现${shape.maxConsecutiveShort}个不足${shape.shortThreshold}字的短段，容易形成短句堆砌。`,
+            suggestion: "把连续的碎动作重新编组，至少让一个段落承载完整的动作链或情绪推进。",
+          },
+    );
+  }
+}
+
+function analyzeParagraphShape(content: string, language: "zh" | "en"): ParagraphShape {
+  const paragraphs = extractParagraphs(content);
+  const shortThreshold = language === "en" ? 120 : 35;
+  const shortParagraphs = paragraphs.filter((paragraph) => paragraph.length < shortThreshold);
+  const averageLength = paragraphs.length > 0
+    ? paragraphs.reduce((sum, paragraph) => sum + paragraph.length, 0) / paragraphs.length
+    : 0;
+
+  let maxConsecutiveShort = 0;
+  let currentConsecutive = 0;
+  for (const paragraph of paragraphs) {
+    if (paragraph.length < shortThreshold) {
+      currentConsecutive++;
+      maxConsecutiveShort = Math.max(maxConsecutiveShort, currentConsecutive);
+    } else {
+      currentConsecutive = 0;
+    }
+  }
+
+  return {
+    paragraphs,
+    shortThreshold,
+    shortParagraphs,
+    shortRatio: paragraphs.length > 0 ? shortParagraphs.length / paragraphs.length : 0,
+    averageLength,
+    maxConsecutiveShort,
+  };
+}
+
+function extractParagraphs(content: string): string[] {
+  return content
+    .split(/\n\s*\n/)
+    .map((paragraph) => paragraph.trim())
+    .filter((paragraph) => paragraph.length > 0)
+    .filter((paragraph) => paragraph !== "---")
+    .filter((paragraph) => !paragraph.startsWith("#"));
 }
 
 const ENGLISH_NAME_STOP_WORDS = new Set([
