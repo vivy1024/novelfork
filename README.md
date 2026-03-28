@@ -18,9 +18,9 @@
 
 ---
 
-开源 AI Agent，自主写小说。10 个专职 AI Agent 组成流水线，负责规划、写作、事实提取、状态管理、33 维连续性审计和修订——人工审核门控确保你始终掌控全局。覆盖玄幻、仙侠、都市、科幻等多种风格，支持续写、番外、同人、仿写等创作形式。已发布为 [OpenClaw](https://clawhub.ai) skill。
+Agent 写小说。写、审、改，全程接管。覆盖玄幻、仙侠、都市、科幻等多种风格，支持续写、番外、同人、仿写等创作形式。
 
-**English novel writing supported.** Set `--lang en` to write in English. See [English README](README.en.md) for details.
+**Native English novel writing now supported！** Set `--lang en` to write in English. See [English README](README.en.md) for details.
 
 ## 快速开始
 
