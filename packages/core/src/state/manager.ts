@@ -20,9 +20,17 @@ export class StateManager {
   }
 
   async ensureControlDocuments(bookId: string, authorIntent?: string): Promise<void> {
-    const storyDir = join(this.bookDir(bookId), "story");
-    const runtimeDir = join(storyDir, "runtime");
     const language = await this.resolveControlDocumentLanguage(bookId);
+    await this.ensureControlDocumentsAt(this.bookDir(bookId), language, authorIntent);
+  }
+
+  async ensureControlDocumentsAt(
+    bookDir: string,
+    language: "zh" | "en",
+    authorIntent?: string,
+  ): Promise<void> {
+    const storyDir = join(bookDir, "story");
+    const runtimeDir = join(storyDir, "runtime");
 
     await mkdir(storyDir, { recursive: true });
     await mkdir(runtimeDir, { recursive: true });
@@ -158,10 +166,13 @@ export class StateManager {
   }
 
   async saveBookConfig(bookId: string, config: BookConfig): Promise<void> {
-    const dir = this.bookDir(bookId);
-    await mkdir(dir, { recursive: true });
+    await this.saveBookConfigAt(this.bookDir(bookId), config);
+  }
+
+  async saveBookConfigAt(bookDir: string, config: BookConfig): Promise<void> {
+    await mkdir(bookDir, { recursive: true });
     await writeFile(
-      join(dir, "book.json"),
+      join(bookDir, "book.json"),
       JSON.stringify(config, null, 2),
       "utf-8",
     );
@@ -223,7 +234,14 @@ export class StateManager {
     bookId: string,
     index: ReadonlyArray<ChapterMeta>,
   ): Promise<void> {
-    const chaptersDir = join(this.bookDir(bookId), "chapters");
+    await this.saveChapterIndexAt(this.bookDir(bookId), index);
+  }
+
+  async saveChapterIndexAt(
+    bookDir: string,
+    index: ReadonlyArray<ChapterMeta>,
+  ): Promise<void> {
+    const chaptersDir = join(bookDir, "chapters");
     await mkdir(chaptersDir, { recursive: true });
     await writeFile(
       join(chaptersDir, "index.json"),
@@ -233,7 +251,11 @@ export class StateManager {
   }
 
   async snapshotState(bookId: string, chapterNumber: number): Promise<void> {
-    const storyDir = join(this.bookDir(bookId), "story");
+    await this.snapshotStateAt(this.bookDir(bookId), chapterNumber);
+  }
+
+  async snapshotStateAt(bookDir: string, chapterNumber: number): Promise<void> {
+    const storyDir = join(bookDir, "story");
     const snapshotDir = join(storyDir, "snapshots", String(chapterNumber));
     await mkdir(snapshotDir, { recursive: true });
 
@@ -252,7 +274,7 @@ export class StateManager {
       }),
     );
 
-    const stateDir = this.stateDir(bookId);
+    const stateDir = join(bookDir, "story", "state");
     const snapshotStateDir = join(snapshotDir, "state");
     try {
       const stateFiles = await readdir(stateDir);
@@ -268,6 +290,28 @@ export class StateManager {
     } catch {
       // state directory missing — skip
     }
+  }
+
+  async isCompleteBookDirectory(bookDir: string): Promise<boolean> {
+    const requiredPaths = [
+      join(bookDir, "book.json"),
+      join(bookDir, "story", "story_bible.md"),
+      join(bookDir, "story", "volume_outline.md"),
+      join(bookDir, "story", "book_rules.md"),
+      join(bookDir, "story", "current_state.md"),
+      join(bookDir, "story", "pending_hooks.md"),
+      join(bookDir, "chapters", "index.json"),
+    ];
+
+    for (const requiredPath of requiredPaths) {
+      try {
+        await stat(requiredPath);
+      } catch {
+        return false;
+      }
+    }
+
+    return true;
   }
 
   async restoreState(bookId: string, chapterNumber: number): Promise<boolean> {

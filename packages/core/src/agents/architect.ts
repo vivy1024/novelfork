@@ -661,7 +661,7 @@ prohibitions:
       const match = content.match(regex);
       const section = match?.[1]?.trim();
       if (!section) {
-        return `[${name} 生成失败，需要重新生成]`;
+        throw new Error(`Architect output missing required section: ${name}`);
       }
       if (name !== "pending_hooks") {
         return section;

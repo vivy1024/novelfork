@@ -32,7 +32,7 @@ import { buildLengthSpec, countChapterLength, formatLengthCount, isOutsideHardRa
 import { analyzeLongSpanFatigue } from "../utils/long-span-fatigue.js";
 import { loadNarrativeMemorySeed, loadSnapshotCurrentStateFacts } from "../state/runtime-state-store.js";
 import { rewriteStructuredStateFromMarkdown } from "../state/state-bootstrap.js";
-import { readFile, readdir, writeFile, mkdir, rm } from "node:fs/promises";
+import { readFile, readdir, writeFile, mkdir, rename, rm, stat } from "node:fs/promises";
 import { join, relative } from "node:path";
 
 export interface PipelineConfig {
@@ -264,6 +264,15 @@ export class PipelineRunner {
     };
   }
 
+  private async pathExists(path: string): Promise<boolean> {
+    try {
+      await stat(path);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   private async loadGenreProfile(genre: string): Promise<{ profile: GenreProfile }> {
     const parsed = await readGenreProfile(this.config.projectRoot, genre);
     return { profile: parsed.profile };
@@ -281,31 +290,51 @@ export class PipelineRunner {
   async initBook(book: BookConfig): Promise<void> {
     const architect = new ArchitectAgent(this.agentCtxFor("architect", book.id));
     const bookDir = this.state.bookDir(book.id);
+    const stagingBookDir = join(
+      this.state.booksDir,
+      `.tmp-book-create-${book.id}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+    );
     const stageLanguage = await this.resolveBookLanguage(book);
-
-    this.logStage(stageLanguage, { zh: "保存书籍配置", en: "saving book config" });
-    await this.state.saveBookConfig(book.id, book);
 
     this.logStage(stageLanguage, { zh: "生成基础设定", en: "generating foundation" });
     const { profile: gp } = await this.loadGenreProfile(book.genre);
     const foundation = await architect.generateFoundation(book, this.config.externalContext);
-    this.logStage(stageLanguage, { zh: "写入基础设定文件", en: "writing foundation files" });
-    await architect.writeFoundationFiles(
-      bookDir,
-      foundation,
-      gp.numericalSystem,
-      book.language ?? gp.language,
-    );
-    this.logStage(stageLanguage, { zh: "初始化控制文档", en: "initializing control documents" });
-    await this.state.ensureControlDocuments(book.id, this.config.externalContext);
+    try {
+      this.logStage(stageLanguage, { zh: "保存书籍配置", en: "saving book config" });
+      await this.state.saveBookConfigAt(stagingBookDir, book);
 
-    // Ensure chapters directory exists (prevents ENOENT if init was previously interrupted)
-    await mkdir(join(bookDir, "chapters"), { recursive: true });
-    await this.state.saveChapterIndex(book.id, []);
+      this.logStage(stageLanguage, { zh: "写入基础设定文件", en: "writing foundation files" });
+      await architect.writeFoundationFiles(
+        stagingBookDir,
+        foundation,
+        gp.numericalSystem,
+        book.language ?? gp.language,
+      );
 
-    // Snapshot initial state so rewrite of chapter 1 can restore to pre-chapter state
-    this.logStage(stageLanguage, { zh: "创建初始快照", en: "creating initial snapshot" });
-    await this.state.snapshotState(book.id, 0);
+      this.logStage(stageLanguage, { zh: "初始化控制文档", en: "initializing control documents" });
+      await this.state.ensureControlDocumentsAt(
+        stagingBookDir,
+        book.language ?? gp.language,
+        this.config.externalContext,
+      );
+
+      await this.state.saveChapterIndexAt(stagingBookDir, []);
+
+      this.logStage(stageLanguage, { zh: "创建初始快照", en: "creating initial snapshot" });
+      await this.state.snapshotStateAt(stagingBookDir, 0);
+
+      if (await this.pathExists(bookDir)) {
+        if (await this.state.isCompleteBookDirectory(bookDir)) {
+          throw new Error(`Book "${book.id}" already exists at books/${book.id}/. Use a different title or delete the existing book first.`);
+        }
+        await rm(bookDir, { recursive: true, force: true });
+      }
+
+      await rename(stagingBookDir, bookDir);
+    } catch (error) {
+      await rm(stagingBookDir, { recursive: true, force: true }).catch(() => undefined);
+      throw error;
+    }
   }
 
   /** Import external source material and generate fanfic_canon.md */

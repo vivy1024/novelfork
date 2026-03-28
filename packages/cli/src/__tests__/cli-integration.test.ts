@@ -228,6 +228,37 @@ describe("CLI integration", () => {
     });
   });
 
+  describe("inkos book create", () => {
+    it("removes stale incomplete book directories before retrying create", async () => {
+      try {
+        await stat(join(projectDir, "inkos.json"));
+      } catch {
+        run(["init"]);
+      }
+      const bookId = "stale-book";
+      const staleDir = join(projectDir, "books", bookId);
+      await mkdir(join(staleDir, "story"), { recursive: true });
+      await writeFile(join(staleDir, "book.json"), JSON.stringify({
+        id: bookId,
+        title: "Stale Book",
+      }, null, 2));
+      await writeFile(join(staleDir, "story", "current_state.md"), "# stale\n", "utf-8");
+
+      const { exitCode, stderr } = runStderr([
+        "book",
+        "create",
+        "--title",
+        "stale book",
+      ], {
+        env: failingLlmEnv,
+      });
+
+      expect(exitCode).not.toBe(0);
+      expect(stderr).toContain("Failed to create book");
+      await expect(stat(staleDir)).rejects.toThrow();
+    });
+  });
+
   describe("inkos status", () => {
     it("shows project status with zero books", () => {
       const output = run(["status"]);

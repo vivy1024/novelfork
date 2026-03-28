@@ -270,4 +270,55 @@ describe("ArchitectAgent", () => {
 
     expect(result.pendingHooks).toContain("| H13 | 22 | 舆情操盘 | 待推进 | 0 | 51-60章 | 庄蔓出场后逐步揭露（初始线索：一家自媒体公司在多个旧案节点同步接单） |");
   });
+
+  it("throws when a required foundation section is missing", async () => {
+    const agent = new ArchitectAgent({
+      client: {
+        provider: "openai",
+        apiFormat: "chat",
+        stream: false,
+        defaults: {
+          temperature: 0.7,
+          maxTokens: 4096,
+          thinkingBudget: 0, maxTokensCap: null,
+          extra: {},
+        },
+      },
+      model: "test-model",
+      projectRoot: process.cwd(),
+    });
+
+    const book: BookConfig = {
+      id: "broken-book",
+      title: "Broken Book",
+      platform: "other",
+      genre: "other",
+      status: "active",
+      targetChapters: 20,
+      chapterWordCount: 2200,
+      language: "zh",
+      createdAt: "2026-03-29T00:00:00.000Z",
+      updatedAt: "2026-03-29T00:00:00.000Z",
+    };
+
+    vi.spyOn(agent as unknown as { chat: (...args: unknown[]) => Promise<unknown> }, "chat")
+      .mockResolvedValue({
+        content: [
+          "=== SECTION: story_bible ===",
+          "# 故事圣经",
+          "",
+          "=== SECTION: volume_outline ===",
+          "# 卷纲",
+          "",
+          "=== SECTION: current_state ===",
+          "# 当前状态",
+          "",
+          "=== SECTION: pending_hooks ===",
+          "# 伏笔池",
+        ].join("\n"),
+        usage: ZERO_USAGE,
+      });
+
+    await expect(agent.generateFoundation(book)).rejects.toThrow(/book_rules/i);
+  });
 });

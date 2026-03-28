@@ -333,7 +333,7 @@ describe("PipelineRunner", () => {
       const runtimeDir = await stat(join(storyDir, "runtime"));
 
       expect(authorIntent).toContain("mentor conflict");
-      expect(currentFocus).toContain("Current Focus");
+      expect(currentFocus).toContain("当前聚焦");
       expect(runtimeDir.isDirectory()).toBe(true);
     } finally {
       await rm(root, { recursive: true, force: true });
@@ -362,6 +362,48 @@ describe("PipelineRunner", () => {
       expect(authorIntent).toContain("Author Intent");
       expect(currentFocus).toContain("Current Focus");
       expect(runtimeDir.isDirectory()).toBe(true);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("cleans staged files when initBook fails before foundation is complete", async () => {
+    const root = await mkdtemp(join(tmpdir(), "inkos-init-rollback-"));
+    const runner = new PipelineRunner({
+      client: {
+        provider: "openai",
+        apiFormat: "chat",
+        stream: false,
+        defaults: {
+          temperature: 0.7,
+          maxTokens: 4096,
+          thinkingBudget: 0, maxTokensCap: null,
+        },
+      } as ConstructorParameters<typeof PipelineRunner>[0]["client"],
+      model: "test-model",
+      projectRoot: root,
+    });
+
+    const now = "2026-03-29T00:00:00.000Z";
+    const book: BookConfig = {
+      id: "atomic-book",
+      title: "Atomic Book",
+      platform: "tomato",
+      genre: "xuanhuan",
+      status: "outlining",
+      targetChapters: 12,
+      chapterWordCount: 2200,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    vi.spyOn(ArchitectAgent.prototype, "generateFoundation").mockRejectedValue(
+      new Error("missing book_rules section"),
+    );
+
+    try {
+      await expect(runner.initBook(book)).rejects.toThrow("missing book_rules section");
+      await expect(stat(join(root, "books", "atomic-book"))).rejects.toThrow();
     } finally {
       await rm(root, { recursive: true, force: true });
     }

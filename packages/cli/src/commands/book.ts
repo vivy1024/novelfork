@@ -9,7 +9,6 @@ import {
   formatBookCreateFoundationReady,
   formatBookCreateLocation,
   formatBookCreateNextStep,
-  formatBookCreateResume,
   resolveCliLanguage,
 } from "../localization.js";
 import { loadConfig, buildPipelineConfig, findProjectRoot, resolveBookId, log, logError } from "../utils.js";
@@ -30,7 +29,6 @@ bookCommand
   .option("--json", "Output JSON")
   .action(async (opts) => {
     try {
-      const config = await loadConfig();
       const root = findProjectRoot();
 
       const bookId = opts.title
@@ -39,6 +37,20 @@ bookCommand
         .replace(/-+/g, "-")
         .slice(0, 30);
 
+      const bookDir = join(root, "books", bookId);
+      try {
+        await access(bookDir);
+        const state = new StateManager(root);
+        if (await state.isCompleteBookDirectory(bookDir)) {
+          throw new Error(`Book "${bookId}" already exists at books/${bookId}/. Use a different title or delete the existing book first.`);
+        }
+        await rm(bookDir, { recursive: true, force: true });
+      } catch (e) {
+        if (e instanceof Error && e.message.includes("already exists")) throw e;
+        // Directory doesn't exist, good
+      }
+
+      const config = await loadConfig();
       const now = new Date().toISOString();
       const book: BookConfig = {
         id: bookId,
@@ -53,23 +65,6 @@ bookCommand
         updatedAt: now,
       };
       const language = resolveCliLanguage(book.language);
-
-      const bookDir = join(root, "books", bookId);
-      try {
-        await access(bookDir);
-        // Directory exists — check if it's a complete book or an interrupted init
-        try {
-          await access(join(bookDir, "story", "story_bible.md"));
-          throw new Error(`Book "${bookId}" already exists at books/${bookId}/. Use a different title or delete the existing book first.`);
-        } catch (inner) {
-          if (inner instanceof Error && inner.message.includes("already exists")) throw inner;
-          // story_bible.md missing → incomplete init, allow re-run
-          if (!opts.json) log(formatBookCreateResume(language, bookId));
-        }
-      } catch (e) {
-        if (e instanceof Error && e.message.includes("already exists")) throw e;
-        // Directory doesn't exist, good
-      }
 
       if (!opts.json) log(formatBookCreateCreating(language, book.title, book.genre, book.platform));
 
