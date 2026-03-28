@@ -418,6 +418,42 @@ describe("StateManager", () => {
       const restored = await manager.restoreState(bookId, 999);
       expect(restored).toBe(false);
     });
+
+    it("rewrite chapter 2 then getNextChapterNumber returns 2", async () => {
+      const rwBookId = "rewrite-book";
+      const chapDir = join(manager.bookDir(rwBookId), "chapters");
+      const storyDir = join(manager.bookDir(rwBookId), "story");
+      await mkdir(chapDir, { recursive: true });
+      await mkdir(storyDir, { recursive: true });
+
+      // Simulate 3 chapters written
+      await writeFile(join(chapDir, "0001_ch1.md"), "# Chapter 1\nContent 1", "utf-8");
+      await writeFile(join(chapDir, "0002_ch2.md"), "# Chapter 2\nContent 2", "utf-8");
+      await writeFile(join(chapDir, "0003_ch3.md"), "# Chapter 3\nContent 3", "utf-8");
+      const fullIndex = [
+        { number: 1, title: "Ch1", status: "approved", wordCount: 100, createdAt: "", updatedAt: "", auditIssues: [] },
+        { number: 2, title: "Ch2", status: "approved", wordCount: 100, createdAt: "", updatedAt: "", auditIssues: [] },
+        { number: 3, title: "Ch3", status: "approved", wordCount: 100, createdAt: "", updatedAt: "", auditIssues: [] },
+      ];
+      await manager.saveChapterIndex(rwBookId, fullIndex);
+
+      // Snapshot state at chapter 1 (before chapter 2)
+      await writeFile(join(storyDir, "current_state.md"), "State at ch1", "utf-8");
+      await writeFile(join(storyDir, "pending_hooks.md"), "Hooks at ch1", "utf-8");
+      await manager.snapshotState(rwBookId, 1);
+
+      // Simulate rewrite of chapter 2: trim index, delete ch2+ch3, restore state
+      const trimmed = fullIndex.filter((ch) => ch.number < 2);
+      await manager.saveChapterIndex(rwBookId, trimmed);
+      const { rm } = await import("node:fs/promises");
+      await rm(join(chapDir, "0002_ch2.md"));
+      await rm(join(chapDir, "0003_ch3.md"));
+      await manager.restoreState(rwBookId, 1);
+
+      // Next chapter should be 2, not 4
+      const next = await manager.getNextChapterNumber(rwBookId);
+      expect(next).toBe(2);
+    });
   });
 
   // -------------------------------------------------------------------------
