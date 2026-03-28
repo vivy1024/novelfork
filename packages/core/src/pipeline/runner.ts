@@ -1176,6 +1176,34 @@ export class PipelineRunner {
       throw new Error(`State validation failed for chapter ${chapterNumber}: ${reason}`);
     }
 
+    // 4.2 Final paragraph shape check on persisted content (post-normalize, post-revise)
+    {
+      const { detectParagraphLengthDrift } = await import("../agents/post-write-validator.js");
+      const chapDir = join(bookDir, "chapters");
+      const recentFiles = (await readdir(chapDir).catch(() => [] as string[]))
+        .filter((f) => f.endsWith(".md") && /^\d{4}/.test(f))
+        .sort()
+        .slice(-5);
+      const recentContent = (await Promise.all(
+        recentFiles.map((f) => readFile(join(chapDir, f), "utf-8").catch(() => "")),
+      )).join("\n\n");
+      const paragraphIssues = detectParagraphLengthDrift(finalContent, recentContent, pipelineLang);
+      if (paragraphIssues.length > 0) {
+        for (const issue of paragraphIssues) {
+          this.config.logger?.warn(`[paragraph] ${issue.description}`);
+        }
+        auditResult = {
+          ...auditResult,
+          issues: [...auditResult.issues, ...paragraphIssues.map((v) => ({
+            severity: v.severity as "warning",
+            category: "paragraph-shape",
+            description: v.description,
+            suggestion: v.description,
+          }))],
+        };
+      }
+    }
+
     await writer.saveChapter(bookDir, persistenceOutput, gp.numericalSystem, pipelineLang);
     await writer.saveNewTruthFiles(bookDir, persistenceOutput, pipelineLang);
     await this.syncLegacyStructuredStateFromMarkdown(bookDir, chapterNumber, persistenceOutput);
