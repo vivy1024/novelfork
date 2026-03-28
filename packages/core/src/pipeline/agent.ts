@@ -370,8 +370,15 @@ export async function executeAgentTool(
     }
 
     case "write_draft": {
+      // Guard: write_draft only writes the next sequential chapter
+      const bookId = args.bookId as string;
+      const nextNum = await state.getNextChapterNumber(bookId);
+      const index = await state.loadChapterIndex(bookId);
+      if (index.length > 0 && index[index.length - 1]!.number !== nextNum - 1) {
+        return JSON.stringify({ error: `write_draft 只能续写下一章（第${nextNum}章）。如果中间有空缺，请先用 get_book_status 确认状态。` });
+      }
       const result = await pipeline.writeDraft(
-        args.bookId as string,
+        bookId,
         args.guidance as string | undefined,
       );
       return JSON.stringify(result);
@@ -386,9 +393,22 @@ export async function executeAgentTool(
     }
 
     case "revise_chapter": {
+      // Guard: target chapter must exist and have content
+      const bookId = args.bookId as string;
+      const chapterNum = args.chapterNumber as number | undefined;
+      if (chapterNum !== undefined) {
+        const index = await state.loadChapterIndex(bookId);
+        const chapter = index.find((ch) => ch.number === chapterNum);
+        if (!chapter) {
+          return JSON.stringify({ error: `第${chapterNum}章不存在。revise_chapter 只能修订已有章节，不能用来补写缺失章节。请用 get_book_status 确认。` });
+        }
+        if (chapter.wordCount === 0) {
+          return JSON.stringify({ error: `第${chapterNum}章内容为空（0字）。revise_chapter 不能修订空章节。` });
+        }
+      }
       const result = await pipeline.reviseDraft(
-        args.bookId as string,
-        args.chapterNumber as number | undefined,
+        bookId,
+        chapterNum,
         (args.mode as ReviseMode) ?? DEFAULT_REVISE_MODE,
       );
       return JSON.stringify(result);
@@ -524,6 +544,10 @@ export async function executeAgentTool(
       if (chapters.length === 0) {
         return JSON.stringify({ error: "No chapters found. Check text format or provide a splitPattern." });
       }
+      // Guard: import_chapters is a whole-book reimport, not a single-chapter patch
+      if (chapters.length === 1) {
+        return JSON.stringify({ error: "import_chapters 是整书重导工具，需要至少 2 个章节。如果只想补一章，请用 write_draft 续写或 revise_chapter 修订。" });
+      }
       const result = await pipeline.importChapters({
         bookId: args.bookId as string,
         chapters: [...chapters],
@@ -546,6 +570,14 @@ export async function executeAgentTool(
 
       if (!ALLOWED_FILES.includes(fileName)) {
         return JSON.stringify({ error: `不允许修改文件 "${fileName}"。允许的文件：${ALLOWED_FILES.join(", ")}` });
+      }
+
+      // Guard: block chapter progress manipulation via current_state.md
+      if (fileName === "current_state.md") {
+        const progressPatterns = /(?:lastAppliedChapter|chapter.*:\s*\d+|当前章.*[:：]\s*\d+|进度.*[:：]\s*\d+)/i;
+        if (progressPatterns.test(content)) {
+          return JSON.stringify({ error: "不允许通过 write_truth_file 修改 current_state.md 中的章节进度。章节进度由系统自动管理。" });
+        }
       }
 
       const { writeFile, mkdir } = await import("node:fs/promises");
