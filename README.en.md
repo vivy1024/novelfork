@@ -405,6 +405,10 @@ pnpm typecheck    # Type-check without emitting
  </picture>
 </a>
 
+## Repobeats
+
+![Alt](https://repobeats.axiom.co/api/embed/024114415c1505a8c27fb121e3b392524e48f583.svg "Repobeats analytics image")
+
 ## Contributors
 
 <a href="https://github.com/Narcooo/inkos/graphs/contributors">
