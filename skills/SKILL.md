@@ -381,12 +381,15 @@ inkos genre show xuanhuan
 
 ### Create Custom Genre
 ```bash
-inkos genre create --name "my-genre" --rules "rule1,rule2,rule3"
+inkos genre create my-genre --name "My Genre"
+# Options: --numerical, --power, --era
+inkos genre create dark-xuanhuan --name "Dark Xuanhuan" --numerical --power
 ```
 
-### Copy and Modify Existing Genre
+### Copy Built-in Genre for Customization
 ```bash
-inkos genre copy xuanhuan --name "dark-xuanhuan" --rules "darker tone, more violence"
+inkos genre copy xuanhuan
+# Copies to project genres/ directory for editing
 ```
 
 ## Command Reference Summary
@@ -418,6 +421,18 @@ inkos genre copy xuanhuan --name "dark-xuanhuan" --rules "darker tone, more viol
 | `inkos review list/approve-all` | Manage chapter approvals | Quality gate |
 | `inkos fanfic init` | Create fanfic from source material | `--from <file>`, `--mode canon/au/ooc/cp` |
 | `inkos genre list` | List all available genres | Shows English and Chinese genres with default language |
+| `inkos genre create <id>` | Create custom genre profile | `--name`, `--numerical`, `--power`, `--era` |
+| `inkos genre copy <id>` | Copy built-in genre to project | For customization |
+| `inkos write rewrite <book> <ch>` | Rewrite a specific chapter | Deletes chapter and later, rewrites from that point |
+| `inkos book update [book-id]` | Update book settings | `--chapter-words`, `--target-chapters`, `--status`, `--lang` |
+| `inkos book delete <book-id>` | Delete book and all chapters | `--force` to skip confirmation |
+| `inkos plan chapter [book-id]` | Generate chapter intent | Preview what next chapter will do before writing |
+| `inkos compose chapter [book-id]` | Generate runtime artifacts | Context, rule-stack, trace for next chapter |
+| `inkos consolidate [book-id]` | Consolidate chapter summaries | Reduces context for long books (volume-level summaries) |
+| `inkos eval [book-id]` | Quality evaluation report | `--json`, `--chapters <range>`. Composite quality score |
+| `inkos studio` | Start web workbench | `-p` for port. Local web UI for book management |
+| `inkos fanfic show [book-id]` | Display parsed fanfic canon | Shows imported source material analysis |
+| `inkos fanfic refresh [book-id]` | Re-import and regenerate fanfic canon | `--from <file>` for updated source material |
 
 ## Error Handling
 
