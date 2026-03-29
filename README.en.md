@@ -395,6 +395,22 @@ pnpm test         # Run tests
 pnpm typecheck    # Type-check without emitting
 ```
 
+## Star History
+
+<a href="https://www.star-history.com/#Narcooo/inkos&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=Narcooo/inkos&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=Narcooo/inkos&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=Narcooo/inkos&type=date&legend=top-left" />
+ </picture>
+</a>
+
+## Contributors
+
+<a href="https://github.com/Narcooo/inkos/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=Narcooo/inkos" />
+</a>
+
 ## License
 
 [MIT](LICENSE)
