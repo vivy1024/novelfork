@@ -61,7 +61,14 @@ Output JSON:
 }
 
 passed = true means no serious contradictions found. Minor observations are still reported as warnings.
-If there are no issues at all, return {"warnings": [], "passed": true}.`;
+If there are no issues at all, return {"warnings": [], "passed": true}.
+
+IMPORTANT: Set passed=false ONLY for hard contradictions — facts that directly conflict with the chapter text (e.g., character said to be dead but is alive in text, location stated as X but text clearly shows Y). Do NOT fail for:
+- Slightly ahead-of-text inferences (e.g., "about to go to X" when text shows intent but not arrival)
+- Missing details (state card doesn't capture every minor event)
+- Reasonable extrapolations from text (e.g., "slightly relieved" from "took a sip of water")
+- Hook management differences (hooks added/removed that don't contradict text)
+These should be warnings with passed=true, not failures.`;
 
     const userPrompt = `Chapter ${chapterNumber} validation:
 
