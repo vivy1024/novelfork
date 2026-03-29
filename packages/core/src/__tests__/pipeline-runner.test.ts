@@ -2144,6 +2144,73 @@ describe("PipelineRunner", () => {
     await rm(root, { recursive: true, force: true });
   });
 
+  it("still persists the chapter when the state validator appends markdown after a valid JSON verdict", async () => {
+    vi.restoreAllMocks();
+    vi.spyOn(LengthNormalizerAgent.prototype, "normalizeChapter").mockImplementation(
+      async ({ chapterContent, lengthSpec }) => ({
+        normalizedContent: chapterContent,
+        finalCount: countChapterLength(chapterContent, lengthSpec.countingMode),
+        applied: false,
+        mode: "none",
+        tokenUsage: ZERO_USAGE,
+      }),
+    );
+
+    const { root, runner, state, bookId } = await createRunnerFixture({
+      inputGovernanceMode: "legacy",
+    });
+    const chaptersDir = join(state.bookDir(bookId), "chapters");
+    const finalBody = "Validated chapter body that should still persist.";
+
+    vi.spyOn(WriterAgent.prototype, "writeChapter").mockResolvedValue(
+      createWriterOutput({
+        content: finalBody,
+        wordCount: finalBody.length,
+      }),
+    );
+    vi.spyOn(ContinuityAuditor.prototype, "auditChapter").mockResolvedValue(
+      createAuditResult({
+        passed: true,
+        issues: [],
+        summary: "clean",
+      }),
+    );
+    vi.spyOn(ChapterAnalyzerAgent.prototype, "analyzeChapter").mockResolvedValue(
+      createAnalyzedOutput({
+        content: finalBody,
+        wordCount: finalBody.length,
+      }),
+    );
+    vi.spyOn(
+      StateValidatorAgent.prototype as unknown as {
+        chat: (...args: unknown[]) => Promise<{ content: string; usage: typeof ZERO_USAGE }>;
+      },
+      "chat",
+    ).mockResolvedValue({
+      content: [
+        "{\"warnings\":[],\"passed\":true}",
+        "",
+        "## Notes",
+        "Trailing markdown can include } braces and should not abort persistence.",
+      ].join("\n"),
+      usage: ZERO_USAGE,
+    });
+
+    const result = await runner.writeNextChapter(bookId);
+
+    expect(result.chapterNumber).toBe(1);
+    await expect(readFile(join(chaptersDir, "0001_Test_Chapter.md"), "utf-8"))
+      .resolves.toContain(finalBody);
+    await expect(state.loadChapterIndex(bookId)).resolves.toEqual([
+      expect.objectContaining({
+        number: 1,
+        title: "Test Chapter",
+      }),
+    ]);
+
+    await rm(root, { recursive: true, force: true });
+  });
+
   it("preserves the revised chapter content when final truth rebuild omits CHAPTER_CONTENT", async () => {
     const { root, runner, state, bookId } = await createRunnerFixture({
       inputGovernanceMode: "legacy",

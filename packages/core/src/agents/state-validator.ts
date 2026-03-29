@@ -113,16 +113,15 @@ ${chapterContent.slice(0, 6000)}`;
       throw new Error("LLM returned empty response");
     }
 
-    const jsonMatch = trimmed.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
+    const parsed = extractFirstValidJsonObject<{
+      warnings?: Array<{ category?: string; description?: string }>;
+      passed?: boolean;
+    }>(trimmed);
+    if (!parsed) {
       throw new Error("State validator returned invalid JSON");
     }
 
     try {
-      const parsed = JSON.parse(jsonMatch[0]) as {
-        warnings?: Array<{ category?: string; description?: string }>;
-        passed?: boolean;
-      };
       if (typeof parsed.passed !== "boolean") {
         throw new Error("missing boolean 'passed' field");
       }
@@ -142,4 +141,78 @@ ${chapterContent.slice(0, 6000)}`;
       throw new Error(`State validator returned invalid response: ${String(error)}`);
     }
   }
+}
+
+function extractFirstValidJsonObject<T>(text: string): T | null {
+  const direct = tryParseJson<T>(text);
+  if (direct) {
+    return direct;
+  }
+
+  for (let index = 0; index < text.length; index += 1) {
+    if (text[index] !== "{") continue;
+    const candidate = extractBalancedJsonObject(text, index);
+    if (!candidate) continue;
+    const parsed = tryParseJson<T>(candidate);
+    if (parsed) {
+      return parsed;
+    }
+  }
+
+  return null;
+}
+
+function tryParseJson<T>(text: string): T | null {
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return null;
+  }
+}
+
+function extractBalancedJsonObject(text: string, start: number): string | null {
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let index = start; index < text.length; index += 1) {
+    const char = text[index]!;
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (char === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (char === "\"") {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (char === "\"") {
+      inString = true;
+      continue;
+    }
+
+    if (char === "{") {
+      depth += 1;
+      continue;
+    }
+
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return text.slice(start, index + 1);
+      }
+      if (depth < 0) {
+        return null;
+      }
+    }
+  }
+
+  return null;
 }

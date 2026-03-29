@@ -345,6 +345,78 @@ describe("CLI integration", () => {
       const output = run(["status", "legacy-status-hint"]);
       expect(output).toContain("legacy format");
     });
+
+    it("reports persisted chapter file count instead of runtime progress when state runs ahead", async () => {
+      const bookId = "ahead-status";
+      const bookDir = join(projectDir, "books", bookId);
+      const chaptersDir = join(bookDir, "chapters");
+      const stateDir = join(bookDir, "story", "state");
+
+      await mkdir(chaptersDir, { recursive: true });
+      await mkdir(stateDir, { recursive: true });
+      await writeFile(
+        join(bookDir, "book.json"),
+        JSON.stringify({
+          id: bookId,
+          title: "Ahead Status Book",
+          platform: "other",
+          genre: "other",
+          status: "active",
+          targetChapters: 10,
+          chapterWordCount: 2200,
+          createdAt: "2026-03-29T00:00:00.000Z",
+          updatedAt: "2026-03-29T00:00:00.000Z",
+        }, null, 2),
+        "utf-8",
+      );
+      await writeFile(join(chaptersDir, "0001_First.md"), "# 第1章 First\n\nOnly persisted chapter.", "utf-8");
+      await writeFile(
+        join(chaptersDir, "index.json"),
+        JSON.stringify([
+          {
+            number: 1,
+            title: "First",
+            status: "ready-for-review",
+            wordCount: 42,
+            createdAt: "2026-03-29T00:00:00.000Z",
+            updatedAt: "2026-03-29T00:00:00.000Z",
+            auditIssues: [],
+            lengthWarnings: [],
+          },
+        ], null, 2),
+        "utf-8",
+      );
+      await Promise.all([
+        writeFile(
+          join(stateDir, "manifest.json"),
+          JSON.stringify({
+            schemaVersion: 2,
+            language: "zh",
+            lastAppliedChapter: 4,
+            projectionVersion: 1,
+            migrationWarnings: [],
+          }, null, 2),
+          "utf-8",
+        ),
+        writeFile(
+          join(stateDir, "current_state.json"),
+          JSON.stringify({
+            chapter: 4,
+            facts: [],
+          }, null, 2),
+          "utf-8",
+        ),
+        writeFile(join(stateDir, "hooks.json"), JSON.stringify({ hooks: [] }, null, 2), "utf-8"),
+        writeFile(join(stateDir, "chapter_summaries.json"), JSON.stringify({ rows: [] }, null, 2), "utf-8"),
+      ]);
+
+      const output = run(["status", bookId]);
+      expect(output).toContain("Chapters: 1 / 10");
+      expect(output).not.toContain("Chapters: 4 / 10");
+
+      const json = JSON.parse(run(["status", bookId, "--json"]));
+      expect(json.books[0]?.chapters).toBe(1);
+    });
   });
 
   describe("inkos doctor", () => {

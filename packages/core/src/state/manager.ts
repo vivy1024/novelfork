@@ -220,6 +220,24 @@ export class StateManager {
     return Math.max(indexedChapter, durableChapter, runtimeState.manifest.lastAppliedChapter) + 1;
   }
 
+  async getPersistedChapterCount(bookId: string): Promise<number> {
+    const chaptersDir = join(this.bookDir(bookId), "chapters");
+    const chapterNumbers = new Set<number>();
+
+    try {
+      const files = await readdir(chaptersDir);
+      for (const file of files) {
+        const match = file.match(/^(\d+)_.*\.md$/);
+        if (!match) continue;
+        chapterNumbers.add(parseInt(match[1]!, 10));
+      }
+    } catch {
+      return 0;
+    }
+
+    return chapterNumbers.size;
+  }
+
   async loadChapterIndex(bookId: string): Promise<ReadonlyArray<ChapterMeta>> {
     const indexPath = join(this.bookDir(bookId), "chapters", "index.json");
     try {

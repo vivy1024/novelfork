@@ -33,7 +33,7 @@ export const statusCommand = new Command("status")
         const book = await state.loadBookConfig(id);
         const index = await state.loadChapterIndex(id);
         const migrationHint = await getLegacyMigrationHint(root, id);
-        const nextChapter = await state.getNextChapterNumber(id);
+        const persistedChapterCount = await state.getPersistedChapterCount(id);
         const { profile: genreProfile } = await readGenreProfile(root, book.genre);
         const countingMode = resolveLengthCountingMode(book.language ?? genreProfile.language);
 
@@ -53,7 +53,7 @@ export const statusCommand = new Command("status")
           status: book.status,
           genre: book.genre,
           platform: book.platform,
-          chapters: nextChapter - 1,
+          chapters: persistedChapterCount,
           targetChapters: book.targetChapters,
           totalWords,
           avgWordsPerChapter: avgWords,
@@ -76,7 +76,7 @@ export const statusCommand = new Command("status")
           log(`  ${book.title} (${id})`);
           log(`    Status: ${book.status}`);
           log(`    Platform: ${book.platform} | Genre: ${book.genre}`);
-          log(`    Chapters: ${nextChapter - 1} / ${book.targetChapters}`);
+          log(`    Chapters: ${persistedChapterCount} / ${book.targetChapters}`);
           log(`    Words: ${totalWords.toLocaleString()} (avg ${avgWords}/ch)`);
           log(`    Approved: ${approved} | Pending: ${pending} | Failed: ${failed}`);
           if (migrationHint) {
