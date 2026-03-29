@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.6.3
+
+### Bug Fixes
+
+- **#113/#109** — StateValidator JSON 解析从贪婪正则改为平衡括号解析器，LLM 追加 markdown 不再导致解析失败
+- **#114** — status 命令章节数改为数实际文件，不再受 poisoned runtime state 影响
+- **#110** — book creation 改为原子操作（临时目录 → rename），失败不留半成品
+- **#92/#93** — agent 执行层硬限制：write_draft 校验顺序写入、revise_chapter 校验目标章存在、write_truth_file 拦截进度篡改、import_chapters 要求 ≥2 章
+- **#90** — 段落形态检测移到落盘前（覆盖 normalize + auto revise 后的最终内容）
+- **#94** — 标题去重：writer prompt 加约束 + post-write validator 检测 + 自动改名
+
+### Improvements
+
+- **#111** — SKILL.md 补齐 13 个缺失命令（eval, consolidate, write rewrite, book update/delete, plan/compose, studio, fanfic show/refresh, genre create/copy）
+- **#95** — doctor 命令新增版本迁移检测（识别 pre-v0.6 旧格式书籍）
+- **#103** — 补充 rewrite 端到端回归测试（rewrite 2 → next 应为 3）
+- 新增 `inkos eval` 命令 — 结构化质量评估报告
+- SKILL.md 版本升级到 2.1.0
+
 ## v0.6.2
 
 ### Bug Fixes
