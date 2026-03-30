@@ -12,8 +12,11 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
+    "types": ["node", "vitest/globals"],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@actalk/inkos-core": ["../core/src/index.ts"],
+      "@actalk/inkos-core/*": ["../core/src/*"]
     },
     "baseUrl": "."
   },

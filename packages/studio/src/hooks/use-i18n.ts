@@ -7,6 +7,8 @@ const strings = {
   "nav.books": { zh: "书籍", en: "Books" },
   "nav.newBook": { zh: "新建书籍", en: "New Book" },
   "nav.config": { zh: "配置", en: "Config" },
+  "nav.daemon": { zh: "守护进程", en: "Daemon" },
+  "nav.style": { zh: "风格分析", en: "Style" },
   "nav.connected": { zh: "已连接", en: "Connected" },
   "nav.disconnected": { zh: "未连接", en: "Disconnected" },
 
@@ -43,6 +45,7 @@ const strings = {
   "create.bookTitle": { zh: "书名", en: "Title" },
   "create.language": { zh: "语言", en: "Language" },
   "create.genre": { zh: "题材", en: "Genre" },
+  "create.platform": { zh: "平台", en: "Platform" },
   "create.wordsPerChapter": { zh: "每章字数", en: "Words / Chapter" },
   "create.targetChapters": { zh: "目标章数", en: "Target Chapters" },
   "create.creating": { zh: "创建中...", en: "Creating..." },
@@ -72,6 +75,37 @@ const strings = {
   "config.provider": { zh: "提供方", en: "Provider" },
   "config.model": { zh: "模型", en: "Model" },
   "config.editHint": { zh: "通过 CLI 编辑配置：", en: "Edit via CLI:" },
+
+  // Daemon
+  "daemon.title": { zh: "守护进程", en: "Daemon" },
+  "daemon.running": { zh: "运行中", en: "Running" },
+  "daemon.stopped": { zh: "已停止", en: "Stopped" },
+  "daemon.start": { zh: "启动", en: "Start" },
+  "daemon.starting": { zh: "启动中...", en: "Starting..." },
+  "daemon.stop": { zh: "停止", en: "Stop" },
+  "daemon.stopping": { zh: "停止中...", en: "Stopping..." },
+  "daemon.waitingEvents": { zh: "等待守护进程事件...", en: "Waiting for daemon events..." },
+  "daemon.startHint": { zh: "启动守护进程后，这里会显示事件日志。", en: "Start the daemon to see event logs here." },
+
+  // Style
+  "style.title": { zh: "风格分析", en: "Style Analysis" },
+  "style.sourceName": { zh: "来源名称", en: "Source Name" },
+  "style.sourceExample": { zh: "例如：金庸、畅销样文、个人草稿", en: "e.g. Jin Yong, bestseller sample, personal draft" },
+  "style.textSample": { zh: "文本样本", en: "Text Sample" },
+  "style.pasteHint": { zh: "粘贴一段能代表目标风格的文本...", en: "Paste a representative writing sample..." },
+  "style.analyze": { zh: "分析风格", en: "Analyze Style" },
+  "style.analyzing": { zh: "分析中...", en: "Analyzing..." },
+  "style.results": { zh: "分析结果", en: "Results" },
+  "style.avgSentence": { zh: "平均句长", en: "Avg Sentence" },
+  "style.vocabDiversity": { zh: "词汇多样性", en: "Vocab Diversity" },
+  "style.avgParagraph": { zh: "平均段长", en: "Avg Paragraph" },
+  "style.sentenceStdDev": { zh: "句长波动", en: "Sentence Std Dev" },
+  "style.topPatterns": { zh: "高频模式", en: "Top Patterns" },
+  "style.rhetoricalFeatures": { zh: "修辞特征", en: "Rhetorical Features" },
+  "style.importToBook": { zh: "导入到书籍", en: "Import to Book" },
+  "style.selectBook": { zh: "选择书籍", en: "Select Book" },
+  "style.importGuide": { zh: "导入风格指南", en: "Import Style Guide" },
+  "style.emptyHint": { zh: "输入样本文本后即可分析写作风格。", en: "Paste a sample to analyze the writing style." },
 } as const;
 
 export type StringKey = keyof typeof strings;
