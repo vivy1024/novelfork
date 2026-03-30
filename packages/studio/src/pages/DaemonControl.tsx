@@ -88,7 +88,7 @@ export function DaemonControl({ nav, theme, t, sse }: { nav: Nav; theme: Theme; 
       {/* Daemon event log */}
       <div className={`border ${c.cardStatic} rounded-lg`}>
         <div className="px-5 py-3.5 border-b border-border">
-          <span className="text-sm uppercase tracking-wide text-muted-foreground font-medium">Event Log</span>
+          <span className="text-sm uppercase tracking-wide text-muted-foreground font-medium">{t("daemon.eventLog")}</span>
         </div>
         <div className="p-4 max-h-[500px] overflow-y-auto">
           {daemonEvents.length > 0 ? (

@@ -26,8 +26,8 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
     `/books/${bookId}/chapters/${chapterNumber}`,
   );
 
-  if (loading) return <div className={c.muted}>Loading...</div>;
-  if (error) return <div className="text-red-400">Error: {error}</div>;
+  if (loading) return <div className={c.muted}>{t("common.loading")}</div>;
+  if (error) return <div className="text-red-400">{t("common.error")}: {error}</div>;
   if (!data) return null;
 
   // Split markdown content into title and body

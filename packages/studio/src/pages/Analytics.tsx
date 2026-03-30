@@ -20,8 +20,8 @@ export function Analytics({ bookId, nav, theme, t }: { bookId: string; nav: Nav;
   const c = useColors(theme);
   const { data, loading, error } = useApi<AnalyticsData>(`/books/${bookId}/analytics`);
 
-  if (loading) return <div className={c.muted}>Loading...</div>;
-  if (error) return <div className="text-red-400">Error: {error}</div>;
+  if (loading) return <div className={c.muted}>{t("common.loading")}</div>;
+  if (error) return <div className="text-red-400">{t("common.error")}: {error}</div>;
   if (!data) return null;
 
   const statuses = Object.entries(data.statusDistribution);

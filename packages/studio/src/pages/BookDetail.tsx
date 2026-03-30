@@ -89,8 +89,8 @@ export function BookDetail({ bookId, nav, theme, t, sse }: { bookId: string; nav
     refetch();
   };
 
-  if (loading) return <div className={c.muted}>Loading...</div>;
-  if (error) return <div className="text-red-400">Error: {error}</div>;
+  if (loading) return <div className={c.muted}>{t("common.loading")}</div>;
+  if (error) return <div className="text-red-400">{t("common.error")}: {error}</div>;
   if (!data) return null;
 
   const { book, chapters } = data;
@@ -110,8 +110,8 @@ export function BookDetail({ bookId, nav, theme, t, sse }: { bookId: string; nav
           <h1 className="text-2xl font-semibold">{book.title}</h1>
           <div className={`flex gap-3 mt-1 text-sm ${c.muted}`}>
             <span>{book.genre}</span>
-            <span>{chapters.length} chapters</span>
-            <span>{totalWords.toLocaleString()} words</span>
+            <span>{chapters.length} {t("dash.chapters")}</span>
+            <span>{totalWords.toLocaleString()} {t("book.words")}</span>
             {book.language === "en" && <span className="text-blue-400">EN</span>}
             {book.fanficMode && <span className="text-purple-400">fanfic:{book.fanficMode}</span>}
           </div>
@@ -144,7 +144,7 @@ export function BookDetail({ bookId, nav, theme, t, sse }: { bookId: string; nav
             onClick={() => (nav as { toTruth?: (id: string) => void }).toTruth?.(bookId)}
             className={`px-4 py-2 text-sm ${c.btnSecondary} rounded-md transition-colors`}
           >
-            Truth Files
+            {t("book.truthFiles")}
           </button>
           <button
             onClick={() => nav.toAnalytics(bookId)}
@@ -157,7 +157,7 @@ export function BookDetail({ bookId, nav, theme, t, sse }: { bookId: string; nav
             download
             className={`px-4 py-2 text-sm ${c.btnSecondary} rounded-md transition-colors inline-flex items-center`}
           >
-            Export
+            {t("common.export")}
           </a>
         </div>
       </div>

@@ -30,10 +30,10 @@ export function TruthFiles({ bookId, nav, theme, t }: { bookId: string; nav: Nav
         <span className="text-border">/</span>
         <button onClick={() => nav.toBook(bookId)} className={c.link}>{bookId}</button>
         <span className="text-border">/</span>
-        <span className="text-foreground">Truth Files</span>
+        <span className="text-foreground">{t("truth.title")}</span>
       </div>
 
-      <h1 className="font-serif text-3xl">Truth Files</h1>
+      <h1 className="font-serif text-3xl">{t("truth.title")}</h1>
 
       <div className="grid grid-cols-[240px_1fr] gap-6">
         {/* File list */}
@@ -49,11 +49,11 @@ export function TruthFiles({ bookId, nav, theme, t }: { bookId: string; nav: Nav
               }`}
             >
               <div className="font-mono text-sm truncate">{f.name}</div>
-              <div className="text-xs text-muted-foreground mt-0.5">{f.size.toLocaleString()} chars</div>
+              <div className="text-xs text-muted-foreground mt-0.5">{f.size.toLocaleString()} {t("truth.chars")}</div>
             </button>
           ))}
           {(!data?.files || data.files.length === 0) && (
-            <div className="px-3 py-4 text-sm text-muted-foreground text-center">No truth files</div>
+            <div className="px-3 py-4 text-sm text-muted-foreground text-center">{t("truth.empty")}</div>
           )}
         </div>
 
@@ -62,9 +62,9 @@ export function TruthFiles({ bookId, nav, theme, t }: { bookId: string; nav: Nav
           {selected && fileData?.content ? (
             <pre className="text-sm leading-relaxed whitespace-pre-wrap font-mono text-foreground/80">{fileData.content}</pre>
           ) : selected && fileData?.content === null ? (
-            <div className="text-muted-foreground text-sm">File not found</div>
+            <div className="text-muted-foreground text-sm">{t("truth.notFound")}</div>
           ) : (
-            <div className="text-muted-foreground/50 text-sm italic">Select a file to view</div>
+            <div className="text-muted-foreground/50 text-sm italic">{t("truth.selectFile")}</div>
           )}
         </div>
       </div>

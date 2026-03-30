@@ -26,8 +26,8 @@ export function ConfigView({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunc
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<Record<string, unknown>>({});
 
-  if (loading) return <div className="text-muted-foreground py-20 text-center text-sm">Loading...</div>;
-  if (error) return <div className="text-destructive py-20 text-center">Error: {error}</div>;
+  if (loading) return <div className="text-muted-foreground py-20 text-center text-sm">{t("common.loading")}</div>;
+  if (error) return <div className="text-destructive py-20 text-center">{t("common.error")}: {error}</div>;
   if (!data) return null;
 
   const startEdit = () => {
@@ -64,7 +64,7 @@ export function ConfigView({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunc
         <h1 className="font-serif text-3xl">{t("config.title")}</h1>
         {!editing && (
           <button onClick={startEdit} className={`px-3 py-2 text-xs rounded-md ${c.btnSecondary}`}>
-            Edit
+            {t("common.edit")}
           </button>
         )}
       </div>
@@ -121,10 +121,10 @@ export function ConfigView({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunc
       {editing && (
         <div className="flex gap-2 justify-end">
           <button onClick={() => setEditing(false)} className={`px-4 py-2.5 text-sm rounded-md ${c.btnSecondary}`}>
-            Cancel
+            {t("common.cancel")}
           </button>
           <button onClick={handleSave} disabled={saving} className={`px-4 py-2.5 text-sm rounded-md ${c.btnPrimary} disabled:opacity-50`}>
-            {saving ? "Saving..." : "Save"}
+            {saving ? t("common.saving") : t("common.save")}
           </button>
         </div>
       )}

@@ -36,8 +36,8 @@ export function Dashboard({ nav, sse, theme, t }: { nav: Nav; sse: { messages: R
     void refetch();
   }, [refetch, sse.messages]);
 
-  if (loading) return <div className="text-muted-foreground py-20 text-center text-sm">Loading...</div>;
-  if (error) return <div className="text-destructive py-20 text-center">Error: {error}</div>;
+  if (loading) return <div className="text-muted-foreground py-20 text-center text-sm">{t("common.loading")}</div>;
+  if (error) return <div className="text-destructive py-20 text-center">{t("common.error")}: {error}</div>;
 
   /* ── Empty state — vertically centered in the available viewport ── */
   if (!data?.books.length) {

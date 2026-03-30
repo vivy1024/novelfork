@@ -108,7 +108,7 @@ export function Sidebar({ nav, activePage, t, sse }: {
           onClick={nav.toConfig}
         />
         <SidebarItem
-          label="Daemon"
+          label={t("nav.daemon")}
           icon="⟳"
           active={activePage === "daemon"}
           onClick={nav.toDaemon}
@@ -116,7 +116,7 @@ export function Sidebar({ nav, activePage, t, sse }: {
           badgeColor={daemon?.running ? "text-emerald-500" : undefined}
         />
         <SidebarItem
-          label="Logs"
+          label={t("nav.logs")}
           icon="☰"
           active={activePage === "logs"}
           onClick={nav.toLogs}

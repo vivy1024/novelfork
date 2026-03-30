@@ -8,9 +8,20 @@ const strings = {
   "nav.newBook": { zh: "新建书籍", en: "New Book" },
   "nav.config": { zh: "配置", en: "Config" },
   "nav.daemon": { zh: "守护进程", en: "Daemon" },
+  "nav.logs": { zh: "日志", en: "Logs" },
   "nav.style": { zh: "风格分析", en: "Style" },
   "nav.connected": { zh: "已连接", en: "Connected" },
   "nav.disconnected": { zh: "未连接", en: "Disconnected" },
+
+  // Common
+  "common.loading": { zh: "加载中...", en: "Loading..." },
+  "common.error": { zh: "错误", en: "Error" },
+  "common.edit": { zh: "编辑", en: "Edit" },
+  "common.save": { zh: "保存", en: "Save" },
+  "common.saving": { zh: "保存中...", en: "Saving..." },
+  "common.cancel": { zh: "取消", en: "Cancel" },
+  "common.refresh": { zh: "刷新", en: "Refresh" },
+  "common.export": { zh: "导出", en: "Export" },
 
   // Dashboard
   "dash.title": { zh: "书籍列表", en: "Books" },
@@ -28,6 +39,7 @@ const strings = {
   "book.draftOnly": { zh: "仅草稿", en: "Draft Only" },
   "book.approveAll": { zh: "全部通过", en: "Approve All" },
   "book.analytics": { zh: "数据分析", en: "Analytics" },
+  "book.truthFiles": { zh: "事实文件", en: "Truth Files" },
   "book.noChapters": { zh: "暂无章节，点击「写下一章」开始", en: 'No chapters yet. Click "Write Next" to start.' },
   "book.approve": { zh: "通过", en: "Approve" },
   "book.reject": { zh: "驳回", en: "Reject" },
@@ -86,6 +98,19 @@ const strings = {
   "daemon.stopping": { zh: "停止中...", en: "Stopping..." },
   "daemon.waitingEvents": { zh: "等待守护进程事件...", en: "Waiting for daemon events..." },
   "daemon.startHint": { zh: "启动守护进程后，这里会显示事件日志。", en: "Start the daemon to see event logs here." },
+  "daemon.eventLog": { zh: "事件日志", en: "Event Log" },
+
+  // Logs
+  "logs.title": { zh: "日志", en: "Logs" },
+  "logs.empty": { zh: "暂无日志。执行写作、草稿或守护进程操作后，这里会出现内容。", en: "No log entries. Logs appear after running write/draft/daemon operations." },
+  "logs.showingRecent": { zh: "显示 inkos.log 的最近 100 条记录", en: "Showing last 100 entries from inkos.log" },
+
+  // Truth Files
+  "truth.title": { zh: "事实文件", en: "Truth Files" },
+  "truth.empty": { zh: "暂无事实文件", en: "No truth files" },
+  "truth.notFound": { zh: "文件不存在", en: "File not found" },
+  "truth.selectFile": { zh: "选择一个文件查看内容", en: "Select a file to view" },
+  "truth.chars": { zh: "字符", en: "chars" },
 
   // Style
   "style.title": { zh: "风格分析", en: "Style Analysis" },

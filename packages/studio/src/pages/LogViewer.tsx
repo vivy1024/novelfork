@@ -30,16 +30,16 @@ export function LogViewer({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunct
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <button onClick={nav.toDashboard} className={c.link}>{t("bread.home")}</button>
         <span className="text-border">/</span>
-        <span className="text-foreground">Logs</span>
+        <span className="text-foreground">{t("logs.title")}</span>
       </div>
 
       <div className="flex items-baseline justify-between">
-        <h1 className="font-serif text-3xl">Logs</h1>
+        <h1 className="font-serif text-3xl">{t("logs.title")}</h1>
         <button
           onClick={() => refetch()}
           className={`px-4 py-2.5 text-sm rounded-md ${c.btnSecondary}`}
         >
-          Refresh
+          {t("common.refresh")}
         </button>
       </div>
 
@@ -68,14 +68,14 @@ export function LogViewer({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunct
             </div>
           ) : (
             <div className="text-muted-foreground text-sm italic py-12 text-center">
-              No log entries. Logs appear after running write/draft/daemon operations.
+              {t("logs.empty")}
             </div>
           )}
         </div>
       </div>
 
       <p className="text-sm text-muted-foreground">
-        Showing last 100 entries from <code className="font-mono bg-muted/50 px-1 rounded">inkos.log</code>
+        {t("logs.showingRecent")}
       </p>
     </div>
   );
