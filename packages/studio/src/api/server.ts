@@ -15,6 +15,9 @@ import {
 } from "@actalk/inkos-core";
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
+import { isSafeBookId } from "./safety.js";
+import { ApiError } from "./errors.js";
+import { buildStudioBookConfig } from "./book-create.js";
 
 // --- Event bus for SSE ---
 
@@ -34,6 +37,33 @@ export function createStudioServer(config: ProjectConfig, root: string) {
   const state = new StateManager(root);
 
   app.use("/*", cors());
+
+  // Structured error handler — ApiError returns typed JSON, others return 500
+  app.onError((error, c) => {
+    if (error instanceof ApiError) {
+      return c.json({ error: { code: error.code, message: error.message } }, error.status as 400);
+    }
+    return c.json(
+      { error: { code: "INTERNAL_ERROR", message: "Unexpected server error." } },
+      500,
+    );
+  });
+
+  // BookId validation middleware — blocks path traversal on all book routes
+  app.use("/api/books/:id/*", async (c, next) => {
+    const bookId = c.req.param("id");
+    if (!isSafeBookId(bookId)) {
+      throw new ApiError(400, "INVALID_BOOK_ID", `Invalid book ID: "${bookId}"`);
+    }
+    await next();
+  });
+  app.use("/api/books/:id", async (c, next) => {
+    const bookId = c.req.param("id");
+    if (!isSafeBookId(bookId)) {
+      throw new ApiError(400, "INVALID_BOOK_ID", `Invalid book ID: "${bookId}"`);
+    }
+    await next();
+  });
 
   // Logger sink that broadcasts to SSE
   const sseSink: LogSink = {
@@ -115,29 +145,14 @@ export function createStudioServer(config: ProjectConfig, root: string) {
       title: string;
       genre: string;
       language?: string;
+      platform?: string;
       chapterWordCount?: number;
       targetChapters?: number;
     }>();
 
     const now = new Date().toISOString();
-    const bookId = body.title
-      .toLowerCase()
-      .replace(/[^a-z0-9\u4e00-\u9fff]/g, "-")
-      .replace(/-+/g, "-")
-      .slice(0, 30);
-
-    const bookConfig = {
-      id: bookId,
-      title: body.title,
-      platform: "other" as const,
-      genre: body.genre as "xuanhuan",
-      status: "outlining" as const,
-      targetChapters: body.targetChapters ?? 200,
-      chapterWordCount: body.chapterWordCount ?? 3000,
-      ...(body.language === "en" ? { language: "en" as const } : body.language === "zh" ? { language: "zh" as const } : {}),
-      createdAt: now,
-      updatedAt: now,
-    };
+    const bookConfig = buildStudioBookConfig(body, now);
+    const bookId = bookConfig.id;
 
     broadcast("book:creating", { bookId, title: body.title });
 
@@ -167,6 +182,29 @@ export function createStudioServer(config: ProjectConfig, root: string) {
       return c.json({ chapterNumber: num, filename: match, content });
     } catch {
       return c.json({ error: "Chapter not found" }, 404);
+    }
+  });
+
+  // --- Chapter Save ---
+
+  app.put("/api/books/:id/chapters/:num", async (c) => {
+    const id = c.req.param("id");
+    const num = parseInt(c.req.param("num"), 10);
+    const bookDir = state.bookDir(id);
+    const chaptersDir = join(bookDir, "chapters");
+    const { content } = await c.req.json<{ content: string }>();
+
+    try {
+      const files = await readdir(chaptersDir);
+      const paddedNum = String(num).padStart(4, "0");
+      const match = files.find((f) => f.startsWith(paddedNum) && f.endsWith(".md"));
+      if (!match) return c.json({ error: "Chapter not found" }, 404);
+
+      const { writeFile: writeFileFs } = await import("node:fs/promises");
+      await writeFileFs(join(chaptersDir, match), content, "utf-8");
+      return c.json({ ok: true, chapterNumber: num });
+    } catch (e) {
+      return c.json({ error: String(e) }, 500);
     }
   });
 
@@ -444,22 +482,15 @@ export function createStudioServer(config: ProjectConfig, root: string) {
     broadcast("agent:start", { instruction });
 
     try {
-      const { runAgentLoop, AGENT_TOOLS } = await import("@actalk/inkos-core");
-      const agentCtx = {
-        client: createLLMClient(config.llm),
-        model: config.llm.model,
-        projectRoot: root,
-      };
+      const { runAgentLoop } = await import("@actalk/inkos-core");
 
-      const result = await runAgentLoop({
-        ...agentCtx,
-        tools: AGENT_TOOLS,
-        instruction,
-        pipelineConfig: buildPipelineConfig(),
-      });
+      const result = await runAgentLoop(
+        buildPipelineConfig(),
+        instruction
+      );
 
-      broadcast("agent:complete", { instruction, response: result.summary });
-      return c.json({ response: result.summary });
+      broadcast("agent:complete", { instruction, response: result });
+      return c.json({ response: result });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       broadcast("agent:error", { instruction, error: msg });
@@ -571,16 +602,45 @@ export function createStudioServer(config: ProjectConfig, root: string) {
   app.get("/api/books/:id/export", async (c) => {
     const id = c.req.param("id");
     const format = (c.req.query("format") ?? "txt") as string;
+    const approvedOnly = c.req.query("approvedOnly") === "true";
     const bookDir = state.bookDir(id);
     const chaptersDir = join(bookDir, "chapters");
 
     try {
-      const files = await readdir(chaptersDir);
-      const mdFiles = files.filter((f) => f.endsWith(".md") && !f.startsWith("index")).sort();
-      const contents = await Promise.all(
-        mdFiles.map((f) => readFile(join(chaptersDir, f), "utf-8")),
+      const book = await state.loadBookConfig(id);
+      const index = await state.loadChapterIndex(id);
+      const approvedNums = new Set(
+        approvedOnly ? index.filter((ch) => ch.status === "approved").map((ch) => ch.number) : [],
       );
 
+      const files = await readdir(chaptersDir);
+      const mdFiles = files.filter((f) => f.endsWith(".md") && /^\d{4}/.test(f)).sort();
+
+      const filteredFiles = approvedOnly
+        ? mdFiles.filter((f) => approvedNums.has(parseInt(f.slice(0, 4), 10)))
+        : mdFiles;
+
+      const contents = await Promise.all(
+        filteredFiles.map((f) => readFile(join(chaptersDir, f), "utf-8")),
+      );
+
+      if (format === "epub") {
+        // Basic EPUB: XHTML container
+        const chapters = contents.map((content, i) => {
+          const title = content.match(/^#\s+(.+)$/m)?.[1] ?? `Chapter ${i + 1}`;
+          const html = content.split("\n").filter((l) => !l.startsWith("#")).map((l) => l.trim() ? `<p>${l}</p>` : "").join("\n");
+          return { title, html };
+        });
+        const toc = chapters.map((ch, i) => `<li><a href="#ch${i}">${ch.title}</a></li>`).join("\n");
+        const body = chapters.map((ch, i) => `<h2 id="ch${i}">${ch.title}</h2>\n${ch.html}`).join("\n<hr/>\n");
+        const epub = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${book.title}</title><style>body{font-family:serif;max-width:40em;margin:auto;padding:2em;line-height:1.8}h2{margin-top:3em}</style></head><body><h1>${book.title}</h1><nav><ol>${toc}</ol></nav><hr/>${body}</body></html>`;
+        return new Response(epub, {
+          headers: {
+            "Content-Type": "text/html; charset=utf-8",
+            "Content-Disposition": `attachment; filename="${id}.html"`,
+          },
+        });
+      }
       if (format === "md") {
         const body = contents.join("\n\n---\n\n");
         return new Response(body, {
@@ -603,6 +663,60 @@ export function createStudioServer(config: ProjectConfig, root: string) {
     }
   });
 
+  // --- Export to file (save to project dir) ---
+
+  app.post("/api/books/:id/export-save", async (c) => {
+    const id = c.req.param("id");
+    const { format, approvedOnly } = await c.req.json<{ format?: string; approvedOnly?: boolean }>().catch(() => ({ format: "txt", approvedOnly: false }));
+    const bookDir = state.bookDir(id);
+    const chaptersDir = join(bookDir, "chapters");
+    const fmt = format ?? "txt";
+
+    try {
+      const book = await state.loadBookConfig(id);
+      const index = await state.loadChapterIndex(id);
+      const approvedNums = new Set(
+        approvedOnly ? index.filter((ch) => ch.status === "approved").map((ch) => ch.number) : [],
+      );
+
+      const files = await readdir(chaptersDir);
+      const mdFiles = files.filter((f) => f.endsWith(".md") && /^\d{4}/.test(f)).sort();
+      const filteredFiles = approvedOnly
+        ? mdFiles.filter((f) => approvedNums.has(parseInt(f.slice(0, 4), 10)))
+        : mdFiles;
+      const contents = await Promise.all(
+        filteredFiles.map((f) => readFile(join(chaptersDir, f), "utf-8")),
+      );
+
+      const { writeFile: writeFileFs } = await import("node:fs/promises");
+      let outputPath: string;
+      let body: string;
+
+      if (fmt === "md") {
+        body = contents.join("\n\n---\n\n");
+        outputPath = join(bookDir, `${id}.md`);
+      } else if (fmt === "epub") {
+        const chapters = contents.map((content, i) => {
+          const title = content.match(/^#\s+(.+)$/m)?.[1] ?? `Chapter ${i + 1}`;
+          const html = content.split("\n").filter((l) => !l.startsWith("#")).map((l) => l.trim() ? `<p>${l}</p>` : "").join("\n");
+          return { title, html };
+        });
+        const toc = chapters.map((ch, i) => `<li><a href="#ch${i}">${ch.title}</a></li>`).join("\n");
+        const chapterHtml = chapters.map((ch, i) => `<h2 id="ch${i}">${ch.title}</h2>\n${ch.html}`).join("\n<hr/>\n");
+        body = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${book.title}</title><style>body{font-family:serif;max-width:40em;margin:auto;padding:2em;line-height:1.8}h2{margin-top:3em}</style></head><body><h1>${book.title}</h1><nav><ol>${toc}</ol></nav><hr/>${chapterHtml}</body></html>`;
+        outputPath = join(bookDir, `${id}.html`);
+      } else {
+        body = contents.join("\n\n");
+        outputPath = join(bookDir, `${id}.txt`);
+      }
+
+      await writeFileFs(outputPath, body, "utf-8");
+      return c.json({ ok: true, path: outputPath, format: fmt, chapters: filteredFiles.length });
+    } catch (e) {
+      return c.json({ error: String(e) }, 500);
+    }
+  });
+
   // --- Genre detail + copy ---
 
   app.get("/api/genres/:id", async (c) => {
@@ -618,6 +732,9 @@ export function createStudioServer(config: ProjectConfig, root: string) {
 
   app.post("/api/genres/:id/copy", async (c) => {
     const genreId = c.req.param("id");
+    if (/[/\\\0]/.test(genreId) || genreId.includes("..")) {
+      throw new ApiError(400, "INVALID_GENRE_ID", `Invalid genre ID: "${genreId}"`);
+    }
     try {
       const { getBuiltinGenresDir } = await import("@actalk/inkos-core");
       const { mkdir: mkdirFs, copyFile } = await import("node:fs/promises");
@@ -702,6 +819,407 @@ export function createStudioServer(config: ProjectConfig, root: string) {
     await mkdirFs(join(bookDir, "story"), { recursive: true });
     await writeFileFs(join(bookDir, "story", file), content, "utf-8");
     return c.json({ ok: true });
+  });
+
+  // =============================================
+  // NEW ENDPOINTS — CLI parity
+  // =============================================
+
+  // --- Book Delete ---
+
+  app.delete("/api/books/:id", async (c) => {
+    const id = c.req.param("id");
+    const bookDir = state.bookDir(id);
+    try {
+      const { rm } = await import("node:fs/promises");
+      await rm(bookDir, { recursive: true, force: true });
+      return c.json({ ok: true, bookId: id });
+    } catch (e) {
+      return c.json({ error: String(e) }, 500);
+    }
+  });
+
+  // --- Book Update ---
+
+  app.put("/api/books/:id", async (c) => {
+    const id = c.req.param("id");
+    const updates = await c.req.json<{
+      chapterWordCount?: number;
+      targetChapters?: number;
+      status?: string;
+      language?: string;
+    }>();
+    try {
+      const book = await state.loadBookConfig(id);
+      const updated = {
+        ...book,
+        ...(updates.chapterWordCount !== undefined ? { chapterWordCount: Number(updates.chapterWordCount) } : {}),
+        ...(updates.targetChapters !== undefined ? { targetChapters: Number(updates.targetChapters) } : {}),
+        ...(updates.status !== undefined ? { status: updates.status as typeof book.status } : {}),
+        ...(updates.language !== undefined ? { language: updates.language as "zh" | "en" } : {}),
+        updatedAt: new Date().toISOString(),
+      };
+      await state.saveBookConfig(id, updated);
+      return c.json({ ok: true, book: updated });
+    } catch (e) {
+      return c.json({ error: String(e) }, 500);
+    }
+  });
+
+  // --- Write Rewrite (specific chapter) ---
+
+  app.post("/api/books/:id/rewrite/:chapter", async (c) => {
+    const id = c.req.param("id");
+    const chapterNum = parseInt(c.req.param("chapter"), 10);
+
+    broadcast("rewrite:start", { bookId: id, chapter: chapterNum });
+    try {
+      const restored = await state.restoreState(id, chapterNum);
+      if (!restored) {
+        return c.json({ error: `Cannot restore state to chapter ${chapterNum}` }, 400);
+      }
+      const pipeline = new PipelineRunner(buildPipelineConfig());
+      pipeline.writeNextChapter(id).then(
+        (result) => broadcast("rewrite:complete", { bookId: id, chapterNumber: result.chapterNumber, title: result.title, wordCount: result.wordCount }),
+        (e) => broadcast("rewrite:error", { bookId: id, error: e instanceof Error ? e.message : String(e) }),
+      );
+      return c.json({ status: "rewriting", bookId: id, chapter: chapterNum });
+    } catch (e) {
+      broadcast("rewrite:error", { bookId: id, error: String(e) });
+      return c.json({ error: String(e) }, 500);
+    }
+  });
+
+  // --- Detect All chapters ---
+
+  app.post("/api/books/:id/detect-all", async (c) => {
+    const id = c.req.param("id");
+    const bookDir = state.bookDir(id);
+
+    try {
+      const chaptersDir = join(bookDir, "chapters");
+      const files = await readdir(chaptersDir);
+      const mdFiles = files.filter((f) => f.endsWith(".md") && /^\d{4}/.test(f)).sort();
+      const { analyzeAITells } = await import("@actalk/inkos-core");
+
+      const results = await Promise.all(
+        mdFiles.map(async (f) => {
+          const num = parseInt(f.slice(0, 4), 10);
+          const content = await readFile(join(chaptersDir, f), "utf-8");
+          const result = analyzeAITells(content);
+          return { chapterNumber: num, filename: f, ...result };
+        }),
+      );
+      return c.json({ bookId: id, results });
+    } catch (e) {
+      return c.json({ error: String(e) }, 500);
+    }
+  });
+
+  // --- Detect Stats ---
+
+  app.get("/api/books/:id/detect/stats", async (c) => {
+    const id = c.req.param("id");
+    try {
+      const { loadDetectionHistory, analyzeDetectionInsights } = await import("@actalk/inkos-core");
+      const bookDir = state.bookDir(id);
+      const history = await loadDetectionHistory(bookDir);
+      const insights = analyzeDetectionInsights(history);
+      return c.json(insights);
+    } catch (e) {
+      return c.json({ error: String(e) }, 500);
+    }
+  });
+
+  // --- Genre Create ---
+
+  app.post("/api/genres/create", async (c) => {
+    const body = await c.req.json<{
+      id: string; name: string; language?: string;
+      chapterTypes?: string[]; fatigueWords?: string[];
+      numericalSystem?: boolean; powerScaling?: boolean; eraResearch?: boolean;
+      pacingRule?: string; satisfactionTypes?: string[]; auditDimensions?: number[];
+      body?: string;
+    }>();
+
+    if (!body.id || !body.name) {
+      return c.json({ error: "id and name are required" }, 400);
+    }
+    if (/[/\\\0]/.test(body.id) || body.id.includes("..")) {
+      throw new ApiError(400, "INVALID_GENRE_ID", `Invalid genre ID: "${body.id}"`);
+    }
+
+    const { writeFile: writeFileFs, mkdir: mkdirFs } = await import("node:fs/promises");
+    const genresDir = join(root, "genres");
+    await mkdirFs(genresDir, { recursive: true });
+
+    const frontmatter = [
+      "---",
+      `name: ${body.name}`,
+      `id: ${body.id}`,
+      `language: ${body.language ?? "zh"}`,
+      `chapterTypes: ${JSON.stringify(body.chapterTypes ?? [])}`,
+      `fatigueWords: ${JSON.stringify(body.fatigueWords ?? [])}`,
+      `numericalSystem: ${body.numericalSystem ?? false}`,
+      `powerScaling: ${body.powerScaling ?? false}`,
+      `eraResearch: ${body.eraResearch ?? false}`,
+      `pacingRule: "${body.pacingRule ?? ""}"`,
+      `satisfactionTypes: ${JSON.stringify(body.satisfactionTypes ?? [])}`,
+      `auditDimensions: ${JSON.stringify(body.auditDimensions ?? [])}`,
+      "---",
+      "",
+      body.body ?? "",
+    ].join("\n");
+
+    await writeFileFs(join(genresDir, `${body.id}.md`), frontmatter, "utf-8");
+    return c.json({ ok: true, id: body.id });
+  });
+
+  // --- Genre Edit ---
+
+  app.put("/api/genres/:id", async (c) => {
+    const genreId = c.req.param("id");
+    if (/[/\\\0]/.test(genreId) || genreId.includes("..")) {
+      throw new ApiError(400, "INVALID_GENRE_ID", `Invalid genre ID: "${genreId}"`);
+    }
+
+    const body = await c.req.json<{ profile: Record<string, unknown>; body: string }>();
+    const { writeFile: writeFileFs, mkdir: mkdirFs } = await import("node:fs/promises");
+    const genresDir = join(root, "genres");
+    await mkdirFs(genresDir, { recursive: true });
+
+    const p = body.profile;
+    const frontmatter = [
+      "---",
+      `name: ${p.name ?? genreId}`,
+      `id: ${p.id ?? genreId}`,
+      `language: ${p.language ?? "zh"}`,
+      `chapterTypes: ${JSON.stringify(p.chapterTypes ?? [])}`,
+      `fatigueWords: ${JSON.stringify(p.fatigueWords ?? [])}`,
+      `numericalSystem: ${p.numericalSystem ?? false}`,
+      `powerScaling: ${p.powerScaling ?? false}`,
+      `eraResearch: ${p.eraResearch ?? false}`,
+      `pacingRule: "${p.pacingRule ?? ""}"`,
+      `satisfactionTypes: ${JSON.stringify(p.satisfactionTypes ?? [])}`,
+      `auditDimensions: ${JSON.stringify(p.auditDimensions ?? [])}`,
+      "---",
+      "",
+      body.body ?? "",
+    ].join("\n");
+
+    await writeFileFs(join(genresDir, `${genreId}.md`), frontmatter, "utf-8");
+    return c.json({ ok: true, id: genreId });
+  });
+
+  // --- Genre Delete (project-level only) ---
+
+  app.delete("/api/genres/:id", async (c) => {
+    const genreId = c.req.param("id");
+    if (/[/\\\0]/.test(genreId) || genreId.includes("..")) {
+      throw new ApiError(400, "INVALID_GENRE_ID", `Invalid genre ID: "${genreId}"`);
+    }
+
+    const filePath = join(root, "genres", `${genreId}.md`);
+    try {
+      const { rm } = await import("node:fs/promises");
+      await rm(filePath);
+      return c.json({ ok: true, id: genreId });
+    } catch (e) {
+      return c.json({ error: `Genre "${genreId}" not found in project` }, 404);
+    }
+  });
+
+  // --- Style Analyze ---
+
+  app.post("/api/style/analyze", async (c) => {
+    const { text, sourceName } = await c.req.json<{ text: string; sourceName: string }>();
+    if (!text?.trim()) return c.json({ error: "text is required" }, 400);
+
+    try {
+      const { analyzeStyle } = await import("@actalk/inkos-core");
+      const profile = analyzeStyle(text, sourceName ?? "unknown");
+      return c.json(profile);
+    } catch (e) {
+      return c.json({ error: String(e) }, 500);
+    }
+  });
+
+  // --- Style Import to Book ---
+
+  app.post("/api/books/:id/style/import", async (c) => {
+    const id = c.req.param("id");
+    const { text, sourceName } = await c.req.json<{ text: string; sourceName: string }>();
+
+    broadcast("style:start", { bookId: id });
+    try {
+      const pipeline = new PipelineRunner(buildPipelineConfig());
+      const result = await pipeline.generateStyleGuide(id, text, sourceName ?? "unknown");
+      broadcast("style:complete", { bookId: id });
+      return c.json({ ok: true, result });
+    } catch (e) {
+      broadcast("style:error", { bookId: id, error: String(e) });
+      return c.json({ error: String(e) }, 500);
+    }
+  });
+
+  // --- Import Chapters ---
+
+  app.post("/api/books/:id/import/chapters", async (c) => {
+    const id = c.req.param("id");
+    const { text, splitRegex } = await c.req.json<{ text: string; splitRegex?: string }>();
+    if (!text?.trim()) return c.json({ error: "text is required" }, 400);
+
+    broadcast("import:start", { bookId: id, type: "chapters" });
+    try {
+      const { splitChapters } = await import("@actalk/inkos-core");
+      const chapters = [...splitChapters(text, splitRegex)];
+
+      const pipeline = new PipelineRunner(buildPipelineConfig());
+      const result = await pipeline.importChapters({ bookId: id, chapters });
+      broadcast("import:complete", { bookId: id, type: "chapters", count: result.importedCount });
+      return c.json(result);
+    } catch (e) {
+      broadcast("import:error", { bookId: id, error: String(e) });
+      return c.json({ error: String(e) }, 500);
+    }
+  });
+
+  // --- Import Canon ---
+
+  app.post("/api/books/:id/import/canon", async (c) => {
+    const id = c.req.param("id");
+    const { fromBookId } = await c.req.json<{ fromBookId: string }>();
+    if (!fromBookId) return c.json({ error: "fromBookId is required" }, 400);
+
+    broadcast("import:start", { bookId: id, type: "canon" });
+    try {
+      const pipeline = new PipelineRunner(buildPipelineConfig());
+      await pipeline.importCanon(id, fromBookId);
+      broadcast("import:complete", { bookId: id, type: "canon" });
+      return c.json({ ok: true });
+    } catch (e) {
+      broadcast("import:error", { bookId: id, error: String(e) });
+      return c.json({ error: String(e) }, 500);
+    }
+  });
+
+  // --- Fanfic Init ---
+
+  app.post("/api/fanfic/init", async (c) => {
+    const body = await c.req.json<{
+      title: string; sourceText: string; sourceName?: string;
+      mode?: string; genre?: string; platform?: string;
+      targetChapters?: number; chapterWordCount?: number; language?: string;
+    }>();
+    if (!body.title || !body.sourceText) {
+      return c.json({ error: "title and sourceText are required" }, 400);
+    }
+
+    const now = new Date().toISOString();
+    const bookId = body.title.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]/g, "-").replace(/-+/g, "-").slice(0, 30);
+
+    const bookConfig = {
+      id: bookId,
+      title: body.title,
+      platform: (body.platform ?? "other") as "other",
+      genre: (body.genre ?? "other") as "xuanhuan",
+      status: "outlining" as const,
+      targetChapters: body.targetChapters ?? 100,
+      chapterWordCount: body.chapterWordCount ?? 3000,
+      fanficMode: (body.mode ?? "canon") as "canon",
+      ...(body.language ? { language: body.language as "zh" | "en" } : {}),
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    broadcast("fanfic:start", { bookId, title: body.title });
+    try {
+      const pipeline = new PipelineRunner(buildPipelineConfig());
+      await pipeline.initFanficBook(bookConfig, body.sourceText, body.sourceName ?? "source", (body.mode ?? "canon") as "canon");
+      broadcast("fanfic:complete", { bookId });
+      return c.json({ ok: true, bookId });
+    } catch (e) {
+      broadcast("fanfic:error", { bookId, error: String(e) });
+      return c.json({ error: String(e) }, 500);
+    }
+  });
+
+  // --- Fanfic Show (read canon) ---
+
+  app.get("/api/books/:id/fanfic", async (c) => {
+    const id = c.req.param("id");
+    const bookDir = state.bookDir(id);
+    try {
+      const content = await readFile(join(bookDir, "story", "fanfic_canon.md"), "utf-8");
+      return c.json({ bookId: id, content });
+    } catch {
+      return c.json({ bookId: id, content: null });
+    }
+  });
+
+  // --- Fanfic Refresh ---
+
+  app.post("/api/books/:id/fanfic/refresh", async (c) => {
+    const id = c.req.param("id");
+    const { sourceText, sourceName } = await c.req.json<{ sourceText: string; sourceName?: string }>();
+    if (!sourceText?.trim()) return c.json({ error: "sourceText is required" }, 400);
+
+    broadcast("fanfic:refresh:start", { bookId: id });
+    try {
+      const book = await state.loadBookConfig(id);
+      const pipeline = new PipelineRunner(buildPipelineConfig());
+      await pipeline.importFanficCanon(id, sourceText, sourceName ?? "source", (book.fanficMode ?? "canon") as "canon");
+      broadcast("fanfic:refresh:complete", { bookId: id });
+      return c.json({ ok: true });
+    } catch (e) {
+      broadcast("fanfic:refresh:error", { bookId: id, error: String(e) });
+      return c.json({ error: String(e) }, 500);
+    }
+  });
+
+  // --- Radar Scan ---
+
+  app.post("/api/radar/scan", async (c) => {
+    broadcast("radar:start", {});
+    try {
+      const pipeline = new PipelineRunner(buildPipelineConfig());
+      const result = await pipeline.runRadar();
+      broadcast("radar:complete", { result });
+      return c.json(result);
+    } catch (e) {
+      broadcast("radar:error", { error: String(e) });
+      return c.json({ error: String(e) }, 500);
+    }
+  });
+
+  // --- Doctor (environment health check) ---
+
+  app.get("/api/doctor", async (c) => {
+    const { existsSync } = await import("node:fs");
+    const { GLOBAL_ENV_PATH } = await import("@actalk/inkos-core");
+
+    const checks = {
+      inkosJson: existsSync(join(root, "inkos.json")),
+      projectEnv: existsSync(join(root, ".env")),
+      globalEnv: existsSync(GLOBAL_ENV_PATH),
+      booksDir: existsSync(join(root, "books")),
+      llmConnected: false,
+      bookCount: 0,
+    };
+
+    try {
+      const books = await state.listBooks();
+      checks.bookCount = books.length;
+    } catch { /* ignore */ }
+
+    try {
+      const client = createLLMClient(config.llm);
+      const { chatCompletion } = await import("@actalk/inkos-core");
+      await chatCompletion(client, config.llm.model, [{ role: "user", content: "ping" }], { maxTokens: 5 });
+      checks.llmConnected = true;
+    } catch { /* ignore */ }
+
+    return c.json(checks);
   });
 
   return app;
