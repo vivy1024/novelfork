@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 2,
+  "language": "zh",
+  "lastAppliedChapter": 2,
+  "projectionVersion": 1,
+  "migrationWarnings": [
+    "H007:status normalized from \"new\" to \"open\"",
+    "H008:status normalized from \"new\" to \"open\""
+  ]
+}

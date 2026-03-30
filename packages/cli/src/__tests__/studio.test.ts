@@ -29,7 +29,7 @@ describe("studio command", () => {
 
   it("launches TypeScript sources through tsx in monorepo mode", async () => {
     accessMock.mockImplementation(async (path: string) => {
-      if (path === "/studio/src/api/index.ts") {
+      if (path === "/project/packages/studio/src/api/index.ts") {
         return;
       }
       throw new Error(`missing: ${path}`);
@@ -40,7 +40,7 @@ describe("studio command", () => {
 
     expect(spawnMock).toHaveBeenCalledWith(
       "npx",
-      ["tsx", "/studio/src/api/index.ts"],
+      ["tsx", "/project/packages/studio/src/api/index.ts", "/project"],
       expect.objectContaining({
         cwd: "/project",
         stdio: "inherit",
@@ -62,7 +62,7 @@ describe("studio command", () => {
 
     expect(spawnMock).toHaveBeenCalledWith(
       "node",
-      ["/project/node_modules/@actalk/inkos-studio/dist/api/index.js"],
+      ["/project/node_modules/@actalk/inkos-studio/dist/api/index.js", "/project"],
       expect.objectContaining({
         cwd: "/project",
         stdio: "inherit",

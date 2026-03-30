@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 2,
+  "language": "en",
+  "lastAppliedChapter": 10,
+  "projectionVersion": 1,
+  "migrationWarnings": [
+    "H18:status normalized from \"new\" to \"open\"",
+    "H19:status normalized from \"new\" to \"open\""
+  ]
+}

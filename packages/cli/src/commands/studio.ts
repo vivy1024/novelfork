@@ -1,8 +1,77 @@
 import { Command } from "commander";
 import { findProjectRoot, log, logError } from "../utils.js";
 import { spawn } from "node:child_process";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { access } from "node:fs/promises";
+
+export interface StudioLaunchSpec {
+  readonly studioEntry: string;
+  readonly command: string;
+  readonly args: string[];
+}
+
+async function firstAccessiblePath(paths: readonly string[]): Promise<string | undefined> {
+  for (const path of paths) {
+    try {
+      await access(path);
+      return path;
+    } catch {
+      // continue
+    }
+  }
+  return undefined;
+}
+
+export async function resolveStudioLaunch(root: string): Promise<StudioLaunchSpec | null> {
+  const sourceEntry = await firstAccessiblePath([
+    join(root, "packages", "studio", "src", "api", "index.ts"),
+    join(root, "..", "packages", "studio", "src", "api", "index.ts"),
+    join(root, "..", "studio", "src", "api", "index.ts"),
+  ]);
+  if (sourceEntry) {
+    const studioPackageRoot = dirname(dirname(dirname(sourceEntry)));
+    const localTsxLoader = await firstAccessiblePath([
+      join(studioPackageRoot, "node_modules", "tsx", "dist", "loader.mjs"),
+    ]);
+    if (localTsxLoader) {
+      return {
+        studioEntry: sourceEntry,
+        command: "node",
+        args: ["--import", localTsxLoader, sourceEntry, root],
+      };
+    }
+
+    const localTsx = await firstAccessiblePath([
+      join(studioPackageRoot, "node_modules", ".bin", "tsx"),
+    ]);
+    if (localTsx) {
+      return {
+        studioEntry: sourceEntry,
+        command: localTsx,
+        args: [sourceEntry, root],
+      };
+    }
+    return {
+      studioEntry: sourceEntry,
+      command: "npx",
+      args: ["tsx", sourceEntry, root],
+    };
+  }
+
+  const builtEntry = await firstAccessiblePath([
+    join(root, "node_modules", "@actalk", "inkos-studio", "dist", "api", "index.js"),
+    join(root, "node_modules", "@actalk", "inkos-studio", "server.cjs"),
+  ]);
+  if (builtEntry) {
+    return {
+      studioEntry: builtEntry,
+      command: "node",
+      args: [builtEntry, root],
+    };
+  }
+
+  return null;
+}
 
 export const studioCommand = new Command("studio")
   .description("Start InkOS Studio web workbench")
@@ -10,35 +79,9 @@ export const studioCommand = new Command("studio")
   .action(async (opts) => {
     const root = findProjectRoot();
     const port = opts.port;
+    const launch = await resolveStudioLaunch(root);
 
-    // Look for studio's built server entry
-    const studioPaths = [
-      join(root, "node_modules", "@actalk", "inkos-studio", "dist", "api", "index.js"),
-      join(root, "..", "studio", "src", "api", "index.ts"),
-    ];
-
-    // Try to find tsx or ts-node for running TypeScript
-    // In dev (monorepo), run studio's TS source directly via tsx
-    const studioDir = join(root, "..", "studio");
-    let studioEntry: string | undefined;
-
-    try {
-      await access(join(studioDir, "src", "api", "index.ts"));
-      studioEntry = join(studioDir, "src", "api", "index.ts");
-    } catch {
-      // Not in monorepo — look for built JS
-      for (const p of studioPaths) {
-        try {
-          await access(p);
-          studioEntry = p;
-          break;
-        } catch {
-          // continue
-        }
-      }
-    }
-
-    if (!studioEntry) {
+    if (!launch) {
       logError(
         "InkOS Studio not found. If you cloned the repo, run:\n" +
         "  cd packages/studio && pnpm install && pnpm build\n" +
@@ -48,10 +91,6 @@ export const studioCommand = new Command("studio")
     }
 
     log(`Starting InkOS Studio on http://localhost:${port}`);
-
-    const launch = studioEntry.endsWith(".ts")
-      ? { command: "npx", args: ["tsx", studioEntry] }
-      : { command: "node", args: [studioEntry] };
 
     const child = spawn(launch.command, launch.args, {
       cwd: root,
