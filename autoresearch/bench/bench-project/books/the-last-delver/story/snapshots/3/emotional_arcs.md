@@ -1,9 +1,0 @@
-| Character | Chapter | Emotional State | Trigger Event | Intensity (1-10) | Arc Direction |
-| --- | --- | --- | --- | --- | --- |
-| Rowan | 3 | Coldly determined, angry, sharpened by institutional humiliation | Guild refusal to recognize route rights without rank; confrontation with Pike; Ledger notice confirming insufficiency; Lio’s qualification lead | 9 | From survival panic toward focused legal resolve |
-| Lio | 3 | Strained but loyal, increasingly invested in Rowan’s path | Escape to surface, concern for Jeren, and offering practical help via his aunt’s knowledge | 7 | From rescued subordinate to active ally |
-| Mett | 3 | Bitter, suspicious, but grudgingly compliant | Decision to abandon deeper search, conceal route details, and watch guild process close ranks | 6 | From open resistance toward reluctant acceptance of Rowan’s judgment |
-| Sena | 3 | Practical, frustrated, morally uneasy | Triage pressures, recognition that Rowan is right about claim theft, and disgust at procedure overruling care | 7 | From crisis support toward wary strategic alignment |
-| Toma | 3 | Hurt, sardonic, rough respect for Rowan | Surface emergence, official interference, and Rowan’s verbal pushback against Pike/guild | 5 | From survivor dependence toward respect-based rapport |
-| Jeren | 3 | In pain but defiant, validating Rowan’s reading of the system | Being hauled out, confronting bad records, and publicly backing the existence of the unmapped route | 6 | From rescued burden to corroborating witness |
-| Joren Pike | 3 | Controlled, predatory calm | Unexpected survivor emergence and opportunity to absorb route information through process | 8 | From distant pressure source to direct antagonist |

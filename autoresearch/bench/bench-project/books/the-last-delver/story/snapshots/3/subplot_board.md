@@ -1,8 +1,0 @@
-| Subplot ID | Subplot | Related Characters | Start Chapter | Last Active Chapter | Chapters Since | Status | Progress Summary | Payoff ETA |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| SP01 | Protect the Vale household from debt leverage | Rowan, Elias Vale, Joren Pike | 1 | 3 | 0 | progressing | Rowan explicitly links lack of rank to lack of salvage rights, leverage, and ability to keep Pike from crushing his father through debt. | 5-8 |
-| SP02 | Secure and legally claim the hidden old corridor | Rowan, Lio, Sena, Mett, Toma, Jeren, Joren Pike, guild registrar | 2 | 3 | 0 | progressing | The corridor now has surface access and probable claim value; Rowan successfully withholds route specifics but must get legal standing fast to file anything. | 4-6 |
-| SP03 | Understand Rowan’s Ledger-linked listening trait | Rowan | 2 | 3 | 0 | progressing | The Ledger retains Rowan’s provisional record and notes claim relevance, but still withholds fuller standing or classification. | 5-9 |
-| SP04 | Survive institutional suppression after South Third collapse | Rowan, guild registrar, gray clerk, watchmen, Pike Holdings | 3 | 3 | 0 | new | Guild officials move immediately to constrain testimony, control route information, and threaten detention for reentry. | 4-7 |
-| SP05 | Reach provisional delver qualification | Rowan, Lio | 3 | 3 | 0 | new | Lio reveals qualification screens, probation token pathway, and practical barriers of fee, sponsor, or bond note. | 4-5 |
-| SP06 | Fate of missing survivors Benn and Derren | Rowan, Benn, Derren, Lio, Mett, Sena, Toma, Jeren | 1 | 3 | 0 | progressing | Rowan chooses not to push deeper with the injured group; Benn and Derren remain missing and unresolved. | 4-7 |
