@@ -6,6 +6,52 @@ export interface SSEMessage {
   readonly timestamp: number;
 }
 
+export const STUDIO_SSE_EVENTS = [
+  "book:creating",
+  "book:created",
+  "book:error",
+  "write:start",
+  "write:complete",
+  "write:error",
+  "draft:start",
+  "draft:complete",
+  "draft:error",
+  "daemon:chapter",
+  "daemon:started",
+  "daemon:stopped",
+  "daemon:error",
+  "agent:start",
+  "agent:complete",
+  "agent:error",
+  "audit:start",
+  "audit:complete",
+  "audit:error",
+  "revise:start",
+  "revise:complete",
+  "revise:error",
+  "rewrite:start",
+  "rewrite:complete",
+  "rewrite:error",
+  "style:start",
+  "style:complete",
+  "style:error",
+  "import:start",
+  "import:complete",
+  "import:error",
+  "fanfic:start",
+  "fanfic:complete",
+  "fanfic:error",
+  "fanfic:refresh:start",
+  "fanfic:refresh:complete",
+  "fanfic:refresh:error",
+  "radar:start",
+  "radar:complete",
+  "radar:error",
+  "log",
+  "llm:progress",
+  "ping",
+] as const;
+
 export function useSSE(url = "/api/events") {
   const [messages, setMessages] = useState<ReadonlyArray<SSEMessage>>([]);
   const [connected, setConnected] = useState(false);
@@ -27,12 +73,7 @@ export function useSSE(url = "/api/events") {
       }
     };
 
-    const events = [
-      "write:start", "write:complete", "write:error",
-      "draft:start", "draft:complete", "draft:error",
-      "log", "llm:progress", "ping",
-    ];
-    for (const event of events) {
+    for (const event of STUDIO_SSE_EVENTS) {
       es.addEventListener(event, handleEvent);
     }
 
