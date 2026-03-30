@@ -1,12 +1,12 @@
 import { Command } from "commander";
 import { findProjectRoot, log, logError } from "../utils.js";
 import { spawn } from "node:child_process";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { access } from "node:fs/promises";
 
 export interface StudioLaunchSpec {
   readonly studioEntry: string;
-  readonly command: "npx" | "node";
+  readonly command: string;
   readonly args: string[];
 }
 
@@ -29,6 +29,28 @@ export async function resolveStudioLaunch(root: string): Promise<StudioLaunchSpe
     join(root, "..", "studio", "src", "api", "index.ts"),
   ]);
   if (sourceEntry) {
+    const studioPackageRoot = dirname(dirname(dirname(sourceEntry)));
+    const localTsxLoader = await firstAccessiblePath([
+      join(studioPackageRoot, "node_modules", "tsx", "dist", "loader.mjs"),
+    ]);
+    if (localTsxLoader) {
+      return {
+        studioEntry: sourceEntry,
+        command: "node",
+        args: ["--import", localTsxLoader, sourceEntry, root],
+      };
+    }
+
+    const localTsx = await firstAccessiblePath([
+      join(studioPackageRoot, "node_modules", ".bin", "tsx"),
+    ]);
+    if (localTsx) {
+      return {
+        studioEntry: sourceEntry,
+        command: localTsx,
+        args: [sourceEntry, root],
+      };
+    }
     return {
       studioEntry: sourceEntry,
       command: "npx",
