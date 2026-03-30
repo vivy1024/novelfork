@@ -15,6 +15,28 @@ const BOOK_REFRESH_EVENTS = new Set([
   "audit:error",
 ]);
 
+const BOOK_COLLECTION_REFRESH_EVENTS = new Set([
+  "book:created",
+  "book:deleted",
+  "book:error",
+  "write:complete",
+  "write:error",
+  "draft:complete",
+  "draft:error",
+  "rewrite:complete",
+  "rewrite:error",
+  "revise:complete",
+  "revise:error",
+  "audit:complete",
+  "audit:error",
+]);
+
+const DAEMON_STATUS_REFRESH_EVENTS = new Set([
+  "daemon:started",
+  "daemon:stopped",
+  "daemon:error",
+]);
+
 export interface BookActivity {
   readonly writing: boolean;
   readonly drafting: boolean;
@@ -91,4 +113,12 @@ export function deriveBookActivity(messages: ReadonlyArray<SSEMessage>, bookId: 
 
 export function shouldRefetchBookView(message: SSEMessage, bookId: string): boolean {
   return getBookId(message) === bookId && BOOK_REFRESH_EVENTS.has(message.event);
+}
+
+export function shouldRefetchBookCollections(message: SSEMessage | undefined): boolean {
+  return Boolean(message && BOOK_COLLECTION_REFRESH_EVENTS.has(message.event));
+}
+
+export function shouldRefetchDaemonStatus(message: SSEMessage | undefined): boolean {
+  return Boolean(message && DAEMON_STATUS_REFRESH_EVENTS.has(message.event));
 }

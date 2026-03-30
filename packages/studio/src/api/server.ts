@@ -421,7 +421,7 @@ export function createStudioServer(config: ProjectConfig, root: string) {
     }
     try {
       const { Scheduler } = await import("@actalk/inkos-core");
-      schedulerInstance = new Scheduler({
+      const scheduler = new Scheduler({
         ...buildPipelineConfig(),
         radarCron: config.daemon.schedule.radarCron,
         writeCron: config.daemon.schedule.writeCron,
@@ -437,8 +437,17 @@ export function createStudioServer(config: ProjectConfig, root: string) {
           broadcast("daemon:error", { bookId, error: error.message });
         },
       });
-      await schedulerInstance.start();
+      schedulerInstance = scheduler;
       broadcast("daemon:started", {});
+      void scheduler.start().catch((e) => {
+        const error = e instanceof Error ? e : new Error(String(e));
+        if (schedulerInstance === scheduler) {
+          scheduler.stop();
+          schedulerInstance = null;
+          broadcast("daemon:stopped", {});
+        }
+        broadcast("daemon:error", { bookId: "scheduler", error: error.message });
+      });
       return c.json({ ok: true, running: true });
     } catch (e) {
       return c.json({ error: String(e) }, 500);
@@ -833,6 +842,7 @@ export function createStudioServer(config: ProjectConfig, root: string) {
     try {
       const { rm } = await import("node:fs/promises");
       await rm(bookDir, { recursive: true, force: true });
+      broadcast("book:deleted", { bookId: id });
       return c.json({ ok: true, bookId: id });
     } catch (e) {
       return c.json({ error: String(e) }, 500);

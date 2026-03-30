@@ -1,9 +1,10 @@
 import { useApi, postApi } from "../hooks/use-api";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
 import { useColors } from "../hooks/use-colors";
 import type { SSEMessage } from "../hooks/use-sse";
+import { shouldRefetchDaemonStatus } from "../hooks/use-book-activity";
 
 interface Nav {
   toDashboard: () => void;
@@ -13,6 +14,12 @@ export function DaemonControl({ nav, theme, t, sse }: { nav: Nav; theme: Theme; 
   const c = useColors(theme);
   const { data, refetch } = useApi<{ running: boolean }>("/daemon");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const recent = sse.messages.at(-1);
+    if (!shouldRefetchDaemonStatus(recent)) return;
+    void refetch();
+  }, [refetch, sse.messages]);
 
   const daemonEvents = sse.messages
     .filter((m) => m.event.startsWith("daemon:") || m.event === "log")
@@ -49,14 +56,14 @@ export function DaemonControl({ nav, theme, t, sse }: { nav: Nav; theme: Theme; 
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <button onClick={nav.toDashboard} className={c.link}>{t("bread.home")}</button>
         <span className="text-border">/</span>
-        <span className="text-foreground">Daemon</span>
+        <span className="text-foreground">{t("nav.daemon")}</span>
       </div>
 
       <div className="flex items-baseline justify-between">
-        <h1 className="font-serif text-3xl">Daemon</h1>
+        <h1 className="font-serif text-3xl">{t("daemon.title")}</h1>
         <div className="flex items-center gap-3">
           <span className={`text-sm uppercase tracking-wide font-medium ${isRunning ? "text-emerald-500" : "text-muted-foreground"}`}>
-            {isRunning ? "Running" : "Stopped"}
+            {isRunning ? t("daemon.running") : t("daemon.stopped")}
           </span>
           {isRunning ? (
             <button
@@ -64,7 +71,7 @@ export function DaemonControl({ nav, theme, t, sse }: { nav: Nav; theme: Theme; 
               disabled={loading}
               className={`px-4 py-2.5 text-sm rounded-md ${c.btnDanger} disabled:opacity-50`}
             >
-              {loading ? "Stopping..." : "Stop"}
+              {loading ? t("daemon.stopping") : t("daemon.stop")}
             </button>
           ) : (
             <button
@@ -72,7 +79,7 @@ export function DaemonControl({ nav, theme, t, sse }: { nav: Nav; theme: Theme; 
               disabled={loading}
               className={`px-4 py-2.5 text-sm rounded-md ${c.btnPrimary} disabled:opacity-50`}
             >
-              {loading ? "Starting..." : "Start"}
+              {loading ? t("daemon.starting") : t("daemon.start")}
             </button>
           )}
         </div>
@@ -92,14 +99,14 @@ export function DaemonControl({ nav, theme, t, sse }: { nav: Nav; theme: Theme; 
                   <div key={i} className="leading-relaxed text-muted-foreground">
                     <span className="text-primary/50">{msg.event}</span>
                     <span className="text-border mx-1.5">›</span>
-                    <span>{d.message ?? d.bookId ?? JSON.stringify(d)}</span>
+                    <span>{String(d.message ?? d.bookId ?? JSON.stringify(d))}</span>
                   </div>
                 );
               })}
             </div>
           ) : (
             <div className="text-muted-foreground text-sm italic py-8 text-center">
-              {isRunning ? "Waiting for events..." : "Start the daemon to see events"}
+              {isRunning ? t("daemon.waitingEvents") : t("daemon.startHint")}
             </div>
           )}
         </div>

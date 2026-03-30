@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { SSEMessage } from "./use-sse";
-import { deriveActiveBookIds, deriveBookActivity, shouldRefetchBookView } from "./use-book-activity";
+import {
+  deriveActiveBookIds,
+  deriveBookActivity,
+  shouldRefetchBookCollections,
+  shouldRefetchBookView,
+  shouldRefetchDaemonStatus,
+} from "./use-book-activity";
 
 function msg(event: string, data: unknown, timestamp: number): SSEMessage {
   return { event, data, timestamp };
@@ -77,5 +83,26 @@ describe("shouldRefetchBookView", () => {
     expect(shouldRefetchBookView(msg("audit:complete", { bookId: "alpha", chapter: 3, passed: true }, 1), "alpha")).toBe(true);
     expect(shouldRefetchBookView(msg("audit:start", { bookId: "alpha", chapter: 3 }, 1), "alpha")).toBe(false);
     expect(shouldRefetchBookView(msg("rewrite:complete", { bookId: "beta" }, 1), "alpha")).toBe(false);
+  });
+});
+
+describe("shouldRefetchBookCollections", () => {
+  it("refreshes book lists for create/delete and chapter-changing terminal events", () => {
+    expect(shouldRefetchBookCollections(msg("book:created", { bookId: "alpha" }, 1))).toBe(true);
+    expect(shouldRefetchBookCollections(msg("book:deleted", { bookId: "alpha" }, 1))).toBe(true);
+    expect(shouldRefetchBookCollections(msg("write:complete", { bookId: "alpha" }, 1))).toBe(true);
+    expect(shouldRefetchBookCollections(msg("draft:error", { bookId: "alpha" }, 1))).toBe(true);
+    expect(shouldRefetchBookCollections(msg("rewrite:complete", { bookId: "alpha" }, 1))).toBe(true);
+    expect(shouldRefetchBookCollections(msg("audit:start", { bookId: "alpha" }, 1))).toBe(false);
+    expect(shouldRefetchBookCollections(undefined)).toBe(false);
+  });
+});
+
+describe("shouldRefetchDaemonStatus", () => {
+  it("refreshes daemon status for daemon terminal events", () => {
+    expect(shouldRefetchDaemonStatus(msg("daemon:started", {}, 1))).toBe(true);
+    expect(shouldRefetchDaemonStatus(msg("daemon:stopped", {}, 1))).toBe(true);
+    expect(shouldRefetchDaemonStatus(msg("daemon:error", {}, 1))).toBe(true);
+    expect(shouldRefetchDaemonStatus(msg("daemon:chapter", {}, 1))).toBe(false);
   });
 });
