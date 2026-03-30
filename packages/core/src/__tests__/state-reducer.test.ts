@@ -158,39 +158,40 @@ describe("applyRuntimeStateDelta", () => {
     ).toThrow(/duplicate summary/i);
   });
 
-  it("rejects resolve operations for unknown hooks", () => {
-    expect(() =>
-      applyRuntimeStateDelta({
-        snapshot: {
-          manifest: {
-            schemaVersion: 2,
-            language: "en",
-            lastAppliedChapter: 11,
-            projectionVersion: 1,
-            migrationWarnings: [],
-          },
-          currentState: {
-            chapter: 11,
-            facts: [],
-          },
-          hooks: {
-            hooks: [],
-          },
-          chapterSummaries: {
-            rows: [],
-          },
+  it("ignores resolve and defer operations for unknown hooks", () => {
+    const result = applyRuntimeStateDelta({
+      snapshot: {
+        manifest: {
+          schemaVersion: 2,
+          language: "en",
+          lastAppliedChapter: 11,
+          projectionVersion: 1,
+          migrationWarnings: [],
         },
-        delta: RuntimeStateDeltaSchema.parse({
-          chapter: 12,
-          hookOps: {
-            upsert: [],
-            resolve: ["mentor-debt"],
-            defer: [],
-          },
-          notes: [],
-        }),
+        currentState: {
+          chapter: 11,
+          facts: [],
+        },
+        hooks: {
+          hooks: [],
+        },
+        chapterSummaries: {
+          rows: [],
+        },
+      },
+      delta: RuntimeStateDeltaSchema.parse({
+        chapter: 12,
+        hookOps: {
+          upsert: [],
+          resolve: ["mentor-debt"],
+          defer: ["mentor-debt-later"],
+        },
+        notes: [],
       }),
-    ).toThrow(/unknown hook/i);
+    });
+
+    expect(result.manifest.lastAppliedChapter).toBe(12);
+    expect(result.hooks.hooks).toEqual([]);
   });
 
   it("keeps mention-only hooks from mutating lastAdvancedChapter", () => {
