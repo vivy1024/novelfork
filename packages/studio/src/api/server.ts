@@ -23,6 +23,7 @@ import { buildStudioBookConfig } from "./book-create.js";
 
 type EventHandler = (event: string, data: unknown) => void;
 const subscribers = new Set<EventHandler>();
+const bookCreateStatus = new Map<string, { status: "creating" | "error"; error?: string }>();
 
 function broadcast(event: string, data: unknown): void {
   for (const handler of subscribers) {
@@ -164,14 +165,31 @@ export function createStudioServer(config: ProjectConfig, root: string) {
     }
 
     broadcast("book:creating", { bookId, title: body.title });
+    bookCreateStatus.set(bookId, { status: "creating" });
 
     const pipeline = new PipelineRunner(buildPipelineConfig());
     pipeline.initBook(bookConfig).then(
-      () => broadcast("book:created", { bookId }),
-      (e) => broadcast("book:error", { bookId, error: e instanceof Error ? e.message : String(e) }),
+      () => {
+        bookCreateStatus.delete(bookId);
+        broadcast("book:created", { bookId });
+      },
+      (e) => {
+        const error = e instanceof Error ? e.message : String(e);
+        bookCreateStatus.set(bookId, { status: "error", error });
+        broadcast("book:error", { bookId, error });
+      },
     );
 
     return c.json({ status: "creating", bookId });
+  });
+
+  app.get("/api/books/:id/create-status", async (c) => {
+    const id = c.req.param("id");
+    const status = bookCreateStatus.get(id);
+    if (!status) {
+      return c.json({ status: "missing" }, 404);
+    }
+    return c.json(status);
   });
 
   // --- Chapters ---

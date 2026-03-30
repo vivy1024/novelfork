@@ -52,6 +52,7 @@ export function platformOptionsForLanguage(language: "zh" | "en"): ReadonlyArray
 
 interface WaitForBookReadyOptions {
   readonly fetchBook?: (bookId: string) => Promise<unknown>;
+  readonly fetchStatus?: (bookId: string) => Promise<{ status: string; error?: string }>;
   readonly maxAttempts?: number;
   readonly delayMs?: number;
   readonly waitImpl?: (ms: number) => Promise<void>;
@@ -62,6 +63,7 @@ export async function waitForBookReady(
   options: WaitForBookReadyOptions = {},
 ): Promise<void> {
   const fetchBook = options.fetchBook ?? ((id: string) => fetchJson(`/books/${id}`));
+  const fetchStatus = options.fetchStatus ?? ((id: string) => fetchJson<{ status: string; error?: string }>(`/books/${id}/create-status`));
   const maxAttempts = options.maxAttempts ?? 20;
   const delayMs = options.delayMs ?? 150;
   const waitImpl = options.waitImpl ?? ((ms: number) => new Promise<void>((resolve) => {
@@ -76,6 +78,16 @@ export async function waitForBookReady(
       return;
     } catch (error) {
       lastError = error;
+      try {
+        const status = await fetchStatus(bookId);
+        if (status.status === "error") {
+          throw new Error(status.error ?? `Book "${bookId}" failed to create`);
+        }
+      } catch (statusError) {
+        if (statusError instanceof Error && statusError.message !== "404 Not Found") {
+          throw statusError;
+        }
+      }
       if (attempt === maxAttempts - 1) {
         throw error;
       }

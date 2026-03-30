@@ -236,4 +236,32 @@ describe("createStudioServer daemon lifecycle", () => {
     expect(initBookMock).not.toHaveBeenCalled();
     await expect(access(join(root, "books", "existing-book", "story", "story_bible.md"))).resolves.toBeUndefined();
   });
+
+  it("reports async create failures through the create-status endpoint", async () => {
+    initBookMock.mockRejectedValueOnce(new Error("INKOS_LLM_API_KEY not set"));
+
+    const { createStudioServer } = await import("./server.js");
+    const app = createStudioServer(cloneProjectConfig() as never, root);
+
+    const response = await app.request("http://localhost/api/books/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "Broken Book",
+        genre: "xuanhuan",
+        platform: "qidian",
+        language: "zh",
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    await Promise.resolve();
+
+    const status = await app.request("http://localhost/api/books/broken-book/create-status");
+    expect(status.status).toBe(200);
+    await expect(status.json()).resolves.toMatchObject({
+      status: "error",
+      error: "INKOS_LLM_API_KEY not set",
+    });
+  });
 });

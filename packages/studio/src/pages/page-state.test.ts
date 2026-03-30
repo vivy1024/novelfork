@@ -44,6 +44,7 @@ describe("waitForBookReady", () => {
           throw new Error("Book not found");
         }
       },
+      fetchStatus: async () => ({ status: "creating" }),
       delayMs: 0,
       waitImpl: async () => undefined,
     })).resolves.toBeUndefined();
@@ -56,9 +57,21 @@ describe("waitForBookReady", () => {
       fetchBook: async () => {
         throw new Error("Book not found");
       },
+      fetchStatus: async () => ({ status: "creating" }),
       maxAttempts: 2,
       delayMs: 0,
       waitImpl: async () => undefined,
     })).rejects.toThrow("Book not found");
+  });
+
+  it("prefers the server-reported create failure over a polling timeout", async () => {
+    await expect(waitForBookReady("broken-book", {
+      fetchBook: async () => {
+        throw new Error("Book not found");
+      },
+      fetchStatus: async () => ({ status: "error", error: "INKOS_LLM_API_KEY not set" }),
+      delayMs: 0,
+      waitImpl: async () => undefined,
+    })).rejects.toThrow("INKOS_LLM_API_KEY not set");
   });
 });
