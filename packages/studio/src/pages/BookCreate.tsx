@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useApi, postApi } from "../hooks/use-api";
+import { fetchJson, useApi, postApi } from "../hooks/use-api";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
 import { useColors } from "../hooks/use-colors";
@@ -48,6 +48,42 @@ export function defaultChapterWordsForLanguage(language: "zh" | "en"): string {
 
 export function platformOptionsForLanguage(language: "zh" | "en"): ReadonlyArray<PlatformOption> {
   return language === "en" ? PLATFORMS_EN : PLATFORMS_ZH;
+}
+
+interface WaitForBookReadyOptions {
+  readonly fetchBook?: (bookId: string) => Promise<unknown>;
+  readonly maxAttempts?: number;
+  readonly delayMs?: number;
+  readonly waitImpl?: (ms: number) => Promise<void>;
+}
+
+export async function waitForBookReady(
+  bookId: string,
+  options: WaitForBookReadyOptions = {},
+): Promise<void> {
+  const fetchBook = options.fetchBook ?? ((id: string) => fetchJson(`/books/${id}`));
+  const maxAttempts = options.maxAttempts ?? 20;
+  const delayMs = options.delayMs ?? 150;
+  const waitImpl = options.waitImpl ?? ((ms: number) => new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  }));
+
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      await fetchBook(bookId);
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt === maxAttempts - 1) {
+        throw error;
+      }
+      await waitImpl(delayMs);
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error(`Book "${bookId}" was not ready`);
 }
 
 export function BookCreate({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunction }) {
@@ -107,6 +143,7 @@ export function BookCreate({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunc
         chapterWordCount: parseInt(chapterWords, 10),
         targetChapters: parseInt(targetChapters, 10),
       });
+      await waitForBookReady(result.bookId);
       nav.toBook(result.bookId);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create book");

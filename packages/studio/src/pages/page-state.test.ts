@@ -3,6 +3,7 @@ import {
   defaultChapterWordsForLanguage,
   platformOptionsForLanguage,
   pickValidValue,
+  waitForBookReady,
 } from "./BookCreate";
 
 describe("pickValidValue", () => {
@@ -29,5 +30,35 @@ describe("platformOptionsForLanguage", () => {
     const values = platformOptionsForLanguage("en").map((option) => option.value);
     expect(new Set(values).size).toBe(values.length);
     expect(values).toEqual(["royal-road", "kindle-unlimited", "scribble-hub", "other"]);
+  });
+});
+
+describe("waitForBookReady", () => {
+  it("retries until the created book becomes readable", async () => {
+    let attempts = 0;
+
+    await expect(waitForBookReady("fresh-book", {
+      fetchBook: async () => {
+        attempts += 1;
+        if (attempts < 3) {
+          throw new Error("Book not found");
+        }
+      },
+      delayMs: 0,
+      waitImpl: async () => undefined,
+    })).resolves.toBeUndefined();
+
+    expect(attempts).toBe(3);
+  });
+
+  it("surfaces the last error when the book never becomes readable", async () => {
+    await expect(waitForBookReady("missing-book", {
+      fetchBook: async () => {
+        throw new Error("Book not found");
+      },
+      maxAttempts: 2,
+      delayMs: 0,
+      waitImpl: async () => undefined,
+    })).rejects.toThrow("Book not found");
   });
 });
