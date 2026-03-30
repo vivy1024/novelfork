@@ -5,10 +5,11 @@
   "description": "InkOS Studio — Web workbench for novel writing",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host --port 4567",
     "build": "vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@actalk/inkos-core": "workspace:*",
@@ -34,6 +35,7 @@
     "autoprefixer": "^10.4.0",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.8.0",
-    "vite": "^6.0.0"
+    "vite": "^6.0.0",
+    "vitest": "^3.0.0"
   }
 }

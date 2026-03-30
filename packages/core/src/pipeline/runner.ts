@@ -21,7 +21,7 @@ import type { WebhookEvent } from "../notify/webhook.js";
 import type { AgentContext } from "../agents/base.js";
 import type { AuditResult, AuditIssue } from "../agents/continuity.js";
 import type { RadarResult } from "../agents/radar.js";
-import { readFile, readdir, writeFile, mkdir } from "node:fs/promises";
+import { access, readFile, readdir, writeFile, mkdir, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 
 export interface PipelineConfig {
@@ -187,19 +187,30 @@ export class PipelineRunner {
   async initBook(book: BookConfig): Promise<void> {
     const architect = new ArchitectAgent(this.agentCtxFor("architect", book.id));
     const bookDir = this.state.bookDir(book.id);
+    const stagingDir = join(
+      this.state.booksDir,
+      `.tmp-${book.id}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    );
 
-    await this.state.saveBookConfig(book.id, book);
+    await this.ensureBookTargetIsWritable(book.id);
+    await rm(stagingDir, { recursive: true, force: true });
 
-    const { profile: gp } = await this.loadGenreProfile(book.genre);
-    const foundation = await architect.generateFoundation(book, this.config.externalContext);
-    await architect.writeFoundationFiles(bookDir, foundation, gp.numericalSystem);
+    try {
+      await this.writeBookConfigToDir(stagingDir, book);
 
-    // Ensure chapters directory exists (prevents ENOENT if init was previously interrupted)
-    await mkdir(join(bookDir, "chapters"), { recursive: true });
-    await this.state.saveChapterIndex(book.id, []);
+      const { profile: gp } = await this.loadGenreProfile(book.genre);
+      const foundation = await architect.generateFoundation(book, this.config.externalContext);
+      await architect.writeFoundationFiles(stagingDir, foundation, gp.numericalSystem);
 
-    // Snapshot initial state so rewrite of chapter 1 can restore to pre-chapter state
-    await this.state.snapshotState(book.id, 0);
+      await mkdir(join(stagingDir, "chapters"), { recursive: true });
+      await writeFile(join(stagingDir, "chapters", "index.json"), "[]\n", "utf-8");
+      await this.snapshotStateAtDir(stagingDir, 0);
+
+      await rename(stagingDir, bookDir);
+    } catch (e) {
+      await rm(stagingDir, { recursive: true, force: true });
+      throw e;
+    }
   }
 
   /** Import external source material and generate fanfic_canon.md */
@@ -245,6 +256,52 @@ export class PipelineRunner {
     await mkdir(join(bookDir, "chapters"), { recursive: true });
     await this.state.saveChapterIndex(book.id, []);
     await this.state.snapshotState(book.id, 0);
+  }
+
+  private async ensureBookTargetIsWritable(bookId: string): Promise<void> {
+    const bookDir = this.state.bookDir(bookId);
+    try {
+      await access(bookDir);
+    } catch {
+      return;
+    }
+
+    try {
+      await access(join(bookDir, "story", "story_bible.md"));
+      throw new Error(`Book "${bookId}" already exists at books/${bookId}/`);
+    } catch (e) {
+      if (e instanceof Error && e.message.includes("already exists")) {
+        throw e;
+      }
+      await rm(bookDir, { recursive: true, force: true });
+    }
+  }
+
+  private async writeBookConfigToDir(bookDir: string, book: BookConfig): Promise<void> {
+    await mkdir(bookDir, { recursive: true });
+    await writeFile(join(bookDir, "book.json"), JSON.stringify(book, null, 2), "utf-8");
+  }
+
+  private async snapshotStateAtDir(bookDir: string, chapterNumber: number): Promise<void> {
+    const storyDir = join(bookDir, "story");
+    const snapshotDir = join(storyDir, "snapshots", String(chapterNumber));
+    await mkdir(snapshotDir, { recursive: true });
+
+    const files = [
+      "current_state.md", "particle_ledger.md", "pending_hooks.md",
+      "chapter_summaries.md", "subplot_board.md", "emotional_arcs.md", "character_matrix.md",
+    ];
+
+    await Promise.all(
+      files.map(async (f) => {
+        try {
+          const content = await readFile(join(storyDir, f), "utf-8");
+          await writeFile(join(snapshotDir, f), content, "utf-8");
+        } catch {
+          // file doesn't exist yet
+        }
+      }),
+    );
   }
 
   /** Write a single draft chapter. Saves chapter file + truth files + index + snapshot. */

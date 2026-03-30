@@ -1,8 +1,25 @@
-import { useApi, postApi } from "../hooks/use-api";
-import { useState } from "react";
+import { fetchJson, useApi } from "../hooks/use-api";
+import { useEffect, useState } from "react";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
 import { useColors } from "../hooks/use-colors";
+
+const ROUTING_AGENTS = [
+  "writer",
+  "auditor",
+  "reviser",
+  "architect",
+  "radar",
+  "chapter-analyzer",
+] as const;
+
+interface AgentOverride {
+  readonly model: string;
+  readonly provider: string;
+  readonly baseUrl: string;
+}
+
+type OverridesMap = Record<string, AgentOverride>;
 
 interface ProjectInfo {
   readonly name: string;
@@ -17,6 +34,17 @@ interface ProjectInfo {
 
 interface Nav {
   toDashboard: () => void;
+}
+
+export function normalizeOverridesDraft(
+  data?: { readonly overrides?: OverridesMap } | null,
+): OverridesMap {
+  return Object.fromEntries(
+    Object.entries(data?.overrides ?? {}).map(([agent, override]) => [
+      agent,
+      { ...override },
+    ]),
+  ) as OverridesMap;
 }
 
 export function ConfigView({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunction }) {
@@ -43,7 +71,7 @@ export function ConfigView({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunc
   const handleSave = async () => {
     setSaving(true);
     try {
-      await fetch("/api/project", {
+      await fetchJson("/project", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
@@ -78,7 +106,7 @@ export function ConfigView({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunc
         <Row label={t("config.project")} value={data.name} />
         <Row label={t("config.provider")} value={data.provider} />
         <Row label={t("config.model")} value={data.model} />
-        <Row label="Base URL" value={data.baseUrl} mono />
+        <Row label={t("config.baseUrl")} value={data.baseUrl} mono />
 
         {editing ? (
           <>
@@ -87,38 +115,38 @@ export function ConfigView({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunc
               value={form.language as string}
               onChange={(v) => setForm({ ...form, language: v })}
               type="select"
-              options={[{ value: "zh", label: "Chinese" }, { value: "en", label: "English" }]}
+              options={[{ value: "zh", label: t("config.chinese") }, { value: "en", label: t("config.english") }]}
               c={c}
             />
             <EditRow
-              label="Temperature"
+              label={t("config.temperature")}
               value={String(form.temperature)}
               onChange={(v) => setForm({ ...form, temperature: parseFloat(v) })}
               type="number"
               c={c}
             />
             <EditRow
-              label="Max Tokens"
+              label={t("config.maxTokens")}
               value={String(form.maxTokens)}
               onChange={(v) => setForm({ ...form, maxTokens: parseInt(v, 10) })}
               type="number"
               c={c}
             />
             <EditRow
-              label="Stream"
+              label={t("config.stream")}
               value={String(form.stream)}
               onChange={(v) => setForm({ ...form, stream: v === "true" })}
               type="select"
-              options={[{ value: "true", label: "Enabled" }, { value: "false", label: "Disabled" }]}
+              options={[{ value: "true", label: t("config.enabled") }, { value: "false", label: t("config.disabled") }]}
               c={c}
             />
           </>
         ) : (
           <>
-            <Row label={t("config.language")} value={data.language === "en" ? "English" : "Chinese"} />
-            <Row label="Temperature" value={String(data.temperature)} mono />
-            <Row label="Max Tokens" value={String(data.maxTokens)} mono />
-            <Row label="Stream" value={data.stream ? "Enabled" : "Disabled"} />
+            <Row label={t("config.language")} value={data.language === "en" ? t("config.english") : t("config.chinese")} />
+            <Row label={t("config.temperature")} value={String(data.temperature)} mono />
+            <Row label={t("config.maxTokens")} value={String(data.maxTokens)} mono />
+            <Row label={t("config.stream")} value={data.stream ? t("config.enabled") : t("config.disabled")} />
           </>
         )}
       </div>
@@ -126,14 +154,126 @@ export function ConfigView({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunc
       {editing && (
         <div className="flex gap-2 justify-end">
           <button onClick={() => setEditing(false)} className={`px-4 py-2.5 text-sm rounded-md ${c.btnSecondary}`}>
-            Cancel
+            {t("config.cancel")}
           </button>
           <button onClick={handleSave} disabled={saving} className={`px-4 py-2.5 text-sm rounded-md ${c.btnPrimary} disabled:opacity-50`}>
-            {saving ? "Saving..." : "Save"}
+            {saving ? t("config.saving") : t("config.save")}
           </button>
         </div>
       )}
+
+      <ModelRoutingSection theme={theme} t={t} />
     </div>
+  );
+}
+
+function emptyOverride(): AgentOverride {
+  return { model: "", provider: "", baseUrl: "" };
+}
+
+function ModelRoutingSection({ theme, t }: { theme: Theme; t: TFunction }) {
+  const c = useColors(theme);
+  const { data, loading, error, refetch } = useApi<{ overrides: OverridesMap }>(
+    "/project/model-overrides",
+  );
+  const [overrides, setOverrides] = useState<OverridesMap>({});
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setOverrides(normalizeOverridesDraft(data));
+  }, [data]);
+
+  if (loading) return <div className="text-muted-foreground py-8 text-center text-sm">Loading model overrides...</div>;
+  if (error) return <div className="text-destructive py-8 text-center text-sm">Error: {error}</div>;
+
+  const updateAgent = (agent: string, field: keyof AgentOverride, value: string) => {
+    const current = overrides[agent] ?? emptyOverride();
+    setOverrides({
+      ...overrides,
+      [agent]: { ...current, [field]: value },
+    });
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await fetchJson("/project/model-overrides", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ overrides }),
+      });
+      refetch();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to save model overrides");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <>
+      <h2 className="font-serif text-xl mt-4">{t("config.modelRouting")}</h2>
+
+      <div className={`border ${c.cardStatic} rounded-lg overflow-hidden`}>
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-border/40 text-muted-foreground text-left">
+              <th className="px-4 py-2.5 font-medium">{t("config.agent")}</th>
+              <th className="px-4 py-2.5 font-medium">{t("config.model")}</th>
+              <th className="px-4 py-2.5 font-medium">{t("config.provider")}</th>
+              <th className="px-4 py-2.5 font-medium">{t("config.baseUrl")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {ROUTING_AGENTS.map((agent) => {
+              const row = overrides[agent] ?? emptyOverride();
+              return (
+                <tr key={agent} className="border-b border-border/40 last:border-b-0">
+                  <td className="px-4 py-2 font-mono text-foreground/80">{agent}</td>
+                  <td className="px-4 py-2">
+                    <input
+                      type="text"
+                      value={row.model}
+                      onChange={(e) => updateAgent(agent, "model", e.target.value)}
+                      placeholder={t("config.default")}
+                      className={`${c.input} rounded px-2 py-1 text-sm w-full`}
+                    />
+                  </td>
+                  <td className="px-4 py-2">
+                    <input
+                      type="text"
+                      value={row.provider}
+                      onChange={(e) => updateAgent(agent, "provider", e.target.value)}
+                      placeholder={t("config.optional")}
+                      className={`${c.input} rounded px-2 py-1 text-sm w-full`}
+                    />
+                  </td>
+                  <td className="px-4 py-2">
+                    <input
+                      type="text"
+                      value={row.baseUrl}
+                      onChange={(e) => updateAgent(agent, "baseUrl", e.target.value)}
+                      placeholder={t("config.optional")}
+                      className={`${c.input} rounded px-2 py-1 text-sm w-full`}
+                    />
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="flex justify-end">
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className={`px-4 py-2.5 text-sm rounded-md ${c.btnPrimary} disabled:opacity-50`}
+        >
+          {saving ? t("config.saving") : t("config.saveOverrides")}
+        </button>
+      </div>
+    </>
   );
 }
 
