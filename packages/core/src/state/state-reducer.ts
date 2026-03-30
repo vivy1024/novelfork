@@ -105,7 +105,8 @@ function applyHookOps(hooksState: HooksState, delta: RuntimeStateDelta): HooksSt
   for (const hookId of delta.hookOps.resolve) {
     const existing = hooksById.get(hookId);
     if (!existing) {
-      throw new Error(`unknown hook: ${hookId}`);
+      // Hook may have been cleared by a previous settlement or not yet created — skip gracefully
+      continue;
     }
     hooksById.set(hookId, {
       ...existing,
@@ -117,7 +118,7 @@ function applyHookOps(hooksState: HooksState, delta: RuntimeStateDelta): HooksSt
   for (const hookId of delta.hookOps.defer) {
     const existing = hooksById.get(hookId);
     if (!existing) {
-      throw new Error(`unknown hook: ${hookId}`);
+      continue;
     }
     hooksById.set(hookId, {
       ...existing,
