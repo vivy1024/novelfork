@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 const schedulerStartMock = vi.fn<() => Promise<void>>();
+const initBookMock = vi.fn();
 
 const logger = {
   child: () => logger,
@@ -39,6 +40,8 @@ vi.mock("@actalk/inkos-core", () => {
 
   class MockPipelineRunner {
     constructor(_config: unknown) {}
+
+    initBook = initBookMock;
   }
 
   class MockScheduler {
@@ -109,6 +112,7 @@ describe("createStudioServer daemon lifecycle", () => {
     root = await mkdtemp(join(tmpdir(), "inkos-studio-server-"));
     await writeFile(join(root, "inkos.json"), JSON.stringify(projectConfig, null, 2), "utf-8");
     schedulerStartMock.mockReset();
+    initBookMock.mockReset();
   });
 
   afterEach(async () => {
@@ -204,5 +208,32 @@ describe("createStudioServer daemon lifecycle", () => {
       language: "en",
       languageExplicit: true,
     });
+  });
+
+  it("rejects create requests when a complete book with the same id already exists", async () => {
+    await mkdir(join(root, "books", "existing-book", "story"), { recursive: true });
+    await writeFile(join(root, "books", "existing-book", "book.json"), JSON.stringify({ id: "existing-book" }), "utf-8");
+    await writeFile(join(root, "books", "existing-book", "story", "story_bible.md"), "# existing", "utf-8");
+
+    const { createStudioServer } = await import("./server.js");
+    const app = createStudioServer(cloneProjectConfig() as never, root);
+
+    const response = await app.request("http://localhost/api/books/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "Existing Book",
+        genre: "xuanhuan",
+        platform: "qidian",
+        language: "zh",
+      }),
+    });
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      error: expect.stringContaining('Book "existing-book" already exists'),
+    });
+    expect(initBookMock).not.toHaveBeenCalled();
+    await expect(access(join(root, "books", "existing-book", "story", "story_bible.md"))).resolves.toBeUndefined();
   });
 });

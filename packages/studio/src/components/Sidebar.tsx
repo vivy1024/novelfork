@@ -1,8 +1,21 @@
 import { useEffect } from "react";
 import { useApi } from "../hooks/use-api";
-import type { TFunction } from "../hooks/use-i18n";
 import type { SSEMessage } from "../hooks/use-sse";
 import { shouldRefetchBookCollections, shouldRefetchDaemonStatus } from "../hooks/use-book-activity";
+import type { TFunction } from "../hooks/use-i18n";
+import {
+  Book,
+  Settings,
+  Terminal,
+  Plus,
+  ScrollText,
+  Boxes,
+  Zap,
+  Wand2,
+  FileInput,
+  TrendingUp,
+  Stethoscope,
+} from "lucide-react";
 
 interface BookSummary {
   readonly id: string;
@@ -21,106 +34,176 @@ interface Nav {
   toLogs: () => void;
   toGenres: () => void;
   toStyle: () => void;
+  toImport: () => void;
+  toRadar: () => void;
+  toDoctor: () => void;
 }
 
-export function Sidebar({ nav, activePage, t, sse }: {
+export function Sidebar({ nav, activePage, sse, t }: {
   nav: Nav;
   activePage: string;
-  t: TFunction;
   sse: { messages: ReadonlyArray<SSEMessage> };
+  t: TFunction;
 }) {
-  const { data, refetch } = useApi<{ books: ReadonlyArray<BookSummary> }>("/books");
+  const { data, refetch: refetchBooks } = useApi<{ books: ReadonlyArray<BookSummary> }>("/books");
   const { data: daemon, refetch: refetchDaemon } = useApi<{ running: boolean }>("/daemon");
 
   useEffect(() => {
     const recent = sse.messages.at(-1);
+    if (!recent) return;
     if (shouldRefetchBookCollections(recent)) {
-      void refetch();
+      refetchBooks();
     }
     if (shouldRefetchDaemonStatus(recent)) {
-      void refetchDaemon();
+      refetchDaemon();
     }
-  }, [refetch, refetchDaemon, sse.messages]);
+  }, [refetchBooks, refetchDaemon, sse.messages]);
 
   return (
-    <aside className="w-[240px] shrink-0 border-r border-border bg-card/40 flex flex-col h-full overflow-y-auto">
-      {/* Logo — generous vertical breathing room */}
-      <div className="px-6 pt-7 pb-6">
-        <button onClick={nav.toDashboard} className="flex items-baseline gap-0.5 hover:opacity-70 transition-opacity">
-          <span className="font-serif text-2xl italic text-primary">Ink</span>
-          <span className="text-lg font-semibold tracking-tight">OS</span>
+    <aside className="w-[260px] shrink-0 border-r border-border bg-background/80 backdrop-blur-md flex flex-col h-full overflow-hidden select-none">
+      {/* Logo Area */}
+      <div className="px-6 py-8">
+        <button
+          onClick={nav.toDashboard}
+          className="group flex items-center gap-2 hover:opacity-80 transition-all duration-300"
+        >
+          <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-foreground shadow-lg shadow-primary/20 group-hover:scale-105 transition-transform">
+            <ScrollText size={18} />
+          </div>
+          <div className="flex flex-col">
+            <span className="font-serif text-xl leading-none italic font-medium">InkOS</span>
+            <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-bold mt-1">Studio</span>
+          </div>
         </button>
       </div>
 
-      {/* Books section */}
-      <div className="flex-1 px-4">
-        <div className="px-2 mb-3 flex items-center justify-between">
-          <span className="text-sm uppercase tracking-wide text-muted-foreground font-medium">{t("nav.books")}</span>
-          <button
-            onClick={nav.toBookCreate}
-            className="w-6 h-6 flex items-center justify-center rounded text-sm text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all"
-          >
-            +
-          </button>
+      {/* Main Navigation */}
+      <div className="flex-1 overflow-y-auto px-4 py-2 space-y-6">
+        {/* Books Section */}
+        <div>
+          <div className="px-3 mb-3 flex items-center justify-between">
+            <span className="text-[11px] uppercase tracking-widest text-muted-foreground font-bold">
+              {t("nav.books")}
+            </span>
+            <button
+              onClick={nav.toBookCreate}
+              className="p-1 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all group"
+              title={t("nav.newBook")}
+            >
+              <Plus size={14} className="group-hover:rotate-90 transition-transform duration-300" />
+            </button>
+          </div>
+
+          <div className="space-y-1">
+            {data?.books.map((book) => (
+              <button
+                key={book.id}
+                onClick={() => nav.toBook(book.id)}
+                className={`w-full group flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-200 ${
+                  activePage === `book:${book.id}`
+                    ? "bg-primary/10 text-primary font-semibold"
+                    : "text-foreground font-medium hover:text-foreground hover:bg-secondary/50"
+                }`}
+              >
+                <Book size={16} className={activePage === `book:${book.id}` ? "text-primary" : "text-muted-foreground group-hover:text-foreground"} />
+                <span className="truncate flex-1 text-left">{book.title}</span>
+                {book.chaptersWritten > 0 && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground group-hover:bg-primary/20 group-hover:text-primary transition-colors">
+                    {book.chaptersWritten}
+                  </span>
+                )}
+              </button>
+            ))}
+
+            {(!data?.books || data.books.length === 0) && (
+              <div className="px-3 py-6 text-xs text-muted-foreground/70 italic text-center border border-dashed border-border rounded-lg">
+                {t("dash.noBooks")}
+              </div>
+            )}
+          </div>
         </div>
 
-        <div className="space-y-1">
-          {data?.books.map((book) => (
-            <button
-              key={book.id}
-              onClick={() => nav.toBook(book.id)}
-              className={`w-full text-left px-3 py-2.5 rounded-md text-base truncate transition-all duration-150 ${
-                activePage === `book:${book.id}`
-                  ? "bg-primary/10 text-primary font-medium"
-                  : "text-foreground/80 hover:text-foreground hover:bg-muted/40"
-              }`}
-            >
-              {book.title}
-            </button>
-          ))}
+        {/* System Section */}
+        <div>
+          <div className="px-3 mb-3">
+            <span className="text-[11px] uppercase tracking-widest text-muted-foreground font-bold">
+              {t("nav.system")}
+            </span>
+          </div>
+          <div className="space-y-1">
+            <SidebarItem
+              label={t("create.genre")}
+              icon={<Boxes size={16} />}
+              active={activePage === "genres"}
+              onClick={nav.toGenres}
+            />
+            <SidebarItem
+              label={t("nav.config")}
+              icon={<Settings size={16} />}
+              active={activePage === "config"}
+              onClick={nav.toConfig}
+            />
+            <SidebarItem
+              label={t("nav.daemon")}
+              icon={<Zap size={16} />}
+              active={activePage === "daemon"}
+              onClick={nav.toDaemon}
+              badge={daemon?.running ? t("nav.running") : undefined}
+              badgeColor={daemon?.running ? "bg-emerald-500/10 text-emerald-500" : "bg-muted text-muted-foreground"}
+            />
+            <SidebarItem
+              label={t("nav.logs")}
+              icon={<Terminal size={16} />}
+              active={activePage === "logs"}
+              onClick={nav.toLogs}
+            />
+          </div>
+        </div>
 
-          {(!data?.books || data.books.length === 0) && (
-            <div className="px-3 py-4 text-xs text-muted-foreground/50 italic leading-relaxed">
-              {t("dash.noBooks")}
-            </div>
-          )}
+        {/* Tools Section */}
+        <div>
+          <div className="px-3 mb-3">
+            <span className="text-[11px] uppercase tracking-widest text-muted-foreground font-bold">
+              {t("nav.tools")}
+            </span>
+          </div>
+          <div className="space-y-1">
+            <SidebarItem
+              label={t("nav.style")}
+              icon={<Wand2 size={16} />}
+              active={activePage === "style"}
+              onClick={nav.toStyle}
+            />
+            <SidebarItem
+              label={t("nav.import")}
+              icon={<FileInput size={16} />}
+              active={activePage === "import"}
+              onClick={nav.toImport}
+            />
+            <SidebarItem
+              label={t("nav.radar")}
+              icon={<TrendingUp size={16} />}
+              active={activePage === "radar"}
+              onClick={nav.toRadar}
+            />
+            <SidebarItem
+              label={t("nav.doctor")}
+              icon={<Stethoscope size={16} />}
+              active={activePage === "doctor"}
+              onClick={nav.toDoctor}
+            />
+          </div>
         </div>
       </div>
 
-      {/* System nav — generous spacing from book list */}
-      <div className="border-t border-border mt-4 pt-4 pb-5 px-4 space-y-1">
-        <SidebarItem
-          label={t("create.genre")}
-          icon="◈"
-          active={activePage === "genres"}
-          onClick={nav.toGenres}
-        />
-        <SidebarItem
-          label={t("nav.style")}
-          icon="✦"
-          active={activePage === "style"}
-          onClick={nav.toStyle}
-        />
-        <SidebarItem
-          label={t("nav.config")}
-          icon="⚙"
-          active={activePage === "config"}
-          onClick={nav.toConfig}
-        />
-        <SidebarItem
-          label={t("nav.daemon")}
-          icon="⟳"
-          active={activePage === "daemon"}
-          onClick={nav.toDaemon}
-          badge={daemon?.running ? "●" : undefined}
-          badgeColor={daemon?.running ? "text-emerald-500" : undefined}
-        />
-        <SidebarItem
-          label={t("nav.logs")}
-          icon="☰"
-          active={activePage === "logs"}
-          onClick={nav.toLogs}
-        />
+      {/* Footer / Status Area */}
+      <div className="p-4 border-t border-border bg-secondary/40">
+        <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-card border border-border shadow-sm">
+          <div className={`w-2 h-2 rounded-full ${daemon?.running ? "bg-emerald-500 animate-pulse" : "bg-muted-foreground/40"}`} />
+          <span className="text-[11px] font-semibold text-foreground/80 uppercase tracking-wider">
+            {daemon?.running ? t("nav.agentOnline") : t("nav.agentOffline")}
+          </span>
+        </div>
       </div>
     </aside>
   );
@@ -128,7 +211,7 @@ export function Sidebar({ nav, activePage, t, sse }: {
 
 function SidebarItem({ label, icon, active, onClick, badge, badgeColor }: {
   label: string;
-  icon: string;
+  icon: React.ReactNode;
   active: boolean;
   onClick: () => void;
   badge?: string;
@@ -137,15 +220,21 @@ function SidebarItem({ label, icon, active, onClick, badge, badgeColor }: {
   return (
     <button
       onClick={onClick}
-      className={`w-full text-left px-3 py-2.5 rounded-md text-base flex items-center gap-2.5 transition-all duration-150 ${
+      className={`w-full group flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-200 ${
         active
-          ? "bg-secondary text-foreground font-medium"
-          : "text-foreground/70 hover:text-foreground hover:bg-muted/40"
+          ? "bg-secondary text-foreground font-semibold shadow-sm border border-border"
+          : "text-foreground font-medium hover:text-foreground hover:bg-secondary/50"
       }`}
     >
-      <span className="text-sm w-4 text-center opacity-60">{icon}</span>
-      <span className="flex-1">{label}</span>
-      {badge && <span className={`text-xs ${badgeColor ?? ""}`}>{badge}</span>}
+      <span className={`transition-colors ${active ? "text-primary" : "text-muted-foreground group-hover:text-foreground"}`}>
+        {icon}
+      </span>
+      <span className="flex-1 text-left">{label}</span>
+      {badge && (
+        <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold uppercase tracking-tight ${badgeColor}`}>
+          {badge}
+        </span>
+      )}
     </button>
   );
 }

@@ -13,7 +13,7 @@ import {
   type LogSink,
   type LogEntry,
 } from "@actalk/inkos-core";
-import { readFile, readdir } from "node:fs/promises";
+import { access, readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { isSafeBookId } from "./safety.js";
 import { ApiError } from "./errors.js";
@@ -153,6 +153,15 @@ export function createStudioServer(config: ProjectConfig, root: string) {
     const now = new Date().toISOString();
     const bookConfig = buildStudioBookConfig(body, now);
     const bookId = bookConfig.id;
+    const bookDir = state.bookDir(bookId);
+
+    try {
+      await access(join(bookDir, "book.json"));
+      await access(join(bookDir, "story", "story_bible.md"));
+      return c.json({ error: `Book "${bookId}" already exists` }, 409);
+    } catch {
+      // The target book is not fully initialized yet, so creation can continue.
+    }
 
     broadcast("book:creating", { bookId, title: body.title });
 

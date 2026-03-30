@@ -5,7 +5,7 @@
   "description": "InkOS Studio — Web workbench for novel writing",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host --port 4567",
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
