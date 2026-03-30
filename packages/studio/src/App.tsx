@@ -11,6 +11,7 @@ import { TruthFiles } from "./pages/TruthFiles";
 import { DaemonControl } from "./pages/DaemonControl";
 import { LogViewer } from "./pages/LogViewer";
 import { GenreManager } from "./pages/GenreManager";
+import { StyleManager } from "./pages/StyleManager";
 import { LanguageSelector } from "./pages/LanguageSelector";
 import { useSSE } from "./hooks/use-sse";
 import { useTheme } from "./hooks/use-theme";
@@ -27,7 +28,8 @@ type Route =
   | { page: "truth"; bookId: string }
   | { page: "daemon" }
   | { page: "logs" }
-  | { page: "genres" };
+  | { page: "genres" }
+  | { page: "style" };
 
 export function App() {
   const [route, setRoute] = useState<Route>({ page: "dashboard" });
@@ -66,6 +68,7 @@ export function App() {
     toDaemon: () => setRoute({ page: "daemon" }),
     toLogs: () => setRoute({ page: "logs" }),
     toGenres: () => setRoute({ page: "genres" }),
+    toStyle: () => setRoute({ page: "style" }),
   };
 
   const activePage =
@@ -95,7 +98,7 @@ export function App() {
 
   return (
     <div className="h-screen bg-background text-foreground flex overflow-hidden">
-      <Sidebar nav={nav} activePage={activePage} t={t} />
+      <Sidebar nav={nav} activePage={activePage} t={t} sse={sse} />
 
       <div className="flex-1 flex flex-col min-w-0">
         {/* Thin utility strip — pushed inward */}
@@ -117,7 +120,7 @@ export function App() {
         <div className="flex-1 overflow-y-auto">
           <div className="max-w-3xl mx-auto px-10 py-12">
             {route.page === "dashboard" && <Dashboard nav={nav} sse={sse} theme={theme} t={t} />}
-            {route.page === "book" && <BookDetail bookId={route.bookId} nav={nav} theme={theme} t={t} />}
+            {route.page === "book" && <BookDetail bookId={route.bookId} nav={nav} theme={theme} t={t} sse={sse} />}
             {route.page === "book-create" && <BookCreate nav={nav} theme={theme} t={t} />}
             {route.page === "chapter" && <ChapterReader bookId={route.bookId} chapterNumber={route.chapterNumber} nav={nav} theme={theme} t={t} />}
             {route.page === "analytics" && <Analytics bookId={route.bookId} nav={nav} theme={theme} t={t} />}
@@ -126,6 +129,7 @@ export function App() {
             {route.page === "daemon" && <DaemonControl nav={nav} theme={theme} t={t} sse={sse} />}
             {route.page === "logs" && <LogViewer nav={nav} theme={theme} t={t} />}
             {route.page === "genres" && <GenreManager nav={nav} theme={theme} t={t} />}
+            {route.page === "style" && <StyleManager nav={nav} theme={theme} t={t} />}
           </div>
         </div>
 

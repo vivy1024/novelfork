@@ -1,6 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
 
 const BASE = "/api";
+const API_INVALIDATE_EVENT = "inkos:api-invalidate";
+
+interface ApiInvalidateDetail {
+  readonly paths: ReadonlyArray<string>;
+}
 
 export function buildApiUrl(path: string): string | null {
   const normalized = String(path ?? "").trim();
@@ -9,6 +14,41 @@ export function buildApiUrl(path: string): string | null {
     return normalized;
   }
   return normalized.startsWith("/") ? `${BASE}${normalized}` : `${BASE}/${normalized}`;
+}
+
+export function deriveInvalidationPaths(path: string): ReadonlyArray<string> {
+  const normalized = buildApiUrl(path);
+  if (!normalized) return [];
+
+  if (normalized === "/api/books/create") {
+    return ["/api/books"];
+  }
+
+  const bookAction = normalized.match(/^\/api\/books\/([^/]+)\/(write-next|draft)$/);
+  if (bookAction) {
+    return ["/api/books", `/api/books/${bookAction[1]}`];
+  }
+
+  const chapterAction = normalized.match(/^\/api\/books\/([^/]+)\/chapters\/\d+\/(approve|reject)$/);
+  if (chapterAction) {
+    return ["/api/books", `/api/books/${chapterAction[1]}`];
+  }
+
+  if (/^\/api\/daemon\/(start|stop)$/.test(normalized)) {
+    return ["/api/daemon"];
+  }
+
+  return [];
+}
+
+export function invalidateApiPaths(paths: ReadonlyArray<string>): void {
+  if (!paths.length || typeof window === "undefined") {
+    return;
+  }
+
+  window.dispatchEvent(new CustomEvent<ApiInvalidateDetail>(API_INVALIDATE_EVENT, {
+    detail: { paths: [...new Set(paths)] },
+  }));
 }
 
 async function readErrorMessage(res: Response): Promise<string> {
@@ -91,13 +131,33 @@ export function useApi<T>(path: string) {
     refetch();
   }, [refetch]);
 
+  useEffect(() => {
+    const url = buildApiUrl(path);
+    if (!url || typeof window === "undefined") {
+      return;
+    }
+
+    const handleInvalidate = (event: Event) => {
+      const detail = (event as CustomEvent<ApiInvalidateDetail>).detail;
+      if (!detail?.paths.includes(url)) return;
+      void refetch();
+    };
+
+    window.addEventListener(API_INVALIDATE_EVENT, handleInvalidate);
+    return () => {
+      window.removeEventListener(API_INVALIDATE_EVENT, handleInvalidate);
+    };
+  }, [path, refetch]);
+
   return { data, loading, error, refetch };
 }
 
 export async function postApi<T>(path: string, body?: unknown): Promise<T> {
-  return fetchJson<T>(path, {
+  const result = await fetchJson<T>(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: body ? JSON.stringify(body) : undefined,
   });
+  invalidateApiPaths(deriveInvalidationPaths(path));
+  return result;
 }

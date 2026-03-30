@@ -1,8 +1,10 @@
 import { useApi, postApi } from "../hooks/use-api";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
 import { useColors } from "../hooks/use-colors";
+import type { SSEMessage } from "../hooks/use-sse";
+import { shouldRefetchBookView } from "../hooks/use-book-activity";
 
 interface ChapterMeta {
   readonly number: number;
@@ -39,11 +41,17 @@ const STATUS_COLORS: Record<string, string> = {
   imported: "text-blue-400",
 };
 
-export function BookDetail({ bookId, nav, theme, t }: { bookId: string; nav: Nav; theme: Theme; t: TFunction }) {
+export function BookDetail({ bookId, nav, theme, t, sse }: { bookId: string; nav: Nav; theme: Theme; t: TFunction; sse: { messages: ReadonlyArray<SSEMessage> } }) {
   const c = useColors(theme);
   const { data, loading, error, refetch } = useApi<BookData>(`/books/${bookId}`);
   const [writing, setWriting] = useState(false);
   const [drafting, setDrafting] = useState(false);
+
+  useEffect(() => {
+    const recent = sse.messages.at(-1);
+    if (!recent || !shouldRefetchBookView(recent, bookId)) return;
+    void refetch();
+  }, [bookId, refetch, sse.messages]);
 
   const handleWriteNext = async () => {
     setWriting(true);

@@ -1,9 +1,10 @@
 import { useApi, postApi } from "../hooks/use-api";
-import { useState, useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import type { SSEMessage } from "../hooks/use-sse";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
 import { useColors } from "../hooks/use-colors";
+import { deriveActiveBookIds, shouldRefetchBookCollections } from "../hooks/use-book-activity";
 
 interface BookSummary {
   readonly id: string;
@@ -24,25 +25,16 @@ interface Nav {
 export function Dashboard({ nav, sse, theme, t }: { nav: Nav; sse: { messages: ReadonlyArray<SSEMessage> }; theme: Theme; t: TFunction }) {
   const c = useColors(theme);
   const { data, loading, error, refetch } = useApi<{ books: ReadonlyArray<BookSummary> }>("/books");
-  const [writingBooks, setWritingBooks] = useState<Set<string>>(new Set());
 
   const logEvents = sse.messages.filter((m) => m.event === "log").slice(-8);
   const progressEvent = sse.messages.filter((m) => m.event === "llm:progress").slice(-1)[0];
+  const activeBookIds = useMemo(() => deriveActiveBookIds(sse.messages), [sse.messages]);
 
-  useMemo(() => {
-    for (const msg of sse.messages) {
-      const bookId = (msg.data as { bookId?: string })?.bookId;
-      if (!bookId) continue;
-      if (msg.event === "write:start" || msg.event === "draft:start") {
-        setWritingBooks((prev) => new Set([...prev, bookId]));
-      }
-      if (msg.event === "write:complete" || msg.event === "write:error" ||
-          msg.event === "draft:complete" || msg.event === "draft:error") {
-        setWritingBooks((prev) => { const next = new Set(prev); next.delete(bookId); return next; });
-        refetch();
-      }
-    }
-  }, [sse.messages.length]);
+  useEffect(() => {
+    const recent = sse.messages.at(-1);
+    if (!shouldRefetchBookCollections(recent)) return;
+    void refetch();
+  }, [refetch, sse.messages]);
 
   if (loading) return <div className="text-muted-foreground py-20 text-center text-sm">Loading...</div>;
   if (error) return <div className="text-destructive py-20 text-center">Error: {error}</div>;
@@ -79,7 +71,7 @@ export function Dashboard({ nav, sse, theme, t }: { nav: Nav; sse: { messages: R
 
       <div className="space-y-3">
         {data.books.map((book) => {
-          const isWriting = writingBooks.has(book.id);
+          const isWriting = activeBookIds.has(book.id);
           return (
             <div
               key={book.id}
@@ -141,7 +133,7 @@ export function Dashboard({ nav, sse, theme, t }: { nav: Nav; sse: { messages: R
       </div>
 
       {/* Live writing progress panel */}
-      {writingBooks.size > 0 && logEvents.length > 0 && (
+      {activeBookIds.size > 0 && logEvents.length > 0 && (
         <div className="border border-primary/30 bg-primary/5 rounded-lg p-6">
           <h3 className="text-sm uppercase tracking-wide text-primary font-medium mb-4">{t("dash.writingProgress")}</h3>
           <div className="space-y-1.5 text-sm font-mono text-muted-foreground">

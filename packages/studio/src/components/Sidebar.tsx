@@ -1,5 +1,8 @@
+import { useEffect } from "react";
 import { useApi } from "../hooks/use-api";
 import type { TFunction } from "../hooks/use-i18n";
+import type { SSEMessage } from "../hooks/use-sse";
+import { shouldRefetchBookCollections, shouldRefetchDaemonStatus } from "../hooks/use-book-activity";
 
 interface BookSummary {
   readonly id: string;
@@ -17,15 +20,27 @@ interface Nav {
   toDaemon: () => void;
   toLogs: () => void;
   toGenres: () => void;
+  toStyle: () => void;
 }
 
-export function Sidebar({ nav, activePage, t }: {
+export function Sidebar({ nav, activePage, t, sse }: {
   nav: Nav;
   activePage: string;
   t: TFunction;
+  sse: { messages: ReadonlyArray<SSEMessage> };
 }) {
-  const { data } = useApi<{ books: ReadonlyArray<BookSummary> }>("/books");
-  const { data: daemon } = useApi<{ running: boolean }>("/daemon");
+  const { data, refetch } = useApi<{ books: ReadonlyArray<BookSummary> }>("/books");
+  const { data: daemon, refetch: refetchDaemon } = useApi<{ running: boolean }>("/daemon");
+
+  useEffect(() => {
+    const recent = sse.messages.at(-1);
+    if (shouldRefetchBookCollections(recent)) {
+      void refetch();
+    }
+    if (shouldRefetchDaemonStatus(recent)) {
+      void refetchDaemon();
+    }
+  }, [refetch, refetchDaemon, sse.messages]);
 
   return (
     <aside className="w-[240px] shrink-0 border-r border-border bg-card/40 flex flex-col h-full overflow-y-auto">
@@ -79,6 +94,12 @@ export function Sidebar({ nav, activePage, t }: {
           icon="◈"
           active={activePage === "genres"}
           onClick={nav.toGenres}
+        />
+        <SidebarItem
+          label={t("nav.style")}
+          icon="✦"
+          active={activePage === "style"}
+          onClick={nav.toStyle}
         />
         <SidebarItem
           label={t("nav.config")}

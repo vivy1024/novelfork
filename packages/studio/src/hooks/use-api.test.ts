@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { buildApiUrl, fetchJson } from "./use-api";
+import { buildApiUrl, deriveInvalidationPaths, fetchJson } from "./use-api";
 
 describe("buildApiUrl", () => {
   it("returns null for blank paths so callers can skip requests", () => {
@@ -36,5 +36,27 @@ describe("fetchJson", () => {
     );
 
     await expect(fetchJson("/books", {}, { fetchImpl })).rejects.toThrow("500 Internal Server Error");
+  });
+});
+
+describe("deriveInvalidationPaths", () => {
+  it("refreshes book collections after creating a book", () => {
+    expect(deriveInvalidationPaths("/books/create")).toEqual(["/api/books"]);
+  });
+
+  it("refreshes both collections and the current book after book mutations", () => {
+    expect(deriveInvalidationPaths("/books/demo/write-next")).toEqual([
+      "/api/books",
+      "/api/books/demo",
+    ]);
+    expect(deriveInvalidationPaths("/books/demo/chapters/3/approve")).toEqual([
+      "/api/books",
+      "/api/books/demo",
+    ]);
+  });
+
+  it("refreshes daemon state after daemon mutations", () => {
+    expect(deriveInvalidationPaths("/daemon/start")).toEqual(["/api/daemon"]);
+    expect(deriveInvalidationPaths("/daemon/stop")).toEqual(["/api/daemon"]);
   });
 });
