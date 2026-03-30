@@ -1,7 +1,7 @@
 ---
 name: inkos
-description: Autonomous novel writing CLI agent - use for creative fiction writing, novel generation, style imitation, chapter continuation/import, EPUB export, AIGC detection, and fan fiction. Native English support with 10 built-in English genre profiles (LitRPG, Progression Fantasy, Isekai, Cultivation, System Apocalypse, Dungeon Core, Romantasy, Sci-Fi, Tower Climber, Cozy Fantasy). Also supports Chinese web novel genres (xuanhuan, xianxia, urban, horror, other). Multi-agent pipeline, two-phase writer (creative + settlement), 33-dimension auditing, token usage analytics, creative brief input, structured logging (JSON Lines), multi-model routing, and custom OpenAI-compatible provider support.
-version: 2.1.0
+description: Autonomous novel writing CLI agent with web workbench (InkOS Studio) - use for creative fiction writing, novel generation, style imitation, chapter continuation/import, EPUB export, AIGC detection, and fan fiction. Native English support with 10 built-in English genre profiles (LitRPG, Progression Fantasy, Isekai, Cultivation, System Apocalypse, Dungeon Core, Romantasy, Sci-Fi, Tower Climber, Cozy Fantasy). Also supports Chinese web novel genres (xuanhuan, xianxia, urban, horror, other). Multi-agent pipeline, two-phase writer (creative + settlement), 33-dimension auditing, token usage analytics, creative brief input, structured logging (JSON Lines), multi-model routing, custom OpenAI-compatible provider support, and InkOS Studio web UI for visual book management, chapter review, real-time writing progress, market radar, and analytics.
+version: 2.2.0
 metadata: { "openclaw": { "emoji": "📖", "requires": { "bins": ["inkos", "node"], "env": [] }, "primaryEnv": "", "homepage": "https://github.com/Narcooo/inkos", "install": [{ "id": "npm", "kind": "node", "package": "@actalk/inkos", "label": "Install InkOS (npm)" }] } }
 ---
 
@@ -287,6 +287,27 @@ inkos fanfic init --title "What If" --from source.txt --mode au --genre other
 - Imports and analyzes source material automatically
 - Fanfic-specific audit dimensions and information boundary controls
 - Ensures new content stays consistent with source canon (or deliberately diverges in au/ooc modes)
+
+## InkOS Studio (Web Workbench)
+
+`inkos studio` launches a local web UI (default port 4567) that provides a visual interface for all InkOS operations:
+
+- **Book management** — create, delete, export (TXT/MD/EPUB), configure per-book settings
+- **Chapter review & editing** — approve/reject drafts, edit content inline, multi-mode revision (polish/spot-fix/rewrite/anti-detect)
+- **Real-time writing progress** — SSE-based live updates during chapter generation
+- **Market radar** — AI-powered trend analysis with platform/genre recommendations
+- **Analytics** — word count, audit pass rate, chapter ranking, token usage
+- **AI detection** — scan chapters for AI-generated content
+- **Style analysis** — analyze reference texts and import writing styles
+- **Genre management** — create/customize genre profiles with fatigue words, pacing rules, audit dimensions
+- **Daemon control** — start/stop background writing with event log
+- **Truth file editor** — view and edit canonical knowledge base per book
+- **Config editor** — LLM provider, model routing, notifications
+
+```bash
+inkos studio              # Start on default port 4567
+inkos studio -p 8080      # Start on custom port
+```
 
 ## Advanced: Natural Language Agent Mode
 

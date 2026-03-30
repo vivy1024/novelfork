@@ -20,6 +20,8 @@
 
 Open-source CLI AI Agent that autonomously writes, audits, and revises novels — with human review gates that keep you in control. Supports LitRPG, Progression Fantasy, Isekai, Romantasy, Sci-Fi, and more. Continuation, spinoff, fanfic, and style imitation workflows built in.
 
+**InkOS Studio is here!** — run `inkos studio` to launch a local web workbench. Book management, chapter review & editing, real-time writing progress, market radar, analytics, AI detection, style analysis, genre management, daemon control, truth file editing — everything the CLI does, now visual.
+
 **Native English novel writing now supported！** — 10 built-in English genre profiles with dedicated pacing rules, fatigue word lists, and audit dimensions. Set `--lang en` and go.
 
 ## Quick Start
@@ -373,15 +375,16 @@ inkos agent "Create a progression fantasy about a mage who can only use one spel
 | `inkos style import <file> [id]` | Import style fingerprint into a book |
 | `inkos import chapters [id] --from <path>` | Import existing chapters for continuation (`--split`, `--resume-from`) |
 | `inkos analytics [id]` / `inkos stats [id]` | Book analytics (audit pass rate, top issues, chapter ranking, token usage) |
+| `inkos studio` | Start web workbench (`-p` for port, default 4567) |
 | `inkos up / down` | Start/stop daemon (`-q` quiet mode, auto-writes `inkos.log`) |
 
 `[id]` is auto-detected when the project has only one book. All commands support `--json` for structured output. `draft` / `write next` / `plan chapter` / `compose chapter` accept `--context` for steering, and `--words` overrides the target chapter size. `book create` supports `--brief <file>` to pass a creative brief — the Architect builds from your ideas instead of generating from scratch. `plan chapter` / `compose chapter` do not require a live LLM, so you can inspect governed inputs before finishing API setup.
 
 ## Roadmap
 
-- [ ] `packages/studio` Web UI for review and editing (Vite + React + Hono)
+- [x] ~~`packages/studio` Web UI workbench (Vite + React + Hono)~~ — shipped, run `inkos studio`
+- [ ] Interactive fiction (branching narrative + reader choices)
 - [ ] Partial chapter intervention (rewrite half a chapter + cascade truth file updates)
-- [ ] Novel-to-comic pipeline (truth files → storyboard → manga pages)
 - [ ] Custom agent plugin system
 
 ## Contributing
