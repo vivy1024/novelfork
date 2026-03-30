@@ -1,5 +1,40 @@
 # Changelog
 
+## v1.0.0
+
+InkOS Studio + 稳定性加固。从 CLI 工具升级为 CLI + Web 工作台。
+
+### InkOS Studio
+
+- `inkos studio` 启动本地 Web 工作台（Vite + React + Hono，默认端口 4567）
+- 书籍管理：创建、删除、导出（TXT/MD/EPUB）、配置
+- 章节审阅与编辑：批准/拒绝、行内编辑、多模式修订（polish/spot-fix/rewrite/anti-detect）
+- 实时写作进度：SSE 推送生成状态
+- 市场雷达：AI 驱动的平台/题材趋势分析
+- 数据分析：字数统计、审计通过率、章节排名、token 用量
+- AI 检测：扫描章节 AI 生成痕迹
+- 文风分析与导入：分析参考文本、注入写作风格
+- 题材管理：创建/自定义题材（疲劳词、节奏规则、审计维度）
+- 守护进程控制：启停后台写作、查看事件日志
+- 真相文件编辑器：按书查看和编辑知识库
+- 配置编辑器：LLM 提供商、模型路由、通知
+
+### Bug Fixes
+
+- unknown hook 在 resolve/defer 时不再抛异常，改为跳过
+- Studio 创建书后等待完成再路由跳转
+- Studio 异步创建失败时错误暴露给用户
+- validator false positive：只在硬矛盾时 fail，减少误报
+
+### Chore
+
+- 清理 studio 合并带入的无关文件（.playwright-cli/、.superpowers/、推广文档）
+- untrack docs/ 和 autoresearch/，加入 .gitignore
+- SKILL.md 升级到 v2.2.0，新增 Studio workflow section
+- 三语 README 更新 Studio 发布公告和路线图
+
+---
+
 ## v0.6.3
 
 ### Bug Fixes
