@@ -8,13 +8,17 @@ import { describe, expect, it } from "vitest";
 const testDir = dirname(fileURLToPath(import.meta.url));
 const cliDir = resolve(testDir, "..", "..");
 const workspaceRoot = resolve(cliDir, "..", "..");
+const studioDir = resolve(workspaceRoot, "packages", "studio");
 const sourceCliPackageJsonPromise = readFile(resolve(cliDir, "package.json"), "utf-8").then((raw) =>
   JSON.parse(raw),
 );
+const sourceStudioPackageJsonPromise = readFile(resolve(studioDir, "package.json"), "utf-8").then((raw) =>
+  JSON.parse(raw),
+);
 
-async function extractPackedPackageJson(packDir: string) {
+async function packPackage(packageDir: string, packDir: string) {
   execFileSync("npm", ["pack", "--pack-destination", packDir], {
-    cwd: cliDir,
+    cwd: packageDir,
     env: process.env,
     encoding: "utf-8",
   });
@@ -24,8 +28,13 @@ async function extractPackedPackageJson(packDir: string) {
     throw new Error(`Expected exactly one tarball in ${packDir}, found ${tgzFiles.length}`);
   }
 
+  return join(packDir, tgzFiles[0]);
+}
+
+async function extractPackedPackageJson(packageDir: string, packDir: string) {
+  const tarballPath = await packPackage(packageDir, packDir);
   const tarArgs = process.platform === "win32" ? ["--force-local", "-xOf"] : ["-xOf"];
-  return execFileSync("tar", [...tarArgs, join(packDir, tgzFiles[0]), "package/package.json"], {
+  return execFileSync("tar", [...tarArgs, tarballPath, "package/package.json"], {
     cwd: workspaceRoot,
     encoding: "utf-8",
   });
@@ -93,6 +102,7 @@ describe.sequential("publish packaging", () => {
     const cliPackageJson = await sourceCliPackageJsonPromise;
 
     expect(cliPackageJson.dependencies["@actalk/inkos-core"]).toBe("workspace:*");
+    expect(cliPackageJson.dependencies["@actalk/inkos-studio"]).toBe("workspace:*");
   });
 
   it("verifies publishable manifests before npm publish runs", async () => {
@@ -212,12 +222,32 @@ describe.sequential("publish packaging", () => {
     const packDir = await mkdtemp(join(tmpdir(), "inkos-cli-pack-"));
 
     try {
-      const packedPackageJson = JSON.parse(await extractPackedPackageJson(packDir));
+      const packedPackageJson = JSON.parse(await extractPackedPackageJson(cliDir, packDir));
       const corePackageJson = JSON.parse(
         await readFile(resolve(workspaceRoot, "packages/core/package.json"), "utf-8"),
       );
+      const studioPackageJson = await sourceStudioPackageJsonPromise;
 
       expect(packedPackageJson.dependencies["@actalk/inkos-core"]).toBe(corePackageJson.version);
+      expect(packedPackageJson.dependencies["@actalk/inkos-studio"]).toBe(studioPackageJson.version);
+    } finally {
+      await rm(packDir, { recursive: true, force: true });
+    }
+  });
+
+  it("packs the studio runtime entry alongside the built frontend", { timeout: 30_000 }, async () => {
+    const packDir = await mkdtemp(join(tmpdir(), "inkos-studio-pack-"));
+
+    try {
+      const tarballPath = await packPackage(studioDir, packDir);
+      const tarArgs = process.platform === "win32" ? ["--force-local", "-tf"] : ["-tf"];
+      const archiveListing = execFileSync("tar", [...tarArgs, tarballPath], {
+        cwd: workspaceRoot,
+        encoding: "utf-8",
+      });
+
+      expect(archiveListing).toContain("package/dist/index.html");
+      expect(archiveListing).toContain("package/dist/api/index.js");
     } finally {
       await rm(packDir, { recursive: true, force: true });
     }

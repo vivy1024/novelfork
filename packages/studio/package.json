@@ -1,15 +1,31 @@
 {
   "name": "@actalk/inkos-studio",
   "version": "1.0.0",
-  "private": true,
   "description": "InkOS Studio — Web workbench for novel writing",
   "type": "module",
+  "main": "dist/api/index.js",
+  "types": "dist/api/index.d.ts",
+  "files": [
+    "dist",
+    "!dist/**/*.test.*"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Narcooo/inkos.git",
+    "directory": "packages/studio"
+  },
   "scripts": {
+    "prepack": "npm run build && node ../../scripts/prepare-package-for-publish.mjs",
+    "postpack": "node ../../scripts/restore-package-json.mjs",
+    "prepublishOnly": "node ../../scripts/verify-no-workspace-protocol.mjs .",
     "dev": "vite --host --port 4567",
-    "build": "vite build",
+    "build": "npm run build:client && npm run build:server",
+    "build:client": "vite build",
+    "build:server": "tsc -p tsconfig.server.json",
     "preview": "vite preview",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.server.json --noEmit"
   },
   "dependencies": {
     "@actalk/inkos-core": "workspace:*",

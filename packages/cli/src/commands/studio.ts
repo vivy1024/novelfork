@@ -3,6 +3,7 @@ import { findProjectRoot, log, logError } from "../utils.js";
 import { spawn } from "node:child_process";
 import { dirname, join } from "node:path";
 import { access } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 
 export interface StudioLaunchSpec {
   readonly studioEntry: string;
@@ -21,6 +22,8 @@ async function firstAccessiblePath(paths: readonly string[]): Promise<string | u
   }
   return undefined;
 }
+
+const cliPackageRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 export async function resolveStudioLaunch(root: string): Promise<StudioLaunchSpec | null> {
   const sourceEntry = await firstAccessiblePath([
@@ -61,6 +64,10 @@ export async function resolveStudioLaunch(root: string): Promise<StudioLaunchSpe
   const builtEntry = await firstAccessiblePath([
     join(root, "node_modules", "@actalk", "inkos-studio", "dist", "api", "index.js"),
     join(root, "node_modules", "@actalk", "inkos-studio", "server.cjs"),
+    join(cliPackageRoot, "node_modules", "@actalk", "inkos-studio", "dist", "api", "index.js"),
+    join(cliPackageRoot, "node_modules", "@actalk", "inkos-studio", "server.cjs"),
+    join(cliPackageRoot, "..", "inkos-studio", "dist", "api", "index.js"),
+    join(cliPackageRoot, "..", "inkos-studio", "server.cjs"),
   ]);
   if (builtEntry) {
     return {

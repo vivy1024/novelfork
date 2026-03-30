@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const accessMock = vi.fn();
+const testDir = dirname(fileURLToPath(import.meta.url));
+const cliPackageRoot = resolve(testDir, "..", "..");
 
 vi.mock("node:fs/promises", () => ({
   access: accessMock,
@@ -71,6 +75,24 @@ describe("studio runtime resolution", () => {
       studioEntry: "/repo/test-project/node_modules/@actalk/inkos-studio/dist/api/index.js",
       command: "node",
       args: ["/repo/test-project/node_modules/@actalk/inkos-studio/dist/api/index.js", "/repo/test-project"],
+    });
+  });
+
+  it("falls back to the CLI installation's bundled studio runtime", async () => {
+    accessMock.mockImplementation(async (path: string) => {
+      if (path === `${cliPackageRoot}/node_modules/@actalk/inkos-studio/dist/api/index.js`) {
+        return;
+      }
+      throw new Error(`missing: ${path}`);
+    });
+
+    const { resolveStudioLaunch } = await import("../commands/studio.js");
+    const launch = await resolveStudioLaunch("/repo/test-project");
+
+    expect(launch).toEqual({
+      studioEntry: `${cliPackageRoot}/node_modules/@actalk/inkos-studio/dist/api/index.js`,
+      command: "node",
+      args: [`${cliPackageRoot}/node_modules/@actalk/inkos-studio/dist/api/index.js`, "/repo/test-project"],
     });
   });
 });
