@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useApi, postApi } from "../hooks/use-api";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
@@ -16,19 +16,39 @@ interface GenreInfo {
   readonly language: "zh" | "en";
 }
 
-const PLATFORMS_ZH = [
+interface PlatformOption {
+  readonly value: string;
+  readonly label: string;
+}
+
+const PLATFORMS_ZH: ReadonlyArray<PlatformOption> = [
   { value: "tomato", label: "番茄小说" },
   { value: "qidian", label: "起点中文网" },
   { value: "feilu", label: "飞卢" },
   { value: "other", label: "其他" },
 ];
 
-const PLATFORMS_EN = [
-  { value: "other", label: "Royal Road" },
-  { value: "other", label: "Kindle Unlimited" },
-  { value: "other", label: "Scribble Hub" },
+const PLATFORMS_EN: ReadonlyArray<PlatformOption> = [
+  { value: "royal-road", label: "Royal Road" },
+  { value: "kindle-unlimited", label: "Kindle Unlimited" },
+  { value: "scribble-hub", label: "Scribble Hub" },
   { value: "other", label: "Other" },
 ];
+
+export function pickValidValue(current: string, available: ReadonlyArray<string>): string {
+  if (current && available.includes(current)) {
+    return current;
+  }
+  return available[0] ?? "";
+}
+
+export function defaultChapterWordsForLanguage(language: "zh" | "en"): string {
+  return language === "en" ? "2000" : "3000";
+}
+
+export function platformOptionsForLanguage(language: "zh" | "en"): ReadonlyArray<PlatformOption> {
+  return language === "en" ? PLATFORMS_EN : PLATFORMS_ZH;
+}
 
 export function BookCreate({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunction }) {
   const c = useColors(theme);
@@ -40,7 +60,8 @@ export function BookCreate({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunc
   const [title, setTitle] = useState("");
   const [genre, setGenre] = useState("");
   const [platform, setPlatform] = useState("");
-  const [chapterWords, setChapterWords] = useState(projectLang === "en" ? "2000" : "3000");
+  const [chapterWords, setChapterWords] = useState(defaultChapterWordsForLanguage(projectLang));
+  const [chapterWordsTouched, setChapterWordsTouched] = useState(false);
   const [targetChapters, setTargetChapters] = useState("200");
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,15 +69,23 @@ export function BookCreate({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunc
   // Filter genres by project language + custom genres (always show)
   const allGenres = genreData?.genres ?? [];
   const genres = allGenres.filter((g) => g.language === projectLang || g.source === "project");
-  const platforms = projectLang === "en" ? PLATFORMS_EN : PLATFORMS_ZH;
+  const platforms = platformOptionsForLanguage(projectLang);
+  const genreSignature = genres.map((g) => g.id).join("|");
+  const platformSignature = platforms.map((p) => `${p.value}:${p.label}`).join("|");
 
-  // Auto-select first matching genre
-  if (genres.length > 0 && !genre) {
-    setGenre(genres[0]!.id);
-  }
-  if (platforms.length > 0 && !platform) {
-    setPlatform(platforms[0]!.value);
-  }
+  useEffect(() => {
+    setGenre((current) => pickValidValue(current, genres.map((g) => g.id)));
+  }, [genreSignature]);
+
+  useEffect(() => {
+    setPlatform((current) => pickValidValue(current, platforms.map((p) => p.value)));
+  }, [platformSignature]);
+
+  useEffect(() => {
+    if (!chapterWordsTouched) {
+      setChapterWords(defaultChapterWordsForLanguage(projectLang));
+    }
+  }, [projectLang, chapterWordsTouched]);
 
   const handleCreate = async () => {
     if (!title.trim()) {
@@ -139,15 +168,15 @@ export function BookCreate({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunc
         {/* Platform — filtered by language */}
         <div>
           <label className="block text-sm text-muted-foreground mb-2">
-            {projectLang === "zh" ? "平台" : "Platform"}
+            {t("create.platform")}
           </label>
           <div className="flex gap-2">
-            {platforms.map((p, i) => (
+            {platforms.map((p) => (
               <button
-                key={`${p.value}-${i}`}
+                key={p.value}
                 onClick={() => setPlatform(p.value)}
                 className={`px-3 py-2 rounded-md text-sm transition-all ${
-                  platform === p.value && platforms.indexOf(platforms.find((x) => x.value === platform && x.label === p.label)!) === i
+                  platform === p.value
                     ? "bg-primary/15 text-primary border border-primary/30"
                     : "bg-secondary text-secondary-foreground border border-transparent hover:border-border"
                 }`}
@@ -165,7 +194,10 @@ export function BookCreate({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunc
             <input
               type="number"
               value={chapterWords}
-              onChange={(e) => setChapterWords(e.target.value)}
+              onChange={(e) => {
+                setChapterWordsTouched(true);
+                setChapterWords(e.target.value);
+              }}
               className={`w-full ${c.input} rounded-md px-4 py-3 focus:outline-none`}
             />
           </div>
