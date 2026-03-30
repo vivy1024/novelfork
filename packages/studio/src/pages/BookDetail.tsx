@@ -1,10 +1,10 @@
 import { useApi, postApi } from "../hooks/use-api";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
 import { useColors } from "../hooks/use-colors";
 import type { SSEMessage } from "../hooks/use-sse";
-import { shouldRefetchBookView } from "../hooks/use-book-activity";
+import { deriveBookActivity, shouldRefetchBookView } from "../hooks/use-book-activity";
 
 interface ChapterMeta {
   readonly number: number;
@@ -46,6 +46,9 @@ export function BookDetail({ bookId, nav, theme, t, sse }: { bookId: string; nav
   const { data, loading, error, refetch } = useApi<BookData>(`/books/${bookId}`);
   const [writing, setWriting] = useState(false);
   const [drafting, setDrafting] = useState(false);
+  const activity = useMemo(() => deriveBookActivity(sse.messages, bookId), [bookId, sse.messages]);
+  const writePending = writing || activity.writing;
+  const draftPending = drafting || activity.drafting;
 
   useEffect(() => {
     const recent = sse.messages.at(-1);
@@ -117,17 +120,17 @@ export function BookDetail({ bookId, nav, theme, t, sse }: { bookId: string; nav
         <div className="flex gap-2">
           <button
             onClick={handleWriteNext}
-            disabled={writing || drafting}
+            disabled={writePending || draftPending}
             className={`px-4 py-2 text-sm ${c.btnPrimary} rounded-md transition-colors disabled:opacity-50`}
           >
-            {writing ? "Writing..." : t("book.writeNext")}
+            {writePending ? "Writing..." : t("book.writeNext")}
           </button>
           <button
             onClick={handleDraft}
-            disabled={writing || drafting}
+            disabled={writePending || draftPending}
             className={`px-4 py-2 text-sm ${c.btnSecondary} rounded-md transition-colors disabled:opacity-50`}
           >
-            {drafting ? "Drafting..." : t("book.draftOnly")}
+            {draftPending ? "Drafting..." : t("book.draftOnly")}
           </button>
           {reviewCount > 0 && (
             <button

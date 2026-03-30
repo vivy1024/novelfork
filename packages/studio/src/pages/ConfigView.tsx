@@ -1,4 +1,4 @@
-import { useApi, postApi } from "../hooks/use-api";
+import { useApi, putApi } from "../hooks/use-api";
 import { useState } from "react";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
@@ -21,7 +21,7 @@ interface Nav {
 
 export function ConfigView({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunction }) {
   const c = useColors(theme);
-  const { data, loading, error, refetch } = useApi<ProjectInfo>("/project");
+  const { data, loading, error } = useApi<ProjectInfo>("/project");
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<Record<string, unknown>>({});
@@ -43,13 +43,8 @@ export function ConfigView({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunc
   const handleSave = async () => {
     setSaving(true);
     try {
-      await fetch("/api/project", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
-      });
+      await putApi("/project", form);
       setEditing(false);
-      refetch();
     } catch (e) {
       alert(e instanceof Error ? e.message : "Failed");
     } finally {

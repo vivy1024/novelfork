@@ -37,6 +37,17 @@ describe("fetchJson", () => {
 
     await expect(fetchJson("/books", {}, { fetchImpl })).rejects.toThrow("500 Internal Server Error");
   });
+
+  it("surfaces nested api error messages from structured error payloads", async () => {
+    const fetchImpl = vi.fn(async () =>
+      new Response(JSON.stringify({ error: { code: "INVALID_BOOK_ID", message: "Invalid book ID: ../bad" } }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    await expect(fetchJson("/books/../bad", {}, { fetchImpl })).rejects.toThrow("Invalid book ID: ../bad");
+  });
 });
 
 describe("deriveInvalidationPaths", () => {
@@ -58,5 +69,10 @@ describe("deriveInvalidationPaths", () => {
   it("refreshes daemon state after daemon mutations", () => {
     expect(deriveInvalidationPaths("/daemon/start")).toEqual(["/api/daemon"]);
     expect(deriveInvalidationPaths("/daemon/stop")).toEqual(["/api/daemon"]);
+  });
+
+  it("refreshes project data after project mutations", () => {
+    expect(deriveInvalidationPaths("/project")).toEqual(["/api/project"]);
+    expect(deriveInvalidationPaths("/project/language")).toEqual(["/api/project", "/api/project/language"]);
   });
 });

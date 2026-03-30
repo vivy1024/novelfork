@@ -16,7 +16,7 @@ import { LanguageSelector } from "./pages/LanguageSelector";
 import { useSSE } from "./hooks/use-sse";
 import { useTheme } from "./hooks/use-theme";
 import { useI18n } from "./hooks/use-i18n";
-import { useApi } from "./hooks/use-api";
+import { postApi, useApi } from "./hooks/use-api";
 
 type Route =
   | { page: "dashboard" }
@@ -75,6 +75,10 @@ export function App() {
     route.page === "book" || route.page === "chapter" || route.page === "truth" || route.page === "analytics"
       ? `book:${(route as { bookId: string }).bookId}`
       : route.page;
+  const activeBookId =
+    route.page === "book" || route.page === "chapter" || route.page === "truth" || route.page === "analytics"
+      ? route.bookId
+      : undefined;
 
   if (!ready) {
     return <div className="min-h-screen bg-background" />;
@@ -84,11 +88,7 @@ export function App() {
     return (
       <LanguageSelector
         onSelect={async (lang) => {
-          await fetch("/api/project/language", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ language: lang }),
-          });
+          await postApi("/project/language", { language: lang });
           setShowLanguageSelector(false);
           refetchProject();
         }}
@@ -134,7 +134,7 @@ export function App() {
         </div>
 
         {/* Chat bar — inset to match content width */}
-        <ChatBar t={t} sse={sse} />
+        <ChatBar t={t} sse={sse} activeBookId={activeBookId} />
       </div>
     </div>
   );

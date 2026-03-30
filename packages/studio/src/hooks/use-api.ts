@@ -24,6 +24,14 @@ export function deriveInvalidationPaths(path: string): ReadonlyArray<string> {
     return ["/api/books"];
   }
 
+  if (normalized === "/api/project") {
+    return ["/api/project"];
+  }
+
+  if (normalized.startsWith("/api/project/")) {
+    return ["/api/project", normalized];
+  }
+
   const bookAction = normalized.match(/^\/api\/books\/([^/]+)\/(write-next|draft)$/);
   if (bookAction) {
     return ["/api/books", `/api/books/${bookAction[1]}`];
@@ -58,6 +66,15 @@ async function readErrorMessage(res: Response): Promise<string> {
       const json = await res.json() as { error?: unknown };
       if (typeof json.error === "string" && json.error.trim()) {
         return json.error;
+      }
+      if (
+        json.error &&
+        typeof json.error === "object" &&
+        "message" in json.error &&
+        typeof (json.error as { message?: unknown }).message === "string" &&
+        (json.error as { message: string }).message.trim()
+      ) {
+        return (json.error as { message: string }).message;
       }
     } catch {
       // fall through
@@ -116,10 +133,8 @@ export function useApi<T>(path: string) {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-      const json = await res.json();
-      setData(json as T);
+      const json = await fetchJson<T>(url);
+      setData(json);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -155,6 +170,16 @@ export function useApi<T>(path: string) {
 export async function postApi<T>(path: string, body?: unknown): Promise<T> {
   const result = await fetchJson<T>(path, {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  invalidateApiPaths(deriveInvalidationPaths(path));
+  return result;
+}
+
+export async function putApi<T>(path: string, body?: unknown): Promise<T> {
+  const result = await fetchJson<T>(path, {
+    method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: body ? JSON.stringify(body) : undefined,
   });

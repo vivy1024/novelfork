@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -98,11 +98,16 @@ const projectConfig = {
   notify: [],
 } as const;
 
+function cloneProjectConfig() {
+  return structuredClone(projectConfig);
+}
+
 describe("createStudioServer daemon lifecycle", () => {
   let root: string;
 
   beforeEach(async () => {
     root = await mkdtemp(join(tmpdir(), "inkos-studio-server-"));
+    await writeFile(join(root, "inkos.json"), JSON.stringify(projectConfig, null, 2), "utf-8");
     schedulerStartMock.mockReset();
   });
 
@@ -120,7 +125,7 @@ describe("createStudioServer daemon lifecycle", () => {
     );
 
     const { createStudioServer } = await import("./server.js");
-    const app = createStudioServer(projectConfig as never, root);
+    const app = createStudioServer(cloneProjectConfig() as never, root);
 
     const responseOrTimeout = await Promise.race([
       app.request("http://localhost/api/daemon/start", { method: "POST" }),
@@ -141,7 +146,7 @@ describe("createStudioServer daemon lifecycle", () => {
 
   it("rejects book routes with path traversal ids", async () => {
     const { createStudioServer } = await import("./server.js");
-    const app = createStudioServer(projectConfig as never, root);
+    const app = createStudioServer(cloneProjectConfig() as never, root);
 
     const response = await app.request("http://localhost/api/books/..%2Fetc%2Fpasswd", {
       method: "GET",
@@ -153,6 +158,51 @@ describe("createStudioServer daemon lifecycle", () => {
         code: "INVALID_BOOK_ID",
         message: 'Invalid book ID: "../etc/passwd"',
       },
+    });
+  });
+
+  it("reflects project edits immediately without restarting the studio server", async () => {
+    const { createStudioServer } = await import("./server.js");
+    const app = createStudioServer(cloneProjectConfig() as never, root);
+
+    const save = await app.request("http://localhost/api/project", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        language: "en",
+        temperature: 0.2,
+        maxTokens: 2048,
+        stream: true,
+      }),
+    });
+
+    expect(save.status).toBe(200);
+
+    const project = await app.request("http://localhost/api/project");
+    await expect(project.json()).resolves.toMatchObject({
+      language: "en",
+      temperature: 0.2,
+      maxTokens: 2048,
+      stream: true,
+    });
+  });
+
+  it("updates the first-run language immediately after the language selector saves", async () => {
+    const { createStudioServer } = await import("./server.js");
+    const app = createStudioServer(cloneProjectConfig() as never, root);
+
+    const save = await app.request("http://localhost/api/project/language", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ language: "en" }),
+    });
+
+    expect(save.status).toBe(200);
+
+    const project = await app.request("http://localhost/api/project");
+    await expect(project.json()).resolves.toMatchObject({
+      language: "en",
+      languageExplicit: true,
     });
   });
 });

@@ -372,10 +372,22 @@ export function createStudioServer(config: ProjectConfig, root: string) {
       const raw = await readFile(configPath, "utf-8");
       const existing = JSON.parse(raw);
       // Merge LLM settings
-      if (updates.temperature !== undefined) existing.llm.temperature = updates.temperature;
-      if (updates.maxTokens !== undefined) existing.llm.maxTokens = updates.maxTokens;
-      if (updates.stream !== undefined) existing.llm.stream = updates.stream;
-      if (updates.language !== undefined) existing.language = updates.language;
+      if (updates.temperature !== undefined) {
+        existing.llm.temperature = updates.temperature;
+        config.llm.temperature = Number(updates.temperature);
+      }
+      if (updates.maxTokens !== undefined) {
+        existing.llm.maxTokens = updates.maxTokens;
+        config.llm.maxTokens = Number(updates.maxTokens);
+      }
+      if (updates.stream !== undefined) {
+        existing.llm.stream = updates.stream;
+        config.llm.stream = Boolean(updates.stream);
+      }
+      if (updates.language === "zh" || updates.language === "en") {
+        existing.language = updates.language;
+        config.language = updates.language;
+      }
       const { writeFile: writeFileFs } = await import("node:fs/promises");
       await writeFileFs(configPath, JSON.stringify(existing, null, 2), "utf-8");
       return c.json({ ok: true });
@@ -516,6 +528,7 @@ export function createStudioServer(config: ProjectConfig, root: string) {
       const raw = await readFile(configPath, "utf-8");
       const existing = JSON.parse(raw);
       existing.language = language;
+      config.language = language;
       const { writeFile: writeFileFs } = await import("node:fs/promises");
       await writeFileFs(configPath, JSON.stringify(existing, null, 2), "utf-8");
       return c.json({ ok: true, language });

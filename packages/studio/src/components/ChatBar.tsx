@@ -8,9 +8,30 @@ interface ChatMessage {
   readonly timestamp: number;
 }
 
-export function ChatBar({ t, sse }: {
+interface BookRef {
+  readonly id: string;
+}
+
+export function resolveDirectWriteTarget(
+  activeBookId: string | undefined,
+  books: ReadonlyArray<BookRef>,
+): { bookId: string | null; reason: "active" | "single" | "missing" | "ambiguous" } {
+  if (activeBookId && books.some((book) => book.id === activeBookId)) {
+    return { bookId: activeBookId, reason: "active" };
+  }
+  if (books.length === 1) {
+    return { bookId: books[0]!.id, reason: "single" };
+  }
+  if (books.length === 0) {
+    return { bookId: null, reason: "missing" };
+  }
+  return { bookId: null, reason: "ambiguous" };
+}
+
+export function ChatBar({ t, sse, activeBookId }: {
   t: TFunction;
   sse: { messages: ReadonlyArray<SSEMessage>; connected: boolean };
+  activeBookId?: string;
 }) {
   const [input, setInput] = useState("");
   const [expanded, setExpanded] = useState(false);
@@ -79,15 +100,30 @@ export function ChatBar({ t, sse }: {
 
     try {
       if (lower.match(/^(写下一章|write next)/)) {
-        // Extract book id from context or use first book
         const res = await fetch("/api/books");
-        const { books } = await res.json() as { books: ReadonlyArray<{ id: string }> };
-        if (books.length > 0) {
-          setMessages((prev) => [...prev, { role: "assistant", content: "⋯ Starting...", timestamp: Date.now() }]);
-          await fetch(`/api/books/${books[0]!.id}/write-next`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
-          // SSE will handle the rest
+        const { books } = await res.json() as { books: ReadonlyArray<BookRef> };
+        const target = resolveDirectWriteTarget(activeBookId, books);
+
+        if (target.bookId) {
+          setMessages((prev) => [...prev, {
+            role: "assistant",
+            content: isZh ? `⋯ 开始处理《${target.bookId}》...` : `⋯ Starting ${target.bookId}...`,
+            timestamp: Date.now(),
+          }]);
+          await fetch(`/api/books/${target.bookId}/write-next`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
           return;
         }
+
+        setLoading(false);
+        setMessages((prev) => [...prev, {
+          role: "assistant",
+          content:
+            target.reason === "missing"
+              ? (isZh ? "✗ 还没有书，先创建一本再写。" : "✗ No books yet. Create one first.")
+              : (isZh ? "✗ 当前有多本书，请先打开目标书籍后再执行“写下一章”。" : '✗ Multiple books found. Open the target book first, then run "write next".'),
+          timestamp: Date.now(),
+        }]);
+        return;
       }
 
       // Fallback: send to agent API
