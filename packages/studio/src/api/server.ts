@@ -8,6 +8,7 @@ import {
   createLLMClient,
   createLogger,
   computeAnalytics,
+  loadProjectConfig,
   type PipelineConfig,
   type ProjectConfig,
   type LogSink,
@@ -33,9 +34,10 @@ function broadcast(event: string, data: unknown): void {
 
 // --- Server factory ---
 
-export function createStudioServer(config: ProjectConfig, root: string) {
+export function createStudioServer(initialConfig: ProjectConfig, root: string) {
   const app = new Hono();
   const state = new StateManager(root);
+  let cachedConfig = initialConfig;
 
   app.use("/*", cors());
 
@@ -73,15 +75,24 @@ export function createStudioServer(config: ProjectConfig, root: string) {
     },
   };
 
-  function buildPipelineConfig(): PipelineConfig {
+  async function loadCurrentProjectConfig(
+    options?: { readonly requireApiKey?: boolean },
+  ): Promise<ProjectConfig> {
+    const freshConfig = await loadProjectConfig(root, options);
+    cachedConfig = freshConfig;
+    return freshConfig;
+  }
+
+  async function buildPipelineConfig(): Promise<PipelineConfig> {
+    const currentConfig = await loadCurrentProjectConfig();
     const logger = createLogger({ tag: "studio", sinks: [sseSink] });
     return {
-      client: createLLMClient(config.llm),
-      model: config.llm.model,
+      client: createLLMClient(currentConfig.llm),
+      model: currentConfig.llm.model,
       projectRoot: root,
-      defaultLLMConfig: config.llm,
-      modelOverrides: config.modelOverrides,
-      notifyChannels: config.notify,
+      defaultLLMConfig: currentConfig.llm,
+      modelOverrides: currentConfig.modelOverrides,
+      notifyChannels: currentConfig.notify,
       logger,
       onStreamProgress: (progress) => {
         if (progress.status === "streaming") {
@@ -167,7 +178,7 @@ export function createStudioServer(config: ProjectConfig, root: string) {
     broadcast("book:creating", { bookId, title: body.title });
     bookCreateStatus.set(bookId, { status: "creating" });
 
-    const pipeline = new PipelineRunner(buildPipelineConfig());
+    const pipeline = new PipelineRunner(await buildPipelineConfig());
     pipeline.initBook(bookConfig).then(
       () => {
         bookCreateStatus.delete(bookId);
@@ -282,7 +293,7 @@ export function createStudioServer(config: ProjectConfig, root: string) {
     broadcast("write:start", { bookId: id });
 
     // Fire and forget — progress/completion/errors pushed via SSE
-    const pipeline = new PipelineRunner(buildPipelineConfig());
+    const pipeline = new PipelineRunner(await buildPipelineConfig());
     pipeline.writeNextChapter(id, body.wordCount).then(
       (result) => {
         broadcast("write:complete", { bookId: id, chapterNumber: result.chapterNumber, status: result.status, title: result.title, wordCount: result.wordCount });
@@ -301,7 +312,7 @@ export function createStudioServer(config: ProjectConfig, root: string) {
 
     broadcast("draft:start", { bookId: id });
 
-    const pipeline = new PipelineRunner(buildPipelineConfig());
+    const pipeline = new PipelineRunner(await buildPipelineConfig());
     pipeline.writeDraft(id, body.context, body.wordCount).then(
       (result) => {
         broadcast("draft:complete", { bookId: id, chapterNumber: result.chapterNumber, title: result.title, wordCount: result.wordCount });
@@ -373,20 +384,21 @@ export function createStudioServer(config: ProjectConfig, root: string) {
   // --- Project info ---
 
   app.get("/api/project", async (c) => {
+    const currentConfig = await loadCurrentProjectConfig({ requireApiKey: false });
     // Check if language was explicitly set in inkos.json (not just the schema default)
     const raw = JSON.parse(await readFile(join(root, "inkos.json"), "utf-8"));
     const languageExplicit = "language" in raw && raw.language !== "";
 
     return c.json({
-      name: config.name,
-      language: config.language,
+      name: currentConfig.name,
+      language: currentConfig.language,
       languageExplicit,
-      model: config.llm.model,
-      provider: config.llm.provider,
-      baseUrl: config.llm.baseUrl,
-      stream: config.llm.stream,
-      temperature: config.llm.temperature,
-      maxTokens: config.llm.maxTokens,
+      model: currentConfig.llm.model,
+      provider: currentConfig.llm.provider,
+      baseUrl: currentConfig.llm.baseUrl,
+      stream: currentConfig.llm.stream,
+      temperature: currentConfig.llm.temperature,
+      maxTokens: currentConfig.llm.maxTokens,
     });
   });
 
@@ -401,19 +413,15 @@ export function createStudioServer(config: ProjectConfig, root: string) {
       // Merge LLM settings
       if (updates.temperature !== undefined) {
         existing.llm.temperature = updates.temperature;
-        config.llm.temperature = Number(updates.temperature);
       }
       if (updates.maxTokens !== undefined) {
         existing.llm.maxTokens = updates.maxTokens;
-        config.llm.maxTokens = Number(updates.maxTokens);
       }
       if (updates.stream !== undefined) {
         existing.llm.stream = updates.stream;
-        config.llm.stream = Boolean(updates.stream);
       }
       if (updates.language === "zh" || updates.language === "en") {
         existing.language = updates.language;
-        config.language = updates.language;
       }
       const { writeFile: writeFileFs } = await import("node:fs/promises");
       await writeFileFs(configPath, JSON.stringify(existing, null, 2), "utf-8");
@@ -460,15 +468,16 @@ export function createStudioServer(config: ProjectConfig, root: string) {
     }
     try {
       const { Scheduler } = await import("@actalk/inkos-core");
+      const currentConfig = await loadCurrentProjectConfig();
       const scheduler = new Scheduler({
-        ...buildPipelineConfig(),
-        radarCron: config.daemon.schedule.radarCron,
-        writeCron: config.daemon.schedule.writeCron,
-        maxConcurrentBooks: config.daemon.maxConcurrentBooks,
-        chaptersPerCycle: config.daemon.chaptersPerCycle,
-        retryDelayMs: config.daemon.retryDelayMs,
-        cooldownAfterChapterMs: config.daemon.cooldownAfterChapterMs,
-        maxChaptersPerDay: config.daemon.maxChaptersPerDay,
+        ...(await buildPipelineConfig()),
+        radarCron: currentConfig.daemon.schedule.radarCron,
+        writeCron: currentConfig.daemon.schedule.writeCron,
+        maxConcurrentBooks: currentConfig.daemon.maxConcurrentBooks,
+        chaptersPerCycle: currentConfig.daemon.chaptersPerCycle,
+        retryDelayMs: currentConfig.daemon.retryDelayMs,
+        cooldownAfterChapterMs: currentConfig.daemon.cooldownAfterChapterMs,
+        maxChaptersPerDay: currentConfig.daemon.maxChaptersPerDay,
         onChapterComplete: (bookId, chapter, status) => {
           broadcast("daemon:chapter", { bookId, chapter, status });
         },
@@ -533,7 +542,7 @@ export function createStudioServer(config: ProjectConfig, root: string) {
       const { runAgentLoop } = await import("@actalk/inkos-core");
 
       const result = await runAgentLoop(
-        buildPipelineConfig(),
+        await buildPipelineConfig(),
         instruction
       );
 
@@ -555,7 +564,6 @@ export function createStudioServer(config: ProjectConfig, root: string) {
       const raw = await readFile(configPath, "utf-8");
       const existing = JSON.parse(raw);
       existing.language = language;
-      config.language = language;
       const { writeFile: writeFileFs } = await import("node:fs/promises");
       await writeFileFs(configPath, JSON.stringify(existing, null, 2), "utf-8");
       return c.json({ ok: true, language });
@@ -581,10 +589,11 @@ export function createStudioServer(config: ProjectConfig, root: string) {
       if (!match) return c.json({ error: "Chapter not found" }, 404);
 
       const content = await readFile(join(chaptersDir, match), "utf-8");
+      const currentConfig = await loadCurrentProjectConfig();
       const { ContinuityAuditor } = await import("@actalk/inkos-core");
       const auditor = new ContinuityAuditor({
-        client: createLLMClient(config.llm),
-        model: config.llm.model,
+        client: createLLMClient(currentConfig.llm),
+        model: currentConfig.llm.model,
         projectRoot: root,
         bookId: id,
       });
@@ -626,10 +635,11 @@ export function createStudioServer(config: ProjectConfig, root: string) {
         suggestion: "",
       }));
 
+      const currentConfig = await loadCurrentProjectConfig();
       const { ReviserAgent } = await import("@actalk/inkos-core");
       const reviser = new ReviserAgent({
-        client: createLLMClient(config.llm),
-        model: config.llm.model,
+        client: createLLMClient(currentConfig.llm),
+        model: currentConfig.llm.model,
         projectRoot: root,
         bookId: id,
       });
@@ -928,7 +938,7 @@ export function createStudioServer(config: ProjectConfig, root: string) {
       if (!restored) {
         return c.json({ error: `Cannot restore state to chapter ${chapterNum}` }, 400);
       }
-      const pipeline = new PipelineRunner(buildPipelineConfig());
+      const pipeline = new PipelineRunner(await buildPipelineConfig());
       pipeline.writeNextChapter(id).then(
         (result) => broadcast("rewrite:complete", { bookId: id, chapterNumber: result.chapterNumber, title: result.title, wordCount: result.wordCount }),
         (e) => broadcast("rewrite:error", { bookId: id, error: e instanceof Error ? e.message : String(e) }),
@@ -1102,7 +1112,7 @@ export function createStudioServer(config: ProjectConfig, root: string) {
 
     broadcast("style:start", { bookId: id });
     try {
-      const pipeline = new PipelineRunner(buildPipelineConfig());
+      const pipeline = new PipelineRunner(await buildPipelineConfig());
       const result = await pipeline.generateStyleGuide(id, text, sourceName ?? "unknown");
       broadcast("style:complete", { bookId: id });
       return c.json({ ok: true, result });
@@ -1124,7 +1134,7 @@ export function createStudioServer(config: ProjectConfig, root: string) {
       const { splitChapters } = await import("@actalk/inkos-core");
       const chapters = [...splitChapters(text, splitRegex)];
 
-      const pipeline = new PipelineRunner(buildPipelineConfig());
+      const pipeline = new PipelineRunner(await buildPipelineConfig());
       const result = await pipeline.importChapters({ bookId: id, chapters });
       broadcast("import:complete", { bookId: id, type: "chapters", count: result.importedCount });
       return c.json(result);
@@ -1143,7 +1153,7 @@ export function createStudioServer(config: ProjectConfig, root: string) {
 
     broadcast("import:start", { bookId: id, type: "canon" });
     try {
-      const pipeline = new PipelineRunner(buildPipelineConfig());
+      const pipeline = new PipelineRunner(await buildPipelineConfig());
       await pipeline.importCanon(id, fromBookId);
       broadcast("import:complete", { bookId: id, type: "canon" });
       return c.json({ ok: true });
@@ -1184,7 +1194,7 @@ export function createStudioServer(config: ProjectConfig, root: string) {
 
     broadcast("fanfic:start", { bookId, title: body.title });
     try {
-      const pipeline = new PipelineRunner(buildPipelineConfig());
+      const pipeline = new PipelineRunner(await buildPipelineConfig());
       await pipeline.initFanficBook(bookConfig, body.sourceText, body.sourceName ?? "source", (body.mode ?? "canon") as "canon");
       broadcast("fanfic:complete", { bookId });
       return c.json({ ok: true, bookId });
@@ -1217,7 +1227,7 @@ export function createStudioServer(config: ProjectConfig, root: string) {
     broadcast("fanfic:refresh:start", { bookId: id });
     try {
       const book = await state.loadBookConfig(id);
-      const pipeline = new PipelineRunner(buildPipelineConfig());
+      const pipeline = new PipelineRunner(await buildPipelineConfig());
       await pipeline.importFanficCanon(id, sourceText, sourceName ?? "source", (book.fanficMode ?? "canon") as "canon");
       broadcast("fanfic:refresh:complete", { bookId: id });
       return c.json({ ok: true });
@@ -1232,7 +1242,7 @@ export function createStudioServer(config: ProjectConfig, root: string) {
   app.post("/api/radar/scan", async (c) => {
     broadcast("radar:start", {});
     try {
-      const pipeline = new PipelineRunner(buildPipelineConfig());
+      const pipeline = new PipelineRunner(await buildPipelineConfig());
       const result = await pipeline.runRadar();
       broadcast("radar:complete", { result });
       return c.json(result);
@@ -1263,9 +1273,10 @@ export function createStudioServer(config: ProjectConfig, root: string) {
     } catch { /* ignore */ }
 
     try {
-      const client = createLLMClient(config.llm);
+      const currentConfig = await loadCurrentProjectConfig({ requireApiKey: false });
+      const client = createLLMClient(currentConfig.llm);
       const { chatCompletion } = await import("@actalk/inkos-core");
-      await chatCompletion(client, config.llm.model, [{ role: "user", content: "ping" }], { maxTokens: 5 });
+      await chatCompletion(client, currentConfig.llm.model, [{ role: "user", content: "ping" }], { maxTokens: 5 });
       checks.llmConnected = true;
     } catch { /* ignore */ }
 
@@ -1282,7 +1293,6 @@ export async function startStudioServer(
   port = 4567,
   options?: { readonly staticDir?: string },
 ): Promise<void> {
-  const { loadProjectConfig } = await import("@actalk/inkos-core");
   const config = await loadProjectConfig(root);
 
   const app = createStudioServer(config, root);

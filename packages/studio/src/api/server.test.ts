@@ -1,10 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 const schedulerStartMock = vi.fn<() => Promise<void>>();
 const initBookMock = vi.fn();
+const runRadarMock = vi.fn();
+const createLLMClientMock = vi.fn(() => ({}));
+const chatCompletionMock = vi.fn();
+const loadProjectConfigMock = vi.fn();
+const pipelineConfigs: unknown[] = [];
 
 const logger = {
   child: () => logger,
@@ -39,9 +44,12 @@ vi.mock("@actalk/inkos-core", () => {
   }
 
   class MockPipelineRunner {
-    constructor(_config: unknown) {}
+    constructor(config: unknown) {
+      pipelineConfigs.push(config);
+    }
 
     initBook = initBookMock;
+    runRadar = runRadarMock;
   }
 
   class MockScheduler {
@@ -67,9 +75,12 @@ vi.mock("@actalk/inkos-core", () => {
     StateManager: MockStateManager,
     PipelineRunner: MockPipelineRunner,
     Scheduler: MockScheduler,
-    createLLMClient: vi.fn(() => ({})),
+    createLLMClient: createLLMClientMock,
     createLogger: vi.fn(() => logger),
     computeAnalytics: vi.fn(() => ({})),
+    chatCompletion: chatCompletionMock,
+    loadProjectConfig: loadProjectConfigMock,
+    GLOBAL_ENV_PATH: join(tmpdir(), "inkos-global.env"),
   };
 });
 
@@ -113,6 +124,37 @@ describe("createStudioServer daemon lifecycle", () => {
     await writeFile(join(root, "inkos.json"), JSON.stringify(projectConfig, null, 2), "utf-8");
     schedulerStartMock.mockReset();
     initBookMock.mockReset();
+    runRadarMock.mockReset();
+    runRadarMock.mockResolvedValue({
+      marketSummary: "Fresh market summary",
+      recommendations: [],
+    });
+    createLLMClientMock.mockReset();
+    createLLMClientMock.mockReturnValue({});
+    chatCompletionMock.mockReset();
+    chatCompletionMock.mockResolvedValue({
+      content: "pong",
+      usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+    });
+    loadProjectConfigMock.mockReset();
+    loadProjectConfigMock.mockImplementation(async () => {
+      const raw = JSON.parse(await readFile(join(root, "inkos.json"), "utf-8")) as Record<string, unknown>;
+      return {
+        ...cloneProjectConfig(),
+        ...raw,
+        llm: {
+          ...cloneProjectConfig().llm,
+          ...((raw.llm ?? {}) as Record<string, unknown>),
+        },
+        daemon: {
+          ...cloneProjectConfig().daemon,
+          ...((raw.daemon ?? {}) as Record<string, unknown>),
+        },
+        modelOverrides: (raw.modelOverrides ?? {}) as Record<string, unknown>,
+        notify: (raw.notify ?? []) as unknown[],
+      };
+    });
+    pipelineConfigs.length = 0;
   });
 
   afterEach(async () => {
@@ -188,6 +230,82 @@ describe("createStudioServer daemon lifecycle", () => {
       temperature: 0.2,
       maxTokens: 2048,
       stream: true,
+    });
+  });
+
+  it("reloads latest llm config for doctor checks without restarting the studio server", async () => {
+    const startupConfig = {
+      ...cloneProjectConfig(),
+      llm: {
+        ...cloneProjectConfig().llm,
+        model: "stale-model",
+        baseUrl: "https://stale.example.com/v1",
+      },
+    };
+
+    const freshConfig = {
+      ...cloneProjectConfig(),
+      llm: {
+        ...cloneProjectConfig().llm,
+        model: "fresh-model",
+        baseUrl: "https://fresh.example.com/v1",
+      },
+    };
+    loadProjectConfigMock.mockResolvedValue(freshConfig);
+
+    const { createStudioServer } = await import("./server.js");
+    const app = createStudioServer(startupConfig as never, root);
+
+    const response = await app.request("http://localhost/api/doctor");
+
+    expect(response.status).toBe(200);
+    expect(createLLMClientMock).toHaveBeenCalledWith(expect.objectContaining({
+      model: "fresh-model",
+      baseUrl: "https://fresh.example.com/v1",
+    }));
+    expect(chatCompletionMock).toHaveBeenCalledWith(
+      expect.anything(),
+      "fresh-model",
+      expect.any(Array),
+      expect.objectContaining({ maxTokens: 5 }),
+    );
+  });
+
+  it("reloads latest llm config for radar scans without restarting the studio server", async () => {
+    const startupConfig = {
+      ...cloneProjectConfig(),
+      llm: {
+        ...cloneProjectConfig().llm,
+        model: "stale-model",
+        baseUrl: "https://stale.example.com/v1",
+      },
+    };
+
+    const freshConfig = {
+      ...cloneProjectConfig(),
+      llm: {
+        ...cloneProjectConfig().llm,
+        model: "fresh-model",
+        baseUrl: "https://fresh.example.com/v1",
+      },
+    };
+    loadProjectConfigMock.mockResolvedValue(freshConfig);
+
+    const { createStudioServer } = await import("./server.js");
+    const app = createStudioServer(startupConfig as never, root);
+
+    const response = await app.request("http://localhost/api/radar/scan", {
+      method: "POST",
+    });
+
+    expect(response.status).toBe(200);
+    expect(runRadarMock).toHaveBeenCalledTimes(1);
+    expect(pipelineConfigs.at(-1)).toMatchObject({
+      model: "fresh-model",
+      defaultLLMConfig: expect.objectContaining({
+        model: "fresh-model",
+        baseUrl: "https://fresh.example.com/v1",
+      }),
     });
   });
 
