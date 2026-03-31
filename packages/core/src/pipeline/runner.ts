@@ -388,7 +388,13 @@ export class PipelineRunner {
     this.logStage(stageLanguage, { zh: "初始化控制文档", en: "initializing control documents" });
     await this.state.ensureControlDocuments(book.id, this.config.externalContext);
 
-    // Step 3: Initialize chapters directory + snapshot
+    // Step 3: Generate style guide from source material
+    if (sourceText.length >= 500) {
+      this.logStage(stageLanguage, { zh: "提取原作风格指纹", en: "extracting source style fingerprint" });
+      await this.generateStyleGuide(book.id, sourceText, sourceName);
+    }
+
+    // Step 4: Initialize chapters directory + snapshot
     this.logStage(stageLanguage, { zh: "创建初始快照", en: "creating initial snapshot" });
     await mkdir(join(bookDir, "chapters"), { recursive: true });
     await this.state.saveChapterIndex(book.id, []);
@@ -1581,7 +1587,36 @@ ${matrix}`,
     const canon = response.content + metaBlock;
 
     await writeFile(join(storyDir, "parent_canon.md"), canon, "utf-8");
+
+    // Also generate style guide from parent's chapter text if available
+    const parentChaptersDir = join(parentDir, "chapters");
+    const parentChapterText = await this.readParentChapterSample(parentChaptersDir);
+    if (parentChapterText.length >= 500) {
+      await this.generateStyleGuide(targetBookId, parentChapterText, parentBook.title);
+    }
+
     return canon;
+  }
+
+  private async readParentChapterSample(chaptersDir: string): Promise<string> {
+    try {
+      const entries = await readdir(chaptersDir);
+      const mdFiles = entries
+        .filter((file) => file.endsWith(".md"))
+        .sort()
+        .slice(0, 5);
+      const chunks: string[] = [];
+      let totalLength = 0;
+      for (const file of mdFiles) {
+        if (totalLength >= 20000) break;
+        const content = await readFile(join(chaptersDir, file), "utf-8");
+        chunks.push(content);
+        totalLength += content.length;
+      }
+      return chunks.join("\n\n---\n\n");
+    } catch {
+      return "";
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -1630,6 +1665,16 @@ ${matrix}`,
         await this.resetImportReplayTruthFiles(bookDir, resolvedLanguage);
         await this.state.saveChapterIndex(input.bookId, []);
         await this.state.snapshotState(input.bookId, 0);
+
+        // Generate style guide from imported chapters
+        if (allText.length >= 500) {
+          log?.info(this.localize(resolvedLanguage, {
+            zh: "提取原文风格指纹...",
+            en: "Extracting source style fingerprint...",
+          }));
+          await this.generateStyleGuide(input.bookId, allText, book.title);
+        }
+
         log?.info(this.localize(resolvedLanguage, {
           zh: "基础设定已生成。",
           en: "Foundation generated.",
