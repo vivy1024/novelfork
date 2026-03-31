@@ -1109,9 +1109,10 @@ describe("PlannerAgent", () => {
       externalContext: "Keep the chapter on the mainline debt conflict.",
     });
 
-    expect(result.intent.hookAgenda.mustAdvance).toEqual(["recent-route", "ready-payoff"]);
+    expect(result.intent.hookAgenda.mustAdvance).toEqual(["stale-debt", "ready-payoff"]);
     expect(result.intent.hookAgenda.eligibleResolve).toEqual(["ready-payoff"]);
     expect(result.intent.hookAgenda.staleDebt).toEqual(["stale-debt"]);
+    expect(result.intent.hookAgenda.avoidNewHookFamilies).toContain("relationship");
 
     const intentMarkdown = await readFile(result.runtimePath, "utf-8");
     expect(intentMarkdown).toContain("## Hook Agenda");
@@ -1226,7 +1227,11 @@ describe("PlannerAgent", () => {
       externalContext: "Keep the chapter on the route pressure.",
     });
 
-    expect(result.intent.hookAgenda.mustAdvance).toEqual(["recent-route", "recent-guild"]);
+    expect(result.intent.hookAgenda.mustAdvance).toEqual(["stale-omega", "stale-sable"]);
     expect(result.intent.hookAgenda.staleDebt).toEqual(["stale-omega", "stale-sable"]);
+    expect(result.intent.hookAgenda.avoidNewHookFamilies).toEqual(expect.arrayContaining([
+      "relationship",
+      "mystery",
+    ]));
   });
 });

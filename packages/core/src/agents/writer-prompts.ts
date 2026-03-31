@@ -525,7 +525,7 @@ function buildCreativeOutputFormat(book: BookConfig, gp: GenreProfile, lengthSpe
 | 大纲锚定 | 当前卷名/阶段 + 本章应推进的具体节点 | 严禁跳过节点或提前消耗后续剧情 |
 | 上下文范围 | 第X章至第Y章 / 状态卡 / 设定文件 | |
 | 当前锚点 | 地点 / 对手 / 收益目标 | 锚点必须具体 |
-${resourceRow}| 待回收伏笔 | Hook-A / Hook-B | 与伏笔池一致 |
+${resourceRow}| 待回收伏笔 | 用真实 hook_id 填写（无则写 none） | 与伏笔池一致 |
 | 本章冲突 | 一句话概括 | |
 | 章节类型 | ${gp.chapterTypes.join("/")} | |
 | 风险扫描 | OOC/信息越界/设定冲突${gp.powerScaling ? "/战力崩坏" : ""}/节奏/词汇疲劳 | |`;
@@ -560,7 +560,7 @@ function buildOutputFormat(book: BookConfig, gp: GenreProfile, lengthSpec: Lengt
 | 大纲锚定 | 当前卷名/阶段 + 本章应推进的具体节点 | 严禁跳过节点或提前消耗后续剧情 |
 | 上下文范围 | 第X章至第Y章 / 状态卡 / 设定文件 | |
 | 当前锚点 | 地点 / 对手 / 收益目标 | 锚点必须具体 |
-${resourceRow}| 待回收伏笔 | Hook-A / Hook-B | 与伏笔池一致 |
+${resourceRow}| 待回收伏笔 | 用真实 hook_id 填写（无则写 none） | 与伏笔池一致 |
 | 本章冲突 | 一句话概括 | |
 | 章节类型 | ${gp.chapterTypes.join("/")} | |
 | 风险扫描 | OOC/信息越界/设定冲突${gp.powerScaling ? "/战力崩坏" : ""}/节奏/词汇疲劳 | |`;

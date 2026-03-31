@@ -224,22 +224,20 @@ export function buildPlannerHookAgenda(params: {
     .map(normalizeStoredHook)
     .filter((hook) => !isFuturePlannedHook(hook, params.chapterNumber, 0))
     .filter((hook) => hook.status !== "resolved" && hook.status !== "deferred");
-  const mustAdvance = agendaHooks
+  const mustAdvanceHooks = agendaHooks
     .slice()
     .sort((left, right) => (
-      right.lastAdvancedChapter - left.lastAdvancedChapter
+      left.lastAdvancedChapter - right.lastAdvancedChapter
       || left.startChapter - right.startChapter
       || left.hookId.localeCompare(right.hookId)
     ))
-    .slice(0, params.maxMustAdvance ?? 2)
-    .map((hook) => hook.hookId);
-  const staleDebt = collectStaleHookDebt({
+    .slice(0, params.maxMustAdvance ?? 2);
+  const staleDebtHooks = collectStaleHookDebt({
     hooks: agendaHooks,
     chapterNumber: params.chapterNumber,
   })
-    .slice(0, params.maxStaleDebt ?? 2)
-    .map((hook) => hook.hookId);
-  const eligibleResolve = agendaHooks
+    .slice(0, params.maxStaleDebt ?? 2);
+  const eligibleResolveHooks = agendaHooks
     .filter((hook) => hook.startChapter <= params.chapterNumber - 3)
     .filter((hook) => hook.lastAdvancedChapter >= params.chapterNumber - 2)
     .sort((left, right) => (
@@ -247,14 +245,17 @@ export function buildPlannerHookAgenda(params: {
       || right.lastAdvancedChapter - left.lastAdvancedChapter
       || left.hookId.localeCompare(right.hookId)
     ))
-    .slice(0, params.maxEligibleResolve ?? 1)
-    .map((hook) => hook.hookId);
+    .slice(0, params.maxEligibleResolve ?? 1);
+  const avoidNewHookFamilies = [...new Set([
+    ...staleDebtHooks.map((hook) => hook.type.trim()).filter(Boolean),
+    ...mustAdvanceHooks.map((hook) => hook.type.trim()).filter(Boolean),
+  ])].slice(0, 3);
 
   return {
-    mustAdvance,
-    eligibleResolve,
-    staleDebt,
-    avoidNewHookFamilies: [],
+    mustAdvance: mustAdvanceHooks.map((hook) => hook.hookId),
+    eligibleResolve: eligibleResolveHooks.map((hook) => hook.hookId),
+    staleDebt: staleDebtHooks.map((hook) => hook.hookId),
+    avoidNewHookFamilies,
   };
 }
 

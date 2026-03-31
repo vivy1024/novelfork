@@ -733,6 +733,12 @@ ${lengthRequirementBlock}
     const selectedEvidenceBlock = params.selectedEvidenceBlock
       ? `\n${params.selectedEvidenceBlock}\n`
       : "";
+    const explicitHookAgenda = this.extractMarkdownSection(params.chapterIntent, "## Hook Agenda");
+    const hookAgendaBlock = explicitHookAgenda
+      ? params.language === "en"
+        ? `\n## Explicit Hook Agenda\n${explicitHookAgenda}\n`
+        : `\n## 显式 Hook Agenda\n${explicitHookAgenda}\n`
+      : "";
 
     if (params.language === "en") {
       return `Write chapter ${params.chapterNumber}.
@@ -743,6 +749,7 @@ ${params.chapterIntent}
 ## Selected Context
 ${contextSections || "(none)"}
 ${selectedEvidenceBlock}
+${hookAgendaBlock}
 
 ## Rule Stack
 - Hard: ${params.ruleStack.sections.hard.join(", ") || "(none)"}
@@ -769,6 +776,7 @@ ${params.chapterIntent}
 ## 已选上下文
 ${contextSections || "(无)"}
 ${selectedEvidenceBlock}
+${hookAgendaBlock}
 
 ## 规则栈
 - 硬护栏：${params.ruleStack.sections.hard.join("、") || "(无)"}
@@ -804,6 +812,29 @@ ${lengthRequirementBlock}
       .join("\n");
 
     return joined || undefined;
+  }
+
+  private extractMarkdownSection(content: string, heading: string): string | undefined {
+    const lines = content.split("\n");
+    let buffer: string[] | null = null;
+
+    for (const line of lines) {
+      if (line.trim() === heading) {
+        buffer = [];
+        continue;
+      }
+
+      if (buffer && line.startsWith("## ") && line.trim() !== heading) {
+        break;
+      }
+
+      if (buffer) {
+        buffer.push(line);
+      }
+    }
+
+    const section = buffer?.join("\n").trim();
+    return section && section.length > 0 ? section : undefined;
   }
 
   private buildSettlerGovernedControlBlock(
