@@ -242,6 +242,171 @@ describe("PlannerAgent", () => {
     expect(result.intent.goal).not.toBe("**");
   });
 
+  it("uses Chinese chapter-range outline nodes when the chapter falls inside the range", async () => {
+    await Promise.all([
+      writeFile(
+        join(storyDir, "author_intent.md"),
+        "# Author Intent\n\n(Describe the long-horizon vision for this book here.)\n",
+        "utf-8",
+      ),
+      writeFile(
+        join(storyDir, "current_focus.md"),
+        [
+          "# Current Focus",
+          "",
+          "## Active Focus",
+          "",
+          "(Describe what the next 1-3 chapters should prioritize.)",
+          "",
+        ].join("\n"),
+        "utf-8",
+      ),
+      writeFile(
+        join(storyDir, "volume_outline.md"),
+        [
+          "# Volume Outline",
+          "",
+          "## 第1-6章",
+          "Stay with the early city setup and mentor fallout.",
+          "",
+          "## 第7-20章",
+          "Track the merchant guild's escape route through the western canal.",
+          "",
+        ].join("\n"),
+        "utf-8",
+      ),
+    ]);
+
+    const planner = new PlannerAgent({
+      client: {} as ConstructorParameters<typeof PlannerAgent>[0]["client"],
+      model: "test-model",
+      projectRoot: root,
+      bookId: book.id,
+    });
+
+    const result = await planner.planChapter({
+      book,
+      bookDir,
+      chapterNumber: 7,
+    });
+
+    expect(result.intent.outlineNode).toContain("merchant guild's escape route");
+    expect(result.intent.goal).toContain("merchant guild's escape route");
+    expect(result.intent.goal).not.toContain("Describe the long-horizon vision");
+  });
+
+  it("uses English chapter-range outline nodes when the chapter falls inside the range", async () => {
+    book = {
+      ...book,
+      genre: "other",
+      language: "en",
+    };
+
+    await Promise.all([
+      writeFile(
+        join(storyDir, "author_intent.md"),
+        "# Author Intent\n\n(Describe the long-horizon vision for this book here.)\n",
+        "utf-8",
+      ),
+      writeFile(
+        join(storyDir, "current_focus.md"),
+        [
+          "# Current Focus",
+          "",
+          "## Active Focus",
+          "",
+          "(Describe what the next 1-3 chapters should prioritize.)",
+          "",
+        ].join("\n"),
+        "utf-8",
+      ),
+      writeFile(
+        join(storyDir, "volume_outline.md"),
+        [
+          "# Volume Outline",
+          "",
+          "### Chapter 1-3",
+          "Keep the opening pressure on the first examiner.",
+          "",
+          "### Chapter 4-6",
+          "Recover the sealed ledger before dawn.",
+          "",
+        ].join("\n"),
+        "utf-8",
+      ),
+    ]);
+
+    const planner = new PlannerAgent({
+      client: {} as ConstructorParameters<typeof PlannerAgent>[0]["client"],
+      model: "test-model",
+      projectRoot: root,
+      bookId: book.id,
+    });
+
+    const result = await planner.planChapter({
+      book,
+      bookDir,
+      chapterNumber: 5,
+    });
+
+    expect(result.intent.outlineNode).toContain("sealed ledger");
+    expect(result.intent.goal).toContain("sealed ledger");
+    expect(result.intent.goal).not.toContain("Describe the long-horizon vision");
+  });
+
+  it("falls back to the first outline directive when no range matches", async () => {
+    await Promise.all([
+      writeFile(
+        join(storyDir, "author_intent.md"),
+        "# Author Intent\n\n(Describe the long-horizon vision for this book here.)\n",
+        "utf-8",
+      ),
+      writeFile(
+        join(storyDir, "current_focus.md"),
+        [
+          "# Current Focus",
+          "",
+          "## Active Focus",
+          "",
+          "(Describe what the next 1-3 chapters should prioritize.)",
+          "",
+        ].join("\n"),
+        "utf-8",
+      ),
+      writeFile(
+        join(storyDir, "volume_outline.md"),
+        [
+          "# Volume Outline",
+          "",
+          "## 第1-6章",
+          "Stay with the early city setup and mentor fallout.",
+          "",
+          "## 第7-20章",
+          "Track the merchant guild's escape route through the western canal.",
+          "",
+        ].join("\n"),
+        "utf-8",
+      ),
+    ]);
+
+    const planner = new PlannerAgent({
+      client: {} as ConstructorParameters<typeof PlannerAgent>[0]["client"],
+      model: "test-model",
+      projectRoot: root,
+      bookId: book.id,
+    });
+
+    const result = await planner.planChapter({
+      book,
+      bookDir,
+      chapterNumber: 25,
+    });
+
+    expect(result.intent.outlineNode).toContain("Stay with the early city setup");
+    expect(result.intent.goal).toContain("Stay with the early city setup");
+    expect(result.intent.goal).not.toContain("merchant guild's escape route");
+  });
+
   it("preserves hard facts from state and canon in mustKeep", async () => {
     const planner = new PlannerAgent({
       client: {} as ConstructorParameters<typeof PlannerAgent>[0]["client"],

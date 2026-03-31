@@ -299,18 +299,18 @@ export class PlannerAgent extends BaseAgent {
 
   private findOutlineNode(volumeOutline: string, chapterNumber: number): string | undefined {
     const lines = volumeOutline.split("\n").map((line) => line.trim()).filter(Boolean);
-    const chapterPatterns = [
+    const exactHeadingPatterns = [
       new RegExp(`^#+\\s*Chapter\\s*${chapterNumber}\\b`, "i"),
       new RegExp(`^#+\\s*第\\s*${chapterNumber}\\s*章`),
     ];
-    const inlinePatterns = [
+    const exactInlinePatterns = [
       new RegExp(`^(?:[-*]\\s+)?(?:\\*\\*)?Chapter\\s*${chapterNumber}(?:[:：-])?(?:\\*\\*)?\\s*(.+)$`, "i"),
       new RegExp(`^(?:[-*]\\s+)?(?:\\*\\*)?第\\s*${chapterNumber}\\s*章(?:[:：-])?(?:\\*\\*)?\\s*(.+)$`),
     ];
 
     for (let index = 0; index < lines.length; index += 1) {
       const line = lines[index]!;
-      const match = inlinePatterns
+      const match = exactInlinePatterns
         .map((pattern) => line.match(pattern))
         .find((result): result is RegExpMatchArray => Boolean(result));
       if (!match) continue;
@@ -326,12 +326,37 @@ export class PlannerAgent extends BaseAgent {
       }
     }
 
-    const heading = lines.find((line) => chapterPatterns.some((pattern) => pattern.test(line)));
-    if (!heading) return this.extractFirstDirective(volumeOutline);
+    const exactHeading = lines.find((line) => exactHeadingPatterns.some((pattern) => pattern.test(line)));
+    if (exactHeading) {
+      const headingIndex = lines.indexOf(exactHeading);
+      const nextLine = lines[headingIndex + 1];
+      return nextLine && !nextLine.startsWith("#") ? nextLine : exactHeading.replace(/^#+\s*/, "");
+    }
 
-    const headingIndex = lines.indexOf(heading);
-    const nextLine = lines[headingIndex + 1];
-    return nextLine && !nextLine.startsWith("#") ? nextLine : heading.replace(/^#+\s*/, "");
+    for (let index = 0; index < lines.length; index += 1) {
+      const line = lines[index]!;
+      const match = this.matchRangeOutlineLine(line, chapterNumber);
+      if (!match) continue;
+
+      const inlineContent = this.cleanOutlineContent(match[3]);
+      if (inlineContent) {
+        return inlineContent;
+      }
+
+      const nextContent = this.findNextOutlineContent(lines, index + 1);
+      if (nextContent) {
+        return nextContent;
+      }
+    }
+
+    const rangeHeading = lines.find((line) => this.matchRangeOutlineHeading(line, chapterNumber));
+    if (rangeHeading) {
+      const headingIndex = lines.indexOf(rangeHeading);
+      const nextLine = lines[headingIndex + 1];
+      return nextLine && !nextLine.startsWith("#") ? nextLine : rangeHeading.replace(/^#+\s*/, "");
+    }
+
+    return this.extractFirstDirective(volumeOutline);
   }
 
   private cleanOutlineContent(content?: string): string | undefined {
@@ -362,6 +387,43 @@ export class PlannerAgent extends BaseAgent {
     }
 
     return undefined;
+  }
+
+  private matchRangeOutlineLine(line: string, chapterNumber: number): RegExpMatchArray | undefined {
+    const patterns = [
+      /^(?:[-*]\s+)?(?:\*\*)?Chapter\s*(\d+)\s*[-~–—]\s*(\d+)(?:[:：-])?(?:\*\*)?\s*(.+)$/i,
+      /^(?:[-*]\s+)?(?:\*\*)?第\s*(\d+)\s*[-~–—]\s*(\d+)\s*章(?:[:：-])?(?:\*\*)?\s*(.+)$/i,
+    ];
+
+    for (const pattern of patterns) {
+      const match = line.match(pattern);
+      if (!match) continue;
+      if (this.isChapterWithinRange(match[1], match[2], chapterNumber)) {
+        return match;
+      }
+    }
+
+    return undefined;
+  }
+
+  private matchRangeOutlineHeading(line: string, chapterNumber: number): boolean {
+      return this.matchRangeOutlineLine(line, chapterNumber) !== undefined
+      || [
+        /^#+\s*Chapter\s*(\d+)\s*[-~–—]\s*(\d+)\b/i,
+        /^#+\s*第\s*(\d+)\s*[-~–—]\s*(\d+)\s*章/i,
+      ].some((pattern) => {
+        const match = line.match(pattern);
+        return match ? this.isChapterWithinRange(match[1], match[2], chapterNumber) : false;
+      });
+  }
+
+  private isChapterWithinRange(startText: string | undefined, endText: string | undefined, chapterNumber: number): boolean {
+    const start = Number.parseInt(startText ?? "", 10);
+    const end = Number.parseInt(endText ?? "", 10);
+    if (!Number.isFinite(start) || !Number.isFinite(end)) return false;
+    const lower = Math.min(start, end);
+    const upper = Math.max(start, end);
+    return chapterNumber >= lower && chapterNumber <= upper;
   }
 
   private hasKeywordOverlap(left: string, right: string): boolean {
