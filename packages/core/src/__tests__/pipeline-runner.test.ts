@@ -4,6 +4,7 @@ import { mkdtemp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PipelineRunner } from "../pipeline/runner.js";
+import * as llmProvider from "../llm/provider.js";
 import { StateManager } from "../state/manager.js";
 import { ArchitectAgent } from "../agents/architect.js";
 import { PlannerAgent } from "../agents/planner.js";
@@ -2319,6 +2320,150 @@ describe("PipelineRunner", () => {
     expect(result.nextChapter).toBe(5);
 
     await rm(root, { recursive: true, force: true });
+  });
+
+  it("keeps fanfic initialization running when style guide extraction fails", async () => {
+    const { root, runner, state } = await createRunnerFixture();
+    const bookId = "fanfic-style-fallback";
+    const now = "2026-03-19T00:00:00.000Z";
+    const book: BookConfig = {
+      id: bookId,
+      title: "Fanfic Fallback",
+      platform: "tomato",
+      genre: "xuanhuan",
+      status: "active",
+      targetChapters: 10,
+      chapterWordCount: 3000,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    vi.spyOn(runner, "importFanficCanon").mockImplementation(async (targetBookId) => {
+      const storyDir = join(state.bookDir(targetBookId), "story");
+      await mkdir(storyDir, { recursive: true });
+      await writeFile(join(storyDir, "fanfic_canon.md"), "# Fanfic Canon\n", "utf-8");
+      return "# Fanfic Canon\n";
+    });
+    vi.spyOn(ArchitectAgent.prototype, "generateFanficFoundation").mockResolvedValue({
+      storyBible: "# Story Bible\n",
+      volumeOutline: "# Volume Outline\n",
+      bookRules: "---\nversion: \"1.0\"\n---\n\n# Book Rules\n",
+      currentState: createStateCard({
+        chapter: 0,
+        location: "Lantern quay",
+        protagonistState: "Lin Yue enters the fanfic timeline with a hidden debt.",
+        goal: "Find the canon fissure.",
+        conflict: "The old faction watches every move.",
+      }),
+      pendingHooks: "# Pending Hooks\n",
+    });
+    vi.spyOn(runner, "generateStyleGuide").mockRejectedValue(new Error("style failed"));
+
+    try {
+      await expect(runner.initFanficBook(book, "A".repeat(600), "canon.txt", "canon")).resolves.toBeUndefined();
+
+      expect(await state.loadChapterIndex(bookId)).toEqual([]);
+      await expect(readFile(join(state.bookDir(bookId), "story", "fanfic_canon.md"), "utf-8")).resolves.toContain("Fanfic Canon");
+      await expect(stat(join(state.bookDir(bookId), "story", "snapshots", "0"))).resolves.toBeTruthy();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps canon import running when style guide extraction fails", async () => {
+    const { root, runner, state, bookId } = await createRunnerFixture();
+    const parentBookId = "parent-book";
+    const now = "2026-03-19T00:00:00.000Z";
+    const parentBook: BookConfig = {
+      id: parentBookId,
+      title: "Parent Book",
+      platform: "tomato",
+      genre: "xuanhuan",
+      status: "active",
+      targetChapters: 10,
+      chapterWordCount: 3000,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const parentStoryDir = join(state.bookDir(parentBookId), "story");
+    const parentChaptersDir = join(state.bookDir(parentBookId), "chapters");
+
+    await state.saveBookConfig(parentBookId, parentBook);
+    await mkdir(parentStoryDir, { recursive: true });
+    await mkdir(parentChaptersDir, { recursive: true });
+    await Promise.all([
+      writeFile(join(parentStoryDir, "story_bible.md"), "# Story Bible\n", "utf-8"),
+      writeFile(join(parentStoryDir, "current_state.md"), createStateCard({
+        chapter: 3,
+        location: "North watchtower",
+        protagonistState: "The mentor debt is no longer secret.",
+        goal: "Protect the watchtower archive.",
+        conflict: "Guild spies are already inside the archive.",
+      }), "utf-8"),
+      writeFile(join(parentStoryDir, "particle_ledger.md"), "# Ledger\n", "utf-8"),
+      writeFile(join(parentStoryDir, "pending_hooks.md"), "# Pending Hooks\n", "utf-8"),
+      writeFile(join(parentStoryDir, "chapter_summaries.md"), "# Chapter Summaries\n", "utf-8"),
+      writeFile(join(parentChaptersDir, "0001_Parent.md"), `# Chapter 1\n\n${"Parent text. ".repeat(60)}`, "utf-8"),
+    ]);
+
+    vi.spyOn(llmProvider, "chatCompletion").mockResolvedValue({
+      content: "# Parent Canon\n\nImported canon body.",
+    } as Awaited<ReturnType<typeof llmProvider.chatCompletion>>);
+    vi.spyOn(runner, "generateStyleGuide").mockRejectedValue(new Error("style failed"));
+
+    try {
+      const canon = await runner.importCanon(bookId, parentBookId);
+
+      expect(canon).toContain("# Parent Canon");
+      await expect(readFile(join(state.bookDir(bookId), "story", "parent_canon.md"), "utf-8")).resolves.toContain("Imported canon body.");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps chapter import running when style guide extraction fails", async () => {
+    const { root, runner, state, bookId } = await createRunnerFixture();
+    const chapterContent = "章节正文。".repeat(120);
+
+    vi.spyOn(ArchitectAgent.prototype, "generateFoundationFromImport").mockResolvedValue({
+      storyBible: "# Story Bible\n",
+      volumeOutline: "# Volume Outline\n",
+      bookRules: "---\nversion: \"1.0\"\n---\n\n# Book Rules\n",
+      currentState: createStateCard({
+        chapter: 0,
+        location: "Ashen ferry crossing",
+        protagonistState: "Lin Yue still hides the oath token.",
+        goal: "Find the vanished mentor.",
+        conflict: "The mentor debt is still personal.",
+      }),
+      pendingHooks: "# Pending Hooks\n",
+    });
+    vi.spyOn(ChapterAnalyzerAgent.prototype, "analyzeChapter").mockResolvedValue(
+      createAnalyzedOutput({
+        chapterNumber: 1,
+        title: "Prelude",
+        content: chapterContent,
+        wordCount: chapterContent.length,
+      }),
+    );
+    vi.spyOn(WriterAgent.prototype, "saveChapter").mockResolvedValue(undefined);
+    vi.spyOn(WriterAgent.prototype, "saveNewTruthFiles").mockResolvedValue(undefined);
+    vi.spyOn(runner, "generateStyleGuide").mockRejectedValue(new Error("style failed"));
+
+    try {
+      const result = await runner.importChapters({
+        bookId,
+        chapters: [
+          { title: "Prelude", content: chapterContent },
+        ],
+      });
+
+      expect(result.importedCount).toBe(1);
+      expect((await state.loadChapterIndex(bookId))[0]?.status).toBe("imported");
+      await expect(readFile(join(state.bookDir(bookId), "story", "story_bible.md"), "utf-8")).resolves.toContain("# Story Bible");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   sqliteIt("rebuilds fact history from imported chapter snapshots", async () => {

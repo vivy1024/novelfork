@@ -194,6 +194,24 @@ export class PipelineRunner {
     this.config.logger?.warn(this.localize(language, message));
   }
 
+  private async tryGenerateStyleGuide(
+    bookId: string,
+    referenceText: string,
+    sourceName: string | undefined,
+    language?: LengthLanguage,
+  ): Promise<void> {
+    try {
+      await this.generateStyleGuide(bookId, referenceText, sourceName);
+    } catch (error) {
+      const resolvedLanguage = language ?? await this.resolveBookLanguageById(bookId);
+      const detail = error instanceof Error ? error.message : String(error);
+      this.logWarn(resolvedLanguage, {
+        zh: `风格指纹提取失败，已跳过：${detail}`,
+        en: `Style fingerprint extraction failed and was skipped: ${detail}`,
+      });
+    }
+  }
+
   private agentCtx(bookId?: string): AgentContext {
     return {
       client: this.config.client,
@@ -391,7 +409,7 @@ export class PipelineRunner {
     // Step 3: Generate style guide from source material
     if (sourceText.length >= 500) {
       this.logStage(stageLanguage, { zh: "提取原作风格指纹", en: "extracting source style fingerprint" });
-      await this.generateStyleGuide(book.id, sourceText, sourceName);
+      await this.tryGenerateStyleGuide(book.id, sourceText, sourceName, stageLanguage);
     }
 
     // Step 4: Initialize chapters directory + snapshot
@@ -1592,7 +1610,7 @@ ${matrix}`,
     const parentChaptersDir = join(parentDir, "chapters");
     const parentChapterText = await this.readParentChapterSample(parentChaptersDir);
     if (parentChapterText.length >= 500) {
-      await this.generateStyleGuide(targetBookId, parentChapterText, parentBook.title);
+      await this.tryGenerateStyleGuide(targetBookId, parentChapterText, parentBook.title);
     }
 
     return canon;
@@ -1672,7 +1690,7 @@ ${matrix}`,
             zh: "提取原文风格指纹...",
             en: "Extracting source style fingerprint...",
           }));
-          await this.generateStyleGuide(input.bookId, allText, book.title);
+          await this.tryGenerateStyleGuide(input.bookId, allText, book.title, resolvedLanguage);
         }
 
         log?.info(this.localize(resolvedLanguage, {
