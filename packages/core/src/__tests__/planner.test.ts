@@ -253,6 +253,77 @@ describe("PlannerAgent", () => {
     ]));
   });
 
+  it("emits structured directives when fallback planning, chapter type repetition, and title collapse stack up", async () => {
+    book = {
+      ...book,
+      genre: "other",
+      language: "en",
+    };
+
+    await Promise.all([
+      writeFile(
+        join(storyDir, "author_intent.md"),
+        "# Author Intent\n\n(Describe the long-horizon vision for this book here.)\n",
+        "utf-8",
+      ),
+      writeFile(
+        join(storyDir, "current_focus.md"),
+        [
+          "# Current Focus",
+          "",
+          "## Active Focus",
+          "",
+          "(Describe what the next 1-3 chapters should prioritize.)",
+          "",
+        ].join("\n"),
+        "utf-8",
+      ),
+      writeFile(
+        join(storyDir, "volume_outline.md"),
+        [
+          "# Volume Outline",
+          "",
+          "## Chapter 8",
+          "Expose the registry clerk's hidden ledger in the floodgate archive.",
+          "",
+        ].join("\n"),
+        "utf-8",
+      ),
+      writeFile(
+        join(storyDir, "chapter_summaries.md"),
+        [
+          "# Chapter Summaries",
+          "",
+          "| chapter | title | characters | events | stateChanges | hookActivity | mood | chapterType |",
+          "| --- | --- | --- | --- | --- | --- | --- | --- |",
+          "| 1 | Ledger in Rain | Taryn | Taryn checks the first false folio | None | hook advanced | tight | investigation |",
+          "| 2 | Ledger at Dusk | Taryn | Taryn questions the dock clerk | None | hook advanced | tight | investigation |",
+          "| 3 | Ledger Below | Taryn | Taryn searches the under-archive | None | hook advanced | tight | investigation |",
+          "",
+        ].join("\n"),
+        "utf-8",
+      ),
+    ]);
+
+    const planner = new PlannerAgent({
+      client: {} as ConstructorParameters<typeof PlannerAgent>[0]["client"],
+      model: "test-model",
+      projectRoot: root,
+      bookId: book.id,
+    });
+
+    const result = await planner.planChapter({
+      book,
+      bookDir,
+      chapterNumber: 4,
+    });
+
+    expect(result.intent.arcDirective).toContain("fallback");
+    expect(result.intent.sceneDirective).toContain("investigation");
+    expect(result.intent.titleDirective?.toLowerCase()).toContain("ledger");
+    expect(result.intent.moodDirective).toBeUndefined();
+  });
+
   it("ignores the default current_focus placeholder and falls back to author intent when no chapter outline is available", async () => {
     await Promise.all([
       writeFile(

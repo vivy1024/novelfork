@@ -495,6 +495,10 @@ describe("ChapterIntentSchema", () => {
       chapter: 12,
       goal: "Pull focus back to the mentor conflict",
       outlineNode: "Volume 2 / Chapter 12",
+      sceneDirective: "Break the repeated investigation-room rhythm with a location change.",
+      arcDirective: "Advance toward the next concrete arc beat instead of replaying the fallback setup.",
+      moodDirective: "Release pressure for one chapter before the next escalation.",
+      titleDirective: "Avoid another ledger title and use a new concrete image.",
       mustKeep: ["Protagonist remains injured"],
       mustAvoid: ["Do not reveal the mastermind"],
       styleEmphasis: ["dialogue tension", "character conflict"],
@@ -517,6 +521,10 @@ describe("ChapterIntentSchema", () => {
 
     expect(result.chapter).toBe(12);
     expect(result.goal).toContain("mentor conflict");
+    expect(result.sceneDirective).toContain("location change");
+    expect(result.arcDirective).toContain("arc beat");
+    expect(result.moodDirective).toContain("Release pressure");
+    expect(result.titleDirective).toContain("ledger title");
     expect(result.conflicts).toHaveLength(1);
     expect(result.hookAgenda.mustAdvance).toEqual(["H019"]);
     expect(result.hookAgenda.eligibleResolve).toEqual(["H045"]);
@@ -533,6 +541,10 @@ describe("ChapterIntentSchema", () => {
       goal: "Establish the protagonist's first setback",
     });
 
+    expect(result.sceneDirective).toBeUndefined();
+    expect(result.arcDirective).toBeUndefined();
+    expect(result.moodDirective).toBeUndefined();
+    expect(result.titleDirective).toBeUndefined();
     expect(result.mustKeep).toEqual([]);
     expect(result.mustAvoid).toEqual([]);
     expect(result.styleEmphasis).toEqual([]);

@@ -6,6 +6,7 @@ import { parseBookRules } from "../models/book-rules.js";
 import { ChapterIntentSchema, type ChapterConflict, type ChapterIntent } from "../models/input-governance.js";
 import {
   buildPlannerHookAgenda,
+  parseChapterSummariesMarkdown,
   renderHookSnapshot,
   renderSummarySnapshot,
   retrieveMemorySelection,
@@ -40,6 +41,7 @@ export class PlannerAgent extends BaseAgent {
       currentFocus: join(storyDir, "current_focus.md"),
       storyBible: join(storyDir, "story_bible.md"),
       volumeOutline: join(storyDir, "volume_outline.md"),
+      chapterSummaries: join(storyDir, "chapter_summaries.md"),
       bookRules: join(storyDir, "book_rules.md"),
       currentState: join(storyDir, "current_state.md"),
     } as const;
@@ -49,6 +51,7 @@ export class PlannerAgent extends BaseAgent {
       currentFocus,
       storyBible,
       volumeOutline,
+      chapterSummaries,
       bookRulesRaw,
       currentState,
     ] = await Promise.all([
@@ -56,11 +59,13 @@ export class PlannerAgent extends BaseAgent {
       this.readFileOrDefault(sourcePaths.currentFocus),
       this.readFileOrDefault(sourcePaths.storyBible),
       this.readFileOrDefault(sourcePaths.volumeOutline),
+      this.readFileOrDefault(sourcePaths.chapterSummaries),
       this.readFileOrDefault(sourcePaths.bookRules),
       this.readFileOrDefault(sourcePaths.currentState),
     ]);
 
     const outlineNode = this.findOutlineNode(volumeOutline, input.chapterNumber);
+    const matchedOutlineAnchor = this.hasMatchedOutlineAnchor(volumeOutline, input.chapterNumber);
     const goal = this.deriveGoal(input.externalContext, currentFocus, authorIntent, outlineNode, input.chapterNumber);
     const parsedRules = parseBookRules(bookRulesRaw);
     const mustKeep = this.collectMustKeep(currentState, storyBible);
@@ -79,11 +84,20 @@ export class PlannerAgent extends BaseAgent {
       hooks: memorySelection.activeHooks,
       chapterNumber: input.chapterNumber,
     });
+    const directives = this.buildStructuredDirectives({
+      chapterNumber: input.chapterNumber,
+      language: input.book.language,
+      volumeOutline,
+      outlineNode,
+      matchedOutlineAnchor,
+      chapterSummaries,
+    });
 
     const intent = ChapterIntentSchema.parse({
       chapter: input.chapterNumber,
       goal,
       outlineNode,
+      ...directives,
       mustKeep,
       mustAvoid,
       styleEmphasis,
@@ -105,10 +119,35 @@ export class PlannerAgent extends BaseAgent {
       plannerInputs: [
         ...Object.values(sourcePaths),
         join(storyDir, "pending_hooks.md"),
-        join(storyDir, "chapter_summaries.md"),
         ...(memorySelection.dbPath ? [memorySelection.dbPath] : []),
       ],
       runtimePath,
+    };
+  }
+
+  private buildStructuredDirectives(input: {
+    readonly chapterNumber: number;
+    readonly language?: string;
+    readonly volumeOutline: string;
+    readonly outlineNode: string | undefined;
+    readonly matchedOutlineAnchor: boolean;
+    readonly chapterSummaries: string;
+  }): Pick<ChapterIntent, "sceneDirective" | "arcDirective" | "moodDirective" | "titleDirective"> {
+    const recentSummaries = parseChapterSummariesMarkdown(input.chapterSummaries)
+      .filter((summary) => summary.chapter < input.chapterNumber)
+      .sort((left, right) => right.chapter - left.chapter)
+      .slice(0, 4);
+
+    return {
+      arcDirective: this.buildArcDirective(
+        input.language,
+        input.volumeOutline,
+        input.outlineNode,
+        input.matchedOutlineAnchor,
+      ),
+      sceneDirective: this.buildSceneDirective(input.language, recentSummaries),
+      moodDirective: undefined,
+      titleDirective: this.buildTitleDirective(input.language, recentSummaries),
     };
   }
 
@@ -275,6 +314,75 @@ export class PlannerAgent extends BaseAgent {
     return this.extractListItems(focusSection, limit);
   }
 
+  private buildArcDirective(
+    language: string | undefined,
+    volumeOutline: string,
+    outlineNode: string | undefined,
+    matchedOutlineAnchor: boolean,
+  ): string | undefined {
+    if (matchedOutlineAnchor || !outlineNode || volumeOutline === "(文件尚未创建)") {
+      return undefined;
+    }
+
+    return this.isChineseLanguage(language)
+      ? "不要继续依赖卷纲的 fallback 指令，必须把本章推进到新的弧线节点或地点变化。"
+      : "Do not keep leaning on the outline fallback. Force this chapter toward a fresh arc beat or location change.";
+  }
+
+  private buildSceneDirective(
+    language: string | undefined,
+    recentSummaries: ReadonlyArray<{ chapterType: string }>,
+  ): string | undefined {
+    const repeatedType = this.findRepeatedValue(
+      recentSummaries.map((summary) => summary.chapterType),
+      3,
+    );
+    if (!repeatedType) {
+      return undefined;
+    }
+
+    return this.isChineseLanguage(language)
+      ? `最近章节连续停留在“${repeatedType}”，本章必须更换场景容器、地点或行动方式。`
+      : `Recent chapters are stuck in repeated ${repeatedType} beats. Change the scene container, location, or action pattern this chapter.`;
+  }
+
+  private buildTitleDirective(
+    language: string | undefined,
+    recentSummaries: ReadonlyArray<{ title: string }>,
+  ): string | undefined {
+    const tokenCounts = new Map<string, number>();
+
+    for (const summary of recentSummaries) {
+      for (const token of this.extractKeywords(summary.title)) {
+        tokenCounts.set(token, (tokenCounts.get(token) ?? 0) + 1);
+      }
+    }
+
+    const repeatedToken = [...tokenCounts.entries()]
+      .sort((left, right) => right[1] - left[1])
+      .find((entry) => entry[1] >= 3)?.[0];
+    if (!repeatedToken) {
+      return undefined;
+    }
+
+    return this.isChineseLanguage(language)
+      ? `标题不要再围绕“${repeatedToken}”重复命名，换一个新的意象或动作焦点。`
+      : `Avoid another ${repeatedToken}-centric title. Pick a new image or action focus for this chapter title.`;
+  }
+
+  private findRepeatedValue(values: ReadonlyArray<string>, threshold: number): string | undefined {
+    const counts = new Map<string, number>();
+
+    for (const value of values.map((value) => value.trim()).filter(Boolean)) {
+      counts.set(value, (counts.get(value) ?? 0) + 1);
+      if ((counts.get(value) ?? 0) >= threshold) {
+        return value;
+      }
+    }
+
+    return undefined;
+  }
+
   private extractSection(content: string, headings: ReadonlyArray<string>): string | undefined {
     const targets = headings.map((heading) => this.normalizeHeading(heading));
     const lines = content.split("\n");
@@ -434,6 +542,14 @@ export class PlannerAgent extends BaseAgent {
     return undefined;
   }
 
+  private hasMatchedOutlineAnchor(volumeOutline: string, chapterNumber: number): boolean {
+    const lines = volumeOutline.split("\n").map((line) => line.trim()).filter(Boolean);
+    return lines.some((line) =>
+      this.matchExactOutlineLine(line, chapterNumber) !== undefined
+      || this.matchRangeOutlineLine(line, chapterNumber) !== undefined,
+    );
+  }
+
   private matchExactOutlineLine(line: string, chapterNumber: number): RegExpMatchArray | undefined {
     const patterns = [
       new RegExp(`^(?:#+\\s*)?(?:[-*]\\s+)?(?:\\*\\*)?Chapter\\s*${chapterNumber}(?!\\d|\\s*[-~–—]\\s*\\d)(?:[:：-])?(?:\\*\\*)?\\s*(.*)$`, "i"),
@@ -524,6 +640,12 @@ export class PlannerAgent extends BaseAgent {
     const styleEmphasis = intent.styleEmphasis.length > 0
       ? intent.styleEmphasis.map((item) => `- ${item}`).join("\n")
       : "- none";
+    const directives = [
+      intent.arcDirective ? `- arc: ${intent.arcDirective}` : undefined,
+      intent.sceneDirective ? `- scene: ${intent.sceneDirective}` : undefined,
+      intent.moodDirective ? `- mood: ${intent.moodDirective}` : undefined,
+      intent.titleDirective ? `- title: ${intent.titleDirective}` : undefined,
+    ].filter(Boolean).join("\n") || "- none";
     const hookAgenda = [
       "### Must Advance",
       intent.hookAgenda.mustAdvance.length > 0
@@ -564,6 +686,9 @@ export class PlannerAgent extends BaseAgent {
       "## Style Emphasis",
       styleEmphasis,
       "",
+      "## Structured Directives",
+      directives,
+      "",
       "## Hook Agenda",
       hookAgenda,
       "",
@@ -581,6 +706,10 @@ export class PlannerAgent extends BaseAgent {
 
   private unique(values: ReadonlyArray<string>): string[] {
     return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+  }
+
+  private isChineseLanguage(language: string | undefined): boolean {
+    return (language ?? "zh").toLowerCase().startsWith("zh");
   }
 
   private async readFileOrDefault(path: string): Promise<string> {
