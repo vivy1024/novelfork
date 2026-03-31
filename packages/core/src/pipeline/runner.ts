@@ -1135,6 +1135,7 @@ export class PipelineRunner {
       output.title,
       chapterIndexBeforePersist.map((chapter) => chapter.title),
       pipelineLang,
+      { content: finalContent },
     );
     let persistenceOutput = await this.buildPersistenceOutput(
       bookId,
@@ -1152,6 +1153,7 @@ export class PipelineRunner {
       persistenceOutput.title,
       chapterIndexBeforePersist.map((chapter) => chapter.title),
       pipelineLang,
+      { content: finalContent },
     );
     if (finalTitleResolution.title !== persistenceOutput.title) {
       persistenceOutput = {

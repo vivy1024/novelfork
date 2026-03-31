@@ -3243,8 +3243,8 @@ describe("PipelineRunner", () => {
       createWriterOutput({
         chapterNumber: 2,
         title: "回声",
-        content: "这次的正文完全不同，只是标题碰巧重复了。",
-        wordCount: "这次的正文完全不同，只是标题碰巧重复了。".length,
+        content: "啊。",
+        wordCount: "啊。".length,
       }),
     );
     vi.spyOn(ContinuityAuditor.prototype, "auditChapter").mockResolvedValue(
@@ -3261,6 +3261,62 @@ describe("PipelineRunner", () => {
 
       expect(result.title).toBe("回声（2）");
       expect(index.at(-1)?.title).toBe("回声（2）");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("regenerates duplicate chapter titles before falling back to numeric suffixes", async () => {
+    const { root, runner, state, bookId } = await createRunnerFixture();
+    const storyDir = join(state.bookDir(bookId), "story");
+    const chaptersDir = join(state.bookDir(bookId), "chapters");
+    const now = "2026-03-19T00:00:00.000Z";
+
+    await Promise.all([
+      writeFile(join(chaptersDir, "0001_回声.md"), "# 第1章 回声\n\n旧章节。", "utf-8"),
+      writeFile(join(storyDir, "current_state.md"), createStateCard({
+        chapter: 1,
+        location: "Ashen ferry crossing",
+        protagonistState: "Lin Yue still hides the oath token.",
+        goal: "Find the vanished mentor.",
+        conflict: "The debt trail keeps narrowing.",
+      }), "utf-8"),
+      writeFile(join(storyDir, "pending_hooks.md"), "# Pending Hooks\n", "utf-8"),
+    ]);
+    await state.saveChapterIndex(bookId, [{
+      number: 1,
+      title: "回声",
+      status: "ready-for-review",
+      wordCount: 12,
+      createdAt: now,
+      updatedAt: now,
+      auditIssues: [],
+      lengthWarnings: [],
+    }]);
+
+    vi.spyOn(WriterAgent.prototype, "writeChapter").mockResolvedValue(
+      createWriterOutput({
+        chapterNumber: 2,
+        title: "回声",
+        content: "塔楼里的铜铃只响了一声，风从缺口灌进来，守夜人没有回头。",
+        wordCount: "塔楼里的铜铃只响了一声，风从缺口灌进来，守夜人没有回头。".length,
+      }),
+    );
+    vi.spyOn(ContinuityAuditor.prototype, "auditChapter").mockResolvedValue(
+      createAuditResult({
+        passed: true,
+        issues: [],
+        summary: "clean",
+      }),
+    );
+
+    try {
+      const result = await runner.writeNextChapter(bookId, 120);
+      const index = await state.loadChapterIndex(bookId);
+
+      expect(result.title).toContain("塔楼");
+      expect(result.title).not.toBe("回声（2）");
+      expect(index.at(-1)?.title).toBe(result.title);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
