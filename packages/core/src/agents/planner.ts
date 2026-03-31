@@ -146,7 +146,7 @@ export class PlannerAgent extends BaseAgent {
         input.matchedOutlineAnchor,
       ),
       sceneDirective: this.buildSceneDirective(input.language, recentSummaries),
-      moodDirective: undefined,
+      moodDirective: this.buildMoodDirective(input.language, recentSummaries),
       titleDirective: this.buildTitleDirective(input.language, recentSummaries),
     };
   }
@@ -344,6 +344,41 @@ export class PlannerAgent extends BaseAgent {
     return this.isChineseLanguage(language)
       ? `最近章节连续停留在“${repeatedType}”，本章必须更换场景容器、地点或行动方式。`
       : `Recent chapters are stuck in repeated ${repeatedType} beats. Change the scene container, location, or action pattern this chapter.`;
+  }
+
+  private buildMoodDirective(
+    language: string | undefined,
+    recentSummaries: ReadonlyArray<{ mood: string }>,
+  ): string | undefined {
+    if (recentSummaries.length < 3) {
+      return undefined;
+    }
+
+    const moods = recentSummaries.map((summary) => summary.mood.trim()).filter(Boolean);
+    if (moods.length < 3) {
+      return undefined;
+    }
+
+    const allHighTension = moods.every((mood) => this.isHighTensionMood(mood));
+    if (!allHighTension) {
+      return undefined;
+    }
+
+    return this.isChineseLanguage(language)
+      ? `最近${moods.length}章情绪持续高压（${moods.slice(0, 3).join("、")}），本章必须降调——安排日常/喘息/温情/幽默场景，让读者呼吸。`
+      : `The last ${moods.length} chapters have been relentlessly tense (${moods.slice(0, 3).join(", ")}). This chapter must downshift — write a quieter scene with warmth, humor, or breathing room.`;
+  }
+
+  private isHighTensionMood(mood: string): boolean {
+    const tensionKeywords = [
+      "紧张", "冷硬", "压抑", "逼仄", "肃杀", "沉重", "凝重",
+      "冷峻", "压迫", "阴沉", "焦灼", "窒息", "凛冽", "锋利",
+      "克制", "危机", "对峙", "绷紧", "僵持", "杀意",
+      "tense", "cold", "oppressive", "grim", "ominous", "dark",
+      "bleak", "hostile", "threatening", "heavy", "suffocating",
+    ];
+    const lowerMood = mood.toLowerCase();
+    return tensionKeywords.some((keyword) => lowerMood.includes(keyword));
   }
 
   private buildTitleDirective(

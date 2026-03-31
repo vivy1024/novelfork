@@ -324,6 +324,100 @@ describe("PlannerAgent", () => {
     expect(result.intent.moodDirective).toBeUndefined();
   });
 
+  it("emits a mood directive when recent chapters are all high-tension", async () => {
+    book = {
+      ...book,
+      genre: "other",
+      language: "zh",
+    };
+
+    await Promise.all([
+      writeFile(
+        join(storyDir, "volume_outline.md"),
+        "# Volume Outline\n\n## Chapter 5\n进入新的地点。\n",
+        "utf-8",
+      ),
+      writeFile(
+        join(storyDir, "chapter_summaries.md"),
+        [
+          "# Chapter Summaries",
+          "",
+          "| chapter | title | characters | events | stateChanges | hookActivity | mood | chapterType |",
+          "| --- | --- | --- | --- | --- | --- | --- | --- |",
+          "| 1 | 暗巷追踪 | 周谨川 | 追踪目标 | None | none | 紧张、压抑 | 悬念验证章 |",
+          "| 2 | 旧楼对峙 | 周谨川 | 对峙 | None | none | 冷硬、逼仄 | 冲突章 |",
+          "| 3 | 夜色围堵 | 周谨川 | 围堵 | None | none | 肃杀、凝重 | 追击章 |",
+          "| 4 | 地下通道 | 周谨川 | 逃脱 | None | none | 压迫、窒息 | 逃亡章 |",
+          "",
+        ].join("\n"),
+        "utf-8",
+      ),
+    ]);
+
+    const planner = new PlannerAgent({
+      client: {} as ConstructorParameters<typeof PlannerAgent>[0]["client"],
+      model: "test-model",
+      projectRoot: root,
+      bookId: book.id,
+    });
+
+    const result = await planner.planChapter({
+      book,
+      bookDir,
+      chapterNumber: 5,
+    });
+
+    expect(result.intent.moodDirective).toBeDefined();
+    expect(result.intent.moodDirective).toContain("降调");
+    expect(result.intent.moodDirective).toContain("日常");
+  });
+
+  it("does not emit a mood directive when recent moods are varied", async () => {
+    book = {
+      ...book,
+      genre: "other",
+      language: "en",
+    };
+
+    await Promise.all([
+      writeFile(
+        join(storyDir, "volume_outline.md"),
+        "# Volume Outline\n\n## Chapter 5\nMove to the harbor.\n",
+        "utf-8",
+      ),
+      writeFile(
+        join(storyDir, "chapter_summaries.md"),
+        [
+          "# Chapter Summaries",
+          "",
+          "| chapter | title | characters | events | stateChanges | hookActivity | mood | chapterType |",
+          "| --- | --- | --- | --- | --- | --- | --- | --- |",
+          "| 1 | Morning Calm | Taryn | A quiet walk | None | none | warm, gentle | slice-of-life |",
+          "| 2 | Sudden Rain | Taryn | Storm arrives | None | none | tense, ominous | tension |",
+          "| 3 | Harbor Light | Taryn | Finds shelter | None | none | hopeful, light | transition |",
+          "| 4 | The Letter | Taryn | Reads bad news | None | none | melancholy, reflective | introspection |",
+          "",
+        ].join("\n"),
+        "utf-8",
+      ),
+    ]);
+
+    const planner = new PlannerAgent({
+      client: {} as ConstructorParameters<typeof PlannerAgent>[0]["client"],
+      model: "test-model",
+      projectRoot: root,
+      bookId: book.id,
+    });
+
+    const result = await planner.planChapter({
+      book,
+      bookDir,
+      chapterNumber: 5,
+    });
+
+    expect(result.intent.moodDirective).toBeUndefined();
+  });
+
   it("ignores the default current_focus placeholder and falls back to author intent when no chapter outline is available", async () => {
     await Promise.all([
       writeFile(
