@@ -963,4 +963,126 @@ describe("StateManager", () => {
       expect(hooks.hooks.map((hook) => hook.hookId)).toEqual(["H009"]);
     });
   });
+
+  // -------------------------------------------------------------------------
+  // rollbackToChapter — reject a chapter and discard downstream state
+  // -------------------------------------------------------------------------
+
+  describe("rollbackToChapter", () => {
+    const bookId = "rollback-book";
+
+    async function setupRollbackBook(): Promise<void> {
+      await manager.saveBookConfig(bookId, {
+        id: bookId,
+        title: "Rollback Test",
+        platform: "tomato",
+        genre: "xuanhuan",
+        status: "active",
+        targetChapters: 10,
+        chapterWordCount: 3000,
+        createdAt: "2026-03-31T00:00:00Z",
+        updatedAt: "2026-03-31T00:00:00Z",
+      });
+
+      const bookDir = manager.bookDir(bookId);
+      const storyDir = join(bookDir, "story");
+      const chaptersDir = join(bookDir, "chapters");
+      const runtimeDir = join(storyDir, "runtime");
+      await mkdir(runtimeDir, { recursive: true });
+      await mkdir(chaptersDir, { recursive: true });
+
+      // Write initial state (chapter 0 baseline)
+      await writeFile(join(storyDir, "current_state.md"), "# State\n\n- Initial state.\n", "utf-8");
+      await writeFile(join(storyDir, "pending_hooks.md"), "# Hooks\n\n- hook-1\n", "utf-8");
+      await writeFile(join(storyDir, "chapter_summaries.md"), "# Summaries\n", "utf-8");
+      await manager.snapshotState(bookId, 0);
+
+      // Write chapter 1 state + file
+      await writeFile(join(storyDir, "current_state.md"), "# State\n\n- After chapter 1.\n", "utf-8");
+      await writeFile(join(storyDir, "pending_hooks.md"), "# Hooks\n\n- hook-1\n- hook-2\n", "utf-8");
+      await writeFile(join(storyDir, "chapter_summaries.md"), "# Summaries\n\n| 1 | Title 1 |\n", "utf-8");
+      await writeFile(join(chaptersDir, "0001_Title_One.md"), "# Chapter 1\n\nContent 1.", "utf-8");
+      await manager.snapshotState(bookId, 1);
+
+      // Write chapter 2 state + file
+      await writeFile(join(storyDir, "current_state.md"), "# State\n\n- After chapter 2.\n", "utf-8");
+      await writeFile(join(storyDir, "pending_hooks.md"), "# Hooks\n\n- hook-1\n- hook-2\n- hook-3\n", "utf-8");
+      await writeFile(join(storyDir, "chapter_summaries.md"), "# Summaries\n\n| 1 | Title 1 |\n| 2 | Title 2 |\n", "utf-8");
+      await writeFile(join(chaptersDir, "0002_Title_Two.md"), "# Chapter 2\n\nContent 2.", "utf-8");
+      await writeFile(join(runtimeDir, "chapter-002.intent.md"), "intent 2", "utf-8");
+      await manager.snapshotState(bookId, 2);
+
+      // Write chapter 3 state + file
+      await writeFile(join(storyDir, "current_state.md"), "# State\n\n- After chapter 3.\n", "utf-8");
+      await writeFile(join(storyDir, "pending_hooks.md"), "# Hooks\n\n- hook-1\n- hook-2\n- hook-3\n- hook-4\n", "utf-8");
+      await writeFile(join(storyDir, "chapter_summaries.md"), "# Summaries\n\n| 1 | Title 1 |\n| 2 | Title 2 |\n| 3 | Title 3 |\n", "utf-8");
+      await writeFile(join(chaptersDir, "0003_Title_Three.md"), "# Chapter 3\n\nContent 3.", "utf-8");
+      await writeFile(join(runtimeDir, "chapter-003.intent.md"), "intent 3", "utf-8");
+      await manager.snapshotState(bookId, 3);
+
+      // Save index with all 3 chapters
+      const now = "2026-03-31T00:00:00Z";
+      await manager.saveChapterIndex(bookId, [
+        { number: 1, title: "Title One", status: "approved", wordCount: 100, createdAt: now, updatedAt: now, auditIssues: [], lengthWarnings: [] },
+        { number: 2, title: "Title Two", status: "ready-for-review", wordCount: 100, createdAt: now, updatedAt: now, auditIssues: [], lengthWarnings: [] },
+        { number: 3, title: "Title Three", status: "audit-failed", wordCount: 100, createdAt: now, updatedAt: now, auditIssues: ["pacing"], lengthWarnings: [] },
+      ]);
+    }
+
+    it("restores state to the target chapter and removes subsequent chapters", async () => {
+      await setupRollbackBook();
+
+      const discarded = await manager.rollbackToChapter(bookId, 1);
+
+      expect(discarded).toEqual([2, 3]);
+
+      // State should be restored to chapter 1 snapshot
+      const bookDir = manager.bookDir(bookId);
+      const state = await readFile(join(bookDir, "story", "current_state.md"), "utf-8");
+      expect(state).toContain("After chapter 1");
+      expect(state).not.toContain("After chapter 3");
+
+      const hooks = await readFile(join(bookDir, "story", "pending_hooks.md"), "utf-8");
+      expect(hooks).toContain("hook-2");
+      expect(hooks).not.toContain("hook-4");
+
+      // Chapter index should only have chapter 1
+      const index = await manager.loadChapterIndex(bookId);
+      expect(index).toHaveLength(1);
+      expect(index[0]!.number).toBe(1);
+      expect(index[0]!.status).toBe("approved");
+
+      // Chapter files for 2 and 3 should be deleted
+      const chaptersDir = join(bookDir, "chapters");
+      const { readdir: rd } = await import("node:fs/promises");
+      const remaining = (await rd(chaptersDir)).filter((f) => f.endsWith(".md"));
+      expect(remaining).toEqual(["0001_Title_One.md"]);
+
+      // Snapshots for 2 and 3 should be deleted
+      const snapshotsDir = join(bookDir, "story", "snapshots");
+      const snapshots = await rd(snapshotsDir);
+      expect(snapshots.sort()).toEqual(["0", "1"]);
+    });
+
+    it("rolls back to chapter 0 (initial state) when rejecting chapter 1", async () => {
+      await setupRollbackBook();
+
+      const discarded = await manager.rollbackToChapter(bookId, 0);
+
+      expect(discarded).toEqual([1, 2, 3]);
+
+      const bookDir = manager.bookDir(bookId);
+      const state = await readFile(join(bookDir, "story", "current_state.md"), "utf-8");
+      expect(state).toContain("Initial state");
+
+      const index = await manager.loadChapterIndex(bookId);
+      expect(index).toHaveLength(0);
+    });
+
+    it("throws when the target snapshot does not exist", async () => {
+      await setupRollbackBook();
+
+      await expect(manager.rollbackToChapter(bookId, 99)).rejects.toThrow("Cannot restore snapshot");
+    });
+  });
 });

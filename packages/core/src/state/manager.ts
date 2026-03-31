@@ -393,6 +393,102 @@ export class StateManager {
     }
   }
 
+  /**
+   * Roll back state to the snapshot at `targetChapter`, removing all chapters
+   * after it and their associated files (chapter markdown, snapshots, runtime).
+   * Used by review reject to undo a bad chapter and everything that followed.
+   *
+   * Returns the list of chapter numbers that were discarded.
+   */
+  async rollbackToChapter(
+    bookId: string,
+    targetChapter: number,
+  ): Promise<ReadonlyArray<number>> {
+    const restored = await this.restoreState(bookId, targetChapter);
+    if (!restored) {
+      throw new Error(`Cannot restore snapshot for chapter ${targetChapter} in "${bookId}"`);
+    }
+
+    const bookDir = this.bookDir(bookId);
+    const chaptersDir = join(bookDir, "chapters");
+    const index = await this.loadChapterIndex(bookId);
+
+    const kept: ChapterMeta[] = [];
+    const discarded: number[] = [];
+
+    for (const entry of index) {
+      if (entry.number <= targetChapter) {
+        kept.push(entry);
+      } else {
+        discarded.push(entry.number);
+      }
+    }
+
+    // Delete chapter markdown files for discarded chapters
+    try {
+      const files = await readdir(chaptersDir);
+      for (const file of files) {
+        const match = file.match(/^(\d+)_.*\.md$/);
+        if (!match) continue;
+        const num = parseInt(match[1]!, 10);
+        if (num > targetChapter) {
+          await unlink(join(chaptersDir, file)).catch(() => {});
+        }
+      }
+    } catch {
+      // chapters directory missing
+    }
+
+    // Delete snapshots for discarded chapters
+    const snapshotsDir = join(bookDir, "story", "snapshots");
+    try {
+      const snapshots = await readdir(snapshotsDir);
+      for (const snap of snapshots) {
+        const num = parseInt(snap, 10);
+        if (Number.isFinite(num) && num > targetChapter) {
+          await rm(join(snapshotsDir, snap), { recursive: true, force: true });
+        }
+      }
+    } catch {
+      // snapshots directory missing
+    }
+
+    // Delete runtime artifacts for discarded chapters
+    const runtimeDir = join(bookDir, "story", "runtime");
+    try {
+      const runtimeFiles = await readdir(runtimeDir);
+      for (const file of runtimeFiles) {
+        const match = file.match(/^chapter-(\d+)\./);
+        if (!match) continue;
+        const num = parseInt(match[1]!, 10);
+        if (num > targetChapter) {
+          await unlink(join(runtimeDir, file)).catch(() => {});
+        }
+      }
+    } catch {
+      // runtime directory missing
+    }
+
+    // Also check story/drafts/ for discarded chapter files
+    const draftsDir = join(bookDir, "story", "drafts");
+    try {
+      const draftFiles = await readdir(draftsDir);
+      for (const file of draftFiles) {
+        const match = file.match(/^(\d+)_.*\.md$/);
+        if (!match) continue;
+        const num = parseInt(match[1]!, 10);
+        if (num > targetChapter) {
+          await unlink(join(draftsDir, file)).catch(() => {});
+        }
+      }
+    } catch {
+      // drafts directory missing
+    }
+
+    await this.saveChapterIndex(bookId, kept);
+    return discarded;
+  }
+
   private async writeIfMissing(path: string, content: string): Promise<void> {
     try {
       await stat(path);
