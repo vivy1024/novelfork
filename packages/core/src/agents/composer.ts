@@ -12,7 +12,10 @@ import {
   type RuleStack,
 } from "../models/input-governance.js";
 import type { PlanChapterOutput } from "./planner.js";
-import { retrieveMemorySelection } from "../utils/memory-retrieval.js";
+import {
+  parseChapterSummariesMarkdown,
+  retrieveMemorySelection,
+} from "../utils/memory-retrieval.js";
 
 export interface ComposeChapterInput {
   readonly book: BookConfig;
@@ -121,7 +124,18 @@ export class ComposerAgent extends BaseAgent {
         "Anchor the default planning node for this chapter.",
         plan.intent.outlineNode ? [plan.intent.outlineNode] : [],
       ),
+      this.maybeContextSource(
+        storyDir,
+        "parent_canon.md",
+        "Preserve parent canon constraints for governed continuation or fanfic writing.",
+      ),
+      this.maybeContextSource(
+        storyDir,
+        "fanfic_canon.md",
+        "Preserve extracted fanfic canon constraints for governed writing.",
+      ),
     ]);
+    const trailEntries = await this.buildRecentChapterTrailEntries(storyDir, plan.intent.chapter);
 
     const planningAnchor = plan.intent.conflicts.length > 0 ? undefined : plan.intent.outlineNode;
     const memorySelection = await retrieveMemorySelection({
@@ -159,11 +173,57 @@ export class ComposerAgent extends BaseAgent {
 
     return [
       ...entries.filter((entry): entry is NonNullable<typeof entry> => entry !== null),
+      ...trailEntries,
       ...factEntries,
       ...summaryEntries,
       ...volumeSummaryEntries,
       ...hookEntries,
     ];
+  }
+
+  private async buildRecentChapterTrailEntries(
+    storyDir: string,
+    chapterNumber: number,
+  ): Promise<ContextPackage["selectedContext"]> {
+    const content = await this.readFileOrDefault(join(storyDir, "chapter_summaries.md"));
+    if (!content || content === "(文件尚未创建)") {
+      return [];
+    }
+
+    const recentSummaries = parseChapterSummariesMarkdown(content)
+      .filter((summary) => summary.chapter < chapterNumber)
+      .sort((left, right) => right.chapter - left.chapter)
+      .slice(0, 5);
+    if (recentSummaries.length === 0) {
+      return [];
+    }
+
+    const entries: ContextPackage["selectedContext"] = [];
+    const recentTitles = recentSummaries
+      .map((summary) => [summary.chapter, summary.title].filter(Boolean).join(": "))
+      .filter(Boolean)
+      .join(" | ");
+    if (recentTitles) {
+      entries.push({
+        source: "story/chapter_summaries.md#recent_titles",
+        reason: "Keep recent title history visible to avoid repetitive chapter naming.",
+        excerpt: recentTitles,
+      });
+    }
+
+    const moodTrail = recentSummaries
+      .filter((summary) => summary.mood || summary.chapterType)
+      .map((summary) => `${summary.chapter}: ${summary.mood || "(none)"} / ${summary.chapterType || "(none)"}`)
+      .join(" | ");
+    if (moodTrail) {
+      entries.push({
+        source: "story/chapter_summaries.md#recent_mood_type_trail",
+        reason: "Keep recent mood and chapter-type cadence visible before writing the next chapter.",
+        excerpt: moodTrail,
+      });
+    }
+
+    return entries;
   }
 
   private async maybeContextSource(

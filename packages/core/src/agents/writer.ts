@@ -147,7 +147,7 @@ export class WriterAgent extends BaseAgent {
     const targetWords = input.lengthSpec?.target ?? input.wordCountOverride ?? book.chapterWordCount;
     const resolvedLengthSpec = input.lengthSpec ?? buildLengthSpec(targetWords, resolvedLanguage);
     const governedMemoryBlocks = input.contextPackage
-      ? buildGovernedMemoryEvidenceBlocks(input.contextPackage)
+      ? buildGovernedMemoryEvidenceBlocks(input.contextPackage, resolvedLanguage)
       : undefined;
     const englishVarianceBrief = resolvedLanguage === "en"
       ? await buildEnglishVarianceBrief({
@@ -183,6 +183,7 @@ export class WriterAgent extends BaseAgent {
           lengthSpec: resolvedLengthSpec,
           language: book.language ?? genreProfile.language,
           varianceBrief: englishVarianceBrief?.text,
+          selectedEvidenceBlock: this.joinGovernedEvidenceBlocks(governedMemoryBlocks),
         })
       : (() => {
           // Smart context filtering: inject only relevant parts of truth files
@@ -289,13 +290,7 @@ export class WriterAgent extends BaseAgent {
       characterMatrix: filteredMatrixForSettlement,
       volumeOutline,
       selectedEvidenceBlock: governedMemoryBlocks
-        ? [
-            governedMemoryBlocks.hooksBlock,
-            governedMemoryBlocks.summariesBlock,
-            governedMemoryBlocks.volumeSummariesBlock,
-          ]
-          .filter(Boolean)
-          .join("\n")
+        ? this.joinGovernedEvidenceBlocks(governedMemoryBlocks)
         : undefined,
       chapterIntent: input.chapterIntent,
       contextPackage: input.contextPackage,
@@ -708,6 +703,7 @@ ${lengthRequirementBlock}
     readonly lengthSpec: LengthSpec;
     readonly language?: "zh" | "en";
     readonly varianceBrief?: string;
+    readonly selectedEvidenceBlock?: string;
   }): string {
     const contextSections = params.contextPackage.selectedContext
       .map((entry) => [
@@ -734,6 +730,9 @@ ${lengthRequirementBlock}
     const varianceBlock = params.varianceBrief
       ? `\n${params.varianceBrief}\n`
       : "";
+    const selectedEvidenceBlock = params.selectedEvidenceBlock
+      ? `\n${params.selectedEvidenceBlock}\n`
+      : "";
 
     if (params.language === "en") {
       return `Write chapter ${params.chapterNumber}.
@@ -743,6 +742,7 @@ ${params.chapterIntent}
 
 ## Selected Context
 ${contextSections || "(none)"}
+${selectedEvidenceBlock}
 
 ## Rule Stack
 - Hard: ${params.ruleStack.sections.hard.join(", ") || "(none)"}
@@ -768,6 +768,7 @@ ${params.chapterIntent}
 
 ## 已选上下文
 ${contextSections || "(无)"}
+${selectedEvidenceBlock}
 
 ## 规则栈
 - 硬护栏：${params.ruleStack.sections.hard.join("、") || "(无)"}
@@ -784,6 +785,25 @@ ${varianceBlock}
 ${lengthRequirementBlock}
 - 先输出写作自检表，再写正文
 - 只需输出 PRE_WRITE_CHECK、CHAPTER_TITLE、CHAPTER_CONTENT 三个区块`;
+  }
+
+  private joinGovernedEvidenceBlocks(blocks: ReturnType<typeof buildGovernedMemoryEvidenceBlocks> | undefined): string | undefined {
+    if (!blocks) {
+      return undefined;
+    }
+
+    const joined = [
+      blocks.titleHistoryBlock,
+      blocks.moodTrailBlock,
+      blocks.canonBlock,
+      blocks.hooksBlock,
+      blocks.summariesBlock,
+      blocks.volumeSummariesBlock,
+    ]
+      .filter((block): block is string => Boolean(block))
+      .join("\n");
+
+    return joined || undefined;
   }
 
   private buildSettlerGovernedControlBlock(

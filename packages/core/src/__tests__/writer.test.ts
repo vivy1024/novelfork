@@ -764,4 +764,147 @@ describe("WriterAgent", () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+
+  it("renders explicit title history, mood trail, and canon blocks in governed creative prompts", async () => {
+    const root = await mkdtemp(join(tmpdir(), "inkos-writer-governed-evidence-test-"));
+    const bookDir = join(root, "book");
+    const storyDir = join(bookDir, "story");
+    await mkdir(storyDir, { recursive: true });
+
+    await Promise.all([
+      writeFile(join(storyDir, "story_bible.md"), "# Story Bible\n\n- Registry seals still matter.\n", "utf-8"),
+      writeFile(join(storyDir, "volume_outline.md"), "# Volume Outline\n\n## Chapter 4\nPush Mara back toward the archive ledger.\n", "utf-8"),
+      writeFile(join(storyDir, "style_guide.md"), "# Style Guide\n\n- Keep the prose lean.\n", "utf-8"),
+      writeFile(join(storyDir, "current_state.md"), "# Current State\n\n- Mara still hides the ledger fragment.\n", "utf-8"),
+      writeFile(join(storyDir, "pending_hooks.md"), "# Pending Hooks\n\n- ledger-fragment\n", "utf-8"),
+      writeFile(join(storyDir, "chapter_summaries.md"), "# Chapter Summaries\n", "utf-8"),
+    ]);
+
+    const agent = new WriterAgent({
+      client: {
+        provider: "openai",
+        apiFormat: "chat",
+        stream: false,
+        defaults: {
+          temperature: 0.7,
+          maxTokens: 4096,
+          thinkingBudget: 0, maxTokensCap: null,
+          extra: {},
+        },
+      },
+      model: "test-model",
+      projectRoot: root,
+    });
+
+    const chatSpy = vi.spyOn(WriterAgent.prototype as never, "chat" as never)
+      .mockResolvedValueOnce({
+        content: [
+          "=== CHAPTER_TITLE ===",
+          "Archive Pressure",
+          "",
+          "=== CHAPTER_CONTENT ===",
+          "Mara corners Taryn beside the archive ledger.",
+          "",
+          "=== PRE_WRITE_CHECK ===",
+          "- ok",
+        ].join("\n"),
+        usage: ZERO_USAGE,
+      })
+      .mockResolvedValueOnce({
+        content: "=== OBSERVATIONS ===\n- observed",
+        usage: ZERO_USAGE,
+      })
+      .mockResolvedValueOnce({
+        content: [
+          "=== POST_SETTLEMENT ===",
+          "- ledger-fragment advanced",
+          "",
+          "=== UPDATED_STATE ===",
+          "state",
+          "",
+          "=== UPDATED_HOOKS ===",
+          "hooks",
+          "",
+          "=== CHAPTER_SUMMARY ===",
+          "| 4 | Archive Pressure | Mara,Taryn | Pressure rises | Trail narrows | ledger-fragment advanced | tense | confrontation |",
+          "",
+          "=== UPDATED_SUBPLOTS ===",
+          "subplots",
+          "",
+          "=== UPDATED_EMOTIONAL_ARCS ===",
+          "arcs",
+          "",
+          "=== UPDATED_CHARACTER_MATRIX ===",
+          "matrix",
+        ].join("\n"),
+        usage: ZERO_USAGE,
+      });
+
+    try {
+      await agent.writeChapter({
+        book: {
+          id: "writer-book",
+          title: "Writer Book",
+          platform: "other",
+          genre: "other",
+          status: "active",
+          targetChapters: 20,
+          chapterWordCount: 2200,
+          language: "en",
+          createdAt: "2026-03-26T00:00:00.000Z",
+          updatedAt: "2026-03-26T00:00:00.000Z",
+        },
+        bookDir,
+        chapterNumber: 4,
+        chapterIntent: "# Chapter Intent\n\n## Goal\nPush Mara back toward the archive ledger.\n",
+        contextPackage: {
+          chapter: 4,
+          selectedContext: [
+            {
+              source: "story/chapter_summaries.md#recent_titles",
+              reason: "Avoid repeated ledger titles.",
+              excerpt: "1: Ledger in Rain | 2: Ledger at Dusk | 3: Harbor Ledger",
+            },
+            {
+              source: "story/chapter_summaries.md#recent_mood_type_trail",
+              reason: "Track recent emotional and chapter-type cadence.",
+              excerpt: "1: tight / investigation | 2: tight / investigation | 3: tight / investigation",
+            },
+            {
+              source: "story/parent_canon.md",
+              reason: "Preserve parent canon constraints.",
+              excerpt: "The mentor does not learn about the archive fire until volume two.",
+            },
+            {
+              source: "story/fanfic_canon.md",
+              reason: "Preserve extracted fanfic canon constraints.",
+              excerpt: "Mara may diverge from the archive route, but the oath debt logic must stay intact.",
+            },
+          ],
+        },
+        ruleStack: {
+          layers: [{ id: "L4", name: "current_task", precedence: 70, scope: "local" }],
+          sections: {
+            hard: ["current_state"],
+            soft: ["current_focus"],
+            diagnostic: ["continuity_audit"],
+          },
+          overrideEdges: [],
+          activeOverrides: [],
+        },
+        lengthSpec: buildLengthSpec(2200, "en"),
+      });
+
+      const creativePrompt = (chatSpy.mock.calls[0]?.[0] as ReadonlyArray<{ content: string }> | undefined)?.[1]?.content ?? "";
+      expect(creativePrompt).toContain("## Recent Title History");
+      expect(creativePrompt).toContain("Ledger in Rain");
+      expect(creativePrompt).toContain("## Recent Mood / Chapter Type Trail");
+      expect(creativePrompt).toContain("tight / investigation");
+      expect(creativePrompt).toContain("## Canon Evidence");
+      expect(creativePrompt).toContain("archive fire until volume two");
+      expect(creativePrompt).toContain("oath debt logic must stay intact");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });

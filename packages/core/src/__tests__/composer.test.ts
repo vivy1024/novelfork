@@ -391,4 +391,71 @@ describe("ComposerAgent", () => {
     expect(volumeEntry).toBeDefined();
     expect(volumeEntry?.excerpt).toContain("mentor oath");
   });
+
+  it("adds explicit title history, mood trail, and canon evidence for governed writing", async () => {
+    await Promise.all([
+      writeFile(
+        join(storyDir, "chapter_summaries.md"),
+        [
+          "# Chapter Summaries",
+          "",
+          "| chapter | title | characters | events | stateChanges | hookActivity | mood | chapterType |",
+          "| --- | --- | --- | --- | --- | --- | --- | --- |",
+          "| 1 | Ledger in Rain | Lin Yue | First ledger clue appears | None | none | tight | investigation |",
+          "| 2 | Ledger at Dusk | Lin Yue | Second ledger clue appears | None | none | tight | investigation |",
+          "| 3 | Harbor Ledger | Lin Yue | Third ledger clue appears | None | none | tight | investigation |",
+          "",
+        ].join("\n"),
+        "utf-8",
+      ),
+      writeFile(
+        join(storyDir, "parent_canon.md"),
+        "# Parent Canon\n\nThe mentor does not learn about the archive fire until volume two.\n",
+        "utf-8",
+      ),
+      writeFile(
+        join(storyDir, "fanfic_canon.md"),
+        "# Fanfic Canon\n\nMara may diverge from the archive route, but the oath debt logic must stay intact.\n",
+        "utf-8",
+      ),
+    ]);
+
+    const composer = new ComposerAgent({
+      client: {} as ConstructorParameters<typeof ComposerAgent>[0]["client"],
+      model: "test-model",
+      projectRoot: root,
+      bookId: book.id,
+    });
+
+    const result = await composer.composeChapter({
+      book,
+      bookDir,
+      chapterNumber: 4,
+      plan,
+    });
+
+    const selectedSources = result.contextPackage.selectedContext.map((entry) => entry.source);
+    expect(selectedSources).toContain("story/chapter_summaries.md#recent_titles");
+    expect(selectedSources).toContain("story/chapter_summaries.md#recent_mood_type_trail");
+    expect(selectedSources).toContain("story/parent_canon.md");
+    expect(selectedSources).toContain("story/fanfic_canon.md");
+
+    const titleEntry = result.contextPackage.selectedContext.find((entry) =>
+      entry.source === "story/chapter_summaries.md#recent_titles",
+    );
+    const moodEntry = result.contextPackage.selectedContext.find((entry) =>
+      entry.source === "story/chapter_summaries.md#recent_mood_type_trail",
+    );
+    const parentCanonEntry = result.contextPackage.selectedContext.find((entry) =>
+      entry.source === "story/parent_canon.md",
+    );
+    const fanficCanonEntry = result.contextPackage.selectedContext.find((entry) =>
+      entry.source === "story/fanfic_canon.md",
+    );
+
+    expect(titleEntry?.excerpt).toContain("Ledger in Rain");
+    expect(moodEntry?.excerpt).toContain("tight / investigation");
+    expect(parentCanonEntry?.excerpt).toContain("archive fire");
+    expect(fanficCanonEntry?.excerpt).toContain("oath debt logic");
+  });
 });
