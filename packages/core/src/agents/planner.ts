@@ -66,7 +66,7 @@ export class PlannerAgent extends BaseAgent {
     const mustKeep = this.collectMustKeep(currentState, storyBible);
     const mustAvoid = this.collectMustAvoid(currentFocus, parsedRules.rules.prohibitions);
     const styleEmphasis = this.collectStyleEmphasis(authorIntent, currentFocus);
-    const conflicts = this.collectConflicts(input.externalContext, outlineNode, volumeOutline);
+    const conflicts = this.collectConflicts(input.externalContext, currentFocus, outlineNode, volumeOutline);
     const planningAnchor = conflicts.length > 0 ? undefined : outlineNode;
     const memorySelection = await retrieveMemorySelection({
       bookDir: input.bookDir,
@@ -121,10 +121,12 @@ export class PlannerAgent extends BaseAgent {
   ): string {
     const first = this.extractFirstDirective(externalContext);
     if (first) return first;
-    const focus = this.extractFocusGoal(currentFocus);
-    if (focus) return focus;
+    const localOverride = this.extractLocalOverrideGoal(currentFocus);
+    if (localOverride) return localOverride;
     const outline = this.extractFirstDirective(outlineNode);
     if (outline) return outline;
+    const focus = this.extractFocusGoal(currentFocus);
+    if (focus) return focus;
     const author = this.extractFirstDirective(authorIntent);
     if (author) return author;
     return `Advance chapter ${chapterNumber} with clear narrative focus.`;
@@ -169,19 +171,34 @@ export class PlannerAgent extends BaseAgent {
 
   private collectConflicts(
     externalContext: string | undefined,
+    currentFocus: string,
     outlineNode: string | undefined,
     volumeOutline: string,
   ): ChapterConflict[] {
-    if (!externalContext) return [];
     const outlineText = outlineNode ?? volumeOutline;
     if (!outlineText || outlineText === "(文件尚未创建)") return [];
-    const indicatesOverride = /ignore|skip|defer|instead|不要|别|先别|暂停/i.test(externalContext);
-    if (!indicatesOverride && this.hasKeywordOverlap(externalContext, outlineText)) return [];
+    if (externalContext) {
+      const indicatesOverride = /ignore|skip|defer|instead|不要|别|先别|暂停/i.test(externalContext);
+      if (!indicatesOverride && this.hasKeywordOverlap(externalContext, outlineText)) return [];
+
+      return [
+        {
+          type: "outline_vs_request",
+          resolution: "allow local outline deferral",
+        },
+      ];
+    }
+
+    const localOverride = this.extractLocalOverrideGoal(currentFocus);
+    if (!localOverride || !outlineNode) {
+      return [];
+    }
 
     return [
       {
-        type: "outline_vs_request",
-        resolution: "allow local outline deferral",
+        type: "outline_vs_current_focus",
+        resolution: "allow explicit current focus override",
+        detail: localOverride,
       },
     ];
   }
@@ -222,6 +239,29 @@ export class PlannerAgent extends BaseAgent {
       return this.extractFirstDirective(focusSection);
     }
     return directives.join(this.containsChinese(focusSection) ? "；" : "; ");
+  }
+
+  private extractLocalOverrideGoal(currentFocus: string): string | undefined {
+    const overrideSection = this.extractSection(currentFocus, [
+      "local override",
+      "explicit override",
+      "chapter override",
+      "local task override",
+      "局部覆盖",
+      "本章覆盖",
+      "临时覆盖",
+      "当前覆盖",
+    ]);
+    if (!overrideSection) {
+      return undefined;
+    }
+
+    const directives = this.extractListItems(overrideSection, 3);
+    if (directives.length > 0) {
+      return directives.join(this.containsChinese(overrideSection) ? "；" : "; ");
+    }
+
+    return this.extractFirstDirective(overrideSection);
   }
 
   private extractFocusStyleItems(currentFocus: string, limit = 3): string[] {

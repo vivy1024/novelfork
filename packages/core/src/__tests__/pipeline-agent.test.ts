@@ -117,6 +117,39 @@ describe("agent pipeline tools", () => {
       .resolves.toContain("mentor fallout");
   });
 
+  it("keeps update_current_focus usable for explicit local overrides through the tool surface", async () => {
+    await executeAgentTool(pipeline, state, config, "update_current_focus", {
+      bookId,
+      content: [
+        "# Current Focus",
+        "",
+        "## Active Focus",
+        "",
+        "Keep the merchant guild trail visible in the background.",
+        "",
+        "## Local Override",
+        "",
+        "Stay inside the mentor debt confrontation first and delay the guild chase by one chapter.",
+        "",
+      ].join("\n"),
+    });
+
+    const planResult = JSON.parse(await executeAgentTool(
+      pipeline,
+      state,
+      config,
+      "plan_chapter",
+      { bookId },
+    ));
+
+    const runtimePath = join(state.bookDir(bookId), planResult.intentPath);
+    const intentMarkdown = await readFile(runtimePath, "utf-8");
+    expect(intentMarkdown).toContain([
+      "## Goal",
+      "Stay inside the mentor debt confrontation first and delay the guild chase by one chapter.",
+    ].join("\n"));
+  });
+
   it("blocks write_full_pipeline when runtime progress is ahead of the chapter index", async () => {
     const stateDir = join(state.bookDir(bookId), "story", "state");
     await mkdir(stateDir, { recursive: true });

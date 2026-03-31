@@ -77,7 +77,13 @@ describe("PlannerAgent", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it("uses current focus as the chapter goal and writes a chapter intent file", async () => {
+  it("uses current focus as the chapter goal when no outline node is available", async () => {
+    await writeFile(
+      join(storyDir, "volume_outline.md"),
+      "# Volume Outline\n",
+      "utf-8",
+    );
+
     const planner = new PlannerAgent({
       client: {} as ConstructorParameters<typeof PlannerAgent>[0]["client"],
       model: "test-model",
@@ -93,6 +99,158 @@ describe("PlannerAgent", () => {
 
     expect(result.intent.goal).toContain("mentor conflict");
     await expect(readFile(result.runtimePath, "utf-8")).resolves.toContain("mentor conflict");
+  });
+
+  it("prefers a matched outline node over ordinary current focus text", async () => {
+    await Promise.all([
+      writeFile(
+        join(storyDir, "current_focus.md"),
+        [
+          "# Current Focus",
+          "",
+          "## Active Focus",
+          "",
+          "Pull the next chapter back toward the mentor fallout instead of the guild route.",
+          "",
+        ].join("\n"),
+        "utf-8",
+      ),
+      writeFile(
+        join(storyDir, "volume_outline.md"),
+        [
+          "# Volume Outline",
+          "",
+          "## Chapter 3",
+          "Track the merchant guild's escape route through the western canal.",
+          "",
+        ].join("\n"),
+        "utf-8",
+      ),
+    ]);
+
+    const planner = new PlannerAgent({
+      client: {} as ConstructorParameters<typeof PlannerAgent>[0]["client"],
+      model: "test-model",
+      projectRoot: root,
+      bookId: book.id,
+    });
+
+    const result = await planner.planChapter({
+      book,
+      bookDir,
+      chapterNumber: 3,
+    });
+
+    expect(result.intent.outlineNode).toContain("merchant guild's escape route");
+    expect(result.intent.goal).toContain("merchant guild's escape route");
+    expect(result.intent.goal).not.toContain("mentor fallout");
+    expect(result.intent.conflicts).toEqual([]);
+  });
+
+  it("lets explicit local override focus beat the matched outline node", async () => {
+    await Promise.all([
+      writeFile(
+        join(storyDir, "current_focus.md"),
+        [
+          "# Current Focus",
+          "",
+          "## Active Focus",
+          "",
+          "Keep pressure on the guild route in the background.",
+          "",
+          "## Local Override",
+          "",
+          "Stay inside the mentor debt confrontation first and delay the canal pursuit by one chapter.",
+          "",
+        ].join("\n"),
+        "utf-8",
+      ),
+      writeFile(
+        join(storyDir, "volume_outline.md"),
+        [
+          "# Volume Outline",
+          "",
+          "## Chapter 3",
+          "Track the merchant guild's escape route through the western canal.",
+          "",
+        ].join("\n"),
+        "utf-8",
+      ),
+    ]);
+
+    const planner = new PlannerAgent({
+      client: {} as ConstructorParameters<typeof PlannerAgent>[0]["client"],
+      model: "test-model",
+      projectRoot: root,
+      bookId: book.id,
+    });
+
+    const result = await planner.planChapter({
+      book,
+      bookDir,
+      chapterNumber: 3,
+    });
+
+    expect(result.intent.outlineNode).toContain("merchant guild's escape route");
+    expect(result.intent.goal).toContain("mentor debt confrontation");
+    expect(result.intent.goal).not.toContain("merchant guild's escape route");
+    expect(result.intent.conflicts).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "outline_vs_current_focus",
+        resolution: "allow explicit current focus override",
+      }),
+    ]));
+  });
+
+  it("keeps external context above both outline anchors and current focus", async () => {
+    await Promise.all([
+      writeFile(
+        join(storyDir, "current_focus.md"),
+        [
+          "# Current Focus",
+          "",
+          "## Active Focus",
+          "",
+          "Pull the next chapter back toward the mentor fallout instead of the guild route.",
+          "",
+        ].join("\n"),
+        "utf-8",
+      ),
+      writeFile(
+        join(storyDir, "volume_outline.md"),
+        [
+          "# Volume Outline",
+          "",
+          "## Chapter 3",
+          "Track the merchant guild's escape route through the western canal.",
+          "",
+        ].join("\n"),
+        "utf-8",
+      ),
+    ]);
+
+    const planner = new PlannerAgent({
+      client: {} as ConstructorParameters<typeof PlannerAgent>[0]["client"],
+      model: "test-model",
+      projectRoot: root,
+      bookId: book.id,
+    });
+
+    const result = await planner.planChapter({
+      book,
+      bookDir,
+      chapterNumber: 3,
+      externalContext: "Ignore the canal pursuit for now and force the next chapter into the mentor debt confrontation.",
+    });
+
+    expect(result.intent.goal).toContain("mentor debt confrontation");
+    expect(result.intent.goal).not.toContain("merchant guild's escape route");
+    expect(result.intent.conflicts).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "outline_vs_request",
+        resolution: "allow local outline deferral",
+      }),
+    ]));
   });
 
   it("ignores the default current_focus placeholder and falls back to author intent when no chapter outline is available", async () => {
@@ -756,6 +914,11 @@ describe("PlannerAgent", () => {
         ].join("\n"),
         "utf-8",
       ),
+      writeFile(
+        join(storyDir, "volume_outline.md"),
+        "# Volume Outline\n",
+        "utf-8",
+      ),
     ]);
 
     const planner = new PlannerAgent({
@@ -768,7 +931,7 @@ describe("PlannerAgent", () => {
     const result = await planner.planChapter({
       book,
       bookDir,
-      chapterNumber: 3,
+      chapterNumber: 2,
     });
 
     expect(result.intent.goal).toContain("private confrontation");
