@@ -242,7 +242,61 @@ describe("PlannerAgent", () => {
     expect(result.intent.goal).not.toBe("**");
   });
 
-  it("uses Chinese chapter-range outline nodes when the chapter falls inside the range", async () => {
+  it("does not confuse Chapter 1 with Chapter 10 when matching exact English chapter labels", async () => {
+    book = {
+      ...book,
+      genre: "other",
+      language: "en",
+    };
+
+    await Promise.all([
+      writeFile(
+        join(storyDir, "current_focus.md"),
+        [
+          "# Current Focus",
+          "",
+          "## Active Focus",
+          "",
+          "(Describe what the next 1-3 chapters should prioritize.)",
+          "",
+        ].join("\n"),
+        "utf-8",
+      ),
+      writeFile(
+        join(storyDir, "volume_outline.md"),
+        [
+          "# Volume Outline",
+          "",
+          "### Chapter 10",
+          "This late-volume node should not be selected for chapter one.",
+          "",
+          "### Chapter 1",
+          "Open with the dead examiner and the sealed folio dispute.",
+          "",
+        ].join("\n"),
+        "utf-8",
+      ),
+    ]);
+
+    const planner = new PlannerAgent({
+      client: {} as ConstructorParameters<typeof PlannerAgent>[0]["client"],
+      model: "test-model",
+      projectRoot: root,
+      bookId: book.id,
+    });
+
+    const result = await planner.planChapter({
+      book,
+      bookDir,
+      chapterNumber: 1,
+    });
+
+    expect(result.intent.outlineNode).toContain("dead examiner");
+    expect(result.intent.outlineNode).not.toContain("late-volume");
+    expect(result.intent.goal).toContain("dead examiner");
+  });
+
+  it("uses inline Chinese exact chapter labels with a title suffix", async () => {
     await Promise.all([
       writeFile(
         join(storyDir, "author_intent.md"),
@@ -266,10 +320,59 @@ describe("PlannerAgent", () => {
         [
           "# Volume Outline",
           "",
-          "## 第1-6章",
+          "第 7 章：在码头接头并截住逃跑账房。",
+          "",
+        ].join("\n"),
+        "utf-8",
+      ),
+    ]);
+
+    const planner = new PlannerAgent({
+      client: {} as ConstructorParameters<typeof PlannerAgent>[0]["client"],
+      model: "test-model",
+      projectRoot: root,
+      bookId: book.id,
+    });
+
+    const result = await planner.planChapter({
+      book,
+      bookDir,
+      chapterNumber: 7,
+    });
+
+    expect(result.intent.outlineNode).toContain("在码头接头");
+    expect(result.intent.goal).toContain("在码头接头");
+    expect(result.intent.goal).not.toContain("Describe the long-horizon vision");
+  });
+
+  it("uses standalone Chinese chapter-range labels when the chapter falls inside the range", async () => {
+    await Promise.all([
+      writeFile(
+        join(storyDir, "author_intent.md"),
+        "# Author Intent\n\n(Describe the long-horizon vision for this book here.)\n",
+        "utf-8",
+      ),
+      writeFile(
+        join(storyDir, "current_focus.md"),
+        [
+          "# Current Focus",
+          "",
+          "## Active Focus",
+          "",
+          "(Describe what the next 1-3 chapters should prioritize.)",
+          "",
+        ].join("\n"),
+        "utf-8",
+      ),
+      writeFile(
+        join(storyDir, "volume_outline.md"),
+        [
+          "# Volume Outline",
+          "",
+          "第1-6章",
           "Stay with the early city setup and mentor fallout.",
           "",
-          "## 第7-20章",
+          "第7-20章",
           "Track the merchant guild's escape route through the western canal.",
           "",
         ].join("\n"),
@@ -295,7 +398,7 @@ describe("PlannerAgent", () => {
     expect(result.intent.goal).not.toContain("Describe the long-horizon vision");
   });
 
-  it("uses English chapter-range outline nodes when the chapter falls inside the range", async () => {
+  it("uses standalone English chapter-range labels at the start of the range", async () => {
     book = {
       ...book,
       genre: "other",
@@ -325,10 +428,10 @@ describe("PlannerAgent", () => {
         [
           "# Volume Outline",
           "",
-          "### Chapter 1-3",
+          "Chapter 1-3",
           "Keep the opening pressure on the first examiner.",
           "",
-          "### Chapter 4-6",
+          "Chapter 4-6",
           "Recover the sealed ledger before dawn.",
           "",
         ].join("\n"),
@@ -346,15 +449,22 @@ describe("PlannerAgent", () => {
     const result = await planner.planChapter({
       book,
       bookDir,
-      chapterNumber: 5,
+      chapterNumber: 4,
     });
 
     expect(result.intent.outlineNode).toContain("sealed ledger");
     expect(result.intent.goal).toContain("sealed ledger");
+    expect(result.intent.outlineNode).not.toContain("6");
     expect(result.intent.goal).not.toContain("Describe the long-horizon vision");
   });
 
-  it("falls back to the first outline directive when no range matches", async () => {
+  it("uses the next paragraph for bold standalone English chapter-range labels instead of bleeding into the next range", async () => {
+    book = {
+      ...book,
+      genre: "other",
+      language: "en",
+    };
+
     await Promise.all([
       writeFile(
         join(storyDir, "author_intent.md"),
@@ -378,10 +488,66 @@ describe("PlannerAgent", () => {
         [
           "# Volume Outline",
           "",
-          "## 第1-6章",
+          "**Chapter 1-3:**",
+          "Keep the opening pressure on the first examiner.",
+          "",
+          "**Chapter 4-6:**",
+          "Recover the sealed ledger before dawn.",
+          "",
+          "**Chapter 7-9:**",
+          "Trigger the registry fire and expose the false witness.",
+          "",
+        ].join("\n"),
+        "utf-8",
+      ),
+    ]);
+
+    const planner = new PlannerAgent({
+      client: {} as ConstructorParameters<typeof PlannerAgent>[0]["client"],
+      model: "test-model",
+      projectRoot: root,
+      bookId: book.id,
+    });
+
+    const result = await planner.planChapter({
+      book,
+      bookDir,
+      chapterNumber: 4,
+    });
+
+    expect(result.intent.outlineNode).toContain("sealed ledger");
+    expect(result.intent.outlineNode).not.toContain("registry fire");
+    expect(result.intent.goal).toContain("sealed ledger");
+  });
+
+  it("falls back to the first outline directive when no standalone range matches", async () => {
+    await Promise.all([
+      writeFile(
+        join(storyDir, "author_intent.md"),
+        "# Author Intent\n\n(Describe the long-horizon vision for this book here.)\n",
+        "utf-8",
+      ),
+      writeFile(
+        join(storyDir, "current_focus.md"),
+        [
+          "# Current Focus",
+          "",
+          "## Active Focus",
+          "",
+          "(Describe what the next 1-3 chapters should prioritize.)",
+          "",
+        ].join("\n"),
+        "utf-8",
+      ),
+      writeFile(
+        join(storyDir, "volume_outline.md"),
+        [
+          "# Volume Outline",
+          "",
+          "第1-6章",
           "Stay with the early city setup and mentor fallout.",
           "",
-          "## 第7-20章",
+          "第7-20章",
           "Track the merchant guild's escape route through the western canal.",
           "",
         ].join("\n"),
@@ -404,6 +570,7 @@ describe("PlannerAgent", () => {
 
     expect(result.intent.outlineNode).toContain("Stay with the early city setup");
     expect(result.intent.goal).toContain("Stay with the early city setup");
+    expect(result.intent.outlineNode).not.toBe("第1-6章");
     expect(result.intent.goal).not.toContain("merchant guild's escape route");
   });
 
