@@ -654,12 +654,21 @@ prohibitions:
   }
 
   private parseSections(content: string): ArchitectOutput {
+    const parsedSections = new Map<string, string>();
+    const sectionPattern = /^\s*===\s*SECTION\s*[：:]\s*([^\n=]+?)\s*===\s*$/gim;
+    const matches = [...content.matchAll(sectionPattern)];
+
+    for (let i = 0; i < matches.length; i++) {
+      const match = matches[i]!;
+      const rawName = match[1] ?? "";
+      const start = (match.index ?? 0) + match[0].length;
+      const end = matches[i + 1]?.index ?? content.length;
+      const normalizedName = this.normalizeSectionName(rawName);
+      parsedSections.set(normalizedName, content.slice(start, end).trim());
+    }
+
     const extract = (name: string): string => {
-      const regex = new RegExp(
-        `=== SECTION: ${name} ===\\s*([\\s\\S]*?)(?==== SECTION:|$)`,
-      );
-      const match = content.match(regex);
-      const section = match?.[1]?.trim();
+      const section = parsedSections.get(this.normalizeSectionName(name));
       if (!section) {
         throw new Error(`Architect output missing required section: ${name}`);
       }
@@ -676,6 +685,15 @@ prohibitions:
       currentState: extract("current_state"),
       pendingHooks: extract("pending_hooks"),
     };
+  }
+
+  private normalizeSectionName(name: string): string {
+    return name
+      .normalize("NFKC")
+      .toLowerCase()
+      .replace(/[`"'*_]/g, " ")
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "");
   }
 
   private stripTrailingAssistantCoda(section: string): string {
