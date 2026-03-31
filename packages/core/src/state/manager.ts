@@ -485,6 +485,14 @@ export class StateManager {
       // drafts directory missing
     }
 
+    // Drop any persisted sqlite acceleration index so discarded chapters
+    // cannot leak back into retrieval after the markdown/state rollback.
+    await Promise.all([
+      rm(join(bookDir, "story", "memory.db"), { force: true }),
+      rm(join(bookDir, "story", "memory.db-shm"), { force: true }),
+      rm(join(bookDir, "story", "memory.db-wal"), { force: true }),
+    ]);
+
     await this.saveChapterIndex(bookId, kept);
     return discarded;
   }

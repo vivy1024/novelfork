@@ -129,10 +129,6 @@ reviewCommand
       };
       await state.saveChapterIndex(bookId, index);
 
-      // Ensure a snapshot exists at the approved chapter so reject can
-      // roll back to this committed state later.
-      await state.snapshotState(bookId, chapterNum);
-
       if (opts.json) {
         log(JSON.stringify({ bookId, chapter: chapterNum, status: "approved" }));
       } else {

@@ -620,6 +620,75 @@ describe("CLI integration", () => {
     });
   });
 
+  describe("inkos review", () => {
+    it("preserves the original chapter snapshot when approving review", async () => {
+      const configPath = join(projectDir, "inkos.json");
+      const initialized = await stat(configPath).then(() => true).catch(() => false);
+      if (!initialized) run(["init"]);
+
+      const state = new StateManager(projectDir);
+      const bookId = "review-approve-cli";
+      const bookDir = join(projectDir, "books", bookId);
+      const storyDir = join(bookDir, "story");
+      const chaptersDir = join(bookDir, "chapters");
+      await mkdir(chaptersDir, { recursive: true });
+      await mkdir(storyDir, { recursive: true });
+
+      await writeFile(
+        join(bookDir, "book.json"),
+        JSON.stringify({
+          id: bookId,
+          title: "Review Approve CLI",
+          platform: "other",
+          genre: "other",
+          status: "active",
+          targetChapters: 10,
+          chapterWordCount: 2200,
+          createdAt: "2026-03-22T00:00:00.000Z",
+          updatedAt: "2026-03-22T00:00:00.000Z",
+        }, null, 2),
+        "utf-8",
+      );
+      await writeFile(join(storyDir, "current_state.md"), "State at ch1", "utf-8");
+      await writeFile(join(storyDir, "pending_hooks.md"), "Hooks at ch1", "utf-8");
+      await writeFile(join(chaptersDir, "0001_ch1.md"), "# Chapter 1\n\nContent 1", "utf-8");
+      await writeFile(
+        join(chaptersDir, "index.json"),
+        JSON.stringify([
+          {
+            number: 1,
+            title: "Ch1",
+            status: "ready-for-review",
+            wordCount: 100,
+            createdAt: "",
+            updatedAt: "",
+            auditIssues: [],
+            lengthWarnings: [],
+          },
+        ], null, 2),
+        "utf-8",
+      );
+
+      await state.snapshotState(bookId, 1);
+
+      await writeFile(join(storyDir, "current_state.md"), "State at ch3", "utf-8");
+      await writeFile(join(storyDir, "pending_hooks.md"), "Hooks at ch3", "utf-8");
+
+      const output = run(["review", "approve", bookId, "1"]);
+      expect(output).toContain("Chapter 1 approved");
+
+      await expect(
+        readFile(join(storyDir, "snapshots", "1", "current_state.md"), "utf-8"),
+      ).resolves.toBe("State at ch1");
+      await expect(
+        readFile(join(storyDir, "snapshots", "1", "pending_hooks.md"), "utf-8"),
+      ).resolves.toBe("Hooks at ch1");
+
+      const index = await state.loadChapterIndex(bookId);
+      expect(index[0]?.status).toBe("approved");
+    });
+  });
+
   describe("inkos plan/compose", () => {
     beforeAll(async () => {
       const configPath = join(projectDir, "inkos.json");

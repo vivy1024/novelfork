@@ -1084,5 +1084,22 @@ describe("StateManager", () => {
 
       await expect(manager.rollbackToChapter(bookId, 99)).rejects.toThrow("Cannot restore snapshot");
     });
+
+    it("removes sqlite memory files when rolling back", async () => {
+      await setupRollbackBook();
+
+      const storyDir = join(manager.bookDir(bookId), "story");
+      await Promise.all([
+        writeFile(join(storyDir, "memory.db"), "stale db", "utf-8"),
+        writeFile(join(storyDir, "memory.db-shm"), "stale shm", "utf-8"),
+        writeFile(join(storyDir, "memory.db-wal"), "stale wal", "utf-8"),
+      ]);
+
+      await manager.rollbackToChapter(bookId, 1);
+
+      await expect(stat(join(storyDir, "memory.db"))).rejects.toThrow();
+      await expect(stat(join(storyDir, "memory.db-shm"))).rejects.toThrow();
+      await expect(stat(join(storyDir, "memory.db-wal"))).rejects.toThrow();
+    });
   });
 });
