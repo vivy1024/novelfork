@@ -34,6 +34,13 @@ import { loadNarrativeMemorySeed, loadSnapshotCurrentStateFacts } from "../state
 import { rewriteStructuredStateFromMarkdown } from "../state/state-bootstrap.js";
 import { readFile, readdir, writeFile, mkdir, rename, rm, stat } from "node:fs/promises";
 import { join, relative } from "node:path";
+import {
+  buildStateDegradedPersistenceOutput,
+  buildStateDegradedReviewNote,
+  parseStateDegradedReviewNote,
+  resolveStateDegradedBaseStatus,
+  retrySettlementAfterValidationFailure,
+} from "./chapter-state-recovery.js";
 
 export interface PipelineConfig {
   readonly client: LLMClient;
@@ -1297,7 +1304,7 @@ export class PipelineRunner {
       }
     }
     if (!validation.passed) {
-      const recovery = await this.retrySettlementAfterValidationFailure({
+      const recovery = await retrySettlementAfterValidationFailure({
         writer,
         validator,
         book,
@@ -1310,6 +1317,8 @@ export class PipelineRunner {
         oldHooks,
         originalValidation: validation,
         language: pipelineLang,
+        logWarn: (message) => this.logWarn(pipelineLang, message),
+        logger: this.config.logger,
       });
 
       if (recovery.kind === "recovered") {
@@ -1318,7 +1327,7 @@ export class PipelineRunner {
       } else {
         chapterStatus = "state-degraded";
         degradedIssues = recovery.issues;
-        persistenceOutput = this.buildStateDegradedPersistenceOutput({
+        persistenceOutput = buildStateDegradedPersistenceOutput({
           output: persistenceOutput,
           oldState,
           oldHooks,
@@ -1388,7 +1397,7 @@ export class PipelineRunner {
       ),
       lengthWarnings,
       reviewNote: chapterStatus === "state-degraded"
-        ? this.buildStateDegradedReviewNote(
+        ? buildStateDegradedReviewNote(
             auditResult.passed ? "ready-for-review" : "audit-failed",
             degradedIssues,
           )
@@ -1514,7 +1523,7 @@ export class PipelineRunner {
     );
 
     if (!validation.passed) {
-      const recovery = await this.retrySettlementAfterValidationFailure({
+      const recovery = await retrySettlementAfterValidationFailure({
         writer,
         validator,
         book,
@@ -1526,6 +1535,8 @@ export class PipelineRunner {
         oldHooks,
         originalValidation: validation,
         language: pipelineLang,
+        logWarn: (message) => this.logWarn(pipelineLang, message),
+        logger: this.config.logger,
       });
       if (recovery.kind !== "recovered") {
         throw new Error(
@@ -1548,8 +1559,8 @@ export class PipelineRunner {
     await this.state.snapshotState(bookId, targetChapter);
     await this.syncCurrentStateFactHistory(bookId, targetChapter);
 
-    const baseStatus = this.resolveStateDegradedBaseStatus(targetMeta);
-    const degradedMetadata = this.parseStateDegradedReviewNote(targetMeta.reviewNote);
+    const baseStatus = resolveStateDegradedBaseStatus(targetMeta);
+    const degradedMetadata = parseStateDegradedReviewNote(targetMeta.reviewNote);
     const injectedIssues = new Set(degradedMetadata?.injectedIssues ?? []);
     index[targetIndex] = {
       ...targetMeta,
@@ -2029,215 +2040,6 @@ ${matrix}`,
     throw new Error(
       `Latest chapter ${latestChapter.number} is state-degraded. Repair state or rewrite that chapter before continuing.`,
     );
-  }
-
-  private async retrySettlementAfterValidationFailure(params: {
-    readonly writer: WriterAgent;
-    readonly validator: StateValidatorAgent;
-    readonly book: BookConfig;
-    readonly bookDir: string;
-    readonly chapterNumber: number;
-    readonly title: string;
-    readonly content: string;
-    readonly reducedControlInput?: {
-      chapterIntent: string;
-      contextPackage: ContextPackage;
-      ruleStack: RuleStack;
-    };
-    readonly oldState: string;
-    readonly oldHooks: string;
-    readonly originalValidation: ValidationResult;
-    readonly language: LengthLanguage;
-  }): Promise<
-    | {
-      readonly kind: "recovered";
-      readonly output: WriteChapterOutput;
-      readonly validation: ValidationResult;
-    }
-    | {
-      readonly kind: "degraded";
-      readonly issues: ReadonlyArray<AuditIssue>;
-    }
-  > {
-    this.logWarn(params.language, {
-      zh: `状态校验失败，正在仅重试结算层（第${params.chapterNumber}章）`,
-      en: `State validation failed; retrying settlement only for chapter ${params.chapterNumber}`,
-    });
-
-    const retryOutput = await params.writer.settleChapterState({
-      book: params.book,
-      bookDir: params.bookDir,
-      chapterNumber: params.chapterNumber,
-      title: params.title,
-      content: params.content,
-      chapterIntent: params.reducedControlInput?.chapterIntent,
-      contextPackage: params.reducedControlInput?.contextPackage,
-      ruleStack: params.reducedControlInput?.ruleStack,
-      validationFeedback: this.buildStateValidationFeedback(
-        params.originalValidation.warnings,
-        params.language,
-      ),
-    });
-
-    let retryValidation: ValidationResult;
-    try {
-      retryValidation = await params.validator.validate(
-        params.content,
-        params.chapterNumber,
-        params.oldState,
-        retryOutput.updatedState,
-        params.oldHooks,
-        retryOutput.updatedHooks,
-        params.language,
-      );
-    } catch (error) {
-      throw new Error(`State validation retry failed for chapter ${params.chapterNumber}: ${String(error)}`);
-    }
-
-    if (retryValidation.warnings.length > 0) {
-      this.logWarn(params.language, {
-        zh: `状态校验重试后，第${params.chapterNumber}章仍有 ${retryValidation.warnings.length} 条警告`,
-        en: `State validation retry still reports ${retryValidation.warnings.length} warning(s) for chapter ${params.chapterNumber}`,
-      });
-      for (const warning of retryValidation.warnings) {
-        this.config.logger?.warn(`  [${warning.category}] ${warning.description}`);
-      }
-    }
-
-    if (retryValidation.passed) {
-      return {
-        kind: "recovered",
-        output: retryOutput,
-        validation: retryValidation,
-      };
-    }
-
-    return {
-      kind: "degraded",
-      issues: this.buildStateDegradedIssues(retryValidation.warnings, params.language),
-    };
-  }
-
-  private buildStateValidationFeedback(
-    warnings: ReadonlyArray<ValidationWarning>,
-    language: LengthLanguage,
-  ): string {
-    if (warnings.length === 0) {
-      return language === "en"
-        ? "The previous settlement contradicted the chapter text. Reconcile truth files strictly to the body."
-        : "上一次状态结算与正文矛盾。请严格以正文为准修正 truth files。";
-    }
-
-    if (language === "en") {
-      return [
-        "The previous settlement failed validation. Fix these contradictions against the chapter body:",
-        ...warnings.map((warning) => `- [${warning.category}] ${warning.description}`),
-      ].join("\n");
-    }
-
-    return [
-      "上一次状态结算未通过校验。请对照正文修正以下矛盾：",
-      ...warnings.map((warning) => `- [${warning.category}] ${warning.description}`),
-    ].join("\n");
-  }
-
-  private buildStateDegradedIssues(
-    warnings: ReadonlyArray<ValidationWarning>,
-    language: LengthLanguage,
-  ): ReadonlyArray<AuditIssue> {
-    if (warnings.length > 0) {
-      return warnings.map((warning) => ({
-        severity: "warning" as const,
-        category: "state-validation",
-        description: warning.description,
-        suggestion: language === "en"
-          ? "Repair chapter state from the persisted body before continuing."
-          : "请先基于已保存正文修复本章 state，再继续后续章节。",
-      }));
-    }
-
-    return [{
-      severity: "warning",
-      category: "state-validation",
-      description: language === "en"
-        ? "State validation still failed after settlement retry."
-        : "状态结算重试后仍未通过校验。",
-      suggestion: language === "en"
-        ? "Repair chapter state from the persisted body before continuing."
-        : "请先基于已保存正文修复本章 state，再继续后续章节。",
-    }];
-  }
-
-  private buildStateDegradedPersistenceOutput(params: {
-    readonly output: WriteChapterOutput;
-    readonly oldState: string;
-    readonly oldHooks: string;
-    readonly oldLedger: string;
-  }): WriteChapterOutput {
-    return {
-      ...params.output,
-      runtimeStateDelta: undefined,
-      runtimeStateSnapshot: undefined,
-      updatedState: params.oldState,
-      updatedLedger: params.oldLedger,
-      updatedHooks: params.oldHooks,
-      updatedChapterSummaries: undefined,
-    };
-  }
-
-  private buildStateDegradedReviewNote(
-    baseStatus: "ready-for-review" | "audit-failed",
-    issues: ReadonlyArray<AuditIssue>,
-  ): string {
-    return JSON.stringify({
-      kind: "state-degraded",
-      baseStatus,
-      injectedIssues: issues.map((issue) => `[${issue.severity}] ${issue.description}`),
-    });
-  }
-
-  private parseStateDegradedReviewNote(reviewNote?: string): {
-    readonly kind: "state-degraded";
-    readonly baseStatus: "ready-for-review" | "audit-failed";
-    readonly injectedIssues: ReadonlyArray<string>;
-  } | null {
-    if (!reviewNote) {
-      return null;
-    }
-
-    try {
-      const parsed = JSON.parse(reviewNote) as {
-        kind?: unknown;
-        baseStatus?: unknown;
-        injectedIssues?: unknown;
-      };
-      if (
-        parsed.kind !== "state-degraded"
-        || (parsed.baseStatus !== "ready-for-review" && parsed.baseStatus !== "audit-failed")
-        || !Array.isArray(parsed.injectedIssues)
-      ) {
-        return null;
-      }
-
-      return {
-        kind: "state-degraded",
-        baseStatus: parsed.baseStatus,
-        injectedIssues: parsed.injectedIssues.filter((issue): issue is string => typeof issue === "string"),
-      };
-    } catch {
-      return null;
-    }
-  }
-
-  private resolveStateDegradedBaseStatus(chapter: ChapterMeta): "ready-for-review" | "audit-failed" {
-    const metadata = this.parseStateDegradedReviewNote(chapter.reviewNote);
-    if (metadata) {
-      return metadata.baseStatus;
-    }
-
-    return chapter.auditIssues.some((issue) => issue.startsWith("[critical]"))
-      ? "audit-failed"
-      : "ready-for-review";
   }
 
   // ---------------------------------------------------------------------------
