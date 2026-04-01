@@ -120,6 +120,11 @@ export class ComposerAgent extends BaseAgent {
       this.maybeContextSource(storyDir, "current_focus.md", "Current task focus for this chapter."),
       this.maybeContextSource(
         storyDir,
+        "audit_drift.md",
+        "Carry forward audit drift guidance from the previous chapter without polluting hard state facts.",
+      ),
+      this.maybeContextSource(
+        storyDir,
         "current_state.md",
         "Preserve hard state facts referenced by mustKeep.",
         plan.intent.mustKeep,

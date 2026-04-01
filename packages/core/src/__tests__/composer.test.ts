@@ -460,6 +460,40 @@ describe("ComposerAgent", () => {
     expect(fanficCanonEntry?.excerpt).toContain("oath debt logic");
   });
 
+  it("includes dedicated audit drift guidance instead of relying on current_state pollution", async () => {
+    await writeFile(
+      join(storyDir, "audit_drift.md"),
+      [
+        "# Audit Drift",
+        "",
+        "## 审计纠偏（自动生成，下一章写作前参照）",
+        "",
+        "> - [warning] 节奏单调: 最近4章章节类型持续停留在“调查章”。",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const composer = new ComposerAgent({
+      client: {} as ConstructorParameters<typeof ComposerAgent>[0]["client"],
+      model: "test-model",
+      projectRoot: root,
+      bookId: book.id,
+    });
+
+    const result = await composer.composeChapter({
+      book,
+      bookDir,
+      chapterNumber: 4,
+      plan,
+    });
+
+    const driftEntry = result.contextPackage.selectedContext.find((entry) =>
+      entry.source === "story/audit_drift.md",
+    );
+    expect(driftEntry).toBeDefined();
+    expect(driftEntry?.excerpt).toContain("节奏单调");
+  });
+
   it("emits hook debt briefs for agenda-targeted hooks", async () => {
     await Promise.all([
       writeFile(

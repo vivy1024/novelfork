@@ -641,6 +641,15 @@ export class PipelineRunner {
         : ch,
     );
     await this.state.saveChapterIndex(bookId, updated);
+    const latestChapter = index.length > 0 ? Math.max(...index.map((chapter) => chapter.number)) : targetChapter;
+    if (targetChapter === latestChapter) {
+      await this.persistAuditDriftGuidance({
+        bookDir,
+        chapterNumber: targetChapter,
+        issues: result.issues.filter((issue) => issue.severity === "critical" || issue.severity === "warning"),
+        language,
+      }).catch(() => undefined);
+    }
 
     await this.emitWebhook(
       result.passed ? "audit-passed" : "audit-failed",
@@ -877,6 +886,17 @@ export class PipelineRunner {
           : ch,
       );
       await this.state.saveChapterIndex(bookId, updatedIndex);
+      const latestChapter = index.length > 0 ? Math.max(...index.map((chapter) => chapter.number)) : targetChapter;
+      if (targetChapter === latestChapter) {
+        await this.persistAuditDriftGuidance({
+          bookDir,
+          chapterNumber: targetChapter,
+          issues: effectivePostRevision.auditResult.issues.filter(
+            (issue) => issue.severity === "critical" || issue.severity === "warning",
+          ),
+          language,
+        }).catch(() => undefined);
+      }
 
       // Re-snapshot
       this.logStage(stageLanguage, {
@@ -1379,43 +1399,16 @@ export class PipelineRunner {
     await this.state.saveChapterIndex(bookId, [...existingIndex, newEntry]);
     await this.markBookActiveIfNeeded(bookId);
 
-    // 5.5 Audit drift correction — feed audit findings back into state
-    // This prevents the writer from repeating mistakes in the next chapter
+    // 5.5 Persist audit drift guidance without polluting current_state.md
     const driftIssues = auditResult.issues.filter(
       (i) => i.severity === "critical" || i.severity === "warning",
     );
-    if (chapterStatus !== "state-degraded" && driftIssues.length > 0) {
-      const storyDir = join(bookDir, "story");
-      try {
-        const statePath = join(storyDir, "current_state.md");
-        const currentState = await readFile(statePath, "utf-8").catch(() => "");
-
-        // Append drift correction section (or replace existing one)
-        const correctionHeader = this.localize(stageLanguage, {
-          zh: "## 审计纠偏（自动生成，下一章写作前参照）",
-          en: "## Audit Drift Correction",
-        });
-        const correctionBlock = [
-          correctionHeader,
-          this.localize(stageLanguage, {
-            zh: `> 第${chapterNumber}章审计发现以下问题，下一章写作时必须避免：`,
-            en: `> Chapter ${chapterNumber} audit found the following issues to avoid in the next chapter:`,
-          }),
-          ...driftIssues.map((i) => `> - [${i.severity}] ${i.category}: ${i.description}`),
-          "",
-        ].join("\n");
-
-        // Replace existing correction block or append
-        const existingCorrectionIdx = currentState.indexOf(correctionHeader);
-        const updatedState = existingCorrectionIdx >= 0
-          ? currentState.slice(0, existingCorrectionIdx) + correctionBlock
-          : currentState + "\n\n" + correctionBlock;
-
-        await writeFile(statePath, updatedState, "utf-8");
-      } catch {
-        // Non-critical — don't block pipeline if drift correction fails
-      }
-    }
+    await this.persistAuditDriftGuidance({
+      bookDir,
+      chapterNumber,
+      issues: chapterStatus === "state-degraded" ? [] : driftIssues,
+      language: stageLanguage,
+    }).catch(() => undefined);
 
     // 5.6 Snapshot state for rollback support
     if (chapterStatus !== "state-degraded") {
@@ -2710,6 +2703,72 @@ ${matrix}`,
       normalizeApplied: params.normalizeApplied,
       lengthWarning: params.lengthWarning,
     };
+  }
+
+  private async persistAuditDriftGuidance(params: {
+    readonly bookDir: string;
+    readonly chapterNumber: number;
+    readonly issues: ReadonlyArray<AuditIssue>;
+    readonly language: LengthLanguage;
+  }): Promise<void> {
+    const storyDir = join(params.bookDir, "story");
+    const driftPath = join(storyDir, "audit_drift.md");
+    const statePath = join(storyDir, "current_state.md");
+    const currentState = await readFile(statePath, "utf-8").catch(() => "");
+    const sanitizedState = this.stripAuditDriftCorrectionBlock(currentState).trimEnd();
+
+    if (sanitizedState !== currentState) {
+      await writeFile(statePath, sanitizedState, "utf-8");
+    }
+
+    if (params.issues.length === 0) {
+      await rm(driftPath, { force: true }).catch(() => undefined);
+      return;
+    }
+
+    const block = [
+      this.localize(params.language, {
+        zh: "# 审计纠偏",
+        en: "# Audit Drift",
+      }),
+      "",
+      this.localize(params.language, {
+        zh: "## 审计纠偏（自动生成，下一章写作前参照）",
+        en: "## Audit Drift Correction",
+      }),
+      "",
+      this.localize(params.language, {
+        zh: `> 第${params.chapterNumber}章审计发现以下问题，下一章写作时必须避免：`,
+        en: `> Chapter ${params.chapterNumber} audit found the following issues to avoid in the next chapter:`,
+      }),
+      ...params.issues.map((issue) => `> - [${issue.severity}] ${issue.category}: ${issue.description}`),
+      "",
+    ].join("\n");
+
+    await writeFile(driftPath, block, "utf-8");
+  }
+
+  private stripAuditDriftCorrectionBlock(currentState: string): string {
+    const headers = [
+      "## 审计纠偏（自动生成，下一章写作前参照）",
+      "## Audit Drift Correction",
+      "# 审计纠偏",
+      "# Audit Drift",
+    ];
+
+    let cutIndex = -1;
+    for (const header of headers) {
+      const index = currentState.indexOf(header);
+      if (index >= 0 && (cutIndex < 0 || index < cutIndex)) {
+        cutIndex = index;
+      }
+    }
+
+    if (cutIndex < 0) {
+      return currentState;
+    }
+
+    return currentState.slice(0, cutIndex).trimEnd();
   }
 
   private logLengthWarnings(lengthWarnings: ReadonlyArray<string>): void {
