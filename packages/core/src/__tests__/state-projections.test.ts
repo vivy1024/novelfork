@@ -33,10 +33,10 @@ describe("state projections", () => {
     expect(markdown).toBe([
       "# Pending Hooks",
       "",
-      "| hook_id | start_chapter | type | status | last_advanced_chapter | expected_payoff | notes |",
-      "| --- | --- | --- | --- | --- | --- | --- |",
-      "| a-debt | 4 | relationship | progressing | 11 | Reveal the debt. | Old oath token resurfaces. |",
-      "| b-courier | 12 | mystery | open | 13 | Identify the courier. | The seal is still broken. |",
+      "| hook_id | start_chapter | type | status | last_advanced_chapter | expected_payoff | payoff_timing | notes |",
+      "| --- | --- | --- | --- | --- | --- | --- | --- |",
+      "| a-debt | 4 | relationship | progressing | 11 | Reveal the debt. | mid-arc | Old oath token resurfaces. |",
+      "| b-courier | 12 | mystery | open | 13 | Identify the courier. | mid-arc | The seal is still broken. |",
       "",
     ].join("\n"));
   });
