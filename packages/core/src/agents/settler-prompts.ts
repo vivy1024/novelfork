@@ -171,6 +171,7 @@ export function buildSettlerUserPrompt(params: {
   readonly observations?: string;
   readonly selectedEvidenceBlock?: string;
   readonly governedControlBlock?: string;
+  readonly validationFeedback?: string;
 }): string {
   const ledgerBlock = params.ledger
     ? `\n## 当前资源账本\n${params.ledger}\n`
@@ -202,9 +203,13 @@ export function buildSettlerUserPrompt(params: {
   const outlineBlock = controlBlock.length === 0
     ? `\n## 卷纲\n${params.volumeOutline}\n`
     : "";
+  const validationFeedbackBlock = params.validationFeedback
+    ? `\n## 状态校验反馈\n${params.validationFeedback}\n\n请严格纠正这些矛盾，只修正 truth files，不要改写正文，不要引入正文中不存在的新事实。\n`
+    : "";
 
   return `请分析第${params.chapterNumber}章「${params.title}」的正文，更新所有追踪文件。
 ${observationsBlock}
+${validationFeedbackBlock}
 ## 本章正文
 
 ${params.content}

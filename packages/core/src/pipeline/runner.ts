@@ -13,7 +13,7 @@ import { LengthNormalizerAgent } from "../agents/length-normalizer.js";
 import { ChapterAnalyzerAgent } from "../agents/chapter-analyzer.js";
 import { ContinuityAuditor } from "../agents/continuity.js";
 import { ReviserAgent, DEFAULT_REVISE_MODE, type ReviseMode } from "../agents/reviser.js";
-import { StateValidatorAgent } from "../agents/state-validator.js";
+import { StateValidatorAgent, type ValidationResult, type ValidationWarning } from "../agents/state-validator.js";
 import { RadarAgent } from "../agents/radar.js";
 import type { RadarSource } from "../agents/radar-source.js";
 import { readGenreProfile } from "../agents/rules-reader.js";
@@ -61,7 +61,7 @@ export interface ChapterPipelineResult {
   readonly wordCount: number;
   readonly auditResult: AuditResult;
   readonly revised: boolean;
-  readonly status: "ready-for-review" | "audit-failed";
+  readonly status: "ready-for-review" | "audit-failed" | "state-degraded";
   readonly lengthWarnings?: ReadonlyArray<string>;
   readonly lengthTelemetry?: LengthTelemetry;
   readonly tokenUsage?: TokenUsageSummary;
@@ -964,10 +964,20 @@ export class PipelineRunner {
     }
   }
 
+  async repairChapterState(bookId: string, chapterNumber?: number): Promise<ChapterPipelineResult> {
+    const releaseLock = await this.state.acquireBookLock(bookId);
+    try {
+      return await this._repairChapterStateLocked(bookId, chapterNumber);
+    } finally {
+      await releaseLock();
+    }
+  }
+
   private async _writeNextChapterLocked(bookId: string, wordCount?: number, temperatureOverride?: number): Promise<ChapterPipelineResult> {
     await this.state.ensureControlDocuments(bookId);
     const book = await this.state.loadBookConfig(bookId);
     const bookDir = this.state.bookDir(bookId);
+    await this.assertNoPendingStateRepair(bookId);
     const chapterNumber = await this.state.getNextChapterNumber(bookId);
     const stageLanguage = await this.resolveBookLanguage(book);
     this.logStage(stageLanguage, { zh: "准备章节输入", en: "preparing chapter inputs" });
@@ -1237,12 +1247,15 @@ export class PipelineRunner {
     // 4.1 Validate settler output before writing
     this.logStage(stageLanguage, { zh: "校验真相文件变更", en: "validating truth file updates" });
     const storyDir = join(bookDir, "story");
-    const [oldState, oldHooks] = await Promise.all([
+    const [oldState, oldHooks, oldLedger] = await Promise.all([
       readFile(join(storyDir, "current_state.md"), "utf-8").catch(() => ""),
       readFile(join(storyDir, "pending_hooks.md"), "utf-8").catch(() => ""),
+      readFile(join(storyDir, "particle_ledger.md"), "utf-8").catch(() => ""),
     ]);
     const validator = new StateValidatorAgent(this.agentCtxFor("state-validator", bookId));
-    let validation;
+    let validation: ValidationResult;
+    let chapterStatus: ChapterPipelineResult["status"] | null = null;
+    let degradedIssues: ReadonlyArray<AuditIssue> = [];
     try {
       validation = await validator.validate(
         finalContent, chapterNumber,
@@ -1264,8 +1277,38 @@ export class PipelineRunner {
       }
     }
     if (!validation.passed) {
-      const reason = validation.warnings[0]?.description ?? "validator reported contradictions";
-      throw new Error(`State validation failed for chapter ${chapterNumber}: ${reason}`);
+      const recovery = await this.retrySettlementAfterValidationFailure({
+        writer,
+        validator,
+        book,
+        bookDir,
+        chapterNumber,
+        title: persistenceOutput.title,
+        content: finalContent,
+        reducedControlInput,
+        oldState,
+        oldHooks,
+        originalValidation: validation,
+        language: pipelineLang,
+      });
+
+      if (recovery.kind === "recovered") {
+        persistenceOutput = recovery.output;
+        validation = recovery.validation;
+      } else {
+        chapterStatus = "state-degraded";
+        degradedIssues = recovery.issues;
+        persistenceOutput = this.buildStateDegradedPersistenceOutput({
+          output: persistenceOutput,
+          oldState,
+          oldHooks,
+          oldLedger,
+        });
+        auditResult = {
+          ...auditResult,
+          issues: [...auditResult.issues, ...recovery.issues],
+        };
+      }
     }
 
     // 4.2 Final paragraph shape check on persisted content (post-normalize, post-revise)
@@ -1303,10 +1346,12 @@ export class PipelineRunner {
     }
 
     await writer.saveChapter(bookDir, persistenceOutput, gp.numericalSystem, pipelineLang);
-    await writer.saveNewTruthFiles(bookDir, persistenceOutput, pipelineLang);
-    await this.syncLegacyStructuredStateFromMarkdown(bookDir, chapterNumber, persistenceOutput);
-    this.logStage(stageLanguage, { zh: "同步记忆索引", en: "syncing memory indexes" });
-    await this.syncNarrativeMemoryIndex(bookId);
+    if (chapterStatus !== "state-degraded") {
+      await writer.saveNewTruthFiles(bookDir, persistenceOutput, pipelineLang);
+      await this.syncLegacyStructuredStateFromMarkdown(bookDir, chapterNumber, persistenceOutput);
+      this.logStage(stageLanguage, { zh: "同步记忆索引", en: "syncing memory indexes" });
+      await this.syncNarrativeMemoryIndex(bookId);
+    }
 
     // 5. Update chapter index
     const existingIndex = await this.state.loadChapterIndex(bookId);
@@ -1314,7 +1359,7 @@ export class PipelineRunner {
     const newEntry: ChapterMeta = {
       number: chapterNumber,
       title: persistenceOutput.title,
-      status: auditResult.passed ? "ready-for-review" : "audit-failed",
+      status: chapterStatus ?? (auditResult.passed ? "ready-for-review" : "audit-failed"),
       wordCount: finalWordCount,
       createdAt: now,
       updatedAt: now,
@@ -1322,6 +1367,12 @@ export class PipelineRunner {
         (i) => `[${i.severity}] ${i.description}`,
       ),
       lengthWarnings,
+      reviewNote: chapterStatus === "state-degraded"
+        ? this.buildStateDegradedReviewNote(
+            auditResult.passed ? "ready-for-review" : "audit-failed",
+            degradedIssues,
+          )
+        : undefined,
       lengthTelemetry,
       tokenUsage: totalUsage,
     };
@@ -1333,7 +1384,7 @@ export class PipelineRunner {
     const driftIssues = auditResult.issues.filter(
       (i) => i.severity === "critical" || i.severity === "warning",
     );
-    if (driftIssues.length > 0) {
+    if (chapterStatus !== "state-degraded" && driftIssues.length > 0) {
       const storyDir = join(bookDir, "story");
       try {
         const statePath = join(storyDir, "current_state.md");
@@ -1367,20 +1418,26 @@ export class PipelineRunner {
     }
 
     // 5.6 Snapshot state for rollback support
-    this.logStage(stageLanguage, { zh: "更新章节索引与快照", en: "updating chapter index and snapshots" });
-    await this.state.snapshotState(bookId, chapterNumber);
-    await this.syncCurrentStateFactHistory(bookId, chapterNumber);
+    if (chapterStatus !== "state-degraded") {
+      this.logStage(stageLanguage, { zh: "更新章节索引与快照", en: "updating chapter index and snapshots" });
+      await this.state.snapshotState(bookId, chapterNumber);
+      await this.syncCurrentStateFactHistory(bookId, chapterNumber);
+    }
 
     // 6. Send notification
     if (this.config.notifyChannels && this.config.notifyChannels.length > 0) {
-      const statusEmoji = auditResult.passed ? "✅" : "⚠️";
+      const statusEmoji = chapterStatus === "state-degraded"
+        ? "🧯"
+        : auditResult.passed ? "✅" : "⚠️";
       const chapterLength = formatLengthCount(finalWordCount, lengthSpec.countingMode);
       await dispatchNotification(this.config.notifyChannels, {
         title: `${statusEmoji} ${book.title} 第${chapterNumber}章`,
         body: [
           `**${persistenceOutput.title}** | ${chapterLength}`,
           revised ? "📝 已自动修正" : "",
-          `审稿: ${auditResult.passed ? "通过" : "需人工审核"}`,
+          chapterStatus === "state-degraded"
+            ? "状态结算: 已降级保存，需先修复 state 再继续"
+            : `审稿: ${auditResult.passed ? "通过" : "需人工审核"}`,
           ...auditResult.issues
             .filter((i) => i.severity !== "info")
             .map((i) => `- [${i.severity}] ${i.description}`),
@@ -1395,6 +1452,7 @@ export class PipelineRunner {
       wordCount: finalWordCount,
       passed: auditResult.passed,
       revised,
+      status: chapterStatus ?? (auditResult.passed ? "ready-for-review" : "audit-failed"),
     });
 
     return {
@@ -1403,10 +1461,127 @@ export class PipelineRunner {
       wordCount: finalWordCount,
       auditResult,
       revised,
-      status: auditResult.passed ? "ready-for-review" : "audit-failed",
+      status: chapterStatus ?? (auditResult.passed ? "ready-for-review" : "audit-failed"),
       lengthWarnings,
       lengthTelemetry,
       tokenUsage: totalUsage,
+    };
+  }
+
+  private async _repairChapterStateLocked(bookId: string, chapterNumber?: number): Promise<ChapterPipelineResult> {
+    const book = await this.state.loadBookConfig(bookId);
+    const bookDir = this.state.bookDir(bookId);
+    const stageLanguage = await this.resolveBookLanguage(book);
+    const index = [...(await this.state.loadChapterIndex(bookId))];
+    if (index.length === 0) {
+      throw new Error(`Book "${bookId}" has no persisted chapters to repair.`);
+    }
+
+    const targetChapter = chapterNumber ?? index[index.length - 1]!.number;
+    const targetIndex = index.findIndex((chapter) => chapter.number === targetChapter);
+    if (targetIndex < 0) {
+      throw new Error(`Chapter ${targetChapter} not found in "${bookId}".`);
+    }
+    const targetMeta = index[targetIndex]!;
+    const latestChapter = Math.max(...index.map((chapter) => chapter.number));
+    if (targetMeta.status !== "state-degraded") {
+      throw new Error(`Chapter ${targetChapter} is not state-degraded.`);
+    }
+    if (targetChapter !== latestChapter) {
+      throw new Error(`Only the latest state-degraded chapter can be repaired safely (latest is ${latestChapter}).`);
+    }
+
+    this.logStage(stageLanguage, { zh: "修复章节状态结算", en: "repairing chapter state settlement" });
+    const { profile: gp } = await this.loadGenreProfile(book.genre);
+    const pipelineLang = book.language ?? gp.language;
+    const content = await this.readChapterContent(bookDir, targetChapter);
+    const storyDir = join(bookDir, "story");
+    const [oldState, oldHooks] = await Promise.all([
+      readFile(join(storyDir, "current_state.md"), "utf-8").catch(() => ""),
+      readFile(join(storyDir, "pending_hooks.md"), "utf-8").catch(() => ""),
+    ]);
+
+    const writer = new WriterAgent(this.agentCtxFor("writer", bookId));
+    let repairedOutput = await writer.settleChapterState({
+      book,
+      bookDir,
+      chapterNumber: targetChapter,
+      title: targetMeta.title,
+      content,
+    });
+    const validator = new StateValidatorAgent(this.agentCtxFor("state-validator", bookId));
+    let validation = await validator.validate(
+      content,
+      targetChapter,
+      oldState,
+      repairedOutput.updatedState,
+      oldHooks,
+      repairedOutput.updatedHooks,
+      pipelineLang,
+    );
+
+    if (!validation.passed) {
+      const recovery = await this.retrySettlementAfterValidationFailure({
+        writer,
+        validator,
+        book,
+        bookDir,
+        chapterNumber: targetChapter,
+        title: targetMeta.title,
+        content,
+        oldState,
+        oldHooks,
+        originalValidation: validation,
+        language: pipelineLang,
+      });
+      if (recovery.kind !== "recovered") {
+        throw new Error(
+          recovery.issues[0]?.description
+            ?? `State repair still failed for chapter ${targetChapter}.`,
+        );
+      }
+      repairedOutput = recovery.output;
+      validation = recovery.validation;
+    }
+
+    if (!validation.passed) {
+      throw new Error(`State repair still failed for chapter ${targetChapter}.`);
+    }
+
+    await writer.saveChapter(bookDir, repairedOutput, gp.numericalSystem, pipelineLang);
+    await writer.saveNewTruthFiles(bookDir, repairedOutput, pipelineLang);
+    await this.syncLegacyStructuredStateFromMarkdown(bookDir, targetChapter, repairedOutput);
+    await this.syncNarrativeMemoryIndex(bookId);
+    await this.state.snapshotState(bookId, targetChapter);
+    await this.syncCurrentStateFactHistory(bookId, targetChapter);
+
+    const baseStatus = this.resolveStateDegradedBaseStatus(targetMeta);
+    const degradedMetadata = this.parseStateDegradedReviewNote(targetMeta.reviewNote);
+    const injectedIssues = new Set(degradedMetadata?.injectedIssues ?? []);
+    index[targetIndex] = {
+      ...targetMeta,
+      status: baseStatus,
+      updatedAt: new Date().toISOString(),
+      auditIssues: targetMeta.auditIssues.filter((issue) => !injectedIssues.has(issue)),
+      reviewNote: undefined,
+    };
+    await this.state.saveChapterIndex(bookId, index);
+
+    const repairedPassesAudit = baseStatus !== "audit-failed";
+    return {
+      chapterNumber: targetChapter,
+      title: targetMeta.title,
+      wordCount: targetMeta.wordCount,
+      auditResult: {
+        passed: repairedPassesAudit,
+        issues: [],
+        summary: repairedPassesAudit ? "state repaired" : "state repaired but chapter still needs review",
+      },
+      revised: false,
+      status: baseStatus,
+      lengthWarnings: targetMeta.lengthWarnings,
+      lengthTelemetry: targetMeta.lengthTelemetry,
+      tokenUsage: targetMeta.tokenUsage,
     };
   }
 
@@ -1849,6 +2024,227 @@ ${matrix}`,
       hookHealthIssues: output.hookHealthIssues,
       tokenUsage: output.tokenUsage,
     };
+  }
+
+  private async assertNoPendingStateRepair(bookId: string): Promise<void> {
+    const existingIndex = await this.state.loadChapterIndex(bookId);
+    const latestChapter = [...existingIndex].sort((left, right) => right.number - left.number)[0];
+    if (latestChapter?.status !== "state-degraded") {
+      return;
+    }
+
+    throw new Error(
+      `Latest chapter ${latestChapter.number} is state-degraded. Repair state or rewrite that chapter before continuing.`,
+    );
+  }
+
+  private async retrySettlementAfterValidationFailure(params: {
+    readonly writer: WriterAgent;
+    readonly validator: StateValidatorAgent;
+    readonly book: BookConfig;
+    readonly bookDir: string;
+    readonly chapterNumber: number;
+    readonly title: string;
+    readonly content: string;
+    readonly reducedControlInput?: {
+      chapterIntent: string;
+      contextPackage: ContextPackage;
+      ruleStack: RuleStack;
+    };
+    readonly oldState: string;
+    readonly oldHooks: string;
+    readonly originalValidation: ValidationResult;
+    readonly language: LengthLanguage;
+  }): Promise<
+    | {
+      readonly kind: "recovered";
+      readonly output: WriteChapterOutput;
+      readonly validation: ValidationResult;
+    }
+    | {
+      readonly kind: "degraded";
+      readonly issues: ReadonlyArray<AuditIssue>;
+    }
+  > {
+    this.logWarn(params.language, {
+      zh: `状态校验失败，正在仅重试结算层（第${params.chapterNumber}章）`,
+      en: `State validation failed; retrying settlement only for chapter ${params.chapterNumber}`,
+    });
+
+    const retryOutput = await params.writer.settleChapterState({
+      book: params.book,
+      bookDir: params.bookDir,
+      chapterNumber: params.chapterNumber,
+      title: params.title,
+      content: params.content,
+      chapterIntent: params.reducedControlInput?.chapterIntent,
+      contextPackage: params.reducedControlInput?.contextPackage,
+      ruleStack: params.reducedControlInput?.ruleStack,
+      validationFeedback: this.buildStateValidationFeedback(
+        params.originalValidation.warnings,
+        params.language,
+      ),
+    });
+
+    let retryValidation: ValidationResult;
+    try {
+      retryValidation = await params.validator.validate(
+        params.content,
+        params.chapterNumber,
+        params.oldState,
+        retryOutput.updatedState,
+        params.oldHooks,
+        retryOutput.updatedHooks,
+        params.language,
+      );
+    } catch (error) {
+      throw new Error(`State validation retry failed for chapter ${params.chapterNumber}: ${String(error)}`);
+    }
+
+    if (retryValidation.warnings.length > 0) {
+      this.logWarn(params.language, {
+        zh: `状态校验重试后，第${params.chapterNumber}章仍有 ${retryValidation.warnings.length} 条警告`,
+        en: `State validation retry still reports ${retryValidation.warnings.length} warning(s) for chapter ${params.chapterNumber}`,
+      });
+      for (const warning of retryValidation.warnings) {
+        this.config.logger?.warn(`  [${warning.category}] ${warning.description}`);
+      }
+    }
+
+    if (retryValidation.passed) {
+      return {
+        kind: "recovered",
+        output: retryOutput,
+        validation: retryValidation,
+      };
+    }
+
+    return {
+      kind: "degraded",
+      issues: this.buildStateDegradedIssues(retryValidation.warnings, params.language),
+    };
+  }
+
+  private buildStateValidationFeedback(
+    warnings: ReadonlyArray<ValidationWarning>,
+    language: LengthLanguage,
+  ): string {
+    if (warnings.length === 0) {
+      return language === "en"
+        ? "The previous settlement contradicted the chapter text. Reconcile truth files strictly to the body."
+        : "上一次状态结算与正文矛盾。请严格以正文为准修正 truth files。";
+    }
+
+    if (language === "en") {
+      return [
+        "The previous settlement failed validation. Fix these contradictions against the chapter body:",
+        ...warnings.map((warning) => `- [${warning.category}] ${warning.description}`),
+      ].join("\n");
+    }
+
+    return [
+      "上一次状态结算未通过校验。请对照正文修正以下矛盾：",
+      ...warnings.map((warning) => `- [${warning.category}] ${warning.description}`),
+    ].join("\n");
+  }
+
+  private buildStateDegradedIssues(
+    warnings: ReadonlyArray<ValidationWarning>,
+    language: LengthLanguage,
+  ): ReadonlyArray<AuditIssue> {
+    if (warnings.length > 0) {
+      return warnings.map((warning) => ({
+        severity: "warning" as const,
+        category: "state-validation",
+        description: warning.description,
+        suggestion: language === "en"
+          ? "Repair chapter state from the persisted body before continuing."
+          : "请先基于已保存正文修复本章 state，再继续后续章节。",
+      }));
+    }
+
+    return [{
+      severity: "warning",
+      category: "state-validation",
+      description: language === "en"
+        ? "State validation still failed after settlement retry."
+        : "状态结算重试后仍未通过校验。",
+      suggestion: language === "en"
+        ? "Repair chapter state from the persisted body before continuing."
+        : "请先基于已保存正文修复本章 state，再继续后续章节。",
+    }];
+  }
+
+  private buildStateDegradedPersistenceOutput(params: {
+    readonly output: WriteChapterOutput;
+    readonly oldState: string;
+    readonly oldHooks: string;
+    readonly oldLedger: string;
+  }): WriteChapterOutput {
+    return {
+      ...params.output,
+      runtimeStateDelta: undefined,
+      runtimeStateSnapshot: undefined,
+      updatedState: params.oldState,
+      updatedLedger: params.oldLedger,
+      updatedHooks: params.oldHooks,
+      updatedChapterSummaries: undefined,
+    };
+  }
+
+  private buildStateDegradedReviewNote(
+    baseStatus: "ready-for-review" | "audit-failed",
+    issues: ReadonlyArray<AuditIssue>,
+  ): string {
+    return JSON.stringify({
+      kind: "state-degraded",
+      baseStatus,
+      injectedIssues: issues.map((issue) => `[${issue.severity}] ${issue.description}`),
+    });
+  }
+
+  private parseStateDegradedReviewNote(reviewNote?: string): {
+    readonly kind: "state-degraded";
+    readonly baseStatus: "ready-for-review" | "audit-failed";
+    readonly injectedIssues: ReadonlyArray<string>;
+  } | null {
+    if (!reviewNote) {
+      return null;
+    }
+
+    try {
+      const parsed = JSON.parse(reviewNote) as {
+        kind?: unknown;
+        baseStatus?: unknown;
+        injectedIssues?: unknown;
+      };
+      if (
+        parsed.kind !== "state-degraded"
+        || (parsed.baseStatus !== "ready-for-review" && parsed.baseStatus !== "audit-failed")
+        || !Array.isArray(parsed.injectedIssues)
+      ) {
+        return null;
+      }
+
+      return {
+        kind: "state-degraded",
+        baseStatus: parsed.baseStatus,
+        injectedIssues: parsed.injectedIssues.filter((issue): issue is string => typeof issue === "string"),
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  private resolveStateDegradedBaseStatus(chapter: ChapterMeta): "ready-for-review" | "audit-failed" {
+    const metadata = this.parseStateDegradedReviewNote(chapter.reviewNote);
+    if (metadata) {
+      return metadata.baseStatus;
+    }
+
+    return chapter.auditIssues.some((issue) => issue.startsWith("[critical]"))
+      ? "audit-failed"
+      : "ready-for-review";
   }
 
   // ---------------------------------------------------------------------------

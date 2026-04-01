@@ -2145,6 +2145,257 @@ describe("PipelineRunner", () => {
     await rm(root, { recursive: true, force: true });
   });
 
+  it("retries settlement after state contradictions without rewriting the chapter body", async () => {
+    const { root, runner, state, bookId } = await createRunnerFixture({
+      inputGovernanceMode: "legacy",
+    });
+    const storyDir = join(state.bookDir(bookId), "story");
+
+    await Promise.all([
+      writeFile(join(storyDir, "current_state.md"), "stable state", "utf-8"),
+      writeFile(join(storyDir, "pending_hooks.md"), "stable hooks", "utf-8"),
+      writeFile(join(storyDir, "particle_ledger.md"), "stable ledger", "utf-8"),
+    ]);
+
+    const writeSpy = vi.spyOn(WriterAgent.prototype, "writeChapter").mockResolvedValue(
+      createWriterOutput({
+        content: "Healthy chapter body with the copper token in his coat.",
+        wordCount: "Healthy chapter body with the copper token in his coat.".length,
+        updatedState: "broken state",
+        updatedHooks: "broken hooks",
+        updatedLedger: "broken ledger",
+      }),
+    );
+    const settleSpy = vi.spyOn(
+      WriterAgent.prototype as unknown as {
+        settleChapterState: (input: Record<string, unknown>) => Promise<WriteChapterOutput>;
+      },
+      "settleChapterState",
+    ).mockResolvedValue(
+      createWriterOutput({
+        content: "Healthy chapter body with the copper token in his coat.",
+        wordCount: "Healthy chapter body with the copper token in his coat.".length,
+        updatedState: "fixed state",
+        updatedHooks: "fixed hooks",
+        updatedLedger: "fixed ledger",
+      }),
+    );
+    vi.spyOn(ContinuityAuditor.prototype, "auditChapter").mockResolvedValue(
+      createAuditResult({
+        passed: true,
+        issues: [],
+        summary: "clean",
+      }),
+    );
+    vi.spyOn(StateValidatorAgent.prototype, "validate")
+      .mockResolvedValueOnce({
+        passed: false,
+        warnings: [{
+          category: "unsupported_change",
+          description: "状态写成铜牌未带在身上，但正文明确写了怀里的铜牌。",
+        }],
+      })
+      .mockResolvedValueOnce({
+        passed: true,
+        warnings: [],
+      });
+
+    const result = await runner.writeNextChapter(bookId);
+
+    expect(result.status).toBe("ready-for-review");
+    expect(writeSpy).toHaveBeenCalledTimes(1);
+    expect(settleSpy).toHaveBeenCalledTimes(1);
+    expect(settleSpy).toHaveBeenCalledWith(expect.objectContaining({
+      chapterNumber: 1,
+      title: "Test Chapter",
+      content: "Healthy chapter body with the copper token in his coat.",
+      validationFeedback: expect.stringContaining("怀里的铜牌"),
+    }));
+    await expect(readFile(join(storyDir, "current_state.md"), "utf-8")).resolves.toBe("fixed state");
+    await expect(readFile(join(storyDir, "pending_hooks.md"), "utf-8")).resolves.toBe("fixed hooks");
+
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it("persists a state-degraded chapter without advancing truth files when settlement retry still contradicts the body", async () => {
+    const { root, runner, state, bookId } = await createRunnerFixture({
+      inputGovernanceMode: "legacy",
+    });
+    const bookDir = state.bookDir(bookId);
+    const storyDir = join(bookDir, "story");
+    const chaptersDir = join(bookDir, "chapters");
+
+    await Promise.all([
+      writeFile(join(storyDir, "current_state.md"), "stable state", "utf-8"),
+      writeFile(join(storyDir, "pending_hooks.md"), "stable hooks", "utf-8"),
+      writeFile(join(storyDir, "particle_ledger.md"), "stable ledger", "utf-8"),
+    ]);
+
+    vi.spyOn(WriterAgent.prototype, "writeChapter").mockResolvedValue(
+      createWriterOutput({
+        content: "Healthy chapter body with the copper token in his coat.",
+        wordCount: "Healthy chapter body with the copper token in his coat.".length,
+        updatedState: "broken state",
+        updatedHooks: "broken hooks",
+        updatedLedger: "broken ledger",
+      }),
+    );
+    vi.spyOn(
+      WriterAgent.prototype as unknown as {
+        settleChapterState: (input: Record<string, unknown>) => Promise<WriteChapterOutput>;
+      },
+      "settleChapterState",
+    ).mockResolvedValue(
+      createWriterOutput({
+        content: "Healthy chapter body with the copper token in his coat.",
+        wordCount: "Healthy chapter body with the copper token in his coat.".length,
+        updatedState: "still broken state",
+        updatedHooks: "still broken hooks",
+        updatedLedger: "still broken ledger",
+      }),
+    );
+    vi.spyOn(ContinuityAuditor.prototype, "auditChapter").mockResolvedValue(
+      createAuditResult({
+        passed: true,
+        issues: [],
+        summary: "clean",
+      }),
+    );
+    vi.spyOn(StateValidatorAgent.prototype, "validate")
+      .mockResolvedValueOnce({
+        passed: false,
+        warnings: [{
+          category: "unsupported_change",
+          description: "settler 把铜牌写没了，但正文仍然明确带在身上。",
+        }],
+      })
+      .mockResolvedValueOnce({
+        passed: false,
+        warnings: [{
+          category: "unsupported_change",
+          description: "重试后仍然把铜牌写没了。",
+        }],
+      });
+
+    const result = await runner.writeNextChapter(bookId);
+    const savedIndex = await state.loadChapterIndex(bookId);
+
+    expect(result.status).toBe("state-degraded");
+    expect(savedIndex[0]?.status).toBe("state-degraded");
+    expect(savedIndex[0]?.auditIssues).toContain("[warning] 重试后仍然把铜牌写没了。");
+    await expect(readFile(join(storyDir, "current_state.md"), "utf-8")).resolves.toBe("stable state");
+    await expect(readFile(join(storyDir, "pending_hooks.md"), "utf-8")).resolves.toBe("stable hooks");
+    await expect(readFile(join(storyDir, "particle_ledger.md"), "utf-8")).resolves.toBe("stable ledger");
+    await expect(readdir(chaptersDir)).resolves.toContain("0001_Test_Chapter.md");
+    await expect(stat(join(storyDir, "snapshots", "1"))).rejects.toThrow();
+
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it("blocks writing a new chapter when the latest persisted chapter is state-degraded", async () => {
+    const { root, runner, state, bookId } = await createRunnerFixture({
+      inputGovernanceMode: "legacy",
+    });
+    const now = "2026-03-19T00:00:00.000Z";
+    const storyDir = join(state.bookDir(bookId), "story");
+
+    await Promise.all([
+      writeFile(join(storyDir, "current_state.md"), "stable state", "utf-8"),
+      writeFile(join(storyDir, "pending_hooks.md"), "stable hooks", "utf-8"),
+      state.saveChapterIndex(bookId, [{
+        number: 1,
+        title: "Broken Persistence",
+        status: "state-degraded" as ChapterMeta["status"],
+        wordCount: 1234,
+        createdAt: now,
+        updatedAt: now,
+        auditIssues: ["[warning] state validation degraded"],
+        lengthWarnings: [],
+      }]),
+      writeFile(join(state.bookDir(bookId), "chapters", "0001_Broken_Persistence.md"), "# 第1章 Broken Persistence\n\nbody", "utf-8"),
+    ]);
+
+    await expect(runner.writeNextChapter(bookId)).rejects.toThrow(/state-degraded/i);
+
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it("repairs the latest state-degraded chapter from persisted body without rewriting it", async () => {
+    const { root, runner, state, bookId } = await createRunnerFixture({
+      inputGovernanceMode: "legacy",
+    });
+    const now = "2026-03-19T00:00:00.000Z";
+    const bookDir = state.bookDir(bookId);
+    const storyDir = join(bookDir, "story");
+
+    await Promise.all([
+      writeFile(join(storyDir, "current_state.md"), "stable state", "utf-8"),
+      writeFile(join(storyDir, "pending_hooks.md"), "stable hooks", "utf-8"),
+      writeFile(join(storyDir, "particle_ledger.md"), "stable ledger", "utf-8"),
+      writeFile(
+        join(bookDir, "chapters", "0001_Broken_Persistence.md"),
+        "# 第1章 Broken Persistence\n\nHealthy chapter body with the copper token in his coat.",
+        "utf-8",
+      ),
+      state.saveChapterIndex(bookId, [{
+        number: 1,
+        title: "Broken Persistence",
+        status: "state-degraded" as ChapterMeta["status"],
+        wordCount: 55,
+        createdAt: now,
+        updatedAt: now,
+        auditIssues: ["[warning] 重试后仍然把铜牌写没了。"],
+        lengthWarnings: [],
+        reviewNote: JSON.stringify({
+          kind: "state-degraded",
+          baseStatus: "ready-for-review",
+          injectedIssues: ["[warning] 重试后仍然把铜牌写没了。"],
+        }),
+      }]),
+    ]);
+
+    vi.spyOn(
+      WriterAgent.prototype as unknown as {
+        settleChapterState: (input: Record<string, unknown>) => Promise<WriteChapterOutput>;
+      },
+      "settleChapterState",
+    ).mockResolvedValue(
+      createWriterOutput({
+        chapterNumber: 1,
+        title: "Broken Persistence",
+        content: "Healthy chapter body with the copper token in his coat.",
+        wordCount: "Healthy chapter body with the copper token in his coat.".length,
+        updatedState: "fixed state",
+        updatedHooks: "fixed hooks",
+        updatedLedger: "fixed ledger",
+      }),
+    );
+    vi.spyOn(StateValidatorAgent.prototype, "validate").mockResolvedValue({
+      passed: true,
+      warnings: [],
+    });
+
+    const result = await (
+      runner as unknown as {
+        repairChapterState: (bookId: string, chapterNumber?: number) => Promise<{
+          status: string;
+          chapterNumber: number;
+        }>;
+      }
+    ).repairChapterState(bookId, 1);
+    const savedIndex = await state.loadChapterIndex(bookId);
+
+    expect(result.status).toBe("ready-for-review");
+    expect(result.chapterNumber).toBe(1);
+    await expect(readFile(join(storyDir, "current_state.md"), "utf-8")).resolves.toBe("fixed state");
+    await expect(readFile(join(storyDir, "pending_hooks.md"), "utf-8")).resolves.toBe("fixed hooks");
+    expect(savedIndex[0]?.status).toBe("ready-for-review");
+    expect(savedIndex[0]?.auditIssues).toEqual([]);
+    expect(savedIndex[0]?.reviewNote).toBeUndefined();
+
+    await rm(root, { recursive: true, force: true });
+  });
+
   it("still persists the chapter when the state validator appends markdown after a valid JSON verdict", async () => {
     vi.restoreAllMocks();
     vi.spyOn(LengthNormalizerAgent.prototype, "normalizeChapter").mockImplementation(
