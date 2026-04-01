@@ -5,13 +5,13 @@ import type { BookConfig } from "../models/book.js";
 import { parseBookRules } from "../models/book-rules.js";
 import { ChapterIntentSchema, type ChapterConflict, type ChapterIntent } from "../models/input-governance.js";
 import {
-  buildPlannerHookAgenda,
   parseChapterSummariesMarkdown,
   renderHookSnapshot,
   renderSummarySnapshot,
   retrieveMemorySelection,
 } from "../utils/memory-retrieval.js";
 import { analyzeChapterCadence } from "../utils/chapter-cadence.js";
+import { buildPlannerHookAgenda } from "../utils/hook-agenda.js";
 
 export interface PlanChapterInput {
   readonly book: BookConfig;

@@ -1,10 +1,12 @@
 import type { ContextPackage } from "../models/input-governance.js";
 import {
-  isHookWithinChapterWindow,
-  isHookWithinLifecycleWindow,
   parsePendingHooksMarkdown,
   renderHookSnapshot,
 } from "./memory-retrieval.js";
+import {
+  isHookWithinChapterWindow,
+  isHookWithinLifecycleWindow,
+} from "./hook-agenda.js";
 import { describeHookLifecycle } from "./hook-lifecycle.js";
 
 export function buildGovernedHookWorkingSet(params: {
