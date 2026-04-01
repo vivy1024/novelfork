@@ -27,13 +27,13 @@ import type { AgentContext } from "../agents/base.js";
 import type { AuditResult, AuditIssue } from "../agents/continuity.js";
 import type { RadarResult } from "../agents/radar.js";
 import type { LengthSpec, LengthTelemetry } from "../models/length-governance.js";
-import { ChapterIntentSchema, type ContextPackage, type RuleStack } from "../models/input-governance.js";
+import type { ContextPackage, RuleStack } from "../models/input-governance.js";
 import { buildLengthSpec, countChapterLength, formatLengthCount, isOutsideHardRange, isOutsideSoftRange, resolveLengthCountingMode, type LengthLanguage } from "../utils/length-metrics.js";
 import { analyzeLongSpanFatigue } from "../utils/long-span-fatigue.js";
 import { loadNarrativeMemorySeed, loadSnapshotCurrentStateFacts } from "../state/runtime-state-store.js";
 import { rewriteStructuredStateFromMarkdown } from "../state/state-bootstrap.js";
 import { readFile, readdir, writeFile, mkdir, rename, rm, stat } from "node:fs/promises";
-import { join, relative } from "node:path";
+import { join } from "node:path";
 import {
   buildStateDegradedPersistenceOutput,
   buildStateDegradedReviewNote,
@@ -41,6 +41,7 @@ import {
   resolveStateDegradedBaseStatus,
   retrySettlementAfterValidationFailure,
 } from "./chapter-state-recovery.js";
+import { loadPersistedPlan, relativeToBookDir } from "./persisted-governed-plan.js";
 
 export interface PipelineConfig {
   readonly client: LLMClient;
@@ -575,7 +576,7 @@ export class PipelineRunner {
     return {
       bookId,
       chapterNumber,
-      intentPath: this.relativeToBookDir(bookDir, plan.runtimePath),
+      intentPath: relativeToBookDir(bookDir, plan.runtimePath),
       goal: plan.intent.goal,
       conflicts: plan.intent.conflicts.map((conflict) => `${conflict.type}: ${conflict.resolution}`),
     };
@@ -599,12 +600,12 @@ export class PipelineRunner {
     return {
       bookId,
       chapterNumber,
-      intentPath: this.relativeToBookDir(bookDir, plan.runtimePath),
+      intentPath: relativeToBookDir(bookDir, plan.runtimePath),
       goal: plan.intent.goal,
       conflicts: plan.intent.conflicts.map((conflict) => `${conflict.type}: ${conflict.resolution}`),
-      contextPath: this.relativeToBookDir(bookDir, composed.contextPath),
-      ruleStackPath: this.relativeToBookDir(bookDir, composed.ruleStackPath),
-      tracePath: this.relativeToBookDir(bookDir, composed.tracePath),
+      contextPath: relativeToBookDir(bookDir, composed.contextPath),
+      ruleStackPath: relativeToBookDir(bookDir, composed.ruleStackPath),
+      tracePath: relativeToBookDir(bookDir, composed.tracePath),
     };
   }
 
@@ -2732,7 +2733,7 @@ ${matrix}`,
       options?.reuseExistingIntentWhenContextMissing &&
       (!externalContext || externalContext.trim().length === 0)
     ) {
-      const persisted = await this.loadPersistedPlan(bookDir, chapterNumber);
+      const persisted = await loadPersistedPlan(bookDir, chapterNumber);
       if (persisted) return persisted;
     }
 
@@ -2743,100 +2744,6 @@ ${matrix}`,
       chapterNumber,
       externalContext,
     });
-  }
-
-  private async loadPersistedPlan(bookDir: string, chapterNumber: number): Promise<PlanChapterOutput | null> {
-    const runtimePath = join(
-      bookDir,
-      "story",
-      "runtime",
-      `chapter-${String(chapterNumber).padStart(4, "0")}.intent.md`,
-    );
-
-    try {
-      const intentMarkdown = await readFile(runtimePath, "utf-8");
-      const sections = this.parseIntentSections(intentMarkdown);
-      const goal = this.readIntentScalar(sections, "Goal");
-      if (!goal || this.isInvalidPersistedIntentScalar(goal)) return null;
-
-      const outlineNode = this.readIntentScalar(sections, "Outline Node");
-      if (outlineNode && outlineNode !== "(not found)" && this.isInvalidPersistedIntentScalar(outlineNode)) {
-        return null;
-      }
-      const conflicts = this.readIntentList(sections, "Conflicts")
-        .map((line) => {
-          const separator = line.indexOf(":");
-          if (separator < 0) return null;
-
-          const type = line.slice(0, separator).trim();
-          const resolution = line.slice(separator + 1).trim();
-          if (!type || !resolution) return null;
-          return { type, resolution };
-        })
-        .filter((conflict): conflict is { type: string; resolution: string } => conflict !== null);
-
-      return {
-        intent: ChapterIntentSchema.parse({
-          chapter: chapterNumber,
-          goal,
-          outlineNode: outlineNode && outlineNode !== "(not found)" ? outlineNode : undefined,
-          mustKeep: this.readIntentList(sections, "Must Keep"),
-          mustAvoid: this.readIntentList(sections, "Must Avoid"),
-          styleEmphasis: this.readIntentList(sections, "Style Emphasis"),
-          conflicts,
-        }),
-        intentMarkdown,
-        plannerInputs: [runtimePath],
-        runtimePath,
-      };
-    } catch {
-      return null;
-    }
-  }
-
-  private parseIntentSections(markdown: string): Map<string, string[]> {
-    const sections = new Map<string, string[]>();
-    let current: string | null = null;
-
-    for (const line of markdown.split("\n")) {
-      if (line.startsWith("## ")) {
-        current = line.slice(3).trim();
-        sections.set(current, []);
-        continue;
-      }
-
-      if (!current) continue;
-      sections.get(current)?.push(line);
-    }
-
-    return sections;
-  }
-
-  private readIntentScalar(sections: Map<string, string[]>, name: string): string | undefined {
-    const lines = sections.get(name) ?? [];
-    const value = lines.map((line) => line.trim()).find((line) => line.length > 0);
-    return value && value !== "- none" ? value : undefined;
-  }
-
-  private readIntentList(sections: Map<string, string[]>, name: string): string[] {
-    return (sections.get(name) ?? [])
-      .map((line) => line.trim())
-      .filter((line) => line.startsWith("-") && line !== "- none")
-      .map((line) => line.replace(/^-\s*/, ""));
-  }
-
-  private isInvalidPersistedIntentScalar(value: string): boolean {
-    const normalized = value.trim();
-    if (!normalized) return true;
-    if (/^[*_`~:：|.-]+$/.test(normalized)) return true;
-    return (
-      /^\((describe|briefly describe|write)\b[\s\S]*\)$/i.test(normalized)
-      || /^（(?:在这里描述|描述|填写|写下)[\s\S]*）$/u.test(normalized)
-    );
-  }
-
-  private relativeToBookDir(bookDir: string, absolutePath: string): string {
-    return relative(bookDir, absolutePath).replaceAll("\\", "/");
   }
 
   private async emitWebhook(
