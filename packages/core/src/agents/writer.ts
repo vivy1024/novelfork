@@ -195,7 +195,6 @@ export class WriterAgent extends BaseAgent {
           lengthSpec: resolvedLengthSpec,
           language: book.language ?? genreProfile.language,
           varianceBrief: englishVarianceBrief?.text,
-          selectedEvidenceBlock: this.joinGovernedEvidenceBlocks(governedMemoryBlocks),
         })
       : (() => {
           // Smart context filtering: inject only relevant parts of truth files
@@ -810,64 +809,23 @@ ${lengthRequirementBlock}
     readonly lengthSpec: LengthSpec;
     readonly language?: "zh" | "en";
     readonly varianceBrief?: string;
-    readonly selectedEvidenceBlock?: string;
   }): string {
-    const contextSections = params.contextPackage.selectedContext
-      .map((entry) => [
-        `### ${entry.source}`,
-        `- reason: ${entry.reason}`,
-        entry.excerpt ? `- excerpt: ${entry.excerpt}` : "",
-      ].filter(Boolean).join("\n"))
-      .join("\n\n");
-
-    const overrideLines = params.ruleStack.activeOverrides.length > 0
-      ? params.ruleStack.activeOverrides
-        .map((override) => `- ${override.from} -> ${override.to}: ${override.reason} (${override.target})`)
-        .join("\n")
-      : "- none";
-
-    const diagnosticLines = params.ruleStack.sections.diagnostic.length > 0
-      ? params.ruleStack.sections.diagnostic.join(", ")
-      : "none";
-
-    const traceNotes = params.trace && params.trace.notes.length > 0
-      ? params.trace.notes.map((note) => `- ${note}`).join("\n")
-      : "- none";
     const lengthRequirementBlock = this.buildLengthRequirementBlock(params.lengthSpec, params.language ?? "zh");
     const varianceBlock = params.varianceBrief
       ? `\n${params.varianceBrief}\n`
       : "";
-    const selectedEvidenceBlock = params.selectedEvidenceBlock
-      ? `\n${params.selectedEvidenceBlock}\n`
-      : "";
-    const explicitHookAgenda = this.extractMarkdownSection(params.chapterIntent, "## Hook Agenda");
-    const hookAgendaBlock = explicitHookAgenda
-      ? params.language === "en"
-        ? `\n## Hook Pressure and Debt\n${explicitHookAgenda}\n`
-        : `\n## 伏笔压力与旧债\n${explicitHookAgenda}\n`
-      : "";
+    const storyBrief = this.buildGovernedStoryBrief({
+      chapterIntent: params.chapterIntent,
+      contextPackage: params.contextPackage,
+      ruleStack: params.ruleStack,
+      trace: params.trace,
+      language: params.language ?? "zh",
+    });
 
     if (params.language === "en") {
       return `Write chapter ${params.chapterNumber}.
 
-## Chapter Intent
-${params.chapterIntent}
-
-## Selected Context
-${contextSections || "(none)"}
-${selectedEvidenceBlock}
-${hookAgendaBlock}
-
-## Rule Stack
-- Hard: ${params.ruleStack.sections.hard.join(", ") || "(none)"}
-- Soft: ${params.ruleStack.sections.soft.join(", ") || "(none)"}
-- Diagnostic: ${diagnosticLines}
-
-## Active Overrides
-${overrideLines}
-
-## Trace Notes
-${traceNotes}
+${storyBrief}
 
 ${varianceBlock}
 ${lengthRequirementBlock}
@@ -877,24 +835,7 @@ ${lengthRequirementBlock}
 
     return `请续写第${params.chapterNumber}章。
 
-## 本章意图
-${params.chapterIntent}
-
-## 已选上下文
-${contextSections || "(无)"}
-${selectedEvidenceBlock}
-${hookAgendaBlock}
-
-## 规则栈
-- 硬护栏：${params.ruleStack.sections.hard.join("、") || "(无)"}
-- 软约束：${params.ruleStack.sections.soft.join("、") || "(无)"}
-- 诊断规则：${diagnosticLines}
-
-## 当前覆盖
-${overrideLines}
-
-## 追踪说明
-${traceNotes}
+${storyBrief}
 
 ${varianceBlock}
 ${lengthRequirementBlock}
@@ -920,6 +861,73 @@ ${lengthRequirementBlock}
       .join("\n");
 
     return joined || undefined;
+  }
+
+  private buildGovernedStoryBrief(params: {
+    readonly chapterIntent: string;
+    readonly contextPackage: ContextPackage;
+    readonly ruleStack: RuleStack;
+    readonly trace?: ChapterTrace;
+    readonly language: "zh" | "en";
+  }): string {
+    const goal = this.readIntentScalar(params.chapterIntent, "## Goal");
+    const mustKeep = this.readIntentList(params.chapterIntent, "## Must Keep");
+    const mustAvoid = this.readIntentList(params.chapterIntent, "## Must Avoid");
+    const styleEmphasis = this.readIntentList(params.chapterIntent, "## Style Emphasis");
+    const creativePressure = this.readIntentList(params.chapterIntent, "## Creative Pressure");
+    const hookFocus = this.buildHookFocusLines(params.chapterIntent, params.contextPackage, params.language);
+    const continuityAnchors = this.collectContextExcerpts(params.contextPackage, (entry) =>
+      entry.source.startsWith("story/current_state.md")
+      || entry.source === "story/story_bible.md",
+    );
+    const canonGuardrails = this.collectContextExcerpts(params.contextPackage, (entry) =>
+      entry.source === "story/parent_canon.md" || entry.source === "story/fanfic_canon.md",
+    );
+    const titleHistory = this.findContextExcerpt(
+      params.contextPackage,
+      "story/chapter_summaries.md#recent_titles",
+    );
+    const moodTrail = this.findContextExcerpt(
+      params.contextPackage,
+      "story/chapter_summaries.md#recent_mood_type_trail",
+    );
+    const overrideLines = params.ruleStack.activeOverrides
+      .map((override) => `${override.reason} (${override.target})`);
+    const traceNotes = params.trace?.notes.filter(Boolean) ?? [];
+
+    if (params.language === "en") {
+      return [
+        "## Story Brief",
+        goal ? `Goal: ${goal}` : "",
+        this.renderCompactList("Keep continuity on", mustKeep),
+        this.renderCompactList("Avoid this chapter", mustAvoid),
+        this.renderCompactList("Style emphasis", styleEmphasis),
+        this.renderCompactList("Creative pressure", creativePressure),
+        this.renderCompactList("Hook focus", hookFocus),
+        this.renderCompactList("Continuity anchors", continuityAnchors),
+        this.renderCompactList("Canon guardrails", canonGuardrails),
+        titleHistory ? `Recent title history: ${titleHistory}` : "",
+        moodTrail ? `Recent mood/type trail: ${moodTrail}` : "",
+        this.renderCompactList("Local overrides", overrideLines),
+        this.renderCompactList("Trace notes", traceNotes),
+      ].filter(Boolean).join("\n\n");
+    }
+
+    return [
+      "## Story Brief",
+      goal ? `目标：${goal}` : "",
+      this.renderCompactList("本章必须守住", mustKeep),
+      this.renderCompactList("本章避免", mustAvoid),
+      this.renderCompactList("文风强调", styleEmphasis),
+      this.renderCompactList("创作压力", creativePressure),
+      this.renderCompactList("伏笔焦点", hookFocus),
+      this.renderCompactList("连续性锚点", continuityAnchors),
+      this.renderCompactList("正典护栏", canonGuardrails),
+      titleHistory ? `近期标题历史：${titleHistory}` : "",
+      moodTrail ? `近期情绪/章节类型轨迹：${moodTrail}` : "",
+      this.renderCompactList("局部覆盖", overrideLines),
+      this.renderCompactList("追踪备注", traceNotes),
+    ].filter(Boolean).join("\n\n");
   }
 
   private extractMarkdownSection(content: string, heading: string): string | undefined {
@@ -951,44 +959,161 @@ ${lengthRequirementBlock}
     ruleStack: RuleStack,
     language: "zh" | "en",
   ): string {
-    const selectedContext = contextPackage.selectedContext
-      .map((entry) => `- ${entry.source}: ${entry.reason}${entry.excerpt ? ` | ${entry.excerpt}` : ""}`)
-      .join("\n");
-    const overrides = ruleStack.activeOverrides.length > 0
-      ? ruleStack.activeOverrides
-        .map((override) => `- ${override.from} -> ${override.to}: ${override.reason} (${override.target})`)
-        .join("\n")
-      : "- none";
+    const goal = this.readIntentScalar(chapterIntent, "## Goal");
+    const mustKeep = this.readIntentList(chapterIntent, "## Must Keep");
+    const hookFocus = this.buildHookFocusLines(chapterIntent, contextPackage, language);
+    const continuityAnchors = this.collectContextExcerpts(contextPackage, (entry) =>
+      entry.source.startsWith("story/current_state.md")
+      || entry.source === "story/story_bible.md"
+      || entry.source === "story/parent_canon.md"
+      || entry.source === "story/fanfic_canon.md",
+    );
+    const overrides = ruleStack.activeOverrides
+      .map((override) => `${override.reason} (${override.target})`);
 
     if (language === "en") {
-      return `\n## Chapter Control Inputs
-${chapterIntent}
-
-### Selected Context
-${selectedContext || "- none"}
-
-### Rule Stack
-- Hard guardrails: ${ruleStack.sections.hard.join(", ") || "(none)"}
-- Soft constraints: ${ruleStack.sections.soft.join(", ") || "(none)"}
-- Diagnostic rules: ${ruleStack.sections.diagnostic.join(", ") || "(none)"}
-
-### Active Overrides
-${overrides}\n`;
+      return `\n## Settlement Focus
+${goal ? `Goal: ${goal}\n` : ""}${this.renderCompactList("Keep synced with", mustKeep)}${this.renderCompactList("Hook settlement cues", hookFocus)}${this.renderCompactList("Continuity anchors", continuityAnchors)}${this.renderCompactList("Local overrides", overrides)}\n`;
     }
 
-    return `\n## 本章控制输入
-${chapterIntent}
+    return `\n## 结算焦点
+${goal ? `目标：${goal}\n` : ""}${this.renderCompactList("结算时守住", mustKeep)}${this.renderCompactList("伏笔结算提示", hookFocus)}${this.renderCompactList("连续性锚点", continuityAnchors)}${this.renderCompactList("局部覆盖", overrides)}\n`;
+  }
 
-### 已选上下文
-${selectedContext || "- none"}
+  private readIntentScalar(chapterIntent: string, heading: string): string | undefined {
+    const section = this.extractMarkdownSection(chapterIntent, heading);
+    if (!section) {
+      return undefined;
+    }
 
-### 规则栈
-- 硬护栏：${ruleStack.sections.hard.join("、") || "(无)"}
-- 软约束：${ruleStack.sections.soft.join("、") || "(无)"}
-- 诊断规则：${ruleStack.sections.diagnostic.join("、") || "(无)"}
+    return section
+      .split("\n")
+      .map((line) => line.trim())
+      .find((line) => line.length > 0 && !line.startsWith("-") && line.toLowerCase() !== "(not found)");
+  }
 
-### 当前覆盖
-${overrides}\n`;
+  private readIntentList(chapterIntent: string, heading: string): string[] {
+    const section = this.extractMarkdownSection(chapterIntent, heading);
+    if (!section) {
+      return [];
+    }
+
+    return section
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.startsWith("- "))
+      .map((line) => line.slice(2).trim())
+      .filter((line) => line.length > 0 && line.toLowerCase() !== "none");
+  }
+
+  private buildHookFocusLines(
+    chapterIntent: string,
+    contextPackage: ContextPackage,
+    language: "zh" | "en",
+  ): string[] {
+    const hookDebtLines = this.collectContextExcerpts(
+      contextPackage,
+      (entry) => entry.source.startsWith("runtime/hook_debt#"),
+    );
+    const fallbackLines = [
+      ...this.formatAgendaLines(chapterIntent, "Must Advance", language === "en" ? "Must advance" : "必须推进"),
+      ...this.formatAgendaLines(chapterIntent, "Eligible Resolve", language === "en" ? "Eligible payoff" : "可兑现"),
+      ...this.formatAgendaLines(chapterIntent, "Stale Debt", language === "en" ? "Stale debt" : "旧债"),
+      ...this.formatAgendaLines(
+        chapterIntent,
+        "Avoid New Hook Families",
+        language === "en" ? "Avoid new hook families" : "避免新增同类 hook",
+      ),
+    ];
+
+    return this.uniqueContextLines([
+      ...(hookDebtLines.length > 0 ? hookDebtLines : []),
+      ...fallbackLines,
+    ]).slice(0, 6);
+  }
+
+  private formatAgendaLines(
+    chapterIntent: string,
+    subheading: string,
+    label: string,
+  ): string[] {
+    const hookAgenda = this.extractMarkdownSection(chapterIntent, "## Hook Agenda");
+    if (!hookAgenda) {
+      return [];
+    }
+
+    const lines = hookAgenda.split("\n");
+    const values: string[] = [];
+    let capture = false;
+
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (line === `### ${subheading}`) {
+        capture = true;
+        continue;
+      }
+      if (capture && line.startsWith("### ")) {
+        break;
+      }
+      if (capture && line.startsWith("- ")) {
+        const value = line.slice(2).trim();
+        if (value && value.toLowerCase() !== "none") {
+          values.push(`${label}: ${value}`);
+        }
+      }
+    }
+
+    return values;
+  }
+
+  private collectContextExcerpts(
+    contextPackage: ContextPackage,
+    predicate: (entry: ContextPackage["selectedContext"][number]) => boolean,
+  ): string[] {
+    return this.uniqueContextLines(
+      contextPackage.selectedContext
+        .filter(predicate)
+        .map((entry) => entry.excerpt ?? entry.reason)
+        .filter(Boolean),
+    );
+  }
+
+  private findContextExcerpt(
+    contextPackage: ContextPackage,
+    source: string,
+  ): string | undefined {
+    return contextPackage.selectedContext.find((entry) => entry.source === source)?.excerpt;
+  }
+
+  private renderCompactList(
+    heading: string,
+    items: ReadonlyArray<string>,
+  ): string {
+    if (items.length === 0) {
+      return "";
+    }
+
+    return `${heading}:\n${items.map((item) => `- ${item}`).join("\n")}`;
+  }
+
+  private uniqueContextLines(items: ReadonlyArray<string>): string[] {
+    const seen = new Set<string>();
+    const result: string[] = [];
+
+    for (const item of items) {
+      const trimmed = item.trim();
+      if (!trimmed) {
+        continue;
+      }
+      const normalized = trimmed.toLowerCase();
+      if (seen.has(normalized)) {
+        continue;
+      }
+      seen.add(normalized);
+      result.push(trimmed);
+    }
+
+    return result;
   }
 
   private buildLengthRequirementBlock(lengthSpec: LengthSpec, language: "zh" | "en"): string {
