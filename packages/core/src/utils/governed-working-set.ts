@@ -1,9 +1,11 @@
 import type { ContextPackage } from "../models/input-governance.js";
 import {
   isHookWithinChapterWindow,
+  isHookWithinLifecycleWindow,
   parsePendingHooksMarkdown,
   renderHookSnapshot,
 } from "./memory-retrieval.js";
+import { describeHookLifecycle } from "./hook-lifecycle.js";
 
 export function buildGovernedHookWorkingSet(params: {
   readonly hooksMarkdown: string;
@@ -33,7 +35,23 @@ export function buildGovernedHookWorkingSet(params: {
   const workingSet = hooks.filter((hook) =>
     selectedIds.has(hook.hookId)
       || agendaIds.has(hook.hookId)
-      || isHookWithinChapterWindow(hook, params.chapterNumber, params.keepRecent ?? 5),
+      || (
+        params.keepRecent !== undefined
+          ? isHookWithinChapterWindow(hook, params.chapterNumber, params.keepRecent)
+          : isHookWithinLifecycleWindow(
+              hook,
+              params.chapterNumber,
+              describeHookLifecycle({
+                payoffTiming: hook.payoffTiming,
+                expectedPayoff: hook.expectedPayoff,
+                notes: hook.notes,
+                startChapter: Math.max(0, hook.startChapter),
+                lastAdvancedChapter: Math.max(0, hook.lastAdvancedChapter),
+                status: hook.status,
+                chapterNumber: params.chapterNumber,
+              }),
+            )
+      ),
   );
 
   if (workingSet.length === 0 || workingSet.length >= hooks.length) {

@@ -30,6 +30,8 @@ export interface ChapterCadenceAnalysis {
   readonly titlePressure?: TitleCadencePressure;
 }
 
+export const DEFAULT_CHAPTER_CADENCE_WINDOW = 4;
+
 const HIGH_TENSION_KEYWORDS = [
   "紧张", "冷硬", "压抑", "逼仄", "肃杀", "沉重", "凝重",
   "冷峻", "压迫", "阴沉", "焦灼", "窒息", "凛冽", "锋利",
@@ -49,7 +51,7 @@ export function analyzeChapterCadence(params: {
 }): ChapterCadenceAnalysis {
   const recentRows = [...params.rows]
     .sort((left, right) => left.chapter - right.chapter)
-    .slice(-4);
+    .slice(-DEFAULT_CHAPTER_CADENCE_WINDOW);
 
   return {
     scenePressure: analyzeScenePressure(recentRows),

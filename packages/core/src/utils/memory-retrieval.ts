@@ -501,7 +501,7 @@ function resolveRelevantHookStaleLimit(
   return 1;
 }
 
-function isHookWithinLifecycleWindow(
+export function isHookWithinLifecycleWindow(
   hook: StoredHook,
   chapterNumber: number,
   lifecycle: ReturnType<typeof describeHookLifecycle>,
