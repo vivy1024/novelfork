@@ -11,6 +11,7 @@ import {
   renderSummarySnapshot,
   retrieveMemorySelection,
 } from "../utils/memory-retrieval.js";
+import { analyzeChapterCadence } from "../utils/chapter-cadence.js";
 
 export interface PlanChapterInput {
   readonly book: BookConfig;
@@ -138,8 +139,17 @@ export class PlannerAgent extends BaseAgent {
   }): Pick<ChapterIntent, "sceneDirective" | "arcDirective" | "moodDirective" | "titleDirective"> {
     const recentSummaries = parseChapterSummariesMarkdown(input.chapterSummaries)
       .filter((summary) => summary.chapter < input.chapterNumber)
-      .sort((left, right) => right.chapter - left.chapter)
-      .slice(0, 4);
+      .sort((left, right) => left.chapter - right.chapter)
+      .slice(-4);
+    const cadence = analyzeChapterCadence({
+      language: this.isChineseLanguage(input.language) ? "zh" : "en",
+      rows: recentSummaries.map((summary) => ({
+        chapter: summary.chapter,
+        title: summary.title,
+        mood: summary.mood,
+        chapterType: summary.chapterType,
+      })),
+    });
 
     return {
       arcDirective: this.buildArcDirective(
@@ -148,9 +158,9 @@ export class PlannerAgent extends BaseAgent {
         input.outlineNode,
         input.matchedOutlineAnchor,
       ),
-      sceneDirective: this.buildSceneDirective(input.language, recentSummaries),
-      moodDirective: this.buildMoodDirective(input.language, recentSummaries),
-      titleDirective: this.buildTitleDirective(input.language, recentSummaries),
+      sceneDirective: this.buildSceneDirective(input.language, cadence),
+      moodDirective: this.buildMoodDirective(input.language, cadence),
+      titleDirective: this.buildTitleDirective(input.language, cadence),
     };
   }
 
@@ -334,15 +344,12 @@ export class PlannerAgent extends BaseAgent {
 
   private buildSceneDirective(
     language: string | undefined,
-    recentSummaries: ReadonlyArray<{ chapterType: string }>,
+    cadence: ReturnType<typeof analyzeChapterCadence>,
   ): string | undefined {
-    const repeatedType = this.findRepeatedValue(
-      recentSummaries.map((summary) => summary.chapterType),
-      3,
-    );
-    if (!repeatedType) {
+    if (cadence.scenePressure?.pressure !== "high") {
       return undefined;
     }
+    const repeatedType = cadence.scenePressure.repeatedType;
 
     return this.isChineseLanguage(language)
       ? `最近章节连续停留在“${repeatedType}”，本章必须更换场景容器、地点或行动方式。`
@@ -351,74 +358,30 @@ export class PlannerAgent extends BaseAgent {
 
   private buildMoodDirective(
     language: string | undefined,
-    recentSummaries: ReadonlyArray<{ mood: string }>,
+    cadence: ReturnType<typeof analyzeChapterCadence>,
   ): string | undefined {
-    if (recentSummaries.length < 3) {
+    if (cadence.moodPressure?.pressure !== "high") {
       return undefined;
     }
-
-    const moods = recentSummaries.map((summary) => summary.mood.trim()).filter(Boolean);
-    if (moods.length < 3) {
-      return undefined;
-    }
-
-    const allHighTension = moods.every((mood) => this.isHighTensionMood(mood));
-    if (!allHighTension) {
-      return undefined;
-    }
+    const moods = cadence.moodPressure.recentMoods;
 
     return this.isChineseLanguage(language)
       ? `最近${moods.length}章情绪持续高压（${moods.slice(0, 3).join("、")}），本章必须降调——安排日常/喘息/温情/幽默场景，让读者呼吸。`
       : `The last ${moods.length} chapters have been relentlessly tense (${moods.slice(0, 3).join(", ")}). This chapter must downshift — write a quieter scene with warmth, humor, or breathing room.`;
   }
 
-  private isHighTensionMood(mood: string): boolean {
-    const tensionKeywords = [
-      "紧张", "冷硬", "压抑", "逼仄", "肃杀", "沉重", "凝重",
-      "冷峻", "压迫", "阴沉", "焦灼", "窒息", "凛冽", "锋利",
-      "克制", "危机", "对峙", "绷紧", "僵持", "杀意",
-      "tense", "cold", "oppressive", "grim", "ominous", "dark",
-      "bleak", "hostile", "threatening", "heavy", "suffocating",
-    ];
-    const lowerMood = mood.toLowerCase();
-    return tensionKeywords.some((keyword) => lowerMood.includes(keyword));
-  }
-
   private buildTitleDirective(
     language: string | undefined,
-    recentSummaries: ReadonlyArray<{ title: string }>,
+    cadence: ReturnType<typeof analyzeChapterCadence>,
   ): string | undefined {
-    const tokenCounts = new Map<string, number>();
-
-    for (const summary of recentSummaries) {
-      for (const token of this.extractKeywords(summary.title)) {
-        tokenCounts.set(token, (tokenCounts.get(token) ?? 0) + 1);
-      }
-    }
-
-    const repeatedToken = [...tokenCounts.entries()]
-      .sort((left, right) => right[1] - left[1])
-      .find((entry) => entry[1] >= 3)?.[0];
-    if (!repeatedToken) {
+    if (cadence.titlePressure?.pressure !== "high") {
       return undefined;
     }
+    const repeatedToken = cadence.titlePressure.repeatedToken;
 
     return this.isChineseLanguage(language)
       ? `标题不要再围绕“${repeatedToken}”重复命名，换一个新的意象或动作焦点。`
       : `Avoid another ${repeatedToken}-centric title. Pick a new image or action focus for this chapter title.`;
-  }
-
-  private findRepeatedValue(values: ReadonlyArray<string>, threshold: number): string | undefined {
-    const counts = new Map<string, number>();
-
-    for (const value of values.map((value) => value.trim()).filter(Boolean)) {
-      counts.set(value, (counts.get(value) ?? 0) + 1);
-      if ((counts.get(value) ?? 0) >= threshold) {
-        return value;
-      }
-    }
-
-    return undefined;
   }
 
   private extractSection(content: string, headings: ReadonlyArray<string>): string | undefined {
