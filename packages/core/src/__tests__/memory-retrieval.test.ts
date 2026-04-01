@@ -896,6 +896,108 @@ describe("retrieveMemorySelection", () => {
     expect(result.hooks.map((hook) => hook.hookId)).not.toContain("stale-resolved");
   });
 
+  it("surfaces multiple stale hook families when debt pressure clusters instead of only one stale extra", async () => {
+    root = await mkdtemp(join(tmpdir(), "inkos-memory-retrieval-stale-cluster-test-"));
+    const bookDir = join(root, "book");
+    const storyDir = join(bookDir, "story");
+    const stateDir = join(storyDir, "state");
+    await mkdir(stateDir, { recursive: true });
+
+    await Promise.all([
+      writeFile(
+        join(stateDir, "manifest.json"),
+        JSON.stringify({
+          schemaVersion: 2,
+          language: "en",
+          lastAppliedChapter: 50,
+          projectionVersion: 1,
+          migrationWarnings: [],
+        }, null, 2),
+        "utf-8",
+      ),
+      writeFile(
+        join(stateDir, "current_state.json"),
+        JSON.stringify({
+          chapter: 50,
+          facts: [],
+        }, null, 2),
+        "utf-8",
+      ),
+      writeFile(
+        join(stateDir, "chapter_summaries.json"),
+        JSON.stringify({
+          rows: [],
+        }, null, 2),
+        "utf-8",
+      ),
+      writeFile(
+        join(stateDir, "hooks.json"),
+        JSON.stringify({
+          hooks: [
+            {
+              hookId: "recent-route",
+              startChapter: 47,
+              type: "route",
+              status: "open",
+              lastAdvancedChapter: 49,
+              expectedPayoff: "Recent route payoff",
+              notes: "Recent route remains active.",
+            },
+            {
+              hookId: "recent-guild",
+              startChapter: 46,
+              type: "politics",
+              status: "progressing",
+              lastAdvancedChapter: 48,
+              expectedPayoff: "Guild payoff",
+              notes: "Recent guild pressure remains active.",
+            },
+            {
+              hookId: "recent-token",
+              startChapter: 45,
+              type: "artifact",
+              status: "open",
+              lastAdvancedChapter: 47,
+              expectedPayoff: "Token payoff",
+              notes: "Recent token route remains active.",
+            },
+            {
+              hookId: "stale-omega",
+              startChapter: 6,
+              type: "relationship",
+              status: "open",
+              lastAdvancedChapter: 12,
+              expectedPayoff: "Old relic payoff",
+              notes: "Dormant unresolved relationship line.",
+            },
+            {
+              hookId: "stale-sable",
+              startChapter: 8,
+              type: "mystery",
+              status: "open",
+              lastAdvancedChapter: 14,
+              expectedPayoff: "Archive payoff",
+              notes: "Dormant unresolved mystery line.",
+            },
+          ],
+        }, null, 2),
+        "utf-8",
+      ),
+    ]);
+
+    const result = await retrieveMemorySelection({
+      bookDir,
+      chapterNumber: 51,
+      goal: "Keep the chapter on the debt cluster and route pressure together.",
+      mustKeep: ["The old debt cluster must stay legible."],
+    });
+
+    expect(result.hooks.map((hook) => hook.hookId)).toEqual(expect.arrayContaining([
+      "stale-omega",
+      "stale-sable",
+    ]));
+  });
+
   it("does not surface far-future unstarted hooks in early chapter retrieval", async () => {
     root = await mkdtemp(join(tmpdir(), "inkos-memory-retrieval-future-hook-gate-test-"));
     const bookDir = join(root, "book");

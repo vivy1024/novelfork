@@ -390,7 +390,10 @@ function resolveAgendaLimit(params: {
 }
 
 function selectAgendaHooksWithTypeSpread<T extends {
-  readonly hook: ReturnType<typeof normalizeStoredHook>;
+  readonly hook: {
+    readonly hookId: string;
+    readonly type: string;
+  };
   readonly lifecycle: ReturnType<typeof describeHookLifecycle>;
 }>(params: {
   readonly entries: ReadonlyArray<T>;
@@ -453,6 +456,65 @@ function selectAgendaHooksWithTypeSpread<T extends {
 
 function normalizeHookType(type: string): string {
   return type.trim().toLowerCase() || "hook";
+}
+
+function resolveRelevantHookPrimaryLimit(entries: ReadonlyArray<{
+  readonly hook: {
+    readonly type: string;
+  };
+  readonly lifecycle: ReturnType<typeof describeHookLifecycle>;
+}>): number {
+  const pressuredCount = entries.filter((entry) =>
+    entry.lifecycle.readyToResolve
+    || entry.lifecycle.stale
+    || entry.lifecycle.overdue,
+  ).length;
+  return pressuredCount >= 4 ? 4 : 3;
+}
+
+function resolveRelevantHookStaleLimit(
+  entries: ReadonlyArray<{
+    readonly hook: {
+      readonly hookId: string;
+      readonly type: string;
+    };
+    readonly lifecycle: ReturnType<typeof describeHookLifecycle>;
+  }>,
+  selectedIds: ReadonlySet<string>,
+): number {
+  const staleCandidates = entries.filter((entry) =>
+    !selectedIds.has(entry.hook.hookId)
+    && (entry.lifecycle.stale || entry.lifecycle.overdue),
+  );
+  if (staleCandidates.length === 0) {
+    return 0;
+  }
+
+  const staleFamilies = new Set(
+    staleCandidates.map((entry) => normalizeHookType(entry.hook.type)),
+  ).size;
+  const overdueCount = staleCandidates.filter((entry) => entry.lifecycle.overdue).length;
+  if (overdueCount >= 2 || staleFamilies >= 2) {
+    return Math.min(2, staleCandidates.length);
+  }
+
+  return 1;
+}
+
+function isHookWithinLifecycleWindow(
+  hook: StoredHook,
+  chapterNumber: number,
+  lifecycle: ReturnType<typeof describeHookLifecycle>,
+): boolean {
+  const recentWindow = lifecycle.timing === "endgame"
+    ? 10
+    : lifecycle.timing === "slow-burn"
+      ? 8
+      : lifecycle.timing === "mid-arc"
+        ? 6
+        : 5;
+
+  return isHookWithinChapterWindow(hook, chapterNumber, recentWindow);
 }
 
 function isMustAdvanceCandidate(
@@ -890,6 +952,15 @@ function selectRelevantHooks(
   const ranked = hooks
     .map((hook) => ({
       hook,
+      lifecycle: describeHookLifecycle({
+        payoffTiming: hook.payoffTiming,
+        expectedPayoff: hook.expectedPayoff,
+        notes: hook.notes,
+        startChapter: Math.max(0, hook.startChapter),
+        lastAdvancedChapter: Math.max(0, hook.lastAdvancedChapter),
+        status: hook.status,
+        chapterNumber,
+      }),
       score: scoreHook(hook, queryTerms, chapterNumber),
       matched: matchesAny(
         [hook.hookId, hook.type, hook.expectedPayoff, hook.payoffTiming ?? "", hook.notes].join(" "),
@@ -898,26 +969,30 @@ function selectRelevantHooks(
     }))
     .filter((entry) => entry.matched || isUnresolvedHook(entry.hook.status));
 
-  const recentCutoff = Math.max(0, chapterNumber - 5);
-  const staleCutoff = Math.max(0, chapterNumber - 10);
-  const primary = ranked
-    .filter((entry) => (
-      entry.matched
-      || isHookWithinChapterWindow(entry.hook, chapterNumber, 5)
-    ))
-    .sort((left, right) => right.score - left.score || right.hook.lastAdvancedChapter - left.hook.lastAdvancedChapter)
-    .slice(0, 3);
+  const primary = selectAgendaHooksWithTypeSpread({
+    entries: ranked
+      .filter((entry) => (
+        entry.matched
+        || isHookWithinLifecycleWindow(entry.hook, chapterNumber, entry.lifecycle)
+      ))
+      .sort((left, right) => right.score - left.score || right.hook.lastAdvancedChapter - left.hook.lastAdvancedChapter),
+    limit: resolveRelevantHookPrimaryLimit(ranked),
+    forceInclude: (entry) => entry.matched && entry.lifecycle.overdue,
+  });
 
   const selectedIds = new Set(primary.map((entry) => entry.hook.hookId));
-  const stale = ranked
-    .filter((entry) => (
-      !selectedIds.has(entry.hook.hookId)
-      && !isFuturePlannedHook(entry.hook, chapterNumber)
-      && entry.hook.lastAdvancedChapter <= staleCutoff
-      && isUnresolvedHook(entry.hook.status)
-    ))
-    .sort((left, right) => left.hook.lastAdvancedChapter - right.hook.lastAdvancedChapter || right.score - left.score)
-    .slice(0, 1);
+  const stale = selectAgendaHooksWithTypeSpread({
+    entries: ranked
+      .filter((entry) => (
+        !selectedIds.has(entry.hook.hookId)
+        && !isFuturePlannedHook(entry.hook, chapterNumber)
+        && (entry.lifecycle.stale || entry.lifecycle.overdue)
+        && isUnresolvedHook(entry.hook.status)
+      ))
+      .sort((left, right) => left.hook.lastAdvancedChapter - right.hook.lastAdvancedChapter || right.score - left.score),
+    limit: resolveRelevantHookStaleLimit(ranked, selectedIds),
+    forceInclude: (entry) => entry.lifecycle.overdue,
+  });
 
   return [...primary, ...stale].map((entry) => entry.hook);
 }
