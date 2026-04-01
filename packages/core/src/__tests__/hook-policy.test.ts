@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  HOOK_ACTIVITY_THRESHOLDS,
   HOOK_AGENDA_LIMITS,
   HOOK_HEALTH_DEFAULTS,
   HOOK_PHASE_THRESHOLDS,
@@ -29,5 +30,15 @@ describe("hook-policy", () => {
     expect(HOOK_HEALTH_DEFAULTS.maxActiveHooks).toBe(12);
     expect(HOOK_PHASE_THRESHOLDS.lateProgress).toBeGreaterThan(HOOK_PHASE_THRESHOLDS.middleProgress);
     expect(HOOK_PRESSURE_WEIGHTS.resolveBiasMultiplier).toBe(10);
+  });
+
+  it("keeps lifecycle activity and refresh thresholds on the same policy surface", () => {
+    expect(HOOK_ACTIVITY_THRESHOLDS.recentlyTouchedDormancy).toBe(1);
+    expect(HOOK_ACTIVITY_THRESHOLDS.longArcQuietHoldMaxAge).toBeGreaterThan(
+      HOOK_ACTIVITY_THRESHOLDS.freshPromiseAge,
+    );
+    expect(HOOK_ACTIVITY_THRESHOLDS.refreshDormancy).toBeGreaterThan(
+      HOOK_ACTIVITY_THRESHOLDS.longArcQuietHoldMaxDormancy,
+    );
   });
 });

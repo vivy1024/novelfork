@@ -17,6 +17,7 @@ import {
   normalizeHookPayoffTiming,
 } from "./hook-lifecycle.js";
 import {
+  HOOK_ACTIVITY_THRESHOLDS,
   HOOK_AGENDA_LIMITS,
   HOOK_AGENDA_LOAD_THRESHOLDS,
   HOOK_PRESSURE_WEIGHTS,
@@ -592,11 +593,15 @@ function resolveHookMovement(params: {
     return "advance";
   }
 
-  if (longArc && params.lifecycle.age <= 2 && params.lifecycle.dormancy <= 1) {
+  if (
+    longArc
+    && params.lifecycle.age <= HOOK_ACTIVITY_THRESHOLDS.longArcQuietHoldMaxAge
+    && params.lifecycle.dormancy <= HOOK_ACTIVITY_THRESHOLDS.longArcQuietHoldMaxDormancy
+  ) {
     return "quiet-hold";
   }
 
-  if (params.lifecycle.dormancy >= 2) {
+  if (params.lifecycle.dormancy >= HOOK_ACTIVITY_THRESHOLDS.refreshDormancy) {
     return "refresh";
   }
 
@@ -637,7 +642,7 @@ function resolveHookPressureReason(params: {
       ? "long-arc-hold"
       : "fresh-promise";
   }
-  if (params.lifecycle.age <= 1) {
+  if (params.lifecycle.age <= HOOK_ACTIVITY_THRESHOLDS.freshPromiseAge) {
     return "fresh-promise";
   }
   return "building-debt";

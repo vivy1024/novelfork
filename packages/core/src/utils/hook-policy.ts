@@ -74,6 +74,14 @@ export const HOOK_PRESSURE_WEIGHTS = {
   criticalResolvePressure: 40,
 } as const;
 
+export const HOOK_ACTIVITY_THRESHOLDS = {
+  recentlyTouchedDormancy: 1,
+  longArcQuietHoldMaxAge: 2,
+  longArcQuietHoldMaxDormancy: 1,
+  refreshDormancy: 2,
+  freshPromiseAge: 1,
+} as const;
+
 export const HOOK_AGENDA_LIMITS: Record<HookAgendaLoad, {
   readonly staleDebt: number;
   readonly mustAdvance: number;

@@ -1,5 +1,6 @@
 import type { HookPayoffTiming } from "../models/runtime-state.js";
 import {
+  HOOK_ACTIVITY_THRESHOLDS,
   HOOK_PHASE_THRESHOLDS,
   HOOK_PHASE_WEIGHT,
   HOOK_PRESSURE_WEIGHTS,
@@ -119,7 +120,7 @@ export function describeHookLifecycle(params: {
   const dormancy = Math.max(0, params.chapterNumber - Math.max(1, lastTouchChapter));
   const explicitProgressing = /^(progressing|advanced|重大推进|持续推进)$/i.test(params.status.trim());
   const phaseReady = HOOK_PHASE_WEIGHT[phase] >= HOOK_PHASE_WEIGHT[profile.minimumPhase];
-  const recentlyTouched = dormancy <= 1;
+  const recentlyTouched = dormancy <= HOOK_ACTIVITY_THRESHOLDS.recentlyTouchedDormancy;
   const overdue = phaseReady && age >= profile.overdueAge;
   const cadenceReady = timing === "slow-burn"
     ? phase === "late" || overdue
