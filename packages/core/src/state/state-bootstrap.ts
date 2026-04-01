@@ -10,8 +10,24 @@ import {
   type HookStatus,
   type StateManifest,
 } from "../models/runtime-state.js";
-import type { Fact, StoredHook, StoredSummary } from "./memory-db.js";
+import type { Fact, StoredHook } from "./memory-db.js";
 import { normalizeHookPayoffTiming } from "../utils/hook-lifecycle.js";
+import {
+  inferFactSubject,
+  isCurrentChapterLabel,
+  isStateTableHeaderRow,
+  normalizeHookId,
+  parseChapterSummariesMarkdown,
+  parseInteger,
+  parseMarkdownTableRows,
+} from "../utils/story-markdown.js";
+
+export {
+  normalizeHookId,
+  parseChapterSummariesMarkdown,
+  parseCurrentStateFacts,
+  parsePendingHooksMarkdown,
+} from "../utils/story-markdown.js";
 
 export interface BootstrapStructuredStateResult {
   readonly createdFiles: ReadonlyArray<string>;
@@ -162,69 +178,6 @@ export async function rewriteStructuredStateFromMarkdown(params: {
     warnings: manifest.migrationWarnings,
     manifest,
   };
-}
-
-export function parseChapterSummariesMarkdown(markdown: string): StoredSummary[] {
-  const rows = parseMarkdownTableRows(markdown)
-    .filter((row) => /^\d+$/.test(row[0] ?? ""));
-
-  return rows.map((row) => ({
-    chapter: parseInt(row[0]!, 10),
-    title: row[1] ?? "",
-    characters: row[2] ?? "",
-    events: row[3] ?? "",
-    stateChanges: row[4] ?? "",
-    hookActivity: row[5] ?? "",
-    mood: row[6] ?? "",
-    chapterType: row[7] ?? "",
-  }));
-}
-
-export function parsePendingHooksMarkdown(markdown: string): StoredHook[] {
-  const tableRows = parseMarkdownTableRows(markdown)
-    .filter((row) => (row[0] ?? "").toLowerCase() !== "hook_id");
-
-  if (tableRows.length > 0) {
-    return tableRows
-      .filter((row) => normalizeHookId(row[0]).length > 0)
-      .map((row) => {
-        const legacyShape = row.length < 8;
-        return {
-          hookId: normalizeHookId(row[0]),
-          startChapter: parseInteger(row[1]),
-          type: row[2] ?? "",
-          status: row[3] ?? "open",
-          lastAdvancedChapter: parseInteger(row[4]),
-          expectedPayoff: row[5] ?? "",
-          payoffTiming: legacyShape ? undefined : normalizeHookPayoffTiming(row[6]),
-          notes: legacyShape ? (row[6] ?? "") : (row[7] ?? ""),
-        };
-      });
-  }
-
-  return markdown
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.startsWith("-"))
-    .map((line) => line.replace(/^-\s*/, ""))
-    .filter(Boolean)
-    .map((line, index) => ({
-      hookId: `hook-${index + 1}`,
-      startChapter: 0,
-      type: "unspecified",
-      status: "open",
-      lastAdvancedChapter: 0,
-      expectedPayoff: "",
-      payoffTiming: undefined,
-      notes: line,
-    }));
-}
-
-export function parseCurrentStateFacts(
-  markdown: string,
-  fallbackChapter: number,
-): Fact[] {
-  return parseCurrentStateStateMarkdown(markdown, fallbackChapter, []).facts;
 }
 
 async function loadOrBootstrapCurrentState(params: {
@@ -590,24 +543,6 @@ function maxHookChapter(hooks: ReadonlyArray<StoredHook>): number {
   );
 }
 
-export function normalizeHookId(value: string | undefined): string {
-  let normalized = (value ?? "").trim();
-  let previous = "";
-  while (normalized && normalized !== previous) {
-    previous = normalized;
-    normalized = normalized
-      .replace(/^\[(.+?)\]\([^)]+\)$/u, "$1")
-      .replace(/^\*\*(.+)\*\*$/u, "$1")
-      .replace(/^__(.+)__$/u, "$1")
-      .replace(/^\*(.+)\*$/u, "$1")
-      .replace(/^_(.+)_$/u, "$1")
-      .replace(/^`(.+)`$/u, "$1")
-      .replace(/^~~(.+)~~$/u, "$1")
-      .trim();
-  }
-  return normalized;
-}
-
 function normalizeHookStatus(value: string | undefined, warnings: string[], hookId: string): HookStatus {
   const normalized = (value ?? "").trim().toLowerCase();
   if (!normalized) return "open";
@@ -642,42 +577,6 @@ function parseIntegerWithFallback(
     return Math.max(0, fallback);
   }
   return parseInt(match[0], 10);
-}
-
-function parseMarkdownTableRows(markdown: string): string[][] {
-  return markdown
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.startsWith("|"))
-    .filter((line) => !line.includes("---"))
-    .map((line) => line.split("|").slice(1, -1).map((cell) => cell.trim()))
-    .filter((cells) => cells.some(Boolean));
-}
-
-function isStateTableHeaderRow(row: ReadonlyArray<string>): boolean {
-  const first = (row[0] ?? "").trim().toLowerCase();
-  const second = (row[1] ?? "").trim().toLowerCase();
-  return (first === "字段" && second === "值") || (first === "field" && second === "value");
-}
-
-function isCurrentChapterLabel(label: string): boolean {
-  return /^(当前章节|current chapter)$/i.test(label.trim());
-}
-
-function inferFactSubject(label: string): string {
-  if (/^(当前位置|current location)$/i.test(label)) return "protagonist";
-  if (/^(主角状态|protagonist state)$/i.test(label)) return "protagonist";
-  if (/^(当前目标|current goal)$/i.test(label)) return "protagonist";
-  if (/^(当前限制|current constraint)$/i.test(label)) return "protagonist";
-  if (/^(当前敌我|current alliances|current relationships)$/i.test(label)) return "protagonist";
-  if (/^(当前冲突|current conflict)$/i.test(label)) return "protagonist";
-  return "current_state";
-}
-
-function parseInteger(value: string | undefined): number {
-  if (!value) return 0;
-  const match = value.match(/\d+/);
-  return match ? parseInt(match[0], 10) : 0;
 }
 
 function appendWarning(warnings: string[], warning: string): void {
