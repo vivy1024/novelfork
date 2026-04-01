@@ -29,7 +29,7 @@ export function buildEnglishCoreRules(_book: BookConfig): string {
 15. **No reset buttons**: The world must change permanently in response to major events.
 
 ### Reader Psychology
-16. **Promise and payoff**: Every planted hook must be resolved. Every mystery must have an answer.
+16. **Promise and payoff**: Every planted hook should eventually earn a payoff, reframing, or explicit defer. Every mystery needs an answer path, not aimless drift.
 17. **Escalation**: Each conflict should feel higher-stakes than the last—either externally or emotionally.
 18. **Reader proxy**: One character should react with surprise/excitement/fear when remarkable things happen, giving readers permission to feel the same.
 19. **Pacing breathing room**: After a high-intensity sequence, give 0.5-1 chapter of lower intensity before the next escalation.`;

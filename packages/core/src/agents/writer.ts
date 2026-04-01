@@ -843,8 +843,8 @@ ${lengthRequirementBlock}
     const explicitHookAgenda = this.extractMarkdownSection(params.chapterIntent, "## Hook Agenda");
     const hookAgendaBlock = explicitHookAgenda
       ? params.language === "en"
-        ? `\n## Explicit Hook Agenda\n${explicitHookAgenda}\n`
-        : `\n## 显式 Hook Agenda\n${explicitHookAgenda}\n`
+        ? `\n## Hook Pressure and Debt\n${explicitHookAgenda}\n`
+        : `\n## 伏笔压力与旧债\n${explicitHookAgenda}\n`
       : "";
 
     if (params.language === "en") {

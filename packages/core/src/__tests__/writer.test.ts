@@ -1053,7 +1053,10 @@ describe("WriterAgent", () => {
 
       expect(systemPrompt).not.toContain("Hook-A / Hook-B");
       expect(systemPrompt).toContain("真实 hook_id");
-      expect(creativePrompt).toContain("## Explicit Hook Agenda");
+      expect(systemPrompt).toContain("preferred narrative response");
+      expect(systemPrompt).not.toContain("follow the requested move");
+      expect(creativePrompt).toContain("## Hook Pressure and Debt");
+      expect(creativePrompt).not.toContain("## Explicit Hook Agenda");
       expect(creativePrompt).toContain("mentor-oath");
       expect(creativePrompt).toContain("ledger-fragment");
       expect(creativePrompt).toContain("stale-ledger");

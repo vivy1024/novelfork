@@ -338,8 +338,8 @@ export class PlannerAgent extends BaseAgent {
     }
 
     return this.isChineseLanguage(language)
-      ? "不要继续依赖卷纲的 fallback 指令，必须把本章推进到新的弧线节点或地点变化。"
-      : "Do not keep leaning on the outline fallback. Force this chapter toward a fresh arc beat or location change.";
+      ? "不要继续停留在卷纲 fallback 的保守走法里，优先把本章推向新的弧线节点或地点变化。"
+      : "Do not keep drifting inside the outline fallback. Prefer a fresh arc beat or location change this chapter.";
   }
 
   private buildSceneDirective(
@@ -352,8 +352,8 @@ export class PlannerAgent extends BaseAgent {
     const repeatedType = cadence.scenePressure.repeatedType;
 
     return this.isChineseLanguage(language)
-      ? `最近章节连续停留在“${repeatedType}”，本章必须更换场景容器、地点或行动方式。`
-      : `Recent chapters are stuck in repeated ${repeatedType} beats. Change the scene container, location, or action pattern this chapter.`;
+      ? `最近章节连续停留在“${repeatedType}”，本章最好更换场景容器、地点或行动方式，避免继续沿同一种节拍平移。`
+      : `Recent chapters are lingering in repeated ${repeatedType} beats. Change the scene container, location, or action pattern if possible instead of sliding forward on the same beat.`;
   }
 
   private buildMoodDirective(
@@ -366,8 +366,8 @@ export class PlannerAgent extends BaseAgent {
     const moods = cadence.moodPressure.recentMoods;
 
     return this.isChineseLanguage(language)
-      ? `最近${moods.length}章情绪持续高压（${moods.slice(0, 3).join("、")}），本章必须降调——安排日常/喘息/温情/幽默场景，让读者呼吸。`
-      : `The last ${moods.length} chapters have been relentlessly tense (${moods.slice(0, 3).join(", ")}). This chapter must downshift — write a quieter scene with warmth, humor, or breathing room.`;
+      ? `最近${moods.length}章情绪持续高压（${moods.slice(0, 3).join("、")}），建议本章降调——安排日常/喘息/温情/幽默场景，让读者呼吸。`
+      : `The last ${moods.length} chapters have been relentlessly tense (${moods.slice(0, 3).join(", ")}). Consider downshifting this chapter with warmth, humor, or breathing room.`;
   }
 
   private buildTitleDirective(
@@ -380,8 +380,8 @@ export class PlannerAgent extends BaseAgent {
     const repeatedToken = cadence.titlePressure.repeatedToken;
 
     return this.isChineseLanguage(language)
-      ? `标题不要再围绕“${repeatedToken}”重复命名，换一个新的意象或动作焦点。`
-      : `Avoid another ${repeatedToken}-centric title. Pick a new image or action focus for this chapter title.`;
+      ? `标题尽量不要再围绕“${repeatedToken}”重复命名，换一个新的意象或动作焦点。`
+      : `Try not to return to another ${repeatedToken}-centric title. Pick a new image or action focus for this chapter title.`;
   }
 
   private extractSection(content: string, headings: ReadonlyArray<string>): string | undefined {
@@ -709,7 +709,7 @@ export class PlannerAgent extends BaseAgent {
       "## Style Emphasis",
       styleEmphasis,
       "",
-      "## Structured Directives",
+      "## Creative Pressure",
       directives,
       "",
       "## Hook Agenda",
