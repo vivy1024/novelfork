@@ -10,7 +10,12 @@ import {
 } from "../models/runtime-state.js";
 import { MemoryDB, type Fact, type StoredHook, type StoredSummary } from "../state/memory-db.js";
 import { bootstrapStructuredStateFromMarkdown, normalizeHookId } from "../state/state-bootstrap.js";
-import { collectStaleHookDebt } from "./hook-governance.js";
+import {
+  describeHookLifecycle,
+  localizeHookPayoffTiming,
+  resolveHookPayoffTiming,
+  normalizeHookPayoffTiming,
+} from "./hook-lifecycle.js";
 
 export interface MemorySelection {
   readonly summaries: ReadonlyArray<StoredSummary>;
@@ -191,12 +196,12 @@ export function renderHookSnapshot(
 
   const headers = language === "en"
     ? [
-      "| hook_id | start_chapter | type | status | last_advanced | expected_payoff | notes |",
-      "| --- | --- | --- | --- | --- | --- | --- |",
+      "| hook_id | start_chapter | type | status | last_advanced | expected_payoff | payoff_timing | notes |",
+      "| --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     : [
-      "| hook_id | 起始章节 | 类型 | 状态 | 最近推进 | 预期回收 | 备注 |",
-      "| --- | --- | --- | --- | --- | --- | --- |",
+      "| hook_id | 起始章节 | 类型 | 状态 | 最近推进 | 预期回收 | 回收节奏 | 备注 |",
+      "| --- | --- | --- | --- | --- | --- | --- | --- |",
     ];
 
   return [
@@ -208,6 +213,7 @@ export function renderHookSnapshot(
       hook.status,
       hook.lastAdvancedChapter,
       hook.expectedPayoff,
+      localizeHookPayoffTiming(resolveHookPayoffTiming(hook), language),
       hook.notes,
     ].map((cell) => escapeTableCell(String(cell))).join(" | ")).map((row) => `| ${row} |`),
   ].join("\n");
@@ -216,6 +222,7 @@ export function renderHookSnapshot(
 export function buildPlannerHookAgenda(params: {
   readonly hooks: ReadonlyArray<StoredHook>;
   readonly chapterNumber: number;
+  readonly targetChapters?: number;
   readonly maxMustAdvance?: number;
   readonly maxEligibleResolve?: number;
   readonly maxStaleDebt?: number;
@@ -224,31 +231,55 @@ export function buildPlannerHookAgenda(params: {
     .map(normalizeStoredHook)
     .filter((hook) => !isFuturePlannedHook(hook, params.chapterNumber, 0))
     .filter((hook) => hook.status !== "resolved" && hook.status !== "deferred");
-  const mustAdvanceHooks = agendaHooks
+  const lifecycleEntries = agendaHooks.map((hook) => ({
+    hook,
+    lifecycle: describeHookLifecycle({
+      payoffTiming: hook.payoffTiming,
+      expectedPayoff: hook.expectedPayoff,
+      notes: hook.notes,
+      startChapter: hook.startChapter,
+      lastAdvancedChapter: hook.lastAdvancedChapter,
+      status: hook.status,
+      chapterNumber: params.chapterNumber,
+      targetChapters: params.targetChapters,
+    }),
+  }));
+  const staleDebtHooks = lifecycleEntries
+    .filter((entry) => entry.lifecycle.stale)
+    .sort((left, right) => (
+      Number(right.lifecycle.overdue) - Number(left.lifecycle.overdue)
+      || right.lifecycle.advancePressure - left.lifecycle.advancePressure
+      || left.hook.lastAdvancedChapter - right.hook.lastAdvancedChapter
+      || left.hook.startChapter - right.hook.startChapter
+      || left.hook.hookId.localeCompare(right.hook.hookId)
+    ))
+    .slice(0, params.maxStaleDebt ?? 2)
+    .map((entry) => entry.hook);
+  const mustAdvanceHooks = lifecycleEntries
     .slice()
     .sort((left, right) => (
-      left.lastAdvancedChapter - right.lastAdvancedChapter
-      || left.startChapter - right.startChapter
-      || left.hookId.localeCompare(right.hookId)
+      Number(right.lifecycle.stale) - Number(left.lifecycle.stale)
+      || right.lifecycle.advancePressure - left.lifecycle.advancePressure
+      || left.hook.lastAdvancedChapter - right.hook.lastAdvancedChapter
+      || left.hook.startChapter - right.hook.startChapter
+      || left.hook.hookId.localeCompare(right.hook.hookId)
     ))
-    .slice(0, params.maxMustAdvance ?? 2);
-  const staleDebtHooks = collectStaleHookDebt({
-    hooks: agendaHooks,
-    chapterNumber: params.chapterNumber,
-  })
-    .slice(0, params.maxStaleDebt ?? 2);
-  const eligibleResolveHooks = agendaHooks
-    .filter((hook) => hook.startChapter <= params.chapterNumber - 3)
-    .filter((hook) => hook.lastAdvancedChapter >= params.chapterNumber - 2)
+    .slice(0, params.maxMustAdvance ?? 2)
+    .map((entry) => entry.hook);
+  const eligibleResolveHooks = lifecycleEntries
+    .filter((entry) => entry.lifecycle.readyToResolve)
     .sort((left, right) => (
-      left.startChapter - right.startChapter
-      || right.lastAdvancedChapter - left.lastAdvancedChapter
-      || left.hookId.localeCompare(right.hookId)
+      right.lifecycle.resolvePressure - left.lifecycle.resolvePressure
+      || Number(right.lifecycle.stale) - Number(left.lifecycle.stale)
+      || left.hook.startChapter - right.hook.startChapter
+      || left.hook.hookId.localeCompare(right.hook.hookId)
     ))
-    .slice(0, params.maxEligibleResolve ?? 1);
+    .slice(0, params.maxEligibleResolve ?? 1)
+    .map((entry) => entry.hook);
   const avoidNewHookFamilies = [...new Set([
     ...staleDebtHooks.map((hook) => hook.type.trim()).filter(Boolean),
     ...mustAdvanceHooks.map((hook) => hook.type.trim()).filter(Boolean),
+    ...eligibleResolveHooks.map((hook) => hook.type.trim()).filter(Boolean),
   ])].slice(0, 3);
 
   return {
@@ -388,15 +419,7 @@ export function parsePendingHooksMarkdown(markdown: string): StoredHook[] {
   if (tableRows.length > 0) {
     return tableRows
       .filter((row) => normalizeHookId(row[0]).length > 0)
-      .map((row) => ({
-        hookId: normalizeHookId(row[0]),
-        startChapter: parseInteger(row[1]),
-        type: row[2] ?? "",
-        status: row[3] ?? "open",
-        lastAdvancedChapter: parseInteger(row[4]),
-        expectedPayoff: row[5] ?? "",
-        notes: row[6] ?? "",
-      }));
+      .map((row) => parsePendingHookRow(row));
   }
 
   return markdown
@@ -412,8 +435,26 @@ export function parsePendingHooksMarkdown(markdown: string): StoredHook[] {
       status: "open",
       lastAdvancedChapter: 0,
       expectedPayoff: "",
+      payoffTiming: undefined,
       notes: line,
     }));
+}
+
+function parsePendingHookRow(row: ReadonlyArray<string | undefined>): StoredHook {
+  const legacyShape = row.length < 8;
+  const payoffTiming = legacyShape ? undefined : normalizeHookPayoffTiming(row[6]);
+  const notes = legacyShape ? (row[6] ?? "") : (row[7] ?? "");
+
+  return {
+    hookId: normalizeHookId(row[0]),
+    startChapter: parseInteger(row[1]),
+    type: row[2] ?? "",
+    status: row[3] ?? "open",
+    lastAdvancedChapter: parseInteger(row[4]),
+    expectedPayoff: row[5] ?? "",
+    payoffTiming,
+    notes,
+  };
 }
 
 export function parseCurrentStateFacts(
@@ -553,9 +594,9 @@ function selectRelevantHooks(
   const ranked = hooks
     .map((hook) => ({
       hook,
-      score: scoreHook(hook, queryTerms),
+      score: scoreHook(hook, queryTerms, chapterNumber),
       matched: matchesAny(
-        [hook.hookId, hook.type, hook.expectedPayoff, hook.notes].join(" "),
+        [hook.hookId, hook.type, hook.expectedPayoff, hook.payoffTiming ?? "", hook.notes].join(" "),
         queryTerms,
       ),
     }))
@@ -665,8 +706,12 @@ function scoreSummary(summary: StoredSummary, chapterNumber: number, queryTerms:
   return recencyScore + termScore;
 }
 
-function scoreHook(hook: StoredHook, queryTerms: ReadonlyArray<string>): number {
-  const text = [hook.hookId, hook.type, hook.expectedPayoff, hook.notes].join(" ");
+function scoreHook(
+  hook: StoredHook,
+  queryTerms: ReadonlyArray<string>,
+  _chapterNumber: number,
+): number {
+  const text = [hook.hookId, hook.type, hook.expectedPayoff, hook.payoffTiming ?? "", hook.notes].join(" ");
   const freshness = Math.max(0, hook.lastAdvancedChapter);
   const termScore = queryTerms.reduce((score, term) => score + (includesTerm(text, term) ? Math.max(8, term.length * 2) : 0), 0);
   return termScore + freshness;
@@ -680,6 +725,7 @@ function normalizeStoredHook(hook: StoredHook): HookRecord {
     status: normalizeStoredHookStatus(hook.status),
     lastAdvancedChapter: Math.max(0, hook.lastAdvancedChapter),
     expectedPayoff: hook.expectedPayoff,
+    payoffTiming: resolveHookPayoffTiming(hook),
     notes: hook.notes,
   };
 }

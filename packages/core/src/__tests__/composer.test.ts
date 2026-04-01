@@ -458,4 +458,67 @@ describe("ComposerAgent", () => {
     expect(parentCanonEntry?.excerpt).toContain("archive fire");
     expect(fanficCanonEntry?.excerpt).toContain("oath debt logic");
   });
+
+  it("emits hook debt briefs for agenda-targeted hooks", async () => {
+    await Promise.all([
+      writeFile(
+        join(storyDir, "pending_hooks.md"),
+        [
+          "# Pending Hooks",
+          "",
+          "| hook_id | 起始章节 | 类型 | 状态 | 最近推进 | 预期回收 | 回收节奏 | 备注 |",
+          "| --- | --- | --- | --- | --- | --- | --- | --- |",
+          "| mentor-oath | 8 | relationship | progressing | 9 | 揭开师债为何断裂 | 慢烧 | 师债需要跨更大弧线回收 |",
+          "| guild-route | 1 | mystery | open | 2 | 查清商会路线背后的买家 | 近期 | 商会路线仍在旁支干扰 |",
+          "",
+        ].join("\n"),
+        "utf-8",
+      ),
+      writeFile(
+        join(storyDir, "chapter_summaries.md"),
+        [
+          "# Chapter Summaries",
+          "",
+          "| 7 | Broken Letter | Lin Yue | A torn letter mentions the mentor | Lin Yue reopens the old oath | mentor-oath seeded | uneasy | mystery |",
+          "| 8 | River Camp | Lin Yue | Mentor debt becomes personal | Lin Yue cannot let go | mentor-oath advanced | raw | confrontation |",
+          "| 9 | Trial Echo | Lin Yue | Mentor left without explanation | Oath token matters again | mentor-oath advanced | aching | fallout |",
+          "",
+        ].join("\n"),
+        "utf-8",
+      ),
+    ]);
+
+    const composer = new ComposerAgent({
+      client: {} as ConstructorParameters<typeof ComposerAgent>[0]["client"],
+      model: "test-model",
+      projectRoot: root,
+      bookId: book.id,
+    });
+
+    const result = await composer.composeChapter({
+      book,
+      bookDir,
+      chapterNumber: 10,
+      plan: {
+        ...plan,
+        intent: {
+          ...plan.intent,
+          chapter: 10,
+          goal: "Bring the focus back to the mentor oath conflict.",
+          hookAgenda: {
+            mustAdvance: ["mentor-oath"],
+            eligibleResolve: [],
+            staleDebt: [],
+            avoidNewHookFamilies: ["relationship"],
+          },
+        },
+      },
+    });
+
+    const hookDebtEntry = result.contextPackage.selectedContext.find((entry) => entry.source === "runtime/hook_debt#mentor-oath");
+    expect(hookDebtEntry).toBeDefined();
+    expect(hookDebtEntry?.excerpt).toContain("mentor-oath");
+    expect(hookDebtEntry?.excerpt).toContain("River Camp");
+    expect(hookDebtEntry?.excerpt).toContain("Trial Echo");
+  });
 });

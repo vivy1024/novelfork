@@ -83,6 +83,7 @@ export class PlannerAgent extends BaseAgent {
     const hookAgenda = buildPlannerHookAgenda({
       hooks: memorySelection.activeHooks,
       chapterNumber: input.chapterNumber,
+      targetChapters: input.book.targetChapters,
     });
     const directives = this.buildStructuredDirectives({
       chapterNumber: input.chapterNumber,

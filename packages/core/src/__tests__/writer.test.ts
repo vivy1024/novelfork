@@ -205,6 +205,11 @@ describe("WriterAgent", () => {
               reason: "Carry forward unresolved hook.",
               excerpt: "relationship | open | 101 | Mentor oath debt with Lin Yue",
             },
+            {
+              source: "runtime/hook_debt#mentor-oath",
+              reason: "Explicit hook debt brief for the agenda target.",
+              excerpt: "mentor-oath | cadence: slow-burn | seed: ch8 River Camp - Mentor debt becomes personal | latest: ch99 Locked Gate - Lin Yue chooses the mentor line over the guild line | unpaid: reveal why the mentor broke the oath",
+            },
           ],
         },
         ruleStack: {
@@ -224,7 +229,9 @@ describe("WriterAgent", () => {
       expect(settlePrompt).toContain("## 本章控制输入");
       expect(settlePrompt).toContain("story/chapter_summaries.md#99");
       expect(settlePrompt).toContain("| 99 | Locked Gate |");
-      expect(settlePrompt).toContain("| stale-ledger | 14 | mystery | open | 70 | 120 | Old ledger debt is dormant but unresolved |");
+      expect(settlePrompt).toContain("## Hook Debt Briefs");
+      expect(settlePrompt).toContain("mentor-oath | cadence: slow-burn");
+      expect(settlePrompt).toContain("| stale-ledger | 14 | mystery | open | 70 | 120 | 中程 | Old ledger debt is dormant but unresolved |");
       expect(settlePrompt).not.toContain("| 1 | Guild Trail |");
       expect(settlePrompt).not.toContain("old-seal");
       expect(settlePrompt).not.toContain("Guildmaster Ren");

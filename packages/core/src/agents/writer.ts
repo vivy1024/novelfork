@@ -910,6 +910,7 @@ ${lengthRequirementBlock}
       blocks.titleHistoryBlock,
       blocks.moodTrailBlock,
       blocks.canonBlock,
+      blocks.hookDebtBlock,
       blocks.hooksBlock,
       blocks.summariesBlock,
       blocks.volumeSummariesBlock,

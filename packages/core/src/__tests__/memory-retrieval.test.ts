@@ -1085,4 +1085,62 @@ describe("parsePendingHooksMarkdown", () => {
 
     expect(hooks.map((hook) => hook.hookId)).toEqual(["H009", "H010"]);
   });
+
+  it("parses semantic payoff timing from extended pending hooks tables", () => {
+    const hooks = memoryRetrieval.parsePendingHooksMarkdown([
+      "| hook_id | start_chapter | type | status | last_advanced | expected_payoff | payoff_timing | notes |",
+      "| --- | --- | --- | --- | --- | --- | --- | --- |",
+      "| oath-debt | 8 | relationship | open | 12 | Reveal why the mentor broke the oath | slow-burn | Long-buried debt stays unresolved |",
+      "| kiln-key | 15 | mystery | open | 15 | Find out what the kiln key opens next chapter | immediate | Fresh key with a fast local payoff |",
+      "",
+    ].join("\n"));
+
+    expect(hooks).toEqual([
+      expect.objectContaining({
+        hookId: "oath-debt",
+        payoffTiming: "slow-burn",
+        notes: "Long-buried debt stays unresolved",
+      }),
+      expect.objectContaining({
+        hookId: "kiln-key",
+        payoffTiming: "immediate",
+        notes: "Fresh key with a fast local payoff",
+      }),
+    ]);
+  });
+
+  it("keeps slow-burn hooks out of early resolve slots while still advancing them", () => {
+    const agenda = memoryRetrieval.buildPlannerHookAgenda({
+      chapterNumber: 18,
+      hooks: [
+        {
+          hookId: "slow-oath",
+          startChapter: 10,
+          type: "relationship",
+          status: "progressing",
+          lastAdvancedChapter: 17,
+          expectedPayoff: "Reveal why the mentor buried the oath debt",
+          payoffTiming: "slow-burn",
+          notes: "The debt should simmer across the wider arc.",
+        },
+        {
+          hookId: "ready-packet",
+          startChapter: 14,
+          type: "mystery",
+          status: "progressing",
+          lastAdvancedChapter: 17,
+          expectedPayoff: "Open the missing packet and expose the inside hand",
+          payoffTiming: "near-term",
+          notes: "The local sequence is ready for a concrete payoff.",
+        },
+      ] as never,
+      maxMustAdvance: 2,
+      maxEligibleResolve: 2,
+      targetChapters: 40,
+    } as never);
+
+    expect(agenda.mustAdvance).toContain("slow-oath");
+    expect(agenda.eligibleResolve).toContain("ready-packet");
+    expect(agenda.eligibleResolve).not.toContain("slow-oath");
+  });
 });

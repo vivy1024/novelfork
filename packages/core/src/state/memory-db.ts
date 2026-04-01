@@ -52,6 +52,7 @@ export interface StoredHook {
   readonly status: string;
   readonly lastAdvancedChapter: number;
   readonly expectedPayoff: string;
+  readonly payoffTiming?: string;
   readonly notes: string;
 }
 
@@ -99,6 +100,7 @@ export class MemoryDB {
         status TEXT NOT NULL DEFAULT 'open',
         last_advanced_chapter INTEGER NOT NULL DEFAULT 0,
         expected_payoff TEXT NOT NULL DEFAULT '',
+        payoff_timing TEXT NOT NULL DEFAULT '',
         notes TEXT NOT NULL DEFAULT ''
       );
 
@@ -108,6 +110,16 @@ export class MemoryDB {
       CREATE INDEX IF NOT EXISTS idx_hooks_status ON hooks(status);
       CREATE INDEX IF NOT EXISTS idx_hooks_last_advanced ON hooks(last_advanced_chapter);
     `);
+
+    this.ensureColumn("hooks", "payoff_timing", "TEXT NOT NULL DEFAULT ''");
+  }
+
+  private ensureColumn(table: string, column: string, definition: string): void {
+    try {
+      this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+    } catch {
+      // Column already exists on existing databases.
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -289,8 +301,8 @@ export class MemoryDB {
 
   upsertHook(hook: StoredHook): void {
     this.db.prepare(
-      `INSERT OR REPLACE INTO hooks (hook_id, start_chapter, type, status, last_advanced_chapter, expected_payoff, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT OR REPLACE INTO hooks (hook_id, start_chapter, type, status, last_advanced_chapter, expected_payoff, payoff_timing, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       hook.hookId,
       hook.startChapter,
@@ -298,6 +310,7 @@ export class MemoryDB {
       hook.status,
       hook.lastAdvancedChapter,
       hook.expectedPayoff,
+      hook.payoffTiming ?? "",
       hook.notes,
     );
   }
@@ -318,6 +331,7 @@ export class MemoryDB {
          status,
          last_advanced_chapter AS lastAdvancedChapter,
          expected_payoff AS expectedPayoff,
+         payoff_timing AS payoffTiming,
          notes
        FROM hooks
        WHERE lower(status) NOT IN ('resolved', 'closed', '已回收', '已解决')

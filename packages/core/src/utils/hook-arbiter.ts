@@ -5,6 +5,7 @@ import {
   type RuntimeStateDelta,
 } from "../models/runtime-state.js";
 import { evaluateHookAdmission } from "./hook-governance.js";
+import { resolveHookPayoffTiming } from "./hook-lifecycle.js";
 
 export interface HookArbiterDecision {
   readonly action: "created" | "mapped" | "mentioned" | "rejected";
@@ -154,6 +155,11 @@ function mergeCandidateIntoExistingHook(
     status: existing.status === "resolved" ? "resolved" : "progressing",
     lastAdvancedChapter: Math.max(existing.lastAdvancedChapter, chapter),
     expectedPayoff: preferRicherText(existing.expectedPayoff, candidate.expectedPayoff),
+    payoffTiming: resolveHookPayoffTiming({
+      payoffTiming: candidate.payoffTiming ?? existing.payoffTiming,
+      expectedPayoff: preferRicherText(existing.expectedPayoff, candidate.expectedPayoff),
+      notes: preferRicherText(existing.notes, candidate.notes),
+    }),
     notes: preferRicherText(existing.notes, candidate.notes),
   };
 }
@@ -170,6 +176,7 @@ function createCanonicalHook(params: {
     status: "open",
     lastAdvancedChapter: params.chapter,
     expectedPayoff: params.candidate.expectedPayoff.trim(),
+    payoffTiming: resolveHookPayoffTiming(params.candidate),
     notes: params.candidate.notes.trim(),
   };
 }

@@ -1,10 +1,12 @@
 import type { HookRecord, RuntimeStateDelta } from "../models/runtime-state.js";
+import { describeHookLifecycle } from "./hook-lifecycle.js";
 
 export type HookDisposition = "none" | "mention" | "advance" | "resolve" | "defer";
 
 export interface HookAdmissionCandidate {
   readonly type: string;
   readonly expectedPayoff?: string;
+  readonly payoffTiming?: string;
   readonly notes?: string;
 }
 
@@ -17,15 +19,30 @@ export interface HookAdmissionDecision {
 export function collectStaleHookDebt(params: {
   readonly hooks: ReadonlyArray<HookRecord>;
   readonly chapterNumber: number;
+  readonly targetChapters?: number;
   readonly staleAfterChapters?: number;
 }): HookRecord[] {
-  const staleAfterChapters = params.staleAfterChapters ?? 10;
-  const staleCutoff = params.chapterNumber - staleAfterChapters;
-
   return params.hooks
     .filter((hook) => hook.status !== "resolved" && hook.status !== "deferred")
     .filter((hook) => hook.startChapter <= params.chapterNumber)
-    .filter((hook) => hook.lastAdvancedChapter <= staleCutoff)
+    .filter((hook) => {
+      const lifecycle = describeHookLifecycle({
+        payoffTiming: hook.payoffTiming,
+        expectedPayoff: hook.expectedPayoff,
+        notes: hook.notes,
+        startChapter: hook.startChapter,
+        lastAdvancedChapter: hook.lastAdvancedChapter,
+        status: hook.status,
+        chapterNumber: params.chapterNumber,
+        targetChapters: params.targetChapters,
+      });
+
+      if (params.staleAfterChapters !== undefined) {
+        return hook.lastAdvancedChapter <= params.chapterNumber - params.staleAfterChapters;
+      }
+
+      return lifecycle.stale || lifecycle.overdue;
+    })
     .sort((left, right) => (
       left.lastAdvancedChapter - right.lastAdvancedChapter
       || left.startChapter - right.startChapter
@@ -60,6 +77,7 @@ export function evaluateHookAdmission(params: {
   const candidateNormalized = normalizeText([
     params.candidate.type,
     params.candidate.expectedPayoff ?? "",
+    params.candidate.payoffTiming ?? "",
     params.candidate.notes ?? "",
   ].join(" "));
   const candidateTerms = extractTerms(candidateNormalized);
@@ -69,6 +87,7 @@ export function evaluateHookAdmission(params: {
     const activeNormalized = normalizeText([
       hook.type,
       hook.expectedPayoff,
+      hook.payoffTiming ?? "",
       hook.notes,
     ].join(" "));
 

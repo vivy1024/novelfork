@@ -11,6 +11,7 @@ import {
   type StateManifest,
 } from "../models/runtime-state.js";
 import type { Fact, StoredHook, StoredSummary } from "./memory-db.js";
+import { normalizeHookPayoffTiming } from "../utils/hook-lifecycle.js";
 
 export interface BootstrapStructuredStateResult {
   readonly createdFiles: ReadonlyArray<string>;
@@ -186,15 +187,19 @@ export function parsePendingHooksMarkdown(markdown: string): StoredHook[] {
   if (tableRows.length > 0) {
     return tableRows
       .filter((row) => normalizeHookId(row[0]).length > 0)
-      .map((row) => ({
-        hookId: normalizeHookId(row[0]),
-        startChapter: parseInteger(row[1]),
-        type: row[2] ?? "",
-        status: row[3] ?? "open",
-        lastAdvancedChapter: parseInteger(row[4]),
-        expectedPayoff: row[5] ?? "",
-        notes: row[6] ?? "",
-      }));
+      .map((row) => {
+        const legacyShape = row.length < 8;
+        return {
+          hookId: normalizeHookId(row[0]),
+          startChapter: parseInteger(row[1]),
+          type: row[2] ?? "",
+          status: row[3] ?? "open",
+          lastAdvancedChapter: parseInteger(row[4]),
+          expectedPayoff: row[5] ?? "",
+          payoffTiming: legacyShape ? undefined : normalizeHookPayoffTiming(row[6]),
+          notes: legacyShape ? (row[6] ?? "") : (row[7] ?? ""),
+        };
+      });
   }
 
   return markdown
@@ -210,6 +215,7 @@ export function parsePendingHooksMarkdown(markdown: string): StoredHook[] {
       status: "open",
       lastAdvancedChapter: 0,
       expectedPayoff: "",
+      payoffTiming: undefined,
       notes: line,
     }));
 }
@@ -333,6 +339,7 @@ function parsePendingHooksStateMarkdown(markdown: string, warnings: string[]) {
         .filter((row) => normalizeHookId(row[0]).length > 0)
         .map((row) => {
           const hookId = normalizeHookId(row[0]);
+          const legacyShape = row.length < 8;
           return {
             hookId,
             startChapter: parseIntegerWithWarning(row[1], warnings, `${hookId}:startChapter`),
@@ -340,7 +347,8 @@ function parsePendingHooksStateMarkdown(markdown: string, warnings: string[]) {
             status: normalizeHookStatus(row[3], warnings, hookId),
             lastAdvancedChapter: parseIntegerWithWarning(row[4], warnings, `${hookId}:lastAdvancedChapter`),
             expectedPayoff: row[5] ?? "",
-            notes: row[6] ?? "",
+            payoffTiming: legacyShape ? undefined : normalizeHookPayoffTiming(row[6]),
+            notes: legacyShape ? (row[6] ?? "") : (row[7] ?? ""),
           };
         }),
     });
@@ -360,6 +368,7 @@ function parsePendingHooksStateMarkdown(markdown: string, warnings: string[]) {
         status: "open" as HookStatus,
         lastAdvancedChapter: 0,
         expectedPayoff: "",
+        payoffTiming: undefined,
         notes: line,
       })),
   });

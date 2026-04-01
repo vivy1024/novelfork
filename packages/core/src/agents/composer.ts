@@ -16,6 +16,10 @@ import {
   parseChapterSummariesMarkdown,
   retrieveMemorySelection,
 } from "../utils/memory-retrieval.js";
+import {
+  localizeHookPayoffTiming,
+  resolveHookPayoffTiming,
+} from "../utils/hook-lifecycle.js";
 
 export interface ComposeChapterInput {
   readonly book: BookConfig;
@@ -43,7 +47,11 @@ export class ComposerAgent extends BaseAgent {
     const runtimeDir = join(storyDir, "runtime");
     await mkdir(runtimeDir, { recursive: true });
 
-    const selectedContext = await this.collectSelectedContext(storyDir, input.plan);
+    const selectedContext = await this.collectSelectedContext(
+      storyDir,
+      input.plan,
+      input.book.language ?? "zh",
+    );
     const contextPackage = ContextPackageSchema.parse({
       chapter: input.chapterNumber,
       selectedContext,
@@ -103,7 +111,11 @@ export class ComposerAgent extends BaseAgent {
     };
   }
 
-  private async collectSelectedContext(storyDir: string, plan: PlanChapterOutput): Promise<ContextPackage["selectedContext"]> {
+  private async collectSelectedContext(
+    storyDir: string,
+    plan: PlanChapterOutput,
+    language: "zh" | "en",
+  ): Promise<ContextPackage["selectedContext"]> {
     const entries = await Promise.all([
       this.maybeContextSource(storyDir, "current_focus.md", "Current task focus for this chapter."),
       this.maybeContextSource(
@@ -145,6 +157,12 @@ export class ComposerAgent extends BaseAgent {
       outlineNode: planningAnchor,
       mustKeep: plan.intent.mustKeep,
     });
+    const hookDebtEntries = await this.buildHookDebtEntries(
+      storyDir,
+      plan,
+      memorySelection.activeHooks,
+      language,
+    );
 
     const summaryEntries = memorySelection.summaries.map((summary) => ({
       source: `story/chapter_summaries.md#${summary.chapter}`,
@@ -161,7 +179,7 @@ export class ComposerAgent extends BaseAgent {
     const hookEntries = memorySelection.hooks.map((hook) => ({
       source: `story/pending_hooks.md#${hook.hookId}`,
       reason: "Carry forward unresolved hooks that match the chapter focus.",
-      excerpt: [hook.type, hook.status, hook.expectedPayoff, hook.notes]
+      excerpt: [hook.type, hook.status, hook.expectedPayoff, hook.payoffTiming, hook.notes]
         .filter(Boolean)
         .join(" | "),
     }));
@@ -174,6 +192,7 @@ export class ComposerAgent extends BaseAgent {
     return [
       ...entries.filter((entry): entry is NonNullable<typeof entry> => entry !== null),
       ...trailEntries,
+      ...hookDebtEntries,
       ...factEntries,
       ...summaryEntries,
       ...volumeSummaryEntries,
@@ -226,6 +245,64 @@ export class ComposerAgent extends BaseAgent {
     return entries;
   }
 
+  private async buildHookDebtEntries(
+    storyDir: string,
+    plan: PlanChapterOutput,
+    activeHooks: ReadonlyArray<{
+      readonly hookId: string;
+      readonly startChapter: number;
+      readonly type: string;
+      readonly status: string;
+      readonly lastAdvancedChapter: number;
+      readonly expectedPayoff: string;
+      readonly payoffTiming?: string;
+      readonly notes: string;
+    }>,
+    language: "zh" | "en",
+  ): Promise<ContextPackage["selectedContext"]> {
+    const targetHookIds = [...new Set([
+      ...plan.intent.hookAgenda.eligibleResolve,
+      ...plan.intent.hookAgenda.mustAdvance,
+      ...plan.intent.hookAgenda.staleDebt,
+    ])];
+    if (targetHookIds.length === 0) {
+      return [];
+    }
+
+    const summaries = parseChapterSummariesMarkdown(
+      await this.readFileOrDefault(join(storyDir, "chapter_summaries.md")),
+    );
+
+    return targetHookIds.flatMap((hookId) => {
+      const hook = activeHooks.find((entry) => entry.hookId === hookId);
+      if (!hook) {
+        return [];
+      }
+
+      const seedSummary = this.findHookSummary(summaries, hook.hookId, hook.startChapter, "seed");
+      const latestSummary = this.findHookSummary(summaries, hook.hookId, hook.lastAdvancedChapter, "latest");
+      const cadence = localizeHookPayoffTiming(resolveHookPayoffTiming(hook), language);
+      const role = this.describeHookAgendaRole(plan, hook.hookId, language);
+      const promise = hook.expectedPayoff || (language === "en" ? "(unspecified)" : "（未写明）");
+      const seedBeat = seedSummary
+        ? this.renderHookDebtBeat(seedSummary)
+        : (hook.notes || promise);
+      const latestBeat = latestSummary
+        ? this.renderHookDebtBeat(latestSummary)
+        : (hook.notes || promise);
+
+      return [{
+        source: `runtime/hook_debt#${hook.hookId}`,
+        reason: language === "en"
+          ? "Narrative debt brief for an explicit hook agenda target."
+          : "显式 hook agenda 目标的叙事债务简报。",
+        excerpt: language === "en"
+          ? `${hook.hookId} | role: ${role} | cadence: ${cadence} | promise: ${promise} | seed: ${seedBeat} | latest: ${latestBeat}`
+          : `${hook.hookId} | 角色: ${role} | 节奏: ${cadence} | 承诺: ${promise} | 种子: ${seedBeat} | 最近推进: ${latestBeat}`,
+      }];
+    });
+  }
+
   private async maybeContextSource(
     storyDir: string,
     fileName: string,
@@ -269,5 +346,56 @@ export class ComposerAgent extends BaseAgent {
     } catch {
       return "(文件尚未创建)";
     }
+  }
+
+  private describeHookAgendaRole(
+    plan: PlanChapterOutput,
+    hookId: string,
+    language: "zh" | "en",
+  ): string {
+    if (plan.intent.hookAgenda.eligibleResolve.includes(hookId)) {
+      return language === "en" ? "payoff candidate" : "本章优先兑现";
+    }
+    if (plan.intent.hookAgenda.staleDebt.includes(hookId)) {
+      return language === "en" ? "stale debt" : "高压旧债";
+    }
+    return language === "en" ? "must advance" : "本章必须推进";
+  }
+
+  private findHookSummary(
+    summaries: ReadonlyArray<ReturnType<typeof parseChapterSummariesMarkdown>[number]>,
+    hookId: string,
+    chapter: number,
+    mode: "seed" | "latest",
+  ) {
+    const directChapterHit = summaries.find((summary) => summary.chapter === chapter);
+    const hookMentions = summaries.filter((summary) => this.summaryMentionsHook(summary, hookId));
+    if (mode === "seed") {
+      return hookMentions.find((summary) => summary.chapter === chapter)
+        ?? hookMentions.at(0)
+        ?? directChapterHit;
+    }
+
+    return [...hookMentions].reverse().find((summary) => summary.chapter === chapter)
+      ?? hookMentions.at(-1)
+      ?? directChapterHit;
+  }
+
+  private summaryMentionsHook(
+    summary: ReturnType<typeof parseChapterSummariesMarkdown>[number],
+    hookId: string,
+  ): boolean {
+    return [
+      summary.title,
+      summary.events,
+      summary.stateChanges,
+      summary.hookActivity,
+    ].some((text) => text.includes(hookId));
+  }
+
+  private renderHookDebtBeat(
+    summary: ReturnType<typeof parseChapterSummariesMarkdown>[number],
+  ): string {
+    return `ch${summary.chapter} ${summary.title} - ${summary.events || summary.hookActivity || summary.stateChanges || "(none)"}`;
   }
 }

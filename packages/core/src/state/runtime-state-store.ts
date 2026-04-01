@@ -109,15 +109,16 @@ export async function loadNarrativeMemorySeed(bookDir: string): Promise<Narrativ
       mood: row.mood,
       chapterType: row.chapterType,
     })),
-    hooks: snapshot.hooks.hooks.map((hook) => ({
-      hookId: hook.hookId,
-      startChapter: hook.startChapter,
-      type: hook.type,
-      status: hook.status,
-      lastAdvancedChapter: hook.lastAdvancedChapter,
-      expectedPayoff: hook.expectedPayoff,
-      notes: hook.notes,
-    })),
+      hooks: snapshot.hooks.hooks.map((hook) => ({
+        hookId: hook.hookId,
+        startChapter: hook.startChapter,
+        type: hook.type,
+        status: hook.status,
+        lastAdvancedChapter: hook.lastAdvancedChapter,
+        expectedPayoff: hook.expectedPayoff,
+        payoffTiming: hook.payoffTiming,
+        notes: hook.notes,
+      })),
   };
 }
 

@@ -16,6 +16,15 @@ export type StateManifest = z.infer<typeof StateManifestSchema>;
 export const HookStatusSchema = z.enum(["open", "progressing", "deferred", "resolved"]);
 export type HookStatus = z.infer<typeof HookStatusSchema>;
 
+export const HookPayoffTimingSchema = z.enum([
+  "immediate",
+  "near-term",
+  "mid-arc",
+  "slow-burn",
+  "endgame",
+]);
+export type HookPayoffTiming = z.infer<typeof HookPayoffTimingSchema>;
+
 export const HookRecordSchema = z.object({
   hookId: z.string().min(1),
   startChapter: z.number().int().min(0),
@@ -23,6 +32,7 @@ export const HookRecordSchema = z.object({
   status: HookStatusSchema,
   lastAdvancedChapter: z.number().int().min(0),
   expectedPayoff: z.string().default(""),
+  payoffTiming: HookPayoffTimingSchema.optional(),
   notes: z.string().default(""),
 });
 
@@ -94,6 +104,7 @@ export type HookOps = z.infer<typeof HookOpsSchema>;
 export const NewHookCandidateSchema = z.object({
   type: z.string().min(1),
   expectedPayoff: z.string().default(""),
+  payoffTiming: HookPayoffTimingSchema.optional(),
   notes: z.string().default(""),
 });
 

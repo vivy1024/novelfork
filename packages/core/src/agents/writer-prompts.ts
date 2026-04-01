@@ -105,6 +105,9 @@ function buildGovernedInputContract(language: "zh" | "en", governed: boolean): s
 - When the runtime rule stack records an active L4 -> L3 override, follow the current task over local planning.
 - Keep hard guardrails compact: canon, continuity facts, and explicit prohibitions still win.
 - If an English Variance Brief is provided, obey it: avoid the listed phrase/opening/ending patterns and satisfy the scene obligation.
+- If Hook Debt Briefs are provided, treat them as the active memory of what the reader is still owed: preserve the original promise and change the on-page situation.
+- When the explicit hook agenda names an eligible resolve target, land a concrete payoff beat instead of merely mentioning the old thread.
+- When stale debt is present, do not open sibling hooks casually; clear pressure from old promises before minting fresh debt.
 - In multi-character scenes, include at least one resistance-bearing exchange instead of reducing the beat to summary or explanation.`;
   }
 
@@ -115,6 +118,9 @@ function buildGovernedInputContract(language: "zh" | "en", governed: boolean): s
 - 当 runtime rule stack 明确记录了 L4 -> L3 的 active override 时，优先执行当前任务意图，再局部调整规划层。
 - 真正不能突破的只有硬护栏：世界设定、连续性事实、显式禁令。
 - 如果提供了 English Variance Brief，必须主动避开其中列出的高频短语、重复开头和重复结尾模式，并完成 scene obligation。
+- 如果提供了 Hook Debt 简报，把它当成读者仍在等待兑现的承诺记忆：保留原始 promise，并让本章在页上发生真实变化。
+- 如果显式 hook agenda 里出现了可回收目标，本章必须写出具体兑现片段，不能只是重新提一句旧线索。
+- 如果存在 stale debt，先消化旧承诺的压力，再决定是否开新坑；同类 sibling hook 不得随手再开。
 - 多角色场景里，至少给出一轮带阻力的直接交锋，不要把人物关系写成纯解释或纯总结。`;
 }
 
