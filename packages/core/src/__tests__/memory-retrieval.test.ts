@@ -1142,5 +1142,23 @@ describe("parsePendingHooksMarkdown", () => {
     expect(agenda.mustAdvance).toContain("slow-oath");
     expect(agenda.eligibleResolve).toContain("ready-packet");
     expect(agenda.eligibleResolve).not.toContain("slow-oath");
+    expect(agenda.pressureMap).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        hookId: "slow-oath",
+        movement: "advance",
+        pressure: "medium",
+        type: "relationship",
+        payoffTiming: "slow-burn",
+        reason: "building-debt",
+      }),
+      expect.objectContaining({
+        hookId: "ready-packet",
+        movement: "full-payoff",
+        pressure: "high",
+        type: "mystery",
+        payoffTiming: "near-term",
+        reason: "ripe-payoff",
+      }),
+    ]));
   });
 });

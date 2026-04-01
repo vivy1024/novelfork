@@ -84,6 +84,7 @@ export class PlannerAgent extends BaseAgent {
       hooks: memorySelection.activeHooks,
       chapterNumber: input.chapterNumber,
       targetChapters: input.book.targetChapters,
+      language: input.book.language ?? "zh",
     });
     const directives = this.buildStructuredDirectives({
       chapterNumber: input.chapterNumber,
@@ -109,6 +110,7 @@ export class PlannerAgent extends BaseAgent {
     const runtimePath = join(runtimeDir, `chapter-${String(input.chapterNumber).padStart(4, "0")}.intent.md`);
     const intentMarkdown = this.renderIntentMarkdown(
       intent,
+      input.book.language ?? "zh",
       renderHookSnapshot(memorySelection.hooks, input.book.language ?? "zh"),
       renderSummarySnapshot(memorySelection.summaries, input.book.language ?? "zh"),
     );
@@ -658,6 +660,7 @@ export class PlannerAgent extends BaseAgent {
 
   private renderIntentMarkdown(
     intent: ChapterIntent,
+    language: "zh" | "en",
     pendingHooks: string,
     chapterSummaries: string,
   ): string {
@@ -682,7 +685,28 @@ export class PlannerAgent extends BaseAgent {
       intent.moodDirective ? `- mood: ${intent.moodDirective}` : undefined,
       intent.titleDirective ? `- title: ${intent.titleDirective}` : undefined,
     ].filter(Boolean).join("\n") || "- none";
+    const pressureMap = intent.hookAgenda.pressureMap.length > 0
+      ? [
+          "| hook_id | type | payoff_timing | phase | pressure | movement | reason | sibling_guard |",
+          "| --- | --- | --- | --- | --- | --- | --- | --- |",
+          ...intent.hookAgenda.pressureMap
+            .map((item) => [
+              item.hookId,
+              item.type,
+              item.payoffTiming ?? "unspecified",
+              item.phase,
+              item.pressure,
+              item.movement,
+              item.reason,
+              item.blockSiblingHooks ? "yes" : "no",
+            ].join(" | "))
+            .map((row) => `| ${row} |`),
+        ].join("\n")
+      : "- none";
     const hookAgenda = [
+      "### Pressure Map",
+      pressureMap,
+      "",
       "### Must Advance",
       intent.hookAgenda.mustAdvance.length > 0
         ? intent.hookAgenda.mustAdvance.map((item) => `- ${item}`).join("\n")

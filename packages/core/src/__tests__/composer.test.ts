@@ -73,6 +73,7 @@ describe("ComposerAgent", () => {
           },
         ],
         hookAgenda: {
+          pressureMap: [],
           mustAdvance: [],
           eligibleResolve: [],
           staleDebt: [],
@@ -506,6 +507,16 @@ describe("ComposerAgent", () => {
           chapter: 10,
           goal: "Bring the focus back to the mentor oath conflict.",
           hookAgenda: {
+            pressureMap: [{
+              hookId: "mentor-oath",
+              type: "relationship",
+              payoffTiming: "slow-burn",
+              phase: "middle",
+              pressure: "high",
+              movement: "partial-payoff",
+              reason: "stale-promise",
+              blockSiblingHooks: true,
+            }],
             mustAdvance: ["mentor-oath"],
             eligibleResolve: [],
             staleDebt: [],
@@ -518,6 +529,9 @@ describe("ComposerAgent", () => {
     const hookDebtEntry = result.contextPackage.selectedContext.find((entry) => entry.source === "runtime/hook_debt#mentor-oath");
     expect(hookDebtEntry).toBeDefined();
     expect(hookDebtEntry?.excerpt).toContain("mentor-oath");
+    expect(hookDebtEntry?.excerpt).toContain("动作: 局部兑现");
+    expect(hookDebtEntry?.excerpt).toContain("压力: 高");
+    expect(hookDebtEntry?.excerpt).toContain("抑制同类开坑: 是");
     expect(hookDebtEntry?.excerpt).toContain("River Camp");
     expect(hookDebtEntry?.excerpt).toContain("Trial Echo");
   });

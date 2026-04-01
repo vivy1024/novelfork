@@ -511,6 +511,18 @@ describe("ChapterIntentSchema", () => {
         },
       ],
       hookAgenda: {
+        pressureMap: [
+          {
+            hookId: "H019",
+            type: "relationship",
+            payoffTiming: "slow-burn",
+            phase: "middle",
+            pressure: "high",
+            movement: "partial-payoff",
+            reason: "stale-promise",
+            blockSiblingHooks: true,
+          },
+        ],
         mustAdvance: ["H019"],
         eligibleResolve: ["H045"],
         staleDebt: ["H023", "H027"],
@@ -528,6 +540,17 @@ describe("ChapterIntentSchema", () => {
     expect(result.moodDirective).toContain("Release pressure");
     expect(result.titleDirective).toContain("ledger title");
     expect(result.conflicts).toHaveLength(1);
+    expect(result.hookAgenda.pressureMap).toEqual([
+      expect.objectContaining({
+        hookId: "H019",
+        type: "relationship",
+        phase: "middle",
+        movement: "partial-payoff",
+        pressure: "high",
+        payoffTiming: "slow-burn",
+        reason: "stale-promise",
+      }),
+    ]);
     expect(result.hookAgenda.mustAdvance).toEqual(["H019"]);
     expect(result.hookAgenda.eligibleResolve).toEqual(["H045"]);
     expect(result.hookAgenda.staleDebt).toEqual(["H023", "H027"]);
@@ -551,6 +574,7 @@ describe("ChapterIntentSchema", () => {
     expect(result.mustAvoid).toEqual([]);
     expect(result.styleEmphasis).toEqual([]);
     expect(result.conflicts).toEqual([]);
+    expect(result.hookAgenda.pressureMap).toEqual([]);
     expect(result.hookAgenda.mustAdvance).toEqual([]);
     expect(result.hookAgenda.eligibleResolve).toEqual([]);
     expect(result.hookAgenda.staleDebt).toEqual([]);

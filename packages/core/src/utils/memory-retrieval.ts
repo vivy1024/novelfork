@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { HookAgenda } from "../models/input-governance.js";
+import type { HookAgenda, HookPressure } from "../models/input-governance.js";
 import {
   ChapterSummariesStateSchema,
   CurrentStateStateSchema,
@@ -223,6 +223,7 @@ export function buildPlannerHookAgenda(params: {
   readonly hooks: ReadonlyArray<StoredHook>;
   readonly chapterNumber: number;
   readonly targetChapters?: number;
+  readonly language?: "zh" | "en";
   readonly maxMustAdvance?: number;
   readonly maxEligibleResolve?: number;
   readonly maxStaleDebt?: number;
@@ -281,13 +282,142 @@ export function buildPlannerHookAgenda(params: {
     ...mustAdvanceHooks.map((hook) => hook.type.trim()).filter(Boolean),
     ...eligibleResolveHooks.map((hook) => hook.type.trim()).filter(Boolean),
   ])].slice(0, 3);
+  const pressureMap = buildHookPressureMap({
+    lifecycleEntries,
+    mustAdvanceHooks,
+    eligibleResolveHooks,
+    staleDebtHooks,
+  });
 
   return {
+    pressureMap,
     mustAdvance: mustAdvanceHooks.map((hook) => hook.hookId),
     eligibleResolve: eligibleResolveHooks.map((hook) => hook.hookId),
     staleDebt: staleDebtHooks.map((hook) => hook.hookId),
     avoidNewHookFamilies,
   };
+}
+
+function buildHookPressureMap(params: {
+  readonly lifecycleEntries: ReadonlyArray<{
+    readonly hook: ReturnType<typeof normalizeStoredHook>;
+    readonly lifecycle: ReturnType<typeof describeHookLifecycle>;
+  }>;
+  readonly mustAdvanceHooks: ReadonlyArray<ReturnType<typeof normalizeStoredHook>>;
+  readonly eligibleResolveHooks: ReadonlyArray<ReturnType<typeof normalizeStoredHook>>;
+  readonly staleDebtHooks: ReadonlyArray<ReturnType<typeof normalizeStoredHook>>;
+}): HookPressure[] {
+  const eligibleResolveIds = new Set(params.eligibleResolveHooks.map((hook) => hook.hookId));
+  const staleDebtIds = new Set(params.staleDebtHooks.map((hook) => hook.hookId));
+  const lifecycleById = new Map(
+    params.lifecycleEntries.map((entry) => [entry.hook.hookId, entry.lifecycle] as const),
+  );
+
+  const orderedIds = [...new Set([
+    ...params.eligibleResolveHooks.map((hook) => hook.hookId),
+    ...params.staleDebtHooks.map((hook) => hook.hookId),
+    ...params.mustAdvanceHooks.map((hook) => hook.hookId),
+  ])];
+
+  return orderedIds.flatMap((hookId) => {
+    const hook = params.lifecycleEntries.find((entry) => entry.hook.hookId === hookId)?.hook;
+    const lifecycle = lifecycleById.get(hookId);
+    if (!hook || !lifecycle) {
+      return [];
+    }
+
+    const movement = resolveHookMovement({
+      hook,
+      lifecycle,
+      eligibleResolve: eligibleResolveIds.has(hookId),
+      staleDebt: staleDebtIds.has(hookId),
+    });
+    const pressure = resolveHookPressureLevel({ lifecycle, movement });
+    const reason = resolveHookPressureReason({ lifecycle, movement });
+
+    return [{
+      hookId,
+      type: hook.type.trim() || "hook",
+      movement,
+      pressure,
+      payoffTiming: lifecycle.timing,
+      phase: lifecycle.phase,
+      reason,
+      blockSiblingHooks: staleDebtIds.has(hookId) || movement === "partial-payoff" || movement === "full-payoff",
+    }];
+  });
+}
+
+function resolveHookMovement(params: {
+  readonly hook: ReturnType<typeof normalizeStoredHook>;
+  readonly lifecycle: ReturnType<typeof describeHookLifecycle>;
+  readonly eligibleResolve: boolean;
+  readonly staleDebt: boolean;
+}): HookPressure["movement"] {
+  if (params.eligibleResolve) {
+    return "full-payoff";
+  }
+
+  const timing = params.lifecycle.timing;
+  const longArc = timing === "slow-burn" || timing === "endgame";
+
+  if (params.staleDebt && longArc) {
+    return "partial-payoff";
+  }
+
+  if (params.staleDebt) {
+    return "advance";
+  }
+
+  if (longArc && params.lifecycle.age <= 2 && params.lifecycle.dormancy <= 1) {
+    return "quiet-hold";
+  }
+
+  if (params.lifecycle.dormancy >= 2) {
+    return "refresh";
+  }
+
+  return "advance";
+}
+
+function resolveHookPressureLevel(params: {
+  readonly lifecycle: ReturnType<typeof describeHookLifecycle>;
+  readonly movement: HookPressure["movement"];
+}): HookPressure["pressure"] {
+  if (params.lifecycle.overdue || params.movement === "full-payoff") {
+    return params.lifecycle.overdue ? "critical" : "high";
+  }
+  if (params.lifecycle.stale || params.movement === "partial-payoff") {
+    return "high";
+  }
+  if (params.movement === "advance" || params.movement === "refresh") {
+    return "medium";
+  }
+  return "low";
+}
+
+function resolveHookPressureReason(params: {
+  readonly lifecycle: ReturnType<typeof describeHookLifecycle>;
+  readonly movement: HookPressure["movement"];
+}): HookPressure["reason"] {
+  if (params.lifecycle.overdue && params.movement === "full-payoff") {
+    return "overdue-payoff";
+  }
+  if (params.movement === "full-payoff") {
+    return "ripe-payoff";
+  }
+  if (params.movement === "partial-payoff" || params.lifecycle.stale) {
+    return "stale-promise";
+  }
+  if (params.movement === "quiet-hold") {
+    return params.lifecycle.timing === "slow-burn" || params.lifecycle.timing === "endgame"
+      ? "long-arc-hold"
+      : "fresh-promise";
+  }
+  if (params.lifecycle.age <= 1) {
+    return "fresh-promise";
+  }
+  return "building-debt";
 }
 
 function openMemoryDB(bookDir: string): MemoryDB | null {
