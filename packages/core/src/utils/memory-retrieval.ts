@@ -245,7 +245,8 @@ export function buildPlannerHookAgenda(params: {
       targetChapters: params.targetChapters,
     }),
   }));
-  const staleDebtHooks = lifecycleEntries
+  const agendaLoad = resolveHookAgendaLoad(lifecycleEntries);
+  const staleDebtCandidates = lifecycleEntries
     .filter((entry) => entry.lifecycle.stale)
     .sort((left, right) => (
       Number(right.lifecycle.overdue) - Number(left.lifecycle.overdue)
@@ -253,10 +254,18 @@ export function buildPlannerHookAgenda(params: {
       || left.hook.lastAdvancedChapter - right.hook.lastAdvancedChapter
       || left.hook.startChapter - right.hook.startChapter
       || left.hook.hookId.localeCompare(right.hook.hookId)
-    ))
-    .slice(0, params.maxStaleDebt ?? 2)
-    .map((entry) => entry.hook);
-  const mustAdvanceHooks = lifecycleEntries
+    ));
+  const staleDebtHooks = selectAgendaHooksWithTypeSpread({
+    entries: staleDebtCandidates,
+    limit: resolveAgendaLimit({
+      explicitLimit: params.maxStaleDebt,
+      candidateCount: staleDebtCandidates.length,
+      fallbackLimit: ADAPTIVE_HOOK_AGENDA_LIMITS[agendaLoad].staleDebt,
+    }),
+    forceInclude: (entry) => entry.lifecycle.overdue,
+  }).map((entry) => entry.hook);
+  const mustAdvancePool = lifecycleEntries.filter((entry) => isMustAdvanceCandidate(entry.lifecycle));
+  const mustAdvanceCandidates = (mustAdvancePool.length > 0 ? mustAdvancePool : lifecycleEntries)
     .slice()
     .sort((left, right) => (
       Number(right.lifecycle.stale) - Number(left.lifecycle.stale)
@@ -264,24 +273,38 @@ export function buildPlannerHookAgenda(params: {
       || left.hook.lastAdvancedChapter - right.hook.lastAdvancedChapter
       || left.hook.startChapter - right.hook.startChapter
       || left.hook.hookId.localeCompare(right.hook.hookId)
-    ))
-    .slice(0, params.maxMustAdvance ?? 2)
-    .map((entry) => entry.hook);
-  const eligibleResolveHooks = lifecycleEntries
+    ));
+  const mustAdvanceHooks = selectAgendaHooksWithTypeSpread({
+    entries: mustAdvanceCandidates,
+    limit: resolveAgendaLimit({
+      explicitLimit: params.maxMustAdvance,
+      candidateCount: mustAdvanceCandidates.length,
+      fallbackLimit: ADAPTIVE_HOOK_AGENDA_LIMITS[agendaLoad].mustAdvance,
+    }),
+    forceInclude: (entry) => entry.lifecycle.overdue,
+  }).map((entry) => entry.hook);
+  const eligibleResolveCandidates = lifecycleEntries
     .filter((entry) => entry.lifecycle.readyToResolve)
     .sort((left, right) => (
       right.lifecycle.resolvePressure - left.lifecycle.resolvePressure
       || Number(right.lifecycle.stale) - Number(left.lifecycle.stale)
       || left.hook.startChapter - right.hook.startChapter
       || left.hook.hookId.localeCompare(right.hook.hookId)
-    ))
-    .slice(0, params.maxEligibleResolve ?? 1)
-    .map((entry) => entry.hook);
+    ));
+  const eligibleResolveHooks = selectAgendaHooksWithTypeSpread({
+    entries: eligibleResolveCandidates,
+    limit: resolveAgendaLimit({
+      explicitLimit: params.maxEligibleResolve,
+      candidateCount: eligibleResolveCandidates.length,
+      fallbackLimit: ADAPTIVE_HOOK_AGENDA_LIMITS[agendaLoad].eligibleResolve,
+    }),
+    forceInclude: (entry) => entry.lifecycle.overdue || entry.lifecycle.resolvePressure >= 40,
+  }).map((entry) => entry.hook);
   const avoidNewHookFamilies = [...new Set([
     ...staleDebtHooks.map((hook) => hook.type.trim()).filter(Boolean),
     ...mustAdvanceHooks.map((hook) => hook.type.trim()).filter(Boolean),
     ...eligibleResolveHooks.map((hook) => hook.type.trim()).filter(Boolean),
-  ])].slice(0, 3);
+  ])].slice(0, ADAPTIVE_HOOK_AGENDA_LIMITS[agendaLoad].avoidFamilies);
   const pressureMap = buildHookPressureMap({
     lifecycleEntries,
     mustAdvanceHooks,
@@ -296,6 +319,149 @@ export function buildPlannerHookAgenda(params: {
     staleDebt: staleDebtHooks.map((hook) => hook.hookId),
     avoidNewHookFamilies,
   };
+}
+
+type HookAgendaLoad = "light" | "medium" | "heavy";
+
+const ADAPTIVE_HOOK_AGENDA_LIMITS: Record<HookAgendaLoad, {
+  readonly staleDebt: number;
+  readonly mustAdvance: number;
+  readonly eligibleResolve: number;
+  readonly avoidFamilies: number;
+}> = {
+  light: {
+    staleDebt: 1,
+    mustAdvance: 2,
+    eligibleResolve: 1,
+    avoidFamilies: 2,
+  },
+  medium: {
+    staleDebt: 2,
+    mustAdvance: 2,
+    eligibleResolve: 1,
+    avoidFamilies: 3,
+  },
+  heavy: {
+    staleDebt: 3,
+    mustAdvance: 3,
+    eligibleResolve: 2,
+    avoidFamilies: 4,
+  },
+};
+
+function resolveHookAgendaLoad(entries: ReadonlyArray<{
+  readonly hook: ReturnType<typeof normalizeStoredHook>;
+  readonly lifecycle: ReturnType<typeof describeHookLifecycle>;
+}>): HookAgendaLoad {
+  const pressuredEntries = entries.filter((entry) =>
+    entry.lifecycle.readyToResolve
+    || entry.lifecycle.stale
+    || entry.lifecycle.overdue,
+  );
+  const staleCount = pressuredEntries.filter((entry) => entry.lifecycle.stale).length;
+  const readyCount = pressuredEntries.filter((entry) => entry.lifecycle.readyToResolve).length;
+  const criticalCount = pressuredEntries.filter((entry) =>
+    entry.lifecycle.overdue || entry.lifecycle.resolvePressure >= 40,
+  ).length;
+  const pressuredFamilies = new Set(
+    pressuredEntries.map((entry) => normalizeHookType(entry.hook.type)),
+  ).size;
+
+  if (readyCount >= 3 || staleCount >= 4 || criticalCount >= 3 || pressuredEntries.length >= 6) {
+    return "heavy";
+  }
+  if (readyCount >= 2 || staleCount >= 2 || criticalCount >= 1 || pressuredFamilies >= 3) {
+    return "medium";
+  }
+  return "light";
+}
+
+function resolveAgendaLimit(params: {
+  readonly explicitLimit?: number;
+  readonly candidateCount: number;
+  readonly fallbackLimit: number;
+}): number {
+  if (params.candidateCount <= 0) {
+    return 0;
+  }
+
+  const limit = params.explicitLimit ?? params.fallbackLimit;
+  return Math.max(1, Math.min(limit, params.candidateCount));
+}
+
+function selectAgendaHooksWithTypeSpread<T extends {
+  readonly hook: ReturnType<typeof normalizeStoredHook>;
+  readonly lifecycle: ReturnType<typeof describeHookLifecycle>;
+}>(params: {
+  readonly entries: ReadonlyArray<T>;
+  readonly limit: number;
+  readonly forceInclude?: (entry: T) => boolean;
+}): T[] {
+  if (params.limit <= 0 || params.entries.length === 0) {
+    return [];
+  }
+
+  const selected: T[] = [];
+  const selectedIds = new Set<string>();
+  const selectedTypes = new Set<string>();
+  const forcedEntries = params.entries.filter((entry) => params.forceInclude?.(entry) ?? false);
+  const addEntry = (entry: T): void => {
+    if (selectedIds.has(entry.hook.hookId) || selected.length >= params.limit) {
+      return;
+    }
+    selected.push(entry);
+    selectedIds.add(entry.hook.hookId);
+    selectedTypes.add(normalizeHookType(entry.hook.type));
+  };
+
+  for (const entry of forcedEntries) {
+    if (selected.length >= params.limit) {
+      break;
+    }
+    const normalizedType = normalizeHookType(entry.hook.type);
+    if (!selectedTypes.has(normalizedType)) {
+      addEntry(entry);
+    }
+  }
+
+  for (const entry of forcedEntries) {
+    addEntry(entry);
+  }
+
+  for (const entry of params.entries) {
+    if (selected.length >= params.limit) {
+      break;
+    }
+    if (selectedIds.has(entry.hook.hookId)) {
+      continue;
+    }
+    const normalizedType = normalizeHookType(entry.hook.type);
+    if (!selectedTypes.has(normalizedType)) {
+      addEntry(entry);
+    }
+  }
+
+  for (const entry of params.entries) {
+    if (selected.length >= params.limit) {
+      break;
+    }
+    addEntry(entry);
+  }
+
+  return selected;
+}
+
+function normalizeHookType(type: string): string {
+  return type.trim().toLowerCase() || "hook";
+}
+
+function isMustAdvanceCandidate(
+  lifecycle: ReturnType<typeof describeHookLifecycle>,
+): boolean {
+  return lifecycle.stale
+    || lifecycle.readyToResolve
+    || lifecycle.overdue
+    || lifecycle.advancePressure >= 8;
 }
 
 function buildHookPressureMap(params: {

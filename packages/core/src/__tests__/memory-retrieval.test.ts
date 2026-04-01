@@ -1161,4 +1161,106 @@ describe("parsePendingHooksMarkdown", () => {
       }),
     ]));
   });
+
+  it("expands default resolve coverage when several short-payoff hooks mature together", () => {
+    const agenda = memoryRetrieval.buildPlannerHookAgenda({
+      chapterNumber: 8,
+      targetChapters: 12,
+      hooks: [
+        {
+          hookId: "packet-drop",
+          startChapter: 5,
+          type: "mystery",
+          status: "progressing",
+          lastAdvancedChapter: 7,
+          expectedPayoff: "Open the dropped packet and expose who planted it",
+          payoffTiming: "near-term",
+          notes: "The packet has been foregrounded for two chapters already.",
+        },
+        {
+          hookId: "seal-crack",
+          startChapter: 4,
+          type: "artifact",
+          status: "progressing",
+          lastAdvancedChapter: 7,
+          expectedPayoff: "Reveal what the cracked seal is hiding",
+          payoffTiming: "immediate",
+          notes: "The cracked seal should pay off in the current local sequence.",
+        },
+        {
+          hookId: "witness-turn",
+          startChapter: 5,
+          type: "relationship",
+          status: "progressing",
+          lastAdvancedChapter: 7,
+          expectedPayoff: "Force the silent witness to choose a side",
+          payoffTiming: "near-term",
+          notes: "The witness line is ready for a concrete turn now.",
+        },
+      ] as never,
+    } as never);
+
+    expect(agenda.eligibleResolve.length).toBeGreaterThan(1);
+    expect(agenda.eligibleResolve).toEqual(expect.arrayContaining([
+      "packet-drop",
+      "seal-crack",
+    ]));
+    expect(
+      agenda.pressureMap.filter((entry) => entry.movement === "full-payoff").length,
+    ).toBeGreaterThan(1);
+  });
+
+  it("spreads default must-advance coverage across pressured hook families", () => {
+    const agenda = memoryRetrieval.buildPlannerHookAgenda({
+      chapterNumber: 15,
+      targetChapters: 30,
+      hooks: [
+        {
+          hookId: "mentor-oath-a",
+          startChapter: 1,
+          type: "relationship",
+          status: "open",
+          lastAdvancedChapter: 2,
+          expectedPayoff: "Explain the first layer of the mentor oath debt",
+          payoffTiming: "mid-arc",
+          notes: "Old relationship debt keeps surfacing without movement.",
+        },
+        {
+          hookId: "mentor-oath-b",
+          startChapter: 2,
+          type: "relationship",
+          status: "open",
+          lastAdvancedChapter: 3,
+          expectedPayoff: "Show what the second oath witness is hiding",
+          payoffTiming: "mid-arc",
+          notes: "Another branch of the same relationship family is also stale.",
+        },
+        {
+          hookId: "mentor-oath-c",
+          startChapter: 3,
+          type: "relationship",
+          status: "open",
+          lastAdvancedChapter: 4,
+          expectedPayoff: "Reveal why the oath cannot be spoken aloud",
+          payoffTiming: "mid-arc",
+          notes: "The third relationship branch is still hanging.",
+        },
+        {
+          hookId: "kiln-key",
+          startChapter: 4,
+          type: "artifact",
+          status: "open",
+          lastAdvancedChapter: 5,
+          expectedPayoff: "Show what the kiln key unlocks",
+          payoffTiming: "mid-arc",
+          notes: "Artifact debt is also stale and should not vanish behind relationship debt.",
+        },
+      ] as never,
+    } as never);
+
+    expect(agenda.mustAdvance).toContain("kiln-key");
+    expect(agenda.mustAdvance).toEqual(expect.arrayContaining([
+      expect.stringMatching(/^mentor-oath-/),
+    ]));
+  });
 });
