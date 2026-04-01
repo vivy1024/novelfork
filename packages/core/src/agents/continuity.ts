@@ -170,16 +170,16 @@ function buildDimensionNote(
         : "检查视角切换是否有过渡、是否与设定视角一致";
     case 24:
       return language === "en"
-        ? "Cross-check subplot_board and chapter_summaries: if any subplot goes unmentioned or unadvanced for more than 5 chapters -> warning. If subplots exist but none move in the last 3 chapters -> warning."
-        : "对照 subplot_board 和 chapter_summaries：如果任何支线超过5章未被提及或推进→warning。如果存在支线但近3章完全没有任何支线推进→warning";
+        ? "Cross-check subplot_board and chapter_summaries: flag any subplot that stays dormant long enough to feel abandoned, or a recent run where every subplot is only restated instead of genuinely moving."
+        : "对照 subplot_board 和 chapter_summaries：标记那些沉寂到接近被遗忘的支线，或近期连续只被重复提及、没有真实推进的支线。";
     case 25:
       return language === "en"
-        ? "Cross-check emotional_arcs and chapter_summaries: if a major character shows no emotional change for 3 straight chapters (no new pressure, release, or turn) -> warning. Distinguish unchanged circumstances from unchanged inner movement."
-        : "对照 emotional_arcs 和 chapter_summaries：如果主要角色连续3章情绪状态无变化（没有新的压力、释放、转变）→warning。注意区分'角色处境未变'和'角色内心未变'";
+        ? "Cross-check emotional_arcs and chapter_summaries: flag any major character whose emotional line holds one pressure shape across a run instead of taking new pressure, release, reversal, or reinterpretation. Distinguish unchanged circumstances from unchanged inner movement."
+        : "对照 emotional_arcs 和 chapter_summaries：标记主要角色在一段时间内始终停留在同一种情绪压力形态、没有新压力、释放、转折或重估的情况。注意区分'处境未变'和'内心未变'。";
     case 26:
       return language === "en"
-        ? "Cross-check chapter_summaries for chapter-type distribution: 3+ consecutive chapters of the same type -> warning. No payoff or climax chapter for 5+ chapters -> warning. Explicitly list the recent type sequence."
-        : "对照 chapter_summaries 的章节类型分布：连续≥3章相同类型（如连续3个事件章/战斗章/布局章）→warning。≥5章没有出现回收章或高潮章→warning。请明确列出最近章节的类型序列";
+        ? "Cross-check chapter_summaries for chapter-type distribution: warn when the recent sequence stays in the same mode long enough to flatten rhythm, or when payoff / release beats disappear for too long. Explicitly list the recent type sequence."
+        : "对照 chapter_summaries 的章节类型分布：当近期章节长时间停留在同一种模式、把节奏压平，或回收/释放/高潮章节缺席过久时给出 warning。请明确列出最近章节的类型序列。";
     case 28:
       return language === "en"
         ? "Check whether spinoff events contradict the mainline canon constraints."
@@ -198,8 +198,8 @@ function buildDimensionNote(
         : "检查番外是否越权回收正传伏笔（warning级别）";
     case 32:
       return language === "en"
-        ? "Check: does the chapter ending provide a hook? Has there been a meaningful payoff within the last 3-5 chapters? Is emotional pressure being suppressed for more than 3 chapters without release? Are reader expectation gaps accumulating or being satisfied?"
-        : "检查：章尾是否有钩子？最近3-5章内是否有爽点落地？是否存在超过3章的情绪压制无释放？读者的情绪缺口是否在积累或被满足？";
+        ? "Check whether the ending renews curiosity, whether promised payoffs are landing on the cadence their hooks imply, whether pressure gets any release, and whether reader expectation gaps are accumulating faster than they are being satisfied."
+        : "检查：章尾是否重新点燃好奇心，已经承诺的回收是否按伏笔自身节奏落地，压力是否得到释放，读者期待缺口是在持续累积还是在被满足。";
     case 33:
       return language === "en"
         ? "Cross-check volume_outline: does this chapter match the planned beat for the current chapter range? Did it skip planned nodes or consume later nodes too early? Does actual pacing match the planned chapter span? If a beat planned for N chapters is consumed in 1-2 chapters -> critical."

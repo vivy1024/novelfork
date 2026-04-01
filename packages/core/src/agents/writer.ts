@@ -327,6 +327,7 @@ export class WriterAgent extends BaseAgent {
       ? analyzeHookHealth({
           language: resolvedLanguage,
           chapterNumber,
+          targetChapters: book.targetChapters,
           hooks: (runtimeStateArtifacts?.snapshot ?? settlement.runtimeStateSnapshot)!.hooks.hooks,
           delta: resolvedRuntimeStateDelta,
           existingHookIds: [...priorHookIds],
