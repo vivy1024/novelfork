@@ -1,58 +1,11 @@
 import type { HookPayoffTiming } from "../models/runtime-state.js";
-
-type HookPhase = "opening" | "middle" | "late";
-
-interface LifecycleProfile {
-  readonly earliestResolveAge: number;
-  readonly staleDormancy: number;
-  readonly overdueAge: number;
-  readonly minimumPhase: HookPhase;
-  readonly resolveBias: number;
-}
-
-const TIMING_PROFILES: Record<HookPayoffTiming, LifecycleProfile> = {
-  immediate: {
-    earliestResolveAge: 1,
-    staleDormancy: 1,
-    overdueAge: 3,
-    minimumPhase: "opening",
-    resolveBias: 5,
-  },
-  "near-term": {
-    earliestResolveAge: 1,
-    staleDormancy: 2,
-    overdueAge: 5,
-    minimumPhase: "opening",
-    resolveBias: 4,
-  },
-  "mid-arc": {
-    earliestResolveAge: 2,
-    staleDormancy: 4,
-    overdueAge: 8,
-    minimumPhase: "opening",
-    resolveBias: 3,
-  },
-  "slow-burn": {
-    earliestResolveAge: 4,
-    staleDormancy: 5,
-    overdueAge: 12,
-    minimumPhase: "middle",
-    resolveBias: 2,
-  },
-  endgame: {
-    earliestResolveAge: 6,
-    staleDormancy: 6,
-    overdueAge: 16,
-    minimumPhase: "late",
-    resolveBias: 1,
-  },
-};
-
-const PHASE_WEIGHT: Record<HookPhase, number> = {
-  opening: 0,
-  middle: 1,
-  late: 2,
-};
+import {
+  HOOK_PHASE_THRESHOLDS,
+  HOOK_PHASE_WEIGHT,
+  HOOK_PRESSURE_WEIGHTS,
+  HOOK_TIMING_PROFILES,
+  type HookPhase,
+} from "./hook-policy.js";
 
 const LABELS: Record<"zh" | "en", Record<HookPayoffTiming, string>> = {
   en: {
@@ -159,13 +112,13 @@ export function describeHookLifecycle(params: {
   readonly resolvePressure: number;
 } {
   const timing = resolveHookPayoffTiming(params);
-  const profile = TIMING_PROFILES[timing];
+  const profile = HOOK_TIMING_PROFILES[timing];
   const phase = resolveHookPhase(params.chapterNumber, params.targetChapters);
   const age = Math.max(0, params.chapterNumber - Math.max(1, params.startChapter));
   const lastTouchChapter = Math.max(params.startChapter, params.lastAdvancedChapter);
   const dormancy = Math.max(0, params.chapterNumber - Math.max(1, lastTouchChapter));
   const explicitProgressing = /^(progressing|advanced|重大推进|持续推进)$/i.test(params.status.trim());
-  const phaseReady = PHASE_WEIGHT[phase] >= PHASE_WEIGHT[profile.minimumPhase];
+  const phaseReady = HOOK_PHASE_WEIGHT[phase] >= HOOK_PHASE_WEIGHT[profile.minimumPhase];
   const recentlyTouched = dormancy <= 1;
   const overdue = phaseReady && age >= profile.overdueAge;
   const cadenceReady = timing === "slow-burn"
@@ -191,9 +144,18 @@ export function describeHookLifecycle(params: {
     readyToResolve,
     stale,
     overdue,
-    advancePressure: age + dormancy + (stale ? 8 : 0) + (overdue ? 6 : 0),
+    advancePressure: age
+      + dormancy
+      + (stale ? HOOK_PRESSURE_WEIGHTS.staleAdvanceBonus : 0)
+      + (overdue ? HOOK_PRESSURE_WEIGHTS.overdueAdvanceBonus : 0),
     resolvePressure: readyToResolve
-      ? profile.resolveBias * 10 + (explicitProgressing ? 5 : 0) + Math.min(12, dormancy * 2) + (overdue ? 10 : 0)
+      ? profile.resolveBias * HOOK_PRESSURE_WEIGHTS.resolveBiasMultiplier
+        + (explicitProgressing ? HOOK_PRESSURE_WEIGHTS.progressingResolveBonus : 0)
+        + Math.min(
+          HOOK_PRESSURE_WEIGHTS.maxDormancyResolveBonus,
+          dormancy * HOOK_PRESSURE_WEIGHTS.dormancyResolveMultiplier,
+        )
+        + (overdue ? HOOK_PRESSURE_WEIGHTS.overdueResolveBonus : 0)
       : 0,
   };
 }
@@ -201,12 +163,12 @@ export function describeHookLifecycle(params: {
 function resolveHookPhase(chapterNumber: number, targetChapters?: number): HookPhase {
   if (targetChapters && targetChapters > 0) {
     const progress = chapterNumber / targetChapters;
-    if (progress >= 0.72) return "late";
-    if (progress >= 0.33) return "middle";
+    if (progress >= HOOK_PHASE_THRESHOLDS.lateProgress) return "late";
+    if (progress >= HOOK_PHASE_THRESHOLDS.middleProgress) return "middle";
     return "opening";
   }
 
-  if (chapterNumber >= 24) return "late";
-  if (chapterNumber >= 8) return "middle";
+  if (chapterNumber >= HOOK_PHASE_THRESHOLDS.lateChapter) return "late";
+  if (chapterNumber >= HOOK_PHASE_THRESHOLDS.middleChapter) return "middle";
   return "opening";
 }

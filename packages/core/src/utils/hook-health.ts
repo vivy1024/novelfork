@@ -2,6 +2,7 @@ import type { AuditIssue } from "../agents/continuity.js";
 import type { HookRecord, RuntimeStateDelta } from "../models/runtime-state.js";
 import { classifyHookDisposition, collectStaleHookDebt } from "./hook-governance.js";
 import { describeHookLifecycle, localizeHookPayoffTiming } from "./hook-lifecycle.js";
+import { HOOK_HEALTH_DEFAULTS } from "./hook-policy.js";
 
 export function analyzeHookHealth(params: {
   readonly language: "zh" | "en";
@@ -15,10 +16,10 @@ export function analyzeHookHealth(params: {
   readonly noAdvanceWindow?: number;
   readonly newHookBurstThreshold?: number;
 }): AuditIssue[] {
-  const maxActiveHooks = params.maxActiveHooks ?? 12;
-  const staleAfterChapters = params.staleAfterChapters ?? 10;
-  const noAdvanceWindow = params.noAdvanceWindow ?? 5;
-  const newHookBurstThreshold = params.newHookBurstThreshold ?? 2;
+  const maxActiveHooks = params.maxActiveHooks ?? HOOK_HEALTH_DEFAULTS.maxActiveHooks;
+  const staleAfterChapters = params.staleAfterChapters ?? HOOK_HEALTH_DEFAULTS.staleAfterChapters;
+  const noAdvanceWindow = params.noAdvanceWindow ?? HOOK_HEALTH_DEFAULTS.noAdvanceWindow;
+  const newHookBurstThreshold = params.newHookBurstThreshold ?? HOOK_HEALTH_DEFAULTS.newHookBurstThreshold;
   const issues: AuditIssue[] = [];
 
   const activeHooks = params.hooks.filter((hook) => hook.status !== "resolved");
