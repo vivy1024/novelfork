@@ -36,11 +36,11 @@ import { readFile, readdir, writeFile, mkdir, rename, rm, stat } from "node:fs/p
 import { join } from "node:path";
 import {
   buildStateDegradedPersistenceOutput,
-  buildStateDegradedReviewNote,
   parseStateDegradedReviewNote,
   resolveStateDegradedBaseStatus,
   retrySettlementAfterValidationFailure,
 } from "./chapter-state-recovery.js";
+import { persistChapterArtifacts } from "./chapter-persistence.js";
 import { runChapterReviewCycle } from "./chapter-review-cycle.js";
 import { loadPersistedPlan, relativeToBookDir } from "./persisted-governed-plan.js";
 
@@ -1268,61 +1268,42 @@ export class PipelineRunner {
       }
     }
 
-    await writer.saveChapter(bookDir, persistenceOutput, gp.numericalSystem, pipelineLang);
-    if (chapterStatus !== "state-degraded") {
-      await writer.saveNewTruthFiles(bookDir, persistenceOutput, pipelineLang);
-      await this.syncLegacyStructuredStateFromMarkdown(bookDir, chapterNumber, persistenceOutput);
-      this.logStage(stageLanguage, { zh: "同步记忆索引", en: "syncing memory indexes" });
-      await this.syncNarrativeMemoryIndex(bookId);
-    }
-
-    // 5. Update chapter index
-    const existingIndex = await this.state.loadChapterIndex(bookId);
-    const now = new Date().toISOString();
-    const newEntry: ChapterMeta = {
-      number: chapterNumber,
-      title: persistenceOutput.title,
-      status: chapterStatus ?? (auditResult.passed ? "ready-for-review" : "audit-failed"),
-      wordCount: finalWordCount,
-      createdAt: now,
-      updatedAt: now,
-      auditIssues: auditResult.issues.map(
-        (i) => `[${i.severity}] ${i.description}`,
-      ),
-      lengthWarnings,
-      reviewNote: chapterStatus === "state-degraded"
-        ? buildStateDegradedReviewNote(
-            auditResult.passed ? "ready-for-review" : "audit-failed",
-            degradedIssues,
-          )
-        : undefined,
-      lengthTelemetry,
-      tokenUsage: totalUsage,
-    };
-    await this.state.saveChapterIndex(bookId, [...existingIndex, newEntry]);
-    await this.markBookActiveIfNeeded(bookId);
-
-    // 5.5 Persist audit drift guidance without polluting current_state.md
-    const driftIssues = auditResult.issues.filter(
-      (i) => i.severity === "critical" || i.severity === "warning",
-    );
-    await this.persistAuditDriftGuidance({
-      bookDir,
+    const resolvedStatus = chapterStatus ?? (auditResult.passed ? "ready-for-review" : "audit-failed");
+    await persistChapterArtifacts({
       chapterNumber,
-      issues: chapterStatus === "state-degraded" ? [] : driftIssues,
-      language: stageLanguage,
-    }).catch(() => undefined);
-
-    // 5.6 Snapshot state for rollback support
-    if (chapterStatus !== "state-degraded") {
-      this.logStage(stageLanguage, { zh: "更新章节索引与快照", en: "updating chapter index and snapshots" });
-      await this.state.snapshotState(bookId, chapterNumber);
-      await this.syncCurrentStateFactHistory(bookId, chapterNumber);
-    }
+      chapterTitle: persistenceOutput.title,
+      status: resolvedStatus,
+      auditResult,
+      finalWordCount,
+      lengthWarnings,
+      lengthTelemetry,
+      degradedIssues,
+      tokenUsage: totalUsage,
+      loadChapterIndex: () => this.state.loadChapterIndex(bookId),
+      saveChapter: () => writer.saveChapter(bookDir, persistenceOutput, gp.numericalSystem, pipelineLang),
+      saveTruthFiles: async () => {
+        await writer.saveNewTruthFiles(bookDir, persistenceOutput, pipelineLang);
+        await this.syncLegacyStructuredStateFromMarkdown(bookDir, chapterNumber, persistenceOutput);
+        this.logStage(stageLanguage, { zh: "同步记忆索引", en: "syncing memory indexes" });
+        await this.syncNarrativeMemoryIndex(bookId);
+      },
+      saveChapterIndex: (index) => this.state.saveChapterIndex(bookId, index),
+      markBookActiveIfNeeded: () => this.markBookActiveIfNeeded(bookId),
+      persistAuditDriftGuidance: (issues) => this.persistAuditDriftGuidance({
+        bookDir,
+        chapterNumber,
+        issues,
+        language: stageLanguage,
+      }).catch(() => undefined),
+      snapshotState: () => this.state.snapshotState(bookId, chapterNumber),
+      syncCurrentStateFactHistory: () => this.syncCurrentStateFactHistory(bookId, chapterNumber),
+      logSnapshotStage: () =>
+        this.logStage(stageLanguage, { zh: "更新章节索引与快照", en: "updating chapter index and snapshots" }),
+    });
 
     // 6. Send notification
     if (this.config.notifyChannels && this.config.notifyChannels.length > 0) {
-      const statusEmoji = chapterStatus === "state-degraded"
+      const statusEmoji = resolvedStatus === "state-degraded"
         ? "🧯"
         : auditResult.passed ? "✅" : "⚠️";
       const chapterLength = formatLengthCount(finalWordCount, lengthSpec.countingMode);
@@ -1331,7 +1312,7 @@ export class PipelineRunner {
         body: [
           `**${persistenceOutput.title}** | ${chapterLength}`,
           revised ? "📝 已自动修正" : "",
-          chapterStatus === "state-degraded"
+          resolvedStatus === "state-degraded"
             ? "状态结算: 已降级保存，需先修复 state 再继续"
             : `审稿: ${auditResult.passed ? "通过" : "需人工审核"}`,
           ...auditResult.issues
@@ -1348,7 +1329,7 @@ export class PipelineRunner {
       wordCount: finalWordCount,
       passed: auditResult.passed,
       revised,
-      status: chapterStatus ?? (auditResult.passed ? "ready-for-review" : "audit-failed"),
+      status: resolvedStatus,
     });
 
     return {
@@ -1357,7 +1338,7 @@ export class PipelineRunner {
       wordCount: finalWordCount,
       auditResult,
       revised,
-      status: chapterStatus ?? (auditResult.passed ? "ready-for-review" : "audit-failed"),
+      status: resolvedStatus,
       lengthWarnings,
       lengthTelemetry,
       tokenUsage: totalUsage,
