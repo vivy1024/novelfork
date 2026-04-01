@@ -1,3 +1,9 @@
+import {
+  CADENCE_PRESSURE_THRESHOLDS,
+  CADENCE_WINDOW_DEFAULTS,
+  resolveCadencePressure,
+} from "./cadence-policy.js";
+
 export interface CadenceSummaryRow {
   readonly chapter: number;
   readonly title: string;
@@ -30,7 +36,7 @@ export interface ChapterCadenceAnalysis {
   readonly titlePressure?: TitleCadencePressure;
 }
 
-export const DEFAULT_CHAPTER_CADENCE_WINDOW = 4;
+export const DEFAULT_CHAPTER_CADENCE_WINDOW = CADENCE_WINDOW_DEFAULTS.summaryLookback;
 
 const HIGH_TENSION_KEYWORDS = [
   "紧张", "冷硬", "压抑", "逼仄", "肃杀", "沉重", "凝重",
@@ -51,7 +57,7 @@ export function analyzeChapterCadence(params: {
 }): ChapterCadenceAnalysis {
   const recentRows = [...params.rows]
     .sort((left, right) => left.chapter - right.chapter)
-    .slice(-DEFAULT_CHAPTER_CADENCE_WINDOW);
+    .slice(-CADENCE_WINDOW_DEFAULTS.summaryLookback);
 
   return {
     scenePressure: analyzeScenePressure(recentRows),
@@ -88,11 +94,15 @@ function analyzeScenePressure(
     streak += 1;
   }
 
-  if (streak >= 3) {
-    return { pressure: "high", repeatedType, streak };
-  }
-  if (streak >= 2 && types.length >= 4) {
-    return { pressure: "medium", repeatedType, streak };
+  const pressure = resolveCadencePressure({
+    count: streak,
+    total: types.length,
+    highThreshold: CADENCE_PRESSURE_THRESHOLDS.scene.highCount,
+    mediumThreshold: CADENCE_PRESSURE_THRESHOLDS.scene.mediumCount,
+    mediumWindowFloor: CADENCE_PRESSURE_THRESHOLDS.scene.mediumWindowFloor,
+  });
+  if (pressure) {
+    return { pressure, repeatedType, streak };
   }
   return undefined;
 }
@@ -117,11 +127,15 @@ function analyzeMoodPressure(
     highTensionStreak += 1;
   }
 
-  if (highTensionStreak >= 3) {
-    return { pressure: "high", highTensionStreak, recentMoods };
-  }
-  if (highTensionStreak >= 2 && moods.length >= 4) {
-    return { pressure: "medium", highTensionStreak, recentMoods };
+  const pressure = resolveCadencePressure({
+    count: highTensionStreak,
+    total: moods.length,
+    highThreshold: CADENCE_PRESSURE_THRESHOLDS.mood.highCount,
+    mediumThreshold: CADENCE_PRESSURE_THRESHOLDS.mood.mediumCount,
+    mediumWindowFloor: CADENCE_PRESSURE_THRESHOLDS.mood.mediumWindowFloor,
+  });
+  if (pressure) {
+    return { pressure, highTensionStreak, recentMoods };
   }
   return undefined;
 }
@@ -146,17 +160,21 @@ function analyzeTitlePressure(
 
   const repeated = [...counts.entries()]
     .sort((left, right) => right[1] - left[1] || right[0].length - left[0].length || left[0].localeCompare(right[0]))
-    .find((entry) => entry[1] >= 2);
+    .find((entry) => entry[1] >= CADENCE_PRESSURE_THRESHOLDS.title.minimumRepeatedCount);
   if (!repeated) {
     return undefined;
   }
 
   const [repeatedToken, count] = repeated;
-  if (count >= 3) {
-    return { pressure: "high", repeatedToken, count, recentTitles: titles };
-  }
-  if (count >= 2 && titles.length >= 4) {
-    return { pressure: "medium", repeatedToken, count, recentTitles: titles };
+  const pressure = resolveCadencePressure({
+    count,
+    total: titles.length,
+    highThreshold: CADENCE_PRESSURE_THRESHOLDS.title.highCount,
+    mediumThreshold: CADENCE_PRESSURE_THRESHOLDS.title.mediumCount,
+    mediumWindowFloor: CADENCE_PRESSURE_THRESHOLDS.title.mediumWindowFloor,
+  });
+  if (pressure) {
+    return { pressure, repeatedToken, count, recentTitles: titles };
   }
   return undefined;
 }

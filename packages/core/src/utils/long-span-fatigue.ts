@@ -1,6 +1,10 @@
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { analyzeChapterCadence } from "./chapter-cadence.js";
+import {
+  CADENCE_WINDOW_DEFAULTS,
+  LONG_SPAN_FATIGUE_THRESHOLDS,
+} from "./cadence-policy.js";
 
 export interface LongSpanFatigueIssue {
   readonly severity: "warning";
@@ -32,7 +36,6 @@ interface SummaryRow {
   readonly chapterType: string;
 }
 
-const SENTENCE_SIMILARITY_THRESHOLD = 0.72;
 const CHINESE_PUNCTUATION = /[，。！？；：“”‘’（）《》、\s\-—…·]/g;
 const ENGLISH_PUNCTUATION = /[^a-z0-9]+/gi;
 
@@ -40,7 +43,11 @@ export async function buildEnglishVarianceBrief(params: {
   readonly bookDir: string;
   readonly chapterNumber: number;
 }): Promise<EnglishVarianceBrief | null> {
-  const chapterBodies = await loadPreviousChapterBodies(params.bookDir, params.chapterNumber, 24);
+  const chapterBodies = await loadPreviousChapterBodies(
+    params.bookDir,
+    params.chapterNumber,
+    CADENCE_WINDOW_DEFAULTS.englishVarianceLookback,
+  );
   if (chapterBodies.length < 2) {
     return null;
   }
@@ -49,7 +56,7 @@ export async function buildEnglishVarianceBrief(params: {
   const recentRows = summaryRows
     .filter((row) => row.chapter < params.chapterNumber)
     .sort((left, right) => left.chapter - right.chapter)
-    .slice(-4);
+    .slice(-CADENCE_WINDOW_DEFAULTS.summaryLookback);
 
   const highFrequencyPhrases = collectRepeatedEnglishPhrases(chapterBodies);
   const repeatedOpeningPatterns = collectRepeatedBoundaryPatterns(chapterBodies, "opening");
@@ -89,7 +96,7 @@ export async function analyzeLongSpanFatigue(
   const recentRows = mergedRows
     .filter((row) => row.chapter <= input.chapterNumber)
     .sort((left, right) => left.chapter - right.chapter)
-    .slice(-4);
+    .slice(-CADENCE_WINDOW_DEFAULTS.summaryLookback);
   const cadence = analyzeChapterCadence({
     rows: recentRows,
     language,
@@ -289,9 +296,9 @@ async function loadRecentChapterBodies(
       .map((file) => ({ file, chapter: Number.parseInt(file.slice(0, 4), 10) }))
       .filter((entry) => Number.isFinite(entry.chapter) && entry.chapter < currentChapter && entry.file.endsWith(".md"))
       .sort((left, right) => left.chapter - right.chapter)
-      .slice(-2);
+      .slice(-CADENCE_WINDOW_DEFAULTS.recentBoundaryPatternBodies);
 
-    if (previousFiles.length < 2) {
+    if (previousFiles.length < CADENCE_WINDOW_DEFAULTS.recentBoundaryPatternBodies) {
       return [];
     }
 
@@ -310,7 +317,7 @@ function buildSentencePatternIssue(
   boundary: "opening" | "ending",
   language: "zh" | "en",
 ): LongSpanFatigueIssue | null {
-  if (chapterBodies.length < 3) return null;
+  if (chapterBodies.length < LONG_SPAN_FATIGUE_THRESHOLDS.boundaryPatternMinBodies) return null;
 
   const sentences = chapterBodies.map((body) => extractBoundarySentence(body, boundary));
   if (sentences.some((sentence) => sentence === null)) {
@@ -319,7 +326,7 @@ function buildSentencePatternIssue(
 
   const normalized = sentences
     .map((sentence) => normalizeSentence(sentence!, language));
-  if (normalized.some((sentence) => sentence.length < 18)) {
+  if (normalized.some((sentence) => sentence.length < LONG_SPAN_FATIGUE_THRESHOLDS.boundarySentenceMinLength)) {
     return null;
   }
 
@@ -327,7 +334,7 @@ function buildSentencePatternIssue(
     diceCoefficient(normalized[0]!, normalized[1]!),
     diceCoefficient(normalized[1]!, normalized[2]!),
   ];
-  if (Math.min(...similarities) < SENTENCE_SIMILARITY_THRESHOLD) {
+  if (Math.min(...similarities) < LONG_SPAN_FATIGUE_THRESHOLDS.boundarySimilarityFloor) {
     return null;
   }
 
