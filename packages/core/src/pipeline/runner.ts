@@ -41,6 +41,7 @@ import {
   resolveStateDegradedBaseStatus,
   retrySettlementAfterValidationFailure,
 } from "./chapter-state-recovery.js";
+import { runChapterReviewCycle } from "./chapter-review-cycle.js";
 import { loadPersistedPlan, relativeToBookDir } from "./persisted-governed-plan.js";
 
 export interface PipelineConfig {
@@ -1045,148 +1046,40 @@ export class PipelineRunner {
 
     // Token usage accumulator
     let totalUsage: TokenUsageSummary = output.tokenUsage ?? { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
-    let postReviseCount = 0;
-    let normalizeApplied = false;
-
-    // 2a. Post-write error gate: if deterministic rules found errors, auto-fix before LLM audit
-    let finalContent = output.content;
-    let finalWordCount = output.wordCount;
-    let revised = false;
-
-    if (output.postWriteErrors.length > 0) {
-      this.logWarn(pipelineLang, {
-        zh: `检测到 ${output.postWriteErrors.length} 个后写错误，审计前触发 spot-fix 修补`,
-        en: `${output.postWriteErrors.length} post-write errors detected, triggering spot-fix before audit`,
-      });
-      const reviser = new ReviserAgent(this.agentCtxFor("reviser", bookId));
-      const spotFixIssues = output.postWriteErrors.map((v) => ({
-        severity: "critical" as const,
-        category: v.rule,
-        description: v.description,
-        suggestion: v.suggestion,
-      }));
-      const fixResult = await reviser.reviseChapter(
-        bookDir,
-        finalContent,
-        chapterNumber,
-        spotFixIssues,
-        "spot-fix",
-        book.genre,
-        {
-          ...reducedControlInput,
-          lengthSpec,
-        },
-      );
-      totalUsage = PipelineRunner.addUsage(totalUsage, fixResult.tokenUsage);
-      if (fixResult.revisedContent.length > 0) {
-        finalContent = fixResult.revisedContent;
-        finalWordCount = fixResult.wordCount;
-        revised = true;
-      }
-    }
-
-    const normalizedBeforeAudit = await this.normalizeDraftLengthIfNeeded({
-      bookId,
-      chapterNumber,
-      chapterContent: finalContent,
-      lengthSpec,
-      chapterIntent: writeInput.chapterIntent,
-    });
-    totalUsage = PipelineRunner.addUsage(totalUsage, normalizedBeforeAudit.tokenUsage);
-    finalContent = normalizedBeforeAudit.content;
-    finalWordCount = normalizedBeforeAudit.wordCount;
-    normalizeApplied = normalizeApplied || normalizedBeforeAudit.applied;
-    this.assertChapterContentNotEmpty(finalContent, chapterNumber, "draft generation");
-
-    // 2b. LLM audit
     const auditor = new ContinuityAuditor(this.agentCtxFor("auditor", bookId));
-    this.logStage(stageLanguage, { zh: "审计草稿", en: "auditing draft" });
-    const llmAudit = await auditor.auditChapter(
+    const reviewResult = await runChapterReviewCycle({
+      book: { genre: book.genre },
       bookDir,
-      finalContent,
       chapterNumber,
-      book.genre,
+      initialOutput: output,
       reducedControlInput,
-    );
-    totalUsage = PipelineRunner.addUsage(totalUsage, llmAudit.tokenUsage);
-    const aiTellsResult = analyzeAITells(finalContent);
-    const sensitiveWriteResult = analyzeSensitiveWords(finalContent);
-    const hasBlockedWriteWords = sensitiveWriteResult.found.some((f) => f.severity === "block");
-    let auditResult: AuditResult = {
-      passed: hasBlockedWriteWords ? false : llmAudit.passed,
-      issues: [...llmAudit.issues, ...aiTellsResult.issues, ...sensitiveWriteResult.issues],
-      summary: llmAudit.summary,
-    };
-
-    // 3. If audit fails, try auto-revise once
-    if (!auditResult.passed) {
-      const criticalIssues = auditResult.issues.filter(
-        (i) => i.severity === "critical",
-      );
-      if (criticalIssues.length > 0) {
-        const reviser = new ReviserAgent(this.agentCtxFor("reviser", bookId));
-        this.logStage(stageLanguage, { zh: "自动修复关键问题", en: "auto-revising critical issues" });
-        const reviseOutput = await reviser.reviseChapter(
-          bookDir,
-          finalContent,
-          chapterNumber,
-          auditResult.issues,
-          "spot-fix",
-          book.genre,
-          {
-            ...reducedControlInput,
-            lengthSpec,
-          },
-        );
-        totalUsage = PipelineRunner.addUsage(totalUsage, reviseOutput.tokenUsage);
-
-        if (reviseOutput.revisedContent.length > 0) {
-          const normalizedRevision = await this.normalizeDraftLengthIfNeeded({
-            bookId,
-            chapterNumber,
-            chapterContent: reviseOutput.revisedContent,
-            lengthSpec,
-            chapterIntent: writeInput.chapterIntent,
-          });
-          totalUsage = PipelineRunner.addUsage(totalUsage, normalizedRevision.tokenUsage);
-          postReviseCount = normalizedRevision.wordCount;
-          normalizeApplied = normalizeApplied || normalizedRevision.applied;
-
-          // Guard: reject revision if AI markers increased
-          const preMarkers = analyzeAITells(finalContent);
-          const postMarkers = analyzeAITells(normalizedRevision.content);
-          const preCount = preMarkers.issues.length;
-          const postCount = postMarkers.issues.length;
-
-          if (postCount > preCount) {
-            // Revision made text MORE AI-like — discard it, keep original
-          } else {
-            finalContent = normalizedRevision.content;
-            finalWordCount = normalizedRevision.wordCount;
-            revised = true;
-            this.assertChapterContentNotEmpty(finalContent, chapterNumber, "revision");
-          }
-
-          // Re-audit the (possibly revised) content
-          const reAudit = await auditor.auditChapter(
-            bookDir,
-            finalContent,
-            chapterNumber,
-            book.genre,
-            { ...reducedControlInput, temperature: 0 },
-          );
-          totalUsage = PipelineRunner.addUsage(totalUsage, reAudit.tokenUsage);
-          const reAITells = analyzeAITells(finalContent);
-          const reSensitive = analyzeSensitiveWords(finalContent);
-          const reHasBlocked = reSensitive.found.some((f) => f.severity === "block");
-          auditResult = this.restoreLostAuditIssues(auditResult, {
-            passed: reHasBlocked ? false : reAudit.passed,
-            issues: [...reAudit.issues, ...reAITells.issues, ...reSensitive.issues],
-            summary: reAudit.summary,
-          });
-        }
-      }
-    }
+      lengthSpec,
+      initialUsage: totalUsage,
+      createReviser: () => new ReviserAgent(this.agentCtxFor("reviser", bookId)),
+      auditor,
+      normalizeDraftLengthIfNeeded: (chapterContent) => this.normalizeDraftLengthIfNeeded({
+        bookId,
+        chapterNumber,
+        chapterContent,
+        lengthSpec,
+        chapterIntent: writeInput.chapterIntent,
+      }),
+      assertChapterContentNotEmpty: (content, stage) =>
+        this.assertChapterContentNotEmpty(content, chapterNumber, stage),
+      addUsage: PipelineRunner.addUsage,
+      restoreLostAuditIssues: (previous, next) => this.restoreLostAuditIssues(previous, next),
+      analyzeAITells,
+      analyzeSensitiveWords,
+      logWarn: (message) => this.logWarn(pipelineLang, message),
+      logStage: (message) => this.logStage(stageLanguage, message),
+    });
+    totalUsage = reviewResult.totalUsage;
+    let finalContent = reviewResult.finalContent;
+    let finalWordCount = reviewResult.finalWordCount;
+    let revised = reviewResult.revised;
+    let auditResult = reviewResult.auditResult;
+    const postReviseCount = reviewResult.postReviseCount;
+    const normalizeApplied = reviewResult.normalizeApplied;
 
     // 4. Save the final chapter and truth files from a single persistence source
     this.logStage(stageLanguage, { zh: "落盘最终章节", en: "persisting final chapter" });
@@ -1264,7 +1157,7 @@ export class PipelineRunner {
     const lengthTelemetry = this.buildLengthTelemetry({
       lengthSpec,
       writerCount,
-      postWriterNormalizeCount: normalizedBeforeAudit.wordCount,
+      postWriterNormalizeCount: reviewResult.preAuditNormalizedWordCount,
       postReviseCount,
       finalCount: finalWordCount,
       normalizeApplied,
