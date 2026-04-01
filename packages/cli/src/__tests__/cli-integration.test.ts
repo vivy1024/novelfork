@@ -318,6 +318,50 @@ describe("CLI integration", () => {
       expect(output).not.toContain("7字");
     });
 
+    it("shows degraded chapter counts and issues explicitly", async () => {
+      const bookDir = join(projectDir, "books", "degraded-status");
+      await mkdir(join(bookDir, "chapters"), { recursive: true });
+      await writeFile(
+        join(bookDir, "book.json"),
+        JSON.stringify({
+          id: "degraded-status",
+          title: "Degraded Status Book",
+          platform: "other",
+          genre: "other",
+          status: "active",
+          targetChapters: 10,
+          chapterWordCount: 2200,
+          createdAt: "2026-04-01T00:00:00.000Z",
+          updatedAt: "2026-04-01T00:00:00.000Z",
+        }, null, 2),
+        "utf-8",
+      );
+      await writeFile(
+        join(bookDir, "chapters", "index.json"),
+        JSON.stringify([
+          {
+            number: 1,
+            title: "Broken State",
+            status: "state-degraded",
+            wordCount: 1800,
+            createdAt: "2026-04-01T00:00:00.000Z",
+            updatedAt: "2026-04-01T00:00:00.000Z",
+            auditIssues: ["[warning] state validation still failed after retry"],
+            lengthWarnings: [],
+          },
+        ], null, 2),
+        "utf-8",
+      );
+
+      const output = run(["status", "degraded-status", "--chapters"]);
+      expect(output).toContain("Degraded: 1");
+      expect(output).toContain('Ch.1 "Broken State" | 1800字 | state-degraded');
+      expect(output).toContain("[warning] state validation still failed after retry");
+
+      const json = JSON.parse(run(["status", "degraded-status", "--json"]));
+      expect(json.books[0]?.degraded).toBe(1);
+    });
+
     it("shows a migration hint for legacy pre-v0.6 books", async () => {
       const bookDir = join(projectDir, "books", "legacy-status-hint");
       const storyDir = join(bookDir, "story");
