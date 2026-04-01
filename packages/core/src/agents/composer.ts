@@ -310,9 +310,6 @@ export class ComposerAgent extends BaseAgent {
         : (language === "en"
             ? "Keep the original promise legible and materially change the on-page situation."
             : "保持原始承诺清晰可见，并让页上局势发生实质变化。");
-      const suppressSiblingHooks = guidance?.blockSiblingHooks
-        ? (language === "en" ? "yes" : "是")
-        : (language === "en" ? "no" : "否");
 
       return [{
         source: `runtime/hook_debt#${hook.hookId}`,
@@ -320,8 +317,8 @@ export class ComposerAgent extends BaseAgent {
           ? "Narrative debt brief for an explicit hook agenda target."
           : "显式 hook agenda 目标的叙事债务简报。",
         excerpt: language === "en"
-          ? `${hook.hookId} | role: ${role} | movement: ${movement} | pressure: ${pressure} | cadence: ${cadence} | suppress siblings: ${suppressSiblingHooks} | reason: ${reason} | promise: ${promise} | seed: ${seedBeat} | latest: ${latestBeat}`
-          : `${hook.hookId} | 角色: ${role} | 动作: ${movement} | 压力: ${pressure} | 节奏: ${cadence} | 抑制同类开坑: ${suppressSiblingHooks} | 原因: ${reason} | 承诺: ${promise} | 种子: ${seedBeat} | 最近推进: ${latestBeat}`,
+          ? `${hook.hookId} | narrative debt: ${role} (${cadence}) | current pressure: ${pressure} (${reason}) | preferred move: ${movement} | reader promise: ${promise} | original seed: ${seedBeat} | latest turn: ${latestBeat}${guidance?.blockSiblingHooks ? " | caution: avoid opening sibling hooks" : ""}`
+          : `${hook.hookId} | 叙事债务: ${role}（${cadence}） | 当前压力: ${pressure}（${reason}） | 建议动作: ${movement} | 读者承诺: ${promise} | 最初种子: ${seedBeat} | 最近推进: ${latestBeat}${guidance?.blockSiblingHooks ? " | 注意: 暂缓同类开坑" : ""}`,
       }];
     });
   }
@@ -377,12 +374,12 @@ export class ComposerAgent extends BaseAgent {
     language: "zh" | "en",
   ): string {
     if (plan.intent.hookAgenda.eligibleResolve.includes(hookId)) {
-      return language === "en" ? "payoff candidate" : "优先兑现";
+      return language === "en" ? "payoff-ready debt" : "可兑现旧债";
     }
     if (plan.intent.hookAgenda.staleDebt.includes(hookId)) {
-      return language === "en" ? "stale debt" : "高压旧债";
+      return language === "en" ? "high-pressure debt" : "高压旧债";
     }
-    return language === "en" ? "must advance" : "本章必须推进";
+    return language === "en" ? "mainline debt" : "主要旧债";
   }
 
   private findHookPressure(
