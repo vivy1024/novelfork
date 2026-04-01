@@ -35,13 +35,13 @@ import { rewriteStructuredStateFromMarkdown } from "../state/state-bootstrap.js"
 import { readFile, readdir, writeFile, mkdir, rename, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import {
-  buildStateDegradedPersistenceOutput,
   parseStateDegradedReviewNote,
   resolveStateDegradedBaseStatus,
   retrySettlementAfterValidationFailure,
 } from "./chapter-state-recovery.js";
 import { persistChapterArtifacts } from "./chapter-persistence.js";
 import { runChapterReviewCycle } from "./chapter-review-cycle.js";
+import { validateChapterTruthPersistence } from "./chapter-truth-validation.js";
 import { loadPersistedPlan, relativeToBookDir } from "./persisted-governed-plan.js";
 
 export interface PipelineConfig {
@@ -1174,65 +1174,30 @@ export class PipelineRunner {
       readFile(join(storyDir, "particle_ledger.md"), "utf-8").catch(() => ""),
     ]);
     const validator = new StateValidatorAgent(this.agentCtxFor("state-validator", bookId));
-    let validation: ValidationResult;
-    let chapterStatus: ChapterPipelineResult["status"] | null = null;
-    let degradedIssues: ReadonlyArray<AuditIssue> = [];
-    try {
-      validation = await validator.validate(
-        finalContent, chapterNumber,
-        oldState, persistenceOutput.updatedState,
-        oldHooks, persistenceOutput.updatedHooks,
-        pipelineLang,
-      );
-    } catch (error) {
-      throw new Error(`State validation failed for chapter ${chapterNumber}: ${String(error)}`);
-    }
-
-    if (validation.warnings.length > 0) {
-      this.logWarn(pipelineLang, {
-        zh: `状态校验：第${chapterNumber}章发现 ${validation.warnings.length} 条警告`,
-        en: `State validation: ${validation.warnings.length} warning(s) for chapter ${chapterNumber}`,
-      });
-      for (const w of validation.warnings) {
-        this.config.logger?.warn(`  [${w.category}] ${w.description}`);
-      }
-    }
-    if (!validation.passed) {
-      const recovery = await retrySettlementAfterValidationFailure({
-        writer,
-        validator,
-        book,
-        bookDir,
-        chapterNumber,
-        title: persistenceOutput.title,
-        content: finalContent,
-        reducedControlInput,
+    const truthValidation = await validateChapterTruthPersistence({
+      writer,
+      validator,
+      book,
+      bookDir,
+      chapterNumber,
+      title: persistenceOutput.title,
+      content: finalContent,
+      persistenceOutput,
+      auditResult,
+      previousTruth: {
         oldState,
         oldHooks,
-        originalValidation: validation,
-        language: pipelineLang,
-        logWarn: (message) => this.logWarn(pipelineLang, message),
-        logger: this.config.logger,
-      });
-
-      if (recovery.kind === "recovered") {
-        persistenceOutput = recovery.output;
-        validation = recovery.validation;
-      } else {
-        chapterStatus = "state-degraded";
-        degradedIssues = recovery.issues;
-        persistenceOutput = buildStateDegradedPersistenceOutput({
-          output: persistenceOutput,
-          oldState,
-          oldHooks,
-          oldLedger,
-        });
-        auditResult = {
-          ...auditResult,
-          issues: [...auditResult.issues, ...recovery.issues],
-        };
-      }
-    }
+        oldLedger,
+      },
+      reducedControlInput,
+      language: pipelineLang,
+      logWarn: (message) => this.logWarn(pipelineLang, message),
+      logger: this.config.logger,
+    });
+    let chapterStatus: ChapterPipelineResult["status"] | null = truthValidation.chapterStatus;
+    let degradedIssues: ReadonlyArray<AuditIssue> = truthValidation.degradedIssues;
+    persistenceOutput = truthValidation.persistenceOutput;
+    auditResult = truthValidation.auditResult;
 
     // 4.2 Final paragraph shape check on persisted content (post-normalize, post-revise)
     {
