@@ -5,6 +5,7 @@
  * Catches violations that prompt-only rules cannot guarantee.
  */
 
+import { analyzeChapterCadence } from "../utils/chapter-cadence.js";
 import type { BookRules } from "../models/book-rules.js";
 import type { GenreProfile } from "../models/genre-profile.js";
 
@@ -636,28 +637,89 @@ export function resolveDuplicateTitle(
     return { title: newTitle, issues: [] };
   }
 
-  const issues = detectDuplicateTitle(trimmed, existingTitles);
-  if (issues.length === 0) {
+  const duplicateIssues = detectDuplicateTitle(trimmed, existingTitles);
+  if (duplicateIssues.length > 0) {
+    const regenerated = regenerateDuplicateTitle(trimmed, existingTitles, language, options?.content);
+    if (regenerated && detectDuplicateTitle(regenerated, existingTitles).length === 0) {
+      return { title: regenerated, issues: duplicateIssues };
+    }
+
+    let counter = 2;
+    while (counter < 100) {
+      const candidate = language === "en"
+        ? `${trimmed} (${counter})`
+        : `${trimmed}（${counter}）`;
+      if (detectDuplicateTitle(candidate, existingTitles).length === 0) {
+        return { title: candidate, issues: duplicateIssues };
+      }
+      counter++;
+    }
+
+    return { title: trimmed, issues: duplicateIssues };
+  }
+
+  const collapseIssues = detectTitleCollapse(trimmed, existingTitles, language);
+  if (collapseIssues.length === 0) {
     return { title: trimmed, issues: [] };
   }
 
-  const regenerated = regenerateDuplicateTitle(trimmed, existingTitles, language, options?.content);
-  if (regenerated && detectDuplicateTitle(regenerated, existingTitles).length === 0) {
-    return { title: regenerated, issues };
+  const regenerated = regenerateCollapsedTitle(trimmed, existingTitles, language, options?.content);
+  if (
+    regenerated
+    && detectDuplicateTitle(regenerated, existingTitles).length === 0
+    && detectTitleCollapse(regenerated, existingTitles, language).length === 0
+  ) {
+    return { title: regenerated, issues: collapseIssues };
   }
 
-  let counter = 2;
-  while (counter < 100) {
-    const candidate = language === "en"
-      ? `${trimmed} (${counter})`
-      : `${trimmed}（${counter}）`;
-    if (detectDuplicateTitle(candidate, existingTitles).length === 0) {
-      return { title: candidate, issues };
-    }
-    counter++;
+  return { title: trimmed, issues: collapseIssues };
+}
+
+function detectTitleCollapse(
+  newTitle: string,
+  existingTitles: ReadonlyArray<string>,
+  language: "zh" | "en",
+): ReadonlyArray<PostWriteViolation> {
+  const recentTitles = existingTitles
+    .map((title) => title.trim())
+    .filter(Boolean)
+    .slice(-3);
+  if (recentTitles.length < 3) {
+    return [];
   }
 
-  return { title: trimmed, issues };
+  const cadence = analyzeChapterCadence({
+    language,
+    rows: [...recentTitles, newTitle].map((title, index) => ({
+      chapter: index + 1,
+      title,
+      mood: "",
+      chapterType: "",
+    })),
+  });
+  const titlePressure = cadence.titlePressure;
+  if (!titlePressure || titlePressure.pressure !== "high") {
+    return [];
+  }
+  if (!newTitle.includes(titlePressure.repeatedToken)) {
+    return [];
+  }
+
+  return [
+    language === "en"
+      ? {
+          rule: "title-collapse",
+          severity: "warning",
+          description: `Chapter title "${newTitle}" keeps leaning on the recent "${titlePressure.repeatedToken}" title shell.`,
+          suggestion: "Rename the chapter around a new image, action, consequence, or character focus.",
+        }
+      : {
+          rule: "title-collapse",
+          severity: "warning",
+          description: `章节标题"${newTitle}"仍在沿用近期围绕“${titlePressure.repeatedToken}”的命名壳。`,
+          suggestion: "换一个新的意象、动作、后果或人物焦点来命名。",
+        },
+  ];
 }
 
 function regenerateDuplicateTitle(
@@ -680,6 +742,26 @@ function regenerateDuplicateTitle(
   return language === "en"
     ? `${baseTitle}: ${qualifier}`
     : `${baseTitle}：${qualifier}`;
+}
+
+function regenerateCollapsedTitle(
+  baseTitle: string,
+  existingTitles: ReadonlyArray<string>,
+  language: "zh" | "en",
+  content?: string,
+): string | undefined {
+  if (!content || !content.trim()) {
+    return undefined;
+  }
+
+  const fresh = language === "en"
+    ? extractEnglishTitleQualifier(baseTitle, existingTitles, content)
+    : extractChineseTitleQualifier(baseTitle, existingTitles, content);
+  if (!fresh) {
+    return undefined;
+  }
+
+  return fresh === baseTitle ? undefined : fresh;
 }
 
 function extractEnglishTitleQualifier(

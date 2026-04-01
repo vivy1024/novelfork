@@ -1217,8 +1217,8 @@ export class PipelineRunner {
     }
     if (persistenceOutput.title !== output.title) {
       const description = pipelineLang === "en"
-        ? `Duplicate chapter title "${output.title}" was auto-renamed to "${persistenceOutput.title}".`
-        : `章节标题"${output.title}"与已有标题重复，已自动改为"${persistenceOutput.title}"。`;
+        ? `Chapter title "${output.title}" was auto-adjusted to "${persistenceOutput.title}".`
+        : `章节标题"${output.title}"已自动调整为"${persistenceOutput.title}"。`;
       this.config.logger?.warn(`[title] ${description}`);
       auditResult = {
         ...auditResult,

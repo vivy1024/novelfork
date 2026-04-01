@@ -259,4 +259,19 @@ describe("validatePostWrite", () => {
     expect(result.title).toContain("塔楼");
     expect(result.title).not.toBe("回声（2）");
   });
+
+  it("regenerates a title when it continues a collapsed recent title shell", () => {
+    const result = resolveDuplicateTitle(
+      "名单未落",
+      ["名单之前", "名单之后", "名单还在"],
+      "zh",
+      {
+        content: "塔楼里的铜铃只响了一声，守夜人没有回头，风从缺口灌进来。",
+      },
+    );
+
+    expect(result.issues.some((issue) => issue.rule === "title-collapse")).toBe(true);
+    expect(result.title).not.toContain("名单");
+    expect(result.title).toContain("塔楼");
+  });
 });
