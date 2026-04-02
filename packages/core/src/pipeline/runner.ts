@@ -44,6 +44,19 @@ import { runChapterReviewCycle } from "./chapter-review-cycle.js";
 import { validateChapterTruthPersistence } from "./chapter-truth-validation.js";
 import { loadPersistedPlan, relativeToBookDir } from "./persisted-governed-plan.js";
 
+const SEQUENCE_LEVEL_CATEGORIES = new Set([
+  "Pacing Monotony", "节奏单调",
+  "Mood Monotony", "情绪单调",
+  "Title Collapse", "标题重复",
+  "Title Clustering", "标题聚集",
+  "Opening Pattern Repetition", "开头同构",
+  "Ending Pattern Repetition", "结尾同构",
+]);
+
+function isSequenceLevelCategory(category: string): boolean {
+  return SEQUENCE_LEVEL_CATEGORIES.has(category);
+}
+
 export interface PipelineConfig {
   readonly client: LLMClient;
   readonly model: string;
@@ -2455,11 +2468,14 @@ ${matrix}`,
       return next;
     }
 
+    const revisionRelevant = auditResult.issues.filter(
+      (issue) => !isSequenceLevelCategory(issue.category),
+    );
     return {
       ...next,
       auditResult,
-      blockingCount: auditResult.issues.filter((issue) => issue.severity === "warning" || issue.severity === "critical").length,
-      criticalCount: auditResult.issues.filter((issue) => issue.severity === "critical").length,
+      blockingCount: revisionRelevant.filter((issue) => issue.severity === "warning" || issue.severity === "critical").length,
+      criticalCount: revisionRelevant.filter((issue) => issue.severity === "critical").length,
     };
   }
 
@@ -2510,6 +2526,15 @@ ${matrix}`,
       ...longSpanFatigue.issues,
     ];
 
+    // Long-span-fatigue issues (mood monotony, title clustering, pacing) are
+    // sequence-level properties that cannot be fixed by revising the current
+    // chapter.  Exclude them from blockingCount so they don't inflate the
+    // revision gate or reject otherwise-valid revisions.
+    const longSpanCategories = new Set(longSpanFatigue.issues.map((issue) => issue.category));
+    const revisionRelevantIssues = issues.filter(
+      (issue) => !longSpanCategories.has(issue.category),
+    );
+
     return {
       auditResult: {
         passed: hasBlockedWords ? false : llmAudit.passed,
@@ -2518,8 +2543,8 @@ ${matrix}`,
         tokenUsage: llmAudit.tokenUsage,
       },
       aiTellCount: aiTells.issues.length,
-      blockingCount: issues.filter((issue) => issue.severity === "warning" || issue.severity === "critical").length,
-      criticalCount: issues.filter((issue) => issue.severity === "critical").length,
+      blockingCount: revisionRelevantIssues.filter((issue) => issue.severity === "warning" || issue.severity === "critical").length,
+      criticalCount: revisionRelevantIssues.filter((issue) => issue.severity === "critical").length,
     };
   }
 
