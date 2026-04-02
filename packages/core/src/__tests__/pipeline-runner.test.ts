@@ -604,7 +604,17 @@ describe("PipelineRunner", () => {
     const { root, runner, state, bookId } = await createRunnerFixture();
     const storyDir = join(state.bookDir(bookId), "story");
     const stateDir = join(storyDir, "state");
+    const chaptersDir = join(state.bookDir(bookId), "chapters");
     await mkdir(stateDir, { recursive: true });
+    await writeFile(
+      join(chaptersDir, "index.json"),
+      JSON.stringify([
+        { number: 1, title: "Ch1", status: "approved" },
+        { number: 2, title: "Ch2", status: "approved" },
+        { number: 3, title: "Ch3", status: "approved" },
+      ]),
+      "utf-8",
+    );
 
     await Promise.all([
       writeFile(

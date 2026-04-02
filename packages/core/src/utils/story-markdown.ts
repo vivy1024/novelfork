@@ -195,6 +195,18 @@ export function parseInteger(value: string | undefined): number {
   return match ? parseInt(match[0], 10) : 0;
 }
 
+/**
+ * Strict integer parse — only accepts cells that are purely numeric
+ * (after stripping markdown formatting). Returns 0 for cells containing
+ * prose like "第141号文明" to prevent narrative numbers from being
+ * mistaken for chapter/progress values.
+ */
+function parseStrictChapterInteger(value: string | undefined): number {
+  if (!value) return 0;
+  const stripped = normalizeHookId(value);
+  return /^\d+$/.test(stripped) ? parseInt(stripped, 10) : 0;
+}
+
 export function normalizeHookId(value: string | undefined): string {
   let normalized = (value ?? "").trim();
   let previous = "";
@@ -220,10 +232,10 @@ function parsePendingHookRow(row: ReadonlyArray<string | undefined>): StoredHook
 
   return {
     hookId: normalizeHookId(row[0]),
-    startChapter: parseInteger(row[1]),
+    startChapter: parseStrictChapterInteger(row[1]),
     type: row[2] ?? "",
     status: row[3] ?? "open",
-    lastAdvancedChapter: parseInteger(row[4]),
+    lastAdvancedChapter: parseStrictChapterInteger(row[4]),
     expectedPayoff: row[5] ?? "",
     payoffTiming,
     notes,

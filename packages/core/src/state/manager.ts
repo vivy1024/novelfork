@@ -208,11 +208,14 @@ export class StateManager {
     const durableChapter = await resolveDurableStoryProgress({
       bookDir: this.bookDir(bookId),
     });
-    const runtimeState = await bootstrapStructuredStateFromMarkdown({
+    // Ensure structured state is bootstrapped (side-effect: creates missing
+    // JSON files), but do NOT trust its chapter number for progress — only
+    // the contiguous durable artifact chain is authoritative.
+    await bootstrapStructuredStateFromMarkdown({
       bookDir: this.bookDir(bookId),
       fallbackChapter: durableChapter,
     });
-    return Math.max(durableChapter, runtimeState.manifest.lastAppliedChapter) + 1;
+    return durableChapter + 1;
   }
 
   async getPersistedChapterCount(bookId: string): Promise<number> {

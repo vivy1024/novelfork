@@ -151,8 +151,10 @@ describe("agent pipeline tools", () => {
   });
 
   it("blocks write_full_pipeline when runtime progress is ahead of the chapter index", async () => {
-    const stateDir = join(state.bookDir(bookId), "story", "state");
-    await mkdir(stateDir, { recursive: true });
+    const chaptersDir = join(state.bookDir(bookId), "chapters");
+    // Create durable chapter files for 1-3 but only index chapter 1.
+    // This produces durableChapter=3, nextNum=4 while lastIndexedChapter=1,
+    // triggering the sequential write guard.
     await state.saveChapterIndex(bookId, [{
       number: 1,
       title: "Existing Chapter",
@@ -163,17 +165,11 @@ describe("agent pipeline tools", () => {
       auditIssues: [],
       lengthWarnings: [],
     }]);
-    await writeFile(join(stateDir, "manifest.json"), JSON.stringify({
-      schemaVersion: 2,
-      language: "zh",
-      lastAppliedChapter: 3,
-      projectionVersion: 1,
-      migrationWarnings: [],
-    }, null, 2), "utf-8");
-    await writeFile(join(stateDir, "current_state.json"), JSON.stringify({
-      chapter: 3,
-      facts: [],
-    }, null, 2), "utf-8");
+    await Promise.all([
+      writeFile(join(chaptersDir, "0001_Existing.md"), "# Chapter 1\n", "utf-8"),
+      writeFile(join(chaptersDir, "0002_Second.md"), "# Chapter 2\n", "utf-8"),
+      writeFile(join(chaptersDir, "0003_Third.md"), "# Chapter 3\n", "utf-8"),
+    ]);
 
     const writeNextChapter = vi.spyOn(pipeline, "writeNextChapter").mockResolvedValue({
       bookId,

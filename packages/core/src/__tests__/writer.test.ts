@@ -245,9 +245,15 @@ describe("WriterAgent", () => {
     const root = await mkdtemp(join(tmpdir(), "inkos-writer-runtime-state-test-"));
     const bookDir = join(root, "book");
     const storyDir = join(bookDir, "story");
+    const chaptersDir = join(bookDir, "chapters");
     await mkdir(storyDir, { recursive: true });
+    await mkdir(chaptersDir, { recursive: true });
 
     await Promise.all([
+      writeFile(join(chaptersDir, "index.json"), JSON.stringify([
+        { number: 1, title: "Ch1", status: "approved" },
+        { number: 2, title: "Ch2", status: "approved" },
+      ]), "utf-8"),
       writeFile(join(storyDir, "story_bible.md"), "# Story Bible\n\n- The jade seal cannot be destroyed.\n", "utf-8"),
       writeFile(join(storyDir, "volume_outline.md"), "# Volume Outline\n\n## Chapter 3\nTrace the debt through the river-port ledger.\n", "utf-8"),
       writeFile(join(storyDir, "style_guide.md"), "# Style Guide\n\n- Keep the prose restrained.\n", "utf-8"),
@@ -388,9 +394,15 @@ describe("WriterAgent", () => {
     const root = await mkdtemp(join(tmpdir(), "inkos-writer-runtime-state-hallucinated-chapter-test-"));
     const bookDir = join(root, "book");
     const storyDir = join(bookDir, "story");
+    const chaptersDir = join(bookDir, "chapters");
     await mkdir(storyDir, { recursive: true });
+    await mkdir(chaptersDir, { recursive: true });
 
     await Promise.all([
+      writeFile(join(chaptersDir, "index.json"), JSON.stringify([
+        { number: 1, title: "Ch1", status: "approved" },
+        { number: 2, title: "Ch2", status: "approved" },
+      ]), "utf-8"),
       writeFile(join(storyDir, "story_bible.md"), "# Story Bible\n\n- The city still remembers 1988.\n", "utf-8"),
       writeFile(join(storyDir, "volume_outline.md"), "# Volume Outline\n\n## Chapter 3\nTrace the debt through the river-port ledger.\n", "utf-8"),
       writeFile(join(storyDir, "style_guide.md"), "# Style Guide\n\n- Keep the prose restrained.\n", "utf-8"),
@@ -532,9 +544,15 @@ describe("WriterAgent", () => {
     const root = await mkdtemp(join(tmpdir(), "inkos-writer-arbiter-test-"));
     const bookDir = join(root, "book");
     const storyDir = join(bookDir, "story");
+    const chaptersDir = join(bookDir, "chapters");
     await mkdir(storyDir, { recursive: true });
+    await mkdir(chaptersDir, { recursive: true });
 
     await Promise.all([
+      writeFile(join(chaptersDir, "index.json"), JSON.stringify([
+        { number: 1, title: "Ch1", status: "approved" },
+        { number: 2, title: "Ch2", status: "approved" },
+      ]), "utf-8"),
       writeFile(join(storyDir, "story_bible.md"), "# Story Bible\n\n- Anonymous messages keep steering the debt trail.\n", "utf-8"),
       writeFile(join(storyDir, "volume_outline.md"), "# Volume Outline\n\n## Chapter 3\nThe anonymous source widens from route to address.\n", "utf-8"),
       writeFile(join(storyDir, "style_guide.md"), "# Style Guide\n\n- Keep the prose restrained.\n", "utf-8"),

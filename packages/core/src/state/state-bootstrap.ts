@@ -88,10 +88,10 @@ export async function bootstrapStructuredStateFromMarkdown(params: {
     warnings,
     bootstrapState: markdownState.currentState,
   });
-  const derivedProgress = Math.max(
-    markdownState.durableStoryProgress,
-    currentState.chapter,
-  );
+  // Only trust durable artifact progress (chapter files + index).
+  // currentState.chapter comes from markdown which can contain
+  // hallucinated numbers (e.g. year 1988 parsed as chapter 1988).
+  const derivedProgress = markdownState.durableStoryProgress;
   if ((existingManifest?.lastAppliedChapter ?? 0) > derivedProgress) {
     appendWarning(
       warnings,
@@ -151,10 +151,7 @@ export async function rewriteStructuredStateFromMarkdown(params: {
   const manifest = StateManifestSchema.parse({
     schemaVersion: 2,
     language,
-    lastAppliedChapter: Math.max(
-      markdownState.durableStoryProgress,
-      currentState.chapter,
-    ),
+    lastAppliedChapter: markdownState.durableStoryProgress,
     projectionVersion: existingManifest?.projectionVersion ?? 1,
     migrationWarnings: uniqueStrings([
       ...(existingManifest?.migrationWarnings ?? []),
@@ -444,9 +441,7 @@ async function loadMarkdownBootstrapState(params: {
     summariesState,
     hooksState,
     currentState,
-    durableStoryProgress: authoritativeProgress > 0
-      ? authoritativeProgress
-      : currentState.chapter,
+    durableStoryProgress: authoritativeProgress,
   };
 }
 
