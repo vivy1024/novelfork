@@ -370,8 +370,6 @@ describe("PlannerAgent", () => {
     expect(result.intent.moodDirective).toBeDefined();
     expect(result.intent.moodDirective).toContain("降调");
     expect(result.intent.moodDirective).toContain("日常");
-    expect(result.intent.moodDirective).toContain("建议");
-    expect(result.intent.moodDirective).not.toContain("必须");
   });
 
   it("does not emit a mood directive when recent moods are varied", async () => {

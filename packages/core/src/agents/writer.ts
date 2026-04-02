@@ -34,7 +34,6 @@ import type { RuntimeStateSnapshot } from "../state/state-reducer.js";
 import { parsePendingHooksMarkdown } from "../utils/memory-retrieval.js";
 import { analyzeHookHealth } from "../utils/hook-health.js";
 import { buildEnglishVarianceBrief } from "../utils/long-span-fatigue.js";
-import { buildSettlementFocus, buildStoryBrief } from "../utils/compiled-control-brief.js";
 import { readFile, writeFile, mkdir, readdir } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -196,6 +195,7 @@ export class WriterAgent extends BaseAgent {
           lengthSpec: resolvedLengthSpec,
           language: book.language ?? genreProfile.language,
           varianceBrief: englishVarianceBrief?.text,
+          selectedEvidenceBlock: this.joinGovernedEvidenceBlocks(governedMemoryBlocks),
         })
       : (() => {
           // Smart context filtering: inject only relevant parts of truth files
@@ -810,23 +810,64 @@ ${lengthRequirementBlock}
     readonly lengthSpec: LengthSpec;
     readonly language?: "zh" | "en";
     readonly varianceBrief?: string;
+    readonly selectedEvidenceBlock?: string;
   }): string {
+    const contextSections = params.contextPackage.selectedContext
+      .map((entry) => [
+        `### ${entry.source}`,
+        `- reason: ${entry.reason}`,
+        entry.excerpt ? `- excerpt: ${entry.excerpt}` : "",
+      ].filter(Boolean).join("\n"))
+      .join("\n\n");
+
+    const overrideLines = params.ruleStack.activeOverrides.length > 0
+      ? params.ruleStack.activeOverrides
+        .map((override) => `- ${override.from} -> ${override.to}: ${override.reason} (${override.target})`)
+        .join("\n")
+      : "- none";
+
+    const diagnosticLines = params.ruleStack.sections.diagnostic.length > 0
+      ? params.ruleStack.sections.diagnostic.join(", ")
+      : "none";
+
+    const traceNotes = params.trace && params.trace.notes.length > 0
+      ? params.trace.notes.map((note) => `- ${note}`).join("\n")
+      : "- none";
     const lengthRequirementBlock = this.buildLengthRequirementBlock(params.lengthSpec, params.language ?? "zh");
     const varianceBlock = params.varianceBrief
       ? `\n${params.varianceBrief}\n`
       : "";
-    const storyBrief = this.buildGovernedStoryBrief({
-      chapterIntent: params.chapterIntent,
-      contextPackage: params.contextPackage,
-      ruleStack: params.ruleStack,
-      trace: params.trace,
-      language: params.language ?? "zh",
-    });
+    const selectedEvidenceBlock = params.selectedEvidenceBlock
+      ? `\n${params.selectedEvidenceBlock}\n`
+      : "";
+    const explicitHookAgenda = this.extractMarkdownSection(params.chapterIntent, "## Hook Agenda");
+    const hookAgendaBlock = explicitHookAgenda
+      ? params.language === "en"
+        ? `\n## Explicit Hook Agenda\n${explicitHookAgenda}\n`
+        : `\n## 显式 Hook Agenda\n${explicitHookAgenda}\n`
+      : "";
 
     if (params.language === "en") {
       return `Write chapter ${params.chapterNumber}.
 
-${storyBrief}
+## Chapter Intent
+${params.chapterIntent}
+
+## Selected Context
+${contextSections || "(none)"}
+${selectedEvidenceBlock}
+${hookAgendaBlock}
+
+## Rule Stack
+- Hard: ${params.ruleStack.sections.hard.join(", ") || "(none)"}
+- Soft: ${params.ruleStack.sections.soft.join(", ") || "(none)"}
+- Diagnostic: ${diagnosticLines}
+
+## Active Overrides
+${overrideLines}
+
+## Trace Notes
+${traceNotes}
 
 ${varianceBlock}
 ${lengthRequirementBlock}
@@ -836,7 +877,24 @@ ${lengthRequirementBlock}
 
     return `请续写第${params.chapterNumber}章。
 
-${storyBrief}
+## 本章意图
+${params.chapterIntent}
+
+## 已选上下文
+${contextSections || "(无)"}
+${selectedEvidenceBlock}
+${hookAgendaBlock}
+
+## 规则栈
+- 硬护栏：${params.ruleStack.sections.hard.join("、") || "(无)"}
+- 软约束：${params.ruleStack.sections.soft.join("、") || "(无)"}
+- 诊断规则：${diagnosticLines}
+
+## 当前覆盖
+${overrideLines}
+
+## 追踪说明
+${traceNotes}
 
 ${varianceBlock}
 ${lengthRequirementBlock}
@@ -864,14 +922,27 @@ ${lengthRequirementBlock}
     return joined || undefined;
   }
 
-  private buildGovernedStoryBrief(params: {
-    readonly chapterIntent: string;
-    readonly contextPackage: ContextPackage;
-    readonly ruleStack: RuleStack;
-    readonly trace?: ChapterTrace;
-    readonly language: "zh" | "en";
-  }): string {
-    return buildStoryBrief(params);
+  private extractMarkdownSection(content: string, heading: string): string | undefined {
+    const lines = content.split("\n");
+    let buffer: string[] | null = null;
+
+    for (const line of lines) {
+      if (line.trim() === heading) {
+        buffer = [];
+        continue;
+      }
+
+      if (buffer && line.startsWith("## ") && line.trim() !== heading) {
+        break;
+      }
+
+      if (buffer) {
+        buffer.push(line);
+      }
+    }
+
+    const section = buffer?.join("\n").trim();
+    return section && section.length > 0 ? section : undefined;
   }
 
   private buildSettlerGovernedControlBlock(
@@ -880,12 +951,44 @@ ${lengthRequirementBlock}
     ruleStack: RuleStack,
     language: "zh" | "en",
   ): string {
-    return buildSettlementFocus({
-      chapterIntent,
-      contextPackage,
-      ruleStack,
-      language,
-    });
+    const selectedContext = contextPackage.selectedContext
+      .map((entry) => `- ${entry.source}: ${entry.reason}${entry.excerpt ? ` | ${entry.excerpt}` : ""}`)
+      .join("\n");
+    const overrides = ruleStack.activeOverrides.length > 0
+      ? ruleStack.activeOverrides
+        .map((override) => `- ${override.from} -> ${override.to}: ${override.reason} (${override.target})`)
+        .join("\n")
+      : "- none";
+
+    if (language === "en") {
+      return `\n## Chapter Control Inputs
+${chapterIntent}
+
+### Selected Context
+${selectedContext || "- none"}
+
+### Rule Stack
+- Hard guardrails: ${ruleStack.sections.hard.join(", ") || "(none)"}
+- Soft constraints: ${ruleStack.sections.soft.join(", ") || "(none)"}
+- Diagnostic rules: ${ruleStack.sections.diagnostic.join(", ") || "(none)"}
+
+### Active Overrides
+${overrides}\n`;
+    }
+
+    return `\n## 本章控制输入
+${chapterIntent}
+
+### 已选上下文
+${selectedContext || "- none"}
+
+### 规则栈
+- 硬护栏：${ruleStack.sections.hard.join("、") || "(无)"}
+- 软约束：${ruleStack.sections.soft.join("、") || "(无)"}
+- 诊断规则：${ruleStack.sections.diagnostic.join("、") || "(无)"}
+
+### 当前覆盖
+${overrides}\n`;
   }
 
   private buildLengthRequirementBlock(lengthSpec: LengthSpec, language: "zh" | "en"): string {

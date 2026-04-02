@@ -226,9 +226,8 @@ describe("WriterAgent", () => {
       });
 
       const settlePrompt = (chatSpy.mock.calls[2]?.[0] as ReadonlyArray<{ content: string }> | undefined)?.[1]?.content ?? "";
-      expect(settlePrompt).toContain("## 结算焦点");
-      expect(settlePrompt).not.toContain("### 已选上下文");
-      expect(settlePrompt).not.toContain("## Hook Agenda");
+      expect(settlePrompt).toContain("## 本章控制输入");
+      expect(settlePrompt).toContain("story/chapter_summaries.md#99");
       expect(settlePrompt).toContain("| 99 | Locked Gate |");
       expect(settlePrompt).toContain("## Hook Debt Briefs");
       expect(settlePrompt).toContain("mentor-oath | cadence: slow-burn");
@@ -904,12 +903,11 @@ describe("WriterAgent", () => {
       });
 
       const creativePrompt = (chatSpy.mock.calls[0]?.[0] as ReadonlyArray<{ content: string }> | undefined)?.[1]?.content ?? "";
-      expect(creativePrompt).toContain("## Story Brief");
-      expect(creativePrompt).not.toContain("## Recent Title History");
+      expect(creativePrompt).toContain("## Recent Title History");
       expect(creativePrompt).toContain("Ledger in Rain");
-      expect(creativePrompt).not.toContain("## Recent Mood / Chapter Type Trail");
+      expect(creativePrompt).toContain("## Recent Mood / Chapter Type Trail");
       expect(creativePrompt).toContain("tight / investigation");
-      expect(creativePrompt).not.toContain("## Canon Evidence");
+      expect(creativePrompt).toContain("## Canon Evidence");
       expect(creativePrompt).toContain("archive fire until volume two");
       expect(creativePrompt).toContain("oath debt logic must stay intact");
     } finally {
@@ -1055,14 +1053,7 @@ describe("WriterAgent", () => {
 
       expect(systemPrompt).not.toContain("Hook-A / Hook-B");
       expect(systemPrompt).toContain("真实 hook_id");
-      expect(systemPrompt).toContain("preferred narrative response");
-      expect(systemPrompt).not.toContain("follow the requested move");
-      expect(creativePrompt).toContain("## Story Brief");
-      expect(creativePrompt).not.toContain("## Hook Pressure and Debt");
-      expect(creativePrompt).not.toContain("## Selected Context");
-      expect(creativePrompt).not.toContain("### Pressure Map");
-      expect(creativePrompt).not.toContain("## Pending Hooks Snapshot");
-      expect(creativePrompt).not.toContain("## Chapter Summaries Snapshot");
+      expect(creativePrompt).toContain("## Explicit Hook Agenda");
       expect(creativePrompt).toContain("mentor-oath");
       expect(creativePrompt).toContain("ledger-fragment");
       expect(creativePrompt).toContain("stale-ledger");

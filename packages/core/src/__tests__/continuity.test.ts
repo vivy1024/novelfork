@@ -281,8 +281,6 @@ describe("ContinuityAuditor", () => {
         | undefined;
       const userPrompt = messages?.[1]?.content ?? "";
 
-      expect(userPrompt).toContain("## Review Brief");
-      expect(userPrompt).not.toContain("## Chapter Control Inputs (compiled by Planner/Composer)");
       expect(userPrompt).toContain("story/chapter_summaries.md#99");
       expect(userPrompt).toContain("story/pending_hooks.md#mentor-oath");
       expect(userPrompt).not.toContain("| 1 | Guild Trail |");

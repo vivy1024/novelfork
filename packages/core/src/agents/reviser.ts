@@ -13,7 +13,6 @@ import {
   buildGovernedHookWorkingSet,
   mergeTableMarkdownByKey,
 } from "../utils/governed-working-set.js";
-import { buildProcessBrief } from "../utils/compiled-control-brief.js";
 import { applySpotFixPatches, parseSpotFixPatches } from "../utils/spot-fix-patches.js";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -226,13 +225,7 @@ ${outputFormat}`;
       ? `\n## 同人正典参照（修稿专用）\n本书为同人作品。修改时参照正典角色档案和世界规则，不可违反正典事实。角色对话必须保留原作语癖。\n${fanficCanon}\n`
       : "";
     const reducedControlBlock = options?.chapterIntent && options.contextPackage && options.ruleStack
-      ? `\n${buildProcessBrief({
-          kind: "revision",
-          chapterIntent: options.chapterIntent,
-          contextPackage: options.contextPackage,
-          ruleStack: options.ruleStack,
-          language: resolvedLanguage,
-        })}\n`
+      ? this.buildReducedControlBlock(options.chapterIntent, options.contextPackage, options.ruleStack)
       : "";
     const lengthGuidanceBlock = options?.lengthSpec
       ? `\n## 字数护栏\n目标字数：${options.lengthSpec.target}\n允许区间：${options.lengthSpec.softMin}-${options.lengthSpec.softMax}\n极限区间：${options.lengthSpec.hardMin}-${options.lengthSpec.hardMax}\n如果修正后超出允许区间，请优先压缩冗余解释、重复动作和弱信息句，不得新增支线或删掉核心事实。\n`
@@ -335,4 +328,32 @@ ${chapterContent}`;
     }
   }
 
+  private buildReducedControlBlock(
+    chapterIntent: string,
+    contextPackage: ContextPackage,
+    ruleStack: RuleStack,
+  ): string {
+    const selectedContext = contextPackage.selectedContext
+      .map((entry) => `- ${entry.source}: ${entry.reason}${entry.excerpt ? ` | ${entry.excerpt}` : ""}`)
+      .join("\n");
+    const overrides = ruleStack.activeOverrides.length > 0
+      ? ruleStack.activeOverrides
+        .map((override) => `- ${override.from} -> ${override.to}: ${override.reason} (${override.target})`)
+        .join("\n")
+      : "- none";
+
+    return `\n## 本章控制输入（由 Planner/Composer 编译）
+${chapterIntent}
+
+### 已选上下文
+${selectedContext || "- none"}
+
+### 规则栈
+- 硬护栏：${ruleStack.sections.hard.join("、") || "(无)"}
+- 软约束：${ruleStack.sections.soft.join("、") || "(无)"}
+- 诊断规则：${ruleStack.sections.diagnostic.join("、") || "(无)"}
+
+### 当前覆盖
+${overrides}\n`;
+  }
 }

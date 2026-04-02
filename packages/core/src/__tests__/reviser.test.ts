@@ -453,14 +453,10 @@ describe("ReviserAgent", () => {
         | undefined;
       const userPrompt = messages?.[1]?.content ?? "";
 
-      expect(userPrompt).toContain("## Revision Brief");
-      expect(userPrompt).not.toContain("## 本章控制输入（由 Planner/Composer 编译）");
       expect(userPrompt).toContain("story/chapter_summaries.md#99");
       expect(userPrompt).toContain("story/pending_hooks.md#mentor-oath");
-      expect(userPrompt).toContain("The jade seal cannot be destroyed.");
-      expect(userPrompt).toContain("Track the mentor oath fallout.");
-      expect(userPrompt).not.toContain("story/story_bible.md");
-      expect(userPrompt).not.toContain("story/volume_outline.md");
+      expect(userPrompt).toContain("story/story_bible.md");
+      expect(userPrompt).toContain("story/volume_outline.md");
       expect(userPrompt).not.toContain("| 1 | Guild Trail |");
       expect(userPrompt).not.toContain("guild-route | 1 | mystery");
       expect(userPrompt).not.toContain("Guildmaster Ren secretly forged the harbor roster in chapter 140.");

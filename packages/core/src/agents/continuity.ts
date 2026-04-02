@@ -8,7 +8,6 @@ import { getFanficDimensionConfig, FANFIC_DIMENSIONS } from "./fanfic-dimensions
 import { readFile, readdir } from "node:fs/promises";
 import { filterHooks, filterSummaries, filterSubplots, filterEmotionalArcs, filterCharacterMatrix } from "../utils/context-filter.js";
 import { buildGovernedMemoryEvidenceBlocks } from "../utils/governed-context.js";
-import { buildProcessBrief } from "../utils/compiled-control-brief.js";
 import { join } from "node:path";
 
 export interface AuditResult {
@@ -499,13 +498,7 @@ ${dimList}
         : `\n## 卷纲（用于大纲偏离检测）\n${volumeOutline}\n`
       : "";
     const reducedControlBlock = options?.chapterIntent && options.contextPackage && options.ruleStack
-      ? `\n${buildProcessBrief({
-          kind: "review",
-          chapterIntent: options.chapterIntent,
-          contextPackage: options.contextPackage,
-          ruleStack: options.ruleStack,
-          language: resolvedLanguage,
-        })}\n`
+      ? this.buildReducedControlBlock(options.chapterIntent, options.contextPackage, options.ruleStack, resolvedLanguage)
       : "";
     const styleGuideBlock = reducedControlBlock.length === 0
       ? isEnglish
@@ -623,6 +616,50 @@ ${chapterContent}`;
       }],
       summary: language === "en" ? "Audit output parsing failed" : "审稿输出解析失败",
     };
+  }
+
+  private buildReducedControlBlock(
+    chapterIntent: string,
+    contextPackage: ContextPackage,
+    ruleStack: RuleStack,
+    language: PromptLanguage,
+  ): string {
+    const selectedContext = contextPackage.selectedContext
+      .map((entry) => `- ${entry.source}: ${entry.reason}${entry.excerpt ? ` | ${entry.excerpt}` : ""}`)
+      .join("\n");
+    const overrides = ruleStack.activeOverrides.length > 0
+      ? ruleStack.activeOverrides
+        .map((override) => `- ${override.from} -> ${override.to}: ${override.reason} (${override.target})`)
+        .join("\n")
+      : "- none";
+
+    return language === "en"
+      ? `\n## Chapter Control Inputs (compiled by Planner/Composer)
+${chapterIntent}
+
+### Selected Context
+${selectedContext || "- none"}
+
+### Rule Stack
+- Hard guardrails: ${ruleStack.sections.hard.join(", ") || "(none)"}
+- Soft constraints: ${ruleStack.sections.soft.join(", ") || "(none)"}
+- Diagnostic rules: ${ruleStack.sections.diagnostic.join(", ") || "(none)"}
+
+### Active Overrides
+${overrides}\n`
+      : `\n## 本章控制输入（由 Planner/Composer 编译）
+${chapterIntent}
+
+### 已选上下文
+${selectedContext || "- none"}
+
+### 规则栈
+- 硬护栏：${ruleStack.sections.hard.join("、") || "(无)"}
+- 软约束：${ruleStack.sections.soft.join("、") || "(无)"}
+- 诊断规则：${ruleStack.sections.diagnostic.join("、") || "(无)"}
+
+### 当前覆盖
+${overrides}\n`;
   }
 
   private extractBalancedJson(text: string): string | null {

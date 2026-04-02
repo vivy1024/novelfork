@@ -561,8 +561,7 @@ describe("ChapterAnalyzerAgent", () => {
       const messages = chat.mock.calls[0]?.[0] as Array<{ role: string; content: string }>;
       const userPrompt = messages[1]?.content ?? "";
 
-      expect(userPrompt).toContain("## Analysis Brief");
-      expect(userPrompt).not.toContain("## Chapter Control Inputs (compiled by Planner/Composer)");
+      expect(userPrompt).toContain("## Chapter Control Inputs (compiled by Planner/Composer)");
       expect(userPrompt).toContain("story/pending_hooks.md#mentor-oath");
       expect(userPrompt).toContain("Selected Hook Evidence");
       expect(userPrompt).not.toContain("## Story Bible");

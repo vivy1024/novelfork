@@ -104,12 +104,12 @@ function buildGovernedInputContract(language: "zh" | "en", governed: boolean): s
 - The outline is the default plan, not unconditional global supremacy.
 - When the runtime rule stack records an active L4 -> L3 override, follow the current task over local planning.
 - Keep hard guardrails compact: canon, continuity facts, and explicit prohibitions still win.
-- If an English Variance Brief is provided, use it as a variance cue: avoid the listed phrase/opening/ending patterns and satisfy the scene obligation without sounding mechanical.
+- If an English Variance Brief is provided, obey it: avoid the listed phrase/opening/ending patterns and satisfy the scene obligation.
 - If Hook Debt Briefs are provided, treat them as the active memory of what the reader is still owed: preserve the original promise and change the on-page situation.
-- If the explicit hook agenda includes a pressure map, treat the requested move as the preferred narrative response for each target: full-payoff means concrete payoff, partial-payoff means a meaningful intermediate reveal, advance/refresh mean material movement, and quiet-hold means keep the promise visible without cashing it out early.
-- When the explicit hook agenda names an eligible resolve target, try to land a concrete payoff beat instead of merely mentioning the old thread.
-- When stale debt is present, be cautious about opening sibling hooks; relieve pressure from old promises before minting fresh debt unless the scene earns a new thread.
-- When a hook brief says to suppress sibling hooks, avoid faking progress by opening a parallel hook of the same family.
+- If the explicit hook agenda includes a pressure map, follow the requested move for each target: full-payoff means concrete payoff, partial-payoff means a meaningful intermediate reveal, advance/refresh mean material movement, and quiet-hold means keep the promise visible without cashing it out early.
+- When the explicit hook agenda names an eligible resolve target, land a concrete payoff beat instead of merely mentioning the old thread.
+- When stale debt is present, do not open sibling hooks casually; clear pressure from old promises before minting fresh debt.
+- When a hook brief says to suppress sibling hooks, do not fake progress by opening a parallel hook of the same family.
 - In multi-character scenes, include at least one resistance-bearing exchange instead of reducing the beat to summary or explanation.`;
   }
 
@@ -119,12 +119,12 @@ function buildGovernedInputContract(language: "zh" | "en", governed: boolean): s
 - 卷纲是默认规划，不是全局最高规则。
 - 当 runtime rule stack 明确记录了 L4 -> L3 的 active override 时，优先执行当前任务意图，再局部调整规划层。
 - 真正不能突破的只有硬护栏：世界设定、连续性事实、显式禁令。
-- 如果提供了 English Variance Brief，把它当成变奏提示：主动避开其中列出的高频短语、重复开头和重复结尾模式，同时自然完成 scene obligation。
+- 如果提供了 English Variance Brief，必须主动避开其中列出的高频短语、重复开头和重复结尾模式，并完成 scene obligation。
 - 如果提供了 Hook Debt 简报，把它当成读者仍在等待兑现的承诺记忆：保留原始 promise，并让本章在页上发生真实变化。
-- 如果显式 hook agenda 里带有 pressure map，把其中动作当成优先叙事响应：full-payoff 就是具体兑现，partial-payoff 就是给出中间层级的揭示或缩圈，advance / refresh 就是有分量的推进，quiet-hold 就是让承诺继续可见但不要过早消耗。
-- 如果显式 hook agenda 里出现了可回收目标，优先写出具体兑现片段，不要只是重新提一句旧线索。
-- 如果存在 stale debt，先消化旧承诺的压力，再决定是否开新坑；同类 sibling hook 要谨慎新增，除非场景真的挣到了新的线程。
-- 如果某条 hook 简报明确要求 suppress sibling hooks，避免靠再开一个同类平行坑来假装推进。
+- 如果显式 hook agenda 里带有 pressure map，逐条执行其中要求的动作：full-payoff 就是具体兑现，partial-payoff 就是给出中间层级的揭示或缩圈，advance / refresh 就是有分量的推进，quiet-hold 就是让承诺继续可见但不要过早消耗。
+- 如果显式 hook agenda 里出现了可回收目标，本章必须写出具体兑现片段，不能只是重新提一句旧线索。
+- 如果存在 stale debt，先消化旧承诺的压力，再决定是否开新坑；同类 sibling hook 不得随手再开。
+- 如果某条 hook 简报明确要求 suppress sibling hooks，就不能用再开一个同类平行坑来假装推进。
 - 多角色场景里，至少给出一轮带阻力的直接交锋，不要把人物关系写成纯解释或纯总结。`;
 }
 
@@ -153,7 +153,7 @@ function buildCoreRules(lengthSpec: LengthSpec): string {
 
 1. 以简体中文工作，句子长短交替，段落适合手机阅读（3-5行/段）
 2. 目标字数：${lengthSpec.target}字，允许区间：${lengthSpec.softMin}-${lengthSpec.softMax}字
-3. 伏笔前后呼应，不留悬空线；所有埋下的伏笔都应在后续得到兑现、转化或明确延后
+3. 伏笔前后呼应，不留悬空线；所有埋下的伏笔都必须在后续收回
 4. 只读必要上下文，不机械重复已有内容
 
 ## 人物塑造铁律
@@ -545,7 +545,7 @@ ${resourceRow}| 待回收伏笔 | 用真实 hook_id 填写（无则写 none） |
 ${preWriteTable}
 
 === CHAPTER_TITLE ===
-(章节标题，不含"第X章"。标题应与已有章节标题区分开，避免重复使用相同或相似的标题；若提供了 recent title history 或高频标题词，优先避开重复词根和高频意象)
+(章节标题，不含"第X章"。标题必须与已有章节标题不同，不要重复使用相同或相似的标题；若提供了 recent title history 或高频标题词，必须主动避开重复词根和高频意象)
 
 === CHAPTER_CONTENT ===
 (正文内容，目标${lengthSpec.target}字，允许区间${lengthSpec.softMin}-${lengthSpec.softMax}字)
@@ -598,7 +598,7 @@ ${resourceRow}| 待回收伏笔 | 用真实 hook_id 填写（无则写 none） |
 ${preWriteTable}
 
 === CHAPTER_TITLE ===
-(章节标题，不含"第X章"。标题应与已有章节标题区分开，避免重复使用相同或相似的标题；若提供了 recent title history 或高频标题词，优先避开重复词根和高频意象)
+(章节标题，不含"第X章"。标题必须与已有章节标题不同，不要重复使用相同或相似的标题；若提供了 recent title history 或高频标题词，必须主动避开重复词根和高频意象)
 
 === CHAPTER_CONTENT ===
 (正文内容，目标${lengthSpec.target}字，允许区间${lengthSpec.softMin}-${lengthSpec.softMax}字)

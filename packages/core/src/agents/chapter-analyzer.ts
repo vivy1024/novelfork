@@ -12,7 +12,6 @@ import {
 import { filterEmotionalArcs, filterSubplots } from "../utils/context-filter.js";
 import { countChapterLength, resolveLengthCountingMode } from "../utils/length-metrics.js";
 import { retrieveMemorySelection } from "../utils/memory-retrieval.js";
-import { buildProcessBrief } from "../utils/compiled-control-brief.js";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -96,13 +95,7 @@ export class ChapterAnalyzerAgent extends BaseAgent {
         })
       : characterMatrix;
     const reducedControlBlock = governedMode && input.chapterIntent && input.contextPackage && input.ruleStack
-      ? `\n${buildProcessBrief({
-          kind: "analysis",
-          chapterIntent: input.chapterIntent,
-          contextPackage: input.contextPackage,
-          ruleStack: input.ruleStack,
-          language: resolvedLanguage,
-        })}\n`
+      ? this.buildReducedControlBlock(input.chapterIntent, input.contextPackage, input.ruleStack, resolvedLanguage)
       : "";
 
     const systemPrompt = this.buildSystemPrompt(
@@ -466,6 +459,50 @@ ${ledgerBlock}
 ${params.hooksBlock}${params.volumeSummariesBlock}${params.subplotBlock}${params.emotionalBlock}${params.matrixBlock}${params.summariesBlock}${params.outlineOrControlBlock}${params.bibleBlock}
 
 请严格按照 === TAG === 格式输出分析结果。`;
+  }
+
+  private buildReducedControlBlock(
+    chapterIntent: string,
+    contextPackage: ContextPackage,
+    ruleStack: RuleStack,
+    language: "zh" | "en",
+  ): string {
+    const selectedContext = contextPackage.selectedContext
+      .map((entry) => `- ${entry.source}: ${entry.reason}${entry.excerpt ? ` | ${entry.excerpt}` : ""}`)
+      .join("\n");
+    const overrides = ruleStack.activeOverrides.length > 0
+      ? ruleStack.activeOverrides
+        .map((override) => `- ${override.from} -> ${override.to}: ${override.reason} (${override.target})`)
+        .join("\n")
+      : "- none";
+
+    return language === "en"
+      ? `\n## Chapter Control Inputs (compiled by Planner/Composer)
+${chapterIntent}
+
+### Selected Context
+${selectedContext || "- none"}
+
+### Rule Stack
+- Hard guardrails: ${ruleStack.sections.hard.join(", ") || "(none)"}
+- Soft constraints: ${ruleStack.sections.soft.join(", ") || "(none)"}
+- Diagnostic rules: ${ruleStack.sections.diagnostic.join(", ") || "(none)"}
+
+### Active Overrides
+${overrides}\n`
+      : `\n## 本章控制输入（由 Planner/Composer 编译）
+${chapterIntent}
+
+### 已选上下文
+${selectedContext || "- none"}
+
+### 规则栈
+- 硬护栏：${ruleStack.sections.hard.join("、") || "(无)"}
+- 软约束：${ruleStack.sections.soft.join("、") || "(无)"}
+- 诊断规则：${ruleStack.sections.diagnostic.join("、") || "(无)"}
+
+### 当前覆盖
+${overrides}\n`;
   }
 
   private buildMemoryGoal(chapterTitle: string | undefined, chapterContent: string): string {
