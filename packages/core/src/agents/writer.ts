@@ -319,6 +319,7 @@ export class WriterAgent extends BaseAgent {
       bookDir,
       settlement.runtimeStateDelta,
       resolvedLanguage,
+      chapterNumber,
     );
     const resolvedRuntimeStateDelta = runtimeStateArtifacts?.resolvedDelta ?? settlement.runtimeStateDelta;
     const priorHookIds = new Set(parsePendingHooksMarkdown(hooks).map((hook) => hook.hookId));
@@ -467,6 +468,7 @@ export class WriterAgent extends BaseAgent {
       input.bookDir,
       settlement.runtimeStateDelta,
       resolvedLanguage,
+      input.chapterNumber,
     );
 
     return {
@@ -1098,11 +1100,17 @@ ${overrides}\n`;
     bookDir: string,
     delta: RuntimeStateDelta | undefined,
     language: "zh" | "en",
+    authorativeChapterNumber?: number,
   ): Promise<RuntimeStateArtifacts | null> {
     if (!delta) return null;
+    // The LLM may hallucinate a chapter number from story content (e.g. year
+    // 1988 parsed as "第1988章").  Always trust the pipeline's chapter number.
+    const safeDelta = authorativeChapterNumber !== undefined && delta.chapter !== authorativeChapterNumber
+      ? { ...delta, chapter: authorativeChapterNumber }
+      : delta;
     return buildRuntimeStateArtifacts({
       bookDir,
-      delta,
+      delta: safeDelta,
       language,
     });
   }
