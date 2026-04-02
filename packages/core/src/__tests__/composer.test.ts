@@ -73,6 +73,7 @@ describe("ComposerAgent", () => {
           },
         ],
         hookAgenda: {
+          pressureMap: [],
           mustAdvance: [],
           eligibleResolve: [],
           staleDebt: [],
@@ -390,5 +391,181 @@ describe("ComposerAgent", () => {
 
     expect(volumeEntry).toBeDefined();
     expect(volumeEntry?.excerpt).toContain("mentor oath");
+  });
+
+  it("adds explicit title history, mood trail, and canon evidence for governed writing", async () => {
+    await Promise.all([
+      writeFile(
+        join(storyDir, "chapter_summaries.md"),
+        [
+          "# Chapter Summaries",
+          "",
+          "| chapter | title | characters | events | stateChanges | hookActivity | mood | chapterType |",
+          "| --- | --- | --- | --- | --- | --- | --- | --- |",
+          "| 1 | Ledger in Rain | Lin Yue | First ledger clue appears | None | none | tight | investigation |",
+          "| 2 | Ledger at Dusk | Lin Yue | Second ledger clue appears | None | none | tight | investigation |",
+          "| 3 | Harbor Ledger | Lin Yue | Third ledger clue appears | None | none | tight | investigation |",
+          "",
+        ].join("\n"),
+        "utf-8",
+      ),
+      writeFile(
+        join(storyDir, "parent_canon.md"),
+        "# Parent Canon\n\nThe mentor does not learn about the archive fire until volume two.\n",
+        "utf-8",
+      ),
+      writeFile(
+        join(storyDir, "fanfic_canon.md"),
+        "# Fanfic Canon\n\nMara may diverge from the archive route, but the oath debt logic must stay intact.\n",
+        "utf-8",
+      ),
+    ]);
+
+    const composer = new ComposerAgent({
+      client: {} as ConstructorParameters<typeof ComposerAgent>[0]["client"],
+      model: "test-model",
+      projectRoot: root,
+      bookId: book.id,
+    });
+
+    const result = await composer.composeChapter({
+      book,
+      bookDir,
+      chapterNumber: 4,
+      plan,
+    });
+
+    const selectedSources = result.contextPackage.selectedContext.map((entry) => entry.source);
+    expect(selectedSources).toContain("story/chapter_summaries.md#recent_titles");
+    expect(selectedSources).toContain("story/chapter_summaries.md#recent_mood_type_trail");
+    expect(selectedSources).toContain("story/parent_canon.md");
+    expect(selectedSources).toContain("story/fanfic_canon.md");
+
+    const titleEntry = result.contextPackage.selectedContext.find((entry) =>
+      entry.source === "story/chapter_summaries.md#recent_titles",
+    );
+    const moodEntry = result.contextPackage.selectedContext.find((entry) =>
+      entry.source === "story/chapter_summaries.md#recent_mood_type_trail",
+    );
+    const parentCanonEntry = result.contextPackage.selectedContext.find((entry) =>
+      entry.source === "story/parent_canon.md",
+    );
+    const fanficCanonEntry = result.contextPackage.selectedContext.find((entry) =>
+      entry.source === "story/fanfic_canon.md",
+    );
+
+    expect(titleEntry?.excerpt).toContain("Ledger in Rain");
+    expect(moodEntry?.excerpt).toContain("tight / investigation");
+    expect(parentCanonEntry?.excerpt).toContain("archive fire");
+    expect(fanficCanonEntry?.excerpt).toContain("oath debt logic");
+  });
+
+  it("includes dedicated audit drift guidance instead of relying on current_state pollution", async () => {
+    await writeFile(
+      join(storyDir, "audit_drift.md"),
+      [
+        "# Audit Drift",
+        "",
+        "## 审计纠偏（自动生成，下一章写作前参照）",
+        "",
+        "> - [warning] 节奏单调: 最近4章章节类型持续停留在“调查章”。",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const composer = new ComposerAgent({
+      client: {} as ConstructorParameters<typeof ComposerAgent>[0]["client"],
+      model: "test-model",
+      projectRoot: root,
+      bookId: book.id,
+    });
+
+    const result = await composer.composeChapter({
+      book,
+      bookDir,
+      chapterNumber: 4,
+      plan,
+    });
+
+    const driftEntry = result.contextPackage.selectedContext.find((entry) =>
+      entry.source === "story/audit_drift.md",
+    );
+    expect(driftEntry).toBeDefined();
+    expect(driftEntry?.excerpt).toContain("节奏单调");
+  });
+
+  it("emits hook debt briefs for agenda-targeted hooks", async () => {
+    await Promise.all([
+      writeFile(
+        join(storyDir, "pending_hooks.md"),
+        [
+          "# Pending Hooks",
+          "",
+          "| hook_id | 起始章节 | 类型 | 状态 | 最近推进 | 预期回收 | 回收节奏 | 备注 |",
+          "| --- | --- | --- | --- | --- | --- | --- | --- |",
+          "| mentor-oath | 8 | relationship | progressing | 9 | 揭开师债为何断裂 | 慢烧 | 师债需要跨更大弧线回收 |",
+          "| guild-route | 1 | mystery | open | 2 | 查清商会路线背后的买家 | 近期 | 商会路线仍在旁支干扰 |",
+          "",
+        ].join("\n"),
+        "utf-8",
+      ),
+      writeFile(
+        join(storyDir, "chapter_summaries.md"),
+        [
+          "# Chapter Summaries",
+          "",
+          "| 7 | Broken Letter | Lin Yue | A torn letter mentions the mentor | Lin Yue reopens the old oath | mentor-oath seeded | uneasy | mystery |",
+          "| 8 | River Camp | Lin Yue | Mentor debt becomes personal | Lin Yue cannot let go | mentor-oath advanced | raw | confrontation |",
+          "| 9 | Trial Echo | Lin Yue | Mentor left without explanation | Oath token matters again | mentor-oath advanced | aching | fallout |",
+          "",
+        ].join("\n"),
+        "utf-8",
+      ),
+    ]);
+
+    const composer = new ComposerAgent({
+      client: {} as ConstructorParameters<typeof ComposerAgent>[0]["client"],
+      model: "test-model",
+      projectRoot: root,
+      bookId: book.id,
+    });
+
+    const result = await composer.composeChapter({
+      book,
+      bookDir,
+      chapterNumber: 10,
+      plan: {
+        ...plan,
+        intent: {
+          ...plan.intent,
+          chapter: 10,
+          goal: "Bring the focus back to the mentor oath conflict.",
+          hookAgenda: {
+            pressureMap: [{
+              hookId: "mentor-oath",
+              type: "relationship",
+              payoffTiming: "slow-burn",
+              phase: "middle",
+              pressure: "high",
+              movement: "partial-payoff",
+              reason: "stale-promise",
+              blockSiblingHooks: true,
+            }],
+            mustAdvance: ["mentor-oath"],
+            eligibleResolve: [],
+            staleDebt: [],
+            avoidNewHookFamilies: ["relationship"],
+          },
+        },
+      },
+    });
+
+    const hookDebtEntry = result.contextPackage.selectedContext.find((entry) => entry.source === "runtime/hook_debt#mentor-oath");
+    expect(hookDebtEntry).toBeDefined();
+    expect(hookDebtEntry?.excerpt).toContain("mentor-oath");
+    expect(hookDebtEntry?.excerpt).toContain("主要旧债");
+    expect(hookDebtEntry?.excerpt).toContain("读者承诺");
+    expect(hookDebtEntry?.excerpt).toContain("River Camp");
+    expect(hookDebtEntry?.excerpt).toContain("Trial Echo");
   });
 });

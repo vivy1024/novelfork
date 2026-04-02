@@ -1,19 +1,37 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { HookAgenda } from "../models/input-governance.js";
 import {
   ChapterSummariesStateSchema,
   CurrentStateStateSchema,
   HooksStateSchema,
-  type HookRecord,
-  type HookStatus,
 } from "../models/runtime-state.js";
 import { MemoryDB, type Fact, type StoredHook, type StoredSummary } from "../state/memory-db.js";
+import { bootstrapStructuredStateFromMarkdown } from "../state/state-bootstrap.js";
 import {
-  bootstrapStructuredStateFromMarkdown,
-  parsePendingHooksMarkdown as parseStatePendingHooksMarkdown,
-} from "../state/state-bootstrap.js";
-import { collectStaleHookDebt } from "./hook-governance.js";
+  buildPlannerHookAgenda,
+  filterActiveHooks,
+  isFuturePlannedHook,
+  isHookWithinChapterWindow,
+} from "./hook-agenda.js";
+import {
+  parseChapterSummariesMarkdown,
+  parseCurrentStateFacts,
+  parsePendingHooksMarkdown,
+  renderHookSnapshot,
+  renderSummarySnapshot,
+} from "./story-markdown.js";
+export {
+  buildPlannerHookAgenda,
+  isFuturePlannedHook,
+  isHookWithinChapterWindow,
+} from "./hook-agenda.js";
+export {
+  parseChapterSummariesMarkdown,
+  parseCurrentStateFacts,
+  parsePendingHooksMarkdown,
+  renderHookSnapshot,
+  renderSummarySnapshot,
+} from "./story-markdown.js";
 
 export interface MemorySelection {
   readonly summaries: ReadonlyArray<StoredSummary>;
@@ -29,8 +47,6 @@ export interface VolumeSummarySelection {
   readonly content: string;
   readonly anchor: string;
 }
-
-export const DEFAULT_HOOK_LOOKAHEAD_CHAPTERS = 3;
 
 export async function retrieveMemorySelection(params: {
   readonly bookDir: string;
@@ -155,112 +171,6 @@ export function extractQueryTerms(goal: string, outlineNode: string | undefined,
   ]).slice(0, 12);
 }
 
-export function renderSummarySnapshot(
-  summaries: ReadonlyArray<StoredSummary>,
-  language: "zh" | "en" = "zh",
-): string {
-  if (summaries.length === 0) return "- none";
-
-  const headers = language === "en"
-    ? [
-      "| chapter | title | characters | events | stateChanges | hookActivity | mood | chapterType |",
-      "| --- | --- | --- | --- | --- | --- | --- | --- |",
-    ]
-    : [
-      "| 章节 | 标题 | 出场人物 | 关键事件 | 状态变化 | 伏笔动态 | 情绪基调 | 章节类型 |",
-      "| --- | --- | --- | --- | --- | --- | --- | --- |",
-    ];
-
-  return [
-    ...headers,
-    ...summaries.map((summary) => [
-      summary.chapter,
-      summary.title,
-      summary.characters,
-      summary.events,
-      summary.stateChanges,
-      summary.hookActivity,
-      summary.mood,
-      summary.chapterType,
-    ].map(escapeTableCell).join(" | ")).map((row) => `| ${row} |`),
-  ].join("\n");
-}
-
-export function renderHookSnapshot(
-  hooks: ReadonlyArray<StoredHook>,
-  language: "zh" | "en" = "zh",
-): string {
-  if (hooks.length === 0) return "- none";
-
-  const headers = language === "en"
-    ? [
-      "| hook_id | start_chapter | type | status | last_advanced | expected_payoff | notes |",
-      "| --- | --- | --- | --- | --- | --- | --- |",
-    ]
-    : [
-      "| hook_id | 起始章节 | 类型 | 状态 | 最近推进 | 预期回收 | 备注 |",
-      "| --- | --- | --- | --- | --- | --- | --- |",
-    ];
-
-  return [
-    ...headers,
-    ...hooks.map((hook) => [
-      hook.hookId,
-      hook.startChapter,
-      hook.type,
-      hook.status,
-      hook.lastAdvancedChapter,
-      hook.expectedPayoff,
-      hook.notes,
-    ].map((cell) => escapeTableCell(String(cell))).join(" | ")).map((row) => `| ${row} |`),
-  ].join("\n");
-}
-
-export function buildPlannerHookAgenda(params: {
-  readonly hooks: ReadonlyArray<StoredHook>;
-  readonly chapterNumber: number;
-  readonly maxMustAdvance?: number;
-  readonly maxEligibleResolve?: number;
-  readonly maxStaleDebt?: number;
-}): HookAgenda {
-  const agendaHooks = params.hooks
-    .map(normalizeStoredHook)
-    .filter((hook) => !isFuturePlannedHook(hook, params.chapterNumber, 0))
-    .filter((hook) => hook.status !== "resolved" && hook.status !== "deferred");
-  const mustAdvance = agendaHooks
-    .slice()
-    .sort((left, right) => (
-      right.lastAdvancedChapter - left.lastAdvancedChapter
-      || left.startChapter - right.startChapter
-      || left.hookId.localeCompare(right.hookId)
-    ))
-    .slice(0, params.maxMustAdvance ?? 2)
-    .map((hook) => hook.hookId);
-  const staleDebt = collectStaleHookDebt({
-    hooks: agendaHooks,
-    chapterNumber: params.chapterNumber,
-  })
-    .slice(0, params.maxStaleDebt ?? 2)
-    .map((hook) => hook.hookId);
-  const eligibleResolve = agendaHooks
-    .filter((hook) => hook.startChapter <= params.chapterNumber - 3)
-    .filter((hook) => hook.lastAdvancedChapter >= params.chapterNumber - 2)
-    .sort((left, right) => (
-      left.startChapter - right.startChapter
-      || right.lastAdvancedChapter - left.lastAdvancedChapter
-      || left.hookId.localeCompare(right.hookId)
-    ))
-    .slice(0, params.maxEligibleResolve ?? 1)
-    .map((hook) => hook.hookId);
-
-  return {
-    mustAdvance,
-    eligibleResolve,
-    staleDebt,
-    avoidNewHookFamilies: [],
-  };
-}
-
 function openMemoryDB(bookDir: string): MemoryDB | null {
   try {
     return new MemoryDB(bookDir);
@@ -367,84 +277,6 @@ function uniqueTerms(terms: ReadonlyArray<string>): string[] {
   return result;
 }
 
-export function parseChapterSummariesMarkdown(markdown: string): StoredSummary[] {
-  const rows = parseMarkdownTableRows(markdown)
-    .filter((row) => /^\d+$/.test(row[0] ?? ""));
-
-  return rows.map((row) => ({
-    chapter: parseInt(row[0]!, 10),
-    title: row[1] ?? "",
-    characters: row[2] ?? "",
-    events: row[3] ?? "",
-    stateChanges: row[4] ?? "",
-    hookActivity: row[5] ?? "",
-    mood: row[6] ?? "",
-    chapterType: row[7] ?? "",
-  }));
-}
-
-export function parsePendingHooksMarkdown(markdown: string): StoredHook[] {
-  return parseStatePendingHooksMarkdown(markdown);
-}
-
-export function parseCurrentStateFacts(
-  markdown: string,
-  fallbackChapter: number,
-): Fact[] {
-  const tableRows = parseMarkdownTableRows(markdown);
-  const fieldValueRows = tableRows
-    .filter((row) => row.length >= 2)
-    .filter((row) => !isStateTableHeaderRow(row));
-
-  if (fieldValueRows.length > 0) {
-    const chapterFromTable = fieldValueRows.find((row) => isCurrentChapterLabel(row[0] ?? ""));
-    const stateChapter = parseInteger(chapterFromTable?.[1]) || fallbackChapter;
-
-    return fieldValueRows
-      .filter((row) => !isCurrentChapterLabel(row[0] ?? ""))
-      .flatMap((row): Fact[] => {
-        const label = (row[0] ?? "").trim();
-        const value = (row[1] ?? "").trim();
-        if (!label || !value) return [];
-
-        return [{
-          subject: inferFactSubject(label),
-          predicate: label,
-          object: value,
-          validFromChapter: stateChapter,
-          validUntilChapter: null,
-          sourceChapter: stateChapter,
-        }];
-      });
-  }
-
-  const bulletFacts = markdown
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.startsWith("-"))
-    .map((line) => line.replace(/^-\s*/, ""))
-    .filter(Boolean);
-
-  return bulletFacts.map((line, index) => ({
-    subject: "current_state",
-    predicate: `note_${index + 1}`,
-    object: line,
-    validFromChapter: fallbackChapter,
-    validUntilChapter: null,
-    sourceChapter: fallbackChapter,
-  }));
-}
-
-function parseMarkdownTableRows(markdown: string): string[][] {
-  return markdown
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.startsWith("|"))
-    .filter((line) => !line.includes("---"))
-    .map((line) => line.split("|").slice(1, -1).map((cell) => cell.trim()))
-    .filter((cells) => cells.some(Boolean));
-}
-
 function parseVolumeSummariesMarkdown(markdown: string): VolumeSummarySelection[] {
   if (!markdown.trim()) return [];
 
@@ -464,26 +296,6 @@ function parseVolumeSummariesMarkdown(markdown: string): VolumeSummarySelection[
       anchor: slugifyAnchor(heading),
     };
   }).filter((section) => section.heading.length > 0 && section.content.length > 0);
-}
-
-function isStateTableHeaderRow(row: ReadonlyArray<string>): boolean {
-  const first = (row[0] ?? "").trim().toLowerCase();
-  const second = (row[1] ?? "").trim().toLowerCase();
-  return (first === "字段" && second === "值") || (first === "field" && second === "value");
-}
-
-function isCurrentChapterLabel(label: string): boolean {
-  return /^(当前章节|current chapter)$/i.test(label.trim());
-}
-
-function inferFactSubject(label: string): string {
-  if (/^(当前位置|current location)$/i.test(label)) return "protagonist";
-  if (/^(主角状态|protagonist state)$/i.test(label)) return "protagonist";
-  if (/^(当前目标|current goal)$/i.test(label)) return "protagonist";
-  if (/^(当前限制|current constraint)$/i.test(label)) return "protagonist";
-  if (/^(当前敌我|current alliances|current relationships)$/i.test(label)) return "protagonist";
-  if (/^(当前冲突|current conflict)$/i.test(label)) return "protagonist";
-  return "current_state";
 }
 
 function isUnresolvedHook(status: string): boolean {
@@ -524,36 +336,34 @@ function selectRelevantHooks(
   const ranked = hooks
     .map((hook) => ({
       hook,
-      score: scoreHook(hook, queryTerms),
+      score: scoreHook(hook, queryTerms, chapterNumber),
       matched: matchesAny(
-        [hook.hookId, hook.type, hook.expectedPayoff, hook.notes].join(" "),
+        [hook.hookId, hook.type, hook.expectedPayoff, hook.payoffTiming ?? "", hook.notes].join(" "),
         queryTerms,
       ),
     }))
-    .filter((entry) => entry.matched || isUnresolvedHook(entry.hook.status));
+    .filter((entry: { hook: StoredHook; score: number; matched: boolean }) =>
+      entry.matched || isUnresolvedHook(entry.hook.status),
+    );
 
-  const recentCutoff = Math.max(0, chapterNumber - 5);
-  const staleCutoff = Math.max(0, chapterNumber - 10);
   const primary = ranked
-    .filter((entry) => (
-      entry.matched
-      || isHookWithinChapterWindow(entry.hook, chapterNumber, 5)
-    ))
+    .filter((entry: { hook: StoredHook; score: number; matched: boolean }) =>
+      entry.matched || isHookWithinChapterWindow(entry.hook, chapterNumber, 5),
+    )
     .sort((left, right) => right.score - left.score || right.hook.lastAdvancedChapter - left.hook.lastAdvancedChapter)
-    .slice(0, 3);
+    .slice(0, 6);
 
-  const selectedIds = new Set(primary.map((entry) => entry.hook.hookId));
+  const selectedIds = new Set(primary.map((entry: { hook: StoredHook; score: number; matched: boolean }) => entry.hook.hookId));
   const stale = ranked
-    .filter((entry) => (
+    .filter((entry: { hook: StoredHook; score: number; matched: boolean }) =>
       !selectedIds.has(entry.hook.hookId)
       && !isFuturePlannedHook(entry.hook, chapterNumber)
-      && entry.hook.lastAdvancedChapter <= staleCutoff
-      && isUnresolvedHook(entry.hook.status)
-    ))
+      && isUnresolvedHook(entry.hook.status),
+    )
     .sort((left, right) => left.hook.lastAdvancedChapter - right.hook.lastAdvancedChapter || right.score - left.score)
-    .slice(0, 1);
+    .slice(0, 2);
 
-  return [...primary, ...stale].map((entry) => entry.hook);
+  return [...primary, ...stale].map((entry: { hook: StoredHook; score: number; matched: boolean }) => entry.hook);
 }
 
 function selectRelevantFacts(
@@ -636,69 +446,15 @@ function scoreSummary(summary: StoredSummary, chapterNumber: number, queryTerms:
   return recencyScore + termScore;
 }
 
-function scoreHook(hook: StoredHook, queryTerms: ReadonlyArray<string>): number {
-  const text = [hook.hookId, hook.type, hook.expectedPayoff, hook.notes].join(" ");
+function scoreHook(
+  hook: StoredHook,
+  queryTerms: ReadonlyArray<string>,
+  _chapterNumber: number,
+): number {
+  const text = [hook.hookId, hook.type, hook.expectedPayoff, hook.payoffTiming ?? "", hook.notes].join(" ");
   const freshness = Math.max(0, hook.lastAdvancedChapter);
   const termScore = queryTerms.reduce((score, term) => score + (includesTerm(text, term) ? Math.max(8, term.length * 2) : 0), 0);
   return termScore + freshness;
-}
-
-function normalizeStoredHook(hook: StoredHook): HookRecord {
-  return {
-    hookId: hook.hookId,
-    startChapter: Math.max(0, hook.startChapter),
-    type: hook.type,
-    status: normalizeStoredHookStatus(hook.status),
-    lastAdvancedChapter: Math.max(0, hook.lastAdvancedChapter),
-    expectedPayoff: hook.expectedPayoff,
-    notes: hook.notes,
-  };
-}
-
-function normalizeStoredHookStatus(status: string): HookStatus {
-  if (/^(resolved|closed|done|已回收|已解决)$/i.test(status.trim())) return "resolved";
-  if (/^(deferred|paused|hold|延后|延期|搁置|暂缓)$/i.test(status.trim())) return "deferred";
-  if (/^(progressing|advanced|重大推进|持续推进)$/i.test(status.trim())) return "progressing";
-  return "open";
-}
-
-function filterActiveHooks(hooks: ReadonlyArray<StoredHook>): StoredHook[] {
-  return hooks.filter((hook) => normalizeStoredHookStatus(hook.status) !== "resolved");
-}
-
-export function isFuturePlannedHook(
-  hook: StoredHook,
-  chapterNumber: number,
-  lookahead: number = DEFAULT_HOOK_LOOKAHEAD_CHAPTERS,
-): boolean {
-  return hook.lastAdvancedChapter <= 0 && hook.startChapter > chapterNumber + lookahead;
-}
-
-export function isHookWithinChapterWindow(
-  hook: StoredHook,
-  chapterNumber: number,
-  recentWindow: number = 5,
-  lookahead: number = DEFAULT_HOOK_LOOKAHEAD_CHAPTERS,
-): boolean {
-  const recentCutoff = Math.max(0, chapterNumber - recentWindow);
-
-  if (hook.lastAdvancedChapter > 0 && hook.lastAdvancedChapter >= recentCutoff) {
-    return true;
-  }
-
-  if (hook.lastAdvancedChapter > 0) {
-    return false;
-  }
-
-  if (hook.startChapter <= 0) {
-    return true;
-  }
-
-  if (hook.startChapter >= recentCutoff && hook.startChapter <= chapterNumber) {
-    return true;
-  }
-
-  return hook.startChapter > chapterNumber && hook.startChapter <= chapterNumber + lookahead;
 }
 
 function matchesAny(text: string, queryTerms: ReadonlyArray<string>): boolean {
@@ -707,16 +463,6 @@ function matchesAny(text: string, queryTerms: ReadonlyArray<string>): boolean {
 
 function includesTerm(text: string, term: string): boolean {
   return text.toLowerCase().includes(term.toLowerCase());
-}
-
-function parseInteger(value: string | undefined): number {
-  if (!value) return 0;
-  const match = value.match(/\d+/);
-  return match ? parseInt(match[0], 10) : 0;
-}
-
-function escapeTableCell(value: string | number): string {
-  return String(value).replace(/\|/g, "\\|").trim();
 }
 
 function slugifyAnchor(value: string): string {

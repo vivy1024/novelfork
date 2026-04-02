@@ -59,6 +59,15 @@ writeCommand
           }
           log("");
         }
+
+        if (result.status === "state-degraded") {
+          if (!opts.json) {
+            log(language === "en"
+              ? "State repair required before continuing. Stopping batch."
+              : "需要先修复 state，已停止后续连写。");
+          }
+          break;
+        }
       }
 
       if (opts.json) {
@@ -185,6 +194,61 @@ writeCommand
         log(JSON.stringify({ error: String(e) }));
       } else {
         logError(`Failed to rewrite chapter: ${e}`);
+      }
+      process.exit(1);
+    }
+  });
+
+writeCommand
+  .command("repair-state")
+  .description("Rebuild truth files for a persisted state-degraded chapter without rewriting body text")
+  .argument("<args...>", "Book ID (optional) and chapter number")
+  .option("--json", "Output JSON")
+  .action(async (args: ReadonlyArray<string>, opts) => {
+    try {
+      const root = findProjectRoot();
+
+      let bookId: string;
+      let chapter: number;
+      if (args.length === 1) {
+        chapter = parseInt(args[0]!, 10);
+        if (isNaN(chapter)) throw new Error(`Expected chapter number, got "${args[0]}"`);
+        bookId = await resolveBookId(undefined, root);
+      } else if (args.length === 2) {
+        chapter = parseInt(args[1]!, 10);
+        if (isNaN(chapter)) throw new Error(`Expected chapter number, got "${args[1]}"`);
+        bookId = await resolveBookId(args[0], root);
+      } else {
+        throw new Error("Usage: inkos write repair-state [book-id] <chapter>");
+      }
+
+      const state = new StateManager(root);
+      const book = await state.loadBookConfig(bookId);
+      const language = resolveCliLanguage(book.language);
+      const config = await loadConfig();
+      const pipeline = new PipelineRunner(buildPipelineConfig(config, root));
+      const result = await pipeline.repairChapterState(bookId, chapter);
+
+      if (opts.json) {
+        log(JSON.stringify(result, null, 2));
+      } else {
+        for (const line of formatWriteNextResultLines(language, {
+          chapterNumber: result.chapterNumber,
+          title: result.title,
+          wordCount: result.wordCount,
+          auditPassed: result.auditResult.passed,
+          revised: result.revised,
+          status: result.status,
+          issues: result.auditResult.issues,
+        })) {
+          log(line);
+        }
+      }
+    } catch (e) {
+      if (opts.json) {
+        log(JSON.stringify({ error: String(e) }));
+      } else {
+        logError(`Failed to repair chapter state: ${e}`);
       }
       process.exit(1);
     }

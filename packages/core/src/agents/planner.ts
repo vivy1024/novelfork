@@ -5,11 +5,13 @@ import type { BookConfig } from "../models/book.js";
 import { parseBookRules } from "../models/book-rules.js";
 import { ChapterIntentSchema, type ChapterConflict, type ChapterIntent } from "../models/input-governance.js";
 import {
-  buildPlannerHookAgenda,
+  parseChapterSummariesMarkdown,
   renderHookSnapshot,
   renderSummarySnapshot,
   retrieveMemorySelection,
 } from "../utils/memory-retrieval.js";
+import { analyzeChapterCadence } from "../utils/chapter-cadence.js";
+import { buildPlannerHookAgenda } from "../utils/hook-agenda.js";
 
 export interface PlanChapterInput {
   readonly book: BookConfig;
@@ -40,6 +42,7 @@ export class PlannerAgent extends BaseAgent {
       currentFocus: join(storyDir, "current_focus.md"),
       storyBible: join(storyDir, "story_bible.md"),
       volumeOutline: join(storyDir, "volume_outline.md"),
+      chapterSummaries: join(storyDir, "chapter_summaries.md"),
       bookRules: join(storyDir, "book_rules.md"),
       currentState: join(storyDir, "current_state.md"),
     } as const;
@@ -49,6 +52,7 @@ export class PlannerAgent extends BaseAgent {
       currentFocus,
       storyBible,
       volumeOutline,
+      chapterSummaries,
       bookRulesRaw,
       currentState,
     ] = await Promise.all([
@@ -56,17 +60,19 @@ export class PlannerAgent extends BaseAgent {
       this.readFileOrDefault(sourcePaths.currentFocus),
       this.readFileOrDefault(sourcePaths.storyBible),
       this.readFileOrDefault(sourcePaths.volumeOutline),
+      this.readFileOrDefault(sourcePaths.chapterSummaries),
       this.readFileOrDefault(sourcePaths.bookRules),
       this.readFileOrDefault(sourcePaths.currentState),
     ]);
 
     const outlineNode = this.findOutlineNode(volumeOutline, input.chapterNumber);
+    const matchedOutlineAnchor = this.hasMatchedOutlineAnchor(volumeOutline, input.chapterNumber);
     const goal = this.deriveGoal(input.externalContext, currentFocus, authorIntent, outlineNode, input.chapterNumber);
     const parsedRules = parseBookRules(bookRulesRaw);
     const mustKeep = this.collectMustKeep(currentState, storyBible);
     const mustAvoid = this.collectMustAvoid(currentFocus, parsedRules.rules.prohibitions);
     const styleEmphasis = this.collectStyleEmphasis(authorIntent, currentFocus);
-    const conflicts = this.collectConflicts(input.externalContext, outlineNode, volumeOutline);
+    const conflicts = this.collectConflicts(input.externalContext, currentFocus, outlineNode, volumeOutline);
     const planningAnchor = conflicts.length > 0 ? undefined : outlineNode;
     const memorySelection = await retrieveMemorySelection({
       bookDir: input.bookDir,
@@ -78,12 +84,23 @@ export class PlannerAgent extends BaseAgent {
     const hookAgenda = buildPlannerHookAgenda({
       hooks: memorySelection.activeHooks,
       chapterNumber: input.chapterNumber,
+      targetChapters: input.book.targetChapters,
+      language: input.book.language ?? "zh",
+    });
+    const directives = this.buildStructuredDirectives({
+      chapterNumber: input.chapterNumber,
+      language: input.book.language,
+      volumeOutline,
+      outlineNode,
+      matchedOutlineAnchor,
+      chapterSummaries,
     });
 
     const intent = ChapterIntentSchema.parse({
       chapter: input.chapterNumber,
       goal,
       outlineNode,
+      ...directives,
       mustKeep,
       mustAvoid,
       styleEmphasis,
@@ -94,6 +111,7 @@ export class PlannerAgent extends BaseAgent {
     const runtimePath = join(runtimeDir, `chapter-${String(input.chapterNumber).padStart(4, "0")}.intent.md`);
     const intentMarkdown = this.renderIntentMarkdown(
       intent,
+      input.book.language ?? "zh",
       renderHookSnapshot(memorySelection.hooks, input.book.language ?? "zh"),
       renderSummarySnapshot(memorySelection.summaries, input.book.language ?? "zh"),
     );
@@ -105,10 +123,44 @@ export class PlannerAgent extends BaseAgent {
       plannerInputs: [
         ...Object.values(sourcePaths),
         join(storyDir, "pending_hooks.md"),
-        join(storyDir, "chapter_summaries.md"),
         ...(memorySelection.dbPath ? [memorySelection.dbPath] : []),
       ],
       runtimePath,
+    };
+  }
+
+  private buildStructuredDirectives(input: {
+    readonly chapterNumber: number;
+    readonly language?: string;
+    readonly volumeOutline: string;
+    readonly outlineNode: string | undefined;
+    readonly matchedOutlineAnchor: boolean;
+    readonly chapterSummaries: string;
+  }): Pick<ChapterIntent, "sceneDirective" | "arcDirective" | "moodDirective" | "titleDirective"> {
+    const recentSummaries = parseChapterSummariesMarkdown(input.chapterSummaries)
+      .filter((summary) => summary.chapter < input.chapterNumber)
+      .sort((left, right) => left.chapter - right.chapter)
+      .slice(-4);
+    const cadence = analyzeChapterCadence({
+      language: this.isChineseLanguage(input.language) ? "zh" : "en",
+      rows: recentSummaries.map((summary) => ({
+        chapter: summary.chapter,
+        title: summary.title,
+        mood: summary.mood,
+        chapterType: summary.chapterType,
+      })),
+    });
+
+    return {
+      arcDirective: this.buildArcDirective(
+        input.language,
+        input.volumeOutline,
+        input.outlineNode,
+        input.matchedOutlineAnchor,
+      ),
+      sceneDirective: this.buildSceneDirective(input.language, cadence),
+      moodDirective: this.buildMoodDirective(input.language, cadence),
+      titleDirective: this.buildTitleDirective(input.language, cadence),
     };
   }
 
@@ -121,10 +173,12 @@ export class PlannerAgent extends BaseAgent {
   ): string {
     const first = this.extractFirstDirective(externalContext);
     if (first) return first;
-    const focus = this.extractFocusGoal(currentFocus);
-    if (focus) return focus;
+    const localOverride = this.extractLocalOverrideGoal(currentFocus);
+    if (localOverride) return localOverride;
     const outline = this.extractFirstDirective(outlineNode);
     if (outline) return outline;
+    const focus = this.extractFocusGoal(currentFocus);
+    if (focus) return focus;
     const author = this.extractFirstDirective(authorIntent);
     if (author) return author;
     return `Advance chapter ${chapterNumber} with clear narrative focus.`;
@@ -169,19 +223,34 @@ export class PlannerAgent extends BaseAgent {
 
   private collectConflicts(
     externalContext: string | undefined,
+    currentFocus: string,
     outlineNode: string | undefined,
     volumeOutline: string,
   ): ChapterConflict[] {
-    if (!externalContext) return [];
     const outlineText = outlineNode ?? volumeOutline;
     if (!outlineText || outlineText === "(文件尚未创建)") return [];
-    const indicatesOverride = /ignore|skip|defer|instead|不要|别|先别|暂停/i.test(externalContext);
-    if (!indicatesOverride && this.hasKeywordOverlap(externalContext, outlineText)) return [];
+    if (externalContext) {
+      const indicatesOverride = /ignore|skip|defer|instead|不要|别|先别|暂停/i.test(externalContext);
+      if (!indicatesOverride && this.hasKeywordOverlap(externalContext, outlineText)) return [];
+
+      return [
+        {
+          type: "outline_vs_request",
+          resolution: "allow local outline deferral",
+        },
+      ];
+    }
+
+    const localOverride = this.extractLocalOverrideGoal(currentFocus);
+    if (!localOverride || !outlineNode) {
+      return [];
+    }
 
     return [
       {
-        type: "outline_vs_request",
-        resolution: "allow local outline deferral",
+        type: "outline_vs_current_focus",
+        resolution: "allow explicit current focus override",
+        detail: localOverride,
       },
     ];
   }
@@ -224,6 +293,29 @@ export class PlannerAgent extends BaseAgent {
     return directives.join(this.containsChinese(focusSection) ? "；" : "; ");
   }
 
+  private extractLocalOverrideGoal(currentFocus: string): string | undefined {
+    const overrideSection = this.extractSection(currentFocus, [
+      "local override",
+      "explicit override",
+      "chapter override",
+      "local task override",
+      "局部覆盖",
+      "本章覆盖",
+      "临时覆盖",
+      "当前覆盖",
+    ]);
+    if (!overrideSection) {
+      return undefined;
+    }
+
+    const directives = this.extractListItems(overrideSection, 3);
+    if (directives.length > 0) {
+      return directives.join(this.containsChinese(overrideSection) ? "；" : "; ");
+    }
+
+    return this.extractFirstDirective(overrideSection);
+  }
+
   private extractFocusStyleItems(currentFocus: string, limit = 3): string[] {
     const focusSection = this.extractSection(currentFocus, [
       "active focus",
@@ -233,6 +325,63 @@ export class PlannerAgent extends BaseAgent {
       "近期聚焦",
     ]) ?? currentFocus;
     return this.extractListItems(focusSection, limit);
+  }
+
+  private buildArcDirective(
+    language: string | undefined,
+    volumeOutline: string,
+    outlineNode: string | undefined,
+    matchedOutlineAnchor: boolean,
+  ): string | undefined {
+    if (matchedOutlineAnchor || !outlineNode || volumeOutline === "(文件尚未创建)") {
+      return undefined;
+    }
+
+    return this.isChineseLanguage(language)
+      ? "不要继续依赖卷纲的 fallback 指令，必须把本章推进到新的弧线节点或地点变化。"
+      : "Do not keep leaning on the outline fallback. Force this chapter toward a fresh arc beat or location change.";
+  }
+
+  private buildSceneDirective(
+    language: string | undefined,
+    cadence: ReturnType<typeof analyzeChapterCadence>,
+  ): string | undefined {
+    if (cadence.scenePressure?.pressure !== "high") {
+      return undefined;
+    }
+    const repeatedType = cadence.scenePressure.repeatedType;
+
+    return this.isChineseLanguage(language)
+      ? `最近章节连续停留在“${repeatedType}”，本章必须更换场景容器、地点或行动方式。`
+      : `Recent chapters are stuck in repeated ${repeatedType} beats. Change the scene container, location, or action pattern this chapter.`;
+  }
+
+  private buildMoodDirective(
+    language: string | undefined,
+    cadence: ReturnType<typeof analyzeChapterCadence>,
+  ): string | undefined {
+    if (cadence.moodPressure?.pressure !== "high") {
+      return undefined;
+    }
+    const moods = cadence.moodPressure.recentMoods;
+
+    return this.isChineseLanguage(language)
+      ? `最近${moods.length}章情绪持续高压（${moods.slice(0, 3).join("、")}），本章必须降调——安排日常/喘息/温情/幽默场景，让读者呼吸。`
+      : `The last ${moods.length} chapters have been relentlessly tense (${moods.slice(0, 3).join(", ")}). This chapter must downshift — write a quieter scene with warmth, humor, or breathing room.`;
+  }
+
+  private buildTitleDirective(
+    language: string | undefined,
+    cadence: ReturnType<typeof analyzeChapterCadence>,
+  ): string | undefined {
+    if (cadence.titlePressure?.pressure !== "high") {
+      return undefined;
+    }
+    const repeatedToken = cadence.titlePressure.repeatedToken;
+
+    return this.isChineseLanguage(language)
+      ? `标题不要再围绕“${repeatedToken}”重复命名，换一个新的意象或动作焦点。`
+      : `Avoid another ${repeatedToken}-centric title. Pick a new image or action focus for this chapter title.`;
   }
 
   private extractSection(content: string, headings: ReadonlyArray<string>): string | undefined {
@@ -299,20 +448,10 @@ export class PlannerAgent extends BaseAgent {
 
   private findOutlineNode(volumeOutline: string, chapterNumber: number): string | undefined {
     const lines = volumeOutline.split("\n").map((line) => line.trim()).filter(Boolean);
-    const chapterPatterns = [
-      new RegExp(`^#+\\s*Chapter\\s*${chapterNumber}\\b`, "i"),
-      new RegExp(`^#+\\s*第\\s*${chapterNumber}\\s*章`),
-    ];
-    const inlinePatterns = [
-      new RegExp(`^(?:[-*]\\s+)?(?:\\*\\*)?Chapter\\s*${chapterNumber}(?:[:：-])?(?:\\*\\*)?\\s*(.+)$`, "i"),
-      new RegExp(`^(?:[-*]\\s+)?(?:\\*\\*)?第\\s*${chapterNumber}\\s*章(?:[:：-])?(?:\\*\\*)?\\s*(.+)$`),
-    ];
 
     for (let index = 0; index < lines.length; index += 1) {
       const line = lines[index]!;
-      const match = inlinePatterns
-        .map((pattern) => line.match(pattern))
-        .find((result): result is RegExpMatchArray => Boolean(result));
+      const match = this.matchExactOutlineLine(line, chapterNumber);
       if (!match) continue;
 
       const inlineContent = this.cleanOutlineContent(match[1]);
@@ -326,12 +465,51 @@ export class PlannerAgent extends BaseAgent {
       }
     }
 
-    const heading = lines.find((line) => chapterPatterns.some((pattern) => pattern.test(line)));
-    if (!heading) return this.extractFirstDirective(volumeOutline);
+    for (let index = 0; index < lines.length; index += 1) {
+      const line = lines[index]!;
+      const match = this.matchRangeOutlineLine(line, chapterNumber);
+      if (!match) continue;
 
-    const headingIndex = lines.indexOf(heading);
-    const nextLine = lines[headingIndex + 1];
-    return nextLine && !nextLine.startsWith("#") ? nextLine : heading.replace(/^#+\s*/, "");
+      const inlineContent = this.cleanOutlineContent(match[3]);
+      if (inlineContent) {
+        return inlineContent;
+      }
+
+      const nextContent = this.findNextOutlineContent(lines, index + 1);
+      if (nextContent) {
+        return nextContent;
+      }
+    }
+
+    for (let index = 0; index < lines.length; index += 1) {
+      const line = lines[index]!;
+      if (!this.isOutlineAnchorLine(line)) continue;
+
+      const exactMatch = this.matchAnyExactOutlineLine(line);
+      if (exactMatch) {
+        const inlineContent = this.cleanOutlineContent(exactMatch[1]);
+        if (inlineContent) {
+          return inlineContent;
+        }
+      }
+
+      const rangeMatch = this.matchAnyRangeOutlineLine(line);
+      if (rangeMatch) {
+        const inlineContent = this.cleanOutlineContent(rangeMatch[3]);
+        if (inlineContent) {
+          return inlineContent;
+        }
+      }
+
+      const nextContent = this.findNextOutlineContent(lines, index + 1);
+      if (nextContent) {
+        return nextContent;
+      }
+
+      break;
+    }
+
+    return this.extractFirstDirective(volumeOutline);
   }
 
   private cleanOutlineContent(content?: string): string | undefined {
@@ -344,15 +522,16 @@ export class PlannerAgent extends BaseAgent {
   private findNextOutlineContent(lines: ReadonlyArray<string>, startIndex: number): string | undefined {
     for (let index = startIndex; index < lines.length; index += 1) {
       const line = lines[index]!;
-      if (!line || line.startsWith("#")) {
+      if (!line) {
         continue;
       }
 
-      if (
-        /^(?:[-*]\s+)?(?:\*\*)?Chapter\s*\d+(?:[:：-])?(?:\*\*)?\s*$/i.test(line)
-        || /^(?:[-*]\s+)?(?:\*\*)?第\s*\d+\s*章(?:[:：-])?(?:\*\*)?\s*$/.test(line)
-      ) {
+      if (this.isOutlineAnchorLine(line)) {
         return undefined;
+      }
+
+      if (line.startsWith("#")) {
+        continue;
       }
 
       const cleaned = this.cleanOutlineContent(line);
@@ -362,6 +541,71 @@ export class PlannerAgent extends BaseAgent {
     }
 
     return undefined;
+  }
+
+  private hasMatchedOutlineAnchor(volumeOutline: string, chapterNumber: number): boolean {
+    const lines = volumeOutline.split("\n").map((line) => line.trim()).filter(Boolean);
+    return lines.some((line) =>
+      this.matchExactOutlineLine(line, chapterNumber) !== undefined
+      || this.matchRangeOutlineLine(line, chapterNumber) !== undefined,
+    );
+  }
+
+  private matchExactOutlineLine(line: string, chapterNumber: number): RegExpMatchArray | undefined {
+    const patterns = [
+      new RegExp(`^(?:#+\\s*)?(?:[-*]\\s+)?(?:\\*\\*)?Chapter\\s*${chapterNumber}(?!\\d|\\s*[-~–—]\\s*\\d)(?:[:：-])?(?:\\*\\*)?\\s*(.*)$`, "i"),
+      new RegExp(`^(?:#+\\s*)?(?:[-*]\\s+)?(?:\\*\\*)?第\\s*${chapterNumber}\\s*章(?!\\d|\\s*[-~–—]\\s*\\d)(?:[:：-])?(?:\\*\\*)?\\s*(.*)$`),
+    ];
+
+    return patterns
+      .map((pattern) => line.match(pattern))
+      .find((result): result is RegExpMatchArray => Boolean(result));
+  }
+
+  private matchAnyExactOutlineLine(line: string): RegExpMatchArray | undefined {
+    const patterns = [
+      /^(?:#+\s*)?(?:[-*]\s+)?(?:\*\*)?Chapter\s*\d+(?!\s*[-~–—]\s*\d)(?:[:：-])?(?:\*\*)?\s*(.*)$/i,
+      /^(?:#+\s*)?(?:[-*]\s+)?(?:\*\*)?第\s*\d+\s*章(?!\s*[-~–—]\s*\d)(?:[:：-])?(?:\*\*)?\s*(.*)$/i,
+    ];
+
+    return patterns
+      .map((pattern) => line.match(pattern))
+      .find((result): result is RegExpMatchArray => Boolean(result));
+  }
+
+  private matchRangeOutlineLine(line: string, chapterNumber: number): RegExpMatchArray | undefined {
+    const match = this.matchAnyRangeOutlineLine(line);
+    if (!match) return undefined;
+    if (this.isChapterWithinRange(match[1], match[2], chapterNumber)) {
+      return match;
+    }
+
+    return undefined;
+  }
+
+  private matchAnyRangeOutlineLine(line: string): RegExpMatchArray | undefined {
+    const patterns = [
+      /^(?:#+\s*)?(?:[-*]\s+)?(?:\*\*)?Chapter\s*(\d+)\s*[-~–—]\s*(\d+)\b(?:[:：-])?(?:\*\*)?\s*(.*)$/i,
+      /^(?:#+\s*)?(?:[-*]\s+)?(?:\*\*)?第\s*(\d+)\s*[-~–—]\s*(\d+)\s*章(?:[:：-])?(?:\*\*)?\s*(.*)$/i,
+    ];
+
+    return patterns
+      .map((pattern) => line.match(pattern))
+      .find((result): result is RegExpMatchArray => Boolean(result));
+  }
+
+  private isOutlineAnchorLine(line: string): boolean {
+    return this.matchAnyExactOutlineLine(line) !== undefined
+      || this.matchAnyRangeOutlineLine(line) !== undefined;
+  }
+
+  private isChapterWithinRange(startText: string | undefined, endText: string | undefined, chapterNumber: number): boolean {
+    const start = Number.parseInt(startText ?? "", 10);
+    const end = Number.parseInt(endText ?? "", 10);
+    if (!Number.isFinite(start) || !Number.isFinite(end)) return false;
+    const lower = Math.min(start, end);
+    const upper = Math.max(start, end);
+    return chapterNumber >= lower && chapterNumber <= upper;
   }
 
   private hasKeywordOverlap(left: string, right: string): boolean {
@@ -379,6 +623,7 @@ export class PlannerAgent extends BaseAgent {
 
   private renderIntentMarkdown(
     intent: ChapterIntent,
+    language: "zh" | "en",
     pendingHooks: string,
     chapterSummaries: string,
   ): string {
@@ -397,6 +642,12 @@ export class PlannerAgent extends BaseAgent {
     const styleEmphasis = intent.styleEmphasis.length > 0
       ? intent.styleEmphasis.map((item) => `- ${item}`).join("\n")
       : "- none";
+    const directives = [
+      intent.arcDirective ? `- arc: ${intent.arcDirective}` : undefined,
+      intent.sceneDirective ? `- scene: ${intent.sceneDirective}` : undefined,
+      intent.moodDirective ? `- mood: ${intent.moodDirective}` : undefined,
+      intent.titleDirective ? `- title: ${intent.titleDirective}` : undefined,
+    ].filter(Boolean).join("\n") || "- none";
     const hookAgenda = [
       "### Must Advance",
       intent.hookAgenda.mustAdvance.length > 0
@@ -437,6 +688,9 @@ export class PlannerAgent extends BaseAgent {
       "## Style Emphasis",
       styleEmphasis,
       "",
+      "## Structured Directives",
+      directives,
+      "",
       "## Hook Agenda",
       hookAgenda,
       "",
@@ -454,6 +708,10 @@ export class PlannerAgent extends BaseAgent {
 
   private unique(values: ReadonlyArray<string>): string[] {
     return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+  }
+
+  private isChineseLanguage(language: string | undefined): boolean {
+    return (language ?? "zh").toLowerCase().startsWith("zh");
   }
 
   private async readFileOrDefault(path: string): Promise<string> {

@@ -1,9 +1,11 @@
 import type { ContextPackage } from "../models/input-governance.js";
 import {
-  isHookWithinChapterWindow,
   parsePendingHooksMarkdown,
   renderHookSnapshot,
 } from "./memory-retrieval.js";
+import {
+  isHookWithinChapterWindow,
+} from "./hook-agenda.js";
 
 export function buildGovernedHookWorkingSet(params: {
   readonly hooksMarkdown: string;
@@ -33,7 +35,11 @@ export function buildGovernedHookWorkingSet(params: {
   const workingSet = hooks.filter((hook) =>
     selectedIds.has(hook.hookId)
       || agendaIds.has(hook.hookId)
-      || isHookWithinChapterWindow(hook, params.chapterNumber, params.keepRecent ?? 5),
+      || isHookWithinChapterWindow(
+          hook,
+          params.chapterNumber,
+          params.keepRecent ?? 5,
+        ),
   );
 
   if (workingSet.length === 0 || workingSet.length >= hooks.length) {

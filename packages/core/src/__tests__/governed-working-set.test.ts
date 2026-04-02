@@ -31,8 +31,8 @@ describe("governed-working-set", () => {
       language: "zh",
     });
 
-    expect(filtered).toContain("| opening-call | 1 | mystery | open | 0 | 8 | 匿名来电开篇出现 |");
-    expect(filtered).toContain("| nearby-ledger | 4 | evidence | open | 0 | 12 | 近期开启的账本线 |");
+    expect(filtered).toContain("opening-call");
+    expect(filtered).toContain("nearby-ledger");
     expect(filtered).not.toContain("future-pr-machine");
     expect(filtered).not.toContain("future-template");
   });
@@ -80,6 +80,28 @@ describe("governed-working-set", () => {
 
     expect(filtered).toContain("mentor-oath");
     expect(filtered).toContain("stale-ledger");
+    expect(filtered).not.toContain("future-pr-machine");
+  });
+
+  it("keeps recently-advanced hooks in the governed working set while filtering far-future hooks", () => {
+    const hooks = [
+      "| hook_id | start_chapter | type | status | last_advanced | expected_payoff | payoff_timing | notes |",
+      "| --- | --- | --- | --- | --- | --- | --- | --- |",
+      "| river-oath | 8 | relationship | progressing | 16 | Reveal why the river oath was broken | slow-burn | Long debt should stay visible through the middle game |",
+      "| future-pr-machine | 45 | system | open | 0 | Future hook should stay hidden | endgame | Future hook should stay hidden |",
+    ].join("\n");
+
+    const filtered = buildGovernedHookWorkingSet({
+      hooksMarkdown: hooks,
+      contextPackage: {
+        chapter: 20,
+        selectedContext: [],
+      },
+      chapterNumber: 20,
+      language: "en",
+    });
+
+    expect(filtered).toContain("river-oath");
     expect(filtered).not.toContain("future-pr-machine");
   });
 

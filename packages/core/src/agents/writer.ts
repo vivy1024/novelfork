@@ -18,7 +18,7 @@ import { analyzeAITells } from "./ai-tells.js";
 import type { ChapterTrace, ContextPackage, RuleStack } from "../models/input-governance.js";
 import type { LengthSpec } from "../models/length-governance.js";
 import type { RuntimeStateDelta } from "../models/runtime-state.js";
-import { buildLengthSpec } from "../utils/length-metrics.js";
+import { buildLengthSpec, countChapterLength } from "../utils/length-metrics.js";
 import { filterHooks, filterSummaries, filterSubplots, filterEmotionalArcs, filterCharacterMatrix } from "../utils/context-filter.js";
 import { buildGovernedMemoryEvidenceBlocks } from "../utils/governed-context.js";
 import {
@@ -49,6 +49,18 @@ export interface WriteChapterInput {
   readonly lengthSpec?: LengthSpec;
   readonly wordCountOverride?: number;
   readonly temperatureOverride?: number;
+}
+
+export interface SettleChapterStateInput {
+  readonly book: BookConfig;
+  readonly bookDir: string;
+  readonly chapterNumber: number;
+  readonly title: string;
+  readonly content: string;
+  readonly chapterIntent?: string;
+  readonly contextPackage?: ContextPackage;
+  readonly ruleStack?: RuleStack;
+  readonly validationFeedback?: string;
 }
 
 export interface TokenUsage {
@@ -147,7 +159,7 @@ export class WriterAgent extends BaseAgent {
     const targetWords = input.lengthSpec?.target ?? input.wordCountOverride ?? book.chapterWordCount;
     const resolvedLengthSpec = input.lengthSpec ?? buildLengthSpec(targetWords, resolvedLanguage);
     const governedMemoryBlocks = input.contextPackage
-      ? buildGovernedMemoryEvidenceBlocks(input.contextPackage)
+      ? buildGovernedMemoryEvidenceBlocks(input.contextPackage, resolvedLanguage)
       : undefined;
     const englishVarianceBrief = resolvedLanguage === "en"
       ? await buildEnglishVarianceBrief({
@@ -183,6 +195,7 @@ export class WriterAgent extends BaseAgent {
           lengthSpec: resolvedLengthSpec,
           language: book.language ?? genreProfile.language,
           varianceBrief: englishVarianceBrief?.text,
+          selectedEvidenceBlock: this.joinGovernedEvidenceBlocks(governedMemoryBlocks),
         })
       : (() => {
           // Smart context filtering: inject only relevant parts of truth files
@@ -289,17 +302,12 @@ export class WriterAgent extends BaseAgent {
       characterMatrix: filteredMatrixForSettlement,
       volumeOutline,
       selectedEvidenceBlock: governedMemoryBlocks
-        ? [
-            governedMemoryBlocks.hooksBlock,
-            governedMemoryBlocks.summariesBlock,
-            governedMemoryBlocks.volumeSummariesBlock,
-          ]
-          .filter(Boolean)
-          .join("\n")
+        ? this.joinGovernedEvidenceBlocks(governedMemoryBlocks)
         : undefined,
       chapterIntent: input.chapterIntent,
       contextPackage: input.contextPackage,
       ruleStack: input.ruleStack,
+      validationFeedback: undefined,
       originalHooks: hooks,
       originalSubplots: subplotBoard,
       originalEmotionalArcs: emotionalArcs,
@@ -320,6 +328,7 @@ export class WriterAgent extends BaseAgent {
       ? analyzeHookHealth({
           language: resolvedLanguage,
           chapterNumber,
+          targetChapters: book.targetChapters,
           hooks: (runtimeStateArtifacts?.snapshot ?? settlement.runtimeStateSnapshot)!.hooks.hooks,
           delta: resolvedRuntimeStateDelta,
           existingHookIds: [...priorHookIds],
@@ -398,6 +407,98 @@ export class WriterAgent extends BaseAgent {
     };
   }
 
+  async settleChapterState(input: SettleChapterStateInput): Promise<WriteChapterOutput> {
+    const [
+      currentState,
+      ledger,
+      hooks,
+      chapterSummaries,
+      subplotBoard,
+      emotionalArcs,
+      characterMatrix,
+      volumeOutline,
+    ] = await Promise.all([
+      this.readFileOrDefault(join(input.bookDir, "story/current_state.md")),
+      this.readFileOrDefault(join(input.bookDir, "story/particle_ledger.md")),
+      this.readFileOrDefault(join(input.bookDir, "story/pending_hooks.md")),
+      this.readFileOrDefault(join(input.bookDir, "story/chapter_summaries.md")),
+      this.readFileOrDefault(join(input.bookDir, "story/subplot_board.md")),
+      this.readFileOrDefault(join(input.bookDir, "story/emotional_arcs.md")),
+      this.readFileOrDefault(join(input.bookDir, "story/character_matrix.md")),
+      this.readFileOrDefault(join(input.bookDir, "story/volume_outline.md")),
+    ]);
+
+    const { profile: genreProfile } = await readGenreProfile(this.ctx.projectRoot, input.book.genre);
+    const parsedBookRules = await readBookRules(input.bookDir);
+    const bookRules = parsedBookRules?.rules ?? null;
+    const resolvedLanguage = input.book.language ?? genreProfile.language;
+    const governedMemoryBlocks = input.contextPackage
+      ? buildGovernedMemoryEvidenceBlocks(input.contextPackage, resolvedLanguage)
+      : undefined;
+
+    const settleResult = await this.settle({
+      book: input.book,
+      genreProfile,
+      bookRules,
+      chapterNumber: input.chapterNumber,
+      title: input.title,
+      content: input.content,
+      currentState,
+      ledger: genreProfile.numericalSystem ? ledger : "",
+      hooks,
+      chapterSummaries,
+      subplotBoard,
+      emotionalArcs,
+      characterMatrix,
+      volumeOutline,
+      selectedEvidenceBlock: governedMemoryBlocks
+        ? this.joinGovernedEvidenceBlocks(governedMemoryBlocks)
+        : undefined,
+      chapterIntent: input.chapterIntent,
+      contextPackage: input.contextPackage,
+      ruleStack: input.ruleStack,
+      validationFeedback: input.validationFeedback,
+      originalHooks: hooks,
+      originalSubplots: subplotBoard,
+      originalEmotionalArcs: emotionalArcs,
+      originalCharacterMatrix: characterMatrix,
+    });
+    const settlement = settleResult.settlement;
+    const runtimeStateArtifacts = await this.buildRuntimeStateArtifactsIfPresent(
+      input.bookDir,
+      settlement.runtimeStateDelta,
+      resolvedLanguage,
+      input.chapterNumber,
+    );
+
+    return {
+      chapterNumber: input.chapterNumber,
+      title: input.title,
+      content: input.content,
+      wordCount: countChapterLength(
+        input.content,
+        resolvedLanguage === "en" ? "en_words" : "zh_chars",
+      ),
+      preWriteCheck: "",
+      postSettlement: settlement.postSettlement,
+      runtimeStateDelta: runtimeStateArtifacts?.resolvedDelta ?? settlement.runtimeStateDelta,
+      runtimeStateSnapshot: runtimeStateArtifacts?.snapshot ?? settlement.runtimeStateSnapshot,
+      updatedState: runtimeStateArtifacts?.currentStateMarkdown ?? settlement.updatedState,
+      updatedLedger: settlement.updatedLedger,
+      updatedHooks: runtimeStateArtifacts?.hooksMarkdown ?? settlement.updatedHooks,
+      chapterSummary: settlement.runtimeStateDelta
+        ? this.renderDeltaSummaryRow(settlement.runtimeStateDelta)
+        : settlement.chapterSummary,
+      updatedChapterSummaries: runtimeStateArtifacts?.chapterSummariesMarkdown,
+      updatedSubplots: settlement.updatedSubplots,
+      updatedEmotionalArcs: settlement.updatedEmotionalArcs,
+      updatedCharacterMatrix: settlement.updatedCharacterMatrix,
+      postWriteErrors: [],
+      postWriteWarnings: [],
+      tokenUsage: settleResult.usage,
+    };
+  }
+
   private async settle(params: {
     readonly book: BookConfig;
     readonly genreProfile: GenreProfile;
@@ -417,6 +518,7 @@ export class WriterAgent extends BaseAgent {
     readonly chapterIntent?: string;
     readonly contextPackage?: ContextPackage;
     readonly ruleStack?: RuleStack;
+    readonly validationFeedback?: string;
     readonly originalHooks: string;
     readonly originalSubplots: string;
     readonly originalEmotionalArcs: string;
@@ -478,6 +580,7 @@ export class WriterAgent extends BaseAgent {
       observations,
       selectedEvidenceBlock: params.selectedEvidenceBlock,
       governedControlBlock,
+      validationFeedback: params.validationFeedback,
     });
 
     // Settler outputs all truth files — scale with content size
@@ -709,6 +812,7 @@ ${lengthRequirementBlock}
     readonly lengthSpec: LengthSpec;
     readonly language?: "zh" | "en";
     readonly varianceBrief?: string;
+    readonly selectedEvidenceBlock?: string;
   }): string {
     const contextSections = params.contextPackage.selectedContext
       .map((entry) => [
@@ -735,6 +839,15 @@ ${lengthRequirementBlock}
     const varianceBlock = params.varianceBrief
       ? `\n${params.varianceBrief}\n`
       : "";
+    const selectedEvidenceBlock = params.selectedEvidenceBlock
+      ? `\n${params.selectedEvidenceBlock}\n`
+      : "";
+    const explicitHookAgenda = this.extractMarkdownSection(params.chapterIntent, "## Hook Agenda");
+    const hookAgendaBlock = explicitHookAgenda
+      ? params.language === "en"
+        ? `\n## Explicit Hook Agenda\n${explicitHookAgenda}\n`
+        : `\n## 显式 Hook Agenda\n${explicitHookAgenda}\n`
+      : "";
 
     if (params.language === "en") {
       return `Write chapter ${params.chapterNumber}.
@@ -744,6 +857,8 @@ ${params.chapterIntent}
 
 ## Selected Context
 ${contextSections || "(none)"}
+${selectedEvidenceBlock}
+${hookAgendaBlock}
 
 ## Rule Stack
 - Hard: ${params.ruleStack.sections.hard.join(", ") || "(none)"}
@@ -769,6 +884,8 @@ ${params.chapterIntent}
 
 ## 已选上下文
 ${contextSections || "(无)"}
+${selectedEvidenceBlock}
+${hookAgendaBlock}
 
 ## 规则栈
 - 硬护栏：${params.ruleStack.sections.hard.join("、") || "(无)"}
@@ -785,6 +902,49 @@ ${varianceBlock}
 ${lengthRequirementBlock}
 - 先输出写作自检表，再写正文
 - 只需输出 PRE_WRITE_CHECK、CHAPTER_TITLE、CHAPTER_CONTENT 三个区块`;
+  }
+
+  private joinGovernedEvidenceBlocks(blocks: ReturnType<typeof buildGovernedMemoryEvidenceBlocks> | undefined): string | undefined {
+    if (!blocks) {
+      return undefined;
+    }
+
+    const joined = [
+      blocks.titleHistoryBlock,
+      blocks.moodTrailBlock,
+      blocks.canonBlock,
+      blocks.hookDebtBlock,
+      blocks.hooksBlock,
+      blocks.summariesBlock,
+      blocks.volumeSummariesBlock,
+    ]
+      .filter((block): block is string => Boolean(block))
+      .join("\n");
+
+    return joined || undefined;
+  }
+
+  private extractMarkdownSection(content: string, heading: string): string | undefined {
+    const lines = content.split("\n");
+    let buffer: string[] | null = null;
+
+    for (const line of lines) {
+      if (line.trim() === heading) {
+        buffer = [];
+        continue;
+      }
+
+      if (buffer && line.startsWith("## ") && line.trim() !== heading) {
+        break;
+      }
+
+      if (buffer) {
+        buffer.push(line);
+      }
+    }
+
+    const section = buffer?.join("\n").trim();
+    return section && section.length > 0 ? section : undefined;
   }
 
   private buildSettlerGovernedControlBlock(

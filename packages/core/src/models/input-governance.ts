@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { HookPayoffTimingSchema } from "./runtime-state.js";
 
 export const ChapterConflictSchema = z.object({
   type: z.string().min(1),
@@ -8,7 +9,46 @@ export const ChapterConflictSchema = z.object({
 
 export type ChapterConflict = z.infer<typeof ChapterConflictSchema>;
 
+export const HookPressurePhaseSchema = z.enum(["opening", "middle", "late"]);
+export type HookPressurePhase = z.infer<typeof HookPressurePhaseSchema>;
+
+export const HookMovementSchema = z.enum([
+  "quiet-hold",
+  "refresh",
+  "advance",
+  "partial-payoff",
+  "full-payoff",
+]);
+export type HookMovement = z.infer<typeof HookMovementSchema>;
+
+export const HookPressureLevelSchema = z.enum(["low", "medium", "high", "critical"]);
+export type HookPressureLevel = z.infer<typeof HookPressureLevelSchema>;
+
+export const HookPressureReasonSchema = z.enum([
+  "fresh-promise",
+  "building-debt",
+  "stale-promise",
+  "ripe-payoff",
+  "overdue-payoff",
+  "long-arc-hold",
+]);
+export type HookPressureReason = z.infer<typeof HookPressureReasonSchema>;
+
+export const HookPressureSchema = z.object({
+  hookId: z.string().min(1),
+  type: z.string().min(1),
+  movement: HookMovementSchema,
+  pressure: HookPressureLevelSchema,
+  payoffTiming: HookPayoffTimingSchema.optional(),
+  phase: HookPressurePhaseSchema,
+  reason: HookPressureReasonSchema,
+  blockSiblingHooks: z.boolean().default(false),
+});
+
+export type HookPressure = z.infer<typeof HookPressureSchema>;
+
 export const HookAgendaSchema = z.object({
+  pressureMap: z.array(HookPressureSchema).default([]),
   mustAdvance: z.array(z.string().min(1)).default([]),
   eligibleResolve: z.array(z.string().min(1)).default([]),
   staleDebt: z.array(z.string().min(1)).default([]),
@@ -21,11 +61,16 @@ export const ChapterIntentSchema = z.object({
   chapter: z.number().int().min(1),
   goal: z.string().min(1),
   outlineNode: z.string().optional(),
+  sceneDirective: z.string().min(1).optional(),
+  arcDirective: z.string().min(1).optional(),
+  moodDirective: z.string().min(1).optional(),
+  titleDirective: z.string().min(1).optional(),
   mustKeep: z.array(z.string()).default([]),
   mustAvoid: z.array(z.string()).default([]),
   styleEmphasis: z.array(z.string()).default([]),
   conflicts: z.array(ChapterConflictSchema).default([]),
   hookAgenda: HookAgendaSchema.default({
+    pressureMap: [],
     mustAdvance: [],
     eligibleResolve: [],
     staleDebt: [],

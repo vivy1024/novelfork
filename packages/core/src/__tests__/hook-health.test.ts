@@ -10,6 +10,7 @@ function createHook(overrides: Partial<HookRecord> = {}): HookRecord {
     status: overrides.status ?? "open",
     lastAdvancedChapter: overrides.lastAdvancedChapter ?? 1,
     expectedPayoff: overrides.expectedPayoff ?? "Reveal the hidden ledger",
+    payoffTiming: overrides.payoffTiming,
     notes: overrides.notes ?? "Still unresolved",
   };
 }
@@ -49,18 +50,41 @@ describe("analyzeHookHealth", () => {
     expect(issues.some((issue) => issue.category === "Hook Debt" && issue.description.includes("5 active hooks"))).toBe(true);
   });
 
-  it("warns when no hook has materially advanced for several chapters", () => {
+  it("warns when a short-payoff hook is already under payoff pressure without real movement", () => {
+    const issues = analyzeHookHealth({
+      language: "en",
+      chapterNumber: 4,
+      hooks: [
+        createHook({
+          hookId: "H001",
+          startChapter: 1,
+          lastAdvancedChapter: 1,
+          payoffTiming: "immediate",
+          expectedPayoff: "Reveal the hidden ledger immediately after the theft.",
+        }),
+      ],
+    });
+
+    expect(issues.some((issue) => issue.description.includes("payoff pressure"))).toBe(true);
+  });
+
+  it("does not warn when only endgame hooks are dormant before the story reaches late phase", () => {
     const issues = analyzeHookHealth({
       language: "en",
       chapterNumber: 20,
+      targetChapters: 40,
       hooks: [
-        createHook({ hookId: "H001", lastAdvancedChapter: 12 }),
-        createHook({ hookId: "H002", lastAdvancedChapter: 11 }),
+        createHook({
+          hookId: "H001",
+          startChapter: 10,
+          lastAdvancedChapter: 15,
+          payoffTiming: "endgame",
+          expectedPayoff: "Final reveal in the endgame.",
+        }),
       ],
-      noAdvanceWindow: 5,
     });
 
-    expect(issues.some((issue) => issue.description.includes("No real hook advancement"))).toBe(true);
+    expect(issues).toHaveLength(0);
   });
 
   it("warns when stale hooks receive no disposition in the current chapter", () => {

@@ -12,6 +12,7 @@ import {
   type StateManifest,
 } from "../models/runtime-state.js";
 import { evaluateHookAdmission } from "../utils/hook-governance.js";
+import { resolveHookPayoffTiming } from "../utils/hook-lifecycle.js";
 import { validateRuntimeState } from "./state-validator.js";
 
 export interface RuntimeStateSnapshot {
@@ -153,6 +154,11 @@ function mergeDuplicateHookFamily(existing: HookRecord, incoming: HookRecord): H
         : existing.status,
     lastAdvancedChapter: advanced,
     expectedPayoff,
+    payoffTiming: resolveHookPayoffTiming({
+      payoffTiming: incoming.payoffTiming ?? existing.payoffTiming,
+      expectedPayoff,
+      notes,
+    }),
     notes,
   };
 }

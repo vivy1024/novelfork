@@ -135,13 +135,36 @@ export function createLLMClient(config: LLMConfig): LLMClient {
     };
   }
   // openai or custom — both use OpenAI SDK
+  const extraHeaders = config.headers ?? parseEnvHeaders();
   return {
     provider: "openai",
     apiFormat,
     stream,
-    _openai: new OpenAI({ apiKey: config.apiKey, baseURL: config.baseUrl }),
+    _openai: new OpenAI({
+      apiKey: config.apiKey,
+      baseURL: config.baseUrl,
+      ...(extraHeaders ? { defaultHeaders: extraHeaders } : {}),
+    }),
     defaults,
   };
+}
+
+function parseEnvHeaders(): Record<string, string> | undefined {
+  const raw = process.env.INKOS_LLM_HEADERS;
+  if (!raw) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, string>;
+    }
+  } catch {
+    // not JSON — treat as single "Key: Value" pair
+    const idx = raw.indexOf(":");
+    if (idx > 0) {
+      return { [raw.slice(0, idx).trim()]: raw.slice(idx + 1).trim() };
+    }
+  }
+  return undefined;
 }
 
 // === Partial Response (stream interrupted but usable content received) ===

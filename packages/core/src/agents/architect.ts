@@ -195,18 +195,20 @@ enableFullCastTracking: false
 
     const pendingHooksPrompt = resolvedLanguage === "en"
       ? `Initial hook pool (Markdown table):
-| hook_id | start_chapter | type | status | last_advanced_chapter | expected_payoff | notes |
+| hook_id | start_chapter | type | status | last_advanced_chapter | expected_payoff | payoff_timing | notes |
 
 Rules for the hook table:
 - Column 5 must be a pure chapter number, never natural-language description
 - During book creation, all planned hooks are still unapplied, so last_advanced_chapter = 0
+- Column 7 must be one of: immediate / near-term / mid-arc / slow-burn / endgame
 - If you want to describe the initial clue/signal, put it in notes instead of column 5`
       : `初始伏笔池（Markdown表格）：
-| hook_id | 起始章节 | 类型 | 状态 | 最近推进 | 预期回收 | 备注 |
+| hook_id | 起始章节 | 类型 | 状态 | 最近推进 | 预期回收 | 回收节奏 | 备注 |
 
 伏笔表规则：
 - 第5列必须是纯数字章节号，不能写自然语言描述
 - 建书阶段所有伏笔都还没正式推进，所以第5列统一填 0
+- 第7列必须填写：立即 / 近期 / 中程 / 慢烧 / 终局 之一
 - 如果要说明“初始线索/最初信号”，写进备注，不要写进第5列`;
 
     const finalRequirementsPrompt = resolvedLanguage === "en"
@@ -489,9 +491,9 @@ enableFullCastTracking: false
 
     const pendingHooksPrompt = resolvedLanguage === "en"
       ? `Identify all active hooks from the source text (Markdown table):
-| hook_id | start_chapter | type | status | latest_progress | expected_payoff | notes |`
+| hook_id | start_chapter | type | status | latest_progress | expected_payoff | payoff_timing | notes |`
       : `从正文中识别的所有伏笔（Markdown表格）：
-| hook_id | 起始章节 | 类型 | 状态 | 最近推进 | 预期回收 | 备注 |`;
+| hook_id | 起始章节 | 类型 | 状态 | 最近推进 | 预期回收 | 回收节奏 | 备注 |`;
 
     const keyPrinciplesPrompt = resolvedLanguage === "en"
       ? `## Key Principles
@@ -745,7 +747,8 @@ prohibitions:
         status: row[3] ?? "open",
         lastAdvancedChapter: normalizedProgress,
         expectedPayoff: row[5] ?? "",
-        notes,
+        payoffTiming: row.length >= 8 ? row[6] ?? "" : "",
+        notes: row.length >= 8 ? this.mergeHookNotes(row[7] ?? "", seedNote, language) : notes,
       };
     });
 

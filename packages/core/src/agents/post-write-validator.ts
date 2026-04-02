@@ -5,6 +5,7 @@
  * Catches violations that prompt-only rules cannot guarantee.
  */
 
+import { analyzeChapterCadence } from "../utils/chapter-cadence.js";
 import type { BookRules } from "../models/book-rules.js";
 import type { GenreProfile } from "../models/genre-profile.js";
 
@@ -561,6 +562,21 @@ const ENGLISH_NAME_STOP_WORDS = new Set([
   "They",
 ]);
 
+const CHINESE_TITLE_STOP_WORDS = new Set([
+  "这次",
+  "正文",
+  "标题",
+  "重复",
+  "不同",
+  "完全",
+  "只是",
+  "碰巧",
+  "没有",
+  "回头",
+]);
+
+const CHINESE_TITLE_STOP_CHARS = new Set(["的", "了", "着", "一", "只", "从", "在", "和", "与", "把", "被", "有", "没", "里", "又", "才"]);
+
 /**
  * Detect duplicate or near-duplicate chapter titles.
  * Compares the new title against existing chapter titles from index.
@@ -609,6 +625,9 @@ export function resolveDuplicateTitle(
   newTitle: string,
   existingTitles: ReadonlyArray<string>,
   language: "zh" | "en" = "zh",
+  options?: {
+    readonly content?: string;
+  },
 ): {
   readonly title: string;
   readonly issues: ReadonlyArray<PostWriteViolation>;
@@ -618,21 +637,200 @@ export function resolveDuplicateTitle(
     return { title: newTitle, issues: [] };
   }
 
-  const issues = detectDuplicateTitle(trimmed, existingTitles);
-  if (issues.length === 0) {
+  const duplicateIssues = detectDuplicateTitle(trimmed, existingTitles);
+  if (duplicateIssues.length > 0) {
+    const regenerated = regenerateDuplicateTitle(trimmed, existingTitles, language, options?.content);
+    if (regenerated && detectDuplicateTitle(regenerated, existingTitles).length === 0) {
+      return { title: regenerated, issues: duplicateIssues };
+    }
+
+    let counter = 2;
+    while (counter < 100) {
+      const candidate = language === "en"
+        ? `${trimmed} (${counter})`
+        : `${trimmed}（${counter}）`;
+      if (detectDuplicateTitle(candidate, existingTitles).length === 0) {
+        return { title: candidate, issues: duplicateIssues };
+      }
+      counter++;
+    }
+
+    return { title: trimmed, issues: duplicateIssues };
+  }
+
+  const collapseIssues = detectTitleCollapse(trimmed, existingTitles, language);
+  if (collapseIssues.length === 0) {
     return { title: trimmed, issues: [] };
   }
 
-  let counter = 2;
-  while (counter < 100) {
-    const candidate = language === "en"
-      ? `${trimmed} (${counter})`
-      : `${trimmed}（${counter}）`;
-    if (detectDuplicateTitle(candidate, existingTitles).length === 0) {
-      return { title: candidate, issues };
-    }
-    counter++;
+  const regenerated = regenerateCollapsedTitle(trimmed, existingTitles, language, options?.content);
+  if (
+    regenerated
+    && detectDuplicateTitle(regenerated, existingTitles).length === 0
+    && detectTitleCollapse(regenerated, existingTitles, language).length === 0
+  ) {
+    return { title: regenerated, issues: collapseIssues };
   }
 
-  return { title: trimmed, issues };
+  return { title: trimmed, issues: collapseIssues };
+}
+
+function detectTitleCollapse(
+  newTitle: string,
+  existingTitles: ReadonlyArray<string>,
+  language: "zh" | "en",
+): ReadonlyArray<PostWriteViolation> {
+  const recentTitles = existingTitles
+    .map((title) => title.trim())
+    .filter(Boolean)
+    .slice(-3);
+  if (recentTitles.length < 3) {
+    return [];
+  }
+
+  const cadence = analyzeChapterCadence({
+    language,
+    rows: [...recentTitles, newTitle].map((title, index) => ({
+      chapter: index + 1,
+      title,
+      mood: "",
+      chapterType: "",
+    })),
+  });
+  const titlePressure = cadence.titlePressure;
+  if (!titlePressure || titlePressure.pressure !== "high") {
+    return [];
+  }
+  if (!newTitle.includes(titlePressure.repeatedToken)) {
+    return [];
+  }
+
+  return [
+    language === "en"
+      ? {
+          rule: "title-collapse",
+          severity: "warning",
+          description: `Chapter title "${newTitle}" keeps leaning on the recent "${titlePressure.repeatedToken}" title shell.`,
+          suggestion: "Rename the chapter around a new image, action, consequence, or character focus.",
+        }
+      : {
+          rule: "title-collapse",
+          severity: "warning",
+          description: `章节标题"${newTitle}"仍在沿用近期围绕“${titlePressure.repeatedToken}”的命名壳。`,
+          suggestion: "换一个新的意象、动作、后果或人物焦点来命名。",
+        },
+  ];
+}
+
+function regenerateDuplicateTitle(
+  baseTitle: string,
+  existingTitles: ReadonlyArray<string>,
+  language: "zh" | "en",
+  content?: string,
+): string | undefined {
+  if (!content || !content.trim()) {
+    return undefined;
+  }
+
+  const qualifier = language === "en"
+    ? extractEnglishTitleQualifier(baseTitle, existingTitles, content)
+    : extractChineseTitleQualifier(baseTitle, existingTitles, content);
+  if (!qualifier) {
+    return undefined;
+  }
+
+  return language === "en"
+    ? `${baseTitle}: ${qualifier}`
+    : `${baseTitle}：${qualifier}`;
+}
+
+function regenerateCollapsedTitle(
+  baseTitle: string,
+  existingTitles: ReadonlyArray<string>,
+  language: "zh" | "en",
+  content?: string,
+): string | undefined {
+  if (!content || !content.trim()) {
+    return undefined;
+  }
+
+  const fresh = language === "en"
+    ? extractEnglishTitleQualifier(baseTitle, existingTitles, content)
+    : extractChineseTitleQualifier(baseTitle, existingTitles, content);
+  if (!fresh) {
+    return undefined;
+  }
+
+  return fresh === baseTitle ? undefined : fresh;
+}
+
+function extractEnglishTitleQualifier(
+  baseTitle: string,
+  existingTitles: ReadonlyArray<string>,
+  content: string,
+): string | undefined {
+  const blocked = new Set(extractEnglishTitleTerms([baseTitle, ...existingTitles].join(" ")));
+  const words = (content.match(/[A-Za-z]{4,}/g) ?? [])
+    .map((word) => word.toLowerCase())
+    .filter((word) => !ENGLISH_NAME_STOP_WORDS.has(capitalize(word)))
+    .filter((word) => !blocked.has(word));
+  const first = words[0];
+  if (!first) {
+    return undefined;
+  }
+
+  const second = words.find((word) => word !== first && !blocked.has(word));
+  return second
+    ? `${capitalize(first)} ${capitalize(second)}`
+    : capitalize(first);
+}
+
+function extractChineseTitleQualifier(
+  baseTitle: string,
+  existingTitles: ReadonlyArray<string>,
+  content: string,
+): string | undefined {
+  const blocked = new Set(extractChineseTitleTerms([baseTitle, ...existingTitles].join("")));
+  const segments = content.match(/[\u4e00-\u9fff]+/g) ?? [];
+
+  for (const segment of segments) {
+    for (let start = 0; start < segment.length; start += 1) {
+      for (let size = 2; size <= 4; size += 1) {
+        const candidate = segment.slice(start, start + size).trim();
+        if (candidate.length < 2) continue;
+        if (CHINESE_TITLE_STOP_WORDS.has(candidate)) continue;
+        if ([...candidate].some((char) => CHINESE_TITLE_STOP_CHARS.has(char))) continue;
+        if (blocked.has(candidate)) continue;
+        return candidate;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function extractEnglishTitleTerms(text: string): string[] {
+  return [...new Set((text.match(/[A-Za-z]{4,}/g) ?? []).map((word) => word.toLowerCase()))];
+}
+
+function extractChineseTitleTerms(text: string): string[] {
+  const terms = new Set<string>();
+  const segments = text.match(/[\u4e00-\u9fff]+/g) ?? [];
+
+  for (const segment of segments) {
+    for (let start = 0; start < segment.length; start += 1) {
+      for (let size = 2; size <= 4; size += 1) {
+        const candidate = segment.slice(start, start + size).trim();
+        if (candidate.length < 2) continue;
+        if ([...candidate].some((char) => CHINESE_TITLE_STOP_CHARS.has(char))) continue;
+        terms.add(candidate);
+      }
+    }
+  }
+
+  return [...terms];
+}
+
+function capitalize(word: string): string {
+  return word.length === 0 ? word : `${word[0]!.toUpperCase()}${word.slice(1)}`;
 }

@@ -22,8 +22,9 @@ export function buildSettlerSystemPrompt(
 - 提及伏笔：已有伏笔在本章被提到，但没有新增信息、没有改变读者或角色对该问题的理解 → 放入 mention 数组，不要更新最近推进
 - 推进伏笔：已有伏笔在本章出现了新的事实、证据、关系变化、风险升级或范围收缩 → **必须**更新"最近推进"列为当前章节号，更新状态和备注
 - 回收伏笔：伏笔在本章被明确揭示、解决、或不再成立 → 状态改为"已回收"，备注回收方式
-- 延后伏笔：超过5章未推进 → 标注"延后"，备注原因
+- 延后伏笔：只有当正文明确显示该线被主动搁置、转入后台、或被剧情压后时，才标注"延后"；不要因为“已经过了几章”就机械延后
 - brand-new unresolved thread：不要直接发明新的 hookId。把候选放进 newHookCandidates，由系统决定它是映射到旧 hook、变成真正新 hook，还是被拒绝为重述
+- payoffTiming 使用语义节奏，不用硬写章节号：只允许 immediate / near-term / mid-arc / slow-burn / endgame
 - **铁律**：不要把“再次提到”“换个说法重述”“抽象复盘”当成推进。只有状态真的变了，才更新最近推进。只是出现过的旧 hook，放进 mention 数组。`;
 
   const fullCastBlock = bookRules?.enableFullCastTracking
@@ -114,6 +115,7 @@ function buildSettlerOutputFormat(gp: GenreProfile): string {
         "status": "progressing",
         "lastAdvancedChapter": 12,
         "expectedPayoff": "揭开师债真相",
+        "payoffTiming": "slow-burn",
         "notes": "本章为何推进/延后/回收"
       }
     ],
@@ -125,6 +127,7 @@ function buildSettlerOutputFormat(gp: GenreProfile): string {
     {
       "type": "mystery",
       "expectedPayoff": "新伏笔未来要回收到哪里",
+      "payoffTiming": "near-term",
       "notes": "本章为什么会形成新的未解问题"
     }
   ],
@@ -171,6 +174,7 @@ export function buildSettlerUserPrompt(params: {
   readonly observations?: string;
   readonly selectedEvidenceBlock?: string;
   readonly governedControlBlock?: string;
+  readonly validationFeedback?: string;
 }): string {
   const ledgerBlock = params.ledger
     ? `\n## 当前资源账本\n${params.ledger}\n`
@@ -202,9 +206,13 @@ export function buildSettlerUserPrompt(params: {
   const outlineBlock = controlBlock.length === 0
     ? `\n## 卷纲\n${params.volumeOutline}\n`
     : "";
+  const validationFeedbackBlock = params.validationFeedback
+    ? `\n## 状态校验反馈\n${params.validationFeedback}\n\n请严格纠正这些矛盾，只修正 truth files，不要改写正文，不要引入正文中不存在的新事实。\n`
+    : "";
 
   return `请分析第${params.chapterNumber}章「${params.title}」的正文，更新所有追踪文件。
 ${observationsBlock}
+${validationFeedbackBlock}
 ## 本章正文
 
 ${params.content}

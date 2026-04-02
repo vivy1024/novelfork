@@ -1,5 +1,10 @@
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
+import { analyzeChapterCadence } from "./chapter-cadence.js";
+import {
+  CADENCE_WINDOW_DEFAULTS,
+  LONG_SPAN_FATIGUE_THRESHOLDS,
+} from "./cadence-policy.js";
 
 export interface LongSpanFatigueIssue {
   readonly severity: "warning";
@@ -31,7 +36,6 @@ interface SummaryRow {
   readonly chapterType: string;
 }
 
-const SENTENCE_SIMILARITY_THRESHOLD = 0.72;
 const CHINESE_PUNCTUATION = /[，。！？；：“”‘’（）《》、\s\-—…·]/g;
 const ENGLISH_PUNCTUATION = /[^a-z0-9]+/gi;
 
@@ -39,7 +43,11 @@ export async function buildEnglishVarianceBrief(params: {
   readonly bookDir: string;
   readonly chapterNumber: number;
 }): Promise<EnglishVarianceBrief | null> {
-  const chapterBodies = await loadPreviousChapterBodies(params.bookDir, params.chapterNumber, 24);
+  const chapterBodies = await loadPreviousChapterBodies(
+    params.bookDir,
+    params.chapterNumber,
+    CADENCE_WINDOW_DEFAULTS.englishVarianceLookback,
+  );
   if (chapterBodies.length < 2) {
     return null;
   }
@@ -48,12 +56,16 @@ export async function buildEnglishVarianceBrief(params: {
   const recentRows = summaryRows
     .filter((row) => row.chapter < params.chapterNumber)
     .sort((left, right) => left.chapter - right.chapter)
-    .slice(-3);
+    .slice(-CADENCE_WINDOW_DEFAULTS.summaryLookback);
 
   const highFrequencyPhrases = collectRepeatedEnglishPhrases(chapterBodies);
   const repeatedOpeningPatterns = collectRepeatedBoundaryPatterns(chapterBodies, "opening");
   const repeatedEndingShapes = collectRepeatedBoundaryPatterns(chapterBodies, "ending");
-  const sceneObligation = chooseSceneObligation(recentRows, repeatedOpeningPatterns, repeatedEndingShapes);
+  const cadence = analyzeChapterCadence({
+    rows: recentRows,
+    language: "en",
+  });
+  const sceneObligation = chooseSceneObligation(cadence, repeatedOpeningPatterns, repeatedEndingShapes);
 
   const lines = [
     "## English Variance Brief",
@@ -84,11 +96,25 @@ export async function analyzeLongSpanFatigue(
   const recentRows = mergedRows
     .filter((row) => row.chapter <= input.chapterNumber)
     .sort((left, right) => left.chapter - right.chapter)
-    .slice(-3);
+    .slice(-CADENCE_WINDOW_DEFAULTS.summaryLookback);
+  const cadence = analyzeChapterCadence({
+    rows: recentRows,
+    language,
+  });
 
-  const chapterTypeIssue = buildChapterTypeIssue(recentRows, language);
+  const chapterTypeIssue = buildChapterTypeIssue(cadence, language);
   if (chapterTypeIssue) {
     issues.push(chapterTypeIssue);
+  }
+
+  const moodIssue = buildMoodIssue(cadence, language);
+  if (moodIssue) {
+    issues.push(moodIssue);
+  }
+
+  const titleIssue = buildTitleIssue(cadence, language);
+  if (titleIssue) {
+    issues.push(titleIssue);
   }
 
   const recentChapterBodies = await loadRecentChapterBodies(
@@ -181,26 +207,19 @@ function parseSummaryRow(line: string): SummaryRow | null {
 }
 
 function buildChapterTypeIssue(
-  rows: ReadonlyArray<SummaryRow>,
+  cadence: ReturnType<typeof analyzeChapterCadence>,
   language: "zh" | "en",
 ): LongSpanFatigueIssue | null {
-  if (rows.length < 3) return null;
-
-  const types = rows
-    .map((row) => row.chapterType.trim())
-    .filter((value) => isMeaningfulValue(value));
-  if (types.length < 3) return null;
-
-  const normalized = types.map((value) => value.toLowerCase());
-  if (!normalized.every((value) => value === normalized[0])) {
+  if (cadence.scenePressure?.pressure !== "high") {
     return null;
   }
+  const { repeatedType, streak } = cadence.scenePressure;
 
   if (language === "en") {
     return {
       severity: "warning",
       category: "Pacing Monotony",
-      description: `The last 3 chapter types are identical: ${types.join(" -> ")}, which suggests macro pacing monotony.`,
+      description: `The last ${streak} chapter types have stayed on ${repeatedType}, which suggests macro pacing monotony.`,
       suggestion: "Switch the next chapter's function instead of extending the same beat again. Rotate setup, payoff, reversal, and fallout more deliberately.",
     };
   }
@@ -208,8 +227,60 @@ function buildChapterTypeIssue(
   return {
     severity: "warning",
     category: "节奏单调",
-    description: `最近3章章节类型完全一致：${types.join(" -> ")}，长篇节奏可能开始固化。`,
+    description: `最近${streak}章章节类型持续停留在“${repeatedType}”，长篇节奏可能开始固化。`,
     suggestion: "下一章应切换章节功能，不要连续重复同一种布局/推进节拍。",
+  };
+}
+
+function buildMoodIssue(
+  cadence: ReturnType<typeof analyzeChapterCadence>,
+  language: "zh" | "en",
+): LongSpanFatigueIssue | null {
+  if (cadence.moodPressure?.pressure !== "high") {
+    return null;
+  }
+  const { highTensionStreak, recentMoods } = cadence.moodPressure;
+
+  if (language === "en") {
+    return {
+      severity: "warning",
+      category: "Mood Monotony",
+      description: `High-tension mood has locked in for ${highTensionStreak} chapters (${recentMoods.join(" -> ")}), with no visible emotional release.`,
+      suggestion: "Insert a release beat, warmth, humor, intimacy, or reflective quiet before escalating again.",
+    };
+  }
+
+  return {
+    severity: "warning",
+    category: "情绪单调",
+    description: `最近${highTensionStreak}章持续高压（${recentMoods.join(" -> ")}），缺少明显的情绪释放。`,
+    suggestion: "下一章安排一次喘息、温情、幽默或静场释放，再继续加压。",
+  };
+}
+
+function buildTitleIssue(
+  cadence: ReturnType<typeof analyzeChapterCadence>,
+  language: "zh" | "en",
+): LongSpanFatigueIssue | null {
+  if (cadence.titlePressure?.pressure !== "high") {
+    return null;
+  }
+  const { repeatedToken, count } = cadence.titlePressure;
+
+  if (language === "en") {
+    return {
+      severity: "warning",
+      category: "Title Collapse",
+      description: `Recent titles keep collapsing around "${repeatedToken}" (${count} hits in the current window), which makes chapter naming feel formulaic.`,
+      suggestion: "Change the next title anchor. Use a new image, action, consequence, or character vector instead of the same keyword shell.",
+    };
+  }
+
+  return {
+    severity: "warning",
+    category: "标题重复",
+    description: `最近标题持续围绕“${repeatedToken}”命名（当前窗口命中${count}次），命名开始坍缩。`,
+    suggestion: "下一章标题换一个新的意象、动作、后果或人物焦点，不要继续套同一个关键词壳。",
   };
 }
 
@@ -225,9 +296,9 @@ async function loadRecentChapterBodies(
       .map((file) => ({ file, chapter: Number.parseInt(file.slice(0, 4), 10) }))
       .filter((entry) => Number.isFinite(entry.chapter) && entry.chapter < currentChapter && entry.file.endsWith(".md"))
       .sort((left, right) => left.chapter - right.chapter)
-      .slice(-2);
+      .slice(-CADENCE_WINDOW_DEFAULTS.recentBoundaryPatternBodies);
 
-    if (previousFiles.length < 2) {
+    if (previousFiles.length < CADENCE_WINDOW_DEFAULTS.recentBoundaryPatternBodies) {
       return [];
     }
 
@@ -246,7 +317,7 @@ function buildSentencePatternIssue(
   boundary: "opening" | "ending",
   language: "zh" | "en",
 ): LongSpanFatigueIssue | null {
-  if (chapterBodies.length < 3) return null;
+  if (chapterBodies.length < LONG_SPAN_FATIGUE_THRESHOLDS.boundaryPatternMinBodies) return null;
 
   const sentences = chapterBodies.map((body) => extractBoundarySentence(body, boundary));
   if (sentences.some((sentence) => sentence === null)) {
@@ -255,7 +326,7 @@ function buildSentencePatternIssue(
 
   const normalized = sentences
     .map((sentence) => normalizeSentence(sentence!, language));
-  if (normalized.some((sentence) => sentence.length < 18)) {
+  if (normalized.some((sentence) => sentence.length < LONG_SPAN_FATIGUE_THRESHOLDS.boundarySentenceMinLength)) {
     return null;
   }
 
@@ -263,7 +334,7 @@ function buildSentencePatternIssue(
     diceCoefficient(normalized[0]!, normalized[1]!),
     diceCoefficient(normalized[1]!, normalized[2]!),
   ];
-  if (Math.min(...similarities) < SENTENCE_SIMILARITY_THRESHOLD) {
+  if (Math.min(...similarities) < LONG_SPAN_FATIGUE_THRESHOLDS.boundarySimilarityFloor) {
     return null;
   }
 
@@ -352,15 +423,11 @@ function collectRepeatedBoundaryPatterns(
 }
 
 function chooseSceneObligation(
-  rows: ReadonlyArray<SummaryRow>,
+  cadence: ReturnType<typeof analyzeChapterCadence>,
   repeatedOpenings: ReadonlyArray<string>,
   repeatedEndings: ReadonlyArray<string>,
 ): string {
-  const recentTypes = rows
-    .map((row) => row.chapterType.trim().toLowerCase())
-    .filter((type) => type.length > 0);
-
-  if (recentTypes.length >= 3 && recentTypes.every((type) => type === recentTypes[0])) {
+  if (cadence.scenePressure?.pressure === "high") {
     return "confrontation under pressure";
   }
   if (repeatedEndings.length > 0) {

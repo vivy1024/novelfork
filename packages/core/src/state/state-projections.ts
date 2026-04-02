@@ -3,6 +3,10 @@ import type {
   CurrentStateState,
   HooksState,
 } from "../models/runtime-state.js";
+import {
+  localizeHookPayoffTiming,
+  resolveHookPayoffTiming,
+} from "../utils/hook-lifecycle.js";
 
 export function renderHooksProjection(
   state: HooksState,
@@ -11,12 +15,12 @@ export function renderHooksProjection(
   const title = language === "en" ? "# Pending Hooks" : "# 伏笔池";
   const headers = language === "en"
     ? [
-      "| hook_id | start_chapter | type | status | last_advanced_chapter | expected_payoff | notes |",
-      "| --- | --- | --- | --- | --- | --- | --- |",
+      "| hook_id | start_chapter | type | status | last_advanced_chapter | expected_payoff | payoff_timing | notes |",
+      "| --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     : [
-      "| hook_id | 起始章节 | 类型 | 状态 | 最近推进 | 预期回收 | 备注 |",
-      "| --- | --- | --- | --- | --- | --- | --- |",
+      "| hook_id | 起始章节 | 类型 | 状态 | 最近推进 | 预期回收 | 回收节奏 | 备注 |",
+      "| --- | --- | --- | --- | --- | --- | --- | --- |",
     ];
 
   const rows = [...state.hooks]
@@ -33,6 +37,7 @@ export function renderHooksProjection(
         hook.status,
         hook.lastAdvancedChapter,
         hook.expectedPayoff,
+        localizeHookPayoffTiming(resolveHookPayoffTiming(hook), language),
         hook.notes,
       ].map(escapeTableCell).join(" | ")
     } |`);

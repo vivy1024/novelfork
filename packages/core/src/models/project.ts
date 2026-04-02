@@ -9,6 +9,7 @@ export const LLMConfigSchema = z.object({
   maxTokens: z.number().int().min(1).default(8192),
   thinkingBudget: z.number().int().min(0).default(0),
   extra: z.record(z.unknown()).optional(),
+  headers: z.record(z.string()).optional(),
   apiFormat: z.enum(["chat", "responses"]).default("chat"),
   stream: z.boolean().default(true),
 });

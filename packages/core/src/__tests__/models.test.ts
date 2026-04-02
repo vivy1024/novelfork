@@ -281,19 +281,21 @@ describe("ChapterStatusSchema", () => {
     "auditing",
     "audit-passed",
     "audit-failed",
+    "state-degraded",
     "revising",
     "ready-for-review",
     "approved",
     "rejected",
     "published",
+    "imported",
   ] as const;
 
   it.each(allStatuses)("accepts '%s'", (value) => {
     expect(ChapterStatusSchema.parse(value)).toBe(value);
   });
 
-  it("has exactly 12 valid statuses", () => {
-    expect(ChapterStatusSchema.options).toHaveLength(12);
+  it("has exactly 13 valid statuses", () => {
+    expect(ChapterStatusSchema.options).toHaveLength(13);
   });
 
   it("rejects unknown status", () => {
@@ -495,6 +497,10 @@ describe("ChapterIntentSchema", () => {
       chapter: 12,
       goal: "Pull focus back to the mentor conflict",
       outlineNode: "Volume 2 / Chapter 12",
+      sceneDirective: "Break the repeated investigation-room rhythm with a location change.",
+      arcDirective: "Advance toward the next concrete arc beat instead of replaying the fallback setup.",
+      moodDirective: "Release pressure for one chapter before the next escalation.",
+      titleDirective: "Avoid another ledger title and use a new concrete image.",
       mustKeep: ["Protagonist remains injured"],
       mustAvoid: ["Do not reveal the mastermind"],
       styleEmphasis: ["dialogue tension", "character conflict"],
@@ -505,6 +511,18 @@ describe("ChapterIntentSchema", () => {
         },
       ],
       hookAgenda: {
+        pressureMap: [
+          {
+            hookId: "H019",
+            type: "relationship",
+            payoffTiming: "slow-burn",
+            phase: "middle",
+            pressure: "high",
+            movement: "partial-payoff",
+            reason: "stale-promise",
+            blockSiblingHooks: true,
+          },
+        ],
         mustAdvance: ["H019"],
         eligibleResolve: ["H045"],
         staleDebt: ["H023", "H027"],
@@ -517,7 +535,22 @@ describe("ChapterIntentSchema", () => {
 
     expect(result.chapter).toBe(12);
     expect(result.goal).toContain("mentor conflict");
+    expect(result.sceneDirective).toContain("location change");
+    expect(result.arcDirective).toContain("arc beat");
+    expect(result.moodDirective).toContain("Release pressure");
+    expect(result.titleDirective).toContain("ledger title");
     expect(result.conflicts).toHaveLength(1);
+    expect(result.hookAgenda.pressureMap).toEqual([
+      expect.objectContaining({
+        hookId: "H019",
+        type: "relationship",
+        phase: "middle",
+        movement: "partial-payoff",
+        pressure: "high",
+        payoffTiming: "slow-burn",
+        reason: "stale-promise",
+      }),
+    ]);
     expect(result.hookAgenda.mustAdvance).toEqual(["H019"]);
     expect(result.hookAgenda.eligibleResolve).toEqual(["H045"]);
     expect(result.hookAgenda.staleDebt).toEqual(["H023", "H027"]);
@@ -533,10 +566,15 @@ describe("ChapterIntentSchema", () => {
       goal: "Establish the protagonist's first setback",
     });
 
+    expect(result.sceneDirective).toBeUndefined();
+    expect(result.arcDirective).toBeUndefined();
+    expect(result.moodDirective).toBeUndefined();
+    expect(result.titleDirective).toBeUndefined();
     expect(result.mustKeep).toEqual([]);
     expect(result.mustAvoid).toEqual([]);
     expect(result.styleEmphasis).toEqual([]);
     expect(result.conflicts).toEqual([]);
+    expect(result.hookAgenda.pressureMap).toEqual([]);
     expect(result.hookAgenda.mustAdvance).toEqual([]);
     expect(result.hookAgenda.eligibleResolve).toEqual([]);
     expect(result.hookAgenda.staleDebt).toEqual([]);

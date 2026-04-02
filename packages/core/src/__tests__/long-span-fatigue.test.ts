@@ -121,4 +121,40 @@ describe("analyzeLongSpanFatigue", () => {
       await rm(join(bookDir, ".."), { recursive: true, force: true });
     }
   });
+
+  it("warns when title focus collapses and high-tension mood never releases", async () => {
+    const bookDir = await createBookDir("inkos-long-span-cadence-test-");
+
+    await Promise.all([
+      writeChapter(bookDir, 1, "名单之前", "风贴着走廊吹。周谨川没有停，手指一直压着那份发潮的薄册。"),
+      writeChapter(bookDir, 2, "名单之后", "楼道里只有脚步声。周谨川顺着裂灯往下走，肩背始终绷着。"),
+      writeFile(
+        join(bookDir, "story", "chapter_summaries.md"),
+        [
+          "# 章节摘要",
+          "",
+          "| 章节 | 标题 | 出场人物 | 关键事件 | 状态变化 | 伏笔动态 | 情绪基调 | 章节类型 |",
+          "|------|------|----------|----------|----------|----------|----------|----------|",
+          "| 1 | 名单之前 | 周谨川 | 初次接触名单 | 压力上升 | 名单线继续发酵 | 紧张、压抑 | 调查章 |",
+          "| 2 | 名单之后 | 周谨川 | 顺着名单继续追查 | 目标未变 | 名单线继续发酵 | 冷硬、逼仄 | 调查章 |",
+        ].join("\n"),
+        "utf-8",
+      ),
+    ]);
+
+    try {
+      const result = await analyzeLongSpanFatigue({
+        bookDir,
+        chapterNumber: 3,
+        chapterContent: "墙角的灰一直没落定。周谨川盯着名单最后一行，喉结很轻地滚了一下，还是没有把气松出来。",
+        chapterSummary: "| 3 | 名单未落 | 周谨川 | 名单追查继续推进 | 目标未变 | 名单线继续发酵 | 压迫、窒息 | 调查章 |",
+        language: "zh",
+      });
+
+      expect(result.issues.some((issue) => issue.category === "标题重复")).toBe(true);
+      expect(result.issues.some((issue) => issue.category === "情绪单调")).toBe(true);
+    } finally {
+      await rm(join(bookDir, ".."), { recursive: true, force: true });
+    }
+  });
 });

@@ -105,6 +105,9 @@ function buildGovernedInputContract(language: "zh" | "en", governed: boolean): s
 - When the runtime rule stack records an active L4 -> L3 override, follow the current task over local planning.
 - Keep hard guardrails compact: canon, continuity facts, and explicit prohibitions still win.
 - If an English Variance Brief is provided, obey it: avoid the listed phrase/opening/ending patterns and satisfy the scene obligation.
+- If Hook Debt Briefs are provided, they contain the ORIGINAL SEED TEXT from the chapter where each hook was planted. Use this text to write a continuation or payoff that feels connected to what the reader already saw — not a vague mention, but a scene that builds on the specific promise.
+- When the explicit hook agenda names an eligible resolve target, land a concrete payoff beat that answers the reader's original question from the seed chapter.
+- When stale debt is present, do not open sibling hooks casually; clear pressure from old promises before minting fresh debt.
 - In multi-character scenes, include at least one resistance-bearing exchange instead of reducing the beat to summary or explanation.`;
   }
 
@@ -115,6 +118,9 @@ function buildGovernedInputContract(language: "zh" | "en", governed: boolean): s
 - 当 runtime rule stack 明确记录了 L4 -> L3 的 active override 时，优先执行当前任务意图，再局部调整规划层。
 - 真正不能突破的只有硬护栏：世界设定、连续性事实、显式禁令。
 - 如果提供了 English Variance Brief，必须主动避开其中列出的高频短语、重复开头和重复结尾模式，并完成 scene obligation。
+- 如果提供了 Hook Debt 简报，里面包含每个伏笔种下时的**原始文本片段**。用这些原文来写延续或兑现场景——不是模糊地提一嘴，而是接着读者已经看到的具体承诺来写。
+- 如果显式 hook agenda 里出现了可回收目标，本章必须写出具体兑现片段，回答种子章节中读者的原始疑问。
+- 如果存在 stale debt，先消化旧承诺的压力，再决定是否开新坑；同类 sibling hook 不得随手再开。
 - 多角色场景里，至少给出一轮带阻力的直接交锋，不要把人物关系写成纯解释或纯总结。`;
 }
 
@@ -525,7 +531,7 @@ function buildCreativeOutputFormat(book: BookConfig, gp: GenreProfile, lengthSpe
 | 大纲锚定 | 当前卷名/阶段 + 本章应推进的具体节点 | 严禁跳过节点或提前消耗后续剧情 |
 | 上下文范围 | 第X章至第Y章 / 状态卡 / 设定文件 | |
 | 当前锚点 | 地点 / 对手 / 收益目标 | 锚点必须具体 |
-${resourceRow}| 待回收伏笔 | Hook-A / Hook-B | 与伏笔池一致 |
+${resourceRow}| 待回收伏笔 | 用真实 hook_id 填写（无则写 none） | 与伏笔池一致 |
 | 本章冲突 | 一句话概括 | |
 | 章节类型 | ${gp.chapterTypes.join("/")} | |
 | 风险扫描 | OOC/信息越界/设定冲突${gp.powerScaling ? "/战力崩坏" : ""}/节奏/词汇疲劳 | |`;
@@ -535,7 +541,7 @@ ${resourceRow}| 待回收伏笔 | Hook-A / Hook-B | 与伏笔池一致 |
 ${preWriteTable}
 
 === CHAPTER_TITLE ===
-(章节标题，不含"第X章"。标题必须与已有章节标题不同，不要重复使用相同或相似的标题)
+(章节标题，不含"第X章"。标题必须与已有章节标题不同，不要重复使用相同或相似的标题；若提供了 recent title history 或高频标题词，必须主动避开重复词根和高频意象)
 
 === CHAPTER_CONTENT ===
 (正文内容，目标${lengthSpec.target}字，允许区间${lengthSpec.softMin}-${lengthSpec.softMax}字)
@@ -560,7 +566,7 @@ function buildOutputFormat(book: BookConfig, gp: GenreProfile, lengthSpec: Lengt
 | 大纲锚定 | 当前卷名/阶段 + 本章应推进的具体节点 | 严禁跳过节点或提前消耗后续剧情 |
 | 上下文范围 | 第X章至第Y章 / 状态卡 / 设定文件 | |
 | 当前锚点 | 地点 / 对手 / 收益目标 | 锚点必须具体 |
-${resourceRow}| 待回收伏笔 | Hook-A / Hook-B | 与伏笔池一致 |
+${resourceRow}| 待回收伏笔 | 用真实 hook_id 填写（无则写 none） | 与伏笔池一致 |
 | 本章冲突 | 一句话概括 | |
 | 章节类型 | ${gp.chapterTypes.join("/")} | |
 | 风险扫描 | OOC/信息越界/设定冲突${gp.powerScaling ? "/战力崩坏" : ""}/节奏/词汇疲劳 | |`;
@@ -588,7 +594,7 @@ ${resourceRow}| 待回收伏笔 | Hook-A / Hook-B | 与伏笔池一致 |
 ${preWriteTable}
 
 === CHAPTER_TITLE ===
-(章节标题，不含"第X章"。标题必须与已有章节标题不同，不要重复使用相同或相似的标题)
+(章节标题，不含"第X章"。标题必须与已有章节标题不同，不要重复使用相同或相似的标题；若提供了 recent title history 或高频标题词，必须主动避开重复词根和高频意象)
 
 === CHAPTER_CONTENT ===
 (正文内容，目标${lengthSpec.target}字，允许区间${lengthSpec.softMin}-${lengthSpec.softMax}字)

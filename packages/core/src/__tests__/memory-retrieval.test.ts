@@ -896,6 +896,108 @@ describe("retrieveMemorySelection", () => {
     expect(result.hooks.map((hook) => hook.hookId)).not.toContain("stale-resolved");
   });
 
+  it("surfaces multiple stale hook families when debt pressure clusters instead of only one stale extra", async () => {
+    root = await mkdtemp(join(tmpdir(), "inkos-memory-retrieval-stale-cluster-test-"));
+    const bookDir = join(root, "book");
+    const storyDir = join(bookDir, "story");
+    const stateDir = join(storyDir, "state");
+    await mkdir(stateDir, { recursive: true });
+
+    await Promise.all([
+      writeFile(
+        join(stateDir, "manifest.json"),
+        JSON.stringify({
+          schemaVersion: 2,
+          language: "en",
+          lastAppliedChapter: 50,
+          projectionVersion: 1,
+          migrationWarnings: [],
+        }, null, 2),
+        "utf-8",
+      ),
+      writeFile(
+        join(stateDir, "current_state.json"),
+        JSON.stringify({
+          chapter: 50,
+          facts: [],
+        }, null, 2),
+        "utf-8",
+      ),
+      writeFile(
+        join(stateDir, "chapter_summaries.json"),
+        JSON.stringify({
+          rows: [],
+        }, null, 2),
+        "utf-8",
+      ),
+      writeFile(
+        join(stateDir, "hooks.json"),
+        JSON.stringify({
+          hooks: [
+            {
+              hookId: "recent-route",
+              startChapter: 47,
+              type: "route",
+              status: "open",
+              lastAdvancedChapter: 49,
+              expectedPayoff: "Recent route payoff",
+              notes: "Recent route remains active.",
+            },
+            {
+              hookId: "recent-guild",
+              startChapter: 46,
+              type: "politics",
+              status: "progressing",
+              lastAdvancedChapter: 48,
+              expectedPayoff: "Guild payoff",
+              notes: "Recent guild pressure remains active.",
+            },
+            {
+              hookId: "recent-token",
+              startChapter: 45,
+              type: "artifact",
+              status: "open",
+              lastAdvancedChapter: 47,
+              expectedPayoff: "Token payoff",
+              notes: "Recent token route remains active.",
+            },
+            {
+              hookId: "stale-omega",
+              startChapter: 6,
+              type: "relationship",
+              status: "open",
+              lastAdvancedChapter: 12,
+              expectedPayoff: "Old relic payoff",
+              notes: "Dormant unresolved relationship line.",
+            },
+            {
+              hookId: "stale-sable",
+              startChapter: 8,
+              type: "mystery",
+              status: "open",
+              lastAdvancedChapter: 14,
+              expectedPayoff: "Archive payoff",
+              notes: "Dormant unresolved mystery line.",
+            },
+          ],
+        }, null, 2),
+        "utf-8",
+      ),
+    ]);
+
+    const result = await retrieveMemorySelection({
+      bookDir,
+      chapterNumber: 51,
+      goal: "Keep the chapter on the debt cluster and route pressure together.",
+      mustKeep: ["The old debt cluster must stay legible."],
+    });
+
+    expect(result.hooks.map((hook) => hook.hookId)).toEqual(expect.arrayContaining([
+      "stale-omega",
+      "stale-sable",
+    ]));
+  });
+
   it("does not surface far-future unstarted hooks in early chapter retrieval", async () => {
     root = await mkdtemp(join(tmpdir(), "inkos-memory-retrieval-future-hook-gate-test-"));
     const bookDir = join(root, "book");
@@ -1084,5 +1186,161 @@ describe("parsePendingHooksMarkdown", () => {
     ].join("\n"));
 
     expect(hooks.map((hook) => hook.hookId)).toEqual(["H009", "H010"]);
+  });
+
+  it("parses semantic payoff timing from extended pending hooks tables", () => {
+    const hooks = memoryRetrieval.parsePendingHooksMarkdown([
+      "| hook_id | start_chapter | type | status | last_advanced | expected_payoff | payoff_timing | notes |",
+      "| --- | --- | --- | --- | --- | --- | --- | --- |",
+      "| oath-debt | 8 | relationship | open | 12 | Reveal why the mentor broke the oath | slow-burn | Long-buried debt stays unresolved |",
+      "| kiln-key | 15 | mystery | open | 15 | Find out what the kiln key opens next chapter | immediate | Fresh key with a fast local payoff |",
+      "",
+    ].join("\n"));
+
+    expect(hooks).toEqual([
+      expect.objectContaining({
+        hookId: "oath-debt",
+        payoffTiming: "slow-burn",
+        notes: "Long-buried debt stays unresolved",
+      }),
+      expect.objectContaining({
+        hookId: "kiln-key",
+        payoffTiming: "immediate",
+        notes: "Fresh key with a fast local payoff",
+      }),
+    ]);
+  });
+
+  it("sorts must-advance by stalest-first and resolve by earliest-started", () => {
+    const agenda = memoryRetrieval.buildPlannerHookAgenda({
+      chapterNumber: 18,
+      hooks: [
+        {
+          hookId: "slow-oath",
+          startChapter: 10,
+          type: "relationship",
+          status: "progressing",
+          lastAdvancedChapter: 17,
+          expectedPayoff: "Reveal why the mentor buried the oath debt",
+          payoffTiming: "slow-burn",
+          notes: "The debt should simmer across the wider arc.",
+        },
+        {
+          hookId: "ready-packet",
+          startChapter: 14,
+          type: "mystery",
+          status: "progressing",
+          lastAdvancedChapter: 17,
+          expectedPayoff: "Open the missing packet and expose the inside hand",
+          payoffTiming: "near-term",
+          notes: "The local sequence is ready for a concrete payoff.",
+        },
+      ] as never,
+      maxMustAdvance: 2,
+      maxEligibleResolve: 2,
+      targetChapters: 40,
+    } as never);
+
+    expect(agenda.mustAdvance).toContain("slow-oath");
+    expect(agenda.mustAdvance).toContain("ready-packet");
+    expect(agenda.eligibleResolve).toContain("slow-oath");
+    expect(agenda.eligibleResolve).toContain("ready-packet");
+    expect(agenda.pressureMap).toEqual([]);
+  });
+
+  it("limits eligible resolve to default max of 1 when not overridden", () => {
+    const agenda = memoryRetrieval.buildPlannerHookAgenda({
+      chapterNumber: 8,
+      targetChapters: 12,
+      hooks: [
+        {
+          hookId: "packet-drop",
+          startChapter: 5,
+          type: "mystery",
+          status: "progressing",
+          lastAdvancedChapter: 7,
+          expectedPayoff: "Open the dropped packet and expose who planted it",
+          payoffTiming: "near-term",
+          notes: "The packet has been foregrounded for two chapters already.",
+        },
+        {
+          hookId: "seal-crack",
+          startChapter: 4,
+          type: "artifact",
+          status: "progressing",
+          lastAdvancedChapter: 7,
+          expectedPayoff: "Reveal what the cracked seal is hiding",
+          payoffTiming: "immediate",
+          notes: "The cracked seal should pay off in the current local sequence.",
+        },
+        {
+          hookId: "witness-turn",
+          startChapter: 5,
+          type: "relationship",
+          status: "progressing",
+          lastAdvancedChapter: 7,
+          expectedPayoff: "Force the silent witness to choose a side",
+          payoffTiming: "near-term",
+          notes: "The witness line is ready for a concrete turn now.",
+        },
+      ] as never,
+    } as never);
+
+    expect(agenda.eligibleResolve.length).toBe(1);
+    expect(agenda.pressureMap).toEqual([]);
+  });
+
+  it("picks stalest hooks for must-advance regardless of type family", () => {
+    const agenda = memoryRetrieval.buildPlannerHookAgenda({
+      chapterNumber: 15,
+      targetChapters: 30,
+      hooks: [
+        {
+          hookId: "mentor-oath-a",
+          startChapter: 1,
+          type: "relationship",
+          status: "open",
+          lastAdvancedChapter: 2,
+          expectedPayoff: "Explain the first layer of the mentor oath debt",
+          payoffTiming: "mid-arc",
+          notes: "Old relationship debt keeps surfacing without movement.",
+        },
+        {
+          hookId: "mentor-oath-b",
+          startChapter: 2,
+          type: "relationship",
+          status: "open",
+          lastAdvancedChapter: 3,
+          expectedPayoff: "Show what the second oath witness is hiding",
+          payoffTiming: "mid-arc",
+          notes: "Another branch of the same relationship family is also stale.",
+        },
+        {
+          hookId: "mentor-oath-c",
+          startChapter: 3,
+          type: "relationship",
+          status: "open",
+          lastAdvancedChapter: 4,
+          expectedPayoff: "Reveal why the oath cannot be spoken aloud",
+          payoffTiming: "mid-arc",
+          notes: "The third relationship branch is still hanging.",
+        },
+        {
+          hookId: "kiln-key",
+          startChapter: 4,
+          type: "artifact",
+          status: "open",
+          lastAdvancedChapter: 5,
+          expectedPayoff: "Show what the kiln key unlocks",
+          payoffTiming: "mid-arc",
+          notes: "Artifact debt is also stale and should not vanish behind relationship debt.",
+        },
+      ] as never,
+    } as never);
+
+    expect(agenda.mustAdvance).toEqual(["mentor-oath-a", "mentor-oath-b"]);
+    expect(agenda.mustAdvance).toEqual(expect.arrayContaining([
+      expect.stringMatching(/^mentor-oath-/),
+    ]));
   });
 });

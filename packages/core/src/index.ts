@@ -38,6 +38,9 @@ export {
 } from "./models/runtime-state.js";
 export {
   type ChapterConflict,
+  type HookMovement,
+  type HookPressureLevel,
+  type HookPressure,
   type ChapterIntent,
   type ContextSource,
   type ContextPackage,
@@ -49,6 +52,9 @@ export {
   type RuleStack,
   type ChapterTrace,
   ChapterConflictSchema,
+  HookMovementSchema,
+  HookPressureLevelSchema,
+  HookPressureSchema,
   ChapterIntentSchema,
   ContextSourceSchema,
   ContextPackageSchema,
