@@ -114,7 +114,7 @@ describe("StateManager", () => {
       expect(next).toBe(1);
     });
 
-    it("returns max+1 when chapters exist", async () => {
+    it("returns the first missing chapter when the chapter index has gaps", async () => {
       const chapters: ReadonlyArray<ChapterMeta> = [
         {
           number: 1,
@@ -149,7 +149,7 @@ describe("StateManager", () => {
       ];
       await manager.saveChapterIndex("book-x", chapters);
       const next = await manager.getNextChapterNumber("book-x");
-      expect(next).toBe(6);
+      expect(next).toBe(2);
     });
 
     it("returns 2 when only chapter 1 exists", async () => {
@@ -223,6 +223,99 @@ describe("StateManager", () => {
       const next = await manager.getNextChapterNumber(bookId);
 
       expect(next).toBe(4);
+    });
+
+    it("ignores non-contiguous poisoned chapter numbers when calculating the next chapter", async () => {
+      const bookId = "poisoned-next-chapter-book";
+      const bookDir = manager.bookDir(bookId);
+      const chaptersDir = join(bookDir, "chapters");
+      const storyDir = join(bookDir, "story");
+      const stateDir = join(storyDir, "state");
+      await mkdir(chaptersDir, { recursive: true });
+      await mkdir(stateDir, { recursive: true });
+
+      const indexedChapters: ReadonlyArray<ChapterMeta> = [
+        ...Array.from({ length: 12 }, (_, index) => ({
+          number: index + 1,
+          title: `Ch${index + 1}`,
+          status: "ready-for-review" as const,
+          wordCount: 3000,
+          createdAt: "2026-01-01T00:00:00Z",
+          updatedAt: "2026-01-01T00:00:00Z",
+          auditIssues: [],
+          lengthWarnings: [],
+        })),
+        {
+          number: 142,
+          title: "Poisoned Ch142",
+          status: "audit-failed",
+          wordCount: 3200,
+          createdAt: "2026-01-13T00:00:00Z",
+          updatedAt: "2026-01-13T00:00:00Z",
+          auditIssues: [],
+          lengthWarnings: [],
+        },
+      ];
+
+      await manager.saveChapterIndex(bookId, indexedChapters);
+      await Promise.all([
+        ...Array.from({ length: 12 }, (_, index) => writeFile(
+          join(chaptersDir, `${String(index + 1).padStart(4, "0")}_Ch${index + 1}.md`),
+          `# Chapter ${index + 1}\n\nStable body.`,
+          "utf-8",
+        )),
+        writeFile(
+          join(chaptersDir, "0142_Poisoned.md"),
+          "# Chapter 142\n\nPoisoned body.",
+          "utf-8",
+        ),
+        writeFile(
+          join(storyDir, "current_state.md"),
+          [
+            "# Current State",
+            "",
+            "| Field | Value |",
+            "| --- | --- |",
+            "| Current Chapter | 12 |",
+            "| Current Goal | Enter the next true chapter cleanly |",
+            "",
+          ].join("\n"),
+          "utf-8",
+        ),
+        writeFile(
+          join(storyDir, "pending_hooks.md"),
+          [
+            "| hook_id | start_chapter | type | status | last_advanced | expected_payoff | notes |",
+            "| --- | --- | --- | --- | --- | --- | --- |",
+            "| H001 | 1 | mystery | progressing | 《三体》游戏内第141号文明继续展开 | Reveal the true enemy | Narrative text must not drive chapter progress |",
+            "",
+          ].join("\n"),
+          "utf-8",
+        ),
+        writeFile(
+          join(storyDir, "chapter_summaries.md"),
+          [
+            "| chapter | title | characters | events | stateChanges | hookActivity | mood | chapterType |",
+            "| --- | --- | --- | --- | --- | --- | --- | --- |",
+            ...Array.from({ length: 12 }, (_, index) =>
+              `| ${index + 1} | Ch${index + 1} | Lin Yue | Event ${index + 1} | Shift ${index + 1} | Hook ${index + 1} | tense | mainline |`),
+            "| 142 | Poisoned Ch142 | Lin Yue | Poisoned event | Poisoned shift | Poisoned hook | tense | mainline |",
+            "",
+          ].join("\n"),
+          "utf-8",
+        ),
+        writeFile(join(stateDir, "manifest.json"), JSON.stringify({
+          schemaVersion: 2,
+          language: "en",
+          lastAppliedChapter: 141,
+          projectionVersion: 1,
+          migrationWarnings: [],
+        }, null, 2), "utf-8"),
+      ]);
+
+      const next = await manager.getNextChapterNumber(bookId);
+
+      expect(next).toBe(13);
     });
   });
 
@@ -790,6 +883,61 @@ describe("StateManager", () => {
       ) as { lastAppliedChapter: number };
 
       expect(manifest.lastAppliedChapter).toBe(1);
+    });
+
+    it("does not treat narrative digits inside hook markdown as runtime chapter progress during bootstrap", async () => {
+      const bookId = "runtime-state-narrative-digit-book";
+      const storyDir = join(manager.bookDir(bookId), "story");
+      await mkdir(storyDir, { recursive: true });
+      await Promise.all([
+        writeFile(
+          join(storyDir, "current_state.md"),
+          [
+            "# Current State",
+            "",
+            "| Field | Value |",
+            "| --- | --- |",
+            "| Current Chapter | 12 |",
+            "| Current Goal | Continue after the imported twelfth chapter |",
+            "",
+          ].join("\n"),
+          "utf-8",
+        ),
+        writeFile(
+          join(storyDir, "pending_hooks.md"),
+          [
+            "| hook_id | start_chapter | type | status | last_advanced | expected_payoff | notes |",
+            "| --- | --- | --- | --- | --- | --- | --- |",
+            "| H001 | 1 | mystery | progressing | 《三体》游戏内第141号文明展开到墨子时代 | Reveal the threat | Narrative prose, not chapter metadata |",
+            "",
+          ].join("\n"),
+          "utf-8",
+        ),
+        writeFile(
+          join(storyDir, "chapter_summaries.md"),
+          [
+            "| chapter | title | characters | events | stateChanges | hookActivity | mood | chapterType |",
+            "| --- | --- | --- | --- | --- | --- | --- | --- |",
+            ...Array.from({ length: 12 }, (_, index) =>
+              `| ${index + 1} | Ch${index + 1} | Lin Yue | Event ${index + 1} | Shift ${index + 1} | Hook ${index + 1} | tense | mainline |`),
+            "",
+          ].join("\n"),
+          "utf-8",
+        ),
+      ]);
+
+      await manager.ensureRuntimeState(bookId, 12);
+
+      const manifest = JSON.parse(
+        await readFile(join(manager.stateDir(bookId), "manifest.json"), "utf-8"),
+      ) as { lastAppliedChapter: number };
+      const hooks = JSON.parse(
+        await readFile(join(manager.stateDir(bookId), "hooks.json"), "utf-8"),
+      ) as { hooks: Array<{ hookId: string; lastAdvancedChapter: number }> };
+
+      expect(manifest.lastAppliedChapter).toBe(12);
+      expect(hooks.hooks[0]?.hookId).toBe("H001");
+      expect(hooks.hooks[0]?.lastAdvancedChapter).toBe(0);
     });
 
     it("repairs poisoned manifest chapter when it runs ahead of persisted runtime state", async () => {

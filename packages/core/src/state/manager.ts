@@ -205,19 +205,14 @@ export class StateManager {
   }
 
   async getNextChapterNumber(bookId: string): Promise<number> {
-    const index = await this.loadChapterIndex(bookId);
-    const indexedChapter = index.length > 0
-      ? Math.max(...index.map((ch) => ch.number))
-      : 0;
-    const runtimeState = await bootstrapStructuredStateFromMarkdown({
-      bookDir: this.bookDir(bookId),
-      fallbackChapter: indexedChapter,
-    });
     const durableChapter = await resolveDurableStoryProgress({
       bookDir: this.bookDir(bookId),
-      fallbackChapter: indexedChapter,
     });
-    return Math.max(indexedChapter, durableChapter, runtimeState.manifest.lastAppliedChapter) + 1;
+    await bootstrapStructuredStateFromMarkdown({
+      bookDir: this.bookDir(bookId),
+      fallbackChapter: durableChapter,
+    });
+    return durableChapter + 1;
   }
 
   async getPersistedChapterCount(bookId: string): Promise<number> {

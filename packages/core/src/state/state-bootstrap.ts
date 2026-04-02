@@ -71,12 +71,7 @@ export async function bootstrapStructuredStateFromMarkdown(params: {
     warnings,
     bootstrapState: markdownState.currentState,
   });
-  const derivedProgress = Math.max(
-    markdownState.durableStoryProgress,
-    currentState.chapter,
-    maxSummaryChapter(summariesState),
-    maxHookChapter(hooksState.hooks),
-  );
+  const derivedProgress = markdownState.durableStoryProgress;
   if ((existingManifest?.lastAppliedChapter ?? 0) > derivedProgress) {
     appendWarning(
       warnings,
@@ -136,12 +131,7 @@ export async function rewriteStructuredStateFromMarkdown(params: {
   const manifest = StateManifestSchema.parse({
     schemaVersion: 2,
     language,
-    lastAppliedChapter: Math.max(
-      markdownState.durableStoryProgress,
-      currentState.chapter,
-      maxSummaryChapter(summariesState),
-      maxHookChapter(hooksState.hooks),
-    ),
+    lastAppliedChapter: markdownState.durableStoryProgress,
     projectionVersion: existingManifest?.projectionVersion ?? 1,
     migrationWarnings: uniqueStrings([
       ...(existingManifest?.migrationWarnings ?? []),
@@ -188,10 +178,10 @@ export function parsePendingHooksMarkdown(markdown: string): StoredHook[] {
       .filter((row) => normalizeHookId(row[0]).length > 0)
       .map((row) => ({
         hookId: normalizeHookId(row[0]),
-        startChapter: parseInteger(row[1]),
+        startChapter: parseStrictInteger(row[1]),
         type: row[2] ?? "",
         status: row[3] ?? "open",
-        lastAdvancedChapter: parseInteger(row[4]),
+        lastAdvancedChapter: parseStrictInteger(row[4]),
         expectedPayoff: row[5] ?? "",
         notes: row[6] ?? "",
       }));
@@ -335,10 +325,10 @@ function parsePendingHooksStateMarkdown(markdown: string, warnings: string[]) {
           const hookId = normalizeHookId(row[0]);
           return {
             hookId,
-            startChapter: parseIntegerWithWarning(row[1], warnings, `${hookId}:startChapter`),
+            startChapter: parseStrictIntegerWithWarning(row[1], warnings, `${hookId}:startChapter`),
             type: row[2] ?? "unspecified",
             status: normalizeHookStatus(row[3], warnings, hookId),
-            lastAdvancedChapter: parseIntegerWithWarning(row[4], warnings, `${hookId}:lastAdvancedChapter`),
+            lastAdvancedChapter: parseStrictIntegerWithWarning(row[4], warnings, `${hookId}:lastAdvancedChapter`),
             expectedPayoff: row[5] ?? "",
             notes: row[6] ?? "",
           };
@@ -439,14 +429,9 @@ export async function resolveDurableStoryProgress(params: {
   readonly bookDir: string;
   readonly fallbackChapter?: number;
 }): Promise<number> {
-  const storyDir = join(params.bookDir, "story");
-  const state = await loadMarkdownBootstrapState({
-    bookDir: params.bookDir,
-    storyDir,
-    fallbackChapter: params.fallbackChapter ?? 0,
-    warnings: [],
-  });
-  return state.durableStoryProgress;
+  const explicitFallback = normalizeExplicitChapter(params.fallbackChapter);
+  const durableArtifactProgress = await resolveContiguousArtifactChapterProgress(params.bookDir);
+  return Math.max(durableArtifactProgress, explicitFallback);
 }
 
 async function loadJsonIfValid<T>(
@@ -478,16 +463,12 @@ async function loadMarkdownBootstrapState(params: {
     storyDir: params.storyDir,
     warnings: params.warnings,
   });
-  const durableArtifactProgress = await maxDurableArtifactChapter(params.bookDir);
-  const inferredFallbackChapter = Math.max(
-    params.fallbackChapter,
-    durableArtifactProgress,
-    maxSummaryChapter(summariesState),
-    maxHookChapter(hooksState.hooks),
-  );
+  const explicitFallback = normalizeExplicitChapter(params.fallbackChapter);
+  const durableArtifactProgress = await resolveContiguousArtifactChapterProgress(params.bookDir);
+  const authoritativeProgress = Math.max(explicitFallback, durableArtifactProgress);
   const currentState = await loadMarkdownCurrentState({
     storyDir: params.storyDir,
-    fallbackChapter: inferredFallbackChapter,
+    fallbackChapter: authoritativeProgress,
     warnings: params.warnings,
   });
 
@@ -495,10 +476,9 @@ async function loadMarkdownBootstrapState(params: {
     summariesState,
     hooksState,
     currentState,
-    durableStoryProgress: Math.max(
-      inferredFallbackChapter,
-      currentState.chapter,
-    ),
+    durableStoryProgress: authoritativeProgress > 0
+      ? authoritativeProgress
+      : currentState.chapter,
   };
 }
 
@@ -527,28 +507,31 @@ async function loadMarkdownCurrentState(params: {
   return parseCurrentStateStateMarkdown(markdown, params.fallbackChapter, params.warnings);
 }
 
-async function maxDurableArtifactChapter(bookDir: string): Promise<number> {
+async function resolveContiguousArtifactChapterProgress(bookDir: string): Promise<number> {
+  const chapterNumbers = await loadDurableArtifactChapterNumbers(bookDir);
+  return resolveContiguousChapterPrefix(chapterNumbers);
+}
+
+async function loadDurableArtifactChapterNumbers(bookDir: string): Promise<number[]> {
   const chaptersDir = join(bookDir, "chapters");
   const indexPath = join(chaptersDir, "index.json");
-  const [indexChapter, fileChapter] = await Promise.all([
+  const [indexChapters, fileChapters] = await Promise.all([
     readFile(indexPath, "utf-8")
       .then((raw) => {
         const parsed = JSON.parse(raw) as Array<{ number?: unknown }>;
-        return parsed.reduce((max, entry) => (
-          typeof entry?.number === "number"
-            ? Math.max(max, entry.number)
-            : max
-        ), 0);
+        return parsed
+          .map((entry) => entry?.number)
+          .filter((entry): entry is number => typeof entry === "number" && Number.isInteger(entry) && entry > 0);
       })
-      .catch(() => 0),
+      .catch(() => [] as number[]),
     readdir(chaptersDir)
-      .then((entries) => entries.reduce((max, entry) => {
+      .then((entries) => entries.flatMap((entry) => {
         const match = entry.match(/^(\d+)_/);
-        return match ? Math.max(max, parseInt(match[1]!, 10)) : max;
-      }, 0))
-      .catch(() => 0),
+        return match ? [parseInt(match[1]!, 10)] : [];
+      }))
+      .catch(() => [] as number[]),
   ]);
-  return Math.max(indexChapter, fileChapter);
+  return [...indexChapters, ...fileChapters];
 }
 
 async function pathExists(path: string): Promise<boolean> {
@@ -568,17 +551,15 @@ function deduplicateSummaryRows<T extends { chapter: number }>(rows: ReadonlyArr
   return [...byChapter.values()].sort((a, b) => a.chapter - b.chapter);
 }
 
-function maxSummaryChapter(state: ChapterSummariesState): number {
-  return state.rows.reduce((max, row) => Math.max(max, row.chapter), 0);
-}
-
-function maxHookChapter(hooks: ReadonlyArray<StoredHook>): number {
-  // Only count lastAdvancedChapter — startChapter is a future plan marker,
-  // not an indication that state has been applied up to that chapter.
-  return hooks.reduce(
-    (max, hook) => Math.max(max, hook.lastAdvancedChapter),
-    0,
+export function resolveContiguousChapterPrefix(chapterNumbers: ReadonlyArray<number>): number {
+  const chapters = new Set(
+    chapterNumbers.filter((chapter): chapter is number => Number.isInteger(chapter) && chapter > 0),
   );
+  let contiguousChapter = 0;
+  while (chapters.has(contiguousChapter + 1)) {
+    contiguousChapter += 1;
+  }
+  return contiguousChapter;
 }
 
 export function normalizeHookId(value: string | undefined): string {
@@ -610,14 +591,14 @@ function normalizeHookStatus(value: string | undefined, warnings: string[], hook
   return "open";
 }
 
-function parseIntegerWithWarning(value: string | undefined, warnings: string[], fieldLabel: string): number {
+function parseStrictIntegerWithWarning(value: string | undefined, warnings: string[], fieldLabel: string): number {
   if (!value) return 0;
-  const match = value.match(/\d+/);
-  if (!match) {
-    appendWarning(warnings, `${fieldLabel} normalized from "${value}" to 0`);
-    return 0;
+  const parsed = parseStrictIntegerCell(value);
+  if (parsed !== null) {
+    return parsed;
   }
-  return parseInt(match[0], 10);
+  appendWarning(warnings, `${fieldLabel} normalized from "${value}" to 0`);
+  return 0;
 }
 
 function parseIntegerWithFallback(
@@ -669,6 +650,26 @@ function parseInteger(value: string | undefined): number {
   if (!value) return 0;
   const match = value.match(/\d+/);
   return match ? parseInt(match[0], 10) : 0;
+}
+
+function parseStrictInteger(value: string | undefined): number {
+  return parseStrictIntegerCell(value) ?? 0;
+}
+
+function parseStrictIntegerCell(value: string | undefined): number | null {
+  if (!value) return null;
+  const normalized = normalizeHookId(value);
+  if (!/^\d+$/.test(normalized)) {
+    return null;
+  }
+  return parseInt(normalized, 10);
+}
+
+function normalizeExplicitChapter(value: number | undefined): number {
+  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
+    return 0;
+  }
+  return value;
 }
 
 function appendWarning(warnings: string[], warning: string): void {

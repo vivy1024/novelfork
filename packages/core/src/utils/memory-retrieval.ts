@@ -9,7 +9,10 @@ import {
   type HookStatus,
 } from "../models/runtime-state.js";
 import { MemoryDB, type Fact, type StoredHook, type StoredSummary } from "../state/memory-db.js";
-import { bootstrapStructuredStateFromMarkdown, normalizeHookId } from "../state/state-bootstrap.js";
+import {
+  bootstrapStructuredStateFromMarkdown,
+  parsePendingHooksMarkdown as parseStatePendingHooksMarkdown,
+} from "../state/state-bootstrap.js";
 import { collectStaleHookDebt } from "./hook-governance.js";
 
 export interface MemorySelection {
@@ -381,38 +384,7 @@ export function parseChapterSummariesMarkdown(markdown: string): StoredSummary[]
 }
 
 export function parsePendingHooksMarkdown(markdown: string): StoredHook[] {
-  const tableRows = parseMarkdownTableRows(markdown)
-    .filter((row) => (row[0] ?? "").toLowerCase() !== "hook_id");
-
-  if (tableRows.length > 0) {
-    return tableRows
-      .filter((row) => normalizeHookId(row[0]).length > 0)
-      .map((row) => ({
-        hookId: normalizeHookId(row[0]),
-        startChapter: parseInteger(row[1]),
-        type: row[2] ?? "",
-        status: row[3] ?? "open",
-        lastAdvancedChapter: parseInteger(row[4]),
-        expectedPayoff: row[5] ?? "",
-        notes: row[6] ?? "",
-      }));
-  }
-
-  return markdown
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.startsWith("-"))
-    .map((line) => line.replace(/^-\s*/, ""))
-    .filter(Boolean)
-    .map((line, index) => ({
-      hookId: `hook-${index + 1}`,
-      startChapter: 0,
-      type: "unspecified",
-      status: "open",
-      lastAdvancedChapter: 0,
-      expectedPayoff: "",
-      notes: line,
-    }));
+  return parseStatePendingHooksMarkdown(markdown);
 }
 
 export function parseCurrentStateFacts(
