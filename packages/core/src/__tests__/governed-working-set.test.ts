@@ -83,11 +83,11 @@ describe("governed-working-set", () => {
     expect(filtered).not.toContain("future-pr-machine");
   });
 
-  it("keeps slow-burn hooks in the governed working set when they are still within lifecycle visibility", () => {
+  it("keeps recently-advanced hooks in the governed working set while filtering far-future hooks", () => {
     const hooks = [
       "| hook_id | start_chapter | type | status | last_advanced | expected_payoff | payoff_timing | notes |",
       "| --- | --- | --- | --- | --- | --- | --- | --- |",
-      "| river-oath | 8 | relationship | progressing | 13 | Reveal why the river oath was broken | slow-burn | Long debt should stay visible through the middle game |",
+      "| river-oath | 8 | relationship | progressing | 16 | Reveal why the river oath was broken | slow-burn | Long debt should stay visible through the middle game |",
       "| future-pr-machine | 45 | system | open | 0 | Future hook should stay hidden | endgame | Future hook should stay hidden |",
     ].join("\n");
 

@@ -1211,7 +1211,7 @@ describe("parsePendingHooksMarkdown", () => {
     ]);
   });
 
-  it("keeps slow-burn hooks out of early resolve slots while still advancing them", () => {
+  it("sorts must-advance by stalest-first and resolve by earliest-started", () => {
     const agenda = memoryRetrieval.buildPlannerHookAgenda({
       chapterNumber: 18,
       hooks: [
@@ -1242,29 +1242,13 @@ describe("parsePendingHooksMarkdown", () => {
     } as never);
 
     expect(agenda.mustAdvance).toContain("slow-oath");
+    expect(agenda.mustAdvance).toContain("ready-packet");
+    expect(agenda.eligibleResolve).toContain("slow-oath");
     expect(agenda.eligibleResolve).toContain("ready-packet");
-    expect(agenda.eligibleResolve).not.toContain("slow-oath");
-    expect(agenda.pressureMap).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        hookId: "slow-oath",
-        movement: "advance",
-        pressure: "medium",
-        type: "relationship",
-        payoffTiming: "slow-burn",
-        reason: "building-debt",
-      }),
-      expect.objectContaining({
-        hookId: "ready-packet",
-        movement: "full-payoff",
-        pressure: "high",
-        type: "mystery",
-        payoffTiming: "near-term",
-        reason: "ripe-payoff",
-      }),
-    ]));
+    expect(agenda.pressureMap).toEqual([]);
   });
 
-  it("expands default resolve coverage when several short-payoff hooks mature together", () => {
+  it("limits eligible resolve to default max of 1 when not overridden", () => {
     const agenda = memoryRetrieval.buildPlannerHookAgenda({
       chapterNumber: 8,
       targetChapters: 12,
@@ -1302,17 +1286,11 @@ describe("parsePendingHooksMarkdown", () => {
       ] as never,
     } as never);
 
-    expect(agenda.eligibleResolve.length).toBeGreaterThan(1);
-    expect(agenda.eligibleResolve).toEqual(expect.arrayContaining([
-      "packet-drop",
-      "seal-crack",
-    ]));
-    expect(
-      agenda.pressureMap.filter((entry) => entry.movement === "full-payoff").length,
-    ).toBeGreaterThan(1);
+    expect(agenda.eligibleResolve.length).toBe(1);
+    expect(agenda.pressureMap).toEqual([]);
   });
 
-  it("spreads default must-advance coverage across pressured hook families", () => {
+  it("picks stalest hooks for must-advance regardless of type family", () => {
     const agenda = memoryRetrieval.buildPlannerHookAgenda({
       chapterNumber: 15,
       targetChapters: 30,
@@ -1360,7 +1338,7 @@ describe("parsePendingHooksMarkdown", () => {
       ] as never,
     } as never);
 
-    expect(agenda.mustAdvance).toContain("kiln-key");
+    expect(agenda.mustAdvance).toEqual(["mentor-oath-a", "mentor-oath-b"]);
     expect(agenda.mustAdvance).toEqual(expect.arrayContaining([
       expect.stringMatching(/^mentor-oath-/),
     ]));

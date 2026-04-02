@@ -1207,27 +1207,10 @@ describe("PlannerAgent", () => {
     expect(result.intent.hookAgenda.eligibleResolve).toEqual(["ready-payoff"]);
     expect(result.intent.hookAgenda.staleDebt).toEqual(["stale-debt"]);
     expect(result.intent.hookAgenda.avoidNewHookFamilies).toContain("relationship");
-    expect(result.intent.hookAgenda.pressureMap).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        hookId: "ready-payoff",
-        movement: "full-payoff",
-        pressure: "critical",
-        type: "mystery",
-        reason: "overdue-payoff",
-      }),
-      expect.objectContaining({
-        hookId: "stale-debt",
-        movement: "advance",
-        pressure: "critical",
-        type: "relationship",
-        reason: "stale-promise",
-      }),
-    ]));
+    expect(result.intent.hookAgenda.pressureMap).toEqual([]);
 
     const intentMarkdown = await readFile(result.runtimePath, "utf-8");
     expect(intentMarkdown).toContain("## Hook Agenda");
-    expect(intentMarkdown).toContain("### Pressure Map");
-    expect(intentMarkdown).toContain("recent-route");
     expect(intentMarkdown).toContain("ready-payoff");
     expect(intentMarkdown).toContain("stale-debt");
   });
@@ -1344,19 +1327,6 @@ describe("PlannerAgent", () => {
       "relationship",
       "mystery",
     ]));
-    expect(result.intent.hookAgenda.pressureMap).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        hookId: "stale-omega",
-        movement: "advance",
-        pressure: "critical",
-        reason: "stale-promise",
-      }),
-      expect.objectContaining({
-        hookId: "stale-sable",
-        movement: "advance",
-        pressure: "critical",
-        reason: "stale-promise",
-      }),
-    ]));
+    expect(result.intent.hookAgenda.pressureMap).toEqual([]);
   });
 });

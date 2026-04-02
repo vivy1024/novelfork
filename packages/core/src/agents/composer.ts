@@ -16,10 +16,6 @@ import {
   parseChapterSummariesMarkdown,
   retrieveMemorySelection,
 } from "../utils/memory-retrieval.js";
-import {
-  localizeHookPayoffTiming,
-  resolveHookPayoffTiming,
-} from "../utils/hook-lifecycle.js";
 
 export interface ComposeChapterInput {
   readonly book: BookConfig;
@@ -289,36 +285,34 @@ export class ComposerAgent extends BaseAgent {
 
       const seedSummary = this.findHookSummary(summaries, hook.hookId, hook.startChapter, "seed");
       const latestSummary = this.findHookSummary(summaries, hook.hookId, hook.lastAdvancedChapter, "latest");
-      const cadence = localizeHookPayoffTiming(resolveHookPayoffTiming(hook), language);
-      const guidance = this.findHookPressure(plan, hook.hookId);
       const role = this.describeHookAgendaRole(plan, hook.hookId, language);
-      const movement = guidance
-        ? this.describeHookMovement(guidance.movement, language)
-        : role;
-      const pressure = guidance
-        ? this.describeHookPressure(guidance.pressure, language)
-        : (language === "en" ? "medium" : "中");
       const promise = hook.expectedPayoff || (language === "en" ? "(unspecified)" : "（未写明）");
       const seedBeat = seedSummary
         ? this.renderHookDebtBeat(seedSummary)
         : (hook.notes || promise);
-      const latestBeat = latestSummary
+      const latestBeat = latestSummary && latestSummary !== seedSummary
         ? this.renderHookDebtBeat(latestSummary)
-        : (hook.notes || promise);
-      const reason = guidance
-        ? this.describeHookReason(guidance.reason, language)
-        : (language === "en"
-            ? "Keep the original promise legible and materially change the on-page situation."
-            : "保持原始承诺清晰可见，并让页上局势发生实质变化。");
+        : undefined;
+      const age = Math.max(0, plan.intent.chapter - Math.max(1, hook.startChapter));
 
       return [{
         source: `runtime/hook_debt#${hook.hookId}`,
         reason: language === "en"
-          ? "Narrative debt brief for an explicit hook agenda target."
-          : "显式 hook agenda 目标的叙事债务简报。",
+          ? "Narrative debt brief with original seed text for this hook agenda target."
+          : "含原始种子文本的叙事债务简报。",
         excerpt: language === "en"
-          ? `${hook.hookId} | narrative debt: ${role} (${cadence}) | current pressure: ${pressure} (${reason}) | preferred move: ${movement} | reader promise: ${promise} | original seed: ${seedBeat} | latest turn: ${latestBeat}${guidance?.blockSiblingHooks ? " | caution: avoid opening sibling hooks" : ""}`
-          : `${hook.hookId} | 叙事债务: ${role}（${cadence}） | 当前压力: ${pressure}（${reason}） | 建议动作: ${movement} | 读者承诺: ${promise} | 最初种子: ${seedBeat} | 最近推进: ${latestBeat}${guidance?.blockSiblingHooks ? " | 注意: 暂缓同类开坑" : ""}`,
+          ? [
+              `${hook.hookId} (${hook.type}, ${role}, open ${age} chapters)`,
+              `reader promise: ${promise}`,
+              `original seed (ch${hook.startChapter}): ${seedBeat}`,
+              latestBeat ? `latest turn (ch${hook.lastAdvancedChapter}): ${latestBeat}` : undefined,
+            ].filter(Boolean).join(" | ")
+          : [
+              `${hook.hookId}（${hook.type}，${role}，已开${age}章）`,
+              `读者承诺：${promise}`,
+              `种于第${hook.startChapter}章：${seedBeat}`,
+              latestBeat ? `推进于第${hook.lastAdvancedChapter}章：${latestBeat}` : undefined,
+            ].filter(Boolean).join(" | "),
       }];
     });
   }
@@ -380,71 +374,6 @@ export class ComposerAgent extends BaseAgent {
       return language === "en" ? "high-pressure debt" : "高压旧债";
     }
     return language === "en" ? "mainline debt" : "主要旧债";
-  }
-
-  private findHookPressure(
-    plan: PlanChapterOutput,
-    hookId: string,
-  ): PlanChapterOutput["intent"]["hookAgenda"]["pressureMap"][number] | undefined {
-    return plan.intent.hookAgenda.pressureMap.find((entry) => entry.hookId === hookId);
-  }
-
-  private describeHookMovement(
-    movement: PlanChapterOutput["intent"]["hookAgenda"]["pressureMap"][number]["movement"],
-    language: "zh" | "en",
-  ): string {
-    if (language === "en") {
-      return movement.replace(/-/g, " ");
-    }
-
-    return {
-      "quiet-hold": "轻压保温",
-      refresh: "重新点亮",
-      advance: "推进",
-      "partial-payoff": "局部兑现",
-      "full-payoff": "完整兑现",
-    }[movement];
-  }
-
-  private describeHookPressure(
-    pressure: PlanChapterOutput["intent"]["hookAgenda"]["pressureMap"][number]["pressure"],
-    language: "zh" | "en",
-  ): string {
-    if (language === "en") {
-      return pressure;
-    }
-
-    return {
-      low: "低",
-      medium: "中",
-      high: "高",
-      critical: "极高",
-    }[pressure];
-  }
-
-  private describeHookReason(
-    reason: PlanChapterOutput["intent"]["hookAgenda"]["pressureMap"][number]["reason"],
-    language: "zh" | "en",
-  ): string {
-    if (language === "en") {
-      return {
-        "fresh-promise": "fresh promise",
-        "building-debt": "building debt",
-        "stale-promise": "stale promise",
-        "ripe-payoff": "ripe payoff",
-        "overdue-payoff": "overdue payoff",
-        "long-arc-hold": "long arc hold",
-      }[reason];
-    }
-
-    return {
-      "fresh-promise": "新近承诺，先保持清晰存在",
-      "building-debt": "债务正在累积，需要继续加码",
-      "stale-promise": "旧承诺已停滞，需要重新推动或缩圈",
-      "ripe-payoff": "已经进入可兑现窗口",
-      "overdue-payoff": "已经拖过理想兑现窗口",
-      "long-arc-hold": "长线承诺仍应保温，不宜提前兑付",
-    }[reason];
   }
 
   private findHookSummary(

@@ -648,28 +648,7 @@ export class PlannerAgent extends BaseAgent {
       intent.moodDirective ? `- mood: ${intent.moodDirective}` : undefined,
       intent.titleDirective ? `- title: ${intent.titleDirective}` : undefined,
     ].filter(Boolean).join("\n") || "- none";
-    const pressureMap = intent.hookAgenda.pressureMap.length > 0
-      ? [
-          "| hook_id | type | payoff_timing | phase | pressure | movement | reason | sibling_guard |",
-          "| --- | --- | --- | --- | --- | --- | --- | --- |",
-          ...intent.hookAgenda.pressureMap
-            .map((item) => [
-              item.hookId,
-              item.type,
-              item.payoffTiming ?? "unspecified",
-              item.phase,
-              item.pressure,
-              item.movement,
-              item.reason,
-              item.blockSiblingHooks ? "yes" : "no",
-            ].join(" | "))
-            .map((row) => `| ${row} |`),
-        ].join("\n")
-      : "- none";
     const hookAgenda = [
-      "### Pressure Map",
-      pressureMap,
-      "",
       "### Must Advance",
       intent.hookAgenda.mustAdvance.length > 0
         ? intent.hookAgenda.mustAdvance.map((item) => `- ${item}`).join("\n")

@@ -563,10 +563,8 @@ describe("ComposerAgent", () => {
     const hookDebtEntry = result.contextPackage.selectedContext.find((entry) => entry.source === "runtime/hook_debt#mentor-oath");
     expect(hookDebtEntry).toBeDefined();
     expect(hookDebtEntry?.excerpt).toContain("mentor-oath");
-    expect(hookDebtEntry?.excerpt).toContain("建议动作: 局部兑现");
-    expect(hookDebtEntry?.excerpt).toContain("当前压力: 高");
-    expect(hookDebtEntry?.excerpt).toContain("注意: 暂缓同类开坑");
-    expect(hookDebtEntry?.excerpt).not.toContain("抑制同类开坑: 是");
+    expect(hookDebtEntry?.excerpt).toContain("主要旧债");
+    expect(hookDebtEntry?.excerpt).toContain("读者承诺");
     expect(hookDebtEntry?.excerpt).toContain("River Camp");
     expect(hookDebtEntry?.excerpt).toContain("Trial Echo");
   });

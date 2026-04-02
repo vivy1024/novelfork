@@ -1,9 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   buildPlannerHookAgenda,
-  isHookWithinLifecycleWindow,
+  isHookWithinChapterWindow,
 } from "../utils/hook-agenda.js";
-import { describeHookLifecycle } from "../utils/hook-lifecycle.js";
 import type { StoredHook } from "../state/memory-db.js";
 
 function createHook(overrides: Partial<StoredHook> = {}): StoredHook {
@@ -20,7 +19,7 @@ function createHook(overrides: Partial<StoredHook> = {}): StoredHook {
 }
 
 describe("hook-agenda", () => {
-  it("keeps lifecycle-aware windowing and pressure agenda behavior after extraction", () => {
+  it("builds agenda with stalest-first sorting and chapter-window filtering", () => {
     const staleSlowBurn = createHook({
       hookId: "mentor-oath",
       startChapter: 4,
@@ -45,23 +44,8 @@ describe("hook-agenda", () => {
     });
 
     expect(agenda.mustAdvance).toContain("mentor-oath");
-    expect(agenda.pressureMap).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        hookId: "mentor-oath",
-      }),
-    ]));
 
-    const lifecycle = describeHookLifecycle({
-      payoffTiming: staleSlowBurn.payoffTiming,
-      expectedPayoff: staleSlowBurn.expectedPayoff,
-      notes: staleSlowBurn.notes,
-      startChapter: staleSlowBurn.startChapter,
-      lastAdvancedChapter: staleSlowBurn.lastAdvancedChapter,
-      status: staleSlowBurn.status,
-      chapterNumber: 12,
-      targetChapters: 24,
-    });
-
-    expect(isHookWithinLifecycleWindow(staleSlowBurn, 12, lifecycle)).toBe(true);
+    expect(isHookWithinChapterWindow(staleSlowBurn, 12, 5)).toBe(true);
+    expect(isHookWithinChapterWindow(readyMystery, 12, 5)).toBe(true);
   });
 });

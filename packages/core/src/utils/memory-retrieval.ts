@@ -7,16 +7,11 @@ import {
 } from "../models/runtime-state.js";
 import { MemoryDB, type Fact, type StoredHook, type StoredSummary } from "../state/memory-db.js";
 import { bootstrapStructuredStateFromMarkdown } from "../state/state-bootstrap.js";
-import { describeHookLifecycle } from "./hook-lifecycle.js";
 import {
   buildPlannerHookAgenda,
   filterActiveHooks,
   isFuturePlannedHook,
   isHookWithinChapterWindow,
-  isHookWithinLifecycleWindow,
-  resolveRelevantHookPrimaryLimit,
-  resolveRelevantHookStaleLimit,
-  selectAgendaHooksWithTypeSpread,
 } from "./hook-agenda.js";
 import {
   parseChapterSummariesMarkdown,
@@ -29,7 +24,6 @@ export {
   buildPlannerHookAgenda,
   isFuturePlannedHook,
   isHookWithinChapterWindow,
-  isHookWithinLifecycleWindow,
 } from "./hook-agenda.js";
 export {
   parseChapterSummariesMarkdown,
@@ -342,49 +336,34 @@ function selectRelevantHooks(
   const ranked = hooks
     .map((hook) => ({
       hook,
-      lifecycle: describeHookLifecycle({
-        payoffTiming: hook.payoffTiming,
-        expectedPayoff: hook.expectedPayoff,
-        notes: hook.notes,
-        startChapter: Math.max(0, hook.startChapter),
-        lastAdvancedChapter: Math.max(0, hook.lastAdvancedChapter),
-        status: hook.status,
-        chapterNumber,
-      }),
       score: scoreHook(hook, queryTerms, chapterNumber),
       matched: matchesAny(
         [hook.hookId, hook.type, hook.expectedPayoff, hook.payoffTiming ?? "", hook.notes].join(" "),
         queryTerms,
       ),
     }))
-    .filter((entry) => entry.matched || isUnresolvedHook(entry.hook.status));
+    .filter((entry: { hook: StoredHook; score: number; matched: boolean }) =>
+      entry.matched || isUnresolvedHook(entry.hook.status),
+    );
 
-  const primary = selectAgendaHooksWithTypeSpread({
-    entries: ranked
-      .filter((entry) => (
-        entry.matched
-        || isHookWithinLifecycleWindow(entry.hook, chapterNumber, entry.lifecycle)
-      ))
-      .sort((left, right) => right.score - left.score || right.hook.lastAdvancedChapter - left.hook.lastAdvancedChapter),
-    limit: resolveRelevantHookPrimaryLimit(ranked),
-    forceInclude: (entry) => entry.matched && entry.lifecycle.overdue,
-  });
+  const primary = ranked
+    .filter((entry: { hook: StoredHook; score: number; matched: boolean }) =>
+      entry.matched || isHookWithinChapterWindow(entry.hook, chapterNumber, 5),
+    )
+    .sort((left, right) => right.score - left.score || right.hook.lastAdvancedChapter - left.hook.lastAdvancedChapter)
+    .slice(0, 6);
 
-  const selectedIds = new Set(primary.map((entry) => entry.hook.hookId));
-  const stale = selectAgendaHooksWithTypeSpread({
-    entries: ranked
-      .filter((entry) => (
-        !selectedIds.has(entry.hook.hookId)
-        && !isFuturePlannedHook(entry.hook, chapterNumber)
-        && (entry.lifecycle.stale || entry.lifecycle.overdue)
-        && isUnresolvedHook(entry.hook.status)
-      ))
-      .sort((left, right) => left.hook.lastAdvancedChapter - right.hook.lastAdvancedChapter || right.score - left.score),
-    limit: resolveRelevantHookStaleLimit(ranked, selectedIds),
-    forceInclude: (entry) => entry.lifecycle.overdue,
-  });
+  const selectedIds = new Set(primary.map((entry: { hook: StoredHook; score: number; matched: boolean }) => entry.hook.hookId));
+  const stale = ranked
+    .filter((entry: { hook: StoredHook; score: number; matched: boolean }) =>
+      !selectedIds.has(entry.hook.hookId)
+      && !isFuturePlannedHook(entry.hook, chapterNumber)
+      && isUnresolvedHook(entry.hook.status),
+    )
+    .sort((left, right) => left.hook.lastAdvancedChapter - right.hook.lastAdvancedChapter || right.score - left.score)
+    .slice(0, 2);
 
-  return [...primary, ...stale].map((entry) => entry.hook);
+  return [...primary, ...stale].map((entry: { hook: StoredHook; score: number; matched: boolean }) => entry.hook);
 }
 
 function selectRelevantFacts(
