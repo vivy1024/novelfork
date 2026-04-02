@@ -311,6 +311,7 @@ export class WriterAgent extends BaseAgent {
       bookDir,
       settlement.runtimeStateDelta,
       resolvedLanguage,
+      chapterNumber,
     );
     const resolvedRuntimeStateDelta = runtimeStateArtifacts?.resolvedDelta ?? settlement.runtimeStateDelta;
     const priorHookIds = new Set(parsePendingHooksMarkdown(hooks).map((hook) => hook.hookId));
@@ -935,15 +936,69 @@ ${overrides}\n`;
     return `| ${row} |`;
   }
 
+  private normalizeRuntimeStateDeltaChapter(
+    delta: RuntimeStateDelta,
+    authoritativeChapterNumber: number,
+  ): RuntimeStateDelta {
+    const hookOps = delta.hookOps ?? {
+      upsert: [],
+      mention: [],
+      resolve: [],
+      defer: [],
+    };
+    let changed = delta.chapter !== authoritativeChapterNumber;
+    const normalizedUpserts = hookOps.upsert.map((hook) => {
+      const startChapter = Math.min(hook.startChapter, authoritativeChapterNumber);
+      const lastAdvancedChapter = Math.min(hook.lastAdvancedChapter, authoritativeChapterNumber);
+      if (startChapter !== hook.startChapter || lastAdvancedChapter !== hook.lastAdvancedChapter) {
+        changed = true;
+      }
+      if (startChapter === hook.startChapter && lastAdvancedChapter === hook.lastAdvancedChapter) {
+        return hook;
+      }
+      return {
+        ...hook,
+        startChapter,
+        lastAdvancedChapter,
+      };
+    });
+
+    if (delta.chapterSummary?.chapter !== undefined && delta.chapterSummary.chapter !== authoritativeChapterNumber) {
+      changed = true;
+    }
+    if (!changed) {
+      return delta;
+    }
+
+    return {
+      ...delta,
+      chapter: authoritativeChapterNumber,
+      hookOps: {
+        ...hookOps,
+        upsert: normalizedUpserts,
+      },
+      chapterSummary: delta.chapterSummary
+        ? {
+            ...delta.chapterSummary,
+            chapter: authoritativeChapterNumber,
+          }
+        : undefined,
+    };
+  }
+
   private async buildRuntimeStateArtifactsIfPresent(
     bookDir: string,
     delta: RuntimeStateDelta | undefined,
     language: "zh" | "en",
+    authoritativeChapterNumber?: number,
   ): Promise<RuntimeStateArtifacts | null> {
     if (!delta) return null;
+    const safeDelta = authoritativeChapterNumber === undefined
+      ? delta
+      : this.normalizeRuntimeStateDeltaChapter(delta, authoritativeChapterNumber);
     return buildRuntimeStateArtifacts({
       bookDir,
-      delta,
+      delta: safeDelta,
       language,
     });
   }
@@ -954,15 +1009,20 @@ ${overrides}\n`;
     language: "zh" | "en",
   ): Promise<RuntimeStateArtifacts | null> {
     if (!output.runtimeStateDelta) return null;
+    const safeDelta = this.normalizeRuntimeStateDeltaChapter(
+      output.runtimeStateDelta,
+      output.chapterNumber,
+    );
     if (
-      output.runtimeStateSnapshot
+      safeDelta === output.runtimeStateDelta
+      && output.runtimeStateSnapshot
       && output.updatedChapterSummaries
       && output.updatedState
       && output.updatedHooks
     ) {
       return {
         snapshot: output.runtimeStateSnapshot,
-        resolvedDelta: output.runtimeStateDelta,
+        resolvedDelta: safeDelta,
         currentStateMarkdown: output.updatedState,
         hooksMarkdown: output.updatedHooks,
         chapterSummariesMarkdown: output.updatedChapterSummaries,
@@ -971,7 +1031,7 @@ ${overrides}\n`;
 
     return buildRuntimeStateArtifacts({
       bookDir,
-      delta: output.runtimeStateDelta,
+      delta: safeDelta,
       language,
     });
   }

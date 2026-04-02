@@ -1962,7 +1962,7 @@ describe("PipelineRunner", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it("does not corrupt persisted runtime state when writer delta is invalid", async () => {
+  it("repairs chapter-number drift in writer delta before persisting runtime state", async () => {
     const { root, runner, state, bookId } = await createRunnerFixture({
       inputGovernanceMode: "legacy",
     });
@@ -1997,9 +1997,6 @@ describe("PipelineRunner", () => {
       }, null, 2), "utf-8"),
     ]);
 
-    const beforeState = await readFile(join(storyDir, "current_state.md"), "utf-8");
-    const beforeManifest = await readFile(join(storyDir, "state", "manifest.json"), "utf-8");
-
     vi.spyOn(WriterAgent.prototype, "writeChapter").mockResolvedValue(
       createWriterOutput({
         content: "Broken chapter body.",
@@ -2025,10 +2022,13 @@ describe("PipelineRunner", () => {
       }),
     );
 
-    await expect(runner.writeNextChapter(bookId)).rejects.toThrow();
+    const result = await runner.writeNextChapter(bookId);
 
-    await expect(readFile(join(storyDir, "current_state.md"), "utf-8")).resolves.toBe(beforeState);
-    await expect(readFile(join(storyDir, "state", "manifest.json"), "utf-8")).resolves.toBe(beforeManifest);
+    expect(result.status).toBe("ready-for-review");
+    await expect(readFile(join(storyDir, "current_state.md"), "utf-8"))
+      .resolves.toMatch(/\|\s*(Current Chapter|当前章节)\s*\|\s*1\s*\|/);
+    await expect(readFile(join(storyDir, "state", "manifest.json"), "utf-8"))
+      .resolves.toContain("\"lastAppliedChapter\": 1");
 
     await rm(root, { recursive: true, force: true });
   });
@@ -3705,6 +3705,125 @@ describe("PipelineRunner", () => {
     } finally {
       await rm(root, { recursive: true, force: true });
     }
+  });
+
+  it("excludes pure sequence-level fatigue from revision blocker counts", async () => {
+    const { root, runner, state, bookId } = await createRunnerFixture();
+    const bookDir = state.bookDir(bookId);
+    const storyDir = join(bookDir, "story");
+    const book = await state.loadBookConfig(bookId);
+
+    await writeFile(join(storyDir, "chapter_summaries.md"), [
+      "# 章节摘要",
+      "",
+      "| 章节 | 标题 | 出场人物 | 关键事件 | 状态变化 | 伏笔动态 | 情绪基调 | 章节类型 |",
+      "| --- | --- | --- | --- | --- | --- | --- | --- |",
+      "| 1 | 旧门 | 林越 | 进入旧门 | 压力升高 | none | 冷峻 | 调查 |",
+      "| 2 | 灰灯 | 林越 | 检查灰灯 | 压力升高 | none | 冷峻 | 调查 |",
+      "| 3 | 纸页 | 林越 | 对照纸页 | 压力升高 | none | 冷峻 | 调查 |",
+      "",
+    ].join("\n"), "utf-8");
+
+    const result = await (
+      runner as unknown as {
+        evaluateMergedAudit: (params: {
+          auditor: Pick<ContinuityAuditor, "auditChapter">;
+          book: BookConfig;
+          bookDir: string;
+          chapterContent: string;
+          chapterNumber: number;
+          language: "zh" | "en";
+        }) => Promise<{
+          auditResult: AuditResult;
+          aiTellCount: number;
+          blockingCount: number;
+          criticalCount: number;
+        }>;
+      }
+    ).evaluateMergedAudit({
+      auditor: {
+        auditChapter: vi.fn().mockResolvedValue(
+          createAuditResult({
+            passed: true,
+            issues: [],
+            summary: "clean",
+          }),
+        ),
+      },
+      book,
+      bookDir,
+      chapterContent: "林越把纸页摊平，先看角上的水痕，再看最末那道被抹掉的签名。",
+      chapterNumber: 3,
+      language: "zh",
+    });
+
+    expect(result.auditResult.issues.some((issue) => issue.category === "节奏单调")).toBe(true);
+    expect(result.blockingCount).toBe(0);
+    expect(result.criticalCount).toBe(0);
+
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it("keeps chapter-level blockers even when sequence-level fatigue shares the same category label", async () => {
+    const { root, runner, state, bookId } = await createRunnerFixture();
+    const bookDir = state.bookDir(bookId);
+    const storyDir = join(bookDir, "story");
+    const book = await state.loadBookConfig(bookId);
+
+    await writeFile(join(storyDir, "chapter_summaries.md"), [
+      "# 章节摘要",
+      "",
+      "| 章节 | 标题 | 出场人物 | 关键事件 | 状态变化 | 伏笔动态 | 情绪基调 | 章节类型 |",
+      "| --- | --- | --- | --- | --- | --- | --- | --- |",
+      "| 1 | 旧门 | 林越 | 进入旧门 | 压力升高 | none | 冷峻 | 调查 |",
+      "| 2 | 灰灯 | 林越 | 检查灰灯 | 压力升高 | none | 冷峻 | 调查 |",
+      "| 3 | 纸页 | 林越 | 对照纸页 | 压力升高 | none | 冷峻 | 调查 |",
+      "",
+    ].join("\n"), "utf-8");
+
+    const result = await (
+      runner as unknown as {
+        evaluateMergedAudit: (params: {
+          auditor: Pick<ContinuityAuditor, "auditChapter">;
+          book: BookConfig;
+          bookDir: string;
+          chapterContent: string;
+          chapterNumber: number;
+          language: "zh" | "en";
+        }) => Promise<{
+          auditResult: AuditResult;
+          aiTellCount: number;
+          blockingCount: number;
+          criticalCount: number;
+        }>;
+      }
+    ).evaluateMergedAudit({
+      auditor: {
+        auditChapter: vi.fn().mockResolvedValue(
+          createAuditResult({
+            passed: false,
+            issues: [{
+              severity: "warning",
+              category: "节奏单调",
+              description: "这一章的推进依然原地打转，没有完成当前场景应有的落点。",
+              suggestion: "让当前章把既定动作落下，不要继续停在同一观察节拍。",
+            }],
+            summary: "needs revision",
+          }),
+        ),
+      },
+      book,
+      bookDir,
+      chapterContent: "林越把纸页摊平，先看角上的水痕，再看最末那道被抹掉的签名。",
+      chapterNumber: 3,
+      language: "zh",
+    });
+
+    expect(result.auditResult.issues.filter((issue) => issue.category === "节奏单调")).toHaveLength(2);
+    expect(result.blockingCount).toBe(1);
+    expect(result.criticalCount).toBe(0);
+
+    await rm(root, { recursive: true, force: true });
   });
 
   it("uses chapter length telemetry target for manual revise when available", async () => {

@@ -124,6 +124,14 @@ export interface BookStatusInfo {
   readonly chapters: ReadonlyArray<ChapterMeta>;
 }
 
+interface MergedAuditEvaluation {
+  readonly auditResult: AuditResult;
+  readonly aiTellCount: number;
+  readonly blockingCount: number;
+  readonly criticalCount: number;
+  readonly revisionBlockingIssues: ReadonlyArray<AuditIssue>;
+}
+
 export interface ImportChaptersInput {
   readonly bookId: string;
   readonly chapters: ReadonlyArray<{ readonly title: string; readonly content: string }>;
@@ -2275,19 +2283,16 @@ ${matrix}`,
       aiTellCount: number;
       blockingCount: number;
       criticalCount: number;
+      revisionBlockingIssues: ReadonlyArray<AuditIssue>;
     },
     next: {
       auditResult: AuditResult;
       aiTellCount: number;
       blockingCount: number;
       criticalCount: number;
+      revisionBlockingIssues: ReadonlyArray<AuditIssue>;
     },
-  ): {
-    auditResult: AuditResult;
-    aiTellCount: number;
-    blockingCount: number;
-    criticalCount: number;
-  } {
+  ): MergedAuditEvaluation {
     const auditResult = this.restoreLostAuditIssues(previous.auditResult, next.auditResult);
     if (auditResult === next.auditResult) {
       return next;
@@ -2296,8 +2301,9 @@ ${matrix}`,
     return {
       ...next,
       auditResult,
-      blockingCount: auditResult.issues.filter((issue) => issue.severity === "warning" || issue.severity === "critical").length,
-      criticalCount: auditResult.issues.filter((issue) => issue.severity === "critical").length,
+      revisionBlockingIssues: previous.revisionBlockingIssues,
+      blockingCount: previous.blockingCount,
+      criticalCount: previous.criticalCount,
     };
   }
 
@@ -2319,12 +2325,7 @@ ${matrix}`,
         hooks?: string;
       };
     };
-  }): Promise<{
-    auditResult: AuditResult;
-    aiTellCount: number;
-    blockingCount: number;
-    criticalCount: number;
-  }> {
+  }): Promise<MergedAuditEvaluation> {
     const llmAudit = await params.auditor.auditChapter(
       params.bookDir,
       params.chapterContent,
@@ -2347,6 +2348,11 @@ ${matrix}`,
       ...sensitiveResult.issues,
       ...longSpanFatigue.issues,
     ];
+    const revisionBlockingIssues: ReadonlyArray<AuditIssue> = [
+      ...llmAudit.issues,
+      ...aiTells.issues,
+      ...sensitiveResult.issues,
+    ];
 
     return {
       auditResult: {
@@ -2356,8 +2362,9 @@ ${matrix}`,
         tokenUsage: llmAudit.tokenUsage,
       },
       aiTellCount: aiTells.issues.length,
-      blockingCount: issues.filter((issue) => issue.severity === "warning" || issue.severity === "critical").length,
-      criticalCount: issues.filter((issue) => issue.severity === "critical").length,
+      blockingCount: revisionBlockingIssues.filter((issue) => issue.severity === "warning" || issue.severity === "critical").length,
+      criticalCount: revisionBlockingIssues.filter((issue) => issue.severity === "critical").length,
+      revisionBlockingIssues,
     };
   }
 
