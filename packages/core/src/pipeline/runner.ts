@@ -244,7 +244,7 @@ export class PipelineRunner {
   }
 
   private async generateAndReviewFoundation(params: {
-    readonly generate: () => Promise<ArchitectOutput>;
+    readonly generate: (reviewFeedback?: string) => Promise<ArchitectOutput>;
     readonly reviewer: FoundationReviewerAgent;
     readonly mode: "original" | "fanfic" | "series";
     readonly sourceCanon?: string;
@@ -286,9 +286,7 @@ export class PipelineRunner {
         en: `Foundation rejected (${review.totalScore}/100), regenerating...`,
       });
 
-      // Feed review feedback back to architect via the next generation
-      // (the architect will see different random seed due to temperature)
-      foundation = await params.generate();
+      foundation = await params.generate(this.buildFoundationReviewFeedback(review, params.language));
     }
 
     // Final review
@@ -304,6 +302,42 @@ export class PipelineRunner {
     );
 
     return foundation;
+  }
+
+  private buildFoundationReviewFeedback(
+    review: {
+      readonly dimensions: ReadonlyArray<{
+        readonly name: string;
+        readonly score: number;
+        readonly feedback: string;
+      }>;
+      readonly overallFeedback: string;
+    },
+    language: "zh" | "en",
+  ): string {
+    const dimensionLines = review.dimensions
+      .map((dimension) => (
+        language === "en"
+          ? `- ${dimension.name} [${dimension.score}]: ${dimension.feedback}`
+          : `- ${dimension.name}（${dimension.score}分）：${dimension.feedback}`
+      ))
+      .join("\n");
+
+    return language === "en"
+      ? [
+          "## Overall Feedback",
+          review.overallFeedback,
+          "",
+          "## Dimension Notes",
+          dimensionLines || "- none",
+        ].join("\n")
+      : [
+          "## 总评",
+          review.overallFeedback,
+          "",
+          "## 分项问题",
+          dimensionLines || "- 无",
+        ].join("\n");
   }
 
   private agentCtx(bookId?: string): AgentContext {
@@ -413,7 +447,11 @@ export class PipelineRunner {
     const reviewer = new FoundationReviewerAgent(this.agentCtxFor("foundation-reviewer", book.id));
     const resolvedLanguage = (book.language ?? gp.language) === "en" ? "en" as const : "zh" as const;
     const foundation = await this.generateAndReviewFoundation({
-      generate: () => architect.generateFoundation(book, this.config.externalContext),
+      generate: (reviewFeedback) => architect.generateFoundation(
+        book,
+        this.config.externalContext,
+        reviewFeedback,
+      ),
       reviewer,
       mode: "original",
       language: resolvedLanguage,
@@ -500,7 +538,12 @@ export class PipelineRunner {
     const { profile: gp } = await this.loadGenreProfile(book.genre);
     const resolvedLanguage = (book.language ?? gp.language) === "en" ? "en" as const : "zh" as const;
     const foundation = await this.generateAndReviewFoundation({
-      generate: () => architect.generateFanficFoundation(book, fanficCanon, fanficMode),
+      generate: (reviewFeedback) => architect.generateFanficFoundation(
+        book,
+        fanficCanon,
+        fanficMode,
+        reviewFeedback,
+      ),
       reviewer,
       mode: "fanfic",
       sourceCanon: fanficCanon,

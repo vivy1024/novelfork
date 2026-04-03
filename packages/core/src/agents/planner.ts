@@ -97,7 +97,6 @@ export class PlannerAgent extends BaseAgent {
       outlineNode,
       matchedOutlineAnchor,
       chapterSummaries,
-      activeHookCount,
     });
 
     const intent = ChapterIntentSchema.parse({
@@ -118,6 +117,7 @@ export class PlannerAgent extends BaseAgent {
       input.book.language ?? "zh",
       renderHookSnapshot(memorySelection.hooks, input.book.language ?? "zh"),
       renderSummarySnapshot(memorySelection.summaries, input.book.language ?? "zh"),
+      activeHookCount,
     );
     await writeFile(runtimePath, intentMarkdown, "utf-8");
 
@@ -140,7 +140,6 @@ export class PlannerAgent extends BaseAgent {
     readonly outlineNode: string | undefined;
     readonly matchedOutlineAnchor: boolean;
     readonly chapterSummaries: string;
-    readonly activeHookCount?: number;
   }): Pick<ChapterIntent, "sceneDirective" | "arcDirective" | "moodDirective" | "titleDirective"> {
     const recentSummaries = parseChapterSummariesMarkdown(input.chapterSummaries)
       .filter((summary) => summary.chapter < input.chapterNumber)
@@ -389,9 +388,7 @@ export class PlannerAgent extends BaseAgent {
       : `Avoid another ${repeatedToken}-centric title. Pick a new image or action focus for this chapter title.`;
   }
 
-  private renderHookBudget(pendingHooks: string, language: "zh" | "en"): string {
-    const hookLines = pendingHooks.split("\n").filter((line) => line.startsWith("|") && /^\|\s*[A-Za-z\u4e00-\u9fff]/.test(line));
-    const activeCount = hookLines.length;
+  private renderHookBudget(activeCount: number, language: "zh" | "en"): string {
     const cap = 12;
     if (activeCount < 10) {
       return language === "en"
@@ -646,6 +643,7 @@ export class PlannerAgent extends BaseAgent {
     language: "zh" | "en",
     pendingHooks: string,
     chapterSummaries: string,
+    activeHookCount: number,
   ): string {
     const conflictLines = intent.conflicts.length > 0
       ? intent.conflicts.map((conflict) => `- ${conflict.type}: ${conflict.resolution}`).join("\n")
@@ -689,7 +687,7 @@ export class PlannerAgent extends BaseAgent {
         ? intent.hookAgenda.avoidNewHookFamilies.map((item) => `- ${item}`).join("\n")
         : "- none",
       "",
-      this.renderHookBudget(pendingHooks, language),
+      this.renderHookBudget(activeHookCount, language),
     ].join("\n");
 
     return [

@@ -348,6 +348,90 @@ describe("PipelineRunner", () => {
     }
   });
 
+  it("feeds foundation review feedback into the regeneration call after a rejection", async () => {
+    const { root, runner, bookId } = await createRunnerFixture();
+    const reviewer = new FoundationReviewerAgent({
+      client: {
+        provider: "openai",
+        apiFormat: "chat",
+        stream: false,
+        defaults: {
+          temperature: 0.7,
+          maxTokens: 4096,
+          thinkingBudget: 0, maxTokensCap: null,
+        },
+      } as ConstructorParameters<typeof PipelineRunner>[0]["client"],
+      model: "test-model",
+      projectRoot: root,
+      bookId,
+    });
+    const foundation = {
+      storyBible: "# Story Bible",
+      volumeOutline: "# Volume Outline",
+      bookRules: "---\nversion: \"1.0\"\n---\n\n# Book Rules",
+      currentState: "# Current State",
+      pendingHooks: "# Pending Hooks",
+    };
+    const generate = vi.fn(async (_reviewFeedback?: string) => foundation);
+    const reviewMock = vi.mocked(FoundationReviewerAgent.prototype.review);
+
+    reviewMock.mockReset();
+    reviewMock
+      .mockResolvedValueOnce({
+        passed: false,
+        totalScore: 68,
+        dimensions: [
+          {
+            name: "核心冲突",
+            score: 58,
+            feedback: "核心冲突不够集中，主线悬念没有站稳。",
+          },
+          {
+            name: "开篇节奏",
+            score: 76,
+            feedback: "前五章起势偏慢，爆点不够前置。",
+          },
+        ],
+        overallFeedback: "请把冲突收紧，并在更早的位置建立爆点。",
+      })
+      .mockResolvedValueOnce({
+        passed: true,
+        totalScore: 88,
+        dimensions: [],
+        overallFeedback: "通过",
+      });
+
+    try {
+      const result = await (runner as unknown as {
+        generateAndReviewFoundation: (params: {
+          readonly generate: (reviewFeedback?: string) => Promise<typeof foundation>;
+          readonly reviewer: FoundationReviewerAgent;
+          readonly mode: "original";
+          readonly language: "zh";
+          readonly stageLanguage: "zh";
+          readonly maxRetries: number;
+        }) => Promise<typeof foundation>;
+      }).generateAndReviewFoundation({
+        generate,
+        reviewer,
+        mode: "original",
+        language: "zh",
+        stageLanguage: "zh",
+        maxRetries: 2,
+      });
+
+      expect(result).toEqual(foundation);
+      expect(generate).toHaveBeenCalledTimes(2);
+      expect(generate.mock.calls[0]?.[0]).toBeUndefined();
+      expect(generate.mock.calls[1]?.[0]).toContain("请把冲突收紧，并在更早的位置建立爆点。");
+      expect(generate.mock.calls[1]?.[0]).toContain("核心冲突");
+      expect(generate.mock.calls[1]?.[0]).toContain("核心冲突不够集中");
+      expect(generate.mock.calls[1]?.[0]).toContain("开篇节奏");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("bootstraps missing control documents for legacy books before writing", async () => {
     const { root, runner, bookId } = await createRunnerFixture();
 

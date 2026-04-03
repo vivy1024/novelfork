@@ -1329,4 +1329,80 @@ describe("PlannerAgent", () => {
     ]));
     expect(result.intent.hookAgenda.pressureMap).toEqual([]);
   });
+
+  it("renders hook budget from total active hooks instead of the selected hook snapshot", async () => {
+    const stateDir = join(storyDir, "state");
+    await mkdir(stateDir, { recursive: true });
+
+    const hooks = Array.from({ length: 12 }, (_, index) => ({
+      hookId: `hook-${index + 1}`,
+      startChapter: index + 1,
+      type: index < 6 ? "route" : "mystery",
+      status: "open",
+      lastAdvancedChapter: index < 6 ? 25 - index : 12 - index,
+      expectedPayoff: index < 6 ? "Route debt payoff" : "Dormant mystery payoff",
+      notes: index < 6
+        ? `Route pressure thread ${index + 1} stays relevant.`
+        : `Dormant thread ${index + 1} should not be selected into the primary context.`,
+    }));
+
+    await Promise.all([
+      writeFile(
+        join(stateDir, "manifest.json"),
+        JSON.stringify({
+          schemaVersion: 2,
+          language: "en",
+          lastAppliedChapter: 25,
+          projectionVersion: 1,
+          migrationWarnings: [],
+        }, null, 2),
+        "utf-8",
+      ),
+      writeFile(
+        join(stateDir, "current_state.json"),
+        JSON.stringify({
+          chapter: 25,
+          facts: [],
+        }, null, 2),
+        "utf-8",
+      ),
+      writeFile(
+        join(stateDir, "chapter_summaries.json"),
+        JSON.stringify({
+          rows: [],
+        }, null, 2),
+        "utf-8",
+      ),
+      writeFile(
+        join(stateDir, "hooks.json"),
+        JSON.stringify({ hooks }, null, 2),
+        "utf-8",
+      ),
+    ]);
+
+    book = {
+      ...book,
+      genre: "other",
+      language: "en",
+      targetChapters: 40,
+    };
+
+    const planner = new PlannerAgent({
+      client: {} as ConstructorParameters<typeof PlannerAgent>[0]["client"],
+      model: "test-model",
+      projectRoot: root,
+      bookId: book.id,
+    });
+
+    const result = await planner.planChapter({
+      book,
+      bookDir,
+      chapterNumber: 26,
+      externalContext: "Keep the chapter on the route pressure.",
+    });
+
+    const intentMarkdown = await readFile(result.runtimePath, "utf-8");
+    expect(intentMarkdown).toContain("12 active hooks");
+    expect(intentMarkdown).not.toContain("8 active hooks");
+  });
 });

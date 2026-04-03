@@ -146,6 +146,137 @@ describe("ArchitectAgent", () => {
     expect(messages[0]?.content).not.toContain("## 叙事视角");
   });
 
+  it("embeds reviewer feedback into original foundation regeneration prompts", async () => {
+    const agent = new ArchitectAgent({
+      client: {
+        provider: "openai",
+        apiFormat: "chat",
+        stream: false,
+        defaults: {
+          temperature: 0.7,
+          maxTokens: 4096,
+          thinkingBudget: 0, maxTokensCap: null,
+          extra: {},
+        },
+      },
+      model: "test-model",
+      projectRoot: process.cwd(),
+    });
+
+    const book: BookConfig = {
+      id: "review-feedback-book",
+      title: "雾港回灯",
+      platform: "tomato",
+      genre: "urban",
+      status: "active",
+      targetChapters: 60,
+      chapterWordCount: 2200,
+      language: "zh",
+      createdAt: "2026-04-03T00:00:00.000Z",
+      updatedAt: "2026-04-03T00:00:00.000Z",
+    };
+
+    const chat = vi.spyOn(agent as unknown as { chat: (...args: unknown[]) => Promise<unknown> }, "chat")
+      .mockResolvedValue({
+        content: [
+          "=== SECTION: story_bible ===",
+          "# 故事圣经",
+          "",
+          "=== SECTION: volume_outline ===",
+          "# 卷纲",
+          "",
+          "=== SECTION: book_rules ===",
+          "---",
+          "version: \"1.0\"",
+          "---",
+          "",
+          "=== SECTION: current_state ===",
+          "# 当前状态",
+          "",
+          "=== SECTION: pending_hooks ===",
+          "# 待回收伏笔",
+        ].join("\n"),
+        usage: ZERO_USAGE,
+      });
+
+    await agent.generateFoundation(
+      book,
+      undefined,
+      "请把核心冲突收紧，并明确新空间不是旧案重演。",
+    );
+
+    const messages = chat.mock.calls[0]?.[0] as Array<{ role: string; content: string }>;
+    expect(messages[0]?.content).toContain("上一轮审核反馈");
+    expect(messages[0]?.content).toContain("请把核心冲突收紧");
+    expect(messages[0]?.content).toContain("明确新空间不是旧案重演");
+  });
+
+  it("embeds reviewer feedback into fanfic foundation regeneration prompts", async () => {
+    const agent = new ArchitectAgent({
+      client: {
+        provider: "openai",
+        apiFormat: "chat",
+        stream: false,
+        defaults: {
+          temperature: 0.7,
+          maxTokens: 4096,
+          thinkingBudget: 0, maxTokensCap: null,
+          extra: {},
+        },
+      },
+      model: "test-model",
+      projectRoot: process.cwd(),
+    });
+
+    const book: BookConfig = {
+      id: "fanfic-review-feedback-book",
+      title: "三体：回声舱",
+      platform: "tomato",
+      genre: "other",
+      status: "active",
+      targetChapters: 60,
+      chapterWordCount: 2200,
+      language: "zh",
+      createdAt: "2026-04-03T00:00:00.000Z",
+      updatedAt: "2026-04-03T00:00:00.000Z",
+    };
+
+    const chat = vi.spyOn(agent as unknown as { chat: (...args: unknown[]) => Promise<unknown> }, "chat")
+      .mockResolvedValue({
+        content: [
+          "=== SECTION: story_bible ===",
+          "# 故事圣经",
+          "",
+          "=== SECTION: volume_outline ===",
+          "# 卷纲",
+          "",
+          "=== SECTION: book_rules ===",
+          "---",
+          "version: \"1.0\"",
+          "---",
+          "",
+          "=== SECTION: current_state ===",
+          "# 当前状态",
+          "",
+          "=== SECTION: pending_hooks ===",
+          "# 待回收伏笔",
+        ].join("\n"),
+        usage: ZERO_USAGE,
+      });
+
+    await agent.generateFanficFoundation(
+      book,
+      "# 原作正典\n- 罗辑在面壁计划中留下了一处空档。",
+      "canon",
+      "请明确分岔点，并用原创冲突替代原作重走。",
+    );
+
+    const messages = chat.mock.calls[0]?.[0] as Array<{ role: string; content: string }>;
+    expect(messages[0]?.content).toContain("上一轮审核反馈");
+    expect(messages[0]?.content).toContain("请明确分岔点");
+    expect(messages[0]?.content).toContain("原创冲突替代原作重走");
+  });
+
   it("strips assistant-style trailing coda from the final pending hooks section", async () => {
     const agent = new ArchitectAgent({
       client: {

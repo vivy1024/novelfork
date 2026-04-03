@@ -19,7 +19,11 @@ export class ArchitectAgent extends BaseAgent {
     return "architect";
   }
 
-  async generateFoundation(book: BookConfig, externalContext?: string): Promise<ArchitectOutput> {
+  async generateFoundation(
+    book: BookConfig,
+    externalContext?: string,
+    reviewFeedback?: string,
+  ): Promise<ArchitectOutput> {
     const { profile: gp, body: genreBody } =
       await readGenreProfile(this.ctx.projectRoot, book.genre);
     const resolvedLanguage = book.language ?? gp.language;
@@ -27,6 +31,7 @@ export class ArchitectAgent extends BaseAgent {
     const contextBlock = externalContext
       ? `\n\n## 外部指令\n以下是来自外部系统的创作指令，请将其融入设定中：\n\n${externalContext}\n`
       : "";
+    const reviewFeedbackBlock = this.buildReviewFeedbackBlock(reviewFeedback, resolvedLanguage);
 
     const numericalBlock = gp.numericalSystem
       ? `- 有明确的数值/资源体系可追踪
@@ -231,7 +236,7 @@ ${eraBlock}
 4. 伏笔前后呼应，不留悬空线
 5. 配角有独立动机，不是工具人`;
 
-    const systemPrompt = `你是一个专业的网络小说架构师。你的任务是为一本新的${gp.name}小说生成完整的基础设定。${contextBlock}
+    const systemPrompt = `你是一个专业的网络小说架构师。你的任务是为一本新的${gp.name}小说生成完整的基础设定。${contextBlock}${reviewFeedbackBlock}
 
 要求：
 - 平台：${book.platform}
@@ -581,9 +586,11 @@ ${keyPrinciplesPrompt}`;
     book: BookConfig,
     fanficCanon: string,
     fanficMode: FanficMode,
+    reviewFeedback?: string,
   ): Promise<ArchitectOutput> {
     const { profile: gp, body: genreBody } =
       await readGenreProfile(this.ctx.projectRoot, book.genre);
+    const reviewFeedbackBlock = this.buildReviewFeedbackBlock(reviewFeedback, book.language ?? "zh");
 
     const MODE_INSTRUCTIONS: Record<FanficMode, string> = {
       canon: "剧情发生在原作空白期或未详述的角度。不可改变原作已确立的事实。",
@@ -603,6 +610,8 @@ ${MODE_INSTRUCTIONS[fanficMode]}
 2. **独立核心冲突**：volume_outline 的核心冲突必须是原创的，不是原作情节的翻版。原作角色可以出现，但他们面对的是新问题
 3. **5章内引爆**：volume_outline 的第1卷必须在前5章内建立核心悬念，不允许用3章做铺垫才到引爆点
 4. **场景新鲜度**：至少50%的关键场景发生在原作未出现的地点或情境中
+
+${reviewFeedbackBlock}
 
 ## 原作正典
 ${fanficCanon}
@@ -660,6 +669,26 @@ prohibitions:
     ], { maxTokens: 16384, temperature: 0.7 });
 
     return this.parseSections(response.content);
+  }
+
+  private buildReviewFeedbackBlock(
+    reviewFeedback: string | undefined,
+    language: "zh" | "en",
+  ): string {
+    const trimmed = reviewFeedback?.trim();
+    if (!trimmed) return "";
+
+    if (language === "en") {
+      return `\n\n## Previous Review Feedback
+The previous foundation draft was rejected. You must explicitly fix the following issues in this regeneration instead of paraphrasing the same design:
+
+${trimmed}\n`;
+    }
+
+    return `\n\n## 上一轮审核反馈
+上一轮基础设定未通过审核。你必须在这次重生中明确修复以下问题，不能只换措辞重写同一套方案：
+
+${trimmed}\n`;
   }
 
   private parseSections(content: string): ArchitectOutput {
