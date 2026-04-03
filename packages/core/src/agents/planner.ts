@@ -81,6 +81,9 @@ export class PlannerAgent extends BaseAgent {
       outlineNode: planningAnchor,
       mustKeep,
     });
+    const activeHookCount = memorySelection.activeHooks.filter(
+      (hook) => hook.status !== "resolved" && hook.status !== "deferred",
+    ).length;
     const hookAgenda = buildPlannerHookAgenda({
       hooks: memorySelection.activeHooks,
       chapterNumber: input.chapterNumber,
@@ -94,6 +97,7 @@ export class PlannerAgent extends BaseAgent {
       outlineNode,
       matchedOutlineAnchor,
       chapterSummaries,
+      activeHookCount,
     });
 
     const intent = ChapterIntentSchema.parse({
@@ -136,6 +140,7 @@ export class PlannerAgent extends BaseAgent {
     readonly outlineNode: string | undefined;
     readonly matchedOutlineAnchor: boolean;
     readonly chapterSummaries: string;
+    readonly activeHookCount?: number;
   }): Pick<ChapterIntent, "sceneDirective" | "arcDirective" | "moodDirective" | "titleDirective"> {
     const recentSummaries = parseChapterSummariesMarkdown(input.chapterSummaries)
       .filter((summary) => summary.chapter < input.chapterNumber)
@@ -382,6 +387,21 @@ export class PlannerAgent extends BaseAgent {
     return this.isChineseLanguage(language)
       ? `标题不要再围绕“${repeatedToken}”重复命名，换一个新的意象或动作焦点。`
       : `Avoid another ${repeatedToken}-centric title. Pick a new image or action focus for this chapter title.`;
+  }
+
+  private renderHookBudget(pendingHooks: string, language: "zh" | "en"): string {
+    const hookLines = pendingHooks.split("\n").filter((line) => line.startsWith("|") && /^\|\s*[A-Za-z\u4e00-\u9fff]/.test(line));
+    const activeCount = hookLines.length;
+    const cap = 12;
+    if (activeCount < 10) {
+      return language === "en"
+        ? `### Hook Budget\n- ${activeCount} active hooks (capacity: ${cap})`
+        : `### 伏笔预算\n- 当前 ${activeCount} 条活跃伏笔（容量：${cap}）`;
+    }
+    const remaining = Math.max(0, cap - activeCount);
+    return language === "en"
+      ? `### Hook Budget\n- ${activeCount} active hooks — approaching capacity (${cap}). Only ${remaining} new hook(s) allowed. Prioritize resolving existing debt over opening new threads.`
+      : `### 伏笔预算\n- 当前 ${activeCount} 条活跃伏笔——接近容量上限（${cap}）。仅剩 ${remaining} 个新坑位。优先回收旧债，不要轻易开新线。`;
   }
 
   private extractSection(content: string, headings: ReadonlyArray<string>): string | undefined {
@@ -668,6 +688,8 @@ export class PlannerAgent extends BaseAgent {
       intent.hookAgenda.avoidNewHookFamilies.length > 0
         ? intent.hookAgenda.avoidNewHookFamilies.map((item) => `- ${item}`).join("\n")
         : "- none",
+      "",
+      this.renderHookBudget(pendingHooks, language),
     ].join("\n");
 
     return [

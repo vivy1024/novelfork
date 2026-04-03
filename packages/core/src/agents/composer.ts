@@ -1,4 +1,4 @@
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { readFile, readdir, writeFile, mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import yaml from "js-yaml";
 import { BaseAgent } from "./base.js";
@@ -243,7 +243,53 @@ export class ComposerAgent extends BaseAgent {
       });
     }
 
+    const endingTrail = await this.buildRecentEndingTrail(storyDir, chapterNumber);
+    if (endingTrail) {
+      entries.push({
+        source: "story/chapters#recent_endings",
+        reason: "Show how recent chapters ended so the writer avoids structural repetition (e.g. 3 consecutive collapse endings).",
+        excerpt: endingTrail,
+      });
+    }
+
     return entries;
+  }
+
+  private async buildRecentEndingTrail(
+    storyDir: string,
+    chapterNumber: number,
+  ): Promise<string | undefined> {
+    const chaptersDir = join(dirname(storyDir), "chapters");
+    try {
+      const files = await readdir(chaptersDir);
+      const chapterFiles = files
+        .filter((file) => file.endsWith(".md"))
+        .map((file) => ({ file, num: parseInt(file.slice(0, 4), 10) }))
+        .filter((entry) => Number.isFinite(entry.num) && entry.num < chapterNumber)
+        .sort((a, b) => b.num - a.num)
+        .slice(0, 3);
+
+      const endings: string[] = [];
+      for (const entry of chapterFiles.reverse()) {
+        const content = await readFile(join(chaptersDir, entry.file), "utf-8");
+        const lastLine = this.extractLastMeaningfulSentence(content);
+        if (lastLine) {
+          endings.push(`ch${entry.num}: ${lastLine}`);
+        }
+      }
+      return endings.length >= 2 ? endings.join(" | ") : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private extractLastMeaningfulSentence(content: string): string | undefined {
+    const lines = content.split("\n").map((line) => line.trim()).filter((line) =>
+      line.length > 5 && !line.startsWith("#") && !line.startsWith("|") && !line.startsWith("==="),
+    );
+    const last = lines.at(-1);
+    if (!last) return undefined;
+    return last.length > 60 ? last.slice(0, 57) + "..." : last;
   }
 
   private async buildHookDebtEntries(
