@@ -5,7 +5,8 @@ import type { BookConfig, FanficMode } from "../models/book.js";
 import type { ChapterMeta } from "../models/chapter.js";
 import type { NotifyChannel, LLMConfig, AgentLLMOverride, InputGovernanceMode } from "../models/project.js";
 import type { GenreProfile } from "../models/genre-profile.js";
-import { ArchitectAgent } from "../agents/architect.js";
+import { ArchitectAgent, type ArchitectOutput } from "../agents/architect.js";
+import { FoundationReviewerAgent } from "../agents/foundation-reviewer.js";
 import { PlannerAgent, type PlanChapterOutput } from "../agents/planner.js";
 import { ComposerAgent } from "../agents/composer.js";
 import { WriterAgent, type WriteChapterInput, type WriteChapterOutput } from "../agents/writer.js";
@@ -242,6 +243,69 @@ export class PipelineRunner {
     }
   }
 
+  private async generateAndReviewFoundation(params: {
+    readonly generate: () => Promise<ArchitectOutput>;
+    readonly reviewer: FoundationReviewerAgent;
+    readonly mode: "original" | "fanfic" | "series";
+    readonly sourceCanon?: string;
+    readonly styleGuide?: string;
+    readonly language: "zh" | "en";
+    readonly stageLanguage: LengthLanguage;
+    readonly maxRetries?: number;
+  }): Promise<ArchitectOutput> {
+    const maxRetries = params.maxRetries ?? 2;
+    let foundation = await params.generate();
+
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      this.logStage(params.stageLanguage, {
+        zh: `审核基础设定（第${attempt + 1}轮）`,
+        en: `reviewing foundation (round ${attempt + 1})`,
+      });
+
+      const review = await params.reviewer.review({
+        foundation,
+        mode: params.mode,
+        sourceCanon: params.sourceCanon,
+        styleGuide: params.styleGuide,
+        language: params.language,
+      });
+
+      this.config.logger?.info(
+        `Foundation review: ${review.totalScore}/100 ${review.passed ? "PASSED" : "REJECTED"}`,
+      );
+      for (const dim of review.dimensions) {
+        this.config.logger?.info(`  [${dim.score}] ${dim.name.slice(0, 40)}`);
+      }
+
+      if (review.passed) {
+        return foundation;
+      }
+
+      this.logWarn(params.stageLanguage, {
+        zh: `基础设定未通过审核（${review.totalScore}分），正在重新生成...`,
+        en: `Foundation rejected (${review.totalScore}/100), regenerating...`,
+      });
+
+      // Feed review feedback back to architect via the next generation
+      // (the architect will see different random seed due to temperature)
+      foundation = await params.generate();
+    }
+
+    // Final review
+    const finalReview = await params.reviewer.review({
+      foundation,
+      mode: params.mode,
+      sourceCanon: params.sourceCanon,
+      styleGuide: params.styleGuide,
+      language: params.language,
+    });
+    this.config.logger?.info(
+      `Foundation final review: ${finalReview.totalScore}/100 ${finalReview.passed ? "PASSED" : "ACCEPTED (max retries)"}`,
+    );
+
+    return foundation;
+  }
+
   private agentCtx(bookId?: string): AgentContext {
     return {
       client: this.config.client,
@@ -346,7 +410,15 @@ export class PipelineRunner {
 
     this.logStage(stageLanguage, { zh: "生成基础设定", en: "generating foundation" });
     const { profile: gp } = await this.loadGenreProfile(book.genre);
-    const foundation = await architect.generateFoundation(book, this.config.externalContext);
+    const reviewer = new FoundationReviewerAgent(this.agentCtxFor("foundation-reviewer", book.id));
+    const resolvedLanguage = (book.language ?? gp.language) === "en" ? "en" as const : "zh" as const;
+    const foundation = await this.generateAndReviewFoundation({
+      generate: () => architect.generateFoundation(book, this.config.externalContext),
+      reviewer,
+      mode: "original",
+      language: resolvedLanguage,
+      stageLanguage,
+    });
     try {
       this.logStage(stageLanguage, { zh: "保存书籍配置", en: "saving book config" });
       await this.state.saveBookConfigAt(stagingBookDir, book);
@@ -421,11 +493,20 @@ export class PipelineRunner {
     this.logStage(stageLanguage, { zh: "导入同人正典", en: "importing fanfic canon" });
     const fanficCanon = await this.importFanficCanon(book.id, sourceText, sourceName, fanficMode);
 
-    // Step 2: Generate foundation from fanfic canon (not from scratch)
+    // Step 2: Generate foundation with review loop
     const architect = new ArchitectAgent(this.agentCtxFor("architect", book.id));
+    const reviewer = new FoundationReviewerAgent(this.agentCtxFor("foundation-reviewer", book.id));
     this.logStage(stageLanguage, { zh: "生成同人基础设定", en: "generating fanfic foundation" });
     const { profile: gp } = await this.loadGenreProfile(book.genre);
-    const foundation = await architect.generateFanficFoundation(book, fanficCanon, fanficMode);
+    const resolvedLanguage = (book.language ?? gp.language) === "en" ? "en" as const : "zh" as const;
+    const foundation = await this.generateAndReviewFoundation({
+      generate: () => architect.generateFanficFoundation(book, fanficCanon, fanficMode),
+      reviewer,
+      mode: "fanfic",
+      sourceCanon: fanficCanon,
+      language: resolvedLanguage,
+      stageLanguage,
+    });
     this.logStage(stageLanguage, { zh: "写入基础设定文件", en: "writing foundation files" });
     await architect.writeFoundationFiles(
       bookDir,

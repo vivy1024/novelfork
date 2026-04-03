@@ -15,6 +15,7 @@ import { ContinuityAuditor, type AuditIssue, type AuditResult } from "../agents/
 import { ReviserAgent, type ReviseOutput } from "../agents/reviser.js";
 import { ChapterAnalyzerAgent } from "../agents/chapter-analyzer.js";
 import { StateValidatorAgent } from "../agents/state-validator.js";
+import { FoundationReviewerAgent } from "../agents/foundation-reviewer.js";
 import type { BookConfig } from "../models/book.js";
 import type { ChapterMeta } from "../models/chapter.js";
 import { MemoryDB } from "../state/memory-db.js";
@@ -199,6 +200,12 @@ async function createRunnerFixture(
 
 describe("PipelineRunner", () => {
   beforeEach(() => {
+    vi.spyOn(FoundationReviewerAgent.prototype, "review").mockResolvedValue({
+      passed: true,
+      totalScore: 85,
+      dimensions: [],
+      overallFeedback: "auto-pass for test",
+    });
     vi.spyOn(LengthNormalizerAgent.prototype, "normalizeChapter").mockImplementation(
       async ({ chapterContent, lengthSpec }) => ({
         normalizedContent: chapterContent,
