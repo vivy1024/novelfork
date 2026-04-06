@@ -341,7 +341,7 @@ export class WriterAgent extends BaseAgent {
       ...detectCrossChapterRepetition(creative.content, fingerprintChapters, resolvedLanguage),
       ...detectParagraphLengthDrift(creative.content, fingerprintChapters, resolvedLanguage),
     ];
-    const aiTellIssues = analyzeAITells(creative.content).issues;
+    const aiTellIssues = analyzeAITells(creative.content, resolvedLanguage).issues;
 
     const postWriteErrors = ruleViolations.filter(v => v.severity === "error");
     const postWriteWarnings = ruleViolations.filter(v => v.severity === "warning");

@@ -64,6 +64,7 @@ importCommand
   .requiredOption("--from <path>", "Path to a text file (auto-split) or directory of .md/.txt files")
   .option("--split <regex>", "Custom regex for chapter splitting (single-file mode)")
   .option("--resume-from <n>", "Resume from chapter N (for interrupted imports)", parseInt)
+  .option("--series", "Treat as a new series (shared universe, independent story) instead of direct continuation")
   .option("--json", "Output JSON")
   .action(async (bookIdArg: string | undefined, opts) => {
     try {
@@ -131,6 +132,7 @@ importCommand
         bookId,
         chapters,
         resumeFrom: opts.resumeFrom,
+        importMode: opts.series ? "series" : "continuation",
       });
 
       if (opts.json) {

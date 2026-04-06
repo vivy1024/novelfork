@@ -350,26 +350,38 @@ ${finalRequirementsPrompt}`;
     book: BookConfig,
     chaptersText: string,
     externalContext?: string,
+    reviewFeedback?: string,
+    options?: { readonly importMode?: "continuation" | "series" },
   ): Promise<ArchitectOutput> {
     const { profile: gp, body: genreBody } =
       await readGenreProfile(this.ctx.projectRoot, book.genre);
     const resolvedLanguage = book.language ?? gp.language;
+    const reviewFeedbackBlock = this.buildReviewFeedbackBlock(reviewFeedback, resolvedLanguage);
 
     const contextBlock = externalContext
-      ? `\n\n## 外部指令\n${externalContext}\n`
+      ? (resolvedLanguage === "en"
+          ? `\n\n## External Instructions\n${externalContext}\n`
+          : `\n\n## 外部指令\n${externalContext}\n`)
       : "";
 
     const numericalBlock = gp.numericalSystem
-      ? `- 有明确的数值/资源体系可追踪
-- 在 book_rules 中定义 numericalSystemOverrides（hardCap、resourceTypes）`
-      : "- 本题材无数值系统，不需要资源账本";
+      ? (resolvedLanguage === "en"
+          ? `- The story uses a trackable numerical/resource system
+- Define numericalSystemOverrides in book_rules (hardCap, resourceTypes)`
+          : `- 有明确的数值/资源体系可追踪
+- 在 book_rules 中定义 numericalSystemOverrides（hardCap、resourceTypes）`)
+      : (resolvedLanguage === "en"
+          ? "- This genre has no explicit numerical system and does not need a resource ledger"
+          : "- 本题材无数值系统，不需要资源账本");
 
     const powerBlock = gp.powerScaling
-      ? "- 有明确的战力等级体系"
+      ? (resolvedLanguage === "en" ? "- The story has an explicit power-scaling ladder" : "- 有明确的战力等级体系")
       : "";
 
     const eraBlock = gp.eraResearch
-      ? "- 需要年代考据支撑（在 book_rules 中设置 eraConstraints）"
+      ? (resolvedLanguage === "en"
+          ? "- The story needs era/historical grounding (set eraConstraints in book_rules)"
+          : "- 需要年代考据支撑（在 book_rules 中设置 eraConstraints）")
       : "";
 
     const storyBiblePrompt = resolvedLanguage === "en"
@@ -520,17 +532,108 @@ ${numericalBlock}
 ${powerBlock}
 ${eraBlock}`;
 
-    const systemPrompt = `你是一个专业的网络小说架构师。你的任务是从已有的小说正文中反向推导完整的基础设定。${contextBlock}
+    const isSeries = options?.importMode === "series";
+    const continuationDirectiveEn = isSeries
+      ? `## Continuation Direction Requirements (Critical)
+The continuation portion (chapters in volume_outline that have not happened yet) must open up **new narrative space**:
+1. **New conflict dimension**: Do not merely stretch the imported conflict longer. Introduce at least one new conflict vector not yet covered by the source text (new character, new faction, new location, or new time horizon)
+2. **Ignite within 5 chapters**: The first continuation volume must establish a fresh suspense engine within 5 chapters. Do not spend 3 chapters recapping known information
+3. **Scene freshness**: At least 50% of key continuation scenes must happen in locations or situations not already used in the imported chapters
+4. **No repeated meeting rooms**: If the imported chapters end on a meeting/discussion beat, the continuation must restart from action instead of opening another meeting`
+      : `## Continuation Direction
+The volume_outline should naturally extend the existing narrative arc. Continue from where the imported chapters left off — advance existing conflicts, pay off planted hooks, and introduce new complications that arise organically from the current situation. Do not recap known information.`;
+    const continuationDirectiveZh = isSeries
+      ? `## 续写方向要求（关键）
+续写部分（volume_outline 中尚未发生的章节）必须设计**新的叙事空间**：
+1. **新冲突维度**：续写不能只是把导入章节的冲突继续拉长。必须引入至少一个原文未涉及的新冲突方向（新角色、新势力、新地点、新时间跨度）
+2. **5章内引爆**：续写的第一卷必须在前5章内建立新悬念，不允许用3章回顾已知信息
+3. **场景新鲜度**：续写部分至少50%的关键场景发生在导入章节未出现的地点或情境中
+4. **不重复会议**：如果导入章节以会议/讨论结束，续写必须从行动开始，不能再开一轮会`
+      : `## 续写方向
+卷纲应自然延续已有叙事弧线。从导入章节的结尾处接续——推进现有冲突、兑现已埋伏笔、引入从当前局势中有机产生的新变数。不要回顾已知信息。`;
 
-## 工作模式
+    const workingModeEn = isSeries
+      ? `## Working Mode
 
-这不是从零创建，而是从已有正文中提取和推导。你需要：
+This is not a zero-to-one foundation pass. You must extract durable story truth from the imported chapters **and design a continuation path**. You need to:
+1. Extract worldbuilding, factions, characters, and systems from the source text -> generate story_bible
+2. Infer narrative structure and future arc direction -> generate volume_outline (review existing chapters + design a **new continuation direction**)
+3. Infer protagonist lock, prohibitions, and narrative constraints from character behavior -> generate book_rules
+4. Reflect the latest chapter state -> generate current_state
+5. Extract all active hooks already planted in the text -> generate pending_hooks`
+      : `## Working Mode
+
+This is not a zero-to-one foundation pass. You must extract durable story truth from the imported chapters **and preserve a clean continuation path**. You need to:
+1. Extract worldbuilding, factions, characters, and systems from the source text -> generate story_bible
+2. Infer narrative structure and near-future arc direction -> generate volume_outline (review existing chapters + continue naturally from where the imported chapters stop)
+3. Infer protagonist lock, prohibitions, and narrative constraints from character behavior -> generate book_rules
+4. Reflect the latest chapter state -> generate current_state
+5. Extract all active hooks already planted in the text -> generate pending_hooks`;
+    const workingModeZh = isSeries
+      ? `## 工作模式
+
+这不是从零创建，而是从已有正文中提取和推导，**并设计续写方向**。你需要：
 1. 从正文中提取世界观、势力、角色、力量体系 → 生成 story_bible
-2. 从叙事结构推断卷纲 → 生成 volume_outline（已有章节的回顾 + 预测后续方向）
+2. 从叙事结构推断卷纲 → 生成 volume_outline（已有章节的回顾 + **续写部分的新方向设计**）
 3. 从角色行为推断主角锁定和禁忌 → 生成 book_rules
 4. 从最新章节状态推断 current_state（反映最后一章结束时的状态）
-5. 从正文中识别已埋伏笔 → 生成 pending_hooks
+5. 从正文中识别已埋伏笔 → 生成 pending_hooks`
+      : `## 工作模式
 
+这不是从零创建，而是从已有正文中提取和推导，**并为自然续写保留清晰延续路径**。你需要：
+1. 从正文中提取世界观、势力、角色、力量体系 → 生成 story_bible
+2. 从叙事结构推断卷纲 → 生成 volume_outline（回顾已有章节，并从导入章节结束处自然接续）
+3. 从角色行为推断主角锁定和禁忌 → 生成 book_rules
+4. 从最新章节状态推断 current_state（反映最后一章结束时的状态）
+5. 从正文中识别已埋伏笔 → 生成 pending_hooks`;
+
+    const systemPrompt = resolvedLanguage === "en"
+      ? `You are a professional web-fiction architect. Your task is to reverse-engineer a complete foundation from existing chapters.${contextBlock}
+
+${workingModeEn}
+
+All output sections — story_bible, volume_outline, book_rules, current_state, and pending_hooks — MUST be written in English. Keep the === SECTION: === tags unchanged.
+
+${continuationDirectiveEn}
+${reviewFeedbackBlock}
+## Book Metadata
+
+- Title: ${book.title}
+- Platform: ${book.platform}
+- Genre: ${gp.name} (${book.genre})
+- Target Chapters: ${book.targetChapters}
+- Chapter Target Length: ${book.chapterWordCount}
+
+## Genre Profile
+
+${genreBody}
+
+## Output Contract
+
+Generate the following sections. Separate every section with === SECTION: <name> ===:
+
+=== SECTION: story_bible ===
+${storyBiblePrompt}
+
+=== SECTION: volume_outline ===
+${volumeOutlinePrompt}
+
+=== SECTION: book_rules ===
+${bookRulesPrompt}
+
+=== SECTION: current_state ===
+${currentStatePrompt}
+
+=== SECTION: pending_hooks ===
+${pendingHooksPrompt}
+
+${keyPrinciplesPrompt}`
+      : `你是一个专业的网络小说架构师。你的任务是从已有的小说正文中反向推导完整的基础设定。${contextBlock}
+
+${workingModeZh}
+
+${continuationDirectiveZh}
+${reviewFeedbackBlock}
 ## 书籍信息
 
 - 标题：${book.title}
@@ -563,16 +666,12 @@ ${currentStatePrompt}
 ${pendingHooksPrompt}
 
 ${keyPrinciplesPrompt}`;
-
-    const langPrefix = resolvedLanguage === "en"
-      ? `【LANGUAGE OVERRIDE】ALL output (story_bible, volume_outline, book_rules, current_state, pending_hooks) MUST be written in English. Character names, place names, and all prose must be in English. The === SECTION: === tags remain unchanged.\n\n`
-      : "";
     const userMessage = resolvedLanguage === "en"
       ? `Generate the complete foundation for an imported ${gp.name} novel titled "${book.title}". Write everything in English.\n\n${chaptersText}`
       : `以下是《${book.title}》的全部已有正文，请从中反向推导完整基础设定：\n\n${chaptersText}`;
 
     const response = await this.chat([
-      { role: "system", content: langPrefix + systemPrompt },
+      { role: "system", content: systemPrompt },
       {
         role: "user",
         content: userMessage,
