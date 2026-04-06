@@ -197,6 +197,7 @@ ${outputFormat}`;
     const governedMemoryBlocks = options?.contextPackage
       ? buildGovernedMemoryEvidenceBlocks(options.contextPackage, resolvedLanguage)
       : undefined;
+    const hookDebtBlock = governedMemoryBlocks?.hookDebtBlock ?? "";
     const hooksBlock = governedMemoryBlocks?.hooksBlock
       ?? `\n## 伏笔池\n${hooksWorkingSet}\n`;
     const outlineBlock = volumeOutline !== "(文件不存在)"
@@ -242,7 +243,7 @@ ${issueList}
 ## 当前状态卡
 ${currentState}
 ${ledgerBlock}
-${hooksBlock}${volumeSummariesBlock}${reducedControlBlock || outlineBlock}${bibleBlock}${matrixBlock}${summariesBlock}${canonBlock}${fanficCanonBlock}${styleGuideBlock}${lengthGuidanceBlock}
+${hookDebtBlock}${hooksBlock}${volumeSummariesBlock}${reducedControlBlock || outlineBlock}${bibleBlock}${matrixBlock}${summariesBlock}${canonBlock}${fanficCanonBlock}${styleGuideBlock}${lengthGuidanceBlock}
 
 ## 待修正章节
 ${chapterContent}`;
