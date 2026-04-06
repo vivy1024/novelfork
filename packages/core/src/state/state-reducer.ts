@@ -25,6 +25,7 @@ export interface RuntimeStateSnapshot {
 export function applyRuntimeStateDelta(params: {
   readonly snapshot: RuntimeStateSnapshot;
   readonly delta: RuntimeStateDelta;
+  readonly allowReapply?: boolean;
 }): RuntimeStateSnapshot {
   const snapshot = {
     manifest: StateManifestSchema.parse(params.snapshot.manifest),
@@ -33,8 +34,9 @@ export function applyRuntimeStateDelta(params: {
     chapterSummaries: ChapterSummariesStateSchema.parse(params.snapshot.chapterSummaries),
   };
   const delta = RuntimeStateDeltaSchema.parse(params.delta);
+  const allowReapply = params.allowReapply ?? false;
 
-  if (delta.chapter <= snapshot.manifest.lastAppliedChapter) {
+  if (allowReapply ? delta.chapter < snapshot.manifest.lastAppliedChapter : delta.chapter <= snapshot.manifest.lastAppliedChapter) {
     throw new Error(`delta chapter ${delta.chapter} goes backwards`);
   }
 
@@ -45,6 +47,7 @@ export function applyRuntimeStateDelta(params: {
   if (
     delta.chapterSummary
     && snapshot.chapterSummaries.rows.some((row) => row.chapter === delta.chapterSummary?.chapter)
+    && !allowReapply
   ) {
     throw new Error(`duplicate summary row for chapter ${delta.chapterSummary.chapter}`);
   }
@@ -55,7 +58,7 @@ export function applyRuntimeStateDelta(params: {
     snapshot.manifest.language,
     delta,
   );
-  const chapterSummaries = applySummaryDelta(snapshot.chapterSummaries, delta);
+  const chapterSummaries = applySummaryDelta(snapshot.chapterSummaries, delta, allowReapply);
 
   const next: RuntimeStateSnapshot = {
     manifest: {
@@ -240,6 +243,7 @@ function applyCurrentStatePatch(
 function applySummaryDelta(
   state: ChapterSummariesState,
   delta: RuntimeStateDelta,
+  allowReapply = false,
 ): ChapterSummariesState {
   if (!delta.chapterSummary) {
     return {
@@ -248,6 +252,9 @@ function applySummaryDelta(
   }
 
   return {
-    rows: [...state.rows, delta.chapterSummary].sort((left, right) => left.chapter - right.chapter),
+    rows: [
+      ...(allowReapply ? state.rows.filter((row) => row.chapter !== delta.chapterSummary!.chapter) : state.rows),
+      delta.chapterSummary,
+    ].sort((left, right) => left.chapter - right.chapter),
   };
 }

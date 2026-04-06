@@ -126,6 +126,9 @@ describe("chapter-state-recovery", () => {
     expect(result.kind).toBe("recovered");
     expect(capturedFeedback).toContain("上一次状态结算未通过校验");
     expect(capturedFeedback).toContain("铜牌位置与正文矛盾");
+    expect(writer.settleChapterState).toHaveBeenCalledWith(expect.objectContaining({
+      allowReapply: true,
+    }));
     expect(logWarn).toHaveBeenCalledWith(expect.objectContaining({
       zh: expect.stringContaining("仅重试结算层"),
     }));

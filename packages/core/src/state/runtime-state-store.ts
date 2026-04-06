@@ -60,6 +60,7 @@ export async function buildRuntimeStateArtifacts(params: {
   readonly bookDir: string;
   readonly delta: RuntimeStateDelta;
   readonly language: "zh" | "en";
+  readonly allowReapply?: boolean;
 }): Promise<RuntimeStateArtifacts> {
   const snapshot = await loadRuntimeStateSnapshot(params.bookDir);
   const { resolvedDelta } = arbitrateRuntimeStateDeltaHooks({
@@ -69,6 +70,7 @@ export async function buildRuntimeStateArtifacts(params: {
   const next = applyRuntimeStateDelta({
     snapshot,
     delta: resolvedDelta,
+    allowReapply: params.allowReapply,
   });
 
   return {

@@ -158,6 +158,70 @@ describe("applyRuntimeStateDelta", () => {
     ).toThrow(/duplicate summary/i);
   });
 
+  it("allows reapplying the same chapter when explicitly enabled", () => {
+    const result = applyRuntimeStateDelta({
+      snapshot: {
+        manifest: {
+          schemaVersion: 2,
+          language: "zh",
+          lastAppliedChapter: 12,
+          projectionVersion: 1,
+          migrationWarnings: [],
+        },
+        currentState: {
+          chapter: 12,
+          facts: [],
+        },
+        hooks: {
+          hooks: [],
+        },
+        chapterSummaries: {
+          rows: [
+            {
+              chapter: 12,
+              title: "旧版河埠对账",
+              characters: "林月",
+              events: "旧摘要。",
+              stateChanges: "旧变化。",
+              hookActivity: "旧钩子",
+              mood: "紧绷",
+              chapterType: "主线推进",
+            },
+          ],
+        },
+      },
+      delta: RuntimeStateDeltaSchema.parse({
+        chapter: 12,
+        hookOps: {
+          upsert: [],
+          resolve: [],
+          defer: [],
+        },
+        chapterSummary: {
+          chapter: 12,
+          title: "新版河埠对账",
+          characters: "林月",
+          events: "新摘要。",
+          stateChanges: "新变化。",
+          hookActivity: "新钩子",
+          mood: "压抑",
+          chapterType: "修订",
+        },
+        notes: [],
+      }),
+      allowReapply: true,
+    });
+
+    expect(result.manifest.lastAppliedChapter).toBe(12);
+    expect(result.chapterSummaries.rows).toEqual([
+      expect.objectContaining({
+        chapter: 12,
+        title: "新版河埠对账",
+        events: "新摘要。",
+      }),
+    ]);
+  });
+
   it("ignores resolve and defer operations for unknown hooks", () => {
     const result = applyRuntimeStateDelta({
       snapshot: {

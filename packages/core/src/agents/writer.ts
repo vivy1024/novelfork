@@ -57,6 +57,7 @@ export interface SettleChapterStateInput {
   readonly chapterNumber: number;
   readonly title: string;
   readonly content: string;
+  readonly allowReapply?: boolean;
   readonly chapterIntent?: string;
   readonly contextPackage?: ContextPackage;
   readonly ruleStack?: RuleStack;
@@ -469,6 +470,7 @@ export class WriterAgent extends BaseAgent {
       settlement.runtimeStateDelta,
       resolvedLanguage,
       input.chapterNumber,
+      input.allowReapply,
     );
 
     return {
@@ -1151,6 +1153,7 @@ ${overrides}\n`;
     delta: RuntimeStateDelta | undefined,
     language: "zh" | "en",
     authoritativeChapterNumber?: number,
+    allowReapply?: boolean,
   ): Promise<RuntimeStateArtifacts | null> {
     if (!delta) return null;
     const safeDelta = authoritativeChapterNumber === undefined
@@ -1160,6 +1163,7 @@ ${overrides}\n`;
       bookDir,
       delta: safeDelta,
       language,
+      allowReapply,
     });
   }
 

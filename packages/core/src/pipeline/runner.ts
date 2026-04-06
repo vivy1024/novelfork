@@ -1498,6 +1498,7 @@ export class PipelineRunner {
       chapterNumber: targetChapter,
       title: targetMeta.title,
       content,
+      allowReapply: true,
     });
     const validator = new StateValidatorAgent(this.agentCtxFor("state-validator", bookId));
     let validation = await validator.validate(

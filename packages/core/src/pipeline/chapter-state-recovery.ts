@@ -58,6 +58,7 @@ export async function retrySettlementAfterValidationFailure(
     chapterNumber: params.chapterNumber,
     title: params.title,
     content: params.content,
+    allowReapply: true,
     chapterIntent: params.reducedControlInput?.chapterIntent,
     contextPackage: params.reducedControlInput?.contextPackage,
     ruleStack: params.reducedControlInput?.ruleStack,

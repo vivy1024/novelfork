@@ -2457,7 +2457,7 @@ describe("PipelineRunner", () => {
       }]),
     ]);
 
-    vi.spyOn(
+    const settleSpy = vi.spyOn(
       WriterAgent.prototype as unknown as {
         settleChapterState: (input: Record<string, unknown>) => Promise<WriteChapterOutput>;
       },
@@ -2490,6 +2490,9 @@ describe("PipelineRunner", () => {
 
     expect(result.status).toBe("ready-for-review");
     expect(result.chapterNumber).toBe(1);
+    expect(settleSpy).toHaveBeenCalledWith(expect.objectContaining({
+      allowReapply: true,
+    }));
     await expect(readFile(join(storyDir, "current_state.md"), "utf-8")).resolves.toBe("fixed state");
     await expect(readFile(join(storyDir, "pending_hooks.md"), "utf-8")).resolves.toBe("fixed hooks");
     expect(savedIndex[0]?.status).toBe("ready-for-review");
