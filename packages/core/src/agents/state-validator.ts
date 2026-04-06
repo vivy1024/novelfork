@@ -123,30 +123,28 @@ ${chapterContent.slice(0, 6000)}`;
   private parseResult(content: string): ValidationResult {
     const trimmed = content.trim();
     if (!trimmed) {
-      // Empty response = assume pass (fail-open for empty)
-      return { warnings: [], passed: true };
+      throw new Error("LLM returned empty response");
+    }
+
+    const jsonResult = this.tryParseJsonResult(trimmed);
+    if (jsonResult) {
+      return jsonResult;
     }
 
     const lines = trimmed.split("\n").map((line) => line.trim()).filter(Boolean);
     if (lines.length === 0) {
-      return { warnings: [], passed: true };
+      throw new Error("LLM returned empty response");
     }
 
-    // First line determines verdict
-    const verdictLine = lines[0]!.toUpperCase();
-    const passed = !verdictLine.startsWith("FAIL");
-
-    // Try JSON fallback for backwards compatibility — extract first balanced {}
-    if (lines[0]!.startsWith("{")) {
-      const jsonResult = this.tryParseJsonResult(lines[0]!);
-      if (jsonResult) return jsonResult;
+    const verdictLine = lines[0]!;
+    if (!/^(PASS|FAIL)$/i.test(verdictLine)) {
+      throw new Error("State validator returned invalid response");
     }
+    const passed = /^PASS$/i.test(verdictLine);
 
-    // Parse remaining lines as warnings
     const warnings: ValidationWarning[] = [];
     for (let i = 1; i < lines.length; i++) {
       const line = lines[i]!;
-      // Skip lines that are just "PASS" or "FAIL" echoes
       if (/^(PASS|FAIL)$/i.test(line)) continue;
 
       const categoryMatch = line.match(/^\[([^\]]+)\]\s*(.+)$/);
@@ -172,6 +170,19 @@ ${chapterContent.slice(0, 6000)}`;
   }
 
   private tryParseJsonResult(text: string): ValidationResult | null {
+    const direct = this.tryParseExactJsonResult(text);
+    if (direct) {
+      return direct;
+    }
+
+    const candidate = extractBalancedJsonObject(text);
+    if (!candidate) {
+      return null;
+    }
+    return this.tryParseExactJsonResult(candidate);
+  }
+
+  private tryParseExactJsonResult(text: string): ValidationResult | null {
     try {
       const parsed = JSON.parse(text) as {
         warnings?: Array<{ category?: string; description?: string }>;
@@ -189,4 +200,56 @@ ${chapterContent.slice(0, 6000)}`;
       return null;
     }
   }
+}
+
+function extractBalancedJsonObject(text: string): string | null {
+  const start = text.indexOf("{");
+  if (start < 0) {
+    return null;
+  }
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let index = start; index < text.length; index += 1) {
+    const char = text[index]!;
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (char === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (char === "\"") {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (char === "\"") {
+      inString = true;
+      continue;
+    }
+
+    if (char === "{") {
+      depth += 1;
+      continue;
+    }
+
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return text.slice(start, index + 1);
+      }
+      if (depth < 0) {
+        return null;
+      }
+    }
+  }
+
+  return null;
 }

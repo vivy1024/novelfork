@@ -79,7 +79,7 @@ describe("StateValidatorAgent", () => {
         usage: ZERO_USAGE,
       });
 
-    // Empty response is now fail-open (pass), not throw
+    // Empty response throws (fail-closed)
     await expect(agent.validate(
       "Chapter body.",
       3,
@@ -88,9 +88,6 @@ describe("StateValidatorAgent", () => {
       "old hooks",
       "new hooks",
       "en",
-    )).resolves.toEqual({
-      warnings: [],
-      passed: true,
-    });
+    )).rejects.toThrow("empty response");
   });
 });
