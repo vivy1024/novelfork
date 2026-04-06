@@ -1,5 +1,26 @@
 # Changelog
 
+## v1.1.1
+
+### Release Focus
+
+- 回退到稳定的 `v6 + bugfix` 主线，替换掉不稳定的 `v8` 最新版本
+
+### Bug Fixes
+
+- **#151** — Architect section 解析支持 `book-rules` / `Book Rules` / 全角冒号等标题漂移，不再因 `book_rules` 区块轻微变形而创建失败
+- **#152** — State validator 改为 fail-closed：空响应直接报错，并恢复多行 JSON 平衡提取，避免 `passed` 字段丢失时被误判
+- **#154** — 后写规则增加正文章节号指称检测，拦截 `第33章` / `Chapter 33` 一类叙述
+- **#155** — `repair-state` 支持对最新 `state-degraded` 章节进行同章重算，不再报 `delta chapter N goes backwards`
+
+### Improvements
+
+- `ai-tells` / `sensitive-words` 增加中英双语规则路径，英文书修订链不再混入中文 issue
+- import / continuation / series 的 prompt 与语言传递补齐，foundation reviewer 结果能更稳定回灌
+- reviser 修订链重新接入 `hookDebtBlock`，局部修订时能看到 hook 债务证据
+
+---
+
 ## v1.0.2
 
 ### Bug Fixes
