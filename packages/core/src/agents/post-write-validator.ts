@@ -165,7 +165,24 @@ export function validatePostWrite(
     });
   }
 
-  // 7. 作者说教词
+  // 7. 正文中的章节号指称（如"第33章"、"chapter 33"）
+  const chapterRefPattern = /(?:第\s*\d+\s*章|[Cc]hapter\s+\d+)/g;
+  const chapterRefs = content.match(chapterRefPattern);
+  if (chapterRefs && chapterRefs.length > 0) {
+    const unique = [...new Set(chapterRefs)];
+    violations.push({
+      rule: isEnglish ? "chapter-number-reference" : "章节号指称",
+      severity: "error",
+      description: isEnglish
+        ? `Chapter text contains explicit chapter number references: ${unique.map(r => `"${r}"`).join(", ")}. Characters do not know they are in a numbered chapter.`
+        : `正文中出现了章节号指称：${unique.map(r => `"${r}"`).join("、")}。角色不知道自己在第几章。`,
+      suggestion: isEnglish
+        ? "Replace with natural references: 'that night', 'when the warehouse burned', 'the incident at the dock'"
+        : '改成自然表达："那天晚上"、"仓库出事那次"、"码头上的事"',
+    });
+  }
+
+  // 8. 作者说教词
   const foundSermons: string[] = [];
   for (const word of SERMON_WORDS) {
     if (content.includes(word)) {
