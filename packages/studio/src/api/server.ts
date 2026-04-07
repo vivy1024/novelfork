@@ -347,11 +347,20 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
 
     try {
       const index = await state.loadChapterIndex(id);
-      const updated = index.map((ch) =>
-        ch.number === num ? { ...ch, status: "rejected" as const } : ch,
-      );
-      await state.saveChapterIndex(id, updated);
-      return c.json({ ok: true, chapterNumber: num, status: "rejected" });
+      const target = index.find((ch) => ch.number === num);
+      if (!target) {
+        return c.json({ error: `Chapter ${num} not found` }, 404);
+      }
+
+      const rollbackTarget = num - 1;
+      const discarded = await state.rollbackToChapter(id, rollbackTarget);
+      return c.json({
+        ok: true,
+        chapterNumber: num,
+        status: "rejected",
+        rolledBackTo: rollbackTarget,
+        discarded,
+      });
     } catch (e) {
       return c.json({ error: String(e) }, 500);
     }

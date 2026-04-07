@@ -6,6 +6,9 @@ import { tmpdir } from "node:os";
 const schedulerStartMock = vi.fn<() => Promise<void>>();
 const initBookMock = vi.fn();
 const runRadarMock = vi.fn();
+const rollbackToChapterMock = vi.fn();
+const saveChapterIndexMock = vi.fn();
+const loadChapterIndexMock = vi.fn();
 const createLLMClientMock = vi.fn(() => ({}));
 const chatCompletionMock = vi.fn();
 const loadProjectConfigMock = vi.fn();
@@ -30,8 +33,16 @@ vi.mock("@actalk/inkos-core", () => {
       throw new Error("not implemented");
     }
 
-    async loadChapterIndex(): Promise<[]> {
-      return [];
+    async loadChapterIndex(bookId: string): Promise<[]> {
+      return (await loadChapterIndexMock(bookId)) as [];
+    }
+
+    async saveChapterIndex(bookId: string, index: unknown): Promise<void> {
+      await saveChapterIndexMock(bookId, index);
+    }
+
+    async rollbackToChapter(bookId: string, chapterNumber: number): Promise<number[]> {
+      return (await rollbackToChapterMock(bookId, chapterNumber)) as number[];
     }
 
     async getNextChapterNumber(): Promise<number> {
@@ -125,6 +136,9 @@ describe("createStudioServer daemon lifecycle", () => {
     schedulerStartMock.mockReset();
     initBookMock.mockReset();
     runRadarMock.mockReset();
+    rollbackToChapterMock.mockReset();
+    saveChapterIndexMock.mockReset();
+    loadChapterIndexMock.mockReset();
     runRadarMock.mockResolvedValue({
       marketSummary: "Fresh market summary",
       recommendations: [],
@@ -154,6 +168,9 @@ describe("createStudioServer daemon lifecycle", () => {
         notify: (raw.notify ?? []) as unknown[],
       };
     });
+    loadChapterIndexMock.mockResolvedValue([]);
+    saveChapterIndexMock.mockResolvedValue(undefined);
+    rollbackToChapterMock.mockResolvedValue([]);
     pipelineConfigs.length = 0;
   });
 
@@ -381,5 +398,49 @@ describe("createStudioServer daemon lifecycle", () => {
       status: "error",
       error: "INKOS_LLM_API_KEY not set",
     });
+  });
+
+  it("uses rollback semantics for chapter rejection instead of only flipping status", async () => {
+    loadChapterIndexMock.mockResolvedValue([
+      {
+        number: 3,
+        title: "Broken Chapter",
+        status: "ready-for-review",
+        wordCount: 1800,
+        createdAt: "2026-04-07T00:00:00.000Z",
+        updatedAt: "2026-04-07T00:00:00.000Z",
+        auditIssues: ["continuity"],
+        lengthWarnings: [],
+      },
+      {
+        number: 4,
+        title: "Downstream Chapter",
+        status: "ready-for-review",
+        wordCount: 1900,
+        createdAt: "2026-04-07T00:00:00.000Z",
+        updatedAt: "2026-04-07T00:00:00.000Z",
+        auditIssues: [],
+        lengthWarnings: [],
+      },
+    ]);
+    rollbackToChapterMock.mockResolvedValue([3, 4]);
+
+    const { createStudioServer } = await import("./server.js");
+    const app = createStudioServer(cloneProjectConfig() as never, root);
+
+    const response = await app.request("http://localhost/api/books/demo-book/chapters/3/reject", {
+      method: "POST",
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      ok: true,
+      chapterNumber: 3,
+      status: "rejected",
+      rolledBackTo: 2,
+      discarded: [3, 4],
+    });
+    expect(rollbackToChapterMock).toHaveBeenCalledWith("demo-book", 2);
+    expect(saveChapterIndexMock).not.toHaveBeenCalled();
   });
 });

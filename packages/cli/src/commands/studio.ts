@@ -11,6 +11,11 @@ export interface StudioLaunchSpec {
   readonly args: string[];
 }
 
+export interface BrowserLaunchSpec {
+  readonly command: string;
+  readonly args: string[];
+}
+
 async function firstAccessiblePath(paths: readonly string[]): Promise<string | undefined> {
   for (const path of paths) {
     try {
@@ -24,6 +29,19 @@ async function firstAccessiblePath(paths: readonly string[]): Promise<string | u
 }
 
 const cliPackageRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+
+export function resolveBrowserLaunch(
+  platform: NodeJS.Platform,
+  url: string,
+): BrowserLaunchSpec {
+  if (platform === "darwin") {
+    return { command: "open", args: [url] };
+  }
+  if (platform === "win32") {
+    return { command: "cmd", args: ["/c", "start", "", url] };
+  }
+  return { command: "xdg-open", args: [url] };
+}
 
 export async function resolveStudioLaunch(root: string): Promise<StudioLaunchSpec | null> {
   const sourceEntry = await firstAccessiblePath([
@@ -86,6 +104,7 @@ export const studioCommand = new Command("studio")
   .action(async (opts) => {
     const root = findProjectRoot();
     const port = opts.port;
+    const url = `http://localhost:${port}`;
     const launch = await resolveStudioLaunch(root);
 
     if (!launch) {
@@ -97,7 +116,7 @@ export const studioCommand = new Command("studio")
       process.exit(1);
     }
 
-    log(`Starting InkOS Studio on http://localhost:${port}`);
+    log(`Starting InkOS Studio on ${url}`);
 
     const child = spawn(launch.command, launch.args, {
       cwd: root,
@@ -109,6 +128,17 @@ export const studioCommand = new Command("studio")
       logError(`Failed to start studio: ${e.message}`);
       process.exit(1);
     });
+
+    const browserLaunch = resolveBrowserLaunch(process.platform, url);
+    const browser = spawn(browserLaunch.command, browserLaunch.args, {
+      cwd: root,
+      stdio: "ignore",
+      detached: true,
+    });
+    browser.on("error", () => {
+      // Best effort only — server startup should not fail just because browser open failed.
+    });
+    browser.unref();
 
     child.on("exit", (code) => {
       process.exit(code ?? 0);

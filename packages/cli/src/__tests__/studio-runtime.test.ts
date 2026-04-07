@@ -95,4 +95,28 @@ describe("studio runtime resolution", () => {
       args: [`${cliPackageRoot}/node_modules/@actalk/inkos-studio/dist/api/index.js`, "/repo/test-project"],
     });
   });
+
+  it("returns a browser launch spec for macOS", async () => {
+    const { resolveBrowserLaunch } = await import("../commands/studio.js");
+    expect(resolveBrowserLaunch("darwin", "http://localhost:4567")).toEqual({
+      command: "open",
+      args: ["http://localhost:4567"],
+    });
+  });
+
+  it("returns a browser launch spec for Windows", async () => {
+    const { resolveBrowserLaunch } = await import("../commands/studio.js");
+    expect(resolveBrowserLaunch("win32", "http://localhost:4567")).toEqual({
+      command: "cmd",
+      args: ["/c", "start", "", "http://localhost:4567"],
+    });
+  });
+
+  it("returns a browser launch spec for Linux", async () => {
+    const { resolveBrowserLaunch } = await import("../commands/studio.js");
+    expect(resolveBrowserLaunch("linux", "http://localhost:4567")).toEqual({
+      command: "xdg-open",
+      args: ["http://localhost:4567"],
+    });
+  });
 });
