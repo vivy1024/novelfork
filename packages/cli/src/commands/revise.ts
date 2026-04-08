@@ -7,6 +7,7 @@ export const reviseCommand = new Command("revise")
   .argument("[book-id]", "Book ID (auto-detected if only one book)")
   .argument("[chapter]", "Chapter number (defaults to latest)")
   .option("--mode <mode>", "Revise mode: spot-fix, polish, rewrite, rework, anti-detect", DEFAULT_REVISE_MODE)
+  .option("--brief <text>", "One-off creative guidance for this revise/rewrite only")
   .option("--json", "Output JSON")
   .action(async (bookIdArg: string | undefined, chapterStr: string | undefined, opts) => {
     try {
@@ -23,7 +24,9 @@ export const reviseCommand = new Command("revise")
         chapterNumber = chapterStr ? parseInt(chapterStr, 10) : undefined;
       }
 
-      const pipeline = new PipelineRunner(buildPipelineConfig(config, root));
+      const pipeline = new PipelineRunner(buildPipelineConfig(config, root, {
+        externalContext: opts.brief,
+      }));
 
       const mode = opts.mode as ReviseMode;
       if (!opts.json) log(`Revising "${bookId}"${chapterNumber ? ` chapter ${chapterNumber}` : " (latest)"} [mode: ${mode}]...`);

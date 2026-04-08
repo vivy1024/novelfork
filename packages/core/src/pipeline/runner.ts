@@ -853,7 +853,7 @@ export class PipelineRunner {
           book,
           bookDir,
           targetChapter,
-          undefined,
+          this.config.externalContext,
           { reuseExistingIntentWhenContextMissing: true },
         );
       const preRevision = await this.evaluateMergedAudit({
@@ -1145,6 +1145,15 @@ export class PipelineRunner {
     const releaseLock = await this.state.acquireBookLock(bookId);
     try {
       return await this._repairChapterStateLocked(bookId, chapterNumber);
+    } finally {
+      await releaseLock();
+    }
+  }
+
+  async resyncChapterArtifacts(bookId: string, chapterNumber?: number): Promise<ChapterPipelineResult> {
+    const releaseLock = await this.state.acquireBookLock(bookId);
+    try {
+      return await this._resyncChapterArtifactsLocked(bookId, chapterNumber);
     } finally {
       await releaseLock();
     }
@@ -1572,6 +1581,155 @@ export class PipelineRunner {
       },
       revised: false,
       status: baseStatus,
+      lengthWarnings: targetMeta.lengthWarnings,
+      lengthTelemetry: targetMeta.lengthTelemetry,
+      tokenUsage: targetMeta.tokenUsage,
+    };
+  }
+
+  private async _resyncChapterArtifactsLocked(bookId: string, chapterNumber?: number): Promise<ChapterPipelineResult> {
+    const book = await this.state.loadBookConfig(bookId);
+    const bookDir = this.state.bookDir(bookId);
+    const stageLanguage = await this.resolveBookLanguage(book);
+    const index = [...(await this.state.loadChapterIndex(bookId))];
+    if (index.length === 0) {
+      throw new Error(`Book "${bookId}" has no persisted chapters to sync.`);
+    }
+
+    const targetChapter = chapterNumber ?? index[index.length - 1]!.number;
+    const targetIndex = index.findIndex((chapter) => chapter.number === targetChapter);
+    if (targetIndex < 0) {
+      throw new Error(`Chapter ${targetChapter} not found in "${bookId}".`);
+    }
+
+    const targetMeta = index[targetIndex]!;
+    const latestChapter = Math.max(...index.map((chapter) => chapter.number));
+    if (targetChapter !== latestChapter) {
+      throw new Error(`Only the latest persisted chapter can be synced safely (latest is ${latestChapter}).`);
+    }
+
+    this.logStage(stageLanguage, { zh: "根据已编辑正文同步真相文件与索引", en: "syncing truth files and indexes from edited chapter body" });
+    const { profile: gp } = await this.loadGenreProfile(book.genre);
+    const pipelineLang = book.language ?? gp.language;
+    const content = await this.readChapterContent(bookDir, targetChapter);
+    const storyDir = join(bookDir, "story");
+    const [oldState, oldHooks] = await Promise.all([
+      readFile(join(storyDir, "current_state.md"), "utf-8").catch(() => ""),
+      readFile(join(storyDir, "pending_hooks.md"), "utf-8").catch(() => ""),
+    ]);
+
+    const reducedControlInput = (this.config.inputGovernanceMode ?? "v2") === "legacy"
+      ? undefined
+      : await this.createGovernedArtifacts(
+        book,
+        bookDir,
+        targetChapter,
+        this.config.externalContext,
+        { reuseExistingIntentWhenContextMissing: true },
+      );
+
+    const writer = new WriterAgent(this.agentCtxFor("writer", bookId));
+    let syncedOutput = await writer.settleChapterState({
+      book,
+      bookDir,
+      chapterNumber: targetChapter,
+      title: targetMeta.title,
+      content,
+      chapterIntent: reducedControlInput?.plan.intentMarkdown,
+      contextPackage: reducedControlInput?.composed.contextPackage,
+      ruleStack: reducedControlInput?.composed.ruleStack,
+      allowReapply: true,
+    });
+    const validator = new StateValidatorAgent(this.agentCtxFor("state-validator", bookId));
+    let validation = await validator.validate(
+      content,
+      targetChapter,
+      oldState,
+      syncedOutput.updatedState,
+      oldHooks,
+      syncedOutput.updatedHooks,
+      pipelineLang,
+    );
+
+    if (!validation.passed) {
+      const recovery = await retrySettlementAfterValidationFailure({
+        writer,
+        validator,
+        book,
+        bookDir,
+        chapterNumber: targetChapter,
+        title: targetMeta.title,
+        content,
+        reducedControlInput: reducedControlInput
+          ? {
+              chapterIntent: reducedControlInput.plan.intentMarkdown,
+              contextPackage: reducedControlInput.composed.contextPackage,
+              ruleStack: reducedControlInput.composed.ruleStack,
+            }
+          : undefined,
+        oldState,
+        oldHooks,
+        originalValidation: validation,
+        language: pipelineLang,
+        logWarn: (message) => this.logWarn(pipelineLang, message),
+        logger: this.config.logger,
+      });
+      if (recovery.kind !== "recovered") {
+        throw new Error(
+          recovery.issues[0]?.description
+            ?? `Chapter sync still failed for chapter ${targetChapter}.`,
+        );
+      }
+      syncedOutput = recovery.output;
+      validation = recovery.validation;
+    }
+
+    if (!validation.passed) {
+      throw new Error(`Chapter sync still failed for chapter ${targetChapter}.`);
+    }
+
+    await writer.saveChapter(bookDir, syncedOutput, gp.numericalSystem, pipelineLang);
+    await writer.saveNewTruthFiles(bookDir, syncedOutput, pipelineLang);
+    await this.syncLegacyStructuredStateFromMarkdown(bookDir, targetChapter, syncedOutput);
+    await this.syncNarrativeMemoryIndex(bookId);
+    await this.state.snapshotState(bookId, targetChapter);
+    await this.syncCurrentStateFactHistory(bookId, targetChapter);
+
+    const finalStatus: "ready-for-review" | "audit-failed" = targetMeta.status === "state-degraded"
+      ? resolveStateDegradedBaseStatus(targetMeta)
+      : "ready-for-review";
+
+    if (targetMeta.status === "state-degraded") {
+      const degradedMetadata = parseStateDegradedReviewNote(targetMeta.reviewNote);
+      const injectedIssues = new Set(degradedMetadata?.injectedIssues ?? []);
+      index[targetIndex] = {
+        ...targetMeta,
+        status: finalStatus,
+        updatedAt: new Date().toISOString(),
+        auditIssues: targetMeta.auditIssues.filter((issue) => !injectedIssues.has(issue)),
+        reviewNote: undefined,
+      };
+    } else {
+      index[targetIndex] = {
+        ...targetMeta,
+        status: "ready-for-review",
+        updatedAt: new Date().toISOString(),
+      };
+    }
+    await this.state.saveChapterIndex(bookId, index);
+    return {
+      chapterNumber: targetChapter,
+      title: targetMeta.title,
+      wordCount: targetMeta.wordCount,
+      auditResult: {
+        passed: finalStatus !== "audit-failed",
+        issues: [],
+        summary: finalStatus === "audit-failed"
+          ? "chapter truth/state resynced from edited body, but chapter still needs audit fixes"
+          : "chapter truth/state resynced from edited body",
+      },
+      revised: false,
+      status: finalStatus,
       lengthWarnings: targetMeta.lengthWarnings,
       lengthTelemetry: targetMeta.lengthTelemetry,
       tokenUsage: targetMeta.tokenUsage,

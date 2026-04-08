@@ -21,6 +21,7 @@ import {
   X,
   ShieldCheck,
   RotateCcw,
+  RefreshCw,
   Sparkles,
   Trash2,
   Save
@@ -99,6 +100,7 @@ export function BookDetail({
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [rewritingChapters, setRewritingChapters] = useState<ReadonlyArray<number>>([]);
   const [revisingChapters, setRevisingChapters] = useState<ReadonlyArray<number>>([]);
+  const [syncingChapters, setSyncingChapters] = useState<ReadonlyArray<number>>([]);
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsWordCount, setSettingsWordCount] = useState<number | null>(null);
   const [settingsTargetChapters, setSettingsTargetChapters] = useState<number | null>(null);
@@ -108,6 +110,7 @@ export function BookDetail({
   const activity = useMemo(() => deriveBookActivity(sse.messages, bookId), [bookId, sse.messages]);
   const writing = writeRequestPending || activity.writing;
   const drafting = draftRequestPending || activity.drafting;
+  const latestPersistedChapter = data ? data.nextChapter - 1 : 0;
 
   useEffect(() => {
     const recent = sse.messages.at(-1);
@@ -171,9 +174,20 @@ export function BookDetail({
   };
 
   const handleRewrite = async (chapterNum: number) => {
+    const brief = window.prompt(
+      data?.book.language === "en"
+        ? "Optional rewrite brief for this run only. Leave blank to use existing focus."
+        : "可选：输入这次重写要遵循的补充想法。留空则沿用现有 focus。",
+      "",
+    );
+    if (brief === null) return;
     setRewritingChapters((prev) => [...prev, chapterNum]);
     try {
-      await postApi(`/books/${bookId}/rewrite/${chapterNum}`);
+      await fetchJson(`/books/${bookId}/rewrite/${chapterNum}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ brief: brief.trim() || undefined }),
+      });
       refetch();
     } catch (e) {
       alert(e instanceof Error ? e.message : "Rewrite failed");
@@ -183,18 +197,48 @@ export function BookDetail({
   };
 
   const handleRevise = async (chapterNum: number, mode: ReviseMode) => {
+    const brief = window.prompt(
+      data?.book.language === "en"
+        ? "Optional revise brief for this run only. Leave blank to use existing focus."
+        : "可选：输入这次修订要遵循的补充想法。留空则沿用现有 focus。",
+      "",
+    );
+    if (brief === null) return;
     setRevisingChapters((prev) => [...prev, chapterNum]);
     try {
       await fetchJson(`/books/${bookId}/revise/${chapterNum}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode }),
+        body: JSON.stringify({ mode, brief: brief.trim() || undefined }),
       });
       refetch();
     } catch (e) {
       alert(e instanceof Error ? e.message : "Revision failed");
     } finally {
       setRevisingChapters((prev) => prev.filter((n) => n !== chapterNum));
+    }
+  };
+
+  const handleSync = async (chapterNum: number) => {
+    const brief = window.prompt(
+      data?.book.language === "en"
+        ? "Optional sync brief for interpreting the edited chapter body. Leave blank to sync directly from the text."
+        : "可选：输入这次同步时要遵循的补充说明。留空则直接按正文同步。",
+      "",
+    );
+    if (brief === null) return;
+    setSyncingChapters((prev) => [...prev, chapterNum]);
+    try {
+      await fetchJson(`/books/${bookId}/resync/${chapterNum}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ brief: brief.trim() || undefined }),
+      });
+      refetch();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Sync failed");
+    } finally {
+      setSyncingChapters((prev) => prev.filter((n) => n !== chapterNum));
     }
   };
 
@@ -525,6 +569,16 @@ export function BookDetail({
                         {rewritingChapters.includes(ch.number)
                           ? <div className="w-3.5 h-3.5 border-2 border-muted-foreground/20 border-t-muted-foreground rounded-full animate-spin" />
                           : <RotateCcw size={14} />}
+                      </button>
+                      <button
+                        onClick={() => handleSync(ch.number)}
+                        disabled={syncingChapters.includes(ch.number) || ch.number !== latestPersistedChapter}
+                        className="p-2 rounded-lg bg-secondary text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all shadow-sm disabled:opacity-50"
+                        title={data?.book.language === "en" ? "Sync truth/state from edited chapter" : "根据已编辑章节同步 truth/state"}
+                      >
+                        {syncingChapters.includes(ch.number)
+                          ? <div className="w-3.5 h-3.5 border-2 border-muted-foreground/20 border-t-muted-foreground rounded-full animate-spin" />
+                          : <RefreshCw size={14} />}
                       </button>
                       <select
                         disabled={revisingChapters.includes(ch.number)}

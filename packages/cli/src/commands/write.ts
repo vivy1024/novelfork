@@ -91,6 +91,7 @@ writeCommand
   .argument("<args...>", "Book ID (optional) and chapter number")
   .option("--force", "Skip confirmation prompt")
   .option("--words <n>", "Words per chapter (overrides book config)")
+  .option("--brief <text>", "One-off creative guidance for this rewrite only")
   .option("--json", "Output JSON")
   .action(async (args: ReadonlyArray<string>, opts) => {
     try {
@@ -168,7 +169,9 @@ writeCommand
       const wordCount = opts.words ? parseInt(opts.words, 10) : undefined;
 
       const config = await loadConfig();
-      const pipeline = new PipelineRunner(buildPipelineConfig(config, root));
+      const pipeline = new PipelineRunner(buildPipelineConfig(config, root, {
+        externalContext: opts.brief,
+      }));
 
       const result = await pipeline.writeNextChapter(bookId, wordCount);
       const book = await state.loadBookConfig(bookId);
@@ -194,6 +197,64 @@ writeCommand
         log(JSON.stringify({ error: String(e) }));
       } else {
         logError(`Failed to rewrite chapter: ${e}`);
+      }
+      process.exit(1);
+    }
+  });
+
+writeCommand
+  .command("sync")
+  .description("Rebuild truth files and SQLite indexes from the latest edited chapter body")
+  .argument("<args...>", "Book ID (optional) and chapter number")
+  .option("--brief <text>", "One-off guidance for how to interpret the edited chapter while syncing")
+  .option("--json", "Output JSON")
+  .action(async (args: ReadonlyArray<string>, opts) => {
+    try {
+      const root = findProjectRoot();
+
+      let bookId: string;
+      let chapter: number;
+      if (args.length === 1) {
+        chapter = parseInt(args[0]!, 10);
+        if (isNaN(chapter)) throw new Error(`Expected chapter number, got "${args[0]}"`);
+        bookId = await resolveBookId(undefined, root);
+      } else if (args.length === 2) {
+        chapter = parseInt(args[1]!, 10);
+        if (isNaN(chapter)) throw new Error(`Expected chapter number, got "${args[1]}"`);
+        bookId = await resolveBookId(args[0], root);
+      } else {
+        throw new Error("Usage: inkos write sync [book-id] <chapter>");
+      }
+
+      const state = new StateManager(root);
+      const book = await state.loadBookConfig(bookId);
+      const language = resolveCliLanguage(book.language);
+      const config = await loadConfig();
+      const pipeline = new PipelineRunner(buildPipelineConfig(config, root, {
+        externalContext: opts.brief,
+      }));
+      const result = await pipeline.resyncChapterArtifacts(bookId, chapter);
+
+      if (opts.json) {
+        log(JSON.stringify(result, null, 2));
+      } else {
+        for (const line of formatWriteNextResultLines(language, {
+          chapterNumber: result.chapterNumber,
+          title: result.title,
+          wordCount: result.wordCount,
+          auditPassed: result.auditResult.passed,
+          revised: result.revised,
+          status: result.status,
+          issues: result.auditResult.issues,
+        })) {
+          log(line);
+        }
+      }
+    } catch (e) {
+      if (opts.json) {
+        log(JSON.stringify({ error: String(e) }));
+      } else {
+        logError(`Failed to sync chapter artifacts: ${e}`);
       }
       process.exit(1);
     }

@@ -6,6 +6,9 @@ import { tmpdir } from "node:os";
 const schedulerStartMock = vi.fn<() => Promise<void>>();
 const initBookMock = vi.fn();
 const runRadarMock = vi.fn();
+const reviseDraftMock = vi.fn();
+const resyncChapterArtifactsMock = vi.fn();
+const writeNextChapterMock = vi.fn();
 const rollbackToChapterMock = vi.fn();
 const saveChapterIndexMock = vi.fn();
 const loadChapterIndexMock = vi.fn();
@@ -61,6 +64,9 @@ vi.mock("@actalk/inkos-core", () => {
 
     initBook = initBookMock;
     runRadar = runRadarMock;
+    reviseDraft = reviseDraftMock;
+    resyncChapterArtifacts = resyncChapterArtifactsMock;
+    writeNextChapter = writeNextChapterMock;
   }
 
   class MockScheduler {
@@ -136,12 +142,38 @@ describe("createStudioServer daemon lifecycle", () => {
     schedulerStartMock.mockReset();
     initBookMock.mockReset();
     runRadarMock.mockReset();
+    reviseDraftMock.mockReset();
+    resyncChapterArtifactsMock.mockReset();
+    writeNextChapterMock.mockReset();
     rollbackToChapterMock.mockReset();
     saveChapterIndexMock.mockReset();
     loadChapterIndexMock.mockReset();
     runRadarMock.mockResolvedValue({
       marketSummary: "Fresh market summary",
       recommendations: [],
+    });
+    reviseDraftMock.mockResolvedValue({
+      chapterNumber: 3,
+      wordCount: 1800,
+      fixedIssues: ["focus restored"],
+      applied: true,
+      status: "ready-for-review",
+    });
+    resyncChapterArtifactsMock.mockResolvedValue({
+      chapterNumber: 3,
+      title: "Synced Chapter",
+      wordCount: 1800,
+      revised: false,
+      status: "ready-for-review",
+      auditResult: { passed: true, issues: [], summary: "synced" },
+    });
+    writeNextChapterMock.mockResolvedValue({
+      chapterNumber: 3,
+      title: "Rewritten Chapter",
+      wordCount: 1800,
+      revised: false,
+      status: "ready-for-review",
+      auditResult: { passed: true, issues: [], summary: "rewritten" },
     });
     createLLMClientMock.mockReset();
     createLLMClientMock.mockReturnValue({});
@@ -442,5 +474,35 @@ describe("createStudioServer daemon lifecycle", () => {
     });
     expect(rollbackToChapterMock).toHaveBeenCalledWith("demo-book", 2);
     expect(saveChapterIndexMock).not.toHaveBeenCalled();
+  });
+
+  it("passes one-off brief into revise requests through pipeline config", async () => {
+    const { createStudioServer } = await import("./server.js");
+    const app = createStudioServer(cloneProjectConfig() as never, root);
+
+    const response = await app.request("http://localhost/api/books/demo-book/revise/3", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: "rewrite", brief: "把注意力拉回师债主线。" }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(pipelineConfigs.at(-1)).toMatchObject({ externalContext: "把注意力拉回师债主线。" });
+    expect(reviseDraftMock).toHaveBeenCalledWith("demo-book", 3, "rewrite");
+  });
+
+  it("exposes a resync endpoint for rebuilding latest chapter truth artifacts", async () => {
+    const { createStudioServer } = await import("./server.js");
+    const app = createStudioServer(cloneProjectConfig() as never, root);
+
+    const response = await app.request("http://localhost/api/books/demo-book/resync/3", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ brief: "以师债线为准同步状态。" }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(pipelineConfigs.at(-1)).toMatchObject({ externalContext: "以师债线为准同步状态。" });
+    expect(resyncChapterArtifactsMock).toHaveBeenCalledWith("demo-book", 3);
   });
 });

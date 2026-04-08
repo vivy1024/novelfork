@@ -83,7 +83,9 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     return freshConfig;
   }
 
-  async function buildPipelineConfig(): Promise<PipelineConfig> {
+  async function buildPipelineConfig(
+    overrides?: Partial<Pick<PipelineConfig, "externalContext">>,
+  ): Promise<PipelineConfig> {
     const currentConfig = await loadCurrentProjectConfig();
     const logger = createLogger({ tag: "studio", sinks: [sseSink] });
     return {
@@ -103,6 +105,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
           });
         }
       },
+      externalContext: overrides?.externalContext,
     };
   }
 
@@ -620,42 +623,19 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
   app.post("/api/books/:id/revise/:chapter", async (c) => {
     const id = c.req.param("id");
     const chapterNum = parseInt(c.req.param("chapter"), 10);
-    const bookDir = state.bookDir(id);
-    const body = await c.req.json<{ mode?: string }>().catch(() => ({ mode: "spot-fix" }));
+    const body: { mode?: string; brief?: string } = await c.req
+      .json<{ mode?: string; brief?: string }>()
+      .catch(() => ({ mode: "spot-fix" }));
 
     broadcast("revise:start", { bookId: id, chapter: chapterNum });
     try {
-      const book = await state.loadBookConfig(id);
-      const chaptersDir = join(bookDir, "chapters");
-      const files = await readdir(chaptersDir);
-      const paddedNum = String(chapterNum).padStart(4, "0");
-      const match = files.find((f) => f.startsWith(paddedNum) && f.endsWith(".md"));
-      if (!match) return c.json({ error: "Chapter not found" }, 404);
-
-      const content = await readFile(join(chaptersDir, match), "utf-8");
-
-      // Get audit issues first
-      const index = await state.loadChapterIndex(id);
-      const chapterMeta = index.find((ch) => ch.number === chapterNum);
-      const issues = (chapterMeta?.auditIssues ?? []).map((desc) => ({
-        severity: "warning" as const,
-        category: "general",
-        description: desc,
-        suggestion: "",
+      const pipeline = new PipelineRunner(await buildPipelineConfig({
+        externalContext: body.brief,
       }));
-
-      const currentConfig = await loadCurrentProjectConfig();
-      const { ReviserAgent } = await import("@actalk/inkos-core");
-      const reviser = new ReviserAgent({
-        client: createLLMClient(currentConfig.llm),
-        model: currentConfig.llm.model,
-        projectRoot: root,
-        bookId: id,
-      });
-      const result = await reviser.reviseChapter(
-        bookDir, content, chapterNum, issues,
-        (body.mode ?? "spot-fix") as "spot-fix",
-        book.genre,
+      const result = await pipeline.reviseDraft(
+        id,
+        chapterNum,
+        (body.mode ?? "spot-fix") as "spot-fix" | "polish" | "rewrite" | "rework" | "anti-detect",
       );
       broadcast("revise:complete", { bookId: id, chapter: chapterNum });
       return c.json(result);
@@ -940,21 +920,42 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
   app.post("/api/books/:id/rewrite/:chapter", async (c) => {
     const id = c.req.param("id");
     const chapterNum = parseInt(c.req.param("chapter"), 10);
+    const body: { brief?: string } = await c.req
+      .json<{ brief?: string }>()
+      .catch(() => ({}));
 
     broadcast("rewrite:start", { bookId: id, chapter: chapterNum });
     try {
-      const restored = await state.restoreState(id, chapterNum);
-      if (!restored) {
-        return c.json({ error: `Cannot restore state to chapter ${chapterNum}` }, 400);
-      }
-      const pipeline = new PipelineRunner(await buildPipelineConfig());
+      const rollbackTarget = chapterNum - 1;
+      const discarded = await state.rollbackToChapter(id, rollbackTarget);
+      const pipeline = new PipelineRunner(await buildPipelineConfig({
+        externalContext: body.brief,
+      }));
       pipeline.writeNextChapter(id).then(
         (result) => broadcast("rewrite:complete", { bookId: id, chapterNumber: result.chapterNumber, title: result.title, wordCount: result.wordCount }),
         (e) => broadcast("rewrite:error", { bookId: id, error: e instanceof Error ? e.message : String(e) }),
       );
-      return c.json({ status: "rewriting", bookId: id, chapter: chapterNum });
+      return c.json({ status: "rewriting", bookId: id, chapter: chapterNum, rolledBackTo: rollbackTarget, discarded });
     } catch (e) {
       broadcast("rewrite:error", { bookId: id, error: String(e) });
+      return c.json({ error: String(e) }, 500);
+    }
+  });
+
+  app.post("/api/books/:id/resync/:chapter", async (c) => {
+    const id = c.req.param("id");
+    const chapterNum = parseInt(c.req.param("chapter"), 10);
+    const body: { brief?: string } = await c.req
+      .json<{ brief?: string }>()
+      .catch(() => ({}));
+
+    try {
+      const pipeline = new PipelineRunner(await buildPipelineConfig({
+        externalContext: body.brief,
+      }));
+      const result = await pipeline.resyncChapterArtifacts(id, chapterNum);
+      return c.json(result);
+    } catch (e) {
       return c.json({ error: String(e) }, 500);
     }
   });
