@@ -388,6 +388,8 @@ inkos agent "Create a progression fantasy about a mage who can only use one spel
 
 Contributions welcome. Open an issue or PR.
 
+Development is moving quickly. More features and writing-quality improvements will keep landing. Feedback, feature requests, and project follow-up are all welcome. The goal is to build the strongest AI novel-writing Agent.
+
 ```bash
 pnpm install
 pnpm dev          # Watch mode for all packages
