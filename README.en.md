@@ -102,22 +102,19 @@ inkos config show-models        # View current routing
 
 Agents without explicit overrides fall back to the global model.
 
-### v0.6 Update
+### v1 Update
 
-**Structured State + Hook Governance + Length Governance**
+**InkOS Studio + Writing Pipeline Overhaul**
 
-Addresses three systemic long-form writing problems: **context bloat after 20+ chapters causing slowdowns and 400 errors** (Settler full injection → JSON delta + selective retrieval), **hooks only accumulate, never resolve, ~0% payoff rate** (Planner scheduling + Settler blind spot fix + audit debt tracking), **word count deviation 50%+ and normalizer destroying chapters** (LengthSpec + safety net).
-
-- Pipeline upgraded to 10 agents: adds Planner, Composer, Observer, Reflector, Normalizer
-- Truth files moved to `story/state/*.json` (Zod validated); Settler outputs JSON delta instead of full markdown; legacy books auto-migrate
-- SQLite temporal memory database on Node 22+ for relevance-based retrieval
-- Planner generates `hookAgenda` to schedule hook advancement and payoff; Settler working set expanded to cover dormant debt
-- New `mention` semantics prevents fake hook advancement; `analyzeHookHealth` audits hook debt; `evaluateHookAdmission` blocks duplicate hooks
-- Length governance: `LengthSpec` + Normalizer single-pass correction with safety net against destructive normalization
-- User `INKOS_LLM_MAX_TOKENS` acts as global cap; reserved keys in `llm.extra` auto-stripped
-- Cross-chapter repetition detection, dialogue-driven guidance, English variance brief, multi-character scene resistance
-- Chapter summary dedup, ESM node:sqlite fix, consolidate full-width parenthesis support
-- Bilingual CLI output and logging
+- **InkOS Studio** (v1.0): `inkos studio` launches a local web workbench (Vite + React + Hono). Book management, chapter review & editing, real-time writing progress, market radar, analytics, AI detection, style analysis, genre management, daemon control, truth file editing — everything the CLI does, now visual
+- **Foundation Reviewer** (v1.1): independent review agent at book creation, 5-dimension scoring (canon DNA, new narrative space, core conflict, opening pacing, pacing viability), auto-reject below 80
+- **Hook Seed Excerpt** (v1.1): when resolving hooks, Composer extracts original seed scene excerpts into Writer context so payoff scenes are grounded in concrete narrative
+- **Review Reject Rollback** (v1.1): `inkos review reject` rolls back state to the pre-chapter snapshot, discards downstream chapters and memory index
+- **State Validation Recovery** (v1.1): auto-retries settler on state validation failure, degrades gracefully if still failing, `inkos write repair-state` for manual recovery
+- **Bilingual Import** (v1.1.1): `import chapters` and `fanfic init` support bilingual prompts, auto-detect continuation vs series mode
+- **Chapter Number Anchoring** (v1.1): chapter progress anchored to contiguous durable files only — narrative numbers no longer pollute progress
+- Audit drift isolation, title collapse repair, hook budget hints, chapter ending trail, mood/pacing monotony detection
+- Bilingual AI-tells and sensitive word lists, custom HTTP headers (`INKOS_LLM_HEADERS`)
 
 ### Write Your First Book
 

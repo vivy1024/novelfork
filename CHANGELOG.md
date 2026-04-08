@@ -21,6 +21,35 @@
 
 ---
 
+## v1.1.0
+
+写作管线全面升级。通过 Meta-Harness 方法论驱动的多轮 autoresearch 实验，从零模式质量从 75 分提升至 92 分，同人模式从 39 分提升至 82+ 分。
+
+### 新功能
+
+- **Foundation Reviewer**：建书时新增独立审核 Agent，5 维度百分制打分（原作 DNA 保留、新叙事空间、核心冲突、开篇节奏、节奏可行性），不达 80 分自动驳回并将审核意见反馈给 Architect 重新生成
+- **新时空要求**：同人模式（canon/au/ooc/cp）必须设计原创分岔点，不允许复述原作剧情
+- **Hook Seed Excerpt**：伏笔回收时，Composer 从 chapter_summaries 提取原始种子场景的原文片段注入 Writer 上下文，替代了复杂的 lifecycle pressure 系统
+- **Review Reject 回滚**：`inkos review reject` 回滚 state 到被拒章节之前的快照，丢弃下游章节和记忆索引
+- **State Validation Recovery**：state 校验失败自动重试 settler，仍失败则降级保存，支持 `inkos write repair-state` 手动修复
+- **Audit Drift 隔离**：审计纠偏写入独立的 `audit_drift.md`，不再追加到 `current_state.md`
+- **标题坍缩修复**：检测近期标题主题聚集，从正文提取新关键词重生标题
+- **Hook 预算提示**：活跃伏笔 ≥10 时显示预算警告，引导优先回收旧债
+- **章节结尾摘要**：提取最近 3 章结尾句注入上下文，防止结构性重复
+- **情绪/节奏检测**：mood 单调和标题聚集检测，序列级 warning 不计入修订 blockingCount
+- **同人风格提取**：`fanfic init` 和 `import chapters` 自动生成 style_guide.md + style_profile.json
+- **Governed 路径补全**：续写/同人的 parent_canon.md 和 fanfic_canon.md 通过 Governed 路径注入 Writer
+- **自定义 HTTP Headers**：`INKOS_LLM_HEADERS` 环境变量注入自定义 HTTP 头
+
+### Bug Fixes
+
+- 章节号污染修复：叙事文本中的数字不再被误解析为章节进度
+- hook 排序修复：mustAdvance 从降序修正为升序（选最久未推进的）
+- Outline 匹配修复：支持章节范围格式，防止 Chapter 1 误匹配 Chapter 10
+- approve 不覆盖快照、style 提取 graceful degrade、Studio 热加载 LLM 配置、主题持久化
+
+---
+
 ## v1.0.2
 
 ### Bug Fixes
