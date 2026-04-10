@@ -170,6 +170,9 @@ export function ConfigView({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunc
         </div>
       )}
 
+
+      <MyLlmSettings theme={theme} t={t} />
+
       <ModelRoutingSection theme={theme} t={t} />
     </div>
   );
@@ -177,6 +180,138 @@ export function ConfigView({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunc
 
 function emptyOverride(): AgentOverride {
   return { model: "", provider: "", baseUrl: "" };
+}
+
+interface LlmSettingsData {
+  readonly apiKey: string;
+  readonly baseUrl: string;
+  readonly model: string;
+  readonly provider: string;
+  readonly hasApiKey: boolean;
+}
+
+function MyLlmSettings({ theme, t }: { theme: Theme; t: TFunction }) {
+  const c = useColors(theme);
+  const { data, loading, error, refetch } = useApi<LlmSettingsData>("/auth/llm-settings");
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({ apiKey: "", baseUrl: "", model: "", provider: "" });
+
+  if (loading) return <div className="text-muted-foreground py-8 text-center text-sm">Loading LLM settings...</div>;
+  if (error) return <div className="text-destructive py-8 text-center text-sm">Error: {error}</div>;
+  if (!data) return null;
+
+  const startEdit = () => {
+    setForm({
+      apiKey: "", // Don't pre-fill API key for security
+      baseUrl: data.baseUrl,
+      model: data.model,
+      provider: data.provider,
+    });
+    setEditing(true);
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const payload: Record<string, string> = {};
+      // Only send apiKey if user actually typed something new
+      if (form.apiKey.trim()) payload.apiKey = form.apiKey;
+      payload.baseUrl = form.baseUrl;
+      payload.model = form.model;
+      payload.provider = form.provider;
+
+      await fetchJson("/auth/llm-settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      setEditing(false);
+      refetch();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to save LLM settings");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <>
+      <div className="flex items-baseline justify-between">
+        <h2 className="font-serif text-xl mt-4">{t("config.myLlm") ?? "My LLM Settings"}</h2>
+        {!editing && (
+          <button onClick={startEdit} className={`px-3 py-2 text-xs rounded-md ${c.btnSecondary}`}>
+            Edit
+          </button>
+        )}
+      </div>
+
+      <div className={`border ${c.cardStatic} rounded-lg divide-y divide-border/40`}>
+        {editing ? (
+          <>
+            <div className="flex justify-between items-center px-4 py-2.5">
+              <span className="text-muted-foreground text-sm">{t("config.provider") ?? "Provider"}</span>
+              <input
+                type="text"
+                value={form.provider}
+                onChange={(e) => setForm({ ...form, provider: e.target.value })}
+                placeholder="openai"
+                className={`${c.input} rounded px-2 py-1 text-sm w-48`}
+              />
+            </div>
+            <div className="flex justify-between items-center px-4 py-2.5">
+              <span className="text-muted-foreground text-sm">API Key</span>
+              <input
+                type="password"
+                value={form.apiKey}
+                onChange={(e) => setForm({ ...form, apiKey: e.target.value })}
+                placeholder={data.hasApiKey ? "••••••••(keep current)" : "sk-..."}
+                className={`${c.input} rounded px-2 py-1 text-sm w-48`}
+              />
+            </div>
+            <div className="flex justify-between items-center px-4 py-2.5">
+              <span className="text-muted-foreground text-sm">Base URL</span>
+              <input
+                type="text"
+                value={form.baseUrl}
+                onChange={(e) => setForm({ ...form, baseUrl: e.target.value })}
+                placeholder="https://api.openai.com/v1"
+                className={`${c.input} rounded px-2 py-1 text-sm w-48`}
+              />
+            </div>
+            <div className="flex justify-between items-center px-4 py-2.5">
+              <span className="text-muted-foreground text-sm">{t("config.model") ?? "Model"}</span>
+              <input
+                type="text"
+                value={form.model}
+                onChange={(e) => setForm({ ...form, model: e.target.value })}
+                placeholder="gpt-4o"
+                className={`${c.input} rounded px-2 py-1 text-sm w-48`}
+              />
+            </div>
+          </>
+        ) : (
+          <>
+            <Row label={t("config.provider") ?? "Provider"} value={data.provider || "(default)"} />
+            <Row label="API Key" value={data.hasApiKey ? data.apiKey : "Not set"} mono />
+            <Row label="Base URL" value={data.baseUrl || "(default)"} mono />
+            <Row label={t("config.model") ?? "Model"} value={data.model || "(default)"} />
+          </>
+        )}
+      </div>
+
+      {editing && (
+        <div className="flex gap-2 justify-end">
+          <button onClick={() => setEditing(false)} className={`px-4 py-2.5 text-sm rounded-md ${c.btnSecondary}`}>
+            {t("config.cancel") ?? "Cancel"}
+          </button>
+          <button onClick={handleSave} disabled={saving} className={`px-4 py-2.5 text-sm rounded-md ${c.btnPrimary} disabled:opacity-50`}>
+            {saving ? (t("config.saving") ?? "Saving...") : (t("config.save") ?? "Save")}
+          </button>
+        </div>
+      )}
+    </>
+  );
 }
 
 function ModelRoutingSection({ theme, t }: { theme: Theme; t: TFunction }) {
