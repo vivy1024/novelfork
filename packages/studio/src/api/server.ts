@@ -1347,7 +1347,9 @@ export async function startStudioServer(
   port = 4567,
   options?: { readonly staticDir?: string },
 ): Promise<void> {
-  const config = await loadProjectConfig(root);
+  // Multi-user mode: don't require global API key at startup.
+  // Each user provides their own key via session (getSessionLlm).
+  const config = await loadProjectConfig(root, { requireApiKey: false });
 
   const app = createStudioServer(config, root);
 
