@@ -1387,6 +1387,33 @@ export async function startStudioServer(
   port = 4567,
   options?: { readonly staticDir?: string },
 ): Promise<void> {
+  // Auto-init project directory if inkos.json doesn't exist (Zeabur / Docker deployment)
+  const { existsSync: existsSyncInit } = await import("node:fs");
+  const { mkdir: mkdirInit, writeFile: writeFileInit } = await import("node:fs/promises");
+  const configPathInit = join(root, "inkos.json");
+  if (!existsSyncInit(configPathInit)) {
+    console.log(`inkos.json not found in ${root}, auto-initializing...`);
+    await mkdirInit(root, { recursive: true });
+    await mkdirInit(join(root, "books"), { recursive: true });
+    const defaultConfig = {
+      name: "inkos-studio",
+      version: "0.1.0",
+      language: process.env.INKOS_DEFAULT_LANGUAGE ?? "zh",
+      llm: {
+        provider: process.env.INKOS_LLM_PROVIDER ?? "openai",
+        baseUrl: process.env.INKOS_LLM_BASE_URL ?? "",
+        model: process.env.INKOS_LLM_MODEL ?? "gpt-4o",
+      },
+      notify: [],
+      daemon: {
+        schedule: { radarCron: "0 */6 * * *", writeCron: "*/15 * * * *" },
+        maxConcurrentBooks: 3,
+      },
+    };
+    await writeFileInit(configPathInit, JSON.stringify(defaultConfig, null, 2), "utf-8");
+    console.log("Auto-initialized project at", root);
+  }
+
   // Multi-user mode: don't require global API key at startup.
   // Each user provides their own key via session (getSessionLlm).
   const config = await loadProjectConfig(root, { requireApiKey: false });
