@@ -19,6 +19,8 @@ import { join } from "node:path";
 import { isSafeBookId } from "./safety.js";
 import { ApiError } from "./errors.js";
 import { buildStudioBookConfig } from "./book-create.js";
+import { establishLaunchSession, readSessionFromCookie, toPublicSession } from "./auth.js";
+import type { Context } from "hono";
 
 // --- Event bus for SSE ---
 
@@ -83,16 +85,29 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     return freshConfig;
   }
 
+  async function getSessionLlm(c: Context): Promise<{ apiKey: string; baseUrl: string } | undefined> {
+    const session = await readSessionFromCookie(c);
+    if (!session?.llmApiKey) return undefined;
+    return {
+      apiKey: session.llmApiKey,
+      baseUrl: session.llmBaseUrl ?? "",
+    };
+  }
+
   async function buildPipelineConfig(
-    overrides?: Partial<Pick<PipelineConfig, "externalContext">>,
+    overrides?: Partial<Pick<PipelineConfig, "externalContext">> & { apiKey?: string; baseUrl?: string },
   ): Promise<PipelineConfig> {
-    const currentConfig = await loadCurrentProjectConfig();
+    const hasSessionLlm = Boolean(overrides?.apiKey);
+    const currentConfig = await loadCurrentProjectConfig({ requireApiKey: !hasSessionLlm });
+    const llm = hasSessionLlm
+      ? { ...currentConfig.llm, apiKey: overrides!.apiKey!, baseUrl: overrides!.baseUrl ?? currentConfig.llm.baseUrl }
+      : currentConfig.llm;
     const logger = createLogger({ tag: "studio", sinks: [sseSink] });
     return {
-      client: createLLMClient(currentConfig.llm),
-      model: currentConfig.llm.model,
+      client: createLLMClient(llm),
+      model: llm.model,
       projectRoot: root,
-      defaultLLMConfig: currentConfig.llm,
+      defaultLLMConfig: llm,
       modelOverrides: currentConfig.modelOverrides,
       notifyChannels: currentConfig.notify,
       logger,
@@ -108,6 +123,23 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
       externalContext: overrides?.externalContext,
     };
   }
+
+  // --- Auth ---
+
+  app.post("/api/auth/launch", async (c) => {
+    const body: { token?: string } = await c.req.json<{ token?: string }>().catch(() => ({}));
+    if (!body.token?.trim()) {
+      throw new ApiError(400, "TOKEN_REQUIRED", "Launch token is required.");
+    }
+    const session = await establishLaunchSession(c, body.token);
+    return c.json({ ok: true, session: toPublicSession(session) });
+  });
+
+  app.get("/api/auth/me", async (c) => {
+    const session = await readSessionFromCookie(c);
+    if (!session) throw new ApiError(401, "UNAUTHORIZED", "Not authenticated.");
+    return c.json({ session: toPublicSession(session) });
+  });
 
   // --- Books ---
 
@@ -181,7 +213,8 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     broadcast("book:creating", { bookId, title: body.title });
     bookCreateStatus.set(bookId, { status: "creating" });
 
-    const pipeline = new PipelineRunner(await buildPipelineConfig());
+    const sessionLlm = await getSessionLlm(c);
+    const pipeline = new PipelineRunner(await buildPipelineConfig(sessionLlm));
     pipeline.initBook(bookConfig).then(
       () => {
         bookCreateStatus.delete(bookId);
@@ -296,7 +329,8 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     broadcast("write:start", { bookId: id });
 
     // Fire and forget — progress/completion/errors pushed via SSE
-    const pipeline = new PipelineRunner(await buildPipelineConfig());
+    const sessionLlm = await getSessionLlm(c);
+    const pipeline = new PipelineRunner(await buildPipelineConfig(sessionLlm));
     pipeline.writeNextChapter(id, body.wordCount).then(
       (result) => {
         broadcast("write:complete", { bookId: id, chapterNumber: result.chapterNumber, status: result.status, title: result.title, wordCount: result.wordCount });
@@ -315,7 +349,8 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
 
     broadcast("draft:start", { bookId: id });
 
-    const pipeline = new PipelineRunner(await buildPipelineConfig());
+    const sessionLlm = await getSessionLlm(c);
+    const pipeline = new PipelineRunner(await buildPipelineConfig(sessionLlm));
     pipeline.writeDraft(id, body.context, body.wordCount).then(
       (result) => {
         broadcast("draft:complete", { bookId: id, chapterNumber: result.chapterNumber, title: result.title, wordCount: result.wordCount });
@@ -554,7 +589,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
       const { runAgentLoop } = await import("@actalk/inkos-core");
 
       const result = await runAgentLoop(
-        await buildPipelineConfig(),
+        await buildPipelineConfig(await getSessionLlm(c)),
         instruction
       );
 
@@ -631,6 +666,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     try {
       const pipeline = new PipelineRunner(await buildPipelineConfig({
         externalContext: body.brief,
+        ...(await getSessionLlm(c)),
       }));
       const result = await pipeline.reviseDraft(
         id,
@@ -930,6 +966,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
       const discarded = await state.rollbackToChapter(id, rollbackTarget);
       const pipeline = new PipelineRunner(await buildPipelineConfig({
         externalContext: body.brief,
+        ...(await getSessionLlm(c)),
       }));
       pipeline.writeNextChapter(id).then(
         (result) => broadcast("rewrite:complete", { bookId: id, chapterNumber: result.chapterNumber, title: result.title, wordCount: result.wordCount }),
@@ -952,6 +989,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     try {
       const pipeline = new PipelineRunner(await buildPipelineConfig({
         externalContext: body.brief,
+        ...(await getSessionLlm(c)),
       }));
       const result = await pipeline.resyncChapterArtifacts(id, chapterNum);
       return c.json(result);
@@ -1122,7 +1160,8 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
 
     broadcast("style:start", { bookId: id });
     try {
-      const pipeline = new PipelineRunner(await buildPipelineConfig());
+      const sessionLlm = await getSessionLlm(c);
+    const pipeline = new PipelineRunner(await buildPipelineConfig(sessionLlm));
       const result = await pipeline.generateStyleGuide(id, text, sourceName ?? "unknown");
       broadcast("style:complete", { bookId: id });
       return c.json({ ok: true, result });
@@ -1144,7 +1183,8 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
       const { splitChapters } = await import("@actalk/inkos-core");
       const chapters = [...splitChapters(text, splitRegex)];
 
-      const pipeline = new PipelineRunner(await buildPipelineConfig());
+      const sessionLlm = await getSessionLlm(c);
+    const pipeline = new PipelineRunner(await buildPipelineConfig(sessionLlm));
       const result = await pipeline.importChapters({ bookId: id, chapters });
       broadcast("import:complete", { bookId: id, type: "chapters", count: result.importedCount });
       return c.json(result);
@@ -1163,7 +1203,8 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
 
     broadcast("import:start", { bookId: id, type: "canon" });
     try {
-      const pipeline = new PipelineRunner(await buildPipelineConfig());
+      const sessionLlm = await getSessionLlm(c);
+    const pipeline = new PipelineRunner(await buildPipelineConfig(sessionLlm));
       await pipeline.importCanon(id, fromBookId);
       broadcast("import:complete", { bookId: id, type: "canon" });
       return c.json({ ok: true });
@@ -1204,7 +1245,8 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
 
     broadcast("fanfic:start", { bookId, title: body.title });
     try {
-      const pipeline = new PipelineRunner(await buildPipelineConfig());
+      const sessionLlm = await getSessionLlm(c);
+    const pipeline = new PipelineRunner(await buildPipelineConfig(sessionLlm));
       await pipeline.initFanficBook(bookConfig, body.sourceText, body.sourceName ?? "source", (body.mode ?? "canon") as "canon");
       broadcast("fanfic:complete", { bookId });
       return c.json({ ok: true, bookId });
@@ -1237,7 +1279,8 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     broadcast("fanfic:refresh:start", { bookId: id });
     try {
       const book = await state.loadBookConfig(id);
-      const pipeline = new PipelineRunner(await buildPipelineConfig());
+      const sessionLlm = await getSessionLlm(c);
+    const pipeline = new PipelineRunner(await buildPipelineConfig(sessionLlm));
       await pipeline.importFanficCanon(id, sourceText, sourceName ?? "source", (book.fanficMode ?? "canon") as "canon");
       broadcast("fanfic:refresh:complete", { bookId: id });
       return c.json({ ok: true });
@@ -1252,7 +1295,8 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
   app.post("/api/radar/scan", async (c) => {
     broadcast("radar:start", {});
     try {
-      const pipeline = new PipelineRunner(await buildPipelineConfig());
+      const sessionLlm = await getSessionLlm(c);
+    const pipeline = new PipelineRunner(await buildPipelineConfig(sessionLlm));
       const result = await pipeline.runRadar();
       broadcast("radar:complete", { result });
       return c.json(result);

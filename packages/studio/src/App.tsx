@@ -19,7 +19,7 @@ import { LanguageSelector } from "./pages/LanguageSelector";
 import { useSSE } from "./hooks/use-sse";
 import { useTheme } from "./hooks/use-theme";
 import { useI18n } from "./hooks/use-i18n";
-import { postApi, useApi } from "./hooks/use-api";
+import { fetchJson, postApi, useApi } from "./hooks/use-api";
 import { Sun, Moon, Bell, MessageSquare } from "lucide-react";
 
 export type Route =
@@ -44,7 +44,56 @@ export function deriveActiveBookId(route: Route): string | undefined {
     : undefined;
 }
 
+type AuthState = "checking" | "unauthenticated" | "authenticated";
+
+function useLaunchAuth() {
+  const [authState, setAuthState] = useState<AuthState>("checking");
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get("token");
+
+    if (token) {
+      window.history.replaceState({}, "", window.location.pathname);
+      fetchJson<{ ok: boolean }>("/auth/launch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token }),
+      })
+        .then(() => setAuthState("authenticated"))
+        .catch((e) => {
+          setError(e instanceof Error ? e.message : "Login failed");
+          setAuthState("unauthenticated");
+        });
+    } else {
+      fetchJson<{ session: unknown }>("/auth/me")
+        .then(() => setAuthState("authenticated"))
+        .catch(() => setAuthState("unauthenticated"));
+    }
+  }, []);
+
+  return { authState, error };
+}
+
+function LoginGate({ error }: { error: string | null }) {
+  return (
+    <div className="min-h-screen bg-background flex items-center justify-center">
+      <div className="max-w-sm text-center space-y-4">
+        <h1 className="text-2xl font-serif text-foreground">InkOS Studio</h1>
+        <p className="text-sm text-muted-foreground">
+          {error ?? "请从 Sub2API 控制台登录后访问。"}
+        </p>
+        {error && (
+          <p className="text-xs text-destructive">{error}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function App() {
+  const { authState, error: authError } = useLaunchAuth();
   const [route, setRoute] = useState<Route>({ page: "dashboard" });
   const sse = useSSE();
   const { theme, setTheme } = useTheme();
@@ -69,6 +118,39 @@ export function App() {
     }
   }, [project]);
 
+  // Auth gate
+  if (authState === "checking") {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="w-12 h-12 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (authState === "unauthenticated") {
+    return <LoginGate error={authError} />;
+  }
+
+  if (!ready) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="w-12 h-12 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (showLanguageSelector) {
+    return (
+      <LanguageSelector
+        onSelect={async (lang) => {
+          await postApi("/project/language", { language: lang });
+          setShowLanguageSelector(false);
+          refetchProject();
+        }}
+      />
+    );
+  }
+
   const nav = {
     toDashboard: () => setRoute({ page: "dashboard" }),
     toBook: (bookId: string) => setRoute({ page: "book", bookId }),
@@ -92,26 +174,6 @@ export function App() {
     activeBookId
       ? `book:${activeBookId}`
       : route.page;
-
-  if (!ready) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="w-12 h-12 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
-      </div>
-    );
-  }
-
-  if (showLanguageSelector) {
-    return (
-      <LanguageSelector
-        onSelect={async (lang) => {
-          await postApi("/project/language", { language: lang });
-          setShowLanguageSelector(false);
-          refetchProject();
-        }}
-      />
-    );
-  }
 
   return (
     <div className="h-screen bg-background text-foreground flex overflow-hidden font-sans">
