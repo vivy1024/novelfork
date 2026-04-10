@@ -244,6 +244,7 @@ const strings = {
   "config.stream": { zh: "流式输出", en: "Stream" },
   "config.chinese": { zh: "中文", en: "Chinese" },
   "config.english": { zh: "英文", en: "English" },
+  "config.myLlm": { zh: "我的 LLM 设置", en: "My LLM Settings" },
 
   // BookCreate extras
   "create.platform": { zh: "平台", en: "Platform" },
