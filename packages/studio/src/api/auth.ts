@@ -180,10 +180,11 @@ export function toPublicSession(session: InkosSession): PublicInkosSession {
 
 export async function establishLaunchSession(c: Context, token: string): Promise<InkosSession> {
   const session = verifyLaunchToken(token, getLaunchSecret());
+  // Persist full session (including llmApiKey/llmBaseUrl) for multi-user isolation
   await setSignedCookie(
     c,
     SESSION_COOKIE_NAME,
-    JSON.stringify(toPublicSession(session)),
+    JSON.stringify(session),
     getCookieSecret(),
     {
       httpOnly: true,
@@ -208,6 +209,8 @@ export async function readSessionFromCookie(c: Context): Promise<InkosSession | 
       userId: parseUserId(parsed.userId),
       email: parseString(parsed.email, "email"),
       role: parseString(parsed.role, "role"),
+      llmBaseUrl: typeof parsed.llmBaseUrl === "string" && parsed.llmBaseUrl.trim() ? parsed.llmBaseUrl.trim() : undefined,
+      llmApiKey: typeof parsed.llmApiKey === "string" && parsed.llmApiKey.trim() ? parsed.llmApiKey.trim() : undefined,
     };
   } catch {
     return null;
@@ -223,7 +226,7 @@ export async function requireSession(c: Context): Promise<InkosSession> {
 }
 
 export async function refreshSession(c: Context, session: InkosSession): Promise<void> {
-  await setSignedCookie(c, SESSION_COOKIE_NAME, JSON.stringify(toPublicSession(session)), getCookieSecret(), {
+  await setSignedCookie(c, SESSION_COOKIE_NAME, JSON.stringify(session), getCookieSecret(), {
     httpOnly: true,
     path: "/",
     sameSite: "Lax",
