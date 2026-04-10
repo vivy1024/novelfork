@@ -30,6 +30,8 @@ export interface InkosSession {
   role: string;
   llmBaseUrl?: string;
   llmApiKey?: string;
+  llmModel?: string;
+  llmProvider?: string;
 }
 
 export interface PublicInkosSession {
@@ -48,6 +50,8 @@ interface LaunchClaims {
   jti?: string;
   llm_base_url?: string;
   llm_api_key?: string;
+  llm_model?: string;
+  llm_provider?: string;
 }
 
 function decodeBase64Url(value: string): string {
@@ -167,6 +171,8 @@ export function verifyLaunchToken(token: string, secret: string): InkosSession {
     role: parseString(claims.role, "role"),
     llmBaseUrl: typeof claims.llm_base_url === "string" && claims.llm_base_url.trim() ? claims.llm_base_url.trim() : undefined,
     llmApiKey: typeof claims.llm_api_key === "string" && claims.llm_api_key.trim() ? claims.llm_api_key.trim() : undefined,
+    llmModel: typeof claims.llm_model === "string" && claims.llm_model.trim() ? claims.llm_model.trim() : undefined,
+    llmProvider: typeof claims.llm_provider === "string" && claims.llm_provider.trim() ? claims.llm_provider.trim() : undefined,
   };
 }
 
@@ -211,6 +217,8 @@ export async function readSessionFromCookie(c: Context): Promise<InkosSession | 
       role: parseString(parsed.role, "role"),
       llmBaseUrl: typeof parsed.llmBaseUrl === "string" && parsed.llmBaseUrl.trim() ? parsed.llmBaseUrl.trim() : undefined,
       llmApiKey: typeof parsed.llmApiKey === "string" && parsed.llmApiKey.trim() ? parsed.llmApiKey.trim() : undefined,
+      llmModel: typeof parsed.llmModel === "string" && parsed.llmModel.trim() ? parsed.llmModel.trim() : undefined,
+      llmProvider: typeof parsed.llmProvider === "string" && parsed.llmProvider.trim() ? parsed.llmProvider.trim() : undefined,
     };
   } catch {
     return null;

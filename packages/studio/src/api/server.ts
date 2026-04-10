@@ -19,7 +19,7 @@ import { join } from "node:path";
 import { isSafeBookId } from "./safety.js";
 import { ApiError } from "./errors.js";
 import { buildStudioBookConfig } from "./book-create.js";
-import { establishLaunchSession, readSessionFromCookie, toPublicSession } from "./auth.js";
+import { establishLaunchSession, readSessionFromCookie, refreshSession, toPublicSession } from "./auth.js";
 import type { Context } from "hono";
 
 // --- Event bus for SSE ---
@@ -85,22 +85,30 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     return freshConfig;
   }
 
-  async function getSessionLlm(c: Context): Promise<{ apiKey: string; baseUrl: string } | undefined> {
+  async function getSessionLlm(c: Context): Promise<{ apiKey: string; baseUrl: string; model?: string; provider?: string } | undefined> {
     const session = await readSessionFromCookie(c);
     if (!session?.llmApiKey) return undefined;
     return {
       apiKey: session.llmApiKey,
       baseUrl: session.llmBaseUrl ?? "",
+      model: session.llmModel,
+      provider: session.llmProvider,
     };
   }
 
   async function buildPipelineConfig(
-    overrides?: Partial<Pick<PipelineConfig, "externalContext">> & { apiKey?: string; baseUrl?: string },
+    overrides?: Partial<Pick<PipelineConfig, "externalContext">> & { apiKey?: string; baseUrl?: string; model?: string; provider?: string },
   ): Promise<PipelineConfig> {
     const hasSessionLlm = Boolean(overrides?.apiKey);
     const currentConfig = await loadCurrentProjectConfig({ requireApiKey: !hasSessionLlm });
     const llm = hasSessionLlm
-      ? { ...currentConfig.llm, apiKey: overrides!.apiKey!, baseUrl: overrides!.baseUrl ?? currentConfig.llm.baseUrl }
+      ? {
+          ...currentConfig.llm,
+          apiKey: overrides!.apiKey!,
+          baseUrl: overrides!.baseUrl || currentConfig.llm.baseUrl,
+          ...(overrides!.model ? { model: overrides!.model } : {}),
+          ...(overrides!.provider ? { provider: overrides!.provider as typeof currentConfig.llm.provider } : {}),
+        }
       : currentConfig.llm;
     const logger = createLogger({ tag: "studio", sinks: [sseSink] });
     return {
@@ -139,6 +147,38 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     const session = await readSessionFromCookie(c);
     if (!session) throw new ApiError(401, "UNAUTHORIZED", "Not authenticated.");
     return c.json({ session: toPublicSession(session) });
+  });
+
+  // --- User LLM Settings ---
+
+  app.get("/api/auth/llm-settings", async (c) => {
+    const session = await readSessionFromCookie(c);
+    if (!session) throw new ApiError(401, "UNAUTHORIZED", "Not authenticated.");
+    return c.json({
+      apiKey: session.llmApiKey ? `${session.llmApiKey.slice(0, 8)}...${session.llmApiKey.slice(-4)}` : "",
+      baseUrl: session.llmBaseUrl ?? "",
+      model: session.llmModel ?? "",
+      provider: session.llmProvider ?? "",
+      hasApiKey: Boolean(session.llmApiKey),
+    });
+  });
+
+  app.put("/api/auth/llm-settings", async (c) => {
+    const session = await readSessionFromCookie(c);
+    if (!session) throw new ApiError(401, "UNAUTHORIZED", "Not authenticated.");
+
+    const body = await c.req.json<{
+      apiKey?: string; baseUrl?: string; model?: string; provider?: string;
+    }>();
+
+    // Update session with new LLM settings
+    if (typeof body.apiKey === "string") session.llmApiKey = body.apiKey.trim() || undefined;
+    if (typeof body.baseUrl === "string") session.llmBaseUrl = body.baseUrl.trim() || undefined;
+    if (typeof body.model === "string") session.llmModel = body.model.trim() || undefined;
+    if (typeof body.provider === "string") session.llmProvider = body.provider.trim() || undefined;
+
+    await refreshSession(c, session);
+    return c.json({ ok: true });
   });
 
   // --- Books ---
