@@ -10,6 +10,19 @@ export default defineConfig({
       "@": resolve(__dirname, "src"),
     },
   },
+  build: {
+    rollupOptions: {
+      external: [
+        "@tauri-apps/api",
+        "@tauri-apps/api/core",
+        "@tauri-apps/api/event",
+        "@tauri-apps/plugin-dialog",
+        "@tauri-apps/plugin-fs",
+        "@tauri-apps/plugin-updater",
+        "@tauri-apps/plugin-process",
+      ],
+    },
+  },
   server: {
     port: 4567,
     proxy: {
