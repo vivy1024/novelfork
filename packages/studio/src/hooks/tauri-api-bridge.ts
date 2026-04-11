@@ -700,8 +700,9 @@ export async function tauriFetch<T>(path: string, init?: RequestInit): Promise<T
     const separator = format === "md" ? "\n\n---\n\n" : "\n\n";
     const text = contents.join(separator);
 
-    // Tauri 模式下无法直接返回文件下载，返回文本内容供前端处理
-    return { text, format, chapters: contents.length } as T;
+    // Tauri 模式下返回文本内容供前端处理（兼容 Dashboard 的 content/filename 和 BookDetail 的 text/format）
+    const ext = format === "md" ? ".md" : format === "epub" ? ".html" : ".txt";
+    return { text, content: text, format, filename: `${bookId}${ext}`, chapters: contents.length } as T;
   }
 
   // POST /api/books/:id/export-save — 导出并保存到本地

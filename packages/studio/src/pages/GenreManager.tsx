@@ -302,11 +302,7 @@ export function GenreManager({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFu
     if (!validSelected) return;
     if (!window.confirm(`Delete genre "${validSelected}"?`)) return;
     try {
-      const res = await fetch(`/api/genres/${validSelected}`, { method: "DELETE" });
-      if (!res.ok) {
-        const json = await res.json() as { error?: string };
-        throw new Error(json.error ?? `${res.status}`);
-      }
+      await fetchJson(`/genres/${validSelected}`, { method: "DELETE" });
       setSelected(null);
       refetch();
     } catch (e) {
