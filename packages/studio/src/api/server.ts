@@ -70,23 +70,21 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     );
   });
 
-  // BookId validation middleware — only needed in standalone
-  if (mode === "standalone") {
-    app.use("/api/books/:id/*", async (c, next) => {
-      const bookId = c.req.param("id");
-      if (!isSafeBookId(bookId)) {
-        throw new ApiError(400, "INVALID_BOOK_ID", `Invalid book ID: "${bookId}"`);
-      }
-      await next();
-    });
-    app.use("/api/books/:id", async (c, next) => {
-      const bookId = c.req.param("id");
-      if (!isSafeBookId(bookId)) {
-        throw new ApiError(400, "INVALID_BOOK_ID", `Invalid book ID: "${bookId}"`);
-      }
-      await next();
-    });
-  }
+  // BookId validation middleware — global (ai.ts also has /api/books/:id/* routes)
+  app.use("/api/books/:id/*", async (c, next) => {
+    const bookId = c.req.param("id");
+    if (!isSafeBookId(bookId)) {
+      throw new ApiError(400, "INVALID_BOOK_ID", `Invalid book ID: "${bookId}"`);
+    }
+    await next();
+  });
+  app.use("/api/books/:id", async (c, next) => {
+    const bookId = c.req.param("id");
+    if (!isSafeBookId(bookId)) {
+      throw new ApiError(400, "INVALID_BOOK_ID", `Invalid book ID: "${bookId}"`);
+    }
+    await next();
+  });
 
   // Logger sink that broadcasts to SSE
   const sseSink: LogSink = {
@@ -104,14 +102,19 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
   }
 
   async function getSessionLlm(c: Context): Promise<{ apiKey: string; baseUrl: string; model?: string; provider?: string } | undefined> {
-    const session = await readSessionFromCookie(c);
-    if (!session?.llmApiKey) return undefined;
-    return {
-      apiKey: session.llmApiKey,
-      baseUrl: session.llmBaseUrl ?? "",
-      model: session.llmModel,
-      provider: session.llmProvider,
-    };
+    try {
+      const session = await readSessionFromCookie(c);
+      if (!session?.llmApiKey) return undefined;
+      return {
+        apiKey: session.llmApiKey,
+        baseUrl: session.llmBaseUrl ?? "",
+        model: session.llmModel,
+        provider: session.llmProvider,
+      };
+    } catch {
+      // SESSION_SECRET not configured — standalone mode, no session
+      return undefined;
+    }
   }
 
   async function buildPipelineConfig(

@@ -11,6 +11,22 @@ import {
   toPublicSession,
 } from "../auth.js";
 import { ApiError } from "../errors.js";
+import type { InkosSession } from "../auth.js";
+
+/**
+ * Safely read session — returns null when SESSION_SECRET is missing
+ * (standalone mode without multi-user auth configured).
+ */
+async function safeReadSession(c: import("hono").Context): Promise<InkosSession | null> {
+  try {
+    return await readSessionFromCookie(c);
+  } catch (e) {
+    if (e instanceof ApiError && e.code === "SESSION_SECRET_MISSING") {
+      return null;
+    }
+    throw e;
+  }
+}
 
 export function createAuthRouter(): Hono {
   const app = new Hono();
@@ -25,13 +41,13 @@ export function createAuthRouter(): Hono {
   });
 
   app.get("/api/auth/me", async (c) => {
-    const session = await readSessionFromCookie(c);
+    const session = await safeReadSession(c);
     if (!session) throw new ApiError(401, "UNAUTHORIZED", "Not authenticated.");
     return c.json({ session: toPublicSession(session) });
   });
 
   app.get("/api/auth/llm-settings", async (c) => {
-    const session = await readSessionFromCookie(c);
+    const session = await safeReadSession(c);
     if (!session) throw new ApiError(401, "UNAUTHORIZED", "Not authenticated.");
     return c.json({
       apiKey: session.llmApiKey ? `${session.llmApiKey.slice(0, 8)}...${session.llmApiKey.slice(-4)}` : "",
@@ -43,7 +59,7 @@ export function createAuthRouter(): Hono {
   });
 
   app.put("/api/auth/llm-settings", async (c) => {
-    const session = await readSessionFromCookie(c);
+    const session = await safeReadSession(c);
     if (!session) throw new ApiError(401, "UNAUTHORIZED", "Not authenticated.");
 
     const body = await c.req.json<{
