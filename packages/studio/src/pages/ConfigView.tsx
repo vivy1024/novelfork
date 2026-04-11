@@ -193,8 +193,8 @@ export function ConfigView({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunc
         <MyLlmSettings theme={theme} t={t} />
       )}
 
-      {/* Model routing — standalone only */}
-      {isStandalone && <ModelRoutingSection theme={theme} t={t} />}
+      {/* Model routing — standalone and tauri */}
+      {(isStandalone || isTauri) && <ModelRoutingSection theme={theme} t={t} isTauri={isTauri} />}
     </div>
   );
 }
@@ -254,7 +254,7 @@ function TauriWorkspaceSection({ workspace, selectWorkspace, theme, t }: {
   );
 }
 
-type LLMProvider = "openai" | "anthropic" | "ollama" | "custom";
+type LLMProvider = "openai" | "anthropic" | "ollama" | "gemini" | "custom";
 
 interface LLMProfileView {
   readonly name: string;
@@ -269,6 +269,7 @@ interface LLMProfileView {
 const PROVIDER_PRESETS: Record<LLMProvider, { label: string; placeholder: string; defaultModel: string }> = {
   openai: { label: "OpenAI 兼容", placeholder: "https://api.openai.com/v1", defaultModel: "gpt-4o" },
   anthropic: { label: "Anthropic", placeholder: "https://api.anthropic.com", defaultModel: "claude-sonnet-4-20250514" },
+  gemini: { label: "Gemini", placeholder: "https://generativelanguage.googleapis.com", defaultModel: "gemini-2.0-flash" },
   ollama: { label: "Ollama 本地", placeholder: "http://localhost:11434", defaultModel: "llama3" },
   custom: { label: "自定义", placeholder: "https://your-api.com/v1", defaultModel: "gpt-4o" },
 };
@@ -283,7 +284,7 @@ function TauriLlmSettings({ theme, t }: { theme: Theme; t: TFunction }) {
     name: "", provider: "openai", apiKey: "", baseUrl: "", model: "gpt-4o",
   });
   const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null);
+  const [testResult, setTestResult] = useState<{ ok: boolean; msg: string; models?: string[] } | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -355,8 +356,10 @@ function TauriLlmSettings({ theme, t }: { theme: Theme; t: TFunction }) {
     setTesting(true);
     setTestResult(null);
     try {
-      const res = await fetchJson<{ ok: boolean; reply?: string; error?: string }>("/llm/test", { method: "POST" });
-      setTestResult(res.ok ? { ok: true, msg: res.reply ?? "OK" } : { ok: false, msg: res.error ?? "失败" });
+      const res = await fetchJson<{ ok: boolean; reply?: string; error?: string; models?: string[] }>("/llm/test", { method: "POST" });
+      setTestResult(res.ok
+        ? { ok: true, msg: res.reply ?? "OK", models: res.models }
+        : { ok: false, msg: res.error ?? "失败", models: res.models });
     } catch (e) {
       setTestResult({ ok: false, msg: e instanceof Error ? e.message : "测试失败" });
     } finally {
@@ -389,6 +392,20 @@ function TauriLlmSettings({ theme, t }: { theme: Theme; t: TFunction }) {
       {testResult && (
         <div className={`text-sm px-3 py-2 rounded-md ${testResult.ok ? "bg-green-500/10 text-green-600" : "bg-red-500/10 text-red-600"}`}>
           {testResult.ok ? `连接成功: ${testResult.msg}` : `连接失败: ${testResult.msg}`}
+        </div>
+      )}
+
+      {testResult?.models && testResult.models.length > 0 && (
+        <div className="text-sm px-3 py-2 rounded-md bg-muted/50">
+          <div className="text-xs text-muted-foreground mb-1.5">上游可用模型 ({testResult.models.length})</div>
+          <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
+            {testResult.models.slice(0, 50).map(m => (
+              <span key={m} className="px-1.5 py-0.5 text-xs bg-secondary rounded font-mono">{m}</span>
+            ))}
+            {testResult.models.length > 50 && (
+              <span className="text-xs text-muted-foreground">+{testResult.models.length - 50} more</span>
+            )}
+          </div>
         </div>
       )}
 
@@ -631,7 +648,7 @@ function MyLlmSettings({ theme, t }: { theme: Theme; t: TFunction }) {
   );
 }
 
-function ModelRoutingSection({ theme, t }: { theme: Theme; t: TFunction }) {
+function ModelRoutingSection({ theme, t, isTauri }: { theme: Theme; t: TFunction; isTauri?: boolean }) {
   const c = useColors(theme);
   const { data, loading, error, refetch } = useApi<{ overrides: OverridesMap }>(
     "/project/model-overrides",
