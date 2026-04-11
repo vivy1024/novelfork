@@ -20,6 +20,8 @@ import { isSafeBookId } from "./safety.js";
 import { ApiError } from "./errors.js";
 import { buildStudioBookConfig } from "./book-create.js";
 import { establishLaunchSession, readSessionFromCookie, refreshSession, toPublicSession } from "./auth.js";
+import { RunStore } from "./lib/run-store.js";
+import { createRunsRouter } from "./routes/index.js";
 import type { Context } from "hono";
 
 // --- Event bus for SSE ---
@@ -1376,6 +1378,11 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
 
     return c.json(checks);
   });
+
+  // Mount per-run SSE + management routes
+  const runStore = new RunStore();
+  const runsRouter = createRunsRouter(runStore);
+  app.route("", runsRouter);
 
   return app;
 }
