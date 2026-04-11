@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { isTauriBridgeActive, tauriFetch } from "./tauri-api-bridge";
 
 const BASE = "/api";
 const API_INVALIDATE_EVENT = "inkos:api-invalidate";
@@ -91,6 +92,11 @@ export async function fetchJson<T>(
   const url = buildApiUrl(path);
   if (!url) {
     throw new Error("API path is required");
+  }
+
+  // Tauri mode: route through local bridge instead of HTTP
+  if (isTauriBridgeActive()) {
+    return tauriFetch<T>(url, init);
   }
 
   const fetchImpl = deps?.fetchImpl ?? fetch;
