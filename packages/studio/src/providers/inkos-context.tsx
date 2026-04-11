@@ -22,6 +22,8 @@ interface InkOSContextValue {
   readonly mode: InkosMode;
   readonly selectWorkspace?: () => Promise<string | null>;
   readonly workspace?: string | null;
+  readonly tauriAuthenticated?: boolean;
+  readonly loginWithToken?: (token: string) => Promise<void>;
 }
 
 const InkOSContext = createContext<InkOSContextValue | null>(null);
@@ -43,7 +45,7 @@ export function InkOSProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (isTauri()) {
-      initTauriMode().then(setCtx).catch(() => {
+      initTauriMode(setCtx).catch(() => {
         // Fallback to web mode if Tauri init fails
       });
     } else {
@@ -64,7 +66,7 @@ export function InkOSProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
-async function initTauriMode(): Promise<InkOSContextValue> {
+async function initTauriMode(setCtx: (v: InkOSContextValue) => void): Promise<void> {
   const { TauriStorageAdapter, setWorkspace, getWorkspace } = await import("../storage/tauri-adapter.js");
   const { RelayAIClient } = await import("../ai/relay-client.js");
 
@@ -103,13 +105,69 @@ async function initTauriMode(): Promise<InkOSContextValue> {
     return folder;
   };
 
-  return {
-    storage,
-    ai,
-    mode: "tauri",
-    selectWorkspace,
-    workspace: getWorkspace(),
+  const hasAuth = Boolean(localStorage.getItem("inkos-auth-token"));
+
+  // Process a launch token: verify with relay, store credentials
+  const loginWithToken = async (token: string): Promise<void> => {
+    const res = await fetch(`${relayUrl}/api/auth/launch`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: { message: "Login failed" } }));
+      throw new Error(err?.error?.message ?? "Login failed");
+    }
+    const data = await res.json() as { ok: boolean; session: { userId: number; email: string } };
+
+    // Decode JWT payload to extract LLM config (without verifying — relay already verified)
+    const parts = token.split(".");
+    if (parts.length === 3) {
+      try {
+        const payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
+        if (payload.llm_api_key || payload.llm_base_url) {
+          localStorage.setItem("inkos-llm-config", JSON.stringify({
+            apiKey: payload.llm_api_key ?? "",
+            baseUrl: payload.llm_base_url ?? "",
+            model: payload.llm_model ?? "gpt-4o",
+            provider: payload.llm_provider ?? "openai",
+          }));
+        }
+      } catch { /* ignore decode errors */ }
+    }
+
+    // Store auth token for relay requests
+    localStorage.setItem("inkos-auth-token", token);
+
+    // Update context with authenticated state
+    setCtx({
+      storage, ai, mode: "tauri", selectWorkspace,
+      workspace: getWorkspace(),
+      tauriAuthenticated: true,
+      loginWithToken,
+    });
   };
+
+  // Build initial context
+  const buildCtx = (): InkOSContextValue => ({
+    storage, ai, mode: "tauri", selectWorkspace,
+    workspace: getWorkspace(),
+    tauriAuthenticated: hasAuth,
+    loginWithToken,
+  });
+
+  setCtx(buildCtx());
+
+  // Listen for deep link events (inkos://launch?token=xxx)
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const eventMod = await (Function('return import("@tauri-apps/api/event")')() as Promise<any>);
+    eventMod.listen("inkos-launch", (event: { payload: string }) => {
+      if (event.payload) {
+        loginWithToken(event.payload).catch(console.error);
+      }
+    });
+  } catch { /* deep link listener not available */ }
 }
 
 export function useInkOS(): InkOSContextValue {

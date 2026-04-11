@@ -9,6 +9,7 @@ import { ChapterReader } from "./pages/ChapterReader";
 import { Analytics } from "./pages/Analytics";
 import { ConfigView } from "./pages/ConfigView";
 import { WorkspaceSelector } from "./pages/WorkspaceSelector";
+import { TauriLogin } from "./pages/TauriLogin";
 import { TruthFiles } from "./pages/TruthFiles";
 import { DaemonControl } from "./pages/DaemonControl";
 import { LogViewer } from "./pages/LogViewer";
@@ -104,7 +105,7 @@ export function App() {
 
 function AppInner() {
   const { authState, error: authError } = useLaunchAuth();
-  const { mode, selectWorkspace, workspace } = useInkOS();
+  const { mode, selectWorkspace, workspace, tauriAuthenticated, loginWithToken } = useInkOS();
   const [route, setRoute] = useState<Route>({ page: "dashboard" });
   const sse = useSSE();
   const { theme, setTheme } = useTheme();
@@ -137,6 +138,18 @@ function AppInner() {
       <WorkspaceSelector
         onSelect={() => setWsReady(true)}
         selectWorkspace={selectWorkspace!}
+        t={t}
+      />
+    );
+  }
+
+  // Tauri auth gate — must have credentials before proceeding
+  if (isTauri && !tauriAuthenticated) {
+    const relayUrl = localStorage.getItem("inkos-relay-url") ?? "https://inkos.vivy1024.cc";
+    return (
+      <TauriLogin
+        onLogin={(token) => loginWithToken!(token)}
+        relayUrl={relayUrl}
         t={t}
       />
     );
