@@ -81,7 +81,7 @@ async function decrypt(data: Uint8Array, passphrase: string): Promise<string> {
 // Tauri invoke helper (same pattern as tauri-adapter)
 async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const mod = await (Function('return import("@tauri-apps/api/core")')() as Promise<any>);
+  const mod = await import("@tauri-apps/api/core") as any;
   return mod.invoke(cmd, args) as T;
 }
 

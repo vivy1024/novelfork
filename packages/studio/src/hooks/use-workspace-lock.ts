@@ -19,7 +19,7 @@ function isTauri(): boolean {
 }
 
 async function getTauriCore(): Promise<any> {
-  const mod = await (Function('return import("@tauri-apps/api/core")')() as Promise<any>);
+  const mod = await import("@tauri-apps/api/core") as any;
   return mod;
 }
 
