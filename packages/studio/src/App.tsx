@@ -12,7 +12,6 @@ import { ChapterReader } from "./pages/ChapterReader";
 import { Analytics } from "./pages/Analytics";
 import { ConfigView } from "./pages/ConfigView";
 import { WorkspaceSelector } from "./pages/WorkspaceSelector";
-import { TauriLogin } from "./pages/TauriLogin";
 import { TruthFiles } from "./pages/TruthFiles";
 import { DaemonControl } from "./pages/DaemonControl";
 import { LogViewer } from "./pages/LogViewer";
@@ -123,7 +122,7 @@ export function App() {
 
 function AppInner() {
   const { authState, error: authError } = useLaunchAuth();
-  const { mode, selectWorkspace, workspace, tauriAuthenticated, loginWithToken, skipAuth } = useInkOS();
+  const { mode, selectWorkspace, workspace } = useInkOS();
   const { tabs, activeTabId, activeTab, openTab, closeTab, activateTab } = useTabsState();
   const [bookCreateOpen, setBookCreateOpen] = useState(false);
   const sse = useSSE();
@@ -167,25 +166,17 @@ function AppInner() {
     }
   }, [project]);
 
+  // Tauri mode: ready immediately (no server project config to wait for)
+  useEffect(() => {
+    if (isTauri) setReady(true);
+  }, [isTauri]);
+
   // Tauri workspace gate — must pick a folder before anything else
   if (isTauri && !wsReady) {
     return (
       <WorkspaceSelector
         onSelect={() => setWsReady(true)}
         selectWorkspace={selectWorkspace!}
-        t={t}
-      />
-    );
-  }
-
-  // Tauri auth gate — must have credentials before proceeding
-  if (isTauri && !tauriAuthenticated) {
-    const relayUrl = localStorage.getItem("inkos-relay-url") ?? "https://inkos.vivy1024.cc";
-    return (
-      <TauriLogin
-        onLogin={(token) => loginWithToken!(token)}
-        onSkip={() => skipAuth!()}
-        relayUrl={relayUrl}
         t={t}
       />
     );
