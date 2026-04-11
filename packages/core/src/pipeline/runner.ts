@@ -510,9 +510,14 @@ export class PipelineRunner {
     const result = await importer.importFromText(sourceText, sourceName, fanficMode);
 
     const bookDir = this.state.bookDir(bookId);
-    const storyDir = join(bookDir, "story");
-    await mkdir(storyDir, { recursive: true });
-    await writeFile(join(storyDir, "fanfic_canon.md"), result.fullDocument, "utf-8");
+    const releaseLock = await this.state.acquireBookLock(bookId);
+    try {
+      const storyDir = join(bookDir, "story");
+      await mkdir(storyDir, { recursive: true });
+      await writeFile(join(storyDir, "fanfic_canon.md"), result.fullDocument, "utf-8");
+    } finally {
+      await releaseLock();
+    }
 
     return result.fullDocument;
   }
@@ -785,27 +790,32 @@ export class PipelineRunner {
     });
     const result = evaluation.auditResult;
 
-    // Update index with audit result
-    const index = await this.state.loadChapterIndex(bookId);
-    const updated = index.map((ch) =>
-      ch.number === targetChapter
-        ? {
-            ...ch,
-            status: (result.passed ? "ready-for-review" : "audit-failed") as ChapterMeta["status"],
-            updatedAt: new Date().toISOString(),
-            auditIssues: result.issues.map((i) => `[${i.severity}] ${i.description}`),
-          }
-        : ch,
-    );
-    await this.state.saveChapterIndex(bookId, updated);
-    const latestChapter = index.length > 0 ? Math.max(...index.map((chapter) => chapter.number)) : targetChapter;
-    if (targetChapter === latestChapter) {
-      await this.persistAuditDriftGuidance({
-        bookDir,
-        chapterNumber: targetChapter,
-        issues: result.issues.filter((issue) => issue.severity === "critical" || issue.severity === "warning"),
-        language,
-      }).catch(() => undefined);
+    // Update index with audit result — acquire lock to prevent concurrent writes
+    const releaseLock = await this.state.acquireBookLock(bookId);
+    try {
+      const index = await this.state.loadChapterIndex(bookId);
+      const updated = index.map((ch) =>
+        ch.number === targetChapter
+          ? {
+              ...ch,
+              status: (result.passed ? "ready-for-review" : "audit-failed") as ChapterMeta["status"],
+              updatedAt: new Date().toISOString(),
+              auditIssues: result.issues.map((i) => `[${i.severity}] ${i.description}`),
+            }
+          : ch,
+      );
+      await this.state.saveChapterIndex(bookId, updated);
+      const latestChapter = index.length > 0 ? Math.max(...index.map((chapter) => chapter.number)) : targetChapter;
+      if (targetChapter === latestChapter) {
+        await this.persistAuditDriftGuidance({
+          bookDir,
+          chapterNumber: targetChapter,
+          issues: result.issues.filter((issue) => issue.severity === "critical" || issue.severity === "warning"),
+          language,
+        }).catch(() => undefined);
+      }
+    } finally {
+      await releaseLock();
     }
 
     await this.emitWebhook(
