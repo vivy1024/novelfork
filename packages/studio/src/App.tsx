@@ -128,7 +128,11 @@ function AppInner() {
   const sse = useSSE();
   const { theme, setTheme } = useTheme();
   const { t } = useI18n();
-  const isTauri = mode === "tauri";
+
+  // 同步检测 Tauri 环境，不依赖异步 mode 状态
+  const isTauriEnv = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+  const isTauri = isTauriEnv || mode === "tauri";
+
   const { data: project, refetch: refetchProject } = useApi<{ language: string; languageExplicit: boolean }>(isTauri ? null : "/project");
   const [showLanguageSelector, setShowLanguageSelector] = useState(false);
   const [ready, setReady] = useState(isTauri);
@@ -170,6 +174,11 @@ function AppInner() {
   useEffect(() => {
     if (isTauri) setReady(true);
   }, [isTauri]);
+
+  // Tauri workspace restored from localStorage
+  useEffect(() => {
+    if (isTauri && workspace) setWsReady(true);
+  }, [isTauri, workspace]);
 
   // Tauri workspace gate — must pick a folder before anything else
   if (isTauri && !wsReady) {
