@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useApi } from "../hooks/use-api";
 import type { SSEMessage } from "../hooks/use-sse";
 import { shouldRefetchBookCollections, shouldRefetchDaemonStatus } from "../hooks/use-book-activity";
@@ -16,6 +16,10 @@ import {
   FileInput,
   TrendingUp,
   Stethoscope,
+  ChevronRight,
+  ChevronDown,
+  FileText,
+  FolderOpen,
 } from "lucide-react";
 
 interface BookSummary {
@@ -30,6 +34,8 @@ interface Nav {
   toDashboard: () => void;
   toBook: (id: string) => void;
   toBookCreate: () => void;
+  toChapter: (bookId: string, chapterNumber: number) => void;
+  toTruth: (bookId: string) => void;
   toConfig: () => void;
   toDaemon: () => void;
   toLogs: () => void;
@@ -50,6 +56,16 @@ export function Sidebar({ nav, activePage, sse, t }: {
   const { data: daemon, refetch: refetchDaemon } = useApi<{ running: boolean }>("/daemon");
   const { mode } = useInkOS();
   const isStandalone = mode === "standalone";
+  const [expandedBooks, setExpandedBooks] = useState<Set<string>>(new Set());
+
+  const toggleBook = (bookId: string) => {
+    setExpandedBooks((prev) => {
+      const next = new Set(prev);
+      if (next.has(bookId)) next.delete(bookId);
+      else next.add(bookId);
+      return next;
+    });
+  };
 
   useEffect(() => {
     const recent = sse.messages.at(-1);
@@ -97,26 +113,42 @@ export function Sidebar({ nav, activePage, sse, t }: {
             </button>
           </div>
 
-          <div className="space-y-1">
-            {data?.books.map((book) => (
-              <button
-                key={book.id}
-                onClick={() => nav.toBook(book.id)}
-                className={`w-full group flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-200 ${
-                  activePage === `book:${book.id}`
-                    ? "bg-primary/10 text-primary font-semibold"
-                    : "text-foreground font-medium hover:text-foreground hover:bg-secondary/50"
-                }`}
-              >
-                <Book size={16} className={activePage === `book:${book.id}` ? "text-primary" : "text-muted-foreground group-hover:text-foreground"} />
-                <span className="truncate flex-1 text-left">{book.title}</span>
-                {book.chaptersWritten > 0 && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground group-hover:bg-primary/20 group-hover:text-primary transition-colors">
-                    {book.chaptersWritten}
-                  </span>
-                )}
-              </button>
-            ))}
+          <div className="space-y-0.5">
+            {data?.books.map((book) => {
+              const isExpanded = expandedBooks.has(book.id);
+              const isActive = activePage === `book:${book.id}`;
+              return (
+                <div key={book.id}>
+                  <div className="flex items-center">
+                    <button
+                      onClick={() => toggleBook(book.id)}
+                      className="w-5 h-7 flex items-center justify-center text-muted-foreground hover:text-foreground shrink-0"
+                    >
+                      {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                    </button>
+                    <button
+                      onClick={() => nav.toBook(book.id)}
+                      className={`flex-1 group flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-all ${
+                        isActive
+                          ? "bg-primary/10 text-primary font-semibold"
+                          : "text-foreground font-medium hover:bg-secondary/50"
+                      }`}
+                    >
+                      <Book size={14} className={isActive ? "text-primary" : "text-muted-foreground"} />
+                      <span className="truncate flex-1 text-left">{book.title}</span>
+                      {book.chaptersWritten > 0 && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                          {book.chaptersWritten}
+                        </span>
+                      )}
+                    </button>
+                  </div>
+                  {isExpanded && (
+                    <BookTreeChildren bookId={book.id} chaptersWritten={book.chaptersWritten} nav={nav} activePage={activePage} t={t} />
+                  )}
+                </div>
+              );
+            })}
 
             {(!data?.books || data.books.length === 0) && (
               <div className="px-3 py-6 text-xs text-muted-foreground/70 italic text-center border border-dashed border-border rounded-lg">
@@ -247,5 +279,62 @@ function SidebarItem({ label, icon, active, onClick, badge, badgeColor }: {
         </span>
       )}
     </button>
+  );
+}
+
+interface ChapterMeta {
+  readonly chapterNumber: number;
+  readonly title?: string;
+  readonly status?: string;
+}
+
+function BookTreeChildren({ bookId, chaptersWritten, nav, activePage, t }: {
+  bookId: string;
+  chaptersWritten: number;
+  nav: Nav;
+  activePage: string;
+  t: TFunction;
+}) {
+  const { data } = useApi<{ chapters: ReadonlyArray<ChapterMeta> }>(`/books/${bookId}/chapters`);
+
+  return (
+    <div className="ml-5 pl-3 border-l border-border/40 space-y-0.5 py-0.5">
+      {data?.chapters.map((ch) => {
+        const chId = `chapter:${bookId}:${ch.chapterNumber}`;
+        const isActive = activePage === chId;
+        return (
+          <button
+            key={ch.chapterNumber}
+            onClick={() => nav.toChapter(bookId, ch.chapterNumber)}
+            className={`w-full flex items-center gap-2 px-2 py-1 rounded-md text-xs transition-all ${
+              isActive
+                ? "bg-primary/10 text-primary font-semibold"
+                : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
+            }`}
+          >
+            <FileText size={12} />
+            <span className="truncate">{ch.title ?? t("chapter.label").replace("{n}", String(ch.chapterNumber))}</span>
+          </button>
+        );
+      })}
+
+      <button
+        onClick={() => nav.toTruth(bookId)}
+        className={`w-full flex items-center gap-2 px-2 py-1 rounded-md text-xs transition-all ${
+          activePage === `truth:${bookId}`
+            ? "bg-primary/10 text-primary font-semibold"
+            : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
+        }`}
+      >
+        <FolderOpen size={12} />
+        <span>{t("book.truthFiles")}</span>
+      </button>
+
+      {(!data?.chapters || data.chapters.length === 0) && chaptersWritten === 0 && (
+        <div className="px-2 py-1 text-[10px] text-muted-foreground/50 italic">
+          {t("book.noChapters")}
+        </div>
+      )}
+    </div>
   );
 }
