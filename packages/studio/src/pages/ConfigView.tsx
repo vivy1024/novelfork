@@ -1,10 +1,10 @@
 import { fetchJson, putApi, useApi } from "../hooks/use-api";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
 import { useColors } from "../hooks/use-colors";
 import { useInkOS } from "../providers/inkos-context";
-import { FolderOpen } from "lucide-react";
+import { FolderOpen, Plus, Trash2, Check, Zap, Pencil } from "lucide-react";
 
 const ROUTING_AGENTS = [
   "writer",
@@ -254,92 +254,246 @@ function TauriWorkspaceSection({ workspace, selectWorkspace, theme, t }: {
   );
 }
 
+type LLMProvider = "openai" | "anthropic" | "ollama" | "custom";
+
+interface LLMProfileView {
+  readonly name: string;
+  readonly provider: LLMProvider;
+  readonly apiKey: string;
+  readonly baseUrl: string;
+  readonly model: string;
+  readonly temperature?: number;
+  readonly maxTokens?: number;
+}
+
+const PROVIDER_PRESETS: Record<LLMProvider, { label: string; placeholder: string; defaultModel: string }> = {
+  openai: { label: "OpenAI 兼容", placeholder: "https://api.openai.com/v1", defaultModel: "gpt-4o" },
+  anthropic: { label: "Anthropic", placeholder: "https://api.anthropic.com", defaultModel: "claude-sonnet-4-20250514" },
+  ollama: { label: "Ollama 本地", placeholder: "http://localhost:11434", defaultModel: "llama3" },
+  custom: { label: "自定义", placeholder: "https://your-api.com/v1", defaultModel: "gpt-4o" },
+};
+
 function TauriLlmSettings({ theme, t }: { theme: Theme; t: TFunction }) {
   const c = useColors(theme);
-  const [editing, setEditing] = useState(false);
-  const [form, setForm] = useState({ apiKey: "", baseUrl: "", model: "", provider: "" });
+  const [profiles, setProfiles] = useState<LLMProfileView[]>([]);
+  const [active, setActive] = useState("");
+  const [editingIdx, setEditingIdx] = useState<number | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [form, setForm] = useState<LLMProfileView>({
+    name: "", provider: "openai", apiKey: "", baseUrl: "", model: "gpt-4o",
+  });
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null);
 
-  const stored = (() => {
+  const refresh = useCallback(async () => {
     try {
-      const raw = localStorage.getItem("inkos-llm-config");
-      if (raw) return JSON.parse(raw) as { apiKey?: string; baseUrl?: string; model?: string; provider?: string };
-    } catch { /* ignore */ }
-    return { apiKey: "", baseUrl: "", model: "gpt-4o", provider: "openai" };
-  })();
+      const data = await fetchJson<{ profiles: LLMProfileView[]; active: string }>("/llm/profiles");
+      setProfiles(data.profiles);
+      setActive(data.active);
+    } catch { /* no profiles yet */ }
+  }, []);
 
-  const startEdit = () => {
-    setForm({
-      apiKey: "",
-      baseUrl: stored.baseUrl ?? "",
-      model: stored.model ?? "gpt-4o",
-      provider: stored.provider ?? "openai",
+  useEffect(() => { void refresh(); }, [refresh]);
+
+  const handleActivate = async (name: string) => {
+    await fetchJson("/llm/active", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
     });
-    setEditing(true);
+    setActive(name);
+    setTestResult(null);
   };
 
-  const handleSave = () => {
-    const config = {
-      apiKey: form.apiKey.trim() || stored.apiKey || "",
-      baseUrl: form.baseUrl,
-      model: form.model,
-      provider: form.provider,
-    };
-    localStorage.setItem("inkos-llm-config", JSON.stringify(config));
-    setEditing(false);
+  const handleDelete = async (name: string) => {
+    if (!confirm(`删除配置「${name}」？`)) return;
+    await fetchJson(`/llm/profiles/${encodeURIComponent(name)}`, { method: "DELETE" });
+    await refresh();
+    setTestResult(null);
   };
 
-  const maskedKey = stored.apiKey ? `${stored.apiKey.slice(0, 6)}...${stored.apiKey.slice(-4)}` : "未设置";
+  const startAdd = () => {
+    setForm({ name: "", provider: "openai", apiKey: "", baseUrl: "", model: "gpt-4o" });
+    setAdding(true);
+    setEditingIdx(null);
+    setTestResult(null);
+  };
+
+  const startEdit = (idx: number) => {
+    const p = profiles[idx];
+    setForm({ ...p, apiKey: "" }); // don't prefill masked key
+    setEditingIdx(idx);
+    setAdding(false);
+    setTestResult(null);
+  };
+
+  const handleSave = async () => {
+    try {
+      if (adding) {
+        await fetchJson("/llm/profiles", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(form),
+        });
+      } else if (editingIdx !== null) {
+        const oldName = profiles[editingIdx].name;
+        await fetchJson(`/llm/profiles/${encodeURIComponent(oldName)}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(form),
+        });
+      }
+      setAdding(false);
+      setEditingIdx(null);
+      await refresh();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "保存失败");
+    }
+  };
+
+  const handleTest = async () => {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const res = await fetchJson<{ ok: boolean; reply?: string; error?: string }>("/llm/test", { method: "POST" });
+      setTestResult(res.ok ? { ok: true, msg: res.reply ?? "OK" } : { ok: false, msg: res.error ?? "失败" });
+    } catch (e) {
+      setTestResult({ ok: false, msg: e instanceof Error ? e.message : "测试失败" });
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const isEditing = adding || editingIdx !== null;
+  const preset = PROVIDER_PRESETS[form.provider] ?? PROVIDER_PRESETS.openai;
 
   return (
     <>
       <div className="flex items-baseline justify-between">
-        <h2 className="font-serif text-xl mt-4">{t("config.myLlm") ?? "My LLM Settings"}</h2>
-        {!editing && (
-          <button onClick={startEdit} className={`px-3 py-2 text-xs rounded-md ${c.btnSecondary}`}>
-            Edit
-          </button>
-        )}
+        <h2 className="font-serif text-xl mt-4">LLM 配置</h2>
+        <div className="flex gap-2">
+          {!isEditing && (
+            <button onClick={handleTest} disabled={testing || profiles.length === 0}
+              className={`px-3 py-2 text-xs rounded-md ${c.btnSecondary} disabled:opacity-50 flex items-center gap-1`}>
+              <Zap size={12} />{testing ? "测试中..." : "测试连接"}
+            </button>
+          )}
+          {!isEditing && (
+            <button onClick={startAdd} className={`px-3 py-2 text-xs rounded-md ${c.btnPrimary} flex items-center gap-1`}>
+              <Plus size={12} />新增配置
+            </button>
+          )}
+        </div>
       </div>
 
-      <div className={`border ${c.cardStatic} rounded-lg divide-y divide-border/40`}>
-        {editing ? (
-          <>
+      {testResult && (
+        <div className={`text-sm px-3 py-2 rounded-md ${testResult.ok ? "bg-green-500/10 text-green-600" : "bg-red-500/10 text-red-600"}`}>
+          {testResult.ok ? `连接成功: ${testResult.msg}` : `连接失败: ${testResult.msg}`}
+        </div>
+      )}
+
+      {/* 配置列表 */}
+      {!isEditing && profiles.length === 0 && (
+        <div className="text-muted-foreground text-sm py-8 text-center">
+          尚未添加 LLM 配置，点击「新增配置」开始
+        </div>
+      )}
+
+      {!isEditing && profiles.map((p, i) => (
+        <div key={p.name} className={`border rounded-lg ${p.name === active ? "border-primary/50 ring-1 ring-primary/20" : "border-border"} ${c.cardStatic}`}>
+          <div className="flex items-center justify-between px-4 py-3">
+            <div className="flex items-center gap-2">
+              {p.name === active && <Check size={14} className="text-primary" />}
+              <span className={`font-medium text-sm ${p.name === active ? "text-primary" : ""}`}>{p.name}</span>
+              <span className="text-xs text-muted-foreground px-1.5 py-0.5 rounded bg-muted">
+                {PROVIDER_PRESETS[p.provider]?.label ?? p.provider}
+              </span>
+            </div>
+            <div className="flex items-center gap-1">
+              {p.name !== active && (
+                <button onClick={() => handleActivate(p.name)} title="激活"
+                  className={`p-1.5 rounded-md text-xs ${c.btnSecondary}`}>
+                  <Check size={12} />
+                </button>
+              )}
+              <button onClick={() => startEdit(i)} title="编辑"
+                className={`p-1.5 rounded-md text-xs ${c.btnSecondary}`}>
+                <Pencil size={12} />
+              </button>
+              <button onClick={() => handleDelete(p.name)} title="删除"
+                className="p-1.5 rounded-md text-xs text-red-500 hover:bg-red-500/10">
+                <Trash2 size={12} />
+              </button>
+            </div>
+          </div>
+          <div className="border-t border-border/40 px-4 py-2 grid grid-cols-3 gap-2 text-xs text-muted-foreground">
+            <div>模型: <span className="text-foreground">{p.model}</span></div>
+            <div>Base URL: <span className="font-mono text-foreground">{p.baseUrl || "(默认)"}</span></div>
+            <div>API Key: <span className="font-mono text-foreground">{p.apiKey || "未设置"}</span></div>
+          </div>
+        </div>
+      ))}
+
+      {/* 编辑/新增表单 */}
+      {isEditing && (
+        <>
+          <div className={`border ${c.cardStatic} rounded-lg divide-y divide-border/40`}>
             <div className="flex justify-between items-center px-4 py-2.5">
-              <span className="text-muted-foreground text-sm">{t("config.provider") ?? "Provider"}</span>
-              <input type="text" value={form.provider} onChange={(e) => setForm({ ...form, provider: e.target.value })} placeholder="openai" className={`${c.input} rounded px-2 py-1 text-sm w-48`} />
+              <span className="text-muted-foreground text-sm">配置名称</span>
+              <input type="text" value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                placeholder="例: GPT-4o / Claude / 本地Ollama"
+                className={`${c.input} rounded px-2 py-1 text-sm w-56`} />
             </div>
             <div className="flex justify-between items-center px-4 py-2.5">
-              <span className="text-muted-foreground text-sm">API Key</span>
-              <input type="password" value={form.apiKey} onChange={(e) => setForm({ ...form, apiKey: e.target.value })} placeholder={stored.apiKey ? "••••••••(keep current)" : "sk-..."} className={`${c.input} rounded px-2 py-1 text-sm w-48`} />
+              <span className="text-muted-foreground text-sm">协议类型</span>
+              <select value={form.provider}
+                onChange={(e) => {
+                  const pv = e.target.value as LLMProvider;
+                  const pr = PROVIDER_PRESETS[pv];
+                  setForm({ ...form, provider: pv, model: form.model || pr.defaultModel });
+                }}
+                className={`${c.input} rounded px-2 py-1 text-sm w-56`}>
+                {Object.entries(PROVIDER_PRESETS).map(([k, v]) => (
+                  <option key={k} value={k}>{v.label}</option>
+                ))}
+              </select>
             </div>
+            {form.provider !== "ollama" && (
+              <div className="flex justify-between items-center px-4 py-2.5">
+                <span className="text-muted-foreground text-sm">API Key</span>
+                <input type="password" value={form.apiKey}
+                  onChange={(e) => setForm({ ...form, apiKey: e.target.value })}
+                  placeholder={editingIdx !== null ? "留空保持不变" : "sk-..."}
+                  className={`${c.input} rounded px-2 py-1 text-sm w-56`} />
+              </div>
+            )}
             <div className="flex justify-between items-center px-4 py-2.5">
               <span className="text-muted-foreground text-sm">Base URL</span>
-              <input type="text" value={form.baseUrl} onChange={(e) => setForm({ ...form, baseUrl: e.target.value })} placeholder="https://api.openai.com/v1" className={`${c.input} rounded px-2 py-1 text-sm w-48`} />
+              <input type="text" value={form.baseUrl}
+                onChange={(e) => setForm({ ...form, baseUrl: e.target.value })}
+                placeholder={preset.placeholder}
+                className={`${c.input} rounded px-2 py-1 text-sm w-56`} />
             </div>
             <div className="flex justify-between items-center px-4 py-2.5">
-              <span className="text-muted-foreground text-sm">{t("config.model") ?? "Model"}</span>
-              <input type="text" value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} placeholder="gpt-4o" className={`${c.input} rounded px-2 py-1 text-sm w-48`} />
+              <span className="text-muted-foreground text-sm">模型</span>
+              <input type="text" value={form.model}
+                onChange={(e) => setForm({ ...form, model: e.target.value })}
+                placeholder={preset.defaultModel}
+                className={`${c.input} rounded px-2 py-1 text-sm w-56`} />
             </div>
-          </>
-        ) : (
-          <>
-            <Row label={t("config.provider") ?? "Provider"} value={stored.provider || "openai"} />
-            <Row label="API Key" value={maskedKey} mono />
-            <Row label="Base URL" value={stored.baseUrl || "(default)"} mono />
-            <Row label={t("config.model") ?? "Model"} value={stored.model || "gpt-4o"} />
-          </>
-        )}
-      </div>
-
-      {editing && (
-        <div className="flex gap-2 justify-end">
-          <button onClick={() => setEditing(false)} className={`px-4 py-2.5 text-sm rounded-md ${c.btnSecondary}`}>
-            {t("config.cancel") ?? "Cancel"}
-          </button>
-          <button onClick={handleSave} className={`px-4 py-2.5 text-sm rounded-md ${c.btnPrimary}`}>
-            {t("config.save") ?? "Save"}
-          </button>
-        </div>
+          </div>
+          <div className="flex gap-2 justify-end">
+            <button onClick={() => { setAdding(false); setEditingIdx(null); }}
+              className={`px-4 py-2.5 text-sm rounded-md ${c.btnSecondary}`}>
+              取消
+            </button>
+            <button onClick={handleSave}
+              className={`px-4 py-2.5 text-sm rounded-md ${c.btnPrimary}`}>
+              {adding ? "添加" : "保存"}
+            </button>
+          </div>
+        </>
       )}
     </>
   );
