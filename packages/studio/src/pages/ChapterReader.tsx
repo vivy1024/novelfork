@@ -3,6 +3,7 @@ import { fetchJson, useApi, postApi } from "../hooks/use-api";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
 import { useColors } from "../hooks/use-colors";
+import { InkEditor, getMarkdown } from "../components/InkEditor";
 import {
   ChevronLeft,
   Check,
@@ -102,8 +103,6 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
     await postApi(`/books/${bookId}/chapters/${chapterNumber}/reject`);
     nav.toBook(bookId);
   };
-
-  const paragraphs = body.split(/\n\n+/).filter(Boolean);
 
   return (
     <div className="max-w-4xl mx-auto space-y-10 fade-in">
@@ -208,20 +207,16 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
         </header>
 
         {editing ? (
-          <textarea
-            value={editContent}
-            onChange={(e) => setEditContent(e.target.value)}
-            className="w-full min-h-[60vh] bg-transparent font-serif text-lg leading-[1.8] text-foreground/90 focus:outline-none resize-none border border-border/30 rounded-lg p-6 focus:border-primary/40 focus:ring-2 focus:ring-primary/10 transition-all"
-            autoFocus
+          <InkEditor
+            initialContent={editContent}
+            onChange={(md) => setEditContent(md)}
+            editable={true}
           />
         ) : (
-          <article className="prose prose-zinc dark:prose-invert max-w-none">
-            {paragraphs.map((para, i) => (
-              <p key={i} className="font-serif text-lg md:text-xl leading-[1.8] text-foreground/90 mb-8 first-letter:text-2xl first-letter:font-bold first-letter:text-primary/40">
-                {para}
-              </p>
-            ))}
-          </article>
+          <InkEditor
+            initialContent={data.content}
+            editable={false}
+          />
         )}
 
         <footer className="mt-24 pt-12 border-t border-border/20 flex flex-col items-center gap-6 text-center">
