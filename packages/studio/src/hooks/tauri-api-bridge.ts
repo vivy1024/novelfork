@@ -138,13 +138,18 @@ function countWords(text: string): number {
   return chinese + english;
 }
 
-// ── LLM 配置类型 ──
+// ── LLM 多配置管理 ──
 
-interface LLMConfig {
+type LLMProvider = "openai" | "anthropic" | "ollama" | "custom";
+
+interface LLMProfile {
+  readonly name: string;
+  readonly provider: LLMProvider;
   readonly apiKey: string;
   readonly baseUrl: string;
   readonly model: string;
-  readonly provider?: string;
+  readonly temperature?: number;
+  readonly maxTokens?: number;
 }
 
 interface ChatMessage {
@@ -157,57 +162,217 @@ interface CallLLMOptions {
   readonly maxTokens?: number;
 }
 
-/**
- * 从 localStorage 读取用户配置的 LLM 信息
- */
-function loadLLMConfig(): LLMConfig {
-  const raw = localStorage.getItem("inkos-llm-config");
-  if (!raw) {
-    throw new Error("未配置 LLM API。请在设置中配置 API Key 和 Base URL。");
+const PROFILES_KEY = "inkos-llm-profiles";
+const ACTIVE_KEY = "inkos-llm-active";
+const LEGACY_KEY = "inkos-llm-config";
+
+/** 读取所有 LLM 配置 */
+function loadAllProfiles(): LLMProfile[] {
+  const raw = localStorage.getItem(PROFILES_KEY);
+  if (raw) {
+    try { return JSON.parse(raw) as LLMProfile[]; } catch { /* fall through */ }
   }
-  const config = JSON.parse(raw) as LLMConfig;
-  if (!config.apiKey || !config.baseUrl || !config.model) {
-    throw new Error("LLM 配置不完整，需要 apiKey、baseUrl 和 model。");
+  // 迁移旧格式
+  const legacy = localStorage.getItem(LEGACY_KEY);
+  if (legacy) {
+    try {
+      const old = JSON.parse(legacy) as Record<string, string>;
+      const migrated: LLMProfile = {
+        name: "默认",
+        provider: (old.provider as LLMProvider) || "openai",
+        apiKey: old.apiKey || "",
+        baseUrl: old.baseUrl || "",
+        model: old.model || "gpt-4o",
+      };
+      const profiles = [migrated];
+      localStorage.setItem(PROFILES_KEY, JSON.stringify(profiles));
+      localStorage.setItem(ACTIVE_KEY, migrated.name);
+      return profiles;
+    } catch { /* fall through */ }
   }
-  return config;
+  return [];
 }
 
-/**
- * 调用用户自配置的 OpenAI 兼容 API
- */
+/** 获取当前激活的配置 */
+function loadActiveProfile(): LLMProfile {
+  const profiles = loadAllProfiles();
+  if (profiles.length === 0) {
+    throw new Error("未配置 LLM API。请在设置 → LLM 配置中添加至少一个配置。");
+  }
+  const activeName = localStorage.getItem(ACTIVE_KEY);
+  const active = activeName ? profiles.find(p => p.name === activeName) : profiles[0];
+  if (!active) return profiles[0];
+  if (!active.apiKey && active.provider !== "ollama") {
+    throw new Error(`配置「${active.name}」缺少 API Key。`);
+  }
+  if (!active.baseUrl) {
+    throw new Error(`配置「${active.name}」缺少 Base URL。`);
+  }
+  return active;
+}
+
+/** 保存配置列表 */
+function saveAllProfiles(profiles: LLMProfile[]): void {
+  localStorage.setItem(PROFILES_KEY, JSON.stringify(profiles));
+  // 同步写旧 key 保持兼容
+  const active = localStorage.getItem(ACTIVE_KEY);
+  const cur = active ? profiles.find(p => p.name === active) : profiles[0];
+  if (cur) {
+    localStorage.setItem(LEGACY_KEY, JSON.stringify({
+      apiKey: cur.apiKey, baseUrl: cur.baseUrl,
+      model: cur.model, provider: cur.provider,
+    }));
+  }
+}
+
+/** 规范化 baseUrl：去尾斜杠，自动补全常见路径 */
+function normalizeBaseUrl(url: string, provider: LLMProvider): string {
+  let u = url.trim().replace(/\/+$/, "");
+  // 如果用户已经填了完整的 chat/completions 路径，截掉
+  if (u.endsWith("/chat/completions")) {
+    u = u.slice(0, -"/chat/completions".length);
+  }
+  if (u.endsWith("/v1/messages")) {
+    u = u.slice(0, -"/v1/messages".length);
+  }
+  // 按 provider 补全
+  if (provider === "openai" || provider === "custom") {
+    if (!u.endsWith("/v1")) u += "/v1";
+  }
+  return u;
+}
+
+/** 按 provider 分发请求 */
 async function callUserLLM(
   messages: ReadonlyArray<ChatMessage>,
   options?: CallLLMOptions,
 ): Promise<string> {
-  const config = loadLLMConfig();
-  const url = `${config.baseUrl.replace(/\/$/, "")}/chat/completions`;
+  const profile = loadActiveProfile();
+  const p = profile.provider || "openai";
+  const temp = options?.temperature ?? profile.temperature ?? 0.7;
+  const maxTok = options?.maxTokens ?? profile.maxTokens ?? 4096;
+
+  if (p === "anthropic") {
+    return callAnthropic(profile, messages, temp, maxTok);
+  }
+  if (p === "ollama") {
+    return callOllama(profile, messages, temp, maxTok);
+  }
+  // openai / custom — OpenAI 兼容格式
+  return callOpenAICompat(profile, messages, temp, maxTok);
+}
+
+/** OpenAI 兼容格式（OpenAI / DeepSeek / Moonshot / 中转站等） */
+async function callOpenAICompat(
+  profile: LLMProfile,
+  messages: ReadonlyArray<ChatMessage>,
+  temperature: number,
+  maxTokens: number,
+): Promise<string> {
+  const base = normalizeBaseUrl(profile.baseUrl, profile.provider);
+  const url = `${base}/chat/completions`;
 
   const res = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${config.apiKey}`,
+      Authorization: `Bearer ${profile.apiKey}`,
     },
     body: JSON.stringify({
-      model: config.model,
+      model: profile.model,
       messages,
-      temperature: options?.temperature ?? 0.7,
-      max_tokens: options?.maxTokens ?? 4096,
+      temperature,
+      max_tokens: maxTokens,
     }),
   });
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({})) as { error?: { message?: string } };
-    throw new Error(err.error?.message ?? `LLM API 错误: ${res.status} ${res.statusText}`);
+    throw new Error(err.error?.message ?? `LLM API 错误: ${res.status} (${profile.name})`);
   }
 
   const data = await res.json() as {
     choices: ReadonlyArray<{ message: { content: string } }>;
   };
   const content = data.choices?.[0]?.message?.content;
-  if (!content) {
-    throw new Error("LLM 返回了空响应");
+  if (!content) throw new Error("LLM 返回了空响应");
+  return content;
+}
+
+/** Anthropic Messages API */
+async function callAnthropic(
+  profile: LLMProfile,
+  messages: ReadonlyArray<ChatMessage>,
+  temperature: number,
+  maxTokens: number,
+): Promise<string> {
+  const base = profile.baseUrl.trim().replace(/\/+$/, "");
+  const url = base.includes("/v1/messages") ? base : `${base}/v1/messages`;
+
+  // Anthropic 格式：system 单独提取，其余为 user/assistant 交替
+  const systemMsg = messages.find(m => m.role === "system");
+  const nonSystem = messages.filter(m => m.role !== "system");
+
+  const body: Record<string, unknown> = {
+    model: profile.model,
+    max_tokens: maxTokens,
+    temperature,
+    messages: nonSystem.map(m => ({ role: m.role, content: m.content })),
+  };
+  if (systemMsg) body.system = systemMsg.content;
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": profile.apiKey,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as { error?: { message?: string } };
+    throw new Error(err.error?.message ?? `Anthropic API 错误: ${res.status} (${profile.name})`);
   }
+
+  const data = await res.json() as {
+    content: ReadonlyArray<{ type: string; text: string }>;
+  };
+  const text = data.content?.find(b => b.type === "text")?.text;
+  if (!text) throw new Error("Anthropic 返回了空响应");
+  return text;
+}
+
+/** Ollama 本地模型（无需 API Key） */
+async function callOllama(
+  profile: LLMProfile,
+  messages: ReadonlyArray<ChatMessage>,
+  temperature: number,
+  maxTokens: number,
+): Promise<string> {
+  const base = profile.baseUrl.trim().replace(/\/+$/, "") || "http://localhost:11434";
+  const url = `${base}/api/chat`;
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: profile.model,
+      messages: messages.map(m => ({ role: m.role, content: m.content })),
+      stream: false,
+      options: { temperature, num_predict: maxTokens },
+    }),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text().catch(() => "");
+    throw new Error(`Ollama 错误: ${res.status} ${errText} (${profile.name})`);
+  }
+
+  const data = await res.json() as { message?: { content?: string } };
+  const content = data.message?.content;
+  if (!content) throw new Error("Ollama 返回了空响应");
   return content;
 }
 
@@ -1060,10 +1225,10 @@ export async function tauriFetch<T>(path: string, init?: RequestInit): Promise<T
     // 3. LLM 配置是否完整（不实际调用 API，避免产生费用）
     let llmConnected = false;
     try {
-      const raw = localStorage.getItem("inkos-llm-config");
-      if (raw) {
-        const cfg = JSON.parse(raw) as { apiKey?: string; baseUrl?: string; model?: string };
-        llmConnected = !!(cfg.apiKey && cfg.baseUrl && cfg.model);
+      const profiles = loadAllProfiles();
+      if (profiles.length > 0) {
+        const active = profiles.find(p => p.name === (localStorage.getItem(ACTIVE_KEY) ?? "")) ?? profiles[0];
+        llmConnected = !!(active.baseUrl && active.model && (active.apiKey || active.provider === "ollama"));
       }
     } catch { /* 解析失败 */ }
 
@@ -1122,6 +1287,104 @@ export async function tauriFetch<T>(path: string, init?: RequestInit): Promise<T
       llmConnected,
       bookCount,
     } as T;
+  }
+
+  // ── LLM 多配置管理路由 ──
+
+  // GET /api/llm/profiles — 列出所有配置
+  if (path === "/api/llm/profiles" && method === "GET") {
+    const profiles = loadAllProfiles();
+    const active = localStorage.getItem(ACTIVE_KEY) ?? (profiles[0]?.name ?? "");
+    return {
+      profiles: profiles.map(p => ({
+        ...p,
+        apiKey: p.apiKey ? `${p.apiKey.slice(0, 6)}...${p.apiKey.slice(-4)}` : "",
+      })),
+      active,
+    } as T;
+  }
+
+  // POST /api/llm/profiles — 新增配置
+  if (path === "/api/llm/profiles" && method === "POST") {
+    const body = JSON.parse(init?.body as string ?? "{}") as LLMProfile;
+    if (!body.name?.trim()) throw new Error("配置名称不能为空");
+    const profiles = loadAllProfiles();
+    if (profiles.some(p => p.name === body.name)) throw new Error(`配置「${body.name}」已存在`);
+    profiles.push({
+      name: body.name.trim(),
+      provider: body.provider || "openai",
+      apiKey: body.apiKey || "",
+      baseUrl: body.baseUrl || "",
+      model: body.model || "gpt-4o",
+      temperature: body.temperature,
+      maxTokens: body.maxTokens,
+    });
+    saveAllProfiles(profiles);
+    if (profiles.length === 1) localStorage.setItem(ACTIVE_KEY, body.name.trim());
+    return { ok: true } as T;
+  }
+
+  // PUT /api/llm/profiles/:name — 更新配置
+  if (path.startsWith("/api/llm/profiles/") && method === "PUT") {
+    const name = decodeURIComponent(path.slice("/api/llm/profiles/".length));
+    const body = JSON.parse(init?.body as string ?? "{}") as Partial<LLMProfile>;
+    const profiles = loadAllProfiles();
+    const idx = profiles.findIndex(p => p.name === name);
+    if (idx < 0) throw new Error(`配置「${name}」不存在`);
+    const old = profiles[idx];
+    profiles[idx] = {
+      name: body.name?.trim() || old.name,
+      provider: body.provider ?? old.provider,
+      apiKey: body.apiKey || old.apiKey,  // 空字符串保留旧值
+      baseUrl: body.baseUrl ?? old.baseUrl,
+      model: body.model ?? old.model,
+      temperature: body.temperature ?? old.temperature,
+      maxTokens: body.maxTokens ?? old.maxTokens,
+    };
+    saveAllProfiles(profiles);
+    // 如果改了名字，同步 active
+    if (body.name && body.name !== name && localStorage.getItem(ACTIVE_KEY) === name) {
+      localStorage.setItem(ACTIVE_KEY, body.name.trim());
+    }
+    return { ok: true } as T;
+  }
+
+  // DELETE /api/llm/profiles/:name — 删除配置
+  if (path.startsWith("/api/llm/profiles/") && method === "DELETE") {
+    const name = decodeURIComponent(path.slice("/api/llm/profiles/".length));
+    const profiles = loadAllProfiles();
+    const filtered = profiles.filter(p => p.name !== name);
+    if (filtered.length === profiles.length) throw new Error(`配置「${name}」不存在`);
+    saveAllProfiles(filtered);
+    if (localStorage.getItem(ACTIVE_KEY) === name) {
+      localStorage.setItem(ACTIVE_KEY, filtered[0]?.name ?? "");
+    }
+    return { ok: true } as T;
+  }
+
+  // PUT /api/llm/active — 切换激活配置
+  if (path === "/api/llm/active" && method === "PUT") {
+    const body = JSON.parse(init?.body as string ?? "{}") as { name: string };
+    const profiles = loadAllProfiles();
+    if (!profiles.some(p => p.name === body.name)) throw new Error(`配置「${body.name}」不存在`);
+    localStorage.setItem(ACTIVE_KEY, body.name);
+    // 同步旧 key
+    const cur = profiles.find(p => p.name === body.name)!;
+    localStorage.setItem(LEGACY_KEY, JSON.stringify({
+      apiKey: cur.apiKey, baseUrl: cur.baseUrl,
+      model: cur.model, provider: cur.provider,
+    }));
+    return { ok: true } as T;
+  }
+
+  // POST /api/llm/test — 测试当前激活配置连通性
+  if (path === "/api/llm/test" && method === "POST") {
+    try {
+      const reply = await callUserLLM([{ role: "user", content: "Say OK" }], { maxTokens: 16 });
+      return { ok: true, reply: reply.slice(0, 100) } as T;
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) } as T;
+    }
   }
 
   // Fallback — unsupported route
