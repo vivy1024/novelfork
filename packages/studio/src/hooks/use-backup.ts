@@ -149,7 +149,7 @@ export { type BackupEntry, type BackupPayload };
 
 export function useBackup(): UseBackupReturn {
   const { mode, workspace } = useInkOS();
-  const isTauri = mode === "tauri";
+  const isTauri = mode === "tauri" || (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window);
   const [backups, setBackups] = useState<ReadonlyArray<BackupEntry>>([]);
   const [loading, setLoading] = useState(false);
 
