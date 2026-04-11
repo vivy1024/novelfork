@@ -12,7 +12,6 @@ import {
   computeAnalytics,
   loadProjectConfig,
 } from "@actalk/inkos-core";
-import { isSafeBookId } from "../safety.js";
 import { ApiError } from "../errors.js";
 import { buildStudioBookConfig } from "../book-create.js";
 import type { RouterContext } from "./context.js";
@@ -28,21 +27,7 @@ export function createStorageRouter(ctx: RouterContext): Hono {
   const app = new Hono();
   const { state, root, broadcast } = ctx;
 
-  // BookId validation middleware
-  app.use("/api/books/:id/*", async (c, next) => {
-    const bookId = c.req.param("id");
-    if (!isSafeBookId(bookId)) {
-      throw new ApiError(400, "INVALID_BOOK_ID", `Invalid book ID: "${bookId}"`);
-    }
-    await next();
-  });
-  app.use("/api/books/:id", async (c, next) => {
-    const bookId = c.req.param("id");
-    if (!isSafeBookId(bookId)) {
-      throw new ApiError(400, "INVALID_BOOK_ID", `Invalid book ID: "${bookId}"`);
-    }
-    await next();
-  });
+  // Note: bookId validation middleware is registered globally in server.ts
 
   // In-memory book creation status tracking
   const bookCreateStatus = new Map<string, { status: "creating" | "error"; error?: string }>();
