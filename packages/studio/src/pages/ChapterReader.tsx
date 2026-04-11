@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { fetchJson, useApi, postApi } from "../hooks/use-api";
+import { useAutosave } from "../hooks/use-autosave";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
 import { useColors } from "../hooks/use-colors";
@@ -45,7 +46,21 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
   );
   const [editing, setEditing] = useState(false);
   const [editContent, setEditContent] = useState("");
-  const [saving, setSaving] = useState(false);
+  const [manualSaving, setManualSaving] = useState(false);
+
+  const autosave = useAutosave({
+    bookId,
+    chapterNumber,
+    content: editContent,
+    enabled: editing,
+    onSave: async (content) => {
+      await fetchJson(`/books/${bookId}/chapters/${chapterNumber}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content }),
+      });
+    },
+  });
 
   const handleStartEdit = () => {
     if (!data) return;
@@ -59,21 +74,19 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
   };
 
   const handleSave = async () => {
-    setSaving(true);
+    setManualSaving(true);
     try {
-      await fetchJson(`/books/${bookId}/chapters/${chapterNumber}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: editContent }),
-      });
+      await autosave.flush();
       setEditing(false);
       refetch();
     } catch (e) {
       alert(e instanceof Error ? e.message : "Save failed");
     } finally {
-      setSaving(false);
+      setManualSaving(false);
     }
   };
+
+  const isSaving = manualSaving || autosave.saving;
 
   if (loading) return (
     <div className="flex flex-col items-center justify-center py-32 space-y-4">
@@ -143,11 +156,11 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
             <>
               <button
                 onClick={handleSave}
-                disabled={saving}
+                disabled={isSaving}
                 className="flex items-center gap-2 px-4 py-2 text-xs font-bold bg-primary text-primary-foreground rounded-xl hover:scale-105 active:scale-95 transition-all shadow-sm disabled:opacity-50"
               >
-                {saving ? <div className="w-3.5 h-3.5 border-2 border-primary-foreground/20 border-t-primary-foreground rounded-full animate-spin" /> : <Save size={14} />}
-                {saving ? t("book.saving") : t("book.save")}
+                {isSaving ? <div className="w-3.5 h-3.5 border-2 border-primary-foreground/20 border-t-primary-foreground rounded-full animate-spin" /> : <Save size={14} />}
+                {isSaving ? t("book.saving") : t("book.save")}
               </button>
               <button
                 onClick={handleCancelEdit}
@@ -207,11 +220,22 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
         </header>
 
         {editing ? (
-          <InkEditor
-            initialContent={editContent}
-            onChange={(md) => setEditContent(md)}
-            editable={true}
-          />
+          <>
+            <InkEditor
+              initialContent={editContent}
+              onChange={(md) => setEditContent(md)}
+              editable={true}
+            />
+            <div className="flex items-center gap-2 text-xs text-muted-foreground mt-2">
+              {autosave.saving
+                ? "保存中..."
+                : autosave.dirty
+                  ? "未保存更改"
+                  : autosave.lastSaved
+                    ? `已保存 ${autosave.lastSaved.toLocaleTimeString()}`
+                    : ""}
+            </div>
+          </>
         ) : (
           <InkEditor
             initialContent={data.content}

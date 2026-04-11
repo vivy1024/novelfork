@@ -14,7 +14,7 @@ export interface Tab {
   readonly closable: boolean;
 }
 
-interface TabsState {
+export interface TabsState {
   readonly tabs: ReadonlyArray<Tab>;
   readonly activeTabId: string;
 }
@@ -73,7 +73,7 @@ function routeToTab(route: Route): Tab {
   };
 }
 
-const INITIAL_STATE: TabsState = {
+export const INITIAL_STATE: TabsState = {
   tabs: [routeToTab({ page: "dashboard" })],
   activeTabId: "dashboard",
 };
@@ -87,7 +87,7 @@ function findNeighbor(tabs: ReadonlyArray<Tab>, closedId: string): string {
   return next.id;
 }
 
-function tabsReducer(state: TabsState, action: TabAction): TabsState {
+export function tabsReducer(state: TabsState, action: TabAction): TabsState {
   switch (action.type) {
     case "open": {
       const existing = state.tabs.find((t) => t.id === action.tab.id);

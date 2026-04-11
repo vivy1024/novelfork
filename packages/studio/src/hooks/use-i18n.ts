@@ -292,9 +292,19 @@ const strings = {
 export type StringKey = keyof typeof strings;
 export type TFunction = (key: StringKey) => string;
 
+function isTauri(): boolean {
+  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+}
+
 export function useI18n() {
-  const { data } = useApi<{ language: string }>("/project");
-  const lang: Lang = data?.language === "en" ? "en" : "zh";
+  const skipApi = isTauri();
+  const { data } = useApi<{ language: string }>(skipApi ? null : "/project");
+
+  const lang: Lang = skipApi
+    ? ((localStorage.getItem("inkos-language") ?? "zh") as Lang)
+    : data?.language === "en"
+      ? "en"
+      : "zh";
 
   function t(key: StringKey): string {
     return strings[key][lang];
