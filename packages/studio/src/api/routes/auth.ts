@@ -58,6 +58,11 @@ export function createAuthRouter(): Hono {
     });
   });
 
+  app.get("/api/mode", (c) => {
+    const mode = (process.env.INKOS_MODE?.trim().toLowerCase() === "relay") ? "relay" : "standalone";
+    return c.json({ mode });
+  });
+
   app.put("/api/auth/llm-settings", async (c) => {
     const session = await safeReadSession(c);
     if (!session) throw new ApiError(401, "UNAUTHORIZED", "Not authenticated.");

@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
 import type { SSEMessage } from "../hooks/use-sse";
+import { useInkOS } from "../providers/inkos-context";
 import { useColors } from "../hooks/use-colors";
 import { deriveBookActivity, shouldRefetchBookView } from "../hooks/use-book-activity";
 import { ConfirmDialog } from "../components/ConfirmDialog";
@@ -93,6 +94,7 @@ export function BookDetail({
   sse: { messages: ReadonlyArray<SSEMessage> };
 }) {
   const c = useColors(theme);
+  const { ai, storage } = useInkOS();
   const { data, loading, error, refetch } = useApi<BookData>(`/books/${bookId}`);
   const [writeRequestPending, setWriteRequestPending] = useState(false);
   const [draftRequestPending, setDraftRequestPending] = useState(false);
@@ -139,7 +141,7 @@ export function BookDetail({
   const handleWriteNext = async () => {
     setWriteRequestPending(true);
     try {
-      await postApi(`/books/${bookId}/write-next`);
+      await ai.writeNext(bookId);
     } catch (e) {
       setWriteRequestPending(false);
       alert(e instanceof Error ? e.message : "Failed");
@@ -149,7 +151,7 @@ export function BookDetail({
   const handleDraft = async () => {
     setDraftRequestPending(true);
     try {
-      await postApi(`/books/${bookId}/draft`);
+      await ai.draft(bookId);
     } catch (e) {
       setDraftRequestPending(false);
       alert(e instanceof Error ? e.message : "Failed");
@@ -160,11 +162,7 @@ export function BookDetail({
     setConfirmDeleteOpen(false);
     setDeleting(true);
     try {
-      const res = await fetch(`/api/books/${bookId}`, { method: "DELETE" });
-      if (!res.ok) {
-        const json = await res.json().catch(() => ({}));
-        throw new Error((json as { error?: string }).error ?? `${res.status}`);
-      }
+      await storage.deleteBook(bookId);
       nav.toDashboard();
     } catch (e) {
       alert(e instanceof Error ? e.message : "Delete failed");
@@ -183,11 +181,7 @@ export function BookDetail({
     if (brief === null) return;
     setRewritingChapters((prev) => [...prev, chapterNum]);
     try {
-      await fetchJson(`/books/${bookId}/rewrite/${chapterNum}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ brief: brief.trim() || undefined }),
-      });
+      await ai.rewrite(bookId, chapterNum, brief.trim() || undefined);
       refetch();
     } catch (e) {
       alert(e instanceof Error ? e.message : "Rewrite failed");
@@ -206,11 +200,7 @@ export function BookDetail({
     if (brief === null) return;
     setRevisingChapters((prev) => [...prev, chapterNum]);
     try {
-      await fetchJson(`/books/${bookId}/revise/${chapterNum}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode, brief: brief.trim() || undefined }),
-      });
+      await ai.revise(bookId, chapterNum, mode, brief.trim() || undefined);
       refetch();
     } catch (e) {
       alert(e instanceof Error ? e.message : "Revision failed");
@@ -229,11 +219,7 @@ export function BookDetail({
     if (brief === null) return;
     setSyncingChapters((prev) => [...prev, chapterNum]);
     try {
-      await fetchJson(`/books/${bookId}/resync/${chapterNum}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ brief: brief.trim() || undefined }),
-      });
+      await ai.resync(bookId, chapterNum, brief.trim() || undefined);
       refetch();
     } catch (e) {
       alert(e instanceof Error ? e.message : "Sync failed");
@@ -250,11 +236,7 @@ export function BookDetail({
       if (settingsWordCount !== null) body.chapterWordCount = settingsWordCount;
       if (settingsTargetChapters !== null) body.targetChapters = settingsTargetChapters;
       if (settingsStatus !== null) body.status = settingsStatus;
-      await fetchJson(`/books/${bookId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
+      await storage.updateBook(bookId, body);
       refetch();
     } catch (e) {
       alert(e instanceof Error ? e.message : "Save failed");
@@ -267,7 +249,7 @@ export function BookDetail({
     if (!data) return;
     const reviewable = data.chapters.filter((ch) => ch.status === "ready-for-review");
     for (const ch of reviewable) {
-      await postApi(`/books/${bookId}/chapters/${ch.number}/approve`);
+      await storage.approveChapter(bookId, ch.number);
     }
     refetch();
   };
@@ -534,14 +516,14 @@ export function BookDetail({
                       {ch.status === "ready-for-review" && (
                         <>
                           <button
-                            onClick={async () => { await postApi(`/books/${bookId}/chapters/${ch.number}/approve`); refetch(); }}
+                            onClick={async () => { await storage.approveChapter(bookId, ch.number); refetch(); }}
                             className="p-2 rounded-lg bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500 hover:text-white transition-all shadow-sm"
                             title={t("book.approve")}
                           >
                             <Check size={14} />
                           </button>
                           <button
-                            onClick={async () => { await postApi(`/books/${bookId}/chapters/${ch.number}/reject`); refetch(); }}
+                            onClick={async () => { await storage.rejectChapter(bookId, ch.number); refetch(); }}
                             className="p-2 rounded-lg bg-destructive/10 text-destructive hover:bg-destructive hover:text-white transition-all shadow-sm"
                             title={t("book.reject")}
                           >
@@ -551,7 +533,7 @@ export function BookDetail({
                       )}
                       <button
                         onClick={async () => {
-                          const auditResult = await fetchJson<{ passed?: boolean; issues?: unknown[] }>(`/books/${bookId}/audit/${ch.number}`, { method: "POST" });
+                          const auditResult = await ai.audit(bookId, ch.number);
                           alert(auditResult.passed ? "Audit passed" : `Audit failed: ${auditResult.issues?.length ?? 0} issues`);
                           refetch();
                         }}
