@@ -185,7 +185,7 @@ export function Sidebar({ nav, activePage, sse, t }: {
                 onClick={nav.toConfig}
               />
             )}
-            {isStandalone && (
+            {(isStandalone || isTauri) && (
               <SidebarItem
                 label={t("nav.daemon")}
                 icon={<Zap size={16} />}
@@ -246,7 +246,7 @@ export function Sidebar({ nav, activePage, sse, t }: {
               active={activePage === "radar"}
               onClick={nav.toRadar}
             />
-            {isStandalone && (
+            {(isStandalone || isTauri) && (
               <SidebarItem
                 label={t("nav.doctor")}
                 icon={<Stethoscope size={16} />}

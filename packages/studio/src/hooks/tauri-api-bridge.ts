@@ -211,6 +211,143 @@ async function callUserLLM(
   return content;
 }
 
+// ── 守护进程状态 ──
+
+interface DaemonLogEntry {
+  readonly timestamp: string;
+  readonly event: string;
+  readonly message: string;
+}
+
+let _daemonInterval: ReturnType<typeof setInterval> | null = null;
+let _daemonRunning = false;
+let _daemonIntervalMinutes = 5;
+let _daemonLog: DaemonLogEntry[] = [];
+let _daemonBusy = false; // 防止并发 tick
+
+function daemonAddLog(event: string, message: string): void {
+  _daemonLog.push({ timestamp: new Date().toISOString(), event, message });
+  // 只保留最近 50 条
+  if (_daemonLog.length > 50) _daemonLog = _daemonLog.slice(-50);
+}
+
+/**
+ * 守护进程单次 tick：找到需要写章节的书，调用 LLM 生成并保存
+ */
+async function daemonTick(adapter: ClientStorageAdapter): Promise<void> {
+  if (_daemonBusy) return;
+  _daemonBusy = true;
+  try {
+    const books = await adapter.listBooks();
+    // 筛选活跃书籍
+    const activeBooks = books.filter(b => b.status === "active" || b.status === "outlining");
+    if (activeBooks.length === 0) {
+      daemonAddLog("daemon:idle", "没有活跃书籍");
+      return;
+    }
+
+    // 找需要章节最少的书（简易轮询）
+    const needsWork = activeBooks
+      .filter(b => !b.targetChapters || b.chaptersWritten < b.targetChapters)
+      .sort((a, b) => a.chaptersWritten - b.chaptersWritten);
+
+    if (needsWork.length === 0) {
+      daemonAddLog("daemon:idle", "所有活跃书籍已达目标章数");
+      return;
+    }
+
+    const book = needsWork[0];
+    daemonAddLog("daemon:pick", `选中《${book.title}》(${book.chaptersWritten}章)`);
+
+    // 加载书籍数据
+    const bookData = await adapter.loadBook(book.id);
+    const nextNum = bookData.nextChapter;
+    const targetWords = book.chapterWordCount || 3000;
+
+    // 收集上下文：最近 2 章
+    const recentChapters: string[] = [];
+    const chaptersToLoad = bookData.chapters.slice(-2);
+    for (const ch of chaptersToLoad) {
+      try {
+        const detail = await adapter.loadChapter(book.id, ch.number);
+        recentChapters.push(`## 第${ch.number}章 ${ch.title}\n\n${detail.content}`);
+      } catch { /* 跳过 */ }
+    }
+
+    // 收集真相文件摘要
+    let truthSummary = "";
+    try {
+      const truthFiles = await adapter.listTruthFiles(book.id);
+      const previews = truthFiles.slice(0, 5).map(f => `[${f.name}] ${f.preview}`);
+      if (previews.length > 0) truthSummary = previews.join("\n");
+    } catch { /* 无真相文件 */ }
+
+    // 构建写作提示词
+    const lang = book.language === "en" ? "en" : "zh";
+    const systemPrompt = lang === "zh"
+      ? `你是一位专业的网络小说作家。请根据提供的上下文，续写下一章。要求：
+- 字数约 ${targetWords} 字
+- 保持与前文的连贯性（人物、情节、语气）
+- 章节有明确的开头、发展和结尾钩子
+- 直接输出章节正文，不要加标题或元信息`
+      : `You are a professional fiction writer. Write the next chapter based on the provided context.
+- Target length: ~${targetWords} words
+- Maintain continuity with previous chapters (characters, plot, tone)
+- Include a clear opening, development, and ending hook
+- Output chapter text directly, no title or metadata`;
+
+    let userPrompt = lang === "zh"
+      ? `书名：${book.title}\n题材：${book.genre}\n当前要写：第${nextNum}章\n`
+      : `Title: ${book.title}\nGenre: ${book.genre}\nWriting: Chapter ${nextNum}\n`;
+
+    if (truthSummary) {
+      userPrompt += lang === "zh" ? `\n设定摘要：\n${truthSummary}\n` : `\nStory bible:\n${truthSummary}\n`;
+    }
+    if (recentChapters.length > 0) {
+      userPrompt += lang === "zh" ? `\n前文回顾：\n${recentChapters.join("\n\n")}\n` : `\nPrevious chapters:\n${recentChapters.join("\n\n")}\n`;
+    }
+    userPrompt += lang === "zh" ? "\n请续写下一章：" : "\nWrite the next chapter:";
+
+    daemonAddLog("daemon:writing", `正在为《${book.title}》生成第${nextNum}章...`);
+
+    const content = await callUserLLM(
+      [{ role: "system", content: systemPrompt }, { role: "user", content: userPrompt }],
+      { temperature: 0.7, maxTokens: 8192 },
+    );
+
+    // 保存章节文件
+    const padded = String(nextNum).padStart(4, "0");
+    // 从生成内容的第一行提取标题
+    const firstLine = content.split("\n")[0].replace(/^#+\s*/, "").trim();
+    const title = firstLine.slice(0, 50) || (lang === "zh" ? `第${nextNum}章` : `Chapter ${nextNum}`);
+    const safeTitle = title.replace(/[/\\:*?"<>|]/g, "_");
+
+    const chaptersDir = join(ws(), "books", book.id, "chapters");
+    await invoke("create_dir_all", { path: chaptersDir });
+    await invoke("write_file_text", {
+      path: join(chaptersDir, `${padded}-${safeTitle}.md`),
+      content,
+    });
+
+    // 更新 chapter_index.json
+    const indexPath = join(ws(), "books", book.id, "chapter_index.json");
+    let index: Array<{ number: number; title: string; status: string; wordCount: number }> = [];
+    try {
+      const raw = await invoke<string>("read_file_text", { path: indexPath });
+      index = JSON.parse(raw) as typeof index;
+    } catch { /* 新索引 */ }
+    index.push({ number: nextNum, title, status: "draft", wordCount: countWords(content) });
+    await invoke("write_file_text", { path: indexPath, content: JSON.stringify(index, null, 2) });
+
+    daemonAddLog("daemon:done", `《${book.title}》第${nextNum}章已生成（${countWords(content)}字）`);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    daemonAddLog("daemon:error", `写作失败: ${msg}`);
+  } finally {
+    _daemonBusy = false;
+  }
+}
+
 let _adapter: ClientStorageAdapter | null = null;
 
 export function setTauriBridge(adapter: ClientStorageAdapter): void {
@@ -344,9 +481,39 @@ export async function tauriFetch<T>(path: string, init?: RequestInit): Promise<T
     return { mode: "tauri" } as T;
   }
 
-  // GET /api/daemon — no daemon in Tauri mode
-  if (path === "/api/daemon") {
-    return { running: false } as T;
+  // GET /api/daemon — 返回守护进程状态
+  if (path === "/api/daemon" && method === "GET") {
+    return {
+      running: _daemonRunning,
+      log: _daemonLog.slice(-20),
+      intervalMinutes: _daemonIntervalMinutes,
+    } as T;
+  }
+
+  // POST /api/daemon/start — 启动本地守护进程
+  if (path === "/api/daemon/start" && method === "POST") {
+    if (_daemonRunning) return { ok: true, message: "already running" } as T;
+    const minutes = (body?.intervalMinutes as number) || _daemonIntervalMinutes;
+    _daemonIntervalMinutes = Math.max(1, Math.min(60, minutes));
+    _daemonRunning = true;
+    daemonAddLog("daemon:started", `守护进程已启动，间隔 ${_daemonIntervalMinutes} 分钟`);
+    // 立即执行一次
+    void daemonTick(_adapter!);
+    _daemonInterval = setInterval(() => {
+      if (_daemonRunning && _adapter) void daemonTick(_adapter);
+    }, _daemonIntervalMinutes * 60 * 1000);
+    return { ok: true } as T;
+  }
+
+  // POST /api/daemon/stop — 停止本地守护进程
+  if (path === "/api/daemon/stop" && method === "POST") {
+    if (_daemonInterval) {
+      clearInterval(_daemonInterval);
+      _daemonInterval = null;
+    }
+    _daemonRunning = false;
+    daemonAddLog("daemon:stopped", "守护进程已停止");
+    return { ok: true } as T;
   }
 
   // GET /api/genres — 内置 + 项目自定义流派列表
@@ -868,6 +1035,93 @@ export async function tauriFetch<T>(path: string, init?: RequestInit): Promise<T
       { role: "user", content: instruction },
     ], { temperature: 0.7 });
     return { response } as T;
+  }
+
+  // GET /api/doctor — 本地环境诊断
+  if (path === "/api/doctor" && method === "GET") {
+    // 1. inkos.json 是否存在且可解析
+    let inkosJson = false;
+    try {
+      const raw = await invoke<string>("read_file_text", { path: join(ws(), "inkos.json") });
+      JSON.parse(raw);
+      inkosJson = true;
+    } catch { /* 不存在或解析失败 */ }
+
+    // 2. books/ 目录是否存在，统计书籍数
+    let booksDir = false;
+    let bookCount = 0;
+    const booksDirPath = join(ws(), "books");
+    try {
+      const entries = await invoke<Array<{ name: string; is_dir: boolean }>>("list_dir", { path: booksDirPath });
+      booksDir = true;
+      bookCount = entries.filter(e => e.is_dir).length;
+    } catch { /* 目录不存在 */ }
+
+    // 3. LLM 配置是否完整（不实际调用 API，避免产生费用）
+    let llmConnected = false;
+    try {
+      const raw = localStorage.getItem("inkos-llm-config");
+      if (raw) {
+        const cfg = JSON.parse(raw) as { apiKey?: string; baseUrl?: string; model?: string };
+        llmConnected = !!(cfg.apiKey && cfg.baseUrl && cfg.model);
+      }
+    } catch { /* 解析失败 */ }
+
+    // 4. 章节索引一致性：每本书的 chapter_index.json 与实际 .md 文件匹配
+    let chapterConsistencyOk = true;
+    if (booksDir) {
+      try {
+        const bookEntries = await invoke<Array<{ name: string; is_dir: boolean }>>("list_dir", { path: booksDirPath });
+        for (const bd of bookEntries) {
+          if (!bd.is_dir) continue;
+          const indexPath = join(booksDirPath, bd.name, "chapter_index.json");
+          const chapDir = join(booksDirPath, bd.name, "chapters");
+          try {
+            const indexRaw = await invoke<string>("read_file_text", { path: indexPath });
+            const index = JSON.parse(indexRaw) as Array<{ number: number }>;
+            const indexNums = new Set(index.map(c => c.number));
+            const files = await invoke<Array<{ name: string; is_dir: boolean }>>("list_dir", { path: chapDir }).catch(() => []);
+            const fileNums = new Set(
+              files.filter(f => !f.is_dir && f.name.endsWith(".md") && /^\d{4}/.test(f.name))
+                .map(f => parseInt(f.name.slice(0, 4), 10)),
+            );
+            if (indexNums.size !== fileNums.size) { chapterConsistencyOk = false; break; }
+            for (const n of indexNums) {
+              if (!fileNums.has(n)) { chapterConsistencyOk = false; break; }
+            }
+            if (!chapterConsistencyOk) break;
+          } catch { /* 无索引文件视为一致（新书） */ }
+        }
+      } catch { /* 读取失败 */ }
+    }
+
+    // 5. genres/ 目录是否存在且自定义流派可解析
+    let genresDirOk = true;
+    const genresDirPath = join(ws(), "genres");
+    try {
+      const entries = await invoke<Array<{ name: string; is_dir: boolean }>>("list_dir", { path: genresDirPath });
+      for (const e of entries) {
+        if (e.is_dir || !e.name.endsWith(".md")) continue;
+        try {
+          const raw = await invoke<string>("read_file_text", { path: join(genresDirPath, e.name) });
+          parseGenreFrontmatter(raw);
+        } catch {
+          genresDirOk = false;
+          break;
+        }
+      }
+    } catch {
+      // genres 目录不存在也算正常（使用内置流派）
+    }
+
+    return {
+      inkosJson,
+      projectEnv: chapterConsistencyOk,  // 复用：章节索引一致性
+      globalEnv: genresDirOk,            // 复用：题材目录有效性
+      booksDir,
+      llmConnected,
+      bookCount,
+    } as T;
   }
 
   // Fallback — unsupported route
