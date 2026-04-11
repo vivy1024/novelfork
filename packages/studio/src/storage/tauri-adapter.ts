@@ -99,10 +99,45 @@ export class TauriStorageAdapter implements ClientStorageAdapter {
       nextChapter,
     };
   }
-  async createBook(_params: CreateBookParams): Promise<{ status: string; bookId: string }> {
-    // Book creation requires PipelineRunner (AI-driven outline generation).
-    // In Tauri mode, this is delegated to the relay server via RelayAIClient.
-    throw new Error("Book creation must go through RelayAIClient");
+  async createBook(params: CreateBookParams): Promise<{ status: string; bookId: string }> {
+    const bookId = params.title
+      .toLowerCase()
+      .replace(/[^a-z0-9\u4e00-\u9fff]+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 30) || "untitled";
+    const bookDir = join(ws(), "books", bookId);
+    const chaptersDir = join(bookDir, "chapters");
+    const storyDir = join(bookDir, "story");
+
+    // Create directories
+    await invoke("create_dir_all", { path: chaptersDir });
+    await invoke("create_dir_all", { path: storyDir });
+
+    // Write book.json
+    const config = {
+      id: bookId,
+      title: params.title,
+      genre: params.genre,
+      language: params.language ?? "zh",
+      platform: params.platform ?? "other",
+      chapterWordCount: params.chapterWordCount ?? 3000,
+      targetChapters: params.targetChapters ?? 200,
+      status: "active",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    await invoke("write_file_text", {
+      path: join(bookDir, "book.json"),
+      content: JSON.stringify(config, null, 2),
+    });
+
+    // Write empty chapter index
+    await invoke("write_file_text", {
+      path: join(bookDir, "chapter_index.json"),
+      content: "[]",
+    });
+
+    return { status: "ready", bookId };
   }
 
   async updateBook(bookId: string, updates: BookUpdates): Promise<void> {
@@ -186,8 +221,13 @@ export class TauriStorageAdapter implements ClientStorageAdapter {
 
   async loadProject(): Promise<ProjectConfig> {
     const configPath = join(ws(), "inkos.json");
-    const raw = await invoke<string>("read_file_text", { path: configPath });
-    const config = JSON.parse(raw) as Record<string, unknown>;
+    let config: Record<string, unknown> = {};
+    try {
+      const raw = await invoke<string>("read_file_text", { path: configPath });
+      config = JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      // No inkos.json yet — return defaults
+    }
     const llm = (config.llm ?? {}) as Record<string, unknown>;
     return {
       name: (config.name as string) ?? "inkos-studio",
@@ -204,8 +244,13 @@ export class TauriStorageAdapter implements ClientStorageAdapter {
 
   async updateProject(updates: Record<string, unknown>): Promise<void> {
     const configPath = join(ws(), "inkos.json");
-    const raw = await invoke<string>("read_file_text", { path: configPath });
-    const config = JSON.parse(raw) as Record<string, unknown>;
+    let config: Record<string, unknown> = {};
+    try {
+      const raw = await invoke<string>("read_file_text", { path: configPath });
+      config = JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      // File doesn't exist yet — start fresh
+    }
     const llm = (config.llm ?? {}) as Record<string, unknown>;
     if (updates.temperature !== undefined) llm.temperature = updates.temperature;
     if (updates.maxTokens !== undefined) llm.maxTokens = updates.maxTokens;

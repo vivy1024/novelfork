@@ -301,8 +301,17 @@ function AppInner() {
 
       {/* BookCreate Modal */}
       {bookCreateOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="bg-background rounded-2xl shadow-2xl border border-border/40 w-full max-w-lg max-h-[90vh] overflow-y-auto p-8">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+          onClick={(e) => { if (e.target === e.currentTarget) setBookCreateOpen(false); }}
+        >
+          <div className="bg-background rounded-2xl shadow-2xl border border-border/40 w-full max-w-lg max-h-[90vh] overflow-y-auto p-8 relative">
+            <button
+              onClick={() => setBookCreateOpen(false)}
+              className="absolute top-4 right-4 text-muted-foreground hover:text-foreground text-lg leading-none"
+              aria-label="Close"
+            >
+              &times;
+            </button>
             <BookCreate
               nav={{
                 ...nav,
