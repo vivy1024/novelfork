@@ -26,6 +26,12 @@ export async function tauriFetch<T>(path: string, init?: RequestInit): Promise<T
   const method = (init?.method ?? "GET").toUpperCase();
   const body = init?.body ? JSON.parse(init.body as string) : undefined;
 
+  // POST /api/books/create
+  if (path === "/api/books/create" && method === "POST") {
+    const result = await _adapter.createBook(body);
+    return result as T;
+  }
+
   // GET /api/books
   if (path === "/api/books" && method === "GET") {
     const books = await _adapter.listBooks();
@@ -136,6 +142,34 @@ export async function tauriFetch<T>(path: string, init?: RequestInit): Promise<T
   // GET /api/daemon — no daemon in Tauri mode
   if (path === "/api/daemon") {
     return { running: false } as T;
+  }
+
+  // GET /api/genres — built-in genres for Tauri mode
+  if (path === "/api/genres" && method === "GET") {
+    const genres = [
+      { id: "xuanhuan", name: "玄幻", source: "builtin", language: "zh" },
+      { id: "xianxia", name: "仙侠", source: "builtin", language: "zh" },
+      { id: "urban", name: "都市", source: "builtin", language: "zh" },
+      { id: "horror", name: "恐怖", source: "builtin", language: "zh" },
+      { id: "other", name: "通用", source: "builtin", language: "zh" },
+      { id: "litrpg", name: "LitRPG", source: "builtin", language: "en" },
+      { id: "progression", name: "Progression Fantasy", source: "builtin", language: "en" },
+      { id: "cultivation", name: "English Cultivation", source: "builtin", language: "en" },
+      { id: "isekai", name: "Isekai / Portal Fantasy", source: "builtin", language: "en" },
+      { id: "cozy", name: "Cozy Fantasy", source: "builtin", language: "en" },
+      { id: "romantasy", name: "Romantasy", source: "builtin", language: "en" },
+      { id: "sci-fi", name: "Science Fiction", source: "builtin", language: "en" },
+      { id: "dungeon-core", name: "Dungeon Core", source: "builtin", language: "en" },
+      { id: "system-apocalypse", name: "System Apocalypse", source: "builtin", language: "en" },
+      { id: "tower-climber", name: "Tower Climbing", source: "builtin", language: "en" },
+    ];
+    return { genres } as T;
+  }
+
+  // GET /api/books/:id/create-status
+  const createStatusMatch = path.match(/^\/api\/books\/([^/]+)\/create-status$/);
+  if (createStatusMatch && method === "GET") {
+    return { status: "ready" } as T;
   }
 
   // Fallback — unsupported route
