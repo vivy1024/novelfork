@@ -20,6 +20,8 @@ import {
   ChevronDown,
   FileText,
   FolderOpen,
+  Search,
+  Shield,
 } from "lucide-react";
 
 interface BookSummary {
@@ -44,6 +46,8 @@ interface Nav {
   toImport: () => void;
   toRadar: () => void;
   toDoctor: () => void;
+  toSearch: () => void;
+  toBackup: () => void;
 }
 
 export function Sidebar({ nav, activePage, sse, t }: {
@@ -56,6 +60,7 @@ export function Sidebar({ nav, activePage, sse, t }: {
   const { data: daemon, refetch: refetchDaemon } = useApi<{ running: boolean }>("/daemon");
   const { mode } = useInkOS();
   const isStandalone = mode === "standalone";
+  const isTauri = mode === "tauri";
   const [expandedBooks, setExpandedBooks] = useState<Set<string>>(new Set());
 
   const toggleBook = (bookId: string) => {
@@ -79,7 +84,7 @@ export function Sidebar({ nav, activePage, sse, t }: {
   }, [refetchBooks, refetchDaemon, sse.messages]);
 
   return (
-    <aside className="w-[260px] shrink-0 border-r border-border bg-background/80 backdrop-blur-md flex flex-col h-full overflow-hidden select-none">
+    <aside className="w-full border-r border-border bg-background/80 backdrop-blur-md flex flex-col h-full overflow-hidden select-none">
       {/* Logo Area */}
       <div className="px-6 py-8">
         <button
@@ -198,6 +203,14 @@ export function Sidebar({ nav, activePage, sse, t }: {
                 onClick={nav.toLogs}
               />
             )}
+            {isTauri && (
+              <SidebarItem
+                label={t("nav.backup")}
+                icon={<Shield size={16} />}
+                active={activePage === "backup"}
+                onClick={nav.toBackup}
+              />
+            )}
           </div>
         </div>
 
@@ -209,6 +222,12 @@ export function Sidebar({ nav, activePage, sse, t }: {
             </span>
           </div>
           <div className="space-y-1">
+            <SidebarItem
+              label={t("nav.search")}
+              icon={<Search size={16} />}
+              active={activePage === "search"}
+              onClick={nav.toSearch}
+            />
             <SidebarItem
               label={t("nav.style")}
               icon={<Wand2 size={16} />}

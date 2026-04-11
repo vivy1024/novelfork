@@ -353,8 +353,8 @@ export function ChatPanel({ open, onClose, t, sse, activeBookId }: {
   return (
     <aside
       className={cn(
-        "h-full flex flex-col border-l border-border/40 bg-background/80 backdrop-blur-md chat-panel-enter shrink-0 overflow-hidden",
-        open ? "w-[380px] opacity-100" : "w-0 opacity-0",
+        "h-full flex flex-col border-l border-border/40 bg-background/80 backdrop-blur-md chat-panel-enter overflow-hidden",
+        open ? "w-full opacity-100" : "w-0 opacity-0",
       )}
     >
       {open && (

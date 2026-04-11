@@ -14,6 +14,7 @@ interface Nav {
   toImport: () => void;
   toRadar: () => void;
   toDoctor: () => void;
+  toSearch: () => void;
 }
 
 interface CommandPaletteProps {
@@ -59,6 +60,7 @@ export function CommandPalette({ nav, tabs, activateTab, onClose, onNewBook, t }
             <Item onSelect={() => run(nav.toImport)}>{t("nav.import")}</Item>
             <Item onSelect={() => run(nav.toRadar)}>{t("nav.radar")}</Item>
             <Item onSelect={() => run(nav.toDoctor)}>{t("nav.doctor")}</Item>
+            <Item onSelect={() => run(nav.toSearch)}>{t("nav.search")}</Item>
             <Item onSelect={() => run(nav.toDaemon)}>{t("nav.daemon")}</Item>
             <Item onSelect={() => run(nav.toLogs)}>{t("logs.title")}</Item>
             <Item onSelect={() => run(onNewBook)}>{t("nav.newBook")}</Item>
