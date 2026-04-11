@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
 import { useColors } from "../hooks/use-colors";
+import { useInkOS } from "../providers/inkos-context";
+import { FolderOpen } from "lucide-react";
 
 const ROUTING_AGENTS = [
   "writer",
@@ -61,16 +63,20 @@ export function normalizeOverridesDraft(
 
 export function ConfigView({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunction }) {
   const c = useColors(theme);
-  const { data, loading, error, refetch } = useApi<ProjectInfo>("/project");
+  const { mode, workspace, selectWorkspace } = useInkOS();
+  const isTauri = mode === "tauri";
+  const isStandalone = mode === "standalone";
+  const { data, loading, error, refetch } = useApi<ProjectInfo>(isTauri ? null : "/project");
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<Record<string, unknown>>({});
 
-  if (loading) return <div className="text-muted-foreground py-20 text-center text-sm">Loading...</div>;
-  if (error) return <div className="text-destructive py-20 text-center">Error: {error}</div>;
-  if (!data) return null;
+  if (!isTauri && loading) return <div className="text-muted-foreground py-20 text-center text-sm">Loading...</div>;
+  if (!isTauri && error) return <div className="text-destructive py-20 text-center">Error: {error}</div>;
+  if (!isTauri && !data) return null;
 
   const startEdit = () => {
+    if (!data) return;
     setForm({
       temperature: data.temperature,
       maxTokens: data.maxTokens,
@@ -103,6 +109,191 @@ export function ConfigView({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunc
 
       <div className="flex items-baseline justify-between">
         <h1 className="font-serif text-3xl">{t("config.title")}</h1>
+        {isStandalone && !editing && (
+          <button onClick={startEdit} className={`px-3 py-2 text-xs rounded-md ${c.btnSecondary}`}>
+            Edit
+          </button>
+        )}
+      </div>
+
+      {/* Tauri workspace info */}
+      {isTauri && (
+        <TauriWorkspaceSection workspace={workspace} selectWorkspace={selectWorkspace} theme={theme} t={t} />
+      )}
+
+      {/* Project config (web modes only) */}
+      {!isTauri && data && (
+        <>
+          <div className={`border ${c.cardStatic} rounded-lg divide-y divide-border/40`}>
+            <Row label={t("config.project")} value={data.name} />
+            <Row label={t("config.provider")} value={data.provider} />
+            <Row label={t("config.model")} value={data.model} />
+            <Row label={t("config.baseUrl")} value={data.baseUrl} mono />
+
+            {editing ? (
+              <>
+                <EditRow
+                  label={t("config.language")}
+                  value={form.language as string}
+                  onChange={(v) => setForm({ ...form, language: v })}
+                  type="select"
+                  options={[{ value: "zh", label: t("config.chinese") }, { value: "en", label: t("config.english") }]}
+                  c={c}
+                />
+                <EditRow
+                  label={t("config.temperature")}
+                  value={String(form.temperature)}
+                  onChange={(v) => setForm({ ...form, temperature: parseFloat(v) })}
+                  type="number"
+                  c={c}
+                />
+                <EditRow
+                  label={t("config.maxTokens")}
+                  value={String(form.maxTokens)}
+                  onChange={(v) => setForm({ ...form, maxTokens: parseInt(v, 10) })}
+                  type="number"
+                  c={c}
+                />
+                <EditRow
+                  label={t("config.stream")}
+                  value={String(form.stream)}
+                  onChange={(v) => setForm({ ...form, stream: v === "true" })}
+                  type="select"
+                  options={[{ value: "true", label: t("config.enabled") }, { value: "false", label: t("config.disabled") }]}
+                  c={c}
+                />
+              </>
+            ) : (
+              <>
+                <Row label={t("config.language")} value={data.language === "en" ? t("config.english") : t("config.chinese")} />
+                <Row label={t("config.temperature")} value={String(data.temperature)} mono />
+                <Row label={t("config.maxTokens")} value={String(data.maxTokens)} mono />
+                <Row label={t("config.stream")} value={data.stream ? t("config.enabled") : t("config.disabled")} />
+              </>
+            )}
+          </div>
+
+          {editing && (
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setEditing(false)} className={`px-4 py-2.5 text-sm rounded-md ${c.btnSecondary}`}>
+                {t("config.cancel")}
+              </button>
+              <button onClick={handleSave} disabled={saving} className={`px-4 py-2.5 text-sm rounded-md ${c.btnPrimary} disabled:opacity-50`}>
+                {saving ? t("config.saving") : t("config.save")}
+              </button>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* LLM settings — Tauri reads from localStorage, web from server */}
+      {isTauri ? (
+        <TauriLlmSettings theme={theme} t={t} />
+      ) : (
+        <MyLlmSettings theme={theme} t={t} />
+      )}
+
+      {/* Model routing — standalone only */}
+      {isStandalone && <ModelRoutingSection theme={theme} t={t} />}
+    </div>
+  );
+}
+
+function emptyOverride(): AgentOverride {
+  return { model: "", provider: "", baseUrl: "" };
+}
+
+function TauriWorkspaceSection({ workspace, selectWorkspace, theme, t }: {
+  workspace?: string | null;
+  selectWorkspace?: () => Promise<string | null>;
+  theme: Theme;
+  t: TFunction;
+}) {
+  const c = useColors(theme);
+  const [switching, setSwitching] = useState(false);
+
+  const handleSwitch = async () => {
+    if (!selectWorkspace) return;
+    setSwitching(true);
+    try {
+      await selectWorkspace();
+      window.location.reload();
+    } catch {
+      // user cancelled
+    } finally {
+      setSwitching(false);
+    }
+  };
+
+  return (
+    <>
+      <h2 className="font-serif text-xl">{t("config.workspace")}</h2>
+      <div className={`border ${c.cardStatic} rounded-lg divide-y divide-border/40`}>
+        <div className="flex justify-between items-center px-4 py-3">
+          <span className="text-muted-foreground text-sm flex items-center gap-2">
+            <FolderOpen size={14} />
+            {t("config.workspacePath")}
+          </span>
+          <span className="font-mono text-sm truncate max-w-[280px]" title={workspace ?? ""}>
+            {workspace ?? "未选择"}
+          </span>
+        </div>
+      </div>
+      {selectWorkspace && (
+        <div className="flex justify-end">
+          <button
+            onClick={handleSwitch}
+            disabled={switching}
+            className={`px-4 py-2.5 text-sm rounded-md ${c.btnSecondary} disabled:opacity-50`}
+          >
+            {switching ? "切换中..." : t("config.switchWorkspace")}
+          </button>
+        </div>
+      )}
+    </>
+  );
+}
+
+function TauriLlmSettings({ theme, t }: { theme: Theme; t: TFunction }) {
+  const c = useColors(theme);
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState({ apiKey: "", baseUrl: "", model: "", provider: "" });
+
+  const stored = (() => {
+    try {
+      const raw = localStorage.getItem("inkos-llm-config");
+      if (raw) return JSON.parse(raw) as { apiKey?: string; baseUrl?: string; model?: string; provider?: string };
+    } catch { /* ignore */ }
+    return { apiKey: "", baseUrl: "", model: "gpt-4o", provider: "openai" };
+  })();
+
+  const startEdit = () => {
+    setForm({
+      apiKey: "",
+      baseUrl: stored.baseUrl ?? "",
+      model: stored.model ?? "gpt-4o",
+      provider: stored.provider ?? "openai",
+    });
+    setEditing(true);
+  };
+
+  const handleSave = () => {
+    const config = {
+      apiKey: form.apiKey.trim() || stored.apiKey || "",
+      baseUrl: form.baseUrl,
+      model: form.model,
+      provider: form.provider,
+    };
+    localStorage.setItem("inkos-llm-config", JSON.stringify(config));
+    setEditing(false);
+  };
+
+  const maskedKey = stored.apiKey ? `${stored.apiKey.slice(0, 6)}...${stored.apiKey.slice(-4)}` : "未设置";
+
+  return (
+    <>
+      <div className="flex items-baseline justify-between">
+        <h2 className="font-serif text-xl mt-4">{t("config.myLlm") ?? "My LLM Settings"}</h2>
         {!editing && (
           <button onClick={startEdit} className={`px-3 py-2 text-xs rounded-md ${c.btnSecondary}`}>
             Edit
@@ -111,50 +302,31 @@ export function ConfigView({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunc
       </div>
 
       <div className={`border ${c.cardStatic} rounded-lg divide-y divide-border/40`}>
-        <Row label={t("config.project")} value={data.name} />
-        <Row label={t("config.provider")} value={data.provider} />
-        <Row label={t("config.model")} value={data.model} />
-        <Row label={t("config.baseUrl")} value={data.baseUrl} mono />
-
         {editing ? (
           <>
-            <EditRow
-              label={t("config.language")}
-              value={form.language as string}
-              onChange={(v) => setForm({ ...form, language: v })}
-              type="select"
-              options={[{ value: "zh", label: t("config.chinese") }, { value: "en", label: t("config.english") }]}
-              c={c}
-            />
-            <EditRow
-              label={t("config.temperature")}
-              value={String(form.temperature)}
-              onChange={(v) => setForm({ ...form, temperature: parseFloat(v) })}
-              type="number"
-              c={c}
-            />
-            <EditRow
-              label={t("config.maxTokens")}
-              value={String(form.maxTokens)}
-              onChange={(v) => setForm({ ...form, maxTokens: parseInt(v, 10) })}
-              type="number"
-              c={c}
-            />
-            <EditRow
-              label={t("config.stream")}
-              value={String(form.stream)}
-              onChange={(v) => setForm({ ...form, stream: v === "true" })}
-              type="select"
-              options={[{ value: "true", label: t("config.enabled") }, { value: "false", label: t("config.disabled") }]}
-              c={c}
-            />
+            <div className="flex justify-between items-center px-4 py-2.5">
+              <span className="text-muted-foreground text-sm">{t("config.provider") ?? "Provider"}</span>
+              <input type="text" value={form.provider} onChange={(e) => setForm({ ...form, provider: e.target.value })} placeholder="openai" className={`${c.input} rounded px-2 py-1 text-sm w-48`} />
+            </div>
+            <div className="flex justify-between items-center px-4 py-2.5">
+              <span className="text-muted-foreground text-sm">API Key</span>
+              <input type="password" value={form.apiKey} onChange={(e) => setForm({ ...form, apiKey: e.target.value })} placeholder={stored.apiKey ? "••••••••(keep current)" : "sk-..."} className={`${c.input} rounded px-2 py-1 text-sm w-48`} />
+            </div>
+            <div className="flex justify-between items-center px-4 py-2.5">
+              <span className="text-muted-foreground text-sm">Base URL</span>
+              <input type="text" value={form.baseUrl} onChange={(e) => setForm({ ...form, baseUrl: e.target.value })} placeholder="https://api.openai.com/v1" className={`${c.input} rounded px-2 py-1 text-sm w-48`} />
+            </div>
+            <div className="flex justify-between items-center px-4 py-2.5">
+              <span className="text-muted-foreground text-sm">{t("config.model") ?? "Model"}</span>
+              <input type="text" value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} placeholder="gpt-4o" className={`${c.input} rounded px-2 py-1 text-sm w-48`} />
+            </div>
           </>
         ) : (
           <>
-            <Row label={t("config.language")} value={data.language === "en" ? t("config.english") : t("config.chinese")} />
-            <Row label={t("config.temperature")} value={String(data.temperature)} mono />
-            <Row label={t("config.maxTokens")} value={String(data.maxTokens)} mono />
-            <Row label={t("config.stream")} value={data.stream ? t("config.enabled") : t("config.disabled")} />
+            <Row label={t("config.provider") ?? "Provider"} value={stored.provider || "openai"} />
+            <Row label="API Key" value={maskedKey} mono />
+            <Row label="Base URL" value={stored.baseUrl || "(default)"} mono />
+            <Row label={t("config.model") ?? "Model"} value={stored.model || "gpt-4o"} />
           </>
         )}
       </div>
@@ -162,24 +334,15 @@ export function ConfigView({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunc
       {editing && (
         <div className="flex gap-2 justify-end">
           <button onClick={() => setEditing(false)} className={`px-4 py-2.5 text-sm rounded-md ${c.btnSecondary}`}>
-            {t("config.cancel")}
+            {t("config.cancel") ?? "Cancel"}
           </button>
-          <button onClick={handleSave} disabled={saving} className={`px-4 py-2.5 text-sm rounded-md ${c.btnPrimary} disabled:opacity-50`}>
-            {saving ? t("config.saving") : t("config.save")}
+          <button onClick={handleSave} className={`px-4 py-2.5 text-sm rounded-md ${c.btnPrimary}`}>
+            {t("config.save") ?? "Save"}
           </button>
         </div>
       )}
-
-
-      <MyLlmSettings theme={theme} t={t} />
-
-      <ModelRoutingSection theme={theme} t={t} />
-    </div>
+    </>
   );
-}
-
-function emptyOverride(): AgentOverride {
-  return { model: "", provider: "", baseUrl: "" };
 }
 
 interface LlmSettingsData {

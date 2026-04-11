@@ -116,12 +116,18 @@ export async function fetchJson<T>(
   return await res.json() as T;
 }
 
-export function useApi<T>(path: string) {
+export function useApi<T>(path: string | null) {
   const [data, setData] = useState<T | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(path !== null);
   const [error, setError] = useState<string | null>(null);
 
   const refetch = useCallback(async () => {
+    if (path === null) {
+      setData(null);
+      setError(null);
+      setLoading(false);
+      return;
+    }
     const url = buildApiUrl(path);
     if (!url) {
       setData(null);
@@ -147,8 +153,9 @@ export function useApi<T>(path: string) {
   }, [refetch]);
 
   useEffect(() => {
+    if (path === null || typeof window === "undefined") return;
     const url = buildApiUrl(path);
-    if (!url || typeof window === "undefined") {
+    if (!url) {
       return;
     }
 

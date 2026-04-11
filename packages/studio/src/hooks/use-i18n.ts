@@ -245,6 +245,14 @@ const strings = {
   "config.chinese": { zh: "中文", en: "Chinese" },
   "config.english": { zh: "英文", en: "English" },
   "config.myLlm": { zh: "我的 LLM 设置", en: "My LLM Settings" },
+  "config.workspace": { zh: "工作区", en: "Workspace" },
+  "config.workspacePath": { zh: "路径", en: "Path" },
+  "config.switchWorkspace": { zh: "切换工作区", en: "Switch Workspace" },
+
+  // Workspace Selector
+  "workspace.description": { zh: "选择一个本地文件夹作为你的写作工作区。所有小说、设定和章节都将保存在这里。", en: "Choose a local folder as your writing workspace. All novels, settings and chapters will be saved here." },
+  "workspace.select": { zh: "选择工作区文件夹", en: "Select Workspace Folder" },
+  "workspace.hint": { zh: "建议选择一个空文件夹或已有的 InkOS 项目文件夹", en: "Recommend an empty folder or an existing InkOS project folder" },
 
   // BookCreate extras
   "create.platform": { zh: "平台", en: "Platform" },
