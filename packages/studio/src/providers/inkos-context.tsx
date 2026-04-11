@@ -101,7 +101,7 @@ async function initTauriMode(setCtx: (v: InkOSContextValue) => void): Promise<vo
 
   const selectWorkspace = async (): Promise<string | null> => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const mod = await (Function('return import("@tauri-apps/api/core")')() as Promise<any>);
+    const mod = await import("@tauri-apps/api/core") as any;
     const folder = await mod.invoke("select_workspace");
     if (folder) {
       setWorkspace(folder);
@@ -179,7 +179,7 @@ async function initTauriMode(setCtx: (v: InkOSContextValue) => void): Promise<vo
   // Listen for deep link events (inkos://launch?token=xxx)
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const eventMod = await (Function('return import("@tauri-apps/api/event")')() as Promise<any>);
+    const eventMod = await import("@tauri-apps/api/event") as any;
     eventMod.listen("inkos-launch", (event: { payload: string }) => {
       if (event.payload) {
         loginWithToken(event.payload).catch(console.error);

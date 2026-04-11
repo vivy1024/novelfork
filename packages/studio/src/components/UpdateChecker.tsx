@@ -22,7 +22,7 @@ export function UpdateChecker() {
     (async () => {
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const mod = await (Function('return import("@tauri-apps/plugin-updater")')() as Promise<any>);
+        const mod = await import("@tauri-apps/plugin-updater") as any;
         const update = await mod.check();
 
         if (cancelled) return;
@@ -75,7 +75,7 @@ export function UpdateChecker() {
       });
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const processMod = await (Function('return import("@tauri-apps/plugin-process")')() as Promise<any>);
+      const processMod = await import("@tauri-apps/plugin-process") as any;
       await processMod.relaunch();
     } catch (err) {
       setState({

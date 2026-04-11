@@ -10,6 +10,14 @@ export default defineConfig({
       "@": resolve(__dirname, "src"),
     },
   },
+  optimizeDeps: {
+    include: [
+      "@tauri-apps/api/core",
+      "@tauri-apps/api/event",
+      "@tauri-apps/plugin-updater",
+      "@tauri-apps/plugin-process",
+    ],
+  },
   build: {
     rollupOptions: {
       external: [

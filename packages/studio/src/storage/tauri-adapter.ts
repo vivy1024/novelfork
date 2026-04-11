@@ -25,7 +25,7 @@ declare global {
 async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   // Dynamic import — @tauri-apps/api only exists in Tauri runtime
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const mod = await (Function('return import("@tauri-apps/api/core")')() as Promise<any>);
+  const mod = await import("@tauri-apps/api/core") as any;
   return mod.invoke(cmd, args) as T;
 }
 
