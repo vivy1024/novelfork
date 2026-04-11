@@ -25,6 +25,7 @@ interface InkOSContextValue {
   readonly workspace?: string | null;
   readonly tauriAuthenticated?: boolean;
   readonly loginWithToken?: (token: string) => Promise<void>;
+  readonly skipAuth?: () => void;
 }
 
 const InkOSContext = createContext<InkOSContextValue | null>(null);
@@ -111,6 +112,17 @@ async function initTauriMode(setCtx: (v: InkOSContextValue) => void): Promise<vo
 
   const hasAuth = Boolean(localStorage.getItem("inkos-auth-token"));
 
+  // Skip auth — allow offline use without a relay token
+  const skipAuth = (): void => {
+    setCtx({
+      storage, ai, mode: "tauri", selectWorkspace,
+      workspace: getWorkspace(),
+      tauriAuthenticated: true,
+      loginWithToken,
+      skipAuth,
+    });
+  };
+
   // Process a launch token: verify with relay, store credentials
   const loginWithToken = async (token: string): Promise<void> => {
     const res = await fetch(`${relayUrl}/api/auth/launch`, {
@@ -149,6 +161,7 @@ async function initTauriMode(setCtx: (v: InkOSContextValue) => void): Promise<vo
       workspace: getWorkspace(),
       tauriAuthenticated: true,
       loginWithToken,
+      skipAuth,
     });
   };
 
@@ -158,6 +171,7 @@ async function initTauriMode(setCtx: (v: InkOSContextValue) => void): Promise<vo
     workspace: getWorkspace(),
     tauriAuthenticated: hasAuth,
     loginWithToken,
+    skipAuth,
   });
 
   setCtx(buildCtx());

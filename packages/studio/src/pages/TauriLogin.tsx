@@ -9,11 +9,12 @@ import type { TFunction } from "../hooks/use-i18n";
 
 interface TauriLoginProps {
   onLogin: (token: string) => void;
+  onSkip: () => void;
   relayUrl: string;
   t: TFunction;
 }
 
-export function TauriLogin({ onLogin, relayUrl, t }: TauriLoginProps) {
+export function TauriLogin({ onLogin, onSkip, relayUrl, t }: TauriLoginProps) {
   const [token, setToken] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -94,6 +95,13 @@ export function TauriLogin({ onLogin, relayUrl, t }: TauriLoginProps) {
             {error}
           </div>
         )}
+
+        <button
+          onClick={onSkip}
+          className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-4 transition-colors"
+        >
+          {t("login.skip")}
+        </button>
       </div>
     </div>
   );

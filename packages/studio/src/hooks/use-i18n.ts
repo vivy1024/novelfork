@@ -266,6 +266,7 @@ const strings = {
   "login.verifying": { zh: "验证中...", en: "Verifying..." },
   "login.submit": { zh: "登录", en: "Log In" },
   "login.hint": { zh: "在 Sub2API 侧边栏点击「小说工作台」会自动唤起本应用。", en: "Click 'Novel Studio' in the Sub2API sidebar to launch this app automatically." },
+  "login.skip": { zh: "跳过登录，离线使用（AI 功能不可用）", en: "Skip login, use offline (AI features unavailable)" },
 
   // BookCreate extras
   "create.platform": { zh: "平台", en: "Platform" },
