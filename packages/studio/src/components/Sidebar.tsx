@@ -177,7 +177,7 @@ export function Sidebar({ nav, activePage, sse, t }: {
               active={activePage === "genres"}
               onClick={nav.toGenres}
             />
-            {isStandalone && (
+            {(isStandalone || isTauri) && (
               <SidebarItem
                 label={t("nav.config")}
                 icon={<Settings size={16} />}
@@ -261,10 +261,21 @@ export function Sidebar({ nav, activePage, sse, t }: {
       {/* Footer / Status Area */}
       <div className="p-4 border-t border-border bg-secondary/40">
         <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-card border border-border shadow-sm">
-          <div className={`w-2 h-2 rounded-full ${daemon?.running ? "bg-emerald-500 animate-pulse" : "bg-muted-foreground/40"}`} />
-          <span className="text-[11px] font-semibold text-foreground/80 uppercase tracking-wider">
-            {daemon?.running ? t("nav.agentOnline") : t("nav.agentOffline")}
-          </span>
+          {isTauri ? (
+            <>
+              <div className="w-2 h-2 rounded-full bg-blue-500" />
+              <span className="text-[11px] font-semibold text-foreground/80 uppercase tracking-wider">
+                {t("nav.localMode")}
+              </span>
+            </>
+          ) : (
+            <>
+              <div className={`w-2 h-2 rounded-full ${daemon?.running ? "bg-emerald-500 animate-pulse" : "bg-muted-foreground/40"}`} />
+              <span className="text-[11px] font-semibold text-foreground/80 uppercase tracking-wider">
+                {daemon?.running ? t("nav.agentOnline") : t("nav.agentOffline")}
+              </span>
+            </>
+          )}
         </div>
       </div>
     </aside>
