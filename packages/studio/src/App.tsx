@@ -66,6 +66,12 @@ function useLaunchAuth() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Tauri mode handles auth via deep link / localStorage — skip server auth
+    if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
+      setAuthState("authenticated");
+      return;
+    }
+
     const params = new URLSearchParams(window.location.search);
     const token = params.get("token");
 
