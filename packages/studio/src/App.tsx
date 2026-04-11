@@ -3,6 +3,7 @@ import { Sidebar } from "./components/Sidebar";
 import { ChatPanel } from "./components/ChatBar";
 import { TabBar } from "./components/TabBar";
 import { CommandPalette } from "./components/CommandPalette";
+import { UpdateChecker } from "./components/UpdateChecker";
 import { InkOSProvider, useInkOS } from "./providers/inkos-context";
 import { Dashboard } from "./pages/Dashboard";
 import { BookDetail } from "./pages/BookDetail";
@@ -20,11 +21,17 @@ import { StyleManager } from "./pages/StyleManager";
 import { ImportManager } from "./pages/ImportManager";
 import { RadarView } from "./pages/RadarView";
 import { DoctorView } from "./pages/DoctorView";
+import { DiffView } from "./pages/DiffView";
+import { SearchView } from "./pages/SearchView";
+import { BackupView } from "./pages/BackupView";
 import { LanguageSelector } from "./pages/LanguageSelector";
+import { RecoveryBanner } from "./components/RecoveryBanner";
 import { useSSE } from "./hooks/use-sse";
 import { useTheme } from "./hooks/use-theme";
 import { useI18n } from "./hooks/use-i18n";
 import { useTabsState } from "./hooks/use-tabs";
+import { useResizable } from "./hooks/use-resizable";
+import { useRecovery } from "./hooks/use-crash-recovery";
 import { fetchJson, postApi, useApi } from "./hooks/use-api";
 
 export type Route =
@@ -41,10 +48,13 @@ export type Route =
   | { page: "style" }
   | { page: "import" }
   | { page: "radar" }
-  | { page: "doctor" };
+  | { page: "doctor" }
+  | { page: "diff"; bookId: string; chapterNumber: number }
+  | { page: "search" }
+  | { page: "backup" };
 
 export function deriveActiveBookId(route: Route): string | undefined {
-  return route.page === "book" || route.page === "chapter" || route.page === "truth" || route.page === "analytics"
+  return route.page === "book" || route.page === "chapter" || route.page === "truth" || route.page === "analytics" || route.page === "diff"
     ? route.bookId
     : undefined;
 }
@@ -120,6 +130,10 @@ function AppInner() {
   const [chatOpen, setChatOpen] = useState(false);
   const [wsReady, setWsReady] = useState(!isTauri || !!workspace);
   const [cmdOpen, setCmdOpen] = useState(false);
+
+  const sidebarResize = useResizable({ initialWidth: 260, minWidth: 200, maxWidth: 400, side: "left" });
+  const chatResize = useResizable({ initialWidth: 320, minWidth: 240, maxWidth: 500, side: "right" });
+  const recovery = useRecovery();
 
   const isDark = theme === "dark";
 
@@ -219,6 +233,10 @@ function AppInner() {
     toImport: () => openTab({ page: "import" }),
     toRadar: () => openTab({ page: "radar" }),
     toDoctor: () => openTab({ page: "doctor" }),
+    toSearch: () => openTab({ page: "search" }),
+    toBackup: () => openTab({ page: "backup" }),
+    toDiff: (bookId: string, chapterNumber: number) =>
+      openTab({ page: "diff", bookId, chapterNumber }),
   };
 
   const activeBookId = activeTab ? deriveActiveBookId(activeTab.route) : undefined;
@@ -235,7 +253,12 @@ function AppInner() {
   return (
     <div className="h-screen bg-background text-foreground flex overflow-hidden font-sans">
       {/* Left Sidebar */}
-      <Sidebar nav={nav} activePage={activePage} sse={sse} t={t} />
+      <div style={{ width: sidebarResize.width }} className="shrink-0">
+        <Sidebar nav={nav} activePage={activePage} sse={sse} t={t} />
+      </div>
+
+      {/* Left Drag Handle */}
+      <div {...sidebarResize.handleProps} />
 
       {/* Center Content */}
       <div className="flex-1 flex flex-col min-w-0 bg-background/30 backdrop-blur-sm">
@@ -253,6 +276,18 @@ function AppInner() {
 
         {/* Main Content Area — all open tabs rendered, only active visible */}
         <main className="flex-1 overflow-y-auto scroll-smooth relative">
+          {isTauri && recovery.hasRecovery && (
+            <RecoveryBanner
+              entries={recovery.entries}
+              onRecoverAll={async () => {
+                for (const entry of recovery.entries) {
+                  await recovery.recover(entry);
+                }
+              }}
+              onDismiss={() => recovery.dismissAll()}
+              t={t}
+            />
+          )}
           {tabs.map((tab) => (
             <div
               key={tab.id}
@@ -283,14 +318,22 @@ function AppInner() {
         </div>
       )}
 
+      {/* Right Drag Handle */}
+      {chatOpen && <div {...chatResize.handleProps} />}
+
       {/* Right Chat Panel */}
-      <ChatPanel
-        open={chatOpen}
-        onClose={() => setChatOpen(false)}
-        t={t}
-        sse={sse}
-        activeBookId={activeBookId}
-      />
+      <div style={{ width: chatOpen ? chatResize.width : 0 }} className="shrink-0">
+        <ChatPanel
+          open={chatOpen}
+          onClose={() => setChatOpen(false)}
+          t={t}
+          sse={sse}
+          activeBookId={activeBookId}
+        />
+      </div>
+
+      {/* Auto-Updater (Tauri only) */}
+      {isTauri && <UpdateChecker />}
 
       {/* Command Palette */}
       {cmdOpen && (
@@ -329,6 +372,9 @@ function TabContent({ route, nav, theme, t, sse }: {
     case "import": return <ImportManager nav={nav} theme={theme} t={t} />;
     case "radar": return <RadarView nav={nav} theme={theme} t={t} />;
     case "doctor": return <DoctorView nav={nav} theme={theme} t={t} />;
+    case "search": return <SearchView nav={nav} theme={theme} t={t} />;
+    case "diff": return <DiffView bookId={route.bookId} chapterNumber={route.chapterNumber} nav={nav} theme={theme} t={t} />;
+    case "backup": return <BackupView nav={nav} theme={theme} t={t} />;
     default: return null;
   }
 }

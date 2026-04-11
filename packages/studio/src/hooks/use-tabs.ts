@@ -42,6 +42,9 @@ export function routeToTabId(route: Route): string {
     case "import": return "import";
     case "radar": return "radar";
     case "doctor": return "doctor";
+    case "search": return "search";
+    case "diff": return `diff:${route.bookId}:${route.chapterNumber}`;
+    case "backup": return "backup";
   }
 }
 
@@ -61,6 +64,9 @@ export function routeToTabLabel(route: Route): string {
     case "import": return "Import";
     case "radar": return "Radar";
     case "doctor": return "Doctor";
+    case "search": return "Search";
+    case "diff": return `Diff Ch.${route.chapterNumber}`;
+    case "backup": return "Backup";
   }
 }
 

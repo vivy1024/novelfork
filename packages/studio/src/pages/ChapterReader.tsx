@@ -20,6 +20,7 @@ import {
   Pencil,
   Save,
   Eye,
+  GitCompare,
 } from "lucide-react";
 
 interface ChapterData {
@@ -31,6 +32,7 @@ interface ChapterData {
 interface Nav {
   toBook: (id: string) => void;
   toDashboard: () => void;
+  toDiff: (bookId: string, chapterNumber: number) => void;
 }
 
 export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
@@ -149,6 +151,14 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
           >
             <List size={14} />
             {t("reader.backToList")}
+          </button>
+
+          <button
+            onClick={() => nav.toDiff(bookId, chapterNumber)}
+            className="flex items-center gap-2 px-4 py-2 text-xs font-bold bg-secondary text-muted-foreground rounded-xl hover:text-primary hover:bg-primary/10 transition-all border border-border/50"
+          >
+            <GitCompare size={14} />
+            {t("diff.title")}
           </button>
 
           {/* Edit / Preview toggle */}

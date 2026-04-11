@@ -87,6 +87,10 @@ const strings = {
   "nav.import": { zh: "导入", en: "Import" },
   "nav.radar": { zh: "市场雷达", en: "Radar" },
   "nav.doctor": { zh: "环境诊断", en: "Doctor" },
+  "nav.search": { zh: "搜索", en: "Search" },
+  "search.placeholder": { zh: "搜索章节内容...", en: "Search chapter content..." },
+  "search.noResults": { zh: "未找到匹配内容", en: "No matching content found" },
+  "search.results": { zh: "搜索结果", en: "Search Results" },
 
   // Book Detail extras
   "book.deleteBook": { zh: "删除书籍", en: "Delete Book" },
@@ -287,6 +291,34 @@ const strings = {
   "logs.title": { zh: "日志", en: "Logs" },
   "logs.empty": { zh: "暂无日志", en: "No log entries yet" },
   "logs.showingRecent": { zh: "当前展示最近日志记录。", en: "Showing recent log entries." },
+
+  // Update
+  "update.available": { zh: "发现新版本 {v}", en: "Update available: {v}" },
+  "update.download": { zh: "立即更新", en: "Update Now" },
+  "update.downloading": { zh: "下载中...", en: "Downloading..." },
+  "update.restart": { zh: "重启应用", en: "Restart" },
+
+  // Diff
+  "diff.title": { zh: "版本对比", en: "Version Compare" },
+  "diff.from": { zh: "从版本", en: "From version" },
+  "diff.to": { zh: "到版本", en: "To version" },
+  "diff.noVersions": { zh: "暂无历史版本", en: "No version history" },
+  "diff.additions": { zh: "新增", en: "Additions" },
+  "diff.deletions": { zh: "删除", en: "Deletions" },
+
+  // Backup
+  "backup.title": { zh: "加密备份", en: "Encrypted Backup" },
+  "backup.create": { zh: "创建备份", en: "Create Backup" },
+  "backup.restore": { zh: "恢复备份", en: "Restore Backup" },
+  "backup.passphrase": { zh: "输入密码", en: "Enter passphrase" },
+  "backup.confirm": { zh: "确认密码", en: "Confirm passphrase" },
+  "backup.noBackups": { zh: "暂无备份", en: "No backups yet" },
+  "nav.backup": { zh: "备份", en: "Backup" },
+
+  // Recovery
+  "recovery.found": { zh: "发现未保存的更改", en: "Unsaved changes found" },
+  "recovery.recoverAll": { zh: "全部恢复", en: "Recover All" },
+  "recovery.dismiss": { zh: "忽略", en: "Dismiss" },
 } as const;
 
 export type StringKey = keyof typeof strings;
