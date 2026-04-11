@@ -79,7 +79,7 @@ export { type RecoveryEntry };
 
 export function useRecovery(): UseRecoveryReturn {
   const { mode, workspace } = useInkOS();
-  const isTauri = mode === "tauri";
+  const isTauri = mode === "tauri" || (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window);
   const [entries, setEntries] = useState<ReadonlyArray<RecoveryEntry>>([]);
   const writeTimerRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 

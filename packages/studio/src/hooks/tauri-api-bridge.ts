@@ -689,8 +689,8 @@ export async function tauriFetch<T>(path: string, init?: RequestInit): Promise<T
       genreMap.set(id, { id, name: g.profile.name, source: "builtin", language: g.profile.language });
     }
     // 项目自定义流派（覆盖同名内置）
-    const genresDir = join(ws(), "genres");
     try {
+      const genresDir = join(ws(), "genres");
       const entries = await invoke<Array<{ name: string; is_dir: boolean }>>("list_dir", { path: genresDir });
       for (const e of entries) {
         if (e.is_dir || !e.name.endsWith(".md")) continue;
@@ -701,7 +701,7 @@ export async function tauriFetch<T>(path: string, init?: RequestInit): Promise<T
           genreMap.set(id, { id, name: parsed.profile.name || id, source: "project", language: parsed.profile.language });
         } catch { /* 跳过损坏文件 */ }
       }
-    } catch { /* 无 genres 目录 */ }
+    } catch { /* 无 workspace 或 genres 目录 */ }
     const genres = [...genreMap.values()].sort((a, b) => a.id.localeCompare(b.id));
     return { genres } as T;
   }
@@ -1204,23 +1204,30 @@ export async function tauriFetch<T>(path: string, init?: RequestInit): Promise<T
 
   // GET /api/doctor — 本地环境诊断
   if (path === "/api/doctor" && method === "GET") {
+    let workspace: string | null = null;
+    try { workspace = ws(); } catch { /* no workspace */ }
+
     // 1. inkos.json 是否存在且可解析
     let inkosJson = false;
-    try {
-      const raw = await invoke<string>("read_file_text", { path: join(ws(), "inkos.json") });
-      JSON.parse(raw);
-      inkosJson = true;
-    } catch { /* 不存在或解析失败 */ }
+    if (workspace) {
+      try {
+        const raw = await invoke<string>("read_file_text", { path: join(workspace, "inkos.json") });
+        JSON.parse(raw);
+        inkosJson = true;
+      } catch { /* 不存在或解析失败 */ }
+    }
 
     // 2. books/ 目录是否存在，统计书籍数
     let booksDir = false;
     let bookCount = 0;
-    const booksDirPath = join(ws(), "books");
-    try {
-      const entries = await invoke<Array<{ name: string; is_dir: boolean }>>("list_dir", { path: booksDirPath });
-      booksDir = true;
-      bookCount = entries.filter(e => e.is_dir).length;
-    } catch { /* 目录不存在 */ }
+    const booksDirPath = workspace ? join(workspace, "books") : "";
+    if (workspace) {
+      try {
+        const entries = await invoke<Array<{ name: string; is_dir: boolean }>>("list_dir", { path: booksDirPath });
+        booksDir = true;
+        bookCount = entries.filter(e => e.is_dir).length;
+      } catch { /* 目录不存在 */ }
+    }
 
     // 3. LLM 配置是否完整（不实际调用 API，避免产生费用）
     let llmConnected = false;
@@ -1262,21 +1269,23 @@ export async function tauriFetch<T>(path: string, init?: RequestInit): Promise<T
 
     // 5. genres/ 目录是否存在且自定义流派可解析
     let genresDirOk = true;
-    const genresDirPath = join(ws(), "genres");
-    try {
-      const entries = await invoke<Array<{ name: string; is_dir: boolean }>>("list_dir", { path: genresDirPath });
-      for (const e of entries) {
-        if (e.is_dir || !e.name.endsWith(".md")) continue;
-        try {
-          const raw = await invoke<string>("read_file_text", { path: join(genresDirPath, e.name) });
-          parseGenreFrontmatter(raw);
-        } catch {
-          genresDirOk = false;
-          break;
+    if (workspace) {
+      const genresDirPath = join(workspace, "genres");
+      try {
+        const entries = await invoke<Array<{ name: string; is_dir: boolean }>>("list_dir", { path: genresDirPath });
+        for (const e of entries) {
+          if (e.is_dir || !e.name.endsWith(".md")) continue;
+          try {
+            const raw = await invoke<string>("read_file_text", { path: join(genresDirPath, e.name) });
+            parseGenreFrontmatter(raw);
+          } catch {
+            genresDirOk = false;
+            break;
+          }
         }
+      } catch {
+        // genres 目录不存在也算正常（使用内置流派）
       }
-    } catch {
-      // genres 目录不存在也算正常（使用内置流派）
     }
 
     return {
