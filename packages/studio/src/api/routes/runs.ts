@@ -1,78 +1,58 @@
 import { Hono } from "hono";
-import { streamSSE } from "hono/streaming";
-import type { RunStore } from "../run-store.js";
+import type { RunStore } from "../lib/run-store.js";
+import { isTerminalRunStatus } from "../lib/run-store.js";
+import { createRunEventStream } from "../lib/sse.js";
 
 export function createRunsRouter(runStore: RunStore): Hono {
   const app = new Hono();
 
-  // Per-run SSE — replaces global /api/events for AI operation progress
-  // Supports Last-Event-ID for reconnect deduplication
+  // Per-run SSE stream using upstream createRunEventStream
   app.get("/api/runs/:runId/events", (c) => {
     const runId = c.req.param("runId");
-    const run = runStore.getRun(runId);
+    const run = runStore.get(runId);
     if (!run) {
       return c.json({ error: "Run not found" }, 404);
     }
 
-    return streamSSE(c, async (stream) => {
-      const lastEventId = c.req.header("Last-Event-ID");
+    const initialEvent = { type: "snapshot" as const, runId, run };
 
-      // Replay missed events on reconnect
-      const missed = runStore.getEventsSince(runId, lastEventId ?? undefined);
-      for (const event of missed) {
-        await stream.writeSSE({
-          event: event.event,
-          data: JSON.stringify(event.data),
-          id: event.eventId,
-        });
-      }
-
-      // Stream future events
-      const unsubscribe = runStore.subscribe(runId, async (event) => {
-        await stream.writeSSE({
-          event: event.event,
-          data: JSON.stringify(event.data),
-          id: event.eventId,
-        });
-      });
-
-      // Keep-alive ping
-      const keepAlive = setInterval(() => {
-        stream.writeSSE({ event: "ping", data: "" });
-      }, 30_000);
-
-      stream.onAbort(() => {
-        unsubscribe();
-        clearInterval(keepAlive);
-      });
-
-      await new Promise(() => {});
-    });
+    return createRunEventStream(
+      initialEvent,
+      (send) => runStore.subscribe(runId, send),
+      (event) =>
+        event.type === "status" &&
+        event.status !== undefined &&
+        isTerminalRunStatus(event.status),
+    );
   });
 
-  // Cancel a running operation
+  // Cancel a running operation — mark as failed
   app.delete("/api/runs/:runId", (c) => {
     const runId = c.req.param("runId");
-    const cancelled = runStore.cancel(runId);
-    if (!cancelled) {
-      return c.json({ error: "Run not found or already terminal" }, 404);
+    const run = runStore.get(runId);
+    if (!run) {
+      return c.json({ error: "Run not found" }, 404);
     }
+    if (run.status === "succeeded" || run.status === "failed") {
+      return c.json({ error: "Run already terminal" }, 409);
+    }
+    runStore.fail(runId, "Cancelled by user");
     return c.json({ ok: true, runId });
   });
 
   // Get run status
   app.get("/api/runs/:runId", (c) => {
     const runId = c.req.param("runId");
-    const run = runStore.getRun(runId);
+    const run = runStore.get(runId);
     if (!run) {
       return c.json({ error: "Run not found" }, 404);
     }
-    return c.json({
-      runId: run.runId,
-      bookId: run.bookId,
-      operation: run.operation,
-      status: run.status,
-    });
+    return c.json(run);
+  });
+
+  // List all runs
+  app.get("/api/runs", (c) => {
+    return c.json(runStore.list());
   });
 
   return app;
