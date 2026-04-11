@@ -82,6 +82,7 @@ const strings = {
   "nav.running": { zh: "运行中", en: "Running" },
   "nav.agentOnline": { zh: "代理在线", en: "Agent Online" },
   "nav.agentOffline": { zh: "代理离线", en: "Agent Offline" },
+  "nav.localMode": { zh: "本地模式", en: "Local Mode" },
   "nav.tools": { zh: "工具", en: "Tools" },
   "nav.style": { zh: "文风", en: "Style" },
   "nav.import": { zh: "导入", en: "Import" },

@@ -5,6 +5,211 @@
  */
 
 import type { ClientStorageAdapter } from "../storage/adapter.js";
+import { getWorkspace } from "../storage/tauri-adapter.js";
+
+// ── Tauri invoke 辅助 ──
+
+async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mod = await (Function('return import("@tauri-apps/api/core")')() as Promise<any>);
+  return mod.invoke(cmd, args) as T;
+}
+
+function join(...parts: string[]): string {
+  return parts.join("/").replace(/\/+/g, "/");
+}
+
+function ws(): string {
+  const w = getWorkspace();
+  if (!w) throw new Error("Workspace not selected");
+  return w;
+}
+
+// ── 内置流派数据（Tauri 模式无法读取 node_modules 内的 .md 文件） ──
+
+interface BuiltinGenreData {
+  readonly profile: {
+    readonly name: string;
+    readonly id: string;
+    readonly language: string;
+    readonly chapterTypes: ReadonlyArray<string>;
+    readonly fatigueWords: ReadonlyArray<string>;
+    readonly numericalSystem: boolean;
+    readonly powerScaling: boolean;
+    readonly eraResearch: boolean;
+    readonly pacingRule: string;
+    readonly auditDimensions: ReadonlyArray<number>;
+  };
+  readonly body: string;
+}
+
+const BUILTIN_GENRES: Record<string, BuiltinGenreData> = {
+  xuanhuan: { profile: { name: "玄幻", id: "xuanhuan", language: "zh", chapterTypes: ["战斗章","布局章","过渡章","回收章"], fatigueWords: ["冷笑","蝼蚁","倒吸凉气","瞳孔骤缩"], numericalSystem: true, powerScaling: true, eraResearch: false, pacingRule: "三章内必有明确反馈", auditDimensions: [1,2,3,4,5,6,7,8,9,10,11,13,14,15,16,17,18,19,24,25,26] }, body: "玄幻题材规则" },
+  xianxia: { profile: { name: "仙侠", id: "xianxia", language: "zh", chapterTypes: ["修炼章","历劫章","论道章","过渡章"], fatigueWords: ["道友","贫道","天劫","渡劫"], numericalSystem: true, powerScaling: true, eraResearch: false, pacingRule: "修炼与历劫交替推进", auditDimensions: [1,2,3,4,5,6,7,8,9,10] }, body: "仙侠题材规则" },
+  urban: { profile: { name: "都市", id: "urban", language: "zh", chapterTypes: ["日常章","冲突章","反转章"], fatigueWords: ["不禁","竟然","没想到"], numericalSystem: false, powerScaling: false, eraResearch: false, pacingRule: "节奏紧凑，冲突驱动", auditDimensions: [1,2,3,4,5] }, body: "都市题材规则" },
+  horror: { profile: { name: "恐怖", id: "horror", language: "zh", chapterTypes: ["铺垫章","惊吓章","揭秘章"], fatigueWords: ["毛骨悚然","不寒而栗"], numericalSystem: false, powerScaling: false, eraResearch: false, pacingRule: "恐惧递进，张弛有度", auditDimensions: [1,2,3,4,5] }, body: "恐怖题材规则" },
+  other: { profile: { name: "通用", id: "other", language: "zh", chapterTypes: ["正文章","过渡章"], fatigueWords: [], numericalSystem: false, powerScaling: false, eraResearch: false, pacingRule: "", auditDimensions: [] }, body: "" },
+  litrpg: { profile: { name: "LitRPG", id: "litrpg", language: "en", chapterTypes: ["combat","quest","downtime"], fatigueWords: ["suddenly","somehow"], numericalSystem: true, powerScaling: true, eraResearch: false, pacingRule: "Level-up every 3-5 chapters", auditDimensions: [1,2,3,4,5] }, body: "LitRPG genre rules" },
+  progression: { profile: { name: "Progression Fantasy", id: "progression", language: "en", chapterTypes: ["training","breakthrough","conflict"], fatigueWords: ["suddenly","somehow"], numericalSystem: true, powerScaling: true, eraResearch: false, pacingRule: "Steady power growth", auditDimensions: [1,2,3,4,5] }, body: "Progression Fantasy rules" },
+  cultivation: { profile: { name: "English Cultivation", id: "cultivation", language: "en", chapterTypes: ["cultivation","tribulation","exploration"], fatigueWords: ["qi","dao"], numericalSystem: true, powerScaling: true, eraResearch: false, pacingRule: "Realm breakthroughs as milestones", auditDimensions: [1,2,3,4,5] }, body: "Cultivation rules" },
+  isekai: { profile: { name: "Isekai / Portal Fantasy", id: "isekai", language: "en", chapterTypes: ["discovery","adaptation","conflict"], fatigueWords: ["suddenly","somehow"], numericalSystem: false, powerScaling: true, eraResearch: false, pacingRule: "World discovery pacing", auditDimensions: [1,2,3,4,5] }, body: "Isekai rules" },
+  cozy: { profile: { name: "Cozy Fantasy", id: "cozy", language: "en", chapterTypes: ["slice-of-life","community","gentle-conflict"], fatigueWords: [], numericalSystem: false, powerScaling: false, eraResearch: false, pacingRule: "Gentle, character-driven", auditDimensions: [1,2,3] }, body: "Cozy Fantasy rules" },
+  romantasy: { profile: { name: "Romantasy", id: "romantasy", language: "en", chapterTypes: ["romance","adventure","tension"], fatigueWords: ["heart pounded","breath caught"], numericalSystem: false, powerScaling: false, eraResearch: false, pacingRule: "Romance and plot interleaved", auditDimensions: [1,2,3,4,5] }, body: "Romantasy rules" },
+  "sci-fi": { profile: { name: "Science Fiction", id: "sci-fi", language: "en", chapterTypes: ["exploration","conflict","discovery"], fatigueWords: ["suddenly","somehow"], numericalSystem: false, powerScaling: false, eraResearch: true, pacingRule: "Ideas drive plot", auditDimensions: [1,2,3,4,5] }, body: "Sci-fi rules" },
+  "dungeon-core": { profile: { name: "Dungeon Core", id: "dungeon-core", language: "en", chapterTypes: ["building","defense","expansion"], fatigueWords: ["mana","core"], numericalSystem: true, powerScaling: true, eraResearch: false, pacingRule: "Build-defend cycles", auditDimensions: [1,2,3,4,5] }, body: "Dungeon Core rules" },
+  "system-apocalypse": { profile: { name: "System Apocalypse", id: "system-apocalypse", language: "en", chapterTypes: ["survival","combat","system"], fatigueWords: ["suddenly","notification"], numericalSystem: true, powerScaling: true, eraResearch: false, pacingRule: "Survival tension", auditDimensions: [1,2,3,4,5] }, body: "System Apocalypse rules" },
+  "tower-climber": { profile: { name: "Tower Climbing", id: "tower-climber", language: "en", chapterTypes: ["floor","boss","rest"], fatigueWords: ["floor","level"], numericalSystem: true, powerScaling: true, eraResearch: false, pacingRule: "Floor-by-floor progression", auditDimensions: [1,2,3,4,5] }, body: "Tower Climbing rules" },
+};
+
+// ── 流派 frontmatter 解析/序列化 ──
+
+interface GenreProfile {
+  name: string; id: string; language: string;
+  chapterTypes: string[]; fatigueWords: string[];
+  numericalSystem: boolean; powerScaling: boolean; eraResearch: boolean;
+  pacingRule: string; auditDimensions: number[];
+}
+
+function parseGenreFrontmatter(raw: string): { profile: GenreProfile; body: string } {
+  const m = raw.match(/^---\s*\n([\s\S]*?)\n---\s*\n([\s\S]*)$/);
+  if (!m) {
+    return {
+      profile: { name: "", id: "", language: "zh", chapterTypes: [], fatigueWords: [], numericalSystem: false, powerScaling: false, eraResearch: false, pacingRule: "", auditDimensions: [] },
+      body: raw,
+    };
+  }
+  // 简易 YAML 解析（流派文件结构固定）
+  const lines = m[1].split("\n");
+  const obj: Record<string, unknown> = {};
+  for (const line of lines) {
+    const kv = line.match(/^(\w+):\s*(.*)$/);
+    if (!kv) continue;
+    const [, key, val] = kv;
+    if (val.startsWith("[")) {
+      try { obj[key] = JSON.parse(val); } catch { obj[key] = []; }
+    } else if (val === "true") { obj[key] = true; }
+    else if (val === "false") { obj[key] = false; }
+    else if (val.startsWith('"') && val.endsWith('"')) { obj[key] = val.slice(1, -1); }
+    else { obj[key] = val; }
+  }
+  return {
+    profile: {
+      name: String(obj.name ?? ""),
+      id: String(obj.id ?? ""),
+      language: String(obj.language ?? "zh"),
+      chapterTypes: Array.isArray(obj.chapterTypes) ? obj.chapterTypes as string[] : [],
+      fatigueWords: Array.isArray(obj.fatigueWords) ? obj.fatigueWords as string[] : [],
+      numericalSystem: obj.numericalSystem === true,
+      powerScaling: obj.powerScaling === true,
+      eraResearch: obj.eraResearch === true,
+      pacingRule: String(obj.pacingRule ?? ""),
+      auditDimensions: Array.isArray(obj.auditDimensions) ? obj.auditDimensions as number[] : [],
+    },
+    body: m[2].trim(),
+  };
+}
+
+function serializeGenreFrontmatter(profile: Record<string, unknown>, body: string): string {
+  return [
+    "---",
+    `name: ${profile.name ?? ""}`,
+    `id: ${profile.id ?? ""}`,
+    `language: ${profile.language ?? "zh"}`,
+    `chapterTypes: ${JSON.stringify(profile.chapterTypes ?? [])}`,
+    `fatigueWords: ${JSON.stringify(profile.fatigueWords ?? [])}`,
+    `numericalSystem: ${profile.numericalSystem ?? false}`,
+    `powerScaling: ${profile.powerScaling ?? false}`,
+    `eraResearch: ${profile.eraResearch ?? false}`,
+    `pacingRule: "${profile.pacingRule ?? ""}"`,
+    `satisfactionTypes: ${JSON.stringify(profile.satisfactionTypes ?? [])}`,
+    `auditDimensions: ${JSON.stringify(profile.auditDimensions ?? [])}`,
+    "---",
+    "",
+    body ?? "",
+  ].join("\n");
+}
+
+// ── 中文字数统计 ──
+
+function countWords(text: string): number {
+  // 中文按字计数，英文按空格分词
+  const chinese = (text.match(/[\u4e00-\u9fff]/g) ?? []).length;
+  const english = text.replace(/[\u4e00-\u9fff]/g, "").split(/\s+/).filter(Boolean).length;
+  return chinese + english;
+}
+
+// ── LLM 配置类型 ──
+
+interface LLMConfig {
+  readonly apiKey: string;
+  readonly baseUrl: string;
+  readonly model: string;
+  readonly provider?: string;
+}
+
+interface ChatMessage {
+  readonly role: string;
+  readonly content: string;
+}
+
+interface CallLLMOptions {
+  readonly temperature?: number;
+  readonly maxTokens?: number;
+}
+
+/**
+ * 从 localStorage 读取用户配置的 LLM 信息
+ */
+function loadLLMConfig(): LLMConfig {
+  const raw = localStorage.getItem("inkos-llm-config");
+  if (!raw) {
+    throw new Error("未配置 LLM API。请在设置中配置 API Key 和 Base URL。");
+  }
+  const config = JSON.parse(raw) as LLMConfig;
+  if (!config.apiKey || !config.baseUrl || !config.model) {
+    throw new Error("LLM 配置不完整，需要 apiKey、baseUrl 和 model。");
+  }
+  return config;
+}
+
+/**
+ * 调用用户自配置的 OpenAI 兼容 API
+ */
+async function callUserLLM(
+  messages: ReadonlyArray<ChatMessage>,
+  options?: CallLLMOptions,
+): Promise<string> {
+  const config = loadLLMConfig();
+  const url = `${config.baseUrl.replace(/\/$/, "")}/chat/completions`;
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${config.apiKey}`,
+    },
+    body: JSON.stringify({
+      model: config.model,
+      messages,
+      temperature: options?.temperature ?? 0.7,
+      max_tokens: options?.maxTokens ?? 4096,
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as { error?: { message?: string } };
+    throw new Error(err.error?.message ?? `LLM API 错误: ${res.status} ${res.statusText}`);
+  }
+
+  const data = await res.json() as {
+    choices: ReadonlyArray<{ message: { content: string } }>;
+  };
+  const content = data.choices?.[0]?.message?.content;
+  if (!content) {
+    throw new Error("LLM 返回了空响应");
+  }
+  return content;
+}
 
 let _adapter: ClientStorageAdapter | null = null;
 
@@ -144,25 +349,28 @@ export async function tauriFetch<T>(path: string, init?: RequestInit): Promise<T
     return { running: false } as T;
   }
 
-  // GET /api/genres — built-in genres for Tauri mode
+  // GET /api/genres — 内置 + 项目自定义流派列表
   if (path === "/api/genres" && method === "GET") {
-    const genres = [
-      { id: "xuanhuan", name: "玄幻", source: "builtin", language: "zh" },
-      { id: "xianxia", name: "仙侠", source: "builtin", language: "zh" },
-      { id: "urban", name: "都市", source: "builtin", language: "zh" },
-      { id: "horror", name: "恐怖", source: "builtin", language: "zh" },
-      { id: "other", name: "通用", source: "builtin", language: "zh" },
-      { id: "litrpg", name: "LitRPG", source: "builtin", language: "en" },
-      { id: "progression", name: "Progression Fantasy", source: "builtin", language: "en" },
-      { id: "cultivation", name: "English Cultivation", source: "builtin", language: "en" },
-      { id: "isekai", name: "Isekai / Portal Fantasy", source: "builtin", language: "en" },
-      { id: "cozy", name: "Cozy Fantasy", source: "builtin", language: "en" },
-      { id: "romantasy", name: "Romantasy", source: "builtin", language: "en" },
-      { id: "sci-fi", name: "Science Fiction", source: "builtin", language: "en" },
-      { id: "dungeon-core", name: "Dungeon Core", source: "builtin", language: "en" },
-      { id: "system-apocalypse", name: "System Apocalypse", source: "builtin", language: "en" },
-      { id: "tower-climber", name: "Tower Climbing", source: "builtin", language: "en" },
-    ];
+    const genreMap = new Map<string, { id: string; name: string; source: string; language: string }>();
+    // 内置流派
+    for (const [id, g] of Object.entries(BUILTIN_GENRES)) {
+      genreMap.set(id, { id, name: g.profile.name, source: "builtin", language: g.profile.language });
+    }
+    // 项目自定义流派（覆盖同名内置）
+    const genresDir = join(ws(), "genres");
+    try {
+      const entries = await invoke<Array<{ name: string; is_dir: boolean }>>("list_dir", { path: genresDir });
+      for (const e of entries) {
+        if (e.is_dir || !e.name.endsWith(".md")) continue;
+        const id = e.name.replace(/\.md$/, "");
+        try {
+          const raw = await invoke<string>("read_file_text", { path: join(genresDir, e.name) });
+          const parsed = parseGenreFrontmatter(raw);
+          genreMap.set(id, { id, name: parsed.profile.name || id, source: "project", language: parsed.profile.language });
+        } catch { /* 跳过损坏文件 */ }
+      }
+    } catch { /* 无 genres 目录 */ }
+    const genres = [...genreMap.values()].sort((a, b) => a.id.localeCompare(b.id));
     return { genres } as T;
   }
 
@@ -170,6 +378,495 @@ export async function tauriFetch<T>(path: string, init?: RequestInit): Promise<T
   const createStatusMatch = path.match(/^\/api\/books\/([^/]+)\/create-status$/);
   if (createStatusMatch && method === "GET") {
     return { status: "ready" } as T;
+  }
+
+  // ── 流派管理 ──
+
+  // GET /api/genres/:id — 流派详情（先查项目自定义，再查内置）
+  const genreDetailMatch = path.match(/^\/api\/genres\/([^/]+)$/);
+  if (genreDetailMatch && method === "GET") {
+    const genreId = genreDetailMatch[1];
+    // 先尝试读取项目自定义流派
+    const genrePath = join(ws(), "genres", `${genreId}.md`);
+    try {
+      const raw = await invoke<string>("read_file_text", { path: genrePath });
+      return parseGenreFrontmatter(raw) as T;
+    } catch {
+      // 回退到内置流派
+      const builtin = BUILTIN_GENRES[genreId];
+      if (builtin) return builtin as T;
+      throw new Error(`Genre "${genreId}" not found`);
+    }
+  }
+
+  // POST /api/genres/create — 创建自定义流派
+  if (path === "/api/genres/create" && method === "POST") {
+    if (!body?.id || !body?.name) throw new Error("id and name are required");
+    const genresDir = join(ws(), "genres");
+    await invoke("create_dir_all", { path: genresDir });
+    const content = serializeGenreFrontmatter(body, body.body ?? "");
+    await invoke("write_file_text", { path: join(genresDir, `${body.id}.md`), content });
+    return { ok: true, id: body.id } as T;
+  }
+
+  // PUT /api/genres/:id — 更新流派
+  if (genreDetailMatch && method === "PUT") {
+    const genreId = genreDetailMatch[1];
+    const genresDir = join(ws(), "genres");
+    await invoke("create_dir_all", { path: genresDir });
+    const p = body?.profile ?? {};
+    const content = serializeGenreFrontmatter(p, body?.body ?? "");
+    await invoke("write_file_text", { path: join(genresDir, `${genreId}.md`), content });
+    return { ok: true, id: genreId } as T;
+  }
+
+  // DELETE /api/genres/:id — 删除项目自定义流派
+  if (genreDetailMatch && method === "DELETE") {
+    const genreId = genreDetailMatch[1];
+    const filePath = join(ws(), "genres", `${genreId}.md`);
+    try {
+      await invoke("delete_path", { path: filePath });
+      return { ok: true, id: genreId } as T;
+    } catch {
+      throw new Error(`Genre "${genreId}" not found in project`);
+    }
+  }
+
+  // POST /api/genres/:id/copy — 复制内置流派到项目
+  const genreCopyMatch = path.match(/^\/api\/genres\/([^/]+)\/copy$/);
+  if (genreCopyMatch && method === "POST") {
+    const genreId = genreCopyMatch[1];
+    const builtin = BUILTIN_GENRES[genreId];
+    if (!builtin) throw new Error(`Built-in genre "${genreId}" not found`);
+    const genresDir = join(ws(), "genres");
+    await invoke("create_dir_all", { path: genresDir });
+    const content = serializeGenreFrontmatter(
+      builtin.profile as unknown as Record<string, unknown>,
+      builtin.body,
+    );
+    await invoke("write_file_text", { path: join(genresDir, `${genreId}.md`), content });
+    return { ok: true, path: `genres/${genreId}.md` } as T;
+  }
+
+  // ── 搜索 ──
+
+  // GET /api/search?q=... — 全文搜索所有书籍章节
+  if (path.startsWith("/api/search") && method === "GET") {
+    const urlObj = new URL(path, "http://localhost");
+    const q = urlObj.searchParams.get("q")?.trim() ?? "";
+    if (!q) return { hits: [] } as T;
+
+    const hits: Array<{ bookId: string; bookTitle: string; chapterNumber: number; snippet: string }> = [];
+    const booksDir = join(ws(), "books");
+    let bookDirs: Array<{ name: string; is_dir: boolean }> = [];
+    try { bookDirs = await invoke<Array<{ name: string; is_dir: boolean }>>("list_dir", { path: booksDir }); } catch { /* 无书籍 */ }
+
+    for (const bd of bookDirs) {
+      if (!bd.is_dir) continue;
+      const bookId = bd.name;
+      let bookTitle = bookId;
+      try {
+        const configRaw = await invoke<string>("read_file_text", { path: join(booksDir, bookId, "book.json") });
+        const config = JSON.parse(configRaw) as { title?: string };
+        bookTitle = config.title ?? bookId;
+      } catch { /* 跳过 */ }
+
+      const chaptersDir = join(booksDir, bookId, "chapters");
+      let chapterFiles: Array<{ name: string; is_dir: boolean }> = [];
+      try { chapterFiles = await invoke<Array<{ name: string; is_dir: boolean }>>("list_dir", { path: chaptersDir }); } catch { continue; }
+
+      const mdFiles = chapterFiles.filter(f => !f.is_dir && f.name.endsWith(".md") && /^\d{4}/.test(f.name)).sort((a, b) => a.name.localeCompare(b.name));
+      for (const f of mdFiles) {
+        try {
+          const content = await invoke<string>("read_file_text", { path: join(chaptersDir, f.name) });
+          const chapterNum = parseInt(f.name.slice(0, 4), 10);
+          const lowerQ = q.toLowerCase();
+          const lines = content.split("\n");
+          for (let i = 0; i < lines.length; i++) {
+            if (lines[i].toLowerCase().includes(lowerQ)) {
+              // 提取上下文片段
+              const start = Math.max(0, i - 1);
+              const end = Math.min(lines.length, i + 2);
+              const snippet = lines.slice(start, end).join("\n").slice(0, 200);
+              hits.push({ bookId, bookTitle, chapterNumber: chapterNum, snippet });
+              break; // 每章只取第一个匹配
+            }
+          }
+        } catch { /* 跳过不可读文件 */ }
+      }
+    }
+    return { hits } as T;
+  }
+
+  // ── 数据分析 ──
+
+  // GET /api/books/:id/analytics — 书籍统计
+  const analyticsMatch = path.match(/^\/api\/books\/([^/]+)\/analytics$/);
+  if (analyticsMatch && method === "GET") {
+    const bookId = analyticsMatch[1];
+    const indexPath = join(ws(), "books", bookId, "chapter_index.json");
+    let chapters: Array<{ number: number; status: string; wordCount?: number }> = [];
+    try {
+      const raw = await invoke<string>("read_file_text", { path: indexPath });
+      chapters = JSON.parse(raw) as typeof chapters;
+    } catch { /* 无索引 */ }
+
+    // 如果 index 没有 wordCount，从文件读取
+    let totalWords = 0;
+    const chaptersDir = join(ws(), "books", bookId, "chapters");
+    const entries = await invoke<Array<{ name: string; is_dir: boolean }>>("list_dir", { path: chaptersDir }).catch(() => []);
+    const mdFiles = entries.filter(e => !e.is_dir && e.name.endsWith(".md") && /^\d{4}/.test(e.name));
+
+    for (const f of mdFiles) {
+      try {
+        const content = await invoke<string>("read_file_text", { path: join(chaptersDir, f.name) });
+        totalWords += countWords(content);
+      } catch { /* 跳过 */ }
+    }
+
+    const statusDist: Record<string, number> = {};
+    for (const ch of chapters) {
+      const s = ch.status ?? "draft";
+      statusDist[s] = (statusDist[s] ?? 0) + 1;
+    }
+
+    const totalChapters = Math.max(chapters.length, mdFiles.length);
+    return {
+      bookId,
+      totalChapters,
+      totalWords,
+      avgWordsPerChapter: totalChapters > 0 ? Math.round(totalWords / totalChapters) : 0,
+      statusDistribution: statusDist,
+    } as T;
+  }
+
+  // ── 导入 ──
+
+  // POST /api/books/:id/import/chapters — 导入章节文本
+  const importChaptersMatch = path.match(/^\/api\/books\/([^/]+)\/import\/chapters$/);
+  if (importChaptersMatch && method === "POST") {
+    const bookId = importChaptersMatch[1];
+    const { text, splitRegex } = body as { text: string; splitRegex?: string };
+    if (!text?.trim()) throw new Error("导入文本不能为空");
+
+    // 按正则或默认按空行分割
+    const pattern = splitRegex ? new RegExp(splitRegex, "gm") : /\n{2,}/;
+    const parts = text.split(pattern).map(s => s.trim()).filter(Boolean);
+
+    const indexPath = join(ws(), "books", bookId, "chapter_index.json");
+    const chaptersDir = join(ws(), "books", bookId, "chapters");
+    await invoke("create_dir_all", { path: chaptersDir });
+
+    // 读取现有索引
+    let index: Array<{ number: number; title: string; status: string; wordCount: number }> = [];
+    try {
+      const raw = await invoke<string>("read_file_text", { path: indexPath });
+      index = JSON.parse(raw) as typeof index;
+    } catch { /* 新索引 */ }
+
+    const startNum = index.length > 0 ? Math.max(...index.map(c => c.number)) + 1 : 1;
+    let imported = 0;
+
+    for (let i = 0; i < parts.length; i++) {
+      const num = startNum + i;
+      const padded = String(num).padStart(4, "0");
+      // 尝试从第一行提取标题
+      const firstLine = parts[i].split("\n")[0].replace(/^#+\s*/, "").trim();
+      const title = firstLine.slice(0, 50) || `第${num}章`;
+      const content = parts[i];
+      const wc = countWords(content);
+
+      await invoke("write_file_text", {
+        path: join(chaptersDir, `${padded}-${title.replace(/[/\\:*?"<>|]/g, "_")}.md`),
+        content,
+      });
+      index.push({ number: num, title, status: "draft", wordCount: wc });
+      imported++;
+    }
+
+    await invoke("write_file_text", { path: indexPath, content: JSON.stringify(index, null, 2) });
+    return { ok: true, importedCount: imported } as T;
+  }
+
+  // POST /api/books/:id/import/canon — 导入原作素材
+  const importCanonMatch = path.match(/^\/api\/books\/([^/]+)\/import\/canon$/);
+  if (importCanonMatch && method === "POST") {
+    const bookId = importCanonMatch[1];
+    const { fromBookId } = body as { fromBookId: string };
+    if (!fromBookId) throw new Error("fromBookId is required");
+
+    // 读取源书籍的 story 目录内容，复制到目标书籍
+    const srcStoryDir = join(ws(), "books", fromBookId, "story");
+    const dstStoryDir = join(ws(), "books", bookId, "story");
+    await invoke("create_dir_all", { path: dstStoryDir });
+
+    const srcFiles = await invoke<Array<{ name: string; is_dir: boolean }>>("list_dir", { path: srcStoryDir }).catch(() => []);
+    let copied = 0;
+    for (const f of srcFiles) {
+      if (f.is_dir) continue;
+      try {
+        const content = await invoke<string>("read_file_text", { path: join(srcStoryDir, f.name) });
+        await invoke("write_file_text", { path: join(dstStoryDir, f.name), content });
+        copied++;
+      } catch { /* 跳过 */ }
+    }
+
+    // 同时读取源书籍所有章节合并为 fanfic_canon.md
+    const srcChaptersDir = join(ws(), "books", fromBookId, "chapters");
+    const chapterEntries = await invoke<Array<{ name: string; is_dir: boolean }>>("list_dir", { path: srcChaptersDir }).catch(() => []);
+    const mdFiles = chapterEntries.filter(e => !e.is_dir && e.name.endsWith(".md") && /^\d{4}/.test(e.name)).sort((a, b) => a.name.localeCompare(b.name));
+    const allContent: string[] = [];
+    for (const f of mdFiles) {
+      try {
+        const c = await invoke<string>("read_file_text", { path: join(srcChaptersDir, f.name) });
+        allContent.push(c);
+      } catch { /* 跳过 */ }
+    }
+    if (allContent.length > 0) {
+      await invoke("write_file_text", {
+        path: join(dstStoryDir, "fanfic_canon.md"),
+        content: allContent.join("\n\n---\n\n"),
+      });
+    }
+
+    return { ok: true, copiedFiles: copied } as T;
+  }
+
+  // POST /api/fanfic/init — 初始化同人模式
+  if (path === "/api/fanfic/init" && method === "POST") {
+    const { title, sourceText, mode, genre, language } = body as {
+      title: string; sourceText: string; mode?: string; genre?: string; language?: string;
+    };
+    if (!title?.trim() || !sourceText?.trim()) throw new Error("title and sourceText are required");
+
+    // 创建新书
+    const result = await _adapter.createBook({
+      title,
+      genre: genre ?? "other",
+      language: language ?? "zh",
+    });
+    const bookId = result.bookId;
+
+    // 更新 book.json 添加 fanficMode
+    const configPath = join(ws(), "books", bookId, "book.json");
+    const configRaw = await invoke<string>("read_file_text", { path: configPath });
+    const config = JSON.parse(configRaw) as Record<string, unknown>;
+    config.fanficMode = mode ?? "canon";
+    await invoke("write_file_text", { path: configPath, content: JSON.stringify(config, null, 2) });
+
+    // 保存原作文本到 story/fanfic_canon.md
+    const storyDir = join(ws(), "books", bookId, "story");
+    await invoke("create_dir_all", { path: storyDir });
+    await invoke("write_file_text", {
+      path: join(storyDir, "fanfic_canon.md"),
+      content: sourceText,
+    });
+
+    return { ok: true, bookId } as T;
+  }
+
+  // ── 导出 ──
+
+  // GET /api/books/:id/export — 导出书籍全文
+  const exportMatch = path.match(/^\/api\/books\/([^/]+)\/export/);
+  if (exportMatch && method === "GET") {
+    const bookId = exportMatch[1];
+    const urlObj = new URL(path, "http://localhost");
+    const format = urlObj.searchParams.get("format") ?? "txt";
+    const approvedOnly = urlObj.searchParams.get("approvedOnly") === "true";
+
+    const chaptersDir = join(ws(), "books", bookId, "chapters");
+    const entries = await invoke<Array<{ name: string; is_dir: boolean }>>("list_dir", { path: chaptersDir }).catch(() => []);
+    let mdFiles = entries.filter(e => !e.is_dir && e.name.endsWith(".md") && /^\d{4}/.test(e.name)).sort((a, b) => a.name.localeCompare(b.name));
+
+    if (approvedOnly) {
+      const indexPath = join(ws(), "books", bookId, "chapter_index.json");
+      try {
+        const raw = await invoke<string>("read_file_text", { path: indexPath });
+        const index = JSON.parse(raw) as Array<{ number: number; status: string }>;
+        const approvedNums = new Set(index.filter(ch => ch.status === "approved").map(ch => ch.number));
+        mdFiles = mdFiles.filter(f => approvedNums.has(parseInt(f.name.slice(0, 4), 10)));
+      } catch { /* 无索引则导出全部 */ }
+    }
+
+    const contents: string[] = [];
+    for (const f of mdFiles) {
+      try {
+        const c = await invoke<string>("read_file_text", { path: join(chaptersDir, f.name) });
+        contents.push(c);
+      } catch { /* 跳过 */ }
+    }
+
+    const separator = format === "md" ? "\n\n---\n\n" : "\n\n";
+    const text = contents.join(separator);
+
+    // Tauri 模式下无法直接返回文件下载，返回文本内容供前端处理
+    return { text, format, chapters: contents.length } as T;
+  }
+
+  // POST /api/books/:id/export-save — 导出并保存到本地
+  const exportSaveMatch = path.match(/^\/api\/books\/([^/]+)\/export-save$/);
+  if (exportSaveMatch && method === "POST") {
+    const bookId = exportSaveMatch[1];
+    const { format, approvedOnly } = (body ?? {}) as { format?: string; approvedOnly?: boolean };
+    const fmt = format ?? "txt";
+
+    const chaptersDir = join(ws(), "books", bookId, "chapters");
+    const entries = await invoke<Array<{ name: string; is_dir: boolean }>>("list_dir", { path: chaptersDir }).catch(() => []);
+    let mdFiles = entries.filter(e => !e.is_dir && e.name.endsWith(".md") && /^\d{4}/.test(e.name)).sort((a, b) => a.name.localeCompare(b.name));
+
+    if (approvedOnly) {
+      const indexPath = join(ws(), "books", bookId, "chapter_index.json");
+      try {
+        const raw = await invoke<string>("read_file_text", { path: indexPath });
+        const index = JSON.parse(raw) as Array<{ number: number; status: string }>;
+        const approvedNums = new Set(index.filter(ch => ch.status === "approved").map(ch => ch.number));
+        mdFiles = mdFiles.filter(f => approvedNums.has(parseInt(f.name.slice(0, 4), 10)));
+      } catch { /* 无索引 */ }
+    }
+
+    const contents: string[] = [];
+    for (const f of mdFiles) {
+      try {
+        const c = await invoke<string>("read_file_text", { path: join(chaptersDir, f.name) });
+        contents.push(c);
+      } catch { /* 跳过 */ }
+    }
+
+    const separator = fmt === "md" ? "\n\n---\n\n" : "\n\n";
+    const text = contents.join(separator);
+    const ext = fmt === "md" ? ".md" : fmt === "epub" ? ".html" : ".txt";
+    const outputPath = join(ws(), "books", bookId, `${bookId}${ext}`);
+    await invoke("write_file_text", { path: outputPath, content: text });
+
+    return { ok: true, path: outputPath, format: fmt, chapters: mdFiles.length } as T;
+  }
+
+  // ── 版本对比 (DiffView) ──
+
+  // GET /api/books/:id/chapters/:num/versions — 列出章节版本
+  const versionsMatch = path.match(/^\/api\/books\/([^/]+)\/chapters\/(\d+)\/versions$/);
+  if (versionsMatch && method === "GET") {
+    const bookId = versionsMatch[1];
+    const num = Number(versionsMatch[2]);
+    const padded = String(num).padStart(4, "0");
+    const versionsDir = join(ws(), "books", bookId, "chapters", ".versions", padded);
+
+    const versions: Array<{ version: number; timestamp: string; wordCount: number }> = [];
+    try {
+      const entries = await invoke<Array<{ name: string; is_dir: boolean }>>("list_dir", { path: versionsDir });
+      const jsonFiles = entries.filter(e => !e.is_dir && e.name.endsWith(".json")).sort((a, b) => a.name.localeCompare(b.name));
+      for (let i = 0; i < jsonFiles.length; i++) {
+        try {
+          const raw = await invoke<string>("read_file_text", { path: join(versionsDir, jsonFiles[i].name) });
+          const meta = JSON.parse(raw) as { timestamp: string; wordCount: number };
+          versions.push({ version: i + 1, timestamp: meta.timestamp, wordCount: meta.wordCount });
+        } catch { /* 跳过损坏的版本 */ }
+      }
+    } catch { /* 无版本目录 */ }
+
+    return versions as T;
+  }
+
+  // GET /api/books/:id/chapters/:num/diff?from=&to= — 对比两个版本
+  const diffMatch = path.match(/^\/api\/books\/([^/]+)\/chapters\/(\d+)\/diff/);
+  if (diffMatch && method === "GET") {
+    const bookId = diffMatch[1];
+    const num = Number(diffMatch[2]);
+    const padded = String(num).padStart(4, "0");
+    const urlObj = new URL(path, "http://localhost");
+    const fromV = Number(urlObj.searchParams.get("from") ?? "1");
+    const toV = Number(urlObj.searchParams.get("to") ?? "2");
+
+    const versionsDir = join(ws(), "books", bookId, "chapters", ".versions", padded);
+    const entries = await invoke<Array<{ name: string; is_dir: boolean }>>("list_dir", { path: versionsDir }).catch(() => []);
+    const jsonFiles = entries.filter(e => !e.is_dir && e.name.endsWith(".json")).sort((a, b) => a.name.localeCompare(b.name));
+
+    // 读取对应版本的内容文件（.md，与 .json 同名）
+    const readVersionContent = async (versionIdx: number): Promise<string> => {
+      if (versionIdx < 1 || versionIdx > jsonFiles.length) return "";
+      const baseName = jsonFiles[versionIdx - 1].name.replace(/\.json$/, ".md");
+      try {
+        return await invoke<string>("read_file_text", { path: join(versionsDir, baseName) });
+      } catch { return ""; }
+    };
+
+    const fromContent = await readVersionContent(fromV);
+    const toContent = await readVersionContent(toV);
+
+    // 简易 diff：按行对比生成 hunks
+    const fromLines = fromContent.split("\n");
+    const toLines = toContent.split("\n");
+    const hunks: Array<{ type: "add" | "remove" | "context"; lines: string[] }> = [];
+
+    const maxLen = Math.max(fromLines.length, toLines.length);
+    for (let i = 0; i < maxLen; i++) {
+      const fl = i < fromLines.length ? fromLines[i] : undefined;
+      const tl = i < toLines.length ? toLines[i] : undefined;
+      if (fl === tl) {
+        hunks.push({ type: "context", lines: [fl ?? ""] });
+      } else {
+        if (fl !== undefined) hunks.push({ type: "remove", lines: [fl] });
+        if (tl !== undefined) hunks.push({ type: "add", lines: [tl] });
+      }
+    }
+
+    return { hunks } as T;
+  }
+
+  // ── AI 路由：使用用户自配置的 LLM ──
+
+  // POST /api/style/analyze — 文风分析
+  if (path === "/api/style/analyze" && method === "POST") {
+    const { text, sourceName } = body as { text: string; sourceName?: string };
+    if (!text?.trim()) throw new Error("分析文本不能为空");
+    const raw = await callUserLLM([
+      { role: "system", content: "你是一个专业的文学风格分析师。分析给定文本的写作风格，返回严格的 JSON（不要 markdown 代码块）：{\"sourceName\":\"来源名称\",\"avgSentenceLength\":数字,\"sentenceLengthStdDev\":数字,\"avgParagraphLength\":数字,\"vocabularyDiversity\":0到1的数字,\"topPatterns\":[\"模式1\",\"模式2\"],\"rhetoricalFeatures\":[\"特征1\",\"特征2\"]}" },
+      { role: "user", content: `分析以下文本的写作风格。来源: "${sourceName ?? "sample"}"\n\n${text.slice(0, 8000)}` },
+    ], { temperature: 0.3 });
+    const jsonStr = raw.replace(/^```(?:json)?\s*/m, "").replace(/\s*```$/m, "").trim();
+    try { return JSON.parse(jsonStr) as T; }
+    catch { throw new Error(`LLM 返回的风格分析结果无法解析为 JSON: ${raw.slice(0, 200)}`); }
+  }
+
+  // POST /api/books/:id/style/import — 导入风格到书籍
+  const styleImportMatch = path.match(/^\/api\/books\/([^/]+)\/style\/import$/);
+  if (styleImportMatch && method === "POST") {
+    const bookId = styleImportMatch[1]!;
+    const { text, sourceName } = body as { text: string; sourceName?: string };
+    if (!text?.trim()) throw new Error("导入文本不能为空");
+    const raw = await callUserLLM([
+      { role: "system", content: "你是一个专业的文学风格分析师。分析给定文本并生成风格指南，返回严格的 JSON（不要 markdown 代码块）：{\"sourceName\":\"来源\",\"avgSentenceLength\":数字,\"sentenceLengthStdDev\":数字,\"avgParagraphLength\":数字,\"vocabularyDiversity\":0到1的数字,\"topPatterns\":[\"模式1\"],\"rhetoricalFeatures\":[\"特征1\"],\"styleGuide\":\"风格要点描述\"}" },
+      { role: "user", content: `分析以下文本并生成风格指南。来源: "${sourceName ?? "sample"}"\n\n${text.slice(0, 8000)}` },
+    ], { temperature: 0.3 });
+    const jsonStr = raw.replace(/^```(?:json)?\s*/m, "").replace(/\s*```$/m, "").trim();
+    let styleData: Record<string, unknown>;
+    try { styleData = JSON.parse(jsonStr) as Record<string, unknown>; }
+    catch { throw new Error(`LLM 返回的风格数据无法解析: ${raw.slice(0, 200)}`); }
+    await _adapter.saveTruthFile(bookId, "style-guide.json", JSON.stringify(styleData, null, 2));
+    return { ok: true, style: styleData } as T;
+  }
+
+  // POST /api/radar/scan — 市场趋势扫描
+  if (path === "/api/radar/scan" && method === "POST") {
+    const raw = await callUserLLM([
+      { role: "system", content: "你是一个网文市场分析专家。分析当前网文/轻小说市场趋势，返回严格的 JSON（不要 markdown 代码块）：{\"marketSummary\":\"市场概况（200-400字）\",\"recommendations\":[{\"confidence\":0到1的数字,\"platform\":\"平台\",\"genre\":\"题材\",\"concept\":\"一句话概念\",\"reasoning\":\"推荐理由\",\"benchmarkTitles\":[\"参考作品\"]}]} 提供 3-5 条推荐。" },
+      { role: "user", content: "请分析当前网文市场趋势，给出题材和平台推荐。" },
+    ], { temperature: 0.8, maxTokens: 4096 });
+    const jsonStr = raw.replace(/^```(?:json)?\s*/m, "").replace(/\s*```$/m, "").trim();
+    try { return JSON.parse(jsonStr) as T; }
+    catch { throw new Error(`LLM 返回的市场分析结果无法解析: ${raw.slice(0, 200)}`); }
+  }
+
+  // POST /api/agent — 聊天助手
+  if (path === "/api/agent" && method === "POST") {
+    const { instruction } = body as { instruction: string };
+    if (!instruction?.trim()) return { response: "请输入指令。" } as T;
+    const response = await callUserLLM([
+      { role: "system", content: "你是 InkOS 写作助手，帮助用户进行小说创作。可以回答写作问题、提供创意建议、帮助构思情节角色世界观、给出写作技巧。用简洁友好的语气回复。" },
+      { role: "user", content: instruction },
+    ], { temperature: 0.7 });
+    return { response } as T;
   }
 
   // Fallback — unsupported route

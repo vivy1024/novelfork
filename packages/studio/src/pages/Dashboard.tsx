@@ -66,6 +66,22 @@ function BookMenu({ bookId, bookTitle, nav, t, onDelete }: {
     onDelete();
   };
 
+  const handleExport = async () => {
+    setOpen(false);
+    try {
+      const data = await fetchJson<{ content: string; filename: string }>(`/books/${bookId}/export?format=txt`);
+      const blob = new Blob([data.content], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = data.filename || `${bookId}.txt`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Export failed");
+    }
+  };
+
   return (
     <div ref={menuRef} className="relative">
       <button
@@ -83,15 +99,13 @@ function BookMenu({ bookId, bookTitle, nav, t, onDelete }: {
             <Settings size={14} className="text-muted-foreground" />
             {t("book.settings")}
           </button>
-          <a
-            href={`/api/books/${bookId}/export?format=txt`}
-            download
-            onClick={() => setOpen(false)}
+          <button
+            onClick={handleExport}
             className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-foreground hover:bg-secondary/50 transition-colors cursor-pointer"
           >
             <Download size={14} className="text-muted-foreground" />
             {t("book.export")}
-          </a>
+          </button>
           <div className="border-t border-border/50 my-1" />
           <button
             onClick={() => { setOpen(false); setConfirmDelete(true); }}

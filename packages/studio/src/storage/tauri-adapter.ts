@@ -173,6 +173,32 @@ export class TauriStorageAdapter implements ClientStorageAdapter {
     const match = entries.find(e => e.name.startsWith(padded) && e.name.endsWith(".md"));
     if (!match) throw new Error(`Chapter ${num} not found`);
     await invoke("write_file_text", { path: join(chaptersDir, match.name), content });
+
+    // 保存版本快照用于 DiffView
+    try {
+      const versionsDir = join(chaptersDir, ".versions", padded);
+      await invoke("create_dir_all", { path: versionsDir });
+      const ts = new Date().toISOString();
+      const slug = ts.replace(/[:.]/g, "-");
+      const wordCount = this.countWordsSimple(content);
+      await invoke("write_file_text", {
+        path: join(versionsDir, `${slug}.md`),
+        content,
+      });
+      await invoke("write_file_text", {
+        path: join(versionsDir, `${slug}.json`),
+        content: JSON.stringify({ timestamp: ts, wordCount }, null, 2),
+      });
+    } catch {
+      // 版本快照失败不阻塞保存
+    }
+  }
+
+  /** 简易字数统计（中文按字，英文按词） */
+  private countWordsSimple(text: string): number {
+    const chinese = (text.match(/[\u4e00-\u9fff]/g) ?? []).length;
+    const english = text.replace(/[\u4e00-\u9fff]/g, "").split(/\s+/).filter(Boolean).length;
+    return chinese + english;
   }
 
   async approveChapter(bookId: string, num: number): Promise<void> {
