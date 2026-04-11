@@ -22,6 +22,7 @@ import {
   createAuthRouter,
   createStorageRouter,
   createAIRouter,
+  createAIRelayRouter,
   createDaemonRouter,
 } from "./routes/index.js";
 import type { RouterContext } from "./routes/index.js";
@@ -168,18 +169,21 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
   // Auth — all modes
   app.route("", createAuthRouter());
 
-  // AI operations + legacy SSE — all modes
-  app.route("", createAIRouter(ctx));
-
   // Per-run SSE + management — all modes
   app.route("", createRunsRouter(runStore));
 
   if (mode === "standalone") {
+    // AI operations + legacy SSE — standalone uses book-id based routes
+    app.route("", createAIRouter(ctx));
+
     // Storage routes (books CRUD, chapters, truth, genres, config, export, logs, doctor)
     app.route("", createStorageRouter(ctx));
 
     // Daemon scheduler
     app.route("", createDaemonRouter(ctx));
+  } else {
+    // Relay mode — snapshot-based AI endpoints only
+    app.route("", createAIRelayRouter(ctx));
   }
 
   return app;
