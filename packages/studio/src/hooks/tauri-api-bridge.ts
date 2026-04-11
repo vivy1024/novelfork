@@ -140,7 +140,7 @@ function countWords(text: string): number {
 
 // ── LLM 多配置管理 ──
 
-type LLMProvider = "openai" | "anthropic" | "ollama" | "custom";
+type LLMProvider = "openai" | "anthropic" | "ollama" | "gemini" | "custom";
 
 interface LLMProfile {
   readonly name: string;
@@ -258,8 +258,50 @@ async function callUserLLM(
   if (p === "ollama") {
     return callOllama(profile, messages, temp, maxTok);
   }
+  if (p === "gemini") {
+    return callGemini(profile, messages, temp, maxTok);
+  }
   // openai / custom — OpenAI 兼容格式
   return callOpenAICompat(profile, messages, temp, maxTok);
+}
+
+/** 按 provider 获取上游可用模型列表 */
+async function fetchUpstreamModels(profile: LLMProfile): Promise<string[]> {
+  const p = profile.provider || "openai";
+
+  if (p === "ollama") {
+    const base = profile.baseUrl.trim().replace(/\/+$/, "") || "http://localhost:11434";
+    const res = await fetch(`${base}/api/tags`);
+    if (!res.ok) throw new Error(`Ollama models 错误: ${res.status}`);
+    const data = await res.json() as { models?: Array<{ name: string }> };
+    return (data.models ?? []).map(m => m.name);
+  }
+
+  if (p === "anthropic") {
+    // Anthropic 没有 /models 端点，返回已知模型
+    return [
+      "claude-sonnet-4-20250514", "claude-opus-4-20250514",
+      "claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022",
+      "claude-3-opus-20240229",
+    ];
+  }
+
+  if (p === "gemini") {
+    const base = profile.baseUrl.trim().replace(/\/+$/, "") || "https://generativelanguage.googleapis.com";
+    const res = await fetch(`${base}/v1beta/models?key=${profile.apiKey}`);
+    if (!res.ok) throw new Error(`Gemini models 错误: ${res.status}`);
+    const data = await res.json() as { models?: Array<{ name: string }> };
+    return (data.models ?? []).map(m => m.name.replace("models/", ""));
+  }
+
+  // openai / custom
+  const base = normalizeBaseUrl(profile.baseUrl, profile.provider);
+  const res = await fetch(`${base}/models`, {
+    headers: { Authorization: `Bearer ${profile.apiKey}` },
+  });
+  if (!res.ok) throw new Error(`Models 错误: ${res.status}`);
+  const data = await res.json() as { data?: Array<{ id: string }> };
+  return (data.data ?? []).map(m => m.id).sort();
 }
 
 /** OpenAI 兼容格式（OpenAI / DeepSeek / Moonshot / 中转站等） */
@@ -374,6 +416,52 @@ async function callOllama(
   const content = data.message?.content;
   if (!content) throw new Error("Ollama 返回了空响应");
   return content;
+}
+
+/** Gemini generateContent API */
+async function callGemini(
+  profile: LLMProfile,
+  messages: ReadonlyArray<ChatMessage>,
+  temperature: number,
+  maxTokens: number,
+): Promise<string> {
+  const base = profile.baseUrl.trim().replace(/\/+$/, "") || "https://generativelanguage.googleapis.com";
+  const model = profile.model || "gemini-2.0-flash";
+  const url = `${base}/v1beta/models/${model}:generateContent?key=${profile.apiKey}`;
+
+  // 转换 messages 为 Gemini contents 格式
+  const systemMsg = messages.find(m => m.role === "system");
+  const nonSystem = messages.filter(m => m.role !== "system");
+  const contents = nonSystem.map(m => ({
+    role: m.role === "assistant" ? "model" : "user",
+    parts: [{ text: m.content }],
+  }));
+
+  const body: Record<string, unknown> = {
+    contents,
+    generationConfig: { temperature, maxOutputTokens: maxTokens },
+  };
+  if (systemMsg) {
+    body.systemInstruction = { parts: [{ text: systemMsg.content }] };
+  }
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as { error?: { message?: string } };
+    throw new Error(err.error?.message ?? `Gemini API 错误: ${res.status} (${profile.name})`);
+  }
+
+  const data = await res.json() as {
+    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+  };
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text) throw new Error("Gemini 返回了空响应");
+  return text;
 }
 
 // ── 守护进程状态 ──
@@ -633,6 +721,30 @@ export async function tauriFetch<T>(path: string, init?: RequestInit): Promise<T
   // POST /api/project/language
   if (path === "/api/project/language" && method === "POST") {
     await _adapter.updateProject({ language: body?.language });
+    return { ok: true } as T;
+  }
+
+  // GET /api/project/model-overrides — 读取模型路由覆盖
+  if (path === "/api/project/model-overrides" && method === "GET") {
+    try {
+      const raw = await invoke<string>("read_file_text", { path: join(ws(), "inkos.json") });
+      const config = JSON.parse(raw) as Record<string, unknown>;
+      return { overrides: config.modelOverrides ?? {} } as T;
+    } catch {
+      return { overrides: {} } as T;
+    }
+  }
+
+  // PUT /api/project/model-overrides — 保存模型路由覆盖
+  if (path === "/api/project/model-overrides" && method === "PUT") {
+    const configPath = join(ws(), "inkos.json");
+    let config: Record<string, unknown> = {};
+    try {
+      const raw = await invoke<string>("read_file_text", { path: configPath });
+      config = JSON.parse(raw) as Record<string, unknown>;
+    } catch { /* new file */ }
+    config.modelOverrides = body?.overrides ?? {};
+    await invoke("write_file_text", { path: configPath, content: JSON.stringify(config, null, 2) });
     return { ok: true } as T;
   }
 
@@ -1386,14 +1498,31 @@ export async function tauriFetch<T>(path: string, init?: RequestInit): Promise<T
     return { ok: true } as T;
   }
 
-  // POST /api/llm/test — 测试当前激活配置连通性
+  // POST /api/llm/test — 测试当前激活配置连通性 + 获取模型列表
   if (path === "/api/llm/test" && method === "POST") {
+    const profile = loadActiveProfile();
+    let models: string[] = [];
+    let testReply = "";
+    let testError = "";
+
+    // 1. 尝试获取模型列表
     try {
-      const reply = await callUserLLM([{ role: "user", content: "Say OK" }], { maxTokens: 16 });
-      return { ok: true, reply: reply.slice(0, 100) } as T;
+      models = await fetchUpstreamModels(profile);
+    } catch { /* 部分 API 不支持 /models */ }
+
+    // 2. 测试实际调用
+    try {
+      testReply = (await callUserLLM([{ role: "user", content: "Say OK" }], { maxTokens: 16 })).slice(0, 100);
     } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) } as T;
+      testError = err instanceof Error ? err.message : String(err);
     }
+
+    return {
+      ok: !testError,
+      reply: testReply || undefined,
+      error: testError || undefined,
+      models,
+    } as T;
   }
 
   // Fallback — unsupported route
