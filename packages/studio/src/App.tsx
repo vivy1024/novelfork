@@ -1,13 +1,14 @@
 import { useState, useEffect } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { ChatPanel } from "./components/ChatBar";
-import { InkOSProvider } from "./providers/inkos-context";
+import { InkOSProvider, useInkOS } from "./providers/inkos-context";
 import { Dashboard } from "./pages/Dashboard";
 import { BookDetail } from "./pages/BookDetail";
 import { BookCreate } from "./pages/BookCreate";
 import { ChapterReader } from "./pages/ChapterReader";
 import { Analytics } from "./pages/Analytics";
 import { ConfigView } from "./pages/ConfigView";
+import { WorkspaceSelector } from "./pages/WorkspaceSelector";
 import { TruthFiles } from "./pages/TruthFiles";
 import { DaemonControl } from "./pages/DaemonControl";
 import { LogViewer } from "./pages/LogViewer";
@@ -94,15 +95,26 @@ function LoginGate({ error }: { error: string | null }) {
 }
 
 export function App() {
+  return (
+    <InkOSProvider>
+      <AppInner />
+    </InkOSProvider>
+  );
+}
+
+function AppInner() {
   const { authState, error: authError } = useLaunchAuth();
+  const { mode, selectWorkspace, workspace } = useInkOS();
   const [route, setRoute] = useState<Route>({ page: "dashboard" });
   const sse = useSSE();
   const { theme, setTheme } = useTheme();
   const { t } = useI18n();
-  const { data: project, refetch: refetchProject } = useApi<{ language: string; languageExplicit: boolean }>("/project");
+  const isTauri = mode === "tauri";
+  const { data: project, refetch: refetchProject } = useApi<{ language: string; languageExplicit: boolean }>(isTauri ? null : "/project");
   const [showLanguageSelector, setShowLanguageSelector] = useState(false);
-  const [ready, setReady] = useState(false);
+  const [ready, setReady] = useState(isTauri);
   const [chatOpen, setChatOpen] = useState(false);
+  const [wsReady, setWsReady] = useState(!isTauri || !!workspace);
 
   const isDark = theme === "dark";
 
@@ -119,8 +131,19 @@ export function App() {
     }
   }, [project]);
 
-  // Auth gate
-  if (authState === "checking") {
+  // Tauri workspace gate — must pick a folder before anything else
+  if (isTauri && !wsReady) {
+    return (
+      <WorkspaceSelector
+        onSelect={() => setWsReady(true)}
+        selectWorkspace={selectWorkspace!}
+        t={t}
+      />
+    );
+  }
+
+  // Auth gate (web only — Tauri skips server auth)
+  if (!isTauri && authState === "checking") {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="w-12 h-12 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
@@ -128,7 +151,7 @@ export function App() {
     );
   }
 
-  if (authState === "unauthenticated") {
+  if (!isTauri && authState === "unauthenticated") {
     return <LoginGate error={authError} />;
   }
 
@@ -177,7 +200,6 @@ export function App() {
       : route.page;
 
   return (
-    <InkOSProvider>
     <div className="h-screen bg-background text-foreground flex overflow-hidden font-sans">
       {/* Left Sidebar */}
       <Sidebar nav={nav} activePage={activePage} sse={sse} t={t} />
@@ -252,6 +274,5 @@ export function App() {
         activeBookId={activeBookId}
       />
     </div>
-    </InkOSProvider>
   );
 }
