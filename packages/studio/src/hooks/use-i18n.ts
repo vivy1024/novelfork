@@ -175,6 +175,10 @@ const strings = {
   "doctor.failed": { zh: "失败", en: "Failed" },
   "doctor.allPassed": { zh: "所有检查通过 — 环境健康", en: "All checks passed — environment is healthy" },
   "doctor.someFailed": { zh: "部分检查失败 — 请查看配置", en: "Some checks failed — review configuration" },
+  "doctor.workspaceConfig": { zh: "工作区配置 (inkos.json)", en: "Workspace Config (inkos.json)" },
+  "doctor.chapterConsistency": { zh: "章节索引一致性", en: "Chapter Index Consistency" },
+  "doctor.genresDir": { zh: "题材目录", en: "Genres Directory" },
+  "doctor.llmConfig": { zh: "LLM API 配置", en: "LLM API Config" },
 
   // Genre extras
   "genre.createNew": { zh: "创建新题材", en: "Create New Genre" },
@@ -242,6 +246,8 @@ const strings = {
   "daemon.waitingEvents": { zh: "等待事件...", en: "Waiting for events..." },
   "daemon.startHint": { zh: "启动守护进程查看事件", en: "Start the daemon to see events" },
   "daemon.eventLog": { zh: "事件日志", en: "Event Log" },
+  "daemon.interval": { zh: "写作间隔（分钟）", en: "Interval (minutes)" },
+  "daemon.noLLM": { zh: "请先在配置中设置 LLM API", en: "Please configure LLM API in settings first" },
 
   // Config extras (labels)
   "config.temperature": { zh: "温度", en: "Temperature" },

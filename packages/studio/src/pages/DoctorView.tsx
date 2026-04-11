@@ -2,6 +2,7 @@ import { useApi } from "../hooks/use-api";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
 import { useColors } from "../hooks/use-colors";
+import { useInkOS } from "../providers/inkos-context";
 import { Stethoscope, CheckCircle2, XCircle, Loader2 } from "lucide-react";
 
 interface DoctorChecks {
@@ -31,7 +32,15 @@ function CheckRow({ label, ok, detail }: { label: string; ok: boolean; detail?: 
 
 export function DoctorView({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunction }) {
   const c = useColors(theme);
+  const { mode } = useInkOS();
+  const isTauri = mode === "tauri";
   const { data, refetch } = useApi<DoctorChecks>("/doctor");
+
+  // Tauri 模式下使用桌面端相关的标签
+  const labelInkos = isTauri ? t("doctor.workspaceConfig") : t("doctor.inkosJson");
+  const labelProjectEnv = isTauri ? t("doctor.chapterConsistency") : t("doctor.projectEnv");
+  const labelGlobalEnv = isTauri ? t("doctor.genresDir") : t("doctor.globalEnv");
+  const labelLlm = isTauri ? t("doctor.llmConfig") : t("doctor.llmApi");
 
   return (
     <div className="space-y-8">
@@ -57,11 +66,11 @@ export function DoctorView({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunc
         </div>
       ) : (
         <div className={`border ${c.cardStatic} rounded-lg p-5`}>
-          <CheckRow label={t("doctor.inkosJson")} ok={data.inkosJson} />
-          <CheckRow label={t("doctor.projectEnv")} ok={data.projectEnv} />
-          <CheckRow label={t("doctor.globalEnv")} ok={data.globalEnv} />
+          <CheckRow label={labelInkos} ok={data.inkosJson} />
+          <CheckRow label={labelProjectEnv} ok={data.projectEnv} />
+          <CheckRow label={labelGlobalEnv} ok={data.globalEnv} />
           <CheckRow label={t("doctor.booksDir")} ok={data.booksDir} detail={`${data.bookCount} book(s)`} />
-          <CheckRow label={t("doctor.llmApi")} ok={data.llmConnected} detail={data.llmConnected ? t("doctor.connected") : t("doctor.failed")} />
+          <CheckRow label={labelLlm} ok={data.llmConnected} detail={data.llmConnected ? t("doctor.connected") : t("doctor.failed")} />
         </div>
       )}
 
