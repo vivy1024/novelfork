@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { ChatPanel } from "./components/ChatBar";
+import { InkOSProvider } from "./providers/inkos-context";
 import { Dashboard } from "./pages/Dashboard";
 import { BookDetail } from "./pages/BookDetail";
 import { BookCreate } from "./pages/BookCreate";
@@ -176,6 +177,7 @@ export function App() {
       : route.page;
 
   return (
+    <InkOSProvider>
     <div className="h-screen bg-background text-foreground flex overflow-hidden font-sans">
       {/* Left Sidebar */}
       <Sidebar nav={nav} activePage={activePage} sse={sse} t={t} />
@@ -250,5 +252,6 @@ export function App() {
         activeBookId={activeBookId}
       />
     </div>
+    </InkOSProvider>
   );
 }

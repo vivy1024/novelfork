@@ -3,6 +3,7 @@ import { useApi } from "../hooks/use-api";
 import type { SSEMessage } from "../hooks/use-sse";
 import { shouldRefetchBookCollections, shouldRefetchDaemonStatus } from "../hooks/use-book-activity";
 import type { TFunction } from "../hooks/use-i18n";
+import { useInkOS } from "../providers/inkos-context";
 import {
   Book,
   Settings,
@@ -47,6 +48,8 @@ export function Sidebar({ nav, activePage, sse, t }: {
 }) {
   const { data, refetch: refetchBooks } = useApi<{ books: ReadonlyArray<BookSummary> }>("/books");
   const { data: daemon, refetch: refetchDaemon } = useApi<{ running: boolean }>("/daemon");
+  const { mode } = useInkOS();
+  const isStandalone = mode === "standalone";
 
   useEffect(() => {
     const recent = sse.messages.at(-1);
@@ -137,26 +140,32 @@ export function Sidebar({ nav, activePage, sse, t }: {
               active={activePage === "genres"}
               onClick={nav.toGenres}
             />
-            <SidebarItem
-              label={t("nav.config")}
-              icon={<Settings size={16} />}
-              active={activePage === "config"}
-              onClick={nav.toConfig}
-            />
-            <SidebarItem
-              label={t("nav.daemon")}
-              icon={<Zap size={16} />}
-              active={activePage === "daemon"}
-              onClick={nav.toDaemon}
-              badge={daemon?.running ? t("nav.running") : undefined}
-              badgeColor={daemon?.running ? "bg-emerald-500/10 text-emerald-500" : "bg-muted text-muted-foreground"}
-            />
-            <SidebarItem
-              label={t("nav.logs")}
-              icon={<Terminal size={16} />}
-              active={activePage === "logs"}
-              onClick={nav.toLogs}
-            />
+            {isStandalone && (
+              <SidebarItem
+                label={t("nav.config")}
+                icon={<Settings size={16} />}
+                active={activePage === "config"}
+                onClick={nav.toConfig}
+              />
+            )}
+            {isStandalone && (
+              <SidebarItem
+                label={t("nav.daemon")}
+                icon={<Zap size={16} />}
+                active={activePage === "daemon"}
+                onClick={nav.toDaemon}
+                badge={daemon?.running ? t("nav.running") : undefined}
+                badgeColor={daemon?.running ? "bg-emerald-500/10 text-emerald-500" : "bg-muted text-muted-foreground"}
+              />
+            )}
+            {isStandalone && (
+              <SidebarItem
+                label={t("nav.logs")}
+                icon={<Terminal size={16} />}
+                active={activePage === "logs"}
+                onClick={nav.toLogs}
+              />
+            )}
           </div>
         </div>
 
@@ -186,12 +195,14 @@ export function Sidebar({ nav, activePage, sse, t }: {
               active={activePage === "radar"}
               onClick={nav.toRadar}
             />
-            <SidebarItem
-              label={t("nav.doctor")}
-              icon={<Stethoscope size={16} />}
-              active={activePage === "doctor"}
-              onClick={nav.toDoctor}
-            />
+            {isStandalone && (
+              <SidebarItem
+                label={t("nav.doctor")}
+                icon={<Stethoscope size={16} />}
+                active={activePage === "doctor"}
+                onClick={nav.toDoctor}
+              />
+            )}
           </div>
         </div>
       </div>
