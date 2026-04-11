@@ -123,7 +123,7 @@ export function App() {
 
 function AppInner() {
   const { authState, error: authError } = useLaunchAuth();
-  const { mode, selectWorkspace, workspace, tauriAuthenticated, loginWithToken } = useInkOS();
+  const { mode, selectWorkspace, workspace, tauriAuthenticated, loginWithToken, skipAuth } = useInkOS();
   const { tabs, activeTabId, activeTab, openTab, closeTab, activateTab } = useTabsState();
   const [bookCreateOpen, setBookCreateOpen] = useState(false);
   const sse = useSSE();
@@ -184,6 +184,7 @@ function AppInner() {
     return (
       <TauriLogin
         onLogin={(token) => loginWithToken!(token)}
+        onSkip={() => skipAuth!()}
         relayUrl={relayUrl}
         t={t}
       />
