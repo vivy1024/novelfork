@@ -169,7 +169,7 @@ export function useBackup(): UseBackupReturn {
       const json = JSON.stringify(payload);
       const encrypted = await encrypt(json, passphrase);
       const backupDir = join(workspace, ".inkos-backups");
-      await invoke("ensure_dir", { path: backupDir });
+      await invoke("create_dir_all", { path: backupDir });
       const filename = `${Date.now()}.bak`;
       // Write as base64 text since Tauri invoke uses text files
       const b64 = btoa(String.fromCharCode(...encrypted));
