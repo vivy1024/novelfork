@@ -13,6 +13,7 @@ import type { AIClient } from "../ai/client.js";
 import { HttpStorageAdapter } from "../storage/http-adapter.js";
 import { HttpAIClient } from "../ai/http-client.js";
 import { fetchJson } from "../hooks/use-api.js";
+import { setTauriBridge } from "../hooks/tauri-api-bridge.js";
 
 export type InkosMode = "standalone" | "relay" | "tauri";
 
@@ -75,6 +76,9 @@ async function initTauriMode(setCtx: (v: InkOSContextValue) => void): Promise<vo
   if (saved) setWorkspace(saved);
 
   const storage = new TauriStorageAdapter();
+
+  // Activate the Tauri API bridge so useApi/fetchJson route locally
+  setTauriBridge(storage);
 
   // Relay URL defaults to production; can be overridden via localStorage
   const relayUrl = localStorage.getItem("inkos-relay-url") ?? "https://inkos.vivy1024.cc";
