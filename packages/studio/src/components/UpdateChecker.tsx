@@ -21,7 +21,8 @@ export function UpdateChecker() {
 
     (async () => {
       try {
-        const mod = await import("@tauri-apps/plugin-updater" as string);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const mod = await (Function('return import("@tauri-apps/plugin-updater")')() as Promise<any>);
         const update = await mod.check();
 
         if (cancelled) return;
@@ -57,7 +58,8 @@ export function UpdateChecker() {
   const handleUpdate = async () => {
     setState({ phase: "downloading", progress: 0 });
     try {
-      const mod = await import("@tauri-apps/plugin-updater" as string);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const mod = await (Function('return import("@tauri-apps/plugin-updater")')() as Promise<any>);
       const update = await mod.check();
       if (!update) return;
 
@@ -72,7 +74,8 @@ export function UpdateChecker() {
         }
       });
 
-      const processMod = await import("@tauri-apps/plugin-process" as string);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const processMod = await (Function('return import("@tauri-apps/plugin-process")')() as Promise<any>);
       await processMod.relaunch();
     } catch (err) {
       setState({
