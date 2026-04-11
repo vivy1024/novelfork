@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { ChatPanel } from "./components/ChatBar";
 import { TabBar } from "./components/TabBar";
+import { CommandPalette } from "./components/CommandPalette";
 import { InkOSProvider, useInkOS } from "./providers/inkos-context";
 import { Dashboard } from "./pages/Dashboard";
 import { BookDetail } from "./pages/BookDetail";
@@ -118,8 +119,20 @@ function AppInner() {
   const [ready, setReady] = useState(isTauri);
   const [chatOpen, setChatOpen] = useState(false);
   const [wsReady, setWsReady] = useState(!isTauri || !!workspace);
+  const [cmdOpen, setCmdOpen] = useState(false);
 
   const isDark = theme === "dark";
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        setCmdOpen(prev => !prev);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", isDark);
@@ -209,10 +222,15 @@ function AppInner() {
   };
 
   const activeBookId = activeTab ? deriveActiveBookId(activeTab.route) : undefined;
-  const activePage =
-    activeBookId
-      ? `book:${activeBookId}`
-      : activeTab?.route.page ?? "dashboard";
+  const activePage = (() => {
+    const r = activeTab?.route;
+    if (!r) return "dashboard";
+    if (r.page === "chapter") return `chapter:${r.bookId}:${r.chapterNumber}`;
+    if (r.page === "truth") return `truth:${r.bookId}`;
+    if (r.page === "analytics") return `analytics:${r.bookId}`;
+    if (r.page === "book") return `book:${r.bookId}`;
+    return r.page;
+  })();
 
   return (
     <div className="h-screen bg-background text-foreground flex overflow-hidden font-sans">
@@ -256,6 +274,7 @@ function AppInner() {
               nav={{
                 ...nav,
                 toDashboard: () => setBookCreateOpen(false),
+                toBook: (id: string) => { setBookCreateOpen(false); nav.toBook(id); },
               }}
               theme={theme}
               t={t}
@@ -272,6 +291,18 @@ function AppInner() {
         sse={sse}
         activeBookId={activeBookId}
       />
+
+      {/* Command Palette */}
+      {cmdOpen && (
+        <CommandPalette
+          nav={nav}
+          tabs={tabs}
+          activateTab={activateTab}
+          onClose={() => setCmdOpen(false)}
+          onNewBook={() => setBookCreateOpen(true)}
+          t={t}
+        />
+      )}
     </div>
   );
 }
