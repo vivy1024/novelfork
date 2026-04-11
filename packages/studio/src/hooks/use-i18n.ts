@@ -254,6 +254,15 @@ const strings = {
   "workspace.select": { zh: "选择工作区文件夹", en: "Select Workspace Folder" },
   "workspace.hint": { zh: "建议选择一个空文件夹或已有的 InkOS 项目文件夹", en: "Recommend an empty folder or an existing InkOS project folder" },
 
+  // Tauri Login
+  "login.description": { zh: "请从 Sub2API 控制台登录以连接 AI 写作服务。", en: "Log in from the Sub2API console to connect AI writing services." },
+  "login.openSub2api": { zh: "打开 Sub2API 控制台", en: "Open Sub2API Console" },
+  "login.orPasteToken": { zh: "或粘贴登录令牌", en: "or paste login token" },
+  "login.tokenPlaceholder": { zh: "粘贴从 Sub2API 获取的令牌...", en: "Paste token from Sub2API..." },
+  "login.verifying": { zh: "验证中...", en: "Verifying..." },
+  "login.submit": { zh: "登录", en: "Log In" },
+  "login.hint": { zh: "在 Sub2API 侧边栏点击「小说工作台」会自动唤起本应用。", en: "Click 'Novel Studio' in the Sub2API sidebar to launch this app automatically." },
+
   // BookCreate extras
   "create.platform": { zh: "平台", en: "Platform" },
 
