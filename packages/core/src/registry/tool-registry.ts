@@ -17,7 +17,9 @@ export interface ToolParameter {
 export interface ToolDefinition {
   name: string;
   description: string;
-  parameters: ToolParameter[];
+  parameters?: ToolParameter[];
+  inputSchema?: Record<string, unknown>;
+  source?: "builtin" | "mcp" | "plugin";
 }
 
 export type ToolHandler = (
@@ -27,19 +29,41 @@ export type ToolHandler = (
   args: Record<string, unknown>,
 ) => Promise<string>;
 
+// Generic tool handler for MCP/plugin tools
+export type GenericToolHandler = (args: Record<string, unknown>) => Promise<unknown>;
+
 export interface RegisteredTool {
   definition: ToolDefinition;
-  handler: ToolHandler;
+  handler: ToolHandler | GenericToolHandler;
 }
 
 export class ToolRegistry {
   private tools = new Map<string, RegisteredTool>();
 
-  register(tool: RegisteredTool): void {
-    if (this.tools.has(tool.definition.name)) {
-      throw new Error(`Tool "${tool.definition.name}" is already registered.`);
+  register(tool: RegisteredTool | {
+    name: string;
+    description: string;
+    inputSchema?: Record<string, unknown>;
+    source?: "builtin" | "mcp" | "plugin";
+    handler: GenericToolHandler;
+  }): void {
+    // Support both old and new registration formats
+    const registeredTool: RegisteredTool = "definition" in tool
+      ? tool
+      : {
+          definition: {
+            name: tool.name,
+            description: tool.description,
+            inputSchema: tool.inputSchema,
+            source: tool.source,
+          },
+          handler: tool.handler as any,
+        };
+
+    if (this.tools.has(registeredTool.definition.name)) {
+      throw new Error(`Tool "${registeredTool.definition.name}" is already registered.`);
     }
-    this.tools.set(tool.definition.name, tool);
+    this.tools.set(registeredTool.definition.name, registeredTool);
   }
 
   unregister(name: string): boolean {
