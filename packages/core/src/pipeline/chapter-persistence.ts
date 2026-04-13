@@ -21,6 +21,8 @@ export async function persistChapterArtifacts(params: {
   readonly lengthTelemetry?: LengthTelemetry;
   readonly degradedIssues: ReadonlyArray<AuditIssue>;
   readonly tokenUsage?: ChapterPersistenceUsage;
+  readonly detectionScore?: number;
+  readonly detectionProvider?: string;
   readonly loadChapterIndex: () => Promise<ReadonlyArray<ChapterMeta>>;
   readonly saveChapter: () => Promise<void>;
   readonly saveTruthFiles: () => Promise<void>;
@@ -56,6 +58,8 @@ export async function persistChapterArtifacts(params: {
       : undefined,
     lengthTelemetry: params.lengthTelemetry,
     tokenUsage: params.tokenUsage,
+    detectionScore: params.detectionScore,
+    detectionProvider: params.detectionProvider,
   };
   await params.saveChapterIndex([...existingIndex, entry]);
   await params.markBookActiveIfNeeded();

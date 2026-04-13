@@ -1,5 +1,5 @@
 import { fetchJson, useApi, postApi } from "../hooks/use-api";
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
 import type { SSEMessage } from "../hooks/use-sse";
@@ -7,6 +7,7 @@ import { useInkOS } from "../providers/inkos-context";
 import { useColors } from "../hooks/use-colors";
 import { deriveBookActivity, shouldRefetchBookView } from "../hooks/use-book-activity";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { ChapterMeta as ChapterMetaPanel } from "../components/ChapterMeta";
 import {
   ChevronLeft,
   Zap,
@@ -21,6 +22,7 @@ import {
   Check,
   X,
   ShieldCheck,
+  ScanEye,
   RotateCcw,
   RefreshCw,
   Sparkles,
@@ -33,6 +35,21 @@ interface ChapterMeta {
   readonly title: string;
   readonly status: string;
   readonly wordCount: number;
+  readonly auditIssues?: ReadonlyArray<string>;
+  readonly lengthWarnings?: ReadonlyArray<string>;
+  readonly reviewNote?: string;
+  readonly detectionScore?: number;
+  readonly detectionProvider?: string;
+  readonly lengthTelemetry?: {
+    readonly target: number;
+    readonly actual: number;
+    readonly delta: number;
+  };
+  readonly tokenUsage?: {
+    readonly prompt: number;
+    readonly completion: number;
+    readonly total: number;
+  };
 }
 
 interface BookData {
@@ -58,6 +75,7 @@ interface Nav {
   toDashboard: () => void;
   toChapter: (bookId: string, num: number) => void;
   toAnalytics: (bookId: string) => void;
+  toDetect?: (bookId: string) => void;
 }
 
 function translateChapterStatus(status: string, t: TFunction): string {
@@ -390,6 +408,13 @@ export function BookDetail({
             <BarChart2 size={14} />
             {t("book.analytics")}
           </button>
+          <button
+            onClick={() => nav.toDetect?.(bookId)}
+            className="flex items-center gap-2 px-4 py-2 text-xs font-bold bg-secondary/50 text-muted-foreground rounded-lg hover:text-foreground hover:bg-secondary transition-all border border-border/50"
+          >
+            <ScanEye size={14} />
+            AI 检测
+          </button>
           <div className="flex items-center gap-2">
             <select
               value={exportFormat}
@@ -494,7 +519,8 @@ export function BookDetail({
               {chapters.map((ch, index) => {
                 const staggerClass = `stagger-${Math.min(index + 1, 5)}`;
                 return (
-                <tr key={ch.number} className={`group hover:bg-primary/[0.02] transition-colors fade-in ${staggerClass}`}>
+                <React.Fragment key={ch.number}>
+                <tr className={`group hover:bg-primary/[0.02] transition-colors fade-in ${staggerClass}`}>
                   <td className="px-6 py-4 text-muted-foreground/60 font-mono text-xs">{ch.number.toString().padStart(2, '0')}</td>
                   <td className="px-6 py-4">
                     <button
@@ -582,6 +608,14 @@ export function BookDetail({
                     </div>
                   </td>
                 </tr>
+                {(ch.tokenUsage || ch.lengthTelemetry || ch.detectionScore != null || (ch.auditIssues && ch.auditIssues.length > 0) || ch.reviewNote || (ch.lengthWarnings && ch.lengthWarnings.length > 0)) && (
+                  <tr>
+                    <td colSpan={5} className="px-6 pb-4 pt-0">
+                      <ChapterMetaPanel chapter={ch} theme={theme} t={t} />
+                    </td>
+                  </tr>
+                )}
+                </React.Fragment>
                 );
               })}
             </tbody>

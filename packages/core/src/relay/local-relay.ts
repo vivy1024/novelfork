@@ -193,8 +193,10 @@ export class LocalAIRelay implements AIRelay {
       provider: (llm.provider as LLMConfig["provider"]) ?? "openai",
       temperature: llm.temperature ?? 0.7,
       maxTokens: llm.maxTokens ?? 8192,
-      thinkingBudget: 0,
-      apiFormat: "chat" as const,
+      thinkingBudget: llm.thinkingBudget ?? 0,
+      apiFormat: llm.apiFormat ?? "chat",
+      extra: llm.extra,
+      headers: llm.headers,
       stream: llm.stream ?? true,
     };
 
