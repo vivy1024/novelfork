@@ -44,6 +44,7 @@ import { persistChapterArtifacts } from "./chapter-persistence.js";
 import { runChapterReviewCycle } from "./chapter-review-cycle.js";
 import { validateChapterTruthPersistence } from "./chapter-truth-validation.js";
 import { loadPersistedPlan, relativeToBookDir } from "./persisted-governed-plan.js";
+import { pipelineEvents } from "./pipeline-events.js";
 
 const SEQUENCE_LEVEL_CATEGORIES = new Set([
   "Pacing Monotony", "节奏单调",
@@ -1176,13 +1177,34 @@ export class PipelineRunner {
     await this.assertNoPendingStateRepair(bookId);
     const chapterNumber = await this.state.getNextChapterNumber(bookId);
     const stageLanguage = await this.resolveBookLanguage(book);
+
+    // Emit pipeline start event
+    const runId = `${bookId}-${chapterNumber}-${Date.now()}`;
+    pipelineEvents.emit({
+      type: "run:start",
+      data: { runId, bookId, bookTitle: book.title, chapterNumber },
+    });
+
     this.logStage(stageLanguage, { zh: "准备章节输入", en: "preparing chapter inputs" });
+
+    // Emit plan stage start
+    pipelineEvents.emit({
+      type: "stage:update",
+      data: { runId, stageName: "plan", status: "running", agent: "planner", startTime: Date.now() },
+    });
+
     const writeInput = await this.prepareWriteInput(
       book,
       bookDir,
       chapterNumber,
       this.config.externalContext,
     );
+
+    // Emit plan stage complete
+    pipelineEvents.emit({
+      type: "stage:update",
+      data: { runId, stageName: "plan", status: "completed", endTime: Date.now() },
+    });
     const reducedControlInput = writeInput.chapterIntent && writeInput.contextPackage && writeInput.ruleStack
       ? {
           chapterIntent: writeInput.chapterIntent,
@@ -1200,6 +1222,13 @@ export class PipelineRunner {
     // 1. Write chapter
     const writer = new WriterAgent(this.agentCtxFor("writer", bookId));
     this.logStage(stageLanguage, { zh: "撰写章节草稿", en: "writing chapter draft" });
+
+    // Emit write stage start
+    pipelineEvents.emit({
+      type: "stage:update",
+      data: { runId, stageName: "write", status: "running", agent: "writer", model: this.config.model, startTime: Date.now() },
+    });
+
     const output = await writer.writeChapter({
       book,
       bookDir,
@@ -1211,9 +1240,28 @@ export class PipelineRunner {
     });
     const writerCount = countChapterLength(output.content, lengthSpec.countingMode);
 
+    // Emit write stage complete with token usage
+    pipelineEvents.emit({
+      type: "stage:update",
+      data: {
+        runId,
+        stageName: "write",
+        status: "completed",
+        endTime: Date.now(),
+        tokenUsage: output.tokenUsage,
+      },
+    });
+
     // Token usage accumulator
     let totalUsage: TokenUsageSummary = output.tokenUsage ?? { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
     const auditor = new ContinuityAuditor(this.agentCtxFor("auditor", bookId));
+
+    // Emit audit stage start
+    pipelineEvents.emit({
+      type: "stage:update",
+      data: { runId, stageName: "audit", status: "running", agent: "auditor", startTime: Date.now() },
+    });
+
     const reviewResult = await runChapterReviewCycle({
       book: { genre: book.genre },
       bookDir,
@@ -1240,6 +1288,13 @@ export class PipelineRunner {
       logWarn: (message) => this.logWarn(pipelineLang, message),
       logStage: (message) => this.logStage(stageLanguage, message),
     });
+
+    // Emit audit stage complete
+    pipelineEvents.emit({
+      type: "stage:update",
+      data: { runId, stageName: "audit", status: "completed", endTime: Date.now() },
+    });
+
     totalUsage = reviewResult.totalUsage;
     let finalContent = reviewResult.finalContent;
     let finalWordCount = reviewResult.finalWordCount;
@@ -1462,6 +1517,15 @@ export class PipelineRunner {
       passed: auditResult.passed,
       revised,
       status: resolvedStatus,
+    });
+
+    // Emit pipeline complete event
+    pipelineEvents.emit({
+      type: "run:complete",
+      data: {
+        runId,
+        status: resolvedStatus === "audit-failed" || resolvedStatus === "state-degraded" ? "failed" : "completed",
+      },
     });
 
     return {
