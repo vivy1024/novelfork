@@ -144,23 +144,25 @@ UI（参考 CC Switch）:
 
 ---
 
-### ⏳ P2-4: MCP Server 暴露（待实施，2-3 天）
+### ❌ P2-4: MCP Server 暴露（已删除）
 
-**目标**: InkOS 独有差异化。把记忆系统暴露为 MCP server。
+**删除原因**: 场景不成立，已有更简单方案。
 
-**计划**:
+**原计划**: 把 InkOS 记忆系统暴露为 MCP server，让外部工具查询。
 
-暴露的 tool:
-- `inkos.query_facts(subject, chapter?)` — 时序事实查询
-- `inkos.query_hooks(status?)` — 伏笔池查询
-- `inkos.query_summaries(chapter_range?)` — 章节摘要查询
-- `inkos.get_world_state(bookId)` — 当前世界状态快照
-- `inkos.search_memory(query, bookId)` — 语义记忆检索（复用 `retrieveMemorySelection`）
+**为什么删除**:
+1. **MCP Server 需要常驻运行**，但 InkOS 是写作工具不是后台服务
+2. **应用场景存疑**：
+   - Claude Code 写代码时不需要查小说设定
+   - 羽书查角色关系可以直接读 markdown 文件（`current_state.md`、`pending_hooks.md`）
+3. **已有更简单方案**：
+   - Truth files 本来就是 markdown，任何工具都能读
+   - `memory.db` 是 SQLite，可以直接查询
+   - 不需要额外的 MCP 层
 
-应用场景:
-- Claude Code 写代码时查 InkOS 世界观
-- 羽书（AstrBot）查角色关系回答读者问题
-- 其他 agent 框架通过 MCP 接入 InkOS 的叙事知识库
+**替代方案**（如果真需要外部访问）:
+- 羽书直接读 InkOS 的 markdown 文件（最简单）
+- 或在 Studio 暴露 HTTP API（更通用）
 
 ---
 
@@ -290,7 +292,7 @@ console.log(header+'.'+payload+'.'+sig);
 | 项目 | 借鉴内容 | 对应步骤 |
 |------|---------|---------|
 | AstrBot | MCPClient 三种传输 + 自动重连；Star 插件 manifest + 生命周期 | P2-3, P2-11 |
-| Mastra | `createTool()` + Zod schema 工具注册；MCP 双向集成 | P2-0, P2-3, P2-4 |
+| Mastra | `createTool()` + Zod schema 工具注册；MCP 双向集成 | P2-0, P2-3 |
 | VoltAgent | Hooks 生命周期拦截器；VoltOps 运行态流程图 | P2-2, P2-6 |
 | CopilotKit | AG-UI 事件流协议；Shared State；HITL 暂停/恢复 | P2-6 |
 | CC Switch | MCP server 管理 UI 交互设计 | P2-10 |
@@ -307,11 +309,11 @@ console.log(header+'.'+payload+'.'+sig);
 | P2-10 MCP Server 管理 | 1-2 天 | ✅ 已完成 | 4-7 天 |
 | P2-2 Pipeline Hooks | 2 天 | ✅ 已完成 | 6-9 天 |
 | P2-3 MCP Client | 3-5 天 | ⏳ 待实施 | 9-14 天 |
-| P2-4 MCP Server 暴露 | 2-3 天 | ⏳ 待实施 | 11-17 天 |
-| P2-11 Plugin 系统 | 3-5 天 | ⏳ 待实施 | 14-22 天 |
-| P2-6 Pipeline 可视化 | 5+ 天 | ⏳ 待实施 | 19-27 天 |
+| ~~P2-4 MCP Server 暴露~~ | ~~2-3 天~~ | ❌ 已删除 | — |
+| P2-11 Plugin 系统 | 3-5 天 | ⏳ 待实施 | 12-19 天 |
+| P2-6 Pipeline 可视化 | 5+ 天 | ⏳ 待实施 | 17-24 天 |
 
-**当前进度**: 6-9 天 / 19-27 天（约 30-40% 完成）
+**当前进度**: 6-9 天 / 17-24 天（约 35-50% 完成）
 
 ---
 
@@ -331,7 +333,7 @@ console.log(header+'.'+payload+'.'+sig);
 
 - [x] 本地验证 P2-0/P2-10/P2-13 的渲染和交互
 - [x] 实施 P2-2 Pipeline Hooks
+- [x] 删除 P2-4 MCP Server 暴露（场景不成立）
 - [ ] 实施 P2-3 MCP Client 集成
-- [ ] 实施 P2-4 MCP Server 暴露
 - [ ] 实施 P2-11 Skills / Plugin 系统
 - [ ] 实施 P2-6 Pipeline 可视化（可放 v11）
