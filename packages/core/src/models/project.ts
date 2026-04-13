@@ -104,6 +104,21 @@ export const HookConfigSchema = z.object({
 
 export type HookConfig = z.infer<typeof HookConfigSchema>;
 
+export const MCPServerConfigSchema = z.object({
+  name: z.string().min(1),
+  transport: z.enum(["stdio", "sse"]),
+  command: z.string().optional(),
+  args: z.array(z.string()).optional(),
+  env: z.record(z.string()).optional(),
+  url: z.string().url().optional(),
+  headers: z.record(z.string()).optional(),
+  timeout: z.number().int().min(1000).default(180000),
+  autoReconnect: z.boolean().default(true),
+  enabled: z.boolean().default(true),
+});
+
+export type MCPServerConfig = z.infer<typeof MCPServerConfigSchema>;
+
 export const ProjectConfigSchema = z.object({
   name: z.string().min(1),
   version: z.literal("0.1.0"),
@@ -114,6 +129,7 @@ export const ProjectConfigSchema = z.object({
   modelOverrides: z.record(z.string(), ModelOverrideValueSchema).optional(),
   inputGovernanceMode: InputGovernanceModeSchema.default("v2"),
   hooks: z.array(HookConfigSchema).default([]),
+  mcpServers: z.array(MCPServerConfigSchema).default([]),
   daemon: z.object({
     schedule: z.object({
       radarCron: z.string().default("0 */6 * * *"),
