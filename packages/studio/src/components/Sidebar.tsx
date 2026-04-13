@@ -29,6 +29,7 @@ import {
   Sliders,
   Clock,
   Layers,
+  Server,
 } from "lucide-react";
 
 interface BookSummary {
@@ -64,6 +65,7 @@ interface Nav {
   toHooks: () => void;
   toLLMAdvanced: () => void;
   toState: (bookId: string) => void;
+  toMCP: () => void;
 }
 
 export function Sidebar({ nav, activePage, sse, t }: {
@@ -307,6 +309,12 @@ export function Sidebar({ nav, activePage, sse, t }: {
               icon={<ShieldCheck size={16} />}
               active={activePage === "detection-config"}
               onClick={nav.toDetectionConfig}
+            />
+            <SidebarItem
+              label="MCP Server"
+              icon={<Server size={16} />}
+              active={activePage === "mcp"}
+              onClick={nav.toMCP}
             />
           </div>
         </div>
