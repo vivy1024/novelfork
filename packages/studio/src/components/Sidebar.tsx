@@ -28,6 +28,7 @@ import {
   ShieldCheck,
   Sliders,
   Clock,
+  Layers,
 } from "lucide-react";
 
 interface BookSummary {
@@ -62,6 +63,7 @@ interface Nav {
   toDetectionConfig: () => void;
   toHooks: () => void;
   toLLMAdvanced: () => void;
+  toState: (bookId: string) => void;
 }
 
 export function Sidebar({ nav, activePage, sse, t }: {
@@ -410,6 +412,18 @@ function BookTreeChildren({ bookId, chaptersWritten, nav, activePage, t }: {
       >
         <FolderOpen size={12} />
         <span>{t("book.truthFiles")}</span>
+      </button>
+
+      <button
+        onClick={() => nav.toState(bookId)}
+        className={`w-full flex items-center gap-2 px-2 py-1 rounded-md text-xs transition-all ${
+          activePage === `state:${bookId}`
+            ? "bg-primary/10 text-primary font-semibold"
+            : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
+        }`}
+      >
+        <Layers size={12} />
+        <span>状态投影</span>
       </button>
 
       {(!data?.chapters || data.chapters.length === 0) && chaptersWritten === 0 && (
