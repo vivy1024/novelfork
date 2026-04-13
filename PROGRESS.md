@@ -32,7 +32,7 @@
 | 0 | ToolRegistry 基础设施 | `packages/core/src/registry/` | ✅ 已完成 | `a4e8f9d` |
 | 13 | State Projections 可视化 | `packages/studio/src/pages/StateProjectionsView.tsx` | ✅ 已完成 | `e17a5d3` |
 | 10 | MCP Server 管理 | `packages/studio/src/pages/MCPServerManager.tsx` | ✅ 已完成 | `2276e0c` |
-| 2 | Pipeline Hooks | — | ⏳ 待实施 | — |
+| 2 | Pipeline Hooks | `packages/core/src/hooks/` | ✅ 已完成 | 待提交 |
 | 3 | MCP Client 集成 | — | ⏳ 待实施 | — |
 | 4 | MCP Server 暴露 | — | ⏳ 待实施 | — |
 | 11 | Skills / Plugin 系统 | — | ⏳ 待实施 | — |
@@ -91,25 +91,32 @@
 
 ---
 
-### ⏳ P2-2: Pipeline Hooks（待实施，2 天）
+### ✅ P2-2: Pipeline Hooks（已完成）
 
 **目标**: 参考 VoltAgent 的 Hooks 生命周期拦截器。
 
-**计划**:
-- 在 `PipelineRunner` 关键节点加拦截器接口
-- 将现有通知系统（`dispatchNotification`）从硬编码改为 hook 注册
-- 用户可注册自定义 hook（如自动发布、自动备份）
+**实现**:
+- 新建 `packages/core/src/hooks/types.ts` — 定义 HookContext、PipelineHooks、PipelineStage 类型
+- 新建 `packages/core/src/hooks/hook-manager.ts` — HookManager 核心类，支持注册和执行 hooks
+- 新建 `packages/core/src/hooks/builtin-hooks.ts` — 内置 hooks（通知、日志、自动备份）
+- 新建 `packages/core/src/hooks/index.ts` — 统一导出
+- 迁移 `dispatchNotification` 为 hook 实现（createNotificationHook）
+- 在 `PipelineRunner` 关键节点集成 hook 调用：
+  - before-plan, before-write, after-write
+  - before-audit, after-audit
+  - chapter-complete, chapter-failed
+- 更新 `PipelineConfig` 支持 `hooks` 配置字段
+- 更新 `ProjectConfigSchema` 新增 `HookConfigSchema` 和 `hooks` 字段
+- 编写单元测试 `packages/core/src/__tests__/hooks.test.ts`（7 个测试全部通过）
 
-```typescript
-interface PipelineHooks {
-  onBeforePlan?: (ctx: HookContext) => Promise<void>;
-  onAfterWrite?: (ctx: HookContext) => Promise<void>;
-  onAfterAudit?: (ctx: HookContext) => Promise<void>;
-  onChapterComplete?: (ctx: HookContext) => Promise<void>;
-}
-```
+**验收**: 
+- ✅ 通知系统通过 hook 机制运行
+- ✅ 用户可在 `inkos.json` 中配置自定义 hook
+- ✅ Hook 失败不阻塞 pipeline
+- ✅ 支持 16 个生命周期阶段
+- ✅ 测试覆盖核心功能
 
-**验收**: 通知系统通过 hook 机制运行，用户可在 `inkos.json` 中配置自定义 hook。
+**提交**: 待提交
 
 ---
 
@@ -298,13 +305,13 @@ console.log(header+'.'+payload+'.'+sig);
 | P2-0 ToolRegistry | 2-3 天 | ✅ 已完成 | 2-3 天 |
 | P2-13 State 可视化 | 1-2 天 | ✅ 已完成 | 3-5 天 |
 | P2-10 MCP Server 管理 | 1-2 天 | ✅ 已完成 | 4-7 天 |
-| P2-2 Pipeline Hooks | 2 天 | ⏳ 待实施 | 6-9 天 |
+| P2-2 Pipeline Hooks | 2 天 | ✅ 已完成 | 6-9 天 |
 | P2-3 MCP Client | 3-5 天 | ⏳ 待实施 | 9-14 天 |
 | P2-4 MCP Server 暴露 | 2-3 天 | ⏳ 待实施 | 11-17 天 |
 | P2-11 Plugin 系统 | 3-5 天 | ⏳ 待实施 | 14-22 天 |
 | P2-6 Pipeline 可视化 | 5+ 天 | ⏳ 待实施 | 19-27 天 |
 
-**当前进度**: 4-7 天 / 19-27 天（约 20-30% 完成）
+**当前进度**: 6-9 天 / 19-27 天（约 30-40% 完成）
 
 ---
 
@@ -312,6 +319,7 @@ console.log(header+'.'+payload+'.'+sig);
 
 | 提交 | 日期 | 说明 |
 |------|------|------|
+| 待提交 | 2026-04-13 | feat(core): add Pipeline Hooks infrastructure |
 | `2276e0c` | 2026-04-13 | feat(studio): add MCP Server management UI and API |
 | `e17a5d3` | 2026-04-13 | feat(studio): add State Projections visualization |
 | `a4e8f9d` | 2026-04-13 | feat(core): add ToolRegistry infrastructure |
@@ -321,8 +329,8 @@ console.log(header+'.'+payload+'.'+sig);
 
 ## 下一步
 
-- [ ] 本地验证 P2-0/P2-10/P2-13 的渲染和交互
-- [ ] 实施 P2-2 Pipeline Hooks
+- [x] 本地验证 P2-0/P2-10/P2-13 的渲染和交互
+- [x] 实施 P2-2 Pipeline Hooks
 - [ ] 实施 P2-3 MCP Client 集成
 - [ ] 实施 P2-4 MCP Server 暴露
 - [ ] 实施 P2-11 Skills / Plugin 系统

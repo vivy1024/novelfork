@@ -75,6 +75,35 @@ export type InputGovernanceMode = z.infer<typeof InputGovernanceModeSchema>;
 
 const ModelOverrideValueSchema = z.union([z.string(), AgentLLMOverrideSchema]);
 
+export const HookConfigSchema = z.object({
+  name: z.string().min(1),
+  stages: z.array(z.enum([
+    "before-plan",
+    "after-plan",
+    "before-compose",
+    "after-compose",
+    "before-write",
+    "after-write",
+    "before-normalize",
+    "after-normalize",
+    "before-settle",
+    "after-settle",
+    "before-audit",
+    "after-audit",
+    "before-revise",
+    "after-revise",
+    "chapter-complete",
+    "chapter-failed",
+  ])),
+  type: z.enum(["builtin", "script"]),
+  handler: z.string().optional(),
+  script: z.string().optional(),
+  config: z.record(z.unknown()).optional(),
+  enabled: z.boolean().default(true),
+});
+
+export type HookConfig = z.infer<typeof HookConfigSchema>;
+
 export const ProjectConfigSchema = z.object({
   name: z.string().min(1),
   version: z.literal("0.1.0"),
@@ -84,6 +113,7 @@ export const ProjectConfigSchema = z.object({
   detection: DetectionConfigSchema.optional(),
   modelOverrides: z.record(z.string(), ModelOverrideValueSchema).optional(),
   inputGovernanceMode: InputGovernanceModeSchema.default("v2"),
+  hooks: z.array(HookConfigSchema).default([]),
   daemon: z.object({
     schedule: z.object({
       radarCron: z.string().default("0 */6 * * *"),
