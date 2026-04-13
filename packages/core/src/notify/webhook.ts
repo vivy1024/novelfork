@@ -8,6 +8,7 @@ export interface WebhookConfig {
 
 export type WebhookEvent =
   | "chapter-complete"
+  | "chapter-failed"
   | "audit-passed"
   | "audit-failed"
   | "revision-complete"

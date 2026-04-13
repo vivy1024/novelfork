@@ -14,5 +14,24 @@
       "writeCron": "*/15 * * * *"
     },
     "maxConcurrentBooks": 3
-  }
+  },
+  "mcpServers": [
+    {
+      "name": "example-filesystem",
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
+      "enabled": false
+    },
+    {
+      "name": "example-brave-search",
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+      "env": {
+        "BRAVE_API_KEY": "your-api-key-here"
+      },
+      "enabled": false
+    }
+  ]
 }

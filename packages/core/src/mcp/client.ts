@@ -129,7 +129,7 @@ export class MCPClientImpl implements MCPClient {
         jsonrpc: "2.0",
         id: this.transport.nextRequestId(),
         method: MCPMethods.CALL_TOOL,
-        params,
+        params: params as any,
       });
 
       if (response.error) {
@@ -200,7 +200,7 @@ export class MCPClientImpl implements MCPClient {
       jsonrpc: "2.0",
       id: this.transport.nextRequestId(),
       method: MCPMethods.INITIALIZE,
-      params,
+      params: params as any,
     });
 
     if (response.error) {

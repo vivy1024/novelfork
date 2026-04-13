@@ -141,3 +141,10 @@ export { sendTelegram, type TelegramConfig } from "./notify/telegram.js";
 export { sendFeishu, type FeishuConfig } from "./notify/feishu.js";
 export { sendWechatWork, type WechatWorkConfig } from "./notify/wechat-work.js";
 export { sendWebhook, type WebhookConfig, type WebhookEvent, type WebhookPayload } from "./notify/webhook.js";
+
+// MCP
+export { MCPClientImpl, MCPManager, StdioTransport, SSETransport, MCPMethods, MCPErrorCodes } from "./mcp/index.js";
+export type { MCPTransportType, MCPServerConfig, MCPTool, MCPToolCallRequest, MCPToolCallResponse, MCPContent, MCPConnectionState, MCPClientEvents, MCPClient, MCPRequest, MCPResponse, MCPNotification, MCPError, MCPInitializeParams, MCPInitializeResult, MCPToolsListResult, MCPToolCallParams, MCPToolCallResult } from "./mcp/index.js";
+
+// Registry
+export { ToolRegistry, globalToolRegistry, type ToolParameter, type ToolHandler, type GenericToolHandler, type RegisteredTool } from "./registry/tool-registry.js";

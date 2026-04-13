@@ -45,12 +45,15 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
+    "@modelcontextprotocol/sdk": "^1.0.4",
     "dotenv": "^16.4.0",
+    "eventsource": "^2.0.2",
     "js-yaml": "^4.1.1",
     "openai": "^4.80.0",
     "zod": "^3.24.0"
   },
   "devDependencies": {
+    "@types/eventsource": "^1.1.15",
     "@types/js-yaml": "^4.0.9",
     "typescript": "^5.8.0",
     "vitest": "^3.0.0"
