@@ -1,0 +1,21 @@
+{
+  "name": "auto-backup",
+  "displayName": "Auto Backup",
+  "version": "1.0.0",
+  "description": "Automatically backup chapters after completion",
+  "author": "InkOS Team",
+  "tools": ["backup_chapter"],
+  "hooks": ["chapter-complete"],
+  "configSchema": {
+    "backupDir": {
+      "type": "string",
+      "description": "Directory to store backups",
+      "default": "./backups"
+    },
+    "maxBackups": {
+      "type": "number",
+      "description": "Maximum number of backups to keep per chapter",
+      "default": 5
+    }
+  }
+}
