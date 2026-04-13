@@ -107,9 +107,18 @@ inkos config show-models        # 查看当前路由
 
 未单独配置的 Agent 自动使用全局模型。
 
-### v1 更新
+### 最新更新
 
-**InkOS Studio + 写作管线全面升级**
+**v1.2.0 — 架构扩展与可观测性升级**
+
+- **MCP Client 集成**：InkOS 现在可以调用外部 MCP Server 提供的工具（支持 stdio/SSE 传输，自动重连，21 个测试通过）
+- **Plugin 系统**：动态加载插件扩展 InkOS 功能（PluginManager + 生命周期管理 + 示例 AutoBackupPlugin）
+- **Pipeline 可视化**：VoltOps 风格运行态流程图，实时显示 7 个阶段状态、Token 统计、耗时、tool 调用日志
+- **Pipeline Hooks**：16 个生命周期拦截器（before-plan/after-write/chapter-complete 等），支持通知、日志、自动备份
+- **ToolRegistry**：统一工具注册与执行接口，支持 builtin/mcp/plugin 三种来源
+- **Studio 增强**：新增 State Projections 可视化、MCP Server 管理、Agent 管理面板、Scheduler 配置、AIGC 检测配置、伏笔健康仪表盘、LLM 高级参数暴露
+
+**v1.1 — InkOS Studio + 写作管线全面升级**
 
 - **InkOS Studio**（v1.0）：`inkos studio` 启动本地 Web 工作台（Vite + React + Hono）。书籍管理、章节审阅编辑、实时写作进度、市场雷达、数据分析、AI 检测、文风分析、题材管理、守护进程控制、真相文件编辑——CLI 能做的，Studio 全部可视化
 - **Foundation Reviewer**（v1.1）：建书时新增独立审核 Agent，5 维度百分制打分，不达 80 分自动驳回重新生成
