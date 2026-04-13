@@ -24,6 +24,7 @@ import {
   createAIRouter,
   createAIRelayRouter,
   createDaemonRouter,
+  createMCPRouter,
 } from "./routes/index.js";
 import type { RouterContext } from "./routes/index.js";
 import type { Context } from "hono";
@@ -181,6 +182,9 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
 
     // Daemon scheduler
     app.route("", createDaemonRouter(ctx));
+
+    // MCP Server management
+    app.route("", createMCPRouter(root));
   } else {
     // Relay mode — snapshot-based AI endpoints only
     app.route("", createAIRelayRouter(ctx));

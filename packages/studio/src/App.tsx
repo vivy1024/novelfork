@@ -33,6 +33,7 @@ import { DetectionConfigView } from "./pages/DetectionConfigView";
 import { HookDashboard } from "./pages/HookDashboard";
 import { LLMAdvancedConfig } from "./pages/LLMAdvancedConfig";
 import { StateProjectionsView } from "./pages/StateProjectionsView";
+import { MCPServerManager } from "./pages/MCPServerManager";
 import { RecoveryBanner } from "./components/RecoveryBanner";
 import { useSSE } from "./hooks/use-sse";
 import { useTheme } from "./hooks/use-theme";
@@ -68,7 +69,8 @@ export type Route =
   | { page: "detection-config" }
   | { page: "hooks" }
   | { page: "llm-advanced" }
-  | { page: "state"; bookId: string };
+  | { page: "state"; bookId: string }
+  | { page: "mcp" };
 
 export function deriveActiveBookId(route: Route): string | undefined {
   return route.page === "book" || route.page === "chapter" || route.page === "truth" || route.page === "analytics" || route.page === "diff" || route.page === "detect" || route.page === "intent" || route.page === "state"
@@ -271,6 +273,7 @@ function AppInner() {
     toHooks: () => openTab({ page: "hooks" }),
     toLLMAdvanced: () => openTab({ page: "llm-advanced" }),
     toState: (bookId: string) => openTab({ page: "state", bookId }),
+    toMCP: () => openTab({ page: "mcp" }),
   };
 
   const activeBookId = activeTab ? deriveActiveBookId(activeTab.route) : undefined;
@@ -427,6 +430,7 @@ function TabContent({ route, nav, theme, t, sse }: {
     case "hooks": return <HookDashboard nav={nav} theme={theme} t={t} />;
     case "llm-advanced": return <LLMAdvancedConfig nav={nav} theme={theme} t={t} />;
     case "state": return <StateProjectionsView bookId={route.bookId} nav={nav} theme={theme} t={t} />;
+    case "mcp": return <MCPServerManager nav={nav} theme={theme} t={t} />;
     default: return null;
   }
 }
