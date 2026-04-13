@@ -279,6 +279,7 @@ function AppInner() {
     toState: (bookId: string) => openTab({ page: "state", bookId }),
     toMCP: () => openTab({ page: "mcp" }),
     toPipeline: (runId?: string) => openTab({ page: "pipeline", runId }),
+    toPlugins: () => openTab({ page: "plugins" }),
   };
 
   const activeBookId = activeTab ? deriveActiveBookId(activeTab.route) : undefined;
@@ -437,6 +438,7 @@ function TabContent({ route, nav, theme, t, sse }: {
     case "state": return <StateProjectionsView bookId={route.bookId} nav={nav} theme={theme} t={t} />;
     case "mcp": return <MCPServerManager nav={nav} theme={theme} t={t} />;
     case "pipeline": return <PipelineVisualization runId={route.runId} nav={nav} theme={theme} t={t} />;
+    case "plugins": return <PluginManager nav={nav} theme={theme} t={t} />;
     default: return null;
   }
 }

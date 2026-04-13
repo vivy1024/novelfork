@@ -31,6 +31,7 @@ import {
   Layers,
   Server,
   GitBranch,
+  Puzzle,
 } from "lucide-react";
 
 interface BookSummary {
@@ -68,6 +69,7 @@ interface Nav {
   toState: (bookId: string) => void;
   toMCP: () => void;
   toPipeline: (runId?: string) => void;
+  toPlugins: () => void;
 }
 
 export function Sidebar({ nav, activePage, sse, t }: {
@@ -323,6 +325,12 @@ export function Sidebar({ nav, activePage, sse, t }: {
               icon={<GitBranch size={16} />}
               active={activePage === "pipeline"}
               onClick={() => nav.toPipeline()}
+            />
+            <SidebarItem
+              label="Plugin 管理"
+              icon={<Puzzle size={16} />}
+              active={activePage === "plugins"}
+              onClick={nav.toPlugins}
             />
           </div>
         </div>
