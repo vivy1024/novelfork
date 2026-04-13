@@ -25,6 +25,7 @@ import {
   createAIRelayRouter,
   createDaemonRouter,
   createMCPRouter,
+  createPipelineRouter,
 } from "./routes/index.js";
 import type { RouterContext } from "./routes/index.js";
 import type { Context } from "hono";
@@ -185,6 +186,9 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
 
     // MCP Server management
     app.route("", createMCPRouter(root));
+
+    // Pipeline visualization
+    app.route("/api/pipeline", createPipelineRouter(ctx));
   } else {
     // Relay mode — snapshot-based AI endpoints only
     app.route("", createAIRelayRouter(ctx));

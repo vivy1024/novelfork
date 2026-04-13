@@ -30,6 +30,7 @@ import {
   Clock,
   Layers,
   Server,
+  GitBranch,
 } from "lucide-react";
 
 interface BookSummary {
@@ -66,6 +67,7 @@ interface Nav {
   toLLMAdvanced: () => void;
   toState: (bookId: string) => void;
   toMCP: () => void;
+  toPipeline: (runId?: string) => void;
 }
 
 export function Sidebar({ nav, activePage, sse, t }: {
@@ -315,6 +317,12 @@ export function Sidebar({ nav, activePage, sse, t }: {
               icon={<Server size={16} />}
               active={activePage === "mcp"}
               onClick={nav.toMCP}
+            />
+            <SidebarItem
+              label="Pipeline 可视化"
+              icon={<GitBranch size={16} />}
+              active={activePage === "pipeline"}
+              onClick={() => nav.toPipeline()}
             />
           </div>
         </div>
