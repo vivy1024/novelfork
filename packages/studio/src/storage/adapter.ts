@@ -26,6 +26,21 @@ export interface ChapterMeta {
   readonly title: string;
   readonly status: string;
   readonly wordCount: number;
+  readonly auditIssues?: ReadonlyArray<string>;
+  readonly lengthWarnings?: ReadonlyArray<string>;
+  readonly reviewNote?: string;
+  readonly detectionScore?: number;
+  readonly detectionProvider?: string;
+  readonly lengthTelemetry?: {
+    readonly target: number;
+    readonly actual: number;
+    readonly delta: number;
+  };
+  readonly tokenUsage?: {
+    readonly prompt: number;
+    readonly completion: number;
+    readonly total: number;
+  };
 }
 
 export interface ChapterDetail {

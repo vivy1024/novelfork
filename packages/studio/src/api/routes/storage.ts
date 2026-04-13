@@ -21,6 +21,7 @@ const TRUTH_FILES = [
   "particle_ledger.md", "pending_hooks.md", "chapter_summaries.md",
   "subplot_board.md", "emotional_arcs.md", "character_matrix.md",
   "style_guide.md", "parent_canon.md", "fanfic_canon.md", "book_rules.md",
+  "author_intent.md", "current_focus.md",
 ];
 
 export function createStorageRouter(ctx: RouterContext): Hono {
@@ -282,6 +283,20 @@ export function createStorageRouter(ctx: RouterContext): Hono {
     }
   });
 
+  // --- State Projections ---
+
+  app.get("/api/books/:id/state", async (c) => {
+    const id = c.req.param("id");
+    const bookDir = state.bookDir(id);
+    try {
+      const { loadRuntimeStateSnapshot } = await import("@actalk/inkos-core/state/runtime-state-store");
+      const snapshot = await loadRuntimeStateSnapshot(bookDir);
+      return c.json(snapshot);
+    } catch (e) {
+      return c.json({ error: String(e) }, 500);
+    }
+  });
+
   // --- Analytics ---
 
   app.get("/api/books/:id/analytics", async (c) => {
@@ -450,6 +465,14 @@ export function createStorageRouter(ctx: RouterContext): Hono {
       stream: currentConfig.llm.stream,
       temperature: currentConfig.llm.temperature,
       maxTokens: currentConfig.llm.maxTokens,
+      daemon: currentConfig.daemon,
+      detection: currentConfig.detection ?? null,
+      llm: {
+        thinkingBudget: currentConfig.llm.thinkingBudget,
+        apiFormat: currentConfig.llm.apiFormat,
+        extra: currentConfig.llm.extra,
+        headers: currentConfig.llm.headers,
+      },
     });
   });
 
@@ -463,6 +486,22 @@ export function createStorageRouter(ctx: RouterContext): Hono {
       if (updates.maxTokens !== undefined) existing.llm.maxTokens = updates.maxTokens;
       if (updates.stream !== undefined) existing.llm.stream = updates.stream;
       if (updates.language === "zh" || updates.language === "en") existing.language = updates.language;
+      // daemon 配置
+      if (updates.daemon && typeof updates.daemon === "object") {
+        existing.daemon = { ...existing.daemon, ...(updates.daemon as Record<string, unknown>) };
+      }
+      // detection 配置
+      if (updates.detection && typeof updates.detection === "object") {
+        existing.detection = { ...existing.detection, ...(updates.detection as Record<string, unknown>) };
+      }
+      // llm 高级参数
+      if (updates.llm && typeof updates.llm === "object") {
+        const llmUpdates = updates.llm as Record<string, unknown>;
+        if (llmUpdates.thinkingBudget !== undefined) existing.llm.thinkingBudget = llmUpdates.thinkingBudget;
+        if (llmUpdates.apiFormat !== undefined) existing.llm.apiFormat = llmUpdates.apiFormat;
+        if (llmUpdates.extra !== undefined) existing.llm.extra = llmUpdates.extra;
+        if (llmUpdates.headers !== undefined) existing.llm.headers = llmUpdates.headers;
+      }
       const { writeFile: writeFileFs } = await import("node:fs/promises");
       await writeFileFs(configPath, JSON.stringify(existing, null, 2), "utf-8");
       return c.json({ ok: true });

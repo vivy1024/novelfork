@@ -19,6 +19,10 @@ export interface LLMRelayConfig {
   readonly maxTokens?: number;
   readonly stream?: boolean;
   readonly modelOverrides?: Record<string, string>;
+  readonly thinkingBudget?: number;
+  readonly apiFormat?: "chat" | "responses";
+  readonly extra?: Record<string, unknown>;
+  readonly headers?: Record<string, string>;
 }
 
 // ---------------------------------------------------------------------------

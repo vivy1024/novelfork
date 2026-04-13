@@ -22,6 +22,12 @@ import {
   FolderOpen,
   Search,
   Shield,
+  Bot,
+  Bell,
+  Anchor,
+  ShieldCheck,
+  Sliders,
+  Clock,
 } from "lucide-react";
 
 interface BookSummary {
@@ -48,6 +54,14 @@ interface Nav {
   toDoctor: () => void;
   toSearch: () => void;
   toBackup: () => void;
+  toDetect: (bookId: string) => void;
+  toNotify: () => void;
+  toIntent: (bookId: string) => void;
+  toAgents: () => void;
+  toSchedulerConfig: () => void;
+  toDetectionConfig: () => void;
+  toHooks: () => void;
+  toLLMAdvanced: () => void;
 }
 
 export function Sidebar({ nav, activePage, sse, t }: {
@@ -211,6 +225,32 @@ export function Sidebar({ nav, activePage, sse, t }: {
                 onClick={nav.toBackup}
               />
             )}
+            <SidebarItem
+              label="Agent 管理"
+              icon={<Bot size={16} />}
+              active={activePage === "agents"}
+              onClick={nav.toAgents}
+            />
+            <SidebarItem
+              label="通知配置"
+              icon={<Bell size={16} />}
+              active={activePage === "notify"}
+              onClick={nav.toNotify}
+            />
+            {(isStandalone || isTauri) && (
+              <SidebarItem
+                label="调度配置"
+                icon={<Clock size={16} />}
+                active={activePage === "scheduler-config"}
+                onClick={nav.toSchedulerConfig}
+              />
+            )}
+            <SidebarItem
+              label="LLM 高级"
+              icon={<Sliders size={16} />}
+              active={activePage === "llm-advanced"}
+              onClick={nav.toLLMAdvanced}
+            />
           </div>
         </div>
 
@@ -254,6 +294,18 @@ export function Sidebar({ nav, activePage, sse, t }: {
                 onClick={nav.toDoctor}
               />
             )}
+            <SidebarItem
+              label="伏笔健康"
+              icon={<Anchor size={16} />}
+              active={activePage === "hooks"}
+              onClick={nav.toHooks}
+            />
+            <SidebarItem
+              label="AIGC 检测"
+              icon={<ShieldCheck size={16} />}
+              active={activePage === "detection-config"}
+              onClick={nav.toDetectionConfig}
+            />
           </div>
         </div>
       </div>

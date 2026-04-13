@@ -1,0 +1,18 @@
+{
+  "name": "inkos-studio",
+  "version": "0.1.0",
+  "language": "zh",
+  "llm": {
+    "provider": "openai",
+    "baseUrl": "",
+    "model": "gpt-4o"
+  },
+  "notify": [],
+  "daemon": {
+    "schedule": {
+      "radarCron": "0 */6 * * *",
+      "writeCron": "*/15 * * * *"
+    },
+    "maxConcurrentBooks": 3
+  }
+}

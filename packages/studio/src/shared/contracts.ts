@@ -60,6 +60,19 @@ export interface ChapterSummary {
 export interface ChapterDetail extends ChapterSummary {
   readonly auditIssues: ReadonlyArray<string>;
   readonly reviewNote?: string;
+  readonly detectionScore?: number;
+  readonly detectionProvider?: string;
+  readonly lengthTelemetry?: {
+    readonly target: number;
+    readonly actual: number;
+    readonly delta: number;
+  };
+  readonly tokenUsage?: {
+    readonly prompt: number;
+    readonly completion: number;
+    readonly total: number;
+  };
+  readonly lengthWarnings?: ReadonlyArray<string>;
   readonly content: string;
 }
 

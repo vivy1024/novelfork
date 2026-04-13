@@ -24,6 +24,14 @@ import { DiffView } from "./pages/DiffView";
 import { SearchView } from "./pages/SearchView";
 import { BackupView } from "./pages/BackupView";
 import { LanguageSelector } from "./pages/LanguageSelector";
+import { DetectView } from "./pages/DetectView";
+import { NotifyConfig } from "./pages/NotifyConfig";
+import { IntentEditor } from "./pages/IntentEditor";
+import { AgentPanel } from "./pages/AgentPanel";
+import { SchedulerConfig } from "./pages/SchedulerConfig";
+import { DetectionConfigView } from "./pages/DetectionConfigView";
+import { HookDashboard } from "./pages/HookDashboard";
+import { LLMAdvancedConfig } from "./pages/LLMAdvancedConfig";
 import { RecoveryBanner } from "./components/RecoveryBanner";
 import { useSSE } from "./hooks/use-sse";
 import { useTheme } from "./hooks/use-theme";
@@ -50,10 +58,18 @@ export type Route =
   | { page: "doctor" }
   | { page: "diff"; bookId: string; chapterNumber: number }
   | { page: "search" }
-  | { page: "backup" };
+  | { page: "backup" }
+  | { page: "detect"; bookId: string }
+  | { page: "notify" }
+  | { page: "intent"; bookId: string }
+  | { page: "agents" }
+  | { page: "scheduler-config" }
+  | { page: "detection-config" }
+  | { page: "hooks" }
+  | { page: "llm-advanced" };
 
 export function deriveActiveBookId(route: Route): string | undefined {
-  return route.page === "book" || route.page === "chapter" || route.page === "truth" || route.page === "analytics" || route.page === "diff"
+  return route.page === "book" || route.page === "chapter" || route.page === "truth" || route.page === "analytics" || route.page === "diff" || route.page === "detect" || route.page === "intent"
     ? route.bookId
     : undefined;
 }
@@ -244,6 +260,14 @@ function AppInner() {
     toBackup: () => openTab({ page: "backup" }),
     toDiff: (bookId: string, chapterNumber: number) =>
       openTab({ page: "diff", bookId, chapterNumber }),
+    toDetect: (bookId: string) => openTab({ page: "detect", bookId }),
+    toNotify: () => openTab({ page: "notify" }),
+    toIntent: (bookId: string) => openTab({ page: "intent", bookId }),
+    toAgents: () => openTab({ page: "agents" }),
+    toSchedulerConfig: () => openTab({ page: "scheduler-config" }),
+    toDetectionConfig: () => openTab({ page: "detection-config" }),
+    toHooks: () => openTab({ page: "hooks" }),
+    toLLMAdvanced: () => openTab({ page: "llm-advanced" }),
   };
 
   const activeBookId = activeTab ? deriveActiveBookId(activeTab.route) : undefined;
@@ -391,6 +415,14 @@ function TabContent({ route, nav, theme, t, sse }: {
     case "search": return <SearchView nav={nav} theme={theme} t={t} />;
     case "diff": return <DiffView bookId={route.bookId} chapterNumber={route.chapterNumber} nav={nav} theme={theme} t={t} />;
     case "backup": return <BackupView nav={nav} theme={theme} t={t} />;
+    case "detect": return <DetectView bookId={route.bookId} nav={nav} theme={theme} t={t} />;
+    case "notify": return <NotifyConfig nav={nav} theme={theme} t={t} />;
+    case "intent": return <IntentEditor bookId={route.bookId} nav={nav} theme={theme} t={t} />;
+    case "agents": return <AgentPanel nav={nav} theme={theme} t={t} />;
+    case "scheduler-config": return <SchedulerConfig nav={nav} theme={theme} t={t} />;
+    case "detection-config": return <DetectionConfigView nav={nav} theme={theme} t={t} />;
+    case "hooks": return <HookDashboard nav={nav} theme={theme} t={t} />;
+    case "llm-advanced": return <LLMAdvancedConfig nav={nav} theme={theme} t={t} />;
     default: return null;
   }
 }
