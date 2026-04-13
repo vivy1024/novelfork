@@ -8,6 +8,10 @@ export { type BookRules, type ParsedBookRules, BookRulesSchema, parseBookRules }
 export { type DetectionHistoryEntry, type DetectionStats } from "./models/detection.js";
 export { type StyleProfile } from "./models/style-profile.js";
 export { type LengthCountingMode, type LengthNormalizeMode, type LengthSpec, type LengthTelemetry, type LengthWarning, LengthCountingModeSchema, LengthNormalizeModeSchema, LengthSpecSchema, LengthTelemetrySchema, LengthWarningSchema } from "./models/length-governance.js";
+
+// Pipeline events
+export { pipelineEvents, type PipelineEvent, type PipelineEventHandler, type PipelineStageUpdate, type PipelineRunStart, type PipelineRunComplete } from "./pipeline/pipeline-events.js";
+
 export {
   type RuntimeStateLanguage,
   type StateManifest,

@@ -1,5 +1,6 @@
 import { Router } from "express";
 import type { RouterContext } from "./context.js";
+import { pipelineEvents } from "@actalk/inkos-core";
 
 interface PipelineStage {
   readonly name: string;
@@ -34,6 +35,17 @@ interface PipelineRun {
 
 // In-memory storage for pipeline runs (temporary implementation)
 const pipelineRuns = new Map<string, PipelineRun>();
+
+// Listen to pipeline events from core
+pipelineEvents.on((event) => {
+  if (event.type === "run:start") {
+    createPipelineRun(event.data.runId, event.data.bookId, event.data.bookTitle);
+  } else if (event.type === "stage:update") {
+    updatePipelineStage(event.data.runId, event.data.stageName, event.data);
+  } else if (event.type === "run:complete") {
+    completePipelineRun(event.data.runId, event.data.status);
+  }
+});
 
 export function createPipelineRouter(ctx: RouterContext): Router {
   const router = Router();
