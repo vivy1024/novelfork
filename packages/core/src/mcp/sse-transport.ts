@@ -39,13 +39,20 @@ export class SSETransport extends EventEmitter {
       throw new Error("Transport already connected");
     }
 
-    // Note: EventSource is available in browser and via polyfill in Node.js
-    // For Node.js, use eventsource package: npm install eventsource
-    const EventSourceImpl = globalThis.EventSource ?? (await import("eventsource")).default;
+    // Note: For Node.js, use eventsource package which supports headers
+    // For browser, standard EventSource doesn't support custom headers
+    let EventSourceImpl: any;
 
-    this.eventSource = new EventSourceImpl(this.config.url, {
-      headers: this.config.headers as Record<string, string>,
-    }) as EventSource;
+    if (typeof globalThis.EventSource !== "undefined") {
+      EventSourceImpl = globalThis.EventSource;
+      this.eventSource = new EventSourceImpl(this.config.url) as EventSource;
+    } else {
+      // Node.js: use eventsource package
+      const { default: NodeEventSource } = await import("eventsource");
+      this.eventSource = new NodeEventSource(this.config.url, {
+        headers: this.config.headers,
+      }) as any as EventSource;
+    }
 
     this.eventSource.onmessage = (event) => {
       try {

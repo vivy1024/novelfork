@@ -93,7 +93,13 @@ export class ToolRegistry {
     if (!tool) {
       return JSON.stringify({ error: `Unknown tool: ${name}` });
     }
-    return tool.handler(pipeline, state, config, args);
+
+    try {
+      const result = await tool.handler(pipeline as any, state as any, config as any, args);
+      return typeof result === "string" ? result : JSON.stringify(result);
+    } catch (error) {
+      return JSON.stringify({ error: String(error) });
+    }
   }
 }
 

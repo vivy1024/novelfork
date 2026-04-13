@@ -3,11 +3,17 @@ import { PipelineRunner, type PipelineConfig } from "./runner.js";
 import { globalToolRegistry } from "../registry/tool-registry.js";
 import { BUILTIN_TOOLS } from "../registry/builtin-tools.js";
 import { DEFAULT_REVISE_MODE } from "../agents/reviser.js";
+import { MCPManager } from "../mcp/manager.js";
+import type { MCPServerConfig } from "../mcp/types.js";
+import { createLogger, nullSink } from "../utils/logger.js";
 
 // 初始化内置工具注册表
 for (const tool of BUILTIN_TOOLS) {
   globalToolRegistry.register(tool);
 }
+
+// 全局 MCP Manager 实例
+let globalMCPManager: MCPManager | null = null;
 
 /** Tool definitions for the agent loop. */
 const TOOLS: ReadonlyArray<ToolDefinition> = [
@@ -229,6 +235,54 @@ export interface AgentLoopOptions {
   readonly onToolResult?: (name: string, result: string) => void;
   readonly onMessage?: (content: string) => void;
   readonly maxTurns?: number;
+  readonly mcpServers?: ReadonlyArray<MCPServerConfig>;
+}
+
+/**
+ * Initialize MCP servers and register their tools to the global registry
+ */
+async function initializeMCPServers(
+  mcpServers: ReadonlyArray<MCPServerConfig>,
+): Promise<MCPManager> {
+  const logger = createLogger({ tag: "mcp", sinks: [nullSink] });
+  const manager = new MCPManager(globalToolRegistry, logger);
+
+  for (const serverConfig of mcpServers) {
+    try {
+      await manager.addServer(serverConfig);
+    } catch (error) {
+      logger.error(`Failed to initialize MCP server ${serverConfig.name}: ${error}`);
+    }
+  }
+
+  return manager;
+}
+
+/**
+ * Get or create global MCP manager
+ */
+async function getOrCreateMCPManager(
+  mcpServers?: ReadonlyArray<MCPServerConfig>,
+): Promise<MCPManager | null> {
+  if (!mcpServers || mcpServers.length === 0) {
+    return null;
+  }
+
+  if (!globalMCPManager) {
+    globalMCPManager = await initializeMCPServers(mcpServers);
+  }
+
+  return globalMCPManager;
+}
+
+/**
+ * Shutdown global MCP manager
+ */
+export async function shutdownMCPManager(): Promise<void> {
+  if (globalMCPManager) {
+    await globalMCPManager.disconnectAll();
+    globalMCPManager = null;
+  }
 }
 
 export async function runAgentLoop(
@@ -239,6 +293,22 @@ export async function runAgentLoop(
   const pipeline = new PipelineRunner(config);
   const { StateManager } = await import("../state/manager.js");
   const state = new StateManager(config.projectRoot);
+
+  // Initialize MCP servers if provided
+  await getOrCreateMCPManager(options?.mcpServers);
+
+  // Get all available tools (builtin + MCP)
+  const allToolDefinitions = globalToolRegistry.listDefinitions();
+  const toolsForLLM: ToolDefinition[] = [
+    ...TOOLS,
+    ...allToolDefinitions
+      .filter((t) => t.source === "mcp")
+      .map((t) => ({
+        name: t.name,
+        description: t.description,
+        parameters: t.inputSchema as any,
+      })),
+  ];
 
   const messages: AgentMessage[] = [
     {
@@ -315,7 +385,7 @@ export async function runAgentLoop(
   let lastAssistantMessage = "";
 
   for (let turn = 0; turn < maxTurns; turn++) {
-    const result = await chatWithTools(config.client, config.model, messages, TOOLS);
+    const result = await chatWithTools(config.client, config.model, messages, toolsForLLM);
 
     // Push assistant message to history
     messages.push({
