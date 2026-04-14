@@ -56,6 +56,16 @@ export interface StoredHook {
   readonly notes: string;
 }
 
+export interface ChapterSnapshot {
+  readonly id?: number;
+  readonly chapterId: string;
+  readonly content: string;
+  readonly createdAt: number;
+  readonly triggerType: string;
+  readonly description?: string;
+  readonly parentId?: number;
+}
+
 export class MemoryDB {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private db: any;
@@ -104,11 +114,23 @@ export class MemoryDB {
         notes TEXT NOT NULL DEFAULT ''
       );
 
+      CREATE TABLE IF NOT EXISTS chapter_snapshots (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        chapter_id TEXT NOT NULL,
+        content TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        trigger_type TEXT NOT NULL,
+        description TEXT,
+        parent_id INTEGER,
+        FOREIGN KEY (parent_id) REFERENCES chapter_snapshots(id)
+      );
+
       CREATE INDEX IF NOT EXISTS idx_facts_subject ON facts(subject);
       CREATE INDEX IF NOT EXISTS idx_facts_valid ON facts(valid_from_chapter, valid_until_chapter);
       CREATE INDEX IF NOT EXISTS idx_facts_source ON facts(source_chapter);
       CREATE INDEX IF NOT EXISTS idx_hooks_status ON hooks(status);
       CREATE INDEX IF NOT EXISTS idx_hooks_last_advanced ON hooks(last_advanced_chapter);
+      CREATE INDEX IF NOT EXISTS idx_snapshots_chapter ON chapter_snapshots(chapter_id, created_at DESC);
     `);
 
     this.ensureColumn("hooks", "payoff_timing", "TEXT NOT NULL DEFAULT ''");
@@ -337,6 +359,80 @@ export class MemoryDB {
        WHERE lower(status) NOT IN ('resolved', 'closed', '已回收', '已解决')
        ORDER BY last_advanced_chapter DESC, start_chapter DESC, hook_id ASC`,
     ).all() as unknown as ReadonlyArray<StoredHook>;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Chapter Snapshots
+  // ---------------------------------------------------------------------------
+
+  /** Create a new snapshot and auto-cleanup old ones. */
+  createSnapshot(
+    chapterId: string,
+    content: string,
+    triggerType: string,
+    description?: string,
+  ): number {
+    const createdAt = Date.now();
+    const stmt = this.db.prepare(
+      `INSERT INTO chapter_snapshots (chapter_id, content, created_at, trigger_type, description)
+       VALUES (?, ?, ?, ?, ?)`,
+    );
+    const result = stmt.run(chapterId, content, createdAt, triggerType, description ?? null);
+    const snapshotId = Number(result.lastInsertRowid);
+
+    // Auto-cleanup: keep only the 50 most recent snapshots for this chapter
+    this.deleteOldSnapshots(chapterId, 50);
+
+    return snapshotId;
+  }
+
+  /** Get snapshots for a chapter, ordered by most recent first. */
+  getSnapshots(chapterId: string, limit = 50): ReadonlyArray<ChapterSnapshot> {
+    return this.db.prepare(
+      `SELECT
+         id,
+         chapter_id AS chapterId,
+         content,
+         created_at AS createdAt,
+         trigger_type AS triggerType,
+         description,
+         parent_id AS parentId
+       FROM chapter_snapshots
+       WHERE chapter_id = ?
+       ORDER BY created_at DESC
+       LIMIT ?`,
+    ).all(chapterId, limit) as unknown as ChapterSnapshot[];
+  }
+
+  /** Get a specific snapshot's content. */
+  getSnapshotContent(snapshotId: number): ChapterSnapshot | null {
+    const result = this.db.prepare(
+      `SELECT
+         id,
+         chapter_id AS chapterId,
+         content,
+         created_at AS createdAt,
+         trigger_type AS triggerType,
+         description,
+         parent_id AS parentId
+       FROM chapter_snapshots
+       WHERE id = ?`,
+    ).get(snapshotId) as unknown as ChapterSnapshot | undefined;
+    return result ?? null;
+  }
+
+  /** Delete old snapshots, keeping only the most recent N. */
+  deleteOldSnapshots(chapterId: string, keepCount = 50): void {
+    this.db.prepare(
+      `DELETE FROM chapter_snapshots
+       WHERE chapter_id = ?
+       AND id NOT IN (
+         SELECT id FROM chapter_snapshots
+         WHERE chapter_id = ?
+         ORDER BY created_at DESC
+         LIMIT ?
+       )`,
+    ).run(chapterId, chapterId, keepCount);
   }
 
   // ---------------------------------------------------------------------------

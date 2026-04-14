@@ -1,10 +1,13 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { fetchJson, useApi, postApi } from "../hooks/use-api";
 import { useAutosave } from "../hooks/use-autosave";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
 import { useColors } from "../hooks/use-colors";
 import { InkEditor, getMarkdown } from "../components/InkEditor";
+import { ContextPanel } from "../components/ContextPanel";
+import { HistoryPanel } from "../components/HistoryPanel";
+import { DiffPanel } from "../components/DiffPanel";
 import {
   ChevronLeft,
   Check,
@@ -21,6 +24,9 @@ import {
   Save,
   Eye,
   GitCompare,
+  Layers,
+  History,
+  BookmarkPlus,
 } from "lucide-react";
 
 interface ChapterData {
@@ -49,6 +55,12 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
   const [editing, setEditing] = useState(false);
   const [editContent, setEditContent] = useState("");
   const [manualSaving, setManualSaving] = useState(false);
+  const [contextPanelOpen, setContextPanelOpen] = useState(false);
+  const [historyPanelOpen, setHistoryPanelOpen] = useState(false);
+  const [diffPanelData, setDiffPanelData] = useState<{ originalText: string; newText: string; mode: string; snapshotId: number } | null>(null);
+  const [showSnapshotDialog, setShowSnapshotDialog] = useState(false);
+  const [snapshotDescription, setSnapshotDescription] = useState("");
+  const editorRef = useRef<any>(null);
 
   const autosave = useAutosave({
     bookId,
@@ -88,6 +100,82 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
     }
   };
 
+  const handleAIAction = async (params: { text: string; surrounding: string; mode: string }): Promise<string> => {
+    const response = await fetchJson<{ result: string; mode: string }>("/api/ai/transform", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(params),
+    });
+    return response.result;
+  };
+
+  const handleSnapshotSelect = async (snapshotId: number) => {
+    try {
+      // Get current editor content
+      const currentContent = editorRef.current ? getMarkdown(editorRef.current) : editContent;
+
+      // Fetch snapshot content
+      const snapshotData = await fetchJson<{ content: string }>(`/api/snapshots/${snapshotId}/content`);
+
+      // Open DiffPanel with comparison
+      setDiffPanelData({
+        originalText: snapshotData.content,
+        newText: currentContent,
+        mode: "restore",
+        snapshotId,
+      });
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to load snapshot");
+    }
+  };
+
+  const handleRestoreSnapshot = async () => {
+    if (!diffPanelData) return;
+
+    try {
+      // Call restore API
+      await postApi(`/api/snapshots/${diffPanelData.snapshotId}/restore`);
+
+      // Update editor content with snapshot content
+      setEditContent(diffPanelData.originalText);
+
+      // Close diff panel and refresh
+      setDiffPanelData(null);
+      refetch();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to restore snapshot");
+    }
+  };
+
+  const handleSaveSnapshot = async () => {
+    try {
+      // Get current editor content
+      const currentContent = editorRef.current ? getMarkdown(editorRef.current) : editContent;
+
+      // Get chapter ID
+      const chapterData = await fetchJson<{ id: number }>(`/books/${bookId}/chapters/${chapterNumber}`);
+
+      // Create snapshot
+      await fetchJson("/api/snapshots", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chapterId: chapterData.id,
+          content: currentContent,
+          triggerType: "manual",
+          description: snapshotDescription || "手动保存",
+        }),
+      });
+
+      // Close dialog and reset
+      setShowSnapshotDialog(false);
+      setSnapshotDescription("");
+      alert("快照已保存");
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to save snapshot");
+    }
+  };
+
   const isSaving = manualSaving || autosave.saving;
 
   if (loading) return (
@@ -118,6 +206,21 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
     await postApi(`/books/${bookId}/chapters/${chapterNumber}/reject`);
     nav.toBook(bookId);
   };
+
+  // Keyboard shortcut: Ctrl+S / Cmd+S for manual snapshot
+  useEffect(() => {
+    if (!editing) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        setShowSnapshotDialog(true);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [editing]);
 
   return (
     <div className="max-w-4xl mx-auto space-y-10 fade-in">
@@ -160,6 +263,35 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
             <GitCompare size={14} />
             {t("diff.title")}
           </button>
+
+          <button
+            onClick={() => {
+              setContextPanelOpen(false);
+              setHistoryPanelOpen(!historyPanelOpen);
+            }}
+            className="flex items-center gap-2 px-4 py-2 text-xs font-bold bg-secondary text-muted-foreground rounded-xl hover:text-primary hover:bg-primary/10 transition-all border border-border/50"
+          >
+            <History size={14} />
+            历史
+          </button>
+
+          <button
+            onClick={() => setContextPanelOpen(!contextPanelOpen)}
+            className="flex items-center gap-2 px-4 py-2 text-xs font-bold bg-secondary text-muted-foreground rounded-xl hover:text-primary hover:bg-primary/10 transition-all border border-border/50"
+          >
+            <Layers size={14} />
+            上下文
+          </button>
+
+          {editing && (
+            <button
+              onClick={() => setShowSnapshotDialog(true)}
+              className="flex items-center gap-2 px-4 py-2 text-xs font-bold bg-blue-500/10 text-blue-600 rounded-xl hover:bg-blue-500 hover:text-white transition-all border border-blue-500/20"
+            >
+              <BookmarkPlus size={14} />
+              保存快照
+            </button>
+          )}
 
           {/* Edit / Preview toggle */}
           {editing ? (
@@ -232,9 +364,13 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
         {editing ? (
           <>
             <InkEditor
+              ref={editorRef}
               initialContent={editContent}
               onChange={(md) => setEditContent(md)}
               editable={true}
+              onAIAction={handleAIAction}
+              bookId={bookId}
+              chapterNumber={chapterNumber}
             />
             <div className="flex items-center gap-2 text-xs text-muted-foreground mt-2">
               {autosave.saving
@@ -282,6 +418,64 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
           <div />
         )}
       </div>
+
+      <ContextPanel
+        bookId={bookId}
+        chapterNumber={chapterNumber}
+        visible={contextPanelOpen}
+        onClose={() => setContextPanelOpen(false)}
+      />
+
+      <HistoryPanel
+        bookId={bookId}
+        chapterNumber={chapterNumber}
+        visible={historyPanelOpen}
+        onClose={() => setHistoryPanelOpen(false)}
+        onSnapshotSelect={handleSnapshotSelect}
+      />
+
+      {diffPanelData && (
+        <DiffPanel
+          originalText={diffPanelData.originalText}
+          newText={diffPanelData.newText}
+          mode={diffPanelData.mode}
+          onAccept={handleRestoreSnapshot}
+          onReject={() => setDiffPanelData(null)}
+        />
+      )}
+
+      {showSnapshotDialog && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 animate-in fade-in duration-200">
+          <div className="bg-background rounded-2xl border border-border shadow-2xl w-[400px] p-6 space-y-4 animate-in zoom-in-95 duration-200">
+            <h3 className="text-lg font-bold text-foreground">保存快照</h3>
+            <input
+              type="text"
+              value={snapshotDescription}
+              onChange={(e) => setSnapshotDescription(e.target.value)}
+              placeholder="输入快照描述（可选）"
+              className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+              autoFocus
+            />
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => {
+                  setShowSnapshotDialog(false);
+                  setSnapshotDescription("");
+                }}
+                className="px-4 py-2 text-xs font-bold bg-secondary text-muted-foreground rounded-lg hover:text-foreground transition-all"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleSaveSnapshot}
+                className="px-4 py-2 text-xs font-bold bg-primary text-primary-foreground rounded-lg hover:scale-105 active:scale-95 transition-all"
+              >
+                保存
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

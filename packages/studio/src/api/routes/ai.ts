@@ -9,6 +9,15 @@ import { streamSSE } from "hono/streaming";
 import {
   PipelineRunner,
   createLLMClient,
+  chatCompletion,
+  filterHooks,
+  filterSummaries,
+  filterSubplots,
+  filterEmotionalArcs,
+  filterCharacterMatrix,
+  extractPOVFromOutline,
+  filterMatrixByPOV,
+  filterHooksByPOV,
 } from "@actalk/inkos-core";
 import { join } from "node:path";
 import { readFile, readdir } from "node:fs/promises";
@@ -415,6 +424,227 @@ export function createAIRouter(ctx: RouterContext): Hono {
       legacyBroadcast("agent:error", { instruction, error: msg });
       return c.json({ response: msg });
     }
+  });
+
+  // --- Selection Transform (lightweight text-in → text-out) ---
+
+  const TRANSFORM_MODES = ["polish", "condense", "expand", "audit"] as const;
+  type TransformMode = (typeof TRANSFORM_MODES)[number];
+
+  const TRANSFORM_PROMPTS: Record<TransformMode, string> = {
+    polish:
+      "你是一位专业小说编辑。请润色以下文本，保留原意和风格，优化措辞和节奏感。只返回润色后的文本，不要解释。",
+    condense:
+      "你是一位专业小说编辑。请精简以下文本，去除冗余，保留核心信息。只返回精简后的文本。",
+    expand:
+      "你是一位专业小说编辑。请扩写以下文本，增加场景细节、感官描写或对话。只返回扩写后的文本。",
+    audit:
+      "你是一位连续性审计员。请审查以下文本片段，找出逻辑矛盾、人物性格不一致、时间线错误等问题。以 JSON 数组返回问题列表。",
+  };
+
+  app.post("/api/ai/transform", async (c) => {
+    const body = await c.req
+      .json<{ text: string; surrounding: string; mode: string }>()
+      .catch(() => ({ text: "", surrounding: "", mode: "" }));
+
+    if (!body.text?.trim()) {
+      return c.json({ error: "text is required" }, 400);
+    }
+    if (!TRANSFORM_MODES.includes(body.mode as TransformMode)) {
+      return c.json(
+        { error: `mode must be one of: ${TRANSFORM_MODES.join(", ")}` },
+        400,
+      );
+    }
+
+    const mode = body.mode as TransformMode;
+
+    try {
+      const sessionLlm = await ctx.getSessionLlm(c);
+      const config = await ctx.buildPipelineConfig(sessionLlm);
+
+      const messages = [
+        { role: "system" as const, content: TRANSFORM_PROMPTS[mode] },
+        {
+          role: "user" as const,
+          content: `### 上下文\n${body.surrounding}\n\n### 需要处理的选中文本\n${body.text}`,
+        },
+      ];
+
+      const response = await chatCompletion(config.client, config.model, messages);
+      return c.json({ result: response.content, mode });
+    } catch (e) {
+      return c.json({ error: String(e) }, 500);
+    }
+  });
+
+  // --- Context Assembly (for ContextPanel) ---
+
+  const TRUTH_LABEL_MAP: Record<string, string> = {
+    "story_bible.md": "故事圣经",
+    "volume_outline.md": "卷大纲",
+    "current_state.md": "当前状态",
+    "particle_ledger.md": "粒子台账",
+    "pending_hooks.md": "悬念钩子",
+    "chapter_summaries.md": "章节摘要",
+    "subplot_board.md": "支线看板",
+    "emotional_arcs.md": "情感弧线",
+    "character_matrix.md": "角色矩阵",
+    "style_guide.md": "文风指南",
+    "parent_canon.md": "母本设定",
+    "fanfic_canon.md": "同人设定",
+    "book_rules.md": "书籍规则",
+    "author_intent.md": "作者意图",
+    "current_focus.md": "当前焦点",
+  };
+
+  const CONTEXT_BUDGET_MAX = 8000;
+
+  function estimateTokens(content: string): number {
+    return Math.ceil(content.length / 2);
+  }
+
+  async function loadTruthFile(storyDir: string, filename: string): Promise<string | null> {
+    try {
+      return await readFile(join(storyDir, filename), "utf-8");
+    } catch {
+      return null;
+    }
+  }
+
+  app.post("/api/ai/context-assembly", async (c) => {
+    const body = await c.req
+      .json<{ bookId: string; chapterNumber: number; povCharacter?: string }>()
+      .catch(() => ({ bookId: "", chapterNumber: 1, povCharacter: undefined }));
+
+    if (!body.bookId) {
+      return c.json({ error: "bookId is required" }, 400);
+    }
+
+    try {
+      const bookDir = state.bookDir(body.bookId);
+      const storyDir = join(bookDir, "story");
+
+      const filenames = Object.keys(TRUTH_LABEL_MAP);
+      const rawContents = await Promise.all(
+        filenames.map((f) => loadTruthFile(storyDir, f)),
+      );
+
+      // Build a map of filename → raw content
+      const contentMap = new Map<string, string>();
+      for (let i = 0; i < filenames.length; i++) {
+        const raw = rawContents[i];
+        if (raw && raw.trim()) {
+          contentMap.set(filenames[i]!, raw);
+        }
+      }
+
+      // Load outline for POV extraction and character filtering
+      const outline = contentMap.get("volume_outline.md") ?? "";
+      const summaries = contentMap.get("chapter_summaries.md") ?? "";
+
+      // Determine POV character
+      const pov = body.povCharacter ?? extractPOVFromOutline(outline, body.chapterNumber);
+
+      // Apply filters to each truth file
+      const entries: Array<{
+        source: string;
+        label: string;
+        content: string;
+        tokens: number;
+        active: boolean;
+      }> = [];
+
+      for (const [filename, raw] of contentMap) {
+        let filtered = raw;
+
+        switch (filename) {
+          case "pending_hooks.md":
+            filtered = filterHooks(raw);
+            if (pov) filtered = filterHooksByPOV(filtered, pov, summaries);
+            break;
+          case "chapter_summaries.md":
+            filtered = filterSummaries(raw, body.chapterNumber);
+            break;
+          case "subplot_board.md":
+            filtered = filterSubplots(raw);
+            break;
+          case "emotional_arcs.md":
+            filtered = filterEmotionalArcs(raw, body.chapterNumber);
+            break;
+          case "character_matrix.md":
+            filtered = filterCharacterMatrix(raw, outline);
+            if (pov) filtered = filterMatrixByPOV(filtered, pov);
+            break;
+          default:
+            // No special filter; use raw content
+            break;
+        }
+
+        entries.push({
+          source: filename,
+          label: TRUTH_LABEL_MAP[filename] ?? filename,
+          content: filtered,
+          tokens: estimateTokens(filtered),
+          active: true,
+        });
+      }
+
+      const totalTokens = entries.reduce((sum, e) => sum + e.tokens, 0);
+
+      return c.json({
+        entries,
+        totalTokens,
+        budgetMax: CONTEXT_BUDGET_MAX,
+      });
+    } catch (e) {
+      return c.json({ error: String(e) }, 500);
+    }
+  });
+
+  // --- Inline Completion (ghost text / Tab completion) ---
+
+  app.post("/api/ai/complete", async (c) => {
+    const body = await c.req.json<{ text: string; surrounding: string }>().catch(() => ({ text: "", surrounding: "" }));
+    if (!body.text?.trim() && !body.surrounding?.trim()) {
+      return c.json({ error: "text or surrounding is required" }, 400);
+    }
+
+    const sessionLlm = await ctx.getSessionLlm(c);
+    const config = await ctx.buildPipelineConfig(sessionLlm);
+
+    const systemPrompt = "你是一位小说续写助手。根据上下文，自然地续写下一句话（30-80字）。只返回续写内容，不要解释，不要重复已有文本。保持风格一致。";
+
+    return streamSSE(c, async (stream) => {
+      try {
+        const messages = [
+          { role: "system" as const, content: systemPrompt },
+          { role: "user" as const, content: `### 上下文\n${body.surrounding}\n\n### 当前段落末尾\n${body.text}` },
+        ];
+
+        const response = await chatCompletion(config.client, config.model, messages);
+
+        // Split response into chunks to simulate streaming
+        const fullText = response.content;
+        const chunkSize = 4;
+        for (let i = 0; i < fullText.length; i += chunkSize) {
+          const chunk = fullText.slice(i, i + chunkSize);
+          await stream.writeSSE({
+            event: "chunk",
+            data: JSON.stringify({ text: chunk, done: false }),
+          });
+        }
+        await stream.writeSSE({
+          event: "chunk",
+          data: JSON.stringify({ text: "", done: true }),
+        });
+      } catch (e) {
+        await stream.writeSSE({
+          event: "error",
+          data: JSON.stringify({ error: String(e) }),
+        });
+      }
+    });
   });
 
   // --- Legacy global SSE (kept for backward compat, Phase 2 removes) ---

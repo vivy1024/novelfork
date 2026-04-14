@@ -1,6 +1,7 @@
 export { createRunsRouter } from "./runs.js";
 export { createAuthRouter } from "./auth.js";
 export { createStorageRouter } from "./storage.js";
+export { createSnapshotsRouter } from "./snapshots.js";
 export { createAIRouter } from "./ai.js";
 export { createAIRelayRouter } from "./ai-relay.js";
 export { createDaemonRouter } from "./daemon.js";
