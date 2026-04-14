@@ -371,13 +371,14 @@ export class MemoryDB {
     content: string,
     triggerType: string,
     description?: string,
+    parentId?: number,
   ): number {
     const createdAt = Date.now();
     const stmt = this.db.prepare(
-      `INSERT INTO chapter_snapshots (chapter_id, content, created_at, trigger_type, description)
-       VALUES (?, ?, ?, ?, ?)`,
+      `INSERT INTO chapter_snapshots (chapter_id, content, created_at, trigger_type, description, parent_id)
+       VALUES (?, ?, ?, ?, ?, ?)`,
     );
-    const result = stmt.run(chapterId, content, createdAt, triggerType, description ?? null);
+    const result = stmt.run(chapterId, content, createdAt, triggerType, description ?? null, parentId ?? null);
     const snapshotId = Number(result.lastInsertRowid);
 
     // Auto-cleanup: keep only the 50 most recent snapshots for this chapter
@@ -419,6 +420,42 @@ export class MemoryDB {
        WHERE id = ?`,
     ).get(snapshotId) as unknown as ChapterSnapshot | undefined;
     return result ?? null;
+  }
+
+  /** Get all snapshots for a chapter as a flat list with parentId, for tree construction. */
+  getSnapshotTree(chapterId: string): ReadonlyArray<ChapterSnapshot> {
+    return this.db.prepare(
+      `SELECT
+         id,
+         chapter_id AS chapterId,
+         content,
+         created_at AS createdAt,
+         trigger_type AS triggerType,
+         description,
+         parent_id AS parentId
+       FROM chapter_snapshots
+       WHERE chapter_id = ?
+       ORDER BY created_at ASC`,
+    ).all(chapterId) as unknown as ChapterSnapshot[];
+  }
+
+  /** Create a branch snapshot from an existing snapshot. */
+  createBranch(
+    sourceSnapshotId: number,
+    content: string,
+    description?: string,
+  ): number {
+    const source = this.getSnapshotContent(sourceSnapshotId);
+    if (!source) {
+      throw new Error(`Source snapshot ${sourceSnapshotId} not found`);
+    }
+    return this.createSnapshot(
+      source.chapterId,
+      content,
+      "branch",
+      description,
+      sourceSnapshotId,
+    );
   }
 
   /** Delete old snapshots, keeping only the most recent N. */
