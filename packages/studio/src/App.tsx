@@ -82,58 +82,27 @@ export function deriveActiveBookId(route: Route): string | undefined {
     : undefined;
 }
 
-type AuthState = "checking" | "unauthenticated" | "authenticated";
-
-function useLaunchAuth() {
-  const [authState, setAuthState] = useState<AuthState>("checking");
-  const [error, setError] = useState<string | null>(null);
-
+/**
+ * Silent token import — if URL has ?token=, establish session in background.
+ * No gate: IDE is always accessible. Token just unlocks session-based LLM config.
+ */
+function useSilentTokenImport() {
   useEffect(() => {
-    // Tauri mode handles auth via deep link / localStorage — skip server auth
-    if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
-      setAuthState("authenticated");
-      return;
-    }
+    if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) return;
 
     const params = new URLSearchParams(window.location.search);
     const token = params.get("token");
-
     if (token) {
       window.history.replaceState({}, "", window.location.pathname);
       fetchJson<{ ok: boolean }>("/auth/launch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token }),
-      })
-        .then(() => setAuthState("authenticated"))
-        .catch((e) => {
-          setError(e instanceof Error ? e.message : "Login failed");
-          setAuthState("unauthenticated");
-        });
-    } else {
-      fetchJson<{ session: unknown }>("/auth/me")
-        .then(() => setAuthState("authenticated"))
-        .catch(() => setAuthState("unauthenticated"));
+      }).catch(() => {
+        // Token import failed silently — user can still use IDE
+      });
     }
   }, []);
-
-  return { authState, error };
-}
-
-function LoginGate({ error }: { error: string | null }) {
-  return (
-    <div className="min-h-screen bg-background flex items-center justify-center">
-      <div className="max-w-sm text-center space-y-4">
-        <h1 className="text-2xl font-serif text-foreground">InkOS Studio</h1>
-        <p className="text-sm text-muted-foreground">
-          {error ?? "请从 Sub2API 控制台登录后访问。"}
-        </p>
-        {error && (
-          <p className="text-xs text-destructive">{error}</p>
-        )}
-      </div>
-    </div>
-  );
 }
 
 export function App() {
@@ -145,7 +114,7 @@ export function App() {
 }
 
 function AppInner() {
-  const { authState, error: authError } = useLaunchAuth();
+  useSilentTokenImport();
   const { mode, selectWorkspace, workspace } = useInkOS();
   const { tabs, activeTabId, activeTab, openTab, closeTab, activateTab } = useTabsState();
   const [bookCreateOpen, setBookCreateOpen] = useState(false);
@@ -215,18 +184,8 @@ function AppInner() {
     );
   }
 
-  // Auth gate (web only — Tauri skips server auth)
-  if (!isTauri && authState === "checking") {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="w-12 h-12 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
-      </div>
-    );
-  }
-
-  if (!isTauri && authState === "unauthenticated") {
-    return <LoginGate error={authError} />;
-  }
+  // Auth gate removed — IDE always accessible
+  // Token import is handled silently by useSilentTokenImport()
 
   if (!ready) {
     return (

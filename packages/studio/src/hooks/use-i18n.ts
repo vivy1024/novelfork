@@ -257,6 +257,9 @@ const strings = {
   "config.english": { zh: "英文", en: "English" },
   "config.myLlm": { zh: "我的 LLM 设置", en: "My LLM Settings" },
   "config.workspace": { zh: "工作区", en: "Workspace" },
+  "config.llmNotConfigured": { zh: "未配置 API Key，AI 功能不可用", en: "API Key not configured, AI features unavailable" },
+  "config.connectSubapi": { zh: "从 Sub2API 连接", en: "Connect from Sub2API" },
+  "config.manualConfig": { zh: "手动配置", en: "Manual Config" },
   "config.workspacePath": { zh: "路径", en: "Path" },
   "config.switchWorkspace": { zh: "切换工作区", en: "Switch Workspace" },
 
