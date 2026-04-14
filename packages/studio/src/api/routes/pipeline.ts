@@ -1,4 +1,5 @@
-import { Router } from "express";
+import { Hono } from "hono";
+import { streamSSE } from "hono/streaming";
 import type { RouterContext } from "./context.js";
 import { pipelineEvents } from "@actalk/inkos-core";
 
@@ -47,95 +48,101 @@ pipelineEvents.on((event) => {
   }
 });
 
-export function createPipelineRouter(ctx: RouterContext): Router {
-  const router = Router();
+export function createPipelineRouter(ctx: RouterContext): Hono {
+  const app = new Hono();
 
   // Get pipeline run status
-  router.get("/:runId/status", (req, res) => {
-    const { runId } = req.params;
+  app.get("/:runId/status", (c) => {
+    const runId = c.req.param("runId");
     const run = pipelineRuns.get(runId);
 
     if (!run) {
-      return res.status(404).json({ error: "Pipeline run not found" });
+      return c.json({ error: "Pipeline run not found" }, 404);
     }
 
-    res.json(run);
+    return c.json(run);
   });
 
   // Get all stages for a pipeline run
-  router.get("/:runId/stages", (req, res) => {
-    const { runId } = req.params;
+  app.get("/:runId/stages", (c) => {
+    const runId = c.req.param("runId");
     const run = pipelineRuns.get(runId);
 
     if (!run) {
-      return res.status(404).json({ error: "Pipeline run not found" });
+      return c.json({ error: "Pipeline run not found" }, 404);
     }
 
-    res.json({ stages: run.stages });
+    return c.json({ stages: run.stages });
   });
 
   // Get a specific stage
-  router.get("/:runId/stages/:stageId", (req, res) => {
-    const { runId, stageId } = req.params;
+  app.get("/:runId/stages/:stageId", (c) => {
+    const runId = c.req.param("runId");
+    const stageId = c.req.param("stageId");
     const run = pipelineRuns.get(runId);
 
     if (!run) {
-      return res.status(404).json({ error: "Pipeline run not found" });
+      return c.json({ error: "Pipeline run not found" }, 404);
     }
 
     const stageIndex = parseInt(stageId, 10);
     const stage = run.stages[stageIndex];
 
     if (!stage) {
-      return res.status(404).json({ error: "Stage not found" });
+      return c.json({ error: "Stage not found" }, 404);
     }
 
-    res.json(stage);
+    return c.json(stage);
   });
 
   // SSE endpoint for real-time pipeline events
-  router.get("/:runId/events", (req, res) => {
-    const { runId } = req.params;
+  app.get("/:runId/events", (c) => {
+    const runId = c.req.param("runId");
 
-    res.setHeader("Content-Type", "text/event-stream");
-    res.setHeader("Cache-Control", "no-cache");
-    res.setHeader("Connection", "keep-alive");
+    return streamSSE(c, async (stream) => {
+      // Send initial connection event
+      await stream.writeSSE({
+        event: "connected",
+        data: JSON.stringify({ runId }),
+      });
 
-    // Send initial connection event
-    res.write(`event: connected\ndata: ${JSON.stringify({ runId })}\n\n`);
+      const interval = setInterval(async () => {
+        const run = pipelineRuns.get(runId);
+        if (!run) {
+          clearInterval(interval);
+          return;
+        }
 
-    // Poll for updates and send to client
-    const interval = setInterval(() => {
-      const run = pipelineRuns.get(runId);
-      if (!run) {
+        await stream.writeSSE({
+          event: "pipeline:update",
+          data: JSON.stringify(run),
+        });
+
+        if (run.status === "completed" || run.status === "failed") {
+          clearInterval(interval);
+          await stream.writeSSE({
+            event: "pipeline:done",
+            data: JSON.stringify({ status: run.status }),
+          });
+        }
+      }, 1000);
+
+      stream.onAbort(() => {
         clearInterval(interval);
-        res.end();
-        return;
-      }
+      });
 
-      // Send stage updates
-      res.write(`event: pipeline:update\ndata: ${JSON.stringify(run)}\n\n`);
-
-      // Close connection if pipeline is done
-      if (run.status === "completed" || run.status === "failed") {
-        clearInterval(interval);
-        res.write(`event: pipeline:done\ndata: ${JSON.stringify({ status: run.status })}\n\n`);
-        res.end();
-      }
-    }, 1000);
-
-    req.on("close", () => {
-      clearInterval(interval);
+      // Block until aborted
+      await new Promise(() => {});
     });
   });
 
   // List all pipeline runs (for debugging)
-  router.get("/", (req, res) => {
+  app.get("/", (c) => {
     const runs = Array.from(pipelineRuns.values());
-    res.json({ runs });
+    return c.json({ runs });
   });
 
-  return router;
+  return app;
 }
 
 // Helper functions for pipeline runner to update state
