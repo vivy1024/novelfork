@@ -45,6 +45,18 @@ export function routeToTabId(route: Route): string {
     case "search": return "search";
     case "diff": return `diff:${route.bookId}:${route.chapterNumber}`;
     case "backup": return "backup";
+    case "detect": return `detect:${route.bookId}`;
+    case "notify": return "notify";
+    case "intent": return `intent:${route.bookId}`;
+    case "agents": return "agents";
+    case "scheduler-config": return "scheduler-config";
+    case "detection-config": return "detection-config";
+    case "hooks": return "hooks";
+    case "llm-advanced": return "llm-advanced";
+    case "state": return `state:${route.bookId}`;
+    case "mcp": return "mcp";
+    case "pipeline": return route.runId ? `pipeline:${route.runId}` : "pipeline";
+    case "plugins": return "plugins";
   }
 }
 
@@ -67,6 +79,18 @@ export function routeToTabLabel(route: Route): string {
     case "search": return "Search";
     case "diff": return `Diff Ch.${route.chapterNumber}`;
     case "backup": return "Backup";
+    case "detect": return "Detect";
+    case "notify": return "Notify";
+    case "intent": return "Intent";
+    case "agents": return "Agents";
+    case "scheduler-config": return "Scheduler";
+    case "detection-config": return "Detection";
+    case "hooks": return "Hooks";
+    case "llm-advanced": return "LLM";
+    case "state": return "State";
+    case "mcp": return "MCP";
+    case "pipeline": return "Pipeline";
+    case "plugins": return "Plugins";
   }
 }
 

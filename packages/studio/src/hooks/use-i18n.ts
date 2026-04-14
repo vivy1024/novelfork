@@ -327,6 +327,17 @@ const strings = {
   "recovery.found": { zh: "发现未保存的更改", en: "Unsaved changes found" },
   "recovery.recoverAll": { zh: "全部恢复", en: "Recover All" },
   "recovery.dismiss": { zh: "忽略", en: "Dismiss" },
+
+  // Plugins
+  "plugins.title": { zh: "插件管理", en: "Plugins" },
+  "plugins.subtitle": { zh: "管理基于 MCP 的外部工具集成", en: "Manage MCP-based external tool integrations" },
+  "plugins.empty": { zh: "暂无插件", en: "No plugins installed" },
+  "plugins.emptyHint": { zh: "点击下方按钮配置 MCP 服务器", en: "Click the button below to configure MCP servers" },
+  "plugins.details": { zh: "插件详情", en: "Plugin Details" },
+  "plugins.tools": { zh: "可用工具", en: "Available Tools" },
+  "plugins.hooks": { zh: "拦截器挂载", en: "Hook Mounts" },
+  "plugins.config": { zh: "插件配置", en: "Plugin Configuration" },
+  "plugins.selectHint": { zh: "从左侧选择插件查看详情", en: "Select a plugin from the left to view details" }
 } as const;
 
 export type StringKey = keyof typeof strings;

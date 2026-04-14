@@ -289,7 +289,7 @@ export function createStorageRouter(ctx: RouterContext): Hono {
     const id = c.req.param("id");
     const bookDir = state.bookDir(id);
     try {
-      const { loadRuntimeStateSnapshot } = await import("@actalk/inkos-core/state/runtime-state-store");
+      const { loadRuntimeStateSnapshot } = await import("@actalk/inkos-core");
       const snapshot = await loadRuntimeStateSnapshot(bookDir);
       return c.json(snapshot);
     } catch (e) {
