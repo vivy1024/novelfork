@@ -51,6 +51,8 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.0",
+    "@tiptap/core": "2.27.2",
+    "@tiptap/pm": "2.27.2",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",

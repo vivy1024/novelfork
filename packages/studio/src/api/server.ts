@@ -21,6 +21,7 @@ import {
   createRunsRouter,
   createAuthRouter,
   createStorageRouter,
+  createSnapshotsRouter,
   createAIRouter,
   createAIRelayRouter,
   createDaemonRouter,
@@ -180,6 +181,9 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
 
     // Storage routes (books CRUD, chapters, truth, genres, config, export, logs, doctor)
     app.route("", createStorageRouter(ctx));
+
+    // Snapshots routes (chapter version control)
+    app.route("", createSnapshotsRouter(ctx));
 
     // Daemon scheduler
     app.route("", createDaemonRouter(ctx));

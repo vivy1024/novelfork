@@ -33,13 +33,26 @@ import {
   Bold,
   Italic,
   Strikethrough,
+  Sparkles,
+  Eraser,
+  Expand,
+  ShieldCheck,
+  Loader2,
 } from "lucide-react";
+import { useState, useRef, useEffect, useCallback, forwardRef, useImperativeHandle } from "react";
+import { DiffPanel } from "./DiffPanel";
+import { GhostText } from "../extensions/ghost-text";
+import { useTabCompletion } from "../hooks/use-tab-completion";
+import { fetchJson } from "../hooks/use-api";
 
 interface InkEditorProps {
   initialContent?: string;
   onChange?: (markdown: string) => void;
   editable?: boolean;
   className?: string;
+  onAIAction?: (params: { text: string; surrounding: string; mode: string }) => Promise<string>;
+  bookId?: string;
+  chapterNumber?: number;
 }
 
 const suggestionItems = createSuggestionItems([
@@ -132,21 +145,150 @@ const extensions = [
     transformPastedText: true,
   }),
   slashCommand,
+  GhostText,
 ];
+
+/** Extract surrounding context around a selection */
+function getSurrounding(editor: any, from: number, to: number, chars = 500): string {
+  const doc = editor.state.doc;
+  const before = doc.textBetween(Math.max(0, from - chars), from, "\n");
+  const after = doc.textBetween(to, Math.min(doc.content.size, to + chars), "\n");
+  return `${before}\n[SELECTED]\n${after}`;
+}
 
 /** Get markdown from editor instance */
 export function getMarkdown(editor: any): string {
   return editor?.storage?.markdown?.getMarkdown?.() ?? "";
 }
 
-export function InkEditor({ initialContent, onChange, editable = true, className }: InkEditorProps) {
+interface PendingDiff {
+  readonly from: number;
+  readonly to: number;
+  readonly originalText: string;
+  readonly newText: string;
+  readonly mode: string;
+}
+
+const InkEditorComponent = forwardRef(function InkEditor({ initialContent, onChange, editable = true, className, onAIAction, bookId, chapterNumber }: InkEditorProps, ref: React.Ref<any>) {
+  const [aiLoading, setAiLoading] = useState(false);
+  const [pendingDiff, setPendingDiff] = useState<PendingDiff | null>(null);
+  const [diffPosition, setDiffPosition] = useState<{ top: number; left: number }>({ top: 100, left: 100 });
+  const editorRef = useRef<any>(null);
+  const lastSnapshotTimeRef = useRef<number>(0);
+
+  // Expose editor instance to parent via ref
+  useImperativeHandle(ref, () => editorRef.current, []);
+
+  const handleAcceptDiff = useCallback(() => {
+    if (!pendingDiff || !editorRef.current) return;
+    const editor = editorRef.current;
+    editor.chain().focus().insertContentAt(
+      { from: pendingDiff.from, to: pendingDiff.to },
+      pendingDiff.newText,
+    ).run();
+    setPendingDiff(null);
+    setAiLoading(false);
+  }, [pendingDiff]);
+
+  const handleRejectDiff = useCallback(() => {
+    setPendingDiff(null);
+    setAiLoading(false);
+  }, []);
+
+  // Create snapshot helper
+  const createSnapshot = useCallback(async (triggerType: string, description: string) => {
+    if (!bookId || !chapterNumber || !editorRef.current) return;
+
+    // Debounce: skip if last snapshot was < 30 seconds ago
+    const now = Date.now();
+    if (now - lastSnapshotTimeRef.current < 30000) {
+      console.log("[InkEditor] Skipping snapshot due to debounce");
+      return;
+    }
+
+    try {
+      const content = getMarkdown(editorRef.current);
+      await fetchJson("/api/snapshots", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          bookId,
+          chapterNumber,
+          content,
+          triggerType,
+          description,
+        }),
+      });
+      lastSnapshotTimeRef.current = now;
+      console.log(`[InkEditor] Snapshot created: ${description}`);
+    } catch (err) {
+      console.error("[InkEditor] Failed to create snapshot:", err);
+      // Don't block AI action on snapshot failure
+    }
+  }, [bookId, chapterNumber]);
+
+  // Keyboard shortcuts: Ctrl+Enter = accept, Escape = reject
+  useEffect(() => {
+    if (!pendingDiff) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        handleRejectDiff();
+      }
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        handleAcceptDiff();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [pendingDiff, handleAcceptDiff, handleRejectDiff]);
+
+  const { trigger: triggerCompletion, cancel: cancelCompletion } = useTabCompletion({
+    editor: editorRef.current,
+    enabled: editable && !pendingDiff && !aiLoading,
+  });
+
+  const handleAI = async (editor: any, mode: string) => {
+    if (!onAIAction || aiLoading) return;
+    cancelCompletion();
+    const { from, to } = editor.state.selection;
+    if (from === to) return;
+
+    const text = editor.state.doc.textBetween(from, to, "\n");
+    const surrounding = getSurrounding(editor, from, to);
+
+    setAiLoading(true);
+
+    // Create "before AI" snapshot
+    await createSnapshot("before_ai", `AI ${mode} 前`);
+
+    try {
+      const result = await onAIAction({ text, surrounding, mode });
+
+      // Compute position near the selection
+      const coords = editor.view.coordsAtPos(from);
+      setDiffPosition({ top: coords.bottom + 8, left: Math.max(16, coords.left - 120) });
+
+      // Store diff for review instead of direct replacement
+      setPendingDiff({ from, to, originalText: text, newText: result, mode });
+      // Keep aiLoading=true to disable AI buttons while diff panel is shown
+
+      // Create "after AI" snapshot
+      await createSnapshot("after_ai", `AI ${mode} 后`);
+    } catch (err) {
+      console.error("[InkEditor] AI action failed:", err);
+      setAiLoading(false);
+    }
+  };
+
   return (
     <EditorRoot>
       <EditorContent
         className={className}
         extensions={extensions}
         initialContent={initialContent as any}
-        editable={editable}
+        editable={editable && !pendingDiff}
         editorProps={{
           handleDOMEvents: {
             keydown: (_view: any, event: any) => handleCommandNavigation(event),
@@ -155,10 +297,15 @@ export function InkEditor({ initialContent, onChange, editable = true, className
             class: "prose prose-zinc dark:prose-invert max-w-none font-serif text-lg leading-[1.8] focus:outline-none min-h-[60vh]",
           },
         }}
+        onCreate={({ editor }) => {
+          editorRef.current = editor;
+        }}
         onUpdate={({ editor }) => {
+          editorRef.current = editor;
           if (onChange) {
             onChange(getMarkdown(editor));
           }
+          triggerCompletion();
         }}
       >
         {/* Slash Command Menu */}
@@ -206,11 +353,54 @@ export function InkEditor({ initialContent, onChange, editable = true, className
           >
             <Strikethrough size={14} />
           </BubbleButton>
+
+          {/* Separator between format and AI buttons */}
+          <div className="w-px h-4 bg-border mx-1" />
+
+          {/* AI action buttons */}
+          <AIBubbleButton
+            action={(editor) => handleAI(editor, "polish")}
+            disabled={aiLoading}
+          >
+            {aiLoading ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+          </AIBubbleButton>
+          <AIBubbleButton
+            action={(editor) => handleAI(editor, "condense")}
+            disabled={aiLoading}
+          >
+            {aiLoading ? <Loader2 size={14} className="animate-spin" /> : <Eraser size={14} />}
+          </AIBubbleButton>
+          <AIBubbleButton
+            action={(editor) => handleAI(editor, "expand")}
+            disabled={aiLoading}
+          >
+            {aiLoading ? <Loader2 size={14} className="animate-spin" /> : <Expand size={14} />}
+          </AIBubbleButton>
+          <AIBubbleButton
+            action={(editor) => handleAI(editor, "audit")}
+            disabled={aiLoading}
+          >
+            {aiLoading ? <Loader2 size={14} className="animate-spin" /> : <ShieldCheck size={14} />}
+          </AIBubbleButton>
         </EditorBubble>
       </EditorContent>
+
+      {/* Diff review panel */}
+      {pendingDiff && (
+        <DiffPanel
+          originalText={pendingDiff.originalText}
+          newText={pendingDiff.newText}
+          mode={pendingDiff.mode}
+          position={diffPosition}
+          onAccept={handleAcceptDiff}
+          onReject={handleRejectDiff}
+        />
+      )}
     </EditorRoot>
   );
-}
+});
+
+InkEditorComponent.displayName = "InkEditor";
 
 function BubbleButton({ children, action, isActive }: {
   children: React.ReactNode;
@@ -226,3 +416,20 @@ function BubbleButton({ children, action, isActive }: {
     </EditorBubbleItem>
   );
 }
+
+function AIBubbleButton({ children, action, disabled }: {
+  children: React.ReactNode;
+  action: (editor: any) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <EditorBubbleItem
+      onSelect={(editor) => { if (!disabled) action(editor); }}
+      className={`rounded-lg p-2 transition-colors ${disabled ? "opacity-40 cursor-not-allowed" : "hover:bg-accent cursor-pointer"}`}
+    >
+      {children}
+    </EditorBubbleItem>
+  );
+}
+
+export const InkEditor = InkEditorComponent;
