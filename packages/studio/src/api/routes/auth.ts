@@ -42,13 +42,25 @@ export function createAuthRouter(): Hono {
 
   app.get("/api/auth/me", async (c) => {
     const session = await safeReadSession(c);
-    if (!session) throw new ApiError(401, "UNAUTHORIZED", "Not authenticated.");
-    return c.json({ session: toPublicSession(session) });
+    // Open mode: return anonymous session if no auth cookie
+    if (!session) {
+      return c.json({ session: null, anonymous: true });
+    }
+    return c.json({ session: toPublicSession(session), anonymous: false });
   });
 
   app.get("/api/auth/llm-settings", async (c) => {
     const session = await safeReadSession(c);
-    if (!session) throw new ApiError(401, "UNAUTHORIZED", "Not authenticated.");
+    // Open mode: return empty config if no session
+    if (!session) {
+      return c.json({
+        apiKey: "",
+        baseUrl: "",
+        model: "",
+        provider: "",
+        hasApiKey: false,
+      });
+    }
     return c.json({
       apiKey: session.llmApiKey ? `${session.llmApiKey.slice(0, 8)}...${session.llmApiKey.slice(-4)}` : "",
       baseUrl: session.llmBaseUrl ?? "",
@@ -64,12 +76,16 @@ export function createAuthRouter(): Hono {
   });
 
   app.put("/api/auth/llm-settings", async (c) => {
-    const session = await safeReadSession(c);
-    if (!session) throw new ApiError(401, "UNAUTHORIZED", "Not authenticated.");
-
     const body = await c.req.json<{
       apiKey?: string; baseUrl?: string; model?: string; provider?: string;
     }>();
+
+    // Open mode: allow setting LLM config without session (store in env or config)
+    // For now, require session to persist settings
+    const session = await safeReadSession(c);
+    if (!session) {
+      throw new ApiError(401, "UNAUTHORIZED", "Session required to save LLM settings. Use Sub2API login or OAuth.");
+    }
 
     // Update session with new LLM settings
     if (typeof body.apiKey === "string") session.llmApiKey = body.apiKey.trim() || undefined;
