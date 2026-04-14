@@ -20,9 +20,10 @@ export function createSnapshotsRouter(ctx: RouterContext): Hono {
         content: string;
         triggerType: string;
         description?: string;
+        parentId?: number;
       }>();
 
-      const { chapterId, content, triggerType, description } = body;
+      const { chapterId, content, triggerType, description, parentId } = body;
 
       if (!chapterId || !content || !triggerType) {
         return c.json({ error: "chapterId, content, and triggerType are required" }, 400);
@@ -38,7 +39,7 @@ export function createSnapshotsRouter(ctx: RouterContext): Hono {
       const db = new MemoryDB(bookDir);
 
       try {
-        const snapshotId = db.createSnapshot(chapterId, content, triggerType, description);
+        const snapshotId = db.createSnapshot(chapterId, content, triggerType, description, parentId);
         return c.json({ ok: true, snapshotId });
       } finally {
         db.close();
@@ -72,8 +73,78 @@ export function createSnapshotsRouter(ctx: RouterContext): Hono {
           createdAt: s.createdAt,
           triggerType: s.triggerType,
           description: s.description,
+          parentId: s.parentId ?? null,
         }));
         return c.json({ snapshots: metadata });
+      } finally {
+        db.close();
+      }
+    } catch (e) {
+      return c.json({ error: String(e) }, 500);
+    }
+  });
+
+  // --- Snapshot tree for a chapter ---
+
+  app.get("/api/snapshots/:chapterId/tree", async (c) => {
+    try {
+      const chapterId = c.req.param("chapterId");
+
+      const [bookId] = chapterId.split(":");
+      if (!bookId) {
+        return c.json({ error: "Invalid chapterId format" }, 400);
+      }
+
+      const bookDir = state.bookDir(bookId);
+      const db = new MemoryDB(bookDir);
+
+      try {
+        const snapshots = db.getSnapshotTree(chapterId);
+        const nodes = snapshots.map((s) => ({
+          id: s.id,
+          parentId: s.parentId ?? null,
+          createdAt: s.createdAt,
+          triggerType: s.triggerType,
+          description: s.description ?? null,
+        }));
+        return c.json({ nodes });
+      } finally {
+        db.close();
+      }
+    } catch (e) {
+      return c.json({ error: String(e) }, 500);
+    }
+  });
+
+  // --- Create branch from snapshot ---
+
+  app.post("/api/snapshots/:id/branch", async (c) => {
+    try {
+      const id = parseInt(c.req.param("id"), 10);
+      if (isNaN(id)) {
+        return c.json({ error: "Invalid snapshot ID" }, 400);
+      }
+
+      const body = await c.req.json<{
+        content: string;
+        description?: string;
+      }>();
+
+      if (!body.content) {
+        return c.json({ error: "content is required" }, 400);
+      }
+
+      const bookId = c.req.query("bookId");
+      if (!bookId) {
+        return c.json({ error: "bookId query parameter is required" }, 400);
+      }
+
+      const bookDir = state.bookDir(bookId);
+      const db = new MemoryDB(bookDir);
+
+      try {
+        const branchId = db.createBranch(id, body.content, body.description);
+        return c.json({ ok: true, snapshotId: branchId });
       } finally {
         db.close();
       }

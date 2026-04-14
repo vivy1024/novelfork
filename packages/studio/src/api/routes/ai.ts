@@ -602,6 +602,106 @@ export function createAIRouter(ctx: RouterContext): Hono {
     }
   });
 
+  // --- Intelligent Outline ---
+
+  const OUTLINE_PROMPTS: Record<string, string> = {
+    generate: [
+      "你是一位专业小说大纲策划师。根据提供的章节摘要、故事圣经和现有大纲，生成或更新章节大纲。",
+      "规则：",
+      "1. 已写章节标记为 done，当前正在写的标记为 current，未来计划的标记为 planned",
+      "2. 每个节点包含：chapter（章节号）、title（标题）、summary（一句话概要）、status、pov（视角角色，可选）、notes（备注，可选）",
+      "3. 保持与现有内容一致，planned 章节基于情节走向合理推测",
+      "4. 返回纯 JSON，格式：{ \"nodes\": [...], \"message\": \"概要说明\" }",
+    ].join("\n"),
+    check: [
+      "你是一位连续性审核员。对比章节大纲与实际章节内容，找出不一致之处。",
+      "规则：",
+      "1. 检查标题、POV、情节是否与大纲匹配",
+      "2. 在 notes 字段标注发现的问题",
+      "3. 有问题的章节在 notes 中用「⚠️」开头",
+      "4. 返回纯 JSON，格式：{ \"nodes\": [...], \"message\": \"检查结果概要\" }",
+    ].join("\n"),
+    suggest: [
+      "你是一位小说情节顾问。根据已有章节和大纲，建议接下来一章的内容。",
+      "规则：",
+      "1. 只返回 1-3 个 planned 节点作为建议",
+      "2. 考虑悬念钩子、角色弧线、节奏感",
+      "3. summary 要具体到场景和冲突",
+      "4. 返回纯 JSON，格式：{ \"nodes\": [...], \"message\": \"建议理由\" }",
+    ].join("\n"),
+  };
+
+  app.post("/api/ai/outline", async (c) => {
+    const body = await c.req
+      .json<{ bookId: string; action: string }>()
+      .catch(() => ({ bookId: "", action: "" }));
+
+    if (!body.bookId) {
+      return c.json({ error: "bookId is required" }, 400);
+    }
+
+    const validActions = ["generate", "check", "suggest"];
+    if (!validActions.includes(body.action)) {
+      return c.json({ error: `action must be one of: ${validActions.join(", ")}` }, 400);
+    }
+
+    try {
+      const bookDir = state.bookDir(body.bookId);
+      const storyDir = join(bookDir, "story");
+
+      // Load truth files for context
+      const [outline, summaries, bible, currentState, hooks] = await Promise.all([
+        loadTruthFile(storyDir, "volume_outline.md"),
+        loadTruthFile(storyDir, "chapter_summaries.md"),
+        loadTruthFile(storyDir, "story_bible.md"),
+        loadTruthFile(storyDir, "current_state.md"),
+        loadTruthFile(storyDir, "pending_hooks.md"),
+      ]);
+
+      // Load chapter list for context
+      const chaptersDir = join(bookDir, "chapters");
+      let chapterFiles: string[] = [];
+      try {
+        const files = await readdir(chaptersDir);
+        chapterFiles = files.filter((f) => f.endsWith(".md") && /^\d{4}/.test(f)).sort();
+      } catch {
+        // No chapters dir yet
+      }
+
+      const contextParts = [
+        outline ? `### 现有大纲\n${outline}` : "### 现有大纲\n（无）",
+        summaries ? `### 章节摘要\n${summaries}` : "",
+        bible ? `### 故事圣经（摘要）\n${bible.slice(0, 2000)}` : "",
+        currentState ? `### 当前状态\n${currentState}` : "",
+        hooks ? `### 悬念钩子\n${hooks.slice(0, 1000)}` : "",
+        `### 已有章节文件\n${chapterFiles.length > 0 ? chapterFiles.join(", ") : "（无）"}`,
+      ].filter(Boolean);
+
+      const systemPrompt = OUTLINE_PROMPTS[body.action]!;
+      const sessionLlm = await ctx.getSessionLlm(c);
+      const config = await ctx.buildPipelineConfig(sessionLlm);
+
+      const messages = [
+        { role: "system" as const, content: systemPrompt },
+        { role: "user" as const, content: contextParts.join("\n\n") },
+      ];
+
+      const response = await chatCompletion(config.client, config.model, messages);
+
+      // Parse JSON from response, handling markdown code blocks
+      let content = response.content.trim();
+      const codeBlockMatch = content.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/);
+      if (codeBlockMatch) {
+        content = codeBlockMatch[1]!.trim();
+      }
+
+      const parsed = JSON.parse(content) as { nodes: unknown[]; message?: string };
+      return c.json(parsed);
+    } catch (e) {
+      return c.json({ error: String(e) }, 500);
+    }
+  });
+
   // --- Inline Completion (ghost text / Tab completion) ---
 
   app.post("/api/ai/complete", async (c) => {

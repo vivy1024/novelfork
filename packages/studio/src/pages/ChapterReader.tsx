@@ -7,6 +7,7 @@ import { useColors } from "../hooks/use-colors";
 import { InkEditor, getMarkdown } from "../components/InkEditor";
 import { ContextPanel } from "../components/ContextPanel";
 import { HistoryPanel } from "../components/HistoryPanel";
+import { OutlinePanel } from "../components/OutlinePanel";
 import { DiffPanel } from "../components/DiffPanel";
 import {
   ChevronLeft,
@@ -57,6 +58,7 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
   const [manualSaving, setManualSaving] = useState(false);
   const [contextPanelOpen, setContextPanelOpen] = useState(false);
   const [historyPanelOpen, setHistoryPanelOpen] = useState(false);
+  const [outlinePanelOpen, setOutlinePanelOpen] = useState(false);
   const [diffPanelData, setDiffPanelData] = useState<{ originalText: string; newText: string; mode: string; snapshotId: number } | null>(null);
   const [showSnapshotDialog, setShowSnapshotDialog] = useState(false);
   const [snapshotDescription, setSnapshotDescription] = useState("");
@@ -267,6 +269,19 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
           <button
             onClick={() => {
               setContextPanelOpen(false);
+              setHistoryPanelOpen(false);
+              setOutlinePanelOpen(!outlinePanelOpen);
+            }}
+            className="flex items-center gap-2 px-4 py-2 text-xs font-bold bg-secondary text-muted-foreground rounded-xl hover:text-primary hover:bg-primary/10 transition-all border border-border/50"
+          >
+            <BookOpen size={14} />
+            大纲
+          </button>
+
+          <button
+            onClick={() => {
+              setContextPanelOpen(false);
+              setOutlinePanelOpen(false);
               setHistoryPanelOpen(!historyPanelOpen);
             }}
             className="flex items-center gap-2 px-4 py-2 text-xs font-bold bg-secondary text-muted-foreground rounded-xl hover:text-primary hover:bg-primary/10 transition-all border border-border/50"
@@ -276,7 +291,11 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
           </button>
 
           <button
-            onClick={() => setContextPanelOpen(!contextPanelOpen)}
+            onClick={() => {
+              setHistoryPanelOpen(false);
+              setOutlinePanelOpen(false);
+              setContextPanelOpen(!contextPanelOpen);
+            }}
             className="flex items-center gap-2 px-4 py-2 text-xs font-bold bg-secondary text-muted-foreground rounded-xl hover:text-primary hover:bg-primary/10 transition-all border border-border/50"
           >
             <Layers size={14} />
@@ -432,6 +451,12 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
         visible={historyPanelOpen}
         onClose={() => setHistoryPanelOpen(false)}
         onSnapshotSelect={handleSnapshotSelect}
+      />
+
+      <OutlinePanel
+        bookId={bookId}
+        visible={outlinePanelOpen}
+        onClose={() => setOutlinePanelOpen(false)}
       />
 
       {diffPanelData && (
