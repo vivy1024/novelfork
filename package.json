@@ -32,5 +32,11 @@
   "engines": {
     "node": ">=20.0.0",
     "pnpm": ">=9.0.0"
+  },
+  "dependencies": {
+    "@tiptap/core": "2.27.2",
+    "@tiptap/pm": "2.27.2",
+    "@tiptap/react": "^3.22.3",
+    "@tiptap/starter-kit": "^3.22.3"
   }
 }
