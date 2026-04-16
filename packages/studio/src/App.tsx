@@ -45,6 +45,7 @@ import { useTabsState } from "./hooks/use-tabs";
 import { useResizable } from "./hooks/use-resizable";
 import { useVerticalResizable } from "./hooks/use-vertical-resizable";
 import { useRecovery } from "./hooks/use-crash-recovery";
+import { persistTabSession, restoreTabSession } from "./hooks/use-persisted-tabs";
 import { fetchJson, postApi, useApi } from "./hooks/use-api";
 
 export type Route =
@@ -142,6 +143,30 @@ function AppInner() {
   const recovery = useRecovery();
 
   const isDark = theme === "dark";
+
+  // Persist tabs to IndexedDB on change
+  useEffect(() => {
+    persistTabSession(
+      tabs.map((t) => ({ route: t.route, id: t.id })),
+      activeTabId,
+    ).catch(() => {});
+  }, [tabs, activeTabId]);
+
+  // Restore tabs from IndexedDB on mount
+  useEffect(() => {
+    restoreTabSession().then((session) => {
+      if (!session?.tabs?.length) return;
+      for (const saved of session.tabs) {
+        if (saved.route && typeof saved.route === "object" && "page" in saved.route) {
+          openTab(saved.route as Route);
+        }
+      }
+      if (session.activeTabId) {
+        activateTab(session.activeTabId);
+      }
+    }).catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
