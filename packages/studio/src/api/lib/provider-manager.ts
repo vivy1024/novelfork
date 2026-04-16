@@ -1,12 +1,12 @@
 /**
  * AI 提供商管理服务
- * 统一管理多个 AI 提供商（Anthropic、OpenAI、NKP、NUG、Cline）
+ * 统一管理多个 AI 提供商（Anthropic、OpenAI）
  */
 
 export interface AIProvider {
   id: string;
   name: string;
-  type: "anthropic" | "openai" | "nkp" | "nug" | "cline";
+  type: "anthropic" | "openai";
   enabled: boolean;
   priority: number; // 排序优先级，数字越小越优先
   config: ProviderConfig;

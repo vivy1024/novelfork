@@ -41,12 +41,6 @@ export function ProviderCard({ provider, onToggle, onConfigure, onTest }: Provid
         return "Anthropic";
       case "openai":
         return "OpenAI";
-      case "nkp":
-        return "NKP";
-      case "nug":
-        return "NUG";
-      case "cline":
-        return "Cline";
       default:
         return type;
     }

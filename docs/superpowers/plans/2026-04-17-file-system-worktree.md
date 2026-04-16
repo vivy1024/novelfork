@@ -283,7 +283,7 @@
 - Dependencies: Phase 1-7
 - Risk: 中 — 需要 mock Git 环境
 
-### Phase 9: AI 提供商与 Agent 配置管理（8 文件，复杂度：高）
+### Phase 9: AI 提供商与 Agent 配置管理（7 文件，复杂度：中）
 
 **9.1 创建提供商管理服务**（文件：`src/api/lib/provider-manager.ts`）
 - Action: 实现提供商 CRUD、排序、启用/禁用、模型池管理
@@ -293,9 +293,9 @@
   - `reorderProviders(ids)` — 拖拽排序
   - `getModelPool()` — 获取所有可用模型（跨提供商）
   - `testProviderConnection(id)` — 测试提供商连通性
-- Why: 统一管理多个 AI 提供商（Anthropic、OpenAI、NKP、NUG、Cline）
+- Why: 统一管理多个 AI 提供商（Anthropic、OpenAI 两种协议）
 - Dependencies: 无
-- Risk: 高 — 需要支持多种提供商协议，API 密钥安全存储
+- Risk: 中 — 需要支持两种主流协议，API 密钥安全存储
 
 **9.2 创建 Agent 配置服务**（文件：`src/api/lib/agent-config-service.ts`）
 - Action: 实现 Agent 运行时配置管理
@@ -358,16 +358,6 @@
 - Why: 用户控制 Agent 资源使用
 - Dependencies: 无
 - Risk: 低
-
-**9.8 创建平台集成面板**（文件：`src/components/PlatformIntegrationPanel.tsx`）
-- Action: 平台集成配置界面
-  - Kiro 平台集成（API 端点、认证）
-  - Codex 平台集成（WebSocket 配置）
-  - Cline 平台集成（兼容性设置）
-  - 平台状态指示器（在线/离线）
-- Why: 支持多平台集成
-- Dependencies: 无
-- Risk: 中 — 需要处理不同平台的认证机制
 
 ## 依赖关系图
 
@@ -470,13 +460,12 @@ Phase 1-4、Phase 5-7、Phase 9 可并行开发
 - [ ] AI 可以辅助生成合并建议
 - [ ] 所有文件操作限制在工作空间内
 - [ ] 所有 Git 操作有错误处理和回滚机制
-- [ ] 用户可以管理多个 AI 提供商（Anthropic、OpenAI、NKP、NUG、Cline）
+- [ ] 用户可以管理多个 AI 提供商（Anthropic、OpenAI 两种协议）
 - [ ] 用户可以启用/禁用提供商
 - [ ] 用户可以拖拽排序提供商优先级
-- [ ] 用户可以查看模型池（59 个模型跨 7 个提供商）
+- [ ] 用户可以查看模型池（跨提供商）
 - [ ] 用户可以配置 Agent 资源限制（工作区、容器、端口）
 - [ ] 用户可以查看实时资源使用情况
-- [ ] 用户可以配置平台集成（Kiro、Codex、Cline）
 - [ ] API 密钥加密存储，前端仅显示脱敏版本
 - [ ] 单元测试覆盖率 ≥ 80%
 - [ ] 在 Windows 环境下验证通过
@@ -493,8 +482,8 @@ Phase 1-4、Phase 5-7、Phase 9 可并行开发
 | Phase 6 | 4 | ~600 | 6 | 高 |
 | Phase 7 | 2 | ~300 | 4 | 中 |
 | Phase 8 | 2 | ~200 | 3 | 中 |
-| Phase 9 | 8 | ~1000 | 10 | 高 |
-| **总计** | **33** | **~4300** | **49** | **高** |
+| Phase 9 | 7 | ~900 | 9 | 中 |
+| **总计** | **32** | **~4200** | **48** | **高** |
 
 ## 实施顺序建议
 
@@ -507,7 +496,7 @@ Phase 1-4、Phase 5-7、Phase 9 可并行开发
 - 可以实现多线并行写作
 
 **优先级 3**：Phase 9（AI 提供商与 Agent 配置，独立可交付）
-- 完成后用户可以管理多个 AI 提供商
+- 完成后用户可以管理 AI 提供商（Anthropic、OpenAI 两种协议）
 - 可以配置 Agent 资源限制
 - 可以与 Phase 1-7 并行开发
 
@@ -518,4 +507,7 @@ Phase 1-4、Phase 5-7、Phase 9 可并行开发
 
 ---
 
-**计划状态**: 已完成（基于 Claude Code 架构重写），等待实施确认
+**计划状态**: Phase 1 和 Phase 9 已完成基础实现（2026-04-17）
+- Phase 1: 工具执行器、权限管理器、文件操作工具库 ✅
+- Phase 9: 提供商管理（Anthropic/OpenAI）、Agent 配置、前端组件 ✅
+- 已简化为只支持 Anthropic 和 OpenAI 两种主流协议
