@@ -18,6 +18,7 @@ function makeTab(route: Route, overrides?: Partial<Tab>): Tab {
     route,
     label: routeToTabLabel(route),
     closable: route.page !== "dashboard",
+    dirty: false,
     ...overrides,
   };
 }

@@ -84,6 +84,16 @@ export function Sidebar({ nav, activePage, sse, t }: {
   const isStandalone = mode === "standalone";
   const isTauri = mode === "tauri";
   const [expandedBooks, setExpandedBooks] = useState<Set<string>>(new Set());
+  const [systemOpen, setSystemOpen] = useState(() => {
+    try {
+      return localStorage.getItem("inkos-sidebar-system") !== "false";
+    } catch { return false; }
+  });
+  const [toolsOpen, setToolsOpen] = useState(() => {
+    try {
+      return localStorage.getItem("inkos-sidebar-tools") !== "false";
+    } catch { return false; }
+  });
 
   const toggleBook = (bookId: string) => {
     setExpandedBooks((prev) => {
@@ -92,6 +102,22 @@ export function Sidebar({ nav, activePage, sse, t }: {
       else next.add(bookId);
       return next;
     });
+  };
+
+  const toggleSection = (section: "system" | "tools") => {
+    if (section === "system") {
+      setSystemOpen((prev) => {
+        const next = !prev;
+        try { localStorage.setItem("inkos-sidebar-system", String(next)); } catch {}
+        return next;
+      });
+    } else {
+      setToolsOpen((prev) => {
+        const next = !prev;
+        try { localStorage.setItem("inkos-sidebar-tools", String(next)); } catch {}
+        return next;
+      });
+    }
   };
 
   useEffect(() => {
@@ -185,13 +211,20 @@ export function Sidebar({ nav, activePage, sse, t }: {
           </div>
         </div>
 
-        {/* System Section */}
+        {/* System Section — collapsible */}
         <div>
-          <div className="px-3 mb-3">
+          <button
+            onClick={() => toggleSection("system")}
+            className="w-full px-3 mb-3 flex items-center justify-between group cursor-pointer"
+          >
             <span className="text-[11px] uppercase tracking-widest text-muted-foreground font-bold">
               {t("nav.system")}
             </span>
-          </div>
+            <span className="text-muted-foreground group-hover:text-foreground transition-colors">
+              {systemOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+            </span>
+          </button>
+          {systemOpen && (
           <div className="space-y-1">
             <SidebarItem
               label={t("create.genre")}
@@ -260,15 +293,23 @@ export function Sidebar({ nav, activePage, sse, t }: {
               onClick={nav.toLLMAdvanced}
             />
           </div>
+          )}
         </div>
 
-        {/* Tools Section */}
+        {/* Tools Section — collapsible */}
         <div>
-          <div className="px-3 mb-3">
+          <button
+            onClick={() => toggleSection("tools")}
+            className="w-full px-3 mb-3 flex items-center justify-between group cursor-pointer"
+          >
             <span className="text-[11px] uppercase tracking-widest text-muted-foreground font-bold">
               {t("nav.tools")}
             </span>
-          </div>
+            <span className="text-muted-foreground group-hover:text-foreground transition-colors">
+              {toolsOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+            </span>
+          </button>
+          {toolsOpen && (
           <div className="space-y-1">
             <SidebarItem
               label={t("nav.search")}
@@ -333,6 +374,7 @@ export function Sidebar({ nav, activePage, sse, t }: {
               onClick={nav.toPlugins}
             />
           </div>
+          )}
         </div>
       </div>
 
@@ -420,7 +462,7 @@ function BookTreeChildren({ bookId, chaptersWritten, nav, activePage, t }: {
                 : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
             }`}
           >
-            <FileText size={12} />
+            <ChapterStatusIcon status={ch.status} />
             <span className="truncate">{ch.title ?? t("chapter.label").replace("{n}", String(ch.chapterNumber))}</span>
           </button>
         );
@@ -457,4 +499,21 @@ function BookTreeChildren({ bookId, chaptersWritten, nav, activePage, t }: {
       )}
     </div>
   );
+}
+
+/**
+ * Chapter status icon: ✓ done (green), ● in-progress (amber), ○ pending (gray)
+ */
+function ChapterStatusIcon({ status }: { status?: string }) {
+  switch (status) {
+    case "done":
+    case "published":
+      return <span className="w-3 h-3 shrink-0 text-emerald-500 text-[10px] leading-3 text-center">✓</span>;
+    case "writing":
+    case "in-progress":
+    case "revising":
+      return <span className="w-3 h-3 shrink-0 rounded-full bg-amber-400 inline-block scale-50" />;
+    default:
+      return <span className="w-3 h-3 shrink-0 rounded-full border border-muted-foreground/40 inline-block scale-50" />;
+  }
 }
