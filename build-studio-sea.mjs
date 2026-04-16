@@ -1,0 +1,138 @@
+#!/usr/bin/env node
+/**
+ * build-studio-sea.mjs — Build InkOS Studio as a Node.js Single Executable Application.
+ *
+ * Steps:
+ *   1. Build frontend (Vite) → dist/
+ *   2. Build server (tsc) → dist-server/
+ *   3. Bundle server + static assets into a single JS blob
+ *   4. Generate SEA config → sea-config.json
+ *   5. Create SEA blob → sea-prep.blob
+ *   6. Copy node.exe → inkos.exe
+ *   7. Inject SEA blob into inkos.exe
+ *
+ * Requirements: Node.js >= 22.5.0, pnpm, Windows (for .exe output)
+ *
+ * Usage: node build-studio-sea.mjs [--skip-frontend] [--skip-server]
+ */
+
+import { execSync } from "node:child_process";
+import { readFileSync, writeFileSync, copyFileSync, existsSync, mkdirSync } from "node:fs";
+import { join, resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const studioRoot = resolve(__dirname, "packages", "studio");
+const outDir = resolve(__dirname, "dist-sea");
+const skipFrontend = process.argv.includes("--skip-frontend");
+const skipServer = process.argv.includes("--skip-server");
+
+function run(cmd, opts = {}) {
+  console.log(`> ${cmd}`);
+  execSync(cmd, { stdio: "inherit", ...opts });
+}
+
+function ensureDir(dir) {
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+}
+
+// --- Step 1: Build frontend ---
+if (!skipFrontend) {
+  console.log("\n=== Step 1: Building frontend ===");
+  run("pnpm run build", { cwd: studioRoot });
+} else {
+  console.log("\n=== Step 1: Skipping frontend build ===");
+}
+
+// --- Step 2: Build server ---
+if (!skipServer) {
+  console.log("\n=== Step 2: Building server ===");
+  run("pnpm run --filter @actalk/inkos-core build", { cwd: __dirname });
+  run("pnpm run --filter @actalk/inkos-studio build:server", { cwd: __dirname });
+} else {
+  console.log("\n=== Step 2: Skipping server build ===");
+}
+
+// --- Step 3: Create SEA entry point ---
+console.log("\n=== Step 3: Creating SEA entry bundle ===");
+ensureDir(outDir);
+
+const seaEntry = `
+// InkOS Studio — Single Executable Application entry
+import { startStudioServer } from "./packages/studio/dist-server/api/server.js";
+import { resolve, join } from "node:path";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+
+const root = process.argv[2] ?? process.env.INKOS_PROJECT_ROOT ?? process.cwd();
+const port = parseInt(process.env.INKOS_STUDIO_PORT ?? "4567", 10);
+
+// Static assets are embedded alongside the SEA blob
+const staticDir = join(import.meta.dirname ?? __dirname, "packages", "studio", "dist");
+
+// Auto-open browser after a short delay
+setTimeout(() => {
+  const url = \`http://localhost:\${port}\`;
+  console.log(\`Opening \${url} in browser...\`);
+  import("node:child_process").then(({ spawn }) => {
+    const platform = process.platform;
+    if (platform === "win32") {
+      spawn("cmd", ["/c", "start", "", url], { detached: true, stdio: "ignore" }).unref();
+    } else if (platform === "darwin") {
+      spawn("open", [url], { detached: true, stdio: "ignore" }).unref();
+    } else {
+      spawn("xdg-open", [url], { detached: true, stdio: "ignore" }).unref();
+    }
+  });
+}, 1500);
+
+console.log(\`InkOS Studio starting on http://localhost:\${port}\`);
+startStudioServer(root, port, { staticDir }).catch((e) => {
+  console.error("Failed to start:", e);
+  process.exit(1);
+});
+`.trim();
+
+const seaEntryPath = join(outDir, "sea-entry.mjs");
+writeFileSync(seaEntryPath, seaEntry, "utf-8");
+
+// --- Step 4: Generate SEA config ---
+console.log("\n=== Step 4: Generating SEA config ===");
+const seaConfig = {
+  main: seaEntryPath,
+  output: join(outDir, "sea-prep.blob"),
+  disableExperimentalSEAWarning: true,
+  useSnapshot: false,
+  useCodeCache: true,
+};
+const seaConfigPath = join(outDir, "sea-config.json");
+writeFileSync(seaConfigPath, JSON.stringify(seaConfig, null, 2), "utf-8");
+
+// --- Step 5: Generate SEA blob ---
+console.log("\n=== Step 5: Generating SEA blob ===");
+run(`node --experimental-sea-config "${seaConfigPath}"`);
+
+// --- Step 6: Copy node.exe ---
+console.log("\n=== Step 6: Copying node.exe → inkos.exe ===");
+const nodeExe = process.execPath;
+const inkosExe = join(outDir, "inkos.exe");
+copyFileSync(nodeExe, inkosExe);
+
+// --- Step 7: Inject SEA blob ---
+console.log("\n=== Step 7: Injecting SEA blob ===");
+const blobPath = join(outDir, "sea-prep.blob");
+
+// Remove signature (Windows)
+try {
+  run(`signtool remove /s "${inkosExe}"`, { stdio: "pipe" });
+} catch {
+  // signtool not available — skip, postject handles unsigned binaries
+}
+
+run(`npx postject "${inkosExe}" NODE_SEA_BLOB "${blobPath}" --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2`);
+
+console.log(`\n=== Done! ===`);
+console.log(`Output: ${inkosExe}`);
+console.log(`\nUsage:`);
+console.log(`  inkos.exe                    # Start studio in current directory`);
+console.log(`  inkos.exe /path/to/project   # Start studio for specific project`);
+console.log(`  INKOS_STUDIO_PORT=8080 inkos.exe  # Custom port`);
