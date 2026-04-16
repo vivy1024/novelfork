@@ -16,6 +16,8 @@ import {
   parseChapterSummariesMarkdown,
   retrieveMemorySelection,
 } from "../utils/memory-retrieval.js";
+import { MemoryDB } from "../state/memory-db.js";
+import { retrieveLorebook } from "../state/lorebook-retriever.js";
 
 export interface ComposeChapterInput {
   readonly book: BookConfig;
@@ -190,6 +192,12 @@ export class ComposerAgent extends BaseAgent {
       excerpt: `${summary.heading} | ${summary.content}`,
     }));
 
+    // --- Lorebook / World Info retrieval (Phase 4) ---
+    const lorebookEntries = await this.retrieveLorebookEntries(
+      dirname(storyDir),
+      plan,
+    );
+
     return [
       ...entries.filter((entry): entry is NonNullable<typeof entry> => entry !== null),
       ...trailEntries,
@@ -198,6 +206,7 @@ export class ComposerAgent extends BaseAgent {
       ...summaryEntries,
       ...volumeSummaryEntries,
       ...hookEntries,
+      ...lorebookEntries,
     ];
   }
 
@@ -457,5 +466,55 @@ export class ComposerAgent extends BaseAgent {
     summary: ReturnType<typeof parseChapterSummariesMarkdown>[number],
   ): string {
     return `ch${summary.chapter} ${summary.title} - ${summary.events || summary.hookActivity || summary.stateChanges || "(none)"}`;
+  }
+
+  /**
+   * Retrieve lorebook/world-info entries matching the current chapter context.
+   * Gracefully returns empty if memory.db doesn't exist or has no world entries.
+   */
+  private async retrieveLorebookEntries(
+    bookDir: string,
+    plan: PlanChapterOutput,
+  ): Promise<ContextPackage["selectedContext"]> {
+    let db: MemoryDB | undefined;
+    try {
+      db = new MemoryDB(bookDir);
+      const recentChapterText = await this.getRecentChapterText(bookDir, plan.intent.chapter);
+      const result = retrieveLorebook(db, {
+        chapterText: recentChapterText,
+        goal: plan.intent.goal,
+        mustKeep: plan.intent.mustKeep,
+      });
+      return result.entries.map((entry) => ({
+        source: entry.source,
+        reason: entry.reason,
+        excerpt: entry.excerpt,
+      }));
+    } catch {
+      // memory.db doesn't exist yet or has no world_entries table — that's fine
+      return [];
+    } finally {
+      db?.close();
+    }
+  }
+
+  private async getRecentChapterText(bookDir: string, chapterNumber: number): Promise<string> {
+    const chaptersDir = join(bookDir, "chapters");
+    try {
+      const files = await readdir(chaptersDir);
+      const recent = files
+        .filter((f) => f.endsWith(".md"))
+        .map((f) => ({ file: f, num: parseInt(f.slice(0, 4), 10) }))
+        .filter((e) => Number.isFinite(e.num) && e.num < chapterNumber)
+        .sort((a, b) => b.num - a.num)
+        .slice(0, 2);
+      const texts: string[] = [];
+      for (const entry of recent) {
+        texts.push(await readFile(join(chaptersDir, entry.file), "utf-8"));
+      }
+      return texts.join("\n").slice(-4000);
+    } catch {
+      return "";
+    }
   }
 }

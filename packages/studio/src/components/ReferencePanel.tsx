@@ -4,7 +4,7 @@
  */
 
 import { useState } from "react";
-import { BookOpen, Users, Anchor } from "lucide-react";
+import { BookOpen, Users, Anchor, Globe } from "lucide-react";
 import { useApi } from "../hooks/use-api";
 
 // --- Types ---
@@ -20,7 +20,7 @@ interface ReferencePanelProps {
   readonly bookId?: string;
 }
 
-type RefTab = "truth" | "characters" | "hooks";
+type RefTab = "truth" | "characters" | "hooks" | "lorebook";
 
 // --- Main Component ---
 
@@ -31,6 +31,7 @@ export function ReferencePanel({ height, bookId }: ReferencePanelProps) {
     { id: "truth", label: "设定文件", icon: <BookOpen size={12} /> },
     { id: "characters", label: "角色", icon: <Users size={12} /> },
     { id: "hooks", label: "伏笔", icon: <Anchor size={12} /> },
+    { id: "lorebook", label: "世界观", icon: <Globe size={12} /> },
   ];
 
   return (
@@ -72,6 +73,7 @@ export function ReferencePanel({ height, bookId }: ReferencePanelProps) {
             {activeTab === "truth" && <TruthTab bookId={bookId} />}
             {activeTab === "characters" && <CharactersTab bookId={bookId} />}
             {activeTab === "hooks" && <HooksTab bookId={bookId} />}
+            {activeTab === "lorebook" && <LorebookTab bookId={bookId} />}
           </>
         )}
       </div>
@@ -313,6 +315,110 @@ function HooksTab({ bookId }: { bookId: string }) {
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+// --- Lorebook Tab ---
+
+interface LorebookEntryData {
+  readonly id: number;
+  readonly dimension: string;
+  readonly name: string;
+  readonly keywords: string;
+  readonly content: string;
+  readonly priority: number;
+  readonly enabled: boolean;
+}
+
+interface DimensionData {
+  readonly key: string;
+  readonly label: string;
+  readonly entryCount: number;
+}
+
+function LorebookTab({ bookId }: { bookId: string }) {
+  const [selectedDim, setSelectedDim] = useState<string | null>(null);
+  const { data: dimData, loading: dimLoading } = useApi<{ dimensions: ReadonlyArray<DimensionData> }>(
+    `/books/${bookId}/lorebook/dimensions`,
+  );
+  const { data: entryData, loading: entryLoading } = useApi<{ entries: ReadonlyArray<LorebookEntryData>; total: number }>(
+    selectedDim
+      ? `/books/${bookId}/lorebook/entries?dimension=${selectedDim}`
+      : `/books/${bookId}/lorebook/entries`,
+  );
+
+  if (dimLoading) {
+    return <div className="p-3 text-xs text-muted-foreground">加载中...</div>;
+  }
+
+  const dimensions = dimData?.dimensions ?? [];
+  const entries = entryData?.entries ?? [];
+  const total = entryData?.total ?? 0;
+
+  return (
+    <div className="flex h-full">
+      <div className="w-36 shrink-0 border-r border-border/30 overflow-y-auto">
+        <button
+          onClick={() => setSelectedDim(null)}
+          className={`w-full text-left px-3 py-1.5 text-[11px] transition-colors ${
+            selectedDim === null
+              ? "bg-primary/10 text-primary font-medium"
+              : "text-muted-foreground hover:bg-secondary/50"
+          }`}
+        >
+          全部 ({total})
+        </button>
+        {dimensions.map((dim) => (
+          <button
+            key={dim.key}
+            onClick={() => setSelectedDim(dim.key)}
+            className={`w-full text-left px-3 py-1.5 text-[11px] truncate transition-colors ${
+              selectedDim === dim.key
+                ? "bg-primary/10 text-primary font-medium"
+                : "text-muted-foreground hover:bg-secondary/50"
+            }`}
+          >
+            {dim.label} ({dim.entryCount})
+          </button>
+        ))}
+      </div>
+      <div className="flex-1 overflow-y-auto">
+        {entryLoading ? (
+          <div className="p-3 text-xs text-muted-foreground">加载中...</div>
+        ) : entries.length === 0 ? (
+          <div className="p-3 text-xs text-muted-foreground/50 italic">
+            暂无世界观条目（通过 API 或导入功能添加）
+          </div>
+        ) : (
+          <div className="divide-y divide-border/30">
+            {entries.map((entry) => (
+              <div key={entry.id} className="px-3 py-2">
+                <div className="flex items-center gap-1.5 mb-0.5">
+                  <Globe size={11} className="text-primary shrink-0" />
+                  <span className="text-xs font-medium text-foreground">{entry.name}</span>
+                  <span className="text-[9px] px-1 py-0.5 rounded bg-secondary text-muted-foreground">
+                    {entry.dimension}
+                  </span>
+                  {!entry.enabled && (
+                    <span className="text-[9px] px-1 py-0.5 rounded bg-red-500/10 text-red-500">禁用</span>
+                  )}
+                </div>
+                <p className="text-[11px] text-muted-foreground line-clamp-2">{entry.content}</p>
+                {entry.keywords && (
+                  <div className="mt-0.5 flex flex-wrap gap-1">
+                    {entry.keywords.split(",").slice(0, 5).map((kw, i) => (
+                      <span key={i} className="text-[9px] px-1 py-0.5 rounded bg-muted text-muted-foreground">
+                        {kw.trim()}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
