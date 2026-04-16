@@ -278,12 +278,26 @@ async function fetchUpstreamModels(profile: LLMProfile): Promise<string[]> {
   }
 
   if (p === "anthropic") {
-    // Anthropic 没有 /models 端点，返回已知模型
-    return [
-      "claude-sonnet-4-20250514", "claude-opus-4-20250514",
-      "claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022",
-      "claude-3-opus-20240229",
-    ];
+    // 尝试调用 /v1/models 端点（兼容 Sub2API 等中转）
+    try {
+      const base = profile.baseUrl.trim().replace(/\/+$/, "") || "https://api.anthropic.com";
+      const res = await fetch(`${base}/v1/models`, {
+        headers: {
+          "x-api-key": profile.apiKey,
+          "anthropic-version": "2023-06-01"
+        },
+      });
+      if (res.ok) {
+        const data = await res.json() as { data?: Array<{ id: string }> };
+        if (data.data && data.data.length > 0) {
+          return data.data.map(m => m.id);
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to fetch models from anthropic endpoint:", e);
+    }
+    // 如果 API 调用失败，返回空数组（让用户手动输入模型名）
+    return [];
   }
 
   if (p === "gemini") {
