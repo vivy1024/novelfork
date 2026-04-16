@@ -337,7 +337,7 @@ function AppInner() {
               className={tab.id === activeTabId ? "block" : "hidden"}
             >
               <div className="px-6 py-8 md:px-12 lg:py-12 fade-in">
-                <TabContent route={tab.route} nav={nav} theme={theme} t={t} sse={sse} />
+                <TabContent route={tab.route} nav={nav} theme={theme} t={t} sse={sse} setTheme={setTheme} />
               </div>
             </div>
           ))}
@@ -416,12 +416,13 @@ function AppInner() {
   );
 }
 
-function TabContent({ route, nav, theme, t, sse }: {
+function TabContent({ route, nav, theme, t, sse, setTheme }: {
   route: Route;
   nav: any;
   theme: any;
   t: any;
   sse: any;
+  setTheme: (theme: "light" | "dark" | "auto") => void;
 }) {
   switch (route.page) {
     case "dashboard": return <Dashboard nav={nav} sse={sse} theme={theme} t={t} />;
@@ -453,7 +454,7 @@ function TabContent({ route, nav, theme, t, sse }: {
     case "mcp": return <MCPServerManager nav={nav} theme={theme} t={t} />;
     case "pipeline": return <PipelineVisualization runId={route.runId} nav={nav} sse={sse} theme={theme} t={t} />;
     case "plugins": return <PluginManager nav={nav} theme={theme} t={t} />;
-    case "settings": return <SettingsView nav={nav} theme={theme} t={t} />;
+    case "settings": return <SettingsView nav={nav} theme={theme} t={t} onThemeChange={setTheme} />;
     default: return null;
   }
 }
