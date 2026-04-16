@@ -11,6 +11,9 @@ importers:
       '@tiptap/core':
         specifier: 2.27.2
         version: 2.27.2(@tiptap/pm@2.27.2)
+      '@tiptap/extension-text-style':
+        specifier: ^3.22.3
+        version: 3.22.3(@tiptap/core@2.27.2(@tiptap/pm@2.27.2))
       '@tiptap/pm':
         specifier: 2.27.2
         version: 2.27.2
@@ -1742,6 +1745,11 @@ packages:
     resolution: {integrity: sha512-Omk+uxjJLyEY69KStpCw5fA9asvV+MGcAX2HOxyISDFoLaL49TMrNjhGAuz09P1L1b0KGXo4ml7Q3v/Lfy4WPA==}
     peerDependencies:
       '@tiptap/core': ^2.7.0
+
+  '@tiptap/extension-text-style@3.22.3':
+    resolution: {integrity: sha512-JKmWAogM/LX9ZJmXJQalpcR77wWVtVXdRFgvHGsFomW9WFhZqcnIEDWR2sbpZHWtu8dml6eBQGhdLppJmxeFfA==}
+    peerDependencies:
+      '@tiptap/core': ^3.22.3
 
   '@tiptap/extension-text@2.27.2':
     resolution: {integrity: sha512-Xk7nYcigljAY0GO9hAQpZ65ZCxqOqaAlTPDFcKerXmlkQZP/8ndx95OgUb1Xf63kmPOh3xypurGS2is3v0MXSA==}
@@ -5383,6 +5391,10 @@ snapshots:
       '@tiptap/core': 2.27.2(@tiptap/pm@2.27.2)
 
   '@tiptap/extension-text-style@2.27.2(@tiptap/core@2.27.2(@tiptap/pm@2.27.2))':
+    dependencies:
+      '@tiptap/core': 2.27.2(@tiptap/pm@2.27.2)
+
+  '@tiptap/extension-text-style@3.22.3(@tiptap/core@2.27.2(@tiptap/pm@2.27.2))':
     dependencies:
       '@tiptap/core': 2.27.2(@tiptap/pm@2.27.2)
 
