@@ -110,6 +110,7 @@ export { ConsolidatorAgent } from "./agents/consolidator.js";
 export { MemoryDB, type Fact, type StoredSummary, type StoredHook, type ChapterSnapshot, type WorldEntry, type WorldDimension } from "./state/memory-db.js";
 export { retrieveLorebook, extractTerms, formatLorebookForPrompt, type LorebookRetrievalInput, type LorebookRetrievalResult, type LorebookEntry } from "./state/lorebook-retriever.js";
 export { importMarkdownFile, importWorldbuildingDirectory, parseMarkdownSections, inferDimension, type ImportResult, type WorldImportSummary } from "./state/world-importer.js";
+export { analyzeBloat, type BloatEntry, type BloatReport, type BloatGuardianInput } from "./state/bloat-guardian.js";
 export { detectToxicPatterns, type ToxicDetectionContext, type ToxicDetectionResult } from "./utils/toxic-detector.js";
 export { parseOutlineTree, findOutlineNodeForChapter, detectOutlineDrift, type OutlineNode, type OutlineDriftResult } from "./utils/outline-drift.js";
 export { StateValidatorAgent } from "./agents/state-validator.js";
@@ -129,6 +130,7 @@ export {
 } from "./utils/hook-governance.js";
 export { arbitrateRuntimeStateDeltaHooks, type HookArbiterDecision } from "./utils/hook-arbiter.js";
 export { analyzeHookHealth } from "./utils/hook-health.js";
+export { analyzeChapterCadence, isHighTensionMood, type CadenceSummaryRow, type ChapterCadenceAnalysis, type SceneCadencePressure, type MoodCadencePressure, type TitleCadencePressure } from "./utils/chapter-cadence.js";
 
 // Pipeline
 export { PipelineRunner, type PipelineConfig, type ChapterPipelineResult, type DraftResult, type PlanChapterResult, type ComposeChapterResult, type ReviseResult, type TruthFiles, type BookStatusInfo, type ImportChaptersInput, type ImportChaptersResult, type TokenUsageSummary } from "./pipeline/runner.js";

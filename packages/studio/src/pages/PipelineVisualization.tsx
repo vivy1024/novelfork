@@ -1,290 +1,328 @@
-import { useState, useEffect } from "react";
-import { Card } from "../components/ui/card";
-import { Badge } from "../components/ui/badge";
+/**
+ * PipelineVisualization — real-time pipeline stage tracking via SSE.
+ * Replaces the old polling approach with live pipeline:start/stage/complete events.
+ */
+
+import { useState, useEffect, useMemo } from "react";
+import type { SSEMessage } from "../hooks/use-sse";
+import type { Theme } from "../hooks/use-theme";
+import type { TFunction } from "../hooks/use-i18n";
+import { useColors } from "../hooks/use-colors";
 import { fetchJson } from "../hooks/use-api";
+import {
+  Activity,
+  CheckCircle2,
+  XCircle,
+  Clock,
+  Loader2,
+  Zap,
+  ChevronDown,
+  ChevronRight,
+} from "lucide-react";
 
 interface PipelineStage {
   readonly name: string;
   readonly status: "waiting" | "running" | "completed" | "failed";
   readonly agent?: string;
   readonly model?: string;
-  readonly startTime?: number;
-  readonly endTime?: number;
+  readonly durationMs?: number;
   readonly tokenUsage?: {
     readonly promptTokens: number;
     readonly completionTokens: number;
     readonly totalTokens: number;
   };
-  readonly toolCalls?: ReadonlyArray<{
-    readonly name: string;
-    readonly timestamp: number;
-    readonly duration?: number;
-    readonly result?: string;
-  }>;
   readonly error?: string;
 }
 
-interface PipelineRun {
+interface RunState {
   readonly runId: string;
-  readonly bookId: string;
-  readonly bookTitle: string;
+  readonly bookId?: string;
+  readonly bookTitle?: string;
+  readonly chapterNumber?: number;
   readonly status: "running" | "completed" | "failed";
-  readonly startTime: number;
-  readonly endTime?: number;
-  readonly stages: ReadonlyArray<PipelineStage>;
+  readonly stages: Map<string, PipelineStage>;
+  readonly startedAt: number;
+  readonly completedAt?: number;
 }
 
-const STAGE_NAMES = [
-  { key: "plan", label: "Plan", description: "生成章节意图" },
-  { key: "compose", label: "Compose", description: "组装上下文和规则栈" },
-  { key: "write", label: "Write", description: "生成章节正文" },
-  { key: "normalize", label: "Normalize", description: "长度治理和格式化" },
-  { key: "settle", label: "Settle", description: "持久化状态和伏笔" },
-  { key: "audit", label: "Audit", description: "审计连续性和质量" },
-  { key: "revise", label: "Revise", description: "修订问题" },
+const DEFAULT_STAGES = [
+  "radar", "planner", "composer", "architect", "writer",
+  "observer", "settler", "length-normalizer", "continuity-auditor", "reviser",
 ];
 
-function formatDuration(ms: number): string {
-  if (ms < 1000) return `${ms}ms`;
-  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
-  return `${(ms / 60000).toFixed(1)}m`;
-}
+function useSSERuns(messages: ReadonlyArray<SSEMessage>): Map<string, RunState> {
+  const [runs, setRuns] = useState<Map<string, RunState>>(new Map());
 
-function formatTokens(tokens: number): string {
-  if (tokens < 1000) return `${tokens}`;
-  if (tokens < 1000000) return `${(tokens / 1000).toFixed(1)}K`;
-  return `${(tokens / 1000000).toFixed(2)}M`;
-}
+  useEffect(() => {
+    const last = messages.at(-1);
+    if (!last) return;
 
-function StageCard({ stage }: { stage: PipelineStage }) {
-  const duration = stage.startTime && stage.endTime
-    ? stage.endTime - stage.startTime
-    : stage.startTime
-    ? Date.now() - stage.startTime
-    : 0;
+    setRuns((prev) => {
+      const next = new Map(prev);
 
-  const statusColors = {
-    waiting: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400",
-    running: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300",
-    completed: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300",
-    failed: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300",
-  };
+      if (last.event === "pipeline:start") {
+        const d = last.data as { runId: string; bookId?: string; bookTitle?: string; chapterNumber?: number };
+        const stages = new Map<string, PipelineStage>();
+        for (const name of DEFAULT_STAGES) {
+          stages.set(name, { name, status: "waiting" });
+        }
+        next.set(d.runId, {
+          runId: d.runId, bookId: d.bookId, bookTitle: d.bookTitle,
+          chapterNumber: d.chapterNumber, status: "running",
+          stages, startedAt: last.timestamp,
+        });
+      }
 
-  return (
-    <Card className="p-4 hover:shadow-md transition-shadow">
-      <div className="flex items-center justify-between mb-2">
-        <h3 className="font-medium text-foreground">{stage.name}</h3>
-        <Badge className={statusColors[stage.status]}>
-          {stage.status}
-        </Badge>
-      </div>
+      if (last.event === "pipeline:stage") {
+        const d = last.data as PipelineStage & { runId: string; stageName?: string };
+        const stageName = d.stageName ?? d.name;
+        const runId = d.runId;
+        const run = next.get(runId);
+        if (run) {
+          const stages = new Map(run.stages);
+          stages.set(stageName, { ...d, name: stageName });
+          next.set(runId, { ...run, stages });
+        }
+      }
 
-      {stage.agent && (
-        <div className="text-sm text-muted-foreground mb-1">
-          Agent: <span className="font-mono">{stage.agent}</span>
-        </div>
-      )}
+      if (last.event === "pipeline:complete") {
+        const d = last.data as { runId: string; status: "completed" | "failed"; error?: string };
+        const run = next.get(d.runId);
+        if (run) {
+          next.set(d.runId, { ...run, status: d.status, completedAt: last.timestamp });
+        }
+      }
 
-      {stage.model && (
-        <div className="text-sm text-muted-foreground mb-1">
-          Model: <span className="font-mono">{stage.model}</span>
-        </div>
-      )}
+      // Keep last 20 runs
+      if (next.size > 20) {
+        const sorted = [...next.entries()].sort((a, b) => b[1].startedAt - a[1].startedAt);
+        return new Map(sorted.slice(0, 20));
+      }
+      return next;
+    });
+  }, [messages]);
 
-      {duration > 0 && (
-        <div className="text-sm text-muted-foreground mb-1">
-          Duration: {formatDuration(duration)}
-        </div>
-      )}
-
-      {stage.tokenUsage && (
-        <div className="text-sm text-muted-foreground mb-2">
-          Tokens: {formatTokens(stage.tokenUsage.totalTokens)}
-          <span className="text-xs ml-1">
-            ({formatTokens(stage.tokenUsage.promptTokens)} + {formatTokens(stage.tokenUsage.completionTokens)})
-          </span>
-        </div>
-      )}
-
-      {stage.toolCalls && stage.toolCalls.length > 0 && (
-        <div className="mt-2 pt-2 border-t border-border">
-          <div className="text-xs font-medium text-muted-foreground mb-1">Tool Calls:</div>
-          <div className="space-y-1">
-            {stage.toolCalls.map((call, idx) => (
-              <div key={idx} className="text-xs font-mono text-muted-foreground">
-                {call.name}
-                {call.duration && ` (${formatDuration(call.duration)})`}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {stage.error && (
-        <div className="mt-2 p-2 bg-red-50 dark:bg-red-950 rounded text-xs text-red-700 dark:text-red-300">
-          {stage.error}
-        </div>
-      )}
-    </Card>
-  );
+  return runs;
 }
 
 export function PipelineVisualization({
   runId,
   nav,
+  sse,
   theme,
-  t
+  t,
 }: {
   runId?: string;
-  nav: any;
-  theme: any;
-  t: any;
+  nav: { toDashboard: () => void };
+  sse: { messages: ReadonlyArray<SSEMessage> };
+  theme: Theme;
+  t: TFunction;
 }) {
-  const [run, setRun] = useState<PipelineRun | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [selectedStage, setSelectedStage] = useState<PipelineStage | null>(null);
+  const c = useColors(theme);
+  const sseRuns = useSSERuns(sse.messages);
 
+  // If a specific runId is requested and not in SSE, try fetching it once
+  const [fetchedRun, setFetchedRun] = useState<RunState | null>(null);
   useEffect(() => {
-    if (!runId) {
-      setLoading(false);
-      return;
+    if (!runId || sseRuns.has(runId)) return;
+    fetchJson<{
+      runId: string; bookId: string; bookTitle: string; status: string;
+      startTime: number; endTime?: number;
+      stages: ReadonlyArray<{ name: string; status: string; agent?: string; model?: string;
+        startTime?: number; endTime?: number; error?: string;
+        tokenUsage?: { promptTokens: number; completionTokens: number; totalTokens: number } }>;
+    }>(`/api/pipeline/${runId}/status`).then((data) => {
+      const stages = new Map<string, PipelineStage>();
+      for (const s of data.stages) {
+        stages.set(s.name, {
+          name: s.name,
+          status: s.status as PipelineStage["status"],
+          agent: s.agent, model: s.model,
+          durationMs: s.startTime && s.endTime ? s.endTime - s.startTime : undefined,
+          tokenUsage: s.tokenUsage, error: s.error,
+        });
+      }
+      setFetchedRun({
+        runId: data.runId, bookId: data.bookId, bookTitle: data.bookTitle,
+        status: data.status as RunState["status"],
+        stages, startedAt: data.startTime, completedAt: data.endTime,
+      });
+    }).catch(() => { /* ignore — SSE will pick up future runs */ });
+  }, [runId, sseRuns]);
+
+  const allRuns = useMemo(() => {
+    const merged = new Map(sseRuns);
+    if (fetchedRun && !merged.has(fetchedRun.runId)) {
+      merged.set(fetchedRun.runId, fetchedRun);
     }
+    return [...merged.values()].sort((a, b) => b.startedAt - a.startedAt);
+  }, [sseRuns, fetchedRun]);
 
-    const fetchRun = async () => {
-      try {
-        const data = await fetchJson<PipelineRun>(`/api/pipeline/${runId}/status`);
-        setRun(data);
-        setError(null);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to load pipeline run");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchRun();
-
-    // Poll for updates if running
-    const interval = setInterval(() => {
-      if (run?.status === "running") {
-        fetchRun();
-      }
-    }, 2000);
-
-    return () => clearInterval(interval);
-  }, [runId, run?.status]);
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <div className="w-8 h-8 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="text-center py-12">
-        <p className="text-destructive">{error}</p>
-      </div>
-    );
-  }
-
-  if (!run) {
-    return (
-      <div className="text-center py-12">
-        <h2 className="text-2xl font-serif mb-4">Pipeline Visualization</h2>
-        <p className="text-muted-foreground">No pipeline run selected</p>
-      </div>
-    );
-  }
-
-  const totalDuration = run.endTime ? run.endTime - run.startTime : Date.now() - run.startTime;
-  const totalTokens = run.stages.reduce((sum, s) => sum + (s.tokenUsage?.totalTokens || 0), 0);
+  const activeRun = allRuns.find((r) => r.status === "running");
+  const displayRuns = runId ? allRuns.filter((r) => r.runId === runId) : allRuns;
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-serif mb-2">Pipeline Run</h1>
-        <p className="text-muted-foreground">
-          {run.bookTitle} - Run ID: {run.runId}
-        </p>
+    <div className="space-y-8">
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <button onClick={nav.toDashboard} className={c.link}>{t("bread.home")}</button>
+        <span className="text-border">/</span>
+        <span>Pipeline</span>
       </div>
 
-      <Card className="p-6">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div>
-            <div className="text-sm text-muted-foreground">Status</div>
-            <div className="text-lg font-medium">{run.status}</div>
-          </div>
-          <div>
-            <div className="text-sm text-muted-foreground">Duration</div>
-            <div className="text-lg font-medium">{formatDuration(totalDuration)}</div>
-          </div>
-          <div>
-            <div className="text-sm text-muted-foreground">Total Tokens</div>
-            <div className="text-lg font-medium">{formatTokens(totalTokens)}</div>
-          </div>
-          <div>
-            <div className="text-sm text-muted-foreground">Stages</div>
-            <div className="text-lg font-medium">
-              {run.stages.filter(s => s.status === "completed").length} / {run.stages.length}
-            </div>
-          </div>
+      <div className="flex items-baseline justify-between">
+        <h1 className="font-serif text-3xl flex items-center gap-3">
+          <Activity size={28} className="text-primary" />
+          Pipeline Monitor
+        </h1>
+        {activeRun && (
+          <span className="flex items-center gap-2 text-xs text-primary font-medium px-3 py-1.5 rounded-full bg-primary/10">
+            <Loader2 size={12} className="animate-spin" />
+            运行中
+          </span>
+        )}
+      </div>
+
+      {displayRuns.length === 0 ? (
+        <div className={`border border-dashed ${c.cardStatic} rounded-lg p-12 text-center text-muted-foreground text-sm italic`}>
+          暂无 Pipeline 运行记录（触发写作后将实时显示）
         </div>
-      </Card>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {run.stages.map((stage, idx) => (
-          <div key={idx} onClick={() => setSelectedStage(stage)} className="cursor-pointer">
-            <StageCard stage={stage} />
-          </div>
-        ))}
-      </div>
-
-      {selectedStage && (
-        <Card className="p-6">
-          <h2 className="text-xl font-serif mb-4">Stage Details: {selectedStage.name}</h2>
-          <div className="space-y-4">
-            <div>
-              <div className="text-sm font-medium text-muted-foreground mb-1">Status</div>
-              <div>{selectedStage.status}</div>
-            </div>
-            {selectedStage.agent && (
-              <div>
-                <div className="text-sm font-medium text-muted-foreground mb-1">Agent</div>
-                <div className="font-mono">{selectedStage.agent}</div>
-              </div>
-            )}
-            {selectedStage.model && (
-              <div>
-                <div className="text-sm font-medium text-muted-foreground mb-1">Model</div>
-                <div className="font-mono">{selectedStage.model}</div>
-              </div>
-            )}
-            {selectedStage.toolCalls && selectedStage.toolCalls.length > 0 && (
-              <div>
-                <div className="text-sm font-medium text-muted-foreground mb-2">Tool Calls</div>
-                <div className="space-y-2">
-                  {selectedStage.toolCalls.map((call, idx) => (
-                    <div key={idx} className="p-3 bg-muted rounded">
-                      <div className="font-mono text-sm">{call.name}</div>
-                      <div className="text-xs text-muted-foreground mt-1">
-                        {new Date(call.timestamp).toLocaleTimeString()}
-                        {call.duration && ` - ${formatDuration(call.duration)}`}
-                      </div>
-                      {call.result && (
-                        <pre className="mt-2 text-xs overflow-x-auto">{call.result}</pre>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </Card>
+      ) : (
+        <div className="space-y-4">
+          {displayRuns.map((run) => (
+            <RunCard key={run.runId} run={run} c={c} />
+          ))}
+        </div>
       )}
     </div>
   );
+}
+
+function RunCard({ run, c }: { run: RunState; c: ReturnType<typeof useColors> }) {
+  const [expanded, setExpanded] = useState(run.status === "running");
+  const elapsed = (run.completedAt ?? Date.now()) - run.startedAt;
+  const stages = [...run.stages.values()];
+  const completedCount = stages.filter((s) => s.status === "completed").length;
+  const totalTokens = stages.reduce((sum, s) => sum + (s.tokenUsage?.totalTokens ?? 0), 0);
+
+  return (
+    <div className={`border ${c.cardStatic} rounded-xl overflow-hidden`}>
+      <button
+        onClick={() => setExpanded((p) => !p)}
+        className="w-full px-5 py-3 bg-muted/40 border-b border-border flex items-center justify-between text-left"
+      >
+        <div className="flex items-center gap-3">
+          {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          <RunStatusIcon status={run.status} />
+          <div>
+            <span className="text-sm font-medium">
+              {run.bookTitle ?? run.bookId ?? "Pipeline Run"}
+              {run.chapterNumber != null && ` — 第${run.chapterNumber}章`}
+            </span>
+            <span className="text-[10px] text-muted-foreground ml-2 font-mono">
+              {run.runId.slice(0, 8)}
+            </span>
+          </div>
+        </div>
+        <div className="flex items-center gap-4 text-xs text-muted-foreground">
+          <span>{completedCount}/{stages.length} stages</span>
+          {totalTokens > 0 && (
+            <span className="flex items-center gap-1">
+              <Zap size={10} /> {totalTokens.toLocaleString()}
+            </span>
+          )}
+          <span className="flex items-center gap-1 tabular-nums">
+            <Clock size={10} /> {formatDuration(elapsed)}
+          </span>
+        </div>
+      </button>
+
+      {/* Compact progress bar */}
+      <div className="flex h-1">
+        {stages.map((s) => (
+          <div
+            key={s.name}
+            className={`flex-1 transition-colors duration-300 ${stageBarColor(s.status)}`}
+          />
+        ))}
+      </div>
+
+      {expanded && (
+        <div className="px-5 py-3">
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-2">
+            {stages.map((s) => (
+              <StageCard key={s.name} stage={s} />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StageCard({ stage }: { stage: PipelineStage }) {
+  return (
+    <div className="rounded-lg border border-border/40 p-2.5 text-xs">
+      <div className="flex items-center gap-1.5 mb-1">
+        <StageStatusIcon status={stage.status} />
+        <span className="font-medium text-foreground truncate">{stage.name}</span>
+      </div>
+      {stage.agent && (
+        <div className="text-[10px] text-muted-foreground truncate">
+          {stage.agent}{stage.model ? ` · ${stage.model}` : ""}
+        </div>
+      )}
+      {stage.durationMs != null && (
+        <div className="text-[10px] text-muted-foreground tabular-nums">
+          {formatDuration(stage.durationMs)}
+        </div>
+      )}
+      {stage.status === "running" && (
+        <div className="text-[10px] text-primary animate-pulse">运行中...</div>
+      )}
+      {stage.tokenUsage && (
+        <div className="text-[10px] text-muted-foreground tabular-nums">
+          {stage.tokenUsage.totalTokens.toLocaleString()} tok
+        </div>
+      )}
+      {stage.error && (
+        <div className="text-[10px] text-destructive truncate mt-0.5" title={stage.error}>
+          {stage.error}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RunStatusIcon({ status }: { status: string }) {
+  switch (status) {
+    case "running": return <Loader2 size={16} className="text-primary animate-spin shrink-0" />;
+    case "completed": return <CheckCircle2 size={16} className="text-emerald-500 shrink-0" />;
+    case "failed": return <XCircle size={16} className="text-destructive shrink-0" />;
+    default: return <Clock size={16} className="text-muted-foreground shrink-0" />;
+  }
+}
+
+function StageStatusIcon({ status }: { status: string }) {
+  switch (status) {
+    case "running": return <Loader2 size={10} className="text-primary animate-spin shrink-0" />;
+    case "completed": return <CheckCircle2 size={10} className="text-emerald-500 shrink-0" />;
+    case "failed": return <XCircle size={10} className="text-destructive shrink-0" />;
+    default: return <div className="w-2.5 h-2.5 rounded-full border border-border shrink-0" />;
+  }
+}
+
+function stageBarColor(status: string): string {
+  switch (status) {
+    case "running": return "bg-primary animate-pulse";
+    case "completed": return "bg-emerald-500";
+    case "failed": return "bg-destructive";
+    default: return "bg-muted";
+  }
+}
+
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s}s`;
+  return `${Math.floor(s / 60)}m${s % 60}s`;
 }

@@ -8,10 +8,12 @@ import { Server, Play, Square, Trash2, Plus, RefreshCw, AlertCircle, CheckCircle
 interface MCPServer {
   id: string;
   name: string;
-  command: string;
-  args: string[];
+  transport: "stdio" | "sse";
+  command?: string;
+  args?: string[];
+  url?: string;
   env?: Record<string, string>;
-  status: "stopped" | "starting" | "running" | "error";
+  status: "disconnected" | "connecting" | "connected" | "reconnecting" | "failed";
   tools?: Array<{ name: string; description: string }>;
   error?: string;
 }
@@ -28,8 +30,10 @@ export function MCPServerManager({ nav, theme, t }: Props) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
+    transport: "stdio" as "stdio" | "sse",
     command: "",
     args: "",
+    url: "",
     env: "",
   });
 
@@ -54,12 +58,14 @@ export function MCPServerManager({ nav, theme, t }: Props) {
     const env = formData.env ? JSON.parse(formData.env) : undefined;
     await postApi("/mcp/servers", {
       name: formData.name,
-      command: formData.command,
-      args,
+      transport: formData.transport,
+      command: formData.transport === "stdio" ? formData.command : undefined,
+      args: formData.transport === "stdio" ? args : undefined,
+      url: formData.transport === "sse" ? formData.url : undefined,
       env,
     });
     setShowAddForm(false);
-    setFormData({ name: "", command: "", args: "", env: "" });
+    setFormData({ name: "", transport: "stdio", command: "", args: "", url: "", env: "" });
     refetch();
   }
 
@@ -98,25 +104,51 @@ export function MCPServerManager({ nav, theme, t }: Props) {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1 text-foreground">命令</label>
-              <input
-                type="text"
-                value={formData.command}
-                onChange={(e) => setFormData({ ...formData, command: e.target.value })}
+              <label className="block text-sm font-medium mb-1 text-foreground">传输方式</label>
+              <select
+                value={formData.transport}
+                onChange={(e) => setFormData({ ...formData, transport: e.target.value as "stdio" | "sse" })}
                 className={c.input}
-                placeholder="npx"
-              />
+              >
+                <option value="stdio">stdio（本地进程）</option>
+                <option value="sse">SSE（远程 HTTP）</option>
+              </select>
             </div>
-            <div>
-              <label className="block text-sm font-medium mb-1 text-foreground">参数（逗号分隔）</label>
-              <input
-                type="text"
-                value={formData.args}
-                onChange={(e) => setFormData({ ...formData, args: e.target.value })}
-                className={c.input}
-                placeholder="-y, @modelcontextprotocol/server-filesystem, /path/to/dir"
-              />
-            </div>
+            {formData.transport === "stdio" ? (
+              <>
+                <div>
+                  <label className="block text-sm font-medium mb-1 text-foreground">命令</label>
+                  <input
+                    type="text"
+                    value={formData.command}
+                    onChange={(e) => setFormData({ ...formData, command: e.target.value })}
+                    className={c.input}
+                    placeholder="npx"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1 text-foreground">参数（逗号分隔）</label>
+                  <input
+                    type="text"
+                    value={formData.args}
+                    onChange={(e) => setFormData({ ...formData, args: e.target.value })}
+                    className={c.input}
+                    placeholder="-y, @modelcontextprotocol/server-filesystem, /path/to/dir"
+                  />
+                </div>
+              </>
+            ) : (
+              <div>
+                <label className="block text-sm font-medium mb-1 text-foreground">URL</label>
+                <input
+                  type="text"
+                  value={formData.url}
+                  onChange={(e) => setFormData({ ...formData, url: e.target.value })}
+                  className={c.input}
+                  placeholder="http://localhost:3001/sse"
+                />
+              </div>
+            )}
             <div>
               <label className="block text-sm font-medium mb-1 text-foreground">环境变量（JSON）</label>
               <textarea
@@ -148,33 +180,35 @@ export function MCPServerManager({ nav, theme, t }: Props) {
                 <div>
                   <h3 className="font-semibold text-foreground">{server.name}</h3>
                   <p className="text-xs text-muted-foreground">
-                    {server.command} {server.args.join(" ")}
+                    {server.transport === "sse"
+                      ? server.url
+                      : `${server.command ?? ""} ${(server.args ?? []).join(" ")}`}
                   </p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                {server.status === "running" && (
+                {server.status === "connected" && (
                   <span className="flex items-center gap-1 text-xs text-green-500">
                     <CheckCircle2 className="w-3 h-3" />
-                    运行中
+                    已连接
                   </span>
                 )}
-                {server.status === "starting" && (
+                {(server.status === "connecting" || server.status === "reconnecting") && (
                   <span className="flex items-center gap-1 text-xs text-yellow-500">
                     <Loader2 className="w-3 h-3 animate-spin" />
-                    启动中
+                    {server.status === "connecting" ? "连接中" : "重连中"}
                   </span>
                 )}
-                {server.status === "stopped" && (
+                {server.status === "disconnected" && (
                   <span className="flex items-center gap-1 text-xs text-muted-foreground">
                     <Square className="w-3 h-3" />
-                    已停止
+                    未连接
                   </span>
                 )}
-                {server.status === "error" && (
+                {server.status === "failed" && (
                   <span className="flex items-center gap-1 text-xs text-red-500">
                     <AlertCircle className="w-3 h-3" />
-                    错误
+                    失败
                   </span>
                 )}
               </div>
@@ -206,16 +240,22 @@ export function MCPServerManager({ nav, theme, t }: Props) {
             )}
 
             <div className="flex gap-2">
-              {server.status === "stopped" && (
+              {server.status === "disconnected" && (
                 <button onClick={() => handleStart(server.id)} className={c.btnPrimary + " text-xs"}>
                   <Play className="w-3 h-3 mr-1" />
-                  启动
+                  连接
                 </button>
               )}
-              {(server.status === "running" || server.status === "starting") && (
+              {server.status === "failed" && (
+                <button onClick={() => handleStart(server.id)} className={c.btnPrimary + " text-xs"}>
+                  <Play className="w-3 h-3 mr-1" />
+                  重连
+                </button>
+              )}
+              {(server.status === "connected" || server.status === "connecting" || server.status === "reconnecting") && (
                 <button onClick={() => handleStop(server.id)} className={c.btnSecondary + " text-xs"}>
                   <Square className="w-3 h-3 mr-1" />
-                  停止
+                  断开
                 </button>
               )}
               <button onClick={() => handleDelete(server.id)} className={c.btnDanger + " text-xs"}>
