@@ -1,0 +1,105 @@
+import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { join, dirname } from "node:path";
+import { homedir } from "node:os";
+import { existsSync } from "node:fs";
+import type { UserConfig } from "../../types/settings.js";
+import { DEFAULT_USER_CONFIG } from "../../types/settings.js";
+
+/**
+ * 获取用户配置文件路径
+ */
+export function getUserConfigPath(): string {
+  return join(homedir(), ".inkos", "user-config.json");
+}
+
+/**
+ * 获取配置备份路径
+ */
+function getBackupPath(index: number): string {
+  return join(homedir(), ".inkos", `user-config.backup${index}.json`);
+}
+
+/**
+ * 确保配置目录存在
+ */
+async function ensureConfigDir(): Promise<void> {
+  const configPath = getUserConfigPath();
+  const dir = dirname(configPath);
+  if (!existsSync(dir)) {
+    await mkdir(dir, { recursive: true });
+  }
+}
+
+/**
+ * 加载用户配置
+ */
+export async function loadUserConfig(): Promise<UserConfig> {
+  await ensureConfigDir();
+  const configPath = getUserConfigPath();
+
+  if (!existsSync(configPath)) {
+    // 首次运行，创建默认配置
+    await saveUserConfig(DEFAULT_USER_CONFIG);
+    return DEFAULT_USER_CONFIG;
+  }
+
+  try {
+    const raw = await readFile(configPath, "utf-8");
+    const config = JSON.parse(raw) as UserConfig;
+    // 合并默认值（处理新增字段）
+    return {
+      ...DEFAULT_USER_CONFIG,
+      ...config,
+      profile: { ...DEFAULT_USER_CONFIG.profile, ...config.profile },
+      preferences: { ...DEFAULT_USER_CONFIG.preferences, ...config.preferences },
+    };
+  } catch (error) {
+    console.error("Failed to load user config, using default:", error);
+    return DEFAULT_USER_CONFIG;
+  }
+}
+
+/**
+ * 保存用户配置（带备份）
+ */
+export async function saveUserConfig(config: UserConfig): Promise<void> {
+  await ensureConfigDir();
+  const configPath = getUserConfigPath();
+
+  // 如果配置文件已存在，先备份
+  if (existsSync(configPath)) {
+    try {
+      const existing = await readFile(configPath, "utf-8");
+      // 轮转备份：backup3 <- backup2 <- backup1 <- current
+      for (let i = 2; i >= 0; i--) {
+        const oldPath = i === 0 ? configPath : getBackupPath(i);
+        const newPath = getBackupPath(i + 1);
+        if (existsSync(oldPath)) {
+          await writeFile(newPath, await readFile(oldPath, "utf-8"), "utf-8");
+        }
+      }
+    } catch (error) {
+      console.warn("Failed to backup config:", error);
+    }
+  }
+
+  // 保存新配置
+  await writeFile(configPath, JSON.stringify(config, null, 2), "utf-8");
+}
+
+/**
+ * 更新用户配置（部分更新）
+ */
+export async function updateUserConfig(partial: Partial<UserConfig>): Promise<UserConfig> {
+  const current = await loadUserConfig();
+  const updated: UserConfig = {
+    ...current,
+    ...partial,
+    profile: { ...current.profile, ...(partial.profile ?? {}) },
+    preferences: { ...current.preferences, ...(partial.preferences ?? {}) },
+    shortcuts: { ...current.shortcuts, ...(partial.shortcuts ?? {}) },
+    recentWorkspaces: partial.recentWorkspaces ?? current.recentWorkspaces,
+  };
+  await saveUserConfig(updated);
+  return updated;
+}

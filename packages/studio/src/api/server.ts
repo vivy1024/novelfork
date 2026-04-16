@@ -30,6 +30,7 @@ import {
   createPipelineRouter,
   createWorkbenchRouter,
   createLorebookRouter,
+  createSettingsRouter,
 } from "./routes/index.js";
 import type { RouterContext } from "./routes/index.js";
 import type { Context } from "hono";
@@ -218,6 +219,9 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
 
     // Pipeline visualization
     app.route("/api/pipeline", createPipelineRouter(ctx));
+
+    // Settings management
+    app.route("/api/settings", createSettingsRouter());
   } else {
     // Relay mode — snapshot-based AI endpoints only
     app.route("", createAIRelayRouter(ctx));

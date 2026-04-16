@@ -70,6 +70,7 @@ interface Nav {
   toMCP: () => void;
   toPipeline: (runId?: string) => void;
   toPlugins: () => void;
+  toSettings: () => void;
 }
 
 export function Sidebar({ nav, activePage, sse, t }: {
@@ -291,6 +292,12 @@ export function Sidebar({ nav, activePage, sse, t }: {
               icon={<Sliders size={16} />}
               active={activePage === "llm-advanced"}
               onClick={nav.toLLMAdvanced}
+            />
+            <SidebarItem
+              label="设置"
+              icon={<Settings size={16} />}
+              active={activePage === "settings"}
+              onClick={nav.toSettings}
             />
           </div>
           )}

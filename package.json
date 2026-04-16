@@ -37,7 +37,8 @@
     "@tiptap/core": "2.27.2",
     "@tiptap/pm": "2.27.2",
     "@tiptap/react": "^3.22.3",
-    "@tiptap/starter-kit": "^3.22.3"
+    "@tiptap/starter-kit": "^3.22.3",
+    "novel": "^1.0.2"
   },
   "devDependencies": {
     "esbuild": "^0.28.0"
