@@ -110,6 +110,8 @@ export { ConsolidatorAgent } from "./agents/consolidator.js";
 export { MemoryDB, type Fact, type StoredSummary, type StoredHook, type ChapterSnapshot, type WorldEntry, type WorldDimension } from "./state/memory-db.js";
 export { retrieveLorebook, extractTerms, formatLorebookForPrompt, type LorebookRetrievalInput, type LorebookRetrievalResult, type LorebookEntry } from "./state/lorebook-retriever.js";
 export { importMarkdownFile, importWorldbuildingDirectory, parseMarkdownSections, inferDimension, type ImportResult, type WorldImportSummary } from "./state/world-importer.js";
+export { detectToxicPatterns, type ToxicDetectionContext, type ToxicDetectionResult } from "./utils/toxic-detector.js";
+export { parseOutlineTree, findOutlineNodeForChapter, detectOutlineDrift, type OutlineNode, type OutlineDriftResult } from "./utils/outline-drift.js";
 export { StateValidatorAgent } from "./agents/state-validator.js";
 export { loadRuntimeStateSnapshot, buildRuntimeStateArtifacts, saveRuntimeStateSnapshot, loadNarrativeMemorySeed, loadSnapshotCurrentStateFacts, type RuntimeStateArtifacts, type NarrativeMemorySeed } from "./state/runtime-state-store.js";
 export { splitChapters, type SplitChapter } from "./utils/chapter-splitter.js";
