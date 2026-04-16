@@ -126,5 +126,33 @@ export function createWorktreeRouter(): Hono {
     }
   });
 
+  /**
+   * GET /api/worktree/diff?path=<worktree-path>&file=<file-path>
+   * 获取指定文件的 diff
+   */
+  app.get("/api/worktree/diff", async (c) => {
+    try {
+      const worktreePath = c.req.query("path");
+      const filePath = c.req.query("file");
+
+      if (!worktreePath?.trim()) {
+        throw new ApiError(400, "PATH_REQUIRED", "Worktree path is required");
+      }
+
+      if (!filePath?.trim()) {
+        throw new ApiError(400, "FILE_REQUIRED", "File path is required");
+      }
+
+      // 导入 getFileDiff 函数
+      const { getFileDiff } = await import("../lib/git-utils.js");
+      const diff = await getFileDiff(worktreePath, filePath);
+
+      return c.json({ diff });
+    } catch (error) {
+      if (error instanceof ApiError) throw error;
+      throw new ApiError(500, "DIFF_FAILED", error instanceof Error ? error.message : "Failed to get file diff");
+    }
+  });
+
   return app;
 }

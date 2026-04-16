@@ -4,8 +4,9 @@
  */
 
 import { useState } from "react";
-import { Plus, RefreshCw, AlertCircle, FolderGit2 } from "lucide-react";
+import { Plus, RefreshCw, AlertCircle, FolderGit2, X } from "lucide-react";
 import { WorktreeCard } from "../components/WorktreeCard";
+import { FileModPanel } from "../components/FileModPanel";
 import { useWorktree } from "../hooks/use-worktree";
 import { Button } from "../components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "../components/ui/dialog";
@@ -22,6 +23,7 @@ export function WorktreeManager({ onBack }: WorktreeManagerProps) {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const [viewingChangesPath, setViewingChangesPath] = useState<string | null>(null);
 
   const [newWorktreeName, setNewWorktreeName] = useState("");
   const [newWorktreeBranch, setNewWorktreeBranch] = useState("");
@@ -80,6 +82,47 @@ export function WorktreeManager({ onBack }: WorktreeManagerProps) {
     setSelectedPath(path);
     setDeleteDialogOpen(true);
   };
+
+  const handleViewChanges = (path: string) => {
+    setViewingChangesPath(path);
+  };
+
+  const handleCloseChanges = () => {
+    setViewingChangesPath(null);
+  };
+
+  // 如果正在查看变更，显示 FileModPanel
+  if (viewingChangesPath) {
+    const worktree = worktrees.find(w => w.path === viewingChangesPath);
+    if (!worktree) {
+      setViewingChangesPath(null);
+      return null;
+    }
+
+    // 从 worktree.status 获取实际的文件列表
+    // 注意：worktree.status 只有计数，需要调用 API 获取详细文件列表
+    return (
+      <div className="h-full flex flex-col bg-background">
+        {/* 顶部工具栏 */}
+        <div className="flex items-center justify-between p-4 border-b">
+          <div className="flex items-center gap-4">
+            <Button variant="ghost" onClick={handleCloseChanges}>
+              ← 返回列表
+            </Button>
+            <h1 className="text-2xl font-bold">文件变更</h1>
+            <span className="text-sm text-muted-foreground">
+              {worktree.branch}
+            </span>
+          </div>
+        </div>
+
+        {/* FileModPanel */}
+        <div className="flex-1 overflow-hidden p-4">
+          <FileModPanel worktreePath={viewingChangesPath} />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-full flex flex-col bg-background">
@@ -140,6 +183,7 @@ export function WorktreeManager({ onBack }: WorktreeManagerProps) {
                 worktree={worktree}
                 onDelete={handleDeleteClick}
                 onOpen={handleOpenWorktree}
+                onViewChanges={handleViewChanges}
               />
             ))}
           </div>
