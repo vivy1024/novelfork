@@ -36,12 +36,14 @@ import { StateProjectionsView } from "./pages/StateProjectionsView";
 import { MCPServerManager } from "./pages/MCPServerManager";
 import { PipelineVisualization } from "./pages/PipelineVisualization";
 import { PluginManager } from "./pages/PluginManager";
+import { ReferencePanel } from "./components/ReferencePanel";
 import { RecoveryBanner } from "./components/RecoveryBanner";
 import { useSSE } from "./hooks/use-sse";
 import { useTheme } from "./hooks/use-theme";
 import { useI18n } from "./hooks/use-i18n";
 import { useTabsState } from "./hooks/use-tabs";
 import { useResizable } from "./hooks/use-resizable";
+import { useVerticalResizable } from "./hooks/use-vertical-resizable";
 import { useRecovery } from "./hooks/use-crash-recovery";
 import { fetchJson, postApi, useApi } from "./hooks/use-api";
 
@@ -135,6 +137,8 @@ function AppInner() {
 
   const sidebarResize = useResizable({ initialWidth: 260, minWidth: 200, maxWidth: 400, side: "left" });
   const chatResize = useResizable({ initialWidth: 320, minWidth: 240, maxWidth: 500, side: "right" });
+  const bottomResize = useVerticalResizable({ initialHeight: 200, minHeight: 120, maxHeight: 400 });
+  const [refPanelOpen, setRefPanelOpen] = useState(false);
   const recovery = useRecovery();
 
   const isDark = theme === "dark";
@@ -144,6 +148,16 @@ function AppInner() {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault();
         setCmdOpen(prev => !prev);
+      }
+      // Ctrl+S — prevent browser save, dispatch custom event for editors
+      if ((e.metaKey || e.ctrlKey) && e.key === "s") {
+        e.preventDefault();
+        window.dispatchEvent(new CustomEvent("inkos:save"));
+      }
+      // Ctrl+B — toggle reference panel
+      if ((e.metaKey || e.ctrlKey) && e.key === "b") {
+        e.preventDefault();
+        setRefPanelOpen(prev => !prev);
       }
     };
     window.addEventListener("keydown", handler);
@@ -295,12 +309,26 @@ function AppInner() {
               key={tab.id}
               className={tab.id === activeTabId ? "block" : "hidden"}
             >
-              <div className="max-w-4xl mx-auto px-6 py-12 md:px-12 lg:py-16 fade-in">
+              <div className="px-6 py-8 md:px-12 lg:py-12 fade-in">
                 <TabContent route={tab.route} nav={nav} theme={theme} t={t} sse={sse} />
               </div>
             </div>
           ))}
         </main>
+
+        {/* Bottom Reference Panel */}
+        {refPanelOpen && (
+          <>
+            <div {...bottomResize.handleProps} />
+            <ReferencePanel height={bottomResize.height} />
+          </>
+        )}
+
+        {/* Status Bar */}
+        <footer className="h-6 shrink-0 flex items-center px-4 text-[10px] text-muted-foreground border-t border-border/40 bg-background/80 gap-4">
+          <span>InkOS Studio</span>
+          <span className="ml-auto">Ctrl+K 命令面板 · Ctrl+B 参考面板 · Ctrl+S 保存</span>
+        </footer>
       </div>
 
       {/* BookCreate Modal */}

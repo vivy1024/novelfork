@@ -12,6 +12,7 @@ export interface Tab {
   readonly route: Route;
   readonly label: string;
   readonly closable: boolean;
+  readonly dirty: boolean;
 }
 
 export interface TabsState {
@@ -24,7 +25,9 @@ type TabAction =
   | { type: "activate"; tabId: string }
   | { type: "close"; tabId: string }
   | { type: "closeOthers"; tabId: string }
-  | { type: "closeRight"; tabId: string };
+  | { type: "closeRight"; tabId: string }
+  | { type: "markDirty"; tabId: string }
+  | { type: "markClean"; tabId: string };
 
 export function routeToTabId(route: Route): string {
   switch (route.page) {
@@ -100,6 +103,7 @@ function routeToTab(route: Route): Tab {
     route,
     label: routeToTabLabel(route),
     closable: route.page !== "dashboard",
+    dirty: false,
   };
 }
 
@@ -157,6 +161,22 @@ export function tabsReducer(state: TabsState, action: TabAction): TabsState {
         activeTabId: activeStillOpen ? state.activeTabId : action.tabId,
       };
     }
+    case "markDirty": {
+      return {
+        ...state,
+        tabs: state.tabs.map((t) =>
+          t.id === action.tabId ? { ...t, dirty: true } : t,
+        ),
+      };
+    }
+    case "markClean": {
+      return {
+        ...state,
+        tabs: state.tabs.map((t) =>
+          t.id === action.tabId ? { ...t, dirty: false } : t,
+        ),
+      };
+    }
   }
 }
 
@@ -183,6 +203,14 @@ export function useTabsState() {
     dispatch({ type: "closeRight", tabId });
   }, []);
 
+  const markDirty = useCallback((tabId: string) => {
+    dispatch({ type: "markDirty", tabId });
+  }, []);
+
+  const markClean = useCallback((tabId: string) => {
+    dispatch({ type: "markClean", tabId });
+  }, []);
+
   return {
     tabs: state.tabs,
     activeTabId: state.activeTabId,
@@ -192,5 +220,7 @@ export function useTabsState() {
     activateTab,
     closeOtherTabs,
     closeTabsToRight,
+    markDirty,
+    markClean,
   };
 }

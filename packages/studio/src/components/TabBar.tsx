@@ -50,6 +50,9 @@ export function TabBar({
                 }
               }}
             >
+              {tab.dirty && (
+                <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" title="未保存" />
+              )}
               <span className="truncate max-w-[120px]">{tab.label}</span>
               {tab.closable && (
                 <button
