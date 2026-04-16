@@ -9,4 +9,5 @@ export { createMCPRouter } from "./mcp.js";
 export { createPipelineRouter } from "./pipeline.js";
 export { createWorkbenchRouter } from "./workbench.js";
 export { createLorebookRouter } from "./lorebook.js";
+export { createSettingsRouter } from "./settings.js";
 export type { RouterContext } from "./context.js";

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 export type Theme = "light" | "dark";
+export type ThemePreference = "light" | "dark" | "auto";
 
 const THEME_STORAGE_KEY = "inkos:studio:theme";
 
@@ -29,15 +30,23 @@ function getThemeStorage(): ThemeStorageLike | null {
   }
 }
 
-export function readStoredTheme(storage: Pick<ThemeStorageLike, "getItem"> | null | undefined): Theme | null {
+export function readStoredTheme(storage: Pick<ThemeStorageLike, "getItem"> | null | undefined): ThemePreference | null {
   const storedTheme = storage?.getItem(THEME_STORAGE_KEY);
-  return storedTheme === "light" || storedTheme === "dark" ? storedTheme : null;
+  return storedTheme === "light" || storedTheme === "dark" || storedTheme === "auto" ? storedTheme : null;
+}
+
+function getSystemTheme(): Theme {
+  if (typeof window === "undefined") return "light";
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
 export function resolveThemePreference(params: {
   readonly hour: number;
-  readonly storedTheme: Theme | null;
+  readonly storedTheme: ThemePreference | null;
 }): Theme {
+  if (params.storedTheme === "auto") {
+    return getSystemTheme();
+  }
   return params.storedTheme ?? getTimeBasedThemeForHour(params.hour);
 }
 
@@ -50,6 +59,17 @@ export function useTheme() {
   );
 
   useEffect(() => {
+    // 监听系统主题变化
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    const handleChange = () => {
+      const storedTheme = readStoredTheme(getThemeStorage());
+      if (storedTheme === "auto") {
+        setThemeState(getSystemTheme());
+      }
+    };
+    mediaQuery.addEventListener("change", handleChange);
+
+    // 定时检查（用于时间基础主题）
     const timer = setInterval(() => {
       const storedTheme = readStoredTheme(getThemeStorage());
       setThemeState(resolveThemePreference({
@@ -58,17 +78,22 @@ export function useTheme() {
       }));
     }, 60000);
 
-    return () => clearInterval(timer);
+    return () => {
+      mediaQuery.removeEventListener("change", handleChange);
+      clearInterval(timer);
+    };
   }, []);
 
-  const setTheme = (nextTheme: Theme) => {
+  const setTheme = (nextTheme: ThemePreference) => {
     const storage = getThemeStorage();
     try {
       storage?.setItem(THEME_STORAGE_KEY, nextTheme);
     } catch {
       // Ignore storage failures and keep the in-memory preference for this session.
     }
-    setThemeState(nextTheme);
+    // 立即解析并应用主题
+    const resolvedTheme = nextTheme === "auto" ? getSystemTheme() : nextTheme;
+    setThemeState(resolvedTheme);
   };
 
   return { theme, setTheme };

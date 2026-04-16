@@ -35,7 +35,7 @@ import { LLMAdvancedConfig } from "./pages/LLMAdvancedConfig";
 import { StateProjectionsView } from "./pages/StateProjectionsView";
 import { MCPServerManager } from "./pages/MCPServerManager";
 import { PipelineVisualization } from "./pages/PipelineVisualization";
-import { PluginManager } from "./pages/PluginManager";
+import { SettingsView } from "./pages/SettingsView";
 import { ReferencePanel } from "./components/ReferencePanel";
 import { RecoveryBanner } from "./components/RecoveryBanner";
 import { useSSE } from "./hooks/use-sse";
@@ -77,7 +77,8 @@ export type Route =
   | { page: "state"; bookId: string }
   | { page: "mcp" }
   | { page: "pipeline"; runId?: string }
-  | { page: "plugins" };
+  | { page: "plugins" }
+  | { page: "settings" };
 
 export function deriveActiveBookId(route: Route): string | undefined {
   return route.page === "book" || route.page === "chapter" || route.page === "truth" || route.page === "analytics" || route.page === "diff" || route.page === "detect" || route.page === "intent" || route.page === "state"
@@ -278,6 +279,7 @@ function AppInner() {
     toMCP: () => openTab({ page: "mcp" }),
     toPipeline: (runId?: string) => openTab({ page: "pipeline", runId }),
     toPlugins: () => openTab({ page: "plugins" }),
+    toSettings: () => openTab({ page: "settings" }),
   };
 
   const activeBookId = activeTab ? deriveActiveBookId(activeTab.route) : undefined;
@@ -451,6 +453,7 @@ function TabContent({ route, nav, theme, t, sse }: {
     case "mcp": return <MCPServerManager nav={nav} theme={theme} t={t} />;
     case "pipeline": return <PipelineVisualization runId={route.runId} nav={nav} sse={sse} theme={theme} t={t} />;
     case "plugins": return <PluginManager nav={nav} theme={theme} t={t} />;
+    case "settings": return <SettingsView nav={nav} theme={theme} t={t} />;
     default: return null;
   }
 }
