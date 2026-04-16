@@ -39,6 +39,7 @@
     "@tiptap/pm": "2.27.2",
     "@tiptap/react": "^3.22.3",
     "@tiptap/starter-kit": "^3.22.3",
+    "glob": "^13.0.6",
     "novel": "^1.0.2"
   },
   "devDependencies": {

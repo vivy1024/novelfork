@@ -4,6 +4,7 @@
  */
 
 import * as fs from "node:fs/promises";
+import type { Stats } from "node:fs";
 import * as path from "node:path";
 
 /**
@@ -196,7 +197,7 @@ export async function fileExists(
 export async function getFileInfo(
   filePath: string,
   workspaceRoot: string
-): Promise<{ success: boolean; info?: fs.Stats; error?: string }> {
+): Promise<{ success: boolean; info?: Stats; error?: string }> {
   const validation = validatePath(filePath, workspaceRoot);
   if (!validation.valid) {
     return { success: false, error: validation.error };
