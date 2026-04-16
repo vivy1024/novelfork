@@ -66,6 +66,29 @@ export interface ChapterSnapshot {
   readonly parentId?: number;
 }
 
+// ---------------------------------------------------------------------------
+// World Info / Lorebook
+// ---------------------------------------------------------------------------
+
+export interface WorldEntry {
+  readonly id?: number;
+  readonly dimension: string;
+  readonly name: string;
+  readonly keywords: string;
+  readonly content: string;
+  readonly priority: number;
+  readonly enabled: boolean;
+  readonly sourceChapter: number | null;
+}
+
+export interface WorldDimension {
+  readonly id?: number;
+  readonly key: string;
+  readonly label: string;
+  readonly description: string;
+  readonly builtIn: boolean;
+}
+
 export class MemoryDB {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private db: any;
@@ -133,6 +156,38 @@ export class MemoryDB {
       CREATE INDEX IF NOT EXISTS idx_snapshots_chapter ON chapter_snapshots(chapter_id, created_at DESC);
     `);
 
+    // --- World Info / Lorebook tables (Phase 4) ---
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS world_dimensions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        key TEXT NOT NULL UNIQUE,
+        label TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        built_in INTEGER NOT NULL DEFAULT 0
+      );
+
+      CREATE TABLE IF NOT EXISTS world_entries (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        dimension TEXT NOT NULL,
+        name TEXT NOT NULL,
+        keywords TEXT NOT NULL DEFAULT '',
+        content TEXT NOT NULL,
+        priority INTEGER NOT NULL DEFAULT 100,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        source_chapter INTEGER,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (dimension) REFERENCES world_dimensions(key)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_world_entries_dimension ON world_entries(dimension);
+      CREATE INDEX IF NOT EXISTS idx_world_entries_enabled ON world_entries(enabled, priority DESC);
+      CREATE INDEX IF NOT EXISTS idx_world_entries_keywords ON world_entries(keywords);
+    `);
+
+    // Seed built-in dimensions if empty
+    this.seedBuiltInDimensions();
+
     this.ensureColumn("hooks", "payoff_timing", "TEXT NOT NULL DEFAULT ''");
   }
 
@@ -141,6 +196,26 @@ export class MemoryDB {
       this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
     } catch {
       // Column already exists on existing databases.
+    }
+  }
+
+  private seedBuiltInDimensions(): void {
+    const builtIn: ReadonlyArray<{ key: string; label: string; description: string }> = [
+      { key: "characters", label: "角色", description: "人物设定、属性、关系" },
+      { key: "hooks", label: "伏笔", description: "叙事钩子、悬念、回收计划" },
+      { key: "items", label: "道具", description: "重要物品、法宝、装备" },
+      { key: "timeline", label: "时间线", description: "关键事件时间节点" },
+      { key: "factions", label: "势力", description: "门派、组织、阵营" },
+      { key: "physics", label: "物理规则", description: "修炼体系、战力规则、世界法则" },
+      { key: "economy", label: "经济", description: "货币、交易、资源体系" },
+      { key: "geography", label: "地理", description: "地图、地点、空间关系" },
+      { key: "materials", label: "材料", description: "灵材、配方、炼制素材" },
+    ];
+    const stmt = this.db.prepare(
+      `INSERT OR IGNORE INTO world_dimensions (key, label, description, built_in) VALUES (?, ?, ?, 1)`,
+    );
+    for (const dim of builtIn) {
+      stmt.run(dim.key, dim.label, dim.description);
     }
   }
 
@@ -470,6 +545,135 @@ export class MemoryDB {
          LIMIT ?
        )`,
     ).run(chapterId, chapterId, keepCount);
+  }
+
+  // ---------------------------------------------------------------------------
+  // World Dimensions
+  // ---------------------------------------------------------------------------
+
+  /** Get all dimensions (built-in + custom). */
+  getDimensions(): ReadonlyArray<WorldDimension> {
+    return this.db.prepare(
+      `SELECT id, key, label, description, built_in AS builtIn
+       FROM world_dimensions ORDER BY built_in DESC, key`,
+    ).all() as unknown as WorldDimension[];
+  }
+
+  /** Add a custom dimension. */
+  addDimension(dim: Omit<WorldDimension, "id" | "builtIn">): void {
+    this.db.prepare(
+      `INSERT OR IGNORE INTO world_dimensions (key, label, description, built_in) VALUES (?, ?, ?, 0)`,
+    ).run(dim.key, dim.label, dim.description);
+  }
+
+  /** Remove a custom dimension and its entries. */
+  removeDimension(key: string): void {
+    this.db.prepare("DELETE FROM world_entries WHERE dimension = ?").run(key);
+    this.db.prepare("DELETE FROM world_dimensions WHERE key = ? AND built_in = 0").run(key);
+  }
+
+  // ---------------------------------------------------------------------------
+  // World Entries (Lorebook)
+  // ---------------------------------------------------------------------------
+
+  private readonly WORLD_ENTRY_COLUMNS = `
+    id, dimension, name, keywords, content, priority,
+    enabled, source_chapter AS sourceChapter
+  `;
+
+  /** Add a world entry. */
+  addWorldEntry(entry: Omit<WorldEntry, "id">): number {
+    const result = this.db.prepare(
+      `INSERT INTO world_entries (dimension, name, keywords, content, priority, enabled, source_chapter)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      entry.dimension, entry.name, entry.keywords, entry.content,
+      entry.priority, entry.enabled ? 1 : 0, entry.sourceChapter ?? null,
+    );
+    return Number(result.lastInsertRowid);
+  }
+
+  /** Update a world entry. */
+  updateWorldEntry(id: number, updates: Partial<Omit<WorldEntry, "id">>): void {
+    const fields: string[] = [];
+    const values: unknown[] = [];
+    if (updates.dimension !== undefined) { fields.push("dimension = ?"); values.push(updates.dimension); }
+    if (updates.name !== undefined) { fields.push("name = ?"); values.push(updates.name); }
+    if (updates.keywords !== undefined) { fields.push("keywords = ?"); values.push(updates.keywords); }
+    if (updates.content !== undefined) { fields.push("content = ?"); values.push(updates.content); }
+    if (updates.priority !== undefined) { fields.push("priority = ?"); values.push(updates.priority); }
+    if (updates.enabled !== undefined) { fields.push("enabled = ?"); values.push(updates.enabled ? 1 : 0); }
+    if (updates.sourceChapter !== undefined) { fields.push("source_chapter = ?"); values.push(updates.sourceChapter); }
+    if (fields.length === 0) return;
+    fields.push("updated_at = datetime('now')");
+    values.push(id);
+    this.db.prepare(`UPDATE world_entries SET ${fields.join(", ")} WHERE id = ?`).run(...values);
+  }
+
+  /** Delete a world entry. */
+  deleteWorldEntry(id: number): void {
+    this.db.prepare("DELETE FROM world_entries WHERE id = ?").run(id);
+  }
+
+  /** Get all entries for a dimension. */
+  getEntriesByDimension(dimension: string): ReadonlyArray<WorldEntry> {
+    return this.db.prepare(
+      `SELECT ${this.WORLD_ENTRY_COLUMNS}
+       FROM world_entries WHERE dimension = ? AND enabled = 1
+       ORDER BY priority DESC, name`,
+    ).all(dimension) as unknown as WorldEntry[];
+  }
+
+  /** Get all enabled entries. */
+  getAllEntries(): ReadonlyArray<WorldEntry> {
+    return this.db.prepare(
+      `SELECT ${this.WORLD_ENTRY_COLUMNS}
+       FROM world_entries WHERE enabled = 1
+       ORDER BY priority DESC, dimension, name`,
+    ).all() as unknown as WorldEntry[];
+  }
+
+  /** Get all entries (including disabled) for management UI. */
+  getAllEntriesUnfiltered(): ReadonlyArray<WorldEntry> {
+    return this.db.prepare(
+      `SELECT ${this.WORLD_ENTRY_COLUMNS}
+       FROM world_entries
+       ORDER BY dimension, priority DESC, name`,
+    ).all() as unknown as WorldEntry[];
+  }
+
+  /**
+   * Keyword-triggered retrieval: find entries whose keywords match any of the given terms.
+   * This is the core Lorebook/World Info retrieval mechanism.
+   */
+  findEntriesByKeywords(terms: ReadonlyArray<string>): ReadonlyArray<WorldEntry> {
+    if (terms.length === 0) return [];
+    const lowerTerms = terms.map((t) => t.toLowerCase());
+    // Fetch all enabled entries and filter in JS for flexible keyword matching
+    const all = this.getAllEntries();
+    return all.filter((entry) => {
+      const entryKeywords = entry.keywords.toLowerCase().split(",").map((k) => k.trim());
+      const entryName = entry.name.toLowerCase();
+      return lowerTerms.some((term) =>
+        entryName.includes(term) || entryKeywords.some((kw) => kw.length > 0 && term.includes(kw)),
+      );
+    });
+  }
+
+  /** Bulk import entries (replaces all entries in a dimension). */
+  replaceEntriesInDimension(dimension: string, entries: ReadonlyArray<Omit<WorldEntry, "id">>): void {
+    this.db.prepare("DELETE FROM world_entries WHERE dimension = ?").run(dimension);
+    for (const entry of entries) {
+      this.addWorldEntry({ ...entry, dimension });
+    }
+  }
+
+  /** Get entry count per dimension. */
+  getEntryCountByDimension(): ReadonlyArray<{ dimension: string; count: number }> {
+    return this.db.prepare(
+      `SELECT dimension, COUNT(*) as count FROM world_entries
+       GROUP BY dimension ORDER BY dimension`,
+    ).all() as unknown as ReadonlyArray<{ dimension: string; count: number }>;
   }
 
   // ---------------------------------------------------------------------------
