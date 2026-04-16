@@ -27,6 +27,7 @@ import {
   createDaemonRouter,
   createMCPRouter,
   createPipelineRouter,
+  createWorkbenchRouter,
 } from "./routes/index.js";
 import type { RouterContext } from "./routes/index.js";
 import type { Context } from "hono";
@@ -176,6 +177,10 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
   app.route("", createRunsRouter(runStore));
 
   if (mode === "standalone") {
+    // Workbench routes — sandboxed file operations for IDE layout
+    const workbenchToken = process.env.INKOS_WORKBENCH_TOKEN;
+    app.route("", createWorkbenchRouter(root, workbenchToken));
+
     // AI operations + legacy SSE — standalone uses book-id based routes
     app.route("", createAIRouter(ctx));
 

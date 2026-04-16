@@ -7,4 +7,5 @@ export { createAIRelayRouter } from "./ai-relay.js";
 export { createDaemonRouter } from "./daemon.js";
 export { createMCPRouter } from "./mcp.js";
 export { createPipelineRouter } from "./pipeline.js";
+export { createWorkbenchRouter } from "./workbench.js";
 export type { RouterContext } from "./context.js";
