@@ -17,7 +17,7 @@
  */
 
 import { execSync } from "node:child_process";
-import { readFileSync, writeFileSync, copyFileSync, existsSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, copyFileSync, existsSync, mkdirSync, readdirSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -67,7 +67,8 @@ const { spawn } = require("node:child_process");
 
 const root = process.argv[2] || process.env.INKOS_PROJECT_ROOT || process.cwd();
 const port = parseInt(process.env.INKOS_STUDIO_PORT || "4567", 10);
-const staticDir = join(__dirname, "packages", "studio", "dist");
+const exeDir = require("node:path").dirname(process.execPath);
+const staticDir = join(exeDir, "static");
 
 setTimeout(() => {
   const url = "http://localhost:" + port;
@@ -141,8 +142,31 @@ try {
 
 run(`npx postject "${inkosExe}" NODE_SEA_BLOB "${blobPath}" --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2`);
 
+// --- Step 8: Copy frontend static files ---
+console.log("\n=== Step 8: Copying frontend static files ===");
+const frontendSrc = join(studioRoot, "dist");
+const frontendDst = join(outDir, "static");
+ensureDir(frontendDst);
+ensureDir(join(frontendDst, "assets"));
+
+// Copy index.html
+copyFileSync(join(frontendSrc, "index.html"), join(frontendDst, "index.html"));
+
+// Copy assets
+for (const f of readdirSync(join(frontendSrc, "assets"))) {
+  copyFileSync(join(frontendSrc, "assets", f), join(frontendDst, "assets", f));
+}
+
+// Copy vite.svg if exists
+if (existsSync(join(frontendSrc, "vite.svg"))) {
+  copyFileSync(join(frontendSrc, "vite.svg"), join(frontendDst, "vite.svg"));
+}
+
+console.log(`Copied frontend to ${frontendDst}`);
+
 console.log(`\n=== Done! ===`);
 console.log(`Output: ${inkosExe}`);
+console.log(`Static: ${frontendDst}`);
 console.log(`\nUsage:`);
 console.log(`  inkos.exe                    # Start studio in current directory`);
 console.log(`  inkos.exe /path/to/project   # Start studio for specific project`);
