@@ -36,6 +36,7 @@ import { StateProjectionsView } from "./pages/StateProjectionsView";
 import { MCPServerManager } from "./pages/MCPServerManager";
 import { PipelineVisualization } from "./pages/PipelineVisualization";
 import { SettingsView } from "./pages/SettingsView";
+import { PluginManager } from "./pages/PluginManager";
 import { ReferencePanel } from "./components/ReferencePanel";
 import { RecoveryBanner } from "./components/RecoveryBanner";
 import { useSSE } from "./hooks/use-sse";
