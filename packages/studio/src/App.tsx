@@ -320,7 +320,7 @@ function AppInner() {
         {refPanelOpen && (
           <>
             <div {...bottomResize.handleProps} />
-            <ReferencePanel height={bottomResize.height} />
+            <ReferencePanel height={bottomResize.height} bookId={activeBookId} />
           </>
         )}
 
