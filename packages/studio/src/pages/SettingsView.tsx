@@ -2,9 +2,12 @@ import { useState } from "react";
 import { useColors } from "../hooks/use-colors";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
-import { Settings, User, Palette, Code, Keyboard, Bell, Activity, Info } from "lucide-react";
+import { Settings, User, Palette, Code, Keyboard, Bell, Activity, Info, Database } from "lucide-react";
 import { ProfilePanel } from "./settings/ProfilePanel";
 import { AppearancePanel } from "./settings/AppearancePanel";
+import { EditorPanel } from "./settings/EditorPanel";
+import { MonitoringPanel } from "./settings/MonitoringPanel";
+import { DataPanel } from "./settings/DataPanel";
 
 interface Props {
   nav: any;
@@ -13,7 +16,7 @@ interface Props {
   onThemeChange?: (theme: "light" | "dark" | "auto") => void;
 }
 
-type SettingsSection = "profile" | "appearance" | "editor" | "shortcuts" | "notifications" | "monitoring" | "about";
+type SettingsSection = "profile" | "appearance" | "editor" | "shortcuts" | "notifications" | "monitoring" | "data" | "about";
 
 export function SettingsView({ nav, theme, t, onThemeChange }: Props) {
   const c = useColors(theme);
@@ -26,6 +29,7 @@ export function SettingsView({ nav, theme, t, onThemeChange }: Props) {
     { id: "shortcuts", label: "快捷键", icon: Keyboard },
     { id: "notifications", label: "通知", icon: Bell },
     { id: "monitoring", label: "系统监控", icon: Activity },
+    { id: "data", label: "数据管理", icon: Database },
     { id: "about", label: "关于", icon: Info },
   ];
 
@@ -69,12 +73,7 @@ export function SettingsView({ nav, theme, t, onThemeChange }: Props) {
               onThemeChange={onThemeChange || (() => {})}
             />
           )}
-          {activeSection === "editor" && (
-            <div>
-              <h2 className="text-2xl font-bold mb-6 text-foreground">编辑器</h2>
-              <p className="text-muted-foreground">编辑器设置面板开发中...</p>
-            </div>
-          )}
+          {activeSection === "editor" && <EditorPanel theme={theme} />}
           {activeSection === "shortcuts" && (
             <div>
               <h2 className="text-2xl font-bold mb-6 text-foreground">快捷键</h2>
@@ -87,12 +86,8 @@ export function SettingsView({ nav, theme, t, onThemeChange }: Props) {
               <p className="text-muted-foreground">通知设置面板开发中...</p>
             </div>
           )}
-          {activeSection === "monitoring" && (
-            <div>
-              <h2 className="text-2xl font-bold mb-6 text-foreground">系统监控</h2>
-              <p className="text-muted-foreground">系统监控面板开发中...</p>
-            </div>
-          )}
+          {activeSection === "monitoring" && <MonitoringPanel theme={theme} />}
+          {activeSection === "data" && <DataPanel theme={theme} />}
           {activeSection === "about" && (
             <div>
               <h2 className="text-2xl font-bold mb-6 text-foreground">关于</h2>
