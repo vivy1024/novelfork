@@ -12,7 +12,9 @@
 import { createRequire } from "node:module";
 import { join } from "node:path";
 
-const require = createRequire(import.meta.url);
+const require = typeof globalThis.require === "function"
+  ? globalThis.require
+  : createRequire(import.meta.url);
 
 const FACT_SELECT_COLUMNS = `
   id,

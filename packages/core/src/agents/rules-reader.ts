@@ -5,7 +5,12 @@ import { parseGenreProfile, type ParsedGenreProfile } from "../models/genre-prof
 import { parseBookRules, type ParsedBookRules } from "../models/book-rules.js";
 import { BookConfigSchema } from "../models/book.js";
 
-const BUILTIN_GENRES_DIR = join(dirname(fileURLToPath(import.meta.url)), "../../genres");
+const BUILTIN_GENRES_DIR = join(
+  typeof __dirname !== "undefined"
+    ? __dirname
+    : dirname(fileURLToPath(import.meta.url)),
+  "../../genres",
+);
 
 async function tryReadFile(path: string): Promise<string | null> {
   try {
