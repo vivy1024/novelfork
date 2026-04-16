@@ -21,6 +21,8 @@ import {
   Settings,
   Download,
   FileInput,
+  Target,
+  TrendingUp,
 } from "lucide-react";
 
 interface BookSummary {
@@ -306,6 +308,9 @@ export function Dashboard({ nav, sse, theme, t }: { nav: Nav; sse: { messages: R
         })}
       </div>
 
+      {/* Daily Writing Target Panel */}
+      <DailyTargetPanel theme={theme} />
+
       {/* Modern writing progress panel */}
       {writingBooks.size > 0 && logEvents.length > 0 && (
         <div className="glass-panel rounded-2xl p-8 border-primary/20 bg-primary/[0.02] shadow-2xl shadow-primary/5 fade-in">
@@ -354,6 +359,123 @@ export function Dashboard({ nav, sse, theme, t }: { nav: Nav; sse: { messages: R
           100% { transform: translateX(300%); }
         }
       `}</style>
+    </div>
+  );
+}
+
+// --- Daily Writing Target Panel ---
+
+interface DailyStats {
+  readonly todayWords: number;
+  readonly todayChapters: number;
+  readonly trend: ReadonlyArray<{ date: string; words: number }>;
+}
+
+const DEFAULT_DAILY_TARGET = 6000;
+const STORAGE_KEY = "inkos-daily-target";
+
+function DailyTargetPanel({ theme }: { theme: Theme }) {
+  const c = useColors(theme);
+  const { data, loading } = useApi<DailyStats>("/daily-stats");
+  const [target, setTarget] = useState(() => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    return saved ? parseInt(saved, 10) : DEFAULT_DAILY_TARGET;
+  });
+  const [editing, setEditing] = useState(false);
+
+  if (loading || !data) return null;
+
+  const pct = target > 0 ? Math.min(Math.round((data.todayWords / target) * 100), 100) : 0;
+  const isComplete = data.todayWords >= target;
+  const maxTrend = Math.max(...data.trend.map((d) => d.words), 1);
+
+  const handleTargetChange = (val: string) => {
+    const n = parseInt(val, 10);
+    if (Number.isFinite(n) && n > 0) {
+      setTarget(n);
+      localStorage.setItem(STORAGE_KEY, String(n));
+    }
+  };
+
+  return (
+    <div className={`rounded-2xl border ${c.cardStatic} p-6 fade-in`}>
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2.5">
+          <div className={`p-1.5 rounded-lg ${isComplete ? "bg-emerald-500/10 text-emerald-500" : "bg-primary/10 text-primary"}`}>
+            <Target size={16} />
+          </div>
+          <span className="text-sm font-bold">日更目标</span>
+        </div>
+        {editing ? (
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min={1000}
+              max={20000}
+              step={1000}
+              value={target}
+              onChange={(e) => handleTargetChange(e.target.value)}
+              className={`w-24 px-2 py-1 rounded text-xs text-right ${c.input}`}
+              autoFocus
+              onBlur={() => setEditing(false)}
+              onKeyDown={(e) => e.key === "Enter" && setEditing(false)}
+            />
+            <span className="text-[10px] text-muted-foreground">字</span>
+          </div>
+        ) : (
+          <button
+            onClick={() => setEditing(true)}
+            className="text-xs text-muted-foreground hover:text-primary transition-colors"
+          >
+            {target.toLocaleString()} 字/天
+          </button>
+        )}
+      </div>
+
+      {/* Progress bar */}
+      <div className="mb-3">
+        <div className="flex items-baseline justify-between mb-1.5">
+          <span className={`text-2xl font-bold tabular-nums ${isComplete ? "text-emerald-500" : "text-foreground"}`}>
+            {data.todayWords.toLocaleString()}
+          </span>
+          <span className="text-xs text-muted-foreground">
+            {pct}% · {data.todayChapters} 章
+          </span>
+        </div>
+        <div className="h-2 rounded-full bg-secondary overflow-hidden">
+          <div
+            className={`h-full rounded-full transition-all duration-500 ${isComplete ? "bg-emerald-500" : "bg-primary"}`}
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+      </div>
+
+      {/* 7-day trend */}
+      <div className="flex items-center gap-1.5 mt-4">
+        <TrendingUp size={12} className="text-muted-foreground shrink-0" />
+        <span className="text-[10px] text-muted-foreground mr-1">7日</span>
+        <div className="flex items-end gap-px flex-1" style={{ height: 28 }}>
+          {data.trend.map((d) => (
+            <div
+              key={d.date}
+              className="flex-1 group relative"
+              style={{ height: 28 }}
+            >
+              <div
+                className={`w-full rounded-t-sm absolute bottom-0 ${
+                  d.words >= target ? "bg-emerald-500/60" : "bg-primary/30"
+                }`}
+                style={{ height: Math.max(2, (d.words / maxTrend) * 28) }}
+              />
+              <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 hidden group-hover:block
+                bg-popover border border-border rounded px-1.5 py-0.5 text-[9px] text-foreground
+                shadow-sm whitespace-nowrap pointer-events-none z-10">
+                {d.date.slice(5)}: {d.words.toLocaleString()}字
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

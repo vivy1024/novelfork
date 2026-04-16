@@ -5,7 +5,7 @@
  */
 
 import { Hono } from "hono";
-import { readFile, readdir, access } from "node:fs/promises";
+import { readFile, readdir, access, stat } from "node:fs/promises";
 import { join } from "node:path";
 import {
   PipelineRunner,
@@ -307,6 +307,54 @@ export function createStorageRouter(ctx: RouterContext): Hono {
     } catch {
       return c.json({ error: `Book "${id}" not found` }, 404);
     }
+  });
+
+  // --- Daily Writing Stats ---
+
+  app.get("/api/daily-stats", async (c) => {
+    const bookIds = await state.listBooks();
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayMs = todayStart.getTime();
+
+    let todayWords = 0;
+    let todayChapters = 0;
+    const recentDays: Map<string, number> = new Map();
+
+    for (const bookId of bookIds) {
+      const chaptersDir = join(state.bookDir(bookId), "chapters");
+      try {
+        const files = await readdir(chaptersDir);
+        const mdFiles = files.filter((f) => f.endsWith(".md")).sort();
+        for (const f of mdFiles) {
+          const filePath = join(chaptersDir, f);
+          const fileStat = await stat(filePath);
+          const mtime = fileStat.mtimeMs;
+          const dayKey = new Date(mtime).toISOString().slice(0, 10);
+          const content = await readFile(filePath, "utf-8");
+          const wc = content.replace(/\s+/g, "").length;
+
+          recentDays.set(dayKey, (recentDays.get(dayKey) ?? 0) + wc);
+
+          if (mtime >= todayMs) {
+            todayWords += wc;
+            todayChapters += 1;
+          }
+        }
+      } catch {
+        // no chapters dir
+      }
+    }
+
+    // Last 7 days trend
+    const trend: { date: string; words: number }[] = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(todayMs - i * 86400000);
+      const key = d.toISOString().slice(0, 10);
+      trend.push({ date: key, words: recentDays.get(key) ?? 0 });
+    }
+
+    return c.json({ todayWords, todayChapters, trend });
   });
 
   // --- Genres ---

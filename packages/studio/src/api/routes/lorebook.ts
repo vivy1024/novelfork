@@ -14,7 +14,8 @@
 
 import { Hono } from "hono";
 import { join } from "node:path";
-import { MemoryDB, importMarkdownFile, inferDimension } from "@actalk/inkos-core";
+import { readdir, readFile } from "node:fs/promises";
+import { MemoryDB, importMarkdownFile, inferDimension, analyzeBloat } from "@actalk/inkos-core";
 import { ApiError } from "../errors.js";
 
 function openDB(root: string, bookId: string): MemoryDB {
@@ -165,6 +166,33 @@ export function createLorebookRouter(root: string): Hono {
     try {
       const result = importMarkdownFile(db, body.content, dimension, body.fileName ?? "import.md");
       return c.json(result);
+    } finally {
+      db.close();
+    }
+  });
+
+  // GET /api/books/:id/lorebook/bloat — analyze stale/unused world entries
+  app.get("/api/books/:id/lorebook/bloat", async (c) => {
+    const bookId = c.req.param("id");
+    const bookDir = join(root, "books", bookId);
+    const chaptersDir = join(bookDir, "chapters");
+    const db = openDB(root, bookId);
+    try {
+      const chapterTexts: { chapter: number; text: string }[] = [];
+      try {
+        const files = await readdir(chaptersDir);
+        const mdFiles = files.filter((f) => f.endsWith(".md")).sort();
+        for (const f of mdFiles) {
+          const num = parseInt(f.slice(0, 4), 10);
+          if (!Number.isFinite(num)) continue;
+          const text = await readFile(join(chaptersDir, f), "utf-8");
+          chapterTexts.push({ chapter: num, text });
+        }
+      } catch {
+        // no chapters dir — still run analysis with empty texts
+      }
+      const report = analyzeBloat({ db, chapterTexts });
+      return c.json(report);
     } finally {
       db.close();
     }

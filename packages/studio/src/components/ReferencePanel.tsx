@@ -3,8 +3,8 @@
  * Tabs: 设定文件 (truth files), 角色 (characters), 伏笔 (hooks)
  */
 
-import { useState } from "react";
-import { BookOpen, Users, Anchor, Globe } from "lucide-react";
+import { useState, useMemo } from "react";
+import { BookOpen, Users, Anchor, Globe, Activity } from "lucide-react";
 import { useApi } from "../hooks/use-api";
 
 // --- Types ---
@@ -20,7 +20,7 @@ interface ReferencePanelProps {
   readonly bookId?: string;
 }
 
-type RefTab = "truth" | "characters" | "hooks" | "lorebook";
+type RefTab = "truth" | "characters" | "hooks" | "lorebook" | "cadence";
 
 // --- Main Component ---
 
@@ -32,6 +32,7 @@ export function ReferencePanel({ height, bookId }: ReferencePanelProps) {
     { id: "characters", label: "角色", icon: <Users size={12} /> },
     { id: "hooks", label: "伏笔", icon: <Anchor size={12} /> },
     { id: "lorebook", label: "世界观", icon: <Globe size={12} /> },
+    { id: "cadence", label: "节奏", icon: <Activity size={12} /> },
   ];
 
   return (
@@ -74,6 +75,7 @@ export function ReferencePanel({ height, bookId }: ReferencePanelProps) {
             {activeTab === "characters" && <CharactersTab bookId={bookId} />}
             {activeTab === "hooks" && <HooksTab bookId={bookId} />}
             {activeTab === "lorebook" && <LorebookTab bookId={bookId} />}
+            {activeTab === "cadence" && <CadenceTab bookId={bookId} />}
           </>
         )}
       </div>
@@ -419,6 +421,165 @@ function LorebookTab({ bookId }: { bookId: string }) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// --- Cadence Tab ---
+
+interface CadenceRow {
+  readonly chapter: number;
+  readonly title: string;
+  readonly mood: string;
+  readonly chapterType: string;
+}
+
+interface CadenceSnapshot {
+  readonly chapterSummaries?: { readonly rows?: ReadonlyArray<CadenceRow> };
+}
+
+const HIGH_TENSION_KEYWORDS = [
+  "紧张", "冷硬", "压抑", "逼仄", "肃杀", "沉重", "凝重",
+  "冷峻", "压迫", "阴沉", "焦灼", "窒息", "凛冽", "锋利",
+  "克制", "危机", "对峙", "绷紧", "僵持", "杀意",
+  "tense", "cold", "oppressive", "grim", "ominous", "dark",
+  "bleak", "hostile", "threatening", "heavy", "suffocating",
+];
+
+function isHighTension(mood: string): boolean {
+  const lower = mood.toLowerCase();
+  return HIGH_TENSION_KEYWORDS.some((kw) => lower.includes(kw));
+}
+
+function computeScenePressure(rows: ReadonlyArray<CadenceRow>): number[] {
+  const types = rows.map((r) => r.chapterType.trim().toLowerCase());
+  return types.map((t, i) => {
+    if (!t || t === "none" || t === "无") return 0;
+    let streak = 1;
+    for (let j = i - 1; j >= 0; j--) {
+      if (types[j] === t) streak++;
+      else break;
+    }
+    return Math.min(streak / 4, 1);
+  });
+}
+
+function computeMoodPressure(rows: ReadonlyArray<CadenceRow>): number[] {
+  return rows.map((r, i) => {
+    const mood = r.mood.trim();
+    if (!mood || mood === "none" || mood === "无") return 0.2;
+    if (!isHighTension(mood)) return 0.2;
+    let streak = 1;
+    for (let j = i - 1; j >= 0; j--) {
+      if (isHighTension(rows[j]!.mood)) streak++;
+      else break;
+    }
+    return Math.min(streak / 5, 1);
+  });
+}
+
+function computeTitleVariety(rows: ReadonlyArray<CadenceRow>): number[] {
+  return rows.map((_, i) => {
+    const window = rows.slice(Math.max(0, i - 4), i + 1);
+    const titles = window.map((r) => r.title.trim()).filter(Boolean);
+    if (titles.length < 2) return 0;
+    const chars = new Set(titles.join("").split(""));
+    const totalLen = titles.reduce((s, t) => s + t.length, 0);
+    const ratio = chars.size / Math.max(totalLen, 1);
+    return 1 - Math.min(ratio * 2, 1);
+  });
+}
+
+function CadenceTab({ bookId }: { bookId: string }) {
+  const { data, loading } = useApi<CadenceSnapshot>(`/books/${bookId}/state`);
+
+  const rows = useMemo(() => {
+    const raw = data?.chapterSummaries?.rows ?? [];
+    return [...raw].sort((a, b) => a.chapter - b.chapter).slice(-20);
+  }, [data]);
+
+  const scene = useMemo(() => computeScenePressure(rows), [rows]);
+  const mood = useMemo(() => computeMoodPressure(rows), [rows]);
+  const title = useMemo(() => computeTitleVariety(rows), [rows]);
+
+  if (loading) {
+    return <div className="p-3 text-xs text-muted-foreground">加载中...</div>;
+  }
+
+  if (rows.length === 0) {
+    return (
+      <div className="p-3 text-xs text-muted-foreground/50 italic">
+        暂无章节摘要数据（至少需要 2 章才能分析节奏）
+      </div>
+    );
+  }
+
+  const barW = Math.max(16, Math.min(40, Math.floor(600 / rows.length)));
+  const chartH = 60;
+
+  return (
+    <div className="p-3 space-y-3 overflow-x-auto">
+      <div className="text-[11px] text-muted-foreground mb-1">
+        最近 {rows.length} 章节奏分析（压力越高 = 越需要变化）
+      </div>
+      {([
+        { label: "场景重复", data: scene, color: "bg-blue-500" },
+        { label: "情绪张力", data: mood, color: "bg-amber-500" },
+        { label: "标题雷同", data: title, color: "bg-purple-500" },
+      ] as const).map((dim) => (
+        <div key={dim.label}>
+          <div className="flex items-center gap-1.5 mb-1">
+            <span className={`w-2 h-2 rounded-full ${dim.color} shrink-0`} />
+            <span className="text-[10px] font-medium text-foreground">{dim.label}</span>
+          </div>
+          <div className="flex items-end gap-px" style={{ height: chartH }}>
+            {dim.data.map((v, i) => (
+              <div
+                key={rows[i]!.chapter}
+                className="group relative flex flex-col items-center"
+                style={{ width: barW }}
+              >
+                <div
+                  className={`w-full rounded-t-sm transition-all ${
+                    v > 0.7 ? dim.color : v > 0.4 ? `${dim.color}/60` : `${dim.color}/25`
+                  }`}
+                  style={{ height: Math.max(2, v * chartH) }}
+                />
+                <span className="text-[8px] text-muted-foreground/60 mt-0.5 leading-none">
+                  {rows[i]!.chapter}
+                </span>
+                <div className="absolute bottom-full mb-1 hidden group-hover:block z-10
+                  bg-popover border border-border rounded px-2 py-1 text-[10px] text-foreground
+                  shadow-md whitespace-nowrap pointer-events-none">
+                  <div>第{rows[i]!.chapter}章: {rows[i]!.title || "—"}</div>
+                  <div className="text-muted-foreground">
+                    {dim.label === "场景重复" && `类型: ${rows[i]!.chapterType || "—"}`}
+                    {dim.label === "情绪张力" && `情绪: ${rows[i]!.mood || "—"}`}
+                    {dim.label === "标题雷同" && `压力: ${Math.round(v * 100)}%`}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+      <CadenceLegend />
+    </div>
+  );
+}
+
+function CadenceLegend() {
+  return (
+    <div className="flex items-center gap-4 pt-1 border-t border-border/30 text-[9px] text-muted-foreground">
+      <span className="flex items-center gap-1">
+        <span className="w-3 h-2 rounded-sm bg-current opacity-25" /> 低
+      </span>
+      <span className="flex items-center gap-1">
+        <span className="w-3 h-2 rounded-sm bg-current opacity-60" /> 中
+      </span>
+      <span className="flex items-center gap-1">
+        <span className="w-3 h-2 rounded-sm bg-current" /> 高（需变化）
+      </span>
     </div>
   );
 }

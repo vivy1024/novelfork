@@ -6,6 +6,7 @@ import {
   createLLMClient,
   createLogger,
   loadProjectConfig,
+  pipelineEvents,
   type PipelineConfig,
   type ProjectConfig,
   type LogSink,
@@ -43,6 +44,21 @@ function broadcast(event: string, data: unknown): void {
     handler(event, data);
   }
 }
+
+// Bridge core pipeline events → SSE
+pipelineEvents.on((event) => {
+  switch (event.type) {
+    case "run:start":
+      broadcast("pipeline:start", event.data);
+      break;
+    case "stage:update":
+      broadcast("pipeline:stage", event.data);
+      break;
+    case "run:complete":
+      broadcast("pipeline:complete", event.data);
+      break;
+  }
+});
 
 // --- INKOS_MODE ---
 
