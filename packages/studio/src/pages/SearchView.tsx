@@ -3,13 +3,14 @@ import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
 import { useColors } from "../hooks/use-colors";
 import { fetchJson } from "../hooks/use-api";
-import { Search, Loader2 } from "lucide-react";
+import { Search, Loader2, FileText, BookOpen, Anchor, Globe } from "lucide-react";
 
 interface SearchHit {
   readonly bookId: string;
   readonly bookTitle: string;
   readonly chapterNumber: number;
   readonly snippet: string;
+  readonly contentType?: "chapter" | "truth" | "hook" | "lorebook";
 }
 
 interface SearchResult {
@@ -112,9 +113,17 @@ export function SearchView({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunc
                     onClick={() => nav.toChapter(hit.bookId, hit.chapterNumber)}
                     className={`w-full text-left px-5 py-3 ${c.tableHover} flex flex-col gap-1`}
                   >
-                    <span className="text-xs font-semibold text-primary">
-                      {t("chapter.label").replace("{n}", String(hit.chapterNumber))}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <ContentTypeIcon type={hit.contentType} />
+                      <span className="text-xs font-semibold text-primary">
+                        {t("chapter.label").replace("{n}", String(hit.chapterNumber))}
+                      </span>
+                      {hit.contentType && hit.contentType !== "chapter" && (
+                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                          {contentTypeLabel(hit.contentType)}
+                        </span>
+                      )}
+                    </div>
                     <span className="text-sm text-foreground/80 leading-relaxed">
                       {highlightSnippet(hit.snippet, query.trim())}
                     </span>
@@ -162,4 +171,22 @@ function groupByBook(hits: ReadonlyArray<SearchHit>): ReadonlyArray<BookGroup> {
     bookTitle,
     hits: h,
   }));
+}
+
+function ContentTypeIcon({ type }: { type?: string }) {
+  switch (type) {
+    case "truth": return <BookOpen size={12} className="text-amber-500 shrink-0" />;
+    case "hook": return <Anchor size={12} className="text-purple-500 shrink-0" />;
+    case "lorebook": return <Globe size={12} className="text-emerald-500 shrink-0" />;
+    default: return <FileText size={12} className="text-muted-foreground shrink-0" />;
+  }
+}
+
+function contentTypeLabel(type: string): string {
+  switch (type) {
+    case "truth": return "设定";
+    case "hook": return "伏笔";
+    case "lorebook": return "世界观";
+    default: return "章节";
+  }
 }
