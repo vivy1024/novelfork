@@ -65,8 +65,43 @@ const { startStudioServer } = require("${serverPath}");
 const { join } = require("node:path");
 const { spawn } = require("node:child_process");
 
-const root = process.argv[2] || process.env.INKOS_PROJECT_ROOT || process.cwd();
-const port = parseInt(process.env.INKOS_STUDIO_PORT || "4567", 10);
+// Parse command line arguments
+const args = process.argv.slice(2);
+
+// Handle --version flag
+if (args.includes('--version') || args.includes('-v')) {
+  console.log('InkOS Studio v1.1.1');
+  process.exit(0);
+}
+
+// Handle --help flag
+if (args.includes('--help') || args.includes('-h')) {
+  console.log('Usage: inkos [options] [project-path]');
+  console.log('');
+  console.log('Options:');
+  console.log('  -h, --help     Show this help message');
+  console.log('  -v, --version  Show version number');
+  console.log('  --port <port>  Specify port (default: 4567)');
+  console.log('');
+  console.log('Environment Variables:');
+  console.log('  INKOS_PROJECT_ROOT  Default project directory');
+  console.log('  INKOS_STUDIO_PORT   Server port (default: 4567)');
+  process.exit(0);
+}
+
+// Extract port from --port flag if present
+let portArg = null;
+const portIndex = args.findIndex(arg => arg === '--port');
+if (portIndex !== -1 && args[portIndex + 1]) {
+  portArg = parseInt(args[portIndex + 1], 10);
+}
+
+// Get project root (first non-flag argument)
+const root = args.find(arg => !arg.startsWith('-') && arg !== args[portIndex + 1])
+  || process.env.INKOS_PROJECT_ROOT
+  || process.cwd();
+
+const port = portArg || parseInt(process.env.INKOS_STUDIO_PORT || "4567", 10);
 const exeDir = require("node:path").dirname(process.execPath);
 const staticDir = join(exeDir, "static");
 
