@@ -9,12 +9,8 @@
  * persistence layer. MemoryDB is an acceleration index built alongside them.
  */
 
-import { createRequire } from "node:module";
+import { DatabaseSync } from "node:sqlite";
 import { join } from "node:path";
-
-const require = typeof globalThis.require === "function"
-  ? globalThis.require
-  : createRequire(import.meta.url);
 
 const FACT_SELECT_COLUMNS = `
   id,
@@ -96,8 +92,6 @@ export class MemoryDB {
   private db: any;
 
   constructor(bookDir: string) {
-    // node:sqlite requires Node 22+; require() via createRequire for ESM compat
-    const { DatabaseSync } = require("node:sqlite");
     const dbPath = join(bookDir, "story", "memory.db");
     this.db = new DatabaseSync(dbPath);
     this.db.exec("PRAGMA journal_mode = WAL");
