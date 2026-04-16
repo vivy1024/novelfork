@@ -67,12 +67,12 @@ export async function loadProjectConfig(
     throw new Error(`inkos.json in ${root} is not valid JSON. Check the file for syntax errors.`);
   }
 
-  // .env overrides inkos.json for LLM settings
+  // .env overrides inkos.json for LLM settings — only non-empty values override
   const env = process.env;
   const llm = (config.llm ?? {}) as Record<string, unknown>;
-  if (env.INKOS_LLM_PROVIDER) llm.provider = env.INKOS_LLM_PROVIDER;
-  if (env.INKOS_LLM_BASE_URL) llm.baseUrl = env.INKOS_LLM_BASE_URL;
-  if (env.INKOS_LLM_MODEL) llm.model = env.INKOS_LLM_MODEL;
+  if (env.INKOS_LLM_PROVIDER && env.INKOS_LLM_PROVIDER.length > 0) llm.provider = env.INKOS_LLM_PROVIDER;
+  if (env.INKOS_LLM_BASE_URL && env.INKOS_LLM_BASE_URL.length > 0) llm.baseUrl = env.INKOS_LLM_BASE_URL;
+  if (env.INKOS_LLM_MODEL && env.INKOS_LLM_MODEL.length > 0) llm.model = env.INKOS_LLM_MODEL;
   if (env.INKOS_LLM_TEMPERATURE) llm.temperature = parseFloat(env.INKOS_LLM_TEMPERATURE);
   if (env.INKOS_LLM_MAX_TOKENS) llm.maxTokens = parseInt(env.INKOS_LLM_MAX_TOKENS, 10);
   if (env.INKOS_LLM_THINKING_BUDGET) llm.thinkingBudget = parseInt(env.INKOS_LLM_THINKING_BUDGET, 10);
@@ -101,7 +101,9 @@ export async function loadProjectConfig(
   if (env.INKOS_DEFAULT_LANGUAGE) config.language = env.INKOS_DEFAULT_LANGUAGE;
 
   // API key ONLY from env — never stored in inkos.json
-  const apiKey = env.INKOS_LLM_API_KEY;
+  // Empty string is treated as unset (e.g., `.env` with `INKOS_LLM_API_KEY=`)
+  const apiKeyRaw = env.INKOS_LLM_API_KEY;
+  const apiKey = apiKeyRaw && apiKeyRaw.trim().length > 0 ? apiKeyRaw.trim() : undefined;
   const provider = typeof llm.provider === "string" ? llm.provider : undefined;
   const baseUrl = typeof llm.baseUrl === "string" ? llm.baseUrl : undefined;
   const apiKeyOptional = isApiKeyOptionalForEndpoint({ provider, baseUrl });

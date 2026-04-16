@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import { PipelineRunner, StateManager } from "@actalk/inkos-core";
-import { readdir, unlink } from "node:fs/promises";
+import { readdir, unlink, rename as fsRename, writeFile as fsWriteFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { loadConfig, buildPipelineConfig, findProjectRoot, getLegacyMigrationHint, resolveContext, resolveBookId, log, logError } from "../utils.js";
@@ -131,31 +131,27 @@ writeCommand
         log(`[migration] ${migrationHint}`);
       }
 
-      // Remove existing chapter file
+      // Phase 1: Backup existing chapter files instead of deleting (atomic safety)
       const files = await readdir(chaptersDir);
       const paddedNum = String(chapter).padStart(4, "0");
       const existing = files.filter((f) => f.startsWith(paddedNum) && f.endsWith(".md"));
-      for (const f of existing) {
-        await unlink(join(chaptersDir, f));
-        if (!opts.json) log(`Removed: ${f}`);
-      }
-
-      // Remove from index (and all chapters after it)
-      const index = await state.loadChapterIndex(bookId);
-      const trimmed = index.filter((ch) => ch.number < chapter);
-      await state.saveChapterIndex(bookId, trimmed);
-
-      // Also remove later chapter files since state will be rolled back
       const laterFiles = files.filter((f) => {
         const num = parseInt(f.slice(0, 4), 10);
         return num > chapter && f.endsWith(".md");
       });
-      for (const f of laterFiles) {
-        await unlink(join(chaptersDir, f));
-        if (!opts.json) log(`Removed later chapter: ${f}`);
+      const backups: Array<{ original: string; backup: string }> = [];
+      for (const f of [...existing, ...laterFiles]) {
+        const backupName = f + ".bak";
+        await fsRename(join(chaptersDir, f), join(chaptersDir, backupName));
+        backups.push({ original: f, backup: backupName });
+        if (!opts.json) log(`Backed up: ${f} → ${backupName}`);
       }
 
-      // Restore state to previous chapter's end-state (chapter 1 uses snapshot-0 from initBook)
+      // Phase 2: Update index and restore state
+      const index = await state.loadChapterIndex(bookId);
+      const trimmed = index.filter((ch) => ch.number < chapter);
+      await state.saveChapterIndex(bookId, trimmed);
+
       const restoreFrom = chapter - 1;
       const restored = await state.restoreState(bookId, restoreFrom);
       if (restored) {
@@ -173,7 +169,23 @@ writeCommand
         externalContext: opts.brief,
       }));
 
-      const result = await pipeline.writeNextChapter(bookId, wordCount);
+      let result;
+      try {
+        result = await pipeline.writeNextChapter(bookId, wordCount);
+      } catch (pipelineError) {
+        // Pipeline failed — restore backups to prevent data loss
+        if (!opts.json) log("Pipeline failed, restoring original chapter files...");
+        for (const { original, backup } of backups) {
+          await fsRename(join(chaptersDir, backup), join(chaptersDir, original));
+        }
+        await state.saveChapterIndex(bookId, index);
+        throw pipelineError;
+      }
+
+      // Phase 3: Pipeline succeeded — remove backups
+      for (const { backup } of backups) {
+        await unlink(join(chaptersDir, backup)).catch(() => {});
+      }
       const book = await state.loadBookConfig(bookId);
       const language = resolveCliLanguage(book.language);
 

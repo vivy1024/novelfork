@@ -1,5 +1,5 @@
-import { readFile, stat } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { readFile, stat, access } from "node:fs/promises";
+import { join, resolve, dirname } from "node:path";
 import { createLLMClient, StateManager, createLogger, createStderrSink, createJsonLineSink, loadProjectConfig, GLOBAL_CONFIG_DIR, GLOBAL_ENV_PATH, type ProjectConfig, type PipelineConfig, type LogSink } from "@actalk/inkos-core";
 import { formatSqliteMemorySupportWarning } from "./runtime-requirements.js";
 
@@ -28,7 +28,28 @@ export async function resolveContext(opts: {
 }
 
 export function findProjectRoot(): string {
-  return process.cwd();
+  let dir = process.cwd();
+  const root = (typeof process.platform === "string" && process.platform === "win32")
+    ? dir.split("\\")[0]! + "\\"
+    : "/";
+
+  while (true) {
+    const candidate = join(dir, "inkos.json");
+    try {
+      // Synchronous existence check — findProjectRoot is called synchronously everywhere
+      const fs = require("node:fs") as typeof import("node:fs");
+      fs.accessSync(candidate);
+      return dir;
+    } catch {
+      // not found, keep climbing
+    }
+    const parent = dirname(dir);
+    if (parent === dir || parent === root) {
+      // Reached filesystem root without finding inkos.json, fall back to cwd
+      return process.cwd();
+    }
+    dir = parent;
+  }
 }
 
 export async function loadConfig(options?: { readonly requireApiKey?: boolean }): Promise<ProjectConfig> {
