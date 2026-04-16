@@ -31,6 +31,8 @@ import {
   createWorkbenchRouter,
   createLorebookRouter,
   createSettingsRouter,
+  createProvidersRouter,
+  createAgentConfigRouter,
 } from "./routes/index.js";
 import type { RouterContext } from "./routes/index.js";
 import type { Context } from "hono";
@@ -222,6 +224,12 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
 
     // Settings management
     app.route("/api/settings", createSettingsRouter());
+
+    // AI Providers management
+    app.route("/api/providers", createProvidersRouter());
+
+    // Agent configuration
+    app.route("/api/agent/config", createAgentConfigRouter());
   } else {
     // Relay mode — snapshot-based AI endpoints only
     app.route("", createAIRelayRouter(ctx));
