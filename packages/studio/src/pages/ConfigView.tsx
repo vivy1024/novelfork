@@ -4,7 +4,7 @@ import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
 import { useColors } from "../hooks/use-colors";
 import { useInkOS } from "../providers/inkos-context";
-import { FolderOpen, Plus, Trash2, Check, Zap, Pencil } from "lucide-react";
+import { FolderOpen, Plus, Trash2, Check, Zap, Pencil, ExternalLink } from "lucide-react";
 
 const ROUTING_AGENTS = [
   "writer",
@@ -375,6 +375,13 @@ function TauriLlmSettings({ theme, t }: { theme: Theme; t: TFunction }) {
       <div className="flex items-baseline justify-between">
         <h2 className="font-serif text-xl mt-4">LLM 配置</h2>
         <div className="flex gap-2">
+          {!isEditing && (
+            <button
+              onClick={() => { window.location.href = "/api/auth/oauth2/initiate"; }}
+              className={`px-3 py-2 text-xs rounded-md ${c.btnSecondary} flex items-center gap-1`}>
+              <ExternalLink size={12} />连接 Sub2API
+            </button>
+          )}
           {!isEditing && (
             <button onClick={handleTest} disabled={testing || profiles.length === 0}
               className={`px-3 py-2 text-xs rounded-md ${c.btnSecondary} disabled:opacity-50 flex items-center gap-1`}>
