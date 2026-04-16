@@ -12,4 +12,6 @@ export { createLorebookRouter } from "./lorebook.js";
 export { createSettingsRouter } from "./settings.js";
 export { createProvidersRouter } from "./providers.js";
 export { createAgentConfigRouter } from "./agent-config.js";
+export { createToolsRouter } from "./tools.js";
+export { createWorktreeRouter } from "./worktree.js";
 export type { RouterContext } from "./context.js";

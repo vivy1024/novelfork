@@ -32,6 +32,7 @@ import {
   Server,
   GitBranch,
   Puzzle,
+  FolderGit2,
 } from "lucide-react";
 
 interface BookSummary {
@@ -71,6 +72,7 @@ interface Nav {
   toPipeline: (runId?: string) => void;
   toPlugins: () => void;
   toSettings: () => void;
+  toWorktree: () => void;
 }
 
 export function Sidebar({ nav, activePage, sse, t }: {
@@ -379,6 +381,12 @@ export function Sidebar({ nav, activePage, sse, t }: {
               icon={<Puzzle size={16} />}
               active={activePage === "plugins"}
               onClick={nav.toPlugins}
+            />
+            <SidebarItem
+              label="Worktree 管理"
+              icon={<FolderGit2 size={16} />}
+              active={activePage === "worktree"}
+              onClick={nav.toWorktree}
             />
           </div>
           )}

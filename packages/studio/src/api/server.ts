@@ -33,6 +33,8 @@ import {
   createSettingsRouter,
   createProvidersRouter,
   createAgentConfigRouter,
+  createToolsRouter,
+  createWorktreeRouter,
 } from "./routes/index.js";
 import type { RouterContext } from "./routes/index.js";
 import type { Context } from "hono";
@@ -230,6 +232,12 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
 
     // Agent configuration
     app.route("/api/agent/config", createAgentConfigRouter());
+
+    // Tools API
+    app.route("/api/tools", createToolsRouter());
+
+    // Worktree management
+    app.route("/api/worktree", createWorktreeRouter());
   } else {
     // Relay mode — snapshot-based AI endpoints only
     app.route("", createAIRelayRouter(ctx));
