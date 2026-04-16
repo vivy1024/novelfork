@@ -3,7 +3,7 @@
  * 显示单个 worktree 的信息和操作按钮
  */
 
-import { FolderGit2, Trash2, ExternalLink } from "lucide-react";
+import { FolderGit2, Trash2, ExternalLink, FileText } from "lucide-react";
 import { Card } from "./ui/card";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
@@ -22,9 +22,10 @@ export interface WorktreeCardProps {
   };
   onDelete: (path: string) => void;
   onOpen: (path: string) => void;
+  onViewChanges?: (path: string) => void;
 }
 
-export function WorktreeCard({ worktree, onDelete, onOpen }: WorktreeCardProps) {
+export function WorktreeCard({ worktree, onDelete, onOpen, onViewChanges }: WorktreeCardProps) {
   const hasChanges =
     worktree.status.modified > 0 ||
     worktree.status.added > 0 ||
@@ -76,6 +77,17 @@ export function WorktreeCard({ worktree, onDelete, onOpen }: WorktreeCardProps) 
         </div>
 
         <div className="flex flex-col gap-2">
+          {hasChanges && onViewChanges && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => onViewChanges(worktree.path)}
+              className="whitespace-nowrap"
+            >
+              <FileText size={14} className="mr-1" />
+              查看变更
+            </Button>
+          )}
           <Button
             size="sm"
             variant="outline"

@@ -255,6 +255,39 @@ export async function getDiff(
 }
 
 /**
+ * 获取单个文件的 diff
+ * @param worktreePath Worktree 路径
+ * @param filePath 文件路径
+ * @returns Diff 输出
+ */
+export async function getFileDiff(
+  worktreePath: string,
+  filePath: string
+): Promise<string> {
+  // 验证文件路径（防止路径遍历）
+  if (filePath.includes("..")) {
+    throw new Error("Invalid file path: path traversal not allowed");
+  }
+
+  // 获取文件相对于 HEAD 的 diff
+  try {
+    return await execGit(["diff", "HEAD", "--", filePath], worktreePath);
+  } catch (error) {
+    // 如果文件是新增的（untracked），尝试显示完整内容
+    try {
+      const content = await execGit(["show", `:0:${filePath}`], worktreePath);
+      // 构造一个伪 diff 格式
+      const lines = content.split("\n");
+      const diffLines = lines.map((line, i) => `+${line}`);
+      return `@@ -0,0 +1,${lines.length} @@\n${diffLines.join("\n")}`;
+    } catch {
+      // 如果是未跟踪文件，返回空 diff
+      return "";
+    }
+  }
+}
+
+/**
  * 获取当前分支名
  * @param cwd 工作目录
  * @returns 分支名
