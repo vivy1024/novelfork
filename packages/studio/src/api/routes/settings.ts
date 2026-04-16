@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { loadUserConfig, updateUserConfig } from "../lib/user-config-service.js";
+import { collectMetrics } from "../lib/metrics-service.js";
 import type { UserConfig } from "../../types/settings.js";
 
 export function createSettingsRouter() {
@@ -128,6 +129,19 @@ export function createSettingsRouter() {
     } catch (error) {
       console.error("Failed to update shortcuts:", error);
       return c.json({ error: "Failed to update shortcuts" }, 500);
+    }
+  });
+
+  // 获取系统指标
+  app.get("/metrics", async (c) => {
+    try {
+      // 从环境变量或默认路径获取项目根目录
+      const projectRoot = process.env.INKOS_PROJECT_ROOT || process.cwd();
+      const metrics = await collectMetrics(projectRoot);
+      return c.json(metrics);
+    } catch (error) {
+      console.error("Failed to collect metrics:", error);
+      return c.json({ error: "Failed to collect metrics" }, 500);
     }
   });
 
