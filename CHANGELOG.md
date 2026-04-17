@@ -70,4 +70,98 @@
 
 ---
 
-## v1.1.1
+## v1.1.1 (2026-04-08)
+
+### 新功能
+
+#### Studio 可视化工作台
+- 实现全局搜索功能，支持 FTS 全文索引
+- 实现监控可视化面板，支持 WebSocket 实时日志流
+- 实现会话管理功能，支持多会话切换与历史记录
+- 实现双 Git 按钮（日志查看器 + Fork/Merge 操作）
+- 实现工具调用可视化功能，展示 Agent 工具使用情况
+- 实现消息编辑与重新生成功能
+- 实现设置页面，包含 Config/Status/Usage 三个标签页
+- 实现 AI 聊天界面，支持与助手对话
+- 实现多窗口卡片对话系统
+- 实现实时上下文管理系统
+- 实现倒计时系统，支持逾期警告
+- 实现底部上下文面板的 4 个新 Tab 组件
+- 实现 CSS Grid 布局与可调整大小的面板
+- 添加 PWA 支持，支持离线使用
+- 实现 Phase 7 文件修改面板与 Diff 查看器
+- 实现 Phase 4 工具显示组件
+- 完成设置系统阶段 3-6 实现
+
+#### 核心功能
+- 实现套路系统（Routines System），支持写作模板与套路管理
+- 集成 NER + Lorebook RAG 到 Composer Agent
+- 实现 NER 实体提取，准确率 80%+
+- 实现 Phase 3 和 Phase 6 工具 API 与 Worktree UI
+- 实现 Phase 2 和 Phase 5 核心工具与 Worktree 后端
+- 实现 Phase 1 工具系统与 Phase 9 AI 提供商管理
+
+#### Git Worktree 系统
+- 完善 Git Worktree 多线并行系统
+
+#### 测试
+- 添加 Phase 8 集成测试，覆盖工具与 Worktree 系统
+
+### 变更
+
+- 简化提供商管理，仅保留 Anthropic 和 OpenAI
+- 清理技术栈演变遗留物
+
+### Bug Fixes
+
+- 修复搜索路由与组件导入问题
+- 修复 Studio 测试以处理新的服务器返回类型
+- 修正黄金三章分析器正则表达式锚点问题
+- 修复 Studio TypeScript 构建错误
+- 修复 @tauri-apps/plugin-shell Vite 外部配置
+- 添加缺失的 PluginManager 导入
+
+### 文档更新
+
+- 新增技术栈演变与当前状态完整报告
+- 新增 v2.0 完整规划文档体系
+- 清理冗余文档，保留核心计划
+- 重新整理计划文档，明确 PWA+IDE 需求
+- 新增实现完成报告
+- 新增 InkOS Studio 启动脚本
+- 添加 Phase 9 AI 提供商与 Agent 配置管理计划
+
+---
+
+## v0.0.1 (2026-04-18)
+
+### 初始版本
+
+这是 InkOS（原 NovelFork）项目的首个正式版本标记，标志着从概念验证到可用产品的转变。
+
+#### 核心架构
+- 建立 monorepo 结构（packages/core, packages/cli, packages/studio）
+- 实现 10-Agent 写作流水线基础架构
+- 建立 33 维度连续性审计系统
+- 实现风格克隆与去 AI 化处理
+
+#### 基础功能
+- CLI 命令行工具基础框架
+- Studio Web 工作台基础界面
+- 多 AI 提供商支持（Anthropic, OpenAI）
+- 基础的章节生成与管理
+
+#### 技术栈
+- TypeScript + Node.js 22.5+
+- React 19 + Vite 6
+- Hono + Express
+- Zod 验证
+- pnpm workspace
+
+---
+
+## 版本说明
+
+- **v1.2.0**: P2 阶段完成，架构扩展与可观测性升级
+- **v1.1.1**: Phase 4 功能完成，Studio 可视化工作台成熟
+- **v0.0.1**: 初始版本，基础架构建立

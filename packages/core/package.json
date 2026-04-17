@@ -1,18 +1,17 @@
 {
-  "name": "@actalk/inkos-core",
-  "version": "1.1.1",
-  "description": "InkOS core engine — multi-agent novel writing pipeline with 33-dimension continuity audit, style cloning, and de-AI-ification",
+  "name": "@vivy1024/novelfork-core",
+  "version": "0.0.1",
+  "description": "NovelFork core engine — Forked from InkOS, multi-agent novel writing pipeline for Chinese web novels",
   "keywords": [
     "ai-novel-writing",
-    "ai-writing-agent",
+    "web-novel",
+    "chinese-novel",
     "novel-generator",
     "multi-agent-pipeline",
     "continuity-audit",
-    "style-cloning",
     "ai-fiction",
     "creative-writing-ai",
-    "llm-agent",
-    "zod-validation"
+    "llm-agent"
   ],
   "type": "module",
   "main": "dist/index.js",
@@ -34,7 +33,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/Narcooo/inkos.git",
+    "url": "https://github.com/vivy1024/inkos.git",
     "directory": "packages/core"
   },
   "scripts": {
@@ -47,18 +46,18 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.78.0",
-    "@modelcontextprotocol/sdk": "^1.0.4",
-    "dotenv": "^16.4.0",
-    "eventsource": "^2.0.2",
-    "js-yaml": "^4.1.1",
-    "openai": "^4.80.0",
-    "zod": "^3.24.0"
+    "@anthropic-ai/sdk": "0.78.0",
+    "@modelcontextprotocol/sdk": "1.0.4",
+    "dotenv": "16.4.0",
+    "eventsource": "2.0.2",
+    "js-yaml": "4.1.1",
+    "openai": "4.80.0",
+    "zod": "3.24.0"
   },
   "devDependencies": {
-    "@types/eventsource": "^1.1.15",
-    "@types/js-yaml": "^4.0.9",
-    "typescript": "^5.8.0",
-    "vitest": "^3.0.0"
+    "@types/eventsource": "1.1.15",
+    "@types/js-yaml": "4.0.9",
+    "typescript": "^5.7.0",
+    "vitest": "3.0.0"
   }
 }
