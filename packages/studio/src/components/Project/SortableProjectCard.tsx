@@ -1,6 +1,7 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Book, ChevronRight, ChevronDown } from "lucide-react";
+import type { TFunction } from "../../hooks/use-i18n";
 
 interface BookSummary {
   readonly id: string;
@@ -12,10 +13,6 @@ interface BookSummary {
 
 interface Nav {
   toBook: (id: string) => void;
-}
-
-interface TFunction {
-  (key: string): string;
 }
 
 export function SortableProjectCard({
