@@ -16,12 +16,8 @@
 
 ## 欢迎交流
 
-> 当前更新相对频繁，后续会持续新增功能与优化写作效果。
-> 欢迎加群反馈问题、提出需求，也欢迎关注项目动态 — 我们的目标是做最强的基于小说的内容生态创作 AI Agent。
-
-<p align="center">
-  <img src="assets/wechat-group.jpg" width="300" alt="微信交流群">
-</p>
+> Fork 自 InkOS，专注中文网文创作场景。
+> 欢迎提 issue 反馈问题、提出需求。
 
 ## 快速开始
 
@@ -361,7 +357,7 @@ novelfork agent "先扫描市场趋势，然后根据结果创建一本新书"
 
 ## 路线图
 
-- [x] ~~`packages/studio` Web UI 工作台（Vite + React + Hono）~~ — 已发布，`inkos studio` 启动
+- [x] ~~`packages/studio` Web UI 工作台（Vite + React + Hono）~~ — 已发布，`novelfork studio` 启动
 - [ ] 互动小说（分支叙事 + 读者选择）
 - [ ] 局部干预（重写半章 + 级联更新后续 truth 文件）
 - [ ] 自定义 agent 插件系统
@@ -378,26 +374,10 @@ pnpm test         # 运行测试
 pnpm typecheck    # 类型检查
 ```
 
-## Star History
-
-<a href="https://www.star-history.com/#Narcooo/inkos&type=date&legend=top-left">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=Narcooo/inkos&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=Narcooo/inkos&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=Narcooo/inkos&type=date&legend=top-left" />
- </picture>
-</a>
-
-## Repobeats
-
-![Alt](https://repobeats.axiom.co/api/embed/024114415c1505a8c27fb121e3b392524e48f583.svg "Repobeats analytics image")
-
-## Contributors
-
-<a href="https://github.com/Narcooo/inkos/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=Narcooo/inkos" />
-</a>
-
 ## 许可证
 
 [MIT](LICENSE)
+
+---
+
+**致谢**：本项目基于 [InkOS](https://github.com/Narcooo/inkos) v1.1.1 fork。感谢原作者 Narcooo 的开源贡献。
