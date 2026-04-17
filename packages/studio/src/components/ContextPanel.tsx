@@ -4,9 +4,10 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
-import { X, ChevronDown, ChevronRight, FileText } from "lucide-react";
+import { X, ChevronDown, ChevronRight, FileText, Trash2, Scissors, Archive } from "lucide-react";
 import { Switch } from "./ui/switch";
 import { fetchJson } from "../hooks/use-api";
+import { AutoCompressToggle } from "./AutoCompressToggle";
 
 interface ContextEntry {
   readonly source: string;
@@ -99,6 +100,35 @@ export function ContextPanel({ bookId, chapterNumber, visible, onClose }: Contex
     });
   };
 
+  const handleCompress = async () => {
+    try {
+      await fetchJson(`/api/context/${bookId}/compress`, { method: "POST" });
+      await fetchContext();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const handleTruncate = async () => {
+    try {
+      await fetchJson(`/api/context/${bookId}/truncate`, { method: "POST" });
+      await fetchContext();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const handleClear = async () => {
+    if (!confirm("确定要清空所有上下文吗？此操作不可恢复。")) return;
+
+    try {
+      await fetchJson(`/api/context/${bookId}/clear`, { method: "POST" });
+      await fetchContext();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
   // Recalculate active tokens based on disabled sources
   const activeTokens = entries.reduce(
     (sum, entry) => (disabledSources.has(entry.source) ? sum : sum + entry.tokens),
@@ -139,6 +169,38 @@ export function ContextPanel({ bookId, chapterNumber, visible, onClose }: Contex
           />
         </div>
       </div>
+
+      {/* Action Buttons */}
+      <div className="flex items-center gap-2 px-4 py-2 border-b border-border/30">
+        <button
+          onClick={handleCompress}
+          disabled={ratio < 0.8}
+          className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-xs rounded-lg bg-secondary hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          title="压缩上下文"
+        >
+          <Archive size={14} />
+          压缩
+        </button>
+        <button
+          onClick={handleTruncate}
+          className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-xs rounded-lg bg-secondary hover:bg-secondary/80 transition-colors"
+          title="裁剪上下文"
+        >
+          <Scissors size={14} />
+          裁剪
+        </button>
+        <button
+          onClick={handleClear}
+          className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-xs rounded-lg bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors"
+          title="清空上下文"
+        >
+          <Trash2 size={14} />
+          清空
+        </button>
+      </div>
+
+      {/* Auto-compress toggle */}
+      <AutoCompressToggle bookId={bookId} onCompress={handleCompress} />
 
       {/* Entry List */}
       <div className="flex-1 overflow-y-auto">
