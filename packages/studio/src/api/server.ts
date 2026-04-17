@@ -39,6 +39,8 @@ import {
   createRhythmRouter,
   createHooksCountdownRouter,
   createGoldenChaptersRouter,
+  createChatRouter,
+  createContextManagerRouter,
 } from "./routes/index.js";
 import type { RouterContext } from "./routes/index.js";
 import type { Context } from "hono";
@@ -254,6 +256,12 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
 
     // Golden chapters analysis
     app.route("", createGoldenChaptersRouter(ctx));
+
+    // Chat interface
+    app.route("", createChatRouter(ctx));
+
+    // Context manager
+    app.route("", createContextManagerRouter(ctx));
   } else {
     // Relay mode — snapshot-based AI endpoints only
     app.route("", createAIRelayRouter(ctx));

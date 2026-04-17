@@ -40,7 +40,8 @@
     "@tiptap/react": "^3.22.3",
     "@tiptap/starter-kit": "^3.22.3",
     "glob": "^13.0.6",
-    "novel": "^1.0.2"
+    "novel": "^1.0.2",
+    "tiktoken": "^1.0.22"
   },
   "devDependencies": {
     "esbuild": "^0.28.0"

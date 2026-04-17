@@ -154,5 +154,59 @@ export function createWorktreeRouter(): Hono {
     }
   });
 
+  /**
+   * POST /api/worktree/merge
+   * 合并分支到当前分支
+   * Body: { path: string, sourceBranch: string, noFf?: boolean }
+   */
+  app.post("/api/worktree/merge", async (c) => {
+    try {
+      const body = await c.req.json<{ path?: string; sourceBranch?: string; noFf?: boolean }>();
+
+      if (!body.path?.trim()) {
+        throw new ApiError(400, "PATH_REQUIRED", "Worktree path is required");
+      }
+
+      if (!body.sourceBranch?.trim()) {
+        throw new ApiError(400, "SOURCE_BRANCH_REQUIRED", "Source branch is required");
+      }
+
+      const { mergeBranch } = await import("../lib/git-utils.js");
+      const result = await mergeBranch(body.path, body.sourceBranch.trim(), body.noFf ?? true);
+
+      return c.json({ ok: result.success, message: result.message });
+    } catch (error) {
+      if (error instanceof ApiError) throw error;
+      throw new ApiError(500, "MERGE_FAILED", error instanceof Error ? error.message : "Failed to merge branch");
+    }
+  });
+
+  /**
+   * POST /api/worktree/fork
+   * 从当前分支创建新分支（Fork）
+   * Body: { path: string, newBranch: string }
+   */
+  app.post("/api/worktree/fork", async (c) => {
+    try {
+      const body = await c.req.json<{ path?: string; newBranch?: string }>();
+
+      if (!body.path?.trim()) {
+        throw new ApiError(400, "PATH_REQUIRED", "Worktree path is required");
+      }
+
+      if (!body.newBranch?.trim()) {
+        throw new ApiError(400, "NEW_BRANCH_REQUIRED", "New branch name is required");
+      }
+
+      const { forkBranch } = await import("../lib/git-utils.js");
+      const branchName = await forkBranch(body.path, body.newBranch.trim());
+
+      return c.json({ ok: true, branch: branchName });
+    } catch (error) {
+      if (error instanceof ApiError) throw error;
+      throw new ApiError(500, "FORK_FAILED", error instanceof Error ? error.message : "Failed to fork branch");
+    }
+  });
+
   return app;
 }

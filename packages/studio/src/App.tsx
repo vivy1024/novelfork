@@ -29,6 +29,7 @@ import { DetectView } from "./pages/DetectView";
 import { NotifyConfig } from "./pages/NotifyConfig";
 import { IntentEditor } from "./pages/IntentEditor";
 import { AgentPanel } from "./pages/AgentPanel";
+import { ChatWindowManager } from "./components/ChatWindowManager";
 import { SchedulerConfig } from "./pages/SchedulerConfig";
 import { DetectionConfigView } from "./pages/DetectionConfigView";
 import { HookDashboard } from "./pages/HookDashboard";
@@ -72,6 +73,7 @@ export type Route =
   | { page: "notify" }
   | { page: "intent"; bookId: string }
   | { page: "agents" }
+  | { page: "chat-windows" }
   | { page: "scheduler-config" }
   | { page: "detection-config" }
   | { page: "hooks" }
@@ -356,6 +358,7 @@ function AppInner() {
     toNotify: () => openTab({ page: "notify" }),
     toIntent: (bookId: string) => openTab({ page: "intent", bookId }),
     toAgents: () => openTab({ page: "agents" }),
+    toChatWindows: () => openTab({ page: "chat-windows" }),
     toSchedulerConfig: () => openTab({ page: "scheduler-config" }),
     toDetectionConfig: () => openTab({ page: "detection-config" }),
     toHooks: () => openTab({ page: "hooks" }),
@@ -577,6 +580,7 @@ function TabContent({ route, nav, theme, t, sse, setTheme }: {
     case "notify": return <NotifyConfig nav={nav} theme={theme} t={t} />;
     case "intent": return <IntentEditor bookId={route.bookId} nav={nav} theme={theme} t={t} />;
     case "agents": return <AgentPanel nav={nav} theme={theme} t={t} />;
+    case "chat-windows": return <ChatWindowManager theme={theme} />;
     case "scheduler-config": return <SchedulerConfig nav={nav} theme={theme} t={t} />;
     case "detection-config": return <DetectionConfigView nav={nav} theme={theme} t={t} />;
     case "hooks": return <HookDashboard nav={nav} theme={theme} t={t} />;
