@@ -1,5 +1,5 @@
-import { useCallback } from "react";
-import { Responsive, WidthProvider, Layout } from "react-grid-layout";
+import { useCallback, useRef, useEffect, useState } from "react";
+import { ResponsiveGridLayout, type Layout } from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
 import { Plus } from "lucide-react";
@@ -7,8 +7,6 @@ import type { Theme } from "../hooks/use-theme";
 import { useColors } from "../hooks/use-colors";
 import { ChatWindow } from "./ChatWindow";
 import { useWindowStore } from "../stores/windowStore";
-
-const ResponsiveGridLayout = WidthProvider(Responsive);
 
 interface ChatWindowManagerProps {
   theme: Theme;
@@ -19,6 +17,24 @@ export function ChatWindowManager({ theme }: ChatWindowManagerProps) {
   const windows = useWindowStore((state) => state.windows);
   const addWindow = useWindowStore((state) => state.addWindow);
   const updateLayout = useWindowStore((state) => state.updateLayout);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(1200);
+
+  // 监听容器宽度变化
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setWidth(entry.contentRect.width);
+      }
+    });
+
+    observer.observe(containerRef.current);
+    setWidth(containerRef.current.offsetWidth);
+
+    return () => observer.disconnect();
+  }, []);
 
   const handleLayoutChange = useCallback(
     (layout: Layout[]) => {
@@ -47,20 +63,18 @@ export function ChatWindowManager({ theme }: ChatWindowManagerProps) {
     addWindow(agentId, title);
   };
 
-  const layouts = {
-    lg: windows.map((w) => ({
-      i: w.id,
-      x: w.position.x,
-      y: w.position.y,
-      w: w.minimized ? 4 : w.position.w,
-      h: w.minimized ? 1 : w.position.h,
-      minW: 3,
-      minH: w.minimized ? 1 : 4,
-    })),
-  };
+  const layout = windows.map((w) => ({
+    i: w.id,
+    x: w.position.x,
+    y: w.position.y,
+    w: w.minimized ? 4 : w.position.w,
+    h: w.minimized ? 1 : w.position.h,
+    minW: 3,
+    minH: w.minimized ? 1 : 4,
+  }));
 
   return (
-    <div className="relative w-full h-full" style={{ backgroundColor: c.bg }}>
+    <div ref={containerRef} className="relative w-full h-full" style={{ backgroundColor: c.bg }}>
       {/* 添加窗口按钮 */}
       <button
         onClick={handleAddWindow}
@@ -75,10 +89,11 @@ export function ChatWindowManager({ theme }: ChatWindowManagerProps) {
       {windows.length > 0 ? (
         <ResponsiveGridLayout
           className="layout"
-          layouts={layouts}
+          layouts={{ lg: layout }}
           breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
           cols={{ lg: 12, md: 10, sm: 6, xs: 4, xxs: 2 }}
           rowHeight={60}
+          width={width}
           onLayoutChange={handleLayoutChange}
           draggableHandle=".cursor-move"
           compactType={null}

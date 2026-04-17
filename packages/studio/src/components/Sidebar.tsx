@@ -33,6 +33,7 @@ import {
   GitBranch,
   Puzzle,
   FolderGit2,
+  MessageSquare,
 } from "lucide-react";
 
 interface BookSummary {
@@ -63,6 +64,7 @@ interface Nav {
   toNotify: () => void;
   toIntent: (bookId: string) => void;
   toAgents: () => void;
+  toChatWindows: () => void;
   toSchedulerConfig: () => void;
   toDetectionConfig: () => void;
   toHooks: () => void;
@@ -274,6 +276,12 @@ export function Sidebar({ nav, activePage, sse, t }: {
               icon={<Bot size={16} />}
               active={activePage === "agents"}
               onClick={nav.toAgents}
+            />
+            <SidebarItem
+              label="多窗口对话"
+              icon={<MessageSquare size={16} />}
+              active={activePage === "chat-windows"}
+              onClick={nav.toChatWindows}
             />
             <SidebarItem
               label="通知配置"
