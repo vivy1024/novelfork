@@ -1,5 +1,4 @@
 import { useRef, useEffect } from "react";
-import { FixedSizeList as List } from "react-window";
 import { MessageItem } from "./MessageItem";
 import { BotMessageSquare } from "lucide-react";
 
@@ -13,7 +12,6 @@ interface Message {
 interface MessageListProps {
   messages: Message[];
   isStreaming?: boolean;
-  streamingContent?: string;
 }
 
 function EmptyState() {
@@ -28,8 +26,7 @@ function EmptyState() {
   );
 }
 
-export function MessageList({ messages, isStreaming, streamingContent }: MessageListProps) {
-  const listRef = useRef<List>(null);
+export function MessageList({ messages, isStreaming }: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom on new messages
@@ -37,27 +34,22 @@ export function MessageList({ messages, isStreaming, streamingContent }: Message
     if (containerRef.current) {
       containerRef.current.scrollTop = containerRef.current.scrollHeight;
     }
-  }, [messages.length, streamingContent]);
+  }, [messages.length]);
 
   if (messages.length === 0 && !isStreaming) {
     return <EmptyState />;
   }
 
-  const allMessages = [...messages];
-  if (isStreaming && streamingContent) {
-    allMessages.push({
-      id: "streaming",
-      role: "assistant",
-      content: streamingContent,
-      timestamp: Date.now(),
-    });
-  }
-
   return (
     <div ref={containerRef} className="flex-1 overflow-y-auto">
-      {allMessages.map((msg) => (
+      {messages.map((msg) => (
         <MessageItem key={msg.id} message={msg} />
       ))}
+      {isStreaming && (
+        <div className="px-4 py-4 bg-secondary/20 text-sm text-muted-foreground italic">
+          Thinking...
+        </div>
+      )}
     </div>
   );
 }

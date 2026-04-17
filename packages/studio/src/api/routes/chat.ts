@@ -1,11 +1,9 @@
 /**
  * Chat routes — conversational interface for book operations.
- * SSE streaming for real-time AI responses.
  */
 
 import { Hono } from "hono";
-import { streamSSE } from "hono/streaming";
-import { chatCompletion, createLLMClient } from "@actalk/inkos-core";
+import { chatCompletion } from "@actalk/inkos-core";
 import type { RouterContext } from "./context.js";
 
 interface Message {
@@ -22,7 +20,7 @@ export function createChatRouter(ctx: RouterContext): Hono {
   // In-memory message store (per book)
   const messageStore = new Map<string, Message[]>();
 
-  // POST /api/chat/:bookId/send - Send message and get SSE stream
+  // POST /api/chat/:bookId/send - Send message and get response
   app.post("/api/chat/:bookId/send", async (c) => {
     const bookId = c.req.param("bookId");
     const { content } = await c.req.json<{ content: string }>();
@@ -43,76 +41,51 @@ export function createChatRouter(ctx: RouterContext): Hono {
     messages.push(userMsg);
     messageStore.set(bookId, messages);
 
-    // Get session LLM config
-    const sessionLlm = await ctx.getSessionLlm(c);
-    const llmClient = createLLMClient(
-      sessionLlm?.provider || "openai",
-      sessionLlm?.apiKey || process.env.OPENAI_API_KEY || "",
-      sessionLlm?.baseUrl || process.env.OPENAI_BASE_URL,
-    );
+    try {
+      // Get session LLM config and build pipeline config
+      const sessionLlm = await ctx.getSessionLlm(c);
+      const config = await ctx.buildPipelineConfig(sessionLlm);
 
-    // Stream AI response
-    return streamSSE(c, async (stream) => {
-      let assistantContent = "";
-      const assistantId = `${Date.now()}-assistant`;
-
-      try {
-        // Build context from book
-        const book = await state.loadBookConfig(bookId);
-        const systemPrompt = `You are a writing assistant for the novel "${book.title}".
+      // Build context from book
+      const book = await state.loadBookConfig(bookId);
+      const systemPrompt = `You are a writing assistant for the novel "${book.title}".
 Help the author with plot development, character analysis, and writing suggestions.
 Be concise and actionable.`;
 
-        // Convert messages to chat format
-        const chatMessages = messages.map((m) => ({
-          role: m.role,
-          content: m.content,
-        }));
+      // Convert messages to chat format
+      const chatMessages = messages.map((m) => ({
+        role: m.role as "user" | "assistant",
+        content: m.content,
+      }));
 
-        // Stream completion
-        const completion = await chatCompletion(
-          llmClient,
-          [
-            { role: "system", content: systemPrompt },
-            ...chatMessages,
-            { role: "user", content: content.trim() },
-          ],
-          sessionLlm?.model || "gpt-4o-mini",
-          { stream: true },
-        );
+      // Call completion
+      const response = await chatCompletion(
+        config.client,
+        config.model,
+        [
+          { role: "system", content: systemPrompt },
+          ...chatMessages,
+          { role: "user", content: content.trim() },
+        ],
+      );
 
-        for await (const chunk of completion) {
-          const delta = chunk.choices[0]?.delta?.content || "";
-          if (delta) {
-            assistantContent += delta;
-            await stream.writeSSE({
-              data: JSON.stringify({ type: "delta", content: delta }),
-            });
-          }
-        }
+      // Store assistant message
+      const assistantMsg: Message = {
+        id: `${Date.now()}-assistant`,
+        role: "assistant",
+        content: response.content,
+        timestamp: Date.now(),
+      };
+      messages.push(assistantMsg);
+      messageStore.set(bookId, messages);
 
-        // Store assistant message
-        const assistantMsg: Message = {
-          id: assistantId,
-          role: "assistant",
-          content: assistantContent,
-          timestamp: Date.now(),
-        };
-        messages.push(assistantMsg);
-        messageStore.set(bookId, messages);
-
-        await stream.writeSSE({
-          data: JSON.stringify({ type: "done", messageId: assistantId }),
-        });
-      } catch (error) {
-        await stream.writeSSE({
-          data: JSON.stringify({
-            type: "error",
-            error: error instanceof Error ? error.message : String(error),
-          }),
-        });
-      }
-    });
+      return c.json({ message: assistantMsg });
+    } catch (error) {
+      return c.json(
+        { error: error instanceof Error ? error.message : String(error) },
+        500,
+      );
+    }
   });
 
   // GET /api/chat/:bookId/messages - Get message history
