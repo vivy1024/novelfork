@@ -5,6 +5,8 @@
 
 import { X, Sun, Moon, Bell, MessageSquare } from "lucide-react";
 import type { Tab } from "../hooks/use-tabs";
+import { GitLogButton } from "./Git/GitLogButton";
+import { GitForkButton } from "./Git/GitForkButton";
 
 interface TabBarProps {
   tabs: ReadonlyArray<Tab>;
@@ -15,6 +17,7 @@ interface TabBarProps {
   onToggleTheme: () => void;
   chatOpen: boolean;
   onToggleChat: () => void;
+  repoPath?: string;
 }
 
 export function TabBar({
@@ -26,6 +29,7 @@ export function TabBar({
   onToggleTheme,
   chatOpen,
   onToggleChat,
+  repoPath,
 }: TabBarProps) {
   return (
     <header className="h-10 shrink-0 flex items-center border-b border-border/40 bg-background">
@@ -72,6 +76,12 @@ export function TabBar({
 
       {/* Right controls */}
       <div className="flex items-center gap-1.5 px-3 shrink-0">
+        {repoPath && (
+          <>
+            <GitLogButton repoPath={repoPath} />
+            <GitForkButton repoPath={repoPath} />
+          </>
+        )}
         <button
           onClick={onToggleTheme}
           className="w-7 h-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all"

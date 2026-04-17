@@ -1,11 +1,21 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
+export interface ToolCall {
+  toolName: string;
+  command: string;
+  duration: number;
+  output: string;
+  error?: string;
+  exitCode?: number;
+}
+
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant" | "system";
   content: string;
   timestamp: number;
+  toolCalls?: ToolCall[];
 }
 
 export interface ChatWindow {
