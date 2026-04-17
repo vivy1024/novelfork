@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { MessageList } from "./MessageList";
 import { ChatInput } from "./ChatInput";
 import { Trash2, MessageSquare } from "lucide-react";
+import { useMessageEdit } from "../hooks/useMessageEdit";
 
 interface Message {
   id: string;
@@ -18,6 +19,7 @@ interface ChatPanelProps {
 export function ChatPanel({ bookId, onClose }: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
+  const { editingMessageId, startEdit, cancelEdit, saveEdit } = useMessageEdit();
 
   // Load message history
   useEffect(() => {
@@ -79,6 +81,41 @@ export function ChatPanel({ bookId, onClose }: ChatPanelProps) {
     }
   };
 
+  const handleSaveEdit = async (messageId: string, newContent: string) => {
+    const newMessages = saveEdit(messageId, newContent, messages, setMessages);
+    if (!newMessages) return;
+
+    // Regenerate from edited message
+    const editedMessage = newMessages.find((m) => m.id === messageId);
+    if (editedMessage && editedMessage.role === "user") {
+      setIsStreaming(true);
+
+      try {
+        const response = await fetch(`/api/chat/${bookId}/send`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: newContent }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        if (data.message) {
+          setMessages((prev) => [...prev, data.message]);
+        } else if (data.error) {
+          console.error("API error:", data.error);
+        }
+      } catch (error) {
+        console.error("Failed to regenerate message:", error);
+      } finally {
+        setIsStreaming(false);
+      }
+    }
+  };
+
   return (
     <div className="flex flex-col h-full bg-background">
       {/* Header */}
@@ -99,7 +136,14 @@ export function ChatPanel({ bookId, onClose }: ChatPanelProps) {
       </div>
 
       {/* Messages */}
-      <MessageList messages={messages} isStreaming={isStreaming} />
+      <MessageList
+        messages={messages}
+        isStreaming={isStreaming}
+        editingMessageId={editingMessageId}
+        onEdit={startEdit}
+        onSaveEdit={handleSaveEdit}
+        onCancelEdit={cancelEdit}
+      />
 
       {/* Input */}
       <ChatInput onSend={handleSend} disabled={isStreaming} />
