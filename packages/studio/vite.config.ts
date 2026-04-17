@@ -28,6 +28,7 @@ export default defineConfig({
         "@tauri-apps/plugin-fs",
         "@tauri-apps/plugin-updater",
         "@tauri-apps/plugin-process",
+        "@tauri-apps/plugin-shell",
       ],
     },
   },
