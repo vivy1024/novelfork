@@ -30,6 +30,8 @@
   "dependencies": {
     "@actalk/inkos-core": "workspace:*",
     "@base-ui/react": "^1.3.0",
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
     "@fontsource-variable/geist": "^5.2.8",
     "@hono/node-server": "^1.13.0",
     "@tauri-apps/api": "^2.10.1",
