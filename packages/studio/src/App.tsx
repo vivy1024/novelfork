@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { Sidebar } from "./components/Sidebar";
 import { ChatPanel } from "./components/ChatBar";
 import { TabBar } from "./components/TabBar";
@@ -44,8 +45,7 @@ import { useSSE } from "./hooks/use-sse";
 import { useTheme } from "./hooks/use-theme";
 import { useI18n } from "./hooks/use-i18n";
 import { useTabsState } from "./hooks/use-tabs";
-import { useResizable } from "./hooks/use-resizable";
-import { useVerticalResizable } from "./hooks/use-vertical-resizable";
+import { useLayoutConfig } from "./hooks/use-layout-config";
 import { useRecovery } from "./hooks/use-crash-recovery";
 import { persistTabSession, restoreTabSession } from "./hooks/use-persisted-tabs";
 import { fetchJson, postApi, useApi } from "./hooks/use-api";
@@ -140,13 +140,95 @@ function AppInner() {
   const [wsReady, setWsReady] = useState(!isTauri || !!workspace);
   const [cmdOpen, setCmdOpen] = useState(false);
 
-  const sidebarResize = useResizable({ initialWidth: 260, minWidth: 200, maxWidth: 400, side: "left" });
-  const chatResize = useResizable({ initialWidth: 320, minWidth: 240, maxWidth: 500, side: "right" });
-  const bottomResize = useVerticalResizable({ initialHeight: 200, minHeight: 120, maxHeight: 400 });
+  const { config, loaded: layoutLoaded, updateConfig } = useLayoutConfig();
   const [refPanelOpen, setRefPanelOpen] = useState(false);
   const recovery = useRecovery();
 
+  // Sidebar drag state
+  const [sidebarDragging, setSidebarDragging] = useState(false);
+  const [sidebarStartX, setSidebarStartX] = useState(0);
+  const [sidebarStartWidth, setSidebarStartWidth] = useState(0);
+
+  // Bottom panel drag state
+  const [bottomDragging, setBottomDragging] = useState(false);
+  const [bottomStartY, setBottomStartY] = useState(0);
+  const [bottomStartHeight, setBottomStartHeight] = useState(0);
+
   const isDark = theme === "dark";
+
+  // Sidebar drag handlers
+  const handleSidebarMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setSidebarStartX(e.clientX);
+    setSidebarStartWidth(config.sidebarWidth);
+    setSidebarDragging(true);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  }, [config.sidebarWidth]);
+
+  const handleSidebarMouseMove = useCallback((e: MouseEvent) => {
+    if (!sidebarDragging) return;
+    const delta = e.clientX - sidebarStartX;
+    const newWidth = Math.max(200, Math.min(400, sidebarStartWidth + delta));
+    updateConfig({ sidebarWidth: newWidth });
+  }, [sidebarDragging, sidebarStartX, sidebarStartWidth, updateConfig]);
+
+  const handleSidebarMouseUp = useCallback(() => {
+    setSidebarDragging(false);
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+  }, []);
+
+  // Bottom panel drag handlers
+  const handleBottomMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setBottomStartY(e.clientY);
+    setBottomStartHeight(config.bottomPanelHeight);
+    setBottomDragging(true);
+    document.body.style.cursor = "row-resize";
+    document.body.style.userSelect = "none";
+  }, [config.bottomPanelHeight]);
+
+  const handleBottomMouseMove = useCallback((e: MouseEvent) => {
+    if (!bottomDragging) return;
+    const delta = bottomStartY - e.clientY;
+    const newHeight = Math.max(120, Math.min(400, bottomStartHeight + delta));
+    updateConfig({ bottomPanelHeight: newHeight });
+  }, [bottomDragging, bottomStartY, bottomStartHeight, updateConfig]);
+
+  const handleBottomMouseUp = useCallback(() => {
+    setBottomDragging(false);
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+  }, []);
+
+  // Toggle bottom panel collapse
+  const toggleBottomPanel = useCallback(() => {
+    updateConfig({ bottomPanelCollapsed: !config.bottomPanelCollapsed });
+  }, [config.bottomPanelCollapsed, updateConfig]);
+
+  // Attach global mouse listeners for dragging
+  useEffect(() => {
+    if (sidebarDragging) {
+      window.addEventListener("mousemove", handleSidebarMouseMove);
+      window.addEventListener("mouseup", handleSidebarMouseUp);
+      return () => {
+        window.removeEventListener("mousemove", handleSidebarMouseMove);
+        window.removeEventListener("mouseup", handleSidebarMouseUp);
+      };
+    }
+  }, [sidebarDragging, handleSidebarMouseMove, handleSidebarMouseUp]);
+
+  useEffect(() => {
+    if (bottomDragging) {
+      window.addEventListener("mousemove", handleBottomMouseMove);
+      window.addEventListener("mouseup", handleBottomMouseUp);
+      return () => {
+        window.removeEventListener("mousemove", handleBottomMouseMove);
+        window.removeEventListener("mouseup", handleBottomMouseUp);
+      };
+    }
+  }, [bottomDragging, handleBottomMouseMove, handleBottomMouseUp]);
 
   // Persist tabs to IndexedDB on change
   useEffect(() => {
@@ -297,18 +379,32 @@ function AppInner() {
     return r.page;
   })();
 
+  // Calculate actual bottom panel height (collapsed = 32px for title bar only)
+  const actualBottomHeight = config.bottomPanelCollapsed ? 32 : config.bottomPanelHeight;
+
   return (
-    <div className="h-screen bg-background text-foreground flex overflow-hidden font-sans">
+    <div
+      className="h-screen bg-background text-foreground overflow-hidden font-sans"
+      style={{
+        display: "grid",
+        gridTemplateColumns: `${config.sidebarWidth}px 1fr`,
+        gridTemplateRows: refPanelOpen ? `1fr ${actualBottomHeight}px` : "1fr",
+      }}
+    >
       {/* Left Sidebar */}
-      <div style={{ width: sidebarResize.width }} className="shrink-0">
+      <div className="row-span-2 flex flex-col">
         <Sidebar nav={nav} activePage={activePage} sse={sse} t={t} />
       </div>
 
-      {/* Left Drag Handle */}
-      <div {...sidebarResize.handleProps} />
+      {/* Sidebar Drag Handle */}
+      <div
+        onMouseDown={handleSidebarMouseDown}
+        className="absolute w-1 h-full shrink-0 hover:bg-primary/20 transition-colors cursor-col-resize z-10"
+        style={{ left: config.sidebarWidth, top: 0 }}
+      />
 
-      {/* Center Content */}
-      <div className="flex-1 flex flex-col min-w-0 bg-background/30 backdrop-blur-sm">
+      {/* Main Content Area */}
+      <div className="flex flex-col min-w-0 bg-background/30 backdrop-blur-sm overflow-hidden">
         {/* Tab Bar */}
         <TabBar
           tabs={tabs}
@@ -321,7 +417,7 @@ function AppInner() {
           onToggleChat={() => setChatOpen((prev) => !prev)}
         />
 
-        {/* Main Content Area — all open tabs rendered, only active visible */}
+        {/* Main Content — all open tabs rendered, only active visible */}
         <main className="flex-1 overflow-y-auto scroll-smooth relative">
           {isTauri && recovery.hasRecovery && (
             <RecoveryBanner
@@ -347,20 +443,51 @@ function AppInner() {
           ))}
         </main>
 
-        {/* Bottom Reference Panel */}
-        {refPanelOpen && (
-          <>
-            <div {...bottomResize.handleProps} />
-            <ReferencePanel height={bottomResize.height} bookId={activeBookId} />
-          </>
-        )}
-
         {/* Status Bar */}
         <footer className="h-6 shrink-0 flex items-center px-4 text-[10px] text-muted-foreground border-t border-border/40 bg-background/80 gap-4">
           <span>InkOS Studio</span>
           <span className="ml-auto">Ctrl+K 命令面板 · Ctrl+B 参考面板 · Ctrl+S 保存</span>
         </footer>
       </div>
+
+      {/* Bottom Reference Panel */}
+      {refPanelOpen && (
+        <>
+          {/* Bottom Panel Drag Handle */}
+          {!config.bottomPanelCollapsed && (
+            <div
+              onMouseDown={handleBottomMouseDown}
+              className="col-start-2 h-1 shrink-0 hover:bg-primary/20 transition-colors cursor-row-resize z-10"
+            />
+          )}
+
+          {/* Bottom Panel Content */}
+          <div className="col-start-2 border-t border-border bg-background/50 flex flex-col overflow-hidden">
+            {/* Title Bar with Collapse Button */}
+            <div className="h-8 shrink-0 flex items-center px-3 border-b border-border/40 bg-background/80">
+              <span className="text-xs font-medium text-foreground">参考面板</span>
+              <button
+                onClick={toggleBottomPanel}
+                className="ml-auto p-1 hover:bg-secondary/50 rounded transition-colors"
+                aria-label={config.bottomPanelCollapsed ? "展开" : "折叠"}
+              >
+                {config.bottomPanelCollapsed ? (
+                  <ChevronUp size={14} className="text-muted-foreground" />
+                ) : (
+                  <ChevronDown size={14} className="text-muted-foreground" />
+                )}
+              </button>
+            </div>
+
+            {/* Panel Content (hidden when collapsed) */}
+            {!config.bottomPanelCollapsed && (
+              <div className="flex-1 overflow-hidden">
+                <ReferencePanel height={config.bottomPanelHeight - 32} bookId={activeBookId} />
+              </div>
+            )}
+          </div>
+        </>
+      )}
 
       {/* BookCreate Modal */}
       {bookCreateOpen && (
@@ -388,19 +515,18 @@ function AppInner() {
         </div>
       )}
 
-      {/* Right Drag Handle */}
-      {chatOpen && <div {...chatResize.handleProps} />}
-
-      {/* Right Chat Panel */}
-      <div style={{ width: chatOpen ? chatResize.width : 0 }} className="shrink-0">
-        <ChatPanel
-          open={chatOpen}
-          onClose={() => setChatOpen(false)}
-          t={t}
-          sse={sse}
-          activeBookId={activeBookId}
-        />
-      </div>
+      {/* Right Chat Panel (overlay, not in grid) */}
+      {chatOpen && (
+        <div className="fixed right-0 top-0 h-full w-80 z-20 shadow-2xl">
+          <ChatPanel
+            open={chatOpen}
+            onClose={() => setChatOpen(false)}
+            t={t}
+            sse={sse}
+            activeBookId={activeBookId}
+          />
+        </div>
+      )}
 
       {/* Auto-Updater (Tauri only) */}
       {isTauri && <UpdateChecker />}

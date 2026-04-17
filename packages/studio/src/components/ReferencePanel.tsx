@@ -38,7 +38,7 @@ export function ReferencePanel({ height, bookId }: ReferencePanelProps) {
   return (
     <div
       style={{ height }}
-      className="border-t border-border bg-background/50 flex flex-col overflow-hidden"
+      className="bg-background/50 flex flex-col overflow-hidden"
     >
       {/* Tab header */}
       <div className="px-2 flex items-center gap-0 border-b border-border/40 shrink-0">
