@@ -3,6 +3,8 @@
  */
 
 import { Hono } from "hono";
+import { readFile, readdir } from "node:fs/promises";
+import { join } from "node:path";
 import type { RouterContext } from "./context.js";
 import { globalSearchIndex, type SearchType } from "../lib/search-index.js";
 
@@ -50,21 +52,33 @@ export function createSearchRouter(ctx: RouterContext): Hono {
       let indexed = 0;
 
       for (const bookId of bookIds) {
+        const bookDir = state.bookDir(bookId);
+        const chaptersDir = join(bookDir, "chapters");
+
         // Index chapters
         try {
           const chapters = await state.loadChapterIndex(bookId);
+          const files = await readdir(chaptersDir).catch(() => []);
+
           for (const chapter of chapters) {
-            const content = await state.loadChapterContent(bookId, chapter.number);
-            globalSearchIndex.index({
-              id: `chapter:${bookId}:${chapter.number}`,
-              type: 'chapter',
-              title: chapter.title || `Chapter ${chapter.number}`,
-              content: content || '',
-              bookId,
-              timestamp: Date.now(),
-              metadata: { chapterNumber: chapter.number },
-            });
-            indexed++;
+            const match = files.find(f => f.startsWith(`${chapter.number.toString().padStart(4, '0')}-`));
+            if (match) {
+              try {
+                const content = await readFile(join(chaptersDir, match), "utf-8");
+                globalSearchIndex.index({
+                  id: `chapter:${bookId}:${chapter.number}`,
+                  type: 'chapter',
+                  title: chapter.title || `Chapter ${chapter.number}`,
+                  content: content || '',
+                  bookId,
+                  timestamp: Date.now(),
+                  metadata: { chapterNumber: chapter.number },
+                });
+                indexed++;
+              } catch {
+                // Skip if file can't be read
+              }
+            }
           }
         } catch (e) {
           console.error(`Failed to index chapters for book ${bookId}:`, e);
@@ -72,6 +86,7 @@ export function createSearchRouter(ctx: RouterContext): Hono {
 
         // Index truth files (settings)
         try {
+          const storyDir = join(bookDir, "story");
           const truthFiles = [
             'story_bible.md',
             'volume_outline.md',
@@ -82,7 +97,7 @@ export function createSearchRouter(ctx: RouterContext): Hono {
 
           for (const file of truthFiles) {
             try {
-              const content = await state.loadTruthFile(bookId, file);
+              const content = await readFile(join(storyDir, file), "utf-8");
               globalSearchIndex.index({
                 id: `setting:${bookId}:${file}`,
                 type: 'setting',
