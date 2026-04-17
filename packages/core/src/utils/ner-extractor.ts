@@ -56,6 +56,17 @@ const ITEM_SUFFIXES = [
   '袋', '瓶', '壶', '杯', '盏', '碗', '盘', '盒', '匣', '箱', '柜', '册', '卷', '书', '图', '谱'
 ];
 
+// 常见停用词（不应出现在人名中）
+const STOP_WORDS = new Set([
+  '和', '与', '及', '或', '在', '的', '了', '是', '有', '为', '从', '到', '把', '被', '将',
+  '对', '向', '往', '给', '让', '使', '叫', '着', '过', '去', '来', '上', '下', '中', '里',
+  '外', '前', '后', '左', '右', '东', '西', '南', '北', '这', '那', '些', '个', '们', '他',
+  '她', '它', '我', '你', '您', '咱', '谁', '什', '么', '哪', '几', '多', '少', '都', '也',
+  '还', '就', '却', '但', '而', '且', '又', '再', '才', '只', '不', '没', '无', '非', '未',
+  '人', '位', '名', '次', '回', '遍', '趟', '场', '番', '度', '年', '月', '日', '时', '分', '秒',
+  '于', '附', '近', '旁', '边', '侧', '间', '内', '以', '所', '处', '得', '很', '太', '更', '最'
+]);
+
 /**
  * 识别人名
  */
@@ -63,24 +74,61 @@ function extractPersons(text: string): Entity[] {
   const entities: Entity[] = [];
   const seen = new Set<string>();
 
-  // 匹配 2-4 字的中文人名（姓氏开头）
-  for (const surname of SURNAMES) {
-    const surnameLen = surname.length;
-    // 匹配姓氏 + 1-3个汉字的名字
-    const pattern = new RegExp(`${surname}[\\u4e00-\\u9fa5]{1,${4 - surnameLen}}(?![\\u4e00-\\u9fa5])`, 'g');
-    let match;
-    while ((match = pattern.exec(text)) !== null) {
-      const name = match[0];
+  // 使用滑动窗口查找人名
+  for (let i = 0; i < text.length; i++) {
+    // 尝试 2-4 字的人名
+    for (let len = 4; len >= 2; len--) {
+      if (i + len > text.length) continue;
+
+      const candidate = text.substring(i, i + len);
+
+      // 检查是否以姓氏开头
+      let startsWithSurname = false;
+      for (const surname of SURNAMES) {
+        if (candidate.startsWith(surname)) {
+          startsWithSurname = true;
+          break;
+        }
+      }
+
+      if (!startsWithSurname) continue;
+
+      // 必须全是汉字
+      if (!/^[\u4e00-\u9fa5]+$/.test(candidate)) continue;
+
+      // 过滤：不能包含停用词
+      let hasStopWord = false;
+      for (const stopWord of STOP_WORDS) {
+        if (candidate.includes(stopWord)) {
+          hasStopWord = true;
+          break;
+        }
+      }
+      if (hasStopWord) continue;
+
       // 过滤：不能是地名/术语/道具后缀
-      const lastChar = name[name.length - 1];
+      const lastChar = candidate[candidate.length - 1];
       if (LOCATION_SUFFIXES.includes(lastChar) ||
           TERM_SUFFIXES.includes(lastChar) ||
           ITEM_SUFFIXES.includes(lastChar)) {
         continue;
       }
-      if (!seen.has(name)) {
-        seen.add(name);
-        entities.push({ text: name, type: 'person', confidence: 0.9 });
+
+      // 过滤：如果最后一个字是数字，且后面跟量词，则排除（如"林动三"+"人"）
+      if (/[一二三四五六七八九十两]/.test(lastChar)) {
+        const nextIdx = i + len;
+        if (nextIdx < text.length) {
+          const nextChar = text[nextIdx];
+          if (['人', '位', '名', '个', '者'].includes(nextChar)) {
+            continue; // 跳过这个候选，尝试更短的
+          }
+        }
+      }
+
+      if (!seen.has(candidate)) {
+        seen.add(candidate);
+        entities.push({ text: candidate, type: 'person', confidence: 0.9 });
+        break; // 找到最长匹配后跳出
       }
     }
   }
@@ -96,12 +144,23 @@ function extractLocations(text: string): Entity[] {
   const seen = new Set<string>();
 
   for (const suffix of LOCATION_SUFFIXES) {
-    // 转义正则特殊字符，匹配 2-8 字的地名（后缀匹配）
+    // 转义正则特殊字符，匹配 2-4 字的地名（后缀匹配）
     const escapedSuffix = suffix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const pattern = new RegExp(`[\\u4e00-\\u9fa5]{1,7}${escapedSuffix}`, 'g');
+    const pattern = new RegExp(`[\\u4e00-\\u9fa5]{1,3}${escapedSuffix}`, 'g');
     let match;
     while ((match = pattern.exec(text)) !== null) {
       const location = match[0];
+
+      // 过滤：不能包含停用词
+      let hasStopWord = false;
+      for (const stopWord of STOP_WORDS) {
+        if (location.includes(stopWord)) {
+          hasStopWord = true;
+          break;
+        }
+      }
+      if (hasStopWord) continue;
+
       if (!seen.has(location)) {
         seen.add(location);
         entities.push({ text: location, type: 'location', confidence: 0.8 });
@@ -120,12 +179,23 @@ function extractTerms(text: string): Entity[] {
   const seen = new Set<string>();
 
   for (const suffix of TERM_SUFFIXES) {
-    // 转义正则特殊字符，匹配 2-10 字的术语（后缀匹配）
+    // 转义正则特殊字符，匹配 2-6 字的术语（后缀匹配）
     const escapedSuffix = suffix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const pattern = new RegExp(`[\\u4e00-\\u9fa5]{1,9}${escapedSuffix}`, 'g');
+    const pattern = new RegExp(`[\\u4e00-\\u9fa5]{1,5}${escapedSuffix}`, 'g');
     let match;
     while ((match = pattern.exec(text)) !== null) {
       const term = match[0];
+
+      // 过滤：不能包含停用词
+      let hasStopWord = false;
+      for (const stopWord of STOP_WORDS) {
+        if (term.includes(stopWord)) {
+          hasStopWord = true;
+          break;
+        }
+      }
+      if (hasStopWord) continue;
+
       if (!seen.has(term)) {
         seen.add(term);
         entities.push({ text: term, type: 'term', confidence: 0.85 });
@@ -144,12 +214,23 @@ function extractItems(text: string): Entity[] {
   const seen = new Set<string>();
 
   for (const suffix of ITEM_SUFFIXES) {
-    // 转义正则特殊字符，匹配 2-8 字的道具（后缀匹配）
+    // 转义正则特殊字符，匹配 2-5 字的道具（后缀匹配）
     const escapedSuffix = suffix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const pattern = new RegExp(`[\\u4e00-\\u9fa5]{1,7}${escapedSuffix}`, 'g');
+    const pattern = new RegExp(`[\\u4e00-\\u9fa5]{1,4}${escapedSuffix}`, 'g');
     let match;
     while ((match = pattern.exec(text)) !== null) {
       const item = match[0];
+
+      // 过滤：不能包含停用词
+      let hasStopWord = false;
+      for (const stopWord of STOP_WORDS) {
+        if (item.includes(stopWord)) {
+          hasStopWord = true;
+          break;
+        }
+      }
+      if (hasStopWord) continue;
+
       if (!seen.has(item)) {
         seen.add(item);
         entities.push({ text: item, type: 'item', confidence: 0.8 });
