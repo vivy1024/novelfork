@@ -12,6 +12,10 @@ interface Message {
 interface MessageListProps {
   messages: Message[];
   isStreaming?: boolean;
+  editingMessageId?: string | null;
+  onEdit?: (messageId: string) => void;
+  onSaveEdit?: (messageId: string, newContent: string) => void;
+  onCancelEdit?: () => void;
 }
 
 function EmptyState() {
@@ -26,7 +30,14 @@ function EmptyState() {
   );
 }
 
-export function MessageList({ messages, isStreaming }: MessageListProps) {
+export function MessageList({
+  messages,
+  isStreaming,
+  editingMessageId,
+  onEdit,
+  onSaveEdit,
+  onCancelEdit
+}: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom on new messages
@@ -43,7 +54,14 @@ export function MessageList({ messages, isStreaming }: MessageListProps) {
   return (
     <div ref={containerRef} className="flex-1 overflow-y-auto">
       {messages.map((msg) => (
-        <MessageItem key={msg.id} message={msg} />
+        <MessageItem
+          key={msg.id}
+          message={msg}
+          isEditing={editingMessageId === msg.id}
+          onEdit={onEdit}
+          onSaveEdit={onSaveEdit}
+          onCancelEdit={onCancelEdit}
+        />
       ))}
       {isStreaming && (
         <div className="px-4 py-4 bg-secondary/20 text-sm text-muted-foreground italic">
