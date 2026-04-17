@@ -22,5 +22,7 @@ export { createChatRouter } from "./chat.js";
 export { createContextManagerRouter } from "./context-manager.js";
 export { createAdminRouter } from "./admin.js";
 export { createRoutinesRouter } from "./routines.js";
+export { createSearchRouter } from "./search.js";
 export { default as sessionRouter } from "./session.js";
+export { createMonitorRouter, setupMonitorWebSocket } from "./monitor.js";
 export type { RouterContext } from "./context.js";

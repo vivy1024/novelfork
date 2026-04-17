@@ -4,6 +4,7 @@ import { Sidebar } from "./components/Sidebar";
 import { ChatPanel } from "./components/ChatBar";
 import { TabBar } from "./components/TabBar";
 import { CommandPalette } from "./components/CommandPalette";
+import { SearchDialog } from "./components/Search/SearchDialog";
 import { UpdateChecker } from "./components/UpdateChecker";
 import { InkOSProvider, useInkOS } from "./providers/inkos-context";
 import { Dashboard } from "./pages/Dashboard";
@@ -51,6 +52,7 @@ import { useLayoutConfig } from "./hooks/use-layout-config";
 import { useRecovery } from "./hooks/use-crash-recovery";
 import { persistTabSession, restoreTabSession } from "./hooks/use-persisted-tabs";
 import { fetchJson, postApi, useApi } from "./hooks/use-api";
+import type { SearchResult } from "./api/lib/search-index";
 
 export type Route =
   | { page: "dashboard" }
