@@ -35,6 +35,10 @@ import {
   createAgentConfigRouter,
   createToolsRouter,
   createWorktreeRouter,
+  createPoisonDetectorRouter,
+  createRhythmRouter,
+  createHooksCountdownRouter,
+  createGoldenChaptersRouter,
 } from "./routes/index.js";
 import type { RouterContext } from "./routes/index.js";
 import type { Context } from "hono";
@@ -238,6 +242,18 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
 
     // Worktree management
     app.route("/api/worktree", createWorktreeRouter());
+
+    // Poison detector
+    app.route("", createPoisonDetectorRouter(ctx));
+
+    // Rhythm analysis
+    app.route("", createRhythmRouter(ctx));
+
+    // Hooks countdown
+    app.route("/api/hooks", createHooksCountdownRouter(ctx));
+
+    // Golden chapters analysis
+    app.route("", createGoldenChaptersRouter(ctx));
   } else {
     // Relay mode — snapshot-based AI endpoints only
     app.route("", createAIRelayRouter(ctx));

@@ -51,6 +51,7 @@ export interface StoredHook {
   readonly lastAdvancedChapter: number;
   readonly expectedPayoff: string;
   readonly payoffTiming?: string;
+  readonly expectedResolveChapter?: number;
   readonly notes: string;
 }
 
@@ -185,6 +186,7 @@ export class MemoryDB {
     this.seedBuiltInDimensions();
 
     this.ensureColumn("hooks", "payoff_timing", "TEXT NOT NULL DEFAULT ''");
+    this.ensureColumn("hooks", "expected_resolve_chapter", "INTEGER");
   }
 
   private ensureColumn(table: string, column: string, definition: string): void {
@@ -394,8 +396,8 @@ export class MemoryDB {
 
   upsertHook(hook: StoredHook): void {
     this.db.prepare(
-      `INSERT OR REPLACE INTO hooks (hook_id, start_chapter, type, status, last_advanced_chapter, expected_payoff, payoff_timing, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT OR REPLACE INTO hooks (hook_id, start_chapter, type, status, last_advanced_chapter, expected_payoff, payoff_timing, expected_resolve_chapter, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       hook.hookId,
       hook.startChapter,
@@ -404,6 +406,7 @@ export class MemoryDB {
       hook.lastAdvancedChapter,
       hook.expectedPayoff,
       hook.payoffTiming ?? "",
+      hook.expectedResolveChapter ?? null,
       hook.notes,
     );
   }
@@ -425,11 +428,95 @@ export class MemoryDB {
          last_advanced_chapter AS lastAdvancedChapter,
          expected_payoff AS expectedPayoff,
          payoff_timing AS payoffTiming,
+         expected_resolve_chapter AS expectedResolveChapter,
          notes
        FROM hooks
        WHERE lower(status) NOT IN ('resolved', 'closed', '已回收', '已解决')
        ORDER BY last_advanced_chapter DESC, start_chapter DESC, hook_id ASC`,
     ).all() as unknown as ReadonlyArray<StoredHook>;
+  }
+
+  getAllHooks(): ReadonlyArray<StoredHook> {
+    return this.db.prepare(
+      `SELECT
+         hook_id AS hookId,
+         start_chapter AS startChapter,
+         type,
+         status,
+         last_advanced_chapter AS lastAdvancedChapter,
+         expected_payoff AS expectedPayoff,
+         payoff_timing AS payoffTiming,
+         expected_resolve_chapter AS expectedResolveChapter,
+         notes
+       FROM hooks
+       ORDER BY start_chapter DESC, hook_id ASC`,
+    ).all() as unknown as ReadonlyArray<StoredHook>;
+  }
+
+  getOverdueHooks(currentChapter: number): ReadonlyArray<StoredHook> {
+    return this.db.prepare(
+      `SELECT
+         hook_id AS hookId,
+         start_chapter AS startChapter,
+         type,
+         status,
+         last_advanced_chapter AS lastAdvancedChapter,
+         expected_payoff AS expectedPayoff,
+         payoff_timing AS payoffTiming,
+         expected_resolve_chapter AS expectedResolveChapter,
+         notes
+       FROM hooks
+       WHERE lower(status) NOT IN ('resolved', 'closed', '已回收', '已解决')
+       AND expected_resolve_chapter IS NOT NULL
+       AND expected_resolve_chapter < ?
+       ORDER BY expected_resolve_chapter ASC`,
+    ).all(currentChapter) as unknown as ReadonlyArray<StoredHook>;
+  }
+
+  getPendingHooks(currentChapter: number): ReadonlyArray<StoredHook> {
+    return this.db.prepare(
+      `SELECT
+         hook_id AS hookId,
+         start_chapter AS startChapter,
+         type,
+         status,
+         last_advanced_chapter AS lastAdvancedChapter,
+         expected_payoff AS expectedPayoff,
+         payoff_timing AS payoffTiming,
+         expected_resolve_chapter AS expectedResolveChapter,
+         notes
+       FROM hooks
+       WHERE lower(status) NOT IN ('resolved', 'closed', '已回收', '已解决')
+       AND expected_resolve_chapter IS NOT NULL
+       AND expected_resolve_chapter >= ?
+       ORDER BY expected_resolve_chapter ASC`,
+    ).all(currentChapter) as unknown as ReadonlyArray<StoredHook>;
+  }
+
+  getHookById(hookId: string): StoredHook | null {
+    const result = this.db.prepare(
+      `SELECT
+         hook_id AS hookId,
+         start_chapter AS startChapter,
+         type,
+         status,
+         last_advanced_chapter AS lastAdvancedChapter,
+         expected_payoff AS expectedPayoff,
+         payoff_timing AS payoffTiming,
+         expected_resolve_chapter AS expectedResolveChapter,
+         notes
+       FROM hooks
+       WHERE hook_id = ?`,
+    ).get(hookId) as unknown as StoredHook | undefined;
+    return result ?? null;
+  }
+
+  updateHookStatus(hookId: string, status: string): void {
+    this.db.prepare("UPDATE hooks SET status = ? WHERE hook_id = ?").run(status, hookId);
+  }
+
+  deleteHook(hookId: string): void {
+    this.db.prepare("DELETE FROM hooks WHERE hook_id = ?").run(hookId);
   }
 
   // ---------------------------------------------------------------------------
