@@ -421,6 +421,7 @@ function AppInner() {
           onToggleTheme={() => setTheme(isDark ? "light" : "dark")}
           chatOpen={chatOpen}
           onToggleChat={() => setChatOpen((prev) => !prev)}
+          repoPath={workspace || undefined}
         />
 
         {/* Main Content — all open tabs rendered, only active visible */}
