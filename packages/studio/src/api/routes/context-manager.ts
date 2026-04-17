@@ -119,7 +119,7 @@ export function createContextManagerRouter(ctx: RouterContext): Hono {
    */
   app.post("/api/context/:bookId/truncate", async (c) => {
     const bookId = c.req.param("bookId");
-    const body = await c.req.json<{ maxTokens?: number }>().catch(() => ({}));
+    const body = await c.req.json<{ maxTokens?: number }>().catch(() => ({ maxTokens: undefined }));
     const targetTokens = body.maxTokens ?? CONTEXT_MAX_TOKENS * 0.7;
 
     try {
