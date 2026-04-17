@@ -1,11 +1,16 @@
 /**
  * ReferencePanel — bottom panel with tabbed reference views.
- * Tabs: 设定文件 (truth files), 角色 (characters), 伏笔 (hooks)
+ * Tabs: 设定文件 (truth files), 角色 (characters), 伏笔 (hooks), Lorebook, 节奏 (cadence)
+ * + 新增 4 个 Tab: LorebookPanel, HookCountdown, RhythmChart, WorldDimensions
  */
 
 import { useState, useMemo } from "react";
-import { BookOpen, Users, Anchor, Globe, Activity } from "lucide-react";
+import { BookOpen, Users, Anchor, Globe, Activity, Clock, TrendingUp } from "lucide-react";
 import { useApi } from "../hooks/use-api";
+import { LorebookPanel } from "./LorebookPanel";
+import { HookCountdown } from "./HookCountdown";
+import { RhythmChart } from "./RhythmChart";
+import { WorldDimensions } from "./WorldDimensions";
 
 // --- Types ---
 
@@ -18,13 +23,14 @@ interface TruthFile {
 interface ReferencePanelProps {
   readonly height: number;
   readonly bookId?: string;
+  readonly chapterNumber?: number;
 }
 
-type RefTab = "truth" | "characters" | "hooks" | "lorebook" | "cadence";
+type RefTab = "truth" | "characters" | "hooks" | "lorebook" | "cadence" | "lorebook-panel" | "hook-countdown" | "rhythm-chart" | "world-dimensions";
 
 // --- Main Component ---
 
-export function ReferencePanel({ height, bookId }: ReferencePanelProps) {
+export function ReferencePanel({ height, bookId, chapterNumber }: ReferencePanelProps) {
   const [activeTab, setActiveTab] = useState<RefTab>("truth");
 
   const tabs: ReadonlyArray<{ id: RefTab; label: string; icon: React.ReactNode }> = [
@@ -33,6 +39,10 @@ export function ReferencePanel({ height, bookId }: ReferencePanelProps) {
     { id: "hooks", label: "伏笔", icon: <Anchor size={12} /> },
     { id: "lorebook", label: "世界观", icon: <Globe size={12} /> },
     { id: "cadence", label: "节奏", icon: <Activity size={12} /> },
+    { id: "lorebook-panel", label: "Lorebook", icon: <Globe size={12} /> },
+    { id: "hook-countdown", label: "伏笔倒计时", icon: <Clock size={12} /> },
+    { id: "rhythm-chart", label: "节奏分析", icon: <TrendingUp size={12} /> },
+    { id: "world-dimensions", label: "世界观维度", icon: <Globe size={12} /> },
   ];
 
   return (
@@ -64,18 +74,22 @@ export function ReferencePanel({ height, bookId }: ReferencePanelProps) {
       </div>
 
       {/* Tab content */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-hidden">
         {!bookId ? (
           <div className="flex items-center justify-center h-full text-sm text-muted-foreground/40 italic">
             请先打开一本书
           </div>
         ) : (
           <>
-            {activeTab === "truth" && <TruthTab bookId={bookId} />}
-            {activeTab === "characters" && <CharactersTab bookId={bookId} />}
-            {activeTab === "hooks" && <HooksTab bookId={bookId} />}
-            {activeTab === "lorebook" && <LorebookTab bookId={bookId} />}
-            {activeTab === "cadence" && <CadenceTab bookId={bookId} />}
+            {activeTab === "truth" && <div className="h-full overflow-y-auto"><TruthTab bookId={bookId} /></div>}
+            {activeTab === "characters" && <div className="h-full overflow-y-auto"><CharactersTab bookId={bookId} /></div>}
+            {activeTab === "hooks" && <div className="h-full overflow-y-auto"><HooksTab bookId={bookId} /></div>}
+            {activeTab === "lorebook" && <div className="h-full overflow-y-auto"><LorebookTab bookId={bookId} /></div>}
+            {activeTab === "cadence" && <div className="h-full overflow-y-auto"><CadenceTab bookId={bookId} /></div>}
+            {activeTab === "lorebook-panel" && <LorebookPanel bookId={bookId} chapterNumber={chapterNumber} />}
+            {activeTab === "hook-countdown" && <HookCountdown bookId={bookId} />}
+            {activeTab === "rhythm-chart" && <RhythmChart bookId={bookId} />}
+            {activeTab === "world-dimensions" && <WorldDimensions bookId={bookId} />}
           </>
         )}
       </div>
