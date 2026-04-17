@@ -44,6 +44,9 @@ import {
   createAdminRouter,
   createRoutinesRouter,
   sessionRouter,
+  createSearchRouter,
+  createMonitorRouter,
+  setupMonitorWebSocket,
 } from "./routes/index.js";
 import type { RouterContext } from "./routes/index.js";
 import type { Context } from "hono";
@@ -273,13 +276,19 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     app.route("/api/routines", createRoutinesRouter());
 
     // Session management
+    // Search system
+    app.route("", createSearchRouter(ctx));
+
     app.route("/api/sessions", sessionRouter);
+
+    // Monitor visualization
+    app.route("", createMonitorRouter(ctx));
   } else {
     // Relay mode — snapshot-based AI endpoints only
     app.route("", createAIRelayRouter(ctx));
   }
 
-  return app;
+  return { app, ctx };
 }
 
 // --- Standalone runner ---
@@ -322,7 +331,7 @@ export async function startStudioServer(
   const mode = getInkosMode();
   console.log(`InkOS mode: ${mode}`);
 
-  const app = createStudioServer(config, root);
+  const { app, ctx } = createStudioServer(config, root);
 
   // Serve frontend static files — single process for API + frontend
   if (options?.staticDir) {
@@ -368,6 +377,7 @@ export async function startStudioServer(
   // Create HTTP server for WebSocket support
   const server = createServer();
   setupAdminWebSocket(server);
+  setupMonitorWebSocket(server, ctx);
 
   // Use @hono/node-server with custom server
   serve({ fetch: app.fetch, port, createServer: () => server });

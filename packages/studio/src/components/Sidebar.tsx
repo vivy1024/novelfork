@@ -4,6 +4,10 @@ import type { SSEMessage } from "../hooks/use-sse";
 import { shouldRefetchBookCollections, shouldRefetchDaemonStatus } from "../hooks/use-book-activity";
 import type { TFunction } from "../hooks/use-i18n";
 import { useInkOS } from "../providers/inkos-context";
+import { useProjectSort } from "../hooks/use-project-sort";
+import { DndContext, closestCenter, DragEndEvent } from "@dnd-kit/core";
+import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { SortableProjectCard } from "./Project/SortableProjectCard";
 import {
   Book,
   Settings,
@@ -100,6 +104,16 @@ export function Sidebar({ nav, activePage, sse, t }: {
     } catch { return false; }
   });
 
+  // 项目拖拽排序
+  const { sortedItems: sortedBooks, handleDragEnd } = useProjectSort(data?.books ?? []);
+
+  const onDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over) {
+      handleDragEnd(String(active.id), String(over.id));
+    }
+  };
+
   const toggleBook = (bookId: string) => {
     setExpandedBooks((prev) => {
       const next = new Set(prev);
@@ -172,41 +186,29 @@ export function Sidebar({ nav, activePage, sse, t }: {
           </div>
 
           <div className="space-y-0.5">
-            {data?.books.map((book) => {
-              const isExpanded = expandedBooks.has(book.id);
-              const isActive = activePage === `book:${book.id}`;
-              return (
-                <div key={book.id}>
-                  <div className="flex items-center">
-                    <button
-                      onClick={() => toggleBook(book.id)}
-                      className="w-5 h-7 flex items-center justify-center text-muted-foreground hover:text-foreground shrink-0"
-                    >
-                      {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                    </button>
-                    <button
-                      onClick={() => nav.toBook(book.id)}
-                      className={`flex-1 group flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-all ${
-                        isActive
-                          ? "bg-primary/10 text-primary font-semibold"
-                          : "text-foreground font-medium hover:bg-secondary/50"
-                      }`}
-                    >
-                      <Book size={14} className={isActive ? "text-primary" : "text-muted-foreground"} />
-                      <span className="truncate flex-1 text-left">{book.title}</span>
-                      {book.chaptersWritten > 0 && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
-                          {book.chaptersWritten}
-                        </span>
+            <DndContext collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+              <SortableContext items={sortedBooks.map(b => b.id)} strategy={verticalListSortingStrategy}>
+                {sortedBooks.map((book) => {
+                  const isExpanded = expandedBooks.has(book.id);
+                  const isActive = activePage === `book:${book.id}`;
+                  return (
+                    <div key={book.id}>
+                      <SortableProjectCard
+                        book={book}
+                        isExpanded={isExpanded}
+                        isActive={isActive}
+                        onToggle={() => toggleBook(book.id)}
+                        nav={nav}
+                        t={t}
+                      />
+                      {isExpanded && (
+                        <BookTreeChildren bookId={book.id} chaptersWritten={book.chaptersWritten} nav={nav} activePage={activePage} t={t} />
                       )}
-                    </button>
-                  </div>
-                  {isExpanded && (
-                    <BookTreeChildren bookId={book.id} chaptersWritten={book.chaptersWritten} nav={nav} activePage={activePage} t={t} />
-                  )}
-                </div>
-              );
-            })}
+                    </div>
+                  );
+                })}
+              </SortableContext>
+            </DndContext>
 
             {(!data?.books || data.books.length === 0) && (
               <div className="px-3 py-6 text-xs text-muted-foreground/70 italic text-center border border-dashed border-border rounded-lg">

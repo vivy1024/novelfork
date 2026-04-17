@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { Search, RotateCcw, Save } from "lucide-react";
 import { openDB, IDBPDatabase } from "idb";
+import { ModelPicker } from "../Model/ModelPicker";
 
 interface ConfigProps {
   theme: "light" | "dark";
@@ -24,6 +25,8 @@ interface SettingsState {
   fontSize: string;
   showLineNumbers: boolean;
   autoCompressContext: boolean;
+  modelProvider: string;
+  modelId: string;
 }
 
 const DB_NAME = "inkos-settings";
@@ -67,6 +70,8 @@ function getDefaultSettings(): SettingsState {
     fontSize: "medium",
     showLineNumbers: true,
     autoCompressContext: false,
+    modelProvider: "anthropic",
+    modelId: "claude-sonnet-4-6",
   };
 }
 
@@ -84,13 +89,6 @@ export const Config = React.memo(function Config({ theme }: ConfigProps) {
   }, []);
 
   const settingsList: Setting[] = useMemo(() => [
-    {
-      id: "autoSave",
-      label: "自动保存",
-      description: "编辑后自动保存内容",
-      type: "boolean",
-      value: settings.autoSave,
-    },
     {
       id: "theme",
       label: "主题",
@@ -123,6 +121,13 @@ export const Config = React.memo(function Config({ theme }: ConfigProps) {
       value: settings.showLineNumbers,
     },
     {
+      id: "autoSave",
+      label: "自动保存",
+      description: "编辑后自动保存内容",
+      type: "boolean",
+      value: settings.autoSave,
+    },
+    {
       id: "autoCompressContext",
       label: "自动压缩上下文",
       description: "自动压缩长对话上下文",
@@ -148,6 +153,10 @@ export const Config = React.memo(function Config({ theme }: ConfigProps) {
 
   const handleChange = (id: string, value: SettingValue) => {
     setSettings((prev) => ({ ...prev, [id]: value }));
+  };
+
+  const handleModelChange = (providerId: string, modelId: string) => {
+    setSettings((prev) => ({ ...prev, modelProvider: providerId, modelId }));
   };
 
   const handleSave = async () => {
@@ -183,6 +192,16 @@ export const Config = React.memo(function Config({ theme }: ConfigProps) {
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           className="w-full pl-10 pr-4 py-2 rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+        />
+      </div>
+
+      {/* 模型选择 */}
+      <div className="p-4 rounded-lg border border-border bg-background/50">
+        <h3 className="text-sm font-semibold text-foreground mb-3">AI 模型</h3>
+        <ModelPicker
+          value={{ providerId: settings.modelProvider, modelId: settings.modelId }}
+          onChange={handleModelChange}
+          theme={theme}
         />
       </div>
 

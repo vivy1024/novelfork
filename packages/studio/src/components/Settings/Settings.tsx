@@ -1,7 +1,7 @@
 import { useState, useEffect, Suspense, lazy } from "react";
 import { X } from "lucide-react";
 
-type Tab = "status" | "config" | "usage";
+type Tab = "status" | "config" | "providers" | "usage";
 
 interface SettingsProps {
   onClose: () => void;
@@ -11,6 +11,7 @@ interface SettingsProps {
 const Config = lazy(() => import("./Config").then(m => ({ default: m.Config })));
 const Status = lazy(() => import("./Status").then(m => ({ default: m.Status })));
 const Usage = lazy(() => import("./Usage").then(m => ({ default: m.Usage })));
+const ProviderConfig = lazy(() => import("../Model/ProviderConfig").then(m => ({ default: m.ProviderConfig })));
 
 export function Settings({ onClose, theme }: SettingsProps) {
   const [activeTab, setActiveTab] = useState<Tab>("config");
@@ -43,7 +44,7 @@ export function Settings({ onClose, theme }: SettingsProps) {
 
         {/* Tab Bar */}
         <div className="h-12 flex items-center px-6 border-b border-border bg-background/50">
-          {(["status", "config", "usage"] as const).map((tab) => (
+          {(["status", "config", "providers", "usage"] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -55,6 +56,7 @@ export function Settings({ onClose, theme }: SettingsProps) {
             >
               {tab === "status" && "状态"}
               {tab === "config" && "配置"}
+              {tab === "providers" && "供应商"}
               {tab === "usage" && "使用统计"}
             </button>
           ))}
@@ -65,6 +67,7 @@ export function Settings({ onClose, theme }: SettingsProps) {
           <Suspense fallback={<div className="p-6 text-muted-foreground">加载中...</div>}>
             {activeTab === "status" && <Status theme={theme} />}
             {activeTab === "config" && <Config theme={theme} />}
+            {activeTab === "providers" && <ProviderConfig theme={theme} />}
             {activeTab === "usage" && <Usage theme={theme} />}
           </Suspense>
         </div>
