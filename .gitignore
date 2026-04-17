@@ -14,7 +14,9 @@ test-project/
 .venv*/
 .gstack/
 .worktrees/
-docs/
+# docs/ - 保留手写规划文档，只忽略自动生成的
+docs/api/
+docs/typedoc/
 novel-to-comic-research.docx
 .pnpm-store/
 tmp/
