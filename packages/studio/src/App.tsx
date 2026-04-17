@@ -369,6 +369,7 @@ function AppInner() {
   };
 
   const activeBookId = activeTab ? deriveActiveBookId(activeTab.route) : undefined;
+  const activeChapterNumber = activeTab?.route.page === "chapter" ? activeTab.route.chapterNumber : undefined;
   const activePage = (() => {
     const r = activeTab?.route;
     if (!r) return "dashboard";
@@ -482,7 +483,7 @@ function AppInner() {
             {/* Panel Content (hidden when collapsed) */}
             {!config.bottomPanelCollapsed && (
               <div className="flex-1 overflow-hidden">
-                <ReferencePanel height={config.bottomPanelHeight - 32} bookId={activeBookId} />
+                <ReferencePanel height={config.bottomPanelHeight - 32} bookId={activeBookId} chapterNumber={activeChapterNumber} />
               </div>
             )}
           </div>
