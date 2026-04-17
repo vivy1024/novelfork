@@ -41,6 +41,7 @@ import {
   createGoldenChaptersRouter,
   createChatRouter,
   createContextManagerRouter,
+  createAdminRouter,
 } from "./routes/index.js";
 import type { RouterContext } from "./routes/index.js";
 import type { Context } from "hono";
@@ -262,6 +263,9 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
 
     // Context manager
     app.route("", createContextManagerRouter(ctx));
+
+    // Admin panel
+    app.route("/api/admin", createAdminRouter());
   } else {
     // Relay mode — snapshot-based AI endpoints only
     app.route("", createAIRelayRouter(ctx));
