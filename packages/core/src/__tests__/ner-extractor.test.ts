@@ -8,9 +8,6 @@ describe('NER Extractor', () => {
       const entities = extractEntities(text);
       const persons = entities.filter(e => e.type === 'person');
 
-      console.log('提取到的所有实体:', entities);
-      console.log('提取到的人名:', persons);
-
       expect(persons.length).toBeGreaterThanOrEqual(2);
       expect(persons.some(p => p.text === '张三')).toBe(true);
       expect(persons.some(p => p.text === '李四')).toBe(true);
