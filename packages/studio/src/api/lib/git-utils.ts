@@ -309,3 +309,65 @@ export async function isGitRepository(cwd: string): Promise<boolean> {
     return false;
   }
 }
+
+/**
+ * 合并分支到当前分支
+ * @param cwd 工作目录
+ * @param sourceBranch 源分支名
+ * @param noFf 禁用快进合并（默认 true，保留合并历史）
+ * @returns 合并结果信息
+ */
+export async function mergeBranch(
+  cwd: string,
+  sourceBranch: string,
+  noFf = true
+): Promise<{ success: boolean; message: string }> {
+  if (!isValidBranchName(sourceBranch)) {
+    throw new Error(`Invalid branch name: ${sourceBranch}`);
+  }
+
+  try {
+    const args = ["merge"];
+    if (noFf) {
+      args.push("--no-ff");
+    }
+    args.push(sourceBranch);
+
+    const output = await execGit(args, cwd);
+    return { success: true, message: output || "Merge completed successfully" };
+  } catch (error: any) {
+    const message = error.message || "Merge failed";
+    if (message.includes("CONFLICT")) {
+      return { success: false, message: "Merge conflict detected. Please resolve conflicts manually." };
+    }
+    throw error;
+  }
+}
+
+/**
+ * 从当前分支创建新分支（Fork）
+ * @param cwd 工作目录
+ * @param newBranch 新分支名
+ * @returns 新分支名
+ */
+export async function forkBranch(cwd: string, newBranch: string): Promise<string> {
+  if (!isValidBranchName(newBranch)) {
+    throw new Error(`Invalid branch name: ${newBranch}`);
+  }
+
+  // 检查分支是否已存在
+  try {
+    await execGit(["rev-parse", "--verify", newBranch], cwd);
+    throw new Error(`Branch already exists: ${newBranch}`);
+  } catch (error: any) {
+    // 分支不存在，继续创建
+    if (!error.message.includes("Branch already exists")) {
+      // 预期的错误（分支不存在），继续
+    } else {
+      throw error;
+    }
+  }
+
+  await execGit(["checkout", "-b", newBranch], cwd);
+  return newBranch;
+}
