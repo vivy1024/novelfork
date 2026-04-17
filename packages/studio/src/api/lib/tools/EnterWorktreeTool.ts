@@ -3,20 +3,20 @@
  * 创建并进入 Git worktree
  */
 
-import type { ToolDefinition, ToolContext, ToolResult } from "../tool-executor";
+import type { ToolDefinition, ToolContext, ToolResult } from "../tool-executor.js";
 import {
   createWorktree,
   listWorktrees,
   isGitRepository,
   getCurrentBranch,
-} from "../git-utils";
+} from "../git-utils.js";
 import * as path from "node:path";
 
 /**
  * 会话状态管理（简化版，实际应该存储在 Redis/内存中）
  * 从 ExitWorktreeTool 导入共享状态
  */
-import { sessionWorktrees } from "./ExitWorktreeTool";
+import { sessionWorktrees } from "./ExitWorktreeTool.js";
 
 export const EnterWorktreeTool: ToolDefinition = {
   name: "EnterWorktree",
@@ -38,7 +38,7 @@ export const EnterWorktreeTool: ToolDefinition = {
         "已存在的 worktree 路径（进入已有 worktree 时使用）。必须是当前仓库的有效 worktree。与 name 参数互斥。",
     },
   ],
-  execute: async (params, context): Promise<ToolResult> => {
+  execute: async (params: Record<string, unknown>, context: ToolContext): Promise<ToolResult> => {
     const { name, path: existingPath } = params as {
       name?: string;
       path?: string;
@@ -78,7 +78,7 @@ export const EnterWorktreeTool: ToolDefinition = {
       if (existingPath) {
         // 进入已存在的 worktree
         const existing = await listWorktrees(workspaceRoot);
-        const worktree = existing.find((w) => w.path === existingPath);
+        const worktree = existing.find((w: { path: string; branch: string }) => w.path === existingPath);
 
         if (!worktree) {
           return {

@@ -3,7 +3,7 @@
  * ⚠️ 安全警告：需要严格权限控制
  */
 
-import type { ToolDefinition, ToolContext, ToolResult } from "../tool-executor";
+import type { ToolDefinition, ToolContext, ToolResult } from "../tool-executor.js";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
 
@@ -27,7 +27,7 @@ export const BashTool: ToolDefinition = {
       default: 120000,
     },
   ],
-  execute: async (params, context: ToolContext): Promise<ToolResult> => {
+  execute: async (params: Record<string, unknown>, context: ToolContext): Promise<ToolResult> => {
     const command = params.command as string;
     const timeout = (params.timeout as number) ?? 120000;
 

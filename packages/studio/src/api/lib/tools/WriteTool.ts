@@ -3,8 +3,8 @@
  * 创建新文件或覆盖现有文件
  */
 
-import type { ToolDefinition, ToolContext, ToolResult } from "../tool-executor";
-import { writeFile, fileExists } from "../file-utils";
+import type { ToolDefinition, ToolContext, ToolResult } from "../tool-executor.js";
+import { writeFile, fileExists } from "../file-utils.js";
 
 export const WriteTool: ToolDefinition = {
   name: "Write",
@@ -23,7 +23,7 @@ export const WriteTool: ToolDefinition = {
       description: "文件内容",
     },
   ],
-  execute: async (params, context: ToolContext): Promise<ToolResult> => {
+  execute: async (params: Record<string, unknown>, context: ToolContext): Promise<ToolResult> => {
     const filePath = params.file_path as string;
     const content = params.content as string;
 

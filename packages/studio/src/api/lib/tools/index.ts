@@ -2,23 +2,23 @@
  * 工具导出索引
  */
 
-export { EnterWorktreeTool } from "./EnterWorktreeTool";
-export { ExitWorktreeTool } from "./ExitWorktreeTool";
-export { ReadTool } from "./ReadTool";
-export { WriteTool } from "./WriteTool";
-export { EditTool } from "./EditTool";
-export { GlobTool } from "./GlobTool";
-export { GrepTool } from "./GrepTool";
-export { BashTool } from "./BashTool";
+export { EnterWorktreeTool } from "./EnterWorktreeTool.js";
+export { ExitWorktreeTool } from "./ExitWorktreeTool.js";
+export { ReadTool } from "./ReadTool.js";
+export { WriteTool } from "./WriteTool.js";
+export { EditTool } from "./EditTool.js";
+export { GlobTool } from "./GlobTool.js";
+export { GrepTool } from "./GrepTool.js";
+export { BashTool } from "./BashTool.js";
 
-import { EnterWorktreeTool } from "./EnterWorktreeTool";
-import { ExitWorktreeTool } from "./ExitWorktreeTool";
-import { ReadTool } from "./ReadTool";
-import { WriteTool } from "./WriteTool";
-import { EditTool } from "./EditTool";
-import { GlobTool } from "./GlobTool";
-import { GrepTool } from "./GrepTool";
-import { BashTool } from "./BashTool";
+import { EnterWorktreeTool } from "./EnterWorktreeTool.js";
+import { ExitWorktreeTool } from "./ExitWorktreeTool.js";
+import { ReadTool } from "./ReadTool.js";
+import { WriteTool } from "./WriteTool.js";
+import { EditTool } from "./EditTool.js";
+import { GlobTool } from "./GlobTool.js";
+import { GrepTool } from "./GrepTool.js";
+import { BashTool } from "./BashTool.js";
 
 /**
  * 所有可用工具列表

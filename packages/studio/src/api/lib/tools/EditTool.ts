@@ -3,8 +3,8 @@
  * 精确字符串替换
  */
 
-import type { ToolDefinition, ToolContext, ToolResult } from "../tool-executor";
-import { editFile } from "../file-utils";
+import type { ToolDefinition, ToolContext, ToolResult } from "../tool-executor.js";
+import { editFile } from "../file-utils.js";
 
 export const EditTool: ToolDefinition = {
   name: "Edit",
@@ -36,7 +36,7 @@ export const EditTool: ToolDefinition = {
       default: false,
     },
   ],
-  execute: async (params, context: ToolContext): Promise<ToolResult> => {
+  execute: async (params: Record<string, unknown>, context: ToolContext): Promise<ToolResult> => {
     const filePath = params.file_path as string;
     const oldString = params.old_string as string;
     const newString = params.new_string as string;
