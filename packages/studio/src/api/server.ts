@@ -43,6 +43,7 @@ import {
   createContextManagerRouter,
   createAdminRouter,
   createRoutinesRouter,
+  sessionRouter,
 } from "./routes/index.js";
 import type { RouterContext } from "./routes/index.js";
 import type { Context } from "hono";
@@ -270,6 +271,9 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
 
     // Routines system
     app.route("/api/routines", createRoutinesRouter());
+
+    // Session management
+    app.route("/api/sessions", sessionRouter);
   } else {
     // Relay mode — snapshot-based AI endpoints only
     app.route("", createAIRelayRouter(ctx));

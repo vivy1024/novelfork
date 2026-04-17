@@ -22,4 +22,5 @@ export { createChatRouter } from "./chat.js";
 export { createContextManagerRouter } from "./context-manager.js";
 export { createAdminRouter } from "./admin.js";
 export { createRoutinesRouter } from "./routines.js";
+export { default as sessionRouter } from "./session.js";
 export type { RouterContext } from "./context.js";
