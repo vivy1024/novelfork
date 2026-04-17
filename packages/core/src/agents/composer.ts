@@ -17,7 +17,8 @@ import {
   retrieveMemorySelection,
 } from "../utils/memory-retrieval.js";
 import { MemoryDB } from "../state/memory-db.js";
-import { retrieveLorebook } from "../state/lorebook-retriever.js";
+import { extractEntities } from "../utils/ner-extractor.js";
+import { retrieveLorebookEntries, formatLorebookContext } from "../utils/lorebook-rag.js";
 
 export interface ComposeChapterInput {
   readonly book: BookConfig;
@@ -470,6 +471,7 @@ export class ComposerAgent extends BaseAgent {
 
   /**
    * Retrieve lorebook/world-info entries matching the current chapter context.
+   * Uses NER + RAG for precise entity-based retrieval.
    * Gracefully returns empty if memory.db doesn't exist or has no world entries.
    */
   private async retrieveLorebookEntries(
@@ -479,16 +481,30 @@ export class ComposerAgent extends BaseAgent {
     let db: MemoryDB | undefined;
     try {
       db = new MemoryDB(bookDir);
+
+      // 1. 获取最近章节文本
       const recentChapterText = await this.getRecentChapterText(bookDir, plan.intent.chapter);
-      const result = retrieveLorebook(db, {
-        chapterText: recentChapterText,
-        goal: plan.intent.goal,
-        mustKeep: plan.intent.mustKeep,
+
+      // 2. 构建查询文本（目标 + 章节文本 + mustKeep）
+      const queryText = [
+        plan.intent.goal,
+        recentChapterText,
+        ...plan.intent.mustKeep,
+      ].filter(Boolean).join("\n");
+
+      // 3. NER 实体抽取
+      const entities = extractEntities(queryText);
+
+      // 4. Lorebook RAG 检索（token 预算 2000）
+      const lorebookEntries = await retrieveLorebookEntries(entities, db, {
+        tokenBudget: 2000,
       });
-      return result.entries.map((entry) => ({
-        source: entry.source,
-        reason: entry.reason,
-        excerpt: entry.excerpt,
+
+      // 5. 转换为 ContextSource 格式
+      return lorebookEntries.map((entry) => ({
+        source: `lorebook/${entry.dimension}/${entry.name}`,
+        reason: `World info entry matched by NER entity (priority ${entry.priority}).`,
+        excerpt: entry.content,
       }));
     } catch {
       // memory.db doesn't exist yet or has no world_entries table — that's fine
