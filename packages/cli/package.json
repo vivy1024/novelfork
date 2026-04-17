@@ -1,27 +1,23 @@
 {
-  "name": "@actalk/inkos",
-  "version": "1.1.1",
-  "description": "Autonomous AI novel writing CLI agent — 10-agent pipeline that writes, audits, and revises novels with continuity tracking. Supports LitRPG, Progression Fantasy, Isekai, Romantasy, Sci-Fi and more.",
+  "name": "@vivy1024/novelfork-cli",
+  "version": "0.0.1",
+  "description": "NovelFork CLI — Forked from InkOS, specialized for Chinese web novel creation with AI assistance",
   "keywords": [
     "ai-novel-writing",
-    "ai-writing-agent",
+    "web-novel",
+    "chinese-novel",
     "novel-generator",
-    "autonomous-writing",
-    "litrpg",
-    "progression-fantasy",
+    "xuanhuan",
+    "xianxia",
     "ai-fiction",
     "multi-agent",
     "creative-writing-ai",
-    "novel-writing-tool",
-    "ai-storytelling",
-    "openclaw-skill",
     "cli",
-    "epub",
-    "continuity-tracking"
+    "epub"
   ],
   "type": "module",
   "bin": {
-    "inkos": "dist/index.js"
+    "novelfork": "dist/index.js"
   },
   "files": [
     "dist",
@@ -33,7 +29,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/Narcooo/inkos.git",
+    "url": "https://github.com/vivy1024/inkos.git",
     "directory": "packages/cli"
   },
   "scripts": {
@@ -46,16 +42,16 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@actalk/inkos-core": "workspace:*",
-    "@actalk/inkos-studio": "workspace:*",
-    "commander": "^13.0.0",
-    "dotenv": "^16.4.0",
-    "epub-gen-memory": "^1.0.10",
-    "marked": "^15.0.0"
+    "@vivy1024/novelfork-core": "workspace:*",
+    "@vivy1024/novelfork-studio": "workspace:*",
+    "commander": "13.0.0",
+    "dotenv": "16.4.0",
+    "epub-gen-memory": "1.0.10",
+    "marked": "15.0.0"
   },
   "devDependencies": {
-    "typescript": "^5.8.0",
-    "vitest": "^3.0.0",
-    "@types/node": "^22.0.0"
+    "typescript": "^5.7.0",
+    "vitest": "3.0.0",
+    "@types/node": "22.0.0"
   }
 }

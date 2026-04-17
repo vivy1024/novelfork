@@ -1,24 +1,24 @@
 {
-  "name": "inkos",
-  "version": "1.1.1",
+  "name": "novelfork",
+  "version": "0.0.1",
   "private": true,
-  "description": "Autonomous AI novel writing CLI agent — 10-agent pipeline that writes, audits, and revises novels with continuity tracking",
+  "description": "NovelFork — Forked from InkOS, specialized AI-assisted workbench for Chinese web novel creation",
   "keywords": [
     "ai-novel-writing",
-    "ai-writing-agent",
+    "web-novel",
+    "chinese-novel",
     "novel-generator",
     "autonomous-writing",
-    "litrpg",
-    "progression-fantasy",
+    "xuanhuan",
+    "xianxia",
     "multi-agent",
     "creative-writing-ai",
-    "openclaw-skill",
     "cli"
   ],
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Narcooo/inkos"
+    "url": "https://github.com/vivy1024/inkos"
   },
   "scripts": {
     "build": "pnpm -r build",
@@ -27,7 +27,8 @@
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
     "verify:publish-manifests": "node scripts/verify-no-workspace-protocol.mjs packages/core packages/cli packages/studio",
-    "release": "pnpm build && pnpm test"
+    "release": "pnpm build && pnpm test",
+    "version": "pnpm -r exec npm version"
   },
   "engines": {
     "node": ">=20.0.0",
@@ -35,16 +36,17 @@
   },
   "dependencies": {
     "@tiptap/core": "2.27.2",
-    "@tiptap/extension-text-style": "^3.22.3",
+    "@tiptap/extension-text-style": "3.22.3",
     "@tiptap/pm": "2.27.2",
-    "@tiptap/react": "^3.22.3",
-    "@tiptap/starter-kit": "^3.22.3",
-    "glob": "^13.0.6",
-    "idb": "^8.0.3",
-    "novel": "^1.0.2",
-    "tiktoken": "^1.0.22"
+    "@tiptap/react": "3.22.3",
+    "@tiptap/starter-kit": "3.22.3",
+    "glob": "13.0.6",
+    "idb": "8.0.3",
+    "novel": "1.0.2",
+    "tiktoken": "1.0.22"
   },
   "devDependencies": {
-    "esbuild": "^0.28.0"
+    "@playwright/test": "1.59.1",
+    "esbuild": "0.28.0"
   }
 }
