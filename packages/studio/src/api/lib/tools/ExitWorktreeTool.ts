@@ -3,8 +3,8 @@
  * 退出当前 worktree 并可选删除
  */
 
-import type { ToolDefinition, ToolContext, ToolResult } from "../tool-executor";
-import { removeWorktree, getWorktreeStatus } from "../git-utils";
+import type { ToolDefinition, ToolContext, ToolResult } from "../tool-executor.js";
+import { removeWorktree, getWorktreeStatus } from "../git-utils.js";
 
 /**
  * 会话状态管理（与 EnterWorktreeTool 共享）
@@ -33,7 +33,7 @@ export const ExitWorktreeTool: ToolDefinition = {
         "当 action='remove' 且 worktree 有未提交更改时，是否强制删除。默认 false（有更改时拒绝删除）。",
     },
   ],
-  execute: async (params, context): Promise<ToolResult> => {
+  execute: async (params: Record<string, unknown>, context: ToolContext): Promise<ToolResult> => {
     const { action, discard_changes } = params as {
       action: string;
       discard_changes?: boolean;
@@ -68,10 +68,10 @@ export const ExitWorktreeTool: ToolDefinition = {
         if (status.hasChanges && !discard_changes) {
           // 有更改且未允许丢弃，拒绝删除
           const changes = [
-            ...status.modified.map((f) => `M ${f}`),
-            ...status.added.map((f) => `A ${f}`),
-            ...status.deleted.map((f) => `D ${f}`),
-            ...status.untracked.map((f) => `? ${f}`),
+            ...status.modified.map((f: string) => `M ${f}`),
+            ...status.added.map((f: string) => `A ${f}`),
+            ...status.deleted.map((f: string) => `D ${f}`),
+            ...status.untracked.map((f: string) => `? ${f}`),
           ];
 
           return {

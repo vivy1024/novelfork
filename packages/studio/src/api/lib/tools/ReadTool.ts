@@ -3,8 +3,8 @@
  * 支持完整读取或按行范围读取
  */
 
-import type { ToolDefinition, ToolContext, ToolResult } from "../tool-executor";
-import { readFile } from "../file-utils";
+import type { ToolDefinition, ToolContext, ToolResult } from "../tool-executor.js";
+import { readFile } from "../file-utils.js";
 
 export const ReadTool: ToolDefinition = {
   name: "Read",
@@ -30,7 +30,7 @@ export const ReadTool: ToolDefinition = {
       default: 2000,
     },
   ],
-  execute: async (params, context: ToolContext): Promise<ToolResult> => {
+  execute: async (params: Record<string, unknown>, context: ToolContext): Promise<ToolResult> => {
     const filePath = params.file_path as string;
     const offset = params.offset as number | undefined;
     const limit = (params.limit as number | undefined) ?? 2000;

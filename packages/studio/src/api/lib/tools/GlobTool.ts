@@ -3,7 +3,7 @@
  * 使用 glob 模式匹配文件
  */
 
-import type { ToolDefinition, ToolContext, ToolResult } from "../tool-executor";
+import type { ToolDefinition, ToolContext, ToolResult } from "../tool-executor.js";
 import { glob } from "glob";
 import * as path from "node:path";
 
@@ -24,7 +24,7 @@ export const GlobTool: ToolDefinition = {
       description: "搜索目录（相对于工作空间根目录，默认为根目录）",
     },
   ],
-  execute: async (params, context: ToolContext): Promise<ToolResult> => {
+  execute: async (params: Record<string, unknown>, context: ToolContext): Promise<ToolResult> => {
     const pattern = params.pattern as string;
     const searchPath = (params.path as string) || ".";
 

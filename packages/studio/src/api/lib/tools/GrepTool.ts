@@ -3,7 +3,7 @@
  * 在文件中搜索正则表达式模式
  */
 
-import type { ToolDefinition, ToolContext, ToolResult } from "../tool-executor";
+import type { ToolDefinition, ToolContext, ToolResult } from "../tool-executor.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { glob } from "glob";
@@ -46,7 +46,7 @@ export const GrepTool: ToolDefinition = {
       default: "files_with_matches",
     },
   ],
-  execute: async (params, context: ToolContext): Promise<ToolResult> => {
+  execute: async (params: Record<string, unknown>, context: ToolContext): Promise<ToolResult> => {
     const patternStr = params.pattern as string;
     const searchPath = (params.path as string) || ".";
     const globPattern = (params.glob as string) || "**/*";
