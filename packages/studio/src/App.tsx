@@ -40,6 +40,7 @@ import { PipelineVisualization } from "./pages/PipelineVisualization";
 import { SettingsView } from "./pages/SettingsView";
 import { PluginManager } from "./pages/PluginManager";
 import { WorktreeManager } from "./pages/WorktreeManager";
+import { Admin } from "./components/Admin/Admin";
 import { ReferencePanel } from "./components/ReferencePanel";
 import { RecoveryBanner } from "./components/RecoveryBanner";
 import { useSSE } from "./hooks/use-sse";
@@ -83,7 +84,8 @@ export type Route =
   | { page: "pipeline"; runId?: string }
   | { page: "plugins" }
   | { page: "settings" }
-  | { page: "worktree" };
+  | { page: "worktree" }
+  | { page: "admin" };
 
 export function deriveActiveBookId(route: Route): string | undefined {
   return route.page === "book" || route.page === "chapter" || route.page === "truth" || route.page === "analytics" || route.page === "diff" || route.page === "detect" || route.page === "intent" || route.page === "state"
@@ -591,6 +593,7 @@ function TabContent({ route, nav, theme, t, sse, setTheme }: {
     case "plugins": return <PluginManager nav={nav} theme={theme} t={t} />;
     case "settings": return <SettingsView nav={nav} theme={theme} t={t} onThemeChange={setTheme} />;
     case "worktree": return <WorktreeManager onBack={() => nav({ page: "dashboard" })} />;
+    case "admin": return <Admin onBack={() => nav({ page: "dashboard" })} />;
     default: return null;
   }
 }

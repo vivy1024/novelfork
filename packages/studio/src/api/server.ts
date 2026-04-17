@@ -42,6 +42,7 @@ import {
   createChatRouter,
   createContextManagerRouter,
   createAdminRouter,
+  createRoutinesRouter,
 } from "./routes/index.js";
 import type { RouterContext } from "./routes/index.js";
 import type { Context } from "hono";
@@ -266,6 +267,9 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
 
     // Admin panel
     app.route("/api/admin", createAdminRouter());
+
+    // Routines system
+    app.route("/api/routines", createRoutinesRouter());
   } else {
     // Relay mode — snapshot-based AI endpoints only
     app.route("", createAIRelayRouter(ctx));
@@ -356,5 +360,11 @@ export async function startStudioServer(
   }
 
   console.log(`InkOS Studio running on http://localhost:${port}`);
-  serve({ fetch: app.fetch, port });
+
+  // Create HTTP server for WebSocket support
+  const server = createServer();
+  setupAdminWebSocket(server);
+
+  // Use @hono/node-server with custom server
+  serve({ fetch: app.fetch, port, createServer: () => server });
 }

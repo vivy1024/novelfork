@@ -21,4 +21,5 @@ export { createGoldenChaptersRouter } from "./golden-chapters.js";
 export { createChatRouter } from "./chat.js";
 export { createContextManagerRouter } from "./context-manager.js";
 export { createAdminRouter } from "./admin.js";
+export { createRoutinesRouter } from "./routines.js";
 export type { RouterContext } from "./context.js";
