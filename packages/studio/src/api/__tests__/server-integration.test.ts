@@ -275,7 +275,8 @@ describe("server integration — core 20 endpoints", () => {
     });
 
     const { createStudioServer } = await import("../server.js");
-    app = createStudioServer(cloneConfig() as never, root);
+    const { app: honoApp } = createStudioServer(cloneConfig() as never, root);
+    app = honoApp;
   });
 
   afterEach(async () => {

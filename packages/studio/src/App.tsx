@@ -145,6 +145,7 @@ function AppInner() {
   const [chatOpen, setChatOpen] = useState(false);
   const [wsReady, setWsReady] = useState(!isTauri || !!workspace);
   const [cmdOpen, setCmdOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
 
   const { config, loaded: layoutLoaded, updateConfig } = useLayoutConfig();
   const [refPanelOpen, setRefPanelOpen] = useState(false);
@@ -264,7 +265,12 @@ function AppInner() {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault();
-        setCmdOpen(prev => !prev);
+        // Shift+Cmd+K for search, Cmd+K for command palette
+        if (e.shiftKey) {
+          setSearchOpen(prev => !prev);
+        } else {
+          setCmdOpen(prev => !prev);
+        }
       }
       // Ctrl+S — prevent browser save, dispatch custom event for editors
       if ((e.metaKey || e.ctrlKey) && e.key === "s") {
