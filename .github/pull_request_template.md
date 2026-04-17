@@ -1,35 +1,35 @@
-## Summary
-<!-- 1-3 bullet points: what changed and why -->
+## 改动摘要
+<!-- 1-3 条要点：改了什么，为什么改 -->
 
 -
 
-## Type of change
+## 改动类型
 
-- [ ] Bug fix
-- [ ] New feature
-- [ ] Refactor (no behavior change)
-- [ ] Docs / SKILL.md
-- [ ] Test
-- [ ] Performance
+- [ ] Bug 修复
+- [ ] 新功能
+- [ ] 重构（不改变行为）
+- [ ] 文档 / SKILL.md
+- [ ] 测试
+- [ ] 性能优化
 
-## Motivation (optional)
-<!-- Why this change is needed. Link issues if applicable. Closes #xxx -->
+## 动机（可选）
+<!-- 为什么需要这个改动。关联 issue：Closes #xxx -->
 
-## Changes
-<!-- File-level change list: what each file does -->
+## 改动清单
+<!-- 文件级改动列表：每个文件做了什么 -->
 
-| File | Change |
-|------|--------|
+| 文件 | 改动 |
+|------|------|
 | | |
 
-## Usage (optional)
-<!-- Code snippets, CLI examples, or config samples showing how to use the new feature -->
+## 使用方式（可选）
+<!-- 代码示例、CLI 命令或配置样例，展示如何使用新功能 -->
 
-## Test plan
+## 测试计划
 
-- [ ] `pnpm typecheck` passes
-- [ ] `pnpm test` passes (all existing + new tests)
-- [ ] Manual verification: <!-- describe manual test steps -->
+- [ ] `pnpm typecheck` 通过
+- [ ] `pnpm test` 通过（包括新测试）
+- [ ] 手动验证：<!-- 描述手动测试步骤 -->
 
-## Breaking changes (optional)
-<!-- List any breaking changes to public API, CLI flags, config format, etc. -->
+## 破坏性变更（可选）
+<!-- 列出对公开 API、CLI 参数、配置格式等的破坏性变更 -->
