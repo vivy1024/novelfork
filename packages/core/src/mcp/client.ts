@@ -65,11 +65,11 @@ export class MCPClientImpl implements MCPClient {
       this.transport = this.createTransport();
 
       // Setup transport event handlers
-      this.transport.on("error", (error: Error) => {
+      (this.transport as any).on("error", (error: Error) => {
         this.events?.onError?.(error);
       });
 
-      this.transport.on("close", () => {
+      (this.transport as any).on("close", () => {
         this.handleDisconnect();
       });
 
