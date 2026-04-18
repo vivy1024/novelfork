@@ -140,7 +140,7 @@ export function ContextPanel({ bookId, chapterNumber, visible, onClose }: Contex
   if (!visible) return null;
 
   return (
-    <div className="fixed top-0 right-0 z-50 h-full w-[360px] flex flex-col border-l border-border bg-background shadow-2xl animate-in slide-in-from-right duration-200">
+    <div className="fixed top-0 right-0 z-50 h-full w-[360px] flex flex-col border-l border-border bg-background shadow-2xl animate-in slide-in-from-right duration-200" data-testid="context-panel">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border/50">
         <h2 className="text-sm font-bold text-foreground">上下文面板</h2>
@@ -177,6 +177,7 @@ export function ContextPanel({ bookId, chapterNumber, visible, onClose }: Contex
           disabled={ratio < 0.8}
           className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-xs rounded-lg bg-secondary hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           title="压缩上下文"
+          data-testid="compress-context-btn"
         >
           <Archive size={14} />
           压缩
@@ -193,6 +194,7 @@ export function ContextPanel({ bookId, chapterNumber, visible, onClose }: Contex
           onClick={handleClear}
           className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-xs rounded-lg bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors"
           title="清空上下文"
+          data-testid="clear-context-btn"
         >
           <Trash2 size={14} />
           清空

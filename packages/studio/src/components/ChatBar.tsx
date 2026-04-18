@@ -356,6 +356,7 @@ export function ChatPanel({ open, onClose, t, sse, activeBookId }: {
         "h-full flex flex-col border-l border-border/40 bg-background/80 backdrop-blur-md chat-panel-enter overflow-hidden",
         open ? "w-full opacity-100" : "w-0 opacity-0",
       )}
+      data-testid="chat-interface"
     >
       {open && (
         <>
@@ -466,11 +467,13 @@ export function ChatPanel({ open, onClose, t, sse, activeBookId }: {
                 disabled={loading}
                 className="flex-1 bg-transparent text-sm placeholder:text-muted-foreground/50 outline-none ring-0 shadow-none disabled:opacity-50"
                 style={{ outline: "none", boxShadow: "none" }}
+                data-testid="message-input"
               />
               <button
                 onClick={handleSubmit}
                 disabled={!input.trim() || loading}
                 className="w-7 h-7 rounded-lg bg-primary text-primary-foreground flex items-center justify-center hover:scale-105 active:scale-95 transition-all disabled:opacity-20 disabled:scale-100 shadow-sm shadow-primary/20"
+                data-testid="send-message-btn"
               >
                 {loading ? (
                   <Loader2 size={14} className="animate-spin" />

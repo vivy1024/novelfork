@@ -74,12 +74,13 @@ export function ChatWindowManager({ theme }: ChatWindowManagerProps) {
   }));
 
   return (
-    <div ref={containerRef} className="relative w-full h-full" style={{ backgroundColor: c.bg }}>
+    <div ref={containerRef} className="relative w-full h-full" style={{ backgroundColor: c.bg }} data-testid="card-container">
       {/* 添加窗口按钮 */}
       <button
         onClick={handleAddWindow}
         className="absolute top-4 right-4 z-50 flex items-center gap-2 px-4 py-2 rounded-lg shadow-lg transition-transform hover:scale-105"
         style={{ backgroundColor: c.accent, color: "#fff" }}
+        data-testid="new-card-btn"
       >
         <Plus size={16} />
         <span className="text-sm font-medium">新建对话窗口</span>

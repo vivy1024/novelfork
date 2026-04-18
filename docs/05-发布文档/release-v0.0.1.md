@@ -172,7 +172,7 @@ NovelFork 是从 InkOS 项目 fork 出来的专注于**中文网文小说创作*
 
 ```bash
 # 克隆仓库
-git clone https://github.com/vivy1024/inkos.git
+git clone https://github.com/vivy1024/novelfork.git
 cd inkos
 
 # 安装依赖
@@ -283,9 +283,9 @@ Copyright (c) 2026 薛小川 (vivy1024)
 
 ## 🔗 链接
 
-- **GitHub**: https://github.com/vivy1024/inkos
-- **Issues**: https://github.com/vivy1024/inkos/issues
-- **Discussions**: https://github.com/vivy1024/inkos/discussions
+- **GitHub**: https://github.com/vivy1024/novelfork
+- **Issues**: https://github.com/vivy1024/novelfork/issues
+- **Discussions**: https://github.com/vivy1024/novelfork/discussions
 
 ---
 

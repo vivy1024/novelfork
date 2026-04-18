@@ -110,6 +110,7 @@ export function SearchDialog({ open, onClose, onNavigate }: SearchDialogProps) {
             onChange={(e) => setQuery(e.target.value)}
             className="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground"
             autoFocus
+            data-testid="global-search-input"
           />
           {loading && (
             <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
@@ -140,7 +141,7 @@ export function SearchDialog({ open, onClose, onNavigate }: SearchDialogProps) {
         </div>
 
         {/* Results */}
-        <div className="overflow-y-auto max-h-[calc(80vh-140px)]">
+        <div className="overflow-y-auto max-h-[calc(80vh-140px)]" data-testid="search-results">
           {results.length === 0 && query.trim() && !loading && (
             <div className="px-4 py-8 text-center text-sm text-muted-foreground">
               No results found for "{query}"

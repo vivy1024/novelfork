@@ -103,7 +103,7 @@ export function ResourcesTab() {
   const memoryUsagePercent = (stats.memory.used / stats.memory.total) * 100;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-testid="resource-metrics">
       {/* Connection Status */}
       <div className="flex items-center gap-2">
         <div className={`w-3 h-3 rounded-full ${connected ? "bg-green-500" : "bg-red-500"}`} />

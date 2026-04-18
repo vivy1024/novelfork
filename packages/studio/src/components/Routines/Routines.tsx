@@ -83,7 +83,7 @@ export function Routines({ onBack }: RoutinesPanelProps) {
   }
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col" data-testid="routine-panel">
       {/* Header */}
       <div className="border-b p-4">
         <div className="flex items-center justify-between">
@@ -138,7 +138,7 @@ export function Routines({ onBack }: RoutinesPanelProps) {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 overflow-y-auto p-4" data-testid="routine-list">
         {activeTab === "commands" && (
           <CommandsTab
             commands={routines.commands}
