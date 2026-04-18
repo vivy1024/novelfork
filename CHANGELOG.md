@@ -4,7 +4,7 @@
 
 ### Release Focus
 
-**P2 阶段完成** — 架构扩展与可观测性全面升级。新增 MCP Client 集成、Plugin 系统、Pipeline 可视化、Pipeline Hooks 等核心基础设施，为 InkOS 生态扩展和深度集成奠定基础。
+**P2 阶段完成** — 架构扩展与可观测性全面升级。新增 MCP Client 集成、Plugin 系统、Pipeline 可视化、Pipeline Hooks 等核心基础设施，为 NovelFork 生态扩展和深度集成奠定基础。
 
 ### 新功能
 
@@ -30,7 +30,7 @@
 - **MCP Server 管理** (P2-10): 
   - MCP Server 启动/停止/删除
   - 工具列表查询
-  - 进程管理 + inkos.json 配置持久化
+  - 进程管理 + novelfork.json 配置持久化
 - **Pipeline 可视化** (P2-6):
   - VoltOps 风格运行态流程图
   - 7 个阶段卡片（plan → compose → write → normalize → settle → audit → revise）
@@ -48,7 +48,7 @@
 
 ### 架构变更
 
-- **P2-4 MCP Server 暴露已删除**: 场景不成立（MCP Server 需要常驻运行，但 InkOS 是写作工具不是后台服务）。替代方案：外部工具直接读 markdown 文件或使用 HTTP API
+- **P2-4 MCP Server 暴露已删除**: 场景不成立（MCP Server 需要常驻运行，但 NovelFork 是写作工具不是后台服务）。替代方案：外部工具直接读 markdown 文件或使用 HTTP API
 
 ### Bug Fixes
 
@@ -128,7 +128,7 @@
 - 清理冗余文档，保留核心计划
 - 重新整理计划文档，明确 PWA+IDE 需求
 - 新增实现完成报告
-- 新增 InkOS Studio 启动脚本
+- 新增 NovelFork Studio 启动脚本
 - 添加 Phase 9 AI 提供商与 Agent 配置管理计划
 
 ---

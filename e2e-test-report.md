@@ -1,9 +1,9 @@
-# InkOS Studio Phase 4 E2E 测试报告
+# NovelFork Studio Phase 4 E2E 测试报告
 
 **测试时间**: 2026-04-18  
 **测试工具**: Playwright 1.59.1  
 **浏览器**: Chromium  
-**测试文件**: `/d/DESKTOP/sub2api/inkos-master/e2e/phase4-integration.spec.ts`
+**测试文件**: `/d/DESKTOP/sub2api/novelfork/e2e/phase4-integration.spec.ts`
 
 ## 测试结果概览
 
@@ -149,9 +149,9 @@
 
 ## 测试工件
 
-- **配置文件**: `/d/DESKTOP/sub2api/inkos-master/playwright.config.ts`
-- **测试文件**: `/d/DESKTOP/sub2api/inkos-master/e2e/phase4-integration.spec.ts`
-- **截图目录**: `/d/DESKTOP/sub2api/inkos-master/test-results/`
+- **配置文件**: `/d/DESKTOP/sub2api/novelfork/playwright.config.ts`
+- **测试文件**: `/d/DESKTOP/sub2api/novelfork/e2e/phase4-integration.spec.ts`
+- **截图目录**: `/d/DESKTOP/sub2api/novelfork/test-results/`
 - **视频录制**: 每个失败测试都有对应的 video.webm
 
 ## 下一步行动

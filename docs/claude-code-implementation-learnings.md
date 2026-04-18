@@ -2,7 +2,7 @@
 
 **分析日期**: 2026-04-18  
 **Claude Code 版本**: v2.1.88  
-**目标**: 为 InkOS Phase 4 的 4 个并行 agent 提供实现参考
+**目标**: 为 NovelFork Phase 4 的 4 个并行 agent 提供实现参考
 
 ---
 
@@ -16,7 +16,7 @@ Claude Code 使用的是 **Terminal UI (Ink.js)** 而非 Web UI：
 - 虚拟滚动通过自定义 `useVirtualScroll` hook 实现
 - **不使用** `react-grid-layout` 或 `react-window`（这些是 Web 专用库）
 
-**对 InkOS 的启示**：
+**对 NovelFork 的启示**：
 - ✅ 我们的 PWA 方案（React + Web）是正确的
 - ✅ 可以直接使用 `react-window` 或 `react-virtualized`
 - ✅ 可以使用 `react-grid-layout` 实现拖拽窗口
