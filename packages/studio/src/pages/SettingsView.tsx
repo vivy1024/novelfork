@@ -38,7 +38,7 @@ export function SettingsView({ nav, theme, t, onThemeChange }: Props) {
 
   return (
     <>
-      <div className="flex h-screen">
+      <div className="flex h-screen" data-testid="settings-form">
         {/* 侧边栏导航 */}
         <div className="w-64 border-r border-border bg-background p-4">
           <div className="flex items-center gap-2 mb-6">

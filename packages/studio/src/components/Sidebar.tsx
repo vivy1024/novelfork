@@ -310,6 +310,7 @@ export function Sidebar({ nav, activePage, sse, t }: {
               icon={<Settings size={16} />}
               active={activePage === "settings"}
               onClick={nav.toSettings}
+              testId="settings-btn"
             />
           </div>
           )}
@@ -427,13 +428,14 @@ export function Sidebar({ nav, activePage, sse, t }: {
   );
 }
 
-function SidebarItem({ label, icon, active, onClick, badge, badgeColor }: {
+function SidebarItem({ label, icon, active, onClick, badge, badgeColor, testId }: {
   label: string;
   icon: React.ReactNode;
   active: boolean;
   onClick: () => void;
   badge?: string;
   badgeColor?: string;
+  testId?: string;
 }) {
   return (
     <button
@@ -443,6 +445,7 @@ function SidebarItem({ label, icon, active, onClick, badge, badgeColor }: {
           ? "bg-secondary text-foreground font-semibold shadow-sm border border-border"
           : "text-foreground font-medium hover:text-foreground hover:bg-secondary/50"
       }`}
+      data-testid={testId}
     >
       <span className={`transition-colors ${active ? "text-primary" : "text-muted-foreground group-hover:text-foreground"}`}>
         {icon}

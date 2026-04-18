@@ -61,21 +61,9 @@ export function WorktreeManager({ onBack }: WorktreeManagerProps) {
   };
 
   const handleOpenWorktree = (path: string) => {
-    // 在文件管理器中打开
-    if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
-      // Tauri 环境：使用 shell open
-      import("@tauri-apps/plugin-shell").then(({ open }) => {
-        void open(path);
-      }).catch(() => {
-        // Fallback: 复制路径
-        void navigator.clipboard.writeText(path);
-        alert(`路径已复制到剪贴板：${path}`);
-      });
-    } else {
-      // Web 环境：复制路径到剪贴板
-      void navigator.clipboard.writeText(path);
-      alert(`路径已复制到剪贴板：${path}`);
-    }
+    // PWA 环境：复制路径到剪贴板
+    void navigator.clipboard.writeText(path);
+    alert(`路径已复制到剪贴板：${path}`);
   };
 
   const handleDeleteClick = (path: string) => {
@@ -125,7 +113,7 @@ export function WorktreeManager({ onBack }: WorktreeManagerProps) {
   }
 
   return (
-    <div className="h-full flex flex-col bg-background">
+    <div className="h-full flex flex-col bg-background" data-testid="worktree-panel">
       {/* 顶部工具栏 */}
       <div className="flex items-center justify-between p-4 border-b">
         <div className="flex items-center gap-4">
@@ -148,6 +136,7 @@ export function WorktreeManager({ onBack }: WorktreeManagerProps) {
           <Button
             size="sm"
             onClick={() => setCreateDialogOpen(true)}
+            data-testid="create-worktree-btn"
           >
             <Plus size={16} className="mr-1" />
             创建 Worktree

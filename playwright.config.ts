@@ -28,5 +28,9 @@ export default defineConfig({
     url: 'http://localhost:4567',
     reuseExistingServer: !process.env.CI,
     timeout: 120000,
+    stdout: 'pipe',
+    stderr: 'pipe',
   },
+  // 避免与 Vitest 冲突
+  testMatch: '**/*.spec.ts',
 });

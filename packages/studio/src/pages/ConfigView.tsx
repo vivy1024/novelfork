@@ -477,9 +477,10 @@ function TauriLlmSettings({ theme, t }: { theme: Theme; t: TFunction }) {
                   const pr = PROVIDER_PRESETS[pv];
                   setForm({ ...form, provider: pv, model: form.model || pr.defaultModel });
                 }}
-                className={`${c.input} rounded px-2 py-1 text-sm w-56`}>
+                className={`${c.input} rounded px-2 py-1 text-sm w-56`}
+                data-testid="model-selector">
                 {Object.entries(PROVIDER_PRESETS).map(([k, v]) => (
-                  <option key={k} value={k}>{v.label}</option>
+                  <option key={k} value={k} data-testid="model-option">{v.label}</option>
                 ))}
               </select>
             </div>
