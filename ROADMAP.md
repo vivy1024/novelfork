@@ -121,8 +121,8 @@ inkos cascade apply 吞天魔帝 10    # 应用级联更新
 
 我们欢迎社区贡献！如果你对某个功能感兴趣：
 
-1. 在 [Issues](https://github.com/Narcooo/inkos/issues) 中讨论
-2. 提交 [Feature Request](.github/ISSUE_TEMPLATE/feature_request.md)
+1. 在 [Issues]) 中讨论
+2. 提交 [Feature Request](
 3. 查看 [CONTRIBUTING.md](CONTRIBUTING.md) 了解如何贡献代码
 
 ---
