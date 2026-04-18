@@ -24,3 +24,5 @@ autoresearch/
 .playwright-cli/
 .superpowers/
 _*.md
+playwright-report/
+test-results/
