@@ -1,6 +1,6 @@
 # 贡献指南 | Contributing Guide
 
-感谢你对 InkOS 的关注！我们欢迎所有形式的贡献。
+感谢你对 NovelFork 的关注！我们欢迎所有形式的贡献。
 
 ## 快速开始
 
@@ -108,8 +108,8 @@ docs(readme): update installation instructions
 测试文件位于源码旁的 `__tests__/` 目录，使用 Vitest。
 
 ```bash
-pnpm --filter @actalk/inkos-core test    # 只测试 core
-pnpm --filter @actalk/inkos test         # 只测试 cli
+pnpm --filter @vivy1024/novelfork-core test    # 只测试 core
+pnpm --filter @vivy1024/novelfork test         # 只测试 cli
 ```
 
 涉及 LLM 管线的功能需要 mock LLM 调用——测试中不要发起真实 API 请求。
