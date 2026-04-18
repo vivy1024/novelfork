@@ -19,9 +19,9 @@
 ### 发布总结
 
 - **[release-summary.md](release-summary.md)** - v0.0.1 发布总结
-  - 完成清单（功能、测试、版本管理、开源准备）
-  - 项目统计（代码、功能、测试、文档）
-  - 下一步行动（立即、短期、中期）
+  - 完成清单
+  - 项目统计
+  - 下一步行动
   - GitHub 操作指南
   - 关键指标
 
@@ -62,4 +62,5 @@
 - 更新日志 → [../../CHANGELOG.md](../../CHANGELOG.md)
 - 版本历史 → [../../VERSION_HISTORY.md](../../VERSION_HISTORY.md)
 - 产品路线图 → [../../ROADMAP.md](../../ROADMAP.md)
+- 版本规划 → [../05-规划文档/version-plan.md](../05-规划文档/version-plan.md)
 - 返回文档首页 → [../README.md](../README.md)
