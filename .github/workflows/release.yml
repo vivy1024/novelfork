@@ -29,8 +29,8 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
-      - run: pnpm --filter @actalk/inkos-core typecheck
-      - run: pnpm --filter @actalk/inkos typecheck
+      - run: pnpm --filter @vivy1024/novelfork-core typecheck
+      - run: pnpm --filter @vivy1024/novelfork-cli typecheck
       - run: pnpm test
 
   smoke-test:
@@ -148,7 +148,7 @@ jobs:
 
           ACTUAL_CANARY=""
           for _ in 1 2 3 4 5 6; do
-            ACTUAL_CANARY=$(npm view @actalk/inkos@canary version 2>/dev/null || true)
+            ACTUAL_CANARY=$(npm view @vivy1024/novelfork-cli@canary version 2>/dev/null || true)
             if [ "$ACTUAL_CANARY" = "$EXPECTED_CANARY" ]; then
               break
             fi
@@ -163,28 +163,28 @@ jobs:
           TMPDIR=$(mktemp -d)
           cd "$TMPDIR"
           npm init -y
-          npm install "@actalk/inkos@$EXPECTED_CANARY"
+          npm install "@vivy1024/novelfork-cli@$EXPECTED_CANARY"
 
-          if grep -q '"workspace:' node_modules/@actalk/inkos/package.json; then
+          if grep -q '"workspace:' node_modules/@vivy1024/novelfork-cli/package.json; then
             echo "FATAL: canary CLI package still contains workspace: protocol"
-            cat node_modules/@actalk/inkos/package.json | grep workspace
+            cat node_modules/@vivy1024/novelfork-cli/package.json | grep workspace
             exit 1
           fi
 
-          if grep -q '"workspace:' node_modules/@actalk/inkos-studio/package.json; then
+          if grep -q '"workspace:' node_modules/@vivy1024/novelfork-studio/package.json; then
             echo "FATAL: canary studio package still contains workspace: protocol"
-            cat node_modules/@actalk/inkos-studio/package.json | grep workspace
+            cat node_modules/@vivy1024/novelfork-studio/package.json | grep workspace
             exit 1
           fi
 
-          if grep -q '"workspace:' node_modules/@actalk/inkos-core/package.json; then
+          if grep -q '"workspace:' node_modules/@vivy1024/novelfork-core/package.json; then
             echo "FATAL: canary core package still contains workspace: protocol"
-            cat node_modules/@actalk/inkos-core/package.json | grep workspace
+            cat node_modules/@vivy1024/novelfork-core/package.json | grep workspace
             exit 1
           fi
 
-          npx inkos --version
-          test -f node_modules/@actalk/inkos-studio/dist/api/index.js
+          npx novelfork --version
+          test -f node_modules/@vivy1024/novelfork-studio/dist/api/index.js
           echo "Canary verification passed"
           rm -rf "$TMPDIR"
 
@@ -246,7 +246,7 @@ jobs:
 
           ACTUAL_LATEST=""
           for _ in 1 2 3 4 5 6; do
-            ACTUAL_LATEST=$(npm view @actalk/inkos@latest version 2>/dev/null || true)
+            ACTUAL_LATEST=$(npm view @vivy1024/novelfork-cli@latest version 2>/dev/null || true)
             if [ "$ACTUAL_LATEST" = "$EXPECTED_RELEASE" ]; then
               break
             fi
@@ -261,28 +261,28 @@ jobs:
           TMPDIR=$(mktemp -d)
           cd "$TMPDIR"
           npm init -y
-          npm install "@actalk/inkos@$EXPECTED_RELEASE"
+          npm install "@vivy1024/novelfork-cli@$EXPECTED_RELEASE"
 
-          if grep -q '"workspace:' node_modules/@actalk/inkos/package.json; then
+          if grep -q '"workspace:' node_modules/@vivy1024/novelfork-cli/package.json; then
             echo "FATAL: released CLI package still contains workspace: protocol"
-            cat node_modules/@actalk/inkos/package.json | grep workspace
+            cat node_modules/@vivy1024/novelfork-cli/package.json | grep workspace
             exit 1
           fi
 
-          if grep -q '"workspace:' node_modules/@actalk/inkos-studio/package.json; then
+          if grep -q '"workspace:' node_modules/@vivy1024/novelfork-studio/package.json; then
             echo "FATAL: released studio package still contains workspace: protocol"
-            cat node_modules/@actalk/inkos-studio/package.json | grep workspace
+            cat node_modules/@vivy1024/novelfork-studio/package.json | grep workspace
             exit 1
           fi
 
-          if grep -q '"workspace:' node_modules/@actalk/inkos-core/package.json; then
+          if grep -q '"workspace:' node_modules/@vivy1024/novelfork-core/package.json; then
             echo "FATAL: released core package still contains workspace: protocol"
-            cat node_modules/@actalk/inkos-core/package.json | grep workspace
+            cat node_modules/@vivy1024/novelfork-core/package.json | grep workspace
             exit 1
           fi
 
-          npx inkos --version
-          test -f node_modules/@actalk/inkos-studio/dist/api/index.js
+          npx novelfork --version
+          test -f node_modules/@vivy1024/novelfork-studio/dist/api/index.js
           echo "Release verification passed"
           rm -rf "$TMPDIR"
 

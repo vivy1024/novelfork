@@ -1333,13 +1333,13 @@ export async function tauriFetch<T>(path: string, init?: RequestInit): Promise<T
     let workspace: string | null = null;
     try { workspace = ws(); } catch { /* no workspace */ }
 
-    // 1. inkos.json 是否存在且可解析
-    let inkosJson = false;
+    // 1. novelfork.json 是否存在且可解析
+    let projectConfig = false;
     if (workspace) {
       try {
         const raw = await invoke<string>("read_file_text", { path: join(workspace, "novelfork.json") });
         JSON.parse(raw);
-        inkosJson = true;
+        projectConfig = true;
       } catch { /* 不存在或解析失败 */ }
     }
 
@@ -1415,7 +1415,7 @@ export async function tauriFetch<T>(path: string, init?: RequestInit): Promise<T
     }
 
     return {
-      inkosJson,
+      projectConfig,
       projectEnv: chapterConsistencyOk,  // 复用：章节索引一致性
       globalEnv: genresDirOk,            // 复用：题材目录有效性
       booksDir,

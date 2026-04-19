@@ -1,6 +1,6 @@
 # NovelFork 运维状态
 
-**最后更新**: 2026-04-19 23:00
+**最后更新**: 2026-04-20
 
 ---
 
@@ -8,45 +8,35 @@
 
 | 组件 | 状态 | 备注 |
 |------|------|------|
-| CLI 工具 | ✅ 正常 | `novelfork --version` |
-| Studio Web | 🔄 待启动 | `novelfork studio` |
-| 数据库 | ✅ SQLite | 本地存储 |
-| AI Provider | 🔄 待配置 | 需配置 API Key |
+| 核心写作引擎 | ✅ 可用 | core 构建通过 |
+| CLI 入口 | ✅ 可用 | 仍是过渡期入口 |
+| Studio 工作台 | ✅ 可构建 | server/client 构建通过 |
+| 测试 | ⚠️ 部分失败 | 需继续修复测试基础设施 |
+| 平台迁移 | 🔄 进行中 | 正在回归 NarraFork 路线 |
 
 ---
 
-## 最近操作
+## 已确认事实
 
-### 2026-04-19 23:00 - 项目独立迁移
-
-- **操作**: 从 `D:\DESKTOP\sub2api\novelfork\` 迁移到 `D:\DESKTOP\novelfork`
-- **变更**: 
-  - 创建独立 CLAUDE.md
-  - 创建 `.kiro/steering/` 配置目录
-  - 创建 OPS_RUNTIME_STATE.md
-- **状态**: ✅ 配置迁移完成
+- 当前项目身份是 **NovelFork**，不是 InkOS
+- 核心写作能力大量已实现，可复用
+- 当前主要问题在平台外壳：`pnpm + tsc + CLI spawn studio + Node`
+- 当前目标是回归 **Bun 单入口 + bun compile 单可执行文件** 路线
 
 ---
 
-## 待办事项
+## 当前待办
 
-- [ ] 配置全局 API Provider（`novelfork config set-global`）
-- [ ] 测试 CLI 基本功能
-- [ ] 启动 Studio 验证 Web 工作台
-- [ ] 创建第一个测试书籍项目
-
----
-
-## 已知问题
-
-暂无
+- [ ] 建立 Bun 主入口 `main.ts`
+- [ ] 处理 SQLite 在 Bun 下的兼容层
+- [ ] 设计前端静态资源内嵌方案
+- [ ] 清理旧 CLI / desktop / 双进程启动残留
+- [ ] 修复测试与文档中的旧口径
 
 ---
 
-## 环境信息
+## 参考文档
 
-- **Node.js**: >= 22.5.0
-- **包管理器**: pnpm
-- **运行时**: Bun（推荐）
-- **数据库**: SQLite（本地）
-- **Git 远端**: `vivy1024/inkos`
+- `docs/02-核心架构/01-系统架构/03-平台纠偏说明.md`
+- `docs/04-开发指南/05-调研规划/01-平台迁移方案.md`
+- `docs/03-代码参考/04-NarraFork依赖参考.md`

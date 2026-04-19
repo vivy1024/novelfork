@@ -62,7 +62,7 @@ describe("studio runtime resolution", () => {
 
   it("uses node for built JavaScript entries", async () => {
     accessMock.mockImplementation(async (path: string) => {
-      if (path === "/repo/test-project/node_modules/@actalk/inkos-studio/dist/api/index.js") {
+      if (path === "/repo/test-project/node_modules/@vivy1024/novelfork-studio/dist/api/index.js") {
         return;
       }
       throw new Error(`missing: ${path}`);
@@ -72,15 +72,15 @@ describe("studio runtime resolution", () => {
     const launch = await resolveStudioLaunch("/repo/test-project");
 
     expect(launch).toEqual({
-      studioEntry: "/repo/test-project/node_modules/@actalk/inkos-studio/dist/api/index.js",
+      studioEntry: "/repo/test-project/node_modules/@vivy1024/novelfork-studio/dist/api/index.js",
       command: "node",
-      args: ["/repo/test-project/node_modules/@actalk/inkos-studio/dist/api/index.js", "/repo/test-project"],
+      args: ["/repo/test-project/node_modules/@vivy1024/novelfork-studio/dist/api/index.js", "/repo/test-project"],
     });
   });
 
   it("falls back to the CLI installation's bundled studio runtime", async () => {
     accessMock.mockImplementation(async (path: string) => {
-      if (path === `${cliPackageRoot}/node_modules/@actalk/inkos-studio/dist/api/index.js`) {
+      if (path === `${cliPackageRoot}/node_modules/@vivy1024/novelfork-studio/dist/api/index.js`) {
         return;
       }
       throw new Error(`missing: ${path}`);
@@ -90,9 +90,9 @@ describe("studio runtime resolution", () => {
     const launch = await resolveStudioLaunch("/repo/test-project");
 
     expect(launch).toEqual({
-      studioEntry: `${cliPackageRoot}/node_modules/@actalk/inkos-studio/dist/api/index.js`,
+      studioEntry: `${cliPackageRoot}/node_modules/@vivy1024/novelfork-studio/dist/api/index.js`,
       command: "node",
-      args: [`${cliPackageRoot}/node_modules/@actalk/inkos-studio/dist/api/index.js`, "/repo/test-project"],
+      args: [`${cliPackageRoot}/node_modules/@vivy1024/novelfork-studio/dist/api/index.js`, "/repo/test-project"],
     });
   });
 

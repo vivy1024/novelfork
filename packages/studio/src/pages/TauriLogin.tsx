@@ -47,7 +47,7 @@ export function TauriLogin({ onLogin, onSkip, relayUrl, t }: TauriLoginProps) {
             <KeyRound size={32} className="text-primary" />
           </div>
           <h1 className="text-3xl font-serif font-medium text-foreground">
-            InkOS Studio
+            NovelFork Studio
           </h1>
           <p className="text-sm text-muted-foreground leading-relaxed">
             {t("login.description")}

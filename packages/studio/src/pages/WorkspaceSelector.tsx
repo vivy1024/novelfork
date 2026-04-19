@@ -40,7 +40,7 @@ export function WorkspaceSelector({ onSelect, selectWorkspace, t }: WorkspaceSel
             <FolderOpen size={32} className="text-primary" />
           </div>
           <h1 className="text-3xl font-serif font-medium text-foreground">
-            InkOS Studio
+            NovelFork Studio
           </h1>
           <p className="text-sm text-muted-foreground leading-relaxed">
             {t("workspace.description")}

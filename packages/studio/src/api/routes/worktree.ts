@@ -18,7 +18,7 @@ export function createWorktreeRouter(): Hono {
    */
   app.get("/api/worktree/list", async (c) => {
     try {
-      const root = process.env.INKOS_WORKSPACE || process.cwd();
+      const root = process.env.NOVELFORK_WORKSPACE || process.env.INKOS_WORKSPACE || process.cwd();
       const worktrees = await listWorktrees(root);
 
       // 获取每个 worktree 的状态
@@ -64,7 +64,7 @@ export function createWorktreeRouter(): Hono {
         throw new ApiError(400, "NAME_REQUIRED", "Worktree name is required");
       }
 
-      const root = process.env.INKOS_WORKSPACE || process.cwd();
+      const root = process.env.NOVELFORK_WORKSPACE || process.env.INKOS_WORKSPACE || process.cwd();
       const worktreePath = await createWorktree(root, body.name.trim(), body.branch?.trim());
 
       return c.json({ ok: true, path: worktreePath });
@@ -87,7 +87,7 @@ export function createWorktreeRouter(): Hono {
         throw new ApiError(400, "PATH_REQUIRED", "Worktree path is required");
       }
 
-      const root = process.env.INKOS_WORKSPACE || process.cwd();
+      const root = process.env.NOVELFORK_WORKSPACE || process.env.INKOS_WORKSPACE || process.cwd();
 
       // 验证路径是否存在
       try {

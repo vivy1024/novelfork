@@ -111,7 +111,7 @@ fanficCommand
       try {
         canon = await readFile(join(bookDir, "story/fanfic_canon.md"), "utf-8");
       } catch {
-        throw new Error(`该书没有同人正典文件。用 inkos fanfic init 创建同人书。`);
+        throw new Error(`该书没有同人正典文件。用 novelfork fanfic init 创建同人书。`);
       }
 
       if (opts.json) {

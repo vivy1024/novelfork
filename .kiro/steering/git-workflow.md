@@ -4,10 +4,10 @@
 
 | Remote | URL | 用途 |
 |--------|-----|------|
-| origin | `vivy1024/inkos` | 本项目推送目标 |
+| origin | `vivy1024/novelfork` | 本项目推送目标 |
 | upstream | `Narcooo/inkos` | 上游 InkOS 源 |
 
-注意：GitHub 仓库名仍为 `inkos`，未来可能 rename 为 `novelfork`。
+注意：本项目主仓库地址已是 `vivy1024/novelfork`；上游仍是 `Narcooo/inkos`。
 
 ---
 

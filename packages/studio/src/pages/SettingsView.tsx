@@ -104,7 +104,7 @@ export function SettingsView({ nav, theme, t, onThemeChange }: Props) {
                 <div className="space-y-4">
                   <div>
                     <p className="text-sm text-muted-foreground mb-1">应用名称</p>
-                    <p className="text-foreground font-medium">InkOS Studio</p>
+                    <p className="text-foreground font-medium">NovelFork Studio</p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground mb-1">版本</p>

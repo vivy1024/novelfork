@@ -771,7 +771,7 @@ export function createStorageRouter(ctx: RouterContext): Hono {
     const { GLOBAL_ENV_PATH, createLLMClient, chatCompletion } = await import("@vivy1024/novelfork-core");
 
     const checks = {
-      inkosJson: existsSync(join(root, "novelfork.json")),
+      projectConfig: existsSync(join(root, "novelfork.json")),
       projectEnv: existsSync(join(root, ".env")),
       globalEnv: existsSync(GLOBAL_ENV_PATH),
       booksDir: existsSync(join(root, "books")),

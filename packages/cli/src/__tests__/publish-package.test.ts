@@ -42,7 +42,7 @@ async function extractPackedPackageJson(packageDir: string, packDir: string) {
 
 describe.sequential("publish packaging", () => {
   it("rewrites workspace package versions for canary publishing", async () => {
-    const tempRoot = await mkdtemp(join(tmpdir(), "inkos-version-script-"));
+    const tempRoot = await mkdtemp(join(tmpdir(), "novelfork-version-script-"));
     const tempPackagesDir = join(tempRoot, "packages");
     const tempCoreDir = join(tempPackagesDir, "core");
     const tempCliDir = join(tempPackagesDir, "cli");
@@ -63,7 +63,7 @@ describe.sequential("publish packaging", () => {
         join(tempCliDir, "package.json"),
         `${JSON.stringify(
           {
-            name: "@actalk/inkos",
+            name: "@vivy1024/novelfork-cli",
             version: "0.4.6",
             dependencies: {
               "@vivy1024/novelfork-core": "workspace:*",
@@ -102,7 +102,7 @@ describe.sequential("publish packaging", () => {
     const cliPackageJson = await sourceCliPackageJsonPromise;
 
     expect(cliPackageJson.dependencies["@vivy1024/novelfork-core"]).toBe("workspace:*");
-    expect(cliPackageJson.dependencies["@actalk/inkos-studio"]).toBe("workspace:*");
+    expect(cliPackageJson.dependencies["@vivy1024/novelfork-studio"]).toBe("workspace:*");
   });
 
   it("verifies publishable manifests before npm publish runs", async () => {
@@ -120,7 +120,7 @@ describe.sequential("publish packaging", () => {
   });
 
   it("allows source workspace protocol manifests when they normalize cleanly for publish", async () => {
-    const tempRoot = await mkdtemp(join(tmpdir(), "inkos-publish-verify-pass-"));
+    const tempRoot = await mkdtemp(join(tmpdir(), "novelfork-publish-verify-pass-"));
     const tempPackagesDir = join(tempRoot, "packages");
     const tempCoreDir = join(tempPackagesDir, "core");
     const tempCliDir = join(tempPackagesDir, "cli");
@@ -141,7 +141,7 @@ describe.sequential("publish packaging", () => {
         join(tempCliDir, "package.json"),
         `${JSON.stringify(
           {
-            name: "@actalk/inkos",
+            name: "@vivy1024/novelfork-cli",
             version: "0.5.1",
             dependencies: {
               "@vivy1024/novelfork-core": "workspace:*",
@@ -170,7 +170,7 @@ describe.sequential("publish packaging", () => {
   });
 
   it("rejects workspace protocol manifests that normalize to the wrong internal version", async () => {
-    const tempRoot = await mkdtemp(join(tmpdir(), "inkos-publish-verify-fail-"));
+    const tempRoot = await mkdtemp(join(tmpdir(), "novelfork-publish-verify-fail-"));
     const tempPackagesDir = join(tempRoot, "packages");
     const tempCoreDir = join(tempPackagesDir, "core");
     const tempCliDir = join(tempPackagesDir, "cli");
@@ -191,7 +191,7 @@ describe.sequential("publish packaging", () => {
         join(tempCliDir, "package.json"),
         `${JSON.stringify(
           {
-            name: "@actalk/inkos",
+            name: "@vivy1024/novelfork-cli",
             version: "0.5.1",
             dependencies: {
               "@vivy1024/novelfork-core": "workspace:0.5.0",
@@ -219,7 +219,7 @@ describe.sequential("publish packaging", () => {
   });
 
   it("replaces workspace dependencies before npm pack", { timeout: 30_000 }, async () => {
-    const packDir = await mkdtemp(join(tmpdir(), "inkos-cli-pack-"));
+    const packDir = await mkdtemp(join(tmpdir(), "novelfork-cli-pack-"));
 
     try {
       const packedPackageJson = JSON.parse(await extractPackedPackageJson(cliDir, packDir));
@@ -229,14 +229,14 @@ describe.sequential("publish packaging", () => {
       const studioPackageJson = await sourceStudioPackageJsonPromise;
 
       expect(packedPackageJson.dependencies["@vivy1024/novelfork-core"]).toBe(corePackageJson.version);
-      expect(packedPackageJson.dependencies["@actalk/inkos-studio"]).toBe(studioPackageJson.version);
+      expect(packedPackageJson.dependencies["@vivy1024/novelfork-studio"]).toBe(studioPackageJson.version);
     } finally {
       await rm(packDir, { recursive: true, force: true });
     }
   });
 
   it("packs the studio runtime entry alongside the built frontend", { timeout: 30_000 }, async () => {
-    const packDir = await mkdtemp(join(tmpdir(), "inkos-studio-pack-"));
+    const packDir = await mkdtemp(join(tmpdir(), "novelfork-studio-pack-"));
 
     try {
       const tarballPath = await packPackage(studioDir, packDir);
@@ -250,6 +250,10 @@ describe.sequential("publish packaging", () => {
       expect(archiveListing).toContain("package/dist/api/index.js");
     } finally {
       await rm(packDir, { recursive: true, force: true });
+    }
+  });
+});
+true, force: true });
     }
   });
 });

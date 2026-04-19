@@ -4,12 +4,12 @@
  * Automatically backs up chapters after completion.
  */
 
-import { InkOSPlugin } from "@actalk/inkos-core/plugins";
+import { InkOSPlugin } from "@vivy1024/novelfork-core/plugins";
 import type {
   PluginManifest,
   PluginTool,
   PluginHook,
-} from "@actalk/inkos-core/plugins";
+} from "@vivy1024/novelfork-core/plugins";
 import { writeFile, mkdir, readdir, unlink } from "node:fs/promises";
 import { join } from "node:path";
 

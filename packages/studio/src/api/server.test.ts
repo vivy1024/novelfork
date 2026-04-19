@@ -405,7 +405,7 @@ describe("createStudioServer daemon lifecycle", () => {
   });
 
   it("reports async create failures through the create-status endpoint", async () => {
-    initBookMock.mockRejectedValueOnce(new Error("INKOS_LLM_API_KEY not set"));
+    initBookMock.mockRejectedValueOnce(new Error("NOVELFORK_LLM_API_KEY not set"));
 
     const { createStudioServer } = await import("./server.js");
     const app = createStudioServer(cloneProjectConfig() as never, root);
@@ -428,7 +428,7 @@ describe("createStudioServer daemon lifecycle", () => {
     expect(status.status).toBe(200);
     await expect(status.json()).resolves.toMatchObject({
       status: "error",
-      error: "INKOS_LLM_API_KEY not set",
+      error: "NOVELFORK_LLM_API_KEY not set",
     });
   });
 

@@ -17,7 +17,7 @@ body:
       description: How should it work? Include CLI examples if applicable.
       placeholder: |
         ```bash
-        inkos <new-command> --flag value
+        novelfork <new-command> --flag value
         ```
     validations:
       required: true

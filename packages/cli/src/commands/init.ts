@@ -23,11 +23,11 @@ export const initCommand = new Command("init")
     try {
       await mkdir(projectDir, { recursive: true });
 
-      // Check if inkos.json already exists
+      // Check if novelfork.json already exists
       const configPath = join(projectDir, "novelfork.json");
       try {
         await access(configPath);
-        throw new Error(`inkos.json already exists in ${projectDir}. Use a different directory or delete the existing project.`);
+        throw new Error(`novelfork.json already exists in ${projectDir}. Use a different directory or delete the existing project.`);
       } catch (e) {
         if (e instanceof Error && e.message.includes("already exists")) throw e;
         // File doesn't exist, good
@@ -137,7 +137,7 @@ export const initCommand = new Command("init")
         log("Next steps:");
         if (name) log(`  cd ${name}`);
         log("  # Option 1: Set global config (recommended, one-time):");
-        log("  inkos config set-global --provider openai --base-url <your-api-url> --api-key <your-key> --model <your-model>");
+        log("  novelfork config set-global --provider openai --base-url <your-api-url> --api-key <your-key> --model <your-model>");
         log("  # Option 2: Edit .env for this project only");
         log("");
         log(exampleCreate);
