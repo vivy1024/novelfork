@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import { findProjectRoot, log, logError } from "../utils.js";
 import { spawn } from "node:child_process";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { access } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
@@ -45,9 +45,9 @@ export function resolveBrowserLaunch(
 
 export async function resolveStudioLaunch(root: string): Promise<StudioLaunchSpec | null> {
   const sourceEntry = await firstAccessiblePath([
+    resolve(root, "..", "packages", "studio", "src", "api", "index.ts"),
     join(root, "packages", "studio", "src", "api", "index.ts"),
-    join(root, "..", "packages", "studio", "src", "api", "index.ts"),
-    join(root, "..", "studio", "src", "api", "index.ts"),
+    resolve(root, "..", "studio", "src", "api", "index.ts"),
   ]);
   if (sourceEntry) {
     const studioPackageRoot = dirname(dirname(dirname(sourceEntry)));
@@ -80,12 +80,12 @@ export async function resolveStudioLaunch(root: string): Promise<StudioLaunchSpe
   }
 
   const builtEntry = await firstAccessiblePath([
-    join(root, "node_modules", "@actalk", "inkos-studio", "dist", "api", "index.js"),
-    join(root, "node_modules", "@actalk", "inkos-studio", "server.cjs"),
-    join(cliPackageRoot, "node_modules", "@actalk", "inkos-studio", "dist", "api", "index.js"),
-    join(cliPackageRoot, "node_modules", "@actalk", "inkos-studio", "server.cjs"),
-    join(cliPackageRoot, "..", "inkos-studio", "dist", "api", "index.js"),
-    join(cliPackageRoot, "..", "inkos-studio", "server.cjs"),
+    join(root, "node_modules", "@vivy1024", "novelfork-studio", "dist", "api", "index.js"),
+    join(root, "node_modules", "@vivy1024", "novelfork-studio", "server.cjs"),
+    join(cliPackageRoot, "node_modules", "@vivy1024", "novelfork-studio", "dist", "api", "index.js"),
+    join(cliPackageRoot, "node_modules", "@vivy1024", "novelfork-studio", "server.cjs"),
+    resolve(cliPackageRoot, "..", "novelfork-studio", "dist", "api", "index.js"),
+    resolve(cliPackageRoot, "..", "novelfork-studio", "server.cjs"),
   ]);
   if (builtEntry) {
     return {
@@ -111,7 +111,7 @@ export const studioCommand = new Command("studio")
       logError(
         "NovelFork Studio not found. If you cloned the repo, run:\n" +
         "  cd packages/studio && pnpm install && pnpm build\n" +
-        "Then run 'inkos studio' from the project root.",
+        "Then run 'novelfork studio' from the project root.",
       );
       process.exit(1);
     }
@@ -138,7 +138,7 @@ export const studioCommand = new Command("studio")
     browser.on("error", () => {
       // Best effort only — server startup should not fail just because browser open failed.
     });
-    browser.unref();
+    browser.unref?.();
 
     child.on("exit", (code) => {
       process.exit(code ?? 0);

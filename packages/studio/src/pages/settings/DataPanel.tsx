@@ -156,5 +156,3 @@ export function DataPanel({ theme }: Props) {
     </div>
   );
 }
-;
-}

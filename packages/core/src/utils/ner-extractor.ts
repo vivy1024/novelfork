@@ -45,7 +45,7 @@ const LOCATION_SUFFIXES = [
 const TERM_SUFFIXES = [
   '术', '法', '诀', '功', '经', '典', '道', '心法', '神通', '秘籍', '真经', '宝典', '要诀',
   '口诀', '心诀', '真诀', '妙法', '大法', '绝学', '奇功', '神功', '魔功', '仙法', '妖术',
-  '咒', '印', '阵', '式', '招', '掌', '拳', '腿', '指', '爪', '剑法', '刀法', '枪法', '棍法'
+  '咒', '印', '阵', '式', '招', '掌', '拳', '腿', '指', '爪', '神剑', '剑法', '刀法', '枪法', '棍法'
 ];
 
 // 道具后缀
@@ -56,16 +56,26 @@ const ITEM_SUFFIXES = [
   '袋', '瓶', '壶', '杯', '盏', '碗', '盘', '盒', '匣', '箱', '柜', '册', '卷', '书', '图', '谱'
 ];
 
-// 常见停用词（不应出现在人名中）
+// 常见停用词（不应出现在实体候选中）
 const STOP_WORDS = new Set([
   '和', '与', '及', '或', '在', '的', '了', '是', '有', '为', '从', '到', '把', '被', '将',
-  '对', '向', '往', '给', '让', '使', '叫', '着', '过', '去', '来', '上', '下', '中', '里',
-  '外', '前', '后', '左', '右', '东', '西', '南', '北', '这', '那', '些', '个', '们', '他',
+  '对', '向', '往', '给', '让', '使', '叫', '着', '过', '去', '来', '中', '里',
+  '外', '前', '后', '左', '右', '这', '那', '些', '个', '们', '他',
   '她', '它', '我', '你', '您', '咱', '谁', '什', '么', '哪', '几', '多', '少', '都', '也',
   '还', '就', '却', '但', '而', '且', '又', '再', '才', '只', '不', '没', '无', '非', '未',
-  '人', '位', '名', '次', '回', '遍', '趟', '场', '番', '度', '年', '月', '日', '时', '分', '秒',
+  '人', '位', '名', '次', '回', '遍', '趟', '场', '番', '度', '年', '日', '时', '分', '秒',
   '于', '附', '近', '旁', '边', '侧', '间', '内', '以', '所', '处', '得', '很', '太', '更', '最'
 ]);
+
+// 常见前导噪声字（量词等），仅用于后缀实体裁剪
+const LEADING_NOISE_CHARS = new Set([
+  '半', '条', '部', '座', '位', '名', '个', '只', '把', '件', '柄', '颗', '粒',
+  '口', '本', '册', '卷', '篇', '处', '道', '股'
+]);
+
+const CHINESE_NUMERALS = new Set(['一', '二', '三', '四', '五', '六', '七', '八', '九', '十', '两']);
+const TERM_ACTION_PREFIXES = ['修炼', '切磋', '修', '炼', '切', '磋'];
+const ITEM_ACTION_PREFIXES = ['手持', '持', '寻找', '找', '寻', '穿着', '服用', '炼化'];
 
 /**
  * 识别人名
@@ -82,16 +92,15 @@ function extractPersons(text: string): Entity[] {
 
       const candidate = text.substring(i, i + len);
 
-      // 检查是否以姓氏开头
-      let startsWithSurname = false;
+      // 检查是否以姓氏开头（优先复姓）
+      let matchedSurname: string | null = null;
       for (const surname of SURNAMES) {
-        if (candidate.startsWith(surname)) {
-          startsWithSurname = true;
-          break;
+        if (candidate.startsWith(surname) && (!matchedSurname || surname.length > matchedSurname.length)) {
+          matchedSurname = surname;
         }
       }
 
-      if (!startsWithSurname) continue;
+      if (!matchedSurname) continue;
 
       // 必须全是汉字
       if (!/^[\u4e00-\u9fa5]+$/.test(candidate)) continue;
@@ -139,6 +148,51 @@ function extractPersons(text: string): Entity[] {
 /**
  * 识别地名
  */
+function normalizeSuffixMatches(rawMatch: string, suffix: string, maxLength: number, actionPrefixes: string[] = []): string[] {
+  const results: string[] = [];
+  const minLength = suffix.length + 1;
+
+  for (let start = 0; start < rawMatch.length; start++) {
+    let candidate = rawMatch.slice(start);
+    if (!candidate.endsWith(suffix)) continue;
+    if (candidate.length < minLength || candidate.length > maxLength) continue;
+
+    while (candidate.length > minLength) {
+      const firstChar = candidate[0];
+      const secondChar = candidate[1];
+      const actionPrefix = actionPrefixes.find(prefix => candidate.startsWith(prefix));
+      const shouldTrimNumberPrefix = CHINESE_NUMERALS.has(firstChar) && !!secondChar && LEADING_NOISE_CHARS.has(secondChar);
+      const shouldTrimNoisePrefix = LEADING_NOISE_CHARS.has(firstChar);
+
+      if (actionPrefix) {
+        candidate = candidate.slice(actionPrefix.length);
+        continue;
+      }
+
+      if (!shouldTrimNumberPrefix && !shouldTrimNoisePrefix) break;
+      candidate = candidate.slice(1);
+    }
+
+    if (candidate.length < minLength || candidate.length > maxLength) continue;
+    if (STOP_WORDS.has(candidate[0])) continue;
+
+    let hasStopWord = false;
+    for (const stopWord of STOP_WORDS) {
+      if (candidate.includes(stopWord)) {
+        hasStopWord = true;
+        break;
+      }
+    }
+    if (hasStopWord) continue;
+
+    results.push(candidate);
+  }
+
+  return results.length > 0
+    ? [[...new Set(results)].sort((a, b) => b.length - a.length)[0]]
+    : [];
+}
+
 function extractLocations(text: string): Entity[] {
   const entities: Entity[] = [];
   const seen = new Set<string>();
@@ -149,21 +203,12 @@ function extractLocations(text: string): Entity[] {
     const pattern = new RegExp(`[\\u4e00-\\u9fa5]{1,3}${escapedSuffix}`, 'g');
     let match;
     while ((match = pattern.exec(text)) !== null) {
-      const location = match[0];
-
-      // 过滤：不能包含停用词
-      let hasStopWord = false;
-      for (const stopWord of STOP_WORDS) {
-        if (location.includes(stopWord)) {
-          hasStopWord = true;
-          break;
+      const normalizedMatches = normalizeSuffixMatches(match[0], suffix, 4);
+      for (const location of normalizedMatches) {
+        if (!seen.has(location)) {
+          seen.add(location);
+          entities.push({ text: location, type: 'location', confidence: 0.8 });
         }
-      }
-      if (hasStopWord) continue;
-
-      if (!seen.has(location)) {
-        seen.add(location);
-        entities.push({ text: location, type: 'location', confidence: 0.8 });
       }
     }
   }
@@ -184,21 +229,12 @@ function extractTerms(text: string): Entity[] {
     const pattern = new RegExp(`[\\u4e00-\\u9fa5]{1,5}${escapedSuffix}`, 'g');
     let match;
     while ((match = pattern.exec(text)) !== null) {
-      const term = match[0];
-
-      // 过滤：不能包含停用词
-      let hasStopWord = false;
-      for (const stopWord of STOP_WORDS) {
-        if (term.includes(stopWord)) {
-          hasStopWord = true;
-          break;
+      const normalizedMatches = normalizeSuffixMatches(match[0], suffix, 6, TERM_ACTION_PREFIXES);
+      for (const term of normalizedMatches) {
+        if (!seen.has(term)) {
+          seen.add(term);
+          entities.push({ text: term, type: 'term', confidence: 0.85 });
         }
-      }
-      if (hasStopWord) continue;
-
-      if (!seen.has(term)) {
-        seen.add(term);
-        entities.push({ text: term, type: 'term', confidence: 0.85 });
       }
     }
   }
@@ -216,24 +252,15 @@ function extractItems(text: string): Entity[] {
   for (const suffix of ITEM_SUFFIXES) {
     // 转义正则特殊字符，匹配 2-5 字的道具（后缀匹配）
     const escapedSuffix = suffix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const pattern = new RegExp(`[\\u4e00-\\u9fa5]{1,4}${escapedSuffix}`, 'g');
+    const pattern = new RegExp(`[\\u4e00-\\u9fa5]{1,5}${escapedSuffix}`, 'g');
     let match;
     while ((match = pattern.exec(text)) !== null) {
-      const item = match[0];
-
-      // 过滤：不能包含停用词
-      let hasStopWord = false;
-      for (const stopWord of STOP_WORDS) {
-        if (item.includes(stopWord)) {
-          hasStopWord = true;
-          break;
+      const normalizedMatches = normalizeSuffixMatches(match[0], suffix, 6, ITEM_ACTION_PREFIXES);
+      for (const item of normalizedMatches) {
+        if (!seen.has(item)) {
+          seen.add(item);
+          entities.push({ text: item, type: 'item', confidence: 0.8 });
         }
-      }
-      if (hasStopWord) continue;
-
-      if (!seen.has(item)) {
-        seen.add(item);
-        entities.push({ text: item, type: 'item', confidence: 0.8 });
       }
     }
   }

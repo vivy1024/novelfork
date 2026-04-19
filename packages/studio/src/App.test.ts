@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deriveActiveBookId } from "./App";
+import { deriveActiveBookId } from "./route-utils";
 
 describe("deriveActiveBookId", () => {
   it("returns the current book across book-centered routes", () => {
