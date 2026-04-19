@@ -1,7 +1,7 @@
 #!/bin/bash
-# InkOS Studio 启动脚本
+# NovelFork Studio 启动脚本
 
-echo "🚀 启动 InkOS Studio..."
+echo "🚀 启动 NovelFork Studio..."
 echo ""
 
 # 检查依赖
@@ -19,7 +19,7 @@ fi
 # 启动后端服务器（端口 4569）
 echo "🔧 启动后端服务器（端口 4569）..."
 cd packages/studio
-INKOS_STUDIO_PORT=4569 node dist/api/server.js &
+NOVELFORK_STUDIO_PORT=4569 node dist/api/server.js &
 BACKEND_PID=$!
 cd ../..
 
@@ -34,7 +34,7 @@ FRONTEND_PID=$!
 cd ../..
 
 echo ""
-echo "✅ InkOS Studio 已启动！"
+echo "✅ NovelFork Studio 已启动！"
 echo ""
 echo "📍 访问地址："
 echo "   前端：http://localhost:4567"

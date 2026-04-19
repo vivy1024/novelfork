@@ -3,7 +3,7 @@
  * Uses Web Crypto API (AES-GCM 256-bit) with PBKDF2 key derivation.
  */
 import { useState, useEffect, useCallback } from "react";
-import { useInkOS } from "../providers/inkos-context";
+import { useNovelFork } from "../providers/novelfork-context";
 
 interface BackupEntry {
   readonly filename: string;
@@ -130,7 +130,7 @@ async function collectBackupPayload(workspace: string): Promise<BackupPayload> {
 }
 
 async function listBackupFiles(workspace: string): Promise<ReadonlyArray<BackupEntry>> {
-  const backupDir = join(workspace, ".inkos-backups");
+  const backupDir = join(workspace, ".novelfork-backups");
   const entries = await invoke<Array<{ name: string; is_dir: boolean }>>("list_dir", { path: backupDir }).catch(() => []);
   const results: BackupEntry[] = [];
   for (const e of entries) {
@@ -148,7 +148,7 @@ async function listBackupFiles(workspace: string): Promise<ReadonlyArray<BackupE
 export { type BackupEntry, type BackupPayload };
 
 export function useBackup(): UseBackupReturn {
-  const { mode, workspace } = useInkOS();
+  const { mode, workspace } = useNovelFork();
   const isTauri = mode === "tauri" || (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window);
   const [backups, setBackups] = useState<ReadonlyArray<BackupEntry>>([]);
   const [loading, setLoading] = useState(false);
@@ -168,7 +168,7 @@ export function useBackup(): UseBackupReturn {
       const payload = await collectBackupPayload(workspace);
       const json = JSON.stringify(payload);
       const encrypted = await encrypt(json, passphrase);
-      const backupDir = join(workspace, ".inkos-backups");
+      const backupDir = join(workspace, ".novelfork-backups");
       await invoke("create_dir_all", { path: backupDir });
       const filename = `${Date.now()}.bak`;
       // Write as base64 text since Tauri invoke uses text files
@@ -184,7 +184,7 @@ export function useBackup(): UseBackupReturn {
     if (!isTauri || !workspace) throw new Error("Backup not supported in browser mode");
     setLoading(true);
     try {
-      const backupDir = join(workspace, ".inkos-backups");
+      const backupDir = join(workspace, ".novelfork-backups");
       const b64 = await invoke<string>("read_file_text", { path: join(backupDir, filename) });
       const raw = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
       const json = await decrypt(raw, passphrase);

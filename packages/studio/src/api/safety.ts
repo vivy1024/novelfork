@@ -78,7 +78,7 @@ export function createUploadResponse(input: {
 
 /** Parses port from environment with safe fallback. */
 export function resolveServerPort(env: Record<string, string | undefined> = process.env): number {
-  const raw = env.INKOS_STUDIO_PORT ?? env.PORT ?? "4567";
+  const raw = env.NOVELFORK_STUDIO_PORT ?? env.PORT ?? "4567";
   const parsed = Number.parseInt(raw, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 4567;
 }

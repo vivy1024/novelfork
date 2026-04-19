@@ -143,7 +143,7 @@ export async function createWorktree(
   }
 
   // Worktree 路径
-  const worktreePath = path.join(root, ".inkos-worktrees", name);
+  const worktreePath = path.join(root, ".novelfork-worktrees", name);
   const gitPath = toGitPath(worktreePath);
 
   // 检查是否已存在

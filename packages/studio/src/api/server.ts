@@ -11,7 +11,7 @@ import {
   type ProjectConfig,
   type LogSink,
   type LogEntry,
-} from "@actalk/inkos-core";
+} from "@actalk/novelfork-core";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { isSafeBookId } from "./safety.js";
@@ -79,9 +79,9 @@ pipelineEvents.on((event) => {
 
 // --- INKOS_MODE ---
 
-export type InkosMode = "standalone" | "relay";
+export type NovelForkMode = "standalone" | "relay";
 
-function getInkosMode(): InkosMode {
+function getInkosMode(): NovelForkMode {
   const raw = process.env.INKOS_MODE?.trim().toLowerCase();
   if (raw === "relay") return "relay";
   return "standalone";
@@ -301,13 +301,13 @@ export async function startStudioServer(
   // Auto-init project directory if inkos.json doesn't exist (Zeabur / Docker deployment)
   const { existsSync: existsSyncInit } = await import("node:fs");
   const { mkdir: mkdirInit, writeFile: writeFileInit } = await import("node:fs/promises");
-  const configPathInit = join(root, "inkos.json");
+  const configPathInit = join(root, "novelfork.json");
   if (!existsSyncInit(configPathInit)) {
     console.log(`inkos.json not found in ${root}, auto-initializing...`);
     await mkdirInit(root, { recursive: true });
     await mkdirInit(join(root, "books"), { recursive: true });
     const defaultConfig = {
-      name: "inkos-studio",
+      name: "novelfork-studio",
       version: "0.1.0",
       language: process.env.INKOS_DEFAULT_LANGUAGE ?? "zh",
       llm: {

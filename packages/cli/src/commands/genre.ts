@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import { writeFile, mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { listAvailableGenres, readGenreProfile, getBuiltinGenresDir } from "@actalk/inkos-core";
+import { listAvailableGenres, readGenreProfile, getBuiltinGenresDir } from "@actalk/novelfork-core";
 import { findProjectRoot, log, logError } from "../utils.js";
 
 export const genreCommand = new Command("genre")
@@ -144,7 +144,7 @@ genreCommand
       try {
         content = await readFile(srcPath, "utf-8");
       } catch {
-        logError(`Built-in genre "${id}" not found. Use 'inkos genre list' to see available genres.`);
+        logError(`Built-in genre "${id}" not found. Use 'novelfork genre list' to see available genres.`);
         process.exit(1);
         return;
       }

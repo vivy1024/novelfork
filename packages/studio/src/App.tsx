@@ -6,7 +6,7 @@ import { TabBar } from "./components/TabBar";
 import { CommandPalette } from "./components/CommandPalette";
 import { SearchDialog } from "./components/Search/SearchDialog";
 import { UpdateChecker } from "./components/UpdateChecker";
-import { InkOSProvider, useInkOS } from "./providers/inkos-context";
+import { NovelForkProvider, useNovelFork } from "./providers/novelfork-context";
 import { Dashboard } from "./pages/Dashboard";
 import { BookDetail } from "./pages/BookDetail";
 import { BookCreate } from "./pages/BookCreate";
@@ -120,15 +120,15 @@ function useSilentTokenImport() {
 
 export function App() {
   return (
-    <InkOSProvider>
+    <NovelForkProvider>
       <AppInner />
-    </InkOSProvider>
+    </NovelForkProvider>
   );
 }
 
 function AppInner() {
   useSilentTokenImport();
-  const { mode, selectWorkspace, workspace } = useInkOS();
+  const { mode, selectWorkspace, workspace } = useNovelFork();
   const { tabs, activeTabId, activeTab, openTab, closeTab, activateTab } = useTabsState();
   const [bookCreateOpen, setBookCreateOpen] = useState(false);
   const sse = useSSE();

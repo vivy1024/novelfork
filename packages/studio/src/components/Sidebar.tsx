@@ -3,7 +3,7 @@ import { useApi } from "../hooks/use-api";
 import type { SSEMessage } from "../hooks/use-sse";
 import { shouldRefetchBookCollections, shouldRefetchDaemonStatus } from "../hooks/use-book-activity";
 import type { TFunction } from "../hooks/use-i18n";
-import { useInkOS } from "../providers/inkos-context";
+import { useNovelFork } from "../providers/novelfork-context";
 import { useProjectSort } from "../hooks/use-project-sort";
 import { DndContext, closestCenter, DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
@@ -89,18 +89,18 @@ export function Sidebar({ nav, activePage, sse, t }: {
 }) {
   const { data, refetch: refetchBooks } = useApi<{ books: ReadonlyArray<BookSummary> }>("/books");
   const { data: daemon, refetch: refetchDaemon } = useApi<{ running: boolean }>("/daemon");
-  const { mode } = useInkOS();
+  const { mode } = useNovelFork();
   const isStandalone = mode === "standalone";
   const isTauri = mode === "tauri";
   const [expandedBooks, setExpandedBooks] = useState<Set<string>>(new Set());
   const [systemOpen, setSystemOpen] = useState(() => {
     try {
-      return localStorage.getItem("inkos-sidebar-system") !== "false";
+      return localStorage.getItem("novelfork-sidebar-system") !== "false";
     } catch { return false; }
   });
   const [toolsOpen, setToolsOpen] = useState(() => {
     try {
-      return localStorage.getItem("inkos-sidebar-tools") !== "false";
+      return localStorage.getItem("novelfork-sidebar-tools") !== "false";
     } catch { return false; }
   });
 
@@ -127,13 +127,13 @@ export function Sidebar({ nav, activePage, sse, t }: {
     if (section === "system") {
       setSystemOpen((prev) => {
         const next = !prev;
-        try { localStorage.setItem("inkos-sidebar-system", String(next)); } catch {}
+        try { localStorage.setItem("novelfork-sidebar-system", String(next)); } catch {}
         return next;
       });
     } else {
       setToolsOpen((prev) => {
         const next = !prev;
-        try { localStorage.setItem("inkos-sidebar-tools", String(next)); } catch {}
+        try { localStorage.setItem("novelfork-sidebar-tools", String(next)); } catch {}
         return next;
       });
     }

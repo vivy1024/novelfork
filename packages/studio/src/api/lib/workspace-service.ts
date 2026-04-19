@@ -148,7 +148,7 @@ function inferDirectoryRole(relPath: string): string | undefined {
 }
 
 function inferFileRole(relPath: string, name: string): string | undefined {
-  if (name === "inkos.json") return "config";
+  if (name === "novelfork.json") return "config";
   if (name === "book.json") return "book-config";
   if (name === "chapter-index.json") return "chapter-index";
   if (relPath.includes("/chapters/") && name.endsWith(".md")) return "chapter";

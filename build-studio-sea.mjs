@@ -84,8 +84,8 @@ if (args.includes('--help') || args.includes('-h')) {
   console.log('  --port <port>  Specify port (default: 4567)');
   console.log('');
   console.log('Environment Variables:');
-  console.log('  INKOS_PROJECT_ROOT  Default project directory');
-  console.log('  INKOS_STUDIO_PORT   Server port (default: 4567)');
+  console.log('  NOVELFORK_PROJECT_ROOT  Default project directory');
+  console.log('  NOVELFORK_STUDIO_PORT   Server port (default: 4567)');
   process.exit(0);
 }
 
@@ -98,10 +98,10 @@ if (portIndex !== -1 && args[portIndex + 1]) {
 
 // Get project root (first non-flag argument)
 const root = args.find(arg => !arg.startsWith('-') && arg !== args[portIndex + 1])
-  || process.env.INKOS_PROJECT_ROOT
+  || process.env.NOVELFORK_PROJECT_ROOT
   || process.cwd();
 
-const port = portArg || parseInt(process.env.INKOS_STUDIO_PORT || "4567", 10);
+const port = portArg || parseInt(process.env.NOVELFORK_STUDIO_PORT || "4567", 10);
 const exeDir = require("node:path").dirname(process.execPath);
 const staticDir = join(exeDir, "static");
 
@@ -205,4 +205,4 @@ console.log(`Static: ${frontendDst}`);
 console.log(`\nUsage:`);
 console.log(`  inkos.exe                    # Start studio in current directory`);
 console.log(`  inkos.exe /path/to/project   # Start studio for specific project`);
-console.log(`  INKOS_STUDIO_PORT=8080 inkos.exe  # Custom port`);
+console.log(`  NOVELFORK_STUDIO_PORT=8080 inkos.exe  # Custom port`);

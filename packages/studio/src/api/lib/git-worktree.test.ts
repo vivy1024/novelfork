@@ -24,7 +24,7 @@ describe("Git Worktree Operations", () => {
 
   beforeEach(async () => {
     // 创建临时测试仓库
-    testRepo = path.join(os.tmpdir(), `inkos-test-${Date.now()}`);
+    testRepo = path.join(os.tmpdir(), `novelfork-test-${Date.now()}`);
     await fs.mkdir(testRepo, { recursive: true });
 
     // 初始化 Git 仓库
@@ -86,7 +86,7 @@ describe("Git Worktree Operations", () => {
 
     it("should list multiple worktrees", async () => {
       // 创建额外的 worktree
-      const worktreePath = path.join(testRepo, ".inkos-worktrees", "feature-1");
+      const worktreePath = path.join(testRepo, ".novelfork-worktrees", "feature-1");
       await createWorktree(testRepo, "feature-1");
 
       const worktrees = await listWorktrees(testRepo);

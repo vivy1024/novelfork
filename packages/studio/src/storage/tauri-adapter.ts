@@ -246,7 +246,7 @@ export class TauriStorageAdapter implements ClientStorageAdapter {
   }
 
   async loadProject(): Promise<ProjectConfig> {
-    const configPath = join(ws(), "inkos.json");
+    const configPath = join(ws(), "novelfork.json");
     let config: Record<string, unknown> = {};
     try {
       const raw = await invoke<string>("read_file_text", { path: configPath });
@@ -256,7 +256,7 @@ export class TauriStorageAdapter implements ClientStorageAdapter {
     }
     const llm = (config.llm ?? {}) as Record<string, unknown>;
     return {
-      name: (config.name as string) ?? "inkos-studio",
+      name: (config.name as string) ?? "novelfork-studio",
       language: (config.language as string) ?? "zh",
       languageExplicit: "language" in config && config.language !== "",
       model: (llm.model as string) ?? "",
@@ -269,7 +269,7 @@ export class TauriStorageAdapter implements ClientStorageAdapter {
   }
 
   async updateProject(updates: Record<string, unknown>): Promise<void> {
-    const configPath = join(ws(), "inkos.json");
+    const configPath = join(ws(), "novelfork.json");
     let config: Record<string, unknown> = {};
     try {
       const raw = await invoke<string>("read_file_text", { path: configPath });

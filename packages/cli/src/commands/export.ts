@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { StateManager } from "@actalk/inkos-core";
+import { StateManager } from "@actalk/novelfork-core";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { findProjectRoot, resolveBookId, log, logError } from "../utils.js";

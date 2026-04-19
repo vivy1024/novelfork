@@ -136,7 +136,7 @@ export function createSettingsRouter() {
   app.get("/metrics", async (c) => {
     try {
       // 从环境变量或默认路径获取项目根目录
-      const projectRoot = process.env.INKOS_PROJECT_ROOT || process.cwd();
+      const projectRoot = process.env.NOVELFORK_PROJECT_ROOT || process.cwd();
       const metrics = await collectMetrics(projectRoot);
       return c.json(metrics);
     } catch (error) {

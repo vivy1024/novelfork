@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import type { RouterContext } from "./context.js";
-import { pipelineEvents } from "@actalk/inkos-core";
+import { pipelineEvents } from "@actalk/novelfork-core";
 
 interface PipelineStage {
   readonly name: string;

@@ -1,4 +1,4 @@
-# InkOS Studio - AI 工具系统与 Git Worktree 实现完成报告
+# NovelFork Studio - AI 工具系统与 Git Worktree 实现完成报告
 
 **实施日期**: 2026-04-17  
 **版本**: v1.1.1  
@@ -6,7 +6,7 @@
 
 ## 📋 实施概览
 
-基于实施计划 `docs/superpowers/plans/2026-04-17-file-system-worktree.md`，成功实现了 InkOS Studio 的 AI 工具系统和 Git Worktree 多线并行功能。
+基于实施计划 `docs/superpowers/plans/2026-04-17-file-system-worktree.md`，成功实现了 NovelFork Studio 的 AI 工具系统和 Git Worktree 多线并行功能。
 
 **总计**: 9 个 Phase，35 个文件，约 5200 行代码
 

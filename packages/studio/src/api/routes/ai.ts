@@ -18,7 +18,7 @@ import {
   extractPOVFromOutline,
   filterMatrixByPOV,
   filterHooksByPOV,
-} from "@actalk/inkos-core";
+} from "@actalk/novelfork-core";
 import { join } from "node:path";
 import { readFile, readdir } from "node:fs/promises";
 import type { RouterContext } from "./context.js";
@@ -100,8 +100,8 @@ export function createAIRouter(ctx: RouterContext): Hono {
       if (!match) return c.json({ error: "Chapter not found" }, 404);
 
       const content = await readFile(join(chaptersDir, match), "utf-8");
-      const currentConfig = await import("@actalk/inkos-core").then(m => m.loadProjectConfig(root, { requireApiKey: false }));
-      const { ContinuityAuditor } = await import("@actalk/inkos-core");
+      const currentConfig = await import("@actalk/novelfork-core").then(m => m.loadProjectConfig(root, { requireApiKey: false }));
+      const { ContinuityAuditor } = await import("@actalk/novelfork-core");
       const auditor = new ContinuityAuditor({
         client: createLLMClient(currentConfig.llm),
         model: currentConfig.llm.model,
@@ -209,7 +209,7 @@ export function createAIRouter(ctx: RouterContext): Hono {
       if (!match) return c.json({ error: "Chapter not found" }, 404);
 
       const content = await readFile(join(chaptersDir, match), "utf-8");
-      const { analyzeAITells } = await import("@actalk/inkos-core");
+      const { analyzeAITells } = await import("@actalk/novelfork-core");
       const result = analyzeAITells(content);
       return c.json({ chapterNumber: chapterNum, ...result });
     } catch (e) {
@@ -227,7 +227,7 @@ export function createAIRouter(ctx: RouterContext): Hono {
       const chaptersDir = join(bookDir, "chapters");
       const files = await readdir(chaptersDir);
       const mdFiles = files.filter((f) => f.endsWith(".md") && /^\d{4}/.test(f)).sort();
-      const { analyzeAITells } = await import("@actalk/inkos-core");
+      const { analyzeAITells } = await import("@actalk/novelfork-core");
 
       const results = await Promise.all(
         mdFiles.map(async (f) => {
@@ -250,7 +250,7 @@ export function createAIRouter(ctx: RouterContext): Hono {
     if (!text?.trim()) return c.json({ error: "text is required" }, 400);
 
     try {
-      const { analyzeStyle } = await import("@actalk/inkos-core");
+      const { analyzeStyle } = await import("@actalk/novelfork-core");
       const profile = analyzeStyle(text, sourceName ?? "unknown");
       return c.json(profile);
     } catch (e) {
@@ -286,7 +286,7 @@ export function createAIRouter(ctx: RouterContext): Hono {
 
     legacyBroadcast("import:start", { bookId: id, type: "chapters" });
     try {
-      const { splitChapters } = await import("@actalk/inkos-core");
+      const { splitChapters } = await import("@actalk/novelfork-core");
       const chapters = [...splitChapters(text, splitRegex)];
 
       const sessionLlm = await ctx.getSessionLlm(c);
@@ -410,7 +410,7 @@ export function createAIRouter(ctx: RouterContext): Hono {
     legacyBroadcast("agent:start", { instruction });
 
     try {
-      const { runAgentLoop } = await import("@actalk/inkos-core");
+      const { runAgentLoop } = await import("@actalk/novelfork-core");
 
       const result = await runAgentLoop(
         await ctx.buildPipelineConfig(await ctx.getSessionLlm(c)),

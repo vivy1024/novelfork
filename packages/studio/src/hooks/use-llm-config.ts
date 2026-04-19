@@ -5,7 +5,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { fetchJson } from "./use-api";
-import { useInkOS } from "../providers/inkos-context";
+import { useNovelFork } from "../providers/novelfork-context";
 
 export interface LLMConfig {
   apiKey: string;
@@ -16,7 +16,7 @@ export interface LLMConfig {
 }
 
 export function useLLMConfig() {
-  const { mode } = useInkOS();
+  const { mode } = useNovelFork();
   const isTauri = mode === "tauri";
   const [config, setConfig] = useState<LLMConfig | null>(null);
   const [loading, setLoading] = useState(true);
@@ -27,7 +27,7 @@ export function useLLMConfig() {
     try {
       if (isTauri) {
         // Tauri: read from localStorage
-        const raw = localStorage.getItem("inkos-llm-config");
+        const raw = localStorage.getItem("novelfork-llm-config");
         if (raw) {
           const parsed = JSON.parse(raw);
           setConfig({
@@ -83,7 +83,7 @@ export function useLLMConfig() {
           };
           const updated = { ...current, ...updates };
           localStorage.setItem(
-            "inkos-llm-config",
+            "novelfork-llm-config",
             JSON.stringify({
               apiKey: updated.apiKey,
               baseUrl: updated.baseUrl,

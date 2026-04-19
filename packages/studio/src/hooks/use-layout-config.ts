@@ -10,7 +10,7 @@ interface LayoutConfig {
   bottomPanelCollapsed: boolean;
 }
 
-const DB_NAME = "inkos-studio";
+const DB_NAME = "novelfork-studio";
 const DB_VERSION = 1;
 const STORE_NAME = "layout";
 const CONFIG_KEY = "main-layout";

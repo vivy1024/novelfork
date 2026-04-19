@@ -48,13 +48,13 @@ export async function loadProjectConfig(
   loadEnv({ path: GLOBAL_ENV_PATH });
   loadEnv({ path: join(root, ".env"), override: true });
 
-  const configPath = join(root, "inkos.json");
+  const configPath = join(root, "novelfork.json");
 
   try {
     await access(configPath);
   } catch {
     throw new Error(
-      `inkos.json not found in ${root}.\nMake sure you are inside an InkOS project directory (cd into the project created by 'inkos init').`,
+      `inkos.json not found in ${root}.\nMake sure you are inside an NovelFork project directory (cd into the project created by 'inkos init').`,
     );
   }
 

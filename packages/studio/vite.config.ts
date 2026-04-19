@@ -12,8 +12,8 @@ export default defineConfig({
       registerType: "autoUpdate",
       includeAssets: ["favicon.ico", "robots.txt", "icons/*.png"],
       manifest: {
-        name: "InkOS Studio",
-        short_name: "InkOS",
+        name: "NovelFork Studio",
+        short_name: "NovelFork",
         description: "Web workbench for novel writing",
         theme_color: "#3b82f6",
         background_color: "#ffffff",
@@ -130,7 +130,7 @@ export default defineConfig({
     port: 4567,
     proxy: {
       "/api": {
-        target: `http://localhost:${process.env.INKOS_STUDIO_PORT ?? "4569"}`,
+        target: `http://localhost:${process.env.NOVELFORK_STUDIO_PORT ?? "4569"}`,
         changeOrigin: true,
       },
     },

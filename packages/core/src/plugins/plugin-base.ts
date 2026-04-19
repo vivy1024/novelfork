@@ -1,5 +1,5 @@
 /**
- * InkOSPlugin - Base class for all InkOS plugins
+ * NovelForkPlugin - Base class for all NovelFork plugins
  *
  * Plugins extend this class to provide custom tools and hooks.
  */
@@ -12,9 +12,9 @@ import type {
 } from "./types.js";
 
 /**
- * Abstract base class for InkOS plugins
+ * Abstract base class for NovelFork plugins
  */
-export abstract class InkOSPlugin {
+export abstract class NovelForkPlugin {
   protected ctx!: PluginContext;
 
   /**

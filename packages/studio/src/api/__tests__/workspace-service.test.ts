@@ -23,11 +23,11 @@ describe("workspace-service", () => {
   let root: string;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "inkos-ws-test-"));
+    root = await mkdtemp(join(tmpdir(), "novelfork-ws-test-"));
     // Create a minimal InkOS structure
     await mkdir(join(root, "books", "test-book", "chapters"), { recursive: true });
     await mkdir(join(root, "books", "test-book", "story"), { recursive: true });
-    await writeFile(join(root, "inkos.json"), '{"name": "test"}', "utf-8");
+    await writeFile(join(root, "novelfork.json"), '{"name": "test"}', "utf-8");
     await writeFile(join(root, "books", "test-book", "book.json"), '{"title": "Test"}', "utf-8");
     await writeFile(
       join(root, "books", "test-book", "chapters", "0001-first-chapter.md"),
@@ -99,7 +99,7 @@ describe("workspace-service", () => {
       expect(booksDir!.type).toBe("directory");
 
       // Find inkos.json with config role
-      const configFile = tree.find(e => e.name === "inkos.json");
+      const configFile = tree.find(e => e.name === "novelfork.json");
       expect(configFile).toBeDefined();
       expect(configFile!.storyRole).toBe("config");
     });
@@ -130,7 +130,7 @@ describe("workspace-service", () => {
 
   describe("readWorkspaceFile", () => {
     it("reads a file with metadata", async () => {
-      const result = await readWorkspaceFile(root, "inkos.json");
+      const result = await readWorkspaceFile(root, "novelfork.json");
       expect(result.content).toBe('{"name": "test"}');
       expect(result.mtime).toBeTruthy();
       expect(result.size).toBeGreaterThan(0);

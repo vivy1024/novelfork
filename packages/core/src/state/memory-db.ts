@@ -1,5 +1,5 @@
 /**
- * Temporal memory database for InkOS truth files.
+ * Temporal memory database for NovelFork truth files.
  *
  * Uses Node.js built-in SQLite (node:sqlite, Node 22+).
  * Stores facts with temporal validity (valid_from/valid_until chapter numbers),

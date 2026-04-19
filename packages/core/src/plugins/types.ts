@@ -2,7 +2,7 @@
  * Plugin System Types
  *
  * Inspired by AstrBot Star system and Rivet Plugin architecture.
- * Provides a lightweight plugin system for extending InkOS functionality.
+ * Provides a lightweight plugin system for extending NovelFork functionality.
  */
 
 import type { ToolDefinition, ToolHandler, GenericToolHandler } from "../registry/tool-registry.js";
