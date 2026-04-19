@@ -28,6 +28,8 @@
     "typecheck": "pnpm -r typecheck",
     "bun:main": "bun run main.ts",
     "bun:studio": "bun run main.ts",
+    "bun:build-client": "pnpm --dir packages/studio build:client",
+    "bun:compile": "pnpm bun:build-client && bun build ./main.ts --compile --outfile dist/novelfork",
     "verify:publish-manifests": "node scripts/verify-no-workspace-protocol.mjs packages/core packages/cli packages/studio",
     "release": "pnpm build && pnpm test",
     "version": "pnpm -r exec npm version"
