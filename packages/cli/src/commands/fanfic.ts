@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { join, resolve, basename } from "node:path";
-import { PipelineRunner, type BookConfig, type FanficMode } from "@actalk/inkos-core";
+import { PipelineRunner, type BookConfig, type FanficMode } from "@actalk/novelfork-core";
 import { loadConfig, buildPipelineConfig, findProjectRoot, resolveBookId, log, logError } from "../utils.js";
 
 export const fanficCommand = new Command("fanfic")
@@ -73,7 +73,7 @@ fanficCommand
           fanficMode: mode,
           source: sourceName,
           location: `books/${bookId}/`,
-          nextStep: `inkos write next ${bookId}`,
+          nextStep: `novelfork write next ${bookId}`,
         }, null, 2));
       } else {
         log(`Fanfic created: ${bookId}`);
@@ -81,7 +81,7 @@ fanficCommand
         log(`  Location: books/${bookId}/`);
         log(`  fanfic_canon.md + foundation generated.`);
         log("");
-        log(`Next: inkos write next ${bookId}`);
+        log(`Next: novelfork write next ${bookId}`);
       }
     } catch (e) {
       if (opts.json) {
@@ -103,7 +103,7 @@ fanficCommand
       await loadConfig();
       const root = findProjectRoot();
       const bookId = await resolveBookId(bookIdArg, root);
-      const { StateManager } = await import("@actalk/inkos-core");
+      const { StateManager } = await import("@actalk/novelfork-core");
       const state = new StateManager(root);
       const bookDir = state.bookDir(bookId);
 
@@ -141,7 +141,7 @@ fanficCommand
       const config = await loadConfig();
       const root = findProjectRoot();
       const bookId = await resolveBookId(bookIdArg, root);
-      const { StateManager } = await import("@actalk/inkos-core");
+      const { StateManager } = await import("@actalk/novelfork-core");
       const state = new StateManager(root);
       const book = await state.loadBookConfig(bookId);
 

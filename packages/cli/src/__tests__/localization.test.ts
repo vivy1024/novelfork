@@ -18,12 +18,12 @@ describe("CLI localization", () => {
     expect(formatBookCreateCreating("zh", "山河", "xuanhuan", "tomato"))
       .toBe('创建书籍 "山河"（xuanhuan / tomato）...');
     expect(formatBookCreateCreated("zh", "shan-he")).toBe("已创建书籍：shan-he");
-    expect(formatBookCreateNextStep("zh", "shan-he")).toBe("下一步：inkos write next shan-he");
+    expect(formatBookCreateNextStep("zh", "shan-he")).toBe("下一步：novelfork write next shan-he");
 
     expect(formatBookCreateCreating("en", "Harbor", "other", "other"))
       .toBe('Creating book "Harbor" (other / other)...');
     expect(formatBookCreateCreated("en", "harbor")).toBe("Book created: harbor");
-    expect(formatBookCreateNextStep("en", "harbor")).toBe("Next: inkos write next harbor");
+    expect(formatBookCreateNextStep("en", "harbor")).toBe("Next: novelfork write next harbor");
   });
 
   it("formats write-next progress and result summaries in both languages", () => {
@@ -82,7 +82,7 @@ describe("CLI localization", () => {
       "  总长度：45678字",
       "  下一章编号：13",
       "",
-      '运行 "inkos write next shan-he" 继续写作。',
+      '运行 "novelfork write next shan-he" 继续写作。',
     ]);
 
     expect(formatImportChaptersDiscovery("en", 10, "harbor"))
@@ -99,7 +99,7 @@ describe("CLI localization", () => {
       "  Total length: 18342 words",
       "  Next chapter number: 11",
       "",
-      'Run "inkos write next harbor" to continue writing.',
+      'Run "novelfork write next harbor" to continue writing.',
     ]);
   });
 

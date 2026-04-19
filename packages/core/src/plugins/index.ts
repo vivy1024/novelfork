@@ -2,7 +2,7 @@
  * Plugin system exports
  */
 
-export { InkOSPlugin } from "./plugin-base.js";
+export { NovelForkPlugin } from "./plugin-base.js";
 export { PluginManager } from "./plugin-manager.js";
 export type {
   PluginManifest,

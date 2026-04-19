@@ -13,7 +13,7 @@ configCommand
   .argument("<value>", "Config value")
   .action(async (key: string, value: string) => {
     const root = findProjectRoot();
-    const configPath = join(root, "inkos.json");
+    const configPath = join(root, "novelfork.json");
 
     try {
       const raw = await readFile(configPath, "utf-8");
@@ -86,7 +86,7 @@ configCommand
 
 configCommand
   .command("set-global")
-  .description("Set global LLM config (~/.inkos/.env), shared by all projects")
+  .description("Set global LLM config (~/.novelfork/.env), shared by all projects")
   .requiredOption("--provider <provider>", "LLM provider (openai / anthropic)")
   .requiredOption("--base-url <url>", "API base URL")
   .requiredOption("--api-key <key>", "API key")
@@ -101,16 +101,16 @@ configCommand
       await mkdir(GLOBAL_CONFIG_DIR, { recursive: true });
 
       const lines = [
-        "# InkOS Global LLM Configuration",
-        `INKOS_LLM_PROVIDER=${opts.provider}`,
-        `INKOS_LLM_BASE_URL=${opts.baseUrl}`,
-        `INKOS_LLM_API_KEY=${opts.apiKey}`,
-        `INKOS_LLM_MODEL=${opts.model}`,
+        "# NovelFork Global LLM Configuration",
+        `NOVELFORK_LLM_PROVIDER=${opts.provider}`,
+        `NOVELFORK_LLM_BASE_URL=${opts.baseUrl}`,
+        `NOVELFORK_LLM_API_KEY=${opts.apiKey}`,
+        `NOVELFORK_LLM_MODEL=${opts.model}`,
       ];
-      if (opts.temperature) lines.push(`INKOS_LLM_TEMPERATURE=${opts.temperature}`);
-      if (opts.maxTokens) lines.push(`INKOS_LLM_MAX_TOKENS=${opts.maxTokens}`);
-      if (opts.thinkingBudget) lines.push(`INKOS_LLM_THINKING_BUDGET=${opts.thinkingBudget}`);
-      if (opts.apiFormat) lines.push(`INKOS_LLM_API_FORMAT=${opts.apiFormat}`);
+      if (opts.temperature) lines.push(`NOVELFORK_LLM_TEMPERATURE=${opts.temperature}`);
+      if (opts.maxTokens) lines.push(`NOVELFORK_LLM_MAX_TOKENS=${opts.maxTokens}`);
+      if (opts.thinkingBudget) lines.push(`NOVELFORK_LLM_THINKING_BUDGET=${opts.thinkingBudget}`);
+      if (opts.apiFormat) lines.push(`NOVELFORK_LLM_API_FORMAT=${opts.apiFormat}`);
       if (opts.lang) lines.push(`INKOS_DEFAULT_LANGUAGE=${opts.lang}`);
 
       await writeFile(GLOBAL_ENV_PATH, lines.join("\n") + "\n", "utf-8");
@@ -124,17 +124,17 @@ configCommand
 
 configCommand
   .command("show-global")
-  .description("Show global LLM config (~/.inkos/.env)")
+  .description("Show global LLM config (~/.novelfork/.env)")
   .action(async () => {
     try {
       const content = await readFile(GLOBAL_ENV_PATH, "utf-8");
       const masked = content.replace(
-        /(INKOS_LLM_API_KEY=)(.{8})(.*)(.{4})/,
+        /(NOVELFORK_LLM_API_KEY=)(.{8})(.*)(.{4})/,
         "$1$2...$4",
       );
       log(masked);
     } catch {
-      log("No global config found. Run 'inkos config set-global' to create one.");
+      log("No global config found. Run 'novelfork config set-global' to create one.");
     }
   });
 
@@ -143,7 +143,7 @@ configCommand
   .description("Show current project configuration")
   .action(async () => {
     const root = findProjectRoot();
-    const configPath = join(root, "inkos.json");
+    const configPath = join(root, "novelfork.json");
 
     try {
       const raw = await readFile(configPath, "utf-8");
@@ -196,7 +196,7 @@ configCommand
     }
 
     const root = findProjectRoot();
-    const configPath = join(root, "inkos.json");
+    const configPath = join(root, "novelfork.json");
 
     try {
       const raw = await readFile(configPath, "utf-8");
@@ -229,7 +229,7 @@ configCommand
   .argument("<agent>", "Agent name")
   .action(async (agent: string) => {
     const root = findProjectRoot();
-    const configPath = join(root, "inkos.json");
+    const configPath = join(root, "novelfork.json");
 
     try {
       const raw = await readFile(configPath, "utf-8");
@@ -255,7 +255,7 @@ configCommand
   .option("--json", "Output JSON")
   .action(async (opts) => {
     const root = findProjectRoot();
-    const configPath = join(root, "inkos.json");
+    const configPath = join(root, "novelfork.json");
 
     try {
       const raw = await readFile(configPath, "utf-8");

@@ -136,7 +136,7 @@ inkos cascade apply 吞天魔帝 10    # 应用级联更新
 - Pipeline Hooks
 
 ### v1.1.0（2026-03）
-- InkOS Studio Web 工作台
+- NovelFork Studio Web 工作台
 - Foundation Reviewer
 - Hook Seed Excerpt
 - Review Reject 回滚

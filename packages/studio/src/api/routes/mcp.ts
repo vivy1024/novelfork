@@ -6,7 +6,7 @@
 import { Hono } from "hono";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { MCPClientImpl, type MCPServerConfig as CoreMCPConfig } from "@actalk/inkos-core";
+import { MCPClientImpl, type MCPServerConfig as CoreMCPConfig } from "@actalk/novelfork-core";
 
 interface MCPServerEntry {
   readonly id: string;
@@ -30,7 +30,7 @@ export function createMCPRouter(projectRoot: string): Hono {
 
   async function loadConfig(): Promise<MCPServerEntry[]> {
     try {
-      const configPath = join(projectRoot, "inkos.json");
+      const configPath = join(projectRoot, "novelfork.json");
       const raw = await readFile(configPath, "utf-8");
       const config = JSON.parse(raw);
       return config.mcpServers ?? [];
@@ -40,7 +40,7 @@ export function createMCPRouter(projectRoot: string): Hono {
   }
 
   async function saveConfig(servers: MCPServerEntry[]): Promise<void> {
-    const configPath = join(projectRoot, "inkos.json");
+    const configPath = join(projectRoot, "novelfork.json");
     let config: Record<string, unknown> = {};
     try {
       const raw = await readFile(configPath, "utf-8");

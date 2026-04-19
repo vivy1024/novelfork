@@ -9,7 +9,7 @@ import type { RouterContext } from "./context.js";
 export function createDaemonRouter(ctx: RouterContext): Hono {
   const app = new Hono();
 
-  let schedulerInstance: import("@actalk/inkos-core").Scheduler | null = null;
+  let schedulerInstance: import("@actalk/novelfork-core").Scheduler | null = null;
 
   app.get("/api/daemon", (c) => {
     return c.json({
@@ -22,7 +22,7 @@ export function createDaemonRouter(ctx: RouterContext): Hono {
       return c.json({ error: "Daemon already running" }, 400);
     }
     try {
-      const { Scheduler, loadProjectConfig } = await import("@actalk/inkos-core");
+      const { Scheduler, loadProjectConfig } = await import("@actalk/novelfork-core");
       const currentConfig = await loadProjectConfig(ctx.root);
       const scheduler = new Scheduler({
         ...(await ctx.buildPipelineConfig()),

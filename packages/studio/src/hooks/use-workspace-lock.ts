@@ -12,7 +12,7 @@ interface UseWorkspaceLockReturn {
 const LOCK_FILE = ".inkos.lock";
 const HEARTBEAT_MS = 10_000;
 const STALE_MS = 30_000;
-const WORKSPACE_KEY = "inkos-workspace";
+const WORKSPACE_KEY = "novelfork-workspace";
 
 function isTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;

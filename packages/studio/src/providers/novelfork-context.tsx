@@ -1,6 +1,6 @@
 /**
- * InkOS context provider — injects storage + AI adapters into the React tree.
- * Components use useInkOS() instead of importing concrete implementations.
+ * NovelFork context provider — injects storage + AI adapters into the React tree.
+ * Components use useNovelFork() instead of importing concrete implementations.
  *
  * Detects Tauri environment automatically:
  * - Tauri: TauriStorageAdapter + RelayAIClient
@@ -15,12 +15,12 @@ import { HttpAIClient } from "../ai/http-client.js";
 import { fetchJson } from "../hooks/use-api.js";
 import { setTauriBridge } from "../hooks/tauri-api-bridge.js";
 
-export type InkosMode = "standalone" | "relay" | "tauri";
+export type NovelForkMode = "standalone" | "relay" | "tauri";
 
-interface InkOSContextValue {
+interface NovelForkContextValue {
   readonly storage: ClientStorageAdapter;
   readonly ai: AIClient;
-  readonly mode: InkosMode;
+  readonly mode: NovelForkMode;
   readonly selectWorkspace?: () => Promise<string | null>;
   readonly workspace?: string | null;
   readonly tauriAuthenticated?: boolean;
@@ -28,7 +28,7 @@ interface InkOSContextValue {
   readonly skipAuth?: () => void;
 }
 
-const InkOSContext = createContext<InkOSContextValue | null>(null);
+const NovelForkContext = createContext<NovelForkContextValue | null>(null);
 
 function isTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -38,8 +38,8 @@ function isTauri(): boolean {
 const httpStorage = new HttpStorageAdapter();
 const httpAI = new HttpAIClient();
 
-export function InkOSProvider({ children }: { children: React.ReactNode }) {
-  const [ctx, setCtx] = useState<InkOSContextValue>({
+export function NovelForkProvider({ children }: { children: React.ReactNode }) {
+  const [ctx, setCtx] = useState<NovelForkContextValue>({
     storage: httpStorage,
     ai: httpAI,
     mode: "standalone",
@@ -62,18 +62,18 @@ export function InkOSProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <InkOSContext.Provider value={ctx}>
+    <NovelForkContext.Provider value={ctx}>
       {children}
-    </InkOSContext.Provider>
+    </NovelForkContext.Provider>
   );
 }
 
-async function initTauriMode(setCtx: (v: InkOSContextValue) => void): Promise<void> {
+async function initTauriMode(setCtx: (v: NovelForkContextValue) => void): Promise<void> {
   const { TauriStorageAdapter, setWorkspace, getWorkspace } = await import("../storage/tauri-adapter.js");
   const { RelayAIClient } = await import("../ai/relay-client.js");
 
   // Try to restore last workspace from localStorage
-  const saved = localStorage.getItem("inkos-workspace");
+  const saved = localStorage.getItem("novelfork-workspace");
   if (saved) setWorkspace(saved);
 
   const storage = new TauriStorageAdapter();
@@ -82,18 +82,18 @@ async function initTauriMode(setCtx: (v: InkOSContextValue) => void): Promise<vo
   setTauriBridge(storage);
 
   // Relay URL defaults to production; can be overridden via localStorage
-  const relayUrl = localStorage.getItem("inkos-relay-url") ?? "https://inkos.vivy1024.cc";
+  const relayUrl = localStorage.getItem("novelfork-relay-url") ?? "https://inkos.vivy1024.cc";
 
   const ai = new RelayAIClient({
     relayUrl,
     storage,
     getAuthHeaders: async (): Promise<Record<string, string>> => {
-      const token = localStorage.getItem("inkos-auth-token");
+      const token = localStorage.getItem("novelfork-auth-token");
       if (token) return { Authorization: `Bearer ${token}` };
       return {};
     },
     getLLMConfig: async () => {
-      const raw = localStorage.getItem("inkos-llm-config");
+      const raw = localStorage.getItem("novelfork-llm-config");
       if (raw) return JSON.parse(raw);
       return { apiKey: "", baseUrl: "", model: "gpt-4o" };
     },
@@ -105,12 +105,12 @@ async function initTauriMode(setCtx: (v: InkOSContextValue) => void): Promise<vo
     const folder = await mod.invoke("select_workspace");
     if (folder) {
       setWorkspace(folder);
-      localStorage.setItem("inkos-workspace", folder);
+      localStorage.setItem("novelfork-workspace", folder);
     }
     return folder;
   };
 
-  const hasAuth = Boolean(localStorage.getItem("inkos-auth-token"));
+  const hasAuth = Boolean(localStorage.getItem("novelfork-auth-token"));
 
   // Skip auth — allow offline use without a relay token
   const skipAuth = (): void => {
@@ -142,7 +142,7 @@ async function initTauriMode(setCtx: (v: InkOSContextValue) => void): Promise<vo
       try {
         const payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
         if (payload.llm_api_key || payload.llm_base_url) {
-          localStorage.setItem("inkos-llm-config", JSON.stringify({
+          localStorage.setItem("novelfork-llm-config", JSON.stringify({
             apiKey: payload.llm_api_key ?? "",
             baseUrl: payload.llm_base_url ?? "",
             model: payload.llm_model ?? "gpt-4o",
@@ -153,7 +153,7 @@ async function initTauriMode(setCtx: (v: InkOSContextValue) => void): Promise<vo
     }
 
     // Store auth token for relay requests
-    localStorage.setItem("inkos-auth-token", token);
+    localStorage.setItem("novelfork-auth-token", token);
 
     // Update context with authenticated state
     setCtx({
@@ -166,7 +166,7 @@ async function initTauriMode(setCtx: (v: InkOSContextValue) => void): Promise<vo
   };
 
   // Build initial context
-  const buildCtx = (): InkOSContextValue => ({
+  const buildCtx = (): NovelForkContextValue => ({
     storage, ai, mode: "tauri", selectWorkspace,
     workspace: getWorkspace(),
     tauriAuthenticated: hasAuth,
@@ -176,11 +176,11 @@ async function initTauriMode(setCtx: (v: InkOSContextValue) => void): Promise<vo
 
   setCtx(buildCtx());
 
-  // Listen for deep link events (inkos://launch?token=xxx)
+  // Listen for deep link events (novelfork://launch?token=xxx)
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const eventMod = await import("@tauri-apps/api/event") as any;
-    eventMod.listen("inkos-launch", (event: { payload: string }) => {
+    eventMod.listen("novelfork-launch", (event: { payload: string }) => {
       if (event.payload) {
         loginWithToken(event.payload).catch(console.error);
       }
@@ -188,8 +188,8 @@ async function initTauriMode(setCtx: (v: InkOSContextValue) => void): Promise<vo
   } catch { /* deep link listener not available */ }
 }
 
-export function useInkOS(): InkOSContextValue {
-  const ctx = useContext(InkOSContext);
-  if (!ctx) throw new Error("useInkOS must be used within <InkOSProvider>");
+export function useNovelFork(): NovelForkContextValue {
+  const ctx = useContext(NovelForkContext);
+  if (!ctx) throw new Error("useNovelFork must be used within <NovelForkProvider>");
   return ctx;
 }

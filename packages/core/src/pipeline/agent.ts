@@ -313,7 +313,7 @@ export async function runAgentLoop(
   const messages: AgentMessage[] = [
     {
       role: "system",
-      content: `你是 InkOS 小说写作 Agent。用户是小说作者，你帮他管理从建书到成稿的全过程。
+      content: `你是 NovelFork 小说写作 Agent。用户是小说作者，你帮他管理从建书到成稿的全过程。
 
 ## 工具
 

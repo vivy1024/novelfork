@@ -40,7 +40,7 @@ const logger = {
   error: vi.fn(),
 };
 
-vi.mock("@actalk/inkos-core", () => {
+vi.mock("@actalk/novelfork-core", () => {
   class MockStateManager {
     constructor(private readonly root: string) {}
 
@@ -130,7 +130,7 @@ vi.mock("@actalk/inkos-core", () => {
       profile: { language: "zh", name: genreId },
       body: "# Genre body",
     })),
-    GLOBAL_ENV_PATH: join(tmpdir(), "inkos-global.env"),
+    GLOBAL_ENV_PATH: join(tmpdir(), "novelfork-global.env"),
     splitChapters: vi.fn(function* (text: string) {
       yield { title: "Chapter 1", content: text };
     }),
@@ -143,7 +143,7 @@ vi.mock("@actalk/inkos-core", () => {
       vocabulary: [],
       sentencePatterns: [],
     })),
-    getBuiltinGenresDir: vi.fn(() => join(tmpdir(), "inkos-builtin-genres")),
+    getBuiltinGenresDir: vi.fn(() => join(tmpdir(), "novelfork-builtin-genres")),
   };
 });
 
@@ -189,10 +189,10 @@ describe("server integration — core 20 endpoints", () => {
   let app: Hono;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "inkos-integ-"));
+    root = await mkdtemp(join(tmpdir(), "novelfork-integ-"));
     await mkdir(join(root, "books"), { recursive: true });
     await writeFile(
-      join(root, "inkos.json"),
+      join(root, "novelfork.json"),
       JSON.stringify(projectConfig, null, 2),
       "utf-8",
     );
@@ -256,7 +256,7 @@ describe("server integration — core 20 endpoints", () => {
 
     loadProjectConfigMock.mockImplementation(async () => {
       const raw = JSON.parse(
-        await readFile(join(root, "inkos.json"), "utf-8"),
+        await readFile(join(root, "novelfork.json"), "utf-8"),
       ) as Record<string, unknown>;
       return {
         ...cloneConfig(),
@@ -701,7 +701,7 @@ describe("server integration — core 20 endpoints", () => {
 
       // Verify persisted changes
       const raw = JSON.parse(
-        await readFile(join(root, "inkos.json"), "utf-8"),
+        await readFile(join(root, "novelfork.json"), "utf-8"),
       );
       expect(raw.llm.temperature).toBe(0.3);
       expect(raw.llm.maxTokens).toBe(2048);
@@ -713,7 +713,7 @@ describe("server integration — core 20 endpoints", () => {
       expect(res.status).toBe(200);
 
       const raw = JSON.parse(
-        await readFile(join(root, "inkos.json"), "utf-8"),
+        await readFile(join(root, "novelfork.json"), "utf-8"),
       );
       expect(raw.language).toBe("en");
     });
@@ -724,7 +724,7 @@ describe("server integration — core 20 endpoints", () => {
       expect(res.status).toBe(200);
 
       const raw = JSON.parse(
-        await readFile(join(root, "inkos.json"), "utf-8"),
+        await readFile(join(root, "novelfork.json"), "utf-8"),
       );
       // Should still be original value since "fr" is not zh|en
       expect(raw.language).toBe("zh");
@@ -736,7 +736,7 @@ describe("server integration — core 20 endpoints", () => {
       expect(res.status).toBe(200);
 
       const raw = JSON.parse(
-        await readFile(join(root, "inkos.json"), "utf-8"),
+        await readFile(join(root, "novelfork.json"), "utf-8"),
       );
       expect(raw.llm.stream).toBe(true);
     });
@@ -1041,14 +1041,14 @@ describe("server integration — core 20 endpoints", () => {
 
     it("returns configured model overrides from inkos.json", async () => {
       const config = JSON.parse(
-        await readFile(join(root, "inkos.json"), "utf-8"),
+        await readFile(join(root, "novelfork.json"), "utf-8"),
       );
       config.modelOverrides = {
         outline: "claude-sonnet-4-20250514",
         audit: { model: "gpt-4o", provider: "openai" },
       };
       await writeFile(
-        join(root, "inkos.json"),
+        join(root, "novelfork.json"),
         JSON.stringify(config, null, 2),
         "utf-8",
       );
@@ -1081,7 +1081,7 @@ describe("server integration — core 20 endpoints", () => {
 
       // Verify persisted
       const raw = JSON.parse(
-        await readFile(join(root, "inkos.json"), "utf-8"),
+        await readFile(join(root, "novelfork.json"), "utf-8"),
       );
       expect(raw.modelOverrides.write).toBe("claude-sonnet-4-20250514");
     });

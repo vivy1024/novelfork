@@ -39,7 +39,7 @@ export function useVerticalResizable({
   initialHeight,
   minHeight,
   maxHeight,
-  storageKey = "inkos-panel-bottom",
+  storageKey = "novelfork-panel-bottom",
 }: UseVerticalResizableOptions): UseVerticalResizableResult {
   const [height, setHeight] = useState(() => {
     const stored = readStored(storageKey, initialHeight);

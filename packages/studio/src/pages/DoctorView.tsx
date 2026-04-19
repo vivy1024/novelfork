@@ -2,7 +2,7 @@ import { useApi } from "../hooks/use-api";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
 import { useColors } from "../hooks/use-colors";
-import { useInkOS } from "../providers/inkos-context";
+import { useNovelFork } from "../providers/novelfork-context";
 import { Stethoscope, CheckCircle2, XCircle, Loader2 } from "lucide-react";
 
 interface DoctorChecks {
@@ -32,7 +32,7 @@ function CheckRow({ label, ok, detail }: { label: string; ok: boolean; detail?: 
 
 export function DoctorView({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunction }) {
   const c = useColors(theme);
-  const { mode } = useInkOS();
+  const { mode } = useNovelFork();
   const isTauri = mode === "tauri";
   const { data, refetch } = useApi<DoctorChecks>("/doctor");
 

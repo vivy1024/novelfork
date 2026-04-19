@@ -372,7 +372,7 @@ interface DailyStats {
 }
 
 const DEFAULT_DAILY_TARGET = 6000;
-const STORAGE_KEY = "inkos-daily-target";
+const STORAGE_KEY = "novelfork-daily-target";
 
 function DailyTargetPanel({ theme }: { theme: Theme }) {
   const c = useColors(theme);

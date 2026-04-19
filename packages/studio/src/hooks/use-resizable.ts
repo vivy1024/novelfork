@@ -18,7 +18,7 @@ interface UseResizableResult {
 }
 
 function storageKey(side: string): string {
-  return `inkos-panel-${side}`;
+  return `novelfork-panel-${side}`;
 }
 
 function readStored(side: string, fallback: number): number {

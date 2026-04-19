@@ -5,7 +5,7 @@ import type { TFunction } from "../hooks/use-i18n";
 import { useColors } from "../hooks/use-colors";
 import type { SSEMessage } from "../hooks/use-sse";
 import { shouldRefetchDaemonStatus } from "../hooks/use-book-activity";
-import { useInkOS } from "../providers/inkos-context";
+import { useNovelFork } from "../providers/novelfork-context";
 
 interface Nav {
   toDashboard: () => void;
@@ -28,7 +28,7 @@ export function DaemonControl({ nav, theme, t, sse }: { nav: Nav; theme: Theme; 
   const { data, refetch } = useApi<DaemonData>("/daemon");
   const [loading, setLoading] = useState(false);
   const [intervalMin, setIntervalMin] = useState(5);
-  const { mode } = useInkOS();
+  const { mode } = useNovelFork();
   const isTauri = mode === "tauri";
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 

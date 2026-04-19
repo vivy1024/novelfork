@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { DEFAULT_REVISE_MODE, PipelineRunner, type ReviseMode } from "@actalk/inkos-core";
+import { DEFAULT_REVISE_MODE, PipelineRunner, type ReviseMode } from "@actalk/novelfork-core";
 import { loadConfig, buildPipelineConfig, findProjectRoot, resolveBookId, log, logError } from "../utils.js";
 
 export const reviseCommand = new Command("revise")

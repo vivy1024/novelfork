@@ -103,7 +103,7 @@ export const useWindowStore = create<WindowStore>()(
         })),
     }),
     {
-      name: "inkos-chat-windows",
+      name: "novelfork-chat-windows",
       partialize: (state) => ({
         windows: state.windows.map((w) => ({
           ...w,

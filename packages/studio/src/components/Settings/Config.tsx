@@ -29,7 +29,7 @@ interface SettingsState {
   modelId: string;
 }
 
-const DB_NAME = "inkos-settings";
+const DB_NAME = "novelfork-settings";
 const DB_VERSION = 1;
 const STORE_NAME = "config";
 

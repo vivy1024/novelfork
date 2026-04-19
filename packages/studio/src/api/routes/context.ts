@@ -3,7 +3,7 @@
  * Keeps route files decoupled from global singletons.
  */
 
-import type { StateManager, PipelineConfig } from "@actalk/inkos-core";
+import type { StateManager, PipelineConfig } from "@actalk/novelfork-core";
 import type { RunStore } from "../lib/run-store.js";
 import type { Context } from "hono";
 

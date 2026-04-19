@@ -9,7 +9,7 @@
  * Gracefully degrades if IndexedDB is unavailable.
  */
 
-const DB_NAME = "inkos-studio";
+const DB_NAME = "novelfork-studio";
 const DB_VERSION = 1;
 const TABS_STORE = "tabs";
 const DRAFTS_STORE = "drafts";

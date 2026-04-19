@@ -2,7 +2,7 @@ import { Command } from "commander";
 import { access, readFile, rm } from "node:fs/promises";
 import { createInterface } from "node:readline";
 import { join, resolve } from "node:path";
-import { PipelineRunner, StateManager, type BookConfig } from "@actalk/inkos-core";
+import { PipelineRunner, StateManager, type BookConfig } from "@actalk/novelfork-core";
 import {
   formatBookCreateCreated,
   formatBookCreateCreating,
@@ -83,7 +83,7 @@ bookCommand
           genre: book.genre,
           platform: book.platform,
           location: `books/${bookId}/`,
-          nextStep: `inkos write next ${bookId}`,
+          nextStep: `novelfork write next ${bookId}`,
         }, null, 2));
       } else {
         log(formatBookCreateCreated(language, bookId));
@@ -175,7 +175,7 @@ bookCommand
         if (opts.json) {
           log(JSON.stringify({ books: [] }));
         } else {
-          log("No books found. Create one with: inkos book create --title '...'");
+          log("No books found. Create one with: novelfork book create --title '...'");
         }
         return;
       }

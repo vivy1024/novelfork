@@ -162,9 +162,9 @@ interface CallLLMOptions {
   readonly maxTokens?: number;
 }
 
-const PROFILES_KEY = "inkos-llm-profiles";
-const ACTIVE_KEY = "inkos-llm-active";
-const LEGACY_KEY = "inkos-llm-config";
+const PROFILES_KEY = "novelfork-llm-profiles";
+const ACTIVE_KEY = "novelfork-llm-active";
+const LEGACY_KEY = "novelfork-llm-config";
 
 /** 读取所有 LLM 配置 */
 function loadAllProfiles(): LLMProfile[] {
@@ -741,7 +741,7 @@ export async function tauriFetch<T>(path: string, init?: RequestInit): Promise<T
   // GET /api/project/model-overrides — 读取模型路由覆盖
   if (path === "/api/project/model-overrides" && method === "GET") {
     try {
-      const raw = await invoke<string>("read_file_text", { path: join(ws(), "inkos.json") });
+      const raw = await invoke<string>("read_file_text", { path: join(ws(), "novelfork.json") });
       const config = JSON.parse(raw) as Record<string, unknown>;
       return { overrides: config.modelOverrides ?? {} } as T;
     } catch {
@@ -751,7 +751,7 @@ export async function tauriFetch<T>(path: string, init?: RequestInit): Promise<T
 
   // PUT /api/project/model-overrides — 保存模型路由覆盖
   if (path === "/api/project/model-overrides" && method === "PUT") {
-    const configPath = join(ws(), "inkos.json");
+    const configPath = join(ws(), "novelfork.json");
     let config: Record<string, unknown> = {};
     try {
       const raw = await invoke<string>("read_file_text", { path: configPath });
@@ -1337,7 +1337,7 @@ export async function tauriFetch<T>(path: string, init?: RequestInit): Promise<T
     let inkosJson = false;
     if (workspace) {
       try {
-        const raw = await invoke<string>("read_file_text", { path: join(workspace, "inkos.json") });
+        const raw = await invoke<string>("read_file_text", { path: join(workspace, "novelfork.json") });
         JSON.parse(raw);
         inkosJson = true;
       } catch { /* 不存在或解析失败 */ }

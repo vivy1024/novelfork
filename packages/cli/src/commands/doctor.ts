@@ -45,10 +45,10 @@ export const doctorCommand = new Command("doctor")
 
     // 2. Check inkos.json exists
     try {
-      await readFile(join(root, "inkos.json"), "utf-8");
-      checks.push({ name: "inkos.json", ok: true, detail: "Found" });
+      await readFile(join(root, "novelfork.json"), "utf-8");
+      checks.push({ name: "novelfork.json", ok: true, detail: "Found" });
     } catch {
-      checks.push({ name: "inkos.json", ok: false, detail: "Not found. Run 'inkos init'" });
+      checks.push({ name: "novelfork.json", ok: false, detail: "Not found. Run 'inkos init'" });
     }
 
     // 3. Check .env exists
@@ -64,12 +64,12 @@ export const doctorCommand = new Command("doctor")
       let hasGlobal = false;
       try {
         const globalContent = await readFile(GLOBAL_ENV_PATH, "utf-8");
-        hasGlobal = globalContent.includes("INKOS_LLM_API_KEY=") && !globalContent.includes("your-api-key-here");
+        hasGlobal = globalContent.includes("NOVELFORK_LLM_API_KEY=") && !globalContent.includes("your-api-key-here");
       } catch { /* no global config */ }
       checks.push({
         name: "Global Config",
         ok: hasGlobal,
-        detail: hasGlobal ? `Found (${GLOBAL_ENV_PATH})` : "Not set. Run 'inkos config set-global'",
+        detail: hasGlobal ? `Found (${GLOBAL_ENV_PATH})` : "Not set. Run 'novelfork config set-global'",
       });
     }
 
@@ -79,9 +79,9 @@ export const doctorCommand = new Command("doctor")
       const { config: loadDotenv } = await import("dotenv");
       loadDotenv({ path: GLOBAL_ENV_PATH });
       loadDotenv({ path: join(root, ".env"), override: true });
-      const { isApiKeyOptionalForEndpoint } = await import("@actalk/inkos-core");
-      let provider = process.env.INKOS_LLM_PROVIDER;
-      let baseUrl = process.env.INKOS_LLM_BASE_URL;
+      const { isApiKeyOptionalForEndpoint } = await import("@actalk/novelfork-core");
+      let provider = process.env.NOVELFORK_LLM_PROVIDER;
+      let baseUrl = process.env.NOVELFORK_LLM_BASE_URL;
       try {
         const config = await loadConfig({ requireApiKey: false });
         provider = config.llm.provider;
@@ -89,7 +89,7 @@ export const doctorCommand = new Command("doctor")
       } catch {
         // Fall back to raw env inspection only.
       }
-      const apiKey = process.env.INKOS_LLM_API_KEY;
+      const apiKey = process.env.NOVELFORK_LLM_API_KEY;
       const apiKeyOptional = isApiKeyOptionalForEndpoint({ provider, baseUrl });
       const hasKey = apiKeyOptional || (!!apiKey && apiKey.length > 10 && apiKey !== "your-api-key-here");
       checks.push({
@@ -99,13 +99,13 @@ export const doctorCommand = new Command("doctor")
           ? "Optional for local/self-hosted endpoint"
           : hasKey
             ? "Configured"
-            : "Missing — run 'inkos config set-global' or add to project .env",
+            : "Missing — run 'novelfork config set-global' or add to project .env",
       });
     }
 
     // 5. Check books directory
     try {
-      const { StateManager } = await import("@actalk/inkos-core");
+      const { StateManager } = await import("@actalk/novelfork-core");
       const state = new StateManager(root);
       const books = await state.listBooks();
       checks.push({
@@ -122,7 +122,7 @@ export const doctorCommand = new Command("doctor")
       const { existsSync } = await import("node:fs");
       const hasStructuredState = existsSync(join(root, "books"));
       if (hasStructuredState) {
-        const { StateManager } = await import("@actalk/inkos-core");
+        const { StateManager } = await import("@actalk/novelfork-core");
         const sm = new StateManager(root);
         const bookIds = await sm.listBooks();
         let legacyCount = 0;
@@ -135,7 +135,7 @@ export const doctorCommand = new Command("doctor")
           checks.push({
             name: "Version Migration",
             ok: false,
-            detail: `${legacyCount} book(s) using legacy format (pre-v0.6). Run 'inkos write next' on each to auto-migrate, or re-init with 'inkos init'.`,
+            detail: `${legacyCount} book(s) using legacy format (pre-v0.6). Run 'novelfork write next' on each to auto-migrate, or re-init with 'inkos init'.`,
           });
         } else if (bookIds.length > 0) {
           checks.push({
@@ -149,7 +149,7 @@ export const doctorCommand = new Command("doctor")
 
     // 6. API connectivity test
     try {
-      const { createLLMClient, chatCompletion, LLMConfigSchema, isApiKeyOptionalForEndpoint } = await import("@actalk/inkos-core");
+      const { createLLMClient, chatCompletion, LLMConfigSchema, isApiKeyOptionalForEndpoint } = await import("@actalk/novelfork-core");
       const { loadConfig } = await import("../utils.js");
 
       let llmConfig;
@@ -162,15 +162,15 @@ export const doctorCommand = new Command("doctor")
         loadDotenv({ path: GLOBAL_ENV_PATH });
         const env = process.env;
         const apiKeyOptional = isApiKeyOptionalForEndpoint({
-          provider: env.INKOS_LLM_PROVIDER,
-          baseUrl: env.INKOS_LLM_BASE_URL,
+          provider: env.NOVELFORK_LLM_PROVIDER,
+          baseUrl: env.NOVELFORK_LLM_BASE_URL,
         });
-        if ((env.INKOS_LLM_API_KEY || apiKeyOptional) && env.INKOS_LLM_BASE_URL && env.INKOS_LLM_MODEL) {
+        if ((env.NOVELFORK_LLM_API_KEY || apiKeyOptional) && env.NOVELFORK_LLM_BASE_URL && env.NOVELFORK_LLM_MODEL) {
           llmConfig = LLMConfigSchema.parse({
-            provider: env.INKOS_LLM_PROVIDER ?? "custom",
-            baseUrl: env.INKOS_LLM_BASE_URL,
-            apiKey: env.INKOS_LLM_API_KEY ?? "",
-            model: env.INKOS_LLM_MODEL,
+            provider: env.NOVELFORK_LLM_PROVIDER ?? "custom",
+            baseUrl: env.NOVELFORK_LLM_BASE_URL,
+            apiKey: env.NOVELFORK_LLM_API_KEY ?? "",
+            model: env.NOVELFORK_LLM_MODEL,
           });
         }
       }
@@ -205,14 +205,14 @@ export const doctorCommand = new Command("doctor")
       const hints: string[] = [];
 
       if (errMsg.includes("Connection error") || errMsg.includes("ECONNREFUSED") || errMsg.includes("fetch failed")) {
-        hints.push("baseUrl 可能不正确，检查 INKOS_LLM_BASE_URL 是否包含完整路径（如 /v1）");
+        hints.push("baseUrl 可能不正确，检查 NOVELFORK_LLM_BASE_URL 是否包含完整路径（如 /v1）");
       }
       if (errMsg.includes("400")) {
         hints.push("检查提供方文档，确认该接口要求 stream=true、stream=false，还是根本不支持 stream");
-        hints.push("检查模型名称是否正确（INKOS_LLM_MODEL）");
+        hints.push("检查模型名称是否正确（NOVELFORK_LLM_MODEL）");
       }
       if (errMsg.includes("401")) {
-        hints.push("API Key 无效，检查 INKOS_LLM_API_KEY");
+        hints.push("API Key 无效，检查 NOVELFORK_LLM_API_KEY");
       }
 
       checks.push({
@@ -229,7 +229,7 @@ export const doctorCommand = new Command("doctor")
     }
 
     // Output
-    log("\nInkOS Doctor\n");
+    log("\nNovelFork Doctor\n");
     for (const check of checks) {
       const icon = check.ok ? "[OK]" : "[!!]";
       log(`  ${icon} ${check.name}: ${check.detail}`);

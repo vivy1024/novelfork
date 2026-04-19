@@ -355,7 +355,7 @@ export function useI18n() {
   const { data } = useApi<{ language: string }>(skipApi ? null : "/project");
 
   const lang: Lang = skipApi
-    ? ((localStorage.getItem("inkos-language") ?? "zh") as Lang)
+    ? ((localStorage.getItem("novelfork-language") ?? "zh") as Lang)
     : data?.language === "en"
       ? "en"
       : "zh";

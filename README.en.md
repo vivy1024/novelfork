@@ -20,7 +20,7 @@
 
 Open-source CLI AI Agent that autonomously writes, audits, and revises novels — with human review gates that keep you in control. Supports LitRPG, Progression Fantasy, Isekai, Romantasy, Sci-Fi, and more. Continuation, spinoff, fanfic, and style imitation workflows built in.
 
-**InkOS Studio is here!** — run `inkos studio` to launch a local web workbench. Book management, chapter review & editing, real-time writing progress, market radar, analytics, AI detection, style analysis, genre management, daemon control, truth file editing — everything the CLI does, now visual.
+**NovelFork Studio is here!** — run `inkos studio` to launch a local web workbench. Book management, chapter review & editing, real-time writing progress, market radar, analytics, AI detection, style analysis, genre management, daemon control, truth file editing — everything the CLI does, now visual.
 
 **Native English novel writing now supported！** — 10 built-in English genre profiles with dedicated pacing rules, fatigue word lists, and audit dimensions. Set `--lang en` and go.
 
@@ -104,9 +104,9 @@ Agents without explicit overrides fall back to the global model.
 
 ### v1 Update
 
-**InkOS Studio + Writing Pipeline Overhaul**
+**NovelFork Studio + Writing Pipeline Overhaul**
 
-- **InkOS Studio** (v1.0): `inkos studio` launches a local web workbench (Vite + React + Hono). Book management, chapter review & editing, real-time writing progress, market radar, analytics, AI detection, style analysis, genre management, daemon control, truth file editing — everything the CLI does, now visual
+- **NovelFork Studio** (v1.0): `inkos studio` launches a local web workbench (Vite + React + Hono). Book management, chapter review & editing, real-time writing progress, market radar, analytics, AI detection, style analysis, genre management, daemon control, truth file editing — everything the CLI does, now visual
 - **Foundation Reviewer** (v1.1): independent review agent at book creation, 5-dimension scoring (canon DNA, new narrative space, core conflict, opening pacing, pacing viability), auto-reject below 80
 - **Hook Seed Excerpt** (v1.1): when resolving hooks, Composer extracts original seed scene excerpts into Writer context so payoff scenes are grounded in concrete narrative
 - **Review Reject Rollback** (v1.1): `inkos review reject` rolls back state to the pre-chapter snapshot, discards downstream chapters and memory index

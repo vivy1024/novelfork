@@ -40,7 +40,7 @@ describe("loadProjectConfig local provider auth", () => {
       process.env[key] = "";
     }
 
-    await writeFile(join(root, "inkos.json"), JSON.stringify({
+    await writeFile(join(root, "novelfork.json"), JSON.stringify({
       name: "local-project",
       version: "0.1.0",
       llm: {
@@ -65,7 +65,7 @@ describe("loadProjectConfig local provider auth", () => {
       process.env[key] = "";
     }
 
-    await writeFile(join(root, "inkos.json"), JSON.stringify({
+    await writeFile(join(root, "novelfork.json"), JSON.stringify({
       name: "remote-project",
       version: "0.1.0",
       llm: {

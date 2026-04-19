@@ -3,7 +3,7 @@ import { useEffect, useState, useCallback } from "react";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
 import { useColors } from "../hooks/use-colors";
-import { useInkOS } from "../providers/inkos-context";
+import { useNovelFork } from "../providers/novelfork-context";
 import { FolderOpen, Plus, Trash2, Check, Zap, Pencil, ExternalLink } from "lucide-react";
 
 const ROUTING_AGENTS = [
@@ -63,7 +63,7 @@ export function normalizeOverridesDraft(
 
 export function ConfigView({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunction }) {
   const c = useColors(theme);
-  const { mode, workspace, selectWorkspace } = useInkOS();
+  const { mode, workspace, selectWorkspace } = useNovelFork();
   const isTauri = mode === "tauri";
   const isStandalone = mode === "standalone";
   const { data, loading, error, refetch } = useApi<ProjectInfo>(isTauri ? null : "/project");

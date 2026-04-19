@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useInkOS } from "../providers/inkos-context";
+import { useNovelFork } from "../providers/novelfork-context";
 import { useI18n } from "../hooks/use-i18n";
 
 type UpdateState =
@@ -10,7 +10,7 @@ type UpdateState =
   | { phase: "error"; message: string };
 
 export function UpdateChecker() {
-  const { mode } = useInkOS();
+  const { mode } = useNovelFork();
   const { t } = useI18n();
   const [state, setState] = useState<UpdateState>({ phase: "checking" });
 

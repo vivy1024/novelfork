@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { StateManager, formatLengthCount, readGenreProfile, resolveLengthCountingMode } from "@actalk/inkos-core";
+import { StateManager, formatLengthCount, readGenreProfile, resolveLengthCountingMode } from "@actalk/novelfork-core";
 import { findProjectRoot, getLegacyMigrationHint, log, logError } from "../utils.js";
 
 export const statusCommand = new Command("status")
@@ -24,7 +24,7 @@ export const statusCommand = new Command("status")
       const booksData = [];
 
       if (!opts.json) {
-        log(`InkOS Project: ${root}`);
+        log(`NovelFork Project: ${root}`);
         log(`Books: ${allBookIds.length}`);
         log("");
       }

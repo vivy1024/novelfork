@@ -99,7 +99,7 @@ export async function resolveStudioLaunch(root: string): Promise<StudioLaunchSpe
 }
 
 export const studioCommand = new Command("studio")
-  .description("Start InkOS Studio web workbench")
+  .description("Start NovelFork Studio web workbench")
   .option("-p, --port <port>", "Server port", "4567")
   .action(async (opts) => {
     const root = findProjectRoot();
@@ -109,19 +109,19 @@ export const studioCommand = new Command("studio")
 
     if (!launch) {
       logError(
-        "InkOS Studio not found. If you cloned the repo, run:\n" +
+        "NovelFork Studio not found. If you cloned the repo, run:\n" +
         "  cd packages/studio && pnpm install && pnpm build\n" +
         "Then run 'inkos studio' from the project root.",
       );
       process.exit(1);
     }
 
-    log(`Starting InkOS Studio on ${url}`);
+    log(`Starting NovelFork Studio on ${url}`);
 
     const child = spawn(launch.command, launch.args, {
       cwd: root,
       stdio: "inherit",
-      env: { ...process.env, INKOS_STUDIO_PORT: port },
+      env: { ...process.env, NOVELFORK_STUDIO_PORT: port },
     });
 
     child.on("error", (e) => {

@@ -14,7 +14,7 @@ export interface Session {
   worktree?: string;
 }
 
-const DB_NAME = "inkos-studio";
+const DB_NAME = "novelfork-studio";
 const DB_VERSION = 2;
 const SESSION_STORE = "sessions";
 

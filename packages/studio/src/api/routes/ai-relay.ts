@@ -17,7 +17,7 @@ import {
   createLogger,
   type PipelineConfig,
   type LLMConfig,
-} from "@actalk/inkos-core";
+} from "@actalk/novelfork-core";
 import type { RouterContext } from "./context.js";
 
 interface SnapshotChapter {
@@ -61,7 +61,7 @@ async function materializeSnapshot(
   snapshot: RelaySnapshot,
 ): Promise<string> {
   const runId = randomUUID();
-  const root = join(tmpdir(), `inkos-relay-${runId}`);
+  const root = join(tmpdir(), `novelfork-relay-${runId}`);
   const bookDir = join(root, "books", snapshot.bookId);
   const storyDir = join(bookDir, "story");
   const chaptersDir = join(bookDir, "chapters");
@@ -108,7 +108,7 @@ async function materializeSnapshot(
 
   // Minimal inkos.json so PipelineRunner doesn't crash
   await writeFile(
-    join(root, "inkos.json"),
+    join(root, "novelfork.json"),
     JSON.stringify({ name: "relay-run", version: "0.1.0", language: (snapshot.bookConfig.language as string) ?? "zh", llm: {} }, null, 2),
     "utf-8",
   );
@@ -255,7 +255,7 @@ export function createAIRelayRouter(_ctx: RouterContext): Hono {
     const { content } = await c.req.json<{ content: string }>();
     if (!content?.trim()) return c.json({ error: "content is required" }, 400);
     try {
-      const { analyzeAITells } = await import("@actalk/inkos-core");
+      const { analyzeAITells } = await import("@actalk/novelfork-core");
       const result = analyzeAITells(content);
       return c.json(result);
     } catch (e) {
@@ -268,7 +268,7 @@ export function createAIRelayRouter(_ctx: RouterContext): Hono {
     const { text, sourceName } = await c.req.json<{ text: string; sourceName: string }>();
     if (!text?.trim()) return c.json({ error: "text is required" }, 400);
     try {
-      const { analyzeStyle } = await import("@actalk/inkos-core");
+      const { analyzeStyle } = await import("@actalk/novelfork-core");
       const profile = analyzeStyle(text, sourceName ?? "unknown");
       return c.json(profile);
     } catch (e) {

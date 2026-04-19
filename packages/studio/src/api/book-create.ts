@@ -1,4 +1,4 @@
-import type { Platform } from "@actalk/inkos-core";
+import type { Platform } from "@actalk/novelfork-core";
 
 export interface StudioCreateBookBody {
   readonly title: string;

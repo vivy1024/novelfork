@@ -4,7 +4,7 @@
  */
 
 import { Hono } from "hono";
-import { MemoryDB } from "@actalk/inkos-core";
+import { MemoryDB } from "@actalk/novelfork-core";
 import type { RouterContext } from "./context.js";
 
 export function createSnapshotsRouter(ctx: RouterContext): Hono {

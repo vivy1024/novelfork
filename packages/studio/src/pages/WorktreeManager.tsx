@@ -197,7 +197,7 @@ export function WorktreeManager({ onBack }: WorktreeManagerProps) {
                 disabled={creating}
               />
               <p className="text-xs text-muted-foreground">
-                将在 .inkos-worktrees/ 目录下创建
+                将在 .novelfork-worktrees/ 目录下创建
               </p>
             </div>
 

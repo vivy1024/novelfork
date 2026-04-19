@@ -5,7 +5,7 @@ interface SortableItem {
   readonly sortOrder?: number;
 }
 
-const STORAGE_KEY = "inkos-project-sort-order";
+const STORAGE_KEY = "novelfork-project-sort-order";
 
 /**
  * 加载项目排序顺序

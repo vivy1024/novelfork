@@ -3,7 +3,7 @@
  * Writes recovery files on content changes; detects stale recovery on app start.
  */
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useInkOS } from "../providers/inkos-context";
+import { useNovelFork } from "../providers/novelfork-context";
 
 interface RecoveryEntry {
   readonly bookId: string;
@@ -42,7 +42,7 @@ function parseRecoveryFilename(name: string): { bookId: string; chapterNumber: n
 }
 
 async function loadRecoveryEntries(workspace: string): Promise<RecoveryEntry[]> {
-  const recoveryDir = join(workspace, ".inkos-recovery");
+  const recoveryDir = join(workspace, ".novelfork-recovery");
   const entries = await invoke<Array<{ name: string; is_dir: boolean }>>("list_dir", { path: recoveryDir }).catch(() => []);
   const results: RecoveryEntry[] = [];
   for (const e of entries) {
@@ -58,7 +58,7 @@ async function loadRecoveryEntries(workspace: string): Promise<RecoveryEntry[]> 
 }
 
 async function pruneOldRecoveryFiles(workspace: string, bookId: string, chapterNumber: number): Promise<void> {
-  const recoveryDir = join(workspace, ".inkos-recovery");
+  const recoveryDir = join(workspace, ".novelfork-recovery");
   const entries = await invoke<Array<{ name: string; is_dir: boolean }>>("list_dir", { path: recoveryDir }).catch(() => []);
   const matching: Array<{ name: string; timestamp: number }> = [];
   for (const e of entries) {
@@ -78,7 +78,7 @@ async function pruneOldRecoveryFiles(workspace: string, bookId: string, chapterN
 export { type RecoveryEntry };
 
 export function useRecovery(): UseRecoveryReturn {
-  const { mode, workspace } = useInkOS();
+  const { mode, workspace } = useNovelFork();
   const isTauri = mode === "tauri" || (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window);
   const [entries, setEntries] = useState<ReadonlyArray<RecoveryEntry>>([]);
   const writeTimerRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
@@ -101,14 +101,14 @@ export function useRecovery(): UseRecoveryReturn {
     if (!match) throw new Error(`Chapter ${entry.chapterNumber} not found`);
     await invoke("write_file_text", { path: join(chaptersDir, match.name), content: entry.content });
     // Remove the recovery file
-    const recoveryDir = join(workspace, ".inkos-recovery");
+    const recoveryDir = join(workspace, ".novelfork-recovery");
     await invoke("delete_path", { path: join(recoveryDir, entry.filename) }).catch(() => {});
     await refresh();
   }, [workspace, refresh]);
 
   const dismissAll = useCallback(async () => {
     if (!workspace) return;
-    const recoveryDir = join(workspace, ".inkos-recovery");
+    const recoveryDir = join(workspace, ".novelfork-recovery");
     const dirEntries = await invoke<Array<{ name: string; is_dir: boolean }>>("list_dir", { path: recoveryDir }).catch(() => []);
     for (const e of dirEntries) {
       if (!e.is_dir && e.name.endsWith(".recovery")) {
@@ -125,7 +125,7 @@ export function useRecovery(): UseRecoveryReturn {
     const existing = writeTimerRef.current.get(key);
     if (existing) clearTimeout(existing);
     writeTimerRef.current.set(key, setTimeout(() => {
-      const recoveryDir = join(workspace, ".inkos-recovery");
+      const recoveryDir = join(workspace, ".novelfork-recovery");
       const filename = `${bookId}_${chapterNumber}_${Date.now()}.recovery`;
       void (async () => {
         await invoke("ensure_dir", { path: recoveryDir });
@@ -142,7 +142,7 @@ export function useRecovery(): UseRecoveryReturn {
     if (existing) clearTimeout(existing);
     writeTimerRef.current.delete(key);
     // Remove all recovery files for this chapter
-    const recoveryDir = join(workspace, ".inkos-recovery");
+    const recoveryDir = join(workspace, ".novelfork-recovery");
     void (async () => {
       const dirEntries = await invoke<Array<{ name: string; is_dir: boolean }>>("list_dir", { path: recoveryDir }).catch(() => []);
       for (const e of dirEntries) {

@@ -12,7 +12,7 @@
 
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import type { InkOSPlugin } from "./plugin-base.js";
+import type { NovelForkPlugin } from "./plugin-base.js";
 import type {
   PluginManifest,
   PluginMetadata,
@@ -46,7 +46,7 @@ export interface PluginManagerConfig {
  */
 export class PluginManager {
   private plugins = new Map<string, PluginMetadata>();
-  private instances = new Map<string, InkOSPlugin>();
+  private instances = new Map<string, NovelForkPlugin>();
   private config: PluginManagerConfig;
   private userConfigs = new Map<string, Record<string, unknown>>();
 
@@ -148,7 +148,7 @@ export class PluginManager {
       }
 
       // Instantiate plugin
-      const instance: InkOSPlugin = new PluginClass();
+      const instance: NovelForkPlugin = new PluginClass();
       this.instances.set(pluginName, instance);
 
       metadata.state = "loaded";

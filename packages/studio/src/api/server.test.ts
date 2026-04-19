@@ -24,7 +24,7 @@ const logger = {
   error: vi.fn(),
 };
 
-vi.mock("@actalk/inkos-core", () => {
+vi.mock("@actalk/novelfork-core", () => {
   class MockStateManager {
     constructor(private readonly root: string) {}
 
@@ -97,7 +97,7 @@ vi.mock("@actalk/inkos-core", () => {
     computeAnalytics: vi.fn(() => ({})),
     chatCompletion: chatCompletionMock,
     loadProjectConfig: loadProjectConfigMock,
-    GLOBAL_ENV_PATH: join(tmpdir(), "inkos-global.env"),
+    GLOBAL_ENV_PATH: join(tmpdir(), "novelfork-global.env"),
   };
 });
 
@@ -137,8 +137,8 @@ describe("createStudioServer daemon lifecycle", () => {
   let root: string;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "inkos-studio-server-"));
-    await writeFile(join(root, "inkos.json"), JSON.stringify(projectConfig, null, 2), "utf-8");
+    root = await mkdtemp(join(tmpdir(), "novelfork-studio-server-"));
+    await writeFile(join(root, "novelfork.json"), JSON.stringify(projectConfig, null, 2), "utf-8");
     schedulerStartMock.mockReset();
     initBookMock.mockReset();
     runRadarMock.mockReset();
@@ -184,7 +184,7 @@ describe("createStudioServer daemon lifecycle", () => {
     });
     loadProjectConfigMock.mockReset();
     loadProjectConfigMock.mockImplementation(async () => {
-      const raw = JSON.parse(await readFile(join(root, "inkos.json"), "utf-8")) as Record<string, unknown>;
+      const raw = JSON.parse(await readFile(join(root, "novelfork.json"), "utf-8")) as Record<string, unknown>;
       return {
         ...cloneProjectConfig(),
         ...raw,

@@ -1,10 +1,10 @@
 /**
  * Poison Detector routes — toxic pattern detection for web novels.
- * Exposes the deterministic toxic-detector from @actalk/inkos-core.
+ * Exposes the deterministic toxic-detector from @actalk/novelfork-core.
  */
 
 import { Hono } from "hono";
-import { detectToxicPatterns, type ToxicDetectionContext, loadRuntimeStateSnapshot } from "@actalk/inkos-core";
+import { detectToxicPatterns, type ToxicDetectionContext, loadRuntimeStateSnapshot } from "@actalk/novelfork-core";
 import type { RouterContext } from "./context.js";
 import { ApiError } from "../errors.js";
 
