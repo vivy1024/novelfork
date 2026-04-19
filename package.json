@@ -26,6 +26,8 @@
     "test": "pnpm -r test",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
+    "bun:main": "bun run main.ts",
+    "bun:studio": "bun run main.ts",
     "verify:publish-manifests": "node scripts/verify-no-workspace-protocol.mjs packages/core packages/cli packages/studio",
     "release": "pnpm build && pnpm test",
     "version": "pnpm -r exec npm version"

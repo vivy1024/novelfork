@@ -309,11 +309,11 @@ export async function startStudioServer(
     const defaultConfig = {
       name: "novelfork-studio",
       version: "0.1.0",
-      language: process.env.INKOS_DEFAULT_LANGUAGE ?? "zh",
+      language: process.env.NOVELFORK_DEFAULT_LANGUAGE ?? process.env.INKOS_DEFAULT_LANGUAGE ?? "zh",
       llm: {
         provider: process.env.NOVELFORK_LLM_PROVIDER ?? process.env.INKOS_LLM_PROVIDER ?? "openai",
         baseUrl: process.env.NOVELFORK_LLM_BASE_URL ?? process.env.INKOS_LLM_BASE_URL ?? "",
-        model: process.env.INKOS_LLM_MODEL ?? "gpt-4o",
+        model: process.env.NOVELFORK_LLM_MODEL ?? process.env.INKOS_LLM_MODEL ?? "gpt-4o",
       },
       notify: [],
       daemon: {
@@ -329,7 +329,7 @@ export async function startStudioServer(
   const config = await loadProjectConfig(root, { requireApiKey: false });
 
   const mode = getInkosMode();
-  console.log(`InkOS mode: ${mode}`);
+  console.log(`NovelFork mode: ${mode}`);
 
   const { app, ctx } = createStudioServer(config, root);
 
