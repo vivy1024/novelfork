@@ -1,3 +1,0 @@
-[workspace]
-members = ["packages/desktop/src-tauri"]
-resolver = "2"
