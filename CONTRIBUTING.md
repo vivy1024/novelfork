@@ -1,131 +1,95 @@
-# 贡献指南 | Contributing Guide
+# 贡献指南
 
-感谢你对 NovelFork 的关注！我们欢迎所有形式的贡献。
+感谢你对 **NovelFork** 的关注。
 
-## 快速开始
+---
+
+## 当前项目状态
+
+当前项目就是 **NovelFork**。
+
+- 上游来源：`Narcooo/inkos`
+- 当前产品身份：**NovelFork**
+- 当前方向：回归 NarraFork 风格的本地单体应用路线
+
+因此提交和讨论时，请统一使用 **NovelFork** 口径，不再把当前项目写成 InkOS。
+
+---
+
+## 从源码运行（过渡方式）
 
 ```bash
-git clone https://github.com/Narcooo/inkos.git
-cd inkos
+git clone https://github.com/vivy1024/novelfork.git novelfork
+cd novelfork
 pnpm install
 pnpm build
 pnpm test
 ```
 
-要求：Node ≥ 20, pnpm ≥ 9
+> 这是当前源码运行方式，不代表最终产品形态。
+
+---
 
 ## 项目结构
 
-```
+```text
 packages/
-  core/    # Agents, pipeline, state management, LLM providers
-  cli/     # Commander.js commands (22 commands)
-  studio/  # Web UI (Vite + React + Hono)
+  core/     # 写作引擎、状态、审计、LLM 适配
+  cli/      # 过渡期命令入口
+  studio/   # React + Hono 工作台
+  desktop/  # 历史 Tauri 壳（非当前主路线）
 ```
 
-Monorepo 使用 pnpm workspaces 管理。`cli` 通过 `workspace:*` 依赖 `core`。
+---
 
 ## 开发流程
 
 ```bash
-pnpm dev          # 监听模式（所有包）
-pnpm build        # 构建一次
-pnpm test         # 运行所有测试
-pnpm typecheck    # 类型检查
+pnpm dev
+pnpm build
+pnpm test
+pnpm typecheck
 ```
+
+如果你在做平台回正相关工作，请优先阅读：
+- `docs/02-核心架构/01-系统架构/03-平台纠偏说明.md`
+- `docs/04-开发指南/05-调研规划/01-平台迁移方案.md`
+
+---
 
 ## 提交规范
 
-遵循 [Conventional Commits](https://www.conventionalcommits.org/)：
+遵循：
 
-```
-<type>(<scope>): <description>
-
-[optional body]
+```text
+type(scope): description
 ```
 
-**Type:**
-- `feat`: 新功能
-- `fix`: Bug 修复
-- `refactor`: 重构（不改变功能）
-- `docs`: 文档更新
-- `test`: 测试相关
-- `chore`: 构建/工具链相关
-- `perf`: 性能优化
-- `ci`: CI/CD 相关
+示例：
+- `feat(core): add chapter truth validation`
+- `fix(studio): repair runtime config reload`
+- `docs(docs): reorganize documentation structure`
 
-**Scope（可选）:**
-- `core`: 核心逻辑
-- `cli`: 命令行接口
-- `studio`: Web 工作台
-- `agent`: Agent 相关
-- `pipeline`: 写作管线
+---
 
-**示例:**
-```
-feat(agent): add new auditor dimension for plot consistency
-fix(pipeline): resolve state validation failure on chapter rewrite
-docs(readme): update installation instructions
-```
-
-保持提交原子化——一次提交只做一个逻辑改动。
-
-## Pull Request 检查清单
+## PR 检查清单
 
 - [ ] `pnpm build` 通过
-- [ ] `pnpm test` 通过（包括新测试）
+- [ ] `pnpm test` 通过，或说明未通过原因
 - [ ] `pnpm typecheck` 通过
-- [ ] 新功能有对应测试
-- [ ] 没有无关的格式化改动
-- [ ] 提交信息符合规范
-- [ ] 更新了相关文档
+- [ ] 改动范围聚焦，无无关清理
+- [ ] 文档已同步更新（如适用）
 
-## 代码规范
-
-- TypeScript strict 模式
-- 2 空格缩进
-- 不可变模式：`{ ...obj, key: value }` 而非直接修改
-- 函数 < 50 行，文件 < 800 行
-- 错误必须处理，不能静默吞掉（`catch { }` 需要注释说明）
-- `workspace:*` 保留在源码 `package.json` 中（CI 发布时自动替换版本号）
-
-## 添加 CLI 命令
-
-1. 创建 `packages/cli/src/commands/<name>.ts`
-2. 导出 `Command` 实例
-3. 在 `packages/cli/src/index.ts` 中注册
-4. 添加 `--json` 输出支持
-5. 支持单书项目时自动检测 book-id
-
-## 添加题材
-
-1. 创建 `packages/core/genres/<id>.md`（YAML frontmatter）
-2. 定义：`chapterTypes`, `fatigueWords`, `numericalSystem`, `powerScaling`, `pacingRule`, `satisfactionTypes`, `auditDimensions`, `language`
-3. 编写题材正文（禁忌、语言规则、叙事指导）
-
-## 测试
-
-测试文件位于源码旁的 `__tests__/` 目录，使用 Vitest。
-
-```bash
-pnpm --filter @vivy1024/novelfork-core test    # 只测试 core
-pnpm --filter @vivy1024/novelfork test         # 只测试 cli
-```
-
-涉及 LLM 管线的功能需要 mock LLM 调用——测试中不要发起真实 API 请求。
+---
 
 ## 报告问题
 
-- 使用 [Bug Report 模板](.github/ISSUE_TEMPLATE/bug_report.md)
-- 使用 [Feature Request 模板](.github/ISSUE_TEMPLATE/feature_request.md)
-- 使用 [Question 模板](.github/ISSUE_TEMPLATE/question.md)
+- Bug：使用 `Bug Report`
+- 功能建议：使用 `Feature Request`
+- 使用问题：使用 `Question`
 
-## 需要帮助？
+---
 
-- 查看 [README](README.md)
-- 查看已有 issues: https://github.com/Narcooo/inkos/issues
-- 加入微信交流群（见 README）
+## 许可证
 
-## License
-
-贡献的代码将采用 [MIT License](LICENSE)。
+贡献代码默认采用 [MIT License](LICENSE)。

@@ -80,7 +80,7 @@ describe("CLI integration", () => {
       expect(output).toContain("Project initialized");
     });
 
-    it("creates inkos.json with correct structure", async () => {
+    it("creates novelfork.json with correct structure", async () => {
       const raw = await readFile(join(projectDir, "novelfork.json"), "utf-8");
       const config = JSON.parse(raw);
       expect(config.llm).toBeDefined();
@@ -119,7 +119,7 @@ describe("CLI integration", () => {
       expect(output).toContain("Project initialized");
     });
 
-    it("creates inkos.json in subdirectory", async () => {
+    it("creates novelfork.json in subdirectory", async () => {
       const raw = await readFile(join(projectDir, "subproject", "novelfork.json"), "utf-8");
       const config = JSON.parse(raw);
       expect(config.name).toBe("subproject");

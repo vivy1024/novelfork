@@ -23,7 +23,7 @@ export const detectCommand = new Command("detect")
       const root = findProjectRoot();
 
       if (!config.detection?.enabled) {
-        logError("AIGC detection is not enabled. Add detection config to inkos.json.");
+        logError("AIGC detection is not enabled. Add detection config to novelfork.json.");
         process.exit(1);
       }
 

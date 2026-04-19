@@ -6,7 +6,7 @@ import { useNovelFork } from "../providers/novelfork-context";
 import { Stethoscope, CheckCircle2, XCircle, Loader2 } from "lucide-react";
 
 interface DoctorChecks {
-  readonly inkosJson: boolean;
+  readonly projectConfig: boolean;
   readonly projectEnv: boolean;
   readonly globalEnv: boolean;
   readonly booksDir: boolean;
@@ -37,7 +37,7 @@ export function DoctorView({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunc
   const { data, refetch } = useApi<DoctorChecks>("/doctor");
 
   // Tauri 模式下使用桌面端相关的标签
-  const labelInkos = isTauri ? t("doctor.workspaceConfig") : t("doctor.inkosJson");
+  const labelInkos = isTauri ? t("doctor.workspaceConfig") : t("doctor.projectConfig");
   const labelProjectEnv = isTauri ? t("doctor.chapterConsistency") : t("doctor.projectEnv");
   const labelGlobalEnv = isTauri ? t("doctor.genresDir") : t("doctor.globalEnv");
   const labelLlm = isTauri ? t("doctor.llmConfig") : t("doctor.llmApi");
@@ -66,7 +66,7 @@ export function DoctorView({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunc
         </div>
       ) : (
         <div className={`border ${c.cardStatic} rounded-lg p-5`}>
-          <CheckRow label={labelInkos} ok={data.inkosJson} />
+          <CheckRow label={labelInkos} ok={data.projectConfig} />
           <CheckRow label={labelProjectEnv} ok={data.projectEnv} />
           <CheckRow label={labelGlobalEnv} ok={data.globalEnv} />
           <CheckRow label={t("doctor.booksDir")} ok={data.booksDir} detail={`${data.bookCount} book(s)`} />
@@ -76,11 +76,11 @@ export function DoctorView({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunc
 
       {data && (
         <div className={`px-4 py-3 rounded-lg text-sm font-medium ${
-          data.inkosJson && (data.projectEnv || data.globalEnv) && data.llmConnected
+          data.projectConfig && (data.projectEnv || data.globalEnv) && data.llmConnected
             ? "bg-emerald-500/10 text-emerald-600"
             : "bg-amber-500/10 text-amber-600"
         }`}>
-          {data.inkosJson && (data.projectEnv || data.globalEnv) && data.llmConnected
+          {data.projectConfig && (data.projectEnv || data.globalEnv) && data.llmConnected
             ? t("doctor.allPassed")
             : t("doctor.someFailed")
           }

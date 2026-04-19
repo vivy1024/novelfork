@@ -67,7 +67,7 @@ export class HookManager {
   }
 
   /**
-   * Register hooks from configuration (inkos.json)
+   * Register hooks from configuration (novelfork.json)
    */
   async registerFromConfig(configs: ReadonlyArray<HookConfig>): Promise<void> {
     for (const config of configs) {

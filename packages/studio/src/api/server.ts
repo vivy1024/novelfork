@@ -82,7 +82,7 @@ pipelineEvents.on((event) => {
 export type NovelForkMode = "standalone" | "relay";
 
 function getInkosMode(): NovelForkMode {
-  const raw = process.env.INKOS_MODE?.trim().toLowerCase();
+  const raw = (process.env.NOVELFORK_MODE ?? process.env.INKOS_MODE)?.trim().toLowerCase();
   if (raw === "relay") return "relay";
   return "standalone";
 }
@@ -212,7 +212,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
 
   if (mode === "standalone") {
     // Workbench routes — sandboxed file operations for IDE layout
-    const workbenchToken = process.env.INKOS_WORKBENCH_TOKEN;
+    const workbenchToken = process.env.NOVELFORK_WORKBENCH_TOKEN ?? process.env.INKOS_WORKBENCH_TOKEN;
     app.route("", createWorkbenchRouter(root, workbenchToken));
 
     // AI operations + legacy SSE — standalone uses book-id based routes
@@ -298,12 +298,12 @@ export async function startStudioServer(
   port = 4567,
   options?: { readonly staticDir?: string },
 ): Promise<void> {
-  // Auto-init project directory if inkos.json doesn't exist (Zeabur / Docker deployment)
+  // Auto-init project directory if novelfork.json doesn't exist (Zeabur / Docker deployment)
   const { existsSync: existsSyncInit } = await import("node:fs");
   const { mkdir: mkdirInit, writeFile: writeFileInit } = await import("node:fs/promises");
   const configPathInit = join(root, "novelfork.json");
   if (!existsSyncInit(configPathInit)) {
-    console.log(`inkos.json not found in ${root}, auto-initializing...`);
+    console.log(`novelfork.json not found in ${root}, auto-initializing...`);
     await mkdirInit(root, { recursive: true });
     await mkdirInit(join(root, "books"), { recursive: true });
     const defaultConfig = {
@@ -311,8 +311,8 @@ export async function startStudioServer(
       version: "0.1.0",
       language: process.env.INKOS_DEFAULT_LANGUAGE ?? "zh",
       llm: {
-        provider: process.env.INKOS_LLM_PROVIDER ?? "openai",
-        baseUrl: process.env.INKOS_LLM_BASE_URL ?? "",
+        provider: process.env.NOVELFORK_LLM_PROVIDER ?? process.env.INKOS_LLM_PROVIDER ?? "openai",
+        baseUrl: process.env.NOVELFORK_LLM_BASE_URL ?? process.env.INKOS_LLM_BASE_URL ?? "",
         model: process.env.INKOS_LLM_MODEL ?? "gpt-4o",
       },
       notify: [],
@@ -372,7 +372,7 @@ export async function startStudioServer(
     }
   }
 
-  console.log(`InkOS Studio running on http://localhost:${port}`);
+  console.log(`NovelFork Studio running on http://localhost:${port}`);
 
   // TODO: WebSocket support - createServer 和 setupAdminWebSocket 未定义
   // const server = createServer();

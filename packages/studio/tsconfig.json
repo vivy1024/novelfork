@@ -15,8 +15,8 @@
     "types": ["node", "vitest/globals"],
     "paths": {
       "@/*": ["./src/*"],
-      "@actalk/inkos-core": ["../core/src/index.ts"],
-      "@actalk/inkos-core/*": ["../core/src/*"]
+      "@vivy1024/novelfork-core": ["../core/src/index.ts"],
+      "@vivy1024/novelfork-core/*": ["../core/src/*"]
     },
     "baseUrl": "."
   },

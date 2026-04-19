@@ -101,7 +101,7 @@ function parseBookAndChapter(
     }
     return { bookIdArg: args[0], chapterNum: num };
   }
-  throw new Error("Usage: inkos review approve [book-id] <chapter>");
+  throw new Error("Usage: novelfork review approve [book-id] <chapter>");
 }
 
 reviewCommand

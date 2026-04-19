@@ -21,7 +21,7 @@ export function DataPanel({ theme }: Props) {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `inkos-config-${new Date().toISOString().split("T")[0]}.json`;
+      a.download = `novelfork-config-${new Date().toISOString().split("T")[0]}.json`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (error) {
@@ -141,13 +141,13 @@ export function DataPanel({ theme }: Props) {
             <div>
               <span className="text-muted-foreground">用户配置：</span>
               <code className="ml-2 px-2 py-1 rounded bg-secondary text-foreground font-mono text-xs">
-                ~/.inkos/user-config.json
+                ~/.novelfork/user-config.json
               </code>
             </div>
             <div>
               <span className="text-muted-foreground">备份文件：</span>
               <code className="ml-2 px-2 py-1 rounded bg-secondary text-foreground font-mono text-xs">
-                ~/.inkos/user-config.backup*.json
+                ~/.novelfork/user-config.backup*.json
               </code>
             </div>
           </div>
@@ -155,4 +155,6 @@ export function DataPanel({ theme }: Props) {
       </div>
     </div>
   );
+}
+;
 }

@@ -51,7 +51,7 @@ describe("studio command", () => {
 
   it("launches built JavaScript entries through node", async () => {
     accessMock.mockImplementation(async (path: string) => {
-      if (path === "/project/node_modules/@actalk/inkos-studio/dist/api/index.js") {
+      if (path === "/project/node_modules/@vivy1024/novelfork-studio/dist/api/index.js") {
         return;
       }
       throw new Error(`missing: ${path}`);
@@ -62,7 +62,7 @@ describe("studio command", () => {
 
     expect(spawnMock).toHaveBeenCalledWith(
       "node",
-      ["/project/node_modules/@actalk/inkos-studio/dist/api/index.js", "/project"],
+      ["/project/node_modules/@vivy1024/novelfork-studio/dist/api/index.js", "/project"],
       expect.objectContaining({
         cwd: "/project",
         stdio: "inherit",

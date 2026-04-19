@@ -75,6 +75,6 @@ describe("loadProjectConfig local provider auth", () => {
       },
     }, null, 2), "utf-8");
     await writeFile(join(root, ".env"), "", "utf-8");
-    await expect(loadProjectConfig(root)).rejects.toThrow(/INKOS_LLM_API_KEY not set/i);
+    await expect(loadProjectConfig(root)).rejects.toThrow(/NOVELFORK_LLM_API_KEY not set/i);
   });
 });

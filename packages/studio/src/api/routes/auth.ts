@@ -72,7 +72,7 @@ export function createAuthRouter(): Hono {
   });
 
   app.get("/api/mode", (c) => {
-    const mode = (process.env.INKOS_MODE?.trim().toLowerCase() === "relay") ? "relay" : "standalone";
+    const mode = (((process.env.NOVELFORK_MODE ?? process.env.INKOS_MODE)?.trim().toLowerCase()) === "relay") ? "relay" : "standalone";
     return c.json({ mode });
   });
 

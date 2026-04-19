@@ -252,7 +252,7 @@ export class TauriStorageAdapter implements ClientStorageAdapter {
       const raw = await invoke<string>("read_file_text", { path: configPath });
       config = JSON.parse(raw) as Record<string, unknown>;
     } catch {
-      // No inkos.json yet — return defaults
+      // No novelfork.json yet — return defaults
     }
     const llm = (config.llm ?? {}) as Record<string, unknown>;
     return {

@@ -95,7 +95,7 @@ export interface PipelineHooks {
 }
 
 /**
- * Hook configuration from inkos.json
+ * Hook configuration from novelfork.json
  */
 export interface HookConfig {
   /** Hook name/identifier */

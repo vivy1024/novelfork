@@ -663,7 +663,7 @@ describe("server integration — core 20 endpoints", () => {
   // ================================================================
 
   describe("GET /api/project", () => {
-    it("returns project configuration from inkos.json", async () => {
+    it("returns project configuration from novelfork.json", async () => {
       const res = await req("/api/project");
 
       expect(res.status).toBe(200);
@@ -689,7 +689,7 @@ describe("server integration — core 20 endpoints", () => {
   // ================================================================
 
   describe("PUT /api/project", () => {
-    it("updates temperature and maxTokens in inkos.json", async () => {
+    it("updates temperature and maxTokens in novelfork.json", async () => {
       const res = await jsonReq("/api/project", "PUT", {
         temperature: 0.3,
         maxTokens: 2048,
@@ -994,8 +994,8 @@ describe("server integration — core 20 endpoints", () => {
 
       expect(res.status).toBe(200);
       const data = await res.json();
-      expect(typeof data.inkosJson).toBe("boolean");
-      expect(data.inkosJson).toBe(true); // We wrote inkos.json in beforeEach
+      expect(typeof data.projectConfig).toBe("boolean");
+      expect(data.projectConfig).toBe(true); // We wrote novelfork.json in beforeEach
       expect(typeof data.booksDir).toBe("boolean");
       expect(data.booksDir).toBe(true); // We created books/ in beforeEach
       expect(typeof data.llmConnected).toBe("boolean");
@@ -1039,7 +1039,7 @@ describe("server integration — core 20 endpoints", () => {
       expect(data.overrides).toEqual({});
     });
 
-    it("returns configured model overrides from inkos.json", async () => {
+    it("returns configured model overrides from novelfork.json", async () => {
       const config = JSON.parse(
         await readFile(join(root, "novelfork.json"), "utf-8"),
       );
@@ -1070,7 +1070,7 @@ describe("server integration — core 20 endpoints", () => {
   // ================================================================
 
   describe("PUT /api/project/model-overrides", () => {
-    it("persists model override changes to inkos.json", async () => {
+    it("persists model override changes to novelfork.json", async () => {
       const res = await jsonReq("/api/project/model-overrides", "PUT", {
         overrides: { write: "claude-sonnet-4-20250514" },
       });

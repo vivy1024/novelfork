@@ -98,7 +98,7 @@ describe("workspace-service", () => {
       expect(booksDir).toBeDefined();
       expect(booksDir!.type).toBe("directory");
 
-      // Find inkos.json with config role
+      // Find novelfork.json with config role
       const configFile = tree.find(e => e.name === "novelfork.json");
       expect(configFile).toBeDefined();
       expect(configFile!.storyRole).toBe("config");

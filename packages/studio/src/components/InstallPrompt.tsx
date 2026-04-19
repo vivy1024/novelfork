@@ -50,7 +50,7 @@ export function InstallPrompt() {
       <div className="flex items-start gap-3">
         <div className="flex-1">
           <h3 className="font-semibold text-gray-900 dark:text-white">
-            安装 InkOS Studio
+            安装 NovelFork Studio
           </h3>
           <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
             将应用添加到主屏幕，获得更好的体验

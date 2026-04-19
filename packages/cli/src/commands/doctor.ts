@@ -43,7 +43,7 @@ export const doctorCommand = new Command("doctor")
       ...await inspectNodeRuntimePinFiles(root),
     });
 
-    // 2. Check inkos.json exists
+    // 2. Check novelfork.json exists
     try {
       await readFile(join(root, "novelfork.json"), "utf-8");
       checks.push({ name: "novelfork.json", ok: true, detail: "Found" });

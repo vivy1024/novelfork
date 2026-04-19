@@ -106,7 +106,7 @@ async function materializeSnapshot(
     await writeFile(join(bookDir, "style_profile.json"), snapshot.styleProfile, "utf-8");
   }
 
-  // Minimal inkos.json so PipelineRunner doesn't crash
+  // Minimal novelfork.json so PipelineRunner doesn't crash
   await writeFile(
     join(root, "novelfork.json"),
     JSON.stringify({ name: "relay-run", version: "0.1.0", language: (snapshot.bookConfig.language as string) ?? "zh", llm: {} }, null, 2),

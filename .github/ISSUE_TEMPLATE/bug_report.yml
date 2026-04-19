@@ -16,9 +16,9 @@ body:
       label: Steps to reproduce
       description: Minimal steps to reproduce the issue.
       placeholder: |
-        1. inkos init test
-        2. inkos book create --title '...' --genre xuanhuan
-        3. inkos write next ...
+        1. novelfork init test
+        2. novelfork book create --title '...' --genre xuanhuan
+        3. novelfork write next ...
         4. See error: ...
     validations:
       required: true
@@ -34,8 +34,8 @@ body:
   - type: input
     id: version
     attributes:
-      label: InkOS version
-      description: Output of `inkos --version`
+      label: NovelFork version
+      description: Output of `novelfork --version`
       placeholder: "0.4.5"
     validations:
       required: true

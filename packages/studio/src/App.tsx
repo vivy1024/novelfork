@@ -460,7 +460,7 @@ function AppInner() {
 
         {/* Status Bar */}
         <footer className="h-6 shrink-0 flex items-center px-4 text-[10px] text-muted-foreground border-t border-border/40 bg-background/80 gap-4">
-          <span>InkOS Studio</span>
+          <span>NovelFork Studio</span>
           <span className="ml-auto">Ctrl+K 命令面板 · Ctrl+B 参考面板 · Ctrl+S 保存</span>
         </footer>
       </div>
