@@ -1,4 +1,4 @@
-import type { Platform } from "@actalk/novelfork-core";
+import type { Platform } from "@vivy1024/novelfork-core";
 
 export interface StudioCreateBookBody {
   readonly title: string;

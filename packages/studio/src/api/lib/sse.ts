@@ -17,7 +17,7 @@ export function createRunEventStream(
   let unsubscribe: (() => void) | null = null;
 
   const stream = new ReadableStream<Uint8Array>({
-    start(controller) {
+    start(controller: ReadableStreamDefaultController<Uint8Array>) {
       controller.enqueue(encodeSse(initialEvent));
 
       if (shouldClose(initialEvent)) {

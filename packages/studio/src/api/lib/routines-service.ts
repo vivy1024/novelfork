@@ -5,8 +5,8 @@
 import { promises as fs } from "fs";
 import path from "path";
 import os from "os";
-import type { Routines } from "../../types/routines";
-import { DEFAULT_ROUTINES } from "../../types/routines";
+import type { Routines } from "../../types/routines.js";
+import { DEFAULT_ROUTINES } from "../../types/routines.js";
 
 const GLOBAL_CONFIG_DIR = path.join(os.homedir(), ".inkos");
 const GLOBAL_ROUTINES_FILE = path.join(GLOBAL_CONFIG_DIR, "routines.json");

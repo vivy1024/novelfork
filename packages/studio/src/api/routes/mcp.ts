@@ -6,7 +6,7 @@
 import { Hono } from "hono";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { MCPClientImpl, type MCPServerConfig as CoreMCPConfig } from "@actalk/novelfork-core";
+import { MCPClientImpl, type MCPServerConfig as CoreMCPConfig } from "@vivy1024/novelfork-core";
 
 interface MCPServerEntry {
   readonly id: string;

@@ -1,13 +1,14 @@
 import { Command } from "commander";
 import { execSync } from "node:child_process";
+import { createRequire } from "node:module";
 import { log, logError } from "../utils.js";
+
+const require = createRequire(import.meta.url);
 
 export const updateCommand = new Command("update")
   .description("Update InkOS to the latest version")
   .action(async () => {
     try {
-      const { createRequire } = await import("node:module");
-      const require = createRequire(import.meta.url);
       const { version: currentVersion } = require("../../package.json") as { version: string };
 
       log(`Current version: ${currentVersion}`);

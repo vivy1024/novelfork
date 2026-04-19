@@ -9,7 +9,7 @@ import type { RouterContext } from "./context.js";
 export function createDaemonRouter(ctx: RouterContext): Hono {
   const app = new Hono();
 
-  let schedulerInstance: import("@actalk/novelfork-core").Scheduler | null = null;
+  let schedulerInstance: import("@vivy1024/novelfork-core").Scheduler | null = null;
 
   app.get("/api/daemon", (c) => {
     return c.json({
@@ -22,7 +22,7 @@ export function createDaemonRouter(ctx: RouterContext): Hono {
       return c.json({ error: "Daemon already running" }, 400);
     }
     try {
-      const { Scheduler, loadProjectConfig } = await import("@actalk/novelfork-core");
+      const { Scheduler, loadProjectConfig } = await import("@vivy1024/novelfork-core");
       const currentConfig = await loadProjectConfig(ctx.root);
       const scheduler = new Scheduler({
         ...(await ctx.buildPipelineConfig()),
@@ -33,16 +33,16 @@ export function createDaemonRouter(ctx: RouterContext): Hono {
         retryDelayMs: currentConfig.daemon.retryDelayMs,
         cooldownAfterChapterMs: currentConfig.daemon.cooldownAfterChapterMs,
         maxChaptersPerDay: currentConfig.daemon.maxChaptersPerDay,
-        onChapterComplete: (bookId, chapter, status) => {
+        onChapterComplete: (bookId: any, chapter: any, status: any) => {
           ctx.broadcast("daemon:chapter", { bookId, chapter, status });
         },
-        onError: (bookId, error) => {
+        onError: (bookId: any, error: any) => {
           ctx.broadcast("daemon:error", { bookId, error: error.message });
         },
       });
       schedulerInstance = scheduler;
       ctx.broadcast("daemon:started", {});
-      void scheduler.start().catch((e) => {
+      void scheduler.start().catch((e: any) => {
         const error = e instanceof Error ? e : new Error(String(e));
         if (schedulerInstance === scheduler) {
           scheduler.stop();

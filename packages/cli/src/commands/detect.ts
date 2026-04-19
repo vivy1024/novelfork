@@ -5,7 +5,7 @@ import {
   loadDetectionHistory,
   analyzeDetectionInsights,
   type DetectionConfig,
-} from "@actalk/novelfork-core";
+} from "@vivy1024/novelfork-core";
 import { loadConfig, findProjectRoot, resolveBookId, log, logError } from "../utils.js";
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";

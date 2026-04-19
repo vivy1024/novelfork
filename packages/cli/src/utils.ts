@@ -1,6 +1,6 @@
 import { readFile, stat, access } from "node:fs/promises";
 import { join, resolve, dirname } from "node:path";
-import { createLLMClient, StateManager, createLogger, createStderrSink, createJsonLineSink, loadProjectConfig, GLOBAL_CONFIG_DIR, GLOBAL_ENV_PATH, type ProjectConfig, type PipelineConfig, type LogSink } from "@actalk/novelfork-core";
+import { createLLMClient, StateManager, createLogger, createStderrSink, createJsonLineSink, loadProjectConfig, GLOBAL_CONFIG_DIR, GLOBAL_ENV_PATH, type ProjectConfig, type PipelineConfig, type LogSink } from "@vivy1024/novelfork-core";
 import { formatSqliteMemorySupportWarning } from "./runtime-requirements.js";
 
 export { GLOBAL_CONFIG_DIR, GLOBAL_ENV_PATH };
@@ -21,6 +21,7 @@ export async function resolveContext(opts: {
     for await (const chunk of process.stdin) {
       chunks.push(chunk as Buffer);
     }
+    // @ts-ignore - Buffer.concat type issue with ArrayBufferLike
     const text = Buffer.concat(chunks).toString("utf-8").trim();
     if (text.length > 0) return text;
   }

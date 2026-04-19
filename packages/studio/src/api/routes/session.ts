@@ -3,7 +3,7 @@
  */
 
 import { Hono } from "hono";
-import type { Session } from "../../hooks/useSession";
+import type { Session } from "../../hooks/useSession.js";
 
 const app = new Hono();
 

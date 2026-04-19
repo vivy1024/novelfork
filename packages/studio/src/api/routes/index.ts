@@ -14,9 +14,11 @@ export { createProvidersRouter } from "./providers.js";
 export { createAgentConfigRouter } from "./agent-config.js";
 export { createToolsRouter } from "./tools.js";
 export { createWorktreeRouter } from "./worktree.js";
-export { createPoisonDetectorRouter } from "./poison-detector.js";
+// TODO: 需要重构为 Hono，暂时禁用
+// export { createPoisonDetectorRouter } from "./poison-detector.js";
 export { createRhythmRouter } from "./rhythm.js";
-export { createHooksCountdownRouter } from "./hooks-countdown.js";
+// TODO: 需要重构为 Hono，暂时禁用
+// export { createHooksCountdownRouter } from "./hooks-countdown.js";
 export { createGoldenChaptersRouter } from "./golden-chapters.js";
 export { createChatRouter } from "./chat.js";
 export { createContextManagerRouter } from "./context-manager.js";

@@ -15,7 +15,7 @@
 import { Hono } from "hono";
 import { join } from "node:path";
 import { readdir, readFile } from "node:fs/promises";
-import { MemoryDB, importMarkdownFile, inferDimension, analyzeBloat } from "@actalk/novelfork-core";
+import { MemoryDB, importMarkdownFile, inferDimension, analyzeBloat } from "@vivy1024/novelfork-core";
 import { ApiError } from "../errors.js";
 
 function openDB(root: string, bookId: string): MemoryDB {

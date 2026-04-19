@@ -3,7 +3,8 @@
  */
 
 import { Tiktoken } from "tiktoken/lite";
-import cl100k_base from "tiktoken/encoders/cl100k_base.json" assert { type: "json" };
+// @ts-ignore - import attributes not fully supported in Node16 module resolution
+import cl100k_base from "tiktoken/encoders/cl100k_base.json";
 
 const encoder = new Tiktoken(
   cl100k_base.bpe_ranks,

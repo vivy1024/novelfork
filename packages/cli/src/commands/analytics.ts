@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { StateManager, computeAnalytics } from "@actalk/novelfork-core";
+import { StateManager, computeAnalytics } from "@vivy1024/novelfork-core";
 import { loadConfig, findProjectRoot, resolveBookId, log, logError } from "../utils.js";
 
 export const analyticsCommand = new Command("analytics")

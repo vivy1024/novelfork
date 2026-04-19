@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { PipelineRunner, StateManager, splitChapters } from "@actalk/novelfork-core";
+import { PipelineRunner, StateManager, splitChapters } from "@vivy1024/novelfork-core";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { loadConfig, buildPipelineConfig, findProjectRoot, resolveBookId, log, logError } from "../utils.js";
