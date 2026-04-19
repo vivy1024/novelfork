@@ -16,10 +16,26 @@ const sourceStudioPackageJsonPromise = readFile(resolve(studioDir, "package.json
   JSON.parse(raw),
 );
 
+function createPackEnv() {
+  const env = { ...process.env, NODE_ENV: "production" };
+
+  delete env.VITEST;
+  delete env.VITEST_MODE;
+  delete env.VITEST_POOL_ID;
+  delete env.VITEST_WORKER_ID;
+  delete env.TEST;
+
+  return env;
+}
+
 async function packPackage(packageDir: string, packDir: string) {
-  execFileSync("npm", ["pack", "--pack-destination", packDir], {
+  const command = process.platform === "win32" ? "cmd" : "pnpm";
+  const args = process.platform === "win32"
+    ? ["/c", "pnpm", "pack", "--pack-destination", packDir]
+    : ["pack", "--pack-destination", packDir];
+  execFileSync(command, args, {
     cwd: packageDir,
-    env: process.env,
+    env: createPackEnv(),
     encoding: "utf-8",
   });
 
@@ -250,10 +266,6 @@ describe.sequential("publish packaging", () => {
       expect(archiveListing).toContain("package/dist/api/index.js");
     } finally {
       await rm(packDir, { recursive: true, force: true });
-    }
-  });
-});
-true, force: true });
     }
   });
 });

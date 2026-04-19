@@ -98,6 +98,7 @@ vi.mock("@vivy1024/novelfork-core", () => {
     chatCompletion: chatCompletionMock,
     loadProjectConfig: loadProjectConfigMock,
     GLOBAL_ENV_PATH: join(tmpdir(), "novelfork-global.env"),
+    pipelineEvents: { on: vi.fn() },
   };
 });
 
@@ -220,7 +221,7 @@ describe("createStudioServer daemon lifecycle", () => {
     );
 
     const { createStudioServer } = await import("./server.js");
-    const app = createStudioServer(cloneProjectConfig() as never, root);
+    const { app } = createStudioServer(cloneProjectConfig() as never, root);
 
     const responseOrTimeout = await Promise.race([
       app.request("http://localhost/api/daemon/start", { method: "POST" }),
@@ -241,7 +242,7 @@ describe("createStudioServer daemon lifecycle", () => {
 
   it("rejects book routes with path traversal ids", async () => {
     const { createStudioServer } = await import("./server.js");
-    const app = createStudioServer(cloneProjectConfig() as never, root);
+    const { app } = createStudioServer(cloneProjectConfig() as never, root);
 
     const response = await app.request("http://localhost/api/books/..%2Fetc%2Fpasswd", {
       method: "GET",
@@ -258,7 +259,7 @@ describe("createStudioServer daemon lifecycle", () => {
 
   it("reflects project edits immediately without restarting the studio server", async () => {
     const { createStudioServer } = await import("./server.js");
-    const app = createStudioServer(cloneProjectConfig() as never, root);
+    const { app } = createStudioServer(cloneProjectConfig() as never, root);
 
     const save = await app.request("http://localhost/api/project", {
       method: "PUT",
@@ -303,7 +304,7 @@ describe("createStudioServer daemon lifecycle", () => {
     loadProjectConfigMock.mockResolvedValue(freshConfig);
 
     const { createStudioServer } = await import("./server.js");
-    const app = createStudioServer(startupConfig as never, root);
+    const { app } = createStudioServer(startupConfig as never, root);
 
     const response = await app.request("http://localhost/api/doctor");
 
@@ -341,7 +342,7 @@ describe("createStudioServer daemon lifecycle", () => {
     loadProjectConfigMock.mockResolvedValue(freshConfig);
 
     const { createStudioServer } = await import("./server.js");
-    const app = createStudioServer(startupConfig as never, root);
+    const { app } = createStudioServer(startupConfig as never, root);
 
     const response = await app.request("http://localhost/api/radar/scan", {
       method: "POST",
@@ -360,7 +361,7 @@ describe("createStudioServer daemon lifecycle", () => {
 
   it("updates the first-run language immediately after the language selector saves", async () => {
     const { createStudioServer } = await import("./server.js");
-    const app = createStudioServer(cloneProjectConfig() as never, root);
+    const { app } = createStudioServer(cloneProjectConfig() as never, root);
 
     const save = await app.request("http://localhost/api/project/language", {
       method: "POST",
@@ -383,7 +384,7 @@ describe("createStudioServer daemon lifecycle", () => {
     await writeFile(join(root, "books", "existing-book", "story", "story_bible.md"), "# existing", "utf-8");
 
     const { createStudioServer } = await import("./server.js");
-    const app = createStudioServer(cloneProjectConfig() as never, root);
+    const { app } = createStudioServer(cloneProjectConfig() as never, root);
 
     const response = await app.request("http://localhost/api/books/create", {
       method: "POST",
@@ -408,7 +409,7 @@ describe("createStudioServer daemon lifecycle", () => {
     initBookMock.mockRejectedValueOnce(new Error("NOVELFORK_LLM_API_KEY not set"));
 
     const { createStudioServer } = await import("./server.js");
-    const app = createStudioServer(cloneProjectConfig() as never, root);
+    const { app } = createStudioServer(cloneProjectConfig() as never, root);
 
     const response = await app.request("http://localhost/api/books/create", {
       method: "POST",
@@ -458,7 +459,7 @@ describe("createStudioServer daemon lifecycle", () => {
     rollbackToChapterMock.mockResolvedValue([3, 4]);
 
     const { createStudioServer } = await import("./server.js");
-    const app = createStudioServer(cloneProjectConfig() as never, root);
+    const { app } = createStudioServer(cloneProjectConfig() as never, root);
 
     const response = await app.request("http://localhost/api/books/demo-book/chapters/3/reject", {
       method: "POST",
@@ -478,7 +479,7 @@ describe("createStudioServer daemon lifecycle", () => {
 
   it("passes one-off brief into revise requests through pipeline config", async () => {
     const { createStudioServer } = await import("./server.js");
-    const app = createStudioServer(cloneProjectConfig() as never, root);
+    const { app } = createStudioServer(cloneProjectConfig() as never, root);
 
     const response = await app.request("http://localhost/api/books/demo-book/revise/3", {
       method: "POST",
@@ -493,7 +494,7 @@ describe("createStudioServer daemon lifecycle", () => {
 
   it("exposes a resync endpoint for rebuilding latest chapter truth artifacts", async () => {
     const { createStudioServer } = await import("./server.js");
-    const app = createStudioServer(cloneProjectConfig() as never, root);
+    const { app } = createStudioServer(cloneProjectConfig() as never, root);
 
     const response = await app.request("http://localhost/api/books/demo-book/resync/3", {
       method: "POST",

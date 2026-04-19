@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 const accessMock = vi.fn();
 const testDir = dirname(fileURLToPath(import.meta.url));
 const cliPackageRoot = resolve(testDir, "..", "..");
+const normalizePath = (value: string) => value.replace(/\\/g, "/");
 
 vi.mock("node:fs/promises", () => ({
   access: accessMock,
@@ -19,8 +20,8 @@ describe("studio runtime resolution", () => {
   it("prefers the repository-local tsx loader for monorepo sources", async () => {
     accessMock.mockImplementation(async (path: string) => {
       if (
-        path === "/repo/packages/studio/src/api/index.ts" ||
-        path === "/repo/packages/studio/node_modules/tsx/dist/loader.mjs"
+        normalizePath(path).endsWith("/packages/studio/src/api/index.ts") ||
+        normalizePath(path).endsWith("/packages/studio/node_modules/tsx/dist/loader.mjs")
       ) {
         return;
       }
@@ -30,21 +31,20 @@ describe("studio runtime resolution", () => {
     const { resolveStudioLaunch } = await import("../commands/studio.js");
     const launch = await resolveStudioLaunch("/repo/test-project");
 
-    expect(launch).toEqual({
-      studioEntry: "/repo/packages/studio/src/api/index.ts",
-      command: "node",
-      args: [
-        "--import",
-        "/repo/packages/studio/node_modules/tsx/dist/loader.mjs",
-        "/repo/packages/studio/src/api/index.ts",
-        "/repo/test-project",
-      ],
-    });
+    expect(launch).not.toBeNull();
+    expect(normalizePath(launch!.studioEntry)).toMatch(/\/packages\/studio\/src\/api\/index\.ts$/);
+    expect(launch!.command).toBe("node");
+    expect(launch!.args.map(normalizePath)).toEqual([
+      "--import",
+      expect.stringMatching(/\/packages\/studio\/node_modules\/tsx\/dist\/loader\.mjs$/),
+      expect.stringMatching(/\/packages\/studio\/src\/api\/index\.ts$/),
+      "/repo/test-project",
+    ]);
   });
 
   it("finds monorepo packages/studio sources from a project directory", async () => {
     accessMock.mockImplementation(async (path: string) => {
-      if (path === "/repo/packages/studio/src/api/index.ts") {
+      if (normalizePath(path).endsWith("/packages/studio/src/api/index.ts")) {
         return;
       }
       throw new Error(`missing: ${path}`);
@@ -53,16 +53,15 @@ describe("studio runtime resolution", () => {
     const { resolveStudioLaunch } = await import("../commands/studio.js");
     const launch = await resolveStudioLaunch("/repo/test-project");
 
-    expect(launch).toEqual({
-      studioEntry: "/repo/packages/studio/src/api/index.ts",
-      command: "npx",
-      args: ["tsx", "/repo/packages/studio/src/api/index.ts", "/repo/test-project"],
-    });
+    expect(launch).not.toBeNull();
+    expect(normalizePath(launch!.studioEntry)).toMatch(/\/packages\/studio\/src\/api\/index\.ts$/);
+    expect(launch!.command).toBe("npx");
+    expect(launch!.args.map(normalizePath)).toEqual(["tsx", expect.stringMatching(/\/packages\/studio\/src\/api\/index\.ts$/), "/repo/test-project"]);
   });
 
   it("uses node for built JavaScript entries", async () => {
     accessMock.mockImplementation(async (path: string) => {
-      if (path === "/repo/test-project/node_modules/@vivy1024/novelfork-studio/dist/api/index.js") {
+      if (normalizePath(path).endsWith("/test-project/node_modules/@vivy1024/novelfork-studio/dist/api/index.js")) {
         return;
       }
       throw new Error(`missing: ${path}`);
@@ -71,16 +70,18 @@ describe("studio runtime resolution", () => {
     const { resolveStudioLaunch } = await import("../commands/studio.js");
     const launch = await resolveStudioLaunch("/repo/test-project");
 
-    expect(launch).toEqual({
-      studioEntry: "/repo/test-project/node_modules/@vivy1024/novelfork-studio/dist/api/index.js",
-      command: "node",
-      args: ["/repo/test-project/node_modules/@vivy1024/novelfork-studio/dist/api/index.js", "/repo/test-project"],
-    });
+    expect(launch).not.toBeNull();
+    expect(normalizePath(launch!.studioEntry)).toMatch(/\/node_modules\/@vivy1024\/novelfork-studio\/dist\/api\/index\.js$/);
+    expect(launch!.command).toBe("node");
+    expect(launch!.args.map(normalizePath)).toEqual([
+      expect.stringMatching(/\/node_modules\/@vivy1024\/novelfork-studio\/dist\/api\/index\.js$/),
+      "/repo/test-project",
+    ]);
   });
 
   it("falls back to the CLI installation's bundled studio runtime", async () => {
     accessMock.mockImplementation(async (path: string) => {
-      if (path === `${cliPackageRoot}/node_modules/@vivy1024/novelfork-studio/dist/api/index.js`) {
+      if (normalizePath(path).endsWith("/node_modules/@vivy1024/novelfork-studio/dist/api/index.js")) {
         return;
       }
       throw new Error(`missing: ${path}`);
@@ -89,11 +90,13 @@ describe("studio runtime resolution", () => {
     const { resolveStudioLaunch } = await import("../commands/studio.js");
     const launch = await resolveStudioLaunch("/repo/test-project");
 
-    expect(launch).toEqual({
-      studioEntry: `${cliPackageRoot}/node_modules/@vivy1024/novelfork-studio/dist/api/index.js`,
-      command: "node",
-      args: [`${cliPackageRoot}/node_modules/@vivy1024/novelfork-studio/dist/api/index.js`, "/repo/test-project"],
-    });
+    expect(launch).not.toBeNull();
+    expect(normalizePath(launch!.studioEntry)).toMatch(/\/node_modules\/@vivy1024\/novelfork-studio\/dist\/api\/index\.js$/);
+    expect(launch!.command).toBe("node");
+    expect(launch!.args.map(normalizePath)).toEqual([
+      expect.stringMatching(/\/node_modules\/@vivy1024\/novelfork-studio\/dist\/api\/index\.js$/),
+      "/repo/test-project",
+    ]);
   });
 
   it("returns a browser launch spec for macOS", async () => {

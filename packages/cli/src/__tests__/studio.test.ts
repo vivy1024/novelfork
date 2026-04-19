@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const accessMock = vi.fn();
+const normalizePath = (value: string) => value.replace(/\\/g, "/");
 const spawnMock = vi.fn(() => ({
   on: vi.fn(),
 }));
@@ -29,7 +30,7 @@ describe("studio command", () => {
 
   it("launches TypeScript sources through tsx in monorepo mode", async () => {
     accessMock.mockImplementation(async (path: string) => {
-      if (path === "/project/packages/studio/src/api/index.ts") {
+      if (normalizePath(path).endsWith("/packages/studio/src/api/index.ts")) {
         return;
       }
       throw new Error(`missing: ${path}`);
@@ -38,20 +39,20 @@ describe("studio command", () => {
     const { studioCommand } = await import("../commands/studio.js");
     await studioCommand.parseAsync(["node", "studio", "--port", "9001"]);
 
-    expect(spawnMock).toHaveBeenCalledWith(
-      "npx",
-      ["tsx", "/project/packages/studio/src/api/index.ts", "/project"],
-      expect.objectContaining({
-        cwd: "/project",
-        stdio: "inherit",
-        env: expect.objectContaining({ NOVELFORK_STUDIO_PORT: "9001" }),
-      }),
-    );
+    const launchCall = spawnMock.mock.calls[0];
+    expect(launchCall).toBeDefined();
+    expect(launchCall?.[0]).toBe("npx");
+    expect((launchCall?.[1] as string[]).map(normalizePath)).toEqual(["tsx", expect.stringMatching(/\/packages\/studio\/src\/api\/index\.ts$/), "/project"]);
+    expect(launchCall?.[2]).toEqual(expect.objectContaining({
+      cwd: "/project",
+      stdio: "inherit",
+      env: expect.objectContaining({ NOVELFORK_STUDIO_PORT: "9001" }),
+    }));
   });
 
   it("launches built JavaScript entries through node", async () => {
     accessMock.mockImplementation(async (path: string) => {
-      if (path === "/project/node_modules/@vivy1024/novelfork-studio/dist/api/index.js") {
+      if (normalizePath(path).endsWith("/node_modules/@vivy1024/novelfork-studio/dist/api/index.js")) {
         return;
       }
       throw new Error(`missing: ${path}`);
@@ -60,14 +61,17 @@ describe("studio command", () => {
     const { studioCommand } = await import("../commands/studio.js");
     await studioCommand.parseAsync(["node", "studio", "--port", "4567"]);
 
-    expect(spawnMock).toHaveBeenCalledWith(
-      "node",
-      ["/project/node_modules/@vivy1024/novelfork-studio/dist/api/index.js", "/project"],
-      expect.objectContaining({
-        cwd: "/project",
-        stdio: "inherit",
-        env: expect.objectContaining({ NOVELFORK_STUDIO_PORT: "4567" }),
-      }),
-    );
+    const launchCall = spawnMock.mock.calls[0];
+    expect(launchCall).toBeDefined();
+    expect(launchCall?.[0]).toBe("node");
+    expect((launchCall?.[1] as string[]).map(normalizePath)).toEqual([
+      expect.stringMatching(/\/node_modules\/@vivy1024\/novelfork-studio\/dist\/api\/index\.js$/),
+      "/project",
+    ]);
+    expect(launchCall?.[2]).toEqual(expect.objectContaining({
+      cwd: "/project",
+      stdio: "inherit",
+      env: expect.objectContaining({ NOVELFORK_STUDIO_PORT: "4567" }),
+    }));
   });
 });

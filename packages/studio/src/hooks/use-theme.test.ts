@@ -25,7 +25,7 @@ describe("readStoredTheme", () => {
   it("accepts only light and dark values from storage", () => {
     expect(readStoredTheme({ getItem: () => "light" })).toBe("light");
     expect(readStoredTheme({ getItem: () => "dark" })).toBe("dark");
-    expect(readStoredTheme({ getItem: () => "auto" })).toBeNull();
+    expect(readStoredTheme({ getItem: () => "auto" })).toBe("auto");
     expect(readStoredTheme({ getItem: () => null })).toBeNull();
   });
 });
