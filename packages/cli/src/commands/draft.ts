@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { PipelineRunner } from "@actalk/novelfork-core";
+import { PipelineRunner } from "@vivy1024/novelfork-core";
 import { loadConfig, buildPipelineConfig, findProjectRoot, resolveContext, resolveBookId, log, logError } from "../utils.js";
 
 export const draftCommand = new Command("draft")

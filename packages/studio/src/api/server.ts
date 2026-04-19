@@ -11,7 +11,7 @@ import {
   type ProjectConfig,
   type LogSink,
   type LogEntry,
-} from "@actalk/novelfork-core";
+} from "@vivy1024/novelfork-core";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { isSafeBookId } from "./safety.js";
@@ -35,9 +35,9 @@ import {
   createAgentConfigRouter,
   createToolsRouter,
   createWorktreeRouter,
-  createPoisonDetectorRouter,
+  // createPoisonDetectorRouter, // TODO: 需要重构为 Hono，暂时禁用
   createRhythmRouter,
-  createHooksCountdownRouter,
+  // createHooksCountdownRouter, // TODO: 需要重构为 Hono，暂时禁用
   createGoldenChaptersRouter,
   createChatRouter,
   createContextManagerRouter,
@@ -251,14 +251,14 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     // Worktree management
     app.route("/api/worktree", createWorktreeRouter());
 
-    // Poison detector
-    app.route("", createPoisonDetectorRouter(ctx));
+    // Poison detector - TODO: 需要重构为 Hono，暂时禁用
+    // app.route("", createPoisonDetectorRouter(ctx));
 
     // Rhythm analysis
     app.route("", createRhythmRouter(ctx));
 
-    // Hooks countdown
-    app.route("/api/hooks", createHooksCountdownRouter(ctx));
+    // Hooks countdown - TODO: 需要重构为 Hono
+    // app.route("/api/hooks", createHooksCountdownRouter(ctx));
 
     // Golden chapters analysis
     app.route("", createGoldenChaptersRouter(ctx));
@@ -353,7 +353,7 @@ export async function startStudioServer(
           ico: "image/x-icon",
           json: "application/json",
         };
-        return new Response(content, {
+        return new Response(new Uint8Array(content), {
           headers: { "Content-Type": contentTypes[ext] ?? "application/octet-stream" },
         });
       } catch {
@@ -374,11 +374,11 @@ export async function startStudioServer(
 
   console.log(`InkOS Studio running on http://localhost:${port}`);
 
-  // Create HTTP server for WebSocket support
-  const server = createServer();
-  setupAdminWebSocket(server);
-  setupMonitorWebSocket(server, ctx);
+  // TODO: WebSocket support - createServer 和 setupAdminWebSocket 未定义
+  // const server = createServer();
+  // setupAdminWebSocket(server);
+  // setupMonitorWebSocket(server, ctx);
 
-  // Use @hono/node-server with custom server
-  serve({ fetch: app.fetch, port, createServer: () => server });
+  // Use @hono/node-server
+  serve({ fetch: app.fetch, port });
 }

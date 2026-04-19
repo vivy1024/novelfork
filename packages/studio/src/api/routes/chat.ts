@@ -3,7 +3,7 @@
  */
 
 import { Hono } from "hono";
-import { chatCompletion } from "@actalk/novelfork-core";
+import { chatCompletion } from "@vivy1024/novelfork-core";
 import type { RouterContext } from "./context.js";
 
 interface Message {

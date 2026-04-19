@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { Scheduler } from "@actalk/novelfork-core";
+import { Scheduler } from "@vivy1024/novelfork-core";
 import { loadConfig, findProjectRoot, buildPipelineConfig, log, logError } from "../utils.js";
 import { createWriteStream, type WriteStream } from "node:fs";
 import { writeFile, readFile, unlink } from "node:fs/promises";

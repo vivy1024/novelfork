@@ -24,7 +24,7 @@ const logger = {
   error: vi.fn(),
 };
 
-vi.mock("@actalk/novelfork-core", () => {
+vi.mock("@vivy1024/novelfork-core", () => {
   class MockStateManager {
     constructor(private readonly root: string) {}
 

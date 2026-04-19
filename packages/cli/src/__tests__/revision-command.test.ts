@@ -7,7 +7,7 @@ const loadBookConfigMock = vi.fn();
 const logMock = vi.fn();
 const logErrorMock = vi.fn();
 
-vi.mock("@actalk/novelfork-core", () => ({
+vi.mock("@vivy1024/novelfork-core", () => ({
   DEFAULT_REVISE_MODE: "spot-fix",
   PipelineRunner: class {
     reviseDraft = reviseDraftMock;

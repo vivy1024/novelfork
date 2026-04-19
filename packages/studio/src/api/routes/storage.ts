@@ -11,7 +11,7 @@ import {
   PipelineRunner,
   computeAnalytics,
   loadProjectConfig,
-} from "@actalk/novelfork-core";
+} from "@vivy1024/novelfork-core";
 import { ApiError } from "../errors.js";
 import { buildStudioBookConfig } from "../book-create.js";
 import type { RouterContext } from "./context.js";
@@ -289,7 +289,7 @@ export function createStorageRouter(ctx: RouterContext): Hono {
     const id = c.req.param("id");
     const bookDir = state.bookDir(id);
     try {
-      const { loadRuntimeStateSnapshot } = await import("@actalk/novelfork-core");
+      const { loadRuntimeStateSnapshot } = await import("@vivy1024/novelfork-core");
       const snapshot = await loadRuntimeStateSnapshot(bookDir);
       return c.json(snapshot);
     } catch (e) {
@@ -360,7 +360,7 @@ export function createStorageRouter(ctx: RouterContext): Hono {
   // --- Genres ---
 
   app.get("/api/genres", async (c) => {
-    const { listAvailableGenres, readGenreProfile } = await import("@actalk/novelfork-core");
+    const { listAvailableGenres, readGenreProfile } = await import("@vivy1024/novelfork-core");
     const rawGenres = await listAvailableGenres(root);
     const genres = await Promise.all(
       rawGenres.map(async (g) => {
@@ -378,7 +378,7 @@ export function createStorageRouter(ctx: RouterContext): Hono {
   app.get("/api/genres/:id", async (c) => {
     const genreId = c.req.param("id");
     try {
-      const { readGenreProfile } = await import("@actalk/novelfork-core");
+      const { readGenreProfile } = await import("@vivy1024/novelfork-core");
       const { profile, body } = await readGenreProfile(root, genreId);
       return c.json({ profile, body });
     } catch (e) {
@@ -392,7 +392,7 @@ export function createStorageRouter(ctx: RouterContext): Hono {
       throw new ApiError(400, "INVALID_GENRE_ID", `Invalid genre ID: "${genreId}"`);
     }
     try {
-      const { getBuiltinGenresDir } = await import("@actalk/novelfork-core");
+      const { getBuiltinGenresDir } = await import("@vivy1024/novelfork-core");
       const { mkdir: mkdirFs, copyFile } = await import("node:fs/promises");
       const builtinDir = getBuiltinGenresDir();
       const projectGenresDir = join(root, "genres");
@@ -738,7 +738,7 @@ export function createStorageRouter(ctx: RouterContext): Hono {
   app.get("/api/books/:id/detect/stats", async (c) => {
     const id = c.req.param("id");
     try {
-      const { loadDetectionHistory, analyzeDetectionInsights } = await import("@actalk/novelfork-core");
+      const { loadDetectionHistory, analyzeDetectionInsights } = await import("@vivy1024/novelfork-core");
       const bookDir = state.bookDir(id);
       const history = await loadDetectionHistory(bookDir);
       const insights = analyzeDetectionInsights(history);
@@ -768,7 +768,7 @@ export function createStorageRouter(ctx: RouterContext): Hono {
 
   app.get("/api/doctor", async (c) => {
     const { existsSync } = await import("node:fs");
-    const { GLOBAL_ENV_PATH, createLLMClient, chatCompletion } = await import("@actalk/novelfork-core");
+    const { GLOBAL_ENV_PATH, createLLMClient, chatCompletion } = await import("@vivy1024/novelfork-core");
 
     const checks = {
       inkosJson: existsSync(join(root, "novelfork.json")),

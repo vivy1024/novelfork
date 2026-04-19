@@ -19,7 +19,7 @@ export interface SSETransportConfig {
 }
 
 export class SSETransport extends EventEmitter {
-  private eventSource: EventSource | null = null;
+  private eventSource: any | null = null;
   private requestId = 0;
   private pendingRequests = new Map<
     string | number,
@@ -43,18 +43,18 @@ export class SSETransport extends EventEmitter {
     // For browser, standard EventSource doesn't support custom headers
     let EventSourceImpl: any;
 
-    if (typeof globalThis.EventSource !== "undefined") {
-      EventSourceImpl = globalThis.EventSource;
-      this.eventSource = new EventSourceImpl(this.config.url) as EventSource;
+    if (typeof (globalThis as any).EventSource !== "undefined") {
+      EventSourceImpl = (globalThis as any).EventSource;
+      this.eventSource = new EventSourceImpl(this.config.url);
     } else {
       // Node.js: use eventsource package
       const { default: NodeEventSource } = await import("eventsource");
       this.eventSource = new NodeEventSource(this.config.url, {
         headers: this.config.headers,
-      }) as any as EventSource;
+      });
     }
 
-    this.eventSource.onmessage = (event) => {
+    this.eventSource.onmessage = (event: any) => {
       try {
         const message = JSON.parse(event.data);
         this.handleMessage(message);
@@ -63,7 +63,7 @@ export class SSETransport extends EventEmitter {
       }
     };
 
-    this.eventSource.onerror = (error) => {
+    this.eventSource.onerror = (error: any) => {
       this.emit("error", new Error("SSE connection error"));
       this.emit("close", null);
     };

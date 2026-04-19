@@ -4,7 +4,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { StateManager } from "@actalk/novelfork-core";
+import { StateManager } from "@vivy1024/novelfork-core";
 
 const testDir = dirname(fileURLToPath(import.meta.url));
 const cliDir = resolve(testDir, "..", "..");

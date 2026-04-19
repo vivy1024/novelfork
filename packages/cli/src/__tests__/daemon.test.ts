@@ -20,7 +20,7 @@ vi.mock("node:fs", () => ({
   createWriteStream: createWriteStreamMock,
 }));
 
-vi.mock("@actalk/novelfork-core", () => ({
+vi.mock("@vivy1024/novelfork-core", () => ({
   Scheduler: class {
     start = schedulerStartMock;
     stop = schedulerStopMock;

@@ -9,6 +9,7 @@
  * persistence layer. MemoryDB is an acceleration index built alongside them.
  */
 
+// @ts-ignore - node:sqlite is available in Node.js 22+
 import { DatabaseSync } from "node:sqlite";
 import { join } from "node:path";
 

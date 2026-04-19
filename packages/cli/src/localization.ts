@@ -1,4 +1,4 @@
-import { formatLengthCount, resolveLengthCountingMode } from "@actalk/novelfork-core";
+import { formatLengthCount, resolveLengthCountingMode } from "@vivy1024/novelfork-core";
 
 export type CliLanguage = "zh" | "en";
 

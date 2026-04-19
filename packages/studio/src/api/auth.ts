@@ -115,7 +115,7 @@ function verifySignature(token: string, secret: string): LaunchClaims {
   const actualSignature = Buffer.from(signatureSegment, "base64url");
   if (
     actualSignature.length !== expectedSignature.length ||
-    !timingSafeEqual(actualSignature, expectedSignature)
+    !timingSafeEqual(new Uint8Array(actualSignature), new Uint8Array(expectedSignature))
   ) {
     throw new Error("Invalid launch token.");
   }

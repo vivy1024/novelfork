@@ -3,9 +3,14 @@
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": "src",
-    "lib": ["ES2022"],
-    "types": ["node"]
+    "lib": ["ES2022", "DOM"],
+    "types": ["node"],
+    "skipLibCheck": true
   },
-  "include": ["src/api"],
-  "exclude": ["src/api/**/*.test.ts"]
+  "include": ["src/api/**/*.ts"],
+  "exclude": [
+    "src/api/**/*.test.ts",
+    "src/api/routes/hooks-countdown.ts",
+    "src/api/routes/poison-detector.ts"
+  ]
 }

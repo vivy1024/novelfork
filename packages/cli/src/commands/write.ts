@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { PipelineRunner, StateManager } from "@actalk/novelfork-core";
+import { PipelineRunner, StateManager } from "@vivy1024/novelfork-core";
 import { readdir, unlink, rename as fsRename, writeFile as fsWriteFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createInterface } from "node:readline";

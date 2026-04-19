@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { StateManager, formatLengthCount, readGenreProfile, resolveLengthCountingMode } from "@actalk/novelfork-core";
+import { StateManager, formatLengthCount, readGenreProfile, resolveLengthCountingMode } from "@vivy1024/novelfork-core";
 import { findProjectRoot, getLegacyMigrationHint, log, logError } from "../utils.js";
 
 export const statusCommand = new Command("status")

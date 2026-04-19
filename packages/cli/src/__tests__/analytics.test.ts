@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeAnalytics } from "@actalk/novelfork-core";
+import { computeAnalytics } from "@vivy1024/novelfork-core";
 
 describe("computeAnalytics", () => {
   it("returns zeros for empty chapters", () => {

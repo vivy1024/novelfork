@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { runAgentLoop } from "@actalk/novelfork-core";
+import { runAgentLoop } from "@vivy1024/novelfork-core";
 import { loadConfig, createClient, findProjectRoot, resolveContext, log, logError } from "../utils.js";
 
 export const agentCommand = new Command("agent")
