@@ -31,7 +31,7 @@
     "version": "pnpm -r exec npm version"
   },
   "engines": {
-    "node": ">=20.0.0",
+    "node": ">=22.5.0",
     "pnpm": ">=9.0.0"
   },
   "dependencies": {

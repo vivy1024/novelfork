@@ -16,9 +16,9 @@
 |------|------|------|
 | `.`（根） | NovelFork 主仓库 | `vivy1024/inkos` |
 | `packages/cli/` | CLI 工具（novelfork 命令） | — |
-| `packages/studio/` | Web 工作台（Vue 3 + Vite） | — |
-| `packages/core/` | 核心写作引擎 | — |
-| `packages/agents/` | AI Agent 协作管线 | — |
+| `packages/studio/` | Web 工作台（React 19 + Hono + Vite） | — |
+| `packages/core/` | 核心写作引擎 + Agent 管线 | — |
+| `packages/desktop/` | 桌面端（Tauri 2，骨架阶段） | — |
 
 ---
 
@@ -137,7 +137,7 @@ Git 检查 → git status --short
 | 写作流程规范 | `.kiro/steering/writing-workflow.md` |
 | 代码规范 | `.kiro/steering/project-standards.md` |
 | MCP 工具使用 | `.kiro/steering/mcp-tools-reference.md` |
-| Skills 映射与协作 | `.kiro/steering/skills-integration.md` |
+
 | 动态运维状态 | `OPS_RUNTIME_STATE.md` |
 
 ---
@@ -149,14 +149,14 @@ Git 检查 → git status --short
 | 项目 | 路径 | 定位 | 与本项目的关系 |
 |------|------|------|----------------|
 | **Sub2API** | `D:\DESKTOP\sub2api` | 订阅转 API 网关（Go + Vue + PostgreSQL + Redis + Zeabur） | 本项目的 AI API 调用走 Sub2API 网关；API 报错时需要同步排查；网关的 Mihomo 代理为本项目提供多出口支持 |
-| **文字修仙** | `D:\DESKTOP\narrafork` | 纯单机修仙游戏（Python FastAPI + Vue 3 + Electron），目标上 Steam | 游戏的叙事系统（storyteller.py）可借鉴本项目写作流程；游戏世界观数据（YAML 灵材/配方/地点）可作为本项目修仙题材模板；Electron 桌面壳经验互通 |
+| **文字修仙** | `D:\DESKTOP\文字修仙` | 纯单机修仙游戏（Python FastAPI + Vue 3 + Electron），目标上 Steam | 游戏的叙事系统（storyteller.py）可借鉴本项目写作流程；游戏世界观数据（YAML 灵材/配方/地点）可作为本项目修仙题材模板；Electron 桌面壳经验互通 |
 | **OpenClaw** | `D:\DESKTOP\openclaw` | 本地 AI 工作台 + QQ 群聊 bot「羽书」| 小说原文 `.txt` 共享；GraphRAG 知识图谱可与本项目联动；羽书的 agent 架构设计是参考范例 |
 
 ### 何时去看兄弟项目
 
 - **API 网关相关** → Sub2API 运行状态看 `D:\DESKTOP\sub2api/OPS_RUNTIME_STATE.md`；环境变量看 `.kiro/steering/zeabur-env-vars.md`
-- **小说原文 / 修仙书设** → openclaw 根目录有 `.txt` 原文；文字修仙有分析报告：`D:\DESKTOP\narrafork\文字修仙\reference\*_分析报告.md`
-- **修仙世界观** → `D:\DESKTOP\narrafork\文字修仙\docs\`（50+ 设计文档，LEVSS 物理体系、境界体系、势力经济）
-- **Electron 桌面壳** → 文字修仙有现成实现：`D:\DESKTOP\narrafork\文字修仙\electron\`（本项目终态也要做桌面端）
+- **小说原文 / 修仙书设** → openclaw 根目录有 `.txt` 原文；文字修仙有分析报告：`D:\DESKTOP\文字修仙\reference\*_分析报告.md`
+- **修仙世界观** → `D:\DESKTOP\文字修仙\docs\`（50+ 设计文档，LEVSS 物理体系、境界体系、势力经济）
+- **Electron 桌面壳** → 文字修仙有现成实现：`D:\DESKTOP\文字修仙\electron\`（本项目终态也要做桌面端）
 - **GraphRAG 小说索引** → `D:\DESKTOP\openclaw/graphrag_novels/`（已建好的小说知识图谱）
 - **提示词工程模式** → 三个项目共享同一套 CLAUDE.md / AGENTS.md / .kiro/steering/ / OPS_RUNTIME_STATE.md 模式
