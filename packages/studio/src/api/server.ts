@@ -17,6 +17,7 @@ import { join } from "node:path";
 import { isSafeBookId } from "./safety.js";
 import { ApiError } from "./errors.js";
 import { readSessionFromCookie } from "./auth.js";
+import { createFilesystemStaticProvider, type StaticProvider } from "./static-provider.js";
 import { RunStore } from "./lib/run-store.js";
 import {
   createRunsRouter,
@@ -296,7 +297,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
 export async function startStudioServer(
   root: string,
   port = 4567,
-  options?: { readonly staticDir?: string },
+  options?: { readonly staticDir?: string; readonly staticProvider?: StaticProvider },
 ): Promise<void> {
   // Auto-init project directory if novelfork.json doesn't exist (Zeabur / Docker deployment)
   const { existsSync: existsSyncInit } = await import("node:fs");
@@ -334,37 +335,21 @@ export async function startStudioServer(
   const { app, ctx } = createStudioServer(config, root);
 
   // Serve frontend static files — single process for API + frontend
-  if (options?.staticDir) {
-    const { readFile: readFileFs } = await import("node:fs/promises");
-    const { join: joinPath } = await import("node:path");
-    const { existsSync } = await import("node:fs");
-
-    // Serve static assets (js, css, etc.)
+  const staticProvider = options?.staticProvider
+    ?? (options?.staticDir ? createFilesystemStaticProvider(options.staticDir) : undefined);
+  if (staticProvider) {
     app.get("/assets/*", async (c) => {
-      const filePath = joinPath(options.staticDir!, c.req.path);
-      try {
-        const content = await readFileFs(filePath);
-        const ext = filePath.split(".").pop() ?? "";
-        const contentTypes: Record<string, string> = {
-          js: "application/javascript",
-          css: "text/css",
-          svg: "image/svg+xml",
-          png: "image/png",
-          ico: "image/x-icon",
-          json: "application/json",
-        };
-        return new Response(new Uint8Array(content), {
-          headers: { "Content-Type": contentTypes[ext] ?? "application/octet-stream" },
-        });
-      } catch {
+      const asset = await staticProvider.readAsset(c.req.path);
+      if (!asset) {
         return c.notFound();
       }
+      return new Response(asset.content, {
+        headers: { "Content-Type": asset.contentType },
+      });
     });
 
-    // SPA fallback
-    const indexPath = joinPath(options.staticDir!, "index.html");
-    if (existsSync(indexPath)) {
-      const indexHtml = await readFileFs(indexPath, "utf-8");
+    const indexHtml = await staticProvider.readIndexHtml();
+    if (indexHtml !== null) {
       app.get("*", (c) => {
         if (c.req.path.startsWith("/api/")) return c.notFound();
         return c.html(indexHtml);
