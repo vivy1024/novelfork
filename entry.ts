@@ -56,17 +56,49 @@ serve({
   port: PORT,
 });
 
-// 自动打开浏览器（无界面模式）
+// 自动打开浏览器（Chrome App Mode - 无界面）
 setTimeout(() => {
   const url = `http://localhost:${PORT}`;
 
-  // Windows: 使用 start 命令打开默认浏览器
+  // Windows: 使用 Chrome App Mode 打开（无地址栏、无标签页）
   if (process.platform === "win32") {
-    spawn("cmd", ["/c", "start", url], { detached: true, stdio: "ignore" });
+    // 尝试使用 Chrome App Mode
+    const chromeArgs = [
+      "--app=" + url,
+      "--window-size=1440,900",
+      "--disable-features=TranslateUI",
+      "--no-first-run",
+      "--no-default-browser-check"
+    ];
+
+    // 尝试常见的 Chrome 安装路径
+    const chromePaths = [
+      "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+      "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+      process.env.LOCALAPPDATA + "\\Google\\Chrome\\Application\\chrome.exe"
+    ];
+
+    let chromeOpened = false;
+    for (const chromePath of chromePaths) {
+      if (existsSync(chromePath)) {
+        spawn(chromePath, chromeArgs, { detached: true, stdio: "ignore" });
+        chromeOpened = true;
+        console.log(`✅ Opened Chrome App Mode: ${chromePath}`);
+        break;
+      }
+    }
+
+    // Fallback: 使用默认浏览器
+    if (!chromeOpened) {
+      spawn("cmd", ["/c", "start", url], { detached: true, stdio: "ignore" });
+      console.log(`⚠️  Chrome not found, using default browser`);
+    }
   } else if (process.platform === "darwin") {
-    spawn("open", [url], { detached: true, stdio: "ignore" });
+    // macOS: 使用 Chrome App Mode
+    spawn("open", ["-a", "Google Chrome", "--args", "--app=" + url], { detached: true, stdio: "ignore" });
   } else {
-    spawn("xdg-open", [url], { detached: true, stdio: "ignore" });
+    // Linux: 尝试 Chrome App Mode
+    spawn("google-chrome", ["--app=" + url], { detached: true, stdio: "ignore" });
   }
 }, 1000);
 
