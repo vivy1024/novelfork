@@ -13,7 +13,8 @@ const port = parseInt(process.env.NOVELFORK_STUDIO_PORT ?? "4567", 10);
 const studioRoot = resolve(__dirname, "../..");
 const distDir = join(studioRoot, "dist");
 
-// Auto-build frontend if dist/ doesn't exist
+// Legacy package entrypoint: auto-build frontend if dist/ doesn't exist.
+// The repository-level Bun main entry intentionally does NOT auto-build.
 if (!existsSync(join(distDir, "index.html"))) {
   console.log("Building frontend...");
   try {

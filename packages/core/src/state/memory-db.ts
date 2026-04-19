@@ -9,9 +9,8 @@
  * persistence layer. MemoryDB is an acceleration index built alongside them.
  */
 
-// @ts-ignore - node:sqlite is available in Node.js 22+
-import { DatabaseSync } from "node:sqlite";
 import { join } from "node:path";
+import { createSqliteDatabase } from "./sqlite-driver.js";
 
 const FACT_SELECT_COLUMNS = `
   id,
@@ -95,7 +94,7 @@ export class MemoryDB {
 
   constructor(bookDir: string) {
     const dbPath = join(bookDir, "story", "memory.db");
-    this.db = new DatabaseSync(dbPath);
+    this.db = createSqliteDatabase(dbPath);
     this.db.exec("PRAGMA journal_mode = WAL");
     this.migrate();
   }

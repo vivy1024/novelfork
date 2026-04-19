@@ -97,9 +97,16 @@ export function parseNodeMajor(version: string): number {
   return parseInt(version.replace(/^v/i, "").split(".")[0] ?? "0", 10);
 }
 
-function hasNodeSqliteBuiltin(): boolean {
+function hasSqliteBuiltin(): boolean {
   try {
     require("node:sqlite");
+    return true;
+  } catch {
+    // continue
+  }
+
+  try {
+    require("bun:sqlite");
     return true;
   } catch {
     return false;
