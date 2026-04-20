@@ -60,6 +60,14 @@ export function routeToTabId(route: Route): string {
     case "mcp": return "mcp";
     case "pipeline": return route.runId ? `pipeline:${route.runId}` : "pipeline";
     case "plugins": return "plugins";
+    case "chat-windows": return "chat-windows";
+    case "settings": return "settings";
+    case "worktree": return "worktree";
+    case "admin": return "admin";
+    default: {
+      const unreachable: never = route;
+      throw new Error(`Unhandled route for tab id: ${JSON.stringify(unreachable)}`);
+    }
   }
 }
 
@@ -94,6 +102,14 @@ export function routeToTabLabel(route: Route): string {
     case "mcp": return "MCP";
     case "pipeline": return "Pipeline";
     case "plugins": return "Plugins";
+    case "chat-windows": return "Chat Windows";
+    case "settings": return "Settings";
+    case "worktree": return "Worktree";
+    case "admin": return "Admin";
+    default: {
+      const unreachable: never = route;
+      throw new Error(`Unhandled route for tab label: ${JSON.stringify(unreachable)}`);
+    }
   }
 }
 

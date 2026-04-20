@@ -91,13 +91,32 @@ export async function execCommand(command: string, options: ExecOptions = {}): P
       stderr: "pipe",
     });
 
-    const [stdout, stderr, exitCode] = await Promise.all([
-      collectStream(proc.stdout),
-      collectStream(proc.stderr),
-      proc.exited,
-    ]);
+    let timedOut = false;
+    const timer = options.timeout && options.timeout > 0
+      ? setTimeout(() => {
+          timedOut = true;
+          proc.kill();
+        }, options.timeout)
+      : null;
 
-    return { stdout: stdout.trim(), stderr: stderr.trim(), exitCode };
+    try {
+      const [stdout, stderr, exitCode] = await Promise.all([
+        collectStream(proc.stdout),
+        collectStream(proc.stderr),
+        proc.exited,
+      ]);
+
+      return {
+        stdout: stdout.trim(),
+        stderr: stderr.trim(),
+        exitCode,
+        signal: timedOut ? "SIGTERM" : null,
+      };
+    } finally {
+      if (timer) {
+        clearTimeout(timer);
+      }
+    }
   }
 
   const { exec } = await import("node:child_process");
@@ -108,14 +127,14 @@ export async function execCommand(command: string, options: ExecOptions = {}): P
       timeout: options.timeout,
       maxBuffer: 10 * 1024 * 1024,
     }, (error, stdout, stderr) => {
-      if (error && typeof error.code !== "number") {
+      if (error && typeof error.code !== "number" && !error.signal) {
         reject(error);
         return;
       }
       resolve({
         stdout: stdout.trim(),
         stderr: stderr.trim(),
-        exitCode: error && typeof error.code === "number" ? error.code : 0,
+        exitCode: error && typeof error.code === "number" ? error.code : null,
         signal: error?.signal ?? null,
       });
     });

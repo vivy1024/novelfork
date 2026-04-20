@@ -14,7 +14,7 @@ interface ChatWindowProps {
 
 export function ChatWindow({ windowId, theme }: ChatWindowProps) {
   const c = useColors(theme);
-  const window = useWindowStore((state) => state.windows.find((w) => w.id === windowId));
+  const chatWindow = useWindowStore((state) => state.windows.find((w) => w.id === windowId));
   const removeWindow = useWindowStore((state) => state.removeWindow);
   const toggleMinimize = useWindowStore((state) => state.toggleMinimize);
   const addMessage = useWindowStore((state) => state.addMessage);
@@ -25,13 +25,12 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
-  // WebSocket 连接管理
   useEffect(() => {
-    if (!window) return;
+    if (!chatWindow) return;
 
     const connectWs = () => {
-      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const wsUrl = `${protocol}//${window.location.host}/api/agent/${window.agentId}/chat`;
+      const protocol = globalThis.window.location.protocol === "https:" ? "wss:" : "ws:";
+      const wsUrl = `${protocol}//${globalThis.window.location.host}/api/agent/${chatWindow.agentId}/chat`;
 
       try {
         const ws = new WebSocket(wsUrl);
@@ -52,7 +51,6 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
             };
             addMessage(windowId, message);
           } catch {
-            // 如果不是 JSON，直接作为文本消息
             const message: ChatMessage = {
               id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
               role: "assistant",
@@ -69,7 +67,6 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
 
         ws.onclose = () => {
           setWsConnected(windowId, false);
-          // 5 秒后自动重连
           setTimeout(connectWs, 5000);
         };
       } catch (error) {
@@ -86,14 +83,13 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
         wsRef.current = null;
       }
     };
-  }, [windowId, window?.agentId, addMessage, setWsConnected]);
+  }, [windowId, chatWindow?.agentId, addMessage, setWsConnected]);
 
-  // 自动滚动到底部
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [window?.messages]);
+  }, [chatWindow?.messages]);
 
-  if (!window) return null;
+  if (!chatWindow) return null;
 
   const handleSend = () => {
     if (!input.trim() || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
@@ -111,7 +107,6 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
   };
 
   const handleMaximize = () => {
-    // 最大化：占满整个网格
     useWindowStore.getState().updateLayout(windowId, { x: 0, y: 0, w: 12, h: 12 });
   };
 
@@ -121,7 +116,6 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
       style={{ backgroundColor: c.bg, border: `1px solid ${c.border}` }}
       onClick={() => setActiveWindow(windowId)}
     >
-      {/* 标题栏 */}
       <div
         className="flex items-center justify-between px-3 py-2 cursor-move"
         style={{ backgroundColor: c.bgSecondary, borderBottom: `1px solid ${c.border}` }}
@@ -129,32 +123,33 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
         <div className="flex items-center gap-2">
           <Bot size={16} style={{ color: c.accent }} />
           <span className="text-sm font-medium" style={{ color: c.text }}>
-            {window.title}
+            {chatWindow.title}
           </span>
-          {window.wsConnected ? (
-            <Wifi size={12} style={{ color: "#10b981" }} title="已连接" />
+          {chatWindow.wsConnected ? (
+            <span title="已连接">
+              <Wifi size={12} style={{ color: "#10b981" }} />
+            </span>
           ) : (
-            <WifiOff size={12} style={{ color: "#ef4444" }} title="未连接" />
+            <span title="未连接">
+              <WifiOff size={12} style={{ color: "#ef4444" }} />
+            </span>
           )}
         </div>
         <WindowControls
           theme={theme}
-          minimized={window.minimized}
+          minimized={chatWindow.minimized}
           onMinimize={() => toggleMinimize(windowId)}
           onMaximize={handleMaximize}
           onClose={() => removeWindow(windowId)}
         />
       </div>
 
-      {/* 消息区域 */}
-      {!window.minimized && (
+      {!chatWindow.minimized && (
         <>
           <div className="flex-1 overflow-y-auto p-3 space-y-2">
-            {window.messages.map((msg) => (
+            {chatWindow.messages.map((msg) => (
               <div key={msg.id} className="space-y-2">
-                <div
-                  className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-                >
+                <div className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
                   <div
                     className="max-w-[80%] px-3 py-2 rounded-lg text-sm"
                     style={{
@@ -168,11 +163,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
                 {msg.toolCalls && msg.toolCalls.length > 0 && (
                   <div className="space-y-2 ml-4">
                     {msg.toolCalls.map((toolCall, idx) => (
-                      <ToolCallCard
-                        key={`${msg.id}-tool-${idx}`}
-                        toolCall={toolCall}
-                        theme={c}
-                      />
+                      <ToolCallCard key={`${msg.id}-tool-${idx}`} toolCall={toolCall} theme={c} />
                     ))}
                   </div>
                 )}
@@ -181,7 +172,6 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* 输入区域 */}
           <div className="p-3 border-t" style={{ borderColor: c.border }}>
             <div className="flex gap-2">
               <input
@@ -196,11 +186,11 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
                   color: c.text,
                   border: `1px solid ${c.border}`,
                 }}
-                disabled={!window.wsConnected}
+                disabled={!chatWindow.wsConnected}
               />
               <button
                 onClick={handleSend}
-                disabled={!window.wsConnected || !input.trim()}
+                disabled={!chatWindow.wsConnected || !input.trim()}
                 className="px-4 py-2 rounded text-sm font-medium transition-opacity disabled:opacity-50"
                 style={{ backgroundColor: c.accent, color: "#fff" }}
               >
