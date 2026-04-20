@@ -1,5 +1,17 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Bot, Braces, Cpu, PlusCircle, Settings2, Wifi, WifiOff } from "lucide-react";
+import { Fragment, useEffect, useRef, useState } from "react";
+import {
+  Bot,
+  Braces,
+  ChevronRight,
+  Clock3,
+  Cpu,
+  GitBranch,
+  PlusCircle,
+  Settings2,
+  Wifi,
+  WifiOff,
+  Wrench,
+} from "lucide-react";
 
 import type { Theme } from "../hooks/use-theme";
 import { useColors } from "../hooks/use-colors";
@@ -10,8 +22,15 @@ import type {
   ChatWindow as ChatWindowState,
   SessionPermissionMode,
   SessionReasoningEffort,
+  ToolCall,
 } from "../stores/windowStore";
-import { ToolCallBlock, parseAssistantPayload } from "./ToolCall";
+import {
+  buildToolCallSummary,
+  formatToolCallDuration,
+  getToolCallStatusLabel,
+  parseAssistantPayload,
+  ToolCallBlock,
+} from "./ToolCall";
 import { ContextPanel, type ContextEntry } from "./ContextPanel";
 import { fetchJson } from "../hooks/use-api";
 import { getDefaultModel, getDefaultProvider, getModel, getProvider, PROVIDERS } from "../shared/provider-catalog";
@@ -149,6 +168,8 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
       : contextSummary.percentage >= 60
         ? "text-amber-600"
         : "text-emerald-600";
+  const recentExecutionChain = buildRecentExecutionChain(chatWindow.messages);
+  const sessionBreadcrumb = buildSessionBreadcrumb(chatWindow);
 
   const handleSend = () => {
     if (!input.trim() || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
@@ -175,12 +196,24 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
     : "--:--";
 
   const updateSessionConfig = (updates: Partial<NonNullable<ChatWindowState["sessionConfig"]>>) => {
+    const nextSessionConfig = {
+      ...sessionConfig,
+      ...updates,
+    };
+
     updateWindow(windowId, {
-      sessionConfig: {
-        ...sessionConfig,
-        ...updates,
-      },
+      sessionConfig: nextSessionConfig,
     });
+
+    if (chatWindow.sessionId) {
+      void fetchJson(`/api/sessions/${chatWindow.sessionId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionConfig: nextSessionConfig,
+        }),
+      });
+    }
   };
 
   return (
@@ -191,45 +224,63 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
         onClick={() => setActiveWindow(windowId)}
       >
         <div
-          className="flex items-center justify-between px-3 py-2 cursor-move"
+          className="cursor-move px-3 py-2"
           style={{ backgroundColor: c.bgSecondary, borderBottom: `1px solid ${c.border}` }}
         >
-          <div className="flex min-w-0 items-center gap-2">
-            <Bot size={16} style={{ color: c.accent }} />
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="max-w-[180px] truncate text-sm font-medium" style={{ color: c.text }}>
-                  {chatWindow.title}
-                </span>
-                {isActive && (
-                  <span className="rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
-                    聚焦
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex min-w-0 items-start gap-2">
+              <Bot size={16} style={{ color: c.accent }} className="mt-0.5 shrink-0" />
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="max-w-[180px] truncate text-sm font-medium" style={{ color: c.text }}>
+                    {chatWindow.title}
                   </span>
-                )}
-              </div>
-              <div className="mt-0.5 flex items-center gap-2 text-[10px] text-muted-foreground">
-                <span>Agent {chatWindow.agentId}</span>
-                <span>•</span>
-                <span>{chatWindow.messages.length} 条消息</span>
+                  {isActive && (
+                    <span className="rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+                      聚焦
+                    </span>
+                  )}
+                </div>
+                <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
+                  <span>Agent {chatWindow.agentId}</span>
+                  <span>•</span>
+                  <span>{chatWindow.messages.length} 条消息</span>
+                  {chatWindow.sessionId ? (
+                    <>
+                      <span>•</span>
+                      <span title={chatWindow.sessionId}>Session {shortSessionId(chatWindow.sessionId)}</span>
+                    </>
+                  ) : null}
+                </div>
+                <div className="mt-1 flex flex-wrap items-center gap-1 text-[10px] text-muted-foreground">
+                  {sessionBreadcrumb.map((segment, index) => (
+                    <Fragment key={`${segment}-${index}`}>
+                      {index > 0 ? <ChevronRight className="size-3 opacity-50" /> : null}
+                      <span className="rounded-full border border-border/60 bg-background/70 px-2 py-0.5">{segment}</span>
+                    </Fragment>
+                  ))}
+                </div>
               </div>
             </div>
-            {chatWindow.wsConnected ? (
-              <span title="已连接">
-                <Wifi size={12} style={{ color: "#10b981" }} />
-              </span>
-            ) : (
-              <span title="未连接">
-                <WifiOff size={12} style={{ color: "#ef4444" }} />
-              </span>
-            )}
+            <div className="flex items-center gap-2">
+              {chatWindow.wsConnected ? (
+                <span title="已连接">
+                  <Wifi size={12} style={{ color: "#10b981" }} />
+                </span>
+              ) : (
+                <span title="未连接">
+                  <WifiOff size={12} style={{ color: "#ef4444" }} />
+                </span>
+              )}
+              <WindowControls
+                theme={theme}
+                minimized={chatWindow.minimized}
+                onMinimize={() => toggleMinimize(windowId)}
+                onMaximize={handleMaximize}
+                onClose={() => removeWindow(windowId)}
+              />
+            </div>
           </div>
-          <WindowControls
-            theme={theme}
-            minimized={chatWindow.minimized}
-            onMinimize={() => toggleMinimize(windowId)}
-            onMaximize={handleMaximize}
-            onClose={() => removeWindow(windowId)}
-          />
         </div>
 
         {!chatWindow.minimized && (
@@ -257,76 +308,133 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
               </div>
 
               <div className="grid gap-3 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,1fr)]">
-                <div className="rounded-xl border border-border/70 bg-background/80 p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <div>
-                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Context</div>
-                      <div className={`mt-1 text-2xl font-semibold ${contextSeverityClassName}`}>{contextSummary.percentage}%</div>
+                <div className="space-y-3">
+                  <div className="rounded-xl border border-border/70 bg-background/80 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Context</div>
+                        <div className={`mt-1 text-2xl font-semibold ${contextSeverityClassName}`}>{contextSummary.percentage}%</div>
+                      </div>
+                      <div className="text-right text-xs text-muted-foreground">
+                        <div>
+                          {contextSummary.totalTokens.toLocaleString()} / {tokenBudget.toLocaleString()}
+                        </div>
+                        <div>{contextSummary.messageCount} 条消息</div>
+                      </div>
                     </div>
-                    <div className="text-right text-xs text-muted-foreground">
-                      <div>{contextSummary.totalTokens.toLocaleString()} / {tokenBudget.toLocaleString()}</div>
-                      <div>{contextSummary.messageCount} 条消息</div>
+                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
+                      <div
+                        className={`h-full rounded-full transition-all ${contextSummary.percentage >= 80 ? "bg-red-500" : contextSummary.percentage >= 60 ? "bg-amber-500" : "bg-emerald-500"}`}
+                        style={{ width: `${Math.min(contextSummary.percentage, 100)}%` }}
+                      />
                     </div>
-                  </div>
-                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
-                    <div
-                      className={`h-full rounded-full transition-all ${contextSummary.percentage >= 80 ? "bg-red-500" : contextSummary.percentage >= 60 ? "bg-amber-500" : "bg-emerald-500"}`}
-                      style={{ width: `${Math.min(contextSummary.percentage, 100)}%` }}
-                    />
-                  </div>
-                  <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px]">
-                    <span className={`rounded-full px-2 py-1 ${contextSummary.percentage >= 80 ? "bg-red-500/10 text-red-600" : contextSummary.percentage >= 60 ? "bg-amber-500/10 text-amber-600" : "bg-emerald-500/10 text-emerald-600"}`}>
-                      {contextSeverityLabel}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setContextPanelOpen(true)}
-                      className="rounded-full border border-border/70 bg-background px-2 py-1 text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
-                      aria-label="上下文详情"
-                    >
-                      上下文详情
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => updateWindow(windowId, { messages: compressMessages(chatWindow.messages) })}
-                      className="rounded-full border border-border/70 bg-background px-2 py-1 text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
-                    >
-                      压缩
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => updateWindow(windowId, { messages: truncateMessages(chatWindow.messages) })}
-                      className="rounded-full border border-border/70 bg-background px-2 py-1 text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
-                    >
-                      裁剪
-                    </button>
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        const session = await fetchJson<NarratorSessionRecord>("/api/sessions", {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({
-                            title: `${chatWindow.title} · 新会话`,
-                            agentId: chatWindow.agentId,
-                            sessionConfig,
-                          }),
-                        });
-
-                        addWindow({
-                          agentId: chatWindow.agentId,
-                          title: `${chatWindow.title} · 新会话`,
-                          sessionId: session.id,
-                          sessionConfig: session.sessionConfig,
-                        });
-                      }}
-                      className="rounded-full border border-border/70 bg-background px-2 py-1 text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
-                    >
-                      <span className="inline-flex items-center gap-1">
-                        <PlusCircle className="size-3.5" />
-                        新开会话
+                    <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px]">
+                      <span className={`rounded-full px-2 py-1 ${contextSummary.percentage >= 80 ? "bg-red-500/10 text-red-600" : contextSummary.percentage >= 60 ? "bg-amber-500/10 text-amber-600" : "bg-emerald-500/10 text-emerald-600"}`}>
+                        {contextSeverityLabel}
                       </span>
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => setContextPanelOpen(true)}
+                        className="rounded-full border border-border/70 bg-background px-2 py-1 text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
+                        aria-label="上下文详情"
+                      >
+                        上下文详情
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => updateWindow(windowId, { messages: compressMessages(chatWindow.messages) })}
+                        className="rounded-full border border-border/70 bg-background px-2 py-1 text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
+                      >
+                        压缩
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => updateWindow(windowId, { messages: truncateMessages(chatWindow.messages) })}
+                        className="rounded-full border border-border/70 bg-background px-2 py-1 text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
+                      >
+                        裁剪
+                      </button>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const session = await fetchJson<NarratorSessionRecord>("/api/sessions", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                              title: `${chatWindow.title} · 新会话`,
+                              agentId: chatWindow.agentId,
+                              sessionConfig,
+                            }),
+                          });
+
+                          addWindow({
+                            agentId: chatWindow.agentId,
+                            title: `${chatWindow.title} · 新会话`,
+                            sessionId: session.id,
+                            sessionConfig: session.sessionConfig,
+                          });
+                        }}
+                        className="rounded-full border border-border/70 bg-background px-2 py-1 text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
+                      >
+                        <span className="inline-flex items-center gap-1">
+                          <PlusCircle className="size-3.5" />
+                          新开会话
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-border/70 bg-background/80 p-3" data-testid="execution-chain-card">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                          <GitBranch className="size-3.5 text-primary" />
+                          最近执行链
+                        </div>
+                        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                          把最近一轮工具动作串成主链，至少能看见 AI 刚才查了什么、改了什么、耗时多久。
+                        </p>
+                      </div>
+                      <span className="rounded-full border border-border/70 bg-background px-2 py-1 text-[10px] text-muted-foreground">
+                        {recentExecutionChain ? `${recentExecutionChain.calls.length} 步主链` : "等待执行"}
+                      </span>
+                    </div>
+
+                    {recentExecutionChain ? (
+                      <>
+                        <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[11px]">
+                          {recentExecutionChain.calls.map((call, index) => (
+                            <Fragment key={call.id ?? `${call.toolName}-${index}`}>
+                              {index > 0 ? <ChevronRight className="size-3 text-muted-foreground" /> : null}
+                              <span className="inline-flex items-center gap-1 rounded-full border border-border/70 bg-background px-2 py-1 text-foreground">
+                                <Wrench className="size-3 text-primary" />
+                                {call.toolName}
+                              </span>
+                            </Fragment>
+                          ))}
+                        </div>
+                        <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                          <MiniInfoTile label="最近状态" value={recentExecutionChain.statusLabel} tone={recentExecutionChain.tone} />
+                          <MiniInfoTile
+                            label="总耗时"
+                            value={recentExecutionChain.totalDurationLabel}
+                            tone={recentExecutionChain.tone}
+                          />
+                          <MiniInfoTile label="最近时间" value={recentExecutionChain.timeLabel} />
+                        </div>
+                        <div className="mt-3 rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+                          <div className="font-medium text-foreground">{recentExecutionChain.headline}</div>
+                          <div className="mt-1 flex items-center gap-1">
+                            <Clock3 className="size-3.5" />
+                            {recentExecutionChain.detail}
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="mt-3 rounded-lg border border-dashed border-border/60 bg-muted/10 px-3 py-2 text-xs text-muted-foreground">
+                        当前还没有工具主链；一旦助手发起 Read / Bash / Grep / Write 等动作，这里会立即展示过程轨迹。
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -404,13 +512,13 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-3 space-y-2">
+            <div className="flex-1 space-y-2 overflow-y-auto p-3">
               {chatWindow.messages.map((msg) => (
                 <div key={msg.id} className="space-y-2">
                   {msg.content ? (
                     <div className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
                       <div
-                        className="max-w-[80%] px-3 py-2 rounded-lg text-sm"
+                        className="max-w-[80%] rounded-lg px-3 py-2 text-sm"
                         style={{
                           backgroundColor: msg.role === "user" ? c.accent : c.bgSecondary,
                           color: msg.role === "user" ? "#fff" : c.text,
@@ -422,8 +530,13 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
                   ) : null}
                   {msg.toolCalls && msg.toolCalls.length > 0 && (
                     <div className="ml-4 space-y-2 rounded-xl border border-border/40 bg-muted/20 p-2">
-                      <div className="px-1 text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                        工具调用日志
+                      <div className="flex items-center justify-between gap-2 px-1">
+                        <div className="text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                          工具调用日志
+                        </div>
+                        <div className="text-[10px] text-muted-foreground">
+                          {msg.toolCalls.length} 步 · {sumToolCallDurations(msg.toolCalls)}
+                        </div>
                       </div>
                       {msg.toolCalls.map((toolCall, idx) => (
                         <ToolCallBlock
@@ -503,8 +616,29 @@ function SessionMetric({ label, value }: { label: string; value: string }) {
   );
 }
 
+function MiniInfoTile({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone?: "default" | "error" | "running";
+}) {
+  return (
+    <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
+      <div className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">{label}</div>
+      <div
+        className={`mt-1 text-sm font-medium ${tone === "error" ? "text-red-600" : tone === "running" ? "text-amber-600" : "text-foreground"}`}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
 function buildSessionContextSummary(chatWindow: ChatWindowState, budgetMax: number) {
-  const totalTokens = chatWindow.messages.reduce((sum, message) => sum + approximateTokens(message.content), 0);
+  const totalTokens = chatWindow.messages.reduce((sum, message) => sum + approximateMessageTokens(message), 0);
   const percentage = budgetMax > 0 ? Math.min(Math.round((totalTokens / budgetMax) * 100), 999) : 0;
   return {
     totalTokens,
@@ -514,19 +648,69 @@ function buildSessionContextSummary(chatWindow: ChatWindowState, budgetMax: numb
 }
 
 function buildContextEntries(messages: ChatMessage[]): ContextEntry[] {
-  return messages.map((message) => ({
-    id: message.id,
-    source: message.role === "assistant" ? "assistant" : message.role === "system" ? "system" : "user",
-    label: formatMessageLabel(message),
-    content: message.content || "（无文本内容）",
-    tokens: approximateTokens(message.content),
-    active: true,
-  }));
+  return messages.flatMap((message) => {
+    const entries: ContextEntry[] = [
+      {
+        id: message.id,
+        source: message.role === "assistant" ? "assistant" : message.role === "system" ? "system" : "user",
+        layer: message.role === "system" ? "system" : "session",
+        label: formatMessageLabel(message),
+        description: buildMessageDescription(message),
+        content: message.content || "（无文本内容）",
+        tokens: approximateTokens(message.content),
+        active: true,
+      },
+    ];
+
+    if (message.toolCalls?.length) {
+      entries.push(
+        ...message.toolCalls.map((toolCall, index) => {
+          const content = buildToolCallContextContent(toolCall);
+          return {
+            id: `${message.id}-${toolCall.id ?? `tool-${index}`}`,
+            source: toolCall.toolName,
+            layer: "tool" as const,
+            label: `${toolCall.toolName} · ${getToolCallStatusLabel(toolCall.status)}`,
+            description: buildToolCallSummary(toolCall),
+            content,
+            tokens: approximateTokens(content),
+            active: true,
+          };
+        }),
+      );
+    }
+
+    return entries;
+  });
 }
 
 function formatMessageLabel(message: ChatMessage) {
   const time = new Date(message.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   return `${message.role === "assistant" ? "助手" : message.role === "system" ? "系统" : "用户"} · ${time}`;
+}
+
+function buildMessageDescription(message: ChatMessage) {
+  if (message.toolCalls?.length) {
+    return `包含 ${message.toolCalls.length} 个工具步骤`;
+  }
+
+  return message.role === "system" ? "系统注入内容" : "会话消息";
+}
+
+function buildToolCallContextContent(toolCall: ToolCall) {
+  const sections = [
+    `工具：${toolCall.toolName}`,
+    `状态：${getToolCallStatusLabel(toolCall.status)}`,
+    toolCall.command ? `命令：${toolCall.command}` : undefined,
+    toolCall.output?.trim() ? `输出：\n${toolCall.output.trim()}` : undefined,
+    toolCall.error?.trim() ? `错误：\n${toolCall.error.trim()}` : undefined,
+  ].filter((section): section is string => Boolean(section));
+
+  return sections.join("\n\n");
+}
+
+function approximateMessageTokens(message: ChatMessage) {
+  return approximateTokens(message.content) + (message.toolCalls?.reduce((sum, toolCall) => sum + approximateTokens(buildToolCallContextContent(toolCall)), 0) ?? 0);
 }
 
 function approximateTokens(content: string) {
@@ -551,4 +735,61 @@ function compressMessages(messages: ChatMessage[]) {
 function truncateMessages(messages: ChatMessage[]) {
   if (messages.length <= 2) return messages;
   return messages.slice(-2);
+}
+
+function buildRecentExecutionChain(messages: ChatMessage[]) {
+  const latestMessageWithTools = [...messages].reverse().find((message) => message.toolCalls?.length);
+
+  if (!latestMessageWithTools?.toolCalls?.length) {
+    return null;
+  }
+
+  const calls = latestMessageWithTools.toolCalls;
+  const totalDuration = calls.reduce((sum, toolCall) => sum + (toolCall.duration ?? 0), 0);
+  const hasDuration = calls.some((toolCall) => typeof toolCall.duration === "number");
+  const status = calls.some((toolCall) => toolCall.status === "error")
+    ? "error"
+    : calls.some((toolCall) => toolCall.status === "running" || toolCall.status === "pending")
+      ? "running"
+      : "success";
+  const errorCount = calls.filter((toolCall) => toolCall.status === "error").length;
+
+  return {
+    calls,
+    headline: `${calls[0]?.toolName ?? "工具"} → ${calls[calls.length - 1]?.toolName ?? "工具"}`,
+    statusLabel:
+      status === "error"
+        ? `${errorCount} 步失败`
+        : status === "running"
+          ? "执行中"
+          : `${calls.length} 步完成`,
+    detail: calls
+      .map((toolCall) => `${toolCall.toolName}：${buildToolCallSummary(toolCall)}`)
+      .slice(0, 2)
+      .join("；"),
+    timeLabel: new Date(latestMessageWithTools.timestamp).toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    }),
+    totalDurationLabel: hasDuration ? formatToolCallDuration(totalDuration) : "未上报",
+    tone: status === "error" ? "error" : status === "running" ? "running" : "default",
+  } as const;
+}
+
+function buildSessionBreadcrumb(chatWindow: ChatWindowState) {
+  return [
+    "NovelFork Studio",
+    `Agent / ${chatWindow.agentId}`,
+    chatWindow.sessionId ? `Session / ${shortSessionId(chatWindow.sessionId)}` : "临时窗口",
+  ];
+}
+
+function shortSessionId(sessionId: string) {
+  return sessionId.length > 10 ? `${sessionId.slice(0, 8)}…` : sessionId;
+}
+
+function sumToolCallDurations(toolCalls: ToolCall[]) {
+  const total = toolCalls.reduce((sum, toolCall) => sum + (toolCall.duration ?? 0), 0);
+  return toolCalls.some((toolCall) => typeof toolCall.duration === "number") ? formatToolCallDuration(total) : "未上报";
 }

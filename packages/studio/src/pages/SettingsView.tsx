@@ -26,6 +26,7 @@ import { DataPanel } from "./settings/DataPanel";
 import { EditorPanel } from "./settings/EditorPanel";
 import { MonitoringPanel } from "./settings/MonitoringPanel";
 import { ProfilePanel } from "./settings/ProfilePanel";
+import { RuntimeControlPanel } from "./settings/RuntimeControlPanel";
 
 interface Props {
   nav: unknown;
@@ -144,13 +145,16 @@ export function SettingsView({
             {activeSection === "monitoring" && <MonitoringPanel theme={theme} />}
             {activeSection === "data" && <DataPanel theme={theme} />}
             {activeSection === "advanced" && (
-              <SettingsContent
-                theme={theme}
-                variant="embedded"
-                tabs={["config", "status", "usage"]}
-                defaultTab="config"
-                onNavigateSection={selectSection}
-              />
+              <div className="space-y-6">
+                <RuntimeControlPanel />
+                <SettingsContent
+                  theme={theme}
+                  variant="embedded"
+                  tabs={["config", "status", "usage"]}
+                  defaultTab="config"
+                  onNavigateSection={selectSection}
+                />
+              </div>
             )}
             {activeSection === "about" && (
               <div className="space-y-4">

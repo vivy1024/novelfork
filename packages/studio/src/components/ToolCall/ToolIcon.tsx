@@ -1,4 +1,6 @@
-import { Terminal, FileText, Edit, Search, Code } from "lucide-react";
+import { Blocks, Bot, FileSearch, FileText, Globe, Pencil, Terminal } from "lucide-react";
+
+import { getToolCallKind } from "./tool-call-utils";
 
 interface ToolIconProps {
   name: string;
@@ -9,17 +11,22 @@ interface ToolIconProps {
 export function ToolIcon({ name, size = 16, color }: ToolIconProps) {
   const iconProps = { size, color };
 
-  switch (name.toLowerCase()) {
+  switch (getToolCallKind(name)) {
     case "bash":
       return <Terminal {...iconProps} />;
     case "read":
       return <FileText {...iconProps} />;
     case "write":
-    case "edit":
-      return <Edit {...iconProps} />;
-    case "grep":
-      return <Search {...iconProps} />;
+      return <Pencil {...iconProps} />;
+    case "search":
+      return <FileSearch {...iconProps} />;
+    case "web":
+      return <Globe {...iconProps} />;
+    case "mcp":
+      return <Blocks {...iconProps} />;
+    case "agent":
+      return <Bot {...iconProps} />;
     default:
-      return <Code {...iconProps} />;
+      return <Blocks {...iconProps} />;
   }
 }

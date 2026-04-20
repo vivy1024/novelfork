@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { loadUserConfig, updateUserConfig } from "../lib/user-config-service.js";
 import { collectMetrics } from "../lib/metrics-service.js";
-import type { UserConfig } from "../../types/settings.js";
+import type { UserConfigPatch } from "../../types/settings.js";
 
 export function createSettingsRouter() {
   const app = new Hono();
@@ -20,7 +20,7 @@ export function createSettingsRouter() {
   // 更新用户配置（部分更新）
   app.put("/user", async (c) => {
     try {
-      const partial = await c.req.json<Partial<UserConfig>>();
+      const partial = await c.req.json<UserConfigPatch>();
       const updated = await updateUserConfig(partial);
       return c.json(updated);
     } catch (error) {
@@ -45,7 +45,7 @@ export function createSettingsRouter() {
     try {
       const { theme } = await c.req.json<{ theme: "light" | "dark" | "auto" }>();
       const updated = await updateUserConfig({
-        preferences: { theme } as any,
+        preferences: { theme },
       });
       return c.json({ theme: updated.preferences.theme });
     } catch (error) {
@@ -92,7 +92,7 @@ export function createSettingsRouter() {
           editorTabSize: editorPrefs.tabSize,
           autoSave: editorPrefs.autoSave,
           autoSaveDelay: editorPrefs.autoSaveDelay,
-        } as any,
+        },
       });
 
       return c.json({

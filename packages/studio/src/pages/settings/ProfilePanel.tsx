@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useColors } from "../../hooks/use-colors";
 import type { Theme } from "../../hooks/use-theme";
-import { fetchJson, postApi } from "../../hooks/use-api";
+import { fetchJson, putApi } from "../../hooks/use-api";
 import type { UserProfile } from "../../types/settings";
 import { User, Mail, GitBranch } from "lucide-react";
 
@@ -32,7 +32,7 @@ export function ProfilePanel({ theme }: Props) {
   async function handleSave() {
     setSaving(true);
     try {
-      await postApi("/settings/user", { profile });
+      await putApi("/settings/user", { profile });
     } finally {
       setSaving(false);
     }

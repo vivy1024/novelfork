@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useColors } from "../../hooks/use-colors";
 import type { Theme } from "../../hooks/use-theme";
-import { fetchJson } from "../../hooks/use-api";
+import { fetchJson, putApi } from "../../hooks/use-api";
 import { Download, Upload, FileJson } from "lucide-react";
 
 interface Props {
@@ -50,11 +50,7 @@ export function DataPanel({ theme }: Props) {
         }
 
         // 导入配置
-        await fetch("/settings/user", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(config),
-        });
+        await putApi("/settings/user", config);
 
         alert("导入成功！页面将刷新以应用新配置。");
         window.location.reload();
@@ -141,13 +137,13 @@ export function DataPanel({ theme }: Props) {
             <div>
               <span className="text-muted-foreground">用户配置：</span>
               <code className="ml-2 px-2 py-1 rounded bg-secondary text-foreground font-mono text-xs">
-                ~/.novelfork/user-config.json
+                ~/.inkos/user-config.json
               </code>
             </div>
             <div>
               <span className="text-muted-foreground">备份文件：</span>
               <code className="ml-2 px-2 py-1 rounded bg-secondary text-foreground font-mono text-xs">
-                ~/.novelfork/user-config.backup*.json
+                ~/.inkos/user-config.backup*.json
               </code>
             </div>
           </div>

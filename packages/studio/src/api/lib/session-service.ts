@@ -9,6 +9,7 @@ import {
   type NarratorSessionRecord,
   type UpdateNarratorSessionInput,
 } from "../../shared/session-types.js";
+import { loadUserConfig } from "./user-config-service.js";
 
 function getSessionStoreFilePath(): string {
   const overrideDir = process.env.NOVELFORK_SESSION_STORE_DIR?.trim();
@@ -64,6 +65,7 @@ export async function getSessionById(id: string): Promise<NarratorSessionRecord 
 
 export async function createSession(input: CreateNarratorSessionInput): Promise<NarratorSessionRecord> {
   const records = await loadSessionRecords();
+  const userConfig = await loadUserConfig();
   const now = new Date().toISOString();
   const session: NarratorSessionRecord = {
     id: crypto.randomUUID(),
@@ -80,6 +82,8 @@ export async function createSession(input: CreateNarratorSessionInput): Promise<
     projectId: input.projectId,
     sessionConfig: {
       ...DEFAULT_SESSION_CONFIG,
+      permissionMode: userConfig.runtimeControls.defaultPermissionMode,
+      reasoningEffort: userConfig.runtimeControls.defaultReasoningEffort,
       ...input.sessionConfig,
     },
   };

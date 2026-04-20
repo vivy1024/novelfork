@@ -2,7 +2,7 @@ import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { homedir } from "node:os";
 import { existsSync } from "node:fs";
-import type { UserConfig } from "../../types/settings.js";
+import type { RuntimeControlSettings, UserConfig, UserConfigPatch } from "../../types/settings.js";
 import { DEFAULT_USER_CONFIG } from "../../types/settings.js";
 
 /**
@@ -30,6 +30,42 @@ async function ensureConfigDir(): Promise<void> {
   }
 }
 
+function clampNumber(value: unknown, fallback: number, min: number, max: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.min(max, Math.max(min, Math.round(value)));
+}
+
+function sanitizeRuntimeControls(runtimeControls?: Partial<RuntimeControlSettings> | null): RuntimeControlSettings {
+  return {
+    defaultPermissionMode:
+      runtimeControls?.defaultPermissionMode === "allow"
+      || runtimeControls?.defaultPermissionMode === "ask"
+      || runtimeControls?.defaultPermissionMode === "deny"
+        ? runtimeControls.defaultPermissionMode
+        : DEFAULT_USER_CONFIG.runtimeControls.defaultPermissionMode,
+    defaultReasoningEffort:
+      runtimeControls?.defaultReasoningEffort === "low"
+      || runtimeControls?.defaultReasoningEffort === "medium"
+      || runtimeControls?.defaultReasoningEffort === "high"
+        ? runtimeControls.defaultReasoningEffort
+        : DEFAULT_USER_CONFIG.runtimeControls.defaultReasoningEffort,
+    contextCompressionThresholdPercent: clampNumber(
+      runtimeControls?.contextCompressionThresholdPercent,
+      DEFAULT_USER_CONFIG.runtimeControls.contextCompressionThresholdPercent,
+      50,
+      95,
+    ),
+    contextTruncateTargetPercent: clampNumber(
+      runtimeControls?.contextTruncateTargetPercent,
+      DEFAULT_USER_CONFIG.runtimeControls.contextTruncateTargetPercent,
+      40,
+      90,
+    ),
+  };
+}
+
 /**
  * 加载用户配置
  */
@@ -52,6 +88,7 @@ export async function loadUserConfig(): Promise<UserConfig> {
       ...config,
       profile: { ...DEFAULT_USER_CONFIG.profile, ...config.profile },
       preferences: { ...DEFAULT_USER_CONFIG.preferences, ...config.preferences },
+      runtimeControls: sanitizeRuntimeControls(config.runtimeControls),
     };
   } catch (error) {
     console.error("Failed to load user config, using default:", error);
@@ -90,13 +127,13 @@ export async function saveUserConfig(config: UserConfig): Promise<void> {
 /**
  * 更新用户配置（部分更新）
  */
-export async function updateUserConfig(partial: Partial<UserConfig>): Promise<UserConfig> {
+export async function updateUserConfig(partial: UserConfigPatch): Promise<UserConfig> {
   const current = await loadUserConfig();
   const updated: UserConfig = {
     ...current,
-    ...partial,
     profile: { ...current.profile, ...(partial.profile ?? {}) },
     preferences: { ...current.preferences, ...(partial.preferences ?? {}) },
+    runtimeControls: sanitizeRuntimeControls({ ...current.runtimeControls, ...(partial.runtimeControls ?? {}) }),
     shortcuts: { ...current.shortcuts, ...(partial.shortcuts ?? {}) },
     recentWorkspaces: partial.recentWorkspaces ?? current.recentWorkspaces,
   };

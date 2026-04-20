@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   defaultChapterWordsForLanguage,
+  initializationDefaultsForMode,
   platformOptionsForLanguage,
   pickValidValue,
   waitForBookReady,
@@ -22,6 +23,26 @@ describe("defaultChapterWordsForLanguage", () => {
   it("uses 3000 for chinese projects and 2000 for english projects", () => {
     expect(defaultChapterWordsForLanguage("zh")).toBe("3000");
     expect(defaultChapterWordsForLanguage("en")).toBe("2000");
+  });
+});
+
+describe("initializationDefaultsForMode", () => {
+  it("adjusts chapter defaults when workflow mode changes", () => {
+    expect(initializationDefaultsForMode("zh", "outline-first", "genre-default")).toEqual({
+      chapterWords: "3000",
+      targetChapters: "180",
+    });
+    expect(initializationDefaultsForMode("zh", "serial-ops", "web-serial")).toEqual({
+      chapterWords: "3400",
+      targetChapters: "280",
+    });
+  });
+
+  it("keeps lower-friction presets for draft-first and blank-slate setups", () => {
+    expect(initializationDefaultsForMode("en", "draft-first", "blank-slate")).toEqual({
+      chapterWords: "1800",
+      targetChapters: "80",
+    });
   });
 });
 

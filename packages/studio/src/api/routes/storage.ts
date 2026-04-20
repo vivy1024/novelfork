@@ -13,7 +13,7 @@ import {
   loadProjectConfig,
 } from "@vivy1024/novelfork-core";
 import { ApiError } from "../errors.js";
-import { buildStudioBookConfig } from "../book-create.js";
+import { buildStudioBookConfig, buildStudioProjectInitRecord } from "../book-create.js";
 import type { RouterContext } from "./context.js";
 
 const TRUTH_FILES = [
@@ -67,6 +67,15 @@ export function createStorageRouter(ctx: RouterContext): Hono {
       platform?: string;
       chapterWordCount?: number;
       targetChapters?: number;
+      projectInit?: {
+        repositorySource?: "new" | "existing" | "clone";
+        workflowMode?: "outline-first" | "draft-first" | "serial-ops";
+        templatePreset?: "genre-default" | "blank-slate" | "web-serial";
+        repositoryPath?: string;
+        cloneUrl?: string;
+        gitBranch?: string;
+        worktreeName?: string;
+      };
     }>();
 
     const now = new Date().toISOString();
@@ -88,7 +97,21 @@ export function createStorageRouter(ctx: RouterContext): Hono {
     const sessionLlm = await ctx.getSessionLlm(c);
     const pipeline = new PipelineRunner(await ctx.buildPipelineConfig(sessionLlm));
     pipeline.initBook(bookConfig).then(
-      () => {
+      async () => {
+        if (body.projectInit) {
+          try {
+            const projectInitRecord = buildStudioProjectInitRecord(body, now);
+            const { mkdir, writeFile: writeFileFs } = await import("node:fs/promises");
+            await mkdir(bookDir, { recursive: true });
+            await writeFileFs(
+              join(bookDir, ".novelfork-project-init.json"),
+              `${JSON.stringify(projectInitRecord, null, 2)}\n`,
+              "utf-8",
+            );
+          } catch {
+            // Keep book creation compatible even if the first-round init sidecar fails.
+          }
+        }
         bookCreateStatus.delete(bookId);
         broadcast("book:created", { bookId });
       },

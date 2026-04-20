@@ -1,6 +1,6 @@
 import React from "react";
-import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 
 import { ToolCallBlock } from "./ToolCallBlock";
 import { parseAssistantPayload } from "./tool-call-utils";
@@ -11,8 +11,12 @@ vi.stubGlobal("navigator", {
   },
 });
 
+afterEach(() => {
+  cleanup();
+});
+
 describe("ToolCallBlock", () => {
-  it("renders status, summary and expandable details", () => {
+  it("renders status, summary and differentiated bash details", () => {
     render(
       <ToolCallBlock
         toolCall={{
@@ -22,6 +26,7 @@ describe("ToolCallBlock", () => {
           command: "git status --short",
           output: " M packages/studio/src/components/ChatWindow.tsx",
           duration: 420,
+          startedAt: 1710000000000,
         }}
       />,
     );
@@ -29,12 +34,34 @@ describe("ToolCallBlock", () => {
     expect(screen.getByText("Bash")).toBeTruthy();
     expect(screen.getByText("执行中")).toBeTruthy();
     expect(screen.getByText("正在执行 git status")).toBeTruthy();
-    expect(screen.queryByText("git status --short")).toBeNull();
+    expect(screen.getByText("Shell")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "复制工具命令" })).toBeTruthy();
+    expect(screen.queryByText("标准输出")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "展开工具调用详情" }));
 
-    expect(screen.getByText("git status --short")).toBeTruthy();
+    expect(screen.getAllByText("git status --short").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("标准输出")).toBeTruthy();
     expect(screen.getByText(/ChatWindow\.tsx/)).toBeTruthy();
+  });
+
+  it("shows file target for read tool calls", () => {
+    render(
+      <ToolCallBlock
+        toolCall={{
+          toolName: "Read",
+          status: "success",
+          summary: "已读取大纲",
+          input: { file_path: "books/demo/outline.md" },
+          output: "# 大纲",
+          duration: 38,
+        }}
+      />,
+    );
+
+    expect(screen.getByText("读取")).toBeTruthy();
+    expect(screen.getByText(/books\/demo\/outline\.md/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "复制工具输出" })).toBeTruthy();
   });
 
   it("parses mock-friendly assistant payload with tool calls", () => {

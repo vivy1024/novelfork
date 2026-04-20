@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Bot, LayoutGrid, MessagesSquare, MonitorSmartphone, PlusCircle } from "lucide-react";
+import { ArrowUpDown, Archive, Bot, LayoutGrid, MessagesSquare, MonitorSmartphone, PlusCircle } from "lucide-react";
 
 import { ChatWindowManager } from "@/components/ChatWindowManager";
 import { PageEmptyState } from "@/components/layout/PageEmptyState";
@@ -8,10 +8,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { NewSessionDialog, SESSION_PRESETS, type NewSessionPayload, type SessionPresetId } from "@/components/sessions/NewSessionDialog";
-import { fetchJson } from "@/hooks/use-api";
+import { useSession } from "@/hooks/useSession";
 import { useWindowStore } from "@/stores/windowStore";
 import type { Theme } from "../hooks/use-theme";
-import type { NarratorSessionRecord } from "../shared/session-types";
 
 export function SessionCenter({ theme }: { theme: Theme }) {
   const windows = useWindowStore((state) => state.windows);
@@ -20,13 +19,20 @@ export function SessionCenter({ theme }: { theme: Theme }) {
   const setActiveWindow = useWindowStore((state) => state.setActiveWindow);
   const toggleMinimize = useWindowStore((state) => state.toggleMinimize);
   const removeWindow = useWindowStore((state) => state.removeWindow);
+  const { sessions, loaded, createSession, updateSession } = useSession();
   const connected = windows.filter((window) => window.wsConnected).length;
   const minimized = windows.filter((window) => window.minimized).length;
   const totalMessages = windows.reduce((sum, window) => sum + window.messages.length, 0);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogPreset, setDialogPreset] = useState<SessionPresetId>("writer");
+  const [sessionFilter, setSessionFilter] = useState<"all" | "active" | "archived">("all");
+  const [sessionSort, setSessionSort] = useState<"recent" | "title" | "messages">("recent");
 
   const activeWindow = windows.find((window) => window.id === activeWindowId) ?? windows[0] ?? null;
+  const windowBySessionId = useMemo(
+    () => new Map(windows.filter((window) => window.sessionId).map((window) => [window.sessionId!, window])),
+    [windows],
+  );
 
   const templateCards = useMemo(
     () =>
@@ -37,19 +43,34 @@ export function SessionCenter({ theme }: { theme: Theme }) {
     [],
   );
 
+  const visibleSessions = useMemo(() => {
+    const filtered = sessions.filter((session) => {
+      if (sessionFilter === "all") {
+        return true;
+      }
+      return session.status === sessionFilter;
+    });
+
+    return [...filtered].sort((left, right) => {
+      if (sessionSort === "title") {
+        return left.title.localeCompare(right.title, "zh-CN");
+      }
+      if (sessionSort === "messages") {
+        return right.messageCount - left.messageCount;
+      }
+      return right.lastModified.getTime() - left.lastModified.getTime();
+    });
+  }, [sessions, sessionFilter, sessionSort]);
+
   const openSessionDialog = (presetId: SessionPresetId) => {
     setDialogPreset(presetId);
     setDialogOpen(true);
   };
 
   const handleCreateSession = async (payload: NewSessionPayload) => {
-    const session = await fetchJson<NarratorSessionRecord>("/api/sessions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title: payload.title,
-        agentId: payload.agentId,
-      }),
+    const session = await createSession({
+      title: payload.title,
+      agentId: payload.agentId,
     });
 
     addWindow({
@@ -58,6 +79,30 @@ export function SessionCenter({ theme }: { theme: Theme }) {
       sessionId: session.id,
       sessionConfig: session.sessionConfig,
     });
+  };
+
+  const handleOpenSessionWorkspace = (sessionId: string) => {
+    const existingWindow = windowBySessionId.get(sessionId);
+    if (existingWindow) {
+      setActiveWindow(existingWindow.id);
+      return;
+    }
+
+    const session = sessions.find((item) => item.id === sessionId);
+    if (!session) {
+      return;
+    }
+
+    addWindow({
+      agentId: session.agentId,
+      title: session.title,
+      sessionId: session.id,
+      sessionConfig: session.sessionConfig,
+    });
+  };
+
+  const handleToggleArchive = async (sessionId: string, nextStatus: "active" | "archived") => {
+    await updateSession(sessionId, { status: nextStatus });
   };
 
   return (
@@ -81,8 +126,8 @@ export function SessionCenter({ theme }: { theme: Theme }) {
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <SessionStat
             title="活跃会话"
-            value={String(windows.length)}
-            description="当前已打开的工作台会话窗口"
+            value={String(sessions.length > 0 ? sessions.filter((session) => session.status === "active").length : windows.length)}
+            description={sessions.length > 0 ? "当前正式 session 中处于 active 的对象" : "当前已打开的工作台会话窗口"}
             icon={MessagesSquare}
           />
           <SessionStat
@@ -165,8 +210,59 @@ export function SessionCenter({ theme }: { theme: Theme }) {
               每个卡片都暴露标题、Agent、连接状态、消息数与快捷动作，方便把会话当成可操作的对象来管理。
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            {windows.length > 0 ? (
+          <CardContent className="space-y-4">
+            {loaded && sessions.length > 0 ? (
+              <>
+                <div className="flex flex-col gap-3 rounded-xl border border-border/60 bg-muted/20 p-3 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="flex flex-wrap gap-2">
+                    <Button variant={sessionFilter === "all" ? "secondary" : "outline"} className="h-8 px-3 text-xs" onClick={() => setSessionFilter("all")}>
+                      全部
+                    </Button>
+                    <Button variant={sessionFilter === "active" ? "secondary" : "outline"} className="h-8 px-3 text-xs" onClick={() => setSessionFilter("active")}>
+                      仅看活跃
+                    </Button>
+                    <Button variant={sessionFilter === "archived" ? "secondary" : "outline"} className="h-8 px-3 text-xs" onClick={() => setSessionFilter("archived")}>
+                      仅看已归档
+                    </Button>
+                  </div>
+                  <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <ArrowUpDown className="size-3.5" />
+                    排序
+                    <select
+                      aria-label="会话排序"
+                      value={sessionSort}
+                      onChange={(event) => setSessionSort(event.target.value as "recent" | "title" | "messages")}
+                      className="h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground"
+                    >
+                      <option value="recent">最近活动</option>
+                      <option value="title">标题</option>
+                      <option value="messages">消息数</option>
+                    </select>
+                  </label>
+                </div>
+                <div className="grid gap-4 xl:grid-cols-2">
+                  {visibleSessions.map((session) => {
+                    const attachedWindow = windowBySessionId.get(session.id);
+                    return (
+                      <NarratorSessionCard
+                        key={session.id}
+                        title={session.title}
+                        agentId={session.agentId}
+                        status={session.status}
+                        model={session.sessionConfig.modelId}
+                        messageCount={attachedWindow?.messages.length ?? session.messageCount}
+                        lastModified={session.lastModified}
+                        attachedWindow={attachedWindow ? { id: attachedWindow.id, wsConnected: attachedWindow.wsConnected, minimized: attachedWindow.minimized } : null}
+                        active={attachedWindow?.id === activeWindowId}
+                        onOpenWorkspace={() => handleOpenSessionWorkspace(session.id)}
+                        onToggleArchive={() => handleToggleArchive(session.id, session.status === "archived" ? "active" : "archived")}
+                        onCloseWindow={attachedWindow ? () => removeWindow(attachedWindow.id) : undefined}
+                      />
+                    );
+                  })}
+                </div>
+              </>
+            ) : windows.length > 0 ? (
               <div className="grid gap-4 xl:grid-cols-2">
                 {windows.map((window) => (
                   <SessionObjectCard
@@ -246,6 +342,81 @@ function SessionStat({
         <CardTitle className="text-2xl">{value}</CardTitle>
       </CardHeader>
       <CardContent className="pt-0 text-xs text-muted-foreground">{description}</CardContent>
+    </Card>
+  );
+}
+
+function NarratorSessionCard({
+  title,
+  agentId,
+  status,
+  model,
+  messageCount,
+  lastModified,
+  attachedWindow,
+  active,
+  onOpenWorkspace,
+  onToggleArchive,
+  onCloseWindow,
+}: {
+  title: string;
+  agentId: string;
+  status: "active" | "archived";
+  model: string;
+  messageCount: number;
+  lastModified: Date;
+  attachedWindow: { id: string; wsConnected: boolean; minimized: boolean } | null;
+  active: boolean;
+  onOpenWorkspace: () => void;
+  onToggleArchive: () => void;
+  onCloseWindow?: () => void;
+}) {
+  return (
+    <Card className={active ? "border-primary/40 shadow-sm ring-1 ring-primary/10" : ""}>
+      <CardHeader className="space-y-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <CardTitle className="text-base">{title}</CardTitle>
+              <Badge variant={status === "active" ? "secondary" : "outline"}>{status === "active" ? "活跃" : "已归档"}</Badge>
+              {attachedWindow && <Badge variant={attachedWindow.wsConnected ? "secondary" : "outline"}>{attachedWindow.wsConnected ? "在线" : "离线"}</Badge>}
+              {active && <Badge>当前对象</Badge>}
+            </div>
+            <CardDescription className="flex flex-wrap items-center gap-2 text-xs">
+              <span>Agent {agentId}</span>
+              <span>•</span>
+              <span>{model}</span>
+              <span>•</span>
+              <span>{messageCount} 条消息</span>
+            </CardDescription>
+          </div>
+          <div className="text-right text-[11px] text-muted-foreground">
+            <div>最近修改</div>
+            <div className="font-medium text-foreground">{lastModified.toLocaleString([], { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}</div>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="rounded-xl border border-border/60 bg-muted/30 p-3 text-xs text-muted-foreground">
+          {attachedWindow
+            ? `已关联工作台窗口 ${attachedWindow.id}${attachedWindow.minimized ? " · 已收起" : " · 展开中"}`
+            : "当前尚未打开工作台窗口，可直接从这里进入会话工作区。"}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" className="h-8 px-3 text-xs" onClick={onOpenWorkspace}>
+            {attachedWindow ? "聚焦工作台" : "打开工作台"}
+          </Button>
+          <Button variant="outline" className="h-8 px-3 text-xs" onClick={onToggleArchive}>
+            <Archive className="size-3.5" />
+            {status === "archived" ? "恢复" : "归档"}
+          </Button>
+          {onCloseWindow && (
+            <Button variant="ghost" className="h-8 px-3 text-xs text-destructive hover:text-destructive" onClick={onCloseWindow}>
+              关闭窗口
+            </Button>
+          )}
+        </div>
+      </CardContent>
     </Card>
   );
 }

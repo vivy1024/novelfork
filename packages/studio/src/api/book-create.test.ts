@@ -1,5 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
-import { buildStudioBookConfig, normalizeStudioPlatform, waitForStudioBookReady } from "./book-create";
+import {
+  buildStudioBookConfig,
+  buildStudioProjectInitRecord,
+  normalizeStudioPlatform,
+  normalizeStudioProjectInit,
+  suggestStudioWorktreeName,
+  waitForStudioBookReady,
+} from "./book-create";
 
 describe("normalizeStudioPlatform", () => {
   it("keeps supported chinese platform ids and folds unsupported values to other", () => {
@@ -8,6 +15,45 @@ describe("normalizeStudioPlatform", () => {
     expect(normalizeStudioPlatform("feilu")).toBe("feilu");
     expect(normalizeStudioPlatform("royal-road")).toBe("other");
     expect(normalizeStudioPlatform(undefined)).toBe("other");
+  });
+});
+
+describe("suggestStudioWorktreeName", () => {
+  it("derives a stable worktree placeholder from the title", () => {
+    expect(suggestStudioWorktreeName("测试书")).toBe("draft-测试书");
+    expect(suggestStudioWorktreeName("My New Book!!!")).toBe("draft-my-new-book");
+    expect(suggestStudioWorktreeName("")).toBe("draft-main");
+  });
+});
+
+describe("normalizeStudioProjectInit", () => {
+  it("fills project creation defaults for the first-round workflow", () => {
+    expect(normalizeStudioProjectInit(undefined, "测试书")).toEqual({
+      repositorySource: "new",
+      workflowMode: "outline-first",
+      templatePreset: "genre-default",
+      gitBranch: "main",
+      worktreeName: "draft-测试书",
+    });
+  });
+
+  it("keeps only the repo fields relevant to the selected source", () => {
+    expect(normalizeStudioProjectInit({
+      repositorySource: "clone",
+      workflowMode: "draft-first",
+      templatePreset: "web-serial",
+      repositoryPath: " D:/novels ",
+      cloneUrl: " https://example.com/repo.git ",
+      gitBranch: " feature/story ",
+      worktreeName: " writer-room ",
+    }, "Clone Book")).toEqual({
+      repositorySource: "clone",
+      workflowMode: "draft-first",
+      templatePreset: "web-serial",
+      cloneUrl: "https://example.com/repo.git",
+      gitBranch: "feature/story",
+      worktreeName: "writer-room",
+    });
   });
 });
 
@@ -49,6 +95,42 @@ describe("buildStudioBookConfig", () => {
     expect(config.platform).toBe("other");
     expect(config.language).toBe("en");
     expect(config.id).toBe("english-book");
+  });
+});
+
+describe("buildStudioProjectInitRecord", () => {
+  it("builds a persisted workflow init record from create payloads", () => {
+    const record = buildStudioProjectInitRecord(
+      {
+        title: "测试书",
+        genre: "xuanhuan",
+        platform: "qidian",
+        language: "zh",
+        projectInit: {
+          repositorySource: "existing",
+          repositoryPath: " D:/DESKTOP/openclaw ",
+          workflowMode: "serial-ops",
+          templatePreset: "web-serial",
+          gitBranch: " main ",
+          worktreeName: " drafting-room ",
+        },
+      },
+      "2026-03-30T00:00:00.000Z",
+    );
+
+    expect(record).toEqual({
+      title: "测试书",
+      genre: "xuanhuan",
+      platform: "qidian",
+      language: "zh",
+      repositorySource: "existing",
+      repositoryPath: "D:/DESKTOP/openclaw",
+      workflowMode: "serial-ops",
+      templatePreset: "web-serial",
+      gitBranch: "main",
+      worktreeName: "drafting-room",
+      createdAt: "2026-03-30T00:00:00.000Z",
+    });
   });
 });
 

@@ -5,6 +5,7 @@
 import { Hono } from "hono";
 import type { RouterContext } from "./context.js";
 import { countTokens } from "../lib/token-counter.js";
+import { loadUserConfig } from "../lib/user-config-service.js";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -13,6 +14,14 @@ export function createContextManagerRouter(ctx: RouterContext): Hono {
   const { state } = ctx;
 
   const CONTEXT_MAX_TOKENS = 100000; // Claude 3.5 context window
+
+  const getRuntimeThresholds = async () => {
+    const config = await loadUserConfig();
+    return {
+      compressionRatio: config.runtimeControls.contextCompressionThresholdPercent / 100,
+      truncateRatio: config.runtimeControls.contextTruncateTargetPercent / 100,
+    };
+  };
 
   /**
    * GET /api/context/:bookId/usage
@@ -53,8 +62,9 @@ export function createContextManagerRouter(ctx: RouterContext): Hono {
         }
       }
 
+      const { compressionRatio } = await getRuntimeThresholds();
       const percentage = (totalTokens / CONTEXT_MAX_TOKENS) * 100;
-      const canCompress = totalTokens > CONTEXT_MAX_TOKENS * 0.8;
+      const canCompress = totalTokens > CONTEXT_MAX_TOKENS * compressionRatio;
 
       return c.json({
         totalTokens,
@@ -120,7 +130,8 @@ export function createContextManagerRouter(ctx: RouterContext): Hono {
   app.post("/api/context/:bookId/truncate", async (c) => {
     const bookId = c.req.param("bookId");
     const body = await c.req.json<{ maxTokens?: number }>().catch(() => ({ maxTokens: undefined }));
-    const targetTokens = body.maxTokens ?? CONTEXT_MAX_TOKENS * 0.7;
+    const { truncateRatio } = await getRuntimeThresholds();
+    const targetTokens = body.maxTokens ?? CONTEXT_MAX_TOKENS * truncateRatio;
 
     try {
       const bookDir = state.bookDir(bookId);

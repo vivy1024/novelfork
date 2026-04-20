@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useColors } from "../../hooks/use-colors";
 import type { Theme } from "../../hooks/use-theme";
-import { fetchJson, postApi } from "../../hooks/use-api";
+import { fetchJson, putApi } from "../../hooks/use-api";
 import type { UserPreferences } from "../../types/settings";
 import { Sun, Moon, Monitor, Type } from "lucide-react";
 
@@ -39,7 +39,7 @@ export function AppearancePanel({ theme, onThemeChange }: Props) {
     onThemeChange(newTheme);
     setSaving(true);
     try {
-      await postApi("/settings/theme", { theme: newTheme });
+      await putApi("/settings/theme", { theme: newTheme });
     } finally {
       setSaving(false);
     }
@@ -49,7 +49,7 @@ export function AppearancePanel({ theme, onThemeChange }: Props) {
     setPreferences({ ...preferences, fontSize: size });
     setSaving(true);
     try {
-      await postApi("/settings/user", { preferences: { fontSize: size } });
+      await putApi("/settings/user", { preferences: { fontSize: size } });
     } finally {
       setSaving(false);
     }

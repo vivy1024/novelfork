@@ -4,7 +4,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { fetchJson } from "./use-api";
-import type { NarratorSessionRecord } from "../shared/session-types";
+import type { CreateNarratorSessionInput, NarratorSessionRecord } from "../shared/session-types";
 
 export interface Session extends Omit<NarratorSessionRecord, "createdAt" | "lastModified"> {
   createdAt: Date;
@@ -21,6 +21,10 @@ function toSession(record: NarratorSessionRecord): Session {
   };
 }
 
+interface CreateSessionOptions extends CreateNarratorSessionInput {
+  model?: string;
+}
+
 export function useSession() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
@@ -32,15 +36,29 @@ export function useSession() {
       .finally(() => setLoaded(true));
   }, []);
 
-  const createSession = useCallback(async (title: string, model: string, worktree?: string) => {
+  const createSession = useCallback(async (
+    titleOrOptions: string | CreateSessionOptions,
+    model?: string,
+    worktree?: string,
+  ) => {
+    const payload = typeof titleOrOptions === "string"
+      ? {
+          title: titleOrOptions,
+          worktree,
+          sessionConfig: model ? { modelId: model } : undefined,
+        }
+      : {
+          ...titleOrOptions,
+          sessionConfig: {
+            ...titleOrOptions.sessionConfig,
+            ...(titleOrOptions.model ? { modelId: titleOrOptions.model } : {}),
+          },
+        };
+
     const record = await fetchJson<NarratorSessionRecord>("/api/sessions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title,
-        worktree,
-        sessionConfig: { modelId: model },
-      }),
+      body: JSON.stringify(payload),
     });
     const session = toSession(record);
     setSessions((prev) => [session, ...prev]);
