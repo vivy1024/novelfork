@@ -3,13 +3,14 @@
  * injected into AI prompts, with token budget visualization.
  */
 
-import { useState, useEffect, useCallback } from "react";
-import { X, ChevronDown, ChevronRight, FileText, Trash2, Scissors, Archive } from "lucide-react";
+import { useEffect, useState, useCallback, useMemo } from "react";
+import { X, ChevronDown, ChevronRight, FileText, Trash2, Scissors, Archive, MessagesSquare } from "lucide-react";
 import { Switch } from "./ui/switch";
 import { fetchJson } from "../hooks/use-api";
 import { AutoCompressToggle } from "./AutoCompressToggle";
 
-interface ContextEntry {
+export interface ContextEntry {
+  readonly id?: string;
   readonly source: string;
   readonly label: string;
   readonly content: string;
@@ -23,11 +24,24 @@ interface ContextAssemblyResponse {
   readonly budgetMax: number;
 }
 
+interface SessionContextSummary {
+  readonly totalTokens: number;
+  readonly budgetMax: number;
+  readonly messageCount: number;
+}
+
 interface ContextPanelProps {
-  readonly bookId: string;
-  readonly chapterNumber: number;
   readonly visible: boolean;
   readonly onClose: () => void;
+  readonly mode?: "book" | "session";
+  readonly bookId?: string;
+  readonly chapterNumber?: number;
+  readonly sessionTitle?: string;
+  readonly sessionEntries?: ReadonlyArray<ContextEntry>;
+  readonly sessionSummary?: SessionContextSummary;
+  readonly onCompress?: () => void;
+  readonly onTruncate?: () => void;
+  readonly onClear?: () => void;
 }
 
 function budgetColor(ratio: number): string {
@@ -51,7 +65,19 @@ function SummaryTile({ label, value }: { readonly label: string; readonly value:
   );
 }
 
-export function ContextPanel({ bookId, chapterNumber, visible, onClose }: ContextPanelProps) {
+export function ContextPanel({
+  visible,
+  onClose,
+  mode = "book",
+  bookId,
+  chapterNumber,
+  sessionTitle,
+  sessionEntries,
+  sessionSummary,
+  onCompress,
+  onTruncate,
+  onClear,
+}: ContextPanelProps) {
   const [entries, setEntries] = useState<ReadonlyArray<ContextEntry>>([]);
   const [totalTokens, setTotalTokens] = useState(0);
   const [budgetMax, setBudgetMax] = useState(8000);
@@ -60,7 +86,11 @@ export function ContextPanel({ bookId, chapterNumber, visible, onClose }: Contex
   const [expandedSources, setExpandedSources] = useState<ReadonlySet<string>>(new Set());
   const [disabledSources, setDisabledSources] = useState<ReadonlySet<string>>(new Set());
 
+  const sessionMode = mode === "session";
+
   const fetchContext = useCallback(async () => {
+    if (sessionMode || !bookId || typeof chapterNumber !== "number") return;
+
     setLoading(true);
     setError(null);
     try {
@@ -77,13 +107,22 @@ export function ContextPanel({ bookId, chapterNumber, visible, onClose }: Contex
     } finally {
       setLoading(false);
     }
-  }, [bookId, chapterNumber]);
+  }, [sessionMode, bookId, chapterNumber]);
 
   useEffect(() => {
-    if (visible) {
-      fetchContext();
+    if (!visible) return;
+
+    if (sessionMode) {
+      setEntries(sessionEntries ?? []);
+      setTotalTokens(sessionSummary?.totalTokens ?? 0);
+      setBudgetMax(sessionSummary?.budgetMax ?? 8000);
+      setError(null);
+      setLoading(false);
+      return;
     }
-  }, [visible, fetchContext]);
+
+    void fetchContext();
+  }, [visible, sessionMode, sessionEntries, sessionSummary, fetchContext]);
 
   const toggleExpanded = (source: string) => {
     setExpandedSources((prev) => {
@@ -110,6 +149,13 @@ export function ContextPanel({ bookId, chapterNumber, visible, onClose }: Contex
   };
 
   const handleCompress = async () => {
+    if (sessionMode) {
+      onCompress?.();
+      return;
+    }
+
+    if (!bookId) return;
+
     try {
       await fetchJson(`/api/context/${bookId}/compress`, { method: "POST" });
       await fetchContext();
@@ -119,6 +165,13 @@ export function ContextPanel({ bookId, chapterNumber, visible, onClose }: Contex
   };
 
   const handleTruncate = async () => {
+    if (sessionMode) {
+      onTruncate?.();
+      return;
+    }
+
+    if (!bookId) return;
+
     try {
       await fetchJson(`/api/context/${bookId}/truncate`, { method: "POST" });
       await fetchContext();
@@ -130,6 +183,13 @@ export function ContextPanel({ bookId, chapterNumber, visible, onClose }: Contex
   const handleClear = async () => {
     if (!confirm("确定要清空所有上下文吗？此操作不可恢复。")) return;
 
+    if (sessionMode) {
+      onClear?.();
+      return;
+    }
+
+    if (!bookId) return;
+
     try {
       await fetchJson(`/api/context/${bookId}/clear`, { method: "POST" });
       await fetchContext();
@@ -138,23 +198,33 @@ export function ContextPanel({ bookId, chapterNumber, visible, onClose }: Contex
     }
   };
 
-  // Recalculate active tokens based on disabled sources
-  const activeTokens = entries.reduce(
-    (sum, entry) => (disabledSources.has(entry.source) ? sum : sum + entry.tokens),
-    0,
+  const activeTokens = useMemo(
+    () =>
+      entries.reduce(
+        (sum, entry) => (disabledSources.has(entry.source) ? sum : sum + entry.tokens),
+        0,
+      ),
+    [entries, disabledSources],
   );
 
   const ratio = budgetMax > 0 ? activeTokens / budgetMax : 0;
+  const sessionMessageCount = sessionSummary?.messageCount ?? entries.length;
 
   if (!visible) return null;
 
   return (
     <div className="fixed top-0 right-0 z-50 h-full w-[360px] flex flex-col border-l border-border bg-background shadow-2xl animate-in slide-in-from-right duration-200" data-testid="context-panel">
-      {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border/50">
         <div>
           <h2 className="text-sm font-bold text-foreground">上下文面板</h2>
-          <p className="mt-0.5 text-[10px] text-muted-foreground">第 {chapterNumber} 章 · 当前书籍 {bookId}</p>
+          {sessionMode ? (
+            <p className="mt-0.5 flex items-center gap-1 text-[10px] text-muted-foreground">
+              <MessagesSquare size={12} />
+              最近会话消息 · {sessionTitle ?? "当前会话"}
+            </p>
+          ) : (
+            <p className="mt-0.5 text-[10px] text-muted-foreground">第 {chapterNumber} 章 · 当前书籍 {bookId}</p>
+          )}
         </div>
         <button
           onClick={onClose}
@@ -164,10 +234,9 @@ export function ContextPanel({ bookId, chapterNumber, visible, onClose }: Contex
         </button>
       </div>
 
-      {/* Summary + Token Budget Bar */}
       <div className="space-y-3 border-b border-border/30 px-4 py-3">
         <div className="grid grid-cols-4 gap-2">
-          <SummaryTile label="条目" value={String(entries.length)} />
+          <SummaryTile label={sessionMode ? "消息" : "条目"} value={String(sessionMode ? sessionMessageCount : entries.length)} />
           <SummaryTile label="启用" value={String(entries.length - disabledSources.size)} />
           <SummaryTile label="屏蔽" value={String(disabledSources.size)} />
           <SummaryTile label="余量" value={String(Math.max(budgetMax - activeTokens, 0))} />
@@ -190,10 +259,9 @@ export function ContextPanel({ bookId, chapterNumber, visible, onClose }: Contex
         </div>
       </div>
 
-      {/* Action Buttons */}
       <div className="flex items-center gap-2 px-4 py-2 border-b border-border/30">
         <button
-          onClick={handleCompress}
+          onClick={() => void handleCompress()}
           disabled={ratio < 0.8}
           className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-xs rounded-lg bg-secondary hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           title="压缩上下文"
@@ -203,7 +271,7 @@ export function ContextPanel({ bookId, chapterNumber, visible, onClose }: Contex
           压缩
         </button>
         <button
-          onClick={handleTruncate}
+          onClick={() => void handleTruncate()}
           className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-xs rounded-lg bg-secondary hover:bg-secondary/80 transition-colors"
           title="裁剪上下文"
         >
@@ -211,7 +279,7 @@ export function ContextPanel({ bookId, chapterNumber, visible, onClose }: Contex
           裁剪
         </button>
         <button
-          onClick={handleClear}
+          onClick={() => void handleClear()}
           className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-xs rounded-lg bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors"
           title="清空上下文"
           data-testid="clear-context-btn"
@@ -221,10 +289,8 @@ export function ContextPanel({ bookId, chapterNumber, visible, onClose }: Contex
         </button>
       </div>
 
-      {/* Auto-compress toggle */}
-      <AutoCompressToggle bookId={bookId} onCompress={handleCompress} />
+      {!sessionMode && bookId ? <AutoCompressToggle bookId={bookId} onCompress={handleCompress} /> : null}
 
-      {/* Entry List */}
       <div className="flex-1 overflow-y-auto">
         {loading && (
           <div className="flex flex-col items-center justify-center py-16 space-y-3">
@@ -248,14 +314,15 @@ export function ContextPanel({ bookId, chapterNumber, visible, onClose }: Contex
 
         {!loading &&
           entries.map((entry) => {
-            const isExpanded = expandedSources.has(entry.source);
+            const key = entry.id ?? entry.source;
+            const isExpanded = expandedSources.has(key);
             const isDisabled = disabledSources.has(entry.source);
             const preview = entry.content.slice(0, 100);
             const hasMore = entry.content.length > 100;
 
             return (
               <div
-                key={entry.source}
+                key={key}
                 className={`border-b border-border/30 transition-colors ${isDisabled ? "opacity-40" : ""}`}
               >
                 <div className="flex items-center gap-2 px-4 py-3">
@@ -265,7 +332,7 @@ export function ContextPanel({ bookId, chapterNumber, visible, onClose }: Contex
                   />
 
                   <button
-                    onClick={() => toggleExpanded(entry.source)}
+                    onClick={() => toggleExpanded(key)}
                     className="flex-1 flex items-center gap-2 min-w-0 text-left"
                   >
                     {isExpanded ? (
@@ -291,12 +358,10 @@ export function ContextPanel({ bookId, chapterNumber, visible, onClose }: Contex
                   </div>
                 </div>
 
-                {/* Content Preview / Expanded */}
                 {isExpanded && (
                   <div className="px-4 pb-3 pl-12">
                     <pre className="text-[11px] text-muted-foreground whitespace-pre-wrap font-sans leading-relaxed bg-secondary/30 rounded-lg p-3 max-h-[200px] overflow-y-auto">
-                      {isExpanded ? entry.content : preview}
-                      {!isExpanded && hasMore && "..."}
+                      {entry.content}
                     </pre>
                   </div>
                 )}

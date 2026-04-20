@@ -27,6 +27,16 @@ export interface ChatMessage {
   toolCalls?: ToolCall[];
 }
 
+export type SessionPermissionMode = "allow" | "ask" | "deny";
+export type SessionReasoningEffort = "low" | "medium" | "high";
+
+export interface SessionConfig {
+  providerId: string;
+  modelId: string;
+  permissionMode: SessionPermissionMode;
+  reasoningEffort: SessionReasoningEffort;
+}
+
 export interface ChatWindow {
   id: string;
   title: string;
@@ -35,6 +45,7 @@ export interface ChatWindow {
   minimized: boolean;
   messages: ChatMessage[];
   wsConnected: boolean;
+  sessionConfig?: SessionConfig;
 }
 
 interface WindowStore {
@@ -72,6 +83,12 @@ export const useWindowStore = create<WindowStore>()(
             minimized: false,
             messages: [],
             wsConnected: false,
+            sessionConfig: {
+              providerId: "anthropic",
+              modelId: "claude-sonnet-4-6",
+              permissionMode: "allow",
+              reasoningEffort: "medium",
+            },
           };
           return { windows: [...state.windows, newWindow], activeWindowId: id };
         }),
