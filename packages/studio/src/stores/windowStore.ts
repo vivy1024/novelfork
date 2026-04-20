@@ -1,13 +1,22 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
+export type ToolCallStatus = "pending" | "running" | "success" | "error";
+
 export interface ToolCall {
+  id?: string;
   toolName: string;
-  command: string;
-  duration: number;
-  output: string;
+  status?: ToolCallStatus;
+  summary?: string;
+  command?: string;
+  input?: unknown;
+  duration?: number;
+  output?: string;
+  result?: unknown;
   error?: string;
   exitCode?: number;
+  startedAt?: number;
+  finishedAt?: number;
 }
 
 export interface ChatMessage {
