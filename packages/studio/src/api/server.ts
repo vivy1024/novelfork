@@ -34,6 +34,7 @@ import {
   createLorebookRouter,
   createSettingsRouter,
   createProvidersRouter,
+  createGitRouter,
   createAgentConfigRouter,
   createToolsRouter,
   createWorktreeRouter,
@@ -243,6 +244,9 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
 
     // AI Providers management
     app.route("/api/providers", createProvidersRouter());
+
+    // Git operations for browser clients
+    app.route("/api/git", createGitRouter());
 
     // Agent configuration
     app.route("/api/agent/config", createAgentConfigRouter());

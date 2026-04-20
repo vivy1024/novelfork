@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Trash2, Plus, Check, X } from "lucide-react";
-import { PROVIDERS, Provider, getProvider } from "../../api/lib/providers";
+import { PROVIDERS, getProvider } from "../../shared/provider-catalog";
 import { openDB, IDBPDatabase } from "idb";
 
 interface ProviderConfigProps {

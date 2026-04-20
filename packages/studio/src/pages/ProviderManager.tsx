@@ -11,7 +11,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { GripVertical, Plus, Search } from "lucide-react";
 import { ProviderCard } from "../components/ProviderCard";
 import { fetchJson } from "../hooks/use-api";
-import type { AIProvider, ModelPoolEntry } from "../api/lib/provider-manager";
+import type { AIProvider, ModelPoolEntry } from "../shared/provider-manager-types";
 
 interface ProviderManagerProps {
   onBack: () => void;

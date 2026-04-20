@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { X, GitBranch, GitMerge } from "lucide-react";
-import { execGit, forkBranch, mergeBranch, createWorktree } from "../../api/lib/git-utils";
+import { createGitWorktree, fetchGitBranches, mergeGitBranch } from "../../lib/git-api";
 
 interface GitForkDialogProps {
   repoPath: string;
@@ -19,17 +19,13 @@ export function GitForkDialog({ repoPath, onClose }: GitForkDialogProps) {
   const [success, setSuccess] = useState("");
 
   useEffect(() => {
-    loadBranches();
+    void loadBranches();
   }, [repoPath]);
 
   async function loadBranches() {
     try {
-      const output = await execGit(["branch", "-a"], repoPath);
-      const branchList = output
-        .split("\n")
-        .map((line) => line.replace(/^\*?\s+/, "").trim())
-        .filter(Boolean);
-      setBranches(branchList);
+      const { branches } = await fetchGitBranches(repoPath);
+      setBranches(branches);
     } catch (err: any) {
       setError(err.message);
     }
@@ -46,7 +42,7 @@ export function GitForkDialog({ repoPath, onClose }: GitForkDialogProps) {
     setSuccess("");
 
     try {
-      await createWorktree(repoPath, branchName, branchName);
+      await createGitWorktree(repoPath, branchName, branchName);
       setSuccess(`Worktree 创建成功: ${branchName}`);
       setTimeout(() => {
         onClose();
@@ -69,8 +65,8 @@ export function GitForkDialog({ repoPath, onClose }: GitForkDialogProps) {
     setSuccess("");
 
     try {
-      const result = await mergeBranch(repoPath, selectedBranch);
-      if (result.success) {
+      const result = await mergeGitBranch(repoPath, selectedBranch);
+      if (result.ok) {
         setSuccess(result.message);
         setTimeout(() => {
           onClose();
@@ -88,7 +84,6 @@ export function GitForkDialog({ repoPath, onClose }: GitForkDialogProps) {
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-white dark:bg-gray-900 rounded-lg shadow-xl w-[500px]">
-        {/* Header */}
         <div className="flex items-center justify-between p-4 border-b dark:border-gray-700">
           <h2 className="text-lg font-semibold">Git Fork/合并</h2>
           <button onClick={onClose} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded">
@@ -96,7 +91,6 @@ export function GitForkDialog({ repoPath, onClose }: GitForkDialogProps) {
           </button>
         </div>
 
-        {/* Mode Tabs */}
         <div className="flex border-b dark:border-gray-700">
           <button
             onClick={() => setMode("fork")}
@@ -122,7 +116,6 @@ export function GitForkDialog({ repoPath, onClose }: GitForkDialogProps) {
           </button>
         </div>
 
-        {/* Content */}
         <div className="p-4 space-y-4">
           {error && (
             <div className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 p-3 rounded text-sm">
@@ -170,7 +163,6 @@ export function GitForkDialog({ repoPath, onClose }: GitForkDialogProps) {
           )}
         </div>
 
-        {/* Actions */}
         <div className="flex justify-end gap-2 p-4 border-t dark:border-gray-700">
           <button
             onClick={mode === "fork" ? handleFork : handleMerge}

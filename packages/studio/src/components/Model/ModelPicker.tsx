@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Eye, EyeOff, Check, AlertCircle } from "lucide-react";
-import { PROVIDERS, Provider, Model } from "../../api/lib/providers";
+import { PROVIDERS } from "../../shared/provider-catalog";
 import { openDB, IDBPDatabase } from "idb";
 
 interface ModelPickerProps {
