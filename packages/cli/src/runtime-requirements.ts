@@ -1,8 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { createRequire } from "node:module";
 
-const require = createRequire(import.meta.url);
 
 export const SQLITE_MEMORY_MIN_NODE_MAJOR = 22;
 export const SQLITE_MEMORY_PIN_VERSION = String(SQLITE_MEMORY_MIN_NODE_MAJOR);
@@ -98,16 +96,16 @@ export function parseNodeMajor(version: string): number {
 }
 
 function hasSqliteBuiltin(): boolean {
-  try {
-    require("node:sqlite");
+  if (process.versions.bun) {
     return true;
-  } catch {
-    // continue
   }
 
+  const nodeProcess = process as typeof process & {
+    getBuiltinModule?: (id: string) => unknown;
+  };
+
   try {
-    require("bun:sqlite");
-    return true;
+    return Boolean(nodeProcess.getBuiltinModule?.("node:sqlite"));
   } catch {
     return false;
   }

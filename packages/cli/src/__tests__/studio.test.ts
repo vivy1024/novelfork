@@ -45,7 +45,7 @@ describe("studio command", () => {
     expect(launchCall[1].map(normalizePath)).toEqual(["tsx", expect.stringMatching(/\/packages\/studio\/src\/api\/index\.ts$/), "/project"]);
     expect(launchCall[2]).toEqual(expect.objectContaining({
       cwd: "/project",
-      stdio: "inherit",
+      stdio: ["pipe", "pipe", "pipe"],
       env: expect.objectContaining({ NOVELFORK_STUDIO_PORT: "9001" }),
     }));
   });
@@ -70,7 +70,7 @@ describe("studio command", () => {
     ]);
     expect(launchCall[2]).toEqual(expect.objectContaining({
       cwd: "/project",
-      stdio: "inherit",
+      stdio: ["pipe", "pipe", "pipe"],
       env: expect.objectContaining({ NOVELFORK_STUDIO_PORT: "4567" }),
     }));
   });

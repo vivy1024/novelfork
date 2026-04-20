@@ -1,6 +1,6 @@
-import { createRequire } from "node:module";
-
-const require = createRequire(import.meta.url);
+type BuiltinProcess = typeof process & {
+  getBuiltinModule?: (id: string) => unknown;
+};
 
 type SQLiteDatabaseLike = {
   exec(sql: string): void;
@@ -14,22 +14,23 @@ type SQLiteDatabaseLike = {
 
 type SQLiteCtor = new (filename: string) => SQLiteDatabaseLike;
 
-function loadNodeSqlite(): SQLiteCtor | null {
+function getBuiltinModule<T>(id: string): T | null {
   try {
-    const mod = require("node:sqlite") as { DatabaseSync?: SQLiteCtor };
-    return mod.DatabaseSync ?? null;
+    const builtin = (process as BuiltinProcess).getBuiltinModule?.(id) as T | undefined;
+    return builtin ?? null;
   } catch {
     return null;
   }
 }
 
+function loadNodeSqlite(): SQLiteCtor | null {
+  const mod = getBuiltinModule<{ DatabaseSync?: SQLiteCtor }>("node:sqlite");
+  return mod?.DatabaseSync ?? null;
+}
+
 function loadBunSqlite(): SQLiteCtor | null {
-  try {
-    const mod = require("bun:sqlite") as { Database?: SQLiteCtor };
-    return mod.Database ?? null;
-  } catch {
-    return null;
-  }
+  const mod = getBuiltinModule<{ Database?: SQLiteCtor }>("bun:sqlite");
+  return mod?.Database ?? null;
 }
 
 export function hasSqliteRuntime(): boolean {

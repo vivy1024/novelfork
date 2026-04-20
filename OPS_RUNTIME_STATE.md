@@ -8,11 +8,13 @@
 
 | 组件 | 状态 | 备注 |
 |------|------|------|
-| 核心写作引擎 | ✅ 可用 | core 构建通过 |
-| CLI 入口 | ✅ 可用 | 仍是过渡期入口 |
-| Studio 工作台 | ✅ 可构建 | server/client 构建通过 |
-| 测试 | ⚠️ 部分失败 | 需继续修复测试基础设施 |
-| 平台迁移 | 🔄 进行中 | 正在回归 NarraFork 路线 |
+| 核心写作引擎 | ✅ 可用 | core 构建与 typecheck 通过 |
+| CLI 入口 | ✅ 可用 | `novelfork studio` 已优先走 Bun 主入口 |
+| Studio 工作台 | ✅ 可构建 | client/server 构建通过，legacy 入口已降级为兼容桥 |
+| Bun 主入口 | ✅ 可用 | `bun run main.ts` 可启动并优先使用 embedded assets |
+| 单文件产物 | ✅ 可用 | `pnpm bun:compile` 已生成 `dist/novelfork.exe`，且 smoke 运行通过 |
+| 测试主链 | ✅ 基本收绿 | CLI typecheck 与关键测试已通过，Studio pack 主链通过 |
+| 平台迁移 | 🔄 进行中 | 已推进到深层执行链去 Node 化阶段 |
 
 ---
 
@@ -27,11 +29,11 @@
 
 ## 当前待办
 
-- [ ] 建立 Bun 主入口 `main.ts`
-- [ ] 处理 SQLite 在 Bun 下的兼容层
-- [ ] 设计前端静态资源内嵌方案
-- [ ] 清理旧 CLI / desktop / 双进程启动残留
-- [ ] 修复测试与文档中的旧口径
+- [ ] 收剩余边角主路径 Node 绑定（如 `cli studio` 的主服务启动部分）
+- [ ] 继续推进深层执行链去 Node 化（MCP / Bash / Git 已完成第一轮 adapter 接入）
+- [ ] 评估 `sqlite-driver` 从 `createRequire` 迁到更干净的 Bun/Node 运行时探测方式
+- [ ] 清理 Studio 非主链历史 typecheck 旧债
+- [ ] 开始整理分发与安装体验（产物命名、首次启动、配置目录）
 
 ---
 

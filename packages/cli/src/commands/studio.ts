@@ -1,4 +1,5 @@
 import { Command } from "commander";
+import { spawnProcess } from "@vivy1024/novelfork-core/runtime/process-adapter";
 import { findProjectRoot, log, logError } from "../utils.js";
 import { spawn } from "node:child_process";
 import { dirname, join, resolve } from "node:path";
@@ -130,13 +131,18 @@ export const studioCommand = new Command("studio")
 
     log(`Starting NovelFork Studio on ${url}`);
 
-    const child = spawn(launch.command, launch.args, {
+    const child = await spawnProcess(launch.command, launch.args, {
       cwd: root,
-      stdio: "inherit",
       env: { ...process.env, NOVELFORK_STUDIO_PORT: port },
     });
 
-    child.on("error", (e) => {
+    child.onStdout((data) => {
+      process.stdout.write(data);
+    });
+    child.onStderr((data) => {
+      process.stderr.write(data);
+    });
+    child.onError((e) => {
       logError(`Failed to start studio: ${e.message}`);
       process.exit(1);
     });
@@ -152,7 +158,7 @@ export const studioCommand = new Command("studio")
     });
     browser.unref?.();
 
-    child.on("exit", (code) => {
+    child.onClose((code) => {
       process.exit(code ?? 0);
     });
   });
