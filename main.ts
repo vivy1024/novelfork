@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { startStudioServer } from "./packages/studio/src/api/server.ts";
-import { createFilesystemStaticProvider } from "./packages/studio/src/api/static-provider.ts";
+import { createEmbeddedStaticProvider, createFilesystemStaticProvider } from "./packages/studio/src/api/static-provider.ts";
 
 function parseArg(name: string): string | undefined {
   const prefix = `${name}=`;
@@ -22,11 +22,32 @@ const port = parseInt(
 
 const staticDir = resolve("packages/studio/dist");
 const hasStatic = existsSync(join(staticDir, "index.html"));
-const staticProvider = hasStatic ? createFilesystemStaticProvider(staticDir) : undefined;
 
-if (!hasStatic) {
-  console.warn("[bun:main] packages/studio/dist/index.html not found; starting API without embedded frontend assets.");
-  console.warn("[bun:main] Run 'pnpm bun:build-client' before using the Bun main entry with the web UI.");
+let staticProvider;
+let usingEmbeddedAssets = false;
+
+try {
+  const embeddedAssets = await import("./packages/studio/src/api/embedded-assets.generated.ts");
+  if (embeddedAssets.embeddedIndexHtml) {
+    staticProvider = createEmbeddedStaticProvider({
+      indexHtml: embeddedAssets.embeddedIndexHtml,
+      files: embeddedAssets.embeddedFiles,
+    });
+    usingEmbeddedAssets = true;
+  }
+} catch {
+  // generated module missing; fall back to filesystem assets
+}
+
+if (!staticProvider && hasStatic) {
+  staticProvider = createFilesystemStaticProvider(staticDir);
+}
+
+if (!staticProvider) {
+  console.warn("[bun:main] No embedded assets or packages/studio/dist/index.html found; starting API without frontend assets.");
+  console.warn("[bun:main] Run 'pnpm bun:build-client' and 'pnpm bun:embed-assets' before compile.");
+} else if (usingEmbeddedAssets) {
+  console.log("[bun:main] Using embedded Studio assets.");
 }
 
 await startStudioServer(projectRoot, port, {
