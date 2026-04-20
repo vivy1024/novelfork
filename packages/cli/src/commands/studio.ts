@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import { spawnProcess } from "@vivy1024/novelfork-core/runtime/process-adapter";
+import { openExternalUrl } from "../open-external-url.js";
 import { findProjectRoot, log, logError } from "../utils.js";
-import { spawn } from "node:child_process";
 import { dirname, join, resolve } from "node:path";
 import { access } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -147,16 +147,7 @@ export const studioCommand = new Command("studio")
       process.exit(1);
     });
 
-    const browserLaunch = resolveBrowserLaunch(process.platform, url);
-    const browser = spawn(browserLaunch.command, browserLaunch.args, {
-      cwd: root,
-      stdio: "ignore",
-      detached: true,
-    });
-    browser.on("error", () => {
-      // Best effort only — server startup should not fail just because browser open failed.
-    });
-    browser.unref?.();
+    await openExternalUrl(process.platform, url, root);
 
     child.onClose((code) => {
       process.exit(code ?? 0);
