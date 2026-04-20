@@ -7,9 +7,9 @@ describe("Settings Component", () => {
     const onClose = vi.fn();
     render(<Settings onClose={onClose} theme="light" />);
 
-    expect(screen.getByText("状态")).toBeInTheDocument();
-    expect(screen.getByText("配置")).toBeInTheDocument();
-    expect(screen.getByText("使用统计")).toBeInTheDocument();
+    expect(screen.getByText("状态")).toBeTruthy();
+    expect(screen.getByText("配置")).toBeTruthy();
+    expect(screen.getByText("使用统计")).toBeTruthy();
   });
 
   it("closes on Escape key", () => {

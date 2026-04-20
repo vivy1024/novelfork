@@ -1,13 +1,13 @@
 import ReactMarkdown from "react-markdown";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { ChevronDown, ChevronRight, Copy, Check } from "lucide-react";
 
 interface CodeBlockProps {
   inline?: boolean;
   className?: string;
-  children?: React.ReactNode;
+  children?: ReactNode;
 }
 
 function CodeBlock({ inline, className, children }: CodeBlockProps) {

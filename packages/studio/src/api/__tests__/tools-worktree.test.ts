@@ -70,7 +70,7 @@ describe("Tool System Integration", () => {
           workspaceRoot: TEST_WORKSPACE,
           userId: "test-user",
           sessionId: "test-session",
-          permissions: new Set(),
+          permissions: new Set<string>(),
         }
       );
 
@@ -86,7 +86,7 @@ describe("Tool System Integration", () => {
           workspaceRoot: TEST_WORKSPACE,
           userId: "test-user",
           sessionId: "test-session",
-          permissions: new Set(),
+          permissions: new Set<string>(),
         }
       );
 
@@ -104,7 +104,7 @@ describe("Tool System Integration", () => {
           workspaceRoot: TEST_WORKSPACE,
           userId: "test-user",
           sessionId: "test-session",
-          permissions: new Set(),
+          permissions: new Set<string>(),
         }
       );
 
@@ -120,7 +120,7 @@ describe("Tool System Integration", () => {
           workspaceRoot: TEST_WORKSPACE,
           userId: "test-user",
           sessionId: "test-session",
-          permissions: new Set(),
+          permissions: new Set<string>(),
         }
       );
 
@@ -238,7 +238,7 @@ describe("Tool System Integration", () => {
           workspaceRoot: TEST_WORKSPACE,
           userId: "test-user",
           sessionId: "test-session",
-          permissions: new Set(),
+          permissions: new Set<string>(),
         }
       );
 
@@ -256,7 +256,7 @@ describe("Tool System Integration", () => {
           workspaceRoot: TEST_WORKSPACE,
           userId: "test-user",
           sessionId: "test-session",
-          permissions: new Set(),
+          permissions: new Set<string>(),
         }
       );
 
@@ -274,7 +274,7 @@ describe("Tool System Integration", () => {
           workspaceRoot: TEST_WORKSPACE,
           userId: "test-user",
           sessionId: "test-session",
-          permissions: new Set(),
+          permissions: new Set<string>(),
         }
       );
 
@@ -295,7 +295,7 @@ describe("Tool System Integration", () => {
           workspaceRoot: TEST_WORKSPACE,
           userId: "test-user",
           sessionId: "test-session",
-          permissions: new Set(),
+          permissions: new Set<string>(),
         }
       );
 
@@ -317,7 +317,7 @@ describe("Tool System Integration", () => {
           workspaceRoot: TEST_WORKSPACE,
           userId: "test-user",
           sessionId: "test-session",
-          permissions: new Set(),
+          permissions: new Set<string>(),
         }
       );
 
@@ -337,7 +337,7 @@ describe("Tool System Integration", () => {
           workspaceRoot: TEST_WORKSPACE,
           userId: "test-user",
           sessionId: "test-session",
-          permissions: new Set(),
+          permissions: new Set<string>(),
         }
       );
 
@@ -362,7 +362,7 @@ describe("Tool System Integration", () => {
           workspaceRoot: TEST_WORKSPACE,
           userId: "test-user",
           sessionId: "test-session",
-          permissions: new Set(),
+          permissions: new Set<string>(),
         }
       );
 
@@ -386,7 +386,7 @@ describe("Tool System Integration", () => {
           workspaceRoot: TEST_WORKSPACE,
           userId: "test-user",
           sessionId: "test-session",
-          permissions: new Set(),
+          permissions: new Set<string>(),
         }
       );
 
@@ -409,7 +409,7 @@ describe("Tool System Integration", () => {
           workspaceRoot: TEST_WORKSPACE,
           userId: "test-user",
           sessionId: "test-session",
-          permissions: new Set(),
+          permissions: new Set<string>(),
         }
       );
 
@@ -432,7 +432,7 @@ describe("Tool System Integration", () => {
           workspaceRoot: TEST_WORKSPACE,
           userId: "test-user",
           sessionId: "test-session",
-          permissions: new Set(),
+          permissions: new Set<string>(),
         }
       );
 
@@ -458,7 +458,7 @@ describe("Tool System Integration", () => {
           workspaceRoot: TEST_WORKSPACE,
           userId: "test-user",
           sessionId: "test-session",
-          permissions: new Set(),
+          permissions: new Set<string>(),
         }
       );
 
@@ -475,7 +475,7 @@ describe("Tool System Integration", () => {
           workspaceRoot: TEST_WORKSPACE,
           userId: "test-user",
           sessionId: "test-session",
-          permissions: new Set(),
+          permissions: new Set<string>(),
         }
       );
 
@@ -492,7 +492,7 @@ describe("Tool System Integration", () => {
           workspaceRoot: TEST_WORKSPACE,
           userId: "test-user",
           sessionId: "test-session",
-          permissions: new Set(),
+          permissions: new Set<string>(),
         }
       );
 
@@ -519,7 +519,7 @@ describe("Tool System Integration", () => {
           workspaceRoot: TEST_WORKSPACE,
           userId: "test-user",
           sessionId: "test-session",
-          permissions: new Set(),
+          permissions: new Set<string>(),
         }
       );
 
@@ -541,7 +541,7 @@ describe("Tool System Integration", () => {
           workspaceRoot: TEST_WORKSPACE,
           userId: "test-user",
           sessionId: "test-session",
-          permissions: new Set(),
+          permissions: new Set<string>(),
         }
       );
 
@@ -562,7 +562,7 @@ describe("Tool System Integration", () => {
           workspaceRoot: TEST_WORKSPACE,
           userId: "test-user",
           sessionId: "test-session",
-          permissions: new Set(),
+          permissions: new Set<string>(),
         }
       );
 
@@ -586,7 +586,7 @@ describe("Tool System Integration", () => {
           workspaceRoot: TEST_WORKSPACE,
           userId: "test-user",
           sessionId: "test-session",
-          permissions: new Set(),
+          permissions: new Set<string>(),
         }
       );
 
@@ -639,7 +639,7 @@ describe("Tool System Integration", () => {
           workspaceRoot: TEST_WORKSPACE,
           userId: "test-user",
           sessionId: "test-session",
-          permissions: new Set(), // 没有 bash 权限
+          permissions: new Set<string>(), // 没有 bash 权限
         }
       );
 
@@ -762,7 +762,7 @@ describe("Integration Scenarios", () => {
       workspaceRoot: TEST_WORKSPACE,
       userId: "test-user",
       sessionId: "test-session",
-      permissions: new Set(),
+      permissions: new Set<string>(),
     };
 
     // 1. 创建文件
@@ -813,7 +813,7 @@ describe("Integration Scenarios", () => {
       workspaceRoot: TEST_WORKSPACE,
       userId: "test-user",
       sessionId: "test-session",
-      permissions: new Set(),
+      permissions: new Set<string>(),
     };
 
     // 1. 创建多个文件
@@ -878,7 +878,7 @@ describe("Integration Scenarios", () => {
       workspaceRoot: TEST_WORKSPACE,
       userId: "test-user",
       sessionId: "test-session",
-      permissions: new Set(),
+      permissions: new Set<string>(),
     };
 
     // 1. 尝试读取不存在的文件

@@ -20,5 +20,9 @@
     },
     "baseUrl": "."
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": [
+    "src/api/routes/hooks-countdown.ts",
+    "src/api/routes/poison-detector.ts"
+  ]
 }

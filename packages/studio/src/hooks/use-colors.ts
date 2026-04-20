@@ -22,6 +22,11 @@ export function useColors(_theme: Theme) {
     active: "text-emerald-500",
     paused: "text-amber-500",
     mono: "font-mono text-sm",
-    accent: "text-primary",
+    text: "var(--foreground)",
+    textSecondary: "var(--muted-foreground)",
+    bg: "var(--card)",
+    bgSecondary: "var(--secondary)",
+    border: "var(--border)",
+    accent: "var(--primary)",
   };
 }

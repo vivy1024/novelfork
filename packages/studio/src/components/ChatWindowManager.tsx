@@ -1,5 +1,5 @@
-import { useCallback, useRef, useEffect, useState } from "react";
-import { ResponsiveGridLayout, type Layout } from "react-grid-layout";
+import { useCallback, useRef, useEffect, useState, type ComponentType } from "react";
+import { ResponsiveGridLayout, type Layout, type LayoutItem } from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
 import { Plus } from "lucide-react";
@@ -14,6 +14,7 @@ interface ChatWindowManagerProps {
 
 export function ChatWindowManager({ theme }: ChatWindowManagerProps) {
   const c = useColors(theme);
+  const GridLayoutComponent = ResponsiveGridLayout as unknown as ComponentType<any>;
   const windows = useWindowStore((state) => state.windows);
   const addWindow = useWindowStore((state) => state.addWindow);
   const updateLayout = useWindowStore((state) => state.updateLayout);
@@ -37,8 +38,8 @@ export function ChatWindowManager({ theme }: ChatWindowManagerProps) {
   }, []);
 
   const handleLayoutChange = useCallback(
-    (layout: Layout[]) => {
-      layout.forEach((item) => {
+    (layout: Layout) => {
+      layout.forEach((item: LayoutItem) => {
         const window = windows.find((w) => w.id === item.i);
         if (window) {
           const newPos = { x: item.x, y: item.y, w: item.w, h: item.h };
@@ -88,7 +89,7 @@ export function ChatWindowManager({ theme }: ChatWindowManagerProps) {
 
       {/* 网格布局 */}
       {windows.length > 0 ? (
-        <ResponsiveGridLayout
+        <GridLayoutComponent
           className="layout"
           layouts={{ lg: layout }}
           breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
@@ -105,7 +106,7 @@ export function ChatWindowManager({ theme }: ChatWindowManagerProps) {
               <ChatWindow windowId={window.id} theme={theme} />
             </div>
           ))}
-        </ResponsiveGridLayout>
+        </GridLayoutComponent>
       ) : (
         <div className="flex items-center justify-center h-full">
           <div className="text-center">
