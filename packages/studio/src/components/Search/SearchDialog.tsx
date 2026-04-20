@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Dialog, DialogContent, DialogTitle } from "../ui/dialog";
 import { SearchResultCard } from "./SearchResultCard";
-import type { SearchResult, SearchType } from "../../api/lib/search-index";
+import type { SearchResult, SearchType } from "../../shared/search-types";
 import { XIcon, SearchIcon } from "lucide-react";
 
 interface SearchDialogProps {

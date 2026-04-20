@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { X, FileText, GitCommit, List } from "lucide-react";
-import { execGit } from "../../api/lib/git-utils";
+import { commitGitChanges, fetchGitOverview, stageGitFile } from "../../lib/git-api";
 
 interface GitLogDialogProps {
   repoPath: string;
@@ -23,21 +23,15 @@ export function GitLogDialog({ repoPath, onClose }: GitLogDialogProps) {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    loadGitData();
+    void loadGitData();
   }, [repoPath]);
 
   async function loadGitData() {
     setLoading(true);
     setError("");
     try {
-      const [logOutput, diffOutput, statusOutput] = await Promise.all([
-        execGit(["log", "--oneline", "-n", "20"], repoPath),
-        execGit(["diff", "HEAD"], repoPath),
-        execGit(["status", "--short"], repoPath),
-      ]);
-
-      // 解析 log
-      const commitList = logOutput
+      const { log, diff, status } = await fetchGitOverview(repoPath);
+      const commitList = log
         .split("\n")
         .filter(Boolean)
         .map((line) => {
@@ -46,8 +40,8 @@ export function GitLogDialog({ repoPath, onClose }: GitLogDialogProps) {
         });
 
       setCommits(commitList);
-      setDiff(diffOutput || "无变更");
-      setStatus(statusOutput || "工作区干净");
+      setDiff(diff || "无变更");
+      setStatus(status || "工作区干净");
     } catch (err: any) {
       setError(err.message || "加载 Git 数据失败");
     } finally {
@@ -57,7 +51,7 @@ export function GitLogDialog({ repoPath, onClose }: GitLogDialogProps) {
 
   async function handleStage(file: string) {
     try {
-      await execGit(["add", file], repoPath);
+      await stageGitFile(repoPath, file);
       await loadGitData();
     } catch (err: any) {
       setError(err.message);
@@ -69,7 +63,7 @@ export function GitLogDialog({ repoPath, onClose }: GitLogDialogProps) {
     if (!message) return;
 
     try {
-      await execGit(["commit", "-m", message], repoPath);
+      await commitGitChanges(repoPath, message);
       await loadGitData();
     } catch (err: any) {
       setError(err.message);
@@ -79,7 +73,6 @@ export function GitLogDialog({ repoPath, onClose }: GitLogDialogProps) {
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-white dark:bg-gray-900 rounded-lg shadow-xl w-[800px] max-h-[80vh] flex flex-col">
-        {/* Header */}
         <div className="flex items-center justify-between p-4 border-b dark:border-gray-700">
           <h2 className="text-lg font-semibold">Git 日志</h2>
           <button onClick={onClose} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded">
@@ -87,7 +80,6 @@ export function GitLogDialog({ repoPath, onClose }: GitLogDialogProps) {
           </button>
         </div>
 
-        {/* Tabs */}
         <div className="flex border-b dark:border-gray-700">
           <button
             onClick={() => setActiveTab("log")}
@@ -124,7 +116,6 @@ export function GitLogDialog({ repoPath, onClose }: GitLogDialogProps) {
           </button>
         </div>
 
-        {/* Content */}
         <div className="flex-1 overflow-auto p-4">
           {loading && <div className="text-center text-gray-500">加载中...</div>}
           {error && <div className="text-red-500 text-sm">{error}</div>}
@@ -173,7 +164,6 @@ export function GitLogDialog({ repoPath, onClose }: GitLogDialogProps) {
           )}
         </div>
 
-        {/* Actions */}
         <div className="flex justify-end gap-2 p-4 border-t dark:border-gray-700">
           <button
             onClick={handleCommit}

@@ -370,7 +370,7 @@ export function ChatPanel({ open, onClose, t, sse, activeBookId }: {
                 )}
               </div>
               <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground">
-                InkOS Assistant
+                NovelFork Assistant
               </span>
             </div>
             <div className="flex items-center gap-1">

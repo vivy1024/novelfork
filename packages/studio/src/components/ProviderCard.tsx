@@ -5,7 +5,7 @@
 
 import { useState } from "react";
 import { Power, Settings, Wifi, WifiOff, ChevronDown, ChevronRight } from "lucide-react";
-import type { AIProvider } from "../api/lib/provider-manager";
+import type { AIProvider } from "../shared/provider-manager-types";
 
 interface ProviderCardProps {
   provider: AIProvider;

@@ -1,4 +1,4 @@
-import type { SearchResult } from "../../api/lib/search-index";
+import type { SearchResult } from "../../shared/search-types";
 import { FileTextIcon, BookOpenIcon, MessageSquareIcon, FileIcon } from "lucide-react";
 
 interface SearchResultCardProps {

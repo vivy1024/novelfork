@@ -6,7 +6,7 @@
 import { useState, useEffect } from "react";
 import { Save, RotateCcw, AlertTriangle, CheckCircle } from "lucide-react";
 import { fetchJson } from "../hooks/use-api";
-import type { AgentConfig, AgentResourceUsage } from "../api/lib/agent-config-service";
+import type { AgentConfig, AgentResourceUsage } from "../shared/agent-config-types";
 
 interface AgentConfigPanelProps {
   onBack?: () => void;

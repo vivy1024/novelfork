@@ -52,7 +52,7 @@ import { useLayoutConfig } from "./hooks/use-layout-config";
 import { useRecovery } from "./hooks/use-crash-recovery";
 import { persistTabSession, restoreTabSession } from "./hooks/use-persisted-tabs";
 import { fetchJson, postApi, useApi } from "./hooks/use-api";
-import type { SearchResult } from "./api/lib/search-index";
+import type { SearchResult } from "./shared/search-types";
 
 export type Route =
   | { page: "dashboard" }
