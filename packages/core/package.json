@@ -20,6 +20,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./runtime/process-adapter": {
+      "types": "./dist/runtime/process-adapter.d.ts",
+      "import": "./dist/runtime/process-adapter.js"
     }
   },
   "files": [

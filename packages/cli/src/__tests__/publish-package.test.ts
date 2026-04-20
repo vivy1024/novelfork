@@ -16,8 +16,8 @@ const sourceStudioPackageJsonPromise = readFile(resolve(studioDir, "package.json
   JSON.parse(raw),
 );
 
-function createPackEnv() {
-  const env = { ...process.env, NODE_ENV: "production" };
+function createPackEnv(): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env, NODE_ENV: "production" };
 
   delete env.VITEST;
   delete env.VITEST_MODE;

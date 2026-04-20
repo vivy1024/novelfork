@@ -349,7 +349,8 @@ export async function startStudioServer(
         if (!asset) {
           return c.notFound();
         }
-        return new Response(Buffer.from(asset.content), {
+        const body = asset.content.slice();
+        return new Response(body, {
           headers: { "Content-Type": asset.contentType },
         });
       }
