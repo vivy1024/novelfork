@@ -5,11 +5,30 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { SessionCenter } from "./SessionCenter";
 import { useWindowStore } from "@/stores/windowStore";
 import type { ChatMessage, ChatWindow } from "@/stores/windowStore";
+import type { Session } from "@/hooks/useSession";
 
 const fetchJsonMock = vi.fn();
+const updateSessionMock = vi.fn();
+
+let sessionHookState: {
+  sessions: Session[];
+  currentSessionId: string | null;
+  loaded: boolean;
+  createSession: (...args: unknown[]) => Promise<unknown>;
+  loadSession: (...args: unknown[]) => Promise<unknown>;
+  renameSession: (...args: unknown[]) => Promise<unknown>;
+  removeSession: (...args: unknown[]) => Promise<unknown>;
+  updateSession: (...args: unknown[]) => Promise<unknown>;
+  reorderSessions: (...args: unknown[]) => Promise<unknown>;
+  exportSession: (...args: unknown[]) => Promise<unknown>;
+} = createSessionHookState();
 
 vi.mock("@/hooks/use-api", () => ({
   fetchJson: (...args: unknown[]) => fetchJsonMock(...args),
+}));
+
+vi.mock("@/hooks/useSession", () => ({
+  useSession: () => sessionHookState,
 }));
 
 vi.mock("@/components/ChatWindowManager", () => ({
@@ -48,27 +67,20 @@ vi.mock("@/stores/windowStore", () => {
 afterEach(() => {
   cleanup();
   fetchJsonMock.mockReset();
+  updateSessionMock.mockReset();
+  sessionHookState = createSessionHookState();
   mockState = createMockState();
 });
 
 describe("SessionCenter", () => {
   it("creates a formal narrator session before opening a workspace window", async () => {
-    fetchJsonMock.mockResolvedValueOnce({
+    const createSessionMock = vi.fn(async () => createNarratorSession({
       id: "session-1",
       title: "Planner 会话",
       agentId: "planner",
-      kind: "standalone",
-      status: "active",
-      createdAt: new Date().toISOString(),
-      lastModified: new Date().toISOString(),
-      messageCount: 0,
-      sortOrder: 0,
-      sessionConfig: {
-        providerId: "anthropic",
-        modelId: "claude-sonnet-4-6",
-        permissionMode: "allow",
-        reasoningEffort: "medium",
-      },
+    }));
+    sessionHookState = createSessionHookState({
+      createSession: createSessionMock,
     });
 
     render(<SessionCenter theme="light" />);
@@ -87,9 +99,10 @@ describe("SessionCenter", () => {
 
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(fetchJsonMock).toHaveBeenCalledWith("/api/sessions", expect.objectContaining({
-      method: "POST",
-    }));
+    expect(createSessionMock).toHaveBeenCalledWith({
+      title: "Planner 会话",
+      agentId: "planner",
+    });
 
     const windows = useWindowStore.getState().windows;
     expect(windows).toHaveLength(1);
@@ -123,7 +136,79 @@ describe("SessionCenter", () => {
     expect(screen.getByText("1 条消息")).toBeTruthy();
     expect(screen.getByRole("button", { name: "聚焦" })).toBeTruthy();
   });
+
+  it("renders persisted narrator sessions and supports archive filtering", async () => {
+    sessionHookState = createSessionHookState({
+      sessions: [
+        createNarratorSession({
+          id: "session-active",
+          title: "Writer 会话",
+          agentId: "writer",
+          status: "active",
+          lastModified: new Date("2026-04-20T10:00:00Z"),
+        }),
+        createNarratorSession({
+          id: "session-archived",
+          title: "Archived Planner",
+          agentId: "planner",
+          status: "archived",
+          lastModified: new Date("2026-04-18T10:00:00Z"),
+        }),
+      ],
+    });
+
+    render(<SessionCenter theme="light" />);
+
+    expect(screen.getByText("Writer 会话")).toBeTruthy();
+    expect(screen.getByText("Archived Planner")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "仅看已归档" }));
+
+    expect(screen.queryByText("Writer 会话")).toBeNull();
+    expect(screen.getByText("Archived Planner")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "恢复" }));
+    expect(updateSessionMock).toHaveBeenCalledWith("session-archived", { status: "active" });
+  });
 });
+
+function createSessionHookState(overrides?: Partial<typeof sessionHookState>) {
+  return {
+    sessions: [] as Session[],
+    currentSessionId: null,
+    loaded: true,
+    createSession: vi.fn(async () => undefined),
+    loadSession: vi.fn(async () => undefined),
+    renameSession: vi.fn(async () => undefined),
+    removeSession: vi.fn(async () => undefined),
+    updateSession: updateSessionMock,
+    reorderSessions: vi.fn(async () => undefined),
+    exportSession: vi.fn(async () => undefined),
+    ...overrides,
+  };
+}
+
+function createNarratorSession(overrides?: Partial<Session>): Session {
+  return {
+    id: "session-default",
+    title: "Default Session",
+    agentId: "writer",
+    kind: "standalone",
+    status: "active",
+    createdAt: new Date("2026-04-20T08:00:00Z"),
+    lastModified: new Date("2026-04-20T08:00:00Z"),
+    messageCount: 0,
+    sortOrder: 0,
+    sessionConfig: {
+      providerId: "anthropic",
+      modelId: "claude-sonnet-4-6",
+      permissionMode: "allow",
+      reasoningEffort: "medium",
+    },
+    model: "claude-sonnet-4-6",
+    ...overrides,
+  };
+}
 
 function createMockState(overrides?: Partial<MockWindowStore>): MockWindowStore {
   return Object.assign(baseMockState(), overrides ?? {});

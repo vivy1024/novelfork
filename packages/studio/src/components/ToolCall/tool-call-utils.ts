@@ -4,6 +4,8 @@ const TOOL_NAME_KEYS = ["toolName", "name", "tool", "tool_name"] as const;
 const TOOL_CALL_COLLECTION_KEYS = ["toolCalls", "tool_calls", "tools"] as const;
 const TEXT_CONTENT_KEYS = ["content", "message", "text", "response"] as const;
 
+export type ToolCallKind = "bash" | "read" | "write" | "search" | "web" | "mcp" | "agent" | "other";
+
 export interface ParsedAssistantPayload {
   content: string;
   toolCalls: ToolCall[];
@@ -122,6 +124,91 @@ export function getToolCallStatusLabel(status?: ToolCallStatus): string {
   }
 }
 
+export function getToolCallKind(toolName: string): ToolCallKind {
+  const normalized = toolName.trim().toLowerCase();
+
+  if (!normalized) {
+    return "other";
+  }
+
+  if (normalized.startsWith("mcp__") || normalized.includes("mcp")) {
+    return "mcp";
+  }
+
+  if (["bash", "shell", "terminal", "command"].includes(normalized)) {
+    return "bash";
+  }
+
+  if (["read", "open", "view"].includes(normalized)) {
+    return "read";
+  }
+
+  if (["write", "edit", "update", "patch"].includes(normalized)) {
+    return "write";
+  }
+
+  if (["grep", "glob", "search", "find"].includes(normalized)) {
+    return "search";
+  }
+
+  if (["webfetch", "fetch", "browser", "web", "openurl", "web_search"].includes(normalized)) {
+    return "web";
+  }
+
+  if (normalized.includes("agent") || normalized.includes("delegate") || normalized.includes("task")) {
+    return "agent";
+  }
+
+  return "other";
+}
+
+export function getToolCallPrimaryTarget(toolCall: ToolCall): string | undefined {
+  const inputRecord = asRecord(toolCall.input);
+
+  switch (getToolCallKind(toolCall.toolName)) {
+    case "read":
+    case "write":
+      return pickFirstString(inputRecord, ["file_path", "path", "target", "url"]);
+    case "search":
+      return pickFirstString(inputRecord, ["pattern", "glob", "path", "query"]);
+    case "web":
+      return pickFirstString(inputRecord, ["url", "selector", "purpose"]);
+    case "mcp": {
+      const mcpParts = parseMcpToolName(toolCall.toolName);
+      if (mcpParts) {
+        return `${mcpParts.server} / ${mcpParts.tool}`;
+      }
+      return pickFirstString(inputRecord, ["serverName", "toolName", "tool", "resource"]);
+    }
+    default:
+      return pickFirstString(inputRecord, ["path", "target", "url"]);
+  }
+}
+
+export function getToolCallTimelineLabel(timestamp?: number): string | undefined {
+  if (typeof timestamp !== "number" || Number.isNaN(timestamp) || timestamp <= 0) {
+    return undefined;
+  }
+
+  return new Date(timestamp).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
+export function buildToolCallTranscript(toolCall: ToolCall): string {
+  const parts = [
+    toolCall.command ? `命令\n${toolCall.command}` : undefined,
+    stringifyUnknown(toolCall.input) ? `输入\n${stringifyUnknown(toolCall.input)}` : undefined,
+    toolCall.output?.trim() ? `输出\n${toolCall.output.trim()}` : undefined,
+    stringifyUnknown(toolCall.result) ? `结果\n${stringifyUnknown(toolCall.result)}` : undefined,
+    toolCall.error?.trim() ? `错误\n${toolCall.error.trim()}` : undefined,
+  ].filter((part): part is string => Boolean(part));
+
+  return parts.join("\n\n");
+}
+
 function normalizeStatus(rawStatus: unknown, error?: string, exitCode?: number): ToolCallStatus {
   if (rawStatus === "pending" || rawStatus === "running" || rawStatus === "success" || rawStatus === "error") {
     return rawStatus;
@@ -138,7 +225,11 @@ function outputLikePending(rawStatus: unknown): boolean {
   return rawStatus === "in_progress" || rawStatus === "processing";
 }
 
-function pickFirstString(record: Record<string, unknown>, keys: readonly string[]): string | undefined {
+function pickFirstString(record: Record<string, unknown> | undefined, keys: readonly string[]): string | undefined {
+  if (!record) {
+    return undefined;
+  }
+
   for (const key of keys) {
     const value = record[key];
     if (typeof value === "string" && value.trim()) {
@@ -160,6 +251,10 @@ function pickFirstNumber(record: Record<string, unknown>, keys: readonly string[
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return isRecord(value) ? value : undefined;
 }
 
 function stringifyUnknown(value: unknown): string | undefined {
@@ -184,6 +279,18 @@ function stringifyUnknown(value: unknown): string | undefined {
 
 function firstLine(value?: string): string | undefined {
   return value?.split(/\r?\n/).find((line) => line.trim().length > 0)?.trim();
+}
+
+function parseMcpToolName(toolName: string): { server: string; tool: string } | null {
+  const parts = toolName.split("__").filter(Boolean);
+  if (parts.length < 3 || parts[0]?.toLowerCase() !== "mcp") {
+    return null;
+  }
+
+  return {
+    server: parts[1] ?? "server",
+    tool: parts.slice(2).join("__") || "tool",
+  };
 }
 
 function truncate(value: string, max: number): string {

@@ -1,0 +1,278 @@
+import { useEffect, useMemo, useState } from "react";
+import { Activity, Brain, Shield, SlidersHorizontal } from "lucide-react";
+
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { fetchJson, putApi } from "@/hooks/use-api";
+import type { RuntimeControlSettings, UserConfig } from "@/types/settings";
+import { DEFAULT_USER_CONFIG } from "@/types/settings";
+
+const PERMISSION_OPTIONS: Array<{ value: RuntimeControlSettings["defaultPermissionMode"]; label: string; description: string }> = [
+  { value: "allow", label: "直接执行", description: "适合本地可逆操作，默认尽量少打断。" },
+  { value: "ask", label: "执行前确认", description: "遇到动作前先请求确认，适合稳妥模式。" },
+  { value: "deny", label: "默认拒绝", description: "先收窄高风险动作，适合审阅和观察。" },
+];
+
+const REASONING_OPTIONS: Array<{ value: RuntimeControlSettings["defaultReasoningEffort"]; label: string; description: string }> = [
+  { value: "low", label: "低", description: "适合轻量查询和快速修补。" },
+  { value: "medium", label: "中", description: "沿用当前会话默认档位。" },
+  { value: "high", label: "高", description: "适合复杂规划和长链分析。" },
+];
+
+const DEFAULT_RUNTIME_CONTROLS = DEFAULT_USER_CONFIG.runtimeControls;
+
+function clampNumber(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function parsePercentInput(raw: string, fallback: number, min: number, max: number) {
+  if (raw.trim() === "") {
+    return fallback;
+  }
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  return clampNumber(parsed, min, max);
+}
+
+export function RuntimeControlPanel() {
+  const [runtimeControls, setRuntimeControls] = useState<RuntimeControlSettings>(DEFAULT_RUNTIME_CONTROLS);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    fetchJson<Pick<UserConfig, "runtimeControls">>("/settings/user")
+      .then((data) => {
+        setRuntimeControls({
+          ...DEFAULT_RUNTIME_CONTROLS,
+          ...(data.runtimeControls ?? {}),
+        });
+        setError(null);
+      })
+      .catch((loadError) => {
+        setError(loadError instanceof Error ? loadError.message : String(loadError));
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  const activePermission = useMemo(
+    () => PERMISSION_OPTIONS.find((option) => option.value === runtimeControls.defaultPermissionMode) ?? PERMISSION_OPTIONS[0],
+    [runtimeControls.defaultPermissionMode],
+  );
+  const activeReasoning = useMemo(
+    () => REASONING_OPTIONS.find((option) => option.value === runtimeControls.defaultReasoningEffort) ?? REASONING_OPTIONS[1],
+    [runtimeControls.defaultReasoningEffort],
+  );
+
+  async function handleSave() {
+    setSaving(true);
+    setSaved(false);
+    setError(null);
+
+    try {
+      const updated = await putApi<UserConfig>("/settings/user", { runtimeControls });
+      setRuntimeControls({
+        ...DEFAULT_RUNTIME_CONTROLS,
+        ...updated.runtimeControls,
+      });
+      setSaved(true);
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : String(saveError));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card className="border-dashed bg-muted/20">
+      <CardHeader className="gap-3">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div className="space-y-1">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <SlidersHorizontal className="size-4 text-primary" />
+              运行控制面板
+            </CardTitle>
+            <CardDescription>
+              本轮先把会话默认权限、推理强度和上下文压缩阈值纳入 /api/settings 主配置，避免再出现本地并行存储。
+            </CardDescription>
+          </div>
+          <Badge variant="outline">/api/settings/user</Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {loading ? (
+          <p className="text-sm text-muted-foreground">正在读取运行控制配置...</p>
+        ) : (
+          <>
+            <div className="grid gap-4 xl:grid-cols-2">
+              <Card size="sm">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-sm">
+                    <Shield className="size-4 text-primary" />
+                    默认权限模式
+                  </CardTitle>
+                  <CardDescription>{activePermission.description}</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <Label htmlFor="settings-runtime-permission">默认权限模式</Label>
+                  <Select
+                    value={runtimeControls.defaultPermissionMode}
+                    onValueChange={(value) => {
+                      setSaved(false);
+                      setRuntimeControls((current) => ({
+                        ...current,
+                        defaultPermissionMode: value as RuntimeControlSettings["defaultPermissionMode"],
+                      }));
+                    }}
+                  >
+                    <SelectTrigger id="settings-runtime-permission" aria-label="默认权限模式" className="w-full">
+                      <SelectValue placeholder="选择默认权限模式" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PERMISSION_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </CardContent>
+              </Card>
+
+              <Card size="sm">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-sm">
+                    <Brain className="size-4 text-primary" />
+                    默认推理强度
+                  </CardTitle>
+                  <CardDescription>{activeReasoning.description}</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <Label htmlFor="settings-runtime-reasoning">默认推理强度</Label>
+                  <Select
+                    value={runtimeControls.defaultReasoningEffort}
+                    onValueChange={(value) => {
+                      setSaved(false);
+                      setRuntimeControls((current) => ({
+                        ...current,
+                        defaultReasoningEffort: value as RuntimeControlSettings["defaultReasoningEffort"],
+                      }));
+                    }}
+                  >
+                    <SelectTrigger id="settings-runtime-reasoning" aria-label="默认推理强度" className="w-full">
+                      <SelectValue placeholder="选择默认推理强度" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {REASONING_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </CardContent>
+              </Card>
+            </div>
+
+            <div className="grid gap-4 xl:grid-cols-2">
+              <Card size="sm">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-sm">
+                    <Activity className="size-4 text-primary" />
+                    上下文压缩阈值
+                  </CardTitle>
+                  <CardDescription>
+                    对齐当前 context manager 的 canCompress 口径，达到该比例后进入压缩区间。
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <Label htmlFor="settings-runtime-compress-threshold">压缩阈值 (%)</Label>
+                  <Input
+                    id="settings-runtime-compress-threshold"
+                    aria-label="压缩阈值 (%)"
+                    type="number"
+                    min={50}
+                    max={95}
+                    value={runtimeControls.contextCompressionThresholdPercent}
+                    onChange={(event) => {
+                      setSaved(false);
+                      setRuntimeControls((current) => ({
+                        ...current,
+                        contextCompressionThresholdPercent: parsePercentInput(
+                          event.target.value,
+                          current.contextCompressionThresholdPercent,
+                          50,
+                          95,
+                        ),
+                      }));
+                    }}
+                  />
+                  <p className="text-xs text-muted-foreground">当前默认值 80%，来源于现有 /api/context/:bookId/usage 压缩判定。</p>
+                </CardContent>
+              </Card>
+
+              <Card size="sm">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-sm">
+                    <Activity className="size-4 text-primary" />
+                    上下文截断目标
+                  </CardTitle>
+                  <CardDescription>
+                    对齐当前 context manager 的 truncate 默认目标，压缩后优先回落到该比例。
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <Label htmlFor="settings-runtime-truncate-target">截断目标 (%)</Label>
+                  <Input
+                    id="settings-runtime-truncate-target"
+                    aria-label="截断目标 (%)"
+                    type="number"
+                    min={40}
+                    max={90}
+                    value={runtimeControls.contextTruncateTargetPercent}
+                    onChange={(event) => {
+                      setSaved(false);
+                      setRuntimeControls((current) => ({
+                        ...current,
+                        contextTruncateTargetPercent: parsePercentInput(
+                          event.target.value,
+                          current.contextTruncateTargetPercent,
+                          40,
+                          90,
+                        ),
+                      }));
+                    }}
+                  />
+                  <p className="text-xs text-muted-foreground">当前默认值 70%，来源于现有 /api/context/:bookId/truncate 目标比例。</p>
+                </CardContent>
+              </Card>
+            </div>
+
+            <div className="flex flex-col gap-3 border-t pt-4 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
+              <div className="space-y-1">
+                <p>当前通过 /api/settings/user 统一持久化；导入/导出会自动带上这组运行控制字段。</p>
+                {error ? <p className="text-destructive">保存失败：{error}</p> : saved ? <p className="text-primary">运行控制已保存。</p> : null}
+              </div>
+              <Button type="button" onClick={handleSave} disabled={loading || saving}>
+                {saving ? "保存中..." : "保存运行控制"}
+              </Button>
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}

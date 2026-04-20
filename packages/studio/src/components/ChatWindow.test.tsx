@@ -103,9 +103,22 @@ describe("ChatWindow", () => {
         sessionConfig: expect.objectContaining({ reasoningEffort: "high" }),
       }),
     );
+    expect(fetchJsonMock).toHaveBeenCalledWith("/api/sessions/session-abc123456", expect.objectContaining({
+      method: "PUT",
+    }));
   });
 
-  it("opens context details from the current chat session", () => {
+  it("shows session breadcrumb and recent execution chain", () => {
+    render(<ChatWindow windowId="window-1" theme="light" />);
+
+    expect(screen.getByText("NovelFork Studio")).toBeTruthy();
+    expect(screen.getByText(/Agent \/ writer/)).toBeTruthy();
+    expect(screen.getByText("最近执行链")).toBeTruthy();
+    expect(screen.getByText("Read → Bash")).toBeTruthy();
+    expect(screen.getByText(/2 步完成/)).toBeTruthy();
+  });
+
+  it("opens context details from the current chat session with layered sources", () => {
     render(<ChatWindow windowId="window-1" theme="light" />);
 
     expect(screen.queryByTestId("context-panel")).toBeNull();
@@ -115,6 +128,9 @@ describe("ChatWindow", () => {
     expect(screen.getByTestId("context-panel")).toBeTruthy();
     expect(screen.getByText("上下文面板")).toBeTruthy();
     expect(screen.getByText(/最近会话消息/)).toBeTruthy();
+    expect(screen.getByText("来源分层")).toBeTruthy();
+    expect(screen.getAllByText("工具结果").length).toBeGreaterThan(0);
+    expect(screen.getByText("Read · 完成")).toBeTruthy();
   });
 
   it("creates a formal narrator session when opening a follow-up session", async () => {
@@ -164,11 +180,35 @@ function baseMockState(): MockWindowStore {
         id: "window-1",
         title: "Writer 会话",
         agentId: "writer",
+        sessionId: "session-abc123456",
         position: { x: 0, y: 0, w: 6, h: 8 },
         minimized: false,
         messages: [
           { id: "msg-1", role: "user", content: "写下一章", timestamp: Date.now() - 60_000 },
-          { id: "msg-2", role: "assistant", content: "好的，我先整理剧情节奏。", timestamp: Date.now() - 30_000 },
+          {
+            id: "msg-2",
+            role: "assistant",
+            content: "好的，我先整理剧情节奏。",
+            timestamp: Date.now() - 30_000,
+            toolCalls: [
+              {
+                id: "tool-read",
+                toolName: "Read",
+                status: "success",
+                input: { file_path: "books/demo/outline.md" },
+                output: "# 大纲\n- 第一幕：主角入局",
+                duration: 38,
+              },
+              {
+                id: "tool-bash",
+                toolName: "Bash",
+                status: "success",
+                command: "git status --short",
+                output: " M packages/studio/src/components/ChatWindow.tsx",
+                duration: 420,
+              },
+            ],
+          },
         ],
         wsConnected: true,
       },

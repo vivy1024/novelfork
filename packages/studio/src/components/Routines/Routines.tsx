@@ -4,25 +4,19 @@
  * Custom Sub-agents, Global Prompts, System Prompts, MCP Tools
  */
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { CheckCircle, RotateCcw, Save } from "lucide-react";
+
 import { CommandsTab } from "./CommandsTab";
-import { PermissionsTab } from "./PermissionsTab";
-import { SkillsTab } from "./SkillsTab";
-import { ToolsTab } from "./ToolsTab";
-import { SubAgentsTab } from "./SubAgentsTab";
-import { PromptsTab } from "./PromptsTab";
 import { MCPToolsTab } from "./MCPToolsTab";
-import type { Routines as RoutinesConfig } from "../../types/routines";
-import { DEFAULT_ROUTINES } from "../../types/routines";
+import { PermissionsTab } from "./PermissionsTab";
+import { PromptsTab } from "./PromptsTab";
+import { SkillsTab } from "./SkillsTab";
+import { SubAgentsTab } from "./SubAgentsTab";
+import { ToolsTab } from "./ToolsTab";
+import type { RoutinesScope } from "./routines-api";
+import { ROUTINES_SCOPE_META, useRoutinesEditor } from "./use-routines-editor";
 import { useNovelFork } from "../../providers/novelfork-context";
-import {
-  fetchRoutines,
-  resetRoutines,
-  saveRoutines,
-  type EditableRoutinesScope,
-  type RoutinesScope,
-} from "./routines-api";
 
 interface RoutinesPanelProps {
   onBack?: () => void;
@@ -40,128 +34,27 @@ const TABS = [
   { id: "mcp", label: "MCP Tools" },
 ] as const;
 
-const SCOPE_META: Record<RoutinesScope, { label: string; description: string }> = {
-  merged: {
-    label: "生效视图",
-    description: "默认读取 merged 视图；项目配置覆盖全局配置，只读展示当前实际生效结果。",
-  },
-  global: {
-    label: "全局",
-    description: "编辑 ~/.inkos/routines.json，作为所有项目的默认基线。",
-  },
-  project: {
-    label: "项目",
-    description: "编辑 <workspace>/.inkos/routines.json，只影响当前工作区。",
-  },
-};
-
 type TabId = typeof TABS[number]["id"];
-
-function cloneDefaultRoutines(): RoutinesConfig {
-  return {
-    commands: [...DEFAULT_ROUTINES.commands],
-    tools: [...DEFAULT_ROUTINES.tools],
-    permissions: [...DEFAULT_ROUTINES.permissions],
-    globalSkills: [...DEFAULT_ROUTINES.globalSkills],
-    projectSkills: [...DEFAULT_ROUTINES.projectSkills],
-    subAgents: [...DEFAULT_ROUTINES.subAgents],
-    globalPrompts: [...DEFAULT_ROUTINES.globalPrompts],
-    systemPrompts: [...DEFAULT_ROUTINES.systemPrompts],
-    mcpTools: [...DEFAULT_ROUTINES.mcpTools],
-  };
-}
 
 export function Routines({ onBack, projectRoot: projectRootProp, defaultScope }: RoutinesPanelProps) {
   const { workspace } = useNovelFork();
   const projectRoot = projectRootProp ?? workspace ?? undefined;
-  const hasProjectScope = Boolean(projectRoot);
   const [activeTab, setActiveTab] = useState<TabId>("commands");
-  const [viewScope, setViewScope] = useState<RoutinesScope>(defaultScope ?? (hasProjectScope ? "merged" : "global"));
-  const [routines, setRoutines] = useState<RoutinesConfig>(cloneDefaultRoutines());
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!hasProjectScope && viewScope !== "global") {
-      setViewScope("global");
-    }
-  }, [hasProjectScope, viewScope]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadCurrentScope() {
-      setLoading(true);
-      setError(null);
-      setSaved(false);
-      try {
-        const next = await fetchRoutines(viewScope, projectRoot);
-        if (!cancelled) {
-          setRoutines(next);
-        }
-      } catch (loadError) {
-        if (!cancelled) {
-          setError(loadError instanceof Error ? loadError.message : "Failed to load routines");
-          setRoutines(cloneDefaultRoutines());
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    }
-
-    void loadCurrentScope();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [projectRoot, viewScope]);
-
-  const isReadOnly = viewScope === "merged";
-  const scopeMeta = SCOPE_META[viewScope];
-
-  const handleSave = async () => {
-    if (isReadOnly) {
-      return;
-    }
-
-    setSaving(true);
-    setSaved(false);
-    setError(null);
-    try {
-      await saveRoutines(viewScope as EditableRoutinesScope, routines, projectRoot);
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
-    } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Failed to save routines");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleReset = async () => {
-    if (isReadOnly) {
-      return;
-    }
-    if (!confirm("Reset current routines scope to default values?")) return;
-
-    setSaving(true);
-    setSaved(false);
-    setError(null);
-    try {
-      const next = await resetRoutines(viewScope as EditableRoutinesScope, projectRoot);
-      setRoutines(next);
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
-    } catch (resetError) {
-      setError(resetError instanceof Error ? resetError.message : "Failed to reset routines");
-    } finally {
-      setSaving(false);
-    }
-  };
+  const {
+    error,
+    handleReset,
+    handleSave,
+    hasProjectScope,
+    isReadOnly,
+    loading,
+    routines,
+    saved,
+    saving,
+    scopeMeta,
+    setRoutines,
+    setViewScope,
+    viewScope,
+  } = useRoutinesEditor({ projectRoot, defaultScope });
 
   if (loading) {
     return <div className="p-8 text-center text-muted-foreground">Loading...</div>;
@@ -214,7 +107,7 @@ export function Routines({ onBack, projectRoot: projectRootProp, defaultScope }:
                   : "hover:bg-accent"
               } disabled:opacity-50`}
             >
-              {SCOPE_META.merged.label}
+              {ROUTINES_SCOPE_META.merged.label}
             </button>
             <button
               type="button"
@@ -225,7 +118,7 @@ export function Routines({ onBack, projectRoot: projectRootProp, defaultScope }:
                   : "hover:bg-accent"
               }`}
             >
-              {SCOPE_META.global.label}
+              {ROUTINES_SCOPE_META.global.label}
             </button>
             <button
               type="button"
@@ -237,7 +130,7 @@ export function Routines({ onBack, projectRoot: projectRootProp, defaultScope }:
                   : "hover:bg-accent"
               } disabled:opacity-50`}
             >
-              {SCOPE_META.project.label}
+              {ROUTINES_SCOPE_META.project.label}
             </button>
           </div>
           <p className="text-sm text-muted-foreground">{scopeMeta.description}</p>

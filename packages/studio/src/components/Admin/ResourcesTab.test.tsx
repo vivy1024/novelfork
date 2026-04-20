@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const fetchJsonMock = vi.fn();
@@ -18,13 +18,70 @@ describe("ResourcesTab", () => {
     cleanup();
   });
 
-  it("renders runtime resources and storage scan panel from the admin API", async () => {
+  it("renders runtime resources and real storage scan results from the admin API", async () => {
     fetchJsonMock.mockResolvedValueOnce({
       stats: {
         cpu: { usage: 18.2, cores: 8 },
-        memory: { used: 8 * 1024 * 1024 * 1024, total: 16 * 1024 * 1024 * 1024 },
-        disk: { used: 32 * 1024 * 1024 * 1024, total: 128 * 1024 * 1024 * 1024 },
+        memory: { used: 8 * 1024 * 1024 * 1024, total: 16 * 1024 * 1024 * 1024, free: 8 * 1024 * 1024 * 1024, usagePercent: 50 },
+        disk: { used: 32 * 1024 * 1024 * 1024, total: 128 * 1024 * 1024 * 1024, free: 96 * 1024 * 1024 * 1024, usagePercent: 25 },
         network: { sent: 1024, received: 2048 },
+        sampledAt: "2026-04-20T10:00:00Z",
+      },
+      storage: {
+        rootPath: "D:/DESKTOP/novelfork",
+        scannedAt: "2026-04-20T10:05:00Z",
+        scanDurationMs: 123,
+        mode: "fresh",
+        ageMs: 0,
+        ttlMs: 30000,
+        summary: {
+          scannedTargets: 3,
+          existingTargets: 3,
+          totalBytes: 5 * 1024 * 1024 * 1024,
+          fileCount: 120,
+          directoryCount: 12,
+          largestTargetId: "packages",
+          largestTargetLabel: "工作台源码",
+          largestTargetBytes: 3 * 1024 * 1024 * 1024,
+        },
+        targets: [
+          {
+            id: "packages",
+            label: "工作台源码",
+            relativePath: "packages",
+            absolutePath: "D:/DESKTOP/novelfork/packages",
+            status: "ready",
+            totalBytes: 3 * 1024 * 1024 * 1024,
+            fileCount: 80,
+            directoryCount: 8,
+            lastModifiedAt: "2026-04-20T10:04:00Z",
+            largestChildren: [{ name: "studio", relativePath: "packages/studio", kind: "directory", totalBytes: 2 * 1024 * 1024 * 1024 }],
+          },
+          {
+            id: "books",
+            label: "书籍目录",
+            relativePath: "books",
+            absolutePath: "D:/DESKTOP/novelfork/books",
+            status: "ready",
+            totalBytes: 1 * 1024 * 1024 * 1024,
+            fileCount: 20,
+            directoryCount: 2,
+            lastModifiedAt: "2026-04-20T10:03:00Z",
+            largestChildren: [],
+          },
+          {
+            id: "dist",
+            label: "构建产物",
+            relativePath: "dist",
+            absolutePath: "D:/DESKTOP/novelfork/dist",
+            status: "missing",
+            totalBytes: 0,
+            fileCount: 0,
+            directoryCount: 0,
+            lastModifiedAt: null,
+            largestChildren: [],
+          },
+        ],
       },
     });
 
@@ -37,19 +94,67 @@ describe("ResourcesTab", () => {
     expect(screen.getByText("8 核心")).toBeTruthy();
     expect(screen.getByText("8.00 GB / 16.00 GB")).toBeTruthy();
     expect(screen.getByText("存储扫描工作台")).toBeTruthy();
-    expect(screen.getByText("接入状态")).toBeTruthy();
+    expect(screen.getAllByText("工作台源码").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("当前展示最新重扫结果")).toBeTruthy();
+    expect(screen.getByText("5.00 GB")).toBeTruthy();
     expect(fetchJsonMock).toHaveBeenCalledWith("/api/admin/resources");
   });
 
   it("keeps the storage scan section visible when runtime stats are empty", async () => {
-    fetchJsonMock.mockResolvedValueOnce({ stats: null });
+    fetchJsonMock.mockResolvedValueOnce({
+      stats: null,
+      storage: {
+        rootPath: "D:/DESKTOP/novelfork",
+        scannedAt: "2026-04-20T10:05:00Z",
+        scanDurationMs: 80,
+        mode: "cached",
+        ageMs: 1200,
+        ttlMs: 30000,
+        summary: {
+          scannedTargets: 2,
+          existingTargets: 1,
+          totalBytes: 1024,
+          fileCount: 2,
+          directoryCount: 1,
+          largestTargetId: "books",
+          largestTargetLabel: "书籍目录",
+          largestTargetBytes: 1024,
+        },
+        targets: [
+          {
+            id: "books",
+            label: "书籍目录",
+            relativePath: "books",
+            absolutePath: "D:/DESKTOP/novelfork/books",
+            status: "ready",
+            totalBytes: 1024,
+            fileCount: 2,
+            directoryCount: 1,
+            lastModifiedAt: "2026-04-20T10:04:00Z",
+            largestChildren: [],
+          },
+          {
+            id: "dist",
+            label: "构建产物",
+            relativePath: "dist",
+            absolutePath: "D:/DESKTOP/novelfork/dist",
+            status: "missing",
+            totalBytes: 0,
+            fileCount: 0,
+            directoryCount: 0,
+            lastModifiedAt: null,
+            largestChildren: [],
+          },
+        ],
+      },
+    });
 
     render(<ResourcesTab />);
 
     expect(await screen.findByText("暂无运行资源快照")).toBeTruthy();
-    expect(screen.getByText("当前接口未返回 stats 字段；运行资源区块已站住，后续接入后会自动展示最新快照。")).toBeTruthy();
     expect(screen.getByText("存储扫描工作台")).toBeTruthy();
-    expect(screen.getAllByText("待接入").length).toBeGreaterThan(0);
+    expect(screen.getByText("当前展示缓存快照")).toBeTruthy();
+    expect(screen.getAllByText("书籍目录").length).toBeGreaterThanOrEqual(1);
   });
 
   it("shows runtime load errors without hiding the storage scan section", async () => {
@@ -63,23 +168,102 @@ describe("ResourcesTab", () => {
     expect(screen.getByText("存储扫描工作台")).toBeTruthy();
   });
 
-  it("records a placeholder storage scan request", async () => {
-    fetchJsonMock.mockResolvedValueOnce({
-      stats: {
-        cpu: { usage: 10, cores: 4 },
-        memory: { used: 4 * 1024 * 1024 * 1024, total: 8 * 1024 * 1024 * 1024 },
-        disk: { used: 0, total: 0 },
-        network: { sent: 0, received: 0 },
-      },
-    });
+  it("forces a backend storage rescan when clicking the rescan button", async () => {
+    fetchJsonMock
+      .mockResolvedValueOnce({
+        stats: {
+          cpu: { usage: 10, cores: 4 },
+          memory: { used: 4 * 1024 * 1024 * 1024, total: 8 * 1024 * 1024 * 1024, free: 4 * 1024 * 1024 * 1024, usagePercent: 50 },
+          disk: { used: 0, total: 0, free: 0, usagePercent: 0 },
+          network: { sent: 0, received: 0 },
+          sampledAt: "2026-04-20T10:00:00Z",
+        },
+        storage: {
+          rootPath: "D:/DESKTOP/novelfork",
+          scannedAt: "2026-04-20T10:05:00Z",
+          scanDurationMs: 80,
+          mode: "cached",
+          ageMs: 1200,
+          ttlMs: 30000,
+          summary: {
+            scannedTargets: 1,
+            existingTargets: 1,
+            totalBytes: 1024,
+            fileCount: 2,
+            directoryCount: 1,
+            largestTargetId: "books",
+            largestTargetLabel: "书籍目录",
+            largestTargetBytes: 1024,
+          },
+          targets: [
+            {
+              id: "books",
+              label: "书籍目录",
+              relativePath: "books",
+              absolutePath: "D:/DESKTOP/novelfork/books",
+              status: "ready",
+              totalBytes: 1024,
+              fileCount: 2,
+              directoryCount: 1,
+              lastModifiedAt: "2026-04-20T10:04:00Z",
+              largestChildren: [],
+            },
+          ],
+        },
+      })
+      .mockResolvedValueOnce({
+        stats: {
+          cpu: { usage: 10, cores: 4 },
+          memory: { used: 4 * 1024 * 1024 * 1024, total: 8 * 1024 * 1024 * 1024, free: 4 * 1024 * 1024 * 1024, usagePercent: 50 },
+          disk: { used: 0, total: 0, free: 0, usagePercent: 0 },
+          network: { sent: 0, received: 0 },
+          sampledAt: "2026-04-20T10:01:00Z",
+        },
+        storage: {
+          rootPath: "D:/DESKTOP/novelfork",
+          scannedAt: "2026-04-20T10:06:00Z",
+          scanDurationMs: 95,
+          mode: "fresh",
+          ageMs: 0,
+          ttlMs: 30000,
+          summary: {
+            scannedTargets: 1,
+            existingTargets: 1,
+            totalBytes: 2048,
+            fileCount: 3,
+            directoryCount: 1,
+            largestTargetId: "books",
+            largestTargetLabel: "书籍目录",
+            largestTargetBytes: 2048,
+          },
+          targets: [
+            {
+              id: "books",
+              label: "书籍目录",
+              relativePath: "books",
+              absolutePath: "D:/DESKTOP/novelfork/books",
+              status: "ready",
+              totalBytes: 2048,
+              fileCount: 3,
+              directoryCount: 1,
+              lastModifiedAt: "2026-04-20T10:05:30Z",
+              largestChildren: [],
+            },
+          ],
+        },
+      });
 
     render(<ResourcesTab />);
 
     await screen.findByRole("heading", { name: "资源 / 存储面板" });
 
-    fireEvent.click(screen.getByRole("button", { name: "立即扫描（占位）" }));
+    fireEvent.click(screen.getByRole("button", { name: "重扫存储" }));
 
-    expect(screen.getByText("1 次")).toBeTruthy();
-    expect(screen.getByText("已记录一次占位扫描请求。后续接入真实任务后，这里会展示扫描进度、结果摘要与异常资源列表。")).toBeTruthy();
+    await waitFor(() => {
+      expect(fetchJsonMock).toHaveBeenNthCalledWith(2, "/api/admin/resources?refresh=1");
+    });
+
+    expect(await screen.findByText("当前展示最新重扫结果")).toBeTruthy();
+    expect(screen.getAllByText("2.00 KB").length).toBeGreaterThanOrEqual(1);
   });
 });
