@@ -1,22 +1,25 @@
 import { Command } from "commander";
-import { execSync } from "node:child_process";
-import { createRequire } from "node:module";
+import packageJson from "../../package.json";
 import { log, logError } from "../utils.js";
-
-const require = createRequire(import.meta.url);
 
 export const updateCommand = new Command("update")
   .description("Update NovelFork to the latest version")
   .action(async () => {
     try {
-      const { version: currentVersion } = require("../../package.json") as { version: string };
+      const currentVersion = packageJson.version;
 
       log(`Current version: ${currentVersion}`);
       log("Checking npm registry...");
 
-      const remoteVersion = execSync("npm view @vivy1024/novelfork-cli version", {
-        encoding: "utf-8",
-      }).trim();
+      const response = await fetch("https://registry.npmjs.org/@vivy1024%2Fnovelfork-cli/latest");
+      if (!response.ok) {
+        throw new Error(`Registry request failed with ${response.status}`);
+      }
+      const latest = await response.json() as { version?: string };
+      const remoteVersion = latest.version?.trim();
+      if (!remoteVersion) {
+        throw new Error("Registry response did not include a version");
+      }
 
       if (currentVersion === remoteVersion) {
         log(`Already up to date (${currentVersion}).`);
@@ -35,12 +38,11 @@ export const updateCommand = new Command("update")
         return;
       }
 
-      log(`Updating: ${currentVersion} → ${remoteVersion}`);
-      execSync("npm install -g @vivy1024/novelfork-cli@latest", { stdio: "inherit" });
-      log(`Updated to ${remoteVersion}.`);
+      log(`Update available: ${currentVersion} → ${remoteVersion}`);
+      log("Manual update command: npm install -g @vivy1024/novelfork-cli@latest");
     } catch (e) {
-      logError(`Update failed: ${e}`);
-      log("You can also update manually: npm install -g @vivy1024/novelfork-cli@latest");
+      logError(`Update check failed: ${e}`);
+      log("You can update manually with: npm install -g @vivy1024/novelfork-cli@latest");
       process.exit(1);
     }
   });

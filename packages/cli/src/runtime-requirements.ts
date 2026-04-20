@@ -127,11 +127,11 @@ export function evaluateSqliteMemorySupport(options?: {
     };
   }
 
-  const hasNodeSqlite = options?.hasNodeSqlite ?? hasNodeSqliteBuiltin();
+  const hasNodeSqlite = options?.hasNodeSqlite ?? hasSqliteBuiltin();
   if (!hasNodeSqlite) {
     return {
       ok: false,
-      detail: `${nodeVersion} detected, but node:sqlite is unavailable on this runtime. memory.db acceleration will stay disabled.`,
+      detail: `${nodeVersion} detected, but neither node:sqlite nor bun:sqlite is available on this runtime. memory.db acceleration will stay disabled.`,
     };
   }
 
