@@ -1,9 +1,15 @@
 /**
- * 资源监控标签页（WebSocket 实时监控）
+ * 资源监控标签页
  */
 
-import { useState, useEffect, useRef } from "react";
-import { Cpu, HardDrive, Network, Activity } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
+import { Activity, Cpu, HardDrive, Network } from "lucide-react";
+
+import { PageEmptyState } from "@/components/layout/PageEmptyState";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { fetchJson } from "../../hooks/use-api";
 
 interface ResourceStats {
   cpu: { usage: number; cores: number };
@@ -14,219 +20,186 @@ interface ResourceStats {
 
 export function ResourcesTab() {
   const [stats, setStats] = useState<ResourceStats | null>(null);
-  const [connected, setConnected] = useState(false);
-  const wsRef = useRef<WebSocket | null>(null);
-  const [history, setHistory] = useState<{ time: number; cpu: number; memory: number }[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    connectWebSocket();
-    return () => {
-      if (wsRef.current) {
-        wsRef.current.close();
-      }
-    };
+    void loadResources();
   }, []);
 
-  const connectWebSocket = () => {
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const ws = new WebSocket(`${protocol}//${window.location.host}/api/admin/resources/ws`);
-
-    ws.onopen = () => {
-      console.log("WebSocket connected");
-      setConnected(true);
-    };
-
-    ws.onmessage = (event) => {
-      const data: ResourceStats = JSON.parse(event.data);
-      setStats(data);
-
-      // 更新历史数据（保留最近 60 个数据点）
-      setHistory((prev) => {
-        const newHistory = [
-          ...prev,
-          {
-            time: Date.now(),
-            cpu: data.cpu.usage,
-            memory: (data.memory.used / data.memory.total) * 100,
-          },
-        ];
-        return newHistory.slice(-60);
-      });
-    };
-
-    ws.onerror = (error) => {
-      console.error("WebSocket error:", error);
-      setConnected(false);
-    };
-
-    ws.onclose = () => {
-      console.log("WebSocket disconnected");
-      setConnected(false);
-      // 5 秒后重连
-      setTimeout(connectWebSocket, 5000);
-    };
-
-    wsRef.current = ws;
+  const loadResources = async () => {
+    setLoading(true);
+    try {
+      const data = await fetchJson<{ stats: ResourceStats }>("/api/admin/resources");
+      setStats(data.stats);
+      setError(null);
+    } catch (loadError) {
+      setStats(null);
+      setError(loadError instanceof Error ? loadError.message : "加载资源快照失败");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const formatBytes = (bytes: number) => {
-    if (bytes === 0) return "0 B";
-    const k = 1024;
-    const sizes = ["B", "KB", "MB", "GB", "TB"];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return `${(bytes / Math.pow(k, i)).toFixed(2)} ${sizes[i]}`;
-  };
-
-  const getUsageColor = (usage: number) => {
-    if (usage < 50) return "text-green-600 dark:text-green-400";
-    if (usage < 80) return "text-yellow-600 dark:text-yellow-400";
-    return "text-red-600 dark:text-red-400";
-  };
-
-  const getUsageBgColor = (usage: number) => {
-    if (usage < 50) return "bg-green-500";
-    if (usage < 80) return "bg-yellow-500";
-    return "bg-red-500";
-  };
-
-  if (!stats) {
+  if (loading) {
     return (
-      <div className="text-center py-8">
-        <Activity size={48} className="mx-auto mb-4 text-gray-400 animate-pulse" />
-        <p className="text-gray-600 dark:text-gray-400">
-          {connected ? "等待数据..." : "连接中..."}
-        </p>
-      </div>
+      <PageEmptyState
+        title="正在加载资源数据"
+        description="正在向 /api/admin/resources 拉取最新系统快照。"
+        icon={Activity}
+      />
     );
   }
 
-  const memoryUsagePercent = (stats.memory.used / stats.memory.total) * 100;
+  if (error) {
+    return (
+      <PageEmptyState
+        title="资源数据加载失败"
+        description={error}
+        action={<Button variant="outline" onClick={() => void loadResources()}>重试</Button>}
+      />
+    );
+  }
+
+  if (!stats) {
+    return (
+      <PageEmptyState
+        title="暂无资源数据"
+        description="接入资源监控后，这里会显示 CPU、内存、磁盘和网络快照。"
+        icon={Activity}
+        action={<Button variant="outline" onClick={() => void loadResources()}>刷新</Button>}
+      />
+    );
+  }
+
+  const memoryUsagePercent = stats.memory.total > 0 ? (stats.memory.used / stats.memory.total) * 100 : 0;
+  const diskUsagePercent = stats.disk.total > 0 ? (stats.disk.used / stats.disk.total) * 100 : 0;
+  const networkTotal = stats.network.sent + stats.network.received;
 
   return (
-    <div className="space-y-6" data-testid="resource-metrics">
-      {/* Connection Status */}
-      <div className="flex items-center gap-2">
-        <div className={`w-3 h-3 rounded-full ${connected ? "bg-green-500" : "bg-red-500"}`} />
-        <span className="text-sm text-gray-600 dark:text-gray-400">
-          {connected ? "实时监控中" : "连接断开"}
-        </span>
+    <div className="space-y-6">
+      <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <h2 className="text-xl font-semibold text-foreground">资源监控</h2>
+            <Badge variant="secondary">API 快照</Badge>
+          </div>
+          <p className="text-sm text-muted-foreground">直接读取 /api/admin/resources 的最新系统快照，避免 WebSocket 重连抖动。</p>
+        </div>
+        <Button variant="outline" onClick={() => void loadResources()}>
+          刷新
+        </Button>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* CPU */}
-        <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="p-2 bg-blue-100 dark:bg-blue-900 rounded">
-              <Cpu size={24} className="text-blue-600 dark:text-blue-400" />
-            </div>
-            <div>
-              <div className="text-sm text-gray-600 dark:text-gray-400">CPU 使用率</div>
-              <div className={`text-2xl font-bold ${getUsageColor(stats.cpu.usage)}`}>
-                {stats.cpu.usage.toFixed(1)}%
-              </div>
-            </div>
-          </div>
-          <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-            <div
-              className={`h-2 rounded-full transition-all ${getUsageBgColor(stats.cpu.usage)}`}
-              style={{ width: `${Math.min(stats.cpu.usage, 100)}%` }}
-            />
-          </div>
-          <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">{stats.cpu.cores} 核心</div>
-        </div>
-
-        {/* Memory */}
-        <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="p-2 bg-purple-100 dark:bg-purple-900 rounded">
-              <Activity size={24} className="text-purple-600 dark:text-purple-400" />
-            </div>
-            <div>
-              <div className="text-sm text-gray-600 dark:text-gray-400">内存使用</div>
-              <div className={`text-2xl font-bold ${getUsageColor(memoryUsagePercent)}`}>
-                {memoryUsagePercent.toFixed(1)}%
-              </div>
-            </div>
-          </div>
-          <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-            <div
-              className={`h-2 rounded-full transition-all ${getUsageBgColor(memoryUsagePercent)}`}
-              style={{ width: `${Math.min(memoryUsagePercent, 100)}%` }}
-            />
-          </div>
-          <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-            {formatBytes(stats.memory.used)} / {formatBytes(stats.memory.total)}
-          </div>
-        </div>
-
-        {/* Disk */}
-        <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="p-2 bg-green-100 dark:bg-green-900 rounded">
-              <HardDrive size={24} className="text-green-600 dark:text-green-400" />
-            </div>
-            <div>
-              <div className="text-sm text-gray-600 dark:text-gray-400">磁盘使用</div>
-              <div className="text-2xl font-bold text-gray-600 dark:text-gray-400">N/A</div>
-            </div>
-          </div>
-          <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-            <div className="h-2 rounded-full bg-gray-400" style={{ width: "0%" }} />
-          </div>
-          <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">需要额外库支持</div>
-        </div>
-
-        {/* Network */}
-        <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="p-2 bg-orange-100 dark:bg-orange-900 rounded">
-              <Network size={24} className="text-orange-600 dark:text-orange-400" />
-            </div>
-            <div>
-              <div className="text-sm text-gray-600 dark:text-gray-400">网络流量</div>
-              <div className="text-lg font-bold text-gray-900 dark:text-white">
-                {formatBytes(stats.network.sent + stats.network.received)}
-              </div>
-            </div>
-          </div>
-          <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-            <div>↑ {formatBytes(stats.network.sent)}</div>
-            <div>↓ {formatBytes(stats.network.received)}</div>
-          </div>
-        </div>
-      </div>
-
-      {/* Simple Chart */}
-      <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
-        <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">历史趋势（最近 60 秒）</h3>
-        <div className="h-48 flex items-end gap-1">
-          {history.map((point, i) => (
-            <div key={i} className="flex-1 flex flex-col gap-1">
-              <div
-                className="bg-blue-500 rounded-t"
-                style={{ height: `${point.cpu}%` }}
-                title={`CPU: ${point.cpu.toFixed(1)}%`}
-              />
-              <div
-                className="bg-purple-500 rounded-t"
-                style={{ height: `${point.memory}%` }}
-                title={`Memory: ${point.memory.toFixed(1)}%`}
-              />
-            </div>
-          ))}
-        </div>
-        <div className="flex gap-4 mt-4 text-sm">
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 bg-blue-500 rounded" />
-            <span className="text-gray-600 dark:text-gray-400">CPU</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 bg-purple-500 rounded" />
-            <span className="text-gray-600 dark:text-gray-400">内存</span>
-          </div>
-        </div>
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <MetricCard
+          icon={Cpu}
+          title="CPU 使用率"
+          value={`${stats.cpu.usage.toFixed(1)}%`}
+          description={`${stats.cpu.cores} 核心`}
+          ratio={Math.min(stats.cpu.usage, 100)}
+          ratioLabel="CPU 负载"
+          accent="blue"
+        />
+        <MetricCard
+          icon={Activity}
+          title="内存使用"
+          value={`${memoryUsagePercent.toFixed(1)}%`}
+          description={`${formatBytes(stats.memory.used)} / ${formatBytes(stats.memory.total)}`}
+          ratio={Math.min(memoryUsagePercent, 100)}
+          ratioLabel="内存占用"
+          accent="violet"
+        />
+        <MetricCard
+          icon={HardDrive}
+          title="磁盘使用"
+          value={stats.disk.total > 0 ? `${diskUsagePercent.toFixed(1)}%` : "待接入"}
+          description={stats.disk.total > 0 ? `${formatBytes(stats.disk.used)} / ${formatBytes(stats.disk.total)}` : "当前 API 暂未返回磁盘统计"}
+          ratio={stats.disk.total > 0 ? Math.min(diskUsagePercent, 100) : undefined}
+          ratioLabel={stats.disk.total > 0 ? "磁盘占用" : undefined}
+          accent="emerald"
+          badge={stats.disk.total > 0 ? undefined : <Badge variant="outline">未接入</Badge>}
+        />
+        <MetricCard
+          icon={Network}
+          title="网络流量"
+          value={formatBytes(networkTotal)}
+          description={`↑ ${formatBytes(stats.network.sent)} · ↓ ${formatBytes(stats.network.received)}`}
+          ratio={networkTotal > 0 ? Math.min((stats.network.sent / networkTotal) * 100, 100) : undefined}
+          ratioLabel="发送占比"
+          accent="amber"
+        />
       </div>
     </div>
   );
+}
+
+function MetricCard({
+  icon: Icon,
+  title,
+  value,
+  description,
+  ratio,
+  ratioLabel,
+  badge,
+  accent,
+}: {
+  icon: typeof Cpu;
+  title: string;
+  value: string;
+  description: string;
+  ratio?: number;
+  ratioLabel?: string;
+  badge?: ReactNode;
+  accent: "blue" | "violet" | "emerald" | "amber";
+}) {
+  const accentClassName = {
+    blue: "border-sky-500/20 bg-sky-500/5",
+    violet: "border-violet-500/20 bg-violet-500/5",
+    emerald: "border-emerald-500/20 bg-emerald-500/5",
+    amber: "border-amber-500/20 bg-amber-500/5",
+  }[accent];
+
+  const barClassName = {
+    blue: "bg-sky-500",
+    violet: "bg-violet-500",
+    emerald: "bg-emerald-500",
+    amber: "bg-amber-500",
+  }[accent];
+
+  return (
+    <Card size="sm" className={accentClassName}>
+      <CardHeader className="space-y-2">
+        <div className="flex items-start justify-between gap-3">
+          <CardDescription className="flex items-center gap-2">
+            <Icon className="size-4 text-primary" />
+            {title}
+          </CardDescription>
+          {badge}
+        </div>
+        <CardTitle className="text-3xl">{value}</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3 pt-0">
+        {ratio !== undefined ? (
+          <div className="space-y-1.5">
+            <div className="h-2 rounded-full bg-muted/80">
+              <div className={`h-2 rounded-full ${barClassName}`} style={{ width: `${Math.max(0, Math.min(ratio, 100))}%` }} />
+            </div>
+            {ratioLabel && <p className="text-xs text-muted-foreground">{ratioLabel}</p>}
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground">暂未提供百分比数据</p>
+        )}
+        <p className="text-xs text-muted-foreground">{description}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function formatBytes(bytes: number) {
+  if (bytes === 0) return "0 B";
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB", "TB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${(bytes / Math.pow(k, i)).toFixed(2)} ${sizes[i]}`;
 }

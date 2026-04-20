@@ -1,9 +1,14 @@
 import { useState } from "react";
-import type { Theme } from "../hooks/use-theme";
-import type { TFunction } from "../hooks/use-i18n";
-import { useColors } from "../hooks/use-colors";
+import { Loader2, Target, TrendingUp } from "lucide-react";
+
+import { PageEmptyState } from "@/components/layout/PageEmptyState";
+import { PageScaffold } from "@/components/layout/PageScaffold";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { fetchJson } from "../hooks/use-api";
-import { TrendingUp, Loader2, Target } from "lucide-react";
+import { useColors } from "../hooks/use-colors";
+import type { TFunction } from "../hooks/use-i18n";
+import type { Theme } from "../hooks/use-theme";
 
 interface Recommendation {
   readonly confidence: number;
@@ -41,74 +46,93 @@ export function RadarView({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunct
   };
 
   return (
-    <div className="space-y-8">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <button onClick={nav.toDashboard} className={c.link}>{t("bread.home")}</button>
-        <span className="text-border">/</span>
-        <span>{t("nav.radar")}</span>
-      </div>
-
-      <div className="flex items-center justify-between">
-        <h1 className="font-serif text-3xl flex items-center gap-3">
-          <TrendingUp size={28} className="text-primary" />
-          {t("radar.title")}
-        </h1>
-        <button
-          onClick={handleScan}
-          disabled={loading}
-          className={`px-5 py-2.5 text-sm rounded-lg ${c.btnPrimary} disabled:opacity-30 flex items-center gap-2`}
-        >
-          {loading ? <Loader2 size={14} className="animate-spin" /> : <Target size={14} />}
-          {loading ? t("radar.scanning") : t("radar.scan")}
-        </button>
-      </div>
-
+    <PageScaffold
+      title={t("radar.title")}
+      description="先扫描内容市场，再给出题材、平台与概念层面的选题建议。"
+      actions={
+        <>
+          <Button variant="outline" onClick={nav.toDashboard}>返回书单</Button>
+          <Button onClick={handleScan} disabled={loading}>
+            {loading ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Target className="mr-2 size-4" />}
+            {loading ? t("radar.scanning") : t("radar.scan")}
+          </Button>
+        </>
+      }
+    >
       {error && (
-        <div className="bg-destructive/10 text-destructive px-4 py-3 rounded-lg text-sm">{error}</div>
+        <Card className="border-destructive/20 bg-destructive/5">
+          <CardContent className="p-4 text-sm text-destructive">{error}</CardContent>
+        </Card>
       )}
 
-      {result && (
+      {result ? (
         <div className="space-y-6">
-          <div className={`border ${c.cardStatic} rounded-lg p-5`}>
-            <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3">{t("radar.summary")}</h3>
-            <p className="text-sm leading-relaxed whitespace-pre-wrap">{result.marketSummary}</p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {result.recommendations.map((rec, i) => (
-              <div key={i} className={`border ${c.cardStatic} rounded-lg p-5 space-y-3`}>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                    {rec.platform} · {rec.genre}
-                  </span>
-                  <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
-                    rec.confidence >= 0.7 ? "bg-emerald-500/10 text-emerald-600" :
-                    rec.confidence >= 0.4 ? "bg-amber-500/10 text-amber-600" :
-                    "bg-muted text-muted-foreground"
-                  }`}>
-                    {(rec.confidence * 100).toFixed(0)}%
-                  </span>
-                </div>
-                <p className="text-sm font-semibold">{rec.concept}</p>
-                <p className="text-xs text-muted-foreground leading-relaxed">{rec.reasoning}</p>
-                {rec.benchmarkTitles.length > 0 && (
-                  <div className="flex gap-2 flex-wrap">
-                    {rec.benchmarkTitles.map((bt) => (
-                      <span key={bt} className="px-2 py-0.5 text-[10px] bg-secondary rounded">{bt}</span>
-                    ))}
-                  </div>
-                )}
+          <Card className={c.cardStatic}>
+            <CardContent className="space-y-3 p-5">
+              <div>
+                <h2 className="text-sm font-medium text-foreground">{t("radar.summary")}</h2>
+                <p className="text-xs text-muted-foreground">市场概览会帮助你把选题放到更合适的平台与受众区间。</p>
               </div>
-            ))}
-          </div>
-        </div>
-      )}
+              <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">{result.marketSummary}</p>
+            </CardContent>
+          </Card>
 
-      {!result && !loading && !error && (
-        <div className={`border border-dashed ${c.cardStatic} rounded-lg p-12 text-center text-muted-foreground text-sm italic`}>
-          {t("radar.emptyHint")}
+          {result.recommendations.length > 0 ? (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              {result.recommendations.map((rec, i) => (
+                <Card key={i} className={c.cardStatic}>
+                  <CardContent className="space-y-3 p-5">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                        {rec.platform} · {rec.genre}
+                      </span>
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-xs font-bold ${
+                          rec.confidence >= 0.7
+                            ? "bg-emerald-500/10 text-emerald-600"
+                            : rec.confidence >= 0.4
+                              ? "bg-amber-500/10 text-amber-600"
+                              : "bg-muted text-muted-foreground"
+                        }`}
+                      >
+                        {(rec.confidence * 100).toFixed(0)}%
+                      </span>
+                    </div>
+                    <p className="text-sm font-semibold text-foreground">{rec.concept}</p>
+                    <p className="text-xs leading-relaxed text-muted-foreground">{rec.reasoning}</p>
+                    {rec.benchmarkTitles.length > 0 && (
+                      <div className="flex flex-wrap gap-2">
+                        {rec.benchmarkTitles.map((bt) => (
+                          <span key={bt} className="rounded-md bg-secondary px-2 py-1 text-[10px] text-foreground/80">
+                            {bt}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <PageEmptyState
+              title="暂无推荐结果"
+              description="这次扫描没有生成可用的题材建议，稍后可以重新扫描或换一个采样方向。"
+              icon={TrendingUp}
+            />
+          )}
         </div>
+      ) : loading ? (
+        <div className="flex min-h-[240px] items-center justify-center text-sm text-muted-foreground">
+          <Loader2 className="mr-2 size-4 animate-spin" />
+          {t("radar.scanning")}
+        </div>
+      ) : (
+        <PageEmptyState
+          title={t("radar.emptyHint")}
+          description="点击右上角的扫描按钮，生成平台、题材和概念层面的内容雷达。"
+          icon={TrendingUp}
+        />
       )}
-    </div>
+    </PageScaffold>
   );
 }

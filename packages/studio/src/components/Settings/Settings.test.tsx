@@ -7,6 +7,14 @@ afterEach(() => {
 });
 
 describe("Settings Component", () => {
+  it("renders as a dialog shell", () => {
+    const onClose = vi.fn();
+    render(<Settings onClose={onClose} theme="light" />);
+
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect(screen.getByText("设置")).toBeTruthy();
+  });
+
   it("renders with three tabs", () => {
     const onClose = vi.fn();
     render(<Settings onClose={onClose} theme="light" />);

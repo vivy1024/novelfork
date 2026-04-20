@@ -2,6 +2,8 @@ import { useState, type ReactNode } from "react";
 import { BookCopy, Feather, FileInput } from "lucide-react";
 
 import { PageScaffold } from "@/components/layout/PageScaffold";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { fetchJson, postApi, useApi } from "../hooks/use-api";
 import { useColors } from "../hooks/use-colors";
 import { useI18n } from "../hooks/use-i18n";
@@ -102,169 +104,160 @@ export function ImportManager({ nav, theme, t }: { nav: Nav; theme: Theme; t: TF
   return (
     <PageScaffold
       title={t("import.title")}
-      description="批量导入章节、衍生 canon 或同人初始化素材。"
+      description="批量导入章节、衍生 canon 或同人初始化素材，并统一放到一个导入工作台里。"
+      actions={<Button variant="outline" onClick={nav.toDashboard}>返回书单</Button>}
     >
-      <div className="flex w-fit gap-1 rounded-lg bg-secondary/30 p-1">
-        {tabs.map((tb) => (
-          <button
-            key={tb.id}
-            onClick={() => {
-              setTab(tb.id);
-              setStatus("");
-            }}
-            className={`flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-all ${
-              tab === tb.id ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            {tb.icon}
-            {tb.label}
-          </button>
-        ))}
-      </div>
-
-      <div className={`space-y-4 rounded-lg border ${c.cardStatic} p-6`}>
-        {tab === "chapters" && (
-          <>
-            <select
-              value={chBookId}
-              onChange={(e) => setChBookId(e.target.value)}
-              className="w-full rounded-lg border border-border bg-secondary/30 px-3 py-2 text-sm"
-            >
-              <option value="">{t("import.selectTarget")}</option>
-              {booksData?.books.map((book) => (
-                <option key={book.id} value={book.id}>
-                  {book.title}
-                </option>
-              ))}
-            </select>
-            <input
-              type="text"
-              value={chSplitRegex}
-              onChange={(e) => setChSplitRegex(e.target.value)}
-              placeholder={t("import.splitRegex")}
-              className="w-full rounded-lg border border-border bg-secondary/30 px-3 py-2 font-mono text-sm"
-            />
-            <textarea
-              value={chText}
-              onChange={(e) => setChText(e.target.value)}
-              rows={10}
-              placeholder={t("import.pasteChapters")}
-              className="w-full resize-none rounded-lg border border-border bg-secondary/30 px-3 py-2 font-mono text-sm"
-            />
-            <button
-              onClick={handleImportChapters}
-              disabled={loading || !chBookId || !chText.trim()}
-              className={`rounded-lg px-4 py-2 text-sm ${c.btnPrimary} disabled:opacity-30`}
-            >
-              {loading ? t("import.importing") : t("import.chapters")}
-            </button>
-          </>
-        )}
-
-        {tab === "canon" && (
-          <>
-            <select
-              value={canonFrom}
-              onChange={(e) => setCanonFrom(e.target.value)}
-              className="w-full rounded-lg border border-border bg-secondary/30 px-3 py-2 text-sm"
-            >
-              <option value="">{t("import.selectSource")}</option>
-              {booksData?.books.map((book) => (
-                <option key={book.id} value={book.id}>
-                  {book.title}
-                </option>
-              ))}
-            </select>
-            <select
-              value={canonTarget}
-              onChange={(e) => setCanonTarget(e.target.value)}
-              className="w-full rounded-lg border border-border bg-secondary/30 px-3 py-2 text-sm"
-            >
-              <option value="">{t("import.selectDerivative")}</option>
-              {booksData?.books.map((book) => (
-                <option key={book.id} value={book.id}>
-                  {book.title}
-                </option>
-              ))}
-            </select>
-            <button
-              onClick={handleImportCanon}
-              disabled={loading || !canonTarget || !canonFrom}
-              className={`rounded-lg px-4 py-2 text-sm ${c.btnPrimary} disabled:opacity-30`}
-            >
-              {loading ? t("import.importing") : t("import.canon")}
-            </button>
-          </>
-        )}
-
-        {tab === "fanfic" && (
-          <>
-            <input
-              type="text"
-              value={ffTitle}
-              onChange={(e) => setFfTitle(e.target.value)}
-              placeholder={t("import.fanficTitle")}
-              className="w-full rounded-lg border border-border bg-secondary/30 px-3 py-2 text-sm"
-            />
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-              <select
-                value={ffMode}
-                onChange={(e) => setFfMode(e.target.value)}
-                className="rounded-lg border border-border bg-secondary/30 px-3 py-2 text-sm"
+      <Card className={c.cardStatic}>
+        <CardHeader className="space-y-4">
+          <CardTitle>导入类型</CardTitle>
+          <div className="flex w-fit gap-1 rounded-lg bg-secondary/30 p-1">
+            {tabs.map((tb) => (
+              <button
+                key={tb.id}
+                onClick={() => {
+                  setTab(tb.id);
+                  setStatus("");
+                }}
+                className={`flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-all ${
+                  tab === tb.id ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                }`}
               >
-                <option value="canon">Canon</option>
-                <option value="au">AU</option>
-                <option value="ooc">OOC</option>
-                <option value="cp">CP</option>
-              </select>
-              <select
-                value={ffGenre}
-                onChange={(e) => setFfGenre(e.target.value)}
-                className="rounded-lg border border-border bg-secondary/30 px-3 py-2 text-sm"
-              >
-                <option value="other">Other</option>
-                <option value="xuanhuan">玄幻</option>
-                <option value="urban">都市</option>
-                <option value="xianxia">仙侠</option>
-              </select>
-              <select
-                value={ffLang}
-                onChange={(e) => setFfLang(e.target.value as "zh" | "en")}
-                className="rounded-lg border border-border bg-secondary/30 px-3 py-2 text-sm"
-              >
-                <option value="zh">中文</option>
-                <option value="en">English</option>
-              </select>
-            </div>
-            <textarea
-              value={ffText}
-              onChange={(e) => setFfText(e.target.value)}
-              rows={10}
-              placeholder={t("import.pasteMaterial")}
-              className="w-full resize-none rounded-lg border border-border bg-secondary/30 px-3 py-2 font-mono text-sm"
-            />
-            <button
-              onClick={handleFanficInit}
-              disabled={loading || !ffTitle.trim() || !ffText.trim()}
-              className={`rounded-lg px-4 py-2 text-sm ${c.btnPrimary} disabled:opacity-30`}
-            >
-              {loading ? t("import.creating") : t("import.fanfic")}
-            </button>
-          </>
-        )}
-
-        {status && (
-          <div
-            className={`rounded-lg px-3 py-2 text-sm ${
-              status.startsWith("Error")
-                ? "bg-destructive/10 text-destructive"
-                : "bg-emerald-500/10 text-emerald-600"
-            }`}
-          >
-            {status}
+                {tb.icon}
+                {tb.label}
+              </button>
+            ))}
           </div>
-        )}
-      </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {tab === "chapters" && (
+            <>
+              <select
+                value={chBookId}
+                onChange={(e) => setChBookId(e.target.value)}
+                className="w-full rounded-xl border border-border bg-secondary/30 px-3 py-2 text-sm"
+              >
+                <option value="">{t("import.selectTarget")}</option>
+                {booksData?.books.map((book) => (
+                  <option key={book.id} value={book.id}>
+                    {book.title}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="text"
+                value={chSplitRegex}
+                onChange={(e) => setChSplitRegex(e.target.value)}
+                placeholder={t("import.splitRegex")}
+                className="w-full rounded-xl border border-border bg-secondary/30 px-3 py-2 font-mono text-sm"
+              />
+              <textarea
+                value={chText}
+                onChange={(e) => setChText(e.target.value)}
+                rows={10}
+                placeholder={t("import.pasteChapters")}
+                className="w-full resize-none rounded-xl border border-border bg-secondary/30 px-3 py-2 font-mono text-sm"
+              />
+              <Button onClick={handleImportChapters} disabled={loading || !chBookId || !chText.trim()}>
+                {loading ? t("import.importing") : t("import.chapters")}
+              </Button>
+            </>
+          )}
+
+          {tab === "canon" && (
+            <>
+              <select
+                value={canonFrom}
+                onChange={(e) => setCanonFrom(e.target.value)}
+                className="w-full rounded-xl border border-border bg-secondary/30 px-3 py-2 text-sm"
+              >
+                <option value="">{t("import.selectSource")}</option>
+                {booksData?.books.map((book) => (
+                  <option key={book.id} value={book.id}>
+                    {book.title}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={canonTarget}
+                onChange={(e) => setCanonTarget(e.target.value)}
+                className="w-full rounded-xl border border-border bg-secondary/30 px-3 py-2 text-sm"
+              >
+                <option value="">{t("import.selectDerivative")}</option>
+                {booksData?.books.map((book) => (
+                  <option key={book.id} value={book.id}>
+                    {book.title}
+                  </option>
+                ))}
+              </select>
+              <Button onClick={handleImportCanon} disabled={loading || !canonTarget || !canonFrom}>
+                {loading ? t("import.importing") : t("import.canon")}
+              </Button>
+            </>
+          )}
+
+          {tab === "fanfic" && (
+            <>
+              <input
+                type="text"
+                value={ffTitle}
+                onChange={(e) => setFfTitle(e.target.value)}
+                placeholder={t("import.fanficTitle")}
+                className="w-full rounded-xl border border-border bg-secondary/30 px-3 py-2 text-sm"
+              />
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                <select
+                  value={ffMode}
+                  onChange={(e) => setFfMode(e.target.value)}
+                  className="rounded-xl border border-border bg-secondary/30 px-3 py-2 text-sm"
+                >
+                  <option value="canon">Canon</option>
+                  <option value="au">AU</option>
+                  <option value="ooc">OOC</option>
+                  <option value="cp">CP</option>
+                </select>
+                <select
+                  value={ffGenre}
+                  onChange={(e) => setFfGenre(e.target.value)}
+                  className="rounded-xl border border-border bg-secondary/30 px-3 py-2 text-sm"
+                >
+                  <option value="other">Other</option>
+                  <option value="xuanhuan">玄幻</option>
+                  <option value="urban">都市</option>
+                  <option value="xianxia">仙侠</option>
+                </select>
+                <select
+                  value={ffLang}
+                  onChange={(e) => setFfLang(e.target.value as "zh" | "en")}
+                  className="rounded-xl border border-border bg-secondary/30 px-3 py-2 text-sm"
+                >
+                  <option value="zh">中文</option>
+                  <option value="en">English</option>
+                </select>
+              </div>
+              <textarea
+                value={ffText}
+                onChange={(e) => setFfText(e.target.value)}
+                rows={10}
+                placeholder={t("import.pasteMaterial")}
+                className="w-full resize-none rounded-xl border border-border bg-secondary/30 px-3 py-2 font-mono text-sm"
+              />
+              <Button onClick={handleFanficInit} disabled={loading || !ffTitle.trim() || !ffText.trim()}>
+                {loading ? t("import.creating") : t("import.fanfic")}
+              </Button>
+            </>
+          )}
+
+          {status && (
+            <div
+              className={`rounded-xl px-3 py-2 text-sm ${
+                status.startsWith("Error") ? "bg-destructive/10 text-destructive" : "bg-emerald-500/10 text-emerald-600"
+              }`}
+            >
+              {status}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </PageScaffold>
   );
 }

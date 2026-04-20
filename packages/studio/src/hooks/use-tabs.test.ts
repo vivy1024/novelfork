@@ -8,10 +8,6 @@ import {
 import type { Tab, TabsState } from "./use-tabs";
 import type { Route } from "../routes";
 
-/* ------------------------------------------------------------------ */
-/*  helpers                                                           */
-/* ------------------------------------------------------------------ */
-
 function makeTab(route: Route, overrides?: Partial<Tab>): Tab {
   return {
     id: routeToTabId(route),
@@ -23,10 +19,6 @@ function makeTab(route: Route, overrides?: Partial<Tab>): Tab {
   };
 }
 
-/* ------------------------------------------------------------------ */
-/*  routeToTabId                                                      */
-/* ------------------------------------------------------------------ */
-
 describe("routeToTabId", () => {
   it('dashboard → "dashboard"', () => {
     expect(routeToTabId({ page: "dashboard" })).toBe("dashboard");
@@ -37,132 +29,61 @@ describe("routeToTabId", () => {
   });
 
   it('chapter bookId "abc" chapterNumber 5 → "chapter:abc:5"', () => {
-    expect(
-      routeToTabId({ page: "chapter", bookId: "abc", chapterNumber: 5 }),
-    ).toBe("chapter:abc:5");
+    expect(routeToTabId({ page: "chapter", bookId: "abc", chapterNumber: 5 })).toBe("chapter:abc:5");
   });
 
-  it('book-create → "book-create"', () => {
-    expect(routeToTabId({ page: "book-create" })).toBe("book-create");
+  it('workflow agents → "workflow:agents"', () => {
+    expect(routeToTabId({ page: "workflow", section: "agents" })).toBe("workflow:agents");
   });
 
-  it('truth → "truth:{bookId}"', () => {
-    expect(routeToTabId({ page: "truth", bookId: "b1" })).toBe("truth:b1");
+  it('admin daemon → "admin:daemon"', () => {
+    expect(routeToTabId({ page: "admin", section: "daemon" })).toBe("admin:daemon");
   });
 
-  it('analytics → "analytics:{bookId}"', () => {
-    expect(routeToTabId({ page: "analytics", bookId: "b2" })).toBe("analytics:b2");
+  it('settings appearance → "settings:appearance"', () => {
+    expect(routeToTabId({ page: "settings", section: "appearance" })).toBe("settings:appearance");
   });
 
-  it('workflow → "workflow"', () => {
-    expect(routeToTabId({ page: "workflow" } as Route)).toBe("workflow");
-  });
-
-  it('daemon → "daemon"', () => {
-    expect(routeToTabId({ page: "daemon" })).toBe("daemon");
-  });
-
-  it('logs → "logs"', () => {
-    expect(routeToTabId({ page: "logs" })).toBe("logs");
-  });
-
-  it('genres → "genres"', () => {
-    expect(routeToTabId({ page: "genres" })).toBe("genres");
-  });
-
-  it('style → "style"', () => {
-    expect(routeToTabId({ page: "style" })).toBe("style");
-  });
-
-  it('import → "import"', () => {
-    expect(routeToTabId({ page: "import" })).toBe("import");
-  });
-
-  it('radar → "radar"', () => {
-    expect(routeToTabId({ page: "radar" })).toBe("radar");
-  });
-
-  it('doctor → "doctor"', () => {
-    expect(routeToTabId({ page: "doctor" })).toBe("doctor");
+  it('sessions defaults to "sessions"', () => {
+    expect(routeToTabId({ page: "sessions" })).toBe("sessions");
   });
 });
 
-/* ------------------------------------------------------------------ */
-/*  routeToTabLabel                                                   */
-/* ------------------------------------------------------------------ */
-
 describe("routeToTabLabel", () => {
-  it('dashboard → "Dashboard"', () => {
-    expect(routeToTabLabel({ page: "dashboard" })).toBe("Dashboard");
+  it('dashboard → "项目总览"', () => {
+    expect(routeToTabLabel({ page: "dashboard" })).toBe("项目总览");
   });
 
   it("book → bookId", () => {
     expect(routeToTabLabel({ page: "book", bookId: "my-novel" })).toBe("my-novel");
   });
 
-  it('book-create → "New Book"', () => {
-    expect(routeToTabLabel({ page: "book-create" })).toBe("New Book");
+  it('book-create → "新建书籍"', () => {
+    expect(routeToTabLabel({ page: "book-create" })).toBe("新建书籍");
   });
 
-  it('chapter → "Ch.{n}"', () => {
-    expect(
-      routeToTabLabel({ page: "chapter", bookId: "x", chapterNumber: 12 }),
-    ).toBe("Ch.12");
+  it('chapter → "章节 {n}"', () => {
+    expect(routeToTabLabel({ page: "chapter", bookId: "x", chapterNumber: 12 })).toBe("章节 12");
   });
 
-  it('truth → "Truth Files"', () => {
-    expect(routeToTabLabel({ page: "truth", bookId: "x" })).toBe("Truth Files");
+  it('workflow agents → "工作流 · Agent"', () => {
+    expect(routeToTabLabel({ page: "workflow", section: "agents" })).toBe("工作流 · Agent");
   });
 
-  it('analytics → "Analytics"', () => {
-    expect(routeToTabLabel({ page: "analytics", bookId: "x" })).toBe("Analytics");
+  it('admin daemon → "管理 · 守护进程"', () => {
+    expect(routeToTabLabel({ page: "admin", section: "daemon" })).toBe("管理 · 守护进程");
   });
 
-  it('workflow → "Workflow"', () => {
-    expect(routeToTabLabel({ page: "workflow" } as Route)).toBe("Workflow");
-  });
-
-  it('daemon → "Daemon"', () => {
-    expect(routeToTabLabel({ page: "daemon" })).toBe("Daemon");
-  });
-
-  it('logs → "Logs"', () => {
-    expect(routeToTabLabel({ page: "logs" })).toBe("Logs");
-  });
-
-  it('genres → "Genres"', () => {
-    expect(routeToTabLabel({ page: "genres" })).toBe("Genres");
-  });
-
-  it('style → "Style"', () => {
-    expect(routeToTabLabel({ page: "style" })).toBe("Style");
-  });
-
-  it('import → "Import"', () => {
-    expect(routeToTabLabel({ page: "import" })).toBe("Import");
-  });
-
-  it('radar → "Radar"', () => {
-    expect(routeToTabLabel({ page: "radar" })).toBe("Radar");
-  });
-
-  it('doctor → "Doctor"', () => {
-    expect(routeToTabLabel({ page: "doctor" })).toBe("Doctor");
+  it('settings appearance → "设置 · 外观"', () => {
+    expect(routeToTabLabel({ page: "settings", section: "appearance" })).toBe("设置 · 外观");
   });
 });
-
-/* ------------------------------------------------------------------ */
-/*  tabsReducer                                                       */
-/* ------------------------------------------------------------------ */
-/* ------------------------------------------------------------------ */
-/*  tabsReducer                                                       */
-/* ------------------------------------------------------------------ */
 
 describe("tabsReducer", () => {
   const dashboardTab = makeTab({ page: "dashboard" });
   const bookTab = makeTab({ page: "book", bookId: "abc" });
   const chapterTab = makeTab({ page: "chapter", bookId: "abc", chapterNumber: 3 });
-  const workflowTab = makeTab({ page: "workflow" } as Route);
+  const workflowTab = makeTab({ page: "workflow", section: "agents" });
 
   describe("INITIAL_STATE", () => {
     it("has only the dashboard tab", () => {
@@ -211,6 +132,7 @@ describe("tabsReducer", () => {
       expect(next).toBe(INITIAL_STATE);
     });
   });
+
   describe("close", () => {
     it("removes a closable tab", () => {
       const state: TabsState = {
@@ -262,44 +184,40 @@ describe("tabsReducer", () => {
   });
 
   describe("closeOthers", () => {
-    it("keeps only the target tab and unclosable tabs", () => {
+    it("keeps the requested tab and all non-closable tabs", () => {
       const state: TabsState = {
         tabs: [dashboardTab, bookTab, chapterTab, workflowTab],
         activeTabId: "book:abc",
       };
-      const next = tabsReducer(state, { type: "closeOthers", tabId: "book:abc" });
+      const next = tabsReducer(state, { type: "closeOthers", tabId: workflowTab.id });
+      expect(next.tabs.map((t) => t.id)).toEqual(["dashboard", workflowTab.id]);
+      expect(next.activeTabId).toBe(workflowTab.id);
+    });
+  });
+
+  describe("closeRight", () => {
+    it("closes tabs to the right but preserves non-closable tabs", () => {
+      const state: TabsState = {
+        tabs: [dashboardTab, bookTab, chapterTab, workflowTab],
+        activeTabId: workflowTab.id,
+      };
+      const next = tabsReducer(state, { type: "closeRight", tabId: "book:abc" });
       expect(next.tabs.map((t) => t.id)).toEqual(["dashboard", "book:abc"]);
       expect(next.activeTabId).toBe("book:abc");
     });
   });
 
-  describe("closeRight", () => {
-    it("closes all closable tabs to the right of the target", () => {
+  describe("markDirty / markClean", () => {
+    it("marks a tab dirty and then clean again", () => {
       const state: TabsState = {
-        tabs: [dashboardTab, bookTab, chapterTab, workflowTab],
+        tabs: [dashboardTab, bookTab],
         activeTabId: "dashboard",
       };
-      const next = tabsReducer(state, { type: "closeRight", tabId: "book:abc" });
-      expect(next.tabs.map((t) => t.id)).toEqual(["dashboard", "book:abc"]);
-      expect(next.activeTabId).toBe("dashboard");
-    });
+      const dirty = tabsReducer(state, { type: "markDirty", tabId: "book:abc" });
+      expect(dirty.tabs.find((t) => t.id === "book:abc")?.dirty).toBe(true);
 
-    it("switches activeTabId to target when active tab is closed", () => {
-      const state: TabsState = {
-        tabs: [dashboardTab, bookTab, chapterTab, workflowTab],
-        activeTabId: "workflow",
-      };
-      const next = tabsReducer(state, { type: "closeRight", tabId: "book:abc" });
-      expect(next.activeTabId).toBe("book:abc");
-    });
-
-    it("preserves unclosable tabs even if they are to the right", () => {
-      const dashRight: TabsState = {
-        tabs: [bookTab, dashboardTab, chapterTab],
-        activeTabId: "book:abc",
-      };
-      const next = tabsReducer(dashRight, { type: "closeRight", tabId: "book:abc" });
-      expect(next.tabs.map((t) => t.id)).toEqual(["book:abc", "dashboard"]);
+      const clean = tabsReducer(dirty, { type: "markClean", tabId: "book:abc" });
+      expect(clean.tabs.find((t) => t.id === "book:abc")?.dirty).toBe(false);
     });
   });
 });

@@ -8,7 +8,10 @@ import { useColors } from "../hooks/use-colors";
 import { deriveBookActivity, shouldRefetchBookView } from "../hooks/use-book-activity";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { ChapterMeta as ChapterMetaPanel } from "../components/ChapterMeta";
+import { PageEmptyState } from "@/components/layout/PageEmptyState";
+import { PageScaffold } from "@/components/layout/PageScaffold";
 import {
+  AlertCircle,
   ChevronLeft,
   Zap,
   FileText,
@@ -272,14 +275,24 @@ export function BookDetail({
     refetch();
   };
 
-  if (loading) return (
-    <div className="flex flex-col items-center justify-center py-32 space-y-4">
-      <div className="w-8 h-8 border-2 border-primary/20 border-t-primary rounded-full animate-spin" />
-      <span className="text-sm text-muted-foreground">{t("common.loading")}</span>
-    </div>
-  );
+  if (loading) {
+    return (
+      <PageScaffold title="书籍详情" description="正在加载书籍与章节信息。">
+        <div className="flex min-h-[240px] items-center justify-center text-sm text-muted-foreground">
+          <div className="w-8 h-8 border-2 border-primary/20 border-t-primary rounded-full animate-spin" />
+          <span className="ml-3">{t("common.loading")}</span>
+        </div>
+      </PageScaffold>
+    );
+  }
 
-  if (error) return <div className="text-destructive p-8 bg-destructive/5 rounded-xl border border-destructive/20">Error: {error}</div>;
+  if (error) {
+    return (
+      <PageScaffold title="书籍详情" description="正在加载书籍与章节信息。">
+        <PageEmptyState title={t("common.error")} description={error} icon={AlertCircle} />
+      </PageScaffold>
+    );
+  }
   if (!data) return null;
 
   const { book, chapters } = data;
@@ -293,7 +306,11 @@ export function BookDetail({
   const exportHref = `/api/books/${bookId}/export?format=${exportFormat}${exportApprovedOnly ? "&approvedOnly=true" : ""}`;
 
   return (
-    <div className="space-y-8 fade-in">
+    <PageScaffold
+      title="书籍工作台"
+      description="管理章节编排、写作动作、导出与审计结果。"
+    >
+      <div className="space-y-8 fade-in">
       {/* Breadcrumbs */}
       <nav className="flex items-center gap-2 text-[13px] font-medium text-muted-foreground">
         <button
@@ -623,13 +640,12 @@ export function BookDetail({
         </div>
 
         {chapters.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-20 text-center">
-            <div className="w-12 h-12 rounded-full bg-muted/20 flex items-center justify-center mb-4">
-               <FileText size={20} className="text-muted-foreground/40" />
-            </div>
-            <p className="text-sm italic font-serif text-muted-foreground">
-              {t("book.noChapters")}
-            </p>
+          <div className="px-6 py-8">
+            <PageEmptyState
+              title={t("book.noChapters")}
+              description="先写出第一章或导入章节后，这里会显示完整章节列表。"
+              icon={FileText}
+            />
           </div>
         )}
       </div>
@@ -645,5 +661,6 @@ export function BookDetail({
         onCancel={() => setConfirmDeleteOpen(false)}
       />
     </div>
+    </PageScaffold>
   );
 }

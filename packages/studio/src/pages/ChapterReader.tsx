@@ -9,6 +9,7 @@ import { ContextPanel } from "../components/ContextPanel";
 import { HistoryPanel } from "../components/HistoryPanel";
 import { OutlinePanel } from "../components/OutlinePanel";
 import { DiffPanel } from "../components/DiffPanel";
+import { PageScaffold } from "@/components/layout/PageScaffold";
 import {
   ChevronLeft,
   Check,
@@ -180,14 +181,26 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
 
   const isSaving = manualSaving || autosave.saving;
 
-  if (loading) return (
-    <div className="flex flex-col items-center justify-center py-32 space-y-4">
-      <div className="w-8 h-8 border-2 border-primary/20 border-t-primary rounded-full animate-spin" />
-      <span className="text-sm text-muted-foreground">{t("reader.openingManuscript")}</span>
-    </div>
-  );
+  if (loading) {
+    return (
+      <PageScaffold title="章节阅读器" description="阅读、编辑与审阅单章正文。">
+        <div className="flex min-h-[240px] items-center justify-center text-sm text-muted-foreground">
+          <div className="w-8 h-8 border-2 border-primary/20 border-t-primary rounded-full animate-spin" />
+          <span className="ml-3">{t("reader.openingManuscript")}</span>
+        </div>
+      </PageScaffold>
+    );
+  }
 
-  if (error) return <div className="text-destructive p-8 bg-destructive/5 rounded-xl border border-destructive/20">Error: {error}</div>;
+  if (error) {
+    return (
+      <PageScaffold title="章节阅读器" description="阅读、编辑与审阅单章正文。">
+        <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-8 text-sm text-destructive">
+          Error: {error}
+        </div>
+      </PageScaffold>
+    );
+  }
   if (!data) return null;
 
   // Split markdown content into title and body
@@ -225,7 +238,11 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
   }, [editing]);
 
   return (
-    <div className="max-w-4xl mx-auto space-y-10 fade-in">
+    <PageScaffold
+      title="章节阅读器"
+      description={`${bookId} · 第 ${chapterNumber} 章，支持编辑、对比与快照保存。`}
+    >
+      <div className="mx-auto max-w-4xl space-y-10 fade-in">
       {/* Navigation & Actions */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <nav className="flex items-center gap-2 text-[13px] font-medium text-muted-foreground">
@@ -502,5 +519,6 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
         </div>
       )}
     </div>
+    </PageScaffold>
   );
 }

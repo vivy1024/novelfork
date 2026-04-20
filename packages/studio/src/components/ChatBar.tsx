@@ -190,6 +190,15 @@ function QuickChip({ icon, label, onClick }: {
   );
 }
 
+function InfoTile({ label, value }: { readonly label: string; readonly value: string }) {
+  return (
+    <div className="rounded-lg border border-border/50 bg-background px-3 py-2 shadow-sm">
+      <div className="text-[9px] uppercase tracking-[0.18em] text-muted-foreground">{label}</div>
+      <div className="truncate text-xs font-medium text-foreground">{value}</div>
+    </div>
+  );
+}
+
 // ── Main Component ──
 
 export function ChatPanel({ open, onClose, t, sse, activeBookId }: {
@@ -370,7 +379,7 @@ export function ChatPanel({ open, onClose, t, sse, activeBookId }: {
                 )}
               </div>
               <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground">
-                NovelFork Assistant
+                会话助手 · 辅助面板
               </span>
             </div>
             <div className="flex items-center gap-1">
@@ -388,6 +397,25 @@ export function ChatPanel({ open, onClose, t, sse, activeBookId }: {
               >
                 <PanelRightClose size={14} className="group-hover:translate-x-0.5 transition-transform" />
               </button>
+            </div>
+          </div>
+
+          <div className="shrink-0 border-b border-border/30 bg-muted/20 px-4 py-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-1">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">辅助说明</div>
+                <p className="text-xs leading-5 text-muted-foreground">
+                  正式会话对象请到「会话中心」管理；这里保留快速指令、轻量对话和当前书籍的辅助入口。
+                </p>
+              </div>
+              <span className="rounded-full border border-border bg-background px-2.5 py-1 text-[10px] font-medium text-muted-foreground">
+                Sidecar
+              </span>
+            </div>
+            <div className="mt-3 grid grid-cols-3 gap-2">
+              <InfoTile label="目标书籍" value={activeBookId ?? "未锁定"} />
+              <InfoTile label="面板状态" value={loading ? "处理中" : "待命"} />
+              <InfoTile label="主入口" value="会话中心" />
             </div>
           </div>
 

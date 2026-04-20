@@ -62,6 +62,7 @@ export function ContextCircle({ bookId, onCompress, onTruncate, onClear }: Conte
         onClick={() => setShowMenu(!showMenu)}
         className="relative flex items-center justify-center w-24 h-24 rounded-full hover:bg-secondary/50 transition-colors"
         title="上下文管理"
+        aria-label={`上下文管理，当前 ${Math.round(usage.percentage)}%，${usage.totalTokens} tokens，${usage.messages} 条消息`}
       >
         <svg width="100" height="100" className="transform -rotate-90">
           {/* Background circle */}
@@ -95,7 +96,10 @@ export function ContextCircle({ bookId, onCompress, onTruncate, onClear }: Conte
             {Math.round(usage.percentage)}%
           </span>
           <span className="text-[10px] text-muted-foreground">
-            {(usage.totalTokens / 1000).toFixed(0)}k
+            {(usage.totalTokens / 1000).toFixed(0)}k tokens
+          </span>
+          <span className="text-[9px] uppercase tracking-[0.18em] text-muted-foreground/70">
+            上下文
           </span>
         </div>
 
@@ -109,6 +113,12 @@ export function ContextCircle({ bookId, onCompress, onTruncate, onClear }: Conte
       {/* Context menu */}
       {showMenu && (
         <div className="absolute top-full mt-2 right-0 w-48 bg-background border border-border rounded-lg shadow-lg z-50 overflow-hidden">
+          <div className="border-b border-border/40 px-4 py-2">
+            <div className="text-xs font-medium text-foreground">{usage.messages} 条消息</div>
+            <div className="text-[10px] text-muted-foreground">
+              {usage.totalTokens.toLocaleString()} / {usage.maxTokens.toLocaleString()} tokens
+            </div>
+          </div>
           <button
             onClick={() => {
               onCompress?.();

@@ -3,8 +3,9 @@
  * Wraps the existing Route type, adding tab identity and lifecycle.
  */
 
-import { useReducer, useCallback } from "react";
-import type { Route } from "../routes";
+import { useCallback, useReducer } from "react";
+import type { AdminSection, Route, SettingsSection, WorkflowSection } from "../routes";
+import { canonicalRouteId } from "../routes";
 
 export interface Tab {
   readonly id: string;
@@ -28,67 +29,90 @@ type TabAction =
   | { type: "markDirty"; tabId: string }
   | { type: "markClean"; tabId: string };
 
+const WORKFLOW_SECTION_LABELS: Record<WorkflowSection, string> = {
+  project: "项目与模型",
+  agents: "Agent",
+  mcp: "MCP 工具",
+  plugins: "插件",
+  advanced: "高级 LLM",
+  scheduler: "调度",
+  detection: "AIGC 检测",
+  hooks: "伏笔健康",
+  notify: "通知",
+};
+
+const SETTINGS_SECTION_LABELS: Record<SettingsSection, string> = {
+  profile: "个人资料",
+  appearance: "外观",
+  editor: "编辑器",
+  shortcuts: "快捷键",
+  notifications: "通知",
+  monitoring: "系统监控",
+  data: "数据管理",
+  about: "关于",
+  advanced: "高级设置",
+};
+
+const ADMIN_SECTION_LABELS: Record<AdminSection, string> = {
+  overview: "总览",
+  providers: "供应商",
+  resources: "资源监控",
+  requests: "请求历史",
+  daemon: "守护进程",
+  logs: "日志",
+  worktrees: "Worktree",
+};
+
 export function routeToTabId(route: Route): string {
-  switch (route.page) {
-    case "dashboard": return "dashboard";
-    case "workflow": return "workflow";
-    case "sessions": return "sessions";
-    case "book": return `book:${route.bookId}`;
-    case "book-create": return "book-create";
-    case "chapter": return `chapter:${route.bookId}:${route.chapterNumber}`;
-    case "truth": return `truth:${route.bookId}`;
-    case "analytics": return `analytics:${route.bookId}`;
-    case "daemon": return "daemon";
-    case "logs": return "logs";
-    case "genres": return "genres";
-    case "style": return "style";
-    case "import": return "import";
-    case "radar": return "radar";
-    case "doctor": return "doctor";
-    case "search": return "search";
-    case "diff": return `diff:${route.bookId}:${route.chapterNumber}`;
-    case "backup": return "backup";
-    case "detect": return `detect:${route.bookId}`;
-    case "intent": return `intent:${route.bookId}`;
-    case "state": return `state:${route.bookId}`;
-    case "pipeline": return route.runId ? `pipeline:${route.runId}` : "pipeline";
-    case "settings": return "settings";
-    case "worktree": return "worktree";
-    case "admin": return "admin";
-    default: {
-      const unreachable: never = route;
-      throw new Error(`Unhandled route for tab id: ${JSON.stringify(unreachable)}`);
-    }
-  }
+  return canonicalRouteId(route);
 }
 
 export function routeToTabLabel(route: Route): string {
   switch (route.page) {
-    case "dashboard": return "Dashboard";
-    case "workflow": return "Workflow";
-    case "sessions": return "Sessions";
-    case "book": return route.bookId;
-    case "book-create": return "New Book";
-    case "chapter": return `Ch.${route.chapterNumber}`;
-    case "truth": return "Truth Files";
-    case "analytics": return "Analytics";
-    case "daemon": return "Daemon";
-    case "logs": return "Logs";
-    case "genres": return "Genres";
-    case "style": return "Style";
-    case "import": return "Import";
-    case "radar": return "Radar";
-    case "doctor": return "Doctor";
-    case "search": return "Search";
-    case "diff": return `Diff Ch.${route.chapterNumber}`;
-    case "backup": return "Backup";
-    case "detect": return "Detect";
-    case "intent": return "Intent";
-    case "state": return "State";
-    case "pipeline": return "Pipeline";
-    case "settings": return "Settings";
-    case "worktree": return "Worktree";
-    case "admin": return "Admin";
+    case "dashboard":
+      return "项目总览";
+    case "workflow":
+      return route.section ? `工作流 · ${WORKFLOW_SECTION_LABELS[route.section]}` : "工作流配置";
+    case "sessions":
+      return "会话中心";
+    case "book":
+      return route.bookId;
+    case "book-create":
+      return "新建书籍";
+    case "chapter":
+      return `章节 ${route.chapterNumber}`;
+    case "truth":
+      return "真相文件";
+    case "analytics":
+      return "数据分析";
+    case "genres":
+      return "题材模板";
+    case "style":
+      return "文风分析";
+    case "import":
+      return "导入中心";
+    case "radar":
+      return "剧情雷达";
+    case "doctor":
+      return "项目体检";
+    case "search":
+      return "全局检索";
+    case "diff":
+      return `章节对比 ${route.chapterNumber}`;
+    case "backup":
+      return "备份";
+    case "detect":
+      return "AIGC 检测";
+    case "intent":
+      return "意图编辑";
+    case "state":
+      return "状态投影";
+    case "pipeline":
+      return route.runId ? `Pipeline · ${route.runId}` : "Pipeline";
+    case "settings":
+      return route.section ? `设置 · ${SETTINGS_SECTION_LABELS[route.section]}` : "设置";
+    case "admin":
+      return route.section ? `管理 · ${ADMIN_SECTION_LABELS[route.section]}` : "管理中心";
     default: {
       const unreachable: never = route;
       throw new Error(`Unhandled route for tab label: ${JSON.stringify(unreachable)}`);
@@ -112,8 +136,8 @@ export const INITIAL_STATE: TabsState = {
 };
 
 function findNeighbor(tabs: ReadonlyArray<Tab>, closedId: string): string {
-  const idx = tabs.findIndex((t) => t.id === closedId);
-  const remaining = tabs.filter((t) => t.id !== closedId);
+  const idx = tabs.findIndex((tab) => tab.id === closedId);
+  const remaining = tabs.filter((tab) => tab.id !== closedId);
   if (remaining.length === 0) return "dashboard";
   const next = remaining[Math.min(idx, remaining.length - 1)];
   return next.id;
@@ -122,7 +146,7 @@ function findNeighbor(tabs: ReadonlyArray<Tab>, closedId: string): string {
 export function tabsReducer(state: TabsState, action: TabAction): TabsState {
   switch (action.type) {
     case "open": {
-      const existing = state.tabs.find((t) => t.id === action.tab.id);
+      const existing = state.tabs.find((tab) => tab.id === action.tab.id);
       if (existing) {
         return { ...state, activeTabId: existing.id };
       }
@@ -132,28 +156,28 @@ export function tabsReducer(state: TabsState, action: TabAction): TabsState {
       };
     }
     case "activate": {
-      if (!state.tabs.some((t) => t.id === action.tabId)) return state;
+      if (!state.tabs.some((tab) => tab.id === action.tabId)) return state;
       return { ...state, activeTabId: action.tabId };
     }
     case "close": {
-      const tab = state.tabs.find((t) => t.id === action.tabId);
+      const tab = state.tabs.find((candidate) => candidate.id === action.tabId);
       if (!tab || !tab.closable) return state;
       const nextActive = state.activeTabId === action.tabId
         ? findNeighbor(state.tabs, action.tabId)
         : state.activeTabId;
       return {
-        tabs: state.tabs.filter((t) => t.id !== action.tabId),
+        tabs: state.tabs.filter((candidate) => candidate.id !== action.tabId),
         activeTabId: nextActive,
       };
     }
     case "closeOthers": {
-      const keep = state.tabs.filter((t) => t.id === action.tabId || !t.closable);
+      const keep = state.tabs.filter((tab) => tab.id === action.tabId || !tab.closable);
       return { tabs: keep, activeTabId: action.tabId };
     }
     case "closeRight": {
-      const idx = state.tabs.findIndex((t) => t.id === action.tabId);
-      const keep = state.tabs.filter((t, i) => i <= idx || !t.closable);
-      const activeStillOpen = keep.some((t) => t.id === state.activeTabId);
+      const idx = state.tabs.findIndex((tab) => tab.id === action.tabId);
+      const keep = state.tabs.filter((tab, index) => index <= idx || !tab.closable);
+      const activeStillOpen = keep.some((tab) => tab.id === state.activeTabId);
       return {
         tabs: keep,
         activeTabId: activeStillOpen ? state.activeTabId : action.tabId,
@@ -162,16 +186,16 @@ export function tabsReducer(state: TabsState, action: TabAction): TabsState {
     case "markDirty": {
       return {
         ...state,
-        tabs: state.tabs.map((t) =>
-          t.id === action.tabId ? { ...t, dirty: true } : t,
+        tabs: state.tabs.map((tab) =>
+          tab.id === action.tabId ? { ...tab, dirty: true } : tab,
         ),
       };
     }
     case "markClean": {
       return {
         ...state,
-        tabs: state.tabs.map((t) =>
-          t.id === action.tabId ? { ...t, dirty: false } : t,
+        tabs: state.tabs.map((tab) =>
+          tab.id === action.tabId ? { ...tab, dirty: false } : tab,
         ),
       };
     }
@@ -212,7 +236,7 @@ export function useTabsState() {
   return {
     tabs: state.tabs,
     activeTabId: state.activeTabId,
-    activeTab: state.tabs.find((t) => t.id === state.activeTabId) ?? state.tabs[0],
+    activeTab: state.tabs.find((tab) => tab.id === state.activeTabId) ?? state.tabs[0],
     openTab,
     closeTab,
     activateTab,

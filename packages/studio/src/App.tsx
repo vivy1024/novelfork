@@ -45,7 +45,7 @@ import { useRecovery } from "./hooks/use-crash-recovery";
 import { persistTabSession, restoreTabSession } from "./hooks/use-persisted-tabs";
 import { fetchJson, postApi, useApi } from "./hooks/use-api";
 import type { SearchResult } from "./shared/search-types";
-import type { Route } from "./routes";
+import type { AdminSection, Route, SettingsSection, WorkflowSection } from "./routes";
 import { sanitizeRestoredTabSession } from "./routes";
 import { deriveActiveBookId } from "./route-utils";
 
@@ -297,7 +297,7 @@ function AppInner() {
 
   const nav = {
     toDashboard: () => openTab({ page: "dashboard" }),
-    toWorkflow: () => openTab({ page: "workflow" }),
+    toWorkflow: (section?: WorkflowSection) => openTab({ page: "workflow", section }),
     toSessions: () => openTab({ page: "sessions" }),
     toBook: (bookId: string) => openTab({ page: "book", bookId }),
     toBookCreate: () => setBookCreateOpen(true),
@@ -305,8 +305,9 @@ function AppInner() {
       openTab({ page: "chapter", bookId, chapterNumber }),
     toAnalytics: (bookId: string) => openTab({ page: "analytics", bookId }),
     toTruth: (bookId: string) => openTab({ page: "truth", bookId }),
-    toDaemon: () => openTab({ page: "daemon" }),
-    toLogs: () => openTab({ page: "logs" }),
+    toAdmin: (section?: AdminSection) => openTab({ page: "admin", section }),
+    toDaemon: () => openTab({ page: "admin", section: "daemon" }),
+    toLogs: () => openTab({ page: "admin", section: "logs" }),
     toGenres: () => openTab({ page: "genres" }),
     toStyle: () => openTab({ page: "style" }),
     toImport: () => openTab({ page: "import" }),
@@ -320,20 +321,23 @@ function AppInner() {
     toIntent: (bookId: string) => openTab({ page: "intent", bookId }),
     toState: (bookId: string) => openTab({ page: "state", bookId }),
     toPipeline: (runId?: string) => openTab({ page: "pipeline", runId }),
-    toSettings: () => openTab({ page: "settings" }),
-    toWorktree: () => openTab({ page: "worktree" }),
+    toSettings: (section?: SettingsSection) => openTab({ page: "settings", section }),
+    toWorktree: () => openTab({ page: "admin", section: "worktrees" }),
   };
 
   const activeBookId = activeTab ? deriveActiveBookId(activeTab.route) : undefined;
   const activeChapterNumber = activeTab?.route.page === "chapter" ? activeTab.route.chapterNumber : undefined;
   const activePage = (() => {
-    const r = activeTab?.route;
-    if (!r) return "dashboard";
-    if (r.page === "chapter") return `chapter:${r.bookId}:${r.chapterNumber}`;
-    if (r.page === "truth") return `truth:${r.bookId}`;
-    if (r.page === "analytics") return `analytics:${r.bookId}`;
-    if (r.page === "book") return `book:${r.bookId}`;
-    return r.page;
+    const route = activeTab?.route;
+    if (!route) return "dashboard";
+    if (route.page === "chapter") return `chapter:${route.bookId}:${route.chapterNumber}`;
+    if (route.page === "truth") return `truth:${route.bookId}`;
+    if (route.page === "analytics") return `analytics:${route.bookId}`;
+    if (route.page === "book") return `book:${route.bookId}`;
+    if (route.page === "workflow") return route.section ? `workflow:${route.section}` : "workflow";
+    if (route.page === "admin") return route.section ? `admin:${route.section}` : "admin";
+    if (route.page === "settings") return route.section ? `settings:${route.section}` : "settings";
+    return route.page;
   })();
 
   // Calculate actual bottom panel height (collapsed = 32px for title bar only)
@@ -514,15 +518,22 @@ function TabContent({ route, nav, theme, t, sse, setTheme }: {
 }) {
   switch (route.page) {
     case "dashboard": return <Dashboard nav={nav} sse={sse} theme={theme} t={t} />;
-    case "workflow": return <WorkflowWorkbench nav={nav} theme={theme} t={t} />;
+    case "workflow":
+      return (
+        <WorkflowWorkbench
+          nav={nav}
+          theme={theme}
+          t={t}
+          section={route.section}
+          onNavigateSection={(section) => nav.toWorkflow(section)}
+        />
+      );
     case "sessions": return <SessionCenter theme={theme} />;
     case "book": return <BookDetail bookId={route.bookId} nav={nav} theme={theme} t={t} sse={sse} />;
     case "book-create": return <BookCreate nav={nav} theme={theme} t={t} />;
     case "chapter": return <ChapterReader bookId={route.bookId} chapterNumber={route.chapterNumber} nav={nav} theme={theme} t={t} />;
     case "analytics": return <Analytics bookId={route.bookId} nav={nav} theme={theme} t={t} />;
     case "truth": return <TruthFiles bookId={route.bookId} nav={nav} theme={theme} t={t} />;
-    case "daemon": return <DaemonControl nav={nav} theme={theme} t={t} sse={sse} />;
-    case "logs": return <LogViewer nav={nav} theme={theme} t={t} />;
     case "genres": return <GenreManager nav={nav} theme={theme} t={t} />;
     case "style": return <StyleManager nav={nav} theme={theme} t={t} />;
     case "import": return <ImportManager nav={nav} theme={theme} t={t} />;
@@ -535,9 +546,35 @@ function TabContent({ route, nav, theme, t, sse, setTheme }: {
     case "intent": return <IntentEditor bookId={route.bookId} nav={nav} theme={theme} t={t} />;
     case "state": return <StateProjectionsView bookId={route.bookId} nav={nav} theme={theme} t={t} />;
     case "pipeline": return <PipelineVisualization runId={route.runId} nav={nav} sse={sse} theme={theme} t={t} />;
-    case "settings": return <SettingsView nav={nav} theme={theme} t={t} onThemeChange={setTheme} />;
-    case "worktree": return <WorktreeManager onBack={nav.toDashboard} />;
-    case "admin": return <Admin onBack={nav.toDashboard} />;
+    case "settings":
+      return (
+        <SettingsView
+          nav={nav}
+          theme={theme}
+          t={t}
+          onThemeChange={setTheme}
+          section={route.section}
+          onNavigateSection={(section) => nav.toSettings(section)}
+        />
+      );
+    case "admin": {
+      if (route.section === "daemon") {
+        return <DaemonControl nav={nav} theme={theme} t={t} sse={sse} />;
+      }
+      if (route.section === "logs") {
+        return <LogViewer nav={nav} theme={theme} t={t} />;
+      }
+      if (route.section === "worktrees") {
+        return <WorktreeManager onBack={() => nav.toAdmin()} />;
+      }
+      return (
+        <Admin
+          onBack={nav.toDashboard}
+          section={route.section}
+          onNavigateSection={(section) => nav.toAdmin(section)}
+        />
+      );
+    }
     default: return null;
   }
 }

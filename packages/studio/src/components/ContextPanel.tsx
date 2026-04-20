@@ -42,6 +42,15 @@ function budgetTextColor(ratio: number): string {
   return "text-red-600";
 }
 
+function SummaryTile({ label, value }: { readonly label: string; readonly value: string }) {
+  return (
+    <div className="rounded-lg border border-border/60 bg-background px-2 py-1.5 text-center">
+      <div className="text-[9px] uppercase tracking-[0.18em] text-muted-foreground">{label}</div>
+      <div className="truncate text-xs font-medium text-foreground">{value}</div>
+    </div>
+  );
+}
+
 export function ContextPanel({ bookId, chapterNumber, visible, onClose }: ContextPanelProps) {
   const [entries, setEntries] = useState<ReadonlyArray<ContextEntry>>([]);
   const [totalTokens, setTotalTokens] = useState(0);
@@ -143,7 +152,10 @@ export function ContextPanel({ bookId, chapterNumber, visible, onClose }: Contex
     <div className="fixed top-0 right-0 z-50 h-full w-[360px] flex flex-col border-l border-border bg-background shadow-2xl animate-in slide-in-from-right duration-200" data-testid="context-panel">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border/50">
-        <h2 className="text-sm font-bold text-foreground">上下文面板</h2>
+        <div>
+          <h2 className="text-sm font-bold text-foreground">上下文面板</h2>
+          <p className="mt-0.5 text-[10px] text-muted-foreground">第 {chapterNumber} 章 · 当前书籍 {bookId}</p>
+        </div>
         <button
           onClick={onClose}
           className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-all"
@@ -152,21 +164,29 @@ export function ContextPanel({ bookId, chapterNumber, visible, onClose }: Contex
         </button>
       </div>
 
-      {/* Token Budget Bar */}
-      <div className="px-4 py-3 border-b border-border/30">
-        <div className="flex items-center justify-between mb-2">
-          <span className={`text-xs font-bold ${budgetTextColor(ratio)}`}>
-            已用 {activeTokens.toLocaleString()}/{budgetMax.toLocaleString()} tokens
-          </span>
-          <span className="text-[10px] text-muted-foreground font-medium">
-            {Math.round(ratio * 100)}%
-          </span>
+      {/* Summary + Token Budget Bar */}
+      <div className="space-y-3 border-b border-border/30 px-4 py-3">
+        <div className="grid grid-cols-4 gap-2">
+          <SummaryTile label="条目" value={String(entries.length)} />
+          <SummaryTile label="启用" value={String(entries.length - disabledSources.size)} />
+          <SummaryTile label="屏蔽" value={String(disabledSources.size)} />
+          <SummaryTile label="余量" value={String(Math.max(budgetMax - activeTokens, 0))} />
         </div>
-        <div className="h-2 rounded-full bg-secondary overflow-hidden">
-          <div
-            className={`h-full rounded-full transition-all duration-300 ${budgetColor(ratio)}`}
-            style={{ width: `${Math.min(ratio * 100, 100)}%` }}
-          />
+        <div>
+          <div className="mb-2 flex items-center justify-between">
+            <span className={`text-xs font-bold ${budgetTextColor(ratio)}`}>
+              已用 {activeTokens.toLocaleString()}/{budgetMax.toLocaleString()} tokens
+            </span>
+            <span className="text-[10px] text-muted-foreground font-medium">
+              {Math.round(ratio * 100)}%
+            </span>
+          </div>
+          <div className="h-2 overflow-hidden rounded-full bg-secondary">
+            <div
+              className={`h-full rounded-full transition-all duration-300 ${budgetColor(ratio)}`}
+              style={{ width: `${Math.min(ratio * 100, 100)}%` }}
+            />
+          </div>
         </div>
       </div>
 
@@ -254,16 +274,21 @@ export function ContextPanel({ bookId, chapterNumber, visible, onClose }: Contex
                       <ChevronRight size={14} className="shrink-0 text-muted-foreground" />
                     )}
 
-                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-primary/10 text-primary shrink-0">
+                    <span className="inline-flex items-center rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-bold text-primary shrink-0">
                       {entry.source}
                     </span>
 
-                    <span className="text-xs text-foreground truncate">{entry.label}</span>
+                    <span className="min-w-0 flex-1 truncate text-xs text-foreground">{entry.label}</span>
                   </button>
 
-                  <span className="text-[10px] font-mono text-muted-foreground shrink-0">
-                    {entry.tokens}
-                  </span>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${isDisabled ? "bg-secondary text-muted-foreground" : "bg-emerald-500/10 text-emerald-600"}`}>
+                      {isDisabled ? "已屏蔽" : "启用"}
+                    </span>
+                    <span className="rounded-full border border-border px-2 py-0.5 text-[10px] font-mono text-muted-foreground">
+                      {entry.tokens}
+                    </span>
+                  </div>
                 </div>
 
                 {/* Content Preview / Expanded */}

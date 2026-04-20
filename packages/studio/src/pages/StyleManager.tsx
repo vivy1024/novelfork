@@ -1,9 +1,14 @@
 import { useState } from "react";
-import { fetchJson, useApi, postApi } from "../hooks/use-api";
-import type { Theme } from "../hooks/use-theme";
-import type { TFunction } from "../hooks/use-i18n";
+import { BarChart3, Upload, Wand2 } from "lucide-react";
+
+import { PageEmptyState } from "@/components/layout/PageEmptyState";
+import { PageScaffold } from "@/components/layout/PageScaffold";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { fetchJson, postApi, useApi } from "../hooks/use-api";
 import { useColors } from "../hooks/use-colors";
-import { Wand2, Upload, BarChart3 } from "lucide-react";
+import type { TFunction } from "../hooks/use-i18n";
+import type { Theme } from "../hooks/use-theme";
 
 interface StyleProfile {
   readonly sourceName: string;
@@ -81,145 +86,163 @@ export function StyleManager({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFu
   };
 
   return (
-    <div className="space-y-8">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <button onClick={nav.toDashboard} className={c.link}>{t("bread.home")}</button>
-        <span className="text-border">/</span>
-        <span>{t("nav.style")}</span>
-      </div>
-
-      <h1 className="font-serif text-3xl flex items-center gap-3">
-        <Wand2 size={28} className="text-primary" />
-        {t("style.title")}
-      </h1>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Input */}
-        <div className="space-y-4">
-          <div>
-            <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground block mb-2">{t("style.sourceName")}</label>
-            <input
-              type="text"
-              value={sourceName}
-              onChange={(e) => setSourceName(e.target.value)}
-              placeholder={t("style.sourceExample")}
-              className="w-full px-3 py-2 rounded-lg bg-secondary/30 border border-border text-sm focus:outline-none focus:border-primary"
-            />
-          </div>
-          <div>
-            <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground block mb-2">{t("style.textSample")}</label>
-            <textarea
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              rows={12}
-              placeholder={t("style.pasteHint")}
-              className="w-full px-3 py-2 rounded-lg bg-secondary/30 border border-border text-sm focus:outline-none focus:border-primary resize-none font-mono"
-            />
-          </div>
-          <div className="flex gap-3">
-            <button
-              onClick={handleAnalyze}
-              disabled={!text.trim() || loading}
-              className={`px-4 py-2 text-sm rounded-lg ${c.btnPrimary} disabled:opacity-30 flex items-center gap-2`}
-            >
-              <BarChart3 size={14} />
-              {loading ? t("style.analyzing") : t("style.analyze")}
-            </button>
-          </div>
-        </div>
-
-        {/* Results */}
-        <div className="space-y-4">
-          {profile && (
-            <div className={`border ${c.cardStatic} rounded-lg p-5 space-y-4`}>
-              <h3 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground">{t("style.results")}</h3>
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div className="bg-secondary/30 rounded-lg p-3">
-                  <div className="text-muted-foreground text-xs">{t("style.avgSentence")}</div>
-                  <div className="text-xl font-bold">{profile.avgSentenceLength.toFixed(1)}</div>
-                </div>
-                <div className="bg-secondary/30 rounded-lg p-3">
-                  <div className="text-muted-foreground text-xs">{t("style.vocabDiversity")}</div>
-                  <div className="text-xl font-bold">{(profile.vocabularyDiversity * 100).toFixed(0)}%</div>
-                </div>
-                <div className="bg-secondary/30 rounded-lg p-3">
-                  <div className="text-muted-foreground text-xs">{t("style.avgParagraph")}</div>
-                  <div className="text-xl font-bold">{profile.avgParagraphLength.toFixed(0)}</div>
-                </div>
-                <div className="bg-secondary/30 rounded-lg p-3">
-                  <div className="text-muted-foreground text-xs">{t("style.sentenceStdDev")}</div>
-                  <div className="text-xl font-bold">{profile.sentenceLengthStdDev.toFixed(1)}</div>
-                </div>
-              </div>
-              {profile.topPatterns.length > 0 && (
-                <div>
-                  <div className="text-xs text-muted-foreground uppercase tracking-wide mb-2">{t("style.topPatterns")}</div>
-                  <div className="flex gap-2 flex-wrap">
-                    {profile.topPatterns.map((p) => (
-                      <span key={p} className="px-2 py-1 text-xs bg-secondary rounded">{p}</span>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {profile.rhetoricalFeatures.length > 0 && (
-                <div>
-                  <div className="text-xs text-muted-foreground uppercase tracking-wide mb-2">{t("style.rhetoricalFeatures")}</div>
-                  <div className="flex gap-2 flex-wrap">
-                    {profile.rhetoricalFeatures.map((f) => (
-                      <span key={f} className="px-2 py-1 text-xs bg-primary/10 text-primary rounded">{f}</span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Import to book */}
-              <div className="border-t border-border pt-4 mt-4 space-y-3">
-                <h4 className="font-semibold text-sm flex items-center gap-2">
-                  <Upload size={14} />
-                  {t("style.importToBook")}
-                </h4>
-                <select
-                  value={importBookId}
-                  onChange={(e) => setImportBookId(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-secondary/30 border border-border text-sm"
-                >
-                  <option value="">{t("style.selectBook")}</option>
-                  {booksData?.books.map((b) => (
-                    <option key={b.id} value={b.id}>{b.title}</option>
-                  ))}
-                </select>
-                <button
-                  onClick={handleImport}
-                  disabled={!importBookId}
-                  className={`px-4 py-2 text-sm rounded-lg ${c.btnSecondary} disabled:opacity-30`}
-                >
-                  {t("style.importGuide")}
-                </button>
-                {importStatus && <div className="text-xs text-muted-foreground">{importStatus}</div>}
-              </div>
+    <PageScaffold
+      title={t("style.title")}
+      description="分析一段样本文字的风格特征，并把结果导入到指定书籍中形成可复用的写作参考。"
+      actions={<Button variant="outline" onClick={nav.toDashboard}>返回书单</Button>}
+    >
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card className={c.cardStatic}>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Wand2 className="size-5 text-primary" />
+              {t("style.title")}
+            </CardTitle>
+            <CardDescription>先输入样本文字，再抽取句长、段落、词汇和修辞特征。</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                {t("style.sourceName")}
+              </label>
+              <input
+                type="text"
+                value={sourceName}
+                onChange={(e) => setSourceName(e.target.value)}
+                placeholder={t("style.sourceExample")}
+                className="w-full rounded-xl border border-border bg-secondary/30 px-3 py-2 text-sm outline-none focus:border-primary"
+              />
             </div>
-          )}
-          {!profile && !loading && (
-            <div className={`border border-dashed ${c.cardStatic} rounded-lg p-8 text-center text-muted-foreground text-sm italic`}>
-              {t("style.emptyHint")}
+            <div>
+              <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                {t("style.textSample")}
+              </label>
+              <textarea
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                rows={12}
+                placeholder={t("style.pasteHint")}
+                className="h-[320px] w-full resize-none rounded-xl border border-border bg-secondary/30 px-3 py-2 font-mono text-sm outline-none focus:border-primary"
+              />
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <Button onClick={handleAnalyze} disabled={!text.trim() || loading}>
+                <BarChart3 className="mr-2 size-4" />
+                {loading ? t("style.analyzing") : t("style.analyze")}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <div className="space-y-4">
+          {profile ? (
+            <Card className={c.cardStatic}>
+              <CardHeader>
+                <CardTitle>{t("style.results")}</CardTitle>
+                <CardDescription>这些指标会帮助你把风格特征转成更稳定的写作提示。</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <Metric label={t("style.avgSentence")} value={profile.avgSentenceLength.toFixed(1)} />
+                  <Metric label={t("style.vocabDiversity")} value={`${(profile.vocabularyDiversity * 100).toFixed(0)}%`} />
+                  <Metric label={t("style.avgParagraph")} value={profile.avgParagraphLength.toFixed(0)} />
+                  <Metric label={t("style.sentenceStdDev")} value={profile.sentenceLengthStdDev.toFixed(1)} />
+                </div>
+
+                {profile.topPatterns.length > 0 && (
+                  <div>
+                    <div className="mb-2 text-xs uppercase tracking-wide text-muted-foreground">{t("style.topPatterns")}</div>
+                    <div className="flex flex-wrap gap-2">
+                      {profile.topPatterns.map((p) => (
+                        <span key={p} className="rounded-md bg-secondary px-2 py-1 text-xs text-foreground">
+                          {p}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {profile.rhetoricalFeatures.length > 0 && (
+                  <div>
+                    <div className="mb-2 text-xs uppercase tracking-wide text-muted-foreground">{t("style.rhetoricalFeatures")}</div>
+                    <div className="flex flex-wrap gap-2">
+                      {profile.rhetoricalFeatures.map((f) => (
+                        <span key={f} className="rounded-md bg-primary/10 px-2 py-1 text-xs text-primary">
+                          {f}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="space-y-3 border-t border-border pt-4">
+                  <h4 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                    <Upload size={14} />
+                    {t("style.importToBook")}
+                  </h4>
+                  <select
+                    value={importBookId}
+                    onChange={(e) => setImportBookId(e.target.value)}
+                    className="w-full rounded-xl border border-border bg-secondary/30 px-3 py-2 text-sm outline-none"
+                  >
+                    <option value="">{t("style.selectBook")}</option>
+                    {booksData?.books.map((b) => (
+                      <option key={b.id} value={b.id}>{b.title}</option>
+                    ))}
+                  </select>
+                  <Button variant="secondary" onClick={handleImport} disabled={!importBookId}>
+                    {t("style.importGuide")}
+                  </Button>
+                  {importStatus && <div className="text-xs text-muted-foreground">{importStatus}</div>}
+                </div>
+              </CardContent>
+            </Card>
+          ) : !loading ? (
+            <PageEmptyState
+              title={t("style.emptyHint")}
+              description="先输入样本，再查看风格分析结果与导入选项。"
+              icon={BarChart3}
+            />
+          ) : (
+            <div className="flex min-h-[240px] items-center justify-center text-sm text-muted-foreground">
+              分析中…
             </div>
           )}
         </div>
       </div>
 
       {statusNotice && (
-        <div
-          className={`px-4 py-3 rounded-lg text-sm ${
+        <Card
+          className={
             statusNotice.tone === "error"
-              ? "bg-destructive/10 text-destructive"
+              ? "border-destructive/20 bg-destructive/5"
               : statusNotice.tone === "info"
-                ? "bg-secondary text-muted-foreground"
-                : "bg-emerald-500/10 text-emerald-600"
-          }`}
+                ? c.cardStatic
+                : "border-emerald-500/20 bg-emerald-500/5"
+          }
         >
-          {statusNotice.message}
-        </div>
+          <CardContent
+            className={`p-4 text-sm ${
+              statusNotice.tone === "error"
+                ? "text-destructive"
+                : statusNotice.tone === "info"
+                  ? "text-muted-foreground"
+                  : "text-emerald-600"
+            }`}
+          >
+            {statusNotice.message}
+          </CardContent>
+        </Card>
       )}
+    </PageScaffold>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl bg-secondary/30 p-3">
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="text-xl font-bold text-foreground">{value}</div>
     </div>
   );
 }

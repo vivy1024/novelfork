@@ -1,14 +1,18 @@
-import { useState, useEffect } from "react";
-import { useApi, postApi } from "../hooks/use-api";
-import { Card } from "../components/ui/card";
-import { Button } from "../components/ui/button";
+import { useState, type ReactNode } from "react";
+import { AlertCircle, CheckCircle, Loader, Puzzle, RefreshCw, Settings, XCircle } from "lucide-react";
+
+import { PageEmptyState } from "@/components/layout/PageEmptyState";
 import { Badge } from "../components/ui/badge";
-import { Switch } from "../components/ui/switch";
+import { Button } from "../components/ui/button";
+import { Card } from "../components/ui/card";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Separator } from "../components/ui/separator";
-import { Puzzle, Settings, CheckCircle, XCircle, AlertCircle, Loader } from "lucide-react";
+import { Switch } from "../components/ui/switch";
+import { postApi, useApi } from "../hooks/use-api";
+import { useColors } from "../hooks/use-colors";
 import type { TFunction } from "../hooks/use-i18n";
+import type { Theme } from "../hooks/use-theme";
 
 interface PluginMetadata {
   manifest: {
@@ -30,12 +34,13 @@ interface PluginMetadata {
 }
 
 interface PluginManagerProps {
-  nav: any;
-  theme: any;
+  nav: { toWorkflow?: () => void };
+  theme: Theme;
   t: TFunction;
 }
 
 export function PluginManager({ nav, theme, t }: PluginManagerProps) {
+  const c = useColors(theme);
   const { data: pluginsData, refetch } = useApi<{ plugins: PluginMetadata[] }>("/plugins");
   const [selectedPlugin, setSelectedPlugin] = useState<string | null>(null);
   const [configValues, setConfigValues] = useState<Record<string, unknown>>({});
@@ -80,15 +85,15 @@ export function PluginManager({ nav, theme, t }: PluginManagerProps) {
   const getStateIcon = (state: string) => {
     switch (state) {
       case "active":
-        return <CheckCircle className="w-4 h-4 text-green-500" />;
+        return <CheckCircle className="size-4 text-green-500" />;
       case "error":
-        return <XCircle className="w-4 h-4 text-red-500" />;
+        return <XCircle className="size-4 text-red-500" />;
       case "discovered":
       case "loaded":
       case "initialized":
-        return <AlertCircle className="w-4 h-4 text-yellow-500" />;
+        return <AlertCircle className="size-4 text-yellow-500" />;
       default:
-        return <Loader className="w-4 h-4 text-gray-500" />;
+        return <Loader className="size-4 text-gray-500" />;
     }
   };
 
@@ -106,105 +111,88 @@ export function PluginManager({ nav, theme, t }: PluginManagerProps) {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <Puzzle className="w-8 h-8 text-primary" />
-        <div>
-          <h1 className="text-3xl font-serif font-bold text-foreground">
-            {t("plugins.title") || "Plugin Manager"}
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            {t("plugins.subtitle") || "Manage InkOS plugins and extensions"}
-          </p>
-        </div>
-      </div>
+      <SectionHeader
+        title="插件管理"
+        description="把扩展插件的启用、状态查看和配置保存收口到工作流配置台。"
+        actions={
+          <>
+            {nav.toWorkflow && (
+              <button onClick={() => nav.toWorkflow?.()} className="rounded-md border border-border/70 bg-background/70 px-3 py-2 text-xs font-medium text-foreground transition-colors hover:bg-muted/70">
+                工作流总览
+              </button>
+            )}
+            <Button variant="outline" onClick={() => void refetch()}>
+              <RefreshCw className="size-4" />
+              刷新
+            </Button>
+          </>
+        }
+      />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Plugin List */}
-        <div className="lg:col-span-2 space-y-4">
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.7fr)]">
+        <div className="space-y-4">
           {plugins.length === 0 ? (
-            <Card className="p-8 text-center">
-              <Puzzle className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-              <p className="text-muted-foreground">
-                {t("plugins.empty") || "No plugins found"}
-              </p>
-              <p className="text-xs text-muted-foreground mt-2">
-                {t("plugins.emptyHint") || "Place plugins in the plugins/ directory"}
-              </p>
-            </Card>
+            <PageEmptyState
+              title="暂无插件"
+              description="将插件放到 plugins/ 目录后，这里会自动发现并展示。"
+              action={
+                <Button variant="outline" onClick={() => void refetch()}>
+                  <RefreshCw className="size-4" />
+                  刷新
+                </Button>
+              }
+            />
           ) : (
             plugins.map((plugin) => (
               <Card
                 key={plugin.manifest.name}
-                className={`p-6 cursor-pointer transition-all hover:shadow-md ${
-                  selectedPlugin === plugin.manifest.name
-                    ? "ring-2 ring-primary"
-                    : ""
-                }`}
+                className={`cursor-pointer p-6 transition-all hover:shadow-md ${selectedPlugin === plugin.manifest.name ? "ring-2 ring-primary" : ""}`}
                 onClick={() => setSelectedPlugin(plugin.manifest.name)}
               >
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0 flex-1">
+                    <div className="mb-2 flex flex-wrap items-center gap-3">
                       {getStateIcon(plugin.state)}
-                      <h3 className="text-lg font-semibold text-foreground">
-                        {plugin.manifest.displayName}
-                      </h3>
+                      <h3 className="text-lg font-semibold text-foreground">{plugin.manifest.displayName}</h3>
                       {getStateBadge(plugin.state)}
                     </div>
-                    <p className="text-sm text-muted-foreground mb-3">
-                      {plugin.manifest.description}
-                    </p>
-                    <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                    <p className="mb-3 text-sm text-muted-foreground">{plugin.manifest.description}</p>
+                    <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
                       <span>v{plugin.manifest.version}</span>
                       {plugin.manifest.author && <span>by {plugin.manifest.author}</span>}
                       <span>{plugin.toolsCount} tools</span>
                       <span>{plugin.hooksCount} hooks</span>
                     </div>
-                    {plugin.error && (
-                      <div className="mt-3 p-2 bg-destructive/10 rounded text-xs text-destructive">
-                        {plugin.error}
-                      </div>
-                    )}
+                    {plugin.error && <div className="mt-3 rounded bg-destructive/10 p-2 text-xs text-destructive">{plugin.error}</div>}
                   </div>
-                  <div className="ml-4">
-                    <Switch
-                      checked={plugin.enabled}
-                      onCheckedChange={(checked) =>
-                        handleToggle(plugin.manifest.name, checked)
-                      }
-                      disabled={loading === plugin.manifest.name}
-                    />
-                  </div>
+                  <Switch
+                    checked={plugin.enabled}
+                    onCheckedChange={(checked) => handleToggle(plugin.manifest.name, checked)}
+                    disabled={loading === plugin.manifest.name}
+                  />
                 </div>
               </Card>
             ))
           )}
         </div>
 
-        {/* Plugin Details */}
         <div className="space-y-4">
           {selected ? (
             <>
               <Card className="p-6">
-                <div className="flex items-center gap-2 mb-4">
-                  <Settings className="w-5 h-5 text-primary" />
-                  <h3 className="text-lg font-semibold text-foreground">
-                    {t("plugins.details") || "Plugin Details"}
-                  </h3>
+                <div className="mb-4 flex items-center gap-2">
+                  <Settings className="size-5 text-primary" />
+                  <h3 className="text-lg font-semibold text-foreground">{t("plugins.details") || "插件详情"}</h3>
                 </div>
                 <Separator className="mb-4" />
                 <div className="space-y-3 text-sm">
                   <div>
                     <span className="text-muted-foreground">Name:</span>
-                    <span className="ml-2 text-foreground font-mono">
-                      {selected.manifest.name}
-                    </span>
+                    <span className="ml-2 font-mono text-foreground">{selected.manifest.name}</span>
                   </div>
                   <div>
                     <span className="text-muted-foreground">Version:</span>
-                    <span className="ml-2 text-foreground">
-                      {selected.manifest.version}
-                    </span>
+                    <span className="ml-2 text-foreground">{selected.manifest.version}</span>
                   </div>
                   <div>
                     <span className="text-muted-foreground">State:</span>
@@ -213,29 +201,20 @@ export function PluginManager({ nav, theme, t }: PluginManagerProps) {
                   {selected.manifest.author && (
                     <div>
                       <span className="text-muted-foreground">Author:</span>
-                      <span className="ml-2 text-foreground">
-                        {selected.manifest.author}
-                      </span>
+                      <span className="ml-2 text-foreground">{selected.manifest.author}</span>
                     </div>
                   )}
                   {selected.manifest.homepage && (
                     <div>
                       <span className="text-muted-foreground">Homepage:</span>
-                      <a
-                        href={selected.manifest.homepage}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="ml-2 text-primary hover:underline"
-                      >
+                      <a href={selected.manifest.homepage} target="_blank" rel="noopener noreferrer" className="ml-2 text-primary hover:underline">
                         {selected.manifest.homepage}
                       </a>
                     </div>
                   )}
                   <div>
                     <span className="text-muted-foreground">Path:</span>
-                    <span className="ml-2 text-foreground font-mono text-xs break-all">
-                      {selected.path}
-                    </span>
+                    <span className="ml-2 break-all font-mono text-xs text-foreground">{selected.path}</span>
                   </div>
                 </div>
 
@@ -243,9 +222,7 @@ export function PluginManager({ nav, theme, t }: PluginManagerProps) {
                   <>
                     <Separator className="my-4" />
                     <div>
-                      <h4 className="text-sm font-semibold text-foreground mb-2">
-                        {t("plugins.tools") || "Tools"}
-                      </h4>
+                      <h4 className="mb-2 text-sm font-semibold text-foreground">{t("plugins.tools") || "Tools"}</h4>
                       <div className="flex flex-wrap gap-2">
                         {selected.manifest.tools.map((tool) => (
                           <Badge key={tool} variant="secondary">
@@ -261,9 +238,7 @@ export function PluginManager({ nav, theme, t }: PluginManagerProps) {
                   <>
                     <Separator className="my-4" />
                     <div>
-                      <h4 className="text-sm font-semibold text-foreground mb-2">
-                        {t("plugins.hooks") || "Hooks"}
-                      </h4>
+                      <h4 className="mb-2 text-sm font-semibold text-foreground">{t("plugins.hooks") || "Hooks"}</h4>
                       <div className="flex flex-wrap gap-2">
                         {selected.manifest.hooks.map((hook) => (
                           <Badge key={hook} variant="outline">
@@ -277,11 +252,9 @@ export function PluginManager({ nav, theme, t }: PluginManagerProps) {
               </Card>
 
               <Card className="p-6">
-                <div className="flex items-center gap-2 mb-4">
-                  <Settings className="w-5 h-5 text-primary" />
-                  <h3 className="text-lg font-semibold text-foreground">
-                    {t("plugins.config") || "Configuration"}
-                  </h3>
+                <div className="mb-4 flex items-center gap-2">
+                  <Settings className="size-5 text-primary" />
+                  <h3 className="text-lg font-semibold text-foreground">{t("plugins.config") || "配置"}</h3>
                 </div>
                 <Separator className="mb-4" />
                 <div className="space-y-4">
@@ -290,9 +263,7 @@ export function PluginManager({ nav, theme, t }: PluginManagerProps) {
                     <Input
                       id="backupDir"
                       value={(configValues.backupDir as string) || "./backups"}
-                      onChange={(e) =>
-                        setConfigValues({ ...configValues, backupDir: e.target.value })
-                      }
+                      onChange={(e) => setConfigValues({ ...configValues, backupDir: e.target.value })}
                       placeholder="./backups"
                     />
                   </div>
@@ -302,35 +273,48 @@ export function PluginManager({ nav, theme, t }: PluginManagerProps) {
                       id="maxBackups"
                       type="number"
                       value={(configValues.maxBackups as number) || 5}
-                      onChange={(e) =>
-                        setConfigValues({
-                          ...configValues,
-                          maxBackups: parseInt(e.target.value),
-                        })
-                      }
+                      onChange={(e) => setConfigValues({ ...configValues, maxBackups: parseInt(e.target.value) })}
                       placeholder="5"
                     />
                   </div>
-                  <Button
-                    onClick={handleSaveConfig}
-                    disabled={loading === selectedPlugin}
-                    className="w-full"
-                  >
-                    {loading === selectedPlugin ? "Saving..." : "Save Configuration"}
+                  <Button onClick={handleSaveConfig} disabled={loading === selectedPlugin} className="w-full">
+                    {loading === selectedPlugin ? "Saving..." : "保存配置"}
                   </Button>
                 </div>
               </Card>
             </>
           ) : (
-            <Card className="p-8 text-center">
-              <Puzzle className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-              <p className="text-muted-foreground">
-                {t("plugins.selectHint") || "Select a plugin to view details"}
-              </p>
-            </Card>
+            <PageEmptyState
+              title="选择一个插件"
+              description="先从左侧列表选择插件，再查看详情、开关状态和扩展配置。"
+              icon={Puzzle}
+            />
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function SectionHeader({
+  title,
+  description,
+  actions,
+}: {
+  title: string;
+  description: string;
+  actions?: ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-4 rounded-2xl border border-border/60 bg-card/80 p-5 shadow-sm backdrop-blur-sm lg:flex-row lg:items-start lg:justify-between">
+      <div className="space-y-2">
+        <p className="text-xs font-medium uppercase tracking-[0.24em] text-muted-foreground">Workflow Workbench</p>
+        <div className="space-y-1">
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">{title}</h1>
+          <p className="max-w-3xl text-sm leading-6 text-muted-foreground">{description}</p>
+        </div>
+      </div>
+      {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
     </div>
   );
 }

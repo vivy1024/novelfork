@@ -1,11 +1,13 @@
-import { useState, useEffect, useRef, useCallback } from "react";
-import { fetchJson } from "../hooks/use-api";
-import type { Theme } from "../hooks/use-theme";
-import type { TFunction } from "../hooks/use-i18n";
-import { useColors } from "../hooks/use-colors";
-import { Compass, Crosshair, Save, AlertTriangle } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AlertTriangle, Compass, Crosshair, Save } from "lucide-react";
 
-// --- 类型定义 ---
+import { PageScaffold } from "@/components/layout/PageScaffold";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { fetchJson } from "../hooks/use-api";
+import { useColors } from "../hooks/use-colors";
+import type { TFunction } from "../hooks/use-i18n";
+import type { Theme } from "../hooks/use-theme";
 
 interface Nav {
   toBook: (id: string) => void;
@@ -18,8 +20,6 @@ interface TruthFileResponse {
 }
 
 type SaveStatus = "idle" | "saving" | "saved" | "error";
-
-// --- 单文件编辑面板 ---
 
 function FilePanel({
   bookId,
@@ -40,30 +40,29 @@ function FilePanel({
   const [status, setStatus] = useState<SaveStatus>("idle");
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  // 用于跟踪最新内容，避免闭包过期
   const contentRef = useRef(content);
   contentRef.current = content;
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // 标记是否有过用户编辑（区分初始加载和用户修改）
   const dirtyRef = useRef(false);
 
-  // 保存逻辑
-  const save = useCallback(async (text: string) => {
-    setStatus("saving");
-    try {
-      await fetchJson(`/books/${bookId}/truth/${fileName}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: text }),
-      });
-      setStatus("saved");
-      dirtyRef.current = false;
-    } catch {
-      setStatus("error");
-    }
-  }, [bookId, fileName]);
+  const save = useCallback(
+    async (text: string) => {
+      setStatus("saving");
+      try {
+        await fetchJson(`/books/${bookId}/truth/${fileName}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: text }),
+        });
+        setStatus("saved");
+        dirtyRef.current = false;
+      } catch {
+        setStatus("error");
+      }
+    },
+    [bookId, fileName],
+  );
 
-  // 加载文件内容
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
@@ -78,7 +77,6 @@ function FilePanel({
       .catch((e: unknown) => {
         if (cancelled) return;
         const msg = e instanceof Error ? e.message : String(e);
-        // 400 表示文件名不在白名单，显示友好提示
         if (msg.includes("400") || msg.toLowerCase().includes("not allowed") || msg.toLowerCase().includes("not found")) {
           setLoadError(`该文件 (${fileName}) 暂未被后端支持，请联系管理员将其加入 truth files 白名单。`);
         } else {
@@ -87,17 +85,17 @@ function FilePanel({
         setLoading(false);
       });
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [bookId, fileName]);
 
-  // 清理定时器
   useEffect(() => {
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
   }, []);
 
-  // 文本变更：标记 dirty + 启动 debounce 自动保存
   const handleChange = (value: string) => {
     setContent(value);
     dirtyRef.current = true;
@@ -109,87 +107,85 @@ function FilePanel({
     }, 3000);
   };
 
-  // 手动保存
   const handleManualSave = () => {
     if (timerRef.current) clearTimeout(timerRef.current);
     void save(contentRef.current);
   };
 
-  // 状态指示器文案和样式
   const statusLabel = (): { text: string; className: string } => {
     switch (status) {
-      case "saving": return { text: "保存中…", className: "text-amber-500" };
-      case "saved":  return { text: "已保存", className: "text-emerald-500" };
-      case "error":  return { text: "保存失败", className: "text-destructive" };
-      default:       return dirtyRef.current
-        ? { text: "未保存", className: "text-muted-foreground" }
-        : { text: "", className: "" };
+      case "saving":
+        return { text: "保存中…", className: "text-amber-500" };
+      case "saved":
+        return { text: "已保存", className: "text-emerald-500" };
+      case "error":
+        return { text: "保存失败", className: "text-destructive" };
+      default:
+        return dirtyRef.current ? { text: "未保存", className: "text-muted-foreground" } : { text: "", className: "" };
     }
   };
 
   const st = statusLabel();
 
-  // 加载中
   if (loading) {
     return (
-      <div className={`border ${c.cardStatic} rounded-lg p-5 flex-1 min-h-[400px] flex items-center justify-center`}>
-        <span className="text-muted-foreground text-sm">加载中…</span>
-      </div>
+      <Card className={c.cardStatic}>
+        <CardContent className="flex min-h-[400px] items-center justify-center p-5 text-sm text-muted-foreground">
+          加载中…
+        </CardContent>
+      </Card>
     );
   }
 
-  // 后端不支持该文件
   if (loadError) {
     return (
-      <div className={`border ${c.cardStatic} rounded-lg p-5 flex-1 min-h-[400px] flex flex-col`}>
-        <div className="flex items-center gap-2 mb-3">
-          {icon}
-          <h2 className="font-semibold text-lg">{title}</h2>
-        </div>
-        <div className="flex-1 flex items-center justify-center">
-          <div className="flex items-start gap-3 max-w-md text-sm bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/30 rounded-lg p-4">
-            <AlertTriangle size={18} className="shrink-0 mt-0.5" />
+      <Card className={`${c.cardStatic} border-amber-500/20 bg-amber-500/5`}>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-lg">
+            {icon}
+            {title}
+          </CardTitle>
+          <CardDescription>{description}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-700 dark:text-amber-400">
+            <AlertTriangle size={18} className="mt-0.5 shrink-0" />
             <span>{loadError}</span>
           </div>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
     );
   }
 
   return (
-    <div className={`border ${c.cardStatic} rounded-lg p-5 flex-1 min-h-[400px] flex flex-col`}>
-      {/* 标题栏 */}
-      <div className="flex items-center justify-between mb-1">
-        <div className="flex items-center gap-2">
-          {icon}
-          <h2 className="font-semibold text-lg">{title}</h2>
+    <Card className={c.cardStatic}>
+      <CardHeader className="space-y-1 pb-3">
+        <div className="flex items-start justify-between gap-3">
+          <CardTitle className="flex items-center gap-2 text-lg">
+            {icon}
+            {title}
+          </CardTitle>
+          <div className="flex items-center gap-3">
+            {st.text && <span className={`text-xs ${st.className}`}>{st.text}</span>}
+            <Button size="sm" onClick={handleManualSave} disabled={status === "saving"}>
+              <Save className="mr-2 size-4" />
+              保存
+            </Button>
+          </div>
         </div>
-        <div className="flex items-center gap-3">
-          {st.text && <span className={`text-xs ${st.className}`}>{st.text}</span>}
-          <button
-            onClick={handleManualSave}
-            disabled={status === "saving"}
-            className={`inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-md ${c.btnPrimary} disabled:opacity-50`}
-          >
-            <Save size={14} />
-            保存
-          </button>
-        </div>
-      </div>
-      <p className="text-xs text-muted-foreground mb-3">{description}</p>
-
-      {/* 编辑器 */}
-      <textarea
-        value={content}
-        onChange={(e) => handleChange(e.target.value)}
-        placeholder={`在此编写 ${title}…`}
-        className={`${c.input} flex-1 rounded-md p-3 text-sm font-mono leading-relaxed resize-none min-h-[300px]`}
-      />
-    </div>
+        <CardDescription>{description}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <textarea
+          value={content}
+          onChange={(e) => handleChange(e.target.value)}
+          placeholder={`在此编写 ${title}…`}
+          className={`${c.input} min-h-[320px] w-full resize-none rounded-xl p-3 font-mono text-sm leading-relaxed`}
+        />
+      </CardContent>
+    </Card>
   );
 }
-
-// --- 主组件 ---
 
 export function IntentEditor({
   bookId,
@@ -205,27 +201,17 @@ export function IntentEditor({
   const c = useColors(theme);
 
   return (
-    <div className="space-y-6">
-      {/* 面包屑 */}
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <button onClick={nav.toDashboard} className={c.link}>
-          {t("bread.home")}
-        </button>
-        <span className="text-border">/</span>
-        <button onClick={() => nav.toBook(bookId)} className={c.link}>
-          {bookId}
-        </button>
-        <span className="text-border">/</span>
-        <span className="text-foreground">写作意图</span>
-      </div>
-
-      <h1 className="font-serif text-3xl flex items-center gap-3">
-        <Compass size={28} className="text-primary" />
-        写作意图与当前焦点
-      </h1>
-
-      {/* 双栏编辑区 */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <PageScaffold
+      title="写作意图与当前焦点"
+      description="把作者意图和当前写作焦点拆成两个可独立维护的文件，便于随时校准故事方向。"
+      actions={
+        <>
+          <Button variant="outline" onClick={nav.toDashboard}>{t("bread.books")}</Button>
+          <Button variant="outline" onClick={() => nav.toBook(bookId)}>返回书籍</Button>
+        </>
+      }
+    >
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <FilePanel
           bookId={bookId}
           fileName="author_intent.md"
@@ -243,6 +229,6 @@ export function IntentEditor({
           c={c}
         />
       </div>
-    </div>
+    </PageScaffold>
   );
 }

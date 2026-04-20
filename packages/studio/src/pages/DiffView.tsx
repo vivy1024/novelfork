@@ -1,9 +1,14 @@
-import { useState, useEffect } from "react";
-import { useApi, fetchJson } from "../hooks/use-api";
-import type { Theme } from "../hooks/use-theme";
-import type { TFunction } from "../hooks/use-i18n";
+import { useEffect, useState } from "react";
+import { ChevronLeft, GitCompare, Loader2, Minus, Plus } from "lucide-react";
+
+import { PageEmptyState } from "@/components/layout/PageEmptyState";
+import { PageScaffold } from "@/components/layout/PageScaffold";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { fetchJson, useApi } from "../hooks/use-api";
 import { useColors } from "../hooks/use-colors";
-import { ChevronLeft, GitCompare, Plus, Minus } from "lucide-react";
+import type { TFunction } from "../hooks/use-i18n";
+import type { Theme } from "../hooks/use-theme";
 
 interface Version {
   readonly version: number;
@@ -44,7 +49,6 @@ export function DiffView({ bookId, chapterNumber, nav, theme, t }: {
   const [diffLoading, setDiffLoading] = useState(false);
   const [diffError, setDiffError] = useState<string | null>(null);
 
-  // Set default versions when data loads
   useEffect(() => {
     if (!versions || versions.length < 2) return;
     const sorted = [...versions].sort((a, b) => a.version - b.version);
@@ -52,7 +56,6 @@ export function DiffView({ bookId, chapterNumber, nav, theme, t }: {
     setToVersion(sorted[sorted.length - 1].version);
   }, [versions]);
 
-  // Fetch diff when both versions are selected
   useEffect(() => {
     if (fromVersion === null || toVersion === null) return;
     let cancelled = false;
@@ -61,165 +64,176 @@ export function DiffView({ bookId, chapterNumber, nav, theme, t }: {
     fetchJson<DiffResponse>(
       `/books/${bookId}/chapters/${chapterNumber}/diff?from=${fromVersion}&to=${toVersion}`,
     )
-      .then((data) => { if (!cancelled) setDiff(data); })
-      .catch((e) => { if (!cancelled) setDiffError(e instanceof Error ? e.message : String(e)); })
-      .finally(() => { if (!cancelled) setDiffLoading(false); });
-    return () => { cancelled = true; };
+      .then((data) => {
+        if (!cancelled) setDiff(data);
+      })
+      .catch((e) => {
+        if (!cancelled) setDiffError(e instanceof Error ? e.message : String(e));
+      })
+      .finally(() => {
+        if (!cancelled) setDiffLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [bookId, chapterNumber, fromVersion, toVersion]);
 
-  // Compute word count change
   const fromWc = versions?.find((v) => v.version === fromVersion)?.wordCount ?? 0;
   const toWc = versions?.find((v) => v.version === toVersion)?.wordCount ?? 0;
   const wcDelta = toWc - fromWc;
 
-  if (loading) return (
-    <div className="flex flex-col items-center justify-center py-32 space-y-4">
-      <div className="w-8 h-8 border-2 border-primary/20 border-t-primary rounded-full animate-spin" />
-      <span className="text-sm text-muted-foreground">{t("common.loading")}</span>
-    </div>
-  );
-
-  if (error) return (
-    <div className="text-destructive p-8 bg-destructive/5 rounded-xl border border-destructive/20">
-      {t("common.error")}: {error}
-    </div>
-  );
-
-  if (!versions || versions.length === 0) return (
-    <div className="space-y-6">
-      <button
-        onClick={() => nav.toChapter(bookId, chapterNumber)}
-        className="flex items-center gap-2 text-sm font-bold text-muted-foreground hover:text-primary transition-all"
+  if (loading) {
+    return (
+      <PageScaffold
+        title={t("diff.title")}
+        description={`章节 ${chapterNumber} 的版本对比。`}
+        actions={<Button variant="outline" onClick={() => nav.toChapter(bookId, chapterNumber)}>返回章节</Button>}
       >
-        <ChevronLeft size={16} />
-        {t("reader.backToList")}
-      </button>
-      <div className="text-center py-24 text-muted-foreground">{t("diff.noVersions")}</div>
-    </div>
-  );
+        <div className="flex min-h-[240px] items-center justify-center text-sm text-muted-foreground">
+          <Loader2 className="mr-2 size-4 animate-spin" />
+          {t("common.loading")}
+        </div>
+      </PageScaffold>
+    );
+  }
+
+  if (error) {
+    return (
+      <PageScaffold
+        title={t("diff.title")}
+        description={`章节 ${chapterNumber} 的版本对比。`}
+        actions={<Button variant="outline" onClick={() => nav.toChapter(bookId, chapterNumber)}>返回章节</Button>}
+      >
+        <Card className="border-destructive/20 bg-destructive/5">
+          <CardContent className="p-4 text-sm text-destructive">
+            {t("common.error")}: {error}
+          </CardContent>
+        </Card>
+      </PageScaffold>
+    );
+  }
+
+  if (!versions || versions.length === 0) {
+    return (
+      <PageScaffold
+        title={t("diff.title")}
+        description={`章节 ${chapterNumber} 的版本对比。`}
+        actions={<Button variant="outline" onClick={() => nav.toChapter(bookId, chapterNumber)}>返回章节</Button>}
+      >
+        <PageEmptyState
+          title={t("diff.noVersions")}
+          description="当前章节还没有可对比的版本，先保存几次内容后再回来查看。"
+          icon={GitCompare}
+        />
+      </PageScaffold>
+    );
+  }
 
   const sorted = [...versions].sort((a, b) => a.version - b.version);
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8 fade-in">
-      {/* Breadcrumb & back */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <nav className="flex items-center gap-2 text-[13px] font-medium text-muted-foreground">
-          <button onClick={nav.toDashboard} className="hover:text-primary transition-colors">
-            {t("bread.books")}
-          </button>
-          <span className="text-border">/</span>
-          <button onClick={() => nav.toBook(bookId)} className="hover:text-primary transition-colors truncate max-w-[120px]">
-            {bookId}
-          </button>
-          <span className="text-border">/</span>
-          <button onClick={() => nav.toChapter(bookId, chapterNumber)} className="hover:text-primary transition-colors">
-            {t("bread.chapter").replace("{n}", String(chapterNumber))}
-          </button>
-          <span className="text-border">/</span>
-          <span className="text-foreground">{t("diff.title")}</span>
-        </nav>
+    <PageScaffold
+      title={t("diff.title")}
+      description={`章节 ${chapterNumber} · ${versions.length} 个版本可供对比。`}
+      actions={
+        <>
+          <Button variant="outline" onClick={() => nav.toDashboard()}>返回书单</Button>
+          <Button variant="outline" onClick={() => nav.toChapter(bookId, chapterNumber)}>
+            <ChevronLeft className="mr-2 size-4" />
+            返回章节
+          </Button>
+        </>
+      }
+    >
+      <Card className={c.cardStatic}>
+        <CardContent className="space-y-4 p-5">
+          <div className="flex flex-wrap items-center gap-4">
+            <label className="flex items-center gap-2 text-sm text-muted-foreground">
+              {t("diff.from")}
+              <select
+                value={fromVersion ?? ""}
+                onChange={(e) => setFromVersion(Number(e.target.value))}
+                className="rounded-lg border border-border bg-secondary px-3 py-1.5 text-sm text-foreground"
+              >
+                {sorted.map((v) => (
+                  <option key={v.version} value={v.version}>
+                    v{v.version} — {new Date(v.timestamp).toLocaleString()} ({v.wordCount.toLocaleString()} {t("book.words")})
+                  </option>
+                ))}
+              </select>
+            </label>
 
-        <button
-          onClick={() => nav.toChapter(bookId, chapterNumber)}
-          className="flex items-center gap-2 px-4 py-2 text-xs font-bold bg-secondary text-muted-foreground rounded-xl hover:text-foreground hover:bg-secondary/80 transition-all border border-border/50"
-        >
-          <ChevronLeft size={14} />
-          {t("reader.backToList")}
-        </button>
-      </div>
+            <label className="flex items-center gap-2 text-sm text-muted-foreground">
+              {t("diff.to")}
+              <select
+                value={toVersion ?? ""}
+                onChange={(e) => setToVersion(Number(e.target.value))}
+                className="rounded-lg border border-border bg-secondary px-3 py-1.5 text-sm text-foreground"
+              >
+                {sorted.map((v) => (
+                  <option key={v.version} value={v.version}>
+                    v{v.version} — {new Date(v.timestamp).toLocaleString()} ({v.wordCount.toLocaleString()} {t("book.words")})
+                  </option>
+                ))}
+              </select>
+            </label>
 
-      {/* Title */}
-      <div className="flex items-center gap-3">
-        <GitCompare size={22} className="text-primary" />
-        <h1 className="text-2xl font-serif font-medium text-foreground">
-          {t("diff.title")} — {t("bread.chapter").replace("{n}", String(chapterNumber))}
-        </h1>
-      </div>
-
-      {/* Version selectors & word count summary */}
-      <div className="flex flex-wrap items-center gap-4">
-        <label className="flex items-center gap-2 text-sm text-muted-foreground">
-          {t("diff.from")}
-          <select
-            value={fromVersion ?? ""}
-            onChange={(e) => setFromVersion(Number(e.target.value))}
-            className="rounded-lg border border-border bg-secondary px-3 py-1.5 text-sm text-foreground focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
-          >
-            {sorted.map((v) => (
-              <option key={v.version} value={v.version}>
-                v{v.version} — {new Date(v.timestamp).toLocaleString()} ({v.wordCount.toLocaleString()} {t("book.words")})
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="flex items-center gap-2 text-sm text-muted-foreground">
-          {t("diff.to")}
-          <select
-            value={toVersion ?? ""}
-            onChange={(e) => setToVersion(Number(e.target.value))}
-            className="rounded-lg border border-border bg-secondary px-3 py-1.5 text-sm text-foreground focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
-          >
-            {sorted.map((v) => (
-              <option key={v.version} value={v.version}>
-                v{v.version} — {new Date(v.timestamp).toLocaleString()} ({v.wordCount.toLocaleString()} {t("book.words")})
-              </option>
-            ))}
-          </select>
-        </label>
-
-        {fromVersion !== null && toVersion !== null && (
-          <div className="flex items-center gap-3 ml-auto text-sm">
-            <span className="flex items-center gap-1 text-emerald-700 dark:text-emerald-300">
-              <Plus size={14} />
-              {t("diff.additions")}: {toWc > fromWc ? `+${wcDelta.toLocaleString()}` : "0"}
-            </span>
-            <span className="flex items-center gap-1 text-red-700 dark:text-red-300">
-              <Minus size={14} />
-              {t("diff.deletions")}: {toWc < fromWc ? wcDelta.toLocaleString() : "0"}
-            </span>
+            {fromVersion !== null && toVersion !== null && (
+              <div className="ml-auto flex items-center gap-3 text-sm">
+                <span className="flex items-center gap-1 text-emerald-700 dark:text-emerald-300">
+                  <Plus size={14} />
+                  {t("diff.additions")}: {toWc > fromWc ? `+${wcDelta.toLocaleString()}` : "0"}
+                </span>
+                <span className="flex items-center gap-1 text-red-700 dark:text-red-300">
+                  <Minus size={14} />
+                  {t("diff.deletions")}: {toWc < fromWc ? wcDelta.toLocaleString() : "0"}
+                </span>
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        </CardContent>
+      </Card>
 
-      {/* Diff content */}
       {diffLoading && (
-        <div className="flex items-center justify-center py-16">
-          <div className="w-8 h-8 border-2 border-primary/20 border-t-primary rounded-full animate-spin" />
+        <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
+          <Loader2 className="mr-2 size-4 animate-spin" />
+          {t("common.loading")}
         </div>
       )}
 
       {diffError && (
-        <div className="text-destructive p-6 bg-destructive/5 rounded-xl border border-destructive/20 text-sm">
-          {t("common.error")}: {diffError}
-        </div>
+        <Card className="border-destructive/20 bg-destructive/5">
+          <CardContent className="p-4 text-sm text-destructive">
+            {t("common.error")}: {diffError}
+          </CardContent>
+        </Card>
       )}
 
       {diff && !diffLoading && (
-        <div className="rounded-2xl border border-border overflow-hidden font-mono text-sm">
-          {diff.hunks.map((hunk, hi) => (
-            <div key={hi}>
-              {hunk.lines.map((line, li) => {
-                const base =
-                  hunk.type === "add"
-                    ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-                    : hunk.type === "remove"
-                      ? "bg-red-500/10 text-red-700 dark:text-red-300"
-                      : "text-foreground";
-                const prefix =
-                  hunk.type === "add" ? "+" : hunk.type === "remove" ? "-" : " ";
-                return (
-                  <div key={`${hi}-${li}`} className={`px-4 py-0.5 whitespace-pre-wrap ${base}`}>
-                    <span className="select-none opacity-50 mr-3">{prefix}</span>
-                    {line}
-                  </div>
-                );
-              })}
-            </div>
-          ))}
-        </div>
+        <Card className={c.cardStatic}>
+          <CardContent className="overflow-hidden p-0 font-mono text-sm">
+            {diff.hunks.map((hunk, hi) => (
+              <div key={hi}>
+                {hunk.lines.map((line, li) => {
+                  const base =
+                    hunk.type === "add"
+                      ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                      : hunk.type === "remove"
+                        ? "bg-red-500/10 text-red-700 dark:text-red-300"
+                        : "text-foreground";
+                  const prefix = hunk.type === "add" ? "+" : hunk.type === "remove" ? "-" : " ";
+                  return (
+                    <div key={`${hi}-${li}`} className={`whitespace-pre-wrap px-4 py-0.5 ${base}`}>
+                      <span className="mr-3 select-none opacity-50">{prefix}</span>
+                      {line}
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </CardContent>
+        </Card>
       )}
-    </div>
+    </PageScaffold>
   );
 }

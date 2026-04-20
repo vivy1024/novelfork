@@ -18,13 +18,16 @@ export interface NewSessionPayload {
   readonly title: string;
 }
 
+export type SessionPresetId = (typeof SESSION_PRESETS)[number]["id"];
+
 interface NewSessionDialogProps {
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
   readonly onCreate: (payload: NewSessionPayload) => void;
+  readonly initialPresetId?: SessionPresetId;
 }
 
-const SESSION_PRESETS = [
+export const SESSION_PRESETS = [
   {
     id: "writer",
     title: "Writer",
@@ -55,35 +58,36 @@ const SESSION_PRESETS = [
   },
 ] as const;
 
-function defaultTitleFor(presetId: string) {
+function defaultTitleFor(presetId: SessionPresetId) {
   const preset = SESSION_PRESETS.find((item) => item.id === presetId) ?? SESSION_PRESETS[0];
   return `${preset.title} 会话`;
 }
 
-export function NewSessionDialog({ open, onOpenChange, onCreate }: NewSessionDialogProps) {
-  const [presetId, setPresetId] = useState<(typeof SESSION_PRESETS)[number]["id"]>("writer");
-  const [agentId, setAgentId] = useState("writer");
-  const [title, setTitle] = useState(defaultTitleFor("writer"));
+export function NewSessionDialog({ open, onOpenChange, onCreate, initialPresetId = "writer" }: NewSessionDialogProps) {
+  const [presetId, setPresetId] = useState<SessionPresetId>(initialPresetId);
+  const [agentId, setAgentId] = useState<string>(initialPresetId);
+  const [title, setTitle] = useState(defaultTitleFor(initialPresetId));
   const [titleTouched, setTitleTouched] = useState(false);
 
   useEffect(() => {
     if (!open) return;
-    setPresetId("writer");
-    setAgentId("writer");
-    setTitle(defaultTitleFor("writer"));
+    setPresetId(initialPresetId);
+    setAgentId(initialPresetId);
+    setTitle(defaultTitleFor(initialPresetId));
     setTitleTouched(false);
-  }, [open]);
+  }, [open, initialPresetId]);
 
   const selectedPreset = useMemo(
     () => SESSION_PRESETS.find((item) => item.id === presetId) ?? SESSION_PRESETS[0],
     [presetId],
   );
 
-  const handlePresetSelect = (nextPresetId: (typeof SESSION_PRESETS)[number]["id"]) => {
+  const handlePresetSelect = (nextPresetId: SessionPresetId) => {
+    const generatedTitle = defaultTitleFor(nextPresetId);
     setPresetId(nextPresetId);
     setAgentId(nextPresetId);
     if (!titleTouched || !title.trim() || title === defaultTitleFor(presetId)) {
-      setTitle(defaultTitleFor(nextPresetId));
+      setTitle(generatedTitle);
     }
   };
 
@@ -110,6 +114,21 @@ export function NewSessionDialog({ open, onOpenChange, onCreate }: NewSessionDia
         </DialogHeader>
 
         <div className="space-y-6 px-6 pb-6">
+          <div className="rounded-2xl border border-border/60 bg-muted/30 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">当前对象</p>
+                <h3 className="mt-1 text-sm font-medium text-foreground">{selectedPreset.label}</h3>
+              </div>
+              <span className="rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-[10px] font-medium text-primary">
+                {selectedPreset.title}
+              </span>
+            </div>
+            <p className="mt-2 text-xs leading-5 text-muted-foreground">
+              {selectedPreset.description} 选定后会自动带出同名会话标题，便于把会话当作对象来创建。
+            </p>
+          </div>
+
           <div className="grid gap-3 sm:grid-cols-2">
             {SESSION_PRESETS.map((preset) => {
               const Icon = preset.icon;

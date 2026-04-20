@@ -3,36 +3,36 @@ import { describe, expect, it } from "vitest";
 import { sanitizeRestoredTabSession } from "./routes";
 
 describe("sanitizeRestoredTabSession", () => {
-  it("drops removed legacy routes and keeps supported pages", () => {
+  it("maps legacy workflow/admin routes into the grouped shell", () => {
     const session = sanitizeRestoredTabSession({
       tabs: [
         { id: "dashboard", route: { page: "dashboard" } },
-        { id: "workflow", route: { page: "workflow" } },
         { id: "agents", route: { page: "agents" } },
-        { id: "config", route: { page: "config" } },
+        { id: "daemon", route: { page: "daemon" } },
         { id: "book:alpha", route: { page: "book", bookId: "alpha" } },
       ],
-      activeTabId: "workflow",
+      activeTabId: "agents",
     });
 
     expect(session).toEqual({
       tabs: [
         { id: "dashboard", route: { page: "dashboard" } },
-        { id: "workflow", route: { page: "workflow" } },
+        { id: "workflow:agents", route: { page: "workflow", section: "agents" } },
+        { id: "admin:daemon", route: { page: "admin", section: "daemon" } },
         { id: "book:alpha", route: { page: "book", bookId: "alpha" } },
       ],
-      activeTabId: "workflow",
+      activeTabId: "workflow:agents",
     });
   });
 
   it("falls back to the first surviving tab when the active route was removed", () => {
     const session = sanitizeRestoredTabSession({
       tabs: [
-        { id: "agents", route: { page: "agents" } },
+        { id: "legacy-removed", route: { page: "chat-windows-legacy" } },
         { id: "dashboard", route: { page: "dashboard" } },
         { id: "sessions", route: { page: "sessions" } },
       ],
-      activeTabId: "agents",
+      activeTabId: "legacy-removed",
     });
 
     expect(session).toEqual({
@@ -47,10 +47,10 @@ describe("sanitizeRestoredTabSession", () => {
   it("returns undefined when no supported routes survive", () => {
     const session = sanitizeRestoredTabSession({
       tabs: [
-        { id: "agents", route: { page: "agents" } },
-        { id: "config", route: { page: "config" } },
+        { id: "legacy-1", route: { page: "chat-windows-legacy" } },
+        { id: "legacy-2", route: { page: "config-legacy" } },
       ],
-      activeTabId: "agents",
+      activeTabId: "legacy-1",
     });
 
     expect(session).toBeUndefined();

@@ -1,9 +1,10 @@
-/**
- * API 供应商管理标签页
- */
+import { useEffect, useMemo, useState } from "react";
+import { CheckCircle2, Eye, EyeOff, PlugZap, Server, Unplug } from "lucide-react";
 
-import { useState, useEffect } from "react";
-import { Server, CheckCircle, XCircle, Eye, EyeOff } from "lucide-react";
+import { PageEmptyState } from "@/components/layout/PageEmptyState";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { fetchJson } from "../../hooks/use-api";
 
 interface Provider {
@@ -17,13 +18,20 @@ interface Provider {
   priority: number;
 }
 
+interface ConnectionFeedback {
+  tone: "success" | "error";
+  message: string;
+}
+
 export function ProvidersTab() {
   const [providers, setProviders] = useState<Provider[]>([]);
   const [loading, setLoading] = useState(true);
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
+  const [busyProviderId, setBusyProviderId] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<ConnectionFeedback | null>(null);
 
   useEffect(() => {
-    loadProviders();
+    void loadProviders();
   }, []);
 
   const loadProviders = async () => {
@@ -31,38 +39,73 @@ export function ProvidersTab() {
       const data = await fetchJson<{ providers: Provider[] }>("/api/admin/providers");
       setProviders(data.providers);
     } catch (error) {
-      console.error("Failed to load providers:", error);
+      setFeedback({
+        tone: "error",
+        message: error instanceof Error ? error.message : "加载供应商失败",
+      });
     } finally {
       setLoading(false);
     }
   };
 
+  const summary = useMemo(() => {
+    const enabledCount = providers.filter((provider) => provider.enabled).length;
+    const modelCount = providers.reduce((sum, provider) => sum + provider.models.length, 0);
+    return {
+      providerCount: providers.length,
+      enabledCount,
+      modelCount,
+    };
+  }, [providers]);
+
   const toggleProvider = async (id: string, enabled: boolean) => {
+    setBusyProviderId(id);
     try {
       await fetchJson(`/api/providers/${id}/toggle`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ enabled }),
       });
+      setFeedback({
+        tone: "success",
+        message: enabled ? "供应商已启用" : "供应商已禁用",
+      });
       await loadProviders();
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Failed to toggle provider");
+      setFeedback({
+        tone: "error",
+        message: error instanceof Error ? error.message : "切换供应商失败",
+      });
+    } finally {
+      setBusyProviderId(null);
     }
   };
 
   const testConnection = async (id: string) => {
+    setBusyProviderId(id);
     try {
       const result = await fetchJson<{ success: boolean; latency?: number; error?: string }>(
         `/api/providers/${id}/test`,
-        { method: "POST" }
+        { method: "POST" },
       );
-      if (result.success) {
-        alert(`连接成功！延迟: ${result.latency}ms`);
-      } else {
-        alert(`连接失败: ${result.error}`);
-      }
+      setFeedback(
+        result.success
+          ? {
+              tone: "success",
+              message: `连接成功，延迟 ${result.latency ?? "--"}ms`,
+            }
+          : {
+              tone: "error",
+              message: `连接失败：${result.error ?? "未知错误"}`,
+            },
+      );
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Failed to test connection");
+      setFeedback({
+        tone: "error",
+        message: error instanceof Error ? error.message : "连接测试失败",
+      });
+    } finally {
+      setBusyProviderId(null);
     }
   };
 
@@ -73,98 +116,129 @@ export function ProvidersTab() {
   };
 
   if (loading) {
-    return <div className="text-center py-8 text-gray-600 dark:text-gray-400">加载中...</div>;
+    return <div className="py-10 text-center text-sm text-muted-foreground">正在加载供应商状态…</div>;
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-white">API 供应商列表</h2>
-        <div className="text-sm text-gray-600 dark:text-gray-400">
-          共 {providers.length} 个供应商，{providers.filter((p) => p.enabled).length} 个已启用
+    <div className="space-y-6">
+      <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+        <div>
+          <h2 className="text-xl font-semibold text-foreground">供应商总览</h2>
+          <p className="text-sm text-muted-foreground">统一查看模型资源池、启用状态、验证情况与连接反馈。</p>
         </div>
+        <Button variant="outline" onClick={() => void loadProviders()}>
+          刷新供应商
+        </Button>
       </div>
 
-      <div className="grid gap-4">
-        {providers.map((provider) => (
-          <div
-            key={provider.id}
-            className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700"
-          >
-            <div className="flex items-start justify-between">
-              <div className="flex items-start gap-3 flex-1">
-                <div className="p-2 bg-blue-100 dark:bg-blue-900 rounded">
-                  <Server size={24} className="text-blue-600 dark:text-blue-400" />
-                </div>
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white">{provider.name}</h3>
-                    <span className="text-xs px-2 py-1 rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400">
-                      {provider.type}
-                    </span>
-                    {provider.enabled ? (
-                      <CheckCircle size={16} className="text-green-500" />
-                    ) : (
-                      <XCircle size={16} className="text-gray-400" />
-                    )}
-                  </div>
-                  <div className="mt-2 space-y-1 text-sm text-gray-600 dark:text-gray-400">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">API Key:</span>
-                      <span className="font-mono">
-                        {showKeys[provider.id] ? provider.apiKey || "未配置" : maskApiKey(provider.apiKey)}
-                      </span>
-                      <button
-                        onClick={() => setShowKeys({ ...showKeys, [provider.id]: !showKeys[provider.id] })}
-                        className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
-                      >
-                        {showKeys[provider.id] ? <EyeOff size={14} /> : <Eye size={14} />}
-                      </button>
+      {feedback && (
+        <Card className={feedback.tone === "success" ? "border-emerald-500/30 bg-emerald-500/5" : "border-destructive/30 bg-destructive/5"}>
+          <CardContent className="py-4 text-sm">
+            {feedback.message}
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="grid gap-4 md:grid-cols-3">
+        <SummaryCard title="供应商总数" value={String(summary.providerCount)} description="已接入的模型供应来源" />
+        <SummaryCard title="启用中" value={String(summary.enabledCount)} description="当前参与调度的供应商数量" />
+        <SummaryCard title="模型总数" value={String(summary.modelCount)} description="已注册到资源池的模型数量" />
+      </div>
+
+      {providers.length === 0 ? (
+        <PageEmptyState title="暂无 API 供应商" description="接入供应商后，这里会展示状态、模型数量和连接检查结果。" />
+      ) : (
+        <div className="grid gap-4">
+          {providers.map((provider) => {
+            const isBusy = busyProviderId === provider.id;
+            return (
+              <Card key={provider.id}>
+                <CardHeader className="gap-3 md:flex-row md:items-start md:justify-between">
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <CardTitle className="text-lg">{provider.name}</CardTitle>
+                      <Badge variant="outline">{provider.type}</Badge>
+                      <Badge variant={provider.enabled ? "secondary" : "outline"}>
+                        {provider.enabled ? "已启用" : "未启用"}
+                      </Badge>
                     </div>
-                    {provider.baseUrl && (
-                      <div>
-                        <span className="font-medium">Base URL:</span> {provider.baseUrl}
+                    <CardDescription>
+                      优先级 {provider.priority}
+                      {provider.baseUrl ? ` · ${provider.baseUrl}` : " · 使用默认网关地址"}
+                    </CardDescription>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant={provider.enabled ? "outline" : "default"}
+                      disabled={isBusy}
+                      onClick={() => void toggleProvider(provider.id, !provider.enabled)}
+                    >
+                      {provider.enabled ? <Unplug className="size-4" /> : <PlugZap className="size-4" />}
+                      {provider.enabled ? "禁用" : "启用"}
+                    </Button>
+                    <Button variant="secondary" disabled={isBusy} onClick={() => void testConnection(provider.id)}>
+                      <CheckCircle2 className="size-4" />
+                      测试连接
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px]">
+                  <div className="space-y-3">
+                    <div className="rounded-xl border border-border/70 bg-muted/30 p-3">
+                      <div className="mb-1 text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">API Key</div>
+                      <div className="flex items-center gap-2 text-sm text-foreground">
+                        <span className="font-mono">{showKeys[provider.id] ? provider.apiKey || "未配置" : maskApiKey(provider.apiKey)}</span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setShowKeys((prev) => ({ ...prev, [provider.id]: !prev[provider.id] }))}
+                        >
+                          {showKeys[provider.id] ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                        </Button>
                       </div>
-                    )}
-                    <div>
-                      <span className="font-medium">模型:</span>{" "}
-                      {provider.models.length > 0 ? provider.models.join(", ") : "无"}
                     </div>
-                    <div>
-                      <span className="font-medium">优先级:</span> {provider.priority}
+                    <div className="rounded-xl border border-border/70 p-3">
+                      <div className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">模型资源池</div>
+                      <div className="flex flex-wrap gap-2">
+                        {provider.models.length > 0 ? (
+                          provider.models.map((model) => (
+                            <Badge key={model} variant="secondary">{model}</Badge>
+                          ))
+                        ) : (
+                          <span className="text-sm text-muted-foreground">暂无模型</span>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
-              </div>
-              <div className="flex flex-col gap-2">
-                <button
-                  onClick={() => toggleProvider(provider.id, !provider.enabled)}
-                  className={`px-4 py-2 rounded text-sm font-medium ${
-                    provider.enabled
-                      ? "bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
-                      : "bg-green-500 text-white hover:bg-green-600"
-                  }`}
-                >
-                  {provider.enabled ? "禁用" : "启用"}
-                </button>
-                <button
-                  onClick={() => testConnection(provider.id)}
-                  className="px-4 py-2 bg-blue-500 text-white rounded text-sm font-medium hover:bg-blue-600"
-                >
-                  测试连接
-                </button>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {providers.length === 0 && (
-        <div className="text-center py-12 text-gray-500 dark:text-gray-400">
-          <Server size={48} className="mx-auto mb-4 opacity-50" />
-          <p>暂无 API 供应商</p>
+                  <div className="rounded-xl border border-dashed border-border/70 p-4 text-sm text-muted-foreground">
+                    <div className="mb-3 flex items-center gap-2 text-foreground">
+                      <Server className="size-4 text-primary" />
+                      连接摘要
+                    </div>
+                    <ul className="space-y-2">
+                      <li>启用状态：{provider.enabled ? "已参与调度" : "当前未参与"}</li>
+                      <li>模型数量：{provider.models.length}</li>
+                      <li>接入方式：{provider.type}</li>
+                    </ul>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       )}
     </div>
+  );
+}
+
+function SummaryCard({ title, value, description }: { title: string; value: string; description: string }) {
+  return (
+    <Card size="sm">
+      <CardHeader>
+        <CardDescription>{title}</CardDescription>
+        <CardTitle className="text-3xl">{value}</CardTitle>
+      </CardHeader>
+      <CardContent className="pt-0 text-xs text-muted-foreground">{description}</CardContent>
+    </Card>
   );
 }
