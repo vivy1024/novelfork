@@ -34,10 +34,17 @@ export interface RuntimeControlSettings {
   contextTruncateTargetPercent: number;
 }
 
+export interface ModelDefaultSettings {
+  defaultSessionModel: string;
+  summaryModel: string;
+  subagentModelPool: string[];
+}
+
 export interface UserConfig {
   profile: UserProfile;
   preferences: UserPreferences;
   runtimeControls: RuntimeControlSettings;
+  modelDefaults: ModelDefaultSettings;
   shortcuts: Record<string, string>;
   recentWorkspaces: string[];
 }
@@ -46,6 +53,7 @@ export interface UserConfigPatch {
   profile?: Partial<UserProfile>;
   preferences?: Partial<UserPreferences>;
   runtimeControls?: Partial<RuntimeControlSettings>;
+  modelDefaults?: Partial<ModelDefaultSettings>;
   shortcuts?: Record<string, string>;
   recentWorkspaces?: string[];
 }
@@ -72,6 +80,11 @@ export const DEFAULT_USER_CONFIG: UserConfig = {
     defaultReasoningEffort: DEFAULT_SESSION_CONFIG.reasoningEffort,
     contextCompressionThresholdPercent: 80,
     contextTruncateTargetPercent: 70,
+  },
+  modelDefaults: {
+    defaultSessionModel: "anthropic:claude-sonnet-4-6",
+    summaryModel: "anthropic:claude-haiku-4-5",
+    subagentModelPool: ["anthropic:claude-haiku-4-5", "openai:gpt-4-turbo"],
   },
   shortcuts: {},
   recentWorkspaces: [],

@@ -585,9 +585,9 @@ describe("StateManager", () => {
 
       const trimmed = fullIndex.filter((ch) => ch.number < 2);
       await manager.saveChapterIndex(rwBookId, trimmed);
-      const { rm } = await import("node:fs/promises");
-      await rm(join(chapDir, "0002_ch2.md"));
-      await rm(join(chapDir, "0003_ch3.md"));
+      const { rename } = await import("node:fs/promises");
+      await rename(join(chapDir, "0002_ch2.md"), join(chapDir, "0002_ch2.md.bak"));
+      await rename(join(chapDir, "0003_ch3.md"), join(chapDir, "0003_ch3.md.bak"));
       await manager.restoreState(rwBookId, 1);
 
       const next = await manager.getNextChapterNumber(rwBookId);

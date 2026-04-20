@@ -2,7 +2,7 @@ import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { homedir } from "node:os";
 import { existsSync } from "node:fs";
-import type { RuntimeControlSettings, UserConfig, UserConfigPatch } from "../../types/settings.js";
+import type { ModelDefaultSettings, RuntimeControlSettings, UserConfig, UserConfigPatch } from "../../types/settings.js";
 import { DEFAULT_USER_CONFIG } from "../../types/settings.js";
 
 /**
@@ -66,6 +66,26 @@ function sanitizeRuntimeControls(runtimeControls?: Partial<RuntimeControlSetting
   };
 }
 
+function sanitizeModelDefaults(modelDefaults?: Partial<ModelDefaultSettings> | null): ModelDefaultSettings {
+  const defaultModelDefaults = DEFAULT_USER_CONFIG.modelDefaults;
+  return {
+    defaultSessionModel:
+      typeof modelDefaults?.defaultSessionModel === "string" && modelDefaults.defaultSessionModel.trim().length > 0
+        ? modelDefaults.defaultSessionModel.trim()
+        : defaultModelDefaults.defaultSessionModel,
+    summaryModel:
+      typeof modelDefaults?.summaryModel === "string" && modelDefaults.summaryModel.trim().length > 0
+        ? modelDefaults.summaryModel.trim()
+        : defaultModelDefaults.summaryModel,
+    subagentModelPool:
+      Array.isArray(modelDefaults?.subagentModelPool)
+        ? modelDefaults.subagentModelPool
+          .map((item) => typeof item === "string" ? item.trim() : "")
+          .filter(Boolean)
+        : defaultModelDefaults.subagentModelPool,
+  };
+}
+
 /**
  * 加载用户配置
  */
@@ -89,6 +109,7 @@ export async function loadUserConfig(): Promise<UserConfig> {
       profile: { ...DEFAULT_USER_CONFIG.profile, ...config.profile },
       preferences: { ...DEFAULT_USER_CONFIG.preferences, ...config.preferences },
       runtimeControls: sanitizeRuntimeControls(config.runtimeControls),
+      modelDefaults: sanitizeModelDefaults(config.modelDefaults),
     };
   } catch (error) {
     console.error("Failed to load user config, using default:", error);
@@ -134,6 +155,7 @@ export async function updateUserConfig(partial: UserConfigPatch): Promise<UserCo
     profile: { ...current.profile, ...(partial.profile ?? {}) },
     preferences: { ...current.preferences, ...(partial.preferences ?? {}) },
     runtimeControls: sanitizeRuntimeControls({ ...current.runtimeControls, ...(partial.runtimeControls ?? {}) }),
+    modelDefaults: sanitizeModelDefaults({ ...current.modelDefaults, ...(partial.modelDefaults ?? {}) }),
     shortcuts: { ...current.shortcuts, ...(partial.shortcuts ?? {}) },
     recentWorkspaces: partial.recentWorkspaces ?? current.recentWorkspaces,
   };

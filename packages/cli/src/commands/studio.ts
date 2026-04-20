@@ -45,6 +45,7 @@ export function resolveBrowserLaunch(
 }
 
 export async function resolveStudioLaunch(root: string): Promise<StudioLaunchSpec | null> {
+  // 运行时口径：仓库级 Bun 主入口优先；packages/studio 旧入口只保留兼容桥职责。
   const bunMainEntry = await firstAccessiblePath([
     join(root, "main.ts"),
     resolve(root, "..", "main.ts"),

@@ -47,6 +47,10 @@ describe("routeToTabId", () => {
   it('sessions defaults to "sessions"', () => {
     expect(routeToTabId({ page: "sessions" })).toBe("sessions");
   });
+
+  it('project-create defaults to "project-create"', () => {
+    expect(routeToTabId({ page: "project-create" })).toBe("project-create");
+  });
 });
 
 describe("routeToTabLabel", () => {
@@ -56,6 +60,10 @@ describe("routeToTabLabel", () => {
 
   it("book → bookId", () => {
     expect(routeToTabLabel({ page: "book", bookId: "my-novel" })).toBe("my-novel");
+  });
+
+  it('project-create → "新建项目"', () => {
+    expect(routeToTabLabel({ page: "project-create" })).toBe("新建项目");
   });
 
   it('book-create → "新建书籍"', () => {

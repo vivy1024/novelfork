@@ -1,6 +1,6 @@
 # NovelFork 运维状态
 
-**最后更新**: 2026-04-20
+**最后更新**: 2026-04-21
 
 ---
 
@@ -8,37 +8,40 @@
 
 | 组件 | 状态 | 备注 |
 |------|------|------|
-| 核心写作引擎 | ✅ 可用 | core 构建与 typecheck 通过 |
-| CLI 入口 | ✅ 可用 | `novelfork studio` 已优先走 Bun 主入口 |
-| Studio 工作台 | ✅ 可构建 | client/server 构建通过，legacy 入口已降级为兼容桥 |
-| Bun 主入口 | ✅ 可用 | `bun run main.ts` 可启动并优先使用 embedded assets |
-| 单文件产物 | ✅ 可用 | `pnpm bun:compile` 已生成 `dist/novelfork.exe`，且 smoke 运行通过 |
-| 测试主链 | ✅ 基本收绿 | CLI typecheck 与关键测试已通过，Studio pack 主链通过 |
-| 平台迁移 | 🔄 进行中 | 已推进到深层执行链去 Node 化阶段 |
+| 核心写作引擎 | ✅ 可用 | core 仍是主能力承载层 |
+| CLI 入口 | ✅ 过渡可用 | `novelfork studio` 当前优先转交仓库级 `main.ts`，fallback 仍保留兼容桥 |
+| Studio 工作台 | ✅ 源码可启动 | `main.ts` 可拉起 API + 静态资源服务 |
+| Bun 主入口 | ✅ 可用 | `main.ts` 已是源码主入口，embedded assets 优先，filesystem dist 次级回退 |
+| embedded assets | ✅ 已接线 | 由 `scripts/generate-embedded-assets.mjs` 生成 `embedded-assets.generated.ts` |
+| compile 链路 | 🔄 已接线待持续验证 | `pnpm bun:compile` 会串联 client build / embed / bun compile，但不能等同于正式分发已完成 |
+| 启动期修复编排 | ⚠️ 未集中化 | 当前只有最小项目初始化 + 按需惰性迁移/修复，没有启动时全量 orchestrator |
 
 ---
 
 ## 已确认事实
 
 - 当前项目身份是 **NovelFork**，不是 InkOS
-- 核心写作能力大量已实现，可复用
-- 当前主要问题在平台外壳：`pnpm + tsc + CLI spawn studio + Node`
-- 当前目标是回归 **Bun 单入口 + bun compile 单可执行文件** 路线
+- 仓库根 `main.ts` 已经承担源码主入口职责
+- `packages/studio/src/api/index.ts` 仍存在，但当前口径是**兼容桥**，不是主路径
+- `novelfork studio` 还没有消失，但职责已收敛为**优先拉起 Bun 主入口**
+- `pnpm bun:compile` 是当前仓内构建链路，不应写成安装器/正式分发能力
+- 启动时自动动作目前只到“项目根目录初始化 + 启动静态资源服务”为止
 
 ---
 
 ## 当前待办
 
-- [ ] 收剩余边角主路径 Node 绑定（如 `cli studio` 的主服务启动部分）
-- [ ] 继续推进深层执行链去 Node 化（MCP / Bash / Git 已完成第一轮 adapter 接入）
-- [ ] 评估 `sqlite-driver` 从 `createRequire` 迁到更干净的 Bun/Node 运行时探测方式
-- [ ] 清理 Studio 非主链历史 typecheck 旧债
-- [ ] 开始整理分发与安装体验（产物命名、首次启动、配置目录）
+- [x] 启动期迁移、索引恢复、状态修复任务整理成正式清单
+- [ ] 把启动期全量迁移 / 索引恢复 orchestrator 从目标变成实现
+- [ ] 继续压缩 CLI / package fallback 对 legacy Studio 入口的依赖面
+- [ ] 继续验证 `bun compile` 产物在脱离源码目录后的 smoke 口径
+- [ ] 整理正式分发缺口：安装器、签名、首次启动 UX、自动更新
 
 ---
 
 ## 参考文档
 
+- `docs/06-部署运维/01-当前运行与启动方式.md`
+- `docs/06-部署运维/03-启动期迁移与修复清单.md`
 - `docs/02-核心架构/01-系统架构/03-平台纠偏说明.md`
 - `docs/04-开发指南/05-调研规划/01-平台迁移方案.md`
-- `docs/03-代码参考/04-NarraFork依赖参考.md`

@@ -28,6 +28,32 @@ describe("studio command", () => {
     vi.resetModules();
   });
 
+  it("launches the repository Bun main entry when available", async () => {
+    accessMock.mockImplementation(async (path: string) => {
+      if (normalizePath(path).endsWith("/project/main.ts")) {
+        return;
+      }
+      throw new Error(`missing: ${path}`);
+    });
+
+    const { studioCommand } = await import("../commands/studio.js");
+    await studioCommand.parseAsync(["node", "studio", "--port", "9001"]);
+
+    const launchCall = spawnMock.mock.calls[0] as unknown as [string, string[], Record<string, unknown>];
+    expect(launchCall).toBeDefined();
+    expect(launchCall[0]).toBe("bun");
+    expect(launchCall[1].map(normalizePath)).toEqual([
+      "run",
+      expect.stringMatching(/\/project\/main\.ts$/),
+      "--root=/project",
+    ]);
+    expect(launchCall[2]).toEqual(expect.objectContaining({
+      cwd: "/project",
+      stdio: ["pipe", "pipe", "pipe"],
+      env: expect.objectContaining({ NOVELFORK_STUDIO_PORT: "9001" }),
+    }));
+  });
+
   it("launches TypeScript sources through tsx in monorepo mode", async () => {
     accessMock.mockImplementation(async (path: string) => {
       if (normalizePath(path).endsWith("/packages/studio/src/api/index.ts")) {

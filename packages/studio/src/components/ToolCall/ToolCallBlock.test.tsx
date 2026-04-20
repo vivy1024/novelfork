@@ -64,6 +64,37 @@ describe("ToolCallBlock", () => {
     expect(screen.getByRole("button", { name: "复制工具输出" })).toBeTruthy();
   });
 
+  it("renders a dedicated subagent card for agent tool calls", () => {
+    render(
+      <ToolCallBlock
+        toolCall={{
+          toolName: "Agent",
+          status: "success",
+          summary: "并行处理 ProjectCreate 对象流",
+          input: {
+            description: "project create flow",
+            subagent_type: "general",
+            model: "codex:gpt-5.4",
+            prompt: "推进 ProjectCreate 对象流",
+          },
+          result: {
+            status: "completed",
+            summary: "完成项目创建链路改造",
+          },
+          duration: 1800,
+        }}
+      />,
+    );
+
+    const subagentCard = screen.getByTestId("subagent-card");
+    expect(screen.getByText("子代理卡片")).toBeTruthy();
+    expect(subagentCard.textContent).toContain("project create flow");
+    expect(subagentCard.textContent).toContain("general");
+    expect(subagentCard.textContent).toContain("codex:gpt-5.4");
+    expect(subagentCard.textContent).toContain("completed");
+    expect(subagentCard.textContent).toContain("完成项目创建链路改造");
+  });
+
   it("parses mock-friendly assistant payload with tool calls", () => {
     const parsed = parseAssistantPayload({
       message: "已读取文件",

@@ -20,6 +20,7 @@ describe("NewSessionDialog", () => {
     expect(onCreate).toHaveBeenCalledWith({
       agentId: "writer",
       title: "Writer 会话",
+      sessionMode: "chat",
     });
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
@@ -41,6 +42,7 @@ describe("NewSessionDialog", () => {
     expect(onCreate).toHaveBeenCalledWith({
       agentId: "continuity-auditor",
       title: "连续性排查",
+      sessionMode: "chat",
     });
   });
 });

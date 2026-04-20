@@ -1,13 +1,15 @@
+import { readFileSync } from "node:fs";
 import { Command } from "commander";
-import packageJson from "../../package.json";
 import { log, logError } from "../utils.js";
+
+const { version: currentVersion } = JSON.parse(
+  readFileSync(new URL("../../package.json", import.meta.url), "utf-8"),
+) as { version: string };
 
 export const updateCommand = new Command("update")
   .description("Update NovelFork to the latest version")
   .action(async () => {
     try {
-      const currentVersion = packageJson.version;
-
       log(`Current version: ${currentVersion}`);
       log("Checking npm registry...");
 

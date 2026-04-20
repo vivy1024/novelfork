@@ -54,6 +54,20 @@ function sortSessions(records: NarratorSessionRecord[]): NarratorSessionRecord[]
   });
 }
 
+function parseModelReference(reference: string | undefined): { providerId: string; modelId: string } | null {
+  if (!reference) {
+    return null;
+  }
+  const [providerId, modelId] = reference.split(":");
+  if (!providerId || !modelId) {
+    return null;
+  }
+  return {
+    providerId,
+    modelId,
+  };
+}
+
 export async function listSessions(): Promise<NarratorSessionRecord[]> {
   return sortSessions(await loadSessionRecords());
 }
@@ -66,12 +80,14 @@ export async function getSessionById(id: string): Promise<NarratorSessionRecord 
 export async function createSession(input: CreateNarratorSessionInput): Promise<NarratorSessionRecord> {
   const records = await loadSessionRecords();
   const userConfig = await loadUserConfig();
+  const modelDefaults = parseModelReference(userConfig.modelDefaults?.defaultSessionModel);
   const now = new Date().toISOString();
   const session: NarratorSessionRecord = {
     id: crypto.randomUUID(),
     title: input.title?.trim() || "Untitled Session",
     agentId: input.agentId?.trim() || "writer",
     kind: input.kind ?? "standalone",
+    sessionMode: input.sessionMode ?? (input.agentId === "planner" ? "plan" : "chat"),
     status: "active",
     createdAt: now,
     lastModified: now,
@@ -82,6 +98,7 @@ export async function createSession(input: CreateNarratorSessionInput): Promise<
     projectId: input.projectId,
     sessionConfig: {
       ...DEFAULT_SESSION_CONFIG,
+      ...(modelDefaults ?? {}),
       permissionMode: userConfig.runtimeControls.defaultPermissionMode,
       reasoningEffort: userConfig.runtimeControls.defaultReasoningEffort,
       ...input.sessionConfig,

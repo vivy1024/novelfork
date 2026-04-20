@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { sanitizeRestoredTabSession } from "./routes";
+import { normalizeRoute, sanitizeRestoredTabSession } from "./routes";
+
+describe("normalizeRoute", () => {
+  it("accepts the formal project-create route", () => {
+    expect(normalizeRoute({ page: "project-create" })).toEqual({ page: "project-create" });
+  });
+});
 
 describe("sanitizeRestoredTabSession", () => {
   it("maps legacy workflow/admin routes into the grouped shell", () => {

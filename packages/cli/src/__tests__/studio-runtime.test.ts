@@ -17,6 +17,30 @@ describe("studio runtime resolution", () => {
     vi.resetModules();
   });
 
+  it("prefers the repository Bun main entry before legacy studio bridges", async () => {
+    accessMock.mockImplementation(async (path: string) => {
+      if (
+        normalizePath(path).endsWith("/test-project/main.ts") ||
+        normalizePath(path).endsWith("/packages/studio/src/api/index.ts")
+      ) {
+        return;
+      }
+      throw new Error(`missing: ${path}`);
+    });
+
+    const { resolveStudioLaunch } = await import("../commands/studio.js");
+    const launch = await resolveStudioLaunch("/repo/test-project");
+
+    expect(launch).not.toBeNull();
+    expect(normalizePath(launch!.studioEntry)).toMatch(/\/test-project\/main\.ts$/);
+    expect(launch!.command).toBe("bun");
+    expect(launch!.args.map(normalizePath)).toEqual([
+      "run",
+      expect.stringMatching(/\/test-project\/main\.ts$/),
+      "--root=/repo/test-project",
+    ]);
+  });
+
   it("prefers the repository-local tsx loader for monorepo sources", async () => {
     accessMock.mockImplementation(async (path: string) => {
       if (

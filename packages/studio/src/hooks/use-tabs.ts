@@ -75,6 +75,8 @@ export function routeToTabLabel(route: Route): string {
       return route.section ? `工作流 · ${WORKFLOW_SECTION_LABELS[route.section]}` : "工作流配置";
     case "sessions":
       return "会话中心";
+    case "project-create":
+      return "新建项目";
     case "book":
       return route.bookId;
     case "book-create":

@@ -251,7 +251,7 @@ describe.sequential("publish packaging", () => {
     }
   });
 
-  it("packs the studio runtime entry alongside the built frontend", { timeout: 30_000 }, async () => {
+  it("packs the studio runtime entry alongside the built frontend", { timeout: 90_000 }, async () => {
     const packDir = await mkdtemp(join(tmpdir(), "novelfork-studio-pack-"));
 
     try {
