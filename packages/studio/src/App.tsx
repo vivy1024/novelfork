@@ -12,7 +12,6 @@ import { BookDetail } from "./pages/BookDetail";
 import { BookCreate } from "./pages/BookCreate";
 import { ChapterReader } from "./pages/ChapterReader";
 import { Analytics } from "./pages/Analytics";
-import { ConfigView } from "./pages/ConfigView";
 import { WorkspaceSelector } from "./pages/WorkspaceSelector";
 import { TruthFiles } from "./pages/TruthFiles";
 import { DaemonControl } from "./pages/DaemonControl";
@@ -27,20 +26,13 @@ import { SearchView } from "./pages/SearchView";
 import { BackupView } from "./pages/BackupView";
 import { LanguageSelector } from "./pages/LanguageSelector";
 import { DetectView } from "./pages/DetectView";
-import { NotifyConfig } from "./pages/NotifyConfig";
 import { IntentEditor } from "./pages/IntentEditor";
-import { AgentPanel } from "./pages/AgentPanel";
-import { ChatWindowManager } from "./components/ChatWindowManager";
-import { SchedulerConfig } from "./pages/SchedulerConfig";
-import { DetectionConfigView } from "./pages/DetectionConfigView";
-import { HookDashboard } from "./pages/HookDashboard";
-import { LLMAdvancedConfig } from "./pages/LLMAdvancedConfig";
 import { StateProjectionsView } from "./pages/StateProjectionsView";
-import { MCPServerManager } from "./pages/MCPServerManager";
 import { PipelineVisualization } from "./pages/PipelineVisualization";
 import { SettingsView } from "./pages/SettingsView";
-import { PluginManager } from "./pages/PluginManager";
 import { WorktreeManager } from "./pages/WorktreeManager";
+import { SessionCenter } from "./pages/SessionCenter";
+import { WorkflowWorkbench } from "./pages/WorkflowWorkbench";
 import { Admin } from "./components/Admin/Admin";
 import { ReferencePanel } from "./components/ReferencePanel";
 import { RecoveryBanner } from "./components/RecoveryBanner";
@@ -53,42 +45,8 @@ import { useRecovery } from "./hooks/use-crash-recovery";
 import { persistTabSession, restoreTabSession } from "./hooks/use-persisted-tabs";
 import { fetchJson, postApi, useApi } from "./hooks/use-api";
 import type { SearchResult } from "./shared/search-types";
-
-export type Route =
-  | { page: "dashboard" }
-  | { page: "book"; bookId: string }
-  | { page: "book-create" }
-  | { page: "chapter"; bookId: string; chapterNumber: number }
-  | { page: "analytics"; bookId: string }
-  | { page: "config" }
-  | { page: "truth"; bookId: string }
-  | { page: "daemon" }
-  | { page: "logs" }
-  | { page: "genres" }
-  | { page: "style" }
-  | { page: "import" }
-  | { page: "radar" }
-  | { page: "doctor" }
-  | { page: "diff"; bookId: string; chapterNumber: number }
-  | { page: "search" }
-  | { page: "backup" }
-  | { page: "detect"; bookId: string }
-  | { page: "notify" }
-  | { page: "intent"; bookId: string }
-  | { page: "agents" }
-  | { page: "chat-windows" }
-  | { page: "scheduler-config" }
-  | { page: "detection-config" }
-  | { page: "hooks" }
-  | { page: "llm-advanced" }
-  | { page: "state"; bookId: string }
-  | { page: "mcp" }
-  | { page: "pipeline"; runId?: string }
-  | { page: "plugins" }
-  | { page: "settings" }
-  | { page: "worktree" }
-  | { page: "admin" };
-
+import type { Route } from "./routes";
+import { sanitizeRestoredTabSession } from "./routes";
 import { deriveActiveBookId } from "./route-utils";
 
 /**
@@ -243,16 +201,13 @@ function AppInner() {
 
   // Restore tabs from IndexedDB on mount
   useEffect(() => {
-    restoreTabSession().then((session) => {
-      if (!session?.tabs?.length) return;
+    restoreTabSession().then((rawSession) => {
+      const session = sanitizeRestoredTabSession(rawSession);
+      if (!session?.tabs.length) return;
       for (const saved of session.tabs) {
-        if (saved.route && typeof saved.route === "object" && "page" in saved.route) {
-          openTab(saved.route as Route);
-        }
+        openTab(saved.route);
       }
-      if (session.activeTabId) {
-        activateTab(session.activeTabId);
-      }
+      activateTab(session.activeTabId);
     }).catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -342,12 +297,13 @@ function AppInner() {
 
   const nav = {
     toDashboard: () => openTab({ page: "dashboard" }),
+    toWorkflow: () => openTab({ page: "workflow" }),
+    toSessions: () => openTab({ page: "sessions" }),
     toBook: (bookId: string) => openTab({ page: "book", bookId }),
     toBookCreate: () => setBookCreateOpen(true),
     toChapter: (bookId: string, chapterNumber: number) =>
       openTab({ page: "chapter", bookId, chapterNumber }),
     toAnalytics: (bookId: string) => openTab({ page: "analytics", bookId }),
-    toConfig: () => openTab({ page: "config" }),
     toTruth: (bookId: string) => openTab({ page: "truth", bookId }),
     toDaemon: () => openTab({ page: "daemon" }),
     toLogs: () => openTab({ page: "logs" }),
@@ -361,18 +317,9 @@ function AppInner() {
     toDiff: (bookId: string, chapterNumber: number) =>
       openTab({ page: "diff", bookId, chapterNumber }),
     toDetect: (bookId: string) => openTab({ page: "detect", bookId }),
-    toNotify: () => openTab({ page: "notify" }),
     toIntent: (bookId: string) => openTab({ page: "intent", bookId }),
-    toAgents: () => openTab({ page: "agents" }),
-    toChatWindows: () => openTab({ page: "chat-windows" }),
-    toSchedulerConfig: () => openTab({ page: "scheduler-config" }),
-    toDetectionConfig: () => openTab({ page: "detection-config" }),
-    toHooks: () => openTab({ page: "hooks" }),
-    toLLMAdvanced: () => openTab({ page: "llm-advanced" }),
     toState: (bookId: string) => openTab({ page: "state", bookId }),
-    toMCP: () => openTab({ page: "mcp" }),
     toPipeline: (runId?: string) => openTab({ page: "pipeline", runId }),
-    toPlugins: () => openTab({ page: "plugins" }),
     toSettings: () => openTab({ page: "settings" }),
     toWorktree: () => openTab({ page: "worktree" }),
   };
@@ -567,11 +514,12 @@ function TabContent({ route, nav, theme, t, sse, setTheme }: {
 }) {
   switch (route.page) {
     case "dashboard": return <Dashboard nav={nav} sse={sse} theme={theme} t={t} />;
+    case "workflow": return <WorkflowWorkbench nav={nav} theme={theme} t={t} />;
+    case "sessions": return <SessionCenter theme={theme} />;
     case "book": return <BookDetail bookId={route.bookId} nav={nav} theme={theme} t={t} sse={sse} />;
     case "book-create": return <BookCreate nav={nav} theme={theme} t={t} />;
     case "chapter": return <ChapterReader bookId={route.bookId} chapterNumber={route.chapterNumber} nav={nav} theme={theme} t={t} />;
     case "analytics": return <Analytics bookId={route.bookId} nav={nav} theme={theme} t={t} />;
-    case "config": return <ConfigView nav={nav} theme={theme} t={t} />;
     case "truth": return <TruthFiles bookId={route.bookId} nav={nav} theme={theme} t={t} />;
     case "daemon": return <DaemonControl nav={nav} theme={theme} t={t} sse={sse} />;
     case "logs": return <LogViewer nav={nav} theme={theme} t={t} />;
@@ -584,21 +532,12 @@ function TabContent({ route, nav, theme, t, sse, setTheme }: {
     case "diff": return <DiffView bookId={route.bookId} chapterNumber={route.chapterNumber} nav={nav} theme={theme} t={t} />;
     case "backup": return <BackupView nav={nav} theme={theme} t={t} />;
     case "detect": return <DetectView bookId={route.bookId} nav={nav} theme={theme} t={t} />;
-    case "notify": return <NotifyConfig nav={nav} theme={theme} t={t} />;
     case "intent": return <IntentEditor bookId={route.bookId} nav={nav} theme={theme} t={t} />;
-    case "agents": return <AgentPanel nav={nav} theme={theme} t={t} />;
-    case "chat-windows": return <ChatWindowManager theme={theme} />;
-    case "scheduler-config": return <SchedulerConfig nav={nav} theme={theme} t={t} />;
-    case "detection-config": return <DetectionConfigView nav={nav} theme={theme} t={t} />;
-    case "hooks": return <HookDashboard nav={nav} theme={theme} t={t} />;
-    case "llm-advanced": return <LLMAdvancedConfig nav={nav} theme={theme} t={t} />;
     case "state": return <StateProjectionsView bookId={route.bookId} nav={nav} theme={theme} t={t} />;
-    case "mcp": return <MCPServerManager nav={nav} theme={theme} t={t} />;
     case "pipeline": return <PipelineVisualization runId={route.runId} nav={nav} sse={sse} theme={theme} t={t} />;
-    case "plugins": return <PluginManager nav={nav} theme={theme} t={t} />;
     case "settings": return <SettingsView nav={nav} theme={theme} t={t} onThemeChange={setTheme} />;
-    case "worktree": return <WorktreeManager onBack={() => nav({ page: "dashboard" })} />;
-    case "admin": return <Admin onBack={() => nav({ page: "dashboard" })} />;
+    case "worktree": return <WorktreeManager onBack={nav.toDashboard} />;
+    case "admin": return <Admin onBack={nav.toDashboard} />;
     default: return null;
   }
 }

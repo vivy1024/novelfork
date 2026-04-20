@@ -11,7 +11,7 @@ import { Clock, Shield, Save, RotateCcw } from "lucide-react";
 
 interface Nav {
   toDashboard: () => void;
-  toDaemon: () => void;
+  toWorkflow: () => void;
 }
 
 interface DaemonConfig {
@@ -96,7 +96,7 @@ export function SchedulerConfig({ nav, theme, t }: { nav: Nav; theme: Theme; t: 
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <button onClick={nav.toDashboard} className={c.link}>首页</button>
         <span className="text-border">/</span>
-        <button onClick={nav.toDaemon} className={c.link}>守护进程</button>
+        <button onClick={nav.toWorkflow} className={c.link}>工作流配置</button>
         <span className="text-border">/</span>
         <span className="text-foreground">调度配置</span>
       </div>

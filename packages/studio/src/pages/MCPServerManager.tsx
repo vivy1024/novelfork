@@ -1,9 +1,23 @@
 import { useState } from "react";
-import { useApi, postApi, putApi } from "../hooks/use-api";
+import {
+  AlertCircle,
+  CheckCircle2,
+  Loader2,
+  Play,
+  Plus,
+  RefreshCw,
+  Server,
+  Square,
+  Trash2,
+} from "lucide-react";
+
+import { PageEmptyState } from "@/components/layout/PageEmptyState";
+import { PageScaffold } from "@/components/layout/PageScaffold";
+import { Button } from "@/components/ui/button";
+import { postApi, useApi } from "../hooks/use-api";
 import { useColors } from "../hooks/use-colors";
-import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
-import { Server, Play, Square, Trash2, Plus, RefreshCw, AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
+import type { Theme } from "../hooks/use-theme";
 
 interface MCPServer {
   id: string;
@@ -19,7 +33,7 @@ interface MCPServer {
 }
 
 interface Props {
-  nav: any;
+  nav: unknown;
   theme: Theme;
   t: TFunction;
 }
@@ -54,8 +68,12 @@ export function MCPServerManager({ nav, theme, t }: Props) {
   }
 
   async function handleAdd() {
-    const args = formData.args.split(",").map((s) => s.trim()).filter(Boolean);
+    const args = formData.args
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
     const env = formData.env ? JSON.parse(formData.env) : undefined;
+
     await postApi("/mcp/servers", {
       name: formData.name,
       transport: formData.transport,
@@ -64,37 +82,34 @@ export function MCPServerManager({ nav, theme, t }: Props) {
       url: formData.transport === "sse" ? formData.url : undefined,
       env,
     });
+
     setShowAddForm(false);
     setFormData({ name: "", transport: "stdio", command: "", args: "", url: "", env: "" });
     refetch();
   }
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold mb-1 text-foreground">MCP Server 管理</h1>
-          <p className="text-sm text-muted-foreground">
-            管理 Model Context Protocol 服务器连接
-          </p>
-        </div>
+    <PageScaffold
+      title="MCP Server 管理"
+      description="管理 Model Context Protocol 的本地/远程服务连接，并查看当前可用工具。"
+      actions={
         <div className="flex gap-2">
-          <button onClick={refetch} className={c.btnSecondary}>
-            <RefreshCw className="w-4 h-4" />
-          </button>
-          <button onClick={() => setShowAddForm(true)} className={c.btnPrimary}>
-            <Plus className="w-4 h-4 mr-2" />
+          <Button variant="outline" onClick={refetch}>
+            <RefreshCw className="size-4" />
+          </Button>
+          <Button onClick={() => setShowAddForm(true)}>
+            <Plus className="size-4" />
             添加 Server
-          </button>
+          </Button>
         </div>
-      </div>
-
+      }
+    >
       {showAddForm && (
-        <div className={c.cardStatic + " mb-6"}>
-          <h3 className="font-semibold mb-4 text-foreground">添加 MCP Server</h3>
+        <div className={`${c.cardStatic} mb-6`}>
+          <h3 className="mb-4 font-semibold text-foreground">添加 MCP Server</h3>
           <div className="space-y-3">
             <div>
-              <label className="block text-sm font-medium mb-1 text-foreground">名称</label>
+              <label className="mb-1 block text-sm font-medium text-foreground">名称</label>
               <input
                 type="text"
                 value={formData.name}
@@ -104,7 +119,7 @@ export function MCPServerManager({ nav, theme, t }: Props) {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1 text-foreground">传输方式</label>
+              <label className="mb-1 block text-sm font-medium text-foreground">传输方式</label>
               <select
                 value={formData.transport}
                 onChange={(e) => setFormData({ ...formData, transport: e.target.value as "stdio" | "sse" })}
@@ -117,7 +132,7 @@ export function MCPServerManager({ nav, theme, t }: Props) {
             {formData.transport === "stdio" ? (
               <>
                 <div>
-                  <label className="block text-sm font-medium mb-1 text-foreground">命令</label>
+                  <label className="mb-1 block text-sm font-medium text-foreground">命令</label>
                   <input
                     type="text"
                     value={formData.command}
@@ -127,7 +142,7 @@ export function MCPServerManager({ nav, theme, t }: Props) {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1 text-foreground">参数（逗号分隔）</label>
+                  <label className="mb-1 block text-sm font-medium text-foreground">参数（逗号分隔）</label>
                   <input
                     type="text"
                     value={formData.args}
@@ -139,7 +154,7 @@ export function MCPServerManager({ nav, theme, t }: Props) {
               </>
             ) : (
               <div>
-                <label className="block text-sm font-medium mb-1 text-foreground">URL</label>
+                <label className="mb-1 block text-sm font-medium text-foreground">URL</label>
                 <input
                   type="text"
                   value={formData.url}
@@ -150,7 +165,7 @@ export function MCPServerManager({ nav, theme, t }: Props) {
               </div>
             )}
             <div>
-              <label className="block text-sm font-medium mb-1 text-foreground">环境变量（JSON）</label>
+              <label className="mb-1 block text-sm font-medium text-foreground">环境变量（JSON）</label>
               <textarea
                 value={formData.env}
                 onChange={(e) => setFormData({ ...formData, env: e.target.value })}
@@ -160,12 +175,10 @@ export function MCPServerManager({ nav, theme, t }: Props) {
               />
             </div>
             <div className="flex gap-2">
-              <button onClick={handleAdd} className={c.btnPrimary}>
-                添加
-              </button>
-              <button onClick={() => setShowAddForm(false)} className={c.btnSecondary}>
+              <Button onClick={handleAdd}>添加</Button>
+              <Button variant="outline" onClick={() => setShowAddForm(false)}>
                 取消
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -174,9 +187,9 @@ export function MCPServerManager({ nav, theme, t }: Props) {
       <div className="space-y-4">
         {data?.servers.map((server) => (
           <div key={server.id} className={c.cardStatic}>
-            <div className="flex items-start justify-between mb-3">
+            <div className="mb-3 flex items-start justify-between">
               <div className="flex items-center gap-3">
-                <Server className="w-5 h-5 text-primary" />
+                <Server className="size-5 text-primary" />
                 <div>
                   <h3 className="font-semibold text-foreground">{server.name}</h3>
                   <p className="text-xs text-muted-foreground">
@@ -189,25 +202,25 @@ export function MCPServerManager({ nav, theme, t }: Props) {
               <div className="flex items-center gap-2">
                 {server.status === "connected" && (
                   <span className="flex items-center gap-1 text-xs text-green-500">
-                    <CheckCircle2 className="w-3 h-3" />
+                    <CheckCircle2 className="size-3" />
                     已连接
                   </span>
                 )}
                 {(server.status === "connecting" || server.status === "reconnecting") && (
                   <span className="flex items-center gap-1 text-xs text-yellow-500">
-                    <Loader2 className="w-3 h-3 animate-spin" />
+                    <Loader2 className="size-3 animate-spin" />
                     {server.status === "connecting" ? "连接中" : "重连中"}
                   </span>
                 )}
                 {server.status === "disconnected" && (
                   <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                    <Square className="w-3 h-3" />
+                    <Square className="size-3" />
                     未连接
                   </span>
                 )}
                 {server.status === "failed" && (
                   <span className="flex items-center gap-1 text-xs text-red-500">
-                    <AlertCircle className="w-3 h-3" />
+                    <AlertCircle className="size-3" />
                     失败
                   </span>
                 )}
@@ -215,25 +228,21 @@ export function MCPServerManager({ nav, theme, t }: Props) {
             </div>
 
             {server.error && (
-              <div className="mb-3 p-2 rounded bg-red-500/10 text-red-500 text-xs">
-                {server.error}
-              </div>
+              <div className="mb-3 rounded bg-red-500/10 p-2 text-xs text-red-500">{server.error}</div>
             )}
 
             {server.tools && server.tools.length > 0 && (
               <div className="mb-3">
-                <p className="text-xs font-medium mb-2 text-foreground">可用工具 ({server.tools.length})</p>
+                <p className="mb-2 text-xs font-medium text-foreground">可用工具（{server.tools.length}）</p>
                 <div className="space-y-1">
                   {server.tools.slice(0, 3).map((tool) => (
-                    <div key={tool.name} className="text-xs p-2 rounded bg-secondary/50">
+                    <div key={tool.name} className="rounded bg-secondary/50 p-2 text-xs">
                       <span className="font-mono text-foreground">{tool.name}</span>
-                      <span className="text-muted-foreground ml-2">— {tool.description}</span>
+                      <span className="ml-2 text-muted-foreground">— {tool.description}</span>
                     </div>
                   ))}
                   {server.tools.length > 3 && (
-                    <p className="text-xs text-muted-foreground">
-                      ...还有 {server.tools.length - 3} 个工具
-                    </p>
+                    <p className="text-xs text-muted-foreground">...还有 {server.tools.length - 3} 个工具</p>
                   )}
                 </div>
               </div>
@@ -241,25 +250,27 @@ export function MCPServerManager({ nav, theme, t }: Props) {
 
             <div className="flex gap-2">
               {server.status === "disconnected" && (
-                <button onClick={() => handleStart(server.id)} className={c.btnPrimary + " text-xs"}>
-                  <Play className="w-3 h-3 mr-1" />
+                <button onClick={() => handleStart(server.id)} className={`${c.btnPrimary} text-xs`}>
+                  <Play className="mr-1 inline size-3" />
                   连接
                 </button>
               )}
               {server.status === "failed" && (
-                <button onClick={() => handleStart(server.id)} className={c.btnPrimary + " text-xs"}>
-                  <Play className="w-3 h-3 mr-1" />
+                <button onClick={() => handleStart(server.id)} className={`${c.btnPrimary} text-xs`}>
+                  <Play className="mr-1 inline size-3" />
                   重连
                 </button>
               )}
-              {(server.status === "connected" || server.status === "connecting" || server.status === "reconnecting") && (
-                <button onClick={() => handleStop(server.id)} className={c.btnSecondary + " text-xs"}>
-                  <Square className="w-3 h-3 mr-1" />
+              {(server.status === "connected" ||
+                server.status === "connecting" ||
+                server.status === "reconnecting") && (
+                <button onClick={() => handleStop(server.id)} className={`${c.btnSecondary} text-xs`}>
+                  <Square className="mr-1 inline size-3" />
                   断开
                 </button>
               )}
-              <button onClick={() => handleDelete(server.id)} className={c.btnDanger + " text-xs"}>
-                <Trash2 className="w-3 h-3 mr-1" />
+              <button onClick={() => handleDelete(server.id)} className={`${c.btnDanger} text-xs`}>
+                <Trash2 className="mr-1 inline size-3" />
                 删除
               </button>
             </div>
@@ -267,13 +278,9 @@ export function MCPServerManager({ nav, theme, t }: Props) {
         ))}
 
         {(!data?.servers || data.servers.length === 0) && (
-          <div className={c.cardStatic}>
-            <p className="text-sm text-muted-foreground text-center py-8">
-              暂无 MCP Server，点击右上角添加
-            </p>
-          </div>
+          <PageEmptyState title="暂无 MCP Server" description="点击右上角添加，接入本地或远程 MCP 工具服务。" />
         )}
       </div>
-    </div>
+    </PageScaffold>
   );
 }

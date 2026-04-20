@@ -4,8 +4,7 @@
  */
 
 import { useReducer, useCallback } from "react";
-import type { Route } from "../App";
-import type { TFunction } from "./use-i18n";
+import type { Route } from "../routes";
 
 export interface Tab {
   readonly id: string;
@@ -32,12 +31,13 @@ type TabAction =
 export function routeToTabId(route: Route): string {
   switch (route.page) {
     case "dashboard": return "dashboard";
+    case "workflow": return "workflow";
+    case "sessions": return "sessions";
     case "book": return `book:${route.bookId}`;
     case "book-create": return "book-create";
     case "chapter": return `chapter:${route.bookId}:${route.chapterNumber}`;
     case "truth": return `truth:${route.bookId}`;
     case "analytics": return `analytics:${route.bookId}`;
-    case "config": return "config";
     case "daemon": return "daemon";
     case "logs": return "logs";
     case "genres": return "genres";
@@ -49,18 +49,9 @@ export function routeToTabId(route: Route): string {
     case "diff": return `diff:${route.bookId}:${route.chapterNumber}`;
     case "backup": return "backup";
     case "detect": return `detect:${route.bookId}`;
-    case "notify": return "notify";
     case "intent": return `intent:${route.bookId}`;
-    case "agents": return "agents";
-    case "scheduler-config": return "scheduler-config";
-    case "detection-config": return "detection-config";
-    case "hooks": return "hooks";
-    case "llm-advanced": return "llm-advanced";
     case "state": return `state:${route.bookId}`;
-    case "mcp": return "mcp";
     case "pipeline": return route.runId ? `pipeline:${route.runId}` : "pipeline";
-    case "plugins": return "plugins";
-    case "chat-windows": return "chat-windows";
     case "settings": return "settings";
     case "worktree": return "worktree";
     case "admin": return "admin";
@@ -74,12 +65,13 @@ export function routeToTabId(route: Route): string {
 export function routeToTabLabel(route: Route): string {
   switch (route.page) {
     case "dashboard": return "Dashboard";
+    case "workflow": return "Workflow";
+    case "sessions": return "Sessions";
     case "book": return route.bookId;
     case "book-create": return "New Book";
     case "chapter": return `Ch.${route.chapterNumber}`;
     case "truth": return "Truth Files";
     case "analytics": return "Analytics";
-    case "config": return "Config";
     case "daemon": return "Daemon";
     case "logs": return "Logs";
     case "genres": return "Genres";
@@ -91,18 +83,9 @@ export function routeToTabLabel(route: Route): string {
     case "diff": return `Diff Ch.${route.chapterNumber}`;
     case "backup": return "Backup";
     case "detect": return "Detect";
-    case "notify": return "Notify";
     case "intent": return "Intent";
-    case "agents": return "Agents";
-    case "scheduler-config": return "Scheduler";
-    case "detection-config": return "Detection";
-    case "hooks": return "Hooks";
-    case "llm-advanced": return "LLM";
     case "state": return "State";
-    case "mcp": return "MCP";
     case "pipeline": return "Pipeline";
-    case "plugins": return "Plugins";
-    case "chat-windows": return "Chat Windows";
     case "settings": return "Settings";
     case "worktree": return "Worktree";
     case "admin": return "Admin";
@@ -132,7 +115,6 @@ function findNeighbor(tabs: ReadonlyArray<Tab>, closedId: string): string {
   const idx = tabs.findIndex((t) => t.id === closedId);
   const remaining = tabs.filter((t) => t.id !== closedId);
   if (remaining.length === 0) return "dashboard";
-  // prefer right neighbor, then left
   const next = remaining[Math.min(idx, remaining.length - 1)];
   return next.id;
 }

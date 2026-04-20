@@ -6,7 +6,7 @@ import {
   INITIAL_STATE,
 } from "./use-tabs";
 import type { Tab, TabsState } from "./use-tabs";
-import type { Route } from "../App";
+import type { Route } from "../routes";
 
 /* ------------------------------------------------------------------ */
 /*  helpers                                                           */
@@ -54,8 +54,8 @@ describe("routeToTabId", () => {
     expect(routeToTabId({ page: "analytics", bookId: "b2" })).toBe("analytics:b2");
   });
 
-  it('config → "config"', () => {
-    expect(routeToTabId({ page: "config" })).toBe("config");
+  it('workflow → "workflow"', () => {
+    expect(routeToTabId({ page: "workflow" } as Route)).toBe("workflow");
   });
 
   it('daemon → "daemon"', () => {
@@ -118,8 +118,8 @@ describe("routeToTabLabel", () => {
     expect(routeToTabLabel({ page: "analytics", bookId: "x" })).toBe("Analytics");
   });
 
-  it('config → "Config"', () => {
-    expect(routeToTabLabel({ page: "config" })).toBe("Config");
+  it('workflow → "Workflow"', () => {
+    expect(routeToTabLabel({ page: "workflow" } as Route)).toBe("Workflow");
   });
 
   it('daemon → "Daemon"', () => {
@@ -162,7 +162,7 @@ describe("tabsReducer", () => {
   const dashboardTab = makeTab({ page: "dashboard" });
   const bookTab = makeTab({ page: "book", bookId: "abc" });
   const chapterTab = makeTab({ page: "chapter", bookId: "abc", chapterNumber: 3 });
-  const configTab = makeTab({ page: "config" });
+  const workflowTab = makeTab({ page: "workflow" } as Route);
 
   describe("INITIAL_STATE", () => {
     it("has only the dashboard tab", () => {
@@ -264,7 +264,7 @@ describe("tabsReducer", () => {
   describe("closeOthers", () => {
     it("keeps only the target tab and unclosable tabs", () => {
       const state: TabsState = {
-        tabs: [dashboardTab, bookTab, chapterTab, configTab],
+        tabs: [dashboardTab, bookTab, chapterTab, workflowTab],
         activeTabId: "book:abc",
       };
       const next = tabsReducer(state, { type: "closeOthers", tabId: "book:abc" });
@@ -276,7 +276,7 @@ describe("tabsReducer", () => {
   describe("closeRight", () => {
     it("closes all closable tabs to the right of the target", () => {
       const state: TabsState = {
-        tabs: [dashboardTab, bookTab, chapterTab, configTab],
+        tabs: [dashboardTab, bookTab, chapterTab, workflowTab],
         activeTabId: "dashboard",
       };
       const next = tabsReducer(state, { type: "closeRight", tabId: "book:abc" });
@@ -286,8 +286,8 @@ describe("tabsReducer", () => {
 
     it("switches activeTabId to target when active tab is closed", () => {
       const state: TabsState = {
-        tabs: [dashboardTab, bookTab, chapterTab, configTab],
-        activeTabId: "config",
+        tabs: [dashboardTab, bookTab, chapterTab, workflowTab],
+        activeTabId: "workflow",
       };
       const next = tabsReducer(state, { type: "closeRight", tabId: "book:abc" });
       expect(next.activeTabId).toBe("book:abc");

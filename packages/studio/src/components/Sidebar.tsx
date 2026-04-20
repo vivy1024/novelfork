@@ -1,44 +1,35 @@
-import { useEffect, useState } from "react";
-import { useApi } from "../hooks/use-api";
+import { useEffect, useMemo, useState } from "react";
+import { DndContext, closestCenter, type DragEndEvent } from "@dnd-kit/core";
+import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import {
+  BookOpen,
+  Boxes,
+  ChevronDown,
+  ChevronRight,
+  FileInput,
+  FolderGit2,
+  LayoutDashboard,
+  MessageSquare,
+  ScrollText,
+  Search,
+  Settings,
+  Shield,
+  Sparkles,
+  Stethoscope,
+  TerminalSquare,
+  TrendingUp,
+  Workflow,
+  Wrench,
+  Zap,
+} from "lucide-react";
+
 import type { SSEMessage } from "../hooks/use-sse";
+import { useApi } from "../hooks/use-api";
 import { shouldRefetchBookCollections, shouldRefetchDaemonStatus } from "../hooks/use-book-activity";
 import type { TFunction } from "../hooks/use-i18n";
 import { useNovelFork } from "../providers/novelfork-context";
 import { useProjectSort } from "../hooks/use-project-sort";
-import { DndContext, closestCenter, DragEndEvent } from "@dnd-kit/core";
-import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { SortableProjectCard } from "./Project/SortableProjectCard";
-import {
-  Book,
-  Settings,
-  Terminal,
-  Plus,
-  ScrollText,
-  Boxes,
-  Zap,
-  Wand2,
-  FileInput,
-  TrendingUp,
-  Stethoscope,
-  ChevronRight,
-  ChevronDown,
-  FileText,
-  FolderOpen,
-  Search,
-  Shield,
-  Bot,
-  Bell,
-  Anchor,
-  ShieldCheck,
-  Sliders,
-  Clock,
-  Layers,
-  Server,
-  GitBranch,
-  Puzzle,
-  FolderGit2,
-  MessageSquare,
-} from "lucide-react";
 
 interface BookSummary {
   readonly id: string;
@@ -50,11 +41,12 @@ interface BookSummary {
 
 interface Nav {
   toDashboard: () => void;
+  toWorkflow: () => void;
+  toSessions: () => void;
   toBook: (id: string) => void;
   toBookCreate: () => void;
   toChapter: (bookId: string, chapterNumber: number) => void;
   toTruth: (bookId: string) => void;
-  toConfig: () => void;
   toDaemon: () => void;
   toLogs: () => void;
   toGenres: () => void;
@@ -64,21 +56,33 @@ interface Nav {
   toDoctor: () => void;
   toSearch: () => void;
   toBackup: () => void;
-  toDetect: (bookId: string) => void;
-  toNotify: () => void;
-  toIntent: (bookId: string) => void;
-  toAgents: () => void;
-  toChatWindows: () => void;
-  toSchedulerConfig: () => void;
-  toDetectionConfig: () => void;
-  toHooks: () => void;
-  toLLMAdvanced: () => void;
   toState: (bookId: string) => void;
-  toMCP: () => void;
   toPipeline: (runId?: string) => void;
-  toPlugins: () => void;
   toSettings: () => void;
   toWorktree: () => void;
+}
+
+const SIDEBAR_STORAGE_KEYS = {
+  workspace: "novelfork-sidebar-workspace-v2",
+  workbench: "novelfork-sidebar-workbench-v2",
+  system: "novelfork-sidebar-system-v2",
+} as const;
+
+function readSectionState(key: string, defaultValue = true) {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw === null ? defaultValue : raw === "true";
+  } catch {
+    return defaultValue;
+  }
+}
+
+function writeSectionState(key: string, value: boolean) {
+  try {
+    localStorage.setItem(key, String(value));
+  } catch {
+    // ignore storage failures
+  }
 }
 
 export function Sidebar({ nav, activePage, sse, t }: {
@@ -93,19 +97,123 @@ export function Sidebar({ nav, activePage, sse, t }: {
   const isStandalone = mode === "standalone";
   const isTauri = mode === "tauri";
   const [expandedBooks, setExpandedBooks] = useState<Set<string>>(new Set());
-  const [systemOpen, setSystemOpen] = useState(() => {
-    try {
-      return localStorage.getItem("novelfork-sidebar-system") !== "false";
-    } catch { return false; }
-  });
-  const [toolsOpen, setToolsOpen] = useState(() => {
-    try {
-      return localStorage.getItem("novelfork-sidebar-tools") !== "false";
-    } catch { return false; }
-  });
+  const [workspaceOpen, setWorkspaceOpen] = useState(() => readSectionState(SIDEBAR_STORAGE_KEYS.workspace));
+  const [workbenchOpen, setWorkbenchOpen] = useState(() => readSectionState(SIDEBAR_STORAGE_KEYS.workbench));
+  const [systemOpen, setSystemOpen] = useState(() => readSectionState(SIDEBAR_STORAGE_KEYS.system));
 
-  // 项目拖拽排序
   const { sortedItems: sortedBooks, handleDragEnd } = useProjectSort(data?.books ?? []);
+
+  const primaryItems = useMemo(() => [
+    {
+      label: "仪表盘",
+      icon: <LayoutDashboard size={16} />,
+      active: activePage === "dashboard",
+      onClick: nav.toDashboard,
+    },
+    {
+      label: "会话中心",
+      icon: <MessageSquare size={16} />,
+      active: activePage === "sessions",
+      onClick: nav.toSessions,
+    },
+    {
+      label: "工作流配置",
+      icon: <Workflow size={16} />,
+      active: activePage === "workflow",
+      onClick: nav.toWorkflow,
+      badge: "新",
+      badgeColor: "bg-primary/10 text-primary",
+    },
+    {
+      label: "设置",
+      icon: <Settings size={16} />,
+      active: activePage === "settings",
+      onClick: nav.toSettings,
+      testId: "settings-btn",
+    },
+  ], [activePage, nav]);
+
+  const workbenchItems = useMemo(() => [
+    {
+      label: t("nav.search"),
+      icon: <Search size={16} />,
+      active: activePage === "search",
+      onClick: nav.toSearch,
+    },
+    {
+      label: t("nav.style"),
+      icon: <Sparkles size={16} />,
+      active: activePage === "style",
+      onClick: nav.toStyle,
+    },
+    {
+      label: t("nav.import"),
+      icon: <FileInput size={16} />,
+      active: activePage === "import",
+      onClick: nav.toImport,
+    },
+    {
+      label: t("create.genre"),
+      icon: <Boxes size={16} />,
+      active: activePage === "genres",
+      onClick: nav.toGenres,
+    },
+    {
+      label: t("nav.radar"),
+      icon: <TrendingUp size={16} />,
+      active: activePage === "radar",
+      onClick: nav.toRadar,
+    },
+    ...(isStandalone || isTauri
+      ? [{
+          label: t("nav.doctor"),
+          icon: <Stethoscope size={16} />,
+          active: activePage === "doctor",
+          onClick: nav.toDoctor,
+        }]
+      : []),
+    {
+      label: "Pipeline",
+      icon: <Wrench size={16} />,
+      active: activePage === "pipeline",
+      onClick: () => nav.toPipeline(),
+    },
+  ], [activePage, isStandalone, isTauri, nav, t]);
+
+  const systemItems = useMemo(() => [
+    ...(isStandalone || isTauri
+      ? [{
+          label: "守护进程",
+          icon: <Zap size={16} />,
+          active: activePage === "daemon",
+          onClick: nav.toDaemon,
+          badge: daemon?.running ? "运行中" : undefined,
+          badgeColor: daemon?.running ? "bg-emerald-500/10 text-emerald-500" : undefined,
+        }]
+      : []),
+    ...(isStandalone
+      ? [{
+          label: "日志",
+          icon: <TerminalSquare size={16} />,
+          active: activePage === "logs",
+          onClick: nav.toLogs,
+        }]
+      : []),
+    ...(isTauri
+      ? [{
+          label: "备份",
+          icon: <Shield size={16} />,
+          active: activePage === "backup",
+          onClick: nav.toBackup,
+        }]
+      : []),
+    {
+      label: "Worktree",
+      icon: <FolderGit2 size={16} />,
+      active: activePage === "worktree",
+      onClick: nav.toWorktree,
+    },
+  ], [activePage, daemon?.running, isStandalone, isTauri, nav]);
 
   const onDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -123,22 +231,6 @@ export function Sidebar({ nav, activePage, sse, t }: {
     });
   };
 
-  const toggleSection = (section: "system" | "tools") => {
-    if (section === "system") {
-      setSystemOpen((prev) => {
-        const next = !prev;
-        try { localStorage.setItem("novelfork-sidebar-system", String(next)); } catch {}
-        return next;
-      });
-    } else {
-      setToolsOpen((prev) => {
-        const next = !prev;
-        try { localStorage.setItem("novelfork-sidebar-tools", String(next)); } catch {}
-        return next;
-      });
-    }
-  };
-
   useEffect(() => {
     const recent = sse.messages.at(-1);
     if (!recent) return;
@@ -151,43 +243,53 @@ export function Sidebar({ nav, activePage, sse, t }: {
   }, [refetchBooks, refetchDaemon, sse.messages]);
 
   return (
-    <aside className="w-full border-r border-border bg-background/80 backdrop-blur-md flex flex-col h-full overflow-hidden select-none">
-      {/* Logo Area */}
-      <div className="px-6 py-8">
+    <aside className="flex h-full w-full select-none flex-col overflow-hidden border-r border-border/70 bg-background/90 backdrop-blur-md">
+      <div className="border-b border-border/60 px-5 py-6">
         <button
           onClick={nav.toDashboard}
-          className="group flex items-center gap-2 hover:opacity-80 transition-all duration-300"
+          className="group flex items-center gap-3 text-left transition-opacity hover:opacity-90"
         >
-          <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-foreground shadow-lg shadow-primary/20 group-hover:scale-105 transition-transform">
+          <div className="flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/20 transition-transform group-hover:scale-105">
             <ScrollText size={18} />
           </div>
-          <div className="flex flex-col">
-            <span className="font-serif text-xl leading-none italic font-medium">NovelFork</span>
-            <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-bold mt-1">Studio</span>
+          <div className="flex min-w-0 flex-col">
+            <span className="truncate text-lg font-semibold tracking-tight text-foreground">NovelFork</span>
+            <span className="text-[10px] font-bold uppercase tracking-[0.24em] text-muted-foreground">Studio</span>
           </div>
         </button>
       </div>
 
-      {/* Main Navigation */}
-      <div className="flex-1 overflow-y-auto px-4 py-2 space-y-6">
-        {/* Books Section */}
-        <div>
-          <div className="px-3 mb-3 flex items-center justify-between">
-            <span className="text-[11px] uppercase tracking-widest text-muted-foreground font-bold">
-              {t("nav.books")}
-            </span>
+      <div className="flex-1 space-y-5 overflow-y-auto px-4 py-4">
+        <div className="space-y-1">
+          {primaryItems.map((item) => (
+            <SidebarItem key={item.label} {...item} />
+          ))}
+        </div>
+
+        <SidebarSection
+          title="项目 / 书籍"
+          open={workspaceOpen}
+          onToggle={() => {
+            const next = !workspaceOpen;
+            setWorkspaceOpen(next);
+            writeSectionState(SIDEBAR_STORAGE_KEYS.workspace, next);
+          }}
+          action={
             <button
-              onClick={nav.toBookCreate}
-              className="p-1 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all group"
+              onClick={(event) => {
+                event.stopPropagation();
+                nav.toBookCreate();
+              }}
+              className="rounded-md px-1.5 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
               title={t("nav.newBook")}
             >
-              <Plus size={14} className="group-hover:rotate-90 transition-transform duration-300" />
+              +
             </button>
-          </div>
-
+          }
+        >
           <div className="space-y-0.5">
             <DndContext collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-              <SortableContext items={sortedBooks.map(b => b.id)} strategy={verticalListSortingStrategy}>
+              <SortableContext items={sortedBooks.map((book) => book.id)} strategy={verticalListSortingStrategy}>
                 {sortedBooks.map((book) => {
                   const isExpanded = expandedBooks.has(book.id);
                   const isActive = activePage === `book:${book.id}`;
@@ -202,7 +304,13 @@ export function Sidebar({ nav, activePage, sse, t }: {
                         t={t}
                       />
                       {isExpanded && (
-                        <BookTreeChildren bookId={book.id} chaptersWritten={book.chaptersWritten} nav={nav} activePage={activePage} t={t} />
+                        <BookTreeChildren
+                          bookId={book.id}
+                          chaptersWritten={book.chaptersWritten}
+                          nav={nav}
+                          activePage={activePage}
+                          t={t}
+                        />
                       )}
                     </div>
                   );
@@ -211,213 +319,59 @@ export function Sidebar({ nav, activePage, sse, t }: {
             </DndContext>
 
             {(!data?.books || data.books.length === 0) && (
-              <div className="px-3 py-6 text-xs text-muted-foreground/70 italic text-center border border-dashed border-border rounded-lg">
+              <div className="rounded-xl border border-dashed border-border px-3 py-5 text-center text-xs text-muted-foreground">
                 {t("dash.noBooks")}
               </div>
             )}
           </div>
-        </div>
+        </SidebarSection>
 
-        {/* System Section — collapsible */}
-        <div>
-          <button
-            onClick={() => toggleSection("system")}
-            className="w-full px-3 mb-3 flex items-center justify-between group cursor-pointer"
-          >
-            <span className="text-[11px] uppercase tracking-widest text-muted-foreground font-bold">
-              {t("nav.system")}
-            </span>
-            <span className="text-muted-foreground group-hover:text-foreground transition-colors">
-              {systemOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-            </span>
-          </button>
-          {systemOpen && (
+        <SidebarSection
+          title="工作台"
+          open={workbenchOpen}
+          onToggle={() => {
+            const next = !workbenchOpen;
+            setWorkbenchOpen(next);
+            writeSectionState(SIDEBAR_STORAGE_KEYS.workbench, next);
+          }}
+        >
           <div className="space-y-1">
-            <SidebarItem
-              label={t("create.genre")}
-              icon={<Boxes size={16} />}
-              active={activePage === "genres"}
-              onClick={nav.toGenres}
-            />
-            {(isStandalone || isTauri) && (
-              <SidebarItem
-                label={t("nav.config")}
-                icon={<Settings size={16} />}
-                active={activePage === "config"}
-                onClick={nav.toConfig}
-              />
-            )}
-            {(isStandalone || isTauri) && (
-              <SidebarItem
-                label={t("nav.daemon")}
-                icon={<Zap size={16} />}
-                active={activePage === "daemon"}
-                onClick={nav.toDaemon}
-                badge={daemon?.running ? t("nav.running") : undefined}
-                badgeColor={daemon?.running ? "bg-emerald-500/10 text-emerald-500" : "bg-muted text-muted-foreground"}
-              />
-            )}
-            {isStandalone && (
-              <SidebarItem
-                label={t("nav.logs")}
-                icon={<Terminal size={16} />}
-                active={activePage === "logs"}
-                onClick={nav.toLogs}
-              />
-            )}
-            {isTauri && (
-              <SidebarItem
-                label={t("nav.backup")}
-                icon={<Shield size={16} />}
-                active={activePage === "backup"}
-                onClick={nav.toBackup}
-              />
-            )}
-            <SidebarItem
-              label="Agent 管理"
-              icon={<Bot size={16} />}
-              active={activePage === "agents"}
-              onClick={nav.toAgents}
-            />
-            <SidebarItem
-              label="多窗口对话"
-              icon={<MessageSquare size={16} />}
-              active={activePage === "chat-windows"}
-              onClick={nav.toChatWindows}
-            />
-            <SidebarItem
-              label="通知配置"
-              icon={<Bell size={16} />}
-              active={activePage === "notify"}
-              onClick={nav.toNotify}
-            />
-            {(isStandalone || isTauri) && (
-              <SidebarItem
-                label="调度配置"
-                icon={<Clock size={16} />}
-                active={activePage === "scheduler-config"}
-                onClick={nav.toSchedulerConfig}
-              />
-            )}
-            <SidebarItem
-              label="LLM 高级"
-              icon={<Sliders size={16} />}
-              active={activePage === "llm-advanced"}
-              onClick={nav.toLLMAdvanced}
-            />
-            <SidebarItem
-              label="设置"
-              icon={<Settings size={16} />}
-              active={activePage === "settings"}
-              onClick={nav.toSettings}
-              testId="settings-btn"
-            />
+            {workbenchItems.map((item) => (
+              <SidebarItem key={item.label} {...item} />
+            ))}
           </div>
-          )}
-        </div>
+        </SidebarSection>
 
-        {/* Tools Section — collapsible */}
-        <div>
-          <button
-            onClick={() => toggleSection("tools")}
-            className="w-full px-3 mb-3 flex items-center justify-between group cursor-pointer"
-          >
-            <span className="text-[11px] uppercase tracking-widest text-muted-foreground font-bold">
-              {t("nav.tools")}
-            </span>
-            <span className="text-muted-foreground group-hover:text-foreground transition-colors">
-              {toolsOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-            </span>
-          </button>
-          {toolsOpen && (
+        <SidebarSection
+          title="系统台"
+          open={systemOpen}
+          onToggle={() => {
+            const next = !systemOpen;
+            setSystemOpen(next);
+            writeSectionState(SIDEBAR_STORAGE_KEYS.system, next);
+          }}
+        >
           <div className="space-y-1">
-            <SidebarItem
-              label={t("nav.search")}
-              icon={<Search size={16} />}
-              active={activePage === "search"}
-              onClick={nav.toSearch}
-            />
-            <SidebarItem
-              label={t("nav.style")}
-              icon={<Wand2 size={16} />}
-              active={activePage === "style"}
-              onClick={nav.toStyle}
-            />
-            <SidebarItem
-              label={t("nav.import")}
-              icon={<FileInput size={16} />}
-              active={activePage === "import"}
-              onClick={nav.toImport}
-            />
-            <SidebarItem
-              label={t("nav.radar")}
-              icon={<TrendingUp size={16} />}
-              active={activePage === "radar"}
-              onClick={nav.toRadar}
-            />
-            {(isStandalone || isTauri) && (
-              <SidebarItem
-                label={t("nav.doctor")}
-                icon={<Stethoscope size={16} />}
-                active={activePage === "doctor"}
-                onClick={nav.toDoctor}
-              />
-            )}
-            <SidebarItem
-              label="伏笔健康"
-              icon={<Anchor size={16} />}
-              active={activePage === "hooks"}
-              onClick={nav.toHooks}
-            />
-            <SidebarItem
-              label="AIGC 检测"
-              icon={<ShieldCheck size={16} />}
-              active={activePage === "detection-config"}
-              onClick={nav.toDetectionConfig}
-            />
-            <SidebarItem
-              label="MCP Server"
-              icon={<Server size={16} />}
-              active={activePage === "mcp"}
-              onClick={nav.toMCP}
-            />
-            <SidebarItem
-              label="Pipeline 可视化"
-              icon={<GitBranch size={16} />}
-              active={activePage === "pipeline"}
-              onClick={() => nav.toPipeline()}
-            />
-            <SidebarItem
-              label="Plugin 管理"
-              icon={<Puzzle size={16} />}
-              active={activePage === "plugins"}
-              onClick={nav.toPlugins}
-            />
-            <SidebarItem
-              label="Worktree 管理"
-              icon={<FolderGit2 size={16} />}
-              active={activePage === "worktree"}
-              onClick={nav.toWorktree}
-            />
+            {systemItems.map((item) => (
+              <SidebarItem key={item.label} {...item} />
+            ))}
           </div>
-          )}
-        </div>
+        </SidebarSection>
       </div>
 
-      {/* Footer / Status Area */}
-      <div className="p-4 border-t border-border bg-secondary/40">
-        <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-card border border-border shadow-sm">
+      <div className="border-t border-border/60 bg-muted/30 p-4">
+        <div className="flex items-center gap-3 rounded-xl border border-border/70 bg-card px-3 py-2 shadow-sm">
           {isTauri ? (
             <>
-              <div className="w-2 h-2 rounded-full bg-blue-500" />
-              <span className="text-[11px] font-semibold text-foreground/80 uppercase tracking-wider">
+              <span className="size-2 rounded-full bg-blue-500" />
+              <span className="text-[11px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
                 {t("nav.localMode")}
               </span>
             </>
           ) : (
             <>
-              <div className={`w-2 h-2 rounded-full ${daemon?.running ? "bg-emerald-500 animate-pulse" : "bg-muted-foreground/40"}`} />
-              <span className="text-[11px] font-semibold text-foreground/80 uppercase tracking-wider">
+              <span className={`size-2 rounded-full ${daemon?.running ? "bg-emerald-500 animate-pulse" : "bg-muted-foreground/40"}`} />
+              <span className="text-[11px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
                 {daemon?.running ? t("nav.agentOnline") : t("nav.agentOffline")}
               </span>
             </>
@@ -425,6 +379,38 @@ export function Sidebar({ nav, activePage, sse, t }: {
         </div>
       </div>
     </aside>
+  );
+}
+
+function SidebarSection({
+  title,
+  open,
+  onToggle,
+  children,
+  action,
+}: {
+  title: string;
+  open: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+  action?: React.ReactNode;
+}) {
+  return (
+    <section className="space-y-2">
+      <button
+        onClick={onToggle}
+        className="flex w-full items-center justify-between rounded-lg px-2 py-1 text-left"
+      >
+        <span className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+          {title}
+        </span>
+        <span className="flex items-center gap-1 text-muted-foreground">
+          {action}
+          {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        </span>
+      </button>
+      {open && children}
+    </section>
   );
 }
 
@@ -440,19 +426,19 @@ function SidebarItem({ label, icon, active, onClick, badge, badgeColor, testId }
   return (
     <button
       onClick={onClick}
-      className={`w-full group flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-200 ${
+      className={`group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-all duration-200 ${
         active
-          ? "bg-secondary text-foreground font-semibold shadow-sm border border-border"
-          : "text-foreground font-medium hover:text-foreground hover:bg-secondary/50"
+          ? "border border-border bg-muted/80 font-semibold text-foreground shadow-sm"
+          : "border border-transparent text-foreground/80 hover:bg-muted/60 hover:text-foreground"
       }`}
       data-testid={testId}
     >
-      <span className={`transition-colors ${active ? "text-primary" : "text-muted-foreground group-hover:text-foreground"}`}>
+      <span className={`${active ? "text-primary" : "text-muted-foreground group-hover:text-foreground"}`}>
         {icon}
       </span>
       <span className="flex-1 text-left">{label}</span>
       {badge && (
-        <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold uppercase tracking-tight ${badgeColor}`}>
+        <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-tight ${badgeColor ?? "bg-muted text-muted-foreground"}`}>
           {badge}
         </span>
       )}
@@ -476,52 +462,54 @@ function BookTreeChildren({ bookId, chaptersWritten, nav, activePage, t }: {
   const { data } = useApi<{ chapters: ReadonlyArray<ChapterMeta> }>(`/books/${bookId}/chapters`);
 
   return (
-    <div className="ml-5 pl-3 border-l border-border/40 space-y-0.5 py-0.5">
-      {data?.chapters.map((ch) => {
-        const chId = `chapter:${bookId}:${ch.chapterNumber}`;
-        const isActive = activePage === chId;
+    <div className="ml-5 space-y-0.5 border-l border-border/50 pl-3 py-1">
+      {data?.chapters.map((chapter) => {
+        const chapterId = `chapter:${bookId}:${chapter.chapterNumber}`;
+        const isActive = activePage === chapterId;
         return (
           <button
-            key={ch.chapterNumber}
-            onClick={() => nav.toChapter(bookId, ch.chapterNumber)}
-            className={`w-full flex items-center gap-2 px-2 py-1 rounded-md text-xs transition-all ${
+            key={chapter.chapterNumber}
+            onClick={() => nav.toChapter(bookId, chapter.chapterNumber)}
+            className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs transition-all ${
               isActive
-                ? "bg-primary/10 text-primary font-semibold"
-                : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
+                ? "bg-primary/10 font-semibold text-primary"
+                : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
             }`}
           >
-            <ChapterStatusIcon status={ch.status} />
-            <span className="truncate">{ch.title ?? t("chapter.label").replace("{n}", String(ch.chapterNumber))}</span>
+            <ChapterStatusIcon status={chapter.status} />
+            <span className="truncate">
+              {chapter.title ?? t("chapter.label").replace("{n}", String(chapter.chapterNumber))}
+            </span>
           </button>
         );
       })}
 
       <button
         onClick={() => nav.toTruth(bookId)}
-        className={`w-full flex items-center gap-2 px-2 py-1 rounded-md text-xs transition-all ${
+        className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs transition-all ${
           activePage === `truth:${bookId}`
-            ? "bg-primary/10 text-primary font-semibold"
-            : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
+            ? "bg-primary/10 font-semibold text-primary"
+            : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
         }`}
       >
-        <FolderOpen size={12} />
+        <BookOpen size={12} />
         <span>{t("book.truthFiles")}</span>
       </button>
 
       <button
         onClick={() => nav.toState(bookId)}
-        className={`w-full flex items-center gap-2 px-2 py-1 rounded-md text-xs transition-all ${
+        className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs transition-all ${
           activePage === `state:${bookId}`
-            ? "bg-primary/10 text-primary font-semibold"
-            : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
+            ? "bg-primary/10 font-semibold text-primary"
+            : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
         }`}
       >
-        <Layers size={12} />
+        <Workflow size={12} />
         <span>状态投影</span>
       </button>
 
       {(!data?.chapters || data.chapters.length === 0) && chaptersWritten === 0 && (
-        <div className="px-2 py-1 text-[10px] text-muted-foreground/50 italic">
+        <div className="px-2 py-1 text-[10px] italic text-muted-foreground/60">
           {t("book.noChapters")}
         </div>
       )}
@@ -529,19 +517,16 @@ function BookTreeChildren({ bookId, chaptersWritten, nav, activePage, t }: {
   );
 }
 
-/**
- * Chapter status icon: ✓ done (green), ● in-progress (amber), ○ pending (gray)
- */
 function ChapterStatusIcon({ status }: { status?: string }) {
   switch (status) {
     case "done":
     case "published":
-      return <span className="w-3 h-3 shrink-0 text-emerald-500 text-[10px] leading-3 text-center">✓</span>;
+      return <span className="w-3 shrink-0 text-center text-[10px] leading-3 text-emerald-500">✓</span>;
     case "writing":
     case "in-progress":
     case "revising":
-      return <span className="w-3 h-3 shrink-0 rounded-full bg-amber-400 inline-block scale-50" />;
+      return <span className="inline-block size-3 shrink-0 scale-50 rounded-full bg-amber-400" />;
     default:
-      return <span className="w-3 h-3 shrink-0 rounded-full border border-muted-foreground/40 inline-block scale-50" />;
+      return <span className="inline-block size-3 shrink-0 scale-50 rounded-full border border-muted-foreground/40" />;
   }
 }

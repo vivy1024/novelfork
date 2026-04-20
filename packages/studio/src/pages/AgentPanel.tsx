@@ -11,7 +11,7 @@ import { Bot, ChevronDown, ChevronRight, Zap, Settings2, RotateCcw } from "lucid
 
 interface Nav {
   toDashboard: () => void;
-  toConfig: () => void;
+  toWorkflow: () => void;
 }
 
 // 16 个 agent 的静态元数据
@@ -91,8 +91,8 @@ export function AgentPanel({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunc
 
       <div className="flex items-baseline justify-between">
         <h1 className="font-serif text-3xl">Agent 管理</h1>
-        <button onClick={nav.toConfig} className={`px-3 py-2 text-xs rounded-md ${c.btnSecondary} flex items-center gap-1`}>
-          <Settings2 size={12} />模型路由配置
+        <button onClick={nav.toWorkflow} className={`px-3 py-2 text-xs rounded-md ${c.btnSecondary} flex items-center gap-1`}>
+          <Settings2 size={12} />返回工作流台
         </button>
       </div>
 

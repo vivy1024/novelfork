@@ -11,7 +11,7 @@ import { Sliders, Save, RotateCcw, Plus, Trash2 } from "lucide-react";
 
 interface Nav {
   toDashboard: () => void;
-  toConfig: () => void;
+  toWorkflow: () => void;
 }
 
 interface LLMAdvancedForm {
@@ -100,7 +100,7 @@ export function LLMAdvancedConfig({ nav, theme, t }: { nav: Nav; theme: Theme; t
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <button onClick={nav.toDashboard} className={c.link}>首页</button>
         <span className="text-border">/</span>
-        <button onClick={nav.toConfig} className={c.link}>配置</button>
+        <button onClick={nav.toWorkflow} className={c.link}>工作流配置</button>
         <span className="text-border">/</span>
         <span className="text-foreground">LLM 高级参数</span>
       </div>

@@ -1,27 +1,29 @@
-import { useCallback, useRef, useEffect, useState, type ComponentType } from "react";
+import { useCallback, useEffect, useRef, useState, type ComponentType } from "react";
 import { ResponsiveGridLayout, type Layout, type LayoutItem } from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
 import { Plus } from "lucide-react";
+
 import type { Theme } from "../hooks/use-theme";
 import { useColors } from "../hooks/use-colors";
 import { ChatWindow } from "./ChatWindow";
 import { useWindowStore } from "../stores/windowStore";
+import { Button } from "./ui/button";
+import { PageEmptyState } from "./layout/PageEmptyState";
 
 interface ChatWindowManagerProps {
-  theme: Theme;
+  readonly theme: Theme;
+  readonly onCreateWindow: () => void;
 }
 
-export function ChatWindowManager({ theme }: ChatWindowManagerProps) {
+export function ChatWindowManager({ theme, onCreateWindow }: ChatWindowManagerProps) {
   const c = useColors(theme);
   const GridLayoutComponent = ResponsiveGridLayout as unknown as ComponentType<any>;
   const windows = useWindowStore((state) => state.windows);
-  const addWindow = useWindowStore((state) => state.addWindow);
   const updateLayout = useWindowStore((state) => state.updateLayout);
   const containerRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(1200);
 
-  // 监听容器宽度变化
   useEffect(() => {
     if (!containerRef.current) return;
 
@@ -40,57 +42,52 @@ export function ChatWindowManager({ theme }: ChatWindowManagerProps) {
   const handleLayoutChange = useCallback(
     (layout: Layout) => {
       layout.forEach((item: LayoutItem) => {
-        const window = windows.find((w) => w.id === item.i);
-        if (window) {
-          const newPos = { x: item.x, y: item.y, w: item.w, h: item.h };
-          if (
-            window.position.x !== newPos.x ||
-            window.position.y !== newPos.y ||
-            window.position.w !== newPos.w ||
-            window.position.h !== newPos.h
-          ) {
-            updateLayout(item.i, newPos);
-          }
+        const window = windows.find((candidate) => candidate.id === item.i);
+        if (!window) return;
+
+        const nextPosition = { x: item.x, y: item.y, w: item.w, h: item.h };
+        if (
+          window.position.x !== nextPosition.x ||
+          window.position.y !== nextPosition.y ||
+          window.position.w !== nextPosition.w ||
+          window.position.h !== nextPosition.h
+        ) {
+          updateLayout(item.i, nextPosition);
         }
       });
     },
-    [windows, updateLayout]
+    [windows, updateLayout],
   );
 
-  const handleAddWindow = () => {
-    const agentId = prompt("输入 Agent ID (例如: writer, planner, auditor):");
-    if (!agentId) return;
-    const title = prompt("输入窗口标题:", `${agentId} Agent`) || `${agentId} Agent`;
-    addWindow(agentId, title);
-  };
-
-  const layout = windows.map((w) => ({
-    i: w.id,
-    x: w.position.x,
-    y: w.position.y,
-    w: w.minimized ? 4 : w.position.w,
-    h: w.minimized ? 1 : w.position.h,
+  const layout = windows.map((window) => ({
+    i: window.id,
+    x: window.position.x,
+    y: window.position.y,
+    w: window.minimized ? 4 : window.position.w,
+    h: window.minimized ? 1 : window.position.h,
     minW: 3,
-    minH: w.minimized ? 1 : 4,
+    minH: window.minimized ? 1 : 4,
   }));
 
   return (
-    <div ref={containerRef} className="relative w-full h-full" style={{ backgroundColor: c.bg }} data-testid="card-container">
-      {/* 添加窗口按钮 */}
-      <button
-        onClick={handleAddWindow}
-        className="absolute top-4 right-4 z-50 flex items-center gap-2 px-4 py-2 rounded-lg shadow-lg transition-transform hover:scale-105"
-        style={{ backgroundColor: c.accent, color: "#fff" }}
+    <div
+      ref={containerRef}
+      className="relative h-full w-full overflow-hidden rounded-xl border border-border/60 bg-muted/20"
+      style={{ backgroundColor: c.bg }}
+      data-testid="card-container"
+    >
+      <Button
+        onClick={onCreateWindow}
+        className="absolute top-4 right-4 z-50"
         data-testid="new-card-btn"
       >
-        <Plus size={16} />
-        <span className="text-sm font-medium">新建对话窗口</span>
-      </button>
+        <Plus className="size-4" />
+        新建会话
+      </Button>
 
-      {/* 网格布局 */}
       {windows.length > 0 ? (
         <GridLayoutComponent
-          className="layout"
+          className="layout h-full"
           layouts={{ lg: layout }}
           breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
           cols={{ lg: 12, md: 10, sm: 6, xs: 4, xxs: 2 }}
@@ -108,19 +105,12 @@ export function ChatWindowManager({ theme }: ChatWindowManagerProps) {
           ))}
         </GridLayoutComponent>
       ) : (
-        <div className="flex items-center justify-center h-full">
-          <div className="text-center">
-            <p className="text-lg mb-4" style={{ color: c.textSecondary }}>
-              暂无对话窗口
-            </p>
-            <button
-              onClick={handleAddWindow}
-              className="px-6 py-3 rounded-lg shadow-lg transition-transform hover:scale-105"
-              style={{ backgroundColor: c.accent, color: "#fff" }}
-            >
-              创建第一个窗口
-            </button>
-          </div>
+        <div className="flex h-full items-center justify-center px-6">
+          <PageEmptyState
+            title="还没有会话窗口"
+            description="先创建一个 Writer、Planner 或 Auditor 会话，再开始排布多窗口工作台。"
+            action={<Button onClick={onCreateWindow}>创建第一个会话</Button>}
+          />
         </div>
       )}
     </div>

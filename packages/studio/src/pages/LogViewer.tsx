@@ -1,7 +1,10 @@
+import { PageEmptyState } from "@/components/layout/PageEmptyState";
+import { PageScaffold } from "@/components/layout/PageScaffold";
+import { Button } from "@/components/ui/button";
 import { useApi } from "../hooks/use-api";
-import type { Theme } from "../hooks/use-theme";
-import type { TFunction } from "../hooks/use-i18n";
 import { useColors } from "../hooks/use-colors";
+import type { TFunction } from "../hooks/use-i18n";
+import type { Theme } from "../hooks/use-theme";
 
 interface LogEntry {
   readonly level?: string;
@@ -26,57 +29,46 @@ export function LogViewer({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunct
   const { data, refetch } = useApi<{ entries: ReadonlyArray<LogEntry> }>("/logs");
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <button onClick={nav.toDashboard} className={c.link}>{t("bread.home")}</button>
-        <span className="text-border">/</span>
-        <span className="text-foreground">{t("logs.title")}</span>
-      </div>
-
-      <div className="flex items-baseline justify-between">
-        <h1 className="font-serif text-3xl">{t("logs.title")}</h1>
-        <button
-          onClick={() => refetch()}
-          className={`px-4 py-2.5 text-sm rounded-md ${c.btnSecondary}`}
-        >
+    <PageScaffold
+      title={t("logs.title")}
+      description={t("logs.showingRecent")}
+      actions={
+        <Button variant="outline" onClick={() => refetch()}>
           {t("common.refresh")}
-        </button>
-      </div>
-
-      <div className={`border ${c.cardStatic} rounded-lg overflow-hidden`}>
-        <div className="p-4 max-h-[600px] overflow-y-auto">
+        </Button>
+      }
+    >
+      <div className={`overflow-hidden rounded-lg border ${c.cardStatic}`}>
+        <div className="max-h-[600px] overflow-y-auto p-4">
           {data?.entries && data.entries.length > 0 ? (
             <div className="space-y-1 font-mono text-sm leading-relaxed">
-              {data.entries.map((entry, i) => (
-                <div key={i} className="flex gap-2">
+              {data.entries.map((entry, index) => (
+                <div key={index} className="flex gap-2">
                   {entry.timestamp && (
-                    <span className="text-muted-foreground shrink-0 w-20 tabular-nums">
+                    <span className="w-20 shrink-0 tabular-nums text-muted-foreground">
                       {new Date(entry.timestamp).toLocaleTimeString()}
                     </span>
                   )}
                   {entry.level && (
-                    <span className={`shrink-0 w-12 uppercase ${LEVEL_COLORS[entry.level] ?? "text-muted-foreground"}`}>
+                    <span
+                      className={`w-12 shrink-0 uppercase ${LEVEL_COLORS[entry.level] ?? "text-muted-foreground"}`}
+                    >
                       {entry.level}
                     </span>
                   )}
-                  {entry.tag && (
-                    <span className="text-primary/70 shrink-0">[{entry.tag}]</span>
-                  )}
+                  {entry.tag && <span className="shrink-0 text-primary/70">[{entry.tag}]</span>}
                   <span className="text-foreground/80">{entry.message}</span>
                 </div>
               ))}
             </div>
           ) : (
-            <div className="text-muted-foreground text-sm italic py-12 text-center">
-              {t("logs.empty")}
-            </div>
+            <PageEmptyState
+              title={t("logs.empty")}
+              description="当前还没有可显示的 Studio 日志，等守护进程或页面动作产生日志后会在这里滚动展示。"
+            />
           )}
         </div>
       </div>
-
-      <p className="text-sm text-muted-foreground">
-        {t("logs.showingRecent")}
-      </p>
-    </div>
+    </PageScaffold>
   );
 }
