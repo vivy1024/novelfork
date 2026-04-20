@@ -5,8 +5,8 @@
  * Based on AstrBot MCPClient stdio implementation.
  */
 
-import { spawn, type ChildProcess } from "node:child_process";
 import { EventEmitter } from "node:events";
+import { spawnProcess, type ProcessHandle } from "../runtime/process-adapter.js";
 import type {
   MCPRequest,
   MCPResponse,
@@ -29,7 +29,7 @@ export interface StdioTransportEvents {
 }
 
 export class StdioTransport extends EventEmitter {
-  private process: ChildProcess | null = null;
+  private process: ProcessHandle | null = null;
   private buffer = "";
   private requestId = 0;
   private pendingRequests = new Map<
@@ -55,40 +55,34 @@ export class StdioTransport extends EventEmitter {
       ...this.config.env,
     };
 
-    this.process = spawn(this.config.command, this.config.args ?? [], {
-      env,
-      stdio: ["pipe", "pipe", "pipe"],
+    this.process = await spawnProcess(this.config.command, this.config.args ?? [], {
+      env: this.config.env,
     });
 
-    this.process.stdout?.setEncoding("utf-8");
-    this.process.stderr?.setEncoding("utf-8");
-
-    this.process.stdout?.on("data", (data: string) => {
+    this.process.onStdout((data) => {
       this.emit("stdout", data);
       this.handleData(data);
     });
 
-    this.process.stderr?.on("data", (data: string) => {
+    this.process.onStderr((data) => {
       this.emit("stderr", data);
     });
 
-    this.process.on("error", (error) => {
+    this.process.onError((error) => {
       this.emit("error", error);
     });
 
-    this.process.on("close", (code) => {
+    this.process.onClose((code) => {
       this.cleanup();
       this.emit("close", code);
     });
 
-    // Wait for process to be ready
     await new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error("Process startup timeout"));
       }, this.config.timeout ?? 180000);
 
-      // Consider process ready when stdout is available
-      if (this.process?.stdout) {
+      if (this.process?.isAlive()) {
         clearTimeout(timeout);
         resolve();
       }
@@ -111,7 +105,7 @@ export class StdioTransport extends EventEmitter {
   }
 
   async sendRequest(request: MCPRequest): Promise<MCPResponse> {
-    if (!this.process?.stdin) {
+    if (!this.process) {
       throw new Error("Transport not connected");
     }
 
@@ -124,7 +118,7 @@ export class StdioTransport extends EventEmitter {
       this.pendingRequests.set(request.id, { resolve, reject, timeout });
 
       const message = JSON.stringify(request) + "\n";
-      this.process!.stdin!.write(message, (err) => {
+      this.process!.writeStdin(message, (err) => {
         if (err) {
           clearTimeout(timeout);
           this.pendingRequests.delete(request.id);
@@ -182,6 +176,6 @@ export class StdioTransport extends EventEmitter {
   }
 
   isConnected(): boolean {
-    return this.process !== null && !this.process.killed;
+    return this.process !== null && this.process.isAlive();
   }
 }

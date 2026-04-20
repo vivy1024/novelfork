@@ -3,11 +3,8 @@
  * ⚠️ 安全警告：需要严格权限控制
  */
 
+import { execCommand } from "@vivy1024/novelfork-core/runtime/process-adapter";
 import type { ToolDefinition, ToolContext, ToolResult } from "../tool-executor.js";
-import { exec } from "node:child_process";
-import { promisify } from "node:util";
-
-const execAsync = promisify(exec);
 
 export const BashTool: ToolDefinition = {
   name: "Bash",
@@ -60,45 +57,40 @@ export const BashTool: ToolDefinition = {
       }
     }
 
-    try {
-      const { stdout, stderr } = await execAsync(command, {
-        cwd: context.workspaceRoot,
-        timeout,
-        maxBuffer: 10 * 1024 * 1024, // 10MB
-      });
+    const result = await execCommand(command, {
+      cwd: context.workspaceRoot,
+      timeout,
+    });
 
-      return {
-        success: true,
-        data: {
-          stdout: stdout.trim(),
-          stderr: stderr.trim(),
-        },
-        metadata: {
-          command,
-          timeout,
-        },
-      };
-    } catch (error: unknown) {
-      const err = error as { code?: number; signal?: string; stdout?: string; stderr?: string; message?: string };
-
-      // 超时错误
-      if (err.signal === "SIGTERM") {
-        return {
-          success: false,
-          error: `Command timed out after ${timeout}ms`,
-        };
-      }
-
-      // 命令执行失败
+    if (result.signal === "SIGTERM") {
       return {
         success: false,
-        error: err.message || String(error),
+        error: `Command timed out after ${timeout}ms`,
+      };
+    }
+
+    if ((result.exitCode ?? 0) !== 0) {
+      return {
+        success: false,
+        error: result.stderr || `Command failed with exit code ${result.exitCode}`,
         data: {
-          stdout: err.stdout?.trim() || "",
-          stderr: err.stderr?.trim() || "",
-          exitCode: err.code,
+          stdout: result.stdout,
+          stderr: result.stderr,
+          exitCode: result.exitCode,
         },
       };
     }
+
+    return {
+      success: true,
+      data: {
+        stdout: result.stdout,
+        stderr: result.stderr,
+      },
+      metadata: {
+        command,
+        timeout,
+      },
+    };
   },
 };

@@ -22,7 +22,7 @@
     "dev": "vite --host --port 4567",
     "build": "npm run build:client && npm run build:server",
     "build:client": "vite build",
-    "build:server": "tsc -p tsconfig.server.json",
+    "build:server": "pnpm --dir ../core build && tsc -p tsconfig.server.json",
     "preview": "vite preview",
     "test": "vitest run",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.server.json --noEmit"

@@ -3,11 +3,8 @@
  * 提供安全的 Git 操作接口，防止命令注入
  */
 
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import * as path from "node:path";
-
-const execFileAsync = promisify(execFile);
+import { execFileCommand } from "@vivy1024/novelfork-core/runtime/process-adapter";
 
 /**
  * Worktree 信息
@@ -37,17 +34,11 @@ export interface GitStatus {
  * @returns 命令输出
  */
 export async function execGit(args: string[], cwd: string): Promise<string> {
-  try {
-    const { stdout } = await execFileAsync("git", args, {
-      cwd,
-      encoding: "utf8",
-      maxBuffer: 10 * 1024 * 1024, // 10MB
-    });
-    return stdout.trim();
-  } catch (error: any) {
-    const stderr = error.stderr || error.message;
-    throw new Error(`Git command failed: ${stderr}`);
+  const result = await execFileCommand("git", args, { cwd });
+  if (result.exitCode !== 0) {
+    throw new Error(`Git command failed: ${result.stderr || result.stdout}`);
   }
+  return result.stdout.trim();
 }
 
 /**
