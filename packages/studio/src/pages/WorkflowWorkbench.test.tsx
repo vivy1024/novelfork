@@ -36,6 +36,9 @@ describe("WorkflowWorkbench", () => {
     );
 
     expect(screen.getByText("工作流配置台")).toBeTruthy();
+    expect(screen.getByText("当前区块的配置边界")).toBeTruthy();
+    expect(screen.getAllByText("全局级").length).toBeGreaterThan(0);
+    expect(screen.getByText("按 Agent 分组在各自面板保存，避免误改整套编排。")).toBeTruthy();
     expect(screen.getByRole("tab", { name: /MCP 工具/ })).toBeTruthy();
 
     fireEvent.click(screen.getByRole("tab", { name: /MCP 工具/ }));

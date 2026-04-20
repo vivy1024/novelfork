@@ -5,7 +5,7 @@ import { useColors } from "../hooks/use-colors";
 import { WindowControls } from "./WindowControls";
 import { useWindowStore } from "../stores/windowStore";
 import type { ChatMessage } from "../stores/windowStore";
-import { ToolCallCard } from "./ToolCall/ToolCallCard";
+import { ToolCallBlock, parseAssistantPayload } from "./ToolCall";
 
 interface ChatWindowProps {
   windowId: string;
@@ -44,11 +44,13 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
         ws.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data);
+            const parsed = parseAssistantPayload(data, event.data);
             const message: ChatMessage = {
               id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
               role: "assistant",
-              content: data.content || data.message || event.data,
+              content: parsed.content,
               timestamp: Date.now(),
+              toolCalls: parsed.toolCalls.length > 0 ? parsed.toolCalls : undefined,
             };
             addMessage(windowId, message);
           } catch {
@@ -187,9 +189,16 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
                   </div>
                 </div>
                 {msg.toolCalls && msg.toolCalls.length > 0 && (
-                  <div className="space-y-2 ml-4">
+                  <div className="ml-4 space-y-2 rounded-xl border border-border/40 bg-muted/20 p-2">
+                    <div className="px-1 text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                      工具调用日志
+                    </div>
                     {msg.toolCalls.map((toolCall, idx) => (
-                      <ToolCallCard key={`${msg.id}-tool-${idx}`} toolCall={toolCall} theme={c} />
+                      <ToolCallBlock
+                        key={toolCall.id ?? `${msg.id}-tool-${idx}`}
+                        toolCall={toolCall}
+                        defaultExpanded={toolCall.status === "error" || toolCall.status === "running"}
+                      />
                     ))}
                   </div>
                 )}

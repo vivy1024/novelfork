@@ -40,6 +40,10 @@ const WORKFLOW_TABS = [
     icon: Boxes,
     summary: "项目基础配置、默认模型、路由覆盖",
     badge: "基础",
+    scope: "混合",
+    scopeDescription: "同时包含项目级默认值与全局模型路由配置。",
+    saveStrategy: "混合保存",
+    saveDescription: "部分字段即时生效，部分字段沿用各子面板自己的保存动作。",
   },
   {
     value: "agents",
@@ -47,6 +51,10 @@ const WORKFLOW_TABS = [
     icon: Bot,
     summary: "16 个写作 Agent 的路由与状态总览",
     badge: "核心",
+    scope: "全局级",
+    scopeDescription: "影响整套写作管线默认行为，所有项目默认继承。",
+    saveStrategy: "面板内保存",
+    saveDescription: "按 Agent 分组在各自面板保存，避免误改整套编排。",
   },
   {
     value: "mcp",
@@ -54,6 +62,10 @@ const WORKFLOW_TABS = [
     icon: Server,
     summary: "本地/远程 MCP Server 与工具接入",
     badge: "工具",
+    scope: "全局级",
+    scopeDescription: "工具接入属于工作台基础设施，默认对所有会话共享。",
+    saveStrategy: "即时同步",
+    saveDescription: "连接状态与启停结果即时反馈，配置仍由子面板确认。",
   },
   {
     value: "plugins",
@@ -61,6 +73,10 @@ const WORKFLOW_TABS = [
     icon: Puzzle,
     summary: "插件开关、状态与配置入口",
     badge: "扩展",
+    scope: "全局级",
+    scopeDescription: "插件能力面向整个 Studio 工作台提供，不按单书拆分。",
+    saveStrategy: "面板内保存",
+    saveDescription: "插件启停和细项配置在各自卡片内保存，便于追踪变更。",
   },
   {
     value: "advanced",
@@ -68,6 +84,10 @@ const WORKFLOW_TABS = [
     icon: SlidersHorizontal,
     summary: "thinking budget、headers、extra 参数",
     badge: "模型",
+    scope: "全局级",
+    scopeDescription: "高级模型参数会影响所有 AI 调用的默认行为。",
+    saveStrategy: "即时同步",
+    saveDescription: "参数修改后立即反映到后续请求，当前任务无需离开工作台。",
   },
   {
     value: "scheduler",
@@ -75,6 +95,10 @@ const WORKFLOW_TABS = [
     icon: Workflow,
     summary: "守护进程写作节奏与质量门控",
     badge: "自动化",
+    scope: "项目级",
+    scopeDescription: "调度节奏与质量门控通常按项目/书籍分别管理。",
+    saveStrategy: "面板内保存",
+    saveDescription: "建议逐项确认后再保存，避免守护进程立刻切换节奏。",
   },
   {
     value: "detection",
@@ -82,6 +106,10 @@ const WORKFLOW_TABS = [
     icon: ShieldCheck,
     summary: "检测提供商、阈值与自动改写策略",
     badge: "审计",
+    scope: "项目级",
+    scopeDescription: "不同书籍可按题材和风险要求设不同检测阈值。",
+    saveStrategy: "面板内保存",
+    saveDescription: "检测阈值和改写策略集中在当前项目上下文中提交。",
   },
   {
     value: "hooks",
@@ -89,6 +117,10 @@ const WORKFLOW_TABS = [
     icon: Sparkles,
     summary: "伏笔生命周期、陈旧度与回收率",
     badge: "审计",
+    scope: "项目级",
+    scopeDescription: "伏笔生命周期依附具体书籍，不适合作为全局默认值。",
+    saveStrategy: "即时刷新",
+    saveDescription: "切换区块后立即刷新当前书籍快照，保存策略沿用数据面板。",
   },
   {
     value: "notify",
@@ -96,6 +128,10 @@ const WORKFLOW_TABS = [
     icon: Bell,
     summary: "Telegram / 飞书 / 企业微信 / Webhook",
     badge: "联动",
+    scope: "全局级",
+    scopeDescription: "通知渠道是工作台级能力，可被多个任务复用。",
+    saveStrategy: "面板内保存",
+    saveDescription: "渠道配置集中保存，避免半配置状态影响运行中的任务。",
   },
 ] as const;
 
@@ -130,8 +166,33 @@ export function WorkflowWorkbench({
         <WorkbenchStat title="已收口模块" value="9" description="从分散入口合并到统一工作台" />
         <WorkbenchStat title="一级入口" value="1" description="侧边栏只保留工作流配置" />
         <WorkbenchStat title="当前区块" value={currentTab.label} description={currentTab.summary} />
-        <WorkbenchStat title="参考方向" value="NarraFork" description="对齐 routines / config workbench 的组织方式" />
+        <WorkbenchStat title="配置边界" value={currentTab.scope} description={currentTab.scopeDescription} />
       </div>
+
+      <Card size="sm" className="border-dashed bg-muted/20">
+        <CardHeader className="gap-3 md:flex-row md:items-start md:justify-between">
+          <div className="space-y-1.5">
+            <CardTitle className="text-base">当前区块的配置边界</CardTitle>
+            <CardDescription>
+              {currentTab.scopeDescription}
+            </CardDescription>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Badge variant="secondary">{currentTab.scope}</Badge>
+            <Badge variant="outline">{currentTab.saveStrategy}</Badge>
+          </div>
+        </CardHeader>
+        <CardContent className="grid gap-3 text-sm text-muted-foreground md:grid-cols-2">
+          <div>
+            <p className="font-medium text-foreground">适用范围</p>
+            <p className="mt-1">{currentTab.scopeDescription}</p>
+          </div>
+          <div>
+            <p className="font-medium text-foreground">保存策略</p>
+            <p className="mt-1">{currentTab.saveDescription}</p>
+          </div>
+        </CardContent>
+      </Card>
 
       <Tabs
         value={currentSection}
