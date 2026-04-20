@@ -6,13 +6,16 @@
 import { Hono } from "hono";
 import { createServer } from "node:http";
 import * as os from "node:os";
-import { join, relative, resolve } from "node:path";
-import { readdir, stat } from "node:fs/promises";
+import { basename, join, relative, resolve } from "node:path";
+import { readFile, readdir, stat } from "node:fs/promises";
 import { statfs as statfsCallback } from "node:fs";
 import { promisify } from "node:util";
 import { WebSocketServer } from "ws";
 
+import { getWorktreeStatus, listWorktrees } from "../lib/git-utils.js";
 import { providerManager } from "../lib/provider-manager.js";
+import { getDaemonAdminSnapshot, startDaemon, stopDaemon } from "./daemon.js";
+import type { RouterContext } from "./context.js";
 
 const statfs = promisify(statfsCallback);
 const MAX_REQUEST_LOGS = 1000;
@@ -215,6 +218,9 @@ function resolveRequestKind(endpoint: string): string {
   if (endpoint.startsWith("/resources")) return "resource-monitor";
   if (endpoint.startsWith("/requests")) return "request-audit";
   if (endpoint.startsWith("/users")) return "user-admin";
+  if (endpoint.startsWith("/daemon")) return "daemon-admin";
+  if (endpoint.startsWith("/logs")) return "log-tail";
+  if (endpoint.startsWith("/worktrees")) return "worktree-admin";
   return "admin";
 }
 
@@ -507,6 +513,223 @@ async function getStorageSnapshot(forceRefresh: boolean, root?: string): Promise
   };
 }
 
+interface AdminLogEntry {
+  timestamp?: string;
+  level?: string;
+  tag?: string;
+  message: string;
+  raw: string;
+  source: "json" | "text";
+}
+
+interface AdminLogsSnapshot {
+  sourcePath: string;
+  exists: boolean;
+  refreshedAt: string;
+  updatedAt: string | null;
+  sizeBytes: number;
+  limit: number;
+  totalEntries: number;
+  refreshHintMs: number;
+  capabilities: {
+    tail: true;
+    stream: false;
+    download: false;
+  };
+  entries: AdminLogEntry[];
+}
+
+interface AdminWorktreeItem {
+  path: string;
+  relativePath: string;
+  branch: string;
+  head: string;
+  shortHead: string;
+  bare: boolean;
+  isPrimary: boolean;
+  dirty: boolean;
+  changeCount: number;
+  status: {
+    modified: number;
+    added: number;
+    deleted: number;
+    untracked: number;
+  };
+}
+
+interface AdminWorktreeSnapshot {
+  rootPath: string;
+  refreshedAt: string;
+  refreshHintMs: number;
+  status: "ready" | "error";
+  error?: string;
+  summary: {
+    total: number;
+    dirty: number;
+    clean: number;
+    bare: number;
+  };
+  capabilities: {
+    list: true;
+    mutate: false;
+    terminal: false;
+    container: false;
+  };
+  worktrees: AdminWorktreeItem[];
+}
+
+function normalizeRelativePath(rootPath: string, targetPath: string) {
+  const relativePath = relative(rootPath, targetPath).replace(/\\/g, "/");
+  return relativePath.length === 0 || relativePath === "." ? "." : relativePath || basename(targetPath) || ".";
+}
+
+async function getLogsSnapshot(limit: number, root?: string): Promise<AdminLogsSnapshot> {
+  const rootPath = getAdminProjectRoot(root);
+  const sourcePath = join(rootPath, "inkos.log");
+
+  try {
+    const [content, fileStats] = await Promise.all([readFile(sourcePath, "utf-8"), stat(sourcePath)]);
+    const lines = content
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    const entries = lines.slice(-limit).reverse().map<AdminLogEntry>((line) => {
+      try {
+        const parsed = JSON.parse(line) as Record<string, unknown>;
+        return {
+          timestamp: typeof parsed.timestamp === "string" ? parsed.timestamp : undefined,
+          level: typeof parsed.level === "string" ? parsed.level : undefined,
+          tag: typeof parsed.tag === "string" ? parsed.tag : undefined,
+          message: typeof parsed.message === "string" ? parsed.message : line,
+          raw: line,
+          source: "json",
+        };
+      } catch {
+        return {
+          message: line,
+          raw: line,
+          source: "text",
+        };
+      }
+    });
+
+    return {
+      sourcePath,
+      exists: true,
+      refreshedAt: new Date().toISOString(),
+      updatedAt: fileStats.mtime.toISOString(),
+      sizeBytes: fileStats.size,
+      limit,
+      totalEntries: lines.length,
+      refreshHintMs: 5_000,
+      capabilities: {
+        tail: true,
+        stream: false,
+        download: false,
+      },
+      entries,
+    };
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      return {
+        sourcePath,
+        exists: false,
+        refreshedAt: new Date().toISOString(),
+        updatedAt: null,
+        sizeBytes: 0,
+        limit,
+        totalEntries: 0,
+        refreshHintMs: 5_000,
+        capabilities: {
+          tail: true,
+          stream: false,
+          download: false,
+        },
+        entries: [],
+      };
+    }
+
+    throw error;
+  }
+}
+
+async function getWorktreesSnapshot(root?: string): Promise<AdminWorktreeSnapshot> {
+  const rootPath = getAdminProjectRoot(root);
+
+  try {
+    const worktrees = await listWorktrees(rootPath);
+    const detailed = await Promise.all(
+      worktrees.map(async (worktree) => {
+        const gitStatus = await getWorktreeStatus(worktree.path);
+        const status = {
+          modified: gitStatus.modified.length,
+          added: gitStatus.added.length,
+          deleted: gitStatus.deleted.length,
+          untracked: gitStatus.untracked.length,
+        };
+        const changeCount = status.modified + status.added + status.deleted + status.untracked;
+
+        return {
+          path: worktree.path,
+          relativePath: normalizeRelativePath(rootPath, worktree.path),
+          branch: worktree.branch.replace(/^refs\/heads\//, ""),
+          head: worktree.head,
+          shortHead: worktree.head.slice(0, 8),
+          bare: worktree.bare,
+          isPrimary: resolve(worktree.path) === resolve(rootPath),
+          dirty: changeCount > 0,
+          changeCount,
+          status,
+        } satisfies AdminWorktreeItem;
+      }),
+    );
+
+    const dirty = detailed.filter((item) => item.dirty).length;
+    const bare = detailed.filter((item) => item.bare).length;
+
+    return {
+      rootPath,
+      refreshedAt: new Date().toISOString(),
+      refreshHintMs: 10_000,
+      status: "ready",
+      summary: {
+        total: detailed.length,
+        dirty,
+        clean: detailed.length - dirty,
+        bare,
+      },
+      capabilities: {
+        list: true,
+        mutate: false,
+        terminal: false,
+        container: false,
+      },
+      worktrees: detailed,
+    };
+  } catch (error) {
+    return {
+      rootPath,
+      refreshedAt: new Date().toISOString(),
+      refreshHintMs: 10_000,
+      status: "error",
+      error: error instanceof Error ? error.message : "读取 worktree 列表失败",
+      summary: {
+        total: 0,
+        dirty: 0,
+        clean: 0,
+        bare: 0,
+      },
+      capabilities: {
+        list: true,
+        mutate: false,
+        terminal: false,
+        container: false,
+      },
+      worktrees: [],
+    };
+  }
+}
+
 export function resetAdminState() {
   users.splice(0, users.length, ...initialUsers.map(cloneUser));
   requestLogs.splice(0, requestLogs.length);
@@ -517,7 +740,7 @@ export function resetAdminState() {
 
 // --- Router ---
 
-export function createAdminRouter(root?: string) {
+export function createAdminRouter(root?: string, runtime?: RouterContext) {
   const app = new Hono<{ Variables: { adminLogMeta?: AdminLogMeta } }>();
 
   app.use("*", async (c, next) => {
@@ -623,6 +846,102 @@ export function createAdminRouter(root?: string) {
       details: `providers=${providers.length}`,
     });
     return c.json({ providers });
+  });
+
+  // ===== 守护进程 =====
+
+  app.get("/daemon", async (c) => {
+    const snapshot = await getDaemonAdminSnapshot(getAdminProjectRoot(root));
+    c.set("adminLogMeta", {
+      narrator: "admin.daemon",
+      requestKind: "daemon-admin",
+      details: `running=${snapshot.running ? 1 : 0}`,
+    });
+    return c.json(snapshot);
+  });
+
+  app.post("/daemon/start", async (c) => {
+    if (!runtime) {
+      c.set("adminLogMeta", {
+        narrator: "admin.daemon",
+        requestKind: "daemon-admin",
+        details: "action=start unavailable",
+      });
+      return c.json({ error: "Admin daemon controls require studio runtime context" }, 503);
+    }
+
+    try {
+      await startDaemon(runtime);
+      c.set("adminLogMeta", {
+        narrator: "admin.daemon",
+        requestKind: "daemon-admin",
+        details: "action=start",
+      });
+      return c.json({ ok: true });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      c.set("adminLogMeta", {
+        narrator: "admin.daemon",
+        requestKind: "daemon-admin",
+        details: `action=start error=${message}`,
+      });
+      return c.json({ error: message }, message === "Daemon already running" ? 400 : 500);
+    }
+  });
+
+  app.post("/daemon/stop", async (c) => {
+    if (!runtime) {
+      c.set("adminLogMeta", {
+        narrator: "admin.daemon",
+        requestKind: "daemon-admin",
+        details: "action=stop unavailable",
+      });
+      return c.json({ error: "Admin daemon controls require studio runtime context" }, 503);
+    }
+
+    try {
+      stopDaemon(runtime);
+      c.set("adminLogMeta", {
+        narrator: "admin.daemon",
+        requestKind: "daemon-admin",
+        details: "action=stop",
+      });
+      return c.json({ ok: true });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      c.set("adminLogMeta", {
+        narrator: "admin.daemon",
+        requestKind: "daemon-admin",
+        details: `action=stop error=${message}`,
+      });
+      return c.json({ error: message }, message === "Daemon not running" ? 400 : 500);
+    }
+  });
+
+  // ===== 日志 =====
+
+  app.get("/logs", async (c) => {
+    const rawLimit = Number.parseInt(c.req.query("limit") || "200", 10);
+    const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 20), 500) : 200;
+    const snapshot = await getLogsSnapshot(limit, root);
+    c.set("adminLogMeta", {
+      narrator: "admin.logs",
+      requestKind: "log-tail",
+      details: `entries=${snapshot.entries.length}/${snapshot.totalEntries}`,
+    });
+    return c.json(snapshot);
+  });
+
+  // ===== Worktree =====
+
+  app.get("/worktrees", async (c) => {
+    const snapshot = await getWorktreesSnapshot(root);
+    c.set("adminLogMeta", {
+      narrator: "admin.worktrees",
+      requestKind: "worktree-admin",
+      details: snapshot.status === "ready" ? `worktrees=${snapshot.summary.total}` : `error=${snapshot.error ?? "unknown"}`,
+    });
+    return c.json(snapshot);
   });
 
   // ===== 资源监控 =====

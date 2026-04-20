@@ -40,6 +40,7 @@ export function ToolCallBlock({ toolCall, defaultExpanded = false, className }: 
   const toolKind = useMemo(() => getToolCallKind(toolCall.toolName), [toolCall.toolName]);
   const primaryTarget = useMemo(() => getToolCallPrimaryTarget(toolCall), [toolCall]);
   const detailSections = useMemo(() => buildDetailSections(toolCall, toolKind), [toolCall, toolKind]);
+  const subagentCard = useMemo(() => (toolKind === "agent" ? buildSubagentCard(toolCall) : null), [toolCall, toolKind]);
   const status = toolCall.status ?? "success";
   const timeline = useMemo(
     () => [
@@ -109,6 +110,7 @@ export function ToolCallBlock({ toolCall, defaultExpanded = false, className }: 
                   ))}
                 </div>
               )}
+              {subagentCard && <SubagentCard card={subagentCard} />}
               {(timeline.length > 0 || toolCall.error) && (
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
                   {timeline.map((item) => (
@@ -231,6 +233,48 @@ function DetailSection({
   );
 }
 
+function SubagentCard({
+  card,
+}: {
+  card: { title: string; summary?: string; fields: Array<{ label: string; value: string }> };
+}) {
+  return (
+    <div className="rounded-lg border border-primary/20 bg-primary/5 p-3" data-testid="subagent-card">
+      <div className="mb-2 flex items-center gap-2">
+        <Badge variant="secondary">子代理卡片</Badge>
+        <span className="text-xs font-medium text-foreground">{card.title}</span>
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2">
+        {card.fields.map((field) => (
+          <div key={`${field.label}-${field.value}`} className="rounded-md border border-border/60 bg-background/80 px-2 py-1.5">
+            <div className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">{field.label}</div>
+            <div className="truncate text-xs text-foreground" title={field.value}>{field.value}</div>
+          </div>
+        ))}
+      </div>
+      {card.summary ? <p className="mt-2 text-xs leading-5 text-muted-foreground">{card.summary}</p> : null}
+    </div>
+  );
+}
+
+function buildSubagentCard(toolCall: ToolCall) {
+  const input = asRecord(toolCall.input);
+  const result = asRecord(toolCall.result);
+  const title = pickFirstString(input, ["description", "task", "prompt"]) ?? toolCall.summary ?? "子代理任务";
+  const fields = [
+    pickFirstString(input, ["subagent_type", "agentType", "type"]) ? { label: "类型", value: pickFirstString(input, ["subagent_type", "agentType", "type"])! } : null,
+    pickFirstString(input, ["model"]) ? { label: "模型", value: pickFirstString(input, ["model"])! } : null,
+    pickFirstString(result, ["status", "state"]) ?? toolCall.status ? { label: "状态", value: pickFirstString(result, ["status", "state"]) ?? getToolCallStatusLabel(toolCall.status) } : null,
+    pickFirstString(result, ["subagent_id", "task_id", "id"]) ? { label: "任务", value: pickFirstString(result, ["subagent_id", "task_id", "id"])! } : null,
+  ].filter((item): item is { label: string; value: string } => Boolean(item));
+
+  return {
+    title,
+    summary: pickFirstString(result, ["summary", "message", "content"]) ?? firstLine(toolCall.output),
+    fields,
+  };
+}
+
 function buildHighlightBadges(toolCall: ToolCall, toolKind: ReturnType<typeof getToolCallKind>, primaryTarget?: string) {
   const badges: Array<{ label: string; value: string; tone?: "error" }> = [];
 
@@ -350,4 +394,25 @@ function summarizeLineCount(value: string) {
 
 function truncate(value: string, max: number) {
   return value.length > max ? `${value.slice(0, max - 1)}…` : value;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null ? value as Record<string, unknown> : undefined;
+}
+
+function pickFirstString(record: Record<string, unknown> | undefined, keys: readonly string[]): string | undefined {
+  if (!record) {
+    return undefined;
+  }
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function firstLine(value?: string) {
+  return value?.split(/\r?\n/).find((line) => line.trim().length > 0);
 }

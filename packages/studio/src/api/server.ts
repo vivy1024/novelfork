@@ -276,7 +276,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     app.route("", createContextManagerRouter(ctx));
 
     // Admin panel
-    app.route("/api/admin", createAdminRouter(root));
+    app.route("/api/admin", createAdminRouter(root, ctx));
 
     // Routines system
     app.route("/api/routines", createRoutinesRouter());

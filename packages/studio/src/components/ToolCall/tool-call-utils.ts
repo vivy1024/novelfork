@@ -180,6 +180,8 @@ export function getToolCallPrimaryTarget(toolCall: ToolCall): string | undefined
       }
       return pickFirstString(inputRecord, ["serverName", "toolName", "tool", "resource"]);
     }
+    case "agent":
+      return pickFirstString(inputRecord, ["description", "subagent_type", "task_id", "prompt"]);
     default:
       return pickFirstString(inputRecord, ["path", "target", "url"]);
   }

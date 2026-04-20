@@ -22,6 +22,7 @@ const contentTypes: Record<string, string> = {
   json: "application/json",
   html: "text/html; charset=utf-8",
   woff2: "font/woff2",
+  webmanifest: "application/manifest+json",
 };
 
 function getContentType(filePath: string): string {

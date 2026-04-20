@@ -26,6 +26,7 @@ describe("sessionRouter", () => {
         title: "Planner 会话",
         agentId: "planner",
         kind: "standalone",
+        sessionMode: "plan",
         worktree: "feature/session-core",
         sessionConfig: {
           providerId: "anthropic",
@@ -43,6 +44,7 @@ describe("sessionRouter", () => {
       title: "Planner 会话",
       agentId: "planner",
       kind: "standalone",
+      sessionMode: "plan",
       worktree: "feature/session-core",
       status: "active",
       sortOrder: 0,
@@ -66,6 +68,7 @@ describe("sessionRouter", () => {
       id: created.id,
       agentId: "planner",
       kind: "standalone",
+      sessionMode: "plan",
       sessionConfig: {
         providerId: "anthropic",
         modelId: "claude-sonnet-4-6",

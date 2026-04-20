@@ -9,6 +9,11 @@ vi.mock("./user-config-service.js", () => ({
       defaultPermissionMode: "ask",
       defaultReasoningEffort: "high",
     },
+    modelDefaults: {
+      defaultSessionModel: "openai:gpt-4-turbo",
+      summaryModel: "anthropic:claude-haiku-4-5",
+      subagentModelPool: ["openai:gpt-4-turbo", "deepseek:deepseek-chat"],
+    },
   })),
 }));
 
@@ -35,7 +40,7 @@ describe("session-service", () => {
 
     expect(session.sessionConfig.permissionMode).toBe("ask");
     expect(session.sessionConfig.reasoningEffort).toBe("high");
-    expect(session.sessionConfig.providerId).toBe("anthropic");
-    expect(session.sessionConfig.modelId).toBe("claude-sonnet-4-6");
+    expect(session.sessionConfig.providerId).toBe("openai");
+    expect(session.sessionConfig.modelId).toBe("gpt-4-turbo");
   });
 });

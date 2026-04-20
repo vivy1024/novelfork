@@ -10,12 +10,14 @@ export interface SessionConfig {
 
 export type NarratorSessionKind = "standalone" | "chapter";
 export type NarratorSessionStatus = "active" | "archived";
+export type NarratorSessionMode = "chat" | "plan";
 
 export interface NarratorSessionRecord {
   id: string;
   title: string;
   agentId: string;
   kind: NarratorSessionKind;
+  sessionMode: NarratorSessionMode;
   status: NarratorSessionStatus;
   createdAt: string;
   lastModified: string;
@@ -31,6 +33,7 @@ export interface CreateNarratorSessionInput {
   title?: string;
   agentId?: string;
   kind?: NarratorSessionKind;
+  sessionMode?: NarratorSessionMode;
   worktree?: string;
   chapterId?: string;
   projectId?: string;
@@ -41,6 +44,7 @@ export interface UpdateNarratorSessionInput {
   title?: string;
   agentId?: string;
   kind?: NarratorSessionKind;
+  sessionMode?: NarratorSessionMode;
   status?: NarratorSessionStatus;
   messageCount?: number;
   sortOrder?: number;

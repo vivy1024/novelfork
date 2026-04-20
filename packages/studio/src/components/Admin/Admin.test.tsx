@@ -17,6 +17,18 @@ vi.mock("./RequestsTab", () => ({
   RequestsTab: () => <div>RequestsTab Mock</div>,
 }));
 
+vi.mock("./DaemonTab", () => ({
+  DaemonTab: () => <div>DaemonTab Mock</div>,
+}));
+
+vi.mock("./LogsTab", () => ({
+  LogsTab: () => <div>LogsTab Mock</div>,
+}));
+
+vi.mock("./WorktreesTab", () => ({
+  WorktreesTab: () => <div>WorktreesTab Mock</div>,
+}));
+
 import { Admin } from "./Admin";
 
 describe("Admin", () => {
@@ -34,12 +46,16 @@ describe("Admin", () => {
     expect(onNavigateSection).toHaveBeenNthCalledWith(3, "worktrees");
   });
 
-  it("renders a placeholder for daemon work", () => {
+  it("renders the daemon tab instead of a placeholder", () => {
     render(<Admin section="daemon" onNavigateSection={() => {}} />);
 
-    expect(
-      screen.getByText("下一批会把守护进程运行状态、启动 / 停止和最近事件统一收口到这里。"),
-    ).toBeTruthy();
+    expect(screen.getByText("DaemonTab Mock")).toBeTruthy();
+  });
+
+  it("renders the logs tab content", () => {
+    render(<Admin section="logs" onNavigateSection={() => {}} />);
+
+    expect(screen.getByText("LogsTab Mock")).toBeTruthy();
   });
 
   it("renders the selected admin tab content", () => {

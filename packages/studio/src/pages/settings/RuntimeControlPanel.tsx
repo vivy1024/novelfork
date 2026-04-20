@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Activity, Brain, Shield, SlidersHorizontal } from "lucide-react";
+import { Activity, Brain, Cpu, Shield, SlidersHorizontal } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,7 +14,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { fetchJson, putApi } from "@/hooks/use-api";
-import type { RuntimeControlSettings, UserConfig } from "@/types/settings";
+import { PROVIDERS } from "@/shared/provider-catalog";
+import type { ModelDefaultSettings, RuntimeControlSettings, UserConfig } from "@/types/settings";
 import { DEFAULT_USER_CONFIG } from "@/types/settings";
 
 const PERMISSION_OPTIONS: Array<{ value: RuntimeControlSettings["defaultPermissionMode"]; label: string; description: string }> = [
@@ -30,6 +31,13 @@ const REASONING_OPTIONS: Array<{ value: RuntimeControlSettings["defaultReasoning
 ];
 
 const DEFAULT_RUNTIME_CONTROLS = DEFAULT_USER_CONFIG.runtimeControls;
+const DEFAULT_MODEL_DEFAULTS = DEFAULT_USER_CONFIG.modelDefaults;
+const MODEL_OPTIONS = PROVIDERS.flatMap((provider) =>
+  provider.models.map((model) => ({
+    value: `${provider.id}:${model.id}`,
+    label: `${provider.name} · ${model.name}`,
+  })),
+);
 
 function clampNumber(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
@@ -48,17 +56,23 @@ function parsePercentInput(raw: string, fallback: number, min: number, max: numb
 
 export function RuntimeControlPanel() {
   const [runtimeControls, setRuntimeControls] = useState<RuntimeControlSettings>(DEFAULT_RUNTIME_CONTROLS);
+  const [modelDefaults, setModelDefaults] = useState<ModelDefaultSettings>(DEFAULT_MODEL_DEFAULTS);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    fetchJson<Pick<UserConfig, "runtimeControls">>("/settings/user")
+    fetchJson<Pick<UserConfig, "runtimeControls" | "modelDefaults">>("/settings/user")
       .then((data) => {
         setRuntimeControls({
           ...DEFAULT_RUNTIME_CONTROLS,
           ...(data.runtimeControls ?? {}),
+        });
+        setModelDefaults({
+          ...DEFAULT_MODEL_DEFAULTS,
+          ...(data.modelDefaults ?? {}),
+          subagentModelPool: data.modelDefaults?.subagentModelPool ?? DEFAULT_MODEL_DEFAULTS.subagentModelPool,
         });
         setError(null);
       })
@@ -83,10 +97,15 @@ export function RuntimeControlPanel() {
     setError(null);
 
     try {
-      const updated = await putApi<UserConfig>("/settings/user", { runtimeControls });
+      const updated = await putApi<UserConfig>("/settings/user", { runtimeControls, modelDefaults });
       setRuntimeControls({
         ...DEFAULT_RUNTIME_CONTROLS,
         ...updated.runtimeControls,
+      });
+      setModelDefaults({
+        ...DEFAULT_MODEL_DEFAULTS,
+        ...updated.modelDefaults,
+        subagentModelPool: updated.modelDefaults?.subagentModelPool ?? DEFAULT_MODEL_DEFAULTS.subagentModelPool,
       });
       setSaved(true);
     } catch (saveError) {
@@ -117,6 +136,103 @@ export function RuntimeControlPanel() {
           <p className="text-sm text-muted-foreground">正在读取运行控制配置...</p>
         ) : (
           <>
+            <div className="grid gap-4 xl:grid-cols-2">
+              <Card size="sm">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-sm">
+                    <Cpu className="size-4 text-primary" />
+                    默认会话模型
+                  </CardTitle>
+                  <CardDescription>
+                    新建正式 session 时默认写入的 provider/model 组合；当前已接入 session 创建链。
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <Label htmlFor="settings-default-session-model">默认会话模型</Label>
+                  <Input
+                    id="settings-default-session-model"
+                    aria-label="默认会话模型"
+                    list="settings-model-options"
+                    value={modelDefaults.defaultSessionModel}
+                    onChange={(event) => {
+                      setSaved(false);
+                      setModelDefaults((current) => ({
+                        ...current,
+                        defaultSessionModel: event.target.value.trim() || current.defaultSessionModel,
+                      }));
+                    }}
+                  />
+                </CardContent>
+              </Card>
+
+              <Card size="sm">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-sm">
+                    <Cpu className="size-4 text-primary" />
+                    摘要模型
+                  </CardTitle>
+                  <CardDescription>
+                    为摘要/压缩类链路预留的默认模型，本轮先统一进入主配置流。
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <Label htmlFor="settings-summary-model">摘要模型</Label>
+                  <Input
+                    id="settings-summary-model"
+                    aria-label="摘要模型"
+                    list="settings-model-options"
+                    value={modelDefaults.summaryModel}
+                    onChange={(event) => {
+                      setSaved(false);
+                      setModelDefaults((current) => ({
+                        ...current,
+                        summaryModel: event.target.value.trim() || current.summaryModel,
+                      }));
+                    }}
+                  />
+                </CardContent>
+              </Card>
+            </div>
+
+            <Card size="sm">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-sm">
+                  <Cpu className="size-4 text-primary" />
+                  子代理模型池
+                </CardTitle>
+                <CardDescription>
+                  以逗号分隔的 provider:model 列表，作为子代理调度池的第一轮事实源。
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <Label htmlFor="settings-subagent-model-pool">子代理模型池</Label>
+                <Input
+                  id="settings-subagent-model-pool"
+                  aria-label="子代理模型池"
+                  value={modelDefaults.subagentModelPool.join(", ")}
+                  onChange={(event) => {
+                    setSaved(false);
+                    setModelDefaults((current) => ({
+                      ...current,
+                      subagentModelPool: event.target.value
+                        .split(",")
+                        .map((item) => item.trim())
+                        .filter(Boolean),
+                    }));
+                  }}
+                />
+                <p className="text-xs text-muted-foreground">示例：anthropic:claude-haiku-4-5, openai:gpt-4-turbo</p>
+              </CardContent>
+            </Card>
+
+            <datalist id="settings-model-options">
+              {MODEL_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </datalist>
+
             <div className="grid gap-4 xl:grid-cols-2">
               <Card size="sm">
                 <CardHeader>

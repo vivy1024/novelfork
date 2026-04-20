@@ -71,12 +71,14 @@ export function SessionCenter({ theme }: { theme: Theme }) {
     const session = await createSession({
       title: payload.title,
       agentId: payload.agentId,
+      sessionMode: payload.sessionMode,
     });
 
     addWindow({
       agentId: payload.agentId,
       title: payload.title,
       sessionId: session.id,
+      sessionMode: session.sessionMode,
       sessionConfig: session.sessionConfig,
     });
   };
@@ -97,6 +99,7 @@ export function SessionCenter({ theme }: { theme: Theme }) {
       agentId: session.agentId,
       title: session.title,
       sessionId: session.id,
+      sessionMode: session.sessionMode,
       sessionConfig: session.sessionConfig,
     });
   };
@@ -249,6 +252,7 @@ export function SessionCenter({ theme }: { theme: Theme }) {
                         title={session.title}
                         agentId={session.agentId}
                         status={session.status}
+                        sessionMode={session.sessionMode}
                         model={session.sessionConfig.modelId}
                         messageCount={attachedWindow?.messages.length ?? session.messageCount}
                         lastModified={session.lastModified}
@@ -350,6 +354,7 @@ function NarratorSessionCard({
   title,
   agentId,
   status,
+  sessionMode,
   model,
   messageCount,
   lastModified,
@@ -362,6 +367,7 @@ function NarratorSessionCard({
   title: string;
   agentId: string;
   status: "active" | "archived";
+  sessionMode: "chat" | "plan";
   model: string;
   messageCount: number;
   lastModified: Date;
@@ -379,6 +385,7 @@ function NarratorSessionCard({
             <div className="flex flex-wrap items-center gap-2">
               <CardTitle className="text-base">{title}</CardTitle>
               <Badge variant={status === "active" ? "secondary" : "outline"}>{status === "active" ? "活跃" : "已归档"}</Badge>
+              <Badge variant="outline">{sessionMode === "plan" ? "计划模式" : "对话模式"}</Badge>
               {attachedWindow && <Badge variant={attachedWindow.wsConnected ? "secondary" : "outline"}>{attachedWindow.wsConnected ? "在线" : "离线"}</Badge>}
               {active && <Badge>当前对象</Badge>}
             </div>

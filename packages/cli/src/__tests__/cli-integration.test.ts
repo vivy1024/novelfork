@@ -67,7 +67,7 @@ describe("CLI integration", () => {
   describe("inkos --help", () => {
     it("prints help with command list", () => {
       const output = run(["--help"]);
-      expect(output).toContain("inkos");
+      expect(output).toContain("novelfork");
       expect(output).toContain("init");
       expect(output).toContain("book");
       expect(output).toContain("write");

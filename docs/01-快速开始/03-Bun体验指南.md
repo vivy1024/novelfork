@@ -2,234 +2,174 @@
 
 **版本**: v1.0.0  
 **创建日期**: 2026-04-20  
-**更新日期**: 2026-04-20  
-**状态**: ✅ 可直接使用
+**更新日期**: 2026-04-21  
+**状态**: 🔄 以当前源码事实为准
 
 ---
 
 ## 这份文档解决什么问题
 
-如果你现在就想**亲手跑 NovelFork 的 Bun 主入口**，并体验当前已经完成的：
+如果你现在要体验 NovelFork 的 Bun 路线，这份文档只回答两件事：
 
-- Bun 单入口
-- embedded 前端资源
-- `bun compile` 单文件产物
-
-就按这份文档做。
+1. **现在源码该怎么跑**
+2. **现在 compile 链路能做到什么、还没做到什么**
 
 ---
 
-## 当前你可以实际体验的 3 条路径
+## 先记住一句话
 
-### 1. 直接跑 Bun 主入口
+当前真实口径是：
+
+> **Bun 主入口已经存在并可作为源码主路径使用；`novelfork studio` 仍是过渡期拉起方式；`pnpm bun:compile` 只是构建链路，不代表正式分发已完成。**
+
+---
+
+## 1. 最推荐的体验方式：直接跑 Bun 主入口
 
 ```bash
 bun run main.ts --root=. --port=4567
 ```
 
-预期日志：
+预期现象：
 
-```text
-[bun:main] Using embedded Studio assets.
-NovelFork mode: standalone
-NovelFork Studio running on http://localhost:4567
-```
+- 控制台出现 `NovelFork Studio running on http://localhost:4567`
+- 若 embedded 资源存在，会看到 `Using embedded Studio assets`
+- 若 embedded 不存在但 `packages/studio/dist` 存在，会走 filesystem fallback
 
-然后浏览器打开：
+然后打开：
 
 - `http://localhost:4567`
 
+这是当前最适合验证运行时行为的方式。
+
 ---
 
-### 2. 通过 CLI 走主入口
+## 2. 通过 CLI 走主入口
 
 ```bash
 novelfork studio --port 4567
 ```
 
-当前 `novelfork studio` 已经优先走：
+当前这条命令的职责不是继续当“正式运行时入口”，而是：
 
-- 根 `main.ts`
-- Bun 主入口
+- 优先寻找仓库根 `main.ts`
+- 命中后执行 `bun run <main.ts> --root=<project>`
+- 只有 Bun 主入口不可用时，才回退到 legacy Studio package 入口
 
-它不再优先把 `packages/studio/src/api/index.ts` 当成正式入口。
+也就是说，它现在更像：
+
+> **Bun 主入口的过渡期启动器。**
 
 ---
 
-### 3. 生成单文件产物
+## 3. compile 链路现在怎么用
+
+### 3.1 执行命令
 
 ```bash
 pnpm bun:compile
 ```
 
-预期产物：
-
-- `dist/novelfork.exe`
-
----
-
-## 推荐体验顺序
-
-### 第一步：先生成 embedded 资源并编译
-
-```bash
-pnpm bun:compile
-```
-
-这一步会自动执行：
+它会顺序执行：
 
 1. `pnpm bun:build-client`
 2. `pnpm bun:embed-assets`
 3. `bun build ./main.ts --compile --outfile dist/novelfork`
 
-也就是说你**不需要自己手动先 build client**。
+### 3.2 这条链路当前能证明什么
+
+能证明：
+
+- 仓库里已经接好了 compile 构建脚本
+- embedded assets 会在 compile 前生成
+- 产物目标是 `dist/novelfork`（Windows 下一般表现为 `dist/novelfork.exe`）
+
+### 3.3 这条链路当前**不能**证明什么
+
+当前还不能直接写成已完成的能力：
+
+- 不能宣称安装器已完成
+- 不能宣称自动更新已完成
+- 不能宣称所有平台 smoke 已沉淀
+- 不能宣称正式分发体验已经闭环
+
+所以现在更准确的说法是：
+
+> **compile 构建路径已接线，可用于本地验证；正式分发仍在 Phase H。**
 
 ---
 
-### 第二步：直接运行 exe
+## 4. 什么时候需要先 build client / embed assets
 
-```bash
-./dist/novelfork.exe --root=. --port=4567
-```
+### 直接跑源码时
 
-如果你在 Windows PowerShell / CMD：
+如果仓库里已经有可用的 embedded 资源，`bun run main.ts` 会优先直接使用。
 
-```powershell
-.\dist\novelfork.exe --root=. --port=4567
-```
+如果没有，则会尝试回退到：
 
-预期日志：
+- `packages/studio/dist/index.html`
 
-```text
-[bun:main] Using embedded Studio assets.
-NovelFork mode: standalone
-NovelFork Studio running on http://localhost:4567
-```
-
----
-
-### 第三步：验证它不依赖源码目录下的前端 dist
-
-当前已经验证过：
-
-- `dist/novelfork.exe` 可以在隔离目录下运行
-- 主入口会优先使用 embedded assets
-- 不再把 `packages/studio/dist` 当成唯一资源来源
-
-所以你接下来体验时，重点看：
-
-- 页面能不能正常打开
-- 基础 API 是否可用
-- 写作工作台是否能正常加载
-
----
-
-## 当前推荐命令清单
-
-### Bun 主入口
-
-```bash
-bun run main.ts --root=. --port=4567
-```
-
-### CLI 入口
-
-```bash
-novelfork studio --port 4567
-```
-
-### 只构建前端
+如果你看到前端资源缺失告警，再执行：
 
 ```bash
 pnpm bun:build-client
-```
-
-### 只生成 embedded 资源模块
-
-```bash
 pnpm bun:embed-assets
 ```
 
-### 完整 compile
+### 跑 compile 时
 
-```bash
-pnpm bun:compile
-```
+不用手动补，`pnpm bun:compile` 已经把这两步串起来了。
 
 ---
 
-## 你现在体验时应该知道的事实
+## 5. 体验时最值得看的不是“能不能编译”，而是这些事实
 
-### 已经完成
+### 运行时事实
 
-- Bun 主入口已建立
-- `novelfork studio` 已优先走 Bun 主入口
-- embedded assets 已接线
-- `bun compile` 已通过
-- `dist/novelfork.exe` 已可运行
+- `main.ts` 是当前源码主入口
+- `novelfork studio` 优先转交给 `main.ts`
+- embedded assets 与 filesystem fallback 都已接线
 
-### 仍是过渡态
+### 未完成事实
 
-- 仍有部分历史测试/类型债未全清
-- 仍有少量边角 Node 绑定留在测试与构建兜底层
-- 还没有做安装器 / 自动更新 / 首次启动 UX 收尾
+- 启动期全局迁移 / 索引恢复 orchestrator 还没有
+- 首次启动产品化体验还没有
+- 正式分发闭环还没有
 
-所以你现在体验到的，是：
+相关清单：
 
-> **一个已经可运行、可编译、可体验的 Bun-first NovelFork 原型**
-
-而不是最终商业化打磨完成版。
+- `docs/06-部署运维/01-当前运行与启动方式.md`
+- `docs/06-部署运维/03-启动期迁移与修复清单.md`
+- `OPS_RUNTIME_STATE.md`
 
 ---
 
-## 建议你怎么体验
+## 6. 建议体验顺序
 
 ### 最小体验
 
-1. 跑 `pnpm bun:compile`
-2. 跑 `dist/novelfork.exe --root=. --port=4567`
-3. 打开浏览器
-4. 看首页是否正常加载
-5. 试一次最小流程：
-   - 书籍列表
-   - 章节/工作台
-   - 基础设置页
+1. `bun run main.ts --root=. --port=4567`
+2. 打开 `http://localhost:4567`
+3. 验证页面能否正常加载
 
-### 开发态体验
+### 想顺便看 compile 链路
 
-如果你还想直接看源码运行链：
-
-```bash
-bun run main.ts --root=. --port=4567
-```
-
-这样更适合边看日志边体验。
-
----
-
-## 如果体验中遇到问题，优先看哪里
-
-### 先看日志
-看是否出现：
-
-- `Using embedded Studio assets`
-- `NovelFork Studio running on http://localhost:xxxx`
-
-### 再看运维状态
-
-- `OPS_RUNTIME_STATE.md`
-
-### 再看部署/运行说明
-
-- `docs/06-部署运维/01-当前运行与启动方式.md`
+1. `pnpm bun:compile`
+2. 查看 `dist/novelfork` 是否生成
+3. 把它当作本地构建结果验证，不把它当成“正式分发已完成”
 
 ---
 
 ## 一句话总结
 
-如果你现在就要体验 NovelFork 的 Bun 路线，用这两个命令就够了：
+如果你现在要体验 NovelFork 的 Bun 路线，优先这样做：
+
+```bash
+bun run main.ts --root=. --port=4567
+```
+
+如果你要验证打包链路，再执行：
 
 ```bash
 pnpm bun:compile
-./dist/novelfork.exe --root=. --port=4567
 ```

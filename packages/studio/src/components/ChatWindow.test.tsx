@@ -6,10 +6,10 @@ import { ChatWindow } from "./ChatWindow";
 import { useWindowStore } from "@/stores/windowStore";
 import type { ChatMessage, ChatWindow as ChatWindowState } from "@/stores/windowStore";
 
-const fetchJsonMock = vi.fn();
+const fetchJsonMock = vi.fn(async (..._args: [string, ...unknown[]]) => ({ success: true }));
 
 vi.mock("@/hooks/use-api", () => ({
-  fetchJson: (...args: unknown[]) => fetchJsonMock(...args),
+  fetchJson: (url: string, ...rest: unknown[]) => fetchJsonMock(url, ...rest),
 }));
 
 vi.mock("./WindowControls", () => ({
@@ -19,7 +19,7 @@ vi.mock("./WindowControls", () => ({
 interface MockWindowStore {
   windows: ChatWindowState[];
   activeWindowId: string | null;
-  addWindow: (agentIdOrInput: string | { agentId: string; title: string; sessionId?: string; sessionConfig?: ChatWindowState["sessionConfig"] }, title?: string) => void;
+  addWindow: (agentIdOrInput: string | { agentId: string; title: string; sessionId?: string; sessionMode?: "chat" | "plan"; sessionConfig?: ChatWindowState["sessionConfig"] }, title?: string) => void;
   removeWindow: (id: string) => void;
   updateWindow: (id: string, updates: Partial<ChatWindowState>) => void;
   toggleMinimize: (id: string) => void;
@@ -49,19 +49,27 @@ vi.mock("@/stores/windowStore", () => {
 
 class MockWebSocket {
   static OPEN = 1;
+  static instances: MockWebSocket[] = [];
   readyState = 1;
+  url: string;
+  sentMessages: string[] = [];
   onopen: (() => void) | null = null;
   onmessage: ((event: { data: string }) => void) | null = null;
   onerror: (() => void) | null = null;
   onclose: (() => void) | null = null;
 
-  constructor(_url: string) {
+  constructor(url: string) {
+    this.url = url;
+    MockWebSocket.instances.push(this);
     queueMicrotask(() => {
       this.onopen?.();
     });
   }
 
-  send() {}
+  send(message: string) {
+    this.sentMessages.push(message);
+  }
+
   close() {}
 }
 
@@ -75,7 +83,9 @@ Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
 afterEach(() => {
   cleanup();
   fetchJsonMock.mockReset();
+  fetchJsonMock.mockImplementation(async () => ({ success: true }));
   updateWindowSpy.mockReset();
+  MockWebSocket.instances = [];
   mockState = createMockState();
 });
 
@@ -116,6 +126,54 @@ describe("ChatWindow", () => {
     expect(screen.getByText("最近执行链")).toBeTruthy();
     expect(screen.getByText("Read → Bash")).toBeTruthy();
     expect(screen.getByText(/2 步完成/)).toBeTruthy();
+    expect(MockWebSocket.instances[0]?.url).toContain("sessionId=session-abc123456");
+    expect(MockWebSocket.instances[0]?.url).toContain("mode=chat");
+  });
+
+  it("hydrates chat window metadata from the formal session record", async () => {
+    fetchJsonMock.mockImplementation((async (...args: [string, ...unknown[]]) => {
+      const [url] = args;
+      if (url === "/api/sessions/session-abc123456") {
+        return {
+          id: "session-abc123456",
+          title: "Writer 会话（正式）",
+          agentId: "writer",
+          kind: "standalone",
+          sessionMode: "plan",
+          status: "active",
+          createdAt: new Date().toISOString(),
+          lastModified: new Date().toISOString(),
+          messageCount: 2,
+          sortOrder: 0,
+          sessionConfig: {
+            providerId: "openai",
+            modelId: "gpt-5.4",
+            permissionMode: "ask",
+            reasoningEffort: "high",
+          },
+        };
+      }
+      return { success: true };
+    }) as any);
+
+    render(<ChatWindow windowId="window-1" theme="light" />);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(fetchJsonMock).toHaveBeenCalledWith("/api/sessions/session-abc123456");
+    expect(updateWindowSpy).toHaveBeenCalledWith(
+      "window-1",
+      expect.objectContaining({
+        title: "Writer 会话（正式）",
+        sessionMode: "plan",
+        sessionConfig: expect.objectContaining({
+          providerId: "openai",
+          modelId: "gpt-5.4",
+          permissionMode: "ask",
+          reasoningEffort: "high",
+        }),
+      }),
+    );
   });
 
   it("opens context details from the current chat session with layered sources", () => {
@@ -133,24 +191,53 @@ describe("ChatWindow", () => {
     expect(screen.getByText("Read · 完成")).toBeTruthy();
   });
 
-  it("creates a formal narrator session when opening a follow-up session", async () => {
-    fetchJsonMock.mockResolvedValueOnce({
-      id: "session-2",
-      title: "Writer 会话 · 新会话",
-      agentId: "writer",
-      kind: "standalone",
-      status: "active",
-      createdAt: new Date().toISOString(),
-      lastModified: new Date().toISOString(),
-      messageCount: 0,
-      sortOrder: 1,
-      sessionConfig: {
-        providerId: "anthropic",
-        modelId: "claude-sonnet-4-6",
-        permissionMode: "allow",
-        reasoningEffort: "medium",
-      },
+  it("sends session id and mode with outgoing chat messages", async () => {
+    render(<ChatWindow windowId="window-1" theme="light" />);
+
+    fireEvent.change(screen.getByPlaceholderText("输入消息..."), {
+      target: { value: "继续规划这一章" },
     });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const payload = JSON.parse(MockWebSocket.instances[0]?.sentMessages[0] ?? "{}");
+    expect(payload).toMatchObject({
+      content: "继续规划这一章",
+      sessionId: "session-abc123456",
+      sessionMode: "chat",
+    });
+    expect(fetchJsonMock).toHaveBeenCalledWith("/api/sessions/session-abc123456", expect.objectContaining({
+      method: "PUT",
+      body: JSON.stringify({ messageCount: 3 }),
+    }));
+  });
+
+  it("creates a formal narrator session when opening a follow-up session", async () => {
+    fetchJsonMock.mockImplementation((async (...args: [string, ...unknown[]]) => {
+      const [url, options] = args as [string, { method?: string } | undefined];
+      if (url === "/api/sessions" && options?.method === "POST") {
+        return {
+          id: "session-2",
+          title: "Writer 会话 · 新会话",
+          agentId: "writer",
+          kind: "standalone",
+          sessionMode: "chat",
+          status: "active",
+          createdAt: new Date().toISOString(),
+          lastModified: new Date().toISOString(),
+          messageCount: 0,
+          sortOrder: 1,
+          sessionConfig: {
+            providerId: "anthropic",
+            modelId: "claude-sonnet-4-6",
+            permissionMode: "allow",
+            reasoningEffort: "medium",
+          },
+        };
+      }
+      return { success: true };
+    }) as any);
 
     render(<ChatWindow windowId="window-1" theme="light" />);
 
@@ -181,6 +268,7 @@ function baseMockState(): MockWindowStore {
         title: "Writer 会话",
         agentId: "writer",
         sessionId: "session-abc123456",
+        sessionMode: "chat",
         position: { x: 0, y: 0, w: 6, h: 8 },
         minimized: false,
         messages: [
@@ -214,7 +302,7 @@ function baseMockState(): MockWindowStore {
       },
     ] as ChatWindowState[],
     activeWindowId: "window-1",
-    addWindow(agentIdOrInput: string | { agentId: string; title: string; sessionId?: string; sessionConfig?: ChatWindowState["sessionConfig"] }, title?: string) {
+    addWindow(agentIdOrInput: string | { agentId: string; title: string; sessionId?: string; sessionMode?: "chat" | "plan"; sessionConfig?: ChatWindowState["sessionConfig"] }, title?: string) {
       const normalized = typeof agentIdOrInput === "string"
         ? { agentId: agentIdOrInput, title: title ?? "Untitled Session" }
         : agentIdOrInput;
@@ -226,6 +314,7 @@ function baseMockState(): MockWindowStore {
           title: normalized.title,
           agentId: normalized.agentId,
           sessionId: normalized.sessionId,
+          sessionMode: normalized.sessionMode,
           sessionConfig: normalized.sessionConfig,
           position: { x: 0, y: 0, w: 6, h: 8 },
           minimized: false,

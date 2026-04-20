@@ -3,6 +3,7 @@ import { persist } from "zustand/middleware";
 
 import {
   DEFAULT_SESSION_CONFIG,
+  type NarratorSessionMode,
   type SessionConfig,
   type SessionPermissionMode,
   type SessionReasoningEffort,
@@ -39,6 +40,7 @@ export interface ChatWindow {
   title: string;
   agentId: string;
   sessionId?: string;
+  sessionMode?: NarratorSessionMode;
   position: { x: number; y: number; w: number; h: number };
   minimized: boolean;
   messages: ChatMessage[];
@@ -50,6 +52,7 @@ interface AddWindowInput {
   agentId: string;
   title: string;
   sessionId?: string;
+  sessionMode?: NarratorSessionMode;
   sessionConfig?: SessionConfig;
 }
 
@@ -91,6 +94,7 @@ export const useWindowStore = create<WindowStore>()(
             title: normalized.title,
             agentId: normalized.agentId,
             sessionId: normalized.sessionId,
+            sessionMode: normalized.sessionMode,
             position: {
               x: (state.windows.length * 2) % 10,
               y: (state.windows.length * 2) % 10,

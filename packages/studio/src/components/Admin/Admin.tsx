@@ -4,30 +4,23 @@
  */
 
 import { Activity, FileText, LayoutDashboard, Logs, Server, Users, Workflow } from "lucide-react";
-
-import { PageEmptyState } from "@/components/layout/PageEmptyState";
 import { PageScaffold } from "@/components/layout/PageScaffold";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { AdminSection } from "../../routes";
+import { DaemonTab } from "./DaemonTab";
+import { LogsTab } from "./LogsTab";
 import { ProvidersTab } from "./ProvidersTab";
 import { RequestsTab } from "./RequestsTab";
 import { ResourcesTab } from "./ResourcesTab";
 import { UsersTab } from "./UsersTab";
+import { WorktreesTab } from "./WorktreesTab";
 
 interface AdminProps {
   onBack?: () => void;
   section?: AdminSection;
   onNavigateSection?: (section: AdminSection) => void;
-}
-
-const PLACEHOLDER_SECTIONS = new Set<AdminPlaceholderSection>(["daemon", "logs", "worktrees"]);
-
-type AdminPlaceholderSection = Exclude<AdminSection, "overview" | "providers" | "resources" | "requests">;
-
-function isPlaceholderSection(section: AdminSection): section is AdminPlaceholderSection {
-  return section === "daemon" || section === "logs" || section === "worktrees";
 }
 
 export function Admin({ onBack, section, onNavigateSection }: AdminProps) {
@@ -36,7 +29,7 @@ export function Admin({ onBack, section, onNavigateSection }: AdminProps) {
   return (
     <PageScaffold
       title="管理中心"
-      description="参考 NarraFork 的 Admin 信息架构，把供应商、请求历史、资源监控与系统运维入口收口到一个平台面板里。"
+      description="把供应商、请求历史、资源监控与系统运维入口统一收口到一个管理中心，优先接真实 API 和真实刷新流。"
       actions={onBack ? <Button variant="outline" onClick={onBack}>返回</Button> : undefined}
       contentClassName="space-y-6"
     >
@@ -81,21 +74,21 @@ export function Admin({ onBack, section, onNavigateSection }: AdminProps) {
             <AdminEntryCard
               icon={Server}
               title="守护进程"
-              description="查看运行状态、启动 / 停止与最近事件。"
+              description="查看真实运行状态、启动 / 停止与最近事件。"
               active={activeSection === "daemon"}
               onClick={() => onNavigateSection?.("daemon")}
             />
             <AdminEntryCard
               icon={Logs}
               title="日志"
-              description="滚动查看 Studio 与运行日志。"
+              description="滚动查看真实日志文件尾部与刷新状态。"
               active={activeSection === "logs"}
               onClick={() => onNavigateSection?.("logs")}
             />
             <AdminEntryCard
               icon={Workflow}
               title="Worktree"
-              description="管理隔离工作树与分支工作目录。"
+              description="查看真实 worktree 列表与变更计数。"
               active={activeSection === "worktrees"}
               onClick={() => onNavigateSection?.("worktrees")}
             />
@@ -109,7 +102,7 @@ export function Admin({ onBack, section, onNavigateSection }: AdminProps) {
             <CardHeader>
               <CardTitle>管理首页</CardTitle>
               <CardDescription>
-                这一层先站住“平台面板”结构，下一批再把守护进程、日志、Worktree 等系统子页整体并进来。
+                平台面板已经把供应商、请求历史、资源监控、守护进程、日志和 Worktree 收到同一套管理导航里。
               </CardDescription>
             </CardHeader>
           </Card>
@@ -117,7 +110,7 @@ export function Admin({ onBack, section, onNavigateSection }: AdminProps) {
             <CardHeader>
               <CardTitle>当前收口范围</CardTitle>
               <CardDescription>
-                供应商、请求历史、资源监控优先统一到管理中心；守护进程 / 日志 / Worktree 暂以管理子路由方式接入。
+                当前优先接入真实可验证的后台结构与刷新流；终端 / 容器等仍未验证的入口，会在子页里明确标为待接入。
               </CardDescription>
             </CardHeader>
           </Card>
@@ -139,18 +132,9 @@ export function Admin({ onBack, section, onNavigateSection }: AdminProps) {
       {activeSection === "providers" && <ProvidersTab />}
       {activeSection === "resources" && <ResourcesTab />}
       {activeSection === "requests" && <RequestsTab />}
-
-      {isPlaceholderSection(activeSection) && (
-        <PageEmptyState
-          title={placeholderTitle(activeSection)}
-          description={placeholderDescription(activeSection)}
-          action={
-            <Button variant="outline" onClick={() => onNavigateSection?.("overview")}>
-              返回总览
-            </Button>
-          }
-        />
-      )}
+      {activeSection === "daemon" && <DaemonTab />}
+      {activeSection === "logs" && <LogsTab />}
+      {activeSection === "worktrees" && <WorktreesTab />}
     </PageScaffold>
   );
 }
@@ -184,26 +168,4 @@ function AdminEntryCard({
       </Card>
     </button>
   );
-}
-
-function placeholderTitle(section: AdminPlaceholderSection) {
-  switch (section) {
-    case "daemon":
-      return "守护进程";
-    case "logs":
-      return "日志";
-    case "worktrees":
-      return "Worktree";
-  }
-}
-
-function placeholderDescription(section: AdminPlaceholderSection) {
-  switch (section) {
-    case "daemon":
-      return "下一批会把守护进程运行状态、启动 / 停止和最近事件统一收口到这里。";
-    case "logs":
-      return "下一批会把日志滚动、筛选和导出统一收口到这里。";
-    case "worktrees":
-      return "下一批会把工作树列表、分支状态和隔离目录管理统一收口到这里。";
-  }
 }

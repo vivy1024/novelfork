@@ -3,6 +3,7 @@ import {
   buildStudioBookConfig,
   buildStudioProjectInitRecord,
   normalizeStudioPlatform,
+  normalizeStudioProjectCreateDraft,
   normalizeStudioProjectInit,
   suggestStudioWorktreeName,
   waitForStudioBookReady,
@@ -53,6 +54,31 @@ describe("normalizeStudioProjectInit", () => {
       cloneUrl: "https://example.com/repo.git",
       gitBranch: "feature/story",
       worktreeName: "writer-room",
+    });
+  });
+});
+
+describe("normalizeStudioProjectCreateDraft", () => {
+  it("wraps project init into a formal project create object", () => {
+    expect(normalizeStudioProjectCreateDraft({
+      title: "  仙路长明  ",
+      projectInit: {
+        repositorySource: "existing",
+        repositoryPath: " D:/DESKTOP/openclaw ",
+        workflowMode: "serial-ops",
+        templatePreset: "web-serial",
+        gitBranch: " main ",
+      },
+    })).toEqual({
+      title: "仙路长明",
+      projectInit: {
+        repositorySource: "existing",
+        repositoryPath: "D:/DESKTOP/openclaw",
+        workflowMode: "serial-ops",
+        templatePreset: "web-serial",
+        gitBranch: "main",
+        worktreeName: "draft-仙路长明",
+      },
     });
   });
 });

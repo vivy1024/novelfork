@@ -173,12 +173,8 @@ writeCommand
       try {
         result = await pipeline.writeNextChapter(bookId, wordCount);
       } catch (pipelineError) {
-        // Pipeline failed — restore backups to prevent data loss
-        if (!opts.json) log("Pipeline failed, restoring original chapter files...");
-        for (const { original, backup } of backups) {
-          await fsRename(join(chaptersDir, backup), join(chaptersDir, original));
-        }
-        await state.saveChapterIndex(bookId, index);
+        // Pipeline failed — keep the rewind state, and leave backups on disk for manual recovery.
+        if (!opts.json) log("Pipeline failed after rewind; original chapter files remain as .bak backups.");
         throw pipelineError;
       }
 

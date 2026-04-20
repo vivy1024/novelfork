@@ -1,11 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  normalizeStudioProjectCreateDraft,
   normalizeStudioProjectInit,
+  type StudioProjectCreateDraft,
   type StudioRepositorySource,
   type StudioTemplatePreset,
   type StudioWorkflowMode,
   suggestStudioWorktreeName,
 } from "../api/book-create";
+import { ChoiceGrid } from "../components/Project/ChoiceGrid";
+import {
+  repositorySourceOptions,
+  templatePresetOptions,
+  workflowModeOptions,
+} from "../components/Project/project-init-options";
 import { fetchJson, useApi, postApi } from "../hooks/use-api";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
@@ -14,6 +22,7 @@ import { useColors } from "../hooks/use-colors";
 interface Nav {
   toDashboard: () => void;
   toBook: (id: string) => void;
+  toProjectCreate?: (draft?: Partial<StudioProjectCreateDraft>) => void;
 }
 
 interface GenreInfo {
@@ -26,12 +35,6 @@ interface GenreInfo {
 interface PlatformOption {
   readonly value: string;
   readonly label: string;
-}
-
-interface ChoiceOption<T extends string> {
-  readonly value: T;
-  readonly title: string;
-  readonly description: string;
 }
 
 const PLATFORMS_ZH: ReadonlyArray<PlatformOption> = [
@@ -102,54 +105,6 @@ interface WaitForBookReadyOptions {
 const DEFAULT_BOOK_READY_MAX_ATTEMPTS = 120;
 const DEFAULT_BOOK_READY_DELAY_MS = 250;
 
-function repositorySourceOptions(language: "zh" | "en"): ReadonlyArray<ChoiceOption<StudioRepositorySource>> {
-  if (language === "en") {
-    return [
-      { value: "new", title: "New repo", description: "Start from the current workspace and reserve a clean project root." },
-      { value: "existing", title: "Existing repo", description: "Bind this book to an already prepared local repository." },
-      { value: "clone", title: "Clone remote", description: "Reserve remote clone information for the next Git bootstrap step." },
-    ];
-  }
-
-  return [
-    { value: "new", title: "新建仓库", description: "从当前工作区起一个新的项目根目录，适合全新开书。" },
-    { value: "existing", title: "已有仓库", description: "把本书挂到已经准备好的本地仓库，先对齐写作工作区。" },
-    { value: "clone", title: "克隆仓库", description: "先登记远端来源，为后续 clone / Git 接管留好入口。" },
-  ];
-}
-
-function workflowModeOptions(language: "zh" | "en"): ReadonlyArray<ChoiceOption<StudioWorkflowMode>> {
-  if (language === "en") {
-    return [
-      { value: "outline-first", title: "Outline first", description: "Land the bible and world rules first, then expand into chapter work." },
-      { value: "draft-first", title: "Draft first", description: "Keep the setup lighter and reach the first writable draft faster." },
-      { value: "serial-ops", title: "Serial ops", description: "Prepare for long-running serial work with higher chapter and cadence defaults." },
-    ];
-  }
-
-  return [
-    { value: "outline-first", title: "先大纲", description: "先把故事圣经、世界规则和基础骨架立起来，再进入章节生产。" },
-    { value: "draft-first", title: "先开稿", description: "减少前置铺垫，先得到一套可写的初始工程，适合快速起盘。" },
-    { value: "serial-ops", title: "连载推进", description: "按长期连载准备更高章数与节奏预设，方便后续持续推进。" },
-  ];
-}
-
-function templatePresetOptions(language: "zh" | "en"): ReadonlyArray<ChoiceOption<StudioTemplatePreset>> {
-  if (language === "en") {
-    return [
-      { value: "genre-default", title: "Genre default", description: "Follow the selected genre as the first-round scaffold." },
-      { value: "blank-slate", title: "Blank slate", description: "Keep the initial skeleton lighter for manual worldbuilding." },
-      { value: "web-serial", title: "Web serial", description: "Bias the setup toward web-serial pacing and chapter cadence." },
-    ];
-  }
-
-  return [
-    { value: "genre-default", title: "跟随题材", description: "用当前题材作为第一轮初始化骨架，保留原有书籍生成主链。" },
-    { value: "blank-slate", title: "空白模板", description: "减少预设束缚，适合先自己铺设世界观和角色底稿。" },
-    { value: "web-serial", title: "网文快启", description: "偏向网文连载节奏，默认给更积极的章节推进预设。" },
-  ];
-}
-
 export async function waitForBookReady(
   bookId: string,
   options: WaitForBookReadyOptions = {},
@@ -199,37 +154,15 @@ export async function waitForBookReady(
   throw lastError instanceof Error ? lastError : new Error(`Book "${bookId}" was not ready`);
 }
 
-function ChoiceGrid<T extends string>({
-  options,
-  value,
-  onChange,
-}: {
-  options: ReadonlyArray<ChoiceOption<T>>;
-  value: T;
-  onChange: (next: T) => void;
-}) {
-  return (
-    <div className="grid gap-2">
-      {options.map((option) => (
-        <button
-          type="button"
-          key={option.value}
-          onClick={() => onChange(option.value)}
-          className={`rounded-xl border px-4 py-3 text-left transition-all ${
-            value === option.value
-              ? "border-primary/40 bg-primary/10"
-              : "border-border/60 bg-background hover:border-border"
-          }`}
-        >
-          <div className="text-sm font-medium text-foreground">{option.title}</div>
-          <div className="mt-1 text-xs leading-5 text-muted-foreground">{option.description}</div>
-        </button>
-      ))}
-    </div>
-  );
+interface BookCreateProps {
+  readonly nav: Nav;
+  readonly theme: Theme;
+  readonly t: TFunction;
+  readonly projectCreateDraft?: Partial<StudioProjectCreateDraft>;
+  readonly flowRevision?: number;
 }
 
-export function BookCreate({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunction }) {
+export function BookCreate({ nav, theme, t, projectCreateDraft, flowRevision = 0 }: BookCreateProps) {
   const c = useColors(theme);
   const { data: genreData } = useApi<{ genres: ReadonlyArray<GenreInfo> }>("/genres");
   const { data: project } = useApi<{ language: string }>("/project");
@@ -259,6 +192,7 @@ export function BookCreate({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunc
   const platforms = platformOptionsForLanguage(projectLang);
   const genreSignature = genres.map((g) => g.id).join("|");
   const platformSignature = platforms.map((p) => `${p.value}:${p.label}`).join("|");
+  const managedProjectCreate = projectCreateDraft !== undefined;
   const repoOptions = useMemo(() => repositorySourceOptions(projectLang), [projectLang]);
   const workflowOptions = useMemo(() => workflowModeOptions(projectLang), [projectLang]);
   const templateOptions = useMemo(() => templatePresetOptions(projectLang), [projectLang]);
@@ -275,6 +209,37 @@ export function BookCreate({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunc
     gitBranch,
     worktreeName,
   }, title);
+  const currentProjectCreateDraft = normalizeStudioProjectCreateDraft({
+    title,
+    projectInit,
+  });
+
+  useEffect(() => {
+    const initialDraft = normalizeStudioProjectCreateDraft(projectCreateDraft);
+    const nextDefaults = initializationDefaultsForMode(
+      projectLang,
+      initialDraft.projectInit.workflowMode,
+      initialDraft.projectInit.templatePreset,
+    );
+
+    setTitle(initialDraft.title ?? "");
+    setGenre("");
+    setPlatform("");
+    setRepositorySource(initialDraft.projectInit.repositorySource);
+    setWorkflowMode(initialDraft.projectInit.workflowMode);
+    setTemplatePreset(initialDraft.projectInit.templatePreset);
+    setRepositoryPath(initialDraft.projectInit.repositoryPath ?? "");
+    setCloneUrl(initialDraft.projectInit.cloneUrl ?? "");
+    setGitBranch(initialDraft.projectInit.gitBranch ?? "main");
+    setWorktreeName(initialDraft.projectInit.worktreeName ?? suggestStudioWorktreeName(initialDraft.title));
+    setChapterWords(nextDefaults.chapterWords);
+    setChapterWordsTouched(false);
+    setTargetChapters(nextDefaults.targetChapters);
+    setTargetChaptersTouched(false);
+    setWorktreeTouched(false);
+    setCreating(false);
+    setError(null);
+  }, [flowRevision, projectCreateDraft, projectLang]);
 
   useEffect(() => {
     setGenre((current) => pickValidValue(current, genres.map((g) => g.id)));
@@ -304,11 +269,16 @@ export function BookCreate({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunc
 
   const copy = projectLang === "en"
     ? {
-        breadcrumb: "Initialize project",
-        title: "Initialize a writing workspace",
-        subtitle: "Keep the current /books/create entry, but let this first step decide repo source, workflow mode, template bias and reserved Git fields.",
+        breadcrumb: managedProjectCreate ? "Create book" : "Initialize project",
+        title: managedProjectCreate ? "Complete the first book scaffold" : "Initialize a writing workspace",
+        subtitle: managedProjectCreate
+          ? "ProjectCreate already captured the projectInit object. This step only keeps the book scaffold aligned with that state."
+          : "Keep the current /books/create entry, but let this first step decide repo source, workflow mode, template bias and reserved Git fields.",
         initSection: "Initialization workflow",
         initHint: "This round does not replace the existing book pipeline. It adds a first-class setup pass before the first book is generated.",
+        summaryLabel: "ProjectCreate object",
+        summaryHint: "No clone / worktree execution yet. This summary only carries the reserved projectInit state forward.",
+        summaryEdit: "Edit initialization",
         repoLabel: "Repository source",
         workflowLabel: "Workflow mode",
         templateLabel: "Template bias",
@@ -320,15 +290,20 @@ export function BookCreate({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunc
         planRepo: repoOptions.find((option) => option.value === repositorySource)?.title ?? repositorySource,
         planWorkflow: workflowOptions.find((option) => option.value === workflowMode)?.title ?? workflowMode,
         planTemplate: templateOptions.find((option) => option.value === templatePreset)?.title ?? templatePreset,
-        submit: "Initialize project and create book",
-        creating: "Initializing...",
+        submit: managedProjectCreate ? "Create book" : "Initialize project and create book",
+        creating: managedProjectCreate ? "Creating..." : "Initializing...",
       }
     : {
-        breadcrumb: "初始化项目",
-        title: "先把写作工作流起出来",
-        subtitle: "保留当前 /books/create 入口，但把第一步前移成仓库来源、工作流模式、模板偏向与 Git 预留字段的初始化。",
+        breadcrumb: managedProjectCreate ? "新建书籍" : "初始化项目",
+        title: managedProjectCreate ? "把第一本书骨架补齐" : "先把写作工作流起出来",
+        subtitle: managedProjectCreate
+          ? "ProjectCreate 已经把 projectInit 对象收束好了，这一步只负责把书籍骨架接到同一条状态流上。"
+          : "保留当前 /books/create 入口，但把第一步前移成仓库来源、工作流模式、模板偏向与 Git 预留字段的初始化。",
         initSection: "初始化工作流",
         initHint: "这一轮不替换现有建书主链，只是在生成第一本书前补一层项目初始化。",
+        summaryLabel: "ProjectCreate 对象",
+        summaryHint: "这一轮仍不执行 clone / worktree，只把前一步整理好的 projectInit 状态带进建书提交。",
+        summaryEdit: "返回修改初始化",
         repoLabel: "仓库来源",
         workflowLabel: "工作流模式",
         templateLabel: "模板偏向",
@@ -340,8 +315,8 @@ export function BookCreate({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunc
         planRepo: repoOptions.find((option) => option.value === repositorySource)?.title ?? repositorySource,
         planWorkflow: workflowOptions.find((option) => option.value === workflowMode)?.title ?? workflowMode,
         planTemplate: templateOptions.find((option) => option.value === templatePreset)?.title ?? templatePreset,
-        submit: "初始化项目并创建书籍",
-        creating: "初始化中...",
+        submit: managedProjectCreate ? "创建书籍" : "初始化项目并创建书籍",
+        creating: managedProjectCreate ? "创建中..." : "初始化中...",
       };
 
   const handleCreate = async () => {
@@ -393,77 +368,103 @@ export function BookCreate({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunc
         </div>
       )}
 
-      <div className="space-y-4 rounded-2xl border border-border/60 bg-background/50 p-5">
-        <div className="space-y-1">
-          <div className="text-sm font-medium text-foreground">{copy.initSection}</div>
-          <p className="text-xs leading-5 text-muted-foreground">{copy.initHint}</p>
-        </div>
-
-        <div className="space-y-2">
-          <label className="block text-sm text-muted-foreground">{copy.repoLabel}</label>
-          <ChoiceGrid options={repoOptions} value={repositorySource} onChange={setRepositorySource} />
-        </div>
-
-        {repositorySource === "clone" ? (
-          <div>
-            <label className="block text-sm text-muted-foreground mb-2">{copy.cloneLabel}</label>
-            <input
-              type="text"
-              value={cloneUrl}
-              onChange={(e) => setCloneUrl(e.target.value)}
-              className={`w-full ${c.input} rounded-md px-4 py-3 focus:outline-none text-base`}
-              placeholder={projectLang === "en" ? "https://github.com/org/repo.git" : "https://github.com/org/repo.git"}
-            />
+      {managedProjectCreate ? (
+        <div className="space-y-4 rounded-2xl border border-border/60 bg-background/50 p-5">
+          <div className="space-y-1">
+            <div className="text-sm font-medium text-foreground">{copy.summaryLabel}</div>
+            <p className="text-xs leading-5 text-muted-foreground">{copy.summaryHint}</p>
           </div>
-        ) : (
-          <div>
-            <label className="block text-sm text-muted-foreground mb-2">{copy.repoPathLabel}</label>
-            <input
-              type="text"
-              value={repositoryPath}
-              onChange={(e) => setRepositoryPath(e.target.value)}
-              className={`w-full ${c.input} rounded-md px-4 py-3 focus:outline-none text-base`}
-              placeholder={projectLang === "en" ? "D:/DESKTOP/novelfork-workspace" : "D:/DESKTOP/novelfork-workspace"}
-            />
-          </div>
-        )}
 
-        <div className="space-y-2">
-          <label className="block text-sm text-muted-foreground">{copy.workflowLabel}</label>
-          <ChoiceGrid options={workflowOptions} value={workflowMode} onChange={setWorkflowMode} />
-        </div>
+          <ul className="space-y-2 text-sm text-muted-foreground">
+            <li>{projectLang === "en" ? "Repo source" : "仓库来源"}：{copy.planRepo}</li>
+            <li>{projectLang === "en" ? "Workflow mode" : "工作流模式"}：{copy.planWorkflow}</li>
+            <li>{projectLang === "en" ? "Template bias" : "模板偏向"}：{copy.planTemplate}</li>
+            <li>{projectLang === "en" ? "Reserved Git" : "Git 预留"}：{projectInit.gitBranch} / {projectInit.worktreeName}</li>
+          </ul>
 
-        <div className="space-y-2">
-          <label className="block text-sm text-muted-foreground">{copy.templateLabel}</label>
-          <ChoiceGrid options={templateOptions} value={templatePreset} onChange={setTemplatePreset} />
+          {nav.toProjectCreate && (
+            <button
+              type="button"
+              onClick={() => nav.toProjectCreate?.(currentProjectCreateDraft)}
+              className={`px-4 py-3 ${c.btnSecondary} rounded-md font-medium text-base`}
+            >
+              {copy.summaryEdit}
+            </button>
+          )}
         </div>
+      ) : (
+        <div className="space-y-4 rounded-2xl border border-border/60 bg-background/50 p-5">
+          <div className="space-y-1">
+            <div className="text-sm font-medium text-foreground">{copy.initSection}</div>
+            <p className="text-xs leading-5 text-muted-foreground">{copy.initHint}</p>
+          </div>
 
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm text-muted-foreground mb-2">{copy.gitBranchLabel}</label>
-            <input
-              type="text"
-              value={gitBranch}
-              onChange={(e) => setGitBranch(e.target.value)}
-              className={`w-full ${c.input} rounded-md px-4 py-3 focus:outline-none`}
-              placeholder="main"
-            />
+          <div className="space-y-2">
+            <label className="block text-sm text-muted-foreground">{copy.repoLabel}</label>
+            <ChoiceGrid options={repoOptions} value={repositorySource} onChange={setRepositorySource} />
           </div>
-          <div>
-            <label className="block text-sm text-muted-foreground mb-2">{copy.worktreeLabel}</label>
-            <input
-              type="text"
-              value={worktreeName}
-              onChange={(e) => {
-                setWorktreeTouched(true);
-                setWorktreeName(e.target.value);
-              }}
-              className={`w-full ${c.input} rounded-md px-4 py-3 focus:outline-none`}
-              placeholder="draft-main"
-            />
+
+          {repositorySource === "clone" ? (
+            <div>
+              <label className="block text-sm text-muted-foreground mb-2">{copy.cloneLabel}</label>
+              <input
+                type="text"
+                value={cloneUrl}
+                onChange={(e) => setCloneUrl(e.target.value)}
+                className={`w-full ${c.input} rounded-md px-4 py-3 focus:outline-none text-base`}
+                placeholder="https://github.com/org/repo.git"
+              />
+            </div>
+          ) : (
+            <div>
+              <label className="block text-sm text-muted-foreground mb-2">{copy.repoPathLabel}</label>
+              <input
+                type="text"
+                value={repositoryPath}
+                onChange={(e) => setRepositoryPath(e.target.value)}
+                className={`w-full ${c.input} rounded-md px-4 py-3 focus:outline-none text-base`}
+                placeholder="D:/DESKTOP/novelfork-workspace"
+              />
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <label className="block text-sm text-muted-foreground">{copy.workflowLabel}</label>
+            <ChoiceGrid options={workflowOptions} value={workflowMode} onChange={setWorkflowMode} />
+          </div>
+
+          <div className="space-y-2">
+            <label className="block text-sm text-muted-foreground">{copy.templateLabel}</label>
+            <ChoiceGrid options={templateOptions} value={templatePreset} onChange={setTemplatePreset} />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm text-muted-foreground mb-2">{copy.gitBranchLabel}</label>
+              <input
+                type="text"
+                value={gitBranch}
+                onChange={(e) => setGitBranch(e.target.value)}
+                className={`w-full ${c.input} rounded-md px-4 py-3 focus:outline-none`}
+                placeholder="main"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-muted-foreground mb-2">{copy.worktreeLabel}</label>
+              <input
+                type="text"
+                value={worktreeName}
+                onChange={(e) => {
+                  setWorktreeTouched(true);
+                  setWorktreeName(e.target.value);
+                }}
+                className={`w-full ${c.input} rounded-md px-4 py-3 focus:outline-none`}
+                placeholder="draft-main"
+              />
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       <div className="space-y-5 rounded-2xl border border-border/60 bg-background/50 p-5">
         <div className="text-sm font-medium text-foreground">

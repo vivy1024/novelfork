@@ -38,7 +38,7 @@ vi.mock("@/components/ChatWindowManager", () => ({
 interface MockWindowStore {
   windows: ChatWindow[];
   activeWindowId: string | null;
-  addWindow: (agentIdOrInput: string | { agentId: string; title: string; sessionId?: string; sessionConfig?: ChatWindow["sessionConfig"] }, title?: string) => void;
+  addWindow: (agentIdOrInput: string | { agentId: string; title: string; sessionId?: string; sessionMode?: "chat" | "plan"; sessionConfig?: ChatWindow["sessionConfig"] }, title?: string) => void;
   removeWindow: (id: string) => void;
   updateWindow: (id: string, updates: Partial<ChatWindow>) => void;
   toggleMinimize: (id: string) => void;
@@ -102,6 +102,7 @@ describe("SessionCenter", () => {
     expect(createSessionMock).toHaveBeenCalledWith({
       title: "Planner 会话",
       agentId: "planner",
+      sessionMode: "plan",
     });
 
     const windows = useWindowStore.getState().windows;
@@ -151,6 +152,7 @@ describe("SessionCenter", () => {
           id: "session-archived",
           title: "Archived Planner",
           agentId: "planner",
+          sessionMode: "plan",
           status: "archived",
           lastModified: new Date("2026-04-18T10:00:00Z"),
         }),
@@ -161,6 +163,7 @@ describe("SessionCenter", () => {
 
     expect(screen.getByText("Writer 会话")).toBeTruthy();
     expect(screen.getByText("Archived Planner")).toBeTruthy();
+    expect(screen.getByText("计划模式")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "仅看已归档" }));
 
@@ -206,6 +209,7 @@ function createNarratorSession(overrides?: Partial<Session>): Session {
       reasoningEffort: "medium",
     },
     model: "claude-sonnet-4-6",
+    sessionMode: "chat",
     ...overrides,
   };
 }
@@ -218,7 +222,7 @@ function baseMockState(): MockWindowStore {
   const state: MockWindowStore = {
     windows: [] as ChatWindow[],
     activeWindowId: null as string | null,
-    addWindow(agentIdOrInput: string | { agentId: string; title: string; sessionId?: string; sessionConfig?: ChatWindow["sessionConfig"] }, title?: string) {
+    addWindow(agentIdOrInput: string | { agentId: string; title: string; sessionId?: string; sessionMode?: "chat" | "plan"; sessionConfig?: ChatWindow["sessionConfig"] }, title?: string) {
       const normalized = typeof agentIdOrInput === "string"
         ? { agentId: agentIdOrInput, title: title ?? "Untitled Session" }
         : agentIdOrInput;
@@ -230,6 +234,7 @@ function baseMockState(): MockWindowStore {
           title: normalized.title,
           agentId: normalized.agentId,
           sessionId: normalized.sessionId,
+          sessionMode: normalized.sessionMode,
           sessionConfig: normalized.sessionConfig,
           position: { x: (state.windows.length * 2) % 10, y: (state.windows.length * 2) % 10, w: 6, h: 8 },
           minimized: false,

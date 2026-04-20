@@ -19,6 +19,11 @@ export interface StudioProjectInitDraft {
   readonly worktreeName?: string;
 }
 
+export interface StudioProjectCreateDraft {
+  readonly title?: string;
+  readonly projectInit: StudioProjectInitDraft;
+}
+
 export interface StudioCreateBookBody {
   readonly title: string;
   readonly genre: string;
@@ -136,6 +141,17 @@ export function normalizeStudioProjectInit(
     ...(cloneUrl ? { cloneUrl } : {}),
     gitBranch: trimOptionalValue(projectInit?.gitBranch) ?? DEFAULT_PROJECT_INIT_BRANCH,
     worktreeName: trimOptionalValue(projectInit?.worktreeName) ?? suggestStudioWorktreeName(title),
+  };
+}
+
+export function normalizeStudioProjectCreateDraft(
+  draft?: Partial<StudioProjectCreateDraft>,
+): StudioProjectCreateDraft {
+  const title = trimOptionalValue(draft?.title);
+
+  return {
+    ...(title ? { title } : {}),
+    projectInit: normalizeStudioProjectInit(draft?.projectInit, title),
   };
 }
 

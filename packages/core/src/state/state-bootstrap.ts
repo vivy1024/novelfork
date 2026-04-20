@@ -489,7 +489,7 @@ async function loadDurableArtifactChapterNumbers(bookDir: string): Promise<numbe
       .catch(() => [] as number[]),
     readdir(chaptersDir)
       .then((entries) => entries.flatMap((entry) => {
-        const match = entry.match(/^(\d+)_/);
+        const match = entry.match(/^(\d+)_.*\.md$/);
         return match ? [parseInt(match[1]!, 10)] : [];
       }))
       .catch(() => [] as number[]),

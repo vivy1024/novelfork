@@ -83,7 +83,14 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
 
     const connectWs = () => {
       const protocol = globalThis.window.location.protocol === "https:" ? "wss:" : "ws:";
-      const wsUrl = `${protocol}//${globalThis.window.location.host}/api/agent/${chatWindow.agentId}/chat`;
+      const params = new URLSearchParams();
+      if (chatWindow.sessionId) {
+        params.set("sessionId", chatWindow.sessionId);
+      }
+      if (chatWindow.sessionMode) {
+        params.set("mode", chatWindow.sessionMode);
+      }
+      const wsUrl = `${protocol}//${globalThis.window.location.host}/api/agent/${chatWindow.agentId}/chat${params.size > 0 ? `?${params.toString()}` : ""}`;
 
       try {
         const ws = new WebSocket(wsUrl);
@@ -144,6 +151,36 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
     messagesEndRef.current?.scrollIntoView?.({ behavior: "smooth" });
   }, [chatWindow?.messages]);
 
+  useEffect(() => {
+    if (!chatWindow?.sessionId) {
+      return;
+    }
+
+    void fetchJson<NarratorSessionRecord>(`/api/sessions/${chatWindow.sessionId}`)
+      .then((session) => {
+        updateWindow(windowId, {
+          title: session.title,
+          sessionMode: session.sessionMode,
+          sessionConfig: session.sessionConfig,
+        });
+      })
+      .catch(() => {
+        // ignore hydration errors and keep local fallback state
+      });
+  }, [chatWindow?.sessionId, updateWindow, windowId]);
+
+  useEffect(() => {
+    if (!chatWindow?.sessionId) {
+      return;
+    }
+
+    void fetchJson(`/api/sessions/${chatWindow.sessionId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messageCount: chatWindow.messages.length }),
+    });
+  }, [chatWindow?.sessionId, chatWindow?.messages.length]);
+
   if (!chatWindow) return null;
 
   const defaultProvider = getDefaultProvider();
@@ -182,7 +219,11 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
     };
 
     addMessage(windowId, userMessage);
-    wsRef.current.send(JSON.stringify({ content: input }));
+    wsRef.current.send(JSON.stringify({
+      content: input,
+      sessionId: chatWindow.sessionId,
+      sessionMode: chatWindow.sessionMode,
+    }));
     setInput("");
   };
 
@@ -243,6 +284,8 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
                 </div>
                 <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
                   <span>Agent {chatWindow.agentId}</span>
+                  <span>•</span>
+                  <span>{chatWindow.sessionMode === "plan" ? "计划模式" : "对话模式"}</span>
                   <span>•</span>
                   <span>{chatWindow.messages.length} 条消息</span>
                   {chatWindow.sessionId ? (
@@ -363,6 +406,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
                             body: JSON.stringify({
                               title: `${chatWindow.title} · 新会话`,
                               agentId: chatWindow.agentId,
+                              sessionMode: chatWindow.sessionMode,
                               sessionConfig,
                             }),
                           });
@@ -371,6 +415,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
                             agentId: chatWindow.agentId,
                             title: `${chatWindow.title} · 新会话`,
                             sessionId: session.id,
+                            sessionMode: session.sessionMode,
                             sessionConfig: session.sessionConfig,
                           });
                         }}

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Bot, PenTool, ShieldAlert, Sparkles } from "lucide-react";
 
+import type { NarratorSessionMode } from "@/shared/session-types";
+
 import { Button } from "../ui/button";
 import {
   Dialog,
@@ -16,9 +18,12 @@ import { Label } from "../ui/label";
 export interface NewSessionPayload {
   readonly agentId: string;
   readonly title: string;
+  readonly sessionMode: NarratorSessionMode;
 }
 
 export type SessionPresetId = (typeof SESSION_PRESETS)[number]["id"];
+
+type SessionPreset = (typeof SESSION_PRESETS)[number];
 
 interface NewSessionDialogProps {
   readonly open: boolean;
@@ -27,6 +32,11 @@ interface NewSessionDialogProps {
   readonly initialPresetId?: SessionPresetId;
 }
 
+export const SESSION_MODE_LABELS: Record<NarratorSessionMode, string> = {
+  chat: "对话模式",
+  plan: "计划模式",
+};
+
 export const SESSION_PRESETS = [
   {
     id: "writer",
@@ -34,6 +44,7 @@ export const SESSION_PRESETS = [
     label: "写作 Writer",
     description: "直接进入章节创作与续写。",
     icon: PenTool,
+    defaultSessionMode: "chat",
   },
   {
     id: "planner",
@@ -41,6 +52,7 @@ export const SESSION_PRESETS = [
     label: "规划 Planner",
     description: "先拆解章节目标、节奏与结构。",
     icon: Sparkles,
+    defaultSessionMode: "plan",
   },
   {
     id: "auditor",
@@ -48,6 +60,7 @@ export const SESSION_PRESETS = [
     label: "审计 Auditor",
     description: "做连续性、设定与逻辑排查。",
     icon: ShieldAlert,
+    defaultSessionMode: "chat",
   },
   {
     id: "architect",
@@ -55,6 +68,7 @@ export const SESSION_PRESETS = [
     label: "设定 Architect",
     description: "用于世界观、卷纲与题材设计。",
     icon: Bot,
+    defaultSessionMode: "chat",
   },
 ] as const;
 
@@ -67,13 +81,18 @@ export function NewSessionDialog({ open, onOpenChange, onCreate, initialPresetId
   const [presetId, setPresetId] = useState<SessionPresetId>(initialPresetId);
   const [agentId, setAgentId] = useState<string>(initialPresetId);
   const [title, setTitle] = useState(defaultTitleFor(initialPresetId));
+  const [sessionMode, setSessionMode] = useState<NarratorSessionMode>(
+    (SESSION_PRESETS.find((item) => item.id === initialPresetId) as SessionPreset | undefined)?.defaultSessionMode ?? "chat",
+  );
   const [titleTouched, setTitleTouched] = useState(false);
 
   useEffect(() => {
     if (!open) return;
+    const initialPreset = SESSION_PRESETS.find((item) => item.id === initialPresetId) ?? SESSION_PRESETS[0];
     setPresetId(initialPresetId);
     setAgentId(initialPresetId);
     setTitle(defaultTitleFor(initialPresetId));
+    setSessionMode(initialPreset.defaultSessionMode);
     setTitleTouched(false);
   }, [open, initialPresetId]);
 
@@ -83,9 +102,11 @@ export function NewSessionDialog({ open, onOpenChange, onCreate, initialPresetId
   );
 
   const handlePresetSelect = (nextPresetId: SessionPresetId) => {
+    const nextPreset = SESSION_PRESETS.find((item) => item.id === nextPresetId) ?? SESSION_PRESETS[0];
     const generatedTitle = defaultTitleFor(nextPresetId);
     setPresetId(nextPresetId);
     setAgentId(nextPresetId);
+    setSessionMode(nextPreset.defaultSessionMode);
     if (!titleTouched || !title.trim() || title === defaultTitleFor(presetId)) {
       setTitle(generatedTitle);
     }
@@ -99,6 +120,7 @@ export function NewSessionDialog({ open, onOpenChange, onCreate, initialPresetId
     onCreate({
       agentId: trimmedAgentId,
       title: trimmedTitle,
+      sessionMode,
     });
     onOpenChange(false);
   };
@@ -120,9 +142,14 @@ export function NewSessionDialog({ open, onOpenChange, onCreate, initialPresetId
                 <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">当前对象</p>
                 <h3 className="mt-1 text-sm font-medium text-foreground">{selectedPreset.label}</h3>
               </div>
-              <span className="rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-[10px] font-medium text-primary">
-                {selectedPreset.title}
-              </span>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-[10px] font-medium text-primary">
+                  {selectedPreset.title}
+                </span>
+                <span className="rounded-full border border-border/60 px-2.5 py-1 text-[10px] font-medium text-muted-foreground">
+                  {SESSION_MODE_LABELS[sessionMode]}
+                </span>
+              </div>
             </div>
             <p className="mt-2 text-xs leading-5 text-muted-foreground">
               {selectedPreset.description} 选定后会自动带出同名会话标题，便于把会话当作对象来创建。
@@ -156,6 +183,27 @@ export function NewSessionDialog({ open, onOpenChange, onCreate, initialPresetId
                 </button>
               );
             })}
+          </div>
+
+          <div className="space-y-2">
+            <Label>启动模式</Label>
+            <div className="flex flex-wrap gap-2">
+              {(["chat", "plan"] as NarratorSessionMode[]).map((mode) => (
+                <Button
+                  key={mode}
+                  type="button"
+                  variant={sessionMode === mode ? "default" : "outline"}
+                  onClick={() => {
+                    setSessionMode(mode);
+                  }}
+                >
+                  {SESSION_MODE_LABELS[mode]}
+                </Button>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Planner 默认进入计划模式；其他模板默认对话模式，也可以在创建前手动切换。
+            </p>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
