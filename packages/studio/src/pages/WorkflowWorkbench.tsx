@@ -23,6 +23,7 @@ import { MCPServerManager } from "./MCPServerManager";
 import { NotifyConfig } from "./NotifyConfig";
 import { PluginManager } from "./PluginManager";
 import { SchedulerConfig } from "./SchedulerConfig";
+import { useNovelFork } from "../providers/novelfork-context";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
 import type { WorkflowSection } from "../routes";
@@ -148,8 +149,12 @@ export function WorkflowWorkbench({
   section?: WorkflowSection;
   onNavigateSection?: (section: WorkflowSection) => void;
 }) {
+  const { workspace } = useNovelFork();
   const currentSection = section ?? "project";
   const currentTab = WORKFLOW_TABS.find((tab) => tab.value === currentSection) ?? WORKFLOW_TABS[0]!;
+  const routinesDescription = workspace
+    ? "默认读取 merged 视图；当前工作区的 .inkos/routines.json 会覆盖全局 ~/.inkos/routines.json。需要修改时切到 global / project 视图保存。"
+    : "当前没有工作区上下文时，Routines 只读取全局 ~/.inkos/routines.json。进入工作区后默认改为 merged 视图查看实际生效结果。";
 
   return (
     <PageScaffold
@@ -190,6 +195,22 @@ export function WorkflowWorkbench({
           <div>
             <p className="font-medium text-foreground">保存策略</p>
             <p className="mt-1">{currentTab.saveDescription}</p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card size="sm" className="border-dashed bg-muted/20" data-testid="workflow-routines-policy">
+        <CardHeader className="gap-2">
+          <CardTitle className="text-base">Routines 主事实源</CardTitle>
+          <CardDescription>
+            后端 routines-service 文件配置是唯一事实源，前端不再使用 IndexedDB 单独存一份。
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2 text-sm text-muted-foreground">
+          <p>{routinesDescription}</p>
+          <div className="flex flex-wrap gap-2">
+            <Badge variant="secondary">默认读取：{workspace ? "merged" : "global"}</Badge>
+            <Badge variant="outline">保存入口：global / project</Badge>
           </div>
         </CardContent>
       </Card>

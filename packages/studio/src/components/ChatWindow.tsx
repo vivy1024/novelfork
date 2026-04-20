@@ -13,7 +13,9 @@ import type {
 } from "../stores/windowStore";
 import { ToolCallBlock, parseAssistantPayload } from "./ToolCall";
 import { ContextPanel, type ContextEntry } from "./ContextPanel";
-import { getModel, getProvider, PROVIDERS } from "../shared/provider-catalog";
+import { fetchJson } from "../hooks/use-api";
+import { getDefaultModel, getDefaultProvider, getModel, getProvider, PROVIDERS } from "../shared/provider-catalog";
+import type { NarratorSessionRecord } from "../shared/session-types";
 
 interface ChatWindowProps {
   windowId: string;
@@ -125,9 +127,11 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
 
   if (!chatWindow) return null;
 
+  const defaultProvider = getDefaultProvider();
+  const defaultModel = getDefaultModel(defaultProvider.id);
   const sessionConfig = chatWindow.sessionConfig ?? {
-    providerId: "anthropic",
-    modelId: "claude-sonnet-4-6",
+    providerId: defaultProvider.id,
+    modelId: defaultModel?.id ?? "",
     permissionMode: "allow" as SessionPermissionMode,
     reasoningEffort: "medium" as SessionReasoningEffort,
   };
@@ -298,7 +302,24 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
                     </button>
                     <button
                       type="button"
-                      onClick={() => addWindow(chatWindow.agentId, `${chatWindow.title} · 新会话`)}
+                      onClick={async () => {
+                        const session = await fetchJson<NarratorSessionRecord>("/api/sessions", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            title: `${chatWindow.title} · 新会话`,
+                            agentId: chatWindow.agentId,
+                            sessionConfig,
+                          }),
+                        });
+
+                        addWindow({
+                          agentId: chatWindow.agentId,
+                          title: `${chatWindow.title} · 新会话`,
+                          sessionId: session.id,
+                          sessionConfig: session.sessionConfig,
+                        });
+                      }}
                       className="rounded-full border border-border/70 bg-background px-2 py-1 text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
                     >
                       <span className="inline-flex items-center gap-1">

@@ -6,6 +6,12 @@ import { ChatWindow } from "./ChatWindow";
 import { useWindowStore } from "@/stores/windowStore";
 import type { ChatMessage, ChatWindow as ChatWindowState } from "@/stores/windowStore";
 
+const fetchJsonMock = vi.fn();
+
+vi.mock("@/hooks/use-api", () => ({
+  fetchJson: (...args: unknown[]) => fetchJsonMock(...args),
+}));
+
 vi.mock("./WindowControls", () => ({
   WindowControls: () => <div data-testid="window-controls" />,
 }));
@@ -13,7 +19,7 @@ vi.mock("./WindowControls", () => ({
 interface MockWindowStore {
   windows: ChatWindowState[];
   activeWindowId: string | null;
-  addWindow: (agentId: string, title: string) => void;
+  addWindow: (agentIdOrInput: string | { agentId: string; title: string; sessionId?: string; sessionConfig?: ChatWindowState["sessionConfig"] }, title?: string) => void;
   removeWindow: (id: string) => void;
   updateWindow: (id: string, updates: Partial<ChatWindowState>) => void;
   toggleMinimize: (id: string) => void;
@@ -68,6 +74,7 @@ Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
 
 afterEach(() => {
   cleanup();
+  fetchJsonMock.mockReset();
   updateWindowSpy.mockReset();
   mockState = createMockState();
 });
@@ -109,6 +116,41 @@ describe("ChatWindow", () => {
     expect(screen.getByText("上下文面板")).toBeTruthy();
     expect(screen.getByText(/最近会话消息/)).toBeTruthy();
   });
+
+  it("creates a formal narrator session when opening a follow-up session", async () => {
+    fetchJsonMock.mockResolvedValueOnce({
+      id: "session-2",
+      title: "Writer 会话 · 新会话",
+      agentId: "writer",
+      kind: "standalone",
+      status: "active",
+      createdAt: new Date().toISOString(),
+      lastModified: new Date().toISOString(),
+      messageCount: 0,
+      sortOrder: 1,
+      sessionConfig: {
+        providerId: "anthropic",
+        modelId: "claude-sonnet-4-6",
+        permissionMode: "allow",
+        reasoningEffort: "medium",
+      },
+    });
+
+    render(<ChatWindow windowId="window-1" theme="light" />);
+
+    fireEvent.click(screen.getByRole("button", { name: /新开会话/ }));
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(fetchJsonMock).toHaveBeenCalledWith("/api/sessions", expect.objectContaining({
+      method: "POST",
+    }));
+    expect(useWindowStore.getState().windows[1]).toMatchObject({
+      title: "Writer 会话 · 新会话",
+      agentId: "writer",
+      sessionId: "session-2",
+    });
+  });
 });
 
 function createMockState(overrides?: Partial<MockWindowStore>): MockWindowStore {
@@ -132,14 +174,19 @@ function baseMockState(): MockWindowStore {
       },
     ] as ChatWindowState[],
     activeWindowId: "window-1",
-    addWindow(agentId: string, title: string) {
+    addWindow(agentIdOrInput: string | { agentId: string; title: string; sessionId?: string; sessionConfig?: ChatWindowState["sessionConfig"] }, title?: string) {
+      const normalized = typeof agentIdOrInput === "string"
+        ? { agentId: agentIdOrInput, title: title ?? "Untitled Session" }
+        : agentIdOrInput;
       const id = `window-${state.windows.length + 1}`;
       state.windows = [
         ...state.windows,
         {
           id,
-          title,
-          agentId,
+          title: normalized.title,
+          agentId: normalized.agentId,
+          sessionId: normalized.sessionId,
+          sessionConfig: normalized.sessionConfig,
           position: { x: 0, y: 0, w: 6, h: 8 },
           minimized: false,
           messages: [],

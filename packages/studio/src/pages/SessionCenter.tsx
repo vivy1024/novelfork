@@ -8,8 +8,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { NewSessionDialog, SESSION_PRESETS, type NewSessionPayload, type SessionPresetId } from "@/components/sessions/NewSessionDialog";
+import { fetchJson } from "@/hooks/use-api";
 import { useWindowStore } from "@/stores/windowStore";
 import type { Theme } from "../hooks/use-theme";
+import type { NarratorSessionRecord } from "../shared/session-types";
 
 export function SessionCenter({ theme }: { theme: Theme }) {
   const windows = useWindowStore((state) => state.windows);
@@ -40,8 +42,22 @@ export function SessionCenter({ theme }: { theme: Theme }) {
     setDialogOpen(true);
   };
 
-  const handleCreateSession = (payload: NewSessionPayload) => {
-    addWindow(payload.agentId, payload.title);
+  const handleCreateSession = async (payload: NewSessionPayload) => {
+    const session = await fetchJson<NarratorSessionRecord>("/api/sessions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: payload.title,
+        agentId: payload.agentId,
+      }),
+    });
+
+    addWindow({
+      agentId: payload.agentId,
+      title: payload.title,
+      sessionId: session.id,
+      sessionConfig: session.sessionConfig,
+    });
   };
 
   return (
@@ -66,7 +82,7 @@ export function SessionCenter({ theme }: { theme: Theme }) {
           <SessionStat
             title="活跃会话"
             value={String(windows.length)}
-            description="当前已保存的会话对象"
+            description="当前已打开的工作台会话窗口"
             icon={MessagesSquare}
           />
           <SessionStat

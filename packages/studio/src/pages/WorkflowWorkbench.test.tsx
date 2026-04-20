@@ -10,6 +10,7 @@ vi.mock("./SchedulerConfig", () => ({ SchedulerConfig: () => <div>SchedulerConfi
 vi.mock("./DetectionConfigView", () => ({ DetectionConfigView: () => <div>DetectionConfigView</div> }));
 vi.mock("./HookDashboard", () => ({ HookDashboard: () => <div>HookDashboard</div> }));
 vi.mock("./NotifyConfig", () => ({ NotifyConfig: () => <div>NotifyConfig</div> }));
+vi.mock("../providers/novelfork-context", () => ({ useNovelFork: () => ({ workspace: "D:/workspace/novel" }) }));
 
 import { WorkflowWorkbench } from "./WorkflowWorkbench";
 
@@ -37,6 +38,8 @@ describe("WorkflowWorkbench", () => {
 
     expect(screen.getByText("工作流配置台")).toBeTruthy();
     expect(screen.getByText("当前区块的配置边界")).toBeTruthy();
+    expect(screen.getByText("Routines 主事实源")).toBeTruthy();
+    expect(screen.getByText(/默认读取 merged 视图/)).toBeTruthy();
     expect(screen.getAllByText("全局级").length).toBeGreaterThan(0);
     expect(screen.getByText("按 Agent 分组在各自面板保存，避免误改整套编排。")).toBeTruthy();
     expect(screen.getByRole("tab", { name: /MCP 工具/ })).toBeTruthy();

@@ -1,117 +1,55 @@
 /**
  * AI 提供商管理服务
- * 统一管理多个 AI 提供商（Anthropic、OpenAI）
+ * 统一管理多个 AI 提供商目录与运行时配置
  */
 
-export interface AIProvider {
-  id: string;
-  name: string;
-  type: "anthropic" | "openai";
-  enabled: boolean;
-  priority: number; // 排序优先级，数字越小越优先
-  config: ProviderConfig;
-  models: AIModel[];
-}
+import {
+  buildManagedProviders,
+  buildModelPool,
+  type ManagedProvider,
+  type Model,
+  type ModelPoolEntry,
+} from "../../shared/provider-catalog.js";
 
-export interface ProviderConfig {
-  apiKey?: string;
-  endpoint?: string;
-  timeout?: number;
-  retryAttempts?: number;
-  customHeaders?: Record<string, string>;
-}
+export type AIProvider = ManagedProvider;
+export type AIModel = Model;
+export type { ModelPoolEntry, ProviderConfig } from "../../shared/provider-catalog.js";
 
-export interface AIModel {
-  id: string;
-  name: string;
-  providerId: string;
-  contextWindow: number;
-  maxOutputTokens: number;
-  supportsFunctionCalling: boolean;
-  supportsStreaming: boolean;
-}
-
-export interface ModelPoolEntry {
-  modelId: string;
-  modelName: string;
-  providerId: string;
-  providerName: string;
-  enabled: boolean;
-}
-
-class ProviderManager {
+export class ProviderManager {
   private providers: Map<string, AIProvider> = new Map();
   private models: Map<string, AIModel> = new Map();
+
+  private registerProvider(provider: AIProvider): void {
+    this.providers.set(provider.id, provider);
+    this.syncProviderModels(provider.id);
+  }
+
+  private syncProviderModels(providerId: string): void {
+    for (const key of Array.from(this.models.keys())) {
+      if (key.startsWith(`${providerId}:`)) {
+        this.models.delete(key);
+      }
+    }
+
+    const provider = this.providers.get(providerId);
+    if (!provider) {
+      return;
+    }
+
+    for (const model of provider.models) {
+      this.models.set(`${provider.id}:${model.id}`, { ...model });
+    }
+  }
 
   /**
    * 初始化默认提供商
    */
   initialize(): void {
-    // 默认提供商配置
-    const defaultProviders: AIProvider[] = [
-      {
-        id: "anthropic-official",
-        name: "Anthropic Official",
-        type: "anthropic",
-        enabled: true,
-        priority: 1,
-        config: {},
-        models: [
-          {
-            id: "claude-opus-4",
-            name: "Claude Opus 4",
-            providerId: "anthropic-official",
-            contextWindow: 200000,
-            maxOutputTokens: 16384,
-            supportsFunctionCalling: true,
-            supportsStreaming: true,
-          },
-          {
-            id: "claude-sonnet-4",
-            name: "Claude Sonnet 4",
-            providerId: "anthropic-official",
-            contextWindow: 200000,
-            maxOutputTokens: 16384,
-            supportsFunctionCalling: true,
-            supportsStreaming: true,
-          },
-        ],
-      },
-      {
-        id: "openai-official",
-        name: "OpenAI Official",
-        type: "openai",
-        enabled: true,
-        priority: 2,
-        config: {},
-        models: [
-          {
-            id: "gpt-4-turbo",
-            name: "GPT-4 Turbo",
-            providerId: "openai-official",
-            contextWindow: 128000,
-            maxOutputTokens: 4096,
-            supportsFunctionCalling: true,
-            supportsStreaming: true,
-          },
-          {
-            id: "gpt-4o",
-            name: "GPT-4o",
-            providerId: "openai-official",
-            contextWindow: 128000,
-            maxOutputTokens: 16384,
-            supportsFunctionCalling: true,
-            supportsStreaming: true,
-          },
-        ],
-      },
-    ];
+    this.providers.clear();
+    this.models.clear();
 
-    for (const provider of defaultProviders) {
-      this.providers.set(provider.id, provider);
-      for (const model of provider.models) {
-        this.models.set(`${provider.id}:${model.id}`, model);
-      }
+    for (const provider of buildManagedProviders()) {
+      this.registerProvider(provider);
     }
   }
 
@@ -138,8 +76,19 @@ class ProviderManager {
       return null;
     }
 
-    const updated = { ...provider, ...updates };
+    const { id: _ignoredId, config, models, ...restUpdates } = updates;
+    const updated: AIProvider = {
+      ...provider,
+      ...restUpdates,
+      config: {
+        ...provider.config,
+        ...config,
+      },
+      models: models ? models.map((model) => ({ ...model })) : provider.models.map((model) => ({ ...model })),
+    };
+
     this.providers.set(id, updated);
+    this.syncProviderModels(id);
     return updated;
   }
 
@@ -152,7 +101,10 @@ class ProviderManager {
       return false;
     }
 
-    provider.enabled = enabled;
+    this.providers.set(id, {
+      ...provider,
+      enabled,
+    });
     return true;
   }
 
@@ -160,18 +112,19 @@ class ProviderManager {
    * 重新排序提供商
    */
   reorderProviders(orderedIds: string[]): boolean {
-    // 验证所有 ID 都存在
     for (const id of orderedIds) {
       if (!this.providers.has(id)) {
         return false;
       }
     }
 
-    // 更新优先级
     orderedIds.forEach((id, index) => {
       const provider = this.providers.get(id);
       if (provider) {
-        provider.priority = index + 1;
+        this.providers.set(id, {
+          ...provider,
+          priority: index + 1,
+        });
       }
     });
 
@@ -182,25 +135,7 @@ class ProviderManager {
    * 获取模型池（所有可用模型）
    */
   getModelPool(): ModelPoolEntry[] {
-    const pool: ModelPoolEntry[] = [];
-
-    for (const provider of this.providers.values()) {
-      for (const model of provider.models) {
-        pool.push({
-          modelId: `${provider.id}:${model.id}`,
-          modelName: model.name,
-          providerId: provider.id,
-          providerName: provider.name,
-          enabled: provider.enabled,
-        });
-      }
-    }
-
-    return pool.sort((a, b) => {
-      const providerA = this.providers.get(a.providerId);
-      const providerB = this.providers.get(b.providerId);
-      return (providerA?.priority || 999) - (providerB?.priority || 999);
-    });
+    return buildModelPool(this.listProviders());
   }
 
   /**
@@ -215,22 +150,19 @@ class ProviderManager {
     const startTime = Date.now();
 
     try {
-      // 根据提供商类型执行不同的测试
       switch (provider.type) {
         case "anthropic":
-          // 测试 Anthropic API
+        case "openai":
+        case "deepseek":
           if (!provider.config.apiKey) {
             return { success: false, error: "API key not configured" };
           }
-          // TODO: 实际调用 API 测试
           break;
 
-        case "openai":
-          // 测试 OpenAI API
-          if (!provider.config.apiKey) {
-            return { success: false, error: "API key not configured" };
+        case "custom":
+          if (!provider.config.endpoint) {
+            return { success: false, error: "Endpoint not configured" };
           }
-          // TODO: 实际调用 API 测试
           break;
 
         default:
@@ -254,16 +186,12 @@ class ProviderManager {
     const maxPriority = Math.max(...Array.from(this.providers.values()).map((p) => p.priority), 0);
     const newProvider: AIProvider = {
       ...provider,
+      config: { ...provider.config },
+      models: provider.models.map((model) => ({ ...model })),
       priority: maxPriority + 1,
     };
 
-    this.providers.set(newProvider.id, newProvider);
-
-    // 注册模型
-    for (const model of newProvider.models) {
-      this.models.set(`${newProvider.id}:${model.id}`, model);
-    }
-
+    this.registerProvider(newProvider);
     return newProvider;
   }
 
@@ -276,7 +204,6 @@ class ProviderManager {
       return false;
     }
 
-    // 删除关联的模型
     for (const model of provider.models) {
       this.models.delete(`${id}:${model.id}`);
     }
