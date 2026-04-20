@@ -12,13 +12,44 @@ const GLOBAL_CONFIG_DIR = path.join(os.homedir(), ".inkos");
 const GLOBAL_ROUTINES_FILE = path.join(GLOBAL_CONFIG_DIR, "routines.json");
 const PROJECT_ROUTINES_FILE = ".inkos/routines.json";
 
+function cloneDefaultRoutines(): Routines {
+  return {
+    commands: [...DEFAULT_ROUTINES.commands],
+    tools: [...DEFAULT_ROUTINES.tools],
+    permissions: [...DEFAULT_ROUTINES.permissions],
+    globalSkills: [...DEFAULT_ROUTINES.globalSkills],
+    projectSkills: [...DEFAULT_ROUTINES.projectSkills],
+    subAgents: [...DEFAULT_ROUTINES.subAgents],
+    globalPrompts: [...DEFAULT_ROUTINES.globalPrompts],
+    systemPrompts: [...DEFAULT_ROUTINES.systemPrompts],
+    mcpTools: [...DEFAULT_ROUTINES.mcpTools],
+  };
+}
+
+export function normalizeRoutines(input: Partial<Routines> | null | undefined): Routines {
+  const fallback = cloneDefaultRoutines();
+  const source = input ?? {};
+
+  return {
+    commands: Array.isArray(source.commands) ? [...source.commands] : fallback.commands,
+    tools: Array.isArray(source.tools) ? [...source.tools] : fallback.tools,
+    permissions: Array.isArray(source.permissions) ? [...source.permissions] : fallback.permissions,
+    globalSkills: Array.isArray(source.globalSkills) ? [...source.globalSkills] : fallback.globalSkills,
+    projectSkills: Array.isArray(source.projectSkills) ? [...source.projectSkills] : fallback.projectSkills,
+    subAgents: Array.isArray(source.subAgents) ? [...source.subAgents] : fallback.subAgents,
+    globalPrompts: Array.isArray(source.globalPrompts) ? [...source.globalPrompts] : fallback.globalPrompts,
+    systemPrompts: Array.isArray(source.systemPrompts) ? [...source.systemPrompts] : fallback.systemPrompts,
+    mcpTools: Array.isArray(source.mcpTools) ? [...source.mcpTools] : fallback.mcpTools,
+  };
+}
+
 /**
  * 确保配置目录存在
  */
 async function ensureConfigDir(dir: string): Promise<void> {
   try {
     await fs.mkdir(dir, { recursive: true });
-  } catch (error) {
+  } catch {
     // 目录已存在，忽略错误
   }
 }
@@ -30,10 +61,10 @@ export async function loadGlobalRoutines(): Promise<Routines> {
   try {
     await ensureConfigDir(GLOBAL_CONFIG_DIR);
     const content = await fs.readFile(GLOBAL_ROUTINES_FILE, "utf-8");
-    return JSON.parse(content) as Routines;
-  } catch (error) {
+    return normalizeRoutines(JSON.parse(content) as Partial<Routines>);
+  } catch {
     // 文件不存在或解析失败，返回默认配置
-    return { ...DEFAULT_ROUTINES };
+    return cloneDefaultRoutines();
   }
 }
 
@@ -42,7 +73,7 @@ export async function loadGlobalRoutines(): Promise<Routines> {
  */
 export async function saveGlobalRoutines(routines: Routines): Promise<void> {
   await ensureConfigDir(GLOBAL_CONFIG_DIR);
-  await fs.writeFile(GLOBAL_ROUTINES_FILE, JSON.stringify(routines, null, 2), "utf-8");
+  await fs.writeFile(GLOBAL_ROUTINES_FILE, JSON.stringify(normalizeRoutines(routines), null, 2), "utf-8");
 }
 
 /**
@@ -52,8 +83,8 @@ export async function loadProjectRoutines(projectRoot: string): Promise<Routines
   try {
     const configPath = path.join(projectRoot, PROJECT_ROUTINES_FILE);
     const content = await fs.readFile(configPath, "utf-8");
-    return JSON.parse(content) as Routines;
-  } catch (error) {
+    return normalizeRoutines(JSON.parse(content) as Partial<Routines>);
+  } catch {
     // 文件不存在，返回 null
     return null;
   }
@@ -66,47 +97,52 @@ export async function saveProjectRoutines(projectRoot: string, routines: Routine
   const configDir = path.join(projectRoot, ".inkos");
   await ensureConfigDir(configDir);
   const configPath = path.join(projectRoot, PROJECT_ROUTINES_FILE);
-  await fs.writeFile(configPath, JSON.stringify(routines, null, 2), "utf-8");
+  await fs.writeFile(configPath, JSON.stringify(normalizeRoutines(routines), null, 2), "utf-8");
 }
 
 /**
  * 合并全局和项目配置（项目配置优先）
  */
 export function mergeRoutines(global: Routines, project: Routines | null): Routines {
+  const globalRoutines = normalizeRoutines(global);
   if (!project) {
-    return global;
+    return globalRoutines;
   }
 
+  const projectRoutines = normalizeRoutines(project);
+
   return {
-    commands: [...global.commands, ...project.commands],
-    tools: mergeTools(global.tools, project.tools),
-    permissions: [...project.permissions, ...global.permissions], // 项目权限优先
-    globalSkills: global.globalSkills,
-    projectSkills: project.projectSkills,
-    subAgents: [...global.subAgents, ...project.subAgents],
-    globalPrompts: global.globalPrompts,
-    systemPrompts: [...global.systemPrompts, ...project.systemPrompts],
-    mcpTools: mergeTools(global.mcpTools, project.mcpTools),
+    commands: mergeByKey(globalRoutines.commands, projectRoutines.commands, (item) => item.id),
+    tools: mergeByKey(globalRoutines.tools, projectRoutines.tools, (item) => item.name),
+    permissions: mergeByKey(
+      globalRoutines.permissions,
+      projectRoutines.permissions,
+      (item) => `${item.tool}::${item.pattern ?? ""}`,
+    ),
+    globalSkills: [...globalRoutines.globalSkills],
+    projectSkills: [...projectRoutines.projectSkills],
+    subAgents: mergeByKey(globalRoutines.subAgents, projectRoutines.subAgents, (item) => item.id),
+    globalPrompts: [...globalRoutines.globalPrompts],
+    systemPrompts: mergeByKey(globalRoutines.systemPrompts, projectRoutines.systemPrompts, (item) => item.id),
+    mcpTools: mergeByKey(globalRoutines.mcpTools, projectRoutines.mcpTools, (item) => item.id),
   };
 }
 
-/**
- * 合并工具配置（项目配置覆盖全局配置）
- */
-function mergeTools<T extends { name?: string; id?: string }>(
-  global: T[],
-  project: T[]
-): T[] {
-  const merged = [...global];
+function mergeByKey<T>(globalItems: T[], projectItems: T[], getKey: (item: T) => string | undefined): T[] {
+  const merged = [...globalItems];
 
-  for (const projectItem of project) {
-    const key = projectItem.name ?? projectItem.id;
-    const index = merged.findIndex((item) => (item.name ?? item.id) === key);
+  for (const projectItem of projectItems) {
+    const key = getKey(projectItem);
+    if (!key) {
+      merged.push(projectItem);
+      continue;
+    }
 
+    const index = merged.findIndex((item) => getKey(item) === key);
     if (index >= 0) {
-      merged[index] = projectItem; // 覆盖
+      merged[index] = projectItem;
     } else {
-      merged.push(projectItem); // 新增
+      merged.push(projectItem);
     }
   }
 
@@ -117,7 +153,7 @@ function mergeTools<T extends { name?: string; id?: string }>(
  * 重置为默认配置
  */
 export async function resetRoutines(scope: "global" | "project", projectRoot?: string): Promise<Routines> {
-  const defaultRoutines = { ...DEFAULT_ROUTINES };
+  const defaultRoutines = cloneDefaultRoutines();
 
   if (scope === "global") {
     await saveGlobalRoutines(defaultRoutines);

@@ -1,6 +1,13 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
+import {
+  DEFAULT_SESSION_CONFIG,
+  type SessionConfig,
+  type SessionPermissionMode,
+  type SessionReasoningEffort,
+} from "../shared/session-types";
+
 export type ToolCallStatus = "pending" | "running" | "success" | "error";
 
 export interface ToolCall {
@@ -27,20 +34,11 @@ export interface ChatMessage {
   toolCalls?: ToolCall[];
 }
 
-export type SessionPermissionMode = "allow" | "ask" | "deny";
-export type SessionReasoningEffort = "low" | "medium" | "high";
-
-export interface SessionConfig {
-  providerId: string;
-  modelId: string;
-  permissionMode: SessionPermissionMode;
-  reasoningEffort: SessionReasoningEffort;
-}
-
 export interface ChatWindow {
   id: string;
   title: string;
   agentId: string;
+  sessionId?: string;
   position: { x: number; y: number; w: number; h: number };
   minimized: boolean;
   messages: ChatMessage[];
@@ -48,10 +46,17 @@ export interface ChatWindow {
   sessionConfig?: SessionConfig;
 }
 
+interface AddWindowInput {
+  agentId: string;
+  title: string;
+  sessionId?: string;
+  sessionConfig?: SessionConfig;
+}
+
 interface WindowStore {
   windows: ChatWindow[];
   activeWindowId: string | null;
-  addWindow: (agentId: string, title: string) => void;
+  addWindow: (agentIdOrInput: string | AddWindowInput, title?: string) => void;
   removeWindow: (id: string) => void;
   updateWindow: (id: string, updates: Partial<ChatWindow>) => void;
   toggleMinimize: (id: string) => void;
@@ -61,19 +66,31 @@ interface WindowStore {
   setWsConnected: (windowId: string, connected: boolean) => void;
 }
 
+function normalizeAddWindowInput(agentIdOrInput: string | AddWindowInput, title?: string): AddWindowInput {
+  if (typeof agentIdOrInput === "string") {
+    return {
+      agentId: agentIdOrInput,
+      title: title ?? "Untitled Session",
+    };
+  }
+  return agentIdOrInput;
+}
+
 export const useWindowStore = create<WindowStore>()(
   persist(
     (set) => ({
       windows: [],
       activeWindowId: null,
 
-      addWindow: (agentId, title) =>
+      addWindow: (agentIdOrInput, title) =>
         set((state) => {
+          const normalized = normalizeAddWindowInput(agentIdOrInput, title);
           const id = `window-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
           const newWindow: ChatWindow = {
             id,
-            title,
-            agentId,
+            title: normalized.title,
+            agentId: normalized.agentId,
+            sessionId: normalized.sessionId,
             position: {
               x: (state.windows.length * 2) % 10,
               y: (state.windows.length * 2) % 10,
@@ -83,12 +100,7 @@ export const useWindowStore = create<WindowStore>()(
             minimized: false,
             messages: [],
             wsConnected: false,
-            sessionConfig: {
-              providerId: "anthropic",
-              modelId: "claude-sonnet-4-6",
-              permissionMode: "allow",
-              reasoningEffort: "medium",
-            },
+            sessionConfig: normalized.sessionConfig ?? { ...DEFAULT_SESSION_CONFIG },
           };
           return { windows: [...state.windows, newWindow], activeWindowId: id };
         }),
@@ -114,7 +126,7 @@ export const useWindowStore = create<WindowStore>()(
       addMessage: (windowId, message) =>
         set((state) => ({
           windows: state.windows.map((w) =>
-            w.id === windowId ? { ...w, messages: [...w.messages, message] } : w
+            w.id === windowId ? { ...w, messages: [...w.messages, message] } : w,
           ),
         })),
 
@@ -133,10 +145,12 @@ export const useWindowStore = create<WindowStore>()(
       partialize: (state) => ({
         windows: state.windows.map((w) => ({
           ...w,
-          messages: w.messages.slice(-50), // 只持久化最近 50 条消息
-          wsConnected: false, // 重启后重连
+          messages: w.messages.slice(-50),
+          wsConnected: false,
         })),
       }),
-    }
-  )
+    },
+  ),
 );
+
+export type { SessionConfig, SessionPermissionMode, SessionReasoningEffort };

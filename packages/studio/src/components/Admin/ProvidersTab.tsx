@@ -6,17 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { fetchJson } from "../../hooks/use-api";
-
-interface Provider {
-  id: string;
-  name: string;
-  type: string;
-  apiKey?: string;
-  baseUrl?: string;
-  models: string[];
-  enabled: boolean;
-  priority: number;
-}
+import { getProviderTypeLabel, type ManagedProvider } from "../../shared/provider-catalog";
 
 interface ConnectionFeedback {
   tone: "success" | "error";
@@ -24,7 +14,7 @@ interface ConnectionFeedback {
 }
 
 export function ProvidersTab() {
-  const [providers, setProviders] = useState<Provider[]>([]);
+  const [providers, setProviders] = useState<ManagedProvider[]>([]);
   const [loading, setLoading] = useState(true);
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
   const [busyProviderId, setBusyProviderId] = useState<string | null>(null);
@@ -36,7 +26,7 @@ export function ProvidersTab() {
 
   const loadProviders = async () => {
     try {
-      const data = await fetchJson<{ providers: Provider[] }>("/api/admin/providers");
+      const data = await fetchJson<{ providers: ManagedProvider[] }>("/api/admin/providers");
       setProviders(data.providers);
     } catch (error) {
       setFeedback({
@@ -151,20 +141,21 @@ export function ProvidersTab() {
         <div className="grid gap-4">
           {providers.map((provider) => {
             const isBusy = busyProviderId === provider.id;
+            const endpoint = provider.config.endpoint ?? provider.baseUrl;
             return (
               <Card key={provider.id}>
                 <CardHeader className="gap-3 md:flex-row md:items-start md:justify-between">
                   <div className="space-y-3">
                     <div className="flex flex-wrap items-center gap-2">
                       <CardTitle className="text-lg">{provider.name}</CardTitle>
-                      <Badge variant="outline">{provider.type}</Badge>
+                      <Badge variant="outline">{getProviderTypeLabel(provider.type)}</Badge>
                       <Badge variant={provider.enabled ? "secondary" : "outline"}>
                         {provider.enabled ? "已启用" : "未启用"}
                       </Badge>
                     </div>
                     <CardDescription>
                       优先级 {provider.priority}
-                      {provider.baseUrl ? ` · ${provider.baseUrl}` : " · 使用默认网关地址"}
+                      {endpoint ? ` · ${endpoint}` : " · 使用默认网关地址"}
                     </CardDescription>
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -187,7 +178,11 @@ export function ProvidersTab() {
                     <div className="rounded-xl border border-border/70 bg-muted/30 p-3">
                       <div className="mb-1 text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">API Key</div>
                       <div className="flex items-center gap-2 text-sm text-foreground">
-                        <span className="font-mono">{showKeys[provider.id] ? provider.apiKey || "未配置" : maskApiKey(provider.apiKey)}</span>
+                        <span className="font-mono">
+                          {showKeys[provider.id]
+                            ? provider.config.apiKey || "未配置"
+                            : maskApiKey(provider.config.apiKey)}
+                        </span>
                         <Button
                           variant="ghost"
                           size="sm"
@@ -202,7 +197,7 @@ export function ProvidersTab() {
                       <div className="flex flex-wrap gap-2">
                         {provider.models.length > 0 ? (
                           provider.models.map((model) => (
-                            <Badge key={model} variant="secondary">{model}</Badge>
+                            <Badge key={model.id} variant="secondary">{model.name}</Badge>
                           ))
                         ) : (
                           <span className="text-sm text-muted-foreground">暂无模型</span>
@@ -218,7 +213,7 @@ export function ProvidersTab() {
                     <ul className="space-y-2">
                       <li>启用状态：{provider.enabled ? "已参与调度" : "当前未参与"}</li>
                       <li>模型数量：{provider.models.length}</li>
-                      <li>接入方式：{provider.type}</li>
+                      <li>接入方式：{getProviderTypeLabel(provider.type)}</li>
                     </ul>
                   </div>
                 </CardContent>

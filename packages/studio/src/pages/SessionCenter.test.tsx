@@ -6,6 +6,12 @@ import { SessionCenter } from "./SessionCenter";
 import { useWindowStore } from "@/stores/windowStore";
 import type { ChatMessage, ChatWindow } from "@/stores/windowStore";
 
+const fetchJsonMock = vi.fn();
+
+vi.mock("@/hooks/use-api", () => ({
+  fetchJson: (...args: unknown[]) => fetchJsonMock(...args),
+}));
+
 vi.mock("@/components/ChatWindowManager", () => ({
   ChatWindowManager: () => <div data-testid="chat-window-manager" />,
 }));
@@ -13,7 +19,7 @@ vi.mock("@/components/ChatWindowManager", () => ({
 interface MockWindowStore {
   windows: ChatWindow[];
   activeWindowId: string | null;
-  addWindow: (agentId: string, title: string) => void;
+  addWindow: (agentIdOrInput: string | { agentId: string; title: string; sessionId?: string; sessionConfig?: ChatWindow["sessionConfig"] }, title?: string) => void;
   removeWindow: (id: string) => void;
   updateWindow: (id: string, updates: Partial<ChatWindow>) => void;
   toggleMinimize: (id: string) => void;
@@ -41,11 +47,30 @@ vi.mock("@/stores/windowStore", () => {
 
 afterEach(() => {
   cleanup();
+  fetchJsonMock.mockReset();
   mockState = createMockState();
 });
 
 describe("SessionCenter", () => {
-  it("opens a preset session dialog and creates a structured session", () => {
+  it("creates a formal narrator session before opening a workspace window", async () => {
+    fetchJsonMock.mockResolvedValueOnce({
+      id: "session-1",
+      title: "Planner 会话",
+      agentId: "planner",
+      kind: "standalone",
+      status: "active",
+      createdAt: new Date().toISOString(),
+      lastModified: new Date().toISOString(),
+      messageCount: 0,
+      sortOrder: 0,
+      sessionConfig: {
+        providerId: "anthropic",
+        modelId: "claude-sonnet-4-6",
+        permissionMode: "allow",
+        reasoningEffort: "medium",
+      },
+    });
+
     render(<SessionCenter theme="light" />);
 
     expect(screen.getByText("会话对象入口")).toBeTruthy();
@@ -60,10 +85,17 @@ describe("SessionCenter", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "创建会话" }));
 
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(fetchJsonMock).toHaveBeenCalledWith("/api/sessions", expect.objectContaining({
+      method: "POST",
+    }));
+
     const windows = useWindowStore.getState().windows;
     expect(windows).toHaveLength(1);
     expect(windows[0]?.agentId).toBe("planner");
     expect(windows[0]?.title).toBe("Planner 会话");
+    expect(windows[0]?.sessionId).toBe("session-1");
   });
 
   it("renders existing session cards as object entries", () => {
@@ -101,14 +133,19 @@ function baseMockState(): MockWindowStore {
   const state: MockWindowStore = {
     windows: [] as ChatWindow[],
     activeWindowId: null as string | null,
-    addWindow(agentId: string, title: string) {
+    addWindow(agentIdOrInput: string | { agentId: string; title: string; sessionId?: string; sessionConfig?: ChatWindow["sessionConfig"] }, title?: string) {
+      const normalized = typeof agentIdOrInput === "string"
+        ? { agentId: agentIdOrInput, title: title ?? "Untitled Session" }
+        : agentIdOrInput;
       const id = `window-${state.windows.length + 1}`;
       state.windows = [
         ...state.windows,
         {
           id,
-          title,
-          agentId,
+          title: normalized.title,
+          agentId: normalized.agentId,
+          sessionId: normalized.sessionId,
+          sessionConfig: normalized.sessionConfig,
           position: { x: (state.windows.length * 2) % 10, y: (state.windows.length * 2) % 10, w: 6, h: 8 },
           minimized: false,
           messages: [],

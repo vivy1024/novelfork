@@ -1,3 +1,5 @@
+export type ProviderType = "anthropic" | "openai" | "deepseek" | "custom";
+
 export interface Model {
   id: string;
   name: string;
@@ -7,20 +9,47 @@ export interface Model {
   outputPrice?: number;
   supportsFunctionCalling?: boolean;
   supportsVision?: boolean;
+  supportsStreaming?: boolean;
 }
 
 export interface Provider {
   id: string;
   name: string;
+  type: ProviderType;
   apiKeyRequired: boolean;
   baseUrl?: string;
   models: Model[];
+}
+
+export interface ProviderConfig {
+  apiKey?: string;
+  endpoint?: string;
+  timeout?: number;
+  retryAttempts?: number;
+  customHeaders?: Record<string, string>;
+}
+
+export interface ManagedProvider extends Provider {
+  enabled: boolean;
+  priority: number;
+  config: ProviderConfig;
+}
+
+export interface ModelPoolEntry {
+  modelId: string;
+  modelName: string;
+  providerId: string;
+  providerName: string;
+  enabled: boolean;
+  contextWindow: number;
+  maxOutputTokens: number;
 }
 
 export const PROVIDERS: Provider[] = [
   {
     id: "anthropic",
     name: "Anthropic",
+    type: "anthropic",
     apiKeyRequired: true,
     baseUrl: "https://api.anthropic.com",
     models: [
@@ -33,6 +62,7 @@ export const PROVIDERS: Provider[] = [
         outputPrice: 75,
         supportsFunctionCalling: true,
         supportsVision: true,
+        supportsStreaming: true,
       },
       {
         id: "claude-sonnet-4-6",
@@ -43,6 +73,7 @@ export const PROVIDERS: Provider[] = [
         outputPrice: 15,
         supportsFunctionCalling: true,
         supportsVision: true,
+        supportsStreaming: true,
       },
       {
         id: "claude-haiku-4-5",
@@ -52,12 +83,14 @@ export const PROVIDERS: Provider[] = [
         inputPrice: 0.8,
         outputPrice: 4,
         supportsFunctionCalling: true,
+        supportsStreaming: true,
       },
     ],
   },
   {
     id: "openai",
     name: "OpenAI",
+    type: "openai",
     apiKeyRequired: true,
     baseUrl: "https://api.openai.com/v1",
     models: [
@@ -70,6 +103,7 @@ export const PROVIDERS: Provider[] = [
         outputPrice: 30,
         supportsFunctionCalling: true,
         supportsVision: true,
+        supportsStreaming: true,
       },
       {
         id: "gpt-4",
@@ -79,6 +113,7 @@ export const PROVIDERS: Provider[] = [
         inputPrice: 30,
         outputPrice: 60,
         supportsFunctionCalling: true,
+        supportsStreaming: true,
       },
       {
         id: "gpt-3.5-turbo",
@@ -88,12 +123,14 @@ export const PROVIDERS: Provider[] = [
         inputPrice: 0.5,
         outputPrice: 1.5,
         supportsFunctionCalling: true,
+        supportsStreaming: true,
       },
     ],
   },
   {
     id: "deepseek",
     name: "DeepSeek",
+    type: "deepseek",
     apiKeyRequired: true,
     baseUrl: "https://api.deepseek.com",
     models: [
@@ -105,6 +142,7 @@ export const PROVIDERS: Provider[] = [
         inputPrice: 0.14,
         outputPrice: 0.28,
         supportsFunctionCalling: true,
+        supportsStreaming: true,
       },
       {
         id: "deepseek-coder",
@@ -113,21 +151,74 @@ export const PROVIDERS: Provider[] = [
         maxOutputTokens: 4096,
         inputPrice: 0.14,
         outputPrice: 0.28,
+        supportsStreaming: true,
       },
     ],
   },
   {
     id: "custom",
     name: "自定义",
+    type: "custom",
     apiKeyRequired: false,
     models: [],
   },
 ];
 
+const providerMap = new Map(PROVIDERS.map((provider) => [provider.id, provider]));
+
+const PROVIDER_TYPE_LABELS: Record<ProviderType, string> = {
+  anthropic: "Anthropic",
+  openai: "OpenAI",
+  deepseek: "DeepSeek",
+  custom: "自定义",
+};
+
 export function getProvider(id: string): Provider | undefined {
-  return PROVIDERS.find((provider) => provider.id === id);
+  return providerMap.get(id);
 }
 
 export function getModel(providerId: string, modelId: string): Model | undefined {
   return getProvider(providerId)?.models.find((model) => model.id === modelId);
+}
+
+export function getDefaultProvider(): Provider {
+  return PROVIDERS[0];
+}
+
+export function getDefaultModel(providerId = getDefaultProvider().id): Model | undefined {
+  return getProvider(providerId)?.models[0];
+}
+
+export function getProviderTypeLabel(type: ProviderType): string {
+  return PROVIDER_TYPE_LABELS[type] ?? type;
+}
+
+export function buildManagedProviders(): ManagedProvider[] {
+  return PROVIDERS.map((provider, index) => ({
+    ...provider,
+    enabled: true,
+    priority: index + 1,
+    config: {},
+    models: provider.models.map((model) => ({ ...model })),
+  }));
+}
+
+export function buildModelPool(providers: ManagedProvider[]): ModelPoolEntry[] {
+  return providers
+    .flatMap((provider) =>
+      provider.models.map((model) => ({
+        modelId: `${provider.id}:${model.id}`,
+        modelName: model.name,
+        providerId: provider.id,
+        providerName: provider.name,
+        enabled: provider.enabled,
+        contextWindow: model.contextWindow,
+        maxOutputTokens: model.maxOutputTokens,
+      })),
+    )
+    .sort((a, b) => {
+      const providerA = providers.find((provider) => provider.id === a.providerId);
+      const providerB = providers.find((provider) => provider.id === b.providerId);
+      return (providerA?.priority ?? 999) - (providerB?.priority ?? 999);
+    });
 }

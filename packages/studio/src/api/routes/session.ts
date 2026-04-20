@@ -3,23 +3,25 @@
  */
 
 import { Hono } from "hono";
-import type { Session } from "../../hooks/useSession.js";
+import {
+  createSession,
+  deleteSession,
+  getSessionById,
+  listSessions,
+  updateSession,
+} from "../lib/session-service.js";
+import type { CreateNarratorSessionInput, UpdateNarratorSessionInput } from "../../shared/session-types.js";
 
 const app = new Hono();
 
-// In-memory session storage (for server-side operations if needed)
-const sessions = new Map<string, Session>();
-
-app.get("/", (c) => {
-  const allSessions = Array.from(sessions.values()).sort(
-    (a, b) => b.lastModified.getTime() - a.lastModified.getTime()
-  );
-  return c.json(allSessions);
+app.get("/", async (c) => {
+  const sessions = await listSessions();
+  return c.json(sessions);
 });
 
-app.get("/:id", (c) => {
+app.get("/:id", async (c) => {
   const id = c.req.param("id");
-  const session = sessions.get(id);
+  const session = await getSessionById(id);
   if (!session) {
     return c.json({ error: "Session not found" }, 404);
   }
@@ -27,43 +29,27 @@ app.get("/:id", (c) => {
 });
 
 app.post("/", async (c) => {
-  const body = await c.req.json();
-  const session: Session = {
-    id: crypto.randomUUID(),
-    title: body.title || "Untitled Session",
-    createdAt: new Date(),
-    lastModified: new Date(),
-    messageCount: 0,
-    model: body.model || "claude-opus-4-7",
-    worktree: body.worktree,
-  };
-  sessions.set(session.id, session);
+  const body = await c.req.json<CreateNarratorSessionInput>();
+  const session = await createSession(body);
   return c.json(session, 201);
 });
 
 app.put("/:id", async (c) => {
   const id = c.req.param("id");
-  const session = sessions.get(id);
-  if (!session) {
+  const body = await c.req.json<UpdateNarratorSessionInput>();
+  const updated = await updateSession(id, body);
+  if (!updated) {
     return c.json({ error: "Session not found" }, 404);
   }
-  const body = await c.req.json();
-  const updated: Session = {
-    ...session,
-    ...body,
-    id,
-    lastModified: new Date(),
-  };
-  sessions.set(id, updated);
   return c.json(updated);
 });
 
-app.delete("/:id", (c) => {
+app.delete("/:id", async (c) => {
   const id = c.req.param("id");
-  if (!sessions.has(id)) {
+  const deleted = await deleteSession(id);
+  if (!deleted) {
     return c.json({ error: "Session not found" }, 404);
   }
-  sessions.delete(id);
   return c.json({ success: true });
 });
 
