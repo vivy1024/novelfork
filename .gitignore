@@ -29,4 +29,5 @@ test-results/
 # Compiled executables
 *.exe
 dist-bun/*.exe
+packages/studio/src/api/embedded-assets.generated.ts
 .narrafork/

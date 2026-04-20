@@ -338,23 +338,27 @@ export async function startStudioServer(
   const staticProvider = options?.staticProvider
     ?? (options?.staticDir ? createFilesystemStaticProvider(options.staticDir) : undefined);
   if (staticProvider) {
-    app.get("/assets/*", async (c) => {
-      const asset = await staticProvider.readAsset(c.req.path);
-      if (!asset) {
+    app.get("*", async (c) => {
+      if (c.req.path.startsWith("/api/")) {
         return c.notFound();
       }
-      return new Response(asset.content, {
-        headers: { "Content-Type": asset.contentType },
-      });
-    });
 
-    const indexHtml = await staticProvider.readIndexHtml();
-    if (indexHtml !== null) {
-      app.get("*", (c) => {
-        if (c.req.path.startsWith("/api/")) return c.notFound();
-        return c.html(indexHtml);
-      });
-    }
+      if (c.req.path !== "/" && c.req.path.includes(".")) {
+        const asset = await staticProvider.readAsset(c.req.path);
+        if (!asset) {
+          return c.notFound();
+        }
+        return new Response(Buffer.from(asset.content), {
+          headers: { "Content-Type": asset.contentType },
+        });
+      }
+
+      const indexHtml = await staticProvider.readIndexHtml();
+      if (indexHtml === null) {
+        return c.notFound();
+      }
+      return c.html(indexHtml);
+    });
   }
 
   console.log(`NovelFork Studio running on http://localhost:${port}`);
