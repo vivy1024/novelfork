@@ -1,4 +1,4 @@
-import type { Route } from "./App";
+import type { Route } from "./routes";
 
 export function deriveActiveBookId(route: Route): string | undefined {
   return route.page === "book"

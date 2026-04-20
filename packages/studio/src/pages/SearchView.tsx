@@ -1,9 +1,12 @@
-import { useState, useEffect, useRef } from "react";
-import type { Theme } from "../hooks/use-theme";
-import type { TFunction } from "../hooks/use-i18n";
-import { useColors } from "../hooks/use-colors";
+import { useEffect, useRef, useState } from "react";
+import { Anchor, BookOpen, FileText, Globe, Loader2, Search } from "lucide-react";
+
+import { PageEmptyState } from "@/components/layout/PageEmptyState";
+import { PageScaffold } from "@/components/layout/PageScaffold";
 import { fetchJson } from "../hooks/use-api";
-import { Search, Loader2, FileText, BookOpen, Anchor, Globe } from "lucide-react";
+import { useColors } from "../hooks/use-colors";
+import type { TFunction } from "../hooks/use-i18n";
+import type { Theme } from "../hooks/use-theme";
 
 interface SearchHit {
   readonly bookId: string;
@@ -26,10 +29,14 @@ function highlightSnippet(snippet: string, query: string) {
   if (!query.trim()) return snippet;
   const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const parts = snippet.split(new RegExp(`(${escaped})`, "gi"));
-  return parts.map((part, i) =>
-    part.toLowerCase() === query.toLowerCase()
-      ? <mark key={i} className="bg-primary/20 text-primary rounded px-0.5">{part}</mark>
-      : part
+  return parts.map((part, index) =>
+    part.toLowerCase() === query.toLowerCase() ? (
+      <mark key={index} className="rounded bg-primary/20 px-0.5 text-primary">
+        {part}
+      </mark>
+    ) : (
+      part
+    ),
   );
 }
 
@@ -44,6 +51,7 @@ export function SearchView({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunc
 
   useEffect(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
+
     const trimmed = query.trim();
     if (!trimmed) {
       setResults([]);
@@ -51,6 +59,7 @@ export function SearchView({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunc
       setError("");
       return;
     }
+
     timerRef.current = setTimeout(async () => {
       setLoading(true);
       setError("");
@@ -64,24 +73,19 @@ export function SearchView({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunc
       setSearched(true);
       setLoading(false);
     }, 300);
-    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
   }, [query]);
 
   const grouped = groupByBook(results);
 
   return (
-    <div className="space-y-8">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <button onClick={nav.toDashboard} className={c.link}>{t("bread.home")}</button>
-        <span className="text-border">/</span>
-        <span>{t("nav.search")}</span>
-      </div>
-
-      <h1 className="font-serif text-3xl flex items-center gap-3">
-        <Search size={28} className="text-primary" />
-        {t("search.results")}
-      </h1>
-
+    <PageScaffold
+      title={t("search.results")}
+      description="跨章节、设定、伏笔与世界观内容做统一检索。"
+    >
       <div className="relative">
         <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
         <input
@@ -89,29 +93,34 @@ export function SearchView({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunc
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={t("search.placeholder")}
-          className={`w-full pl-10 pr-4 py-2.5 rounded-lg text-sm ${c.input}`}
+          className={`w-full rounded-lg py-2.5 pl-10 pr-4 text-sm ${c.input}`}
           autoFocus
         />
-        {loading && <Loader2 size={16} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-muted-foreground" />}
+        {loading && (
+          <Loader2
+            size={16}
+            className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-muted-foreground"
+          />
+        )}
       </div>
 
-      {error && (
-        <div className="bg-destructive/10 text-destructive px-4 py-3 rounded-lg text-sm">{error}</div>
-      )}
+      {error && <div className="rounded-lg bg-destructive/10 px-4 py-3 text-sm text-destructive">{error}</div>}
 
       {grouped.length > 0 && (
         <div className="space-y-6">
           {grouped.map((group) => (
-            <div key={group.bookId} className={`border ${c.cardStatic} rounded-lg overflow-hidden`}>
-              <div className="px-5 py-3 bg-muted/40 border-b border-border">
-                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{group.bookTitle}</span>
+            <div key={group.bookId} className={`overflow-hidden rounded-lg border ${c.cardStatic}`}>
+              <div className="border-b border-border bg-muted/40 px-5 py-3">
+                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  {group.bookTitle}
+                </span>
               </div>
               <div className={`divide-y ${c.tableDivide}`}>
-                {group.hits.map((hit, i) => (
+                {group.hits.map((hit, index) => (
                   <button
-                    key={i}
+                    key={index}
                     onClick={() => nav.toChapter(hit.bookId, hit.chapterNumber)}
-                    className={`w-full text-left px-5 py-3 ${c.tableHover} flex flex-col gap-1`}
+                    className={`flex w-full flex-col gap-1 px-5 py-3 text-left ${c.tableHover}`}
                   >
                     <div className="flex items-center gap-2">
                       <ContentTypeIcon type={hit.contentType} />
@@ -119,12 +128,12 @@ export function SearchView({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunc
                         {t("chapter.label").replace("{n}", String(hit.chapterNumber))}
                       </span>
                       {hit.contentType && hit.contentType !== "chapter" && (
-                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                        <span className="rounded bg-muted px-1.5 py-0.5 text-[9px] text-muted-foreground">
                           {contentTypeLabel(hit.contentType)}
                         </span>
                       )}
                     </div>
-                    <span className="text-sm text-foreground/80 leading-relaxed">
+                    <span className="text-sm leading-relaxed text-foreground/80">
                       {highlightSnippet(hit.snippet, query.trim())}
                     </span>
                   </button>
@@ -136,17 +145,17 @@ export function SearchView({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunc
       )}
 
       {searched && !loading && results.length === 0 && !error && (
-        <div className={`border border-dashed ${c.cardStatic} rounded-lg p-12 text-center text-muted-foreground text-sm italic`}>
-          {t("search.noResults")}
-        </div>
+        <PageEmptyState
+          title={t("search.noResults")}
+          description="当前关键词没有命中章节或设定内容，试试换一个角色名、地点名或关键词组合。"
+          icon={Search}
+        />
       )}
 
       {!searched && !loading && (
-        <div className={`border border-dashed ${c.cardStatic} rounded-lg p-12 text-center text-muted-foreground text-sm italic`}>
-          {t("search.placeholder")}
-        </div>
+        <PageEmptyState title="开始搜索" description={t("search.placeholder")} icon={Search} />
       )}
-    </div>
+    </PageScaffold>
   );
 }
 
@@ -166,27 +175,36 @@ function groupByBook(hits: ReadonlyArray<SearchHit>): ReadonlyArray<BookGroup> {
       map.set(hit.bookId, { bookTitle: hit.bookTitle, hits: [hit] });
     }
   }
-  return Array.from(map.entries()).map(([bookId, { bookTitle, hits: h }]) => ({
+
+  return Array.from(map.entries()).map(([bookId, { bookTitle, hits: groupHits }]) => ({
     bookId,
     bookTitle,
-    hits: h,
+    hits: groupHits,
   }));
 }
 
 function ContentTypeIcon({ type }: { type?: string }) {
   switch (type) {
-    case "truth": return <BookOpen size={12} className="text-amber-500 shrink-0" />;
-    case "hook": return <Anchor size={12} className="text-purple-500 shrink-0" />;
-    case "lorebook": return <Globe size={12} className="text-emerald-500 shrink-0" />;
-    default: return <FileText size={12} className="text-muted-foreground shrink-0" />;
+    case "truth":
+      return <BookOpen size={12} className="shrink-0 text-amber-500" />;
+    case "hook":
+      return <Anchor size={12} className="shrink-0 text-purple-500" />;
+    case "lorebook":
+      return <Globe size={12} className="shrink-0 text-emerald-500" />;
+    default:
+      return <FileText size={12} className="shrink-0 text-muted-foreground" />;
   }
 }
 
 function contentTypeLabel(type: string): string {
   switch (type) {
-    case "truth": return "设定";
-    case "hook": return "伏笔";
-    case "lorebook": return "世界观";
-    default: return "章节";
+    case "truth":
+      return "设定";
+    case "hook":
+      return "伏笔";
+    case "lorebook":
+      return "世界观";
+    default:
+      return "章节";
   }
 }

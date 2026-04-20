@@ -16,3 +16,4 @@
 - [03-Claude Code体验优化参考.md](./03-Claude Code体验优化参考.md)
 - [04-NarraFork依赖参考.md](./04-NarraFork依赖参考.md)
 - [05-NarraFork更新日志参考.md](./05-NarraFork更新日志参考.md)
+- [06-NarraFork-UIUX与交互功能调研.md](./06-NarraFork-UIUX与交互功能调研.md)

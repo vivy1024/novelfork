@@ -1,5 +1,9 @@
+import { useEffect, useRef, useState } from "react";
+
+import { PageEmptyState } from "@/components/layout/PageEmptyState";
+import { PageScaffold } from "@/components/layout/PageScaffold";
+import { Button } from "@/components/ui/button";
 import { useApi, postApi } from "../hooks/use-api";
-import { useEffect, useState, useRef } from "react";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
 import { useColors } from "../hooks/use-colors";
@@ -98,17 +102,11 @@ export function DaemonControl({ nav, theme, t, sse }: { nav: Nav; theme: Theme; 
         });
 
   return (
-    <div className="space-y-8">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <button onClick={nav.toDashboard} className={c.link}>{t("bread.home")}</button>
-        <span className="text-border">/</span>
-        <span className="text-foreground">{t("nav.daemon")}</span>
-      </div>
-
-      <div className="flex items-baseline justify-between">
-        <h1 className="font-serif text-3xl">{t("daemon.title")}</h1>
+    <PageScaffold
+      title={t("daemon.title")}
+      description="查看守护进程状态、切换运行状态，并持续观察最近事件流。"
+      actions={
         <div className="flex items-center gap-3">
-          {/* Tauri 模式：间隔配置 */}
           {isTauri && !isRunning && (
             <label className="flex items-center gap-2 text-sm text-muted-foreground">
               <span>{t("daemon.interval")}</span>
@@ -118,59 +116,51 @@ export function DaemonControl({ nav, theme, t, sse }: { nav: Nav; theme: Theme; 
                 max={60}
                 value={intervalMin}
                 onChange={(e) => setIntervalMin(Math.max(1, Math.min(60, Number(e.target.value) || 5)))}
-                className="w-16 px-2 py-1 rounded border border-border bg-background text-foreground text-sm"
+                className="w-16 rounded border border-border bg-background px-2 py-1 text-sm text-foreground"
               />
             </label>
           )}
-          <span className={`text-sm uppercase tracking-wide font-medium ${isRunning ? "text-emerald-500" : "text-muted-foreground"}`}>
+          <span className={`text-sm font-medium uppercase tracking-wide ${isRunning ? "text-emerald-500" : "text-muted-foreground"}`}>
             {isRunning ? t("daemon.running") : t("daemon.stopped")}
           </span>
           {isRunning ? (
-            <button
-              onClick={handleStop}
-              disabled={loading}
-              className={`px-4 py-2.5 text-sm rounded-md ${c.btnDanger} disabled:opacity-50`}
-            >
+            <Button onClick={handleStop} disabled={loading} variant="destructive">
               {loading ? t("daemon.stopping") : t("daemon.stop")}
-            </button>
+            </Button>
           ) : (
-            <button
-              onClick={handleStart}
-              disabled={loading}
-              className={`px-4 py-2.5 text-sm rounded-md ${c.btnPrimary} disabled:opacity-50`}
-            >
+            <Button onClick={handleStart} disabled={loading}>
               {loading ? t("daemon.starting") : t("daemon.start")}
-            </button>
+            </Button>
           )}
         </div>
-      </div>
-
-      {/* 事件日志 */}
-      <div className={`border ${c.cardStatic} rounded-lg`}>
-        <div className="px-5 py-3.5 border-b border-border">
-          <span className="text-sm uppercase tracking-wide text-muted-foreground font-medium">{t("daemon.eventLog")}</span>
+      }
+    >
+      <div className={`rounded-lg border ${c.cardStatic}`}>
+        <div className="border-b border-border px-5 py-3.5">
+          <span className="text-sm font-medium uppercase tracking-wide text-muted-foreground">{t("daemon.eventLog")}</span>
         </div>
-        <div className="p-4 max-h-[500px] overflow-y-auto">
+        <div className="max-h-[500px] overflow-y-auto p-4">
           {daemonEvents.length > 0 ? (
             <div className="space-y-1.5 font-mono text-sm">
               {daemonEvents.map((entry, i) => (
                 <div key={i} className="leading-relaxed text-muted-foreground">
                   {"timestamp" in entry && entry.timestamp && (
-                    <span className="text-muted-foreground/50 mr-2">{new Date(entry.timestamp).toLocaleTimeString()}</span>
+                    <span className="mr-2 text-muted-foreground/50">{new Date(entry.timestamp).toLocaleTimeString()}</span>
                   )}
                   <span className="text-primary/50">{entry.event}</span>
-                  <span className="text-border mx-1.5">›</span>
+                  <span className="mx-1.5 text-border">›</span>
                   <span>{entry.message}</span>
                 </div>
               ))}
             </div>
           ) : (
-            <div className="text-muted-foreground text-sm italic py-8 text-center">
-              {isRunning ? t("daemon.waitingEvents") : t("daemon.startHint")}
-            </div>
+            <PageEmptyState
+              title={isRunning ? t("daemon.waitingEvents") : t("daemon.startHint")}
+              description="守护进程产生日志后会滚动出现在这里；当前为空时代表还没有新的任务事件。"
+            />
           )}
         </div>
       </div>
-    </div>
+    </PageScaffold>
   );
 }
