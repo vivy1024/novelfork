@@ -35,8 +35,8 @@ const { version } = require("../package.json") as { version: string };
 const program = new Command();
 
 program
-  .name("inkos")
-  .description("InkOS — Multi-agent novel production system")
+  .name("novelfork")
+  .description("NovelFork — Multi-agent web novel production system")
   .version(version);
 
 program.addCommand(initCommand);

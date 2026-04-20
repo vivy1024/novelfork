@@ -13,8 +13,9 @@ const port = parseInt(process.env.NOVELFORK_STUDIO_PORT ?? "4567", 10);
 const studioRoot = resolve(__dirname, "../..");
 const distDir = join(studioRoot, "dist");
 
-// Legacy package entrypoint for npm/package usage.
-// The repository-level Bun main entry is `D:/DESKTOP/novelfork/main.ts` and intentionally does NOT auto-build.
+// Legacy package entrypoint for npm/package usage only.
+// The repository-level Bun main entry is `D:/DESKTOP/novelfork/main.ts`.
+// Keep this file as a thin compatibility bridge; do not treat it as the primary runtime path.
 if (!existsSync(join(distDir, "index.html"))) {
   console.log("Building frontend...");
   try {

@@ -18,6 +18,7 @@ import { isSafeBookId } from "./safety.js";
 import { ApiError } from "./errors.js";
 import { readSessionFromCookie } from "./auth.js";
 import { createFilesystemStaticProvider, type StaticProvider } from "./static-provider.js";
+import { startHttpServer } from "./start-http-server.js";
 import { RunStore } from "./lib/run-store.js";
 import {
   createRunsRouter,
@@ -368,6 +369,5 @@ export async function startStudioServer(
   // setupAdminWebSocket(server);
   // setupMonitorWebSocket(server, ctx);
 
-  // Use @hono/node-server
-  serve({ fetch: app.fetch, port });
+  await startHttpServer({ fetch: app.fetch, port });
 }

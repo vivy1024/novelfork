@@ -44,6 +44,18 @@ export function resolveBrowserLaunch(
 }
 
 export async function resolveStudioLaunch(root: string): Promise<StudioLaunchSpec | null> {
+  const bunMainEntry = await firstAccessiblePath([
+    join(root, "main.ts"),
+    resolve(root, "..", "main.ts"),
+  ]);
+  if (bunMainEntry) {
+    return {
+      studioEntry: bunMainEntry,
+      command: "bun",
+      args: ["run", bunMainEntry, `--root=${root}`],
+    };
+  }
+
   const sourceEntry = await firstAccessiblePath([
     resolve(root, "..", "packages", "studio", "src", "api", "index.ts"),
     join(root, "packages", "studio", "src", "api", "index.ts"),
