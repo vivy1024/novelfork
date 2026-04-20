@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { createRequire } from "node:module";
+import { readFileSync } from "node:fs";
 import { Command } from "commander";
 import { initCommand } from "./commands/init.js";
 import { configCommand } from "./commands/config.js";
@@ -29,8 +29,9 @@ import { fanficCommand } from "./commands/fanfic.js";
 import { studioCommand } from "./commands/studio.js";
 import { consolidateCommand } from "./commands/consolidate.js";
 
-const require = createRequire(import.meta.url);
-const { version } = require("../package.json") as { version: string };
+const { version } = JSON.parse(
+  readFileSync(new URL("../package.json", import.meta.url), "utf-8"),
+) as { version: string };
 
 const program = new Command();
 
