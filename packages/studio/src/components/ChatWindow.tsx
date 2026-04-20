@@ -15,6 +15,7 @@ interface ChatWindowProps {
 export function ChatWindow({ windowId, theme }: ChatWindowProps) {
   const c = useColors(theme);
   const chatWindow = useWindowStore((state) => state.windows.find((w) => w.id === windowId));
+  const isActive = useWindowStore((state) => state.activeWindowId === windowId);
   const removeWindow = useWindowStore((state) => state.removeWindow);
   const toggleMinimize = useWindowStore((state) => state.toggleMinimize);
   const addMessage = useWindowStore((state) => state.addMessage);
@@ -110,9 +111,14 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
     useWindowStore.getState().updateLayout(windowId, { x: 0, y: 0, w: 12, h: 12 });
   };
 
+  const lastMessage = chatWindow.messages[chatWindow.messages.length - 1];
+  const lastMessageTime = lastMessage
+    ? new Date(lastMessage.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    : "--:--";
+
   return (
     <div
-      className="flex flex-col h-full rounded-lg shadow-lg overflow-hidden"
+      className={`flex h-full flex-col overflow-hidden rounded-lg shadow-lg transition-shadow ${isActive ? "ring-1 ring-primary/20" : ""}`}
       style={{ backgroundColor: c.bg, border: `1px solid ${c.border}` }}
       onClick={() => setActiveWindow(windowId)}
     >
@@ -120,11 +126,25 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
         className="flex items-center justify-between px-3 py-2 cursor-move"
         style={{ backgroundColor: c.bgSecondary, borderBottom: `1px solid ${c.border}` }}
       >
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 items-center gap-2">
           <Bot size={16} style={{ color: c.accent }} />
-          <span className="text-sm font-medium" style={{ color: c.text }}>
-            {chatWindow.title}
-          </span>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="max-w-[180px] truncate text-sm font-medium" style={{ color: c.text }}>
+                {chatWindow.title}
+              </span>
+              {isActive && (
+                <span className="rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+                  聚焦
+                </span>
+              )}
+            </div>
+            <div className="mt-0.5 flex items-center gap-2 text-[10px] text-muted-foreground">
+              <span>Agent {chatWindow.agentId}</span>
+              <span>•</span>
+              <span>{chatWindow.messages.length} 条消息</span>
+            </div>
+          </div>
           {chatWindow.wsConnected ? (
             <span title="已连接">
               <Wifi size={12} style={{ color: "#10b981" }} />
@@ -146,6 +166,12 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
 
       {!chatWindow.minimized && (
         <>
+          <div className="grid gap-2 border-b px-3 py-2 text-[10px] sm:grid-cols-3" style={{ borderColor: c.border, backgroundColor: c.bgSecondary }}>
+            <SessionMetric label="连接" value={chatWindow.wsConnected ? "在线" : "离线"} />
+            <SessionMetric label="位置" value={`x:${chatWindow.position.x} y:${chatWindow.position.y}`} />
+            <SessionMetric label="最近活动" value={lastMessageTime} />
+          </div>
+
           <div className="flex-1 overflow-y-auto p-3 space-y-2">
             {chatWindow.messages.map((msg) => (
               <div key={msg.id} className="space-y-2">
@@ -172,7 +198,12 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
             <div ref={messagesEndRef} />
           </div>
 
-          <div className="p-3 border-t" style={{ borderColor: c.border }}>
+          <div className="border-t px-3 py-2" style={{ borderColor: c.border }}>
+            <div className="mb-2 flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
+              <span className="rounded-full border border-border px-2 py-0.5">对象化会话</span>
+              <span className="rounded-full border border-border px-2 py-0.5">Agent {chatWindow.agentId}</span>
+              <span className="rounded-full border border-border px-2 py-0.5">{chatWindow.messages.length} 条消息</span>
+            </div>
             <div className="flex gap-2">
               <input
                 type="text"
@@ -180,7 +211,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleSend()}
                 placeholder="输入消息..."
-                className="flex-1 px-3 py-2 rounded text-sm"
+                className="flex-1 rounded px-3 py-2 text-sm"
                 style={{
                   backgroundColor: c.bgSecondary,
                   color: c.text,
@@ -191,7 +222,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
               <button
                 onClick={handleSend}
                 disabled={!chatWindow.wsConnected || !input.trim()}
-                className="px-4 py-2 rounded text-sm font-medium transition-opacity disabled:opacity-50"
+                className="rounded px-4 py-2 text-sm font-medium transition-opacity disabled:opacity-50"
                 style={{ backgroundColor: c.accent, color: "#fff" }}
               >
                 发送
@@ -200,6 +231,15 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+function SessionMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-border/60 bg-background/80 px-2 py-1.5">
+      <div className="text-[9px] uppercase tracking-[0.18em] text-muted-foreground">{label}</div>
+      <div className="truncate text-[11px] font-medium text-foreground">{value}</div>
     </div>
   );
 }

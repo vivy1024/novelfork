@@ -1,6 +1,12 @@
-import React, { useState, useEffect, useMemo } from "react";
-import { Search, RotateCcw, Save } from "lucide-react";
+import React, { useEffect, useMemo, useState } from "react";
+import { Database, RotateCcw, Save, Search } from "lucide-react";
 import { openDB, IDBPDatabase } from "idb";
+
+import { PageEmptyState } from "@/components/layout/PageEmptyState";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { ModelPicker } from "../Model/ModelPicker";
 
 interface ConfigProps {
@@ -57,8 +63,8 @@ async function saveSettings(settings: SettingsState): Promise<void> {
   try {
     const db = await getDB();
     await db.put(STORE_NAME, settings, "settings");
-  } catch (e) {
-    console.error("Failed to save settings:", e);
+  } catch (error) {
+    console.error("Failed to save settings:", error);
   }
 }
 
@@ -88,64 +94,67 @@ export const Config = React.memo(function Config({ theme }: ConfigProps) {
     });
   }, []);
 
-  const settingsList: Setting[] = useMemo(() => [
-    {
-      id: "theme",
-      label: "主题",
-      description: "选择界面主题",
-      type: "enum",
-      value: settings.theme,
-      options: ["light", "dark", "auto"],
-    },
-    {
-      id: "language",
-      label: "语言",
-      description: "界面显示语言",
-      type: "enum",
-      value: settings.language,
-      options: ["zh-CN", "en-US"],
-    },
-    {
-      id: "fontSize",
-      label: "字体大小",
-      description: "编辑器字体大小",
-      type: "enum",
-      value: settings.fontSize,
-      options: ["small", "medium", "large"],
-    },
-    {
-      id: "showLineNumbers",
-      label: "显示行号",
-      description: "在编辑器中显示行号",
-      type: "boolean",
-      value: settings.showLineNumbers,
-    },
-    {
-      id: "autoSave",
-      label: "自动保存",
-      description: "编辑后自动保存内容",
-      type: "boolean",
-      value: settings.autoSave,
-    },
-    {
-      id: "autoCompressContext",
-      label: "自动压缩上下文",
-      description: "自动压缩长对话上下文",
-      type: "boolean",
-      value: settings.autoCompressContext,
-    },
-  ], [settings]);
+  const settingsList: Setting[] = useMemo(
+    () => [
+      {
+        id: "theme",
+        label: "主题",
+        description: "选择界面主题",
+        type: "enum",
+        value: settings.theme,
+        options: ["light", "dark", "auto"],
+      },
+      {
+        id: "language",
+        label: "语言",
+        description: "界面显示语言",
+        type: "enum",
+        value: settings.language,
+        options: ["zh-CN", "en-US"],
+      },
+      {
+        id: "fontSize",
+        label: "字体大小",
+        description: "编辑器字体大小",
+        type: "enum",
+        value: settings.fontSize,
+        options: ["small", "medium", "large"],
+      },
+      {
+        id: "showLineNumbers",
+        label: "显示行号",
+        description: "在编辑器中显示行号",
+        type: "boolean",
+        value: settings.showLineNumbers,
+      },
+      {
+        id: "autoSave",
+        label: "自动保存",
+        description: "编辑后自动保存内容",
+        type: "boolean",
+        value: settings.autoSave,
+      },
+      {
+        id: "autoCompressContext",
+        label: "自动压缩上下文",
+        description: "自动压缩长对话上下文",
+        type: "boolean",
+        value: settings.autoCompressContext,
+      },
+    ],
+    [settings],
+  );
 
   const filteredSettings = useMemo(() => {
     if (!searchQuery.trim()) return settingsList;
     const query = searchQuery.toLowerCase();
     return settingsList.filter(
-      (s) =>
-        s.label.toLowerCase().includes(query) ||
-        s.description?.toLowerCase().includes(query) ||
-        s.id.toLowerCase().includes(query)
+      (setting) =>
+        setting.label.toLowerCase().includes(query) ||
+        setting.description?.toLowerCase().includes(query) ||
+        setting.id.toLowerCase().includes(query),
     );
-  }, [settingsList, searchQuery]);
+  }, [searchQuery, settingsList]);
 
   const hasChanges = useMemo(() => {
     return JSON.stringify(settings) !== JSON.stringify(initialSettings);
@@ -171,111 +180,124 @@ export const Config = React.memo(function Config({ theme }: ConfigProps) {
   };
 
   useEffect(() => {
-    const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && hasChanges) {
-        e.stopPropagation();
+    const handleEsc = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && hasChanges) {
+        event.stopPropagation();
         handleRevert();
       }
     };
+
     window.addEventListener("keydown", handleEsc, { capture: true });
     return () => window.removeEventListener("keydown", handleEsc, { capture: true });
   }, [hasChanges, initialSettings]);
 
   return (
-    <div className="p-6 space-y-6">
-      {/* 搜索栏 */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-        <input
-          type="text"
-          placeholder="搜索配置项..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full pl-10 pr-4 py-2 rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+    <div className="space-y-6">
+      <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+        <div>
+          <h2 className="text-2xl font-semibold text-foreground">配置</h2>
+          <p className="text-sm text-muted-foreground">选择主题、语言和常用编辑偏好。</p>
+        </div>
+        <Badge variant="outline">
+          {filteredSettings.length}/{settingsList.length} 项
+        </Badge>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Search className="size-5 text-primary" />
+            配置筛选
+          </CardTitle>
+          <CardDescription>搜索配置项，快速定位需要调整的选项。</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Input
+            type="text"
+            placeholder="搜索配置项..."
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+          />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Database className="size-5 text-primary" />
+            AI 模型
+          </CardTitle>
+          <CardDescription>选择默认模型供应商和模型 ID。</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ModelPicker
+            value={{ providerId: settings.modelProvider, modelId: settings.modelId }}
+            onChange={handleModelChange}
+            theme={theme}
+          />
+        </CardContent>
+      </Card>
+
+      {filteredSettings.length === 0 ? (
+        <PageEmptyState
+          title="未找到匹配的配置项"
+          description="试试换一个关键词，或者清空搜索后重新浏览。"
+          action={<Button variant="outline" onClick={() => setSearchQuery("")}>清除搜索</Button>}
         />
-      </div>
-
-      {/* 模型选择 */}
-      <div className="p-4 rounded-lg border border-border bg-background/50">
-        <h3 className="text-sm font-semibold text-foreground mb-3">AI 模型</h3>
-        <ModelPicker
-          value={{ providerId: settings.modelProvider, modelId: settings.modelId }}
-          onChange={handleModelChange}
-          theme={theme}
-        />
-      </div>
-
-      {/* 配置项列表 */}
-      <div className="space-y-4">
-        {filteredSettings.map((setting) => (
-          <div
-            key={setting.id}
-            className="p-4 rounded-lg border border-border bg-background/50 hover:bg-background/80 transition-colors"
-          >
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex-1">
-                <label className="text-sm font-medium text-foreground block mb-1">
-                  {setting.label}
-                </label>
-                {setting.description && (
-                  <p className="text-xs text-muted-foreground">{setting.description}</p>
-                )}
-              </div>
-              <div className="flex-shrink-0">
-                {setting.type === "boolean" && (
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={setting.value as boolean}
-                      onChange={(e) => handleChange(setting.id, e.target.checked)}
-                      className="sr-only peer"
-                    />
-                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-primary rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-primary"></div>
-                  </label>
-                )}
-                {setting.type === "enum" && setting.options && (
-                  <select
-                    value={setting.value as string}
-                    onChange={(e) => handleChange(setting.id, e.target.value)}
-                    className="px-3 py-1.5 rounded-md border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                  >
-                    {setting.options.map((opt) => (
-                      <option key={opt} value={opt}>
-                        {opt}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* 操作按钮 */}
-      {hasChanges && (
-        <div className="flex items-center gap-3 pt-4 border-t border-border">
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
-          >
-            <Save className="w-4 h-4" />
-            {saving ? "保存中..." : "保存更改"}
-          </button>
-          <button
-            onClick={handleRevert}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg border border-border text-foreground hover:bg-secondary transition-colors"
-          >
-            <RotateCcw className="w-4 h-4" />
-            回滚 (Esc)
-          </button>
+      ) : (
+        <div className="space-y-3">
+          {filteredSettings.map((setting) => (
+            <Card key={setting.id} size="sm">
+              <CardContent className="flex items-center justify-between gap-4 py-4">
+                <div className="min-w-0 space-y-1">
+                  <div className="flex items-center gap-2">
+                    <p className="font-medium text-foreground">{setting.label}</p>
+                    <Badge variant="outline">{setting.id}</Badge>
+                  </div>
+                  {setting.description && <p className="text-xs text-muted-foreground">{setting.description}</p>}
+                </div>
+                <div className="flex-shrink-0">
+                  {setting.type === "boolean" && (
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={setting.value as boolean}
+                        onChange={(event) => handleChange(setting.id, event.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 rounded-full bg-input transition-colors peer-checked:bg-primary after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:bg-background after:shadow-lg after:transition-transform peer-checked:after:translate-x-full" />
+                    </label>
+                  )}
+                  {setting.type === "enum" && setting.options && (
+                    <select
+                      value={setting.value as string}
+                      onChange={(event) => handleChange(setting.id, event.target.value)}
+                      className="h-8 rounded-lg border border-input bg-background px-3 text-sm text-foreground"
+                    >
+                      {setting.options.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
         </div>
       )}
 
-      {filteredSettings.length === 0 && (
-        <div className="text-center py-8 text-muted-foreground">
-          未找到匹配的配置项
+      {hasChanges && (
+        <div className="flex flex-wrap items-center gap-3 pt-2">
+          <Button onClick={() => void handleSave()} disabled={saving}>
+            <Save className="size-4" />
+            {saving ? "保存中..." : "保存更改"}
+          </Button>
+          <Button variant="outline" onClick={handleRevert}>
+            <RotateCcw className="size-4" />
+            回滚 (Esc)
+          </Button>
         </div>
       )}
     </div>

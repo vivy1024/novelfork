@@ -25,10 +25,12 @@ import { PluginManager } from "./PluginManager";
 import { SchedulerConfig } from "./SchedulerConfig";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
+import type { WorkflowSection } from "../routes";
 
 interface Nav {
   toDashboard: () => void;
   toBook: (bookId: string) => void;
+  toWorkflow?: () => void;
 }
 
 const WORKFLOW_TABS = [
@@ -97,30 +99,46 @@ const WORKFLOW_TABS = [
   },
 ] as const;
 
-export function WorkflowWorkbench({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunction }) {
-  const workflowNav = {
-    toDashboard: nav.toDashboard,
-    toWorkflow: () => {},
-  };
+export function WorkflowWorkbench({
+  nav,
+  theme,
+  t,
+  section,
+  onNavigateSection,
+}: {
+  nav: Nav;
+  theme: Theme;
+  t: TFunction;
+  section?: WorkflowSection;
+  onNavigateSection?: (section: WorkflowSection) => void;
+}) {
+  const currentSection = section ?? "project";
+  const currentTab = WORKFLOW_TABS.find((tab) => tab.value === currentSection) ?? WORKFLOW_TABS[0]!;
 
   return (
     <PageScaffold
-      title="工作流配置"
-      description="把原先分散在多个页面的模型、Agent、MCP、插件、调度、检测和通知配置收口到一个工作台里，侧边栏只保留一个稳定入口。"
+      title="工作流配置台"
+      description="参考 NarraFork 的 routines/config workbench 信息架构，把模型、Agent、MCP、插件、调度、检测和通知收口到一个工作台里。"
       actions={
         <>
-          <Badge variant="secondary">阶段 1</Badge>
-          <Badge variant="outline">shadcn UI</Badge>
+          <Badge variant="secondary">统一入口</Badge>
+          <Badge variant="outline">section 路由兼容</Badge>
         </>
       }
     >
-      <div className="grid gap-4 lg:grid-cols-3 xl:grid-cols-5">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <WorkbenchStat title="已收口模块" value="9" description="从分散入口合并到统一工作台" />
         <WorkbenchStat title="一级入口" value="1" description="侧边栏只保留工作流配置" />
-        <WorkbenchStat title="参考方向" value="NarraFork" description="参考其配置中心与信息架构" />
+        <WorkbenchStat title="当前区块" value={currentTab.label} description={currentTab.summary} />
+        <WorkbenchStat title="参考方向" value="NarraFork" description="对齐 routines / config workbench 的组织方式" />
       </div>
 
-      <Tabs defaultValue="project" orientation="vertical" className="gap-6 lg:grid lg:grid-cols-[260px_minmax(0,1fr)] lg:items-start">
+      <Tabs
+        value={currentSection}
+        onValueChange={(value) => onNavigateSection?.(value as WorkflowSection)}
+        orientation="vertical"
+        className="gap-6 lg:grid lg:grid-cols-[260px_minmax(0,1fr)] lg:items-start"
+      >
         <Card className="lg:sticky lg:top-0">
           <CardHeader>
             <CardTitle>配置导航</CardTitle>
@@ -166,11 +184,11 @@ export function WorkflowWorkbench({ nav, theme, t }: { nav: Nav; theme: Theme; t
                 </Card>
 
                 {tab.value === "project" && <ConfigView nav={nav} theme={theme} t={t} />}
-                {tab.value === "agents" && <AgentPanel nav={workflowNav} theme={theme} t={t} />}
+                {tab.value === "agents" && <AgentPanel nav={nav} theme={theme} t={t} />}
                 {tab.value === "mcp" && <MCPServerManager nav={nav} theme={theme} t={t} />}
                 {tab.value === "plugins" && <PluginManager nav={nav} theme={theme} t={t} />}
-                {tab.value === "advanced" && <LLMAdvancedConfig nav={workflowNav} theme={theme} t={t} />}
-                {tab.value === "scheduler" && <SchedulerConfig nav={workflowNav} theme={theme} t={t} />}
+                {tab.value === "advanced" && <LLMAdvancedConfig nav={nav} theme={theme} t={t} />}
+                {tab.value === "scheduler" && <SchedulerConfig nav={nav} theme={theme} t={t} />}
                 {tab.value === "detection" && <DetectionConfigView nav={nav} theme={theme} t={t} />}
                 {tab.value === "hooks" && <HookDashboard nav={nav} theme={theme} t={t} />}
                 {tab.value === "notify" && <NotifyConfig nav={nav} theme={theme} t={t} />}

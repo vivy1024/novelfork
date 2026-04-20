@@ -1,9 +1,14 @@
-import { fetchJson, useApi } from "../hooks/use-api";
 import { useState } from "react";
-import type { Theme } from "../hooks/use-theme";
-import type { TFunction } from "../hooks/use-i18n";
-import { useColors } from "../hooks/use-colors";
 import { Pencil, Save, X } from "lucide-react";
+
+import { PageEmptyState } from "@/components/layout/PageEmptyState";
+import { PageScaffold } from "@/components/layout/PageScaffold";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { fetchJson, useApi } from "../hooks/use-api";
+import { useColors } from "../hooks/use-colors";
+import type { TFunction } from "../hooks/use-i18n";
+import type { Theme } from "../hooks/use-theme";
 
 interface TruthFile {
   readonly name: string;
@@ -54,90 +59,106 @@ export function TruthFiles({ bookId, nav, theme, t }: { bookId: string; nav: Nav
     }
   };
 
+  const selectedLabel = data?.files.find((file) => file.name === selected)?.name ?? selected ?? t("truth.selectFile");
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <button onClick={nav.toDashboard} className={c.link}>{t("bread.books")}</button>
-        <span className="text-border">/</span>
-        <button onClick={() => nav.toBook(bookId)} className={c.link}>{bookId}</button>
-        <span className="text-border">/</span>
-        <span className="text-foreground">{t("truth.title")}</span>
-      </div>
-
-      <h1 className="font-serif text-3xl">{t("truth.title")}</h1>
-
-      <div className="grid grid-cols-[240px_1fr] gap-6">
-        {/* File list */}
-        <div className={`border ${c.cardStatic} rounded-lg overflow-hidden`}>
-          {data?.files.map((f) => (
-            <button
-              key={f.name}
-              onClick={() => { setSelected(f.name); setEditMode(false); }}
-              className={`w-full text-left px-3 py-2.5 text-sm border-b border-border/40 transition-colors ${
-                selected === f.name
-                  ? "bg-primary/10 text-primary"
-                  : "hover:bg-muted/30 text-muted-foreground"
-              }`}
-            >
-              <div className="font-mono text-sm truncate">{f.name}</div>
-              <div className="text-xs text-muted-foreground mt-0.5">{f.size.toLocaleString()} {t("truth.chars")}</div>
-            </button>
-          ))}
-          {(!data?.files || data.files.length === 0) && (
-            <div className="px-3 py-4 text-sm text-muted-foreground text-center">{t("truth.empty")}</div>
-          )}
-        </div>
-
-        {/* Content viewer */}
-        <div className={`border ${c.cardStatic} rounded-lg p-5 min-h-[400px] flex flex-col`}>
-          {selected && fileData?.content != null ? (
-            <>
-              <div className="flex items-center justify-end gap-2 mb-3">
-                {editMode ? (
-                  <>
-                    <button
-                      onClick={cancelEdit}
-                      className={`inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-md ${c.btnSecondary}`}
-                    >
-                      <X size={14} />
-                      Cancel
-                    </button>
-                    <button
-                      onClick={handleSaveEdit}
-                      disabled={savingEdit}
-                      className={`inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-md ${c.btnPrimary} disabled:opacity-50`}
-                    >
-                      <Save size={14} />
-                      {savingEdit ? t("truth.saving") : t("truth.save")}
-                    </button>
-                  </>
-                ) : (
-                  <button
-                    onClick={startEdit}
-                    className={`inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-md ${c.btnSecondary}`}
-                  >
-                    <Pencil size={14} />
-                    Edit
-                  </button>
-                )}
+    <PageScaffold
+      title={t("truth.title")}
+      description="左侧切换真相文件，右侧查看预览并直接修订内容。"
+      actions={
+        <>
+          <Button variant="outline" onClick={nav.toDashboard}>返回书单</Button>
+          <Button variant="outline" onClick={() => nav.toBook(bookId)}>返回书籍</Button>
+        </>
+      }
+    >
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
+        <Card className={c.cardStatic}>
+          <CardHeader className="space-y-1 pb-3">
+            <CardTitle className="text-lg">文件列表</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1 p-0">
+            {data?.files.map((f) => (
+              <button
+                key={f.name}
+                onClick={() => {
+                  setSelected(f.name);
+                  setEditMode(false);
+                }}
+                className={`w-full border-b border-border/40 px-4 py-3 text-left text-sm transition-colors last:border-b-0 ${
+                  selected === f.name ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/30 hover:text-foreground"
+                }`}
+              >
+                <div className="truncate font-mono text-sm">{f.name}</div>
+                <div className="mt-0.5 text-xs text-muted-foreground">{f.size.toLocaleString()} {t("truth.chars")}</div>
+              </button>
+            ))}
+            {(!data?.files || data.files.length === 0) && (
+              <div className="p-4">
+                <PageEmptyState
+                  title={t("truth.empty")}
+                  description="当前书籍还没有可用的 truth 文件，等系统生成后会显示在这里。"
+                  icon={Pencil}
+                />
               </div>
-              {editMode ? (
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className={c.cardStatic}>
+          <CardHeader className="space-y-1 pb-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <CardTitle className="text-lg">{selectedLabel}</CardTitle>
+                <p className="mt-1 text-sm text-muted-foreground">{t("truth.title")}</p>
+              </div>
+              {selected && fileData?.content != null && !editMode && (
+                <Button variant="outline" onClick={startEdit}>
+                  <Pencil className="mr-2 size-4" />
+                  Edit
+                </Button>
+              )}
+              {editMode && (
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" onClick={cancelEdit}>
+                    <X className="mr-2 size-4" />
+                    Cancel
+                  </Button>
+                  <Button onClick={handleSaveEdit} disabled={savingEdit}>
+                    <Save className="mr-2 size-4" />
+                    {savingEdit ? t("truth.saving") : t("truth.save")}
+                  </Button>
+                </div>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent className="min-h-[420px]">
+            {selected && fileData?.content != null ? (
+              editMode ? (
                 <textarea
                   value={editText}
                   onChange={(e) => setEditText(e.target.value)}
-                  className={`${c.input} flex-1 rounded-md p-3 text-sm font-mono leading-relaxed resize-none min-h-[360px]`}
+                  className={`${c.input} min-h-[360px] w-full resize-none rounded-xl p-3 font-mono text-sm leading-relaxed`}
                 />
               ) : (
-                <pre className="text-sm leading-relaxed whitespace-pre-wrap font-mono text-foreground/80">{fileData.content}</pre>
-              )}
-            </>
-          ) : selected && fileData?.content === null ? (
-            <div className="text-muted-foreground text-sm">{t("truth.notFound")}</div>
-          ) : (
-            <div className="text-muted-foreground/50 text-sm italic">{t("truth.selectFile")}</div>
-          )}
-        </div>
+                <pre className="whitespace-pre-wrap font-mono text-sm leading-relaxed text-foreground/80">{fileData.content}</pre>
+              )
+            ) : selected && fileData?.content === null ? (
+              <PageEmptyState
+                title={t("truth.notFound")}
+                description="后端返回了空内容，可能是白名单未配置或文件尚未生成。"
+                icon={Pencil}
+              />
+            ) : (
+              <PageEmptyState
+                title={t("truth.selectFile")}
+                description="先从左侧选择一个真相文件，再查看预览或切换到编辑模式。"
+                icon={Pencil}
+              />
+            )}
+          </CardContent>
+        </Card>
       </div>
-    </div>
+    </PageScaffold>
   );
 }

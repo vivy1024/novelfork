@@ -1,14 +1,15 @@
-/**
- * 请求历史标签页
- */
+import { useEffect, useMemo, useState } from "react";
+import { Clock3, FileText, RefreshCw, TimerReset } from "lucide-react";
 
-import { useState, useEffect } from "react";
-import { FileText, RefreshCw } from "lucide-react";
+import { PageEmptyState } from "@/components/layout/PageEmptyState";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { fetchJson } from "../../hooks/use-api";
 
 interface RequestLog {
   id: string;
-  timestamp: Date;
+  timestamp: Date | string;
   method: string;
   endpoint: string;
   status: number;
@@ -23,139 +24,149 @@ export function RequestsTab() {
   const [limit, setLimit] = useState(100);
 
   useEffect(() => {
-    loadLogs();
+    void loadLogs();
   }, [limit]);
 
   const loadLogs = async () => {
     setLoading(true);
     try {
-      const data = await fetchJson<{ logs: RequestLog[]; total: number }>(
-        `/api/admin/requests?limit=${limit}`
-      );
+      const data = await fetchJson<{ logs: RequestLog[]; total: number }>(`/api/admin/requests?limit=${limit}`);
       setLogs(data.logs);
       setTotal(data.total);
-    } catch (error) {
-      console.error("Failed to load request logs:", error);
     } finally {
       setLoading(false);
     }
   };
 
-  const getStatusColor = (status: number) => {
-    if (status >= 200 && status < 300) return "text-green-600 dark:text-green-400";
-    if (status >= 300 && status < 400) return "text-blue-600 dark:text-blue-400";
-    if (status >= 400 && status < 500) return "text-yellow-600 dark:text-yellow-400";
-    return "text-red-600 dark:text-red-400";
-  };
+  const summary = useMemo(() => {
+    const successful = logs.filter((log) => log.status >= 200 && log.status < 400).length;
+    const successRate = logs.length === 0 ? 0 : Math.round((successful / logs.length) * 100);
+    const slowRequests = logs.filter((log) => log.duration >= 2000).length;
+    const averageDuration = logs.length === 0 ? 0 : Math.round(logs.reduce((sum, log) => sum + log.duration, 0) / logs.length);
 
-  const getMethodColor = (method: string) => {
+    return {
+      successRate,
+      slowRequests,
+      averageDuration,
+    };
+  }, [logs]);
+
+  const methodVariant = (method: string) => {
     switch (method.toUpperCase()) {
       case "GET":
-        return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200";
+        return "outline" as const;
       case "POST":
-        return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200";
       case "PUT":
-        return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200";
-      case "DELETE":
-        return "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200";
+        return "secondary" as const;
       default:
-        return "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200";
+        return "outline" as const;
     }
   };
 
+  const statusClassName = (status: number) => {
+    if (status >= 200 && status < 300) return "text-emerald-500";
+    if (status >= 300 && status < 400) return "text-sky-500";
+    if (status >= 400 && status < 500) return "text-amber-500";
+    return "text-destructive";
+  };
+
   if (loading) {
-    return <div className="text-center py-8 text-gray-600 dark:text-gray-400">加载中...</div>;
+    return <div className="py-10 text-center text-sm text-muted-foreground">正在加载请求历史…</div>;
   }
 
   return (
-    <div className="space-y-4">
-      {/* Header */}
-      <div className="flex justify-between items-center">
+    <div className="space-y-6">
+      <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">请求历史</h2>
-          <p className="text-sm text-gray-600 dark:text-gray-400">
-            显示最近 {logs.length} 条，共 {total} 条记录
-          </p>
+          <h2 className="text-xl font-semibold text-foreground">请求历史</h2>
+          <p className="text-sm text-muted-foreground">统一观察最近请求、成功率、响应耗时与异常波动。</p>
         </div>
         <div className="flex items-center gap-3">
           <select
             value={limit}
-            onChange={(e) => setLimit(Number(e.target.value))}
-            className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+            onChange={(event) => setLimit(Number(event.target.value))}
+            className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground"
           >
             <option value={50}>50 条</option>
             <option value={100}>100 条</option>
             <option value={200}>200 条</option>
             <option value={500}>500 条</option>
           </select>
-          <button
-            onClick={loadLogs}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-          >
-            <RefreshCw size={16} />
+          <Button variant="outline" onClick={() => void loadLogs()}>
+            <RefreshCw className="size-4" />
             刷新
-          </button>
+          </Button>
         </div>
       </div>
 
-      {/* Logs Table */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50 dark:bg-gray-700">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">
-                  时间
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">
-                  方法
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">
-                  端点
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">
-                  状态
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">
-                  耗时
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">
-                  用户
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-              {logs.map((log) => (
-                <tr key={log.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
-                  <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">
-                    {new Date(log.timestamp).toLocaleString()}
-                  </td>
-                  <td className="px-4 py-3 text-sm">
-                    <span className={`px-2 py-1 rounded text-xs font-medium ${getMethodColor(log.method)}`}>
-                      {log.method}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-900 dark:text-white font-mono">
-                    {log.endpoint}
-                  </td>
-                  <td className="px-4 py-3 text-sm">
-                    <span className={`font-semibold ${getStatusColor(log.status)}`}>{log.status}</span>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">{log.duration}ms</td>
-                  <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">{log.userId}</td>
+      <div className="grid gap-4 md:grid-cols-4">
+        <SummaryCard title="总请求数" value={String(total)} description="当前筛选范围内累计请求" icon={FileText} />
+        <SummaryCard title="成功率" value={`${summary.successRate}%`} description="2xx / 3xx 请求占比" icon={Clock3} />
+        <SummaryCard title="慢请求" value={String(summary.slowRequests)} description="耗时大于等于 2000ms" icon={TimerReset} />
+        <SummaryCard title="平均耗时" value={`${summary.averageDuration}ms`} description="最近请求的平均响应时间" icon={RefreshCw} />
+      </div>
+
+      {logs.length === 0 ? (
+        <PageEmptyState title="暂无请求记录" description="接入请求追踪后，这里会显示请求明细、成功率和性能波动。" />
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle>最近请求</CardTitle>
+            <CardDescription>显示最近 {logs.length} 条，共 {total} 条记录</CardDescription>
+          </CardHeader>
+          <CardContent className="overflow-x-auto">
+            <table className="w-full min-w-[760px] text-sm">
+              <thead>
+                <tr className="border-b text-left text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                  <th className="py-3 pr-4 font-medium">时间</th>
+                  <th className="py-3 pr-4 font-medium">方法</th>
+                  <th className="py-3 pr-4 font-medium">端点</th>
+                  <th className="py-3 pr-4 font-medium">状态</th>
+                  <th className="py-3 pr-4 font-medium">耗时</th>
+                  <th className="py-3 font-medium">用户</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {logs.length === 0 && (
-        <div className="text-center py-12 text-gray-500 dark:text-gray-400">
-          <FileText size={48} className="mx-auto mb-4 opacity-50" />
-          <p>暂无请求记录</p>
-        </div>
+              </thead>
+              <tbody>
+                {logs.map((log) => (
+                  <tr key={log.id} className="border-b border-border/60 align-top last:border-b-0">
+                    <td className="py-3 pr-4 text-muted-foreground">{new Date(log.timestamp).toLocaleString()}</td>
+                    <td className="py-3 pr-4"><Badge variant={methodVariant(log.method)}>{log.method}</Badge></td>
+                    <td className="py-3 pr-4 font-mono text-foreground">{log.endpoint}</td>
+                    <td className={`py-3 pr-4 font-semibold ${statusClassName(log.status)}`}>{log.status}</td>
+                    <td className="py-3 pr-4 text-muted-foreground">{log.duration}ms</td>
+                    <td className="py-3 text-muted-foreground">{log.userId}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
       )}
     </div>
+  );
+}
+
+function SummaryCard({
+  title,
+  value,
+  description,
+  icon: Icon,
+}: {
+  title: string;
+  value: string;
+  description: string;
+  icon: typeof FileText;
+}) {
+  return (
+    <Card size="sm">
+      <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
+        <div>
+          <CardDescription>{title}</CardDescription>
+          <CardTitle className="mt-2 text-3xl">{value}</CardTitle>
+        </div>
+        <Icon className="size-4 text-muted-foreground" />
+      </CardHeader>
+      <CardContent className="pt-0 text-xs text-muted-foreground">{description}</CardContent>
+    </Card>
   );
 }

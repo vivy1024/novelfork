@@ -33,7 +33,7 @@ interface MCPServer {
 }
 
 interface Props {
-  nav: unknown;
+  nav: { toWorkflow?: () => void };
   theme: Theme;
   t: TFunction;
 }
@@ -91,11 +91,17 @@ export function MCPServerManager({ nav, theme, t }: Props) {
   return (
     <PageScaffold
       title="MCP Server 管理"
-      description="管理 Model Context Protocol 的本地/远程服务连接，并查看当前可用工具。"
+      description="在工作流配置台统一管理 Model Context Protocol 的本地/远程服务连接，并查看当前可用工具。"
       actions={
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          {nav.toWorkflow && (
+            <Button variant="outline" onClick={() => nav.toWorkflow?.()}>
+              工作流总览
+            </Button>
+          )}
           <Button variant="outline" onClick={refetch}>
             <RefreshCw className="size-4" />
+            刷新
           </Button>
           <Button onClick={() => setShowAddForm(true)}>
             <Plus className="size-4" />
@@ -278,7 +284,16 @@ export function MCPServerManager({ nav, theme, t }: Props) {
         ))}
 
         {(!data?.servers || data.servers.length === 0) && (
-          <PageEmptyState title="暂无 MCP Server" description="点击右上角添加，接入本地或远程 MCP 工具服务。" />
+          <PageEmptyState
+            title="暂无 MCP Server"
+            description="点击右上角添加，接入本地或远程 MCP 工具服务。"
+            action={
+              <Button onClick={() => setShowAddForm(true)}>
+                <Plus className="size-4" />
+                添加 Server
+              </Button>
+            }
+          />
         )}
       </div>
     </PageScaffold>

@@ -1,5 +1,10 @@
-import { useState, useEffect, Suspense, lazy } from "react";
-import { X } from "lucide-react";
+import { Suspense, lazy, useEffect, useState } from "react";
+import { Activity, BarChart3, Server, SlidersHorizontal, X } from "lucide-react";
+
+import { PageEmptyState } from "@/components/layout/PageEmptyState";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type Tab = "status" | "config" | "providers" | "usage";
 
@@ -8,70 +13,91 @@ interface SettingsProps {
   theme: "light" | "dark";
 }
 
-const Config = lazy(() => import("./Config").then(m => ({ default: m.Config })));
-const Status = lazy(() => import("./Status").then(m => ({ default: m.Status })));
-const Usage = lazy(() => import("./Usage").then(m => ({ default: m.Usage })));
-const ProviderConfig = lazy(() => import("../Model/ProviderConfig").then(m => ({ default: m.ProviderConfig })));
+const SETTINGS_TABS: Array<{ id: Tab; label: string; icon: typeof Activity }> = [
+  { id: "status", label: "状态", icon: Activity },
+  { id: "config", label: "配置", icon: SlidersHorizontal },
+  { id: "providers", label: "供应商", icon: Server },
+  { id: "usage", label: "使用统计", icon: BarChart3 },
+];
+
+const Config = lazy(() => import("./Config").then((m) => ({ default: m.Config })));
+const Status = lazy(() => import("./Status").then((m) => ({ default: m.Status })));
+const Usage = lazy(() => import("./Usage").then((m) => ({ default: m.Usage })));
+const ProviderConfig = lazy(() => import("../Model/ProviderConfig").then((m) => ({ default: m.ProviderConfig })));
 
 export function Settings({ onClose, theme }: SettingsProps) {
   const [activeTab, setActiveTab] = useState<Tab>("config");
-  const contentHeight = 600;
 
   useEffect(() => {
-    const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
         onClose();
       }
     };
-    window.addEventListener("keydown", handleEsc);
-    return () => window.removeEventListener("keydown", handleEsc);
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="bg-background rounded-lg shadow-2xl border border-border w-full max-w-4xl" style={{ height: contentHeight + 100 }}>
-        {/* Header */}
-        <div className="h-14 flex items-center justify-between px-6 border-b border-border">
-          <h2 className="text-lg font-semibold text-foreground">设置</h2>
-          <button
-            onClick={onClose}
-            className="p-1 hover:bg-secondary rounded transition-colors"
-            aria-label="关闭"
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <DialogContent className="max-w-5xl p-0 overflow-hidden" showCloseButton={false}>
+        <div className="flex h-[720px] flex-col">
+          <DialogHeader className="flex flex-row items-start justify-between gap-4 border-b px-6 py-4">
+            <div className="space-y-1">
+              <DialogTitle className="text-xl">设置</DialogTitle>
+              <DialogDescription>
+                把状态、配置、供应商和使用统计收口到一个统一窗口。
+              </DialogDescription>
+            </div>
+            <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="关闭">
+              <X className="size-4" />
+            </Button>
+          </DialogHeader>
+
+          <Tabs
+            value={activeTab}
+            onValueChange={(value) => setActiveTab(value as Tab)}
+            className="flex min-h-0 flex-1 flex-col"
           >
-            <X size={20} className="text-muted-foreground" />
-          </button>
-        </div>
+            <div className="border-b px-6 pt-4">
+              <TabsList variant="line" className="w-full justify-start gap-2 bg-transparent p-0">
+                {SETTINGS_TABS.map((tab) => {
+                  const Icon = tab.icon;
+                  return (
+                    <TabsTrigger key={tab.id} value={tab.id} className="gap-2 rounded-none px-1.5 py-2">
+                      <Icon className="size-4" />
+                      {tab.label}
+                    </TabsTrigger>
+                  );
+                })}
+              </TabsList>
+            </div>
 
-        {/* Tab Bar */}
-        <div className="h-12 flex items-center px-6 border-b border-border bg-background/50">
-          {(["status", "config", "providers", "usage"] as const).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2 text-sm font-medium transition-colors ${
-                activeTab === tab
-                  ? "text-primary border-b-2 border-primary"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              {tab === "status" && "状态"}
-              {tab === "config" && "配置"}
-              {tab === "providers" && "供应商"}
-              {tab === "usage" && "使用统计"}
-            </button>
-          ))}
+            <div className="min-h-0 flex-1 overflow-y-auto p-6">
+              <Suspense
+                fallback={
+                  <PageEmptyState
+                    title="正在加载设置"
+                    description="设置内容正在准备中，请稍候。"
+                    icon={Activity}
+                  />
+                }
+              >
+                {activeTab === "status" && <Status theme={theme} />}
+                {activeTab === "config" && <Config theme={theme} />}
+                {activeTab === "providers" && <ProviderConfig theme={theme} />}
+                {activeTab === "usage" && <Usage theme={theme} />}
+              </Suspense>
+            </div>
+          </Tabs>
         </div>
-
-        {/* Content */}
-        <div className="overflow-y-auto" style={{ height: contentHeight }}>
-          <Suspense fallback={<div className="p-6 text-muted-foreground">加载中...</div>}>
-            {activeTab === "status" && <Status theme={theme} />}
-            {activeTab === "config" && <Config theme={theme} />}
-            {activeTab === "providers" && <ProviderConfig theme={theme} />}
-            {activeTab === "usage" && <Usage theme={theme} />}
-          </Suspense>
-        </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

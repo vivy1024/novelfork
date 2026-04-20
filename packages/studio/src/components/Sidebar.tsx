@@ -58,6 +58,7 @@ interface Nav {
   toBackup: () => void;
   toState: (bookId: string) => void;
   toPipeline: (runId?: string) => void;
+  toAdmin: () => void;
   toSettings: () => void;
   toWorktree: () => void;
 }
@@ -105,7 +106,7 @@ export function Sidebar({ nav, activePage, sse, t }: {
 
   const primaryItems = useMemo(() => [
     {
-      label: "仪表盘",
+      label: "项目总览",
       icon: <LayoutDashboard size={16} />,
       active: activePage === "dashboard",
       onClick: nav.toDashboard,
@@ -119,15 +120,21 @@ export function Sidebar({ nav, activePage, sse, t }: {
     {
       label: "工作流配置",
       icon: <Workflow size={16} />,
-      active: activePage === "workflow",
+      active: activePage === "workflow" || activePage.startsWith("workflow:"),
       onClick: nav.toWorkflow,
       badge: "新",
       badgeColor: "bg-primary/10 text-primary",
     },
     {
+      label: "管理中心",
+      icon: <Shield size={16} />,
+      active: activePage === "admin" || activePage.startsWith("admin:"),
+      onClick: nav.toAdmin,
+    },
+    {
       label: "设置",
       icon: <Settings size={16} />,
-      active: activePage === "settings",
+      active: activePage === "settings" || activePage.startsWith("settings:"),
       onClick: nav.toSettings,
       testId: "settings-btn",
     },
@@ -185,7 +192,7 @@ export function Sidebar({ nav, activePage, sse, t }: {
       ? [{
           label: "守护进程",
           icon: <Zap size={16} />,
-          active: activePage === "daemon",
+          active: activePage === "admin:daemon",
           onClick: nav.toDaemon,
           badge: daemon?.running ? "运行中" : undefined,
           badgeColor: daemon?.running ? "bg-emerald-500/10 text-emerald-500" : undefined,
@@ -195,7 +202,7 @@ export function Sidebar({ nav, activePage, sse, t }: {
       ? [{
           label: "日志",
           icon: <TerminalSquare size={16} />,
-          active: activePage === "logs",
+          active: activePage === "admin:logs",
           onClick: nav.toLogs,
         }]
       : []),
@@ -210,7 +217,7 @@ export function Sidebar({ nav, activePage, sse, t }: {
     {
       label: "Worktree",
       icon: <FolderGit2 size={16} />,
-      active: activePage === "worktree",
+      active: activePage === "admin:worktrees",
       onClick: nav.toWorktree,
     },
   ], [activePage, daemon?.running, isStandalone, isTauri, nav]);
