@@ -140,7 +140,7 @@ pnpm bun:embed-assets
 
 - `docs/06-部署运维/01-当前运行与启动方式.md`
 - `docs/06-部署运维/03-启动期迁移与修复清单.md`
-- `OPS_RUNTIME_STATE.md`
+- git 日志 / 相关运维文档 / 记忆记录
 
 ---
 

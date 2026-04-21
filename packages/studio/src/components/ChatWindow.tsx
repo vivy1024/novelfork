@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import {
   Bot,
   Braces,
@@ -34,7 +34,12 @@ import {
 import { ContextPanel, type ContextEntry } from "./ContextPanel";
 import { fetchJson } from "../hooks/use-api";
 import { getDefaultModel, getDefaultProvider, getModel, getProvider, PROVIDERS } from "../shared/provider-catalog";
-import type { NarratorSessionRecord } from "../shared/session-types";
+import type {
+  NarratorSessionChatMessage,
+  NarratorSessionChatServerEnvelope,
+  NarratorSessionChatSnapshot,
+  NarratorSessionRecord,
+} from "../shared/session-types";
 
 interface ChatWindowProps {
   windowId: string;
@@ -75,22 +80,140 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
 
   const [input, setInput] = useState("");
   const [contextPanelOpen, setContextPanelOpen] = useState(false);
+  const [sessionRecord, setSessionRecord] = useState<NarratorSessionRecord | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  const reconnectTimerRef = useRef<number | null>(null);
+
+  const syncSessionRecord = useCallback(
+    (nextSession: NarratorSessionRecord) => {
+      setSessionRecord(nextSession);
+      updateWindow(windowId, {
+        title: nextSession.title,
+        sessionMode: nextSession.sessionMode,
+        sessionConfig: nextSession.sessionConfig,
+      });
+    },
+    [updateWindow, windowId],
+  );
+
+  const handleSessionTransportMessage = useCallback(
+    async (rawData: unknown) => {
+      const rawText = await normalizeSessionChatPayloadText(rawData);
+      if (!rawText) {
+        return;
+      }
+
+      const envelope = parseSessionChatEnvelope(rawText);
+      if (envelope) {
+        if (envelope.type === "session:snapshot") {
+          syncSessionRecord(envelope.snapshot.session);
+          const currentWindow = useWindowStore.getState().windows.find((window) => window.id === windowId);
+          if (currentWindow) {
+            const mergedMessages = mergeSessionMessages(currentWindow.messages, envelope.snapshot.messages);
+            if (mergedMessages.length !== currentWindow.messages.length) {
+              updateWindow(windowId, { messages: mergedMessages });
+            }
+          }
+          return;
+        }
+
+        if (envelope.type === "session:state") {
+          syncSessionRecord(envelope.session);
+          return;
+        }
+
+        if (envelope.type === "session:message") {
+          const nextMessage = toChatWindowMessage(envelope.message);
+          const currentWindow = useWindowStore.getState().windows.find((window) => window.id === windowId);
+          if (currentWindow?.messages.some((message) => message.id === nextMessage.id)) {
+            return;
+          }
+          addMessage(windowId, nextMessage);
+          return;
+        }
+
+        if (envelope.type === "session:error") {
+          console.error("Session chat error:", envelope.error);
+          setWsConnected(windowId, false);
+          return;
+        }
+      }
+
+      try {
+        const parsed = parseAssistantPayload(JSON.parse(rawText), rawText);
+        const message: ChatMessage = {
+          id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+          role: "assistant",
+          content: parsed.content,
+          timestamp: Date.now(),
+          toolCalls: parsed.toolCalls.length > 0 ? parsed.toolCalls : undefined,
+        };
+        addMessage(windowId, message);
+      } catch {
+        const message: ChatMessage = {
+          id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+          role: "assistant",
+          content: rawText,
+          timestamp: Date.now(),
+        };
+        addMessage(windowId, message);
+      }
+    },
+    [addMessage, setWsConnected, syncSessionRecord, updateWindow, windowId],
+  );
 
   useEffect(() => {
-    if (!chatWindow) return;
+    const sessionId = chatWindow?.sessionId;
+    if (!sessionId) {
+      return;
+    }
+
+    let cancelled = false;
+    void fetchJson<NarratorSessionChatSnapshot>(`/api/sessions/${sessionId}/chat/state`)
+      .then((snapshot) => {
+        if (cancelled || !snapshot?.session?.sessionConfig) {
+          return;
+        }
+
+        syncSessionRecord(snapshot.session);
+        const currentWindow = useWindowStore.getState().windows.find((window) => window.id === windowId);
+        if (!currentWindow) {
+          return;
+        }
+
+        const mergedMessages = mergeSessionMessages(currentWindow.messages, snapshot.messages);
+        if (mergedMessages.length !== currentWindow.messages.length) {
+          updateWindow(windowId, { messages: mergedMessages });
+        }
+      })
+      .catch(() => {
+        // ignore hydration errors and keep local fallback state
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [chatWindow?.sessionId, syncSessionRecord, updateWindow, windowId]);
+
+  useEffect(() => {
+    const sessionId = chatWindow?.sessionId;
+    if (!sessionId) {
+      return;
+    }
+
+    let disposed = false;
+    const sessionMode = sessionRecord?.sessionMode ?? chatWindow?.sessionMode ?? "chat";
+    const params = new URLSearchParams();
+    params.set("mode", sessionMode);
 
     const connectWs = () => {
+      if (disposed) {
+        return;
+      }
+
       const protocol = globalThis.window.location.protocol === "https:" ? "wss:" : "ws:";
-      const params = new URLSearchParams();
-      if (chatWindow.sessionId) {
-        params.set("sessionId", chatWindow.sessionId);
-      }
-      if (chatWindow.sessionMode) {
-        params.set("mode", chatWindow.sessionMode);
-      }
-      const wsUrl = `${protocol}//${globalThis.window.location.host}/api/agent/${chatWindow.agentId}/chat${params.size > 0 ? `?${params.toString()}` : ""}`;
+      const wsUrl = `${protocol}//${globalThis.window.location.host}/api/sessions/${sessionId}/chat?${params.toString()}`;
 
       try {
         const ws = new WebSocket(wsUrl);
@@ -98,29 +221,14 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
 
         ws.onopen = () => {
           setWsConnected(windowId, true);
+          if (reconnectTimerRef.current !== null) {
+            globalThis.clearTimeout(reconnectTimerRef.current);
+            reconnectTimerRef.current = null;
+          }
         };
 
         ws.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            const parsed = parseAssistantPayload(data, event.data);
-            const message: ChatMessage = {
-              id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-              role: "assistant",
-              content: parsed.content,
-              timestamp: Date.now(),
-              toolCalls: parsed.toolCalls.length > 0 ? parsed.toolCalls : undefined,
-            };
-            addMessage(windowId, message);
-          } catch {
-            const message: ChatMessage = {
-              id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-              role: "assistant",
-              content: event.data,
-              timestamp: Date.now(),
-            };
-            addMessage(windowId, message);
-          }
+          void handleSessionTransportMessage(event.data);
         };
 
         ws.onerror = () => {
@@ -129,7 +237,13 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
 
         ws.onclose = () => {
           setWsConnected(windowId, false);
-          setTimeout(connectWs, 5000);
+          if (disposed) {
+            return;
+          }
+          if (reconnectTimerRef.current !== null) {
+            globalThis.clearTimeout(reconnectTimerRef.current);
+          }
+          reconnectTimerRef.current = globalThis.window.setTimeout(connectWs, 5000);
         };
       } catch (error) {
         console.error("WebSocket connection failed:", error);
@@ -140,57 +254,61 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
     connectWs();
 
     return () => {
+      disposed = true;
+      if (reconnectTimerRef.current !== null) {
+        globalThis.clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
       if (wsRef.current) {
         wsRef.current.close();
         wsRef.current = null;
       }
     };
-  }, [windowId, chatWindow?.agentId, addMessage, setWsConnected]);
+  }, [chatWindow?.sessionId, chatWindow?.sessionMode, handleSessionTransportMessage, sessionRecord?.sessionMode, setWsConnected, windowId]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView?.({ behavior: "smooth" });
   }, [chatWindow?.messages]);
 
   useEffect(() => {
-    if (!chatWindow?.sessionId) {
+    const sessionId = chatWindow?.sessionId;
+    if (!sessionId) {
       return;
     }
 
-    void fetchJson<NarratorSessionRecord>(`/api/sessions/${chatWindow.sessionId}`)
-      .then((session) => {
-        updateWindow(windowId, {
-          title: session.title,
-          sessionMode: session.sessionMode,
-          sessionConfig: session.sessionConfig,
-        });
-      })
-      .catch(() => {
-        // ignore hydration errors and keep local fallback state
-      });
-  }, [chatWindow?.sessionId, updateWindow, windowId]);
-
-  useEffect(() => {
-    if (!chatWindow?.sessionId) {
-      return;
-    }
-
-    void fetchJson(`/api/sessions/${chatWindow.sessionId}`, {
+    const messageCount = sessionRecord?.messageCount ?? chatWindow?.messages.length ?? 0;
+    void fetchJson<NarratorSessionRecord>(`/api/sessions/${sessionId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messageCount: chatWindow.messages.length }),
-    });
-  }, [chatWindow?.sessionId, chatWindow?.messages.length]);
+      body: JSON.stringify({ messageCount }),
+    })
+      .then((session) => {
+        if (!session?.sessionConfig) {
+          return;
+        }
+        syncSessionRecord(session);
+      })
+      .catch(() => {
+        // keep local state in sync even if the persistence write fails
+      });
+  }, [chatWindow?.sessionId, chatWindow?.messages.length, sessionRecord?.messageCount, syncSessionRecord]);
 
   if (!chatWindow) return null;
 
   const defaultProvider = getDefaultProvider();
   const defaultModel = getDefaultModel(defaultProvider.id);
-  const sessionConfig = chatWindow.sessionConfig ?? {
-    providerId: defaultProvider.id,
-    modelId: defaultModel?.id ?? "",
-    permissionMode: "allow" as SessionPermissionMode,
-    reasoningEffort: "medium" as SessionReasoningEffort,
+  const sessionState = sessionRecord ?? {
+    title: chatWindow.title,
+    sessionMode: chatWindow.sessionMode ?? "chat",
+    sessionConfig: chatWindow.sessionConfig ?? {
+      providerId: defaultProvider.id,
+      modelId: defaultModel?.id ?? "",
+      permissionMode: "allow" as SessionPermissionMode,
+      reasoningEffort: "medium" as SessionReasoningEffort,
+    },
+    messageCount: chatWindow.messages.length,
   };
+  const sessionConfig = sessionState.sessionConfig;
 
   const selectedProvider = getProvider(sessionConfig.providerId);
   const selectedModel = getModel(sessionConfig.providerId, sessionConfig.modelId);
@@ -211,19 +329,24 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
   const handleSend = () => {
     if (!input.trim() || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
 
+    const messageId = `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
     const userMessage: ChatMessage = {
-      id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+      id: messageId,
       role: "user",
       content: input,
       timestamp: Date.now(),
     };
 
     addMessage(windowId, userMessage);
-    wsRef.current.send(JSON.stringify({
-      content: input,
-      sessionId: chatWindow.sessionId,
-      sessionMode: chatWindow.sessionMode,
-    }));
+    wsRef.current.send(
+      JSON.stringify({
+        type: "session:message",
+        messageId,
+        content: input,
+        sessionId: chatWindow.sessionId,
+        sessionMode: sessionState.sessionMode,
+      }),
+    );
     setInput("");
   };
 
@@ -247,13 +370,22 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
     });
 
     if (chatWindow.sessionId) {
-      void fetchJson(`/api/sessions/${chatWindow.sessionId}`, {
+      void fetchJson<NarratorSessionRecord>(`/api/sessions/${chatWindow.sessionId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           sessionConfig: nextSessionConfig,
         }),
-      });
+      })
+        .then((session) => {
+          if (!session?.sessionConfig) {
+            return;
+          }
+          syncSessionRecord(session);
+        })
+        .catch(() => {
+          // keep local state even if the persistence write fails
+        });
     }
   };
 
@@ -274,7 +406,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="max-w-[180px] truncate text-sm font-medium" style={{ color: c.text }}>
-                    {chatWindow.title}
+                    {sessionState.title}
                   </span>
                   {isActive && (
                     <span className="rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
@@ -285,9 +417,9 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
                 <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
                   <span>Agent {chatWindow.agentId}</span>
                   <span>•</span>
-                  <span>{chatWindow.sessionMode === "plan" ? "计划模式" : "对话模式"}</span>
+                  <span>{sessionState.sessionMode === "plan" ? "计划模式" : "对话模式"}</span>
                   <span>•</span>
-                  <span>{chatWindow.messages.length} 条消息</span>
+                  <span>{sessionState.messageCount} 条消息</span>
                   {chatWindow.sessionId ? (
                     <>
                       <span>•</span>
@@ -362,7 +494,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
                         <div>
                           {contextSummary.totalTokens.toLocaleString()} / {tokenBudget.toLocaleString()}
                         </div>
-                        <div>{contextSummary.messageCount} 条消息</div>
+                        <div>{sessionState.messageCount} 条消息</div>
                       </div>
                     </div>
                     <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
@@ -404,16 +536,16 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({
-                              title: `${chatWindow.title} · 新会话`,
+                              title: `${sessionState.title} · 新会话`,
                               agentId: chatWindow.agentId,
-                              sessionMode: chatWindow.sessionMode,
+                              sessionMode: sessionState.sessionMode,
                               sessionConfig,
                             }),
                           });
 
                           addWindow({
                             agentId: chatWindow.agentId,
-                            title: `${chatWindow.title} · 新会话`,
+                            title: `${sessionState.title} · 新会话`,
                             sessionId: session.id,
                             sessionMode: session.sessionMode,
                             sessionConfig: session.sessionConfig,
@@ -601,7 +733,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
               <div className="mb-2 flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
                 <span className="rounded-full border border-border px-2 py-0.5">对象化会话</span>
                 <span className="rounded-full border border-border px-2 py-0.5">Agent {chatWindow.agentId}</span>
-                <span className="rounded-full border border-border px-2 py-0.5">{chatWindow.messages.length} 条消息</span>
+                <span className="rounded-full border border-border px-2 py-0.5">{sessionState.messageCount} 条消息</span>
                 {selectedProvider ? <span className="rounded-full border border-border px-2 py-0.5">{selectedProvider.name}</span> : null}
               </div>
               <div className="flex gap-2">
@@ -637,12 +769,12 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
         mode="session"
         visible={contextPanelOpen}
         onClose={() => setContextPanelOpen(false)}
-        sessionTitle={chatWindow.title}
+        sessionTitle={sessionState.title}
         sessionEntries={contextEntries}
         sessionSummary={{
           totalTokens: contextSummary.totalTokens,
           budgetMax: tokenBudget,
-          messageCount: contextSummary.messageCount,
+          messageCount: sessionState.messageCount,
         }}
         onCompress={() => updateWindow(windowId, { messages: compressMessages(chatWindow.messages) })}
         onTruncate={() => updateWindow(windowId, { messages: truncateMessages(chatWindow.messages) })}
@@ -837,4 +969,81 @@ function shortSessionId(sessionId: string) {
 function sumToolCallDurations(toolCalls: ToolCall[]) {
   const total = toolCalls.reduce((sum, toolCall) => sum + (toolCall.duration ?? 0), 0);
   return toolCalls.some((toolCall) => typeof toolCall.duration === "number") ? formatToolCallDuration(total) : "未上报";
+}
+
+function toChatWindowMessage(message: NarratorSessionChatMessage): ChatMessage {
+  return {
+    id: message.id,
+    role: message.role,
+    content: message.content,
+    timestamp: message.timestamp,
+  };
+}
+
+function mergeSessionMessages(existingMessages: ChatMessage[], snapshotMessages: NarratorSessionChatMessage[]) {
+  const seenIds = new Set(existingMessages.map((message) => message.id));
+  return [
+    ...existingMessages,
+    ...snapshotMessages
+      .filter((message) => !seenIds.has(message.id))
+      .map(toChatWindowMessage),
+  ];
+}
+
+async function normalizeSessionChatPayloadText(rawData: unknown): Promise<string | null> {
+  if (typeof rawData === "string") {
+    return rawData;
+  }
+
+  if (typeof Blob !== "undefined" && rawData instanceof Blob) {
+    return rawData.text();
+  }
+
+  if (rawData instanceof Uint8Array) {
+    return new TextDecoder().decode(rawData);
+  }
+
+  if (rawData instanceof ArrayBuffer) {
+    return new TextDecoder().decode(new Uint8Array(rawData));
+  }
+
+  if (ArrayBuffer.isView(rawData)) {
+    return new TextDecoder().decode(new Uint8Array(rawData.buffer, rawData.byteOffset, rawData.byteLength));
+  }
+
+  if (typeof rawData === "object" && rawData !== null && "toString" in rawData) {
+    const text = String(rawData);
+    return text === "[object Object]" ? null : text;
+  }
+
+  return null;
+}
+
+function parseSessionChatEnvelope(rawText: string): NarratorSessionChatServerEnvelope | null {
+  try {
+    const parsed = JSON.parse(rawText) as NarratorSessionChatServerEnvelope | { type?: string };
+    if (!parsed || typeof parsed !== "object" || typeof parsed.type !== "string") {
+      return null;
+    }
+
+    if (parsed.type === "session:snapshot" && "snapshot" in parsed) {
+      return parsed as NarratorSessionChatServerEnvelope;
+    }
+
+    if (parsed.type === "session:state" && "session" in parsed) {
+      return parsed as NarratorSessionChatServerEnvelope;
+    }
+
+    if (parsed.type === "session:message" && "message" in parsed) {
+      return parsed as NarratorSessionChatServerEnvelope;
+    }
+
+    if (parsed.type === "session:error" && "error" in parsed) {
+      return parsed as NarratorSessionChatServerEnvelope;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
 }

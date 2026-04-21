@@ -1,0 +1,76 @@
+import { fireEvent, render, screen } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const { useApiMock, postApiMock, putApiMock } = vi.hoisted(() => ({
+  useApiMock: vi.fn(),
+  postApiMock: vi.fn(),
+  putApiMock: vi.fn(),
+}));
+
+vi.mock("../hooks/use-api", () => ({
+  useApi: useApiMock,
+  postApi: postApiMock,
+  putApi: putApiMock,
+}));
+
+import { MCPServerManager } from "./MCPServerManager";
+
+describe("MCPServerManager", () => {
+  beforeEach(() => {
+    useApiMock.mockReturnValue({
+      data: {
+        summary: {
+          totalServers: 2,
+          connectedServers: 1,
+          enabledTools: 3,
+          discoveredTools: 5,
+        },
+        servers: [
+          {
+            id: "server-1",
+            name: "Filesystem",
+            transport: "stdio",
+            command: "npx",
+            args: ["-y", "@modelcontextprotocol/server-filesystem", "."],
+            status: "connected",
+            tools: [
+              { name: "read_file", description: "Read a file" },
+              { name: "write_file", description: "Write a file" },
+            ],
+            toolCount: 2,
+          },
+        ],
+      },
+      refetch: vi.fn(),
+    });
+    postApiMock.mockResolvedValue({ ok: true });
+    putApiMock.mockResolvedValue({ ok: true });
+  });
+
+  it("renders registry summary and discovered tool counts", () => {
+    render(<MCPServerManager nav={{}} theme="light" t={(key: string) => key} />);
+
+    expect(screen.getByText("MCP Server 管理")).toBeTruthy();
+    expect(screen.getByText(/已注册 Server/)).toBeTruthy();
+    expect(screen.getAllByText(/已发现工具/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Filesystem/)).toBeTruthy();
+    expect(screen.getAllByText("2").length).toBeGreaterThan(0);
+    expect(screen.getByText(/2 个工具/)).toBeTruthy();
+  });
+
+  it("allows editing an existing server and saving through the MCP API", () => {
+    render(<MCPServerManager nav={{}} theme="light" t={(key: string) => key} />);
+
+    fireEvent.click(screen.getAllByRole("button", { name: "编辑" })[0]!);
+    fireEvent.change(screen.getByLabelText("名称"), { target: { value: "Filesystem Updated" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存修改" }));
+
+    expect(putApiMock).toHaveBeenCalledWith(
+      "/mcp/servers/server-1",
+      expect.objectContaining({
+        name: "Filesystem Updated",
+        transport: "stdio",
+      }),
+    );
+  });
+});

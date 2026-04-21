@@ -1,21 +1,22 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
-  AlertCircle,
-  CheckCircle2,
-  Loader2,
+  Pencil,
   Play,
   Plus,
   RefreshCw,
   Server,
   Square,
   Trash2,
+  Wrench,
 } from "lucide-react";
 
 import { PageEmptyState } from "@/components/layout/PageEmptyState";
-import { PageScaffold } from "@/components/layout/PageScaffold";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { postApi, useApi } from "../hooks/use-api";
-import { useColors } from "../hooks/use-colors";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { postApi, putApi, useApi } from "../hooks/use-api";
 import type { TFunction } from "../hooks/use-i18n";
 import type { Theme } from "../hooks/use-theme";
 
@@ -28,8 +29,19 @@ interface MCPServer {
   url?: string;
   env?: Record<string, string>;
   status: "disconnected" | "connecting" | "connected" | "reconnecting" | "failed";
-  tools?: Array<{ name: string; description: string }>;
+  tools: Array<{ name: string; description: string }>;
+  toolCount: number;
   error?: string;
+}
+
+interface MCPRegistryResponse {
+  summary: {
+    totalServers: number;
+    connectedServers: number;
+    enabledTools: number;
+    discoveredTools: number;
+  };
+  servers: MCPServer[];
 }
 
 interface Props {
@@ -38,18 +50,93 @@ interface Props {
   t: TFunction;
 }
 
+interface ServerFormState {
+  name: string;
+  transport: "stdio" | "sse";
+  command: string;
+  args: string;
+  url: string;
+  env: string;
+}
+
+const EMPTY_FORM: ServerFormState = {
+  name: "",
+  transport: "stdio",
+  command: "",
+  args: "",
+  url: "",
+  env: "",
+};
+
+function toFormState(server?: MCPServer): ServerFormState {
+  if (!server) {
+    return { ...EMPTY_FORM };
+  }
+  return {
+    name: server.name,
+    transport: server.transport,
+    command: server.command ?? "",
+    args: (server.args ?? []).join(", "),
+    url: server.url ?? "",
+    env: server.env ? JSON.stringify(server.env, null, 2) : "",
+  };
+}
+
+function parseFormPayload(form: ServerFormState) {
+  const args = form.args
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  return {
+    name: form.name.trim(),
+    transport: form.transport,
+    command: form.transport === "stdio" ? form.command.trim() : undefined,
+    args: form.transport === "stdio" ? args : undefined,
+    url: form.transport === "sse" ? form.url.trim() : undefined,
+    env: form.env.trim() ? JSON.parse(form.env) : undefined,
+  };
+}
+
 export function MCPServerManager({ nav, theme, t }: Props) {
-  const c = useColors(theme);
-  const { data, refetch } = useApi<{ servers: MCPServer[] }>("/mcp/servers");
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [formData, setFormData] = useState({
-    name: "",
-    transport: "stdio" as "stdio" | "sse",
-    command: "",
-    args: "",
-    url: "",
-    env: "",
-  });
+  void theme;
+  void t;
+
+  const { data, refetch } = useApi<MCPRegistryResponse>("/mcp/registry");
+  const [editorMode, setEditorMode] = useState<"create" | "edit" | null>(null);
+  const [editingServerId, setEditingServerId] = useState<string | null>(null);
+  const [formData, setFormData] = useState<ServerFormState>({ ...EMPTY_FORM });
+
+  const servers = data?.servers ?? [];
+  const summary = data?.summary ?? {
+    totalServers: 0,
+    connectedServers: 0,
+    enabledTools: 0,
+    discoveredTools: 0,
+  };
+
+  const connectedRatio = useMemo(() => {
+    if (summary.totalServers === 0) return "0%";
+    return `${Math.round((summary.connectedServers / summary.totalServers) * 100)}%`;
+  }, [summary.connectedServers, summary.totalServers]);
+
+  function openCreateForm() {
+    setEditorMode("create");
+    setEditingServerId(null);
+    setFormData({ ...EMPTY_FORM });
+  }
+
+  function openEditForm(server: MCPServer) {
+    setEditorMode("edit");
+    setEditingServerId(server.id);
+    setFormData(toFormState(server));
+  }
+
+  function closeEditor() {
+    setEditorMode(null);
+    setEditingServerId(null);
+    setFormData({ ...EMPTY_FORM });
+  }
 
   async function handleStart(id: string) {
     await postApi(`/mcp/servers/${id}/start`, {});
@@ -67,235 +154,236 @@ export function MCPServerManager({ nav, theme, t }: Props) {
     refetch();
   }
 
-  async function handleAdd() {
-    const args = formData.args
-      .split(",")
-      .map((item) => item.trim())
-      .filter(Boolean);
-    const env = formData.env ? JSON.parse(formData.env) : undefined;
+  async function handleSave() {
+    const payload = parseFormPayload(formData);
 
-    await postApi("/mcp/servers", {
-      name: formData.name,
-      transport: formData.transport,
-      command: formData.transport === "stdio" ? formData.command : undefined,
-      args: formData.transport === "stdio" ? args : undefined,
-      url: formData.transport === "sse" ? formData.url : undefined,
-      env,
-    });
+    if (editorMode === "edit" && editingServerId) {
+      await putApi(`/mcp/servers/${editingServerId}`, payload);
+    } else {
+      await postApi("/mcp/servers", payload);
+    }
 
-    setShowAddForm(false);
-    setFormData({ name: "", transport: "stdio", command: "", args: "", url: "", env: "" });
+    closeEditor();
     refetch();
   }
 
   return (
-    <PageScaffold
-      title="MCP Server 管理"
-      description="在工作流配置台统一管理 Model Context Protocol 的本地/远程服务连接，并查看当前可用工具。"
-      actions={
-        <div className="flex flex-wrap gap-2">
-          {nav.toWorkflow && (
-            <Button variant="outline" onClick={() => nav.toWorkflow?.()}>
-              工作流总览
-            </Button>
-          )}
-          <Button variant="outline" onClick={refetch}>
-            <RefreshCw className="size-4" />
-            刷新
-          </Button>
-          <Button onClick={() => setShowAddForm(true)}>
-            <Plus className="size-4" />
-            添加 Server
-          </Button>
+    <div className="space-y-6">
+      <header className="flex flex-col gap-4 rounded-2xl border border-border/60 bg-card/80 p-6 shadow-sm backdrop-blur-sm lg:flex-row lg:items-start lg:justify-between">
+        <div className="space-y-2">
+          <p className="text-xs font-medium uppercase tracking-[0.24em] text-muted-foreground">NovelFork Studio</p>
+          <div className="space-y-1">
+            <h1 className="text-3xl font-semibold tracking-tight text-foreground">MCP Server 管理</h1>
+            <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
+              在工作流配置台统一管理 Model Context Protocol 的本地/远程服务连接，并把 transport、连接状态、工具数量与编辑能力收口到统一注册表视图。
+            </p>
+          </div>
         </div>
-      }
-    >
-      {showAddForm && (
-        <div className={`${c.cardStatic} mb-6`}>
-          <h3 className="mb-4 font-semibold text-foreground">添加 MCP Server</h3>
-          <div className="space-y-3">
-            <div>
-              <label className="mb-1 block text-sm font-medium text-foreground">名称</label>
-              <input
-                type="text"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                className={c.input}
-                placeholder="my-mcp-server"
-              />
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap gap-2">
+            {nav.toWorkflow && (
+              <Button variant="outline" onClick={() => nav.toWorkflow?.()}>
+                工作流总览
+              </Button>
+            )}
+            <Button variant="outline" onClick={refetch}>
+              <RefreshCw className="size-4" />
+              刷新
+            </Button>
+            <Button onClick={openCreateForm}>
+              <Plus className="size-4" />
+              添加 Server
+            </Button>
+          </div>
+        </div>
+      </header>
+
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <SummaryCard title="已注册 Server" value={String(summary.totalServers)} description="当前已写入 novelfork.json 的 MCP 服务数" />
+        <SummaryCard title="已连接" value={String(summary.connectedServers)} description={`连接占比 ${connectedRatio}`} />
+        <SummaryCard title="已发现工具" value={String(summary.discoveredTools)} description="从已连接 MCP 服务发现的工具总数" />
+        <SummaryCard title="已启用工具" value={String(summary.enabledTools)} description="当前进入系统注册视图的工具数量" />
+      </div>
+
+      {editorMode && (
+        <Card className="border-dashed bg-muted/20">
+          <CardHeader>
+            <CardTitle>{editorMode === "edit" ? "编辑 MCP Server" : "添加 MCP Server"}</CardTitle>
+            <CardDescription>
+              {editorMode === "edit" ? "修改 transport、命令/URL 与环境变量。保存后需要重新连接。" : "添加本地 stdio 或远程 SSE MCP 服务。"}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="mcp-server-name">名称</Label>
+                <Input id="mcp-server-name" aria-label="名称" value={formData.name} onChange={(event) => setFormData((current) => ({ ...current, name: event.target.value }))} placeholder="my-mcp-server" />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="mcp-server-transport">传输方式</Label>
+                <select
+                  id="mcp-server-transport"
+                  aria-label="传输方式"
+                  value={formData.transport}
+                  onChange={(event) => setFormData((current) => ({ ...current, transport: event.target.value as "stdio" | "sse" }))}
+                  className="flex h-10 w-full rounded-lg border border-input bg-background px-3 text-sm"
+                >
+                  <option value="stdio">stdio（本地进程）</option>
+                  <option value="sse">SSE（远程 HTTP）</option>
+                </select>
+              </div>
             </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium text-foreground">传输方式</label>
-              <select
-                value={formData.transport}
-                onChange={(e) => setFormData({ ...formData, transport: e.target.value as "stdio" | "sse" })}
-                className={c.input}
-              >
-                <option value="stdio">stdio（本地进程）</option>
-                <option value="sse">SSE（远程 HTTP）</option>
-              </select>
-            </div>
+
             {formData.transport === "stdio" ? (
-              <>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-foreground">命令</label>
-                  <input
-                    type="text"
-                    value={formData.command}
-                    onChange={(e) => setFormData({ ...formData, command: e.target.value })}
-                    className={c.input}
-                    placeholder="npx"
-                  />
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="mcp-server-command">命令</Label>
+                  <Input id="mcp-server-command" aria-label="命令" value={formData.command} onChange={(event) => setFormData((current) => ({ ...current, command: event.target.value }))} placeholder="npx" />
                 </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-foreground">参数（逗号分隔）</label>
-                  <input
-                    type="text"
-                    value={formData.args}
-                    onChange={(e) => setFormData({ ...formData, args: e.target.value })}
-                    className={c.input}
-                    placeholder="-y, @modelcontextprotocol/server-filesystem, /path/to/dir"
-                  />
+                <div className="space-y-2">
+                  <Label htmlFor="mcp-server-args">参数（逗号分隔）</Label>
+                  <Input id="mcp-server-args" aria-label="参数（逗号分隔）" value={formData.args} onChange={(event) => setFormData((current) => ({ ...current, args: event.target.value }))} placeholder="-y, @modelcontextprotocol/server-filesystem, ." />
                 </div>
-              </>
+              </div>
             ) : (
-              <div>
-                <label className="mb-1 block text-sm font-medium text-foreground">URL</label>
-                <input
-                  type="text"
-                  value={formData.url}
-                  onChange={(e) => setFormData({ ...formData, url: e.target.value })}
-                  className={c.input}
-                  placeholder="http://localhost:3001/sse"
-                />
+              <div className="space-y-2">
+                <Label htmlFor="mcp-server-url">URL</Label>
+                <Input id="mcp-server-url" aria-label="URL" value={formData.url} onChange={(event) => setFormData((current) => ({ ...current, url: event.target.value }))} placeholder="http://localhost:3001/sse" />
               </div>
             )}
-            <div>
-              <label className="mb-1 block text-sm font-medium text-foreground">环境变量（JSON）</label>
+
+            <div className="space-y-2">
+              <Label htmlFor="mcp-server-env">环境变量（JSON）</Label>
               <textarea
+                id="mcp-server-env"
+                aria-label="环境变量（JSON）"
                 value={formData.env}
-                onChange={(e) => setFormData({ ...formData, env: e.target.value })}
-                className={c.input}
-                rows={3}
+                onChange={(event) => setFormData((current) => ({ ...current, env: event.target.value }))}
+                className="min-h-28 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
                 placeholder='{"API_KEY": "xxx"}'
               />
             </div>
+
             <div className="flex gap-2">
-              <Button onClick={handleAdd}>添加</Button>
-              <Button variant="outline" onClick={() => setShowAddForm(false)}>
-                取消
-              </Button>
+              <Button onClick={() => void handleSave()}>{editorMode === "edit" ? "保存修改" : "添加"}</Button>
+              <Button variant="outline" onClick={closeEditor}>取消</Button>
             </div>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       )}
 
-      <div className="space-y-4">
-        {data?.servers.map((server) => (
-          <div key={server.id} className={c.cardStatic}>
-            <div className="mb-3 flex items-start justify-between">
-              <div className="flex items-center gap-3">
-                <Server className="size-5 text-primary" />
-                <div>
-                  <h3 className="font-semibold text-foreground">{server.name}</h3>
-                  <p className="text-xs text-muted-foreground">
-                    {server.transport === "sse"
-                      ? server.url
-                      : `${server.command ?? ""} ${(server.args ?? []).join(" ")}`}
-                  </p>
+      {servers.length === 0 ? (
+        <PageEmptyState
+          title="暂无 MCP Server"
+          description="点击右上角添加，接入本地或远程 MCP 工具服务。"
+          action={
+            <Button onClick={openCreateForm}>
+              <Plus className="size-4" />
+              添加 Server
+            </Button>
+          }
+        />
+      ) : (
+        <div className="grid gap-4">
+          {servers.map((server) => (
+            <Card key={server.id}>
+              <CardHeader className="gap-3 md:flex-row md:items-start md:justify-between">
+                <div className="space-y-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <CardTitle className="text-lg">{server.name}</CardTitle>
+                    <Badge variant="outline">{server.transport.toUpperCase()}</Badge>
+                    <Badge variant={server.status === "connected" ? "secondary" : "outline"}>{server.status}</Badge>
+                    <Badge variant="outline">{server.toolCount} 个工具</Badge>
+                  </div>
+                  <CardDescription>
+                    {server.transport === "sse" ? server.url : `${server.command ?? ""} ${(server.args ?? []).join(" ")}`}
+                  </CardDescription>
                 </div>
-              </div>
-              <div className="flex items-center gap-2">
-                {server.status === "connected" && (
-                  <span className="flex items-center gap-1 text-xs text-green-500">
-                    <CheckCircle2 className="size-3" />
-                    已连接
-                  </span>
-                )}
-                {(server.status === "connecting" || server.status === "reconnecting") && (
-                  <span className="flex items-center gap-1 text-xs text-yellow-500">
-                    <Loader2 className="size-3 animate-spin" />
-                    {server.status === "connecting" ? "连接中" : "重连中"}
-                  </span>
-                )}
-                {server.status === "disconnected" && (
-                  <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                    <Square className="size-3" />
-                    未连接
-                  </span>
-                )}
-                {server.status === "failed" && (
-                  <span className="flex items-center gap-1 text-xs text-red-500">
-                    <AlertCircle className="size-3" />
-                    失败
-                  </span>
-                )}
-              </div>
-            </div>
-
-            {server.error && (
-              <div className="mb-3 rounded bg-red-500/10 p-2 text-xs text-red-500">{server.error}</div>
-            )}
-
-            {server.tools && server.tools.length > 0 && (
-              <div className="mb-3">
-                <p className="mb-2 text-xs font-medium text-foreground">可用工具（{server.tools.length}）</p>
-                <div className="space-y-1">
-                  {server.tools.slice(0, 3).map((tool) => (
-                    <div key={tool.name} className="rounded bg-secondary/50 p-2 text-xs">
-                      <span className="font-mono text-foreground">{tool.name}</span>
-                      <span className="ml-2 text-muted-foreground">— {tool.description}</span>
-                    </div>
-                  ))}
-                  {server.tools.length > 3 && (
-                    <p className="text-xs text-muted-foreground">...还有 {server.tools.length - 3} 个工具</p>
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="outline" onClick={() => openEditForm(server)}>
+                    <Pencil className="size-4" />
+                    编辑
+                  </Button>
+                  {server.status === "disconnected" || server.status === "failed" ? (
+                    <Button onClick={() => void handleStart(server.id)}>
+                      <Play className="size-4" />
+                      {server.status === "failed" ? "重连" : "连接"}
+                    </Button>
+                  ) : (
+                    <Button variant="secondary" onClick={() => void handleStop(server.id)}>
+                      <Square className="size-4" />
+                      断开
+                    </Button>
                   )}
+                  <Button variant="outline" onClick={() => void handleDelete(server.id)}>
+                    <Trash2 className="size-4" />
+                    删除
+                  </Button>
                 </div>
-              </div>
-            )}
+              </CardHeader>
+              <CardContent className="grid gap-4 md:grid-cols-[minmax(0,1fr)_240px]">
+                <div className="space-y-3">
+                  {server.error && (
+                    <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+                      {server.error}
+                    </div>
+                  )}
+                  <div className="rounded-xl border border-border/70 p-3">
+                    <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                      <Wrench className="size-3.5" />
+                      工具注册表
+                    </div>
+                    <div className="space-y-2">
+                      {server.tools.length > 0 ? (
+                        server.tools.map((tool) => (
+                          <div key={tool.name} className="rounded-lg bg-muted/40 p-2 text-xs">
+                            <span className="font-mono text-foreground">{tool.name}</span>
+                            <span className="ml-2 text-muted-foreground">— {tool.description}</span>
+                          </div>
+                        ))
+                      ) : (
+                        <p className="text-sm text-muted-foreground">尚未发现工具；连接后会把已发现工具汇总到这里。</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <div className="rounded-xl border border-dashed border-border/70 p-4 text-sm text-muted-foreground">
+                  <div className="mb-3 flex items-center gap-2 text-foreground">
+                    <Server className="size-4 text-primary" />
+                    注册表摘要
+                  </div>
+                  <ul className="space-y-2">
+                    <li>传输方式：{server.transport.toUpperCase()}</li>
+                    <li>连接状态：{renderStatusLabel(server.status)}</li>
+                    <li>已发现工具：{server.toolCount}</li>
+                    <li>连接入口：{server.transport === "sse" ? (server.url ?? "未配置") : (server.command ?? "未配置")}</li>
+                  </ul>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
-            <div className="flex gap-2">
-              {server.status === "disconnected" && (
-                <button onClick={() => handleStart(server.id)} className={`${c.btnPrimary} text-xs`}>
-                  <Play className="mr-1 inline size-3" />
-                  连接
-                </button>
-              )}
-              {server.status === "failed" && (
-                <button onClick={() => handleStart(server.id)} className={`${c.btnPrimary} text-xs`}>
-                  <Play className="mr-1 inline size-3" />
-                  重连
-                </button>
-              )}
-              {(server.status === "connected" ||
-                server.status === "connecting" ||
-                server.status === "reconnecting") && (
-                <button onClick={() => handleStop(server.id)} className={`${c.btnSecondary} text-xs`}>
-                  <Square className="mr-1 inline size-3" />
-                  断开
-                </button>
-              )}
-              <button onClick={() => handleDelete(server.id)} className={`${c.btnDanger} text-xs`}>
-                <Trash2 className="mr-1 inline size-3" />
-                删除
-              </button>
-            </div>
-          </div>
-        ))}
+function renderStatusLabel(status: MCPServer["status"]) {
+  if (status === "connected") return "已连接";
+  if (status === "connecting") return "连接中";
+  if (status === "reconnecting") return "重连中";
+  if (status === "failed") return "失败";
+  return "未连接";
+}
 
-        {(!data?.servers || data.servers.length === 0) && (
-          <PageEmptyState
-            title="暂无 MCP Server"
-            description="点击右上角添加，接入本地或远程 MCP 工具服务。"
-            action={
-              <Button onClick={() => setShowAddForm(true)}>
-                <Plus className="size-4" />
-                添加 Server
-              </Button>
-            }
-          />
-        )}
-      </div>
-    </PageScaffold>
+function SummaryCard({ title, value, description }: { title: string; value: string; description: string }) {
+  return (
+    <Card size="sm">
+      <CardHeader>
+        <CardDescription>{title}</CardDescription>
+        <CardTitle className="text-3xl">{value}</CardTitle>
+      </CardHeader>
+      <CardContent className="pt-0 text-xs text-muted-foreground">{description}</CardContent>
+    </Card>
   );
 }

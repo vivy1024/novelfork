@@ -2,7 +2,15 @@ import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { homedir } from "node:os";
 import { existsSync } from "node:fs";
-import type { ModelDefaultSettings, RuntimeControlSettings, UserConfig, UserConfigPatch } from "../../types/settings.js";
+import type {
+  ModelDefaultSettings,
+  RuntimeControlSettings,
+  ToolAccessSettings,
+  RuntimeDebugSettings,
+  RuntimeRecoverySettings,
+  UserConfig,
+  UserConfigPatch,
+} from "../../types/settings.js";
 import { DEFAULT_USER_CONFIG } from "../../types/settings.js";
 
 /**
@@ -30,39 +38,97 @@ async function ensureConfigDir(): Promise<void> {
   }
 }
 
-function clampNumber(value: unknown, fallback: number, min: number, max: number): number {
+function clampNumber(value: unknown, fallback: number, min: number, max: number, round = true): number {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     return fallback;
   }
-  return Math.min(max, Math.max(min, Math.round(value)));
+
+  const normalized = round ? Math.round(value) : value;
+  return Math.min(max, Math.max(min, normalized));
+}
+
+function sanitizeStringList(values: unknown, fallback: string[] = []): string[] {
+  if (!Array.isArray(values)) {
+    return fallback;
+  }
+
+  return values
+    .map((item) => (typeof item === "string" ? item.trim() : ""))
+    .filter(Boolean);
+}
+
+function sanitizeRecovery(runtimeRecovery?: Partial<RuntimeRecoverySettings> | null): RuntimeRecoverySettings {
+  const defaults = DEFAULT_USER_CONFIG.runtimeControls.recovery;
+  return {
+    resumeOnStartup: typeof runtimeRecovery?.resumeOnStartup === "boolean" ? runtimeRecovery.resumeOnStartup : defaults.resumeOnStartup,
+    maxRecoveryAttempts: clampNumber(runtimeRecovery?.maxRecoveryAttempts, defaults.maxRecoveryAttempts, 0, 20),
+    maxRetryAttempts: clampNumber(runtimeRecovery?.maxRetryAttempts, defaults.maxRetryAttempts, 0, 20),
+    initialRetryDelayMs: clampNumber(runtimeRecovery?.initialRetryDelayMs, defaults.initialRetryDelayMs, 0, 300000),
+    maxRetryDelayMs: clampNumber(runtimeRecovery?.maxRetryDelayMs, defaults.maxRetryDelayMs, 0, 600000),
+    backoffMultiplier: clampNumber(runtimeRecovery?.backoffMultiplier, defaults.backoffMultiplier, 1, 10, false),
+    jitterPercent: clampNumber(runtimeRecovery?.jitterPercent, defaults.jitterPercent, 0, 100),
+  };
+}
+
+function sanitizeToolAccess(toolAccess?: Partial<ToolAccessSettings> | null): ToolAccessSettings {
+  const defaults = DEFAULT_USER_CONFIG.runtimeControls.toolAccess;
+  const mcpStrategy = toolAccess?.mcpStrategy;
+
+  return {
+    allowlist: sanitizeStringList(toolAccess?.allowlist, defaults.allowlist),
+    blocklist: sanitizeStringList(toolAccess?.blocklist, defaults.blocklist),
+    mcpStrategy: mcpStrategy === "inherit" || mcpStrategy === "allow" || mcpStrategy === "ask" || mcpStrategy === "deny"
+      ? mcpStrategy
+      : defaults.mcpStrategy,
+  };
+}
+
+function sanitizeRuntimeDebug(runtimeDebug?: Partial<RuntimeDebugSettings> | null): RuntimeDebugSettings {
+  const defaults = DEFAULT_USER_CONFIG.runtimeControls.runtimeDebug;
+  return {
+    tokenDebugEnabled: typeof runtimeDebug?.tokenDebugEnabled === "boolean" ? runtimeDebug.tokenDebugEnabled : defaults.tokenDebugEnabled,
+    rateDebugEnabled: typeof runtimeDebug?.rateDebugEnabled === "boolean" ? runtimeDebug.rateDebugEnabled : defaults.rateDebugEnabled,
+    dumpEnabled: typeof runtimeDebug?.dumpEnabled === "boolean" ? runtimeDebug.dumpEnabled : defaults.dumpEnabled,
+    traceEnabled: typeof runtimeDebug?.traceEnabled === "boolean" ? runtimeDebug.traceEnabled : defaults.traceEnabled,
+    traceSampleRatePercent: clampNumber(
+      runtimeDebug?.traceSampleRatePercent,
+      defaults.traceSampleRatePercent,
+      0,
+      100,
+    ),
+  };
 }
 
 function sanitizeRuntimeControls(runtimeControls?: Partial<RuntimeControlSettings> | null): RuntimeControlSettings {
+  const defaults = DEFAULT_USER_CONFIG.runtimeControls;
   return {
     defaultPermissionMode:
       runtimeControls?.defaultPermissionMode === "allow"
       || runtimeControls?.defaultPermissionMode === "ask"
       || runtimeControls?.defaultPermissionMode === "deny"
         ? runtimeControls.defaultPermissionMode
-        : DEFAULT_USER_CONFIG.runtimeControls.defaultPermissionMode,
+        : defaults.defaultPermissionMode,
     defaultReasoningEffort:
       runtimeControls?.defaultReasoningEffort === "low"
       || runtimeControls?.defaultReasoningEffort === "medium"
       || runtimeControls?.defaultReasoningEffort === "high"
         ? runtimeControls.defaultReasoningEffort
-        : DEFAULT_USER_CONFIG.runtimeControls.defaultReasoningEffort,
+        : defaults.defaultReasoningEffort,
     contextCompressionThresholdPercent: clampNumber(
       runtimeControls?.contextCompressionThresholdPercent,
-      DEFAULT_USER_CONFIG.runtimeControls.contextCompressionThresholdPercent,
+      defaults.contextCompressionThresholdPercent,
       50,
       95,
     ),
     contextTruncateTargetPercent: clampNumber(
       runtimeControls?.contextTruncateTargetPercent,
-      DEFAULT_USER_CONFIG.runtimeControls.contextTruncateTargetPercent,
+      defaults.contextTruncateTargetPercent,
       40,
       90,
     ),
+    recovery: sanitizeRecovery(runtimeControls?.recovery),
+    toolAccess: sanitizeToolAccess(runtimeControls?.toolAccess),
+    runtimeDebug: sanitizeRuntimeDebug(runtimeControls?.runtimeDebug),
   };
 }
 
@@ -127,7 +193,6 @@ export async function saveUserConfig(config: UserConfig): Promise<void> {
   // 如果配置文件已存在，先备份
   if (existsSync(configPath)) {
     try {
-      const existing = await readFile(configPath, "utf-8");
       // 轮转备份：backup3 <- backup2 <- backup1 <- current
       for (let i = 2; i >= 0; i--) {
         const oldPath = i === 0 ? configPath : getBackupPath(i);
@@ -150,11 +215,28 @@ export async function saveUserConfig(config: UserConfig): Promise<void> {
  */
 export async function updateUserConfig(partial: UserConfigPatch): Promise<UserConfig> {
   const current = await loadUserConfig();
+  const mergedRuntimeControls: Partial<RuntimeControlSettings> = {
+    ...current.runtimeControls,
+    ...(partial.runtimeControls ?? {}),
+    recovery: {
+      ...current.runtimeControls.recovery,
+      ...(partial.runtimeControls?.recovery ?? {}),
+    },
+    toolAccess: {
+      ...current.runtimeControls.toolAccess,
+      ...(partial.runtimeControls?.toolAccess ?? {}),
+    },
+    runtimeDebug: {
+      ...current.runtimeControls.runtimeDebug,
+      ...(partial.runtimeControls?.runtimeDebug ?? {}),
+    },
+  };
+
   const updated: UserConfig = {
     ...current,
     profile: { ...current.profile, ...(partial.profile ?? {}) },
     preferences: { ...current.preferences, ...(partial.preferences ?? {}) },
-    runtimeControls: sanitizeRuntimeControls({ ...current.runtimeControls, ...(partial.runtimeControls ?? {}) }),
+    runtimeControls: sanitizeRuntimeControls(mergedRuntimeControls),
     modelDefaults: sanitizeModelDefaults({ ...current.modelDefaults, ...(partial.modelDefaults ?? {}) }),
     shortcuts: { ...current.shortcuts, ...(partial.shortcuts ?? {}) },
     recentWorkspaces: partial.recentWorkspaces ?? current.recentWorkspaces,

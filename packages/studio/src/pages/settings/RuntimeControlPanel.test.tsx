@@ -24,6 +24,30 @@ describe("RuntimeControlPanel", () => {
         defaultReasoningEffort: "high",
         contextCompressionThresholdPercent: 85,
         contextTruncateTargetPercent: 65,
+        recovery: {
+          ...DEFAULT_USER_CONFIG.runtimeControls.recovery,
+          resumeOnStartup: false,
+          maxRecoveryAttempts: 4,
+          maxRetryAttempts: 6,
+          initialRetryDelayMs: 1500,
+          maxRetryDelayMs: 15000,
+          backoffMultiplier: 1.8,
+          jitterPercent: 15,
+        },
+        toolAccess: {
+          ...DEFAULT_USER_CONFIG.runtimeControls.toolAccess,
+          allowlist: ["Read"],
+          blocklist: ["Delete"],
+          mcpStrategy: "ask",
+        },
+        runtimeDebug: {
+          ...DEFAULT_USER_CONFIG.runtimeControls.runtimeDebug,
+          tokenDebugEnabled: true,
+          rateDebugEnabled: false,
+          dumpEnabled: true,
+          traceEnabled: false,
+          traceSampleRatePercent: 35,
+        },
       },
       modelDefaults: {
         ...DEFAULT_USER_CONFIG.modelDefaults,
@@ -41,6 +65,30 @@ describe("RuntimeControlPanel", () => {
         defaultReasoningEffort: "high",
         contextCompressionThresholdPercent: 82,
         contextTruncateTargetPercent: 60,
+        recovery: {
+          ...DEFAULT_USER_CONFIG.runtimeControls.recovery,
+          resumeOnStartup: true,
+          maxRecoveryAttempts: 7,
+          maxRetryAttempts: 9,
+          initialRetryDelayMs: 2000,
+          maxRetryDelayMs: 45000,
+          backoffMultiplier: 2.4,
+          jitterPercent: 12,
+        },
+        toolAccess: {
+          ...DEFAULT_USER_CONFIG.runtimeControls.toolAccess,
+          allowlist: ["Read", "Write", "Bash"],
+          blocklist: ["Delete", "Shell"],
+          mcpStrategy: "ask",
+        },
+        runtimeDebug: {
+          ...DEFAULT_USER_CONFIG.runtimeControls.runtimeDebug,
+          tokenDebugEnabled: true,
+          rateDebugEnabled: true,
+          dumpEnabled: false,
+          traceEnabled: true,
+          traceSampleRatePercent: 50,
+        },
       },
       modelDefaults: {
         ...DEFAULT_USER_CONFIG.modelDefaults,
@@ -60,12 +108,43 @@ describe("RuntimeControlPanel", () => {
     expect(screen.getByDisplayValue("openai:gpt-4-turbo")).toBeTruthy();
     expect(screen.getByDisplayValue("anthropic:claude-haiku-4-5")).toBeTruthy();
     expect(screen.getByDisplayValue("openai:gpt-4-turbo, deepseek:deepseek-chat")).toBeTruthy();
+    expect(screen.getByDisplayValue("4")).toBeTruthy();
+    expect(screen.getByDisplayValue("6")).toBeTruthy();
+    expect(screen.getByDisplayValue("1.8")).toBeTruthy();
+    expect(screen.getByDisplayValue("15")).toBeTruthy();
+    expect(screen.getByDisplayValue("Read")).toBeTruthy();
+    expect(screen.getByDisplayValue("Delete")).toBeTruthy();
+    expect(screen.getByDisplayValue("35")).toBeTruthy();
 
-    fireEvent.change(screen.getByLabelText("压缩阈值 (%)"), {
-      target: { value: "82" },
+    fireEvent.click(screen.getByLabelText("启动时自动恢复"));
+    fireEvent.change(screen.getByLabelText("最大恢复次数"), {
+      target: { value: "7" },
     });
-    fireEvent.change(screen.getByLabelText("截断目标 (%)"), {
-      target: { value: "60" },
+    fireEvent.change(screen.getByLabelText("最大重试次数"), {
+      target: { value: "9" },
+    });
+    fireEvent.change(screen.getByLabelText("初始退避 (ms)"), {
+      target: { value: "2000" },
+    });
+    fireEvent.change(screen.getByLabelText("最大退避 (ms)"), {
+      target: { value: "45000" },
+    });
+    fireEvent.change(screen.getByLabelText("退避倍率"), {
+      target: { value: "2.4" },
+    });
+    fireEvent.change(screen.getByLabelText("抖动 (%)"), {
+      target: { value: "12" },
+    });
+    fireEvent.change(screen.getByLabelText("工具白名单"), {
+      target: { value: "Read, Write, Bash" },
+    });
+    fireEvent.change(screen.getByLabelText("工具黑名单"), {
+      target: { value: "Delete, Shell" },
+    });
+    fireEvent.click(screen.getByLabelText("速率调试"));
+    fireEvent.click(screen.getByLabelText("Trace 调试"));
+    fireEvent.change(screen.getByLabelText("Trace 采样 (%)"), {
+      target: { value: "50" },
     });
     fireEvent.change(screen.getByLabelText("默认会话模型"), {
       target: { value: "anthropic:claude-opus-4-7" },
@@ -81,8 +160,32 @@ describe("RuntimeControlPanel", () => {
           ...DEFAULT_USER_CONFIG.runtimeControls,
           defaultPermissionMode: "ask",
           defaultReasoningEffort: "high",
-          contextCompressionThresholdPercent: 82,
-          contextTruncateTargetPercent: 60,
+          contextCompressionThresholdPercent: 85,
+          contextTruncateTargetPercent: 65,
+          recovery: {
+            ...DEFAULT_USER_CONFIG.runtimeControls.recovery,
+            resumeOnStartup: true,
+            maxRecoveryAttempts: 7,
+            maxRetryAttempts: 9,
+            initialRetryDelayMs: 2000,
+            maxRetryDelayMs: 45000,
+            backoffMultiplier: 2.4,
+            jitterPercent: 12,
+          },
+          toolAccess: {
+            ...DEFAULT_USER_CONFIG.runtimeControls.toolAccess,
+            allowlist: ["Read", "Write", "Bash"],
+            blocklist: ["Delete", "Shell"],
+            mcpStrategy: "ask",
+          },
+          runtimeDebug: {
+            ...DEFAULT_USER_CONFIG.runtimeControls.runtimeDebug,
+            tokenDebugEnabled: true,
+            rateDebugEnabled: true,
+            dumpEnabled: true,
+            traceEnabled: true,
+            traceSampleRatePercent: 50,
+          },
         },
         modelDefaults: {
           ...DEFAULT_USER_CONFIG.modelDefaults,

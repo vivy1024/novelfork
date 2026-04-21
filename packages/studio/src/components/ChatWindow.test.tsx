@@ -126,14 +126,37 @@ describe("ChatWindow", () => {
     expect(screen.getByText("最近执行链")).toBeTruthy();
     expect(screen.getByText("Read → Bash")).toBeTruthy();
     expect(screen.getByText(/2 步完成/)).toBeTruthy();
-    expect(MockWebSocket.instances[0]?.url).toContain("sessionId=session-abc123456");
+    expect(MockWebSocket.instances[0]?.url).toContain("/api/sessions/session-abc123456/chat");
     expect(MockWebSocket.instances[0]?.url).toContain("mode=chat");
   });
 
   it("hydrates chat window metadata from the formal session record", async () => {
     fetchJsonMock.mockImplementation((async (...args: [string, ...unknown[]]) => {
-      const [url] = args;
-      if (url === "/api/sessions/session-abc123456") {
+      const [url, options] = args as [string, { method?: string } | undefined];
+      if (url === "/api/sessions/session-abc123456/chat/state") {
+        return {
+          session: {
+            id: "session-abc123456",
+            title: "Writer 会话（正式）",
+            agentId: "writer",
+            kind: "standalone",
+            sessionMode: "plan",
+            status: "active",
+            createdAt: new Date().toISOString(),
+            lastModified: new Date().toISOString(),
+            messageCount: 2,
+            sortOrder: 0,
+            sessionConfig: {
+              providerId: "openai",
+              modelId: "gpt-5.4",
+              permissionMode: "ask",
+              reasoningEffort: "high",
+            },
+          },
+          messages: [],
+        };
+      }
+      if (url === "/api/sessions/session-abc123456" && options?.method === "PUT") {
         return {
           id: "session-abc123456",
           title: "Writer 会话（正式）",
@@ -160,7 +183,7 @@ describe("ChatWindow", () => {
 
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(fetchJsonMock).toHaveBeenCalledWith("/api/sessions/session-abc123456");
+    expect(fetchJsonMock).toHaveBeenCalledWith("/api/sessions/session-abc123456/chat/state");
     expect(updateWindowSpy).toHaveBeenCalledWith(
       "window-1",
       expect.objectContaining({

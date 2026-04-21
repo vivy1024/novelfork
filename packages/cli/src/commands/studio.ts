@@ -45,7 +45,7 @@ export function resolveBrowserLaunch(
 }
 
 export async function resolveStudioLaunch(root: string): Promise<StudioLaunchSpec | null> {
-  // 运行时口径：仓库级 Bun 主入口优先；packages/studio 旧入口只保留兼容桥职责。
+  // 运行时口径：仓库级 Bun 主入口优先；legacy Studio 入口仅作为最后兼容桥。
   const bunMainEntry = await firstAccessiblePath([
     join(root, "main.ts"),
     resolve(root, "..", "main.ts"),
@@ -55,6 +55,22 @@ export async function resolveStudioLaunch(root: string): Promise<StudioLaunchSpe
       studioEntry: bunMainEntry,
       command: "bun",
       args: ["run", bunMainEntry, `--root=${root}`],
+    };
+  }
+
+  const builtEntry = await firstAccessiblePath([
+    join(root, "node_modules", "@vivy1024", "novelfork-studio", "dist", "api", "index.js"),
+    join(root, "node_modules", "@vivy1024", "novelfork-studio", "server.cjs"),
+    join(cliPackageRoot, "node_modules", "@vivy1024", "novelfork-studio", "dist", "api", "index.js"),
+    join(cliPackageRoot, "node_modules", "@vivy1024", "novelfork-studio", "server.cjs"),
+    resolve(cliPackageRoot, "..", "novelfork-studio", "dist", "api", "index.js"),
+    resolve(cliPackageRoot, "..", "novelfork-studio", "server.cjs"),
+  ]);
+  if (builtEntry) {
+    return {
+      studioEntry: builtEntry,
+      command: "node",
+      args: [builtEntry, root],
     };
   }
 
@@ -93,22 +109,6 @@ export async function resolveStudioLaunch(root: string): Promise<StudioLaunchSpe
     };
   }
 
-  const builtEntry = await firstAccessiblePath([
-    join(root, "node_modules", "@vivy1024", "novelfork-studio", "dist", "api", "index.js"),
-    join(root, "node_modules", "@vivy1024", "novelfork-studio", "server.cjs"),
-    join(cliPackageRoot, "node_modules", "@vivy1024", "novelfork-studio", "dist", "api", "index.js"),
-    join(cliPackageRoot, "node_modules", "@vivy1024", "novelfork-studio", "server.cjs"),
-    resolve(cliPackageRoot, "..", "novelfork-studio", "dist", "api", "index.js"),
-    resolve(cliPackageRoot, "..", "novelfork-studio", "server.cjs"),
-  ]);
-  if (builtEntry) {
-    return {
-      studioEntry: builtEntry,
-      command: "node",
-      args: [builtEntry, root],
-    };
-  }
-
   return null;
 }
 
@@ -124,7 +124,9 @@ export const studioCommand = new Command("studio")
     if (!launch) {
       logError(
         "NovelFork Studio not found. If you cloned the repo, run:\n" +
-        "  cd packages/studio && pnpm install && pnpm build\n" +
+        "  pnpm bun:compile\n" +
+        "or, for package-only verification:\n" +
+        "  pnpm --dir packages/studio build\n" +
         "Then run 'novelfork studio' from the project root.",
       );
       process.exit(1);
