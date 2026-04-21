@@ -23,13 +23,11 @@ export interface NewSessionPayload {
 
 export type SessionPresetId = (typeof SESSION_PRESETS)[number]["id"];
 
-type SessionPreset = (typeof SESSION_PRESETS)[number];
-
 interface NewSessionDialogProps {
   readonly open: boolean;
+  readonly initialPresetId?: SessionPresetId;
   readonly onOpenChange: (open: boolean) => void;
   readonly onCreate: (payload: NewSessionPayload) => void;
-  readonly initialPresetId?: SessionPresetId;
 }
 
 export const SESSION_MODE_LABELS: Record<NarratorSessionMode, string> = {
@@ -72,43 +70,42 @@ export const SESSION_PRESETS = [
   },
 ] as const;
 
-function defaultTitleFor(presetId: SessionPresetId) {
+function defaultTitleFor(presetId: string) {
   const preset = SESSION_PRESETS.find((item) => item.id === presetId) ?? SESSION_PRESETS[0];
   return `${preset.title} 会话`;
 }
 
-export function NewSessionDialog({ open, onOpenChange, onCreate, initialPresetId = "writer" }: NewSessionDialogProps) {
-  const [presetId, setPresetId] = useState<SessionPresetId>(initialPresetId);
+export function NewSessionDialog({ open, initialPresetId = "writer", onOpenChange, onCreate }: NewSessionDialogProps) {
+  const [presetId, setPresetId] = useState<(typeof SESSION_PRESETS)[number]["id"]>(initialPresetId);
   const [agentId, setAgentId] = useState<string>(initialPresetId);
   const [title, setTitle] = useState(defaultTitleFor(initialPresetId));
   const [sessionMode, setSessionMode] = useState<NarratorSessionMode>(
-    (SESSION_PRESETS.find((item) => item.id === initialPresetId) as SessionPreset | undefined)?.defaultSessionMode ?? "chat",
+    (SESSION_PRESETS.find((item) => item.id === initialPresetId) ?? SESSION_PRESETS[0]).defaultSessionMode,
   );
   const [titleTouched, setTitleTouched] = useState(false);
 
   useEffect(() => {
     if (!open) return;
-    const initialPreset = SESSION_PRESETS.find((item) => item.id === initialPresetId) ?? SESSION_PRESETS[0];
-    setPresetId(initialPresetId);
-    setAgentId(initialPresetId);
-    setTitle(defaultTitleFor(initialPresetId));
-    setSessionMode(initialPreset.defaultSessionMode);
+    const nextPreset = SESSION_PRESETS.find((item) => item.id === initialPresetId) ?? SESSION_PRESETS[0];
+    setPresetId(nextPreset.id);
+    setAgentId(nextPreset.id);
+    setTitle(defaultTitleFor(nextPreset.id));
+    setSessionMode(nextPreset.defaultSessionMode);
     setTitleTouched(false);
-  }, [open, initialPresetId]);
+  }, [initialPresetId, open]);
 
   const selectedPreset = useMemo(
     () => SESSION_PRESETS.find((item) => item.id === presetId) ?? SESSION_PRESETS[0],
     [presetId],
   );
 
-  const handlePresetSelect = (nextPresetId: SessionPresetId) => {
-    const nextPreset = SESSION_PRESETS.find((item) => item.id === nextPresetId) ?? SESSION_PRESETS[0];
-    const generatedTitle = defaultTitleFor(nextPresetId);
+  const handlePresetSelect = (nextPresetId: (typeof SESSION_PRESETS)[number]["id"]) => {
     setPresetId(nextPresetId);
     setAgentId(nextPresetId);
+    const nextPreset = SESSION_PRESETS.find((item) => item.id === nextPresetId) ?? SESSION_PRESETS[0];
     setSessionMode(nextPreset.defaultSessionMode);
     if (!titleTouched || !title.trim() || title === defaultTitleFor(presetId)) {
-      setTitle(generatedTitle);
+      setTitle(defaultTitleFor(nextPresetId));
     }
   };
 
@@ -152,7 +149,7 @@ export function NewSessionDialog({ open, onOpenChange, onCreate, initialPresetId
               </div>
             </div>
             <p className="mt-2 text-xs leading-5 text-muted-foreground">
-              {selectedPreset.description} 选定后会自动带出同名会话标题，便于把会话当作对象来创建。
+              当前标题：{title.trim() || defaultTitleFor(selectedPreset.id)}。未手动编辑时会自动生成“{defaultTitleFor(selectedPreset.id)}”，切换模板时也会跟着更新。
             </p>
           </div>
 

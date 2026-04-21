@@ -88,10 +88,10 @@ describe("ResourcesTab", () => {
     render(<ResourcesTab />);
 
     expect(await screen.findByRole("heading", { name: "资源 / 存储面板" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "运行诊断摘要" })).toBeTruthy();
-    expect(screen.getAllByText("健康").length).toBeGreaterThanOrEqual(2);
     expect(screen.getByRole("heading", { name: "运行资源" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "存储扫描" })).toBeTruthy();
+    expect(screen.getByText("接入状态")).toBeTruthy();
+    expect(screen.getAllByText("已接入").length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText("18.2%")).toBeTruthy();
     expect(screen.getByText("8 核心")).toBeTruthy();
     expect(screen.getByText("8.00 GB / 16.00 GB")).toBeTruthy();
@@ -160,10 +160,11 @@ describe("ResourcesTab", () => {
 
     render(<ResourcesTab />);
 
-    expect(await screen.findByRole("heading", { name: "运行诊断摘要" })).toBeTruthy();
-    expect(screen.getAllByText("告警").length).toBeGreaterThanOrEqual(2);
-    expect(screen.getByText(/扫描异常/)).toBeTruthy();
-    expect(screen.getByText(/存储缓存已超出 TTL/)).toBeTruthy();
+    expect(await screen.findByText("接入状态")).toBeTruthy();
+    expect(screen.getByText("当前展示缓存快照")).toBeTruthy();
+    expect(screen.getByText("扫描失败")).toBeTruthy();
+    expect(screen.getByText(/默认 30 秒内读缓存/)).toBeTruthy();
+    expect(screen.getAllByText("异常").length).toBeGreaterThanOrEqual(1);
   });
 
   it("keeps the storage scan section visible when runtime stats are empty", async () => {

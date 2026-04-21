@@ -379,3 +379,4 @@ export async function forkBranch(cwd: string, newBranch: string): Promise<string
   await execGit(["checkout", "-b", newBranch], cwd);
   return newBranch;
 }
+

@@ -17,34 +17,9 @@ describe("studio runtime resolution", () => {
     vi.resetModules();
   });
 
-  it("prefers the repository Bun main entry before legacy studio bridges", async () => {
+  it("prefers the repository-local tsx loader for monorepo sources", async () => {
     accessMock.mockImplementation(async (path: string) => {
       if (
-        normalizePath(path).endsWith("/test-project/main.ts") ||
-        normalizePath(path).endsWith("/packages/studio/src/api/index.ts")
-      ) {
-        return;
-      }
-      throw new Error(`missing: ${path}`);
-    });
-
-    const { resolveStudioLaunch } = await import("../commands/studio.js");
-    const launch = await resolveStudioLaunch("/repo/test-project");
-
-    expect(launch).not.toBeNull();
-    expect(normalizePath(launch!.studioEntry)).toMatch(/\/test-project\/main\.ts$/);
-    expect(launch!.command).toBe("bun");
-    expect(launch!.args.map(normalizePath)).toEqual([
-      "run",
-      expect.stringMatching(/\/test-project\/main\.ts$/),
-      "--root=/repo/test-project",
-    ]);
-  });
-
-  it("prefers the built studio package before the legacy source bridge", async () => {
-    accessMock.mockImplementation(async (path: string) => {
-      if (
-        normalizePath(path).endsWith("/node_modules/@vivy1024/novelfork-studio/dist/api/index.js") ||
         normalizePath(path).endsWith("/packages/studio/src/api/index.ts") ||
         normalizePath(path).endsWith("/packages/studio/node_modules/tsx/dist/loader.mjs")
       ) {
@@ -57,17 +32,19 @@ describe("studio runtime resolution", () => {
     const launch = await resolveStudioLaunch("/repo/test-project");
 
     expect(launch).not.toBeNull();
-    expect(normalizePath(launch!.studioEntry)).toMatch(/\/node_modules\/\@vivy1024\/novelfork-studio\/dist\/api\/index\.js$/);
+    expect(normalizePath(launch!.studioEntry)).toBe("/repo/packages/studio/src/api/index.ts");
     expect(launch!.command).toBe("node");
     expect(launch!.args.map(normalizePath)).toEqual([
-      expect.stringMatching(/\/node_modules\/\@vivy1024\/novelfork-studio\/dist\/api\/index\.js$/),
+      "--import",
+      "/repo/packages/studio/node_modules/tsx/dist/loader.mjs",
+      "/repo/packages/studio/src/api/index.ts",
       "/repo/test-project",
     ]);
   });
 
   it("finds monorepo packages/studio sources from a project directory", async () => {
     accessMock.mockImplementation(async (path: string) => {
-      if (normalizePath(path).endsWith("/packages/studio/src/api/index.ts")) {
+      if (normalizePath(path) === "/repo/packages/studio/src/api/index.ts") {
         return;
       }
       throw new Error(`missing: ${path}`);
@@ -84,7 +61,7 @@ describe("studio runtime resolution", () => {
 
   it("uses node for built JavaScript entries", async () => {
     accessMock.mockImplementation(async (path: string) => {
-      if (normalizePath(path).endsWith("/test-project/node_modules/@vivy1024/novelfork-studio/dist/api/index.js")) {
+      if (normalizePath(path) === "/repo/test-project/node_modules/@vivy1024/novelfork-studio/dist/api/index.js") {
         return;
       }
       throw new Error(`missing: ${path}`);
@@ -94,17 +71,14 @@ describe("studio runtime resolution", () => {
     const launch = await resolveStudioLaunch("/repo/test-project");
 
     expect(launch).not.toBeNull();
-    expect(normalizePath(launch!.studioEntry)).toMatch(/\/node_modules\/@vivy1024\/novelfork-studio\/dist\/api\/index\.js$/);
+    expect(normalizePath(launch!.studioEntry)).toBe("/repo/test-project/node_modules/@vivy1024/novelfork-studio/dist/api/index.js");
     expect(launch!.command).toBe("node");
-    expect(launch!.args.map(normalizePath)).toEqual([
-      expect.stringMatching(/\/node_modules\/@vivy1024\/novelfork-studio\/dist\/api\/index\.js$/),
-      "/repo/test-project",
-    ]);
+    expect(launch!.args.map(normalizePath)).toEqual(["/repo/test-project/node_modules/@vivy1024/novelfork-studio/dist/api/index.js", "/repo/test-project"]);
   });
 
   it("falls back to the CLI installation's bundled studio runtime", async () => {
     accessMock.mockImplementation(async (path: string) => {
-      if (normalizePath(path).endsWith("/node_modules/@vivy1024/novelfork-studio/dist/api/index.js")) {
+      if (normalizePath(path) === normalizePath(`${cliPackageRoot}/node_modules/@vivy1024/novelfork-studio/dist/api/index.js`)) {
         return;
       }
       throw new Error(`missing: ${path}`);

@@ -8,12 +8,15 @@ import {
   getDefaultProvider,
   getModel,
   getProvider,
+  getProviderTypeLabel,
 } from "./provider-catalog";
 
 describe("provider-catalog", () => {
   it("uses shared provider ids and model helpers consistently", () => {
     expect(PROVIDERS.map((provider) => provider.id)).toEqual(["anthropic", "openai", "deepseek", "custom"]);
     expect(getProvider("anthropic")?.name).toBe("Anthropic");
+    expect(getProvider("anthropic")?.type).toBe("anthropic");
+    expect(getProviderTypeLabel("custom")).toBe("自定义");
     expect(getModel("anthropic", "claude-sonnet-4-6")?.name).toBe("Claude Sonnet 4.6");
   });
 

@@ -61,6 +61,8 @@ const ADMIN_SECTION_LABELS: Record<AdminSection, string> = {
   daemon: "守护进程",
   logs: "日志",
   worktrees: "Worktree",
+  terminal: "终端",
+  container: "容器",
 };
 
 export function routeToTabId(route: Route): string {
@@ -75,8 +77,6 @@ export function routeToTabLabel(route: Route): string {
       return route.section ? `工作流 · ${WORKFLOW_SECTION_LABELS[route.section]}` : "工作流配置";
     case "sessions":
       return "会话中心";
-    case "project-create":
-      return "新建项目";
     case "book":
       return route.bookId;
     case "book-create":

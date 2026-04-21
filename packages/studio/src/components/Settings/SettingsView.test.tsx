@@ -22,20 +22,23 @@ beforeEach(() => {
 });
 
 describe("SettingsView", () => {
-  it("uses the scaffold header and empty state for placeholder sections", () => {
+  it("uses the scaffold header and placeholder copy for shortcut sections", () => {
     render(<SettingsView nav={{}} theme="light" t={t} section="shortcuts" />);
 
     expect(screen.getByText("NovelFork Studio")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "快捷键" })).toBeTruthy();
-    expect(screen.getByText("命令面板、保存、导航等快捷键说明会在这里统一收口。")).toBeTruthy();
+    expect(screen.getByText("下一批会把命令面板、参考面板、保存等快捷键说明统一搬到这里。")).toBeTruthy();
   });
 
-  it("embeds migrated legacy settings content and runtime controls into the advanced section", async () => {
+  it("opens the compatibility settings dialog from the advanced section", async () => {
     render(<SettingsView nav={{}} theme="light" t={t} section="advanced" />);
 
-    expect(screen.getByText("主入口 · 统一数据源")).toBeTruthy();
-    expect(screen.queryByText("打开高级设置窗口")).toBeNull();
-    expect(await screen.findByText("运行控制面板")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "高级设置" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "打开高级设置窗口" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "打开高级设置" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "打开高级设置" }));
+
     expect(await screen.findByText("配置入口已迁移到设置中心")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("tab", { name: "状态" }));

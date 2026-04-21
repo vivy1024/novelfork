@@ -17,22 +17,18 @@ vi.mock("./RequestsTab", () => ({
   RequestsTab: () => <div>RequestsTab Mock</div>,
 }));
 
-vi.mock("./DaemonTab", () => ({
-  DaemonTab: () => <div>DaemonTab Mock</div>,
+vi.mock("./TerminalTab", () => ({
+  TerminalTab: () => <div>TerminalTab Mock</div>,
 }));
 
-vi.mock("./LogsTab", () => ({
-  LogsTab: () => <div>LogsTab Mock</div>,
-}));
-
-vi.mock("./WorktreesTab", () => ({
-  WorktreesTab: () => <div>WorktreesTab Mock</div>,
+vi.mock("./ContainerTab", () => ({
+  ContainerTab: () => <div>ContainerTab Mock</div>,
 }));
 
 import { Admin } from "./Admin";
 
 describe("Admin", () => {
-  it("shows daemon, logs, and worktree entry cards in overview", () => {
+  it("shows daemon, logs, worktree, terminal, and container entry cards in overview", () => {
     const onNavigateSection = vi.fn();
 
     render(<Admin section="overview" onNavigateSection={onNavigateSection} />);
@@ -40,27 +36,29 @@ describe("Admin", () => {
     fireEvent.click(screen.getByRole("button", { name: /守护进程/i }));
     fireEvent.click(screen.getByRole("button", { name: /日志/i }));
     fireEvent.click(screen.getByRole("button", { name: /worktree/i }));
+    fireEvent.click(screen.getByRole("button", { name: /终端/i }));
+    fireEvent.click(screen.getByRole("button", { name: /容器/i }));
 
     expect(onNavigateSection).toHaveBeenNthCalledWith(1, "daemon");
     expect(onNavigateSection).toHaveBeenNthCalledWith(2, "logs");
     expect(onNavigateSection).toHaveBeenNthCalledWith(3, "worktrees");
-  });
-
-  it("renders the daemon tab instead of a placeholder", () => {
-    render(<Admin section="daemon" onNavigateSection={() => {}} />);
-
-    expect(screen.getByText("DaemonTab Mock")).toBeTruthy();
-  });
-
-  it("renders the logs tab content", () => {
-    render(<Admin section="logs" onNavigateSection={() => {}} />);
-
-    expect(screen.getByText("LogsTab Mock")).toBeTruthy();
+    expect(onNavigateSection).toHaveBeenNthCalledWith(4, "terminal");
+    expect(onNavigateSection).toHaveBeenNthCalledWith(5, "container");
   });
 
   it("renders the selected admin tab content", () => {
     render(<Admin section="providers" onNavigateSection={() => {}} />);
 
     expect(screen.getByText("ProvidersTab Mock")).toBeTruthy();
+  });
+
+  it("renders terminal and container tab content", () => {
+    const { rerender } = render(<Admin section="terminal" onNavigateSection={() => {}} />);
+
+    expect(screen.getByText("TerminalTab Mock")).toBeTruthy();
+
+    rerender(<Admin section="container" onNavigateSection={() => {}} />);
+
+    expect(screen.getByText("ContainerTab Mock")).toBeTruthy();
   });
 });

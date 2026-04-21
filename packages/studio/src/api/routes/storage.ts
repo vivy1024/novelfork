@@ -13,12 +13,7 @@ import {
   loadProjectConfig,
 } from "@vivy1024/novelfork-core";
 import { ApiError } from "../errors.js";
-import { buildStudioBookConfig, type StudioCreateBookBody } from "../book-create.js";
-import {
-  persistStudioProjectInitRecord,
-  prepareStudioBookProjectBootstrap,
-  type PreparedStudioProjectBootstrap,
-} from "../lib/project-bootstrap.js";
+import { buildStudioBookConfig } from "../book-create.js";
 import type { RouterContext } from "./context.js";
 
 const TRUTH_FILES = [
@@ -65,7 +60,14 @@ export function createStorageRouter(ctx: RouterContext): Hono {
   });
 
   app.post("/api/books/create", async (c) => {
-    const body = await c.req.json<StudioCreateBookBody>();
+    const body = await c.req.json<{
+      title: string;
+      genre: string;
+      language?: string;
+      platform?: string;
+      chapterWordCount?: number;
+      targetChapters?: number;
+    }>();
 
     const now = new Date().toISOString();
     const bookConfig = buildStudioBookConfig(body, now);
@@ -87,21 +89,10 @@ export function createStorageRouter(ctx: RouterContext): Hono {
     broadcast("book:creating", { bookId, title: body.title });
     bookCreateStatus.set(bookId, { status: "creating" });
 
-    let preparedProjectBootstrap: PreparedStudioProjectBootstrap | undefined;
-    try {
-      preparedProjectBootstrap = await prepareStudioBookProjectBootstrap(body, now, { root });
-
-      const sessionLlm = await ctx.getSessionLlm(c);
-      const pipeline = new PipelineRunner(await ctx.buildPipelineConfig(sessionLlm));
-      pipeline.initBook(bookConfig).then(
-      async () => {
-        if (preparedProjectBootstrap) {
-          try {
-            await persistStudioProjectInitRecord(bookDir, preparedProjectBootstrap.projectInitRecord);
-          } catch {
-            // Keep book creation compatible even if the first-round init sidecar fails.
-          }
-        }
+    const sessionLlm = await ctx.getSessionLlm(c);
+    const pipeline = new PipelineRunner(await ctx.buildPipelineConfig(sessionLlm));
+    pipeline.initBook(bookConfig).then(
+      () => {
         bookCreateStatus.delete(bookId);
         broadcast("book:created", { bookId });
       },

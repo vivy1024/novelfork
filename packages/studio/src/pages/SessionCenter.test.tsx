@@ -91,8 +91,8 @@ describe("SessionCenter", () => {
     fireEvent.click(screen.getByRole("button", { name: /规划 Planner/ }));
 
     expect(screen.getByRole("heading", { name: "新建会话" })).toBeTruthy();
-    expect((screen.getByLabelText("Agent ID") as HTMLInputElement).value).toBe("planner");
-    expect((screen.getByLabelText("会话标题") as HTMLInputElement).value).toBe("Planner 会话");
+    expect((screen.getAllByLabelText("Agent ID").at(-1) as HTMLInputElement).value).toBe("planner");
+    expect((screen.getAllByLabelText("会话标题").at(-1) as HTMLInputElement).value).toBe("Planner 会话");
 
     fireEvent.click(screen.getByRole("button", { name: "创建会话" }));
 
@@ -183,7 +183,7 @@ describe("SessionCenter", () => {
     expect(updateSessionMock).toHaveBeenCalledWith("session-archived", { status: "active" });
   });
 
-  it("opens an existing session workspace as a shell window and leaves hydration to ChatWindow", async () => {
+  it("opens an existing session workspace without preloading chat state", async () => {
     sessionHookState = createSessionHookState({
       sessions: [
         createNarratorSession({
@@ -209,7 +209,7 @@ describe("SessionCenter", () => {
       title: "Writer 会话",
       agentId: "writer",
       sessionId: "session-active",
-      sessionMode: "chat",
+      messages: [],
     });
   });
 });

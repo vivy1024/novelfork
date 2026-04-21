@@ -3,6 +3,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { createSession } from "../lib/session-service";
+import { attachSessionChatTransport, handleSessionChatTransportMessage } from "../lib/session-chat-service";
 import sessionRouter from "./session";
 import {
   attachSessionChatTransport,
@@ -111,65 +113,46 @@ describe("sessionRouter", () => {
     });
   });
 
-  it("serves incremental chat history by sinceSeq", async () => {
-    const createResponse = await sessionRouter.request("http://localhost/", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title: "Writer 会话",
-        agentId: "writer",
-        sessionMode: "chat",
-      }),
+  it("returns the full persisted chat history, not just the recent snapshot", async () => {
+    const session = await createSession({
+      title: "History 会话",
+      agentId: "writer",
+      sessionMode: "chat",
     });
-    const created = await createResponse.json();
+    const transport = {
+      send() {},
+      close() {},
+    };
 
-    const transport = new MockTransport();
-    expect(await attachSessionChatTransport(created.id, transport)).toBe(true);
+    const attached = await attachSessionChatTransport(session.id, transport);
+    expect(attached).toBe(true);
 
-    await handleSessionChatTransportMessage(
-      created.id,
-      transport,
-      JSON.stringify({
-        type: "session:message",
-        messageId: "history-message-1",
-        content: "第一句",
-        sessionMode: "chat",
-      }),
-    );
-    await handleSessionChatTransportMessage(
-      created.id,
-      transport,
-      JSON.stringify({
-        type: "session:message",
-        messageId: "history-message-2",
-        content: "第二句",
-        sessionMode: "chat",
-      }),
-    );
+    for (let index = 1; index <= 26; index += 1) {
+      await handleSessionChatTransportMessage(
+        session.id,
+        transport,
+        JSON.stringify({
+          messageId: `history-message-${index}`,
+          content: `第 ${index} 条消息`,
+        }),
+      );
+    }
 
-    const historyResponse = await sessionRouter.request(`http://localhost/${created.id}/chat/history?sinceSeq=2`);
-    expect(historyResponse.status).toBe(200);
+    const response = await sessionRouter.request(`http://localhost/${session.id}/chat/history`);
+    expect(response.status).toBe(200);
 
-    const history = await historyResponse.json();
-    expect(history).toMatchObject({
-      sessionId: created.id,
-      sinceSeq: 2,
-      availableFromSeq: 1,
-      resetRequired: false,
-      cursor: {
-        lastSeq: 4,
-      },
+    const payload = await response.json();
+    expect(payload).toMatchObject({
+      sessionId: session.id,
     });
-    expect(history.messages).toHaveLength(2);
-    expect(history.messages[0]).toMatchObject({
-      id: "history-message-2",
+    expect(payload.messages).toHaveLength(52);
+    expect(payload.messages[0]).toMatchObject({
+      id: "history-message-1",
       role: "user",
-      seq: 3,
+      content: "第 1 条消息",
     });
-    expect(history.messages[1]).toMatchObject({
-      id: "history-message-2-assistant",
+    expect(payload.messages.at(-1)).toMatchObject({
       role: "assistant",
-      seq: 4,
     });
   });
 });
