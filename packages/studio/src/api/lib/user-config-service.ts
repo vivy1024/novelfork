@@ -30,11 +30,12 @@ async function ensureConfigDir(): Promise<void> {
   }
 }
 
-function clampNumber(value: unknown, fallback: number, min: number, max: number): number {
+function clampNumber(value: unknown, fallback: number, min: number, max: number, round = true): number {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     return fallback;
   }
-  return Math.min(max, Math.max(min, Math.round(value)));
+  const normalized = round ? Math.round(value) : value;
+  return Math.min(max, Math.max(min, normalized));
 }
 
 function sanitizeToolAccess(toolAccess?: Partial<ToolAccessSettings> | null): ToolAccessSettings {
@@ -52,6 +53,50 @@ function sanitizeToolAccess(toolAccess?: Partial<ToolAccessSettings> | null): To
       || toolAccess?.mcpStrategy === "inherit"
         ? toolAccess.mcpStrategy
         : DEFAULT_USER_CONFIG.runtimeControls.toolAccess.mcpStrategy,
+  };
+}
+
+function sanitizeRecoverySettings(runtimeControls?: Partial<RuntimeControlSettings> | null) {
+  const defaults = DEFAULT_USER_CONFIG.runtimeControls.recovery;
+  return {
+    resumeOnStartup:
+      typeof runtimeControls?.recovery?.resumeOnStartup === "boolean"
+        ? runtimeControls.recovery.resumeOnStartup
+        : defaults.resumeOnStartup,
+    maxRecoveryAttempts: clampNumber(runtimeControls?.recovery?.maxRecoveryAttempts, defaults.maxRecoveryAttempts, 0, 20),
+    maxRetryAttempts: clampNumber(runtimeControls?.recovery?.maxRetryAttempts, defaults.maxRetryAttempts, 0, 20),
+    initialRetryDelayMs: clampNumber(runtimeControls?.recovery?.initialRetryDelayMs, defaults.initialRetryDelayMs, 0, 300000),
+    maxRetryDelayMs: clampNumber(runtimeControls?.recovery?.maxRetryDelayMs, defaults.maxRetryDelayMs, 0, 600000),
+    backoffMultiplier: clampNumber(runtimeControls?.recovery?.backoffMultiplier, defaults.backoffMultiplier, 1, 10, false),
+    jitterPercent: clampNumber(runtimeControls?.recovery?.jitterPercent, defaults.jitterPercent, 0, 100),
+  };
+}
+
+function sanitizeRuntimeDebugSettings(runtimeControls?: Partial<RuntimeControlSettings> | null) {
+  const defaults = DEFAULT_USER_CONFIG.runtimeControls.runtimeDebug;
+  return {
+    tokenDebugEnabled:
+      typeof runtimeControls?.runtimeDebug?.tokenDebugEnabled === "boolean"
+        ? runtimeControls.runtimeDebug.tokenDebugEnabled
+        : defaults.tokenDebugEnabled,
+    rateDebugEnabled:
+      typeof runtimeControls?.runtimeDebug?.rateDebugEnabled === "boolean"
+        ? runtimeControls.runtimeDebug.rateDebugEnabled
+        : defaults.rateDebugEnabled,
+    dumpEnabled:
+      typeof runtimeControls?.runtimeDebug?.dumpEnabled === "boolean"
+        ? runtimeControls.runtimeDebug.dumpEnabled
+        : defaults.dumpEnabled,
+    traceEnabled:
+      typeof runtimeControls?.runtimeDebug?.traceEnabled === "boolean"
+        ? runtimeControls.runtimeDebug.traceEnabled
+        : defaults.traceEnabled,
+    traceSampleRatePercent: clampNumber(
+      runtimeControls?.runtimeDebug?.traceSampleRatePercent,
+      defaults.traceSampleRatePercent,
+      0,
+      100,
+    ),
   };
 }
 
@@ -81,7 +126,9 @@ function sanitizeRuntimeControls(runtimeControls?: Partial<RuntimeControlSetting
       40,
       90,
     ),
+    recovery: sanitizeRecoverySettings(runtimeControls),
     toolAccess: sanitizeToolAccess(runtimeControls?.toolAccess),
+    runtimeDebug: sanitizeRuntimeDebugSettings(runtimeControls),
   };
 }
 

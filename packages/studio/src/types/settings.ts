@@ -8,7 +8,8 @@ import {
   type SessionReasoningEffort,
 } from "../shared/session-types.js";
 
-export type ToolAccessMcpStrategy = SessionPermissionMode | "inherit";
+export type McpPolicyMode = SessionPermissionMode | "inherit";
+export type ToolAccessMcpStrategy = McpPolicyMode;
 
 export interface ToolAccessSettings {
   allowlist: string[];
@@ -35,12 +36,32 @@ export interface UserPreferences {
   dailyWordTarget: number;
 }
 
+export interface RecoverySettings {
+  resumeOnStartup: boolean;
+  maxRecoveryAttempts: number;
+  maxRetryAttempts: number;
+  initialRetryDelayMs: number;
+  maxRetryDelayMs: number;
+  backoffMultiplier: number;
+  jitterPercent: number;
+}
+
+export interface RuntimeDebugSettings {
+  tokenDebugEnabled: boolean;
+  rateDebugEnabled: boolean;
+  dumpEnabled: boolean;
+  traceEnabled: boolean;
+  traceSampleRatePercent: number;
+}
+
 export interface RuntimeControlSettings {
   defaultPermissionMode: SessionPermissionMode;
   defaultReasoningEffort: SessionReasoningEffort;
   contextCompressionThresholdPercent: number;
   contextTruncateTargetPercent: number;
+  recovery: RecoverySettings;
   toolAccess: ToolAccessSettings;
+  runtimeDebug: RuntimeDebugSettings;
 }
 
 export interface ModelDefaultSettings {
@@ -89,10 +110,26 @@ export const DEFAULT_USER_CONFIG: UserConfig = {
     defaultReasoningEffort: DEFAULT_SESSION_CONFIG.reasoningEffort,
     contextCompressionThresholdPercent: 80,
     contextTruncateTargetPercent: 70,
+    recovery: {
+      resumeOnStartup: true,
+      maxRecoveryAttempts: 5,
+      maxRetryAttempts: 3,
+      initialRetryDelayMs: 1000,
+      maxRetryDelayMs: 30000,
+      backoffMultiplier: 2,
+      jitterPercent: 15,
+    },
     toolAccess: {
       allowlist: [],
       blocklist: [],
       mcpStrategy: "inherit",
+    },
+    runtimeDebug: {
+      tokenDebugEnabled: false,
+      rateDebugEnabled: false,
+      dumpEnabled: false,
+      traceEnabled: false,
+      traceSampleRatePercent: 10,
     },
   },
   modelDefaults: {
