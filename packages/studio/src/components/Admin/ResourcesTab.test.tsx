@@ -74,7 +74,7 @@ describe("ResourcesTab", () => {
             label: "构建产物",
             relativePath: "dist",
             absolutePath: "D:/DESKTOP/novelfork/dist",
-            status: "missing",
+            status: "ready",
             totalBytes: 0,
             fileCount: 0,
             directoryCount: 0,
@@ -88,6 +88,8 @@ describe("ResourcesTab", () => {
     render(<ResourcesTab />);
 
     expect(await screen.findByRole("heading", { name: "资源 / 存储面板" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "运行诊断摘要" })).toBeTruthy();
+    expect(screen.getAllByText("健康").length).toBeGreaterThanOrEqual(2);
     expect(screen.getByRole("heading", { name: "运行资源" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "存储扫描" })).toBeTruthy();
     expect(screen.getByText("18.2%")).toBeTruthy();
@@ -98,6 +100,70 @@ describe("ResourcesTab", () => {
     expect(screen.getByText("当前展示最新重扫结果")).toBeTruthy();
     expect(screen.getByText("5.00 GB")).toBeTruthy();
     expect(fetchJsonMock).toHaveBeenCalledWith("/api/admin/resources");
+  });
+
+  it("marks the diagnostic summary as alerting when resources are stale or unhealthy", async () => {
+    fetchJsonMock.mockResolvedValueOnce({
+      stats: {
+        cpu: { usage: 92.5, cores: 8 },
+        memory: { used: 15 * 1024 * 1024 * 1024, total: 16 * 1024 * 1024 * 1024, free: 1 * 1024 * 1024 * 1024, usagePercent: 93.8 },
+        disk: { used: 118 * 1024 * 1024 * 1024, total: 128 * 1024 * 1024 * 1024, free: 10 * 1024 * 1024 * 1024, usagePercent: 92.2 },
+        network: { sent: 4096, received: 1024 },
+        sampledAt: "2026-04-20T10:10:00Z",
+      },
+      storage: {
+        rootPath: "D:/DESKTOP/novelfork",
+        scannedAt: "2026-04-20T10:00:00Z",
+        scanDurationMs: 300,
+        mode: "cached",
+        ageMs: 45000,
+        ttlMs: 30000,
+        summary: {
+          scannedTargets: 2,
+          existingTargets: 1,
+          totalBytes: 1024,
+          fileCount: 2,
+          directoryCount: 1,
+          largestTargetId: "books",
+          largestTargetLabel: "书籍目录",
+          largestTargetBytes: 1024,
+        },
+        targets: [
+          {
+            id: "books",
+            label: "书籍目录",
+            relativePath: "books",
+            absolutePath: "D:/DESKTOP/novelfork/books",
+            status: "ready",
+            totalBytes: 1024,
+            fileCount: 2,
+            directoryCount: 1,
+            lastModifiedAt: "2026-04-20T10:09:00Z",
+            largestChildren: [],
+          },
+          {
+            id: "dist",
+            label: "构建产物",
+            relativePath: "dist",
+            absolutePath: "D:/DESKTOP/novelfork/dist",
+            status: "error",
+            totalBytes: 0,
+            fileCount: 0,
+            directoryCount: 0,
+            lastModifiedAt: null,
+            largestChildren: [],
+            error: "扫描失败",
+          },
+        ],
+      },
+    });
+
+    render(<ResourcesTab />);
+
+    expect(await screen.findByRole("heading", { name: "运行诊断摘要" })).toBeTruthy();
+    expect(screen.getAllByText("告警").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText(/扫描异常/)).toBeTruthy();
+    expect(screen.getByText(/存储缓存已超出 TTL/)).toBeTruthy();
   });
 
   it("keeps the storage scan section visible when runtime stats are empty", async () => {

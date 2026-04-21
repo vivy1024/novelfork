@@ -199,6 +199,61 @@ describe("ChatWindow", () => {
     );
   });
 
+  it("prefers formal session snapshot messages over stale local window messages", async () => {
+    mockState = createMockState({
+      windows: [
+        {
+          ...createMockState().windows[0],
+          messages: [
+            { id: "local-stale-1", role: "assistant", content: "本地旧消息", timestamp: Date.now() - 120_000 },
+          ],
+        },
+      ],
+    });
+
+    fetchJsonMock.mockImplementation((async (...args: [string, ...unknown[]]) => {
+      const [url] = args as [string];
+      if (url === "/api/sessions/session-abc123456/chat/state") {
+        return {
+          session: {
+            id: "session-abc123456",
+            title: "Writer 会话（正式）",
+            agentId: "writer",
+            kind: "standalone",
+            sessionMode: "chat",
+            status: "active",
+            createdAt: new Date().toISOString(),
+            lastModified: new Date().toISOString(),
+            messageCount: 1,
+            sortOrder: 0,
+            sessionConfig: {
+              providerId: "anthropic",
+              modelId: "claude-sonnet-4-6",
+              permissionMode: "allow",
+              reasoningEffort: "medium",
+            },
+          },
+          messages: [
+            {
+              id: "server-msg-1",
+              role: "assistant",
+              content: "服务端正式消息",
+              timestamp: new Date().toISOString(),
+            },
+          ],
+        };
+      }
+      return { success: true };
+    }) as any);
+
+    render(<ChatWindow windowId="window-1" theme="light" />);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(screen.getByText("服务端正式消息")).toBeTruthy();
+    expect(screen.queryByText("本地旧消息")).toBeNull();
+  });
+
   it("opens context details from the current chat session with layered sources", () => {
     render(<ChatWindow windowId="window-1" theme="light" />);
 

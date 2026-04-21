@@ -35,11 +35,13 @@ interface ToolCallBlockProps {
 
 export function ToolCallBlock({ toolCall, defaultExpanded = false, className }: ToolCallBlockProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
+  const [rawExpanded, setRawExpanded] = useState(false);
   const [copiedKey, setCopiedKey] = useState<"summary" | "command" | "output" | null>(null);
   const summary = useMemo(() => buildToolCallSummary(toolCall), [toolCall]);
   const toolKind = useMemo(() => getToolCallKind(toolCall.toolName), [toolCall.toolName]);
   const primaryTarget = useMemo(() => getToolCallPrimaryTarget(toolCall), [toolCall]);
   const detailSections = useMemo(() => buildDetailSections(toolCall, toolKind), [toolCall, toolKind]);
+  const rawPayload = useMemo(() => buildRawPayload(toolCall), [toolCall]);
   const subagentCard = useMemo(() => (toolKind === "agent" ? buildSubagentCard(toolCall) : null), [toolCall, toolKind]);
   const status = toolCall.status ?? "success";
   const timeline = useMemo(
@@ -159,6 +161,19 @@ export function ToolCallBlock({ toolCall, defaultExpanded = false, className }: 
                 输出
               </Button>
             ) : null}
+            {rawPayload ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="xs"
+                onClick={() => setRawExpanded((prev) => !prev)}
+                aria-expanded={rawExpanded}
+                aria-label={rawExpanded ? "收起原始载荷" : "查看原始载荷"}
+              >
+                {rawExpanded ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
+                原始载荷
+              </Button>
+            ) : null}
             {canExpand && (
               <Button
                 type="button"
@@ -176,13 +191,16 @@ export function ToolCallBlock({ toolCall, defaultExpanded = false, className }: 
         </div>
       </CardHeader>
 
-      {expanded && canExpand && (
+      {(expanded && canExpand) || rawExpanded ? (
         <CardContent className="space-y-3 pt-3">
-          {detailSections.map((section) => (
-            <DetailSection key={section.key} label={section.label} value={section.value} tone={section.tone} />
-          ))}
+          {expanded && canExpand
+            ? detailSections.map((section) => (
+                <DetailSection key={section.key} label={section.label} value={section.value} tone={section.tone} />
+              ))
+            : null}
+          {rawExpanded && rawPayload ? <DetailSection label="原始载荷" value={rawPayload} /> : null}
         </CardContent>
-      )}
+      ) : null}
     </Card>
   );
 }
@@ -348,6 +366,19 @@ function buildDetailSections(toolCall: ToolCall, toolKind: ReturnType<typeof get
     (section): section is { key: string; label: string; value: string; tone?: "error" } =>
       Boolean(section.value?.trim()),
   );
+}
+
+function buildRawPayload(toolCall: ToolCall) {
+  const payload = {
+    input: toolCall.input ?? null,
+    result: toolCall.result ?? null,
+  };
+
+  if (payload.input == null && payload.result == null) {
+    return undefined;
+  }
+
+  return JSON.stringify(payload, null, 2);
 }
 
 function getKindLabel(toolKind: ReturnType<typeof getToolCallKind>) {

@@ -4,6 +4,8 @@
 
 import { useState } from "react";
 import { Plus, Trash2, Edit2, Save, X } from "lucide-react";
+
+import { ConfirmDialog } from "../ConfirmDialog";
 import type { Command } from "../../types/routines";
 
 interface CommandsTabProps {
@@ -14,6 +16,7 @@ interface CommandsTabProps {
 export function CommandsTab({ commands, onChange }: CommandsTabProps) {
   const [editing, setEditing] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<Command>>({});
+  const [deleteTarget, setDeleteTarget] = useState<Command | null>(null);
 
   const handleAdd = () => {
     const newCommand: Command = {
@@ -55,9 +58,10 @@ export function CommandsTab({ commands, onChange }: CommandsTabProps) {
     setEditForm({});
   };
 
-  const handleDelete = (id: string) => {
-    if (!confirm("Delete this command?")) return;
-    onChange(commands.filter((cmd) => cmd.id !== id));
+  const handleDelete = () => {
+    if (!deleteTarget) return;
+    onChange(commands.filter((cmd) => cmd.id !== deleteTarget.id));
+    setDeleteTarget(null);
   };
 
   const handleToggle = (id: string) => {
@@ -168,8 +172,9 @@ export function CommandsTab({ commands, onChange }: CommandsTabProps) {
                     <Edit2 size={14} />
                   </button>
                   <button
-                    onClick={() => handleDelete(cmd.id)}
+                    onClick={() => setDeleteTarget(cmd)}
                     className="p-1 hover:bg-accent rounded text-red-600"
+                    aria-label={`Delete command ${cmd.name}`}
                   >
                     <Trash2 size={14} />
                   </button>
@@ -185,6 +190,17 @@ export function CommandsTab({ commands, onChange }: CommandsTabProps) {
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        title="Delete Command"
+        message={deleteTarget ? `Delete /${deleteTarget.name}? This cannot be undone.` : "Delete this command? This cannot be undone."}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        variant="danger"
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   );
 }

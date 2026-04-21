@@ -81,6 +81,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
   const [input, setInput] = useState("");
   const [contextPanelOpen, setContextPanelOpen] = useState(false);
   const [sessionRecord, setSessionRecord] = useState<NarratorSessionRecord | null>(null);
+  const [sessionMessages, setSessionMessages] = useState<ChatMessage[] | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimerRef = useRef<number | null>(null);
@@ -108,13 +109,9 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
       if (envelope) {
         if (envelope.type === "session:snapshot") {
           syncSessionRecord(envelope.snapshot.session);
-          const currentWindow = useWindowStore.getState().windows.find((window) => window.id === windowId);
-          if (currentWindow) {
-            const mergedMessages = mergeSessionMessages(currentWindow.messages, envelope.snapshot.messages);
-            if (mergedMessages.length !== currentWindow.messages.length) {
-              updateWindow(windowId, { messages: mergedMessages });
-            }
-          }
+          const nextMessages = envelope.snapshot.messages.map(toChatWindowMessage);
+          setSessionMessages(nextMessages);
+          updateWindow(windowId, { messages: nextMessages });
           return;
         }
 
@@ -129,6 +126,12 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
           if (currentWindow?.messages.some((message) => message.id === nextMessage.id)) {
             return;
           }
+          setSessionMessages((current) => {
+            if (!current) {
+              return current;
+            }
+            return current.some((message) => message.id === nextMessage.id) ? current : [...current, nextMessage];
+          });
           addMessage(windowId, nextMessage);
           return;
         }
@@ -177,15 +180,9 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
         }
 
         syncSessionRecord(snapshot.session);
-        const currentWindow = useWindowStore.getState().windows.find((window) => window.id === windowId);
-        if (!currentWindow) {
-          return;
-        }
-
-        const mergedMessages = mergeSessionMessages(currentWindow.messages, snapshot.messages);
-        if (mergedMessages.length !== currentWindow.messages.length) {
-          updateWindow(windowId, { messages: mergedMessages });
-        }
+        const nextMessages = snapshot.messages.map(toChatWindowMessage);
+        setSessionMessages(nextMessages);
+        updateWindow(windowId, { messages: nextMessages });
       })
       .catch(() => {
         // ignore hydration errors and keep local fallback state
@@ -266,9 +263,11 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
     };
   }, [chatWindow?.sessionId, chatWindow?.sessionMode, handleSessionTransportMessage, sessionRecord?.sessionMode, setWsConnected, windowId]);
 
+  const effectiveMessages = sessionMessages ?? chatWindow?.messages ?? [];
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView?.({ behavior: "smooth" });
-  }, [chatWindow?.messages]);
+  }, [effectiveMessages]);
 
   useEffect(() => {
     const sessionId = chatWindow?.sessionId;
@@ -276,7 +275,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
       return;
     }
 
-    const messageCount = sessionRecord?.messageCount ?? chatWindow?.messages.length ?? 0;
+    const messageCount = sessionRecord?.messageCount ?? effectiveMessages.length;
     void fetchJson<NarratorSessionRecord>(`/api/sessions/${sessionId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -306,15 +305,15 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
       permissionMode: "allow" as SessionPermissionMode,
       reasoningEffort: "medium" as SessionReasoningEffort,
     },
-    messageCount: chatWindow.messages.length,
+    messageCount: effectiveMessages.length,
   };
   const sessionConfig = sessionState.sessionConfig;
 
   const selectedProvider = getProvider(sessionConfig.providerId);
   const selectedModel = getModel(sessionConfig.providerId, sessionConfig.modelId);
   const tokenBudget = selectedModel?.contextWindow ?? 200000;
-  const contextSummary = buildSessionContextSummary(chatWindow, tokenBudget);
-  const contextEntries = buildContextEntries(chatWindow.messages);
+  const contextSummary = buildSessionContextSummary(effectiveMessages, tokenBudget);
+  const contextEntries = buildContextEntries(effectiveMessages);
   const contextSeverityLabel =
     contextSummary.percentage >= 80 ? "临界" : contextSummary.percentage >= 60 ? "警告" : "安全";
   const contextSeverityClassName =
@@ -323,7 +322,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
       : contextSummary.percentage >= 60
         ? "text-amber-600"
         : "text-emerald-600";
-  const recentExecutionChain = buildRecentExecutionChain(chatWindow.messages);
+  const recentExecutionChain = buildRecentExecutionChain(effectiveMessages);
   const sessionBreadcrumb = buildSessionBreadcrumb(chatWindow);
 
   const handleSend = () => {
@@ -517,7 +516,11 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
                       </button>
                       <button
                         type="button"
-                        onClick={() => updateWindow(windowId, { messages: compressMessages(chatWindow.messages) })}
+                        onClick={() => {
+                          const nextMessages = compressMessages(effectiveMessages);
+                          setSessionMessages(nextMessages);
+                          updateWindow(windowId, { messages: nextMessages });
+                        }}
                         className="rounded-full border border-border/70 bg-background px-2 py-1 text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
                       >
                         压缩
@@ -814,13 +817,13 @@ function MiniInfoTile({
   );
 }
 
-function buildSessionContextSummary(chatWindow: ChatWindowState, budgetMax: number) {
-  const totalTokens = chatWindow.messages.reduce((sum, message) => sum + approximateMessageTokens(message), 0);
+function buildSessionContextSummary(messages: ChatMessage[], budgetMax: number) {
+  const totalTokens = messages.reduce((sum, message) => sum + approximateMessageTokens(message), 0);
   const percentage = budgetMax > 0 ? Math.min(Math.round((totalTokens / budgetMax) * 100), 999) : 0;
   return {
     totalTokens,
     percentage,
-    messageCount: chatWindow.messages.length,
+    messageCount: messages.length,
   };
 }
 

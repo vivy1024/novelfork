@@ -4,6 +4,8 @@
 
 import { useState } from "react";
 import { Plus, Trash2, Edit2, Save, X, Globe, Folder } from "lucide-react";
+
+import { ConfirmDialog } from "../ConfirmDialog";
 import type { Skill } from "../../types/routines";
 
 interface SkillsTabProps {
@@ -22,6 +24,7 @@ export function SkillsTab({
   const [activeTab, setActiveTab] = useState<"global" | "project">("global");
   const [editing, setEditing] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<Skill>>({});
+  const [deleteTarget, setDeleteTarget] = useState<Skill | null>(null);
 
   const skills = activeTab === "global" ? globalSkills : projectSkills;
   const onChange = activeTab === "global" ? onGlobalChange : onProjectChange;
@@ -66,9 +69,10 @@ export function SkillsTab({
     setEditForm({});
   };
 
-  const handleDelete = (id: string) => {
-    if (!confirm("Delete this skill?")) return;
-    onChange(skills.filter((skill) => skill.id !== id));
+  const handleDelete = () => {
+    if (!deleteTarget) return;
+    onChange(skills.filter((skill) => skill.id !== deleteTarget.id));
+    setDeleteTarget(null);
   };
 
   const handleToggle = (id: string) => {
@@ -210,8 +214,9 @@ export function SkillsTab({
                     <Edit2 size={14} />
                   </button>
                   <button
-                    onClick={() => handleDelete(skill.id)}
+                    onClick={() => setDeleteTarget(skill)}
                     className="p-1 hover:bg-accent rounded text-red-600"
+                    aria-label={`Delete skill ${skill.name}`}
                   >
                     <Trash2 size={14} />
                   </button>
@@ -227,6 +232,17 @@ export function SkillsTab({
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        title="Delete Skill"
+        message={deleteTarget ? `Delete ${deleteTarget.name}? This cannot be undone.` : "Delete this skill? This cannot be undone."}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        variant="danger"
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   );
 }

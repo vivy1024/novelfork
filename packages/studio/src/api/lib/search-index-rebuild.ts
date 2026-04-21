@@ -2,6 +2,20 @@ import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { globalSearchIndex } from "./search-index.js";
 
+function parseChapterFileName(fileName: string): { readonly number: number; readonly title?: string } | null {
+  const match = fileName.match(/^(\d+)(?:[_-](.+))?\.md$/i);
+  if (!match) return null;
+
+  const number = Number.parseInt(match[1]!, 10);
+  if (!Number.isFinite(number)) return null;
+
+  const rawTitle = match[2]?.replace(/_/g, " ").trim();
+  return {
+    number,
+    ...(rawTitle ? { title: rawTitle } : {}),
+  };
+}
+
 export interface SearchIndexRebuildState {
   listBooks(): Promise<ReadonlyArray<string>>;
   bookDir(bookId: string): string;
@@ -50,6 +64,7 @@ async function indexBookSearchDocuments(state: SearchIndexRebuildState, bookId: 
   const storyDir = join(bookDir, "story");
   const indexedAt = Date.now();
   let indexed = 0;
+  const indexedChapterNumbers = new Set<number>();
 
   const [chapters, chapterFiles] = await Promise.all([
     state.loadChapterIndex(bookId),
@@ -73,6 +88,27 @@ async function indexBookSearchDocuments(state: SearchIndexRebuildState, bookId: 
       timestamp: indexedAt,
       metadata: { chapterNumber: chapter.number },
     });
+    indexedChapterNumbers.add(chapter.number);
+    indexed += 1;
+  }
+
+  // Recovery path: if chapters/index.json is missing or stale, still index
+  // the markdown chapter files we can actually see on disk.
+  for (const fileName of chapterFiles) {
+    const chapter = parseChapterFileName(fileName);
+    if (!chapter || indexedChapterNumbers.has(chapter.number)) continue;
+
+    const content = await readFile(join(chaptersDir, fileName), "utf-8").catch(() => "");
+    globalSearchIndex.index({
+      id: `chapter:${bookId}:${chapter.number}`,
+      type: "chapter",
+      title: chapter.title || `Chapter ${chapter.number}`,
+      content,
+      bookId,
+      timestamp: indexedAt,
+      metadata: { chapterNumber: chapter.number },
+    });
+    indexedChapterNumbers.add(chapter.number);
     indexed += 1;
   }
 

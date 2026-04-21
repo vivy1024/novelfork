@@ -95,6 +95,37 @@ describe("ToolCallBlock", () => {
     expect(subagentCard.textContent).toContain("完成项目创建链路改造");
   });
 
+  it("reveals raw payload when requested", () => {
+    render(
+      <ToolCallBlock
+        toolCall={{
+          toolName: "MCP",
+          status: "success",
+          summary: "查询文档索引",
+          input: {
+            server: "docs-registry",
+            tool: "searchDocs",
+            query: "session state",
+          },
+          result: {
+            matches: 3,
+            source: "index-cache",
+          },
+          output: "命中 3 条结果",
+        }}
+      />,
+    );
+
+    expect(screen.queryByText(/docs-registry/)).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "查看原始载荷" }));
+
+    expect(screen.getByRole("button", { name: "收起原始载荷" })).toBeTruthy();
+    expect(screen.getByText(/"server": "docs-registry"/)).toBeTruthy();
+    expect(screen.getByText(/"tool": "searchDocs"/)).toBeTruthy();
+    expect(screen.getByText(/"source": "index-cache"/)).toBeTruthy();
+  });
+
   it("parses mock-friendly assistant payload with tool calls", () => {
     const parsed = parseAssistantPayload({
       message: "已读取文件",

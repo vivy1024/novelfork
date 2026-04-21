@@ -100,6 +100,7 @@ export function ResourcesTab() {
   const memoryUsagePercent = stats?.memory.usagePercent ?? 0;
   const diskUsagePercent = stats?.disk.usagePercent ?? 0;
   const networkTotal = stats ? stats.network.sent + stats.network.received : 0;
+  const diagnosticSummary = useMemo(() => summarizeDiagnosticSummary(stats, storage), [stats, storage]);
 
   const storageOverview = useMemo(() => {
     if (!storage) {
@@ -149,6 +150,42 @@ export function ResourcesTab() {
           </Button>
         </div>
       </div>
+
+      <section className="space-y-4" aria-labelledby="diagnostic-summary-heading">
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 id="diagnostic-summary-heading" className="text-lg font-semibold text-foreground">
+            运行诊断摘要
+          </h3>
+          <Badge variant={diagnosticSummary.variant}>{diagnosticSummary.label}</Badge>
+          {stats?.sampledAt ? <Badge variant="outline">采样 {formatShortDateTime(stats.sampledAt)}</Badge> : null}
+          {storage?.scannedAt ? <Badge variant="outline">扫描 {formatShortDateTime(storage.scannedAt)}</Badge> : null}
+        </div>
+
+        <Card className={diagnosticSummary.cardClassName}>
+          <CardHeader className="gap-3 md:flex-row md:items-start md:justify-between">
+            <div className="space-y-1">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Activity className="size-4 text-primary" />
+                运行健康
+              </CardTitle>
+              <CardDescription>基于最新资源采样与存储扫描自动判定，优先暴露异常和过期缓存。</CardDescription>
+            </div>
+            <Badge variant={diagnosticSummary.variant}>{diagnosticSummary.label}</Badge>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-foreground">{diagnosticSummary.summary}</p>
+            {diagnosticSummary.reasons.length > 0 ? (
+              <ul className="space-y-1 text-sm text-muted-foreground">
+                {diagnosticSummary.reasons.map((reason) => (
+                  <li key={reason}>• {reason}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-muted-foreground">暂无异常：当前 CPU、内存、磁盘和存储扫描都在可接受范围内。</p>
+            )}
+          </CardContent>
+        </Card>
+      </section>
 
       <section className="space-y-4" aria-labelledby="runtime-resources-heading">
         <div className="flex flex-wrap items-center gap-2">
@@ -395,6 +432,105 @@ export function ResourcesTab() {
       </section>
     </div>
   );
+}
+
+function summarizeDiagnosticSummary(stats: ResourceStats | null, storage: StorageSnapshot | null) {
+  const reasons: string[] = [];
+  let variant: "secondary" | "outline" | "destructive" = "secondary";
+  let label = "健康";
+
+  const raise = (nextVariant: typeof variant, reason: string) => {
+    reasons.push(reason);
+    if (variant === "destructive") {
+      return;
+    }
+    if (nextVariant === "destructive") {
+      variant = "destructive";
+      label = "告警";
+      return;
+    }
+    if (variant === "secondary") {
+      variant = "outline";
+      label = "注意";
+    }
+  };
+
+  if (!stats && !storage) {
+    return {
+      variant: "outline" as const,
+      label: "待接入",
+      summary: "运行资源未返回 · 存储扫描未返回",
+      reasons,
+      cardClassName: "border-dashed border-border/70 bg-muted/20",
+    };
+  }
+
+  if (stats) {
+    inspectUsage("CPU", stats.cpu.usage, 75, 90, raise);
+    inspectUsage("内存", stats.memory.usagePercent, 80, 90, raise);
+    inspectUsage("磁盘", stats.disk.usagePercent, 80, 90, raise);
+  }
+
+  if (storage) {
+    const missingTargets = storage.targets.filter((target) => target.status === "missing").length;
+    const errorTargets = storage.targets.filter((target) => target.status === "error").length;
+
+    if (errorTargets > 0) {
+      raise("destructive", `${errorTargets} 个存储目标扫描异常`);
+    } else if (missingTargets > 0) {
+      raise("outline", `${missingTargets} 个存储目标缺失`);
+    }
+
+    if (storage.mode === "cached" && storage.ageMs > storage.ttlMs) {
+      raise("outline", `存储缓存已超出 TTL ${formatDuration(storage.ageMs - storage.ttlMs)}`);
+    }
+  }
+
+  const summaryParts: string[] = [];
+  if (stats) {
+    summaryParts.push(`CPU ${stats.cpu.usage.toFixed(1)}% · 内存 ${stats.memory.usagePercent.toFixed(1)}% · 磁盘 ${stats.disk.usagePercent.toFixed(1)}%`);
+  } else {
+    summaryParts.push("运行资源未返回");
+  }
+
+  if (storage) {
+    summaryParts.push(`存储 ${storage.summary.existingTargets}/${storage.summary.scannedTargets} · ${storage.mode === "cached" ? "缓存" : "最新"}快照`);
+  } else {
+    summaryParts.push("存储扫描未返回");
+  }
+
+  return {
+    variant,
+    label,
+    summary: summaryParts.join(" · "),
+    reasons,
+    cardClassName: getDiagnosticCardClassName(variant),
+  };
+
+  function inspectUsage(
+    labelName: string,
+    value: number,
+    warningThreshold: number,
+    criticalThreshold: number,
+    push: (nextVariant: typeof variant, reason: string) => void,
+  ) {
+    if (value >= criticalThreshold) {
+      push("destructive", `${labelName}使用率 ${value.toFixed(1)}%`);
+    } else if (value >= warningThreshold) {
+      push("outline", `${labelName}使用率 ${value.toFixed(1)}%`);
+    }
+  }
+}
+
+function getDiagnosticCardClassName(variant: "secondary" | "outline" | "destructive") {
+  switch (variant) {
+    case "destructive":
+      return "border-destructive/30 bg-destructive/5";
+    case "outline":
+      return "border-amber-500/30 bg-amber-500/5";
+    default:
+      return "border-emerald-500/20 bg-emerald-500/5";
+  }
 }
 
 function MetricCard({
