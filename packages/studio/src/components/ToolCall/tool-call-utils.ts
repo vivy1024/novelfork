@@ -1,4 +1,4 @@
-import type { ToolCall, ToolCallStatus } from "@/stores/windowStore";
+import type { ToolCall, ToolCallStatus } from "@/shared/session-types";
 
 const TOOL_NAME_KEYS = ["toolName", "name", "tool", "tool_name"] as const;
 const TOOL_CALL_COLLECTION_KEYS = ["toolCalls", "tool_calls", "tools"] as const;

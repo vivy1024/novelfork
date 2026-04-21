@@ -27,6 +27,12 @@ interface WorktreePreparationResult {
   readonly worktreeCreated: boolean;
 }
 
+interface StudioProjectRepositoryRootInput {
+  readonly repositorySource: StudioProjectInitRecord["repositorySource"];
+  readonly repositoryPath?: string;
+  readonly cloneUrl?: string;
+}
+
 function normalizePathForComparison(targetPath: string): string {
   return path.resolve(targetPath).replace(/\\/g, "/").replace(/\/+$/, "");
 }
@@ -38,6 +44,54 @@ async function pathExists(targetPath: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+function normalizeCloneSource(cloneUrl: string, studioRoot: string): string {
+  const trimmed = cloneUrl.trim();
+  if (!trimmed) {
+    throw new ApiError(400, "PROJECT_BOOTSTRAP_CLONE_URL_REQUIRED", "Clone URL is required.");
+  }
+
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)) {
+    return trimmed.replace(/\/+$/, "");
+  }
+
+  if (/^[^@\s]+@[^:\s]+:.+/.test(trimmed)) {
+    return trimmed;
+  }
+
+  return normalizePathForComparison(path.resolve(studioRoot, trimmed));
+}
+
+function extractCloneRepositoryStem(cloneUrl: string): string {
+  const trimmed = cloneUrl.trim();
+  if (!trimmed) {
+    return "repo";
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    const pathname = decodeURIComponent(parsed.pathname);
+    const candidate = pathname.split("/").filter(Boolean).at(-1) ?? "repo";
+    return candidate.replace(/\.git$/i, "") || "repo";
+  } catch {
+    const candidate = trimmed.split(/[\\/]/).filter(Boolean).at(-1) ?? trimmed;
+    const tail = candidate.split(":").filter(Boolean).at(-1) ?? candidate;
+    return tail.replace(/\.git$/i, "") || "repo";
+  }
+}
+
+function buildCloneRepositoryDirectoryName(cloneUrl: string, studioRoot: string): string {
+  const normalizedSource = normalizeCloneSource(cloneUrl, studioRoot);
+  const stem = extractCloneRepositoryStem(cloneUrl)
+    .toLowerCase()
+    .replace(/[^a-z0-9\u4e00-\u9fff._-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 48);
+  const hash = createHash("sha1").update(normalizedSource).digest("hex").slice(0, 8);
+
+  return `${stem || "repo"}-${hash}`;
 }
 
 function buildWorktreeBranchName(worktreeName: string): string {
@@ -60,6 +114,11 @@ function stripBranchRef(branch: string): string {
 async function initRepository(repoRoot: string, initialBranch: string): Promise<void> {
   await mkdir(repoRoot, { recursive: true });
   await execGit(["init", `--initial-branch=${initialBranch}`], repoRoot);
+}
+
+async function cloneRepository(cloneUrl: string, repoRoot: string, studioRoot: string): Promise<void> {
+  await mkdir(path.dirname(repoRoot), { recursive: true });
+  await execGit(["clone", cloneUrl, repoRoot], studioRoot);
 }
 
 async function branchExists(repoRoot: string, branch: string): Promise<boolean> {
@@ -150,7 +209,10 @@ async function ensureWorktree(
   };
 }
 
-function resolveRepositoryRoot(record: StudioProjectInitRecord, studioRoot: string): string {
+export function resolveStudioProjectRepositoryRoot(
+  record: StudioProjectRepositoryRootInput,
+  studioRoot: string,
+): string {
   if (record.repositorySource === "existing") {
     if (!record.repositoryPath) {
       throw new ApiError(400, "PROJECT_BOOTSTRAP_PATH_REQUIRED", "Existing repository path is required.");
@@ -158,7 +220,15 @@ function resolveRepositoryRoot(record: StudioProjectInitRecord, studioRoot: stri
     return path.resolve(studioRoot, record.repositoryPath);
   }
 
-  if (record.repositorySource === "new" && record.repositoryPath) {
+  if (record.repositorySource === "clone") {
+    return path.resolve(
+      studioRoot,
+      ".novelfork-repos",
+      buildCloneRepositoryDirectoryName(record.cloneUrl ?? "", studioRoot),
+    );
+  }
+
+  if (record.repositoryPath) {
     return path.resolve(studioRoot, record.repositoryPath);
   }
 
@@ -178,15 +248,7 @@ export async function prepareStudioProjectBootstrap(
     );
   }
 
-  if (record.repositorySource === "clone") {
-    throw new ApiError(
-      501,
-      "PROJECT_BOOTSTRAP_CLONE_UNSUPPORTED",
-      "Clone bootstrap is not implemented under the current fixed workspace root yet.",
-    );
-  }
-
-  const repositoryRoot = resolveRepositoryRoot(record, options.root);
+  const repositoryRoot = resolveStudioProjectRepositoryRoot(record, options.root);
   let repositoryCreated = false;
 
   if (record.repositorySource === "existing") {
@@ -202,6 +264,17 @@ export async function prepareStudioProjectBootstrap(
         400,
         "PROJECT_BOOTSTRAP_REPOSITORY_INVALID",
         `Existing repository path is not a Git repository: "${repositoryRoot}".`,
+      );
+    }
+  } else if (record.repositorySource === "clone") {
+    if (!await pathExists(repositoryRoot)) {
+      await cloneRepository(record.cloneUrl ?? "", repositoryRoot, options.root);
+      repositoryCreated = true;
+    } else if (!await isGitRepository(repositoryRoot)) {
+      throw new ApiError(
+        400,
+        "PROJECT_BOOTSTRAP_REPOSITORY_INVALID",
+        `Clone target path is not a Git repository: "${repositoryRoot}".`,
       );
     }
   } else if (!await isGitRepository(repositoryRoot)) {

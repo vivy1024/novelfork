@@ -18,7 +18,8 @@ import { useColors } from "../hooks/use-colors";
 import { WindowControls } from "./WindowControls";
 import { useWindowRuntimeStore } from "../stores/windowRuntimeStore";
 import { useWindowStore } from "../stores/windowStore";
-import type { ChatMessage, ChatWindow as ChatWindowState, ToolCall } from "../stores/windowStore";
+import type { ChatMessage, ToolCall } from "../shared/session-types";
+import type { ChatWindow as ChatWindowState } from "../stores/windowStore";
 import {
   buildToolCallSummary,
   formatToolCallDuration,

@@ -22,6 +22,7 @@ import {
 import {
   persistStudioProjectInitRecord,
   prepareStudioBookProjectBootstrap,
+  resolveStudioProjectRepositoryRoot,
   type PreparedStudioProjectBootstrap,
 } from "../lib/project-bootstrap.js";
 import type { RouterContext } from "./context.js";
@@ -50,10 +51,10 @@ function normalizeOwnershipPath(targetPath: string): string {
 }
 
 function resolveProjectWorktreeOwnership(
-  record: Pick<StudioProjectInitRecord, "repositorySource" | "repositoryPath" | "worktreeName" | "bootstrap">,
+  record: Pick<StudioProjectInitRecord, "repositorySource" | "repositoryPath" | "cloneUrl" | "worktreeName" | "bootstrap">,
   studioRoot: string,
 ): ProjectWorktreeOwnership | null {
-  if (!record.worktreeName || record.repositorySource === "clone") {
+  if (!record.worktreeName) {
     return null;
   }
 
@@ -64,19 +65,8 @@ function resolveProjectWorktreeOwnership(
     };
   }
 
-  if (record.repositorySource === "existing") {
-    if (!record.repositoryPath) {
-      return null;
-    }
-
-    return {
-      repositoryRoot: resolve(studioRoot, record.repositoryPath),
-      worktreeName: record.worktreeName,
-    };
-  }
-
   return {
-    repositoryRoot: record.repositoryPath ? resolve(studioRoot, record.repositoryPath) : resolve(studioRoot),
+    repositoryRoot: resolveStudioProjectRepositoryRoot(record, studioRoot),
     worktreeName: record.worktreeName,
   };
 }

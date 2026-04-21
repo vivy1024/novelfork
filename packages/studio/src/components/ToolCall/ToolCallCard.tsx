@@ -1,4 +1,4 @@
-import type { ToolCall } from "../../stores/windowStore";
+import type { ToolCall } from "../../shared/session-types";
 import { ToolCallBlock } from "./ToolCallBlock";
 
 interface ToolCallCardProps {
