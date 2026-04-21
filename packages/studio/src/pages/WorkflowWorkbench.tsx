@@ -52,6 +52,9 @@ interface MCPRegistryResponse {
     connectedServers: number;
     enabledTools: number;
     discoveredTools: number;
+    allowTools?: number;
+    promptTools?: number;
+    denyTools?: number;
     policySource?: string;
     mcpStrategy?: "allow" | "ask" | "deny" | "inherit";
   };
@@ -262,6 +265,7 @@ export function WorkflowWorkbench({
           <GovernanceSummaryCard title="MCP 注册表实时摘要">
             <p className="text-foreground">已发现 {registrySummary?.discoveredTools ?? 0} 个工具</p>
             <p>已启用 {registrySummary?.enabledTools ?? 0} 个工具</p>
+            <p>allow / prompt / deny：{registrySummary?.allowTools ?? 0} / {registrySummary?.promptTools ?? 0} / {registrySummary?.denyTools ?? 0}</p>
             <p>已连接 {registrySummary?.connectedServers ?? 0} / {registrySummary?.totalServers ?? 0} 个 Server</p>
             <p>策略来源：{registrySummary?.policySource ?? "runtimeControls.toolAccess"}</p>
           </GovernanceSummaryCard>
