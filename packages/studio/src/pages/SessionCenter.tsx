@@ -22,7 +22,7 @@ export function SessionCenter({ theme }: { theme: Theme }) {
   const { sessions, loaded, createSession, updateSession } = useSession();
   const connected = windows.filter((window) => window.wsConnected).length;
   const minimized = windows.filter((window) => window.minimized).length;
-  const totalMessages = windows.reduce((sum, window) => sum + window.messages.length, 0);
+  const totalMessages = sessions.reduce((sum, session) => sum + session.messageCount, 0);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogPreset, setDialogPreset] = useState<SessionPresetId>("writer");
   const [sessionFilter, setSessionFilter] = useState<"all" | "active" | "archived">("all");
@@ -266,22 +266,24 @@ export function SessionCenter({ theme }: { theme: Theme }) {
               </>
             ) : windows.length > 0 ? (
               <div className="grid gap-4 xl:grid-cols-2">
-                {windows.map((window) => (
-                  <SessionObjectCard
-                    key={window.id}
-                    title={window.title}
-                    agentId={window.agentId}
-                    minimized={window.minimized}
-                    wsConnected={window.wsConnected}
-                    messageCount={window.messages.length}
-                    position={window.position}
-                    lastMessage={window.messages[window.messages.length - 1]}
-                    active={window.id === activeWindowId}
-                    onActivate={() => setActiveWindow(window.id)}
-                    onToggleMinimize={() => toggleMinimize(window.id)}
-                    onClose={() => removeWindow(window.id)}
-                  />
-                ))}
+                {windows.map((window) => {
+                  const session = window.sessionId ? sessions.find((item) => item.id === window.sessionId) : null;
+                  return (
+                    <SessionObjectCard
+                      key={window.id}
+                      title={session?.title ?? window.title}
+                      agentId={session?.agentId ?? window.agentId}
+                      minimized={window.minimized}
+                      wsConnected={window.wsConnected}
+                      messageCount={session?.messageCount ?? 0}
+                      position={window.position}
+                      active={window.id === activeWindowId}
+                      onActivate={() => setActiveWindow(window.id)}
+                      onToggleMinimize={() => toggleMinimize(window.id)}
+                      onClose={() => removeWindow(window.id)}
+                    />
+                  );
+                })}
               </div>
             ) : (
               <PageEmptyState
@@ -433,7 +435,6 @@ function SessionObjectCard({
   wsConnected,
   messageCount,
   position,
-  lastMessage,
   active,
   onActivate,
   onToggleMinimize,
@@ -445,15 +446,12 @@ function SessionObjectCard({
   wsConnected: boolean;
   messageCount: number;
   position: { x: number; y: number; w: number; h: number };
-  lastMessage?: { content: string; timestamp: number };
   active: boolean;
   onActivate: () => void;
   onToggleMinimize: () => void;
   onClose: () => void;
 }) {
   const positionLabel = `x:${position.x} y:${position.y} · ${position.w}×${position.h}`;
-  const latestText = lastMessage?.content ? lastMessage.content : "暂无消息";
-  const latestTime = lastMessage ? new Date(lastMessage.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "--:--";
 
   return (
     <Card className={active ? "border-primary/40 shadow-sm ring-1 ring-primary/10" : ""}>
@@ -475,15 +473,15 @@ function SessionObjectCard({
             </CardDescription>
           </div>
           <div className="text-right text-[11px] text-muted-foreground">
-            <div>最近活动</div>
-            <div className="font-medium text-foreground">{latestTime}</div>
+            <div>窗口状态</div>
+            <div className="font-medium text-foreground">{minimized ? "已收起" : "展开中"}</div>
           </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="rounded-xl border border-border/60 bg-muted/30 p-3">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">最新消息</p>
-          <p className="mt-1 line-clamp-2 text-sm leading-6 text-foreground/90">{latestText}</p>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">窗口说明</p>
+          <p className="mt-1 line-clamp-2 text-sm leading-6 text-foreground/90">当前卡片只展示会话壳层状态；正式消息与配置由会话服务端事实源提供。</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" className="h-8 px-3 text-xs" onClick={onActivate}>

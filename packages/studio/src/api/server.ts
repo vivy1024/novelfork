@@ -257,7 +257,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     app.route("/api/tools", createToolsRouter());
 
     // Worktree management
-    app.route("/api/worktree", createWorktreeRouter());
+    app.route("/api/worktree", createWorktreeRouter(root));
 
     // Poison detector - TODO: 需要重构为 Hono，暂时禁用
     // app.route("", createPoisonDetectorRouter(ctx));

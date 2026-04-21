@@ -18,6 +18,10 @@ describe("useWindowStore", () => {
     });
 
     const window = useWindowStore.getState().windows[0];
-    expect(window?.sessionConfig).toBeUndefined();
+    expect(window).toMatchObject({
+      agentId: "writer",
+      title: "Writer 会话",
+      wsConnected: false,
+    });
   });
 });

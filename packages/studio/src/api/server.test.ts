@@ -3,6 +3,8 @@ import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promise
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
+import { execGit } from "./lib/git-utils.js";
+
 const schedulerStartMock = vi.fn<() => Promise<void>>();
 const initBookMock = vi.fn();
 const runRadarMock = vi.fn();
@@ -132,6 +134,15 @@ const projectConfig = {
 
 function cloneProjectConfig() {
   return structuredClone(projectConfig);
+}
+
+async function createCommittedRepository(repoRoot: string, branch = "main"): Promise<void> {
+  await execGit(["init", `--initial-branch=${branch}`], repoRoot);
+  await execGit(["config", "user.name", "Test User"], repoRoot);
+  await execGit(["config", "user.email", "test@example.com"], repoRoot);
+  await writeFile(join(repoRoot, "README.md"), "# test\n", "utf-8");
+  await execGit(["add", "README.md"], repoRoot);
+  await execGit(["commit", "-m", "Initial commit"], repoRoot);
 }
 
 describe("createStudioServer daemon lifecycle", () => {
@@ -405,7 +416,7 @@ describe("createStudioServer daemon lifecycle", () => {
     await expect(access(join(root, "books", "existing-book", "story", "story_bible.md"))).resolves.toBeUndefined();
   });
 
-  it("persists first-round project init metadata next to the created book", async () => {
+  it("bootstraps a new local repo/worktree before persisting the project init sidecar", async () => {
     initBookMock.mockImplementationOnce(async (bookConfig: { id: string }) => {
       const bookDir = join(root, "books", bookConfig.id);
       await mkdir(join(bookDir, "story"), { recursive: true });
@@ -425,6 +436,129 @@ describe("createStudioServer daemon lifecycle", () => {
         platform: "qidian",
         language: "zh",
         projectInit: {
+          repositorySource: "new",
+          workflowMode: "serial-ops",
+          templatePreset: "web-serial",
+          gitBranch: "main",
+          worktreeName: "serial-room",
+        },
+        initializationPlan: {
+          phase: "project-create",
+          nextStage: "book-create",
+          readyToContinue: true,
+        },
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(access(join(root, ".git"))).resolves.toBeUndefined();
+    await expect(access(join(root, ".novelfork-worktrees", "serial-room"))).resolves.toBeUndefined();
+
+    await vi.waitFor(async () => {
+      const sidecar = JSON.parse(
+        await readFile(join(root, "books", "init-book", ".novelfork-project-init.json"), "utf-8"),
+      );
+      expect(sidecar).toMatchObject({
+        title: "Init Book",
+        genre: "xuanhuan",
+        platform: "qidian",
+        language: "zh",
+        repositorySource: "new",
+        workflowMode: "serial-ops",
+        templatePreset: "web-serial",
+        gitBranch: "main",
+        worktreeName: "serial-room",
+        initializationPlan: {
+          phase: "project-create",
+          nextStage: "book-create",
+          readyToContinue: true,
+        },
+        bootstrap: {
+          status: "prepared",
+          repositoryRoot: root,
+          baseBranch: "main",
+          worktreePath: join(root, ".novelfork-worktrees", "serial-room"),
+          repositoryCreated: true,
+          worktreeCreated: true,
+        },
+      });
+      expect(sidecar.bootstrap.worktreeBranch).toContain("worktree/");
+    });
+  });
+
+  it("creates a worktree inside an existing repository path before running book scaffold creation", async () => {
+    const existingRepo = await mkdtemp(join(tmpdir(), "novelfork-existing-repo-"));
+    await createCommittedRepository(existingRepo, "story-base");
+    initBookMock.mockImplementationOnce(async (bookConfig: { id: string }) => {
+      const bookDir = join(root, "books", bookConfig.id);
+      await mkdir(join(bookDir, "story"), { recursive: true });
+      await writeFile(join(bookDir, "book.json"), JSON.stringify(bookConfig), "utf-8");
+      await writeFile(join(bookDir, "story", "story_bible.md"), "# initialized", "utf-8");
+    });
+
+    try {
+      const { createStudioServer } = await import("./server.js");
+      const { app } = createStudioServer(cloneProjectConfig() as never, root);
+
+      const response = await app.request("http://localhost/api/books/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: "Existing Repo Book",
+          genre: "xuanhuan",
+          platform: "qidian",
+          language: "zh",
+          projectInit: {
+            repositorySource: "existing",
+            repositoryPath: existingRepo,
+            workflowMode: "outline-first",
+            templatePreset: "genre-default",
+            gitBranch: "main",
+            worktreeName: "draft-existing-repo",
+          },
+          initializationPlan: {
+            phase: "project-create",
+            nextStage: "book-create",
+            readyToContinue: true,
+          },
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      await expect(access(join(existingRepo, ".novelfork-worktrees", "draft-existing-repo"))).resolves.toBeUndefined();
+
+      await vi.waitFor(async () => {
+        const sidecar = JSON.parse(
+          await readFile(join(root, "books", "existing-repo-book", ".novelfork-project-init.json"), "utf-8"),
+        );
+        expect(sidecar.bootstrap).toMatchObject({
+          status: "prepared",
+          repositoryRoot: existingRepo,
+          baseBranch: "story-base",
+          baseBranchFallback: true,
+          repositoryCreated: false,
+          worktreeCreated: true,
+          worktreePath: join(existingRepo, ".novelfork-worktrees", "draft-existing-repo"),
+        });
+      });
+    } finally {
+      await rm(existingRepo, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects clone bootstrap requests explicitly instead of pretending they succeeded", async () => {
+    const { createStudioServer } = await import("./server.js");
+    const { app } = createStudioServer(cloneProjectConfig() as never, root);
+
+    const response = await app.request("http://localhost/api/books/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "Clone Book",
+        genre: "xuanhuan",
+        platform: "qidian",
+        language: "zh",
+        projectInit: {
           repositorySource: "clone",
           cloneUrl: "https://github.com/vivy1024/novelfork.git",
           workflowMode: "serial-ops",
@@ -440,29 +574,91 @@ describe("createStudioServer daemon lifecycle", () => {
       }),
     });
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(501);
+    await expect(response.json()).resolves.toEqual({
+      error: {
+        code: "PROJECT_BOOTSTRAP_CLONE_UNSUPPORTED",
+        message: "Clone bootstrap is not implemented under the current fixed workspace root yet.",
+      },
+    });
+    expect(initBookMock).not.toHaveBeenCalled();
+  });
 
-    await vi.waitFor(async () => {
-      const sidecar = JSON.parse(
-        await readFile(join(root, "books", "init-book", ".novelfork-project-init.json"), "utf-8"),
-      );
-      expect(sidecar).toMatchObject({
-        title: "Init Book",
-        genre: "xuanhuan",
-        platform: "qidian",
-        language: "zh",
-        repositorySource: "clone",
-        cloneUrl: "https://github.com/vivy1024/novelfork.git",
+  it("rejects duplicate create requests while the same book is still initializing", async () => {
+    let resolveInit: (() => void) | undefined;
+    initBookMock.mockImplementationOnce(
+      () => new Promise<void>((resolve) => {
+        resolveInit = resolve;
+      }),
+    );
+
+    const { createStudioServer } = await import("./server.js");
+    const { app } = createStudioServer(cloneProjectConfig() as never, root);
+    const payload = JSON.stringify({
+      title: "Concurrent Book",
+      genre: "xuanhuan",
+      platform: "qidian",
+      language: "zh",
+      projectInit: {
+        repositorySource: "new",
         workflowMode: "serial-ops",
         templatePreset: "web-serial",
         gitBranch: "main",
-        worktreeName: "serial-room",
-        initializationPlan: {
-          phase: "project-create",
-          nextStage: "book-create",
-          readyToContinue: true,
-        },
-      });
+        worktreeName: "concurrent-room",
+      },
+      initializationPlan: {
+        phase: "project-create",
+        nextStage: "book-create",
+        readyToContinue: true,
+      },
+    });
+
+    const firstRequest = app.request("http://localhost/api/books/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: payload,
+    });
+    await Promise.resolve();
+    const secondResponse = await app.request("http://localhost/api/books/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: payload,
+    });
+    const firstResponse = await firstRequest;
+
+    expect(firstResponse.status).toBe(200);
+    expect(secondResponse.status).toBe(409);
+    await expect(secondResponse.json()).resolves.toMatchObject({
+      error: 'Book "concurrent-book" is already being created',
+    });
+
+    resolveInit?.();
+  });
+
+  it("serves /api/worktree routes against the studio root instead of process.cwd()", async () => {
+    await createCommittedRepository(root, "main");
+
+    const { createStudioServer } = await import("./server.js");
+    const { app } = createStudioServer(cloneProjectConfig() as never, root);
+
+    const createResponse = await app.request("http://localhost/api/worktree/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "ops-room" }),
+    });
+
+    expect(createResponse.status).toBe(200);
+    await expect(createResponse.json()).resolves.toMatchObject({
+      ok: true,
+      path: join(root, ".novelfork-worktrees", "ops-room"),
+    });
+
+    const listResponse = await app.request("http://localhost/api/worktree/list");
+    expect(listResponse.status).toBe(200);
+    await expect(listResponse.json()).resolves.toMatchObject({
+      worktrees: expect.arrayContaining([
+        expect.objectContaining({ path: expect.stringContaining("ops-room") }),
+      ]),
     });
   });
 

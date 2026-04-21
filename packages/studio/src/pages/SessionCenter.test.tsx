@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 
 import { SessionCenter } from "./SessionCenter";
 import { useWindowStore } from "@/stores/windowStore";
-import type { ChatMessage, ChatWindow } from "@/stores/windowStore";
+import type { ChatWindow } from "@/stores/windowStore";
 import type { Session } from "@/hooks/useSession";
 
 const fetchJsonMock = vi.fn();
@@ -38,12 +38,11 @@ vi.mock("@/components/ChatWindowManager", () => ({
 interface MockWindowStore {
   windows: ChatWindow[];
   activeWindowId: string | null;
-  addWindow: (agentIdOrInput: string | { agentId: string; title: string; sessionId?: string; sessionMode?: "chat" | "plan"; sessionConfig?: ChatWindow["sessionConfig"] }, title?: string) => void;
+  addWindow: (agentIdOrInput: string | { agentId: string; title: string; sessionId?: string; sessionMode?: "chat" | "plan" }, title?: string) => void;
   removeWindow: (id: string) => void;
   updateWindow: (id: string, updates: Partial<ChatWindow>) => void;
   toggleMinimize: (id: string) => void;
   setActiveWindow: (id: string | null) => void;
-  addMessage: (windowId: string, message: ChatMessage) => void;
   updateLayout: (id: string, position: ChatWindow["position"]) => void;
   setWsConnected: (windowId: string, connected: boolean) => void;
 }
@@ -110,21 +109,30 @@ describe("SessionCenter", () => {
     expect(windows[0]?.agentId).toBe("planner");
     expect(windows[0]?.title).toBe("Planner 会话");
     expect(windows[0]?.sessionId).toBe("session-1");
-    expect(windows[0]?.sessionConfig).toBeUndefined();
+    expect(windows[0]?.wsConnected).toBe(false);
   });
 
   it("renders existing session cards as object entries", () => {
+    sessionHookState = createSessionHookState({
+      sessions: [
+        createNarratorSession({
+          id: "session-window-1",
+          title: "Writer 会话",
+          agentId: "writer",
+          messageCount: 1,
+        }),
+      ],
+    });
     mockState = createMockState({
       windows: [
         {
           id: "window-1",
           title: "Writer 会话",
           agentId: "writer",
+          sessionId: "session-window-1",
+          sessionMode: "chat",
           position: { x: 1, y: 2, w: 6, h: 8 },
           minimized: false,
-          messages: [
-            { id: "msg-1", role: "user", content: "写下一章", timestamp: Date.now() },
-          ],
           wsConnected: true,
         },
       ],
@@ -136,7 +144,7 @@ describe("SessionCenter", () => {
     expect(screen.getByText("Writer 会话")).toBeTruthy();
     expect(screen.getByText(/Agent writer/)).toBeTruthy();
     expect(screen.getByText("1 条消息")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "聚焦" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "聚焦工作台" })).toBeTruthy();
   });
 
   it("renders persisted narrator sessions and supports archive filtering", async () => {
@@ -203,7 +211,6 @@ describe("SessionCenter", () => {
       sessionId: "session-active",
       sessionMode: "chat",
     });
-    expect(windows[0]?.messages).toEqual([]);
   });
 });
 
@@ -254,7 +261,7 @@ function baseMockState(): MockWindowStore {
   const state: MockWindowStore = {
     windows: [] as ChatWindow[],
     activeWindowId: null as string | null,
-    addWindow(agentIdOrInput: string | { agentId: string; title: string; sessionId?: string; sessionMode?: "chat" | "plan"; sessionConfig?: ChatWindow["sessionConfig"] }, title?: string) {
+    addWindow(agentIdOrInput: string | { agentId: string; title: string; sessionId?: string; sessionMode?: "chat" | "plan" }, title?: string) {
       const normalized = typeof agentIdOrInput === "string"
         ? { agentId: agentIdOrInput, title: title ?? "Untitled Session" }
         : agentIdOrInput;
@@ -267,10 +274,8 @@ function baseMockState(): MockWindowStore {
           agentId: normalized.agentId,
           sessionId: normalized.sessionId,
           sessionMode: normalized.sessionMode,
-          sessionConfig: normalized.sessionConfig,
           position: { x: (state.windows.length * 2) % 10, y: (state.windows.length * 2) % 10, w: 6, h: 8 },
           minimized: false,
-          messages: [],
           wsConnected: false,
         },
       ];
@@ -298,11 +303,6 @@ function baseMockState(): MockWindowStore {
     updateLayout(id: string, position: { x: number; y: number; w: number; h: number }) {
       state.windows = state.windows.map((window) =>
         window.id === id ? { ...window, position } : window,
-      );
-    },
-    addMessage(windowId: string, message: { id: string; role: "user" | "assistant" | "system"; content: string; timestamp: number }) {
-      state.windows = state.windows.map((window) =>
-        window.id === windowId ? { ...window, messages: [...window.messages, message] } : window,
       );
     },
     setWsConnected(windowId: string, connected: boolean) {
