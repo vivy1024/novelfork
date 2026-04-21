@@ -2,7 +2,6 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 import {
-  DEFAULT_SESSION_CONFIG,
   type NarratorSessionMode,
   type SessionConfig,
   type SessionPermissionMode,
@@ -104,7 +103,7 @@ export const useWindowStore = create<WindowStore>()(
             minimized: false,
             messages: [],
             wsConnected: false,
-            sessionConfig: normalized.sessionConfig ?? { ...DEFAULT_SESSION_CONFIG },
+            sessionConfig: normalized.sessionConfig,
           };
           return { windows: [...state.windows, newWindow], activeWindowId: id };
         }),

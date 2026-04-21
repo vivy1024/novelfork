@@ -14,7 +14,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { fetchJson, putApi } from "@/hooks/use-api";
-import { PROVIDERS } from "@/shared/provider-catalog";
 import type {
   McpPolicyMode,
   ModelDefaultSettings,
@@ -44,12 +43,6 @@ const MCP_POLICY_OPTIONS: Array<{ value: McpPolicyMode; label: string; descripti
 
 const DEFAULT_RUNTIME_CONTROLS = DEFAULT_USER_CONFIG.runtimeControls;
 const DEFAULT_MODEL_DEFAULTS = DEFAULT_USER_CONFIG.modelDefaults;
-const MODEL_OPTIONS = PROVIDERS.flatMap((provider) =>
-  provider.models.map((model) => ({
-    value: `${provider.id}:${model.id}`,
-    label: `${provider.name} · ${model.name}`,
-  })),
-);
 
 function clampNumber(value: number, min: number, max: number, round = true) {
   const normalized = round ? Math.round(value) : value;
@@ -74,26 +67,6 @@ function parseCsvList(raw: string) {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
-}
-
-function normalizeModelDefaults(modelDefaults?: Partial<ModelDefaultSettings> | null): ModelDefaultSettings {
-  const defaults = DEFAULT_MODEL_DEFAULTS;
-  return {
-    defaultSessionModel:
-      typeof modelDefaults?.defaultSessionModel === "string" && modelDefaults.defaultSessionModel.trim().length > 0
-        ? modelDefaults.defaultSessionModel.trim()
-        : defaults.defaultSessionModel,
-    summaryModel:
-      typeof modelDefaults?.summaryModel === "string" && modelDefaults.summaryModel.trim().length > 0
-        ? modelDefaults.summaryModel.trim()
-        : defaults.summaryModel,
-    subagentModelPool:
-      Array.isArray(modelDefaults?.subagentModelPool)
-        ? modelDefaults.subagentModelPool
-            .map((item) => (typeof item === "string" ? item.trim() : ""))
-            .filter(Boolean)
-        : defaults.subagentModelPool,
-  };
 }
 
 function normalizeRuntimeControls(runtimeControls?: Partial<RuntimeControlSettings> | null): RuntimeControlSettings {
@@ -213,22 +186,58 @@ function normalizeRuntimeControls(runtimeControls?: Partial<RuntimeControlSettin
 export function RuntimeControlPanel() {
   const [runtimeControls, setRuntimeControls] = useState<RuntimeControlSettings>(DEFAULT_RUNTIME_CONTROLS);
   const [modelDefaults, setModelDefaults] = useState<ModelDefaultSettings>(DEFAULT_MODEL_DEFAULTS);
+  const [modelOptions, setModelOptions] = useState<Array<{ value: string; label: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
+
     fetchJson<Pick<UserConfig, "runtimeControls" | "modelDefaults">>("/settings/user")
       .then((data) => {
+        if (cancelled) {
+          return;
+        }
+
         setRuntimeControls(normalizeRuntimeControls(data.runtimeControls));
-        setModelDefaults(normalizeModelDefaults(data.modelDefaults));
+        setModelDefaults(data.modelDefaults ?? DEFAULT_MODEL_DEFAULTS);
         setError(null);
       })
       .catch((loadError) => {
-        setError(loadError instanceof Error ? loadError.message : String(loadError));
+        if (!cancelled) {
+          setError(loadError instanceof Error ? loadError.message : String(loadError));
+        }
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      });
+
+    void fetchJson<{ models: Array<{ modelId: string; modelName: string; providerName: string }> }>("/api/providers/models")
+      .then((data) => {
+        if (cancelled) {
+          return;
+        }
+
+        setModelOptions(
+          data.models.map((model) => ({
+            value: model.modelId,
+            label: `${model.providerName} · ${model.modelName}`,
+          })),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setModelOptions([]);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const activePermission = useMemo(
@@ -262,7 +271,7 @@ export function RuntimeControlPanel() {
     try {
       const updated = await putApi<UserConfig>("/settings/user", { runtimeControls, modelDefaults });
       setRuntimeControls(normalizeRuntimeControls(updated.runtimeControls));
-      setModelDefaults(normalizeModelDefaults(updated.modelDefaults));
+      setModelDefaults(updated.modelDefaults ?? DEFAULT_MODEL_DEFAULTS);
       setSaved(true);
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : String(saveError));
@@ -376,7 +385,7 @@ export function RuntimeControlPanel() {
             </Card>
 
             <datalist id="settings-model-options">
-              {MODEL_OPTIONS.map((option) => (
+              {modelOptions.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>

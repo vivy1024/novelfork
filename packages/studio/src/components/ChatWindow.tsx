@@ -98,6 +98,46 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
     [updateWindow, windowId],
   );
 
+  const persistSessionMessages = useCallback(
+    (nextMessages: ChatMessage[]) => {
+      const nextRecentMessages = nextMessages.map(toNarratorSessionChatMessage);
+      setSessionMessages(nextMessages);
+      updateWindow(windowId, { messages: nextMessages });
+      setSessionRecord((current) =>
+        current
+          ? {
+              ...current,
+              messageCount: nextMessages.length,
+              recentMessages: nextRecentMessages,
+            }
+          : current,
+      );
+
+      if (!chatWindow?.sessionId) {
+        return;
+      }
+
+      void fetchJson<NarratorSessionRecord>(`/api/sessions/${chatWindow.sessionId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messageCount: nextMessages.length,
+          recentMessages: nextRecentMessages,
+        }),
+      })
+        .then((session) => {
+          if (!session?.sessionConfig) {
+            return;
+          }
+          syncSessionRecord(session);
+        })
+        .catch(() => {
+          // keep local state even if the persistence write fails
+        });
+    },
+    [chatWindow?.sessionId, syncSessionRecord, updateWindow, windowId],
+  );
+
   const handleSessionTransportMessage = useCallback(
     async (rawData: unknown) => {
       const rawText = await normalizeSessionChatPayloadText(rawData);
@@ -516,18 +556,14 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
                       </button>
                       <button
                         type="button"
-                        onClick={() => {
-                          const nextMessages = compressMessages(effectiveMessages);
-                          setSessionMessages(nextMessages);
-                          updateWindow(windowId, { messages: nextMessages });
-                        }}
+                        onClick={() => persistSessionMessages(compressMessages(effectiveMessages))}
                         className="rounded-full border border-border/70 bg-background px-2 py-1 text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
                       >
                         压缩
                       </button>
                       <button
                         type="button"
-                        onClick={() => updateWindow(windowId, { messages: truncateMessages(chatWindow.messages) })}
+                        onClick={() => persistSessionMessages(truncateMessages(effectiveMessages))}
                         className="rounded-full border border-border/70 bg-background px-2 py-1 text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
                       >
                         裁剪
@@ -779,9 +815,9 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
           budgetMax: tokenBudget,
           messageCount: sessionState.messageCount,
         }}
-        onCompress={() => updateWindow(windowId, { messages: compressMessages(chatWindow.messages) })}
-        onTruncate={() => updateWindow(windowId, { messages: truncateMessages(chatWindow.messages) })}
-        onClear={() => updateWindow(windowId, { messages: [] })}
+        onCompress={() => persistSessionMessages(compressMessages(effectiveMessages))}
+        onTruncate={() => persistSessionMessages(truncateMessages(effectiveMessages))}
+        onClear={() => persistSessionMessages([])}
       />
     </>
   );
@@ -975,6 +1011,15 @@ function sumToolCallDurations(toolCalls: ToolCall[]) {
 }
 
 function toChatWindowMessage(message: NarratorSessionChatMessage): ChatMessage {
+  return {
+    id: message.id,
+    role: message.role,
+    content: message.content,
+    timestamp: message.timestamp,
+  };
+}
+
+function toNarratorSessionChatMessage(message: ChatMessage): NarratorSessionChatMessage {
   return {
     id: message.id,
     role: message.role,

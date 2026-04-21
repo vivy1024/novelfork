@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -125,6 +125,92 @@ describe("session-chat-service", () => {
     expect(snapshot?.messages[1]).toMatchObject({
       role: "assistant",
     });
+  });
+
+  it("serves reconnect snapshots from runtime state when persisted metadata is stale", async () => {
+    const {
+      createSession,
+      getSessionById,
+      attachSessionChatTransport,
+      getSessionChatSnapshot,
+      handleSessionChatTransportMessage,
+    } = await loadSessionServices();
+    const session = await createSession({
+      title: "重连会话",
+      agentId: "writer",
+      sessionMode: "chat",
+    });
+    const primaryTransport = new MockTransport();
+
+    const attached = await attachSessionChatTransport(session.id, primaryTransport);
+    expect(attached).toBe(true);
+
+    await handleSessionChatTransportMessage(
+      session.id,
+      primaryTransport,
+      JSON.stringify({
+        type: "session:message",
+        messageId: "runtime-message-1",
+        content: "请接着上一段",
+        sessionMode: "chat",
+      }),
+    );
+
+    const persistedSession = await getSessionById(session.id);
+    expect(persistedSession?.messageCount).toBe(2);
+
+    await writeFile(
+      join(sessionStoreDir, "sessions.json"),
+      JSON.stringify(
+        [
+          {
+            ...persistedSession,
+            messageCount: 0,
+            recentMessages: [],
+          },
+        ],
+        null,
+        2,
+      ),
+      "utf-8",
+    );
+
+    const reconnectTransport = new MockTransport();
+    const reattached = await attachSessionChatTransport(session.id, reconnectTransport);
+    expect(reattached).toBe(true);
+
+    const reconnectEnvelopes = reconnectTransport.sent.map((entry) => JSON.parse(entry));
+    expect(reconnectEnvelopes[0]).toMatchObject({
+      type: "session:snapshot",
+      snapshot: {
+        session: {
+          id: session.id,
+          messageCount: 2,
+        },
+        messages: [
+          {
+            id: "runtime-message-1",
+            role: "user",
+          },
+          {
+            id: "runtime-message-1-assistant",
+            role: "assistant",
+          },
+        ],
+      },
+    });
+    expect(reconnectEnvelopes[1]).toMatchObject({
+      type: "session:state",
+      session: {
+        id: session.id,
+        messageCount: 2,
+      },
+    });
+
+    const snapshot = await getSessionChatSnapshot(session.id);
+    expect(snapshot?.session.messageCount).toBe(2);
+    expect(snapshot?.session.recentMessages).toHaveLength(2);
+    expect(snapshot?.messages).toHaveLength(2);
   });
 
   it("restores recent messages from persisted session state after runtime reload", async () => {

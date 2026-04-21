@@ -19,9 +19,17 @@ export interface StudioProjectInitDraft {
   readonly worktreeName?: string;
 }
 
+export interface StudioProjectInitializationPlan {
+  readonly phase: "project-create";
+  readonly nextStage: "book-create";
+  readonly readyToContinue: boolean;
+  readonly blockingField?: "repositoryPath" | "cloneUrl";
+}
+
 export interface StudioProjectCreateDraft {
   readonly title?: string;
   readonly projectInit: StudioProjectInitDraft;
+  readonly initializationPlan: StudioProjectInitializationPlan;
 }
 
 export interface StudioCreateBookBody {
@@ -32,6 +40,7 @@ export interface StudioCreateBookBody {
   readonly chapterWordCount?: number;
   readonly targetChapters?: number;
   readonly projectInit?: Partial<StudioProjectInitDraft>;
+  readonly initializationPlan?: StudioProjectInitializationPlan;
 }
 
 export interface StudioBookConfigDraft {
@@ -59,6 +68,7 @@ export interface StudioProjectInitRecord {
   readonly cloneUrl?: string;
   readonly gitBranch: string;
   readonly worktreeName: string;
+  readonly initializationPlan: StudioProjectInitializationPlan;
   readonly createdAt: string;
 }
 
@@ -89,6 +99,56 @@ const DEFAULT_PROJECT_INIT: StudioProjectInitDraft = {
 function trimOptionalValue(value?: string): string | undefined {
   const normalized = value?.trim();
   return normalized ? normalized : undefined;
+}
+
+function buildStudioProjectInitializationPlan(
+  projectInit: StudioProjectInitDraft,
+): StudioProjectInitializationPlan {
+  if (projectInit.repositorySource === "clone" && !projectInit.cloneUrl) {
+    return {
+      phase: "project-create",
+      nextStage: "book-create",
+      readyToContinue: false,
+      blockingField: "cloneUrl",
+    };
+  }
+
+  if (projectInit.repositorySource === "existing" && !projectInit.repositoryPath) {
+    return {
+      phase: "project-create",
+      nextStage: "book-create",
+      readyToContinue: false,
+      blockingField: "repositoryPath",
+    };
+  }
+
+  return {
+    phase: "project-create",
+    nextStage: "book-create",
+    readyToContinue: true,
+  };
+}
+
+function resolveStudioProjectInitializationPlan(
+  projectInit: StudioProjectInitDraft,
+  initializationPlan?: StudioProjectInitializationPlan,
+): StudioProjectInitializationPlan {
+  const normalizedPlan = buildStudioProjectInitializationPlan(projectInit);
+
+  if (!initializationPlan) {
+    return normalizedPlan;
+  }
+
+  if (
+    initializationPlan.phase !== normalizedPlan.phase
+    || initializationPlan.nextStage !== normalizedPlan.nextStage
+    || initializationPlan.readyToContinue !== normalizedPlan.readyToContinue
+    || initializationPlan.blockingField !== normalizedPlan.blockingField
+  ) {
+    return normalizedPlan;
+  }
+
+  return initializationPlan;
 }
 
 export function normalizeStudioPlatform(platform?: string): Platform {
@@ -148,10 +208,12 @@ export function normalizeStudioProjectCreateDraft(
   draft?: Partial<StudioProjectCreateDraft>,
 ): StudioProjectCreateDraft {
   const title = trimOptionalValue(draft?.title);
+  const projectInit = normalizeStudioProjectInit(draft?.projectInit, title);
 
   return {
     ...(title ? { title } : {}),
-    projectInit: normalizeStudioProjectInit(draft?.projectInit, title),
+    projectInit,
+    initializationPlan: buildStudioProjectInitializationPlan(projectInit),
   };
 }
 
@@ -183,6 +245,7 @@ export function buildStudioProjectInitRecord(
   now: string,
 ): StudioProjectInitRecord {
   const projectInit = normalizeStudioProjectInit(body.projectInit, body.title);
+  const initializationPlan = resolveStudioProjectInitializationPlan(projectInit, body.initializationPlan);
 
   return {
     title: body.title,
@@ -200,6 +263,7 @@ export function buildStudioProjectInitRecord(
     ...(projectInit.cloneUrl ? { cloneUrl: projectInit.cloneUrl } : {}),
     gitBranch: projectInit.gitBranch ?? DEFAULT_PROJECT_INIT_BRANCH,
     worktreeName: projectInit.worktreeName ?? suggestStudioWorktreeName(body.title),
+    initializationPlan,
     createdAt: now,
   };
 }

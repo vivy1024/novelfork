@@ -76,6 +76,12 @@ export function createStorageRouter(ctx: RouterContext): Hono {
         gitBranch?: string;
         worktreeName?: string;
       };
+      initializationPlan?: {
+        phase: "project-create";
+        nextStage: "book-create";
+        readyToContinue: boolean;
+        blockingField?: "repositoryPath" | "cloneUrl";
+      };
     }>();
 
     const now = new Date().toISOString();

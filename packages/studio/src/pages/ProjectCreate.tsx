@@ -82,6 +82,7 @@ export function ProjectCreate({ nav, theme, t, initialDraft, flowRevision = 0 }:
       worktreeName,
     },
   });
+  const initializationPlan = projectCreateDraft.initializationPlan;
 
   const copy = projectLang === "en"
     ? {
@@ -152,6 +153,11 @@ export function ProjectCreate({ nav, theme, t, initialDraft, flowRevision = 0 }:
         <div className="space-y-1">
           <div className="text-sm font-medium text-foreground">{copy.initSection}</div>
           <p className="text-xs leading-5 text-muted-foreground">{copy.initHint}</p>
+          <p className="text-xs leading-5 text-muted-foreground">
+            {projectLang === "en"
+              ? `Initialization plan: ${initializationPlan.readyToContinue ? "ready for the next step" : `waiting for ${initializationPlan.blockingField}`}`
+              : `初始化计划：${initializationPlan.readyToContinue ? "可进入下一步" : initializationPlan.blockingField === "cloneUrl" ? "等待填写克隆地址" : "等待填写仓库路径"}`}
+          </p>
         </div>
 
         <div className="space-y-2">
@@ -241,8 +247,13 @@ export function ProjectCreate({ nav, theme, t, initialDraft, flowRevision = 0 }:
         </button>
         <button
           type="button"
-          onClick={() => nav.toBookCreate(projectCreateDraft)}
-          className={`px-4 py-3 ${c.btnPrimary} rounded-md font-medium text-base`}
+          onClick={() => {
+            if (initializationPlan.readyToContinue) {
+              nav.toBookCreate(projectCreateDraft);
+            }
+          }}
+          disabled={!initializationPlan.readyToContinue}
+          className={`px-4 py-3 ${initializationPlan.readyToContinue ? c.btnPrimary : "bg-muted text-muted-foreground cursor-not-allowed"} rounded-md font-medium text-base`}
         >
           {copy.next}
         </button>

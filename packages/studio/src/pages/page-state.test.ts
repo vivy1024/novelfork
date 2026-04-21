@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildStudioCreateBookRequest,
   defaultChapterWordsForLanguage,
   initializationDefaultsForMode,
   platformOptionsForLanguage,
@@ -51,6 +52,52 @@ describe("platformOptionsForLanguage", () => {
     const values = platformOptionsForLanguage("en").map((option) => option.value);
     expect(new Set(values).size).toBe(values.length);
     expect(values).toEqual(["royal-road", "kindle-unlimited", "scribble-hub", "other"]);
+  });
+});
+
+describe("buildStudioCreateBookRequest", () => {
+  it("carries the initialization plan into the create payload", () => {
+    expect(buildStudioCreateBookRequest({
+      title: "  仙路长明  ",
+      genre: "xuanhuan",
+      language: "zh",
+      platform: "qidian",
+      chapterWords: "3400",
+      targetChapters: "280",
+      projectInit: {
+        repositorySource: "clone",
+        cloneUrl: "https://github.com/vivy1024/novelfork.git",
+        workflowMode: "serial-ops",
+        templatePreset: "web-serial",
+        gitBranch: "main",
+        worktreeName: "serial-room",
+      },
+      initializationPlan: {
+        phase: "project-create",
+        nextStage: "book-create",
+        readyToContinue: true,
+      },
+    })).toEqual({
+      title: "仙路长明",
+      genre: "xuanhuan",
+      language: "zh",
+      platform: "qidian",
+      chapterWordCount: 3400,
+      targetChapters: 280,
+      projectInit: {
+        repositorySource: "clone",
+        cloneUrl: "https://github.com/vivy1024/novelfork.git",
+        workflowMode: "serial-ops",
+        templatePreset: "web-serial",
+        gitBranch: "main",
+        worktreeName: "serial-room",
+      },
+      initializationPlan: {
+        phase: "project-create",
+        nextStage: "book-create",
+        readyToContinue: true,
+      },
+    });
   });
 });
 

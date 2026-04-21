@@ -432,6 +432,11 @@ describe("createStudioServer daemon lifecycle", () => {
           gitBranch: "main",
           worktreeName: "serial-room",
         },
+        initializationPlan: {
+          phase: "project-create",
+          nextStage: "book-create",
+          readyToContinue: true,
+        },
       }),
     });
 
@@ -452,6 +457,11 @@ describe("createStudioServer daemon lifecycle", () => {
         templatePreset: "web-serial",
         gitBranch: "main",
         worktreeName: "serial-room",
+        initializationPlan: {
+          phase: "project-create",
+          nextStage: "book-create",
+          readyToContinue: true,
+        },
       });
     });
   });

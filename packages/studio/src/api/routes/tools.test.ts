@@ -80,6 +80,30 @@ describe("createToolsRouter", () => {
     );
   });
 
+  it("keeps builtin prompt tools visible when the runtime fallback allows tools", async () => {
+    const app = createToolsRouter();
+    const response = await app.request("http://localhost/list");
+    expect(response.status).toBe(200);
+
+    const payload = await response.json();
+    expect(payload.tools).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "Write",
+          access: "prompt",
+          enabled: true,
+          requiresConfirmation: true,
+        }),
+        expect.objectContaining({
+          name: "Edit",
+          access: "prompt",
+          enabled: true,
+          requiresConfirmation: true,
+        }),
+      ]),
+    );
+  });
+
   it("executes allowlisted tools", async () => {
     userConfigState.runtimeControls.toolAccess.allowlist = ["Read"];
 

@@ -198,4 +198,39 @@ describe("RuntimeControlPanel", () => {
 
     expect(await screen.findByText("运行控制已保存。")).toBeTruthy();
   });
+
+  it("hydrates model suggestions from the provider model registry route", async () => {
+    fetchJsonMock.mockImplementation(async (url: string) => {
+      if (url === "/settings/user") {
+        return {
+          runtimeControls: DEFAULT_USER_CONFIG.runtimeControls,
+          modelDefaults: DEFAULT_USER_CONFIG.modelDefaults,
+        };
+      }
+
+      if (url === "/api/providers/models") {
+        return {
+          models: [
+            {
+              modelId: "local:novel-1",
+              modelName: "Novel 1",
+              providerId: "local",
+              providerName: "本地网关",
+              enabled: true,
+              contextWindow: 32768,
+              maxOutputTokens: 8192,
+            },
+          ],
+        };
+      }
+
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    render(<RuntimeControlPanel />);
+
+    await waitFor(() => {
+      expect(fetchJsonMock).toHaveBeenCalledWith("/api/providers/models");
+    });
+  });
 });

@@ -254,6 +254,57 @@ describe("ChatWindow", () => {
     expect(screen.queryByText("本地旧消息")).toBeNull();
   });
 
+  it("persists compressed session messages back to the formal session state", async () => {
+    mockState = createMockState({
+      windows: [
+        {
+          ...createMockState().windows[0],
+          messages: [
+            { id: "msg-1", role: "user", content: "第一条消息", timestamp: Date.now() - 300_000 },
+            { id: "msg-2", role: "assistant", content: "第二条消息", timestamp: Date.now() - 240_000 },
+            { id: "msg-3", role: "user", content: "第三条消息", timestamp: Date.now() - 180_000 },
+            { id: "msg-4", role: "assistant", content: "第四条消息", timestamp: Date.now() - 120_000 },
+            { id: "msg-5", role: "user", content: "第五条消息", timestamp: Date.now() - 60_000 },
+          ],
+        },
+      ],
+    });
+
+    render(<ChatWindow windowId="window-1" theme="light" />);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    fetchJsonMock.mockClear();
+
+    fireEvent.click(screen.getByRole("button", { name: "压缩" }));
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const persistCall = fetchJsonMock.mock.calls.find(
+      ([url, options]) =>
+        url === "/api/sessions/session-abc123456" &&
+        typeof options === "object" &&
+        options !== null &&
+        "method" in options &&
+        (options as { method?: string }).method === "PUT",
+    );
+
+    expect(persistCall).toBeTruthy();
+    const [, options] = persistCall as [string, { body?: string }];
+    expect(JSON.parse(options.body ?? "{}")).toMatchObject({
+      messageCount: 5,
+      recentMessages: [
+        expect.objectContaining({
+          role: "system",
+          content: "已压缩较早消息，共保留最近 4 条对话。",
+        }),
+        expect.objectContaining({ id: "msg-2", content: "第二条消息" }),
+        expect.objectContaining({ id: "msg-3", content: "第三条消息" }),
+        expect.objectContaining({ id: "msg-4", content: "第四条消息" }),
+        expect.objectContaining({ id: "msg-5", content: "第五条消息" }),
+      ],
+    });
+  });
+
   it("opens context details from the current chat session with layered sources", () => {
     render(<ChatWindow windowId="window-1" theme="light" />);
 

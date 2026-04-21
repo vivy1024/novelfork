@@ -12,6 +12,7 @@ import type {
   UserConfigPatch,
 } from "../../types/settings.js";
 import { DEFAULT_USER_CONFIG } from "../../types/settings.js";
+import { providerManager } from "./provider-manager.js";
 
 /**
  * 获取用户配置文件路径
@@ -132,23 +133,31 @@ function sanitizeRuntimeControls(runtimeControls?: Partial<RuntimeControlSetting
   };
 }
 
+function normalizeKnownModelId(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const normalized = value.trim();
+  if (!normalized) {
+    return undefined;
+  }
+
+  return providerManager.getModel(normalized) ? normalized : undefined;
+}
+
 function sanitizeModelDefaults(modelDefaults?: Partial<ModelDefaultSettings> | null): ModelDefaultSettings {
   const defaultModelDefaults = DEFAULT_USER_CONFIG.modelDefaults;
+  const defaultSessionModel = normalizeKnownModelId(modelDefaults?.defaultSessionModel);
+  const summaryModel = normalizeKnownModelId(modelDefaults?.summaryModel);
+  const subagentModelPool = Array.isArray(modelDefaults?.subagentModelPool)
+    ? modelDefaults.subagentModelPool.map(normalizeKnownModelId).filter((value): value is string => Boolean(value))
+    : defaultModelDefaults.subagentModelPool;
+
   return {
-    defaultSessionModel:
-      typeof modelDefaults?.defaultSessionModel === "string" && modelDefaults.defaultSessionModel.trim().length > 0
-        ? modelDefaults.defaultSessionModel.trim()
-        : defaultModelDefaults.defaultSessionModel,
-    summaryModel:
-      typeof modelDefaults?.summaryModel === "string" && modelDefaults.summaryModel.trim().length > 0
-        ? modelDefaults.summaryModel.trim()
-        : defaultModelDefaults.summaryModel,
-    subagentModelPool:
-      Array.isArray(modelDefaults?.subagentModelPool)
-        ? modelDefaults.subagentModelPool
-          .map((item) => typeof item === "string" ? item.trim() : "")
-          .filter(Boolean)
-        : defaultModelDefaults.subagentModelPool,
+    defaultSessionModel: defaultSessionModel ?? defaultModelDefaults.defaultSessionModel,
+    summaryModel: summaryModel ?? defaultModelDefaults.summaryModel,
+    subagentModelPool: subagentModelPool.length > 0 ? subagentModelPool : defaultModelDefaults.subagentModelPool,
   };
 }
 
