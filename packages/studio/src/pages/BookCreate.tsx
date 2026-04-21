@@ -2,7 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import {
   normalizeStudioProjectCreateDraft,
   normalizeStudioProjectInit,
+  type StudioCreateBookBody,
   type StudioProjectCreateDraft,
+  type StudioProjectInitDraft,
+  type StudioProjectInitializationPlan,
   type StudioRepositorySource,
   type StudioTemplatePreset,
   type StudioWorkflowMode,
@@ -91,6 +94,28 @@ export function initializationDefaultsForMode(
   return {
     chapterWords: String(workflowWords),
     targetChapters: String(Math.max(40, baseChapters + templateDelta)),
+  };
+}
+
+export function buildStudioCreateBookRequest(input: {
+  readonly title: string;
+  readonly genre: string;
+  readonly language: "zh" | "en";
+  readonly platform: string;
+  readonly chapterWords: string;
+  readonly targetChapters: string;
+  readonly projectInit: StudioProjectInitDraft;
+  readonly initializationPlan?: StudioProjectInitializationPlan;
+}): StudioCreateBookBody {
+  return {
+    title: input.title.trim(),
+    genre: input.genre,
+    language: input.language,
+    platform: input.platform,
+    chapterWordCount: parseInt(input.chapterWords, 10),
+    targetChapters: parseInt(input.targetChapters, 10),
+    projectInit: input.projectInit,
+    ...(input.initializationPlan ? { initializationPlan: input.initializationPlan } : {}),
   };
 }
 
@@ -331,15 +356,16 @@ export function BookCreate({ nav, theme, t, projectCreateDraft, flowRevision = 0
     setCreating(true);
     setError(null);
     try {
-      const result = await postApi<{ bookId: string }>("/books/create", {
-        title: title.trim(),
+      const result = await postApi<{ bookId: string }>("/books/create", buildStudioCreateBookRequest({
+        title,
         genre,
         language: projectLang,
         platform,
-        chapterWordCount: parseInt(chapterWords, 10),
-        targetChapters: parseInt(targetChapters, 10),
+        chapterWords,
+        targetChapters,
         projectInit,
-      });
+        initializationPlan: currentProjectCreateDraft.initializationPlan,
+      }));
       await waitForBookReady(result.bookId);
       nav.toBook(result.bookId);
     } catch (e) {

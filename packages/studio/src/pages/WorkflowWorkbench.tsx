@@ -167,9 +167,8 @@ export function WorkflowWorkbench({
   const { workspace } = useNovelFork();
   const currentSection = section ?? "project";
   const currentTab = WORKFLOW_TABS.find((tab) => tab.value === currentSection) ?? WORKFLOW_TABS[0]!;
-  const routinesDescription = workspace
-    ? "默认读取 merged 视图；当前工作区的 .inkos/routines.json 会覆盖全局 ~/.inkos/routines.json。需要修改 Prompt / Tool Permissions / MCP Tools / Sub-agents 时，切到 global / project 视图保存。"
-    : "当前没有工作区上下文时，Routines 只读取全局 ~/.inkos/routines.json。进入工作区后默认改为 merged 视图查看实际生效结果。";
+  const routinesScope = workspace ? "merged" : "global";
+  const routinesDescription = ROUTINES_SCOPE_META[routinesScope].description;
 
   return (
     <PageScaffold

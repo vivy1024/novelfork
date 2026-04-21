@@ -110,6 +110,7 @@ describe("SessionCenter", () => {
     expect(windows[0]?.agentId).toBe("planner");
     expect(windows[0]?.title).toBe("Planner 会话");
     expect(windows[0]?.sessionId).toBe("session-1");
+    expect(windows[0]?.sessionConfig).toBeUndefined();
   });
 
   it("renders existing session cards as object entries", () => {
@@ -174,16 +175,7 @@ describe("SessionCenter", () => {
     expect(updateSessionMock).toHaveBeenCalledWith("session-archived", { status: "active" });
   });
 
-  it("hydrates recent snapshot messages before opening an existing session workspace", async () => {
-    fetchJsonMock.mockResolvedValue({
-      session: {
-        id: "session-active",
-      },
-      messages: [
-        { id: "msg-1", role: "user", content: "上一条消息", timestamp: 1 },
-        { id: "msg-2", role: "assistant", content: "上一条回复", timestamp: 2 },
-      ],
-    });
+  it("opens an existing session workspace as a shell window and leaves hydration to ChatWindow", async () => {
     sessionHookState = createSessionHookState({
       sessions: [
         createNarratorSession({
@@ -202,12 +194,16 @@ describe("SessionCenter", () => {
     fireEvent.click(screen.getByRole("button", { name: "打开工作台" }));
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(fetchJsonMock).toHaveBeenCalledWith("/api/sessions/session-active/chat/state");
+    expect(fetchJsonMock).not.toHaveBeenCalled();
     const windows = useWindowStore.getState().windows;
     expect(windows).toHaveLength(1);
-    expect(windows[0]?.messages).toHaveLength(2);
-    expect(windows[0]?.messages[0]).toMatchObject({ content: "上一条消息" });
-    expect(windows[0]?.messages[1]).toMatchObject({ content: "上一条回复" });
+    expect(windows[0]).toMatchObject({
+      title: "Writer 会话",
+      agentId: "writer",
+      sessionId: "session-active",
+      sessionMode: "chat",
+    });
+    expect(windows[0]?.messages).toEqual([]);
   });
 });
 

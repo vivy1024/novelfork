@@ -63,6 +63,17 @@ function trimSessionMessages(state: SessionChatRuntimeState): void {
   state.messages = state.messages.slice(-MAX_SESSION_MESSAGES);
 }
 
+function buildServerFirstSession(session: NarratorSessionRecord, state: SessionChatRuntimeState): NarratorSessionRecord {
+  const recentMessages = state.messages.length > 0 ? [...state.messages] : [...(session.recentMessages ?? [])];
+  const messageCount = Math.max(session.messageCount, state.messageCount, recentMessages.length);
+
+  return {
+    ...session,
+    messageCount,
+    recentMessages,
+  };
+}
+
 function broadcastEnvelope(
   sessionId: string,
   envelope: NarratorSessionChatServerEnvelope,
@@ -99,6 +110,7 @@ async function loadSessionState(sessionId: string): Promise<{ session: NarratorS
     state.messages = [...session.recentMessages];
   }
   trimSessionMessages(state);
+  state.messageCount = Math.max(state.messageCount, state.messages.length);
   return { session, state };
 }
 
@@ -167,34 +179,35 @@ function createSessionChatStateEnvelope(session: NarratorSessionRecord): Narrato
 }
 
 export async function getSessionChatSnapshot(sessionId: string): Promise<NarratorSessionChatSnapshot | null> {
-  const state = await loadSessionState(sessionId);
-  if (!state) {
+  const loaded = await loadSessionState(sessionId);
+  if (!loaded) {
     return null;
   }
 
   return {
-    session: state.session,
-    messages: [...state.state.messages],
+    session: buildServerFirstSession(loaded.session, loaded.state),
+    messages: [...loaded.state.messages],
   };
 }
 
 export async function attachSessionChatTransport(sessionId: string, transport: SessionChatTransport): Promise<boolean> {
-  const state = await loadSessionState(sessionId);
-  if (!state) {
+  const loaded = await loadSessionState(sessionId);
+  if (!loaded) {
     sendEnvelope(transport, createSessionChatError(sessionId, "Session not found"));
     transport.close(1008, "Session not found");
     return false;
   }
 
-  state.state.transports.add(transport);
+  const session = buildServerFirstSession(loaded.session, loaded.state);
+  loaded.state.transports.add(transport);
   sendEnvelope(transport, {
     type: "session:snapshot",
     snapshot: {
-      session: state.session,
-      messages: [...state.state.messages],
+      session,
+      messages: [...loaded.state.messages],
     },
   });
-  sendEnvelope(transport, createSessionChatStateEnvelope(state.session));
+  sendEnvelope(transport, createSessionChatStateEnvelope(session));
   return true;
 }
 

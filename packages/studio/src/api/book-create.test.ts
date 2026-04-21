@@ -79,6 +79,11 @@ describe("normalizeStudioProjectCreateDraft", () => {
         gitBranch: "main",
         worktreeName: "draft-仙路长明",
       },
+      initializationPlan: {
+        phase: "project-create",
+        nextStage: "book-create",
+        readyToContinue: true,
+      },
     });
   });
 });
@@ -140,6 +145,11 @@ describe("buildStudioProjectInitRecord", () => {
           gitBranch: " main ",
           worktreeName: " drafting-room ",
         },
+        initializationPlan: {
+          phase: "project-create",
+          nextStage: "book-create",
+          readyToContinue: true,
+        },
       },
       "2026-03-30T00:00:00.000Z",
     );
@@ -155,7 +165,41 @@ describe("buildStudioProjectInitRecord", () => {
       templatePreset: "web-serial",
       gitBranch: "main",
       worktreeName: "drafting-room",
+      initializationPlan: {
+        phase: "project-create",
+        nextStage: "book-create",
+        readyToContinue: true,
+      },
       createdAt: "2026-03-30T00:00:00.000Z",
+    });
+  });
+
+  it("falls back to the normalized plan when a stale payload disagrees with project init", () => {
+    const record = buildStudioProjectInitRecord(
+      {
+        title: "测试书",
+        genre: "xuanhuan",
+        projectInit: {
+          repositorySource: "clone",
+          workflowMode: "outline-first",
+          templatePreset: "genre-default",
+          gitBranch: "main",
+          worktreeName: "draft-main",
+        },
+        initializationPlan: {
+          phase: "project-create",
+          nextStage: "book-create",
+          readyToContinue: true,
+        },
+      },
+      "2026-03-30T00:00:00.000Z",
+    );
+
+    expect(record.initializationPlan).toEqual({
+      phase: "project-create",
+      nextStage: "book-create",
+      readyToContinue: false,
+      blockingField: "cloneUrl",
     });
   });
 });

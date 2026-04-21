@@ -35,6 +35,11 @@ describe("user-config-service", () => {
       JSON.stringify({
         profile: { name: "旧配置用户" },
         preferences: { theme: "dark", fontSize: 16 },
+        modelDefaults: {
+          defaultSessionModel: "anthropic:not-a-model",
+          summaryModel: "openai:also-missing",
+          subagentModelPool: ["openai:gpt-4-turbo", "ghost:model", "bad-format"],
+        },
         shortcuts: {},
         recentWorkspaces: [],
       }, null, 2),
@@ -43,6 +48,11 @@ describe("user-config-service", () => {
 
     const loaded = await service.loadUserConfig();
     expect(loaded.runtimeControls).toEqual(DEFAULT_USER_CONFIG.runtimeControls);
+    expect(loaded.modelDefaults).toEqual({
+      defaultSessionModel: DEFAULT_USER_CONFIG.modelDefaults.defaultSessionModel,
+      summaryModel: DEFAULT_USER_CONFIG.modelDefaults.summaryModel,
+      subagentModelPool: ["openai:gpt-4-turbo"],
+    });
 
     const updated = await service.updateUserConfig({
       runtimeControls: {

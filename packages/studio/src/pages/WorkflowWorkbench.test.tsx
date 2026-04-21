@@ -22,7 +22,7 @@ vi.mock("@/components/Routines/PromptsTab", () => ({ PromptsTab: () => <div>Prom
 vi.mock("@/components/Routines/SubAgentsTab", () => ({ SubAgentsTab: () => <div>SubAgentsTab</div> }));
 vi.mock("@/components/Routines/use-routines-editor", () => ({
   ROUTINES_SCOPE_META: {
-    merged: { label: "生效视图", description: "默认读取 merged 视图；项目配置覆盖全局配置，只读展示当前实际生效结果。" },
+    merged: { label: "生效视图", description: "由 routines-editor 统一提供的 merged 说明：仅展示当前生效结果。" },
     global: { label: "全局", description: "编辑 ~/.inkos/routines.json，作为所有项目的默认基线。" },
     project: { label: "项目", description: "编辑 <workspace>/.inkos/routines.json，只影响当前工作区。" },
   },
@@ -108,7 +108,7 @@ describe("WorkflowWorkbench", () => {
     expect(screen.getByText("工作流配置台")).toBeTruthy();
     expect(screen.getByText("当前区块的配置边界")).toBeTruthy();
     expect(screen.getByText("Routines 主事实源")).toBeTruthy();
-    expect(screen.getAllByText(/默认读取 merged 视图/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("由 routines-editor 统一提供的 merged 说明：仅展示当前生效结果。").length).toBeGreaterThan(0);
     expect(screen.getAllByText("混合").length).toBeGreaterThan(0);
     expect(screen.getByText("Agent 路由在主面板保存，执行权限、MCP 工具与子代理在下方 routines 区块按 global / project 保存。")).toBeTruthy();
     expect(screen.getByText("执行编排资源")).toBeTruthy();
