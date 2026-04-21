@@ -13,7 +13,6 @@ import type {
   NarratorSessionChatStateEnvelope,
   NarratorSessionRecord,
 } from "../../shared/session-types.js";
-import { appendSessionChatHistory, isSessionChatHistoryDeleted, loadSessionChatHistory } from "./session-history-store.js";
 import { getSessionById, updateSession } from "./session-service.js";
 
 const MAX_SESSION_MESSAGES = 50;
@@ -234,17 +233,12 @@ async function loadSessionState(sessionId: string): Promise<{ session: NarratorS
     return null;
   }
 
-  const state = getRuntimeState(sessionId, session.messageCount);
-  state.messageCount = Math.max(state.messageCount, session.messageCount);
-  if (state.messages.length === 0) {
-    if (session.recentMessages && session.recentMessages.length > 0) {
-      state.messages = [...session.recentMessages];
-    } else {
-      const historyMessages = await loadSessionChatHistory(sessionId);
-      if (historyMessages.length > 0) {
-        state.messages = historyMessages.slice(-MAX_SESSION_MESSAGES);
-      }
-    }
+  const normalizedRecentMessages = normalizeSessionMessages(session.recentMessages, session.messageCount);
+  const normalizedMessageCount = Math.max(session.messageCount, getLastSeq(normalizedRecentMessages), normalizedRecentMessages.length);
+  const state = getRuntimeState(sessionId, normalizedMessageCount, normalizedRecentMessages);
+
+  if (state.messages.length === 0 && normalizedRecentMessages.length > 0) {
+    state.messages = [...normalizedRecentMessages];
   }
 
   trimSessionMessages(state);
@@ -365,32 +359,33 @@ export async function getSessionChatSnapshot(sessionId: string): Promise<Narrato
   };
 }
 
-export async function getSessionChatHistory(sessionId: string): Promise<{
-  session: NarratorSessionRecord;
-  messages: NarratorSessionChatMessage[];
-} | null> {
-  const session = await getSessionById(sessionId);
-  if (!session) {
+export async function getSessionChatHistory(sessionId: string, sinceSeq = 0): Promise<NarratorSessionChatHistory | null> {
+  const loaded = await loadSessionState(sessionId);
+  if (!loaded) {
     return null;
   }
 
-  const messages = await loadSessionChatHistory(sessionId);
-  if (messages.length > 0) {
-    return {
-      session,
-      messages,
-    };
-  }
+  const normalizedSinceSeq = Math.max(0, sanitizeSeq(sinceSeq));
+  const firstBufferedSeq = loaded.state.messages[0]?.seq ?? 0;
+  const resetRequired = normalizedSinceSeq > 0 && firstBufferedSeq > 0 && normalizedSinceSeq < firstBufferedSeq - 1;
 
   return {
-    session,
-    messages: [...(session.recentMessages ?? [])],
+    sessionId,
+    sinceSeq: normalizedSinceSeq,
+    availableFromSeq: firstBufferedSeq,
+    resetRequired,
+    messages: resetRequired ? [] : loaded.state.messages.filter((message) => (message.seq ?? 0) > normalizedSinceSeq),
+    cursor: createCursor(loaded.state),
   };
 }
 
-export async function attachSessionChatTransport(sessionId: string, transport: SessionChatTransport): Promise<boolean> {
-  const state = await loadSessionState(sessionId);
-  if (!state) {
+export async function attachSessionChatTransport(
+  sessionId: string,
+  transport: SessionChatTransport,
+  options: AttachSessionChatTransportOptions = {},
+): Promise<boolean> {
+  const loaded = await loadSessionState(sessionId);
+  if (!loaded) {
     sendEnvelope(transport, createSessionChatError(sessionId, "Session not found"));
     transport.close(1008, "Session not found");
     return false;
@@ -442,10 +437,6 @@ export async function handleSessionChatTransportMessage(
     return;
   }
 
-  if (isSessionChatHistoryDeleted(sessionId)) {
-    return;
-  }
-
   const text = await normalizeMessageText(rawMessage);
   if (!text) {
     sendEnvelope(transport, createSessionChatError(sessionId, "Empty message payload"));
@@ -487,7 +478,6 @@ export async function handleSessionChatTransportMessage(
     timestamp: timestamp + 1,
   });
 
-  await appendSessionChatHistory(sessionId, [userMessage, assistantMessage], loaded.session.recentMessages ?? []);
   const updatedSession = await updateSession(sessionId, {
     messageCount: loaded.state.messageCount,
     recentMessages: [...loaded.state.messages],
