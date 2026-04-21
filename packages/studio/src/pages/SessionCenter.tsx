@@ -8,14 +8,17 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { NewSessionDialog, SESSION_PRESETS, type NewSessionPayload, type SessionPresetId } from "@/components/sessions/NewSessionDialog";
+import { fetchJson } from "@/hooks/use-api";
 import { useSession } from "@/hooks/useSession";
 import { useWindowStore } from "@/stores/windowStore";
+import type { NarratorSessionChatSnapshot } from "@/shared/session-types";
 import type { Theme } from "../hooks/use-theme";
 
 export function SessionCenter({ theme }: { theme: Theme }) {
   const windows = useWindowStore((state) => state.windows);
   const activeWindowId = useWindowStore((state) => state.activeWindowId);
   const addWindow = useWindowStore((state) => state.addWindow);
+  const updateWindow = useWindowStore((state) => state.updateWindow);
   const setActiveWindow = useWindowStore((state) => state.setActiveWindow);
   const toggleMinimize = useWindowStore((state) => state.toggleMinimize);
   const removeWindow = useWindowStore((state) => state.removeWindow);
@@ -83,7 +86,7 @@ export function SessionCenter({ theme }: { theme: Theme }) {
     });
   };
 
-  const handleOpenSessionWorkspace = (sessionId: string) => {
+  const handleOpenSessionWorkspace = async (sessionId: string) => {
     const existingWindow = windowBySessionId.get(sessionId);
     if (existingWindow) {
       setActiveWindow(existingWindow.id);
@@ -95,6 +98,14 @@ export function SessionCenter({ theme }: { theme: Theme }) {
       return;
     }
 
+    let snapshotMessages: NarratorSessionChatSnapshot["messages"] = [];
+    try {
+      const snapshot = await fetchJson<NarratorSessionChatSnapshot>(`/api/sessions/${sessionId}/chat/state`);
+      snapshotMessages = snapshot.messages;
+    } catch {
+      snapshotMessages = [];
+    }
+
     addWindow({
       agentId: session.agentId,
       title: session.title,
@@ -102,6 +113,20 @@ export function SessionCenter({ theme }: { theme: Theme }) {
       sessionMode: session.sessionMode,
       sessionConfig: session.sessionConfig,
     });
+
+    if (snapshotMessages.length > 0) {
+      const createdWindow = useWindowStore.getState().windows.find((window) => window.sessionId === sessionId);
+      if (createdWindow) {
+        updateWindow(createdWindow.id, {
+          messages: snapshotMessages.map((message) => ({
+            id: message.id,
+            role: message.role,
+            content: message.content,
+            timestamp: message.timestamp,
+          })),
+        });
+      }
+    }
   };
 
   const handleToggleArchive = async (sessionId: string, nextStatus: "active" | "archived") => {

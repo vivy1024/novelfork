@@ -17,12 +17,14 @@ vi.mock("./user-config-service.js", () => ({
   })),
 }));
 
-import { createSession, getSessionById } from "./session-service";
-import {
-  attachSessionChatTransport,
-  getSessionChatSnapshot,
-  handleSessionChatTransportMessage,
-} from "./session-chat-service";
+async function loadSessionServices() {
+  const sessionService = await import("./session-service");
+  const chatService = await import("./session-chat-service");
+  return {
+    ...sessionService,
+    ...chatService,
+  };
+}
 
 class MockTransport {
   readonly sent: string[] = [];
@@ -51,6 +53,14 @@ describe("session-chat-service", () => {
   });
 
   it("publishes a per-session snapshot and keeps message counts in sync", async () => {
+    const {
+      createSession,
+      getSessionById,
+      attachSessionChatTransport,
+      getSessionChatSnapshot,
+      handleSessionChatTransportMessage,
+    } = await loadSessionServices();
+
     const session = await createSession({
       title: "Planner 会话",
       agentId: "planner",
@@ -111,6 +121,44 @@ describe("session-chat-service", () => {
       id: "client-message-1",
       role: "user",
       content: "继续这一章",
+    });
+    expect(snapshot?.messages[1]).toMatchObject({
+      role: "assistant",
+    });
+  });
+
+  it("restores recent messages from persisted session state after runtime reload", async () => {
+    const firstLoad = await loadSessionServices();
+    const session = await firstLoad.createSession({
+      title: "持久化会话",
+      agentId: "writer",
+      sessionMode: "chat",
+    });
+    const transport = new MockTransport();
+
+    const attached = await firstLoad.attachSessionChatTransport(session.id, transport);
+    expect(attached).toBe(true);
+
+    await firstLoad.handleSessionChatTransportMessage(
+      session.id,
+      transport,
+      JSON.stringify({
+        type: "session:message",
+        messageId: "persisted-message-1",
+        content: "请继续写下去",
+        sessionMode: "chat",
+      }),
+    );
+
+    vi.resetModules();
+    const reloaded = await loadSessionServices();
+    const snapshot = await reloaded.getSessionChatSnapshot(session.id);
+
+    expect(snapshot?.messages).toHaveLength(2);
+    expect(snapshot?.messages[0]).toMatchObject({
+      id: "persisted-message-1",
+      role: "user",
+      content: "请继续写下去",
     });
     expect(snapshot?.messages[1]).toMatchObject({
       role: "assistant",

@@ -103,6 +103,7 @@ export async function createSession(input: CreateNarratorSessionInput): Promise<
       reasoningEffort: userConfig.runtimeControls.defaultReasoningEffort,
       ...input.sessionConfig,
     },
+    recentMessages: [],
   };
 
   records.push(session);
