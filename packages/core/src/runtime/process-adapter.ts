@@ -174,14 +174,14 @@ export async function execFileCommand(command: string, args: readonly string[], 
       encoding: "utf8",
       maxBuffer: 10 * 1024 * 1024,
     }, (error, stdout, stderr) => {
-      if (error && typeof error.code !== "number") {
+      if (error && typeof error.code !== "number" && !error.signal) {
         reject(error);
         return;
       }
       resolve({
         stdout: stdout.trim(),
         stderr: stderr.trim(),
-        exitCode: error && typeof error.code === "number" ? error.code : 0,
+        exitCode: error && typeof error.code === "number" ? error.code : error ? null : 0,
         signal: error?.signal ?? null,
       });
     });
