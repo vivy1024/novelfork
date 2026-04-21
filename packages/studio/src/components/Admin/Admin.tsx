@@ -3,19 +3,17 @@
  * 用户管理、API 供应商管理、资源监控、请求历史
  */
 
-import { Activity, FileText, LayoutDashboard, Logs, Server, Users, Workflow } from "lucide-react";
-import { PageScaffold } from "@/components/layout/PageScaffold";
-import { Badge } from "@/components/ui/badge";
+import { Activity, Box, FileText, LayoutDashboard, Logs, Server, Terminal, Users, Workflow } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { AdminSection } from "../../routes";
-import { DaemonTab } from "./DaemonTab";
-import { LogsTab } from "./LogsTab";
+import { ContainerTab } from "./ContainerTab";
 import { ProvidersTab } from "./ProvidersTab";
 import { RequestsTab } from "./RequestsTab";
 import { ResourcesTab } from "./ResourcesTab";
+import { TerminalTab } from "./TerminalTab";
 import { UsersTab } from "./UsersTab";
-import { WorktreesTab } from "./WorktreesTab";
 
 interface AdminProps {
   onBack?: () => void;
@@ -27,14 +25,24 @@ export function Admin({ onBack, section, onNavigateSection }: AdminProps) {
   const activeSection = section ?? "overview";
 
   return (
-    <PageScaffold
-      title="管理中心"
-      description="把供应商、请求历史、资源监控与系统运维入口统一收口到一个管理中心，优先接真实 API 和真实刷新流。"
-      actions={onBack ? <Button variant="outline" onClick={onBack}>返回</Button> : undefined}
-      contentClassName="space-y-6"
-    >
-      <div className="space-y-4" data-testid="admin-panel">
-        <section>
+    <div className="flex flex-col gap-6" data-testid="admin-panel">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-sm text-muted-foreground">管理 / 运维</p>
+          <h1 className="text-3xl font-semibold tracking-tight text-foreground">管理中心</h1>
+          <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+            参考 NarraFork 的 Admin 信息架构，把供应商、请求历史、资源监控与系统运维入口收口到一个平台面板里。
+          </p>
+        </div>
+        {onBack && (
+          <Button variant="outline" onClick={onBack}>
+            返回
+          </Button>
+        )}
+      </div>
+
+      <div className="space-y-4">
+        <div>
           <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">平台管理</p>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <AdminEntryCard
@@ -66,34 +74,48 @@ export function Admin({ onBack, section, onNavigateSection }: AdminProps) {
               onClick={() => onNavigateSection?.("requests")}
             />
           </div>
-        </section>
+        </div>
 
-        <section>
+        <div>
           <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">系统运维</p>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             <AdminEntryCard
               icon={Server}
               title="守护进程"
-              description="查看真实运行状态、启动 / 停止与最近事件。"
+              description="查看运行状态、启动/停止与最近事件。"
               active={activeSection === "daemon"}
               onClick={() => onNavigateSection?.("daemon")}
             />
             <AdminEntryCard
               icon={Logs}
               title="日志"
-              description="滚动查看真实日志文件尾部与刷新状态。"
+              description="滚动查看 Studio 与运行日志。"
               active={activeSection === "logs"}
               onClick={() => onNavigateSection?.("logs")}
             />
             <AdminEntryCard
               icon={Workflow}
               title="Worktree"
-              description="查看真实 worktree 列表与变更计数。"
+              description="管理隔离工作树与分支工作目录。"
               active={activeSection === "worktrees"}
               onClick={() => onNavigateSection?.("worktrees")}
             />
+            <AdminEntryCard
+              icon={Terminal}
+              title="Terminal 终端"
+              description="terminal 管理入口，后续接本地 shell 与受控命令执行。"
+              active={activeSection === "terminal"}
+              onClick={() => onNavigateSection?.("terminal")}
+            />
+            <AdminEntryCard
+              icon={Box}
+              title="Container 容器"
+              description="container 管理入口，后续接容器运行时与 exec 能力。"
+              active={activeSection === "container"}
+              onClick={() => onNavigateSection?.("container")}
+            />
           </div>
-        </section>
+        </div>
       </div>
 
       {activeSection === "overview" && (
@@ -101,26 +123,19 @@ export function Admin({ onBack, section, onNavigateSection }: AdminProps) {
           <Card>
             <CardHeader>
               <CardTitle>管理首页</CardTitle>
-              <CardDescription>
-                平台面板已经把供应商、请求历史、资源监控、守护进程、日志和 Worktree 收到同一套管理导航里。
-              </CardDescription>
+              <CardDescription>这一层先站住“平台面板”结构，下一批再把守护进程、日志、Worktree 等系统子页整体并进来。</CardDescription>
             </CardHeader>
           </Card>
           <Card>
             <CardHeader>
               <CardTitle>当前收口范围</CardTitle>
-              <CardDescription>
-                当前优先接入真实可验证的后台结构与刷新流；终端 / 容器等仍未验证的入口，会在子页里明确标为待接入。
-              </CardDescription>
+              <CardDescription>供应商、请求历史、资源监控优先统一到管理中心；守护进程 / 日志 / Worktree 暂以管理子路由方式接入。</CardDescription>
             </CardHeader>
           </Card>
           <Card className="lg:col-span-2">
-            <CardHeader className="gap-2 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <CardTitle>用户管理</CardTitle>
-                <CardDescription>沿用现有用户管理能力，先保留在管理中心总览里。</CardDescription>
-              </div>
-              <Badge variant="secondary">核心入口</Badge>
+            <CardHeader>
+              <CardTitle>用户管理</CardTitle>
+              <CardDescription>沿用现有用户管理能力，先保留在管理中心总览里。</CardDescription>
             </CardHeader>
             <CardContent>
               <UsersTab />
@@ -132,10 +147,9 @@ export function Admin({ onBack, section, onNavigateSection }: AdminProps) {
       {activeSection === "providers" && <ProvidersTab />}
       {activeSection === "resources" && <ResourcesTab />}
       {activeSection === "requests" && <RequestsTab />}
-      {activeSection === "daemon" && <DaemonTab />}
-      {activeSection === "logs" && <LogsTab />}
-      {activeSection === "worktrees" && <WorktreesTab />}
-    </PageScaffold>
+      {activeSection === "terminal" && <TerminalTab />}
+      {activeSection === "container" && <ContainerTab />}
+    </div>
   );
 }
 
@@ -153,16 +167,13 @@ function AdminEntryCard({
   onClick: () => void;
 }) {
   return (
-    <button type="button" onClick={onClick} className="text-left">
+    <button onClick={onClick} className="text-left">
       <Card className={active ? "border-primary/40 bg-primary/5" : undefined}>
         <CardHeader>
-          <div className="flex items-start justify-between gap-3">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Icon className="size-4 text-primary" />
-              {title}
-            </CardTitle>
-            {active && <Badge variant="secondary">当前</Badge>}
-          </div>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Icon className="size-4 text-primary" />
+            {title}
+          </CardTitle>
           <CardDescription>{description}</CardDescription>
         </CardHeader>
       </Card>

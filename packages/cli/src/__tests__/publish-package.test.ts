@@ -16,18 +16,6 @@ const sourceStudioPackageJsonPromise = readFile(resolve(studioDir, "package.json
   JSON.parse(raw),
 );
 
-function createPackEnv(): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { ...process.env, NODE_ENV: "production" };
-
-  delete env.VITEST;
-  delete env.VITEST_MODE;
-  delete env.VITEST_POOL_ID;
-  delete env.VITEST_WORKER_ID;
-  delete env.TEST;
-
-  return env;
-}
-
 async function packPackage(packageDir: string, packDir: string) {
   const command = process.platform === "win32" ? "cmd" : "pnpm";
   const args = process.platform === "win32"
@@ -35,7 +23,7 @@ async function packPackage(packageDir: string, packDir: string) {
     : ["pack", "--pack-destination", packDir];
   execFileSync(command, args, {
     cwd: packageDir,
-    env: createPackEnv(),
+    env: process.env,
     encoding: "utf-8",
   });
 
@@ -69,7 +57,7 @@ describe.sequential("publish packaging", () => {
 
       await writeFile(
         join(tempRoot, "package.json"),
-        `${JSON.stringify({ name: "inkos", version: "0.4.6" }, null, 2)}\n`,
+        `${JSON.stringify({ name: "novelfork", version: "0.4.6" }, null, 2)}\n`,
       );
       await writeFile(
         join(tempCoreDir, "package.json"),
@@ -147,7 +135,7 @@ describe.sequential("publish packaging", () => {
 
       await writeFile(
         join(tempRoot, "package.json"),
-        `${JSON.stringify({ name: "inkos", version: "0.5.1" }, null, 2)}\n`,
+        `${JSON.stringify({ name: "novelfork", version: "0.5.1" }, null, 2)}\n`,
       );
       await writeFile(
         join(tempCoreDir, "package.json"),
@@ -197,7 +185,7 @@ describe.sequential("publish packaging", () => {
 
       await writeFile(
         join(tempRoot, "package.json"),
-        `${JSON.stringify({ name: "inkos", version: "0.5.1" }, null, 2)}\n`,
+        `${JSON.stringify({ name: "novelfork", version: "0.5.1" }, null, 2)}\n`,
       );
       await writeFile(
         join(tempCoreDir, "package.json"),

@@ -97,9 +97,6 @@ export function Sidebar({ nav, activePage, sse, t }: {
   const { mode } = useNovelFork();
   const isStandalone = mode === "standalone";
   const isTauri = mode === "tauri";
-  const showPlatformEntries = isStandalone || isTauri;
-  const showStandaloneEntries = isStandalone;
-  const showTauriEntries = isTauri;
   const [expandedBooks, setExpandedBooks] = useState<Set<string>>(new Set());
   const [workspaceOpen, setWorkspaceOpen] = useState(() => readSectionState(SIDEBAR_STORAGE_KEYS.workspace));
   const [workbenchOpen, setWorkbenchOpen] = useState(() => readSectionState(SIDEBAR_STORAGE_KEYS.workbench));
@@ -174,7 +171,7 @@ export function Sidebar({ nav, activePage, sse, t }: {
       active: activePage === "radar",
       onClick: nav.toRadar,
     },
-    ...(showPlatformEntries
+    ...(isStandalone || isTauri
       ? [{
           label: t("nav.doctor"),
           icon: <Stethoscope size={16} />,
@@ -188,16 +185,10 @@ export function Sidebar({ nav, activePage, sse, t }: {
       active: activePage === "pipeline",
       onClick: () => nav.toPipeline(),
     },
-  ], [activePage, nav, showPlatformEntries, t]);
+  ], [activePage, isStandalone, isTauri, nav, t]);
 
   const systemItems = useMemo(() => [
-    {
-      label: "Worktree",
-      icon: <FolderGit2 size={16} />,
-      active: activePage === "admin:worktrees",
-      onClick: nav.toWorktree,
-    },
-    ...(showPlatformEntries
+    ...(isStandalone || isTauri
       ? [{
           label: "守护进程",
           icon: <Zap size={16} />,
@@ -207,7 +198,7 @@ export function Sidebar({ nav, activePage, sse, t }: {
           badgeColor: daemon?.running ? "bg-emerald-500/10 text-emerald-500" : undefined,
         }]
       : []),
-    ...(showStandaloneEntries
+    ...(isStandalone
       ? [{
           label: "日志",
           icon: <TerminalSquare size={16} />,
@@ -215,7 +206,7 @@ export function Sidebar({ nav, activePage, sse, t }: {
           onClick: nav.toLogs,
         }]
       : []),
-    ...(showTauriEntries
+    ...(isTauri
       ? [{
           label: "备份",
           icon: <Shield size={16} />,
@@ -223,7 +214,13 @@ export function Sidebar({ nav, activePage, sse, t }: {
           onClick: nav.toBackup,
         }]
       : []),
-  ], [activePage, daemon?.running, nav, showPlatformEntries, showStandaloneEntries, showTauriEntries]);
+    {
+      label: "Worktree",
+      icon: <FolderGit2 size={16} />,
+      active: activePage === "admin:worktrees",
+      onClick: nav.toWorktree,
+    },
+  ], [activePage, daemon?.running, isStandalone, isTauri, nav]);
 
   const onDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;

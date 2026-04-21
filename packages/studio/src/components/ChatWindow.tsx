@@ -66,6 +66,12 @@ const REASONING_OPTIONS: Array<{ value: SessionReasoningEffort; label: string }>
   { value: "high", label: "高" },
 ];
 
+type NarratorSessionChatHistoryResponse = {
+  session?: NarratorSessionRecord;
+  sessionId?: string;
+  messages?: NarratorSessionChatMessage[];
+};
+
 export function ChatWindow({ windowId, theme }: ChatWindowProps) {
   const c = useColors(theme);
   const chatWindow = useWindowStore((state) => state.windows.find((w) => w.id === windowId));
@@ -85,6 +91,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimerRef = useRef<number | null>(null);
+  const hydrateSessionRequestRef = useRef(0);
 
   const syncSessionRecord = useCallback(
     (nextSession: NarratorSessionRecord) => {
@@ -94,6 +101,17 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
         sessionMode: nextSession.sessionMode,
         sessionConfig: nextSession.sessionConfig,
       });
+    },
+    [updateWindow, windowId],
+  );
+
+  const syncSessionMessages = useCallback(
+    (incomingMessages: NarratorSessionChatMessage[]) => {
+      const currentWindow = useWindowStore.getState().windows.find((window) => window.id === windowId);
+      const nextMessages = mergeSessionMessages(currentWindow?.messages ?? [], incomingMessages);
+      setSessionMessages(nextMessages);
+      updateWindow(windowId, { messages: nextMessages });
+      return nextMessages;
     },
     [updateWindow, windowId],
   );
@@ -109,9 +127,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
       if (envelope) {
         if (envelope.type === "session:snapshot") {
           syncSessionRecord(envelope.snapshot.session);
-          const nextMessages = envelope.snapshot.messages.map(toChatWindowMessage);
-          setSessionMessages(nextMessages);
-          updateWindow(windowId, { messages: nextMessages });
+          syncSessionMessages(envelope.snapshot.messages);
           return;
         }
 
@@ -163,35 +179,40 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
         addMessage(windowId, message);
       }
     },
-    [addMessage, setWsConnected, syncSessionRecord, updateWindow, windowId],
+    [addMessage, setWsConnected, syncSessionMessages, syncSessionRecord, windowId],
   );
 
-  useEffect(() => {
-    const sessionId = chatWindow?.sessionId;
-    if (!sessionId) {
-      return;
-    }
+  const hydrateSessionFromServer = useCallback(
+    async (sessionId: string) => {
+      const requestId = ++hydrateSessionRequestRef.current;
 
-    let cancelled = false;
-    void fetchJson<NarratorSessionChatSnapshot>(`/api/sessions/${sessionId}/chat/state`)
-      .then((snapshot) => {
-        if (cancelled || !snapshot?.session?.sessionConfig) {
-          return;
-        }
+      const [historyResult, snapshotResult] = await Promise.allSettled([
+        fetchJson<NarratorSessionChatHistoryResponse>(`/api/sessions/${sessionId}/chat/history`),
+        fetchJson<Partial<NarratorSessionChatSnapshot>>(`/api/sessions/${sessionId}/chat/state`),
+      ]);
 
-        syncSessionRecord(snapshot.session);
-        const nextMessages = snapshot.messages.map(toChatWindowMessage);
-        setSessionMessages(nextMessages);
-        updateWindow(windowId, { messages: nextMessages });
-      })
-      .catch(() => {
-        // ignore hydration errors and keep local fallback state
-      });
+      if (requestId !== hydrateSessionRequestRef.current) {
+        return;
+      }
 
-    return () => {
-      cancelled = true;
-    };
-  }, [chatWindow?.sessionId, syncSessionRecord, updateWindow, windowId]);
+      const history = historyResult.status === "fulfilled" ? historyResult.value : null;
+      const snapshot = snapshotResult.status === "fulfilled" ? snapshotResult.value : null;
+      const sessionCandidates = [snapshot?.session, history?.session].filter(
+        (session): session is NarratorSessionRecord => Boolean(session),
+      );
+      const nextSession = sessionCandidates.find((session) => session.sessionConfig) ?? sessionCandidates[0] ?? null;
+      if (nextSession) {
+        syncSessionRecord(nextSession);
+      }
+
+      const historyMessages = Array.isArray(history?.messages) ? history.messages : [];
+      const snapshotMessages = Array.isArray(snapshot?.messages) ? snapshot.messages : [];
+      if (historyMessages.length > 0 || snapshotMessages.length > 0) {
+        syncSessionMessages([...historyMessages, ...snapshotMessages]);
+      }
+    },
+    [syncSessionMessages, syncSessionRecord],
+  );
 
   useEffect(() => {
     const sessionId = chatWindow?.sessionId;
@@ -222,6 +243,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
             globalThis.clearTimeout(reconnectTimerRef.current);
             reconnectTimerRef.current = null;
           }
+          void hydrateSessionFromServer(sessionId);
         };
 
         ws.onmessage = (event) => {
@@ -252,6 +274,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
 
     return () => {
       disposed = true;
+      hydrateSessionRequestRef.current += 1;
       if (reconnectTimerRef.current !== null) {
         globalThis.clearTimeout(reconnectTimerRef.current);
         reconnectTimerRef.current = null;
@@ -261,7 +284,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
         wsRef.current = null;
       }
     };
-  }, [chatWindow?.sessionId, chatWindow?.sessionMode, handleSessionTransportMessage, sessionRecord?.sessionMode, setWsConnected, windowId]);
+  }, [chatWindow?.sessionId, chatWindow?.sessionMode, handleSessionTransportMessage, hydrateSessionFromServer, sessionRecord?.sessionMode, setWsConnected, windowId]);
 
   const effectiveMessages = sessionMessages ?? chatWindow?.messages ?? [];
 
@@ -984,13 +1007,17 @@ function toChatWindowMessage(message: NarratorSessionChatMessage): ChatMessage {
 }
 
 function mergeSessionMessages(existingMessages: ChatMessage[], snapshotMessages: NarratorSessionChatMessage[]) {
-  const seenIds = new Set(existingMessages.map((message) => message.id));
-  return [
-    ...existingMessages,
-    ...snapshotMessages
-      .filter((message) => !seenIds.has(message.id))
-      .map(toChatWindowMessage),
-  ];
+  const mergedById = new Map(existingMessages.map((message) => [message.id, message]));
+
+  for (const message of snapshotMessages) {
+    const nextMessage = toChatWindowMessage(message);
+    const existingMessage = mergedById.get(message.id);
+    mergedById.set(message.id, existingMessage?.toolCalls ? { ...nextMessage, toolCalls: existingMessage.toolCalls } : nextMessage);
+  }
+
+  return [...mergedById.values()].sort(
+    (left, right) => new Date(left.timestamp).getTime() - new Date(right.timestamp).getTime(),
+  );
 }
 
 async function normalizeSessionChatPayloadText(rawData: unknown): Promise<string | null> {

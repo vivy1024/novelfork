@@ -1,12 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizeRoute, sanitizeRestoredTabSession } from "./routes";
-
-describe("normalizeRoute", () => {
-  it("accepts the formal project-create route", () => {
-    expect(normalizeRoute({ page: "project-create" })).toEqual({ page: "project-create" });
-  });
-});
+import { sanitizeRestoredTabSession } from "./routes";
 
 describe("sanitizeRestoredTabSession", () => {
   it("maps legacy workflow/admin routes into the grouped shell", () => {
@@ -15,6 +9,8 @@ describe("sanitizeRestoredTabSession", () => {
         { id: "dashboard", route: { page: "dashboard" } },
         { id: "agents", route: { page: "agents" } },
         { id: "daemon", route: { page: "daemon" } },
+        { id: "terminal", route: { page: "admin", section: "terminal" } },
+        { id: "container", route: { page: "admin", section: "container" } },
         { id: "book:alpha", route: { page: "book", bookId: "alpha" } },
       ],
       activeTabId: "agents",
@@ -25,6 +21,8 @@ describe("sanitizeRestoredTabSession", () => {
         { id: "dashboard", route: { page: "dashboard" } },
         { id: "workflow:agents", route: { page: "workflow", section: "agents" } },
         { id: "admin:daemon", route: { page: "admin", section: "daemon" } },
+        { id: "admin:terminal", route: { page: "admin", section: "terminal" } },
+        { id: "admin:container", route: { page: "admin", section: "container" } },
         { id: "book:alpha", route: { page: "book", bookId: "alpha" } },
       ],
       activeTabId: "workflow:agents",

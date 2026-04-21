@@ -21,7 +21,7 @@ function createState() {
       }
       return [{ number: 3, title: "第三章" }];
     }),
-    ensureRuntimeState: vi.fn(async () => undefined),
+    ensureRuntimeState: vi.fn(async (_bookId: string, _fallbackChapter?: number): Promise<void> => undefined),
   };
 }
 
@@ -51,8 +51,110 @@ describe("startup orchestrator", () => {
       migratedBooks: 2,
       skippedBooks: 0,
       failures: [],
+      recoveryReport: {
+        counts: {
+          success: 3,
+          skipped: 0,
+          failed: 0,
+        },
+      },
     });
     expect(summary.indexedDocuments).toBe(0);
+    expect(summary.recoveryReport.startedAt).toEqual(expect.any(String));
+    expect(summary.recoveryReport.finishedAt).toEqual(expect.any(String));
+    expect(summary.recoveryReport.actions).toHaveLength(3);
+    expect(summary.recoveryReport.actions[0]).toMatchObject({
+      kind: "runtime-state",
+      scope: "book",
+      bookId: "alpha",
+      status: "success",
+      reason: "运行态已补建",
+      note: "fallbackChapter=2",
+    });
+    expect(summary.recoveryReport.actions[1]).toMatchObject({
+      kind: "runtime-state",
+      scope: "book",
+      bookId: "beta",
+      status: "success",
+      reason: "运行态已补建",
+      note: "fallbackChapter=3",
+    });
+    expect(summary.recoveryReport.actions[2]).toMatchObject({
+      kind: "search-index",
+      scope: "library",
+      status: "success",
+      reason: "内存搜索索引已重建",
+      note: "bookCount=2, indexedDocuments=0, skippedBooks=0",
+    });
+  });
+
+  it("records failed and skipped recovery steps in the report", async () => {
+    const state = createState();
+    state.loadChapterIndex.mockImplementation(async (bookId: string) => {
+      if (bookId === "beta") {
+        throw new Error("missing chapter index");
+      }
+      return [
+        { number: 1, title: "第一章" },
+        { number: 2, title: "第二章" },
+      ];
+    });
+    state.ensureRuntimeState.mockImplementation(async (bookId: string): Promise<void> => {
+      if (bookId === "beta") {
+        throw new Error("runtime repair failed");
+      }
+    });
+
+    const summary = await runStartupOrchestrator(state);
+
+    expect(summary).toMatchObject({
+      bookCount: 2,
+      migratedBooks: 1,
+      skippedBooks: 1,
+      failures: [
+        {
+          bookId: "beta",
+          phase: "migration",
+          message: "runtime repair failed",
+        },
+      ],
+      recoveryReport: {
+        counts: {
+          success: 2,
+          skipped: 1,
+          failed: 1,
+        },
+      },
+    });
+    expect(summary.recoveryReport.actions).toHaveLength(4);
+    expect(summary.recoveryReport.actions[0]).toMatchObject({
+      kind: "runtime-state",
+      scope: "book",
+      bookId: "alpha",
+      status: "success",
+    });
+    expect(summary.recoveryReport.actions[1]).toMatchObject({
+      kind: "runtime-state",
+      scope: "book",
+      bookId: "beta",
+      status: "failed",
+      reason: "运行态补建失败",
+      note: "runtime repair failed",
+    });
+    expect(summary.recoveryReport.actions[2]).toMatchObject({
+      kind: "search-index",
+      scope: "library",
+      status: "success",
+      reason: "内存搜索索引已重建",
+      note: "bookCount=2, indexedDocuments=0, skippedBooks=1",
+    });
+    expect(summary.recoveryReport.actions[3]).toMatchObject({
+      kind: "search-index",
+      scope: "library",
+      status: "skipped",
+      reason: "部分书籍在索引重建中被跳过",
+      note: "skippedBooks=1",
+    });
   });
 
   it("rebuilds the in-memory search index from current book files", async () => {

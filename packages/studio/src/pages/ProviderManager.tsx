@@ -11,7 +11,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { GripVertical, Plus, Search } from "lucide-react";
 import { ProviderCard } from "../components/ProviderCard";
 import { fetchJson } from "../hooks/use-api";
-import type { ManagedProvider, ModelPoolEntry } from "../shared/provider-catalog";
+import type { AIProvider, ModelPoolEntry } from "../shared/provider-manager-types";
 
 interface ProviderManagerProps {
   onBack: () => void;
@@ -23,7 +23,7 @@ function SortableProviderCard({
   onConfigure,
   onTest,
 }: {
-  provider: ManagedProvider;
+  provider: AIProvider;
   onToggle: (id: string, enabled: boolean) => void;
   onConfigure: (id: string) => void;
   onTest: (id: string) => Promise<{ success: boolean; latency?: number; error?: string }>;
@@ -51,7 +51,7 @@ function SortableProviderCard({
 }
 
 export function ProviderManager({ onBack }: ProviderManagerProps) {
-  const [providers, setProviders] = useState<ManagedProvider[]>([]);
+  const [providers, setProviders] = useState<AIProvider[]>([]);
   const [modelPool, setModelPool] = useState<ModelPoolEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -71,7 +71,7 @@ export function ProviderManager({ onBack }: ProviderManagerProps) {
 
   const loadProviders = async () => {
     try {
-      const data = await fetchJson<{ providers: ManagedProvider[] }>("/api/providers");
+      const data = await fetchJson<{ providers: AIProvider[] }>("/api/providers");
       setProviders(data.providers);
     } catch (error) {
       console.error("Failed to load providers:", error);

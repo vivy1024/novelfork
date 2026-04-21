@@ -1,0 +1,319 @@
+# NovelFork 平台迁移方案：回归 NarraFork 路线
+
+**更新日期**: 2026-04-20  
+**目标**: 把 NovelFork 从当前的 `pnpm monorepo + tsc + CLI spawn studio + Node` 外壳，迁移到 NarraFork 风格的 `Bun 单入口本地应用 + bun compile 单可执行文件` 形态。
+
+---
+
+## 一、当前启动链路（需要拆掉的）
+
+```text
+用户执行 novelfork studio
+  → packages/cli/src/commands/studio.ts
+    → resolveStudioLaunch() 搜索 studio 入口
+      → 找到 packages/studio/src/api/index.ts
+    → spawn("node", ["--import", "tsx/loader.mjs", "index.ts", root])
+      → packages/studio/src/api/index.ts
+        → startStudioServer(root, port, { staticDir })
+          → loadProjectConfig(root)
+          → createStudioServer(config, root)
+            → new Hono() + 挂载 25+ 路由组
+          → serve(app, port)
+          → 静态文件服务（dist/）
+  → spawn("cmd", ["/c", "start", url])  // 打开浏览器
+```
+
+问题：
+- CLI 是独立包，通过 spawn 拉起 studio
+- studio 入口需要先 tsc 编译或 tsx loader
+- 静态文件来自 vite build 的 dist/
+- 整条链路依赖 pnpm workspace 的包间引用
+- 用户需要理解 monorepo 结构才能运行
+
+---
+
+## 二、目标启动链路（要做成的）
+
+```text
+用户执行 novelfork（单可执行文件）
+  → 主入口 main.ts
+    → loadProjectConfig(root)
+    → createStudioServer(config, root)
+    → 内嵌前端静态资源服务
+    → 监听 https://localhost:<port>
+    → 自动打开浏览器
+```
+
+特征：
+- 单入口，不 spawn 子进程
+- 前端资源内嵌在可执行文件中
+- Bun 原生运行 .ts，不需要 tsc/tsx
+- 开发模式下 `bun run main.ts` 即可启动
+- 分发模式下 `bun compile` 生成单文件
+
+---
+
+## 三、代码资产盘点
+
+### 可直接复用（~49000 行）
+
+| 模块 | 位置 | 行数 | 说明 |
+|------|------|------|------|
+| 写作管线 | `packages/core/src/agents/` | ~8000 | 全部 Agent 实现 |
+| 管线编排 | `packages/core/src/pipeline/` | ~5000 | runner、scheduler、review cycle |
+| 状态管理 | `packages/core/src/state/` | ~3000 | StateManager、reducer、projections |
+| 数据模型 | `packages/core/src/models/` | ~3000 | Zod schema + types |
+| 工具函数 | `packages/core/src/utils/` | ~8000 | cadence、hook、length、memory 等 |
+| LLM 抽象 | `packages/core/src/llm/` | ~1500 | provider、streaming |
+| MCP client | `packages/core/src/mcp/` | ~2000 | stdio/SSE transport |
+| 通知系统 | `packages/core/src/notify/` | ~800 | telegram、feishu、webhook |
+| Hook 系统 | `packages/core/src/hooks/` | ~600 | builtin hooks |
+| 题材配置 | `packages/core/genres/` | 15 文件 | 玄幻、仙侠、都市等 |
+
+### 可迁移复用（~13000 行）
+
+| 模块 | 位置 | 说明 |
+|------|------|------|
+| Hono API 路由 | `packages/studio/src/api/routes/` | 25+ 路由组，大部分可直接挂载 |
+| API 服务层 | `packages/studio/src/api/lib/` | 工具执行、搜索、节奏分析等 |
+| server 工厂 | `packages/studio/src/api/server.ts` | `createStudioServer()` 可直接复用 |
+| React 前端 | `packages/studio/src/` | 组件、页面、store、hooks |
+
+### 需要替换或删除
+
+| 模块 | 位置 | 原因 |
+|------|------|------|
+| CLI 入口 | `packages/cli/` | 不再需要 Commander.js 做主入口 |
+| studio spawn 逻辑 | `packages/cli/src/commands/studio.ts` | 不再 spawn 子进程 |
+| tsx loader 依赖 | studio.ts 中的 resolveStudioLaunch | Bun 原生运行 .ts |
+| tsc 构建链 | 各包的 `build: tsc` | Bun 不需要编译步骤 |
+| Tauri 桌面壳 | `packages/desktop/` | 单 exe 路线不需要 Tauri |
+| PWA 配置 | vite-plugin-pwa 相关 | 可选保留但不是平台目标 |
+| start-novelfork-studio.sh | 根目录 | 旧的双进程启动脚本 |
+
+---
+
+## 四、迁移步骤
+
+### Phase 1：建立新主入口（不破坏旧链路）
+
+**目标**：在根目录创建一个 `main.ts`，能用 `bun run main.ts` 直接启动完整应用。
+
+**具体操作**：
+
+1. 创建 `main.ts`，内容大致为：
+```typescript
+import { startStudioServer } from "./packages/studio/src/api/server.ts";
+
+const root = process.env.NOVELFORK_PROJECT_ROOT ?? process.cwd();
+const port = parseInt(process.env.NOVELFORK_STUDIO_PORT ?? "4567", 10);
+
+// 开发模式：前端由 vite dev server 提供
+// 生产模式：前端由内嵌静态资源提供
+const staticDir = process.env.NOVELFORK_STATIC_DIR ?? "./packages/studio/dist";
+
+await startStudioServer(root, port, { staticDir });
+
+// 自动打开浏览器
+const url = `http://localhost:${port}`;
+const proc = Bun.spawn(
+  process.platform === "win32"
+    ? ["cmd", "/c", "start", "", url]
+    : process.platform === "darwin"
+      ? ["open", url]
+      : ["xdg-open", url],
+);
+proc.unref();
+
+console.log(`\n  NovelFork running on ${url}\n`);
+```
+
+2. 验证 `bun run main.ts` 能启动 server 并打开浏览器
+
+3. 处理 Bun 与 `node:sqlite` 的兼容性问题
+   - 当前 `memory-db.ts` 使用 `node:sqlite`（Node 22+ 内置）
+   - Bun 不支持 `node:sqlite`
+   - 需要替换为 `bun:sqlite`（Bun 内置）或 `better-sqlite3`
+   - 这是 Phase 1 最大的技术风险点
+
+4. 处理 `@hono/node-server` → Bun 原生 serve
+   - 当前 `startStudioServer` 使用 `serve()` from `@hono/node-server`
+   - Bun 有原生 HTTP server，Hono 直接支持
+   - 改动量很小
+
+**完成标准**：
+- `bun run main.ts` 能启动完整应用
+- 旧的 `novelfork studio` 命令仍然可用（不破坏）
+- 两条链路共存
+
+**预计改动量**：
+- 新增 1 个文件（main.ts）
+- 修改 1-2 个文件（server.ts 的 serve 方式、memory-db.ts 的 SQLite 导入）
+
+---
+
+### Phase 2：解决 SQLite 兼容层
+
+**目标**：让 core 的 MemoryDB 在 Bun 下正常工作。
+
+**方案选择**：
+
+| 方案 | 改动量 | 风险 | 推荐 |
+|------|--------|------|------|
+| A. 条件导入 `bun:sqlite` / `node:sqlite` | 小 | 中（API 差异） | 短期可行 |
+| B. 切到 `better-sqlite3` | 中 | 低（成熟库） | 中期推荐 |
+| C. 切到 `better-sqlite3` + `drizzle-orm` | 大 | 低 | 长期最优 |
+
+**建议**：先用方案 A 快速打通，后续再评估是否走 B/C。
+
+`bun:sqlite` 和 `node:sqlite` 的 API 差异主要在：
+- 构造函数签名
+- prepared statement API
+- WAL 模式配置
+
+需要在 `memory-db.ts` 中做一层薄适配。
+
+---
+
+### Phase 3：前端资源内嵌
+
+**目标**：让 `bun compile` 产物能直接服务前端页面。
+
+**方案**：
+
+1. 前端仍用 `vite build` 生成 `dist/`
+2. 在 `bun compile` 时，把 `dist/` 作为嵌入资源
+3. server 启动时从嵌入资源读取静态文件
+
+Bun compile 支持 `--asset-dir` 嵌入静态资源：
+```bash
+bun build main.ts --compile --asset-dir ./packages/studio/dist --outfile novelfork
+```
+
+server 端需要把当前的文件系统读取改为从嵌入资源读取：
+```typescript
+// 当前方式（文件系统）
+const content = await readFile(join(staticDir, path));
+
+// 嵌入方式
+const content = await Bun.file(new URL(path, import.meta.url)).bytes();
+```
+
+**完成标准**：
+- `bun compile` 能生成单个可执行文件
+- 可执行文件启动后能正常服务前端页面
+- 不再依赖外部 `dist/` 目录
+
+---
+
+### Phase 4：清理旧外壳
+
+**目标**：把不再需要的旧结构降级或移除。
+
+**操作清单**：
+
+1. `packages/cli/` → 降级为可选开发工具
+   - 保留 CLI 命令能力（write、audit、revise 等）
+   - 但不再作为主入口
+   - `novelfork studio` 命令标记为 deprecated
+
+2. `packages/desktop/` → 冻结
+   - Tauri 壳不再维护
+   - 保留代码但不构建
+
+3. `start-novelfork-studio.sh` → 删除
+   - 双进程启动脚本不再需要
+
+4. 根 `package.json` scripts → 简化
+   - 新增 `"start": "bun run main.ts"`
+   - 新增 `"compile": "vite build -c packages/studio/vite.config.ts && bun build main.ts --compile --outfile novelfork"`
+
+5. `tsconfig.json` → 保留但降级
+   - 仍用于 IDE 类型检查
+   - 不再驱动运行时构建
+
+---
+
+### Phase 5：workspace 结构演化（可选）
+
+**目标**：评估是否需要从 monorepo 收敛为单包。
+
+**两种路径**：
+
+| 路径 | 说明 | 适合场景 |
+|------|------|---------|
+| A. 保留 monorepo，但主入口在根 | core/studio 仍是独立包，main.ts 在根 | 过渡期，改动最小 |
+| B. 合并为单包 | 把 core 和 studio 的 src 合并到根 | 长期最简，但改动大 |
+
+**建议**：先走路径 A，等 Phase 1-4 稳定后再评估是否需要 B。
+
+---
+
+## 五、风险与缓解
+
+### 风险 1：Bun 与 node:sqlite 不兼容
+- **影响**：core 的 MemoryDB 无法工作
+- **缓解**：Phase 2 专门处理，有三个备选方案
+- **最坏情况**：切到 better-sqlite3，改动量可控
+
+### 风险 2：Bun compile 的资源嵌入限制
+- **影响**：前端资源可能无法正确嵌入
+- **缓解**：NarraFork 已验证此路线可行
+- **最坏情况**：前端资源放在 exe 同目录，不嵌入
+
+### 风险 3：部分 npm 包不兼容 Bun
+- **影响**：某些依赖可能在 Bun 下行为异常
+- **缓解**：Bun 兼容性已经很好，主要风险在原生模块
+- **最坏情况**：个别包需要替换
+
+### 风险 4：迁移期间旧链路断裂
+- **影响**：开发者无法正常使用
+- **缓解**：Phase 1 明确要求"两条链路共存"
+- **最坏情况**：旧链路保留到 Phase 4 才清理
+
+---
+
+## 六、验证里程碑
+
+| 里程碑 | 验证方式 | 对应阶段 |
+|--------|---------|---------|
+| `bun run main.ts` 能启动完整应用 | 手动验证 | Phase 1 |
+| MemoryDB 在 Bun 下正常读写 | 单元测试 | Phase 2 |
+| `bun compile` 产物能独立运行 | 手动验证 | Phase 3 |
+| 旧 CLI spawn 链路可安全移除 | 回归测试 | Phase 4 |
+| 最终用户体验：双击 exe → 浏览器打开 → 开始写作 | 端到端验证 | Phase 4 |
+
+---
+
+## 七、代码量估算
+
+| 阶段 | 新增 | 修改 | 删除 | 预计工时 |
+|------|------|------|------|---------|
+| Phase 1 | ~100 行 | ~50 行 | 0 | 2-4h |
+| Phase 2 | ~80 行 | ~60 行 | 0 | 2-4h |
+| Phase 3 | ~30 行 | ~40 行 | 0 | 2-3h |
+| Phase 4 | 0 | ~20 行 | ~200 行 | 1-2h |
+| **总计** | **~210 行** | **~170 行** | **~200 行** | **7-13h** |
+
+这不是重写项目，而是换壳。核心写作引擎 49000+ 行代码不动。
+
+---
+
+## 八、执行顺序建议
+
+```text
+Phase 1（主入口）→ Phase 2（SQLite）→ Phase 3（资源嵌入）→ Phase 4（清理）
+```
+
+Phase 5 是可选的，等前四步稳定后再决定。
+
+每个 Phase 完成后都应该能独立验证，不依赖后续 Phase。
+
+---
+
+## 相关文档
+
+- [平台纠偏说明](../03-架构设计/平台纠偏说明.md)
+- [技术栈选型](../03-架构设计/技术栈选型.md)
+- [系统架构总览](../03-架构设计/系统架构总览.md)
+- [迁移 backlog](./feature-backlog.md)

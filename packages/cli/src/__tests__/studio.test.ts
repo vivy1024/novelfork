@@ -28,50 +28,22 @@ describe("studio command", () => {
     vi.resetModules();
   });
 
-  it("launches the repository Bun main entry when available", async () => {
+  it("launches TypeScript sources through tsx in monorepo mode", async () => {
     accessMock.mockImplementation(async (path: string) => {
-      if (normalizePath(path).endsWith("/project/main.ts")) {
+      if (normalizePath(path).endsWith("/packages/studio/src/api/index.ts")) {
         return;
       }
       throw new Error(`missing: ${path}`);
     });
+
 
     const { studioCommand } = await import("../commands/studio.js");
     await studioCommand.parseAsync(["node", "studio", "--port", "9001"]);
 
     const launchCall = spawnMock.mock.calls[0] as unknown as [string, string[], Record<string, unknown>];
     expect(launchCall).toBeDefined();
-    expect(launchCall[0]).toBe("bun");
-    expect(launchCall[1].map(normalizePath)).toEqual([
-      "run",
-      expect.stringMatching(/\/project\/main\.ts$/),
-      "--root=/project",
-    ]);
-    expect(launchCall[2]).toEqual(expect.objectContaining({
-      cwd: "/project",
-      stdio: ["pipe", "pipe", "pipe"],
-      env: expect.objectContaining({ NOVELFORK_STUDIO_PORT: "9001" }),
-    }));
-  });
-
-  it("launches the built studio package before legacy source bridges", async () => {
-    accessMock.mockImplementation(async (path: string) => {
-      if (normalizePath(path).endsWith("/node_modules/@vivy1024/novelfork-studio/dist/api/index.js")) {
-        return;
-      }
-      throw new Error(`missing: ${path}`);
-    });
-
-    const { studioCommand } = await import("../commands/studio.js");
-    await studioCommand.parseAsync(["node", "studio", "--port", "9001"]);
-
-    const launchCall = spawnMock.mock.calls[0] as unknown as [string, string[], Record<string, unknown>];
-    expect(launchCall).toBeDefined();
-    expect(launchCall[0]).toBe("node");
-    expect(launchCall[1].map(normalizePath)).toEqual([
-      expect.stringMatching(/\/node_modules\/\@vivy1024\/novelfork-studio\/dist\/api\/index\.js$/),
-      "/project",
-    ]);
+    expect(launchCall[0]).toBe("npx");
+    expect(launchCall[1].map(normalizePath)).toEqual(["tsx", expect.stringMatching(/\/packages\/studio\/src\/api\/index\.ts$/), "/project"]);
     expect(launchCall[2]).toEqual(expect.objectContaining({
       cwd: "/project",
       stdio: ["pipe", "pipe", "pipe"],
@@ -81,7 +53,7 @@ describe("studio command", () => {
 
   it("launches built JavaScript entries through node", async () => {
     accessMock.mockImplementation(async (path: string) => {
-      if (normalizePath(path).endsWith("/node_modules/@vivy1024/novelfork-studio/dist/api/index.js")) {
+      if (normalizePath(path) === "/project/node_modules/@vivy1024/novelfork-studio/dist/api/index.js") {
         return;
       }
       throw new Error(`missing: ${path}`);

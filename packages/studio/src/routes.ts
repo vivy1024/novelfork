@@ -27,13 +27,14 @@ export type AdminSection =
   | "requests"
   | "daemon"
   | "logs"
-  | "worktrees";
+  | "worktrees"
+  | "terminal"
+  | "container";
 
 export type Route =
   | { page: "dashboard" }
   | { page: "workflow"; section?: WorkflowSection }
   | { page: "sessions" }
-  | { page: "project-create" }
   | { page: "book"; bookId: string }
   | { page: "book-create" }
   | { page: "chapter"; bookId: string; chapterNumber: number }
@@ -96,6 +97,8 @@ const ADMIN_SECTIONS = new Set<AdminSection>([
   "daemon",
   "logs",
   "worktrees",
+  "terminal",
+  "container",
 ]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -129,8 +132,6 @@ export function canonicalRouteId(route: Route): string {
       return route.section ? `workflow:${route.section}` : "workflow";
     case "sessions":
       return "sessions";
-    case "project-create":
-      return "project-create";
     case "book":
       return `book:${route.bookId}`;
     case "book-create":
@@ -184,7 +185,6 @@ export function normalizeRoute(value: unknown): Route | undefined {
   switch (value.page) {
     case "dashboard":
     case "sessions":
-    case "project-create":
     case "genres":
     case "style":
     case "import":

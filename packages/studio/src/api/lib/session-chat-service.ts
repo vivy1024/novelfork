@@ -9,6 +9,7 @@ import type {
   NarratorSessionChatStateEnvelope,
   NarratorSessionRecord,
 } from "../../shared/session-types.js";
+import { appendSessionChatHistory, isSessionChatHistoryDeleted, loadSessionChatHistory } from "./session-history-store.js";
 import { getSessionById, updateSession } from "./session-service.js";
 import type { ServerType } from "@hono/node-server";
 
@@ -95,8 +96,15 @@ async function loadSessionState(sessionId: string): Promise<{ session: NarratorS
 
   const state = getRuntimeState(sessionId, session.messageCount);
   state.messageCount = Math.max(state.messageCount, session.messageCount);
-  if (state.messages.length === 0 && session.recentMessages && session.recentMessages.length > 0) {
-    state.messages = [...session.recentMessages];
+  if (state.messages.length === 0) {
+    if (session.recentMessages && session.recentMessages.length > 0) {
+      state.messages = [...session.recentMessages];
+    } else {
+      const historyMessages = await loadSessionChatHistory(sessionId);
+      if (historyMessages.length > 0) {
+        state.messages = historyMessages.slice(-MAX_SESSION_MESSAGES);
+      }
+    }
   }
   trimSessionMessages(state);
   return { session, state };
@@ -178,6 +186,29 @@ export async function getSessionChatSnapshot(sessionId: string): Promise<Narrato
   };
 }
 
+export async function getSessionChatHistory(sessionId: string): Promise<{
+  session: NarratorSessionRecord;
+  messages: NarratorSessionChatMessage[];
+} | null> {
+  const session = await getSessionById(sessionId);
+  if (!session) {
+    return null;
+  }
+
+  const messages = await loadSessionChatHistory(sessionId);
+  if (messages.length > 0) {
+    return {
+      session,
+      messages,
+    };
+  }
+
+  return {
+    session,
+    messages: [...(session.recentMessages ?? [])],
+  };
+}
+
 export async function attachSessionChatTransport(sessionId: string, transport: SessionChatTransport): Promise<boolean> {
   const state = await loadSessionState(sessionId);
   if (!state) {
@@ -222,6 +253,10 @@ export async function handleSessionChatTransportMessage(
     return;
   }
 
+  if (isSessionChatHistoryDeleted(sessionId)) {
+    return;
+  }
+
   const text = await normalizeMessageText(rawMessage);
   if (!text) {
     sendEnvelope(transport, createSessionChatError(sessionId, "Empty message payload"));
@@ -259,6 +294,7 @@ export async function handleSessionChatTransportMessage(
   loaded.state.messageCount += 1;
   trimSessionMessages(loaded.state);
 
+  await appendSessionChatHistory(sessionId, [userMessage, assistantMessage], loaded.session.recentMessages ?? []);
   const updatedSession = await updateSession(sessionId, {
     messageCount: loaded.state.messageCount,
     recentMessages: [...loaded.state.messages],

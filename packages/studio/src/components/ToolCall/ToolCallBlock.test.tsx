@@ -1,6 +1,6 @@
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 
 import { ToolCallBlock } from "./ToolCallBlock";
 import { parseAssistantPayload } from "./tool-call-utils";
@@ -24,6 +24,7 @@ describe("ToolCallBlock", () => {
           status: "running",
           summary: "正在执行 git status",
           command: "git status --short",
+          input: { cwd: "packages/studio" },
           output: " M packages/studio/src/components/ChatWindow.tsx",
           duration: 420,
           startedAt: 1710000000000,
@@ -35,10 +36,13 @@ describe("ToolCallBlock", () => {
     expect(screen.getByText("执行中")).toBeTruthy();
     expect(screen.getByText("正在执行 git status")).toBeTruthy();
     expect(screen.getByText("Shell")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "复制工具命令" })).toBeTruthy();
+    const actionBar = screen.getByRole("group", { name: "工具调用动作区" });
+    expect(within(actionBar).getByRole("button", { name: "复制工具命令" })).toBeTruthy();
+    expect(within(actionBar).getByRole("button", { name: "查看原始载荷" })).toBeTruthy();
+    expect(within(actionBar).getByRole("button", { name: "展开结果细节" })).toBeTruthy();
     expect(screen.queryByText("标准输出")).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "展开工具调用详情" }));
+    fireEvent.click(within(actionBar).getByRole("button", { name: "展开结果细节" }));
 
     expect(screen.getAllByText("git status --short").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("标准输出")).toBeTruthy();

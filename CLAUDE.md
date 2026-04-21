@@ -4,7 +4,7 @@
 
 你是 Claude Code。配置以本文件 + `.kiro/steering/` 为准。
 
-**项目**: NovelFork — 网文小说 AI 辅助创作工作台（TypeScript + Bun + Vue 3 + SQLite + AI Agents）
+**项目**: NovelFork — 网文小说 AI 辅助创作工作台（TypeScript + Bun + React 19 + Hono + SQLite + AI Agents）
 **开发者**: 薛小川 | GitHub `vivy1024` — ❌ 禁止虚构
 **上游**: Fork 自 [InkOS](https://github.com/Narcooo/inkos)，专注中文网文创作场景
 
@@ -54,7 +54,7 @@ Git 检查 → git status --short
 ## 核心行为约束
 
 ### 验证与报告
-- 说"已完成"前，至少核对 `git status`、相关 diff、`OPS_RUNTIME_STATE.md`、实测
+- 说"已完成"前，至少核对 `git status`、相关 diff、实测，以及必要的 git 日志/记忆上下文
 - 没运行就写"未运行"；没验活就写"未验活"
 
 ### 最小改动
@@ -138,7 +138,7 @@ Git 检查 → git status --short
 | 代码规范 | `.kiro/steering/project-standards.md` |
 | MCP 工具使用 | `.kiro/steering/mcp-tools-reference.md` |
 
-| 动态运维状态 | `OPS_RUNTIME_STATE.md` |
+| 动态状态追踪 | git 日志 / 记忆 / 运维文档 |
 
 ---
 
@@ -160,4 +160,3 @@ Git 检查 → git status --short
 - **Electron 桌面壳** → 文字修仙有现成实现：`D:\DESKTOP\文字修仙\electron\`（本项目终态也要做桌面端）
 - **GraphRAG 小说索引** → `D:\DESKTOP\openclaw/graphrag_novels/`（已建好的小说知识图谱）
 - **提示词工程模式** → 三个项目共享同一套 CLAUDE.md / AGENTS.md / .kiro/steering/ / 记忆沉淀模式
-��式
