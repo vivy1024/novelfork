@@ -34,8 +34,8 @@ describe("MCPServerManager", () => {
             args: ["-y", "@modelcontextprotocol/server-filesystem", "."],
             status: "connected",
             tools: [
-              { name: "read_file", description: "Read a file" },
-              { name: "write_file", description: "Write a file" },
+              { name: "read_file", description: "Read a file", access: "allow", source: "runtimeControls.toolAccess.mcpStrategy", reason: "MCP tool is allowed by runtimeControls.toolAccess.mcpStrategy=allow" },
+              { name: "write_file", description: "Write a file", access: "prompt", source: "runtimeControls.toolAccess.mcpStrategy", reason: "MCP tool requires confirmation because runtimeControls.toolAccess.mcpStrategy=ask" },
             ],
             toolCount: 2,
           },

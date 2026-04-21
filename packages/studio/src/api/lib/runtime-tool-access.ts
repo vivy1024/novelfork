@@ -7,10 +7,32 @@ export type ToolAccessAction = "allow" | "deny" | "prompt";
 export interface ToolAccessDecision {
   action: ToolAccessAction;
   reason?: string;
+  source?: string;
 }
 
 function toPermissionAction(mode: SessionPermissionMode): ToolAccessAction {
   return mode === "ask" ? "prompt" : mode;
+}
+
+function inferDecisionSource(reason: string | undefined, fallback: string): string {
+  if (!reason) {
+    return fallback;
+  }
+
+  if (reason.includes("runtimeControls.toolAccess.allowlist")) {
+    return "runtimeControls.toolAccess.allowlist";
+  }
+  if (reason.includes("runtimeControls.toolAccess.blocklist")) {
+    return "runtimeControls.toolAccess.blocklist";
+  }
+  if (reason.includes("defaultPermissionMode")) {
+    return "runtimeControls.defaultPermissionMode";
+  }
+  if (reason.includes("Potentially destructive command")) {
+    return "builtin-permission-rules";
+  }
+
+  return fallback;
 }
 
 function buildAllowlistRules(toolAccess: ToolAccessSettings): PermissionRule[] {
@@ -66,6 +88,7 @@ export function getPermissionDecision(
   return {
     action,
     reason: rule?.reason,
+    source: inferDecisionSource(rule?.reason, rule ? "builtin-permission-rules" : "runtimeControls.defaultPermissionMode"),
   };
 }
 
@@ -79,6 +102,7 @@ export function getMCPToolDecision(
     return {
       action: "deny",
       reason: "MCP tool is blocked by runtimeControls.toolAccess.blocklist",
+      source: "runtimeControls.toolAccess.blocklist",
     };
   }
 
@@ -96,6 +120,7 @@ export function getMCPToolDecision(
     return {
       action: "allow",
       reason: "MCP tool is allowed by runtimeControls.toolAccess.mcpStrategy=allow",
+      source: "runtimeControls.toolAccess.mcpStrategy",
     };
   }
 
@@ -103,6 +128,7 @@ export function getMCPToolDecision(
     return {
       action: "deny",
       reason: "MCP tool is blocked by runtimeControls.toolAccess.mcpStrategy=deny",
+      source: "runtimeControls.toolAccess.mcpStrategy",
     };
   }
 
@@ -110,6 +136,7 @@ export function getMCPToolDecision(
     return {
       action: "prompt",
       reason: "MCP tool requires confirmation because runtimeControls.toolAccess.mcpStrategy=ask",
+      source: "runtimeControls.toolAccess.mcpStrategy",
     };
   }
 
@@ -117,5 +144,6 @@ export function getMCPToolDecision(
   return {
     action: inheritedAction,
     reason: `MCP tool inherits defaultPermissionMode=${runtimeControls.defaultPermissionMode}`,
+    source: "runtimeControls.defaultPermissionMode",
   };
 }

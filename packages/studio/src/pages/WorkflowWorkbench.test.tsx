@@ -66,6 +66,7 @@ describe("WorkflowWorkbench", () => {
               connectedServers: 1,
               enabledTools: 3,
               discoveredTools: 5,
+              policySource: "runtimeControls.toolAccess",
             },
             servers: [
               {
@@ -119,6 +120,7 @@ describe("WorkflowWorkbench", () => {
     expect(screen.getByText("allowlist：2 项（Read / Write）")).toBeTruthy();
     expect(screen.getByText("blocklist：1 项（Edit）")).toBeTruthy();
     expect(screen.getByText("mcpStrategy：inherit")).toBeTruthy();
+    expect(screen.getAllByText("策略来源：runtimeControls.toolAccess").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("已发现 5 个工具")).toBeTruthy();
     expect(screen.getByText("已启用 3 个工具")).toBeTruthy();
     expect(screen.getByText("AgentPanel")).toBeTruthy();

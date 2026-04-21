@@ -45,6 +45,9 @@ export function createToolsRouter() {
         return c.json(
           {
             success: false,
+            allowed: false,
+            reason: permission.reason,
+            source: permission.source,
             error: permission.reason || "Permission denied",
           },
           403,
@@ -55,6 +58,9 @@ export function createToolsRouter() {
         return c.json(
           {
             success: false,
+            allowed: false,
+            reason: permission.reason,
+            source: permission.source,
             error: permission.reason || "Tool execution requires confirmation",
             confirmationRequired: true,
           },
@@ -101,6 +107,7 @@ export function createToolsRouter() {
           enabled: permission.action !== "deny",
           requiresConfirmation: permission.action === "prompt",
           reason: permission.reason,
+          source: permission.source,
         };
       });
 

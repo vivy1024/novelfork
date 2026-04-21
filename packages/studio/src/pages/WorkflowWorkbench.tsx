@@ -52,6 +52,8 @@ interface MCPRegistryResponse {
     connectedServers: number;
     enabledTools: number;
     discoveredTools: number;
+    policySource?: string;
+    mcpStrategy?: "allow" | "ask" | "deny" | "inherit";
   };
 }
 
@@ -253,13 +255,15 @@ export function WorkflowWorkbench({
             </div>
             <p>allowlist：{formatStatusList(toolAccess?.allowlist)}</p>
             <p>blocklist：{formatStatusList(toolAccess?.blocklist)}</p>
-            <p>mcpStrategy：{toolAccess?.mcpStrategy ?? "inherit"}</p>
+            <p>mcpStrategy：{toolAccess?.mcpStrategy ?? registrySummary?.mcpStrategy ?? "inherit"}</p>
+            <p>策略来源：{registrySummary?.policySource ?? "runtimeControls.toolAccess"}</p>
           </GovernanceSummaryCard>
 
           <GovernanceSummaryCard title="MCP 注册表实时摘要">
             <p className="text-foreground">已发现 {registrySummary?.discoveredTools ?? 0} 个工具</p>
             <p>已启用 {registrySummary?.enabledTools ?? 0} 个工具</p>
             <p>已连接 {registrySummary?.connectedServers ?? 0} / {registrySummary?.totalServers ?? 0} 个 Server</p>
+            <p>策略来源：{registrySummary?.policySource ?? "runtimeControls.toolAccess"}</p>
           </GovernanceSummaryCard>
         </CardContent>
       </Card>

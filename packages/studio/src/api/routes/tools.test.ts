@@ -68,6 +68,7 @@ describe("createToolsRouter", () => {
           enabled: false,
           requiresConfirmation: false,
           reason: "Tool is blocked by runtimeControls.toolAccess.blocklist",
+          source: "runtimeControls.toolAccess.blocklist",
         }),
         expect.objectContaining({
           name: "Write",
@@ -75,6 +76,7 @@ describe("createToolsRouter", () => {
           enabled: false,
           requiresConfirmation: false,
           reason: "Tool is not in runtimeControls.toolAccess.allowlist",
+          source: "runtimeControls.toolAccess.allowlist",
         }),
       ]),
     );
@@ -168,8 +170,29 @@ describe("createToolsRouter", () => {
     const payload = await response.json();
     expect(payload).toMatchObject({
       success: false,
+      allowed: false,
       confirmationRequired: true,
+      source: "runtimeControls.defaultPermissionMode",
       error: "Tool falls back to defaultPermissionMode=ask",
     });
+  });
+
+  it("returns a unified permission decision envelope for successful tool registry reads", async () => {
+    userConfigState.runtimeControls.toolAccess.allowlist = ["Read"];
+
+    const app = createToolsRouter();
+    const response = await app.request("http://localhost/list");
+    expect(response.status).toBe(200);
+
+    const payload = await response.json();
+    expect(payload.tools).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "Read",
+          access: "allow",
+          source: "runtimeControls.toolAccess.allowlist",
+        }),
+      ]),
+    );
   });
 });

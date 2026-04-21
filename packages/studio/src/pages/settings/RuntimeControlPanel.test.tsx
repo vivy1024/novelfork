@@ -24,6 +24,11 @@ describe("RuntimeControlPanel", () => {
         defaultReasoningEffort: "high",
         contextCompressionThresholdPercent: 85,
         contextTruncateTargetPercent: 65,
+        toolAccess: {
+          allowlist: ["Read", "Write"],
+          blocklist: ["Bash"],
+          mcpStrategy: "ask",
+        },
       },
       modelDefaults: {
         ...DEFAULT_USER_CONFIG.modelDefaults,
@@ -41,6 +46,11 @@ describe("RuntimeControlPanel", () => {
         defaultReasoningEffort: "high",
         contextCompressionThresholdPercent: 82,
         contextTruncateTargetPercent: 60,
+        toolAccess: {
+          allowlist: ["Read", "Edit"],
+          blocklist: ["Bash", "WebFetch"],
+          mcpStrategy: "inherit",
+        },
       },
       modelDefaults: {
         ...DEFAULT_USER_CONFIG.modelDefaults,
@@ -73,6 +83,12 @@ describe("RuntimeControlPanel", () => {
     fireEvent.change(screen.getByLabelText("子代理模型池"), {
       target: { value: "anthropic:claude-opus-4-7, deepseek:deepseek-chat" },
     });
+    fireEvent.change(screen.getByLabelText("允许工具列表"), {
+      target: { value: "Read, Edit" },
+    });
+    fireEvent.change(screen.getByLabelText("阻止工具列表"), {
+      target: { value: "Bash, WebFetch" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "保存运行控制" }));
 
     await waitFor(() => {
@@ -83,6 +99,11 @@ describe("RuntimeControlPanel", () => {
           defaultReasoningEffort: "high",
           contextCompressionThresholdPercent: 82,
           contextTruncateTargetPercent: 60,
+          toolAccess: {
+            allowlist: ["Read", "Edit"],
+            blocklist: ["Bash", "WebFetch"],
+            mcpStrategy: "ask",
+          },
         },
         modelDefaults: {
           ...DEFAULT_USER_CONFIG.modelDefaults,
