@@ -209,7 +209,6 @@ describe("SessionCenter", () => {
       title: "Writer 会话",
       agentId: "writer",
       sessionId: "session-active",
-      messages: [],
     });
   });
 });

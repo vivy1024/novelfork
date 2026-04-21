@@ -8,14 +8,6 @@ import {
   type SessionReasoningEffort,
 } from "../shared/session-types.js";
 
-export type ToolAccessMcpStrategy = SessionPermissionMode | "inherit";
-
-export interface ToolAccessSettings {
-  allowlist: string[];
-  blocklist: string[];
-  mcpStrategy: ToolAccessMcpStrategy;
-}
-
 export interface UserProfile {
   name: string;
   email: string;
@@ -35,12 +27,40 @@ export interface UserPreferences {
   dailyWordTarget: number;
 }
 
+export interface RuntimeRecoverySettings {
+  resumeOnStartup: boolean;
+  maxRecoveryAttempts: number;
+  maxRetryAttempts: number;
+  initialRetryDelayMs: number;
+  maxRetryDelayMs: number;
+  backoffMultiplier: number;
+  jitterPercent: number;
+}
+
+export type McpPolicyMode = "inherit" | "allow" | "ask" | "deny";
+
+export interface ToolAccessSettings {
+  allowlist: string[];
+  blocklist: string[];
+  mcpStrategy: McpPolicyMode;
+}
+
+export interface RuntimeDebugSettings {
+  tokenDebugEnabled: boolean;
+  rateDebugEnabled: boolean;
+  dumpEnabled: boolean;
+  traceEnabled: boolean;
+  traceSampleRatePercent: number;
+}
+
 export interface RuntimeControlSettings {
   defaultPermissionMode: SessionPermissionMode;
   defaultReasoningEffort: SessionReasoningEffort;
   contextCompressionThresholdPercent: number;
   contextTruncateTargetPercent: number;
+  recovery: RuntimeRecoverySettings;
   toolAccess: ToolAccessSettings;
+  runtimeDebug: RuntimeDebugSettings;
 }
 
 export interface ModelDefaultSettings {
@@ -89,10 +109,26 @@ export const DEFAULT_USER_CONFIG: UserConfig = {
     defaultReasoningEffort: DEFAULT_SESSION_CONFIG.reasoningEffort,
     contextCompressionThresholdPercent: 80,
     contextTruncateTargetPercent: 70,
+    recovery: {
+      resumeOnStartup: true,
+      maxRecoveryAttempts: 3,
+      maxRetryAttempts: 5,
+      initialRetryDelayMs: 1000,
+      maxRetryDelayMs: 30000,
+      backoffMultiplier: 2,
+      jitterPercent: 20,
+    },
     toolAccess: {
       allowlist: [],
       blocklist: [],
       mcpStrategy: "inherit",
+    },
+    runtimeDebug: {
+      tokenDebugEnabled: false,
+      rateDebugEnabled: false,
+      dumpEnabled: false,
+      traceEnabled: false,
+      traceSampleRatePercent: 0,
     },
   },
   modelDefaults: {

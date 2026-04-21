@@ -16,8 +16,6 @@ import {
   listSessions,
   updateSession,
 } from "../lib/session-service.js";
-import { getSessionChatHistory, getSessionChatSnapshot } from "../lib/session-chat-service.js";
-import type { CreateNarratorSessionInput, UpdateNarratorSessionInput } from "../../shared/session-types.js";
 
 const app = new Hono();
 
@@ -55,16 +53,11 @@ app.get("/:id/chat/state", async (c) => {
 
 app.get("/:id/chat/history", async (c) => {
   const id = c.req.param("id");
-  const history = await getSessionChatHistory(id);
+  const history = await getSessionChatHistory(id, parseSinceSeq(c.req.query("sinceSeq")));
   if (!history) {
     return c.json({ error: "Session not found" }, 404);
   }
-
-  return c.json({
-    sessionId: id,
-    session: history.session,
-    messages: history.messages,
-  });
+  return c.json(history);
 });
 
 app.post("/", async (c) => {
