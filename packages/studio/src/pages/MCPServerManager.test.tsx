@@ -24,7 +24,13 @@ describe("MCPServerManager", () => {
           connectedServers: 1,
           enabledTools: 3,
           discoveredTools: 5,
+          allowTools: 2,
+          promptTools: 1,
+          denyTools: 2,
+          policySource: "runtimeControls.toolAccess",
+          mcpStrategy: "inherit",
         },
+
         servers: [
           {
             id: "server-1",
@@ -56,6 +62,10 @@ describe("MCPServerManager", () => {
     expect(screen.getByText(/Filesystem/)).toBeTruthy();
     expect(screen.getAllByText("2").length).toBeGreaterThan(0);
     expect(screen.getByText(/2 个工具/)).toBeTruthy();
+    expect(screen.getByText(/allow 2 \/ prompt 1 \/ deny 2/)).toBeTruthy();
+    expect(screen.getByText("allow")).toBeTruthy();
+    expect(screen.getByText("prompt")).toBeTruthy();
+    expect(screen.getAllByText(/来源：runtimeControls.toolAccess.mcpStrategy/).length).toBeGreaterThanOrEqual(1);
   });
 
   it("allows editing an existing server and saving through the MCP API", () => {

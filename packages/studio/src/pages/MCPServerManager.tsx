@@ -48,6 +48,9 @@ interface MCPRegistryResponse {
     connectedServers: number;
     enabledTools: number;
     discoveredTools: number;
+    allowTools?: number;
+    promptTools?: number;
+    denyTools?: number;
     policySource?: string;
     mcpStrategy?: "allow" | "ask" | "deny" | "inherit";
   };
@@ -123,6 +126,9 @@ export function MCPServerManager({ nav, theme, t }: Props) {
     connectedServers: 0,
     enabledTools: 0,
     discoveredTools: 0,
+    allowTools: 0,
+    promptTools: 0,
+    denyTools: 0,
   };
 
   const connectedRatio = useMemo(() => {
@@ -211,7 +217,7 @@ export function MCPServerManager({ nav, theme, t }: Props) {
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <SummaryCard title="已注册 Server" value={String(summary.totalServers)} description="当前已写入 novelfork.json 的 MCP 服务数" />
         <SummaryCard title="已连接" value={String(summary.connectedServers)} description={`连接占比 ${connectedRatio}`} />
-        <SummaryCard title="已发现工具" value={String(summary.discoveredTools)} description="从已连接 MCP 服务发现的工具总数" />
+        <SummaryCard title="已发现工具" value={String(summary.discoveredTools)} description={`allow ${summary.allowTools ?? 0} / prompt ${summary.promptTools ?? 0} / deny ${summary.denyTools ?? 0}`} />
         <SummaryCard title="已启用工具" value={String(summary.enabledTools)} description="当前进入系统注册视图的工具数量" />
       </div>
 

@@ -98,6 +98,9 @@ describe("createMCPRouter", () => {
       connectedServers: 0,
       enabledTools: 0,
       discoveredTools: 0,
+      allowTools: 0,
+      promptTools: 0,
+      denyTools: 0,
       policySource: "runtimeControls.toolAccess",
       mcpStrategy: "inherit",
     });
@@ -238,5 +241,46 @@ describe("createMCPRouter", () => {
       structuredContent: { path: "story.txt" },
       isError: false,
     });
+  });
+
+  it("returns governance-aware registry counts and tool access metadata after a server starts", async () => {
+    userConfigState.runtimeControls.toolAccess.mcpStrategy = "ask";
+    const app = createMCPRouter(root);
+
+    const startResponse = await app.request("http://localhost/api/mcp/servers/stdio-server/start", {
+      method: "POST",
+    });
+    expect(startResponse.status).toBe(200);
+
+    const registryResponse = await app.request("http://localhost/api/mcp/registry");
+    expect(registryResponse.status).toBe(200);
+    const payload = await registryResponse.json();
+
+    expect(payload.summary).toMatchObject({
+      totalServers: 2,
+      connectedServers: 1,
+      discoveredTools: 1,
+      enabledTools: 1,
+      allowTools: 0,
+      promptTools: 1,
+      denyTools: 0,
+      policySource: "runtimeControls.toolAccess",
+      mcpStrategy: "ask",
+    });
+    expect(payload.servers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "stdio-server",
+          toolCount: 1,
+          tools: [
+            expect.objectContaining({
+              name: "read_file",
+              access: "prompt",
+              source: "runtimeControls.toolAccess.mcpStrategy",
+            }),
+          ],
+        }),
+      ]),
+    );
   });
 });

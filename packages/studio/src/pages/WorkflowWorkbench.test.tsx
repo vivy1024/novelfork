@@ -66,6 +66,9 @@ describe("WorkflowWorkbench", () => {
               connectedServers: 1,
               enabledTools: 3,
               discoveredTools: 5,
+              allowTools: 2,
+              promptTools: 1,
+              denyTools: 2,
               policySource: "runtimeControls.toolAccess",
             },
             servers: [
