@@ -6,14 +6,19 @@
 
 import { Hono } from "hono";
 import { readFile, readdir, access, stat } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import {
   PipelineRunner,
   computeAnalytics,
   loadProjectConfig,
 } from "@vivy1024/novelfork-core";
-import { ApiError } from "../errors.js";
-import { buildStudioBookConfig, type StudioCreateBookBody } from "../book-create.js";
+import { ApiError, isMissingFileError } from "../errors.js";
+import {
+  buildStudioBookConfig,
+  buildStudioProjectInitRecord,
+  type StudioCreateBookBody,
+  type StudioProjectInitRecord,
+} from "../book-create.js";
 import {
   persistStudioProjectInitRecord,
   prepareStudioBookProjectBootstrap,
@@ -29,6 +34,112 @@ const TRUTH_FILES = [
   "author_intent.md", "current_focus.md",
 ];
 
+interface ProjectWorktreeOwnership {
+  readonly repositoryRoot: string;
+  readonly worktreeName: string;
+}
+
+interface BookCreateState {
+  readonly status: "creating" | "error";
+  readonly error?: string;
+  readonly ownership?: ProjectWorktreeOwnership;
+}
+
+function normalizeOwnershipPath(targetPath: string): string {
+  return resolve(targetPath).replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+}
+
+function resolveProjectWorktreeOwnership(
+  record: Pick<StudioProjectInitRecord, "repositorySource" | "repositoryPath" | "worktreeName" | "bootstrap">,
+  studioRoot: string,
+): ProjectWorktreeOwnership | null {
+  if (!record.worktreeName || record.repositorySource === "clone") {
+    return null;
+  }
+
+  if (record.bootstrap?.repositoryRoot) {
+    return {
+      repositoryRoot: record.bootstrap.repositoryRoot,
+      worktreeName: record.worktreeName,
+    };
+  }
+
+  if (record.repositorySource === "existing") {
+    if (!record.repositoryPath) {
+      return null;
+    }
+
+    return {
+      repositoryRoot: resolve(studioRoot, record.repositoryPath),
+      worktreeName: record.worktreeName,
+    };
+  }
+
+  return {
+    repositoryRoot: record.repositoryPath ? resolve(studioRoot, record.repositoryPath) : resolve(studioRoot),
+    worktreeName: record.worktreeName,
+  };
+}
+
+function hasSameOwnership(left: ProjectWorktreeOwnership, right: ProjectWorktreeOwnership): boolean {
+  return left.worktreeName === right.worktreeName
+    && normalizeOwnershipPath(left.repositoryRoot) === normalizeOwnershipPath(right.repositoryRoot);
+}
+
+async function findConflictingBookOwner(
+  studioRoot: string,
+  requestedBookId: string,
+  requestedOwnership: ProjectWorktreeOwnership | null,
+  bookCreateStatus: Map<string, BookCreateState>,
+): Promise<string | null> {
+  if (!requestedOwnership) {
+    return null;
+  }
+
+  for (const [bookId, status] of bookCreateStatus.entries()) {
+    if (
+      bookId !== requestedBookId
+      && status.status === "creating"
+      && status.ownership
+      && hasSameOwnership(status.ownership, requestedOwnership)
+    ) {
+      return bookId;
+    }
+  }
+
+  let entries: Awaited<ReturnType<typeof readdir>>;
+  try {
+    entries = await readdir(join(studioRoot, "books"), { withFileTypes: true });
+  } catch (error) {
+    if (isMissingFileError(error)) {
+      return null;
+    }
+    throw error;
+  }
+
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.name === requestedBookId) {
+      continue;
+    }
+
+    try {
+      const raw = await readFile(join(studioRoot, "books", entry.name, ".novelfork-project-init.json"), "utf-8");
+      const record = JSON.parse(raw) as StudioProjectInitRecord;
+      const existingOwnership = resolveProjectWorktreeOwnership(record, studioRoot);
+      if (existingOwnership && hasSameOwnership(existingOwnership, requestedOwnership)) {
+        return entry.name;
+      }
+    } catch (error) {
+      if (isMissingFileError(error)) {
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  return null;
+}
+
 export function createStorageRouter(ctx: RouterContext): Hono {
   const app = new Hono();
   const { state, root, broadcast } = ctx;
@@ -36,7 +147,7 @@ export function createStorageRouter(ctx: RouterContext): Hono {
   // Note: bookId validation middleware is registered globally in server.ts
 
   // In-memory book creation status tracking
-  const bookCreateStatus = new Map<string, { status: "creating" | "error"; error?: string }>();
+  const bookCreateStatus = new Map<string, BookCreateState>();
 
   // --- Books ---
 
@@ -84,8 +195,20 @@ export function createStorageRouter(ctx: RouterContext): Hono {
       return c.json({ error: `Book "${bookId}" is already being created` }, 409);
     }
 
+    const requestedOwnership = body.projectInit
+      ? resolveProjectWorktreeOwnership(buildStudioProjectInitRecord(body, now), root)
+      : null;
+    const conflictingOwnerBookId = await findConflictingBookOwner(root, bookId, requestedOwnership, bookCreateStatus);
+    if (conflictingOwnerBookId) {
+      throw new ApiError(
+        409,
+        "PROJECT_BOOTSTRAP_WORKTREE_CONFLICT",
+        `Worktree "${requestedOwnership?.worktreeName}" is already owned by book "${conflictingOwnerBookId}" in repository "${requestedOwnership?.repositoryRoot}".`,
+      );
+    }
+
     broadcast("book:creating", { bookId, title: body.title });
-    bookCreateStatus.set(bookId, { status: "creating" });
+    bookCreateStatus.set(bookId, { status: "creating", ...(requestedOwnership ? { ownership: requestedOwnership } : {}) });
 
     let preparedProjectBootstrap: PreparedStudioProjectBootstrap | undefined;
     try {
