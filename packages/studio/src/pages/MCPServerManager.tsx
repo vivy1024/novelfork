@@ -20,6 +20,14 @@ import { postApi, putApi, useApi } from "../hooks/use-api";
 import type { TFunction } from "../hooks/use-i18n";
 import type { Theme } from "../hooks/use-theme";
 
+interface MCPServerTool {
+  name: string;
+  description: string;
+  access?: "allow" | "prompt" | "deny";
+  source?: string;
+  reason?: string;
+}
+
 interface MCPServer {
   id: string;
   name: string;
@@ -29,7 +37,7 @@ interface MCPServer {
   url?: string;
   env?: Record<string, string>;
   status: "disconnected" | "connecting" | "connected" | "reconnecting" | "failed";
-  tools: Array<{ name: string; description: string }>;
+  tools: MCPServerTool[];
   toolCount: number;
   error?: string;
 }
@@ -40,6 +48,8 @@ interface MCPRegistryResponse {
     connectedServers: number;
     enabledTools: number;
     discoveredTools: number;
+    policySource?: string;
+    mcpStrategy?: "allow" | "ask" | "deny" | "inherit";
   };
   servers: MCPServer[];
 }
@@ -337,8 +347,17 @@ export function MCPServerManager({ nav, theme, t }: Props) {
                       {server.tools.length > 0 ? (
                         server.tools.map((tool) => (
                           <div key={tool.name} className="rounded-lg bg-muted/40 p-2 text-xs">
-                            <span className="font-mono text-foreground">{tool.name}</span>
-                            <span className="ml-2 text-muted-foreground">— {tool.description}</span>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-mono text-foreground">{tool.name}</span>
+                              {tool.access ? (
+                                <Badge variant={tool.access === "allow" ? "secondary" : tool.access === "prompt" ? "outline" : "destructive"}>
+                                  {tool.access}
+                                </Badge>
+                              ) : null}
+                            </div>
+                            <div className="mt-1 text-muted-foreground">— {tool.description}</div>
+                            {tool.source ? <div className="mt-1 text-muted-foreground">来源：{tool.source}</div> : null}
+                            {tool.reason ? <div className="mt-1 text-muted-foreground">原因：{tool.reason}</div> : null}
                           </div>
                         ))
                       ) : (

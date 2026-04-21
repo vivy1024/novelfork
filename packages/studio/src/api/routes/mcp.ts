@@ -7,6 +7,8 @@ import { Hono } from "hono";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { MCPClientImpl, type MCPServerConfig as CoreMCPConfig } from "@vivy1024/novelfork-core";
+import { getMCPToolDecision } from "../lib/runtime-tool-access.js";
+import { loadUserConfig } from "../lib/user-config-service.js";
 
 interface MCPServerEntry {
   readonly id: string;
@@ -97,6 +99,7 @@ export function createMCPRouter(projectRoot: string): Hono {
 
   async function buildRegistry() {
     const entries = await loadConfig();
+    const userConfig = await loadUserConfig();
     const servers = entries.map(serializeServer);
     const connectedServers = servers.filter((server) => server.status === "connected").length;
     const discoveredTools = servers.reduce((sum, server) => sum + server.toolCount, 0);
@@ -108,6 +111,8 @@ export function createMCPRouter(projectRoot: string): Hono {
         connectedServers,
         enabledTools: discoveredTools,
         discoveredTools,
+        policySource: "runtimeControls.toolAccess",
+        mcpStrategy: userConfig.runtimeControls.toolAccess.mcpStrategy,
       },
     };
   }
@@ -229,6 +234,36 @@ export function createMCPRouter(projectRoot: string): Hono {
     if (!managed) return c.json({ error: "Server not connected" }, 400);
 
     const body = await c.req.json<{ tool: string; arguments?: Record<string, unknown> }>();
+    const userConfig = await loadUserConfig();
+    const decision = getMCPToolDecision(body.tool, userConfig.runtimeControls);
+
+    if (decision.action === "deny") {
+      return c.json(
+        {
+          success: false,
+          allowed: false,
+          reason: decision.reason,
+          source: decision.source,
+          error: decision.reason || "MCP tool execution denied",
+        },
+        403,
+      );
+    }
+
+    if (decision.action === "prompt") {
+      return c.json(
+        {
+          success: false,
+          allowed: false,
+          confirmationRequired: true,
+          reason: decision.reason,
+          source: decision.source,
+          error: decision.reason || "MCP tool execution requires confirmation",
+        },
+        403,
+      );
+    }
+
     const result = await managed.client.callTool({
       name: body.tool,
       arguments: body.arguments ?? {},

@@ -1,7 +1,45 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+
+const { userConfigState, mockCallTool } = vi.hoisted(() => ({
+  userConfigState: {
+    runtimeControls: {
+      defaultPermissionMode: "allow" as const,
+      toolAccess: {
+        allowlist: [] as string[],
+        blocklist: [] as string[],
+        mcpStrategy: "inherit" as "inherit" | "allow" | "ask" | "deny",
+      },
+    },
+  },
+  mockCallTool: vi.fn(async ({ name, arguments: args }: { name: string; arguments: Record<string, unknown> }) => ({
+    content: [{ type: "text", text: `called:${name}` }],
+    structuredContent: args,
+    isError: false,
+  })),
+}));
+
+vi.mock("../lib/user-config-service.js", () => ({
+  loadUserConfig: vi.fn(async () => userConfigState),
+}));
+
+vi.mock("@vivy1024/novelfork-core", () => ({
+  MCPClientImpl: class MockMCPClientImpl {
+    state = "connected";
+    tools = new Set([{ name: "read_file", description: "Read a file" }]);
+    async connect() {
+      this.state = "connected";
+    }
+    async disconnect() {
+      this.state = "disconnected";
+    }
+    async callTool(payload: { name: string; arguments: Record<string, unknown> }) {
+      return mockCallTool(payload);
+    }
+  },
+}));
 
 import { createMCPRouter, resetMCPRuntime } from "./mcp";
 
@@ -10,6 +48,11 @@ describe("createMCPRouter", () => {
 
   beforeEach(async () => {
     resetMCPRuntime();
+    mockCallTool.mockClear();
+    userConfigState.runtimeControls.defaultPermissionMode = "allow";
+    userConfigState.runtimeControls.toolAccess.allowlist = [];
+    userConfigState.runtimeControls.toolAccess.blocklist = [];
+    userConfigState.runtimeControls.toolAccess.mcpStrategy = "inherit";
     root = await mkdtemp(join(tmpdir(), "novelfork-mcp-route-"));
     await writeFile(
       join(root, "novelfork.json"),
@@ -55,6 +98,8 @@ describe("createMCPRouter", () => {
       connectedServers: 0,
       enabledTools: 0,
       discoveredTools: 0,
+      policySource: "runtimeControls.toolAccess",
+      mcpStrategy: "inherit",
     });
     expect(payload.servers).toEqual(
       expect.arrayContaining([
@@ -103,5 +148,95 @@ describe("createMCPRouter", () => {
         }),
       ]),
     );
+  });
+
+  it("blocks MCP tool calls when runtimeControls.toolAccess denies the tool", async () => {
+    userConfigState.runtimeControls.toolAccess.blocklist = ["read_file"];
+    const app = createMCPRouter(root);
+
+    const startResponse = await app.request("http://localhost/api/mcp/servers/stdio-server/start", {
+      method: "POST",
+    });
+    expect(startResponse.status).toBe(200);
+
+    const response = await app.request("http://localhost/api/mcp/servers/stdio-server/call", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tool: "read_file",
+        arguments: { path: "story.txt" },
+      }),
+    });
+
+    expect(response.status).toBe(403);
+    expect(mockCallTool).not.toHaveBeenCalled();
+    const payload = await response.json();
+    expect(payload).toMatchObject({
+      success: false,
+      allowed: false,
+      source: "runtimeControls.toolAccess.blocklist",
+      error: "MCP tool is blocked by runtimeControls.toolAccess.blocklist",
+    });
+  });
+
+  it("returns confirmationRequired when MCP policy resolves to ask", async () => {
+    userConfigState.runtimeControls.toolAccess.mcpStrategy = "ask";
+    const app = createMCPRouter(root);
+
+    const startResponse = await app.request("http://localhost/api/mcp/servers/stdio-server/start", {
+      method: "POST",
+    });
+    expect(startResponse.status).toBe(200);
+
+    const response = await app.request("http://localhost/api/mcp/servers/stdio-server/call", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tool: "read_file",
+        arguments: { path: "story.txt" },
+      }),
+    });
+
+    expect(response.status).toBe(403);
+    expect(mockCallTool).not.toHaveBeenCalled();
+    const payload = await response.json();
+    expect(payload).toMatchObject({
+      success: false,
+      allowed: false,
+      confirmationRequired: true,
+      source: "runtimeControls.toolAccess.mcpStrategy",
+      error: "MCP tool requires confirmation because runtimeControls.toolAccess.mcpStrategy=ask",
+    });
+  });
+
+  it("calls the MCP tool when runtimeControls allows execution", async () => {
+    userConfigState.runtimeControls.toolAccess.mcpStrategy = "allow";
+    const app = createMCPRouter(root);
+
+    const startResponse = await app.request("http://localhost/api/mcp/servers/stdio-server/start", {
+      method: "POST",
+    });
+    expect(startResponse.status).toBe(200);
+
+    const response = await app.request("http://localhost/api/mcp/servers/stdio-server/call", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tool: "read_file",
+        arguments: { path: "story.txt" },
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(mockCallTool).toHaveBeenCalledWith({
+      name: "read_file",
+      arguments: { path: "story.txt" },
+    });
+    const payload = await response.json();
+    expect(payload).toMatchObject({
+      content: [{ type: "text", text: "called:read_file" }],
+      structuredContent: { path: "story.txt" },
+      isError: false,
+    });
   });
 });

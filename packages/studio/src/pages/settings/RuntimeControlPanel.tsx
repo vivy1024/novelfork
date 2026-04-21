@@ -30,6 +30,17 @@ const REASONING_OPTIONS: Array<{ value: RuntimeControlSettings["defaultReasoning
   { value: "high", label: "高", description: "适合复杂规划和长链分析。" },
 ];
 
+const MCP_POLICY_OPTIONS: Array<{
+  value: RuntimeControlSettings["toolAccess"]["mcpStrategy"];
+  label: string;
+  description: string;
+}> = [
+  { value: "inherit", label: "继承默认权限", description: "MCP 工具默认跟随 defaultPermissionMode 判定。" },
+  { value: "allow", label: "直接允许", description: "默认允许 MCP 工具执行，仅受 allowlist/blocklist 影响。" },
+  { value: "ask", label: "执行前确认", description: "MCP 工具执行前必须确认。" },
+  { value: "deny", label: "默认拒绝", description: "默认拒绝 MCP 工具执行。" },
+];
+
 const DEFAULT_RUNTIME_CONTROLS = DEFAULT_USER_CONFIG.runtimeControls;
 const DEFAULT_MODEL_DEFAULTS = DEFAULT_USER_CONFIG.modelDefaults;
 
@@ -115,6 +126,10 @@ export function RuntimeControlPanel() {
   const activeReasoning = useMemo(
     () => REASONING_OPTIONS.find((option) => option.value === runtimeControls.defaultReasoningEffort) ?? REASONING_OPTIONS[1],
     [runtimeControls.defaultReasoningEffort],
+  );
+  const activeMcpPolicy = useMemo(
+    () => MCP_POLICY_OPTIONS.find((option) => option.value === runtimeControls.toolAccess.mcpStrategy) ?? MCP_POLICY_OPTIONS[0],
+    [runtimeControls.toolAccess.mcpStrategy],
   );
 
   async function handleSave() {
@@ -325,6 +340,101 @@ export function RuntimeControlPanel() {
                       ))}
                     </SelectContent>
                   </Select>
+                </CardContent>
+              </Card>
+            </div>
+
+            <div className="grid gap-4 xl:grid-cols-3">
+              <Card size="sm">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-sm">
+                    <Shield className="size-4 text-primary" />
+                    MCP 策略
+                  </CardTitle>
+                  <CardDescription>{activeMcpPolicy.description}</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <Label htmlFor="settings-runtime-mcp-strategy">MCP 策略</Label>
+                  <Select
+                    value={runtimeControls.toolAccess.mcpStrategy}
+                    onValueChange={(value) => {
+                      setSaved(false);
+                      setRuntimeControls((current) => ({
+                        ...current,
+                        toolAccess: {
+                          ...current.toolAccess,
+                          mcpStrategy: value as RuntimeControlSettings["toolAccess"]["mcpStrategy"],
+                        },
+                      }));
+                    }}
+                  >
+                    <SelectTrigger id="settings-runtime-mcp-strategy" aria-label="MCP 策略" className="w-full">
+                      <SelectValue placeholder="选择 MCP 策略" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {MCP_POLICY_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </CardContent>
+              </Card>
+
+              <Card size="sm">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-sm">
+                    <Shield className="size-4 text-primary" />
+                    允许工具列表
+                  </CardTitle>
+                  <CardDescription>逗号分隔的工具名列表；命中后优先按允许处理。</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <Label htmlFor="settings-runtime-tool-allowlist">允许工具列表</Label>
+                  <Input
+                    id="settings-runtime-tool-allowlist"
+                    aria-label="允许工具列表"
+                    value={runtimeControls.toolAccess.allowlist.join(", ")}
+                    onChange={(event) => {
+                      setSaved(false);
+                      setRuntimeControls((current) => ({
+                        ...current,
+                        toolAccess: {
+                          ...current.toolAccess,
+                          allowlist: event.target.value.split(",").map((item) => item.trim()).filter(Boolean),
+                        },
+                      }));
+                    }}
+                  />
+                </CardContent>
+              </Card>
+
+              <Card size="sm">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-sm">
+                    <Shield className="size-4 text-primary" />
+                    阻止工具列表
+                  </CardTitle>
+                  <CardDescription>逗号分隔的工具名列表；命中后优先按拒绝处理。</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <Label htmlFor="settings-runtime-tool-blocklist">阻止工具列表</Label>
+                  <Input
+                    id="settings-runtime-tool-blocklist"
+                    aria-label="阻止工具列表"
+                    value={runtimeControls.toolAccess.blocklist.join(", ")}
+                    onChange={(event) => {
+                      setSaved(false);
+                      setRuntimeControls((current) => ({
+                        ...current,
+                        toolAccess: {
+                          ...current.toolAccess,
+                          blocklist: event.target.value.split(",").map((item) => item.trim()).filter(Boolean),
+                        },
+                      }));
+                    }}
+                  />
                 </CardContent>
               </Card>
             </div>

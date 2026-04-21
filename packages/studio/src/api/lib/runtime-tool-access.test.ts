@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { UserConfig } from "../../types/settings.js";
-import { createRuntimePermissionManager, getPermissionDecision } from "./runtime-tool-access.js";
+import { createRuntimePermissionManager, getMCPToolDecision, getPermissionDecision } from "./runtime-tool-access.js";
 
 function createRuntimeControls(
   overrides: Partial<UserConfig["runtimeControls"]> = {},
@@ -44,18 +44,22 @@ describe("createRuntimePermissionManager", () => {
     expect(getPermissionDecision(manager, "Write", {})).toEqual({
       action: "prompt",
       reason: undefined,
+      source: "builtin-permission-rules",
     });
     expect(getPermissionDecision(manager, "Edit", {})).toEqual({
       action: "prompt",
       reason: undefined,
+      source: "builtin-permission-rules",
     });
     expect(getPermissionDecision(manager, "Bash", { command: "rm -rf ./tmp" })).toEqual({
       action: "prompt",
       reason: "Potentially destructive command",
+      source: "builtin-permission-rules",
     });
     expect(getPermissionDecision(manager, "EnterWorktree", {})).toEqual({
       action: "allow",
       reason: "Tool falls back to defaultPermissionMode=allow",
+      source: "runtimeControls.defaultPermissionMode",
     });
   });
 
@@ -73,6 +77,35 @@ describe("createRuntimePermissionManager", () => {
     expect(getPermissionDecision(manager, "Write", {})).toEqual({
       action: "allow",
       reason: "Tool is explicitly allowed by runtimeControls.toolAccess.allowlist",
+      source: "runtimeControls.toolAccess.allowlist",
+    });
+  });
+
+  it("returns decision provenance for builtin and MCP policy checks", () => {
+    const manager = createRuntimePermissionManager(createRuntimeControls());
+
+    expect(getPermissionDecision(manager, "Write", {})).toEqual({
+      action: "prompt",
+      reason: undefined,
+      source: "builtin-permission-rules",
+    });
+
+    expect(
+      getMCPToolDecision(
+        "mcp.read_file",
+        createRuntimeControls({
+          defaultPermissionMode: "ask",
+          toolAccess: {
+            allowlist: [],
+            blocklist: [],
+            mcpStrategy: "allow",
+          },
+        }).runtimeControls,
+      ),
+    ).toEqual({
+      action: "allow",
+      reason: "MCP tool is allowed by runtimeControls.toolAccess.mcpStrategy=allow",
+      source: "runtimeControls.toolAccess.mcpStrategy",
     });
   });
 });
