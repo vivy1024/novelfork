@@ -35,6 +35,8 @@ import { ContextPanel, type ContextEntry } from "./ContextPanel";
 import { fetchJson } from "../hooks/use-api";
 import { getDefaultModel, getDefaultProvider, getModel, getProvider, PROVIDERS } from "../shared/provider-catalog";
 import type {
+  NarratorSessionChatCursor,
+  NarratorSessionChatHistory,
   NarratorSessionChatMessage,
   NarratorSessionChatServerEnvelope,
   NarratorSessionChatSnapshot,
@@ -66,10 +68,11 @@ const REASONING_OPTIONS: Array<{ value: SessionReasoningEffort; label: string }>
   { value: "high", label: "高" },
 ];
 
-type NarratorSessionChatHistoryResponse = {
+type NarratorSessionChatHistoryResponse = Partial<NarratorSessionChatHistory> & {
   session?: NarratorSessionRecord;
   sessionId?: string;
   messages?: NarratorSessionChatMessage[];
+  cursor?: NarratorSessionChatCursor;
 };
 
 export function ChatWindow({ windowId, theme }: ChatWindowProps) {
@@ -78,7 +81,6 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
   const isActive = useWindowStore((state) => state.activeWindowId === windowId);
   const removeWindow = useWindowStore((state) => state.removeWindow);
   const toggleMinimize = useWindowStore((state) => state.toggleMinimize);
-  const addMessage = useWindowStore((state) => state.addMessage);
   const setWsConnected = useWindowStore((state) => state.setWsConnected);
   const setActiveWindow = useWindowStore((state) => state.setActiveWindow);
   const updateWindow = useWindowStore((state) => state.updateWindow);
@@ -92,6 +94,8 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimerRef = useRef<number | null>(null);
   const hydrateSessionRequestRef = useRef(0);
+  const sessionMessagesRef = useRef<ChatMessage[]>([]);
+  const lastSessionSeqRef = useRef(0);
 
   const syncSessionRecord = useCallback(
     (nextSession: NarratorSessionRecord) => {
@@ -108,13 +112,48 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
   const syncSessionMessages = useCallback(
     (incomingMessages: NarratorSessionChatMessage[]) => {
       const currentWindow = useWindowStore.getState().windows.find((window) => window.id === windowId);
-      const nextMessages = mergeSessionMessages(currentWindow?.messages ?? [], incomingMessages);
+      const baseMessages = sessionMessagesRef.current.length > 0 ? sessionMessagesRef.current : currentWindow?.messages ?? [];
+      const nextMessages = mergeSessionMessages(baseMessages, incomingMessages);
+      sessionMessagesRef.current = nextMessages;
       setSessionMessages(nextMessages);
       updateWindow(windowId, { messages: nextMessages });
       return nextMessages;
     },
     [updateWindow, windowId],
   );
+
+  const syncSessionSeq = useCallback((nextSeq?: number) => {
+    if (typeof nextSeq !== "number" || !Number.isFinite(nextSeq) || nextSeq <= 0) {
+      return;
+    }
+
+    lastSessionSeqRef.current = Math.max(lastSessionSeqRef.current, Math.floor(nextSeq));
+  }, []);
+
+  const ackSessionSeq = useCallback(() => {
+    if (!chatWindow?.sessionId || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN || lastSessionSeqRef.current <= 0) {
+      return;
+    }
+
+    wsRef.current.send(
+      JSON.stringify({
+        type: "session:ack",
+        sessionId: chatWindow.sessionId,
+        ack: lastSessionSeqRef.current,
+      }),
+    );
+  }, [chatWindow?.sessionId]);
+
+  const getLastSessionSeq = useCallback((messages: NarratorSessionChatMessage[] | undefined) => {
+    return (messages ?? []).reduce((maxSeq, message) => Math.max(maxSeq, message.seq ?? 0), 0);
+  }, []);
+
+  useEffect(() => {
+    lastSessionSeqRef.current = 0;
+    sessionMessagesRef.current = [];
+    setSessionMessages(null);
+    setSessionRecord(null);
+  }, [chatWindow?.sessionId]);
 
   const handleSessionTransportMessage = useCallback(
     async (rawData: unknown) => {
@@ -127,28 +166,28 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
       if (envelope) {
         if (envelope.type === "session:snapshot") {
           syncSessionRecord(envelope.snapshot.session);
+          syncSessionSeq(envelope.snapshot.cursor?.lastSeq ?? getLastSessionSeq(envelope.snapshot.messages));
           syncSessionMessages(envelope.snapshot.messages);
+          ackSessionSeq();
           return;
         }
 
         if (envelope.type === "session:state") {
           syncSessionRecord(envelope.session);
+          syncSessionSeq(envelope.cursor?.lastSeq);
           return;
         }
 
         if (envelope.type === "session:message") {
+          syncSessionSeq(envelope.message.seq ?? envelope.cursor?.lastSeq);
           const nextMessage = toChatWindowMessage(envelope.message);
           const currentWindow = useWindowStore.getState().windows.find((window) => window.id === windowId);
           if (currentWindow?.messages.some((message) => message.id === nextMessage.id)) {
+            ackSessionSeq();
             return;
           }
-          setSessionMessages((current) => {
-            if (!current) {
-              return current;
-            }
-            return current.some((message) => message.id === nextMessage.id) ? current : [...current, nextMessage];
-          });
-          addMessage(windowId, nextMessage);
+          syncSessionMessages([...sessionMessagesRef.current, nextMessage]);
+          ackSessionSeq();
           return;
         }
 
@@ -168,7 +207,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
           timestamp: Date.now(),
           toolCalls: parsed.toolCalls.length > 0 ? parsed.toolCalls : undefined,
         };
-        addMessage(windowId, message);
+        syncSessionMessages([...sessionMessagesRef.current, message]);
       } catch {
         const message: ChatMessage = {
           id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
@@ -176,10 +215,10 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
           content: rawText,
           timestamp: Date.now(),
         };
-        addMessage(windowId, message);
+        syncSessionMessages([...sessionMessagesRef.current, message]);
       }
     },
-    [addMessage, setWsConnected, syncSessionMessages, syncSessionRecord, windowId],
+    [ackSessionSeq, getLastSessionSeq, setWsConnected, syncSessionMessages, syncSessionRecord, syncSessionSeq, windowId],
   );
 
   const hydrateSessionFromServer = useCallback(
@@ -207,11 +246,15 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
 
       const historyMessages = Array.isArray(history?.messages) ? history.messages : [];
       const snapshotMessages = Array.isArray(snapshot?.messages) ? snapshot.messages : [];
-      if (historyMessages.length > 0 || snapshotMessages.length > 0) {
-        syncSessionMessages([...historyMessages, ...snapshotMessages]);
+      const mergedMessages = history?.resetRequired ? snapshotMessages : [...historyMessages, ...snapshotMessages];
+      if (mergedMessages.length > 0) {
+        syncSessionMessages(mergedMessages);
       }
+
+      syncSessionSeq(snapshot?.cursor?.lastSeq ?? history?.cursor?.lastSeq ?? getLastSessionSeq(snapshotMessages.length > 0 ? snapshotMessages : historyMessages));
+      ackSessionSeq();
     },
-    [syncSessionMessages, syncSessionRecord],
+    [ackSessionSeq, getLastSessionSeq, syncSessionMessages, syncSessionRecord, syncSessionSeq],
   );
 
   useEffect(() => {
@@ -222,8 +265,6 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
 
     let disposed = false;
     const sessionMode = sessionRecord?.sessionMode ?? chatWindow?.sessionMode ?? "chat";
-    const params = new URLSearchParams();
-    params.set("mode", sessionMode);
 
     const connectWs = () => {
       if (disposed) {
@@ -231,6 +272,11 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
       }
 
       const protocol = globalThis.window.location.protocol === "https:" ? "wss:" : "ws:";
+      const params = new URLSearchParams();
+      params.set("mode", sessionMode);
+      if (lastSessionSeqRef.current > 0) {
+        params.set("resumeFromSeq", String(lastSessionSeqRef.current));
+      }
       const wsUrl = `${protocol}//${globalThis.window.location.host}/api/sessions/${sessionId}/chat?${params.toString()}`;
 
       try {
@@ -359,7 +405,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
       timestamp: Date.now(),
     };
 
-    addMessage(windowId, userMessage);
+    syncSessionMessages([...sessionMessagesRef.current, userMessage]);
     wsRef.current.send(
       JSON.stringify({
         type: "session:message",
@@ -367,6 +413,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
         content: input,
         sessionId: chatWindow.sessionId,
         sessionMode: sessionState.sessionMode,
+        ack: lastSessionSeqRef.current > 0 ? lastSessionSeqRef.current : undefined,
       }),
     );
     setInput("");
