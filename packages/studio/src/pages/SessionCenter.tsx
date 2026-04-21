@@ -75,8 +75,8 @@ export function SessionCenter({ theme }: { theme: Theme }) {
     });
 
     addWindow({
-      agentId: payload.agentId,
-      title: payload.title,
+      agentId: session.agentId,
+      title: session.title,
       sessionId: session.id,
       sessionMode: session.sessionMode,
       sessionConfig: session.sessionConfig,
@@ -254,7 +254,7 @@ export function SessionCenter({ theme }: { theme: Theme }) {
                         status={session.status}
                         sessionMode={session.sessionMode}
                         model={session.sessionConfig.modelId}
-                        messageCount={attachedWindow?.messages.length ?? session.messageCount}
+                        messageCount={session.messageCount}
                         lastModified={session.lastModified}
                         attachedWindow={attachedWindow ? { id: attachedWindow.id, wsConnected: attachedWindow.wsConnected, minimized: attachedWindow.minimized } : null}
                         active={attachedWindow?.id === activeWindowId}

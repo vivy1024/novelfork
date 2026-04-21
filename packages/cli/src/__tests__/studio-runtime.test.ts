@@ -41,9 +41,10 @@ describe("studio runtime resolution", () => {
     ]);
   });
 
-  it("prefers the repository-local tsx loader for monorepo sources", async () => {
+  it("prefers the built studio package before the legacy source bridge", async () => {
     accessMock.mockImplementation(async (path: string) => {
       if (
+        normalizePath(path).endsWith("/node_modules/@vivy1024/novelfork-studio/dist/api/index.js") ||
         normalizePath(path).endsWith("/packages/studio/src/api/index.ts") ||
         normalizePath(path).endsWith("/packages/studio/node_modules/tsx/dist/loader.mjs")
       ) {
@@ -56,12 +57,10 @@ describe("studio runtime resolution", () => {
     const launch = await resolveStudioLaunch("/repo/test-project");
 
     expect(launch).not.toBeNull();
-    expect(normalizePath(launch!.studioEntry)).toMatch(/\/packages\/studio\/src\/api\/index\.ts$/);
+    expect(normalizePath(launch!.studioEntry)).toMatch(/\/node_modules\/\@vivy1024\/novelfork-studio\/dist\/api\/index\.js$/);
     expect(launch!.command).toBe("node");
     expect(launch!.args.map(normalizePath)).toEqual([
-      "--import",
-      expect.stringMatching(/\/packages\/studio\/node_modules\/tsx\/dist\/loader\.mjs$/),
-      expect.stringMatching(/\/packages\/studio\/src\/api\/index\.ts$/),
+      expect.stringMatching(/\/node_modules\/\@vivy1024\/novelfork-studio\/dist\/api\/index\.js$/),
       "/repo/test-project",
     ]);
   });

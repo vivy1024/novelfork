@@ -34,7 +34,7 @@ novelfork/
 │   └── desktop/      # 桌面端（Tauri 2，骨架阶段）
 ├── CLAUDE.md         # Claude Code 配置
 ├── .kiro/steering/   # 项目规则与指南
-└── OPS_RUNTIME_STATE.md  # 运维状态
+└── docs/06-部署运维/      # 运维与启动文档
 ```
 
 ---

@@ -10,6 +10,8 @@ import {
   listSessions,
   updateSession,
 } from "../lib/session-service.js";
+import { getSessionChatSnapshot } from "../lib/session-chat-service.js";
+
 import type { CreateNarratorSessionInput, UpdateNarratorSessionInput } from "../../shared/session-types.js";
 
 const app = new Hono();
@@ -26,6 +28,15 @@ app.get("/:id", async (c) => {
     return c.json({ error: "Session not found" }, 404);
   }
   return c.json(session);
+});
+
+app.get("/:id/chat/state", async (c) => {
+  const id = c.req.param("id");
+  const snapshot = await getSessionChatSnapshot(id);
+  if (!snapshot) {
+    return c.json({ error: "Session not found" }, 404);
+  }
+  return c.json(snapshot);
 });
 
 app.post("/", async (c) => {

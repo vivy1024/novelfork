@@ -23,7 +23,23 @@ interface ManagedServer {
   readonly client: MCPClientImpl;
 }
 
+interface MCPRegistryTool {
+  readonly name: string;
+  readonly description?: string;
+}
+
+interface MCPRegistryServer extends MCPServerEntry {
+  readonly status: "disconnected" | "connecting" | "connected" | "reconnecting" | "failed";
+  readonly tools: MCPRegistryTool[];
+  readonly toolCount: number;
+  readonly error?: string;
+}
+
 const managedServers = new Map<string, ManagedServer>();
+
+export function resetMCPRuntime() {
+  managedServers.clear();
+}
 
 export function createMCPRouter(projectRoot: string): Hono {
   const app = new Hono();
@@ -45,7 +61,9 @@ export function createMCPRouter(projectRoot: string): Hono {
     try {
       const raw = await readFile(configPath, "utf-8");
       config = JSON.parse(raw);
-    } catch { /* new file */ }
+    } catch {
+      // new file
+    }
     config.mcpServers = servers;
     await writeFile(configPath, JSON.stringify(config, null, 2), "utf-8");
   }
@@ -63,52 +81,107 @@ export function createMCPRouter(projectRoot: string): Hono {
     };
   }
 
-  // GET /api/mcp/servers
-  app.get("/api/mcp/servers", async (c) => {
+  function serializeServer(entry: MCPServerEntry): MCPRegistryServer {
+    const managed = managedServers.get(entry.id);
+    const client = managed?.client;
+    const tools = client ? [...client.tools].map((tool) => ({ name: tool.name, description: tool.description })) : [];
+
+    return {
+      ...entry,
+      status: client?.state ?? "disconnected",
+      tools,
+      toolCount: tools.length,
+      error: undefined,
+    };
+  }
+
+  async function buildRegistry() {
     const entries = await loadConfig();
-    const servers = entries.map((entry) => {
-      const managed = managedServers.get(entry.id);
-      const client = managed?.client;
-      return {
-        id: entry.id,
-        name: entry.name,
-        transport: entry.transport ?? "stdio",
-        command: entry.command,
-        args: entry.args,
-        url: entry.url,
-        env: entry.env,
-        status: client?.state ?? "disconnected",
-        tools: client ? [...client.tools].map((t) => ({ name: t.name, description: t.description })) : [],
-        error: undefined as string | undefined,
-      };
-    });
-    return c.json({ servers });
+    const servers = entries.map(serializeServer);
+    const connectedServers = servers.filter((server) => server.status === "connected").length;
+    const discoveredTools = servers.reduce((sum, server) => sum + server.toolCount, 0);
+
+    return {
+      servers,
+      summary: {
+        totalServers: servers.length,
+        connectedServers,
+        enabledTools: discoveredTools,
+        discoveredTools,
+      },
+    };
+  }
+
+  app.get("/api/mcp/registry", async (c) => {
+    return c.json(await buildRegistry());
   });
 
-  // POST /api/mcp/servers — add new server config
+  app.get("/api/mcp/servers", async (c) => {
+    const registry = await buildRegistry();
+    return c.json({ servers: registry.servers, summary: registry.summary });
+  });
+
   app.post("/api/mcp/servers", async (c) => {
     const body = await c.req.json<{
-      name: string; transport?: "stdio" | "sse";
-      command?: string; args?: string[]; url?: string;
+      name: string;
+      transport?: "stdio" | "sse";
+      command?: string;
+      args?: string[];
+      url?: string;
       env?: Record<string, string>;
     }>();
     const entries = await loadConfig();
     const id = `mcp-${Date.now()}`;
     entries.push({
-      id, name: body.name,
+      id,
+      name: body.name,
       transport: body.transport ?? "stdio",
-      command: body.command, args: body.args,
-      url: body.url, env: body.env,
+      command: body.transport === "sse" ? undefined : body.command,
+      args: body.transport === "sse" ? undefined : body.args,
+      url: body.transport === "sse" ? body.url : undefined,
+      env: body.env,
     });
     await saveConfig(entries);
     return c.json({ ok: true, id });
   });
 
-  // POST /api/mcp/servers/:id/start — connect via real MCP handshake
+  app.put("/api/mcp/servers/:id", async (c) => {
+    const id = c.req.param("id");
+    const body = await c.req.json<Partial<Omit<MCPServerEntry, "id">>>();
+    const entries = await loadConfig();
+    const index = entries.findIndex((entry) => entry.id === id);
+    if (index < 0) {
+      return c.json({ error: "Server not found" }, 404);
+    }
+
+    const current = entries[index]!;
+    const transport = body.transport ?? current.transport;
+    const updated: MCPServerEntry = {
+      ...current,
+      ...body,
+      id,
+      transport,
+      command: transport === "stdio" ? body.command ?? current.command : undefined,
+      args: transport === "stdio" ? body.args ?? current.args : undefined,
+      url: transport === "sse" ? body.url ?? current.url : undefined,
+      env: body.env ?? current.env,
+    };
+
+    const managed = managedServers.get(id);
+    if (managed) {
+      await managed.client.disconnect();
+      managedServers.delete(id);
+    }
+
+    entries[index] = updated;
+    await saveConfig(entries);
+    return c.json({ ok: true, server: serializeServer(updated) });
+  });
+
   app.post("/api/mcp/servers/:id/start", async (c) => {
     const id = c.req.param("id");
     const entries = await loadConfig();
-    const entry = entries.find((e) => e.id === id);
+    const entry = entries.find((server) => server.id === id);
     if (!entry) return c.json({ error: "Server not found" }, 404);
 
     if (managedServers.has(id)) {
@@ -120,15 +193,14 @@ export function createMCPRouter(projectRoot: string): Hono {
 
     try {
       await client.connect();
-      const tools = [...client.tools].map((t) => ({ name: t.name, description: t.description }));
+      const tools = [...client.tools].map((tool) => ({ name: tool.name, description: tool.description }));
       return c.json({ ok: true, status: client.state, tools });
-    } catch (e) {
+    } catch (error) {
       managedServers.delete(id);
-      return c.json({ error: e instanceof Error ? e.message : String(e) }, 500);
+      return c.json({ error: error instanceof Error ? error.message : String(error) }, 500);
     }
   });
 
-  // POST /api/mcp/servers/:id/stop
   app.post("/api/mcp/servers/:id/stop", async (c) => {
     const id = c.req.param("id");
     const managed = managedServers.get(id);
@@ -139,7 +211,6 @@ export function createMCPRouter(projectRoot: string): Hono {
     return c.json({ ok: true });
   });
 
-  // POST /api/mcp/servers/:id/delete
   app.post("/api/mcp/servers/:id/delete", async (c) => {
     const id = c.req.param("id");
     const managed = managedServers.get(id);
@@ -148,11 +219,10 @@ export function createMCPRouter(projectRoot: string): Hono {
       managedServers.delete(id);
     }
     const entries = await loadConfig();
-    await saveConfig(entries.filter((e) => e.id !== id));
+    await saveConfig(entries.filter((entry) => entry.id !== id));
     return c.json({ ok: true });
   });
 
-  // POST /api/mcp/servers/:id/call — invoke a tool
   app.post("/api/mcp/servers/:id/call", async (c) => {
     const id = c.req.param("id");
     const managed = managedServers.get(id);

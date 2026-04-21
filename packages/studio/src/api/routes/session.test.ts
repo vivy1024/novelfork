@@ -59,6 +59,24 @@ describe("sessionRouter", () => {
     expect(typeof created.createdAt).toBe("string");
     expect(typeof created.lastModified).toBe("string");
 
+    const stateResponse = await sessionRouter.request(`http://localhost/${created.id}/chat/state`);
+    expect(stateResponse.status).toBe(200);
+
+    const state = await stateResponse.json();
+    expect(state).toMatchObject({
+      session: {
+        id: created.id,
+        agentId: "planner",
+        kind: "standalone",
+        sessionMode: "plan",
+        sessionConfig: {
+          providerId: "anthropic",
+          modelId: "claude-sonnet-4-6",
+        },
+      },
+      messages: [],
+    });
+
     const listResponse = await sessionRouter.request("http://localhost/");
     expect(listResponse.status).toBe(200);
 
