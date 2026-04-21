@@ -4,6 +4,8 @@
 
 import { useState } from "react";
 import { Plus, Trash2, Edit2, Save, X, FileText, Settings } from "lucide-react";
+
+import { ConfirmDialog } from "../ConfirmDialog";
 import type { Prompt } from "../../types/routines";
 
 interface PromptsTabProps {
@@ -22,6 +24,7 @@ export function PromptsTab({
   const [activeTab, setActiveTab] = useState<"global" | "system">("global");
   const [editing, setEditing] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<Prompt>>({});
+  const [deleteTarget, setDeleteTarget] = useState<Prompt | null>(null);
 
   const prompts = activeTab === "global" ? globalPrompts : systemPrompts;
   const onChange = activeTab === "global" ? onGlobalChange : onSystemChange;
@@ -65,9 +68,10 @@ export function PromptsTab({
     setEditForm({});
   };
 
-  const handleDelete = (id: string) => {
-    if (!confirm("Delete this prompt?")) return;
-    onChange(prompts.filter((prompt) => prompt.id !== id));
+  const handleDelete = () => {
+    if (!deleteTarget) return;
+    onChange(prompts.filter((prompt) => prompt.id !== deleteTarget.id));
+    setDeleteTarget(null);
   };
 
   const handleToggle = (id: string) => {
@@ -196,8 +200,9 @@ export function PromptsTab({
                     <Edit2 size={14} />
                   </button>
                   <button
-                    onClick={() => handleDelete(prompt.id)}
+                    onClick={() => setDeleteTarget(prompt)}
                     className="p-1 hover:bg-accent rounded text-red-600"
+                    aria-label={`Delete prompt ${prompt.name}`}
                   >
                     <Trash2 size={14} />
                   </button>
@@ -213,6 +218,17 @@ export function PromptsTab({
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        title="Delete Prompt"
+        message={deleteTarget ? `Delete ${deleteTarget.name}? This cannot be undone.` : "Delete this prompt? This cannot be undone."}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        variant="danger"
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   );
 }

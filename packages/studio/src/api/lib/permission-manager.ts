@@ -19,6 +19,25 @@ export interface PermissionRequest {
   reason?: string;
 }
 
+export const DEFAULT_PERMISSION_RULES: PermissionRule[] = [
+  // 允许读取操作
+  { toolName: "Read", action: "allow" },
+  { toolName: "Glob", action: "allow" },
+  { toolName: "Grep", action: "allow" },
+
+  // 写入和删除需要确认
+  { toolName: "Write", action: "prompt" },
+  { toolName: "Edit", action: "prompt" },
+
+  // 危险的 Bash 命令需要确认
+  {
+    toolName: "Bash",
+    pattern: "(rm|del|format|mkfs|dd|>)",
+    action: "prompt",
+    reason: "Potentially destructive command",
+  },
+];
+
 export class PermissionManager {
   private rules: PermissionRule[] = [];
   private requests = new Map<string, PermissionRequest>();
@@ -55,8 +74,9 @@ export class PermissionManager {
   /**
    * 匹配权限规则
    */
-  private matchRule(toolName: string, params: Record<string, unknown>): PermissionRule | null {
-    for (const rule of this.rules) {
+  getMatchingRule(toolName: string, params: Record<string, unknown>): PermissionRule | null {
+    for (let index = this.rules.length - 1; index >= 0; index -= 1) {
+      const rule = this.rules[index]!;
       if (rule.toolName !== toolName && rule.toolName !== "*") {
         continue;
       }
@@ -86,7 +106,7 @@ export class PermissionManager {
    * @returns "allow" | "deny" | "prompt"
    */
   checkPermission(toolName: string, params: Record<string, unknown>): "allow" | "deny" | "prompt" {
-    const rule = this.matchRule(toolName, params);
+    const rule = this.getMatchingRule(toolName, params);
     if (rule) {
       return rule.action;
     }
@@ -110,7 +130,7 @@ export class PermissionManager {
     }
 
     if (action === "deny") {
-      const rule = this.matchRule(toolName, params);
+      const rule = this.getMatchingRule(toolName, params);
       return { approved: false, reason: rule?.reason || "Permission denied by rule" };
     }
 
@@ -194,25 +214,11 @@ export class PermissionManager {
   }
 }
 
+export function createDefaultPermissionManager(): PermissionManager {
+  const manager = new PermissionManager();
+  manager.addRules(DEFAULT_PERMISSION_RULES);
+  return manager;
+}
+
 // 全局权限管理器实例
-export const permissionManager = new PermissionManager();
-
-// 默认安全规则
-permissionManager.addRules([
-  // 允许读取操作
-  { toolName: "Read", action: "allow" },
-  { toolName: "Glob", action: "allow" },
-  { toolName: "Grep", action: "allow" },
-
-  // 写入和删除需要确认
-  { toolName: "Write", action: "prompt" },
-  { toolName: "Edit", action: "prompt" },
-
-  // 危险的 Bash 命令需要确认
-  {
-    toolName: "Bash",
-    pattern: "(rm|del|format|mkfs|dd|>)",
-    action: "prompt",
-    reason: "Potentially destructive command",
-  },
-]);
+export const permissionManager = createDefaultPermissionManager();

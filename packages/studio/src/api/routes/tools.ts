@@ -5,15 +5,15 @@
 
 import { Hono } from "hono";
 import { ToolExecutor } from "../lib/tool-executor.js";
-import { PermissionManager } from "../lib/permission-manager.js";
 import { ALL_TOOLS } from "../lib/tools/index.js";
+import { loadUserConfig } from "../lib/user-config-service.js";
+import { createRuntimePermissionManager, getPermissionDecision } from "../lib/runtime-tool-access.js";
 
 export function createToolsRouter() {
   const app = new Hono();
 
-  // 初始化工具执行器和权限管理器
+  // 初始化工具执行器
   const executor = new ToolExecutor();
-  const permissionManager = new PermissionManager();
 
   // 注册所有工具
   for (const tool of ALL_TOOLS) {
@@ -37,24 +37,37 @@ export function createToolsRouter() {
         return c.json({ success: false, error: "Missing or invalid params" }, 400);
       }
 
-      // 1. 请求权限
-      const permission = await permissionManager.requestPermission(toolName, params);
-      if (!permission.approved) {
+      const userConfig = await loadUserConfig();
+      const permissionManager = createRuntimePermissionManager(userConfig);
+      const permission = getPermissionDecision(permissionManager, toolName, params as Record<string, unknown>);
+
+      if (permission.action === "deny") {
         return c.json(
           {
             success: false,
             error: permission.reason || "Permission denied",
           },
-          403
+          403,
         );
       }
 
-      // 2. 执行工具
-      const result = await executor.execute(toolName, params, {
-        workspaceRoot: process.cwd(), // 或从配置读取
-        userId: "default", // 或从会话读取
-        sessionId: "default", // 或从请求头读取
-        permissions: new Set(["read", "write", "execute"]), // 或从会话读取
+      if (permission.action === "prompt") {
+        return c.json(
+          {
+            success: false,
+            error: permission.reason || "Tool execution requires confirmation",
+            confirmationRequired: true,
+          },
+          403,
+        );
+      }
+
+      // 执行工具
+      const result = await executor.execute(toolName, params as Record<string, unknown>, {
+        workspaceRoot: process.cwd(),
+        userId: "default",
+        sessionId: "default",
+        permissions: new Set(["read", "write", "execute", "bash", "worktree"]),
       });
 
       return c.json({ success: result.success, result, error: result.error });
@@ -65,7 +78,7 @@ export function createToolsRouter() {
           success: false,
           error: error instanceof Error ? error.message : "Failed to execute tool",
         },
-        500
+        500,
       );
     }
   });
@@ -74,13 +87,22 @@ export function createToolsRouter() {
    * GET /api/tools/list
    * 列出所有可用工具
    */
-  app.get("/list", (c) => {
+  app.get("/list", async (c) => {
     try {
-      const tools = executor.listTools().map((tool) => ({
-        name: tool.name,
-        description: tool.description,
-        parameters: tool.parameters,
-      }));
+      const userConfig = await loadUserConfig();
+      const permissionManager = createRuntimePermissionManager(userConfig);
+      const tools = executor.listTools().map((tool) => {
+        const permission = getPermissionDecision(permissionManager, tool.name, {});
+        return {
+          name: tool.name,
+          description: tool.description,
+          parameters: tool.parameters,
+          access: permission.action,
+          enabled: permission.action !== "deny",
+          requiresConfirmation: permission.action === "prompt",
+          reason: permission.reason,
+        };
+      });
 
       return c.json({ tools });
     } catch (error) {

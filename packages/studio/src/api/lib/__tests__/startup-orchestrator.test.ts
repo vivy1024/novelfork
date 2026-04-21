@@ -83,4 +83,30 @@ describe("startup orchestrator", () => {
     expect(globalSearchIndex.size()).toBe(2);
     expect(globalSearchIndex.search("第一章", "chapter")).toHaveLength(1);
   });
+
+  it("falls back to chapter filenames when the chapter index is missing", async () => {
+    tempRoot = await mkdtemp(join(tmpdir(), "novelfork-search-fallback-"));
+    const bookDir = join(tempRoot, "books", "alpha");
+    await mkdir(join(bookDir, "chapters"), { recursive: true });
+    await writeFile(join(bookDir, "book.json"), JSON.stringify({ id: "alpha" }), "utf-8");
+    await writeFile(join(bookDir, "chapters", "0001_hello.md"), "# 第一章\n内容", "utf-8");
+    await writeFile(join(bookDir, "chapters", "0002_world.md"), "# 第二章\n更多内容", "utf-8");
+
+    const state = {
+      listBooks: vi.fn(async () => ["alpha"]),
+      bookDir: vi.fn((bookId: string) => join(tempRoot, "books", bookId)),
+      loadChapterIndex: vi.fn(async () => []),
+    };
+
+    const summary = await rebuildSearchIndex(state);
+
+    expect(summary).toMatchObject({
+      bookCount: 1,
+      indexedDocuments: 2,
+      skippedBooks: 0,
+    });
+    expect(globalSearchIndex.size()).toBe(2);
+    expect(globalSearchIndex.get("chapter:alpha:1")).toBeDefined();
+    expect(globalSearchIndex.get("chapter:alpha:2")).toBeDefined();
+  });
 });

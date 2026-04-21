@@ -1,8 +1,9 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { useRoutinesEditorMock } = vi.hoisted(() => ({
+const { useRoutinesEditorMock, fetchJsonMock } = vi.hoisted(() => ({
   useRoutinesEditorMock: vi.fn(),
+  fetchJsonMock: vi.fn(),
 }));
 
 vi.mock("./ConfigView", () => ({ ConfigView: () => <div>ConfigView</div> }));
@@ -16,6 +17,7 @@ vi.mock("./HookDashboard", () => ({ HookDashboard: () => <div>HookDashboard</div
 vi.mock("./NotifyConfig", () => ({ NotifyConfig: () => <div>NotifyConfig</div> }));
 vi.mock("../providers/novelfork-context", () => ({ useNovelFork: () => ({ workspace: "D:/workspace/novel" }) }));
 vi.mock("@/components/Routines/PermissionsTab", () => ({ PermissionsTab: () => <div>PermissionsTab</div> }));
+vi.mock("@/components/Routines/MCPToolsTab", () => ({ MCPToolsTab: () => <div>MCPToolsTab</div> }));
 vi.mock("@/components/Routines/PromptsTab", () => ({ PromptsTab: () => <div>PromptsTab</div> }));
 vi.mock("@/components/Routines/SubAgentsTab", () => ({ SubAgentsTab: () => <div>SubAgentsTab</div> }));
 vi.mock("@/components/Routines/use-routines-editor", () => ({
@@ -26,6 +28,9 @@ vi.mock("@/components/Routines/use-routines-editor", () => ({
   },
   useRoutinesEditor: useRoutinesEditorMock,
 }));
+vi.mock("@/hooks/use-api", () => ({
+  fetchJson: fetchJsonMock,
+}));
 
 import { WorkflowWorkbench } from "./WorkflowWorkbench";
 
@@ -35,6 +40,16 @@ const nav = {
 };
 
 beforeEach(() => {
+  fetchJsonMock.mockResolvedValue({
+    summary: {
+      totalServers: 1,
+      connectedServers: 1,
+      enabledTools: 1,
+      discoveredTools: 2,
+    },
+    servers: [],
+  });
+
   useRoutinesEditorMock.mockImplementation(() => ({
     error: null,
     handleReset: vi.fn(),
@@ -60,7 +75,7 @@ beforeEach(() => {
       ],
       globalPrompts: [{ id: "prompt-1", name: "全局提示", content: "global", enabled: true }],
       systemPrompts: [{ id: "prompt-2", name: "系统提示", content: "system", enabled: true }],
-      mcpTools: [],
+      mcpTools: [{ id: "mcp-1", serverName: "local", toolName: "search", enabled: true, approved: true }],
     },
     saved: false,
     saving: false,
@@ -77,7 +92,7 @@ afterEach(() => {
 });
 
 describe("WorkflowWorkbench", () => {
-  it("keeps section navigation inside the workbench shell", () => {
+  it("keeps section navigation inside the workbench shell", async () => {
     const onNavigateSection = vi.fn();
 
     render(
@@ -95,13 +110,22 @@ describe("WorkflowWorkbench", () => {
     expect(screen.getByText("Routines 主事实源")).toBeTruthy();
     expect(screen.getAllByText(/默认读取 merged 视图/).length).toBeGreaterThan(0);
     expect(screen.getAllByText("混合").length).toBeGreaterThan(0);
-    expect(screen.getByText("Agent 路由在主面板保存，执行权限与子代理在下方 routines 区块按 global / project 保存。")).toBeTruthy();
+    expect(screen.getByText("Agent 路由在主面板保存，执行权限、MCP 工具与子代理在下方 routines 区块按 global / project 保存。")).toBeTruthy();
     expect(screen.getByText("执行编排资源")).toBeTruthy();
     expect(screen.getByTestId("workflow-routines-agents-permissions")).toBeTruthy();
+    expect(screen.getByTestId("workflow-routines-agents-mcp-tools")).toBeTruthy();
     expect(screen.getByTestId("workflow-routines-agents-subagents")).toBeTruthy();
     expect(screen.getByText("PermissionsTab")).toBeTruthy();
+    expect(screen.getByText("MCPToolsTab")).toBeTruthy();
     expect(screen.getByText("SubAgentsTab")).toBeTruthy();
     expect(screen.getByRole("tab", { name: /MCP 工具/ })).toBeTruthy();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("workflow-routines-agents-mcp-registry")).toBeTruthy();
+      expect(screen.getByText("实时 MCP 注册表")).toBeTruthy();
+      expect(screen.getByText("已发现 2")).toBeTruthy();
+      expect(screen.getByText("已启用 1")).toBeTruthy();
+    });
 
     fireEvent.click(screen.getByRole("tab", { name: /MCP 工具/ }));
 

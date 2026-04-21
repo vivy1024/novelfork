@@ -4,6 +4,8 @@
 
 import { useState } from "react";
 import { Plus, Trash2, Edit2, Save, X, Bot } from "lucide-react";
+
+import { ConfirmDialog } from "../ConfirmDialog";
 import type { SubAgent } from "../../types/routines";
 
 interface SubAgentsTabProps {
@@ -14,6 +16,7 @@ interface SubAgentsTabProps {
 export function SubAgentsTab({ subAgents, onChange }: SubAgentsTabProps) {
   const [editing, setEditing] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<SubAgent>>({});
+  const [deleteTarget, setDeleteTarget] = useState<SubAgent | null>(null);
 
   const handleAdd = () => {
     const newAgent: SubAgent = {
@@ -56,9 +59,10 @@ export function SubAgentsTab({ subAgents, onChange }: SubAgentsTabProps) {
     setEditForm({});
   };
 
-  const handleDelete = (id: string) => {
-    if (!confirm("Delete this sub-agent?")) return;
-    onChange(subAgents.filter((agent) => agent.id !== id));
+  const handleDelete = () => {
+    if (!deleteTarget) return;
+    onChange(subAgents.filter((agent) => agent.id !== deleteTarget.id));
+    setDeleteTarget(null);
   };
 
   const handleToggle = (id: string) => {
@@ -185,8 +189,9 @@ export function SubAgentsTab({ subAgents, onChange }: SubAgentsTabProps) {
                     <Edit2 size={14} />
                   </button>
                   <button
-                    onClick={() => handleDelete(agent.id)}
+                    onClick={() => setDeleteTarget(agent)}
                     className="p-1 hover:bg-accent rounded text-red-600"
+                    aria-label={`Delete sub-agent ${agent.name}`}
                   >
                     <Trash2 size={14} />
                   </button>
@@ -202,6 +207,17 @@ export function SubAgentsTab({ subAgents, onChange }: SubAgentsTabProps) {
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        title="Delete Sub-agent"
+        message={deleteTarget ? `Delete ${deleteTarget.name}? This cannot be undone.` : "Delete this sub-agent? This cannot be undone."}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        variant="danger"
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   );
 }

@@ -4,6 +4,8 @@
 
 import { useState } from "react";
 import { Plus, Trash2, Shield, AlertTriangle } from "lucide-react";
+
+import { ConfirmDialog } from "../ConfirmDialog";
 import type { ToolPermission, PermissionBehavior } from "../../types/routines";
 
 interface PermissionsTabProps {
@@ -21,6 +23,7 @@ export function PermissionsTab({ permissions, onChange }: PermissionsTabProps) {
   const [newTool, setNewTool] = useState("");
   const [newPattern, setNewPattern] = useState("");
   const [newPermission, setNewPermission] = useState<PermissionBehavior>("allow");
+  const [deleteTarget, setDeleteTarget] = useState<number | null>(null);
 
   const handleAdd = () => {
     if (!newTool.trim()) return;
@@ -38,8 +41,10 @@ export function PermissionsTab({ permissions, onChange }: PermissionsTabProps) {
     setNewPermission("allow");
   };
 
-  const handleDelete = (index: number) => {
-    onChange(permissions.filter((_, i) => i !== index));
+  const handleDelete = () => {
+    if (deleteTarget === null) return;
+    onChange(permissions.filter((_, i) => i !== deleteTarget));
+    setDeleteTarget(null);
   };
 
   const handleUpdate = (index: number, updates: Partial<ToolPermission>) => {
@@ -172,8 +177,9 @@ export function PermissionsTab({ permissions, onChange }: PermissionsTabProps) {
                 <option value="deny">Deny</option>
               </select>
               <button
-                onClick={() => handleDelete(index)}
+                onClick={() => setDeleteTarget(index)}
                 className="p-1 hover:bg-accent rounded text-red-600"
+                aria-label={`Delete permission rule for ${perm.tool}`}
               >
                 <Trash2 size={14} />
               </button>
@@ -187,6 +193,17 @@ export function PermissionsTab({ permissions, onChange }: PermissionsTabProps) {
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title="Delete Permission Rule"
+        message={deleteTarget !== null ? `Delete the permission rule for ${permissions[deleteTarget]?.tool ?? "this tool"}? This cannot be undone.` : "Delete this permission rule? This cannot be undone."}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        variant="danger"
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   );
 }

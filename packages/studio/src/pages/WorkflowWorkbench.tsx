@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import {
   Anchor,
@@ -22,6 +22,7 @@ import { PromptsTab } from "@/components/Routines/PromptsTab";
 import { SubAgentsTab } from "@/components/Routines/SubAgentsTab";
 import { ROUTINES_SCOPE_META, useRoutinesEditor } from "@/components/Routines/use-routines-editor";
 import { PageScaffold } from "@/components/layout/PageScaffold";
+import { fetchJson } from "@/hooks/use-api";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -38,6 +39,7 @@ import { MCPServerManager } from "./MCPServerManager";
 import { NotifyConfig } from "./NotifyConfig";
 import { PluginManager } from "./PluginManager";
 import { SchedulerConfig } from "./SchedulerConfig";
+import { MCPToolsTab } from "@/components/Routines/MCPToolsTab";
 
 interface Nav {
   toDashboard: () => void;
@@ -61,12 +63,12 @@ const WORKFLOW_TABS = [
     value: "agents",
     label: "Agent",
     icon: Bot,
-    summary: "16 个写作 Agent、Tool Permissions、Sub-agents",
+    summary: "16 个写作 Agent、Tool Permissions、MCP Tools、Sub-agents",
     badge: "核心",
     scope: "混合",
-    scopeDescription: "Agent 路由默认影响整套写作管线；下方 Tool Permissions / Sub-agents 仍可按 routines 的 global / project 口径覆盖。",
+    scopeDescription: "Agent 路由默认影响整套写作管线；下方 Tool Permissions / MCP Tools / Sub-agents 也都沿用同一 routines 事实源。",
     saveStrategy: "面板内保存",
-    saveDescription: "Agent 路由在主面板保存，执行权限与子代理在下方 routines 区块按 global / project 保存。",
+    saveDescription: "Agent 路由在主面板保存，执行权限、MCP 工具与子代理在下方 routines 区块按 global / project 保存。",
   },
   {
     value: "mcp",
@@ -147,7 +149,7 @@ const WORKFLOW_TABS = [
   },
 ] as const;
 
-type RoutinesResourceSection = "prompts" | "permissions" | "subagents";
+type RoutinesResourceSection = "prompts" | "permissions" | "subagents" | "mcpTools";
 
 export function WorkflowWorkbench({
   nav,
@@ -166,7 +168,7 @@ export function WorkflowWorkbench({
   const currentSection = section ?? "project";
   const currentTab = WORKFLOW_TABS.find((tab) => tab.value === currentSection) ?? WORKFLOW_TABS[0]!;
   const routinesDescription = workspace
-    ? "默认读取 merged 视图；当前工作区的 .inkos/routines.json 会覆盖全局 ~/.inkos/routines.json。需要修改 Prompt / Tool Permissions / Sub-agents 时，切到 global / project 视图保存。"
+    ? "默认读取 merged 视图；当前工作区的 .inkos/routines.json 会覆盖全局 ~/.inkos/routines.json。需要修改 Prompt / Tool Permissions / MCP Tools / Sub-agents 时，切到 global / project 视图保存。"
     : "当前没有工作区上下文时，Routines 只读取全局 ~/.inkos/routines.json。进入工作区后默认改为 merged 视图查看实际生效结果。";
 
   return (
@@ -216,7 +218,7 @@ export function WorkflowWorkbench({
         <CardHeader className="gap-2">
           <CardTitle className="text-base">Routines 主事实源</CardTitle>
           <CardDescription>
-            后端 routines-service 文件配置是唯一事实源，Prompt / Tool Permissions / Sub-agents 直接在工作流配置台读写。
+            后端 routines-service 文件配置是唯一事实源，Prompt / Tool Permissions / MCP Tools / Sub-agents 直接在工作流配置台读写。
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-2 text-sm text-muted-foreground">
@@ -295,8 +297,8 @@ export function WorkflowWorkbench({
                     <AgentPanel nav={nav} theme={theme} t={t} />
                     <WorkflowRoutinesResourceBlock
                       title="执行编排资源"
-                      description="Tool Permissions 与 Sub-agents 直接复用现有 routines 数据结构和编辑组件，不再藏在独立 Routines 页面里。"
-                      sections={["permissions", "subagents"]}
+                      description="Tool Permissions、MCP Tools 与 Sub-agents 直接复用现有 routines 数据结构和编辑组件，不再藏在独立 Routines 页面里。"
+                      sections={["permissions", "mcpTools", "subagents"]}
                       projectRoot={workspace ?? undefined}
                       testId="workflow-routines-agents"
                     />
@@ -374,8 +376,40 @@ function WorkflowRoutinesResourceBlock({
 
   const promptCount = routines.globalPrompts.length + routines.systemPrompts.length;
   const permissionCount = routines.permissions.length;
+  const mcpToolCount = routines.mcpTools.length;
+  const approvedMcpToolCount = routines.mcpTools.filter((tool) => tool.approved).length;
+  const enabledMcpToolCount = routines.mcpTools.filter((tool) => tool.enabled).length;
   const subAgentCount = routines.subAgents.length;
   const enabledSubAgentCount = routines.subAgents.filter((agent) => agent.enabled).length;
+  const [mcpRegistrySummary, setMcpRegistrySummary] = useState<{ discoveredTools: number; enabledTools: number } | null>(null);
+
+  useEffect(() => {
+    if (!sections.includes("mcpTools")) {
+      setMcpRegistrySummary(null);
+      return;
+    }
+
+    let cancelled = false;
+    void fetchJson<{ summary: { discoveredTools: number; enabledTools: number } }>("/mcp/registry")
+      .then((response) => {
+        if (cancelled) {
+          return;
+        }
+        setMcpRegistrySummary({
+          discoveredTools: response.summary.discoveredTools,
+          enabledTools: response.summary.enabledTools,
+        });
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setMcpRegistrySummary(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sections]);
 
   return (
     <Card data-testid={testId}>
@@ -421,6 +455,13 @@ function WorkflowRoutinesResourceBlock({
               description="Allow / Ask / Deny 规则"
             />
           )}
+          {sections.includes("mcpTools") && (
+            <ResourceStatCard
+              title="MCP Tools"
+              value={String(mcpToolCount)}
+              description={`已批准 ${approvedMcpToolCount} / 已启用 ${enabledMcpToolCount}`}
+            />
+          )}
           {sections.includes("subagents") && (
             <ResourceStatCard
               title="Sub-agents"
@@ -429,6 +470,23 @@ function WorkflowRoutinesResourceBlock({
             />
           )}
         </div>
+
+        {sections.includes("mcpTools") && mcpRegistrySummary ? (
+          <Card size="sm" className="border-dashed bg-muted/20" data-testid={`${testId}-mcp-registry`}>
+            <CardHeader className="gap-2 md:flex-row md:items-start md:justify-between">
+              <div className="space-y-1.5">
+                <CardTitle className="text-base">实时 MCP 注册表</CardTitle>
+                <CardDescription>
+                  把 routines 里的 MCP Tools 审批配置与当前 `/mcp/registry` 的实时发现结果并排展示，避免工作流台只剩静态勾选。
+                </CardDescription>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Badge variant="secondary">已发现 {mcpRegistrySummary.discoveredTools}</Badge>
+                <Badge variant="outline">已启用 {mcpRegistrySummary.enabledTools}</Badge>
+              </div>
+            </CardHeader>
+          </Card>
+        ) : null}
 
         <div className="rounded-lg border bg-muted/20 p-3 space-y-2" data-testid={`${testId}-scope`}>
           <div className="flex flex-wrap gap-2">
@@ -521,6 +579,21 @@ function WorkflowRoutinesResourceBlock({
                 <PermissionsTab
                   permissions={routines.permissions}
                   onChange={(permissions) => setRoutines({ ...routines, permissions })}
+                />
+              </ResourceSectionCard>
+            )}
+
+            {sections.includes("mcpTools") && (
+              <ResourceSectionCard
+                title="MCP Tools"
+                icon={Server}
+                description="MCP 工具和 Tool Permissions 现在在同一个编排区块里一起维护，便于对照启用与审批状态。"
+                badges={[`${routines.mcpTools.length} 个`, `批准 ${approvedMcpToolCount} 个`, `启用 ${enabledMcpToolCount} 个`]}
+                testId={`${testId}-mcp-tools`}
+              >
+                <MCPToolsTab
+                  mcpTools={routines.mcpTools}
+                  onChange={(mcpTools) => setRoutines({ ...routines, mcpTools })}
                 />
               </ResourceSectionCard>
             )}
