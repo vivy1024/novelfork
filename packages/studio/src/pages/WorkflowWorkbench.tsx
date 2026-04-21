@@ -60,6 +60,13 @@ interface MCPRegistryResponse {
   };
 }
 
+interface ToolsRegistryResponse {
+  tools?: Array<{
+    name: string;
+    access?: "allow" | "prompt" | "deny";
+  }>;
+}
+
 const WORKFLOW_TABS = [
   {
     value: "project",
@@ -201,6 +208,7 @@ export function WorkflowWorkbench({
   );
   const workflowSettings = useApi<GovernanceSettingsResponse>("/settings/user");
   const mcpRegistry = useApi<MCPRegistryResponse>("/mcp/registry");
+  const toolsRegistry = useApi<ToolsRegistryResponse>("/tools/list");
   const workflowNav = {
     toDashboard: nav.toDashboard,
     toWorkflow: () => {
@@ -215,6 +223,14 @@ export function WorkflowWorkbench({
   const runtimeControls = workflowSettings.data?.runtimeControls;
   const toolAccess = runtimeControls?.toolAccess;
   const registrySummary = mcpRegistry.data?.summary;
+  const builtinToolSummary = useMemo(() => {
+    const tools = toolsRegistry.data?.tools ?? [];
+    return {
+      allow: tools.filter((tool) => tool.access === "allow").length,
+      prompt: tools.filter((tool) => tool.access === "prompt").length,
+      deny: tools.filter((tool) => tool.access === "deny").length,
+    };
+  }, [toolsRegistry.data?.tools]);
 
   return (
     <PageScaffold
@@ -259,6 +275,7 @@ export function WorkflowWorkbench({
             <p>allowlist：{formatStatusList(toolAccess?.allowlist)}</p>
             <p>blocklist：{formatStatusList(toolAccess?.blocklist)}</p>
             <p>mcpStrategy：{toolAccess?.mcpStrategy ?? registrySummary?.mcpStrategy ?? "inherit"}</p>
+            <p>内置 tools：{builtinToolSummary.allow} / {builtinToolSummary.prompt} / {builtinToolSummary.deny}</p>
             <p>策略来源：{registrySummary?.policySource ?? "runtimeControls.toolAccess"}</p>
           </GovernanceSummaryCard>
 
