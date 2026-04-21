@@ -95,6 +95,10 @@ async function loadSessionState(sessionId: string): Promise<{ session: NarratorS
 
   const state = getRuntimeState(sessionId, session.messageCount);
   state.messageCount = Math.max(state.messageCount, session.messageCount);
+  if (state.messages.length === 0 && session.recentMessages && session.recentMessages.length > 0) {
+    state.messages = [...session.recentMessages];
+  }
+  trimSessionMessages(state);
   return { session, state };
 }
 
@@ -255,7 +259,10 @@ export async function handleSessionChatTransportMessage(
   loaded.state.messageCount += 1;
   trimSessionMessages(loaded.state);
 
-  const updatedSession = await updateSession(sessionId, { messageCount: loaded.state.messageCount });
+  const updatedSession = await updateSession(sessionId, {
+    messageCount: loaded.state.messageCount,
+    recentMessages: [...loaded.state.messages],
+  });
   broadcastEnvelope(sessionId, { type: "session:message", sessionId, message: assistantMessage });
   if (updatedSession) {
     broadcastEnvelope(sessionId, createSessionChatStateEnvelope(updatedSession));

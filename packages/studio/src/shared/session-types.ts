@@ -27,6 +27,7 @@ export interface NarratorSessionRecord {
   chapterId?: string;
   projectId?: string;
   sessionConfig: SessionConfig;
+  recentMessages?: NarratorSessionChatMessage[];
 }
 
 export interface CreateNarratorSessionInput {
@@ -52,6 +53,7 @@ export interface UpdateNarratorSessionInput {
   chapterId?: string;
   projectId?: string;
   sessionConfig?: Partial<SessionConfig>;
+  recentMessages?: NarratorSessionChatMessage[];
 }
 
 export const DEFAULT_SESSION_CONFIG: SessionConfig = {

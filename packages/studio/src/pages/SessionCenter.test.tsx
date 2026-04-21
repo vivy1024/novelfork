@@ -173,6 +173,42 @@ describe("SessionCenter", () => {
     fireEvent.click(screen.getByRole("button", { name: "恢复" }));
     expect(updateSessionMock).toHaveBeenCalledWith("session-archived", { status: "active" });
   });
+
+  it("hydrates recent snapshot messages before opening an existing session workspace", async () => {
+    fetchJsonMock.mockResolvedValue({
+      session: {
+        id: "session-active",
+      },
+      messages: [
+        { id: "msg-1", role: "user", content: "上一条消息", timestamp: 1 },
+        { id: "msg-2", role: "assistant", content: "上一条回复", timestamp: 2 },
+      ],
+    });
+    sessionHookState = createSessionHookState({
+      sessions: [
+        createNarratorSession({
+          id: "session-active",
+          title: "Writer 会话",
+          agentId: "writer",
+          status: "active",
+          messageCount: 2,
+          lastModified: new Date("2026-04-20T10:00:00Z"),
+        }),
+      ],
+    });
+
+    render(<SessionCenter theme="light" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "打开工作台" }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(fetchJsonMock).toHaveBeenCalledWith("/api/sessions/session-active/chat/state");
+    const windows = useWindowStore.getState().windows;
+    expect(windows).toHaveLength(1);
+    expect(windows[0]?.messages).toHaveLength(2);
+    expect(windows[0]?.messages[0]).toMatchObject({ content: "上一条消息" });
+    expect(windows[0]?.messages[1]).toMatchObject({ content: "上一条回复" });
+  });
 });
 
 function createSessionHookState(overrides?: Partial<typeof sessionHookState>) {
