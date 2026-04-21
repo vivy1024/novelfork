@@ -137,7 +137,7 @@ export function Settings({ onClose, theme }: SettingsProps) {
             <div className="space-y-1">
               <DialogTitle className="text-xl">设置</DialogTitle>
               <DialogDescription>
-                兼容窗口只承接剩余能力；设置页才是当前主入口与主事实源。
+                设置页统一承接主题、编辑器、个人资料与数据管理等配置能力。
               </DialogDescription>
             </div>
             <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="关闭">

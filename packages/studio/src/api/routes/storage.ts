@@ -213,18 +213,14 @@ export function createStorageRouter(ctx: RouterContext): Hono {
     let preparedProjectBootstrap: PreparedStudioProjectBootstrap | undefined;
     try {
       preparedProjectBootstrap = await prepareStudioBookProjectBootstrap(body, now, { root });
+      if (preparedProjectBootstrap) {
+        await persistStudioProjectInitRecord(bookDir, preparedProjectBootstrap.projectInitRecord);
+      }
 
       const sessionLlm = await ctx.getSessionLlm(c);
       const pipeline = new PipelineRunner(await ctx.buildPipelineConfig(sessionLlm));
       pipeline.initBook(bookConfig).then(
         async () => {
-          if (preparedProjectBootstrap) {
-            try {
-              await persistStudioProjectInitRecord(bookDir, preparedProjectBootstrap.projectInitRecord);
-            } catch {
-              // Keep book creation compatible even if the first-round init sidecar fails.
-            }
-          }
           bookCreateStatus.delete(bookId);
           broadcast("book:created", { bookId });
         },
@@ -896,7 +892,7 @@ export function createStorageRouter(ctx: RouterContext): Hono {
   // --- Logs ---
 
   app.get("/api/logs", async (c) => {
-    const logPath = join(root, "inkos.log");
+    const logPath = join(root, "novelfork.log");
     try {
       const content = await readFile(logPath, "utf-8");
       const lines = content.trim().split("\n").slice(-100);

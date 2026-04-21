@@ -5,7 +5,7 @@ import { createWriteStream, type WriteStream } from "node:fs";
 import { writeFile, readFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 
-const PID_FILE = "inkos.pid";
+const PID_FILE = "novelfork.pid";
 
 export const upCommand = new Command("up")
   .description("Start the NovelFork daemon (autonomous mode)")
@@ -37,7 +37,7 @@ export const upCommand = new Command("up")
       await writeFile(pidPath, String(process.pid), "utf-8");
 
       // File logging for daemon
-      const logPath = join(root, "inkos.log");
+      const logPath = join(root, "novelfork.log");
       logStream = createWriteStream(logPath, { flags: "a" });
 
       const scheduler = new Scheduler({

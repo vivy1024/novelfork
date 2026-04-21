@@ -37,7 +37,6 @@ export interface ChatWindow {
   sessionMode?: NarratorSessionMode;
   position: { x: number; y: number; w: number; h: number };
   minimized: boolean;
-  wsConnected: boolean;
 }
 
 interface AddWindowInput {
@@ -56,7 +55,6 @@ interface WindowStore {
   toggleMinimize: (id: string) => void;
   setActiveWindow: (id: string | null) => void;
   updateLayout: (id: string, position: { x: number; y: number; w: number; h: number }) => void;
-  setWsConnected: (windowId: string, connected: boolean) => void;
 }
 
 function normalizeAddWindowInput(agentIdOrInput: string | AddWindowInput, title?: string): AddWindowInput {
@@ -92,7 +90,6 @@ export const useWindowStore = create<WindowStore>()(
               h: 8,
             },
             minimized: false,
-            wsConnected: false,
           };
           return { windows: [...state.windows, newWindow], activeWindowId: id };
         }),
@@ -119,20 +116,16 @@ export const useWindowStore = create<WindowStore>()(
         set((state) => ({
           windows: state.windows.map((w) => (w.id === id ? { ...w, position } : w)),
         })),
-
-      setWsConnected: (windowId, connected) =>
-        set((state) => ({
-          windows: state.windows.map((w) => (w.id === windowId ? { ...w, wsConnected: connected } : w)),
-        })),
     }),
     {
       name: "novelfork-window-store",
       partialize: (state) => ({
-        windows: state.windows.map(({ id, title, agentId, sessionId, position, minimized }) => ({
+        windows: state.windows.map(({ id, title, agentId, sessionId, sessionMode, position, minimized }) => ({
           id,
           title,
           agentId,
           sessionId,
+          sessionMode,
           position,
           minimized,
         })),

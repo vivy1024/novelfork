@@ -1,7 +1,7 @@
 /**
  * AI routes — mounted in all modes (standalone + relay).
  * ~16 endpoints: write-next, draft, audit, revise, rewrite, detect, style,
- * radar, agent, imports, fanfic operations, legacy SSE.
+ * radar, agent, imports, fanfic operations, studio SSE.
  */
 
 import { Hono } from "hono";
@@ -29,10 +29,10 @@ export function createAIRouter(ctx: RouterContext): Hono {
   const app = new Hono();
   const { state, root, broadcast } = ctx;
 
-  // Legacy SSE subscribers (will be replaced by per-run SSE in Phase 2)
+  // Studio SSE subscribers
   const subscribers = new Set<EventHandler>();
 
-  function legacyBroadcast(event: string, data: unknown): void {
+  function broadcastStudioEvent(event: string, data: unknown): void {
     broadcast(event, data);
     for (const handler of subscribers) {
       handler(event, data);
@@ -45,16 +45,16 @@ export function createAIRouter(ctx: RouterContext): Hono {
     const id = c.req.param("id");
     const body = await c.req.json<{ wordCount?: number }>().catch(() => ({ wordCount: undefined }));
 
-    legacyBroadcast("write:start", { bookId: id });
+    broadcastStudioEvent("write:start", { bookId: id });
 
     const sessionLlm = await ctx.getSessionLlm(c);
     const pipeline = new PipelineRunner(await ctx.buildPipelineConfig(sessionLlm));
     pipeline.writeNextChapter(id, body.wordCount).then(
       (result: any) => {
-        legacyBroadcast("write:complete", { bookId: id, chapterNumber: result.chapterNumber, status: result.status, title: result.title, wordCount: result.wordCount });
+        broadcastStudioEvent("write:complete", { bookId: id, chapterNumber: result.chapterNumber, status: result.status, title: result.title, wordCount: result.wordCount });
       },
       (e: any) => {
-        legacyBroadcast("write:error", { bookId: id, error: e instanceof Error ? e.message : String(e) });
+        broadcastStudioEvent("write:error", { bookId: id, error: e instanceof Error ? e.message : String(e) });
       },
     );
 
@@ -67,16 +67,16 @@ export function createAIRouter(ctx: RouterContext): Hono {
     const id = c.req.param("id");
     const body = await c.req.json<{ wordCount?: number; context?: string }>().catch(() => ({ wordCount: undefined, context: undefined }));
 
-    legacyBroadcast("draft:start", { bookId: id });
+    broadcastStudioEvent("draft:start", { bookId: id });
 
     const sessionLlm = await ctx.getSessionLlm(c);
     const pipeline = new PipelineRunner(await ctx.buildPipelineConfig(sessionLlm));
     pipeline.writeDraft(id, body.context, body.wordCount).then(
       (result: any) => {
-        legacyBroadcast("draft:complete", { bookId: id, chapterNumber: result.chapterNumber, title: result.title, wordCount: result.wordCount });
+        broadcastStudioEvent("draft:complete", { bookId: id, chapterNumber: result.chapterNumber, title: result.title, wordCount: result.wordCount });
       },
       (e: any) => {
-        legacyBroadcast("draft:error", { bookId: id, error: e instanceof Error ? e.message : String(e) });
+        broadcastStudioEvent("draft:error", { bookId: id, error: e instanceof Error ? e.message : String(e) });
       },
     );
 
@@ -90,7 +90,7 @@ export function createAIRouter(ctx: RouterContext): Hono {
     const chapterNum = parseInt(c.req.param("chapter"), 10);
     const bookDir = state.bookDir(id);
 
-    legacyBroadcast("audit:start", { bookId: id, chapter: chapterNum });
+    broadcastStudioEvent("audit:start", { bookId: id, chapter: chapterNum });
     try {
       const book = await state.loadBookConfig(id);
       const chaptersDir = join(bookDir, "chapters");
@@ -109,10 +109,10 @@ export function createAIRouter(ctx: RouterContext): Hono {
         bookId: id,
       });
       const result = await auditor.auditChapter(bookDir, content, chapterNum, book.genre);
-      legacyBroadcast("audit:complete", { bookId: id, chapter: chapterNum, passed: result.passed });
+      broadcastStudioEvent("audit:complete", { bookId: id, chapter: chapterNum, passed: result.passed });
       return c.json(result);
     } catch (e) {
-      legacyBroadcast("audit:error", { bookId: id, error: String(e) });
+      broadcastStudioEvent("audit:error", { bookId: id, error: String(e) });
       return c.json({ error: String(e) }, 500);
     }
   });
@@ -126,7 +126,7 @@ export function createAIRouter(ctx: RouterContext): Hono {
       .json<{ mode?: string; brief?: string }>()
       .catch(() => ({ mode: "spot-fix" }));
 
-    legacyBroadcast("revise:start", { bookId: id, chapter: chapterNum });
+    broadcastStudioEvent("revise:start", { bookId: id, chapter: chapterNum });
     try {
       const pipeline = new PipelineRunner(await ctx.buildPipelineConfig({
         externalContext: body.brief,
@@ -137,10 +137,10 @@ export function createAIRouter(ctx: RouterContext): Hono {
         chapterNum,
         (body.mode ?? "spot-fix") as "spot-fix" | "polish" | "rewrite" | "rework" | "anti-detect",
       );
-      legacyBroadcast("revise:complete", { bookId: id, chapter: chapterNum });
+      broadcastStudioEvent("revise:complete", { bookId: id, chapter: chapterNum });
       return c.json(result);
     } catch (e) {
-      legacyBroadcast("revise:error", { bookId: id, error: String(e) });
+      broadcastStudioEvent("revise:error", { bookId: id, error: String(e) });
       return c.json({ error: String(e) }, 500);
     }
   });
@@ -154,7 +154,7 @@ export function createAIRouter(ctx: RouterContext): Hono {
       .json<{ brief?: string }>()
       .catch(() => ({}));
 
-    legacyBroadcast("rewrite:start", { bookId: id, chapter: chapterNum });
+    broadcastStudioEvent("rewrite:start", { bookId: id, chapter: chapterNum });
     try {
       const rollbackTarget = chapterNum - 1;
       const discarded = await state.rollbackToChapter(id, rollbackTarget);
@@ -163,12 +163,12 @@ export function createAIRouter(ctx: RouterContext): Hono {
         ...(await ctx.getSessionLlm(c)),
       }));
       pipeline.writeNextChapter(id).then(
-        (result: any) => legacyBroadcast("rewrite:complete", { bookId: id, chapterNumber: result.chapterNumber, title: result.title, wordCount: result.wordCount }),
-        (e: any) => legacyBroadcast("rewrite:error", { bookId: id, error: e instanceof Error ? e.message : String(e) }),
+        (result: any) => broadcastStudioEvent("rewrite:complete", { bookId: id, chapterNumber: result.chapterNumber, title: result.title, wordCount: result.wordCount }),
+        (e: any) => broadcastStudioEvent("rewrite:error", { bookId: id, error: e instanceof Error ? e.message : String(e) }),
       );
       return c.json({ status: "rewriting", bookId: id, chapter: chapterNum, rolledBackTo: rollbackTarget, discarded });
     } catch (e) {
-      legacyBroadcast("rewrite:error", { bookId: id, error: String(e) });
+      broadcastStudioEvent("rewrite:error", { bookId: id, error: String(e) });
       return c.json({ error: String(e) }, 500);
     }
   });
@@ -264,15 +264,15 @@ export function createAIRouter(ctx: RouterContext): Hono {
     const id = c.req.param("id");
     const { text, sourceName } = await c.req.json<{ text: string; sourceName: string }>();
 
-    legacyBroadcast("style:start", { bookId: id });
+    broadcastStudioEvent("style:start", { bookId: id });
     try {
       const sessionLlm = await ctx.getSessionLlm(c);
       const pipeline = new PipelineRunner(await ctx.buildPipelineConfig(sessionLlm));
       const result = await pipeline.generateStyleGuide(id, text, sourceName ?? "unknown");
-      legacyBroadcast("style:complete", { bookId: id });
+      broadcastStudioEvent("style:complete", { bookId: id });
       return c.json({ ok: true, result });
     } catch (e) {
-      legacyBroadcast("style:error", { bookId: id, error: String(e) });
+      broadcastStudioEvent("style:error", { bookId: id, error: String(e) });
       return c.json({ error: String(e) }, 500);
     }
   });
@@ -284,7 +284,7 @@ export function createAIRouter(ctx: RouterContext): Hono {
     const { text, splitRegex } = await c.req.json<{ text: string; splitRegex?: string }>();
     if (!text?.trim()) return c.json({ error: "text is required" }, 400);
 
-    legacyBroadcast("import:start", { bookId: id, type: "chapters" });
+    broadcastStudioEvent("import:start", { bookId: id, type: "chapters" });
     try {
       const { splitChapters } = await import("@vivy1024/novelfork-core");
       const chapters = [...splitChapters(text, splitRegex)];
@@ -292,10 +292,10 @@ export function createAIRouter(ctx: RouterContext): Hono {
       const sessionLlm = await ctx.getSessionLlm(c);
       const pipeline = new PipelineRunner(await ctx.buildPipelineConfig(sessionLlm));
       const result = await pipeline.importChapters({ bookId: id, chapters });
-      legacyBroadcast("import:complete", { bookId: id, type: "chapters", count: result.importedCount });
+      broadcastStudioEvent("import:complete", { bookId: id, type: "chapters", count: result.importedCount });
       return c.json(result);
     } catch (e) {
-      legacyBroadcast("import:error", { bookId: id, error: String(e) });
+      broadcastStudioEvent("import:error", { bookId: id, error: String(e) });
       return c.json({ error: String(e) }, 500);
     }
   });
@@ -307,15 +307,15 @@ export function createAIRouter(ctx: RouterContext): Hono {
     const { fromBookId } = await c.req.json<{ fromBookId: string }>();
     if (!fromBookId) return c.json({ error: "fromBookId is required" }, 400);
 
-    legacyBroadcast("import:start", { bookId: id, type: "canon" });
+    broadcastStudioEvent("import:start", { bookId: id, type: "canon" });
     try {
       const sessionLlm = await ctx.getSessionLlm(c);
       const pipeline = new PipelineRunner(await ctx.buildPipelineConfig(sessionLlm));
       await pipeline.importCanon(id, fromBookId);
-      legacyBroadcast("import:complete", { bookId: id, type: "canon" });
+      broadcastStudioEvent("import:complete", { bookId: id, type: "canon" });
       return c.json({ ok: true });
     } catch (e) {
-      legacyBroadcast("import:error", { bookId: id, error: String(e) });
+      broadcastStudioEvent("import:error", { bookId: id, error: String(e) });
       return c.json({ error: String(e) }, 500);
     }
   });
@@ -349,15 +349,15 @@ export function createAIRouter(ctx: RouterContext): Hono {
       updatedAt: now,
     };
 
-    legacyBroadcast("fanfic:start", { bookId, title: body.title });
+    broadcastStudioEvent("fanfic:start", { bookId, title: body.title });
     try {
       const sessionLlm = await ctx.getSessionLlm(c);
       const pipeline = new PipelineRunner(await ctx.buildPipelineConfig(sessionLlm));
       await pipeline.initFanficBook(bookConfig, body.sourceText, body.sourceName ?? "source", (body.mode ?? "canon") as "canon");
-      legacyBroadcast("fanfic:complete", { bookId });
+      broadcastStudioEvent("fanfic:complete", { bookId });
       return c.json({ ok: true, bookId });
     } catch (e) {
-      legacyBroadcast("fanfic:error", { bookId, error: String(e) });
+      broadcastStudioEvent("fanfic:error", { bookId, error: String(e) });
       return c.json({ error: String(e) }, 500);
     }
   });
@@ -369,16 +369,16 @@ export function createAIRouter(ctx: RouterContext): Hono {
     const { sourceText, sourceName } = await c.req.json<{ sourceText: string; sourceName?: string }>();
     if (!sourceText?.trim()) return c.json({ error: "sourceText is required" }, 400);
 
-    legacyBroadcast("fanfic:refresh:start", { bookId: id });
+    broadcastStudioEvent("fanfic:refresh:start", { bookId: id });
     try {
       const book = await state.loadBookConfig(id);
       const sessionLlm = await ctx.getSessionLlm(c);
       const pipeline = new PipelineRunner(await ctx.buildPipelineConfig(sessionLlm));
       await pipeline.importFanficCanon(id, sourceText, sourceName ?? "source", (book.fanficMode ?? "canon") as "canon");
-      legacyBroadcast("fanfic:refresh:complete", { bookId: id });
+      broadcastStudioEvent("fanfic:refresh:complete", { bookId: id });
       return c.json({ ok: true });
     } catch (e) {
-      legacyBroadcast("fanfic:refresh:error", { bookId: id, error: String(e) });
+      broadcastStudioEvent("fanfic:refresh:error", { bookId: id, error: String(e) });
       return c.json({ error: String(e) }, 500);
     }
   });
@@ -386,15 +386,15 @@ export function createAIRouter(ctx: RouterContext): Hono {
   // --- Radar Scan ---
 
   app.post("/api/radar/scan", async (c) => {
-    legacyBroadcast("radar:start", {});
+    broadcastStudioEvent("radar:start", {});
     try {
       const sessionLlm = await ctx.getSessionLlm(c);
       const pipeline = new PipelineRunner(await ctx.buildPipelineConfig(sessionLlm));
       const result = await pipeline.runRadar();
-      legacyBroadcast("radar:complete", { result });
+      broadcastStudioEvent("radar:complete", { result });
       return c.json(result);
     } catch (e) {
-      legacyBroadcast("radar:error", { error: String(e) });
+      broadcastStudioEvent("radar:error", { error: String(e) });
       return c.json({ error: String(e) }, 500);
     }
   });
@@ -407,7 +407,7 @@ export function createAIRouter(ctx: RouterContext): Hono {
       return c.json({ error: "No instruction provided" }, 400);
     }
 
-    legacyBroadcast("agent:start", { instruction });
+    broadcastStudioEvent("agent:start", { instruction });
 
     try {
       const { runAgentLoop } = await import("@vivy1024/novelfork-core");
@@ -417,11 +417,11 @@ export function createAIRouter(ctx: RouterContext): Hono {
         instruction
       );
 
-      legacyBroadcast("agent:complete", { instruction, response: result });
+      broadcastStudioEvent("agent:complete", { instruction, response: result });
       return c.json({ response: result });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      legacyBroadcast("agent:error", { instruction, error: msg });
+      broadcastStudioEvent("agent:error", { instruction, error: msg });
       return c.json({ response: msg });
     }
   });
@@ -747,7 +747,7 @@ export function createAIRouter(ctx: RouterContext): Hono {
     });
   });
 
-  // --- Legacy global SSE (kept for backward compat, Phase 2 removes) ---
+  // --- Studio global SSE feed ---
 
   app.get("/api/events", (c) => {
     return streamSSE(c, async (stream) => {

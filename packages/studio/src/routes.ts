@@ -60,7 +60,7 @@ export interface PersistedTabSession {
   readonly activeTabId: string;
 }
 
-export interface SanitizedTabSession {
+export interface PersistedTabSessionState {
   readonly tabs: ReadonlyArray<{ route: Route; id: string }>;
   readonly activeTabId: string;
 }
@@ -233,37 +233,6 @@ export function normalizeRoute(value: unknown): Route | undefined {
       return typeof value.runId === "string" || value.runId === undefined
         ? { page: "pipeline", runId: value.runId as string | undefined }
         : undefined;
-
-    // legacy grouped workflow routes
-    case "config":
-      return { page: "workflow", section: "project" };
-    case "agents":
-      return { page: "workflow", section: "agents" };
-    case "mcp":
-      return { page: "workflow", section: "mcp" };
-    case "plugins":
-      return { page: "workflow", section: "plugins" };
-    case "llm-advanced":
-      return { page: "workflow", section: "advanced" };
-    case "scheduler-config":
-      return { page: "workflow", section: "scheduler" };
-    case "detection-config":
-      return { page: "workflow", section: "detection" };
-    case "hooks":
-      return { page: "workflow", section: "hooks" };
-    case "notify":
-      return { page: "workflow", section: "notify" };
-
-    // legacy grouped admin routes
-    case "daemon":
-      return { page: "admin", section: "daemon" };
-    case "logs":
-      return { page: "admin", section: "logs" };
-    case "worktree":
-      return { page: "admin", section: "worktrees" };
-    case "providers":
-      return { page: "admin", section: "providers" };
-
     default:
       return undefined;
   }
@@ -273,9 +242,9 @@ export function isRoute(value: unknown): value is Route {
   return normalizeRoute(value) !== undefined;
 }
 
-export function sanitizeRestoredTabSession(
+export function validatePersistedTabSession(
   session: PersistedTabSession | undefined,
-): SanitizedTabSession | undefined {
+): PersistedTabSessionState | undefined {
   if (!session || !Array.isArray(session.tabs) || typeof session.activeTabId !== "string") {
     return undefined;
   }
@@ -291,19 +260,13 @@ export function sanitizeRestoredTabSession(
     return undefined;
   }
 
-  const normalizedActive = (() => {
-    const activeCandidate = session.tabs.find(
-      (tab) => isRecord(tab) && typeof tab.id === "string" && tab.id === session.activeTabId,
-    );
-    return activeCandidate ? normalizeRoute(activeCandidate.route) : undefined;
-  })();
-
+  const activeCandidate = session.tabs.find(
+    (tab) => isRecord(tab) && typeof tab.id === "string" && tab.id === session.activeTabId,
+  );
+  const normalizedActive = activeCandidate ? normalizeRoute(activeCandidate.route) : undefined;
   const activeTabId = normalizedActive && tabs.some((tab) => tab.id === canonicalRouteId(normalizedActive))
     ? canonicalRouteId(normalizedActive)
     : tabs[0]!.id;
 
-  return {
-    tabs,
-    activeTabId,
-  };
+  return { tabs, activeTabId };
 }

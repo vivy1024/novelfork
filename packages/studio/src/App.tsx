@@ -46,7 +46,7 @@ import { persistTabSession, restoreTabSession } from "./hooks/use-persisted-tabs
 import { fetchJson, postApi, useApi } from "./hooks/use-api";
 import type { SearchResult } from "./shared/search-types";
 import type { AdminSection, Route, SettingsSection, WorkflowSection } from "./routes";
-import { sanitizeRestoredTabSession } from "./routes";
+import { validatePersistedTabSession } from "./routes";
 import { deriveActiveBookId } from "./route-utils";
 
 /**
@@ -202,7 +202,7 @@ function AppInner() {
   // Restore tabs from IndexedDB on mount
   useEffect(() => {
     restoreTabSession().then((rawSession) => {
-      const session = sanitizeRestoredTabSession(rawSession);
+      const session = validatePersistedTabSession(rawSession);
       if (!session?.tabs.length) return;
       for (const saved of session.tabs) {
         openTab(saved.route);
@@ -226,7 +226,7 @@ function AppInner() {
       // Ctrl+S — prevent browser save, dispatch custom event for editors
       if ((e.metaKey || e.ctrlKey) && e.key === "s") {
         e.preventDefault();
-        window.dispatchEvent(new CustomEvent("inkos:save"));
+        window.dispatchEvent(new CustomEvent("novelfork:save"));
       }
       // Ctrl+B — toggle reference panel
       if ((e.metaKey || e.ctrlKey) && e.key === "b") {
@@ -500,7 +500,7 @@ function AppInner() {
           tabs={tabs}
           activateTab={activateTab}
           onClose={() => setCmdOpen(false)}
-          onNewBook={() => setBookCreateOpen(true)}
+          onNewBook={() => nav.toBookCreate()}
           t={t}
         />
       )}

@@ -164,31 +164,12 @@ interface CallLLMOptions {
 
 const PROFILES_KEY = "novelfork-llm-profiles";
 const ACTIVE_KEY = "novelfork-llm-active";
-const LEGACY_KEY = "novelfork-llm-config";
 
 /** 读取所有 LLM 配置 */
 function loadAllProfiles(): LLMProfile[] {
   const raw = localStorage.getItem(PROFILES_KEY);
   if (raw) {
     try { return JSON.parse(raw) as LLMProfile[]; } catch { /* fall through */ }
-  }
-  // 迁移旧格式
-  const legacy = localStorage.getItem(LEGACY_KEY);
-  if (legacy) {
-    try {
-      const old = JSON.parse(legacy) as Record<string, string>;
-      const migrated: LLMProfile = {
-        name: "默认",
-        provider: (old.provider as LLMProvider) || "openai",
-        apiKey: old.apiKey || "",
-        baseUrl: old.baseUrl || "",
-        model: old.model || "gpt-4o",
-      };
-      const profiles = [migrated];
-      localStorage.setItem(PROFILES_KEY, JSON.stringify(profiles));
-      localStorage.setItem(ACTIVE_KEY, migrated.name);
-      return profiles;
-    } catch { /* fall through */ }
   }
   return [];
 }
@@ -214,15 +195,6 @@ function loadActiveProfile(): LLMProfile {
 /** 保存配置列表 */
 function saveAllProfiles(profiles: LLMProfile[]): void {
   localStorage.setItem(PROFILES_KEY, JSON.stringify(profiles));
-  // 同步写旧 key 保持兼容
-  const active = localStorage.getItem(ACTIVE_KEY);
-  const cur = active ? profiles.find(p => p.name === active) : profiles[0];
-  if (cur) {
-    localStorage.setItem(LEGACY_KEY, JSON.stringify({
-      apiKey: cur.apiKey, baseUrl: cur.baseUrl,
-      model: cur.model, provider: cur.provider,
-    }));
-  }
 }
 
 /** 规范化 baseUrl：去尾斜杠，自动补全常见路径 */
@@ -1503,12 +1475,6 @@ export async function tauriFetch<T>(path: string, init?: RequestInit): Promise<T
     const profiles = loadAllProfiles();
     if (!profiles.some(p => p.name === body.name)) throw new Error(`配置「${body.name}」不存在`);
     localStorage.setItem(ACTIVE_KEY, body.name);
-    // 同步旧 key
-    const cur = profiles.find(p => p.name === body.name)!;
-    localStorage.setItem(LEGACY_KEY, JSON.stringify({
-      apiKey: cur.apiKey, baseUrl: cur.baseUrl,
-      model: cur.model, provider: cur.provider,
-    }));
     return { ok: true } as T;
   }
 

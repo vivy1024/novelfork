@@ -16,7 +16,7 @@ const createPlaceholderPNG = (size) => {
   // Minimal PNG: blue square
   const svg = `<svg width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">
   <rect width="${size}" height="${size}" fill="#3b82f6"/>
-  <text x="50%" y="50%" font-size="${Math.floor(size / 4)}" fill="white" text-anchor="middle" dominant-baseline="middle" font-family="Arial, sans-serif" font-weight="bold">InkOS</text>
+  <text x="50%" y="50%" font-size="${Math.floor(size / 4)}" fill="white" text-anchor="middle" dominant-baseline="middle" font-family="Arial, sans-serif" font-weight="bold">NovelFork</text>
 </svg>`;
   return Buffer.from(svg);
 };
@@ -24,7 +24,7 @@ const createPlaceholderPNG = (size) => {
 for (const size of sizes) {
   const svg = `<svg width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">
   <rect width="${size}" height="${size}" fill="#3b82f6"/>
-  <text x="50%" y="50%" font-size="${Math.floor(size / 4)}" fill="white" text-anchor="middle" dominant-baseline="middle" font-family="Arial, sans-serif" font-weight="bold">InkOS</text>
+  <text x="50%" y="50%" font-size="${Math.floor(size / 4)}" fill="white" text-anchor="middle" dominant-baseline="middle" font-family="Arial, sans-serif" font-weight="bold">NovelFork</text>
 </svg>`;
 
   // Save as SVG (browsers can use SVG as PWA icons)

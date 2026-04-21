@@ -1,19 +1,17 @@
 import { describe, expect, it } from "vitest";
 
-import { sanitizeRestoredTabSession } from "./routes";
+import { validatePersistedTabSession } from "./routes";
 
-describe("sanitizeRestoredTabSession", () => {
-  it("maps legacy workflow/admin routes into the grouped shell", () => {
-    const session = sanitizeRestoredTabSession({
+describe("validatePersistedTabSession", () => {
+  it("keeps current grouped routes when persisted state is already valid", () => {
+    const session = validatePersistedTabSession({
       tabs: [
         { id: "dashboard", route: { page: "dashboard" } },
-        { id: "agents", route: { page: "agents" } },
-        { id: "daemon", route: { page: "daemon" } },
-        { id: "terminal", route: { page: "admin", section: "terminal" } },
-        { id: "container", route: { page: "admin", section: "container" } },
+        { id: "workflow:agents", route: { page: "workflow", section: "agents" } },
+        { id: "admin:daemon", route: { page: "admin", section: "daemon" } },
         { id: "book:alpha", route: { page: "book", bookId: "alpha" } },
       ],
-      activeTabId: "agents",
+      activeTabId: "workflow:agents",
     });
 
     expect(session).toEqual({
@@ -21,22 +19,20 @@ describe("sanitizeRestoredTabSession", () => {
         { id: "dashboard", route: { page: "dashboard" } },
         { id: "workflow:agents", route: { page: "workflow", section: "agents" } },
         { id: "admin:daemon", route: { page: "admin", section: "daemon" } },
-        { id: "admin:terminal", route: { page: "admin", section: "terminal" } },
-        { id: "admin:container", route: { page: "admin", section: "container" } },
         { id: "book:alpha", route: { page: "book", bookId: "alpha" } },
       ],
       activeTabId: "workflow:agents",
     });
   });
 
-  it("falls back to the first surviving tab when the active route was removed", () => {
-    const session = sanitizeRestoredTabSession({
+  it("drops invalid persisted routes and falls back to the first surviving tab", () => {
+    const session = validatePersistedTabSession({
       tabs: [
-        { id: "legacy-removed", route: { page: "chat-windows-legacy" } },
+        { id: "removed-route", route: { page: "unknown-page" } },
         { id: "dashboard", route: { page: "dashboard" } },
         { id: "sessions", route: { page: "sessions" } },
       ],
-      activeTabId: "legacy-removed",
+      activeTabId: "removed-route",
     });
 
     expect(session).toEqual({
@@ -48,13 +44,13 @@ describe("sanitizeRestoredTabSession", () => {
     });
   });
 
-  it("returns undefined when no supported routes survive", () => {
-    const session = sanitizeRestoredTabSession({
+  it("returns undefined when no valid current routes survive", () => {
+    const session = validatePersistedTabSession({
       tabs: [
-        { id: "legacy-1", route: { page: "chat-windows-legacy" } },
-        { id: "legacy-2", route: { page: "config-legacy" } },
+        { id: "invalid-1", route: { page: "unknown-page-a" } },
+        { id: "invalid-2", route: { page: "unknown-page-b" } },
       ],
-      activeTabId: "legacy-1",
+      activeTabId: "invalid-1",
     });
 
     expect(session).toBeUndefined();

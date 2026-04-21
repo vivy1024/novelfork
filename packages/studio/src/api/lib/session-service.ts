@@ -1,7 +1,6 @@
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { homedir } from "node:os";
 
 import {
   DEFAULT_SESSION_CONFIG,
@@ -10,6 +9,7 @@ import {
   type UpdateNarratorSessionInput,
 } from "../../shared/session-types.js";
 import { deleteSessionChatHistory, markSessionChatHistoryDeleted } from "./session-history-store.js";
+import { resolveRuntimeStoragePath } from "./runtime-storage-paths.js";
 import { loadUserConfig } from "./user-config-service.js";
 
 function getSessionStoreFilePath(): string {
@@ -17,7 +17,7 @@ function getSessionStoreFilePath(): string {
   if (overrideDir) {
     return join(overrideDir, "sessions.json");
   }
-  return join(homedir(), ".inkos", "sessions.json");
+  return resolveRuntimeStoragePath("sessions.json");
 }
 
 async function ensureSessionStoreDir(): Promise<void> {

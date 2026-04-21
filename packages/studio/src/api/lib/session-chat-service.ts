@@ -13,6 +13,7 @@ import type {
   NarratorSessionChatStateEnvelope,
   NarratorSessionRecord,
 } from "../../shared/session-types.js";
+import { appendSessionChatHistory, loadSessionChatHistory } from "./session-history-store.js";
 import { getSessionById, updateSession } from "./session-service.js";
 
 const MAX_SESSION_MESSAGES = 50;
@@ -24,7 +25,6 @@ interface SessionChatTransport {
 
 interface SessionChatTransportState {
   ackedSeq: number;
-  resumeFromSeq: number;
 }
 
 interface SessionChatRuntimeState {
@@ -366,15 +366,17 @@ export async function getSessionChatHistory(sessionId: string, sinceSeq = 0): Pr
   }
 
   const normalizedSinceSeq = Math.max(0, sanitizeSeq(sinceSeq));
-  const firstBufferedSeq = loaded.state.messages[0]?.seq ?? 0;
-  const resetRequired = normalizedSinceSeq > 0 && firstBufferedSeq > 0 && normalizedSinceSeq < firstBufferedSeq - 1;
+  const persistedHistory = await loadSessionChatHistory(sessionId);
+  const sourceMessages = persistedHistory.length > 0 ? persistedHistory : loaded.state.messages;
+  const availableFromSeq = sourceMessages[0]?.seq ?? 0;
+  const resetRequired = normalizedSinceSeq > 0 && availableFromSeq > 0 && normalizedSinceSeq < availableFromSeq - 1;
 
   return {
     sessionId,
     sinceSeq: normalizedSinceSeq,
-    availableFromSeq: firstBufferedSeq,
+    availableFromSeq,
     resetRequired,
-    messages: resetRequired ? [] : loaded.state.messages.filter((message) => (message.seq ?? 0) > normalizedSinceSeq),
+    messages: resetRequired ? [] : sourceMessages.filter((message) => (message.seq ?? 0) > normalizedSinceSeq),
     cursor: createCursor(loaded.state),
   };
 }
@@ -395,7 +397,6 @@ export async function attachSessionChatTransport(
   const ackedSeq = Math.min(sanitizeSeq(options.resumeFromSeq), createCursor(loaded.state).lastSeq);
   loaded.state.transports.set(transport, {
     ackedSeq,
-    resumeFromSeq: sanitizeSeq(options.resumeFromSeq),
   });
 
   if (ackedSeq === 0) {
@@ -478,10 +479,20 @@ export async function handleSessionChatTransportMessage(
     timestamp: timestamp + 1,
   });
 
+  const persistedHistory = await appendSessionChatHistory(
+    sessionId,
+    [userMessage, assistantMessage],
+    loaded.session.recentMessages ?? loaded.state.messages,
+  );
+
   const updatedSession = await updateSession(sessionId, {
     messageCount: loaded.state.messageCount,
     recentMessages: [...loaded.state.messages],
   });
+  if (persistedHistory.length > 0) {
+    loaded.state.messageCount = Math.max(loaded.state.messageCount, getLastSeq(persistedHistory));
+    loaded.state.nextSeq = Math.max(loaded.state.nextSeq, loaded.state.messageCount + 1);
+  }
   broadcastMessageEnvelope(sessionId, loaded.state, assistantMessage);
 
   if (updatedSession) {

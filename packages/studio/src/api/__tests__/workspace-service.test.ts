@@ -24,7 +24,7 @@ describe("workspace-service", () => {
 
   beforeEach(async () => {
     root = await mkdtemp(join(tmpdir(), "novelfork-ws-test-"));
-    // Create a minimal InkOS structure
+    // Create a minimal NovelFork structure
     await mkdir(join(root, "books", "test-book", "chapters"), { recursive: true });
     await mkdir(join(root, "books", "test-book", "story"), { recursive: true });
     await writeFile(join(root, "novelfork.json"), '{"name": "test"}', "utf-8");

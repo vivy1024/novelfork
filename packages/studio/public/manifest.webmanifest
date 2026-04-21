@@ -1,6 +1,6 @@
 {
-  "name": "InkOS Studio",
-  "short_name": "InkOS",
+  "name": "NovelFork Studio",
+  "short_name": "NovelFork",
   "description": "Web workbench for novel writing",
   "start_url": "/",
   "display": "standalone",

@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { NewSessionDialog, SESSION_PRESETS, type NewSessionPayload, type SessionPresetId } from "@/components/sessions/NewSessionDialog";
 import { useSession } from "@/hooks/useSession";
+import { useWindowRuntimeStore } from "@/stores/windowRuntimeStore";
 import { useWindowStore } from "@/stores/windowStore";
 import type { Theme } from "../hooks/use-theme";
 
@@ -17,10 +18,10 @@ export function SessionCenter({ theme }: { theme: Theme }) {
   const activeWindowId = useWindowStore((state) => state.activeWindowId);
   const addWindow = useWindowStore((state) => state.addWindow);
   const setActiveWindow = useWindowStore((state) => state.setActiveWindow);
-  const toggleMinimize = useWindowStore((state) => state.toggleMinimize);
   const removeWindow = useWindowStore((state) => state.removeWindow);
+  const wsConnections = useWindowRuntimeStore((state) => state.wsConnections);
   const { sessions, loaded, createSession, updateSession } = useSession();
-  const connected = windows.filter((window) => window.wsConnected).length;
+  const connected = windows.filter((window) => wsConnections[window.id]).length;
   const minimized = windows.filter((window) => window.minimized).length;
   const totalMessages = sessions.reduce((sum, session) => sum + session.messageCount, 0);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -127,8 +128,8 @@ export function SessionCenter({ theme }: { theme: Theme }) {
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <SessionStat
             title="活跃会话"
-            value={String(sessions.length > 0 ? sessions.filter((session) => session.status === "active").length : windows.length)}
-            description={sessions.length > 0 ? "当前正式 session 中处于 active 的对象" : "当前已打开的工作台会话窗口"}
+            value={String(sessions.filter((session) => session.status === "active").length)}
+            description="当前正式 session 中处于 active 的对象"
             icon={MessagesSquare}
           />
           <SessionStat
@@ -254,7 +255,7 @@ export function SessionCenter({ theme }: { theme: Theme }) {
                         model={session.sessionConfig.modelId}
                         messageCount={session.messageCount}
                         lastModified={session.lastModified}
-                        attachedWindow={attachedWindow ? { id: attachedWindow.id, wsConnected: attachedWindow.wsConnected, minimized: attachedWindow.minimized } : null}
+                        attachedWindow={attachedWindow ? { id: attachedWindow.id, wsConnected: wsConnections[attachedWindow.id] ?? false, minimized: attachedWindow.minimized } : null}
                         active={attachedWindow?.id === activeWindowId}
                         onOpenWorkspace={() => handleOpenSessionWorkspace(session.id)}
                         onToggleArchive={() => handleToggleArchive(session.id, session.status === "archived" ? "active" : "archived")}
@@ -264,27 +265,6 @@ export function SessionCenter({ theme }: { theme: Theme }) {
                   })}
                 </div>
               </>
-            ) : windows.length > 0 ? (
-              <div className="grid gap-4 xl:grid-cols-2">
-                {windows.map((window) => {
-                  const session = window.sessionId ? sessions.find((item) => item.id === window.sessionId) : null;
-                  return (
-                    <SessionObjectCard
-                      key={window.id}
-                      title={session?.title ?? window.title}
-                      agentId={session?.agentId ?? window.agentId}
-                      minimized={window.minimized}
-                      wsConnected={window.wsConnected}
-                      messageCount={session?.messageCount ?? 0}
-                      position={window.position}
-                      active={window.id === activeWindowId}
-                      onActivate={() => setActiveWindow(window.id)}
-                      onToggleMinimize={() => toggleMinimize(window.id)}
-                      onClose={() => removeWindow(window.id)}
-                    />
-                  );
-                })}
-              </div>
             ) : (
               <PageEmptyState
                 title="还没有会话对象"
@@ -422,77 +402,6 @@ function NarratorSessionCard({
               关闭窗口
             </Button>
           )}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function SessionObjectCard({
-  title,
-  agentId,
-  minimized,
-  wsConnected,
-  messageCount,
-  position,
-  active,
-  onActivate,
-  onToggleMinimize,
-  onClose,
-}: {
-  title: string;
-  agentId: string;
-  minimized: boolean;
-  wsConnected: boolean;
-  messageCount: number;
-  position: { x: number; y: number; w: number; h: number };
-  active: boolean;
-  onActivate: () => void;
-  onToggleMinimize: () => void;
-  onClose: () => void;
-}) {
-  const positionLabel = `x:${position.x} y:${position.y} · ${position.w}×${position.h}`;
-
-  return (
-    <Card className={active ? "border-primary/40 shadow-sm ring-1 ring-primary/10" : ""}>
-      <CardHeader className="space-y-3">
-        <div className="flex items-start justify-between gap-3">
-          <div className="space-y-2">
-            <div className="flex flex-wrap items-center gap-2">
-              <CardTitle className="text-base">{title}</CardTitle>
-              {active && <Badge>当前对象</Badge>}
-              <Badge variant={wsConnected ? "secondary" : "outline"}>{wsConnected ? "在线" : "离线"}</Badge>
-              <Badge variant="outline">{minimized ? "已收起" : "展开中"}</Badge>
-            </div>
-            <CardDescription className="flex flex-wrap items-center gap-2 text-xs">
-              <span>Agent {agentId}</span>
-              <span>•</span>
-              <span>{messageCount} 条消息</span>
-              <span>•</span>
-              <span>{positionLabel}</span>
-            </CardDescription>
-          </div>
-          <div className="text-right text-[11px] text-muted-foreground">
-            <div>窗口状态</div>
-            <div className="font-medium text-foreground">{minimized ? "已收起" : "展开中"}</div>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <div className="rounded-xl border border-border/60 bg-muted/30 p-3">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">窗口说明</p>
-          <p className="mt-1 line-clamp-2 text-sm leading-6 text-foreground/90">当前卡片只展示会话壳层状态；正式消息与配置由会话服务端事实源提供。</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" className="h-8 px-3 text-xs" onClick={onActivate}>
-            聚焦
-          </Button>
-          <Button variant="outline" className="h-8 px-3 text-xs" onClick={onToggleMinimize}>
-            {minimized ? "展开" : "收起"}
-          </Button>
-          <Button variant="ghost" className="h-8 px-3 text-xs text-destructive hover:text-destructive" onClick={onClose}>
-            关闭
-          </Button>
         </div>
       </CardContent>
     </Card>

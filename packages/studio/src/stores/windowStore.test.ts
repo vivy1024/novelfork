@@ -21,7 +21,21 @@ describe("useWindowStore", () => {
     expect(window).toMatchObject({
       agentId: "writer",
       title: "Writer 会话",
-      wsConnected: false,
+    });
+    expect(window.sessionMode).toBeUndefined();
+    expect(window).not.toHaveProperty("wsConnected");
+  });
+
+  it("retains sessionMode on the shell window state", () => {
+    useWindowStore.getState().addWindow({
+      agentId: "planner",
+      title: "Planner 会话",
+      sessionMode: "plan",
+    });
+
+    expect(useWindowStore.getState().windows[0]).toMatchObject({
+      title: "Planner 会话",
+      sessionMode: "plan",
     });
   });
 });

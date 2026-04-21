@@ -415,7 +415,7 @@ describe("session-chat-service", () => {
     expect(snapshot?.cursor.lastSeq).toBe(2);
   });
 
-  it("marks history replay as reset-required when the requested seq falls behind the retained buffer", async () => {
+  it("serves full replay history from the persisted history store when runtime buffer has been trimmed", async () => {
     const {
       createSession,
       attachSessionChatTransport,
@@ -447,8 +447,18 @@ describe("session-chat-service", () => {
 
     const history = await getSessionChatHistory(session.id, 2);
     expect(history?.cursor.lastSeq).toBe(60);
-    expect(history?.availableFromSeq).toBe(11);
-    expect(history?.resetRequired).toBe(true);
-    expect(history?.messages).toEqual([]);
+    expect(history?.availableFromSeq).toBe(1);
+    expect(history?.resetRequired).toBe(false);
+    expect(history?.messages[0]).toMatchObject({
+      id: "bulk-message-2",
+      seq: 3,
+      role: "user",
+    });
+    expect(history?.messages.at(-1)).toMatchObject({
+      id: "bulk-message-30-assistant",
+      seq: 60,
+      role: "assistant",
+    });
+    expect(history?.messages).toHaveLength(58);
   });
 });

@@ -20,7 +20,7 @@ describe("LogsTab", () => {
 
   it("renders real log tail entries from the admin API", async () => {
     fetchJsonMock.mockResolvedValueOnce({
-      sourcePath: "D:/DESKTOP/novelfork/inkos.log",
+      sourcePath: "D:/DESKTOP/novelfork/novelfork.log",
       exists: true,
       refreshedAt: "2026-04-20T10:05:00Z",
       updatedAt: "2026-04-20T10:04:30Z",
@@ -50,14 +50,14 @@ describe("LogsTab", () => {
     expect(await screen.findByRole("heading", { name: "运行日志" })).toBeTruthy();
     expect(screen.getByText("server booted")).toBeTruthy();
     expect(screen.getByText("plain line")).toBeTruthy();
-    expect(screen.getByText("D:/DESKTOP/novelfork/inkos.log")).toBeTruthy();
+    expect(screen.getByText("D:/DESKTOP/novelfork/novelfork.log")).toBeTruthy();
     expect(fetchJsonMock).toHaveBeenCalledWith("/api/admin/logs?limit=200");
   });
 
   it("refreshes the current log tail limit on demand", async () => {
     fetchJsonMock
       .mockResolvedValueOnce({
-        sourcePath: "D:/DESKTOP/novelfork/inkos.log",
+        sourcePath: "D:/DESKTOP/novelfork/novelfork.log",
         exists: true,
         refreshedAt: "2026-04-20T10:05:00Z",
         updatedAt: "2026-04-20T10:04:30Z",
@@ -68,7 +68,7 @@ describe("LogsTab", () => {
         entries: [{ message: "first line", raw: "first line", source: "text" }],
       })
       .mockResolvedValueOnce({
-        sourcePath: "D:/DESKTOP/novelfork/inkos.log",
+        sourcePath: "D:/DESKTOP/novelfork/novelfork.log",
         exists: true,
         refreshedAt: "2026-04-20T10:06:00Z",
         updatedAt: "2026-04-20T10:05:45Z",

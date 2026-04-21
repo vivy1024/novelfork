@@ -3,11 +3,9 @@ import type { Context } from "hono";
 import { getSignedCookie, setSignedCookie } from "hono/cookie";
 import { ApiError } from "./errors.js";
 
-const SESSION_COOKIE_NAME = "inkos_session";
+const SESSION_COOKIE_NAME = "novelfork_session";
 const DEFAULT_SUBAPI_ISSUER = "sub2api";
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
-
-// --- Nonce store (防 replay 攻击) ---
 
 const usedNonces = new Map<string, number>();
 
@@ -24,7 +22,7 @@ export function consumeNonce(jti: string, expMs: number): boolean {
   return true;
 }
 
-export interface InkosSession {
+export interface NovelForkSession {
   userId: number;
   email: string;
   role: string;
@@ -34,7 +32,7 @@ export interface InkosSession {
   llmProvider?: string;
 }
 
-export interface PublicInkosSession {
+export interface PublicNovelForkSession {
   userId: number;
   email: string;
   role: string;
@@ -114,8 +112,8 @@ function verifySignature(token: string, secret: string): LaunchClaims {
     .digest();
   const actualSignature = Buffer.from(signatureSegment, "base64url");
   if (
-    actualSignature.length !== expectedSignature.length ||
-    !timingSafeEqual(new Uint8Array(actualSignature), new Uint8Array(expectedSignature))
+    actualSignature.length !== expectedSignature.length
+    || !timingSafeEqual(new Uint8Array(actualSignature), new Uint8Array(expectedSignature))
   ) {
     throw new Error("Invalid launch token.");
   }
@@ -143,7 +141,7 @@ function getLaunchSecret(): string {
   return secret;
 }
 
-export function verifyLaunchToken(token: string, secret: string): InkosSession {
+export function verifyLaunchToken(token: string, secret: string): NovelForkSession {
   const claims = verifySignature(token, secret);
   const issuer = parseString(claims.iss, "issuer");
   if (issuer !== getExpectedIssuer()) {
@@ -176,7 +174,7 @@ export function verifyLaunchToken(token: string, secret: string): InkosSession {
   };
 }
 
-export function toPublicSession(session: InkosSession): PublicInkosSession {
+export function toPublicSession(session: NovelForkSession): PublicNovelForkSession {
   return {
     userId: session.userId,
     email: session.email,
@@ -184,9 +182,8 @@ export function toPublicSession(session: InkosSession): PublicInkosSession {
   };
 }
 
-export async function establishLaunchSession(c: Context, token: string): Promise<InkosSession> {
+export async function establishLaunchSession(c: Context, token: string): Promise<NovelForkSession> {
   const session = verifyLaunchToken(token, getLaunchSecret());
-  // Persist full session (including llmApiKey/llmBaseUrl) for multi-user isolation
   await setSignedCookie(
     c,
     SESSION_COOKIE_NAME,
@@ -203,14 +200,14 @@ export async function establishLaunchSession(c: Context, token: string): Promise
   return session;
 }
 
-export async function readSessionFromCookie(c: Context): Promise<InkosSession | null> {
+export async function readSessionFromCookie(c: Context): Promise<NovelForkSession | null> {
   const raw = await getSignedCookie(c, getCookieSecret(), SESSION_COOKIE_NAME);
   if (typeof raw !== "string" || !raw) {
     return null;
   }
 
   try {
-    const parsed = JSON.parse(raw) as Partial<InkosSession>;
+    const parsed = JSON.parse(raw) as Partial<NovelForkSession>;
     return {
       userId: parseUserId(parsed.userId),
       email: parseString(parsed.email, "email"),
@@ -225,7 +222,7 @@ export async function readSessionFromCookie(c: Context): Promise<InkosSession | 
   }
 }
 
-export async function requireSession(c: Context): Promise<InkosSession> {
+export async function requireSession(c: Context): Promise<NovelForkSession> {
   const session = await readSessionFromCookie(c);
   if (!session) {
     throw new ApiError(401, "UNAUTHORIZED", "Authentication required.");
@@ -233,7 +230,7 @@ export async function requireSession(c: Context): Promise<InkosSession> {
   return session;
 }
 
-export async function refreshSession(c: Context, session: InkosSession): Promise<void> {
+export async function refreshSession(c: Context, session: NovelForkSession): Promise<void> {
   await setSignedCookie(c, SESSION_COOKIE_NAME, JSON.stringify(session), getCookieSecret(), {
     httpOnly: true,
     path: "/",

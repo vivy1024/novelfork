@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 
 import { SessionCenter } from "./SessionCenter";
+import { useWindowRuntimeStore } from "@/stores/windowRuntimeStore";
 import { useWindowStore } from "@/stores/windowStore";
 import type { ChatWindow } from "@/stores/windowStore";
 import type { Session } from "@/hooks/useSession";
@@ -44,10 +45,16 @@ interface MockWindowStore {
   toggleMinimize: (id: string) => void;
   setActiveWindow: (id: string | null) => void;
   updateLayout: (id: string, position: ChatWindow["position"]) => void;
+}
+
+interface MockWindowRuntimeStore {
+  wsConnections: Record<string, boolean>;
   setWsConnected: (windowId: string, connected: boolean) => void;
+  clearWindowRuntime: (windowId: string) => void;
 }
 
 let mockState: MockWindowStore = createMockState();
+let mockRuntimeState: MockWindowRuntimeStore = createMockRuntimeState();
 
 vi.mock("@/stores/windowStore", () => {
   const useWindowStoreMock = ((selector: (state: MockWindowStore) => unknown) => selector(mockState)) as typeof useWindowStore & {
@@ -63,12 +70,27 @@ vi.mock("@/stores/windowStore", () => {
   return { useWindowStore: useWindowStoreMock };
 });
 
+vi.mock("@/stores/windowRuntimeStore", () => {
+  const useWindowRuntimeStoreMock = ((selector: (state: MockWindowRuntimeStore) => unknown) => selector(mockRuntimeState)) as typeof useWindowRuntimeStore & {
+    getState: () => MockWindowRuntimeStore;
+    setState: (partial: Partial<MockWindowRuntimeStore>) => void;
+  };
+
+  useWindowRuntimeStoreMock.getState = () => mockRuntimeState;
+  useWindowRuntimeStoreMock.setState = (partial) => {
+    mockRuntimeState = { ...mockRuntimeState, ...partial };
+  };
+
+  return { useWindowRuntimeStore: useWindowRuntimeStoreMock };
+});
+
 afterEach(() => {
   cleanup();
   fetchJsonMock.mockReset();
   updateSessionMock.mockReset();
   sessionHookState = createSessionHookState();
   mockState = createMockState();
+  mockRuntimeState = createMockRuntimeState();
 });
 
 describe("SessionCenter", () => {
@@ -109,7 +131,8 @@ describe("SessionCenter", () => {
     expect(windows[0]?.agentId).toBe("planner");
     expect(windows[0]?.title).toBe("Planner 会话");
     expect(windows[0]?.sessionId).toBe("session-1");
-    expect(windows[0]?.wsConnected).toBe(false);
+    expect(windows[0]).not.toHaveProperty("wsConnected");
+    expect(useWindowRuntimeStore.getState().wsConnections[windows[0]!.id] ?? false).toBe(false);
   });
 
   it("renders existing session cards as object entries", () => {
@@ -133,10 +156,12 @@ describe("SessionCenter", () => {
           sessionMode: "chat",
           position: { x: 1, y: 2, w: 6, h: 8 },
           minimized: false,
-          wsConnected: true,
         },
       ],
       activeWindowId: "window-1",
+    });
+    mockRuntimeState = createMockRuntimeState({
+      wsConnections: { "window-1": true },
     });
 
     render(<SessionCenter theme="light" />);
@@ -144,6 +169,7 @@ describe("SessionCenter", () => {
     expect(screen.getByText("Writer 会话")).toBeTruthy();
     expect(screen.getByText(/Agent writer/)).toBeTruthy();
     expect(screen.getByText("1 条消息")).toBeTruthy();
+    expect(screen.getByText("在线")).toBeTruthy();
     expect(screen.getByRole("button", { name: "聚焦工作台" })).toBeTruthy();
   });
 
@@ -275,7 +301,6 @@ function baseMockState(): MockWindowStore {
           sessionMode: normalized.sessionMode,
           position: { x: (state.windows.length * 2) % 10, y: (state.windows.length * 2) % 10, w: 6, h: 8 },
           minimized: false,
-          wsConnected: false,
         },
       ];
       state.activeWindowId = id;
@@ -304,10 +329,28 @@ function baseMockState(): MockWindowStore {
         window.id === id ? { ...window, position } : window,
       );
     },
+  };
+
+  return state;
+}
+
+function createMockRuntimeState(overrides?: Partial<MockWindowRuntimeStore>): MockWindowRuntimeStore {
+  return Object.assign(baseMockRuntimeState(), overrides ?? {});
+}
+
+function baseMockRuntimeState(): MockWindowRuntimeStore {
+  const state: MockWindowRuntimeStore = {
+    wsConnections: {},
     setWsConnected(windowId: string, connected: boolean) {
-      state.windows = state.windows.map((window) =>
-        window.id === windowId ? { ...window, wsConnected: connected } : window,
-      );
+      state.wsConnections = {
+        ...state.wsConnections,
+        [windowId]: connected,
+      };
+    },
+    clearWindowRuntime(windowId: string) {
+      const nextConnections = { ...state.wsConnections };
+      delete nextConnections[windowId];
+      state.wsConnections = nextConnections;
     },
   };
 

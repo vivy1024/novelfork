@@ -1,16 +1,16 @@
 import { existsSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
 import { join } from "node:path";
 
 import type { NarratorSessionChatMessage } from "../../shared/session-types.js";
+import { resolveRuntimeStorageDir } from "./runtime-storage-paths.js";
 
 function getSessionHistoryDir(): string {
   const overrideDir = process.env.NOVELFORK_SESSION_STORE_DIR?.trim();
   if (overrideDir) {
     return join(overrideDir, "session-history");
   }
-  return join(homedir(), ".inkos", "session-history");
+  return resolveRuntimeStorageDir("session-history");
 }
 
 function getSessionHistoryFilePath(sessionId: string): string {

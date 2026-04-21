@@ -83,8 +83,8 @@ describe("daemon command", () => {
       upCommand.parseAsync(["node", "up", "--quiet"]),
     ).rejects.toMatchObject({ code: 1 });
 
-    expect(writeFileMock).toHaveBeenCalledWith(expect.stringMatching(/inkos\.pid$/), expect.any(String), "utf-8");
-    expect(unlinkMock).toHaveBeenCalledWith(expect.stringMatching(/inkos\.pid$/));
+    expect(writeFileMock).toHaveBeenCalledWith(expect.stringMatching(/novelfork\.pid$/), expect.any(String), "utf-8");
+    expect(unlinkMock).toHaveBeenCalledWith(expect.stringMatching(/novelfork\.pid$/));
 
     exitSpy.mockRestore();
   });

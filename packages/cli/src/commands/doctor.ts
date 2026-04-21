@@ -135,7 +135,7 @@ export const doctorCommand = new Command("doctor")
           checks.push({
             name: "Version Migration",
             ok: false,
-            detail: `${legacyCount} book(s) using legacy format (pre-v0.6). Run 'novelfork write next' on each to auto-migrate, or re-init with 'inkos init'.`,
+            detail: `${legacyCount} book(s) using legacy format (pre-v0.6). Run 'novelfork write next' on each to auto-migrate, or re-init with 'novelfork init'.`,
           });
         } else if (bookIds.length > 0) {
           checks.push({

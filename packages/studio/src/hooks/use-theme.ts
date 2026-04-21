@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 export type Theme = "light" | "dark";
 export type ThemePreference = "light" | "dark" | "auto";
 
-const THEME_STORAGE_KEY = "inkos:studio:theme";
+const THEME_STORAGE_KEY = "novelfork:studio:theme";
 
 interface ThemeStorageLike {
   getItem(key: string): string | null;

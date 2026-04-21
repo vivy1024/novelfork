@@ -85,7 +85,7 @@ export interface TreeEntry {
 
 /**
  * Build a story-aware project tree.
- * Recognizes InkOS structure: books/, chapters/, story/, snapshots/.
+ * Recognizes NovelFork structure: books/, chapters/, story/, snapshots/.
  */
 export async function buildProjectTree(
   root: string,

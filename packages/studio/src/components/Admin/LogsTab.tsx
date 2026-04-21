@@ -160,7 +160,7 @@ export function LogsTab() {
         </CardHeader>
         <CardContent>
           {!snapshot.exists ? (
-            <PageEmptyState title="暂无日志文件" description="后端当前没有检测到 inkos.log，后续一旦产生真实日志，这里会自动展示尾部内容。" />
+            <PageEmptyState title="暂无日志文件" description="后端当前没有检测到 novelfork.log，后续一旦产生真实日志，这里会自动展示尾部内容。" />
           ) : filteredEntries.length === 0 ? (
             <PageEmptyState title="没有匹配日志" description={query ? "当前筛选条件没有命中任何日志行。" : "日志文件存在，但当前展示范围内没有可解析内容。"} />
           ) : (

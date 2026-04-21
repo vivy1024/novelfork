@@ -1,12 +1,3 @@
-/**
- * NovelFork context provider — injects storage + AI adapters into the React tree.
- * Components use useNovelFork() instead of importing concrete implementations.
- *
- * Detects Tauri environment automatically:
- * - Tauri: TauriStorageAdapter + RelayAIClient
- * - Web:   HttpStorageAdapter + HttpAIClient
- */
-
 import { createContext, useContext, useState, useEffect } from "react";
 import type { ClientStorageAdapter } from "../storage/adapter.js";
 import type { AIClient } from "../ai/client.js";
@@ -34,7 +25,6 @@ function isTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
-// Default web adapters (created once)
 const httpStorage = new HttpStorageAdapter();
 const httpAI = new HttpAIClient();
 
@@ -51,7 +41,6 @@ export function NovelForkProvider({ children }: { children: React.ReactNode }) {
         // Fallback to web mode if Tauri init fails
       });
     } else {
-      // Web mode — check server mode
       fetchJson<{ mode: string }>("/mode")
         .then((res) => {
           const mode = res.mode === "relay" ? "relay" as const : "standalone" as const;
@@ -72,17 +61,13 @@ async function initTauriMode(setCtx: (v: NovelForkContextValue) => void): Promis
   const { TauriStorageAdapter, setWorkspace, getWorkspace } = await import("../storage/tauri-adapter.js");
   const { RelayAIClient } = await import("../ai/relay-client.js");
 
-  // Try to restore last workspace from localStorage
   const saved = localStorage.getItem("novelfork-workspace");
   if (saved) setWorkspace(saved);
 
   const storage = new TauriStorageAdapter();
-
-  // Activate the Tauri API bridge so useApi/fetchJson route locally
   setTauriBridge(storage);
 
-  // Relay URL defaults to production; can be overridden via localStorage
-  const relayUrl = localStorage.getItem("novelfork-relay-url") ?? "https://inkos.vivy1024.cc";
+  const relayUrl = localStorage.getItem("novelfork-relay-url") ?? "https://relay.vivy1024.cc";
 
   const ai = new RelayAIClient({
     relayUrl,
@@ -93,14 +78,29 @@ async function initTauriMode(setCtx: (v: NovelForkContextValue) => void): Promis
       return {};
     },
     getLLMConfig: async () => {
-      const raw = localStorage.getItem("novelfork-llm-config");
-      if (raw) return JSON.parse(raw);
-      return { apiKey: "", baseUrl: "", model: "gpt-4o" };
+      const rawProfiles = localStorage.getItem("novelfork-llm-profiles");
+      const activeName = localStorage.getItem("novelfork-llm-active");
+      if (rawProfiles) {
+        try {
+          const profiles = JSON.parse(rawProfiles) as Array<{ name: string; apiKey?: string; baseUrl?: string; model?: string; provider?: string }>;
+          const active = activeName ? profiles.find((profile) => profile.name === activeName) : profiles[0];
+          if (active) {
+            return {
+              apiKey: active.apiKey ?? "",
+              baseUrl: active.baseUrl ?? "",
+              model: active.model ?? "gpt-4o",
+              provider: active.provider ?? "openai",
+            };
+          }
+        } catch {
+          // ignore invalid profile payloads
+        }
+      }
+      return { apiKey: "", baseUrl: "", model: "gpt-4o", provider: "openai" };
     },
   });
 
   const selectWorkspace = async (): Promise<string | null> => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const mod = await import("@tauri-apps/api/core") as any;
     const folder = await mod.invoke("select_workspace");
     if (folder) {
@@ -112,10 +112,12 @@ async function initTauriMode(setCtx: (v: NovelForkContextValue) => void): Promis
 
   const hasAuth = Boolean(localStorage.getItem("novelfork-auth-token"));
 
-  // Skip auth — allow offline use without a relay token
   const skipAuth = (): void => {
     setCtx({
-      storage, ai, mode: "tauri", selectWorkspace,
+      storage,
+      ai,
+      mode: "tauri",
+      selectWorkspace,
       workspace: getWorkspace(),
       tauriAuthenticated: true,
       loginWithToken,
@@ -123,7 +125,6 @@ async function initTauriMode(setCtx: (v: NovelForkContextValue) => void): Promis
     });
   };
 
-  // Process a launch token: verify with relay, store credentials
   const loginWithToken = async (token: string): Promise<void> => {
     const res = await fetch(`${relayUrl}/api/auth/launch`, {
       method: "POST",
@@ -134,30 +135,32 @@ async function initTauriMode(setCtx: (v: NovelForkContextValue) => void): Promis
       const err = await res.json().catch(() => ({ error: { message: "Login failed" } }));
       throw new Error(err?.error?.message ?? "Login failed");
     }
-    const data = await res.json() as { ok: boolean; session: { userId: number; email: string } };
 
-    // Decode JWT payload to extract LLM config (without verifying — relay already verified)
-    const parts = token.split(".");
-    if (parts.length === 3) {
+    if (token.split(".").length === 3) {
       try {
-        const payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
+        const payload = JSON.parse(atob(token.split(".")[1]!.replace(/-/g, "+").replace(/_/g, "/")));
         if (payload.llm_api_key || payload.llm_base_url) {
-          localStorage.setItem("novelfork-llm-config", JSON.stringify({
+          const profile = {
+            name: "默认",
             apiKey: payload.llm_api_key ?? "",
             baseUrl: payload.llm_base_url ?? "",
             model: payload.llm_model ?? "gpt-4o",
             provider: payload.llm_provider ?? "openai",
-          }));
+          };
+          localStorage.setItem("novelfork-llm-profiles", JSON.stringify([profile]));
+          localStorage.setItem("novelfork-llm-active", profile.name);
         }
-      } catch { /* ignore decode errors */ }
+      } catch {
+        // ignore decode errors
+      }
     }
 
-    // Store auth token for relay requests
     localStorage.setItem("novelfork-auth-token", token);
-
-    // Update context with authenticated state
     setCtx({
-      storage, ai, mode: "tauri", selectWorkspace,
+      storage,
+      ai,
+      mode: "tauri",
+      selectWorkspace,
       workspace: getWorkspace(),
       tauriAuthenticated: true,
       loginWithToken,
@@ -165,27 +168,27 @@ async function initTauriMode(setCtx: (v: NovelForkContextValue) => void): Promis
     });
   };
 
-  // Build initial context
-  const buildCtx = (): NovelForkContextValue => ({
-    storage, ai, mode: "tauri", selectWorkspace,
+  setCtx({
+    storage,
+    ai,
+    mode: "tauri",
+    selectWorkspace,
     workspace: getWorkspace(),
     tauriAuthenticated: hasAuth,
     loginWithToken,
     skipAuth,
   });
 
-  setCtx(buildCtx());
-
-  // Listen for deep link events (novelfork://launch?token=xxx)
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const eventMod = await import("@tauri-apps/api/event") as any;
     eventMod.listen("novelfork-launch", (event: { payload: string }) => {
       if (event.payload) {
         loginWithToken(event.payload).catch(console.error);
       }
     });
-  } catch { /* deep link listener not available */ }
+  } catch {
+    // deep link listener not available
+  }
 }
 
 export function useNovelFork(): NovelForkContextValue {
