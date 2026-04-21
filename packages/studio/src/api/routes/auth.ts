@@ -11,14 +11,14 @@ import {
   toPublicSession,
 } from "../auth.js";
 import { ApiError } from "../errors.js";
-import type { InkosSession } from "../auth.js";
+import type { NovelForkSession } from "../auth.js";
 import { createHash, randomBytes } from "node:crypto";
 
 /**
  * Safely read session — returns null when SESSION_SECRET is missing
  * (standalone mode without multi-user auth configured).
  */
-async function safeReadSession(c: import("hono").Context): Promise<InkosSession | null> {
+async function safeReadSession(c: import("hono").Context): Promise<NovelForkSession | null> {
   try {
     return await readSessionFromCookie(c);
   } catch (e) {
@@ -72,7 +72,7 @@ export function createAuthRouter(): Hono {
   });
 
   app.get("/api/mode", (c) => {
-    const mode = (((process.env.NOVELFORK_MODE ?? process.env.INKOS_MODE)?.trim().toLowerCase()) === "relay") ? "relay" : "standalone";
+    const mode = (process.env.NOVELFORK_MODE?.trim().toLowerCase() === "relay") ? "relay" : "standalone";
     return c.json({ mode });
   });
 
@@ -201,7 +201,7 @@ export function createAuthRouter(): Hono {
     }
 
     // Build session from OAuth2 response
-    const session: InkosSession = {
+    const session: NovelForkSession = {
       userId: d.user_id ?? 0,
       email: d.email ?? "",
       role: "user",

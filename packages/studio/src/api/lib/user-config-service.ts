@@ -1,6 +1,5 @@
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { join, dirname } from "node:path";
-import { homedir } from "node:os";
 import { existsSync } from "node:fs";
 import type {
   ModelDefaultSettings,
@@ -13,19 +12,21 @@ import type {
 } from "../../types/settings.js";
 import { DEFAULT_USER_CONFIG } from "../../types/settings.js";
 import { providerManager } from "./provider-manager.js";
+import { resolveRuntimeStoragePath } from "./runtime-storage-paths.js";
 
 /**
  * 获取用户配置文件路径
  */
 export function getUserConfigPath(): string {
-  return join(homedir(), ".inkos", "user-config.json");
+  return resolveRuntimeStoragePath("user-config.json");
 }
 
 /**
  * 获取配置备份路径
  */
 function getBackupPath(index: number): string {
-  return join(homedir(), ".inkos", `user-config.backup${index}.json`);
+  const configPath = getUserConfigPath();
+  return join(dirname(configPath), `user-config.backup${index}.json`);
 }
 
 /**

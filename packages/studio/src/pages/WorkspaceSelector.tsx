@@ -1,6 +1,6 @@
 /**
  * WorkspaceSelector — shown on first Tauri launch when no workspace is set.
- * User picks a local folder to use as their InkOS workspace.
+ * User picks a local folder to use as their NovelFork workspace.
  */
 
 import { useState } from "react";

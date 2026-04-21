@@ -84,7 +84,7 @@ export function useWorkspaceLock(): UseWorkspaceLockReturn {
           if (parsed.ts && Date.now() - parsed.ts < STALE_MS) {
             if (!cancelled) {
               setLocked(false);
-              setLockError("工作区已被另一个 InkOS 实例占用");
+              setLockError("工作区已被另一个 NovelFork 实例占用");
             }
             return;
           }

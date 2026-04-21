@@ -5,14 +5,14 @@ import { afterEach, describe, expect, it } from "vitest";
 import { loadProjectConfig } from "../utils/config-loader.js";
 
 const ENV_KEYS = [
-  "INKOS_LLM_PROVIDER",
-  "INKOS_LLM_BASE_URL",
-  "INKOS_LLM_MODEL",
-  "INKOS_LLM_API_KEY",
-  "INKOS_LLM_TEMPERATURE",
-  "INKOS_LLM_MAX_TOKENS",
-  "INKOS_LLM_THINKING_BUDGET",
-  "INKOS_LLM_API_FORMAT",
+  "NOVELFORK_LLM_PROVIDER",
+  "NOVELFORK_LLM_BASE_URL",
+  "NOVELFORK_LLM_MODEL",
+  "NOVELFORK_LLM_API_KEY",
+  "NOVELFORK_LLM_TEMPERATURE",
+  "NOVELFORK_LLM_MAX_TOKENS",
+  "NOVELFORK_LLM_THINKING_BUDGET",
+  "NOVELFORK_LLM_API_FORMAT",
 ] as const;
 
 describe("loadProjectConfig local provider auth", () => {

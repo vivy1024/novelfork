@@ -1,5 +1,5 @@
 /**
- * InkEditor — Novel (TipTap) based rich text editor for InkOS.
+ * InkEditor — Novel (TipTap) based rich text editor for NovelFork.
  * Supports markdown input/output, slash commands, and bubble menu.
  */
 

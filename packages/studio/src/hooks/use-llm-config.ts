@@ -1,8 +1,3 @@
-/**
- * useLLMConfig — manage LLM API credentials (session-based or localStorage)
- * Open mode: users can manually configure API Key without Sub2API login
- */
-
 import { useState, useEffect, useCallback } from "react";
 import { fetchJson } from "./use-api";
 import { useNovelFork } from "../providers/novelfork-context";
@@ -26,28 +21,31 @@ export function useLLMConfig() {
     setLoading(true);
     try {
       if (isTauri) {
-        // Tauri: read from localStorage
-        const raw = localStorage.getItem("novelfork-llm-config");
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          setConfig({
-            apiKey: parsed.apiKey ?? "",
-            baseUrl: parsed.baseUrl ?? "",
-            model: parsed.model ?? "gpt-4o",
-            provider: parsed.provider ?? "openai",
-            hasApiKey: Boolean(parsed.apiKey),
-          });
-        } else {
-          setConfig({
-            apiKey: "",
-            baseUrl: "",
-            model: "gpt-4o",
-            provider: "openai",
-            hasApiKey: false,
-          });
+        const rawProfiles = localStorage.getItem("novelfork-llm-profiles");
+        const activeName = localStorage.getItem("novelfork-llm-active");
+        if (rawProfiles) {
+          const profiles = JSON.parse(rawProfiles) as Array<{ name: string; apiKey?: string; baseUrl?: string; model?: string; provider?: string }>;
+          const active = activeName ? profiles.find((profile) => profile.name === activeName) : profiles[0];
+          if (active) {
+            setConfig({
+              apiKey: active.apiKey ?? "",
+              baseUrl: active.baseUrl ?? "",
+              model: active.model ?? "gpt-4o",
+              provider: active.provider ?? "openai",
+              hasApiKey: Boolean(active.apiKey),
+            });
+            return;
+          }
         }
+
+        setConfig({
+          apiKey: "",
+          baseUrl: "",
+          model: "gpt-4o",
+          provider: "openai",
+          hasApiKey: false,
+        });
       } else {
-        // Web: read from session cookie via API
         const data = await fetchJson<LLMConfig>("/auth/llm-settings");
         setConfig(data);
       }
@@ -73,7 +71,6 @@ export function useLLMConfig() {
       setSaving(true);
       try {
         if (isTauri) {
-          // Tauri: save to localStorage
           const current = config ?? {
             apiKey: "",
             baseUrl: "",
@@ -82,21 +79,20 @@ export function useLLMConfig() {
             hasApiKey: false,
           };
           const updated = { ...current, ...updates };
-          localStorage.setItem(
-            "novelfork-llm-config",
-            JSON.stringify({
-              apiKey: updated.apiKey,
-              baseUrl: updated.baseUrl,
-              model: updated.model,
-              provider: updated.provider,
-            })
-          );
+          const profile = {
+            name: localStorage.getItem("novelfork-llm-active") || "默认",
+            apiKey: updated.apiKey,
+            baseUrl: updated.baseUrl,
+            model: updated.model,
+            provider: updated.provider,
+          };
+          localStorage.setItem("novelfork-llm-profiles", JSON.stringify([profile]));
+          localStorage.setItem("novelfork-llm-active", profile.name);
           setConfig({
             ...updated,
             hasApiKey: Boolean(updated.apiKey),
           });
         } else {
-          // Web: save to session cookie via API
           await fetchJson("/auth/llm-settings", {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
@@ -108,7 +104,7 @@ export function useLLMConfig() {
         setSaving(false);
       }
     },
-    [isTauri, config, load]
+    [isTauri, config, load],
   );
 
   return { config, loading, saving, save, reload: load };

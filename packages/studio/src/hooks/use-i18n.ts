@@ -266,7 +266,7 @@ const strings = {
   // Workspace Selector
   "workspace.description": { zh: "选择一个本地文件夹作为你的写作工作区。所有小说、设定和章节都将保存在这里。", en: "Choose a local folder as your writing workspace. All novels, settings and chapters will be saved here." },
   "workspace.select": { zh: "选择工作区文件夹", en: "Select Workspace Folder" },
-  "workspace.hint": { zh: "建议选择一个空文件夹或已有的 InkOS 项目文件夹", en: "Recommend an empty folder or an existing InkOS project folder" },
+  "workspace.hint": { zh: "建议选择一个空文件夹或已有的 NovelFork 项目文件夹", en: "Recommend an empty folder or an existing NovelFork project folder" },
 
   // Tauri Login
   "login.description": { zh: "请从 Sub2API 控制台登录以连接 AI 写作服务。", en: "Log in from the Sub2API console to connect AI writing services." },

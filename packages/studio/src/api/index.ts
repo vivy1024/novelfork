@@ -12,12 +12,12 @@ const port = parseInt(process.env.NOVELFORK_STUDIO_PORT ?? "4567", 10);
 const studioRoot = resolve(__dirname, "../..");
 const distDir = join(studioRoot, "dist");
 
-// Legacy package entrypoint for npm/package usage only.
+// Package entrypoint for published Studio package usage only.
 // The repository-level Bun main entry is `D:/DESKTOP/novelfork/main.ts`.
-// Keep this file as a thin compatibility bridge; do not treat it as the primary runtime path.
+// Keep this file as a thin package launcher; do not treat it as the primary runtime path.
 if (!existsSync(join(distDir, "index.html"))) {
-  console.error("Built frontend assets not found for the legacy Studio package entry.");
-  console.error("Run 'pnpm bun:build-client' or 'cd packages/studio && pnpm build' before using this compatibility bridge.");
+  console.error("Built frontend assets not found for the Studio package entry.");
+  console.error("Run 'pnpm bun:build-client' or 'cd packages/studio && pnpm build' before using this package entry.");
   process.exit(1);
 }
 

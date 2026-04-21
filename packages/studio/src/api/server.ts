@@ -54,7 +54,7 @@ import {
 import type { RouterContext } from "./routes/index.js";
 import type { Context } from "hono";
 
-// --- Event bus for SSE (legacy, Phase 2 replaces with per-run) ---
+// --- Studio event bus for SSE ---
 
 type EventHandler = (event: string, data: unknown) => void;
 const globalSubscribers = new Set<EventHandler>();
@@ -84,8 +84,8 @@ pipelineEvents.on((event) => {
 
 export type NovelForkMode = "standalone" | "relay";
 
-function getInkosMode(): NovelForkMode {
-  const raw = (process.env.NOVELFORK_MODE ?? process.env.INKOS_MODE)?.trim().toLowerCase();
+function getNovelForkMode(): NovelForkMode {
+  const raw = process.env.NOVELFORK_MODE?.trim().toLowerCase();
   if (raw === "relay") return "relay";
   return "standalone";
 }
@@ -96,7 +96,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
   const app = new Hono();
   const state = new StateManager(root);
   const runStore = new RunStore();
-  const mode = getInkosMode();
+  const mode = getNovelForkMode();
   let cachedConfig = initialConfig;
 
   app.use("/*", cors());
@@ -215,7 +215,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
 
   if (mode === "standalone") {
     // Workbench routes — sandboxed file operations for IDE layout
-    const workbenchToken = process.env.NOVELFORK_WORKBENCH_TOKEN ?? process.env.INKOS_WORKBENCH_TOKEN;
+    const workbenchToken = process.env.NOVELFORK_WORKBENCH_TOKEN;
     app.route("", createWorkbenchRouter(root, workbenchToken));
 
     // AI operations + legacy SSE — standalone uses book-id based routes
@@ -315,11 +315,11 @@ export async function startStudioServer(
     const defaultConfig = {
       name: "novelfork-studio",
       version: "0.1.0",
-      language: process.env.NOVELFORK_DEFAULT_LANGUAGE ?? process.env.INKOS_DEFAULT_LANGUAGE ?? "zh",
+      language: process.env.NOVELFORK_DEFAULT_LANGUAGE ?? "zh",
       llm: {
-        provider: process.env.NOVELFORK_LLM_PROVIDER ?? process.env.INKOS_LLM_PROVIDER ?? "openai",
-        baseUrl: process.env.NOVELFORK_LLM_BASE_URL ?? process.env.INKOS_LLM_BASE_URL ?? "",
-        model: process.env.NOVELFORK_LLM_MODEL ?? process.env.INKOS_LLM_MODEL ?? "gpt-4o",
+        provider: process.env.NOVELFORK_LLM_PROVIDER ?? "openai",
+        baseUrl: process.env.NOVELFORK_LLM_BASE_URL ?? "",
+        model: process.env.NOVELFORK_LLM_MODEL ?? "gpt-4o",
       },
       notify: [],
       daemon: {
@@ -334,7 +334,7 @@ export async function startStudioServer(
   // Multi-user mode: don't require global API key at startup.
   const config = await loadProjectConfig(root, { requireApiKey: false });
 
-  const mode = getInkosMode();
+  const mode = getNovelForkMode();
   console.log(`NovelFork mode: ${mode}`);
 
   const { app, ctx } = createStudioServer(config, root);

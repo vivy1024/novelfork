@@ -706,7 +706,7 @@ describe("server integration — core 20 endpoints", () => {
       expect(data.entries).toEqual([]);
     });
 
-    it("returns parsed log entries from inkos.log", async () => {
+    it("returns parsed log entries from novelfork.log", async () => {
       const logLines = [
         JSON.stringify({
           level: "info",
@@ -720,7 +720,7 @@ describe("server integration — core 20 endpoints", () => {
         }),
       ].join("\n");
 
-      await writeFile(join(root, "inkos.log"), logLines, "utf-8");
+      await writeFile(join(root, "novelfork.log"), logLines, "utf-8");
 
       const res = await req("/api/logs");
 
@@ -733,7 +733,7 @@ describe("server integration — core 20 endpoints", () => {
 
     it("handles non-JSON log lines gracefully", async () => {
       await writeFile(
-        join(root, "inkos.log"),
+        join(root, "novelfork.log"),
         "plain text log line\n",
         "utf-8",
       );

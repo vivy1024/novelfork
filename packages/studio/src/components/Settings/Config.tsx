@@ -57,15 +57,15 @@ export const Config = React.memo(function Config({ theme, onNavigateSection, var
           </p>
         </div>
         <Badge variant={variant === "embedded" ? "default" : "secondary"}>
-          {variant === "embedded" ? "当前页主入口" : "兼容入口"}
+          {variant === "embedded" ? "当前页主入口" : "设置入口"}
         </Badge>
       </div>
 
       <Card className="border-dashed bg-muted/20">
         <CardHeader>
-          <CardTitle>旧弹窗不再持有独立设置数据</CardTitle>
+          <CardTitle>设置数据已统一到设置中心</CardTitle>
           <CardDescription>
-            这一块现在只负责承接迁移说明和剩余兼容能力，避免出现“只有弹窗才是真设置”的双轨状态。
+            主题、编辑器、个人资料与数据管理共用同一份设置事实源，不再存在独立配置分支。
           </CardDescription>
         </CardHeader>
       </Card>
@@ -99,9 +99,9 @@ export const Config = React.memo(function Config({ theme, onNavigateSection, var
 
       <Card size="sm">
         <CardHeader>
-          <CardTitle className="text-base">当前兼容容器保留范围</CardTitle>
+          <CardTitle className="text-base">当前入口职责</CardTitle>
           <CardDescription>
-            这里主要承接系统状态与使用统计；供应商配置已转到管理中心的供应商页继续收口，不再作为设置页主入口的一部分。
+            这里主要承接系统状态与使用统计；供应商配置统一在管理中心的供应商页维护。
           </CardDescription>
         </CardHeader>
       </Card>

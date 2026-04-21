@@ -17,11 +17,11 @@ export const ROUTINES_SCOPE_META: Record<RoutinesScope, { label: string; descrip
   },
   global: {
     label: "全局",
-    description: "编辑 ~/.inkos/routines.json，作为所有项目的默认基线。",
+    description: "编辑 ~/.novelfork/routines.json，作为所有项目的默认基线。",
   },
   project: {
     label: "项目",
-    description: "编辑 <workspace>/.inkos/routines.json，只影响当前工作区。",
+    description: "编辑 <workspace>/.novelfork/routines.json，只影响当前工作区。",
   },
 };
 

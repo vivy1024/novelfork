@@ -8,9 +8,9 @@ import os from "os";
 import type { Routines } from "../../types/routines.js";
 import { DEFAULT_ROUTINES } from "../../types/routines.js";
 
-const GLOBAL_CONFIG_DIR = path.join(os.homedir(), ".inkos");
+const GLOBAL_CONFIG_DIR = path.join(os.homedir(), ".novelfork");
 const GLOBAL_ROUTINES_FILE = path.join(GLOBAL_CONFIG_DIR, "routines.json");
-const PROJECT_ROUTINES_FILE = ".inkos/routines.json";
+const PROJECT_ROUTINES_FILE = ".novelfork/routines.json";
 
 function cloneDefaultRoutines(): Routines {
   return {
@@ -94,7 +94,7 @@ export async function loadProjectRoutines(projectRoot: string): Promise<Routines
  * 保存项目配置
  */
 export async function saveProjectRoutines(projectRoot: string, routines: Routines): Promise<void> {
-  const configDir = path.join(projectRoot, ".inkos");
+  const configDir = path.join(projectRoot, ".novelfork");
   await ensureConfigDir(configDir);
   const configPath = path.join(projectRoot, PROJECT_ROUTINES_FILE);
   await fs.writeFile(configPath, JSON.stringify(normalizeRoutines(routines), null, 2), "utf-8");

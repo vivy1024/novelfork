@@ -16,6 +16,7 @@ import {
 import type { Theme } from "../hooks/use-theme";
 import { useColors } from "../hooks/use-colors";
 import { WindowControls } from "./WindowControls";
+import { useWindowRuntimeStore } from "../stores/windowRuntimeStore";
 import { useWindowStore } from "../stores/windowStore";
 import type { ChatMessage, ChatWindow as ChatWindowState, ToolCall } from "../stores/windowStore";
 import {
@@ -69,10 +70,12 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
   const isActive = useWindowStore((state) => state.activeWindowId === windowId);
   const removeWindow = useWindowStore((state) => state.removeWindow);
   const toggleMinimize = useWindowStore((state) => state.toggleMinimize);
-  const setWsConnected = useWindowStore((state) => state.setWsConnected);
   const setActiveWindow = useWindowStore((state) => state.setActiveWindow);
   const updateWindow = useWindowStore((state) => state.updateWindow);
   const addWindow = useWindowStore((state) => state.addWindow);
+  const wsConnected = useWindowRuntimeStore((state) => state.wsConnections[windowId] ?? false);
+  const setWsConnected = useWindowRuntimeStore((state) => state.setWsConnected);
+  const clearWindowRuntime = useWindowRuntimeStore((state) => state.clearWindowRuntime);
 
   const [input, setInput] = useState("");
   const [contextPanelOpen, setContextPanelOpen] = useState(false);
@@ -230,7 +233,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
         syncSessionMessages([...sessionMessagesRef.current, message]);
       }
     },
-    [ackSessionSeq, setWsConnected, syncSessionMessages, syncSessionRecord, syncSessionSeq],
+    [ackSessionSeq, setWsConnected, syncSessionMessages, syncSessionRecord, syncSessionSeq, windowId],
   );
 
   useEffect(() => {
@@ -356,6 +359,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
 
     return () => {
       disposed = true;
+      clearWindowRuntime(windowId);
       if (reconnectTimerRef.current !== null) {
         globalThis.clearTimeout(reconnectTimerRef.current);
         reconnectTimerRef.current = null;
@@ -365,7 +369,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
         wsRef.current = null;
       }
     };
-  }, [chatWindow?.sessionId, chatWindow?.sessionMode, handleSessionTransportMessage, hydrateReconnectHistory, sessionRecord?.sessionMode, setWsConnected, windowId]);
+  }, [chatWindow?.sessionId, chatWindow?.sessionMode, clearWindowRuntime, handleSessionTransportMessage, hydrateReconnectHistory, sessionRecord?.sessionMode, setWsConnected, windowId]);
 
   const effectiveMessages = sessionMessages ?? [];
 
@@ -523,7 +527,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              {chatWindow.wsConnected ? (
+              {wsConnected ? (
                 <span title="已连接">
                   <Wifi size={12} style={{ color: "#10b981" }} />
                 </span>
@@ -537,7 +541,10 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
                 minimized={chatWindow.minimized}
                 onMinimize={() => toggleMinimize(windowId)}
                 onMaximize={handleMaximize}
-                onClose={() => removeWindow(windowId)}
+                onClose={() => {
+                  clearWindowRuntime(windowId);
+                  removeWindow(windowId);
+                }}
               />
             </div>
           </div>
@@ -546,7 +553,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
         {!chatWindow.minimized && (
           <>
             <div className="grid gap-2 border-b px-3 py-2 text-[10px] sm:grid-cols-3" style={{ borderColor: c.border, backgroundColor: c.bgSecondary }}>
-              <SessionMetric label="连接" value={chatWindow.wsConnected ? "在线" : "离线"} />
+              <SessionMetric label="连接" value={wsConnected ? "在线" : "离线"} />
               <SessionMetric label="位置" value={`x:${chatWindow.position.x} y:${chatWindow.position.y}`} />
               <SessionMetric label="最近活动" value={lastMessageTime} />
             </div>
@@ -833,11 +840,11 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
                     color: c.text,
                     border: `1px solid ${c.border}`,
                   }}
-                  disabled={!chatWindow.wsConnected}
+                  disabled={!wsConnected}
                 />
                 <button
                   onClick={handleSend}
-                  disabled={!chatWindow.wsConnected || !input.trim()}
+                  disabled={!wsConnected || !input.trim()}
                   className="rounded px-4 py-2 text-sm font-medium transition-opacity disabled:opacity-50"
                   style={{ backgroundColor: c.accent, color: "#fff" }}
                 >

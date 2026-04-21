@@ -555,6 +555,81 @@ describe("createStudioServer daemon lifecycle", () => {
     await rm(existingRepo, { recursive: true, force: true });
   });
 
+  it("persists prepared bootstrap ownership even when async create later fails, so conflicts stay blocked", async () => {
+    const existingRepo = await mkdtemp(join(tmpdir(), "novelfork-studio-server-persisted-bootstrap-repo-"));
+
+    try {
+      await createCommittedRepository(existingRepo, "main");
+      initBookMock.mockRejectedValueOnce(new Error("NOVELFORK_LLM_API_KEY not set"));
+
+      const { createStudioServer } = await import("./server.js");
+      const { app } = createStudioServer(cloneProjectConfig() as never, root);
+
+      const firstResponse = await app.request("http://localhost/api/books/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: "Retry Book",
+          genre: "xuanhuan",
+          platform: "qidian",
+          language: "zh",
+          projectInit: {
+            repositorySource: "existing",
+            repositoryPath: existingRepo,
+            workflowMode: "outline-first",
+            templatePreset: "genre-default",
+            gitBranch: "main",
+            worktreeName: "draft-shared",
+          },
+        }),
+      });
+
+      expect(firstResponse.status).toBe(200);
+      const persistedProjectInit = JSON.parse(
+        await readFile(join(root, "books", "retry-book", ".novelfork-project-init.json"), "utf-8"),
+      ) as { bootstrap?: { repositoryRoot?: string; worktreeCreated?: boolean } };
+      expect(persistedProjectInit).toMatchObject({
+        repositorySource: "existing",
+        worktreeName: "draft-shared",
+        bootstrap: {
+          repositoryRoot: existingRepo,
+          worktreeCreated: true,
+        },
+      });
+
+      await Promise.resolve();
+
+      const conflictingResponse = await app.request("http://localhost/api/books/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: "Conflicting Book",
+          genre: "xuanhuan",
+          platform: "qidian",
+          language: "zh",
+          projectInit: {
+            repositorySource: "existing",
+            repositoryPath: existingRepo,
+            workflowMode: "outline-first",
+            templatePreset: "genre-default",
+            gitBranch: "main",
+            worktreeName: "draft-shared",
+          },
+        }),
+      });
+
+      expect(conflictingResponse.status).toBe(409);
+      await expect(conflictingResponse.json()).resolves.toMatchObject({
+        error: {
+          code: "PROJECT_BOOTSTRAP_WORKTREE_CONFLICT",
+          message: expect.stringContaining("retry-book"),
+        },
+      });
+    } finally {
+      await rm(existingRepo, { recursive: true, force: true });
+    }
+  });
+
   it("reports async create failures through the create-status endpoint", async () => {
     initBookMock.mockRejectedValueOnce(new Error("NOVELFORK_LLM_API_KEY not set"));
 

@@ -52,7 +52,7 @@ export function useTabCompletion({ editor, enabled, debounceMs = 1500 }: UseTabC
       abortRef.current = controller;
 
       try {
-        const apiBase = (window as any).__NOVELFORK_API_BASE__ ?? (window as any).__INKOS_API_BASE__ ?? "";
+        const apiBase = (window as any).__NOVELFORK_API_BASE__ ?? "";
         const response = await fetch(`${apiBase}/api/ai/complete`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },

@@ -5,8 +5,6 @@ import { ProjectConfigSchema, type ProjectConfig } from "../models/project.js";
 
 export const GLOBAL_CONFIG_DIR = join(homedir(), ".novelfork");
 export const GLOBAL_ENV_PATH = join(GLOBAL_CONFIG_DIR, ".env");
-const LEGACY_GLOBAL_CONFIG_DIR = join(homedir(), ".inkos");
-const LEGACY_GLOBAL_ENV_PATH = join(LEGACY_GLOBAL_CONFIG_DIR, ".env");
 
 function getEnvValue(...keys: string[]): string | undefined {
   for (const key of keys) {
@@ -47,7 +45,6 @@ export function isApiKeyOptionalForEndpoint(params: {
 
 /**
  * Load project config from novelfork.json with .env overrides.
- * NovelFork env vars are preferred; legacy InkOS env vars are accepted as fallback.
  */
 export async function loadProjectConfig(
   root: string,
@@ -55,9 +52,8 @@ export async function loadProjectConfig(
 ): Promise<ProjectConfig> {
   const { config: loadEnv } = await import("dotenv");
 
-  // Priority: ~/.novelfork/.env > legacy ~/.inkos/.env (fallback only) > project .env overrides
+  // Priority: ~/.novelfork/.env > project .env overrides
   loadEnv({ path: GLOBAL_ENV_PATH });
-  loadEnv({ path: LEGACY_GLOBAL_ENV_PATH });
   loadEnv({ path: join(root, ".env"), override: true });
 
   const configPath = join(root, "novelfork.json");
@@ -83,14 +79,14 @@ export async function loadProjectConfig(
   const env = process.env;
   const llm = (config.llm ?? {}) as Record<string, unknown>;
 
-  const provider = getEnvValue("NOVELFORK_LLM_PROVIDER", "INKOS_LLM_PROVIDER");
-  const baseUrl = getEnvValue("NOVELFORK_LLM_BASE_URL", "INKOS_LLM_BASE_URL");
-  const model = getEnvValue("NOVELFORK_LLM_MODEL", "INKOS_LLM_MODEL");
-  const temperature = getEnvValue("NOVELFORK_LLM_TEMPERATURE", "INKOS_LLM_TEMPERATURE");
-  const maxTokens = getEnvValue("NOVELFORK_LLM_MAX_TOKENS", "INKOS_LLM_MAX_TOKENS");
-  const thinkingBudget = getEnvValue("NOVELFORK_LLM_THINKING_BUDGET", "INKOS_LLM_THINKING_BUDGET");
-  const apiFormat = getEnvValue("NOVELFORK_LLM_API_FORMAT", "INKOS_LLM_API_FORMAT");
-  const defaultLanguage = getEnvValue("NOVELFORK_DEFAULT_LANGUAGE", "INKOS_DEFAULT_LANGUAGE");
+  const provider = getEnvValue("NOVELFORK_LLM_PROVIDER");
+  const baseUrl = getEnvValue("NOVELFORK_LLM_BASE_URL");
+  const model = getEnvValue("NOVELFORK_LLM_MODEL");
+  const temperature = getEnvValue("NOVELFORK_LLM_TEMPERATURE");
+  const maxTokens = getEnvValue("NOVELFORK_LLM_MAX_TOKENS");
+  const thinkingBudget = getEnvValue("NOVELFORK_LLM_THINKING_BUDGET");
+  const apiFormat = getEnvValue("NOVELFORK_LLM_API_FORMAT");
+  const defaultLanguage = getEnvValue("NOVELFORK_DEFAULT_LANGUAGE");
 
   if (provider) llm.provider = provider;
   if (baseUrl) llm.baseUrl = baseUrl;
@@ -103,9 +99,7 @@ export async function loadProjectConfig(
   for (const [key, value] of Object.entries(env)) {
     const prefix = key.startsWith("NOVELFORK_LLM_EXTRA_")
       ? "NOVELFORK_LLM_EXTRA_"
-      : key.startsWith("INKOS_LLM_EXTRA_")
-        ? "INKOS_LLM_EXTRA_"
-        : undefined;
+      : undefined;
     if (!prefix || !value) continue;
     const paramName = key.slice(prefix.length);
     if (/^\d+(\.\d+)?$/.test(value)) extraFromEnv[paramName] = parseFloat(value);
@@ -127,7 +121,7 @@ export async function loadProjectConfig(
   if (defaultLanguage) config.language = defaultLanguage;
 
   // API key ONLY from env — never stored in novelfork.json
-  const apiKeyRaw = getEnvValue("NOVELFORK_LLM_API_KEY", "INKOS_LLM_API_KEY");
+  const apiKeyRaw = getEnvValue("NOVELFORK_LLM_API_KEY");
   const apiKey = apiKeyRaw && apiKeyRaw.trim().length > 0 ? apiKeyRaw.trim() : undefined;
   const resolvedProvider = typeof llm.provider === "string" ? llm.provider : undefined;
   const resolvedBaseUrl = typeof llm.baseUrl === "string" ? llm.baseUrl : undefined;

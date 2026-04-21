@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { isTauriBridgeActive, tauriFetch } from "./tauri-api-bridge";
 
 const BASE = "/api";
-const API_INVALIDATE_EVENT = "inkos:api-invalidate";
+const API_INVALIDATE_EVENT = "novelfork:api-invalidate";
 
 interface ApiInvalidateDetail {
   readonly paths: ReadonlyArray<string>;

@@ -114,7 +114,7 @@ function DimensionCard({
   const handleClick = () => {
     // 触发导航到 Lorebook 管理页面（通过自定义事件）
     window.dispatchEvent(
-      new CustomEvent("inkos:navigate", {
+      new CustomEvent("novelfork:navigate", {
         detail: { page: "lorebook", bookId, dimension: dimension.key }
       })
     );

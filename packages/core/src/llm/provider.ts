@@ -150,7 +150,7 @@ export function createLLMClient(config: LLMConfig): LLMClient {
 }
 
 function parseEnvHeaders(): Record<string, string> | undefined {
-  const raw = process.env.INKOS_LLM_HEADERS;
+  const raw = process.env.NOVELFORK_LLM_HEADERS;
   if (!raw) return undefined;
   try {
     const parsed: unknown = JSON.parse(raw);
