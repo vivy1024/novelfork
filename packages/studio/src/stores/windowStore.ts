@@ -1,12 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-import {
-  type NarratorSessionMode,
-  type SessionConfig,
-  type SessionPermissionMode,
-  type SessionReasoningEffort,
-} from "../shared/session-types";
+import { type NarratorSessionMode } from "../shared/session-types";
 
 export type ToolCallStatus = "pending" | "running" | "success" | "error";
 
@@ -42,9 +37,7 @@ export interface ChatWindow {
   sessionMode?: NarratorSessionMode;
   position: { x: number; y: number; w: number; h: number };
   minimized: boolean;
-  messages: ChatMessage[];
   wsConnected: boolean;
-  sessionConfig?: SessionConfig;
 }
 
 interface AddWindowInput {
@@ -52,7 +45,6 @@ interface AddWindowInput {
   title: string;
   sessionId?: string;
   sessionMode?: NarratorSessionMode;
-  sessionConfig?: SessionConfig;
 }
 
 interface WindowStore {
@@ -63,7 +55,6 @@ interface WindowStore {
   updateWindow: (id: string, updates: Partial<ChatWindow>) => void;
   toggleMinimize: (id: string) => void;
   setActiveWindow: (id: string | null) => void;
-  addMessage: (windowId: string, message: ChatMessage) => void;
   updateLayout: (id: string, position: { x: number; y: number; w: number; h: number }) => void;
   setWsConnected: (windowId: string, connected: boolean) => void;
 }
@@ -101,9 +92,7 @@ export const useWindowStore = create<WindowStore>()(
               h: 8,
             },
             minimized: false,
-            messages: [],
             wsConnected: false,
-            sessionConfig: normalized.sessionConfig,
           };
           return { windows: [...state.windows, newWindow], activeWindowId: id };
         }),
@@ -126,13 +115,6 @@ export const useWindowStore = create<WindowStore>()(
 
       setActiveWindow: (id) => set({ activeWindowId: id }),
 
-      addMessage: (windowId, message) =>
-        set((state) => ({
-          windows: state.windows.map((w) =>
-            w.id === windowId ? { ...w, messages: [...w.messages, message] } : w,
-          ),
-        })),
-
       updateLayout: (id, position) =>
         set((state) => ({
           windows: state.windows.map((w) => (w.id === id ? { ...w, position } : w)),
@@ -144,16 +126,19 @@ export const useWindowStore = create<WindowStore>()(
         })),
     }),
     {
-      name: "novelfork-chat-windows",
+      name: "novelfork-window-store",
       partialize: (state) => ({
-        windows: state.windows.map((w) => ({
-          ...w,
-          messages: w.messages.slice(-50),
-          wsConnected: false,
+        windows: state.windows.map(({ id, title, agentId, sessionId, position, minimized }) => ({
+          id,
+          title,
+          agentId,
+          sessionId,
+          position,
+          minimized,
         })),
+        activeWindowId: state.activeWindowId,
       }),
     },
+
   ),
 );
-
-export type { SessionConfig, SessionPermissionMode, SessionReasoningEffort };

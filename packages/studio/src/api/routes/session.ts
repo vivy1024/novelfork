@@ -3,6 +3,12 @@
  */
 
 import { Hono } from "hono";
+
+import type { CreateNarratorSessionInput, UpdateNarratorSessionInput } from "../../shared/session-types.js";
+import {
+  getSessionChatHistory,
+  getSessionChatSnapshot,
+} from "../lib/session-chat-service.js";
 import {
   createSession,
   deleteSession,
@@ -10,11 +16,17 @@ import {
   listSessions,
   updateSession,
 } from "../lib/session-service.js";
-import { getSessionChatSnapshot } from "../lib/session-chat-service.js";
-
-import type { CreateNarratorSessionInput, UpdateNarratorSessionInput } from "../../shared/session-types.js";
 
 const app = new Hono();
+
+function parseSinceSeq(value: string | undefined): number {
+  if (!value) {
+    return 0;
+  }
+
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
 
 app.get("/", async (c) => {
   const sessions = await listSessions();
@@ -37,6 +49,15 @@ app.get("/:id/chat/state", async (c) => {
     return c.json({ error: "Session not found" }, 404);
   }
   return c.json(snapshot);
+});
+
+app.get("/:id/chat/history", async (c) => {
+  const id = c.req.param("id");
+  const history = await getSessionChatHistory(id, parseSinceSeq(c.req.query("sinceSeq")));
+  if (!history) {
+    return c.json({ error: "Session not found" }, 404);
+  }
+  return c.json(history);
 });
 
 app.post("/", async (c) => {

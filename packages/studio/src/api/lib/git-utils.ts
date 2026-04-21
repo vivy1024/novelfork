@@ -16,6 +16,11 @@ export interface WorktreeInfo {
   bare: boolean;
 }
 
+export interface CreateWorktreeOptions {
+  branch?: string;
+  startPoint?: string;
+}
+
 /**
  * Git 状态信息
  */
@@ -121,16 +126,25 @@ export async function listWorktrees(root: string): Promise<WorktreeInfo[]> {
 export async function createWorktree(
   root: string,
   name: string,
-  branch?: string
+  branchOrOptions?: string | CreateWorktreeOptions,
 ): Promise<string> {
   // 验证名称（防止路径遍历）
   if (name.includes("..") || name.includes("/") || name.includes("\\")) {
     throw new Error("Invalid worktree name: must not contain path separators");
   }
 
+  const options = typeof branchOrOptions === "string"
+    ? { branch: branchOrOptions }
+    : branchOrOptions ?? {};
+  const branch = options.branch;
+  const startPoint = options.startPoint?.trim();
+
   // 验证分支名
   if (branch && !isValidBranchName(branch)) {
     throw new Error(`Invalid branch name: ${branch}`);
+  }
+  if (startPoint && !isValidBranchName(startPoint)) {
+    throw new Error(`Invalid branch name: ${startPoint}`);
   }
 
   // Worktree 路径
@@ -138,8 +152,9 @@ export async function createWorktree(
   const gitPath = toGitPath(worktreePath);
 
   // 检查是否已存在
+  const normalizedWorktreePath = toGitPath(worktreePath);
   const existing = await listWorktrees(root);
-  if (existing.some(w => w.path === worktreePath)) {
+  if (existing.some((w) => toGitPath(w.path) === normalizedWorktreePath)) {
     throw new Error(`Worktree already exists: ${name}`);
   }
 
@@ -147,12 +162,14 @@ export async function createWorktree(
   const args = ["worktree", "add"];
 
   if (branch) {
-    // 使用指定分支
     args.push("-b", branch, gitPath);
   } else {
-    // 基于当前分支创建新分支
     const newBranch = `worktree/${name}`;
     args.push("-b", newBranch, gitPath);
+  }
+
+  if (startPoint) {
+    args.push(startPoint);
   }
 
   await execGit(args, root);

@@ -56,6 +56,17 @@ export interface StudioBookConfigDraft {
   readonly updatedAt: string;
 }
 
+export interface StudioProjectBootstrapRecord {
+  readonly status: "prepared";
+  readonly repositoryRoot: string;
+  readonly baseBranch: string;
+  readonly baseBranchFallback?: boolean;
+  readonly worktreePath: string;
+  readonly worktreeBranch: string;
+  readonly repositoryCreated: boolean;
+  readonly worktreeCreated: boolean;
+}
+
 export interface StudioProjectInitRecord {
   readonly title: string;
   readonly genre: string;
@@ -70,6 +81,7 @@ export interface StudioProjectInitRecord {
   readonly worktreeName: string;
   readonly initializationPlan: StudioProjectInitializationPlan;
   readonly createdAt: string;
+  readonly bootstrap?: StudioProjectBootstrapRecord;
 }
 
 interface StudioBookDetail {
@@ -265,6 +277,16 @@ export function buildStudioProjectInitRecord(
     worktreeName: projectInit.worktreeName ?? suggestStudioWorktreeName(body.title),
     initializationPlan,
     createdAt: now,
+  };
+}
+
+export function attachStudioProjectBootstrap(
+  record: StudioProjectInitRecord,
+  bootstrap: StudioProjectBootstrapRecord,
+): StudioProjectInitRecord {
+  return {
+    ...record,
+    bootstrap,
   };
 }
 

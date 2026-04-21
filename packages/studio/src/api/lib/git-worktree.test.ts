@@ -123,6 +123,23 @@ describe("Git Worktree Operations", () => {
       expect(worktree?.branch).toContain("custom-branch");
     });
 
+    it("should create worktree from a requested start point branch", async () => {
+      await execGit(["checkout", "-b", "story-base"], testRepo);
+      await execGit(["checkout", "master"], testRepo);
+
+      const worktreePath = await createWorktree(testRepo, "from-base", {
+        branch: "draft/from-base",
+        startPoint: "story-base",
+      });
+
+      const worktrees = await listWorktrees(testRepo);
+      const normalized = worktreePath.replace(/\\/g, "/");
+      const worktree = worktrees.find(w => w.path === normalized || w.path === worktreePath);
+
+      expect(worktree).toBeDefined();
+      expect(worktree?.branch).toContain("draft/from-base");
+    });
+
     it("should reject invalid worktree names", async () => {
       await expect(createWorktree(testRepo, "../escape")).rejects.toThrow("Invalid worktree name");
       await expect(createWorktree(testRepo, "path/with/slash")).rejects.toThrow("Invalid worktree name");

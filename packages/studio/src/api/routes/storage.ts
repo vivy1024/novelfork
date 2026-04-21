@@ -13,7 +13,12 @@ import {
   loadProjectConfig,
 } from "@vivy1024/novelfork-core";
 import { ApiError } from "../errors.js";
-import { buildStudioBookConfig, buildStudioProjectInitRecord } from "../book-create.js";
+import { buildStudioBookConfig, type StudioCreateBookBody } from "../book-create.js";
+import {
+  persistStudioProjectInitRecord,
+  prepareStudioBookProjectBootstrap,
+  type PreparedStudioProjectBootstrap,
+} from "../lib/project-bootstrap.js";
 import type { RouterContext } from "./context.js";
 
 const TRUTH_FILES = [
@@ -60,29 +65,7 @@ export function createStorageRouter(ctx: RouterContext): Hono {
   });
 
   app.post("/api/books/create", async (c) => {
-    const body = await c.req.json<{
-      title: string;
-      genre: string;
-      language?: string;
-      platform?: string;
-      chapterWordCount?: number;
-      targetChapters?: number;
-      projectInit?: {
-        repositorySource?: "new" | "existing" | "clone";
-        workflowMode?: "outline-first" | "draft-first" | "serial-ops";
-        templatePreset?: "genre-default" | "blank-slate" | "web-serial";
-        repositoryPath?: string;
-        cloneUrl?: string;
-        gitBranch?: string;
-        worktreeName?: string;
-      };
-      initializationPlan?: {
-        phase: "project-create";
-        nextStage: "book-create";
-        readyToContinue: boolean;
-        blockingField?: "repositoryPath" | "cloneUrl";
-      };
-    }>();
+    const body = await c.req.json<StudioCreateBookBody>();
 
     const now = new Date().toISOString();
     const bookConfig = buildStudioBookConfig(body, now);
@@ -97,23 +80,24 @@ export function createStorageRouter(ctx: RouterContext): Hono {
       // The target book is not fully initialized yet, so creation can continue.
     }
 
+    if (bookCreateStatus.get(bookId)?.status === "creating") {
+      return c.json({ error: `Book "${bookId}" is already being created` }, 409);
+    }
+
     broadcast("book:creating", { bookId, title: body.title });
     bookCreateStatus.set(bookId, { status: "creating" });
 
-    const sessionLlm = await ctx.getSessionLlm(c);
-    const pipeline = new PipelineRunner(await ctx.buildPipelineConfig(sessionLlm));
-    pipeline.initBook(bookConfig).then(
+    let preparedProjectBootstrap: PreparedStudioProjectBootstrap | undefined;
+    try {
+      preparedProjectBootstrap = await prepareStudioBookProjectBootstrap(body, now, { root });
+
+      const sessionLlm = await ctx.getSessionLlm(c);
+      const pipeline = new PipelineRunner(await ctx.buildPipelineConfig(sessionLlm));
+      pipeline.initBook(bookConfig).then(
       async () => {
-        if (body.projectInit) {
+        if (preparedProjectBootstrap) {
           try {
-            const projectInitRecord = buildStudioProjectInitRecord(body, now);
-            const { mkdir, writeFile: writeFileFs } = await import("node:fs/promises");
-            await mkdir(bookDir, { recursive: true });
-            await writeFileFs(
-              join(bookDir, ".novelfork-project-init.json"),
-              `${JSON.stringify(projectInitRecord, null, 2)}\n`,
-              "utf-8",
-            );
+            await persistStudioProjectInitRecord(bookDir, preparedProjectBootstrap.projectInitRecord);
           } catch {
             // Keep book creation compatible even if the first-round init sidecar fails.
           }
@@ -128,7 +112,16 @@ export function createStorageRouter(ctx: RouterContext): Hono {
       },
     );
 
-    return c.json({ status: "creating", bookId });
+      return c.json({ status: "creating", bookId });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      bookCreateStatus.set(bookId, { status: "error", error: message });
+      broadcast("book:error", { bookId, error: message });
+      if (error instanceof ApiError) {
+        throw error;
+      }
+      throw new ApiError(500, "BOOK_CREATE_BOOTSTRAP_FAILED", message);
+    }
   });
 
   app.get("/api/books/:id/create-status", async (c) => {
