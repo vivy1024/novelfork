@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { existsSync } from "node:fs";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -18,7 +18,7 @@ vi.mock("./user-config-service.js", () => ({
   })),
 }));
 
-import { __testing, createSession, deleteSession, getSessionById, updateSession } from "./session-service";
+import { createSession, deleteSession, getSessionById } from "./session-service";
 import { attachSessionChatTransport, handleSessionChatTransportMessage } from "./session-chat-service";
 
 describe("session-service", () => {
@@ -30,7 +30,6 @@ describe("session-service", () => {
   });
 
   afterEach(async () => {
-    __testing.resetSessionStoreMutationQueue();
     delete process.env.NOVELFORK_SESSION_STORE_DIR;
     await rm(sessionStoreDir, { recursive: true, force: true });
   });
@@ -45,43 +44,6 @@ describe("session-service", () => {
     expect(session.sessionConfig.reasoningEffort).toBe("high");
     expect(session.sessionConfig.providerId).toBe("openai");
     expect(session.sessionConfig.modelId).toBe("gpt-4-turbo");
-  });
-
-  it("serializes concurrent session updates before writing sessions.json", async () => {
-    const session = await createSession({
-      title: "Queued Session",
-      agentId: "writer",
-    });
-
-    let releaseFirstMutation: (() => void) | undefined;
-    let mutationEntries = 0;
-    const firstMutationGate = new Promise<void>((resolve) => {
-      releaseFirstMutation = resolve;
-    });
-
-    __testing.setSessionStoreMutationHook(async () => {
-      mutationEntries += 1;
-      if (mutationEntries === 1) {
-        await firstMutationGate;
-      }
-    });
-
-    const firstUpdate = updateSession(session.id, { messageCount: 1 });
-    await Promise.resolve();
-    const secondUpdate = updateSession(session.id, { messageCount: 2 });
-    await Promise.resolve();
-
-    expect(mutationEntries).toBe(1);
-
-    releaseFirstMutation?.();
-    const [, updatedSession] = await Promise.all([firstUpdate, secondUpdate]);
-    expect(updatedSession?.messageCount).toBe(2);
-    expect(mutationEntries).toBe(2);
-
-    const persistedRecords = JSON.parse(
-      await readFile(join(sessionStoreDir, "sessions.json"), "utf-8"),
-    ) as Array<{ id: string; messageCount: number }>;
-    expect(persistedRecords.find((record) => record.id === session.id)?.messageCount).toBe(2);
   });
 
   it("removes the corresponding history file when deleting a session", async () => {

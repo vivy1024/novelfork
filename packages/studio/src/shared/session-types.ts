@@ -18,53 +18,24 @@ export interface NarratorSessionChatMessage {
   role: NarratorSessionChatRole;
   content: string;
   timestamp: number;
-  seq?: number;
 }
 
-export interface NarratorSessionChatCursor {
-  lastSeq: number;
-  ackedSeq?: number;
-}
-
-export interface NarratorSessionChatMessageClientEnvelope {
+export interface NarratorSessionChatClientMessage {
   type?: "session:message";
   sessionId?: string;
   messageId?: string;
   sessionMode?: NarratorSessionMode;
   content: string;
-  ack?: number;
 }
-
-export interface NarratorSessionChatAckClientEnvelope {
-  type: "session:ack";
-  sessionId?: string;
-  ack: number;
-}
-
-export type NarratorSessionChatClientMessage =
-  | NarratorSessionChatMessageClientEnvelope
-  | NarratorSessionChatAckClientEnvelope;
 
 export interface NarratorSessionChatSnapshot {
   session: NarratorSessionRecord;
   messages: NarratorSessionChatMessage[];
-  cursor: NarratorSessionChatCursor;
-}
-
-export interface NarratorSessionChatHistory {
-  sessionId: string;
-  session: NarratorSessionRecord;
-  sinceSeq: number;
-  availableFromSeq: number;
-  resetRequired: boolean;
-  messages: NarratorSessionChatMessage[];
-  cursor: NarratorSessionChatCursor;
 }
 
 export interface NarratorSessionChatStateEnvelope {
   type: "session:state";
   session: NarratorSessionRecord;
-  cursor: NarratorSessionChatCursor;
 }
 
 export interface NarratorSessionChatSnapshotEnvelope {
@@ -76,7 +47,6 @@ export interface NarratorSessionChatMessageEnvelope {
   type: "session:message";
   sessionId: string;
   message: NarratorSessionChatMessage;
-  cursor: NarratorSessionChatCursor;
 }
 
 export interface NarratorSessionChatErrorEnvelope {
