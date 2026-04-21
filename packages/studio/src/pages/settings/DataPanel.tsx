@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useColors } from "../../hooks/use-colors";
 import type { Theme } from "../../hooks/use-theme";
-import { fetchJson, putApi } from "../../hooks/use-api";
+import { fetchJson } from "../../hooks/use-api";
 import { Download, Upload, FileJson } from "lucide-react";
 
 interface Props {
@@ -50,7 +50,11 @@ export function DataPanel({ theme }: Props) {
         }
 
         // 导入配置
-        await putApi("/settings/user", config);
+        await fetch("/settings/user", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(config),
+        });
 
         alert("导入成功！页面将刷新以应用新配置。");
         window.location.reload();

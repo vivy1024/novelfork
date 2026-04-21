@@ -126,67 +126,74 @@ export function ToolCallBlock({ toolCall, defaultExpanded = false, className }: 
             </div>
           </div>
 
-          <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
-            <Button
-              type="button"
-              variant="ghost"
-              size="xs"
-              onClick={() => void handleCopy("summary", buildToolCallTranscript(toolCall) || summary)}
-              aria-label="复制工具调用摘要"
+          <div className="flex shrink-0 flex-col items-end gap-1.5">
+            <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">透明化动作</span>
+            <div
+              role="group"
+              aria-label="工具调用动作区"
+              className="flex flex-wrap items-center justify-end gap-1 rounded-lg border border-border/60 bg-muted/20 p-1"
             >
-              {copiedKey === "summary" ? <CheckCircle2 className="size-3.5 text-emerald-500" /> : <Copy className="size-3.5" />}
-              {copiedKey === "summary" ? "已复制" : "复制"}
-            </Button>
-            {toolCall.command?.trim() ? (
               <Button
                 type="button"
                 variant="ghost"
                 size="xs"
-                onClick={() => void handleCopy("command", toolCall.command!.trim())}
-                aria-label="复制工具命令"
+                onClick={() => void handleCopy("summary", buildToolCallTranscript(toolCall) || summary)}
+                aria-label="复制工具调用摘要"
               >
-                {copiedKey === "command" ? <CheckCircle2 className="size-3.5 text-emerald-500" /> : <Copy className="size-3.5" />}
-                命令
+                {copiedKey === "summary" ? <CheckCircle2 className="size-3.5 text-emerald-500" /> : <Copy className="size-3.5" />}
+                {copiedKey === "summary" ? "已复制" : "复制"}
               </Button>
-            ) : null}
-            {toolCall.output?.trim() ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="xs"
-                onClick={() => void handleCopy("output", toolCall.output!.trim())}
-                aria-label="复制工具输出"
-              >
-                {copiedKey === "output" ? <CheckCircle2 className="size-3.5 text-emerald-500" /> : <Copy className="size-3.5" />}
-                输出
-              </Button>
-            ) : null}
-            {rawPayload ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="xs"
-                onClick={() => setRawExpanded((prev) => !prev)}
-                aria-expanded={rawExpanded}
-                aria-label={rawExpanded ? "收起原始载荷" : "查看原始载荷"}
-              >
-                {rawExpanded ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
-                原始载荷
-              </Button>
-            ) : null}
-            {canExpand && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="xs"
-                onClick={() => setExpanded((prev) => !prev)}
-                aria-expanded={expanded}
-                aria-label={expanded ? "收起工具调用详情" : "展开工具调用详情"}
-              >
-                {expanded ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
-                {expanded ? "收起" : "展开"}
-              </Button>
-            )}
+              {toolCall.command?.trim() ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="xs"
+                  onClick={() => void handleCopy("command", toolCall.command!.trim())}
+                  aria-label="复制工具命令"
+                >
+                  {copiedKey === "command" ? <CheckCircle2 className="size-3.5 text-emerald-500" /> : <Copy className="size-3.5" />}
+                  命令
+                </Button>
+              ) : null}
+              {toolCall.output?.trim() ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="xs"
+                  onClick={() => void handleCopy("output", toolCall.output!.trim())}
+                  aria-label="复制工具输出"
+                >
+                  {copiedKey === "output" ? <CheckCircle2 className="size-3.5 text-emerald-500" /> : <Copy className="size-3.5" />}
+                  输出
+                </Button>
+              ) : null}
+              {rawPayload ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="xs"
+                  onClick={() => setRawExpanded((prev) => !prev)}
+                  aria-expanded={rawExpanded}
+                  aria-label={rawExpanded ? "收起原始载荷" : "查看原始载荷"}
+                >
+                  {rawExpanded ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
+                  原始载荷
+                </Button>
+              ) : null}
+              {canExpand && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="xs"
+                  onClick={() => setExpanded((prev) => !prev)}
+                  aria-expanded={expanded}
+                  aria-label={expanded ? "收起结果细节" : "展开结果细节"}
+                >
+                  {expanded ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
+                  {expanded ? "收起结果细节" : "展开结果细节"}
+                </Button>
+              )}
+            </div>
           </div>
         </div>
       </CardHeader>

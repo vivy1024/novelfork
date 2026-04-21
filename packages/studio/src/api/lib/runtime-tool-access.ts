@@ -1,6 +1,6 @@
 import type { SessionPermissionMode } from "../../shared/session-types.js";
-import type { ToolAccessSettings, UserConfig } from "../../types/settings.js";
-import { DEFAULT_PERMISSION_RULES, PermissionManager, type PermissionRule } from "./permission-manager.js";
+import type { RuntimeControlSettings, ToolAccessSettings, UserConfig } from "../../types/settings.js";
+import { PermissionManager, createDefaultPermissionManager, type PermissionRule } from "./permission-manager.js";
 
 export type ToolAccessAction = "allow" | "deny" | "prompt";
 
@@ -71,7 +71,7 @@ export function getPermissionDecision(
 
 export function getMCPToolDecision(
   toolName: string,
-  runtimeControls: Pick<UserConfig["runtimeControls"], "defaultPermissionMode" | "toolAccess">,
+  runtimeControls: Pick<RuntimeControlSettings, "defaultPermissionMode" | "toolAccess">,
 ): ToolAccessDecision {
   const toolAccess = runtimeControls.toolAccess;
   const blocklist = new Set(toolAccess.blocklist);

@@ -20,9 +20,9 @@ const contentTypes: Record<string, string> = {
   png: "image/png",
   ico: "image/x-icon",
   json: "application/json",
+  webmanifest: "application/manifest+json",
   html: "text/html; charset=utf-8",
   woff2: "font/woff2",
-  webmanifest: "application/manifest+json",
 };
 
 function getContentType(filePath: string): string {

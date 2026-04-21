@@ -1,15 +1,54 @@
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { ChatWindow } from "./ChatWindow";
 import { useWindowStore } from "@/stores/windowStore";
-import type { ChatWindow as ChatWindowState } from "@/stores/windowStore";
+import type { ChatMessage, ChatWindow as ChatWindowState } from "@/stores/windowStore";
+import type {
+  NarratorSessionChatMessage,
+  NarratorSessionChatSnapshot,
+  NarratorSessionRecord,
+} from "../shared/session-types";
+
+type NarratorSessionChatHistoryResponse = {
+  session?: NarratorSessionRecord;
+  sessionId?: string;
+  messages?: NarratorSessionChatMessage[];
+};
 
 const fetchJsonMock = vi.fn(async (..._args: [string, ...unknown[]]) => ({ success: true }));
 
 vi.mock("@/hooks/use-api", () => ({
   fetchJson: (url: string, ...rest: unknown[]) => fetchJsonMock(url, ...rest),
+}));
+
+vi.mock("@/shared/provider-catalog", () => ({
+  PROVIDERS: [
+    {
+      id: "anthropic",
+      name: "Anthropic",
+      models: [{ id: "claude-sonnet-4-6", name: "Claude Sonnet 4.6" }],
+    },
+    {
+      id: "openai",
+      name: "OpenAI",
+      models: [{ id: "gpt-5.4", name: "GPT-5.4" }],
+    },
+  ],
+  getDefaultProvider: () => ({ id: "anthropic", name: "Anthropic", models: [{ id: "claude-sonnet-4-6", name: "Claude Sonnet 4.6" }] }),
+  getDefaultModel: (providerId: string) => ({
+    id: providerId === "openai" ? "gpt-5.4" : "claude-sonnet-4-6",
+    name: providerId === "openai" ? "GPT-5.4" : "Claude Sonnet 4.6",
+  }),
+  getProvider: (providerId: string) =>
+    providerId === "openai"
+      ? { id: "openai", name: "OpenAI", models: [{ id: "gpt-5.4", name: "GPT-5.4" }] }
+      : { id: "anthropic", name: "Anthropic", models: [{ id: "claude-sonnet-4-6", name: "Claude Sonnet 4.6" }] },
+  getModel: (providerId: string, modelId: string) => ({
+    id: modelId,
+    name: providerId === "openai" ? "GPT-5.4" : "Claude Sonnet 4.6",
+  }),
 }));
 
 vi.mock("./WindowControls", () => ({
@@ -81,6 +120,7 @@ Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   fetchJsonMock.mockReset();
 fetchJsonMock.mockImplementation(defaultFetchJsonImplementation as any);
 
@@ -227,59 +267,43 @@ describe("ChatWindow", () => {
   });
 
   it("hydrates chat window metadata from the formal session record", async () => {
+    const formalSession = createFormalSessionRecord({
+      title: "Writer 会话（正式）",
+      sessionMode: "plan",
+      messageCount: 2,
+      sessionConfig: {
+        providerId: "openai",
+        modelId: "gpt-5.4",
+        permissionMode: "ask",
+        reasoningEffort: "high",
+      },
+    });
+
     fetchJsonMock.mockImplementation((async (...args: [string, ...unknown[]]) => {
       const [url, options] = args as [string, { method?: string } | undefined];
+      if (url === "/api/sessions/session-abc123456/chat/history") {
+        return {
+          sessionId: "session-abc123456",
+          session: formalSession,
+          messages: [],
+        };
+      }
       if (url === "/api/sessions/session-abc123456/chat/state") {
         return {
-          session: {
-            id: "session-abc123456",
-            title: "Writer 会话（正式）",
-            agentId: "writer",
-            kind: "standalone",
-            sessionMode: "plan",
-            status: "active",
-            createdAt: new Date().toISOString(),
-            lastModified: new Date().toISOString(),
-            messageCount: 2,
-            sortOrder: 0,
-            sessionConfig: {
-              providerId: "openai",
-              modelId: "gpt-5.4",
-              permissionMode: "ask",
-              reasoningEffort: "high",
-            },
-          },
+          session: formalSession,
           messages: [],
         };
       }
       if (url === "/api/sessions/session-abc123456" && options?.method === "PUT") {
-        return {
-          id: "session-abc123456",
-          title: "Writer 会话（正式）",
-          agentId: "writer",
-          kind: "standalone",
-          sessionMode: "plan",
-          status: "active",
-          createdAt: new Date().toISOString(),
-          lastModified: new Date().toISOString(),
-          messageCount: 2,
-          sortOrder: 0,
-          sessionConfig: {
-            providerId: "openai",
-            modelId: "gpt-5.4",
-            permissionMode: "ask",
-            reasoningEffort: "high",
-          },
-        };
+        return formalSession;
       }
       return { success: true };
     }) as any);
 
     render(<ChatWindow windowId="window-1" theme="light" />);
 
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await waitFor(() => expect(fetchJsonMock).toHaveBeenCalledWith("/api/sessions/session-abc123456/chat/state"));
 
-    expect(fetchJsonMock).toHaveBeenCalledWith("/api/sessions/session-abc123456/chat/state");
     expect(updateWindowSpy).toHaveBeenCalledWith(
       "window-1",
       expect.objectContaining({
@@ -289,49 +313,257 @@ describe("ChatWindow", () => {
     );
   });
 
-  it("hydrates messages from the formal session snapshot", async () => {
+  it("keeps the newest hydrate result when an older connection resolves late", async () => {
+    const staleHistory = createDeferred<NarratorSessionChatHistoryResponse>();
+    const staleState = createDeferred<Partial<NarratorSessionChatSnapshot>>();
+    const staleSession = createFormalSessionRecord({
+      title: "Writer 会话（旧响应）",
+      messageCount: 3,
+    });
+    const freshSession = createFormalSessionRecord({
+      title: "Writer 会话（新连接）",
+      messageCount: 4,
+    });
+
+    let historyCalls = 0;
+    let stateCalls = 0;
+
     fetchJsonMock.mockImplementation((async (...args: [string, ...unknown[]]) => {
-      const [url] = args as [string];
-      if (url === "/api/sessions/session-abc123456/chat/state") {
+      const [url, options] = args as [string, { method?: string } | undefined];
+      if (url === "/api/sessions/session-abc123456/chat/history") {
+        historyCalls += 1;
+        if (historyCalls === 1) {
+          return staleHistory.promise;
+        }
         return {
-          session: {
-            id: "session-abc123456",
-            title: "Writer 会话（正式）",
-            agentId: "writer",
-            kind: "standalone",
-            sessionMode: "chat",
-            status: "active",
-            createdAt: new Date().toISOString(),
-            lastModified: new Date().toISOString(),
-            messageCount: 1,
-            sortOrder: 0,
-            sessionConfig: {
-              providerId: "anthropic",
-              modelId: "claude-sonnet-4-6",
-              permissionMode: "allow",
-              reasoningEffort: "medium",
-            },
-          },
+          sessionId: "session-abc123456",
+          session: freshSession,
           messages: [
-            {
-              id: "server-msg-1",
-              role: "assistant",
-              content: "服务端正式消息",
-              timestamp: Date.now(),
-              seq: 1,
-            },
+            { id: "msg-fresh-history", role: "user", content: "新连接历史消息", timestamp: 10 },
           ],
           cursor: { lastSeq: 1 },
         };
+      }
+      if (url === "/api/sessions/session-abc123456/chat/state") {
+        stateCalls += 1;
+        if (stateCalls === 1) {
+          return staleState.promise;
+        }
+        return {
+          session: freshSession,
+          messages: [
+            { id: "msg-fresh-state", role: "assistant", content: "新连接状态消息", timestamp: 20 },
+          ],
+        };
+      }
+      if (url === "/api/sessions/session-abc123456" && options?.method === "PUT") {
+        return freshSession;
       }
       return { success: true };
     }) as any);
 
     render(<ChatWindow windowId="window-1" theme="light" />);
 
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    MockWebSocket.instances[0]?.onopen?.();
+    await Promise.resolve();
+    await Promise.resolve();
 
-    expect(screen.getByText("服务端正式消息")).toBeTruthy();
+    MockWebSocket.instances[0]?.onopen?.();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(useWindowStore.getState().windows[0]?.title).toBe("Writer 会话（新连接）");
+    expect(useWindowStore.getState().windows[0]?.messages.some((message) => message.id === "msg-fresh-state")).toBe(true);
+
+    staleHistory.resolve({
+      sessionId: "session-abc123456",
+      session: staleSession,
+      messages: [
+        { id: "msg-stale-history", role: "user", content: "旧响应历史消息", timestamp: 1 },
+      ],
+    });
+    staleState.resolve({
+      session: staleSession,
+      messages: [
+        { id: "msg-stale-state", role: "assistant", content: "旧响应状态消息", timestamp: 2 },
+      ],
+    });
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const messages = useWindowStore.getState().windows[0]?.messages ?? [];
+    expect(useWindowStore.getState().windows[0]?.title).toBe("Writer 会话（新连接）");
+    expect(messages.some((message) => message.id === "msg-stale-history")).toBe(false);
+    expect(messages.some((message) => message.id === "msg-stale-state")).toBe(false);
+    expect(messages.some((message) => message.id === "msg-fresh-history")).toBe(true);
+    expect(messages.some((message) => message.id === "msg-fresh-state")).toBe(true);
+  });
+
+  it("reloads chat history and state after websocket reconnect", async () => {
+    vi.useFakeTimers();
+    const formalSession = createFormalSessionRecord();
+    const historyUrl = "/api/sessions/session-abc123456/chat/history";
+    const stateUrl = "/api/sessions/session-abc123456/chat/state";
+
+    fetchJsonMock.mockImplementation((async (...args: [string, ...unknown[]]) => {
+      const [url, options] = args as [string, { method?: string } | undefined];
+      if (url === historyUrl) {
+        return {
+          sessionId: "session-abc123456",
+          session: formalSession,
+          messages: [],
+        };
+      }
+      if (url === stateUrl) {
+        return {
+          session: formalSession,
+          messages: [],
+        };
+      }
+      if (url === "/api/sessions/session-abc123456" && options?.method === "PUT") {
+        return formalSession;
+      }
+      return { success: true };
+    }) as any);
+
+    render(<ChatWindow windowId="window-1" theme="light" />);
+
+    MockWebSocket.instances[0]?.onopen?.();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const historyCallsBeforeReconnect = countFetchCalls(historyUrl);
+    const stateCallsBeforeReconnect = countFetchCalls(stateUrl);
+    expect(historyCallsBeforeReconnect).toBeGreaterThanOrEqual(1);
+    expect(stateCallsBeforeReconnect).toBeGreaterThanOrEqual(1);
+
+    MockWebSocket.instances[0]?.onclose?.();
+    await vi.advanceTimersByTimeAsync(5000);
+    MockWebSocket.instances.at(-1)?.onopen?.();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(countFetchCalls(historyUrl)).toBeGreaterThan(historyCallsBeforeReconnect);
+    expect(countFetchCalls(stateUrl)).toBeGreaterThan(stateCallsBeforeReconnect);
+  });
+
+  it("uses the successful side when history or state fails", async () => {
+    const formalSession = createFormalSessionRecord({
+      title: "Writer 会话（仅状态）",
+      sessionConfig: {
+        providerId: "openai",
+        modelId: "gpt-5.4",
+        permissionMode: "ask",
+        reasoningEffort: "high",
+      },
+    });
+
+    fetchJsonMock.mockImplementation((async (...args: [string, ...unknown[]]) => {
+      const [url, options] = args as [string, { method?: string } | undefined];
+      if (url === "/api/sessions/session-abc123456/chat/history") {
+        throw new Error("history failed");
+      }
+      if (url === "/api/sessions/session-abc123456/chat/state") {
+        return {
+          session: formalSession,
+          messages: [
+            { id: "msg-state-only", role: "assistant", content: "仅状态消息", timestamp: 40 },
+          ],
+        };
+      }
+      if (url === "/api/sessions/session-abc123456" && options?.method === "PUT") {
+        return formalSession;
+      }
+      return { success: true };
+    }) as any);
+
+    render(<ChatWindow windowId="window-1" theme="light" />);
+
+    MockWebSocket.instances[0]?.onopen?.();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(useWindowStore.getState().windows[0]?.title).toBe("Writer 会话（仅状态）");
+    await waitFor(() => {
+      expect(useWindowStore.getState().windows[0]?.messages.some((message) => message.id === "msg-state-only")).toBe(true);
+    });
+  });
+
+  it("merges formal session history and state without losing local richer messages", async () => {
+    mockState = createMockState({
+      windows: [
+        {
+          ...createMockState().windows[0],
+          messages: [
+            {
+              id: "msg-local-rich",
+              role: "assistant",
+              content: "本地富消息",
+              timestamp: 20,
+              toolCalls: [
+                {
+                  id: "tool-read-local",
+                  toolName: "Read",
+                  status: "success",
+                  input: { file_path: "books/demo/chapter-1.md" },
+                  output: "本地工具输出",
+                  duration: 12,
+                },
+              ],
+            },
+            { id: "msg-local-only", role: "user", content: "本地待合并消息", timestamp: 30 },
+          ],
+        },
+      ],
+    });
+
+    const formalSession = createFormalSessionRecord({ title: "Writer 会话（正式）", messageCount: 4 });
+    fetchJsonMock.mockImplementation((async (...args: [string, ...unknown[]]) => {
+      const [url, options] = args as [string, { method?: string } | undefined];
+      if (url === "/api/sessions/session-abc123456/chat/history") {
+        return {
+          sessionId: "session-abc123456",
+          session: formalSession,
+          messages: [
+            { id: "msg-history-1", role: "user", content: "更早的历史消息", timestamp: 10 },
+            { id: "msg-local-rich", role: "assistant", content: "服务端普通版消息", timestamp: 20 },
+          ],
+        };
+      }
+      if (url === "/api/sessions/session-abc123456/chat/state") {
+        return {
+          session: formalSession,
+          messages: [
+            { id: "msg-local-rich", role: "assistant", content: "服务端普通版消息", timestamp: 20 },
+            { id: "msg-state-1", role: "assistant", content: "最新状态消息", timestamp: 40 },
+          ],
+        };
+      }
+      if (url === "/api/sessions/session-abc123456" && options?.method === "PUT") {
+        return formalSession;
+      }
+      return { success: true };
+    }) as any);
+
+    render(<ChatWindow windowId="window-1" theme="light" />);
+
+    await waitFor(() => {
+      expect(useWindowStore.getState().windows[0]?.messages.map((message) => message.id)).toEqual([
+        "msg-history-1",
+        "msg-local-rich",
+        "msg-local-only",
+        "msg-state-1",
+      ]);
+    });
+
+    const mergedMessages = useWindowStore.getState().windows[0]?.messages ?? [];
+    expect(mergedMessages.find((message) => message.id === "msg-local-rich")?.toolCalls).toMatchObject([
+      expect.objectContaining({ toolName: "Read" }),
+    ]);
+    expect(mergedMessages.find((message) => message.id === "msg-local-rich")?.content).toBe("服务端普通版消息");
   });
 
   it("persists compressed session messages back to the formal session state", async () => {
@@ -420,6 +652,11 @@ describe("ChatWindow", () => {
     expect(screen.getByTestId("context-panel")).toBeTruthy();
     expect(screen.getByText("上下文面板")).toBeTruthy();
     expect(screen.getByText(/最近会话消息/)).toBeTruthy();
+    expect(screen.getByText(/已用/)).toBeTruthy();
+    expect(screen.getAllByText("Read").length).toBeGreaterThan(0);
+    expect(screen.getByText("Read · 完成")).toBeTruthy();
+    expect(screen.getAllByText("会话层").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("工具层").length).toBeGreaterThan(0);
   });
 
   it("sends session id and mode with outgoing chat messages", async () => {
@@ -483,6 +720,43 @@ describe("ChatWindow", () => {
     });
   });
 });
+
+function countFetchCalls(url: string) {
+  return fetchJsonMock.mock.calls.filter(([calledUrl]) => calledUrl === url).length;
+}
+
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve;
+    reject = promiseReject;
+  });
+
+  return { promise, resolve, reject };
+}
+
+function createFormalSessionRecord(overrides?: Partial<NarratorSessionRecord>): NarratorSessionRecord {
+  return {
+    id: "session-abc123456",
+    title: "Writer 会话（正式）",
+    agentId: "writer",
+    kind: "standalone",
+    sessionMode: "chat",
+    status: "active",
+    createdAt: new Date().toISOString(),
+    lastModified: new Date().toISOString(),
+    messageCount: 2,
+    sortOrder: 0,
+    sessionConfig: {
+      providerId: "anthropic",
+      modelId: "claude-sonnet-4-6",
+      permissionMode: "allow",
+      reasoningEffort: "medium",
+    },
+    ...overrides,
+  };
+}
 
 function createMockState(overrides?: Partial<MockWindowStore>): MockWindowStore {
   return Object.assign(baseMockState(), overrides ?? {});

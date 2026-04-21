@@ -10,7 +10,6 @@ import { NovelForkProvider, useNovelFork } from "./providers/novelfork-context";
 import { Dashboard } from "./pages/Dashboard";
 import { BookDetail } from "./pages/BookDetail";
 import { BookCreate } from "./pages/BookCreate";
-import { ProjectCreate } from "./pages/ProjectCreate";
 import { ChapterReader } from "./pages/ChapterReader";
 import { Analytics } from "./pages/Analytics";
 import { WorkspaceSelector } from "./pages/WorkspaceSelector";
@@ -37,7 +36,6 @@ import { WorkflowWorkbench } from "./pages/WorkflowWorkbench";
 import { Admin } from "./components/Admin/Admin";
 import { ReferencePanel } from "./components/ReferencePanel";
 import { RecoveryBanner } from "./components/RecoveryBanner";
-import { NewProjectDialog } from "./components/Project/NewProjectDialog";
 import { useSSE } from "./hooks/use-sse";
 import { useTheme } from "./hooks/use-theme";
 import { useI18n } from "./hooks/use-i18n";
@@ -50,7 +48,6 @@ import type { SearchResult } from "./shared/search-types";
 import type { AdminSection, Route, SettingsSection, WorkflowSection } from "./routes";
 import { sanitizeRestoredTabSession } from "./routes";
 import { deriveActiveBookId } from "./route-utils";
-import { normalizeStudioProjectCreateDraft, type StudioProjectCreateDraft } from "./api/book-create";
 
 /**
  * Silent token import — if URL has ?token=, establish session in background.
@@ -87,9 +84,7 @@ function AppInner() {
   useSilentTokenImport();
   const { mode, selectWorkspace, workspace } = useNovelFork();
   const { tabs, activeTabId, activeTab, openTab, closeTab, activateTab } = useTabsState();
-  const [newProjectDialogOpen, setNewProjectDialogOpen] = useState(false);
-  const [projectCreateDraft, setProjectCreateDraft] = useState<StudioProjectCreateDraft | undefined>(undefined);
-  const [projectCreateFlowRevision, setProjectCreateFlowRevision] = useState(0);
+  const [bookCreateOpen, setBookCreateOpen] = useState(false);
   const sse = useSSE();
   const { theme, setTheme } = useTheme();
   const { t } = useI18n();
@@ -300,27 +295,12 @@ function AppInner() {
     );
   }
 
-  const bumpProjectCreateFlow = () => setProjectCreateFlowRevision((current) => current + 1);
-
   const nav = {
     toDashboard: () => openTab({ page: "dashboard" }),
     toWorkflow: (section?: WorkflowSection) => openTab({ page: "workflow", section }),
     toSessions: () => openTab({ page: "sessions" }),
-    toProjectCreate: (draft?: Partial<StudioProjectCreateDraft>) => {
-      setProjectCreateDraft(normalizeStudioProjectCreateDraft(draft ?? projectCreateDraft));
-      bumpProjectCreateFlow();
-      openTab({ page: "project-create" });
-    },
     toBook: (bookId: string) => openTab({ page: "book", bookId }),
-    toBookCreate: (draft?: Partial<StudioProjectCreateDraft>) => {
-      if (draft) {
-        setProjectCreateDraft(normalizeStudioProjectCreateDraft(draft));
-        bumpProjectCreateFlow();
-        openTab({ page: "book-create" });
-        return;
-      }
-      setNewProjectDialogOpen(true);
-    },
+    toBookCreate: () => setBookCreateOpen(true),
     toChapter: (bookId: string, chapterNumber: number) =>
       openTab({ page: "chapter", bookId, chapterNumber }),
     toAnalytics: (bookId: string) => openTab({ page: "analytics", bookId }),
@@ -419,16 +399,7 @@ function AppInner() {
               className={tab.id === activeTabId ? "block" : "hidden"}
             >
               <div className="px-6 py-8 md:px-12 lg:py-12 fade-in">
-                <TabContent
-                  route={tab.route}
-                  nav={nav}
-                  theme={theme}
-                  t={t}
-                  sse={sse}
-                  setTheme={setTheme}
-                  projectCreateDraft={projectCreateDraft}
-                  projectCreateFlowRevision={projectCreateFlowRevision}
-                />
+                <TabContent route={tab.route} nav={nav} theme={theme} t={t} sse={sse} setTheme={setTheme} />
               </div>
             </div>
           ))}
@@ -480,21 +451,31 @@ function AppInner() {
         </>
       )}
 
-      <NewProjectDialog
-        open={newProjectDialogOpen}
-        onOpenChange={setNewProjectDialogOpen}
-        onSelect={(target) => {
-          if (target === "project-create") {
-            setProjectCreateDraft(normalizeStudioProjectCreateDraft());
-            bumpProjectCreateFlow();
-            openTab({ page: "project-create" });
-            return;
-          }
-          setProjectCreateDraft(undefined);
-          bumpProjectCreateFlow();
-          openTab({ page: "book-create" });
-        }}
-      />
+      {/* BookCreate Modal */}
+      {bookCreateOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+          onClick={(e) => { if (e.target === e.currentTarget) setBookCreateOpen(false); }}
+        >
+          <div className="bg-background rounded-2xl shadow-2xl border border-border/40 w-full max-w-lg max-h-[90vh] overflow-y-auto p-8 relative">
+            <button
+              onClick={() => setBookCreateOpen(false)}
+              className="absolute top-4 right-4 text-muted-foreground hover:text-foreground text-lg leading-none"
+              aria-label="Close"
+            >
+              &times;
+            </button>
+            <BookCreate
+              nav={{
+                ...nav,
+                toDashboard: () => setBookCreateOpen(false),
+                toBook: (id: string) => { setBookCreateOpen(false); nav.toBook(id); },
+              }}
+              theme={theme}
+              t={t}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Right Chat Panel (overlay, not in grid) */}
       {chatOpen && (
@@ -519,7 +500,7 @@ function AppInner() {
           tabs={tabs}
           activateTab={activateTab}
           onClose={() => setCmdOpen(false)}
-          onNewBook={() => setNewProjectDialogOpen(true)}
+          onNewBook={() => setBookCreateOpen(true)}
           t={t}
         />
       )}
@@ -527,15 +508,13 @@ function AppInner() {
   );
 }
 
-function TabContent({ route, nav, theme, t, sse, setTheme, projectCreateDraft, projectCreateFlowRevision }: {
+function TabContent({ route, nav, theme, t, sse, setTheme }: {
   route: Route;
   nav: any;
   theme: any;
   t: any;
   sse: any;
   setTheme: (theme: "light" | "dark" | "auto") => void;
-  projectCreateDraft?: StudioProjectCreateDraft;
-  projectCreateFlowRevision: number;
 }) {
   switch (route.page) {
     case "dashboard": return <Dashboard nav={nav} sse={sse} theme={theme} t={t} />;
@@ -551,26 +530,7 @@ function TabContent({ route, nav, theme, t, sse, setTheme, projectCreateDraft, p
       );
     case "sessions": return <SessionCenter theme={theme} />;
     case "book": return <BookDetail bookId={route.bookId} nav={nav} theme={theme} t={t} sse={sse} />;
-    case "project-create":
-      return (
-        <ProjectCreate
-          nav={nav}
-          theme={theme}
-          t={t}
-          initialDraft={projectCreateDraft}
-          flowRevision={projectCreateFlowRevision}
-        />
-      );
-    case "book-create":
-      return (
-        <BookCreate
-          nav={nav}
-          theme={theme}
-          t={t}
-          projectCreateDraft={projectCreateDraft}
-          flowRevision={projectCreateFlowRevision}
-        />
-      );
+    case "book-create": return <BookCreate nav={nav} theme={theme} t={t} />;
     case "chapter": return <ChapterReader bookId={route.bookId} chapterNumber={route.chapterNumber} nav={nav} theme={theme} t={t} />;
     case "analytics": return <Analytics bookId={route.bookId} nav={nav} theme={theme} t={t} />;
     case "truth": return <TruthFiles bookId={route.bookId} nav={nav} theme={theme} t={t} />;

@@ -9,6 +9,7 @@ import {
   type NarratorSessionRecord,
   type UpdateNarratorSessionInput,
 } from "../../shared/session-types.js";
+import { deleteSessionChatHistory, markSessionChatHistoryDeleted } from "./session-history-store.js";
 import { loadUserConfig } from "./user-config-service.js";
 
 function getSessionStoreFilePath(): string {
@@ -161,15 +162,16 @@ export async function updateSession(id: string, updates: UpdateNarratorSessionIn
 }
 
 export async function deleteSession(id: string): Promise<boolean> {
-  return mutateSessionRecords(async (records) => {
-    const index = records.findIndex((record) => record.id === id);
-    if (index < 0) {
-      return false;
-    }
+  markSessionChatHistoryDeleted(id);
+  const records = await loadSessionRecords();
+  const nextRecords = records.filter((record) => record.id !== id);
+  if (nextRecords.length === records.length) {
+    return false;
+  }
 
-    records.splice(index, 1);
-    return true;
-  });
+  await deleteSessionChatHistory(id);
+  await saveSessionRecords(nextRecords);
+  return true;
 }
 
 export const __testing = {

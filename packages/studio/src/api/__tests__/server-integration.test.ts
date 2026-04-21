@@ -315,11 +315,10 @@ describe("server integration — core 20 endpoints", () => {
     it("rejects missing token with 400", async () => {
       const res = await jsonReq("/api/auth/launch", "POST", {});
 
-      expect([400, 404]).toContain(res.status);
-      if (res.status === 400) {
-        const data = await res.json();
-        expect(["INVALID_BOOK_ID", "TOKEN_REQUIRED"]).toContain(data.error.code);
-      }
+      expect(res.status).toBe(400);
+      const data = await res.json();
+      expect(data.error.code).toBe("TOKEN_REQUIRED");
+      expect(data.error.message).toContain("Launch token is required");
     });
   });
 
@@ -492,9 +491,9 @@ describe("server integration — core 20 endpoints", () => {
     it("rejects invalid truth file names with 400", async () => {
       const res = await req("/api/books/test-book/truth/evil_file.md");
 
-      expect([400, 404]).toContain(res.status);
+      expect(res.status).toBe(400);
       const data = await res.json();
-      expect(data.error).toContain("Invalid truth file");
+      expect(data.error).toBe("Invalid truth file");
     });
   });
 

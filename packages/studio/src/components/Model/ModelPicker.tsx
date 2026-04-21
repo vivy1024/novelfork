@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Eye, EyeOff, Check, AlertCircle } from "lucide-react";
-import { getDefaultModel, getDefaultProvider, getProvider, PROVIDERS } from "../../shared/provider-catalog";
+import { PROVIDERS } from "../../shared/provider-catalog";
 import { openDB, IDBPDatabase } from "idb";
 
 interface ModelPickerProps {
@@ -52,16 +52,14 @@ export const ModelPicker = React.memo(function ModelPicker({
   onChange,
   theme,
 }: ModelPickerProps) {
-  const defaultProvider = getDefaultProvider();
-  const defaultModel = getDefaultModel(defaultProvider.id);
-  const [selectedProviderId, setSelectedProviderId] = useState(value?.providerId || defaultProvider.id);
-  const [selectedModelId, setSelectedModelId] = useState(value?.modelId || defaultModel?.id || "");
+  const [selectedProviderId, setSelectedProviderId] = useState(value?.providerId || "anthropic");
+  const [selectedModelId, setSelectedModelId] = useState(value?.modelId || "");
   const [providerConfig, setProviderConfig] = useState<ProviderConfig>({});
   const [showApiKey, setShowApiKey] = useState(false);
   const [testingConnection, setTestingConnection] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<"idle" | "success" | "error">("idle");
 
-  const currentProvider = getProvider(selectedProviderId);
+  const currentProvider = PROVIDERS.find((p) => p.id === selectedProviderId);
 
   useEffect(() => {
     loadProviderConfig(selectedProviderId).then(setProviderConfig);
@@ -75,7 +73,7 @@ export const ModelPicker = React.memo(function ModelPicker({
 
   const handleProviderChange = (providerId: string) => {
     setSelectedProviderId(providerId);
-    const provider = getProvider(providerId);
+    const provider = PROVIDERS.find((p) => p.id === providerId);
     if (provider && provider.models.length > 0) {
       const newModelId = provider.models[0].id;
       setSelectedModelId(newModelId);
