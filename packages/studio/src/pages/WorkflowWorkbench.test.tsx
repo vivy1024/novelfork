@@ -58,35 +58,48 @@ describe("WorkflowWorkbench", () => {
         };
       }
 
-      if (path === "/mcp/registry") {
-        return {
-          data: {
-            summary: {
-              totalServers: 2,
-              connectedServers: 1,
-              enabledTools: 3,
-              discoveredTools: 5,
-              allowTools: 2,
-              promptTools: 1,
-              denyTools: 2,
-              policySource: "runtimeControls.toolAccess",
-            },
-            servers: [
-              {
-                id: "server-1",
-                name: "Filesystem",
-                transport: "stdio",
-                status: "connected",
-                tools: [{ name: "read_file", description: "Read a file" }],
-                toolCount: 1,
+        if (path === "/mcp/registry") {
+          return {
+            data: {
+              summary: {
+                totalServers: 2,
+                connectedServers: 1,
+                enabledTools: 3,
+                discoveredTools: 5,
+                allowTools: 2,
+                promptTools: 1,
+                denyTools: 2,
+                policySource: "runtimeControls.toolAccess",
               },
-            ],
-          },
-          loading: false,
-          error: null,
-          refetch: vi.fn(),
-        };
-      }
+              servers: [
+                {
+                  id: "fs",
+                  name: "Filesystem",
+                },
+              ],
+            },
+            loading: false,
+            error: null,
+            refetch: vi.fn(),
+          };
+        }
+
+        if (path === "/tools/list") {
+          return {
+            data: {
+              tools: [
+                { name: "Read", access: "allow" },
+                { name: "Write", access: "prompt" },
+                { name: "Edit", access: "deny" },
+                { name: "Bash", access: "prompt" },
+              ],
+            },
+            loading: false,
+            error: null,
+            refetch: vi.fn(),
+          };
+        }
+
 
       return {
         data: null,
@@ -124,9 +137,12 @@ describe("WorkflowWorkbench", () => {
     expect(screen.getByText("blocklist：1 项（Edit）")).toBeTruthy();
     expect(screen.getByText("mcpStrategy：inherit")).toBeTruthy();
     expect(screen.getAllByText("策略来源：runtimeControls.toolAccess").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText("已发现 5 个工具")).toBeTruthy();
-    expect(screen.getByText("已启用 3 个工具")).toBeTruthy();
+    expect(screen.getByText(/已发现\s*5\s*个工具/)).toBeTruthy();
+    expect(screen.getByText(/已启用\s*3\s*个工具/)).toBeTruthy();
+    expect(screen.getByText("allow / prompt / deny：2 / 1 / 2")).toBeTruthy();
+    expect(screen.getByText("内置 tools：1 / 2 / 1")).toBeTruthy();
     expect(screen.getByText("AgentPanel")).toBeTruthy();
+
     expect(screen.getByRole("button", { name: "返回工作流配置" })).toBeTruthy();
     expect(screen.getByRole("tab", { name: /MCP 工具/ })).toBeTruthy();
 
