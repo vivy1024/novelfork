@@ -3,32 +3,6 @@ import { persist } from "zustand/middleware";
 
 import { type NarratorSessionMode } from "../shared/session-types";
 
-export type ToolCallStatus = "pending" | "running" | "success" | "error";
-
-export interface ToolCall {
-  id?: string;
-  toolName: string;
-  status?: ToolCallStatus;
-  summary?: string;
-  command?: string;
-  input?: unknown;
-  duration?: number;
-  output?: string;
-  result?: unknown;
-  error?: string;
-  exitCode?: number;
-  startedAt?: number;
-  finishedAt?: number;
-}
-
-export interface ChatMessage {
-  id: string;
-  role: "user" | "assistant" | "system";
-  content: string;
-  timestamp: number;
-  toolCalls?: ToolCall[];
-}
-
 export interface ChatWindow {
   id: string;
   title: string;
@@ -39,7 +13,7 @@ export interface ChatWindow {
   minimized: boolean;
 }
 
-interface AddWindowInput {
+export interface AddWindowInput {
   agentId: string;
   title: string;
   sessionId?: string;
@@ -49,22 +23,12 @@ interface AddWindowInput {
 interface WindowStore {
   windows: ChatWindow[];
   activeWindowId: string | null;
-  addWindow: (agentIdOrInput: string | AddWindowInput, title?: string) => void;
+  addWindow: (input: AddWindowInput) => void;
   removeWindow: (id: string) => void;
   updateWindow: (id: string, updates: Partial<ChatWindow>) => void;
   toggleMinimize: (id: string) => void;
   setActiveWindow: (id: string | null) => void;
   updateLayout: (id: string, position: { x: number; y: number; w: number; h: number }) => void;
-}
-
-function normalizeAddWindowInput(agentIdOrInput: string | AddWindowInput, title?: string): AddWindowInput {
-  if (typeof agentIdOrInput === "string") {
-    return {
-      agentId: agentIdOrInput,
-      title: title ?? "Untitled Session",
-    };
-  }
-  return agentIdOrInput;
 }
 
 export const useWindowStore = create<WindowStore>()(
@@ -73,16 +37,15 @@ export const useWindowStore = create<WindowStore>()(
       windows: [],
       activeWindowId: null,
 
-      addWindow: (agentIdOrInput, title) =>
+      addWindow: (input) =>
         set((state) => {
-          const normalized = normalizeAddWindowInput(agentIdOrInput, title);
           const id = `window-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
           const newWindow: ChatWindow = {
             id,
-            title: normalized.title,
-            agentId: normalized.agentId,
-            sessionId: normalized.sessionId,
-            sessionMode: normalized.sessionMode,
+            title: input.title,
+            agentId: input.agentId,
+            sessionId: input.sessionId,
+            sessionMode: input.sessionMode,
             position: {
               x: (state.windows.length * 2) % 10,
               y: (state.windows.length * 2) % 10,
@@ -95,26 +58,32 @@ export const useWindowStore = create<WindowStore>()(
         }),
 
       removeWindow: (id) =>
-        set((state) => ({
-          windows: state.windows.filter((w) => w.id !== id),
-          activeWindowId: state.activeWindowId === id ? null : state.activeWindowId,
-        })),
+        set((state) => {
+          const nextWindows = state.windows.filter((window) => window.id !== id);
+          const nextActiveWindowId = state.activeWindowId === id
+            ? (nextWindows.at(-1)?.id ?? null)
+            : state.activeWindowId;
+          return {
+            windows: nextWindows,
+            activeWindowId: nextActiveWindowId,
+          };
+        }),
 
       updateWindow: (id, updates) =>
         set((state) => ({
-          windows: state.windows.map((w) => (w.id === id ? { ...w, ...updates } : w)),
+          windows: state.windows.map((window) => (window.id === id ? { ...window, ...updates } : window)),
         })),
 
       toggleMinimize: (id) =>
         set((state) => ({
-          windows: state.windows.map((w) => (w.id === id ? { ...w, minimized: !w.minimized } : w)),
+          windows: state.windows.map((window) => (window.id === id ? { ...window, minimized: !window.minimized } : window)),
         })),
 
       setActiveWindow: (id) => set({ activeWindowId: id }),
 
       updateLayout: (id, position) =>
         set((state) => ({
-          windows: state.windows.map((w) => (w.id === id ? { ...w, position } : w)),
+          windows: state.windows.map((window) => (window.id === id ? { ...window, position } : window)),
         })),
     }),
     {
@@ -132,6 +101,5 @@ export const useWindowStore = create<WindowStore>()(
         activeWindowId: state.activeWindowId,
       }),
     },
-
   ),
 );

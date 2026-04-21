@@ -172,4 +172,58 @@ describe("sessionRouter", () => {
       seq: 4,
     });
   });
+
+  it("replays persisted history even when the in-memory runtime buffer has been trimmed", async () => {
+    const createResponse = await sessionRouter.request("http://localhost/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "Long Writer 会话",
+        agentId: "writer",
+        sessionMode: "chat",
+      }),
+    });
+    const created = await createResponse.json();
+
+    const transport = new MockTransport();
+    expect(await attachSessionChatTransport(created.id, transport)).toBe(true);
+
+    for (let index = 0; index < 30; index += 1) {
+      await handleSessionChatTransportMessage(
+        created.id,
+        transport,
+        JSON.stringify({
+          type: "session:message",
+          messageId: `trimmed-message-${index + 1}`,
+          content: `第 ${index + 1} 句`,
+          sessionMode: "chat",
+        }),
+      );
+    }
+
+    const historyResponse = await sessionRouter.request(`http://localhost/${created.id}/chat/history?sinceSeq=1`);
+    expect(historyResponse.status).toBe(200);
+
+    const history = await historyResponse.json();
+    expect(history).toMatchObject({
+      sessionId: created.id,
+      sinceSeq: 1,
+      availableFromSeq: 1,
+      resetRequired: false,
+      cursor: {
+        lastSeq: 60,
+      },
+    });
+    expect(history.messages).toHaveLength(59);
+    expect(history.messages[0]).toMatchObject({
+      id: "trimmed-message-1-assistant",
+      seq: 2,
+      role: "assistant",
+    });
+    expect(history.messages.at(-1)).toMatchObject({
+      id: "trimmed-message-30-assistant",
+      seq: 60,
+      role: "assistant",
+    });
+  });
 });

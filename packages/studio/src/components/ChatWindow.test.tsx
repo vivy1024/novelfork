@@ -5,7 +5,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { ChatWindow } from "./ChatWindow";
 import { useWindowRuntimeStore } from "@/stores/windowRuntimeStore";
 import { useWindowStore } from "@/stores/windowStore";
-import type { ChatWindow as ChatWindowState } from "@/stores/windowStore";
+import type { AddWindowInput, ChatWindow as ChatWindowState } from "@/stores/windowStore";
 
 const fetchJsonMock = vi.fn(async (..._args: [string, ...unknown[]]) => ({ success: true }));
 
@@ -24,7 +24,7 @@ vi.mock("./WindowControls", () => ({
 interface MockWindowStore {
   windows: ChatWindowState[];
   activeWindowId: string | null;
-  addWindow: (agentIdOrInput: string | { agentId: string; title: string; sessionId?: string; sessionMode?: "chat" | "plan" }, title?: string) => void;
+  addWindow: (input: AddWindowInput) => void;
   removeWindow: (id: string) => void;
   updateWindow: (id: string, updates: Partial<ChatWindowState>) => void;
   toggleMinimize: (id: string) => void;
@@ -530,6 +530,251 @@ describe("ChatWindow", () => {
       sessionId: "session-2",
     });
   });
+
+  it("reconnects websocket with resumeFromSeq after receiving sequenced session messages", async () => {
+    let scheduledReconnect: (() => void) | undefined;
+    const setTimeoutSpy = vi.spyOn(globalThis.window, "setTimeout").mockImplementation(((handler: TimerHandler) => {
+      if (typeof handler === "function") {
+        scheduledReconnect = () => {
+          handler();
+        };
+      } else {
+        scheduledReconnect = undefined;
+      }
+      return 1 as unknown as number;
+    }) as typeof globalThis.window.setTimeout);
+
+    try {
+      render(<ChatWindow windowId="window-1" theme="light" />);
+      await Promise.resolve();
+      await Promise.resolve();
+
+      MockWebSocket.instances[0]?.onmessage?.({
+        data: JSON.stringify({
+          type: "session:message",
+          sessionId: "session-abc123456",
+          message: {
+            id: "server-msg-2",
+            role: "assistant",
+            content: "服务端追加消息",
+            timestamp: Date.now(),
+            seq: 2,
+          },
+          cursor: { lastSeq: 2 },
+        }),
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+
+      MockWebSocket.instances[0]?.onclose?.();
+      scheduledReconnect?.();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(MockWebSocket.instances).toHaveLength(2);
+      expect(MockWebSocket.instances[1]?.url).toContain("resumeFromSeq=2");
+    } finally {
+      setTimeoutSpy.mockRestore();
+    }
+  });
+
+  it("falls back to full session state when reconnect history requests a reset", async () => {
+    let scheduledReconnect: (() => void) | undefined;
+    const setTimeoutSpy = vi.spyOn(globalThis.window, "setTimeout").mockImplementation(((handler: TimerHandler) => {
+      if (typeof handler === "function") {
+        scheduledReconnect = () => {
+          handler();
+        };
+      } else {
+        scheduledReconnect = undefined;
+      }
+      return 1 as unknown as number;
+    }) as typeof globalThis.window.setTimeout);
+    let stateCalls = 0;
+
+    fetchJsonMock.mockImplementation((async (...args: [string, ...unknown[]]) => {
+      const [url] = args as [string];
+      if (url === "/api/sessions/session-abc123456/chat/state") {
+        stateCalls += 1;
+        return {
+          session: {
+            id: "session-abc123456",
+            title: "Writer 会话（正式）",
+            agentId: "writer",
+            kind: "standalone",
+            sessionMode: "chat",
+            status: "active",
+            createdAt: new Date().toISOString(),
+            lastModified: new Date().toISOString(),
+            messageCount: 2,
+            sortOrder: 0,
+            sessionConfig: {
+              providerId: "anthropic",
+              modelId: "claude-sonnet-4-6",
+              permissionMode: "allow",
+              reasoningEffort: "medium",
+            },
+          },
+          messages: stateCalls >= 2
+            ? [
+                { id: "server-msg-1", role: "assistant", content: "初始消息", timestamp: Date.now() - 1_000, seq: 1 },
+                { id: "server-msg-2", role: "assistant", content: "需要整包重放", timestamp: Date.now(), seq: 2 },
+              ]
+            : [
+                { id: "server-msg-1", role: "assistant", content: "初始消息", timestamp: Date.now() - 1_000, seq: 1 },
+              ],
+          cursor: { lastSeq: stateCalls >= 2 ? 2 : 1 },
+        };
+      }
+
+      if (url === "/api/sessions/session-abc123456/chat/history?sinceSeq=2") {
+        return {
+          sessionId: "session-abc123456",
+          sinceSeq: 2,
+          availableFromSeq: 5,
+          resetRequired: true,
+          messages: [],
+          cursor: { lastSeq: 2 },
+        };
+      }
+
+      return defaultFetchJsonImplementation(url);
+    }) as any);
+
+    try {
+      render(<ChatWindow windowId="window-1" theme="light" />);
+      await Promise.resolve();
+      await Promise.resolve();
+
+      MockWebSocket.instances[0]?.onmessage?.({
+        data: JSON.stringify({
+          type: "session:message",
+          sessionId: "session-abc123456",
+          message: {
+            id: "server-msg-2",
+            role: "assistant",
+            content: "需要整包重放",
+            timestamp: Date.now(),
+            seq: 2,
+          },
+          cursor: { lastSeq: 2 },
+        }),
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+
+      MockWebSocket.instances[0]?.onclose?.();
+      scheduledReconnect?.();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(fetchJsonMock).toHaveBeenCalledWith("/api/sessions/session-abc123456/chat/history?sinceSeq=2");
+      expect(fetchJsonMock.mock.calls.filter(([url]) => url === "/api/sessions/session-abc123456/chat/state").length).toBeGreaterThanOrEqual(2);
+      expect(MockWebSocket.instances).toHaveLength(2);
+    } finally {
+      setTimeoutSpy.mockRestore();
+    }
+  });
+
+  it("falls back to full session state when reconnect history requests a reset", async () => {
+    let scheduledReconnect: (() => void) | undefined;
+    const setTimeoutSpy = vi.spyOn(globalThis.window, "setTimeout").mockImplementation(((handler: TimerHandler) => {
+      if (typeof handler === "function") {
+        scheduledReconnect = () => {
+          handler();
+        };
+      } else {
+        scheduledReconnect = undefined;
+      }
+      return 1 as unknown as number;
+    }) as typeof globalThis.window.setTimeout);
+    let stateCalls = 0;
+
+    fetchJsonMock.mockImplementation((async (...args: [string, ...unknown[]]) => {
+      const [url] = args as [string];
+      if (url === "/api/sessions/session-abc123456/chat/state") {
+        stateCalls += 1;
+        return {
+          session: {
+            id: "session-abc123456",
+            title: "Writer 会话（正式）",
+            agentId: "writer",
+            kind: "standalone",
+            sessionMode: "chat",
+            status: "active",
+            createdAt: new Date().toISOString(),
+            lastModified: new Date().toISOString(),
+            messageCount: 2,
+            sortOrder: 0,
+            sessionConfig: {
+              providerId: "anthropic",
+              modelId: "claude-sonnet-4-6",
+              permissionMode: "allow",
+              reasoningEffort: "medium",
+            },
+          },
+          messages: stateCalls >= 2
+            ? [
+                { id: "server-msg-1", role: "assistant", content: "初始消息", timestamp: Date.now() - 1_000, seq: 1 },
+                { id: "server-msg-2", role: "assistant", content: "需要整包重放", timestamp: Date.now(), seq: 2 },
+              ]
+            : [
+                { id: "server-msg-1", role: "assistant", content: "初始消息", timestamp: Date.now() - 1_000, seq: 1 },
+              ],
+          cursor: { lastSeq: stateCalls >= 2 ? 2 : 1 },
+        };
+      }
+
+      if (url === "/api/sessions/session-abc123456/chat/history?sinceSeq=2") {
+        return {
+          sessionId: "session-abc123456",
+          sinceSeq: 2,
+          availableFromSeq: 5,
+          resetRequired: true,
+          messages: [],
+          cursor: { lastSeq: 2 },
+        };
+      }
+
+      return defaultFetchJsonImplementation(url);
+    }) as any);
+
+    try {
+      render(<ChatWindow windowId="window-1" theme="light" />);
+      await Promise.resolve();
+      await Promise.resolve();
+
+      MockWebSocket.instances[0]?.onmessage?.({
+        data: JSON.stringify({
+          type: "session:message",
+          sessionId: "session-abc123456",
+          message: {
+            id: "server-msg-2",
+            role: "assistant",
+            content: "需要整包重放",
+            timestamp: Date.now(),
+            seq: 2,
+          },
+          cursor: { lastSeq: 2 },
+        }),
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+
+      MockWebSocket.instances[0]?.onclose?.();
+      scheduledReconnect?.();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(fetchJsonMock).toHaveBeenCalledWith("/api/sessions/session-abc123456/chat/history?sinceSeq=2");
+      expect(fetchJsonMock.mock.calls.filter(([url]) => url === "/api/sessions/session-abc123456/chat/state").length).toBeGreaterThanOrEqual(2);
+      expect(MockWebSocket.instances).toHaveLength(2);
+    } finally {
+      setTimeoutSpy.mockRestore();
+    }
+  });
 });
 
 function createMockState(overrides?: Partial<MockWindowStore>): MockWindowStore {
@@ -550,23 +795,17 @@ function baseMockState(): MockWindowStore {
       },
     ] as ChatWindowState[],
     activeWindowId: "window-1",
-    addWindow(agentIdOrInput: string | { agentId: string; title: string; sessionId?: string; sessionMode?: "chat" | "plan" }, title?: string) {
-      const normalized = typeof agentIdOrInput === "string"
-        ? { agentId: agentIdOrInput, title: title ?? "Untitled Session" }
-        : agentIdOrInput;
+    addWindow(input: AddWindowInput) {
       const id = `window-${state.windows.length + 1}`;
-      state.windows = [
-        ...state.windows,
-        {
-          id,
-          title: normalized.title,
-          agentId: normalized.agentId,
-          sessionId: normalized.sessionId,
-          sessionMode: normalized.sessionMode,
-          position: { x: 0, y: 0, w: 6, h: 8 },
-          minimized: false,
-        },
-      ];
+      state.windows.push({
+        id,
+        title: input.title,
+        agentId: input.agentId,
+        sessionId: input.sessionId,
+        sessionMode: input.sessionMode,
+        position: { x: 0, y: 0, w: 6, h: 8 },
+        minimized: false,
+      });
       state.activeWindowId = id;
     },
     removeWindow(id: string) {

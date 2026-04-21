@@ -146,31 +146,41 @@ describe("project-bootstrap", () => {
     }
   });
 
-  it("rejects clone bootstrap explicitly instead of fabricating success", async () => {
-    const studioRoot = await mkdtemp(join(tmpdir(), "novelfork-bootstrap-clone-"));
+  it("clones into a deterministic repository root and then prepares a worktree", async () => {
+    const studioRoot = await mkdtemp(join(tmpdir(), "novelfork-bootstrap-clone-root-"));
+    const remoteRepo = await mkdtemp(join(tmpdir(), "novelfork-bootstrap-clone-remote-"));
 
     try {
-      await expect(
-        prepareStudioBookProjectBootstrap(
-          buildCreateBody({
-            projectInit: {
-              repositorySource: "clone",
-              cloneUrl: "https://github.com/example/repo.git",
-              workflowMode: "serial-ops",
-              templatePreset: "web-serial",
-              gitBranch: "main",
-              worktreeName: "draft-clone",
-            },
-          }),
-          "2026-04-20T00:00:00.000Z",
-          { root: studioRoot },
-        ),
-      ).rejects.toMatchObject({
-        status: 501,
-        code: "PROJECT_BOOTSTRAP_CLONE_UNSUPPORTED",
-      } satisfies Partial<ApiError>);
+      await createCommittedRepository(remoteRepo, "story-base");
+
+      const prepared = await prepareStudioBookProjectBootstrap(
+        buildCreateBody({
+          projectInit: {
+            repositorySource: "clone",
+            cloneUrl: remoteRepo,
+            workflowMode: "serial-ops",
+            templatePreset: "web-serial",
+            gitBranch: "main",
+            worktreeName: "draft-clone",
+          },
+        }),
+        "2026-04-20T00:00:00.000Z",
+        { root: studioRoot },
+      );
+
+      expect(prepared?.bootstrap).toMatchObject({
+        status: "prepared",
+        baseBranch: "story-base",
+        baseBranchFallback: true,
+        repositoryCreated: true,
+        worktreeCreated: true,
+      });
+      expect(prepared?.bootstrap.repositoryRoot).toContain(join(studioRoot, ".novelfork-repos"));
+      await expect(access(join(prepared!.bootstrap.repositoryRoot, ".git"))).resolves.toBeUndefined();
+      await expect(access(join(prepared!.bootstrap.repositoryRoot, ".novelfork-worktrees", "draft-clone"))).resolves.toBeUndefined();
     } finally {
       await rm(studioRoot, { recursive: true, force: true });
+      await rm(remoteRepo, { recursive: true, force: true });
     }
   });
 });

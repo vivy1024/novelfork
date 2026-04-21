@@ -486,6 +486,56 @@ describe("createStudioServer daemon lifecycle", () => {
     await rm(existingRepo, { recursive: true, force: true });
   });
 
+  it("creates a book from a cloned repository and persists the prepared bootstrap", async () => {
+    const remoteRepo = await mkdtemp(join(tmpdir(), "novelfork-studio-server-clone-remote-"));
+
+    try {
+      await createCommittedRepository(remoteRepo, "story-base");
+      initBookMock.mockResolvedValueOnce(undefined);
+
+      const { createStudioServer } = await import("./server.js");
+      const { app } = createStudioServer(cloneProjectConfig() as never, root);
+
+      const response = await app.request("http://localhost/api/books/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: "Clone Book",
+          genre: "xuanhuan",
+          platform: "qidian",
+          language: "zh",
+          projectInit: {
+            repositorySource: "clone",
+            cloneUrl: remoteRepo,
+            workflowMode: "serial-ops",
+            templatePreset: "web-serial",
+            gitBranch: "main",
+            worktreeName: "draft-clone-book",
+          },
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toMatchObject({
+        status: "creating",
+        bookId: "clone-book",
+      });
+
+      const persistedProjectInit = JSON.parse(
+        await readFile(join(root, "books", "clone-book", ".novelfork-project-init.json"), "utf-8"),
+      ) as { bootstrap?: { repositoryRoot?: string; baseBranch?: string; repositoryCreated?: boolean } };
+
+      expect(persistedProjectInit.bootstrap).toMatchObject({
+        baseBranch: "story-base",
+        repositoryCreated: true,
+      });
+      await expect(access(join(persistedProjectInit.bootstrap!.repositoryRoot!, ".git"))).resolves.toBeUndefined();
+      expect(initBookMock).toHaveBeenCalled();
+    } finally {
+      await rm(remoteRepo, { recursive: true, force: true });
+    }
+  });
+
   it("allows the same book to reuse its repo worktree when retrying after bootstrap", async () => {
     const existingRepo = await mkdtemp(join(tmpdir(), "novelfork-studio-server-retry-repo-"));
     await createCommittedRepository(existingRepo, "main");

@@ -73,6 +73,32 @@ export interface NarratorSessionChatMessage {
   seq?: number;
 }
 
+export type ToolCallStatus = "pending" | "running" | "success" | "error";
+
+export interface ToolCall {
+  id?: string;
+  toolName: string;
+  status?: ToolCallStatus;
+  summary?: string;
+  command?: string;
+  input?: unknown;
+  duration?: number;
+  output?: string;
+  result?: unknown;
+  error?: string;
+  exitCode?: number;
+  startedAt?: number;
+  finishedAt?: number;
+}
+
+export interface ChatMessage {
+  id: string;
+  role: NarratorSessionChatRole;
+  content: string;
+  timestamp: number;
+  toolCalls?: ToolCall[];
+}
+
 export interface NarratorSessionChatCursor {
   lastSeq: number;
   ackedSeq?: number;

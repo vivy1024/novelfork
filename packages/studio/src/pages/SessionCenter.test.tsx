@@ -5,7 +5,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { SessionCenter } from "./SessionCenter";
 import { useWindowRuntimeStore } from "@/stores/windowRuntimeStore";
 import { useWindowStore } from "@/stores/windowStore";
-import type { ChatWindow } from "@/stores/windowStore";
+import type { AddWindowInput, ChatWindow } from "@/stores/windowStore";
 import type { Session } from "@/hooks/useSession";
 
 const fetchJsonMock = vi.fn();
@@ -39,7 +39,7 @@ vi.mock("@/components/ChatWindowManager", () => ({
 interface MockWindowStore {
   windows: ChatWindow[];
   activeWindowId: string | null;
-  addWindow: (agentIdOrInput: string | { agentId: string; title: string; sessionId?: string; sessionMode?: "chat" | "plan" }, title?: string) => void;
+  addWindow: (input: AddWindowInput) => void;
   removeWindow: (id: string) => void;
   updateWindow: (id: string, updates: Partial<ChatWindow>) => void;
   toggleMinimize: (id: string) => void;

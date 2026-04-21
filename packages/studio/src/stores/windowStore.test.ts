@@ -38,4 +38,15 @@ describe("useWindowStore", () => {
       sessionMode: "plan",
     });
   });
+
+  it("moves focus to the newest surviving window when the active shell closes", () => {
+    useWindowStore.getState().addWindow({ agentId: "writer", title: "Writer 会话" });
+    useWindowStore.getState().addWindow({ agentId: "planner", title: "Planner 会话" });
+
+    const [first, second] = useWindowStore.getState().windows;
+    expect(useWindowStore.getState().activeWindowId).toBe(second?.id);
+
+    useWindowStore.getState().removeWindow(second!.id);
+    expect(useWindowStore.getState().activeWindowId).toBe(first?.id);
+  });
 });
