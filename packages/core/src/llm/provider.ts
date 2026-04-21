@@ -203,7 +203,7 @@ function wrapLLMError(error: unknown, context?: { readonly baseUrl?: string; rea
   if (msg.includes("400")) {
     return new Error(
       `API 返回 400 (请求参数错误)。可能原因：\n` +
-      `  1. 模型名称不正确（检查 INKOS_LLM_MODEL）\n` +
+      `  1. 模型名称不正确（检查 NOVELFORK_LLM_MODEL）\n` +
       `  2. 提供方不支持某些参数（如 max_tokens、stream）\n` +
       `  3. 消息格式不兼容（部分提供方不支持 system role）\n` +
       `  建议：检查提供方文档，确认该接口要求流式开启、流式关闭，还是根本不支持 stream${ctxLine}`,

@@ -40,16 +40,20 @@ describe("routeToTabId", () => {
     expect(routeToTabId({ page: "admin", section: "daemon" })).toBe("admin:daemon");
   });
 
+  it('admin terminal → "admin:terminal"', () => {
+    expect(routeToTabId({ page: "admin", section: "terminal" })).toBe("admin:terminal");
+  });
+
+  it('admin container → "admin:container"', () => {
+    expect(routeToTabId({ page: "admin", section: "container" })).toBe("admin:container");
+  });
+
   it('settings appearance → "settings:appearance"', () => {
     expect(routeToTabId({ page: "settings", section: "appearance" })).toBe("settings:appearance");
   });
 
   it('sessions defaults to "sessions"', () => {
     expect(routeToTabId({ page: "sessions" })).toBe("sessions");
-  });
-
-  it('project-create defaults to "project-create"', () => {
-    expect(routeToTabId({ page: "project-create" })).toBe("project-create");
   });
 });
 
@@ -60,10 +64,6 @@ describe("routeToTabLabel", () => {
 
   it("book → bookId", () => {
     expect(routeToTabLabel({ page: "book", bookId: "my-novel" })).toBe("my-novel");
-  });
-
-  it('project-create → "新建项目"', () => {
-    expect(routeToTabLabel({ page: "project-create" })).toBe("新建项目");
   });
 
   it('book-create → "新建书籍"', () => {
@@ -80,6 +80,14 @@ describe("routeToTabLabel", () => {
 
   it('admin daemon → "管理 · 守护进程"', () => {
     expect(routeToTabLabel({ page: "admin", section: "daemon" })).toBe("管理 · 守护进程");
+  });
+
+  it('admin terminal → "管理 · 终端"', () => {
+    expect(routeToTabLabel({ page: "admin", section: "terminal" })).toBe("管理 · 终端");
+  });
+
+  it('admin container → "管理 · 容器"', () => {
+    expect(routeToTabLabel({ page: "admin", section: "container" })).toBe("管理 · 容器");
   });
 
   it('settings appearance → "设置 · 外观"', () => {

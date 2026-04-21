@@ -7,8 +7,6 @@ import { Hono } from "hono";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { MCPClientImpl, type MCPServerConfig as CoreMCPConfig } from "@vivy1024/novelfork-core";
-import { getMCPToolDecision } from "../lib/runtime-tool-access.js";
-import { loadUserConfig } from "../lib/user-config-service.js";
 
 interface MCPServerEntry {
   readonly id: string;
@@ -28,17 +26,12 @@ interface ManagedServer {
 interface MCPRegistryTool {
   readonly name: string;
   readonly description?: string;
-  readonly access: "allow" | "prompt" | "deny";
-  readonly enabled: boolean;
-  readonly requiresConfirmation: boolean;
-  readonly reason?: string;
 }
 
 interface MCPRegistryServer extends MCPServerEntry {
   readonly status: "disconnected" | "connecting" | "connected" | "reconnecting" | "failed";
   readonly tools: MCPRegistryTool[];
   readonly toolCount: number;
-  readonly enabledToolCount: number;
   readonly error?: string;
 }
 
@@ -88,47 +81,32 @@ export function createMCPRouter(projectRoot: string): Hono {
     };
   }
 
-  async function serializeServer(entry: MCPServerEntry): Promise<MCPRegistryServer> {
+  function serializeServer(entry: MCPServerEntry): MCPRegistryServer {
     const managed = managedServers.get(entry.id);
     const client = managed?.client;
-    const userConfig = await loadUserConfig();
-    const tools = client
-      ? [...client.tools].map((tool) => {
-          const decision = getMCPToolDecision(tool.name, userConfig.runtimeControls);
-          return {
-            name: tool.name,
-            description: tool.description,
-            access: decision.action,
-            enabled: decision.action !== "deny",
-            requiresConfirmation: decision.action === "prompt",
-            reason: decision.reason,
-          } satisfies MCPRegistryTool;
-        })
-      : [];
+    const tools = client ? [...client.tools].map((tool) => ({ name: tool.name, description: tool.description })) : [];
 
     return {
       ...entry,
       status: client?.state ?? "disconnected",
       tools,
       toolCount: tools.length,
-      enabledToolCount: tools.filter((tool) => tool.enabled).length,
       error: undefined,
     };
   }
 
   async function buildRegistry() {
     const entries = await loadConfig();
-    const servers = await Promise.all(entries.map((entry) => serializeServer(entry)));
+    const servers = entries.map(serializeServer);
     const connectedServers = servers.filter((server) => server.status === "connected").length;
     const discoveredTools = servers.reduce((sum, server) => sum + server.toolCount, 0);
-    const enabledTools = servers.reduce((sum, server) => sum + server.enabledToolCount, 0);
 
     return {
       servers,
       summary: {
         totalServers: servers.length,
         connectedServers,
-        enabledTools,
+        enabledTools: discoveredTools,
         discoveredTools,
       },
     };
@@ -197,7 +175,7 @@ export function createMCPRouter(projectRoot: string): Hono {
 
     entries[index] = updated;
     await saveConfig(entries);
-    return c.json({ ok: true, server: await serializeServer(updated) });
+    return c.json({ ok: true, server: serializeServer(updated) });
   });
 
   app.post("/api/mcp/servers/:id/start", async (c) => {
@@ -251,23 +229,6 @@ export function createMCPRouter(projectRoot: string): Hono {
     if (!managed) return c.json({ error: "Server not connected" }, 400);
 
     const body = await c.req.json<{ tool: string; arguments?: Record<string, unknown> }>();
-    const userConfig = await loadUserConfig();
-    const decision = getMCPToolDecision(body.tool, userConfig.runtimeControls);
-
-    if (decision.action === "deny") {
-      return c.json({ error: decision.reason || "MCP tool is blocked by runtime settings" }, 403);
-    }
-
-    if (decision.action === "prompt") {
-      return c.json(
-        {
-          error: decision.reason || "MCP tool execution requires confirmation",
-          confirmationRequired: true,
-        },
-        403,
-      );
-    }
-
     const result = await managed.client.callTool({
       name: body.tool,
       arguments: body.arguments ?? {},

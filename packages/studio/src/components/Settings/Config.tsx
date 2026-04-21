@@ -53,7 +53,7 @@ export const Config = React.memo(function Config({ theme, onNavigateSection, var
         <div>
           <h2 className="text-2xl font-semibold text-foreground">配置入口已迁移到设置中心</h2>
           <p className="text-sm text-muted-foreground">
-            主题、编辑器、个人资料、数据管理与新补上的运行控制字段，现都以 SettingsView 和同一份 /api/settings 用户配置为主事实源。
+            主题、编辑器、个人资料与数据管理现以 SettingsView 和同一份 /api/settings 用户配置为主事实源。
           </p>
         </div>
         <Badge variant={variant === "embedded" ? "default" : "secondary"}>

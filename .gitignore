@@ -14,7 +14,6 @@ test-project/
 .venv*/
 .gstack/
 .worktrees/
-claude/
 # docs/ - 保留手写规划文档，只忽略自动生成的
 docs/api/
 docs/typedoc/

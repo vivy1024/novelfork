@@ -48,23 +48,6 @@ describe("user-config-service", () => {
       runtimeControls: {
         defaultPermissionMode: "ask",
         contextCompressionThresholdPercent: 84,
-        recovery: {
-          ...DEFAULT_USER_CONFIG.runtimeControls.recovery,
-          maxRecoveryAttempts: 6,
-          backoffMultiplier: 1.5,
-        },
-        toolAccess: {
-          ...DEFAULT_USER_CONFIG.runtimeControls.toolAccess,
-          allowlist: ["Read", "Write"],
-          blocklist: ["Delete"],
-          mcpStrategy: "ask",
-        },
-        runtimeDebug: {
-          ...DEFAULT_USER_CONFIG.runtimeControls.runtimeDebug,
-          tokenDebugEnabled: true,
-          traceEnabled: true,
-          traceSampleRatePercent: 40,
-        },
       },
     });
 
@@ -72,22 +55,6 @@ describe("user-config-service", () => {
       ...DEFAULT_USER_CONFIG.runtimeControls,
       defaultPermissionMode: "ask",
       contextCompressionThresholdPercent: 84,
-      recovery: {
-        ...DEFAULT_USER_CONFIG.runtimeControls.recovery,
-        maxRecoveryAttempts: 6,
-        backoffMultiplier: 1.5,
-      },
-      toolAccess: {
-        allowlist: ["Read", "Write"],
-        blocklist: ["Delete"],
-        mcpStrategy: "ask",
-      },
-      runtimeDebug: {
-        ...DEFAULT_USER_CONFIG.runtimeControls.runtimeDebug,
-        tokenDebugEnabled: true,
-        traceEnabled: true,
-        traceSampleRatePercent: 40,
-      },
     });
 
     const persisted = JSON.parse(await readFile(configPath, "utf-8")) as {
@@ -99,54 +66,18 @@ describe("user-config-service", () => {
       defaultReasoningEffort: DEFAULT_USER_CONFIG.runtimeControls.defaultReasoningEffort,
       contextCompressionThresholdPercent: 84,
       contextTruncateTargetPercent: DEFAULT_USER_CONFIG.runtimeControls.contextTruncateTargetPercent,
-      recovery: {
-        resumeOnStartup: DEFAULT_USER_CONFIG.runtimeControls.recovery.resumeOnStartup,
-        maxRecoveryAttempts: 6,
-        maxRetryAttempts: DEFAULT_USER_CONFIG.runtimeControls.recovery.maxRetryAttempts,
-        initialRetryDelayMs: DEFAULT_USER_CONFIG.runtimeControls.recovery.initialRetryDelayMs,
-        maxRetryDelayMs: DEFAULT_USER_CONFIG.runtimeControls.recovery.maxRetryDelayMs,
-        backoffMultiplier: 1.5,
-        jitterPercent: DEFAULT_USER_CONFIG.runtimeControls.recovery.jitterPercent,
-      },
-      toolAccess: {
-        allowlist: ["Read", "Write"],
-        blocklist: ["Delete"],
-        mcpStrategy: "ask",
-      },
-      runtimeDebug: {
-        tokenDebugEnabled: true,
-        rateDebugEnabled: DEFAULT_USER_CONFIG.runtimeControls.runtimeDebug.rateDebugEnabled,
-        dumpEnabled: DEFAULT_USER_CONFIG.runtimeControls.runtimeDebug.dumpEnabled,
-        traceEnabled: true,
-        traceSampleRatePercent: 40,
-      },
     });
 
     const sanitized = await service.updateUserConfig({
       runtimeControls: {
-        recovery: {
-          ...DEFAULT_USER_CONFIG.runtimeControls.recovery,
-          maxRetryAttempts: 999,
-          initialRetryDelayMs: -1,
-        },
-        toolAccess: {
-          ...DEFAULT_USER_CONFIG.runtimeControls.toolAccess,
-          allowlist: ["  Read ", "", "Write"],
-          blocklist: ["  Delete  "],
-          mcpStrategy: "unknown" as never,
-        },
-        runtimeDebug: {
-          ...DEFAULT_USER_CONFIG.runtimeControls.runtimeDebug,
-          traceSampleRatePercent: 999,
-        },
+        contextCompressionThresholdPercent: null as unknown as number,
+        contextTruncateTargetPercent: 999,
       },
     });
 
-    expect(sanitized.runtimeControls.recovery.maxRetryAttempts).toBe(20);
-    expect(sanitized.runtimeControls.recovery.initialRetryDelayMs).toBe(0);
-    expect(sanitized.runtimeControls.toolAccess.allowlist).toEqual(["Read", "Write"]);
-    expect(sanitized.runtimeControls.toolAccess.blocklist).toEqual(["Delete"]);
-    expect(sanitized.runtimeControls.toolAccess.mcpStrategy).toBe("inherit");
-    expect(sanitized.runtimeControls.runtimeDebug.traceSampleRatePercent).toBe(100);
+    expect(sanitized.runtimeControls.contextCompressionThresholdPercent).toBe(
+      DEFAULT_USER_CONFIG.runtimeControls.contextCompressionThresholdPercent,
+    );
+    expect(sanitized.runtimeControls.contextTruncateTargetPercent).toBe(90);
   });
 });

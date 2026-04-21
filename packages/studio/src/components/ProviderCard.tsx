@@ -5,10 +5,10 @@
 
 import { useState } from "react";
 import { Power, Settings, Wifi, WifiOff, ChevronDown, ChevronRight } from "lucide-react";
-import { getProviderTypeLabel, type ManagedProvider } from "../shared/provider-catalog";
+import type { AIProvider } from "../shared/provider-manager-types";
 
 interface ProviderCardProps {
-  provider: ManagedProvider;
+  provider: AIProvider;
   onToggle: (id: string, enabled: boolean) => void;
   onConfigure: (id: string) => void;
   onTest: (id: string) => Promise<{ success: boolean; latency?: number; error?: string }>;
@@ -32,6 +32,17 @@ export function ProviderCard({ provider, onToggle, onConfigure, onTest }: Provid
       });
     } finally {
       setTesting(false);
+    }
+  };
+
+  const getProviderTypeLabel = (type: string) => {
+    switch (type) {
+      case "anthropic":
+        return "Anthropic";
+      case "openai":
+        return "OpenAI";
+      default:
+        return type;
     }
   };
 

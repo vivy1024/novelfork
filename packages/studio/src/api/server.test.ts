@@ -405,57 +405,6 @@ describe("createStudioServer daemon lifecycle", () => {
     await expect(access(join(root, "books", "existing-book", "story", "story_bible.md"))).resolves.toBeUndefined();
   });
 
-  it("persists first-round project init metadata next to the created book", async () => {
-    initBookMock.mockImplementationOnce(async (bookConfig: { id: string }) => {
-      const bookDir = join(root, "books", bookConfig.id);
-      await mkdir(join(bookDir, "story"), { recursive: true });
-      await writeFile(join(bookDir, "book.json"), JSON.stringify(bookConfig), "utf-8");
-      await writeFile(join(bookDir, "story", "story_bible.md"), "# initialized", "utf-8");
-    });
-
-    const { createStudioServer } = await import("./server.js");
-    const { app } = createStudioServer(cloneProjectConfig() as never, root);
-
-    const response = await app.request("http://localhost/api/books/create", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title: "Init Book",
-        genre: "xuanhuan",
-        platform: "qidian",
-        language: "zh",
-        projectInit: {
-          repositorySource: "clone",
-          cloneUrl: "https://github.com/vivy1024/novelfork.git",
-          workflowMode: "serial-ops",
-          templatePreset: "web-serial",
-          gitBranch: "main",
-          worktreeName: "serial-room",
-        },
-      }),
-    });
-
-    expect(response.status).toBe(200);
-
-    await vi.waitFor(async () => {
-      const sidecar = JSON.parse(
-        await readFile(join(root, "books", "init-book", ".novelfork-project-init.json"), "utf-8"),
-      );
-      expect(sidecar).toMatchObject({
-        title: "Init Book",
-        genre: "xuanhuan",
-        platform: "qidian",
-        language: "zh",
-        repositorySource: "clone",
-        cloneUrl: "https://github.com/vivy1024/novelfork.git",
-        workflowMode: "serial-ops",
-        templatePreset: "web-serial",
-        gitBranch: "main",
-        worktreeName: "serial-room",
-      });
-    });
-  });
-
   it("reports async create failures through the create-status endpoint", async () => {
     initBookMock.mockRejectedValueOnce(new Error("NOVELFORK_LLM_API_KEY not set"));
 

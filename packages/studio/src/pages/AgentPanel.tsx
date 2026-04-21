@@ -2,16 +2,16 @@
  * P1-5: Agent 管理面板
  * 展示 16 个 agent 的状态、配置、模型路由信息
  */
-import { useState, type ReactNode } from "react";
-import { Bot, ChevronDown, ChevronRight, RefreshCw, RotateCcw, Zap } from "lucide-react";
-
+import { useState } from "react";
 import { useApi, fetchJson } from "../hooks/use-api";
-import { useColors } from "../hooks/use-colors";
-import type { TFunction } from "../hooks/use-i18n";
 import type { Theme } from "../hooks/use-theme";
+import type { TFunction } from "../hooks/use-i18n";
+import { useColors } from "../hooks/use-colors";
+import { Bot, ChevronDown, ChevronRight, Zap, Settings2, RotateCcw } from "lucide-react";
 
 interface Nav {
-  toWorkflow?: () => void;
+  toDashboard: () => void;
+  toWorkflow: () => void;
 }
 
 // 16 个 agent 的静态元数据
@@ -46,9 +46,9 @@ interface OverridesData {
   readonly overrides: Record<string, { model?: string; provider?: string; baseUrl?: string }>;
 }
 
-export function AgentPanel({ nav, theme }: { nav: Nav; theme: Theme; t: TFunction }) {
+export function AgentPanel({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunction }) {
   const c = useColors(theme);
-  const { data: overridesData, refetch } = useApi<OverridesData>("/project/model-overrides");
+  const { data: overridesData } = useApi<OverridesData>("/project/model-overrides");
   const [expanded, setExpanded] = useState<string | null>(null);
   const [testing, setTesting] = useState<string | null>(null);
   const [testResults, setTestResults] = useState<Record<string, { ok: boolean; msg: string }>>({});
@@ -81,67 +81,66 @@ export function AgentPanel({ nav, theme }: { nav: Nav; theme: Theme; t: TFunctio
   }));
 
   return (
-    <div className="space-y-6">
-      <SectionHeader
-        title="Agent 管理面板"
-        description="把写作 routines 的路由、默认模型覆盖和测试入口收口到一个工作流工位。"
-        actions={
-          <>
-            {nav.toWorkflow && (
-              <button onClick={() => nav.toWorkflow?.()} className="rounded-md border border-border/70 bg-background/70 px-3 py-2 text-xs font-medium text-foreground transition-colors hover:bg-muted/70">
-                工作流总览
-              </button>
-            )}
-            <button onClick={() => void refetch()} className={`rounded-md px-3 py-2 text-xs font-medium ${c.btnSecondary} flex items-center gap-1`}>
-              <RefreshCw size={12} />刷新
-            </button>
-          </>
-        }
-      />
+    <div className="space-y-8">
+      {/* 面包屑 */}
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <button onClick={nav.toDashboard} className={c.link}>首页</button>
+        <span className="text-border">/</span>
+        <span className="text-foreground">Agent 管理</span>
+      </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="flex items-baseline justify-between">
+        <h1 className="font-serif text-3xl">Agent 管理</h1>
+        <button onClick={nav.toWorkflow} className={`px-3 py-2 text-xs rounded-md ${c.btnSecondary} flex items-center gap-1`}>
+          <Settings2 size={12} />返回工作流台
+        </button>
+      </div>
+
+      {/* 概览卡片 */}
+      <div className="grid grid-cols-3 gap-4">
         <StatCard c={c} label="Agent 总数" value={String(AGENTS.length)} />
         <StatCard c={c} label="已配置路由" value={String(Object.keys(overrides).filter((k) => overrides[k]?.model).length)} />
         <StatCard c={c} label="分类" value={String(Object.keys(CATEGORIES).length)} />
-        <StatCard c={c} label="覆盖率" value={`${Math.round((Object.keys(overrides).filter((k) => overrides[k]?.model).length / AGENTS.length) * 100)}%`} />
       </div>
 
+      {/* 按分类展示 */}
       {grouped.map((group) => (
-        <section key={group.id} className="space-y-3">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h2 className="text-sm font-medium uppercase tracking-wide text-muted-foreground">{group.name}</h2>
-              <p className="mt-1 text-xs text-muted-foreground">{group.agents.length} 个 Agent</p>
-            </div>
-          </div>
+        <div key={group.id} className="space-y-3">
+          <h2 className="text-sm uppercase tracking-wide text-muted-foreground font-medium">{group.name}</h2>
           <div className="space-y-2">
             {group.agents.map((agent) => {
               const isExpanded = expanded === agent.id;
               const override = overrides[agent.id];
-              const hasOverride = !!override?.model;
+              const hasOverride = !!(override?.model);
               const result = testResults[agent.id];
               return (
-                <div key={agent.id} className={`rounded-lg border ${c.cardStatic}`}>
-                  <button onClick={() => toggle(agent.id)} className="flex w-full items-center justify-between px-4 py-3 text-left">
+                <div key={agent.id} className={`border ${c.cardStatic} rounded-lg`}>
+                  <button
+                    onClick={() => toggle(agent.id)}
+                    className="w-full flex items-center justify-between px-4 py-3 text-left"
+                  >
                     <div className="flex items-center gap-3">
                       {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                       <Bot size={16} className={hasOverride ? "text-primary" : "text-muted-foreground"} />
                       <div>
                         <span className="text-sm font-medium">{agent.name}</span>
-                        <span className="ml-2 text-xs text-muted-foreground">{agent.desc}</span>
+                        <span className="text-xs text-muted-foreground ml-2">{agent.desc}</span>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      {hasOverride ? (
-                        <span className="rounded bg-primary/10 px-1.5 py-0.5 font-mono text-xs text-primary">{override!.model}</span>
-                      ) : (
+                      {hasOverride && (
+                        <span className="text-xs px-1.5 py-0.5 rounded bg-primary/10 text-primary font-mono">
+                          {override!.model}
+                        </span>
+                      )}
+                      {!hasOverride && (
                         <span className="text-xs text-muted-foreground">默认模型</span>
                       )}
                     </div>
                   </button>
                   {isExpanded && (
                     <div className="border-t border-border/40 px-4 py-3 space-y-3">
-                      <div className="grid gap-4 text-sm md:grid-cols-2">
+                      <div className="grid grid-cols-2 gap-4 text-sm">
                         <div>
                           <span className="text-muted-foreground">模型: </span>
                           <span className="font-mono">{override?.model || "(项目默认)"}</span>
@@ -150,7 +149,7 @@ export function AgentPanel({ nav, theme }: { nav: Nav; theme: Theme; t: TFunctio
                           <span className="text-muted-foreground">协议: </span>
                           <span className="font-mono">{override?.provider || "(项目默认)"}</span>
                         </div>
-                        <div className="md:col-span-2">
+                        <div className="col-span-2">
                           <span className="text-muted-foreground">Base URL: </span>
                           <span className="font-mono">{override?.baseUrl || "(项目默认)"}</span>
                         </div>
@@ -159,7 +158,7 @@ export function AgentPanel({ nav, theme }: { nav: Nav; theme: Theme; t: TFunctio
                         <button
                           onClick={() => handleTest(agent.id)}
                           disabled={testing === agent.id}
-                          className={`flex items-center gap-1 rounded-md px-3 py-1.5 text-xs ${c.btnSecondary} disabled:opacity-50`}
+                          className={`px-3 py-1.5 text-xs rounded-md ${c.btnSecondary} disabled:opacity-50 flex items-center gap-1`}
                         >
                           {testing === agent.id ? <RotateCcw size={12} className="animate-spin" /> : <Zap size={12} />}
                           {testing === agent.id ? "测试中..." : "测试连接"}
@@ -176,40 +175,17 @@ export function AgentPanel({ nav, theme }: { nav: Nav; theme: Theme; t: TFunctio
               );
             })}
           </div>
-        </section>
-      ))}
-    </div>
-  );
-}
-
-function SectionHeader({
-  title,
-  description,
-  actions,
-}: {
-  title: string;
-  description: string;
-  actions?: ReactNode;
-}) {
-  return (
-    <div className="flex flex-col gap-4 rounded-2xl border border-border/60 bg-card/80 p-5 shadow-sm backdrop-blur-sm lg:flex-row lg:items-start lg:justify-between">
-      <div className="space-y-2">
-        <p className="text-xs font-medium uppercase tracking-[0.24em] text-muted-foreground">Workflow Workbench</p>
-        <div className="space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">{title}</h1>
-          <p className="max-w-3xl text-sm leading-6 text-muted-foreground">{description}</p>
         </div>
-      </div>
-      {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+      ))}
     </div>
   );
 }
 
 function StatCard({ c, label, value }: { c: ReturnType<typeof useColors>; label: string; value: string }) {
   return (
-    <div className={`rounded-2xl border ${c.cardStatic} px-4 py-3`}>
+    <div className={`border ${c.cardStatic} rounded-lg px-4 py-3`}>
       <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="mt-1 text-2xl font-semibold">{value}</div>
+      <div className="text-2xl font-serif mt-1">{value}</div>
     </div>
   );
 }

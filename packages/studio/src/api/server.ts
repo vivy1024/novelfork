@@ -1,6 +1,5 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { serve } from "@hono/node-server";
 import {
   StateManager,
   createLLMClient,
@@ -19,9 +18,8 @@ import { ApiError } from "./errors.js";
 import { readSessionFromCookie } from "./auth.js";
 import { createFilesystemStaticProvider, type StaticProvider } from "./static-provider.js";
 import { startHttpServer } from "./start-http-server.js";
-import { runStartupOrchestrator } from "./lib/startup-orchestrator.js";
 import { RunStore } from "./lib/run-store.js";
-import { setupSessionChatWebSocket } from "./lib/session-chat-service.js";
+
 import {
   createRunsRouter,
   createAuthRouter,
@@ -82,7 +80,7 @@ pipelineEvents.on((event) => {
   }
 });
 
-// --- INKOS_MODE ---
+// --- Runtime mode ---
 
 export type NovelForkMode = "standalone" | "relay";
 
@@ -278,7 +276,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     app.route("", createContextManagerRouter(ctx));
 
     // Admin panel
-    app.route("/api/admin", createAdminRouter(root, ctx));
+    app.route("/api/admin", createAdminRouter(root));
 
     // Routines system
     app.route("/api/routines", createRoutinesRouter());
@@ -339,19 +337,6 @@ export async function startStudioServer(
   const mode = getInkosMode();
   console.log(`NovelFork mode: ${mode}`);
 
-  const startupState = new StateManager(root);
-  const startupSummary = await runStartupOrchestrator(startupState);
-  console.log(
-    `[startup] runtime-state bootstrapped ${startupSummary.migratedBooks}/${startupSummary.bookCount} books; ` +
-      `indexed ${startupSummary.indexedDocuments} documents`,
-  );
-  if (startupSummary.failures.length > 0) {
-    console.warn(
-      `[startup] ${startupSummary.failures.length} book(s) failed runtime migration: ` +
-      startupSummary.failures.map((failure) => `${failure.bookId} (${failure.message})`).join(", "),
-    );
-  }
-
   const { app, ctx } = createStudioServer(config, root);
 
   // Serve frontend static files — single process for API + frontend
@@ -389,9 +374,5 @@ export async function startStudioServer(
   // setupAdminWebSocket(server);
   // setupMonitorWebSocket(server, ctx);
 
-  await startHttpServer({
-    fetch: app.fetch,
-    port,
-    configureServer: setupSessionChatWebSocket,
-  });
+  await startHttpServer({ fetch: app.fetch, port });
 }

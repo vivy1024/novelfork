@@ -24,27 +24,18 @@ describe("ProvidersTab", () => {
         {
           id: "openai",
           name: "OpenAI",
-          type: "openai",
-          models: [
-            { id: "gpt-5", name: "GPT-5", contextWindow: 128000, maxOutputTokens: 16384 },
-            { id: "gpt-5-mini", name: "GPT-5 Mini", contextWindow: 128000, maxOutputTokens: 16384 },
-          ],
+          type: "api-key",
+          models: ["gpt-5", "gpt-5-mini"],
           enabled: true,
           priority: 1,
-          config: {},
-          apiKeyRequired: true,
-          baseUrl: "https://api.openai.com/v1",
         },
         {
           id: "anthropic",
           name: "Anthropic",
-          type: "anthropic",
-          models: [{ id: "claude-sonnet", name: "Claude Sonnet", contextWindow: 200000, maxOutputTokens: 16384 }],
+          type: "api-key",
+          models: ["claude-sonnet"],
           enabled: false,
           priority: 2,
-          config: {},
-          apiKeyRequired: true,
-          baseUrl: "https://api.anthropic.com",
         },
       ],
     });
@@ -56,7 +47,6 @@ describe("ProvidersTab", () => {
     expect(screen.getByText("模型总数")).toBeTruthy();
     expect(screen.getByText("2")).toBeTruthy();
     expect(screen.getByText("3")).toBeTruthy();
-    expect(screen.getByText("GPT-5")).toBeTruthy();
   });
 
   it("shows inline connection feedback instead of alert", async () => {
@@ -66,13 +56,10 @@ describe("ProvidersTab", () => {
           {
             id: "openai",
             name: "OpenAI",
-            type: "openai",
-            models: [{ id: "gpt-5", name: "GPT-5", contextWindow: 128000, maxOutputTokens: 16384 }],
+            type: "api-key",
+            models: ["gpt-5"],
             enabled: true,
             priority: 1,
-            config: {},
-            apiKeyRequired: true,
-            baseUrl: "https://api.openai.com/v1",
           },
         ],
       })
