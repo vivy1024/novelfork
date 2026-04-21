@@ -1,6 +1,6 @@
 import type { SessionPermissionMode } from "../../shared/session-types.js";
 import type { RuntimeControlSettings, ToolAccessSettings, UserConfig } from "../../types/settings.js";
-import { DEFAULT_PERMISSION_RULES, PermissionManager, type PermissionRule } from "./permission-manager.js";
+import { PermissionManager, createDefaultPermissionManager, type PermissionRule } from "./permission-manager.js";
 
 export type ToolAccessAction = "allow" | "deny" | "prompt";
 
@@ -41,7 +41,7 @@ function buildBlocklistRules(toolAccess: ToolAccessSettings): PermissionRule[] {
 }
 
 export function createRuntimePermissionManager(userConfig: Pick<UserConfig, "runtimeControls">): PermissionManager {
-  const manager = new PermissionManager();
+  const manager = createDefaultPermissionManager();
   const { defaultPermissionMode, toolAccess } = userConfig.runtimeControls;
 
   manager.addRule({
@@ -49,7 +49,6 @@ export function createRuntimePermissionManager(userConfig: Pick<UserConfig, "run
     action: toPermissionAction(defaultPermissionMode),
     reason: `Tool falls back to defaultPermissionMode=${defaultPermissionMode}`,
   });
-  manager.addRules(DEFAULT_PERMISSION_RULES);
   manager.addRules(buildAllowlistRules(toolAccess));
   manager.addRules(buildBlocklistRules(toolAccess));
 

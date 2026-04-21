@@ -1,13 +1,9 @@
 import { WebSocketServer, type RawData, type WebSocket as NodeWebSocket } from "ws";
-import type { ServerType } from "@hono/node-server";
 
 import type {
   NarratorSessionChatClientMessage,
-  NarratorSessionChatCursor,
   NarratorSessionChatErrorEnvelope,
-  NarratorSessionChatHistory,
   NarratorSessionChatMessage,
-  NarratorSessionChatMessageEnvelope,
   NarratorSessionChatServerEnvelope,
   NarratorSessionChatSnapshot,
   NarratorSessionChatStateEnvelope,
@@ -15,6 +11,7 @@ import type {
 } from "../../shared/session-types.js";
 import { appendSessionChatHistory, isSessionChatHistoryDeleted, loadSessionChatHistory } from "./session-history-store.js";
 import { getSessionById, updateSession } from "./session-service.js";
+import type { ServerType } from "@hono/node-server";
 
 const MAX_SESSION_MESSAGES = 50;
 
@@ -23,107 +20,25 @@ interface SessionChatTransport {
   close(code?: number, reason?: string): void;
 }
 
-interface SessionChatTransportState {
-  ackedSeq: number;
-  resumeFromSeq: number;
-}
-
 interface SessionChatRuntimeState {
   messageCount: number;
-  nextSeq: number;
   messages: NarratorSessionChatMessage[];
-  transports: Map<SessionChatTransport, SessionChatTransportState>;
-}
-
-interface AttachSessionChatTransportOptions {
-  resumeFromSeq?: number;
+  transports: Set<SessionChatTransport>;
 }
 
 const runtimeStateBySessionId = new Map<string, SessionChatRuntimeState>();
 
-function sanitizeSeq(value: unknown): number {
-  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
-    return Math.floor(value);
-  }
-  if (typeof value === "string") {
-    const parsed = Number.parseInt(value, 10);
-    if (Number.isFinite(parsed) && parsed > 0) {
-      return parsed;
-    }
-  }
-  return 0;
-}
-
-function normalizeTimestamp(value: unknown): number {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return value;
-  }
-  if (typeof value === "string") {
-    const parsed = Date.parse(value);
-    if (Number.isFinite(parsed)) {
-      return parsed;
-    }
-  }
-  return Date.now();
-}
-
-function getLastSeq(messages: NarratorSessionChatMessage[]): number {
-  return messages.at(-1)?.seq ?? 0;
-}
-
-function normalizeSessionMessages(
-  messages: NarratorSessionChatMessage[] | undefined,
-  messageCount: number,
-): NarratorSessionChatMessage[] {
-  const sourceMessages = Array.isArray(messages) ? messages : [];
-  const effectiveCount = Math.max(messageCount, sourceMessages.length);
-  let nextSeq = Math.max(1, effectiveCount - sourceMessages.length + 1);
-
-  return sourceMessages.map((message) => {
-    const candidateSeq = sanitizeSeq(message.seq);
-    const seq = candidateSeq >= nextSeq ? candidateSeq : nextSeq;
-    nextSeq = seq + 1;
-
-    return {
-      ...message,
-      timestamp: normalizeTimestamp(message.timestamp),
-      seq,
-    };
-  });
-}
-
-function createRuntimeState(
-  initialMessageCount = 0,
-  initialMessages: NarratorSessionChatMessage[] = [],
-): SessionChatRuntimeState {
-  const normalizedMessages = normalizeSessionMessages(initialMessages, initialMessageCount);
-  const lastSeq = getLastSeq(normalizedMessages);
-  const messageCount = Math.max(initialMessageCount, lastSeq, normalizedMessages.length);
-
-  return {
-    messageCount,
-    nextSeq: Math.max(messageCount, lastSeq) + 1,
-    messages: normalizedMessages.slice(-MAX_SESSION_MESSAGES),
-    transports: new Map(),
-  };
-}
-
-function getRuntimeState(
-  sessionId: string,
-  initialMessageCount = 0,
-  initialMessages: NarratorSessionChatMessage[] = [],
-): SessionChatRuntimeState {
+function getRuntimeState(sessionId: string, initialMessageCount = 0): SessionChatRuntimeState {
   const existing = runtimeStateBySessionId.get(sessionId);
   if (existing) {
-    if (existing.messages.length === 0 && initialMessages.length > 0) {
-      existing.messages = normalizeSessionMessages(initialMessages, initialMessageCount).slice(-MAX_SESSION_MESSAGES);
-    }
-    existing.messageCount = Math.max(existing.messageCount, initialMessageCount, getLastSeq(existing.messages));
-    existing.nextSeq = Math.max(existing.nextSeq, existing.messageCount + 1, getLastSeq(existing.messages) + 1);
     return existing;
   }
 
-  const state = createRuntimeState(initialMessageCount, initialMessages);
+  const state: SessionChatRuntimeState = {
+    messageCount: initialMessageCount,
+    messages: [],
+    transports: new Set(),
+  };
   runtimeStateBySessionId.set(sessionId, state);
   return state;
 }
@@ -149,64 +64,18 @@ function trimSessionMessages(state: SessionChatRuntimeState): void {
   state.messages = state.messages.slice(-MAX_SESSION_MESSAGES);
 }
 
-function buildServerFirstSession(session: NarratorSessionRecord, state: SessionChatRuntimeState): NarratorSessionRecord {
-  const recentMessages = state.messages.length > 0 ? [...state.messages] : [...(session.recentMessages ?? [])];
-  const messageCount = Math.max(session.messageCount, state.messageCount, getLastSeq(recentMessages), recentMessages.length);
-
-  return {
-    ...session,
-    messageCount,
-    recentMessages,
-  };
-}
-
-function createCursor(state: SessionChatRuntimeState, ackedSeq?: number): NarratorSessionChatCursor {
-  const lastSeq = Math.max(state.messageCount, getLastSeq(state.messages));
-  if (typeof ackedSeq !== "number") {
-    return { lastSeq };
-  }
-
-  return {
-    lastSeq,
-    ackedSeq: Math.max(0, Math.min(Math.floor(ackedSeq), lastSeq)),
-  };
-}
-
-function createSessionChatStateEnvelope(
-  session: NarratorSessionRecord,
-  state: SessionChatRuntimeState,
-  ackedSeq?: number,
-): NarratorSessionChatStateEnvelope {
-  return {
-    type: "session:state",
-    session,
-    cursor: createCursor(state, ackedSeq),
-  };
-}
-
-function createSessionChatMessageEnvelope(
+function broadcastEnvelope(
   sessionId: string,
-  state: SessionChatRuntimeState,
-  message: NarratorSessionChatMessage,
-): NarratorSessionChatMessageEnvelope {
-  return {
-    type: "session:message",
-    sessionId,
-    message,
-    cursor: createCursor(state),
-  };
-}
-
-function broadcastMessageEnvelope(
-  sessionId: string,
-  state: SessionChatRuntimeState,
-  message: NarratorSessionChatMessage,
+  envelope: NarratorSessionChatServerEnvelope,
   except?: SessionChatTransport,
 ): void {
-  const envelope = createSessionChatMessageEnvelope(sessionId, state, message);
-  const payload = serializeEnvelope(envelope);
+  const state = runtimeStateBySessionId.get(sessionId);
+  if (!state) {
+    return;
+  }
 
-  for (const transport of state.transports.keys()) {
+  const payload = serializeEnvelope(envelope);
+  for (const transport of state.transports) {
     if (transport === except) {
       continue;
     }
@@ -219,34 +88,25 @@ function broadcastMessageEnvelope(
   }
 }
 
-function broadcastStateEnvelope(session: NarratorSessionRecord, state: SessionChatRuntimeState): void {
-  for (const [transport, transportState] of state.transports.entries()) {
-    const delivered = sendEnvelope(transport, createSessionChatStateEnvelope(session, state, transportState.ackedSeq));
-    if (!delivered) {
-      state.transports.delete(transport);
-    }
-  }
-}
-
 async function loadSessionState(sessionId: string): Promise<{ session: NarratorSessionRecord; state: SessionChatRuntimeState } | null> {
   const session = await getSessionById(sessionId);
   if (!session) {
     return null;
   }
 
-  const persistedMessages = session.recentMessages && session.recentMessages.length > 0 ? session.recentMessages : await loadSessionChatHistory(sessionId);
-  const normalizedMessages = normalizeSessionMessages(persistedMessages, session.messageCount);
-  const normalizedMessageCount = Math.max(session.messageCount, getLastSeq(normalizedMessages), normalizedMessages.length);
-  const state = getRuntimeState(sessionId, normalizedMessageCount, normalizedMessages);
-
-  if (state.messages.length === 0 && normalizedMessages.length > 0) {
-    state.messages = [...normalizedMessages];
+  const state = getRuntimeState(sessionId, session.messageCount);
+  state.messageCount = Math.max(state.messageCount, session.messageCount);
+  if (state.messages.length === 0) {
+    if (session.recentMessages && session.recentMessages.length > 0) {
+      state.messages = [...session.recentMessages];
+    } else {
+      const historyMessages = await loadSessionChatHistory(sessionId);
+      if (historyMessages.length > 0) {
+        state.messages = historyMessages.slice(-MAX_SESSION_MESSAGES);
+      }
+    }
   }
-
   trimSessionMessages(state);
-  state.messageCount = Math.max(state.messageCount, normalizedMessageCount, getLastSeq(state.messages));
-  state.nextSeq = Math.max(state.nextSeq, state.messageCount + 1, getLastSeq(state.messages) + 1);
-
   return { session, state };
 }
 
@@ -289,19 +149,8 @@ function parseClientMessage(text: string): NarratorSessionChatClientMessage {
     if (typeof parsed === "string") {
       return { content: parsed };
     }
-    if (parsed?.type === "session:ack") {
-      return {
-        type: "session:ack",
-        sessionId: parsed.sessionId,
-        ack: sanitizeSeq((parsed as { ack?: unknown }).ack),
-      };
-    }
-    if (parsed && typeof (parsed as { content?: unknown }).content === "string") {
-      return {
-        ...(parsed as Record<string, unknown>),
-        content: (parsed as { content: string }).content,
-        ack: sanitizeSeq((parsed as { ack?: unknown }).ack),
-      } as NarratorSessionChatClientMessage;
+    if (parsed && typeof parsed.content === "string") {
+      return parsed as NarratorSessionChatClientMessage;
     }
   } catch {
     // Treat raw text as a chat message payload.
@@ -318,104 +167,65 @@ function createSessionChatError(sessionId: string, error: string): NarratorSessi
   };
 }
 
-function appendMessageToState(
-  state: SessionChatRuntimeState,
-  message: Omit<NarratorSessionChatMessage, "seq">,
-): NarratorSessionChatMessage {
-  const nextMessage: NarratorSessionChatMessage = {
-    ...message,
-    seq: state.nextSeq,
+function createSessionChatStateEnvelope(session: NarratorSessionRecord): NarratorSessionChatStateEnvelope {
+  return {
+    type: "session:state",
+    session,
   };
-
-  state.nextSeq += 1;
-  state.messages.push(nextMessage);
-  state.messageCount = Math.max(state.messageCount, nextMessage.seq ?? 0);
-  trimSessionMessages(state);
-  return nextMessage;
-}
-
-function updateTransportAck(
-  state: SessionChatRuntimeState,
-  transport: SessionChatTransport,
-  ackCandidate: number,
-): SessionChatTransportState | null {
-  const transportState = state.transports.get(transport);
-  if (!transportState) {
-    return null;
-  }
-
-  transportState.ackedSeq = Math.max(transportState.ackedSeq, Math.min(sanitizeSeq(ackCandidate), createCursor(state).lastSeq));
-  return transportState;
 }
 
 export async function getSessionChatSnapshot(sessionId: string): Promise<NarratorSessionChatSnapshot | null> {
-  const loaded = await loadSessionState(sessionId);
-  if (!loaded) {
+  const state = await loadSessionState(sessionId);
+  if (!state) {
     return null;
   }
 
   return {
-    session: buildServerFirstSession(loaded.session, loaded.state),
-    messages: [...loaded.state.messages],
-    cursor: createCursor(loaded.state),
+    session: state.session,
+    messages: [...state.state.messages],
   };
 }
 
-export async function getSessionChatHistory(sessionId: string, sinceSeq = 0): Promise<NarratorSessionChatHistory | null> {
+export async function getSessionChatHistory(sessionId: string): Promise<{
+  session: NarratorSessionRecord;
+  messages: NarratorSessionChatMessage[];
+} | null> {
   const session = await getSessionById(sessionId);
   if (!session) {
     return null;
   }
 
-  const rawHistory = await loadSessionChatHistory(sessionId);
-  const sourceMessages = rawHistory.length > 0 ? rawHistory : session.recentMessages ?? [];
-  const normalizedMessages = normalizeSessionMessages(sourceMessages, session.messageCount);
-  const normalizedSinceSeq = Math.max(0, sanitizeSeq(sinceSeq));
-  const firstBufferedSeq = normalizedMessages[0]?.seq ?? 0;
-  const resetRequired = normalizedSinceSeq > 0 && firstBufferedSeq > 0 && normalizedSinceSeq < firstBufferedSeq - 1;
-
-  const state = createRuntimeState(session.messageCount, normalizedMessages);
+  const messages = await loadSessionChatHistory(sessionId);
+  if (messages.length > 0) {
+    return {
+      session,
+      messages,
+    };
+  }
 
   return {
-    sessionId,
     session,
-    sinceSeq: normalizedSinceSeq,
-    availableFromSeq: firstBufferedSeq,
-    resetRequired,
-    messages: resetRequired ? [] : normalizedMessages.filter((message) => (message.seq ?? 0) > normalizedSinceSeq),
-    cursor: createCursor(state),
+    messages: [...(session.recentMessages ?? [])],
   };
 }
 
-export async function attachSessionChatTransport(
-  sessionId: string,
-  transport: SessionChatTransport,
-  options: AttachSessionChatTransportOptions = {},
-): Promise<boolean> {
-  const loaded = await loadSessionState(sessionId);
-  if (!loaded) {
+export async function attachSessionChatTransport(sessionId: string, transport: SessionChatTransport): Promise<boolean> {
+  const state = await loadSessionState(sessionId);
+  if (!state) {
     sendEnvelope(transport, createSessionChatError(sessionId, "Session not found"));
     transport.close(1008, "Session not found");
     return false;
   }
 
-  const session = buildServerFirstSession(loaded.session, loaded.state);
-  const resumeFromSeq = sanitizeSeq(options.resumeFromSeq);
-  const ackedSeq = Math.min(resumeFromSeq, createCursor(loaded.state).lastSeq);
-  loaded.state.transports.set(transport, {
-    ackedSeq,
-    resumeFromSeq,
-  });
-
+  state.state.transports.add(transport);
   sendEnvelope(transport, {
     type: "session:snapshot",
     snapshot: {
-      session,
-      messages: [...loaded.state.messages],
-      cursor: createCursor(loaded.state, ackedSeq),
+      session: state.session,
+      messages: [...state.state.messages],
     },
   });
-  sendEnvelope(transport, createSessionChatStateEnvelope(session, loaded.state, ackedSeq));
+  sendEnvelope(transport, createSessionChatStateEnvelope(state.session));
   return true;
 }
 
@@ -454,18 +264,6 @@ export async function handleSessionChatTransportMessage(
   }
 
   const payload = parseClientMessage(text);
-  const transportState = loaded.state.transports.get(transport);
-
-  if ("ack" in payload && sanitizeSeq(payload.ack) > 0 && transportState) {
-    updateTransportAck(loaded.state, transport, sanitizeSeq(payload.ack));
-  }
-
-  if (payload.type === "session:ack") {
-    const session = buildServerFirstSession(loaded.session, loaded.state);
-    sendEnvelope(transport, createSessionChatStateEnvelope(session, loaded.state, transportState?.ackedSeq ?? 0));
-    return;
-  }
-
   const content = payload.content.trim();
   if (!content) {
     sendEnvelope(transport, createSessionChatError(sessionId, "Empty message payload"));
@@ -473,29 +271,37 @@ export async function handleSessionChatTransportMessage(
   }
 
   const timestamp = Date.now();
-  const userMessage = appendMessageToState(loaded.state, {
+  const userMessage: NarratorSessionChatMessage = {
     id: payload.messageId?.trim() || `session-msg-${timestamp}-${Math.random().toString(36).slice(2, 8)}`,
     role: "user",
     content,
     timestamp,
-  });
-  broadcastMessageEnvelope(sessionId, loaded.state, userMessage);
+  };
 
-  const assistantMessage = appendMessageToState(loaded.state, {
+  loaded.state.messages.push(userMessage);
+  loaded.state.messageCount += 1;
+  trimSessionMessages(loaded.state);
+  broadcastEnvelope(sessionId, { type: "session:message", sessionId, message: userMessage });
+
+  const assistantMessage: NarratorSessionChatMessage = {
     id: `${userMessage.id}-assistant`,
     role: "assistant",
     content: buildAssistantReply(loaded.session, content, payload.sessionMode),
     timestamp: timestamp + 1,
-  });
+  };
+
+  loaded.state.messages.push(assistantMessage);
+  loaded.state.messageCount += 1;
+  trimSessionMessages(loaded.state);
 
   await appendSessionChatHistory(sessionId, [userMessage, assistantMessage], loaded.session.recentMessages ?? []);
   const updatedSession = await updateSession(sessionId, {
     messageCount: loaded.state.messageCount,
     recentMessages: [...loaded.state.messages],
   });
-  broadcastMessageEnvelope(sessionId, loaded.state, assistantMessage);
+  broadcastEnvelope(sessionId, { type: "session:message", sessionId, message: assistantMessage });
   if (updatedSession) {
-    broadcastStateEnvelope(buildServerFirstSession(updatedSession, loaded.state), loaded.state);
+    broadcastEnvelope(sessionId, createSessionChatStateEnvelope(updatedSession));
   }
 }
 
@@ -510,24 +316,19 @@ export function setupSessionChatWebSocket(server: ServerType): void {
     }
 
     const sessionId = decodeURIComponent(match[1]!);
-    const resumeFromSeq = sanitizeSeq(url.searchParams.get("resumeFromSeq"));
     wss.handleUpgrade(request, socket, head, (ws) => {
-      void bindNodeSessionChatConnection(sessionId, ws, { resumeFromSeq });
+      void bindNodeSessionChatConnection(sessionId, ws);
     });
   });
 }
 
-async function bindNodeSessionChatConnection(
-  sessionId: string,
-  ws: NodeWebSocket,
-  options: AttachSessionChatTransportOptions,
-): Promise<void> {
+async function bindNodeSessionChatConnection(sessionId: string, ws: NodeWebSocket): Promise<void> {
   const transport: SessionChatTransport = {
     send: (data: string) => ws.send(data),
     close: (code?: number, reason?: string) => ws.close(code, reason),
   };
 
-  const attached = await attachSessionChatTransport(sessionId, transport, options);
+  const attached = await attachSessionChatTransport(sessionId, transport);
   if (!attached) {
     return;
   }
