@@ -175,6 +175,7 @@ describe("SessionCenter", () => {
     expect(screen.getByText("在线")).toBeTruthy();
     expect(screen.getByText("正在回放")).toBeTruthy();
     expect(screen.getByText(/当前会话正在回放历史/)).toBeTruthy();
+    expect(screen.getByText(/恢复完成后会继续沿用正式消息链/)).toBeTruthy();
     expect(screen.getByRole("button", { name: "聚焦工作台" })).toBeTruthy();
   });
 

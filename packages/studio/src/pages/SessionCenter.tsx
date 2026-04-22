@@ -351,15 +351,16 @@ function formatRecoveryStateBadge(recoveryState: WindowRecoveryState): string {
 function formatRecoveryStateDescription(recoveryState: WindowRecoveryState): string {
   switch (recoveryState) {
     case "reconnecting":
-      return "当前会话正在重新连接服务端，会在连接恢复后继续同步。";
+      return "当前会话正在重新连接服务端，恢复完成后会继续沿用正式消息链。";
     case "replaying":
-      return "当前会话正在回放历史，稍后会恢复到最近一次服务端状态。";
+      return "当前会话正在回放历史，用来补齐重连期间缺失的消息；恢复完成后会继续沿用正式消息链。";
     case "resetting":
-      return "当前会话历史已请求重置，正在重新同步完整状态。";
+      return "当前会话正在重新同步完整快照，服务端会要求当前窗口放弃本地补拉结果并回到正式快照。";
     default:
       return "当前会话状态稳定。";
   }
 }
+
 
 function NarratorSessionCard({
   title,
