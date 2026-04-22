@@ -34,6 +34,23 @@ interface SessionContextSummary {
   readonly messageCount: number;
 }
 
+interface ContextGovernanceSummary {
+  readonly source: string;
+  readonly compressionThresholdPercent: number;
+  readonly truncateTargetPercent: number;
+  readonly compressionReason?: string;
+  readonly truncateReason?: string;
+}
+
+interface BookContextUsageResponse {
+  readonly totalTokens: number;
+  readonly maxTokens: number;
+  readonly percentage: number;
+  readonly messages: number;
+  readonly canCompress: boolean;
+  readonly governance?: ContextGovernanceSummary;
+}
+
 interface ContextPanelProps {
   readonly visible: boolean;
   readonly onClose: () => void;
@@ -94,6 +111,8 @@ export function ContextPanel({
   const [budgetMax, setBudgetMax] = useState(8000);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [governance, setGovernance] = useState<ContextGovernanceSummary | null>(null);
+  const [canCompress, setCanCompress] = useState(false);
   const [expandedSources, setExpandedSources] = useState<ReadonlySet<string>>(new Set());
   const [disabledSources, setDisabledSources] = useState<ReadonlySet<string>>(new Set());
 
@@ -105,14 +124,19 @@ export function ContextPanel({
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchJson<ContextAssemblyResponse>("/api/ai/context-assembly", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bookId, chapterNumber }),
-      });
+      const [data, usage] = await Promise.all([
+        fetchJson<ContextAssemblyResponse>("/api/ai/context-assembly", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ bookId, chapterNumber }),
+        }),
+        fetchJson<BookContextUsageResponse>(`/api/context/${bookId}/usage`),
+      ]);
       setEntries(data.entries);
       setTotalTokens(data.totalTokens);
       setBudgetMax(data.budgetMax);
+      setGovernance(usage.governance ?? null);
+      setCanCompress(usage.canCompress);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -127,6 +151,7 @@ export function ContextPanel({
       setEntries(sessionEntries ?? []);
       setTotalTokens(sessionSummary?.totalTokens ?? 0);
       setBudgetMax(sessionSummary?.budgetMax ?? 8000);
+      setGovernance(null);
       setError(null);
       setLoading(false);
       return;
@@ -268,14 +293,24 @@ export function ContextPanel({
             />
           </div>
         </div>
+        {!sessionMode && governance ? (
+          <div className="rounded-lg border border-border/60 bg-background px-3 py-2 text-[11px] text-muted-foreground">
+            <p className="text-xs font-semibold text-foreground">上下文治理</p>
+            <p>压缩阈值 {governance.compressionThresholdPercent}% / 截断目标 {governance.truncateTargetPercent}%</p>
+            <p>策略来源：{governance.source}</p>
+            {governance.compressionReason ? <p>{governance.compressionReason}</p> : null}
+            {governance.truncateReason ? <p>{governance.truncateReason}</p> : null}
+          </div>
+        ) : null}
       </div>
 
       <div className="flex items-center gap-2 px-4 py-2 border-b border-border/30">
         <button
           onClick={() => void handleCompress()}
-          disabled={ratio < 0.8}
+          disabled={!canCompress}
           className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-xs rounded-lg bg-secondary hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           title="压缩上下文"
+          aria-label="压缩上下文"
           data-testid="compress-context-btn"
         >
           <Archive size={14} />
@@ -285,6 +320,7 @@ export function ContextPanel({
           onClick={() => void handleTruncate()}
           className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-xs rounded-lg bg-secondary hover:bg-secondary/80 transition-colors"
           title="裁剪上下文"
+          aria-label="裁剪上下文"
         >
           <Scissors size={14} />
           裁剪
@@ -293,6 +329,7 @@ export function ContextPanel({
           onClick={() => void handleClear()}
           className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-xs rounded-lg bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors"
           title="清空上下文"
+          aria-label="清空上下文"
           data-testid="clear-context-btn"
         >
           <Trash2 size={14} />

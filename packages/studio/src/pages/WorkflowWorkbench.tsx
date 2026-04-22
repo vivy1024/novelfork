@@ -470,6 +470,9 @@ export function WorkflowWorkbench({
                 恢复策略：启动恢复{runtimeControls?.recovery?.resumeOnStartup ? "开" : "关"} / 恢复 {runtimeControls?.recovery?.maxRecoveryAttempts ?? 0} 次 / 重试 {runtimeControls?.recovery?.maxRetryAttempts ?? 0} 次 / {runtimeControls?.recovery?.initialRetryDelayMs ?? 0}ms→{runtimeControls?.recovery?.maxRetryDelayMs ?? 0}ms / x{runtimeControls?.recovery?.backoffMultiplier ?? 1} / jitter {runtimeControls?.recovery?.jitterPercent ?? 0}%
               </p>
               <p>
+                上下文治理：压缩阈值 {runtimeControls?.contextCompressionThresholdPercent ?? 0}% / 截断目标 {runtimeControls?.contextTruncateTargetPercent ?? 0}%
+              </p>
+              <p>
                 调试链：dump {runtimeControls?.runtimeDebug?.dumpEnabled ? "开" : "关"} / trace {runtimeControls?.runtimeDebug?.traceEnabled ? "开" : "关"} / sample {runtimeControls?.runtimeDebug?.traceSampleRatePercent ?? 0}%
               </p>
               <p>内置 tools：{builtinToolSummary.allow} / {builtinToolSummary.prompt} / {builtinToolSummary.deny}</p>

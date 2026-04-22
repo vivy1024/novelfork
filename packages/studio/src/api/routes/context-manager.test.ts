@@ -43,6 +43,12 @@ describe("createContextManagerRouter", () => {
     const usagePayload = await usageResponse.json();
     expect(usagePayload.canCompress).toBe(false);
     expect(usagePayload.percentage).toBe(85);
+    expect(usagePayload.governance).toEqual({
+      source: "runtimeControls.contextCompressionThresholdPercent",
+      compressionThresholdPercent: 90,
+      truncateTargetPercent: 60,
+      compressionReason: "当前上下文未达到 runtimeControls.contextCompressionThresholdPercent=90% 的压缩阈值",
+    });
 
     const truncateResponse = await app.request("http://localhost/api/context/demo/truncate", {
       method: "POST",
@@ -52,5 +58,11 @@ describe("createContextManagerRouter", () => {
     expect(truncateResponse.status).toBe(200);
     const truncatePayload = await truncateResponse.json();
     expect(truncatePayload.targetTokens).toBe(60_000);
+    expect(truncatePayload.governance).toEqual({
+      source: "runtimeControls.contextTruncateTargetPercent",
+      compressionThresholdPercent: 90,
+      truncateTargetPercent: 60,
+      truncateReason: "本次截断目标来自 runtimeControls.contextTruncateTargetPercent=60%",
+    });
   });
 });
