@@ -19,6 +19,7 @@ import { readSessionFromCookie } from "./auth.js";
 import { createFilesystemStaticProvider, type StaticProvider } from "./static-provider.js";
 import { startHttpServer } from "./start-http-server.js";
 import { RunStore } from "./lib/run-store.js";
+import { runStartupOrchestrator, type StartupStaticMode } from "./lib/startup-orchestrator.js";
 
 import {
   createRunsRouter,
@@ -231,7 +232,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     app.route("", createDaemonRouter(ctx));
 
     // MCP Server management
-    app.route("", createMCPRouter(root));
+    app.route("", createMCPRouter(root, { runStore }));
 
     // Lorebook / World Info
     app.route("", createLorebookRouter(root));
@@ -252,7 +253,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     app.route("/api/agent/config", createAgentConfigRouter());
 
     // Tools API
-    app.route("/api/tools", createToolsRouter());
+    app.route("/api/tools", createToolsRouter({ runStore }));
 
     // Worktree management
     app.route("/api/worktree", createWorktreeRouter(root));
@@ -302,12 +303,21 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
 export async function startStudioServer(
   root: string,
   port = 4567,
-  options?: { readonly staticDir?: string; readonly staticProvider?: StaticProvider },
+  options?: { readonly staticDir?: string; readonly staticProvider?: StaticProvider; readonly staticMode?: StartupStaticMode },
 ): Promise<void> {
   // Auto-init project directory if novelfork.json doesn't exist (Zeabur / Docker deployment)
   const { existsSync: existsSyncInit } = await import("node:fs");
   const { mkdir: mkdirInit, writeFile: writeFileInit } = await import("node:fs/promises");
   const configPathInit = join(root, "novelfork.json");
+  let projectBootstrap: {
+    status: "success" | "skipped" | "failed";
+    reason: string;
+    note?: string;
+  } = {
+    status: "skipped",
+    reason: "项目配置已存在，无需自动初始化",
+    note: configPathInit,
+  };
   if (!existsSyncInit(configPathInit)) {
     console.log(`novelfork.json not found in ${root}, auto-initializing...`);
     await mkdirInit(root, { recursive: true });
@@ -329,6 +339,11 @@ export async function startStudioServer(
     };
     await writeFileInit(configPathInit, JSON.stringify(defaultConfig, null, 2), "utf-8");
     console.log("Auto-initialized project at", root);
+    projectBootstrap = {
+      status: "success",
+      reason: "项目配置已自动初始化",
+      note: "novelfork.json created",
+    };
   }
 
   // Multi-user mode: don't require global API key at startup.
@@ -342,6 +357,32 @@ export async function startStudioServer(
   // Serve frontend static files — single process for API + frontend
   const staticProvider = options?.staticProvider
     ?? (options?.staticDir ? createFilesystemStaticProvider(options.staticDir) : undefined);
+  const staticMode: StartupStaticMode = options?.staticMode
+    ?? (staticProvider ? (options?.staticDir ? "filesystem" : "embedded") : "missing");
+  const indexHtmlReady = staticProvider ? await staticProvider.hasIndexHtml() : false;
+  const startupSummary = await runStartupOrchestrator(ctx.state, {
+    projectBootstrap,
+    staticDelivery: {
+      mode: staticMode,
+      hasIndexHtml: indexHtmlReady,
+      status: indexHtmlReady || staticMode === "missing" ? "success" : "failed",
+      reason:
+        staticMode === "embedded"
+          ? "使用内嵌静态资源启动"
+          : staticMode === "filesystem"
+            ? "使用文件系统静态资源启动"
+            : "未提供前端静态资源，启动为 API-only 模式",
+    },
+    compileSmoke: {
+      status: indexHtmlReady ? "success" : "failed",
+      reason: indexHtmlReady ? "静态资源入口可用" : "静态资源入口缺失",
+      note: indexHtmlReady
+        ? `${staticMode}-index-ready`
+        : "build client/embed assets before delivery",
+    },
+  });
+  console.log("Startup recovery report:", JSON.stringify(startupSummary.recoveryReport));
+
   if (staticProvider) {
     app.get("*", async (c) => {
       if (c.req.path.startsWith("/api/")) {

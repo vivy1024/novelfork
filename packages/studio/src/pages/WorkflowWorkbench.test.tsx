@@ -59,6 +59,22 @@ describe("WorkflowWorkbench", () => {
                 blocklist: ["Edit"],
                 mcpStrategy: "inherit",
               },
+              recovery: {
+                resumeOnStartup: true,
+                maxRecoveryAttempts: 3,
+                maxRetryAttempts: 5,
+                initialRetryDelayMs: 1000,
+                maxRetryDelayMs: 30000,
+                backoffMultiplier: 2,
+                jitterPercent: 20,
+              },
+              runtimeDebug: {
+                tokenDebugEnabled: false,
+                rateDebugEnabled: false,
+                dumpEnabled: true,
+                traceEnabled: true,
+                traceSampleRatePercent: 50,
+              },
             },
           },
           loading: false,
@@ -150,6 +166,8 @@ describe("WorkflowWorkbench", () => {
     expect(screen.getByText("allowlist：2 项（Read / Write）")).toBeTruthy();
     expect(screen.getByText("blocklist：1 项（Edit）")).toBeTruthy();
     expect(screen.getByText("mcpStrategy：inherit")).toBeTruthy();
+    expect(screen.getByText(/恢复策略：启动恢复开 .* 恢复 3 次 .* 重试 5 次 .* 1000ms→30000ms .* x2 .* jitter 20%/)).toBeTruthy();
+    expect(screen.getByText(/调试链：dump 开 .* trace 开 .* sample 50%/)).toBeTruthy();
     expect(screen.getAllByText("策略来源：runtimeControls.toolAccess").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText(/已发现\s*5\s*个工具/)).toBeTruthy();
     expect(screen.getByText(/已启用\s*3\s*个工具/)).toBeTruthy();

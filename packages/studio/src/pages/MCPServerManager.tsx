@@ -395,6 +395,7 @@ export function MCPServerManager({ nav, theme, t }: Props) {
                     <li>连接状态：{renderStatusLabel(server.status)}</li>
                     <li>已发现工具：{server.toolCount}</li>
                     <li>连接入口：{server.transport === "sse" ? (server.url ?? "未配置") : (server.command ?? "未配置")}</li>
+                    <li>调用执行链：遵循 Settings 的重试 / trace / dump 配置</li>
                   </ul>
                 </div>
               </CardContent>

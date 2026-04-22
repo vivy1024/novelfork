@@ -7,6 +7,8 @@ import { Hono } from "hono";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { MCPClientImpl, type MCPServerConfig as CoreMCPConfig } from "@vivy1024/novelfork-core";
+import type { RunStore } from "../lib/run-store.js";
+import { executeWithRuntimePolicy } from "../lib/execution-runtime.js";
 import { getMCPToolDecision, type ToolAccessReasonKey } from "../lib/runtime-tool-access.js";
 import { loadUserConfig } from "../lib/user-config-service.js";
 
@@ -23,6 +25,12 @@ interface MCPServerEntry {
 interface ManagedServer {
   readonly entry: MCPServerEntry;
   readonly client: MCPClientImpl;
+}
+
+interface MCPRouterOptions {
+  readonly runStore?: RunStore;
+  readonly sleep?: (ms: number) => Promise<void>;
+  readonly random?: () => number;
 }
 
 interface MCPRegistryTool {
@@ -47,7 +55,7 @@ export function resetMCPRuntime() {
   managedServers.clear();
 }
 
-export function createMCPRouter(projectRoot: string): Hono {
+export function createMCPRouter(projectRoot: string, options: MCPRouterOptions = {}): Hono {
   const app = new Hono();
 
   async function loadConfig(): Promise<MCPServerEntry[]> {
@@ -293,11 +301,46 @@ export function createMCPRouter(projectRoot: string): Hono {
       );
     }
 
-    const result = await managed.client.callTool({
-      name: body.tool,
-      arguments: body.arguments ?? {},
+    const execution = await executeWithRuntimePolicy({
+      runStore: options.runStore,
+      action: "tool",
+      label: `MCP ${id}:${body.tool}`,
+      recovery: userConfig.runtimeControls.recovery,
+      runtimeDebug: userConfig.runtimeControls.runtimeDebug,
+      input: { serverId: id, tool: body.tool, arguments: body.arguments ?? {} },
+      sleep: options.sleep,
+      random: options.random,
+      execute: async () => {
+        try {
+          const result = await managed.client.callTool({
+            name: body.tool,
+            arguments: body.arguments ?? {},
+          });
+          return { success: true as const, value: result };
+        } catch (error) {
+          return {
+            success: false as const,
+            error: error instanceof Error ? error.message : String(error),
+          };
+        }
+      },
     });
-    return c.json(result);
+
+    if (!execution.success) {
+      return c.json(
+        {
+          success: false,
+          error: execution.error,
+          execution: execution.execution,
+        },
+        500,
+      );
+    }
+
+    return c.json({
+      ...execution.value,
+      execution: execution.execution,
+    });
   });
 
   return app;

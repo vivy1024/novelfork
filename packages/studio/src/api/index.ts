@@ -21,7 +21,7 @@ if (!existsSync(join(distDir, "index.html"))) {
   process.exit(1);
 }
 
-startStudioServer(root, port, { staticDir: distDir }).catch((e) => {
+startStudioServer(root, port, { staticDir: distDir, staticMode: "filesystem" }).catch((e) => {
   console.error("Failed to start studio:", e);
   process.exit(1);
 });

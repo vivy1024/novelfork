@@ -68,6 +68,7 @@ describe("MCPServerManager", () => {
     expect(screen.getAllByText(/来源：runtimeControls.toolAccess.mcpStrategy/).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("治理解释：MCP 策略直接允许")).toBeTruthy();
     expect(screen.getByText("治理解释：MCP 策略要求确认")).toBeTruthy();
+    expect(screen.getByText("调用执行链：遵循 Settings 的重试 / trace / dump 配置")).toBeTruthy();
   });
 
   it("allows editing an existing server and saving through the MCP API", () => {

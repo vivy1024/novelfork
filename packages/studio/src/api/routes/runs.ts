@@ -6,6 +6,20 @@ import { createRunEventStream } from "../lib/sse.js";
 export function createRunsRouter(runStore: RunStore): Hono {
   const app = new Hono();
 
+  app.get("/api/runs/events", () => {
+    const runId = "__all__";
+    const initialEvent = { type: "snapshot" as const, runId, runs: runStore.list() };
+
+    return createRunEventStream(
+      initialEvent,
+      (send) =>
+        runStore.subscribeAll(() => {
+          send({ type: "snapshot", runId, runs: runStore.list() });
+        }),
+      () => false,
+    );
+  });
+
   // Per-run SSE stream using upstream createRunEventStream
   app.get("/api/runs/:runId/events", (c) => {
     const runId = c.req.param("runId");

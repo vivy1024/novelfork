@@ -74,6 +74,7 @@ describe("RuntimeControlPanel", () => {
     expect(screen.getByText("未命中允许列表 → 拒绝")).toBeTruthy();
     expect(screen.getByText("命中阻止列表 → 拒绝")).toBeTruthy();
     expect(screen.getByText("MCP 策略 ask → 需确认")).toBeTruthy();
+    expect(screen.getByText("Tools Execute / MCP Call 已接入这里的重试、退避、trace、dump 配置。")).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText("压缩阈值 (%)"), {
       target: { value: "82" },
