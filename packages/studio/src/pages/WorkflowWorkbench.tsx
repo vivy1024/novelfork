@@ -10,6 +10,9 @@ import { Bot,
 } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 
+import { useRunListStream } from "@/hooks/use-run-events";
+import type { StudioRun } from "@/shared/contracts";
+
 import { PageScaffold } from "@/components/layout/PageScaffold";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -222,6 +225,14 @@ interface GovernanceReasonGroup {
   count: number;
 }
 
+interface GovernanceRunSummary {
+  total: number;
+  active: number;
+  failed: number;
+  latestStage: string;
+  latestRuns: ReadonlyArray<StudioRun>;
+}
+
 function formatToolSample(sample: GovernanceToolSample) {
   return `${sample.label} · ${sample.reason}`;
 }
@@ -250,6 +261,19 @@ function renderSampleList(samples: GovernanceToolSample[]) {
       ))}
     </ul>
   );
+}
+
+function summarizeLiveRuns(runs: ReadonlyArray<StudioRun>): GovernanceRunSummary {
+  const activeRuns = runs.filter((run) => run.status === "queued" || run.status === "running");
+  const failedRuns = runs.filter((run) => run.status === "failed");
+
+  return {
+    total: runs.length,
+    active: activeRuns.length,
+    failed: failedRuns.length,
+    latestStage: activeRuns[0]?.stage ?? runs[0]?.stage ?? "暂无运行",
+    latestRuns: runs.slice(0, 3),
+  };
 }
 
 function filterSamples(
@@ -290,6 +314,7 @@ export function WorkflowWorkbench({
   const workflowSettings = useApi<GovernanceSettingsResponse>("/settings/user");
   const mcpRegistry = useApi<MCPRegistryResponse>("/mcp/registry");
   const toolsRegistry = useApi<ToolsRegistryResponse>("/tools/list");
+  const liveRuns = useRunListStream();
   const workflowNav = {
     toDashboard: nav.toDashboard,
     toWorkflow: () => {
@@ -421,6 +446,7 @@ export function WorkflowWorkbench({
     ]),
     [filteredBuiltinDenySamples, filteredBuiltinPromptSamples, filteredMcpDenySamples, filteredMcpPromptSamples],
   );
+  const liveRunSummary = useMemo(() => summarizeLiveRuns(liveRuns), [liveRuns]);
 
   return (
     <PageScaffold
@@ -450,7 +476,7 @@ export function WorkflowWorkbench({
           <Badge variant="outline">Workflow / Routines / MCP / Permissions</Badge>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-4 xl:grid-cols-3">
+          <div className="grid gap-4 xl:grid-cols-4">
             <GovernanceSummaryCard title="当前 workflow 编排">
               <p className="text-foreground">当前区块：{currentTab.label}</p>
               <p>区块摘要：{currentTab.summary}</p>
@@ -490,6 +516,21 @@ export function WorkflowWorkbench({
               <p>已连接 {registrySummary?.connectedServers ?? 0} / {registrySummary?.totalServers ?? 0} 个 Server</p>
 
               <p>策略来源：{registrySummary?.policySource ?? "runtimeControls.toolAccess"}</p>
+            </GovernanceSummaryCard>
+
+            <GovernanceSummaryCard title="实时执行投影">
+              <p className="text-foreground">活跃 run：{liveRunSummary.active} / 总 run：{liveRunSummary.total}</p>
+              <p>失败 run：{liveRunSummary.failed}</p>
+              <p>最新阶段：{liveRunSummary.latestStage}</p>
+              {liveRunSummary.latestRuns.length === 0 ? (
+                <p>当前没有来自 runStore 的执行事实。</p>
+              ) : (
+                <ul className="space-y-1 text-xs">
+                  {liveRunSummary.latestRuns.map((run) => (
+                    <li key={run.id}>{run.action} · {run.status} · {run.stage} · {run.id}</li>
+                  ))}
+                </ul>
+              )}
             </GovernanceSummaryCard>
           </div>
 

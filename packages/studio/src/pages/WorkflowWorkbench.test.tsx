@@ -1,5 +1,26 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+class MockEventSource {
+  static instances: MockEventSource[] = [];
+
+  onmessage: ((event: MessageEvent<string>) => void) | null = null;
+  onerror: (() => void) | null = null;
+
+  constructor(public readonly url: string) {
+    MockEventSource.instances.push(this);
+  }
+
+  emit(payload: unknown) {
+    this.onmessage?.({ data: JSON.stringify(payload) } as MessageEvent<string>);
+  }
+
+  close() {
+    return undefined;
+  }
+}
+
+vi.stubGlobal("EventSource", MockEventSource as unknown as typeof EventSource);
 
 const { useApiMock } = vi.hoisted(() => ({
   useApiMock: vi.fn(),
@@ -43,6 +64,7 @@ beforeEach(() => {
   nav.toBook.mockReset();
   nav.toSettings.mockReset();
   nav.toWorkflow.mockReset();
+  MockEventSource.instances = [];
 });
 
 describe("WorkflowWorkbench", () => {
@@ -172,6 +194,49 @@ describe("WorkflowWorkbench", () => {
     expect(screen.getByText(/上下文治理：压缩阈值 80% .* 截断目标 70%/)).toBeTruthy();
     expect(screen.getByText(/调试链：dump 开 .* trace 开 .* sample 50%/)).toBeTruthy();
     expect(screen.getAllByText("策略来源：runtimeControls.toolAccess").length).toBeGreaterThanOrEqual(1);
+    expect(MockEventSource.instances[0]?.url).toBe("/api/runs/events");
+    act(() => {
+      MockEventSource.instances[0]?.emit({
+        type: "snapshot",
+        runId: "__all__",
+        runs: [
+          {
+            id: "run-live-1",
+            bookId: "demo-book",
+            chapter: 7,
+            chapterNumber: 7,
+            action: "tool",
+            status: "running",
+            stage: "Tool Read",
+            createdAt: "2026-04-21T10:00:00.000Z",
+            updatedAt: "2026-04-21T10:00:01.000Z",
+            startedAt: "2026-04-21T10:00:00.000Z",
+            finishedAt: null,
+            logs: [],
+          },
+          {
+            id: "run-live-2",
+            bookId: "demo-book",
+            chapter: 8,
+            chapterNumber: 8,
+            action: "audit",
+            status: "failed",
+            stage: "Audit Failed",
+            createdAt: "2026-04-21T09:59:00.000Z",
+            updatedAt: "2026-04-21T10:00:00.000Z",
+            startedAt: "2026-04-21T09:59:00.000Z",
+            finishedAt: "2026-04-21T10:00:00.000Z",
+            logs: [],
+            error: "audit failed",
+          },
+        ],
+      });
+    });
+    expect(screen.getByText(/活跃 run：1 \/ 总 run：2/)).toBeTruthy();
+    expect(screen.getByText(/失败 run：1/)).toBeTruthy();
+    expect(screen.getByText(/最新阶段：Tool Read/)).toBeTruthy();
+    expect(screen.getByText(/tool · running · Tool Read · run-live-1/)).toBeTruthy();
+    expect(screen.getByText(/audit · failed · Audit Failed · run-live-2/)).toBeTruthy();
     expect(screen.getByText(/已发现\s*5\s*个工具/)).toBeTruthy();
     expect(screen.getByText(/已启用\s*3\s*个工具/)).toBeTruthy();
     expect(screen.getByText(/allow\s*\/\s*prompt\s*\/\s*deny：2\s*\/\s*1\s*\/\s*2/)).toBeTruthy();

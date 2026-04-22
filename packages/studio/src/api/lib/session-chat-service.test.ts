@@ -395,10 +395,18 @@ describe("session-chat-service", () => {
             {
               id: "tool-bash-1",
               toolName: "Bash",
-              status: "success",
+              status: "error",
               command: "git status --short",
               output: " M packages/studio/src/components/ChatWindow.tsx",
               duration: 420,
+              error: "Tool falls back to defaultPermissionMode=ask",
+              result: {
+                allowed: false,
+                confirmationRequired: true,
+                source: "runtimeControls.defaultPermissionMode",
+                reasonKey: "default-prompt",
+                reason: "Tool falls back to defaultPermissionMode=ask",
+              },
             },
           ],
         },
@@ -412,6 +420,14 @@ describe("session-chat-service", () => {
         expect.objectContaining({
           toolName: "Bash",
           command: "git status --short",
+          error: "Tool falls back to defaultPermissionMode=ask",
+          result: expect.objectContaining({
+            allowed: false,
+            confirmationRequired: true,
+            source: "runtimeControls.defaultPermissionMode",
+            reasonKey: "default-prompt",
+            reason: "Tool falls back to defaultPermissionMode=ask",
+          }),
         }),
       ],
     });
@@ -419,6 +435,12 @@ describe("session-chat-service", () => {
       toolCalls: [
         expect.objectContaining({
           toolName: "Bash",
+          result: expect.objectContaining({
+            allowed: false,
+            confirmationRequired: true,
+            source: "runtimeControls.defaultPermissionMode",
+            reasonKey: "default-prompt",
+          }),
         }),
       ],
     });

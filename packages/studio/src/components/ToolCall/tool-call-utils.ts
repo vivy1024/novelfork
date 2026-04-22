@@ -53,7 +53,7 @@ export function normalizeToolCall(raw: unknown, index = 0): ToolCall | null {
   const startedAt = pickFirstNumber(raw, ["startedAt", "startTime", "timestamp"]);
   const finishedAt = pickFirstNumber(raw, ["finishedAt", "endTime"]);
   const input = raw.input ?? raw.params ?? raw.arguments ?? raw.args;
-  const result = raw.result ?? raw.data;
+  const result = raw.result ?? raw.data ?? extractToolCallResultEnvelope(raw);
 
   return {
     id: typeof raw.id === "string" ? raw.id : `${toolName}-${index}`,
@@ -225,6 +225,36 @@ function normalizeStatus(rawStatus: unknown, error?: string, exitCode?: number):
 
 function outputLikePending(rawStatus: unknown): boolean {
   return rawStatus === "in_progress" || rawStatus === "processing";
+}
+
+function extractToolCallResultEnvelope(raw: Record<string, unknown>) {
+  const envelopeKeys = ["success", "allowed", "confirmationRequired", "reason", "source", "reasonKey", "execution"] as const;
+  const envelope = Object.fromEntries(
+    envelopeKeys
+      .map((key) => [key, raw[key]])
+      .filter(([, value]) => value !== undefined),
+  );
+
+  return Object.keys(envelope).length > 0 ? envelope : undefined;
+}
+
+function extractToolCallExecution(raw: Record<string, unknown>) {
+  const executionRecord = isRecord(raw.execution) ? raw.execution : undefined;
+  const runId = typeof executionRecord?.runId === "string" ? executionRecord.runId : undefined;
+  const attempts = typeof executionRecord?.attempts === "number" ? executionRecord.attempts : undefined;
+  const traceEnabled = typeof executionRecord?.traceEnabled === "boolean" ? executionRecord.traceEnabled : undefined;
+  const dumpEnabled = typeof executionRecord?.dumpEnabled === "boolean" ? executionRecord.dumpEnabled : undefined;
+
+  if (!runId && attempts === undefined && traceEnabled === undefined && dumpEnabled === undefined) {
+    return undefined;
+  }
+
+  return {
+    runId,
+    attempts,
+    traceEnabled,
+    dumpEnabled,
+  };
 }
 
 function pickFirstString(record: Record<string, unknown> | undefined, keys: readonly string[]): string | undefined {

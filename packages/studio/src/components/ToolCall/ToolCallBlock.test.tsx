@@ -259,6 +259,34 @@ describe("ToolCallBlock", () => {
     expect(screen.getByText(/实时状态：succeeded/)).toBeTruthy();
   });
 
+  it("shows governance explanation for permission-gated tool calls", () => {
+    render(
+      <ToolCallBlock
+        toolCall={{
+          toolName: "Read",
+          status: "error",
+          summary: "读取被权限链阻止",
+          result: {
+            allowed: false,
+            confirmationRequired: true,
+            source: "runtimeControls.defaultPermissionMode",
+            reasonKey: "default-prompt",
+            reason: "Tool falls back to defaultPermissionMode=ask",
+          },
+          error: "Tool falls back to defaultPermissionMode=ask",
+        }}
+      />,
+    );
+
+    expect(screen.getByTestId("tool-governance-card")).toBeTruthy();
+    expect(screen.getByText("治理解释")).toBeTruthy();
+    expect(screen.getByText(/默认权限要求确认/)).toBeTruthy();
+    expect(screen.getByText(/来源：runtimeControls.defaultPermissionMode/)).toBeTruthy();
+    expect(screen.getByText(/执行：拒绝/)).toBeTruthy();
+    expect(screen.getByText(/执行：需确认/)).toBeTruthy();
+    expect(screen.getByText(/原因：Tool falls back to defaultPermissionMode=ask/)).toBeTruthy();
+  });
+
   it("shows fullscreen, view-source and rerun actions for completed tool calls", async () => {
     const onReplay = vi.fn();
 

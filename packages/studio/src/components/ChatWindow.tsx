@@ -1205,6 +1205,11 @@ function normalizeReplayResult(toolCall: ToolCall, replayResponse: unknown): Too
     output,
     result: {
       ...(resultRecord ?? {}),
+      allowed: typeof payload.allowed === "boolean" ? payload.allowed : undefined,
+      confirmationRequired: payload.confirmationRequired === true,
+      source: typeof payload.source === "string" ? payload.source : undefined,
+      reason: typeof payload.reason === "string" ? payload.reason : undefined,
+      reasonKey: typeof payload.reasonKey === "string" ? payload.reasonKey : undefined,
       execution: payload.execution,
     },
     error: typeof payload.error === "string" ? payload.error : undefined,

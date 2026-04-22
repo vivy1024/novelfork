@@ -329,6 +329,37 @@ describe("ChatWindow", () => {
     });
   });
 
+  it("preserves governance metadata when a replayed tool call requires confirmation", async () => {
+    fetchJsonMock.mockImplementation((async (...args: [string, ...unknown[]]) => {
+      const [url, options] = args as [string, { method?: string; body?: string } | undefined];
+      if (url === "/api/sessions/session-abc123456/chat/state") {
+        return defaultFetchJsonImplementation(url, options);
+      }
+      if (url === "/api/tools/execute") {
+        return {
+          success: false,
+          allowed: false,
+          confirmationRequired: true,
+          source: "runtimeControls.defaultPermissionMode",
+          reasonKey: "default-prompt",
+          reason: "Tool falls back to defaultPermissionMode=ask",
+          error: "Tool falls back to defaultPermissionMode=ask",
+        };
+      }
+      return defaultFetchJsonImplementation(url, options);
+    }) as any);
+
+    render(<ChatWindow windowId="window-1" theme="light" />);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    fireEvent.click(screen.getByRole("button", { name: "展开最近执行链" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "重跑" }).at(-1)!);
+
+    expect((await screen.findAllByText(/默认权限要求确认/)).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/来源：runtimeControls.defaultPermissionMode/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/执行：需确认/).length).toBeGreaterThan(0);
+  });
+
   it("tracks websocket connectivity outside the persisted window shell", async () => {
     mockRuntimeState = createMockRuntimeState({ wsConnections: { "window-1": false } });
 
@@ -607,6 +638,42 @@ describe("ChatWindow", () => {
       agentId: "writer",
       sessionId: "session-2",
     });
+  });
+
+  it("renders governance metadata from raw assistant tool_calls pushed over websocket", async () => {
+    render(<ChatWindow windowId="window-1" theme="light" />);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    await act(async () => {
+      MockWebSocket.instances[0]?.onmessage?.({
+        data: JSON.stringify({
+          message: "本次读取被权限链拦下。",
+          tool_calls: [
+            {
+              id: "tool-read-blocked",
+              tool_name: "Read",
+              status: "error",
+              arguments: { file_path: "books/demo/outline.md" },
+              source: "runtimeControls.defaultPermissionMode",
+              reasonKey: "default-prompt",
+              reason: "Tool falls back to defaultPermissionMode=ask",
+              confirmationRequired: true,
+              allowed: false,
+              error: "Tool falls back to defaultPermissionMode=ask",
+            },
+          ],
+        }),
+      });
+      await Promise.resolve();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "展开最近执行链" }));
+
+    expect(screen.getByText("本次读取被权限链拦下。")).toBeTruthy();
+    expect(screen.getAllByText(/默认权限要求确认/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/来源：runtimeControls.defaultPermissionMode/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/执行：需确认/).length).toBeGreaterThan(0);
   });
 
   it("reconnects websocket with resumeFromSeq after receiving sequenced session messages", async () => {
