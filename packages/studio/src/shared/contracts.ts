@@ -104,7 +104,7 @@ export interface ReviewActionPayload {
 
 // --- Runs ---
 
-export type RunAction = "draft" | "audit" | "revise" | "write-next";
+export type RunAction = "draft" | "audit" | "revise" | "write-next" | "tool";
 
 export type RunStatus = "queued" | "running" | "succeeded" | "failed";
 
@@ -139,6 +139,7 @@ export interface RunStreamEvent {
   readonly type: "snapshot" | "status" | "stage" | "log";
   readonly runId: string;
   readonly run?: StudioRun;
+  readonly runs?: ReadonlyArray<StudioRun>;
   readonly status?: RunStatus;
   readonly stage?: string;
   readonly log?: RunLogEntry;

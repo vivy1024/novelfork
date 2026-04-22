@@ -157,6 +157,59 @@ describe("startup orchestrator", () => {
     });
   });
 
+  it("records delivery and compile smoke actions when startup packaging context is provided", async () => {
+    const state = createState();
+
+    const summary = await runStartupOrchestrator(state, {
+      projectBootstrap: {
+        status: "success",
+        reason: "项目配置已自动初始化",
+        note: "novelfork.json created",
+      },
+      staticDelivery: {
+        mode: "embedded",
+        hasIndexHtml: true,
+        reason: "使用内嵌静态资源启动",
+      },
+      compileSmoke: {
+        status: "success",
+        reason: "编译产物检查通过",
+        note: "embedded-index-ready",
+      },
+    });
+
+    expect(summary.recoveryReport.actions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "project-bootstrap",
+          scope: "library",
+          status: "success",
+          reason: "项目配置已自动初始化",
+          note: "novelfork.json created",
+        }),
+        expect.objectContaining({
+          kind: "static-delivery",
+          scope: "library",
+          status: "success",
+          reason: "使用内嵌静态资源启动",
+          note: "mode=embedded, indexHtml=true",
+        }),
+        expect.objectContaining({
+          kind: "compile-smoke",
+          scope: "library",
+          status: "success",
+          reason: "编译产物检查通过",
+          note: "embedded-index-ready",
+        }),
+      ]),
+    );
+    expect(summary.delivery).toMatchObject({
+      staticMode: "embedded",
+      indexHtmlReady: true,
+      compileSmokeStatus: "success",
+    });
+  });
+
   it("rebuilds the in-memory search index from current book files", async () => {
     tempRoot = await mkdtemp(join(tmpdir(), "novelfork-search-rebuild-"));
     const bookDir = join(tempRoot, "books", "alpha");

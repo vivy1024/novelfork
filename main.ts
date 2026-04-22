@@ -53,4 +53,5 @@ if (!staticProvider) {
 await startStudioServer(projectRoot, port, {
   staticDir: hasStatic ? staticDir : undefined,
   staticProvider,
+  staticMode: usingEmbeddedAssets ? "embedded" : hasStatic ? "filesystem" : "missing",
 });

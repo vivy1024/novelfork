@@ -5,6 +5,8 @@ import { PageEmptyState } from "@/components/layout/PageEmptyState";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useRunListStream } from "@/hooks/use-run-events";
+import type { StudioRun } from "@/shared/contracts";
 import { fetchJson } from "../../hooks/use-api";
 
 interface RequestLog {
@@ -22,6 +24,7 @@ export function RequestsTab() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [limit, setLimit] = useState(100);
+  const liveRuns = useRunListStream();
 
   useEffect(() => {
     void loadLogs();
@@ -50,6 +53,18 @@ export function RequestsTab() {
       averageDuration,
     };
   }, [logs]);
+
+  const runSummary = useMemo(() => {
+    const running = liveRuns.filter((run) => run.status === "running" || run.status === "queued");
+    const failed = liveRuns.filter((run) => run.status === "failed");
+    return {
+      total: liveRuns.length,
+      running: running.length,
+      failed: failed.length,
+      latestStage: running[0]?.stage ?? liveRuns[0]?.stage ?? "暂无运行",
+      latestRuns: liveRuns.slice(0, 5),
+    };
+  }, [liveRuns]);
 
   const methodVariant = (method: string) => {
     switch (method.toUpperCase()) {
@@ -105,6 +120,38 @@ export function RequestsTab() {
         <SummaryCard title="慢请求" value={String(summary.slowRequests)} description="耗时大于等于 2000ms" icon={TimerReset} />
         <SummaryCard title="平均耗时" value={`${summary.averageDuration}ms`} description="最近请求的平均响应时间" icon={RefreshCw} />
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>实时运行总览</CardTitle>
+          <CardDescription>共享 run 事实源，直接观察当前工具/写作/审计任务状态。</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-4">
+            <SummaryCard title="运行总数" value={String(runSummary.total)} description="当前内存 runStore 中的任务" icon={FileText} />
+            <SummaryCard title="运行中" value={String(runSummary.running)} description="queued / running 状态" icon={Clock3} />
+            <SummaryCard title="失败运行" value={String(runSummary.failed)} description="需要优先排查的失败 run" icon={TimerReset} />
+            <SummaryCard title="最近阶段" value={runSummary.latestStage} description="最新活动 run 的阶段" icon={RefreshCw} />
+          </div>
+          {runSummary.latestRuns.length === 0 ? (
+            <PageEmptyState title="暂无运行任务" description="当工具执行、写作、审计进入 runStore 后，这里会实时展示最新运行状态。" />
+          ) : (
+            <div className="space-y-2">
+              {runSummary.latestRuns.map((run) => (
+                <div key={run.id} className="rounded-lg border border-border/60 bg-muted/30 p-3 text-sm">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant={run.status === "failed" ? "destructive" : run.status === "succeeded" ? "secondary" : "outline"}>{run.status}</Badge>
+                    <span className="font-mono text-foreground">{run.id}</span>
+                    <span className="text-muted-foreground">{run.action}</span>
+                    <span className="text-muted-foreground">{run.stage}</span>
+                  </div>
+                  {run.error ? <div className="mt-2 text-xs text-destructive">{run.error}</div> : null}
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {logs.length === 0 ? (
         <PageEmptyState title="暂无请求记录" description="接入请求追踪后，这里会显示请求明细、成功率和性能波动。" />

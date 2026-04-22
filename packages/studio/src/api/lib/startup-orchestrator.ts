@@ -4,21 +4,48 @@ export interface StartupOrchestratorState extends SearchIndexRebuildState {
   ensureRuntimeState(bookId: string, fallbackChapter?: number): Promise<void>;
 }
 
+export type StartupOrchestratorRecoveryStatus = "success" | "skipped" | "failed";
+export type StartupStaticMode = "embedded" | "filesystem" | "missing";
+
 export interface StartupOrchestratorFailure {
   readonly bookId?: string;
-  readonly phase: "migration" | "search-index";
+  readonly phase: "project-bootstrap" | "migration" | "search-index" | "static-delivery" | "compile-smoke";
   readonly message: string;
 }
 
-export type StartupOrchestratorRecoveryStatus = "success" | "skipped" | "failed";
-
 export interface StartupOrchestratorRecoveryAction {
-  readonly kind: "runtime-state" | "search-index";
+  readonly kind: "project-bootstrap" | "runtime-state" | "search-index" | "static-delivery" | "compile-smoke";
   readonly scope: "book" | "library";
   readonly status: StartupOrchestratorRecoveryStatus;
   readonly reason: string;
   readonly note?: string;
   readonly bookId?: string;
+}
+
+export interface StartupOrchestratorOptions {
+  readonly projectBootstrap?: {
+    readonly status: StartupOrchestratorRecoveryStatus;
+    readonly reason: string;
+    readonly note?: string;
+  };
+  readonly staticDelivery?: {
+    readonly mode: StartupStaticMode;
+    readonly hasIndexHtml: boolean;
+    readonly status?: StartupOrchestratorRecoveryStatus;
+    readonly reason: string;
+    readonly note?: string;
+  };
+  readonly compileSmoke?: {
+    readonly status: StartupOrchestratorRecoveryStatus;
+    readonly reason: string;
+    readonly note?: string;
+  };
+}
+
+export interface StartupOrchestratorDeliverySummary {
+  readonly staticMode: StartupStaticMode;
+  readonly indexHtmlReady: boolean;
+  readonly compileSmokeStatus: StartupOrchestratorRecoveryStatus | "unknown";
 }
 
 export interface StartupOrchestratorRecoveryReport {
@@ -39,6 +66,7 @@ export interface StartupOrchestratorSummary {
   readonly indexedDocuments: number;
   readonly skippedBooks: number;
   readonly failures: ReadonlyArray<StartupOrchestratorFailure>;
+  readonly delivery: StartupOrchestratorDeliverySummary;
   readonly recoveryReport: StartupOrchestratorRecoveryReport;
 }
 
@@ -68,6 +96,22 @@ function summarizeActions(actions: ReadonlyArray<StartupOrchestratorRecoveryActi
   );
 }
 
+function pushOptionalAction(
+  actions: StartupOrchestratorRecoveryAction[],
+  failures: StartupOrchestratorFailure[],
+  action: StartupOrchestratorRecoveryAction,
+  phase: StartupOrchestratorFailure["phase"],
+): void {
+  actions.push(action);
+  if (action.status === "failed") {
+    failures.push({
+      phase,
+      bookId: action.bookId,
+      message: action.note ?? action.reason,
+    });
+  }
+}
+
 /**
  * 启动期最小恢复编排：
  * 1. 按书执行 structured runtime state 补建 / 修复
@@ -77,13 +121,31 @@ function summarizeActions(actions: ReadonlyArray<StartupOrchestratorRecoveryActi
  * 这不是全量运维编排，也不是持久化索引恢复；它只负责把启动期必需的
  * 运行态收口到“可继续服务”的最小一致状态。
  */
-export async function runStartupOrchestrator(state: StartupOrchestratorState): Promise<StartupOrchestratorSummary> {
+export async function runStartupOrchestrator(
+  state: StartupOrchestratorState,
+  options: StartupOrchestratorOptions = {},
+): Promise<StartupOrchestratorSummary> {
   const startedAt = new Date();
   const bookIds = await state.listBooks();
   const failures: StartupOrchestratorFailure[] = [];
   const actions: StartupOrchestratorRecoveryAction[] = [];
   let migratedBooks = 0;
   let indexSummary: SearchIndexRebuildSummary | null = null;
+
+  if (options.projectBootstrap) {
+    pushOptionalAction(
+      actions,
+      failures,
+      {
+        kind: "project-bootstrap",
+        scope: "library",
+        status: options.projectBootstrap.status,
+        reason: options.projectBootstrap.reason,
+        note: options.projectBootstrap.note,
+      },
+      "project-bootstrap",
+    );
+  }
 
   for (const bookId of bookIds) {
     try {
@@ -149,8 +211,43 @@ export async function runStartupOrchestrator(state: StartupOrchestratorState): P
     });
   }
 
+  if (options.staticDelivery) {
+    pushOptionalAction(
+      actions,
+      failures,
+      {
+        kind: "static-delivery",
+        scope: "library",
+        status: options.staticDelivery.status ?? (options.staticDelivery.hasIndexHtml ? "success" : "failed"),
+        reason: options.staticDelivery.reason,
+        note: options.staticDelivery.note ?? `mode=${options.staticDelivery.mode}, indexHtml=${options.staticDelivery.hasIndexHtml}`,
+      },
+      "static-delivery",
+    );
+  }
+
+  if (options.compileSmoke) {
+    pushOptionalAction(
+      actions,
+      failures,
+      {
+        kind: "compile-smoke",
+        scope: "library",
+        status: options.compileSmoke.status,
+        reason: options.compileSmoke.reason,
+        note: options.compileSmoke.note,
+      },
+      "compile-smoke",
+    );
+  }
+
   const finishedAt = new Date();
   const counts = summarizeActions(actions);
+  const delivery = {
+    staticMode: options.staticDelivery?.mode ?? "missing",
+    indexHtmlReady: options.staticDelivery?.hasIndexHtml ?? false,
+    compileSmokeStatus: options.compileSmoke?.status ?? "unknown",
+  } as const;
 
   return {
     bookCount: bookIds.length,
@@ -158,6 +255,7 @@ export async function runStartupOrchestrator(state: StartupOrchestratorState): P
     indexedDocuments: indexSummary?.indexedDocuments ?? 0,
     skippedBooks: indexSummary?.skippedBooks ?? 0,
     failures,
+    delivery,
     recoveryReport: {
       startedAt: startedAt.toISOString(),
       finishedAt: finishedAt.toISOString(),

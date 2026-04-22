@@ -21,6 +21,8 @@ import { fetchJson, useApi, postApi } from "../hooks/use-api";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
 import { useColors } from "../hooks/use-colors";
+import { useWindowStore } from "@/stores/windowStore";
+import type { NarratorSessionRecord } from "@/shared/session-types";
 
 interface Nav {
   toDashboard: () => void;
@@ -191,6 +193,7 @@ export function BookCreate({ nav, theme, t, projectCreateDraft, flowRevision = 0
   const c = useColors(theme);
   const { data: genreData } = useApi<{ genres: ReadonlyArray<GenreInfo> }>("/genres");
   const { data: project } = useApi<{ language: string }>("/project");
+  const addWindow = useWindowStore((state) => state.addWindow);
 
   const projectLang = (project?.language ?? "zh") as "zh" | "en";
 
@@ -344,6 +347,10 @@ export function BookCreate({ nav, theme, t, projectCreateDraft, flowRevision = 0
         creating: managedProjectCreate ? "创建中..." : "初始化中...",
       };
 
+  const createDefaultSessionTitle = projectLang === "en"
+    ? `New book “${title.trim()}” writing session`
+    : `新书《${title.trim()}》写作会话`;
+
   const handleCreate = async () => {
     if (!title.trim()) {
       setError(t("create.titleRequired"));
@@ -367,6 +374,23 @@ export function BookCreate({ nav, theme, t, projectCreateDraft, flowRevision = 0
         initializationPlan: currentProjectCreateDraft.initializationPlan,
       }));
       await waitForBookReady(result.bookId);
+      const session = await fetchJson<NarratorSessionRecord>("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: createDefaultSessionTitle,
+          agentId: "writer",
+          sessionMode: "chat",
+          projectId: result.bookId,
+          worktree: projectInit.worktreeName,
+        }),
+      });
+      addWindow({
+        title: session.title,
+        agentId: session.agentId,
+        sessionId: session.id,
+        sessionMode: session.sessionMode,
+      });
       nav.toBook(result.bookId);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create book");

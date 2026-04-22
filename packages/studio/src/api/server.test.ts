@@ -17,6 +17,26 @@ const loadChapterIndexMock = vi.fn();
 const createLLMClientMock = vi.fn(() => ({}));
 const chatCompletionMock = vi.fn();
 const loadProjectConfigMock = vi.fn();
+const startHttpServerMock = vi.fn(async () => undefined);
+const startupOrchestratorMock = vi.fn(async () => ({
+  bookCount: 0,
+  migratedBooks: 0,
+  indexedDocuments: 0,
+  skippedBooks: 0,
+  failures: [],
+  delivery: {
+    staticMode: "missing",
+    indexHtmlReady: false,
+    compileSmokeStatus: "failed",
+  },
+  recoveryReport: {
+    startedAt: new Date(0).toISOString(),
+    finishedAt: new Date(0).toISOString(),
+    durationMs: 0,
+    actions: [],
+    counts: { success: 0, skipped: 0, failed: 0 },
+  },
+}));
 const pipelineConfigs: unknown[] = [];
 
 const logger = {
@@ -25,6 +45,14 @@ const logger = {
   warn: vi.fn(),
   error: vi.fn(),
 };
+
+vi.mock("./start-http-server.js", () => ({
+  startHttpServer: startHttpServerMock,
+}));
+
+vi.mock("./lib/startup-orchestrator.js", () => ({
+  runStartupOrchestrator: startupOrchestratorMock,
+}));
 
 vi.mock("@vivy1024/novelfork-core", () => {
   class MockStateManager {
@@ -52,6 +80,10 @@ vi.mock("@vivy1024/novelfork-core", () => {
 
     async getNextChapterNumber(): Promise<number> {
       return 1;
+    }
+
+    async ensureRuntimeState(): Promise<void> {
+      return undefined;
     }
 
     bookDir(id: string): string {
@@ -195,6 +227,8 @@ describe("createStudioServer daemon lifecycle", () => {
       usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
     });
     loadProjectConfigMock.mockReset();
+    startHttpServerMock.mockClear();
+    startupOrchestratorMock.mockClear();
     loadProjectConfigMock.mockImplementation(async () => {
       const raw = JSON.parse(await readFile(join(root, "novelfork.json"), "utf-8")) as Record<string, unknown>;
       return {
@@ -780,5 +814,40 @@ describe("createStudioServer daemon lifecycle", () => {
     expect(response.status).toBe(200);
     expect(pipelineConfigs.at(-1)).toMatchObject({ externalContext: "以师债线为准同步状态。" });
     expect(resyncChapterArtifactsMock).toHaveBeenCalledWith("demo-book", 3);
+  });
+
+  it("runs startup orchestrator with delivery context before starting the http server", async () => {
+    const { startStudioServer } = await import("./server.js");
+
+    await startStudioServer(root, 4567, {
+      staticProvider: {
+        hasIndexHtml: vi.fn(async () => true),
+        readIndexHtml: vi.fn(async () => "<html></html>"),
+        readAsset: vi.fn(async () => null),
+      },
+      staticMode: "embedded",
+    });
+
+    expect(startupOrchestratorMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        listBooks: expect.any(Function),
+        ensureRuntimeState: expect.any(Function),
+      }),
+      expect.objectContaining({
+        projectBootstrap: expect.objectContaining({
+          status: "skipped",
+          reason: "项目配置已存在，无需自动初始化",
+        }),
+        staticDelivery: expect.objectContaining({
+          mode: "embedded",
+          hasIndexHtml: true,
+        }),
+        compileSmoke: expect.objectContaining({
+          status: "success",
+          reason: "静态资源入口可用",
+        }),
+      }),
+    );
+    expect(startHttpServerMock).toHaveBeenCalledWith(expect.objectContaining({ port: 4567 }));
   });
 });

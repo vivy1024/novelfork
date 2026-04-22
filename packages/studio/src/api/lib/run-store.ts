@@ -13,10 +13,12 @@ import type {
 } from "../../shared/contracts.js";
 
 type RunSubscriber = (event: RunStreamEvent) => void;
+type GlobalRunSubscriber = () => void;
 
 export class RunStore {
   private readonly runs = new Map<string, StudioRun>();
   private readonly subscribers = new Map<string, Set<RunSubscriber>>();
+  private readonly globalSubscribers = new Set<GlobalRunSubscriber>();
 
   create(input: {
     bookId: string;
@@ -130,6 +132,13 @@ export class RunStore {
     };
   }
 
+  subscribeAll(subscriber: GlobalRunSubscriber): () => void {
+    this.globalSubscribers.add(subscriber);
+    return () => {
+      this.globalSubscribers.delete(subscriber);
+    };
+  }
+
   private update(
     runId: string,
     patch: Partial<StudioRun> | ((run: StudioRun) => Partial<StudioRun>),
@@ -158,16 +167,22 @@ export class RunStore {
   }
 
   private publish(runId: string, event: RunStreamEvent): void {
-    const listeners = this.subscribers.get(runId);
-    if (!listeners || listeners.size === 0) return;
-
     const payload =
       event.type === "snapshot"
         ? { ...event, run: event.run ?? this.get(runId) ?? undefined }
         : event;
 
-    for (const listener of listeners) {
-      listener(payload as RunStreamEvent);
+    const listeners = this.subscribers.get(runId);
+    if (listeners && listeners.size > 0) {
+      for (const listener of listeners) {
+        listener(payload as RunStreamEvent);
+      }
+    }
+
+    if (this.globalSubscribers.size > 0) {
+      for (const listener of this.globalSubscribers) {
+        listener();
+      }
     }
   }
 }

@@ -453,6 +453,7 @@ export function RuntimeControlPanel() {
                   {TOOL_ACCESS_GOVERNANCE_EXPLANATIONS.map((item) => (
                     <li key={item}>{item}</li>
                   ))}
+                  <li>Tools Execute / MCP Call 已接入这里的重试、退避、trace、dump 配置。</li>
                 </ul>
               </CardContent>
             </Card>

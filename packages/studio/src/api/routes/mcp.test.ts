@@ -3,6 +3,8 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
+import { RunStore } from "../lib/run-store.js";
+
 const { userConfigState, mockCallTool } = vi.hoisted(() => ({
   userConfigState: {
     runtimeControls: {
@@ -48,11 +50,32 @@ describe("createMCPRouter", () => {
 
   beforeEach(async () => {
     resetMCPRuntime();
-    mockCallTool.mockClear();
+    mockCallTool.mockReset();
+    mockCallTool.mockImplementation(async ({ name, arguments: args }: { name: string; arguments: Record<string, unknown> }) => ({
+      content: [{ type: "text", text: `called:${name}` }],
+      structuredContent: args,
+      isError: false,
+    }));
     userConfigState.runtimeControls.defaultPermissionMode = "allow";
     userConfigState.runtimeControls.toolAccess.allowlist = [];
     userConfigState.runtimeControls.toolAccess.blocklist = [];
     userConfigState.runtimeControls.toolAccess.mcpStrategy = "inherit";
+    (userConfigState.runtimeControls as { recovery?: Record<string, unknown> }).recovery = {
+      resumeOnStartup: true,
+      maxRecoveryAttempts: 3,
+      maxRetryAttempts: 5,
+      initialRetryDelayMs: 1000,
+      maxRetryDelayMs: 30000,
+      backoffMultiplier: 2,
+      jitterPercent: 20,
+    };
+    (userConfigState.runtimeControls as { runtimeDebug?: Record<string, unknown> }).runtimeDebug = {
+      tokenDebugEnabled: false,
+      rateDebugEnabled: false,
+      dumpEnabled: false,
+      traceEnabled: false,
+      traceSampleRatePercent: 0,
+    };
     root = await mkdtemp(join(tmpdir(), "novelfork-mcp-route-"));
     await writeFile(
       join(root, "novelfork.json"),
@@ -285,5 +308,67 @@ describe("createMCPRouter", () => {
         }),
       ]),
     );
+  });
+
+  it("retries allowed MCP tool calls with runtime recovery settings and records execution metadata", async () => {
+    userConfigState.runtimeControls.toolAccess.mcpStrategy = "allow";
+    ((userConfigState.runtimeControls as unknown) as { recovery: Record<string, unknown> }).recovery = {
+      resumeOnStartup: true,
+      maxRecoveryAttempts: 3,
+      maxRetryAttempts: 2,
+      initialRetryDelayMs: 0,
+      maxRetryDelayMs: 0,
+      backoffMultiplier: 2,
+      jitterPercent: 0,
+    };
+    ((userConfigState.runtimeControls as unknown) as { runtimeDebug: Record<string, unknown> }).runtimeDebug = {
+      tokenDebugEnabled: false,
+      rateDebugEnabled: false,
+      dumpEnabled: true,
+      traceEnabled: true,
+      traceSampleRatePercent: 100,
+    };
+    mockCallTool
+      .mockRejectedValueOnce(new Error("temporary mcp failure"))
+      .mockResolvedValueOnce({
+        content: [{ type: "text", text: "called:read_file" }],
+        structuredContent: { path: "story.txt" },
+        isError: false,
+      });
+
+    const runStore = new RunStore();
+    const app = createMCPRouter(root, {
+      runStore,
+      sleep: vi.fn(async () => undefined),
+      random: () => 0,
+    });
+
+    const startResponse = await app.request("http://localhost/api/mcp/servers/stdio-server/start", {
+      method: "POST",
+    });
+    expect(startResponse.status).toBe(200);
+
+    const response = await app.request("http://localhost/api/mcp/servers/stdio-server/call", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tool: "read_file",
+        arguments: { path: "story.txt" },
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(mockCallTool).toHaveBeenCalledTimes(2);
+    const payload = await response.json();
+    expect(payload.execution).toMatchObject({
+      attempts: 2,
+      traceEnabled: true,
+      dumpEnabled: true,
+    });
+    expect(payload.execution.runId).toEqual(expect.any(String));
+
+    const run = runStore.get(payload.execution.runId);
+    expect(run?.status).toBe("succeeded");
+    expect(run?.logs.some((entry) => entry.message.includes("Attempt 1 failed"))).toBe(true);
   });
 });

@@ -1,8 +1,28 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 
 const fetchJsonMock = vi.fn();
 
+class MockEventSource {
+  static instances: MockEventSource[] = [];
+
+  onmessage: ((event: MessageEvent<string>) => void) | null = null;
+  onerror: (() => void) | null = null;
+
+  constructor(public readonly url: string) {
+    MockEventSource.instances.push(this);
+  }
+
+  emit(payload: unknown) {
+    this.onmessage?.({ data: JSON.stringify(payload) } as MessageEvent<string>);
+  }
+
+  close() {
+    return undefined;
+  }
+}
+
+vi.stubGlobal("EventSource", MockEventSource as unknown as typeof EventSource);
 vi.mock("../../hooks/use-api", () => ({
   fetchJson: (...args: unknown[]) => fetchJsonMock(...args),
 }));
@@ -12,6 +32,7 @@ import { RequestsTab } from "./RequestsTab";
 describe("RequestsTab", () => {
   beforeEach(() => {
     fetchJsonMock.mockReset();
+    MockEventSource.instances = [];
   });
 
   afterEach(() => {
@@ -50,5 +71,62 @@ describe("RequestsTab", () => {
     expect(await screen.findByText("/api/chat")).toBeTruthy();
     expect(screen.getByText("writer")).toBeTruthy();
     expect(screen.getAllByText("320ms").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("renders live run summary from the global run stream", async () => {
+    fetchJsonMock.mockResolvedValueOnce({
+      total: 0,
+      logs: [],
+    });
+
+    render(<RequestsTab />);
+
+    expect(await screen.findByText("总请求数")).toBeTruthy();
+    expect(MockEventSource.instances[0]?.url).toBe("/api/runs/events");
+
+    act(() => {
+      MockEventSource.instances[0]?.emit({
+        type: "snapshot",
+        runId: "__all__",
+        runs: [
+          {
+            id: "run-1",
+            bookId: "demo-book",
+            chapter: 3,
+            chapterNumber: 3,
+            action: "tool",
+            status: "running",
+            stage: "Tool Read",
+            createdAt: "2026-04-21T10:00:00.000Z",
+            updatedAt: "2026-04-21T10:00:01.000Z",
+            startedAt: "2026-04-21T10:00:00.000Z",
+            finishedAt: null,
+            logs: [],
+          },
+          {
+            id: "run-2",
+            bookId: "demo-book",
+            chapter: 4,
+            chapterNumber: 4,
+            action: "audit",
+            status: "failed",
+            stage: "Failed",
+            createdAt: "2026-04-21T09:59:00.000Z",
+            updatedAt: "2026-04-21T10:00:00.000Z",
+            startedAt: "2026-04-21T09:59:00.000Z",
+            finishedAt: "2026-04-21T10:00:00.000Z",
+            logs: [],
+            error: "audit failed",
+          },
+        ],
+      });
+    });
+
+    expect(screen.getByText("实时运行总览")).toBeTruthy();
+    expect(screen.getByText("运行中")).toBeTruthy();
+    expect(screen.getByText("失败运行")).toBeTruthy();
+    expect(screen.getAllByText("Tool Read").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText(/run-1/)).toBeTruthy();
+    expect(screen.getByText(/audit failed/)).toBeTruthy();
   });
 });

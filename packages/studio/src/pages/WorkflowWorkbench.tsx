@@ -32,6 +32,7 @@ import {
   type GovernanceSurface,
   type ToolAccessReasonKey,
 } from "../shared/tool-access-reasons";
+import type { RuntimeControlSettings } from "../types/settings";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
 import type { SettingsSection, WorkflowSection } from "../routes";
@@ -45,14 +46,7 @@ interface Nav {
 }
 
 interface GovernanceSettingsResponse {
-  runtimeControls?: {
-    defaultPermissionMode?: "allow" | "ask" | "deny";
-    toolAccess?: {
-      allowlist?: string[];
-      blocklist?: string[];
-      mcpStrategy?: "allow" | "ask" | "deny" | "inherit";
-    };
-  };
+  runtimeControls?: Partial<RuntimeControlSettings>;
 }
 
 interface MCPRegistryResponse {
@@ -472,6 +466,12 @@ export function WorkflowWorkbench({
               <p>allowlist：{formatStatusList(toolAccess?.allowlist)}</p>
               <p>blocklist：{formatStatusList(toolAccess?.blocklist)}</p>
               <p>mcpStrategy：{toolAccess?.mcpStrategy ?? registrySummary?.mcpStrategy ?? "inherit"}</p>
+              <p>
+                恢复策略：启动恢复{runtimeControls?.recovery?.resumeOnStartup ? "开" : "关"} / 恢复 {runtimeControls?.recovery?.maxRecoveryAttempts ?? 0} 次 / 重试 {runtimeControls?.recovery?.maxRetryAttempts ?? 0} 次 / {runtimeControls?.recovery?.initialRetryDelayMs ?? 0}ms→{runtimeControls?.recovery?.maxRetryDelayMs ?? 0}ms / x{runtimeControls?.recovery?.backoffMultiplier ?? 1} / jitter {runtimeControls?.recovery?.jitterPercent ?? 0}%
+              </p>
+              <p>
+                调试链：dump {runtimeControls?.runtimeDebug?.dumpEnabled ? "开" : "关"} / trace {runtimeControls?.runtimeDebug?.traceEnabled ? "开" : "关"} / sample {runtimeControls?.runtimeDebug?.traceSampleRatePercent ?? 0}%
+              </p>
               <p>内置 tools：{builtinToolSummary.allow} / {builtinToolSummary.prompt} / {builtinToolSummary.deny}</p>
               <p>内置来源：allowlist {builtinToolSummary.allowlist} / blocklist {builtinToolSummary.blocklist} / default {builtinToolSummary.defaultPermissionMode} / builtin {builtinToolSummary.builtinRules}</p>
               <p>内置原因：blocklist {builtinReasonSummary.blocklist} / default ask {builtinReasonSummary.defaultAsk} / builtin prompt {builtinReasonSummary.builtinPrompt}</p>
