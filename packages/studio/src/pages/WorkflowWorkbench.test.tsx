@@ -75,6 +75,11 @@ describe("WorkflowWorkbench", () => {
                 {
                   id: "fs",
                   name: "Filesystem",
+                  tools: [
+                    { name: "read_file", source: "runtimeControls.toolAccess.mcpStrategy" },
+                    { name: "write_file", source: "runtimeControls.toolAccess.mcpStrategy" },
+                    { name: "delete_file", source: "runtimeControls.toolAccess.blocklist" },
+                  ],
                 },
               ],
             },
@@ -88,10 +93,10 @@ describe("WorkflowWorkbench", () => {
           return {
             data: {
               tools: [
-                { name: "Read", access: "allow" },
-                { name: "Write", access: "prompt" },
-                { name: "Edit", access: "deny" },
-                { name: "Bash", access: "prompt" },
+                { name: "Read", access: "allow", source: "runtimeControls.toolAccess.allowlist" },
+                { name: "Write", access: "prompt", source: "builtin-permission-rules" },
+                { name: "Edit", access: "deny", source: "runtimeControls.toolAccess.blocklist" },
+                { name: "Bash", access: "prompt", source: "runtimeControls.defaultPermissionMode" },
               ],
             },
             loading: false,
@@ -139,8 +144,10 @@ describe("WorkflowWorkbench", () => {
     expect(screen.getAllByText("策略来源：runtimeControls.toolAccess").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText(/已发现\s*5\s*个工具/)).toBeTruthy();
     expect(screen.getByText(/已启用\s*3\s*个工具/)).toBeTruthy();
-    expect(screen.getByText("allow / prompt / deny：2 / 1 / 2")).toBeTruthy();
-    expect(screen.getByText("内置 tools：1 / 2 / 1")).toBeTruthy();
+    expect(screen.getByText(/allow\s*\/\s*prompt\s*\/\s*deny：2\s*\/\s*1\s*\/\s*2/)).toBeTruthy();
+    expect(screen.getByText(/内置 tools：1\s*\/\s*2\s*\/\s*1/)).toBeTruthy();
+    expect(screen.getByText((content) => content.includes("内置来源：allowlist 1") && content.includes("blocklist 1") && content.includes("default 1") && content.includes("builtin 1"))).toBeTruthy();
+    expect(screen.getByText((content) => content.includes("MCP 来源：mcpStrategy 2") && content.includes("blocklist 1"))).toBeTruthy();
     expect(screen.getByText("AgentPanel")).toBeTruthy();
 
     expect(screen.getByRole("button", { name: "返回工作流配置" })).toBeTruthy();
