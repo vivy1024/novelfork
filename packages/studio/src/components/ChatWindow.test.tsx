@@ -1,6 +1,6 @@
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 
 import { ChatWindow } from "./ChatWindow";
 import { useWindowRuntimeStore } from "@/stores/windowRuntimeStore";
@@ -249,6 +249,63 @@ describe("ChatWindow", () => {
     expect(screen.getByText("最近执行链")).toBeTruthy();
     expect(MockWebSocket.instances[0]?.url).toContain("/api/sessions/session-abc123456/chat");
     expect(MockWebSocket.instances[0]?.url).toContain("mode=chat");
+  });
+
+  it("expands the recent execution chain into concrete tool-call blocks", async () => {
+    render(<ChatWindow windowId="window-1" theme="light" />);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(screen.getByTestId("execution-chain-card")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "展开最近执行链" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "展开最近执行链" }));
+
+    expect(screen.getByText("链路详情")).toBeTruthy();
+    expect(screen.getAllByText("Read").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Bash").length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("group", { name: "工具调用动作区" }).length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "收起最近执行链" })).toBeTruthy();
+  });
+
+  it("replays a tool call and appends the replay result into the current message flow", async () => {
+    fetchJsonMock.mockImplementation((async (...args: [string, ...unknown[]]) => {
+      const [url, options] = args as [string, { method?: string; body?: string } | undefined];
+      if (url === "/api/sessions/session-abc123456/chat/state") {
+        return defaultFetchJsonImplementation(url, options);
+      }
+      if (url === "/api/tools/execute") {
+        return {
+          success: true,
+          result: {
+            success: true,
+            data: " M packages/studio/src/components/ChatWindow.tsx\n M packages/studio/src/components/ToolCall/ToolCallBlock.tsx",
+          },
+          execution: {
+            runId: "run-replay-1",
+            attempts: 1,
+            traceEnabled: true,
+            dumpEnabled: false,
+          },
+        };
+      }
+      return defaultFetchJsonImplementation(url, options);
+    }) as any);
+
+    render(<ChatWindow windowId="window-1" theme="light" />);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    fireEvent.click(screen.getByRole("button", { name: "展开最近执行链" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "重跑" }).at(-1)!);
+
+    expect(await screen.findByText("已重跑 Bash")).toBeTruthy();
+    expect(screen.getAllByText("Bash").length).toBeGreaterThan(1);
+    expect(screen.getAllByText(/重跑完成：Bash/).length).toBeGreaterThan(1);
+    expect(screen.getAllByText(/run-replay-1/).length).toBeGreaterThan(1);
+    expect(fetchJsonMock).toHaveBeenCalledWith(
+      "/api/tools/execute",
+      expect.objectContaining({ method: "POST" }),
+    );
   });
 
   it("tracks websocket connectivity outside the persisted window shell", async () => {
@@ -566,13 +623,19 @@ describe("ChatWindow", () => {
       await Promise.resolve();
       await Promise.resolve();
 
-      MockWebSocket.instances[0]?.onclose?.();
-      scheduledReconnect?.();
-      await Promise.resolve();
-      await Promise.resolve();
+      await act(async () => {
+        MockWebSocket.instances[0]?.onclose?.();
+        await Promise.resolve();
+      });
+      await act(async () => {
+        scheduledReconnect?.();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
 
       expect(MockWebSocket.instances).toHaveLength(2);
       expect(MockWebSocket.instances[1]?.url).toContain("resumeFromSeq=2");
+      expect(screen.getByText("正在回放会话历史…")).toBeTruthy();
     } finally {
       setTimeoutSpy.mockRestore();
     }
@@ -663,12 +726,18 @@ describe("ChatWindow", () => {
       await Promise.resolve();
       await Promise.resolve();
 
-      MockWebSocket.instances[0]?.onclose?.();
-      scheduledReconnect?.();
-      await Promise.resolve();
-      await Promise.resolve();
+      await act(async () => {
+        MockWebSocket.instances[0]?.onclose?.();
+        await Promise.resolve();
+      });
+      await act(async () => {
+        scheduledReconnect?.();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
       await Promise.resolve();
 
+      expect(screen.getByText("历史已重置，正在重新同步会话…")).toBeTruthy();
       expect(fetchJsonMock).toHaveBeenCalledWith("/api/sessions/session-abc123456/chat/history?sinceSeq=2");
       expect(fetchJsonMock.mock.calls.filter(([url]) => url === "/api/sessions/session-abc123456/chat/state").length).toBeGreaterThanOrEqual(2);
       expect(MockWebSocket.instances).toHaveLength(2);
@@ -762,12 +831,18 @@ describe("ChatWindow", () => {
       await Promise.resolve();
       await Promise.resolve();
 
-      MockWebSocket.instances[0]?.onclose?.();
-      scheduledReconnect?.();
-      await Promise.resolve();
-      await Promise.resolve();
+      await act(async () => {
+        MockWebSocket.instances[0]?.onclose?.();
+        await Promise.resolve();
+      });
+      await act(async () => {
+        scheduledReconnect?.();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
       await Promise.resolve();
 
+      expect(screen.getByText("历史已重置，正在重新同步会话…")).toBeTruthy();
       expect(fetchJsonMock).toHaveBeenCalledWith("/api/sessions/session-abc123456/chat/history?sinceSeq=2");
       expect(fetchJsonMock.mock.calls.filter(([url]) => url === "/api/sessions/session-abc123456/chat/state").length).toBeGreaterThanOrEqual(2);
       expect(MockWebSocket.instances).toHaveLength(2);

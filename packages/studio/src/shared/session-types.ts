@@ -71,6 +71,7 @@ export interface NarratorSessionChatMessage {
   content: string;
   timestamp: number;
   seq?: number;
+  toolCalls?: ToolCall[];
 }
 
 export type ToolCallStatus = "pending" | "running" | "success" | "error";

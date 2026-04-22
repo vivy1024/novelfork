@@ -1,10 +1,59 @@
 import React from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 
 import { ToolCallBlock } from "./ToolCallBlock";
 import { parseAssistantPayload } from "./tool-call-utils";
 
+function defaultFetchJsonImplementation(url: string, options?: { body?: string }) {
+  if (url === "/api/tools/source-preview") {
+    const body = JSON.parse(options?.body ?? "{}");
+    const params = body.params ?? {};
+    const target = params.file_path ?? params.path ?? "packages/studio/src/components/ChatWindow.tsx";
+    return Promise.resolve({
+      title: `${body.toolName ?? "Tool"} 源码视图`,
+      target,
+      locator: `${target}:1-5`,
+      requestPreview: [
+        body.command ? `# 命令\n${body.command}` : undefined,
+        "POST /api/tools/execute",
+        JSON.stringify({ toolName: body.toolName, params }, null, 2),
+      ].filter(Boolean).join("\n\n"),
+      snippet: target === "package.json"
+        ? '{\n  "name": "novelfork"\n}'
+        : "export function ChatWindow() {\n  return null;\n}",
+    });
+  }
+
+  return Promise.resolve({ success: true });
+}
+
+const fetchJsonMock = vi.fn(defaultFetchJsonImplementation as typeof defaultFetchJsonImplementation);
+
+vi.mock("@/hooks/use-api", () => ({
+  fetchJson: (url: string, ...rest: unknown[]) => fetchJsonMock(url, ...(rest as [{ body?: string }?])),
+}));
+
+class MockEventSource {
+  static instances: MockEventSource[] = [];
+
+  onmessage: ((event: MessageEvent<string>) => void) | null = null;
+  onerror: (() => void) | null = null;
+
+  constructor(public readonly url: string) {
+    MockEventSource.instances.push(this);
+  }
+
+  emit(payload: unknown) {
+    this.onmessage?.({ data: JSON.stringify(payload) } as MessageEvent<string>);
+  }
+
+  close() {
+    return undefined;
+  }
+}
+
+vi.stubGlobal("EventSource", MockEventSource as unknown as typeof EventSource);
 vi.stubGlobal("navigator", {
   clipboard: {
     writeText: vi.fn().mockResolvedValue(undefined),
@@ -13,9 +62,15 @@ vi.stubGlobal("navigator", {
 
 afterEach(() => {
   cleanup();
+  fetchJsonMock.mockReset();
+  fetchJsonMock.mockImplementation(defaultFetchJsonImplementation as typeof defaultFetchJsonImplementation);
 });
 
 describe("ToolCallBlock", () => {
+  beforeEach(() => {
+    MockEventSource.instances = [];
+  });
+
   it("renders status, summary and differentiated bash details", () => {
     render(
       <ToolCallBlock
@@ -128,6 +183,129 @@ describe("ToolCallBlock", () => {
     expect(screen.getByText(/"server": "docs-registry"/)).toBeTruthy();
     expect(screen.getByText(/"tool": "searchDocs"/)).toBeTruthy();
     expect(screen.getByText(/"source": "index-cache"/)).toBeTruthy();
+  });
+
+  it("shows run-level execution tracking and reacts to live run events", () => {
+    render(
+      <ToolCallBlock
+        toolCall={{
+          toolName: "Read",
+          status: "running",
+          summary: "读取章节并建立索引",
+          result: {
+            execution: {
+              runId: "run-tool-1",
+              attempts: 2,
+              traceEnabled: true,
+              dumpEnabled: false,
+            },
+          },
+        }}
+      />,
+    );
+
+    expect(MockEventSource.instances[0]?.url).toBe("/api/runs/run-tool-1/events");
+
+    act(() => {
+      MockEventSource.instances[0]?.emit({
+        type: "snapshot",
+        runId: "run-tool-1",
+        run: {
+          id: "run-tool-1",
+          bookId: "__studio__",
+          chapter: null,
+          chapterNumber: null,
+          action: "tool",
+          status: "running",
+          stage: "Tool Read",
+          createdAt: "2026-04-21T10:00:00.000Z",
+          updatedAt: "2026-04-21T10:00:01.000Z",
+          startedAt: "2026-04-21T10:00:00.000Z",
+          finishedAt: null,
+          logs: [],
+        },
+      });
+    });
+
+    expect(screen.getByText("运行追踪")).toBeTruthy();
+    expect(screen.getByText(/run-tool-1/)).toBeTruthy();
+    expect(screen.getByText(/尝试 2 次/)).toBeTruthy();
+    expect(screen.getByText(/trace 开/)).toBeTruthy();
+    expect(screen.getByText(/dump 关/)).toBeTruthy();
+    expect(screen.getByText(/阶段：Tool Read/)).toBeTruthy();
+
+    act(() => {
+      MockEventSource.instances[0]?.emit({
+        type: "status",
+        runId: "run-tool-1",
+        status: "succeeded",
+      });
+    });
+
+    expect(screen.getByText(/实时状态：succeeded/)).toBeTruthy();
+  });
+
+  it("shows fullscreen, view-source and rerun actions for completed tool calls", async () => {
+    const onReplay = vi.fn();
+
+    render(
+      <ToolCallBlock
+        toolCall={{
+          toolName: "Bash",
+          status: "success",
+          summary: "已完成 git status 检查",
+          command: "git status --short",
+          input: { cwd: "packages/studio" },
+          output: " M packages/studio/src/components/ChatWindow.tsx",
+          result: { ok: true },
+          duration: 420,
+        }}
+        onReplay={onReplay}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "查看源码" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "全屏查看" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "重跑" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "查看源码" }));
+    expect(screen.getByText("工具源码")).toBeTruthy();
+    expect(await screen.findByText("定位信息")).toBeTruthy();
+    expect(screen.getByText(/packages\/studio\/src\/components\/ChatWindow\.tsx/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "全屏查看" }));
+    expect(screen.getByText("工具调用全屏详情")).toBeTruthy();
+    expect(screen.getAllByText("原始载荷").length).toBeGreaterThan(1);
+    fireEvent.click(screen.getAllByRole("button", { name: "Close" }).at(-1)!);
+
+    fireEvent.click(screen.getByRole("button", { name: "重跑" }));
+    expect(onReplay).toHaveBeenCalledWith(
+      expect.objectContaining({
+        toolName: "Bash",
+        command: "git status --short",
+      }),
+    );
+  });
+
+  it("shows locator and snippet in the source preview for file tools", async () => {
+    render(
+      <ToolCallBlock
+        toolCall={{
+          toolName: "Read",
+          status: "success",
+          summary: "已读取 package.json",
+          input: { file_path: "package.json" },
+          output: '{"name":"novelfork"}',
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "查看源码" }));
+
+    expect(await screen.findByText("源码片段")).toBeTruthy();
+    expect(screen.getByText(/package\.json:1-5/)).toBeTruthy();
+    expect(screen.getByText(/"name": "novelfork"/)).toBeTruthy();
   });
 
   it("parses mock-friendly assistant payload with tool calls", () => {
