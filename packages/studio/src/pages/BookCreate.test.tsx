@@ -106,7 +106,8 @@ describe("BookCreate", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "创建书籍" }));
+    expect(screen.getByText(/创建完成后会自动打开默认写作会话/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "创建书籍并进入工作区" }));
 
     await new Promise((resolve) => setTimeout(resolve, 0));
     await new Promise((resolve) => setTimeout(resolve, 0));

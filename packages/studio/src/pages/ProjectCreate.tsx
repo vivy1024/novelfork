@@ -101,7 +101,8 @@ export function ProjectCreate({ nav, theme, t, initialDraft, flowRevision = 0 }:
         gitBranchLabel: "Git branch (reserved)",
         worktreeLabel: "Worktree name (reserved)",
         planLabel: "Current ProjectCreate object",
-        next: "Next: book scaffold",
+        planHint: "Entering the book scaffold will also prepare the default writer workspace so you can continue immediately after creation.",
+        next: "Next: book scaffold and workspace",
         back: "Back to library",
       }
     : {
@@ -120,7 +121,8 @@ export function ProjectCreate({ nav, theme, t, initialDraft, flowRevision = 0 }:
         gitBranchLabel: "Git 分支（预留）",
         worktreeLabel: "worktree 名称（预留）",
         planLabel: "当前 ProjectCreate 对象",
-        next: "下一步：书籍骨架",
+        planHint: "进入书籍骨架后会自动创建默认写作会话，让你在创建完成后直接进入工作状态。",
+        next: "下一步：书籍骨架并准备进入工作区",
         back: "返回书库",
       };
 
@@ -228,6 +230,7 @@ export function ProjectCreate({ nav, theme, t, initialDraft, flowRevision = 0 }:
 
       <div className="rounded-2xl border border-border/60 bg-secondary/30 p-5">
         <div className="text-sm font-medium text-foreground">{copy.planLabel}</div>
+        <p className="mt-2 text-xs leading-5 text-muted-foreground">{copy.planHint}</p>
         <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
           <li>{projectLang === "en" ? "Title hint" : "标题预设"}：{projectCreateDraft.title ?? (projectLang === "en" ? "Untitled" : "未填写")}</li>
           <li>{projectLang === "en" ? "Repo source" : "仓库来源"}：{repoOptions.find((option) => option.value === repositorySource)?.title ?? repositorySource}</li>
