@@ -283,4 +283,53 @@ describe("createToolsRouter", () => {
     expect(payload.snippet).toContain('"name": "@vivy1024/novelfork-studio"');
     expect(payload.requestPreview).toContain('"file_path": "package.json"');
   });
+
+  it("builds a precise source preview from line-oriented locator params", async () => {
+    const app = createToolsRouter();
+    const response = await app.request("http://localhost/source-preview", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        toolName: "Read",
+        params: { file_path: "package.json", offset: 1, limit: 2 },
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload).toMatchObject({
+      target: "package.json",
+      locator: "package.json:2-3",
+      line: 2,
+    });
+    expect(payload.snippet).toContain('"name": "@vivy1024/novelfork-studio"');
+    expect(payload.snippet).toContain('"version": "0.0.1"');
+    expect(payload.snippet).not.toContain('"description": "NovelFork Studio');
+  });
+
+  it("opens the inferred source target in the editor", async () => {
+    const openInEditor = vi.fn(async () => ({ command: "code", target: "package.json", line: 4 }));
+    const app = createToolsRouter({ openInEditor });
+    const response = await app.request("http://localhost/open-in-editor", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        toolName: "Read",
+        params: { file_path: "package.json", lineno: 4 },
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(openInEditor).toHaveBeenCalledWith(expect.objectContaining({
+      target: "package.json",
+      line: 4,
+    }));
+    const payload = await response.json();
+    expect(payload).toMatchObject({
+      success: true,
+      target: "package.json",
+      line: 4,
+      command: "code",
+    });
+  });
 });

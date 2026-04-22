@@ -3,6 +3,7 @@
  * 提供工具执行、列表查询、权限管理
  */
 
+import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { basename, isAbsolute, relative, resolve } from "node:path";
 
@@ -19,6 +20,7 @@ interface ToolsRouterOptions {
   readonly runStore?: RunStore;
   readonly sleep?: (ms: number) => Promise<void>;
   readonly random?: () => number;
+  readonly openInEditor?: (request: EditorOpenRequest) => Promise<{ command: string; target: string; line?: number }>;
 }
 
 export function createToolsRouter(options: ToolsRouterOptions = {}) {
@@ -138,24 +140,42 @@ export function createToolsRouter(options: ToolsRouterOptions = {}) {
     try {
       const body = await c.req.json<{ toolName?: string; params?: Record<string, unknown>; command?: string; output?: string }>();
       const target = inferSourcePreviewTarget(body.params ?? {}, body.output);
+      const location = extractSourceLocation(body.params ?? {});
       const requestPreview = [
         body.command?.trim() ? `# 命令\n${body.command.trim()}` : undefined,
         "POST /api/tools/execute",
         JSON.stringify({ toolName: body.toolName ?? "Tool", params: body.params ?? {} }, null, 2),
       ].filter((part): part is string => Boolean(part)).join("\n\n");
 
-      const preview = await buildSourcePreview(target);
+      const preview = await buildSourcePreview(target, location);
 
       return c.json({
         title: `${body.toolName ?? "Tool"} 源码视图`,
         target: preview.target,
         locator: preview.locator,
+        line: preview.line,
         requestPreview,
         snippet: preview.snippet,
       });
     } catch (error) {
       console.error("Failed to build source preview:", error);
       return c.json({ error: error instanceof Error ? error.message : "Failed to build source preview" }, 500);
+    }
+  });
+
+  app.post("/open-in-editor", async (c) => {
+    try {
+      const body = await c.req.json<{ toolName?: string; params?: Record<string, unknown>; output?: string }>();
+      const target = inferSourcePreviewTarget(body.params ?? {}, body.output);
+      const location = extractSourceLocation(body.params ?? {});
+      const request: EditorOpenRequest = { target: target ?? "packages/studio/src/components/ChatWindow.tsx", line: location.line };
+      const opened = options.openInEditor
+        ? await options.openInEditor(request)
+        : await openInEditorWithCode(request);
+      return c.json({ success: true, ...opened });
+    } catch (error) {
+      console.error("Failed to open editor target:", error);
+      return c.json({ success: false, error: error instanceof Error ? error.message : "Failed to open editor target" }, 500);
     }
   });
 
@@ -192,23 +212,38 @@ export function createToolsRouter(options: ToolsRouterOptions = {}) {
   return app;
 }
 
-async function buildSourcePreview(target?: string) {
+interface SourceLocation {
+  readonly line: number;
+  readonly endLine: number;
+}
+
+interface EditorOpenRequest {
+  readonly target: string;
+  readonly line?: number;
+}
+
+async function buildSourcePreview(target: string | undefined, location: SourceLocation) {
   const fallbackTarget = "packages/studio/src/components/ChatWindow.tsx";
   const normalizedTarget = target?.trim() ? normalizeTargetPath(target) : fallbackTarget;
   const absolutePath = resolve(process.cwd(), normalizedTarget);
 
   try {
     const raw = await readFile(absolutePath, "utf8");
-    const lines = raw.split(/\r?\n/).slice(0, 5).join("\n");
+    const allLines = raw.split(/\r?\n/);
+    const startIndex = Math.max(0, Math.min(allLines.length - 1, location.line - 1));
+    const endIndex = Math.max(startIndex, Math.min(allLines.length - 1, location.endLine - 1));
+    const snippet = allLines.slice(startIndex, endIndex + 1).join("\n");
     return {
       target: normalizedTarget,
-      locator: `${normalizedTarget}:1-5`,
-      snippet: lines,
+      locator: `${normalizedTarget}:${startIndex + 1}-${endIndex + 1}`,
+      line: startIndex + 1,
+      snippet,
     };
   } catch {
     return {
       target: normalizedTarget,
-      locator: `${normalizedTarget}:1-5`,
+      locator: `${normalizedTarget}:${location.line}-${location.endLine}`,
+      line: location.line,
       snippet: "暂无可用源码片段",
     };
   }
@@ -231,6 +266,47 @@ function inferSourcePreviewTarget(params: Record<string, unknown>, output?: stri
   return undefined;
 }
 
+function extractSourceLocation(params: Record<string, unknown>): SourceLocation {
+  const limit = Math.max(1, extractPositiveInteger(params.limit) ?? 5);
+  const lineno = extractPositiveInteger(params.lineno) ?? extractPositiveInteger(params.line);
+  if (lineno) {
+    return {
+      line: lineno,
+      endLine: lineno + limit - 1,
+    };
+  }
+
+  const offset = extractPositiveInteger(params.offset);
+  if (offset !== undefined) {
+    return {
+      line: offset + 1,
+      endLine: offset + limit,
+    };
+  }
+
+  return { line: 1, endLine: 5 };
+}
+
+async function openInEditorWithCode(request: EditorOpenRequest) {
+  const target = normalizeTargetPath(request.target);
+  const absoluteTarget = resolve(process.cwd(), target);
+  const line = request.line;
+  const gotoTarget = line ? `${absoluteTarget}:${line}` : absoluteTarget;
+
+  await new Promise<void>((resolvePromise, reject) => {
+    const child = spawn("code", ["--goto", gotoTarget], {
+      cwd: process.cwd(),
+      stdio: "ignore",
+      shell: true,
+      windowsHide: true,
+    });
+    child.once("error", reject);
+    child.once("spawn", () => resolvePromise());
+  });
+
+  return { command: "code", target, line };
+}
+
 function normalizeTargetPath(target: string) {
   const sanitized = target.replace(/\\/g, "/").trim();
   if (!sanitized) {
@@ -249,6 +325,19 @@ function pickFirstString(record: Record<string, unknown>, keys: readonly string[
     const value = record[key];
     if (typeof value === "string" && value.trim()) {
       return value;
+    }
+  }
+  return undefined;
+}
+
+function extractPositiveInteger(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
+    return Math.trunc(value);
+  }
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed) && parsed >= 0) {
+      return Math.trunc(parsed);
     }
   }
   return undefined;
