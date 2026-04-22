@@ -510,6 +510,14 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
         : recoveryStatus === "replaying"
           ? "正在回放会话历史…"
           : null;
+  const recoveryStatusDescription =
+    recoveryStatus === "reconnecting"
+      ? "当前窗口正在和服务端正式会话重新对齐，连接恢复后会继续沿用正式消息链。"
+      : recoveryStatus === "resetting"
+        ? "服务端要求当前窗口放弃本地补拉结果，并重新同步正式快照后继续推进。"
+        : recoveryStatus === "replaying"
+          ? "当前窗口正在和服务端正式会话重新对齐，恢复完成后会继续沿用正式消息链。"
+          : null;
 
   const updateSessionConfig = (updates: Partial<NarratorSessionRecord["sessionConfig"]>) => {
     const nextSessionConfig = {
@@ -622,7 +630,10 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
           <>
             {recoveryStatusLabel ? (
               <div className="border-b border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-700">
-                {recoveryStatusLabel}
+                <div className="font-medium">{recoveryStatusLabel}</div>
+                {recoveryStatusDescription ? (
+                  <div className="mt-1 leading-5 text-amber-700/90">{recoveryStatusDescription}</div>
+                ) : null}
               </div>
             ) : null}
             <div className="grid gap-2 border-b px-3 py-2 text-[10px] sm:grid-cols-3" style={{ borderColor: c.border, backgroundColor: c.bgSecondary }}>
