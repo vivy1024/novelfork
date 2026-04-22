@@ -1294,7 +1294,7 @@ export async function tauriFetch<T>(path: string, init?: RequestInit): Promise<T
     const { instruction } = body as { instruction: string };
     if (!instruction?.trim()) return { response: "请输入指令。" } as T;
     const response = await callUserLLM([
-      { role: "system", content: "你是 InkOS 写作助手，帮助用户进行小说创作。可以回答写作问题、提供创意建议、帮助构思情节角色世界观、给出写作技巧。用简洁友好的语气回复。" },
+      { role: "system", content: "你是 NovelFork 写作助手，帮助用户进行小说创作。可以回答写作问题、提供创意建议、帮助构思情节角色世界观、给出写作技巧。用简洁友好的语气回复。" },
       { role: "user", content: instruction },
     ], { temperature: 0.7 });
     return { response } as T;

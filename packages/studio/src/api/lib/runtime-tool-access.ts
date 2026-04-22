@@ -1,5 +1,8 @@
 import type { SessionPermissionMode } from "../../shared/session-types.js";
+import type { ToolAccessReasonKey } from "../../shared/tool-access-reasons.js";
 import type { ToolAccessSettings, UserConfig } from "../../types/settings.js";
+
+export type { ToolAccessReasonKey } from "../../shared/tool-access-reasons.js";
 import { DEFAULT_PERMISSION_RULES, PermissionManager, type PermissionRule } from "./permission-manager.js";
 
 export type ToolAccessAction = "allow" | "deny" | "prompt";
@@ -8,6 +11,7 @@ export interface ToolAccessDecision {
   action: ToolAccessAction;
   reason?: string;
   source?: string;
+  reasonKey: ToolAccessReasonKey;
 }
 
 function toPermissionAction(mode: SessionPermissionMode): ToolAccessAction {
@@ -33,6 +37,57 @@ function inferDecisionSource(reason: string | undefined, fallback: string): stri
   }
 
   return fallback;
+}
+
+function inferDecisionReasonKey(
+  action: ToolAccessAction,
+  toolName: string,
+  reason: string | undefined,
+  source: string,
+  isMcp: boolean,
+): ToolAccessReasonKey {
+  if (source === "runtimeControls.toolAccess.allowlist") {
+    return action === "allow" ? "allowlist-allow" : "allowlist-deny";
+  }
+
+  if (source === "runtimeControls.toolAccess.blocklist") {
+    return "blocklist-deny";
+  }
+
+  if (source === "builtin-permission-rules") {
+    if (toolName === "Write" || toolName === "Edit") {
+      return "builtin-write-prompt";
+    }
+    if (reason === "Potentially destructive command") {
+      return "builtin-bash-dangerous-prompt";
+    }
+  }
+
+  if (source === "runtimeControls.defaultPermissionMode") {
+    if (isMcp) {
+      return action === "allow"
+        ? "mcp-inherit-allow"
+        : action === "deny"
+          ? "mcp-inherit-deny"
+          : "mcp-inherit-prompt";
+    }
+
+    return action === "allow"
+      ? "default-allow"
+      : action === "deny"
+        ? "default-deny"
+        : "default-prompt";
+  }
+
+  if (source === "runtimeControls.toolAccess.mcpStrategy") {
+    return action === "allow"
+      ? "mcp-strategy-allow"
+      : action === "deny"
+        ? "mcp-strategy-deny"
+        : "mcp-strategy-prompt";
+  }
+
+  return "unknown";
 }
 
 function buildAllowlistRules(toolAccess: ToolAccessSettings): PermissionRule[] {
@@ -85,10 +140,12 @@ export function getPermissionDecision(
 ): ToolAccessDecision {
   const action = manager.checkPermission(toolName, params);
   const rule = manager.getMatchingRule(toolName, params);
+  const source = inferDecisionSource(rule?.reason, rule ? "builtin-permission-rules" : "runtimeControls.defaultPermissionMode");
   return {
     action,
     reason: rule?.reason,
-    source: inferDecisionSource(rule?.reason, rule ? "builtin-permission-rules" : "runtimeControls.defaultPermissionMode"),
+    source,
+    reasonKey: inferDecisionReasonKey(action, toolName, rule?.reason, source, false),
   };
 }
 
@@ -99,51 +156,70 @@ export function getMCPToolDecision(
   const toolAccess = runtimeControls.toolAccess;
   const blocklist = new Set(toolAccess.blocklist);
   if (blocklist.has(toolName)) {
+    const source = "runtimeControls.toolAccess.blocklist";
+    const reason = "MCP tool is blocked by runtimeControls.toolAccess.blocklist";
     return {
       action: "deny",
-      reason: "MCP tool is blocked by runtimeControls.toolAccess.blocklist",
-      source: "runtimeControls.toolAccess.blocklist",
+      reason,
+      source,
+      reasonKey: inferDecisionReasonKey("deny", toolName, reason, source, true),
     };
   }
 
   if (toolAccess.allowlist.length > 0) {
     const allowlist = new Set(toolAccess.allowlist);
     if (!allowlist.has(toolName)) {
+      const source = "runtimeControls.toolAccess.allowlist";
+      const reason = "MCP tool is not in runtimeControls.toolAccess.allowlist";
       return {
         action: "deny",
-        reason: "MCP tool is not in runtimeControls.toolAccess.allowlist",
+        reason,
+        source,
+        reasonKey: inferDecisionReasonKey("deny", toolName, reason, source, true),
       };
     }
   }
 
   if (toolAccess.mcpStrategy === "allow") {
+    const source = "runtimeControls.toolAccess.mcpStrategy";
+    const reason = "MCP tool is allowed by runtimeControls.toolAccess.mcpStrategy=allow";
     return {
       action: "allow",
-      reason: "MCP tool is allowed by runtimeControls.toolAccess.mcpStrategy=allow",
-      source: "runtimeControls.toolAccess.mcpStrategy",
+      reason,
+      source,
+      reasonKey: inferDecisionReasonKey("allow", toolName, reason, source, true),
     };
   }
 
   if (toolAccess.mcpStrategy === "deny") {
+    const source = "runtimeControls.toolAccess.mcpStrategy";
+    const reason = "MCP tool is blocked by runtimeControls.toolAccess.mcpStrategy=deny";
     return {
       action: "deny",
-      reason: "MCP tool is blocked by runtimeControls.toolAccess.mcpStrategy=deny",
-      source: "runtimeControls.toolAccess.mcpStrategy",
+      reason,
+      source,
+      reasonKey: inferDecisionReasonKey("deny", toolName, reason, source, true),
     };
   }
 
   if (toolAccess.mcpStrategy === "ask") {
+    const source = "runtimeControls.toolAccess.mcpStrategy";
+    const reason = "MCP tool requires confirmation because runtimeControls.toolAccess.mcpStrategy=ask";
     return {
       action: "prompt",
-      reason: "MCP tool requires confirmation because runtimeControls.toolAccess.mcpStrategy=ask",
-      source: "runtimeControls.toolAccess.mcpStrategy",
+      reason,
+      source,
+      reasonKey: inferDecisionReasonKey("prompt", toolName, reason, source, true),
     };
   }
 
   const inheritedAction = toPermissionAction(runtimeControls.defaultPermissionMode);
+  const source = "runtimeControls.defaultPermissionMode";
+  const reason = `MCP tool inherits defaultPermissionMode=${runtimeControls.defaultPermissionMode}`;
   return {
     action: inheritedAction,
-    reason: `MCP tool inherits defaultPermissionMode=${runtimeControls.defaultPermissionMode}`,
-    source: "runtimeControls.defaultPermissionMode",
+    reason,
+    source,
+    reasonKey: inferDecisionReasonKey(inheritedAction, toolName, reason, source, true),
   };
 }

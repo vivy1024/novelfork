@@ -70,6 +70,10 @@ describe("RuntimeControlPanel", () => {
     expect(screen.getByDisplayValue("openai:gpt-4-turbo")).toBeTruthy();
     expect(screen.getByDisplayValue("anthropic:claude-haiku-4-5")).toBeTruthy();
     expect(screen.getByDisplayValue("openai:gpt-4-turbo, deepseek:deepseek-chat")).toBeTruthy();
+    expect(screen.getByText("命中允许列表 → 直接允许")).toBeTruthy();
+    expect(screen.getByText("未命中允许列表 → 拒绝")).toBeTruthy();
+    expect(screen.getByText("命中阻止列表 → 拒绝")).toBeTruthy();
+    expect(screen.getByText("MCP 策略 ask → 需确认")).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText("压缩阈值 (%)"), {
       target: { value: "82" },

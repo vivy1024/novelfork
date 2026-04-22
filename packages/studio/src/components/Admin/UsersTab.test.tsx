@@ -25,7 +25,7 @@ describe("UsersTab", () => {
           {
             id: "1",
             username: "admin",
-            email: "admin@inkos.local",
+            email: "admin@novelfork.local",
             role: "admin",
             createdAt: "2026-01-01T00:00:00.000Z",
             lastLogin: "2026-04-20T10:00:00.000Z",

@@ -45,21 +45,25 @@ describe("createRuntimePermissionManager", () => {
       action: "prompt",
       reason: undefined,
       source: "builtin-permission-rules",
+      reasonKey: "builtin-write-prompt",
     });
     expect(getPermissionDecision(manager, "Edit", {})).toEqual({
       action: "prompt",
       reason: undefined,
       source: "builtin-permission-rules",
+      reasonKey: "builtin-write-prompt",
     });
     expect(getPermissionDecision(manager, "Bash", { command: "rm -rf ./tmp" })).toEqual({
       action: "prompt",
       reason: "Potentially destructive command",
       source: "builtin-permission-rules",
+      reasonKey: "builtin-bash-dangerous-prompt",
     });
     expect(getPermissionDecision(manager, "EnterWorktree", {})).toEqual({
       action: "allow",
       reason: "Tool falls back to defaultPermissionMode=allow",
       source: "runtimeControls.defaultPermissionMode",
+      reasonKey: "default-allow",
     });
   });
 
@@ -78,6 +82,7 @@ describe("createRuntimePermissionManager", () => {
       action: "allow",
       reason: "Tool is explicitly allowed by runtimeControls.toolAccess.allowlist",
       source: "runtimeControls.toolAccess.allowlist",
+      reasonKey: "allowlist-allow",
     });
   });
 
@@ -88,6 +93,7 @@ describe("createRuntimePermissionManager", () => {
       action: "prompt",
       reason: undefined,
       source: "builtin-permission-rules",
+      reasonKey: "builtin-write-prompt",
     });
 
     expect(
@@ -106,6 +112,7 @@ describe("createRuntimePermissionManager", () => {
       action: "allow",
       reason: "MCP tool is allowed by runtimeControls.toolAccess.mcpStrategy=allow",
       source: "runtimeControls.toolAccess.mcpStrategy",
+      reasonKey: "mcp-strategy-allow",
     });
   });
 });

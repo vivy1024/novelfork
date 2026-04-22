@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/select";
 import { fetchJson, putApi } from "@/hooks/use-api";
 import { PROVIDERS } from "@/shared/provider-catalog";
+import { TOOL_ACCESS_GOVERNANCE_EXPLANATIONS } from "@/shared/tool-access-reasons";
 import type { ModelDefaultSettings, RuntimeControlSettings, UserConfig } from "@/types/settings";
 import { DEFAULT_USER_CONFIG } from "@/types/settings";
 
@@ -438,6 +439,23 @@ export function RuntimeControlPanel() {
                 </CardContent>
               </Card>
             </div>
+
+            <Card size="sm">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-sm">
+                  <Shield className="size-4 text-primary" />
+                  治理判定说明
+                </CardTitle>
+                <CardDescription>把设置项和运行时 reasonKey 对齐，避免只看原始英文原因。</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ul className="space-y-2 text-sm text-muted-foreground">
+                  {TOOL_ACCESS_GOVERNANCE_EXPLANATIONS.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
 
             <div className="grid gap-4 xl:grid-cols-2">
               <Card size="sm">

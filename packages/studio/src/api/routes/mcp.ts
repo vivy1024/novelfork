@@ -7,7 +7,7 @@ import { Hono } from "hono";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { MCPClientImpl, type MCPServerConfig as CoreMCPConfig } from "@vivy1024/novelfork-core";
-import { getMCPToolDecision } from "../lib/runtime-tool-access.js";
+import { getMCPToolDecision, type ToolAccessReasonKey } from "../lib/runtime-tool-access.js";
 import { loadUserConfig } from "../lib/user-config-service.js";
 
 interface MCPServerEntry {
@@ -31,6 +31,7 @@ interface MCPRegistryTool {
   readonly access?: "allow" | "prompt" | "deny";
   readonly source?: string;
   readonly reason?: string;
+  readonly reasonKey?: ToolAccessReasonKey;
 }
 
 interface MCPRegistryServer extends MCPServerEntry {
@@ -101,6 +102,7 @@ export function createMCPRouter(projectRoot: string): Hono {
             access: decision.action,
             source: decision.source,
             reason: decision.reason,
+            reasonKey: decision.reasonKey,
           };
         })
       : [];
@@ -269,6 +271,7 @@ export function createMCPRouter(projectRoot: string): Hono {
           allowed: false,
           reason: decision.reason,
           source: decision.source,
+          reasonKey: decision.reasonKey,
           error: decision.reason || "MCP tool execution denied",
         },
         403,
@@ -283,6 +286,7 @@ export function createMCPRouter(projectRoot: string): Hono {
           confirmationRequired: true,
           reason: decision.reason,
           source: decision.source,
+          reasonKey: decision.reasonKey,
           error: decision.reason || "MCP tool execution requires confirmation",
         },
         403,
