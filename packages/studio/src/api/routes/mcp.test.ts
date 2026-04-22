@@ -178,6 +178,7 @@ describe("createMCPRouter", () => {
       success: false,
       allowed: false,
       source: "runtimeControls.toolAccess.blocklist",
+      reasonKey: "blocklist-deny",
       error: "MCP tool is blocked by runtimeControls.toolAccess.blocklist",
     });
   });
@@ -208,6 +209,7 @@ describe("createMCPRouter", () => {
       allowed: false,
       confirmationRequired: true,
       source: "runtimeControls.toolAccess.mcpStrategy",
+      reasonKey: "mcp-strategy-prompt",
       error: "MCP tool requires confirmation because runtimeControls.toolAccess.mcpStrategy=ask",
     });
   });
@@ -277,6 +279,7 @@ describe("createMCPRouter", () => {
               name: "read_file",
               access: "prompt",
               source: "runtimeControls.toolAccess.mcpStrategy",
+              reasonKey: "mcp-strategy-prompt",
             }),
           ],
         }),

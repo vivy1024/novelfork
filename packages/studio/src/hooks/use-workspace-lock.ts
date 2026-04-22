@@ -9,7 +9,7 @@ interface UseWorkspaceLockReturn {
   readonly lockError: string | null;
 }
 
-const LOCK_FILE = ".inkos.lock";
+const LOCK_FILE = ".novelfork.lock";
 const HEARTBEAT_MS = 10_000;
 const STALE_MS = 30_000;
 const WORKSPACE_KEY = "novelfork-workspace";

@@ -8,10 +8,11 @@ import { Bot,
   Sparkles,
   Workflow,
 } from "lucide-react";
-import { useMemo, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 
 import { PageScaffold } from "@/components/layout/PageScaffold";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useApi } from "../hooks/use-api";
@@ -24,15 +25,23 @@ import { MCPServerManager } from "./MCPServerManager";
 import { NotifyConfig } from "./NotifyConfig";
 import { PluginManager } from "./PluginManager";
 import { SchedulerConfig } from "./SchedulerConfig";
+import {
+  describeToolAccessReason,
+  normalizeGovernanceSourceKey,
+  type GovernanceSourceKey,
+  type GovernanceSurface,
+  type ToolAccessReasonKey,
+} from "../shared/tool-access-reasons";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
-import type { WorkflowSection } from "../routes";
+import type { SettingsSection, WorkflowSection } from "../routes";
 
 
 interface Nav {
   toDashboard: () => void;
   toBook: (bookId: string) => void;
   toWorkflow?: (section?: WorkflowSection) => void;
+  toSettings?: (section?: SettingsSection) => void;
 }
 
 interface GovernanceSettingsResponse {
@@ -63,7 +72,10 @@ interface MCPRegistryResponse {
     name: string;
     tools?: Array<{
       name: string;
+      access?: "allow" | "prompt" | "deny";
       source?: string;
+      reason?: string;
+      reasonKey?: ToolAccessReasonKey;
     }>;
   }>;
 }
@@ -73,6 +85,8 @@ interface ToolsRegistryResponse {
     name: string;
     access?: "allow" | "prompt" | "deny";
     source?: string;
+    reason?: string;
+    reasonKey?: ToolAccessReasonKey;
   }>;
 }
 
@@ -197,6 +211,67 @@ function GovernanceSummaryCard({ title, children }: { title: string; children: R
   );
 }
 
+type GovernanceFilter = "all" | "prompt" | "deny";
+type GovernanceSurfaceFilter = "all" | GovernanceSurface;
+type GovernanceSourceFilter = "all" | GovernanceSourceKey;
+
+interface GovernanceToolSample {
+  label: string;
+  reason: string;
+  access: Exclude<GovernanceFilter, "all">;
+  surface: GovernanceSurface;
+  sourceKey: GovernanceSourceKey;
+}
+
+interface GovernanceReasonGroup {
+  reason: string;
+  count: number;
+}
+
+function formatToolSample(sample: GovernanceToolSample) {
+  return `${sample.label} · ${sample.reason}`;
+}
+
+function groupReasons(samples: GovernanceToolSample[]) {
+  const counts = new Map<string, number>();
+
+  for (const sample of samples) {
+    counts.set(sample.reason, (counts.get(sample.reason) ?? 0) + 1);
+  }
+
+  return Array.from(counts.entries())
+    .map(([reason, count]) => ({ reason, count }))
+    .sort((left, right) => right.count - left.count || left.reason.localeCompare(right.reason));
+}
+
+function renderSampleList(samples: GovernanceToolSample[]) {
+  if (samples.length === 0) {
+    return <p>暂无</p>;
+  }
+
+  return (
+    <ul className="space-y-1">
+      {samples.map((sample) => (
+        <li key={`${sample.access}-${sample.label}-${sample.reason}`}>{formatToolSample(sample)}</li>
+      ))}
+    </ul>
+  );
+}
+
+function filterSamples(
+  samples: GovernanceToolSample[],
+  filter: GovernanceFilter,
+  surfaceFilter: GovernanceSurfaceFilter,
+  sourceFilter: GovernanceSourceFilter,
+) {
+  return samples.filter((sample) => {
+    const accessMatches = filter === "all" || sample.access === filter;
+    const surfaceMatches = surfaceFilter === "all" || sample.surface === surfaceFilter;
+    const sourceMatches = sourceFilter === "all" || sample.sourceKey === sourceFilter;
+    return accessMatches && surfaceMatches && sourceMatches;
+  });
+}
+
 export function WorkflowWorkbench({
   nav,
   theme,
@@ -211,6 +286,9 @@ export function WorkflowWorkbench({
   onNavigateSection?: (section: WorkflowSection) => void;
 }) {
   const currentSection = section ?? "project";
+  const [governanceFilter, setGovernanceFilter] = useState<GovernanceFilter>("all");
+  const [governanceSurfaceFilter, setGovernanceSurfaceFilter] = useState<GovernanceSurfaceFilter>("all");
+  const [governanceSourceFilter, setGovernanceSourceFilter] = useState<GovernanceSourceFilter>("all");
   const currentTab = useMemo(
     () => WORKFLOW_TABS.find((tab) => tab.value === currentSection) ?? WORKFLOW_TABS[0],
     [currentSection],
@@ -251,6 +329,104 @@ export function WorkflowWorkbench({
       blocklist: tools.filter((tool) => tool.source === "runtimeControls.toolAccess.blocklist").length,
     };
   }, [mcpRegistry.data?.servers]);
+  const builtinReasonSummary = useMemo(() => {
+    const tools = toolsRegistry.data?.tools ?? [];
+    return {
+      blocklist: tools.filter((tool) => tool.reasonKey === "blocklist-deny").length,
+      defaultAsk: tools.filter((tool) => tool.reasonKey === "default-prompt").length,
+      builtinPrompt: tools.filter((tool) => tool.reasonKey === "builtin-write-prompt").length,
+    };
+  }, [toolsRegistry.data?.tools]);
+  const mcpReasonSummary = useMemo(() => {
+    const tools = (mcpRegistry.data?.servers ?? []).flatMap((server) => server.tools ?? []);
+    return {
+      mcpStrategyAsk: tools.filter((tool) => tool.reasonKey === "mcp-strategy-prompt").length,
+      blocklist: tools.filter((tool) => tool.reasonKey === "blocklist-deny").length,
+    };
+  }, [mcpRegistry.data?.servers]);
+  const builtinPromptSamples = useMemo(
+    () => (toolsRegistry.data?.tools ?? [])
+      .filter((tool) => tool.access === "prompt")
+      .slice(0, 4)
+      .map((tool) => ({
+        label: tool.name,
+        reason: describeToolAccessReason(tool.reasonKey, tool.reason),
+        access: "prompt" as const,
+        surface: "builtin" as const,
+        sourceKey: normalizeGovernanceSourceKey(tool.source),
+      })),
+    [toolsRegistry.data?.tools],
+  );
+  const builtinDenySamples = useMemo(
+    () => (toolsRegistry.data?.tools ?? [])
+      .filter((tool) => tool.access === "deny")
+      .slice(0, 4)
+      .map((tool) => ({
+        label: tool.name,
+        reason: describeToolAccessReason(tool.reasonKey, tool.reason),
+        access: "deny" as const,
+        surface: "builtin" as const,
+        sourceKey: normalizeGovernanceSourceKey(tool.source),
+      })),
+    [toolsRegistry.data?.tools],
+  );
+  const mcpPromptSamples = useMemo(
+    () => (mcpRegistry.data?.servers ?? [])
+      .flatMap((server) =>
+        (server.tools ?? [])
+          .filter((tool) => tool.access === "prompt")
+          .map((tool) => ({
+            label: `${server.id} / ${tool.name}`,
+            reason: describeToolAccessReason(tool.reasonKey, tool.reason),
+            access: "prompt" as const,
+            surface: "mcp" as const,
+            sourceKey: normalizeGovernanceSourceKey(tool.source),
+          })),
+      )
+      .slice(0, 4),
+    [mcpRegistry.data?.servers],
+  );
+  const mcpDenySamples = useMemo(
+    () => (mcpRegistry.data?.servers ?? [])
+      .flatMap((server) =>
+        (server.tools ?? [])
+          .filter((tool) => tool.access === "deny")
+          .map((tool) => ({
+            label: `${server.id} / ${tool.name}`,
+            reason: describeToolAccessReason(tool.reasonKey, tool.reason),
+            access: "deny" as const,
+            surface: "mcp" as const,
+            sourceKey: normalizeGovernanceSourceKey(tool.source),
+          })),
+      )
+      .slice(0, 4),
+    [mcpRegistry.data?.servers],
+  );
+  const filteredBuiltinPromptSamples = useMemo(
+    () => filterSamples(builtinPromptSamples, governanceFilter, governanceSurfaceFilter, governanceSourceFilter),
+    [builtinPromptSamples, governanceFilter, governanceSourceFilter, governanceSurfaceFilter],
+  );
+  const filteredBuiltinDenySamples = useMemo(
+    () => filterSamples(builtinDenySamples, governanceFilter, governanceSurfaceFilter, governanceSourceFilter),
+    [builtinDenySamples, governanceFilter, governanceSourceFilter, governanceSurfaceFilter],
+  );
+  const filteredMcpPromptSamples = useMemo(
+    () => filterSamples(mcpPromptSamples, governanceFilter, governanceSurfaceFilter, governanceSourceFilter),
+    [governanceFilter, governanceSourceFilter, governanceSurfaceFilter, mcpPromptSamples],
+  );
+  const filteredMcpDenySamples = useMemo(
+    () => filterSamples(mcpDenySamples, governanceFilter, governanceSurfaceFilter, governanceSourceFilter),
+    [governanceFilter, governanceSourceFilter, governanceSurfaceFilter, mcpDenySamples],
+  );
+  const governanceReasonGroups = useMemo(
+    () => groupReasons([
+      ...filteredBuiltinPromptSamples,
+      ...filteredBuiltinDenySamples,
+      ...filteredMcpPromptSamples,
+      ...filteredMcpDenySamples,
+    ]),
+    [filteredBuiltinDenySamples, filteredBuiltinPromptSamples, filteredMcpDenySamples, filteredMcpPromptSamples],
+  );
 
   return (
     <PageScaffold
@@ -279,35 +455,118 @@ export function WorkflowWorkbench({
           </div>
           <Badge variant="outline">Workflow / Routines / MCP / Permissions</Badge>
         </CardHeader>
-        <CardContent className="grid gap-4 xl:grid-cols-3">
-          <GovernanceSummaryCard title="当前 workflow 编排">
-            <p className="text-foreground">当前区块：{currentTab.label}</p>
-            <p>区块摘要：{currentTab.summary}</p>
-            <p>作用域：{currentTab.scope}</p>
-            <p>保存策略：{currentTab.saveStrategy}</p>
-          </GovernanceSummaryCard>
+        <CardContent className="space-y-4">
+          <div className="grid gap-4 xl:grid-cols-3">
+            <GovernanceSummaryCard title="当前 workflow 编排">
+              <p className="text-foreground">当前区块：{currentTab.label}</p>
+              <p>区块摘要：{currentTab.summary}</p>
+              <p>作用域：{currentTab.scope}</p>
+              <p>保存策略：{currentTab.saveStrategy}</p>
+            </GovernanceSummaryCard>
 
-          <GovernanceSummaryCard title="工具执行边界">
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-foreground">toolAccess 模式</span>
-              <Badge variant="secondary">{runtimeControls?.defaultPermissionMode ?? "读取中"}</Badge>
+            <GovernanceSummaryCard title="工具执行边界">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-foreground">toolAccess 模式</span>
+                <Badge variant="secondary">{runtimeControls?.defaultPermissionMode ?? "读取中"}</Badge>
+              </div>
+              <p>allowlist：{formatStatusList(toolAccess?.allowlist)}</p>
+              <p>blocklist：{formatStatusList(toolAccess?.blocklist)}</p>
+              <p>mcpStrategy：{toolAccess?.mcpStrategy ?? registrySummary?.mcpStrategy ?? "inherit"}</p>
+              <p>内置 tools：{builtinToolSummary.allow} / {builtinToolSummary.prompt} / {builtinToolSummary.deny}</p>
+              <p>内置来源：allowlist {builtinToolSummary.allowlist} / blocklist {builtinToolSummary.blocklist} / default {builtinToolSummary.defaultPermissionMode} / builtin {builtinToolSummary.builtinRules}</p>
+              <p>内置原因：blocklist {builtinReasonSummary.blocklist} / default ask {builtinReasonSummary.defaultAsk} / builtin prompt {builtinReasonSummary.builtinPrompt}</p>
+              <p>策略来源：{registrySummary?.policySource ?? "runtimeControls.toolAccess"}</p>
+            </GovernanceSummaryCard>
+
+            <GovernanceSummaryCard title="MCP 注册表实时摘要">
+              <p className="text-foreground">已发现 {registrySummary?.discoveredTools ?? 0} 个工具</p>
+              <p>已启用 {registrySummary?.enabledTools ?? 0} 个工具</p>
+              <p>allow / prompt / deny：{registrySummary?.allowTools ?? 0} / {registrySummary?.promptTools ?? 0} / {registrySummary?.denyTools ?? 0}</p>
+              <p>MCP 来源：mcpStrategy {mcpSourceSummary.mcpStrategy} / blocklist {mcpSourceSummary.blocklist}</p>
+              <p>MCP 原因：mcpStrategy ask {mcpReasonSummary.mcpStrategyAsk} / blocklist {mcpReasonSummary.blocklist}</p>
+              <p>已连接 {registrySummary?.connectedServers ?? 0} / {registrySummary?.totalServers ?? 0} 个 Server</p>
+
+              <p>策略来源：{registrySummary?.policySource ?? "runtimeControls.toolAccess"}</p>
+            </GovernanceSummaryCard>
+          </div>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" size="sm" variant={governanceFilter === "all" ? "secondary" : "outline"} onClick={() => setGovernanceFilter("all")}>
+                  全部样本
+                </Button>
+                <Button type="button" size="sm" variant={governanceFilter === "prompt" ? "secondary" : "outline"} onClick={() => setGovernanceFilter("prompt")}>
+                  仅看需确认
+                </Button>
+                <Button type="button" size="sm" variant={governanceFilter === "deny" ? "secondary" : "outline"} onClick={() => setGovernanceFilter("deny")}>
+                  仅看已拒绝
+                </Button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" size="sm" variant={governanceSurfaceFilter === "all" ? "secondary" : "outline"} onClick={() => setGovernanceSurfaceFilter("all")}>
+                  全部范围
+                </Button>
+                <Button type="button" size="sm" variant={governanceSurfaceFilter === "builtin" ? "secondary" : "outline"} onClick={() => setGovernanceSurfaceFilter("builtin")}>
+                  仅看内置
+                </Button>
+                <Button type="button" size="sm" variant={governanceSurfaceFilter === "mcp" ? "secondary" : "outline"} onClick={() => setGovernanceSurfaceFilter("mcp")}>
+                  仅看 MCP
+                </Button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" size="sm" variant={governanceSourceFilter === "all" ? "secondary" : "outline"} onClick={() => setGovernanceSourceFilter("all")}>
+                  全部来源
+                </Button>
+                <Button type="button" size="sm" variant={governanceSourceFilter === "blocklist" ? "secondary" : "outline"} onClick={() => setGovernanceSourceFilter("blocklist")}>
+                  仅看 blocklist
+                </Button>
+                <Button type="button" size="sm" variant={governanceSourceFilter === "default" ? "secondary" : "outline"} onClick={() => setGovernanceSourceFilter("default")}>
+                  仅看 defaultPermissionMode
+                </Button>
+                <Button type="button" size="sm" variant={governanceSourceFilter === "builtin" ? "secondary" : "outline"} onClick={() => setGovernanceSourceFilter("builtin")}>
+                  仅看 builtin 规则
+                </Button>
+                <Button type="button" size="sm" variant={governanceSourceFilter === "mcpStrategy" ? "secondary" : "outline"} onClick={() => setGovernanceSourceFilter("mcpStrategy")}>
+                  仅看 mcpStrategy
+                </Button>
+              </div>
             </div>
-            <p>allowlist：{formatStatusList(toolAccess?.allowlist)}</p>
-            <p>blocklist：{formatStatusList(toolAccess?.blocklist)}</p>
-            <p>mcpStrategy：{toolAccess?.mcpStrategy ?? registrySummary?.mcpStrategy ?? "inherit"}</p>
-            <p>内置 tools：{builtinToolSummary.allow} / {builtinToolSummary.prompt} / {builtinToolSummary.deny}</p>
-            <p>内置来源：allowlist {builtinToolSummary.allowlist} / blocklist {builtinToolSummary.blocklist} / default {builtinToolSummary.defaultPermissionMode} / builtin {builtinToolSummary.builtinRules}</p>
-            <p>策略来源：{registrySummary?.policySource ?? "runtimeControls.toolAccess"}</p>
-          </GovernanceSummaryCard>
 
-          <GovernanceSummaryCard title="MCP 注册表实时摘要">
-            <p className="text-foreground">已发现 {registrySummary?.discoveredTools ?? 0} 个工具</p>
-            <p>已启用 {registrySummary?.enabledTools ?? 0} 个工具</p>
-            <p>allow / prompt / deny：{registrySummary?.allowTools ?? 0} / {registrySummary?.promptTools ?? 0} / {registrySummary?.denyTools ?? 0}</p>
-            <p>MCP 来源：mcpStrategy {mcpSourceSummary.mcpStrategy} / blocklist {mcpSourceSummary.blocklist}</p>
-            <p>已连接 {registrySummary?.connectedServers ?? 0} / {registrySummary?.totalServers ?? 0} 个 Server</p>
-            <p>策略来源：{registrySummary?.policySource ?? "runtimeControls.toolAccess"}</p>
-          </GovernanceSummaryCard>
+            <div className="grid gap-4 xl:grid-cols-5">
+              <GovernanceSummaryCard title="内置工具需确认样本">
+                {renderSampleList(filteredBuiltinPromptSamples)}
+              </GovernanceSummaryCard>
+              <GovernanceSummaryCard title="内置工具已拒绝样本">
+                {renderSampleList(filteredBuiltinDenySamples)}
+              </GovernanceSummaryCard>
+              <GovernanceSummaryCard title="MCP 工具需确认样本">
+                {renderSampleList(filteredMcpPromptSamples)}
+              </GovernanceSummaryCard>
+              <GovernanceSummaryCard title="MCP 工具已拒绝样本">
+                {renderSampleList(filteredMcpDenySamples)}
+              </GovernanceSummaryCard>
+              <GovernanceSummaryCard title="原因分组与处置入口">
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" size="sm" variant="outline" onClick={() => nav.toSettings?.("advanced")}>
+                  前往高级设置
+                </Button>
+                <Button type="button" size="sm" variant="outline" onClick={() => nav.toWorkflow?.("mcp")}>
+                  前往 MCP 管理
+                </Button>
+              </div>
+                {governanceReasonGroups.length === 0 ? (
+                  <p>暂无</p>
+                ) : (
+                  <ul className="space-y-1">
+                    {governanceReasonGroups.map((group) => (
+                      <li key={group.reason}>{group.reason} · {group.count}</li>
+                    ))}
+                  </ul>
+                )}
+              </GovernanceSummaryCard>
+            </div>
+          </div>
         </CardContent>
       </Card>
 

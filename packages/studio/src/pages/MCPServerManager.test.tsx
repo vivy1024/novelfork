@@ -40,8 +40,8 @@ describe("MCPServerManager", () => {
             args: ["-y", "@modelcontextprotocol/server-filesystem", "."],
             status: "connected",
             tools: [
-              { name: "read_file", description: "Read a file", access: "allow", source: "runtimeControls.toolAccess.mcpStrategy", reason: "MCP tool is allowed by runtimeControls.toolAccess.mcpStrategy=allow" },
-              { name: "write_file", description: "Write a file", access: "prompt", source: "runtimeControls.toolAccess.mcpStrategy", reason: "MCP tool requires confirmation because runtimeControls.toolAccess.mcpStrategy=ask" },
+              { name: "read_file", description: "Read a file", access: "allow", source: "runtimeControls.toolAccess.mcpStrategy", reason: "MCP tool is allowed by runtimeControls.toolAccess.mcpStrategy=allow", reasonKey: "mcp-strategy-allow" },
+              { name: "write_file", description: "Write a file", access: "prompt", source: "runtimeControls.toolAccess.mcpStrategy", reason: "MCP tool requires confirmation because runtimeControls.toolAccess.mcpStrategy=ask", reasonKey: "mcp-strategy-prompt" },
             ],
             toolCount: 2,
           },
@@ -66,6 +66,8 @@ describe("MCPServerManager", () => {
     expect(screen.getByText("allow")).toBeTruthy();
     expect(screen.getByText("prompt")).toBeTruthy();
     expect(screen.getAllByText(/来源：runtimeControls.toolAccess.mcpStrategy/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("治理解释：MCP 策略直接允许")).toBeTruthy();
+    expect(screen.getByText("治理解释：MCP 策略要求确认")).toBeTruthy();
   });
 
   it("allows editing an existing server and saving through the MCP API", () => {

@@ -48,6 +48,7 @@ export function createToolsRouter() {
             allowed: false,
             reason: permission.reason,
             source: permission.source,
+            reasonKey: permission.reasonKey,
             error: permission.reason || "Permission denied",
           },
           403,
@@ -61,6 +62,7 @@ export function createToolsRouter() {
             allowed: false,
             reason: permission.reason,
             source: permission.source,
+            reasonKey: permission.reasonKey,
             error: permission.reason || "Tool execution requires confirmation",
             confirmationRequired: true,
           },
@@ -108,6 +110,7 @@ export function createToolsRouter() {
           requiresConfirmation: permission.action === "prompt",
           reason: permission.reason,
           source: permission.source,
+          reasonKey: permission.reasonKey,
         };
       });
 

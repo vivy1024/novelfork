@@ -1,7 +1,7 @@
 {
   "name": "@vivy1024/novelfork-cli",
   "version": "0.0.1",
-  "description": "NovelFork CLI — Forked from InkOS, specialized for Chinese web novel creation with AI assistance",
+  "description": "NovelFork CLI — AI-assisted command line workflow for Chinese web novel creation",
   "keywords": [
     "ai-novel-writing",
     "web-novel",

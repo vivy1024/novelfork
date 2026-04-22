@@ -24,6 +24,7 @@ import { DataPanel } from "./settings/DataPanel";
 import { EditorPanel } from "./settings/EditorPanel";
 import { MonitoringPanel } from "./settings/MonitoringPanel";
 import { ProfilePanel } from "./settings/ProfilePanel";
+import { RuntimeControlPanel } from "./settings/RuntimeControlPanel";
 
 interface Props {
   nav: unknown;
@@ -129,15 +130,15 @@ export function SettingsView({
               {activeSection === "monitoring" && <MonitoringPanel theme={theme} />}
               {activeSection === "data" && <DataPanel theme={theme} />}
               {activeSection === "advanced" && (
-                <PlaceholderSection
-                  title="高级设置"
-                  description="高级运行参数仍沿用现有弹窗组件，先通过统一路由和设置导航收口，下一批再并回页内结构。"
-                  action={
-                    <Button variant="outline" onClick={() => setShowAdvancedSettings(true)}>
-                      打开高级设置
-                    </Button>
-                  }
-                />
+                <div className="space-y-4">
+                  <div>
+                    <h2 className="text-2xl font-bold text-foreground">高级设置</h2>
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      运行控制正式并入设置页内结构；旧高级设置弹窗保留在页头，便于对照剩余配置。
+                    </p>
+                  </div>
+                  <RuntimeControlPanel />
+                </div>
               )}
               {activeSection === "about" && (
                 <div className="space-y-4">

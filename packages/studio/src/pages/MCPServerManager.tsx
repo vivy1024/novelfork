@@ -19,6 +19,7 @@ import { Label } from "@/components/ui/label";
 import { postApi, putApi, useApi } from "../hooks/use-api";
 import type { TFunction } from "../hooks/use-i18n";
 import type { Theme } from "../hooks/use-theme";
+import { describeToolAccessReason, type ToolAccessReasonKey } from "../shared/tool-access-reasons";
 
 interface MCPServerTool {
   name: string;
@@ -26,6 +27,7 @@ interface MCPServerTool {
   access?: "allow" | "prompt" | "deny";
   source?: string;
   reason?: string;
+  reasonKey?: ToolAccessReasonKey;
 }
 
 interface MCPServer {
@@ -109,6 +111,14 @@ function parseFormPayload(form: ServerFormState) {
     url: form.transport === "sse" ? form.url.trim() : undefined,
     env: form.env.trim() ? JSON.parse(form.env) : undefined,
   };
+}
+
+function renderStatusLabel(status: MCPServer["status"]) {
+  if (status === "connected") return "已连接";
+  if (status === "connecting") return "连接中";
+  if (status === "reconnecting") return "重连中";
+  if (status === "failed") return "失败";
+  return "未连接";
 }
 
 export function MCPServerManager({ nav, theme, t }: Props) {
@@ -363,6 +373,9 @@ export function MCPServerManager({ nav, theme, t }: Props) {
                             </div>
                             <div className="mt-1 text-muted-foreground">— {tool.description}</div>
                             {tool.source ? <div className="mt-1 text-muted-foreground">来源：{tool.source}</div> : null}
+                            {(tool.reasonKey || tool.reason) ? (
+                              <div className="mt-1 text-muted-foreground">治理解释：{describeToolAccessReason(tool.reasonKey, tool.reason)}</div>
+                            ) : null}
                             {tool.reason ? <div className="mt-1 text-muted-foreground">原因：{tool.reason}</div> : null}
                           </div>
                         ))
@@ -391,14 +404,6 @@ export function MCPServerManager({ nav, theme, t }: Props) {
       )}
     </div>
   );
-}
-
-function renderStatusLabel(status: MCPServer["status"]) {
-  if (status === "connected") return "已连接";
-  if (status === "connecting") return "连接中";
-  if (status === "reconnecting") return "重连中";
-  if (status === "failed") return "失败";
-  return "未连接";
 }
 
 function SummaryCard({ title, value, description }: { title: string; value: string; description: string }) {

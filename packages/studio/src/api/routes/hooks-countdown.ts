@@ -6,7 +6,7 @@
 import { Router } from "express";
 import type { RouterContext } from "./context.js";
 import { asyncHandler } from "../errors.js";
-import type { StoredHook } from "@inkos/core/state/memory-db";
+import type { StoredHook } from "@vivy1024/novelfork-core";
 
 export function createHooksCountdownRouter(ctx: RouterContext): Router {
   const router = Router();

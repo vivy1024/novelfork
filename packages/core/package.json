@@ -1,7 +1,7 @@
 {
   "name": "@vivy1024/novelfork-core",
   "version": "0.0.1",
-  "description": "NovelFork core engine — Forked from InkOS, multi-agent novel writing pipeline for Chinese web novels",
+  "description": "NovelFork core engine — multi-agent novel writing pipeline for Chinese web novels",
   "keywords": [
     "ai-novel-writing",
     "web-novel",

@@ -30,10 +30,19 @@ import { WorkflowWorkbench } from "./WorkflowWorkbench";
 const nav = {
   toDashboard: vi.fn(),
   toBook: vi.fn(),
+  toSettings: vi.fn(),
+  toWorkflow: vi.fn(),
 };
 
 afterEach(() => {
   cleanup();
+});
+
+beforeEach(() => {
+  nav.toDashboard.mockReset();
+  nav.toBook.mockReset();
+  nav.toSettings.mockReset();
+  nav.toWorkflow.mockReset();
 });
 
 describe("WorkflowWorkbench", () => {
@@ -76,9 +85,9 @@ describe("WorkflowWorkbench", () => {
                   id: "fs",
                   name: "Filesystem",
                   tools: [
-                    { name: "read_file", source: "runtimeControls.toolAccess.mcpStrategy" },
-                    { name: "write_file", source: "runtimeControls.toolAccess.mcpStrategy" },
-                    { name: "delete_file", source: "runtimeControls.toolAccess.blocklist" },
+                    { name: "read_file", access: "prompt", source: "runtimeControls.toolAccess.mcpStrategy", reason: "MCP tool follows mcpStrategy=ask", reasonKey: "mcp-strategy-prompt" },
+                    { name: "write_file", access: "prompt", source: "runtimeControls.toolAccess.mcpStrategy", reason: "MCP tool follows mcpStrategy=ask", reasonKey: "mcp-strategy-prompt" },
+                    { name: "delete_file", access: "deny", source: "runtimeControls.toolAccess.blocklist", reason: "Tool is blocked by runtimeControls.toolAccess.blocklist", reasonKey: "blocklist-deny" },
                   ],
                 },
               ],
@@ -93,10 +102,10 @@ describe("WorkflowWorkbench", () => {
           return {
             data: {
               tools: [
-                { name: "Read", access: "allow", source: "runtimeControls.toolAccess.allowlist" },
-                { name: "Write", access: "prompt", source: "builtin-permission-rules" },
-                { name: "Edit", access: "deny", source: "runtimeControls.toolAccess.blocklist" },
-                { name: "Bash", access: "prompt", source: "runtimeControls.defaultPermissionMode" },
+                { name: "Read", access: "allow", source: "runtimeControls.toolAccess.allowlist", reason: "Tool is explicitly allowed by runtimeControls.toolAccess.allowlist", reasonKey: "allowlist-allow" },
+                { name: "Write", access: "prompt", source: "builtin-permission-rules", reason: "Built-in write-like tools require confirmation by default", reasonKey: "builtin-write-prompt" },
+                { name: "Edit", access: "deny", source: "runtimeControls.toolAccess.blocklist", reason: "Tool is blocked by runtimeControls.toolAccess.blocklist", reasonKey: "blocklist-deny" },
+                { name: "Bash", access: "prompt", source: "runtimeControls.defaultPermissionMode", reason: "Tool falls back to defaultPermissionMode=ask", reasonKey: "default-prompt" },
               ],
             },
             loading: false,
@@ -148,6 +157,8 @@ describe("WorkflowWorkbench", () => {
     expect(screen.getByText(/内置 tools：1\s*\/\s*2\s*\/\s*1/)).toBeTruthy();
     expect(screen.getByText((content) => content.includes("内置来源：allowlist 1") && content.includes("blocklist 1") && content.includes("default 1") && content.includes("builtin 1"))).toBeTruthy();
     expect(screen.getByText((content) => content.includes("MCP 来源：mcpStrategy 2") && content.includes("blocklist 1"))).toBeTruthy();
+    expect(screen.getByText(/内置原因：blocklist 1 .* default ask 1 .* builtin prompt 1/)).toBeTruthy();
+    expect(screen.getByText(/MCP 原因：mcpStrategy ask 2 .* blocklist 1/)).toBeTruthy();
     expect(screen.getByText("AgentPanel")).toBeTruthy();
 
     expect(screen.getByRole("button", { name: "返回工作流配置" })).toBeTruthy();
@@ -163,6 +174,73 @@ describe("WorkflowWorkbench", () => {
     fireEvent.click(screen.getByRole("tab", { name: /MCP 工具/ }));
 
     expect(onNavigateSection).toHaveBeenNthCalledWith(2, "mcp");
+  });
+
+  it("shows actionable governance drill-down with samples, filters, and shortcuts", async () => {
+    render(
+      <WorkflowWorkbench
+        nav={nav}
+        theme="light"
+        t={(key: string) => key}
+        section="project"
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "全部样本" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "仅看需确认" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "仅看已拒绝" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "全部范围" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "仅看内置" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "仅看 MCP" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "全部来源" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "仅看 blocklist" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "仅看 mcpStrategy" })).toBeTruthy();
+    expect(screen.getByText("内置工具需确认样本")).toBeTruthy();
+    expect(screen.getByText("Write · 内置写类工具默认确认")).toBeTruthy();
+    expect(screen.getByText("Bash · 默认权限要求确认")).toBeTruthy();
+    expect(screen.getByText("内置工具已拒绝样本")).toBeTruthy();
+    expect(screen.getByText("Edit · 命中阻止列表")).toBeTruthy();
+    expect(screen.getByText("MCP 工具需确认样本")).toBeTruthy();
+    expect(screen.getByText("fs / read_file · MCP 策略要求确认")).toBeTruthy();
+    expect(screen.getByText("fs / write_file · MCP 策略要求确认")).toBeTruthy();
+    expect(screen.getByText("MCP 工具已拒绝样本")).toBeTruthy();
+    expect(screen.getByText("fs / delete_file · 命中阻止列表")).toBeTruthy();
+    expect(screen.getByText("原因分组与处置入口")).toBeTruthy();
+    expect(screen.getByText("内置写类工具默认确认 · 1")).toBeTruthy();
+    expect(screen.getByText("默认权限要求确认 · 1")).toBeTruthy();
+    expect(screen.getByText("命中阻止列表 · 2")).toBeTruthy();
+    expect(screen.getByText("MCP 策略要求确认 · 2")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "仅看已拒绝" }));
+    expect(screen.queryByText("Write · 内置写类工具默认确认")).toBeNull();
+    expect(screen.getByText("Edit · 命中阻止列表")).toBeTruthy();
+    expect(screen.getByText("fs / delete_file · 命中阻止列表")).toBeTruthy();
+    expect(screen.queryByText("MCP 策略要求确认 · 2")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "仅看需确认" }));
+    expect(screen.getByText("Write · 内置写类工具默认确认")).toBeTruthy();
+    expect(screen.getByText("fs / read_file · MCP 策略要求确认")).toBeTruthy();
+    expect(screen.queryByText("Edit · 命中阻止列表")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "仅看 MCP" }));
+    fireEvent.click(screen.getByRole("button", { name: "仅看 mcpStrategy" }));
+    await waitFor(() => {
+      expect(screen.queryByText("Write · 内置写类工具默认确认")).toBeNull();
+      expect(screen.getByText("fs / read_file · MCP 策略要求确认")).toBeTruthy();
+      expect(screen.getByText("fs / write_file · MCP 策略要求确认")).toBeTruthy();
+      expect(screen.queryByText("fs / delete_file · 命中阻止列表")).toBeNull();
+      expect(screen.getByText("MCP 策略要求确认 · 2")).toBeTruthy();
+      expect(screen.queryByText("命中阻止列表 · 2")).toBeNull();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "全部范围" }));
+    fireEvent.click(screen.getByRole("button", { name: "全部来源" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "前往高级设置" }));
+    expect(nav.toSettings).toHaveBeenCalledWith("advanced");
+
+    fireEvent.click(screen.getByRole("button", { name: "前往 MCP 管理" }));
+    expect(nav.toWorkflow).toHaveBeenCalledWith("mcp");
   });
 
 });

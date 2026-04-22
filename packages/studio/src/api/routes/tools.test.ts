@@ -69,6 +69,7 @@ describe("createToolsRouter", () => {
           requiresConfirmation: false,
           reason: "Tool is blocked by runtimeControls.toolAccess.blocklist",
           source: "runtimeControls.toolAccess.blocklist",
+          reasonKey: "blocklist-deny",
         }),
         expect.objectContaining({
           name: "Write",
@@ -77,6 +78,7 @@ describe("createToolsRouter", () => {
           requiresConfirmation: false,
           reason: "Tool is not in runtimeControls.toolAccess.allowlist",
           source: "runtimeControls.toolAccess.allowlist",
+          reasonKey: "allowlist-deny",
         }),
       ]),
     );
@@ -95,12 +97,14 @@ describe("createToolsRouter", () => {
           access: "prompt",
           enabled: true,
           requiresConfirmation: true,
+          reasonKey: "builtin-write-prompt",
         }),
         expect.objectContaining({
           name: "Edit",
           access: "prompt",
           enabled: true,
           requiresConfirmation: true,
+          reasonKey: "builtin-write-prompt",
         }),
       ]),
     );
@@ -124,7 +128,7 @@ describe("createToolsRouter", () => {
     expect(response.status).toBe(200);
     const payload = await response.json();
     expect(payload.success).toBe(true);
-    expect(payload.result.data).toContain('"name": "@vivy1024/novelfork-studio"');
+    expect(payload.result.data).toContain('"name": "novelfork"');
   });
 
   it("blocks tools on the runtime blocklist even if they are allowlisted", async () => {
@@ -173,6 +177,7 @@ describe("createToolsRouter", () => {
       allowed: false,
       confirmationRequired: true,
       source: "runtimeControls.defaultPermissionMode",
+      reasonKey: "default-prompt",
       error: "Tool falls back to defaultPermissionMode=ask",
     });
   });
@@ -191,6 +196,7 @@ describe("createToolsRouter", () => {
           name: "Read",
           access: "allow",
           source: "runtimeControls.toolAccess.allowlist",
+          reasonKey: "allowlist-allow",
         }),
       ]),
     );
