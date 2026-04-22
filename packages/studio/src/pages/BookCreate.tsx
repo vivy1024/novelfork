@@ -189,6 +189,38 @@ interface BookCreateProps {
   readonly flowRevision?: number;
 }
 
+type BookCreateStage = "idle" | "submitting" | "waiting" | "creating-session" | "opening-workspace";
+
+function formatBookCreateError(error: unknown, language: "zh" | "en"): string {
+  const errorCode = typeof error === "object" && error !== null && "code" in error && typeof (error as { code?: unknown }).code === "string"
+    ? (error as { code: string }).code
+    : undefined;
+
+  if (errorCode === "PROJECT_BOOTSTRAP_WORKTREE_CONFLICT") {
+    return language === "en"
+      ? "This worktree is already owned by another book. Go back to project initialization and change the worktree name or repository source before retrying."
+      : "当前 worktree 已被其他书占用，可以返回上一步修改 worktree 名称或仓库来源后再重试。";
+  }
+
+  if (error instanceof Error && error.message.includes("still being created")) {
+    return language === "en"
+      ? "The project bootstrap is still running. Wait a moment and refresh before retrying."
+      : "项目初始化仍在进行中，请稍后刷新或稍等片刻后再试。";
+  }
+
+  if (error instanceof Error && error.message.includes("NOVELFORK_LLM_API_KEY")) {
+    return language === "en"
+      ? "Project initialization failed because the backend writing runtime is not fully configured yet. Check the LLM/API key setup and retry."
+      : "项目初始化失败：后端写作运行时尚未配置完成。请先检查 LLM / API Key 配置，再重新尝试。";
+  }
+
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+
+  return language === "en" ? "Failed to create book" : "创建书籍失败";
+}
+
 export function BookCreate({ nav, theme, t, projectCreateDraft, flowRevision = 0 }: BookCreateProps) {
   const c = useColors(theme);
   const { data: genreData } = useApi<{ genres: ReadonlyArray<GenreInfo> }>("/genres");
@@ -213,6 +245,7 @@ export function BookCreate({ nav, theme, t, projectCreateDraft, flowRevision = 0
   const [targetChaptersTouched, setTargetChaptersTouched] = useState(false);
   const [worktreeTouched, setWorktreeTouched] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [createStage, setCreateStage] = useState<BookCreateStage>("idle");
   const [error, setError] = useState<string | null>(null);
 
   const allGenres = genreData?.genres ?? [];
@@ -266,6 +299,7 @@ export function BookCreate({ nav, theme, t, projectCreateDraft, flowRevision = 0
     setTargetChaptersTouched(false);
     setWorktreeTouched(false);
     setCreating(false);
+    setCreateStage("idle");
     setError(null);
   }, [flowRevision, projectCreateDraft, projectLang]);
 
@@ -351,6 +385,23 @@ export function BookCreate({ nav, theme, t, projectCreateDraft, flowRevision = 0
   const createDefaultSessionTitle = projectLang === "en"
     ? `New book “${title.trim()}” writing session`
     : `新书《${title.trim()}》写作会话`;
+  const createStageMessage = createStage === "submitting"
+    ? projectLang === "en"
+      ? "Submitting the create request…"
+      : "正在提交建书请求…"
+    : createStage === "waiting"
+      ? projectLang === "en"
+        ? "Waiting for the book scaffold to become readable…"
+        : "正在等待书籍骨架就绪…"
+      : createStage === "creating-session"
+        ? projectLang === "en"
+          ? "Creating the default writer session…"
+          : "正在创建默认写作会话…"
+        : createStage === "opening-workspace"
+          ? projectLang === "en"
+            ? "Opening the workspace…"
+            : "正在准备进入工作区…"
+          : null;
 
   const handleCreate = async () => {
     if (!title.trim()) {
@@ -362,7 +413,9 @@ export function BookCreate({ nav, theme, t, projectCreateDraft, flowRevision = 0
       return;
     }
     setCreating(true);
+    setCreateStage("submitting");
     setError(null);
+    await Promise.resolve();
     try {
       const result = await postApi<{ bookId: string }>("/books/create", buildStudioCreateBookRequest({
         title,
@@ -374,7 +427,10 @@ export function BookCreate({ nav, theme, t, projectCreateDraft, flowRevision = 0
         projectInit,
         initializationPlan: currentProjectCreateDraft.initializationPlan,
       }));
+      setCreateStage("waiting");
+      await Promise.resolve();
       await waitForBookReady(result.bookId);
+      setCreateStage("creating-session");
       const session = await fetchJson<NarratorSessionRecord>("/api/sessions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -386,6 +442,7 @@ export function BookCreate({ nav, theme, t, projectCreateDraft, flowRevision = 0
           worktree: projectInit.worktreeName,
         }),
       });
+      setCreateStage("opening-workspace");
       addWindow({
         title: session.title,
         agentId: session.agentId,
@@ -394,7 +451,8 @@ export function BookCreate({ nav, theme, t, projectCreateDraft, flowRevision = 0
       });
       nav.toBook(result.bookId);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to create book");
+      setError(formatBookCreateError(e, projectLang));
+      setCreateStage("idle");
     } finally {
       setCreating(false);
     }
@@ -412,6 +470,12 @@ export function BookCreate({ nav, theme, t, projectCreateDraft, flowRevision = 0
         <h1 className="font-serif text-3xl">{copy.title}</h1>
         <p className="text-sm leading-6 text-muted-foreground">{copy.subtitle}</p>
       </div>
+
+      {createStageMessage && (
+        <div className="rounded-md border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-foreground">
+          {createStageMessage}
+        </div>
+      )}
 
       {error && (
         <div className={`border ${c.error} rounded-md px-4 py-3`}>
@@ -438,7 +502,8 @@ export function BookCreate({ nav, theme, t, projectCreateDraft, flowRevision = 0
             <button
               type="button"
               onClick={() => nav.toProjectCreate?.(currentProjectCreateDraft)}
-              className={`px-4 py-3 ${c.btnSecondary} rounded-md font-medium text-base`}
+              disabled={creating}
+              className={`px-4 py-3 ${c.btnSecondary} rounded-md font-medium text-base disabled:opacity-50`}
             >
               {copy.summaryEdit}
             </button>

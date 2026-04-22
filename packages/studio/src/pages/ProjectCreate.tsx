@@ -123,6 +123,9 @@ export function ProjectCreate({ nav, theme, t, initialDraft, flowRevision = 0 }:
         planLabel: "当前 ProjectCreate 对象",
         planHint: "进入书籍骨架后会自动创建默认写作会话，让你在创建完成后直接进入工作状态。",
         next: "下一步：书籍骨架并准备进入工作区",
+        blockingHint: initializationPlan.blockingField === "cloneUrl"
+          ? "要继续进入书籍骨架，需要先补齐克隆地址。"
+          : "要继续进入书籍骨架，需要先补齐仓库路径。",
         back: "返回书库",
       };
 
@@ -239,6 +242,12 @@ export function ProjectCreate({ nav, theme, t, initialDraft, flowRevision = 0 }:
           <li>{projectLang === "en" ? "Reserved Git" : "Git 预留"}：{projectCreateDraft.projectInit.gitBranch} / {projectCreateDraft.projectInit.worktreeName}</li>
         </ul>
       </div>
+
+      {!initializationPlan.readyToContinue && (
+        <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-700">
+          {copy.blockingHint}
+        </div>
+      )}
 
       <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
         <button
