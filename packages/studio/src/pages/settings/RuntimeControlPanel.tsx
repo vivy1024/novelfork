@@ -166,9 +166,10 @@ export function RuntimeControlPanel() {
               <SlidersHorizontal className="size-4 text-primary" />
               运行控制面板
             </CardTitle>
-            <CardDescription>
-              本轮先把会话默认权限、推理强度和上下文压缩阈值纳入 /api/settings 主配置，避免再出现本地并行存储。
-            </CardDescription>
+                  <CardDescription>
+                    本轮先把会话默认权限、推理强度和上下文压缩阈值纳入 /api/settings 主配置，避免再出现本地并行存储。Tools Execute / MCP Call / Context Manager 已接入这里的重试、退避、trace、dump 与上下文阈值配置。
+                  </CardDescription>
+
           </div>
           <Badge variant="outline">/api/settings/user</Badge>
         </div>

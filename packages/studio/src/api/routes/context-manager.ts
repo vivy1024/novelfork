@@ -62,7 +62,7 @@ export function createContextManagerRouter(ctx: RouterContext): Hono {
         }
       }
 
-      const { compressionRatio } = await getRuntimeThresholds();
+      const { compressionRatio, truncateRatio } = await getRuntimeThresholds();
       const percentage = (totalTokens / CONTEXT_MAX_TOKENS) * 100;
       const canCompress = totalTokens > CONTEXT_MAX_TOKENS * compressionRatio;
 
@@ -72,6 +72,14 @@ export function createContextManagerRouter(ctx: RouterContext): Hono {
         percentage,
         messages: messageCount,
         canCompress,
+        governance: {
+          source: "runtimeControls.contextCompressionThresholdPercent",
+          compressionThresholdPercent: Math.round(compressionRatio * 100),
+          truncateTargetPercent: Math.round(truncateRatio * 100),
+          compressionReason: canCompress
+            ? `当前上下文已达到 runtimeControls.contextCompressionThresholdPercent=${Math.round(compressionRatio * 100)}% 的压缩阈值`
+            : `当前上下文未达到 runtimeControls.contextCompressionThresholdPercent=${Math.round(compressionRatio * 100)}% 的压缩阈值`,
+        },
       });
     } catch (e) {
       return c.json({ error: String(e) }, 500);
@@ -130,7 +138,7 @@ export function createContextManagerRouter(ctx: RouterContext): Hono {
   app.post("/api/context/:bookId/truncate", async (c) => {
     const bookId = c.req.param("bookId");
     const body = await c.req.json<{ maxTokens?: number }>().catch(() => ({ maxTokens: undefined }));
-    const { truncateRatio } = await getRuntimeThresholds();
+    const { compressionRatio, truncateRatio } = await getRuntimeThresholds();
     const targetTokens = body.maxTokens ?? CONTEXT_MAX_TOKENS * truncateRatio;
 
     try {
@@ -155,7 +163,16 @@ export function createContextManagerRouter(ctx: RouterContext): Hono {
         // File doesn't exist
       }
 
-      return c.json({ status: "truncated", targetTokens });
+      return c.json({
+        status: "truncated",
+        targetTokens,
+        governance: {
+          source: "runtimeControls.contextTruncateTargetPercent",
+          compressionThresholdPercent: Math.round(compressionRatio * 100),
+          truncateTargetPercent: Math.round(truncateRatio * 100),
+          truncateReason: `本次截断目标来自 runtimeControls.contextTruncateTargetPercent=${Math.round(truncateRatio * 100)}%`,
+        },
+      });
     } catch (e) {
       return c.json({ error: String(e) }, 500);
     }

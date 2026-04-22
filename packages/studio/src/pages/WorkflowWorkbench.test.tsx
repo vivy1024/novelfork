@@ -54,6 +54,8 @@ describe("WorkflowWorkbench", () => {
           data: {
             runtimeControls: {
               defaultPermissionMode: "ask",
+              contextCompressionThresholdPercent: 80,
+              contextTruncateTargetPercent: 70,
               toolAccess: {
                 allowlist: ["Read", "Write"],
                 blocklist: ["Edit"],
@@ -167,6 +169,7 @@ describe("WorkflowWorkbench", () => {
     expect(screen.getByText("blocklist：1 项（Edit）")).toBeTruthy();
     expect(screen.getByText("mcpStrategy：inherit")).toBeTruthy();
     expect(screen.getByText(/恢复策略：启动恢复开 .* 恢复 3 次 .* 重试 5 次 .* 1000ms→30000ms .* x2 .* jitter 20%/)).toBeTruthy();
+    expect(screen.getByText(/上下文治理：压缩阈值 80% .* 截断目标 70%/)).toBeTruthy();
     expect(screen.getByText(/调试链：dump 开 .* trace 开 .* sample 50%/)).toBeTruthy();
     expect(screen.getAllByText("策略来源：runtimeControls.toolAccess").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText(/已发现\s*5\s*个工具/)).toBeTruthy();
