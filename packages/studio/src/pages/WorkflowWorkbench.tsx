@@ -58,12 +58,21 @@ interface MCPRegistryResponse {
     policySource?: string;
     mcpStrategy?: "allow" | "ask" | "deny" | "inherit";
   };
+  servers?: Array<{
+    id: string;
+    name: string;
+    tools?: Array<{
+      name: string;
+      source?: string;
+    }>;
+  }>;
 }
 
 interface ToolsRegistryResponse {
   tools?: Array<{
     name: string;
     access?: "allow" | "prompt" | "deny";
+    source?: string;
   }>;
 }
 
@@ -229,8 +238,19 @@ export function WorkflowWorkbench({
       allow: tools.filter((tool) => tool.access === "allow").length,
       prompt: tools.filter((tool) => tool.access === "prompt").length,
       deny: tools.filter((tool) => tool.access === "deny").length,
+      allowlist: tools.filter((tool) => tool.source === "runtimeControls.toolAccess.allowlist").length,
+      blocklist: tools.filter((tool) => tool.source === "runtimeControls.toolAccess.blocklist").length,
+      defaultPermissionMode: tools.filter((tool) => tool.source === "runtimeControls.defaultPermissionMode").length,
+      builtinRules: tools.filter((tool) => tool.source === "builtin-permission-rules").length,
     };
   }, [toolsRegistry.data?.tools]);
+  const mcpSourceSummary = useMemo(() => {
+    const tools = (mcpRegistry.data?.servers ?? []).flatMap((server) => server.tools ?? []);
+    return {
+      mcpStrategy: tools.filter((tool) => tool.source === "runtimeControls.toolAccess.mcpStrategy").length,
+      blocklist: tools.filter((tool) => tool.source === "runtimeControls.toolAccess.blocklist").length,
+    };
+  }, [mcpRegistry.data?.servers]);
 
   return (
     <PageScaffold
@@ -276,6 +296,7 @@ export function WorkflowWorkbench({
             <p>blocklist：{formatStatusList(toolAccess?.blocklist)}</p>
             <p>mcpStrategy：{toolAccess?.mcpStrategy ?? registrySummary?.mcpStrategy ?? "inherit"}</p>
             <p>内置 tools：{builtinToolSummary.allow} / {builtinToolSummary.prompt} / {builtinToolSummary.deny}</p>
+            <p>内置来源：allowlist {builtinToolSummary.allowlist} / blocklist {builtinToolSummary.blocklist} / default {builtinToolSummary.defaultPermissionMode} / builtin {builtinToolSummary.builtinRules}</p>
             <p>策略来源：{registrySummary?.policySource ?? "runtimeControls.toolAccess"}</p>
           </GovernanceSummaryCard>
 
@@ -283,6 +304,7 @@ export function WorkflowWorkbench({
             <p className="text-foreground">已发现 {registrySummary?.discoveredTools ?? 0} 个工具</p>
             <p>已启用 {registrySummary?.enabledTools ?? 0} 个工具</p>
             <p>allow / prompt / deny：{registrySummary?.allowTools ?? 0} / {registrySummary?.promptTools ?? 0} / {registrySummary?.denyTools ?? 0}</p>
+            <p>MCP 来源：mcpStrategy {mcpSourceSummary.mcpStrategy} / blocklist {mcpSourceSummary.blocklist}</p>
             <p>已连接 {registrySummary?.connectedServers ?? 0} / {registrySummary?.totalServers ?? 0} 个 Server</p>
             <p>策略来源：{registrySummary?.policySource ?? "runtimeControls.toolAccess"}</p>
           </GovernanceSummaryCard>
