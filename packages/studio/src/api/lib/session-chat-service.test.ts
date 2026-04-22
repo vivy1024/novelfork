@@ -375,6 +375,55 @@ describe("session-chat-service", () => {
     expect(snapshot?.cursor.lastSeq).toBe(2);
   });
 
+  it("preserves tool calls through persisted recent messages and snapshots", async () => {
+    const { createSession, getSessionChatSnapshot, updateSession } = await loadSessionServices();
+    const session = await createSession({
+      title: "透明化会话",
+      agentId: "writer",
+      sessionMode: "chat",
+    });
+
+    await updateSession(session.id, {
+      messageCount: 1,
+      recentMessages: [
+        {
+          id: "assistant-tool-1",
+          role: "assistant",
+          content: "我先检查一下工作区。",
+          timestamp: Date.now(),
+          toolCalls: [
+            {
+              id: "tool-bash-1",
+              toolName: "Bash",
+              status: "success",
+              command: "git status --short",
+              output: " M packages/studio/src/components/ChatWindow.tsx",
+              duration: 420,
+            },
+          ],
+        },
+      ],
+    });
+
+    const snapshot = await getSessionChatSnapshot(session.id);
+    expect(snapshot?.messages[0]).toMatchObject({
+      id: "assistant-tool-1",
+      toolCalls: [
+        expect.objectContaining({
+          toolName: "Bash",
+          command: "git status --short",
+        }),
+      ],
+    });
+    expect(snapshot?.session.recentMessages?.[0]).toMatchObject({
+      toolCalls: [
+        expect.objectContaining({
+          toolName: "Bash",
+        }),
+      ],
+    });
+  });
+
   it("restores recent messages from persisted session state after runtime reload", async () => {
     const firstLoad = await loadSessionServices();
     const session = await firstLoad.createSession({

@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { RunStore } from "../lib/run-store.js";
+
 const userConfigState = {
   runtimeControls: {
     defaultPermissionMode: "allow",
@@ -42,6 +44,14 @@ describe("createToolsRouter", () => {
     userConfigState.runtimeControls.toolAccess.allowlist = [];
     userConfigState.runtimeControls.toolAccess.blocklist = [];
     userConfigState.runtimeControls.toolAccess.mcpStrategy = "inherit";
+    userConfigState.runtimeControls.recovery.maxRetryAttempts = 5;
+    userConfigState.runtimeControls.recovery.initialRetryDelayMs = 1000;
+    userConfigState.runtimeControls.recovery.maxRetryDelayMs = 30000;
+    userConfigState.runtimeControls.recovery.backoffMultiplier = 2;
+    userConfigState.runtimeControls.recovery.jitterPercent = 20;
+    userConfigState.runtimeControls.runtimeDebug.dumpEnabled = false;
+    userConfigState.runtimeControls.runtimeDebug.traceEnabled = false;
+    userConfigState.runtimeControls.runtimeDebug.traceSampleRatePercent = 0;
   });
 
   it("exposes runtime tool access decisions in the tool registry", async () => {
@@ -128,7 +138,7 @@ describe("createToolsRouter", () => {
     expect(response.status).toBe(200);
     const payload = await response.json();
     expect(payload.success).toBe(true);
-    expect(payload.result.data).toContain('"name": "novelfork"');
+    expect(payload.result.data).toContain('"name": "@vivy1024/novelfork-studio"');
   });
 
   it("blocks tools on the runtime blocklist even if they are allowlisted", async () => {
@@ -200,5 +210,77 @@ describe("createToolsRouter", () => {
         }),
       ]),
     );
+  });
+
+  it("retries tool execution with runtime recovery settings and records execution metadata", async () => {
+    userConfigState.runtimeControls.toolAccess.allowlist = ["Read"];
+    userConfigState.runtimeControls.recovery.maxRetryAttempts = 2;
+    userConfigState.runtimeControls.recovery.initialRetryDelayMs = 0;
+    userConfigState.runtimeControls.recovery.maxRetryDelayMs = 0;
+    userConfigState.runtimeControls.recovery.jitterPercent = 0;
+    userConfigState.runtimeControls.runtimeDebug.dumpEnabled = true;
+    userConfigState.runtimeControls.runtimeDebug.traceEnabled = true;
+    userConfigState.runtimeControls.runtimeDebug.traceSampleRatePercent = 100;
+
+    const executeMock = vi
+      .fn()
+      .mockResolvedValueOnce({ success: false, error: "temporary failure" })
+      .mockResolvedValueOnce({ success: true, data: "ok" });
+    const runStore = new RunStore();
+    const app = createToolsRouter({
+      runStore,
+      sleep: vi.fn(async () => undefined),
+      random: () => 0,
+      executor: {
+        register: vi.fn(),
+        listTools: vi.fn(() => []),
+        execute: executeMock,
+      } as never,
+    });
+
+    const response = await app.request("http://localhost/execute", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        toolName: "Read",
+        params: { file_path: "package.json" },
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(executeMock).toHaveBeenCalledTimes(2);
+    const payload = await response.json();
+    expect(payload.success).toBe(true);
+    expect(payload.execution).toMatchObject({
+      attempts: 2,
+      traceEnabled: true,
+      dumpEnabled: true,
+    });
+    expect(payload.execution.runId).toEqual(expect.any(String));
+
+    const run = runStore.get(payload.execution.runId);
+    expect(run?.status).toBe("succeeded");
+    expect(run?.logs.some((entry) => entry.message.includes("Attempt 1 failed"))).toBe(true);
+  });
+
+  it("builds a source preview for file-oriented tool calls", async () => {
+    const app = createToolsRouter();
+    const response = await app.request("http://localhost/source-preview", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        toolName: "Read",
+        params: { file_path: "package.json" },
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload).toMatchObject({
+      target: "package.json",
+      locator: "package.json:1-5",
+    });
+    expect(payload.snippet).toContain('"name": "@vivy1024/novelfork-studio"');
+    expect(payload.requestPreview).toContain('"file_path": "package.json"');
   });
 });

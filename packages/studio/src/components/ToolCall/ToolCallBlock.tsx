@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   CheckCircle2,
   ChevronDown,
@@ -6,7 +6,10 @@ import {
   CircleAlert,
   CircleDashed,
   Copy,
+  Expand,
   LoaderCircle,
+  Play,
+  ScrollText,
   TimerReset,
 } from "lucide-react";
 
@@ -14,7 +17,11 @@ import type { ToolCall } from "@/shared/session-types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
+import { fetchJson } from "@/hooks/use-api";
+import { useRunDetails } from "@/hooks/use-run-events";
 
 import { ToolIcon } from "./ToolIcon";
 import {
@@ -31,18 +38,34 @@ interface ToolCallBlockProps {
   toolCall: ToolCall;
   defaultExpanded?: boolean;
   className?: string;
+  onReplay?: (toolCall: ToolCall) => void;
 }
 
-export function ToolCallBlock({ toolCall, defaultExpanded = false, className }: ToolCallBlockProps) {
+interface SourcePreview {
+  title: string;
+  target: string;
+  locator: string;
+  requestPreview: string;
+  snippet: string;
+}
+
+export function ToolCallBlock({ toolCall, defaultExpanded = false, className, onReplay }: ToolCallBlockProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [rawExpanded, setRawExpanded] = useState(false);
+  const [sourceOpen, setSourceOpen] = useState(false);
+  const [fullscreenOpen, setFullscreenOpen] = useState(false);
   const [copiedKey, setCopiedKey] = useState<"summary" | "command" | "output" | null>(null);
+  const [sourcePreview, setSourcePreview] = useState<SourcePreview | null>(null);
+  const [sourcePreviewLoading, setSourcePreviewLoading] = useState(false);
   const summary = useMemo(() => buildToolCallSummary(toolCall), [toolCall]);
   const toolKind = useMemo(() => getToolCallKind(toolCall.toolName), [toolCall.toolName]);
   const primaryTarget = useMemo(() => getToolCallPrimaryTarget(toolCall), [toolCall]);
   const detailSections = useMemo(() => buildDetailSections(toolCall, toolKind), [toolCall, toolKind]);
   const rawPayload = useMemo(() => buildRawPayload(toolCall), [toolCall]);
+  const sourcePayload = useMemo(() => buildSourcePayload(toolCall, toolKind), [toolCall, toolKind]);
   const subagentCard = useMemo(() => (toolKind === "agent" ? buildSubagentCard(toolCall) : null), [toolCall, toolKind]);
+  const executionMeta = useMemo(() => extractToolRunExecution(toolCall), [toolCall]);
+  const liveRun = useRunDetails(executionMeta?.runId);
   const status = toolCall.status ?? "success";
   const timeline = useMemo(
     () => [
@@ -59,7 +82,44 @@ export function ToolCallBlock({ toolCall, defaultExpanded = false, className }: 
   };
 
   const canExpand = detailSections.length > 0;
+  const canReplay = Boolean(onReplay) && isReplayableToolCall(toolCall, toolKind);
+  const hasSource = Boolean(sourcePayload);
   const highlightBadges = buildHighlightBadges(toolCall, toolKind, primaryTarget);
+
+  useEffect(() => {
+    if (!sourceOpen || !hasSource) {
+      return;
+    }
+
+    let cancelled = false;
+    setSourcePreviewLoading(true);
+    void fetchJson<SourcePreview>("/api/tools/source-preview", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        toolName: toolCall.toolName,
+        params: asRecord(toolCall.input) ?? {},
+        command: toolCall.command,
+        output: toolCall.output,
+      }),
+    }).then((payload) => {
+      if (cancelled) {
+        return;
+      }
+      setSourcePreview(payload);
+      setSourcePreviewLoading(false);
+    }).catch(() => {
+      if (cancelled) {
+        return;
+      }
+      setSourcePreview(null);
+      setSourcePreviewLoading(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hasSource, sourceOpen, toolCall]);
 
   return (
     <Card
@@ -123,6 +183,7 @@ export function ToolCallBlock({ toolCall, defaultExpanded = false, className }: 
                   ) : null}
                 </div>
               )}
+              {executionMeta?.runId ? <RunTrackingCard executionMeta={executionMeta} liveRun={liveRun} /> : null}
             </div>
           </div>
 
@@ -167,6 +228,18 @@ export function ToolCallBlock({ toolCall, defaultExpanded = false, className }: 
                   输出
                 </Button>
               ) : null}
+              {hasSource ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="xs"
+                  onClick={() => setSourceOpen(true)}
+                  aria-label="查看源码"
+                >
+                  <ScrollText className="size-3.5" />
+                  查看源码
+                </Button>
+              ) : null}
               {rawPayload ? (
                 <Button
                   type="button"
@@ -178,6 +251,30 @@ export function ToolCallBlock({ toolCall, defaultExpanded = false, className }: 
                 >
                   {rawExpanded ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
                   原始载荷
+                </Button>
+              ) : null}
+              {(canExpand || rawPayload) ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="xs"
+                  onClick={() => setFullscreenOpen(true)}
+                  aria-label="全屏查看"
+                >
+                  <Expand className="size-3.5" />
+                  全屏查看
+                </Button>
+              ) : null}
+              {canReplay ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="xs"
+                  onClick={() => onReplay?.(toolCall)}
+                  aria-label="重跑"
+                >
+                  <Play className="size-3.5" />
+                  重跑
                 </Button>
               ) : null}
               {canExpand && (
@@ -208,6 +305,49 @@ export function ToolCallBlock({ toolCall, defaultExpanded = false, className }: 
           {rawExpanded && rawPayload ? <DetailSection label="原始载荷" value={rawPayload} /> : null}
         </CardContent>
       ) : null}
+
+      <Dialog open={sourceOpen} onOpenChange={setSourceOpen}>
+        <DialogContent className="max-w-4xl max-h-[85vh] overflow-hidden" showCloseButton>
+          <DialogHeader>
+            <DialogTitle>工具源码</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 overflow-auto pr-1 text-sm">
+            {sourcePreviewLoading ? <div className="text-xs text-muted-foreground">正在加载源码预览…</div> : null}
+            {sourcePreview ? (
+              <>
+                <DetailSection label="定位信息" value={`${sourcePreview.target}\n${sourcePreview.locator}`} />
+                <DetailSection label="请求片段" value={sourcePreview.requestPreview} />
+                <DetailSection label="源码片段" value={sourcePreview.snippet} />
+              </>
+            ) : null}
+            {!sourcePreviewLoading && !sourcePreview ? <DetailSection label="请求片段" value={sourcePayload ?? "暂无源码信息"} /> : null}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={fullscreenOpen} onOpenChange={setFullscreenOpen}>
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden" showCloseButton>
+          <DialogHeader>
+            <DialogTitle>工具调用全屏详情</DialogTitle>
+          </DialogHeader>
+          <Tabs defaultValue="details" className="min-h-0 flex-1 overflow-hidden">
+            <TabsList variant="line" className="w-full justify-start rounded-none bg-transparent p-0">
+              <TabsTrigger value="details" className="rounded-none px-3 py-2">结果细节</TabsTrigger>
+              <TabsTrigger value="raw" className="rounded-none px-3 py-2">原始载荷</TabsTrigger>
+            </TabsList>
+            <TabsContent value="details" className="mt-3 space-y-3 overflow-auto pr-1">
+              {detailSections.length > 0
+                ? detailSections.map((section) => (
+                    <DetailSection key={`fullscreen-${section.key}`} label={section.label} value={section.value} tone={section.tone} />
+                  ))
+                : <DetailSection label="结果细节" value="暂无结果细节" />}
+            </TabsContent>
+            <TabsContent value="raw" className="mt-3 overflow-auto pr-1">
+              <DetailSection label="原始载荷" value={rawPayload ?? "暂无原始载荷"} />
+            </TabsContent>
+          </Tabs>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
@@ -388,6 +528,74 @@ function buildRawPayload(toolCall: ToolCall) {
   return JSON.stringify(payload, null, 2);
 }
 
+function buildSourcePayload(toolCall: ToolCall, toolKind: ReturnType<typeof getToolCallKind>) {
+  const input = stringifyDetail(toolCall.input);
+  const sourceSections = [
+    toolKind === "bash" && toolCall.command?.trim()
+      ? `# Bash\n${toolCall.command.trim()}`
+      : undefined,
+    toolKind === "mcp"
+      ? buildMcpReplaySnippet(toolCall)
+      : undefined,
+    toolKind !== "bash" && toolKind !== "mcp"
+      ? buildBuiltinReplaySnippet(toolCall)
+      : undefined,
+    input ? `# 输入参数\n${input}` : undefined,
+  ].filter((section): section is string => Boolean(section));
+
+  return sourceSections.length > 0 ? sourceSections.join("\n\n") : undefined;
+}
+
+function isReplayableToolCall(toolCall: ToolCall, toolKind: ReturnType<typeof getToolCallKind>) {
+  if (toolCall.status !== "success") {
+    return false;
+  }
+
+  if (toolKind === "mcp") {
+    const input = asRecord(toolCall.input);
+    return typeof input?.serverId === "string" && typeof input?.tool === "string";
+  }
+
+  if (["bash", "read", "write", "search", "web"].includes(toolKind)) {
+    return true;
+  }
+
+  return false;
+}
+
+function buildBuiltinReplaySnippet(toolCall: ToolCall) {
+  return [
+    "POST /api/tools/execute",
+    JSON.stringify(
+      {
+        toolName: toolCall.toolName,
+        params: asRecord(toolCall.input) ?? {},
+      },
+      null,
+      2,
+    ),
+  ].join("\n\n");
+}
+
+function buildMcpReplaySnippet(toolCall: ToolCall) {
+  const input = asRecord(toolCall.input);
+  const serverId = typeof input?.serverId === "string" ? input.serverId : "<server-id>";
+  const tool = typeof input?.tool === "string" ? input.tool : toolCall.toolName;
+  const args = asRecord(input?.arguments) ?? {};
+
+  return [
+    `POST /api/mcp/servers/${serverId}/call`,
+    JSON.stringify(
+      {
+        tool,
+        arguments: args,
+      },
+      null,
+      2,
+    ),
+  ].join("\n\n");
+}
+
 function getKindLabel(toolKind: ReturnType<typeof getToolCallKind>) {
   switch (toolKind) {
     case "bash":
@@ -428,6 +636,47 @@ function stringifyDetail(value: unknown): string | undefined {
 function summarizeLineCount(value: string) {
   const lineCount = value.split(/\r?\n/).filter((line) => line.trim().length > 0).length;
   return `${Math.max(lineCount, 1)} 行`;
+}
+
+function RunTrackingCard({
+  executionMeta,
+  liveRun,
+}: {
+  executionMeta: { runId: string; attempts?: number; traceEnabled?: boolean; dumpEnabled?: boolean };
+  liveRun: { status: string; stage?: string; error?: string } | null;
+}) {
+  return (
+    <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs" data-testid="run-tracking-card">
+      <div className="mb-2 flex items-center gap-2">
+        <Badge variant="secondary">运行追踪</Badge>
+        <span className="font-mono text-foreground">{executionMeta.runId}</span>
+      </div>
+      <div className="flex flex-wrap items-center gap-2 text-muted-foreground">
+        {executionMeta.attempts !== undefined ? <span>尝试 {executionMeta.attempts} 次</span> : null}
+        <span>trace {executionMeta.traceEnabled ? "开" : "关"}</span>
+        <span>dump {executionMeta.dumpEnabled ? "开" : "关"}</span>
+        {liveRun?.status ? <span>实时状态：{liveRun.status}</span> : null}
+        {liveRun?.stage ? <span>阶段：{liveRun.stage}</span> : null}
+      </div>
+      {liveRun?.error ? <div className="mt-2 text-destructive">{liveRun.error}</div> : null}
+    </div>
+  );
+}
+
+function extractToolRunExecution(toolCall: ToolCall) {
+  const resultRecord = asRecord(toolCall.result);
+  const executionRecord = asRecord(resultRecord?.execution) ?? resultRecord ?? undefined;
+  const runId = typeof executionRecord?.runId === "string" ? executionRecord.runId : undefined;
+  if (!runId || !executionRecord) {
+    return null;
+  }
+
+  return {
+    runId,
+    attempts: typeof executionRecord.attempts === "number" ? executionRecord.attempts : undefined,
+    traceEnabled: typeof executionRecord.traceEnabled === "boolean" ? executionRecord.traceEnabled : undefined,
+    dumpEnabled: typeof executionRecord.dumpEnabled === "boolean" ? executionRecord.dumpEnabled : undefined,
+  };
 }
 
 function truncate(value: string, max: number) {

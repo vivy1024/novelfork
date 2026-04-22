@@ -24,10 +24,12 @@ import {
   buildToolCallSummary,
   formatToolCallDuration,
   getToolCallStatusLabel,
+  normalizeToolCall,
   parseAssistantPayload,
   ToolCallBlock,
 } from "./ToolCall";
 import { ContextPanel, type ContextEntry } from "./ContextPanel";
+import { Button } from "./ui/button";
 import { fetchJson } from "../hooks/use-api";
 import { getDefaultModel, getDefaultProvider, getModel, getProvider, PROVIDERS } from "../shared/provider-catalog";
 import type {
@@ -82,6 +84,8 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
   const [contextPanelOpen, setContextPanelOpen] = useState(false);
   const [sessionRecord, setSessionRecord] = useState<NarratorSessionRecord | null>(null);
   const [sessionMessages, setSessionMessages] = useState<ChatMessage[] | null>(null);
+  const [recoveryStatus, setRecoveryStatus] = useState<"idle" | "reconnecting" | "replaying" | "resetting">("idle");
+  const [executionChainExpanded, setExecutionChainExpanded] = useState(false);
   const sessionMessagesRef = useRef<ChatMessage[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -129,6 +133,8 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
   useEffect(() => {
     lastSessionSeqRef.current = 0;
     sessionMessagesRef.current = [];
+    setRecoveryStatus("idle");
+    setExecutionChainExpanded(false);
   }, [chatWindow?.sessionId]);
 
   const persistSessionMessages = useCallback(
@@ -180,6 +186,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
       const envelope = parseSessionChatEnvelope(rawText);
       if (envelope) {
         if (envelope.type === "session:snapshot") {
+          setRecoveryStatus("idle");
           syncSessionRecord(envelope.snapshot.session);
           syncSessionSeq(envelope.snapshot.cursor?.lastSeq ?? getLastSessionSeq(envelope.snapshot.messages));
           const nextMessages = envelope.snapshot.messages.map(toChatWindowMessage);
@@ -195,6 +202,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
         }
 
         if (envelope.type === "session:message") {
+          setRecoveryStatus("idle");
           syncSessionSeq(envelope.message.seq ?? envelope.cursor?.lastSeq);
           const nextMessage = toChatWindowMessage(envelope.message);
           if (sessionMessagesRef.current.some((message) => message.id === nextMessage.id)) {
@@ -215,6 +223,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
       }
 
       try {
+        setRecoveryStatus("idle");
         const parsed = parseAssistantPayload(JSON.parse(rawText), rawText);
         const message: ChatMessage = {
           id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
@@ -225,6 +234,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
         };
         syncSessionMessages([...sessionMessagesRef.current, message]);
       } catch {
+        setRecoveryStatus("idle");
         const message: ChatMessage = {
           id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
           role: "assistant",
@@ -267,14 +277,17 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
   const hydrateReconnectHistory = useCallback(
     async (sessionId: string, sinceSeq: number) => {
       if (sinceSeq <= 0) {
+        setRecoveryStatus("idle");
         return;
       }
 
+      setRecoveryStatus("replaying");
       const history = await fetchJson<Partial<NarratorSessionChatHistory>>(`/api/sessions/${sessionId}/chat/history?sinceSeq=${sinceSeq}`);
       if (!history || !Array.isArray(history.messages)) {
         return;
       }
       if (history.resetRequired) {
+        setRecoveryStatus("resetting");
         const snapshot = await fetchJson<NarratorSessionChatSnapshot>(`/api/sessions/${sessionId}/chat/state`);
         syncSessionRecord(snapshot.session);
         syncSessionSeq(snapshot.cursor?.lastSeq ?? getLastSessionSeq(snapshot.messages));
@@ -294,7 +307,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
       syncSessionMessages(nextMessages);
       ackSessionSeq();
     },
-    [ackSessionSeq, syncSessionRecord, syncSessionSeq, updateWindow, windowId],
+    [ackSessionSeq, syncSessionRecord, syncSessionSeq],
   );
 
   useEffect(() => {
@@ -329,6 +342,11 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
             globalThis.clearTimeout(reconnectTimerRef.current);
             reconnectTimerRef.current = null;
           }
+          if (lastSessionSeqRef.current > 0) {
+            setRecoveryStatus("replaying");
+          } else {
+            setRecoveryStatus("idle");
+          }
           void hydrateReconnectHistory(sessionId, lastSessionSeqRef.current);
         };
 
@@ -345,6 +363,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
           if (disposed) {
             return;
           }
+          setRecoveryStatus("reconnecting");
           if (reconnectTimerRef.current !== null) {
             globalThis.clearTimeout(reconnectTimerRef.current);
           }
@@ -377,6 +396,41 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView?.({ behavior: "smooth" });
   }, [effectiveMessages]);
+
+  const handleReplayToolCall = useCallback(async (toolCall: ToolCall) => {
+    const toolKind = normalizeReplayToolKind(toolCall.toolName);
+    const input = asRecord(toolCall.input) ?? {};
+
+    let replayResponse: unknown;
+    if (toolKind === "mcp") {
+      const serverId = typeof input.serverId === "string" ? input.serverId : undefined;
+      const tool = typeof input.tool === "string" ? input.tool : undefined;
+      if (!serverId || !tool) {
+        return;
+      }
+
+      replayResponse = await fetchJson(`/api/mcp/servers/${serverId}/call`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tool,
+          arguments: asRecord(input.arguments) ?? {},
+        }),
+      });
+    } else {
+      replayResponse = await fetchJson("/api/tools/execute", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          toolName: toolCall.toolName,
+          params: input,
+        }),
+      });
+    }
+
+    const replayMessage = buildReplayAssistantMessage(toolCall, replayResponse);
+    syncSessionMessages([...sessionMessagesRef.current, replayMessage]);
+  }, [syncSessionMessages]);
 
   if (!chatWindow) return null;
 
@@ -443,6 +497,14 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
   const lastMessageTime = lastMessage
     ? new Date(lastMessage.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
     : "--:--";
+  const recoveryStatusLabel =
+    recoveryStatus === "reconnecting"
+      ? "正在重连会话…"
+      : recoveryStatus === "resetting"
+        ? "历史已重置，正在重新同步会话…"
+        : recoveryStatus === "replaying"
+          ? "正在回放会话历史…"
+          : null;
 
   const updateSessionConfig = (updates: Partial<NarratorSessionRecord["sessionConfig"]>) => {
     const nextSessionConfig = {
@@ -553,6 +615,11 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
 
         {!chatWindow.minimized && (
           <>
+            {recoveryStatusLabel ? (
+              <div className="border-b border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-700">
+                {recoveryStatusLabel}
+              </div>
+            ) : null}
             <div className="grid gap-2 border-b px-3 py-2 text-[10px] sm:grid-cols-3" style={{ borderColor: c.border, backgroundColor: c.bgSecondary }}>
               <SessionMetric label="连接" value={wsConnected ? "在线" : "离线"} />
               <SessionMetric label="位置" value={`x:${chatWindow.position.x} y:${chatWindow.position.y}`} />
@@ -698,6 +765,30 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
                             {recentExecutionChain.detail}
                           </div>
                         </div>
+                        <div className="mt-3 flex items-center justify-between gap-2">
+                          <div className="text-[11px] font-medium text-muted-foreground">链路详情</div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="xs"
+                            onClick={() => setExecutionChainExpanded((prev) => !prev)}
+                            aria-label={executionChainExpanded ? "收起最近执行链" : "展开最近执行链"}
+                          >
+                            {executionChainExpanded ? "收起最近执行链" : "展开最近执行链"}
+                          </Button>
+                        </div>
+                        {executionChainExpanded ? (
+                          <div className="mt-3 space-y-2 rounded-xl border border-border/60 bg-muted/10 p-2">
+                            {recentExecutionChain.calls.map((toolCall, idx) => (
+                              <ToolCallBlock
+                                key={`execution-chain-${toolCall.id ?? `${toolCall.toolName}-${idx}`}`}
+                                toolCall={toolCall}
+                                defaultExpanded={toolCall.status === "error" || toolCall.status === "running"}
+                                onReplay={handleReplayToolCall}
+                              />
+                            ))}
+                          </div>
+                        ) : null}
                       </>
                     ) : (
                       <div className="mt-3 rounded-lg border border-dashed border-border/60 bg-muted/10 px-3 py-2 text-xs text-muted-foreground">
@@ -812,6 +903,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
                           key={toolCall.id ?? `${msg.id}-tool-${idx}`}
                           toolCall={toolCall}
                           defaultExpanded={toolCall.status === "error" || toolCall.status === "running"}
+                          onReplay={handleReplayToolCall}
                         />
                       ))}
                     </div>
@@ -1063,12 +1155,88 @@ function sumToolCallDurations(toolCalls: ToolCall[]) {
   return toolCalls.some((toolCall) => typeof toolCall.duration === "number") ? formatToolCallDuration(total) : "未上报";
 }
 
+function normalizeReplayToolKind(toolName: string) {
+  return toolName.trim().toLowerCase().includes("mcp") ? "mcp" : "builtin";
+}
+
+function buildReplayAssistantMessage(toolCall: ToolCall, replayResponse: unknown): ChatMessage {
+  const replayCall = normalizeReplayResult(toolCall, replayResponse);
+  return {
+    id: `replay-${toolCall.id ?? toolCall.toolName}-${Date.now()}`,
+    role: "assistant",
+    content: `已重跑 ${toolCall.toolName}`,
+    timestamp: Date.now(),
+    toolCalls: replayCall ? [replayCall] : undefined,
+  };
+}
+
+function normalizeReplayResult(toolCall: ToolCall, replayResponse: unknown): ToolCall | undefined {
+  const payload = asRecord(replayResponse);
+  if (!payload) {
+    return undefined;
+  }
+
+  const resultRecord = asRecord(payload.result);
+  const success = payload.success === true || resultRecord?.success === true;
+  const output = extractReplayOutput(payload);
+  const normalized = normalizeToolCall({
+    id: `${toolCall.id ?? toolCall.toolName}-replay`,
+    toolName: toolCall.toolName,
+    status: success ? "success" : "error",
+    summary: success ? `重跑完成：${toolCall.toolName}` : `重跑失败：${toolCall.toolName}`,
+    command: toolCall.command,
+    input: toolCall.input,
+    output,
+    result: {
+      ...(resultRecord ?? {}),
+      execution: payload.execution,
+    },
+    error: typeof payload.error === "string" ? payload.error : undefined,
+  });
+
+  return normalized ?? undefined;
+}
+
+function extractReplayOutput(payload: Record<string, unknown>) {
+  const resultRecord = asRecord(payload.result);
+  const directData = typeof resultRecord?.data === "string" ? resultRecord.data : undefined;
+  const directOutput = typeof resultRecord?.output === "string" ? resultRecord.output : undefined;
+  if (directData || directOutput) {
+    return directData ?? directOutput;
+  }
+
+  if (typeof payload.error === "string") {
+    return payload.error;
+  }
+
+  return stringifyUnknown(resultRecord ?? payload);
+}
+
+function stringifyUnknown(value: unknown) {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (value == null) {
+    return undefined;
+  }
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null ? value as Record<string, unknown> : undefined;
+}
+
 function toChatWindowMessage(message: NarratorSessionChatMessage): ChatMessage {
   return {
     id: message.id,
     role: message.role,
     content: message.content,
     timestamp: message.timestamp,
+    toolCalls: message.toolCalls,
   };
 }
 
@@ -1078,6 +1246,7 @@ function toNarratorSessionChatMessage(message: ChatMessage): NarratorSessionChat
     role: message.role,
     content: message.content,
     timestamp: message.timestamp,
+    toolCalls: message.toolCalls,
   };
 }
 
