@@ -1,3 +1,5 @@
+import type { ToolAccessReasonKey } from "./tool-access-reasons.js";
+
 export type SessionPermissionMode = "allow" | "ask" | "deny";
 export type SessionReasoningEffort = "low" | "medium" | "high";
 
@@ -76,6 +78,22 @@ export interface NarratorSessionChatMessage {
 
 export type ToolCallStatus = "pending" | "running" | "success" | "error";
 
+export interface ToolCallExecutionEnvelope {
+  runId?: string | null;
+  attempts?: number;
+  traceEnabled?: boolean;
+  dumpEnabled?: boolean;
+}
+
+export interface ToolCallGovernanceEnvelope {
+  allowed?: boolean;
+  confirmationRequired?: boolean;
+  source?: string;
+  reason?: string;
+  reasonKey?: ToolAccessReasonKey;
+  execution?: ToolCallExecutionEnvelope;
+}
+
 export interface ToolCall {
   id?: string;
   toolName: string;
@@ -85,7 +103,13 @@ export interface ToolCall {
   input?: unknown;
   duration?: number;
   output?: string;
-  result?: unknown;
+  result?: ToolCallGovernanceEnvelope | Record<string, unknown>;
+  allowed?: boolean;
+  confirmationRequired?: boolean;
+  source?: string;
+  reason?: string;
+  reasonKey?: ToolAccessReasonKey;
+  execution?: ToolCallExecutionEnvelope;
   error?: string;
   exitCode?: number;
   startedAt?: number;

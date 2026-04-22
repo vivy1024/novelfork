@@ -22,6 +22,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { fetchJson } from "@/hooks/use-api";
 import { useRunDetails } from "@/hooks/use-run-events";
+import { describeToolAccessReason } from "@/shared/tool-access-reasons";
 
 import { ToolIcon } from "./ToolIcon";
 import {
@@ -65,6 +66,7 @@ export function ToolCallBlock({ toolCall, defaultExpanded = false, className, on
   const rawPayload = useMemo(() => buildRawPayload(toolCall), [toolCall]);
   const sourcePayload = useMemo(() => buildSourcePayload(toolCall, toolKind), [toolCall, toolKind]);
   const subagentCard = useMemo(() => (toolKind === "agent" ? buildSubagentCard(toolCall) : null), [toolCall, toolKind]);
+  const governanceMeta = useMemo(() => extractToolGovernance(toolCall), [toolCall]);
   const executionMeta = useMemo(() => extractToolRunExecution(toolCall), [toolCall]);
   const liveRun = useRunDetails(executionMeta?.runId);
   const status = toolCall.status ?? "success";
@@ -186,6 +188,7 @@ export function ToolCallBlock({ toolCall, defaultExpanded = false, className, on
                 </div>
               )}
               {subagentCard && <SubagentCard card={subagentCard} />}
+              {governanceMeta ? <GovernanceCard governanceMeta={governanceMeta} /> : null}
               {(timeline.length > 0 || toolCall.error) && (
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
                   {timeline.map((item) => (
@@ -656,6 +659,27 @@ function summarizeLineCount(value: string) {
   return `${Math.max(lineCount, 1)} 行`;
 }
 
+function GovernanceCard({
+  governanceMeta,
+}: {
+  governanceMeta: { source?: string; reason?: string; reasonLabel: string; confirmationRequired?: boolean; allowed?: boolean };
+}) {
+  return (
+    <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-xs" data-testid="tool-governance-card">
+      <div className="mb-2 flex items-center gap-2">
+        <Badge variant="secondary">治理解释</Badge>
+        <span className="text-foreground">{governanceMeta.reasonLabel}</span>
+      </div>
+      <div className="flex flex-wrap items-center gap-2 text-muted-foreground">
+        {governanceMeta.source ? <span>来源：{governanceMeta.source}</span> : null}
+        {governanceMeta.allowed === false ? <span>执行：拒绝</span> : null}
+        {governanceMeta.confirmationRequired ? <span>执行：需确认</span> : null}
+      </div>
+      {governanceMeta.reason ? <div className="mt-2 text-muted-foreground">原因：{governanceMeta.reason}</div> : null}
+    </div>
+  );
+}
+
 function RunTrackingCard({
   executionMeta,
   liveRun,
@@ -694,6 +718,31 @@ function extractToolRunExecution(toolCall: ToolCall) {
     attempts: typeof executionRecord.attempts === "number" ? executionRecord.attempts : undefined,
     traceEnabled: typeof executionRecord.traceEnabled === "boolean" ? executionRecord.traceEnabled : undefined,
     dumpEnabled: typeof executionRecord.dumpEnabled === "boolean" ? executionRecord.dumpEnabled : undefined,
+  };
+}
+
+function extractToolGovernance(toolCall: ToolCall) {
+  const resultRecord = asRecord(toolCall.result);
+  const source = toolCall.source ?? (typeof resultRecord?.source === "string" ? resultRecord.source : undefined);
+  const reason = toolCall.reason ?? (typeof resultRecord?.reason === "string" ? resultRecord.reason : undefined);
+  const reasonKey = toolCall.reasonKey ?? (typeof resultRecord?.reasonKey === "string" ? resultRecord.reasonKey : undefined);
+  const confirmationRequired = toolCall.confirmationRequired === true || resultRecord?.confirmationRequired === true;
+  const allowed = typeof toolCall.allowed === "boolean"
+    ? toolCall.allowed
+    : typeof resultRecord?.allowed === "boolean"
+      ? resultRecord.allowed
+      : undefined;
+
+  if (!source && !reason && !reasonKey && !confirmationRequired && allowed === undefined) {
+    return null;
+  }
+
+  return {
+    source,
+    reason,
+    confirmationRequired,
+    allowed,
+    reasonLabel: describeToolAccessReason(reasonKey as never, reason),
   };
 }
 

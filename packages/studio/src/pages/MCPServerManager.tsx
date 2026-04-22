@@ -231,6 +231,18 @@ export function MCPServerManager({ nav, theme, t }: Props) {
         <SummaryCard title="已启用工具" value={String(summary.enabledTools)} description="当前进入系统注册视图的工具数量" />
       </div>
 
+      <Card className="border-dashed bg-muted/20">
+        <CardHeader>
+          <CardTitle className="text-base">治理总览</CardTitle>
+          <CardDescription>让 MCP 注册表直接映射 Settings 的权限策略，而不是只显示连接与工具数量。</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-3 text-sm text-muted-foreground md:grid-cols-3">
+          <div>策略来源：{summary.policySource ?? "runtimeControls.toolAccess"}</div>
+          <div>MCP 默认策略：{summary.mcpStrategy ?? "inherit"}</div>
+          <div>调用执行链：遵循 Settings 的重试 / trace / dump 配置</div>
+        </CardContent>
+      </Card>
+
       {editorMode && (
         <Card className="border-dashed bg-muted/20">
           <CardHeader>
