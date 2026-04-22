@@ -42,6 +42,7 @@ describe("ProjectCreate", () => {
 
     expect(nextButton.disabled).toBe(true);
     screen.getByText("初始化计划：等待填写克隆地址");
+    screen.getByText(/要继续进入书籍骨架，需要先补齐克隆地址/);
 
     fireEvent.click(nextButton);
 

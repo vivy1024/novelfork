@@ -4,6 +4,18 @@ import { isTauriBridgeActive, tauriFetch } from "./tauri-api-bridge";
 const BASE = "/api";
 const API_INVALIDATE_EVENT = "novelfork:api-invalidate";
 
+export class ApiRequestError extends Error {
+  readonly code?: string;
+  readonly status?: number;
+
+  constructor(message: string, options?: { code?: string; status?: number }) {
+    super(message);
+    this.name = "ApiRequestError";
+    this.code = options?.code;
+    this.status = options?.status;
+  }
+}
+
 interface ApiInvalidateDetail {
   readonly paths: ReadonlyArray<string>;
 }
@@ -60,28 +72,28 @@ export function invalidateApiPaths(paths: ReadonlyArray<string>): void {
   }));
 }
 
-async function readErrorMessage(res: Response): Promise<string> {
+async function readErrorDetails(res: Response): Promise<{ message: string; code?: string }> {
   const contentType = res.headers.get("content-type") ?? "";
   if (contentType.includes("application/json")) {
     try {
       const json = await res.json() as { error?: unknown };
       if (typeof json.error === "string" && json.error.trim()) {
-        return json.error;
+        return { message: json.error };
       }
-      if (
-        json.error &&
-        typeof json.error === "object" &&
-        "message" in json.error &&
-        typeof (json.error as { message?: unknown }).message === "string" &&
-        (json.error as { message: string }).message.trim()
-      ) {
-        return (json.error as { message: string }).message;
+      if (json.error && typeof json.error === "object") {
+        const structured = json.error as { code?: unknown; message?: unknown };
+        if (typeof structured.message === "string" && structured.message.trim()) {
+          return {
+            message: structured.message,
+            code: typeof structured.code === "string" && structured.code.trim() ? structured.code : undefined,
+          };
+        }
       }
     } catch {
       // fall through
     }
   }
-  return `${res.status} ${res.statusText}`.trim();
+  return { message: `${res.status} ${res.statusText}`.trim() };
 }
 
 export async function fetchJson<T>(
@@ -103,7 +115,8 @@ export async function fetchJson<T>(
   const res = await fetchImpl(url, init);
 
   if (!res.ok) {
-    throw new Error(await readErrorMessage(res));
+    const error = await readErrorDetails(res);
+    throw new ApiRequestError(error.message, { code: error.code, status: res.status });
   }
 
   if (res.status === 204) {

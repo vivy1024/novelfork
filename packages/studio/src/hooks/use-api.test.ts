@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { buildApiUrl, deriveInvalidationPaths, fetchJson } from "./use-api";
+import { ApiRequestError, buildApiUrl, deriveInvalidationPaths, fetchJson } from "./use-api";
 
 describe("buildApiUrl", () => {
   it("returns null for blank paths so callers can skip requests", () => {
@@ -47,6 +47,27 @@ describe("fetchJson", () => {
     );
 
     await expect(fetchJson("/books/../bad", {}, { fetchImpl })).rejects.toThrow("Invalid book ID: ../bad");
+  });
+
+  it("preserves structured api error codes for actionable recovery flows", async () => {
+    const fetchImpl = vi.fn(async () =>
+      new Response(JSON.stringify({
+        error: {
+          code: "PROJECT_BOOTSTRAP_WORKTREE_CONFLICT",
+          message: "Worktree is already owned by another book",
+        },
+      }), {
+        status: 409,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    await expect(fetchJson("/books", {}, { fetchImpl })).rejects.toMatchObject({
+      name: "ApiRequestError",
+      code: "PROJECT_BOOTSTRAP_WORKTREE_CONFLICT",
+      message: "Worktree is already owned by another book",
+      status: 409,
+    });
   });
 });
 
