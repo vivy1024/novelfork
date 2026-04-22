@@ -38,7 +38,7 @@ describe("ProjectCreate", () => {
     });
     fireEvent.click(screen.getAllByRole("button", { name: /克隆仓库/ })[0]);
 
-    const nextButton = screen.getByRole("button", { name: "下一步：书籍骨架" }) as HTMLButtonElement;
+    const nextButton = screen.getByRole("button", { name: "下一步：书籍骨架并准备进入工作区" }) as HTMLButtonElement;
 
     expect(nextButton.disabled).toBe(true);
     screen.getByText("初始化计划：等待填写克隆地址");
@@ -72,7 +72,8 @@ describe("ProjectCreate", () => {
     fireEvent.change(screen.getAllByDisplayValue("main")[0], {
       target: { value: " release " },
     });
-    fireEvent.click(screen.getAllByRole("button", { name: "下一步：书籍骨架" })[0]);
+    expect(screen.getByText(/进入书籍骨架后会自动创建默认写作会话/)).toBeTruthy();
+    fireEvent.click(screen.getAllByRole("button", { name: "下一步：书籍骨架并准备进入工作区" })[0]);
 
     expect(nav.toBookCreate).toHaveBeenCalledWith({
       title: "仙路长明",

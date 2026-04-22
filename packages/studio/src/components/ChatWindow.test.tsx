@@ -34,7 +34,9 @@ interface MockWindowStore {
 
 interface MockWindowRuntimeStore {
   wsConnections: Record<string, boolean>;
+  recoveryStates: Record<string, "idle" | "reconnecting" | "replaying" | "resetting">;
   setWsConnected: (windowId: string, connected: boolean) => void;
+  setRecoveryState: (windowId: string, recoveryState: "idle" | "reconnecting" | "replaying" | "resetting") => void;
   clearWindowRuntime: (windowId: string) => void;
 }
 
@@ -939,16 +941,26 @@ function baseMockRuntimeState(): MockWindowRuntimeStore {
     wsConnections: {
       "window-1": true,
     },
+    recoveryStates: {},
     setWsConnected(windowId: string, connected: boolean) {
       state.wsConnections = {
         ...state.wsConnections,
         [windowId]: connected,
       };
     },
+    setRecoveryState(windowId: string, recoveryState: "idle" | "reconnecting" | "replaying" | "resetting") {
+      state.recoveryStates = {
+        ...state.recoveryStates,
+        [windowId]: recoveryState,
+      };
+    },
     clearWindowRuntime(windowId: string) {
       const nextConnections = { ...state.wsConnections };
+      const nextRecoveryStates = { ...state.recoveryStates };
       delete nextConnections[windowId];
+      delete nextRecoveryStates[windowId];
       state.wsConnections = nextConnections;
+      state.recoveryStates = nextRecoveryStates;
     },
   };
 

@@ -49,7 +49,9 @@ interface MockWindowStore {
 
 interface MockWindowRuntimeStore {
   wsConnections: Record<string, boolean>;
+  recoveryStates: Record<string, "idle" | "reconnecting" | "replaying" | "resetting">;
   setWsConnected: (windowId: string, connected: boolean) => void;
+  setRecoveryState: (windowId: string, recoveryState: "idle" | "reconnecting" | "replaying" | "resetting") => void;
   clearWindowRuntime: (windowId: string) => void;
 }
 
@@ -162,6 +164,7 @@ describe("SessionCenter", () => {
     });
     mockRuntimeState = createMockRuntimeState({
       wsConnections: { "window-1": true },
+      recoveryStates: { "window-1": "replaying" },
     });
 
     render(<SessionCenter theme="light" />);
@@ -170,6 +173,8 @@ describe("SessionCenter", () => {
     expect(screen.getByText(/Agent writer/)).toBeTruthy();
     expect(screen.getByText("1 条消息")).toBeTruthy();
     expect(screen.getByText("在线")).toBeTruthy();
+    expect(screen.getByText("正在回放")).toBeTruthy();
+    expect(screen.getByText(/当前会话正在回放历史/)).toBeTruthy();
     expect(screen.getByRole("button", { name: "聚焦工作台" })).toBeTruthy();
   });
 
@@ -341,16 +346,26 @@ function createMockRuntimeState(overrides?: Partial<MockWindowRuntimeStore>): Mo
 function baseMockRuntimeState(): MockWindowRuntimeStore {
   const state: MockWindowRuntimeStore = {
     wsConnections: {},
+    recoveryStates: {},
     setWsConnected(windowId: string, connected: boolean) {
       state.wsConnections = {
         ...state.wsConnections,
         [windowId]: connected,
       };
     },
+    setRecoveryState(windowId: string, recoveryState: "idle" | "reconnecting" | "replaying" | "resetting") {
+      state.recoveryStates = {
+        ...state.recoveryStates,
+        [windowId]: recoveryState,
+      };
+    },
     clearWindowRuntime(windowId: string) {
       const nextConnections = { ...state.wsConnections };
+      const nextRecoveryStates = { ...state.recoveryStates };
       delete nextConnections[windowId];
+      delete nextRecoveryStates[windowId];
       state.wsConnections = nextConnections;
+      state.recoveryStates = nextRecoveryStates;
     },
   };
 

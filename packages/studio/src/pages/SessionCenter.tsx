@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { NewSessionDialog, SESSION_PRESETS, type NewSessionPayload, type SessionPresetId } from "@/components/sessions/NewSessionDialog";
 import { useSession } from "@/hooks/useSession";
-import { useWindowRuntimeStore } from "@/stores/windowRuntimeStore";
+import { useWindowRuntimeStore, type WindowRecoveryState } from "@/stores/windowRuntimeStore";
 import { useWindowStore } from "@/stores/windowStore";
 import type { Theme } from "../hooks/use-theme";
 
@@ -20,6 +20,7 @@ export function SessionCenter({ theme }: { theme: Theme }) {
   const setActiveWindow = useWindowStore((state) => state.setActiveWindow);
   const removeWindow = useWindowStore((state) => state.removeWindow);
   const wsConnections = useWindowRuntimeStore((state) => state.wsConnections);
+  const recoveryStates = useWindowRuntimeStore((state) => state.recoveryStates);
   const { sessions, loaded, createSession, updateSession } = useSession();
   const connected = windows.filter((window) => wsConnections[window.id]).length;
   const minimized = windows.filter((window) => window.minimized).length;
@@ -49,6 +50,7 @@ export function SessionCenter({ theme }: { theme: Theme }) {
       if (sessionFilter === "all") {
         return true;
       }
+
       return session.status === sessionFilter;
     });
 
@@ -56,12 +58,15 @@ export function SessionCenter({ theme }: { theme: Theme }) {
       if (sessionSort === "title") {
         return left.title.localeCompare(right.title, "zh-CN");
       }
+
       if (sessionSort === "messages") {
         return right.messageCount - left.messageCount;
       }
+
       return right.lastModified.getTime() - left.lastModified.getTime();
     });
   }, [sessions, sessionFilter, sessionSort]);
+
 
   const openSessionDialog = (presetId: SessionPresetId) => {
     setDialogPreset(presetId);
@@ -255,7 +260,7 @@ export function SessionCenter({ theme }: { theme: Theme }) {
                         model={session.sessionConfig.modelId}
                         messageCount={session.messageCount}
                         lastModified={session.lastModified}
-                        attachedWindow={attachedWindow ? { id: attachedWindow.id, wsConnected: wsConnections[attachedWindow.id] ?? false, minimized: attachedWindow.minimized } : null}
+                        attachedWindow={attachedWindow ? { id: attachedWindow.id, wsConnected: wsConnections[attachedWindow.id] ?? false, minimized: attachedWindow.minimized, recoveryState: recoveryStates[attachedWindow.id] ?? "idle" } : null}
                         active={attachedWindow?.id === activeWindowId}
                         onOpenWorkspace={() => handleOpenSessionWorkspace(session.id)}
                         onToggleArchive={() => handleToggleArchive(session.id, session.status === "archived" ? "active" : "archived")}
@@ -330,6 +335,32 @@ function SessionStat({
   );
 }
 
+function formatRecoveryStateBadge(recoveryState: WindowRecoveryState): string {
+  switch (recoveryState) {
+    case "reconnecting":
+      return "正在重连";
+    case "replaying":
+      return "正在回放";
+    case "resetting":
+      return "等待重置";
+    default:
+      return "稳定";
+  }
+}
+
+function formatRecoveryStateDescription(recoveryState: WindowRecoveryState): string {
+  switch (recoveryState) {
+    case "reconnecting":
+      return "当前会话正在重新连接服务端，会在连接恢复后继续同步。";
+    case "replaying":
+      return "当前会话正在回放历史，稍后会恢复到最近一次服务端状态。";
+    case "resetting":
+      return "当前会话历史已请求重置，正在重新同步完整状态。";
+    default:
+      return "当前会话状态稳定。";
+  }
+}
+
 function NarratorSessionCard({
   title,
   agentId,
@@ -351,7 +382,7 @@ function NarratorSessionCard({
   model: string;
   messageCount: number;
   lastModified: Date;
-  attachedWindow: { id: string; wsConnected: boolean; minimized: boolean } | null;
+  attachedWindow: { id: string; wsConnected: boolean; minimized: boolean; recoveryState: WindowRecoveryState } | null;
   active: boolean;
   onOpenWorkspace: () => void;
   onToggleArchive: () => void;
@@ -367,6 +398,9 @@ function NarratorSessionCard({
               <Badge variant={status === "active" ? "secondary" : "outline"}>{status === "active" ? "活跃" : "已归档"}</Badge>
               <Badge variant="outline">{sessionMode === "plan" ? "计划模式" : "对话模式"}</Badge>
               {attachedWindow && <Badge variant={attachedWindow.wsConnected ? "secondary" : "outline"}>{attachedWindow.wsConnected ? "在线" : "离线"}</Badge>}
+              {attachedWindow && attachedWindow.recoveryState !== "idle" && (
+                <Badge variant="outline">{formatRecoveryStateBadge(attachedWindow.recoveryState)}</Badge>
+              )}
               {active && <Badge>当前对象</Badge>}
             </div>
             <CardDescription className="flex flex-wrap items-center gap-2 text-xs">
@@ -384,10 +418,15 @@ function NarratorSessionCard({
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
-        <div className="rounded-xl border border-border/60 bg-muted/30 p-3 text-xs text-muted-foreground">
-          {attachedWindow
-            ? `已关联工作台窗口 ${attachedWindow.id}${attachedWindow.minimized ? " · 已收起" : " · 展开中"}`
-            : "当前尚未打开工作台窗口，可直接从这里进入会话工作区。"}
+        <div className="rounded-xl border border-border/60 bg-muted/30 p-3 text-xs text-muted-foreground space-y-2">
+          <div>
+            {attachedWindow
+              ? `已关联工作台窗口 ${attachedWindow.id}${attachedWindow.minimized ? " · 已收起" : " · 展开中"}`
+              : "当前尚未打开工作台窗口，可直接从这里进入会话工作区。"}
+          </div>
+          {attachedWindow && attachedWindow.recoveryState !== "idle" ? (
+            <div className="text-amber-700">{formatRecoveryStateDescription(attachedWindow.recoveryState)}</div>
+          ) : null}
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" className="h-8 px-3 text-xs" onClick={onOpenWorkspace}>

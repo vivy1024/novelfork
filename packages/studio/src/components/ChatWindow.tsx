@@ -78,6 +78,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
   const addWindow = useWindowStore((state) => state.addWindow);
   const wsConnected = useWindowRuntimeStore((state) => state.wsConnections[windowId] ?? false);
   const setWsConnected = useWindowRuntimeStore((state) => state.setWsConnected);
+  const setRecoveryState = useWindowRuntimeStore((state) => state.setRecoveryState);
   const clearWindowRuntime = useWindowRuntimeStore((state) => state.clearWindowRuntime);
 
   const [input, setInput] = useState("");
@@ -432,6 +433,10 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
     await persistSessionMessages([...sessionMessagesRef.current, replayMessage]);
   }, [persistSessionMessages]);
 
+  useEffect(() => {
+    setRecoveryState(windowId, recoveryStatus);
+  }, [recoveryStatus, setRecoveryState, windowId]);
+
   if (!chatWindow) return null;
 
   const defaultProvider = getDefaultProvider();
@@ -499,7 +504,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
     : "--:--";
   const recoveryStatusLabel =
     recoveryStatus === "reconnecting"
-      ? "正在重连会话…"
+      ? "正在重新连接会话…"
       : recoveryStatus === "resetting"
         ? "历史已重置，正在重新同步会话…"
         : recoveryStatus === "replaying"
