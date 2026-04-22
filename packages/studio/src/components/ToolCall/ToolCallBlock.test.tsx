@@ -10,19 +10,33 @@ function defaultFetchJsonImplementation(url: string, options?: { body?: string }
     const body = JSON.parse(options?.body ?? "{}");
     const params = body.params ?? {};
     const target = params.file_path ?? params.path ?? "packages/studio/src/components/ChatWindow.tsx";
+    const locator = typeof params.offset === "number"
+      ? `${target}:${params.offset + 1}-${params.offset + Math.max(params.limit ?? 1, 1)}`
+      : typeof params.lineno === "number"
+        ? `${target}:${params.lineno}-${params.lineno + Math.max((params.limit ?? 1) - 1, 0)}`
+        : `${target}:1-5`;
     return Promise.resolve({
       title: `${body.toolName ?? "Tool"} 源码视图`,
       target,
-      locator: `${target}:1-5`,
+      locator,
+      line: typeof params.offset === "number" ? params.offset + 1 : (params.lineno ?? 1),
       requestPreview: [
         body.command ? `# 命令\n${body.command}` : undefined,
         "POST /api/tools/execute",
         JSON.stringify({ toolName: body.toolName, params }, null, 2),
       ].filter(Boolean).join("\n\n"),
       snippet: target === "package.json"
-        ? '{\n  "name": "novelfork"\n}'
+        ? '{\n  "name": "@vivy1024/novelfork-studio",\n  "version": "0.0.1"\n}'
         : "export function ChatWindow() {\n  return null;\n}",
     });
+  }
+
+  if (url === "/api/tools/open-in-editor") {
+    const body = JSON.parse(options?.body ?? "{}");
+    const params = body.params ?? {};
+    const target = params.file_path ?? params.path ?? "packages/studio/src/components/ChatWindow.tsx";
+    const line = typeof params.offset === "number" ? params.offset + 1 : (params.lineno ?? 1);
+    return Promise.resolve({ success: true, command: "code", target, line });
   }
 
   return Promise.resolve({ success: true });
@@ -295,7 +309,7 @@ describe("ToolCallBlock", () => {
           toolName: "Read",
           status: "success",
           summary: "已读取 package.json",
-          input: { file_path: "package.json" },
+          input: { file_path: "package.json", offset: 1, limit: 2 },
           output: '{"name":"novelfork"}',
         }}
       />,
@@ -304,8 +318,15 @@ describe("ToolCallBlock", () => {
     fireEvent.click(screen.getByRole("button", { name: "查看源码" }));
 
     expect(await screen.findByText("源码片段")).toBeTruthy();
-    expect(screen.getByText(/package\.json:1-5/)).toBeTruthy();
-    expect(screen.getByText(/"name": "novelfork"/)).toBeTruthy();
+    expect(screen.getByText(/package\.json:2-3/)).toBeTruthy();
+    expect(screen.getByText(/"name": "@vivy1024\/novelfork-studio"/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "打开定位" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "打开定位" }));
+    expect(fetchJsonMock).toHaveBeenCalledWith(
+      "/api/tools/open-in-editor",
+      expect.objectContaining({ method: "POST" }),
+    );
   });
 
   it("parses mock-friendly assistant payload with tool calls", () => {

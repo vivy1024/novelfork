@@ -45,6 +45,7 @@ interface SourcePreview {
   title: string;
   target: string;
   locator: string;
+  line?: number;
   requestPreview: string;
   snippet: string;
 }
@@ -79,6 +80,18 @@ export function ToolCallBlock({ toolCall, defaultExpanded = false, className, on
     await navigator.clipboard.writeText(value);
     setCopiedKey(key);
     setTimeout(() => setCopiedKey((current) => (current === key ? null : current)), 1500);
+  };
+
+  const handleOpenInEditor = async () => {
+    await fetchJson("/api/tools/open-in-editor", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        toolName: toolCall.toolName,
+        params: asRecord(toolCall.input) ?? {},
+        output: toolCall.output,
+      }),
+    });
   };
 
   const canExpand = detailSections.length > 0;
@@ -316,6 +329,11 @@ export function ToolCallBlock({ toolCall, defaultExpanded = false, className, on
             {sourcePreview ? (
               <>
                 <DetailSection label="定位信息" value={`${sourcePreview.target}\n${sourcePreview.locator}`} />
+                <div className="flex justify-end">
+                  <Button type="button" variant="outline" size="xs" onClick={() => void handleOpenInEditor()}>
+                    打开定位
+                  </Button>
+                </div>
                 <DetailSection label="请求片段" value={sourcePreview.requestPreview} />
                 <DetailSection label="源码片段" value={sourcePreview.snippet} />
               </>

@@ -429,8 +429,8 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
     }
 
     const replayMessage = buildReplayAssistantMessage(toolCall, replayResponse);
-    syncSessionMessages([...sessionMessagesRef.current, replayMessage]);
-  }, [syncSessionMessages]);
+    await persistSessionMessages([...sessionMessagesRef.current, replayMessage]);
+  }, [persistSessionMessages]);
 
   if (!chatWindow) return null;
 

@@ -306,6 +306,25 @@ describe("ChatWindow", () => {
       "/api/tools/execute",
       expect.objectContaining({ method: "POST" }),
     );
+    const sessionPersistCalls = fetchJsonMock.mock.calls.filter(
+      ([url, options]) =>
+        url === "/api/sessions/session-abc123456" &&
+        typeof options === "object" &&
+        options !== null &&
+        "method" in options &&
+        (options as { method?: string }).method === "PUT",
+    );
+    expect(sessionPersistCalls.length).toBeGreaterThan(0);
+    const latestPersistBody = JSON.parse((sessionPersistCalls.at(-1)?.[1] as { body?: string } | undefined)?.body ?? "{}");
+    expect(latestPersistBody.recentMessages.at(-1)).toMatchObject({
+      content: "已重跑 Bash",
+      toolCalls: [
+        expect.objectContaining({
+          toolName: "Bash",
+          summary: "重跑完成：Bash",
+        }),
+      ],
+    });
   });
 
   it("tracks websocket connectivity outside the persisted window shell", async () => {
