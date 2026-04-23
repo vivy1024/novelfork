@@ -172,10 +172,11 @@ describe("SessionCenter", () => {
     expect(screen.getByText("Writer 会话")).toBeTruthy();
     expect(screen.getByText(/Agent writer/)).toBeTruthy();
     expect(screen.getByText("1 条消息")).toBeTruthy();
-    expect(screen.getByText("在线")).toBeTruthy();
-    expect(screen.getByText("正在回放")).toBeTruthy();
-    expect(screen.getByText(/当前会话正在回放历史/)).toBeTruthy();
-    expect(screen.getByText(/恢复完成后会继续沿用正式消息链/)).toBeTruthy();
+    // Online + replaying is now surfaced as a single unified badge via the shared
+    // windowRecoveryPresentation module (see Package 4 / 5.6).
+    expect(screen.getByText("回放中")).toBeTruthy();
+    expect(screen.getByText(/当前窗口正在从服务端回放最近增量/)).toBeTruthy();
+    expect(screen.getByText(/回放完成后会继续沿用正式消息链/)).toBeTruthy();
     expect(screen.getByRole("button", { name: "聚焦工作台" })).toBeTruthy();
   });
 
