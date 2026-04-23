@@ -138,7 +138,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
     sessionMessagesRef.current = [];
     setRecoveryStatus("idle");
     setExecutionChainExpanded(false);
-  }, [chatWindow?.sessionId]);
+  }, [chatWindow?.sessionId, setRecoveryStatus]);
 
   const persistSessionMessages = useCallback(
     (nextMessages: ChatMessage[]) => {
@@ -258,7 +258,6 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
 
     let cancelled = false;
     setRecoveryStatus("recovering");
-    setRecoveryState(windowId, "recovering");
     void fetchJson<NarratorSessionChatSnapshot>(`/api/sessions/${sessionId}/chat/state`)
       .then((snapshot) => {
         if (cancelled || !snapshot?.session?.sessionConfig) {
@@ -270,12 +269,10 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
         const nextMessages = snapshot.messages.map(toChatWindowMessage);
         syncSessionMessages(nextMessages);
         setRecoveryStatus("idle");
-        setRecoveryState(windowId, "idle");
       })
       .catch(() => {
         if (!cancelled) {
           setRecoveryStatus("idle");
-          setRecoveryState(windowId, "idle");
         }
         // ignore hydration errors and keep local fallback state
       });
@@ -283,7 +280,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
     return () => {
       cancelled = true;
     };
-  }, [chatWindow?.sessionId, setRecoveryState, syncSessionRecord, syncSessionSeq, updateWindow, windowId]);
+  }, [chatWindow?.sessionId, setRecoveryStatus, syncSessionRecord, syncSessionSeq, syncSessionMessages, windowId]);
 
   const hydrateReconnectHistory = useCallback(
     async (sessionId: string, sinceSeq: number) => {
@@ -443,6 +440,17 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
     await persistSessionMessages([...sessionMessagesRef.current, replayMessage]);
   }, [persistSessionMessages]);
 
+  const recentExecutionChain = buildRecentExecutionChain(effectiveMessages);
+  const recentExecutionRunId = useMemo(
+    () => extractRecentExecutionRunId(recentExecutionChain?.calls),
+    [recentExecutionChain?.calls],
+  );
+  const recentExecutionRun = useRunDetails(recentExecutionRunId);
+  const recentExecutionFacts = useMemo(
+    () => buildRecentExecutionFacts(recentExecutionRunId, recentExecutionRun),
+    [recentExecutionRun, recentExecutionRunId],
+  );
+
   useEffect(() => {
     setRecoveryState(windowId, recoveryStatus);
   }, [recoveryStatus, setRecoveryState, windowId]);
@@ -477,16 +485,6 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
       : contextSummary.percentage >= 60
         ? "text-amber-600"
         : "text-emerald-600";
-  const recentExecutionChain = buildRecentExecutionChain(effectiveMessages);
-  const recentExecutionRunId = useMemo(
-    () => extractRecentExecutionRunId(recentExecutionChain?.calls),
-    [recentExecutionChain?.calls],
-  );
-  const recentExecutionRun = useRunDetails(recentExecutionRunId);
-  const recentExecutionFacts = useMemo(
-    () => buildRecentExecutionFacts(recentExecutionRunId, recentExecutionRun),
-    [recentExecutionRun, recentExecutionRunId],
-  );
   const sessionBreadcrumb = buildSessionBreadcrumb(chatWindow);
 
   const handleSend = () => {

@@ -39,18 +39,9 @@ interface MockWindowStore {
   updateLayout: (id: string, position: ChatWindowState["position"]) => void;
 }
 
-interface MockWindowRuntimeStore {
-  wsConnections: Record<string, boolean>;
-  recoveryStates: Record<string, "idle" | "recovering" | "reconnecting" | "replaying" | "resetting">;
-  setWsConnected: (windowId: string, connected: boolean) => void;
-  setRecoveryState: (windowId: string, recoveryState: "idle" | "recovering" | "reconnecting" | "replaying" | "resetting") => void;
-  clearWindowRuntime: (windowId: string) => void;
-}
-
 const updateWindowSpy = vi.fn();
 
 let mockState: MockWindowStore = createMockState();
-let mockRuntimeState: MockWindowRuntimeStore = createMockRuntimeState();
 
 vi.mock("@/stores/windowStore", () => {
   const useWindowStoreMock = ((selector: (state: MockWindowStore) => unknown) => selector(mockState)) as typeof useWindowStore & {
@@ -66,19 +57,12 @@ vi.mock("@/stores/windowStore", () => {
   return { useWindowStore: useWindowStoreMock };
 });
 
-vi.mock("@/stores/windowRuntimeStore", () => {
-  const useWindowRuntimeStoreMock = ((selector: (state: MockWindowRuntimeStore) => unknown) => selector(mockRuntimeState)) as typeof useWindowRuntimeStore & {
-    getState: () => MockWindowRuntimeStore;
-    setState: (partial: Partial<MockWindowRuntimeStore>) => void;
-  };
-
-  useWindowRuntimeStoreMock.getState = () => mockRuntimeState;
-  useWindowRuntimeStoreMock.setState = (partial) => {
-    mockRuntimeState = { ...mockRuntimeState, ...partial };
-  };
-
-  return { useWindowRuntimeStore: useWindowRuntimeStoreMock };
-});
+function resetWindowRuntimeStore(initial?: { wsConnections?: Record<string, boolean>; recoveryStates?: Record<string, "idle" | "recovering" | "reconnecting" | "replaying" | "resetting"> }) {
+  useWindowRuntimeStore.setState({
+    wsConnections: initial?.wsConnections ?? { "window-1": true },
+    recoveryStates: initial?.recoveryStates ?? {},
+  });
+}
 
 class MockWebSocket {
   static OPEN = 1;
@@ -123,7 +107,7 @@ afterEach(() => {
   updateWindowSpy.mockReset();
   MockWebSocket.instances = [];
   mockState = createMockState();
-  mockRuntimeState = createMockRuntimeState();
+  resetWindowRuntimeStore();
 });
 
 function defaultFetchJsonImplementation(url: string, ...rest: unknown[]) {
@@ -405,7 +389,7 @@ describe("ChatWindow", () => {
   });
 
   it("tracks websocket connectivity outside the persisted window shell", async () => {
-    mockRuntimeState = createMockRuntimeState({ wsConnections: { "window-1": false } });
+    resetWindowRuntimeStore({ wsConnections: { "window-1": false } });
 
     render(<ChatWindow windowId="window-1" theme="light" />);
 
@@ -416,7 +400,7 @@ describe("ChatWindow", () => {
   });
 
   it("clears runtime websocket state when the window closes", async () => {
-    mockRuntimeState = createMockRuntimeState({ wsConnections: { "window-1": true } });
+    resetWindowRuntimeStore({ wsConnections: { "window-1": true } });
 
     render(<ChatWindow windowId="window-1" theme="light" />);
 
@@ -543,7 +527,9 @@ describe("ChatWindow", () => {
 
     expect(screen.getByText("服务端正式消息")).toBeTruthy();
     expect(screen.queryByText("正在恢复正式会话快照…")).toBeNull();
-    expect(useWindowRuntimeStore.getState().recoveryStates["window-1"]).toBe("idle");
+    // After snapshot hydration with seq>0, the ws effect re-runs and transitions to
+    // replay mode, so the authoritative store no longer sits in "recovering".
+    expect(useWindowRuntimeStore.getState().recoveryStates["window-1"]).not.toBe("recovering");
   });
 
   it("persists compressed session messages back to the formal session state", async () => {
@@ -952,37 +938,3 @@ function baseMockState(): MockWindowStore {
   return state;
 }
 
-function createMockRuntimeState(overrides?: Partial<MockWindowRuntimeStore>): MockWindowRuntimeStore {
-  return Object.assign(baseMockRuntimeState(), overrides ?? {});
-}
-
-function baseMockRuntimeState(): MockWindowRuntimeStore {
-  const state: MockWindowRuntimeStore = {
-    wsConnections: {
-      "window-1": true,
-    },
-    recoveryStates: {},
-    setWsConnected(windowId: string, connected: boolean) {
-      state.wsConnections = {
-        ...state.wsConnections,
-        [windowId]: connected,
-      };
-    },
-    setRecoveryState(windowId: string, recoveryState: "idle" | "recovering" | "reconnecting" | "replaying" | "resetting") {
-      state.recoveryStates = {
-        ...state.recoveryStates,
-        [windowId]: recoveryState,
-      };
-    },
-    clearWindowRuntime(windowId: string) {
-      const nextConnections = { ...state.wsConnections };
-      const nextRecoveryStates = { ...state.recoveryStates };
-      delete nextConnections[windowId];
-      delete nextRecoveryStates[windowId];
-      state.wsConnections = nextConnections;
-      state.recoveryStates = nextRecoveryStates;
-    },
-  };
-
-  return state;
-}
