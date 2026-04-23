@@ -23,7 +23,7 @@ export { createRhythmRouter } from "./rhythm.js";
 export { createGoldenChaptersRouter } from "./golden-chapters.js";
 export { createChatRouter } from "./chat.js";
 export { createContextManagerRouter } from "./context-manager.js";
-export { createAdminRouter } from "./admin.js";
+export { createAdminRouter, setupAdminWebSocket } from "./admin.js";
 export { createRoutinesRouter } from "./routines.js";
 export { createSearchRouter } from "./search.js";
 export { default as sessionRouter } from "./session.js";

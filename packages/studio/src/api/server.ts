@@ -59,6 +59,7 @@ import {
   sessionRouter,
   createSearchRouter,
   createMonitorRouter,
+  setupAdminWebSocket,
   setupMonitorWebSocket,
 } from "./routes/index.js";
 import type { RouterContext } from "./routes/index.js";
@@ -484,10 +485,9 @@ export async function startStudioServer(
 
   console.log(`NovelFork Studio running on http://localhost:${port}`);
 
-  // TODO: WebSocket support - createServer 和 setupAdminWebSocket 未定义
-  // const server = createServer();
-  // setupAdminWebSocket(server);
-  // setupMonitorWebSocket(server, ctx);
-
-  await startHttpServer({ fetch: app.fetch, port });
+  const startedServer = await startHttpServer({ fetch: app.fetch, port });
+  if (startedServer) {
+    setupAdminWebSocket(startedServer);
+    // setupMonitorWebSocket(startedServer, ctx);
+  }
 }

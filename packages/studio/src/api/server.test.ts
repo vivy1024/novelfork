@@ -17,7 +17,10 @@ const loadChapterIndexMock = vi.fn();
 const createLLMClientMock = vi.fn(() => ({}));
 const chatCompletionMock = vi.fn();
 const loadProjectConfigMock = vi.fn();
-const startHttpServerMock = vi.fn(async () => undefined);
+const startHttpServerMock = vi.fn(async (): Promise<unknown> => undefined);
+const { setupAdminWebSocketMock } = vi.hoisted(() => ({
+  setupAdminWebSocketMock: vi.fn(),
+}));
 const startupOrchestratorMock = vi.fn(async () => ({
   bookCount: 0,
   migratedBooks: 0,
@@ -49,6 +52,14 @@ const logger = {
 vi.mock("./start-http-server.js", () => ({
   startHttpServer: startHttpServerMock,
 }));
+
+vi.mock("./routes/index.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./routes/index.js")>();
+  return {
+    ...actual,
+    setupAdminWebSocket: setupAdminWebSocketMock,
+  };
+});
 
 vi.mock("./lib/startup-orchestrator.js", () => ({
   runStartupOrchestrator: startupOrchestratorMock,
@@ -240,6 +251,7 @@ describe("createStudioServer daemon lifecycle", () => {
     });
     loadProjectConfigMock.mockReset();
     startHttpServerMock.mockClear();
+    setupAdminWebSocketMock.mockReset();
     startupOrchestratorMock.mockClear();
     loadProjectConfigMock.mockImplementation(async () => {
       const raw = JSON.parse(await readFile(join(root, "novelfork.json"), "utf-8")) as Record<string, unknown>;
@@ -1006,5 +1018,16 @@ describe("createStudioServer daemon lifecycle", () => {
     const afterPayload = await afterResponse.json();
     expect(afterPayload.startup.recoveryReport.startedAt).toBe("2026-04-20T10:05:00.000Z");
     expect(afterPayload.startup.indexedDocuments).toBe(5);
+  });
+
+  it("attaches the admin resource websocket to the started http server", async () => {
+    const startedServer = { kind: "started-http-server" };
+    startHttpServerMock.mockResolvedValueOnce(startedServer);
+
+    const { startStudioServer } = await import("./server.js");
+    await startStudioServer(root, 4567);
+
+    expect(startHttpServerMock).toHaveBeenCalledWith(expect.objectContaining({ port: 4567 }));
+    expect(setupAdminWebSocketMock).toHaveBeenCalledWith(startedServer);
   });
 });
