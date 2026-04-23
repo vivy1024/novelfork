@@ -107,10 +107,11 @@ describe("ResourcesTab", () => {
     expect(screen.getByRole("heading", { name: "存储扫描" })).toBeTruthy();
     expect(screen.getByText("接入状态")).toBeTruthy();
     expect(screen.getByText("启动恢复报告")).toBeTruthy();
-    expect(screen.getByText(/compile smoke success/)).toBeTruthy();
-    expect(screen.getByText(/success 4/)).toBeTruthy();
-    expect(screen.getByText(/failed 0/)).toBeTruthy();
+    expect(screen.getByText("正式交付边界")).toBeTruthy();
+    expect(screen.getByText(/pnpm bun:compile/)).toBeTruthy();
+    expect(screen.getByText(/安装器 \/ 签名 \/ 自动更新 \/ 首启 UX 仍在边界外/)).toBeTruthy();
     expect(screen.getAllByText("已接入").length).toBeGreaterThanOrEqual(2);
+
     expect(screen.getByText("18.2%")).toBeTruthy();
     expect(screen.getByText("8 核心")).toBeTruthy();
     expect(screen.getByText("8.00 GB / 16.00 GB")).toBeTruthy();
