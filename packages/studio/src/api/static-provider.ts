@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { join, normalize } from "node:path";
+import { isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
 
 export interface StaticAsset {
   readonly content: Uint8Array;
@@ -31,12 +31,14 @@ function getContentType(filePath: string): string {
 }
 
 export function createFilesystemStaticProvider(staticDir: string): StaticProvider {
+  const staticRoot = resolve(staticDir);
+
   return {
     async hasIndexHtml(): Promise<boolean> {
-      return existsSync(join(staticDir, "index.html"));
+      return existsSync(join(staticRoot, "index.html"));
     },
     async readIndexHtml(): Promise<string | null> {
-      const indexPath = join(staticDir, "index.html");
+      const indexPath = join(staticRoot, "index.html");
       if (!existsSync(indexPath)) {
         return null;
       }
@@ -44,7 +46,20 @@ export function createFilesystemStaticProvider(staticDir: string): StaticProvide
     },
     async readAsset(requestPath: string): Promise<StaticAsset | null> {
       const normalizedPath = normalize(requestPath).replace(/^[/\\]+/, "");
-      const filePath = join(staticDir, normalizedPath);
+      const filePath = resolve(staticRoot, normalizedPath);
+      const relativePath = relative(staticRoot, filePath);
+
+      if (
+        normalizedPath.length === 0
+        || isAbsolute(normalizedPath)
+        || relativePath === ""
+        || relativePath === ".."
+        || relativePath.startsWith(`..${sep}`)
+        || isAbsolute(relativePath)
+      ) {
+        return null;
+      }
+
       try {
         const content = await readFile(filePath);
         return {

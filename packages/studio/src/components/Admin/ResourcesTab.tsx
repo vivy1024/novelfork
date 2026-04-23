@@ -71,11 +71,33 @@ interface StartupActionSummary {
   bookId?: string;
 }
 
+interface StartupDecisionAction {
+  kind: "repair-runtime-state" | "rebuild-search-index" | "rerun-startup-recovery" | "manual-check";
+  label: string;
+  endpoint?: string;
+  method?: "POST";
+  payload?: Record<string, string>;
+}
+
+interface StartupDecision {
+  id: string;
+  phase: "project-bootstrap" | "migration" | "search-index" | "static-delivery" | "compile-smoke";
+  severity: "error" | "warning";
+  title: string;
+  description: string;
+  action: StartupDecisionAction;
+}
+
 interface StartupSummarySnapshot {
   delivery: {
     staticMode: "embedded" | "filesystem" | "missing";
     indexHtmlReady: boolean;
     compileSmokeStatus: "success" | "skipped" | "failed" | "unknown";
+    compileCommand?: string;
+    expectedArtifactPath?: string;
+    embeddedAssetsReady?: boolean;
+    singleFileReady?: boolean;
+    excludedDeliveryScopes?: readonly string[];
   };
   recoveryReport: {
     startedAt: string;
@@ -93,6 +115,7 @@ interface StartupSummarySnapshot {
     phase: "project-bootstrap" | "migration" | "search-index" | "static-delivery" | "compile-smoke";
     message: string;
   }>;
+  decisions?: StartupDecision[];
 }
 
 interface ResourcesResponse {
@@ -105,7 +128,7 @@ export function ResourcesTab() {
   const [data, setData] = useState<ResourcesResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [pendingAction, setPendingAction] = useState<"runtime" | "storage" | "recovery" | null>(null);
+  const [pendingAction, setPendingAction] = useState<string | null>(null);
 
   useEffect(() => {
     void loadResources();
@@ -144,9 +167,37 @@ export function ResourcesTab() {
     }
   };
 
+  const executeStartupDecision = async (decision: StartupDecision) => {
+    if (!decision.action.endpoint || decision.action.kind === "manual-check") {
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    setPendingAction(decision.id);
+
+    try {
+      const requestInit: RequestInit = {
+        method: decision.action.method ?? "POST",
+      };
+      if (decision.action.payload) {
+        requestInit.body = JSON.stringify(decision.action.payload);
+        requestInit.headers = { "Content-Type": "application/json" };
+      }
+      const data = await fetchJson<ResourcesResponse>(decision.action.endpoint, requestInit);
+      setData(data);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : `${decision.title} 执行失败`);
+    } finally {
+      setLoading(false);
+      setPendingAction(null);
+    }
+  };
+
   const stats = data?.stats ?? null;
   const storage = data?.storage ?? null;
   const startup = data?.startup ?? null;
+  const startupDecisions = startup?.decisions ?? [];
 
   const memoryUsagePercent = stats?.memory.usagePercent ?? 0;
   const diskUsagePercent = stats?.disk.usagePercent ?? 0;
@@ -435,7 +486,7 @@ export function ResourcesTab() {
                 <StatusRow
                   title="正式交付边界"
                   description={startup
-                    ? `当前以 ${startup.delivery.staticMode} 作为静态交付路径，compile smoke 命令固定为 pnpm bun:compile；安装器 / 签名 / 自动更新 / 首启 UX 仍在边界外。`
+                    ? `当前以 ${startup.delivery.staticMode} 作为静态交付路径，compile smoke 命令固定为 ${startup.delivery.compileCommand ?? "pnpm bun:compile"}；产物 ${startup.delivery.expectedArtifactPath ?? "dist/novelfork"}；${startup.delivery.singleFileReady ? "单文件交付已就绪" : "单文件交付未就绪"}；${startup.delivery.embeddedAssetsReady ? "embedded 资源已就绪" : "embedded 资源未就绪"}；${(startup.delivery.excludedDeliveryScopes ?? ["installer", "signing", "auto-update", "first-launch UX"]).map((scope: string) => scope === "installer" ? "安装器" : scope === "signing" ? "签名" : scope === "auto-update" ? "自动更新" : scope === "first-launch UX" ? "首启 UX" : scope).join(" / ")} 仍在边界外。`
                     : "当前正式交付边界：pnpm bun:compile + 单文件产物 + embedded/filesystem 静态资源；安装器 / 签名 / 自动更新 / 首启 UX 暂不纳入。"}
                   badge={<Badge variant="secondary">已明确</Badge>}
                 />
@@ -445,11 +496,41 @@ export function ResourcesTab() {
                 <div className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">待接入</div>
                 <StatusRow
                   title="repair / migration 决策链"
-                  description={startup?.failures.length
-                    ? `当前已有 ${startup.failures.length} 条启动失败记录，但还缺少可直接执行的 repair / migration 操作入口。`
-                    : "后续需要把 runtime repair / migration 决策从摘要推进到可执行入口。"}
-                  badge={<Badge variant="outline">待接入</Badge>}
+                  description={startupDecisions.length
+                    ? `当前已为 ${startupDecisions.length} 条启动失败生成下一步动作，其中可执行入口会直接回写最新 startup summary。`
+                    : startup?.failures.length
+                      ? `当前已有 ${startup.failures.length} 条启动失败记录，正在等待后端生成 repair / migration 决策。`
+                      : "当前暂无 startup failure；若后续出现 repair / migration / compile smoke 问题，会在这里展示决策链。"}
+                  badge={<Badge variant={startupDecisions.length ? "secondary" : "outline"}>{startupDecisions.length ? "已接入" : "待接入"}</Badge>}
                 />
+                {startupDecisions.length ? (
+                  <div className="space-y-3 rounded-xl border border-primary/20 bg-primary/5 p-3">
+                    {startupDecisions.map((decision) => (
+                      <div key={decision.id} className="rounded-xl border border-border/70 bg-background/90 p-3">
+                        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                          <div className="space-y-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <div className="text-sm font-medium text-foreground">{decision.title}</div>
+                              <Badge variant={decision.severity === "error" ? "destructive" : "outline"}>{decision.phase}</Badge>
+                            </div>
+                            <p className="text-sm text-muted-foreground">{decision.description}</p>
+                          </div>
+                          {decision.action.kind === "manual-check" || !decision.action.endpoint ? (
+                            <Badge variant="outline">{decision.action.label}</Badge>
+                          ) : (
+                            <Button
+                              variant="outline"
+                              onClick={() => void executeStartupDecision(decision)}
+                              disabled={loading && pendingAction === decision.id}
+                            >
+                              {loading && pendingAction === decision.id ? "执行中…" : decision.action.label}
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
                 <StatusRow
                   title="异常资源列表"
                   description="按文件级别列出损坏附件、孤儿缓存和可疑大文件，而不止目录汇总。"

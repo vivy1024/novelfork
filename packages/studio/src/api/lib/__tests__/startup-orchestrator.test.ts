@@ -207,6 +207,35 @@ describe("startup orchestrator", () => {
       staticMode: "embedded",
       indexHtmlReady: true,
       compileSmokeStatus: "success",
+      compileCommand: "pnpm bun:compile",
+      expectedArtifactPath: "dist/novelfork",
+      embeddedAssetsReady: true,
+      singleFileReady: true,
+      excludedDeliveryScopes: ["installer", "signing", "auto-update", "first-launch UX"],
+    });
+  });
+
+  it("keeps filesystem startup separate from the single-file delivery signal", async () => {
+    const state = createState();
+
+    const summary = await runStartupOrchestrator(state, {
+      staticDelivery: {
+        mode: "filesystem",
+        hasIndexHtml: true,
+        reason: "使用文件系统静态资源启动",
+      },
+      compileSmoke: {
+        status: "success",
+        reason: "静态资源入口可用",
+      },
+    });
+
+    expect(summary.delivery).toMatchObject({
+      staticMode: "filesystem",
+      indexHtmlReady: true,
+      compileSmokeStatus: "success",
+      embeddedAssetsReady: false,
+      singleFileReady: false,
     });
   });
 

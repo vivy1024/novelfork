@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -63,6 +63,11 @@ describe("createAdminRouter", () => {
           staticMode: "filesystem",
           indexHtmlReady: true,
           compileSmokeStatus: "success",
+          compileCommand: "pnpm bun:compile",
+          expectedArtifactPath: "dist/novelfork",
+          embeddedAssetsReady: false,
+          singleFileReady: false,
+          excludedDeliveryScopes: ["installer", "signing", "auto-update", "first-launch UX"],
         },
         recoveryReport: {
           startedAt: "2026-04-20T09:59:00Z",
@@ -83,10 +88,204 @@ describe("createAdminRouter", () => {
       delivery: expect.objectContaining({
         staticMode: "filesystem",
         compileSmokeStatus: "success",
+        compileCommand: "pnpm bun:compile",
+        expectedArtifactPath: "dist/novelfork",
+        embeddedAssetsReady: false,
+        singleFileReady: false,
+        excludedDeliveryScopes: ["installer", "signing", "auto-update", "first-launch UX"],
       }),
       recoveryReport: expect.objectContaining({
         counts: expect.objectContaining({ success: 4, failed: 0 }),
       }),
+    });
+  });
+
+  it("fills missing delivery boundary fields when startup summaries come from older providers", async () => {
+    const app = createAdminRouter(root, {
+      getStartupSummary: () => ({
+        delivery: {
+          staticMode: "embedded",
+          indexHtmlReady: true,
+          compileSmokeStatus: "success",
+        },
+        recoveryReport: {
+          startedAt: "2026-04-20T09:59:00Z",
+          finishedAt: "2026-04-20T10:00:00Z",
+          durationMs: 1000,
+          counts: { success: 4, skipped: 0, failed: 0 },
+          actions: [],
+        },
+        failures: [],
+      }),
+    });
+
+    const response = await app.request("http://localhost/resources");
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+
+    expect(payload.startup.delivery).toMatchObject({
+      compileCommand: "pnpm bun:compile",
+      expectedArtifactPath: "dist/novelfork",
+      embeddedAssetsReady: true,
+      singleFileReady: true,
+      excludedDeliveryScopes: ["installer", "signing", "auto-update", "first-launch UX"],
+    });
+  });
+
+  it("derives startup failure decisions for repair, rebuild, and manual delivery follow-up", async () => {
+    const app = createAdminRouter(root, {
+      getStartupSummary: () => ({
+        delivery: {
+          staticMode: "missing",
+          indexHtmlReady: false,
+          compileSmokeStatus: "failed",
+        },
+        recoveryReport: {
+          startedAt: "2026-04-20T09:59:00Z",
+          finishedAt: "2026-04-20T10:00:00Z",
+          durationMs: 1000,
+          counts: { success: 1, skipped: 0, failed: 3 },
+          actions: [],
+        },
+        failures: [
+          { bookId: "demo-book", phase: "migration", message: "runtime repair failed" },
+          { phase: "search-index", message: "search rebuild failed" },
+          { phase: "compile-smoke", message: "index missing" },
+        ],
+      }),
+    });
+
+    const response = await app.request("http://localhost/resources");
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+
+    expect(payload.startup.decisions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          phase: "migration",
+          severity: "error",
+          action: expect.objectContaining({
+            kind: "repair-runtime-state",
+            label: "修复该书运行态",
+            endpoint: "/api/admin/resources/recovery/runtime-state",
+            method: "POST",
+            payload: { bookId: "demo-book" },
+          }),
+        }),
+        expect.objectContaining({
+          phase: "search-index",
+          action: expect.objectContaining({
+            kind: "rebuild-search-index",
+            label: "重建搜索索引",
+            endpoint: "/api/admin/resources/recovery/search-index",
+          }),
+        }),
+        expect.objectContaining({
+          phase: "compile-smoke",
+          action: expect.objectContaining({
+            kind: "manual-check",
+            label: "手动执行 pnpm bun:compile",
+          }),
+        }),
+      ]),
+    );
+  });
+
+  it("reruns startup recovery and returns a refreshed summary instead of the stale snapshot", async () => {
+    const staleSummary = {
+      delivery: {
+        staticMode: "filesystem",
+        indexHtmlReady: true,
+        compileSmokeStatus: "success",
+      },
+      recoveryReport: {
+        startedAt: "2026-04-20T10:00:00Z",
+        finishedAt: "2026-04-20T10:00:01Z",
+        durationMs: 1000,
+        counts: { success: 1, skipped: 0, failed: 1 },
+        actions: [],
+      },
+      failures: [{ phase: "search-index", message: "stale failure" }],
+    };
+    const refreshedSummary = {
+      delivery: {
+        staticMode: "embedded",
+        indexHtmlReady: true,
+        compileSmokeStatus: "success",
+      },
+      recoveryReport: {
+        startedAt: "2026-04-20T10:10:00Z",
+        finishedAt: "2026-04-20T10:10:01Z",
+        durationMs: 1000,
+        counts: { success: 4, skipped: 0, failed: 0 },
+        actions: [],
+      },
+      failures: [],
+    };
+    const rerunStartupRecovery = vi.fn(async () => refreshedSummary);
+
+    const app = createAdminRouter(root, {
+      getStartupSummary: () => staleSummary as never,
+      rerunStartupRecovery,
+    } as never);
+
+    const response = await app.request("http://localhost/resources/recovery", {
+      method: "POST",
+    });
+
+    expect(response.status).toBe(200);
+    expect(rerunStartupRecovery).toHaveBeenCalledTimes(1);
+
+    const payload = await response.json();
+    expect(payload.recoveryTriggered).toBe(true);
+    expect(payload.startup).toMatchObject({
+      delivery: expect.objectContaining({ staticMode: "embedded" }),
+      recoveryReport: expect.objectContaining({
+        startedAt: "2026-04-20T10:10:00Z",
+        counts: expect.objectContaining({ failed: 0, success: 4 }),
+      }),
+      failures: [],
+    });
+    expect(payload.startup.recoveryReport.startedAt).not.toBe(staleSummary.recoveryReport.startedAt);
+  });
+
+  it("executes the runtime-state repair endpoint and returns a refreshed startup summary", async () => {
+    const repairRuntimeState = vi.fn(async (bookId: string) => ({
+      delivery: {
+        staticMode: "filesystem",
+        indexHtmlReady: true,
+        compileSmokeStatus: "success",
+      },
+      recoveryReport: {
+        startedAt: "2026-04-20T10:10:00Z",
+        finishedAt: "2026-04-20T10:10:01Z",
+        durationMs: 1000,
+        counts: { success: 3, skipped: 0, failed: 0 },
+        actions: [],
+      },
+      failures: [],
+      repairedBookId: bookId,
+    }));
+
+    const app = createAdminRouter(root, {
+      getStartupSummary: () => null,
+      repairRuntimeState,
+    } as never);
+
+    const response = await app.request("http://localhost/resources/recovery/runtime-state", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ bookId: "demo-book" }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(repairRuntimeState).toHaveBeenCalledWith("demo-book");
+
+    const payload = await response.json();
+    expect(payload.repairTriggered).toBe(true);
+    expect(payload.startup).toMatchObject({
+      delivery: expect.objectContaining({ staticMode: "filesystem" }),
+      recoveryReport: expect.objectContaining({ counts: expect.objectContaining({ failed: 0 }) }),
     });
   });
 

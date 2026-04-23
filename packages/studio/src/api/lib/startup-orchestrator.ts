@@ -13,6 +13,23 @@ export interface StartupOrchestratorFailure {
   readonly message: string;
 }
 
+export interface StartupFailureDecisionAction {
+  readonly kind: "repair-runtime-state" | "rebuild-search-index" | "rerun-startup-recovery" | "manual-check";
+  readonly label: string;
+  readonly endpoint?: string;
+  readonly method?: "POST";
+  readonly payload?: Readonly<Record<string, string>>;
+}
+
+export interface StartupFailureDecision {
+  readonly id: string;
+  readonly phase: StartupOrchestratorFailure["phase"];
+  readonly severity: "error" | "warning";
+  readonly title: string;
+  readonly description: string;
+  readonly action: StartupFailureDecisionAction;
+}
+
 export interface StartupOrchestratorRecoveryAction {
   readonly kind: "project-bootstrap" | "runtime-state" | "search-index" | "static-delivery" | "compile-smoke";
   readonly scope: "book" | "library";
@@ -46,6 +63,11 @@ export interface StartupOrchestratorDeliverySummary {
   readonly staticMode: StartupStaticMode;
   readonly indexHtmlReady: boolean;
   readonly compileSmokeStatus: StartupOrchestratorRecoveryStatus | "unknown";
+  readonly compileCommand: string;
+  readonly expectedArtifactPath: string;
+  readonly embeddedAssetsReady: boolean;
+  readonly singleFileReady: boolean;
+  readonly excludedDeliveryScopes: readonly string[];
 }
 
 export interface StartupOrchestratorRecoveryReport {
@@ -70,7 +92,10 @@ export interface StartupOrchestratorSummary {
   readonly recoveryReport: StartupOrchestratorRecoveryReport;
 }
 
-async function resolveFallbackChapter(state: Pick<SearchIndexRebuildState, "loadChapterIndex">, bookId: string): Promise<number> {
+export async function resolveStartupFallbackChapter(
+  state: Pick<SearchIndexRebuildState, "loadChapterIndex">,
+  bookId: string,
+): Promise<number> {
   try {
     const chapters = await state.loadChapterIndex(bookId);
     return chapters.reduce((max, chapter) => Math.max(max, Number.isInteger(chapter.number) ? chapter.number : 0), 0);
@@ -96,6 +121,10 @@ function summarizeActions(actions: ReadonlyArray<StartupOrchestratorRecoveryActi
   );
 }
 
+const DEFAULT_COMPILE_COMMAND = "pnpm bun:compile";
+const DEFAULT_EXPECTED_ARTIFACT_PATH = "dist/novelfork";
+const DEFAULT_EXCLUDED_DELIVERY_SCOPES = ["installer", "signing", "auto-update", "first-launch UX"] as const;
+
 function pushOptionalAction(
   actions: StartupOrchestratorRecoveryAction[],
   failures: StartupOrchestratorFailure[],
@@ -110,6 +139,123 @@ function pushOptionalAction(
       message: action.note ?? action.reason,
     });
   }
+}
+
+function buildStartupDeliverySummary(options: StartupOrchestratorOptions): StartupOrchestratorDeliverySummary {
+  const staticMode = options.staticDelivery?.mode ?? "missing";
+  const indexHtmlReady = options.staticDelivery?.hasIndexHtml ?? false;
+  const compileSmokeStatus = options.compileSmoke?.status ?? "unknown";
+  const embeddedAssetsReady = staticMode === "embedded" && indexHtmlReady;
+  const singleFileReady = embeddedAssetsReady && compileSmokeStatus === "success";
+
+  return {
+    staticMode,
+    indexHtmlReady,
+    compileSmokeStatus,
+    compileCommand: DEFAULT_COMPILE_COMMAND,
+    expectedArtifactPath: DEFAULT_EXPECTED_ARTIFACT_PATH,
+    embeddedAssetsReady,
+    singleFileReady,
+    excludedDeliveryScopes: DEFAULT_EXCLUDED_DELIVERY_SCOPES,
+  };
+}
+
+export function buildStartupFailureDecisions(summary: Pick<StartupOrchestratorSummary, "failures" | "delivery">): StartupFailureDecision[] {
+  return summary.failures.map((failure, index) => {
+    const id = `${failure.phase}:${failure.bookId ?? "library"}:${index}`;
+
+    switch (failure.phase) {
+      case "migration":
+        return {
+          id,
+          phase: failure.phase,
+          severity: "error",
+          title: failure.bookId ? `${failure.bookId} 运行态修复失败` : "运行态修复失败",
+          description: failure.bookId
+            ? "当前 runtime state 补建失败，先对该书重新执行 repair，再回放启动恢复结果。"
+            : "当前运行态补建失败，建议重新执行启动恢复并核对最近一次 migration 结果。",
+          action: failure.bookId
+            ? {
+                kind: "repair-runtime-state",
+                label: "修复该书运行态",
+                endpoint: "/api/admin/resources/recovery/runtime-state",
+                method: "POST",
+                payload: { bookId: failure.bookId },
+              }
+            : {
+                kind: "rerun-startup-recovery",
+                label: "重新执行启动恢复",
+                endpoint: "/api/admin/resources/recovery",
+                method: "POST",
+              },
+        };
+      case "search-index":
+        return {
+          id,
+          phase: failure.phase,
+          severity: "error",
+          title: "搜索索引重建失败",
+          description: "当前内存搜索索引没有完成 rebuild，先单独重建搜索索引，再重新核对 startup summary。",
+          action: {
+            kind: "rebuild-search-index",
+            label: "重建搜索索引",
+            endpoint: "/api/admin/resources/recovery/search-index",
+            method: "POST",
+          },
+        };
+      case "project-bootstrap":
+        return {
+          id,
+          phase: failure.phase,
+          severity: "error",
+          title: "项目初始化失败",
+          description: "先确认 novelfork.json 与项目目录写权限，再重新执行启动恢复，避免 startup 继续停留在半初始化状态。",
+          action: {
+            kind: "manual-check",
+            label: "检查项目配置与写权限",
+          },
+        };
+      case "static-delivery":
+        return {
+          id,
+          phase: failure.phase,
+          severity: "error",
+          title: "静态交付边界未闭环",
+          description:
+            summary.delivery.staticMode === "missing"
+              ? "当前仍是 API-only 启动状态，先补齐前端静态资源或嵌入产物，再重新执行启动恢复。"
+              : "静态资源入口缺失或损坏，先检查 index.html / embed assets，再重新执行启动恢复。",
+          action: {
+            kind: "manual-check",
+            label: summary.delivery.staticMode === "missing" ? "补齐静态资源产物" : "检查静态资源入口",
+          },
+        };
+      case "compile-smoke":
+        return {
+          id,
+          phase: failure.phase,
+          severity: "error",
+          title: "compile smoke 未通过",
+          description: "先手动执行 pnpm bun:compile 并确认 index.html 可用，再重新执行启动恢复验证交付链。",
+          action: {
+            kind: "manual-check",
+            label: "手动执行 pnpm bun:compile",
+          },
+        };
+      default:
+        return {
+          id,
+          phase: failure.phase,
+          severity: "warning",
+          title: "启动恢复需要人工介入",
+          description: failure.message,
+          action: {
+            kind: "manual-check",
+            label: "查看启动日志",
+          },
+        };
+    }
+  });
 }
 
 /**
@@ -149,7 +295,7 @@ export async function runStartupOrchestrator(
 
   for (const bookId of bookIds) {
     try {
-      const fallbackChapter = await resolveFallbackChapter(state, bookId);
+      const fallbackChapter = await resolveStartupFallbackChapter(state, bookId);
       await state.ensureRuntimeState(bookId, fallbackChapter);
       migratedBooks += 1;
       actions.push({
@@ -243,11 +389,7 @@ export async function runStartupOrchestrator(
 
   const finishedAt = new Date();
   const counts = summarizeActions(actions);
-  const delivery = {
-    staticMode: options.staticDelivery?.mode ?? "missing",
-    indexHtmlReady: options.staticDelivery?.hasIndexHtml ?? false,
-    compileSmokeStatus: options.compileSmoke?.status ?? "unknown",
-  } as const;
+  const delivery = buildStartupDeliverySummary(options);
 
   return {
     bookCount: bookIds.length,

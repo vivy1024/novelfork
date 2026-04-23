@@ -19,7 +19,16 @@ import { readSessionFromCookie } from "./auth.js";
 import { createFilesystemStaticProvider, type StaticProvider } from "./static-provider.js";
 import { startHttpServer } from "./start-http-server.js";
 import { RunStore } from "./lib/run-store.js";
-import { runStartupOrchestrator, type StartupOrchestratorSummary, type StartupStaticMode } from "./lib/startup-orchestrator.js";
+import {
+  rebuildSearchIndex,
+} from "./lib/search-index-rebuild.js";
+import {
+  runStartupOrchestrator,
+  resolveStartupFallbackChapter,
+  type StartupOrchestratorOptions,
+  type StartupOrchestratorSummary,
+  type StartupStaticMode,
+} from "./lib/startup-orchestrator.js";
 
 import {
   createRunsRouter,
@@ -286,15 +295,26 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     app.route("", createContextManagerRouter(ctx));
 
     // Admin panel
+    const refreshStartupSummary = async () => {
+      if (!startupRecoveryRunner) {
+        return ctx.getStartupSummary();
+      }
+      const summary = await startupRecoveryRunner();
+      ctx.setStartupSummary(summary);
+      return summary;
+    };
+
     app.route("/api/admin", createAdminRouter(root, {
       getStartupSummary: ctx.getStartupSummary,
-      rerunStartupRecovery: async () => {
-        if (!startupRecoveryRunner) {
-          return null;
-        }
-        const summary = await startupRecoveryRunner();
-        ctx.setStartupSummary(summary);
-        return summary;
+      rerunStartupRecovery: refreshStartupSummary,
+      repairRuntimeState: async (bookId) => {
+        const fallbackChapter = await resolveStartupFallbackChapter(ctx.state, bookId);
+        await ctx.state.ensureRuntimeState(bookId, fallbackChapter);
+        return refreshStartupSummary();
+      },
+      rebuildSearchIndex: async () => {
+        await rebuildSearchIndex(ctx.state);
+        return refreshStartupSummary();
       },
     }));
 
@@ -378,29 +398,63 @@ export async function startStudioServer(
     ?? (options?.staticDir ? createFilesystemStaticProvider(options.staticDir) : undefined);
   const staticMode: StartupStaticMode = options?.staticMode
     ?? (staticProvider ? (options?.staticDir ? "filesystem" : "embedded") : "missing");
-  const indexHtmlReady = staticProvider ? await staticProvider.hasIndexHtml() : false;
-  const startupSummary = await runStartupOrchestrator(ctx.state, {
-    projectBootstrap,
-    staticDelivery: {
-      mode: staticMode,
-      hasIndexHtml: indexHtmlReady,
-      status: indexHtmlReady || staticMode === "missing" ? "success" : "failed",
-      reason:
-        staticMode === "embedded"
-          ? "使用内嵌静态资源启动"
-          : staticMode === "filesystem"
-            ? "使用文件系统静态资源启动"
-            : "未提供前端静态资源，启动为 API-only 模式",
+
+  const buildStartupOptions = async (
+    bootstrapSummary?: {
+      status: "success" | "skipped" | "failed";
+      reason: string;
+      note?: string;
     },
-    compileSmoke: {
-      status: indexHtmlReady ? "success" : "failed",
-      reason: indexHtmlReady ? "静态资源入口可用" : "静态资源入口缺失",
-      note: indexHtmlReady
-        ? `${staticMode}-index-ready`
-        : "build client/embed assets before delivery",
+  ): Promise<StartupOrchestratorOptions> => {
+    const indexHtmlReady = staticProvider ? await staticProvider.hasIndexHtml() : false;
+    const artifactCandidates = [join(root, "dist", "novelfork.exe"), join(root, "dist", "novelfork")];
+    const artifactPath = artifactCandidates.find((candidate) => existsSyncInit(candidate));
+
+    return {
+      ...(bootstrapSummary ? { projectBootstrap: bootstrapSummary } : {}),
+      staticDelivery: {
+        mode: staticMode,
+        hasIndexHtml: indexHtmlReady,
+        status: indexHtmlReady || staticMode === "missing" ? "success" : "failed",
+        reason:
+          staticMode === "embedded"
+            ? "使用内嵌静态资源启动"
+            : staticMode === "filesystem"
+              ? "使用文件系统静态资源启动"
+              : "未提供前端静态资源，启动为 API-only 模式",
+      },
+      compileSmoke: artifactPath && indexHtmlReady
+        ? {
+            status: "success",
+            reason: "单文件产物与静态入口均可用",
+            note: artifactPath,
+          }
+        : {
+            status: "failed",
+            reason: artifactPath ? "静态资源入口缺失" : "单文件产物缺失",
+            note: artifactPath ?? artifactCandidates.join(" | "),
+          },
+    };
+  };
+
+  const runStartupRecovery = async (
+    bootstrapSummary?: {
+      status: "success" | "skipped" | "failed";
+      reason: string;
+      note?: string;
     },
-  });
-  ctx.setStartupSummary(startupSummary);
+  ) => {
+    const summary = await runStartupOrchestrator(ctx.state, await buildStartupOptions(bootstrapSummary));
+    ctx.setStartupSummary(summary);
+    return summary;
+  };
+
+  const startupSummary = await runStartupRecovery(projectBootstrap);
+  ctx.setStartupRecoveryRunner(() => runStartupRecovery({
+    status: "skipped",
+    reason: "当前进程已完成启动初始化，手动重跑仅刷新恢复与交付摘要",
+    note: configPathInit,
+  }));
   console.log("Startup recovery report:", JSON.stringify(startupSummary.recoveryReport));
 
   if (staticProvider) {
