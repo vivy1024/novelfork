@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { Sidebar } from "./components/Sidebar";
 import { ChatPanel } from "./components/ChatBar";
@@ -15,7 +15,6 @@ import { Analytics } from "./pages/Analytics";
 import { WorkspaceSelector } from "./pages/WorkspaceSelector";
 import { TruthFiles } from "./pages/TruthFiles";
 import { DaemonControl } from "./pages/DaemonControl";
-import { LogViewer } from "./pages/LogViewer";
 import { GenreManager } from "./pages/GenreManager";
 import { StyleManager } from "./pages/StyleManager";
 import { ImportManager } from "./pages/ImportManager";
@@ -239,6 +238,21 @@ function AppInner() {
   }, []);
 
   useEffect(() => {
+    const handleNavigate = (event: Event) => {
+      const detail = (event as CustomEvent<{ page?: string; runId?: string; bookId?: string; chapterNumber?: number; section?: string }>).detail;
+      if (!detail?.page) {
+        return;
+      }
+      if (detail.page === "pipeline") {
+        navRef.current?.toPipeline(detail.runId);
+      }
+    };
+
+    window.addEventListener("novelfork:navigate", handleNavigate as EventListener);
+    return () => window.removeEventListener("novelfork:navigate", handleNavigate as EventListener);
+  }, []);
+
+  useEffect(() => {
     document.documentElement.classList.toggle("dark", isDark);
   }, [isDark]);
 
@@ -324,6 +338,8 @@ function AppInner() {
     toSettings: (section?: SettingsSection) => openTab({ page: "settings", section }),
     toWorktree: () => openTab({ page: "admin", section: "worktrees" }),
   };
+  const navRef = React.useRef(nav);
+  navRef.current = nav;
 
   const activeBookId = activeTab ? deriveActiveBookId(activeTab.route) : undefined;
   const activeChapterNumber = activeTab?.route.page === "chapter" ? activeTab.route.chapterNumber : undefined;
@@ -562,7 +578,13 @@ function TabContent({ route, nav, theme, t, sse, setTheme }: {
         return <DaemonControl nav={nav} theme={theme} t={t} sse={sse} />;
       }
       if (route.section === "logs") {
-        return <LogViewer nav={nav} theme={theme} t={t} />;
+        return (
+          <Admin
+            onBack={nav.toDashboard}
+            section={route.section}
+            onNavigateSection={(section) => nav.toAdmin(section)}
+          />
+        );
       }
       if (route.section === "worktrees") {
         return <WorktreeManager onBack={() => nav.toAdmin()} />;

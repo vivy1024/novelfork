@@ -8,7 +8,10 @@ import { Activity, Box, FileText, LayoutDashboard, Logs, Server, Terminal, Users
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { AdminSection } from "../../routes";
+import { useState } from "react";
+
 import { ContainerTab } from "./ContainerTab";
+import { LogsTab } from "./LogsTab";
 import { ProvidersTab } from "./ProvidersTab";
 import { RequestsTab } from "./RequestsTab";
 import { ResourcesTab } from "./ResourcesTab";
@@ -23,6 +26,19 @@ interface AdminProps {
 
 export function Admin({ onBack, section, onNavigateSection }: AdminProps) {
   const activeSection = section ?? "overview";
+  const [focusedRunId, setFocusedRunId] = useState<string | undefined>(undefined);
+
+  const handleInspectRun = (runId: string) => {
+    setFocusedRunId(runId);
+    window.dispatchEvent(new CustomEvent("novelfork:navigate", {
+      detail: { page: "pipeline", runId },
+    }));
+  };
+
+  const handleNavigateDrillDown = (nextSection: "logs" | "requests" | "resources", options?: { runId?: string }) => {
+    setFocusedRunId(options?.runId);
+    onNavigateSection?.(nextSection);
+  };
 
   return (
     <div className="flex flex-col gap-6" data-testid="admin-panel">
@@ -146,7 +162,8 @@ export function Admin({ onBack, section, onNavigateSection }: AdminProps) {
 
       {activeSection === "providers" && <ProvidersTab />}
       {activeSection === "resources" && <ResourcesTab />}
-      {activeSection === "requests" && <RequestsTab />}
+      {activeSection === "requests" && <RequestsTab runId={focusedRunId} onInspectRun={handleInspectRun} onNavigateSection={handleNavigateDrillDown} />}
+      {activeSection === "logs" && <LogsTab runId={focusedRunId} onInspectRun={handleInspectRun} onNavigateSection={handleNavigateDrillDown} />}
       {activeSection === "terminal" && <TerminalTab />}
       {activeSection === "container" && <ContainerTab />}
     </div>

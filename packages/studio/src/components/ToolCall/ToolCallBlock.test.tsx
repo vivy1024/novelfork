@@ -67,10 +67,18 @@ class MockEventSource {
   }
 }
 
-vi.stubGlobal("EventSource", MockEventSource as unknown as typeof EventSource);
-vi.stubGlobal("navigator", {
-  clipboard: {
-    writeText: vi.fn().mockResolvedValue(undefined),
+Object.defineProperty(globalThis, "EventSource", {
+  writable: true,
+  configurable: true,
+  value: MockEventSource as unknown as typeof EventSource,
+});
+Object.defineProperty(globalThis, "navigator", {
+  writable: true,
+  configurable: true,
+  value: {
+    clipboard: {
+      writeText: vi.fn().mockResolvedValue(undefined),
+    },
   },
 });
 
@@ -289,6 +297,7 @@ describe("ToolCallBlock", () => {
 
   it("shows fullscreen, view-source and rerun actions for completed tool calls", async () => {
     const onReplay = vi.fn();
+    const onInspectRun = vi.fn();
 
     render(
       <ToolCallBlock
@@ -299,16 +308,37 @@ describe("ToolCallBlock", () => {
           command: "git status --short",
           input: { cwd: "packages/studio" },
           output: " M packages/studio/src/components/ChatWindow.tsx",
-          result: { ok: true },
+          result: {
+            ok: true,
+            execution: {
+              runId: "run-bash-1",
+              attempts: 1,
+              traceEnabled: true,
+              dumpEnabled: false,
+            },
+          },
           duration: 420,
         }}
         onReplay={onReplay}
+        onInspectRun={onInspectRun}
       />,
     );
 
     expect(screen.getByRole("button", { name: "查看源码" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "全屏查看" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "重跑" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "定位运行" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "定位运行" }));
+    expect(onInspectRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runId: "run-bash-1",
+      }),
+      expect.objectContaining({
+        toolName: "Bash",
+        command: "git status --short",
+      }),
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "查看源码" }));
     expect(screen.getByText("工具源码")).toBeTruthy();

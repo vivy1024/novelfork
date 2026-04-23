@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { Clock3, FileText, RefreshCw, TimerReset } from "lucide-react";
+import { Clock3, FileText, RefreshCw, Search, TimerReset } from "lucide-react";
 
 import { PageEmptyState } from "@/components/layout/PageEmptyState";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useRunListStream } from "@/hooks/use-run-events";
-import type { StudioRun } from "@/shared/contracts";
 import { fetchJson } from "../../hooks/use-api";
 
 interface RequestLog {
@@ -17,9 +16,24 @@ interface RequestLog {
   status: number;
   duration: number;
   userId: string;
+  narrator?: string;
+  requestKind?: string;
+  details?: string;
 }
 
-export function RequestsTab() {
+interface RequestsResponse {
+  logs: RequestLog[];
+  total: number;
+  filters?: { runId?: string | null };
+}
+
+interface RequestsTabProps {
+  runId?: string;
+  onInspectRun?: (runId: string) => void;
+  onNavigateSection?: (section: "logs" | "requests" | "resources", options?: { runId?: string }) => void;
+}
+
+export function RequestsTab({ runId, onInspectRun, onNavigateSection }: RequestsTabProps = {}) {
   const [logs, setLogs] = useState<RequestLog[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -28,12 +42,16 @@ export function RequestsTab() {
 
   useEffect(() => {
     void loadLogs();
-  }, [limit]);
+  }, [limit, runId]);
 
   const loadLogs = async () => {
     setLoading(true);
     try {
-      const data = await fetchJson<{ logs: RequestLog[]; total: number }>(`/api/admin/requests?limit=${limit}`);
+      const params = new URLSearchParams({ limit: String(limit) });
+      if (runId) {
+        params.set("runId", runId);
+      }
+      const data = await fetchJson<RequestsResponse>(`/api/admin/requests?${params.toString()}`);
       setLogs(data.logs);
       setTotal(data.total);
     } finally {
@@ -85,6 +103,11 @@ export function RequestsTab() {
     return "text-destructive";
   };
 
+  const extractRunId = (log: RequestLog) => {
+    const candidate = [log.details, log.endpoint, log.narrator].find((value) => typeof value === "string" && /run-[\w-]+/.test(value));
+    return candidate?.match(/run-[\w-]+/)?.[0];
+  };
+
   if (loading) {
     return <div className="py-10 text-center text-sm text-muted-foreground">正在加载请求历史…</div>;
   }
@@ -93,7 +116,10 @@ export function RequestsTab() {
     <div className="space-y-6">
       <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-foreground">请求历史</h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-xl font-semibold text-foreground">请求历史</h2>
+            {runId ? <Badge variant="secondary">当前聚焦 {runId}</Badge> : null}
+          </div>
           <p className="text-sm text-muted-foreground">统一观察最近请求、成功率、响应耗时与异常波动。</p>
         </div>
         <div className="flex items-center gap-3">
@@ -146,6 +172,15 @@ export function RequestsTab() {
                     <span className="text-muted-foreground">{run.stage}</span>
                   </div>
                   {run.error ? <div className="mt-2 text-xs text-destructive">{run.error}</div> : null}
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button variant="outline" size="xs" onClick={() => onInspectRun?.(run.id)} aria-label={`定位运行 ${run.id}`}>
+                      <Search className="size-3.5" />
+                      定位运行
+                    </Button>
+                    <Button variant="outline" size="xs" onClick={() => onNavigateSection?.("logs", { runId: run.id })} aria-label={`查看日志 ${run.id}`}>
+                      查看日志
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -174,16 +209,31 @@ export function RequestsTab() {
                 </tr>
               </thead>
               <tbody>
-                {logs.map((log) => (
-                  <tr key={log.id} className="border-b border-border/60 align-top last:border-b-0">
-                    <td className="py-3 pr-4 text-muted-foreground">{new Date(log.timestamp).toLocaleString()}</td>
-                    <td className="py-3 pr-4"><Badge variant={methodVariant(log.method)}>{log.method}</Badge></td>
-                    <td className="py-3 pr-4 font-mono text-foreground">{log.endpoint}</td>
-                    <td className={`py-3 pr-4 font-semibold ${statusClassName(log.status)}`}>{log.status}</td>
-                    <td className="py-3 pr-4 text-muted-foreground">{log.duration}ms</td>
-                    <td className="py-3 text-muted-foreground">{log.userId}</td>
-                  </tr>
-                ))}
+                {logs.map((log) => {
+                  const logRunId = extractRunId(log);
+                  return (
+                    <tr key={log.id} className="border-b border-border/60 align-top last:border-b-0">
+                      <td className="py-3 pr-4 text-muted-foreground">{new Date(log.timestamp).toLocaleString()}</td>
+                      <td className="py-3 pr-4"><Badge variant={methodVariant(log.method)}>{log.method}</Badge></td>
+                      <td className="py-3 pr-4 font-mono text-foreground">{log.endpoint}</td>
+                      <td className={`py-3 pr-4 font-semibold ${statusClassName(log.status)}`}>{log.status}</td>
+                      <td className="py-3 pr-4 text-muted-foreground">{log.duration}ms</td>
+                      <td className="py-3 text-muted-foreground">
+                        <div>{log.userId}</div>
+                        {logRunId ? (
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            <Button variant="outline" size="xs" onClick={() => onInspectRun?.(logRunId)}>
+                              定位运行
+                            </Button>
+                            <Button variant="outline" size="xs" onClick={() => onNavigateSection?.("logs", { runId: logRunId })}>
+                              查看日志
+                            </Button>
+                          </div>
+                        ) : null}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </CardContent>

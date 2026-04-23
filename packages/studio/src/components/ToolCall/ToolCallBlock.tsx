@@ -40,6 +40,7 @@ interface ToolCallBlockProps {
   defaultExpanded?: boolean;
   className?: string;
   onReplay?: (toolCall: ToolCall) => void;
+  onInspectRun?: (executionMeta: { runId: string; attempts?: number; traceEnabled?: boolean; dumpEnabled?: boolean }, toolCall: ToolCall) => void;
 }
 
 interface SourcePreview {
@@ -51,7 +52,7 @@ interface SourcePreview {
   snippet: string;
 }
 
-export function ToolCallBlock({ toolCall, defaultExpanded = false, className, onReplay }: ToolCallBlockProps) {
+export function ToolCallBlock({ toolCall, defaultExpanded = false, className, onReplay, onInspectRun }: ToolCallBlockProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [rawExpanded, setRawExpanded] = useState(false);
   const [sourceOpen, setSourceOpen] = useState(false);
@@ -279,6 +280,18 @@ export function ToolCallBlock({ toolCall, defaultExpanded = false, className, on
                 >
                   <Expand className="size-3.5" />
                   全屏查看
+                </Button>
+              ) : null}
+              {executionMeta?.runId ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="xs"
+                  onClick={() => onInspectRun?.(executionMeta, toolCall)}
+                  aria-label="定位运行"
+                >
+                  <Play className="size-3.5" />
+                  定位运行
                 </Button>
               ) : null}
               {canReplay ? (

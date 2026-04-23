@@ -7,7 +7,7 @@ import { Hono } from "hono";
 import { createServer } from "node:http";
 import * as os from "node:os";
 import { join, relative, resolve } from "node:path";
-import { readdir, stat } from "node:fs/promises";
+import { readdir, readFile, stat } from "node:fs/promises";
 import { statfs as statfsCallback } from "node:fs";
 import { promisify } from "node:util";
 import { WebSocketServer } from "ws";
@@ -162,6 +162,19 @@ interface AdminLogMeta {
   details?: string;
 }
 
+interface AdminRunFilter {
+  runId: string | null;
+}
+
+interface AdminLogEntry {
+  timestamp?: string;
+  level?: string;
+  tag?: string;
+  message: string;
+  raw: string;
+  source: "json" | "text";
+}
+
 const requestLogs: RequestLog[] = [];
 let logIdCounter = 1;
 
@@ -284,6 +297,97 @@ function normalizeStartupSummary(startup: StartupSummarySnapshot | null): Startu
     delivery,
     decisions: startup.decisions ?? buildStartupFailureDecisions({ ...startup, delivery }),
   };
+}
+
+function readRunFilter(runId?: string | null): AdminRunFilter {
+  const normalizedRunId = typeof runId === "string" && runId.trim() ? runId.trim() : null;
+  return { runId: normalizedRunId };
+}
+
+function buildRequestMeta(meta: { narrator: string; requestKind: string }) {
+  return {
+    narrator: meta.narrator,
+    requestKind: meta.requestKind,
+  };
+}
+
+function matchesRunFilter(value: string | undefined, filter: AdminRunFilter) {
+  if (!filter.runId) {
+    return true;
+  }
+  return typeof value === "string" && value.includes(filter.runId);
+}
+
+function parseAdminLogLine(line: string): AdminLogEntry {
+  const trimmed = line.trim();
+  if (!trimmed) {
+    return { message: "", raw: line, source: "text" };
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+    return {
+      timestamp: typeof parsed.timestamp === "string" ? parsed.timestamp : undefined,
+      level: typeof parsed.level === "string" ? parsed.level : undefined,
+      tag: typeof parsed.tag === "string" ? parsed.tag : undefined,
+      message: typeof parsed.message === "string" ? parsed.message : trimmed,
+      raw: trimmed,
+      source: "json",
+    };
+  } catch {
+    const tagMatch = trimmed.match(/\[(.*?)\]/);
+    return {
+      tag: tagMatch?.[1],
+      message: trimmed.replace(/^\[[^\]]+\]\s*/, ""),
+      raw: trimmed,
+      source: "text",
+    };
+  }
+}
+
+async function readAdminLogsSnapshot(rootPath: string, limit: number, filter: AdminRunFilter) {
+  const logPath = join(rootPath, "novelfork.log");
+  try {
+    const content = await readFile(logPath, "utf-8");
+    const allEntries = content
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => parseAdminLogLine(line));
+    const filteredEntries = filter.runId
+      ? allEntries.filter((entry) => matchesRunFilter(entry.tag, filter) || matchesRunFilter(entry.message, filter) || matchesRunFilter(entry.raw, filter))
+      : allEntries;
+    const entries = filteredEntries.slice(-limit).reverse();
+    const fileStats = await stat(logPath);
+
+    return {
+      sourcePath: logPath.replace(/\\/g, "/"),
+      exists: true,
+      refreshedAt: new Date().toISOString(),
+      updatedAt: fileStats.mtime.toISOString(),
+      sizeBytes: fileStats.size,
+      limit,
+      totalEntries: filteredEntries.length,
+      refreshHintMs: 5_000,
+      entries,
+      filters: filter,
+      requestMeta: buildRequestMeta({ narrator: "admin.logs", requestKind: "runtime-log" }),
+    };
+  } catch {
+    return {
+      sourcePath: logPath.replace(/\\/g, "/"),
+      exists: false,
+      refreshedAt: new Date().toISOString(),
+      updatedAt: null,
+      sizeBytes: 0,
+      limit,
+      totalEntries: 0,
+      refreshHintMs: 5_000,
+      entries: [],
+      filters: filter,
+      requestMeta: buildRequestMeta({ narrator: "admin.logs", requestKind: "runtime-log" }),
+    };
+  }
 }
 
 // --- 资源监控 ---
@@ -702,10 +806,11 @@ export function createAdminRouter(
     const forceRefresh = c.req.query("refresh") === "1";
     const [stats, storage] = await Promise.all([getResourceStats(root), getStorageSnapshot(forceRefresh, root)]);
     const startup = normalizeStartupSummary(options?.getStartupSummary?.() ?? null);
+    const requestMeta = buildRequestMeta({ narrator: "admin.resources", requestKind: "resource-monitor" });
 
     c.set("adminLogMeta", {
-      narrator: "admin.resources",
-      requestKind: "resource-monitor",
+      narrator: requestMeta.narrator,
+      requestKind: requestMeta.requestKind,
       cache: {
         status: storage.mode === "cached" ? "hit" : forceRefresh ? "bypass" : "miss",
         scope: "storage-scan",
@@ -714,7 +819,7 @@ export function createAdminRouter(
       details: `storage=${storage.summary.existingTargets}/${storage.summary.scannedTargets};startup=${startup ? startup.delivery.staticMode : "missing"}`,
     });
 
-    return c.json({ stats, storage, startup });
+    return c.json({ stats, storage, startup, requestMeta });
   });
 
   app.post("/resources/recovery", async (c) => {
@@ -806,16 +911,36 @@ export function createAdminRouter(
   app.get("/requests", (c) => {
     const rawLimit = Number.parseInt(c.req.query("limit") || "100", 10);
     const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 1), MAX_REQUEST_LOGS) : 100;
-    const logs = requestLogs.slice(-limit).reverse();
+    const filter = readRunFilter(c.req.query("runId"));
+    const filteredLogs = filter.runId
+      ? requestLogs.filter((log) => matchesRunFilter(log.details, filter) || matchesRunFilter(log.endpoint, filter) || matchesRunFilter(log.narrator, filter))
+      : requestLogs;
+    const logs = filteredLogs.slice(-limit).reverse();
     const summary = summarizeRequests(logs);
+    const requestMeta = buildRequestMeta({ narrator: "admin.requests", requestKind: "request-audit" });
 
     c.set("adminLogMeta", {
-      narrator: "admin.requests",
-      requestKind: "request-audit",
-      details: `limit=${limit}`,
+      narrator: requestMeta.narrator,
+      requestKind: requestMeta.requestKind,
+      details: `limit=${limit}${filter.runId ? `;run=${filter.runId}` : ""}`,
     });
 
-    return c.json({ logs, total: requestLogs.length, summary });
+    return c.json({ logs, total: filteredLogs.length, summary, filters: filter, requestMeta });
+  });
+
+  app.get("/logs", async (c) => {
+    const rawLimit = Number.parseInt(c.req.query("limit") || "200", 10);
+    const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 1), 500) : 200;
+    const filter = readRunFilter(c.req.query("runId"));
+    const snapshot = await readAdminLogsSnapshot(getAdminProjectRoot(root), limit, filter);
+
+    c.set("adminLogMeta", {
+      narrator: "admin.logs",
+      requestKind: "runtime-log",
+      details: `limit=${limit}${filter.runId ? `;run=${filter.runId}` : ""}`,
+    });
+
+    return c.json(snapshot);
   });
 
   return app;
