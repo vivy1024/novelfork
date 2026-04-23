@@ -10,6 +10,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { NewSessionDialog, SESSION_PRESETS, type NewSessionPayload, type SessionPresetId } from "@/components/sessions/NewSessionDialog";
 import { useSession } from "@/hooks/useSession";
 import { useWindowRuntimeStore, type WindowRecoveryState } from "@/stores/windowRuntimeStore";
+import {
+  getRecoveryPresentation,
+  getRecoveryToneBadgeClassName,
+} from "@/lib/windowRecoveryPresentation";
 import { useWindowStore } from "@/stores/windowStore";
 import type { Theme } from "../hooks/use-theme";
 
@@ -335,36 +339,6 @@ function SessionStat({
   );
 }
 
-function formatRecoveryStateBadge(recoveryState: WindowRecoveryState): string {
-  switch (recoveryState) {
-    case "recovering":
-      return "正在恢复";
-    case "reconnecting":
-      return "正在重连";
-    case "replaying":
-      return "正在回放";
-    case "resetting":
-      return "等待重置";
-    default:
-      return "稳定";
-  }
-}
-
-function formatRecoveryStateDescription(recoveryState: WindowRecoveryState): string {
-  switch (recoveryState) {
-    case "recovering":
-      return "当前会话正在从服务端加载正式快照，恢复完成后会继续沿用正式消息链。";
-    case "reconnecting":
-      return "当前会话正在重新连接服务端，恢复完成后会继续沿用正式消息链。";
-    case "replaying":
-      return "当前会话正在回放历史，用来补齐重连期间缺失的消息；恢复完成后会继续沿用正式消息链。";
-    case "resetting":
-      return "当前会话正在重新同步完整快照，服务端会要求当前窗口放弃本地补拉结果并回到正式快照。";
-    default:
-      return "当前会话状态稳定。";
-  }
-}
-
 
 function NarratorSessionCard({
   title,
@@ -402,10 +376,20 @@ function NarratorSessionCard({
               <CardTitle className="text-base">{title}</CardTitle>
               <Badge variant={status === "active" ? "secondary" : "outline"}>{status === "active" ? "活跃" : "已归档"}</Badge>
               <Badge variant="outline">{sessionMode === "plan" ? "计划模式" : "对话模式"}</Badge>
-              {attachedWindow && <Badge variant={attachedWindow.wsConnected ? "secondary" : "outline"}>{attachedWindow.wsConnected ? "在线" : "离线"}</Badge>}
-              {attachedWindow && attachedWindow.recoveryState !== "idle" && (
-                <Badge variant="outline">{formatRecoveryStateBadge(attachedWindow.recoveryState)}</Badge>
-              )}
+              {attachedWindow && (() => {
+                const presentation = getRecoveryPresentation({
+                  recoveryState: attachedWindow.recoveryState,
+                  wsConnected: attachedWindow.wsConnected,
+                });
+                return (
+                  <Badge
+                    variant="outline"
+                    className={getRecoveryToneBadgeClassName(presentation.tone)}
+                  >
+                    {presentation.shortLabel}
+                  </Badge>
+                );
+              })()}
               {active && <Badge>当前对象</Badge>}
             </div>
             <CardDescription className="flex flex-wrap items-center gap-2 text-xs">
@@ -429,9 +413,16 @@ function NarratorSessionCard({
               ? `已关联工作台窗口 ${attachedWindow.id}${attachedWindow.minimized ? " · 已收起" : " · 展开中"}`
               : "当前尚未打开工作台窗口，可直接从这里进入会话工作区。"}
           </div>
-          {attachedWindow && attachedWindow.recoveryState !== "idle" ? (
-            <div className="text-amber-700">{formatRecoveryStateDescription(attachedWindow.recoveryState)}</div>
-          ) : null}
+          {attachedWindow && (() => {
+            const presentation = getRecoveryPresentation({
+              recoveryState: attachedWindow.recoveryState,
+              wsConnected: attachedWindow.wsConnected,
+            });
+            if (!presentation.bannerVisible && presentation.tone !== "success") {
+              return null;
+            }
+            return <div className="text-muted-foreground">{presentation.description}</div>;
+          })()}
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" className="h-8 px-3 text-xs" onClick={onOpenWorkspace}>

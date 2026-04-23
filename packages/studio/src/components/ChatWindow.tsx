@@ -18,6 +18,10 @@ import type { Theme } from "../hooks/use-theme";
 import { useColors } from "../hooks/use-colors";
 import { WindowControls } from "./WindowControls";
 import { useWindowRuntimeStore } from "../stores/windowRuntimeStore";
+import {
+  getRecoveryPresentation,
+  getRecoveryToneBannerClassName,
+} from "../lib/windowRecoveryPresentation";
 import { useWindowStore } from "../stores/windowStore";
 import type { ChatMessage, ToolCall } from "../shared/session-types";
 import type { ChatWindow as ChatWindowState } from "../stores/windowStore";
@@ -519,26 +523,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
   const lastMessageTime = lastMessage
     ? new Date(lastMessage.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
     : "--:--";
-  const recoveryStatusLabel =
-    recoveryStatus === "recovering"
-      ? "正在恢复正式会话快照…"
-      : recoveryStatus === "reconnecting"
-        ? "正在重新连接会话…"
-        : recoveryStatus === "resetting"
-          ? "历史已重置，正在重新同步会话…"
-          : recoveryStatus === "replaying"
-            ? "正在回放会话历史…"
-            : null;
-  const recoveryStatusDescription =
-    recoveryStatus === "recovering"
-      ? "当前窗口正在从服务端加载正式快照，恢复完成后会继续沿用正式消息链。"
-      : recoveryStatus === "reconnecting"
-        ? "当前窗口正在和服务端正式会话重新对齐，连接恢复后会继续沿用正式消息链。"
-        : recoveryStatus === "resetting"
-          ? "服务端要求当前窗口放弃本地补拉结果，并重新同步正式快照后继续推进。"
-          : recoveryStatus === "replaying"
-            ? "当前窗口正在和服务端正式会话重新对齐，恢复完成后会继续沿用正式消息链。"
-            : null;
+  const recoveryPresentation = getRecoveryPresentation({ recoveryState: recoveryStatus, wsConnected });
 
   const updateSessionConfig = (updates: Partial<NarratorSessionRecord["sessionConfig"]>) => {
     const nextSessionConfig = {
@@ -649,12 +634,10 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
 
         {!chatWindow.minimized && (
           <>
-            {recoveryStatusLabel ? (
-              <div className="border-b border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-700">
-                <div className="font-medium">{recoveryStatusLabel}</div>
-                {recoveryStatusDescription ? (
-                  <div className="mt-1 leading-5 text-amber-700/90">{recoveryStatusDescription}</div>
-                ) : null}
+            {recoveryPresentation.bannerVisible ? (
+              <div className={`${getRecoveryToneBannerClassName(recoveryPresentation.tone)} px-3 py-2 text-xs`}>
+                <div className="font-medium">{recoveryPresentation.label}</div>
+                <div className="mt-1 leading-5 opacity-90">{recoveryPresentation.description}</div>
               </div>
             ) : null}
             <div className="grid gap-2 border-b px-3 py-2 text-[10px] sm:grid-cols-3" style={{ borderColor: c.border, backgroundColor: c.bgSecondary }}>
