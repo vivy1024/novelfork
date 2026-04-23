@@ -1,8 +1,21 @@
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
-import { useState, type ReactNode } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import { ChevronDown, ChevronRight, Copy, Check } from "lucide-react";
+
+// KaTeX stylesheet is loaded lazily on first render so it does not bloat the
+// initial bundle for users who never receive a math expression.
+let katexCssPromise: Promise<unknown> | null = null;
+function ensureKatexCss() {
+  if (!katexCssPromise && typeof document !== "undefined") {
+    // Side-effect import; ignore TS asset module resolution since Vite handles it.
+    katexCssPromise = (import(/* @vite-ignore */ "katex/dist/katex.min.css" as string) as Promise<unknown>).catch(() => undefined);
+  }
+}
 
 interface CodeBlockProps {
   inline?: boolean;
@@ -68,9 +81,15 @@ interface MarkdownRendererProps {
 }
 
 export function MarkdownRenderer({ content }: MarkdownRendererProps) {
+  useEffect(() => {
+    ensureKatexCss();
+  }, []);
+
   return (
     <div className="prose prose-sm dark:prose-invert max-w-none">
       <ReactMarkdown
+        remarkPlugins={[remarkGfm, remarkMath]}
+        rehypePlugins={[rehypeKatex]}
         components={{
           code: CodeBlock,
           p: ({ children }) => <p className="mb-3 leading-relaxed">{children}</p>,
@@ -84,6 +103,36 @@ export function MarkdownRenderer({ content }: MarkdownRendererProps) {
               {children}
             </blockquote>
           ),
+          // GFM extensions
+          table: ({ children }) => (
+            <div className="my-3 overflow-x-auto">
+              <table className="w-full border-collapse text-sm">{children}</table>
+            </div>
+          ),
+          thead: ({ children }) => <thead className="bg-secondary/40">{children}</thead>,
+          th: ({ children }) => (
+            <th className="border border-border px-3 py-1.5 text-left font-semibold">{children}</th>
+          ),
+          td: ({ children }) => (
+            <td className="border border-border px-3 py-1.5 align-top">{children}</td>
+          ),
+          del: ({ children }) => <del className="text-muted-foreground">{children}</del>,
+          input: ({ type, checked, disabled, ...rest }) => {
+            if (type === "checkbox") {
+              // GFM task list checkbox — render read-only visual checkbox.
+              return (
+                <input
+                  type="checkbox"
+                  checked={!!checked}
+                  disabled={disabled ?? true}
+                  readOnly
+                  className="mr-2 align-middle accent-primary"
+                  {...rest}
+                />
+              );
+            }
+            return <input type={type} {...rest} />;
+          },
         }}
       >
         {content}
