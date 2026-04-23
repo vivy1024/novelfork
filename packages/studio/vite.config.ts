@@ -111,6 +111,10 @@ export default defineConfig({
     ],
   },
   build: {
+    // Package 6 / 7.1: route-level code splitting lives in src/App.tsx (React.lazy);
+    // this config only carves out the heavy third-party vendors so they do not
+    // bloat the main entry chunk.
+    chunkSizeWarningLimit: 900,
     rollupOptions: {
       external: [
         "@tauri-apps/api",
@@ -125,6 +129,39 @@ export default defineConfig({
         "node:util",
         "node:path",
       ],
+      output: {
+        manualChunks(id: string) {
+          if (!id.includes("node_modules")) return undefined;
+          if (id.includes("@tiptap") || id.includes("prosemirror-") || id.includes("/novel/")) {
+            return "vendor-editor";
+          }
+          if (id.includes("react-grid-layout") || id.includes("react-draggable") || id.includes("react-resizable")) {
+            return "vendor-grid";
+          }
+          if (id.includes("react-markdown") || id.includes("remark-") || id.includes("rehype-") || id.includes("unified") || id.includes("mdast-") || id.includes("micromark") || id.includes("hast-")) {
+            return "vendor-markdown";
+          }
+          if (id.includes("react-syntax-highlighter") || id.includes("refractor") || id.includes("prismjs")) {
+            return "vendor-syntax";
+          }
+          if (id.includes("lucide-react")) {
+            return "vendor-icons";
+          }
+          if (id.includes("@dnd-kit")) {
+            return "vendor-dnd";
+          }
+          if (id.includes("@modelcontextprotocol") || id.includes("eventsource")) {
+            return "vendor-mcp";
+          }
+          // Match pnpm-hoisted bare react / react-dom / scheduler packages only.
+          // Avoid matching scoped packages like @tiptap/react which would cause
+          // circular chunks between vendor-react and vendor-editor.
+          if (/[\\/]react@\d/.test(id) || /[\\/]react-dom@\d/.test(id) || /[\\/]scheduler@\d/.test(id)) {
+            return "vendor-react";
+          }
+          return undefined;
+        },
+      },
     },
   },
   server: {

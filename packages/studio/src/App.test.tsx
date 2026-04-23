@@ -55,6 +55,17 @@ vi.mock("./hooks/use-persisted-tabs", () => ({
   restoreTabSession: vi.fn(async () => null),
 }));
 
+vi.mock("sonner", () => ({
+  Toaster: () => null,
+  toast: Object.assign(vi.fn(), {
+    success: vi.fn(),
+    error: vi.fn(),
+    warning: vi.fn(),
+    info: vi.fn(),
+    dismiss: vi.fn(),
+  }),
+}));
+
 vi.mock("./components/Sidebar", () => ({ Sidebar: () => <div>Sidebar Mock</div> }));
 vi.mock("./components/ChatBar", () => ({ ChatPanel: () => <div>ChatPanel Mock</div> }));
 vi.mock("./components/TabBar", () => ({ TabBar: () => <div>TabBar Mock</div> }));
@@ -146,30 +157,31 @@ describe("App admin routing", () => {
     });
   }
 
-  it("renders the shared Admin logs surface instead of the legacy LogViewer route", () => {
+  it("renders the shared Admin logs surface instead of the legacy LogViewer route", async () => {
     mockAppState({ page: "admin", section: "logs" });
 
     render(<App />);
 
-    expect(screen.getByText("Admin Mock logs")).toBeTruthy();
+    // Admin is React.lazy; await the Suspense resolution.
+    expect(await screen.findByText("Admin Mock logs")).toBeTruthy();
     expect(screen.queryByText("LogViewer Mock")).toBeNull();
   });
 
-  it("renders the shared Admin daemon surface instead of the legacy daemon control route", () => {
+  it("renders the shared Admin daemon surface instead of the legacy daemon control route", async () => {
     mockAppState({ page: "admin", section: "daemon" });
 
     render(<App />);
 
-    expect(screen.getByText("Admin Mock daemon")).toBeTruthy();
+    expect(await screen.findByText("Admin Mock daemon")).toBeTruthy();
     expect(screen.queryByText("DaemonControl Mock")).toBeNull();
   });
 
-  it("passes pipeline drill-down navigation into the admin requests surface", () => {
+  it("passes pipeline drill-down navigation into the admin requests surface", async () => {
     mockAppState({ page: "admin", section: "requests" });
 
     render(<App />);
 
-    expect(screen.getByText("Admin Mock requests")).toBeTruthy();
-    expect(screen.getByText("OpenRun Ready")).toBeTruthy();
+    expect(await screen.findByText("Admin Mock requests")).toBeTruthy();
+    expect(await screen.findByText("OpenRun Ready")).toBeTruthy();
   });
 });

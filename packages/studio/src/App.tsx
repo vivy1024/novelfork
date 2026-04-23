@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { Suspense, lazy, useState, useEffect, useCallback, useRef } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { Sidebar } from "./components/Sidebar";
 import { ChatPanel } from "./components/ChatBar";
@@ -7,34 +7,37 @@ import { CommandPalette } from "./components/CommandPalette";
 import { SearchDialog } from "./components/Search/SearchDialog";
 import { UpdateChecker } from "./components/UpdateChecker";
 import { NovelForkProvider, useNovelFork } from "./providers/novelfork-context";
+// Eager: first-paint critical pages (gate + dashboard + book create modal + language picker)
 import { Dashboard } from "./pages/Dashboard";
-import { BookDetail } from "./pages/BookDetail";
 import { BookCreate } from "./pages/BookCreate";
-import { ChapterReader } from "./pages/ChapterReader";
-import { Analytics } from "./pages/Analytics";
 import { WorkspaceSelector } from "./pages/WorkspaceSelector";
-import { TruthFiles } from "./pages/TruthFiles";
-import { DaemonControl } from "./pages/DaemonControl";
-import { GenreManager } from "./pages/GenreManager";
-import { StyleManager } from "./pages/StyleManager";
-import { ImportManager } from "./pages/ImportManager";
-import { RadarView } from "./pages/RadarView";
-import { DoctorView } from "./pages/DoctorView";
-import { DiffView } from "./pages/DiffView";
-import { SearchView } from "./pages/SearchView";
-import { BackupView } from "./pages/BackupView";
 import { LanguageSelector } from "./pages/LanguageSelector";
-import { DetectView } from "./pages/DetectView";
-import { IntentEditor } from "./pages/IntentEditor";
-import { StateProjectionsView } from "./pages/StateProjectionsView";
-import { PipelineVisualization } from "./pages/PipelineVisualization";
-import { SettingsView } from "./pages/SettingsView";
-import { WorktreeManager } from "./pages/WorktreeManager";
-import { SessionCenter } from "./pages/SessionCenter";
-import { WorkflowWorkbench } from "./pages/WorkflowWorkbench";
-import { Admin } from "./components/Admin/Admin";
+// Lazy: all secondary pages — each becomes its own chunk (Package 6 / 7.1 bundle split)
+const BookDetail = lazy(() => import("./pages/BookDetail").then((m) => ({ default: m.BookDetail })));
+const ChapterReader = lazy(() => import("./pages/ChapterReader").then((m) => ({ default: m.ChapterReader })));
+const Analytics = lazy(() => import("./pages/Analytics").then((m) => ({ default: m.Analytics })));
+const TruthFiles = lazy(() => import("./pages/TruthFiles").then((m) => ({ default: m.TruthFiles })));
+const DaemonControl = lazy(() => import("./pages/DaemonControl").then((m) => ({ default: m.DaemonControl })));
+const GenreManager = lazy(() => import("./pages/GenreManager").then((m) => ({ default: m.GenreManager })));
+const StyleManager = lazy(() => import("./pages/StyleManager").then((m) => ({ default: m.StyleManager })));
+const ImportManager = lazy(() => import("./pages/ImportManager").then((m) => ({ default: m.ImportManager })));
+const RadarView = lazy(() => import("./pages/RadarView").then((m) => ({ default: m.RadarView })));
+const DoctorView = lazy(() => import("./pages/DoctorView").then((m) => ({ default: m.DoctorView })));
+const DiffView = lazy(() => import("./pages/DiffView").then((m) => ({ default: m.DiffView })));
+const SearchView = lazy(() => import("./pages/SearchView").then((m) => ({ default: m.SearchView })));
+const BackupView = lazy(() => import("./pages/BackupView").then((m) => ({ default: m.BackupView })));
+const DetectView = lazy(() => import("./pages/DetectView").then((m) => ({ default: m.DetectView })));
+const IntentEditor = lazy(() => import("./pages/IntentEditor").then((m) => ({ default: m.IntentEditor })));
+const StateProjectionsView = lazy(() => import("./pages/StateProjectionsView").then((m) => ({ default: m.StateProjectionsView })));
+const PipelineVisualization = lazy(() => import("./pages/PipelineVisualization").then((m) => ({ default: m.PipelineVisualization })));
+const SettingsView = lazy(() => import("./pages/SettingsView").then((m) => ({ default: m.SettingsView })));
+const WorktreeManager = lazy(() => import("./pages/WorktreeManager").then((m) => ({ default: m.WorktreeManager })));
+const SessionCenter = lazy(() => import("./pages/SessionCenter").then((m) => ({ default: m.SessionCenter })));
+const WorkflowWorkbench = lazy(() => import("./pages/WorkflowWorkbench").then((m) => ({ default: m.WorkflowWorkbench })));
+const Admin = lazy(() => import("./components/Admin/Admin").then((m) => ({ default: m.Admin })));
 import { ReferencePanel } from "./components/ReferencePanel";
 import { RecoveryBanner } from "./components/RecoveryBanner";
+import { Toaster } from "sonner";
 import { useSSE } from "./hooks/use-sse";
 import { useTheme } from "./hooks/use-theme";
 import { useI18n } from "./hooks/use-i18n";
@@ -75,6 +78,14 @@ export function App() {
   return (
     <NovelForkProvider>
       <AppInner />
+      {/* Package 6 / 7.3: single global Toaster for unified notifications. */}
+      <Toaster
+        position="bottom-right"
+        richColors
+        closeButton
+        theme="system"
+        toastOptions={{ duration: 4000 }}
+      />
     </NovelForkProvider>
   );
 }
@@ -113,6 +124,10 @@ function AppInner() {
   const [bottomDragging, setBottomDragging] = useState(false);
   const [bottomStartY, setBottomStartY] = useState(0);
   const [bottomStartHeight, setBottomStartHeight] = useState(0);
+
+  // Hoisted above the conditional early-return paths so hook order stays stable.
+  // The ref holds the latest `nav` object for closures that outlive a render.
+  const navRef = useRef<any>(null);
 
   const isDark = theme === "dark";
 
@@ -338,7 +353,6 @@ function AppInner() {
     toSettings: (section?: SettingsSection) => openTab({ page: "settings", section }),
     toWorktree: () => openTab({ page: "admin", section: "worktrees" }),
   };
-  const navRef = React.useRef(nav);
   navRef.current = nav;
 
   const activeBookId = activeTab ? deriveActiveBookId(activeTab.route) : undefined;
@@ -524,7 +538,30 @@ function AppInner() {
   );
 }
 
-function TabContent({ route, nav, theme, t, sse, setTheme }: {
+function TabContentFallback() {
+  return (
+    <div className="flex items-center justify-center py-24 text-sm text-muted-foreground">
+      <span className="animate-pulse">加载中…</span>
+    </div>
+  );
+}
+
+function TabContent(props: {
+  route: Route;
+  nav: any;
+  theme: any;
+  t: any;
+  sse: any;
+  setTheme: (theme: "light" | "dark" | "auto") => void;
+}) {
+  return (
+    <Suspense fallback={<TabContentFallback />}>
+      <TabContentInner {...props} />
+    </Suspense>
+  );
+}
+
+function TabContentInner({ route, nav, theme, t, sse, setTheme }: {
   route: Route;
   nav: any;
   theme: any;
