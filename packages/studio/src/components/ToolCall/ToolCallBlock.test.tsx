@@ -267,6 +267,57 @@ describe("ToolCallBlock", () => {
     expect(screen.getByText(/实时状态：succeeded/)).toBeTruthy();
   });
 
+  it("shows richer run facts including book, chapter and latest log line", () => {
+    render(
+      <ToolCallBlock
+        toolCall={{
+          toolName: "Read",
+          status: "running",
+          summary: "读取章节并建立索引",
+          result: {
+            execution: {
+              runId: "run-tool-rich",
+              attempts: 2,
+              traceEnabled: true,
+              dumpEnabled: false,
+            },
+          },
+        }}
+      />,
+    );
+
+    act(() => {
+      MockEventSource.instances[0]?.emit({
+        type: "snapshot",
+        runId: "run-tool-rich",
+        run: {
+          id: "run-tool-rich",
+          bookId: "demo-book",
+          chapter: 7,
+          chapterNumber: 7,
+          action: "tool",
+          status: "running",
+          stage: "Tool Read",
+          createdAt: "2026-04-21T10:00:00.000Z",
+          updatedAt: "2026-04-21T10:00:03.000Z",
+          startedAt: "2026-04-21T10:00:00.000Z",
+          finishedAt: null,
+          logs: [
+            {
+              timestamp: "2026-04-21T10:00:02.000Z",
+              level: "info",
+              message: "Attempt 1/2 started",
+            },
+          ],
+        },
+      });
+    });
+
+    expect(screen.getByText(/demo-book/)).toBeTruthy();
+    expect(screen.getByText(/第 7 章/)).toBeTruthy();
+    expect(screen.getByText(/Attempt 1\/2 started/)).toBeTruthy();
+  });
+
   it("shows governance explanation for permission-gated tool calls", () => {
     render(
       <ToolCallBlock

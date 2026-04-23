@@ -67,6 +67,43 @@ describe("LogsTab", () => {
     expect(onNavigateSection).toHaveBeenCalledWith("requests", { runId: "run-2" });
   });
 
+  it("shows shared run metadata when log entries include narrator and provider facts", async () => {
+    fetchJsonMock.mockResolvedValueOnce({
+      sourcePath: "D:/DESKTOP/novelfork/novelfork.log",
+      exists: true,
+      refreshedAt: "2026-04-20T10:05:00Z",
+      updatedAt: "2026-04-20T10:04:30Z",
+      sizeBytes: 2048,
+      limit: 200,
+      totalEntries: 12,
+      refreshHintMs: 5000,
+      entries: [
+        {
+          timestamp: "2026-04-20T10:04:00Z",
+          level: "info",
+          tag: "studio",
+          message: "tool finished",
+          raw: '{"message":"tool finished"}',
+          source: "json",
+          narrator: "session.alpha",
+          requestKind: "tool-call",
+          provider: "sub2api",
+          model: "claude-sonnet-4.6",
+          runId: "run-42",
+        },
+      ],
+    });
+
+    render(<LogsTab />);
+
+    expect(await screen.findByText("tool finished")).toBeTruthy();
+    expect(screen.getByText(/session.alpha/)).toBeTruthy();
+    expect(screen.getByText(/tool-call/)).toBeTruthy();
+    expect(screen.getByText(/sub2api/)).toBeTruthy();
+    expect(screen.getByText(/claude-sonnet-4.6/)).toBeTruthy();
+    expect(screen.getByText(/run-42/)).toBeTruthy();
+  });
+
   it("refreshes the current log tail limit on demand", async () => {
     fetchJsonMock
       .mockResolvedValueOnce({
@@ -102,5 +139,36 @@ describe("LogsTab", () => {
     });
 
     expect(await screen.findByText("second line")).toBeTruthy();
+  });
+
+  it("opens pipeline drill-down when a log entry carries a run id", async () => {
+    const onOpenRun = vi.fn();
+    fetchJsonMock.mockResolvedValueOnce({
+      sourcePath: "D:/DESKTOP/novelfork/novelfork.log",
+      exists: true,
+      refreshedAt: "2026-04-20T10:05:00Z",
+      updatedAt: "2026-04-20T10:04:30Z",
+      sizeBytes: 2048,
+      limit: 200,
+      totalEntries: 12,
+      refreshHintMs: 5000,
+      entries: [
+        {
+          timestamp: "2026-04-20T10:04:00Z",
+          level: "info",
+          tag: "studio",
+          message: "tool finished",
+          raw: '{"message":"tool finished"}',
+          source: "json",
+          runId: "run-42",
+        },
+      ],
+    });
+
+    render(<LogsTab onOpenRun={onOpenRun} />);
+
+    expect(await screen.findByText("tool finished")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "打开 Pipeline" }));
+    expect(onOpenRun).toHaveBeenCalledWith("run-42");
   });
 });

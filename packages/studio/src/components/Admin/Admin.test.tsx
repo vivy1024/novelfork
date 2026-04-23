@@ -14,7 +14,21 @@ vi.mock("./ResourcesTab", () => ({
 }));
 
 vi.mock("./RequestsTab", () => ({
-  RequestsTab: () => <div>RequestsTab Mock</div>,
+  RequestsTab: ({ onOpenRun }: { onOpenRun?: (runId: string) => void }) => (
+    <div>
+      <div>RequestsTab Mock</div>
+      <div>{onOpenRun ? "Requests OpenRun Ready" : "Requests OpenRun Missing"}</div>
+    </div>
+  ),
+}));
+
+vi.mock("./LogsTab", () => ({
+  LogsTab: ({ onOpenRun }: { onOpenRun?: (runId: string) => void }) => (
+    <div>
+      <div>LogsTab Mock</div>
+      <div>{onOpenRun ? "Logs OpenRun Ready" : "Logs OpenRun Missing"}</div>
+    </div>
+  ),
 }));
 
 vi.mock("./LogsTab", () => ({
@@ -27,6 +41,10 @@ vi.mock("./TerminalTab", () => ({
 
 vi.mock("./ContainerTab", () => ({
   ContainerTab: () => <div>ContainerTab Mock</div>,
+}));
+
+vi.mock("./DaemonTab", () => ({
+  DaemonTab: () => <div>DaemonTab Mock</div>,
 }));
 
 import { Admin } from "./Admin";
@@ -56,17 +74,28 @@ describe("Admin", () => {
     expect(screen.getByText("ProvidersTab Mock")).toBeTruthy();
   });
 
-  it("renders terminal, logs, and container tab content", () => {
+  it("passes run drill-down affordances into requests and logs tabs", () => {
+    const onOpenRun = vi.fn();
+    const { rerender } = render(<Admin section="requests" onNavigateSection={() => {}} onOpenRun={onOpenRun} />);
+
+    expect(screen.getByText("RequestsTab Mock")).toBeTruthy();
+    expect(screen.getByText("Requests OpenRun Ready")).toBeTruthy();
+
+    rerender(<Admin section="logs" onNavigateSection={() => {}} onOpenRun={onOpenRun} />);
+
+    expect(screen.getByText("LogsTab Mock")).toBeTruthy();
+    expect(screen.getByText("Logs OpenRun Ready")).toBeTruthy();
+  });
+
+  it("renders terminal, daemon, and container tab content", () => {
     const { rerender } = render(<Admin section="terminal" onNavigateSection={() => {}} />);
 
     expect(screen.getByText("TerminalTab Mock")).toBeTruthy();
 
-    rerender(<Admin section="logs" onNavigateSection={() => {}} />);
-
-    expect(screen.getByText("LogsTab Mock")).toBeTruthy();
+    rerender(<Admin section="daemon" onNavigateSection={() => {}} />);
+    expect(screen.getByText("DaemonTab Mock")).toBeTruthy();
 
     rerender(<Admin section="container" onNavigateSection={() => {}} />);
-
     expect(screen.getByText("ContainerTab Mock")).toBeTruthy();
   });
 });

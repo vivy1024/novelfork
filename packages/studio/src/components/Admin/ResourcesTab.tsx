@@ -118,10 +118,24 @@ interface StartupSummarySnapshot {
   decisions?: StartupDecision[];
 }
 
+interface RequestCacheMeta {
+  status: "hit" | "miss" | "bypass";
+  scope?: string;
+  ageMs?: number;
+}
+
+interface ResourceRequestMeta {
+  narrator: string;
+  requestKind: string;
+  cache: RequestCacheMeta;
+  details: string;
+}
+
 interface ResourcesResponse {
   stats?: ResourceStats | null;
   storage?: StorageSnapshot | null;
   startup?: StartupSummarySnapshot | null;
+  requestMeta?: ResourceRequestMeta | null;
 }
 
 export function ResourcesTab() {
@@ -198,6 +212,7 @@ export function ResourcesTab() {
   const storage = data?.storage ?? null;
   const startup = data?.startup ?? null;
   const startupDecisions = startup?.decisions ?? [];
+  const requestMeta = data?.requestMeta ?? null;
 
   const memoryUsagePercent = stats?.memory.usagePercent ?? 0;
   const diskUsagePercent = stats?.disk.usagePercent ?? 0;
@@ -256,6 +271,24 @@ export function ResourcesTab() {
         </div>
 
       </div>
+
+      {requestMeta ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">共享请求语义</CardTitle>
+            <CardDescription>让 Resources 与 Requests / Logs 使用同一套 narrator、requestKind 与缓存解释模型。</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex flex-wrap gap-2 text-xs">
+              <Badge variant="outline">{requestMeta.narrator}</Badge>
+              <Badge variant="outline">{requestMeta.requestKind}</Badge>
+              <Badge variant={requestMeta.cache.status === "hit" ? "secondary" : "outline"}>缓存 {requestMeta.cache.status}</Badge>
+              {requestMeta.cache.scope ? <Badge variant="outline">scope {requestMeta.cache.scope}</Badge> : null}
+            </div>
+            <div className="text-sm text-muted-foreground">{requestMeta.details}</div>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <section className="space-y-4" aria-labelledby="runtime-resources-heading">
         <div className="flex flex-wrap items-center gap-2">

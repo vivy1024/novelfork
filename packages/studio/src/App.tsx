@@ -594,6 +594,7 @@ function TabContent({ route, nav, theme, t, sse, setTheme }: {
           onBack={nav.toDashboard}
           section={route.section}
           onNavigateSection={(section) => nav.toAdmin(section)}
+          onOpenRun={(runId) => nav.toPipeline(runId)}
         />
       );
     }

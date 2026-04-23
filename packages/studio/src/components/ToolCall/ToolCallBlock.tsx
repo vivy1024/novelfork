@@ -13,6 +13,7 @@ import {
   TimerReset,
 } from "lucide-react";
 
+import type { StudioRun } from "@/shared/contracts";
 import type { ToolCall } from "@/shared/session-types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -698,8 +699,11 @@ function RunTrackingCard({
   liveRun,
 }: {
   executionMeta: { runId: string; attempts?: number; traceEnabled?: boolean; dumpEnabled?: boolean };
-  liveRun: { status: string; stage?: string; error?: string } | null;
+  liveRun: StudioRun | null;
 }) {
+  const chapterNumber = liveRun?.chapterNumber ?? liveRun?.chapter ?? null;
+  const latestLog = liveRun && liveRun.logs.length > 0 ? liveRun.logs[liveRun.logs.length - 1]?.message : undefined;
+
   return (
     <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs" data-testid="run-tracking-card">
       <div className="mb-2 flex items-center gap-2">
@@ -712,7 +716,10 @@ function RunTrackingCard({
         <span>dump {executionMeta.dumpEnabled ? "开" : "关"}</span>
         {liveRun?.status ? <span>实时状态：{liveRun.status}</span> : null}
         {liveRun?.stage ? <span>阶段：{liveRun.stage}</span> : null}
+        {liveRun?.bookId ? <span>书籍：{liveRun.bookId}</span> : null}
+        {typeof chapterNumber === "number" ? <span>章节：第 {chapterNumber} 章</span> : null}
       </div>
+      {latestLog ? <div className="mt-2 text-muted-foreground">最近日志：{latestLog}</div> : null}
       {liveRun?.error ? <div className="mt-2 text-destructive">{liveRun.error}</div> : null}
     </div>
   );

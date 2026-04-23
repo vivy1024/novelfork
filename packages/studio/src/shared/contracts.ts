@@ -138,6 +138,7 @@ export interface StudioRun {
 export interface RunStreamEvent {
   readonly type: "snapshot" | "status" | "stage" | "log";
   readonly runId: string;
+  readonly seq?: number;
   readonly run?: StudioRun;
   readonly runs?: ReadonlyArray<StudioRun>;
   readonly status?: RunStatus;
@@ -145,6 +146,19 @@ export interface RunStreamEvent {
   readonly log?: RunLogEntry;
   readonly result?: unknown;
   readonly error?: string;
+}
+
+export interface RunHistoryCursor {
+  readonly lastSeq: number;
+}
+
+export interface RunHistory {
+  readonly runId: string;
+  readonly sinceSeq: number;
+  readonly availableFromSeq: number;
+  readonly resetRequired: boolean;
+  readonly events: ReadonlyArray<RunStreamEvent>;
+  readonly cursor: RunHistoryCursor;
 }
 
 // --- API Error Response ---

@@ -7,7 +7,7 @@ import { Hono } from "hono";
 import { createServer } from "node:http";
 import * as os from "node:os";
 import { join, relative, resolve } from "node:path";
-import { readdir, readFile, stat } from "node:fs/promises";
+import { readFile, readdir, stat } from "node:fs/promises";
 import { statfs as statfsCallback } from "node:fs";
 import { promisify } from "node:util";
 import { WebSocketServer } from "ws";
@@ -17,6 +17,8 @@ import { buildStartupFailureDecisions, type StartupFailureDecision } from "../li
 
 const statfs = promisify(statfsCallback);
 const MAX_REQUEST_LOGS = 1000;
+const MAX_ADMIN_LOG_LINES = 500;
+const ADMIN_LOG_REFRESH_HINT_MS = 5_000;
 const STORAGE_SCAN_TTL_MS = 30_000;
 const STORAGE_TARGETS = [
   { id: "books", label: "书籍目录", relativePath: "books" },
@@ -166,6 +168,13 @@ interface AdminRunFilter {
   runId: string | null;
 }
 
+interface ResourceRequestMeta {
+  narrator: string;
+  requestKind: string;
+  cache: RequestCacheMeta;
+  details: string;
+}
+
 interface AdminLogEntry {
   timestamp?: string;
   level?: string;
@@ -173,6 +182,28 @@ interface AdminLogEntry {
   message: string;
   raw: string;
   source: "json" | "text";
+  narrator?: string;
+  requestKind?: string;
+  provider?: string;
+  model?: string;
+  runId?: string;
+}
+
+interface AdminLogsSnapshot {
+  sourcePath: string;
+  exists: boolean;
+  refreshedAt: string;
+  updatedAt: string | null;
+  sizeBytes: number;
+  limit: number;
+  totalEntries: number;
+  refreshHintMs: number;
+  entries: AdminLogEntry[];
+  filters?: AdminRunFilter;
+  requestMeta?: {
+    narrator: string;
+    requestKind: string;
+  };
 }
 
 const requestLogs: RequestLog[] = [];
@@ -311,6 +342,21 @@ function buildRequestMeta(meta: { narrator: string; requestKind: string }) {
   };
 }
 
+function buildResourceRequestMeta({
+  cache,
+  details,
+}: {
+  cache: RequestCacheMeta;
+  details: string;
+}): ResourceRequestMeta {
+  return {
+    narrator: "admin.resources",
+    requestKind: "resource-monitor",
+    cache,
+    details,
+  };
+}
+
 function matchesRunFilter(value: string | undefined, filter: AdminRunFilter) {
   if (!filter.runId) {
     return true;
@@ -319,30 +365,34 @@ function matchesRunFilter(value: string | undefined, filter: AdminRunFilter) {
 }
 
 function parseAdminLogLine(line: string): AdminLogEntry {
-  const trimmed = line.trim();
-  if (!trimmed) {
-    return { message: "", raw: line, source: "text" };
+  const raw = line.replace(/\r$/, "");
+  if (!raw.trim()) {
+    return { message: "", raw, source: "text" };
   }
 
   try {
-    const parsed = JSON.parse(trimmed) as Record<string, unknown>;
-    return {
-      timestamp: typeof parsed.timestamp === "string" ? parsed.timestamp : undefined,
-      level: typeof parsed.level === "string" ? parsed.level : undefined,
-      tag: typeof parsed.tag === "string" ? parsed.tag : undefined,
-      message: typeof parsed.message === "string" ? parsed.message : trimmed,
-      raw: trimmed,
-      source: "json",
-    };
+    const parsed = JSON.parse(raw);
+    if (typeof parsed === "object" && parsed !== null) {
+      const record = parsed as Record<string, unknown>;
+      return {
+        ...record,
+        tag: typeof record.tag === "string" ? record.tag : undefined,
+        message: typeof record.message === "string" && record.message.trim().length > 0 ? record.message : raw,
+        raw,
+        source: "json",
+      } as AdminLogEntry;
+    }
   } catch {
-    const tagMatch = trimmed.match(/\[(.*?)\]/);
-    return {
-      tag: tagMatch?.[1],
-      message: trimmed.replace(/^\[[^\]]+\]\s*/, ""),
-      raw: trimmed,
-      source: "text",
-    };
+    // ignore and fall through to text mode
   }
+
+  const tagMatch = raw.match(/\[(.*?)\]/);
+  return {
+    tag: tagMatch?.[1],
+    message: raw.replace(/^\[[^\]]+\]\s*/, ""),
+    raw,
+    source: "text",
+  };
 }
 
 async function readAdminLogsSnapshot(rootPath: string, limit: number, filter: AdminRunFilter) {
@@ -351,11 +401,11 @@ async function readAdminLogsSnapshot(rootPath: string, limit: number, filter: Ad
     const content = await readFile(logPath, "utf-8");
     const allEntries = content
       .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean)
+      .map((line) => line.replace(/\r$/, ""))
+      .filter((line) => line.trim().length > 0)
       .map((line) => parseAdminLogLine(line));
     const filteredEntries = filter.runId
-      ? allEntries.filter((entry) => matchesRunFilter(entry.tag, filter) || matchesRunFilter(entry.message, filter) || matchesRunFilter(entry.raw, filter))
+      ? allEntries.filter((entry) => matchesRunFilter(entry.tag, filter) || matchesRunFilter(entry.message, filter) || matchesRunFilter(entry.raw, filter) || matchesRunFilter(entry.runId, filter))
       : allEntries;
     const entries = filteredEntries.slice(-limit).reverse();
     const fileStats = await stat(logPath);
@@ -368,7 +418,7 @@ async function readAdminLogsSnapshot(rootPath: string, limit: number, filter: Ad
       sizeBytes: fileStats.size,
       limit,
       totalEntries: filteredEntries.length,
-      refreshHintMs: 5_000,
+      refreshHintMs: ADMIN_LOG_REFRESH_HINT_MS,
       entries,
       filters: filter,
       requestMeta: buildRequestMeta({ narrator: "admin.logs", requestKind: "runtime-log" }),
@@ -382,7 +432,7 @@ async function readAdminLogsSnapshot(rootPath: string, limit: number, filter: Ad
       sizeBytes: 0,
       limit,
       totalEntries: 0,
-      refreshHintMs: 5_000,
+      refreshHintMs: ADMIN_LOG_REFRESH_HINT_MS,
       entries: [],
       filters: filter,
       requestMeta: buildRequestMeta({ narrator: "admin.logs", requestKind: "runtime-log" }),
@@ -806,11 +856,7 @@ export function createAdminRouter(
     const forceRefresh = c.req.query("refresh") === "1";
     const [stats, storage] = await Promise.all([getResourceStats(root), getStorageSnapshot(forceRefresh, root)]);
     const startup = normalizeStartupSummary(options?.getStartupSummary?.() ?? null);
-    const requestMeta = buildRequestMeta({ narrator: "admin.resources", requestKind: "resource-monitor" });
-
-    c.set("adminLogMeta", {
-      narrator: requestMeta.narrator,
-      requestKind: requestMeta.requestKind,
+    const requestMeta = buildResourceRequestMeta({
       cache: {
         status: storage.mode === "cached" ? "hit" : forceRefresh ? "bypass" : "miss",
         scope: "storage-scan",
@@ -819,6 +865,7 @@ export function createAdminRouter(
       details: `storage=${storage.summary.existingTargets}/${storage.summary.scannedTargets};startup=${startup ? startup.delivery.staticMode : "missing"}`,
     });
 
+    c.set("adminLogMeta", requestMeta);
     return c.json({ stats, storage, startup, requestMeta });
   });
 
@@ -833,10 +880,7 @@ export function createAdminRouter(
     }
 
     const [stats, storage] = await Promise.all([getResourceStats(root), getStorageSnapshot(true, root)]);
-
-    c.set("adminLogMeta", {
-      narrator: "admin.resources",
-      requestKind: "resource-monitor",
+    const requestMeta = buildResourceRequestMeta({
       cache: {
         status: "bypass",
         scope: "startup-recovery",
@@ -845,7 +889,9 @@ export function createAdminRouter(
       details: `recovery=manual;startup=${startup.delivery.staticMode};failed=${startup.recoveryReport.counts.failed}`,
     });
 
-    return c.json({ stats, storage, startup, recoveryTriggered: true });
+    c.set("adminLogMeta", requestMeta);
+
+    return c.json({ stats, storage, startup, recoveryTriggered: true, requestMeta });
   });
 
   app.post("/resources/recovery/runtime-state", async (c) => {

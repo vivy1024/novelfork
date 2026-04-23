@@ -11,6 +11,7 @@ import type { AdminSection } from "../../routes";
 import { useState } from "react";
 
 import { ContainerTab } from "./ContainerTab";
+import { DaemonTab } from "./DaemonTab";
 import { LogsTab } from "./LogsTab";
 import { ProvidersTab } from "./ProvidersTab";
 import { RequestsTab } from "./RequestsTab";
@@ -22,9 +23,10 @@ interface AdminProps {
   onBack?: () => void;
   section?: AdminSection;
   onNavigateSection?: (section: AdminSection) => void;
+  onOpenRun?: (runId: string) => void;
 }
 
-export function Admin({ onBack, section, onNavigateSection }: AdminProps) {
+export function Admin({ onBack, section, onNavigateSection, onOpenRun }: AdminProps) {
   const activeSection = section ?? "overview";
   const [focusedRunId, setFocusedRunId] = useState<string | undefined>(undefined);
 
@@ -162,8 +164,23 @@ export function Admin({ onBack, section, onNavigateSection }: AdminProps) {
 
       {activeSection === "providers" && <ProvidersTab />}
       {activeSection === "resources" && <ResourcesTab />}
-      {activeSection === "requests" && <RequestsTab runId={focusedRunId} onInspectRun={handleInspectRun} onNavigateSection={handleNavigateDrillDown} />}
-      {activeSection === "logs" && <LogsTab runId={focusedRunId} onInspectRun={handleInspectRun} onNavigateSection={handleNavigateDrillDown} />}
+      {activeSection === "requests" && (
+        <RequestsTab
+          runId={focusedRunId}
+          onInspectRun={handleInspectRun}
+          onNavigateSection={handleNavigateDrillDown}
+          onOpenRun={onOpenRun}
+        />
+      )}
+      {activeSection === "daemon" && <DaemonTab />}
+      {activeSection === "logs" && (
+        <LogsTab
+          runId={focusedRunId}
+          onInspectRun={handleInspectRun}
+          onNavigateSection={handleNavigateDrillDown}
+          onOpenRun={onOpenRun}
+        />
+      )}
       {activeSection === "terminal" && <TerminalTab />}
       {activeSection === "container" && <ContainerTab />}
     </div>

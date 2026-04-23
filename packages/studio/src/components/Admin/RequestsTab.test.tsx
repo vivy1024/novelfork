@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 const fetchJsonMock = vi.fn();
 
@@ -77,6 +77,51 @@ describe("RequestsTab", () => {
     expect(screen.getAllByText("320ms").length).toBeGreaterThanOrEqual(1);
   });
 
+  it("renders request diagnostics from the admin summary and metadata fields", async () => {
+    fetchJsonMock.mockResolvedValueOnce({
+      total: 1,
+      summary: {
+        successRate: 100,
+        slowRequests: 0,
+        errorRequests: 0,
+        averageDuration: 320,
+        averageTtftMs: 480,
+        totalTokens: 2048,
+        totalCostUsd: 0.1234,
+        cacheHitRate: 75,
+        topEndpoints: [{ label: "/api/chat", count: 3 }],
+        topNarrators: [{ label: "session.alpha", count: 2 }],
+      },
+      logs: [
+        {
+          id: "1",
+          timestamp: "2026-04-20T10:00:00Z",
+          method: "POST",
+          endpoint: "/api/chat",
+          status: 200,
+          duration: 320,
+          userId: "writer",
+          requestKind: "tool-call",
+          narrator: "session.alpha",
+          provider: "sub2api",
+          model: "claude-sonnet-4.6",
+          tokens: { total: 2048 },
+          cache: { status: "hit", scope: "admin" },
+          details: "run=run-1",
+        },
+      ],
+    });
+
+    render(<RequestsTab />);
+
+    expect(await screen.findByText("缓存命中率")).toBeTruthy();
+    expect(screen.getByText("75%")).toBeTruthy();
+    expect(screen.getAllByText(/session.alpha/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText(/claude-sonnet-4.6/)).toBeTruthy();
+    expect(screen.getByText(/2048 tokens/)).toBeTruthy();
+    expect(screen.getByText(/run=run-1/)).toBeTruthy();
+  });
+
   it("renders live run summary from the global run stream", async () => {
     fetchJsonMock.mockResolvedValueOnce({
       total: 0,
@@ -133,7 +178,7 @@ describe("RequestsTab", () => {
     expect(screen.getByText("运行中")).toBeTruthy();
     expect(screen.getByText("失败运行")).toBeTruthy();
     expect(screen.getAllByText("Tool Read").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText(/run-1/)).toBeTruthy();
+    expect(screen.getAllByText(/run-1/).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText(/audit failed/)).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "定位运行 run-1" }));
@@ -141,5 +186,130 @@ describe("RequestsTab", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "查看日志 run-2" }));
     expect(onNavigateSection).toHaveBeenCalledWith("logs", { runId: "run-2" });
+  });
+
+  it("shows live run fact details for the selected run", async () => {
+    fetchJsonMock.mockResolvedValueOnce({
+      total: 0,
+      logs: [],
+    });
+
+    render(<RequestsTab />);
+
+    expect(await screen.findByText("总请求数")).toBeTruthy();
+
+    act(() => {
+      MockEventSource.instances[0]?.emit({
+        type: "snapshot",
+        runId: "__all__",
+        runs: [
+          {
+            id: "run-1",
+            bookId: "demo-book",
+            chapter: 3,
+            chapterNumber: 3,
+            action: "tool",
+            status: "running",
+            stage: "Tool Read",
+            createdAt: "2026-04-21T10:00:00.000Z",
+            updatedAt: "2026-04-21T10:00:01.000Z",
+            startedAt: "2026-04-21T10:00:00.000Z",
+            finishedAt: null,
+            logs: [],
+          },
+        ],
+      });
+    });
+
+    await waitFor(() => {
+      expect(MockEventSource.instances[1]?.url).toBe("/api/runs/run-1/events");
+    });
+
+    act(() => {
+      MockEventSource.instances[1]?.emit({
+        type: "snapshot",
+        runId: "run-1",
+        run: {
+          id: "run-1",
+          bookId: "demo-book",
+          chapter: 3,
+          chapterNumber: 3,
+          action: "tool",
+          status: "running",
+          stage: "Tool Read",
+          createdAt: "2026-04-21T10:00:00.000Z",
+          updatedAt: "2026-04-21T10:00:03.000Z",
+          startedAt: "2026-04-21T10:00:00.000Z",
+          finishedAt: null,
+          logs: [
+            {
+              timestamp: "2026-04-21T10:00:01.000Z",
+              level: "info",
+              message: "Attempt 1/2 started",
+            },
+            {
+              timestamp: "2026-04-21T10:00:02.000Z",
+              level: "warn",
+              message: "Waiting 500ms before retry",
+            },
+          ],
+          result: {
+            attempts: 2,
+            traceEnabled: true,
+          },
+        },
+      });
+    });
+
+    expect(await screen.findByText("运行事实详情")).toBeTruthy();
+    expect(screen.getByText(/demo-book/)).toBeTruthy();
+    expect(screen.getByText(/第 3 章/)).toBeTruthy();
+    expect(screen.getByText(/Attempt 1\/2 started/)).toBeTruthy();
+    expect(screen.getByText(/Waiting 500ms before retry/)).toBeTruthy();
+    expect(screen.getAllByText(/Tool Read/).length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("opens pipeline drill-down for the selected live run when requested", async () => {
+    const onOpenRun = vi.fn();
+    fetchJsonMock.mockResolvedValueOnce({
+      total: 0,
+      logs: [],
+    });
+
+    render(<RequestsTab onOpenRun={onOpenRun} />);
+
+    expect(await screen.findByText("总请求数")).toBeTruthy();
+
+    act(() => {
+      MockEventSource.instances[0]?.emit({
+        type: "snapshot",
+        runId: "__all__",
+        runs: [
+          {
+            id: "run-1",
+            bookId: "demo-book",
+            chapter: 5,
+            chapterNumber: 5,
+            action: "tool",
+            status: "running",
+            stage: "Tool Bash",
+            createdAt: "2026-04-21T10:00:00.000Z",
+            updatedAt: "2026-04-21T10:00:01.000Z",
+            startedAt: "2026-04-21T10:00:00.000Z",
+            finishedAt: null,
+            logs: [],
+          },
+        ],
+      });
+    });
+
+    expect(await screen.findByText("运行事实详情")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "打开 Pipeline" })).toBeTruthy();
+
+    act(() => {
+      screen.getByRole("button", { name: "打开 Pipeline" }).click();
+    });
+
+    expect(onOpenRun).toHaveBeenCalledWith("run-1");
   });
 });
