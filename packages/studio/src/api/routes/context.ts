@@ -5,6 +5,7 @@
 
 import type { StateManager, PipelineConfig } from "@vivy1024/novelfork-core";
 import type { RunStore } from "../lib/run-store.js";
+import type { StartupOrchestratorSummary } from "../lib/startup-orchestrator.js";
 import type { Context } from "hono";
 
 export interface RouterContext {
@@ -37,4 +38,8 @@ export interface RouterContext {
 
   /** Per-run event store */
   readonly runStore: RunStore;
+
+  /** Startup recovery / delivery summary exposed to admin surfaces */
+  readonly getStartupSummary: () => StartupOrchestratorSummary | null;
+  readonly setStartupSummary: (summary: StartupOrchestratorSummary) => void;
 }

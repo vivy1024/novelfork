@@ -19,7 +19,7 @@ import { readSessionFromCookie } from "./auth.js";
 import { createFilesystemStaticProvider, type StaticProvider } from "./static-provider.js";
 import { startHttpServer } from "./start-http-server.js";
 import { RunStore } from "./lib/run-store.js";
-import { runStartupOrchestrator, type StartupStaticMode } from "./lib/startup-orchestrator.js";
+import { runStartupOrchestrator, type StartupOrchestratorSummary, type StartupStaticMode } from "./lib/startup-orchestrator.js";
 
 import {
   createRunsRouter,
@@ -99,6 +99,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
   const runStore = new RunStore();
   const mode = getNovelForkMode();
   let cachedConfig = initialConfig;
+  let startupSummary: StartupOrchestratorSummary | null = null;
 
   app.use("/*", cors());
 
@@ -204,6 +205,10 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     buildPipelineConfig,
     getSessionLlm,
     runStore,
+    getStartupSummary: () => startupSummary,
+    setStartupSummary: (summary) => {
+      startupSummary = summary;
+    },
   };
 
   // --- Route mounting by mode ---
@@ -381,6 +386,7 @@ export async function startStudioServer(
         : "build client/embed assets before delivery",
     },
   });
+  ctx.setStartupSummary(startupSummary);
   console.log("Startup recovery report:", JSON.stringify(startupSummary.recoveryReport));
 
   if (staticProvider) {

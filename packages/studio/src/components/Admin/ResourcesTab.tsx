@@ -62,9 +62,43 @@ interface StorageSnapshot {
   targets: StorageTarget[];
 }
 
+interface StartupActionSummary {
+  kind: string;
+  scope: "book" | "library";
+  status: "success" | "skipped" | "failed";
+  reason: string;
+  note?: string;
+  bookId?: string;
+}
+
+interface StartupSummarySnapshot {
+  delivery: {
+    staticMode: "embedded" | "filesystem" | "missing";
+    indexHtmlReady: boolean;
+    compileSmokeStatus: "success" | "skipped" | "failed" | "unknown";
+  };
+  recoveryReport: {
+    startedAt: string;
+    finishedAt: string;
+    durationMs: number;
+    actions: StartupActionSummary[];
+    counts: {
+      success: number;
+      skipped: number;
+      failed: number;
+    };
+  };
+  failures: Array<{
+    bookId?: string;
+    phase: "project-bootstrap" | "migration" | "search-index" | "static-delivery" | "compile-smoke";
+    message: string;
+  }>;
+}
+
 interface ResourcesResponse {
   stats?: ResourceStats | null;
   storage?: StorageSnapshot | null;
+  startup?: StartupSummarySnapshot | null;
 }
 
 export function ResourcesTab() {
@@ -96,6 +130,7 @@ export function ResourcesTab() {
 
   const stats = data?.stats ?? null;
   const storage = data?.storage ?? null;
+  const startup = data?.startup ?? null;
 
   const memoryUsagePercent = stats?.memory.usagePercent ?? 0;
   const diskUsagePercent = stats?.disk.usagePercent ?? 0;
@@ -350,6 +385,13 @@ export function ResourcesTab() {
               <div className="space-y-3">
                 <div className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">已接入</div>
                 <StatusRow
+                  title="启动恢复报告"
+                  description={startup
+                    ? `静态交付 ${startup.delivery.staticMode} / compile smoke ${startup.delivery.compileSmokeStatus} / success ${startup.recoveryReport.counts.success} / failed ${startup.recoveryReport.counts.failed}。`
+                    : "等待后端返回 startup recovery / delivery summary。"}
+                  badge={<Badge variant={startup ? "secondary" : "outline"}>{startup ? "已接入" : "待接入"}</Badge>}
+                />
+                <StatusRow
                   title="运行资源快照"
                   description={stats?.sampledAt ? `最近采样 ${formatShortDateTime(stats.sampledAt)}，CPU / 内存 / 磁盘 / 网络均来自 /api/admin/resources。` : "已通过 /api/admin/resources 接入系统级 CPU / 内存 / 磁盘 / 网络快照。"}
                   badge={<Badge variant="secondary">已接入</Badge>}
@@ -373,6 +415,13 @@ export function ResourcesTab() {
 
               <div className="space-y-3">
                 <div className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">待接入</div>
+                <StatusRow
+                  title="repair / migration 决策链"
+                  description={startup?.failures.length
+                    ? `当前已有 ${startup.failures.length} 条启动失败记录，但还缺少可直接执行的 repair / migration 操作入口。`
+                    : "后续需要把 runtime repair / migration 决策从摘要推进到可执行入口。"}
+                  badge={<Badge variant="outline">待接入</Badge>}
+                />
                 <StatusRow
                   title="异常资源列表"
                   description="按文件级别列出损坏附件、孤儿缓存和可疑大文件，而不止目录汇总。"
