@@ -49,9 +49,9 @@ interface MockWindowStore {
 
 interface MockWindowRuntimeStore {
   wsConnections: Record<string, boolean>;
-  recoveryStates: Record<string, "idle" | "reconnecting" | "replaying" | "resetting">;
+  recoveryStates: Record<string, "idle" | "recovering" | "reconnecting" | "replaying" | "resetting">;
   setWsConnected: (windowId: string, connected: boolean) => void;
-  setRecoveryState: (windowId: string, recoveryState: "idle" | "reconnecting" | "replaying" | "resetting") => void;
+  setRecoveryState: (windowId: string, recoveryState: "idle" | "recovering" | "reconnecting" | "replaying" | "resetting") => void;
   clearWindowRuntime: (windowId: string) => void;
 }
 
@@ -354,7 +354,7 @@ function baseMockRuntimeState(): MockWindowRuntimeStore {
         [windowId]: connected,
       };
     },
-    setRecoveryState(windowId: string, recoveryState: "idle" | "reconnecting" | "replaying" | "resetting") {
+    setRecoveryState(windowId: string, recoveryState: "idle" | "recovering" | "reconnecting" | "replaying" | "resetting") {
       state.recoveryStates = {
         ...state.recoveryStates,
         [windowId]: recoveryState,

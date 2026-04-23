@@ -34,9 +34,9 @@ interface MockWindowStore {
 
 interface MockWindowRuntimeStore {
   wsConnections: Record<string, boolean>;
-  recoveryStates: Record<string, "idle" | "reconnecting" | "replaying" | "resetting">;
+  recoveryStates: Record<string, "idle" | "recovering" | "reconnecting" | "replaying" | "resetting">;
   setWsConnected: (windowId: string, connected: boolean) => void;
-  setRecoveryState: (windowId: string, recoveryState: "idle" | "reconnecting" | "replaying" | "resetting") => void;
+  setRecoveryState: (windowId: string, recoveryState: "idle" | "recovering" | "reconnecting" | "replaying" | "resetting") => void;
   clearWindowRuntime: (windowId: string) => void;
 }
 
@@ -446,49 +446,60 @@ describe("ChatWindow", () => {
     );
   });
 
-  it("hydrates messages from the formal session snapshot", async () => {
+  it("shows a recovery banner while hydrating the formal session snapshot", async () => {
+    let resolveSnapshot!: (value: unknown) => void;
     fetchJsonMock.mockImplementation((async (...args: [string, ...unknown[]]) => {
       const [url] = args as [string];
       if (url === "/api/sessions/session-abc123456/chat/state") {
-        return {
-          session: {
-            id: "session-abc123456",
-            title: "Writer 会话（正式）",
-            agentId: "writer",
-            kind: "standalone",
-            sessionMode: "chat",
-            status: "active",
-            createdAt: new Date().toISOString(),
-            lastModified: new Date().toISOString(),
-            messageCount: 1,
-            sortOrder: 0,
-            sessionConfig: {
-              providerId: "anthropic",
-              modelId: "claude-sonnet-4-6",
-              permissionMode: "allow",
-              reasoningEffort: "medium",
-            },
-          },
-          messages: [
-            {
-              id: "server-msg-1",
-              role: "assistant",
-              content: "服务端正式消息",
-              timestamp: Date.now(),
-              seq: 1,
-            },
-          ],
-          cursor: { lastSeq: 1 },
-        };
+        return new Promise((resolve) => {
+          resolveSnapshot = resolve;
+        });
       }
       return { success: true };
     }) as any);
 
     render(<ChatWindow windowId="window-1" theme="light" />);
 
+    expect(screen.getByText("正在恢复正式会话快照…")).toBeTruthy();
+    expect(screen.getByText(/当前窗口正在从服务端加载正式快照/)).toBeTruthy();
+    expect(useWindowRuntimeStore.getState().recoveryStates["window-1"]).toBe("recovering");
+
+    resolveSnapshot({
+      session: {
+        id: "session-abc123456",
+        title: "Writer 会话（正式）",
+        agentId: "writer",
+        kind: "standalone",
+        sessionMode: "chat",
+        status: "active",
+        createdAt: new Date().toISOString(),
+        lastModified: new Date().toISOString(),
+        messageCount: 1,
+        sortOrder: 0,
+        sessionConfig: {
+          providerId: "anthropic",
+          modelId: "claude-sonnet-4-6",
+          permissionMode: "allow",
+          reasoningEffort: "medium",
+        },
+      },
+      messages: [
+        {
+          id: "server-msg-1",
+          role: "assistant",
+          content: "服务端正式消息",
+          timestamp: Date.now(),
+          seq: 1,
+        },
+      ],
+      cursor: { lastSeq: 1 },
+    });
+
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(screen.getByText("服务端正式消息")).toBeTruthy();
+    expect(screen.queryByText("正在恢复正式会话快照…")).toBeNull();
+    expect(useWindowRuntimeStore.getState().recoveryStates["window-1"]).toBe("idle");
   });
 
   it("persists compressed session messages back to the formal session state", async () => {
@@ -913,7 +924,7 @@ function baseMockRuntimeState(): MockWindowRuntimeStore {
         [windowId]: connected,
       };
     },
-    setRecoveryState(windowId: string, recoveryState: "idle" | "reconnecting" | "replaying" | "resetting") {
+    setRecoveryState(windowId: string, recoveryState: "idle" | "recovering" | "reconnecting" | "replaying" | "resetting") {
       state.recoveryStates = {
         ...state.recoveryStates,
         [windowId]: recoveryState,
