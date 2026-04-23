@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-export type WindowRecoveryState = "idle" | "reconnecting" | "replaying" | "resetting";
+export type WindowRecoveryState = "idle" | "recovering" | "reconnecting" | "replaying" | "resetting";
 
 interface WindowRuntimeStore {
   wsConnections: Record<string, boolean>;

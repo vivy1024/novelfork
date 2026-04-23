@@ -337,6 +337,8 @@ function SessionStat({
 
 function formatRecoveryStateBadge(recoveryState: WindowRecoveryState): string {
   switch (recoveryState) {
+    case "recovering":
+      return "正在恢复";
     case "reconnecting":
       return "正在重连";
     case "replaying":
@@ -350,6 +352,8 @@ function formatRecoveryStateBadge(recoveryState: WindowRecoveryState): string {
 
 function formatRecoveryStateDescription(recoveryState: WindowRecoveryState): string {
   switch (recoveryState) {
+    case "recovering":
+      return "当前会话正在从服务端加载正式快照，恢复完成后会继续沿用正式消息链。";
     case "reconnecting":
       return "当前会话正在重新连接服务端，恢复完成后会继续沿用正式消息链。";
     case "replaying":

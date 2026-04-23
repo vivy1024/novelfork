@@ -85,7 +85,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
   const [contextPanelOpen, setContextPanelOpen] = useState(false);
   const [sessionRecord, setSessionRecord] = useState<NarratorSessionRecord | null>(null);
   const [sessionMessages, setSessionMessages] = useState<ChatMessage[] | null>(null);
-  const [recoveryStatus, setRecoveryStatus] = useState<"idle" | "reconnecting" | "replaying" | "resetting">("idle");
+  const [recoveryStatus, setRecoveryStatus] = useState<"idle" | "recovering" | "reconnecting" | "replaying" | "resetting">("idle");
   const [executionChainExpanded, setExecutionChainExpanded] = useState(false);
   const sessionMessagesRef = useRef<ChatMessage[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -255,6 +255,8 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
     }
 
     let cancelled = false;
+    setRecoveryStatus("recovering");
+    setRecoveryState(windowId, "recovering");
     void fetchJson<NarratorSessionChatSnapshot>(`/api/sessions/${sessionId}/chat/state`)
       .then((snapshot) => {
         if (cancelled || !snapshot?.session?.sessionConfig) {
@@ -265,15 +267,21 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
         syncSessionSeq(snapshot.cursor?.lastSeq ?? getLastSessionSeq(snapshot.messages));
         const nextMessages = snapshot.messages.map(toChatWindowMessage);
         syncSessionMessages(nextMessages);
+        setRecoveryStatus("idle");
+        setRecoveryState(windowId, "idle");
       })
       .catch(() => {
+        if (!cancelled) {
+          setRecoveryStatus("idle");
+          setRecoveryState(windowId, "idle");
+        }
         // ignore hydration errors and keep local fallback state
       });
 
     return () => {
       cancelled = true;
     };
-  }, [chatWindow?.sessionId, syncSessionRecord, syncSessionSeq, updateWindow, windowId]);
+  }, [chatWindow?.sessionId, setRecoveryState, syncSessionRecord, syncSessionSeq, updateWindow, windowId]);
 
   const hydrateReconnectHistory = useCallback(
     async (sessionId: string, sinceSeq: number) => {
@@ -503,21 +511,25 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
     ? new Date(lastMessage.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
     : "--:--";
   const recoveryStatusLabel =
-    recoveryStatus === "reconnecting"
-      ? "正在重新连接会话…"
-      : recoveryStatus === "resetting"
-        ? "历史已重置，正在重新同步会话…"
-        : recoveryStatus === "replaying"
-          ? "正在回放会话历史…"
-          : null;
+    recoveryStatus === "recovering"
+      ? "正在恢复正式会话快照…"
+      : recoveryStatus === "reconnecting"
+        ? "正在重新连接会话…"
+        : recoveryStatus === "resetting"
+          ? "历史已重置，正在重新同步会话…"
+          : recoveryStatus === "replaying"
+            ? "正在回放会话历史…"
+            : null;
   const recoveryStatusDescription =
-    recoveryStatus === "reconnecting"
-      ? "当前窗口正在和服务端正式会话重新对齐，连接恢复后会继续沿用正式消息链。"
-      : recoveryStatus === "resetting"
-        ? "服务端要求当前窗口放弃本地补拉结果，并重新同步正式快照后继续推进。"
-        : recoveryStatus === "replaying"
-          ? "当前窗口正在和服务端正式会话重新对齐，恢复完成后会继续沿用正式消息链。"
-          : null;
+    recoveryStatus === "recovering"
+      ? "当前窗口正在从服务端加载正式快照，恢复完成后会继续沿用正式消息链。"
+      : recoveryStatus === "reconnecting"
+        ? "当前窗口正在和服务端正式会话重新对齐，连接恢复后会继续沿用正式消息链。"
+        : recoveryStatus === "resetting"
+          ? "服务端要求当前窗口放弃本地补拉结果，并重新同步正式快照后继续推进。"
+          : recoveryStatus === "replaying"
+            ? "当前窗口正在和服务端正式会话重新对齐，恢复完成后会继续沿用正式消息链。"
+            : null;
 
   const updateSessionConfig = (updates: Partial<NarratorSessionRecord["sessionConfig"]>) => {
     const nextSessionConfig = {
