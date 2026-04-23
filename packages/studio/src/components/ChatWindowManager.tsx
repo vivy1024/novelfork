@@ -107,9 +107,9 @@ export function ChatWindowManager({ theme, onCreateWindow }: ChatWindowManagerPr
       ) : (
         <div className="flex h-full items-center justify-center px-6">
           <PageEmptyState
-            title="还没有会话窗口"
-            description="先创建一个 Writer、Planner 或 Auditor 会话，再开始排布多窗口工作台。"
-            action={<Button onClick={onCreateWindow}>创建第一个会话</Button>}
+            title="还没有打开的工作台"
+            description="会话仍保留在下方列表里 · 工作台只是会话的视图，可随时从会话卡重新打开。"
+            action={<Button onClick={onCreateWindow}>新建会话并打开工作台</Button>}
           />
         </div>
       )}

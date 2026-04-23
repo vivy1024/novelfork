@@ -21,7 +21,7 @@ export function WindowControls({ theme, minimized, onMinimize, onMaximize, onClo
           onMinimize();
         }}
         className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-        title={minimized ? "展开" : "最小化"}
+        title={minimized ? "展开工作台 · 会话保持不变" : "最小化工作台 · 会话仍在后台运行"}
       >
         <Minimize2 size={14} style={{ color: c.text }} />
       </button>
@@ -31,7 +31,7 @@ export function WindowControls({ theme, minimized, onMinimize, onMaximize, onClo
           onMaximize();
         }}
         className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-        title="最大化"
+        title="最大化工作台"
       >
         <Maximize2 size={14} style={{ color: c.text }} />
       </button>
@@ -41,7 +41,7 @@ export function WindowControls({ theme, minimized, onMinimize, onMaximize, onClo
           onClose();
         }}
         className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900 transition-colors"
-        title="关闭"
+        title="收起工作台 · 不结束会话，仍可在会话中心重开"
       >
         <X size={14} style={{ color: c.text }} />
       </button>
