@@ -6,7 +6,7 @@
 
 ## Tasks
 
-> 当前进度：Package 1 已完成并通过相关回归与 typecheck；Package 2 进行中。
+> 当前进度：Package 1 / Package 2 / Package 3 已完成并通过相关回归、typecheck 与文档回写；当前主线推进到 Package 4。
 
 - [x] 1. 冻结并确认剩余任务事实
   - 以 07 的剩余项为主事实来源
@@ -19,15 +19,15 @@
   - 统一 reason / source / trace / governance 口径
   - 验证：定向测试 + typecheck + governance 相关回归
 
-- [x] 3. 执行 Package 2：Runtime / Delivery Closure（已完成）
-  - 收口 startup recovery / repair / migration
-  - 固化 compile smoke 与正式交付边界
-  - 验证：startup/recovery 相关测试 + compile smoke
+- [x] 3. 执行 Package 2：Runtime / Delivery Closure
+  - 已完成 startup recovery / repair / migration 收口
+  - 已完成 compile smoke 与正式交付边界固化
+  - 已验证：startup/recovery/admin 相关测试 + typecheck
 
-- [ ] 4. 执行 Package 3：Transparency / Admin Deepening
-  - 推进 run-level 回放与统一运行事实源
-  - 强化 Admin 跨页联动与系统诊断深度
-  - 验证：ToolCall / Admin / run 事件流相关回归
+- [x] 4. 执行 Package 3：Transparency / Admin Deepening
+  - 已完成 run-level 回放与统一运行事实源推进
+  - 已完成 Admin 跨页联动与系统诊断深度强化
+  - 已验证：ToolCall / Admin / run 事件流相关回归 + typecheck
 
 - [ ] 5. 执行 Package 4：Creation / Session Endgame
   - 推进 bootstrap 后完整初始化工作流
@@ -41,13 +41,15 @@
   - 明确真正剩余的长期愿景项
 
 - [ ] 7. 每个 package 完成时执行统一 done definition
-  - 后端完成
-  - 前端入口/反馈完成
-  - 测试补齐
-  - typecheck 通过
-  - 相关回归测试通过
-  - `git status --short` 干净
-  - 文档在包结束时回写一次
+  - 已完成：Package 1 / 2 / 3 已按该口径完成后端、前端入口/反馈、测试、typecheck、相关回归与文档回写
+  - 待继续：Package 4 / 5 完成时继续执行同一 done definition
+  - 检查项：后端完成
+  - 检查项：前端入口/反馈完成
+  - 检查项：测试补齐
+  - 检查项：typecheck 通过
+  - 检查项：相关回归测试通过
+  - 检查项：`git status --short` 干净
+  - 检查项：文档在包结束时回写一次
 
 - [ ] 8. 当且仅当本 Kiro spec 已完整承接旧文档有效内容时，再退役旧文档
   - 删除 06 / 07 / 08
