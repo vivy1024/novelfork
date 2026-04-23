@@ -14,8 +14,6 @@ import { ChapterReader } from "./pages/ChapterReader";
 import { Analytics } from "./pages/Analytics";
 import { WorkspaceSelector } from "./pages/WorkspaceSelector";
 import { TruthFiles } from "./pages/TruthFiles";
-import { DaemonControl } from "./pages/DaemonControl";
-import { LogViewer } from "./pages/LogViewer";
 import { GenreManager } from "./pages/GenreManager";
 import { StyleManager } from "./pages/StyleManager";
 import { ImportManager } from "./pages/ImportManager";
@@ -558,12 +556,6 @@ function TabContent({ route, nav, theme, t, sse, setTheme }: {
         />
       );
     case "admin": {
-      if (route.section === "daemon") {
-        return <DaemonControl nav={nav} theme={theme} t={t} sse={sse} />;
-      }
-      if (route.section === "logs") {
-        return <LogViewer nav={nav} theme={theme} t={t} />;
-      }
       if (route.section === "worktrees") {
         return <WorktreeManager onBack={() => nav.toAdmin()} />;
       }
@@ -572,6 +564,7 @@ function TabContent({ route, nav, theme, t, sse, setTheme }: {
           onBack={nav.toDashboard}
           section={route.section}
           onNavigateSection={(section) => nav.toAdmin(section)}
+          onOpenRun={(runId) => nav.toPipeline(runId)}
         />
       );
     }

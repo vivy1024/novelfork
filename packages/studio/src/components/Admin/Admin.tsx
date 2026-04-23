@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { AdminSection } from "../../routes";
 import { ContainerTab } from "./ContainerTab";
+import { DaemonTab } from "./DaemonTab";
+import { LogsTab } from "./LogsTab";
 import { ProvidersTab } from "./ProvidersTab";
 import { RequestsTab } from "./RequestsTab";
 import { ResourcesTab } from "./ResourcesTab";
@@ -19,9 +21,10 @@ interface AdminProps {
   onBack?: () => void;
   section?: AdminSection;
   onNavigateSection?: (section: AdminSection) => void;
+  onOpenRun?: (runId: string) => void;
 }
 
-export function Admin({ onBack, section, onNavigateSection }: AdminProps) {
+export function Admin({ onBack, section, onNavigateSection, onOpenRun }: AdminProps) {
   const activeSection = section ?? "overview";
 
   return (
@@ -146,7 +149,9 @@ export function Admin({ onBack, section, onNavigateSection }: AdminProps) {
 
       {activeSection === "providers" && <ProvidersTab />}
       {activeSection === "resources" && <ResourcesTab />}
-      {activeSection === "requests" && <RequestsTab />}
+      {activeSection === "requests" && <RequestsTab onOpenRun={onOpenRun} />}
+      {activeSection === "daemon" && <DaemonTab />}
+      {activeSection === "logs" && <LogsTab onOpenRun={onOpenRun} />}
       {activeSection === "terminal" && <TerminalTab />}
       {activeSection === "container" && <ContainerTab />}
     </div>

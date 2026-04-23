@@ -15,6 +15,11 @@ interface AdminLogEntry {
   message: string;
   raw: string;
   source: "json" | "text";
+  narrator?: string;
+  requestKind?: string;
+  provider?: string;
+  model?: string;
+  runId?: string;
 }
 
 interface AdminLogsSnapshot {
@@ -29,6 +34,10 @@ interface AdminLogsSnapshot {
   entries: AdminLogEntry[];
 }
 
+interface LogsTabProps {
+  onOpenRun?: (runId: string) => void;
+}
+
 const LEVEL_CLASSNAMES: Record<string, string> = {
   error: "text-destructive",
   warn: "text-amber-500",
@@ -36,7 +45,7 @@ const LEVEL_CLASSNAMES: Record<string, string> = {
   debug: "text-muted-foreground/70",
 };
 
-export function LogsTab() {
+export function LogsTab({ onOpenRun }: LogsTabProps) {
   const [snapshot, setSnapshot] = useState<AdminLogsSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -174,6 +183,20 @@ export function LogsTab() {
                       {entry.tag ? <Badge variant="outline">{entry.tag}</Badge> : null}
                       <Badge variant={entry.source === "json" ? "secondary" : "outline"}>{entry.source === "json" ? "JSON" : "文本"}</Badge>
                     </div>
+                    {(entry.narrator || entry.requestKind || entry.provider || entry.model || entry.runId) ? (
+                      <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
+                        {entry.narrator ? <Badge variant="outline">{entry.narrator}</Badge> : null}
+                        {entry.requestKind ? <Badge variant="outline">{entry.requestKind}</Badge> : null}
+                        {entry.provider ? <Badge variant="secondary">{entry.provider}</Badge> : null}
+                        {entry.model ? <Badge variant="outline">{entry.model}</Badge> : null}
+                        {entry.runId ? <Badge variant="outline">{entry.runId}</Badge> : null}
+                        {entry.runId && onOpenRun ? (
+                          <Button type="button" variant="outline" size="xs" onClick={() => onOpenRun(entry.runId!)}>
+                            打开 Pipeline
+                          </Button>
+                        ) : null}
+                      </div>
+                    ) : null}
                     <div className="mt-2 whitespace-pre-wrap break-all text-foreground">{entry.message}</div>
                   </div>
                 ))}

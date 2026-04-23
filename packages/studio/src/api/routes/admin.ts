@@ -7,7 +7,7 @@ import { Hono } from "hono";
 import { createServer } from "node:http";
 import * as os from "node:os";
 import { join, relative, resolve } from "node:path";
-import { readdir, stat } from "node:fs/promises";
+import { readFile, readdir, stat } from "node:fs/promises";
 import { statfs as statfsCallback } from "node:fs";
 import { promisify } from "node:util";
 import { WebSocketServer } from "ws";
@@ -16,6 +16,8 @@ import { providerManager } from "../lib/provider-manager.js";
 
 const statfs = promisify(statfsCallback);
 const MAX_REQUEST_LOGS = 1000;
+const MAX_ADMIN_LOG_LINES = 500;
+const ADMIN_LOG_REFRESH_HINT_MS = 5_000;
 const STORAGE_SCAN_TTL_MS = 30_000;
 const STORAGE_TARGETS = [
   { id: "books", label: "书籍目录", relativePath: "books" },
@@ -155,6 +157,39 @@ interface AdminLogMeta {
   details?: string;
 }
 
+interface ResourceRequestMeta {
+  narrator: string;
+  requestKind: string;
+  cache: RequestCacheMeta;
+  details: string;
+}
+
+interface AdminLogEntry {
+  timestamp?: string;
+  level?: string;
+  tag?: string;
+  message: string;
+  raw: string;
+  source: "json" | "text";
+  narrator?: string;
+  requestKind?: string;
+  provider?: string;
+  model?: string;
+  runId?: string;
+}
+
+interface AdminLogsSnapshot {
+  sourcePath: string;
+  exists: boolean;
+  refreshedAt: string;
+  updatedAt: string | null;
+  sizeBytes: number;
+  limit: number;
+  totalEntries: number;
+  refreshHintMs: number;
+  entries: AdminLogEntry[];
+}
+
 const requestLogs: RequestLog[] = [];
 let logIdCounter = 1;
 
@@ -254,6 +289,80 @@ function resolveRequestKind(endpoint: string): string {
 function resolveNarrator(endpoint: string): string {
   const segment = endpoint.split("/").filter(Boolean)[0] ?? "root";
   return `admin.${segment}`;
+}
+
+function buildResourceRequestMeta({
+  cache,
+  details,
+}: {
+  cache: RequestCacheMeta;
+  details: string;
+}): ResourceRequestMeta {
+  return {
+    narrator: "admin.resources",
+    requestKind: "resource-monitor",
+    cache,
+    details,
+  };
+}
+
+function parseAdminLogLine(line: string): AdminLogEntry {
+  const raw = line.replace(/\r$/, "");
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (typeof parsed === "object" && parsed !== null) {
+      const record = parsed as Record<string, unknown>;
+      return {
+        ...record,
+        message: typeof record.message === "string" && record.message.trim().length > 0 ? record.message : raw,
+        raw,
+        source: "json",
+      } as AdminLogEntry;
+    }
+  } catch {
+    // ignore and fall through to text mode
+  }
+
+  return {
+    message: raw,
+    raw,
+    source: "text",
+  };
+}
+
+async function readAdminLogs(limit: number, root?: string): Promise<AdminLogsSnapshot> {
+  const sourcePath = join(getAdminProjectRoot(root), "novelfork.log");
+  const refreshedAt = new Date().toISOString();
+
+  try {
+    const [content, metadata] = await Promise.all([readFile(sourcePath, "utf-8"), stat(sourcePath)]);
+    const lines = content.split(/\r?\n/).filter((line) => line.trim().length > 0);
+
+    return {
+      sourcePath,
+      exists: true,
+      refreshedAt,
+      updatedAt: metadata.mtime.toISOString(),
+      sizeBytes: metadata.size,
+      limit,
+      totalEntries: lines.length,
+      refreshHintMs: ADMIN_LOG_REFRESH_HINT_MS,
+      entries: lines.slice(-limit).map(parseAdminLogLine),
+    };
+  } catch {
+    return {
+      sourcePath,
+      exists: false,
+      refreshedAt,
+      updatedAt: null,
+      sizeBytes: 0,
+      limit,
+      totalEntries: 0,
+      refreshHintMs: ADMIN_LOG_REFRESH_HINT_MS,
+      entries: [],
+    };
+  }
 }
 
 // --- 资源监控 ---
@@ -670,10 +779,7 @@ export function createAdminRouter(
     const forceRefresh = c.req.query("refresh") === "1";
     const [stats, storage] = await Promise.all([getResourceStats(root), getStorageSnapshot(forceRefresh, root)]);
     const startup = options?.getStartupSummary?.() ?? null;
-
-    c.set("adminLogMeta", {
-      narrator: "admin.resources",
-      requestKind: "resource-monitor",
+    const requestMeta = buildResourceRequestMeta({
       cache: {
         status: storage.mode === "cached" ? "hit" : forceRefresh ? "bypass" : "miss",
         scope: "storage-scan",
@@ -682,7 +788,9 @@ export function createAdminRouter(
       details: `storage=${storage.summary.existingTargets}/${storage.summary.scannedTargets};startup=${startup ? startup.delivery.staticMode : "missing"}`,
     });
 
-    return c.json({ stats, storage, startup });
+    c.set("adminLogMeta", requestMeta);
+
+    return c.json({ stats, storage, startup, requestMeta });
   });
 
   app.post("/resources/recovery", async (c) => {
@@ -696,10 +804,7 @@ export function createAdminRouter(
     }
 
     const [stats, storage] = await Promise.all([getResourceStats(root), getStorageSnapshot(true, root)]);
-
-    c.set("adminLogMeta", {
-      narrator: "admin.resources",
-      requestKind: "resource-monitor",
+    const requestMeta = buildResourceRequestMeta({
       cache: {
         status: "bypass",
         scope: "startup-recovery",
@@ -708,7 +813,23 @@ export function createAdminRouter(
       details: `recovery=manual;startup=${startup.delivery.staticMode};failed=${startup.recoveryReport.counts.failed}`,
     });
 
-    return c.json({ stats, storage, startup, recoveryTriggered: true });
+    c.set("adminLogMeta", requestMeta);
+
+    return c.json({ stats, storage, startup, recoveryTriggered: true, requestMeta });
+  });
+
+  app.get("/logs", async (c) => {
+    const rawLimit = Number.parseInt(c.req.query("limit") || "200", 10);
+    const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 1), MAX_ADMIN_LOG_LINES) : 200;
+    const snapshot = await readAdminLogs(limit, root);
+
+    c.set("adminLogMeta", {
+      narrator: "admin.logs",
+      requestKind: "log-tail",
+      details: `limit=${limit};exists=${snapshot.exists ? 1 : 0}`,
+    });
+
+    return c.json(snapshot);
   });
 
   // ===== 请求历史 =====

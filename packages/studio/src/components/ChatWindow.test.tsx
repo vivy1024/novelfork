@@ -5,12 +5,19 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { ChatWindow } from "./ChatWindow";
 import { useWindowRuntimeStore } from "@/stores/windowRuntimeStore";
 import { useWindowStore } from "@/stores/windowStore";
+import type { StudioRun } from "@/shared/contracts";
 import type { AddWindowInput, ChatWindow as ChatWindowState } from "@/stores/windowStore";
 
 const fetchJsonMock = vi.fn(async (..._args: [string, ...unknown[]]) => ({ success: true }));
 
 vi.mock("@/hooks/use-api", () => ({
   fetchJson: (url: string, ...rest: unknown[]) => fetchJsonMock(url, ...rest),
+}));
+
+const useRunDetailsMock = vi.fn<(runId?: string | null) => StudioRun | null>();
+
+vi.mock("@/hooks/use-run-events", () => ({
+  useRunDetails: (runId?: string | null) => useRunDetailsMock(runId),
 }));
 
 vi.mock("./WindowControls", () => ({
@@ -110,6 +117,8 @@ afterEach(() => {
   cleanup();
   fetchJsonMock.mockReset();
   fetchJsonMock.mockImplementation(defaultFetchJsonImplementation as any);
+  useRunDetailsMock.mockReset();
+  useRunDetailsMock.mockReturnValue(null);
 
   updateWindowSpy.mockReset();
   MockWebSocket.instances = [];
@@ -163,6 +172,14 @@ function defaultFetchJsonImplementation(url: string, ...rest: unknown[]) {
               command: "git status --short",
               output: " M packages/studio/src/components/ChatWindow.tsx",
               duration: 420,
+              result: {
+                execution: {
+                  runId: "run-chat-1",
+                  attempts: 1,
+                  traceEnabled: true,
+                  dumpEnabled: false,
+                },
+              },
             },
           ],
         },
@@ -241,7 +258,28 @@ describe("ChatWindow", () => {
     });
   });
 
-  it("shows session breadcrumb and recent execution chain shell", async () => {
+  it("shows run-level facts in the recent execution chain shell when the latest tool call belongs to a live run", async () => {
+    useRunDetailsMock.mockReturnValue({
+      id: "run-chat-1",
+      bookId: "demo-book",
+      chapter: 7,
+      chapterNumber: 7,
+      action: "tool",
+      status: "running",
+      stage: "Drafting",
+      createdAt: "2026-04-20T10:00:00.000Z",
+      updatedAt: "2026-04-20T10:01:00.000Z",
+      startedAt: "2026-04-20T10:00:05.000Z",
+      finishedAt: null,
+      logs: [
+        {
+          timestamp: "2026-04-20T10:01:00.000Z",
+          level: "info",
+          message: "正在写第七章",
+        },
+      ],
+    });
+
     render(<ChatWindow windowId="window-1" theme="light" />);
 
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -249,6 +287,12 @@ describe("ChatWindow", () => {
     expect(screen.getByText("NovelFork Studio")).toBeTruthy();
     expect(screen.getByText(/Agent \/ writer/)).toBeTruthy();
     expect(screen.getByText("最近执行链")).toBeTruthy();
+    expect(screen.getAllByText("run-chat-1").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Drafting/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/demo-book/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/第 7 章/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/正在写第七章/).length).toBeGreaterThan(0);
+    expect(useRunDetailsMock).toHaveBeenCalledWith("run-chat-1");
     expect(MockWebSocket.instances[0]?.url).toContain("/api/sessions/session-abc123456/chat");
     expect(MockWebSocket.instances[0]?.url).toContain("mode=chat");
   });

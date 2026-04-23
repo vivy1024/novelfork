@@ -15,10 +15,14 @@ import type {
 type RunSubscriber = (event: RunStreamEvent) => void;
 type GlobalRunSubscriber = () => void;
 
+const MAX_RUN_HISTORY_EVENTS = 200;
+
 export class RunStore {
   private readonly runs = new Map<string, StudioRun>();
   private readonly subscribers = new Map<string, Set<RunSubscriber>>();
   private readonly globalSubscribers = new Set<GlobalRunSubscriber>();
+  private readonly eventHistory = new Map<string, RunStreamEvent[]>();
+  private readonly nextSeqByRunId = new Map<string, number>();
 
   create(input: {
     bookId: string;
@@ -118,6 +122,30 @@ export class RunStore {
     );
   }
 
+  getHistory(runId: string, sinceSeq = 0) {
+    const current = this.runs.get(runId);
+    if (!current) {
+      return null;
+    }
+
+    const events = this.eventHistory.get(runId) ?? [];
+    const normalizedSinceSeq = Number.isFinite(sinceSeq) ? Math.max(0, Math.floor(sinceSeq)) : 0;
+    const availableFromSeq = events[0]?.seq ?? 1;
+    const resetRequired = normalizedSinceSeq > 0 && availableFromSeq > 0 && normalizedSinceSeq < availableFromSeq - 1;
+    const lastSeq = events.at(-1)?.seq ?? 0;
+
+    return {
+      runId,
+      sinceSeq: normalizedSinceSeq,
+      availableFromSeq,
+      resetRequired,
+      events: resetRequired ? [] : events.filter((event) => (event.seq ?? 0) > normalizedSinceSeq),
+      cursor: {
+        lastSeq,
+      },
+    };
+  }
+
   subscribe(runId: string, subscriber: RunSubscriber): () => void {
     const current =
       this.subscribers.get(runId) ?? new Set<RunSubscriber>();
@@ -171,11 +199,24 @@ export class RunStore {
       event.type === "snapshot"
         ? { ...event, run: event.run ?? this.get(runId) ?? undefined }
         : event;
+    const seq = this.nextSeqByRunId.get(runId) ?? 1;
+    const sequencedPayload = {
+      ...payload,
+      seq,
+    } satisfies RunStreamEvent;
+
+    this.nextSeqByRunId.set(runId, seq + 1);
+    const history = this.eventHistory.get(runId) ?? [];
+    history.push(sequencedPayload);
+    if (history.length > MAX_RUN_HISTORY_EVENTS) {
+      history.splice(0, history.length - MAX_RUN_HISTORY_EVENTS);
+    }
+    this.eventHistory.set(runId, history);
 
     const listeners = this.subscribers.get(runId);
     if (listeners && listeners.size > 0) {
       for (const listener of listeners) {
-        listener(payload as RunStreamEvent);
+        listener(sequencedPayload);
       }
     }
 

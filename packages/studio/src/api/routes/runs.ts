@@ -3,6 +3,15 @@ import type { RunStore } from "../lib/run-store.js";
 import { isTerminalRunStatus } from "../lib/run-store.js";
 import { createRunEventStream } from "../lib/sse.js";
 
+function parseSinceSeq(value: string | undefined): number {
+  if (!value) {
+    return 0;
+  }
+
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
 export function createRunsRouter(runStore: RunStore): Hono {
   const app = new Hono();
 
@@ -34,10 +43,19 @@ export function createRunsRouter(runStore: RunStore): Hono {
       initialEvent,
       (send) => runStore.subscribe(runId, send),
       (event) =>
-        event.type === "status" &&
-        event.status !== undefined &&
-        isTerminalRunStatus(event.status),
+        event.type === "snapshot" &&
+        event.run !== undefined &&
+        isTerminalRunStatus(event.run.status),
     );
+  });
+
+  app.get("/api/runs/:runId/history", (c) => {
+    const runId = c.req.param("runId");
+    const history = runStore.getHistory(runId, parseSinceSeq(c.req.query("sinceSeq")));
+    if (!history) {
+      return c.json({ error: "Run not found" }, 404);
+    }
+    return c.json(history);
   });
 
   // Cancel a running operation — mark as failed
