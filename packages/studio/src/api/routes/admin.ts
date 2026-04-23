@@ -4,14 +4,15 @@
  */
 
 import { Hono } from "hono";
-import { createServer } from "node:http";
+import type { Server } from "node:http";
 import * as os from "node:os";
 import { join, relative, resolve } from "node:path";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { statfs as statfsCallback } from "node:fs";
 import { promisify } from "node:util";
-import { WebSocketServer } from "ws";
+import { WebSocketServer, type WebSocket } from "ws";
 
+import type { BunWebSocketConnection, BunWebSocketRegistrar, StartedHttpServer } from "../start-http-server.js";
 import { providerManager } from "../lib/provider-manager.js";
 import { buildStartupFailureDecisions, type StartupFailureDecision } from "../lib/startup-orchestrator.js";
 
@@ -994,22 +995,48 @@ export function createAdminRouter(
 
 // --- WebSocket 实时监控 ---
 
-export function setupAdminWebSocket(server: ReturnType<typeof createServer>) {
-  const wss = new WebSocketServer({ server, path: "/api/admin/resources/ws" });
+const ADMIN_RESOURCE_WS_PATH = "/api/admin/resources/ws";
+
+export function setupAdminWebSocket(server: StartedHttpServer) {
+  if (isBunWebSocketRegistrar(server)) {
+    const intervals = new WeakMap<BunWebSocketConnection, ReturnType<typeof setInterval>>();
+
+    server.registerWebSocketRoute({
+      path: ADMIN_RESOURCE_WS_PATH,
+      upgrade(request, bunServer) {
+        return bunServer.upgrade(request, { data: { routePath: ADMIN_RESOURCE_WS_PATH } });
+      },
+      open(socket) {
+        console.log("Admin WebSocket client connected");
+        void pushAdminResourceSnapshot(socket);
+        intervals.set(
+          socket,
+          setInterval(() => {
+            void pushAdminResourceSnapshot(socket);
+          }, 1000),
+        );
+      },
+      close(socket) {
+        const interval = intervals.get(socket);
+        if (interval) {
+          clearInterval(interval);
+        }
+        console.log("Admin WebSocket client disconnected");
+      },
+    });
+
+    return null;
+  }
+
+  const wss = new WebSocketServer({ server, path: ADMIN_RESOURCE_WS_PATH });
 
   wss.on("connection", (ws) => {
     console.log("Admin WebSocket client connected");
 
-    const sendSnapshot = async () => {
-      if (ws.readyState !== ws.OPEN) return;
-      const stats = await getResourceStats();
-      ws.send(JSON.stringify(stats));
-    };
-
-    void sendSnapshot();
+    void pushAdminResourceSnapshot(ws);
 
     const interval = setInterval(() => {
-      void sendSnapshot();
+      void pushAdminResourceSnapshot(ws);
     }, 1000);
 
     ws.on("close", () => {
@@ -1019,4 +1046,21 @@ export function setupAdminWebSocket(server: ReturnType<typeof createServer>) {
   });
 
   return wss;
+}
+
+async function pushAdminResourceSnapshot(socket: Pick<BunWebSocketConnection, "send"> | Pick<WebSocket, "send" | "readyState">) {
+  if ("readyState" in socket && socket.readyState !== 1) {
+    return;
+  }
+
+  try {
+    const stats = await getResourceStats();
+    socket.send(JSON.stringify(stats));
+  } catch (error) {
+    console.error("Failed to push admin resource snapshot", error);
+  }
+}
+
+function isBunWebSocketRegistrar(server: StartedHttpServer): server is BunWebSocketRegistrar {
+  return typeof server === "object" && server !== null && "runtime" in server && server.runtime === "bun";
 }

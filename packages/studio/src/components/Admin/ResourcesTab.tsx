@@ -8,6 +8,8 @@ import { Activity, Cpu, HardDrive, Network, RefreshCw, Search, Server } from "lu
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useRunDetails, useRunListStream } from "@/hooks/use-run-events";
+import type { StudioRun } from "@/shared/contracts";
 import { fetchJson } from "../../hooks/use-api";
 
 interface ResourceStats {
@@ -136,6 +138,7 @@ interface ResourcesResponse {
   storage?: StorageSnapshot | null;
   startup?: StartupSummarySnapshot | null;
   requestMeta?: ResourceRequestMeta | null;
+  [key: string]: unknown;
 }
 
 export function ResourcesTab() {
@@ -143,9 +146,40 @@ export function ResourcesTab() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
+  const liveRuns = useRunListStream();
 
   useEffect(() => {
     void loadResources();
+  }, []);
+
+  useEffect(() => {
+    if (typeof WebSocket === "undefined" || typeof window === "undefined") {
+      return;
+    }
+
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const socket = new WebSocket(`${protocol}//${window.location.host}/api/admin/resources/ws`);
+
+    socket.onmessage = (event) => {
+      const liveStats = parseLiveResourceStats(event.data);
+      if (!liveStats) {
+        return;
+      }
+
+      setData((currentData) => ({
+        ...(currentData ?? {}),
+        stats: mergeResourceStats(currentData?.stats ?? null, liveStats),
+      }));
+      setError(null);
+    };
+
+    socket.onerror = () => {
+      // 运行快照仍保留 fetch 结果；实时链路失败时仅静默降级。
+    };
+
+    return () => {
+      socket.close();
+    };
   }, []);
 
   const loadResources = async ({ forceRefresh = false }: { forceRefresh?: boolean } = {}) => {
@@ -213,6 +247,9 @@ export function ResourcesTab() {
   const startup = data?.startup ?? null;
   const startupDecisions = startup?.decisions ?? [];
   const requestMeta = data?.requestMeta ?? null;
+  const liveRunId = liveRuns[0]?.id ?? null;
+  const liveRunDetails = useRunDetails(liveRunId);
+  const liveRun = liveRunDetails ?? liveRuns[0] ?? null;
 
   const memoryUsagePercent = stats?.memory.usagePercent ?? 0;
   const diskUsagePercent = stats?.disk.usagePercent ?? 0;
@@ -286,6 +323,28 @@ export function ResourcesTab() {
               {requestMeta.cache.scope ? <Badge variant="outline">scope {requestMeta.cache.scope}</Badge> : null}
             </div>
             <div className="text-sm text-muted-foreground">{requestMeta.details}</div>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {liveRun ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">实时运行焦点</CardTitle>
+            <CardDescription>直接接入 runStore 事实流，在资源 / 启动诊断旁边同步查看当前运行的阶段与最新日志。</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <Badge variant={liveRun.status === "failed" ? "destructive" : liveRun.status === "succeeded" ? "secondary" : "outline"}>{liveRun.status}</Badge>
+              <Badge variant="outline">{liveRun.action}</Badge>
+              <span className="font-mono text-foreground">{liveRun.id}</span>
+              {liveRun.stage ? <span className="text-muted-foreground">{liveRun.stage}</span> : null}
+            </div>
+            <div className="grid gap-3 md:grid-cols-3">
+              <FactTile label="书籍" value={liveRun.bookId} />
+              <FactTile label="章节" value={formatRunChapter(liveRun)} />
+              <FactTile label="最新日志" value={getLatestRunLog(liveRun) ?? "暂无日志"} />
+            </div>
           </CardContent>
         </Card>
       ) : null}
@@ -588,6 +647,69 @@ export function ResourcesTab() {
   );
 }
 
+type LiveResourceStatsPayload = Partial<{
+  cpu: Partial<ResourceStats["cpu"]>;
+  memory: Partial<ResourceStats["memory"]>;
+  disk: Partial<ResourceStats["disk"]>;
+  network: Partial<ResourceStats["network"]>;
+  sampledAt: string;
+}>;
+
+function parseLiveResourceStats(rawMessage: unknown): LiveResourceStatsPayload | null {
+  if (typeof rawMessage !== "string") {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(rawMessage) as unknown;
+    if (isRecord(parsed) && isRecord(parsed.stats)) {
+      return parsed.stats as LiveResourceStatsPayload;
+    }
+    if (isRecord(parsed)) {
+      return parsed as LiveResourceStatsPayload;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+function mergeResourceStats(current: ResourceStats | null, next: LiveResourceStatsPayload): ResourceStats | null {
+  const cpu = mergeStatsSection(current?.cpu, next.cpu);
+  const memory = mergeStatsSection(current?.memory, next.memory);
+  const disk = mergeStatsSection(current?.disk, next.disk);
+  const network = mergeStatsSection(current?.network, next.network);
+  const sampledAt = next.sampledAt ?? current?.sampledAt;
+
+  if (!cpu || !memory || !disk || !network || !sampledAt) {
+    return current;
+  }
+
+  return {
+    cpu,
+    memory,
+    disk,
+    network,
+    sampledAt,
+  };
+}
+
+function mergeStatsSection<T extends object>(current: T | undefined, next: Partial<T> | undefined): T | undefined {
+  if (!current && !next) {
+    return undefined;
+  }
+
+  return {
+    ...(current ?? {}),
+    ...(next ?? {}),
+  } as T;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
 function MetricCard({
   icon: Icon,
   title,
@@ -658,6 +780,24 @@ function SummaryCard({ title, value, description }: { title: string; value: stri
       <p className="mt-2 text-sm text-muted-foreground">{description}</p>
     </div>
   );
+}
+
+function FactTile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-border/70 bg-muted/20 p-4">
+      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">{label}</div>
+      <div className="mt-2 text-sm text-foreground">{value}</div>
+    </div>
+  );
+}
+
+function formatRunChapter(run: Pick<StudioRun, "chapterNumber" | "chapter">) {
+  const chapterNumber = run.chapterNumber ?? run.chapter;
+  return typeof chapterNumber === "number" ? `第 ${chapterNumber} 章` : "—";
+}
+
+function getLatestRunLog(run: Pick<StudioRun, "logs">) {
+  return run.logs.length > 0 ? run.logs[run.logs.length - 1]?.message : undefined;
 }
 
 function StatusRow({ title, description, badge }: { title: string; description: string; badge: ReactNode }) {

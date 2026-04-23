@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { createAdminRouter, resetAdminState } from "./admin";
+import { createAdminRouter, resetAdminState, setupAdminWebSocket } from "./admin";
 
 describe("createAdminRouter", () => {
   let root: string;
@@ -396,5 +396,23 @@ describe("createAdminRouter", () => {
     expect(payload.sourcePath).toContain("novelfork.log");
     expect(typeof payload.refreshedAt).toBe("string");
     expect(typeof payload.updatedAt).toBe("string");
+  });
+
+  it("registers the resource websocket route on bun-compatible servers", () => {
+    const registerWebSocketRoute = vi.fn();
+
+    setupAdminWebSocket({
+      runtime: "bun",
+      registerWebSocketRoute,
+    });
+
+    expect(registerWebSocketRoute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: "/api/admin/resources/ws",
+        upgrade: expect.any(Function),
+        open: expect.any(Function),
+        close: expect.any(Function),
+      }),
+    );
   });
 });
