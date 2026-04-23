@@ -14,6 +14,7 @@ import {
 } from "@vivy1024/novelfork-core";
 import { ApiError, isMissingFileError } from "../errors.js";
 import {
+  buildDefaultBookSessionTitle,
   buildStudioBookConfig,
   buildStudioProjectInitRecord,
   type StudioCreateBookBody,
@@ -25,6 +26,8 @@ import {
   resolveStudioProjectRepositoryRoot,
   type PreparedStudioProjectBootstrap,
 } from "../lib/project-bootstrap.js";
+import { getSessionChatSnapshot } from "../lib/session-chat-service.js";
+import { createSession } from "../lib/session-service.js";
 import type { RouterContext } from "./context.js";
 
 const TRUTH_FILES = [
@@ -207,6 +210,18 @@ export function createStorageRouter(ctx: RouterContext): Hono {
         await persistStudioProjectInitRecord(bookDir, preparedProjectBootstrap.projectInitRecord);
       }
 
+      const defaultSession = await createSession({
+        title: buildDefaultBookSessionTitle(body.title, body.language),
+        agentId: "writer",
+        sessionMode: "chat",
+        projectId: bookId,
+        worktree: preparedProjectBootstrap?.projectInitRecord.worktreeName ?? body.projectInit?.worktreeName,
+      });
+      const defaultSessionSnapshot = await getSessionChatSnapshot(defaultSession.id);
+      if (!defaultSessionSnapshot) {
+        throw new ApiError(500, "BOOK_CREATE_DEFAULT_SESSION_SNAPSHOT_FAILED", "Default writing session snapshot was not ready.");
+      }
+
       const sessionLlm = await ctx.getSessionLlm(c);
       const pipeline = new PipelineRunner(await ctx.buildPipelineConfig(sessionLlm));
       pipeline.initBook(bookConfig).then(
@@ -221,7 +236,7 @@ export function createStorageRouter(ctx: RouterContext): Hono {
         },
       );
 
-      return c.json({ status: "creating", bookId });
+      return c.json({ status: "creating", bookId, defaultSession, defaultSessionSnapshot });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       bookCreateStatus.set(bookId, { status: "error", error: message });

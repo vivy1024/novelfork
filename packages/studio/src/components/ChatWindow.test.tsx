@@ -6,6 +6,7 @@ import { ChatWindow } from "./ChatWindow";
 import { useWindowRuntimeStore } from "@/stores/windowRuntimeStore";
 import { useWindowStore } from "@/stores/windowStore";
 import type { StudioRun } from "@/shared/contracts";
+import type { NarratorSessionChatSnapshot } from "@/shared/session-types";
 import type { AddWindowInput, ChatWindow as ChatWindowState } from "@/stores/windowStore";
 
 const fetchJsonMock = vi.fn(async (..._args: [string, ...unknown[]]) => ({ success: true }));
@@ -57,10 +58,15 @@ vi.mock("@/stores/windowStore", () => {
   return { useWindowStore: useWindowStoreMock };
 });
 
-function resetWindowRuntimeStore(initial?: { wsConnections?: Record<string, boolean>; recoveryStates?: Record<string, "idle" | "recovering" | "reconnecting" | "replaying" | "resetting"> }) {
+function resetWindowRuntimeStore(initial?: {
+  wsConnections?: Record<string, boolean>;
+  recoveryStates?: Record<string, "idle" | "recovering" | "reconnecting" | "replaying" | "resetting">;
+  chatSnapshots?: Record<string, NarratorSessionChatSnapshot | null>;
+}) {
   useWindowRuntimeStore.setState({
     wsConnections: initial?.wsConnections ?? { "window-1": true },
     recoveryStates: initial?.recoveryStates ?? {},
+    chatSnapshots: initial?.chatSnapshots ?? {},
   });
 }
 
@@ -111,7 +117,37 @@ afterEach(() => {
 });
 
 function defaultFetchJsonImplementation(url: string, ...rest: unknown[]) {
-  const [options] = rest as [{ method?: string } | undefined];
+  const [options] = rest as [{ method?: string; body?: string } | undefined];
+  if (url === "/api/sessions/session-abc123456/chat/state" && options?.method === "PUT") {
+    const requestBody = JSON.parse(options.body ?? "{}");
+    const messages = Array.isArray(requestBody.messages) ? requestBody.messages.map((message: Record<string, unknown>, index: number) => ({
+      ...message,
+      seq: index + 1,
+    })) : [];
+    return Promise.resolve({
+      session: {
+        id: "session-abc123456",
+        title: "Writer 会话（正式）",
+        agentId: "writer",
+        kind: "standalone",
+        sessionMode: "chat",
+        status: "active",
+        createdAt: new Date().toISOString(),
+        lastModified: new Date().toISOString(),
+        messageCount: messages.length,
+        sortOrder: 0,
+        sessionConfig: {
+          providerId: "anthropic",
+          modelId: "claude-sonnet-4-6",
+          permissionMode: "allow",
+          reasoningEffort: "medium",
+        },
+      },
+      messages,
+      cursor: { lastSeq: messages.at(-1)?.seq ?? 0 },
+    });
+  }
+
   if (url === "/api/sessions/session-abc123456/chat/state") {
     return Promise.resolve({
       session: {
@@ -169,27 +205,6 @@ function defaultFetchJsonImplementation(url: string, ...rest: unknown[]) {
         },
       ],
       cursor: { lastSeq: 2 },
-    });
-  }
-
-  if (url === "/api/sessions/session-abc123456" && options?.method === "PUT") {
-    return Promise.resolve({
-      id: "session-abc123456",
-      title: "Writer 会话（正式）",
-      agentId: "writer",
-      kind: "standalone",
-      sessionMode: "chat",
-      status: "active",
-      createdAt: new Date().toISOString(),
-      lastModified: new Date().toISOString(),
-      messageCount: 2,
-      sortOrder: 0,
-      sessionConfig: {
-        providerId: "anthropic",
-        modelId: "claude-sonnet-4-6",
-        permissionMode: "allow",
-        reasoningEffort: "medium",
-      },
     });
   }
 
@@ -338,7 +353,7 @@ describe("ChatWindow", () => {
     );
     const sessionPersistCalls = fetchJsonMock.mock.calls.filter(
       ([url, options]) =>
-        url === "/api/sessions/session-abc123456" &&
+        url === "/api/sessions/session-abc123456/chat/state" &&
         typeof options === "object" &&
         options !== null &&
         "method" in options &&
@@ -346,7 +361,7 @@ describe("ChatWindow", () => {
     );
     expect(sessionPersistCalls.length).toBeGreaterThan(0);
     const latestPersistBody = JSON.parse((sessionPersistCalls.at(-1)?.[1] as { body?: string } | undefined)?.body ?? "{}");
-    expect(latestPersistBody.recentMessages.at(-1)).toMatchObject({
+    expect(latestPersistBody.messages.at(-1)).toMatchObject({
       content: "已重跑 Bash",
       toolCalls: [
         expect.objectContaining({
@@ -476,14 +491,16 @@ describe("ChatWindow", () => {
 
   it("shows a recovery banner while hydrating the formal session snapshot", async () => {
     let resolveSnapshot!: (value: unknown) => void;
+    const pendingSnapshot = new Promise((resolve) => {
+      resolveSnapshot = resolve;
+    });
+
     fetchJsonMock.mockImplementation((async (...args: [string, ...unknown[]]) => {
-      const [url] = args as [string];
+      const [url] = args;
       if (url === "/api/sessions/session-abc123456/chat/state") {
-        return new Promise((resolve) => {
-          resolveSnapshot = resolve;
-        });
+        return pendingSnapshot;
       }
-      return { success: true };
+      return defaultFetchJsonImplementation(url);
     }) as any);
 
     render(<ChatWindow windowId="window-1" theme="light" />);
@@ -532,9 +549,85 @@ describe("ChatWindow", () => {
     expect(useWindowRuntimeStore.getState().recoveryStates["window-1"]).not.toBe("recovering");
   });
 
-  it("persists compressed session messages back to the formal session state", async () => {
+  it("accepts authoritative recovery state overrides from the runtime store", async () => {
+    render(<ChatWindow windowId="window-1" theme="light" />);
+
+    expect(await screen.findByText("好的，我先整理剧情节奏。")).toBeTruthy();
+
+    act(() => {
+      useWindowRuntimeStore.getState().setRecoveryState("window-1", "resetting");
+    });
+
+    expect(useWindowRuntimeStore.getState().recoveryStates["window-1"]).toBe("resetting");
+  });
+
+  it("renders authoritative session snapshots from the runtime store", async () => {
+    render(<ChatWindow windowId="window-1" theme="light" />);
+
+    expect(await screen.findByText("好的，我先整理剧情节奏。")).toBeTruthy();
+
+    act(() => {
+      useWindowRuntimeStore.getState().setChatSnapshot("window-1", {
+        session: {
+          id: "session-abc123456",
+          title: "Writer 会话（来自 store 快照）",
+          agentId: "writer",
+          kind: "standalone",
+          sessionMode: "chat",
+          status: "active",
+          createdAt: new Date().toISOString(),
+          lastModified: new Date().toISOString(),
+          messageCount: 3,
+          sortOrder: 0,
+          sessionConfig: {
+            providerId: "anthropic",
+            modelId: "claude-sonnet-4-6",
+            permissionMode: "allow",
+            reasoningEffort: "medium",
+          },
+        },
+        messages: [
+          { id: "msg-store-1", role: "user", content: "旧消息", timestamp: Date.now() - 10_000, seq: 1 },
+          { id: "msg-store-2", role: "assistant", content: "来自运行时快照", timestamp: Date.now(), seq: 2 },
+          { id: "msg-store-3", role: "assistant", content: "第三条快照消息", timestamp: Date.now() + 1, seq: 3 },
+        ],
+        cursor: { lastSeq: 3 },
+      });
+    });
+
+    expect(screen.getByText("Writer 会话（来自 store 快照）")).toBeTruthy();
+    expect(screen.getByText("来自运行时快照")).toBeTruthy();
+    expect(screen.getAllByText("3 条消息").length).toBeGreaterThan(0);
+  });
+
+  it("syncs compressed session messages through the server-first chat state endpoint", async () => {
+
     fetchJsonMock.mockImplementation((async (...args: [string, ...unknown[]]) => {
-      const [url, options] = args as [string, { method?: string } | undefined];
+      const [url, options] = args as [string, { method?: string; body?: string } | undefined];
+      if (url === "/api/sessions/session-abc123456/chat/state" && options?.method === "PUT") {
+        return {
+          session: {
+            id: "session-abc123456",
+            title: "Writer 会话（正式）",
+            agentId: "writer",
+            kind: "standalone",
+            sessionMode: "chat",
+            status: "active",
+            createdAt: new Date().toISOString(),
+            lastModified: new Date().toISOString(),
+            messageCount: 5,
+            sortOrder: 0,
+            sessionConfig: {
+              providerId: "anthropic",
+              modelId: "claude-sonnet-4-6",
+              permissionMode: "allow",
+              reasoningEffort: "medium",
+            },
+          },
+          messages: JSON.parse(options.body ?? "{}").messages,
+          cursor: { lastSeq: 6 },
+        };
+      }
       if (url === "/api/sessions/session-abc123456/chat/state") {
         return {
           session: {
@@ -580,9 +673,19 @@ describe("ChatWindow", () => {
 
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    const persistCall = fetchJsonMock.mock.calls.find(
+    const legacyPersistCall = fetchJsonMock.mock.calls.find(
       ([url, options]) =>
         url === "/api/sessions/session-abc123456" &&
+        typeof options === "object" &&
+        options !== null &&
+        "method" in options &&
+        (options as { method?: string }).method === "PUT",
+    );
+    expect(legacyPersistCall).toBeUndefined();
+
+    const persistCall = fetchJsonMock.mock.calls.find(
+      ([url, options]) =>
+        url === "/api/sessions/session-abc123456/chat/state" &&
         typeof options === "object" &&
         options !== null &&
         "method" in options &&
@@ -592,8 +695,7 @@ describe("ChatWindow", () => {
     expect(persistCall).toBeTruthy();
     const [, options] = persistCall as [string, { body?: string }];
     expect(JSON.parse(options.body ?? "{}")).toMatchObject({
-      messageCount: 5,
-      recentMessages: [
+      messages: [
         expect.objectContaining({
           role: "system",
           content: "已压缩较早消息，共保留最近 4 条对话。",
@@ -764,10 +866,49 @@ describe("ChatWindow", () => {
 
       expect(MockWebSocket.instances).toHaveLength(2);
       expect(MockWebSocket.instances[1]?.url).toContain("resumeFromSeq=2");
-      expect(screen.getByText("正在回放会话历史…")).toBeTruthy();
+      expect(fetchJsonMock).toHaveBeenCalledWith("/api/sessions/session-abc123456/chat/history?sinceSeq=2");
+      expect(screen.getByText("服务端追加消息")).toBeTruthy();
     } finally {
       setTimeoutSpy.mockRestore();
     }
+  });
+
+  it("accepts server-driven recovery state from session state envelopes", async () => {
+    render(<ChatWindow windowId="window-1" theme="light" />);
+
+    expect(await screen.findByText("好的，我先整理剧情节奏。")).toBeTruthy();
+
+    await act(async () => {
+      MockWebSocket.instances[0]?.onmessage?.({
+        data: JSON.stringify({
+          type: "session:state",
+          session: {
+            id: "session-abc123456",
+            title: "Writer 会话（正式）",
+            agentId: "writer",
+            kind: "standalone",
+            sessionMode: "chat",
+            status: "active",
+            createdAt: new Date().toISOString(),
+            lastModified: new Date().toISOString(),
+            messageCount: 2,
+            sortOrder: 0,
+            sessionConfig: {
+              providerId: "anthropic",
+              modelId: "claude-sonnet-4-6",
+              permissionMode: "allow",
+              reasoningEffort: "medium",
+            },
+          },
+          cursor: { lastSeq: 2, ackedSeq: 2 },
+          recovery: { state: "resetting", reason: "server-reset" },
+        }),
+      });
+      await Promise.resolve();
+    });
+
+    expect(useWindowRuntimeStore.getState().recoveryStates["window-1"]).toBe("resetting");
+    expect(screen.getByText("历史已重置，正在重新同步会话…")).toBeTruthy();
   });
 
   it("falls back to full session state when reconnect history requests a reset", async () => {
@@ -866,12 +1007,9 @@ describe("ChatWindow", () => {
       });
       await Promise.resolve();
 
-      expect(screen.getByText("历史已重置，正在重新同步会话…")).toBeTruthy();
-      expect(screen.getByText(/服务端要求当前窗口放弃本地补拉结果/)).toBeTruthy();
-      expect(screen.getByText(/重新同步正式快照/)).toBeTruthy();
-      expect(fetchJsonMock).toHaveBeenCalledWith("/api/sessions/session-abc123456/chat/history?sinceSeq=2");
-
-      expect(fetchJsonMock.mock.calls.filter(([url]) => url === "/api/sessions/session-abc123456/chat/state").length).toBeGreaterThanOrEqual(2);
+      expect(fetchJsonMock).toHaveBeenCalledWith("/api/sessions/session-abc123456/chat/history?sinceSeq=1");
+      expect(fetchJsonMock.mock.calls.filter(([url]) => url === "/api/sessions/session-abc123456/chat/state").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText("需要整包重放")).toBeTruthy();
       expect(MockWebSocket.instances).toHaveLength(2);
     } finally {
       setTimeoutSpy.mockRestore();

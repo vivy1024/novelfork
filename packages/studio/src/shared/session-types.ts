@@ -121,6 +121,7 @@ export interface ChatMessage {
   role: NarratorSessionChatRole;
   content: string;
   timestamp: number;
+  seq?: number;
   toolCalls?: ToolCall[];
 }
 
@@ -144,6 +145,10 @@ export interface NarratorSessionChatHistory {
   cursor: NarratorSessionChatCursor;
 }
 
+export interface UpdateNarratorSessionChatStateInput {
+  messages: NarratorSessionChatMessage[];
+}
+
 export interface NarratorSessionChatMessageClientEnvelope {
   type?: "session:message";
   sessionId?: string;
@@ -163,15 +168,25 @@ export type NarratorSessionChatClientMessage =
   | NarratorSessionChatMessageClientEnvelope
   | NarratorSessionChatAckClientEnvelope;
 
+export type NarratorSessionRecoveryState = "idle" | "recovering" | "reconnecting" | "replaying" | "resetting";
+export type NarratorSessionRecoveryReason = "initial-hydration" | "reconnect" | "replay" | "history-gap" | "server-reset";
+
+export interface NarratorSessionRecoveryEnvelope {
+  state: NarratorSessionRecoveryState;
+  reason?: NarratorSessionRecoveryReason;
+}
+
 export interface NarratorSessionChatSnapshotEnvelope {
   type: "session:snapshot";
   snapshot: NarratorSessionChatSnapshot;
+  recovery?: NarratorSessionRecoveryEnvelope;
 }
 
 export interface NarratorSessionChatStateEnvelope {
   type: "session:state";
   session: NarratorSessionRecord;
   cursor: NarratorSessionChatCursor;
+  recovery?: NarratorSessionRecoveryEnvelope;
 }
 
 export interface NarratorSessionChatMessageEnvelope {

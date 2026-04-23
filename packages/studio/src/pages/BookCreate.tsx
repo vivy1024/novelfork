@@ -3,6 +3,7 @@ import {
   normalizeStudioProjectCreateDraft,
   normalizeStudioProjectInit,
   type StudioCreateBookBody,
+  type StudioCreateBookResponse,
   type StudioProjectCreateDraft,
   type StudioProjectInitDraft,
   type StudioProjectInitializationPlan,
@@ -22,11 +23,11 @@ import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
 import { useColors } from "../hooks/use-colors";
 import { useWindowStore } from "@/stores/windowStore";
-import type { NarratorSessionRecord } from "@/shared/session-types";
 
 interface Nav {
   toDashboard: () => void;
   toBook: (id: string) => void;
+  toSessions?: () => void;
   toProjectCreate?: (draft?: Partial<StudioProjectCreateDraft>) => void;
 }
 
@@ -191,6 +192,11 @@ interface BookCreateProps {
 
 type BookCreateStage = "idle" | "submitting" | "waiting" | "creating-session" | "opening-workspace";
 
+type WorkspaceBootstrapFailure = {
+  readonly bookId: string;
+  readonly message: string;
+};
+
 function formatBookCreateError(error: unknown, language: "zh" | "en"): string {
   const errorCode = typeof error === "object" && error !== null && "code" in error && typeof (error as { code?: unknown }).code === "string"
     ? (error as { code: string }).code
@@ -247,6 +253,7 @@ export function BookCreate({ nav, theme, t, projectCreateDraft, flowRevision = 0
   const [creating, setCreating] = useState(false);
   const [createStage, setCreateStage] = useState<BookCreateStage>("idle");
   const [error, setError] = useState<string | null>(null);
+  const [workspaceBootstrapFailure, setWorkspaceBootstrapFailure] = useState<WorkspaceBootstrapFailure | null>(null);
 
   const allGenres = genreData?.genres ?? [];
   const genres = allGenres.filter((g) => g.language === projectLang || g.source === "project");
@@ -301,6 +308,7 @@ export function BookCreate({ nav, theme, t, projectCreateDraft, flowRevision = 0
     setCreating(false);
     setCreateStage("idle");
     setError(null);
+    setWorkspaceBootstrapFailure(null);
   }, [flowRevision, projectCreateDraft, projectLang]);
 
   useEffect(() => {
@@ -382,9 +390,6 @@ export function BookCreate({ nav, theme, t, projectCreateDraft, flowRevision = 0
         creating: managedProjectCreate ? "创建中..." : "初始化中...",
       };
 
-  const createDefaultSessionTitle = projectLang === "en"
-    ? `New book “${title.trim()}” writing session`
-    : `新书《${title.trim()}》写作会话`;
   const createStageMessage = createStage === "submitting"
     ? projectLang === "en"
       ? "Submitting the create request…"
@@ -415,9 +420,10 @@ export function BookCreate({ nav, theme, t, projectCreateDraft, flowRevision = 0
     setCreating(true);
     setCreateStage("submitting");
     setError(null);
+    setWorkspaceBootstrapFailure(null);
     await Promise.resolve();
     try {
-      const result = await postApi<{ bookId: string }>("/books/create", buildStudioCreateBookRequest({
+      const result = await postApi<StudioCreateBookResponse>("/books/create", buildStudioCreateBookRequest({
         title,
         genre,
         language: projectLang,
@@ -430,28 +436,36 @@ export function BookCreate({ nav, theme, t, projectCreateDraft, flowRevision = 0
       setCreateStage("waiting");
       await Promise.resolve();
       await waitForBookReady(result.bookId);
-      setCreateStage("creating-session");
-      const session = await fetchJson<NarratorSessionRecord>("/api/sessions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: createDefaultSessionTitle,
-          agentId: "writer",
-          sessionMode: "chat",
-          projectId: result.bookId,
-          worktree: projectInit.worktreeName,
-        }),
-      });
-      setCreateStage("opening-workspace");
-      addWindow({
-        title: session.title,
-        agentId: session.agentId,
-        sessionId: session.id,
-        sessionMode: session.sessionMode,
-      });
-      nav.toBook(result.bookId);
+
+      try {
+        setCreateStage("creating-session");
+        const session = result.defaultSession;
+        if (!session?.id || !result.defaultSessionSnapshot) {
+          throw new Error("默认写作会话尚未就绪，请稍后重试。");
+        }
+        setCreateStage("opening-workspace");
+        addWindow({
+          title: session.title,
+          agentId: session.agentId,
+          sessionId: session.id,
+          sessionMode: session.sessionMode,
+        });
+        if (nav.toSessions) {
+          nav.toSessions();
+        } else {
+          nav.toBook(result.bookId);
+        }
+      } catch (sessionError) {
+        setWorkspaceBootstrapFailure({
+          bookId: result.bookId,
+          message: formatBookCreateError(sessionError, projectLang),
+        });
+        setError(null);
+        setCreateStage("idle");
+      }
     } catch (e) {
       setError(formatBookCreateError(e, projectLang));
+      setWorkspaceBootstrapFailure(null);
       setCreateStage("idle");
     } finally {
       setCreating(false);
@@ -480,6 +494,31 @@ export function BookCreate({ nav, theme, t, projectCreateDraft, flowRevision = 0
       {error && (
         <div className={`border ${c.error} rounded-md px-4 py-3`}>
           {error}
+        </div>
+      )}
+
+      {workspaceBootstrapFailure && (
+        <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-800 space-y-3">
+          <div className="font-medium">书籍骨架已经创建成功，但默认写作会话创建失败。</div>
+          <div>{workspaceBootstrapFailure.message || "请先进入书籍详情或稍后再到会话中心继续。"}</div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => nav.toBook(workspaceBootstrapFailure.bookId)}
+              className={`px-3 py-2 ${c.btnSecondary} rounded-md font-medium text-sm`}
+            >
+              先看书籍详情
+            </button>
+            {nav.toSessions && (
+              <button
+                type="button"
+                onClick={() => nav.toSessions?.()}
+                className={`px-3 py-2 ${c.btnSecondary} rounded-md font-medium text-sm`}
+              >
+                改去会话中心
+              </button>
+            )}
+          </div>
         </div>
       )}
 

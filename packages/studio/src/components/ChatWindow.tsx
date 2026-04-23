@@ -17,7 +17,7 @@ import type { StudioRun } from "../shared/contracts";
 import type { Theme } from "../hooks/use-theme";
 import { useColors } from "../hooks/use-colors";
 import { WindowControls } from "./WindowControls";
-import { useWindowRuntimeStore } from "../stores/windowRuntimeStore";
+import { useWindowRuntimeStore, type WindowRecoveryState } from "../stores/windowRuntimeStore";
 import {
   getRecoveryPresentation,
   getRecoveryToneBannerClassName,
@@ -83,17 +83,18 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
   const updateWindow = useWindowStore((state) => state.updateWindow);
   const addWindow = useWindowStore((state) => state.addWindow);
   const wsConnected = useWindowRuntimeStore((state) => state.wsConnections[windowId] ?? false);
+  const authoritativeRecoveryState = useWindowRuntimeStore((state) => state.recoveryStates[windowId] ?? "idle");
+  const authoritativeSnapshot = useWindowRuntimeStore((state) => state.chatSnapshots[windowId] ?? null);
   const setWsConnected = useWindowRuntimeStore((state) => state.setWsConnected);
   const setRecoveryState = useWindowRuntimeStore((state) => state.setRecoveryState);
+  const setChatSnapshot = useWindowRuntimeStore((state) => state.setChatSnapshot);
   const clearWindowRuntime = useWindowRuntimeStore((state) => state.clearWindowRuntime);
 
   const [input, setInput] = useState("");
   const [contextPanelOpen, setContextPanelOpen] = useState(false);
-  const [sessionRecord, setSessionRecord] = useState<NarratorSessionRecord | null>(null);
-  const [sessionMessages, setSessionMessages] = useState<ChatMessage[] | null>(null);
-  const [recoveryStatus, setRecoveryStatus] = useState<"idle" | "recovering" | "reconnecting" | "replaying" | "resetting">("idle");
   const [executionChainExpanded, setExecutionChainExpanded] = useState(false);
   const sessionMessagesRef = useRef<ChatMessage[]>([]);
+  const sessionRecordRef = useRef<NarratorSessionRecord | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimerRef = useRef<number | null>(null);
@@ -101,7 +102,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
 
   const syncSessionRecord = useCallback(
     (nextSession: NarratorSessionRecord) => {
-      setSessionRecord(nextSession);
+      sessionRecordRef.current = nextSession;
       updateWindow(windowId, {
         title: nextSession.title,
         sessionMode: nextSession.sessionMode,
@@ -112,8 +113,23 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
 
   const syncSessionMessages = useCallback((nextMessages: ChatMessage[]) => {
     sessionMessagesRef.current = nextMessages;
-    setSessionMessages(nextMessages);
   }, []);
+
+  const syncAuthoritativeSnapshot = useCallback((
+    nextSession: NarratorSessionRecord,
+    nextMessages: ChatMessage[],
+    nextSeq?: number,
+  ) => {
+    setChatSnapshot(windowId, {
+      session: nextSession,
+      messages: nextMessages.map(toNarratorSessionChatMessage),
+      cursor: {
+        lastSeq: typeof nextSeq === "number" && Number.isFinite(nextSeq)
+          ? Math.max(0, Math.floor(nextSeq))
+          : getLastSessionSeq(nextMessages.map(toNarratorSessionChatMessage)),
+      },
+    });
+  }, [setChatSnapshot, windowId]);
 
   const syncSessionSeq = useCallback((nextSeq?: number) => {
     if (typeof nextSeq !== "number" || !Number.isFinite(nextSeq)) {
@@ -122,6 +138,10 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
 
     lastSessionSeqRef.current = Math.max(lastSessionSeqRef.current, Math.floor(nextSeq));
   }, []);
+
+  const getCurrentSessionRecord = useCallback(() => {
+    return sessionRecordRef.current ?? useWindowRuntimeStore.getState().chatSnapshots[windowId]?.session ?? null;
+  }, [windowId]);
 
   const ackSessionSeq = useCallback(() => {
     if (!chatWindow?.sessionId || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN || lastSessionSeqRef.current <= 0) {
@@ -137,50 +157,57 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
     );
   }, [chatWindow?.sessionId]);
 
+  const updateRecoveryState = useCallback((nextState: WindowRecoveryState) => {
+    setRecoveryState(windowId, nextState);
+  }, [setRecoveryState, windowId]);
+
+  useEffect(() => {
+    if (!authoritativeSnapshot) {
+      return;
+    }
+
+    sessionRecordRef.current = authoritativeSnapshot.session;
+    syncSessionMessages(authoritativeSnapshot.messages.map(toChatWindowMessage));
+    syncSessionSeq(authoritativeSnapshot.cursor?.lastSeq ?? getLastSessionSeq(authoritativeSnapshot.messages));
+  }, [authoritativeSnapshot, syncSessionMessages, syncSessionSeq]);
+
   useEffect(() => {
     lastSessionSeqRef.current = 0;
     sessionMessagesRef.current = [];
-    setRecoveryStatus("idle");
+    sessionRecordRef.current = null;
+    setChatSnapshot(windowId, null);
+    updateRecoveryState("idle");
     setExecutionChainExpanded(false);
-  }, [chatWindow?.sessionId, setRecoveryStatus]);
+  }, [chatWindow?.sessionId, setChatSnapshot, updateRecoveryState, windowId]);
 
   const persistSessionMessages = useCallback(
-    (nextMessages: ChatMessage[]) => {
-      const nextRecentMessages = nextMessages.map(toNarratorSessionChatMessage);
-      syncSessionMessages(nextMessages);
-      setSessionRecord((current) =>
-        current
-          ? {
-              ...current,
-              messageCount: Math.max(current.messageCount, nextMessages.length),
-              recentMessages: nextRecentMessages,
-            }
-          : current,
-      );
-
+    async (nextMessages: ChatMessage[]) => {
       if (!chatWindow?.sessionId) {
+        syncSessionMessages(nextMessages);
         return;
       }
 
-      void fetchJson<NarratorSessionRecord>(`/api/sessions/${chatWindow.sessionId}`, {
+      const snapshot = await fetchJson<NarratorSessionChatSnapshot>(`/api/sessions/${chatWindow.sessionId}/chat/state`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          messageCount: Math.max(sessionRecord?.messageCount ?? 0, nextMessages.length),
-          recentMessages: nextRecentMessages,
+          messages: nextMessages.map(toNarratorSessionChatMessage),
         }),
-      })
-        .then((session) => {
-          if (!session?.sessionConfig) {
-            return;
-          }
-          syncSessionRecord(session);
-        })
-        .catch(() => {
-          // keep local state even if the persistence write fails
-        });
+      });
+
+      if (!snapshot?.session?.sessionConfig) {
+        return;
+      }
+
+      const syncedMessages = snapshot.messages.map(toChatWindowMessage);
+      const nextSeq = snapshot.cursor?.lastSeq ?? getLastSessionSeq(snapshot.messages);
+      syncSessionRecord(snapshot.session);
+      syncSessionSeq(nextSeq);
+      syncSessionMessages(syncedMessages);
+      syncAuthoritativeSnapshot(snapshot.session, syncedMessages, nextSeq);
+      ackSessionSeq();
     },
-    [chatWindow?.sessionId, sessionRecord?.messageCount, syncSessionMessages, syncSessionRecord],
+    [ackSessionSeq, chatWindow?.sessionId, syncAuthoritativeSnapshot, syncSessionMessages, syncSessionRecord, syncSessionSeq],
   );
 
   const handleSessionTransportMessage = useCallback(
@@ -193,23 +220,29 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
       const envelope = parseSessionChatEnvelope(rawText);
       if (envelope) {
         if (envelope.type === "session:snapshot") {
-          setRecoveryStatus("idle");
-          syncSessionRecord(envelope.snapshot.session);
-          syncSessionSeq(envelope.snapshot.cursor?.lastSeq ?? getLastSessionSeq(envelope.snapshot.messages));
+          updateRecoveryState(envelope.recovery?.state ?? "idle");
           const nextMessages = envelope.snapshot.messages.map(toChatWindowMessage);
+          const nextSeq = envelope.snapshot.cursor?.lastSeq ?? getLastSessionSeq(envelope.snapshot.messages);
+          syncSessionRecord(envelope.snapshot.session);
+          syncSessionSeq(nextSeq);
           syncSessionMessages(nextMessages);
+          syncAuthoritativeSnapshot(envelope.snapshot.session, nextMessages, nextSeq);
           ackSessionSeq();
           return;
         }
 
         if (envelope.type === "session:state") {
+          if (envelope.recovery?.state) {
+            updateRecoveryState(envelope.recovery.state);
+          }
           syncSessionRecord(envelope.session);
           syncSessionSeq(envelope.cursor?.lastSeq);
+          syncAuthoritativeSnapshot(envelope.session, sessionMessagesRef.current, envelope.cursor?.lastSeq);
           return;
         }
 
         if (envelope.type === "session:message") {
-          setRecoveryStatus("idle");
+          updateRecoveryState("idle");
           syncSessionSeq(envelope.message.seq ?? envelope.cursor?.lastSeq);
           const nextMessage = toChatWindowMessage(envelope.message);
           if (sessionMessagesRef.current.some((message) => message.id === nextMessage.id)) {
@@ -218,6 +251,17 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
           }
           const nextMessages = [...sessionMessagesRef.current, nextMessage];
           syncSessionMessages(nextMessages);
+          const nextSession = getCurrentSessionRecord();
+          if (nextSession) {
+            syncAuthoritativeSnapshot(
+              {
+                ...nextSession,
+                messageCount: Math.max(nextSession.messageCount, nextMessages.length),
+              },
+              nextMessages,
+              envelope.message.seq ?? envelope.cursor?.lastSeq,
+            );
+          }
           ackSessionSeq();
           return;
         }
@@ -230,7 +274,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
       }
 
       try {
-        setRecoveryStatus("idle");
+        updateRecoveryState("idle");
         const parsed = parseAssistantPayload(JSON.parse(rawText), rawText);
         const message: ChatMessage = {
           id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
@@ -239,19 +283,41 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
           timestamp: Date.now(),
           toolCalls: parsed.toolCalls.length > 0 ? parsed.toolCalls : undefined,
         };
-        syncSessionMessages([...sessionMessagesRef.current, message]);
+        const nextMessages = [...sessionMessagesRef.current, message];
+        syncSessionMessages(nextMessages);
+        const nextSession = getCurrentSessionRecord();
+        if (nextSession) {
+          syncAuthoritativeSnapshot(
+            {
+              ...nextSession,
+              messageCount: Math.max(nextSession.messageCount, nextMessages.length),
+            },
+            nextMessages,
+          );
+        }
       } catch {
-        setRecoveryStatus("idle");
+        updateRecoveryState("idle");
         const message: ChatMessage = {
           id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
           role: "assistant",
           content: rawText,
           timestamp: Date.now(),
         };
-        syncSessionMessages([...sessionMessagesRef.current, message]);
+        const nextMessages = [...sessionMessagesRef.current, message];
+        syncSessionMessages(nextMessages);
+        const nextSession = getCurrentSessionRecord();
+        if (nextSession) {
+          syncAuthoritativeSnapshot(
+            {
+              ...nextSession,
+              messageCount: Math.max(nextSession.messageCount, nextMessages.length),
+            },
+            nextMessages,
+          );
+        }
       }
     },
-    [ackSessionSeq, setWsConnected, syncSessionMessages, syncSessionRecord, syncSessionSeq, windowId],
+    [ackSessionSeq, getCurrentSessionRecord, setWsConnected, syncAuthoritativeSnapshot, syncSessionMessages, syncSessionRecord, syncSessionSeq, windowId],
   );
 
   useEffect(() => {
@@ -261,22 +327,24 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
     }
 
     let cancelled = false;
-    setRecoveryStatus("recovering");
+    updateRecoveryState("recovering");
     void fetchJson<NarratorSessionChatSnapshot>(`/api/sessions/${sessionId}/chat/state`)
       .then((snapshot) => {
         if (cancelled || !snapshot?.session?.sessionConfig) {
           return;
         }
 
-        syncSessionRecord(snapshot.session);
-        syncSessionSeq(snapshot.cursor?.lastSeq ?? getLastSessionSeq(snapshot.messages));
         const nextMessages = snapshot.messages.map(toChatWindowMessage);
+        const nextSeq = snapshot.cursor?.lastSeq ?? getLastSessionSeq(snapshot.messages);
+        syncSessionRecord(snapshot.session);
+        syncSessionSeq(nextSeq);
         syncSessionMessages(nextMessages);
-        setRecoveryStatus("idle");
+        syncAuthoritativeSnapshot(snapshot.session, nextMessages, nextSeq);
+        updateRecoveryState("idle");
       })
       .catch(() => {
         if (!cancelled) {
-          setRecoveryStatus("idle");
+          updateRecoveryState("idle");
         }
         // ignore hydration errors and keep local fallback state
       });
@@ -284,42 +352,62 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
     return () => {
       cancelled = true;
     };
-  }, [chatWindow?.sessionId, setRecoveryStatus, syncSessionRecord, syncSessionSeq, syncSessionMessages, windowId]);
+  }, [chatWindow?.sessionId, syncAuthoritativeSnapshot, syncSessionRecord, syncSessionSeq, syncSessionMessages, updateRecoveryState, windowId]);
 
   const hydrateReconnectHistory = useCallback(
     async (sessionId: string, sinceSeq: number) => {
       if (sinceSeq <= 0) {
-        setRecoveryStatus("idle");
+        updateRecoveryState("idle");
         return;
       }
 
-      setRecoveryStatus("replaying");
+      if (useWindowRuntimeStore.getState().recoveryStates[windowId] !== "resetting") {
+        updateRecoveryState("replaying");
+      }
       const history = await fetchJson<Partial<NarratorSessionChatHistory>>(`/api/sessions/${sessionId}/chat/history?sinceSeq=${sinceSeq}`);
       if (!history || !Array.isArray(history.messages)) {
         return;
       }
       if (history.resetRequired) {
-        setRecoveryStatus("resetting");
+        updateRecoveryState("resetting");
         const snapshot = await fetchJson<NarratorSessionChatSnapshot>(`/api/sessions/${sessionId}/chat/state`);
-        syncSessionRecord(snapshot.session);
-        syncSessionSeq(snapshot.cursor?.lastSeq ?? getLastSessionSeq(snapshot.messages));
         const nextMessages = snapshot.messages.map(toChatWindowMessage);
+        const nextSeq = snapshot.cursor?.lastSeq ?? getLastSessionSeq(snapshot.messages);
+        syncSessionRecord(snapshot.session);
+        syncSessionSeq(nextSeq);
         syncSessionMessages(nextMessages);
+        syncAuthoritativeSnapshot(snapshot.session, nextMessages, nextSeq);
         ackSessionSeq();
         return;
       }
 
-      syncSessionSeq(history.cursor?.lastSeq ?? getLastSessionSeq(history.messages));
+      const nextSeq = history.cursor?.lastSeq ?? getLastSessionSeq(history.messages);
+      syncSessionSeq(nextSeq);
       if (history.messages.length === 0) {
+        const nextSession = getCurrentSessionRecord();
+        if (nextSession) {
+          syncAuthoritativeSnapshot(nextSession, sessionMessagesRef.current, nextSeq);
+        }
         ackSessionSeq();
         return;
       }
 
       const nextMessages = mergeSessionMessages(sessionMessagesRef.current, history.messages);
       syncSessionMessages(nextMessages);
+      const nextSession = getCurrentSessionRecord();
+      if (nextSession) {
+        syncAuthoritativeSnapshot(
+          {
+            ...nextSession,
+            messageCount: Math.max(nextSession.messageCount, nextMessages.length),
+          },
+          nextMessages,
+          nextSeq,
+        );
+      }
       ackSessionSeq();
     },
-    [ackSessionSeq, syncSessionRecord, syncSessionSeq],
+    [ackSessionSeq, getCurrentSessionRecord, syncAuthoritativeSnapshot, syncSessionRecord, syncSessionSeq, windowId],
   );
 
   useEffect(() => {
@@ -329,7 +417,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
     }
 
     let disposed = false;
-    const sessionMode = sessionRecord?.sessionMode ?? chatWindow?.sessionMode ?? "chat";
+    const sessionMode = sessionRecordRef.current?.sessionMode ?? authoritativeSnapshot?.session.sessionMode ?? chatWindow?.sessionMode ?? "chat";
 
     const connectWs = () => {
       if (disposed) {
@@ -355,9 +443,11 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
             reconnectTimerRef.current = null;
           }
           if (lastSessionSeqRef.current > 0) {
-            setRecoveryStatus("replaying");
+            if (useWindowRuntimeStore.getState().recoveryStates[windowId] !== "resetting") {
+              updateRecoveryState("replaying");
+            }
           } else {
-            setRecoveryStatus("idle");
+            updateRecoveryState("idle");
           }
           void hydrateReconnectHistory(sessionId, lastSessionSeqRef.current);
         };
@@ -375,7 +465,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
           if (disposed) {
             return;
           }
-          setRecoveryStatus("reconnecting");
+          updateRecoveryState("reconnecting");
           if (reconnectTimerRef.current !== null) {
             globalThis.clearTimeout(reconnectTimerRef.current);
           }
@@ -401,9 +491,9 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
         wsRef.current = null;
       }
     };
-  }, [chatWindow?.sessionId, chatWindow?.sessionMode, clearWindowRuntime, handleSessionTransportMessage, hydrateReconnectHistory, sessionRecord?.sessionMode, setWsConnected, windowId]);
+  }, [chatWindow?.sessionId, chatWindow?.sessionMode, clearWindowRuntime, handleSessionTransportMessage, hydrateReconnectHistory, setWsConnected, windowId]);
 
-  const effectiveMessages = sessionMessages ?? [];
+  const effectiveMessages = authoritativeSnapshot?.messages.map(toChatWindowMessage) ?? [];
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView?.({ behavior: "smooth" });
@@ -455,15 +545,11 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
     [recentExecutionRun, recentExecutionRunId],
   );
 
-  useEffect(() => {
-    setRecoveryState(windowId, recoveryStatus);
-  }, [recoveryStatus, setRecoveryState, windowId]);
-
   if (!chatWindow) return null;
 
   const defaultProvider = getDefaultProvider();
   const defaultModel = getDefaultModel(defaultProvider.id);
-  const sessionState = sessionRecord ?? {
+  const sessionState = authoritativeSnapshot?.session ?? {
     title: chatWindow.title,
     sessionMode: chatWindow.sessionMode ?? "chat",
     sessionConfig: {
@@ -502,7 +588,18 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
       timestamp: Date.now(),
     };
 
-    syncSessionMessages([...sessionMessagesRef.current, userMessage]);
+    const nextMessages = [...sessionMessagesRef.current, userMessage];
+    syncSessionMessages(nextMessages);
+    const nextSession = getCurrentSessionRecord();
+    if (nextSession) {
+      syncAuthoritativeSnapshot(
+        {
+          ...nextSession,
+          messageCount: Math.max(nextSession.messageCount, nextMessages.length),
+        },
+        nextMessages,
+      );
+    }
     wsRef.current.send(
       JSON.stringify({
         type: "session:message",
@@ -523,7 +620,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
   const lastMessageTime = lastMessage
     ? new Date(lastMessage.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
     : "--:--";
-  const recoveryPresentation = getRecoveryPresentation({ recoveryState: recoveryStatus, wsConnected });
+  const recoveryPresentation = getRecoveryPresentation({ recoveryState: authoritativeRecoveryState, wsConnected });
 
   const updateSessionConfig = (updates: Partial<NarratorSessionRecord["sessionConfig"]>) => {
     const nextSessionConfig = {
@@ -531,14 +628,17 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
       ...updates,
     };
 
-    setSessionRecord((current) =>
-      current
-        ? {
-            ...current,
-            sessionConfig: nextSessionConfig,
-          }
-        : current,
-    );
+    const currentSession = getCurrentSessionRecord();
+    if (currentSession) {
+      syncAuthoritativeSnapshot(
+        {
+          ...currentSession,
+          sessionConfig: nextSessionConfig,
+        },
+        sessionMessagesRef.current,
+        lastSessionSeqRef.current,
+      );
+    }
 
     if (chatWindow.sessionId) {
       void fetchJson<NarratorSessionRecord>(`/api/sessions/${chatWindow.sessionId}`, {
@@ -553,6 +653,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
             return;
           }
           syncSessionRecord(session);
+          syncAuthoritativeSnapshot(session, sessionMessagesRef.current, lastSessionSeqRef.current);
         })
         .catch(() => {
           // keep local state even if the persistence write fails
@@ -576,6 +677,12 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
               <Bot size={16} style={{ color: c.accent }} className="mt-0.5 shrink-0" />
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
+                  <span
+                    className="shrink-0 rounded-sm border border-border/60 bg-background/70 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.14em] text-muted-foreground"
+                    title="这是会话的工作台视图 · 关闭窗口不会结束会话"
+                  >
+                    工作台
+                  </span>
                   <span className="max-w-[180px] truncate text-sm font-medium" style={{ color: c.text }}>
                     {sessionState.title}
                   </span>
@@ -1334,6 +1441,7 @@ function toChatWindowMessage(message: NarratorSessionChatMessage): ChatMessage {
     role: message.role,
     content: message.content,
     timestamp: message.timestamp,
+    seq: message.seq,
     toolCalls: message.toolCalls,
   };
 }
@@ -1344,6 +1452,7 @@ function toNarratorSessionChatMessage(message: ChatMessage): NarratorSessionChat
     role: message.role,
     content: message.content,
     timestamp: message.timestamp,
+    seq: message.seq,
     toolCalls: message.toolCalls,
   };
 }

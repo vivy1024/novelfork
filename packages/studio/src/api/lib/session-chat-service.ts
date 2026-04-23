@@ -12,8 +12,9 @@ import type {
   NarratorSessionChatSnapshot,
   NarratorSessionChatStateEnvelope,
   NarratorSessionRecord,
+  NarratorSessionRecoveryEnvelope,
 } from "../../shared/session-types.js";
-import { appendSessionChatHistory, loadSessionChatHistory } from "./session-history-store.js";
+import { appendSessionChatHistory, loadSessionChatHistory, saveSessionChatHistory } from "./session-history-store.js";
 import { getSessionById, updateSession } from "./session-service.js";
 
 const MAX_SESSION_MESSAGES = 50;
@@ -175,11 +176,13 @@ function createSessionChatStateEnvelope(
   session: NarratorSessionRecord,
   state: SessionChatRuntimeState,
   ackedSeq?: number,
+  recovery?: NarratorSessionRecoveryEnvelope,
 ): NarratorSessionChatStateEnvelope {
   return {
     type: "session:state",
     session,
     cursor: createCursor(state, ackedSeq),
+    ...(recovery ? { recovery } : {}),
   };
 }
 
@@ -218,9 +221,13 @@ function broadcastMessageEnvelope(
   }
 }
 
-function broadcastStateEnvelope(session: NarratorSessionRecord, state: SessionChatRuntimeState): void {
+function broadcastStateEnvelope(
+  session: NarratorSessionRecord,
+  state: SessionChatRuntimeState,
+  recovery?: NarratorSessionRecoveryEnvelope,
+): void {
   for (const [transport, transportState] of state.transports.entries()) {
-    const delivered = sendEnvelope(transport, createSessionChatStateEnvelope(session, state, transportState.ackedSeq));
+    const delivered = sendEnvelope(transport, createSessionChatStateEnvelope(session, state, transportState.ackedSeq, recovery));
     if (!delivered) {
       state.transports.delete(transport);
     }
@@ -369,7 +376,11 @@ export async function getSessionChatHistory(sessionId: string, sinceSeq = 0): Pr
   const persistedHistory = await loadSessionChatHistory(sessionId);
   const sourceMessages = persistedHistory.length > 0 ? persistedHistory : loaded.state.messages;
   const availableFromSeq = sourceMessages[0]?.seq ?? 0;
-  const resetRequired = normalizedSinceSeq > 0 && availableFromSeq > 0 && normalizedSinceSeq < availableFromSeq - 1;
+  const cursor = createCursor(loaded.state);
+  const resetRequired = normalizedSinceSeq > 0 && (
+    (availableFromSeq > 0 && normalizedSinceSeq < availableFromSeq - 1)
+    || normalizedSinceSeq > cursor.lastSeq
+  );
 
   return {
     sessionId,
@@ -377,8 +388,59 @@ export async function getSessionChatHistory(sessionId: string, sinceSeq = 0): Pr
     availableFromSeq,
     resetRequired,
     messages: resetRequired ? [] : sourceMessages.filter((message) => (message.seq ?? 0) > normalizedSinceSeq),
+    cursor,
+  };
+}
+
+export async function replaceSessionChatState(
+  sessionId: string,
+  nextMessages: NarratorSessionChatMessage[],
+): Promise<NarratorSessionChatSnapshot | null> {
+  const loaded = await loadSessionState(sessionId);
+  if (!loaded) {
+    return null;
+  }
+
+  const normalizedMessages = normalizeSessionMessages(nextMessages, Array.isArray(nextMessages) ? nextMessages.length : 0).slice(-MAX_SESSION_MESSAGES);
+  loaded.state.messages = normalizedMessages;
+  loaded.state.messageCount = Math.max(normalizedMessages.length, getLastSeq(normalizedMessages));
+  loaded.state.nextSeq = loaded.state.messageCount + 1;
+
+  for (const transportState of loaded.state.transports.values()) {
+    transportState.ackedSeq = 0;
+  }
+
+  await saveSessionChatHistory(sessionId, normalizedMessages);
+  const updatedSession = await updateSession(sessionId, {
+    messageCount: loaded.state.messageCount,
+    recentMessages: [...normalizedMessages],
+  });
+  const serverFirstSession = buildServerFirstSession(updatedSession ?? loaded.session, loaded.state);
+  const snapshot: NarratorSessionChatSnapshot = {
+    session: serverFirstSession,
+    messages: [...loaded.state.messages],
     cursor: createCursor(loaded.state),
   };
+
+  for (const transport of loaded.state.transports.keys()) {
+    const transportState = loaded.state.transports.get(transport);
+    sendEnvelope(
+      transport,
+      createSessionChatStateEnvelope(serverFirstSession, loaded.state, transportState?.ackedSeq ?? 0, {
+        state: "resetting",
+        reason: "server-reset",
+      }),
+    );
+    sendEnvelope(transport, {
+      type: "session:snapshot",
+      snapshot,
+      recovery: {
+        state: "idle",
+        reason: "server-reset",
+      },
+    });
+  }
+  return snapshot;
 }
 
 export async function attachSessionChatTransport(
@@ -394,7 +456,10 @@ export async function attachSessionChatTransport(
   }
 
   const session = buildServerFirstSession(loaded.session, loaded.state);
-  const ackedSeq = Math.min(sanitizeSeq(options.resumeFromSeq), createCursor(loaded.state).lastSeq);
+  const requestedResumeSeq = sanitizeSeq(options.resumeFromSeq);
+  const cursor = createCursor(loaded.state);
+  const resumeOutOfRange = requestedResumeSeq > cursor.lastSeq;
+  const ackedSeq = Math.min(requestedResumeSeq, cursor.lastSeq);
   loaded.state.transports.set(transport, {
     ackedSeq,
   });
@@ -410,7 +475,15 @@ export async function attachSessionChatTransport(
     });
   }
 
-  sendEnvelope(transport, createSessionChatStateEnvelope(session, loaded.state, ackedSeq));
+  sendEnvelope(
+    transport,
+    createSessionChatStateEnvelope(
+      session,
+      loaded.state,
+      ackedSeq,
+      resumeOutOfRange ? { state: "resetting", reason: "history-gap" } : undefined,
+    ),
+  );
   return true;
 }
 

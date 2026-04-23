@@ -4,10 +4,11 @@
 
 import { Hono } from "hono";
 
-import type { CreateNarratorSessionInput, UpdateNarratorSessionInput } from "../../shared/session-types.js";
+import type { CreateNarratorSessionInput, UpdateNarratorSessionChatStateInput, UpdateNarratorSessionInput } from "../../shared/session-types.js";
 import {
   getSessionChatHistory,
   getSessionChatSnapshot,
+  replaceSessionChatState,
 } from "../lib/session-chat-service.js";
 import {
   createSession,
@@ -58,6 +59,16 @@ app.get("/:id/chat/history", async (c) => {
     return c.json({ error: "Session not found" }, 404);
   }
   return c.json(history);
+});
+
+app.put("/:id/chat/state", async (c) => {
+  const id = c.req.param("id");
+  const body = await c.req.json<UpdateNarratorSessionChatStateInput>();
+  const snapshot = await replaceSessionChatState(id, body.messages ?? []);
+  if (!snapshot) {
+    return c.json({ error: "Session not found" }, 404);
+  }
+  return c.json(snapshot);
 });
 
 app.post("/", async (c) => {

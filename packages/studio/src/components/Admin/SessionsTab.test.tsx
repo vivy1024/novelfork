@@ -3,6 +3,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 
 import { SessionsTab } from "./SessionsTab";
 import type { AddWindowInput, ChatWindow as ChatWindowState } from "@/stores/windowStore";
+import type { NarratorSessionChatSnapshot } from "@/shared/session-types";
 import type { WindowRecoveryState } from "@/stores/windowRuntimeStore";
 
 interface MockWindowStore {
@@ -19,8 +20,10 @@ interface MockWindowStore {
 interface MockRuntimeStore {
   wsConnections: Record<string, boolean>;
   recoveryStates: Record<string, WindowRecoveryState>;
+  chatSnapshots: Record<string, NarratorSessionChatSnapshot | null>;
   setWsConnected: (windowId: string, connected: boolean) => void;
   setRecoveryState: (windowId: string, state: WindowRecoveryState) => void;
+  setChatSnapshot: (windowId: string, snapshot: NarratorSessionChatSnapshot | null) => void;
   clearWindowRuntime: (windowId: string) => void;
 }
 
@@ -146,8 +149,10 @@ function emptyRuntimeMock(): MockRuntimeStore {
   return {
     wsConnections: {},
     recoveryStates: {},
+    chatSnapshots: {},
     setWsConnected: () => {},
     setRecoveryState: () => {},
+    setChatSnapshot: () => {},
     clearWindowRuntime: () => {},
   };
 }

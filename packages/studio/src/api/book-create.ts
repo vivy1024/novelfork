@@ -1,5 +1,7 @@
 import type { Platform } from "@vivy1024/novelfork-core";
 
+import type { NarratorSessionChatSnapshot, NarratorSessionRecord } from "../shared/session-types.js";
+
 export const STUDIO_REPOSITORY_SOURCES = ["new", "existing", "clone"] as const;
 export type StudioRepositorySource = (typeof STUDIO_REPOSITORY_SOURCES)[number];
 
@@ -41,6 +43,13 @@ export interface StudioCreateBookBody {
   readonly targetChapters?: number;
   readonly projectInit?: Partial<StudioProjectInitDraft>;
   readonly initializationPlan?: StudioProjectInitializationPlan;
+}
+
+export interface StudioCreateBookResponse {
+  readonly status: "creating";
+  readonly bookId: string;
+  readonly defaultSession: NarratorSessionRecord;
+  readonly defaultSessionSnapshot: NarratorSessionChatSnapshot;
 }
 
 export interface StudioBookConfigDraft {
@@ -227,6 +236,13 @@ export function normalizeStudioProjectCreateDraft(
     projectInit,
     initializationPlan: buildStudioProjectInitializationPlan(projectInit),
   };
+}
+
+export function buildDefaultBookSessionTitle(title: string, language?: string): string {
+  const normalizedTitle = title.trim();
+  return language === "en"
+    ? `New book “${normalizedTitle}” writing session`
+    : `新书《${normalizedTitle}》写作会话`;
 }
 
 export function buildStudioBookConfig(body: StudioCreateBookBody, now: string): StudioBookConfigDraft {

@@ -51,6 +51,43 @@ describe("BookCreate", () => {
     cleanup();
   });
 
+  function createDefaultSessionResponse(bookId = "book-demo") {
+    return {
+      id: `session-${bookId}`,
+      title: "新书《仙路长明》写作会话",
+      agentId: "writer",
+      kind: "standalone",
+      sessionMode: "chat",
+      status: "active",
+      createdAt: new Date().toISOString(),
+      lastModified: new Date().toISOString(),
+      messageCount: 0,
+      sortOrder: 0,
+      projectId: bookId,
+      sessionConfig: {
+        providerId: "anthropic",
+        modelId: "claude-sonnet-4-6",
+        permissionMode: "allow",
+        reasoningEffort: "medium",
+      },
+      recentMessages: [],
+    };
+  }
+
+  function createBookResponse(bookId = "book-demo") {
+    const defaultSession = createDefaultSessionResponse(bookId);
+    return {
+      bookId,
+      status: "creating",
+      defaultSession,
+      defaultSessionSnapshot: {
+        session: defaultSession,
+        messages: [],
+        cursor: { lastSeq: 0 },
+      },
+    };
+  }
+
   it("shows staged progress and locks project-create edits while the create workflow is running", async () => {
     const nav = {
       toDashboard: vi.fn(),
@@ -59,37 +96,11 @@ describe("BookCreate", () => {
     };
 
     let resolveBookReady: (() => void) | null = null;
-    let resolveSessionReady: (() => void) | null = null;
-
-    postApiMock.mockResolvedValueOnce({ bookId: "book-demo" });
+    postApiMock.mockResolvedValueOnce(createBookResponse("book-demo"));
     fetchJsonMock.mockImplementation((url: string, options?: { method?: string }) => {
       if (url === "/books/book-demo") {
         return new Promise((resolve) => {
           resolveBookReady = () => resolve({ id: "book-demo" });
-        });
-      }
-      if (url === "/api/sessions" && options?.method === "POST") {
-        return new Promise((resolve) => {
-          resolveSessionReady = () => resolve({
-            id: "session-book-demo",
-            title: "新书《仙路长明》写作会话",
-            agentId: "writer",
-            kind: "standalone",
-            sessionMode: "chat",
-            status: "active",
-            createdAt: new Date().toISOString(),
-            lastModified: new Date().toISOString(),
-            messageCount: 0,
-            sortOrder: 0,
-            projectId: "book-demo",
-            sessionConfig: {
-              providerId: "anthropic",
-              modelId: "claude-sonnet-4-6",
-              permissionMode: "allow",
-              reasoningEffort: "medium",
-            },
-            recentMessages: [],
-          });
         });
       }
       throw new Error(`Unexpected fetchJson call: ${url}`);
@@ -160,39 +171,18 @@ describe("BookCreate", () => {
     expect(screen.getByText(/可以返回上一步修改 worktree 名称或仓库来源/)).toBeTruthy();
   });
 
-  it("creates a default writer session and opens a workspace after the book becomes ready", async () => {
+  it("creates a default writer session and enters the formal session workspace after the book becomes ready", async () => {
     const nav = {
       toDashboard: vi.fn(),
       toBook: vi.fn(),
+      toSessions: vi.fn(),
       toProjectCreate: vi.fn(),
-    };
+    } as any;
 
-    postApiMock.mockResolvedValueOnce({ bookId: "book-demo" });
-    fetchJsonMock.mockImplementation(async (url: string, options?: { method?: string }) => {
+    postApiMock.mockResolvedValueOnce(createBookResponse("book-demo"));
+    fetchJsonMock.mockImplementation(async (url: string) => {
       if (url === "/books/book-demo") {
         return { id: "book-demo" };
-      }
-      if (url === "/api/sessions" && options?.method === "POST") {
-        return {
-          id: "session-book-demo",
-          title: "新书《仙路长明》写作会话",
-          agentId: "writer",
-          kind: "standalone",
-          sessionMode: "chat",
-          status: "active",
-          createdAt: new Date().toISOString(),
-          lastModified: new Date().toISOString(),
-          messageCount: 0,
-          sortOrder: 0,
-          projectId: "book-demo",
-          sessionConfig: {
-            providerId: "anthropic",
-            modelId: "claude-sonnet-4-6",
-            permissionMode: "allow",
-            reasoningEffort: "medium",
-          },
-          recentMessages: [],
-        };
       }
       throw new Error(`Unexpected fetchJson call: ${url}`);
     });
@@ -226,16 +216,67 @@ describe("BookCreate", () => {
       title: "仙路长明",
       genre: "xuanhuan",
     }));
-    expect(fetchJsonMock).toHaveBeenCalledWith("/api/sessions", expect.objectContaining({
-      method: "POST",
-      body: expect.stringContaining('"projectId":"book-demo"'),
-    }));
+    expect(fetchJsonMock).not.toHaveBeenCalledWith("/api/sessions", expect.anything());
     expect(addWindowMock).toHaveBeenCalledWith(expect.objectContaining({
       title: "新书《仙路长明》写作会话",
       agentId: "writer",
       sessionId: "session-book-demo",
       sessionMode: "chat",
     }));
+    expect(nav.toSessions).toHaveBeenCalledTimes(1);
+    expect(nav.toBook).not.toHaveBeenCalled();
+  });
+
+  it("shows actionable guidance when the book scaffold is ready but default session creation fails", async () => {
+    const nav = {
+      toDashboard: vi.fn(),
+      toBook: vi.fn(),
+      toSessions: vi.fn(),
+      toProjectCreate: vi.fn(),
+    } as any;
+
+    postApiMock.mockResolvedValueOnce({
+      bookId: "book-demo",
+      status: "creating",
+      defaultSession: createDefaultSessionResponse("book-demo"),
+      defaultSessionSnapshot: null,
+    });
+    fetchJsonMock.mockImplementation(async (url: string) => {
+      if (url === "/books/book-demo") {
+        return { id: "book-demo" };
+      }
+      throw new Error(`Unexpected fetchJson call: ${url}`);
+    });
+
+    render(
+      <BookCreate
+        nav={nav}
+        theme="light"
+        t={(key: string) => key}
+        projectCreateDraft={{
+          title: "仙路长明",
+          projectInit: {
+            repositorySource: "new",
+            workflowMode: "outline-first",
+            templatePreset: "genre-default",
+            gitBranch: "main",
+            worktreeName: "xianlu-main",
+          },
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "创建书籍并进入工作区" }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/书籍骨架已经创建成功/)).toBeTruthy();
+    });
+    expect(screen.getByText(/默认写作会话创建失败/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "先看书籍详情" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "先看书籍详情" }));
     expect(nav.toBook).toHaveBeenCalledWith("book-demo");
+    expect(nav.toSessions).not.toHaveBeenCalled();
+    expect(addWindowMock).not.toHaveBeenCalled();
   });
 });
