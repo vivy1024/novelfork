@@ -98,6 +98,11 @@ describe("createAdminRouter", () => {
         counts: expect.objectContaining({ success: 4, failed: 0 }),
       }),
     });
+    expect(payload.requestMeta).toMatchObject({
+      narrator: "admin.resources",
+      requestKind: "resource-monitor",
+      cache: expect.objectContaining({ status: "miss", scope: "storage-scan" }),
+    });
   });
 
   it("supports run-level drill-down filters across request and log endpoints", async () => {
@@ -339,5 +344,57 @@ describe("createAdminRouter", () => {
         expect.objectContaining({ endpoint: "/resources", cache: expect.objectContaining({ status: "bypass" }) }),
       ]),
     );
+  });
+
+  it("returns admin log snapshots with parsed metadata from novelfork.log", async () => {
+    const app = createAdminRouter(root);
+    await writeFile(
+      join(root, "novelfork.log"),
+      [
+        JSON.stringify({
+          timestamp: "2026-04-20T10:04:00Z",
+          level: "info",
+          tag: "studio",
+          narrator: "session.alpha",
+          requestKind: "tool-call",
+          provider: "sub2api",
+          model: "claude-sonnet-4.6",
+          runId: "run-42",
+          message: "tool finished",
+        }),
+        "plain text log line",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const response = await app.request("http://localhost/logs?limit=50");
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+
+    expect(payload).toMatchObject({
+      exists: true,
+      limit: 50,
+      totalEntries: 2,
+      entries: [
+        expect.objectContaining({
+          level: "info",
+          tag: "studio",
+          narrator: "session.alpha",
+          requestKind: "tool-call",
+          provider: "sub2api",
+          model: "claude-sonnet-4.6",
+          runId: "run-42",
+          message: "tool finished",
+          source: "json",
+        }),
+        expect.objectContaining({
+          message: "plain text log line",
+          source: "text",
+        }),
+      ],
+    });
+    expect(payload.sourcePath).toContain("novelfork.log");
+    expect(typeof payload.refreshedAt).toBe("string");
+    expect(typeof payload.updatedAt).toBe("string");
   });
 });

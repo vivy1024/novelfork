@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Bot,
   Braces,
@@ -13,6 +13,7 @@ import {
   Wrench,
 } from "lucide-react";
 
+import type { StudioRun } from "../shared/contracts";
 import type { Theme } from "../hooks/use-theme";
 import { useColors } from "../hooks/use-colors";
 import { WindowControls } from "./WindowControls";
@@ -31,6 +32,7 @@ import {
 import { ContextPanel, type ContextEntry } from "./ContextPanel";
 import { Button } from "./ui/button";
 import { fetchJson } from "../hooks/use-api";
+import { useRunDetails } from "../hooks/use-run-events";
 import { getDefaultModel, getDefaultProvider, getModel, getProvider, PROVIDERS } from "../shared/provider-catalog";
 import type {
   NarratorSessionChatHistory,
@@ -476,6 +478,15 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
         ? "text-amber-600"
         : "text-emerald-600";
   const recentExecutionChain = buildRecentExecutionChain(effectiveMessages);
+  const recentExecutionRunId = useMemo(
+    () => extractRecentExecutionRunId(recentExecutionChain?.calls),
+    [recentExecutionChain?.calls],
+  );
+  const recentExecutionRun = useRunDetails(recentExecutionRunId);
+  const recentExecutionFacts = useMemo(
+    () => buildRecentExecutionFacts(recentExecutionRunId, recentExecutionRun),
+    [recentExecutionRun, recentExecutionRunId],
+  );
   const sessionBreadcrumb = buildSessionBreadcrumb(chatWindow);
 
   const handleSend = () => {
@@ -786,6 +797,33 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
                           />
                           <MiniInfoTile label="最近时间" value={recentExecutionChain.timeLabel} />
                         </div>
+                        {recentExecutionFacts ? (
+                          <div className="mt-3 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className="rounded-full border border-border/60 bg-background px-2 py-1 font-mono text-foreground">
+                                {recentExecutionFacts.runId}
+                              </span>
+                              {recentExecutionFacts.stage ? (
+                                <span className="rounded-full border border-border/60 bg-background px-2 py-1 text-foreground">
+                                  {recentExecutionFacts.stage}
+                                </span>
+                              ) : null}
+                              {recentExecutionFacts.bookId ? (
+                                <span className="rounded-full border border-border/60 bg-background px-2 py-1">
+                                  {recentExecutionFacts.bookId}
+                                </span>
+                              ) : null}
+                              {recentExecutionFacts.chapterLabel ? (
+                                <span className="rounded-full border border-border/60 bg-background px-2 py-1">
+                                  {recentExecutionFacts.chapterLabel}
+                                </span>
+                              ) : null}
+                            </div>
+                            {recentExecutionFacts.latestLog ? (
+                              <div className="mt-2">最近日志：{recentExecutionFacts.latestLog}</div>
+                            ) : null}
+                          </div>
+                        ) : null}
                         <div className="mt-3 rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
                           <div className="font-medium text-foreground">{recentExecutionChain.headline}</div>
                           <div className="mt-1 flex items-center gap-1">
@@ -1172,6 +1210,52 @@ function buildSessionBreadcrumb(chatWindow: ChatWindowState) {
     `Agent / ${chatWindow.agentId}`,
     chatWindow.sessionId ? `Session / ${shortSessionId(chatWindow.sessionId)}` : "临时窗口",
   ];
+}
+
+function extractRecentExecutionRunId(calls?: readonly ToolCall[] | null) {
+  if (!calls?.length) {
+    return undefined;
+  }
+
+  for (let index = calls.length - 1; index >= 0; index -= 1) {
+    const execution = extractToolExecution(calls[index]);
+    if (execution?.runId) {
+      return execution.runId;
+    }
+  }
+
+  return undefined;
+}
+
+function buildRecentExecutionFacts(runId: string | undefined, run: StudioRun | null) {
+  if (!runId) {
+    return null;
+  }
+
+  const chapterNumber = run?.chapterNumber ?? run?.chapter ?? null;
+  const latestLog = run?.logs.length ? run.logs[run.logs.length - 1]?.message : undefined;
+
+  return {
+    runId,
+    stage: run?.stage,
+    bookId: run?.bookId,
+    chapterLabel: typeof chapterNumber === "number" ? `第 ${chapterNumber} 章` : undefined,
+    latestLog,
+  };
+}
+
+function extractToolExecution(toolCall: ToolCall) {
+  const resultRecord = asRecord(toolCall.result);
+  const executionRecord = asRecord(resultRecord?.execution) ?? asRecord(toolCall.execution);
+  const runId = typeof executionRecord?.runId === "string" ? executionRecord.runId : undefined;
+
+  if (!runId) {
+    return undefined;
+  }
+
+  return {
+    runId,
+  };
 }
 
 function shortSessionId(sessionId: string) {

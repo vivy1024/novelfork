@@ -15,6 +15,11 @@ interface AdminLogEntry {
   message: string;
   raw: string;
   source: "json" | "text";
+  narrator?: string;
+  requestKind?: string;
+  provider?: string;
+  model?: string;
+  runId?: string;
 }
 
 interface AdminLogsSnapshot {
@@ -34,6 +39,7 @@ interface LogsTabProps {
   runId?: string;
   onInspectRun?: (runId: string) => void;
   onNavigateSection?: (section: "requests" | "logs" | "resources", options?: { runId?: string }) => void;
+  onOpenRun?: (runId: string) => void;
 }
 
 const LEVEL_CLASSNAMES: Record<string, string> = {
@@ -43,7 +49,7 @@ const LEVEL_CLASSNAMES: Record<string, string> = {
   debug: "text-muted-foreground/70",
 };
 
-export function LogsTab({ runId, onInspectRun, onNavigateSection }: LogsTabProps = {}) {
+export function LogsTab({ runId, onInspectRun, onNavigateSection, onOpenRun }: LogsTabProps = {}) {
   const [snapshot, setSnapshot] = useState<AdminLogsSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -196,6 +202,20 @@ export function LogsTab({ runId, onInspectRun, onNavigateSection }: LogsTabProps
                       {entry.tag ? <Badge variant="outline">{entry.tag}</Badge> : null}
                       <Badge variant={entry.source === "json" ? "secondary" : "outline"}>{entry.source === "json" ? "JSON" : "文本"}</Badge>
                     </div>
+                    {(entry.narrator || entry.requestKind || entry.provider || entry.model || entry.runId) ? (
+                      <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
+                        {entry.narrator ? <Badge variant="outline">{entry.narrator}</Badge> : null}
+                        {entry.requestKind ? <Badge variant="outline">{entry.requestKind}</Badge> : null}
+                        {entry.provider ? <Badge variant="secondary">{entry.provider}</Badge> : null}
+                        {entry.model ? <Badge variant="outline">{entry.model}</Badge> : null}
+                        {entry.runId ? <Badge variant="outline">{entry.runId}</Badge> : null}
+                        {entry.runId && onOpenRun ? (
+                          <Button type="button" variant="outline" size="xs" onClick={() => onOpenRun(entry.runId!)}>
+                            打开 Pipeline
+                          </Button>
+                        ) : null}
+                      </div>
+                    ) : null}
                     <div className="mt-2 whitespace-pre-wrap break-all text-foreground">{entry.message}</div>
                   </div>
                 ))}

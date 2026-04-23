@@ -125,6 +125,66 @@ describe("ResourcesTab", () => {
     expect(fetchJsonMock).toHaveBeenCalledWith("/api/admin/resources");
   });
 
+  it("renders shared request metadata for the resources snapshot", async () => {
+    fetchJsonMock.mockResolvedValueOnce({
+      stats: {
+        cpu: { usage: 18.2, cores: 8 },
+        memory: { used: 8 * 1024 * 1024 * 1024, total: 16 * 1024 * 1024 * 1024, free: 8 * 1024 * 1024 * 1024, usagePercent: 50 },
+        disk: { used: 32 * 1024 * 1024 * 1024, total: 128 * 1024 * 1024 * 1024, free: 96 * 1024 * 1024 * 1024, usagePercent: 25 },
+        network: { sent: 1024, received: 2048 },
+        sampledAt: "2026-04-20T10:00:00Z",
+      },
+      requestMeta: {
+        narrator: "admin.resources",
+        requestKind: "resource-monitor",
+        cache: { status: "hit", scope: "storage-scan", ageMs: 1200 },
+        details: "storage=3/5;startup=filesystem",
+      },
+      startup: {
+        delivery: {
+          staticMode: "filesystem",
+          indexHtmlReady: true,
+          compileSmokeStatus: "success",
+        },
+        recoveryReport: {
+          startedAt: "2026-04-20T09:59:00Z",
+          finishedAt: "2026-04-20T10:00:00Z",
+          durationMs: 1000,
+          counts: { success: 4, skipped: 1, failed: 0 },
+          actions: [],
+        },
+        failures: [],
+      },
+      storage: {
+        rootPath: "D:/DESKTOP/novelfork",
+        scannedAt: "2026-04-20T10:05:00Z",
+        scanDurationMs: 123,
+        mode: "cached",
+        ageMs: 1200,
+        ttlMs: 30000,
+        summary: {
+          scannedTargets: 3,
+          existingTargets: 3,
+          totalBytes: 5 * 1024 * 1024 * 1024,
+          fileCount: 120,
+          directoryCount: 12,
+          largestTargetId: "packages",
+          largestTargetLabel: "工作台源码",
+          largestTargetBytes: 3 * 1024 * 1024 * 1024,
+        },
+        targets: [],
+      },
+    });
+
+    render(<ResourcesTab />);
+
+    expect(await screen.findByText("共享请求语义")).toBeTruthy();
+    expect(screen.getAllByText(/admin.resources/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText(/resource-monitor/)).toBeTruthy();
+    expect(screen.getByText(/缓存 hit/)).toBeTruthy();
+    expect(screen.getByText(/storage=3\/5;startup=filesystem/)).toBeTruthy();
+  });
+
   it("marks the diagnostic summary as alerting when resources are stale or unhealthy", async () => {
     fetchJsonMock.mockResolvedValueOnce({
       stats: {
