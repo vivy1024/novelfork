@@ -27,6 +27,7 @@ autoresearch/
 _*.md
 playwright-report/
 test-results/
+test/
 # Compiled executables
 *.exe
 dist-bun/*.exe

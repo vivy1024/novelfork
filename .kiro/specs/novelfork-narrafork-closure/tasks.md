@@ -19,7 +19,7 @@
   - 统一 reason / source / trace / governance 口径
   - 验证：定向测试 + typecheck + governance 相关回归
 
-- [ ] 3. 执行 Package 2：Runtime / Delivery Closure（进行中）
+- [x] 3. 执行 Package 2：Runtime / Delivery Closure（已完成）
   - 收口 startup recovery / repair / migration
   - 固化 compile smoke 与正式交付边界
   - 验证：startup/recovery 相关测试 + compile smoke
