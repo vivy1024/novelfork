@@ -432,6 +432,13 @@ export function ResourcesTab() {
                   description={storage?.summary.largestTargetLabel ? `${storage.summary.largestTargetLabel} 当前是最大扫描目标，体积 ${formatBytes(storage.summary.largestTargetBytes)}。` : "等待真实扫描结果返回容量排行。"}
                   badge={<Badge variant={storage?.summary.largestTargetLabel ? "secondary" : "outline"}>{storage?.summary.largestTargetLabel ? "已接入" : "待接入"}</Badge>}
                 />
+                <StatusRow
+                  title="正式交付边界"
+                  description={startup
+                    ? `当前以 ${startup.delivery.staticMode} 作为静态交付路径，compile smoke 命令固定为 pnpm bun:compile；安装器 / 签名 / 自动更新 / 首启 UX 仍在边界外。`
+                    : "当前正式交付边界：pnpm bun:compile + 单文件产物 + embedded/filesystem 静态资源；安装器 / 签名 / 自动更新 / 首启 UX 暂不纳入。"}
+                  badge={<Badge variant="secondary">已明确</Badge>}
+                />
               </div>
 
               <div className="space-y-3">
