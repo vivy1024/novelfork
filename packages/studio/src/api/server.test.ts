@@ -52,6 +52,8 @@ vi.mock("./start-http-server.js", () => ({
 
 vi.mock("./lib/startup-orchestrator.js", () => ({
   runStartupOrchestrator: startupOrchestratorMock,
+  resolveStartupFallbackChapter: vi.fn(async () => 0),
+  buildStartupFailureDecisions: vi.fn(() => []),
 }));
 
 vi.mock("@vivy1024/novelfork-core", () => {
@@ -166,6 +168,16 @@ const projectConfig = {
 
 function cloneProjectConfig() {
   return structuredClone(projectConfig);
+}
+
+function getCapturedFetch(): typeof fetch {
+  const calls = startHttpServerMock.mock.calls as unknown[];
+  const lastCall = calls[calls.length - 1] as [{ fetch?: typeof fetch }] | undefined;
+  const server = lastCall?.[0];
+  if (!server?.fetch) {
+    throw new Error("startHttpServer was not called with a fetch handler");
+  }
+  return server.fetch;
 }
 
 async function createCommittedRepository(repoRoot: string, branch = "main"): Promise<void> {
@@ -816,6 +828,66 @@ describe("createStudioServer daemon lifecycle", () => {
     expect(resyncChapterArtifactsMock).toHaveBeenCalledWith("demo-book", 3);
   });
 
+  it("serves SPA index for app routes and static assets for dotted paths", async () => {
+    const readAssetMock = vi.fn(async (requestPath: string) => {
+      if (requestPath === "/assets/app.js") {
+        return {
+          content: new TextEncoder().encode("console.log('studio');"),
+          contentType: "application/javascript",
+        };
+      }
+      return null;
+    });
+
+    const { startStudioServer } = await import("./server.js");
+
+    await startStudioServer(root, 4567, {
+      staticProvider: {
+        hasIndexHtml: vi.fn(async () => true),
+        readIndexHtml: vi.fn(async () => "<html><body>studio</body></html>"),
+        readAsset: readAssetMock,
+      },
+      staticMode: "embedded",
+    });
+
+    const serverFetch = getCapturedFetch();
+
+    const appRouteResponse = await serverFetch(new Request("http://localhost/workbench/runs/latest"));
+    expect(appRouteResponse.status).toBe(200);
+    await expect(appRouteResponse.text()).resolves.toContain("studio");
+
+    const assetResponse = await serverFetch(new Request("http://localhost/assets/app.js"));
+    expect(assetResponse.status).toBe(200);
+    expect(assetResponse.headers.get("Content-Type")).toBe("application/javascript");
+    await expect(assetResponse.text()).resolves.toContain("console.log");
+    expect(readAssetMock).toHaveBeenCalledWith("/assets/app.js");
+  });
+
+  it("does not fall back to index for api routes or missing dotted assets", async () => {
+    const readIndexHtmlMock = vi.fn(async () => "<html><body>studio</body></html>");
+
+    const { startStudioServer } = await import("./server.js");
+
+    await startStudioServer(root, 4567, {
+      staticProvider: {
+        hasIndexHtml: vi.fn(async () => true),
+        readIndexHtml: readIndexHtmlMock,
+        readAsset: vi.fn(async () => null),
+      },
+      staticMode: "embedded",
+    });
+
+    const serverFetch = getCapturedFetch();
+
+    const apiResponse = await serverFetch(new Request("http://localhost/api/unknown"));
+    expect(apiResponse.status).toBe(404);
+
+    const missingAssetResponse = await serverFetch(new Request("http://localhost/assets/missing.js"));
+    expect(missingAssetResponse.status).toBe(404);
+
+    expect(readIndexHtmlMock).not.toHaveBeenCalled();
+  });
+
   it("runs startup orchestrator with delivery context before starting the http server", async () => {
     const { startStudioServer } = await import("./server.js");
 
@@ -828,26 +900,111 @@ describe("createStudioServer daemon lifecycle", () => {
       staticMode: "embedded",
     });
 
-    expect(startupOrchestratorMock).toHaveBeenCalledWith(
+    expect(startupOrchestratorMock).toHaveBeenCalledTimes(1);
+    const startupOptions = (startupOrchestratorMock.mock.calls as unknown[])[0] as [unknown, {
+      projectBootstrap: { status: string; reason: string };
+      staticDelivery: { mode: string; hasIndexHtml: boolean };
+      compileSmoke: { status: string; reason: string; note?: string };
+    }] | undefined;
+    expect(startupOptions?.[1].projectBootstrap.status).toBe("skipped");
+    expect(startupOptions?.[1].projectBootstrap.reason).toBe("项目配置已存在，无需自动初始化");
+    expect(startupOptions?.[1].staticDelivery.mode).toBe("embedded");
+    expect(startupOptions?.[1].staticDelivery.hasIndexHtml).toBe(true);
+    expect(startupOptions?.[1].compileSmoke.status).toBe("failed");
+    expect(startupOptions?.[1].compileSmoke.reason).toBe("单文件产物缺失");
+    expect(startupOptions?.[1].compileSmoke.note).toContain("dist");
+    expect(startupOptions?.[1].compileSmoke.note).toContain("novelfork");
+    expect(startHttpServerMock).toHaveBeenCalledWith(expect.objectContaining({ port: 4567 }));
+  });
+
+  it("marks compile smoke as success only when the single-file artifact exists", async () => {
+    const artifactPath = join(root, "dist", "novelfork.exe");
+    await mkdir(join(root, "dist"), { recursive: true });
+    await writeFile(artifactPath, "binary", "utf-8");
+
+    const { startStudioServer } = await import("./server.js");
+
+    await startStudioServer(root, 4567, {
+      staticProvider: {
+        hasIndexHtml: vi.fn(async () => true),
+        readIndexHtml: vi.fn(async () => "<html></html>"),
+        readAsset: vi.fn(async () => null),
+      },
+      staticMode: "embedded",
+    });
+
+    expect(startupOrchestratorMock).toHaveBeenLastCalledWith(
+      expect.anything(),
       expect.objectContaining({
-        listBooks: expect.any(Function),
-        ensureRuntimeState: expect.any(Function),
-      }),
-      expect.objectContaining({
-        projectBootstrap: expect.objectContaining({
-          status: "skipped",
-          reason: "项目配置已存在，无需自动初始化",
-        }),
-        staticDelivery: expect.objectContaining({
-          mode: "embedded",
-          hasIndexHtml: true,
-        }),
         compileSmoke: expect.objectContaining({
           status: "success",
-          reason: "静态资源入口可用",
+          reason: "单文件产物与静态入口均可用",
+          note: expect.stringContaining("novelfork.exe"),
         }),
       }),
     );
-    expect(startHttpServerMock).toHaveBeenCalledWith(expect.objectContaining({ port: 4567 }));
+  });
+
+  it("reruns startup recovery from the admin route and refreshes the cached summary", async () => {
+    const staleSummary = {
+      bookCount: 0,
+      migratedBooks: 0,
+      indexedDocuments: 0,
+      skippedBooks: 0,
+      failures: [{ phase: "search-index", message: "stale failure" }],
+      delivery: {
+        staticMode: "embedded",
+        indexHtmlReady: true,
+        compileSmokeStatus: "success",
+      },
+      recoveryReport: {
+        startedAt: "2026-04-20T10:00:00.000Z",
+        finishedAt: "2026-04-20T10:00:01.000Z",
+        durationMs: 1000,
+        actions: [],
+        counts: { success: 1, skipped: 0, failed: 1 },
+      },
+    };
+    const refreshedSummary = {
+      ...staleSummary,
+      indexedDocuments: 5,
+      failures: [],
+      recoveryReport: {
+        startedAt: "2026-04-20T10:05:00.000Z",
+        finishedAt: "2026-04-20T10:05:01.000Z",
+        durationMs: 1000,
+        actions: [],
+        counts: { success: 4, skipped: 0, failed: 0 },
+      },
+    };
+
+    const { createStudioServer } = await import("./server.js");
+    const { app, ctx } = createStudioServer(cloneProjectConfig() as never, root);
+    const startupRecoveryRunner = vi.fn(async () => refreshedSummary);
+
+    ctx.setStartupSummary(staleSummary as never);
+    ctx.setStartupRecoveryRunner(startupRecoveryRunner as never);
+
+    const beforeResponse = await app.request("http://localhost/api/admin/resources");
+    expect(beforeResponse.status).toBe(200);
+    const beforePayload = await beforeResponse.json();
+    expect(beforePayload.startup.recoveryReport.startedAt).toBe("2026-04-20T10:00:00.000Z");
+    expect(beforePayload.startup.recoveryReport.counts.failed).toBe(1);
+
+    const rerunResponse = await app.request("http://localhost/api/admin/resources/recovery", {
+      method: "POST",
+    });
+    expect(rerunResponse.status).toBe(200);
+    const rerunPayload = await rerunResponse.json();
+    expect(startupRecoveryRunner).toHaveBeenCalledTimes(1);
+    expect(rerunPayload.recoveryTriggered).toBe(true);
+    expect(rerunPayload.startup.recoveryReport.startedAt).toBe("2026-04-20T10:05:00.000Z");
+    expect(rerunPayload.startup.recoveryReport.counts.failed).toBe(0);
+
+    const afterResponse = await app.request("http://localhost/api/admin/resources");
+    expect(afterResponse.status).toBe(200);
+    const afterPayload = await afterResponse.json();
+    expect(afterPayload.startup.recoveryReport.startedAt).toBe("2026-04-20T10:05:00.000Z");
+    expect(afterPayload.startup.indexedDocuments).toBe(5);
   });
 });

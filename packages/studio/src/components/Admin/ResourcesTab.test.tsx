@@ -109,6 +109,9 @@ describe("ResourcesTab", () => {
     expect(screen.getByText("启动恢复报告")).toBeTruthy();
     expect(screen.getByText("正式交付边界")).toBeTruthy();
     expect(screen.getByText(/pnpm bun:compile/)).toBeTruthy();
+    expect(screen.getByText(/产物 dist\/novelfork/)).toBeTruthy();
+    expect(screen.getByText(/单文件交付未就绪/)).toBeTruthy();
+    expect(screen.getByText(/embedded 资源未就绪/)).toBeTruthy();
     expect(screen.getByText(/安装器 \/ 签名 \/ 自动更新 \/ 首启 UX 仍在边界外/)).toBeTruthy();
     expect(screen.getAllByText("已接入").length).toBeGreaterThanOrEqual(2);
 
@@ -415,6 +418,78 @@ describe("ResourcesTab", () => {
 
     await waitFor(() => {
       expect(fetchJsonMock).toHaveBeenNthCalledWith(2, "/api/admin/resources/recovery", { method: "POST" });
+    });
+
+    expect(await screen.findByText(/success 3/)).toBeTruthy();
+  });
+
+  it("renders startup repair decisions and executes the recommended runtime-state repair action", async () => {
+    fetchJsonMock
+      .mockResolvedValueOnce({
+        stats: {
+          cpu: { usage: 10, cores: 4 },
+          memory: { used: 4 * 1024 * 1024 * 1024, total: 8 * 1024 * 1024 * 1024, free: 4 * 1024 * 1024 * 1024, usagePercent: 50 },
+          disk: { used: 0, total: 0, free: 0, usagePercent: 0 },
+          network: { sent: 0, received: 0 },
+          sampledAt: "2026-04-20T10:00:00Z",
+        },
+        startup: {
+          delivery: { staticMode: "missing", indexHtmlReady: false, compileSmokeStatus: "failed" },
+          recoveryReport: { startedAt: "2026-04-20T09:59:00Z", finishedAt: "2026-04-20T10:00:00Z", durationMs: 1000, counts: { success: 0, skipped: 0, failed: 2 }, actions: [] },
+          failures: [{ bookId: "demo-book", phase: "migration", message: "runtime repair failed" }],
+          decisions: [
+            {
+              id: "migration:demo-book:0",
+              phase: "migration",
+              severity: "error",
+              title: "demo-book 运行态修复失败",
+              description: "当前 runtime state 补建失败，先对该书重新执行 repair，再回放启动恢复结果。",
+              action: {
+                kind: "repair-runtime-state",
+                label: "修复该书运行态",
+                endpoint: "/api/admin/resources/recovery/runtime-state",
+                method: "POST",
+                payload: { bookId: "demo-book" },
+              },
+            },
+          ],
+        },
+        storage: {
+          rootPath: "D:/DESKTOP/novelfork",
+          scannedAt: "2026-04-20T10:05:00Z",
+          scanDurationMs: 80,
+          mode: "cached",
+          ageMs: 1200,
+          ttlMs: 30000,
+          summary: { scannedTargets: 1, existingTargets: 1, totalBytes: 1024, fileCount: 2, directoryCount: 1, largestTargetId: "books", largestTargetLabel: "书籍目录", largestTargetBytes: 1024 },
+          targets: [],
+        },
+      })
+      .mockResolvedValueOnce({
+        stats: null,
+        startup: {
+          delivery: { staticMode: "filesystem", indexHtmlReady: true, compileSmokeStatus: "success" },
+          recoveryReport: { startedAt: "2026-04-20T10:10:00Z", finishedAt: "2026-04-20T10:10:01Z", durationMs: 1000, counts: { success: 3, skipped: 0, failed: 0 }, actions: [] },
+          failures: [],
+          decisions: [],
+        },
+        storage: null,
+        repairTriggered: true,
+      });
+
+    render(<ResourcesTab />);
+
+    expect(await screen.findByText("demo-book 运行态修复失败")).toBeTruthy();
+    expect(screen.getByText(/先对该书重新执行 repair/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "修复该书运行态" }));
+
+    await waitFor(() => {
+      expect(fetchJsonMock).toHaveBeenNthCalledWith(2, "/api/admin/resources/recovery/runtime-state", {
+        method: "POST",
+        body: JSON.stringify({ bookId: "demo-book" }),
+        headers: { "Content-Type": "application/json" },
+      });
     });
 
     expect(await screen.findByText(/success 3/)).toBeTruthy();

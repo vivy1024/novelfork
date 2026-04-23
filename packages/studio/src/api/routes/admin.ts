@@ -13,6 +13,7 @@ import { promisify } from "node:util";
 import { WebSocketServer } from "ws";
 
 import { providerManager } from "../lib/provider-manager.js";
+import { buildStartupFailureDecisions, type StartupFailureDecision } from "../lib/startup-orchestrator.js";
 
 const statfs = promisify(statfsCallback);
 const MAX_REQUEST_LOGS = 1000;
@@ -124,6 +125,11 @@ interface StartupSummarySnapshot {
     staticMode: "embedded" | "filesystem" | "missing";
     indexHtmlReady: boolean;
     compileSmokeStatus: "success" | "skipped" | "failed" | "unknown";
+    compileCommand?: string;
+    expectedArtifactPath?: string;
+    embeddedAssetsReady?: boolean;
+    singleFileReady?: boolean;
+    excludedDeliveryScopes?: readonly string[];
   };
   recoveryReport: {
     startedAt: string;
@@ -141,6 +147,7 @@ interface StartupSummarySnapshot {
     phase: "project-bootstrap" | "migration" | "search-index" | "static-delivery" | "compile-smoke";
     message: string;
   }[];
+  decisions?: readonly StartupFailureDecision[];
 }
 
 interface AdminLogMeta {
@@ -254,6 +261,29 @@ function resolveRequestKind(endpoint: string): string {
 function resolveNarrator(endpoint: string): string {
   const segment = endpoint.split("/").filter(Boolean)[0] ?? "root";
   return `admin.${segment}`;
+}
+
+function normalizeStartupSummary(startup: StartupSummarySnapshot | null): StartupSummarySnapshot | null {
+  if (!startup) {
+    return null;
+  }
+
+  const delivery = {
+    ...startup.delivery,
+    compileCommand: startup.delivery.compileCommand ?? "pnpm bun:compile",
+    expectedArtifactPath: startup.delivery.expectedArtifactPath ?? "dist/novelfork",
+    embeddedAssetsReady: startup.delivery.embeddedAssetsReady ?? (startup.delivery.staticMode === "embedded" && startup.delivery.indexHtmlReady),
+    singleFileReady: startup.delivery.singleFileReady
+      ?? ((startup.delivery.embeddedAssetsReady ?? (startup.delivery.staticMode === "embedded" && startup.delivery.indexHtmlReady))
+        && startup.delivery.compileSmokeStatus === "success"),
+    excludedDeliveryScopes: startup.delivery.excludedDeliveryScopes ?? ["installer", "signing", "auto-update", "first-launch UX"],
+  };
+
+  return {
+    ...startup,
+    delivery,
+    decisions: startup.decisions ?? buildStartupFailureDecisions({ ...startup, delivery }),
+  };
 }
 
 // --- 资源监控 ---
@@ -555,6 +585,8 @@ export function createAdminRouter(
   options?: {
     getStartupSummary?: () => StartupSummarySnapshot | null;
     rerunStartupRecovery?: () => Promise<StartupSummarySnapshot | null>;
+    repairRuntimeState?: (bookId: string) => Promise<StartupSummarySnapshot | null>;
+    rebuildSearchIndex?: () => Promise<StartupSummarySnapshot | null>;
   },
 ) {
   const app = new Hono<{ Variables: { adminLogMeta?: AdminLogMeta } }>();
@@ -669,7 +701,7 @@ export function createAdminRouter(
   app.get("/resources", async (c) => {
     const forceRefresh = c.req.query("refresh") === "1";
     const [stats, storage] = await Promise.all([getResourceStats(root), getStorageSnapshot(forceRefresh, root)]);
-    const startup = options?.getStartupSummary?.() ?? null;
+    const startup = normalizeStartupSummary(options?.getStartupSummary?.() ?? null);
 
     c.set("adminLogMeta", {
       narrator: "admin.resources",
@@ -690,7 +722,7 @@ export function createAdminRouter(
       return c.json({ error: "Startup recovery runner unavailable" }, 503);
     }
 
-    const startup = await options.rerunStartupRecovery();
+    const startup = normalizeStartupSummary(await options.rerunStartupRecovery());
     if (!startup) {
       return c.json({ error: "Startup recovery runner unavailable" }, 503);
     }
@@ -709,6 +741,64 @@ export function createAdminRouter(
     });
 
     return c.json({ stats, storage, startup, recoveryTriggered: true });
+  });
+
+  app.post("/resources/recovery/runtime-state", async (c) => {
+    if (!options?.repairRuntimeState) {
+      return c.json({ error: "Runtime-state repair unavailable" }, 503);
+    }
+
+    const body = await c.req.json<{ bookId?: string }>();
+    const bookId = body.bookId?.trim();
+    if (!bookId) {
+      return c.json({ error: "bookId is required" }, 400);
+    }
+
+    const startup = normalizeStartupSummary(await options.repairRuntimeState(bookId));
+    if (!startup) {
+      return c.json({ error: "Runtime-state repair unavailable" }, 503);
+    }
+
+    const [stats, storage] = await Promise.all([getResourceStats(root), getStorageSnapshot(true, root)]);
+
+    c.set("adminLogMeta", {
+      narrator: "admin.resources",
+      requestKind: "resource-monitor",
+      cache: {
+        status: "bypass",
+        scope: "runtime-state-repair",
+        ageMs: 0,
+      },
+      details: `repair=runtime-state;book=${bookId};failed=${startup.recoveryReport.counts.failed}`,
+    });
+
+    return c.json({ stats, storage, startup, repairTriggered: true });
+  });
+
+  app.post("/resources/recovery/search-index", async (c) => {
+    if (!options?.rebuildSearchIndex) {
+      return c.json({ error: "Search-index rebuild unavailable" }, 503);
+    }
+
+    const startup = normalizeStartupSummary(await options.rebuildSearchIndex());
+    if (!startup) {
+      return c.json({ error: "Search-index rebuild unavailable" }, 503);
+    }
+
+    const [stats, storage] = await Promise.all([getResourceStats(root), getStorageSnapshot(true, root)]);
+
+    c.set("adminLogMeta", {
+      narrator: "admin.resources",
+      requestKind: "resource-monitor",
+      cache: {
+        status: "bypass",
+        scope: "search-index-rebuild",
+        ageMs: 0,
+      },
+      details: `repair=search-index;failed=${startup.recoveryReport.counts.failed}`,
+    });
+
+    return c.json({ stats, storage, startup, searchIndexTriggered: true });
   });
 
   // ===== 请求历史 =====
