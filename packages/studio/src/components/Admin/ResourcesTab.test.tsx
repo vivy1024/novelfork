@@ -368,4 +368,54 @@ describe("ResourcesTab", () => {
     expect(await screen.findByText("当前展示最新重扫结果")).toBeTruthy();
     expect(screen.getAllByText("2.00 KB").length).toBeGreaterThanOrEqual(1);
   });
+
+  it("triggers startup recovery rerun when clicking the recovery button", async () => {
+    fetchJsonMock
+      .mockResolvedValueOnce({
+        stats: {
+          cpu: { usage: 10, cores: 4 },
+          memory: { used: 4 * 1024 * 1024 * 1024, total: 8 * 1024 * 1024 * 1024, free: 4 * 1024 * 1024 * 1024, usagePercent: 50 },
+          disk: { used: 0, total: 0, free: 0, usagePercent: 0 },
+          network: { sent: 0, received: 0 },
+          sampledAt: "2026-04-20T10:00:00Z",
+        },
+        startup: {
+          delivery: { staticMode: "missing", indexHtmlReady: false, compileSmokeStatus: "failed" },
+          recoveryReport: { startedAt: "2026-04-20T09:59:00Z", finishedAt: "2026-04-20T10:00:00Z", durationMs: 1000, counts: { success: 0, skipped: 0, failed: 2 }, actions: [] },
+          failures: [{ phase: "compile-smoke", message: "index missing" }],
+        },
+        storage: {
+          rootPath: "D:/DESKTOP/novelfork",
+          scannedAt: "2026-04-20T10:05:00Z",
+          scanDurationMs: 80,
+          mode: "cached",
+          ageMs: 1200,
+          ttlMs: 30000,
+          summary: { scannedTargets: 1, existingTargets: 1, totalBytes: 1024, fileCount: 2, directoryCount: 1, largestTargetId: "books", largestTargetLabel: "书籍目录", largestTargetBytes: 1024 },
+          targets: [],
+        },
+      })
+      .mockResolvedValueOnce({
+        stats: null,
+        startup: {
+          delivery: { staticMode: "filesystem", indexHtmlReady: true, compileSmokeStatus: "success" },
+          recoveryReport: { startedAt: "2026-04-20T10:10:00Z", finishedAt: "2026-04-20T10:10:01Z", durationMs: 1000, counts: { success: 3, skipped: 0, failed: 0 }, actions: [] },
+          failures: [],
+        },
+        storage: null,
+        recoveryTriggered: true,
+      });
+
+    render(<ResourcesTab />);
+
+    await screen.findByRole("heading", { name: "资源 / 存储面板" });
+
+    fireEvent.click(screen.getByRole("button", { name: "重新执行恢复" }));
+
+    await waitFor(() => {
+      expect(fetchJsonMock).toHaveBeenNthCalledWith(2, "/api/admin/resources/recovery", { method: "POST" });
+    });
+
+    expect(await screen.findByText(/success 3/)).toBeTruthy();
+  });
 });

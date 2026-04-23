@@ -129,18 +129,18 @@ interface StartupSummarySnapshot {
     startedAt: string;
     finishedAt: string;
     durationMs: number;
-    actions: StartupActionSummary[];
+    actions: readonly StartupActionSummary[];
     counts: {
       success: number;
       skipped: number;
       failed: number;
     };
   };
-  failures: Array<{
+  failures: readonly {
     bookId?: string;
     phase: "project-bootstrap" | "migration" | "search-index" | "static-delivery" | "compile-smoke";
     message: string;
-  }>;
+  }[];
 }
 
 interface AdminLogMeta {
@@ -550,7 +550,13 @@ export function resetAdminState() {
 
 // --- Router ---
 
-export function createAdminRouter(root?: string, options?: { getStartupSummary?: () => StartupSummarySnapshot | null }) {
+export function createAdminRouter(
+  root?: string,
+  options?: {
+    getStartupSummary?: () => StartupSummarySnapshot | null;
+    rerunStartupRecovery?: () => Promise<StartupSummarySnapshot | null>;
+  },
+) {
   const app = new Hono<{ Variables: { adminLogMeta?: AdminLogMeta } }>();
 
   app.use("*", async (c, next) => {
@@ -677,6 +683,32 @@ export function createAdminRouter(root?: string, options?: { getStartupSummary?:
     });
 
     return c.json({ stats, storage, startup });
+  });
+
+  app.post("/resources/recovery", async (c) => {
+    if (!options?.rerunStartupRecovery) {
+      return c.json({ error: "Startup recovery runner unavailable" }, 503);
+    }
+
+    const startup = await options.rerunStartupRecovery();
+    if (!startup) {
+      return c.json({ error: "Startup recovery runner unavailable" }, 503);
+    }
+
+    const [stats, storage] = await Promise.all([getResourceStats(root), getStorageSnapshot(true, root)]);
+
+    c.set("adminLogMeta", {
+      narrator: "admin.resources",
+      requestKind: "resource-monitor",
+      cache: {
+        status: "bypass",
+        scope: "startup-recovery",
+        ageMs: 0,
+      },
+      details: `recovery=manual;startup=${startup.delivery.staticMode};failed=${startup.recoveryReport.counts.failed}`,
+    });
+
+    return c.json({ stats, storage, startup, recoveryTriggered: true });
   });
 
   // ===== 请求历史 =====

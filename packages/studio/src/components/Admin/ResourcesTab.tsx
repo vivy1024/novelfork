@@ -81,7 +81,7 @@ interface StartupSummarySnapshot {
     startedAt: string;
     finishedAt: string;
     durationMs: number;
-    actions: StartupActionSummary[];
+    actions: readonly StartupActionSummary[];
     counts: {
       success: number;
       skipped: number;
@@ -105,7 +105,7 @@ export function ResourcesTab() {
   const [data, setData] = useState<ResourcesResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [pendingAction, setPendingAction] = useState<"runtime" | "storage" | null>(null);
+  const [pendingAction, setPendingAction] = useState<"runtime" | "storage" | "recovery" | null>(null);
 
   useEffect(() => {
     void loadResources();
@@ -122,6 +122,22 @@ export function ResourcesTab() {
     } catch (loadError) {
       setData(null);
       setError(loadError instanceof Error ? loadError.message : "加载运行资源快照失败");
+    } finally {
+      setLoading(false);
+      setPendingAction(null);
+    }
+  };
+
+  const rerunStartupRecovery = async () => {
+    setLoading(true);
+    setError(null);
+    setPendingAction("recovery");
+
+    try {
+      const data = await fetchJson<ResourcesResponse & { recoveryTriggered?: boolean }>("/api/admin/resources/recovery", { method: "POST" });
+      setData(data);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "启动恢复执行失败");
     } finally {
       setLoading(false);
       setPendingAction(null);
@@ -176,13 +192,18 @@ export function ResourcesTab() {
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => void loadResources()} disabled={loading && pendingAction === "runtime"}>
             <RefreshCw className="size-4" />
-            {loading && pendingAction === "runtime" ? "刷新中…" : "刷新运行快照"}
+            {loading && pendingAction === "runtime" ? "加载中…" : "刷新运行快照"}
+          </Button>
+          <Button variant="outline" onClick={() => void rerunStartupRecovery()} disabled={loading && pendingAction === "recovery"}>
+            <Server className="size-4" />
+            {loading && pendingAction === "recovery" ? "恢复中…" : "重新执行恢复"}
           </Button>
           <Button onClick={() => void loadResources({ forceRefresh: true })} disabled={loading && pendingAction === "storage"}>
             <Search className="size-4" />
             {loading && pendingAction === "storage" ? "重扫中…" : "重扫存储"}
           </Button>
         </div>
+
       </div>
 
       <section className="space-y-4" aria-labelledby="runtime-resources-heading">
