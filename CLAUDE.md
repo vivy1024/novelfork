@@ -18,7 +18,7 @@
 | `packages/cli/` | CLI 工具（novelfork 命令） | — |
 | `packages/studio/` | Web 工作台（React 19 + Hono + Vite） | — |
 | `packages/core/` | 核心写作引擎 + Agent 管线 | — |
-| `packages/desktop/` | 桌面端（Tauri 2，骨架阶段） | — |
+
 
 ---
 
@@ -106,6 +106,7 @@ Git 检查 → git status --short
 2. 简单运维不强制走完整 TDD/brainstorm 流程
 3. 每次改动不强制开 worktree
 4. skills 触发的洞察写入 `remember`，形成跨会话积累
+5. 以后复杂任务默认采用 Kiro spec 工作流：先写 `.kiro/specs/<feature>/requirements.md` 与 `design.md`，再生成 `tasks.md`，不再使用旧的自由 implementation plan 工作流
 
 ---
 
