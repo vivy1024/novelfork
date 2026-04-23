@@ -110,6 +110,39 @@ interface RequestSummary {
   topNarrators: RequestSummaryBucket[];
 }
 
+interface StartupActionSummary {
+  kind: string;
+  scope: "book" | "library";
+  status: "success" | "skipped" | "failed";
+  reason: string;
+  note?: string;
+  bookId?: string;
+}
+
+interface StartupSummarySnapshot {
+  delivery: {
+    staticMode: "embedded" | "filesystem" | "missing";
+    indexHtmlReady: boolean;
+    compileSmokeStatus: "success" | "skipped" | "failed" | "unknown";
+  };
+  recoveryReport: {
+    startedAt: string;
+    finishedAt: string;
+    durationMs: number;
+    actions: StartupActionSummary[];
+    counts: {
+      success: number;
+      skipped: number;
+      failed: number;
+    };
+  };
+  failures: Array<{
+    bookId?: string;
+    phase: "project-bootstrap" | "migration" | "search-index" | "static-delivery" | "compile-smoke";
+    message: string;
+  }>;
+}
+
 interface AdminLogMeta {
   requestKind?: string;
   narrator?: string;
@@ -517,7 +550,7 @@ export function resetAdminState() {
 
 // --- Router ---
 
-export function createAdminRouter(root?: string) {
+export function createAdminRouter(root?: string, options?: { getStartupSummary?: () => StartupSummarySnapshot | null }) {
   const app = new Hono<{ Variables: { adminLogMeta?: AdminLogMeta } }>();
 
   app.use("*", async (c, next) => {
@@ -630,6 +663,7 @@ export function createAdminRouter(root?: string) {
   app.get("/resources", async (c) => {
     const forceRefresh = c.req.query("refresh") === "1";
     const [stats, storage] = await Promise.all([getResourceStats(root), getStorageSnapshot(forceRefresh, root)]);
+    const startup = options?.getStartupSummary?.() ?? null;
 
     c.set("adminLogMeta", {
       narrator: "admin.resources",
@@ -639,10 +673,10 @@ export function createAdminRouter(root?: string) {
         scope: "storage-scan",
         ageMs: storage.ageMs,
       },
-      details: `storage=${storage.summary.existingTargets}/${storage.summary.scannedTargets}`,
+      details: `storage=${storage.summary.existingTargets}/${storage.summary.scannedTargets};startup=${startup ? startup.delivery.staticMode : "missing"}`,
     });
 
-    return c.json({ stats, storage });
+    return c.json({ stats, storage, startup });
   });
 
   // ===== 请求历史 =====

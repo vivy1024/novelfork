@@ -27,6 +27,21 @@ describe("ResourcesTab", () => {
         network: { sent: 1024, received: 2048 },
         sampledAt: "2026-04-20T10:00:00Z",
       },
+      startup: {
+        delivery: {
+          staticMode: "filesystem",
+          indexHtmlReady: true,
+          compileSmokeStatus: "success",
+        },
+        recoveryReport: {
+          startedAt: "2026-04-20T09:59:00Z",
+          finishedAt: "2026-04-20T10:00:00Z",
+          durationMs: 1000,
+          counts: { success: 4, skipped: 1, failed: 0 },
+          actions: [],
+        },
+        failures: [],
+      },
       storage: {
         rootPath: "D:/DESKTOP/novelfork",
         scannedAt: "2026-04-20T10:05:00Z",
@@ -91,6 +106,10 @@ describe("ResourcesTab", () => {
     expect(screen.getByRole("heading", { name: "运行资源" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "存储扫描" })).toBeTruthy();
     expect(screen.getByText("接入状态")).toBeTruthy();
+    expect(screen.getByText("启动恢复报告")).toBeTruthy();
+    expect(screen.getByText(/compile smoke success/)).toBeTruthy();
+    expect(screen.getByText(/success 4/)).toBeTruthy();
+    expect(screen.getByText(/failed 0/)).toBeTruthy();
     expect(screen.getAllByText("已接入").length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText("18.2%")).toBeTruthy();
     expect(screen.getByText("8 核心")).toBeTruthy();
@@ -110,6 +129,21 @@ describe("ResourcesTab", () => {
         disk: { used: 118 * 1024 * 1024 * 1024, total: 128 * 1024 * 1024 * 1024, free: 10 * 1024 * 1024 * 1024, usagePercent: 92.2 },
         network: { sent: 4096, received: 1024 },
         sampledAt: "2026-04-20T10:10:00Z",
+      },
+      startup: {
+        delivery: {
+          staticMode: "missing",
+          indexHtmlReady: false,
+          compileSmokeStatus: "failed",
+        },
+        recoveryReport: {
+          startedAt: "2026-04-20T09:59:00Z",
+          finishedAt: "2026-04-20T10:00:00Z",
+          durationMs: 1000,
+          counts: { success: 1, skipped: 1, failed: 2 },
+          actions: [],
+        },
+        failures: [{ phase: "compile-smoke", message: "index missing" }],
       },
       storage: {
         rootPath: "D:/DESKTOP/novelfork",
@@ -163,6 +197,7 @@ describe("ResourcesTab", () => {
     expect(await screen.findByText("接入状态")).toBeTruthy();
     expect(screen.getByText("当前展示缓存快照")).toBeTruthy();
     expect(screen.getByText("扫描失败")).toBeTruthy();
+    expect(screen.getByText(/当前已有 1 条启动失败记录/)).toBeTruthy();
     expect(screen.getByText(/默认 30 秒内读缓存/)).toBeTruthy();
     expect(screen.getAllByText("异常").length).toBeGreaterThanOrEqual(1);
   });
