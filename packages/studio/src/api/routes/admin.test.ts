@@ -56,6 +56,40 @@ describe("createAdminRouter", () => {
     expect(refreshedPayload.storage.scanDurationMs).toBeGreaterThan(0);
   });
 
+  it("returns startup recovery summary alongside resources when provider is available", async () => {
+    const app = createAdminRouter(root, {
+      getStartupSummary: () => ({
+        delivery: {
+          staticMode: "filesystem",
+          indexHtmlReady: true,
+          compileSmokeStatus: "success",
+        },
+        recoveryReport: {
+          startedAt: "2026-04-20T09:59:00Z",
+          finishedAt: "2026-04-20T10:00:00Z",
+          durationMs: 1000,
+          counts: { success: 4, skipped: 1, failed: 0 },
+          actions: [],
+        },
+        failures: [],
+      }),
+    });
+
+    const response = await app.request("http://localhost/resources");
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+
+    expect(payload.startup).toMatchObject({
+      delivery: expect.objectContaining({
+        staticMode: "filesystem",
+        compileSmokeStatus: "success",
+      }),
+      recoveryReport: expect.objectContaining({
+        counts: expect.objectContaining({ success: 4, failed: 0 }),
+      }),
+    });
+  });
+
   it("records admin request history with cache metadata and narrator buckets", async () => {
     const app = createAdminRouter(root);
 
