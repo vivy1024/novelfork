@@ -100,6 +100,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
   const mode = getNovelForkMode();
   let cachedConfig = initialConfig;
   let startupSummary: StartupOrchestratorSummary | null = null;
+  let startupRecoveryRunner: (() => Promise<StartupOrchestratorSummary>) | null = null;
 
   app.use("/*", cors());
 
@@ -209,6 +210,9 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     setStartupSummary: (summary) => {
       startupSummary = summary;
     },
+    setStartupRecoveryRunner: (runner) => {
+      startupRecoveryRunner = runner;
+    },
   };
 
   // --- Route mounting by mode ---
@@ -282,7 +286,17 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     app.route("", createContextManagerRouter(ctx));
 
     // Admin panel
-    app.route("/api/admin", createAdminRouter(root));
+    app.route("/api/admin", createAdminRouter(root, {
+      getStartupSummary: ctx.getStartupSummary,
+      rerunStartupRecovery: async () => {
+        if (!startupRecoveryRunner) {
+          return null;
+        }
+        const summary = await startupRecoveryRunner();
+        ctx.setStartupSummary(summary);
+        return summary;
+      },
+    }));
 
     // Routines system
     app.route("/api/routines", createRoutinesRouter());

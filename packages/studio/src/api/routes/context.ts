@@ -42,4 +42,5 @@ export interface RouterContext {
   /** Startup recovery / delivery summary exposed to admin surfaces */
   readonly getStartupSummary: () => StartupOrchestratorSummary | null;
   readonly setStartupSummary: (summary: StartupOrchestratorSummary) => void;
+  readonly setStartupRecoveryRunner: (runner: (() => Promise<StartupOrchestratorSummary>) | null) => void;
 }
