@@ -3,7 +3,7 @@
  * 用户管理、API 供应商管理、资源监控、请求历史
  */
 
-import { Activity, Box, FileText, LayoutDashboard, Logs, Server, Terminal, Users, Workflow } from "lucide-react";
+import { Activity, Box, FileText, LayoutDashboard, Logs, MessagesSquare, Server, Terminal, Users, Workflow } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,6 +16,7 @@ import { LogsTab } from "./LogsTab";
 import { ProvidersTab } from "./ProvidersTab";
 import { RequestsTab } from "./RequestsTab";
 import { ResourcesTab } from "./ResourcesTab";
+import { SessionsTab } from "./SessionsTab";
 import { TerminalTab } from "./TerminalTab";
 import { UsersTab } from "./UsersTab";
 
@@ -90,6 +91,13 @@ export function Admin({ onBack, section, onNavigateSection, onOpenRun }: AdminPr
               description="请求追踪、成本与性能统计。"
               active={activeSection === "requests"}
               onClick={() => onNavigateSection?.("requests")}
+            />
+            <AdminEntryCard
+              icon={MessagesSquare}
+              title="会话窗口"
+              description="打开的工作台窗口运行态 · 连接与恢复快看。"
+              active={activeSection === "sessions"}
+              onClick={() => onNavigateSection?.("sessions")}
             />
           </div>
         </div>
@@ -172,6 +180,7 @@ export function Admin({ onBack, section, onNavigateSection, onOpenRun }: AdminPr
           onOpenRun={onOpenRun}
         />
       )}
+      {activeSection === "sessions" && <SessionsTab />}
       {activeSection === "daemon" && <DaemonTab />}
       {activeSection === "logs" && (
         <LogsTab

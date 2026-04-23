@@ -25,6 +25,7 @@ export type AdminSection =
   | "providers"
   | "resources"
   | "requests"
+  | "sessions"
   | "daemon"
   | "logs"
   | "worktrees"
@@ -94,6 +95,7 @@ const ADMIN_SECTIONS = new Set<AdminSection>([
   "providers",
   "resources",
   "requests",
+  "sessions",
   "daemon",
   "logs",
   "worktrees",
