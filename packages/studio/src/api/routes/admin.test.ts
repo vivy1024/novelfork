@@ -100,6 +100,35 @@ describe("createAdminRouter", () => {
     });
   });
 
+  it("supports run-level drill-down filters across request and log endpoints", async () => {
+    const app = createAdminRouter(root);
+
+    await app.request("http://localhost/resources");
+    await app.request("http://localhost/requests");
+
+    const requestsResponse = await app.request("http://localhost/requests?runId=run-2");
+    expect(requestsResponse.status).toBe(200);
+    const requestsPayload = await requestsResponse.json();
+    expect(requestsPayload).toMatchObject({
+      filters: expect.objectContaining({ runId: "run-2" }),
+      requestMeta: expect.objectContaining({
+        narrator: "admin.requests",
+        requestKind: "request-audit",
+      }),
+    });
+
+    const logsResponse = await app.request("http://localhost/logs?limit=50&runId=run-2");
+    expect(logsResponse.status).toBe(200);
+    const logsPayload = await logsResponse.json();
+    expect(logsPayload).toMatchObject({
+      filters: expect.objectContaining({ runId: "run-2" }),
+      requestMeta: expect.objectContaining({
+        narrator: "admin.logs",
+        requestKind: "runtime-log",
+      }),
+    });
+  });
+
   it("fills missing delivery boundary fields when startup summaries come from older providers", async () => {
     const app = createAdminRouter(root, {
       getStartupSummary: () => ({

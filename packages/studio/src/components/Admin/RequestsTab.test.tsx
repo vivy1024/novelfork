@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 
 const fetchJsonMock = vi.fn();
 
@@ -22,7 +22,11 @@ class MockEventSource {
   }
 }
 
-vi.stubGlobal("EventSource", MockEventSource as unknown as typeof EventSource);
+Object.defineProperty(globalThis, "EventSource", {
+  writable: true,
+  configurable: true,
+  value: MockEventSource as unknown as typeof EventSource,
+});
 vi.mock("../../hooks/use-api", () => ({
   fetchJson: (...args: unknown[]) => fetchJsonMock(...args),
 }));
@@ -79,7 +83,10 @@ describe("RequestsTab", () => {
       logs: [],
     });
 
-    render(<RequestsTab />);
+    const onInspectRun = vi.fn();
+    const onNavigateSection = vi.fn();
+
+    render(<RequestsTab onInspectRun={onInspectRun} onNavigateSection={onNavigateSection} />);
 
     expect(await screen.findByText("总请求数")).toBeTruthy();
     expect(MockEventSource.instances[0]?.url).toBe("/api/runs/events");
@@ -128,5 +135,11 @@ describe("RequestsTab", () => {
     expect(screen.getAllByText("Tool Read").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText(/run-1/)).toBeTruthy();
     expect(screen.getByText(/audit failed/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "定位运行 run-1" }));
+    expect(onInspectRun).toHaveBeenCalledWith("run-1");
+
+    fireEvent.click(screen.getByRole("button", { name: "查看日志 run-2" }));
+    expect(onNavigateSection).toHaveBeenCalledWith("logs", { runId: "run-2" });
   });
 });

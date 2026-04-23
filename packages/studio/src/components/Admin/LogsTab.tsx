@@ -27,6 +27,13 @@ interface AdminLogsSnapshot {
   totalEntries: number;
   refreshHintMs: number;
   entries: AdminLogEntry[];
+  filters?: { runId?: string | null };
+}
+
+interface LogsTabProps {
+  runId?: string;
+  onInspectRun?: (runId: string) => void;
+  onNavigateSection?: (section: "requests" | "logs" | "resources", options?: { runId?: string }) => void;
 }
 
 const LEVEL_CLASSNAMES: Record<string, string> = {
@@ -36,7 +43,7 @@ const LEVEL_CLASSNAMES: Record<string, string> = {
   debug: "text-muted-foreground/70",
 };
 
-export function LogsTab() {
+export function LogsTab({ runId, onInspectRun, onNavigateSection }: LogsTabProps = {}) {
   const [snapshot, setSnapshot] = useState<AdminLogsSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -52,7 +59,11 @@ export function LogsTab() {
     }
 
     try {
-      const data = await fetchJson<AdminLogsSnapshot>(`/api/admin/logs?limit=${limit}`);
+      const params = new URLSearchParams({ limit: String(limit) });
+      if (runId) {
+        params.set("runId", runId);
+      }
+      const data = await fetchJson<AdminLogsSnapshot>(`/api/admin/logs?${params.toString()}`);
       setSnapshot(data);
       setError(null);
     } catch (loadError) {
@@ -68,7 +79,7 @@ export function LogsTab() {
 
   useEffect(() => {
     void loadLogs();
-  }, [limit]);
+  }, [limit, runId]);
 
   useEffect(() => {
     const refreshHintMs = snapshot?.refreshHintMs ?? 5_000;
@@ -76,7 +87,7 @@ export function LogsTab() {
       void loadLogs({ silent: true });
     }, refreshHintMs);
     return () => window.clearInterval(timer);
-  }, [snapshot?.refreshHintMs, limit]);
+  }, [snapshot?.refreshHintMs, limit, runId]);
 
   const filteredEntries = useMemo(() => {
     if (!snapshot) return [];
@@ -115,6 +126,7 @@ export function LogsTab() {
             <h2 className="text-xl font-semibold text-foreground">运行日志</h2>
             <Badge variant={snapshot.exists ? "secondary" : "outline"}>{snapshot.exists ? "已接入" : "日志文件缺失"}</Badge>
             <Badge variant="outline">轮询 {Math.round(snapshot.refreshHintMs / 1000)}s</Badge>
+            {runId ? <Badge variant="secondary">当前聚焦 {runId}</Badge> : null}
           </div>
           <p className="text-sm text-muted-foreground">直接读取真实日志文件尾部，不填充任何假数据；支持手动刷新与本地过滤。</p>
         </div>
@@ -152,6 +164,16 @@ export function LogsTab() {
             <CardDescription>
               {snapshot.exists ? `最近刷新 ${formatDateTime(snapshot.refreshedAt)}，日志源 ${snapshot.sourcePath}` : "当前没有找到日志文件；这里会在日志出现后自动接入。"}
             </CardDescription>
+            {runId ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button variant="outline" size="xs" onClick={() => onInspectRun?.(runId)} aria-label={`定位运行 ${runId}`}>
+                  定位运行 {runId}
+                </Button>
+                <Button variant="outline" size="xs" onClick={() => onNavigateSection?.("requests", { runId })} aria-label={`查看请求 ${runId}`}>
+                  查看请求 {runId}
+                </Button>
+              </div>
+            ) : null}
           </div>
           <div className="relative w-full max-w-sm">
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />

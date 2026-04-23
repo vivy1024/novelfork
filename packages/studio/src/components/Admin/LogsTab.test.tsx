@@ -38,20 +38,33 @@ describe("LogsTab", () => {
           source: "json",
         },
         {
-          message: "plain line",
-          raw: "plain line",
+          timestamp: "2026-04-20T10:04:05Z",
+          level: "error",
+          tag: "run:run-2",
+          message: "run-2 audit failed",
+          raw: '[run:run-2] audit failed',
           source: "text",
         },
       ],
     });
 
-    render(<LogsTab />);
+    const onInspectRun = vi.fn();
+    const onNavigateSection = vi.fn();
+
+    render(<LogsTab runId="run-2" onInspectRun={onInspectRun} onNavigateSection={onNavigateSection} />);
 
     expect(await screen.findByRole("heading", { name: "运行日志" })).toBeTruthy();
     expect(screen.getByText("server booted")).toBeTruthy();
-    expect(screen.getByText("plain line")).toBeTruthy();
+    expect(screen.getByText("run-2 audit failed")).toBeTruthy();
     expect(screen.getByText("D:/DESKTOP/novelfork/novelfork.log")).toBeTruthy();
-    expect(fetchJsonMock).toHaveBeenCalledWith("/api/admin/logs?limit=200");
+    expect(screen.getByRole("button", { name: "定位运行 run-2" })).toBeTruthy();
+    expect(fetchJsonMock).toHaveBeenCalledWith("/api/admin/logs?limit=200&runId=run-2");
+
+    fireEvent.click(screen.getByRole("button", { name: "定位运行 run-2" }));
+    expect(onInspectRun).toHaveBeenCalledWith("run-2");
+
+    fireEvent.click(screen.getByRole("button", { name: "查看请求 run-2" }));
+    expect(onNavigateSection).toHaveBeenCalledWith("requests", { runId: "run-2" });
   });
 
   it("refreshes the current log tail limit on demand", async () => {

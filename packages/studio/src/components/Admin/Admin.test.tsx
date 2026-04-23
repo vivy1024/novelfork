@@ -17,6 +17,10 @@ vi.mock("./RequestsTab", () => ({
   RequestsTab: () => <div>RequestsTab Mock</div>,
 }));
 
+vi.mock("./LogsTab", () => ({
+  LogsTab: () => <div>LogsTab Mock</div>,
+}));
+
 vi.mock("./TerminalTab", () => ({
   TerminalTab: () => <div>TerminalTab Mock</div>,
 }));
@@ -52,10 +56,14 @@ describe("Admin", () => {
     expect(screen.getByText("ProvidersTab Mock")).toBeTruthy();
   });
 
-  it("renders terminal and container tab content", () => {
+  it("renders terminal, logs, and container tab content", () => {
     const { rerender } = render(<Admin section="terminal" onNavigateSection={() => {}} />);
 
     expect(screen.getByText("TerminalTab Mock")).toBeTruthy();
+
+    rerender(<Admin section="logs" onNavigateSection={() => {}} />);
+
+    expect(screen.getByText("LogsTab Mock")).toBeTruthy();
 
     rerender(<Admin section="container" onNavigateSection={() => {}} />);
 
