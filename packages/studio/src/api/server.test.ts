@@ -205,6 +205,7 @@ describe("createStudioServer daemon lifecycle", () => {
 
   beforeEach(async () => {
     root = await mkdtemp(join(tmpdir(), "novelfork-studio-server-"));
+    process.env.NOVELFORK_SESSION_STORE_DIR = join(root, ".runtime", "sessions");
     await writeFile(join(root, "novelfork.json"), JSON.stringify(projectConfig, null, 2), "utf-8");
     schedulerStartMock.mockReset();
     initBookMock.mockReset();
@@ -277,6 +278,7 @@ describe("createStudioServer daemon lifecycle", () => {
   });
 
   afterEach(async () => {
+    delete process.env.NOVELFORK_SESSION_STORE_DIR;
     await rm(root, { recursive: true, force: true });
   });
 
@@ -661,6 +663,61 @@ describe("createStudioServer daemon lifecycle", () => {
     expect(initBookMock).toHaveBeenCalled();
 
     await rm(existingRepo, { recursive: true, force: true });
+  });
+
+  it("scaffolds a default writer session and ready chat snapshot during book creation", async () => {
+    initBookMock.mockResolvedValueOnce(undefined);
+
+    const { createStudioServer } = await import("./server.js");
+    const { app } = createStudioServer(cloneProjectConfig() as never, root);
+
+    const response = await app.request("http://localhost/api/books/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "Session Book",
+        genre: "xuanhuan",
+        platform: "qidian",
+        language: "zh",
+        projectInit: {
+          repositorySource: "new",
+          workflowMode: "outline-first",
+          templatePreset: "genre-default",
+          gitBranch: "main",
+          worktreeName: "session-main",
+        },
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      status: "creating",
+      bookId: "session-book",
+      defaultSession: {
+        title: "新书《Session Book》写作会话",
+        agentId: "writer",
+        sessionMode: "chat",
+        projectId: "session-book",
+        worktree: "session-main",
+      },
+      defaultSessionSnapshot: {
+        messages: [],
+        cursor: { lastSeq: 0 },
+      },
+    });
+    expect(body.defaultSessionSnapshot.session.id).toBe(body.defaultSession.id);
+
+    const snapshotResponse = await app.request(`http://localhost/api/sessions/${body.defaultSession.id}/chat/state`);
+    expect(snapshotResponse.status).toBe(200);
+    await expect(snapshotResponse.json()).resolves.toMatchObject({
+      session: {
+        id: body.defaultSession.id,
+        projectId: "session-book",
+      },
+      messages: [],
+      cursor: { lastSeq: 0 },
+    });
   });
 
   it("persists prepared bootstrap ownership even when async create later fails, so conflicts stay blocked", async () => {

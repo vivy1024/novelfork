@@ -6,6 +6,7 @@ import { SessionCenter } from "./SessionCenter";
 import { useWindowRuntimeStore } from "@/stores/windowRuntimeStore";
 import { useWindowStore } from "@/stores/windowStore";
 import type { AddWindowInput, ChatWindow } from "@/stores/windowStore";
+import type { NarratorSessionChatSnapshot } from "@/shared/session-types";
 import type { Session } from "@/hooks/useSession";
 
 const fetchJsonMock = vi.fn();
@@ -50,8 +51,10 @@ interface MockWindowStore {
 interface MockWindowRuntimeStore {
   wsConnections: Record<string, boolean>;
   recoveryStates: Record<string, "idle" | "recovering" | "reconnecting" | "replaying" | "resetting">;
+  chatSnapshots: Record<string, NarratorSessionChatSnapshot | null>;
   setWsConnected: (windowId: string, connected: boolean) => void;
   setRecoveryState: (windowId: string, recoveryState: "idle" | "recovering" | "reconnecting" | "replaying" | "resetting") => void;
+  setChatSnapshot: (windowId: string, snapshot: NarratorSessionChatSnapshot | null) => void;
   clearWindowRuntime: (windowId: string) => void;
 }
 
@@ -349,6 +352,7 @@ function baseMockRuntimeState(): MockWindowRuntimeStore {
   const state: MockWindowRuntimeStore = {
     wsConnections: {},
     recoveryStates: {},
+    chatSnapshots: {},
     setWsConnected(windowId: string, connected: boolean) {
       state.wsConnections = {
         ...state.wsConnections,
@@ -361,13 +365,22 @@ function baseMockRuntimeState(): MockWindowRuntimeStore {
         [windowId]: recoveryState,
       };
     },
+    setChatSnapshot(windowId: string, snapshot: NarratorSessionChatSnapshot | null) {
+      state.chatSnapshots = {
+        ...state.chatSnapshots,
+        [windowId]: snapshot,
+      };
+    },
     clearWindowRuntime(windowId: string) {
       const nextConnections = { ...state.wsConnections };
       const nextRecoveryStates = { ...state.recoveryStates };
+      const nextChatSnapshots = { ...state.chatSnapshots };
       delete nextConnections[windowId];
       delete nextRecoveryStates[windowId];
+      delete nextChatSnapshots[windowId];
       state.wsConnections = nextConnections;
       state.recoveryStates = nextRecoveryStates;
+      state.chatSnapshots = nextChatSnapshots;
     },
   };
 

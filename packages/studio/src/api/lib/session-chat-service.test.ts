@@ -532,4 +532,134 @@ describe("session-chat-service", () => {
     });
     expect(history?.messages).toHaveLength(58);
   });
+
+  it("forces resetRequired when sinceSeq is beyond the current session cursor", async () => {
+    const {
+      createSession,
+      attachSessionChatTransport,
+      getSessionChatHistory,
+      handleSessionChatTransportMessage,
+    } = await loadSessionServices();
+
+    const session = await createSession({
+      title: "越界重置会话",
+      agentId: "writer",
+      sessionMode: "chat",
+    });
+    const transport = new MockTransport();
+
+    expect(await attachSessionChatTransport(session.id, transport)).toBe(true);
+
+    await handleSessionChatTransportMessage(
+      session.id,
+      transport,
+      JSON.stringify({
+        type: "session:message",
+        messageId: "overflow-message-1",
+        content: "第一句",
+        sessionMode: "chat",
+      }),
+    );
+
+    const history = await getSessionChatHistory(session.id, 999);
+    expect(history).toMatchObject({
+      sessionId: session.id,
+      sinceSeq: 999,
+      availableFromSeq: 1,
+      resetRequired: true,
+      messages: [],
+      cursor: {
+        lastSeq: 2,
+      },
+    });
+  });
+
+  it("marks out-of-range websocket resume requests as server reset recovery", async () => {
+    const {
+      createSession,
+      attachSessionChatTransport,
+      handleSessionChatTransportMessage,
+    } = await loadSessionServices();
+
+    const session = await createSession({
+      title: "越界重连会话",
+      agentId: "writer",
+      sessionMode: "chat",
+    });
+    const transport = new MockTransport();
+    expect(await attachSessionChatTransport(session.id, transport)).toBe(true);
+
+    await handleSessionChatTransportMessage(
+      session.id,
+      transport,
+      JSON.stringify({
+        type: "session:message",
+        messageId: "resume-overflow-1",
+        content: "第一句",
+        sessionMode: "chat",
+      }),
+    );
+
+    const reconnectTransport = new MockTransport();
+    expect(await attachSessionChatTransport(session.id, reconnectTransport, { resumeFromSeq: 999 })).toBe(true);
+
+    const envelopes = reconnectTransport.sent.map((entry) => JSON.parse(entry));
+    expect(envelopes.at(-1)).toMatchObject({
+      type: "session:state",
+      cursor: {
+        lastSeq: 2,
+        ackedSeq: 2,
+      },
+      recovery: {
+        state: "resetting",
+        reason: "history-gap",
+      },
+    });
+  });
+
+  it("broadcasts server reset recovery before replacing the authoritative snapshot", async () => {
+    const {
+      createSession,
+      attachSessionChatTransport,
+      replaceSessionChatState,
+    } = await loadSessionServices();
+
+    const session = await createSession({
+      title: "服务端重置会话",
+      agentId: "writer",
+      sessionMode: "chat",
+    });
+    const transport = new MockTransport();
+    expect(await attachSessionChatTransport(session.id, transport)).toBe(true);
+    transport.sent.length = 0;
+
+    const snapshot = await replaceSessionChatState(session.id, [
+      { id: "reset-summary", role: "system", content: "重新同步正式快照", timestamp: 1710000000000 },
+    ]);
+
+    expect(snapshot?.cursor.lastSeq).toBe(1);
+    const envelopes = transport.sent.map((entry) => JSON.parse(entry));
+    expect(envelopes[0]).toMatchObject({
+      type: "session:state",
+      recovery: {
+        state: "resetting",
+        reason: "server-reset",
+      },
+    });
+    expect(envelopes[1]).toMatchObject({
+      type: "session:snapshot",
+      snapshot: {
+        messages: [
+          { id: "reset-summary", role: "system", seq: 1 },
+        ],
+        cursor: {
+          lastSeq: 1,
+        },
+      },
+      recovery: {
+        state: "idle",
+        reason: "server-reset",
+      },
+    });
+  });
 });

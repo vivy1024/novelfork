@@ -173,6 +173,54 @@ describe("sessionRouter", () => {
     });
   });
 
+  it("replaces chat state through the dedicated server-first endpoint", async () => {
+    const createResponse = await sessionRouter.request("http://localhost/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "压缩会话",
+        agentId: "writer",
+        sessionMode: "chat",
+      }),
+    });
+    const created = await createResponse.json();
+
+    const replaceResponse = await sessionRouter.request(`http://localhost/${created.id}/chat/state`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messages: [
+          { id: "summary-1", role: "system", content: "已压缩较早消息", timestamp: 1710000000000 },
+          { id: "msg-2", role: "assistant", content: "保留消息", timestamp: 1710000001000 },
+        ],
+      }),
+    });
+    expect(replaceResponse.status).toBe(200);
+
+    const snapshot = await replaceResponse.json();
+    expect(snapshot).toMatchObject({
+      session: {
+        id: created.id,
+        messageCount: 2,
+      },
+      messages: [
+        { id: "summary-1", role: "system", content: "已压缩较早消息", seq: 1 },
+        { id: "msg-2", role: "assistant", content: "保留消息", seq: 2 },
+      ],
+      cursor: {
+        lastSeq: 2,
+      },
+    });
+
+    const stateResponse = await sessionRouter.request(`http://localhost/${created.id}/chat/state`);
+    expect(stateResponse.status).toBe(200);
+    const state = await stateResponse.json();
+    expect(state.messages).toMatchObject([
+      { id: "summary-1", role: "system", content: "已压缩较早消息", seq: 1 },
+      { id: "msg-2", role: "assistant", content: "保留消息", seq: 2 },
+    ]);
+  });
+
   it("replays persisted history even when the in-memory runtime buffer has been trimmed", async () => {
     const createResponse = await sessionRouter.request("http://localhost/", {
       method: "POST",
