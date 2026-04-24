@@ -3,7 +3,7 @@
  * 提供 worktree 列表、创建、删除功能
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Plus, RefreshCw, AlertCircle, FolderGit2 } from "lucide-react";
 import { WorktreeCard } from "../components/WorktreeCard";
 import { FileModPanel } from "../components/FileModPanel";
@@ -72,10 +72,16 @@ export function WorktreeManager({ onBack }: WorktreeManagerProps) {
     }
   };
 
-  const handleOpenWorktree = (path: string) => {
+  const handleOpenWorktree = async (path: string) => {
     // PWA 环境：复制路径到剪贴板
-    void navigator.clipboard.writeText(path);
-    notify.success("路径已复制到剪贴板", { description: path });
+    try {
+      await navigator.clipboard.writeText(path);
+      notify.success("路径已复制到剪贴板", { description: path });
+    } catch {
+      notify.error("复制失败", {
+        description: "浏览器拒绝了剪贴板写入，请手动复制路径",
+      });
+    }
   };
 
   const handleDeleteClick = (path: string) => {
@@ -91,13 +97,22 @@ export function WorktreeManager({ onBack }: WorktreeManagerProps) {
     setViewingChangesPath(null);
   };
 
-  // 如果正在查看变更，显示 FileModPanel
-  if (viewingChangesPath) {
-    const worktree = worktrees.find(w => w.path === viewingChangesPath);
-    if (!worktree) {
+  const viewingWorktree = useMemo(
+    () => (viewingChangesPath ? worktrees.find((w) => w.path === viewingChangesPath) ?? null : null),
+    [viewingChangesPath, worktrees],
+  );
+
+  // 当目标 worktree 被外部删除 / 刷新掉时，自动回退到列表视图。
+  // 不能在 render 里直接 setState，否则会抛 "Cannot update during render"。
+  useEffect(() => {
+    if (viewingChangesPath && !viewingWorktree) {
       setViewingChangesPath(null);
-      return null;
     }
+  }, [viewingChangesPath, viewingWorktree]);
+
+  // 如果正在查看变更，显示 FileModPanel
+  if (viewingChangesPath && viewingWorktree) {
+    const worktree = viewingWorktree;
 
     // 从 worktree.status 获取实际的文件列表
     // 注意：worktree.status 只有计数，需要调用 API 获取详细文件列表

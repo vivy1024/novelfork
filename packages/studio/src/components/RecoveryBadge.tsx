@@ -27,6 +27,18 @@ import type { WindowRecoveryState } from "@/stores/windowRuntimeStore";
 
 export type RecoveryBadgeVariant = "chip" | "inline" | "banner";
 
+/**
+ * Optional trailing action for the `banner` variant (e.g. ChatWindow "立即重连"
+ * button during reconnect). Rendered inside the banner flex row so it never
+ * overlaps the description text.
+ */
+export interface RecoveryBadgeAction {
+  label: string;
+  onClick: () => void;
+  title?: string;
+  disabled?: boolean;
+}
+
 export interface RecoveryBadgeProps {
   recoveryState: WindowRecoveryState;
   wsConnected: boolean;
@@ -38,6 +50,8 @@ export interface RecoveryBadgeProps {
    * visible per 5.6 acceptance.
    */
   hideWhenStable?: boolean;
+  /** Banner-only trailing action button. Ignored for `chip` / `inline` variants. */
+  action?: RecoveryBadgeAction;
   className?: string;
 }
 
@@ -66,6 +80,7 @@ export function RecoveryBadge({
   wsConnected,
   variant = "chip",
   hideWhenStable = false,
+  action,
   className,
 }: RecoveryBadgeProps) {
   const presentation = getRecoveryPresentation({ recoveryState, wsConnected });
@@ -100,10 +115,21 @@ export function RecoveryBadge({
         )}
       >
         <span className="mt-1.5 flex-shrink-0">{dot}</span>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <div className="font-medium">{presentation.label}</div>
           <div className="mt-0.5 leading-5 opacity-90">{presentation.description}</div>
         </div>
+        {action && (
+          <button
+            type="button"
+            onClick={action.onClick}
+            disabled={action.disabled}
+            title={action.title}
+            className="flex-shrink-0 self-center rounded-md border border-border/60 bg-background/70 px-2 py-1 text-[11px] font-medium text-foreground hover:bg-background disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {action.label}
+          </button>
+        )}
       </div>
     );
   }

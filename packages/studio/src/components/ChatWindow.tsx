@@ -478,15 +478,31 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
     };
 
     // Expose the connect function so the UI can trigger an immediate retry
-    // instead of waiting for the 5s auto-reconnect timer.
+    // instead of waiting for the 5s auto-reconnect timer. Detach the old ws's
+    // handlers before closing, otherwise its async `onclose` would still flip
+    // `wsConnected`/`recoveryState` back and schedule a redundant 5s reconnect
+    // timer on top of the fresh connection we are about to create.
     manualReconnectRef.current = () => {
       if (disposed) return;
       if (reconnectTimerRef.current !== null) {
         globalThis.clearTimeout(reconnectTimerRef.current);
         reconnectTimerRef.current = null;
       }
-      if (wsRef.current && wsRef.current.readyState !== WebSocket.CLOSED) {
-        wsRef.current.close();
+      const previous = wsRef.current;
+      if (previous) {
+        previous.onopen = null;
+        previous.onmessage = null;
+        previous.onerror = null;
+        previous.onclose = null;
+        if (previous.readyState !== WebSocket.CLOSED) {
+          try {
+            previous.close();
+          } catch {
+            // close() can throw in some browsers when the socket is already
+            // closing; the handler detach above is what actually matters.
+          }
+        }
+        wsRef.current = null;
       }
       connectWs();
     };
@@ -812,24 +828,22 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
 
         {!chatWindow.minimized && (
           <>
-            <div className="relative">
-              <RecoveryBadge
-                recoveryState={authoritativeRecoveryState}
-                wsConnected={wsConnected}
-                variant="banner"
-              />
-              {(!wsConnected || authoritativeRecoveryState === "reconnecting") &&
-                authoritativeRecoveryState !== "resetting" && (
-                  <button
-                    type="button"
-                    onClick={() => manualReconnectRef.current?.()}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md border border-current/30 px-2 py-1 text-[11px] font-medium hover:bg-current/10"
-                    title="跳过 5 秒退避，立即重新握手"
-                  >
-                    立即重连
-                  </button>
-                )}
-            </div>
+            <RecoveryBadge
+              recoveryState={authoritativeRecoveryState}
+              wsConnected={wsConnected}
+              variant="banner"
+              action={
+                (!wsConnected || authoritativeRecoveryState === "reconnecting") &&
+                authoritativeRecoveryState !== "resetting"
+                  ? {
+                      label: "立即重连",
+                      title: "跳过 5 秒退避，立即重新握手",
+                      onClick: () => manualReconnectRef.current?.(),
+                    }
+                  : undefined
+              }
+            />
+
             {/* recoveryPresentation intentionally still computed above so call sites below can key off label/tone. */}
             <div className="grid gap-2 border-b px-3 py-2 text-[10px] sm:grid-cols-3" style={{ borderColor: c.border, backgroundColor: c.bgSecondary }}>
               <SessionMetric label="连接" value={wsConnected ? "在线" : "离线"} />
