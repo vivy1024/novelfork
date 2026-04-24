@@ -29,6 +29,7 @@ playwright-report/
 test-results/
 test/
 .claude/
+没钱修什么仙/
 # Compiled executables
 *.exe
 dist-bun/*.exe
