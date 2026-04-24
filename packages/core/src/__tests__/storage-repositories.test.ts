@@ -21,6 +21,18 @@ async function createStorage(): Promise<StorageDatabase> {
   return storage;
 }
 
+async function seedSession(storage: StorageDatabase, id = "session-1") {
+  const sessions = createSessionRepository(storage);
+  await sessions.create({
+    id,
+    createdAt: new Date("2026-04-24T01:00:00.000Z"),
+    updatedAt: new Date("2026-04-24T01:00:00.000Z"),
+    messageCount: 0,
+    configJson: "{}",
+    metadataJson: "{}",
+  });
+}
+
 afterEach(async () => {
   await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
@@ -66,14 +78,7 @@ describe("storage repositories", () => {
     try {
       const sessions = createSessionRepository(storage);
       const messages = createSessionMessageRepository(storage);
-      await sessions.create({
-        id: "session-1",
-        createdAt: new Date("2026-04-24T01:00:00.000Z"),
-        updatedAt: new Date("2026-04-24T01:00:00.000Z"),
-        messageCount: 0,
-        configJson: "{}",
-        metadataJson: "{}",
-      });
+      await seedSession(storage);
 
       const all = await messages.appendMessages("session-1", [
         {
@@ -107,14 +112,7 @@ describe("storage repositories", () => {
     try {
       const sessions = createSessionRepository(storage);
       const messages = createSessionMessageRepository(storage);
-      await sessions.create({
-        id: "session-1",
-        createdAt: new Date("2026-04-24T01:00:00.000Z"),
-        updatedAt: new Date("2026-04-24T01:00:00.000Z"),
-        messageCount: 0,
-        configJson: "{}",
-        metadataJson: "{}",
-      });
+      await seedSession(storage);
 
       await messages.appendMessages("session-1", [{
         id: "old",
@@ -151,6 +149,140 @@ describe("storage repositories", () => {
 
       expect(await kv.get("migration:json-to-sqlite:done")).toBe("true");
       expect(await kv.get("missing")).toBeNull();
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("assigns gap-free seq values for N=50 same-session append calls", async () => {
+    const storage = await createStorage();
+    try {
+      await seedSession(storage);
+      const messages = createSessionMessageRepository(storage);
+
+      const appended = await Promise.all(Array.from({ length: 50 }, (_, index) => messages.appendMessages("session-1", [{
+        id: `parallel-${index}`,
+        role: "user",
+        content: `消息 ${index}`,
+        timestamp: new Date(1_776_990_000_000 + index),
+        metadataJson: "{}",
+      }])));
+
+      expect(appended.at(-1)).toHaveLength(50);
+      const all = await messages.loadAll("session-1");
+      expect(all).toHaveLength(50);
+      expect(all.map((message) => message.seq)).toEqual(Array.from({ length: 50 }, (_, index) => index + 1));
+      expect(new Set(all.map((message) => message.id)).size).toBe(50);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("retries one stale seq conflict and appends at the next available seq", async () => {
+    const storage = await createStorage();
+    try {
+      await seedSession(storage);
+      const messages = createSessionMessageRepository(storage, {
+        beforeAppendAttempt({ attempt, storage: attemptStorage, sessionId }) {
+          if (attempt === 0) {
+            attemptStorage.sqlite.prepare(`
+              INSERT INTO "session_message" (
+                "session_id", "seq", "id", "role", "content", "timestamp", "metadata_json"
+              ) VALUES (?, 1, 'racing-message', 'system', 'racing write', ?, '{}')
+            `).run(sessionId, Date.now());
+            return { cursorOverride: { lastSeq: 0, availableFromSeq: 0 } };
+          }
+          return undefined;
+        },
+      });
+
+      const all = await messages.appendMessages("session-1", [{
+        id: "retried-message",
+        role: "user",
+        content: "需要重试",
+        timestamp: new Date("2026-04-24T02:00:00.000Z"),
+        metadataJson: "{}",
+      }]);
+
+      expect(all.map((message) => message.id)).toEqual(["racing-message", "retried-message"]);
+      expect(all.map((message) => message.seq)).toEqual([1, 2]);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rolls back the whole append transaction when any row fails", async () => {
+    const storage = await createStorage();
+    try {
+      await seedSession(storage);
+      const messages = createSessionMessageRepository(storage);
+
+      await expect(messages.appendMessages("session-1", [
+        {
+          id: "duplicate-id",
+          role: "user",
+          content: "第一条",
+          timestamp: new Date("2026-04-24T02:00:00.000Z"),
+          metadataJson: "{}",
+        },
+        {
+          id: "duplicate-id",
+          role: "assistant",
+          content: "第二条",
+          timestamp: new Date("2026-04-24T02:00:01.000Z"),
+          metadataJson: "{}",
+        },
+      ])).rejects.toThrow(/Failed to append session messages/u);
+
+      expect(await messages.loadAll("session-1")).toEqual([]);
+      expect(await messages.getCursor("session-1")).toEqual({ lastSeq: 0, availableFromSeq: 0 });
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("truncates WAL files during checkpoint", async () => {
+    const storage = await createStorage();
+    try {
+      await seedSession(storage);
+      const messages = createSessionMessageRepository(storage);
+      await messages.appendMessages("session-1", Array.from({ length: 20 }, (_, index) => ({
+        id: `wal-${index}`,
+        role: "user",
+        content: `WAL ${index}`,
+        timestamp: new Date(1_776_990_100_000 + index),
+        metadataJson: "{}",
+      })));
+
+      const walPath = `${storage.databasePath}-wal`;
+      expect(storage.sqlite.pragma("journal_mode", { simple: true })).toBe("wal");
+      storage.checkpoint();
+      const stats = await import("node:fs/promises").then(({ stat }) => stat(walPath).catch(() => null));
+      expect(stats?.size ?? 0).toBe(0);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("records 1000-message append pressure timing without losing rows", async () => {
+    const storage = await createStorage();
+    try {
+      await seedSession(storage);
+      const messages = createSessionMessageRepository(storage);
+      const startedAt = performance.now();
+      const result = await messages.appendMessages("session-1", Array.from({ length: 1000 }, (_, index) => ({
+        id: `pressure-${index}`,
+        role: index % 2 === 0 ? "user" : "assistant",
+        content: `压测消息 ${index}`,
+        timestamp: new Date(1_776_990_200_000 + index),
+        metadataJson: "{}",
+      })));
+      const elapsedMs = performance.now() - startedAt;
+
+      console.info(`[storage-pressure] append 1000 messages: ${elapsedMs.toFixed(2)}ms`);
+      expect(result).toHaveLength(1000);
+      expect(result.at(0)?.seq).toBe(1);
+      expect(result.at(-1)?.seq).toBe(1000);
     } finally {
       storage.close();
     }
