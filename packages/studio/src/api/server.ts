@@ -7,6 +7,7 @@ import {
   initializeStorageDatabase,
   loadProjectConfig,
   pipelineEvents,
+  runJsonImportMigrationIfNeeded,
   runStorageMigrations,
   type PipelineConfig,
   type ProjectConfig,
@@ -510,10 +511,24 @@ export async function startStudioServer(
   });
   console.log(`NovelFork mode: ${mode}`);
 
+  const sessionStoreDir = getSessionStoreDiagnosticDir();
   const storageDatabase = initializeStorageDatabase({ databasePath: getSessionStoreDatabasePath() });
   let storageMigrationResult: ReturnType<typeof runStorageMigrations>;
+  let jsonImportResult: Awaited<ReturnType<typeof runJsonImportMigrationIfNeeded>>;
   try {
     storageMigrationResult = runStorageMigrations(storageDatabase);
+    jsonImportResult = await runJsonImportMigrationIfNeeded(storageDatabase, {
+      storageDir: sessionStoreDir,
+      warn(message, error) {
+        logStartupEvent({
+          level: "warn",
+          component: "storage.json-import",
+          msg: message,
+          ok: false,
+          reason: error instanceof Error ? error.message : undefined,
+        });
+      },
+    });
   } catch (error) {
     storageDatabase.close();
     throw error;
@@ -527,6 +542,7 @@ export async function startStudioServer(
     extra: {
       databasePath: storageDatabase.databasePath,
       appliedMigrations: storageMigrationResult.applied,
+      jsonImport: jsonImportResult,
     },
   });
 
