@@ -29,7 +29,7 @@
   - 保留 `historyWriteQueues` / `sessionStoreMutationQueue` 导出符号作 no-op 兼容壳（后续 spec 清理）
   - 单测：所有 session-chat-service 协议测试通过
 
-- [ ] 4. 并发与原子性验证
+- [x] 4. 并发与原子性验证
   - 实现 append 的唯一索引冲突重试（最多 1 次）
   - 单测：并发 N=50 append 同一 session，断言 seq 严格单调、无空洞、无丢失
   - 单测：事务中 commit 前抛出 → 无半写

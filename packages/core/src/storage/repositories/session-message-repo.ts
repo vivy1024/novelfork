@@ -27,6 +27,22 @@ export interface StoredSessionMessageCursor {
   availableFromSeq: number;
 }
 
+export interface SessionMessageRepositoryAppendAttemptContext {
+  attempt: number;
+  storage: StorageDatabase;
+  sessionId: string;
+}
+
+export interface SessionMessageRepositoryAppendAttemptControl {
+  cursorOverride?: StoredSessionMessageCursor;
+}
+
+export interface CreateSessionMessageRepositoryOptions {
+  beforeAppendAttempt?: (
+    context: SessionMessageRepositoryAppendAttemptContext,
+  ) => SessionMessageRepositoryAppendAttemptControl | void;
+}
+
 interface MessageRow {
   session_id: string;
   seq: number;
@@ -58,7 +74,19 @@ function sanitizeSeq(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
 }
 
-export function createSessionMessageRepository(storage: StorageDatabase) {
+function isRetryableAppendConflict(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) return false;
+  const code = "code" in error ? String((error as { code?: unknown }).code) : "";
+  const message = "message" in error ? String((error as { message?: unknown }).message) : "";
+  return code === "SQLITE_CONSTRAINT_PRIMARYKEY"
+    || code === "SQLITE_BUSY_SNAPSHOT"
+    || /UNIQUE constraint failed: session_message\.session_id, session_message\.seq/u.test(message);
+}
+
+export function createSessionMessageRepository(
+  storage: StorageDatabase,
+  options: CreateSessionMessageRepositoryOptions = {},
+) {
   const insertMessage = storage.sqlite.prepare(`
     INSERT INTO "session_message" (
       "session_id", "seq", "id", "role", "content", "timestamp", "metadata_json"
@@ -117,12 +145,17 @@ export function createSessionMessageRepository(storage: StorageDatabase) {
     }
   }
 
-  const appendTransaction = storage.sqlite.transaction((sessionId: string, messages: StoredSessionMessageInput[], seedMessages: StoredSessionMessageInput[]) => {
-    const existingCursor = getCurrentCursor(sessionId);
+  const appendTransaction = storage.sqlite.transaction((
+    sessionId: string,
+    messages: StoredSessionMessageInput[],
+    seedMessages: StoredSessionMessageInput[],
+    cursorOverride?: StoredSessionMessageCursor,
+  ) => {
+    const existingCursor = cursorOverride ?? getCurrentCursor(sessionId);
     if (existingCursor.lastSeq === 0 && seedMessages.length > 0) {
       insertMessagesStartingAt(sessionId, 1, seedMessages);
     }
-    const afterSeedCursor = getCurrentCursor(sessionId);
+    const afterSeedCursor = cursorOverride ?? getCurrentCursor(sessionId);
     insertMessagesStartingAt(sessionId, afterSeedCursor.lastSeq + 1, messages);
     refreshCursorAndSession(sessionId);
   });
@@ -144,12 +177,21 @@ export function createSessionMessageRepository(storage: StorageDatabase) {
       messages: StoredSessionMessageInput[],
       seedMessages: StoredSessionMessageInput[] = [],
     ): Promise<StoredSessionMessage[]> {
-      try {
-        appendTransaction(sessionId, messages, seedMessages);
-        return this.loadAll(sessionId);
-      } catch (error) {
-        throw new StorageError("Failed to append session messages.", { op: "sessionMessage.appendMessages", sessionId, cause: error });
+      let lastError: unknown;
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        try {
+          const control = options.beforeAppendAttempt?.({ attempt, storage, sessionId });
+          appendTransaction(sessionId, messages, seedMessages, control?.cursorOverride);
+          return this.loadAll(sessionId);
+        } catch (error) {
+          lastError = error;
+          if (attempt >= 1 || !isRetryableAppendConflict(error)) {
+            break;
+          }
+        }
       }
+
+      throw new StorageError("Failed to append session messages.", { op: "sessionMessage.appendMessages", sessionId, cause: lastError });
     },
 
     async loadAll(sessionId: string): Promise<StoredSessionMessage[]> {
