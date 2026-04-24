@@ -379,6 +379,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
         syncSessionMessages(nextMessages);
         syncAuthoritativeSnapshot(snapshot.session, nextMessages, nextSeq);
         ackSessionSeq();
+        updateRecoveryState("idle");
         return;
       }
 
@@ -390,6 +391,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
           syncAuthoritativeSnapshot(nextSession, sessionMessagesRef.current, nextSeq);
         }
         ackSessionSeq();
+        updateRecoveryState("idle");
         return;
       }
 
@@ -407,8 +409,9 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
         );
       }
       ackSessionSeq();
+      updateRecoveryState("idle");
     },
-    [ackSessionSeq, getCurrentSessionRecord, syncAuthoritativeSnapshot, syncSessionRecord, syncSessionSeq, windowId],
+    [ackSessionSeq, getCurrentSessionRecord, syncAuthoritativeSnapshot, syncSessionRecord, syncSessionSeq, updateRecoveryState, windowId],
   );
 
   useEffect(() => {

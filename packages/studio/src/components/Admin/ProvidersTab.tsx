@@ -7,13 +7,18 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { fetchJson } from "../../hooks/use-api";
 
+interface ProviderModel {
+  id?: string;
+  name?: string;
+}
+
 interface Provider {
   id: string;
   name: string;
   type: string;
   apiKey?: string;
   baseUrl?: string;
-  models: string[];
+  models: Array<string | ProviderModel>;
   enabled: boolean;
   priority: number;
 }
@@ -115,6 +120,16 @@ export function ProvidersTab() {
     return `${key.slice(0, 4)}...${key.slice(-4)}`;
   };
 
+  const getModelLabel = (model: string | ProviderModel) => {
+    if (typeof model === "string") return model;
+    return model.name || model.id || "未命名模型";
+  };
+
+  const getModelKey = (model: string | ProviderModel, index: number) => {
+    if (typeof model === "string") return model;
+    return model.id || model.name || `model-${index}`;
+  };
+
   if (loading) {
     return <div className="py-10 text-center text-sm text-muted-foreground">正在加载供应商状态…</div>;
   }
@@ -201,8 +216,8 @@ export function ProvidersTab() {
                       <div className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">模型资源池</div>
                       <div className="flex flex-wrap gap-2">
                         {provider.models.length > 0 ? (
-                          provider.models.map((model) => (
-                            <Badge key={model} variant="secondary">{model}</Badge>
+                          provider.models.map((model, index) => (
+                            <Badge key={getModelKey(model, index)} variant="secondary">{getModelLabel(model)}</Badge>
                           ))
                         ) : (
                           <span className="text-sm text-muted-foreground">暂无模型</span>

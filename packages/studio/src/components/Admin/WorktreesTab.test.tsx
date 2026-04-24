@@ -67,6 +67,51 @@ describe("WorktreesTab", () => {
     expect(fetchJsonMock).toHaveBeenCalledWith("/api/admin/worktrees");
   });
 
+  it("hides external worktrees by default and can reveal them", async () => {
+    fetchJsonMock.mockResolvedValueOnce({
+      rootPath: "D:/DESKTOP/novelfork",
+      refreshedAt: "2026-04-20T10:05:00Z",
+      refreshHintMs: 10000,
+      status: "ready",
+      summary: { total: 2, dirty: 0, clean: 2, bare: 0 },
+      worktrees: [
+        {
+          path: "D:/DESKTOP/novelfork",
+          relativePath: ".",
+          branch: "main",
+          head: "1234567890abcdef",
+          shortHead: "12345678",
+          bare: false,
+          isPrimary: true,
+          isExternal: false,
+          dirty: false,
+          changeCount: 0,
+          status: { modified: 0, added: 0, deleted: 0, untracked: 0 },
+        },
+        {
+          path: "D:/DESKTOP/sub2api/.test-workspace/.inkos-worktrees/feature-test",
+          relativePath: "../sub2api/.test-workspace/.inkos-worktrees/feature-test",
+          branch: "feature-test",
+          head: "abcdef1234567890",
+          shortHead: "abcdef12",
+          bare: false,
+          isPrimary: false,
+          isExternal: true,
+          dirty: false,
+          changeCount: 0,
+          status: { modified: 0, added: 0, deleted: 0, untracked: 0 },
+        },
+      ],
+    });
+
+    render(<WorktreesTab />);
+
+    expect(await screen.findByText("main")).toBeTruthy();
+    expect(screen.queryByText(/sub2api/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /显示外部 Worktree/ }));
+    expect(screen.getAllByText(/sub2api/).length).toBeGreaterThan(0);
+  });
+
   it("refreshes worktree data on demand", async () => {
     fetchJsonMock
       .mockResolvedValueOnce({

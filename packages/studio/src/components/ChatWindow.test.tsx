@@ -868,6 +868,7 @@ describe("ChatWindow", () => {
       expect(MockWebSocket.instances[1]?.url).toContain("resumeFromSeq=2");
       expect(fetchJsonMock).toHaveBeenCalledWith("/api/sessions/session-abc123456/chat/history?sinceSeq=2");
       expect(screen.getByText("服务端追加消息")).toBeTruthy();
+      expect(useWindowRuntimeStore.getState().recoveryStates["window-1"]).toBe("idle");
     } finally {
       setTimeoutSpy.mockRestore();
     }
@@ -1010,6 +1011,7 @@ describe("ChatWindow", () => {
       expect(fetchJsonMock).toHaveBeenCalledWith("/api/sessions/session-abc123456/chat/history?sinceSeq=1");
       expect(fetchJsonMock.mock.calls.filter(([url]) => url === "/api/sessions/session-abc123456/chat/state").length).toBeGreaterThanOrEqual(1);
       expect(screen.getByText("需要整包重放")).toBeTruthy();
+      expect(useWindowRuntimeStore.getState().recoveryStates["window-1"]).toBe("idle");
       expect(MockWebSocket.instances).toHaveLength(2);
     } finally {
       setTimeoutSpy.mockRestore();

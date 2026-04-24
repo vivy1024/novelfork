@@ -15,6 +15,7 @@ interface AdminWorktreeItem {
   shortHead: string;
   bare: boolean;
   isPrimary: boolean;
+  isExternal?: boolean;
   dirty: boolean;
   changeCount: number;
   status: {
@@ -44,6 +45,7 @@ export function WorktreesTab() {
   const [snapshot, setSnapshot] = useState<AdminWorktreeSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [showExternal, setShowExternal] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const loadWorktrees = async ({ silent = false }: { silent?: boolean } = {}) => {
@@ -103,6 +105,11 @@ export function WorktreesTab() {
     return null;
   }
 
+  const hiddenExternalCount = snapshot.worktrees.filter((worktree) => worktree.isExternal).length;
+  const visibleWorktrees = showExternal
+    ? snapshot.worktrees
+    : snapshot.worktrees.filter((worktree) => !worktree.isExternal);
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
@@ -114,10 +121,17 @@ export function WorktreesTab() {
           </div>
           <p className="text-sm text-muted-foreground">接入真实 git worktree 列表与变更计数；创建、删除、终端和容器入口本轮不伪造能力。</p>
         </div>
-        <Button variant="outline" onClick={() => void loadWorktrees({ silent: true })} disabled={refreshing}>
-          <RefreshCw className="size-4" />
-          {refreshing ? "刷新中…" : "刷新 Worktree"}
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          {hiddenExternalCount > 0 && (
+            <Button variant="outline" onClick={() => setShowExternal((prev) => !prev)}>
+              {showExternal ? "隐藏外部 Worktree" : `显示外部 Worktree（${hiddenExternalCount}）`}
+            </Button>
+          )}
+          <Button variant="outline" onClick={() => void loadWorktrees({ silent: true })} disabled={refreshing}>
+            <RefreshCw className="size-4" />
+            {refreshing ? "刷新中…" : "刷新 Worktree"}
+          </Button>
+        </div>
       </div>
 
       <div className="grid gap-4 md:grid-cols-4">
@@ -129,12 +143,12 @@ export function WorktreesTab() {
 
       {snapshot.status === "error" ? (
         <PageEmptyState title="无法读取 Worktree" description={snapshot.error ?? "读取 worktree 列表失败"} />
-      ) : snapshot.worktrees.length === 0 ? (
-        <PageEmptyState title="暂无 Worktree" description="当前仓库没有返回任何 worktree 记录。" />
+      ) : visibleWorktrees.length === 0 ? (
+        <PageEmptyState title="暂无 Worktree" description="当前过滤条件下没有可显示的 worktree 记录。" />
       ) : (
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.85fr)]">
           <div className="space-y-4">
-            {snapshot.worktrees.map((worktree) => (
+            {visibleWorktrees.map((worktree) => (
               <Card key={worktree.path}>
                 <CardHeader className="gap-3 md:flex-row md:items-start md:justify-between">
                   <div className="space-y-2">
@@ -144,6 +158,7 @@ export function WorktreesTab() {
                         {worktree.branch}
                       </CardTitle>
                       {worktree.isPrimary ? <Badge variant="secondary">主仓库</Badge> : null}
+                      {worktree.isExternal ? <Badge variant="outline">外部项目</Badge> : null}
                       {worktree.dirty ? <Badge variant="destructive">有变更</Badge> : <Badge variant="outline">干净</Badge>}
                       {worktree.bare ? <Badge variant="outline">Bare</Badge> : null}
                     </div>
