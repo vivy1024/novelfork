@@ -23,7 +23,8 @@ export function detectRuntimeMode(hints: RuntimeModeHints = {}): RuntimeModeSnap
   const exePath = hints.execPath ?? process.execPath;
   const nodeEnv = hints.nodeEnv ?? process.env.NODE_ENV;
   const normalizedExecPath = exePath.replace(/\\/g, "/").toLowerCase();
-  const isCompiledBinary = bunAvailable && metaUrl.startsWith("file:") && normalizedExecPath.endsWith(".exe");
+  const isBunCli = normalizedExecPath.endsWith("/bun.exe") || normalizedExecPath.endsWith("/bun");
+  const isCompiledBinary = bunAvailable && metaUrl.startsWith("file:") && normalizedExecPath.endsWith(".exe") && !isBunCli;
 
   return {
     runtime: bunAvailable ? "bun" : "node",

@@ -183,6 +183,7 @@ export function Admin({ onBack, section, onNavigateSection, onOpenRun }: AdminPr
           onOpenRun={onOpenRun}
         />
       )}
+      {activeSection === "worktrees" && <WorktreesTab />}
       {activeSection === "container" && <ContainerTab />}
     </div>
   );

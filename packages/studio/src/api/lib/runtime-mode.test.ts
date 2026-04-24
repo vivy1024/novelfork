@@ -17,6 +17,19 @@ describe("detectRuntimeMode", () => {
     });
   });
 
+  it("does not treat the Bun CLI executable as a compiled NovelFork binary", () => {
+    expect(detectRuntimeMode({
+      bunAvailable: true,
+      metaUrl: "file:///D:/DESKTOP/novelfork/packages/studio/src/api/lib/runtime-mode.ts",
+      execPath: "C:/Users/17655/.bun/bin/bun.exe",
+      nodeEnv: "development",
+    })).toMatchObject({
+      runtime: "bun",
+      isProd: false,
+      isCompiledBinary: false,
+    });
+  });
+
   it("keeps dev node runtime separate from compiled binaries", () => {
     expect(detectRuntimeMode({
       bunAvailable: false,

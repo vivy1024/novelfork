@@ -267,13 +267,13 @@
     - `git status --short` 干净
     - 按任务 8 的 done definition 回写 `02-核心架构` / `03-代码参考` / `04-开发指南`，不新建临时报告
 
-- [ ] 7.9 **（Cascade）Package 6 真机回归修复清单**（🔴 2026-04-24 发现 / 高优先级）
+- [x] 7.9 **（Cascade）Package 6 真机回归修复清单**（🔴 2026-04-24 发现 / 高优先级）
 
   > **背景**：Package 4/5/6 的自动化测试与构建全部通过，但真机冒烟（本地 exe + Vite dev）暴露出一批 runtime 级 bug，核心症结是"启动链路透明度不足 + WebSocket 未挂 + 构建产物模式不明"。参考 NarraFork 的结构化启动日志标准重建诊断链。
   >
   > **执行节奏**：先做 **7.9A runtime hotfix**（7.9.1 / 7.9.3 / 7.9.4 / 7.9.7 / 7.9.8 / 7.9.9），保证 Studio 真机主链可用；再做 **7.9B NarraFork parity hardening**（7.9.2 / 7.9.5 / 7.9.6 / 7.9.10），补齐发布与运行态成熟度。7.9A 可独立验证、独立提交，不必等待 7.9B 全部完成。
 
-  - [ ] 7.9.1 **（Cascade / P0 / 7.9A）session chat WebSocket 未注册导致 ChatWindow 整体不通** — 🟡 自动化绿 / 手动冒烟未验；「立即重连」按钮已记录
+  - [x] 7.9.1 **（Cascade / P0 / 7.9A）session chat WebSocket 未注册导致 ChatWindow 整体不通** — 已完成（自动化 + 真实 UI 冒烟通过）
     - 现象：打开 SessionCenter → 打开工作台 → ChatWindow 常驻「重连中」；DevTools 报 `ws://.../api/sessions/<id>/chat → 400`；`/api/sessions/:id/chat/state` HTTP 200 但 WS 握手失败
     - 根因：`@d:\DESKTOP\novelfork\packages\studio\src\api\server.ts` 的 `startStudioServer` 只调用了 `setupAdminWebSocket(startedServer)`，**从未调用** `setupSessionChatWebSocket(startedServer)`；此外 `setupSessionChatWebSocket` 原签名只接受 `@hono/node-server.ServerType`，不支持 bun runtime（编译后的 exe 场景）
     - 状态拆分：
@@ -283,8 +283,8 @@
       - [x] `packages/studio/vite.config.ts` 的 `/api` 代理补 `ws: true`，让 dev 模式 WebSocket 能穿透 Vite 代理
       - [x] `@d:\DESKTOP\novelfork\packages\studio\src\api\server.test.ts` 增加 `expect(setupSessionChatWebSocketMock).toHaveBeenCalledWith(startedServer)` 断言（与现有 admin WS 的断言同形）
       - [x] `session-chat-service.test.ts` 补 bun 注册路径的最小覆盖（mock `registerWebSocketRoute` 调用次数 + `matchPath("/api/sessions/x/chat")` 返回 true）
-      - [ ] 手动冒烟：dev 模式 ChatWindow 从 `reconnecting → idle`、发送按钮解禁、消息往返正常
-      - [ ] 手动冒烟：exe 模式 ChatWindow 可连接、可发、可收
+      - [x] 手动冒烟：dev 模式 ChatWindow 从 `reconnecting → idle`、发送按钮解禁、消息往返正常；真实 UI 发现并修复 `replaying` 卡住问题
+      - [x] 手动冒烟：exe 模式 ChatWindow 可连接、可发、可收
       - [x] UX 打磨：`@d:\DESKTOP\novelfork\packages\studio\src\components\ChatWindow.tsx` 在 RecoveryBadge banner 叠一个「立即重连」按钮（仅 `!wsConnected || reconnecting` 时显示），点击走 `manualReconnectRef` 跳过默认 5 秒退避，close 现有 ws 并立刻 `connectWs()`；不破坏 `ChatWindow.test.tsx` 19/19 绿
     - 自动化验证（2026-04-24）：`src/api/server.test.ts`、`src/api/lib/session-chat-service.test.ts` 覆盖通过；全量 `pnpm --filter @vivy1024/novelfork-studio test` 通过。
 
@@ -315,7 +315,7 @@
       - [x] 后端：`@d:\DESKTOP\novelfork\packages\studio\src\api\routes\ai.ts` 的 `/api/radar/scan` 捕获缺少 LLM API Key 的已知错误签名，返回 `{ code: "LLM_CONFIG_MISSING", message, hint }` 结构，HTTP 400 而非 500
       - [x] 前端：`@d:\DESKTOP\novelfork\packages\studio\src\pages\RadarView.tsx` 已用 `describeLlmError` 渲染中文错误卡片；`@d:\DESKTOP\novelfork\packages\studio\src\lib\llm-error.ts` 支持后端结构化 `code`，并保留「去配置供应商」跳转
     - 自动化验证（2026-04-24）：`src/api/server.test.ts` 覆盖结构化 400；`src/lib/llm-error.test.ts` 覆盖结构化 code 映射；全量 `pnpm --filter @vivy1024/novelfork-studio test` 通过。
-    - 待人工复核：真机断开 API Key 后点击扫描，确认页面不显示英文原文 / 堆栈。
+    - 真实 UI 复核（2026-04-24）：真机缺 API Key 点击扫描显示中文「模型配置未完成」卡片，不显示英文 CLI 原文 / 堆栈；「去配置供应商」跳转到 Admin Providers。复核时发现 ProvidersTab 渲染对象模型会白屏，已修复为兼容 string/object 模型。
 
   - [x] 7.9.5 **（narrafork 后端 / P1 / 7.9B）启动日志结构化改造（对标 NarraFork）** — 已完成（2026-04-24）
     - 目标：每个 startup stage 都有结构化 JSON，含 `level/msg/component/ok|skipped|failed/reason/userImpact`
@@ -370,7 +370,7 @@
       - [x] `@d:\DESKTOP\novelfork\packages\studio\src\pages\WorktreeManager.tsx`：加「仅显示当前项目」checkbox（默认开）+ 已过滤数量 chip + 空态「显示 N 个外部 Worktree」兜底按钮；外部项目卡片角标「外部项目（推测）/ 外部项目」区分来源
       - [x] `use-worktree.test.ts` 7 用例（空 / 内部子路径 / 外部启发式 / backend flag 覆盖启发式 / 大小写-分隔符归一化 / 全 bare / `getVisibleWorktrees` 切换），全绿
     - 自动化验证（2026-04-24）：`src/hooks/use-worktree.test.ts`、`src/components/Admin/WorktreesTab.test.tsx`、`src/api/routes/admin.test.ts` 与全量 `pnpm --filter @vivy1024/novelfork-studio test` 通过。
-    - 待人工复核：真机 Admin → Worktree 管理确认默认不显示兄弟项目路径；7.9.6 的 `git-worktree pollution` 自愈链路仍留到 7.9B。
+    - 真实 UI 复核（2026-04-24）：Admin → Worktree 管理默认隐藏兄弟项目路径，仅显示当前项目 worktree；点击「显示外部 Worktree」后才显示 `sub2api` 外部路径并标记「外部项目」。复核时发现 Admin 未实际挂载 `WorktreesTab`，已补齐。
 
   - [x] 7.9.10 **（P2 / 7.9B）node-server `Failed to find Response internal state key` 警告** — 已完成（2026-04-24）
     - 现象：standalone server 启动日志偶发出现 `Failed to find Response internal state key`
@@ -382,7 +382,7 @@
     - 已落地：`start-http-server.ts` 新增 `createRateLimitedWarningSink()`，node fallback 安装 `console.warn` 过滤器；同一 `Failed to find Response internal state key` 5 秒内只保留首条，不影响其他 warning。
     - 自动化验证（2026-04-24）：`src/api/start-http-server.test.ts` 覆盖 5 秒窗口去重与普通 warning 保留；全量测试通过。
 
-  - [ ] 7.9.11 **（Cascade）done definition** — 🟡 进行中；7.9B 已提交，剩余真人 UI 复核
+  - [x] 7.9.11 **（Cascade）done definition** — 已完成（7.9A/7.9B 自动化 + exe smoke + 真人 UI 复核完成）
     - **7.9A 可先收口并提交**：`pnpm --filter @vivy1024/novelfork-studio typecheck` 通过；相关测试全绿（WS / routeToTabLabel 防御 / Radar 错误渲染 / a11y / Worktree 过滤）；手动冒烟「新建书籍 → 进 SessionCenter → ChatWindow 可发可收 → 断网能重连；RadarView 缺 key 有中文提示与跳转按钮；管理/设置 tab 标题正确」通过；`git status --short` 中仅剩与 7.9B 相关的未提交项或已干净
     - 自动化验证进度（2026-04-24）：
       - [x] `pnpm --filter @vivy1024/novelfork-studio exec vitest run src/api/server.test.ts src/api/lib/session-chat-service.test.ts src/hooks/use-worktree.test.ts src/lib/llm-error.test.ts src/components/Admin/Admin.test.tsx src/App.test.tsx src/components/Admin/WorktreesTab.test.tsx`：59 tests 通过
@@ -395,7 +395,7 @@
       - [x] `pnpm bun:compile`：通过，生成 `dist/novelfork.exe`；构建日志含既有 Rollup pure annotation / dynamic import 警告，不阻断编译
       - [x] exe 冒烟（2026-04-24）：`./dist/novelfork.exe --port=4579 --root=D:/DESKTOP/novelfork` 启动成功；日志确认 `isProd:true` + `isCompiledBinary:true` + `assetSource:"embedded"` + `WebSocket routes registered` 两条路由。
       - [x] exe HTTP/WS 冒烟（2026-04-24）：`GET /` 返回 embedded index；`POST /api/sessions` 成功；`ws://127.0.0.1:4579/api/sessions/<id>/chat` 返回 `session:snapshot`；`POST /api/radar/scan` 在缺 key 时返回结构化 400 + 中文 message；`GET /api/admin/worktrees` 可识别外部 worktree。
-      - [ ] 未执行/仍需真人 UI 复核：dev 模式 ChatWindow 完整发收与断网恢复、RadarView 页面跳转按钮、Admin Worktree UI 默认隐藏外部路径。
+      - [x] 真人 UI 复核（2026-04-24）：dev 模式 ChatWindow 完整发收与断网恢复通过；RadarView 缺 key 中文错误与供应商跳转通过；Admin Worktree UI 默认隐藏外部路径、点击后可显示外部路径通过。
       - [x] `git status --short` 在 7.9B 提交后干净；7.9B 代码提交：`83879f2 feat(studio): complete 7.9B startup hardening`
     - UI/UX 交互复核（2026-04-24，提交 `1f150ec` + `d3d837c`）：
       - [x] `ChatWindow` 手动重连竞态：`manualReconnect` 先解除旧 ws handlers 再 `close()`，避免旧 `onclose` 把 `wsConnected` 翻回 false / 重复排 5s timer 造成第三次连接
@@ -407,7 +407,8 @@
       - [x] `MonitorWidget` 僵尸重连修复：cleanup 前解除旧 ws handlers、`disposed` 标志阻断 `onclose` 的 5s 重连 timer
       - 自动化验证（2026-04-24）：`pnpm --filter @vivy1024/novelfork-studio typecheck` 通过；`pnpm --filter @vivy1024/novelfork-studio test`：534 tests 中 533 passed，1 failed 是预先存在的 Windows `sleep` 平台问题（`src/api/__tests__/tools-worktree.test.ts`），与本次修复无关
     - **7.9B 自动化与 exe smoke 已完成并提交**：`pnpm --filter @vivy1024/novelfork-studio test` 全绿（新增 startup logger / runtime mode / startup repair / node warning 相关用例）；`pnpm bun:compile` 产出 exe；启动日志确认 `isCompiledBinary:true` + `assetSource:"embedded"` + `WebSocket routes registered`。
-    - Package 6 最终收口前：`git status --short` 干净，并按任务 8 的 done definition 回写相关文档
+    - **真实 UI 复核补丁（2026-04-24）**：修复 ChatWindow 重连回放后不退出 `replaying`、ProvidersTab 对象模型渲染白屏、Admin Worktree 子页未挂载、WorktreesTab 默认暴露外部项目路径、bun CLI 被误判为 compiled binary。验证：定向 5 files / 32 tests 通过；typecheck 通过；全量 80 files / 537 tests 通过；`pnpm bun:compile` 通过；bun main 日志 `isCompiledBinary:false`，exe 日志 `isCompiledBinary:true`。
+    - Package 6 最终收口：`git status --short` 干净，并按任务 8 的 done definition 回写相关文档
 
 - [ ] 8. 每个 package 完成时执行统一 done definition
   - 已完成：Package 1 / 2 / 3 已按该口径完成后端、前端入口/反馈、测试、typecheck、相关回归与文档回写

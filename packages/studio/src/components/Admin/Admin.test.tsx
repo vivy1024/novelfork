@@ -39,6 +39,10 @@ vi.mock("./DaemonTab", () => ({
   DaemonTab: () => <div>DaemonTab Mock</div>,
 }));
 
+vi.mock("./WorktreesTab", () => ({
+  WorktreesTab: () => <div>WorktreesTab Mock</div>,
+}));
+
 import { Admin } from "./Admin";
 
 describe("Admin", () => {
@@ -77,9 +81,12 @@ describe("Admin", () => {
     expect(screen.getByText("Logs OpenRun Ready")).toBeTruthy();
   });
 
-  it("renders daemon and container tab content", () => {
+  it("renders daemon, worktree, and container tab content", () => {
     const { rerender } = render(<Admin section="daemon" onNavigateSection={() => {}} />);
     expect(screen.getByText("DaemonTab Mock")).toBeTruthy();
+
+    rerender(<Admin section="worktrees" onNavigateSection={() => {}} />);
+    expect(screen.getByText("WorktreesTab Mock")).toBeTruthy();
 
     rerender(<Admin section="container" onNavigateSection={() => {}} />);
     expect(screen.getByText("ContainerTab Mock")).toBeTruthy();

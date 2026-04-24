@@ -49,6 +49,27 @@ describe("ProvidersTab", () => {
     expect(screen.getByText("3")).toBeTruthy();
   });
 
+  it("renders provider model objects from the admin API without crashing", async () => {
+    fetchJsonMock.mockResolvedValueOnce({
+      providers: [
+        {
+          id: "anthropic",
+          name: "Anthropic",
+          type: "anthropic",
+          models: [
+            { id: "claude-sonnet-4-6", name: "Claude Sonnet 4.6", contextWindow: 200000 },
+          ],
+          enabled: true,
+          priority: 1,
+        },
+      ],
+    });
+
+    render(<ProvidersTab />);
+
+    expect(await screen.findByText("Claude Sonnet 4.6")).toBeTruthy();
+  });
+
   it("shows inline connection feedback instead of alert", async () => {
     fetchJsonMock
       .mockResolvedValueOnce({
