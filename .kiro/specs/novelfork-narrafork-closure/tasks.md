@@ -382,7 +382,7 @@
     - 已落地：`start-http-server.ts` 新增 `createRateLimitedWarningSink()`，node fallback 安装 `console.warn` 过滤器；同一 `Failed to find Response internal state key` 5 秒内只保留首条，不影响其他 warning。
     - 自动化验证（2026-04-24）：`src/api/start-http-server.test.ts` 覆盖 5 秒窗口去重与普通 warning 保留；全量测试通过。
 
-  - [ ] 7.9.11 **（Cascade）done definition** — 🟡 进行中；7.9B 自动化/typecheck/compile 绿，手动冒烟 + git status 未清
+  - [ ] 7.9.11 **（Cascade）done definition** — 🟡 进行中；7.9B 已提交，剩余真人 UI 复核
     - **7.9A 可先收口并提交**：`pnpm --filter @vivy1024/novelfork-studio typecheck` 通过；相关测试全绿（WS / routeToTabLabel 防御 / Radar 错误渲染 / a11y / Worktree 过滤）；手动冒烟「新建书籍 → 进 SessionCenter → ChatWindow 可发可收 → 断网能重连；RadarView 缺 key 有中文提示与跳转按钮；管理/设置 tab 标题正确」通过；`git status --short` 中仅剩与 7.9B 相关的未提交项或已干净
     - 自动化验证进度（2026-04-24）：
       - [x] `pnpm --filter @vivy1024/novelfork-studio exec vitest run src/api/server.test.ts src/api/lib/session-chat-service.test.ts src/hooks/use-worktree.test.ts src/lib/llm-error.test.ts src/components/Admin/Admin.test.tsx src/App.test.tsx src/components/Admin/WorktreesTab.test.tsx`：59 tests 通过
@@ -396,8 +396,8 @@
       - [x] exe 冒烟（2026-04-24）：`./dist/novelfork.exe --port=4579 --root=D:/DESKTOP/novelfork` 启动成功；日志确认 `isProd:true` + `isCompiledBinary:true` + `assetSource:"embedded"` + `WebSocket routes registered` 两条路由。
       - [x] exe HTTP/WS 冒烟（2026-04-24）：`GET /` 返回 embedded index；`POST /api/sessions` 成功；`ws://127.0.0.1:4579/api/sessions/<id>/chat` 返回 `session:snapshot`；`POST /api/radar/scan` 在缺 key 时返回结构化 400 + 中文 message；`GET /api/admin/worktrees` 可识别外部 worktree。
       - [ ] 未执行/仍需真人 UI 复核：dev 模式 ChatWindow 完整发收与断网恢复、RadarView 页面跳转按钮、Admin Worktree UI 默认隐藏外部路径。
-      - [ ] `git status --short` 仍不干净，且包含本轮 7.9B 改动；待提交
-    - **7.9B 自动化与 exe smoke 已完成**：`pnpm --filter @vivy1024/novelfork-studio test` 全绿（新增 startup logger / runtime mode / startup repair / node warning 相关用例）；`pnpm bun:compile` 产出 exe；启动日志确认 `isCompiledBinary:true` + `assetSource:"embedded"` + `WebSocket routes registered`。
+      - [x] `git status --short` 在 7.9B 提交后干净；7.9B 代码提交：`83879f2 feat(studio): complete 7.9B startup hardening`
+    - **7.9B 自动化与 exe smoke 已完成并提交**：`pnpm --filter @vivy1024/novelfork-studio test` 全绿（新增 startup logger / runtime mode / startup repair / node warning 相关用例）；`pnpm bun:compile` 产出 exe；启动日志确认 `isCompiledBinary:true` + `assetSource:"embedded"` + `WebSocket routes registered`。
     - Package 6 最终收口前：`git status --short` 干净，并按任务 8 的 done definition 回写相关文档
 
 - [ ] 8. 每个 package 完成时执行统一 done definition
