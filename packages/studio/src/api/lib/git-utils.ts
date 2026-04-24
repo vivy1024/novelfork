@@ -67,6 +67,12 @@ export function toGitPath(winPath: string): string {
   return winPath.replace(/\\/g, "/");
 }
 
+export function isPathInsideRoot(targetPath: string, root: string): boolean {
+  const normalizedTarget = toGitPath(path.resolve(targetPath)).toLowerCase();
+  const normalizedRoot = toGitPath(path.resolve(root)).replace(/\/+$/, "").toLowerCase();
+  return normalizedTarget === normalizedRoot || normalizedTarget.startsWith(`${normalizedRoot}/`);
+}
+
 /**
  * 列出所有 worktrees
  * @param root 仓库根目录

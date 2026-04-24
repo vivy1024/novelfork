@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { RefreshCw, RotateCcw, Save, ShieldCheck } from "lucide-react";
 
 import { fetchJson } from "../hooks/use-api";
+import { notify } from "@/lib/notify";
 import { useColors } from "../hooks/use-colors";
 import type { TFunction } from "../hooks/use-i18n";
 import type { Theme } from "../hooks/use-theme";
@@ -79,7 +80,7 @@ export function DetectionConfigView({ nav, theme }: { nav: Nav; theme: Theme; t:
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (e) {
-      alert(e instanceof Error ? e.message : "保存失败");
+      notify.error("保存失败", { description: e instanceof Error ? e.message : undefined });
     } finally {
       setSaving(false);
     }

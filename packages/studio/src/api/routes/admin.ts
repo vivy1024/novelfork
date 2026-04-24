@@ -14,6 +14,7 @@ import { WebSocketServer, type WebSocket } from "ws";
 
 import type { BunWebSocketConnection, BunWebSocketRegistrar, StartedHttpServer } from "../start-http-server.js";
 import { providerManager } from "../lib/provider-manager.js";
+import { getWorktreeStatus, isPathInsideRoot, listWorktrees } from "../lib/git-utils.js";
 import { buildStartupFailureDecisions, type StartupFailureDecision } from "../lib/startup-orchestrator.js";
 
 const statfs = promisify(statfsCallback);
@@ -306,6 +307,38 @@ function resolveRequestKind(endpoint: string): string {
 function resolveNarrator(endpoint: string): string {
   const segment = endpoint.split("/").filter(Boolean)[0] ?? "root";
   return `admin.${segment}`;
+}
+
+interface AdminWorktreeSnapshot {
+  rootPath: string;
+  refreshedAt: string;
+  refreshHintMs: number;
+  status: "ready" | "error";
+  error?: string;
+  summary: {
+    total: number;
+    dirty: number;
+    clean: number;
+    bare: number;
+  };
+  worktrees: Array<{
+    path: string;
+    relativePath: string;
+    branch: string;
+    head: string;
+    shortHead: string;
+    bare: boolean;
+    isPrimary: boolean;
+    isExternal: boolean;
+    dirty: boolean;
+    changeCount: number;
+    status: {
+      modified: number;
+      added: number;
+      deleted: number;
+      untracked: number;
+    };
+  }>;
 }
 
 function normalizeStartupSummary(startup: StartupSummarySnapshot | null): StartupSummarySnapshot | null {
@@ -665,6 +698,69 @@ async function scanStorageTarget(rootPath: string, target: (typeof STORAGE_TARGE
   }
 }
 
+async function getAdminWorktreeSnapshot(root?: string): Promise<AdminWorktreeSnapshot> {
+  const rootPath = getAdminProjectRoot(root);
+  const refreshedAt = new Date().toISOString();
+
+  try {
+    const entries = await listWorktrees(rootPath);
+    const primaryPath = entries.find((entry) => !entry.bare)?.path ?? entries[0]?.path ?? rootPath;
+    const worktrees = await Promise.all(entries.map(async (entry) => {
+      const rawStatus = await getWorktreeStatus(entry.path).catch(() => ({
+        modified: [],
+        added: [],
+        deleted: [],
+        untracked: [],
+        hasChanges: false,
+      }));
+      const status = {
+        modified: rawStatus.modified.length,
+        added: rawStatus.added.length,
+        deleted: rawStatus.deleted.length,
+        untracked: rawStatus.untracked.length,
+      };
+      const changeCount = status.modified + status.added + status.deleted + status.untracked;
+      return {
+        path: entry.path,
+        relativePath: relative(rootPath, entry.path).replace(/\\/g, "/") || ".",
+        branch: entry.branch,
+        head: entry.head,
+        shortHead: entry.head.slice(0, 7),
+        bare: entry.bare,
+        isPrimary: resolve(entry.path) === resolve(primaryPath),
+        isExternal: !isPathInsideRoot(entry.path, rootPath),
+        dirty: changeCount > 0,
+        changeCount,
+        status,
+      };
+    }));
+
+    return {
+      rootPath,
+      refreshedAt,
+      refreshHintMs: ADMIN_LOG_REFRESH_HINT_MS,
+      status: "ready",
+      summary: {
+        total: worktrees.length,
+        dirty: worktrees.filter((entry) => entry.dirty).length,
+        clean: worktrees.filter((entry) => !entry.dirty).length,
+        bare: worktrees.filter((entry) => entry.bare).length,
+      },
+      worktrees,
+    };
+  } catch (error) {
+    return {
+      rootPath,
+      refreshedAt,
+      refreshHintMs: ADMIN_LOG_REFRESH_HINT_MS,
+      status: "error",
+      error: error instanceof Error ? error.message : "读取 worktree 列表失败",
+      summary: { total: 0, dirty: 0, clean: 0, bare: 0 },
+      worktrees: [],
+    };
+  }
+}
+
 async function getStorageSnapshot(forceRefresh: boolean, root?: string): Promise<StorageSnapshot> {
   const rootPath = getAdminProjectRoot(root);
   const now = Date.now();
@@ -951,6 +1047,18 @@ export function createAdminRouter(
     });
 
     return c.json({ stats, storage, startup, searchIndexTriggered: true });
+  });
+
+  // ===== Worktree =====
+
+  app.get("/worktrees", async (c) => {
+    const snapshot = await getAdminWorktreeSnapshot(root);
+    c.set("adminLogMeta", {
+      narrator: "admin.worktrees",
+      requestKind: "worktree-audit",
+      details: `total=${snapshot.summary.total};dirty=${snapshot.summary.dirty};status=${snapshot.status}`,
+    });
+    return c.json(snapshot);
   });
 
   // ===== 请求历史 =====

@@ -17,7 +17,6 @@ const BookDetail = lazy(() => import("./pages/BookDetail").then((m) => ({ defaul
 const ChapterReader = lazy(() => import("./pages/ChapterReader").then((m) => ({ default: m.ChapterReader })));
 const Analytics = lazy(() => import("./pages/Analytics").then((m) => ({ default: m.Analytics })));
 const TruthFiles = lazy(() => import("./pages/TruthFiles").then((m) => ({ default: m.TruthFiles })));
-const DaemonControl = lazy(() => import("./pages/DaemonControl").then((m) => ({ default: m.DaemonControl })));
 const GenreManager = lazy(() => import("./pages/GenreManager").then((m) => ({ default: m.GenreManager })));
 const StyleManager = lazy(() => import("./pages/StyleManager").then((m) => ({ default: m.StyleManager })));
 const ImportManager = lazy(() => import("./pages/ImportManager").then((m) => ({ default: m.ImportManager })));
@@ -31,7 +30,6 @@ const IntentEditor = lazy(() => import("./pages/IntentEditor").then((m) => ({ de
 const StateProjectionsView = lazy(() => import("./pages/StateProjectionsView").then((m) => ({ default: m.StateProjectionsView })));
 const PipelineVisualization = lazy(() => import("./pages/PipelineVisualization").then((m) => ({ default: m.PipelineVisualization })));
 const SettingsView = lazy(() => import("./pages/SettingsView").then((m) => ({ default: m.SettingsView })));
-const WorktreeManager = lazy(() => import("./pages/WorktreeManager").then((m) => ({ default: m.WorktreeManager })));
 const SessionCenter = lazy(() => import("./pages/SessionCenter").then((m) => ({ default: m.SessionCenter })));
 const WorkflowWorkbench = lazy(() => import("./pages/WorkflowWorkbench").then((m) => ({ default: m.WorkflowWorkbench })));
 const Admin = lazy(() => import("./components/Admin/Admin").then((m) => ({ default: m.Admin })));
@@ -44,6 +42,7 @@ import { useI18n } from "./hooks/use-i18n";
 import { useTabsState } from "./hooks/use-tabs";
 import { useLayoutConfig } from "./hooks/use-layout-config";
 import { useRecovery } from "./hooks/use-crash-recovery";
+import { useRecoveryToasts } from "./hooks/use-recovery-toasts";
 import { persistTabSession, restoreTabSession } from "./hooks/use-persisted-tabs";
 import { fetchJson, postApi, useApi } from "./hooks/use-api";
 import type { SearchResult } from "./shared/search-types";
@@ -92,6 +91,7 @@ export function App() {
 
 function AppInner() {
   useSilentTokenImport();
+  useRecoveryToasts();
   const { mode, selectWorkspace, workspace } = useNovelFork();
   const { tabs, activeTabId, activeTab, openTab, closeTab, activateTab } = useTabsState();
   const [bookCreateOpen, setBookCreateOpen] = useState(false);
@@ -499,6 +499,8 @@ function AppInner() {
                 ...nav,
                 toDashboard: () => setBookCreateOpen(false),
                 toBook: (id: string) => { setBookCreateOpen(false); nav.toBook(id); },
+                // 5.5.1: after BookCreate succeeds it calls toSessions(); close the modal too.
+                toSessions: () => { setBookCreateOpen(false); nav.toSessions(); },
               }}
               theme={theme}
               t={t}
@@ -611,21 +613,6 @@ function TabContentInner({ route, nav, theme, t, sse, setTheme }: {
         />
       );
     case "admin": {
-      if (route.section === "daemon") {
-        return <DaemonControl nav={nav} theme={theme} t={t} sse={sse} />;
-      }
-      if (route.section === "logs") {
-        return (
-          <Admin
-            onBack={nav.toDashboard}
-            section={route.section}
-            onNavigateSection={(section) => nav.toAdmin(section)}
-          />
-        );
-      }
-      if (route.section === "worktrees") {
-        return <WorktreeManager onBack={() => nav.toAdmin()} />;
-      }
       return (
         <Admin
           onBack={nav.toDashboard}

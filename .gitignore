@@ -28,6 +28,7 @@ _*.md
 playwright-report/
 test-results/
 test/
+.claude/
 # Compiled executables
 *.exe
 dist-bun/*.exe

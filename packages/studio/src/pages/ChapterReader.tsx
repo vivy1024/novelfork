@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { fetchJson, useApi, postApi } from "../hooks/use-api";
+import { notify } from "@/lib/notify";
 import { useAutosave } from "../hooks/use-autosave";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
@@ -97,7 +98,7 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
       setEditing(false);
       refetch();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Save failed");
+      notify.error("保存失败", { description: e instanceof Error ? e.message : undefined });
     } finally {
       setManualSaving(false);
     }
@@ -128,7 +129,7 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
         snapshotId,
       });
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to load snapshot");
+      notify.error("快照加载失败", { description: e instanceof Error ? e.message : undefined });
     }
   };
 
@@ -146,7 +147,7 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
       setDiffPanelData(null);
       refetch();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to restore snapshot");
+      notify.error("快照恢复失败", { description: e instanceof Error ? e.message : undefined });
     }
   };
 
@@ -173,9 +174,9 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
       // Close dialog and reset
       setShowSnapshotDialog(false);
       setSnapshotDescription("");
-      alert("快照已保存");
+      notify.success("快照已保存");
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to save snapshot");
+      notify.error("快照保存失败", { description: e instanceof Error ? e.message : undefined });
     }
   };
 

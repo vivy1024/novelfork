@@ -31,14 +31,6 @@ vi.mock("./LogsTab", () => ({
   ),
 }));
 
-vi.mock("./LogsTab", () => ({
-  LogsTab: () => <div>LogsTab Mock</div>,
-}));
-
-vi.mock("./TerminalTab", () => ({
-  TerminalTab: () => <div>TerminalTab Mock</div>,
-}));
-
 vi.mock("./ContainerTab", () => ({
   ContainerTab: () => <div>ContainerTab Mock</div>,
 }));
@@ -50,7 +42,7 @@ vi.mock("./DaemonTab", () => ({
 import { Admin } from "./Admin";
 
 describe("Admin", () => {
-  it("shows daemon, logs, worktree, terminal, and container entry cards in overview", () => {
+  it("shows daemon, logs, worktree, and container entry cards in overview", () => {
     const onNavigateSection = vi.fn();
 
     render(<Admin section="overview" onNavigateSection={onNavigateSection} />);
@@ -58,14 +50,12 @@ describe("Admin", () => {
     fireEvent.click(screen.getByRole("button", { name: /守护进程/i }));
     fireEvent.click(screen.getByRole("button", { name: /日志/i }));
     fireEvent.click(screen.getByRole("button", { name: /worktree/i }));
-    fireEvent.click(screen.getByRole("button", { name: /终端/i }));
     fireEvent.click(screen.getByRole("button", { name: /容器/i }));
 
     expect(onNavigateSection).toHaveBeenNthCalledWith(1, "daemon");
     expect(onNavigateSection).toHaveBeenNthCalledWith(2, "logs");
     expect(onNavigateSection).toHaveBeenNthCalledWith(3, "worktrees");
-    expect(onNavigateSection).toHaveBeenNthCalledWith(4, "terminal");
-    expect(onNavigateSection).toHaveBeenNthCalledWith(5, "container");
+    expect(onNavigateSection).toHaveBeenNthCalledWith(4, "container");
   });
 
   it("renders the selected admin tab content", () => {
@@ -87,12 +77,8 @@ describe("Admin", () => {
     expect(screen.getByText("Logs OpenRun Ready")).toBeTruthy();
   });
 
-  it("renders terminal, daemon, and container tab content", () => {
-    const { rerender } = render(<Admin section="terminal" onNavigateSection={() => {}} />);
-
-    expect(screen.getByText("TerminalTab Mock")).toBeTruthy();
-
-    rerender(<Admin section="daemon" onNavigateSection={() => {}} />);
+  it("renders daemon and container tab content", () => {
+    const { rerender } = render(<Admin section="daemon" onNavigateSection={() => {}} />);
     expect(screen.getByText("DaemonTab Mock")).toBeTruthy();
 
     rerender(<Admin section="container" onNavigateSection={() => {}} />);

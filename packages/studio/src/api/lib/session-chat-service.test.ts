@@ -662,4 +662,20 @@ describe("session-chat-service", () => {
       },
     });
   });
+
+  it("registers a Bun websocket route that matches concrete session chat paths", async () => {
+    const { setupSessionChatWebSocket } = await loadSessionServices();
+    const registerWebSocketRoute = vi.fn();
+
+    setupSessionChatWebSocket({
+      runtime: "bun",
+      registerWebSocketRoute,
+    });
+
+    expect(registerWebSocketRoute).toHaveBeenCalledTimes(1);
+    const route = registerWebSocketRoute.mock.calls[0]?.[0];
+    expect(route).toMatchObject({ path: "/api/sessions/:id/chat" });
+    expect(route.matchPath("/api/sessions/demo-session/chat")).toBe(true);
+    expect(route.matchPath("/api/sessions/demo-session/chat/state")).toBe(false);
+  });
 });

@@ -58,10 +58,10 @@ const ADMIN_SECTION_LABELS: Record<AdminSection, string> = {
   providers: "供应商",
   resources: "资源监控",
   requests: "请求历史",
+  sessions: "会话联动",
   daemon: "守护进程",
   logs: "日志",
   worktrees: "Worktree",
-  terminal: "终端",
   container: "容器",
 };
 
@@ -73,8 +73,10 @@ export function routeToTabLabel(route: Route): string {
   switch (route.page) {
     case "dashboard":
       return "项目总览";
-    case "workflow":
-      return route.section ? `工作流 · ${WORKFLOW_SECTION_LABELS[route.section]}` : "工作流配置";
+    case "workflow": {
+      const label = route.section ? WORKFLOW_SECTION_LABELS[route.section] : undefined;
+      return label ? `工作流 · ${label}` : "工作流配置";
+    }
     case "sessions":
       return "会话中心";
     case "book":
@@ -111,10 +113,14 @@ export function routeToTabLabel(route: Route): string {
       return "状态投影";
     case "pipeline":
       return route.runId ? `Pipeline · ${route.runId}` : "Pipeline";
-    case "settings":
-      return route.section ? `设置 · ${SETTINGS_SECTION_LABELS[route.section]}` : "设置";
-    case "admin":
-      return route.section ? `管理 · ${ADMIN_SECTION_LABELS[route.section]}` : "管理中心";
+    case "settings": {
+      const label = route.section ? SETTINGS_SECTION_LABELS[route.section] : undefined;
+      return label ? `设置 · ${label}` : "设置";
+    }
+    case "admin": {
+      const label = route.section ? ADMIN_SECTION_LABELS[route.section] : undefined;
+      return label ? `管理 · ${label}` : "管理中心";
+    }
     default: {
       const unreachable: never = route;
       throw new Error(`Unhandled route for tab label: ${JSON.stringify(unreachable)}`);

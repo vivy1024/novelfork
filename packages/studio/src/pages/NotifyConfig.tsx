@@ -3,6 +3,7 @@ import { Globe, MessageSquare, Pencil, Plus, Power, RefreshCw, Send, Trash2, Web
 
 import { PageEmptyState } from "@/components/layout/PageEmptyState";
 import { useApi, putApi } from "../hooks/use-api";
+import { notify } from "@/lib/notify";
 import { useColors } from "../hooks/use-colors";
 import type { TFunction } from "../hooks/use-i18n";
 import type { Theme } from "../hooks/use-theme";
@@ -152,7 +153,7 @@ export function NotifyConfig({ nav, theme }: { nav: Nav; theme: Theme; t: TFunct
       setDirty(false);
       refetch();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "保存失败");
+      notify.error("保存失败", { description: e instanceof Error ? e.message : undefined });
     } finally {
       setSaving(false);
     }

@@ -3,7 +3,7 @@
  * 用户管理、API 供应商管理、资源监控、请求历史
  */
 
-import { Activity, Box, FileText, LayoutDashboard, Logs, MessagesSquare, Server, Terminal, Users, Workflow } from "lucide-react";
+import { Activity, Box, FileText, LayoutDashboard, Logs, MessagesSquare, Server, Users, Workflow } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,8 +17,8 @@ import { ProvidersTab } from "./ProvidersTab";
 import { RequestsTab } from "./RequestsTab";
 import { ResourcesTab } from "./ResourcesTab";
 import { SessionsTab } from "./SessionsTab";
-import { TerminalTab } from "./TerminalTab";
 import { UsersTab } from "./UsersTab";
+import { WorktreesTab } from "./WorktreesTab";
 
 interface AdminProps {
   onBack?: () => void;
@@ -127,13 +127,6 @@ export function Admin({ onBack, section, onNavigateSection, onOpenRun }: AdminPr
               onClick={() => onNavigateSection?.("worktrees")}
             />
             <AdminEntryCard
-              icon={Terminal}
-              title="Terminal 终端"
-              description="terminal 管理入口，后续接本地 shell 与受控命令执行。"
-              active={activeSection === "terminal"}
-              onClick={() => onNavigateSection?.("terminal")}
-            />
-            <AdminEntryCard
               icon={Box}
               title="Container 容器"
               description="container 管理入口，后续接容器运行时与 exec 能力。"
@@ -190,7 +183,6 @@ export function Admin({ onBack, section, onNavigateSection, onOpenRun }: AdminPr
           onOpenRun={onOpenRun}
         />
       )}
-      {activeSection === "terminal" && <TerminalTab />}
       {activeSection === "container" && <ContainerTab />}
     </div>
   );

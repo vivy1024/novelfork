@@ -4,6 +4,7 @@ import { PageEmptyState } from "@/components/layout/PageEmptyState";
 import { PageScaffold } from "@/components/layout/PageScaffold";
 import { Button } from "@/components/ui/button";
 import { useApi, postApi } from "../hooks/use-api";
+import { notify } from "@/lib/notify";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
 import { useColors } from "../hooks/use-colors";
@@ -70,7 +71,7 @@ export function DaemonControl({ nav, theme, t, sse }: { nav: Nav; theme: Theme; 
       await postApi("/daemon/start", { intervalMinutes: intervalMin });
       refetch();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed");
+      notify.error("启动失败", { description: e instanceof Error ? e.message : undefined });
     } finally {
       setLoading(false);
     }
@@ -82,7 +83,7 @@ export function DaemonControl({ nav, theme, t, sse }: { nav: Nav; theme: Theme; 
       await postApi("/daemon/stop");
       refetch();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed");
+      notify.error("停止失败", { description: e instanceof Error ? e.message : undefined });
     } finally {
       setLoading(false);
     }

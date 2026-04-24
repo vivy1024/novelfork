@@ -16,6 +16,13 @@ export interface BunWebSocketConnection {
 
 export interface BunWebSocketRoute {
   readonly path: string;
+  /**
+   * Optional pathname predicate. When present, overrides strict equality on
+   * `path`, enabling routes like `/api/sessions/:id/chat` to match any
+   * concrete session id. `path` remains the stable identifier used by
+   * `socket.data.routePath` during dispatch.
+   */
+  matchPath?(pathname: string): boolean;
   upgrade(request: Request, server: BunUpgradeServer): boolean;
   open?(socket: BunWebSocketConnection): void;
   close?(socket: BunWebSocketConnection, code: number, reason: string): void;
@@ -73,7 +80,9 @@ export async function startHttpServer(options: {
       port: options.port,
       fetch(request, server) {
         const pathname = new URL(request.url).pathname;
-        const route = webSocketRoutes.find((candidate) => candidate.path === pathname);
+        const route = webSocketRoutes.find((candidate) =>
+          candidate.matchPath ? candidate.matchPath(pathname) : candidate.path === pathname,
+        );
         if (route && route.upgrade(request, server)) {
           return undefined;
         }

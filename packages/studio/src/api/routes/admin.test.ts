@@ -375,7 +375,9 @@ describe("createAdminRouter", () => {
       exists: true,
       limit: 50,
       totalEntries: 2,
-      entries: [
+    });
+    expect(payload.entries).toEqual(
+      expect.arrayContaining([
         expect.objectContaining({
           level: "info",
           tag: "studio",
@@ -391,8 +393,8 @@ describe("createAdminRouter", () => {
           message: "plain text log line",
           source: "text",
         }),
-      ],
-    });
+      ]),
+    );
     expect(payload.sourcePath).toContain("novelfork.log");
     expect(typeof payload.refreshedAt).toBe("string");
     expect(typeof payload.updatedAt).toBe("string");

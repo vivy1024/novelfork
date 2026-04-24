@@ -3,15 +3,16 @@
  * 提供 worktree 列表、创建、删除功能
  */
 
-import { useState } from "react";
-import { Plus, RefreshCw, AlertCircle, FolderGit2, X } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Plus, RefreshCw, AlertCircle, FolderGit2 } from "lucide-react";
 import { WorktreeCard } from "../components/WorktreeCard";
 import { FileModPanel } from "../components/FileModPanel";
-import { useWorktree } from "../hooks/use-worktree";
+import { useWorktree, classifyWorktrees, getVisibleWorktrees } from "../hooks/use-worktree";
 import { Button } from "../components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "../components/ui/dialog";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
+import { notify } from "@/lib/notify";
 
 interface WorktreeManagerProps {
   onBack: () => void;
@@ -29,6 +30,17 @@ export function WorktreeManager({ onBack }: WorktreeManagerProps) {
   const [newWorktreeBranch, setNewWorktreeBranch] = useState("");
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [onlyCurrentProject, setOnlyCurrentProject] = useState(true);
+
+  const classified = useMemo(() => classifyWorktrees(worktrees), [worktrees]);
+  const externalCount = useMemo(
+    () => classified.filter((w) => w.externalReason !== undefined).length,
+    [classified],
+  );
+  const visibleWorktrees = useMemo(
+    () => getVisibleWorktrees(classified, !onlyCurrentProject),
+    [classified, onlyCurrentProject],
+  );
 
   const handleCreate = async () => {
     if (!newWorktreeName.trim()) return;
@@ -63,7 +75,7 @@ export function WorktreeManager({ onBack }: WorktreeManagerProps) {
   const handleOpenWorktree = (path: string) => {
     // PWA 环境：复制路径到剪贴板
     void navigator.clipboard.writeText(path);
-    alert(`路径已复制到剪贴板：${path}`);
+    notify.success("路径已复制到剪贴板", { description: path });
   };
 
   const handleDeleteClick = (path: string) => {
@@ -124,6 +136,20 @@ export function WorktreeManager({ onBack }: WorktreeManagerProps) {
         </div>
 
         <div className="flex items-center gap-2">
+          <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={onlyCurrentProject}
+              onChange={(e) => setOnlyCurrentProject(e.target.checked)}
+              className="size-4"
+            />
+            仅显示当前项目
+            {externalCount > 0 && (
+              <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-300">
+                已过滤 {externalCount}
+              </span>
+            )}
+          </label>
           <Button
             variant="outline"
             size="sm"
@@ -164,16 +190,36 @@ export function WorktreeManager({ onBack }: WorktreeManagerProps) {
             <p>暂无 Worktree</p>
             <p className="text-sm mt-2">点击"创建 Worktree"开始</p>
           </div>
+        ) : visibleWorktrees.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
+            <FolderGit2 size={48} className="mb-4 opacity-50" />
+            <p>当前项目暂无 Worktree</p>
+            {externalCount > 0 && (
+              <button
+                type="button"
+                className="text-sm mt-2 text-primary hover:underline"
+                onClick={() => setOnlyCurrentProject(false)}
+              >
+                显示 {externalCount} 个外部 Worktree
+              </button>
+            )}
+          </div>
         ) : (
           <div className="space-y-3">
-            {worktrees.map((worktree) => (
-              <WorktreeCard
-                key={worktree.path}
-                worktree={worktree}
-                onDelete={handleDeleteClick}
-                onOpen={handleOpenWorktree}
-                onViewChanges={handleViewChanges}
-              />
+            {visibleWorktrees.map((worktree) => (
+              <div key={worktree.path} className="relative">
+                {worktree.externalReason && (
+                  <span className="absolute right-3 top-3 z-10 rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-300">
+                    外部项目{worktree.externalReason === "heuristic" ? "（推测）" : ""}
+                  </span>
+                )}
+                <WorktreeCard
+                  worktree={worktree}
+                  onDelete={handleDeleteClick}
+                  onOpen={handleOpenWorktree}
+                  onViewChanges={handleViewChanges}
+                />
+              </div>
             ))}
           </div>
         )}

@@ -23,6 +23,7 @@ import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
 import { useColors } from "../hooks/use-colors";
 import { useWindowStore } from "@/stores/windowStore";
+import { notify } from "@/lib/notify";
 
 interface Nav {
   toDashboard: () => void;
@@ -450,6 +451,11 @@ export function BookCreate({ nav, theme, t, projectCreateDraft, flowRevision = 0
           sessionId: session.id,
           sessionMode: session.sessionMode,
         });
+        // 5.5.1: user-visible success feedback. Landing on SessionCenter makes
+        // the default narrator session immediately usable.
+        notify.success(`《${title}》已创建`, {
+          description: "默认工作流已就绪，可直接开始写作",
+        });
         if (nav.toSessions) {
           nav.toSessions();
         } else {
@@ -555,16 +561,18 @@ export function BookCreate({ nav, theme, t, projectCreateDraft, flowRevision = 0
             <p className="text-xs leading-5 text-muted-foreground">{copy.initHint}</p>
           </div>
 
-          <div className="space-y-2">
-            <label className="block text-sm text-muted-foreground">{copy.repoLabel}</label>
+          <div role="group" aria-labelledby="bookcreate-repo-source-label" className="space-y-2">
+            <div id="bookcreate-repo-source-label" className="block text-sm text-muted-foreground">{copy.repoLabel}</div>
             <ChoiceGrid options={repoOptions} value={repositorySource} onChange={setRepositorySource} />
           </div>
 
           {repositorySource === "clone" ? (
             <div>
-              <label className="block text-sm text-muted-foreground mb-2">{copy.cloneLabel}</label>
+              <label htmlFor="bookcreate-clone-url" className="block text-sm text-muted-foreground mb-2">{copy.cloneLabel}</label>
               <input
-                type="text"
+                id="bookcreate-clone-url"
+                name="cloneUrl"
+                type="url"
                 value={cloneUrl}
                 onChange={(e) => setCloneUrl(e.target.value)}
                 className={`w-full ${c.input} rounded-md px-4 py-3 focus:outline-none text-base`}
@@ -573,8 +581,10 @@ export function BookCreate({ nav, theme, t, projectCreateDraft, flowRevision = 0
             </div>
           ) : (
             <div>
-              <label className="block text-sm text-muted-foreground mb-2">{copy.repoPathLabel}</label>
+              <label htmlFor="bookcreate-repo-path" className="block text-sm text-muted-foreground mb-2">{copy.repoPathLabel}</label>
               <input
+                id="bookcreate-repo-path"
+                name="repositoryPath"
                 type="text"
                 value={repositoryPath}
                 onChange={(e) => setRepositoryPath(e.target.value)}
@@ -584,20 +594,22 @@ export function BookCreate({ nav, theme, t, projectCreateDraft, flowRevision = 0
             </div>
           )}
 
-          <div className="space-y-2">
-            <label className="block text-sm text-muted-foreground">{copy.workflowLabel}</label>
+          <div role="group" aria-labelledby="bookcreate-workflow-mode-label" className="space-y-2">
+            <div id="bookcreate-workflow-mode-label" className="block text-sm text-muted-foreground">{copy.workflowLabel}</div>
             <ChoiceGrid options={workflowOptions} value={workflowMode} onChange={setWorkflowMode} />
           </div>
 
-          <div className="space-y-2">
-            <label className="block text-sm text-muted-foreground">{copy.templateLabel}</label>
+          <div role="group" aria-labelledby="bookcreate-template-preset-label" className="space-y-2">
+            <div id="bookcreate-template-preset-label" className="block text-sm text-muted-foreground">{copy.templateLabel}</div>
             <ChoiceGrid options={templateOptions} value={templatePreset} onChange={setTemplatePreset} />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm text-muted-foreground mb-2">{copy.gitBranchLabel}</label>
+              <label htmlFor="bookcreate-git-branch" className="block text-sm text-muted-foreground mb-2">{copy.gitBranchLabel}</label>
               <input
+                id="bookcreate-git-branch"
+                name="gitBranch"
                 type="text"
                 value={gitBranch}
                 onChange={(e) => setGitBranch(e.target.value)}
@@ -606,8 +618,10 @@ export function BookCreate({ nav, theme, t, projectCreateDraft, flowRevision = 0
               />
             </div>
             <div>
-              <label className="block text-sm text-muted-foreground mb-2">{copy.worktreeLabel}</label>
+              <label htmlFor="bookcreate-worktree-name" className="block text-sm text-muted-foreground mb-2">{copy.worktreeLabel}</label>
               <input
+                id="bookcreate-worktree-name"
+                name="worktreeName"
                 type="text"
                 value={worktreeName}
                 onChange={(e) => {
@@ -628,8 +642,10 @@ export function BookCreate({ nav, theme, t, projectCreateDraft, flowRevision = 0
         </div>
 
         <div>
-          <label className="block text-sm text-muted-foreground mb-2">{t("create.bookTitle")}</label>
+          <label htmlFor="bookcreate-title" className="block text-sm text-muted-foreground mb-2">{t("create.bookTitle")}</label>
           <input
+            id="bookcreate-title"
+            name="title"
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
@@ -638,13 +654,14 @@ export function BookCreate({ nav, theme, t, projectCreateDraft, flowRevision = 0
           />
         </div>
 
-        <div>
-          <label className="block text-sm text-muted-foreground mb-2">{t("create.genre")}</label>
+        <div role="group" aria-labelledby="bookcreate-genre-label">
+          <div id="bookcreate-genre-label" className="block text-sm text-muted-foreground mb-2">{t("create.genre")}</div>
           <div className="grid grid-cols-3 gap-2">
             {genres.map((g) => (
               <button
                 type="button"
                 key={g.id}
+                aria-pressed={genre === g.id}
                 onClick={() => setGenre(g.id)}
                 className={`px-3 py-2.5 rounded-md text-sm text-left transition-all ${
                   genre === g.id
@@ -659,13 +676,14 @@ export function BookCreate({ nav, theme, t, projectCreateDraft, flowRevision = 0
           </div>
         </div>
 
-        <div>
-          <label className="block text-sm text-muted-foreground mb-2">{t("create.platform")}</label>
+        <div role="group" aria-labelledby="bookcreate-platform-label">
+          <div id="bookcreate-platform-label" className="block text-sm text-muted-foreground mb-2">{t("create.platform")}</div>
           <div className="flex flex-wrap gap-2">
             {platforms.map((p) => (
               <button
                 type="button"
                 key={p.value}
+                aria-pressed={platform === p.value}
                 onClick={() => setPlatform(p.value)}
                 className={`px-3 py-2 rounded-md text-sm transition-all ${
                   platform === p.value
@@ -681,9 +699,12 @@ export function BookCreate({ nav, theme, t, projectCreateDraft, flowRevision = 0
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm text-muted-foreground mb-2">{t("create.wordsPerChapter")}</label>
+            <label htmlFor="bookcreate-chapter-words" className="block text-sm text-muted-foreground mb-2">{t("create.wordsPerChapter")}</label>
             <input
+              id="bookcreate-chapter-words"
+              name="chapterWords"
               type="number"
+              min={100}
               value={chapterWords}
               onChange={(e) => {
                 setChapterWordsTouched(true);
@@ -693,9 +714,12 @@ export function BookCreate({ nav, theme, t, projectCreateDraft, flowRevision = 0
             />
           </div>
           <div>
-            <label className="block text-sm text-muted-foreground mb-2">{t("create.targetChapters")}</label>
+            <label htmlFor="bookcreate-target-chapters" className="block text-sm text-muted-foreground mb-2">{t("create.targetChapters")}</label>
             <input
+              id="bookcreate-target-chapters"
+              name="targetChapters"
               type="number"
+              min={1}
               value={targetChapters}
               onChange={(e) => {
                 setTargetChaptersTouched(true);

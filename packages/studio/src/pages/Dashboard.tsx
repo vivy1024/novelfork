@@ -23,6 +23,7 @@ import { PageScaffold } from "@/components/layout/PageScaffold";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { deriveActiveBookIds, shouldRefetchBookCollections } from "../hooks/use-book-activity";
 import { fetchJson, postApi, useApi } from "../hooks/use-api";
+import { notify } from "@/lib/notify";
 import { useColors } from "../hooks/use-colors";
 import type { TFunction } from "../hooks/use-i18n";
 import type { SSEMessage } from "../hooks/use-sse";
@@ -83,7 +84,7 @@ function BookMenu({ bookId, bookTitle, nav, t, onDelete }: {
       a.click();
       URL.revokeObjectURL(url);
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Export failed");
+      notify.error("导出失败", { description: e instanceof Error ? e.message : undefined });
     }
   };
 

@@ -9,10 +9,7 @@
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  getRecoveryPresentation,
-  getRecoveryToneBadgeClassName,
-} from "@/lib/windowRecoveryPresentation";
+import { RecoveryBadge } from "@/components/RecoveryBadge";
 import { useWindowRuntimeStore } from "@/stores/windowRuntimeStore";
 import { useWindowStore } from "@/stores/windowStore";
 
@@ -81,7 +78,6 @@ export function SessionsTab() {
                 {windows.map((window) => {
                   const wsConnected = wsConnections[window.id] ?? false;
                   const recoveryState = recoveryStates[window.id] ?? "idle";
-                  const presentation = getRecoveryPresentation({ recoveryState, wsConnected });
                   return (
                     <tr key={window.id} className="border-b last:border-0" data-testid={`admin-session-row-${window.id}`}>
                       <td className="py-2 pr-3 font-mono text-xs text-foreground">{window.id}</td>
@@ -93,9 +89,11 @@ export function SessionsTab() {
                         {window.sessionMode === "plan" ? "计划模式" : "对话模式"}
                       </td>
                       <td className="py-2 pr-3">
-                        <Badge variant="outline" className={getRecoveryToneBadgeClassName(presentation.tone)}>
-                          {presentation.shortLabel}
-                        </Badge>
+                        <RecoveryBadge
+                          recoveryState={recoveryState}
+                          wsConnected={wsConnected}
+                          variant="chip"
+                        />
                       </td>
                       <td className="py-2 pr-3 font-mono text-xs text-muted-foreground">
                         {`x:${window.position.x} y:${window.position.y} w:${window.position.w} h:${window.position.h}`}

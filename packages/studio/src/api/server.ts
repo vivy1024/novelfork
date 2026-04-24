@@ -18,6 +18,7 @@ import { ApiError } from "./errors.js";
 import { readSessionFromCookie } from "./auth.js";
 import { createFilesystemStaticProvider, type StaticProvider } from "./static-provider.js";
 import { startHttpServer } from "./start-http-server.js";
+import { setupSessionChatWebSocket } from "./lib/session-chat-service.js";
 import { RunStore } from "./lib/run-store.js";
 import {
   rebuildSearchIndex,
@@ -488,6 +489,10 @@ export async function startStudioServer(
   const startedServer = await startHttpServer({ fetch: app.fetch, port });
   if (startedServer) {
     setupAdminWebSocket(startedServer);
+    setupSessionChatWebSocket(startedServer);
+    console.log(
+      `[startup] WebSocket routes registered: /api/admin/resources/ws, /api/sessions/:id/chat`,
+    );
     // setupMonitorWebSocket(startedServer, ctx);
   }
 }

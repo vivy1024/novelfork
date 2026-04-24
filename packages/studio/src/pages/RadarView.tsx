@@ -9,6 +9,8 @@ import { fetchJson } from "../hooks/use-api";
 import { useColors } from "../hooks/use-colors";
 import type { TFunction } from "../hooks/use-i18n";
 import type { Theme } from "../hooks/use-theme";
+import type { AdminSection, SettingsSection } from "../routes";
+import { describeLlmError, type LlmErrorInfo } from "../lib/llm-error";
 
 interface Recommendation {
   readonly confidence: number;
@@ -24,26 +26,53 @@ interface RadarResult {
   readonly recommendations: ReadonlyArray<Recommendation>;
 }
 
-interface Nav { toDashboard: () => void }
+interface Nav {
+  toDashboard: () => void;
+  toAdmin?: (section?: AdminSection) => void;
+  toSettings?: (section?: SettingsSection) => void;
+}
 
 export function RadarView({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunction }) {
   const c = useColors(theme);
   const [result, setResult] = useState<RadarResult | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [errorInfo, setErrorInfo] = useState<LlmErrorInfo | null>(null);
+  const [showRawError, setShowRawError] = useState(false);
 
   const handleScan = async () => {
     setLoading(true);
-    setError("");
+    setErrorInfo(null);
+    setShowRawError(false);
     setResult(null);
     try {
       const data = await fetchJson<RadarResult>("/radar/scan", { method: "POST" });
       setResult(data);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setErrorInfo(describeLlmError(e, "zh"));
     }
     setLoading(false);
   };
+
+  const handleErrorAction = () => {
+    if (!errorInfo) return;
+    if (errorInfo.code === "LLM_CONFIG_MISSING" && nav.toAdmin) {
+      nav.toAdmin("providers");
+      return;
+    }
+    if (errorInfo.code === "LLM_QUOTA_EXHAUSTED" && nav.toAdmin) {
+      nav.toAdmin("providers");
+      return;
+    }
+    if (errorInfo.code === "LLM_NETWORK_ERROR" && nav.toSettings) {
+      nav.toSettings("advanced");
+    }
+  };
+
+  const showAction = Boolean(
+    errorInfo?.actionLabel &&
+      ((errorInfo.code === "LLM_CONFIG_MISSING" || errorInfo.code === "LLM_QUOTA_EXHAUSTED") && nav.toAdmin
+        || errorInfo.code === "LLM_NETWORK_ERROR" && nav.toSettings),
+  );
 
   return (
     <PageScaffold
@@ -59,9 +88,38 @@ export function RadarView({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunct
         </>
       }
     >
-      {error && (
+      {errorInfo && (
         <Card className="border-destructive/20 bg-destructive/5">
-          <CardContent className="p-4 text-sm text-destructive">{error}</CardContent>
+          <CardContent className="space-y-3 p-4 text-sm">
+            <div className="space-y-1">
+              <div className="font-medium text-destructive">{errorInfo.title}</div>
+              <p className="leading-relaxed text-destructive/90">{errorInfo.description}</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {showAction && (
+                <Button size="sm" variant="outline" onClick={handleErrorAction}>
+                  {errorInfo.actionLabel}
+                </Button>
+              )}
+              <Button size="sm" variant="ghost" onClick={handleScan} disabled={loading}>
+                重新扫描
+              </Button>
+              {errorInfo.rawMessage && errorInfo.code !== "UNKNOWN" && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setShowRawError((prev) => !prev)}
+                >
+                  {showRawError ? "隐藏原始错误" : "查看原始错误"}
+                </Button>
+              )}
+            </div>
+            {showRawError && errorInfo.rawMessage && (
+              <pre className="max-h-40 overflow-auto rounded-md bg-destructive/10 p-2 text-xs text-destructive/80 whitespace-pre-wrap">
+                {errorInfo.rawMessage}
+              </pre>
+            )}
+          </CardContent>
         </Card>
       )}
 
