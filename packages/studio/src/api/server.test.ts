@@ -17,6 +17,8 @@ const loadChapterIndexMock = vi.fn();
 const createLLMClientMock = vi.fn(() => ({}));
 const chatCompletionMock = vi.fn();
 const loadProjectConfigMock = vi.fn();
+const createStorageDatabaseMock = vi.fn(() => ({ close: vi.fn(), checkpoint: vi.fn() }));
+const runStorageMigrationsMock = vi.fn(() => ({ applied: ["0001_initial.sql"] }));
 const startHttpServerMock = vi.fn(async (): Promise<unknown> => undefined);
 const { setupAdminWebSocketMock, setupSessionChatWebSocketMock } = vi.hoisted(() => ({
   setupAdminWebSocketMock: vi.fn(),
@@ -153,6 +155,9 @@ vi.mock("@vivy1024/novelfork-core", () => {
     computeAnalytics: vi.fn(() => ({})),
     chatCompletion: chatCompletionMock,
     loadProjectConfig: loadProjectConfigMock,
+    createStorageDatabase: createStorageDatabaseMock,
+    initializeStorageDatabase: createStorageDatabaseMock,
+    runStorageMigrations: runStorageMigrationsMock,
     GLOBAL_ENV_PATH: join(tmpdir(), "novelfork-global.env"),
     pipelineEvents: { on: vi.fn() },
   };
@@ -261,6 +266,10 @@ describe("createStudioServer daemon lifecycle", () => {
     });
     loadProjectConfigMock.mockReset();
     startHttpServerMock.mockClear();
+    createStorageDatabaseMock.mockClear();
+    createStorageDatabaseMock.mockReturnValue({ close: vi.fn(), checkpoint: vi.fn() });
+    runStorageMigrationsMock.mockClear();
+    runStorageMigrationsMock.mockReturnValue({ applied: ["0001_initial.sql"] });
     setupAdminWebSocketMock.mockReset();
     setupSessionChatWebSocketMock.mockReset();
     startupOrchestratorMock.mockClear();
@@ -987,6 +996,44 @@ describe("createStudioServer daemon lifecycle", () => {
     expect(missingAssetResponse.status).toBe(404);
 
     expect(readIndexHtmlMock).not.toHaveBeenCalled();
+  });
+
+  it("initializes SQLite storage before starting the http server", async () => {
+    process.env.NOVELFORK_SESSION_STORE_DIR = join(root, "runtime-store");
+    const { startStudioServer } = await import("./server.js");
+
+    await startStudioServer(root, 4567, {
+      staticProvider: {
+        describe: () => ({ source: "embedded", assetCount: 0 }),
+        hasIndexHtml: vi.fn(async () => true),
+        readIndexHtml: vi.fn(async () => "<html></html>"),
+        readAsset: vi.fn(async () => null),
+      },
+      staticMode: "embedded",
+    });
+
+    expect(createStorageDatabaseMock).toHaveBeenCalledWith({
+      databasePath: join(root, "runtime-store", "novelfork.db"),
+    });
+    expect(runStorageMigrationsMock).toHaveBeenCalledTimes(1);
+    expect(startHttpServerMock).toHaveBeenCalledWith(expect.objectContaining({ port: 4567 }));
+    expect(runStorageMigrationsMock.mock.invocationCallOrder[0]).toBeLessThan(
+      startHttpServerMock.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
+    );
+  });
+
+  it("closes SQLite storage and does not listen when migration fails", async () => {
+    const closeMock = vi.fn();
+    createStorageDatabaseMock.mockReturnValueOnce({ close: closeMock, checkpoint: vi.fn() });
+    runStorageMigrationsMock.mockImplementationOnce(() => {
+      throw new Error("migration failed");
+    });
+    const { startStudioServer } = await import("./server.js");
+
+    await expect(startStudioServer(root, 4567)).rejects.toThrow("migration failed");
+
+    expect(closeMock).toHaveBeenCalledTimes(1);
+    expect(startHttpServerMock).not.toHaveBeenCalled();
   });
 
   it("runs startup orchestrator with delivery context before starting the http server", async () => {
