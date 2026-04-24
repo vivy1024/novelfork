@@ -21,7 +21,7 @@
   - 单测：migration 幂等（多次运行结果一致）
   - 单测：migration SQL 失败时抛 + 不标记 applied；Studio 启动测试覆盖迁移先于 HTTP listen
 
-- [ ] 3. Repository 层与协议兼容
+- [x] 3. Repository 层与协议兼容
   - 新建 `repositories/session-repo.ts`：create / getById / list / update / softDelete
   - 新建 `repositories/session-message-repo.ts`：appendMessages（事务）/ loadAll / loadSinceSeq / replaceAll（事务）/ deleteAllBySession / getCursor
   - 新建 `repositories/kv-repo.ts`：get / set

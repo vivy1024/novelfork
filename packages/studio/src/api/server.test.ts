@@ -146,6 +146,86 @@ vi.mock("@vivy1024/novelfork-core", () => {
     }
   }
 
+  const sessionRows = new Map<string, any>();
+  const messageRows = new Map<string, any[]>();
+  const kvRows = new Map<string, string>();
+
+  function createSessionRepositoryMock() {
+    return {
+      async create(input: any) {
+        const row = { ...input, deletedAt: null };
+        sessionRows.set(input.id, row);
+        return row;
+      },
+      async getById(id: string) {
+        const row = sessionRows.get(id);
+        return row && !row.deletedAt ? row : null;
+      },
+      async list() {
+        return [...sessionRows.values()].filter((row) => !row.deletedAt);
+      },
+      async update(id: string, updates: any) {
+        const row = sessionRows.get(id);
+        if (!row || row.deletedAt) return null;
+        const next = { ...row, ...updates };
+        sessionRows.set(id, next);
+        return next;
+      },
+      async softDelete(id: string) {
+        const row = sessionRows.get(id);
+        if (!row || row.deletedAt) return false;
+        sessionRows.set(id, { ...row, deletedAt: new Date() });
+        return true;
+      },
+    };
+  }
+
+  function createSessionMessageRepositoryMock() {
+    return {
+      async appendMessages(sessionId: string, messages: any[], seedMessages: any[] = []) {
+        const existing = messageRows.get(sessionId) ?? [];
+        const next = existing.length > 0 ? [...existing] : seedMessages.map((message, index) => ({ ...message, sessionId, seq: message.seq ?? index + 1 }));
+        for (const message of messages) {
+          next.push({ ...message, sessionId, seq: message.seq ?? next.length + 1 });
+        }
+        messageRows.set(sessionId, next);
+        return next;
+      },
+      async loadAll(sessionId: string) {
+        return messageRows.get(sessionId) ?? [];
+      },
+      async loadSinceSeq(sessionId: string, sinceSeq: number) {
+        return (messageRows.get(sessionId) ?? []).filter((message) => (message.seq ?? 0) > sinceSeq);
+      },
+      async loadRecent(sessionId: string, limit = 50) {
+        return (messageRows.get(sessionId) ?? []).slice(-limit);
+      },
+      async replaceAll(sessionId: string, messages: any[]) {
+        const next = messages.map((message, index) => ({ ...message, sessionId, seq: message.seq ?? index + 1 }));
+        messageRows.set(sessionId, next);
+        return next;
+      },
+      async deleteAllBySession(sessionId: string) {
+        messageRows.delete(sessionId);
+      },
+      async getCursor(sessionId: string) {
+        const rows = messageRows.get(sessionId) ?? [];
+        return { lastSeq: rows.at(-1)?.seq ?? 0, availableFromSeq: rows[0]?.seq ?? 0 };
+      },
+    };
+  }
+
+  function createKvRepositoryMock() {
+    return {
+      async get(key: string) {
+        return kvRows.get(key) ?? null;
+      },
+      async set(key: string, value: string) {
+        kvRows.set(key, value);
+      },
+    };
+  }
+
   return {
     StateManager: MockStateManager,
     PipelineRunner: MockPipelineRunner,
@@ -155,9 +235,16 @@ vi.mock("@vivy1024/novelfork-core", () => {
     computeAnalytics: vi.fn(() => ({})),
     chatCompletion: chatCompletionMock,
     loadProjectConfig: loadProjectConfigMock,
+    closeStorageDatabase: vi.fn(),
     createStorageDatabase: createStorageDatabaseMock,
+    getStorageDatabase: vi.fn(() => {
+      throw new Error("not initialized");
+    }),
     initializeStorageDatabase: createStorageDatabaseMock,
     runStorageMigrations: runStorageMigrationsMock,
+    createKvRepository: createKvRepositoryMock,
+    createSessionMessageRepository: createSessionMessageRepositoryMock,
+    createSessionRepository: createSessionRepositoryMock,
     GLOBAL_ENV_PATH: join(tmpdir(), "novelfork-global.env"),
     pipelineEvents: { on: vi.fn() },
   };

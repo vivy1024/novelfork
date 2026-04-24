@@ -1,28 +1,49 @@
-import { existsSync } from "node:fs";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import {
+  createSessionMessageRepository,
+  type StoredSessionMessage,
+  type StoredSessionMessageInput,
+} from "@vivy1024/novelfork-core";
 
 import type { NarratorSessionChatMessage } from "../../shared/session-types.js";
-import { resolveRuntimeStorageDir } from "./runtime-storage-paths.js";
+import { getSessionStorageDatabase } from "./session-storage.js";
 
-function getSessionHistoryDir(): string {
-  const overrideDir = process.env.NOVELFORK_SESSION_STORE_DIR?.trim();
-  if (overrideDir) {
-    return join(overrideDir, "session-history");
-  }
-  return resolveRuntimeStorageDir("session-history");
-}
-
-function getSessionHistoryFilePath(sessionId: string): string {
-  return join(getSessionHistoryDir(), `${sessionId}.json`);
-}
-
-async function ensureSessionHistoryDir(): Promise<void> {
-  await mkdir(getSessionHistoryDir(), { recursive: true });
-}
-
-const historyWriteQueues = new Map<string, Promise<void>>();
+export const historyWriteQueues = new Map<string, Promise<void>>();
 const deletedHistorySessions = new Set<string>();
+
+function getMessageRepo() {
+  return createSessionMessageRepository(getSessionStorageDatabase());
+}
+
+function safeParseJson<T>(raw: string, fallback: T): T {
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+function toStoredMessage(message: NarratorSessionChatMessage): StoredSessionMessageInput {
+  return {
+    seq: message.seq,
+    id: message.id,
+    role: message.role,
+    content: message.content,
+    timestamp: new Date(message.timestamp),
+    metadataJson: JSON.stringify(message),
+  };
+}
+
+function toNarratorMessage(message: StoredSessionMessage): NarratorSessionChatMessage {
+  const metadata = safeParseJson<Partial<NarratorSessionChatMessage>>(message.metadataJson, {});
+  return {
+    ...metadata,
+    id: message.id,
+    role: message.role,
+    content: message.content,
+    timestamp: message.timestamp.getTime(),
+    seq: message.seq,
+  };
+}
 
 export function markSessionChatHistoryDeleted(sessionId: string): void {
   deletedHistorySessions.add(sessionId);
@@ -32,44 +53,12 @@ export function isSessionChatHistoryDeleted(sessionId: string): boolean {
   return deletedHistorySessions.has(sessionId);
 }
 
-async function runSessionHistoryWrite<T>(sessionId: string, task: () => Promise<T>): Promise<T> {
-  const previous = historyWriteQueues.get(sessionId) ?? Promise.resolve();
-  let release!: () => void;
-  const current = previous.then(() => new Promise<void>((resolve) => {
-    release = resolve;
-  }));
-  historyWriteQueues.set(sessionId, current);
-
-  await previous;
-  try {
-    return await task();
-  } finally {
-    release();
-    if (historyWriteQueues.get(sessionId) === current) {
-      historyWriteQueues.delete(sessionId);
-    }
-  }
-}
-
 export async function loadSessionChatHistory(sessionId: string): Promise<NarratorSessionChatMessage[]> {
   if (isSessionChatHistoryDeleted(sessionId)) {
     return [];
   }
 
-  await ensureSessionHistoryDir();
-  const filePath = getSessionHistoryFilePath(sessionId);
-
-  if (!existsSync(filePath)) {
-    return [];
-  }
-
-  try {
-    const raw = await readFile(filePath, "utf-8");
-    const parsed = JSON.parse(raw) as NarratorSessionChatMessage[];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+  return (await getMessageRepo().loadAll(sessionId)).map(toNarratorMessage);
 }
 
 export async function saveSessionChatHistory(sessionId: string, messages: NarratorSessionChatMessage[]): Promise<void> {
@@ -77,8 +66,7 @@ export async function saveSessionChatHistory(sessionId: string, messages: Narrat
     return;
   }
 
-  await ensureSessionHistoryDir();
-  await writeFile(getSessionHistoryFilePath(sessionId), JSON.stringify(messages, null, 2), "utf-8");
+  await getMessageRepo().replaceAll(sessionId, messages.map(toStoredMessage));
 }
 
 export async function appendSessionChatHistory(
@@ -90,22 +78,15 @@ export async function appendSessionChatHistory(
     return [];
   }
 
-  return runSessionHistoryWrite(sessionId, async () => {
-    if (isSessionChatHistoryDeleted(sessionId)) {
-      return [];
-    }
-
-    const existingMessages = await loadSessionChatHistory(sessionId);
-    const nextMessages = existingMessages.length > 0 ? [...existingMessages] : [...seedMessages];
-    nextMessages.push(...messages);
-    await saveSessionChatHistory(sessionId, nextMessages);
-    return nextMessages;
-  });
+  const stored = await getMessageRepo().appendMessages(
+    sessionId,
+    messages.map(toStoredMessage),
+    seedMessages.map(toStoredMessage),
+  );
+  return stored.map(toNarratorMessage);
 }
 
 export async function deleteSessionChatHistory(sessionId: string): Promise<void> {
   markSessionChatHistoryDeleted(sessionId);
-  await runSessionHistoryWrite(sessionId, async () => {
-    await rm(getSessionHistoryFilePath(sessionId), { force: true });
-  });
+  await getMessageRepo().deleteAllBySession(sessionId);
 }
