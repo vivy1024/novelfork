@@ -73,6 +73,17 @@ interface StartupActionSummary {
   bookId?: string;
 }
 
+type StartupFailurePhase =
+  | "project-bootstrap"
+  | "migration"
+  | "search-index"
+  | "static-delivery"
+  | "compile-smoke"
+  | "unclean-shutdown"
+  | "git-worktree-pollution"
+  | "session-store"
+  | "provider-availability";
+
 interface StartupDecisionAction {
   kind: "repair-runtime-state" | "rebuild-search-index" | "rerun-startup-recovery" | "manual-check";
   label: string;
@@ -83,7 +94,7 @@ interface StartupDecisionAction {
 
 interface StartupDecision {
   id: string;
-  phase: "project-bootstrap" | "migration" | "search-index" | "static-delivery" | "compile-smoke";
+  phase: StartupFailurePhase;
   severity: "error" | "warning";
   title: string;
   description: string;
@@ -114,7 +125,7 @@ interface StartupSummarySnapshot {
   };
   failures: Array<{
     bookId?: string;
-    phase: "project-bootstrap" | "migration" | "search-index" | "static-delivery" | "compile-smoke";
+    phase: StartupFailurePhase;
     message: string;
   }>;
   decisions?: StartupDecision[];

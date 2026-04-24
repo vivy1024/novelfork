@@ -1,4 +1,5 @@
 import { rebuildSearchIndex, type SearchIndexRebuildState, type SearchIndexRebuildSummary } from "./search-index-rebuild.js";
+import type { StartupDiagnostic, StartupDiagnosticKind } from "./startup-diagnostics.js";
 
 export interface StartupOrchestratorState extends SearchIndexRebuildState {
   ensureRuntimeState(bookId: string, fallbackChapter?: number): Promise<void>;
@@ -7,9 +8,17 @@ export interface StartupOrchestratorState extends SearchIndexRebuildState {
 export type StartupOrchestratorRecoveryStatus = "success" | "skipped" | "failed";
 export type StartupStaticMode = "embedded" | "filesystem" | "missing";
 
+export type StartupOrchestratorFailurePhase =
+  | "project-bootstrap"
+  | "migration"
+  | "search-index"
+  | "static-delivery"
+  | "compile-smoke"
+  | StartupDiagnosticKind;
+
 export interface StartupOrchestratorFailure {
   readonly bookId?: string;
-  readonly phase: "project-bootstrap" | "migration" | "search-index" | "static-delivery" | "compile-smoke";
+  readonly phase: StartupOrchestratorFailurePhase;
   readonly message: string;
 }
 
@@ -31,7 +40,7 @@ export interface StartupFailureDecision {
 }
 
 export interface StartupOrchestratorRecoveryAction {
-  readonly kind: "project-bootstrap" | "runtime-state" | "search-index" | "static-delivery" | "compile-smoke";
+  readonly kind: "project-bootstrap" | "runtime-state" | "search-index" | "static-delivery" | "compile-smoke" | StartupDiagnosticKind;
   readonly scope: "book" | "library";
   readonly status: StartupOrchestratorRecoveryStatus;
   readonly reason: string;
@@ -57,6 +66,7 @@ export interface StartupOrchestratorOptions {
     readonly reason: string;
     readonly note?: string;
   };
+  readonly diagnostics?: readonly StartupDiagnostic[];
 }
 
 export interface StartupOrchestratorDeliverySummary {
@@ -129,7 +139,7 @@ function pushOptionalAction(
   actions: StartupOrchestratorRecoveryAction[],
   failures: StartupOrchestratorFailure[],
   action: StartupOrchestratorRecoveryAction,
-  phase: StartupOrchestratorFailure["phase"],
+  phase: StartupOrchestratorFailurePhase,
 ): void {
   actions.push(action);
   if (action.status === "failed") {
@@ -384,6 +394,21 @@ export async function runStartupOrchestrator(
         note: options.compileSmoke.note,
       },
       "compile-smoke",
+    );
+  }
+
+  for (const diagnostic of options.diagnostics ?? []) {
+    pushOptionalAction(
+      actions,
+      failures,
+      {
+        kind: diagnostic.kind,
+        scope: "library",
+        status: diagnostic.status,
+        reason: diagnostic.reason,
+        note: diagnostic.note,
+      },
+      diagnostic.kind,
     );
   }
 
