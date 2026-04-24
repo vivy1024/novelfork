@@ -287,8 +287,8 @@
     - 建议：**C**（NovelFork 是"写作工具"，外部抓取偏离核心价值；法务风险不小）
 
     **7.7.3 决策落档**
-    - 在 `@d:\DESKTOP\novelfork\docs\04-开发指南\05-调研规划\06-Studio-UIUX改造清单.md` 末尾追加一节 "## 附录 A：TerminalTab / RadarView 取舍（2026-04）"，记录选了哪条 + 一行理由
-    - 若决策为 C，代码清理由 narrafork 执行；若为 A/B，拆独立 spec，**不**在本包实现
+    - 决策已落档于本 tasks.md 7.7 顶部（2026-04-24）。原计划落档到的 `06-Studio-UIUX改造清单.md` 在任务 9 中被退役，因此决策以 closure spec 为最终记录源。
+    - 代码清理：TerminalTab 已在 7.7.1 提交中删除；RadarView 经重审订正为"保留"，不删除。
 
   - [x] 7.8 **（Cascade）Package 6 done definition** — 已完成（2026-04-24）
     - [x] `pnpm --filter @vivy1024/novelfork-studio typecheck`：通过
@@ -455,7 +455,10 @@
   - 检查项：`git status --short` 干净 ✅
   - 检查项：文档在包结束时回写一次 ✅（`02-核心架构` 增九 / 十节；`03-代码参考` 增 Studio 公共组件索引；`04-开发指南` 增 notify 规范；`05-调研规划` 增 TipTap / 持久化 / Bash-AST 三份 spike）
 
-- [ ] 9. 当且仅当本 Kiro spec 已完整承接旧文档有效内容时，再退役旧文档
-  - 删除 06 / 07 / 08
-  - 删除旧自由 plan 文件
-  - 保证后续入口只剩 `.kiro/specs/<feature>/requirements.md + design.md + tasks.md`
+- [x] 9. 退役旧文档 — 已执行（2026-04-24）
+  - 删除 `docs/04-开发指南/05-调研规划/06-Studio-UIUX改造清单.md`
+  - 删除 `docs/04-开发指南/05-调研规划/07-NarraFork功能对齐任务总表.md`
+  - 删除 `docs/04-开发指南/05-调研规划/08-NarraFork快速收口执行计划.md`
+  - 更新 `docs/04-开发指南/05-调研规划/README.md`：移除 07 入口，新增 10 / 11 / 12 spike 入口，并加「已退役文档」说明段
+  - 更新 `docs/04-开发指南/05-调研规划/10-持久化迁移spike.md` 与 `11-Bash-AST审查spike.md`：把对 `06` 的依据引用改为"原 06（已退役）"
+  - 结果：后续入口只剩 `.kiro/specs/novelfork-narrafork-closure/{requirements,design,tasks}.md` 作为主线收口源；历史决策可由 git 追溯

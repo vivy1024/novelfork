@@ -62,7 +62,7 @@ const dangerousPatterns = [
 
 ## 2. NarraFork 的做法参考
 
-> 依据：`06-Studio-UIUX改造清单.md` § 0.1，NarraFork 用 `tree-sitter-bash` + `web-tree-sitter` 做 AST 级审查。
+> 依据：原 `06-Studio-UIUX改造清单.md` § 0.1（已退役，有效内容收入 `.kiro/specs/novelfork-narrafork-closure/`），NarraFork 用 `tree-sitter-bash` + `web-tree-sitter` 做 AST 级审查。
 
 核心思路：
 

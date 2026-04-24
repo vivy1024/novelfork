@@ -6,7 +6,7 @@
 
 **创建日期**: 2026-04-24
 **对应任务**: `.kiro/specs/novelfork-narrafork-closure/tasks.md` § 7.5
-**上游依据**: `06-Studio-UIUX改造清单.md` § 0.1（"NarraFork 启动时会执行 Drizzle migration"）
+**上游依据**: 原 `06-Studio-UIUX改造清单.md` § 0.1（"NarraFork 启动时会执行 Drizzle migration"；该文档 2026-04-24 已退役，有效内容收入 `.kiro/specs/novelfork-narrafork-closure/`）
 
 ---
 
@@ -62,7 +62,7 @@ Studio 层（`packages/studio/src/api/lib/`）另外维护：
 
 ## 2. NarraFork 的做法参考
 
-> 依据：`06-Studio-UIUX改造清单.md` 明确提到 NarraFork 启动阶段跑 **Drizzle migration**，异常退出后会 **重建 FTS 索引**。
+> 依据：原 `06-Studio-UIUX改造清单.md`（已退役）明确提到 NarraFork 启动阶段跑 **Drizzle migration**，异常退出后会 **重建 FTS 索引**。
 
 - 栈：`better-sqlite3` + `drizzle-orm` + `drizzle-kit`（migration 生成）
 - 部署形态：embedded SQLite 文件 + migration 文件夹随二进制一起分发
