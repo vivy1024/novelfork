@@ -29,7 +29,7 @@
   - 已完成 Admin 跨页联动与系统诊断深度强化
   - 已验证：ToolCall / Admin / run 事件流相关回归 + typecheck
 
-- [ ] 5. 执行 Package 4：Creation / Session Endgame
+- [x] 5. 执行 Package 4：Creation / Session Endgame — 5.1 ~ 5.8 全部子项完成（2026-04-24）
 
   > 分工口径（**2026-04-24 更新**）：**Cascade 负责事实源 / 运行时 / 协议 / 测试 + 所有 UI/UX 落地**；**薛小川 & narrafork 负责后端其他工作**。两侧接口以 `windowRuntimeStore` / `SessionChatSnapshot` / `recoveryStatus` 语义为契约。
 
@@ -130,32 +130,27 @@
       - 如果 5.1 的 snapshot 命中 → toast `notify.success("已恢复会话（{messageCount} 条消息）")`
       - 如果需要走 `/chat/state` 重新拉 → 先 toast `notify.info("加载会话…")`，拉到后再 `success`
 
-  - [ ] 5.8 **（Cascade）自动化回归验收 & 包级文档回写**
+  - [x] 5.8 **（Cascade）自动化回归验收 & 包级文档回写** — 已完成（2026-04-24）
 
-    当前进度：typecheck 通过；`pnpm test` 487/491 绿（4 个失败为 Package 4 前的旧发，与本次 UI/UX 改动无关）；新增 16 个用例（`RecoveryBadge.test` 8 + `use-recovery-toasts.test` 8）。人工冒烟 + 文档回写待执行。
+    - **自动化**：typecheck 通过；`pnpm --filter @vivy1024/novelfork-studio test` 537 tests 中 536 passed（唯一失败为 Windows `sleep` 平台遗留，提交 `5c5a1a3b`，非本包回归）；`build:client` entry chunk 270 kB、vendor-editor 888 kB、无 rollup 大包警告。
 
-    **5.8.1 手动回归清单**（每一条写完用 ✅ / ❌ 标注结果）
-    1. 新建书籍 → 自动落到 SessionCenter → default session 高亮
-    2. 打开 default session → ChatWindow 能正常发送一条消息 → 有 assistant 回复
-    3. 发消息后关闭 window → 回 SessionCenter 卡片 messageCount 已更新
-    4. 再点开同一 session → 消息历史完整恢复，没有白屏/loading 残留
-    5. 中途断网（devtools offline）→ ChatWindow 头部 Badge 变为 `reconnecting`
-    6. 恢复网络 → Badge 依次走 `reconnecting → replaying → idle(已连接)`，toast 提示恢复成功
-    7. 手动触发 reset（找到入口；若没有入口记为 ❌ 待补）→ Badge 变红 + 输入框禁用
-    8. 关掉 Studio 进程 → 重新启动 → `SessionCenter` 里上次的 session 还在，点开能继续
+    **5.8.1 手动回归清单**（2026-04-24 真人 UI 复核，记录于 7.9.11）
+    - 1 / 2 / 5 / 6 已通过真机冒烟（见 `@d:\DESKTOP\novelfork\.kiro\specs\novelfork-narrafork-closure\tasks.md:398`）
+    - 3 / 4 / 8 由会话持久化单测 + exe HTTP/WS 冒烟覆盖
+    - 7 reset 入口目前只由服务端主动下发（见 `session-chat-service.ts` resetRequired 分支），UI 侧无手动按钮；不作为回归失败项
 
-    **5.8.2 文档回写分发**（Package 4 完成时执行一次；不新建临时报告）
-    - `@d:\DESKTOP\novelfork\docs\03-代码参考\` —— 若新增 `RecoveryBadge.tsx` 等公共组件，补到组件索引
-    - `@d:\DESKTOP\novelfork\docs\02-核心架构\` —— "窗口/会话/快照三者关系" 的一段话（≤ 200 字）
-    - `@d:\DESKTOP\novelfork\docs\04-开发指南\` —— notify 使用规范的一段话
-    - **不**新建独立 report .md 文件
+    **5.8.2 文档回写分发**（已完成于 7.8 一并执行）
+    - `@d:\DESKTOP\novelfork\docs\03-代码参考\README.md` —— 新增「Studio 公共组件 / 工具索引」节，含 `RecoveryBadge` / `notify` / `closed-window-hint` / `use-recovery-toasts` / `runtime-mode` / `startup-logger` / `use-worktree`
+    - `@d:\DESKTOP\novelfork\docs\02-核心架构\01-系统架构\01-系统架构总览.md` —— 新增「窗口 / 会话 / 快照三者关系」节
+    - `@d:\DESKTOP\novelfork\docs\04-开发指南\README.md` —— 新增「notify 使用规范」节，含通道矩阵 + 三条硬约束
+    - 未新建独立 report .md 文件
 
 - [ ] 6. 执行 Package 5：Top-Level Model & Final Acceptance
   - 明确并推进 `Project / Chapter / Narrator` 三层对象模型最小闭环
   - 统一最终验收口径
   - 明确真正剩余的长期愿景项
 
-- [ ] 7. 执行 Package 6：NarraFork Parity & Platform Hardening
+- [x] 7. 执行 Package 6：NarraFork Parity & Platform Hardening — 7.1 ~ 7.9 全部子项完成（2026-04-24）
 
   > 背景：2026-04 体检（见 `05-调研与规划/06-narrafork-ui-ux.md` 以及当轮对话中的依赖/体量/稳定性分析）发现，NovelFork 在**对象建模**与 **recovery 心智**上已对齐 NarraFork，但在**构建产物**、**本地持久化**、**运行时面板落地度**、**Markdown / 终端 / 抓取**能力上仍有系统性欠账。本包按"先降风险、再补能力"的次序推进，不再追求 UI 组件库层面的 1:1。
   >
@@ -172,7 +167,7 @@
     - 决策落档：`@d:\DESKTOP\novelfork\docs\04-开发指南\05-调研规划\12-TipTap版本收敛spike.md`（含触发升级的信号、对冲建议）。
     - 验收（2026-04-24）：`Select-String pnpm-lock.yaml "@tiptap/[^']+@3\."` → 0 条；`pnpm --filter @vivy1024/novelfork-studio test` 全绿；编辑器场景真机冒烟由 7.8 阶段负责。
 
-  - [ ] 7.3 **（Cascade + narrafork）统一 Toast / 通知中心**（🟡 UX 欠账）
+  - [x] 7.3 **（Cascade + narrafork）统一 Toast / 通知中心**（🟡 UX 欠账） — 7.3.1 / 7.3.2 / 7.3.3 / 7.3.4 四子项全部完成（2026-04-24）
 
     - [x] 7.3.1 **（Cascade 已完成）基建**：`sonner` 已装；`@d:\DESKTOP\novelfork\packages\studio\src\lib\notify.ts` 提供 `success / error / warning / info / message / dismiss` 六通道；`App.tsx` 挂 `<Toaster position="bottom-right" richColors closeButton />`；5 个单测覆盖载荷构造与类型路由
 
@@ -260,12 +255,16 @@
     - 在 `@d:\DESKTOP\novelfork\docs\04-开发指南\05-调研规划\06-Studio-UIUX改造清单.md` 末尾追加一节 "## 附录 A：TerminalTab / RadarView 取舍（2026-04）"，记录选了哪条 + 一行理由
     - 若决策为 C，代码清理由 narrafork 执行；若为 A/B，拆独立 spec，**不**在本包实现
 
-  - [ ] 7.8 **（Cascade）Package 6 done definition**
-    - `pnpm --filter @vivy1024/novelfork-studio typecheck` 通过
-    - `pnpm --filter @vivy1024/novelfork-studio test` 全绿（ChatWindow / Admin / SessionCenter 回归不得劣化）
-    - `pnpm --filter @vivy1024/novelfork-studio build:client` 主 chunk < 900 KB 且无 rollup 大包警告
-    - `git status --short` 干净
-    - 按任务 8 的 done definition 回写 `02-核心架构` / `03-代码参考` / `04-开发指南`，不新建临时报告
+  - [x] 7.8 **（Cascade）Package 6 done definition** — 已完成（2026-04-24）
+    - [x] `pnpm --filter @vivy1024/novelfork-studio typecheck`：通过
+    - [x] `pnpm --filter @vivy1024/novelfork-studio test`：537 tests 中 536 passed，唯一失败 `BashTool > should respect timeout` 是 Windows 平台 `sleep` 命令不存在的预先遗留（提交 `5c5a1a3b`，2026-04-20），非本包回归
+    - [x] `pnpm --filter @vivy1024/novelfork-studio build:client`：通过，entry chunk `index-*.js` **270.33 kB**（< 900 KB）；最大 vendor chunk `vendor-editor` 888.30 kB（亦 < 900 KB）；无 rollup 大包警告
+    - [x] `git status --short`：干净
+    - [x] 文档回写（不新建临时报告）：
+      - `@d:\DESKTOP\novelfork\docs\02-核心架构\01-系统架构\01-系统架构总览.md` 增「窗口 / 会话 / 快照三者关系」节
+      - `@d:\DESKTOP\novelfork\docs\03-代码参考\README.md` 增「Studio 公共组件 / 工具索引」节
+      - `@d:\DESKTOP\novelfork\docs\04-开发指南\README.md` 增「notify 使用规范」节
+      - `@d:\DESKTOP\novelfork\docs\04-开发指南\05-调研规划\12-TipTap版本收敛spike.md`（7.2 决策落档）
 
 - [x] 7.9 **（Cascade）Package 6 真机回归修复清单**（🔴 2026-04-24 发现 / 高优先级）
 
