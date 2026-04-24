@@ -16,4 +16,8 @@
 - [03-平台迁移待办清单.md](./03-平台迁移待办清单.md)
 - [04-旧路线图失效说明.md](./04-旧路线图失效说明.md)
 - [05-版本演进历史.md](./05-版本演进历史.md)
-- [07-NarraFork功能对齐任务总表.md](./07-NarraFork功能对齐任务总表.md)（已吸收原 06 / 07，作为唯一主文档）
+- [10-持久化迁移spike.md](./10-持久化迁移spike.md)
+- [11-Bash-AST审查spike.md](./11-Bash-AST审查spike.md)
+- [12-TipTap版本收敛spike.md](./12-TipTap版本收敛spike.md)
+
+> **已退役文档**（2026-04-24）：原 06 / 07 / 08 三份 NarraFork 对齐计划文档已被 `.kiro/specs/novelfork-narrafork-closure/{requirements,design,tasks}.md` 完整吸收，删除以避免多源混乱。历史版本可由 git 追溯。
