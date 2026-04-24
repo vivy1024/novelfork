@@ -4,12 +4,15 @@ import {
   StateManager,
   createLLMClient,
   createLogger,
+  initializeStorageDatabase,
   loadProjectConfig,
   pipelineEvents,
+  runStorageMigrations,
   type PipelineConfig,
   type ProjectConfig,
   type LogSink,
   type LogEntry,
+  type StorageDatabase,
 } from "@vivy1024/novelfork-core";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -364,16 +367,21 @@ function describeStaticProvider(staticProvider: StaticProvider | undefined, stat
     : { source: "embedded", assetCount: 0 });
 }
 
-let registeredRunningMarkerPath: string | null = null;
+const registeredRunningMarkerPaths = new Set<string>();
+let runningMarkerCleanupRegistered = false;
 
 function registerRunningMarkerCleanup(markerPath: string): void {
-  if (registeredRunningMarkerPath === markerPath) {
+  registeredRunningMarkerPaths.add(markerPath);
+  if (runningMarkerCleanupRegistered) {
     return;
   }
 
-  registeredRunningMarkerPath = markerPath;
+  runningMarkerCleanupRegistered = true;
   const cleanup = () => {
-    void clearUncleanShutdownMarker(markerPath);
+    for (const registeredMarkerPath of registeredRunningMarkerPaths) {
+      void clearUncleanShutdownMarker(registeredMarkerPath);
+    }
+    registeredRunningMarkerPaths.clear();
   };
   process.once("SIGINT", cleanup);
   process.once("SIGTERM", cleanup);
@@ -382,6 +390,31 @@ function registerRunningMarkerCleanup(markerPath: string): void {
 
 function getSessionStoreDiagnosticDir(): string {
   return process.env.NOVELFORK_SESSION_STORE_DIR?.trim() || resolveRuntimeStorageDir();
+}
+
+function getSessionStoreDatabasePath(): string {
+  return join(getSessionStoreDiagnosticDir(), "novelfork.db");
+}
+
+const registeredStorageDatabases = new Set<StorageDatabase>();
+let storageDatabaseShutdownRegistered = false;
+
+function registerStorageDatabaseShutdown(storageDatabase: StorageDatabase): void {
+  registeredStorageDatabases.add(storageDatabase);
+  if (storageDatabaseShutdownRegistered) {
+    return;
+  }
+
+  storageDatabaseShutdownRegistered = true;
+  const cleanup = () => {
+    for (const registeredStorageDatabase of registeredStorageDatabases) {
+      registeredStorageDatabase.close();
+    }
+    registeredStorageDatabases.clear();
+  };
+  process.once("SIGINT", cleanup);
+  process.once("SIGTERM", cleanup);
+  process.once("beforeExit", cleanup);
 }
 
 function buildProviderDiagnosticEntries(config: ProjectConfig) {
@@ -476,6 +509,26 @@ export async function startStudioServer(
     extra: { mode, projectRoot: root },
   });
   console.log(`NovelFork mode: ${mode}`);
+
+  const storageDatabase = initializeStorageDatabase({ databasePath: getSessionStoreDatabasePath() });
+  let storageMigrationResult: ReturnType<typeof runStorageMigrations>;
+  try {
+    storageMigrationResult = runStorageMigrations(storageDatabase);
+  } catch (error) {
+    storageDatabase.close();
+    throw error;
+  }
+  registerStorageDatabaseShutdown(storageDatabase);
+  logStartupEvent({
+    level: "info",
+    component: "storage.sqlite",
+    msg: "SQLite storage ready",
+    ok: true,
+    extra: {
+      databasePath: storageDatabase.databasePath,
+      appliedMigrations: storageMigrationResult.applied,
+    },
+  });
 
   const { app, ctx } = createStudioServer(config, root);
 

@@ -24,6 +24,10 @@
     "./runtime/process-adapter": {
       "types": "./dist/runtime/process-adapter.d.ts",
       "import": "./dist/runtime/process-adapter.js"
+    },
+    "./storage": {
+      "types": "./dist/storage/index.d.ts",
+      "import": "./dist/storage/index.js"
     }
   },
   "files": [
@@ -44,7 +48,7 @@
     "prepack": "node ../../scripts/prepare-package-for-publish.mjs",
     "postpack": "node ../../scripts/restore-package-json.mjs",
     "prepublishOnly": "node ../../scripts/verify-no-workspace-protocol.mjs .",
-    "build": "tsc",
+    "build": "tsc && node scripts/copy-storage-migrations.mjs",
     "dev": "tsc --watch",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
@@ -52,16 +56,20 @@
   "dependencies": {
     "@anthropic-ai/sdk": "0.78.0",
     "@modelcontextprotocol/sdk": "1.0.4",
+    "better-sqlite3": "12.9.0",
     "dotenv": "16.4.0",
+    "drizzle-orm": "0.45.2",
     "eventsource": "2.0.2",
     "js-yaml": "4.1.1",
     "openai": "4.80.0",
     "zod": "3.24.0"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "7.6.13",
     "@types/eventsource": "1.1.15",
     "@types/js-yaml": "4.0.9",
     "@types/node": "22.0.0",
+    "drizzle-kit": "0.31.10",
     "typescript": "^5.7.0",
     "vitest": "3.0.0"
   }
