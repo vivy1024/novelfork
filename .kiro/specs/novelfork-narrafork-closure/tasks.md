@@ -166,11 +166,11 @@
     - 实测：entry chunk **2085 KB → 267 KB**（-87%），rollup 大包警告消失，build 9 s
     - 顺手修复 `AppInner` 里 `React.useRef(nav)` 的 hooks-order 违规（被 Suspense 暴露）
 
-  - [ ] 7.2 **（Cascade）TipTap 版本收敛**（🔴 必须，隐性风险）
-    - 现状：根 `pnpm-lock.yaml` 同时存在 `@tiptap/core@2.27.2` 与 `@tiptap/react@3.22.3`，pnpm 能解析但跨版本行为不一致；`novel` 依赖也要一起看
-    - 做法：统一升到 `@tiptap/* ^3`（含 `@tiptap/core / @tiptap/react / @tiptap/pm / starter-kit / extension-*`），或统一降到 `^2`（**优先升 3**，因为 novel 已走 3）
-    - 验收：`pnpm why @tiptap/core` 只有一个主版本；所有编辑器相关场景（剧情卡片、大纲、标题、章节正文）手动冒烟一次
-    - 回归：`pnpm --filter @vivy1024/novelfork-studio test` 中编辑器相关用例全绿
+  - [x] 7.2 **（Cascade）TipTap 版本收敛**（🔴 必须，隐性风险）— 已收敛到 2.27.2（2026-04-24）
+    - 真机核对订正：`@d:\DESKTOP\novelfork\package.json:51-60` 的 `pnpm.overrides` 已把所有关键 `@tiptap/*` 固定到 `2.27.2`；`pnpm-lock.yaml` 内无任何 3.x 条目；`node_modules/.pnpm/` 下只有一套 `@tiptap+*@2.27.2`。原 tasks.md 描述的「2.x/3.x 共存」已过时。
+    - 升 3.x 决策：**不升**。阻塞点为 `novel@1.0.2` 把 tiptap 当直接依赖装进自身 `node_modules`，peer 锁定 `^2.11.2`；升 3 会跨大版本 API 变更（命令链返回值、schema 合并、ProseMirror plugin view 与 React 19 concurrent 的对齐）。在 `novel` 上游升 3 或被替换前不动。
+    - 决策落档：`@d:\DESKTOP\novelfork\docs\04-开发指南\05-调研规划\12-TipTap版本收敛spike.md`（含触发升级的信号、对冲建议）。
+    - 验收（2026-04-24）：`Select-String pnpm-lock.yaml "@tiptap/[^']+@3\."` → 0 条；`pnpm --filter @vivy1024/novelfork-studio test` 全绿；编辑器场景真机冒烟由 7.8 阶段负责。
 
   - [ ] 7.3 **（Cascade + narrafork）统一 Toast / 通知中心**（🟡 UX 欠账）
 
