@@ -397,12 +397,15 @@
       - [x] exe HTTP/WS 冒烟（2026-04-24）：`GET /` 返回 embedded index；`POST /api/sessions` 成功；`ws://127.0.0.1:4579/api/sessions/<id>/chat` 返回 `session:snapshot`；`POST /api/radar/scan` 在缺 key 时返回结构化 400 + 中文 message；`GET /api/admin/worktrees` 可识别外部 worktree。
       - [ ] 未执行/仍需真人 UI 复核：dev 模式 ChatWindow 完整发收与断网恢复、RadarView 页面跳转按钮、Admin Worktree UI 默认隐藏外部路径。
       - [x] `git status --short` 在 7.9B 提交后干净；7.9B 代码提交：`83879f2 feat(studio): complete 7.9B startup hardening`
-    - UI/UX 交互复核（2026-04-24，提交 `1f150ec`）：
+    - UI/UX 交互复核（2026-04-24，提交 `1f150ec` + `d3d837c`）：
       - [x] `ChatWindow` 手动重连竞态：`manualReconnect` 先解除旧 ws handlers 再 `close()`，避免旧 `onclose` 把 `wsConnected` 翻回 false / 重复排 5s timer 造成第三次连接
       - [x] `WorktreeManager` render 内 setState：viewingChangesPath 对应 worktree 被删时的回退从 render 迁移到 `useEffect`
       - [x] `WorktreeManager.handleOpenWorktree` clipboard 静默成功：改为 `await + try/catch`，拒绝时发 `notify.error`
       - [x] `RecoveryBadge` banner 新增 `action` slot，`ChatWindow` 的「立即重连」从 `absolute` 浮层改为 banner 内 flex 子项，不再遮挡描述文字；新增 3 个回归测试（in-flow 渲染 / bannerVisible=false 不渲染 / 非 banner variant 忽略 action）
-      - 遗留（非阻塞）：P2 — `SessionCenter` 卡片「关闭窗口」按钮无 first-run 提示（ChatWindow 头部有）；`use-recovery-toasts` 未对 `idle+online → idle+offline` 单独出 toast，目前由 RecoveryBadge chip 兜底
+      - [x] `use-recovery-toasts` 增补 `idle+online → idle+offline` 的 `会话暂时离线` warning toast，非 idle 态不重复叠加；+3 测试
+      - [x] `@/lib/closed-window-hint.ts` 抽出首次关窗提示，`ChatWindow.handleClose` 与 `SessionCenter` 卡片「关闭窗口」共用一套 first-run hint；in-memory + localStorage 双重去重，兼容 embedded / file:// 抛错；+4 测试
+      - [x] `MonitorWidget` 僵尸重连修复：cleanup 前解除旧 ws handlers、`disposed` 标志阻断 `onclose` 的 5s 重连 timer
+      - 自动化验证（2026-04-24）：`pnpm --filter @vivy1024/novelfork-studio typecheck` 通过；`pnpm --filter @vivy1024/novelfork-studio test`：534 tests 中 533 passed，1 failed 是预先存在的 Windows `sleep` 平台问题（`src/api/__tests__/tools-worktree.test.ts`），与本次修复无关
     - **7.9B 自动化与 exe smoke 已完成并提交**：`pnpm --filter @vivy1024/novelfork-studio test` 全绿（新增 startup logger / runtime mode / startup repair / node warning 相关用例）；`pnpm bun:compile` 产出 exe；启动日志确认 `isCompiledBinary:true` + `assetSource:"embedded"` + `WebSocket routes registered`。
     - Package 6 最终收口前：`git status --short` 干净，并按任务 8 的 done definition 回写相关文档
 
