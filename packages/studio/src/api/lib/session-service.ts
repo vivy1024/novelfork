@@ -1,82 +1,39 @@
-import { existsSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import {
+  closeStorageDatabase,
+  createSessionRepository,
+  type StoredSessionRecord,
+} from "@vivy1024/novelfork-core";
 
 import {
   DEFAULT_SESSION_CONFIG,
   type CreateNarratorSessionInput,
   type NarratorSessionRecord,
+  type SessionConfig,
   type UpdateNarratorSessionInput,
 } from "../../shared/session-types.js";
 import { deleteSessionChatHistory, markSessionChatHistoryDeleted } from "./session-history-store.js";
-import { resolveRuntimeStoragePath } from "./runtime-storage-paths.js";
+import { getSessionStorageDatabase } from "./session-storage.js";
 import { loadUserConfig } from "./user-config-service.js";
 
-function getSessionStoreFilePath(): string {
-  const overrideDir = process.env.NOVELFORK_SESSION_STORE_DIR?.trim();
-  if (overrideDir) {
-    return join(overrideDir, "sessions.json");
-  }
-  return resolveRuntimeStoragePath("sessions.json");
-}
-
-async function ensureSessionStoreDir(): Promise<void> {
-  await mkdir(dirname(getSessionStoreFilePath()), { recursive: true });
-}
-
-async function loadSessionRecords(): Promise<NarratorSessionRecord[]> {
-  await ensureSessionStoreDir();
-  const filePath = getSessionStoreFilePath();
-
-  if (!existsSync(filePath)) {
-    return [];
-  }
-
-  try {
-    const raw = await readFile(filePath, "utf-8");
-    const parsed = JSON.parse(raw) as NarratorSessionRecord[];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-async function saveSessionRecords(records: NarratorSessionRecord[]): Promise<void> {
-  await ensureSessionStoreDir();
-  await writeFile(getSessionStoreFilePath(), JSON.stringify(records, null, 2), "utf-8");
-}
-
-let sessionStoreMutationQueue: Promise<void> = Promise.resolve();
+export let sessionStoreMutationQueue: Promise<void> = Promise.resolve();
 let sessionStoreMutationHook: (() => Promise<void> | void) | undefined;
 
-async function mutateSessionRecords<T>(
-  mutator: (records: NarratorSessionRecord[]) => Promise<T> | T,
-): Promise<T> {
-  const previous = sessionStoreMutationQueue;
-  let release!: () => void;
-  sessionStoreMutationQueue = new Promise<void>((resolve) => {
-    release = resolve;
-  });
+function getSessionRepo() {
+  return createSessionRepository(getSessionStorageDatabase());
+}
 
-  await previous;
+function safeParseJson<T>(raw: string, fallback: T): T {
   try {
-    await sessionStoreMutationHook?.();
-    const records = await loadSessionRecords();
-    const result = await mutator(records);
-    await saveSessionRecords(records);
-    return result;
-  } finally {
-    release();
+    return JSON.parse(raw) as T;
+  } catch {
+    return fallback;
   }
 }
 
-function sortSessions(records: NarratorSessionRecord[]): NarratorSessionRecord[] {
-  return [...records].sort((a, b) => {
-    if (a.sortOrder !== b.sortOrder) {
-      return a.sortOrder - b.sortOrder;
-    }
-    return new Date(b.lastModified).getTime() - new Date(a.lastModified).getTime();
-  });
+function toDate(value: string | undefined, fallback: Date): Date {
+  if (!value) return fallback;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? new Date(parsed) : fallback;
 }
 
 function parseModelReference(reference: string | undefined): { providerId: string; modelId: string } | null {
@@ -93,85 +50,137 @@ function parseModelReference(reference: string | undefined): { providerId: strin
   };
 }
 
+function normalizeSessionConfig(value: unknown): SessionConfig {
+  return {
+    ...DEFAULT_SESSION_CONFIG,
+    ...(typeof value === "object" && value !== null ? value : {}),
+  } as SessionConfig;
+}
+
+function toNarratorSessionRecord(record: StoredSessionRecord): NarratorSessionRecord {
+  const metadata = safeParseJson<Partial<NarratorSessionRecord>>(record.metadataJson, {});
+  const sessionConfig = normalizeSessionConfig(safeParseJson<Partial<SessionConfig>>(record.configJson, metadata.sessionConfig ?? {}));
+  const createdAt = metadata.createdAt ?? record.createdAt.toISOString();
+  const lastModified = record.updatedAt.toISOString();
+
+  return {
+    id: record.id,
+    title: metadata.title?.trim() || "Untitled Session",
+    agentId: metadata.agentId?.trim() || "writer",
+    kind: metadata.kind ?? "standalone",
+    sessionMode: metadata.sessionMode ?? (metadata.agentId === "planner" ? "plan" : "chat"),
+    status: metadata.status ?? "active",
+    createdAt,
+    lastModified,
+    messageCount: record.messageCount,
+    sortOrder: typeof metadata.sortOrder === "number" ? metadata.sortOrder : 0,
+    worktree: metadata.worktree,
+    chapterId: metadata.chapterId,
+    projectId: metadata.projectId,
+    sessionConfig,
+    recentMessages: Array.isArray(metadata.recentMessages) ? metadata.recentMessages : [],
+  };
+}
+
+function toStoredSessionInput(session: NarratorSessionRecord) {
+  return {
+    id: session.id,
+    createdAt: toDate(session.createdAt, new Date()),
+    updatedAt: toDate(session.lastModified, new Date()),
+    messageCount: session.messageCount,
+    configJson: JSON.stringify(session.sessionConfig),
+    metadataJson: JSON.stringify(session),
+  };
+}
+
+function sortSessions(records: NarratorSessionRecord[]): NarratorSessionRecord[] {
+  return [...records].sort((a, b) => {
+    if (a.sortOrder !== b.sortOrder) {
+      return a.sortOrder - b.sortOrder;
+    }
+    return new Date(b.lastModified).getTime() - new Date(a.lastModified).getTime();
+  });
+}
+
+async function loadSessionRecords(): Promise<NarratorSessionRecord[]> {
+  const records = await getSessionRepo().list();
+  return records.map(toNarratorSessionRecord);
+}
+
 export async function listSessions(): Promise<NarratorSessionRecord[]> {
   return sortSessions(await loadSessionRecords());
 }
 
 export async function getSessionById(id: string): Promise<NarratorSessionRecord | null> {
-  const records = await loadSessionRecords();
-  return records.find((record) => record.id === id) ?? null;
+  const record = await getSessionRepo().getById(id);
+  return record ? toNarratorSessionRecord(record) : null;
 }
 
 export async function createSession(input: CreateNarratorSessionInput): Promise<NarratorSessionRecord> {
   const userConfig = await loadUserConfig();
   const modelDefaults = parseModelReference(userConfig.modelDefaults?.defaultSessionModel);
+  const records = await loadSessionRecords();
+  const now = new Date().toISOString();
+  const session: NarratorSessionRecord = {
+    id: crypto.randomUUID(),
+    title: input.title?.trim() || "Untitled Session",
+    agentId: input.agentId?.trim() || "writer",
+    kind: input.kind ?? "standalone",
+    sessionMode: input.sessionMode ?? (input.agentId === "planner" ? "plan" : "chat"),
+    status: "active",
+    createdAt: now,
+    lastModified: now,
+    messageCount: 0,
+    sortOrder: records.length,
+    worktree: input.worktree,
+    chapterId: input.chapterId,
+    projectId: input.projectId,
+    sessionConfig: {
+      ...DEFAULT_SESSION_CONFIG,
+      ...(modelDefaults ?? {}),
+      permissionMode: userConfig.runtimeControls.defaultPermissionMode,
+      reasoningEffort: userConfig.runtimeControls.defaultReasoningEffort,
+      ...input.sessionConfig,
+    },
+    recentMessages: [],
+  };
 
-  return mutateSessionRecords(async (records) => {
-    const now = new Date().toISOString();
-    const session: NarratorSessionRecord = {
-      id: crypto.randomUUID(),
-      title: input.title?.trim() || "Untitled Session",
-      agentId: input.agentId?.trim() || "writer",
-      kind: input.kind ?? "standalone",
-      sessionMode: input.sessionMode ?? (input.agentId === "planner" ? "plan" : "chat"),
-      status: "active",
-      createdAt: now,
-      lastModified: now,
-      messageCount: 0,
-      sortOrder: records.length,
-      worktree: input.worktree,
-      chapterId: input.chapterId,
-      projectId: input.projectId,
-      sessionConfig: {
-        ...DEFAULT_SESSION_CONFIG,
-        ...(modelDefaults ?? {}),
-        permissionMode: userConfig.runtimeControls.defaultPermissionMode,
-        reasoningEffort: userConfig.runtimeControls.defaultReasoningEffort,
-        ...input.sessionConfig,
-      },
-      recentMessages: [],
-    };
-
-    records.push(session);
-    return session;
-  });
+  await sessionStoreMutationHook?.();
+  const stored = await getSessionRepo().create(toStoredSessionInput(session));
+  return toNarratorSessionRecord(stored);
 }
 
 export async function updateSession(id: string, updates: UpdateNarratorSessionInput): Promise<NarratorSessionRecord | null> {
-  return mutateSessionRecords(async (records) => {
-    const index = records.findIndex((record) => record.id === id);
-    if (index < 0) {
-      return null;
-    }
+  await sessionStoreMutationHook?.();
+  const current = await getSessionById(id);
+  if (!current) {
+    return null;
+  }
 
-    const current = records[index]!;
-    const updated: NarratorSessionRecord = {
-      ...current,
-      ...updates,
-      id,
-      lastModified: new Date().toISOString(),
-      sessionConfig: {
-        ...current.sessionConfig,
-        ...updates.sessionConfig,
-      },
-    };
+  const updated: NarratorSessionRecord = {
+    ...current,
+    ...updates,
+    id,
+    lastModified: new Date().toISOString(),
+    sessionConfig: {
+      ...current.sessionConfig,
+      ...updates.sessionConfig,
+    },
+  };
 
-    records[index] = updated;
-    return updated;
-  });
+  const stored = await getSessionRepo().update(id, toStoredSessionInput(updated));
+  return stored ? toNarratorSessionRecord(stored) : null;
 }
 
 export async function deleteSession(id: string): Promise<boolean> {
   markSessionChatHistoryDeleted(id);
-  const records = await loadSessionRecords();
-  const nextRecords = records.filter((record) => record.id !== id);
-  if (nextRecords.length === records.length) {
+  const current = await getSessionById(id);
+  if (!current) {
     return false;
   }
 
   await deleteSessionChatHistory(id);
-  await saveSessionRecords(nextRecords);
-  return true;
+  return getSessionRepo().softDelete(id);
 }
 
 export const __testing = {
@@ -181,5 +190,6 @@ export const __testing = {
   resetSessionStoreMutationQueue() {
     sessionStoreMutationQueue = Promise.resolve();
     sessionStoreMutationHook = undefined;
+    closeStorageDatabase();
   },
 };

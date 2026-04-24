@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 
 import type { StorageDatabase } from "./db.js";
 
@@ -13,7 +12,22 @@ export interface StorageMigrationResult {
   applied: string[];
 }
 
-const DEFAULT_MIGRATIONS_DIR = fileURLToPath(new URL("./migrations", import.meta.url));
+function stripWindowsPathLeadingSlash(pathname: string): string {
+  return /^\/[A-Za-z]:/u.test(pathname) ? pathname.slice(1) : pathname;
+}
+
+function resolveDefaultMigrationsDir(): string {
+  const migrationsUrl = new URL("./migrations", import.meta.url);
+  const viteFsPath = decodeURIComponent(migrationsUrl.pathname).replace(/^\/@fs\//u, "");
+  const candidatePaths = [
+    stripWindowsPathLeadingSlash(viteFsPath),
+    join(process.cwd(), "src", "storage", "migrations"),
+    join(process.cwd(), "..", "core", "src", "storage", "migrations"),
+    join(process.cwd(), "packages", "core", "src", "storage", "migrations"),
+  ];
+  const existingPath = candidatePaths.find((candidate) => existsSync(candidate));
+  return existingPath ?? candidatePaths[0]!;
+}
 
 function ensureMigrationTable(storage: StorageDatabase): void {
   storage.sqlite.exec(`
@@ -44,7 +58,7 @@ export function runStorageMigrations(
   storage: StorageDatabase,
   options: RunStorageMigrationsOptions = {},
 ): StorageMigrationResult {
-  const migrationsDir = options.migrationsDir ?? DEFAULT_MIGRATIONS_DIR;
+  const migrationsDir = options.migrationsDir ?? resolveDefaultMigrationsDir();
   ensureMigrationTable(storage);
 
   const applied: string[] = [];

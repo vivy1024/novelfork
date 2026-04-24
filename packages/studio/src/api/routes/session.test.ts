@@ -28,6 +28,8 @@ describe("sessionRouter", () => {
   });
 
   afterEach(async () => {
+    const { __testing } = await import("../lib/session-service");
+    __testing.resetSessionStoreMutationQueue();
     delete process.env.NOVELFORK_SESSION_STORE_DIR;
     await rm(sessionStoreDir, { recursive: true, force: true });
   });

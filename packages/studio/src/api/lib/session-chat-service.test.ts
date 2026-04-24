@@ -48,6 +48,8 @@ describe("session-chat-service", () => {
   });
 
   afterEach(async () => {
+    const { __testing } = await import("./session-service");
+    __testing.resetSessionStoreMutationQueue();
     delete process.env.NOVELFORK_SESSION_STORE_DIR;
     await rm(sessionStoreDir, { recursive: true, force: true });
   });
@@ -468,6 +470,7 @@ describe("session-chat-service", () => {
       }),
     );
 
+    firstLoad.__testing.resetSessionStoreMutationQueue();
     vi.resetModules();
     const reloaded = await loadSessionServices();
     const snapshot = await reloaded.getSessionChatSnapshot(session.id);
