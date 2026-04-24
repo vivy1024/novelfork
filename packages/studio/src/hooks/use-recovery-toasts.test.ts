@@ -148,4 +148,51 @@ describe("useRecoveryToasts", () => {
       expect((opts as { id?: string })?.id).toBe("recovery-w1");
     }
   });
+
+  // Offline toast — covers the silent-offline case where recoveryState never
+  // leaves `idle` but the ws channel flips from connected → disconnected.
+  it("fires warning when idle+online flips to idle+offline", () => {
+    act(() => {
+      useWindowRuntimeStore.getState().setRecoveryState("w1", "idle");
+      useWindowRuntimeStore.getState().setWsConnected("w1", true);
+    });
+    renderHook(() => useRecoveryToasts());
+    act(() => {
+      useWindowRuntimeStore.getState().setWsConnected("w1", false);
+    });
+    expect(toastMock.warning).toHaveBeenCalledWith(
+      "会话暂时离线",
+      expect.objectContaining({ id: "recovery-w1" }),
+    );
+  });
+
+  it("does not fire offline toast when non-idle state already owns the banner", () => {
+    act(() => {
+      useWindowRuntimeStore.getState().setRecoveryState("w1", "reconnecting");
+      useWindowRuntimeStore.getState().setWsConnected("w1", true);
+    });
+    renderHook(() => useRecoveryToasts());
+    act(() => {
+      // Still reconnecting, connection just drops — reconnect toast already
+      // covers this; we must not stack a second "离线" on top of it.
+      useWindowRuntimeStore.getState().setWsConnected("w1", false);
+    });
+    expect(toastMock.warning).not.toHaveBeenCalledWith(
+      "会话暂时离线",
+      expect.anything(),
+    );
+  });
+
+  it("does not fire offline toast on first-seen offline window", () => {
+    renderHook(() => useRecoveryToasts());
+    act(() => {
+      useWindowRuntimeStore.getState().setRecoveryState("w1", "idle");
+      useWindowRuntimeStore.getState().setWsConnected("w1", false);
+    });
+    // prevConnected was undefined (first appearance) so no offline announce.
+    expect(toastMock.warning).not.toHaveBeenCalledWith(
+      "会话暂时离线",
+      expect.anything(),
+    );
+  });
 });

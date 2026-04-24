@@ -31,8 +31,14 @@ export function MonitorWidget({ className }: MonitorWidgetProps) {
 
     let ws: WebSocket | null = null;
     let reconnectTimer: NodeJS.Timeout | null = null;
+    // Flag gated by the cleanup function so the auto-reconnect branch inside
+    // `onclose` cannot rearm a zombie timer after unmount. Without this, the
+    // explicit `ws.close()` in cleanup would trigger `onclose`, which would
+    // schedule a 5s `connect()` that re-enters setState on an unmounted tree.
+    let disposed = false;
 
     const connect = () => {
+      if (disposed) return;
       try {
         ws = new WebSocket(wsUrl);
 
@@ -68,21 +74,29 @@ export function MonitorWidget({ className }: MonitorWidgetProps) {
         };
 
         ws.onclose = () => {
+          if (disposed) return;
           console.log("Monitor WebSocket closed, reconnecting in 5s...");
           reconnectTimer = setTimeout(connect, 5000);
         };
       } catch (err) {
         console.error("Failed to connect monitor WebSocket:", err);
-        reconnectTimer = setTimeout(connect, 5000);
+        if (!disposed) {
+          reconnectTimer = setTimeout(connect, 5000);
+        }
       }
     };
 
     connect();
 
     return () => {
+      disposed = true;
       if (reconnectTimer) clearTimeout(reconnectTimer);
       if (ws) {
-        ws.close();
+        ws.onopen = null;
+        ws.onmessage = null;
+        ws.onerror = null;
+        ws.onclose = null;
+        try { ws.close(); } catch { /* already closing */ }
         ws = null;
       }
     };

@@ -11,11 +11,16 @@
  *   reconnecting → replaying       info    ("正在回放历史…")
  *   replaying → idle               success ("会话已恢复")
  *   * → resetting                  error   ("会话已重置")
+ *   idle+online → idle+offline     warning ("会话暂时离线")
+ *     — covers the "silent offline" case where recoveryState never leaves idle
+ *       (e.g. backend crash before any reconnect handshake). The RecoveryBadge
+ *       chip already shows this, but users with the banner hidden get no
+ *       feedback without this toast.
  *
  * Transitions intentionally NOT toasted (noise avoidance):
  *   - First seen window (prev=undefined → idle)
  *   - Window removal (handled by `clearWindowRuntime`; state map drops the key)
- *   - idle ↔ idle steady state
+ *   - idle ↔ idle steady state with connectivity unchanged
  */
 import { useEffect, useRef } from "react";
 
@@ -23,6 +28,7 @@ import { useWindowRuntimeStore, type WindowRecoveryState } from "@/stores/window
 import { notify } from "@/lib/notify";
 
 type StateMap = Record<string, WindowRecoveryState>;
+type ConnectionMap = Record<string, boolean>;
 
 function toastId(windowId: string): string {
   return `recovery-${windowId}`;
@@ -67,39 +73,70 @@ function emitToastForTransition(
   }
 }
 
+function emitOfflineToastIfNeeded(
+  windowId: string,
+  prevConnected: boolean | undefined,
+  nextConnected: boolean,
+  nextState: WindowRecoveryState,
+) {
+  // Only surface the silent-offline transition. Non-idle states already own
+  // the user's attention via dedicated transition toasts above, so we do not
+  // want to stack a second "离线" toast on top of "重连中".
+  if (nextState !== "idle") return;
+  if (prevConnected !== true || nextConnected !== false) return;
+
+  notify.warning("会话暂时离线", {
+    id: toastId(windowId),
+    description: "服务端通道已断开，正在等待恢复。",
+  });
+}
+
 export function useRecoveryToasts() {
-  // Snapshot of the previous state map; compared on each store update so we
-  // only react to genuine transitions, not re-renders.
-  const prevRef = useRef<StateMap>({});
+  // Snapshots of the previous state + connection maps; compared on each store
+  // update so we only react to genuine transitions, not re-renders.
+  const prevStateRef = useRef<StateMap>({});
+  const prevConnectionRef = useRef<ConnectionMap>({});
 
   useEffect(() => {
-    // Seed with the current map so already-connected windows do not trigger
+    // Seed with the current maps so already-connected windows do not trigger
     // toasts on mount.
-    prevRef.current = { ...useWindowRuntimeStore.getState().recoveryStates };
+    const initial = useWindowRuntimeStore.getState();
+    prevStateRef.current = { ...initial.recoveryStates };
+    prevConnectionRef.current = { ...initial.wsConnections };
 
     const unsubscribe = useWindowRuntimeStore.subscribe((state) => {
-      const nextMap = state.recoveryStates;
-      const prevMap = prevRef.current;
+      const nextStateMap = state.recoveryStates;
+      const nextConnectionMap = state.wsConnections;
+      const prevStateMap = prevStateRef.current;
+      const prevConnectionMap = prevConnectionRef.current;
 
       const windowIds = new Set<string>([
-        ...Object.keys(prevMap),
-        ...Object.keys(nextMap),
+        ...Object.keys(prevStateMap),
+        ...Object.keys(nextStateMap),
+        ...Object.keys(prevConnectionMap),
+        ...Object.keys(nextConnectionMap),
       ]);
 
       for (const windowId of windowIds) {
-        const prev = prevMap[windowId];
-        const next = nextMap[windowId];
+        const prevState = prevStateMap[windowId];
+        const nextState = nextStateMap[windowId];
+        const prevConnected = prevConnectionMap[windowId];
+        const nextConnected = nextConnectionMap[windowId];
 
         // Skip removal (next=undefined) — the close flow owns its own UI.
-        if (next === undefined) continue;
+        if (nextState === undefined) continue;
         // Skip first appearance — do not announce "online" for a fresh window.
-        if (prev === undefined) continue;
-        if (prev === next) continue;
+        if (prevState === undefined) continue;
 
-        emitToastForTransition(windowId, prev, next);
+        if (prevState !== nextState) {
+          emitToastForTransition(windowId, prevState, nextState);
+        } else if (nextConnected !== undefined) {
+          emitOfflineToastIfNeeded(windowId, prevConnected, nextConnected, nextState);
+        }
       }
 
-      prevRef.current = { ...nextMap };
+      prevStateRef.current = { ...nextStateMap };
+      prevConnectionRef.current = { ...nextConnectionMap };
     });
 
     return () => {

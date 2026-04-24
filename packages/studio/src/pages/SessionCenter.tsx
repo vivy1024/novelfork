@@ -11,6 +11,7 @@ import { NewSessionDialog, SESSION_PRESETS, type NewSessionPayload, type Session
 import { useSession } from "@/hooks/useSession";
 import { useWindowRuntimeStore, type WindowRecoveryState } from "@/stores/windowRuntimeStore";
 import { getRecoveryPresentation } from "@/lib/windowRecoveryPresentation";
+import { maybeShowClosedWindowHint } from "@/lib/closed-window-hint";
 import { RecoveryBadge } from "@/components/RecoveryBadge";
 import { useWindowStore } from "@/stores/windowStore";
 import type { Theme } from "../hooks/use-theme";
@@ -266,7 +267,19 @@ export function SessionCenter({ theme }: { theme: Theme }) {
                         active={attachedWindow?.id === activeWindowId}
                         onOpenWorkspace={() => handleOpenSessionWorkspace(session.id)}
                         onToggleArchive={() => handleToggleArchive(session.id, session.status === "archived" ? "active" : "archived")}
-                        onCloseWindow={attachedWindow ? () => removeWindow(attachedWindow.id) : undefined}
+                        onCloseWindow={
+                          attachedWindow
+                            ? () => {
+                                // Parity with ChatWindow.handleClose: emit the
+                                // first-run "会话仍保留" hint when closing a
+                                // populated window from the SessionCenter card
+                                // as well. messageCount drives the "hasContent"
+                                // check so empty windows stay silent.
+                                maybeShowClosedWindowHint({ hasContent: session.messageCount > 0 });
+                                removeWindow(attachedWindow.id);
+                              }
+                            : undefined
+                        }
                       />
                     );
                   })}
