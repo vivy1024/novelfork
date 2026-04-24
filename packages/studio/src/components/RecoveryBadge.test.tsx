@@ -1,5 +1,5 @@
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { RecoveryBadge } from "./RecoveryBadge";
 
@@ -62,5 +62,48 @@ describe("RecoveryBadge", () => {
     render(<RecoveryBadge recoveryState="reconnecting" wsConnected={false} />);
     const statusEl = screen.getByRole("status");
     expect(statusEl.getAttribute("aria-label")).toContain("离线");
+  });
+
+  it("banner variant renders the optional action button in-flow (not overlapping)", () => {
+    const onClick = vi.fn();
+    render(
+      <RecoveryBadge
+        recoveryState="reconnecting"
+        wsConnected={false}
+        variant="banner"
+        action={{ label: "立即重连", title: "skip backoff", onClick }}
+      />,
+    );
+    const button = screen.getByRole("button", { name: "立即重连" });
+    expect(button).toBeTruthy();
+    // Action must be a normal flex child, never `absolute` (which used to overlap
+    // the banner description in the old ChatWindow header layout).
+    expect(button.className).not.toContain("absolute");
+    fireEvent.click(button);
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it("banner action is ignored when bannerVisible=false (no stray button on idle+online)", () => {
+    render(
+      <RecoveryBadge
+        recoveryState="idle"
+        wsConnected={true}
+        variant="banner"
+        action={{ label: "立即重连", onClick: () => {} }}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "立即重连" })).toBeNull();
+  });
+
+  it("ignores the action prop for non-banner variants", () => {
+    render(
+      <RecoveryBadge
+        recoveryState="reconnecting"
+        wsConnected={false}
+        variant="chip"
+        action={{ label: "立即重连", onClick: () => {} }}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "立即重连" })).toBeNull();
   });
 });
