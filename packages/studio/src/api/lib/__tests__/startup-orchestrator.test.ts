@@ -215,6 +215,48 @@ describe("startup orchestrator", () => {
     });
   });
 
+  it("includes startup diagnostics in recovery actions and failures", async () => {
+    const state = createState();
+
+    const summary = await runStartupOrchestrator(state, {
+      diagnostics: [
+        {
+          kind: "unclean-shutdown",
+          scope: "library",
+          status: "failed",
+          reason: "检测到上次运行未干净退出",
+          note: "pid=123",
+        },
+        {
+          kind: "provider-availability",
+          scope: "library",
+          status: "skipped",
+          reason: "部分启用供应商缺少 API Key",
+          note: "configured=openai;missing=claude",
+        },
+      ],
+    });
+
+    expect(summary.recoveryReport.actions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: "unclean-shutdown",
+        status: "failed",
+        reason: "检测到上次运行未干净退出",
+      }),
+      expect.objectContaining({
+        kind: "provider-availability",
+        status: "skipped",
+        reason: "部分启用供应商缺少 API Key",
+      }),
+    ]));
+    expect(summary.failures).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        phase: "unclean-shutdown",
+        message: "pid=123",
+      }),
+    ]));
+  });
+
   it("keeps filesystem startup separate from the single-file delivery signal", async () => {
     const state = createState();
 

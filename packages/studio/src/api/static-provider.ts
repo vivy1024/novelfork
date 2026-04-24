@@ -7,7 +7,12 @@ export interface StaticAsset {
   readonly contentType: string;
 }
 
+export type StaticProviderDescription =
+  | { readonly source: "filesystem"; readonly root: string }
+  | { readonly source: "embedded"; readonly assetCount: number };
+
 export interface StaticProvider {
+  describe(): StaticProviderDescription;
   hasIndexHtml(): Promise<boolean>;
   readIndexHtml(): Promise<string | null>;
   readAsset(requestPath: string): Promise<StaticAsset | null>;
@@ -34,6 +39,9 @@ export function createFilesystemStaticProvider(staticDir: string): StaticProvide
   const staticRoot = resolve(staticDir);
 
   return {
+    describe(): StaticProviderDescription {
+      return { source: "filesystem", root: staticRoot };
+    },
     async hasIndexHtml(): Promise<boolean> {
       return existsSync(join(staticRoot, "index.html"));
     },
@@ -78,6 +86,12 @@ export function createEmbeddedStaticProvider(assets: {
   readonly files: Readonly<Record<string, StaticAsset>>;
 }): StaticProvider {
   return {
+    describe(): StaticProviderDescription {
+      return {
+        source: "embedded",
+        assetCount: Object.keys(assets.files).length + (typeof assets.indexHtml === "string" ? 1 : 0),
+      };
+    },
     async hasIndexHtml(): Promise<boolean> {
       return typeof assets.indexHtml === "string";
     },

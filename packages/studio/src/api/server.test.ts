@@ -942,6 +942,7 @@ describe("createStudioServer daemon lifecycle", () => {
 
     await startStudioServer(root, 4567, {
       staticProvider: {
+        describe: () => ({ source: "embedded", assetCount: 0 }),
         hasIndexHtml: vi.fn(async () => true),
         readIndexHtml: vi.fn(async () => "<html><body>studio</body></html>"),
         readAsset: readAssetMock,
@@ -969,6 +970,7 @@ describe("createStudioServer daemon lifecycle", () => {
 
     await startStudioServer(root, 4567, {
       staticProvider: {
+        describe: () => ({ source: "embedded", assetCount: 0 }),
         hasIndexHtml: vi.fn(async () => true),
         readIndexHtml: readIndexHtmlMock,
         readAsset: vi.fn(async () => null),
@@ -992,6 +994,7 @@ describe("createStudioServer daemon lifecycle", () => {
 
     await startStudioServer(root, 4567, {
       staticProvider: {
+        describe: () => ({ source: "embedded", assetCount: 0 }),
         hasIndexHtml: vi.fn(async () => true),
         readIndexHtml: vi.fn(async () => "<html></html>"),
         readAsset: vi.fn(async () => null),
@@ -1016,6 +1019,73 @@ describe("createStudioServer daemon lifecycle", () => {
     expect(startHttpServerMock).toHaveBeenCalledWith(expect.objectContaining({ port: 4567 }));
   });
 
+  it("logs structured runtime and static delivery facts at startup", async () => {
+    const consoleLog = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const { startStudioServer } = await import("./server.js");
+
+    await startStudioServer(root, 4567, {
+      staticProvider: {
+        describe: () => ({ source: "embedded", assetCount: 2 }),
+        hasIndexHtml: vi.fn(async () => true),
+        readIndexHtml: vi.fn(async () => "<html></html>"),
+        readAsset: vi.fn(async () => null),
+      },
+      staticMode: "embedded",
+    });
+
+    const parsedLines = consoleLog.mock.calls
+      .map(([line]) => typeof line === "string" ? line : "")
+      .filter((line) => line.startsWith("{"))
+      .map((line) => JSON.parse(line));
+
+    expect(parsedLines).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        component: "static.provider",
+        ok: true,
+        source: "embedded",
+        assetCount: 2,
+      }),
+      expect.objectContaining({
+        component: "server.listen",
+        ok: true,
+        url: "http://localhost:4567",
+        assetSource: "embedded",
+        runtime: expect.any(String),
+        isCompiledBinary: expect.any(Boolean),
+      }),
+    ]));
+    consoleLog.mockRestore();
+  });
+
+  it("passes startup repair diagnostics into the startup orchestrator", async () => {
+    await mkdir(join(root, ".novelfork"), { recursive: true });
+    await writeFile(join(root, ".novelfork", "running.pid"), JSON.stringify({ pid: 123 }), "utf-8");
+
+    const { startStudioServer } = await import("./server.js");
+
+    await startStudioServer(root, 4567, {
+      staticProvider: {
+        describe: () => ({ source: "embedded", assetCount: 1 }),
+        hasIndexHtml: vi.fn(async () => true),
+        readIndexHtml: vi.fn(async () => "<html></html>"),
+        readAsset: vi.fn(async () => null),
+      },
+      staticMode: "embedded",
+    });
+
+    expect(startupOrchestratorMock).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        diagnostics: expect.arrayContaining([
+          expect.objectContaining({
+            kind: "unclean-shutdown",
+            status: "failed",
+          }),
+        ]),
+      }),
+    );
+  });
+
   it("marks compile smoke as success only when the single-file artifact exists", async () => {
     const artifactPath = join(root, "dist", "novelfork.exe");
     await mkdir(join(root, "dist"), { recursive: true });
@@ -1025,6 +1095,7 @@ describe("createStudioServer daemon lifecycle", () => {
 
     await startStudioServer(root, 4567, {
       staticProvider: {
+        describe: () => ({ source: "embedded", assetCount: 0 }),
         hasIndexHtml: vi.fn(async () => true),
         readIndexHtml: vi.fn(async () => "<html></html>"),
         readAsset: vi.fn(async () => null),

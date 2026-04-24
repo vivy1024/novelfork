@@ -288,7 +288,7 @@
       - [x] UX 打磨：`@d:\DESKTOP\novelfork\packages\studio\src\components\ChatWindow.tsx` 在 RecoveryBadge banner 叠一个「立即重连」按钮（仅 `!wsConnected || reconnecting` 时显示），点击走 `manualReconnectRef` 跳过默认 5 秒退避，close 现有 ws 并立刻 `connectWs()`；不破坏 `ChatWindow.test.tsx` 19/19 绿
     - 自动化验证（2026-04-24）：`src/api/server.test.ts`、`src/api/lib/session-chat-service.test.ts` 覆盖通过；全量 `pnpm --filter @vivy1024/novelfork-studio test` 通过。
 
-  - [ ] 7.9.2 **（narrafork 后端 / P0-release / 7.9B）exe 是否真正走 embedded assets 不透明** — ⬜ 7.9B 待做
+  - [x] 7.9.2 **（narrafork 后端 / P0-release / 7.9B）exe 是否真正走 embedded assets 不透明** — 已完成（2026-04-24）
     - 现象：`pnpm bun:compile` 产出 `dist/novelfork.exe`（~117 MB），但**无法确认**运行时到底加载的是 embedded assets 还是 filesystem `packages/studio/dist/`；当前启动日志里只有 `static-delivery filesystem`
     - 优先级口径：这是发布阻塞项（P0-release），但不阻断 7.9A 的日常 Studio 主链修复；若当前目标是先恢复 dev / 本地工作台体验，可排在 WebSocket、tab、Radar 错误之后
     - 参考：NarraFork 启动日志 `{"msg":"NarraFork server running","isProd":true,"isCompiledBinary":true,"assetSource":"embedded"}` 一行表达清晰
@@ -297,6 +297,8 @@
       - `server.ts` 启动完成时打一行结构化日志：`{"level":"info","msg":"NovelFork Studio running","url":"http://localhost:<port>","isProd":...,"isCompiledBinary":...,"assetSource":"embedded|filesystem","metaUrl":import.meta.url,"exePath":process.execPath,"projectRoot":...}`
       - `isCompiledBinary` 判定：`typeof (globalThis as any).Bun !== "undefined" && import.meta.url.startsWith("file:") && process.execPath.endsWith(".exe")` 等组合条件，放独立 `detectRuntimeMode()` 函数并单测
     - 验收：exe 启动日志必须含 `isCompiledBinary:true` + `assetSource:"embedded"`；dev/node 启动含 `isCompiledBinary:false` + `assetSource:"filesystem"`
+    - 已落地：`static-provider.ts` 暴露 `describe()`；新增 `runtime-mode.ts::detectRuntimeMode()`；`server.ts` 启动时输出结构化 `static.provider` 与 `server.listen`，包含 `assetSource` / `isProd` / `isCompiledBinary` / `runtime` / `metaUrl` / `exePath` / `projectRoot`。
+    - 自动化验证（2026-04-24）：`src/api/static-provider.test.ts`、`src/api/lib/runtime-mode.test.ts`、`src/api/server.test.ts` 覆盖通过；`pnpm bun:compile` 成功产出 `dist/novelfork.exe`。
 
   - [x] 7.9.3 **（Cascade / P1 / 7.9A）routeToTabLabel 在无 section 时仍拼 "undefined"** — 已完成（2026-04-24）
     - 现象：用户点侧边栏「管理中心」/「设置」后，tab 标题显示 `管理 · undefined` / `设置 · undefined`
@@ -315,7 +317,7 @@
     - 自动化验证（2026-04-24）：`src/api/server.test.ts` 覆盖结构化 400；`src/lib/llm-error.test.ts` 覆盖结构化 code 映射；全量 `pnpm --filter @vivy1024/novelfork-studio test` 通过。
     - 待人工复核：真机断开 API Key 后点击扫描，确认页面不显示英文原文 / 堆栈。
 
-  - [ ] 7.9.5 **（narrafork 后端 / P1 / 7.9B）启动日志结构化改造（对标 NarraFork）** — ⬜ 7.9B 待做
+  - [x] 7.9.5 **（narrafork 后端 / P1 / 7.9B）启动日志结构化改造（对标 NarraFork）** — 已完成（2026-04-24）
     - 目标：每个 startup stage 都有结构化 JSON，含 `level/msg/component/ok|skipped|failed/reason/userImpact`
     - 做法：
       - 新建 `@d:\DESKTOP\novelfork\packages\studio\src\api\lib\startup-logger.ts`：`logStartupEvent({ level, component, msg, ok, reason?, extra? })` 输出单行 JSON（dev 环境可切 pretty）
@@ -328,8 +330,10 @@
         - `server.listen`（含完整 runtime 矩阵，见 7.9.2）
       - 最后打印一行 `startup.summary`：`{ ok: n, skipped: m, failed: k, durationMs }`
     - 不动项：现有 `startupSummary` / `recoveryReport` UI 层字段保持兼容，日志仅增补不替换
+    - 已落地：新增 `api/lib/startup-logger.ts`，统一输出单行 JSON；`server.ts` 接入 `config.load`、`static.provider`、`server.listen`、`websocket.register`；保留现有 `Startup recovery report` 与 Admin startup summary 数据结构。
+    - 自动化验证（2026-04-24）：`src/api/lib/startup-logger.test.ts`、`src/api/server.test.ts` 覆盖通过；定向 7.9B 测试 9 files / 66 tests 通过。
 
-  - [ ] 7.9.6 **（narrafork 后端 / P1 / 7.9B）startup repair 增强：对标 NarraFork 的自愈链** — ⬜ 7.9B 待做
+  - [x] 7.9.6 **（narrafork 后端 / P1 / 7.9B）startup repair 增强：对标 NarraFork 的自愈链** — 已完成（2026-04-24）
     - 现有覆盖（Package 2 已做）：startup recovery report / migration / compile smoke
     - 新增检查项：
       - `unclean-shutdown` 标记文件（启动时写入 `.novelfork/running.pid`，优雅退出时删除；启动检测到残留即判定为 unclean）
@@ -339,6 +343,9 @@
       - `websocket-route matrix` 打点（见 7.9.5）
       - `provider/gateway availability` 打点（"OpenAI 网关可达" / "Claude key 未配"）
     - 数据打到 `startupSummary`，在 Dashboard / Admin 一个「系统自愈报告」卡里展示
+    - 已落地：新增 `api/lib/startup-diagnostics.ts`，覆盖 `unclean-shutdown` marker、session-store 一致性、git worktree pollution、provider availability；`startup-orchestrator.ts` 扩展 diagnostics 输入并将失败写入 `recoveryReport.actions` / `failures`；`server.ts` 启动时收集 diagnostics 并传入 startup recovery。
+    - 安全边界：外部 worktree 仅检测与报告，不自动删除；危险修复仍保留人工确认/后续 UI 操作，不误删兄弟项目数据。
+    - 自动化验证（2026-04-24）：`src/api/lib/startup-diagnostics.test.ts`、`src/api/lib/__tests__/startup-orchestrator.test.ts`、`src/api/server.test.ts` 覆盖通过。
 
   - [x] 7.9.7 **（Cascade / P2 / 7.9A）PWA manifest 144x144 图标尺寸不匹配** — 已完成（2026-04-24）
     - 现象：DevTools 稳定报 `Error while trying to use the following icon from the Manifest: /icons/icon-144x144.png — Resource size is not correct`
@@ -365,24 +372,32 @@
     - 自动化验证（2026-04-24）：`src/hooks/use-worktree.test.ts`、`src/components/Admin/WorktreesTab.test.tsx`、`src/api/routes/admin.test.ts` 与全量 `pnpm --filter @vivy1024/novelfork-studio test` 通过。
     - 待人工复核：真机 Admin → Worktree 管理确认默认不显示兄弟项目路径；7.9.6 的 `git-worktree pollution` 自愈链路仍留到 7.9B。
 
-  - [ ] 7.9.10 **（P2 / 7.9B）node-server `Failed to find Response internal state key` 警告** — ⬜ 7.9B 待做
+  - [x] 7.9.10 **（P2 / 7.9B）node-server `Failed to find Response internal state key` 警告** — 已完成（2026-04-24）
     - 现象：standalone server 启动日志偶发出现 `Failed to find Response internal state key`
     - 初判：`@hono/node-server` 某条路径上拿 `Response` 内部字段时版本不匹配；不阻塞功能但污染日志
     - 做法：
       - 确认 `@hono/node-server` 与 `hono` 的版本匹配（当前 `@hono/node-server@1.13.0` + `hono@4.7.0`）
       - 若升级后仍存在，加 node-server PR / issue 链接并在启动日志里 rate-limit 这一行（5s 内同样 msg 只打一次）
     - 验收：启动日志 5 秒内不出现重复的 `Failed to find Response internal state key`
+    - 已落地：`start-http-server.ts` 新增 `createRateLimitedWarningSink()`，node fallback 安装 `console.warn` 过滤器；同一 `Failed to find Response internal state key` 5 秒内只保留首条，不影响其他 warning。
+    - 自动化验证（2026-04-24）：`src/api/start-http-server.test.ts` 覆盖 5 秒窗口去重与普通 warning 保留；全量测试通过。
 
-  - [ ] 7.9.11 **（Cascade）done definition** — 🟡 进行中；自动化/typecheck 绿，手动冒烟 + git status 未清
+  - [ ] 7.9.11 **（Cascade）done definition** — 🟡 进行中；7.9B 自动化/typecheck/compile 绿，手动冒烟 + git status 未清
     - **7.9A 可先收口并提交**：`pnpm --filter @vivy1024/novelfork-studio typecheck` 通过；相关测试全绿（WS / routeToTabLabel 防御 / Radar 错误渲染 / a11y / Worktree 过滤）；手动冒烟「新建书籍 → 进 SessionCenter → ChatWindow 可发可收 → 断网能重连；RadarView 缺 key 有中文提示与跳转按钮；管理/设置 tab 标题正确」通过；`git status --short` 中仅剩与 7.9B 相关的未提交项或已干净
     - 自动化验证进度（2026-04-24）：
       - [x] `pnpm --filter @vivy1024/novelfork-studio exec vitest run src/api/server.test.ts src/api/lib/session-chat-service.test.ts src/hooks/use-worktree.test.ts src/lib/llm-error.test.ts src/components/Admin/Admin.test.tsx src/App.test.tsx src/components/Admin/WorktreesTab.test.tsx`：59 tests 通过
       - [x] `pnpm --filter @vivy1024/novelfork-studio exec vitest run src/api/routes/admin.test.ts`：10 tests 通过
       - [x] `pnpm --filter @vivy1024/novelfork-studio typecheck`：通过
       - [x] `pnpm --filter @vivy1024/novelfork-studio test`：75 files / 510 tests 通过
-      - [ ] 手动冒烟仍未执行：ChatWindow dev/exe 连接与发收、断网恢复、Radar 缺 key 中文提示、Worktree 外部路径默认隐藏
-      - [ ] `git status --short` 仍不干净，且包含 7.9A / 7.9B / 既有改动混合项；未提交
-    - **7.9B 全部完成时**：`pnpm --filter @vivy1024/novelfork-studio test` 全绿（新增 startup logger / runtime mode / startup repair 相关用例）；`pnpm bun:compile` 产出 exe，启动后日志包含 `isCompiledBinary:true` + `assetSource:"embedded"` + `WebSocket routes registered` 两行；启动日志/自愈链路验证通过
+      - [x] `pnpm --filter @vivy1024/novelfork-studio exec vitest run src/api/static-provider.test.ts src/api/lib/runtime-mode.test.ts src/api/lib/startup-logger.test.ts src/api/lib/startup-diagnostics.test.ts src/api/lib/__tests__/startup-orchestrator.test.ts src/api/start-http-server.test.ts src/api/server.test.ts src/api/routes/admin.test.ts src/components/Admin/ResourcesTab.test.tsx`：9 files / 66 tests 通过
+      - [x] `pnpm --filter @vivy1024/novelfork-studio typecheck`：通过
+      - [x] `pnpm --filter @vivy1024/novelfork-studio test`：79 files / 524 tests 通过
+      - [x] `pnpm bun:compile`：通过，生成 `dist/novelfork.exe`；构建日志含既有 Rollup pure annotation / dynamic import 警告，不阻断编译
+      - [x] exe 冒烟（2026-04-24）：`./dist/novelfork.exe --port=4579 --root=D:/DESKTOP/novelfork` 启动成功；日志确认 `isProd:true` + `isCompiledBinary:true` + `assetSource:"embedded"` + `WebSocket routes registered` 两条路由。
+      - [x] exe HTTP/WS 冒烟（2026-04-24）：`GET /` 返回 embedded index；`POST /api/sessions` 成功；`ws://127.0.0.1:4579/api/sessions/<id>/chat` 返回 `session:snapshot`；`POST /api/radar/scan` 在缺 key 时返回结构化 400 + 中文 message；`GET /api/admin/worktrees` 可识别外部 worktree。
+      - [ ] 未执行/仍需真人 UI 复核：dev 模式 ChatWindow 完整发收与断网恢复、RadarView 页面跳转按钮、Admin Worktree UI 默认隐藏外部路径。
+      - [ ] `git status --short` 仍不干净，且包含本轮 7.9B 改动；待提交
+    - **7.9B 自动化与 exe smoke 已完成**：`pnpm --filter @vivy1024/novelfork-studio test` 全绿（新增 startup logger / runtime mode / startup repair / node warning 相关用例）；`pnpm bun:compile` 产出 exe；启动日志确认 `isCompiledBinary:true` + `assetSource:"embedded"` + `WebSocket routes registered`。
     - Package 6 最终收口前：`git status --short` 干净，并按任务 8 的 done definition 回写相关文档
 
 - [ ] 8. 每个 package 完成时执行统一 done definition

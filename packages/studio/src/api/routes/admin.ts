@@ -15,7 +15,7 @@ import { WebSocketServer, type WebSocket } from "ws";
 import type { BunWebSocketConnection, BunWebSocketRegistrar, StartedHttpServer } from "../start-http-server.js";
 import { providerManager } from "../lib/provider-manager.js";
 import { getWorktreeStatus, isPathInsideRoot, listWorktrees } from "../lib/git-utils.js";
-import { buildStartupFailureDecisions, type StartupFailureDecision } from "../lib/startup-orchestrator.js";
+import { buildStartupFailureDecisions, type StartupFailureDecision, type StartupOrchestratorFailurePhase } from "../lib/startup-orchestrator.js";
 
 const statfs = promisify(statfsCallback);
 const MAX_REQUEST_LOGS = 1000;
@@ -148,7 +148,7 @@ interface StartupSummarySnapshot {
   };
   failures: readonly {
     bookId?: string;
-    phase: "project-bootstrap" | "migration" | "search-index" | "static-delivery" | "compile-smoke";
+    phase: StartupOrchestratorFailurePhase;
     message: string;
   }[];
   decisions?: readonly StartupFailureDecision[];

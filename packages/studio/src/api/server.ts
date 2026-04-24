@@ -16,7 +16,7 @@ import { join } from "node:path";
 import { isSafeBookId } from "./safety.js";
 import { ApiError } from "./errors.js";
 import { readSessionFromCookie } from "./auth.js";
-import { createFilesystemStaticProvider, type StaticProvider } from "./static-provider.js";
+import { createFilesystemStaticProvider, type StaticProvider, type StaticProviderDescription } from "./static-provider.js";
 import { startHttpServer } from "./start-http-server.js";
 import { setupSessionChatWebSocket } from "./lib/session-chat-service.js";
 import { RunStore } from "./lib/run-store.js";
@@ -30,6 +30,18 @@ import {
   type StartupOrchestratorSummary,
   type StartupStaticMode,
 } from "./lib/startup-orchestrator.js";
+import { detectRuntimeMode } from "./lib/runtime-mode.js";
+import { logStartupEvent } from "./lib/startup-logger.js";
+import { resolveRuntimeStorageDir } from "./lib/runtime-storage-paths.js";
+import {
+  buildProviderAvailabilityDiagnostics,
+  buildWorktreePollutionDiagnostics,
+  checkSessionStoreConsistency,
+  clearUncleanShutdownMarker,
+  prepareUncleanShutdownMarker,
+  type StartupDiagnostic,
+} from "./lib/startup-diagnostics.js";
+import { listWorktrees } from "./lib/git-utils.js";
 
 import {
   createRunsRouter,
@@ -341,6 +353,71 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
 
 // --- Standalone runner ---
 
+function describeStaticProvider(staticProvider: StaticProvider | undefined, staticMode: StartupStaticMode): StaticProviderDescription | { source: "missing" } {
+  if (!staticProvider) {
+    return { source: "missing" };
+  }
+
+  const providerWithOptionalDescription = staticProvider as StaticProvider & { describe?: () => StaticProviderDescription };
+  return providerWithOptionalDescription.describe?.() ?? (staticMode === "filesystem"
+    ? { source: "filesystem", root: "unknown" }
+    : { source: "embedded", assetCount: 0 });
+}
+
+let registeredRunningMarkerPath: string | null = null;
+
+function registerRunningMarkerCleanup(markerPath: string): void {
+  if (registeredRunningMarkerPath === markerPath) {
+    return;
+  }
+
+  registeredRunningMarkerPath = markerPath;
+  const cleanup = () => {
+    void clearUncleanShutdownMarker(markerPath);
+  };
+  process.once("SIGINT", cleanup);
+  process.once("SIGTERM", cleanup);
+  process.once("beforeExit", cleanup);
+}
+
+function getSessionStoreDiagnosticDir(): string {
+  return process.env.NOVELFORK_SESSION_STORE_DIR?.trim() || resolveRuntimeStorageDir();
+}
+
+function buildProviderDiagnosticEntries(config: ProjectConfig) {
+  const llmConfig = config.llm as { provider?: string; apiKey?: string } | undefined;
+  return [{
+    id: llmConfig?.provider ?? "default",
+    enabled: true,
+    apiKeyConfigured: Boolean(llmConfig?.apiKey),
+  }];
+}
+
+async function collectStartupDiagnostics(root: string, config: ProjectConfig): Promise<StartupDiagnostic[]> {
+  const diagnostics: StartupDiagnostic[] = [];
+  const markerPath = join(root, ".novelfork", "running.pid");
+
+  diagnostics.push(await prepareUncleanShutdownMarker(markerPath));
+  registerRunningMarkerCleanup(markerPath);
+  diagnostics.push(await checkSessionStoreConsistency(getSessionStoreDiagnosticDir()));
+
+  try {
+    const worktrees = await listWorktrees(root);
+    diagnostics.push(buildWorktreePollutionDiagnostics(root, worktrees));
+  } catch (error) {
+    diagnostics.push({
+      kind: "git-worktree-pollution",
+      scope: "library",
+      status: "skipped",
+      reason: "无法读取 git worktree 列表",
+      note: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  diagnostics.push(buildProviderAvailabilityDiagnostics(buildProviderDiagnosticEntries(config)));
+  return diagnostics;
+}
+
 export async function startStudioServer(
   root: string,
   port = 4567,
@@ -391,6 +468,13 @@ export async function startStudioServer(
   const config = await loadProjectConfig(root, { requireApiKey: false });
 
   const mode = getNovelForkMode();
+  logStartupEvent({
+    level: "info",
+    component: "config.load",
+    msg: "Project config loaded",
+    ok: true,
+    extra: { mode, projectRoot: root },
+  });
   console.log(`NovelFork mode: ${mode}`);
 
   const { app, ctx } = createStudioServer(config, root);
@@ -400,6 +484,15 @@ export async function startStudioServer(
     ?? (options?.staticDir ? createFilesystemStaticProvider(options.staticDir) : undefined);
   const staticMode: StartupStaticMode = options?.staticMode
     ?? (staticProvider ? (options?.staticDir ? "filesystem" : "embedded") : "missing");
+  const staticProviderDescription = describeStaticProvider(staticProvider, staticMode);
+  logStartupEvent({
+    level: staticProvider ? "info" : "warn",
+    component: "static.provider",
+    msg: staticProvider ? "Static provider ready" : "Static provider missing",
+    ok: Boolean(staticProvider),
+    reason: staticProvider ? undefined : "未提供前端静态资源，启动为 API-only 模式",
+    extra: staticProviderDescription,
+  });
 
   const buildStartupOptions = async (
     bootstrapSummary?: {
@@ -407,6 +500,7 @@ export async function startStudioServer(
       reason: string;
       note?: string;
     },
+    diagnostics: readonly StartupDiagnostic[] = [],
   ): Promise<StartupOrchestratorOptions> => {
     const indexHtmlReady = staticProvider ? await staticProvider.hasIndexHtml() : false;
     const artifactCandidates = [join(root, "dist", "novelfork.exe"), join(root, "dist", "novelfork")];
@@ -436,6 +530,7 @@ export async function startStudioServer(
             reason: artifactPath ? "静态资源入口缺失" : "单文件产物缺失",
             note: artifactPath ?? artifactCandidates.join(" | "),
           },
+      diagnostics,
     };
   };
 
@@ -445,13 +540,15 @@ export async function startStudioServer(
       reason: string;
       note?: string;
     },
+    diagnostics: readonly StartupDiagnostic[] = [],
   ) => {
-    const summary = await runStartupOrchestrator(ctx.state, await buildStartupOptions(bootstrapSummary));
+    const summary = await runStartupOrchestrator(ctx.state, await buildStartupOptions(bootstrapSummary, diagnostics));
     ctx.setStartupSummary(summary);
     return summary;
   };
 
-  const startupSummary = await runStartupRecovery(projectBootstrap);
+  const startupDiagnostics = await collectStartupDiagnostics(root, config);
+  const startupSummary = await runStartupRecovery(projectBootstrap, startupDiagnostics);
   ctx.setStartupRecoveryRunner(() => runStartupRecovery({
     status: "skipped",
     reason: "当前进程已完成启动初始化，手动重跑仅刷新恢复与交付摘要",
@@ -484,12 +581,41 @@ export async function startStudioServer(
     });
   }
 
-  console.log(`NovelFork Studio running on http://localhost:${port}`);
+  const runtimeMode = detectRuntimeMode();
+  const serverUrl = `http://localhost:${port}`;
+  logStartupEvent({
+    level: "info",
+    component: "server.listen",
+    msg: "NovelFork Studio running",
+    ok: true,
+    extra: {
+      url: serverUrl,
+      isProd: runtimeMode.isProd,
+      isCompiledBinary: runtimeMode.isCompiledBinary,
+      runtime: runtimeMode.runtime,
+      metaUrl: runtimeMode.metaUrl,
+      exePath: runtimeMode.exePath,
+      projectRoot: root,
+      assetSource: staticProviderDescription.source,
+      ...("assetCount" in staticProviderDescription ? { assetCount: staticProviderDescription.assetCount } : {}),
+      ...("root" in staticProviderDescription ? { staticRoot: staticProviderDescription.root } : {}),
+    },
+  });
+  console.log(`NovelFork Studio running on ${serverUrl}`);
 
   const startedServer = await startHttpServer({ fetch: app.fetch, port });
   if (startedServer) {
     setupAdminWebSocket(startedServer);
     setupSessionChatWebSocket(startedServer);
+    for (const route of ["/api/admin/resources/ws", "/api/sessions/:id/chat"]) {
+      logStartupEvent({
+        level: "info",
+        component: "websocket.register",
+        msg: "WebSocket route registered",
+        ok: true,
+        extra: { route },
+      });
+    }
     console.log(
       `[startup] WebSocket routes registered: /api/admin/resources/ws, /api/sessions/:id/chat`,
     );

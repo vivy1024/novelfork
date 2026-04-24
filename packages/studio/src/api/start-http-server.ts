@@ -37,6 +37,43 @@ export interface BunWebSocketRegistrar {
 
 export type StartedHttpServer = Server | BunWebSocketRegistrar;
 
+const NODE_SERVER_RESPONSE_STATE_WARNING = "Failed to find Response internal state key";
+const DEFAULT_WARNING_RATE_LIMIT_MS = 5_000;
+
+export type WarningSink = (...args: unknown[]) => void;
+
+export function createRateLimitedWarningSink(
+  sink: WarningSink,
+  now: () => number = Date.now,
+  windowMs = DEFAULT_WARNING_RATE_LIMIT_MS,
+): WarningSink {
+  let lastResponseStateWarningAt = Number.NEGATIVE_INFINITY;
+
+  return (...args: unknown[]) => {
+    const firstArg = typeof args[0] === "string" ? args[0] : "";
+    if (firstArg.includes(NODE_SERVER_RESPONSE_STATE_WARNING)) {
+      const currentTime = now();
+      if (currentTime - lastResponseStateWarningAt < windowMs) {
+        return;
+      }
+      lastResponseStateWarningAt = currentTime;
+    }
+
+    sink(...args);
+  };
+}
+
+let nodeServerWarningFilterInstalled = false;
+
+function installNodeServerWarningFilter(): void {
+  if (nodeServerWarningFilterInstalled) {
+    return;
+  }
+
+  nodeServerWarningFilterInstalled = true;
+  console.warn = createRateLimitedWarningSink(console.warn.bind(console)) as typeof console.warn;
+}
+
 function getBunRuntime():
   | {
       serve?: (options: {
@@ -117,6 +154,7 @@ export async function startHttpServer(options: {
     };
   }
 
+  installNodeServerWarningFilter();
   const { serve } = await import("@hono/node-server");
   return serve({ fetch: options.fetch, port: options.port }) as Server;
 }
