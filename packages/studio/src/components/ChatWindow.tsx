@@ -35,6 +35,7 @@ import { ContextPanel, type ContextEntry } from "./ContextPanel";
 import { Button } from "./ui/button";
 import { fetchJson } from "../hooks/use-api";
 import { notify } from "@/lib/notify";
+import { maybeShowClosedWindowHint } from "@/lib/closed-window-hint";
 import { useRunDetails } from "../hooks/use-run-events";
 import { getDefaultModel, getDefaultProvider, getModel, getProvider, PROVIDERS } from "../shared/provider-catalog";
 import type {
@@ -794,20 +795,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
                   ? "关闭窗口 · 会话仍保留在会话中心"
                   : "关闭窗口（会话为空）";
                 const handleClose = () => {
-                  if (hasContent) {
-                    try {
-                      const hintKey = "closed-window-hint-shown";
-                      if (!localStorage.getItem(hintKey)) {
-                        notify.info("窗口已关闭", {
-                          description: "会话仍在会话中心，随时可重新打开",
-                          duration: 4000,
-                        });
-                        localStorage.setItem(hintKey, "1");
-                      }
-                    } catch {
-                      // Accessing localStorage can throw in some embedding modes; ignore.
-                    }
-                  }
+                  maybeShowClosedWindowHint({ hasContent });
                   clearWindowRuntime(windowId);
                   removeWindow(windowId);
                 };
