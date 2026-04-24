@@ -145,10 +145,45 @@
     - `@d:\DESKTOP\novelfork\docs\04-开发指南\README.md` —— 新增「notify 使用规范」节，含通道矩阵 + 三条硬约束
     - 未新建独立 report .md 文件
 
-- [ ] 6. 执行 Package 5：Top-Level Model & Final Acceptance
-  - 明确并推进 `Project / Chapter / Narrator` 三层对象模型最小闭环
-  - 统一最终验收口径
-  - 明确真正剩余的长期愿景项
+- [x] 6. 执行 Package 5：Top-Level Model & Final Acceptance — 6.1 / 6.2 / 6.3 全部完成（2026-04-24）
+
+  > Package 5 的角色是**规划收束**，不是新功能实现。requirements.md Requirement 6 明确将"三层对象模型完整"归为**长期愿景项**；本包负责把"最小闭环范围 / 最终验收口径 / 长期愿景项"三件事写清楚并归档。
+
+  - [x] 6.1 **三层对象模型最小闭环范围** — 已明确并归档
+    - 文档落档：`@d:\DESKTOP\novelfork\docs\02-核心架构\01-系统架构\01-系统架构总览.md` 第九节「Project / Book / Chapter / Narrator 对象模型最小闭环」
+    - 判定四条（全部成立）：
+      1. 每个对象的读写走统一 HTTP/WS 协议，`storage/adapter.ts` 层接口不被 UI 绕过
+      2. 每个对象的前端状态由服务端快照驱动（Package 4 session server-first；Book/Chapter 已是服务端事实源；Project 单例配置也走 `/api/project`）
+      3. 每个对象的异常恢复都有明确 UX 反馈（recovery 五态、startup diagnostics、session-store repair）
+      4. 每个对象的 ID / 命名空间不冲突，跨对象引用走明确字段（`session.projectId = bookId`）
+    - 实现证据：`storage/adapter.ts::ProjectConfig` / `shared/contracts.ts::BookSummary|ChapterDetail` / `NarratorSessionRecord` + `SessionChatSnapshot`；对应 HTTP/WS 路由见 `api/routes/storage.ts` 与 `api/lib/session-chat-service.ts`
+
+  - [x] 6.2 **最终验收口径** — 已写清并在本任务列表所有 package 实测满足
+    - 按任务 8 的统一 done definition 验收，6 条每包必做：
+      - 后端完成
+      - 前端入口/反馈完成
+      - 测试补齐
+      - `pnpm --filter @vivy1024/novelfork-studio typecheck` 通过
+      - 相关回归测试通过
+      - `git status --short` 干净
+      - 文档在包结束时回写一次（不新建临时 report 文件）
+    - 本 closure spec 的**总验收口径**：以下全部成立视为 closure 完成
+      1. Package 1 ~ Package 5 顶层任务（任务 2 ~ 6）全部 [x]
+      2. 最近一次 `pnpm --filter @vivy1024/novelfork-studio test` 仅剩与本轮改动无关的平台预遗留失败（当前为 1/537：Windows `sleep` 命令缺失，提交 `5c5a1a3b`，2026-04-20）
+      3. `pnpm --filter @vivy1024/novelfork-studio typecheck` 通过
+      4. `pnpm --filter @vivy1024/novelfork-studio build:client` 通过，entry chunk < 900 KB
+      5. `pnpm bun:compile` 通过，exe smoke 日志含 `isCompiledBinary:true` + `assetSource:"embedded"` + `WebSocket routes registered`
+      6. `git status --short` 干净
+      7. 三类文档（02-核心架构 / 03-代码参考 / 04-开发指南）均在 closure 内回写过一次
+    - 当前状态：1 / 2 / 3 / 4 / 5 / 6 / 7 **全部成立**
+
+  - [x] 6.3 **长期愿景项归档** — 已明确并落档
+    - 文档落档：`@d:\DESKTOP\novelfork\docs\02-核心架构\01-系统架构\01-系统架构总览.md` 第十节「Closure 完成后的长期愿景项」
+    - 三组长期方向（不在 closure 范围，后续任何时刻可拆独立 spec）：
+      - **A. 顶层对象模型完整化**：多 Project / 工作空间、Chapter↔Narrator 消息回链、Narrator↔Book 强绑定、跨 Book 知识库共享
+      - **B. 交付与运维成熟度**：安装器 / 代码签名、自动更新、首启 UX onboarding、系统级实时诊断终态
+      - **C. 运行时 repair / migration 终态**：Book 级 chapter_index repair、schema migration 机制、跨版本 exe 数据迁移
+    - 归档目的：让任何后续 PR / 会话都能立刻判断"这个想法属于 closure 主线 还是 长期愿景"，防止 scope creep
 
 - [x] 7. 执行 Package 6：NarraFork Parity & Platform Hardening — 7.1 ~ 7.9 全部子项完成（2026-04-24）
 
@@ -409,16 +444,16 @@
     - **真实 UI 复核补丁（2026-04-24）**：修复 ChatWindow 重连回放后不退出 `replaying`、ProvidersTab 对象模型渲染白屏、Admin Worktree 子页未挂载、WorktreesTab 默认暴露外部项目路径、bun CLI 被误判为 compiled binary。验证：定向 5 files / 32 tests 通过；typecheck 通过；全量 80 files / 537 tests 通过；`pnpm bun:compile` 通过；bun main 日志 `isCompiledBinary:false`，exe 日志 `isCompiledBinary:true`。
     - Package 6 最终收口：`git status --short` 干净，并按任务 8 的 done definition 回写相关文档
 
-- [ ] 8. 每个 package 完成时执行统一 done definition
-  - 已完成：Package 1 / 2 / 3 已按该口径完成后端、前端入口/反馈、测试、typecheck、相关回归与文档回写
-  - 待继续：Package 4 / 5 / 6 完成时继续执行同一 done definition
-  - 检查项：后端完成
-  - 检查项：前端入口/反馈完成
-  - 检查项：测试补齐
-  - 检查项：typecheck 通过
-  - 检查项：相关回归测试通过
-  - 检查项：`git status --short` 干净
-  - 检查项：文档在包结束时回写一次
+- [x] 8. 每个 package 完成时执行统一 done definition — 全部 package 已走过（2026-04-24）
+  - Package 1 / 2 / 3 / 4 / 5 / 6 均按口径验收：后端、前端入口/反馈、测试、typecheck、相关回归、`git status --short` 干净、文档在包结束时回写
+  - 详细验收记录分散在各 package 小节中（5.8 / 7.8 / 6.2 汇总口径对齐）
+  - 检查项：后端完成 ✅
+  - 检查项：前端入口/反馈完成 ✅
+  - 检查项：测试补齐 ✅
+  - 检查项：typecheck 通过 ✅
+  - 检查项：相关回归测试通过 ✅（当前 536/537，唯一失败为预遗留 Windows `sleep` 平台问题）
+  - 检查项：`git status --short` 干净 ✅
+  - 检查项：文档在包结束时回写一次 ✅（`02-核心架构` 增九 / 十节；`03-代码参考` 增 Studio 公共组件索引；`04-开发指南` 增 notify 规范；`05-调研规划` 增 TipTap / 持久化 / Bash-AST 三份 spike）
 
 - [ ] 9. 当且仅当本 Kiro spec 已完整承接旧文档有效内容时，再退役旧文档
   - 删除 06 / 07 / 08
