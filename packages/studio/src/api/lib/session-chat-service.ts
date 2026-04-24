@@ -1,5 +1,12 @@
+import type { Server as NodeHttpServer } from "node:http";
+
 import { WebSocketServer, type RawData, type WebSocket as NodeWebSocket } from "ws";
-import type { ServerType } from "@hono/node-server";
+
+import type {
+  BunWebSocketConnection,
+  BunWebSocketRegistrar,
+  StartedHttpServer,
+} from "../start-http-server.js";
 
 import type {
   NarratorSessionChatClientMessage,
@@ -573,20 +580,101 @@ export async function handleSessionChatTransportMessage(
   }
 }
 
-export function setupSessionChatWebSocket(server: ServerType): void {
+const SESSION_CHAT_WS_PATH = "/api/sessions/:id/chat";
+const SESSION_CHAT_PATHNAME_REGEX = /^\/api\/sessions\/([^/]+)\/chat$/;
+
+function parseSessionChatUrl(url: URL): { sessionId: string; resumeFromSeq: number | undefined } | null {
+  const match = url.pathname.match(SESSION_CHAT_PATHNAME_REGEX);
+  if (!match) return null;
+  const sessionId = decodeURIComponent(match[1]!);
+  const resumeFromSeq = sanitizeSeq(url.searchParams.get("resumeFromSeq"));
+  return { sessionId, resumeFromSeq };
+}
+
+function isBunWebSocketRegistrar(server: StartedHttpServer): server is BunWebSocketRegistrar {
+  return typeof server === "object" && server !== null && "runtime" in server && server.runtime === "bun";
+}
+
+export function setupSessionChatWebSocket(server: StartedHttpServer): void {
+  if (isBunWebSocketRegistrar(server)) {
+    const sockets = new WeakMap<BunWebSocketConnection, SessionChatTransport>();
+
+    server.registerWebSocketRoute({
+      path: SESSION_CHAT_WS_PATH,
+      matchPath(pathname) {
+        return SESSION_CHAT_PATHNAME_REGEX.test(pathname);
+      },
+      upgrade(request, bunServer) {
+        const url = new URL(request.url);
+        const parsed = parseSessionChatUrl(url);
+        if (!parsed) return false;
+        return bunServer.upgrade(request, {
+          data: {
+            routePath: SESSION_CHAT_WS_PATH,
+            sessionId: parsed.sessionId,
+            resumeFromSeq: parsed.resumeFromSeq,
+          },
+        });
+      },
+      open(socket) {
+        const data = socket.data ?? {};
+        const sessionId = typeof data.sessionId === "string" ? data.sessionId : null;
+        if (!sessionId) {
+          socket.close(4000, "missing sessionId");
+          return;
+        }
+        const resumeFromSeq = typeof data.resumeFromSeq === "number" ? data.resumeFromSeq : undefined;
+        const transport: SessionChatTransport = {
+          send: (payload: string) => socket.send(payload),
+          close: (code?: number, reason?: string) => socket.close(code, reason),
+        };
+        sockets.set(socket, transport);
+        void (async () => {
+          const attached = await attachSessionChatTransport(sessionId, transport, { resumeFromSeq });
+          if (!attached) {
+            sockets.delete(socket);
+          }
+        })();
+      },
+      message(socket, message) {
+        const transport = sockets.get(socket);
+        if (!transport) return;
+        const sessionId = typeof socket.data?.sessionId === "string" ? socket.data.sessionId : null;
+        if (!sessionId) return;
+        void handleSessionChatTransportMessage(sessionId, transport, message);
+      },
+      close(socket) {
+        const transport = sockets.get(socket);
+        sockets.delete(socket);
+        const sessionId = typeof socket.data?.sessionId === "string" ? socket.data.sessionId : null;
+        if (transport && sessionId) {
+          detachSessionChatTransport(sessionId, transport);
+        }
+      },
+      error(socket) {
+        const transport = sockets.get(socket);
+        sockets.delete(socket);
+        const sessionId = typeof socket.data?.sessionId === "string" ? socket.data.sessionId : null;
+        if (transport && sessionId) {
+          detachSessionChatTransport(sessionId, transport);
+        }
+      },
+    });
+
+    return;
+  }
+
+  const httpServer = server as NodeHttpServer;
   const wss = new WebSocketServer({ noServer: true });
 
-  server.on("upgrade", (request, socket, head) => {
+  httpServer.on("upgrade", (request, socket, head) => {
     const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
-    const match = url.pathname.match(/^\/api\/sessions\/([^/]+)\/chat$/);
-    if (!match) {
+    const parsed = parseSessionChatUrl(url);
+    if (!parsed) {
       return;
     }
-
-    const sessionId = decodeURIComponent(match[1]!);
-    const resumeFromSeq = sanitizeSeq(url.searchParams.get("resumeFromSeq"));
     wss.handleUpgrade(request, socket, head, (ws) => {
-      void bindNodeSessionChatConnection(sessionId, ws, { resumeFromSeq });
+      void bindNodeSessionChatConnection(parsed.sessionId, ws, { resumeFromSeq: parsed.resumeFromSeq });
     });
   });
 }

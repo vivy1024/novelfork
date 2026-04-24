@@ -25,6 +25,26 @@ import type { RouterContext } from "./context.js";
 
 type EventHandler = (event: string, data: unknown) => void;
 
+function toErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function isMissingLlmConfigError(error: unknown): boolean {
+  const message = toErrorMessage(error);
+  return /NOVELFORK_LLM_API_KEY/i.test(message)
+    || /API key.*not set/i.test(message)
+    || /missing.*api[_ -]?key/i.test(message)
+    || /no\s+api[_ -]?key/i.test(message);
+}
+
+function structuredLlmConfigError() {
+  return {
+    code: "LLM_CONFIG_MISSING",
+    message: "模型配置未完成，请先到管理中心配置 API Key 或选择可用网关。",
+    hint: "打开管理中心 → 供应商，检查 API Key、Base URL 与模型配置。",
+  };
+}
+
 export function createAIRouter(ctx: RouterContext): Hono {
   const app = new Hono();
   const { state, root, broadcast } = ctx;
@@ -394,8 +414,12 @@ export function createAIRouter(ctx: RouterContext): Hono {
       broadcastStudioEvent("radar:complete", { result });
       return c.json(result);
     } catch (e) {
-      broadcastStudioEvent("radar:error", { error: String(e) });
-      return c.json({ error: String(e) }, 500);
+      const message = toErrorMessage(e);
+      broadcastStudioEvent("radar:error", { error: message });
+      if (isMissingLlmConfigError(e)) {
+        return c.json({ error: structuredLlmConfigError() }, 400);
+      }
+      return c.json({ error: message }, 500);
     }
   });
 

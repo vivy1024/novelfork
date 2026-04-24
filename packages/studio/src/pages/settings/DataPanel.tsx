@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useColors } from "../../hooks/use-colors";
 import type { Theme } from "../../hooks/use-theme";
 import { fetchJson } from "../../hooks/use-api";
+import { notify } from "@/lib/notify";
 import { Download, Upload, FileJson } from "lucide-react";
 
 interface Props {
@@ -25,7 +26,7 @@ export function DataPanel({ theme }: Props) {
       a.click();
       URL.revokeObjectURL(url);
     } catch (error) {
-      alert("导出失败：" + (error as Error).message);
+      notify.error("导出失败", { description: (error as Error).message });
     } finally {
       setExporting(false);
     }
@@ -56,10 +57,10 @@ export function DataPanel({ theme }: Props) {
           body: JSON.stringify(config),
         });
 
-        alert("导入成功！页面将刷新以应用新配置。");
+        notify.success("导入成功", { description: "页面将刷新以应用新配置" });
         window.location.reload();
       } catch (error) {
-        alert("导入失败：" + (error as Error).message);
+        notify.error("导入失败", { description: (error as Error).message });
       } finally {
         setImporting(false);
       }

@@ -29,7 +29,6 @@ export type AdminSection =
   | "daemon"
   | "logs"
   | "worktrees"
-  | "terminal"
   | "container";
 
 export type Route =
@@ -99,7 +98,6 @@ const ADMIN_SECTIONS = new Set<AdminSection>([
   "daemon",
   "logs",
   "worktrees",
-  "terminal",
   "container",
 ]);
 
@@ -121,9 +119,12 @@ function parseOptionalString<T extends string>(
   allowed: ReadonlySet<T>,
 ): T | undefined {
   if (!isRecord(value) || value[key] === undefined) return undefined;
-  return typeof value[key] === "string" && allowed.has(value[key] as T)
-    ? (value[key] as T)
-    : undefined;
+  const raw = value[key];
+  if (typeof raw !== "string") return undefined;
+  // Defense: persisted routes occasionally stringify `undefined`/`null` — reject
+  // these literal sentinels so they never flow into label formatters.
+  if (raw === "" || raw === "undefined" || raw === "null") return undefined;
+  return allowed.has(raw as T) ? (raw as T) : undefined;
 }
 
 export function canonicalRouteId(route: Route): string {

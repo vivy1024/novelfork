@@ -170,6 +170,7 @@ export default defineConfig({
       "/api": {
         target: `http://localhost:${process.env.NOVELFORK_STUDIO_PORT ?? "4569"}`,
         changeOrigin: true,
+        ws: true,
       },
     },
   },

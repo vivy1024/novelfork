@@ -1,4 +1,5 @@
 import { fetchJson, useApi, postApi } from "../hooks/use-api";
+import { notify } from "@/lib/notify";
 import React, { useEffect, useMemo, useState } from "react";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
@@ -165,7 +166,7 @@ export function BookDetail({
       await ai.writeNext(bookId);
     } catch (e) {
       setWriteRequestPending(false);
-      alert(e instanceof Error ? e.message : "Failed");
+      notify.error("写作失败", { description: e instanceof Error ? e.message : undefined });
     }
   };
 
@@ -175,7 +176,7 @@ export function BookDetail({
       await ai.draft(bookId);
     } catch (e) {
       setDraftRequestPending(false);
-      alert(e instanceof Error ? e.message : "Failed");
+      notify.error("草稿生成失败", { description: e instanceof Error ? e.message : undefined });
     }
   };
 
@@ -186,7 +187,7 @@ export function BookDetail({
       await storage.deleteBook(bookId);
       nav.toDashboard();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Delete failed");
+      notify.error("删除失败", { description: e instanceof Error ? e.message : undefined });
     } finally {
       setDeleting(false);
     }
@@ -205,7 +206,7 @@ export function BookDetail({
       await ai.rewrite(bookId, chapterNum, brief.trim() || undefined);
       refetch();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Rewrite failed");
+      notify.error("重写失败", { description: e instanceof Error ? e.message : undefined });
     } finally {
       setRewritingChapters((prev) => prev.filter((n) => n !== chapterNum));
     }
@@ -224,7 +225,7 @@ export function BookDetail({
       await ai.revise(bookId, chapterNum, mode, brief.trim() || undefined);
       refetch();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Revision failed");
+      notify.error("修订失败", { description: e instanceof Error ? e.message : undefined });
     } finally {
       setRevisingChapters((prev) => prev.filter((n) => n !== chapterNum));
     }
@@ -243,7 +244,7 @@ export function BookDetail({
       await ai.resync(bookId, chapterNum, brief.trim() || undefined);
       refetch();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Sync failed");
+      notify.error("同步失败", { description: e instanceof Error ? e.message : undefined });
     } finally {
       setSyncingChapters((prev) => prev.filter((n) => n !== chapterNum));
     }
@@ -260,7 +261,7 @@ export function BookDetail({
       await storage.updateBook(bookId, body);
       refetch();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Save failed");
+      notify.error("保存失败", { description: e instanceof Error ? e.message : undefined });
     } finally {
       setSavingSettings(false);
     }
@@ -459,9 +460,11 @@ export function BookDetail({
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ format: exportFormat, approvedOnly: exportApprovedOnly }),
                   });
-                  alert(`${t("common.exportSuccess")}\n${data.path}\n(${data.chapters} ${t("dash.chapters")})`);
+                  notify.success(t("common.exportSuccess") ?? "导出成功", {
+                    description: `${data.path}\n(${data.chapters} ${t("dash.chapters")})`,
+                  });
                 } catch (e) {
-                  alert(e instanceof Error ? e.message : "Export failed");
+                  notify.error("导出失败", { description: e instanceof Error ? e.message : undefined });
                 }
               }}
               className="flex items-center gap-2 px-4 py-2 text-xs font-bold bg-secondary/50 text-muted-foreground rounded-lg hover:text-foreground hover:bg-secondary transition-all border border-border/50"
@@ -577,7 +580,13 @@ export function BookDetail({
                       <button
                         onClick={async () => {
                           const auditResult = await ai.audit(bookId, ch.number);
-                          alert(auditResult.passed ? "Audit passed" : `Audit failed: ${auditResult.issues?.length ?? 0} issues`);
+                          if (auditResult.passed) {
+                            notify.success("审阅通过");
+                          } else {
+                            notify.error("审阅未通过", {
+                              description: `${auditResult.issues?.length ?? 0} 条问题`,
+                            });
+                          }
                           refetch();
                         }}
                         className="p-2 rounded-lg bg-secondary text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all shadow-sm"

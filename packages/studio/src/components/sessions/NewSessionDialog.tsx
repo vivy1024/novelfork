@@ -215,6 +215,7 @@ export function NewSessionDialog({ open, initialPresetId = "writer", onOpenChang
                   setTitleTouched(true);
                 }}
                 placeholder={defaultTitleFor(presetId)}
+                autoFocus
               />
             </div>
             <div className="space-y-2">

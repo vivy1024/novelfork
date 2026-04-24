@@ -18,8 +18,9 @@ const createLLMClientMock = vi.fn(() => ({}));
 const chatCompletionMock = vi.fn();
 const loadProjectConfigMock = vi.fn();
 const startHttpServerMock = vi.fn(async (): Promise<unknown> => undefined);
-const { setupAdminWebSocketMock } = vi.hoisted(() => ({
+const { setupAdminWebSocketMock, setupSessionChatWebSocketMock } = vi.hoisted(() => ({
   setupAdminWebSocketMock: vi.fn(),
+  setupSessionChatWebSocketMock: vi.fn(),
 }));
 const startupOrchestratorMock = vi.fn(async () => ({
   bookCount: 0,
@@ -66,6 +67,14 @@ vi.mock("./lib/startup-orchestrator.js", () => ({
   resolveStartupFallbackChapter: vi.fn(async () => 0),
   buildStartupFailureDecisions: vi.fn(() => []),
 }));
+
+vi.mock("./lib/session-chat-service.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./lib/session-chat-service.js")>();
+  return {
+    ...actual,
+    setupSessionChatWebSocket: setupSessionChatWebSocketMock,
+  };
+});
 
 vi.mock("@vivy1024/novelfork-core", () => {
   class MockStateManager {
@@ -253,6 +262,7 @@ describe("createStudioServer daemon lifecycle", () => {
     loadProjectConfigMock.mockReset();
     startHttpServerMock.mockClear();
     setupAdminWebSocketMock.mockReset();
+    setupSessionChatWebSocketMock.mockReset();
     startupOrchestratorMock.mockClear();
     loadProjectConfigMock.mockImplementation(async () => {
       const raw = JSON.parse(await readFile(join(root, "novelfork.json"), "utf-8")) as Record<string, unknown>;
@@ -427,6 +437,26 @@ describe("createStudioServer daemon lifecycle", () => {
         model: "fresh-model",
         baseUrl: "https://fresh.example.com/v1",
       }),
+    });
+  });
+
+  it("returns structured radar config errors instead of leaking CLI text", async () => {
+    runRadarMock.mockRejectedValueOnce(new Error("NOVELFORK_LLM_API_KEY not set. Run 'novelfork config set-global' or add it to project .env file."));
+
+    const { createStudioServer } = await import("./server.js");
+    const { app } = createStudioServer(cloneProjectConfig() as never, root);
+
+    const response = await app.request("http://localhost/api/radar/scan", {
+      method: "POST",
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: {
+        code: "LLM_CONFIG_MISSING",
+        message: "模型配置未完成，请先到管理中心配置 API Key 或选择可用网关。",
+        hint: "打开管理中心 → 供应商，检查 API Key、Base URL 与模型配置。",
+      },
     });
   });
 
@@ -1077,7 +1107,7 @@ describe("createStudioServer daemon lifecycle", () => {
     expect(afterPayload.startup.indexedDocuments).toBe(5);
   });
 
-  it("attaches the admin resource websocket to the started http server", async () => {
+  it("attaches websocket routes to the started http server", async () => {
     const startedServer = { kind: "started-http-server" };
     startHttpServerMock.mockResolvedValueOnce(startedServer);
 
@@ -1086,5 +1116,6 @@ describe("createStudioServer daemon lifecycle", () => {
 
     expect(startHttpServerMock).toHaveBeenCalledWith(expect.objectContaining({ port: 4567 }));
     expect(setupAdminWebSocketMock).toHaveBeenCalledWith(startedServer);
+    expect(setupSessionChatWebSocketMock).toHaveBeenCalledWith(startedServer);
   });
 });

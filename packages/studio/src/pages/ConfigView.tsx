@@ -1,4 +1,5 @@
 import { fetchJson, putApi, useApi } from "../hooks/use-api";
+import { notify } from "@/lib/notify";
 import { useEffect, useState, useCallback } from "react";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
@@ -93,7 +94,7 @@ export function ConfigView({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunc
       setEditing(false);
       refetch();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed");
+      notify.error("保存失败", { description: e instanceof Error ? e.message : undefined });
     } finally {
       setSaving(false);
     }
@@ -348,7 +349,7 @@ function TauriLlmSettings({ theme, t }: { theme: Theme; t: TFunction }) {
       setEditingIdx(null);
       await refresh();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "保存失败");
+      notify.error("保存失败", { description: e instanceof Error ? e.message : undefined });
     }
   };
 
@@ -571,7 +572,7 @@ function MyLlmSettings({ theme, t }: { theme: Theme; t: TFunction }) {
       setEditing(false);
       refetch();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to save LLM settings");
+      notify.error("LLM 设置保存失败", { description: e instanceof Error ? e.message : undefined });
     } finally {
       setSaving(false);
     }
@@ -689,7 +690,7 @@ function ModelRoutingSection({ theme, t, isTauri }: { theme: Theme; t: TFunction
       });
       refetch();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to save model overrides");
+      notify.error("模型覆盖保存失败", { description: e instanceof Error ? e.message : undefined });
     } finally {
       setSaving(false);
     }

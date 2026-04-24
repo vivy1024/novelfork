@@ -615,3 +615,12 @@
 这份改造清单的核心，不是“把界面改得像 NarraFork”，而是：
 
 > 把 NovelFork Studio 从“功能堆积型界面”推进成“对象清晰、配置收口、AI 透明、平台能力成体系”的工作台。
+
+---
+
+## 附录 A：TerminalTab / RadarView 取舍（2026-04-24）
+
+本轮 Package 6 / 7.7 对两个长期处于「有壳观望」的 Admin 入口做一次性产品决策：
+
+- **TerminalTab → 选 C：立即删除**。组件已从 `Admin.tsx` 移除；`AdminSection` 枚举、`use-tabs` 标签映射、`Admin.test.tsx` / `use-tabs.test.ts` 对应断言同步清理。理由：`LogsTab` 已提供只读日志流，再留一个没有后端的空壳「终端」入口只会制造误解；若将来真的需要可交互 shell，在独立 spec 里评估 `@xterm/xterm + node-pty`（含 Windows conpty）方案时再回来。
+- **RadarView → 选 A：保留并确认有真后端**。此前体检误判为空壳；实际上 `packages/studio/src/api/routes/ai.ts` 已映射 `POST /api/radar/scan → PipelineRunner.runRadar()`，且 `scheduler` 的 `radarCron` 正在使用。当前 `pages/RadarView.tsx` 是合格的前端入口，维持原状。若日后要扩展抓取链路（puppeteer / readability / 代理路由）再拆独立 spec。

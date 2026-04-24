@@ -8,9 +8,11 @@ interface WindowControlsProps {
   onMinimize: () => void;
   onMaximize: () => void;
   onClose: () => void;
+  /** Optional override for the close button tooltip (5.7.2 / 5.7.3). */
+  closeTooltip?: string;
 }
 
-export function WindowControls({ theme, minimized, onMinimize, onMaximize, onClose }: WindowControlsProps) {
+export function WindowControls({ theme, minimized, onMinimize, onMaximize, onClose, closeTooltip }: WindowControlsProps) {
   const c = useColors(theme);
 
   return (
@@ -41,7 +43,8 @@ export function WindowControls({ theme, minimized, onMinimize, onMaximize, onClo
           onClose();
         }}
         className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900 transition-colors"
-        title="收起工作台 · 不结束会话，仍可在会话中心重开"
+        title={closeTooltip ?? "关闭窗口 · 会话仍保留在会话中心"}
+        aria-label="关闭窗口"
       >
         <X size={14} style={{ color: c.text }} />
       </button>

@@ -10,10 +10,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { NewSessionDialog, SESSION_PRESETS, type NewSessionPayload, type SessionPresetId } from "@/components/sessions/NewSessionDialog";
 import { useSession } from "@/hooks/useSession";
 import { useWindowRuntimeStore, type WindowRecoveryState } from "@/stores/windowRuntimeStore";
-import {
-  getRecoveryPresentation,
-  getRecoveryToneBadgeClassName,
-} from "@/lib/windowRecoveryPresentation";
+import { getRecoveryPresentation } from "@/lib/windowRecoveryPresentation";
+import { RecoveryBadge } from "@/components/RecoveryBadge";
 import { useWindowStore } from "@/stores/windowStore";
 import type { Theme } from "../hooks/use-theme";
 
@@ -277,11 +275,23 @@ export function SessionCenter({ theme }: { theme: Theme }) {
             ) : (
               <PageEmptyState
                 title="还没有会话对象"
-                description="先从模板里创建一个 Writer、Planner、Auditor 或 Architect 会话，接着就可以在工作台里拖拽排布。"
+                description="新建一本书后，默认工作流会自动创建第一个 narrator 会话；你也可以直接从模板创建 Writer / Planner / Auditor / Architect。"
                 action={
-                  <Button onClick={() => openSessionDialog("writer")}>
-                    创建第一个会话
-                  </Button>
+                  <div className="flex flex-wrap items-center justify-center gap-2">
+                    <Button
+                      onClick={() => {
+                        // 5.5.2 primary CTA — keep the creation funnel aligned with BookCreate flow.
+                        window.dispatchEvent(
+                          new CustomEvent("novelfork:navigate", { detail: { page: "book-create" } }),
+                        );
+                      }}
+                    >
+                      新建书籍
+                    </Button>
+                    <Button variant="outline" onClick={() => openSessionDialog("writer")}>
+                      新建空会话
+                    </Button>
+                  </div>
                 }
               />
             )}
@@ -376,20 +386,13 @@ function NarratorSessionCard({
               <CardTitle className="text-base">{title}</CardTitle>
               <Badge variant={status === "active" ? "secondary" : "outline"}>{status === "active" ? "活跃" : "已归档"}</Badge>
               <Badge variant="outline">{sessionMode === "plan" ? "计划模式" : "对话模式"}</Badge>
-              {attachedWindow && (() => {
-                const presentation = getRecoveryPresentation({
-                  recoveryState: attachedWindow.recoveryState,
-                  wsConnected: attachedWindow.wsConnected,
-                });
-                return (
-                  <Badge
-                    variant="outline"
-                    className={getRecoveryToneBadgeClassName(presentation.tone)}
-                  >
-                    {presentation.shortLabel}
-                  </Badge>
-                );
-              })()}
+              {attachedWindow && (
+                <RecoveryBadge
+                  recoveryState={attachedWindow.recoveryState}
+                  wsConnected={attachedWindow.wsConnected}
+                  variant="chip"
+                />
+              )}
               {active && <Badge>当前对象</Badge>}
             </div>
             <CardDescription className="flex flex-wrap items-center gap-2 text-xs">

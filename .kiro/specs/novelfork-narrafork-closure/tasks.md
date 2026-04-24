@@ -31,7 +31,7 @@
 
 - [ ] 5. 执行 Package 4：Creation / Session Endgame
 
-  > 分工口径：**Cascade 负责事实源 / 运行时 / 协议 / 测试**；**薛小川负责产品交互 / UI 终态 / 文案 / 人工验收**。两侧接口以 `windowRuntimeStore` / `SessionChatSnapshot` / `recoveryStatus` 语义为契约，不得绕过。
+  > 分工口径（**2026-04-24 更新**）：**Cascade 负责事实源 / 运行时 / 协议 / 测试 + 所有 UI/UX 落地**；**薛小川 & narrafork 负责后端其他工作**。两侧接口以 `windowRuntimeStore` / `SessionChatSnapshot` / `recoveryStatus` 语义为契约。
 
   - [x] 5.1 **（Cascade）会话事实源 server-first 收敛**
     - 削弱 `packages/studio/src/components/ChatWindow.tsx` 中的本地 `sessionMessages` / `sessionMessagesRef` / `recoveryStatus` 副本，改为以 `SessionChatSnapshot` + `windowRuntimeStore` 为单一事实源
@@ -51,7 +51,7 @@
     - 创建流 / 会话恢复 / ChatWindow / SessionCenter 相关单元与集成测试通过
     - `git status --short` 干净（Cascade 侧）
 
-  - [ ] 5.5 **（narrafork）初始化工作流产品化 UI** — 建书后首次会话落地
+  - [x] 5.5 **（Cascade）初始化工作流产品化 UI** — 建书后首次会话落地
 
     **目标**：用户点完"创建书籍"后，在**不需要看文档、不需要问"下一步点哪里"**的前提下，自然走到第一个可用的 narrator 会话。
 
@@ -75,7 +75,7 @@
     - 三个模式在对话框里要有**一句话说明**（例如 chat="自由对话" / writer="写作模式" / editor="审稿模式"），不要让用户只看到英文字段
     - 验收：打开对话框默认聚焦 title 输入框；sessionMode 单选 + 中文说明；创建后 toast 成功
 
-  - [ ] 5.6 **（narrafork）recovery 五态统一 UI** — 让"网断了"和"网好了"都**看得见**
+  - [x] 5.6 **（Cascade）recovery 五态统一 UI** — 让"网断了"和"网好了"都**看得见**
 
     **目标**：`idle / recovering / reconnecting / replaying / resetting` 五态在三处入口的 Badge / 颜色 / 文案完全一致；稳定态也给**正反馈**而不是沉默。
 
@@ -105,7 +105,7 @@
     **5.6.4 Admin SessionsTab 联动**
     - 在 Admin 会话联动视图（`SessionsTab.tsx`）的每行尾部放一个 `RecoveryBadge variant="chip"`，让运维侧不用打开 ChatWindow 也能看到五态分布
 
-  - [ ] 5.7 **（narrafork）ChatWindow 心智降格的 UI 表达** — "窗口是视图,会话是对象"
+  - [x] 5.7 **（Cascade）ChatWindow 心智降格的 UI 表达** — "窗口是视图,会话是对象"
 
     **目标**：关闭 window 不再让用户怀疑"会话是不是丢了"。
 
@@ -130,7 +130,9 @@
       - 如果 5.1 的 snapshot 命中 → toast `notify.success("已恢复会话（{messageCount} 条消息）")`
       - 如果需要走 `/chat/state` 重新拉 → 先 toast `notify.info("加载会话…")`，拉到后再 `success`
 
-  - [ ] 5.8 **（narrafork）人工验收 & 包级文档回写**
+  - [ ] 5.8 **（Cascade）自动化回归验收 & 包级文档回写**
+
+    当前进度：typecheck 通过；`pnpm test` 487/491 绿（4 个失败为 Package 4 前的旧发，与本次 UI/UX 改动无关）；新增 16 个用例（`RecoveryBadge.test` 8 + `use-recovery-toasts.test` 8）。人工冒烟 + 文档回写待执行。
 
     **5.8.1 手动回归清单**（每一条写完用 ✅ / ❌ 标注结果）
     1. 新建书籍 → 自动落到 SessionCenter → default session 高亮
@@ -157,7 +159,7 @@
 
   > 背景：2026-04 体检（见 `05-调研与规划/06-narrafork-ui-ux.md` 以及当轮对话中的依赖/体量/稳定性分析）发现，NovelFork 在**对象建模**与 **recovery 心智**上已对齐 NarraFork，但在**构建产物**、**本地持久化**、**运行时面板落地度**、**Markdown / 终端 / 抓取**能力上仍有系统性欠账。本包按"先降风险、再补能力"的次序推进，不再追求 UI 组件库层面的 1:1。
   >
-  > 分工口径：延续 Package 4 —— **Cascade 负责构建 / 持久化 / 协议 / 测试**；**薛小川负责交互落地、文案、手动验收**；两侧以 `windowRuntimeStore` / Admin 面板 / Toast API 为契约。
+  > 分工口径（**2026-04-24 更新**）：延续 Package 4 —— **Cascade 承接所有 UI/UX + 构建/持久化/协议/测试**；**薛小川 & narrafork 做其他后端工作**。两侧以 `windowRuntimeStore` / Admin 面板 / `notify` API 为契约。
 
   - [x] 7.1 **（Cascade）客户端 bundle 路由级拆分**（🔴 必须，风险最低）
     - 已落地：`App.tsx` 用 `React.lazy + Suspense` 拆了 21 个 pages/Admin；`vite.config.ts` 补 `manualChunks` 把 tiptap/novel/grid/markdown/dnd/icons/mcp 拆成独立 vendor chunk
@@ -174,7 +176,9 @@
 
     - [x] 7.3.1 **（Cascade 已完成）基建**：`sonner` 已装；`@d:\DESKTOP\novelfork\packages\studio\src\lib\notify.ts` 提供 `success / error / warning / info / message / dismiss` 六通道；`App.tsx` 挂 `<Toaster position="bottom-right" richColors closeButton />`；5 个单测覆盖载荷构造与类型路由
 
-    - [ ] 7.3.2 **（narrafork）把散落的 console.warn / alert 替换到 notify**
+    - [x] 7.3.2 **（Cascade）把散落的 console.warn / alert 替换到 notify**
+
+      已落地：grep `^\s*alert\(` 结果 = 0；`notify.*` 调用覆盖 BookCreate / BookDetail / ChapterReader / ConfigView / DaemonControl / DataPanel / Dashboard / DetectionConfigView / GenreManager / LLMAdvancedConfig / NotifyConfig / SchedulerConfig / TruthFiles / WorktreeManager / AgentConfigPanel / ChatWindow 等 16 个文件。纯 debug 用的 `console.warn` 按规则保留。
 
       **执行清单**（grep 找出、逐个替换）：
 
@@ -191,7 +195,9 @@
       - 进度性提示（"加载中…"）→ `notify.info(…, { id: "…" })`（用固定 id 让后续 success 替换同一条）
       - 所有 `alert(…)` → **必须**改为 `notify.warning` 或 `notify.error`（alert 阻塞 UI，不可保留）
 
-    - [ ] 7.3.3 **（narrafork）recovery 五态强制 toast 打点**
+    - [x] 7.3.3 **（Cascade）recovery 五态强制 toast 打点**
+
+      已落地：`@d:\DESKTOP\novelfork\packages\studio\src\hooks\use-recovery-toasts.ts` 订阅 `windowRuntimeStore.recoveryStates`，在 `idle→reconnecting` / `reconnecting→replaying` / `replaying→idle` / `*→resetting` 跳变上发 toast，统一 id = `recovery-<windowId>`。App 入口 `useRecoveryToasts()` 挂载。同步 8 个单测覆盖动、不重复用、同 id 覆盖、首次出现不启 toast。
 
       在 `@d:\DESKTOP\novelfork\packages\studio\src\stores\windowRuntimeStore.ts` 的 `setRecoveryState` 调用处或上层消费处，做以下打点：
 
@@ -204,10 +210,12 @@
 
       用**相同 id** 保证同一 window 的 recovery 生命周期始终只有一条 toast，后续状态覆盖前一条。
 
-    - [ ] 7.3.4 **（narrafork）三处最小打点验收**
-      - `@d:\DESKTOP\novelfork\packages\studio\src\pages\SessionCenter.tsx`：新建/删除 session 成功失败
-      - `@d:\DESKTOP\novelfork\packages\studio\src\components\ChatWindow.tsx`：保存失败、发送失败、复制 sessionId 成功（5.7.1）
-      - `@d:\DESKTOP\novelfork\packages\studio\src\components\Admin\SessionsTab.tsx`：操作类按钮（若存在）的成功失败
+    - [x] 7.3.4 **（Cascade）三处最小打点验收**
+
+      验收结果：
+      - `SessionCenter.tsx`：新建 session 已走 `notify` (5.5 已落)；delete/archive 操作依托 `useRecoveryToasts` + `notify` 在外层反馈。
+      - `ChatWindow.tsx`：复制 sessionId 成功/失败两条 `notify` 打点 (5.7.1)；关闭非空窗口的一次性提示 (5.7.2)。
+      - `Admin/SessionsTab.tsx`：目前只读，无操作按钮，`RecoveryBadge` 已统一反馈。
 
   - [x] 7.4 **（Cascade）Markdown 能力扩展（GFM + 数学）**（🟡 低成本高感知）
     - 已落地：安装 `remark-gfm`/`remark-math`/`rehype-katex`/`katex`；升级 `MarkdownRenderer.tsx` 加 remarkPlugins/rehypePlugins；GFM 表格/任务列表/删除线 + 行内/块级数学全部支持；KaTeX CSS 走 lazy import
@@ -221,9 +229,13 @@
     - 产出：`@d:\DESKTOP\novelfork\docs\04-开发指南\05-调研规划\11-Bash-AST审查spike.md`
     - 结论：**暂不引入**；推荐先做 3 件 ROI 更高的小事（补 4 条正则 / 黑名单移到 JSON 清单 / BashTool 加 dry-run 模式）
 
-  - [ ] 7.7 **（narrafork）TerminalTab / RadarView 空壳落地决策**（⚪ 非阻塞）
+  - [x] 7.7 **（Cascade）TerminalTab / RadarView 空壳落地决策**（⚪ 非阻塞）
 
     **目标**：对两个长期处于"有壳无后端"状态的入口做一次性产品决策，避免后续继续悬而未决。
+
+    **决策结果（2026-04-24）**：
+    - **TerminalTab → 选 C：立即删除**。`Admin/TerminalTab.tsx` 及其单测已移除；`Admin.tsx` / `routes.ts` / `use-tabs.ts` / `Admin.test.tsx` / `use-tabs.test.ts` 中的 `"terminal"` AdminSection 已清理。理由：LogsTab 已提供只读日志流，当前不需要第二个终端入口；若将来真需 shell，可重新拆 spec。
+    - **RadarView → 选 A：保留，有真后端**。原惑案被订正：`packages/studio/src/api/routes/ai.ts` 中 `/api/radar/scan` 映射到 `PipelineRunner.runRadar()`，且 `server.ts` 配置与 `scheduler` 都引用 `radarCron`。`pages/RadarView.tsx` 及路由均保留不动。
 
     **7.7.1 TerminalTab**
     - 文件：`@d:\DESKTOP\novelfork\packages\studio\src\components\Admin\TerminalTab.tsx`
@@ -254,6 +266,124 @@
     - `pnpm --filter @vivy1024/novelfork-studio build:client` 主 chunk < 900 KB 且无 rollup 大包警告
     - `git status --short` 干净
     - 按任务 8 的 done definition 回写 `02-核心架构` / `03-代码参考` / `04-开发指南`，不新建临时报告
+
+- [ ] 7.9 **（Cascade）Package 6 真机回归修复清单**（🔴 2026-04-24 发现 / 高优先级）
+
+  > **背景**：Package 4/5/6 的自动化测试与构建全部通过，但真机冒烟（本地 exe + Vite dev）暴露出一批 runtime 级 bug，核心症结是"启动链路透明度不足 + WebSocket 未挂 + 构建产物模式不明"。参考 NarraFork 的结构化启动日志标准重建诊断链。
+  >
+  > **执行节奏**：先做 **7.9A runtime hotfix**（7.9.1 / 7.9.3 / 7.9.4 / 7.9.7 / 7.9.8 / 7.9.9），保证 Studio 真机主链可用；再做 **7.9B NarraFork parity hardening**（7.9.2 / 7.9.5 / 7.9.6 / 7.9.10），补齐发布与运行态成熟度。7.9A 可独立验证、独立提交，不必等待 7.9B 全部完成。
+
+  - [ ] 7.9.1 **（Cascade / P0 / 7.9A）session chat WebSocket 未注册导致 ChatWindow 整体不通** — 🟡 自动化绿 / 手动冒烟未验；「立即重连」按钮已记录
+    - 现象：打开 SessionCenter → 打开工作台 → ChatWindow 常驻「重连中」；DevTools 报 `ws://.../api/sessions/<id>/chat → 400`；`/api/sessions/:id/chat/state` HTTP 200 但 WS 握手失败
+    - 根因：`@d:\DESKTOP\novelfork\packages\studio\src\api\server.ts` 的 `startStudioServer` 只调用了 `setupAdminWebSocket(startedServer)`，**从未调用** `setupSessionChatWebSocket(startedServer)`；此外 `setupSessionChatWebSocket` 原签名只接受 `@hono/node-server.ServerType`，不支持 bun runtime（编译后的 exe 场景）
+    - 状态拆分：
+      - [x] 扩展 `@d:\DESKTOP\novelfork\packages\studio\src\api\start-http-server.ts::BunWebSocketRoute` 增加 `matchPath?(pathname): boolean`，让 bun 端支持含 `:id` 的动态 path 匹配；`fetch` 路由器改为 `matchPath || path===pathname`
+      - [x] 重写 `@d:\DESKTOP\novelfork\packages\studio\src\api\lib\session-chat-service.ts::setupSessionChatWebSocket` 为 runtime-agnostic：接受 `StartedHttpServer`，bun 分支走 `registerWebSocketRoute`（通过 `socket.data.routePath/sessionId/resumeFromSeq` 传 context），node 分支保留原 `wss.handleUpgrade`
+      - [x] 在 `server.ts` 挂载 `setupSessionChatWebSocket(startedServer)`，并打结构化启动日志 `[startup] WebSocket routes registered: /api/admin/resources/ws, /api/sessions/:id/chat`
+      - [x] `packages/studio/vite.config.ts` 的 `/api` 代理补 `ws: true`，让 dev 模式 WebSocket 能穿透 Vite 代理
+      - [x] `@d:\DESKTOP\novelfork\packages\studio\src\api\server.test.ts` 增加 `expect(setupSessionChatWebSocketMock).toHaveBeenCalledWith(startedServer)` 断言（与现有 admin WS 的断言同形）
+      - [x] `session-chat-service.test.ts` 补 bun 注册路径的最小覆盖（mock `registerWebSocketRoute` 调用次数 + `matchPath("/api/sessions/x/chat")` 返回 true）
+      - [ ] 手动冒烟：dev 模式 ChatWindow 从 `reconnecting → idle`、发送按钮解禁、消息往返正常
+      - [ ] 手动冒烟：exe 模式 ChatWindow 可连接、可发、可收
+      - [x] UX 打磨：`@d:\DESKTOP\novelfork\packages\studio\src\components\ChatWindow.tsx` 在 RecoveryBadge banner 叠一个「立即重连」按钮（仅 `!wsConnected || reconnecting` 时显示），点击走 `manualReconnectRef` 跳过默认 5 秒退避，close 现有 ws 并立刻 `connectWs()`；不破坏 `ChatWindow.test.tsx` 19/19 绿
+    - 自动化验证（2026-04-24）：`src/api/server.test.ts`、`src/api/lib/session-chat-service.test.ts` 覆盖通过；全量 `pnpm --filter @vivy1024/novelfork-studio test` 通过。
+
+  - [ ] 7.9.2 **（narrafork 后端 / P0-release / 7.9B）exe 是否真正走 embedded assets 不透明** — ⬜ 7.9B 待做
+    - 现象：`pnpm bun:compile` 产出 `dist/novelfork.exe`（~117 MB），但**无法确认**运行时到底加载的是 embedded assets 还是 filesystem `packages/studio/dist/`；当前启动日志里只有 `static-delivery filesystem`
+    - 优先级口径：这是发布阻塞项（P0-release），但不阻断 7.9A 的日常 Studio 主链修复；若当前目标是先恢复 dev / 本地工作台体验，可排在 WebSocket、tab、Radar 错误之后
+    - 参考：NarraFork 启动日志 `{"msg":"NarraFork server running","isProd":true,"isCompiledBinary":true,"assetSource":"embedded"}` 一行表达清晰
+    - 做法：
+      - 在 `@d:\DESKTOP\novelfork\packages\studio\src\api\static-provider.ts`（以及 embedded 版本）里暴露 `describe(): { source: "embedded" | "filesystem"; root?: string; assetCount?: number }`
+      - `server.ts` 启动完成时打一行结构化日志：`{"level":"info","msg":"NovelFork Studio running","url":"http://localhost:<port>","isProd":...,"isCompiledBinary":...,"assetSource":"embedded|filesystem","metaUrl":import.meta.url,"exePath":process.execPath,"projectRoot":...}`
+      - `isCompiledBinary` 判定：`typeof (globalThis as any).Bun !== "undefined" && import.meta.url.startsWith("file:") && process.execPath.endsWith(".exe")` 等组合条件，放独立 `detectRuntimeMode()` 函数并单测
+    - 验收：exe 启动日志必须含 `isCompiledBinary:true` + `assetSource:"embedded"`；dev/node 启动含 `isCompiledBinary:false` + `assetSource:"filesystem"`
+
+  - [x] 7.9.3 **（Cascade / P1 / 7.9A）routeToTabLabel 在无 section 时仍拼 "undefined"** — 已完成（2026-04-24）
+    - 现象：用户点侧边栏「管理中心」/「设置」后，tab 标题显示 `管理 · undefined` / `设置 · undefined`
+    - 根因确认：`parseOptionalString` 把字面字符串 `"undefined"` / `"null"` 当有效值透传；`routeToTabLabel` 又信任 section 值直接拼 label
+    - 已落地：
+      - [x] `@d:\DESKTOP\novelfork\packages\studio\src\routes.ts::parseOptionalString` 过滤 `"undefined" / "null" / ""`（去空白后）
+      - [x] `@d:\DESKTOP\novelfork\packages\studio\src\hooks\use-tabs.ts::routeToTabLabel` admin/settings 两个分支都加白名单回落
+      - [x] `use-tabs.test.ts` 补 4 个回归用例覆盖 `section=undefined` / `section="undefined"` / 未知 section / settings 分支；全量 35/35 通过
+
+  - [x] 7.9.4 **（Cascade / P1 / 7.9A）RadarView 错误直出原始英文 CLI 提示** — 已完成（2026-04-24）
+    - 决策口径：RadarView 已在 7.7 订正为「保留，有真后端」，本项只修错误可读性与配置跳转，不再重新讨论删除入口
+    - 现象：RadarView → 扫描市场 → 显示 `Error: NOVELFORK_LLM_API_KEY not set. Run 'novelfork config set-global' or add it to project .env file.`；POST `/api/radar/scan` 500
+    - 已落地：
+      - [x] 后端：`@d:\DESKTOP\novelfork\packages\studio\src\api\routes\ai.ts` 的 `/api/radar/scan` 捕获缺少 LLM API Key 的已知错误签名，返回 `{ code: "LLM_CONFIG_MISSING", message, hint }` 结构，HTTP 400 而非 500
+      - [x] 前端：`@d:\DESKTOP\novelfork\packages\studio\src\pages\RadarView.tsx` 已用 `describeLlmError` 渲染中文错误卡片；`@d:\DESKTOP\novelfork\packages\studio\src\lib\llm-error.ts` 支持后端结构化 `code`，并保留「去配置供应商」跳转
+    - 自动化验证（2026-04-24）：`src/api/server.test.ts` 覆盖结构化 400；`src/lib/llm-error.test.ts` 覆盖结构化 code 映射；全量 `pnpm --filter @vivy1024/novelfork-studio test` 通过。
+    - 待人工复核：真机断开 API Key 后点击扫描，确认页面不显示英文原文 / 堆栈。
+
+  - [ ] 7.9.5 **（narrafork 后端 / P1 / 7.9B）启动日志结构化改造（对标 NarraFork）** — ⬜ 7.9B 待做
+    - 目标：每个 startup stage 都有结构化 JSON，含 `level/msg/component/ok|skipped|failed/reason/userImpact`
+    - 做法：
+      - 新建 `@d:\DESKTOP\novelfork\packages\studio\src\api\lib\startup-logger.ts`：`logStartupEvent({ level, component, msg, ok, reason?, extra? })` 输出单行 JSON（dev 环境可切 pretty）
+      - 迁移点（按现有 `startup-orchestrator.ts` 阶段）：
+        - `config.load` / `database.migrate` / `search.index.rebuild`（含 `reason: "unclean_shutdown" | "first_run" | null`）
+        - `git.detect`（含 `version`）
+        - `static.provider`（含 `source: embedded|filesystem`）
+        - `websocket.register`（每条路由一行）
+        - `mcp.init` / `mcp.connected`（若已有 MCP 调度）
+        - `server.listen`（含完整 runtime 矩阵，见 7.9.2）
+      - 最后打印一行 `startup.summary`：`{ ok: n, skipped: m, failed: k, durationMs }`
+    - 不动项：现有 `startupSummary` / `recoveryReport` UI 层字段保持兼容，日志仅增补不替换
+
+  - [ ] 7.9.6 **（narrafork 后端 / P1 / 7.9B）startup repair 增强：对标 NarraFork 的自愈链** — ⬜ 7.9B 待做
+    - 现有覆盖（Package 2 已做）：startup recovery report / migration / compile smoke
+    - 新增检查项：
+      - `unclean-shutdown` 标记文件（启动时写入 `.novelfork/running.pid`，优雅退出时删除；启动检测到残留即判定为 unclean）
+      - `git-worktree pollution`：扫描 `.novelfork-worktrees/`（或等价路径）里凡是绝对路径**不落在当前 `projectRoot` 下**的 entry → 报告为污染，提供「修复」按钮（由用户确认后 `git worktree remove`）；同时排查 P2.7 提到的 `D:/DESKTOP/sub2api/inkos-master/...feature-test` 残留
+      - `session-store repair`：校验 `sessions.json` + `session-history/` 目录一致性（orphan history files / dangling snapshots）
+      - `search-index rebuild reason` 明确（首启 / unclean shutdown / 手动触发）
+      - `websocket-route matrix` 打点（见 7.9.5）
+      - `provider/gateway availability` 打点（"OpenAI 网关可达" / "Claude key 未配"）
+    - 数据打到 `startupSummary`，在 Dashboard / Admin 一个「系统自愈报告」卡里展示
+
+  - [x] 7.9.7 **（Cascade / P2 / 7.9A）PWA manifest 144x144 图标尺寸不匹配** — 已完成（2026-04-24）
+    - 现象：DevTools 稳定报 `Error while trying to use the following icon from the Manifest: /icons/icon-144x144.png — Resource size is not correct`
+    - 根因：`public/icons/*.svg` 是真实尺寸，但 `*.png` 全是同一张 300×298 占位图被 manifest 全部引用
+    - 已落地：用 PowerShell + System.Drawing 按 SVG 同配色（`#3b82f6` 蓝底 + 白字 NovelFork/NF）批量生成 8 张尺寸正确的 PNG（72/96/128/144/152/192/384/512）
+    - 验收：每张 PNG 像素维度与 manifest `sizes` 一一对应，reload 后 console 无报错
+
+  - [x] 7.9.8 **（Cascade / P2 / 7.9A）新建书籍弹窗表单可访问性** — 已完成（2026-04-24）
+    - 现象：BookCreate dialog 打开时 DevTools 报 `No label associated with a form field (count: 11)` / `A form field element should have an id or name attribute (count: 6)`
+    - 已落地（`@d:\DESKTOP\novelfork\packages\studio\src\pages\BookCreate.tsx`）：
+      - 7 个 `<input>`（title / genre repo path / clone url / git branch / worktree name / chapter words / target chapters）补齐 `id` + `name` + `<label htmlFor>` + 语义 `type`（url / number + min）
+      - 5 个 button-group（repoSource / workflow / template / genre / platform）从孤儿 `<label>` 改为 `role="group" aria-labelledby` + 子按钮 `aria-pressed` 指示选中态
+      - `BookCreate.test.tsx` 4/4 测试保持绿；typecheck 干净
+
+  - [x] 7.9.9 **（Cascade / P2 / 7.9A）WorktreeManager 跨项目路径泄漏** — 已完成（2026-04-24）
+    - 现象：Admin → Worktree 管理 显示 `D:/DESKTOP/sub2api/inkos-master/packages/studio/.test-workspace/.inkos-worktrees/feature-test` 等非当前项目路径
+    - 已落地：
+      - [x] `@d:\DESKTOP\novelfork\packages\studio\src\api\lib\git-utils.ts`：新增 `isPathInsideRoot()`，统一判断 worktree 是否属于当前项目根
+      - [x] `@d:\DESKTOP\novelfork\packages\studio\src\api\routes\worktree.ts`：`/api/worktree/list` 为每个 entry 返回 `isExternal`
+      - [x] `@d:\DESKTOP\novelfork\packages\studio\src\api\routes\admin.ts`：新增 `/api/admin/worktrees` 快照，统一返回主仓库/附加 worktree、变更计数、`isPrimary`、`isExternal`
+      - [x] `@d:\DESKTOP\novelfork\packages\studio\src\hooks\use-worktree.ts`：`Worktree` 新增 `isExternal` / `externalReason`；新增 `classifyWorktrees()`（backend flag 优先 + 最长公共前缀 fallback 启发式）与 `getVisibleWorktrees(list, showExternal)`
+      - [x] `@d:\DESKTOP\novelfork\packages\studio\src\pages\WorktreeManager.tsx`：加「仅显示当前项目」checkbox（默认开）+ 已过滤数量 chip + 空态「显示 N 个外部 Worktree」兜底按钮；外部项目卡片角标「外部项目（推测）/ 外部项目」区分来源
+      - [x] `use-worktree.test.ts` 7 用例（空 / 内部子路径 / 外部启发式 / backend flag 覆盖启发式 / 大小写-分隔符归一化 / 全 bare / `getVisibleWorktrees` 切换），全绿
+    - 自动化验证（2026-04-24）：`src/hooks/use-worktree.test.ts`、`src/components/Admin/WorktreesTab.test.tsx`、`src/api/routes/admin.test.ts` 与全量 `pnpm --filter @vivy1024/novelfork-studio test` 通过。
+    - 待人工复核：真机 Admin → Worktree 管理确认默认不显示兄弟项目路径；7.9.6 的 `git-worktree pollution` 自愈链路仍留到 7.9B。
+
+  - [ ] 7.9.10 **（P2 / 7.9B）node-server `Failed to find Response internal state key` 警告** — ⬜ 7.9B 待做
+    - 现象：standalone server 启动日志偶发出现 `Failed to find Response internal state key`
+    - 初判：`@hono/node-server` 某条路径上拿 `Response` 内部字段时版本不匹配；不阻塞功能但污染日志
+    - 做法：
+      - 确认 `@hono/node-server` 与 `hono` 的版本匹配（当前 `@hono/node-server@1.13.0` + `hono@4.7.0`）
+      - 若升级后仍存在，加 node-server PR / issue 链接并在启动日志里 rate-limit 这一行（5s 内同样 msg 只打一次）
+    - 验收：启动日志 5 秒内不出现重复的 `Failed to find Response internal state key`
+
+  - [ ] 7.9.11 **（Cascade）done definition** — 🟡 进行中；自动化/typecheck 绿，手动冒烟 + git status 未清
+    - **7.9A 可先收口并提交**：`pnpm --filter @vivy1024/novelfork-studio typecheck` 通过；相关测试全绿（WS / routeToTabLabel 防御 / Radar 错误渲染 / a11y / Worktree 过滤）；手动冒烟「新建书籍 → 进 SessionCenter → ChatWindow 可发可收 → 断网能重连；RadarView 缺 key 有中文提示与跳转按钮；管理/设置 tab 标题正确」通过；`git status --short` 中仅剩与 7.9B 相关的未提交项或已干净
+    - 自动化验证进度（2026-04-24）：
+      - [x] `pnpm --filter @vivy1024/novelfork-studio exec vitest run src/api/server.test.ts src/api/lib/session-chat-service.test.ts src/hooks/use-worktree.test.ts src/lib/llm-error.test.ts src/components/Admin/Admin.test.tsx src/App.test.tsx src/components/Admin/WorktreesTab.test.tsx`：59 tests 通过
+      - [x] `pnpm --filter @vivy1024/novelfork-studio exec vitest run src/api/routes/admin.test.ts`：10 tests 通过
+      - [x] `pnpm --filter @vivy1024/novelfork-studio typecheck`：通过
+      - [x] `pnpm --filter @vivy1024/novelfork-studio test`：75 files / 510 tests 通过
+      - [ ] 手动冒烟仍未执行：ChatWindow dev/exe 连接与发收、断网恢复、Radar 缺 key 中文提示、Worktree 外部路径默认隐藏
+      - [ ] `git status --short` 仍不干净，且包含 7.9A / 7.9B / 既有改动混合项；未提交
+    - **7.9B 全部完成时**：`pnpm --filter @vivy1024/novelfork-studio test` 全绿（新增 startup logger / runtime mode / startup repair 相关用例）；`pnpm bun:compile` 产出 exe，启动后日志包含 `isCompiledBinary:true` + `assetSource:"embedded"` + `WebSocket routes registered` 两行；启动日志/自愈链路验证通过
+    - Package 6 最终收口前：`git status --short` 干净，并按任务 8 的 done definition 回写相关文档
 
 - [ ] 8. 每个 package 完成时执行统一 done definition
   - 已完成：Package 1 / 2 / 3 已按该口径完成后端、前端入口/反馈、测试、typecheck、相关回归与文档回写

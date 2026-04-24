@@ -6,6 +6,7 @@
 import { useState, useEffect } from "react";
 import { Save, RotateCcw, AlertTriangle, CheckCircle } from "lucide-react";
 import { fetchJson } from "../hooks/use-api";
+import { notify } from "@/lib/notify";
 import type { AgentConfig, AgentResourceUsage } from "../shared/agent-config-types";
 
 interface AgentConfigPanelProps {
@@ -70,7 +71,7 @@ export function AgentConfigPanel({ onBack }: AgentConfigPanelProps) {
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Failed to save config");
+      notify.error("配置保存失败", { description: error instanceof Error ? error.message : undefined });
     } finally {
       setSaving(false);
     }
@@ -85,7 +86,7 @@ export function AgentConfigPanel({ onBack }: AgentConfigPanelProps) {
       });
       setConfig(data.config);
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Failed to reset config");
+      notify.error("配置重置失败", { description: error instanceof Error ? error.message : undefined });
     }
   };
 

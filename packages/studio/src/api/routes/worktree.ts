@@ -7,7 +7,7 @@ import { Hono } from "hono";
 import * as fs from "node:fs/promises";
 
 import { ApiError } from "../errors.js";
-import { listWorktrees, createWorktree, removeWorktree, getWorktreeStatus } from "../lib/git-utils.js";
+import { listWorktrees, createWorktree, removeWorktree, getWorktreeStatus, isPathInsideRoot } from "../lib/git-utils.js";
 
 export function createWorktreeRouter(root: string): Hono {
   const app = new Hono();
@@ -25,6 +25,7 @@ export function createWorktreeRouter(root: string): Hono {
             const status = await getWorktreeStatus(wt.path);
             return {
               ...wt,
+              isExternal: !isPathInsideRoot(wt.path, root),
               status: {
                 modified: status.modified.length,
                 added: status.added.length,
@@ -35,6 +36,7 @@ export function createWorktreeRouter(root: string): Hono {
           } catch {
             return {
               ...wt,
+              isExternal: !isPathInsideRoot(wt.path, root),
               status: { modified: 0, added: 0, deleted: 0, untracked: 0 },
             };
           }

@@ -18,10 +18,8 @@ import type { Theme } from "../hooks/use-theme";
 import { useColors } from "../hooks/use-colors";
 import { WindowControls } from "./WindowControls";
 import { useWindowRuntimeStore, type WindowRecoveryState } from "../stores/windowRuntimeStore";
-import {
-  getRecoveryPresentation,
-  getRecoveryToneBannerClassName,
-} from "../lib/windowRecoveryPresentation";
+import { getRecoveryPresentation } from "../lib/windowRecoveryPresentation";
+import { RecoveryBadge } from "./RecoveryBadge";
 import { useWindowStore } from "../stores/windowStore";
 import type { ChatMessage, ToolCall } from "../shared/session-types";
 import type { ChatWindow as ChatWindowState } from "../stores/windowStore";
@@ -36,6 +34,7 @@ import {
 import { ContextPanel, type ContextEntry } from "./ContextPanel";
 import { Button } from "./ui/button";
 import { fetchJson } from "../hooks/use-api";
+import { notify } from "@/lib/notify";
 import { useRunDetails } from "../hooks/use-run-events";
 import { getDefaultModel, getDefaultProvider, getModel, getProvider, PROVIDERS } from "../shared/provider-catalog";
 import type {
@@ -99,6 +98,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimerRef = useRef<number | null>(null);
   const lastSessionSeqRef = useRef(0);
+  const manualReconnectRef = useRef<(() => void) | null>(null);
 
   const syncSessionRecord = useCallback(
     (nextSession: NarratorSessionRecord) => {
@@ -477,10 +477,25 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
       }
     };
 
+    // Expose the connect function so the UI can trigger an immediate retry
+    // instead of waiting for the 5s auto-reconnect timer.
+    manualReconnectRef.current = () => {
+      if (disposed) return;
+      if (reconnectTimerRef.current !== null) {
+        globalThis.clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
+      if (wsRef.current && wsRef.current.readyState !== WebSocket.CLOSED) {
+        wsRef.current.close();
+      }
+      connectWs();
+    };
+
     connectWs();
 
     return () => {
       disposed = true;
+      manualReconnectRef.current = null;
       clearWindowRuntime(windowId);
       if (reconnectTimerRef.current !== null) {
         globalThis.clearTimeout(reconnectTimerRef.current);
@@ -695,13 +710,40 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
                 <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
                   <span>Agent {chatWindow.agentId}</span>
                   <span>•</span>
-                  <span>{sessionState.sessionMode === "plan" ? "计划模式" : "对话模式"}</span>
+                  {/* 5.7.1 sessionMode as a colored chip so users can distinguish modes at a glance. */}
+                  <span
+                    className={`rounded-full border px-1.5 py-0.5 font-medium ${
+                      sessionState.sessionMode === "plan"
+                        ? "border-violet-500/30 bg-violet-500/10 text-violet-700"
+                        : "border-sky-500/30 bg-sky-500/10 text-sky-700"
+                    }`}
+                  >
+                    {sessionState.sessionMode === "plan" ? "计划模式" : "对话模式"}
+                  </span>
                   <span>•</span>
                   <span>{sessionState.messageCount} 条消息</span>
                   {chatWindow.sessionId ? (
                     <>
                       <span>•</span>
-                      <span title={chatWindow.sessionId}>Session {shortSessionId(chatWindow.sessionId)}</span>
+                      {/* 5.7.1 click-to-copy sessionId gives a tangible "session is the object" signal. */}
+                      <button
+                        type="button"
+                        title={`点击复制完整 session ID: ${chatWindow.sessionId}`}
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          const sid = chatWindow.sessionId;
+                          if (!sid) return;
+                          try {
+                            await navigator.clipboard.writeText(sid);
+                            notify.success("会话 ID 已复制");
+                          } catch {
+                            notify.error("复制失败", { description: "浏览器拒绝了剪贴板写入" });
+                          }
+                        }}
+                        className="rounded border border-transparent px-1 font-mono hover:border-border hover:bg-muted/60 transition-colors"
+                      >
+                        #{shortSessionId(chatWindow.sessionId)}
+                      </button>
                     </>
                   ) : null}
                 </div>
@@ -725,28 +767,70 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
                   <WifiOff size={12} style={{ color: "#ef4444" }} />
                 </span>
               )}
-              <WindowControls
-                theme={theme}
-                minimized={chatWindow.minimized}
-                onMinimize={() => toggleMinimize(windowId)}
-                onMaximize={handleMaximize}
-                onClose={() => {
+              {(() => {
+                // 5.7.2 / 5.7.3 — close-button affordance reflects whether the window
+                // carries real content. We do not want a toast on "opened and closed
+                // immediately" flows (empty window), but we do want exactly one
+                // "session is kept" hint the first time a user closes a populated window.
+                const hasContent =
+                  (sessionState.messageCount ?? 0) > 0 || effectiveMessages.length > 0;
+                const closeTooltip = hasContent
+                  ? "关闭窗口 · 会话仍保留在会话中心"
+                  : "关闭窗口（会话为空）";
+                const handleClose = () => {
+                  if (hasContent) {
+                    try {
+                      const hintKey = "closed-window-hint-shown";
+                      if (!localStorage.getItem(hintKey)) {
+                        notify.info("窗口已关闭", {
+                          description: "会话仍在会话中心，随时可重新打开",
+                          duration: 4000,
+                        });
+                        localStorage.setItem(hintKey, "1");
+                      }
+                    } catch {
+                      // Accessing localStorage can throw in some embedding modes; ignore.
+                    }
+                  }
                   clearWindowRuntime(windowId);
                   removeWindow(windowId);
-                }}
-              />
+                };
+                return (
+                  <WindowControls
+                    theme={theme}
+                    minimized={chatWindow.minimized}
+                    onMinimize={() => toggleMinimize(windowId)}
+                    onMaximize={handleMaximize}
+                    onClose={handleClose}
+                    closeTooltip={closeTooltip}
+                  />
+                );
+              })()}
             </div>
           </div>
         </div>
 
         {!chatWindow.minimized && (
           <>
-            {recoveryPresentation.bannerVisible ? (
-              <div className={`${getRecoveryToneBannerClassName(recoveryPresentation.tone)} px-3 py-2 text-xs`}>
-                <div className="font-medium">{recoveryPresentation.label}</div>
-                <div className="mt-1 leading-5 opacity-90">{recoveryPresentation.description}</div>
-              </div>
-            ) : null}
+            <div className="relative">
+              <RecoveryBadge
+                recoveryState={authoritativeRecoveryState}
+                wsConnected={wsConnected}
+                variant="banner"
+              />
+              {(!wsConnected || authoritativeRecoveryState === "reconnecting") &&
+                authoritativeRecoveryState !== "resetting" && (
+                  <button
+                    type="button"
+                    onClick={() => manualReconnectRef.current?.()}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md border border-current/30 px-2 py-1 text-[11px] font-medium hover:bg-current/10"
+                    title="跳过 5 秒退避，立即重新握手"
+                  >
+                    立即重连
+                  </button>
+                )}
+            </div>
+            {/* recoveryPresentation intentionally still computed above so call sites below can key off label/tone. */}
             <div className="grid gap-2 border-b px-3 py-2 text-[10px] sm:grid-cols-3" style={{ borderColor: c.border, backgroundColor: c.bgSecondary }}>
               <SessionMetric label="连接" value={wsConnected ? "在线" : "离线"} />
               <SessionMetric label="位置" value={`x:${chatWindow.position.x} y:${chatWindow.position.y}`} />
@@ -1074,30 +1158,62 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
                 <span className="rounded-full border border-border px-2 py-0.5">{sessionState.messageCount} 条消息</span>
                 {selectedProvider ? <span className="rounded-full border border-border px-2 py-0.5">{selectedProvider.name}</span> : null}
               </div>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleSend()}
-                  placeholder="输入消息..."
-                  className="flex-1 rounded px-3 py-2 text-sm"
-                  style={{
-                    backgroundColor: c.bgSecondary,
-                    color: c.text,
-                    border: `1px solid ${c.border}`,
-                  }}
-                  disabled={!wsConnected}
-                />
-                <button
-                  onClick={handleSend}
-                  disabled={!wsConnected || !input.trim()}
-                  className="rounded px-4 py-2 text-sm font-medium transition-opacity disabled:opacity-50"
-                  style={{ backgroundColor: c.accent, color: "#fff" }}
-                >
-                  发送
-                </button>
-              </div>
+              {(() => {
+                // 5.6.3 — recovery-state-aware input affordance:
+                //   - `resetting`  → disable entirely, show why in the placeholder
+                //   - `reconnecting` / `replaying` → allow typing but defer send until healthy
+                //   - otherwise fall back to wsConnected gate
+                const isResetting = authoritativeRecoveryState === "resetting";
+                const isReconnecting = authoritativeRecoveryState === "reconnecting";
+                const isReplaying = authoritativeRecoveryState === "replaying";
+                const inputDisabled = isResetting;
+                const sendBlocked = !wsConnected || isResetting || isReconnecting || isReplaying;
+                // Connection-offline state is already surfaced by the RecoveryBadge
+                // banner + chip; do not repeat it in the placeholder so the baseline
+                // "输入消息..." text stays stable for both humans and tests.
+                const placeholder = isResetting
+                  ? "会话重置中，稍候…"
+                  : isReconnecting
+                    ? "连接中断，正在重连…（可先输入）"
+                    : isReplaying
+                      ? "正在回放历史…（可先输入）"
+                      : "输入消息...";
+                const sendTooltip = isResetting
+                  ? "会话正在重置，暂不可发送"
+                  : isReconnecting || isReplaying
+                    ? "等待连接恢复后发送"
+                    : !wsConnected
+                      ? "连接已断开"
+                      : "发送消息";
+                return (
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={input}
+                      onChange={(e) => setInput(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && !sendBlocked && handleSend()}
+                      placeholder={placeholder}
+                      className="flex-1 rounded px-3 py-2 text-sm transition-opacity disabled:opacity-60"
+                      style={{
+                        backgroundColor: c.bgSecondary,
+                        color: c.text,
+                        border: `1px solid ${c.border}`,
+                      }}
+                      disabled={inputDisabled}
+                      aria-label="消息输入框"
+                    />
+                    <button
+                      onClick={handleSend}
+                      disabled={sendBlocked || !input.trim()}
+                      title={sendTooltip}
+                      className="rounded px-4 py-2 text-sm font-medium transition-opacity disabled:cursor-not-allowed disabled:opacity-50"
+                      style={{ backgroundColor: c.accent, color: "#fff" }}
+                    >
+                      发送
+                    </button>
+                  </div>
+                );
+              })()}
             </div>
           </>
         )}

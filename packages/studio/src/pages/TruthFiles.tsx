@@ -6,6 +6,7 @@ import { PageScaffold } from "@/components/layout/PageScaffold";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { fetchJson, useApi } from "../hooks/use-api";
+import { notify } from "@/lib/notify";
 import { useColors } from "../hooks/use-colors";
 import type { TFunction } from "../hooks/use-i18n";
 import type { Theme } from "../hooks/use-theme";
@@ -53,7 +54,7 @@ export function TruthFiles({ bookId, nav, theme, t }: { bookId: string; nav: Nav
       setEditMode(false);
       refetchFile();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to save");
+      notify.error("保存失败", { description: e instanceof Error ? e.message : undefined });
     } finally {
       setSavingEdit(false);
     }

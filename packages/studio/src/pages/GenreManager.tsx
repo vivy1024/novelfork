@@ -1,4 +1,5 @@
 import { fetchJson, useApi, postApi } from "../hooks/use-api";
+import { notify } from "@/lib/notify";
 import { useState } from "react";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
@@ -219,7 +220,7 @@ export function GenreManager({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFu
 
   const handleCopy = async (id: string) => {
     await postApi(`/genres/${id}/copy`);
-    alert(`Copied ${id} to project genres/`);
+    notify.success(`已复制 ${id} 到项目 genres/`);
     refetch();
   };
 
@@ -266,7 +267,7 @@ export function GenreManager({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFu
       setFormMode("hidden");
       refetch();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to create genre");
+      notify.error("创建失败", { description: e instanceof Error ? e.message : undefined });
     }
   };
 
@@ -294,7 +295,7 @@ export function GenreManager({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFu
       setFormMode("hidden");
       refetch();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to update genre");
+      notify.error("更新失败", { description: e instanceof Error ? e.message : undefined });
     }
   };
 
@@ -306,7 +307,7 @@ export function GenreManager({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFu
       setSelected(null);
       refetch();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to delete genre");
+      notify.error("删除失败", { description: e instanceof Error ? e.message : undefined });
     }
   };
 

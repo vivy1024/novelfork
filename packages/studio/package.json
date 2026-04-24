@@ -39,6 +39,8 @@
     "@tauri-apps/api": "2.10.1",
     "@tauri-apps/plugin-process": "2.3.1",
     "@tauri-apps/plugin-updater": "2.10.1",
+    "@tiptap/core": "2.27.2",
+    "@tiptap/pm": "2.27.2",
     "@types/react-grid-layout": "2.1.0",
     "@vivy1024/novelfork-core": "workspace:*",
     "class-variance-authority": "0.7.1",
@@ -67,8 +69,6 @@
   },
   "devDependencies": {
     "@testing-library/react": "16.3.2",
-    "@tiptap/core": "2.27.2",
-    "@tiptap/pm": "2.27.2",
     "@types/node": "22.0.0",
     "@types/react": "19.0.0",
     "@types/react-dom": "19.0.0",

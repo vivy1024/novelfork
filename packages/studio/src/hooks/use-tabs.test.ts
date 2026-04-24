@@ -6,6 +6,7 @@ import {
   INITIAL_STATE,
 } from "./use-tabs";
 import type { Tab, TabsState } from "./use-tabs";
+import { normalizeRoute } from "../routes";
 import type { Route } from "../routes";
 
 function makeTab(route: Route, overrides?: Partial<Tab>): Tab {
@@ -38,10 +39,6 @@ describe("routeToTabId", () => {
 
   it('admin daemon → "admin:daemon"', () => {
     expect(routeToTabId({ page: "admin", section: "daemon" })).toBe("admin:daemon");
-  });
-
-  it('admin terminal → "admin:terminal"', () => {
-    expect(routeToTabId({ page: "admin", section: "terminal" })).toBe("admin:terminal");
   });
 
   it('admin container → "admin:container"', () => {
@@ -82,16 +79,24 @@ describe("routeToTabLabel", () => {
     expect(routeToTabLabel({ page: "admin", section: "daemon" })).toBe("管理 · 守护进程");
   });
 
-  it('admin terminal → "管理 · 终端"', () => {
-    expect(routeToTabLabel({ page: "admin", section: "terminal" })).toBe("管理 · 终端");
-  });
-
   it('admin container → "管理 · 容器"', () => {
     expect(routeToTabLabel({ page: "admin", section: "container" })).toBe("管理 · 容器");
   });
 
   it('settings appearance → "设置 · 外观"', () => {
     expect(routeToTabLabel({ page: "settings", section: "appearance" })).toBe("设置 · 外观");
+  });
+
+  it("falls back to root labels for invalid persisted sections", () => {
+    expect(routeToTabLabel({ page: "admin", section: "terminal" as never })).toBe("管理中心");
+    expect(routeToTabLabel({ page: "admin", section: "undefined" as never })).toBe("管理中心");
+    expect(routeToTabLabel({ page: "settings", section: "providers" as never })).toBe("设置");
+    expect(routeToTabLabel({ page: "settings", section: "null" as never })).toBe("设置");
+  });
+
+  it("normalizes serialized undefined and null sections as absent", () => {
+    expect(normalizeRoute({ page: "admin", section: "undefined" })).toEqual({ page: "admin", section: undefined });
+    expect(normalizeRoute({ page: "settings", section: "null" })).toEqual({ page: "settings", section: undefined });
   });
 });
 
