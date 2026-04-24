@@ -19,6 +19,13 @@ const chatCompletionMock = vi.fn();
 const loadProjectConfigMock = vi.fn();
 const createStorageDatabaseMock = vi.fn(() => ({ close: vi.fn(), checkpoint: vi.fn() }));
 const runStorageMigrationsMock = vi.fn(() => ({ applied: ["0001_initial.sql"] }));
+const runJsonImportMigrationIfNeededMock = vi.fn(async () => ({
+  status: "skipped",
+  reason: "no-source",
+  importedSessions: 0,
+  importedMessages: 0,
+  skippedSessions: 0,
+}));
 const startHttpServerMock = vi.fn(async (): Promise<unknown> => undefined);
 const { setupAdminWebSocketMock, setupSessionChatWebSocketMock } = vi.hoisted(() => ({
   setupAdminWebSocketMock: vi.fn(),
@@ -241,6 +248,7 @@ vi.mock("@vivy1024/novelfork-core", () => {
       throw new Error("not initialized");
     }),
     initializeStorageDatabase: createStorageDatabaseMock,
+    runJsonImportMigrationIfNeeded: runJsonImportMigrationIfNeededMock,
     runStorageMigrations: runStorageMigrationsMock,
     createKvRepository: createKvRepositoryMock,
     createSessionMessageRepository: createSessionMessageRepositoryMock,
@@ -357,6 +365,14 @@ describe("createStudioServer daemon lifecycle", () => {
     createStorageDatabaseMock.mockReturnValue({ close: vi.fn(), checkpoint: vi.fn() });
     runStorageMigrationsMock.mockClear();
     runStorageMigrationsMock.mockReturnValue({ applied: ["0001_initial.sql"] });
+    runJsonImportMigrationIfNeededMock.mockClear();
+    runJsonImportMigrationIfNeededMock.mockResolvedValue({
+      status: "skipped",
+      reason: "no-source",
+      importedSessions: 0,
+      importedMessages: 0,
+      skippedSessions: 0,
+    });
     setupAdminWebSocketMock.mockReset();
     setupSessionChatWebSocketMock.mockReset();
     startupOrchestratorMock.mockClear();
@@ -1103,8 +1119,14 @@ describe("createStudioServer daemon lifecycle", () => {
       databasePath: join(root, "runtime-store", "novelfork.db"),
     });
     expect(runStorageMigrationsMock).toHaveBeenCalledTimes(1);
+    expect(runJsonImportMigrationIfNeededMock).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      storageDir: join(root, "runtime-store"),
+    }));
     expect(startHttpServerMock).toHaveBeenCalledWith(expect.objectContaining({ port: 4567 }));
     expect(runStorageMigrationsMock.mock.invocationCallOrder[0]).toBeLessThan(
+      startHttpServerMock.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
+    );
+    expect(runJsonImportMigrationIfNeededMock.mock.invocationCallOrder[0]).toBeLessThan(
       startHttpServerMock.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
     );
   });

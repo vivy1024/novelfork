@@ -36,7 +36,7 @@
   - 单测：WAL checkpoint 行为正常
   - 压测：1000 条消息 append 总耗时记录到测试日志
 
-- [ ] 5. JSON → SQLite 一次性导入
+- [x] 5. JSON → SQLite 一次性导入
   - 实现 `json-import-migration.ts`
   - 读 `sessions.json` + `session-history/*.json` → 事务化批量插入
   - 损坏 JSON → warn + skip，继续下一条
