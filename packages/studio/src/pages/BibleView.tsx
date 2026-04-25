@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import { BookOpen, ChevronLeft, Eye, Trash2 } from "lucide-react";
+import { ChevronLeft, Eye, Trash2 } from "lucide-react";
 
 import { ContextPreviewModal } from "../components/Bible/ContextPreviewModal";
 import { EntryForm } from "../components/Bible/EntryForm";
 import { QuestionnaireWizard, type QuestionnaireTemplateView } from "../components/Bible/QuestionnaireWizard";
 import { FilterReportTab } from "../components/filter/FilterReportTab";
+import { JingweiSectionManager } from "../components/jingwei/JingweiSectionManager";
+import { JingweiSectionTabs } from "../components/jingwei/JingweiSectionTabs";
+import type { JingweiSectionView } from "../components/jingwei/types";
 import { BIBLE_TABS, responseKeyForTab, titleOfEntry, type BibleContextPreview, type BibleEntry, type BibleTab } from "../components/Bible/types";
 import { PageEmptyState } from "../components/layout/PageEmptyState";
 import { PageScaffold } from "../components/layout/PageScaffold";
@@ -33,6 +36,25 @@ interface BookData {
   nextChapter: number;
 }
 
+interface JingweiSectionsResponse {
+  sections: JingweiSectionView[];
+}
+
+function bibleTabForSection(section: JingweiSectionView): BibleTab | null {
+  switch (section.builtinKind ?? section.key) {
+    case "people":
+      return "characters";
+    case "events":
+      return "events";
+    case "settings":
+      return "settings";
+    case "chapter-summary":
+      return "chapter-summaries";
+    default:
+      return null;
+  }
+}
+
 export function BibleView({ bookId, nav }: { bookId: string; nav: { toDashboard: () => void; toBook: (bookId: string) => void } }) {
   const [activeTab, setActiveTab] = useState<BibleTab>("characters");
   const [bibleMode, setBibleMode] = useState<"static" | "dynamic">("dynamic");
@@ -41,7 +63,9 @@ export function BibleView({ bookId, nav }: { bookId: string; nav: { toDashboard:
   const [previewLoading, setPreviewLoading] = useState(false);
   const [preview, setPreview] = useState<BibleContextPreview | null>(null);
   const [sceneText, setSceneText] = useState("");
+  const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
   const { data: bookData } = useApi<BookData>(`/books/${bookId}`);
+  const { data: sectionsData, loading: sectionsLoading, error: sectionsError, refetch: refetchSections } = useApi<JingweiSectionsResponse>(`/books/${bookId}/jingwei/sections`);
   const currentChapterDefault = bookData?.nextChapter ?? 1;
   const [currentChapter, setCurrentChapter] = useState(1);
 
@@ -67,6 +91,28 @@ export function BibleView({ bookId, nav }: { bookId: string; nav: { toDashboard:
     if (!value) return [];
     return Array.isArray(value) ? value : [value];
   }, [activeTab, data]);
+
+  const jingweiSections = useMemo(() => sectionsData?.sections ?? [], [sectionsData]);
+  const visibleJingweiSections = useMemo(
+    () => jingweiSections.filter((section) => section.enabled && section.showInSidebar).sort((a, b) => a.order - b.order || a.name.localeCompare(b.name)),
+    [jingweiSections],
+  );
+  const activeSection = visibleJingweiSections.find((section) => section.id === activeSectionId) ?? visibleJingweiSections[0] ?? null;
+  const activeSectionTab = activeSection ? bibleTabForSection(activeSection) : null;
+  const customSectionSelected = Boolean(activeSection && !activeSectionTab);
+  const visibleEntries = customSectionSelected ? [] : entries;
+  const activeSectionTitle = activeSection?.name ?? BIBLE_TABS.find((tab) => tab.id === activeTab)?.label;
+
+  useEffect(() => {
+    if (!activeSection && activeSectionId !== null) {
+      setActiveSectionId(null);
+      return;
+    }
+    if (!activeSection || activeSectionId) return;
+    setActiveSectionId(activeSection.id);
+    const mappedTab = bibleTabForSection(activeSection);
+    if (mappedTab) setActiveTab(mappedTab);
+  }, [activeSection, activeSectionId]);
 
   const createEntry = async (payload: Record<string, unknown>) => {
     try {
@@ -172,6 +218,7 @@ export function BibleView({ bookId, nav }: { bookId: string; nav: { toDashboard:
               <button onClick={saveBookMode} disabled={savingMode} className="rounded-xl bg-primary px-4 py-2 text-sm font-bold text-primary-foreground disabled:opacity-50">
                 {savingMode ? "保存中..." : "保存模式"}
               </button>
+              <JingweiSectionManager bookId={bookId} sections={jingweiSections} onRefresh={refetchSections} />
               <button onClick={() => { setPreviewOpen(true); void runPreview(); }} className="inline-flex items-center gap-2 rounded-xl border border-border/60 bg-secondary/50 px-4 py-2 text-sm font-bold text-foreground hover:bg-secondary">
                 <Eye size={15} />预览 AI 上下文
               </button>
@@ -180,33 +227,34 @@ export function BibleView({ bookId, nav }: { bookId: string; nav: { toDashboard:
         </section>
 
         <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
-          <aside className="rounded-2xl border border-border/40 bg-card/70 p-3 shadow-sm">
-            <div className="mb-3 px-2 text-[11px] font-bold uppercase tracking-widest text-muted-foreground">经纬栏目</div>
-            {BIBLE_TABS.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`mb-1 flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm transition-all ${activeTab === tab.id ? "bg-primary/10 font-bold text-primary" : "text-foreground hover:bg-muted/60"}`}
-              >
-                <span className="flex items-center gap-2"><BookOpen size={14} />{tab.label}</span>
-              </button>
-            ))}
-          </aside>
+          <JingweiSectionTabs
+            sections={jingweiSections}
+            activeSectionId={activeSection?.id ?? null}
+            activeLegacyTab={activeTab}
+            legacyTabs={BIBLE_TABS}
+            onSelectSection={(section) => {
+              setActiveSectionId(section.id);
+              const mappedTab = bibleTabForSection(section);
+              if (mappedTab) setActiveTab(mappedTab);
+            }}
+            onSelectLegacyTab={setActiveTab}
+          />
 
           <main className="space-y-6">
             {error && <PageEmptyState title="加载故事经纬失败" description={error} />}
+            {sectionsError && <PageEmptyState title="加载经纬栏目失败" description={sectionsError} />}
             <section className="rounded-2xl border border-border/40 bg-card/70 p-5 shadow-sm">
               <div className="mb-4 flex items-center justify-between">
                 <div>
-                  <h2 className="font-serif text-2xl font-semibold">{BIBLE_TABS.find((tab) => tab.id === activeTab)?.label}</h2>
-                  <p className="text-sm text-muted-foreground">当前 {entries.length} 条。点击删除会执行软删除。</p>
+                  <h2 className="font-serif text-2xl font-semibold">{activeSectionTitle}</h2>
+                  <p className="text-sm text-muted-foreground">当前 {visibleEntries.length} 条。点击删除会执行软删除。</p>
                 </div>
-                {loading && <div className="text-xs text-muted-foreground">加载中...</div>}
+                {(loading || sectionsLoading) && <div className="text-xs text-muted-foreground">加载中...</div>}
               </div>
-              {activeTab === "questionnaires" && entries[0] ? (
+              {activeTab === "questionnaires" && visibleEntries[0] ? (
                 <QuestionnaireWizard
                   bookId={bookId}
-                  template={entries[0] as QuestionnaireTemplateView}
+                  template={visibleEntries[0] as QuestionnaireTemplateView}
                   onDone={() => {
                     notify.success("问卷状态已保存");
                     void refetch();
@@ -215,7 +263,7 @@ export function BibleView({ bookId, nav }: { bookId: string; nav: { toDashboard:
               ) : null}
               {activeTab === "ai-filter" ? <FilterReportTab reports={data?.reports ?? []} /> : null}
               <div className="grid gap-3 md:grid-cols-2">
-                {entries.map((entry) => (
+                {visibleEntries.map((entry) => (
                   <article key={entry.id} className="rounded-xl border border-border/50 bg-background/70 p-4">
                     <div className="flex items-start justify-between gap-3">
                       <div>
@@ -243,7 +291,9 @@ export function BibleView({ bookId, nav }: { bookId: string; nav: { toDashboard:
               </div>
             </section>
 
-            {activeTab !== "questionnaires" && activeTab !== "ai-filter" && <EntryForm tab={activeTab} entries={entries} onSubmit={createEntry} />}
+            {customSectionSelected ? (
+              <PageEmptyState title="自定义栏目条目表单待接入" description="栏目结构已经可管理；自定义栏目条目列表与动态字段表单将在下一步任务接入。" />
+            ) : activeTab !== "questionnaires" && activeTab !== "ai-filter" && <EntryForm tab={activeTab} entries={visibleEntries} onSubmit={createEntry} />}
           </main>
         </div>
       </div>

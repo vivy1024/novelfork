@@ -110,7 +110,7 @@
   - 添加快照或文本断言，确保关键页面不再显示用户侧主名称 `Bible`。
   - 覆盖 Requirement 5、12。
 
-- [ ] 13. 实现故事经纬页面与栏目管理 UI
+- [x] 13. 实现故事经纬页面与栏目管理 UI
   - 新增或改造 `JingweiPage.tsx`、`JingweiSectionTabs.tsx`、`JingweiSectionManager.tsx`。
   - 使用 shadcn/ui `Tabs`、`Table`、`DropdownMenu`、`Dialog`、`Form`、`Input`、`Textarea`、`Select`、`Switch`、`Checkbox`。
   - 支持栏目新增、删除/归档、重命名、排序、启用 / 禁用、是否参与 AI、默认可见性、字段定义编辑。
