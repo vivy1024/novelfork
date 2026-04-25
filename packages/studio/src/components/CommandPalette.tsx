@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Command } from "cmdk";
 
+import { useApi } from "../hooks/use-api";
 import type { TFunction } from "../hooks/use-i18n";
 import type { Tab } from "../hooks/use-tabs";
 import type { AdminSection, SettingsSection, WorkflowSection } from "../routes";
@@ -30,6 +31,9 @@ interface CommandPaletteProps {
 }
 
 export function CommandPalette({ nav, tabs, activateTab, onClose, onNewBook, t }: CommandPaletteProps) {
+  const { data: userSettings } = useApi<{ preferences?: { workbenchMode?: boolean } }>("/settings/user");
+  const workbenchModeEnabled = Boolean(userSettings?.preferences?.workbenchMode);
+
   const run = (fn: () => void) => {
     onClose();
     fn();
@@ -59,18 +63,20 @@ export function CommandPalette({ nav, tabs, activateTab, onClose, onNewBook, t }
           <Command.Group heading="Primary" className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:text-muted-foreground">
             <Item onSelect={() => run(nav.toDashboard)}>项目总览</Item>
             <Item onSelect={() => run(nav.toSessions)}>会话中心</Item>
-            <Item onSelect={() => run(() => nav.toWorkflow())}>工作流配置</Item>
-            <Item onSelect={() => run(() => nav.toAdmin())}>管理中心</Item>
+            {workbenchModeEnabled ? <Item onSelect={() => run(() => nav.toWorkflow())}>工作流配置</Item> : null}
+            {workbenchModeEnabled ? <Item onSelect={() => run(() => nav.toAdmin())}>管理中心</Item> : null}
             <Item onSelect={() => run(() => nav.toSettings())}>设置</Item>
             <Item onSelect={() => run(onNewBook)}>{t("nav.newBook")}</Item>
           </Command.Group>
 
-          <Command.Group heading="Workflow" className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:text-muted-foreground">
-            <Item onSelect={() => run(() => nav.toWorkflow("project"))}>项目与模型</Item>
-            <Item onSelect={() => run(() => nav.toWorkflow("agents"))}>Agent</Item>
-            <Item onSelect={() => run(() => nav.toWorkflow("mcp"))}>MCP 工具</Item>
-            <Item onSelect={() => run(() => nav.toWorkflow("plugins"))}>插件</Item>
-          </Command.Group>
+          {workbenchModeEnabled ? (
+            <Command.Group heading="Workflow" className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:text-muted-foreground">
+              <Item onSelect={() => run(() => nav.toWorkflow("project"))}>项目与模型</Item>
+              <Item onSelect={() => run(() => nav.toWorkflow("agents"))}>Agent</Item>
+              <Item onSelect={() => run(() => nav.toWorkflow("mcp"))}>MCP 工具</Item>
+              <Item onSelect={() => run(() => nav.toWorkflow("plugins"))}>插件</Item>
+            </Command.Group>
+          ) : null}
 
           <Command.Group heading="Content Tools" className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:text-muted-foreground">
             <Item onSelect={() => run(nav.toSearch)}>{t("nav.search")}</Item>
@@ -81,13 +87,15 @@ export function CommandPalette({ nav, tabs, activateTab, onClose, onNewBook, t }
             <Item onSelect={() => run(nav.toDoctor)}>{t("nav.doctor")}</Item>
           </Command.Group>
 
-          <Command.Group heading="Admin" className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:text-muted-foreground">
-            <Item onSelect={() => run(() => nav.toAdmin("providers"))}>供应商</Item>
-            <Item onSelect={() => run(() => nav.toAdmin("requests"))}>请求历史</Item>
-            <Item onSelect={() => run(() => nav.toAdmin("daemon"))}>{t("nav.daemon")}</Item>
-            <Item onSelect={() => run(() => nav.toAdmin("logs"))}>{t("logs.title")}</Item>
-            <Item onSelect={() => run(() => nav.toAdmin("worktrees"))}>Worktree</Item>
-          </Command.Group>
+          {workbenchModeEnabled ? (
+            <Command.Group heading="Admin" className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:text-muted-foreground">
+              <Item onSelect={() => run(() => nav.toAdmin("providers"))}>供应商</Item>
+              <Item onSelect={() => run(() => nav.toAdmin("requests"))}>请求历史</Item>
+              <Item onSelect={() => run(() => nav.toAdmin("daemon"))}>{t("nav.daemon")}</Item>
+              <Item onSelect={() => run(() => nav.toAdmin("logs"))}>{t("logs.title")}</Item>
+              <Item onSelect={() => run(() => nav.toAdmin("worktrees"))}>Worktree</Item>
+            </Command.Group>
+          ) : null}
 
           {tabs.length > 0 && (
             <Command.Group heading="Open Tabs" className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:text-muted-foreground">

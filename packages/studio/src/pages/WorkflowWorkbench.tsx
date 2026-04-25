@@ -14,6 +14,7 @@ import { useRunListStream } from "@/hooks/use-run-events";
 import type { StudioRun } from "@/shared/contracts";
 
 import { PageScaffold } from "@/components/layout/PageScaffold";
+import { WorkbenchModeGate } from "@/components/workbench/WorkbenchModeGate";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -449,17 +450,18 @@ export function WorkflowWorkbench({
   const liveRunSummary = useMemo(() => summarizeLiveRuns(liveRuns), [liveRuns]);
 
   return (
-    <PageScaffold
-      title="工作流配置"
-      description="把原先分散在多个页面的模型、Agent、MCP、插件、调度、检测和通知配置收口到一个工作台里，侧边栏只保留一个稳定入口。"
-      actions={
-        <>
-          <Badge variant="secondary">阶段 1</Badge>
-          <Badge variant="outline">shadcn UI</Badge>
-        </>
-      }
-    >
-      <div className="grid gap-4 lg:grid-cols-3 xl:grid-cols-5">
+    <WorkbenchModeGate>
+      <PageScaffold
+        title="工作流配置"
+        description="把原先分散在多个页面的模型、Agent、MCP、插件、调度、检测和通知配置收口到一个工作台里，侧边栏只保留一个稳定入口。"
+        actions={
+          <>
+            <Badge variant="secondary">阶段 1</Badge>
+            <Badge variant="outline">shadcn UI</Badge>
+          </>
+        }
+      >
+        <div className="grid gap-4 lg:grid-cols-3 xl:grid-cols-5">
         <WorkbenchStat title="已收口模块" value="9" description="从分散入口合并到统一工作台" />
         <WorkbenchStat title="一级入口" value="1" description="侧边栏只保留工作流配置" />
         <WorkbenchStat title="参考方向" value="NarraFork" description="参考其配置中心与信息架构" />
@@ -677,8 +679,9 @@ export function WorkflowWorkbench({
             );
           })}
         </div>
-      </Tabs>
-    </PageScaffold>
+        </Tabs>
+      </PageScaffold>
+    </WorkbenchModeGate>
   );
 }
 
