@@ -75,7 +75,7 @@
   - 添加 repository 单测：多 book 隔离、软删过滤、栏目禁用、条目关联。
   - 覆盖 Requirements 6、7、11、13。
 
-- [ ] 9. 实现 legacy Bible 到故事经纬的适配层
+- [x] 9. 实现 legacy Bible 到故事经纬的适配层
   - 新增 `section-adapter.ts` 或等价模块，将 `bible_character`、`bible_event`、`bible_setting`、`bible_chapter_summary` 映射为人物、事件、设定、章节摘要栏目和条目。
   - 首次进入经纬页时，如果存在 legacy 数据但不存在经纬栏目，生成默认栏目映射。
   - 保持非破坏性兼容，不删除、不重命名旧 `bible_*` 表。
