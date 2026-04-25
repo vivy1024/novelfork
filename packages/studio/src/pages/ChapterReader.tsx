@@ -6,11 +6,13 @@ import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
 import { useColors } from "../hooks/use-colors";
 import { InkEditor, getMarkdown } from "../components/InkEditor";
+import { AiModelRequiredDialog } from "@/components/ai/AiModelRequiredDialog";
 import { ContextPanel } from "../components/ContextPanel";
 import { HistoryPanel } from "../components/HistoryPanel";
 import { OutlinePanel } from "../components/OutlinePanel";
 import { DiffPanel } from "../components/DiffPanel";
 import { PageScaffold } from "@/components/layout/PageScaffold";
+import { useAiModelGate } from "../hooks/use-ai-model-gate";
 import {
   ChevronLeft,
   Check,
@@ -42,6 +44,7 @@ interface Nav {
   toBook: (id: string) => void;
   toDashboard: () => void;
   toDiff: (bookId: string, chapterNumber: number) => void;
+  toAdmin?: (section?: string) => void;
 }
 
 export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
@@ -65,6 +68,7 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
   const [showSnapshotDialog, setShowSnapshotDialog] = useState(false);
   const [snapshotDescription, setSnapshotDescription] = useState("");
   const editorRef = useRef<any>(null);
+  const { ensureModelFor, blockedResult, closeGate } = useAiModelGate();
 
   const autosave = useAutosave({
     bookId,
@@ -104,7 +108,12 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
     }
   };
 
-  const handleAIAction = async (params: { text: string; surrounding: string; mode: string }): Promise<string> => {
+  const handleAIAction = async (params: { text: string; surrounding: string; mode: string }): Promise<string | null> => {
+    const action = params.mode === "audit" ? "ai-review" : "ai-rewrite";
+    if (!ensureModelFor(action)) {
+      return null;
+    }
+
     const response = await fetchJson<{ result: string; mode: string }>("/api/ai/transform", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -519,6 +528,16 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
           </div>
         </div>
       )}
+
+      <AiModelRequiredDialog
+        open={Boolean(blockedResult)}
+        message={blockedResult?.message ?? ""}
+        onCancel={closeGate}
+        onConfigureModel={() => {
+          closeGate();
+          nav.toAdmin?.("providers");
+        }}
+      />
     </div>
     </PageScaffold>
   );

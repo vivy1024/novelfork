@@ -9,8 +9,10 @@ import { useColors } from "../hooks/use-colors";
 import { deriveBookActivity, shouldRefetchBookView } from "../hooks/use-book-activity";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { ChapterMeta as ChapterMetaPanel } from "../components/ChapterMeta";
+import { AiModelRequiredDialog } from "@/components/ai/AiModelRequiredDialog";
 import { PageEmptyState } from "@/components/layout/PageEmptyState";
 import { PageScaffold } from "@/components/layout/PageScaffold";
+import { useAiModelGate } from "../hooks/use-ai-model-gate";
 import {
   AlertCircle,
   ChevronLeft,
@@ -80,6 +82,7 @@ interface Nav {
   toChapter: (bookId: string, num: number) => void;
   toAnalytics: (bookId: string) => void;
   toDetect?: (bookId: string) => void;
+  toAdmin?: (section?: string) => void;
 }
 
 function translateChapterStatus(status: string, t: TFunction): string {
@@ -117,6 +120,7 @@ export function BookDetail({
 }) {
   const c = useColors(theme);
   const { ai, storage } = useNovelFork();
+  const { ensureModelFor, blockedResult, closeGate } = useAiModelGate();
   const { data, loading, error, refetch } = useApi<BookData>(`/books/${bookId}`);
   const [writeRequestPending, setWriteRequestPending] = useState(false);
   const [draftRequestPending, setDraftRequestPending] = useState(false);
@@ -161,6 +165,9 @@ export function BookDetail({
   }, [bookId, refetch, sse.messages]);
 
   const handleWriteNext = async () => {
+    if (!ensureModelFor("ai-writing")) {
+      return;
+    }
     setWriteRequestPending(true);
     try {
       await ai.writeNext(bookId);
@@ -171,6 +178,9 @@ export function BookDetail({
   };
 
   const handleDraft = async () => {
+    if (!ensureModelFor("ai-writing")) {
+      return;
+    }
     setDraftRequestPending(true);
     try {
       await ai.draft(bookId);
@@ -194,6 +204,9 @@ export function BookDetail({
   };
 
   const handleRewrite = async (chapterNum: number) => {
+    if (!ensureModelFor("ai-rewrite")) {
+      return;
+    }
     const brief = window.prompt(
       data?.book.language === "en"
         ? "Optional rewrite brief for this run only. Leave blank to use existing focus."
@@ -213,6 +226,9 @@ export function BookDetail({
   };
 
   const handleRevise = async (chapterNum: number, mode: ReviseMode) => {
+    if (!ensureModelFor("ai-rewrite")) {
+      return;
+    }
     const brief = window.prompt(
       data?.book.language === "en"
         ? "Optional revise brief for this run only. Leave blank to use existing focus."
@@ -232,6 +248,9 @@ export function BookDetail({
   };
 
   const handleSync = async (chapterNum: number) => {
+    if (!ensureModelFor("generate-jingwei")) {
+      return;
+    }
     const brief = window.prompt(
       data?.book.language === "en"
         ? "Optional sync brief for interpreting the edited chapter body. Leave blank to sync directly from the text."
@@ -579,6 +598,9 @@ export function BookDetail({
                       )}
                       <button
                         onClick={async () => {
+                          if (!ensureModelFor("ai-review")) {
+                            return;
+                          }
                           const auditResult = await ai.audit(bookId, ch.number);
                           if (auditResult.passed) {
                             notify.success("审阅通过");
@@ -668,6 +690,16 @@ export function BookDetail({
         variant="danger"
         onConfirm={handleDeleteBook}
         onCancel={() => setConfirmDeleteOpen(false)}
+      />
+
+      <AiModelRequiredDialog
+        open={Boolean(blockedResult)}
+        message={blockedResult?.message ?? ""}
+        onCancel={closeGate}
+        onConfigureModel={() => {
+          closeGate();
+          nav.toAdmin?.("providers");
+        }}
       />
     </div>
     </PageScaffold>

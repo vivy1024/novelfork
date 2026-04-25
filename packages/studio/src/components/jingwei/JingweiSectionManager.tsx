@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Archive, Plus, Settings2 } from "lucide-react";
+import { Archive, Plus, Settings2, Upload } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { fetchJson, postApi } from "@/hooks/use-api";
 import { notify } from "@/lib/notify";
 
+import { parseMarkdownDirectoryImport, type MarkdownDirectoryCandidate } from "./markdown-directory-import";
 import type { JingweiFieldDefinitionView, JingweiFieldType, JingweiSectionView, JingweiVisibilityRuleType } from "./types";
 
 interface JingweiSectionManagerProps {
@@ -87,6 +88,10 @@ export function JingweiSectionManager({ bookId, sections, onRefresh }: JingweiSe
   const [draft, setDraft] = useState<SectionDraft | null>(null);
   const [archiveTarget, setArchiveTarget] = useState<JingweiSectionView | null>(null);
   const [saving, setSaving] = useState(false);
+  const [importMode, setImportMode] = useState(false);
+  const [importMarkdown, setImportMarkdown] = useState("");
+  const [importCandidates, setImportCandidates] = useState<MarkdownDirectoryCandidate[]>([]);
+  const [selectedImportKeys, setSelectedImportKeys] = useState<ReadonlySet<string>>(new Set());
 
   const sortedSections = useMemo(
     () => [...sections].sort((a, b) => a.order - b.order || a.name.localeCompare(b.name)),
@@ -94,13 +99,78 @@ export function JingweiSectionManager({ bookId, sections, onRefresh }: JingweiSe
   );
 
   const startCreate = () => {
+    setImportMode(false);
     setArchiveTarget(null);
     setDraft(emptyDraft(sortedSections.length));
   };
 
   const startEdit = (section: JingweiSectionView) => {
+    setImportMode(false);
     setArchiveTarget(null);
     setDraft(draftFromSection(section));
+  };
+
+  const openImportPanel = () => {
+    setImportMode(true);
+    setArchiveTarget(null);
+    setDraft(null);
+    setImportCandidates([]);
+    setSelectedImportKeys(new Set());
+  };
+
+  const previewImport = () => {
+    const result = parseMarkdownDirectoryImport(importMarkdown);
+    const existingKeys = new Set(sortedSections.map((section) => section.key));
+    const candidates = result.candidates.filter((candidate) => !existingKeys.has(candidate.key));
+    setImportCandidates(candidates);
+    setSelectedImportKeys(new Set(candidates.map((candidate) => candidate.key)));
+  };
+
+  const toggleImportCandidate = (key: string) => {
+    setSelectedImportKeys((current) => {
+      const next = new Set(current);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
+
+  const importSelectedSections = async () => {
+    const selectedCandidates = importCandidates.filter((candidate) => selectedImportKeys.has(candidate.key));
+    if (selectedCandidates.length === 0) {
+      notify.error("请至少选择一个栏目");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      for (const [index, candidate] of selectedCandidates.entries()) {
+        await postApi(`/books/${bookId}/jingwei/sections`, {
+          key: candidate.key,
+          name: candidate.name,
+          description: "由 Markdown 目录导入创建。高级范本仅供参考，可继续调整。",
+          order: sortedSections.length + index,
+          enabled: true,
+          showInSidebar: true,
+          participatesInAi: true,
+          defaultVisibility: "tracked",
+          fieldsJson: [],
+        });
+      }
+      await onRefresh();
+      notify.success(`已导入 ${selectedCandidates.length} 个栏目`);
+      setImportMode(false);
+      setImportMarkdown("");
+      setImportCandidates([]);
+      setSelectedImportKeys(new Set());
+    } catch (error) {
+      notify.error("Markdown 目录导入失败", { description: error instanceof Error ? error.message : undefined });
+    } finally {
+      setSaving(false);
+    }
   };
 
   const saveDraft = async () => {
@@ -210,7 +280,10 @@ export function JingweiSectionManager({ bookId, sections, onRefresh }: JingweiSe
             <section className="space-y-3">
               <div className="flex items-center justify-between gap-3">
                 <div className="text-sm font-semibold">当前栏目</div>
-                <Button type="button" size="sm" onClick={startCreate}><Plus size={14} />新增栏目</Button>
+                <div className="flex flex-wrap gap-2">
+                  <Button type="button" size="sm" variant="outline" onClick={openImportPanel}><Upload size={14} />导入 Markdown 目录</Button>
+                  <Button type="button" size="sm" onClick={startCreate}><Plus size={14} />新增栏目</Button>
+                </div>
               </div>
               <Table>
                 <TableHeader>
@@ -263,6 +336,34 @@ export function JingweiSectionManager({ bookId, sections, onRefresh }: JingweiSe
                 </div>
               ) : draft ? (
                 <SectionForm draft={draft} saving={saving} onChange={updateDraft} onAddField={addField} onFieldChange={updateField} onCancel={() => setDraft(null)} onSave={saveDraft} />
+              ) : importMode ? (
+                <div className="space-y-4">
+                  <div>
+                    <h3 className="font-semibold">导入 Markdown 目录</h3>
+                    <p className="mt-2 text-sm leading-6 text-muted-foreground">可粘贴《没钱修什么仙》式高级范本目录或你自己的 Markdown 栏目目录。范本只是参考，不代表所有小说都需要这些栏目。</p>
+                  </div>
+                  <label className="space-y-1 text-sm font-medium">Markdown 目录<Textarea value={importMarkdown} onChange={(event) => setImportMarkdown(event.target.value)} /></label>
+                  <div className="flex justify-between gap-2">
+                    <Button type="button" variant="outline" onClick={() => setImportMode(false)}>取消</Button>
+                    <Button type="button" onClick={previewImport}>识别栏目</Button>
+                  </div>
+                  {importCandidates.length > 0 ? (
+                    <div className="space-y-3 rounded-xl border border-border/60 p-3">
+                      <div className="text-sm font-semibold">候选栏目</div>
+                      <div className="space-y-2">
+                        {importCandidates.map((candidate) => (
+                          <label key={candidate.key} className="flex items-center gap-2 text-sm">
+                            <input type="checkbox" checked={selectedImportKeys.has(candidate.key)} onChange={() => toggleImportCandidate(candidate.key)} />
+                            <span>{candidate.name}</span>
+                          </label>
+                        ))}
+                      </div>
+                      <div className="flex justify-end">
+                        <Button type="button" disabled={saving} onClick={importSelectedSections}>创建 {importCandidates.filter((candidate) => selectedImportKeys.has(candidate.key)).length} 个栏目</Button>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
               ) : (
                 <div className="flex min-h-60 flex-col items-center justify-center rounded-xl border border-dashed border-border/70 p-6 text-center">
                   <Settings2 className="mb-3 text-muted-foreground" size={28} />
