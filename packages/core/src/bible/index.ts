@@ -7,6 +7,7 @@ export type {
   BibleMode,
   BibleSettingRecord,
   BibleVisibilitySource,
+  BuildBibleContextInput,
   BuildBibleContextResult,
   BookRecord,
   CreateBibleChapterSummaryInput,
@@ -23,6 +24,7 @@ export type {
 } from "./types.js";
 
 export { createAliasMatcher, matchTrackedByAliases, AliasMatcher, type AliasMatchEntry } from "./context/alias-matcher.js";
+export { buildBibleContext, injectCharacterArcs, injectConflicts, injectPremise, injectWorldModel, type BuildBibleContextOptions } from "./context/build-bible-context.js";
 export { composeBibleContext, formatBibleContextItem, type ComposableBibleContextItem, type ComposeBibleContextOptions } from "./context/compose-context.js";
 export { resolveNestedRefs, type NestedRefEntry, type ResolveNestedRefsOptions } from "./context/nested-resolver.js";
 export { applyTokenBudget, estimateTokens, sortByContextPriority, type BudgetedBibleContextItem, type TokenBudgetResult } from "./context/token-budget.js";

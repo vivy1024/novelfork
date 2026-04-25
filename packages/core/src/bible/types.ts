@@ -20,6 +20,13 @@ export interface BibleContextItem {
   estimatedTokens: number;
 }
 
+export interface BuildBibleContextInput {
+  bookId: string;
+  currentChapter?: number;
+  sceneText?: string;
+  tokenBudget?: number;
+}
+
 export interface BuildBibleContextResult {
   items: BibleContextItem[];
   totalTokens: number;
