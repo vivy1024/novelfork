@@ -18,7 +18,7 @@ Novel Bible v1（现已扩展为**认知层 v1**）。**前置**：`storage-migr
 
 ## Phase A：Bible 基础（原 8 任务）
 
-- [ ] A1. Schema 与 Repository（Phase A）
+- [x] A1. Schema 与 Repository（Phase A）
   - 在 `packages/core/src/storage/schema.ts` 追加：`book`、`bible_character`、`bible_event`、`bible_setting`、`bible_chapter_summary`
   - 生成 migration `0002_bible_v1.sql`
   - 新建 `packages/core/src/bible/types.ts`：`VisibilityRule` / `BibleMode` / `BibleContextItem` / `BuildBibleContextResult`
