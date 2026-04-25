@@ -92,7 +92,7 @@
   - 添加 API 测试：栏目 CRUD、条目 CRUD、模板应用、软删、非法 bookId。
   - 覆盖 Requirements 6、7、8、11、13。
 
-- [ ] 11. 实现故事经纬 AI 上下文动态装配
+- [x] 11. 实现故事经纬 AI 上下文动态装配
   - 新增 `buildJingweiContext()`，以当前书启用且 participatesInAi=true 的栏目和条目为输入。
   - 实现章节时间线过滤：visibleAfterChapter / visibleUntilChapter。
   - 实现 global / tracked / nested 三类可见性；tracked 扫描标题、别名、关键词；nested 限制递归深度。
