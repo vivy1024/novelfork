@@ -139,7 +139,10 @@ export { runAgentLoop, AGENT_TOOLS as AGENT_TOOLS, type AgentLoopOptions } from 
 export { detectChapter, detectAndRewrite, loadDetectionHistory, type DetectChapterResult, type DetectAndRewriteResult } from "./pipeline/detection-runner.js";
 
 // Storage
-export { closeStorageDatabase, createStorageDatabase, getStorageDatabase, initializeStorageDatabase, runStorageMigrations, runJsonImportMigrationIfNeeded, createKvRepository, createSessionMessageRepository, createSessionRepository, StorageError, sessions, sessionMessages, sessionMessageCursors, kvStore, drizzleMigrations, type CreateStorageDatabaseOptions, type StorageDatabase, type JsonImportMigrationResult, type RunJsonImportMigrationOptions, type RunStorageMigrationsOptions, type StorageMigrationResult, type CreateSessionMessageRepositoryOptions, type SessionMessageRepositoryAppendAttemptContext, type SessionMessageRepositoryAppendAttemptControl, type StoredSessionMessage, type StoredSessionMessageCursor, type StoredSessionMessageInput, type StoredSessionMessageRole, type CreateStoredSessionInput, type StoredSessionRecord, type UpdateStoredSessionInput } from "./storage/index.js";
+export { closeStorageDatabase, createStorageDatabase, getStorageDatabase, initializeStorageDatabase, runStorageMigrations, runJsonImportMigrationIfNeeded, createKvRepository, createSessionMessageRepository, createSessionRepository, StorageError, books, bibleCharacters, bibleEvents, bibleSettings, bibleChapterSummaries, sessions, sessionMessages, sessionMessageCursors, kvStore, drizzleMigrations, type CreateStorageDatabaseOptions, type StorageDatabase, type JsonImportMigrationResult, type RunJsonImportMigrationOptions, type RunStorageMigrationsOptions, type StorageMigrationResult, type CreateSessionMessageRepositoryOptions, type SessionMessageRepositoryAppendAttemptContext, type SessionMessageRepositoryAppendAttemptControl, type StoredSessionMessage, type StoredSessionMessageCursor, type StoredSessionMessageInput, type StoredSessionMessageRole, type CreateStoredSessionInput, type StoredSessionRecord, type UpdateStoredSessionInput } from "./storage/index.js";
+
+// Bible
+export * from "./bible/index.js";
 
 // State
 export { StateManager } from "./state/manager.js";

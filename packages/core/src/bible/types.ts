@@ -1,0 +1,119 @@
+export type BibleMode = "static" | "dynamic";
+
+export type BibleVisibilitySource = "global" | "tracked" | "nested";
+
+export type VisibilityRule =
+  | { type: "global"; visibleAfterChapter?: number; visibleUntilChapter?: number }
+  | { type: "tracked"; visibleAfterChapter?: number; visibleUntilChapter?: number }
+  | { type: "nested"; parentIds: string[]; visibleAfterChapter?: number; visibleUntilChapter?: number };
+
+export type BibleContextItemType = "character" | "event" | "setting" | "chapter-summary";
+
+export interface BibleContextItem {
+  id: string;
+  type: BibleContextItemType;
+  category?: string;
+  name: string;
+  content: string;
+  priority: number;
+  source: BibleVisibilitySource;
+  estimatedTokens: number;
+}
+
+export interface BuildBibleContextResult {
+  items: BibleContextItem[];
+  totalTokens: number;
+  droppedIds: string[];
+  mode: BibleMode;
+}
+
+export interface BookRecord {
+  id: string;
+  name: string;
+  bibleMode: BibleMode;
+  currentChapter: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface CreateBookInput extends BookRecord {}
+
+export interface UpdateBookInput {
+  name?: string;
+  bibleMode?: BibleMode;
+  currentChapter?: number;
+  updatedAt?: Date;
+}
+
+export interface BibleCharacterRecord {
+  id: string;
+  bookId: string;
+  name: string;
+  aliasesJson: string;
+  roleType: string;
+  summary: string;
+  traitsJson: string;
+  visibilityRuleJson: string;
+  firstChapter: number | null;
+  lastChapter: number | null;
+  createdAt: Date;
+  updatedAt: Date;
+  deletedAt: Date | null;
+}
+
+export type CreateBibleCharacterInput = Omit<BibleCharacterRecord, "deletedAt">;
+export type UpdateBibleCharacterInput = Partial<Omit<CreateBibleCharacterInput, "id" | "bookId" | "createdAt">>;
+
+export interface BibleEventRecord {
+  id: string;
+  bookId: string;
+  name: string;
+  eventType: string;
+  chapterStart: number | null;
+  chapterEnd: number | null;
+  summary: string;
+  relatedCharacterIdsJson: string;
+  visibilityRuleJson: string;
+  foreshadowState: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  deletedAt: Date | null;
+}
+
+export type CreateBibleEventInput = Omit<BibleEventRecord, "deletedAt">;
+export type UpdateBibleEventInput = Partial<Omit<CreateBibleEventInput, "id" | "bookId" | "createdAt">>;
+
+export interface BibleSettingRecord {
+  id: string;
+  bookId: string;
+  category: string;
+  name: string;
+  content: string;
+  visibilityRuleJson: string;
+  nestedRefsJson: string;
+  createdAt: Date;
+  updatedAt: Date;
+  deletedAt: Date | null;
+}
+
+export type CreateBibleSettingInput = Omit<BibleSettingRecord, "deletedAt">;
+export type UpdateBibleSettingInput = Partial<Omit<CreateBibleSettingInput, "id" | "bookId" | "createdAt">>;
+
+export interface BibleChapterSummaryRecord {
+  id: string;
+  bookId: string;
+  chapterNumber: number;
+  title: string;
+  summary: string;
+  wordCount: number;
+  keyEventsJson: string;
+  appearingCharacterIdsJson: string;
+  pov: string;
+  metadataJson: string;
+  createdAt: Date;
+  updatedAt: Date;
+  deletedAt: Date | null;
+}
+
+export type CreateBibleChapterSummaryInput = Omit<BibleChapterSummaryRecord, "deletedAt">;
+export type UpdateBibleChapterSummaryInput = Partial<Omit<CreateBibleChapterSummaryInput, "id" | "bookId" | "chapterNumber" | "createdAt">>;
