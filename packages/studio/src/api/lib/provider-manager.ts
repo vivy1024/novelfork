@@ -10,14 +10,17 @@ import {
   type Model,
   type ModelPoolEntry,
 } from "../../shared/provider-catalog.js";
+import type { ProviderRuntimeStatus } from "./ai-gate.js";
 
 export type AIProvider = ManagedProvider;
 export type AIModel = Model;
 export type { ModelPoolEntry, ProviderConfig } from "../../shared/provider-catalog.js";
+export type { ProviderRuntimeStatus } from "./ai-gate.js";
 
 export class ProviderManager {
   private providers: Map<string, AIProvider> = new Map();
   private models: Map<string, AIModel> = new Map();
+  private lastConnectionErrors: Map<string, string> = new Map();
 
   private registerProvider(provider: AIProvider): void {
     this.providers.set(provider.id, provider);
@@ -47,6 +50,7 @@ export class ProviderManager {
   initialize(): void {
     this.providers.clear();
     this.models.clear();
+    this.lastConnectionErrors.clear();
 
     for (const provider of buildManagedProviders()) {
       this.registerProvider(provider);
@@ -138,13 +142,54 @@ export class ProviderManager {
     return buildModelPool(this.listProviders());
   }
 
+  getRuntimeStatus(): ProviderRuntimeStatus {
+    const providers = this.listProviders();
+    const usableProvider = providers.find((provider) => this.isProviderUsable(provider));
+    const usableModel = usableProvider?.models[0];
+
+    if (usableProvider && usableModel) {
+      return {
+        hasUsableModel: true,
+        defaultProvider: usableProvider.id,
+        defaultModel: usableModel.id,
+      };
+    }
+
+    const errorProvider = providers.find((provider) => this.lastConnectionErrors.has(provider.id));
+    return {
+      hasUsableModel: false,
+      ...(errorProvider ? { lastConnectionError: this.lastConnectionErrors.get(errorProvider.id) } : {}),
+    };
+  }
+
+  private isProviderUsable(provider: AIProvider): boolean {
+    if (!provider.enabled || provider.models.length === 0 || this.lastConnectionErrors.has(provider.id)) {
+      return false;
+    }
+
+    if (provider.apiKeyRequired) {
+      return Boolean(provider.config.apiKey?.trim());
+    }
+
+    if (provider.type === "custom") {
+      return Boolean(provider.config.endpoint?.trim());
+    }
+
+    return true;
+  }
+
+  private recordConnectionFailure(id: string, error: string): { success: false; error: string } {
+    this.lastConnectionErrors.set(id, error);
+    return { success: false, error };
+  }
+
   /**
    * 测试提供商连通性
    */
   async testProviderConnection(id: string): Promise<{ success: boolean; error?: string; latency?: number }> {
     const provider = this.providers.get(id);
     if (!provider) {
-      return { success: false, error: "Provider not found" };
+      return this.recordConnectionFailure(id, "Provider not found");
     }
 
     const startTime = Date.now();
@@ -155,27 +200,25 @@ export class ProviderManager {
         case "openai":
         case "deepseek":
           if (!provider.config.apiKey) {
-            return { success: false, error: "API key not configured" };
+            return this.recordConnectionFailure(id, "API key not configured");
           }
           break;
 
         case "custom":
           if (!provider.config.endpoint) {
-            return { success: false, error: "Endpoint not configured" };
+            return this.recordConnectionFailure(id, "Endpoint not configured");
           }
           break;
 
         default:
-          return { success: false, error: "Unsupported provider type" };
+          return this.recordConnectionFailure(id, "Unsupported provider type");
       }
 
       const latency = Date.now() - startTime;
+      this.lastConnectionErrors.delete(id);
       return { success: true, latency };
     } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : String(error),
-      };
+      return this.recordConnectionFailure(id, error instanceof Error ? error.message : String(error));
     }
   }
 

@@ -88,6 +88,37 @@ describe("BookCreate", () => {
     };
   }
 
+  it("presents local-first book creation even when AI model setup is not done", () => {
+    const nav = {
+      toDashboard: vi.fn(),
+      toBook: vi.fn(),
+      toProjectCreate: vi.fn(),
+    };
+
+    render(
+      <BookCreate
+        nav={nav}
+        theme="light"
+        t={(key: string) => key}
+        projectCreateDraft={{
+          title: "仙路长明",
+          projectInit: {
+            repositorySource: "new",
+            workflowMode: "outline-first",
+            templatePreset: "genre-default",
+            gitBranch: "main",
+            worktreeName: "xianlu-main",
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText(/尚未配置 AI 模型/)).toBeTruthy();
+    expect(screen.getByText(/仍可先创建本地书籍/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "创建本地书籍" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "创建书籍并进入工作区" })).toBeNull();
+  });
+
   it("shows staged progress and locks project-create edits while the create workflow is running", async () => {
     const nav = {
       toDashboard: vi.fn(),
@@ -124,7 +155,7 @@ describe("BookCreate", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "创建书籍并进入工作区" }));
+    fireEvent.click(screen.getByRole("button", { name: "创建本地书籍" }));
 
     expect(screen.getByText("正在提交建书请求…")).toBeTruthy();
     expect((screen.getByRole("button", { name: "创建中..." }) as HTMLButtonElement).disabled).toBe(true);
@@ -163,7 +194,7 @@ describe("BookCreate", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "创建书籍并进入工作区" }));
+    fireEvent.click(screen.getByRole("button", { name: "创建本地书籍" }));
 
     await waitFor(() => {
       expect(screen.getByText(/当前 worktree 已被其他书占用/)).toBeTruthy();
@@ -205,8 +236,8 @@ describe("BookCreate", () => {
       />,
     );
 
-    expect(screen.getByText(/创建完成后会自动打开默认写作会话/)).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "创建书籍并进入工作区" }));
+    expect(screen.getByText(/未配置 AI 模型也不影响本地写作/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "创建本地书籍" }));
 
     await new Promise((resolve) => setTimeout(resolve, 0));
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -266,7 +297,7 @@ describe("BookCreate", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "创建书籍并进入工作区" }));
+    fireEvent.click(screen.getByRole("button", { name: "创建本地书籍" }));
 
     await waitFor(() => {
       expect(screen.getByText(/书籍骨架已经创建成功/)).toBeTruthy();

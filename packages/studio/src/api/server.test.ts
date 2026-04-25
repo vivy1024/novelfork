@@ -292,6 +292,23 @@ function cloneProjectConfig() {
   return structuredClone(projectConfig);
 }
 
+function mockMissingProjectLlmConfig() {
+  loadProjectConfigMock.mockImplementation(async (_rootArg: string, options?: { readonly requireApiKey?: boolean }) => {
+    if (options?.requireApiKey !== false) {
+      throw new Error("NOVELFORK_LLM_API_KEY not set. Run 'novelfork config set-global' or add it to project .env file.");
+    }
+
+    const config = cloneProjectConfig();
+    return {
+      ...config,
+      llm: {
+        ...config.llm,
+        apiKey: "",
+      },
+    };
+  });
+}
+
 function getCapturedFetch(): typeof fetch {
   const calls = startHttpServerMock.mock.calls as unknown[];
   const lastCall = calls[calls.length - 1] as [{ fetch?: typeof fetch }] | undefined;
@@ -309,6 +326,20 @@ async function createCommittedRepository(repoRoot: string, branch = "main"): Pro
   await writeFile(join(repoRoot, "README.md"), "# test\n", "utf-8");
   await execGit(["add", "README.md"], repoRoot);
   await execGit(["commit", "-m", "Initial commit"], repoRoot);
+}
+
+async function waitForPath(targetPath: string): Promise<void> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    try {
+      await access(targetPath);
+      return;
+    } catch (error) {
+      lastError = error;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(`Path was not ready: ${targetPath}`);
 }
 
 describe("createStudioServer daemon lifecycle", () => {
@@ -593,6 +624,43 @@ describe("createStudioServer daemon lifecycle", () => {
       language: "en",
       languageExplicit: true,
     });
+  });
+
+  it("creates a local book scaffold when project model config is missing", async () => {
+    mockMissingProjectLlmConfig();
+
+    const { createStudioServer } = await import("./server.js");
+    const { app } = createStudioServer(cloneProjectConfig() as never, root);
+
+    const response = await app.request("http://localhost/api/books/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "Local Only Book",
+        genre: "xuanhuan",
+        platform: "qidian",
+        language: "zh",
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      status: "creating",
+      bookId: "local-only-book",
+      defaultSession: {
+        title: "新书《Local Only Book》写作会话",
+        projectId: "local-only-book",
+      },
+    });
+    expect(initBookMock).not.toHaveBeenCalled();
+
+    const bookJsonPath = join(root, "books", "local-only-book", "book.json");
+    await expect(access(bookJsonPath)).resolves.toBeUndefined();
+    await expect(access(join(root, "books", "local-only-book", "story", "story_bible.md"))).resolves.toBeUndefined();
+    await expect(access(join(root, "books", "local-only-book", "chapters", "index.json"))).resolves.toBeUndefined();
+
+    const bookJson = JSON.parse(await readFile(bookJsonPath, "utf-8")) as { title?: string };
+    expect(bookJson.title).toBe("Local Only Book");
   });
 
   it("rejects create requests when a complete book with the same id already exists", async () => {
@@ -941,7 +1009,7 @@ describe("createStudioServer daemon lifecycle", () => {
     }
   });
 
-  it("reports async create failures through the create-status endpoint", async () => {
+  it("downgrades async model config failures to a local book scaffold", async () => {
     initBookMock.mockRejectedValueOnce(new Error("NOVELFORK_LLM_API_KEY not set"));
 
     const { createStudioServer } = await import("./server.js");
@@ -951,7 +1019,7 @@ describe("createStudioServer daemon lifecycle", () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        title: "Broken Book",
+        title: "Fallback Book",
         genre: "xuanhuan",
         platform: "qidian",
         language: "zh",
@@ -959,14 +1027,20 @@ describe("createStudioServer daemon lifecycle", () => {
     });
 
     expect(response.status).toBe(200);
-    await Promise.resolve();
-
-    const status = await app.request("http://localhost/api/books/broken-book/create-status");
-    expect(status.status).toBe(200);
-    await expect(status.json()).resolves.toMatchObject({
-      status: "error",
-      error: "NOVELFORK_LLM_API_KEY not set",
+    await expect(response.json()).resolves.toMatchObject({
+      status: "creating",
+      bookId: "fallback-book",
     });
+    expect(initBookMock).toHaveBeenCalled();
+
+    const bookJsonPath = join(root, "books", "fallback-book", "book.json");
+    await waitForPath(bookJsonPath);
+    await expect(access(bookJsonPath)).resolves.toBeUndefined();
+    await expect(access(join(root, "books", "fallback-book", "story", "story_bible.md"))).resolves.toBeUndefined();
+    await expect(access(join(root, "books", "fallback-book", "chapters", "index.json"))).resolves.toBeUndefined();
+
+    const bookJson = JSON.parse(await readFile(bookJsonPath, "utf-8")) as { title?: string };
+    expect(bookJson.title).toBe("Fallback Book");
   });
 
   it("uses rollback semantics for chapter rejection instead of only flipping status", async () => {

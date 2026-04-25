@@ -25,6 +25,20 @@ export function createProvidersRouter() {
   });
 
   /**
+   * GET /api/providers/status
+   * 获取当前默认模型可用状态
+   */
+  app.get("/status", async (c) => {
+    try {
+      const status = providerManager.getRuntimeStatus();
+      return c.json({ status });
+    } catch (error) {
+      console.error("Failed to get provider status:", error);
+      return c.json({ error: "Failed to get provider status" }, 500);
+    }
+  });
+
+  /**
    * GET /api/providers/:id
    * 获取单个提供商
    */
