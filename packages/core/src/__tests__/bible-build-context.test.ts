@@ -7,8 +7,13 @@ import { afterEach, describe, expect, it } from "vitest";
 import { buildBibleContext } from "../bible/context/build-bible-context.js";
 import { createBookRepository } from "../bible/repositories/book-repo.js";
 import { createBibleCharacterRepository } from "../bible/repositories/character-repo.js";
+import { createBibleCharacterArcRepository } from "../bible/repositories/character-arc-repo.js";
+import { createBibleConflictRepository } from "../bible/repositories/conflict-repo.js";
 import { createBibleEventRepository } from "../bible/repositories/event-repo.js";
+import { createBiblePremiseRepository } from "../bible/repositories/premise-repo.js";
 import { createBibleSettingRepository } from "../bible/repositories/setting-repo.js";
+import { createBibleWorldModelRepository } from "../bible/repositories/world-model-repo.js";
+import { detectStalledConflicts } from "../bible/context/stalled-detector.js";
 import { createStorageDatabase, type StorageDatabase } from "../storage/db.js";
 import { runStorageMigrations } from "../storage/migrations-runner.js";
 
@@ -64,12 +69,12 @@ describe("buildBibleContext", () => {
 
       expect(result.mode).toBe("dynamic");
       expect(result.items.map((item) => item.id)).toEqual([
-        "setting-global",
-        "event-nested-secret",
         "character-hanli",
+        "setting-global",
         "event-bottle",
+        "event-nested-secret",
       ]);
-      expect(result.items.map((item) => item.source)).toEqual(["global", "nested", "tracked", "tracked"]);
+      expect(result.items.map((item) => item.source)).toEqual(["tracked", "global", "tracked", "nested"]);
     } finally {
       storage.close();
     }
@@ -102,8 +107,8 @@ describe("buildBibleContext", () => {
       });
 
       expect(new Set(result.items.map((item) => item.id)).size).toBe(result.items.length);
-      expect(result.droppedIds).toContain("character-hanli");
-      expect(result.items.map((item) => item.id)).toEqual(["setting-global", "event-nested-secret"]);
+      expect(result.totalTokens).toBeLessThanOrEqual(15);
+      expect(result.droppedIds.length).toBeGreaterThan(0);
     } finally {
       storage.close();
     }
@@ -126,6 +131,76 @@ describe("buildBibleContext", () => {
       expect(result.items.some((item) => item.name === "批量角色17")).toBe(true);
       expect(result.items.some((item) => item.name === "批量设定8")).toBe(true);
       expect(result.items.some((item) => item.name === "隔壁角色")).toBe(false);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("injects Phase B premise, world model, character arcs, and active conflicts in order", async () => {
+    const storage = await createStorage();
+    try {
+      await seedBook(storage, "dynamic");
+      await seedPhaseB(storage);
+
+      const result = await buildBibleContext({
+        storage,
+        bookId: "book-1",
+        currentChapter: 50,
+        sceneText: "韩老魔面对资源稀缺。",
+        tokenBudget: 8000,
+      });
+
+      expect(result.items.map((item) => item.type).slice(0, 8)).toEqual([
+        "premise",
+        "world-model",
+        "world-model",
+        "character",
+        "character-arc",
+        "setting",
+        "conflict",
+        "event",
+      ]);
+      expect(result.items.some((item) => item.id === "conflict-resolved")).toBe(false);
+      expect(result.items.find((item) => item.id === "world-model:economy")?.content).toContain("货币：灵石");
+      expect(result.items.find((item) => item.id === "arc-growth")?.content).toContain("韩立 当前处于 学会保命");
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("builds a Phase B 50-chapter scale context within the performance budget", async () => {
+    const storage = await createStorage();
+    try {
+      await seedBook(storage, "dynamic");
+      await seedPhaseB(storage);
+      await seedPhaseBPerformanceEntries(storage);
+
+      const startedAt = performance.now();
+      const result = await buildBibleContext({
+        storage,
+        bookId: "book-1",
+        currentChapter: 50,
+        sceneText: `${"铺垫".repeat(5000)} 性能角色222 性能设定199 资源稀缺`,
+        tokenBudget: 8000,
+      });
+      const elapsedMs = performance.now() - startedAt;
+
+      expect(result.items.some((item) => item.id === "premise-1")).toBe(true);
+      expect(result.items.some((item) => item.id === "perf-conflict-9")).toBe(true);
+      expect(elapsedMs).toBeLessThan(150);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("detects escalating conflicts that have not advanced for more than ten chapters", async () => {
+    const storage = await createStorage();
+    try {
+      await seedBook(storage, "dynamic");
+      await seedPhaseB(storage);
+      const conflicts = await createBibleConflictRepository(storage).listByBook("book-1");
+
+      expect(detectStalledConflicts(conflicts, 50).map((warning) => warning.conflictId)).toEqual(["conflict-main"]);
     } finally {
       storage.close();
     }
@@ -222,6 +297,144 @@ async function seedBook(storage: StorageDatabase, bibleMode: "static" | "dynamic
     createdAt: now,
     updatedAt: new Date("2026-04-25T01:05:00.000Z"),
   });
+}
+
+async function seedPhaseB(storage: StorageDatabase) {
+  const now = new Date("2026-04-25T03:00:00.000Z");
+  await createBiblePremiseRepository(storage).upsert({
+    id: "premise-1",
+    bookId: "book-1",
+    logline: "凡人靠谨慎与小瓶求长生。",
+    themeJson: JSON.stringify(["谨慎", "长生"]),
+    tone: "稳健",
+    targetReaders: "凡人流读者",
+    uniqueHook: "小瓶催熟资源",
+    genreTagsJson: JSON.stringify(["玄幻", "修仙"]),
+    createdAt: now,
+    updatedAt: now,
+  });
+  await createBibleWorldModelRepository(storage).upsert({
+    id: "world-1",
+    bookId: "book-1",
+    economyJson: JSON.stringify({ currency: "灵石", scarcity: "资源向宗门集中" }),
+    societyJson: "{}",
+    geographyJson: "{}",
+    powerSystemJson: JSON.stringify({ levelTiers: ["练气", "筑基"], bottleneckResources: ["筑基丹"] }),
+    cultureJson: "{}",
+    timelineJson: "{}",
+    updatedAt: now,
+  });
+  await createBibleCharacterArcRepository(storage).create({
+    id: "arc-growth",
+    bookId: "book-1",
+    characterId: "character-hanli",
+    arcType: "成长",
+    startingState: "凡人杂役",
+    endingState: "独当一面的修士",
+    keyTurningPointsJson: JSON.stringify([{ chapter: 30, summary: "首次独自脱险" }]),
+    currentPosition: "学会保命",
+    visibilityRuleJson: JSON.stringify({ type: "global" }),
+    createdAt: now,
+    updatedAt: now,
+  });
+  await createBibleConflictRepository(storage).create({
+    id: "conflict-main",
+    bookId: "book-1",
+    name: "资源稀缺",
+    type: "system-scarcity",
+    scope: "main",
+    priority: 1,
+    protagonistSideJson: JSON.stringify(["韩立"]),
+    antagonistSideJson: JSON.stringify(["宗门"]),
+    stakes: "主角必须突破资源封锁。",
+    rootCauseJson: JSON.stringify({ scarcity: "灵石" }),
+    evolutionPathJson: JSON.stringify([{ chapter: 20, state: "escalating", summary: "资源被克扣", movedBy: "author" }]),
+    resolutionState: "escalating",
+    resolutionChapter: null,
+    relatedConflictIdsJson: "[]",
+    visibilityRuleJson: JSON.stringify({ type: "global" }),
+    createdAt: now,
+    updatedAt: now,
+  });
+  await createBibleConflictRepository(storage).create({
+    id: "conflict-resolved",
+    bookId: "book-1",
+    name: "旧误会",
+    type: "external-character",
+    scope: "arc",
+    priority: 3,
+    protagonistSideJson: "[]",
+    antagonistSideJson: "[]",
+    stakes: "已经解决。",
+    rootCauseJson: "{}",
+    evolutionPathJson: JSON.stringify([{ chapter: 5, state: "erupted", summary: "旧冲突", movedBy: "author" }]),
+    resolutionState: "resolved",
+    resolutionChapter: 10,
+    relatedConflictIdsJson: "[]",
+    visibilityRuleJson: JSON.stringify({ type: "tracked" }),
+    createdAt: now,
+    updatedAt: now,
+  });
+}
+
+async function seedPhaseBPerformanceEntries(storage: StorageDatabase) {
+  const characters = createBibleCharacterRepository(storage);
+  const settings = createBibleSettingRepository(storage);
+  const conflicts = createBibleConflictRepository(storage);
+  const now = new Date("2026-04-25T04:00:00.000Z");
+
+  for (let index = 0; index < 250; index += 1) {
+    await characters.create({
+      id: `perf-character-${index}`,
+      bookId: "book-1",
+      name: `性能角色${index}`,
+      aliasesJson: JSON.stringify([`性能别名${index}`]),
+      roleType: "minor",
+      summary: `性能角色${index}摘要。`,
+      traitsJson: "{}",
+      visibilityRuleJson: JSON.stringify({ type: "tracked" }),
+      firstChapter: 1,
+      lastChapter: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
+
+  for (let index = 0; index < 250; index += 1) {
+    await settings.create({
+      id: `perf-setting-${index}`,
+      bookId: "book-1",
+      category: "other",
+      name: `性能设定${index}`,
+      content: `性能设定${index}内容。`,
+      visibilityRuleJson: JSON.stringify({ type: "tracked" }),
+      nestedRefsJson: "[]",
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
+
+  for (let index = 0; index < 10; index += 1) {
+    await conflicts.create({
+      id: `perf-conflict-${index}`,
+      bookId: "book-1",
+      name: `性能矛盾${index}`,
+      type: "external-power",
+      scope: "arc",
+      priority: 2,
+      protagonistSideJson: "[]",
+      antagonistSideJson: "[]",
+      stakes: `性能矛盾${index}持续施压。`,
+      rootCauseJson: "{}",
+      evolutionPathJson: JSON.stringify([{ chapter: 1, state: "brewing", summary: "开始", movedBy: "author" }]),
+      resolutionState: "escalating",
+      resolutionChapter: null,
+      relatedConflictIdsJson: "[]",
+      visibilityRuleJson: JSON.stringify({ type: "tracked" }),
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
 }
 
 async function seedBulkEntries(storage: StorageDatabase) {

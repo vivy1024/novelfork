@@ -7,7 +7,7 @@ export type VisibilityRule =
   | { type: "tracked"; visibleAfterChapter?: number; visibleUntilChapter?: number }
   | { type: "nested"; parentIds: string[]; visibleAfterChapter?: number; visibleUntilChapter?: number };
 
-export type BibleContextItemType = "character" | "event" | "setting" | "chapter-summary";
+export type BibleContextItemType = "character" | "event" | "setting" | "chapter-summary" | "conflict" | "world-model" | "premise" | "character-arc";
 
 export interface BibleContextItem {
   id: string;
@@ -124,3 +124,76 @@ export interface BibleChapterSummaryRecord {
 
 export type CreateBibleChapterSummaryInput = Omit<BibleChapterSummaryRecord, "deletedAt">;
 export type UpdateBibleChapterSummaryInput = Partial<Omit<CreateBibleChapterSummaryInput, "id" | "bookId" | "chapterNumber" | "createdAt">>;
+
+export interface BibleConflictRecord {
+  id: string;
+  bookId: string;
+  name: string;
+  type: string;
+  scope: string;
+  priority: number;
+  protagonistSideJson: string;
+  antagonistSideJson: string;
+  stakes: string;
+  rootCauseJson: string;
+  evolutionPathJson: string;
+  resolutionState: string;
+  resolutionChapter: number | null;
+  relatedConflictIdsJson: string;
+  visibilityRuleJson: string;
+  createdAt: Date;
+  updatedAt: Date;
+  deletedAt: Date | null;
+}
+
+export type CreateBibleConflictInput = Omit<BibleConflictRecord, "deletedAt">;
+export type UpdateBibleConflictInput = Partial<Omit<CreateBibleConflictInput, "id" | "bookId" | "createdAt">>;
+
+export interface BibleWorldModelRecord {
+  id: string;
+  bookId: string;
+  economyJson: string;
+  societyJson: string;
+  geographyJson: string;
+  powerSystemJson: string;
+  cultureJson: string;
+  timelineJson: string;
+  updatedAt: Date;
+}
+
+export type CreateBibleWorldModelInput = BibleWorldModelRecord;
+export type UpdateBibleWorldModelInput = Partial<Omit<CreateBibleWorldModelInput, "id" | "bookId">>;
+
+export interface BiblePremiseRecord {
+  id: string;
+  bookId: string;
+  logline: string;
+  themeJson: string;
+  tone: string;
+  targetReaders: string;
+  uniqueHook: string;
+  genreTagsJson: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export type CreateBiblePremiseInput = BiblePremiseRecord;
+export type UpdateBiblePremiseInput = Partial<Omit<CreateBiblePremiseInput, "id" | "bookId" | "createdAt">>;
+
+export interface BibleCharacterArcRecord {
+  id: string;
+  bookId: string;
+  characterId: string;
+  arcType: string;
+  startingState: string;
+  endingState: string;
+  keyTurningPointsJson: string;
+  currentPosition: string;
+  visibilityRuleJson: string;
+  deletedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export type CreateBibleCharacterArcInput = Omit<BibleCharacterArcRecord, "deletedAt">;
+export type UpdateBibleCharacterArcInput = Partial<Omit<CreateBibleCharacterArcInput, "id" | "bookId" | "characterId" | "createdAt">>;

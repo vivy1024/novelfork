@@ -86,6 +86,47 @@ function serializeChapterSummary(row: Awaited<ReturnType<ReturnType<CoreModule["
   };
 }
 
+function serializeConflict(row: Awaited<ReturnType<ReturnType<CoreModule["createBibleConflictRepository"]>["create"]>>, currentChapter?: number, stalledWarnings: Array<{ conflictId: string }> = []) {
+  return {
+    ...row,
+    protagonistSide: safeJsonParse(row.protagonistSideJson, [] as string[]),
+    antagonistSide: safeJsonParse(row.antagonistSideJson, [] as string[]),
+    rootCause: safeJsonParse(row.rootCauseJson, {} as Record<string, unknown>),
+    evolutionPath: safeJsonParse(row.evolutionPathJson, [] as Array<Record<string, unknown>>),
+    relatedConflictIds: safeJsonParse(row.relatedConflictIdsJson, [] as string[]),
+    visibilityRule: safeJsonParse(row.visibilityRuleJson, { type: "tracked" }),
+    stalled: currentChapter === undefined ? false : stalledWarnings.some((warning) => warning.conflictId === row.id),
+  };
+}
+
+function serializeWorldModel(row: Awaited<ReturnType<ReturnType<CoreModule["createBibleWorldModelRepository"]>["create"]>>) {
+  return {
+    ...row,
+    economy: safeJsonParse(row.economyJson, {} as Record<string, unknown>),
+    society: safeJsonParse(row.societyJson, {} as Record<string, unknown>),
+    geography: safeJsonParse(row.geographyJson, {} as Record<string, unknown>),
+    powerSystem: safeJsonParse(row.powerSystemJson, {} as Record<string, unknown>),
+    culture: safeJsonParse(row.cultureJson, {} as Record<string, unknown>),
+    timeline: safeJsonParse(row.timelineJson, {} as Record<string, unknown>),
+  };
+}
+
+function serializePremise(row: Awaited<ReturnType<ReturnType<CoreModule["createBiblePremiseRepository"]>["create"]>>) {
+  return {
+    ...row,
+    theme: safeJsonParse(row.themeJson, [] as string[]),
+    genreTags: safeJsonParse(row.genreTagsJson, [] as string[]),
+  };
+}
+
+function serializeCharacterArc(row: Awaited<ReturnType<ReturnType<CoreModule["createBibleCharacterArcRepository"]>["create"]>>) {
+  return {
+    ...row,
+    keyTurningPoints: safeJsonParse(row.keyTurningPointsJson, [] as Array<Record<string, unknown>>),
+    visibilityRule: safeJsonParse(row.visibilityRuleJson, { type: "global" }),
+  };
+}
+
 async function ensureBook(storage: StorageDatabase, bookId: string) {
   const { createBookRepository } = await loadCore();
   const book = await createBookRepository(storage).getById(bookId);
@@ -174,6 +215,10 @@ export function createBibleRouter(options: CreateBibleRouterOptions = {}): Hono 
   registerEventRoutes(app, options);
   registerSettingRoutes(app, options);
   registerChapterSummaryRoutes(app, options);
+  registerConflictRoutes(app, options);
+  registerWorldModelRoutes(app, options);
+  registerPremiseRoutes(app, options);
+  registerCharacterArcRoutes(app, options);
 
   app.post("/api/books/:bookId/bible/preview-context", async (c) => {
     const storage = await resolveStorage(options);
@@ -314,6 +359,231 @@ function registerChapterSummaryRoutes(app: Hono, options: CreateBibleRouterOptio
   });
 
   registerSimpleGetPutDelete(app, options, "chapter-summaries");
+}
+
+function registerConflictRoutes(app: Hono, options: CreateBibleRouterOptions): void {
+  app.get("/api/books/:bookId/bible/conflicts/active", async (c) => {
+    const storage = await resolveStorage(options);
+    const bookId = c.req.param("bookId");
+    await ensureBook(storage, bookId);
+    const chapter = Number(c.req.query("chapter") ?? "0");
+    const core = await loadCore();
+    const conflicts = await core.createBibleConflictRepository(storage).getActiveConflictsAtChapter(bookId, Number.isFinite(chapter) ? chapter : 0);
+    return c.json({ conflicts: conflicts.map((row) => serializeConflict(row)) });
+  });
+
+  app.get("/api/books/:bookId/bible/conflicts", async (c) => {
+    const storage = await resolveStorage(options);
+    const bookId = c.req.param("bookId");
+    const book = await ensureBook(storage, bookId);
+    const core = await loadCore();
+    const warnings = core.detectStalledConflicts(await core.createBibleConflictRepository(storage).listByBook(bookId), book.currentChapter);
+    const conflicts = (await core.createBibleConflictRepository(storage).listByBook(bookId)).map((row) => serializeConflict(row, book.currentChapter, warnings));
+    return c.json({ conflicts });
+  });
+
+  app.post("/api/books/:bookId/bible/conflicts", async (c) => {
+    const storage = await resolveStorage(options);
+    const bookId = c.req.param("bookId");
+    await ensureBook(storage, bookId);
+    const body = await c.req.json<Record<string, unknown>>();
+    const timestamp = now();
+    const core = await loadCore();
+    const conflict = await core.createBibleConflictRepository(storage).create({
+      id: typeof body.id === "string" ? body.id : crypto.randomUUID(),
+      bookId,
+      name: requireName(body),
+      type: typeof body.type === "string" ? body.type : "external-character",
+      scope: typeof body.scope === "string" ? body.scope : "arc",
+      priority: typeof body.priority === "number" ? body.priority : 3,
+      protagonistSideJson: jsonStringify(body.protagonistSide, []),
+      antagonistSideJson: jsonStringify(body.antagonistSide, []),
+      stakes: typeof body.stakes === "string" ? body.stakes : "",
+      rootCauseJson: jsonStringify(body.rootCause, {}),
+      evolutionPathJson: jsonStringify(body.evolutionPath, []),
+      resolutionState: typeof body.resolutionState === "string" ? body.resolutionState : "unborn",
+      resolutionChapter: normalizeNullableNumber(body.resolutionChapter),
+      relatedConflictIdsJson: jsonStringify(body.relatedConflictIds, []),
+      visibilityRuleJson: normalizeVisibilityRule(body, "tracked"),
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    });
+    return c.json({ conflict: serializeConflict(conflict) }, 201);
+  });
+
+  app.get("/api/books/:bookId/bible/conflicts/:id", async (c) => {
+    const storage = await resolveStorage(options);
+    const core = await loadCore();
+    const conflict = await core.createBibleConflictRepository(storage).getById(c.req.param("bookId"), c.req.param("id"));
+    if (!conflict) throw new ApiError(404, "BIBLE_ENTRY_NOT_FOUND", `Conflict not found: ${c.req.param("id")}`);
+    return c.json({ conflict: serializeConflict(conflict) });
+  });
+
+  app.put("/api/books/:bookId/bible/conflicts/:id", async (c) => {
+    const storage = await resolveStorage(options);
+    const body = await c.req.json<Record<string, unknown>>();
+    const core = await loadCore();
+    const conflict = await core.createBibleConflictRepository(storage).update(c.req.param("bookId"), c.req.param("id"), {
+      ...(typeof body.name === "string" ? { name: body.name } : {}),
+      ...(typeof body.type === "string" ? { type: body.type } : {}),
+      ...(typeof body.scope === "string" ? { scope: body.scope } : {}),
+      ...(typeof body.priority === "number" ? { priority: body.priority } : {}),
+      ...(Array.isArray(body.protagonistSide) ? { protagonistSideJson: jsonStringify(body.protagonistSide, []) } : {}),
+      ...(Array.isArray(body.antagonistSide) ? { antagonistSideJson: jsonStringify(body.antagonistSide, []) } : {}),
+      ...(typeof body.stakes === "string" ? { stakes: body.stakes } : {}),
+      ...(body.rootCause && typeof body.rootCause === "object" ? { rootCauseJson: jsonStringify(body.rootCause, {}) } : {}),
+      ...(Array.isArray(body.evolutionPath) ? { evolutionPathJson: jsonStringify(body.evolutionPath, []) } : {}),
+      ...(typeof body.resolutionState === "string" ? { resolutionState: body.resolutionState } : {}),
+      ...(typeof body.resolutionChapter === "number" || body.resolutionChapter === null ? { resolutionChapter: normalizeNullableNumber(body.resolutionChapter) } : {}),
+      ...(Array.isArray(body.relatedConflictIds) ? { relatedConflictIdsJson: jsonStringify(body.relatedConflictIds, []) } : {}),
+      ...(body.visibilityRule && typeof body.visibilityRule === "object" ? { visibilityRuleJson: normalizeVisibilityRule(body, "tracked") } : {}),
+      updatedAt: now(),
+    });
+    if (!conflict) throw new ApiError(404, "BIBLE_ENTRY_NOT_FOUND", `Conflict not found: ${c.req.param("id")}`);
+    return c.json({ conflict: serializeConflict(conflict) });
+  });
+
+  app.delete("/api/books/:bookId/bible/conflicts/:id", async (c) => {
+    const storage = await resolveStorage(options);
+    const core = await loadCore();
+    const deleted = await core.createBibleConflictRepository(storage).softDelete(c.req.param("bookId"), c.req.param("id"));
+    deletedResponse("Conflict", c.req.param("id"), deleted);
+    return c.json({ ok: true, id: c.req.param("id") });
+  });
+}
+
+function registerWorldModelRoutes(app: Hono, options: CreateBibleRouterOptions): void {
+  app.get("/api/books/:bookId/bible/world-model", async (c) => {
+    const storage = await resolveStorage(options);
+    const bookId = c.req.param("bookId");
+    await ensureBook(storage, bookId);
+    const core = await loadCore();
+    const worldModel = await core.createBibleWorldModelRepository(storage).getByBook(bookId);
+    return c.json({ worldModel: worldModel ? serializeWorldModel(worldModel) : null });
+  });
+
+  app.put("/api/books/:bookId/bible/world-model", async (c) => {
+    const storage = await resolveStorage(options);
+    const bookId = c.req.param("bookId");
+    await ensureBook(storage, bookId);
+    const body = await c.req.json<Record<string, unknown>>();
+    const core = await loadCore();
+    const worldModel = await core.createBibleWorldModelRepository(storage).upsert({
+      id: typeof body.id === "string" ? body.id : crypto.randomUUID(),
+      bookId,
+      economyJson: jsonStringify(body.economy, {}),
+      societyJson: jsonStringify(body.society, {}),
+      geographyJson: jsonStringify(body.geography, {}),
+      powerSystemJson: jsonStringify(body.powerSystem, {}),
+      cultureJson: jsonStringify(body.culture, {}),
+      timelineJson: jsonStringify(body.timeline, {}),
+      updatedAt: now(),
+    });
+    return c.json({ worldModel: serializeWorldModel(worldModel) });
+  });
+}
+
+function registerPremiseRoutes(app: Hono, options: CreateBibleRouterOptions): void {
+  app.get("/api/books/:bookId/bible/premise", async (c) => {
+    const storage = await resolveStorage(options);
+    const bookId = c.req.param("bookId");
+    await ensureBook(storage, bookId);
+    const core = await loadCore();
+    const premise = await core.createBiblePremiseRepository(storage).getByBook(bookId);
+    return c.json({ premise: premise ? serializePremise(premise) : null });
+  });
+
+  app.put("/api/books/:bookId/bible/premise", async (c) => {
+    const storage = await resolveStorage(options);
+    const bookId = c.req.param("bookId");
+    await ensureBook(storage, bookId);
+    const body = await c.req.json<Record<string, unknown>>();
+    const timestamp = now();
+    const core = await loadCore();
+    const current = await core.createBiblePremiseRepository(storage).getByBook(bookId);
+    const premise = await core.createBiblePremiseRepository(storage).upsert({
+      id: typeof body.id === "string" ? body.id : current?.id ?? crypto.randomUUID(),
+      bookId,
+      logline: typeof body.logline === "string" ? body.logline : current?.logline ?? "",
+      themeJson: jsonStringify(body.theme, current ? safeJsonParse(current.themeJson, [] as string[]) : []),
+      tone: typeof body.tone === "string" ? body.tone : current?.tone ?? "",
+      targetReaders: typeof body.targetReaders === "string" ? body.targetReaders : current?.targetReaders ?? "",
+      uniqueHook: typeof body.uniqueHook === "string" ? body.uniqueHook : current?.uniqueHook ?? "",
+      genreTagsJson: jsonStringify(body.genreTags, current ? safeJsonParse(current.genreTagsJson, [] as string[]) : []),
+      createdAt: current?.createdAt ?? timestamp,
+      updatedAt: timestamp,
+    });
+    return c.json({ premise: serializePremise(premise) });
+  });
+}
+
+function registerCharacterArcRoutes(app: Hono, options: CreateBibleRouterOptions): void {
+  app.get("/api/books/:bookId/bible/character-arcs", async (c) => {
+    const storage = await resolveStorage(options);
+    const bookId = c.req.param("bookId");
+    await ensureBook(storage, bookId);
+    const core = await loadCore();
+    return c.json({ characterArcs: (await core.createBibleCharacterArcRepository(storage).listByBook(bookId)).map(serializeCharacterArc) });
+  });
+
+  app.get("/api/books/:bookId/bible/character-arcs/:id", async (c) => {
+    const storage = await resolveStorage(options);
+    const core = await loadCore();
+    const arc = await core.createBibleCharacterArcRepository(storage).getById(c.req.param("bookId"), c.req.param("id"));
+    if (!arc) throw new ApiError(404, "BIBLE_ENTRY_NOT_FOUND", `Character arc not found: ${c.req.param("id")}`);
+    return c.json({ characterArc: serializeCharacterArc(arc) });
+  });
+
+  app.post("/api/books/:bookId/bible/character-arcs", async (c) => {
+    const storage = await resolveStorage(options);
+    const bookId = c.req.param("bookId");
+    await ensureBook(storage, bookId);
+    const body = await c.req.json<Record<string, unknown>>();
+    if (typeof body.characterId !== "string" || body.characterId.trim().length === 0) {
+      throw new ApiError(400, "BIBLE_CHARACTER_ID_REQUIRED", "characterId is required.");
+    }
+    const timestamp = now();
+    const core = await loadCore();
+    const arc = await core.createBibleCharacterArcRepository(storage).create({
+      id: typeof body.id === "string" ? body.id : crypto.randomUUID(),
+      bookId,
+      characterId: body.characterId,
+      arcType: typeof body.arcType === "string" ? body.arcType : "成长",
+      startingState: typeof body.startingState === "string" ? body.startingState : "",
+      endingState: typeof body.endingState === "string" ? body.endingState : "",
+      keyTurningPointsJson: jsonStringify(body.keyTurningPoints, []),
+      currentPosition: typeof body.currentPosition === "string" ? body.currentPosition : "",
+      visibilityRuleJson: normalizeVisibilityRule(body, "global"),
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    });
+    return c.json({ characterArc: serializeCharacterArc(arc) }, 201);
+  });
+
+  app.put("/api/books/:bookId/bible/character-arcs/:id", async (c) => {
+    const storage = await resolveStorage(options);
+    const body = await c.req.json<Record<string, unknown>>();
+    const core = await loadCore();
+    const arc = await core.createBibleCharacterArcRepository(storage).update(c.req.param("bookId"), c.req.param("id"), {
+      ...(typeof body.arcType === "string" ? { arcType: body.arcType } : {}),
+      ...(typeof body.startingState === "string" ? { startingState: body.startingState } : {}),
+      ...(typeof body.endingState === "string" ? { endingState: body.endingState } : {}),
+      ...(Array.isArray(body.keyTurningPoints) ? { keyTurningPointsJson: jsonStringify(body.keyTurningPoints, []) } : {}),
+      ...(typeof body.currentPosition === "string" ? { currentPosition: body.currentPosition } : {}),
+      ...(body.visibilityRule && typeof body.visibilityRule === "object" ? { visibilityRuleJson: normalizeVisibilityRule(body, "global") } : {}),
+      updatedAt: now(),
+    });
+    if (!arc) throw new ApiError(404, "BIBLE_ENTRY_NOT_FOUND", `Character arc not found: ${c.req.param("id")}`);
+    return c.json({ characterArc: serializeCharacterArc(arc) });
+  });
+
+  app.delete("/api/books/:bookId/bible/character-arcs/:id", async (c) => {
+    const storage = await resolveStorage(options);
+    const core = await loadCore();
+    const deleted = await core.createBibleCharacterArcRepository(storage).softDelete(c.req.param("bookId"), c.req.param("id"));
+    deletedResponse("CharacterArc", c.req.param("id"), deleted);
+    return c.json({ ok: true, id: c.req.param("id") });
+  });
 }
 
 function registerSimpleGetPutDelete(app: Hono, options: CreateBibleRouterOptions, kind: BibleEntityKind): void {

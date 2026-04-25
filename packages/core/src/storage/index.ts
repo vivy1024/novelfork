@@ -18,4 +18,4 @@ export { runStorageMigrations, type RunStorageMigrationsOptions, type StorageMig
 export { createKvRepository } from "./repositories/kv-repo.js";
 export { createSessionMessageRepository, type CreateSessionMessageRepositoryOptions, type SessionMessageRepositoryAppendAttemptContext, type SessionMessageRepositoryAppendAttemptControl, type StoredSessionMessage, type StoredSessionMessageCursor, type StoredSessionMessageInput, type StoredSessionMessageRole } from "./repositories/session-message-repo.js";
 export { createSessionRepository, StorageError, type CreateStoredSessionInput, type StoredSessionRecord, type UpdateStoredSessionInput } from "./repositories/session-repo.js";
-export { books, bibleCharacters, bibleEvents, bibleSettings, bibleChapterSummaries, sessions, sessionMessages, sessionMessageCursors, kvStore, drizzleMigrations } from "./schema.js";
+export { books, bibleCharacters, bibleEvents, bibleSettings, bibleChapterSummaries, bibleConflicts, bibleWorldModels, biblePremises, bibleCharacterArcs, sessions, sessionMessages, sessionMessageCursors, kvStore, drizzleMigrations } from "./schema.js";

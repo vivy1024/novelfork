@@ -175,6 +175,73 @@ describe("Bible API routes", () => {
     }
   });
 
+  it("supports Phase B premise, world model, conflicts, and character arcs", async () => {
+    const storage = await createStorage();
+    try {
+      const router = createBibleRouter({ storage });
+      await postJson(router, "/api/books/book-1/bible/characters", {
+        id: "char-1",
+        name: "韩立",
+        summary: "谨慎求长生。",
+        visibilityRule: { type: "tracked" },
+      });
+
+      const premiseResponse = await router.request("http://localhost/api/books/book-1/bible/premise", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ logline: "凡人靠小瓶求长生。", tone: "稳健", theme: ["长生"] }),
+      });
+      expect(premiseResponse.status).toBe(200);
+      expect(await premiseResponse.json()).toMatchObject({ premise: { logline: "凡人靠小瓶求长生。", theme: ["长生"] } });
+
+      const worldResponse = await router.request("http://localhost/api/books/book-1/bible/world-model", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ economy: { currency: "灵石" }, powerSystem: { levelTiers: ["练气", "筑基"] } }),
+      });
+      expect(worldResponse.status).toBe(200);
+      expect(await worldResponse.json()).toMatchObject({ worldModel: { economy: { currency: "灵石" } } });
+
+      const conflictResponse = await postJson(router, "/api/books/book-1/bible/conflicts", {
+        id: "conflict-1",
+        name: "资源稀缺",
+        type: "system-scarcity",
+        scope: "main",
+        priority: 1,
+        stakes: "主角必须突破资源封锁。",
+        evolutionPath: [{ chapter: 1, state: "escalating", summary: "资源被克扣" }],
+        resolutionState: "escalating",
+      });
+      expect(conflictResponse.status).toBe(201);
+      expect(await conflictResponse.json()).toMatchObject({ conflict: { id: "conflict-1", protagonistSide: [] } });
+
+      const activeResponse = await router.request("http://localhost/api/books/book-1/bible/conflicts/active?chapter=5");
+      expect(activeResponse.status).toBe(200);
+      expect(await activeResponse.json()).toMatchObject({ conflicts: [{ id: "conflict-1" }] });
+
+      const arcResponse = await postJson(router, "/api/books/book-1/bible/character-arcs", {
+        id: "arc-1",
+        characterId: "char-1",
+        arcType: "成长",
+        startingState: "凡人杂役",
+        endingState: "独当一面",
+        currentPosition: "学会保命",
+      });
+      expect(arcResponse.status).toBe(201);
+      expect(await arcResponse.json()).toMatchObject({ characterArc: { id: "arc-1", keyTurningPoints: [] } });
+
+      const previewResponse = await postJson(router, "/api/books/book-1/bible/preview-context", {
+        currentChapter: 5,
+        sceneText: "韩立遭遇资源稀缺。",
+      });
+      expect(previewResponse.status).toBe(200);
+      const preview = await previewResponse.json();
+      expect(preview.context.items.map((item: { id: string }) => item.id)).toEqual(expect.arrayContaining(["conflict-1", "arc-1"]));
+    } finally {
+      storage.close();
+    }
+  });
+
   it("previews buildBibleContext and patches book settings", async () => {
     const storage = await createStorage();
     try {
@@ -202,7 +269,7 @@ describe("Bible API routes", () => {
       expect(await previewResponse.json()).toMatchObject({
         context: {
           mode: "dynamic",
-          items: [{ id: "setting-1" }, { id: "char-1" }],
+          items: [{ id: "char-1" }, { id: "setting-1" }],
         },
       });
 

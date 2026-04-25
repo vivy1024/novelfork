@@ -142,6 +142,98 @@ export const bibleChapterSummaries = sqliteTable(
   ],
 );
 
+export const bibleConflicts = sqliteTable(
+  "bible_conflict",
+  {
+    id: text("id").primaryKey(),
+    bookId: text("book_id")
+      .notNull()
+      .references(() => books.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    type: text("type").notNull(),
+    scope: text("scope").notNull().default("arc"),
+    priority: integer("priority").notNull().default(3),
+    protagonistSideJson: text("protagonist_side_json").notNull().default("[]"),
+    antagonistSideJson: text("antagonist_side_json").notNull().default("[]"),
+    stakes: text("stakes").notNull().default(""),
+    rootCauseJson: text("root_cause_json").notNull().default("{}"),
+    evolutionPathJson: text("evolution_path_json").notNull().default("[]"),
+    resolutionState: text("resolution_state").notNull().default("unborn"),
+    resolutionChapter: integer("resolution_chapter"),
+    relatedConflictIdsJson: text("related_conflict_ids_json").notNull().default("[]"),
+    visibilityRuleJson: text("visibility_rule_json").notNull().default('{"type":"tracked"}'),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+    deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
+  },
+  (table) => [
+    index("bible_conflict_book_status_idx").on(table.bookId, table.resolutionState),
+    index("bible_conflict_book_priority_idx").on(table.bookId, table.priority),
+  ],
+);
+
+export const bibleWorldModels = sqliteTable(
+  "bible_world_model",
+  {
+    id: text("id").primaryKey(),
+    bookId: text("book_id")
+      .notNull()
+      .unique()
+      .references(() => books.id, { onDelete: "cascade" }),
+    economyJson: text("economy_json").notNull().default("{}"),
+    societyJson: text("society_json").notNull().default("{}"),
+    geographyJson: text("geography_json").notNull().default("{}"),
+    powerSystemJson: text("power_system_json").notNull().default("{}"),
+    cultureJson: text("culture_json").notNull().default("{}"),
+    timelineJson: text("timeline_json").notNull().default("{}"),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [uniqueIndex("bible_world_model_book_id_idx").on(table.bookId)],
+);
+
+export const biblePremises = sqliteTable(
+  "bible_premise",
+  {
+    id: text("id").primaryKey(),
+    bookId: text("book_id")
+      .notNull()
+      .unique()
+      .references(() => books.id, { onDelete: "cascade" }),
+    logline: text("logline").notNull().default(""),
+    themeJson: text("theme_json").notNull().default("[]"),
+    tone: text("tone").notNull().default(""),
+    targetReaders: text("target_readers").notNull().default(""),
+    uniqueHook: text("unique_hook").notNull().default(""),
+    genreTagsJson: text("genre_tags_json").notNull().default("[]"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [uniqueIndex("bible_premise_book_id_idx").on(table.bookId)],
+);
+
+export const bibleCharacterArcs = sqliteTable(
+  "bible_character_arc",
+  {
+    id: text("id").primaryKey(),
+    bookId: text("book_id")
+      .notNull()
+      .references(() => books.id, { onDelete: "cascade" }),
+    characterId: text("character_id")
+      .notNull()
+      .references(() => bibleCharacters.id, { onDelete: "cascade" }),
+    arcType: text("arc_type").notNull(),
+    startingState: text("starting_state").notNull().default(""),
+    endingState: text("ending_state").notNull().default(""),
+    keyTurningPointsJson: text("key_turning_points_json").notNull().default("[]"),
+    currentPosition: text("current_position").notNull().default(""),
+    visibilityRuleJson: text("visibility_rule_json").notNull().default('{"type":"global"}'),
+    deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [index("bible_character_arc_book_character_idx").on(table.bookId, table.characterId)],
+);
+
 export const drizzleMigrations = sqliteTable("drizzle_migrations", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   hash: text("hash").notNull().unique(),
