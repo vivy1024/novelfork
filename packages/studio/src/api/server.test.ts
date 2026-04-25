@@ -976,7 +976,7 @@ describe("createStudioServer daemon lifecycle", () => {
         },
       });
 
-      await Promise.resolve();
+      await waitForPath(join(root, "books", "retry-book", "chapters", "index.json"));
 
       const conflictingResponse = await app.request("http://localhost/api/books/create", {
         method: "POST",
@@ -1034,10 +1034,11 @@ describe("createStudioServer daemon lifecycle", () => {
     expect(initBookMock).toHaveBeenCalled();
 
     const bookJsonPath = join(root, "books", "fallback-book", "book.json");
-    await waitForPath(bookJsonPath);
+    const chapterIndexPath = join(root, "books", "fallback-book", "chapters", "index.json");
+    await waitForPath(chapterIndexPath);
     await expect(access(bookJsonPath)).resolves.toBeUndefined();
     await expect(access(join(root, "books", "fallback-book", "story", "story_bible.md"))).resolves.toBeUndefined();
-    await expect(access(join(root, "books", "fallback-book", "chapters", "index.json"))).resolves.toBeUndefined();
+    await expect(access(chapterIndexPath)).resolves.toBeUndefined();
 
     const bookJson = JSON.parse(await readFile(bookJsonPath, "utf-8")) as { title?: string };
     expect(bookJson.title).toBe("Fallback Book");

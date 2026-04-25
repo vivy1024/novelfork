@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   normalizeStudioProjectCreateDraft,
   normalizeStudioProjectInit,
+  type StudioAiInitializationOptions,
   type StudioCreateBookBody,
   type StudioCreateBookResponse,
   type StudioProjectCreateDraft,
@@ -24,6 +25,7 @@ import type { TFunction } from "../hooks/use-i18n";
 import { useColors } from "../hooks/use-colors";
 import { useWindowStore } from "@/stores/windowStore";
 import { notify } from "@/lib/notify";
+import { Switch } from "@/components/ui/switch";
 
 interface Nav {
   toDashboard: () => void;
@@ -42,6 +44,12 @@ interface GenreInfo {
 interface PlatformOption {
   readonly value: string;
   readonly label: string;
+}
+
+interface ProviderRuntimeStatus {
+  readonly hasUsableModel: boolean;
+  readonly defaultProvider?: string;
+  readonly defaultModel?: string;
 }
 
 const PLATFORMS_ZH: ReadonlyArray<PlatformOption> = [
@@ -110,6 +118,7 @@ export function buildStudioCreateBookRequest(input: {
   readonly targetChapters: string;
   readonly projectInit: StudioProjectInitDraft;
   readonly initializationPlan?: StudioProjectInitializationPlan;
+  readonly aiInitialization?: StudioAiInitializationOptions;
 }): StudioCreateBookBody {
   return {
     title: input.title.trim(),
@@ -120,6 +129,7 @@ export function buildStudioCreateBookRequest(input: {
     targetChapters: parseInt(input.targetChapters, 10),
     projectInit: input.projectInit,
     ...(input.initializationPlan ? { initializationPlan: input.initializationPlan } : {}),
+    ...(input.aiInitialization ? { aiInitialization: input.aiInitialization } : {}),
   };
 }
 
@@ -232,9 +242,12 @@ export function BookCreate({ nav, theme, t, projectCreateDraft, flowRevision = 0
   const c = useColors(theme);
   const { data: genreData } = useApi<{ genres: ReadonlyArray<GenreInfo> }>("/genres");
   const { data: project } = useApi<{ language: string }>("/project");
+  const { data: providerStatusData } = useApi<{ status: ProviderRuntimeStatus }>("/providers/status");
   const addWindow = useWindowStore((state) => state.addWindow);
 
   const projectLang = (project?.language ?? "zh") as "zh" | "en";
+  const providerStatus = providerStatusData?.status;
+  const hasUsableModel = providerStatus?.hasUsableModel === true;
 
   const [title, setTitle] = useState("");
   const [genre, setGenre] = useState("");
@@ -251,6 +264,9 @@ export function BookCreate({ nav, theme, t, projectCreateDraft, flowRevision = 0
   const [targetChapters, setTargetChapters] = useState("200");
   const [targetChaptersTouched, setTargetChaptersTouched] = useState(false);
   const [worktreeTouched, setWorktreeTouched] = useState(false);
+  const [generateJingwei, setGenerateJingwei] = useState(false);
+  const [generatePitch, setGeneratePitch] = useState(false);
+  const [generateFirstChapterDirections, setGenerateFirstChapterDirections] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createStage, setCreateStage] = useState<BookCreateStage>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -306,6 +322,9 @@ export function BookCreate({ nav, theme, t, projectCreateDraft, flowRevision = 0
     setTargetChapters(nextDefaults.targetChapters);
     setTargetChaptersTouched(false);
     setWorktreeTouched(false);
+    setGenerateJingwei(false);
+    setGeneratePitch(false);
+    setGenerateFirstChapterDirections(false);
     setCreating(false);
     setCreateStage("idle");
     setError(null);
@@ -338,6 +357,14 @@ export function BookCreate({ nav, theme, t, projectCreateDraft, flowRevision = 0
     }
   }, [title, worktreeTouched]);
 
+  useEffect(() => {
+    if (!hasUsableModel) {
+      setGenerateJingwei(false);
+      setGeneratePitch(false);
+      setGenerateFirstChapterDirections(false);
+    }
+  }, [hasUsableModel]);
+
   const copy = projectLang === "en"
     ? {
         breadcrumb: managedProjectCreate ? "Create book" : "Initialize project",
@@ -350,6 +377,13 @@ export function BookCreate({ nav, theme, t, projectCreateDraft, flowRevision = 0
         summaryLabel: "ProjectCreate object",
         summaryHint: "No clone / worktree execution yet. This summary only carries the reserved projectInit state forward.",
         summaryEdit: "Edit initialization",
+        aiInitLabel: "AI initialization",
+        aiInitUnavailable: "AI model is not configured yet. You can still create a local book; configure a model later to generate the initial jingwei, pitch and first-three-chapter direction.",
+        aiInitModel: "Current model",
+        aiInitHint: "Optional. If this step fails, the local book scaffold is kept and AI initialization can be retried later.",
+        aiInitJingwei: "Generate initial story jingwei",
+        aiInitPitch: "Generate synopsis / selling points",
+        aiInitFirstChapters: "Generate first-three-chapter direction",
         repoLabel: "Repository source",
         workflowLabel: "Workflow mode",
         templateLabel: "Template bias",
@@ -376,6 +410,13 @@ export function BookCreate({ nav, theme, t, projectCreateDraft, flowRevision = 0
         summaryHint: "这一轮仍不执行 clone / worktree，只把前一步整理好的 projectInit 状态带进建书提交。",
         workspaceHint: "尚未配置 AI 模型也不影响本地写作，仍可先创建本地书籍；配置模型后再启用 AI 续写、评点和经纬生成。",
         summaryEdit: "返回修改初始化",
+        aiInitLabel: "AI 初始化",
+        aiInitUnavailable: "尚未配置 AI 模型，仍可先创建本地书籍；配置模型后可启用初始经纬、简介卖点和前三章方向生成。",
+        aiInitModel: "当前模型",
+        aiInitHint: "可选开启。若 AI 初始化失败，本地书籍骨架会保留，之后可再重试。",
+        aiInitJingwei: "生成初始故事经纬",
+        aiInitPitch: "生成简介 / 卖点",
+        aiInitFirstChapters: "生成前三章方向",
         repoLabel: "仓库来源",
         workflowLabel: "工作流模式",
         templateLabel: "模板偏向",
@@ -408,6 +449,16 @@ export function BookCreate({ nav, theme, t, projectCreateDraft, flowRevision = 0
             ? "Opening the workspace…"
             : "正在准备进入工作区…"
           : null;
+  const aiInitialization = hasUsableModel
+    ? {
+        generateJingwei,
+        generatePitch,
+        generateFirstChapterDirections,
+      }
+    : undefined;
+  const providerSummary = providerStatus?.defaultProvider && providerStatus.defaultModel
+    ? `${providerStatus.defaultProvider} / ${providerStatus.defaultModel}`
+    : undefined;
 
   const handleCreate = async () => {
     if (!title.trim()) {
@@ -433,6 +484,7 @@ export function BookCreate({ nav, theme, t, projectCreateDraft, flowRevision = 0
         targetChapters,
         projectInit,
         initializationPlan: currentProjectCreateDraft.initializationPlan,
+        aiInitialization,
       }));
       setCreateStage("waiting");
       await Promise.resolve();
@@ -744,6 +796,36 @@ export function BookCreate({ nav, theme, t, projectCreateDraft, flowRevision = 0
             />
           </div>
         </div>
+      </div>
+
+      <div className="space-y-4 rounded-2xl border border-border/60 bg-background/50 p-5">
+        <div className="space-y-1">
+          <div className="text-sm font-medium text-foreground">{copy.aiInitLabel}</div>
+          {hasUsableModel ? (
+            <p className="text-xs leading-5 text-muted-foreground">
+              {providerSummary ? `${copy.aiInitModel}：${providerSummary}。` : ""}{copy.aiInitHint}
+            </p>
+          ) : (
+            <p className="text-xs leading-5 text-muted-foreground">{copy.aiInitUnavailable}</p>
+          )}
+        </div>
+
+        {hasUsableModel && (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-border/60 bg-secondary/30 px-3 py-3">
+              <span className="text-sm text-foreground">{copy.aiInitJingwei}</span>
+              <Switch aria-label={copy.aiInitJingwei} checked={generateJingwei} onCheckedChange={setGenerateJingwei} disabled={creating} />
+            </div>
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-border/60 bg-secondary/30 px-3 py-3">
+              <span className="text-sm text-foreground">{copy.aiInitPitch}</span>
+              <Switch aria-label={copy.aiInitPitch} checked={generatePitch} onCheckedChange={setGeneratePitch} disabled={creating} />
+            </div>
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-border/60 bg-secondary/30 px-3 py-3">
+              <span className="text-sm text-foreground">{copy.aiInitFirstChapters}</span>
+              <Switch aria-label={copy.aiInitFirstChapters} checked={generateFirstChapterDirections} onCheckedChange={setGenerateFirstChapterDirections} disabled={creating} />
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="rounded-2xl border border-border/60 bg-secondary/30 p-5">

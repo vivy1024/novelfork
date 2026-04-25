@@ -4,6 +4,11 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 
 const fetchJsonMock = vi.fn();
 const postApiMock = vi.fn();
+let providerStatusMock = {
+  hasUsableModel: false,
+  defaultProvider: undefined as string | undefined,
+  defaultModel: undefined as string | undefined,
+};
 
 vi.mock("../hooks/use-api", () => ({
   fetchJson: (...args: unknown[]) => fetchJsonMock(...args),
@@ -20,6 +25,9 @@ vi.mock("../hooks/use-api", () => ({
     }
     if (url === "/project") {
       return { data: { language: "zh" } };
+    }
+    if (url === "/providers/status") {
+      return { data: { status: providerStatusMock } };
     }
     return { data: undefined };
   },
@@ -44,6 +52,11 @@ describe("BookCreate", () => {
   beforeEach(() => {
     fetchJsonMock.mockReset();
     postApiMock.mockReset();
+    providerStatusMock = {
+      hasUsableModel: false,
+      defaultProvider: undefined,
+      defaultModel: undefined,
+    };
     addWindowMock = vi.fn();
   });
 
@@ -113,10 +126,66 @@ describe("BookCreate", () => {
       />,
     );
 
-    expect(screen.getByText(/尚未配置 AI 模型/)).toBeTruthy();
-    expect(screen.getByText(/仍可先创建本地书籍/)).toBeTruthy();
+    expect(screen.getAllByText(/尚未配置 AI 模型/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/仍可先创建本地书籍/).length).toBeGreaterThan(0);
+    expect(screen.getByText("AI 初始化")).toBeTruthy();
+    expect(screen.getByText(/配置模型后可启用初始经纬、简介卖点和前三章方向生成/)).toBeTruthy();
+    expect(screen.queryByRole("switch", { name: "生成初始故事经纬" })).toBeNull();
     expect(screen.getByRole("button", { name: "创建本地书籍" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "创建书籍并进入工作区" })).toBeNull();
+  });
+
+  it("offers optional AI initialization when a usable model exists", async () => {
+    providerStatusMock = {
+      hasUsableModel: true,
+      defaultProvider: "openai",
+      defaultModel: "gpt-4-turbo",
+    };
+    const nav = {
+      toDashboard: vi.fn(),
+      toBook: vi.fn(),
+      toProjectCreate: vi.fn(),
+    };
+    postApiMock.mockResolvedValueOnce(createBookResponse("book-demo"));
+    fetchJsonMock.mockImplementation(async (url: string) => {
+      if (url === "/books/book-demo") {
+        return { id: "book-demo" };
+      }
+      throw new Error(`Unexpected fetchJson call: ${url}`);
+    });
+
+    render(
+      <BookCreate
+        nav={nav}
+        theme="light"
+        t={(key: string) => key}
+        projectCreateDraft={{
+          title: "仙路长明",
+          projectInit: {
+            repositorySource: "new",
+            workflowMode: "outline-first",
+            templatePreset: "genre-default",
+            gitBranch: "main",
+            worktreeName: "xianlu-main",
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText(/当前模型：openai \/ gpt-4-turbo/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("switch", { name: "生成初始故事经纬" }));
+    fireEvent.click(screen.getByRole("switch", { name: "生成简介 / 卖点" }));
+    fireEvent.click(screen.getByRole("button", { name: "创建本地书籍" }));
+
+    await waitFor(() => {
+      expect(postApiMock).toHaveBeenCalledWith("/books/create", expect.objectContaining({
+        aiInitialization: {
+          generateJingwei: true,
+          generatePitch: true,
+          generateFirstChapterDirections: false,
+        },
+      }));
+    });
   });
 
   it("shows staged progress and locks project-create edits while the create workflow is running", async () => {

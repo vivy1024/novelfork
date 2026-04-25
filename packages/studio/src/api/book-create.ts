@@ -34,6 +34,12 @@ export interface StudioProjectCreateDraft {
   readonly initializationPlan: StudioProjectInitializationPlan;
 }
 
+export interface StudioAiInitializationOptions {
+  readonly generateJingwei: boolean;
+  readonly generatePitch: boolean;
+  readonly generateFirstChapterDirections: boolean;
+}
+
 export interface StudioCreateBookBody {
   readonly title: string;
   readonly genre: string;
@@ -43,6 +49,7 @@ export interface StudioCreateBookBody {
   readonly targetChapters?: number;
   readonly projectInit?: Partial<StudioProjectInitDraft>;
   readonly initializationPlan?: StudioProjectInitializationPlan;
+  readonly aiInitialization?: StudioAiInitializationOptions;
 }
 
 export interface StudioCreateBookResponse {
