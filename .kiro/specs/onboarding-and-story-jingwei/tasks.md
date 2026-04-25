@@ -83,7 +83,7 @@
   - 添加测试：已有 legacy 数据可以在故事经纬页面展示。
   - 覆盖 Requirements 5、7、14。
 
-- [ ] 10. 提供故事经纬 API 路由
+- [x] 10. 提供故事经纬 API 路由
   - 新增 `/api/books/:bookId/jingwei/sections` 的 GET/POST/PUT/DELETE。
   - 新增 `/api/books/:bookId/jingwei/entries` 的 GET/POST/PUT/DELETE。
   - 新增 `/api/books/:bookId/jingwei/templates/apply` 用于应用空白 / 基础 / 增强 / 题材推荐模板。

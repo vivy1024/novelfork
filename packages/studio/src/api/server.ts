@@ -75,6 +75,7 @@ import {
   createContextManagerRouter,
   createAdminRouter,
   createBibleRouter,
+  createJingweiRouter,
   createFilterRouter,
   createRoutinesRouter,
   sessionRouter,
@@ -279,6 +280,9 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
 
     // Novel Bible structured authoring API
     app.route("", createBibleRouter());
+
+    // Story Jingwei structured authoring API
+    app.route("", createJingweiRouter());
 
     app.route("", createFilterRouter());
 
