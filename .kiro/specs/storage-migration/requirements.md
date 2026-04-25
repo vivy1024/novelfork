@@ -97,6 +97,8 @@
 
 #### Acceptance Criteria
 
-1. WHEN 新 spec 需要新增表时 THEN THE SYSTEM SHALL 提供 `packages/core/src/storage/schema.ts` 作为唯一 schema 入口，并支持按 feature 拆分子文件。
-2. WHEN 新增 migration 时 THEN THE SYSTEM SHALL 通过 drizzle-kit 生成版本化 SQL，放在 `packages/core/src/storage/migrations/`。
-3. WHEN 文档更新时 THEN THE SYSTEM SHALL 在 `docs/04-开发指南/` 新增 `存储层开发指引.md`，说明 schema 扩展 / migration 流程 / 测试模式。
+1. WHEN 新 spec 需要新增表时 THEN THE SYSTEM SHALL 提供 `packages/core/src/storage/schema.ts` 作为唯一 schema 入口，支持按 feature 拆分子文件（如 `schema-bible.ts`、`schema-filter.ts`），由 `schema.ts` 统一 re-export。
+2. WHEN 新增 migration 时 THEN THE SYSTEM SHALL 通过 drizzle-kit 生成版本化 SQL，放在 `packages/core/src/storage/migrations/`，按 `{序号}_{spec名或phase名}.sql` 命名。
+3. WHEN 多个 spec 并行开发时 THEN THE SYSTEM SHALL 维护 migration 编号规划表（见 design.md），避免编号冲突；每个 migration 文件只含该 spec / phase 自己的表。
+4. WHEN 一个 spec 分多 Phase 交付时 THEN THE SYSTEM SHALL 每 Phase 独立生成 1 个 migration，Phase N+1 可引用 Phase N 的表但不允许反向依赖。
+5. WHEN 文档更新时 THEN THE SYSTEM SHALL 在 `docs/04-开发指南/` 新增 `存储层开发指引.md`，说明 schema 扩展 / migration 编号协调 / 测试模式 / 禁止事项。

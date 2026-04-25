@@ -206,10 +206,55 @@ async function runJsonImportMigrationIfNeeded(db) {
 
 ## 后续 spec 扩展模式
 
+### 基本步骤
+
 新 spec 需要新表：
-1. 在 `packages/core/src/storage/schema.ts` 追加 `export const newTable = sqliteTable(...)`
+1. 在 `packages/core/src/storage/schema.ts` 追加 `export const newTable = sqliteTable(...)`（或按 feature 拆子文件 `schema-bible.ts`，由 `schema.ts` 统一 re-export）
 2. `pnpm drizzle-kit generate:sqlite --config=...` 生成新 migration
 3. 在自己的 `repositories/` 下新增 repo
 4. 在 design.md 中引用 schema.ts 的具体表名
 
 禁止绕过 schema.ts / migration 机制直接跑 DDL。
+
+### Migration 编号规划
+
+| 编号 | 来源 spec | 内容 | 依赖 |
+|---|---|---|---|
+| `0001_storage_base.sql` | storage-migration | session / session_message / kv_store / drizzle_migrations | — |
+| `0002_bible_v1.sql` | novel-bible-v1 Phase A | book / bible_character / bible_event / bible_setting / bible_chapter_summary | 0001 |
+| `0003_bible_phaseB.sql` | novel-bible-v1 Phase B | bible_conflict / bible_world_model / bible_premise / bible_character_arc | 0002 |
+| `0004_bible_phaseC.sql` | novel-bible-v1 Phase C | questionnaire_template / questionnaire_response / core_shift | 0003 |
+| `0005_filter_v1.sql` | ai-taste-filter-v1 | filter_report | 0001（数据独立于 bible，但编号在其后避免冲突） |
+
+> **编号协调规则**：
+> - 编号由**实际落库顺序**决定，上表是默认推荐顺序
+> - 若 filter 先于 bible Phase B 开发完成，编号可调整为 `0003_filter_v1.sql`，bible Phase B 改为 `0004`
+> - 每个 migration 文件只允许包含该 spec / phase 自己的表，不得跨 spec 合并
+> - 新增 migration 前先 `git pull` 确认编号无冲突
+
+### Multi-Phase 模式约定
+
+当一个 spec 分多个 Phase 交付（如 novel-bible-v1 的 A/B/C）：
+- 每个 Phase 独立生成 1 个 migration 文件
+- Phase N+1 的 migration 可 `references()` Phase N 的表（如 `bible_character_arc.characterId → bible_character.id`），但不允许反向依赖
+- Phase A 的 `buildBibleContext()` 必须为 Phase B 的注入函数预留 stub（返回空数组），确保 Phase A 上线后 Phase B 可无缝接入
+
+### Schema 文件组织
+
+```
+packages/core/src/storage/
+  schema.ts              ← 统一 re-export 入口
+  schema-session.ts      ← session / session_message / kv_store（storage-migration）
+  schema-bible.ts        ← bible_* 全部表（novel-bible-v1 Phase A+B+C）
+  schema-filter.ts       ← filter_report（ai-taste-filter-v1）
+  schema-questionnaire.ts ← questionnaire_*（novel-bible-v1 Phase C，可并入 schema-bible）
+```
+
+`schema.ts` 内容形如：
+```ts
+export * from "./schema-session";
+export * from "./schema-bible";
+export * from "./schema-filter";
+```
+
+新 spec 只需新增子文件并在 `schema.ts` 加一行 re-export。
