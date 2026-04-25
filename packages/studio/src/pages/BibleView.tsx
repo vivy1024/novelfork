@@ -71,6 +71,7 @@ export function BibleView({ bookId, nav }: { bookId: string; nav: { toDashboard:
   const [sceneText, setSceneText] = useState("");
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
   const [editingJingweiEntry, setEditingJingweiEntry] = useState<JingweiEntryView | null>(null);
+  const [createJingweiEntrySignal, setCreateJingweiEntrySignal] = useState(0);
   const { data: bookData } = useApi<BookData>(`/books/${bookId}`);
   const { data: sectionsData, loading: sectionsLoading, error: sectionsError, refetch: refetchSections } = useApi<JingweiSectionsResponse>(`/books/${bookId}/jingwei/sections`);
   const currentChapterDefault = bookData?.nextChapter ?? 1;
@@ -283,6 +284,7 @@ export function BibleView({ bookId, nav }: { bookId: string; nav: { toDashboard:
                     loading={jingweiEntriesLoading}
                     onEdit={setEditingJingweiEntry}
                     onDelete={(entry) => void deleteJingweiEntry(entry)}
+                    onCreate={() => setCreateJingweiEntrySignal((value) => value + 1)}
                   />
                 </>
               ) : (
@@ -335,6 +337,7 @@ export function BibleView({ bookId, nav }: { bookId: string; nav: { toDashboard:
                 section={activeSection}
                 entries={jingweiEntries}
                 editingEntry={editingJingweiEntry}
+                createSignal={createJingweiEntrySignal}
                 onEditingEntryChange={setEditingJingweiEntry}
                 onSaved={refetchJingweiEntries}
               />

@@ -17,6 +17,7 @@ interface JingweiEntryFormProps {
   section: JingweiSectionView;
   entries: JingweiEntryView[];
   editingEntry?: JingweiEntryView | null;
+  createSignal?: number;
   onEditingEntryChange?: (entry: JingweiEntryView | null) => void;
   onSaved: () => Promise<unknown> | unknown;
 }
@@ -65,7 +66,7 @@ function createDraft(section: JingweiSectionView, entry?: JingweiEntryView | nul
   };
 }
 
-export function JingweiEntryForm({ bookId, section, entries, editingEntry, onEditingEntryChange, onSaved }: JingweiEntryFormProps) {
+export function JingweiEntryForm({ bookId, section, entries, editingEntry, createSignal = 0, onEditingEntryChange, onSaved }: JingweiEntryFormProps) {
   const [draft, setDraft] = useState<EntryDraft | null>(editingEntry ? createDraft(section, editingEntry) : null);
   const [saving, setSaving] = useState(false);
 
@@ -82,6 +83,13 @@ export function JingweiEntryForm({ bookId, section, entries, editingEntry, onEdi
   useEffect(() => {
     if (editingEntry) setDraft(createDraft(section, editingEntry));
   }, [editingEntry, section]);
+
+  useEffect(() => {
+    if (createSignal > 0) {
+      onEditingEntryChange?.(null);
+      setDraft(createDraft(section));
+    }
+  }, [createSignal, onEditingEntryChange, section]);
 
   const cancel = () => {
     setDraft(null);

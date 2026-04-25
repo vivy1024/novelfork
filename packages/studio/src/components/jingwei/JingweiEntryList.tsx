@@ -1,5 +1,6 @@
 import { Trash2 } from "lucide-react";
 
+import { JingweiEmptyState } from "@/components/layout/FeatureEmptyState";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
@@ -11,17 +12,13 @@ interface JingweiEntryListProps {
   loading?: boolean;
   onEdit: (entry: JingweiEntryView) => void;
   onDelete: (entry: JingweiEntryView) => void;
+  onCreate?: () => void;
 }
 
-export function JingweiEntryList({ section, entries, loading, onEdit, onDelete }: JingweiEntryListProps) {
+export function JingweiEntryList({ section, entries, loading, onEdit, onDelete, onCreate }: JingweiEntryListProps) {
   if (loading) return <div className="text-sm text-muted-foreground">条目加载中...</div>;
   if (entries.length === 0) {
-    return (
-      <div className="rounded-xl border border-dashed border-border/70 bg-background/60 p-6 text-center">
-        <div className="font-semibold">「{section.name}」还没有条目</div>
-        <p className="mt-2 text-sm text-muted-foreground">可以先手动记录一个关键人物、设定、事件或自定义信息。</p>
-      </div>
-    );
+    return <JingweiEmptyState sectionName={section.name} onCreateEntry={onCreate} />;
   }
 
   return (
