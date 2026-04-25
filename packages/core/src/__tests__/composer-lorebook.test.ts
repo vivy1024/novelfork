@@ -290,6 +290,9 @@ describe("ComposerAgent - Lorebook RAG Integration", () => {
       { dimension: "items", name: "石符", keywords: "石符", content: "石符，林动祖传之物。".repeat(20), priority: 85 },
       { dimension: "physics", name: "斗者", keywords: "斗者", content: "斗者，第二大境界。".repeat(20), priority: 80 },
       { dimension: "physics", name: "异火", keywords: "异火", content: "异火，天地灵物。".repeat(20), priority: 85 },
+      { dimension: "factions", name: "道宗", keywords: "道宗", content: "道宗，东玄域顶级宗门。".repeat(20), priority: 75 },
+      { dimension: "factions", name: "元门", keywords: "元门", content: "元门，东玄域强大宗门。".repeat(20), priority: 75 },
+      { dimension: "materials", name: "涅槃丹", keywords: "涅槃丹", content: "涅槃丹，辅助修炼资源。".repeat(20), priority: 70 },
     ];
 
     for (const entry of allEntries) {

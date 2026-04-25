@@ -1,9 +1,12 @@
 import { Command } from "commander";
 import { findProjectRoot, log, logError } from "../utils.js";
+import { openExternalUrl, resolveBrowserLaunch } from "../open-external-url.js";
 import { spawn } from "node:child_process";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { access } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
+
+export { resolveBrowserLaunch };
 
 export interface StudioLaunchSpec {
   readonly studioEntry: string;
@@ -28,7 +31,7 @@ const cliPackageRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..")
 export async function resolveStudioLaunch(root: string): Promise<StudioLaunchSpec | null> {
   const bunMainEntry = await firstAccessiblePath([
     join(root, "main.ts"),
-    resolve(root, "..", "main.ts"),
+    join(root, "..", "main.ts"),
   ]);
   if (bunMainEntry) {
     return {
@@ -39,9 +42,9 @@ export async function resolveStudioLaunch(root: string): Promise<StudioLaunchSpe
   }
 
   const sourceEntry = await firstAccessiblePath([
-    resolve(root, "..", "packages", "studio", "src", "api", "index.ts"),
+    join(root, "..", "packages", "studio", "src", "api", "index.ts"),
     join(root, "packages", "studio", "src", "api", "index.ts"),
-    resolve(root, "..", "studio", "src", "api", "index.ts"),
+    join(root, "..", "studio", "src", "api", "index.ts"),
   ]);
   if (sourceEntry) {
     const studioPackageRoot = dirname(dirname(dirname(sourceEntry)));
@@ -112,27 +115,26 @@ export const studioCommand = new Command("studio")
 
     log(`Starting NovelFork Studio on ${url}`);
 
-    const child = await spawnProcess(launch.command, launch.args, {
+    const child = spawn(launch.command, launch.args, {
       cwd: root,
       env: { ...process.env, NOVELFORK_STUDIO_PORT: port },
+      stdio: ["ignore", "pipe", "pipe"],
     });
 
-    child.onStdout((data) => {
-      process.stdout.write(data);
+    child.stdout?.on("data", (data: Buffer) => {
+      process.stdout.write(data.toString("utf-8"));
     });
-    child.onStderr((data) => {
-      process.stderr.write(data);
+    child.stderr?.on("data", (data: Buffer) => {
+      process.stderr.write(data.toString("utf-8"));
     });
-    child.onError((e) => {
+    child.on("error", (e: Error) => {
       logError(`Failed to start studio: ${e.message}`);
       process.exit(1);
     });
 
     await openExternalUrl(process.platform, url, root);
 
-    child.onClose((code) => {
+    child.on("close", (code: number | null) => {
       process.exit(code ?? 0);
     });
-  });
-
   });

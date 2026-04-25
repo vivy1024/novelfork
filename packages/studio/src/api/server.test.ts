@@ -19,6 +19,7 @@ const chatCompletionMock = vi.fn();
 const loadProjectConfigMock = vi.fn();
 const createStorageDatabaseMock = vi.fn(() => ({ close: vi.fn(), checkpoint: vi.fn() }));
 const runStorageMigrationsMock = vi.fn(() => ({ applied: ["0001_initial.sql"] }));
+const seedQuestionnaireTemplatesMock = vi.fn(async () => undefined);
 const runJsonImportMigrationIfNeededMock = vi.fn(async () => ({
   status: "skipped",
   reason: "no-source",
@@ -250,6 +251,7 @@ vi.mock("@vivy1024/novelfork-core", () => {
     initializeStorageDatabase: createStorageDatabaseMock,
     runJsonImportMigrationIfNeeded: runJsonImportMigrationIfNeededMock,
     runStorageMigrations: runStorageMigrationsMock,
+    seedQuestionnaireTemplates: seedQuestionnaireTemplatesMock,
     createKvRepository: createKvRepositoryMock,
     createSessionMessageRepository: createSessionMessageRepositoryMock,
     createSessionRepository: createSessionRepositoryMock,
@@ -365,6 +367,8 @@ describe("createStudioServer daemon lifecycle", () => {
     createStorageDatabaseMock.mockReturnValue({ close: vi.fn(), checkpoint: vi.fn() });
     runStorageMigrationsMock.mockClear();
     runStorageMigrationsMock.mockReturnValue({ applied: ["0001_initial.sql"] });
+    seedQuestionnaireTemplatesMock.mockClear();
+    seedQuestionnaireTemplatesMock.mockResolvedValue(undefined);
     runJsonImportMigrationIfNeededMock.mockClear();
     runJsonImportMigrationIfNeededMock.mockResolvedValue({
       status: "skipped",
