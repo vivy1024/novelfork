@@ -22,6 +22,9 @@ export type {
   VisibilityRule,
 } from "./types.js";
 
+export { createAliasMatcher, matchTrackedByAliases, AliasMatcher, type AliasMatchEntry } from "./context/alias-matcher.js";
+export { resolveNestedRefs, type NestedRefEntry, type ResolveNestedRefsOptions } from "./context/nested-resolver.js";
+export { filterEntriesVisibleAtChapter, getVisibilityRule, isVisibleAtChapter, parseVisibilityRule, type VisibilityRuleEntry } from "./context/visibility-filter.js";
 export { createBookRepository } from "./repositories/book-repo.js";
 export { createBibleCharacterRepository } from "./repositories/character-repo.js";
 export { createBibleEventRepository } from "./repositories/event-repo.js";
