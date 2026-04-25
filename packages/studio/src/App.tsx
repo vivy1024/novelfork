@@ -5,6 +5,7 @@ import { ChatPanel } from "./components/ChatBar";
 import { TabBar } from "./components/TabBar";
 import { CommandPalette } from "./components/CommandPalette";
 import { SearchDialog } from "./components/Search/SearchDialog";
+import { FirstRunDialog } from "./components/onboarding/FirstRunDialog";
 import { UpdateChecker } from "./components/UpdateChecker";
 import { NovelForkProvider, useNovelFork } from "./providers/novelfork-context";
 // Eager: first-paint critical pages (gate + dashboard + book create modal + language picker)
@@ -105,8 +106,12 @@ function AppInner() {
   const isTauri = isTauriEnv || mode === "tauri";
 
   const { data: project, refetch: refetchProject } = useApi<{ language: string; languageExplicit: boolean }>(isTauri ? null : "/project");
+  const { data: onboardingStatus, refetch: refetchOnboardingStatus } = useApi<{
+    status?: { dismissedFirstRun?: boolean };
+  }>(isTauri ? null : "/onboarding/status");
   const [showLanguageSelector, setShowLanguageSelector] = useState(false);
   const [ready, setReady] = useState(isTauri);
+  const [firstRunDismissedThisSession, setFirstRunDismissedThisSession] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [wsReady, setWsReady] = useState(!isTauri || !!workspace);
   const [cmdOpen, setCmdOpen] = useState(false);
@@ -357,6 +362,16 @@ function AppInner() {
   };
   navRef.current = nav;
 
+  const firstRunOpen = onboardingStatus?.status?.dismissedFirstRun === false && !firstRunDismissedThisSession;
+  const dismissFirstRun = () => {
+    setFirstRunDismissedThisSession(true);
+    void fetchJson("/onboarding/status", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dismissedFirstRun: true }),
+    }).then(() => refetchOnboardingStatus()).catch(() => undefined);
+  };
+
   const activeBookId = activeTab ? deriveActiveBookId(activeTab.route) : undefined;
   const activeChapterNumber = activeTab?.route.page === "chapter" ? activeTab.route.chapterNumber : undefined;
   const activePage = (() => {
@@ -483,6 +498,28 @@ function AppInner() {
           </div>
         </>
       )}
+
+      <FirstRunDialog
+        open={firstRunOpen}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) {
+            setFirstRunDismissedThisSession(true);
+          }
+        }}
+        onConfigureModel={() => {
+          dismissFirstRun();
+          nav.toAdmin("providers");
+        }}
+        onCreateBook={() => {
+          dismissFirstRun();
+          setBookCreateOpen(true);
+        }}
+        onOpenWorkbenchIntro={() => {
+          dismissFirstRun();
+          nav.toWorkflow("advanced");
+        }}
+        onDismiss={dismissFirstRun}
+      />
 
       {/* BookCreate Modal */}
       {bookCreateOpen && (

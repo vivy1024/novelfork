@@ -33,7 +33,7 @@
   - 添加 API / repository 测试。
   - 覆盖 Requirements 1、2。
 
-- [ ] 4. 实现首次欢迎弹窗 `FirstRunDialog`
+- [x] 4. 实现首次欢迎弹窗 `FirstRunDialog`
   - 在 `packages/studio/src/components/onboarding/` 下新增 `FirstRunDialog.tsx` 和必要 provider/hook。
   - 使用 shadcn/ui `Dialog`、`Card`、`Button`、`Badge` 实现三个入口卡片：配置 AI 模型、创建第一本书、了解工作台模式。
   - 文案明确：建议第一步配置模型；未配置也能创建本地书籍、整理故事经纬、编辑章节。

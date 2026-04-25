@@ -184,4 +184,31 @@ describe("App admin routing", () => {
     expect(await screen.findByText("Admin Mock requests")).toBeTruthy();
     expect(await screen.findByText("OpenRun Ready")).toBeTruthy();
   });
+
+  it("shows the first-run dialog when onboarding has not been dismissed", async () => {
+    mockAppState({ page: "dashboard" });
+    useApiMock.mockImplementation((path: string | null) => {
+      if (path === "/project") {
+        return { data: { language: "zh", languageExplicit: true }, refetch: vi.fn() };
+      }
+      if (path === "/onboarding/status") {
+        return {
+          data: {
+            status: {
+              dismissedFirstRun: false,
+              dismissedGettingStarted: false,
+              provider: { hasUsableModel: false },
+              tasks: {},
+            },
+          },
+          refetch: vi.fn(),
+        };
+      }
+      return { data: null, refetch: vi.fn() };
+    });
+
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: "欢迎使用 NovelFork" })).toBeTruthy();
+  });
 });
