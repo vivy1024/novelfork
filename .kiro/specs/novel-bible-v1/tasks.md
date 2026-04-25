@@ -26,7 +26,7 @@ Novel Bible v1（现已扩展为**认知层 v1**）。**前置**：`storage-migr
   - 软删除支持（`deletedAt`）
   - 单测：CRUD / 多 book 隔离 / 软删过滤
 
-- [ ] A2. 可见性规则引擎
+- [x] A2. 可见性规则引擎
   - `visibility-filter.ts`：时间线过滤（visibleAfterChapter / visibleUntilChapter）
   - `nested-resolver.ts`：BFS + 深度 cap 3 + 环保护
   - `alias-matcher.ts`：Aho-Corasick 构建 + 扫描，支持 name + aliases
