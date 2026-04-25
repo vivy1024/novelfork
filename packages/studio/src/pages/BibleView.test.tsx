@@ -5,6 +5,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 const fetchJsonMock = vi.fn();
 const postApiMock = vi.fn();
 const refetchSectionsMock = vi.fn();
+const refetchEntriesMock = vi.fn();
 
 interface JingweiSectionView {
   id: string;
@@ -26,7 +27,49 @@ interface JingweiSectionView {
   deletedAt: string | null;
 }
 
+interface JingweiEntryView {
+  id: string;
+  bookId: string;
+  sectionId: string;
+  title: string;
+  contentMd: string;
+  tags: string[];
+  aliases: string[];
+  customFields: Record<string, unknown>;
+  relatedChapterNumbers: number[];
+  relatedEntryIds: string[];
+  visibilityRule: { type: "tracked" | "global" | "nested"; keywords?: string[]; parentEntryIds?: string[]; visibleAfterChapter?: number; visibleUntilChapter?: number };
+  participatesInAi: boolean;
+  tokenBudget: number | null;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+}
+
 let sectionsMock: JingweiSectionView[] = [];
+let entriesMock: JingweiEntryView[] = [];
+
+function entry(overrides: Partial<JingweiEntryView>): JingweiEntryView {
+  return {
+    id: "entry-zhang",
+    bookId: "book-1",
+    sectionId: "sec-people",
+    title: "张三",
+    contentMd: "主角，外冷内热，擅长剑法。",
+    tags: ["主角"],
+    aliases: ["三郎"],
+    customFields: { stage: "炼气" },
+    relatedChapterNumbers: [1],
+    relatedEntryIds: [],
+    visibilityRule: { type: "tracked", keywords: ["张三"] },
+    participatesInAi: true,
+    tokenBudget: 500,
+    createdAt: "2026-04-01T00:00:00.000Z",
+    updatedAt: "2026-04-01T00:00:00.000Z",
+    deletedAt: null,
+    ...overrides,
+  };
+}
 
 function section(overrides: Partial<JingweiSectionView>): JingweiSectionView {
   return {
@@ -54,12 +97,18 @@ function section(overrides: Partial<JingweiSectionView>): JingweiSectionView {
 vi.mock("../hooks/use-api", () => ({
   fetchJson: (...args: unknown[]) => fetchJsonMock(...args),
   postApi: (...args: unknown[]) => postApiMock(...args),
-  useApi: (url: string) => {
+  useApi: (url: string | null) => {
+    if (url === null) {
+      return { data: null, loading: false, error: null, refetch: vi.fn() };
+    }
     if (url === "/books/book-1") {
       return { data: { book: { id: "book-1", title: "凡人修仙录" }, nextChapter: 5 }, loading: false, error: null, refetch: vi.fn() };
     }
     if (url === "/books/book-1/jingwei/sections") {
       return { data: { sections: sectionsMock }, loading: false, error: null, refetch: refetchSectionsMock };
+    }
+    if (url === "/books/book-1/jingwei/entries?sectionId=sec-people") {
+      return { data: { entries: entriesMock }, loading: false, error: null, refetch: refetchEntriesMock };
     }
     if (url.startsWith("/books/book-1/bible/") || url === "/questionnaires") {
       return { data: {}, loading: false, error: null, refetch: vi.fn() };
@@ -82,7 +131,9 @@ describe("BibleView user-visible naming", () => {
     fetchJsonMock.mockReset();
     postApiMock.mockReset();
     refetchSectionsMock.mockReset();
+    refetchEntriesMock.mockReset();
     sectionsMock = [];
+    entriesMock = [];
   });
 
   afterEach(() => cleanup());
@@ -180,5 +231,47 @@ describe("BibleView user-visible naming", () => {
     await waitFor(() => {
       expect(fetchJsonMock).toHaveBeenCalledWith("/books/book-1/jingwei/sections/sec-events", expect.objectContaining({ method: "DELETE" }));
     });
+  });
+
+  it("renders dynamic entry fields and saves visibility, relations and custom fields", async () => {
+    sectionsMock = [section({
+      id: "sec-people",
+      fieldsJson: [{ id: "field-stage", key: "stage", label: "阶段", type: "text", required: false, participatesInSummary: true }],
+    })];
+    entriesMock = [entry({ id: "entry-zhang", title: "张三" })];
+    postApiMock.mockResolvedValueOnce({ entry: entry({ id: "entry-li", title: "李四" }) });
+
+    render(<BibleView bookId="book-1" nav={{ toDashboard: vi.fn(), toBook: vi.fn() }} />);
+
+    expect(screen.getByText("张三")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "新增经纬条目" }));
+    fireEvent.change(screen.getByLabelText("条目标题"), { target: { value: "李四" } });
+    fireEvent.change(screen.getByLabelText("正文 Markdown"), { target: { value: "新登场剑修，和张三有旧怨。" } });
+    fireEvent.change(screen.getByLabelText("标签"), { target: { value: "剑修,对手" } });
+    fireEvent.change(screen.getByLabelText("别名 / 关键词"), { target: { value: "小李,剑修" } });
+    fireEvent.change(screen.getByLabelText("关联章节"), { target: { value: "1,2" } });
+    fireEvent.change(screen.getByLabelText("token 预算"), { target: { value: "800" } });
+    fireEvent.change(screen.getByLabelText("阶段"), { target: { value: "筑基" } });
+    fireEvent.change(screen.getByLabelText("可见性类型"), { target: { value: "global" } });
+    fireEvent.change(screen.getByLabelText("关键词"), { target: { value: "李四,剑修" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: "关联条目：张三" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存条目" }));
+
+    await waitFor(() => {
+      expect(postApiMock).toHaveBeenCalledWith("/books/book-1/jingwei/entries", expect.objectContaining({
+        sectionId: "sec-people",
+        title: "李四",
+        contentMd: "新登场剑修，和张三有旧怨。",
+        tags: ["剑修", "对手"],
+        aliases: ["小李", "剑修"],
+        relatedChapterNumbers: [1, 2],
+        relatedEntryIds: ["entry-zhang"],
+        customFields: { stage: "筑基" },
+        visibilityRule: { type: "global", keywords: ["李四", "剑修"] },
+        participatesInAi: true,
+        tokenBudget: 800,
+      }));
+    });
+    expect(refetchEntriesMock).toHaveBeenCalledTimes(1);
   });
 });

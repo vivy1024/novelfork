@@ -5,9 +5,11 @@ import { ContextPreviewModal } from "../components/Bible/ContextPreviewModal";
 import { EntryForm } from "../components/Bible/EntryForm";
 import { QuestionnaireWizard, type QuestionnaireTemplateView } from "../components/Bible/QuestionnaireWizard";
 import { FilterReportTab } from "../components/filter/FilterReportTab";
+import { JingweiEntryForm } from "../components/jingwei/JingweiEntryForm";
+import { JingweiEntryList } from "../components/jingwei/JingweiEntryList";
 import { JingweiSectionManager } from "../components/jingwei/JingweiSectionManager";
 import { JingweiSectionTabs } from "../components/jingwei/JingweiSectionTabs";
-import type { JingweiSectionView } from "../components/jingwei/types";
+import type { JingweiEntryView, JingweiSectionView } from "../components/jingwei/types";
 import { BIBLE_TABS, responseKeyForTab, titleOfEntry, type BibleContextPreview, type BibleEntry, type BibleTab } from "../components/Bible/types";
 import { PageEmptyState } from "../components/layout/PageEmptyState";
 import { PageScaffold } from "../components/layout/PageScaffold";
@@ -40,6 +42,10 @@ interface JingweiSectionsResponse {
   sections: JingweiSectionView[];
 }
 
+interface JingweiEntriesResponse {
+  entries: JingweiEntryView[];
+}
+
 function bibleTabForSection(section: JingweiSectionView): BibleTab | null {
   switch (section.builtinKind ?? section.key) {
     case "people":
@@ -64,6 +70,7 @@ export function BibleView({ bookId, nav }: { bookId: string; nav: { toDashboard:
   const [preview, setPreview] = useState<BibleContextPreview | null>(null);
   const [sceneText, setSceneText] = useState("");
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
+  const [editingJingweiEntry, setEditingJingweiEntry] = useState<JingweiEntryView | null>(null);
   const { data: bookData } = useApi<BookData>(`/books/${bookId}`);
   const { data: sectionsData, loading: sectionsLoading, error: sectionsError, refetch: refetchSections } = useApi<JingweiSectionsResponse>(`/books/${bookId}/jingwei/sections`);
   const currentChapterDefault = bookData?.nextChapter ?? 1;
@@ -100,7 +107,9 @@ export function BibleView({ bookId, nav }: { bookId: string; nav: { toDashboard:
   const activeSection = visibleJingweiSections.find((section) => section.id === activeSectionId) ?? visibleJingweiSections[0] ?? null;
   const activeSectionTab = activeSection ? bibleTabForSection(activeSection) : null;
   const customSectionSelected = Boolean(activeSection && !activeSectionTab);
-  const visibleEntries = customSectionSelected ? [] : entries;
+  const { data: jingweiEntriesData, loading: jingweiEntriesLoading, error: jingweiEntriesError, refetch: refetchJingweiEntries } = useApi<JingweiEntriesResponse>(activeSection ? `/books/${bookId}/jingwei/entries?sectionId=${activeSection.id}` : null);
+  const jingweiEntries = jingweiEntriesData?.entries ?? [];
+  const visibleEntries = activeSection ? [] : entries;
   const activeSectionTitle = activeSection?.name ?? BIBLE_TABS.find((tab) => tab.id === activeTab)?.label;
 
   useEffect(() => {
@@ -113,6 +122,10 @@ export function BibleView({ bookId, nav }: { bookId: string; nav: { toDashboard:
     const mappedTab = bibleTabForSection(activeSection);
     if (mappedTab) setActiveTab(mappedTab);
   }, [activeSection, activeSectionId]);
+
+  useEffect(() => {
+    setEditingJingweiEntry(null);
+  }, [activeSection?.id]);
 
   const createEntry = async (payload: Record<string, unknown>) => {
     try {
@@ -138,6 +151,16 @@ export function BibleView({ bookId, nav }: { bookId: string; nav: { toDashboard:
       await fetchJson(`${endpoint}/${entryId}`, { method: "DELETE" });
       await refetch();
       notify.success("故事经纬条目已删除");
+    } catch (error) {
+      notify.error("删除失败", { description: error instanceof Error ? error.message : undefined });
+    }
+  };
+
+  const deleteJingweiEntry = async (entry: JingweiEntryView) => {
+    try {
+      await fetchJson(`/books/${bookId}/jingwei/entries/${entry.id}`, { method: "DELETE" });
+      await refetchJingweiEntries();
+      notify.success("经纬条目已删除");
     } catch (error) {
       notify.error("删除失败", { description: error instanceof Error ? error.message : undefined });
     }
@@ -247,24 +270,37 @@ export function BibleView({ bookId, nav }: { bookId: string; nav: { toDashboard:
               <div className="mb-4 flex items-center justify-between">
                 <div>
                   <h2 className="font-serif text-2xl font-semibold">{activeSectionTitle}</h2>
-                  <p className="text-sm text-muted-foreground">当前 {visibleEntries.length} 条。点击删除会执行软删除。</p>
+                  <p className="text-sm text-muted-foreground">当前 {activeSection ? jingweiEntries.length : visibleEntries.length} 条。点击删除会执行软删除。</p>
                 </div>
-                {(loading || sectionsLoading) && <div className="text-xs text-muted-foreground">加载中...</div>}
+                {(loading || sectionsLoading || jingweiEntriesLoading) && <div className="text-xs text-muted-foreground">加载中...</div>}
               </div>
-              {activeTab === "questionnaires" && visibleEntries[0] ? (
-                <QuestionnaireWizard
-                  bookId={bookId}
-                  template={visibleEntries[0] as QuestionnaireTemplateView}
-                  onDone={() => {
-                    notify.success("问卷状态已保存");
-                    void refetch();
-                  }}
-                />
-              ) : null}
-              {activeTab === "ai-filter" ? <FilterReportTab reports={data?.reports ?? []} /> : null}
-              <div className="grid gap-3 md:grid-cols-2">
-                {visibleEntries.map((entry) => (
-                  <article key={entry.id} className="rounded-xl border border-border/50 bg-background/70 p-4">
+              {activeSection ? (
+                <>
+                  {jingweiEntriesError && <PageEmptyState title="加载经纬条目失败" description={jingweiEntriesError} />}
+                  <JingweiEntryList
+                    section={activeSection}
+                    entries={jingweiEntries}
+                    loading={jingweiEntriesLoading}
+                    onEdit={setEditingJingweiEntry}
+                    onDelete={(entry) => void deleteJingweiEntry(entry)}
+                  />
+                </>
+              ) : (
+                <>
+                  {activeTab === "questionnaires" && visibleEntries[0] ? (
+                    <QuestionnaireWizard
+                      bookId={bookId}
+                      template={visibleEntries[0] as QuestionnaireTemplateView}
+                      onDone={() => {
+                        notify.success("问卷状态已保存");
+                        void refetch();
+                      }}
+                    />
+                  ) : null}
+                  {activeTab === "ai-filter" ? <FilterReportTab reports={data?.reports ?? []} /> : null}
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {visibleEntries.map((entry) => (
+                      <article key={entry.id} className="rounded-xl border border-border/50 bg-background/70 p-4">
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <div className="font-semibold">{titleOfEntry(entry)}</div>
@@ -288,11 +324,20 @@ export function BibleView({ bookId, nav }: { bookId: string; nav: { toDashboard:
                     {entry.visibilityRule && <div className="mt-3 rounded-lg bg-muted/50 px-2 py-1 text-xs text-muted-foreground">visibility: {entry.visibilityRule.type}</div>}
                   </article>
                 ))}
-              </div>
+                  </div>
+                </>
+              )}
             </section>
 
-            {customSectionSelected ? (
-              <PageEmptyState title="自定义栏目条目表单待接入" description="栏目结构已经可管理；自定义栏目条目列表与动态字段表单将在下一步任务接入。" />
+            {activeSection ? (
+              <JingweiEntryForm
+                bookId={bookId}
+                section={activeSection}
+                entries={jingweiEntries}
+                editingEntry={editingJingweiEntry}
+                onEditingEntryChange={setEditingJingweiEntry}
+                onSaved={refetchJingweiEntries}
+              />
             ) : activeTab !== "questionnaires" && activeTab !== "ai-filter" && <EntryForm tab={activeTab} entries={visibleEntries} onSubmit={createEntry} />}
           </main>
         </div>

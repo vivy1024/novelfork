@@ -118,7 +118,7 @@
   - 添加组件测试：栏目新增、改名、禁用、排序、字段定义保存。
   - 覆盖 Requirements 6、7、12、13。
 
-- [ ] 14. 实现故事经纬条目列表与条目表单 UI
+- [x] 14. 实现故事经纬条目列表与条目表单 UI
   - 新增或改造 `JingweiEntryList.tsx`、`JingweiEntryForm.tsx`、`VisibilityRuleEditor.tsx`、`CustomFieldEditor.tsx`。
   - 条目表单支持：标题、正文 Markdown、标签、别名/关键词、关联章节、关联条目、自定义字段、可见性规则、是否参与 AI、token 预算。
   - 按栏目字段定义动态渲染自定义字段。
