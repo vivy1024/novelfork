@@ -9,7 +9,7 @@
 **NovelFork** 是一个专注中文网文创作的本地 AI 工作台，目标是让作者在一个软件内完成：**构思 → 大纲 → 写作 → 审计 → 去 AI 味 → 上架**。
 
 核心理念：
-- **Novel Bible（小说圣经）**：4 + N 张结构化表管理角色 / 事件 / 设定 / 章节摘要 / 矛盾 / 世界模型 / 故事基线 / 角色弧线，AI 按可见性规则精准注入上下文
+- **故事经纬（内部 legacy Bible 命名兼容保留）**：结构化管理角色 / 事件 / 设定 / 章节摘要 / 矛盾 / 世界模型 / 故事基线 / 角色弧线，AI 按可见性规则精准注入上下文
 - **强制 AI 味过滤**：12 本地特征规则 + 可选腾讯朱雀 API 双检 + 消 AI 味 7 招预设，写作管线必经一层（起点 / 晋江 / 番茄平台合规刚需）
 - **引导式创作**：问卷系统引导建书、CoreShift 变更协议管理核心设定漂移、PGI（Pre-Generation Interrogation）在每章生成前用启发式问题把作者意图显性化
 - **本地优先**：SQLite + drizzle ORM，Bun 单入口，`bun compile` 单可执行文件分发
@@ -55,6 +55,8 @@ pnpm install
 pnpm dev          # 开发模式（Vite HMR）
 ```
 
+首次打开 Studio 时，建议先配置 AI 模型；但这不是强制前置。未配置模型时，你仍然可以继续创建本地书籍、整理故事经纬、编辑章节正文。AI 续写、评点、深度 AI 味检测和工作台 Agent 任务会在真正调用时再提示配置模型。
+
 产物构建与分发：
 
 ```bash
@@ -75,8 +77,8 @@ pnpm bun:compile  # 编译为单可执行文件
 | Spec | 状态 | 范围 |
 |---|---|---|
 | **storage-migration** | Tasks 1-7 ✅ | SQLite 接入 + migration runner + Repository 层 + 并发验证 + JSON 导入 + 扩展指引 |
-| **novel-bible-v1** | Spec 完成，待实现 | Phase A（4 表 Bible + 可见性 + 上下文引擎） → Phase B（Conflict + WorldModel + Premise + CharacterArc） → Phase C（Questionnaire + CoreShift + PGI） |
-| **ai-taste-filter-v1** | Spec 完成，待实现 | 12 规则检测 + 朱雀 API + 7 招建议 + 管线集成 + 跨 Bible/PGI 接口 |
+| **novel-bible-v1** | Spec 完成，待实现 | 内部 spec 名仍为 `novel-bible-v1`，用户可见层统一叫“故事经纬 / 经纬”；范围为可见性 + 上下文引擎 → Conflict + WorldModel + Premise + CharacterArc → Questionnaire + CoreShift + PGI |
+| **ai-taste-filter-v1** | Spec 完成，待实现 | 12 规则检测 + 朱雀 API + 7 招建议 + 管线集成 + 跨故事经纬/PGI 接口 |
 
 ### Migration 编号规划
 
