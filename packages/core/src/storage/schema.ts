@@ -296,6 +296,24 @@ export const coreShifts = sqliteTable(
   (table) => [index("core_shift_book_status_idx").on(table.bookId, table.status)],
 );
 
+export const filterReports = sqliteTable(
+  "filter_report",
+  {
+    id: text("id").primaryKey(),
+    bookId: text("book_id").notNull(),
+    chapterNumber: integer("chapter_number").notNull(),
+    aiTasteScore: integer("ai_taste_score").notNull(),
+    level: text("level").notNull(),
+    hitCountsJson: text("hit_counts_json").notNull(),
+    zhuqueScore: integer("zhuque_score"),
+    zhuqueStatus: text("zhuque_status"),
+    details: text("details").notNull(),
+    engineVersion: text("engine_version").notNull(),
+    scannedAt: integer("scanned_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [index("filter_report_by_chapter_idx").on(table.bookId, table.chapterNumber, table.scannedAt)],
+);
+
 export const drizzleMigrations = sqliteTable("drizzle_migrations", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   hash: text("hash").notNull().unique(),
