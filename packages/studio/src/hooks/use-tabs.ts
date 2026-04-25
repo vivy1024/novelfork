@@ -81,6 +81,8 @@ export function routeToTabLabel(route: Route): string {
       return "会话中心";
     case "book":
       return route.bookId;
+    case "bible":
+      return `Bible · ${route.bookId}`;
     case "book-create":
       return "新建书籍";
     case "chapter":

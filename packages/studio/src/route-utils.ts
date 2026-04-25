@@ -4,6 +4,7 @@ export function deriveActiveBookId(route: Route): string | undefined {
   return route.page === "book"
     || route.page === "chapter"
     || route.page === "truth"
+    || route.page === "bible"
     || route.page === "analytics"
     || route.page === "diff"
     || route.page === "detect"

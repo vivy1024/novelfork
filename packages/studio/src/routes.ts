@@ -36,6 +36,7 @@ export type Route =
   | { page: "workflow"; section?: WorkflowSection }
   | { page: "sessions" }
   | { page: "book"; bookId: string }
+  | { page: "bible"; bookId: string }
   | { page: "book-create" }
   | { page: "chapter"; bookId: string; chapterNumber: number }
   | { page: "analytics"; bookId: string }
@@ -137,6 +138,8 @@ export function canonicalRouteId(route: Route): string {
       return "sessions";
     case "book":
       return `book:${route.bookId}`;
+    case "bible":
+      return `bible:${route.bookId}`;
     case "book-create":
       return "book-create";
     case "chapter":
@@ -214,6 +217,8 @@ export function normalizeRoute(value: unknown): Route | undefined {
       };
     case "book":
       return hasString(value, "bookId") ? { page: "book", bookId: value.bookId as string } : undefined;
+    case "bible":
+      return hasString(value, "bookId") ? { page: "bible", bookId: value.bookId as string } : undefined;
     case "analytics":
       return hasString(value, "bookId") ? { page: "analytics", bookId: value.bookId as string } : undefined;
     case "truth":

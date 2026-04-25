@@ -45,6 +45,8 @@ import { runChapterReviewCycle } from "./chapter-review-cycle.js";
 import { validateChapterTruthPersistence } from "./chapter-truth-validation.js";
 import { loadPersistedPlan, relativeToBookDir } from "./persisted-governed-plan.js";
 import { pipelineEvents } from "./pipeline-events.js";
+import { buildBibleContext } from "../bible/context/build-bible-context.js";
+import { mergeBibleContextWithExternalContext } from "../bible/context/pipeline-bridge.js";
 
 const SEQUENCE_LEVEL_CATEGORIES = new Set([
   "Pacing Monotony", "节奏单调",
@@ -2938,7 +2940,8 @@ ${matrix}`,
     plan: PlanChapterOutput;
     composed: Awaited<ReturnType<ComposerAgent["composeChapter"]>>;
   }> {
-    const plan = await this.resolveGovernedPlan(book, bookDir, chapterNumber, externalContext, options);
+    const mergedContext = await this.withBibleContext(book.id, chapterNumber, externalContext);
+    const plan = await this.resolveGovernedPlan(book, bookDir, chapterNumber, mergedContext, options);
 
     const composer = new ComposerAgent(this.agentCtxFor("composer", book.id));
     const composed = await composer.composeChapter({
@@ -2949,6 +2952,21 @@ ${matrix}`,
     });
 
     return { plan, composed };
+  }
+
+  private async withBibleContext(bookId: string, chapterNumber: number, externalContext?: string): Promise<string | undefined> {
+    try {
+      const context = await buildBibleContext({
+        bookId,
+        currentChapter: chapterNumber,
+      });
+      return mergeBibleContextWithExternalContext(context, externalContext);
+    } catch (error) {
+      this.config.logger?.warn(
+        `Novel Bible context unavailable for book ${bookId} chapter ${chapterNumber}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return externalContext;
+    }
   }
 
   private async resolveGovernedPlan(
