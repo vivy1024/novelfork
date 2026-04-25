@@ -6,6 +6,7 @@ import {
   Boxes,
   ChevronDown,
   ChevronRight,
+  Database,
   FileInput,
   FolderGit2,
   LayoutDashboard,
@@ -44,6 +45,7 @@ interface Nav {
   toWorkflow: () => void;
   toSessions: () => void;
   toBook: (id: string) => void;
+  toBible: (id: string) => void;
   toBookCreate: () => void;
   toChapter: (bookId: string, chapterNumber: number) => void;
   toTruth: (bookId: string) => void;
@@ -490,6 +492,18 @@ function BookTreeChildren({ bookId, chaptersWritten, nav, activePage, t }: {
           </button>
         );
       })}
+
+      <button
+        onClick={() => nav.toBible(bookId)}
+        className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs transition-all ${
+          activePage === `bible:${bookId}`
+            ? "bg-primary/10 font-semibold text-primary"
+            : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+        }`}
+      >
+        <Database size={12} />
+        <span>Bible</span>
+      </button>
 
       <button
         onClick={() => nav.toTruth(bookId)}

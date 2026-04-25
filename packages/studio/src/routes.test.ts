@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { validatePersistedTabSession } from "./routes";
+import { canonicalRouteId, normalizeRoute, validatePersistedTabSession } from "./routes";
+
+describe("Bible route", () => {
+  it("normalizes Bible book routes and uses stable tab ids", () => {
+    expect(normalizeRoute({ page: "bible", bookId: "demo" })).toEqual({ page: "bible", bookId: "demo" });
+    expect(canonicalRouteId({ page: "bible", bookId: "demo" })).toBe("bible:demo");
+  });
+});
 
 describe("validatePersistedTabSession", () => {
   it("keeps current grouped routes when persisted state is already valid", () => {

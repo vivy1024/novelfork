@@ -53,7 +53,7 @@ Novel Bible v1（现已扩展为**认知层 v1**）。**前置**：`storage-migr
   - zod 校验 + 错误码
   - API 测试：每个路由 happy path + 错误路径
 
-- [ ] A6. Studio UI 最小可用
+- [x] A6. Studio UI 最小可用
   - 侧栏新增 Bible 入口
   - 4 Tabs 列表 + 结构化表单（`EntryForm.tsx`）
   - `VisibilityRuleEditor.tsx`：下拉 + 章节数字输入 + nested 父选择
@@ -61,17 +61,18 @@ Novel Bible v1（现已扩展为**认知层 v1**）。**前置**：`storage-migr
   - `ContextPreviewModal.tsx`：展示注入清单 / tokens / 丢弃理由
   - 样式复用现有 NovelFork Studio 设计系统
 
-- [ ] A7. 与写作管线的接口（占位）
+- [x] A7. 与写作管线的接口（占位）
   - 在 AI 写作管线的上下文构建点，调用 `buildBibleContext()` 并拼接到 prompt
   - 留出 `bible_chapter_summary.metadataJson.filterReport` 字段，供 ai-taste-filter-v1 写入
   - 本任务不实现 filter 集成本身，仅确认字段与接口稳定
 
-- [ ] A8. Phase A 测试、性能与文档
+- [x] A8. Phase A 测试、性能与文档
   - 运行 `pnpm --filter ... test`
   - 运行 `pnpm --filter ... typecheck`
   - E2E：创建 book → 加 5 角色 + 3 事件 + 5 设定 → 预览上下文 → 断言注入集正确
   - 新建 `docs/04-开发指南/Bible开发指引.md`（Phase A 版）
   - 更新 07 调研文档的路线图勾选 Phase A
+  - 备注：Phase A 相关测试与 typecheck 已通过；全量 filter test 仍有既有非 Phase A 失败（core composer-lorebook reduction 0.5974 < 0.6；studio session-chat-service ack timeout）
 
 ---
 

@@ -129,6 +129,52 @@ describe("Bible API routes", () => {
     }
   });
 
+  it("runs the Phase A author flow from book setup to bulk entries and preview", async () => {
+    const storage = await createStorage();
+    try {
+      const router = createBibleRouter({ storage });
+
+      for (let index = 1; index <= 5; index += 1) {
+        await postJson(router, "/api/books/book-1/bible/characters", {
+          id: `flow-char-${index}`,
+          name: `角色${index}`,
+          aliases: [`角色别名${index}`],
+          summary: `角色${index}的阶段性设定。`,
+          visibilityRule: index === 1 ? { type: "tracked" } : { type: "global" },
+        });
+      }
+      for (let index = 1; index <= 3; index += 1) {
+        await postJson(router, "/api/books/book-1/bible/events", {
+          id: `flow-event-${index}`,
+          name: `事件${index}`,
+          eventType: "key",
+          summary: `事件${index}推动主线。`,
+          visibilityRule: { type: "tracked" },
+        });
+      }
+      for (let index = 1; index <= 5; index += 1) {
+        await postJson(router, "/api/books/book-1/bible/settings", {
+          id: `flow-setting-${index}`,
+          category: "world",
+          name: `设定${index}`,
+          content: `设定${index}影响修炼资源。`,
+          visibilityRule: { type: "global" },
+        });
+      }
+
+      const previewResponse = await postJson(router, "/api/books/book-1/bible/preview-context", {
+        currentChapter: 5,
+        sceneText: "角色别名1卷入事件2。",
+      });
+      expect(previewResponse.status).toBe(200);
+      const preview = await previewResponse.json();
+      expect(preview.context.items.some((item: { id: string }) => item.id === "flow-char-1")).toBe(true);
+      expect(preview.context.items.some((item: { id: string }) => item.id === "flow-setting-5")).toBe(true);
+    } finally {
+      storage.close();
+    }
+  });
+
   it("previews buildBibleContext and patches book settings", async () => {
     const storage = await createStorage();
     try {

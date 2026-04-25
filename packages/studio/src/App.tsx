@@ -14,6 +14,7 @@ import { WorkspaceSelector } from "./pages/WorkspaceSelector";
 import { LanguageSelector } from "./pages/LanguageSelector";
 // Lazy: all secondary pages — each becomes its own chunk (Package 6 / 7.1 bundle split)
 const BookDetail = lazy(() => import("./pages/BookDetail").then((m) => ({ default: m.BookDetail })));
+const BibleView = lazy(() => import("./pages/BibleView").then((m) => ({ default: m.BibleView })));
 const ChapterReader = lazy(() => import("./pages/ChapterReader").then((m) => ({ default: m.ChapterReader })));
 const Analytics = lazy(() => import("./pages/Analytics").then((m) => ({ default: m.Analytics })));
 const TruthFiles = lazy(() => import("./pages/TruthFiles").then((m) => ({ default: m.TruthFiles })));
@@ -329,6 +330,7 @@ function AppInner() {
     toWorkflow: (section?: WorkflowSection) => openTab({ page: "workflow", section }),
     toSessions: () => openTab({ page: "sessions" }),
     toBook: (bookId: string) => openTab({ page: "book", bookId }),
+    toBible: (bookId: string) => openTab({ page: "bible", bookId }),
     toBookCreate: () => setBookCreateOpen(true),
     toChapter: (bookId: string, chapterNumber: number) =>
       openTab({ page: "chapter", bookId, chapterNumber }),
@@ -364,6 +366,7 @@ function AppInner() {
     if (route.page === "truth") return `truth:${route.bookId}`;
     if (route.page === "analytics") return `analytics:${route.bookId}`;
     if (route.page === "book") return `book:${route.bookId}`;
+    if (route.page === "bible") return `bible:${route.bookId}`;
     if (route.page === "workflow") return route.section ? `workflow:${route.section}` : "workflow";
     if (route.page === "admin") return route.section ? `admin:${route.section}` : "admin";
     if (route.page === "settings") return route.section ? `settings:${route.section}` : "settings";
@@ -585,6 +588,7 @@ function TabContentInner({ route, nav, theme, t, sse, setTheme }: {
       );
     case "sessions": return <SessionCenter theme={theme} />;
     case "book": return <BookDetail bookId={route.bookId} nav={nav} theme={theme} t={t} sse={sse} />;
+    case "bible": return <BibleView bookId={route.bookId} nav={nav} />;
     case "book-create": return <BookCreate nav={nav} theme={theme} t={t} />;
     case "chapter": return <ChapterReader bookId={route.bookId} chapterNumber={route.chapterNumber} nav={nav} theme={theme} t={t} />;
     case "analytics": return <Analytics bookId={route.bookId} nav={nav} theme={theme} t={t} />;
