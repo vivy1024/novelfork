@@ -39,7 +39,7 @@ Novel Bible v1（现已扩展为**认知层 v1**）。**前置**：`storage-migr
   - 单测：预算不够 / 刚好够 / 绰绰有余三种场景
   - 测试丢弃优先级：tracked 先于 nested 先于 global
 
-- [ ] A4. buildBibleContext 总入口
+- [x] A4. buildBibleContext 总入口
   - `build-bible-context.ts`：串联以上模块
   - 处理 static / dynamic 两种 bibleMode
   - 当 sceneText 缺失时 fallback 到 global-only
