@@ -11,6 +11,7 @@ coverage/
 _notes/
 _tmp_*
 test-project/
+packages/studio/.test-workspace/
 .venv*/
 .gstack/
 .worktrees/

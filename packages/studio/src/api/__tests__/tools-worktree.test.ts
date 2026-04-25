@@ -667,7 +667,7 @@ describe("Tool System Integration", () => {
       const result = await executor.execute(
         "Bash",
         {
-          command: "sleep 10",
+          command: `"${process.execPath}" -e "setTimeout(() => {}, 10000)"`,
           timeout: 100, // 100ms timeout
         },
         {

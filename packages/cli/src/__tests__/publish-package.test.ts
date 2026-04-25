@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { gunzipSync } from "node:zlib";
 import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 
@@ -37,11 +38,42 @@ async function packPackage(packageDir: string, packDir: string) {
 
 async function extractPackedPackageJson(packageDir: string, packDir: string) {
   const tarballPath = await packPackage(packageDir, packDir);
-  const tarArgs = process.platform === "win32" ? ["--force-local", "-xOf"] : ["-xOf"];
-  return execFileSync("tar", [...tarArgs, tarballPath, "package/package.json"], {
-    cwd: workspaceRoot,
-    encoding: "utf-8",
-  });
+  const files = await readTarGzFiles(tarballPath);
+  const packageJson = files.get("package/package.json");
+  if (!packageJson) {
+    throw new Error("Packed package.json not found");
+  }
+  return packageJson.toString("utf-8");
+}
+
+function readTarString(block: Buffer, start: number, length: number): string {
+  const slice = block.subarray(start, start + length);
+  const nullIndex = slice.indexOf(0);
+  return slice.subarray(0, nullIndex === -1 ? slice.length : nullIndex).toString("utf-8").trim();
+}
+
+async function readTarGzFiles(tarballPath: string): Promise<Map<string, Buffer>> {
+  const archive = gunzipSync(new Uint8Array(await readFile(tarballPath)));
+  const files = new Map<string, Buffer>();
+  let offset = 0;
+
+  while (offset + 512 <= archive.length) {
+    const header = archive.subarray(offset, offset + 512);
+    const name = readTarString(header, 0, 100);
+    if (!name) {
+      break;
+    }
+
+    const prefix = readTarString(header, 345, 155);
+    const path = prefix ? `${prefix}/${name}` : name;
+    const sizeText = readTarString(header, 124, 12);
+    const size = Number.parseInt(sizeText || "0", 8);
+    const contentStart = offset + 512;
+    files.set(path, archive.subarray(contentStart, contentStart + size));
+    offset = contentStart + Math.ceil(size / 512) * 512;
+  }
+
+  return files;
 }
 
 describe.sequential("publish packaging", () => {
@@ -244,11 +276,7 @@ describe.sequential("publish packaging", () => {
 
     try {
       const tarballPath = await packPackage(studioDir, packDir);
-      const tarArgs = process.platform === "win32" ? ["--force-local", "-tf"] : ["-tf"];
-      const archiveListing = execFileSync("tar", [...tarArgs, tarballPath], {
-        cwd: workspaceRoot,
-        encoding: "utf-8",
-      });
+      const archiveListing = [...(await readTarGzFiles(tarballPath)).keys()].join("\n");
 
       expect(archiveListing).toContain("package/dist/index.html");
       expect(archiveListing).toContain("package/dist/api/index.js");
