@@ -188,7 +188,7 @@ export function EntryForm({
     <form onSubmit={submit} className="space-y-4 rounded-2xl border border-border/40 bg-card/70 p-5 shadow-sm">
       <div>
         <h3 className="font-serif text-xl font-semibold">结构化表单</h3>
-        <p className="text-xs text-muted-foreground">保存后会写入 Novel Bible SQLite 表，并可立即参与上下文预览。</p>
+        <p className="text-xs text-muted-foreground">保存后会写入故事经纬结构化存储，并可立即参与上下文预览。</p>
       </div>
 
       <div className="grid gap-3 md:grid-cols-2">
@@ -295,7 +295,7 @@ export function EntryForm({
       </label>
 
       <button type="submit" disabled={saving} className="rounded-xl bg-primary px-4 py-2 text-sm font-bold text-primary-foreground disabled:opacity-50">
-        {saving ? "保存中..." : "保存 Bible 条目"}
+        {saving ? "保存中..." : "保存经纬条目"}
       </button>
     </form>
   );

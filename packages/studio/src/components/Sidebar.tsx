@@ -502,7 +502,7 @@ function BookTreeChildren({ bookId, chaptersWritten, nav, activePage, t }: {
         }`}
       >
         <Database size={12} />
-        <span>Bible</span>
+        <span>经纬</span>
       </button>
 
       <button

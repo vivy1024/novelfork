@@ -540,7 +540,7 @@ async function daemonTick(adapter: ClientStorageAdapter): Promise<void> {
       : `Title: ${book.title}\nGenre: ${book.genre}\nWriting: Chapter ${nextNum}\n`;
 
     if (truthSummary) {
-      userPrompt += lang === "zh" ? `\n设定摘要：\n${truthSummary}\n` : `\nStory bible:\n${truthSummary}\n`;
+      userPrompt += lang === "zh" ? `\n设定摘要：\n${truthSummary}\n` : `\nStory Jingwei:\n${truthSummary}\n`;
     }
     if (recentChapters.length > 0) {
       userPrompt += lang === "zh" ? `\n前文回顾：\n${recentChapters.join("\n\n")}\n` : `\nPrevious chapters:\n${recentChapters.join("\n\n")}\n`;

@@ -80,7 +80,7 @@ export function BibleView({ bookId, nav }: { bookId: string; nav: { toDashboard:
         await postApi(endpoint, payload);
       }
       await refetch();
-      notify.success("Bible 条目已保存");
+      notify.success("故事经纬条目已保存");
     } catch (error) {
       notify.error("保存失败", { description: error instanceof Error ? error.message : undefined });
       throw error;
@@ -91,7 +91,7 @@ export function BibleView({ bookId, nav }: { bookId: string; nav: { toDashboard:
     try {
       await fetchJson(`${endpoint}/${entryId}`, { method: "DELETE" });
       await refetch();
-      notify.success("Bible 条目已删除");
+      notify.success("故事经纬条目已删除");
     } catch (error) {
       notify.error("删除失败", { description: error instanceof Error ? error.message : undefined });
     }
@@ -115,7 +115,7 @@ export function BibleView({ bookId, nav }: { bookId: string; nav: { toDashboard:
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ bibleMode, currentChapter }),
       });
-      notify.success("Bible 模式已更新");
+      notify.success("经纬模式已更新");
     } catch (error) {
       notify.error("模式更新失败", { description: error instanceof Error ? error.message : undefined });
     } finally {
@@ -139,7 +139,7 @@ export function BibleView({ bookId, nav }: { bookId: string; nav: { toDashboard:
   };
 
   return (
-    <PageScaffold title="Novel Bible" description="结构化管理角色、事件、设定与章节摘要，并预览将注入 AI 写作的上下文。">
+    <PageScaffold title="故事经纬" description="结构化管理人物、事件、设定与章节摘要，并预览将注入 AI 写作的上下文。">
       <div className="space-y-6 fade-in">
         <nav className="flex items-center gap-2 text-[13px] font-medium text-muted-foreground">
           <button onClick={nav.toDashboard} className="flex items-center gap-1 hover:text-primary">
@@ -148,18 +148,18 @@ export function BibleView({ bookId, nav }: { bookId: string; nav: { toDashboard:
           <span>/</span>
           <button onClick={() => nav.toBook(bookId)} className="hover:text-primary">{bookData?.book.title ?? bookId}</button>
           <span>/</span>
-          <span className="text-foreground">Bible</span>
+          <span className="text-foreground">故事经纬</span>
         </nav>
 
         <section className="rounded-2xl border border-border/40 bg-card/70 p-5 shadow-sm">
           <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
             <div>
-              <h2 className="font-serif text-2xl font-semibold">Book Settings Panel</h2>
+              <h2 className="font-serif text-2xl font-semibold">故事经纬设置</h2>
               <p className="text-sm text-muted-foreground">static 只注入全局可见条目；dynamic 会额外按 sceneText 命中 tracked 并展开 nested。</p>
             </div>
             <div className="flex flex-wrap items-end gap-3">
               <label className="flex flex-col gap-1 text-xs font-semibold text-muted-foreground">
-                bible_mode
+                经纬模式
                 <select value={bibleMode} onChange={(event) => setBibleMode(event.target.value as "static" | "dynamic")} className="rounded-lg border border-border/50 bg-background px-3 py-2 text-sm text-foreground">
                   <option value="static">static</option>
                   <option value="dynamic">dynamic</option>
@@ -181,7 +181,7 @@ export function BibleView({ bookId, nav }: { bookId: string; nav: { toDashboard:
 
         <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
           <aside className="rounded-2xl border border-border/40 bg-card/70 p-3 shadow-sm">
-            <div className="mb-3 px-2 text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Bible Tabs</div>
+            <div className="mb-3 px-2 text-[11px] font-bold uppercase tracking-widest text-muted-foreground">经纬栏目</div>
             {BIBLE_TABS.map((tab) => (
               <button
                 key={tab.id}
@@ -194,7 +194,7 @@ export function BibleView({ bookId, nav }: { bookId: string; nav: { toDashboard:
           </aside>
 
           <main className="space-y-6">
-            {error && <PageEmptyState title="加载 Bible 失败" description={error} />}
+            {error && <PageEmptyState title="加载故事经纬失败" description={error} />}
             <section className="rounded-2xl border border-border/40 bg-card/70 p-5 shadow-sm">
               <div className="mb-4 flex items-center justify-between">
                 <div>

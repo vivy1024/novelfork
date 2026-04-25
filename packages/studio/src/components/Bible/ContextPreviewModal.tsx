@@ -29,7 +29,7 @@ export function ContextPreviewModal({
         <div className="flex items-start justify-between border-b border-border/60 p-5">
           <div>
             <h2 className="font-serif text-2xl font-semibold">预览 AI 上下文</h2>
-            <p className="text-sm text-muted-foreground">按当前章节、sceneText 和 token 预算展示将注入写作 prompt 的 Bible 条目。</p>
+            <p className="text-sm text-muted-foreground">按当前章节、sceneText 和 token 预算展示将注入写作 prompt 的故事经纬条目。</p>
           </div>
           <button onClick={onClose} className="rounded-lg px-3 py-1 text-sm text-muted-foreground hover:bg-muted">关闭</button>
         </div>

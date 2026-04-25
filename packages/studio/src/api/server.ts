@@ -278,7 +278,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     // Lorebook / World Info
     app.route("", createLorebookRouter(root));
 
-    // Novel Bible structured authoring API
+    // Story Jingwei structured authoring API (legacy Bible routes remain compatible)
     app.route("", createBibleRouter());
 
     // Story Jingwei structured authoring API

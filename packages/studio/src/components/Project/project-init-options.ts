@@ -29,14 +29,14 @@ export function repositorySourceOptions(language: "zh" | "en"): ReadonlyArray<Ch
 export function workflowModeOptions(language: "zh" | "en"): ReadonlyArray<ChoiceOption<StudioWorkflowMode>> {
   if (language === "en") {
     return [
-      { value: "outline-first", title: "Outline first", description: "Land the bible and world rules first, then expand into chapter work." },
+      { value: "outline-first", title: "Outline first", description: "Land the story framework and world rules first, then expand into chapter work." },
       { value: "draft-first", title: "Draft first", description: "Keep the setup lighter and reach the first writable draft faster." },
       { value: "serial-ops", title: "Serial ops", description: "Prepare for long-running serial work with higher chapter and cadence defaults." },
     ];
   }
 
   return [
-    { value: "outline-first", title: "先大纲", description: "先把故事圣经、世界规则和基础骨架立起来，再进入章节生产。" },
+    { value: "outline-first", title: "先大纲", description: "先把故事经纬、世界规则和基础骨架立起来，再进入章节生产。" },
     { value: "draft-first", title: "先开稿", description: "减少前置铺垫，先得到一套可写的初始工程，适合快速起盘。" },
     { value: "serial-ops", title: "连载推进", description: "按长期连载准备更高章数与节奏预设，方便后续持续推进。" },
   ];

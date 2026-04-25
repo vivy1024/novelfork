@@ -67,6 +67,10 @@ describe("routeToTabLabel", () => {
     expect(routeToTabLabel({ page: "book-create" })).toBe("新建书籍");
   });
 
+  it('bible route uses the visible "经纬" label', () => {
+    expect(routeToTabLabel({ page: "bible", bookId: "demo" })).toBe("经纬 · demo");
+  });
+
   it('chapter → "章节 {n}"', () => {
     expect(routeToTabLabel({ page: "chapter", bookId: "x", chapterNumber: 12 })).toBe("章节 12");
   });

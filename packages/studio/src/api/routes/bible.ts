@@ -47,7 +47,7 @@ function normalizeNullableNumber(value: unknown): number | null {
 
 function requireName(body: Record<string, unknown>): string {
   if (typeof body.name !== "string" || body.name.trim().length === 0) {
-    throw new ApiError(400, "BIBLE_NAME_REQUIRED", "Bible entry name is required.");
+    throw new ApiError(400, "BIBLE_NAME_REQUIRED", "Jingwei entry name is required.");
   }
   return body.name.trim();
 }
