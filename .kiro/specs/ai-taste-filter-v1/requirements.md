@@ -118,7 +118,19 @@
 4. WHEN 朱雀 API 不可用时 THEN THE SYSTEM SHALL 降级路径有测试覆盖。
 5. WHEN 运行 typecheck 时 THEN THE SYSTEM SHALL 无错误。
 
-### Requirement 8：明确不做
+### Requirement 8：与 novel-bible-v1 / PGI 的跨 spec 接口
+
+**User Story：** 作为 PM，我希望 filter 与 Bible / PGI 系统有清晰的数据接口契约，双方按约定读写，不互相侵入。
+
+#### Acceptance Criteria
+
+1. WHEN 章节生成完成并写入 `bible_chapter_summary` 时 THEN THE SYSTEM SHALL 将 `filter_report.id` 写入 `bible_chapter_summary.metadataJson.filterReportId`，形成 1:1 关联。
+2. WHEN `bible_chapter_summary.metadataJson` 中存在 `pgi_answers`（来自 `novel-bible-v1` Phase C 的 Pre-Generation Interrogation）时 THEN THE SYSTEM SHALL 在 `filter_report.details` 中记录 `pgiUsed: true | false`；未走 PGI 的章节标注 `pgiUsed: false`。
+3. WHEN 全书报告页展示时 THEN THE SYSTEM SHALL 支持按 `pgiUsed` 分组对比：走 PGI 的章节平均分 vs 未走 PGI 的章节平均分（可辅助作者判断 PGI 是否有价值）。
+4. WHEN 本地检测的 `aiTasteScore` 与 Conflict 的 `resolution_state` 出现相关性（如连续 3 章 escalating 矛盾的评分比非矛盾章显著高）时 THEN THE SYSTEM SHALL 在报告中标注"矛盾密集章节 AI 味偏高"提示（Phase C+ 可选，v1 仅预留字段不实现分析逻辑）。
+5. WHEN filter 的 migration 编号与 bible 的 migration 冲突时 THEN THE SYSTEM SHALL 使用独立编号序列：bible = `0002/0003/0004`，filter = `0005_filter_v1.sql`（或在开发时按实际先后调整，确保 drizzle-kit 生成的文件名无冲突）。
+
+### Requirement 9：明确不做
 
 **User Story：** 作为 PM，我希望 v1 边界清晰。
 
@@ -130,4 +142,5 @@
    - 图像 / 音频 AI 检测（仅文本）
    - 自动改写执行（仅建议）—— 留给后续 `auto-dehumanize` spec
    - 与晋江 / 起点的直投接口
+   - PGI / Conflict 分析逻辑（仅预留字段，实际分析留给 `novel-bible-v1` Phase C+ 或 `analytics-v1`）
 2. WHEN 未列入的需求被提出时 THEN THE SYSTEM SHALL 在文档中明确 defer 到哪个 spec。

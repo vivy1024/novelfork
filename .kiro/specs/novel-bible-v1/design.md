@@ -246,3 +246,443 @@ export async function buildBibleContext(input: BuildBibleContextInput): Promise<
 
 - `bible_chapter_summary.metadataJson` 预留 `filterReport` 字段，由 filter spec 写入
 - coding-agent 可通过公开的 repository / API 批量插入条目（权限受 workbench mode 控制）
+
+---
+
+# Phase B 设计扩展：Conflict / WorldModel / Premise / CharacterArc
+
+## Conflict（矛盾）建模
+
+### Schema
+
+```ts
+export const bibleConflict = sqliteTable("bible_conflict", {
+  id: text("id").primaryKey(),
+  bookId: text("book_id").notNull().references(() => book.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  type: text("type").notNull(),
+  // external-character | external-power | external-world |
+  // internal-value | internal-fear | social-class | system-scarcity | cultural
+  scope: text("scope").notNull().default("arc"),          // main | arc | chapter | scene
+  priority: integer("priority").notNull().default(3),      // 1-5，1=主线
+  protagonistSideJson: text("protagonist_side_json").notNull().default("[]"),
+  antagonistSideJson: text("antagonist_side_json").notNull().default("[]"),
+  stakes: text("stakes").notNull().default(""),
+  rootCauseJson: text("root_cause_json").notNull().default("{}"),
+  evolutionPathJson: text("evolution_path_json").notNull().default("[]"),
+  // [{ chapter, state, summary, movedBy: "author" | "ai-generated" | "audit", at }]
+  resolutionState: text("resolution_state").notNull().default("unborn"),
+  // unborn | brewing | erupted | escalating | climax | resolved | deferred
+  resolutionChapter: integer("resolution_chapter"),
+  relatedConflictIdsJson: text("related_conflict_ids_json").notNull().default("[]"),
+  visibilityRuleJson: text("visibility_rule_json").notNull().default("{\"type\":\"tracked\"}"),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
+}, (t) => ({
+  byBookStatus: index("idx_bible_conflict_by_status").on(t.bookId, t.resolutionState),
+  byBookPriority: index("idx_bible_conflict_by_priority").on(t.bookId, t.priority),
+}));
+```
+
+### 在场矛盾查询
+
+```ts
+// conflict-repo.ts
+export async function getActiveConflictsAtChapter(bookId: string, chapter: number): Promise<ConflictItem[]> {
+  const rows = await db.select().from(bibleConflict)
+    .where(and(
+      eq(bibleConflict.bookId, bookId),
+      isNull(bibleConflict.deletedAt),
+      notInArray(bibleConflict.resolutionState, ["resolved", "deferred"]),
+    ));
+  return rows
+    .filter((r) => {
+      const path = safeJson(r.evolutionPathJson, []);
+      const firstCh = path[0]?.chapter ?? r.resolutionChapter ?? 0;
+      const lastCh = r.resolutionChapter ?? Number.POSITIVE_INFINITY;
+      return chapter >= firstCh && chapter <= lastCh;
+    })
+    .sort((a, b) => a.priority - b.priority);
+}
+```
+
+### Stalled 检测
+
+- 后台定时（或每次进入 BookDetail 时触发）扫描 `resolution_state = escalating` 的矛盾
+- 对每条查 `evolution_path_json` 最后一条 `{ chapter }`，若 `currentChapter - lastChapter > 10` → 标 stalled
+- UI 在 Conflicts Tab 显示橙色徽章 + "stalled-conflict" 原因
+
+### 注入到 buildBibleContext
+
+```ts
+// 扩展 buildBibleContext
+async function injectConflicts(bookId: string, currentChapter: number): Promise<BibleContextItem[]> {
+  const active = await getActiveConflictsAtChapter(bookId, currentChapter);
+  return active.map((c) => ({
+    id: c.id,
+    type: "conflict",
+    name: c.name,
+    content: `【矛盾-${c.type}】${c.name}（${c.resolutionState}）：${c.stakes}`,
+    priority: 10 - c.priority,         // 主线 1 → 9（高优先），支线 5 → 5（中）
+    source: c.scope === "main" ? "global" : "tracked",
+    estimatedTokens: approxTokens(c.stakes),
+  }));
+}
+```
+
+## WorldModel（5 维）建模
+
+### Schema
+
+```ts
+export const bibleWorldModel = sqliteTable("bible_world_model", {
+  id: text("id").primaryKey(),
+  bookId: text("book_id").notNull().unique().references(() => book.id, { onDelete: "cascade" }),
+  economyJson: text("economy_json").notNull().default("{}"),
+  societyJson: text("society_json").notNull().default("{}"),
+  geographyJson: text("geography_json").notNull().default("{}"),
+  powerSystemJson: text("power_system_json").notNull().default("{}"),
+  cultureJson: text("culture_json").notNull().default("{}"),
+  timelineJson: text("timeline_json").notNull().default("{}"),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+});
+```
+
+### 子字段 TS 类型（规范 JSON 结构）
+
+```ts
+interface EconomyDescriptor {
+  currency?: string;
+  scarcity?: string;
+  classIncomeLevels?: Array<{ class: string; typicalIncome: string }>;
+  tradePatterns?: string;
+  notableCommodities?: string[];
+}
+
+interface SocietyDescriptor {
+  governmentType?: string;
+  classMobility?: string;
+  taboos?: string[];
+  ethicsFrame?: string;
+  keyInstitutions?: Array<{ name: string; role: string }>;
+}
+
+// geography / powerSystem / culture / timeline 类似，按 Requirement 9 条目展开
+```
+
+### 注入策略
+
+```ts
+function formatWorldModel(wm: WorldModelRow): BibleContextItem[] {
+  const items: BibleContextItem[] = [];
+  for (const [dim, json] of [
+    ["经济", wm.economyJson],
+    ["社会", wm.societyJson],
+    ["地理", wm.geographyJson],
+    ["力量体系", wm.powerSystemJson],
+    ["文化", wm.cultureJson],
+    ["纪年", wm.timelineJson],
+  ] as const) {
+    const parsed = safeJson(json, {});
+    if (Object.keys(parsed).length === 0) continue;  // 空维度跳过
+    items.push({
+      id: `world-model:${dim}`,
+      type: "world-model",
+      name: dim,
+      content: `【世界-${dim}】${formatDescriptor(parsed)}`,
+      priority: 8,
+      source: "global",
+      estimatedTokens: approxTokens(JSON.stringify(parsed)),
+    });
+  }
+  return items;
+}
+```
+
+## Premise + CharacterArc
+
+### Schema
+
+```ts
+export const biblePremise = sqliteTable("bible_premise", {
+  id: text("id").primaryKey(),
+  bookId: text("book_id").notNull().unique().references(() => book.id, { onDelete: "cascade" }),
+  logline: text("logline").notNull().default(""),
+  themeJson: text("theme_json").notNull().default("[]"),
+  tone: text("tone").notNull().default(""),
+  targetReaders: text("target_readers").notNull().default(""),
+  uniqueHook: text("unique_hook").notNull().default(""),
+  genreTagsJson: text("genre_tags_json").notNull().default("[]"),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+});
+
+export const bibleCharacterArc = sqliteTable("bible_character_arc", {
+  id: text("id").primaryKey(),
+  bookId: text("book_id").notNull().references(() => book.id, { onDelete: "cascade" }),
+  characterId: text("character_id").notNull().references(() => bibleCharacter.id, { onDelete: "cascade" }),
+  arcType: text("arc_type").notNull(),   // 成长 | 堕落 | 平移 | 反转 | 救赎
+  startingState: text("starting_state").notNull().default(""),
+  endingState: text("ending_state").notNull().default(""),
+  keyTurningPointsJson: text("key_turning_points_json").notNull().default("[]"),
+  // [{ chapter, summary }]
+  currentPosition: text("current_position").notNull().default(""),
+  visibilityRuleJson: text("visibility_rule_json").notNull().default("{\"type\":\"global\"}"),
+  deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+}, (t) => ({
+  byCharacter: index("idx_bible_character_arc_by_character").on(t.bookId, t.characterId),
+}));
+```
+
+### Premise 注入顺序
+
+`buildBibleContext` 组装顺序更新为：
+
+```
+1. Premise（1 条，global，最高优先）
+2. WorldModel 非空维度（global）
+3. 已命中的 Character + 附加 CharacterArc.currentPosition
+4. 已命中的 Event / Setting
+5. 在场 Conflict
+6. nested 扩展
+7. ChapterSummary（最近 N 章，tracked）
+```
+
+---
+
+# Phase C 设计扩展：Questionnaire + CoreShift + PGI
+
+## Questionnaire 系统
+
+### Schema
+
+```ts
+export const questionnaireTemplate = sqliteTable("questionnaire_template", {
+  id: text("id").primaryKey(),
+  version: text("version").notNull(),
+  genreTagsJson: text("genre_tags_json").notNull().default("[]"),
+  tier: integer("tier").notNull(),             // 1 | 2 | 3
+  targetObject: text("target_object").notNull(),
+  // premise | conflict | world-model | character-arc | character | setting
+  questionsJson: text("questions_json").notNull(),
+  isBuiltin: integer("is_builtin", { mode: "boolean" }).notNull().default(true),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+});
+
+export const questionnaireResponse = sqliteTable("questionnaire_response", {
+  id: text("id").primaryKey(),
+  bookId: text("book_id").notNull().references(() => book.id, { onDelete: "cascade" }),
+  templateId: text("template_id").notNull().references(() => questionnaireTemplate.id),
+  targetObjectType: text("target_object_type").notNull(),
+  targetObjectId: text("target_object_id"),
+  answersJson: text("answers_json").notNull(),
+  status: text("status").notNull().default("draft"),   // draft | submitted | skipped
+  answeredVia: text("answered_via").notNull().default("author"),  // author | ai-assisted
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+}, (t) => ({
+  byBookTemplate: index("idx_questionnaire_response_by_book_template").on(t.bookId, t.templateId),
+}));
+```
+
+### 问卷 questions_json 规范
+
+```ts
+interface QuestionnaireQuestion {
+  id: string;                      // 问题稳定 ID
+  prompt: string;                  // 提问文本
+  type: "single" | "multi" | "text" | "ranged-number" | "ai-suggest";
+  options?: string[];              // single / multi 使用
+  min?: number; max?: number;      // ranged-number 使用
+  mapping: {                       // 答案如何落到 target object
+    fieldPath: string;             // e.g. "logline" / "economy.currency"
+    transform?: "identity" | "join-comma" | "parse-int" | "ai-rewrite";
+  };
+  dependsOn?: { questionId: string; equals: string | number | boolean };
+  hint?: string;                   // AI 建议时的上下文 hint
+  defaultSkippable: boolean;       // 本题是否允许跳过
+}
+```
+
+### 内置模板（seed）
+
+Phase C 至少提供以下 builtin：
+
+| tier | target | 适用流派 | 题数 |
+|---|---|---|---|
+| 1 | premise | 通用 | 6 |
+| 1 | premise | 玄幻 | 6 |
+| 1 | premise | 都市 | 6 |
+| 2 | world-model | 玄幻（力量体系优先） | 18 |
+| 2 | world-model | 都市（社会/经济优先） | 18 |
+| 2 | conflict（主线 × 1 支线 × 2） | 通用 | 15 |
+| 2 | character-arc | 通用 | 12 |
+| 3 | world-model（五维全）| 通用 | 35 |
+
+### 事务提交
+
+```ts
+async function submitResponse(response: QuestionnaireResponseInput): Promise<void> {
+  await db.transaction(async (tx) => {
+    const template = await tx.select().from(questionnaireTemplate).where(eq(id, response.templateId)).get();
+    const mappings = safeJson(template.questionsJson, []).map((q) => q.mapping);
+    for (const [qId, answer] of Object.entries(response.answers)) {
+      await applyMappingToTargetObject(tx, response.bookId, template.targetObject, mappings[qId], answer);
+    }
+    await tx.insert(questionnaireResponse).values({ ...response, status: "submitted" });
+  });
+}
+```
+
+### AI 建议端点
+
+```
+POST /api/books/:bookId/questionnaires/:templateId/ai-suggest
+body: { questionId, existingAnswers }
+→ 调用 writer/worldbuilder agent → 返回候选答案与理由
+```
+
+### Dynamic 模式的滞后问卷
+
+- 每章 `appendChapterSummary` 后，扫描 `chapter.keyEventsJson` 中引用但 Bible 中未建档的人物 / 设定 / 矛盾
+- 生成一份临时 "ratify-questionnaire"（形如："本章出现了'林间老翁'，要固化为 Character 吗？"）
+- 作者在侧边栏或章节完成弹窗中响应
+
+## CoreShift 协议
+
+### Schema
+
+```ts
+export const coreShift = sqliteTable("core_shift", {
+  id: text("id").primaryKey(),
+  bookId: text("book_id").notNull().references(() => book.id, { onDelete: "cascade" }),
+  targetType: text("target_type").notNull(),
+  // premise | character-arc | conflict | world-model | outline
+  targetId: text("target_id").notNull(),
+  fromSnapshotJson: text("from_snapshot_json").notNull(),
+  toSnapshotJson: text("to_snapshot_json").notNull(),
+  triggeredBy: text("triggered_by").notNull(),  // author | data-signal | continuity-audit
+  chapterAt: integer("chapter_at").notNull(),
+  affectedChaptersJson: text("affected_chapters_json").notNull().default("[]"),
+  impactAnalysisJson: text("impact_analysis_json").notNull().default("{}"),
+  status: text("status").notNull().default("proposed"),  // proposed | accepted | rejected | applied
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  appliedAt: integer("applied_at", { mode: "timestamp_ms" }),
+}, (t) => ({
+  byBookStatus: index("idx_core_shift_by_status").on(t.bookId, t.status),
+}));
+```
+
+### 流程
+
+```
+[作者编辑 premise / conflict(main) / world-model / character-arc]
+      ↓
+create CoreShift (status = proposed, from/to snapshot)
+      ↓
+analyzeImpact():
+  - 扫 bible_chapter_summary 中引用
+  - 扫 bible_conflict.evolution_path_json
+  - 扫 bible_character_arc.keyTurningPointsJson
+  → affectedChapters[]
+      ↓
+UI 弹"影响分析"面板
+      ↓
+[accept] → 覆盖 Bible 对象；affected 章节加"需复核"徽章
+[reject] → 恢复 Bible 对象前态
+```
+
+### UI
+
+- Book Detail 新增"变更历史" Tab：列出所有 CoreShift 时间线
+- 每个 proposed 变更显示 diff + 影响章节列表 + accept/reject 按钮
+- 章节列表中被 affected 的条目显示橙色"需复核"徽章
+
+## Pre-Generation Interrogation（PGI）
+
+### 端点
+
+```
+POST /api/books/:bookId/chapters/:chapter/pre-generation-questions
+→ 返回 { questions: PGIQuestion[], heuristicsTriggered: string[] }
+```
+
+### 规则引擎（启发式，不用 LLM）
+
+```ts
+async function generatePGIQuestions(bookId: string, chapter: number): Promise<PGIQuestion[]> {
+  const questions: PGIQuestion[] = [];
+  
+  // 规则 1：在场矛盾 escalating
+  const escalating = await getActiveConflictsAtChapter(bookId, chapter);
+  for (const c of escalating.filter((x) => x.resolutionState === "escalating").slice(0, 2)) {
+    questions.push({
+      id: `conflict-escalate:${c.id}`,
+      prompt: `矛盾"${c.name}"当前状态：escalating。本章要推到 climax 吗？`,
+      type: "single",
+      options: ["推到 climax", "保持 escalating", "稍缓（brewing 回退）", "跳过"],
+      context: { conflictId: c.id },
+    });
+  }
+  
+  // 规则 2：伏笔到期
+  const buried = await getEventsByForeshadowState(bookId, "buried");
+  for (const ev of buried) {
+    const plannedAt = ev.chapterEnd ?? ev.chapterStart;
+    if (plannedAt && Math.abs(chapter - plannedAt) <= 3) {
+      questions.push({
+        id: `foreshadow-payoff:${ev.id}`,
+        prompt: `伏笔"${ev.name}"预计在第 ${plannedAt} 章回收。本章要兑现吗？`,
+        type: "single",
+        options: ["本章兑现", "再埋 2 章", "改线（改成其他伏笔）", "跳过"],
+      });
+    }
+  }
+  
+  // 规则 3：人设漂移警报（需 continuity-audit-v1，当前 stub）
+  // 规则 4：大纲偏离（需 outline-v1，当前 stub）
+  
+  return questions.slice(0, 5);
+}
+```
+
+### 生成集成
+
+- writer agent 调用前，UI 先弹 PGI 弹窗（可关闭）
+- 作者答题后，答案以 `pgi_answers` 结构化字段注入 prompt
+- 跳过时直接走默认
+
+### 注入格式
+
+```
+【本章作者指示（PGI）】
+- 矛盾"拜师被拒"推到 climax
+- 伏笔"师父的玉符"本章兑现
+```
+
+---
+
+# 整体数据流视图（Phase A + B + C 完成后）
+
+```
+[问卷（Phase C）] → 事务写入 → [Premise / WorldModel / Conflict / CharacterArc / Character]（Phase A/B）
+                                              ↓
+                                  [buildBibleContext]（Phase A/B 引擎）
+                                              ↓ 先拿 PGI
+[PGI（Phase C）] → 作者回答 → 注入 prompt ← [writer agent]
+                                              ↓
+                                      [生成章节文本]
+                                              ↓ 回流
+                              [bible_chapter_summary（Phase A）]
+                              [filter_report]（ai-taste-filter spec）
+                              [conflict.evolution_path 自动追加（Phase B）]
+                              [dynamic 模式：ratify-questionnaire（Phase C）]
+
+[作者编辑核心对象] → 自动 [CoreShift propose（Phase C）]
+                         → 影响分析
+                         → accept/reject
+                         → Bible 对象更新 + affected 章节标"需复核"
+```

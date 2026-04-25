@@ -252,8 +252,73 @@ export async function afterChapterGenerated(ctx: WritingContext, generated: stri
 | 集成 | 写作管线触发后 filterReport 入库 |
 | 性能 | 5000 字文本 <200ms 断言 |
 
+## 跨 Spec 接口设计（Bible / PGI）
+
+### FilterReport 扩展字段
+
+```ts
+export interface FilterReport {
+  // ... 原有字段
+  pgiUsed: boolean;                    // 本章是否走了 PGI
+  filterReportId?: string;             // 写入 bible_chapter_summary.metadataJson.filterReportId
+  crossSpecHints?: CrossSpecHint[];    // 预留：未来矛盾密集 / 大纲偏离等跨 spec 分析提示
+}
+
+export interface CrossSpecHint {
+  type: "conflict-ai-taste-correlation" | "pgi-effectiveness" | string;
+  message: string;
+  data?: Record<string, unknown>;
+}
+```
+
+### 集成点
+
+```ts
+// integration/pipeline-hook.ts 扩展
+export async function afterChapterGenerated(ctx: WritingContext, generated: string) {
+  const pgiUsed = !!ctx.metadata?.pgi_answers;
+  const report = await runFilter(generated, { bookId: ctx.bookId });
+  report.pgiUsed = pgiUsed;
+
+  // 写 filter_report 表
+  const reportId = await filterReportRepo.insert(ctx.bookId, ctx.chapterNumber, report);
+
+  // 回写 bible_chapter_summary.metadataJson.filterReportId（若 Bible 存在）
+  if (ctx.bibleChapterSummaryId) {
+    await chapterSummaryRepo.patchMetadata(ctx.bibleChapterSummaryId, { filterReportId: reportId });
+  }
+
+  ctx.writeResult.filterReport = report;
+}
+```
+
+### 全书报告 PGI 分组对比
+
+```ts
+// REST: GET /api/books/:bookId/filter/report?groupByPgi=true
+// 返回：
+{
+  overall: { avgScore, totalChapters },
+  pgiUsed: { avgScore, count },
+  pgiNotUsed: { avgScore, count },
+}
+```
+
+### Migration 编号协调
+
+| Spec | Migration 文件 | 依赖 |
+|---|---|---|
+| storage-migration | `0001_storage_base.sql` | — |
+| novel-bible-v1 Phase A | `0002_bible_v1.sql` | 0001 |
+| novel-bible-v1 Phase B | `0003_bible_phaseB.sql` | 0002 |
+| novel-bible-v1 Phase C | `0004_bible_phaseC.sql` | 0003 |
+| ai-taste-filter-v1 | `0005_filter_v1.sql` | 0001（可与 0002-0004 并行开发，但 migration 顺序在其后） |
+
+> 注：实际开发中若 filter 先于 bible Phase B 落库，编号可调整为 `0003_filter_v1.sql`，但需与 bible Phase B 改为 `0004`。由开发者根据实际进度决定。
+
 ## 扩展后续
 
-- v1.5：规则版本化 + 作者反馈回路（误报标记）
+- v1.5：规则版本化 + 作者反馈回路（误报标记） + PGI 有效性分析落地
 - v2：自动重写执行（留 `auto-dehumanize` spec）
+- v2.5：CrossSpecHint 实现（矛盾密集 / 人设漂移 → AI 味相关性分析）
 - v3：本地轻量 ML 分类器（当规则达到瓶颈时）
