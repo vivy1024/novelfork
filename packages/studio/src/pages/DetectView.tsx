@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { AlertTriangle, ChevronDown, ChevronRight, Loader2, ScanSearch, ShieldAlert } from "lucide-react";
 
+import { AiModelRequiredDialog } from "@/components/ai/AiModelRequiredDialog";
 import { PageEmptyState } from "@/components/layout/PageEmptyState";
 import { PageScaffold } from "@/components/layout/PageScaffold";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { useAiModelGate } from "../hooks/use-ai-model-gate";
 import { postApi, useApi } from "../hooks/use-api";
 import { useColors } from "../hooks/use-colors";
 import type { TFunction } from "../hooks/use-i18n";
@@ -37,6 +39,7 @@ interface DetectAllResponse {
 interface Nav {
   toBook: (id: string) => void;
   toDashboard: () => void;
+  toAdmin?: (section?: string) => void;
 }
 
 function riskColor(level: string): string {
@@ -133,6 +136,7 @@ export function DetectView({ bookId, nav, theme, t }: {
   t: TFunction;
 }) {
   const c = useColors(theme);
+  const { ensureModelFor, blockedResult, closeGate } = useAiModelGate();
   const { data: stats, loading: statsLoading, error: statsError } = useApi<DetectStats>(
     `/books/${bookId}/detect/stats`,
   );
@@ -142,6 +146,9 @@ export function DetectView({ bookId, nav, theme, t }: {
   const [results, setResults] = useState<ReadonlyArray<ChapterResult> | null>(null);
 
   const handleScanAll = async () => {
+    if (!ensureModelFor("deep-ai-taste-scan")) {
+      return;
+    }
     setScanning(true);
     setScanError("");
     setResults(null);
@@ -222,6 +229,16 @@ export function DetectView({ bookId, nav, theme, t }: {
           icon={ShieldAlert}
         />
       ) : null}
+
+      <AiModelRequiredDialog
+        open={Boolean(blockedResult)}
+        message={blockedResult?.message ?? ""}
+        onCancel={closeGate}
+        onConfigureModel={() => {
+          closeGate();
+          nav.toAdmin?.("providers");
+        }}
+      />
     </PageScaffold>
   );
 }

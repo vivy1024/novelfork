@@ -8,10 +8,13 @@ import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
 import { useColors } from "../hooks/use-colors";
 import { Bot, ChevronDown, ChevronRight, Zap, Settings2, RotateCcw } from "lucide-react";
+import { AiModelRequiredDialog } from "@/components/ai/AiModelRequiredDialog";
+import { useAiModelGate } from "../hooks/use-ai-model-gate";
 
 interface Nav {
   toDashboard: () => void;
   toWorkflow: () => void;
+  toAdmin?: (section?: string) => void;
 }
 
 // 16 个 agent 的静态元数据
@@ -48,6 +51,7 @@ interface OverridesData {
 
 export function AgentPanel({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunction }) {
   const c = useColors(theme);
+  const { ensureModelFor, blockedResult, closeGate } = useAiModelGate();
   const { data: overridesData } = useApi<OverridesData>("/project/model-overrides");
   const [expanded, setExpanded] = useState<string | null>(null);
   const [testing, setTesting] = useState<string | null>(null);
@@ -57,6 +61,9 @@ export function AgentPanel({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunc
   const toggle = (id: string) => setExpanded(expanded === id ? null : id);
 
   const handleTest = async (agentId: string) => {
+    if (!ensureModelFor("workbench-agent")) {
+      return;
+    }
     setTesting(agentId);
     try {
       const res = await fetchJson<{ ok: boolean; reply?: string; error?: string }>("/llm/test", { method: "POST" });
@@ -177,6 +184,16 @@ export function AgentPanel({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunc
           </div>
         </div>
       ))}
+
+      <AiModelRequiredDialog
+        open={Boolean(blockedResult)}
+        message={blockedResult?.message ?? ""}
+        onCancel={closeGate}
+        onConfigureModel={() => {
+          closeGate();
+          nav.toAdmin?.("providers");
+        }}
+      />
     </div>
   );
 }

@@ -50,7 +50,7 @@ interface InkEditorProps {
   onChange?: (markdown: string) => void;
   editable?: boolean;
   className?: string;
-  onAIAction?: (params: { text: string; surrounding: string; mode: string }) => Promise<string>;
+  onAIAction?: (params: { text: string; surrounding: string; mode: string }) => Promise<string | null>;
   bookId?: string;
   chapterNumber?: number;
 }
@@ -265,6 +265,10 @@ const InkEditorComponent = forwardRef(function InkEditor({ initialContent, onCha
 
     try {
       const result = await onAIAction({ text, surrounding, mode });
+      if (result === null) {
+        setAiLoading(false);
+        return;
+      }
 
       // Compute position near the selection
       const coords = editor.view.coordsAtPos(from);
