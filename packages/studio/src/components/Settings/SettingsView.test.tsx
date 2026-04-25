@@ -10,6 +10,21 @@ const putApiMock = vi.fn();
 vi.mock("@/hooks/use-api", () => ({
   fetchJson: (...args: unknown[]) => fetchJsonMock(...args),
   putApi: (...args: unknown[]) => putApiMock(...args),
+  useApi: (path: string | null) => {
+    if (path === "/settings/user") {
+      return {
+        data: {
+          preferences: {
+            workbenchMode: true,
+          },
+        },
+        loading: false,
+        error: null,
+        refetch: vi.fn(),
+      };
+    }
+    return { data: null, loading: false, error: null, refetch: vi.fn() };
+  },
 }));
 
 const t = ((value: string) => value) as never;

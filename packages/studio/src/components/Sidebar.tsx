@@ -96,9 +96,11 @@ export function Sidebar({ nav, activePage, sse, t }: {
 }) {
   const { data, refetch: refetchBooks } = useApi<{ books: ReadonlyArray<BookSummary> }>("/books");
   const { data: daemon, refetch: refetchDaemon } = useApi<{ running: boolean }>("/daemon");
+  const { data: userSettings } = useApi<{ preferences?: { workbenchMode?: boolean } }>("/settings/user");
   const { mode } = useNovelFork();
   const isStandalone = mode === "standalone";
   const isTauri = mode === "tauri";
+  const workbenchModeEnabled = Boolean(userSettings?.preferences?.workbenchMode);
   const [expandedBooks, setExpandedBooks] = useState<Set<string>>(new Set());
   const [workspaceOpen, setWorkspaceOpen] = useState(() => readSectionState(SIDEBAR_STORAGE_KEYS.workspace));
   const [workbenchOpen, setWorkbenchOpen] = useState(() => readSectionState(SIDEBAR_STORAGE_KEYS.workbench));
@@ -119,20 +121,19 @@ export function Sidebar({ nav, activePage, sse, t }: {
       active: activePage === "sessions",
       onClick: nav.toSessions,
     },
-    {
+    ...(workbenchModeEnabled ? [{
       label: "工作流配置",
       icon: <Workflow size={16} />,
       active: activePage === "workflow" || activePage.startsWith("workflow:"),
       onClick: nav.toWorkflow,
       badge: "新",
       badgeColor: "bg-primary/10 text-primary",
-    },
-    {
+    }, {
       label: "管理中心",
       icon: <Shield size={16} />,
       active: activePage === "admin" || activePage.startsWith("admin:"),
       onClick: nav.toAdmin,
-    },
+    }] : []),
     {
       label: "设置",
       icon: <Settings size={16} />,
@@ -140,7 +141,7 @@ export function Sidebar({ nav, activePage, sse, t }: {
       onClick: nav.toSettings,
       testId: "settings-btn",
     },
-  ], [activePage, nav]);
+  ], [activePage, nav, workbenchModeEnabled]);
 
   const workbenchItems = useMemo(() => [
     {
@@ -216,13 +217,15 @@ export function Sidebar({ nav, activePage, sse, t }: {
           onClick: nav.toBackup,
         }]
       : []),
-    {
-      label: "Worktree",
-      icon: <FolderGit2 size={16} />,
-      active: activePage === "admin:worktrees",
-      onClick: nav.toWorktree,
-    },
-  ], [activePage, daemon?.running, isStandalone, isTauri, nav]);
+    ...(workbenchModeEnabled
+      ? [{
+          label: "Worktree",
+          icon: <FolderGit2 size={16} />,
+          active: activePage === "admin:worktrees",
+          onClick: nav.toWorktree,
+        }]
+      : []),
+  ], [activePage, daemon?.running, isStandalone, isTauri, nav, workbenchModeEnabled]);
 
   const onDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -406,18 +409,21 @@ function SidebarSection({
 }) {
   return (
     <section className="space-y-2">
-      <button
-        onClick={onToggle}
-        className="flex w-full items-center justify-between rounded-lg px-2 py-1 text-left"
-      >
-        <span className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-          {title}
-        </span>
-        <span className="flex items-center gap-1 text-muted-foreground">
-          {action}
-          {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-        </span>
-      </button>
+      <div className="flex items-center justify-between gap-2 rounded-lg px-2 py-1">
+        <button
+          type="button"
+          onClick={onToggle}
+          className="flex min-w-0 flex-1 items-center gap-1 text-left"
+        >
+          <span className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+            {title}
+          </span>
+          <span className="text-muted-foreground">
+            {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          </span>
+        </button>
+        {action ? <span className="flex items-center gap-1 text-muted-foreground">{action}</span> : null}
+      </div>
       {open && children}
     </section>
   );

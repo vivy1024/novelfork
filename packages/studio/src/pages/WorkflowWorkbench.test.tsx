@@ -74,6 +74,9 @@ describe("WorkflowWorkbench", () => {
       if (path === "/settings/user") {
         return {
           data: {
+            preferences: {
+              workbenchMode: true,
+            },
             runtimeControls: {
               defaultPermissionMode: "ask",
               contextCompressionThresholdPercent: 80,

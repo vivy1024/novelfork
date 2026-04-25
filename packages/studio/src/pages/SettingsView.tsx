@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 
 import { PageScaffold } from "@/components/layout/PageScaffold";
+import { WorkbenchModeGate } from "@/components/workbench/WorkbenchModeGate";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Settings } from "../components/Settings";
@@ -130,15 +131,17 @@ export function SettingsView({
               {activeSection === "monitoring" && <MonitoringPanel theme={theme} />}
               {activeSection === "data" && <DataPanel theme={theme} />}
               {activeSection === "advanced" && (
-                <div className="space-y-4">
-                  <div>
-                    <h2 className="text-2xl font-bold text-foreground">高级设置</h2>
-                    <p className="mt-2 text-sm text-muted-foreground">
-                      运行控制正式并入设置页内结构；旧高级设置弹窗保留在页头，便于对照剩余配置。
-                    </p>
+                <WorkbenchModeGate>
+                  <div className="space-y-4">
+                    <div>
+                      <h2 className="text-2xl font-bold text-foreground">高级设置</h2>
+                      <p className="mt-2 text-sm text-muted-foreground">
+                        运行控制正式并入设置页内结构；旧高级设置弹窗保留在页头，便于对照剩余配置。
+                      </p>
+                    </div>
+                    <RuntimeControlPanel />
                   </div>
-                  <RuntimeControlPanel />
-                </div>
+                </WorkbenchModeGate>
               )}
               {activeSection === "about" && (
                 <div className="space-y-4">

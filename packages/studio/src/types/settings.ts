@@ -25,6 +25,7 @@ export interface UserPreferences {
   autoSave: boolean;
   autoSaveDelay: number;
   dailyWordTarget: number;
+  workbenchMode: boolean;
 }
 
 export interface RuntimeRecoverySettings {
@@ -124,6 +125,7 @@ export const DEFAULT_USER_CONFIG: UserConfig = {
     autoSave: true,
     autoSaveDelay: 2000,
     dailyWordTarget: 6000,
+    workbenchMode: false,
   },
   runtimeControls: {
     defaultPermissionMode: DEFAULT_SESSION_CONFIG.permissionMode,

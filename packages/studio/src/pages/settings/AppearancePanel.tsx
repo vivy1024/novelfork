@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useColors } from "../../hooks/use-colors";
 import type { Theme } from "../../hooks/use-theme";
 import { fetchJson, putApi } from "../../hooks/use-api";
-import type { UserPreferences } from "../../types/settings";
+import { DEFAULT_USER_CONFIG, type UserPreferences } from "../../types/settings";
 import { Sun, Moon, Monitor, Type } from "lucide-react";
 
 interface Props {
@@ -12,16 +12,7 @@ interface Props {
 
 export function AppearancePanel({ theme, onThemeChange }: Props) {
   const c = useColors(theme);
-  const [preferences, setPreferences] = useState<UserPreferences>({
-    theme: "auto",
-    fontSize: 14,
-    fontFamily: "system-ui, -apple-system, sans-serif",
-    editorLineHeight: 1.6,
-    editorTabSize: 2,
-    autoSave: true,
-    autoSaveDelay: 2000,
-    dailyWordTarget: 6000,
-  });
+  const [preferences, setPreferences] = useState<UserPreferences>(DEFAULT_USER_CONFIG.preferences);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 

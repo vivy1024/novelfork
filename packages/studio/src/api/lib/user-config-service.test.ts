@@ -48,6 +48,7 @@ describe("user-config-service", () => {
 
     const loaded = await service.loadUserConfig();
     expect(loaded.runtimeControls).toEqual(DEFAULT_USER_CONFIG.runtimeControls);
+    expect(loaded.preferences.workbenchMode).toBe(false);
     expect(loaded.modelDefaults).toEqual({
       defaultSessionModel: DEFAULT_USER_CONFIG.modelDefaults.defaultSessionModel,
       summaryModel: DEFAULT_USER_CONFIG.modelDefaults.summaryModel,
