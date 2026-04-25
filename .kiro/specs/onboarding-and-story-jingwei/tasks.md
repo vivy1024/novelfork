@@ -67,7 +67,7 @@
   - 添加单测：空白 / 基础 / 增强 / 题材推荐应用结果正确。
   - 覆盖 Requirements 6、8、13。
 
-- [ ] 8. 建立故事经纬通用数据模型与 repository
+- [x] 8. 建立故事经纬通用数据模型与 repository
   - 新增 `story_jingwei_section` 与 `story_jingwei_entry` schema / migration，字段按 design 中 Data Model 落地。
   - 新增 section repository：列表、新增、更新、软删、排序、启用 / 禁用。
   - 新增 entry repository：列表、新增、更新、软删、按 section 查询。

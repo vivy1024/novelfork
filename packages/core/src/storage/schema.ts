@@ -314,6 +314,65 @@ export const filterReports = sqliteTable(
   (table) => [index("filter_report_by_chapter_idx").on(table.bookId, table.chapterNumber, table.scannedAt)],
 );
 
+export const storyJingweiSections = sqliteTable(
+  "story_jingwei_section",
+  {
+    id: text("id").primaryKey(),
+    bookId: text("book_id")
+      .notNull()
+      .references(() => books.id, { onDelete: "cascade" }),
+    key: text("key").notNull(),
+    name: text("name").notNull(),
+    description: text("description").notNull().default(""),
+    icon: text("icon"),
+    order: integer("order").notNull().default(0),
+    enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+    showInSidebar: integer("show_in_sidebar", { mode: "boolean" }).notNull().default(true),
+    participatesInAi: integer("participates_in_ai", { mode: "boolean" }).notNull().default(true),
+    defaultVisibility: text("default_visibility", { enum: ["tracked", "global", "nested"] }).notNull().default("tracked"),
+    fieldsJson: text("fields_json").notNull().default("[]"),
+    builtinKind: text("builtin_kind"),
+    sourceTemplate: text("source_template"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+    deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
+  },
+  (table) => [
+    index("story_jingwei_section_book_order_idx").on(table.bookId, table.order),
+    index("story_jingwei_section_book_enabled_ai_idx").on(table.bookId, table.enabled, table.participatesInAi),
+  ],
+);
+
+export const storyJingweiEntries = sqliteTable(
+  "story_jingwei_entry",
+  {
+    id: text("id").primaryKey(),
+    bookId: text("book_id")
+      .notNull()
+      .references(() => books.id, { onDelete: "cascade" }),
+    sectionId: text("section_id")
+      .notNull()
+      .references(() => storyJingweiSections.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    contentMd: text("content_md").notNull().default(""),
+    tagsJson: text("tags_json").notNull().default("[]"),
+    aliasesJson: text("aliases_json").notNull().default("[]"),
+    customFieldsJson: text("custom_fields_json").notNull().default("{}"),
+    relatedChapterNumbersJson: text("related_chapter_numbers_json").notNull().default("[]"),
+    relatedEntryIdsJson: text("related_entry_ids_json").notNull().default("[]"),
+    visibilityRuleJson: text("visibility_rule_json").notNull().default('{"type":"tracked"}'),
+    participatesInAi: integer("participates_in_ai", { mode: "boolean" }).notNull().default(true),
+    tokenBudget: integer("token_budget"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+    deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
+  },
+  (table) => [
+    index("story_jingwei_entry_book_section_updated_idx").on(table.bookId, table.sectionId, table.updatedAt),
+    index("story_jingwei_entry_book_ai_idx").on(table.bookId, table.participatesInAi),
+  ],
+);
+
 export const drizzleMigrations = sqliteTable("drizzle_migrations", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   hash: text("hash").notNull().unique(),
