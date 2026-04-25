@@ -127,6 +127,39 @@ function serializeCharacterArc(row: Awaited<ReturnType<ReturnType<CoreModule["cr
   };
 }
 
+function serializeQuestionnaireTemplate(row: Awaited<ReturnType<ReturnType<CoreModule["createQuestionnaireTemplateRepository"]>["getById"]>>) {
+  if (!row) return null;
+  return {
+    ...row,
+    genreTags: safeJsonParse(row.genreTagsJson, [] as string[]),
+    questions: safeJsonParse(row.questionsJson, [] as Array<Record<string, unknown>>),
+  };
+}
+
+function serializeQuestionnaireResponse(row: Awaited<ReturnType<ReturnType<CoreModule["createQuestionnaireResponseRepository"]>["getById"]>>) {
+  if (!row) return null;
+  return {
+    ...row,
+    answers: safeJsonParse(row.answersJson, {} as Record<string, unknown>),
+  };
+}
+
+function serializeCoreShift(row: Awaited<ReturnType<ReturnType<CoreModule["createCoreShiftRepository"]>["getById"]>>) {
+  if (!row) return null;
+  return {
+    ...row,
+    fromSnapshot: safeJsonParse(row.fromSnapshotJson, {} as Record<string, unknown>),
+    toSnapshot: safeJsonParse(row.toSnapshotJson, {} as Record<string, unknown>),
+    affectedChapters: safeJsonParse(row.affectedChaptersJson, [] as number[]),
+    impactAnalysis: safeJsonParse(row.impactAnalysisJson, {} as Record<string, unknown>),
+  };
+}
+
+async function ensureQuestionnaireSeeds(storage: StorageDatabase): Promise<void> {
+  const core = await loadCore();
+  await core.seedQuestionnaireTemplates(storage);
+}
+
 async function ensureBook(storage: StorageDatabase, bookId: string) {
   const { createBookRepository } = await loadCore();
   const book = await createBookRepository(storage).getById(bookId);
@@ -219,6 +252,9 @@ export function createBibleRouter(options: CreateBibleRouterOptions = {}): Hono 
   registerWorldModelRoutes(app, options);
   registerPremiseRoutes(app, options);
   registerCharacterArcRoutes(app, options);
+  registerQuestionnaireRoutes(app, options);
+  registerCoreShiftRoutes(app, options);
+  registerPGIRoutes(app, options);
 
   app.post("/api/books/:bookId/bible/preview-context", async (c) => {
     const storage = await resolveStorage(options);
@@ -583,6 +619,155 @@ function registerCharacterArcRoutes(app: Hono, options: CreateBibleRouterOptions
     const deleted = await core.createBibleCharacterArcRepository(storage).softDelete(c.req.param("bookId"), c.req.param("id"));
     deletedResponse("CharacterArc", c.req.param("id"), deleted);
     return c.json({ ok: true, id: c.req.param("id") });
+  });
+}
+
+function registerPGIRoutes(app: Hono, options: CreateBibleRouterOptions): void {
+  app.post("/api/books/:bookId/chapters/:chapter/pre-generation-questions", async (c) => {
+    const storage = await resolveStorage(options);
+    const bookId = c.req.param("bookId");
+    await ensureBook(storage, bookId);
+    const chapter = Number(c.req.param("chapter"));
+    const core = await loadCore();
+    const result = await core.generatePGIQuestions(storage, { bookId, chapter: Number.isFinite(chapter) ? chapter : 0 });
+    return c.json(result);
+  });
+}
+
+function registerCoreShiftRoutes(app: Hono, options: CreateBibleRouterOptions): void {
+  app.get("/api/books/:bookId/core-shifts", async (c) => {
+    const storage = await resolveStorage(options);
+    const bookId = c.req.param("bookId");
+    await ensureBook(storage, bookId);
+    const status = c.req.query("status") as "proposed" | "accepted" | "rejected" | "applied" | undefined;
+    const core = await loadCore();
+    const coreShifts = await core.createCoreShiftRepository(storage).listByBook(bookId, status);
+    return c.json({ coreShifts: coreShifts.map((row) => serializeCoreShift(row)) });
+  });
+
+  app.post("/api/books/:bookId/core-shifts", async (c) => {
+    const storage = await resolveStorage(options);
+    const bookId = c.req.param("bookId");
+    await ensureBook(storage, bookId);
+    const body = await c.req.json<Record<string, unknown>>();
+    if (typeof body.targetType !== "string" || typeof body.targetId !== "string") {
+      throw new ApiError(400, "CORE_SHIFT_TARGET_REQUIRED", "targetType and targetId are required.");
+    }
+    const core = await loadCore();
+    const shift = await core.proposeCoreShift(storage, {
+      id: typeof body.id === "string" ? body.id : crypto.randomUUID(),
+      bookId,
+      targetType: body.targetType as Parameters<typeof core.proposeCoreShift>[1]["targetType"],
+      targetId: body.targetId,
+      fromSnapshot: body.fromSnapshot && typeof body.fromSnapshot === "object" ? body.fromSnapshot as Record<string, unknown> : {},
+      toSnapshot: body.toSnapshot && typeof body.toSnapshot === "object" ? body.toSnapshot as Record<string, unknown> : {},
+      triggeredBy: body.triggeredBy === "data-signal" || body.triggeredBy === "continuity-audit" ? body.triggeredBy : "author",
+      chapterAt: typeof body.chapterAt === "number" ? body.chapterAt : 0,
+    });
+    return c.json({ coreShift: serializeCoreShift(shift) }, 201);
+  });
+
+  app.post("/api/books/:bookId/core-shifts/:id/accept", async (c) => {
+    const storage = await resolveStorage(options);
+    const bookId = c.req.param("bookId");
+    await ensureBook(storage, bookId);
+    const core = await loadCore();
+    const shift = await core.acceptCoreShift(storage, bookId, c.req.param("id"));
+    if (!shift) throw new ApiError(404, "CORE_SHIFT_NOT_FOUND", `CoreShift not found: ${c.req.param("id")}`);
+    return c.json({ coreShift: serializeCoreShift(shift) });
+  });
+
+  app.post("/api/books/:bookId/core-shifts/:id/reject", async (c) => {
+    const storage = await resolveStorage(options);
+    const bookId = c.req.param("bookId");
+    await ensureBook(storage, bookId);
+    const core = await loadCore();
+    const shift = await core.rejectCoreShift(storage, bookId, c.req.param("id"));
+    if (!shift) throw new ApiError(404, "CORE_SHIFT_NOT_FOUND", `CoreShift not found: ${c.req.param("id")}`);
+    return c.json({ coreShift: serializeCoreShift(shift) });
+  });
+}
+
+function registerQuestionnaireRoutes(app: Hono, options: CreateBibleRouterOptions): void {
+  app.get("/api/questionnaires", async (c) => {
+    const storage = await resolveStorage(options);
+    await ensureQuestionnaireSeeds(storage);
+    const core = await loadCore();
+    const tierRaw = c.req.query("tier");
+    const tier = tierRaw === "1" || tierRaw === "2" || tierRaw === "3" ? Number(tierRaw) as 1 | 2 | 3 : undefined;
+    const templates = await core.createQuestionnaireTemplateRepository(storage).list({
+      genre: c.req.query("genre") || undefined,
+      tier,
+    });
+    return c.json({ templates: templates.map((row) => serializeQuestionnaireTemplate(row)) });
+  });
+
+  app.post("/api/books/:bookId/questionnaires/:templateId/responses", async (c) => {
+    const storage = await resolveStorage(options);
+    const bookId = c.req.param("bookId");
+    await ensureBook(storage, bookId);
+    await ensureQuestionnaireSeeds(storage);
+    const body = await c.req.json<Record<string, unknown>>();
+    const core = await loadCore();
+    const result = await core.submitQuestionnaireResponse({
+      storage,
+      bookId,
+      templateId: c.req.param("templateId"),
+      responseId: typeof body.id === "string" ? body.id : crypto.randomUUID(),
+      answers: body.answers && typeof body.answers === "object" ? body.answers as Record<string, unknown> : {},
+      answeredVia: body.answeredVia === "ai-assisted" ? "ai-assisted" : "author",
+      status: body.status === "draft" || body.status === "skipped" ? body.status : "submitted",
+    });
+    return c.json({ response: serializeQuestionnaireResponse(result.response), targetObjectId: result.targetObjectId }, 201);
+  });
+
+  app.put("/api/books/:bookId/questionnaires/:templateId/responses/:id", async (c) => {
+    const storage = await resolveStorage(options);
+    const bookId = c.req.param("bookId");
+    await ensureBook(storage, bookId);
+    await ensureQuestionnaireSeeds(storage);
+    const body = await c.req.json<Record<string, unknown>>();
+    const core = await loadCore();
+    if (body.status === "submitted") {
+      const result = await core.submitQuestionnaireResponse({
+        storage,
+        bookId,
+        templateId: c.req.param("templateId"),
+        responseId: c.req.param("id"),
+        answers: body.answers && typeof body.answers === "object" ? body.answers as Record<string, unknown> : {},
+        answeredVia: body.answeredVia === "ai-assisted" ? "ai-assisted" : "author",
+        status: "submitted",
+      });
+      return c.json({ response: serializeQuestionnaireResponse(result.response), targetObjectId: result.targetObjectId });
+    }
+    const response = await core.createQuestionnaireResponseRepository(storage).update(bookId, c.req.param("id"), {
+      ...(body.answers && typeof body.answers === "object" ? { answersJson: jsonStringify(body.answers, {}) } : {}),
+      ...(body.status === "draft" || body.status === "skipped" ? { status: body.status } : {}),
+      ...(body.answeredVia === "ai-assisted" || body.answeredVia === "author" ? { answeredVia: body.answeredVia } : {}),
+      updatedAt: now(),
+    });
+    if (!response) throw new ApiError(404, "QUESTIONNAIRE_RESPONSE_NOT_FOUND", `Questionnaire response not found: ${c.req.param("id")}`);
+    return c.json({ response: serializeQuestionnaireResponse(response) });
+  });
+
+  app.post("/api/books/:bookId/questionnaires/:templateId/ai-suggest", async (c) => {
+    const storage = await resolveStorage(options);
+    const bookId = c.req.param("bookId");
+    await ensureBook(storage, bookId);
+    await ensureQuestionnaireSeeds(storage);
+    const body = await c.req.json<Record<string, unknown>>();
+    const core = await loadCore();
+    const template = await core.createQuestionnaireTemplateRepository(storage).getById(c.req.param("templateId"));
+    if (!template) throw new ApiError(404, "QUESTIONNAIRE_TEMPLATE_NOT_FOUND", `Questionnaire template not found: ${c.req.param("templateId")}`);
+    const questions = safeJsonParse(template.questionsJson, [] as Array<{ id: string }>);
+    const question = questions.find((entry) => entry.id === body.questionId);
+    if (!question) throw new ApiError(404, "QUESTIONNAIRE_QUESTION_NOT_FOUND", `Question not found: ${String(body.questionId)}`);
+    const suggestion = await core.suggestQuestionnaireAnswer({
+      question: question as Parameters<typeof core.suggestQuestionnaireAnswer>[0]["question"],
+      existingAnswers: body.existingAnswers && typeof body.existingAnswers === "object" ? body.existingAnswers as Record<string, unknown> : {},
+      context: { bookId, templateId: c.req.param("templateId") },
+    });
+    return c.json({ suggestion });
   });
 }
 

@@ -1,4 +1,4 @@
-export type BibleTab = "characters" | "events" | "settings" | "chapter-summaries" | "conflicts" | "world-model" | "premise" | "character-arcs";
+export type BibleTab = "characters" | "events" | "settings" | "chapter-summaries" | "conflicts" | "world-model" | "premise" | "character-arcs" | "questionnaires" | "core-shifts";
 export type VisibilityRuleType = "global" | "tracked" | "nested";
 
 export interface VisibilityRuleDraft {
@@ -46,6 +46,13 @@ export interface BibleEntry {
   arcType?: string;
   currentPosition?: string;
   visibilityRule?: VisibilityRuleDraft;
+  tier?: 1 | 2 | 3;
+  targetObject?: string;
+  questions?: Array<{ id: string; prompt: string; type: "single" | "multi" | "text" | "ranged-number" | "ai-suggest"; options?: string[]; mapping: { fieldPath: string; transform?: string }; defaultSkippable: boolean }>;
+  status?: string;
+  targetType?: string;
+  targetId?: string;
+  affectedChapters?: number[];
 }
 
 export interface BibleContextPreviewItem {
@@ -73,18 +80,22 @@ export const BIBLE_TABS: ReadonlyArray<{ id: BibleTab; label: string; singular: 
   { id: "world-model", label: "World", singular: "worldModel" },
   { id: "premise", label: "Premise", singular: "premise" },
   { id: "character-arcs", label: "Character Arcs", singular: "characterArc" },
+  { id: "questionnaires", label: "问卷中心", singular: "template" },
+  { id: "core-shifts", label: "变更历史", singular: "coreShift" },
 ];
 
-export type BibleResponseKey = "characters" | "events" | "settings" | "chapterSummaries" | "conflicts" | "worldModel" | "premise" | "characterArcs";
+export type BibleResponseKey = "characters" | "events" | "settings" | "chapterSummaries" | "conflicts" | "worldModel" | "premise" | "characterArcs" | "templates" | "coreShifts";
 
 export function responseKeyForTab(tab: BibleTab): BibleResponseKey {
   if (tab === "chapter-summaries") return "chapterSummaries";
   if (tab === "world-model") return "worldModel";
   if (tab === "character-arcs") return "characterArcs";
+  if (tab === "questionnaires") return "templates";
+  if (tab === "core-shifts") return "coreShifts";
   return tab;
 }
 
-export function singularKeyForTab(tab: BibleTab): "character" | "event" | "setting" | "chapterSummary" | "conflict" | "worldModel" | "premise" | "characterArc" {
+export function singularKeyForTab(tab: BibleTab): "character" | "event" | "setting" | "chapterSummary" | "conflict" | "worldModel" | "premise" | "characterArc" | "template" | "coreShift" {
   if (tab === "characters") return "character";
   if (tab === "events") return "event";
   if (tab === "settings") return "setting";
@@ -92,9 +103,11 @@ export function singularKeyForTab(tab: BibleTab): "character" | "event" | "setti
   if (tab === "conflicts") return "conflict";
   if (tab === "world-model") return "worldModel";
   if (tab === "premise") return "premise";
+  if (tab === "questionnaires") return "template";
+  if (tab === "core-shifts") return "coreShift";
   return "characterArc";
 }
 
 export function titleOfEntry(entry: BibleEntry): string {
-  return entry.name ?? entry.title ?? entry.logline ?? entry.characterId ?? entry.id;
+  return entry.name ?? entry.title ?? entry.logline ?? entry.characterId ?? entry.targetObject ?? entry.targetType ?? entry.id;
 }
