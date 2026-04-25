@@ -61,6 +61,7 @@ import {
   createWorkbenchRouter,
   createLorebookRouter,
   createSettingsRouter,
+  createOnboardingRouter,
   createProvidersRouter,
   createGitRouter,
   createAgentConfigRouter,
@@ -286,6 +287,9 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
 
     // Settings management
     app.route("/api/settings", createSettingsRouter());
+
+    // First-run onboarding and getting-started state
+    app.route("/api/onboarding", createOnboardingRouter(ctx));
 
     // AI Providers management
     app.route("/api/providers", createProvidersRouter());

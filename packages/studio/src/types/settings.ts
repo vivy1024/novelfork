@@ -69,11 +69,31 @@ export interface ModelDefaultSettings {
   subagentModelPool: string[];
 }
 
+export interface OnboardingTaskSettings {
+  hasOpenedJingwei: boolean;
+  hasTriedAiWriting: boolean;
+  hasTriedAiTasteScan: boolean;
+  hasReadWorkbenchIntro: boolean;
+}
+
+export interface OnboardingSettings {
+  dismissedFirstRun: boolean;
+  dismissedGettingStarted: boolean;
+  tasks: OnboardingTaskSettings;
+}
+
+export interface OnboardingSettingsPatch {
+  dismissedFirstRun?: boolean;
+  dismissedGettingStarted?: boolean;
+  tasks?: Partial<OnboardingTaskSettings>;
+}
+
 export interface UserConfig {
   profile: UserProfile;
   preferences: UserPreferences;
   runtimeControls: RuntimeControlSettings;
   modelDefaults: ModelDefaultSettings;
+  onboarding: OnboardingSettings;
   shortcuts: Record<string, string>;
   recentWorkspaces: string[];
 }
@@ -83,6 +103,7 @@ export interface UserConfigPatch {
   preferences?: Partial<UserPreferences>;
   runtimeControls?: Partial<RuntimeControlSettings>;
   modelDefaults?: Partial<ModelDefaultSettings>;
+  onboarding?: OnboardingSettingsPatch;
   shortcuts?: Record<string, string>;
   recentWorkspaces?: string[];
 }
@@ -135,6 +156,16 @@ export const DEFAULT_USER_CONFIG: UserConfig = {
     defaultSessionModel: "anthropic:claude-sonnet-4-6",
     summaryModel: "anthropic:claude-haiku-4-5",
     subagentModelPool: ["anthropic:claude-haiku-4-5", "openai:gpt-4-turbo"],
+  },
+  onboarding: {
+    dismissedFirstRun: false,
+    dismissedGettingStarted: false,
+    tasks: {
+      hasOpenedJingwei: false,
+      hasTriedAiWriting: false,
+      hasTriedAiTasteScan: false,
+      hasReadWorkbenchIntro: false,
+    },
   },
   shortcuts: {},
   recentWorkspaces: [],

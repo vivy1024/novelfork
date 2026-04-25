@@ -10,6 +10,7 @@ export { createPipelineRouter } from "./pipeline.js";
 export { createWorkbenchRouter } from "./workbench.js";
 export { createLorebookRouter } from "./lorebook.js";
 export { createSettingsRouter } from "./settings.js";
+export { createOnboardingRouter } from "./onboarding.js";
 export { createProvidersRouter } from "./providers.js";
 export { createGitRouter } from "./git.js";
 export { createAgentConfigRouter } from "./agent-config.js";

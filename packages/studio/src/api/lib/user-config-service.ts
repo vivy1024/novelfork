@@ -3,6 +3,7 @@ import { join, dirname } from "node:path";
 import { existsSync } from "node:fs";
 import type {
   ModelDefaultSettings,
+  OnboardingSettings,
   RuntimeControlSettings,
   ToolAccessSettings,
   RuntimeDebugSettings,
@@ -162,6 +163,20 @@ function sanitizeModelDefaults(modelDefaults?: Partial<ModelDefaultSettings> | n
   };
 }
 
+function sanitizeOnboarding(onboarding?: Partial<OnboardingSettings> | null): OnboardingSettings {
+  const defaults = DEFAULT_USER_CONFIG.onboarding;
+  return {
+    dismissedFirstRun: typeof onboarding?.dismissedFirstRun === "boolean" ? onboarding.dismissedFirstRun : defaults.dismissedFirstRun,
+    dismissedGettingStarted: typeof onboarding?.dismissedGettingStarted === "boolean" ? onboarding.dismissedGettingStarted : defaults.dismissedGettingStarted,
+    tasks: {
+      hasOpenedJingwei: typeof onboarding?.tasks?.hasOpenedJingwei === "boolean" ? onboarding.tasks.hasOpenedJingwei : defaults.tasks.hasOpenedJingwei,
+      hasTriedAiWriting: typeof onboarding?.tasks?.hasTriedAiWriting === "boolean" ? onboarding.tasks.hasTriedAiWriting : defaults.tasks.hasTriedAiWriting,
+      hasTriedAiTasteScan: typeof onboarding?.tasks?.hasTriedAiTasteScan === "boolean" ? onboarding.tasks.hasTriedAiTasteScan : defaults.tasks.hasTriedAiTasteScan,
+      hasReadWorkbenchIntro: typeof onboarding?.tasks?.hasReadWorkbenchIntro === "boolean" ? onboarding.tasks.hasReadWorkbenchIntro : defaults.tasks.hasReadWorkbenchIntro,
+    },
+  };
+}
+
 /**
  * 加载用户配置
  */
@@ -186,6 +201,7 @@ export async function loadUserConfig(): Promise<UserConfig> {
       preferences: { ...DEFAULT_USER_CONFIG.preferences, ...config.preferences },
       runtimeControls: sanitizeRuntimeControls(config.runtimeControls),
       modelDefaults: sanitizeModelDefaults(config.modelDefaults),
+      onboarding: sanitizeOnboarding(config.onboarding),
     };
   } catch (error) {
     console.error("Failed to load user config, using default:", error);
@@ -248,6 +264,14 @@ export async function updateUserConfig(partial: UserConfigPatch): Promise<UserCo
     preferences: { ...current.preferences, ...(partial.preferences ?? {}) },
     runtimeControls: sanitizeRuntimeControls(mergedRuntimeControls),
     modelDefaults: sanitizeModelDefaults({ ...current.modelDefaults, ...(partial.modelDefaults ?? {}) }),
+    onboarding: sanitizeOnboarding({
+      ...current.onboarding,
+      ...(partial.onboarding ?? {}),
+      tasks: {
+        ...current.onboarding.tasks,
+        ...(partial.onboarding?.tasks ?? {}),
+      },
+    }),
     shortcuts: { ...current.shortcuts, ...(partial.shortcuts ?? {}) },
     recentWorkspaces: partial.recentWorkspaces ?? current.recentWorkspaces,
   };
