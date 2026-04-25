@@ -92,3 +92,32 @@ export interface StoryJingweiEntryRecord {
 
 export type CreateStoryJingweiEntryInput = Omit<StoryJingweiEntryRecord, "deletedAt">;
 export type UpdateStoryJingweiEntryInput = Partial<Omit<CreateStoryJingweiEntryInput, "id" | "bookId" | "createdAt">>;
+
+export type JingweiContextSource = "global" | "tracked" | "nested";
+
+export interface BuildJingweiContextInput {
+  bookId: string;
+  currentChapter?: number;
+  sceneText?: string;
+  tokenBudget?: number;
+}
+
+export interface JingweiContextItem {
+  id: string;
+  entryId: string;
+  sectionId: string;
+  sectionKey: string;
+  sectionName: string;
+  title: string;
+  text: string;
+  source: JingweiContextSource;
+  priority: number;
+  estimatedTokens: number;
+}
+
+export interface JingweiContextResult {
+  items: JingweiContextItem[];
+  totalTokens: number;
+  droppedEntryIds: string[];
+  sectionStats: Array<{ sectionId: string; sectionName: string; count: number }>;
+}

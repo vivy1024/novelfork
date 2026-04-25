@@ -142,10 +142,6 @@ function jsonError(error: Error) {
   return { error: { code: "INTERNAL_ERROR", message: "Unexpected server error." } };
 }
 
-function estimateTokens(text: string): number {
-  return Math.max(1, Math.ceil(text.length / 2));
-}
-
 export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): Hono {
   const app = new Hono();
 
@@ -352,40 +348,16 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
     const bookId = c.req.param("bookId");
     await ensureBook(storage, bookId);
     const body = await readJson(c);
-    const currentChapter = optionalNumber(body.currentChapter, 1);
-    const { createStoryJingweiEntryRepository, createStoryJingweiSectionRepository } = await loadCore();
-    const sections = await createStoryJingweiSectionRepository(storage).listEnabledForAi(bookId);
-    const sectionById = new Map(sections.map((section) => [section.id, section]));
-    const entries = await createStoryJingweiEntryRepository(storage).listForAi(bookId, sections.map((section) => section.id));
-    const items = entries
-      .filter((entry) => (entry.visibilityRule.visibleAfterChapter ?? 0) <= currentChapter)
-      .filter((entry) => entry.visibilityRule.visibleUntilChapter === undefined || entry.visibilityRule.visibleUntilChapter >= currentChapter)
-      .map((entry) => {
-        const section = sectionById.get(entry.sectionId);
-        const sectionName = section?.name ?? "故事经纬";
-        const text = `【${sectionName}】${entry.title}：${entry.contentMd}`;
-        return {
-          entryId: entry.id,
-          sectionId: entry.sectionId,
-          sectionName,
-          title: entry.title,
-          text,
-          estimatedTokens: estimateTokens(text),
-        };
-      });
-    const sectionStats = sections
-      .map((section) => ({
-        sectionId: section.id,
-        sectionName: section.name,
-        count: items.filter((item) => item.sectionId === section.id).length,
-      }))
-      .filter((stat) => stat.count > 0);
-    return c.json({
-      items,
-      totalTokens: items.reduce((sum, item) => sum + item.estimatedTokens, 0),
-      droppedEntryIds: [],
-      sectionStats,
+    const { buildJingweiContext } = await loadCore();
+    const tokenBudget = optionalNullableNumber(body.tokenBudget);
+    const context = await buildJingweiContext({
+      storage,
+      bookId,
+      currentChapter: optionalNumber(body.currentChapter, 1),
+      sceneText: typeof body.sceneText === "string" ? body.sceneText : undefined,
+      ...(tokenBudget === null ? {} : { tokenBudget }),
     });
+    return c.json(context);
   });
 
   return app;
