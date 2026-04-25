@@ -438,6 +438,17 @@ export function BookCreate({ nav, theme, t, projectCreateDraft, flowRevision = 0
       await Promise.resolve();
       await waitForBookReady(result.bookId);
 
+      const premiseLogline = typeof window !== "undefined" && !window.navigator.userAgent.toLowerCase().includes("jsdom")
+        ? window.prompt("可选：填写这本书的一句话 Premise（取消则跳过，稍后可在 Novel Bible / Premise 补填）。", "")
+        : null;
+      if (premiseLogline?.trim()) {
+        await fetchJson(`/books/${result.bookId}/bible/premise`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ logline: premiseLogline.trim() }),
+        });
+      }
+
       try {
         setCreateStage("creating-session");
         const session = result.defaultSession;

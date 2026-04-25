@@ -20,7 +20,7 @@ describe("Bible token budget", () => {
 
     const result = applyTokenBudget(items, 15);
 
-    expect(result.items.map((item) => item.id)).toEqual(["global", "nested", "tracked-new"]);
+    expect(result.items.map((item) => item.id)).toEqual(["global", "tracked-new", "nested"]);
     expect(result.droppedIds).toEqual(["tracked-old"]);
     expect(result.totalTokens).toBe(15);
   });
@@ -55,14 +55,14 @@ describe("Bible context composer", () => {
     expect(result.droppedIds).toEqual([]);
   });
 
-  it("sorts by source priority before applying the token budget", () => {
+  it("sorts by Phase B context order before applying the token budget", () => {
     const result = composeBibleContext([
       makeItem("tracked", "tracked", "tracked", 3),
       makeItem("global", "global", "global", 3),
       makeItem("nested", "nested", "nested", 3),
     ], { tokenBudget: 9, mode: "static" });
 
-    expect(result.items.map((item) => item.id)).toEqual(["global", "nested", "tracked"]);
+    expect(result.items.map((item) => item.id)).toEqual(["global", "tracked", "nested"]);
   });
 });
 

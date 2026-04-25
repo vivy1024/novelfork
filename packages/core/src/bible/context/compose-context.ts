@@ -15,6 +15,10 @@ const typeLabels: Record<BibleContextItem["type"], string> = {
   event: "事件",
   setting: "设定",
   "chapter-summary": "章节摘要",
+  conflict: "矛盾",
+  "world-model": "世界",
+  premise: "基线",
+  "character-arc": "弧线",
 };
 
 function formatTypeLabel(item: BibleContextItem): string {

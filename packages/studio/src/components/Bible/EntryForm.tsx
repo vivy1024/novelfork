@@ -93,6 +93,56 @@ export function buildBibleEntryPayload(tab: BibleTab, draft: EntryDraft): Record
     };
   }
 
+  if (tab === "conflicts") {
+    return {
+      ...base,
+      name: draft.name.trim(),
+      type: draft.eventType.trim() || "external-character",
+      scope: draft.category.trim() || "arc",
+      priority: parseNumber(draft.wordCount) ?? 3,
+      stakes: draft.summary.trim(),
+      evolutionPath: parseNumber(draft.chapterNumber) ? [{ chapter: parseNumber(draft.chapterNumber), state: "brewing", summary: draft.summary.trim(), movedBy: "author" }] : [],
+      resolutionState: draft.roleType.trim() || "brewing",
+      relatedConflictIds: splitCsv(draft.relatedCharacterIds),
+    };
+  }
+
+  if (tab === "world-model") {
+    return {
+      id: id || undefined,
+      economy: draft.content.trim() ? { note: draft.content.trim() } : {},
+      society: draft.summary.trim() ? { note: draft.summary.trim() } : {},
+      geography: draft.aliases.trim() ? { note: draft.aliases.trim() } : {},
+      powerSystem: draft.nestedRefs.trim() ? { note: draft.nestedRefs.trim() } : {},
+      culture: draft.keyEvents.trim() ? { note: draft.keyEvents.trim() } : {},
+      timeline: draft.appearingCharacterIds.trim() ? { note: draft.appearingCharacterIds.trim() } : {},
+    };
+  }
+
+  if (tab === "premise") {
+    return {
+      id: id || undefined,
+      logline: draft.name.trim(),
+      theme: splitCsv(draft.keyEvents),
+      tone: draft.roleType.trim(),
+      targetReaders: draft.category.trim(),
+      uniqueHook: draft.summary.trim(),
+      genreTags: splitCsv(draft.nestedRefs),
+    };
+  }
+
+  if (tab === "character-arcs") {
+    return {
+      ...base,
+      characterId: draft.relatedCharacterIds.trim(),
+      arcType: draft.roleType.trim() || "成长",
+      startingState: draft.content.trim(),
+      endingState: draft.summary.trim(),
+      keyTurningPoints: parseNumber(draft.chapterNumber) ? [{ chapter: parseNumber(draft.chapterNumber), summary: draft.title.trim() }] : [],
+      currentPosition: draft.pov.trim() || draft.summary.trim(),
+    };
+  }
+
   return {
     id: id || undefined,
     chapterNumber: parseNumber(draft.chapterNumber) ?? 1,
@@ -189,9 +239,44 @@ export function EntryForm({
             <Field label="出场角色 IDs" value={draft.appearingCharacterIds} onChange={(value) => set("appearingCharacterIds", value)} />
           </>
         )}
+        {tab === "conflicts" && (
+          <>
+            <Field label="矛盾类型" value={draft.eventType} onChange={(value) => set("eventType", value)} />
+            <Field label="范围 main/arc/chapter/scene" value={draft.category} onChange={(value) => set("category", value)} />
+            <Field label="优先级 1-5" type="number" value={draft.wordCount} onChange={(value) => set("wordCount", value)} />
+            <Field label="状态" value={draft.roleType} onChange={(value) => set("roleType", value)} />
+            <Field label="首次推进章节" type="number" value={draft.chapterNumber} onChange={(value) => set("chapterNumber", value)} />
+          </>
+        )}
+        {tab === "world-model" && (
+          <>
+            <Field label="经济维度" value={draft.content} onChange={(value) => set("content", value)} />
+            <Field label="社会维度" value={draft.summary} onChange={(value) => set("summary", value)} />
+            <Field label="地理维度" value={draft.aliases} onChange={(value) => set("aliases", value)} />
+            <Field label="力量体系维度" value={draft.nestedRefs} onChange={(value) => set("nestedRefs", value)} />
+            <Field label="文化维度" value={draft.keyEvents} onChange={(value) => set("keyEvents", value)} />
+            <Field label="纪年维度" value={draft.appearingCharacterIds} onChange={(value) => set("appearingCharacterIds", value)} />
+          </>
+        )}
+        {tab === "premise" && (
+          <>
+            <Field label="基调" value={draft.roleType} onChange={(value) => set("roleType", value)} />
+            <Field label="目标读者" value={draft.category} onChange={(value) => set("category", value)} />
+            <Field label="主题关键词" value={draft.keyEvents} onChange={(value) => set("keyEvents", value)} />
+            <Field label="流派标签" value={draft.nestedRefs} onChange={(value) => set("nestedRefs", value)} />
+          </>
+        )}
+        {tab === "character-arcs" && (
+          <>
+            <Field label="角色 ID" value={draft.relatedCharacterIds} onChange={(value) => set("relatedCharacterIds", value)} />
+            <Field label="弧线类型" value={draft.roleType} onChange={(value) => set("roleType", value)} />
+            <Field label="转折章节" type="number" value={draft.chapterNumber} onChange={(value) => set("chapterNumber", value)} />
+            <Field label="当前阶段" value={draft.pov} onChange={(value) => set("pov", value)} />
+          </>
+        )}
       </div>
 
-      {tab !== "chapter-summaries" && (
+      {tab !== "chapter-summaries" && tab !== "world-model" && tab !== "premise" && (
         <VisibilityRuleEditor
           value={draft.visibilityRule}
           nestedOptions={nestedOptions}
@@ -200,9 +285,9 @@ export function EntryForm({
       )}
 
       <label className="flex flex-col gap-1 text-xs font-semibold text-muted-foreground">
-        {tab === "settings" ? "内容" : "摘要"}
+        {tab === "settings" ? "内容" : tab === "premise" ? "差异化钩子" : tab === "character-arcs" ? "终点状态" : "摘要"}
         <textarea
-          value={tab === "settings" ? draft.content : draft.summary}
+          value={tab === "settings" ? draft.content : tab === "character-arcs" ? draft.summary : draft.summary}
           onChange={(event) => set(tab === "settings" ? "content" : "summary", event.target.value)}
           className="min-h-24 rounded-xl border border-border/50 bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary/50"
           required

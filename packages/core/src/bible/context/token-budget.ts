@@ -16,6 +16,18 @@ const sourceRank: Record<BibleContextItem["source"], number> = {
   tracked: 1,
 };
 
+function phaseOrder(item: BibleContextItem): number {
+  if (item.source === "nested") return 40;
+  if (item.type === "premise") return 100;
+  if (item.type === "world-model") return 90;
+  if (item.type === "character") return 80;
+  if (item.type === "character-arc") return 75;
+  if (item.type === "event" || item.type === "setting") return 60;
+  if (item.type === "conflict") return 50;
+  if (item.type === "chapter-summary") return 10;
+  return sourceRank[item.source] * 10;
+}
+
 export function estimateTokens(text: string): number {
   if (text.length === 0) return 0;
   return Math.ceil(text.length * 0.6);
@@ -27,9 +39,10 @@ function updatedAtMs(item: BudgetedBibleContextItem): number {
 
 export function sortByContextPriority<TItem extends BudgetedBibleContextItem>(items: readonly TItem[]): TItem[] {
   return [...items].sort((a, b) => (
-    sourceRank[b.source] - sourceRank[a.source]
-    || updatedAtMs(b) - updatedAtMs(a)
+    phaseOrder(b) - phaseOrder(a)
+    || sourceRank[b.source] - sourceRank[a.source]
     || b.priority - a.priority
+    || updatedAtMs(b) - updatedAtMs(a)
     || a.id.localeCompare(b.id)
   ));
 }
@@ -37,8 +50,9 @@ export function sortByContextPriority<TItem extends BudgetedBibleContextItem>(it
 function sortByDropPriority<TItem extends BudgetedBibleContextItem>(items: readonly TItem[]): TItem[] {
   return [...items].sort((a, b) => (
     sourceRank[a.source] - sourceRank[b.source]
-    || updatedAtMs(a) - updatedAtMs(b)
     || a.priority - b.priority
+    || updatedAtMs(a) - updatedAtMs(b)
+    || phaseOrder(a) - phaseOrder(b)
     || a.id.localeCompare(b.id)
   ));
 }

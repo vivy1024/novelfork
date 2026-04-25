@@ -14,6 +14,10 @@ interface BibleListResponse {
   events?: BibleEntry[];
   settings?: BibleEntry[];
   chapterSummaries?: BibleEntry[];
+  conflicts?: BibleEntry[];
+  worldModel?: BibleEntry | null;
+  premise?: BibleEntry | null;
+  characterArcs?: BibleEntry[];
 }
 
 interface BookData {
@@ -38,11 +42,23 @@ export function BibleView({ bookId, nav }: { bookId: string; nav: { toDashboard:
 
   const endpoint = `/books/${bookId}/bible/${activeTab}`;
   const { data, loading, error, refetch } = useApi<BibleListResponse>(endpoint);
-  const entries = useMemo(() => data?.[responseKeyForTab(activeTab)] ?? [], [activeTab, data]);
+  const entries = useMemo(() => {
+    const value = data?.[responseKeyForTab(activeTab)];
+    if (!value) return [];
+    return Array.isArray(value) ? value : [value];
+  }, [activeTab, data]);
 
   const createEntry = async (payload: Record<string, unknown>) => {
     try {
-      await postApi(endpoint, payload);
+      if (activeTab === "world-model" || activeTab === "premise") {
+        await fetchJson(endpoint, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+      } else {
+        await postApi(endpoint, payload);
+      }
       await refetch();
       notify.success("Bible 条目已保存");
     } catch (error) {
@@ -165,11 +181,14 @@ export function BibleView({ bookId, nav }: { bookId: string; nav: { toDashboard:
                         <div className="font-semibold">{titleOfEntry(entry)}</div>
                         <div className="mt-1 text-xs text-muted-foreground">{entry.id}</div>
                       </div>
-                      <button onClick={() => deleteEntry(entry.id)} className="rounded-lg p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive" title="删除">
-                        <Trash2 size={14} />
-                      </button>
+                      {activeTab !== "world-model" && activeTab !== "premise" && (
+                        <button onClick={() => deleteEntry(entry.id)} className="rounded-lg p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive" title="删除">
+                          <Trash2 size={14} />
+                        </button>
+                      )}
                     </div>
-                    <p className="mt-3 line-clamp-3 text-sm leading-6 text-muted-foreground">{entry.summary ?? entry.content ?? "（无摘要）"}</p>
+                    <p className="mt-3 line-clamp-3 text-sm leading-6 text-muted-foreground">{entry.summary ?? entry.content ?? entry.stakes ?? entry.currentPosition ?? entry.uniqueHook ?? "（无摘要）"}</p>
+                    {entry.stalled && <div className="mt-3 rounded-lg bg-orange-500/10 px-2 py-1 text-xs font-bold text-orange-600">stalled-conflict</div>}
                     {entry.visibilityRule && <div className="mt-3 rounded-lg bg-muted/50 px-2 py-1 text-xs text-muted-foreground">visibility: {entry.visibilityRule.type}</div>}
                   </article>
                 ))}

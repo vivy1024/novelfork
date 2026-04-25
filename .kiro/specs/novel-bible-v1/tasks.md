@@ -78,28 +78,28 @@ Novel Bible v1（现已扩展为**认知层 v1**）。**前置**：`storage-migr
 
 ## Phase B：Conflict + WorldModel + Premise + CharacterArc
 
-- [ ] B1. Phase B Schema 与 Repository
+- [x] B1. Phase B Schema 与 Repository
   - 在 `packages/core/src/storage/schema.ts` 追加：`bible_conflict`、`bible_world_model`、`bible_premise`、`bible_character_arc`
   - 生成 migration `0003_bible_phaseB.sql`
   - 新建 repo：`conflict-repo.ts` / `world-model-repo.ts` / `premise-repo.ts` / `character-arc-repo.ts`
   - 单测：CRUD / 唯一约束（premise/world-model 1:1）/ character-arc 多条并行
   - 单测：`getActiveConflictsAtChapter(bookId, chapter)` 正确覆盖 `resolution_state` 过滤 + 章节范围
 
-- [ ] B2. Conflict 注入与 Stalled 检测
+- [x] B2. Conflict 注入与 Stalled 检测
   - `injectConflicts()` 填入 Phase A 的扩展点
   - `stalled-detector.ts`：扫 `escalating` + 超过 10 章未推进
   - UI：新增「Conflicts」Tab（列表 + 结构化表单 + stalled 徽章）
   - REST API：`/api/books/:bookId/bible/conflicts/*`、`/active?chapter=N`
   - 单测：在场矛盾查询 / stalled 检测 / 注入顺序
 
-- [ ] B3. WorldModel 注入与 UI
+- [x] B3. WorldModel 注入与 UI
   - `injectWorldModel()` 填入 Phase A 扩展点
   - `format-descriptor.ts`：各子字段格式化为中文自然文本
   - UI：新增「World」Tab（5 维卡片式表单，每个可独立展开/折叠）
   - REST API：`GET/PUT /api/books/:bookId/bible/world-model`（1:1）
   - 单测：空维度跳过 / 注入文本格式 / 非法 JSON 兜底
 
-- [ ] B4. Premise + CharacterArc 注入与 UI
+- [x] B4. Premise + CharacterArc 注入与 UI
   - `injectPremise()` + `injectCharacterArcs()` 填入 Phase A 扩展点
   - 更新 `buildBibleContext` 的组装顺序（Premise 首 → WorldModel → Character+Arc → Event/Setting → Conflict → nested → ChapterSummary）
   - UI：BookCreate 完成后弹出 Premise 编辑弹窗（可跳过）
@@ -107,7 +107,7 @@ Novel Bible v1（现已扩展为**认知层 v1**）。**前置**：`storage-migr
   - REST API：`GET/PUT /api/books/:bookId/bible/premise` + `/character-arcs/*`
   - 单测：注入顺序 / Character 与 Arc 的关联注入 / 多 Arc 并行
 
-- [ ] B5. Phase B 测试、性能与文档
+- [x] B5. Phase B 测试、性能与文档
   - 集成测试：一本书含 Premise + WorldModel 3 维 + 5 Conflicts + 3 Characters × 2 Arcs → 第 50 章 `buildBibleContext` 输出验证
   - 性能：500 条目 + 10 矛盾 + 完整 WorldModel → <150ms
   - 更新 `docs/04-开发指南/Bible开发指引.md`（Phase B 段）
