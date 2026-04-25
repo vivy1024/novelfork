@@ -20,6 +20,7 @@ import {
 
 import { PageEmptyState } from "@/components/layout/PageEmptyState";
 import { PageScaffold } from "@/components/layout/PageScaffold";
+import { GettingStartedChecklist, type GettingStartedStatus } from "@/components/onboarding/GettingStartedChecklist";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { deriveActiveBookIds, shouldRefetchBookCollections } from "../hooks/use-book-activity";
 import { fetchJson, postApi, useApi } from "../hooks/use-api";
@@ -43,6 +44,10 @@ interface Nav {
   toBook: (id: string) => void;
   toAnalytics: (id: string) => void;
   toBookCreate: () => void;
+  toAdmin?: (section?: "providers") => void;
+  toBible?: (id: string) => void;
+  toDetect?: (id: string) => void;
+  toWorkflow?: (section?: "advanced") => void;
 }
 
 function BookMenu({ bookId, bookTitle, nav, t, onDelete }: {
@@ -139,6 +144,8 @@ function BookMenu({ bookId, bookTitle, nav, t, onDelete }: {
 export function Dashboard({ nav, sse, theme, t }: { nav: Nav; sse: { messages: ReadonlyArray<SSEMessage> }; theme: Theme; t: TFunction }) {
   const c = useColors(theme);
   const { data, loading, error, refetch } = useApi<{ books: ReadonlyArray<BookSummary> }>("/books");
+  const { data: onboardingData, refetch: refetchOnboarding } = useApi<{ status: GettingStartedStatus }>("/onboarding/status");
+  const [gettingStartedDismissedThisSession, setGettingStartedDismissedThisSession] = useState(false);
   const writingBooks = useMemo(() => deriveActiveBookIds(sse.messages), [sse.messages]);
 
   const logEvents = sse.messages.filter((m) => m.event === "log").slice(-8);
@@ -151,6 +158,71 @@ export function Dashboard({ nav, sse, theme, t }: { nav: Nav; sse: { messages: R
       refetch();
     }
   }, [refetch, sse.messages]);
+
+  const firstBookId = data?.books[0]?.id;
+  const updateGettingStartedDismissed = (dismissed: boolean) => {
+    setGettingStartedDismissedThisSession(dismissed);
+    void fetchJson("/onboarding/status", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dismissedGettingStarted: dismissed }),
+    }).then(() => refetchOnboarding()).catch(() => undefined);
+  };
+
+  const openFirstBookOrCreate = () => {
+    if (firstBookId) {
+      nav.toBook(firstBookId);
+    } else {
+      nav.toBookCreate();
+    }
+  };
+
+  const onboardingStatus = onboardingData?.status;
+  const showGettingStarted = Boolean(onboardingStatus && !onboardingStatus.dismissedGettingStarted && !gettingStartedDismissedThisSession);
+  const showGettingStartedReopen = Boolean(onboardingStatus && (onboardingStatus.dismissedGettingStarted || gettingStartedDismissedThisSession));
+  const gettingStartedNode = onboardingStatus ? (
+    showGettingStarted ? (
+      <GettingStartedChecklist
+        status={onboardingStatus}
+        onConfigureModel={() => nav.toAdmin?.("providers")}
+        onCreateBook={nav.toBookCreate}
+        onOpenJingwei={() => {
+          if (firstBookId && nav.toBible) {
+            nav.toBible(firstBookId);
+          } else {
+            openFirstBookOrCreate();
+          }
+        }}
+        onCreateChapter={openFirstBookOrCreate}
+        onTryAiWriting={() => {
+          if (firstBookId) {
+            void postApi(`/books/${firstBookId}/write-next`);
+          } else {
+            nav.toBookCreate();
+          }
+        }}
+        onTryAiTasteScan={() => {
+          if (firstBookId && nav.toDetect) {
+            nav.toDetect(firstBookId);
+          } else {
+            openFirstBookOrCreate();
+          }
+        }}
+        onOpenWorkbenchIntro={() => nav.toWorkflow?.("advanced")}
+        onDismiss={() => updateGettingStartedDismissed(true)}
+      />
+    ) : showGettingStartedReopen ? (
+      <div className="flex justify-end">
+        <button
+          type="button"
+          className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          onClick={() => updateGettingStartedDismissed(false)}
+        >
+          重新打开任务清单
+        </button>
+      </div>
+    ) : null
+  ) : null;
 
   if (loading) {
     return (
@@ -178,20 +250,23 @@ export function Dashboard({ nav, sse, theme, t }: { nav: Nav; sse: { messages: R
   if (!data?.books.length) {
     return (
       <PageScaffold title={t("dash.title")} description={t("dash.subtitle")}>
-        <PageEmptyState
-          title={t("dash.noBooks")}
-          description={t("dash.createFirst")}
-          icon={BookOpen}
-          action={
-            <button
-              onClick={nav.toBookCreate}
-              className="group flex items-center gap-2 rounded-xl bg-primary px-8 py-3.5 text-sm font-bold text-primary-foreground transition-all hover:scale-105 active:scale-95"
-            >
-              <Plus size={18} />
-              {t("nav.newBook")}
-            </button>
-          }
-        />
+        <div className="space-y-6">
+          {gettingStartedNode}
+          <PageEmptyState
+            title={t("dash.noBooks")}
+            description={t("dash.createFirst")}
+            icon={BookOpen}
+            action={
+              <button
+                onClick={nav.toBookCreate}
+                className="group flex items-center gap-2 rounded-xl bg-primary px-8 py-3.5 text-sm font-bold text-primary-foreground transition-all hover:scale-105 active:scale-95"
+              >
+                <Plus size={18} />
+                {t("nav.newBook")}
+              </button>
+            }
+          />
+        </div>
       </PageScaffold>
     );
   }
@@ -211,6 +286,7 @@ export function Dashboard({ nav, sse, theme, t }: { nav: Nav; sse: { messages: R
       }
     >
       <div className="space-y-12">
+        {gettingStartedNode}
         <div className="grid gap-6">
           {data.books.map((book, index) => {
             const isWriting = writingBooks.has(book.id);

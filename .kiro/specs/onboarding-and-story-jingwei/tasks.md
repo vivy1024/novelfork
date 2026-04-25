@@ -41,7 +41,7 @@
   - 验证键盘可达、Escape 可关闭、焦点回收正确。
   - 覆盖 Requirements 1、12、13。
 
-- [ ] 5. 实现首页 `GettingStartedChecklist`
+- [x] 5. 实现首页 `GettingStartedChecklist`
   - 在首页 / 书籍列表页添加 `开始使用 NovelFork` 任务清单组件。
   - 任务顺序固定为：配置 AI 模型、创建第一本书、认识故事经纬、创建第一章 / 导入正文、试用 AI 写作与评点、试用 AI 味检测、了解工作台模式。
   - 使用 shadcn/ui `Card`、`Button`、`Badge`、`Checkbox` 或状态标记实现任务状态。
