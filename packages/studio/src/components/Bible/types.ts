@@ -1,4 +1,4 @@
-export type BibleTab = "characters" | "events" | "settings" | "chapter-summaries" | "conflicts" | "world-model" | "premise" | "character-arcs" | "questionnaires" | "core-shifts";
+export type BibleTab = "characters" | "events" | "settings" | "chapter-summaries" | "conflicts" | "world-model" | "premise" | "character-arcs" | "questionnaires" | "core-shifts" | "ai-filter";
 export type VisibilityRuleType = "global" | "tracked" | "nested";
 
 export interface VisibilityRuleDraft {
@@ -82,9 +82,10 @@ export const BIBLE_TABS: ReadonlyArray<{ id: BibleTab; label: string; singular: 
   { id: "character-arcs", label: "Character Arcs", singular: "characterArc" },
   { id: "questionnaires", label: "问卷中心", singular: "template" },
   { id: "core-shifts", label: "变更历史", singular: "coreShift" },
+  { id: "ai-filter", label: "AI 味报告", singular: "filterReport" },
 ];
 
-export type BibleResponseKey = "characters" | "events" | "settings" | "chapterSummaries" | "conflicts" | "worldModel" | "premise" | "characterArcs" | "templates" | "coreShifts";
+export type BibleResponseKey = "characters" | "events" | "settings" | "chapterSummaries" | "conflicts" | "worldModel" | "premise" | "characterArcs" | "templates" | "coreShifts" | "reports";
 
 export function responseKeyForTab(tab: BibleTab): BibleResponseKey {
   if (tab === "chapter-summaries") return "chapterSummaries";
@@ -92,10 +93,11 @@ export function responseKeyForTab(tab: BibleTab): BibleResponseKey {
   if (tab === "character-arcs") return "characterArcs";
   if (tab === "questionnaires") return "templates";
   if (tab === "core-shifts") return "coreShifts";
+  if (tab === "ai-filter") return "reports";
   return tab;
 }
 
-export function singularKeyForTab(tab: BibleTab): "character" | "event" | "setting" | "chapterSummary" | "conflict" | "worldModel" | "premise" | "characterArc" | "template" | "coreShift" {
+export function singularKeyForTab(tab: BibleTab): "character" | "event" | "setting" | "chapterSummary" | "conflict" | "worldModel" | "premise" | "characterArc" | "template" | "coreShift" | "filterReport" {
   if (tab === "characters") return "character";
   if (tab === "events") return "event";
   if (tab === "settings") return "setting";
@@ -105,6 +107,7 @@ export function singularKeyForTab(tab: BibleTab): "character" | "event" | "setti
   if (tab === "premise") return "premise";
   if (tab === "questionnaires") return "template";
   if (tab === "core-shifts") return "coreShift";
+  if (tab === "ai-filter") return "filterReport";
   return "characterArc";
 }
 

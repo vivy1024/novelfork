@@ -4,6 +4,7 @@ import { BookOpen, ChevronLeft, Eye, Trash2 } from "lucide-react";
 import { ContextPreviewModal } from "../components/Bible/ContextPreviewModal";
 import { EntryForm } from "../components/Bible/EntryForm";
 import { QuestionnaireWizard, type QuestionnaireTemplateView } from "../components/Bible/QuestionnaireWizard";
+import { FilterReportTab } from "../components/filter/FilterReportTab";
 import { BIBLE_TABS, responseKeyForTab, titleOfEntry, type BibleContextPreview, type BibleEntry, type BibleTab } from "../components/Bible/types";
 import { PageEmptyState } from "../components/layout/PageEmptyState";
 import { PageScaffold } from "../components/layout/PageScaffold";
@@ -21,6 +22,7 @@ interface BibleListResponse {
   characterArcs?: BibleEntry[];
   templates?: BibleEntry[];
   coreShifts?: BibleEntry[];
+  reports?: Array<BibleEntry & { chapterNumber: number; aiTasteScore: number; level: "clean" | "mild" | "moderate" | "severe"; details: { pgiUsed?: boolean; hits?: Array<{ ruleId: string; name: string; severity: "low" | "medium" | "high"; spans: Array<{ start: number; end: number; matched: string }>; suggestion?: string }> } }>;
 }
 
 interface BookData {
@@ -47,7 +49,9 @@ export function BibleView({ bookId, nav }: { bookId: string; nav: { toDashboard:
     ? "/questionnaires"
     : activeTab === "core-shifts"
       ? `/books/${bookId}/core-shifts`
-      : `/books/${bookId}/bible/${activeTab}`;
+      : activeTab === "ai-filter"
+        ? `/books/${bookId}/filter/report?groupByPgi=true`
+        : `/books/${bookId}/bible/${activeTab}`;
   const { data, loading, error, refetch } = useApi<BibleListResponse>(endpoint);
 
   useEffect(() => {
@@ -209,6 +213,7 @@ export function BibleView({ bookId, nav }: { bookId: string; nav: { toDashboard:
                   }}
                 />
               ) : null}
+              {activeTab === "ai-filter" ? <FilterReportTab reports={data?.reports ?? []} /> : null}
               <div className="grid gap-3 md:grid-cols-2">
                 {entries.map((entry) => (
                   <article key={entry.id} className="rounded-xl border border-border/50 bg-background/70 p-4">
@@ -238,7 +243,7 @@ export function BibleView({ bookId, nav }: { bookId: string; nav: { toDashboard:
               </div>
             </section>
 
-            {activeTab !== "questionnaires" && <EntryForm tab={activeTab} entries={entries} onSubmit={createEntry} />}
+            {activeTab !== "questionnaires" && activeTab !== "ai-filter" && <EntryForm tab={activeTab} entries={entries} onSubmit={createEntry} />}
           </main>
         </div>
       </div>

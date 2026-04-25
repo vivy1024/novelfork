@@ -74,6 +74,7 @@ import {
   createContextManagerRouter,
   createAdminRouter,
   createBibleRouter,
+  createFilterRouter,
   createRoutinesRouter,
   sessionRouter,
   createSearchRouter,
@@ -278,8 +279,10 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     // Novel Bible structured authoring API
     app.route("", createBibleRouter());
 
-    // Pipeline visualization
+    app.route("", createFilterRouter());
+
     app.route("/api/pipeline", createPipelineRouter(ctx));
+
 
     // Settings management
     app.route("/api/settings", createSettingsRouter());
