@@ -2,7 +2,7 @@
 
 **版本**: v1.0.0  
 **创建日期**: 2026-04-20  
-**更新日期**: 2026-04-20  
+**更新日期**: 2026-04-25
 **状态**: 🔄 持续更新
 
 ---
@@ -30,5 +30,8 @@ Studio 的用户可见提示**必须**走 `@/lib/notify`，禁止在业务代码
 1. **recovery 五态** 的 toast 已由 `hooks/use-recovery-toasts.ts` 统一生成，业务代码**不要**再在 WS 回调里手写 `notify.warning("重连中…")`。
 2. **同一流程**多次提示要用**相同 `id`**，让后续 toast 覆盖前一条而不是堆叠（见上表 `recovery-` 与 `loading-` 前缀约定）。
 3. **`alert()` 全仓禁用**；替换为 `notify.warning` 或 `notify.error`（alert 会阻塞 UI 且不符合窗口化心智）。
+
+违反以上约束的 PR 按 UI/UX 回归处理。
+�。
 
 违反以上约束的 PR 按 UI/UX 回归处理。

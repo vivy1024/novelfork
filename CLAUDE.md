@@ -138,6 +138,7 @@ Git 检查 → git status --short
 | 写作流程规范 | `.kiro/steering/writing-workflow.md` |
 | 代码规范 | `.kiro/steering/project-standards.md` |
 | MCP 工具使用 | `.kiro/steering/mcp-tools-reference.md` |
+| 存储层扩展与 migration | `docs/04-开发指南/存储层开发指引.md` |
 
 | 动态状态追踪 | git 日志 / 记忆 / 运维文档 |
 

@@ -44,17 +44,23 @@
   - 单测 fixture：三类场景（全新 / 部分损坏 / 已迁移）
   - 单测：已 done 时再次启动不重复导入
 
-- [ ] 6. 协议回归与性能验证
+- [x] 6. 协议回归与性能验证
   - 运行 `pnpm --filter @vivy1024/novelfork-studio test`
   - 运行 `pnpm --filter @vivy1024/novelfork-studio typecheck`
   - 针对 session-chat-service 的 snapshot / history / resetRequired / replaceState 全部断言不变
   - 针对 recovery 流程（`recoveryStatus` 五态）无回归
 
-- [ ] 7. 文档与后续 spec 扩展模式
-  - 新建 `docs/04-开发指南/存储层开发指引.md`：schema 扩展步骤 / migration 生成命令 / 测试模式 / 禁用事项
+- [x] 7. 文档与后续 spec 扩展模式
+  - 新建 `docs/04-开发指南/存储层开发指引.md`，内容须包含：
+    - schema 扩展步骤（子文件 + re-export 模式）
+    - migration 编号规划表（0001-0005 + 协调规则）
+    - multi-phase migration 约定（Phase 间单向依赖、stub 预留）
+    - migration 生成命令（`pnpm drizzle-kit generate:sqlite`）
+    - 测试模式（in-memory SQLite fixture）
+    - 禁止事项（禁裸 DDL / 禁跨 spec 合并 migration / 禁编号冲突）
   - 更新 `CLAUDE.md` 引用该指引
   - 在 07 调研文档的路线图中勾选 storage-migration 完成
-  - 记忆 MCP remember：存储层关键约束（事务边界 / seq 生成策略 / WAL 约定）
+  - 记忆 MCP remember：存储层关键约束（事务边界 / seq 生成策略 / WAL 约定 / migration 编号规划）
 
 ## Done Definition
 
