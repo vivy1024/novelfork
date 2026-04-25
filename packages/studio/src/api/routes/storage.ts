@@ -9,8 +9,10 @@ import { readFile, readdir, access, stat, mkdir, writeFile } from "node:fs/promi
 import { join, resolve } from "node:path";
 import {
   PipelineRunner,
+  applyJingweiTemplate,
   computeAnalytics,
   loadProjectConfig,
+  type JingweiTemplateSelection,
 } from "@vivy1024/novelfork-core";
 import { ApiError, isMissingFileError } from "../errors.js";
 import {
@@ -62,6 +64,38 @@ function isModelConfigMissingError(error: unknown): boolean {
   return MODEL_CONFIG_MISSING_PATTERNS.some((pattern) => pattern.test(message));
 }
 
+function normalizeJingweiTemplateSelection(
+  selection: StudioCreateBookBody["jingweiTemplate"],
+  genre: string,
+): JingweiTemplateSelection {
+  switch (selection?.templateId) {
+    case "blank":
+    case "basic":
+    case "enhanced":
+      return { templateId: selection.templateId };
+    case "genre-recommended":
+      return {
+        templateId: "genre-recommended",
+        genre: selection.genre ?? genre,
+        selectedSectionKeys: selection.selectedSectionKeys ?? [],
+      };
+    default:
+      return { templateId: "basic" };
+  }
+}
+
+function buildJingweiSectionsManifest(
+  selection: StudioCreateBookBody["jingweiTemplate"],
+  genre: string,
+): string {
+  const applied = applyJingweiTemplate(normalizeJingweiTemplateSelection(selection, genre));
+  return JSON.stringify({
+    templateId: applied.templateId,
+    ...(applied.sourceGenre ? { sourceGenre: applied.sourceGenre } : {}),
+    sections: applied.sections,
+  }, null, 2);
+}
+
 function localStoryFiles(language?: "zh" | "en"): ReadonlyArray<{ readonly name: string; readonly content: string }> {
   if (language === "en") {
     return [
@@ -95,6 +129,7 @@ function localStoryFiles(language?: "zh" | "en"): ReadonlyArray<{ readonly name:
 async function writeLocalBookScaffold(
   state: RouterContext["state"],
   bookConfig: StudioBookConfigDraft,
+  jingweiTemplate?: StudioCreateBookBody["jingweiTemplate"],
 ): Promise<void> {
   const bookDir = state.bookDir(bookConfig.id);
   const storyDir = join(bookDir, "story");
@@ -106,6 +141,7 @@ async function writeLocalBookScaffold(
   await Promise.all(
     localStoryFiles(bookConfig.language).map((file) => writeFile(join(storyDir, file.name), file.content, "utf-8")),
   );
+  await writeFile(join(storyDir, "jingwei_sections.json"), buildJingweiSectionsManifest(jingweiTemplate, bookConfig.genre), "utf-8");
   await writeFile(join(chaptersDir, "index.json"), JSON.stringify([], null, 2), "utf-8");
 }
 
@@ -284,7 +320,7 @@ export function createStorageRouter(ctx: RouterContext): Hono {
 
       const scaffoldLocalBook = async (cause: unknown): Promise<void> => {
         const error = cause instanceof Error ? cause.message : String(cause);
-        await writeLocalBookScaffold(state, bookConfig);
+        await writeLocalBookScaffold(state, bookConfig, body.jingweiTemplate);
         bookCreateStatus.delete(bookId);
         broadcast("book:created", { bookId, aiInitializationSkipped: true, reason: "model-not-configured", error });
       };

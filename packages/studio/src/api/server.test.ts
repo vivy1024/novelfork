@@ -158,6 +158,16 @@ vi.mock("@vivy1024/novelfork-core", () => {
   const messageRows = new Map<string, any[]>();
   const kvRows = new Map<string, string>();
 
+  function applyJingweiTemplateMock(selection: { templateId: string }) {
+    const basicSections = ["人物", "事件", "设定", "章节摘要"].map((name, order) => ({ key: `section-${order}`, name, order }));
+    const enhancedSections = ["伏笔", "名场面", "核心记忆"].map((name, index) => ({ key: `enhanced-${index}`, name, order: basicSections.length + index }));
+    return {
+      templateId: selection.templateId,
+      sections: selection.templateId === "enhanced" ? [...basicSections, ...enhancedSections] : basicSections,
+      availableCandidates: [],
+    };
+  }
+
   function createSessionRepositoryMock() {
     return {
       async create(input: any) {
@@ -238,6 +248,7 @@ vi.mock("@vivy1024/novelfork-core", () => {
     StateManager: MockStateManager,
     PipelineRunner: MockPipelineRunner,
     Scheduler: MockScheduler,
+    applyJingweiTemplate: applyJingweiTemplateMock,
     createLLMClient: createLLMClientMock,
     createLogger: vi.fn(() => logger),
     computeAnalytics: vi.fn(() => ({})),
@@ -1023,6 +1034,7 @@ describe("createStudioServer daemon lifecycle", () => {
         genre: "xuanhuan",
         platform: "qidian",
         language: "zh",
+        jingweiTemplate: { templateId: "enhanced" },
       }),
     });
 
@@ -1042,6 +1054,11 @@ describe("createStudioServer daemon lifecycle", () => {
 
     const bookJson = JSON.parse(await readFile(bookJsonPath, "utf-8")) as { title?: string };
     expect(bookJson.title).toBe("Fallback Book");
+
+    const sectionsJson = JSON.parse(
+      await readFile(join(root, "books", "fallback-book", "story", "jingwei_sections.json"), "utf-8"),
+    ) as { sections?: Array<{ key: string; name: string }> };
+    expect(sectionsJson.sections?.map((section) => section.name)).toEqual(["人物", "事件", "设定", "章节摘要", "伏笔", "名场面", "核心记忆"]);
   });
 
   it("uses rollback semantics for chapter rejection instead of only flipping status", async () => {
