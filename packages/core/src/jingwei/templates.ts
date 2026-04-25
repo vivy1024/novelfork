@@ -1,44 +1,9 @@
-export type JingweiTemplateId = "blank" | "basic" | "enhanced" | "genre-recommended";
-
-export type JingweiVisibilityRuleType = "tracked" | "global" | "nested";
-
-export interface JingweiFieldDefinition {
-  id: string;
-  key: string;
-  label: string;
-  type: "text" | "textarea" | "number" | "select" | "multi-select" | "chapter" | "tags" | "relation" | "boolean";
-  required: boolean;
-  options?: string[];
-  helpText?: string;
-  participatesInSummary?: boolean;
-}
-
-export interface JingweiTemplateSection {
-  key: string;
-  name: string;
-  description: string;
-  order: number;
-  enabled: boolean;
-  showInSidebar: boolean;
-  participatesInAi: boolean;
-  defaultVisibility: JingweiVisibilityRuleType;
-  fieldsJson: JingweiFieldDefinition[];
-  builtinKind?: string;
-  sourceTemplate?: string;
-}
-
-export interface JingweiTemplateSelection {
-  templateId: JingweiTemplateId;
-  genre?: string;
-  selectedSectionKeys?: string[];
-}
-
-export interface AppliedJingweiTemplate {
-  templateId: JingweiTemplateId;
-  sourceGenre?: string;
-  sections: JingweiTemplateSection[];
-  availableCandidates: JingweiTemplateSection[];
-}
+import type {
+  AppliedJingweiTemplate,
+  JingweiTemplateSection,
+  JingweiTemplateSelection,
+  JingweiVisibilityRuleType,
+} from "./types.js";
 
 function createSection(input: {
   key: string;
