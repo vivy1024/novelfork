@@ -72,6 +72,7 @@ import {
   createChatRouter,
   createContextManagerRouter,
   createAdminRouter,
+  createBibleRouter,
   createRoutinesRouter,
   sessionRouter,
   createSearchRouter,
@@ -272,6 +273,9 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
 
     // Lorebook / World Info
     app.route("", createLorebookRouter(root));
+
+    // Novel Bible structured authoring API
+    app.route("", createBibleRouter());
 
     // Pipeline visualization
     app.route("/api/pipeline", createPipelineRouter(ctx));

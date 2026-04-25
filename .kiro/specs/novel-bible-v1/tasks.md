@@ -46,7 +46,7 @@ Novel Bible v1（现已扩展为**认知层 v1**）。**前置**：`storage-migr
   - 集成测试：使用 fixture book（含 30+ 条目）验证输出完整性
   - **预留扩展点**：`injectPremise()` / `injectWorldModel()` / `injectConflicts()` / `injectCharacterArcs()` 为 Phase B stubs，返回空数组
 
-- [ ] A5. REST API（Bible 四表）
+- [x] A5. REST API（Bible 四表）
   - 新建 `packages/studio/src/api/routes/bible/`：4 类实体各 GET/POST/PUT/DELETE
   - `preview-context.ts`：POST 接口
   - `book-settings.ts`：PATCH bibleMode / currentChapter

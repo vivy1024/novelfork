@@ -24,6 +24,7 @@ export { createGoldenChaptersRouter } from "./golden-chapters.js";
 export { createChatRouter } from "./chat.js";
 export { createContextManagerRouter } from "./context-manager.js";
 export { createAdminRouter, setupAdminWebSocket } from "./admin.js";
+export { createBibleRouter } from "./bible.js";
 export { createRoutinesRouter } from "./routines.js";
 export { createSearchRouter } from "./search.js";
 export { default as sessionRouter } from "./session.js";
