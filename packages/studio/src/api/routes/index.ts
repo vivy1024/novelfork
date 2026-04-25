@@ -26,6 +26,7 @@ export { createChatRouter } from "./chat.js";
 export { createContextManagerRouter } from "./context-manager.js";
 export { createAdminRouter, setupAdminWebSocket } from "./admin.js";
 export { createBibleRouter } from "./bible.js";
+export { createJingweiRouter } from "./jingwei.js";
 export { createFilterRouter } from "./filter.js";
 export { createRoutinesRouter } from "./routines.js";
 export { createSearchRouter } from "./search.js";
