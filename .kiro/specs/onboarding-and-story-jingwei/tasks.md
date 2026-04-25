@@ -19,14 +19,14 @@
   - 增加测试用例描述：点击 AI 动作但未配置模型时弹出配置提示且不清空当前输入。
   - 覆盖 Requirements 1、2、3、4、13。
 
-- [ ] 2. 实现 provider 状态读取与 AI 动作 gate
+- [x] 2. 实现 provider 状态读取与 AI 动作 gate
   - 在现有 provider / settings 能力上提供统一状态读取：是否有可用模型、默认 provider/model、最近连接错误。
   - 新增 `requireModelForAiAction()` 或等价 gate，返回 `ok | model-not-configured`。
   - 将 gate 设计为只拦截 AI 续写、改写、评点、AI 生成经纬、深度 AI 味检测、工作台 Agent，不拦截本地功能。
   - 为 gate 添加单测：已配置、未配置、连接失败三类。
   - 覆盖 Requirements 3、11、13。
 
-- [ ] 3. 持久化新手引导与首页任务状态
+- [x] 3. 持久化新手引导与首页任务状态
   - 设计并实现 onboarding 状态存储，包含首次弹窗 dismissed、任务清单 dismissed、各任务完成状态。
   - 提供 `GET /api/onboarding/status` 与 `PATCH /api/onboarding/status`，或接入现有用户设置 API 达到同等效果。
   - 任务状态至少包含：modelConfigured、hasAnyBook、hasOpenedJingwei、hasAnyChapter、hasTriedAiWriting、hasTriedAiTasteScan、hasReadWorkbenchIntro。
