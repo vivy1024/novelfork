@@ -374,7 +374,7 @@ export function BookCreate({ nav, theme, t, projectCreateDraft, flowRevision = 0
         initHint: "这一轮不替换现有建书主链，只是在生成第一本书前补一层项目初始化。",
         summaryLabel: "ProjectCreate 对象",
         summaryHint: "这一轮仍不执行 clone / worktree，只把前一步整理好的 projectInit 状态带进建书提交。",
-        workspaceHint: "创建完成后会自动打开默认写作会话，让你直接进入工作区继续推进。",
+        workspaceHint: "尚未配置 AI 模型也不影响本地写作，仍可先创建本地书籍；配置模型后再启用 AI 续写、评点和经纬生成。",
         summaryEdit: "返回修改初始化",
         repoLabel: "仓库来源",
         workflowLabel: "工作流模式",
@@ -387,7 +387,7 @@ export function BookCreate({ nav, theme, t, projectCreateDraft, flowRevision = 0
         planRepo: repoOptions.find((option) => option.value === repositorySource)?.title ?? repositorySource,
         planWorkflow: workflowOptions.find((option) => option.value === workflowMode)?.title ?? workflowMode,
         planTemplate: templateOptions.find((option) => option.value === templatePreset)?.title ?? templatePreset,
-        submit: managedProjectCreate ? "创建书籍并进入工作区" : "初始化项目并创建书籍",
+        submit: "创建本地书籍",
         creating: managedProjectCreate ? "创建中..." : "初始化中...",
       };
 

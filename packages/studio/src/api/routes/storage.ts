@@ -5,7 +5,7 @@
  */
 
 import { Hono } from "hono";
-import { readFile, readdir, access, stat } from "node:fs/promises";
+import { readFile, readdir, access, stat, mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import {
   PipelineRunner,
@@ -17,6 +17,7 @@ import {
   buildDefaultBookSessionTitle,
   buildStudioBookConfig,
   buildStudioProjectInitRecord,
+  type StudioBookConfigDraft,
   type StudioCreateBookBody,
   type StudioProjectInitRecord,
 } from "../book-create.js";
@@ -47,6 +48,65 @@ interface BookCreateState {
   readonly status: "creating" | "error";
   readonly error?: string;
   readonly ownership?: ProjectWorktreeOwnership;
+}
+
+const MODEL_CONFIG_MISSING_PATTERNS: ReadonlyArray<RegExp> = [
+  /NOVELFORK_LLM_API_KEY/i,
+  /API key.*not set/i,
+  /missing.*api[_ -]?key/i,
+  /后端写作运行时尚未配置/i,
+];
+
+function isModelConfigMissingError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return MODEL_CONFIG_MISSING_PATTERNS.some((pattern) => pattern.test(message));
+}
+
+function localStoryFiles(language?: "zh" | "en"): ReadonlyArray<{ readonly name: string; readonly content: string }> {
+  if (language === "en") {
+    return [
+      { name: "story_bible.md", content: "# Story Jingwei\n\nLocal book scaffold. Add characters, events, settings, chapter summaries, foreshadowing, iconic scenes, and core memories here.\n" },
+      { name: "volume_outline.md", content: "# Volume Outline\n\nDraft the volume structure here.\n" },
+      { name: "book_rules.md", content: "---\nversion: \"1.0\"\n---\n\n# Book Rules\n\nRecord writing rules and constraints here.\n" },
+      { name: "current_state.md", content: "# Current State\n\nNo chapters have been written yet.\n" },
+      { name: "pending_hooks.md", content: "# Pending Hooks\n\nTrack unresolved hooks here.\n" },
+      { name: "chapter_summaries.md", content: "# Chapter Summaries\n\n" },
+      { name: "subplot_board.md", content: "# Subplot Board\n\n" },
+      { name: "emotional_arcs.md", content: "# Emotional Arcs\n\n" },
+      { name: "character_matrix.md", content: "# Character Matrix\n\n" },
+      { name: "style_guide.md", content: "# Style Guide\n\n" },
+    ];
+  }
+
+  return [
+    { name: "story_bible.md", content: "# 故事经纬\n\n本地书籍已创建。可以在这里维护人物、事件、设定、章节摘要、伏笔、名场面与核心记忆。\n" },
+    { name: "volume_outline.md", content: "# 分卷大纲\n\n在这里整理分卷与主线推进。\n" },
+    { name: "book_rules.md", content: "---\nversion: \"1.0\"\n---\n\n# 写作规则\n\n在这里记录本书的写作约束、禁忌和统一口径。\n" },
+    { name: "current_state.md", content: "# 当前状态\n\n尚未写入章节。\n" },
+    { name: "pending_hooks.md", content: "# 待处理伏笔\n\n在这里记录尚未回收的伏笔。\n" },
+    { name: "chapter_summaries.md", content: "# 章节摘要\n\n" },
+    { name: "subplot_board.md", content: "# 支线看板\n\n" },
+    { name: "emotional_arcs.md", content: "# 情绪弧线\n\n" },
+    { name: "character_matrix.md", content: "# 人物矩阵\n\n" },
+    { name: "style_guide.md", content: "# 文风指南\n\n" },
+  ];
+}
+
+async function writeLocalBookScaffold(
+  state: RouterContext["state"],
+  bookConfig: StudioBookConfigDraft,
+): Promise<void> {
+  const bookDir = state.bookDir(bookConfig.id);
+  const storyDir = join(bookDir, "story");
+  const chaptersDir = join(bookDir, "chapters");
+
+  await mkdir(storyDir, { recursive: true });
+  await mkdir(chaptersDir, { recursive: true });
+  await writeFile(join(bookDir, "book.json"), JSON.stringify(bookConfig, null, 2), "utf-8");
+  await Promise.all(
+    localStoryFiles(bookConfig.language).map((file) => writeFile(join(storyDir, file.name), file.content, "utf-8")),
+  );
+  await writeFile(join(chaptersDir, "index.json"), JSON.stringify([], null, 2), "utf-8");
 }
 
 function normalizeOwnershipPath(targetPath: string): string {
@@ -222,19 +282,42 @@ export function createStorageRouter(ctx: RouterContext): Hono {
         throw new ApiError(500, "BOOK_CREATE_DEFAULT_SESSION_SNAPSHOT_FAILED", "Default writing session snapshot was not ready.");
       }
 
-      const sessionLlm = await ctx.getSessionLlm(c);
-      const pipeline = new PipelineRunner(await ctx.buildPipelineConfig(sessionLlm));
-      pipeline.initBook(bookConfig).then(
-        async () => {
-          bookCreateStatus.delete(bookId);
-          broadcast("book:created", { bookId });
-        },
-        (e) => {
-          const error = e instanceof Error ? e.message : String(e);
-          bookCreateStatus.set(bookId, { status: "error", error });
-          broadcast("book:error", { bookId, error });
-        },
-      );
+      const scaffoldLocalBook = async (cause: unknown): Promise<void> => {
+        const error = cause instanceof Error ? cause.message : String(cause);
+        await writeLocalBookScaffold(state, bookConfig);
+        bookCreateStatus.delete(bookId);
+        broadcast("book:created", { bookId, aiInitializationSkipped: true, reason: "model-not-configured", error });
+      };
+
+      try {
+        const sessionLlm = await ctx.getSessionLlm(c);
+        const pipeline = new PipelineRunner(await ctx.buildPipelineConfig(sessionLlm));
+        pipeline.initBook(bookConfig).then(
+          async () => {
+            bookCreateStatus.delete(bookId);
+            broadcast("book:created", { bookId });
+          },
+          (e) => {
+            if (isModelConfigMissingError(e)) {
+              void scaffoldLocalBook(e).catch((scaffoldError) => {
+                const error = scaffoldError instanceof Error ? scaffoldError.message : String(scaffoldError);
+                bookCreateStatus.set(bookId, { status: "error", error });
+                broadcast("book:error", { bookId, error });
+              });
+              return;
+            }
+
+            const error = e instanceof Error ? e.message : String(e);
+            bookCreateStatus.set(bookId, { status: "error", error });
+            broadcast("book:error", { bookId, error });
+          },
+        );
+      } catch (error) {
+        if (!isModelConfigMissingError(error)) {
+          throw error;
+        }
+        await scaffoldLocalBook(error);
+      }
 
       return c.json({ status: "creating", bookId, defaultSession, defaultSessionSnapshot });
     } catch (error) {
