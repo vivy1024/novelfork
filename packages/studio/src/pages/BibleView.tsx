@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { BookOpen, ChevronLeft, Eye, Trash2 } from "lucide-react";
 
 import { ContextPreviewModal } from "../components/Bible/ContextPreviewModal";
 import { EntryForm } from "../components/Bible/EntryForm";
+import { QuestionnaireWizard, type QuestionnaireTemplateView } from "../components/Bible/QuestionnaireWizard";
 import { BIBLE_TABS, responseKeyForTab, titleOfEntry, type BibleContextPreview, type BibleEntry, type BibleTab } from "../components/Bible/types";
 import { PageEmptyState } from "../components/layout/PageEmptyState";
 import { PageScaffold } from "../components/layout/PageScaffold";
@@ -18,6 +19,8 @@ interface BibleListResponse {
   worldModel?: BibleEntry | null;
   premise?: BibleEntry | null;
   characterArcs?: BibleEntry[];
+  templates?: BibleEntry[];
+  coreShifts?: BibleEntry[];
 }
 
 interface BookData {
@@ -40,8 +43,21 @@ export function BibleView({ bookId, nav }: { bookId: string; nav: { toDashboard:
   const currentChapterDefault = bookData?.nextChapter ?? 1;
   const [currentChapter, setCurrentChapter] = useState(1);
 
-  const endpoint = `/books/${bookId}/bible/${activeTab}`;
+  const endpoint = activeTab === "questionnaires"
+    ? "/questionnaires"
+    : activeTab === "core-shifts"
+      ? `/books/${bookId}/core-shifts`
+      : `/books/${bookId}/bible/${activeTab}`;
   const { data, loading, error, refetch } = useApi<BibleListResponse>(endpoint);
+
+  useEffect(() => {
+    const key = `novelfork:open-questionnaire:${bookId}`;
+    if (typeof window !== "undefined" && window.sessionStorage.getItem(key)) {
+      window.sessionStorage.removeItem(key);
+      setActiveTab("questionnaires");
+    }
+  }, [bookId]);
+
   const entries = useMemo(() => {
     const value = data?.[responseKeyForTab(activeTab)];
     if (!value) return [];
@@ -74,6 +90,16 @@ export function BibleView({ bookId, nav }: { bookId: string; nav: { toDashboard:
       notify.success("Bible 条目已删除");
     } catch (error) {
       notify.error("删除失败", { description: error instanceof Error ? error.message : undefined });
+    }
+  };
+
+  const updateCoreShift = async (entryId: string, action: "accept" | "reject") => {
+    try {
+      await postApi(`/books/${bookId}/core-shifts/${entryId}/${action}`, {});
+      await refetch();
+      notify.success(action === "accept" ? "变更已接受" : "变更已拒绝");
+    } catch (error) {
+      notify.error("变更操作失败", { description: error instanceof Error ? error.message : undefined });
     }
   };
 
@@ -173,6 +199,16 @@ export function BibleView({ bookId, nav }: { bookId: string; nav: { toDashboard:
                 </div>
                 {loading && <div className="text-xs text-muted-foreground">加载中...</div>}
               </div>
+              {activeTab === "questionnaires" && entries[0] ? (
+                <QuestionnaireWizard
+                  bookId={bookId}
+                  template={entries[0] as QuestionnaireTemplateView}
+                  onDone={() => {
+                    notify.success("问卷状态已保存");
+                    void refetch();
+                  }}
+                />
+              ) : null}
               <div className="grid gap-3 md:grid-cols-2">
                 {entries.map((entry) => (
                   <article key={entry.id} className="rounded-xl border border-border/50 bg-background/70 p-4">
@@ -181,7 +217,12 @@ export function BibleView({ bookId, nav }: { bookId: string; nav: { toDashboard:
                         <div className="font-semibold">{titleOfEntry(entry)}</div>
                         <div className="mt-1 text-xs text-muted-foreground">{entry.id}</div>
                       </div>
-                      {activeTab !== "world-model" && activeTab !== "premise" && (
+                      {activeTab === "core-shifts" && entry.status === "proposed" ? (
+                        <div className="flex gap-2">
+                          <button onClick={() => void updateCoreShift(entry.id, "accept")} className="rounded-lg bg-primary/10 px-2 py-1 text-xs font-bold text-primary">accept</button>
+                          <button onClick={() => void updateCoreShift(entry.id, "reject")} className="rounded-lg bg-destructive/10 px-2 py-1 text-xs font-bold text-destructive">reject</button>
+                        </div>
+                      ) : activeTab !== "world-model" && activeTab !== "premise" && activeTab !== "questionnaires" && activeTab !== "core-shifts" && (
                         <button onClick={() => deleteEntry(entry.id)} className="rounded-lg p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive" title="删除">
                           <Trash2 size={14} />
                         </button>
@@ -189,13 +230,15 @@ export function BibleView({ bookId, nav }: { bookId: string; nav: { toDashboard:
                     </div>
                     <p className="mt-3 line-clamp-3 text-sm leading-6 text-muted-foreground">{entry.summary ?? entry.content ?? entry.stakes ?? entry.currentPosition ?? entry.uniqueHook ?? "（无摘要）"}</p>
                     {entry.stalled && <div className="mt-3 rounded-lg bg-orange-500/10 px-2 py-1 text-xs font-bold text-orange-600">stalled-conflict</div>}
+                    {entry.affectedChapters && entry.affectedChapters.length > 0 && <div className="mt-3 rounded-lg bg-orange-500/10 px-2 py-1 text-xs font-bold text-orange-600">需复核章节：{entry.affectedChapters.join("、")}</div>}
+                    {entry.status && <div className="mt-3 rounded-lg bg-muted/50 px-2 py-1 text-xs text-muted-foreground">status: {entry.status}</div>}
                     {entry.visibilityRule && <div className="mt-3 rounded-lg bg-muted/50 px-2 py-1 text-xs text-muted-foreground">visibility: {entry.visibilityRule.type}</div>}
                   </article>
                 ))}
               </div>
             </section>
 
-            <EntryForm tab={activeTab} entries={entries} onSubmit={createEntry} />
+            {activeTab !== "questionnaires" && <EntryForm tab={activeTab} entries={entries} onSubmit={createEntry} />}
           </main>
         </div>
       </div>

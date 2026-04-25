@@ -197,3 +197,88 @@ export interface BibleCharacterArcRecord {
 
 export type CreateBibleCharacterArcInput = Omit<BibleCharacterArcRecord, "deletedAt">;
 export type UpdateBibleCharacterArcInput = Partial<Omit<CreateBibleCharacterArcInput, "id" | "bookId" | "characterId" | "createdAt">>;
+
+export type QuestionnaireTier = 1 | 2 | 3;
+export type QuestionnaireTargetObject = "premise" | "conflict" | "world-model" | "character-arc" | "character" | "setting";
+export type QuestionnaireQuestionType = "single" | "multi" | "text" | "ranged-number" | "ai-suggest";
+export type QuestionnaireTransform = "identity" | "join-comma" | "parse-int" | "ai-rewrite";
+
+export interface QuestionnaireQuestionMapping {
+  fieldPath: string;
+  transform?: QuestionnaireTransform;
+}
+
+export interface QuestionnaireQuestionDependsOn {
+  questionId: string;
+  equals: string | number | boolean;
+}
+
+export interface QuestionnaireQuestion {
+  id: string;
+  prompt: string;
+  type: QuestionnaireQuestionType;
+  options?: string[];
+  min?: number;
+  max?: number;
+  mapping: QuestionnaireQuestionMapping;
+  dependsOn?: QuestionnaireQuestionDependsOn;
+  hint?: string;
+  defaultSkippable: boolean;
+}
+
+export interface BuiltinQuestionnaireTemplate {
+  id: string;
+  version: string;
+  genreTags: string[];
+  tier: QuestionnaireTier;
+  targetObject: QuestionnaireTargetObject;
+  questions: QuestionnaireQuestion[];
+}
+
+export interface QuestionnaireTemplateRecord {
+  id: string;
+  version: string;
+  genreTagsJson: string;
+  tier: QuestionnaireTier;
+  targetObject: QuestionnaireTargetObject;
+  questionsJson: string;
+  isBuiltin: boolean;
+  createdAt: Date;
+}
+
+export type CreateQuestionnaireTemplateInput = QuestionnaireTemplateRecord;
+
+export interface QuestionnaireResponseRecord {
+  id: string;
+  bookId: string;
+  templateId: string;
+  targetObjectType: QuestionnaireTargetObject;
+  targetObjectId: string | null;
+  answersJson: string;
+  status: "draft" | "submitted" | "skipped";
+  answeredVia: "author" | "ai-assisted";
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export type CreateQuestionnaireResponseInput = QuestionnaireResponseRecord;
+export type UpdateQuestionnaireResponseInput = Partial<Omit<CreateQuestionnaireResponseInput, "id" | "bookId" | "templateId" | "createdAt">>;
+
+export interface CoreShiftRecord {
+  id: string;
+  bookId: string;
+  targetType: "premise" | "character-arc" | "conflict" | "world-model" | "outline";
+  targetId: string;
+  fromSnapshotJson: string;
+  toSnapshotJson: string;
+  triggeredBy: "author" | "data-signal" | "continuity-audit";
+  chapterAt: number;
+  affectedChaptersJson: string;
+  impactAnalysisJson: string;
+  status: "proposed" | "accepted" | "rejected" | "applied";
+  createdAt: Date;
+  appliedAt: Date | null;
+}
+
+export type CreateCoreShiftInput = CoreShiftRecord;
+export type UpdateCoreShiftInput = Partial<Omit<CreateCoreShiftInput, "id" | "bookId" | "targetType" | "targetId" | "createdAt">>;

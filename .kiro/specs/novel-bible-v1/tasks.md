@@ -117,45 +117,45 @@ Novel Bible v1（现已扩展为**认知层 v1**）。**前置**：`storage-migr
 
 ## Phase C：Questionnaire + CoreShift + PGI
 
-- [ ] C1. Phase C Schema 与 Seed
+- [x] C1. Phase C Schema 与 Seed
   - 在 `packages/core/src/storage/schema.ts` 追加：`questionnaire_template`、`questionnaire_response`、`core_shift`
   - 生成 migration `0004_bible_phaseC.sql`
   - 新建 `packages/core/src/bible/questionnaires/seed/`：3 套 Tier 1（通用/玄幻/都市）+ 5 套 Tier 2 + 1 套 Tier 3 的 builtin JSON
   - 启动时 idempotent 写入 `questionnaire_template`（按 `id + version` 去重）
   - 单测：seed 幂等 / 模板 JSON 合法性校验
 
-- [ ] C2. Questionnaire 提交引擎
+- [x] C2. Questionnaire 提交引擎
   - `apply-mapping.ts`：按 `questions_json[i].mapping` 规则把答案写入 `bible_*` 表
   - `submit-response.ts`：事务化提交（要么全成要么全不成）
   - `ai-suggest.ts`：调 writer/worldbuilder agent 返回候选答案
   - REST API：`GET /api/questionnaires?genre=&tier=` / `POST /api/books/:bookId/questionnaires/:templateId/responses` / `PUT .../responses/:id` / `POST .../ai-suggest`
   - 单测：mapping 各 transform / 事务回滚 / dependsOn 跳过 / AI suggest 失败降级
 
-- [ ] C3. Questionnaire UI
+- [x] C3. Questionnaire UI
   - `QuestionnaireWizard.tsx`：分步骤向导（进度条 + 返回/跳过/AI 建议按钮）
   - 集成到 BookCreate 成功回调：自动弹 Tier 1 问卷（可跳过）
   - Book Detail 新增「问卷中心」Tab：列出所有 template（按 tier） + 已填 response
   - 支持"稍后再填"：draft 自动保存 + 重入继续
   - 单测：向导状态机 / AI 建议 UI 展开 / 跳过路径
 
-- [ ] C4. Dynamic 模式滞后问卷
+- [x] C4. Dynamic 模式滞后问卷
   - 章节保存后（`appendChapterSummary` 钩子）扫描新人物/设定/矛盾未建档
   - 生成临时 "ratify-questionnaire" 注入前端侧边栏
   - 作者响应后调用 submit-response 走事务提交
   - 单测：章节文本扫描 / 未建档识别 / ratify 流程
 
-- [ ] C5. CoreShift 协议引擎
+- [x] C5. CoreShift 协议引擎
   - `core-shift-repo.ts` + `impact-analysis.ts`：扫 `chapter_summary` / `conflict.evolution_path` / `character_arc.turning_points`
   - REST API：`POST /api/books/:bookId/core-shifts` / `POST .../core-shifts/:id/accept` / `.../reject` / `GET .../core-shifts?status=`
   - 集成：修改 premise / 主线 conflict / world-model / character-arc 时自动创建 proposed
   - 单测：影响分析 / accept 回写 / reject 恢复 / 幂等
 
-- [ ] C6. CoreShift UI
+- [x] C6. CoreShift UI
   - Book Detail 新增「变更历史」Tab：时间线 + diff + 影响章节 + accept/reject 按钮
   - 章节列表中 affected 章节显示橙色"需复核"徽章
   - 清除徽章：作者手动点"已复核"或 rewrite/revise 该章
 
-- [ ] C7. PGI（Pre-Generation Interrogation）
+- [x] C7. PGI（Pre-Generation Interrogation）
   - `pgi-engine.ts`：启发式规则生成 2-5 个问题（矛盾 escalating / 伏笔到期 / 人设漂移 stub / 大纲偏离 stub）
   - REST API：`POST /api/books/:bookId/chapters/:chapter/pre-generation-questions`
   - UI：writer session 发起生成前，先弹 PGI 弹窗（可关闭）
@@ -164,7 +164,7 @@ Novel Bible v1（现已扩展为**认知层 v1**）。**前置**：`storage-migr
   - 跳过 PGI 时在 filter 报告中标注
   - 单测：每条规则正例 / 规则不触发时返回空 / 截断到 5 题
 
-- [ ] C8. Phase C 测试、文档与路线图
+- [x] C8. Phase C 测试、文档与路线图
   - E2E：创建新书 → 走完 Tier 1 问卷 → Bible 自动生成 → 写第 1 章（触发 PGI）→ 修改主线 conflict（触发 CoreShift）→ accept
   - 更新 `docs/04-开发指南/Bible开发指引.md`（Phase C 段，含问卷模板扩展指南）
   - 07 路线图勾选 Phase C 完成、声明"认知层 v1 MVP 完整"

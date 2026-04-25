@@ -234,6 +234,68 @@ export const bibleCharacterArcs = sqliteTable(
   (table) => [index("bible_character_arc_book_character_idx").on(table.bookId, table.characterId)],
 );
 
+export const questionnaireTemplates = sqliteTable(
+  "questionnaire_template",
+  {
+    id: text("id").primaryKey(),
+    version: text("version").notNull(),
+    genreTagsJson: text("genre_tags_json").notNull().default("[]"),
+    tier: integer("tier").notNull(),
+    targetObject: text("target_object").notNull(),
+    questionsJson: text("questions_json").notNull(),
+    isBuiltin: integer("is_builtin", { mode: "boolean" }).notNull().default(true),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("questionnaire_template_id_version_idx").on(table.id, table.version),
+    index("questionnaire_template_tier_idx").on(table.tier),
+  ],
+);
+
+export const questionnaireResponses = sqliteTable(
+  "questionnaire_response",
+  {
+    id: text("id").primaryKey(),
+    bookId: text("book_id")
+      .notNull()
+      .references(() => books.id, { onDelete: "cascade" }),
+    templateId: text("template_id").notNull(),
+    targetObjectType: text("target_object_type").notNull(),
+    targetObjectId: text("target_object_id"),
+    answersJson: text("answers_json").notNull(),
+    status: text("status").notNull().default("draft"),
+    answeredVia: text("answered_via").notNull().default("author"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [
+    index("questionnaire_response_book_template_idx").on(table.bookId, table.templateId),
+    index("questionnaire_response_book_status_idx").on(table.bookId, table.status),
+  ],
+);
+
+export const coreShifts = sqliteTable(
+  "core_shift",
+  {
+    id: text("id").primaryKey(),
+    bookId: text("book_id")
+      .notNull()
+      .references(() => books.id, { onDelete: "cascade" }),
+    targetType: text("target_type").notNull(),
+    targetId: text("target_id").notNull(),
+    fromSnapshotJson: text("from_snapshot_json").notNull(),
+    toSnapshotJson: text("to_snapshot_json").notNull(),
+    triggeredBy: text("triggered_by").notNull(),
+    chapterAt: integer("chapter_at").notNull(),
+    affectedChaptersJson: text("affected_chapters_json").notNull().default("[]"),
+    impactAnalysisJson: text("impact_analysis_json").notNull().default("{}"),
+    status: text("status").notNull().default("proposed"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    appliedAt: integer("applied_at", { mode: "timestamp_ms" }),
+  },
+  (table) => [index("core_shift_book_status_idx").on(table.bookId, table.status)],
+);
+
 export const drizzleMigrations = sqliteTable("drizzle_migrations", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   hash: text("hash").notNull().unique(),

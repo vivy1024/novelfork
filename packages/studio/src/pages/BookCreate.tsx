@@ -438,7 +438,8 @@ export function BookCreate({ nav, theme, t, projectCreateDraft, flowRevision = 0
       await Promise.resolve();
       await waitForBookReady(result.bookId);
 
-      const premiseLogline = typeof window !== "undefined" && !window.navigator.userAgent.toLowerCase().includes("jsdom")
+      const shouldUseNativePrompt = typeof window !== "undefined" && !window.navigator.userAgent.toLowerCase().includes("jsdom");
+      const premiseLogline = shouldUseNativePrompt
         ? window.prompt("可选：填写这本书的一句话 Premise（取消则跳过，稍后可在 Novel Bible / Premise 补填）。", "")
         : null;
       if (premiseLogline?.trim()) {
@@ -447,6 +448,9 @@ export function BookCreate({ nav, theme, t, projectCreateDraft, flowRevision = 0
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ logline: premiseLogline.trim() }),
         });
+      }
+      if (shouldUseNativePrompt && window.confirm("是否现在填写 Tier 1 建书问卷？选择取消可稍后在 Novel Bible / 问卷中心继续。")) {
+        window.sessionStorage.setItem(`novelfork:open-questionnaire:${result.bookId}`, "tier1");
       }
 
       try {

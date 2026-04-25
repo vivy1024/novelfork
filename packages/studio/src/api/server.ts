@@ -9,6 +9,7 @@ import {
   pipelineEvents,
   runJsonImportMigrationIfNeeded,
   runStorageMigrations,
+  seedQuestionnaireTemplates,
   type PipelineConfig,
   type ProjectConfig,
   type LogSink,
@@ -521,6 +522,7 @@ export async function startStudioServer(
   let jsonImportResult: Awaited<ReturnType<typeof runJsonImportMigrationIfNeeded>>;
   try {
     storageMigrationResult = runStorageMigrations(storageDatabase);
+    await seedQuestionnaireTemplates(storageDatabase);
     jsonImportResult = await runJsonImportMigrationIfNeeded(storageDatabase, {
       storageDir: sessionStoreDir,
       warn(message, error) {

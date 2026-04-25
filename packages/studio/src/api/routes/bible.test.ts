@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createBookRepository, createStorageDatabase, runStorageMigrations, type StorageDatabase } from "@vivy1024/novelfork-core";
+import { createBookRepository, createStorageDatabase, runStorageMigrations, seedQuestionnaireTemplates, type StorageDatabase } from "@vivy1024/novelfork-core";
 
 import { createBibleRouter } from "./bible.js";
 
@@ -16,6 +16,7 @@ async function createStorage(): Promise<StorageDatabase> {
   tempDirs.push(dir);
   const storage = createStorageDatabase({ databasePath: join(dir, "novelfork.db") });
   runStorageMigrations(storage);
+  await seedQuestionnaireTemplates(storage);
   await createBookRepository(storage).create({
     id: "book-1",
     name: "凡人修仙录",
@@ -237,6 +238,90 @@ describe("Bible API routes", () => {
       expect(previewResponse.status).toBe(200);
       const preview = await previewResponse.json();
       expect(preview.context.items.map((item: { id: string }) => item.id)).toEqual(expect.arrayContaining(["conflict-1", "arc-1"]));
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("proposes and accepts CoreShift records through API", async () => {
+    const storage = await createStorage();
+    try {
+      const router = createBibleRouter({ storage });
+      await router.request("http://localhost/api/books/book-1/bible/premise", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: "premise-1", logline: "旧基线", tone: "稳健" }),
+      });
+      await postJson(router, "/api/books/book-1/bible/chapter-summaries", {
+        id: "summary-1",
+        chapterNumber: 1,
+        title: "第一章",
+        summary: "旧基线推动剧情。",
+        metadata: { refs: ["premise-1"] },
+      });
+
+      const proposeResponse = await postJson(router, "/api/books/book-1/core-shifts", {
+        id: "shift-1",
+        targetType: "premise",
+        targetId: "premise-1",
+        fromSnapshot: { logline: "旧基线", tone: "稳健" },
+        toSnapshot: { logline: "新基线", tone: "热血" },
+        triggeredBy: "author",
+        chapterAt: 3,
+      });
+      expect(proposeResponse.status).toBe(201);
+      expect(await proposeResponse.json()).toMatchObject({ coreShift: { id: "shift-1", status: "proposed", affectedChapters: [1] } });
+
+      const acceptResponse = await postJson(router, "/api/books/book-1/core-shifts/shift-1/accept", {});
+      expect(acceptResponse.status).toBe(200);
+      expect(await acceptResponse.json()).toMatchObject({ coreShift: { id: "shift-1", status: "applied" } });
+
+      const listResponse = await router.request("http://localhost/api/books/book-1/core-shifts?status=applied");
+      expect(listResponse.status).toBe(200);
+      expect(await listResponse.json()).toMatchObject({ coreShifts: [{ id: "shift-1", status: "applied" }] });
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("lists questionnaire templates and submits or updates questionnaire responses", async () => {
+    const storage = await createStorage();
+    try {
+      const router = createBibleRouter({ storage });
+
+      const listResponse = await router.request("http://localhost/api/questionnaires?tier=1&genre=玄幻");
+      expect(listResponse.status).toBe(200);
+      const listJson = await listResponse.json();
+      expect(listJson.templates.map((template: { id: string }) => template.id)).toEqual(expect.arrayContaining(["tier1-common-premise", "tier1-xuanhuan-premise"]));
+
+      const submitResponse = await postJson(router, "/api/books/book-1/questionnaires/tier1-common-premise/responses", {
+        id: "response-1",
+        answers: {
+          logline: "凡人靠小瓶求长生",
+          theme: "谨慎,长生",
+          tone: "热血",
+          "target-readers": "修仙读者",
+          "unique-hook": "小瓶催熟资源",
+          "genre-tags": "玄幻,修仙",
+        },
+      });
+      expect(submitResponse.status).toBe(201);
+      expect(await submitResponse.json()).toMatchObject({ response: { id: "response-1", status: "submitted" }, targetObjectId: expect.any(String) });
+
+      const updateResponse = await router.request("http://localhost/api/books/book-1/questionnaires/tier1-common-premise/responses/response-1", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "draft", answers: { logline: "稍后补完" } }),
+      });
+      expect(updateResponse.status).toBe(200);
+      expect(await updateResponse.json()).toMatchObject({ response: { id: "response-1", status: "draft" } });
+
+      const suggestResponse = await postJson(router, "/api/books/book-1/questionnaires/tier1-common-premise/ai-suggest", {
+        questionId: "logline",
+        existingAnswers: {},
+      });
+      expect(suggestResponse.status).toBe(200);
+      expect(await suggestResponse.json()).toMatchObject({ suggestion: { degraded: true } });
     } finally {
       storage.close();
     }
