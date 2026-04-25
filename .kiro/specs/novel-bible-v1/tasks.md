@@ -33,7 +33,7 @@ Novel Bible v1（现已扩展为**认知层 v1**）。**前置**：`storage-migr
   - 单测：每种 type 命中 / 不命中 / 边界章节 / nested 环
   - 性能：500 条目 + 10000 字 sceneText <50ms
 
-- [ ] A3. token-budget 与 composer
+- [x] A3. token-budget 与 composer
   - `token-budget.ts`：估算 tokens（中文字符 × 0.6）+ 按优先级丢弃
   - `compose-context.ts`：格式化 `【类型】名称：内容` 结构
   - 单测：预算不够 / 刚好够 / 绰绰有余三种场景
