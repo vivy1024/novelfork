@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import type { JingweiTemplateSelection } from "@vivy1024/novelfork-core";
 import {
   normalizeStudioProjectCreateDraft,
   normalizeStudioProjectInit,
@@ -51,6 +52,52 @@ interface ProviderRuntimeStatus {
   readonly defaultProvider?: string;
   readonly defaultModel?: string;
 }
+
+interface JingweiTemplateOption {
+  readonly templateId: JingweiTemplateSelection["templateId"];
+  readonly title: string;
+  readonly description: string;
+}
+
+const JINGWEI_TEMPLATE_OPTIONS_ZH: ReadonlyArray<JingweiTemplateOption> = [
+  { templateId: "blank", title: "空白经纬", description: "不创建默认栏目，适合完全自定义。" },
+  { templateId: "basic", title: "基础经纬", description: "人物、事件、设定、章节摘要。" },
+  { templateId: "enhanced", title: "增强经纬", description: "基础栏目外追加伏笔、名场面、核心记忆。" },
+  { templateId: "genre-recommended", title: "按题材推荐", description: "按当前题材给出候选栏目，可逐项勾选。" },
+];
+
+const JINGWEI_TEMPLATE_OPTIONS_EN: ReadonlyArray<JingweiTemplateOption> = [
+  { templateId: "blank", title: "Blank jingwei", description: "Create no default sections; customize from scratch." },
+  { templateId: "basic", title: "Basic jingwei", description: "People, events, settings and chapter summaries." },
+  { templateId: "enhanced", title: "Enhanced jingwei", description: "Adds foreshadowing, iconic scenes and core memories." },
+  { templateId: "genre-recommended", title: "Genre recommendations", description: "Review optional genre-specific section candidates." },
+];
+
+const GENRE_JINGWEI_CANDIDATES_ZH: Record<string, ReadonlyArray<{ key: string; name: string }>> = {
+  xuanhuan: [
+    { key: "power-system", name: "境界体系" },
+    { key: "skills", name: "功法" },
+    { key: "factions", name: "势力" },
+    { key: "resources", name: "资源" },
+    { key: "artifacts", name: "法宝" },
+    { key: "secret-realms", name: "秘境" },
+  ],
+  xiuxian: [
+    { key: "power-system", name: "境界体系" },
+    { key: "skills", name: "功法" },
+    { key: "factions", name: "势力" },
+    { key: "resources", name: "资源" },
+    { key: "artifacts", name: "法宝" },
+    { key: "secret-realms", name: "秘境" },
+  ],
+  suspense: [
+    { key: "clues", name: "线索" },
+    { key: "mysteries", name: "谜团" },
+    { key: "misdirections", name: "误导项" },
+    { key: "case-timeline", name: "案件时间线" },
+    { key: "truth-layer", name: "真相层" },
+  ],
+};
 
 const PLATFORMS_ZH: ReadonlyArray<PlatformOption> = [
   { value: "tomato", label: "番茄小说" },
@@ -118,6 +165,7 @@ export function buildStudioCreateBookRequest(input: {
   readonly targetChapters: string;
   readonly projectInit: StudioProjectInitDraft;
   readonly initializationPlan?: StudioProjectInitializationPlan;
+  readonly jingweiTemplate?: JingweiTemplateSelection;
   readonly aiInitialization?: StudioAiInitializationOptions;
 }): StudioCreateBookBody {
   return {
@@ -129,6 +177,7 @@ export function buildStudioCreateBookRequest(input: {
     targetChapters: parseInt(input.targetChapters, 10),
     projectInit: input.projectInit,
     ...(input.initializationPlan ? { initializationPlan: input.initializationPlan } : {}),
+    ...(input.jingweiTemplate ? { jingweiTemplate: input.jingweiTemplate } : {}),
     ...(input.aiInitialization ? { aiInitialization: input.aiInitialization } : {}),
   };
 }
@@ -264,6 +313,8 @@ export function BookCreate({ nav, theme, t, projectCreateDraft, flowRevision = 0
   const [targetChapters, setTargetChapters] = useState("200");
   const [targetChaptersTouched, setTargetChaptersTouched] = useState(false);
   const [worktreeTouched, setWorktreeTouched] = useState(false);
+  const [jingweiTemplateId, setJingweiTemplateId] = useState<JingweiTemplateSelection["templateId"]>("basic");
+  const [selectedGenreJingweiSectionKeys, setSelectedGenreJingweiSectionKeys] = useState<ReadonlyArray<string>>(["power-system", "factions"]);
   const [generateJingwei, setGenerateJingwei] = useState(false);
   const [generatePitch, setGeneratePitch] = useState(false);
   const [generateFirstChapterDirections, setGenerateFirstChapterDirections] = useState(false);
@@ -322,6 +373,8 @@ export function BookCreate({ nav, theme, t, projectCreateDraft, flowRevision = 0
     setTargetChapters(nextDefaults.targetChapters);
     setTargetChaptersTouched(false);
     setWorktreeTouched(false);
+    setJingweiTemplateId("basic");
+    setSelectedGenreJingweiSectionKeys(["power-system", "factions"]);
     setGenerateJingwei(false);
     setGeneratePitch(false);
     setGenerateFirstChapterDirections(false);
@@ -377,6 +430,9 @@ export function BookCreate({ nav, theme, t, projectCreateDraft, flowRevision = 0
         summaryLabel: "ProjectCreate object",
         summaryHint: "No clone / worktree execution yet. This summary only carries the reserved projectInit state forward.",
         summaryEdit: "Edit initialization",
+        jingweiTemplateLabel: "Story jingwei structure",
+        jingweiTemplateHint: "Choose the local memory structure for this book. Genre recommendations are optional candidates, not a locked schema.",
+        jingweiGenreCandidates: "Genre section candidates",
         aiInitLabel: "AI initialization",
         aiInitUnavailable: "AI model is not configured yet. You can still create a local book; configure a model later to generate the initial jingwei, pitch and first-three-chapter direction.",
         aiInitModel: "Current model",
@@ -410,6 +466,9 @@ export function BookCreate({ nav, theme, t, projectCreateDraft, flowRevision = 0
         summaryHint: "这一轮仍不执行 clone / worktree，只把前一步整理好的 projectInit 状态带进建书提交。",
         workspaceHint: "尚未配置 AI 模型也不影响本地写作，仍可先创建本地书籍；配置模型后再启用 AI 续写、评点和经纬生成。",
         summaryEdit: "返回修改初始化",
+        jingweiTemplateLabel: "故事经纬结构",
+        jingweiTemplateHint: "选择本书的本地长期记忆结构。题材推荐只是候选栏目，不会锁死成默认 schema。",
+        jingweiGenreCandidates: "题材候选栏目",
         aiInitLabel: "AI 初始化",
         aiInitUnavailable: "尚未配置 AI 模型，仍可先创建本地书籍；配置模型后可启用初始经纬、简介卖点和前三章方向生成。",
         aiInitModel: "当前模型",
@@ -459,6 +518,27 @@ export function BookCreate({ nav, theme, t, projectCreateDraft, flowRevision = 0
   const providerSummary = providerStatus?.defaultProvider && providerStatus.defaultModel
     ? `${providerStatus.defaultProvider} / ${providerStatus.defaultModel}`
     : undefined;
+  const jingweiTemplateOptions = projectLang === "en" ? JINGWEI_TEMPLATE_OPTIONS_EN : JINGWEI_TEMPLATE_OPTIONS_ZH;
+  const genreJingweiCandidates = GENRE_JINGWEI_CANDIDATES_ZH[genre] ?? GENRE_JINGWEI_CANDIDATES_ZH.xuanhuan;
+  const selectedGenreJingweiKeySet = new Set(selectedGenreJingweiSectionKeys);
+  const jingweiTemplate = useMemo<JingweiTemplateSelection>(() => {
+    if (jingweiTemplateId === "genre-recommended") {
+      return {
+        templateId: "genre-recommended",
+        genre,
+        selectedSectionKeys: [...selectedGenreJingweiSectionKeys],
+      };
+    }
+
+    return { templateId: jingweiTemplateId };
+  }, [genre, jingweiTemplateId, selectedGenreJingweiSectionKeys]);
+  const toggleGenreJingweiCandidate = (key: string) => {
+    setSelectedGenreJingweiSectionKeys((current) => (
+      current.includes(key)
+        ? current.filter((currentKey) => currentKey !== key)
+        : [...current, key]
+    ));
+  };
 
   const handleCreate = async () => {
     if (!title.trim()) {
@@ -484,6 +564,7 @@ export function BookCreate({ nav, theme, t, projectCreateDraft, flowRevision = 0
         targetChapters,
         projectInit,
         initializationPlan: currentProjectCreateDraft.initializationPlan,
+        jingweiTemplate,
         aiInitialization,
       }));
       setCreateStage("waiting");
@@ -796,6 +877,55 @@ export function BookCreate({ nav, theme, t, projectCreateDraft, flowRevision = 0
             />
           </div>
         </div>
+      </div>
+
+      <div className="space-y-4 rounded-2xl border border-border/60 bg-background/50 p-5">
+        <div className="space-y-1">
+          <div className="text-sm font-medium text-foreground">{copy.jingweiTemplateLabel}</div>
+          <p className="text-xs leading-5 text-muted-foreground">{copy.jingweiTemplateHint}</p>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          {jingweiTemplateOptions.map((option) => (
+            <button
+              key={option.templateId}
+              type="button"
+              aria-pressed={jingweiTemplateId === option.templateId}
+              onClick={() => setJingweiTemplateId(option.templateId)}
+              disabled={creating}
+              className={`rounded-xl border px-3 py-3 text-left transition-all disabled:opacity-50 ${
+                jingweiTemplateId === option.templateId
+                  ? "border-primary/40 bg-primary/10 text-primary"
+                  : "border-border/60 bg-secondary/30 text-foreground hover:border-primary/30"
+              }`}
+            >
+              <div className="text-sm font-medium">{option.title}</div>
+              <div className="mt-1 text-xs leading-5 text-muted-foreground">{option.description}</div>
+            </button>
+          ))}
+        </div>
+        {jingweiTemplateId === "genre-recommended" && (
+          <div className="space-y-2 rounded-xl border border-border/60 bg-secondary/20 p-3">
+            <div className="text-xs font-medium text-muted-foreground">{copy.jingweiGenreCandidates}</div>
+            <div className="flex flex-wrap gap-2">
+              {genreJingweiCandidates.map((candidate) => (
+                <button
+                  key={candidate.key}
+                  type="button"
+                  aria-pressed={selectedGenreJingweiKeySet.has(candidate.key)}
+                  onClick={() => toggleGenreJingweiCandidate(candidate.key)}
+                  disabled={creating}
+                  className={`rounded-full border px-3 py-1.5 text-xs transition-all disabled:opacity-50 ${
+                    selectedGenreJingweiKeySet.has(candidate.key)
+                      ? "border-primary/40 bg-primary/10 text-primary"
+                      : "border-border/60 bg-background/50 text-muted-foreground hover:border-primary/30"
+                  }`}
+                >
+                  {candidate.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="space-y-4 rounded-2xl border border-border/60 bg-background/50 p-5">

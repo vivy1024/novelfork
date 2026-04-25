@@ -1,4 +1,4 @@
-import type { Platform } from "@vivy1024/novelfork-core";
+import type { JingweiTemplateSelection, Platform } from "@vivy1024/novelfork-core";
 
 import type { NarratorSessionChatSnapshot, NarratorSessionRecord } from "../shared/session-types.js";
 
@@ -49,6 +49,7 @@ export interface StudioCreateBookBody {
   readonly targetChapters?: number;
   readonly projectInit?: Partial<StudioProjectInitDraft>;
   readonly initializationPlan?: StudioProjectInitializationPlan;
+  readonly jingweiTemplate?: JingweiTemplateSelection;
   readonly aiInitialization?: StudioAiInitializationOptions;
 }
 

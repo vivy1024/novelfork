@@ -147,6 +147,9 @@ export * from "./filter/index.js";
 // Bible
 export * from "./bible/index.js";
 
+// Jingwei
+export * from "./jingwei/index.js";
+
 // State
 export { StateManager } from "./state/manager.js";
 export { bootstrapStructuredStateFromMarkdown } from "./state/state-bootstrap.js";

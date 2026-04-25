@@ -131,8 +131,52 @@ describe("BookCreate", () => {
     expect(screen.getByText("AI 初始化")).toBeTruthy();
     expect(screen.getByText(/配置模型后可启用初始经纬、简介卖点和前三章方向生成/)).toBeTruthy();
     expect(screen.queryByRole("switch", { name: "生成初始故事经纬" })).toBeNull();
+    expect(screen.getByText("故事经纬结构")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /基础经纬/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: "创建本地书籍" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "创建书籍并进入工作区" })).toBeNull();
+  });
+
+  it("submits the selected jingwei template with the local book request", async () => {
+    const nav = {
+      toDashboard: vi.fn(),
+      toBook: vi.fn(),
+      toProjectCreate: vi.fn(),
+    };
+    postApiMock.mockResolvedValueOnce(createBookResponse("book-demo"));
+    fetchJsonMock.mockImplementation(async (url: string) => {
+      if (url === "/books/book-demo") {
+        return { id: "book-demo" };
+      }
+      throw new Error(`Unexpected fetchJson call: ${url}`);
+    });
+
+    render(
+      <BookCreate
+        nav={nav}
+        theme="light"
+        t={(key: string) => key}
+        projectCreateDraft={{
+          title: "仙路长明",
+          projectInit: {
+            repositorySource: "new",
+            workflowMode: "outline-first",
+            templatePreset: "genre-default",
+            gitBranch: "main",
+            worktreeName: "xianlu-main",
+          },
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /增强经纬/ }));
+    fireEvent.click(screen.getByRole("button", { name: "创建本地书籍" }));
+
+    await waitFor(() => {
+      expect(postApiMock).toHaveBeenCalledWith("/books/create", expect.objectContaining({
+        jingweiTemplate: { templateId: "enhanced" },
+      }));
+    });
   });
 
   it("offers optional AI initialization when a usable model exists", async () => {
