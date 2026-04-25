@@ -1,38 +1,43 @@
 # NovelFork（中文说明）
 
-> 当前项目已经是 **NovelFork**，不是 InkOS。
+> AI 辅助中文网文创作工作台 — 本地优先、作者驱动、平台合规
 
-这份中文 README 旧内容长期混杂了：
-- InkOS 名称
-- 旧 CLI 命令
-- 旧 Web / Tauri / OAuth2 叙事
-- 旧发布与安装方式
-
-为避免继续误导，当前先将它收敛成一份简要说明。
+详细说明见 [README.md](./README.md)（中文内容）。
 
 ---
 
-## 项目定位
+## 一句话
 
-NovelFork 是一个专注于中文网文创作的本地 AI 工作台。
-
-当前仓库：
-- 保留了大量已实现的写作能力
-- 正在从旧的 `pnpm + tsc + CLI spawn studio + Node` 外壳，回归到 **NarraFork 风格的 Bun 单入口本地应用** 路线
+NovelFork 让网文作者在一个本地软件里完成 **构思 → 大纲 → 写作 → 审计 → 去 AI 味 → 上架**，AI 做副驾，作者握方向盘。
 
 ---
 
-## 请优先阅读
+## 核心能力
 
-- [README.md](./README.md)
-- [docs/README.md](./docs/README.md)
-- [docs/02-核心架构/01-系统架构/03-平台纠偏说明.md](./docs/02-核心架构/01-系统架构/03-平台纠偏说明.md)
-- [docs/04-开发指南/05-调研规划/01-平台迁移方案.md](./docs/04-开发指南/05-调研规划/01-平台迁移方案.md)
+| 能力 | 说明 |
+|---|---|
+| **Novel Bible** | 结构化管理角色 / 事件 / 设定 / 矛盾 / 世界模型 / 故事基线 / 角色弧线，AI 按可见性规则精准注入上下文 |
+| **AI 味过滤** | 12 本地规则 + 朱雀 API 双检 + 7 招消 AI 味，写作管线强制必经（起点 / 晋江 / 番茄合规） |
+| **引导式创作** | 问卷引导建书 → CoreShift 管理设定变更 → PGI 每章生成前作者意图显性化 |
+| **多 Agent 管线** | 规划 → 编排 → 写作 → 审计 → 修订，自动连续性检查与文风迁移 |
+| **本地单文件** | SQLite 存储 + Bun 运行时 + `bun compile` 单可执行文件分发 |
 
 ---
 
-## 当前说明
+## 快速开始
 
-- 如果你是开发者，请按源码方式运行当前仓库
-- 如果你关注产品方向，请以 docs 中的“平台纠偏说明”和“迁移方案”为准
-- 这份中文 README 后续还会继续补全，但当前先以“不误导”为第一目标
+```bash
+git clone https://github.com/vivy1024/novelfork.git
+cd novelfork
+pnpm install
+pnpm dev          # 开发模式
+pnpm bun:compile  # 编译为单可执行文件
+```
+
+---
+
+## 文档
+
+- [README.md](./README.md) — 完整说明（技术栈 / 仓库结构 / 开发状态 / Spec 进度）
+- [docs/README.md](./docs/README.md) — 文档中心
+- [.kiro/specs/](./.kiro/specs/) — Kiro-style 需求 / 设计 / 任务 spec
