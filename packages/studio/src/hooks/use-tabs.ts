@@ -82,7 +82,7 @@ export function routeToTabLabel(route: Route): string {
     case "book":
       return route.bookId;
     case "bible":
-      return `Bible · ${route.bookId}`;
+      return `经纬 · ${route.bookId}`;
     case "book-create":
       return "新建书籍";
     case "chapter":

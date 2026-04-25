@@ -505,7 +505,7 @@ export function createAIRouter(ctx: RouterContext): Hono {
   // --- Context Assembly (for ContextPanel) ---
 
   const TRUTH_LABEL_MAP: Record<string, string> = {
-    "story_bible.md": "故事圣经",
+    "story_bible.md": "故事经纬",
     "volume_outline.md": "卷大纲",
     "current_state.md": "当前状态",
     "particle_ledger.md": "粒子台账",
@@ -630,7 +630,7 @@ export function createAIRouter(ctx: RouterContext): Hono {
 
   const OUTLINE_PROMPTS: Record<string, string> = {
     generate: [
-      "你是一位专业小说大纲策划师。根据提供的章节摘要、故事圣经和现有大纲，生成或更新章节大纲。",
+      "你是一位专业小说大纲策划师。根据提供的章节摘要、故事经纬和现有大纲，生成或更新章节大纲。",
       "规则：",
       "1. 已写章节标记为 done，当前正在写的标记为 current，未来计划的标记为 planned",
       "2. 每个节点包含：chapter（章节号）、title（标题）、summary（一句话概要）、status、pov（视角角色，可选）、notes（备注，可选）",
@@ -695,7 +695,7 @@ export function createAIRouter(ctx: RouterContext): Hono {
       const contextParts = [
         outline ? `### 现有大纲\n${outline}` : "### 现有大纲\n（无）",
         summaries ? `### 章节摘要\n${summaries}` : "",
-        bible ? `### 故事圣经（摘要）\n${bible.slice(0, 2000)}` : "",
+        bible ? `### 故事经纬（摘要）\n${bible.slice(0, 2000)}` : "",
         currentState ? `### 当前状态\n${currentState}` : "",
         hooks ? `### 悬念钩子\n${hooks.slice(0, 1000)}` : "",
         `### 已有章节文件\n${chapterFiles.length > 0 ? chapterFiles.join(", ") : "（无）"}`,
