@@ -32,6 +32,8 @@ export const BookConfigSchema = z.object({
   updatedAt: z.string().datetime(),
   parentBookId: z.string().optional(),
   fanficMode: FanficModeSchema.optional(),
+  enabledPresetIds: z.array(z.string()).optional(),
+  customPresetOverrides: z.record(z.string(), z.unknown()).optional(),
 });
 
 export type BookConfig = z.infer<typeof BookConfigSchema>;

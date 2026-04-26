@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { BookConfig } from "../models/book.js";
 import type { GenreProfile } from "../models/genre-profile.js";
 import { LengthSpecSchema } from "../models/length-governance.js";
-import { buildWriterSystemPrompt } from "../agents/writer-prompts.js";
+import { buildWriterSystemPrompt, buildPresetInjections } from "../agents/writer-prompts.js";
+import type { Preset } from "../presets/types.js";
 
 const BOOK: BookConfig = {
   id: "prompt-book",
@@ -133,5 +134,49 @@ describe("buildWriterSystemPrompt", () => {
 
     expect(prompt).toContain("English Variance Brief");
     expect(prompt).toContain("resistance-bearing exchange");
+  });
+});
+
+describe("buildPresetInjections", () => {
+  it("returns empty string for no presets", () => {
+    expect(buildPresetInjections([])).toBe("");
+  });
+
+  it("injects presets in fixed category order: genre → tone → setting-base → logic-risk → anti-ai → literary", () => {
+    const presets: Preset[] = [
+      { id: "lit-1", name: "文学A", category: "literary", description: "", promptInjection: "literary-inject" },
+      { id: "tone-1", name: "文风A", category: "tone", description: "", promptInjection: "tone-inject" },
+      { id: "anti-1", name: "去AI味A", category: "anti-ai", description: "", promptInjection: "anti-ai-inject" },
+      { id: "setting-1", name: "基底A", category: "setting-base", description: "", promptInjection: "setting-inject" },
+      { id: "logic-1", name: "逻辑A", category: "logic-risk", description: "", promptInjection: "logic-inject" },
+      { id: "genre-1", name: "流派A", category: "genre", description: "", promptInjection: "genre-inject" },
+    ];
+
+    const result = buildPresetInjections(presets);
+
+    const genreIdx = result.indexOf("## 流派规则");
+    const toneIdx = result.indexOf("## 文风规则");
+    const settingIdx = result.indexOf("## 时代/社会基底");
+    const logicIdx = result.indexOf("## 逻辑风险约束");
+    const antiIdx = result.indexOf("## AI味过滤");
+    const litIdx = result.indexOf("## 文学技法");
+
+    expect(genreIdx).toBeGreaterThanOrEqual(0);
+    expect(toneIdx).toBeGreaterThan(genreIdx);
+    expect(settingIdx).toBeGreaterThan(toneIdx);
+    expect(logicIdx).toBeGreaterThan(settingIdx);
+    expect(antiIdx).toBeGreaterThan(logicIdx);
+    expect(litIdx).toBeGreaterThan(antiIdx);
+  });
+
+  it("skips categories with empty promptInjection", () => {
+    const presets: Preset[] = [
+      { id: "tone-1", name: "文风A", category: "tone", description: "", promptInjection: "tone-inject" },
+      { id: "empty-1", name: "空注入", category: "anti-ai", description: "", promptInjection: "   " },
+    ];
+
+    const result = buildPresetInjections(presets);
+    expect(result).toContain("## 文风规则");
+    expect(result).not.toContain("## AI味过滤");
   });
 });

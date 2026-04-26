@@ -12,6 +12,7 @@ function createSection(input: {
   builtinKind?: string;
   defaultVisibility?: JingweiVisibilityRuleType;
   sourceTemplate?: string;
+  fieldsJson?: JingweiTemplateSection["fieldsJson"];
 }): Omit<JingweiTemplateSection, "order"> {
   return {
     key: input.key,
@@ -21,7 +22,11 @@ function createSection(input: {
     showInSidebar: true,
     participatesInAi: true,
     defaultVisibility: input.defaultVisibility ?? "tracked",
-    fieldsJson: [],
+    fieldsJson: input.fieldsJson ?? [
+      { id: `${input.key}-name`, key: "name", label: "名称", type: "text", required: true, participatesInSummary: true },
+      { id: `${input.key}-description`, key: "description", label: "说明", type: "textarea", required: false, participatesInSummary: true },
+      { id: `${input.key}-chapter`, key: "chapter", label: "关联章节", type: "chapter", required: false, participatesInSummary: false },
+    ],
     ...(input.builtinKind ? { builtinKind: input.builtinKind } : {}),
     ...(input.sourceTemplate ? { sourceTemplate: input.sourceTemplate } : {}),
   };
@@ -82,18 +87,18 @@ const GENRE_RECOMMENDATIONS: Record<string, Array<Omit<JingweiTemplateSection, "
   xuanhuan: [
     createSection({ key: "power-system", name: "境界体系", description: "记录境界层级、突破条件、战力边界和代价。", sourceTemplate: "genre-recommended:xuanhuan", defaultVisibility: "global" }),
     createSection({ key: "skills", name: "功法", description: "记录功法、术法、神通、传承和修炼限制。", sourceTemplate: "genre-recommended:xuanhuan" }),
-    createSection({ key: "factions", name: "势力", description: "记录宗门、家族、组织、阵营关系和利益冲突。", sourceTemplate: "genre-recommended:xuanhuan" }),
-    createSection({ key: "resources", name: "资源", description: "记录灵石、丹药、材料、地脉、产业和稀缺性。", sourceTemplate: "genre-recommended:xuanhuan" }),
-    createSection({ key: "artifacts", name: "法宝", description: "记录法器、灵宝、道具、装备和使用条件。", sourceTemplate: "genre-recommended:xuanhuan" }),
-    createSection({ key: "secret-realms", name: "秘境", description: "记录秘境、副本、遗迹、禁地和进入规则。", sourceTemplate: "genre-recommended:xuanhuan" }),
+    createSection({ key: "factions", name: "势力/宗门", description: "记录宗门、家族、组织、阵营关系和利益冲突。", sourceTemplate: "genre-recommended:xuanhuan" }),
+    createSection({ key: "resources", name: "资源/灵材", description: "记录灵石、丹药、材料、地脉、产业和稀缺性。", sourceTemplate: "genre-recommended:xuanhuan" }),
+    createSection({ key: "artifacts", name: "法宝/神器", description: "记录法器、灵宝、神器、道具、装备和使用条件。", sourceTemplate: "genre-recommended:xuanhuan" }),
+    createSection({ key: "secret-realms", name: "秘境/副本", description: "记录秘境、副本、遗迹、禁地和进入规则。", sourceTemplate: "genre-recommended:xuanhuan" }),
   ],
   xiuxian: [
     createSection({ key: "power-system", name: "境界体系", description: "记录境界层级、突破条件、战力边界和代价。", sourceTemplate: "genre-recommended:xiuxian", defaultVisibility: "global" }),
     createSection({ key: "skills", name: "功法", description: "记录功法、术法、神通、传承和修炼限制。", sourceTemplate: "genre-recommended:xiuxian" }),
-    createSection({ key: "factions", name: "势力", description: "记录宗门、家族、组织、阵营关系和利益冲突。", sourceTemplate: "genre-recommended:xiuxian" }),
-    createSection({ key: "resources", name: "资源", description: "记录灵石、丹药、材料、地脉、产业和稀缺性。", sourceTemplate: "genre-recommended:xiuxian" }),
-    createSection({ key: "artifacts", name: "法宝", description: "记录法器、灵宝、道具、装备和使用条件。", sourceTemplate: "genre-recommended:xiuxian" }),
-    createSection({ key: "secret-realms", name: "秘境", description: "记录秘境、副本、遗迹、禁地和进入规则。", sourceTemplate: "genre-recommended:xiuxian" }),
+    createSection({ key: "factions", name: "势力/宗门", description: "记录宗门、家族、组织、阵营关系和利益冲突。", sourceTemplate: "genre-recommended:xiuxian" }),
+    createSection({ key: "resources", name: "资源/灵材", description: "记录灵石、丹药、材料、地脉、产业和稀缺性。", sourceTemplate: "genre-recommended:xiuxian" }),
+    createSection({ key: "artifacts", name: "法宝/神器", description: "记录法器、灵宝、神器、道具、装备和使用条件。", sourceTemplate: "genre-recommended:xiuxian" }),
+    createSection({ key: "secret-realms", name: "秘境/副本", description: "记录秘境、副本、遗迹、禁地和进入规则。", sourceTemplate: "genre-recommended:xiuxian" }),
   ],
   suspense: [
     createSection({ key: "clues", name: "线索", description: "记录线索来源、可信度、指向对象和揭示节点。", sourceTemplate: "genre-recommended:suspense" }),
@@ -111,17 +116,24 @@ const GENRE_RECOMMENDATIONS: Record<string, Array<Omit<JingweiTemplateSection, "
   ],
   scifi: [
     createSection({ key: "tech-tree", name: "科技树", description: "记录关键科技、限制、代价和推演边界。", sourceTemplate: "genre-recommended:scifi", defaultVisibility: "global" }),
-    createSection({ key: "star-map", name: "星图", description: "记录星系、航线、殖民地和空间距离。", sourceTemplate: "genre-recommended:scifi" }),
-    createSection({ key: "organizations", name: "组织", description: "记录公司、舰队、联盟、实验室和权力结构。", sourceTemplate: "genre-recommended:scifi" }),
+    createSection({ key: "star-map", name: "星图/地理", description: "记录星系、航线、殖民地、地理空间和距离。", sourceTemplate: "genre-recommended:scifi" }),
+    createSection({ key: "organizations", name: "组织/阵营", description: "记录公司、舰队、联盟、实验室、阵营和权力结构。", sourceTemplate: "genre-recommended:scifi" }),
     createSection({ key: "glossary", name: "术语表", description: "记录专有名词、缩写、规则和首次解释。", sourceTemplate: "genre-recommended:scifi", defaultVisibility: "global" }),
     createSection({ key: "experiments", name: "实验记录", description: "记录实验目的、变量、结果和副作用。", sourceTemplate: "genre-recommended:scifi" }),
   ],
   urban: [
     createSection({ key: "career-line", name: "职业线", description: "记录职业阶段、目标、资源和竞争关系。", sourceTemplate: "genre-recommended:urban" }),
     createSection({ key: "relationship-network", name: "关系网", description: "记录人脉、利益关系、冲突关系和可调用资源。", sourceTemplate: "genre-recommended:urban" }),
-    createSection({ key: "assets", name: "资产", description: "记录金钱、公司、房产、道具和商业资源。", sourceTemplate: "genre-recommended:urban" }),
+    createSection({ key: "assets", name: "资产/经济", description: "记录金钱、公司、房产、道具、商业资源和经济压力。", sourceTemplate: "genre-recommended:urban" }),
     createSection({ key: "city-map", name: "城市地图", description: "记录地点、动线、势力范围和场景功能。", sourceTemplate: "genre-recommended:urban" }),
     createSection({ key: "social-identity", name: "社会身份", description: "记录角色身份、公开形象、隐藏身份和变化节点。", sourceTemplate: "genre-recommended:urban" }),
+  ],
+  history: [
+    createSection({ key: "era-background", name: "时代背景", description: "记录时代参照、制度边界、民生状态和历史改造原则。", sourceTemplate: "genre-recommended:history", defaultVisibility: "global" }),
+    createSection({ key: "historical-figures", name: "历史人物", description: "记录真实或架空人物、立场、关系和改写边界。", sourceTemplate: "genre-recommended:history" }),
+    createSection({ key: "court-factions", name: "朝堂势力", description: "记录中枢、地方、士绅、军政和利益集团。", sourceTemplate: "genre-recommended:history" }),
+    createSection({ key: "technology-gap", name: "科技差", description: "记录穿越知识、技术可行性、材料、工匠和推广阻力。", sourceTemplate: "genre-recommended:history" }),
+    createSection({ key: "butterfly-effects", name: "蝴蝶效应", description: "记录改写事件后的连锁反应、代价和反噬。", sourceTemplate: "genre-recommended:history" }),
   ],
 };
 
@@ -136,6 +148,8 @@ const GENRE_ALIASES: Record<string, string> = {
   感情流: "romance",
   科幻: "scifi",
   都市: "urban",
+  历史: "history",
+  历史穿越: "history",
 };
 
 function normalizeGenreKey(genre?: string): string {

@@ -85,9 +85,11 @@ import {
   sessionRouter,
   createSearchRouter,
   createMonitorRouter,
+  createPresetsRouter,
   setupAdminWebSocket,
   setupMonitorWebSocket,
 } from "./routes/index.js";
+import { registerBuiltinPresets } from "@vivy1024/novelfork-core";
 import type { RouterContext } from "./routes/index.js";
 import type { Context } from "hono";
 
@@ -130,6 +132,8 @@ function getNovelForkMode(): NovelForkMode {
 // --- Server factory ---
 
 export function createStudioServer(initialConfig: ProjectConfig, root: string) {
+  registerBuiltinPresets();
+
   const app = new Hono();
   const state = new StateManager(root);
   const runStore = new RunStore();
@@ -372,6 +376,9 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
 
     // Routines system
     app.route("/api/routines", createRoutinesRouter());
+
+    // Presets browsing and per-book preset management
+    app.route("", createPresetsRouter(ctx));
 
     // Session management
     // Search system

@@ -54,6 +54,29 @@ const startupOrchestratorMock = vi.fn(async () => ({
   healthChecks: [],
 }));
 const pipelineConfigs: unknown[] = [];
+const builtinPresetLookup = new Map<string, { id: string; name: string; category: string; description: string; promptInjection: string }>([
+  ["classical-imagery", {
+    id: "classical-imagery",
+    name: "古典意境",
+    category: "tone",
+    description: "以景写情、含蓄转折。",
+    promptInjection: "tone:classical-imagery",
+  }],
+  ["sect-family-xianxia", {
+    id: "sect-family-xianxia",
+    name: "宗门家族修仙社会",
+    category: "setting-base",
+    description: "宗门、家族、资源稀缺与境界晋升。",
+    promptInjection: "setting:sect-family-xianxia",
+  }],
+  ["information-flow", {
+    id: "information-flow",
+    name: "信息传播速度",
+    category: "logic-risk",
+    description: "检查消息传播和认知边界。",
+    promptInjection: "logic:information-flow",
+  }],
+]);
 
 const logger = {
   child: () => logger,
@@ -365,7 +388,7 @@ vi.mock("@vivy1024/novelfork-core", () => {
     listPresets: vi.fn(() => []),
     listBundles: vi.fn(() => []),
     listBeatTemplates: vi.fn(() => []),
-    getPreset: vi.fn(() => undefined),
+    getPreset: vi.fn((id: string) => builtinPresetLookup.get(id)),
     getBundle: vi.fn(() => undefined),
     getPresetsByGenre: vi.fn(() => []),
   };
@@ -849,6 +872,37 @@ describe("createStudioServer daemon lifecycle", () => {
     expect(deleteResponse.status).toBe(200);
     const deletedJingweiResponse = await app.request("http://localhost/api/books/local-only-book/jingwei/sections");
     expect(deletedJingweiResponse.status).toBe(404);
+  });
+
+  it("writes preset-derived guide files when create requests enable writing presets", async () => {
+    mockMissingProjectLlmConfig();
+
+    const { createStudioServer } = await import("./server.js");
+    const { app } = createStudioServer(cloneProjectConfig() as never, root);
+
+    const response = await app.request("http://localhost/api/books/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "Preset Book",
+        genre: "xuanhuan",
+        platform: "qidian",
+        language: "zh",
+        enabledPresetIds: ["classical-imagery", "sect-family-xianxia", "information-flow"],
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    const bookJson = JSON.parse(await readFile(join(root, "books", "preset-book", "book.json"), "utf-8")) as { enabledPresetIds?: string[] };
+    expect(bookJson.enabledPresetIds).toEqual(["classical-imagery", "sect-family-xianxia", "information-flow"]);
+
+    const styleGuide = await readFile(join(root, "books", "preset-book", "story", "style_guide.md"), "utf-8");
+    const settingGuide = await readFile(join(root, "books", "preset-book", "story", "setting_guide.md"), "utf-8");
+    const bookRules = await readFile(join(root, "books", "preset-book", "story", "book_rules.md"), "utf-8");
+
+    expect(styleGuide).toContain("古典意境");
+    expect(settingGuide).toContain("宗门家族修仙社会");
+    expect(bookRules).toContain("信息传播速度");
   });
 
   it("backfills SQLite book and jingwei sections for file-only books when listing books", async () => {
