@@ -16,6 +16,7 @@
     "paths": {
       "@/*": ["./src/*"],
       "@vivy1024/novelfork-core": ["../core/src/index.ts"],
+      "@vivy1024/novelfork-core/compliance": ["../core/src/compliance/index.ts"],
       "@vivy1024/novelfork-core/*": ["../core/src/*"]
     },
     "baseUrl": "."

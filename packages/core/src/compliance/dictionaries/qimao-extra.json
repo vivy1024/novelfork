@@ -1,0 +1,8 @@
+[
+  { "word": "AI创作", "category": "custom", "severity": "warn", "platforms": ["qimao"], "suggestion": "七猫要求强制标注AI使用情况" },
+  { "word": "人工智能", "category": "custom", "severity": "suggest", "platforms": ["qimao"], "suggestion": "正文中避免提及，在声明中标注" },
+  { "word": "机器生成", "category": "custom", "severity": "warn", "platforms": ["qimao"], "suggestion": "正文中避免" },
+  { "word": "色情", "category": "sexual", "severity": "block", "platforms": ["qimao"], "suggestion": "七猫对色情内容零容忍" },
+  { "word": "裸体", "category": "sexual", "severity": "warn", "platforms": ["qimao"], "suggestion": "注意描写分寸" },
+  { "word": "七猫", "category": "custom", "severity": "suggest", "platforms": ["qimao"], "suggestion": "正文中避免提及平台名" }
+]

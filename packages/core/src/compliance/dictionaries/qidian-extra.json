@@ -1,0 +1,14 @@
+[
+  { "word": "上架求订阅", "category": "custom", "severity": "suggest", "platforms": ["qidian"], "suggestion": "起点正文中不建议出现推销语" },
+  { "word": "求月票", "category": "custom", "severity": "suggest", "platforms": ["qidian"], "suggestion": "放在作者说中，不要在正文" },
+  { "word": "求推荐票", "category": "custom", "severity": "suggest", "platforms": ["qidian"], "suggestion": "放在作者说中，不要在正文" },
+  { "word": "AI生成", "category": "custom", "severity": "block", "platforms": ["qidian"], "suggestion": "起点只接受100%人工创作，正文不应出现AI相关声明" },
+  { "word": "AI辅助", "category": "custom", "severity": "block", "platforms": ["qidian"], "suggestion": "起点只接受100%人工创作" },
+  { "word": "人工智能生成", "category": "custom", "severity": "block", "platforms": ["qidian"], "suggestion": "起点只接受100%人工创作" },
+  { "word": "ChatGPT", "category": "custom", "severity": "warn", "platforms": ["qidian"], "suggestion": "避免在正文中提及AI工具名称" },
+  { "word": "微信", "category": "custom", "severity": "suggest", "platforms": ["qidian"], "suggestion": "起点不允许导流至其他平台" },
+  { "word": "QQ群", "category": "custom", "severity": "suggest", "platforms": ["qidian"], "suggestion": "可在简介中放，正文中避免" },
+  { "word": "抖音", "category": "custom", "severity": "suggest", "platforms": ["qidian"], "suggestion": "避免在正文中导流" },
+  { "word": "日本鬼子", "category": "custom", "severity": "warn", "platforms": ["qidian"], "suggestion": "历史题材可用但需注意分寸" },
+  { "word": "小日本", "category": "custom", "severity": "warn", "platforms": ["qidian"], "suggestion": "避免极端民族主义表述" }
+]

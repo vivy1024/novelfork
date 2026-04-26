@@ -144,6 +144,9 @@ export { closeStorageDatabase, createStorageDatabase, getStorageDatabase, initia
 // Filter
 export * from "./filter/index.js";
 
+// Compliance
+export * from "./compliance/index.js";
+
 // Bible
 export * from "./bible/index.js";
 

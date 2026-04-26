@@ -1,0 +1,12 @@
+[
+  { "word": "AI写作", "category": "custom", "severity": "warn", "platforms": ["fanqie"], "suggestion": "番茄打击AI文，正文避免提及" },
+  { "word": "AI续写", "category": "custom", "severity": "warn", "platforms": ["fanqie"], "suggestion": "番茄打击AI文" },
+  { "word": "GPT", "category": "custom", "severity": "warn", "platforms": ["fanqie"], "suggestion": "避免在正文提及AI模型名称" },
+  { "word": "DeepSeek", "category": "custom", "severity": "warn", "platforms": ["fanqie"], "suggestion": "避免在正文提及AI模型名称" },
+  { "word": "值得注意的是", "category": "custom", "severity": "suggest", "platforms": ["fanqie"], "suggestion": "典型AI味句式，番茄多模态检测会标记" },
+  { "word": "综上所述", "category": "custom", "severity": "suggest", "platforms": ["fanqie"], "suggestion": "典型AI味句式，小说正文极少使用" },
+  { "word": "让我们一起来", "category": "custom", "severity": "suggest", "platforms": ["fanqie"], "suggestion": "典型AI味句式" },
+  { "word": "首先我们需要", "category": "custom", "severity": "suggest", "platforms": ["fanqie"], "suggestion": "典型AI味句式，注意改写" },
+  { "word": "水文", "category": "custom", "severity": "warn", "platforms": ["fanqie"], "suggestion": "番茄全勤改革后对水文监控更严" },
+  { "word": "番茄小说", "category": "custom", "severity": "suggest", "platforms": ["fanqie"], "suggestion": "正文中提及平台名可能引发审核" }
+]

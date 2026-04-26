@@ -1,0 +1,11 @@
+[
+  { "word": "耽美", "category": "custom", "severity": "warn", "platforms": ["jjwxc"], "suggestion": "晋江对BL内容有专门分区要求，确认标签正确" },
+  { "word": "肉文", "category": "custom", "severity": "block", "platforms": ["jjwxc"], "suggestion": "晋江严格限制露骨性描写" },
+  { "word": "车", "category": "custom", "severity": "warn", "platforms": ["jjwxc"], "suggestion": "晋江对性描写暗语也有监控" },
+  { "word": "开车", "category": "custom", "severity": "warn", "platforms": ["jjwxc"], "suggestion": "性描写暗语，注意上下文" },
+  { "word": "AI代写", "category": "custom", "severity": "block", "platforms": ["jjwxc"], "suggestion": "晋江仅允许3种AI辅助：校对/起名/粗纲" },
+  { "word": "大模型", "category": "custom", "severity": "warn", "platforms": ["jjwxc"], "suggestion": "正文中避免AI相关术语" },
+  { "word": "未成年", "category": "custom", "severity": "warn", "platforms": ["jjwxc"], "suggestion": "涉及未成年角色时注意晋江特殊规范" },
+  { "word": "抄袭", "category": "custom", "severity": "warn", "platforms": ["jjwxc"], "suggestion": "敏感用语，注意上下文" },
+  { "word": "融梗", "category": "custom", "severity": "warn", "platforms": ["jjwxc"], "suggestion": "晋江对融梗举报敏感" }
+]

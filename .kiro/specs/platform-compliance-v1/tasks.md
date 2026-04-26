@@ -13,23 +13,24 @@
 
 ## Tasks
 
-- [ ] 1. 定义合规类型系统
+- [x] 1. 定义合规类型系统
   - 新增 `packages/core/src/compliance/types.ts`。
   - 定义类型：`SensitiveWord`、`SensitiveHit`、`SensitiveScanResult`、`ChapterAiEstimate`、`BookAiRatioReport`、`FormatIssue`、`FormatCheckResult`、`PublishReadinessReport`、`AiDisclosure`。
   - 覆盖 Requirement 5。
 
-- [ ] 2. 构建基础敏感词库
-  - 在 `packages/core/src/compliance/dictionaries/` 下创建 JSON 词库：
-    - `common.json`：通用敏感词（约 500-800 词），分 8 个类别。
+- [x] 2. 构建基础敏感词库
+  - 在 `packages/core/src/compliance/dictionaries/` 下创建来源可追溯的 JSON 种子词库：
+    - `common.json`：从已有内置规则迁移并结构化，分 8 个类别。
     - `qidian-extra.json`：起点专属屏蔽词。
     - `jjwxc-extra.json`：晋江专属限制词。
     - `fanqie-extra.json`：番茄专属词。
     - `qimao-extra.json`：七猫专属词。
   - 词库格式：`[{ word, category, severity, platforms, suggestion }]`。
+  - 添加 `README.md` 说明词库来源、边界和外部导入增强路径。
   - 添加测试：每个词库 JSON 解析无错误、格式符合 schema。
   - 覆盖 Requirements 1、5。
 
-- [ ] 3. 实现敏感词扫描引擎
+- [x] 3. 实现敏感词扫描引擎
   - 新增 `packages/core/src/compliance/sensitive-scanner.ts`。
   - 实现 `loadDictionary(platform)` 加载通用+平台专属词库。
   - 实现 `scanChapter(text, chapterNumber, chapterTitle, dictionary)` 扫描单章。
@@ -39,7 +40,7 @@
   - 添加单测：已知词命中、未命中、平台过滤、上下文正确、自定义词库追加。
   - 覆盖 Requirements 1、5。
 
-- [ ] 4. 实现 AI 比例估算
+- [x] 4. 实现 AI 比例估算
   - 新增 `packages/core/src/compliance/ai-ratio-estimator.ts`。
   - 实现 `estimateChapterAiRatio(aiScore)` 单章估算。
   - 实现 `estimateBookAiRatio(chapters, aiScores)` 全书汇总。
@@ -48,7 +49,7 @@
   - 添加单测：分段映射、全书汇总、空章节安全、阈值判断。
   - 覆盖 Requirements 2、5。
 
-- [ ] 5. 实现格式规范检查
+- [x] 5. 实现格式规范检查
   - 新增 `packages/core/src/compliance/format-checker.ts`。
   - 实现 `checkFormat(chapters, bookConfig, platform?)` 检查：
     - 章节标题格式。
@@ -59,14 +60,14 @@
   - 添加单测：各检查项独立覆盖。
   - 覆盖 Requirements 3、5。
 
-- [ ] 6. 实现发布就绪汇总
+- [x] 6. 实现发布就绪汇总
   - 新增 `packages/core/src/compliance/publish-readiness.ts`。
   - 实现 `checkPublishReadiness(bookId, platform, chapters, aiScores, bookConfig)` 依次调用敏感词扫描、AI 比例估算、格式检查。
   - 汇总为 `PublishReadinessReport`：按严重等级排序、计算 block/warn/suggest 计数、判定就绪状态。
   - 添加集成测试：全流程执行、汇总正确。
   - 覆盖 Requirements 3、5。
 
-- [ ] 7. 实现 AI 使用标注生成
+- [x] 7. 实现 AI 使用标注生成
   - 新增 `packages/core/src/compliance/ai-disclosure-generator.ts`。
   - 实现 `generateAiDisclosure(bookId, aiRatioReport, writingLogs?)` 生成结构化声明。
   - 声明包含：辅助类型、估算比例、模型名称、人工修改说明。
@@ -74,7 +75,7 @@
   - 添加测试：格式正确、包含必要字段。
   - 覆盖 Requirements 4、5。
 
-- [ ] 8. 实现合规 API 路由
+- [x] 8. 实现合规 API 路由
   - 新增 `packages/studio/src/api/routes/compliance.ts`：
     - `POST /api/books/:bookId/compliance/sensitive-scan`：body 含 platform。
     - `POST /api/books/:bookId/compliance/ai-ratio`。
