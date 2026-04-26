@@ -13,10 +13,13 @@ import {
   computeAnalytics,
   createBookRepository,
   createStoryJingweiSectionRepository,
+  getPreset,
   getStorageDatabase,
+  registerBuiltinPresets,
   loadProjectConfig,
   type BookConfig,
   type JingweiTemplateSelection,
+  type Preset,
 } from "@vivy1024/novelfork-core";
 import { ApiError, isMissingFileError } from "../errors.js";
 import {
@@ -41,7 +44,7 @@ const TRUTH_FILES = [
   "story_bible.md", "volume_outline.md", "current_state.md",
   "particle_ledger.md", "pending_hooks.md", "chapter_summaries.md",
   "subplot_board.md", "emotional_arcs.md", "character_matrix.md",
-  "style_guide.md", "parent_canon.md", "fanfic_canon.md", "book_rules.md",
+  "style_guide.md", "setting_guide.md", "parent_canon.md", "fanfic_canon.md", "book_rules.md",
   "author_intent.md", "current_focus.md", "market_radar.md", "web_materials.md",
 ];
 
@@ -100,33 +103,108 @@ function buildJingweiSectionsManifest(
   }, null, 2);
 }
 
-function localStoryFiles(language?: "zh" | "en"): ReadonlyArray<{ readonly name: string; readonly content: string }> {
+function presetSummaryLines(presets: ReadonlyArray<Preset>): string {
+  return presets.map((preset) => `- ${preset.name}（${preset.id}）：${preset.description}`).join("\n");
+}
+
+function presetPromptLines(presets: ReadonlyArray<Preset>): string {
+  return presets.map((preset) => `## ${preset.name}\n\n${preset.promptInjection}`).join("\n\n");
+}
+
+function resolveEnabledPresets(bookConfig: Pick<StudioBookConfigDraft, "enabledPresetIds">): ReadonlyArray<Preset> {
+  return (bookConfig.enabledPresetIds ?? [])
+    .map((id) => getPreset(id))
+    .filter((preset): preset is Preset => Boolean(preset));
+}
+
+function buildPresetStoryFiles(language: "zh" | "en" | undefined, presets: ReadonlyArray<Preset>): ReadonlyArray<{ readonly name: string; readonly content: string }> {
+  const tones = presets.filter((preset) => preset.category === "tone");
+  const settingBases = presets.filter((preset) => preset.category === "setting-base");
+  const logicRisks = presets.filter((preset) => preset.category === "logic-risk");
+  const antiAi = presets.filter((preset) => preset.category === "anti-ai");
+  const literary = presets.filter((preset) => preset.category === "literary");
+  const rulePresets = [...logicRisks, ...antiAi, ...literary];
+
+  if (language === "en") {
+    return [
+      {
+        name: "book_rules.md",
+        content: rulePresets.length
+          ? `---\nversion: "1.0"\n---\n\n# Book Rules\n\n## Enabled writing presets\n\n${presetSummaryLines(rulePresets)}\n\n${presetPromptLines(rulePresets)}\n`
+          : "---\nversion: \"1.0\"\n---\n\n# Book Rules\n\nRecord writing rules and constraints here.\n",
+      },
+      {
+        name: "style_guide.md",
+        content: tones.length
+          ? `# Style Guide\n\n## Enabled tone presets\n\n${presetSummaryLines(tones)}\n\n${presetPromptLines(tones)}\n`
+          : "# Style Guide\n\n",
+      },
+      {
+        name: "setting_guide.md",
+        content: settingBases.length
+          ? `# Setting Guide\n\n## Enabled setting bases\n\n${presetSummaryLines(settingBases)}\n\n${presetPromptLines(settingBases)}\n`
+          : "# Setting Guide\n\n",
+      },
+    ];
+  }
+
+  return [
+    {
+      name: "book_rules.md",
+      content: rulePresets.length
+        ? `---\nversion: "1.0"\n---\n\n# 写作规则\n\n## 已启用写作预设\n\n${presetSummaryLines(rulePresets)}\n\n${presetPromptLines(rulePresets)}\n`
+        : "---\nversion: \"1.0\"\n---\n\n# 写作规则\n\n在这里记录本书的写作约束、禁忌和统一口径。\n",
+    },
+    {
+      name: "style_guide.md",
+      content: tones.length
+        ? `# 文风指南\n\n## 已启用文风预设\n\n${presetSummaryLines(tones)}\n\n${presetPromptLines(tones)}\n`
+        : "# 文风指南\n\n",
+    },
+    {
+      name: "setting_guide.md",
+      content: settingBases.length
+        ? `# 设定指南\n\n## 已启用时代/社会基底\n\n${presetSummaryLines(settingBases)}\n\n${presetPromptLines(settingBases)}\n`
+        : "# 设定指南\n\n",
+    },
+  ];
+}
+
+function localStoryFiles(
+  language?: "zh" | "en",
+  presets: ReadonlyArray<Preset> = [],
+): ReadonlyArray<{ readonly name: string; readonly content: string }> {
+  const presetFiles = buildPresetStoryFiles(language, presets);
+  const presetFileByName = new Map(presetFiles.map((file) => [file.name, file]));
+
   if (language === "en") {
     return [
       { name: "story_bible.md", content: "# Story Jingwei\n\nLocal book scaffold. Add characters, events, settings, chapter summaries, foreshadowing, iconic scenes, and core memories here.\n" },
       { name: "volume_outline.md", content: "# Volume Outline\n\nDraft the volume structure here.\n" },
-      { name: "book_rules.md", content: "---\nversion: \"1.0\"\n---\n\n# Book Rules\n\nRecord writing rules and constraints here.\n" },
+      presetFileByName.get("book_rules.md")!,
       { name: "current_state.md", content: "# Current State\n\nNo chapters have been written yet.\n" },
       { name: "pending_hooks.md", content: "# Pending Hooks\n\nTrack unresolved hooks here.\n" },
       { name: "chapter_summaries.md", content: "# Chapter Summaries\n\n" },
       { name: "subplot_board.md", content: "# Subplot Board\n\n" },
       { name: "emotional_arcs.md", content: "# Emotional Arcs\n\n" },
       { name: "character_matrix.md", content: "# Character Matrix\n\n" },
-      { name: "style_guide.md", content: "# Style Guide\n\n" },
+      presetFileByName.get("style_guide.md")!,
+      presetFileByName.get("setting_guide.md")!,
     ];
   }
 
   return [
     { name: "story_bible.md", content: "# 故事经纬\n\n本地书籍已创建。可以在这里维护人物、事件、设定、章节摘要、伏笔、名场面与核心记忆。\n" },
     { name: "volume_outline.md", content: "# 分卷大纲\n\n在这里整理分卷与主线推进。\n" },
-    { name: "book_rules.md", content: "---\nversion: \"1.0\"\n---\n\n# 写作规则\n\n在这里记录本书的写作约束、禁忌和统一口径。\n" },
+    presetFileByName.get("book_rules.md")!,
     { name: "current_state.md", content: "# 当前状态\n\n尚未写入章节。\n" },
     { name: "pending_hooks.md", content: "# 待处理伏笔\n\n在这里记录尚未回收的伏笔。\n" },
     { name: "chapter_summaries.md", content: "# 章节摘要\n\n" },
     { name: "subplot_board.md", content: "# 支线看板\n\n" },
     { name: "emotional_arcs.md", content: "# 情绪弧线\n\n" },
     { name: "character_matrix.md", content: "# 人物矩阵\n\n" },
-    { name: "style_guide.md", content: "# 文风指南\n\n" },
+    presetFileByName.get("style_guide.md")!,
+    presetFileByName.get("setting_guide.md")!,
   ];
 }
 
@@ -197,7 +275,7 @@ async function writeLocalBookScaffold(
   await mkdir(chaptersDir, { recursive: true });
   await writeFile(join(bookDir, "book.json"), JSON.stringify(bookConfig, null, 2), "utf-8");
   await Promise.all(
-    localStoryFiles(bookConfig.language).map((file) => writeFile(join(storyDir, file.name), file.content, "utf-8")),
+    localStoryFiles(bookConfig.language, resolveEnabledPresets(bookConfig)).map((file) => writeFile(join(storyDir, file.name), file.content, "utf-8")),
   );
   await writeFile(join(storyDir, "jingwei_sections.json"), buildJingweiSectionsManifest(jingweiTemplate, bookConfig.genre), "utf-8");
   await writeFile(join(chaptersDir, "index.json"), JSON.stringify([], null, 2), "utf-8");
@@ -329,6 +407,8 @@ export function createStorageRouter(ctx: RouterContext): Hono {
   app.post("/api/books/create", async (c) => {
     const body = await c.req.json<StudioCreateBookBody>();
 
+    registerBuiltinPresets();
+
     const now = new Date().toISOString();
     const bookConfig = buildStudioBookConfig(body, now);
     const bookId = bookConfig.id;
@@ -374,6 +454,9 @@ export function createStorageRouter(ctx: RouterContext): Hono {
         sessionMode: "chat",
         projectId: bookId,
         worktree: preparedProjectBootstrap?.projectInitRecord.worktreeName ?? body.projectInit?.worktreeName,
+        sessionConfig: {
+          permissionMode: "edit",
+        },
       });
       const defaultSessionSnapshot = await getSessionChatSnapshot(defaultSession.id);
       if (!defaultSessionSnapshot) {
@@ -390,7 +473,11 @@ export function createStorageRouter(ctx: RouterContext): Hono {
       try {
         const sessionLlm = await ctx.getSessionLlm(c);
         const pipeline = new PipelineRunner(await ctx.buildPipelineConfig(sessionLlm));
-        pipeline.initBook(bookConfig).then(
+        const runtimeBookConfig: BookConfig = {
+          ...bookConfig,
+          ...(bookConfig.enabledPresetIds ? { enabledPresetIds: [...bookConfig.enabledPresetIds] } : {}),
+        };
+        pipeline.initBook(runtimeBookConfig).then(
           async () => {
             bookCreateStatus.delete(bookId);
             broadcast("book:created", { bookId });

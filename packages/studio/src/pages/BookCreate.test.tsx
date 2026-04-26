@@ -10,6 +10,79 @@ let providerStatusMock = {
   defaultModel: undefined as string | undefined,
 };
 
+const presetBundlesMock = [
+  {
+    id: "mortal-sect-xianxia",
+    name: "凡人宗门修仙",
+    category: "bundle",
+    description: "宗门/家族/资源分配驱动的修仙基底。",
+    promptInjection: "",
+    genreIds: ["xuanhuan"],
+    toneId: "austere-pragmatic",
+    settingBaseId: "sect-family-xianxia",
+    logicRiskIds: ["information-flow"],
+    difficulty: "medium",
+    prerequisites: ["资源账本"],
+    suitableFor: ["凡人流"],
+    notSuitableFor: ["纯沙雕"],
+  },
+];
+
+const presetsMock = [
+  {
+    id: "austere-pragmatic",
+    name: "冷峻质朴",
+    category: "tone",
+    description: "克制而冷硬的语言质感。",
+    promptInjection: "tone:austere-pragmatic",
+    compatibleGenres: ["xuanhuan"],
+    conflictGroup: "tone",
+  },
+  {
+    id: "tragic-solitude",
+    name: "悲苦孤独",
+    category: "tone",
+    description: "悲苦而克制。",
+    promptInjection: "tone:tragic-solitude",
+    compatibleGenres: ["xuanhuan"],
+    conflictGroup: "tone",
+  },
+  {
+    id: "sect-family-xianxia",
+    name: "宗门家族修仙社会",
+    category: "setting-base",
+    description: "宗门、家族与资源分配。",
+    promptInjection: "setting:sect-family-xianxia",
+    compatibleGenres: ["xuanhuan"],
+    conflictGroup: "setting-base",
+  },
+  {
+    id: "historical-court-livelihood",
+    name: "朝堂民生基底",
+    category: "setting-base",
+    description: "朝堂、民生、军政与技术差。",
+    promptInjection: "setting:historical-court-livelihood",
+    compatibleGenres: ["xuanhuan"],
+    conflictGroup: "setting-base",
+  },
+  {
+    id: "information-flow",
+    name: "信息传播速度",
+    category: "logic-risk",
+    description: "检查消息传播和认知边界。",
+    promptInjection: "logic:information-flow",
+    compatibleGenres: ["xuanhuan"],
+  },
+  {
+    id: "institution-response",
+    name: "机构响应",
+    category: "logic-risk",
+    description: "检查制度和组织的反应。",
+    promptInjection: "logic:institution-response",
+    compatibleGenres: ["xuanhuan"],
+  },
+];
+
 vi.mock("../hooks/use-api", () => ({
   fetchJson: (...args: unknown[]) => fetchJsonMock(...args),
   postApi: (...args: unknown[]) => postApiMock(...args),
@@ -28,6 +101,12 @@ vi.mock("../hooks/use-api", () => ({
     }
     if (url === "/providers/status") {
       return { data: { status: providerStatusMock } };
+    }
+    if (url === "/api/presets/bundles") {
+      return { data: { bundles: presetBundlesMock } };
+    }
+    if (url === "/api/presets") {
+      return { data: { presets: presetsMock } };
     }
     return { data: undefined };
   },
@@ -228,6 +307,62 @@ describe("BookCreate", () => {
           generatePitch: true,
           generateFirstChapterDirections: false,
         },
+      }));
+    });
+  });
+
+  it("applies a recommended bundle and lets authors remove or replace individual presets before create", async () => {
+    const nav = {
+      toDashboard: vi.fn(),
+      toBook: vi.fn(),
+      toProjectCreate: vi.fn(),
+    };
+    postApiMock.mockResolvedValueOnce(createBookResponse("book-demo"));
+    fetchJsonMock.mockImplementation(async (url: string) => {
+      if (url === "/books/book-demo") {
+        return { id: "book-demo" };
+      }
+      throw new Error(`Unexpected fetchJson call: ${url}`);
+    });
+
+    render(
+      <BookCreate
+        nav={nav}
+        theme="light"
+        t={(key: string) => key}
+        projectCreateDraft={{
+          title: "仙路长明",
+          projectInit: {
+            repositorySource: "new",
+            workflowMode: "outline-first",
+            templatePreset: "genre-default",
+            gitBranch: "main",
+            worktreeName: "xianlu-main",
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText("推荐创作组合")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /应用「凡人宗门修仙」/ }));
+    expect(screen.getByText("已选择组合：凡人宗门修仙")).toBeTruthy();
+    expect(screen.getByRole("switch", { name: "启用预设 冷峻质朴" }).getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByRole("switch", { name: "启用预设 宗门家族修仙社会" }).getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByRole("switch", { name: "启用预设 信息传播速度" }).getAttribute("aria-checked")).toBe("true");
+
+    fireEvent.click(screen.getByRole("switch", { name: "启用预设 信息传播速度" }));
+    fireEvent.click(screen.getByRole("button", { name: /改用 悲苦孤独/ }));
+    fireEvent.click(screen.getByRole("button", { name: /改用 朝堂民生基底/ }));
+    fireEvent.click(screen.getByRole("button", { name: /新增 机构响应/ }));
+    fireEvent.click(screen.getByRole("button", { name: "创建本地书籍" }));
+
+    await waitFor(() => {
+      expect(postApiMock).toHaveBeenCalledWith("/books/create", expect.objectContaining({
+        enabledPresetIds: [
+          "tragic-solitude",
+          "historical-court-livelihood",
+          "institution-response",
+        ],
       }));
     });
   });

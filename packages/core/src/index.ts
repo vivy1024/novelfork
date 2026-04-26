@@ -170,3 +170,35 @@ export type { MCPTransportType, MCPServerConfig, MCPTool, MCPToolCallRequest, MC
 
 // Registry
 export { ToolRegistry, globalToolRegistry, type ToolParameter, type ToolHandler, type GenericToolHandler, type RegisteredTool } from "./registry/tool-registry.js";
+
+// Presets
+export {
+  registerPreset,
+  registerBeatTemplate,
+  registerAll,
+  getPreset,
+  listPresets,
+  getPresetsByGenre,
+  getBeatTemplate,
+  listBeatTemplates,
+  listSettingBases,
+  listLogicRisks,
+  listBundles,
+  getBundle,
+} from "./presets/index.js";
+export type {
+  Preset,
+  PresetCategory,
+  PresetConfig,
+  PresetBundle,
+  TonePreset,
+  SettingBasePreset,
+  LogicRiskRule,
+  LogicRiskType,
+  PostWriteCheck,
+  Beat,
+  BeatTemplate,
+  GenrePresetBundle,
+} from "./presets/index.js";
+export { buildPresetInjections } from "./agents/writer-prompts.js";
+export { registerBuiltinPresets } from "./presets/builtin.js";

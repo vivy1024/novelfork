@@ -47,6 +47,7 @@ export interface StudioCreateBookBody {
   readonly platform?: string;
   readonly chapterWordCount?: number;
   readonly targetChapters?: number;
+  readonly enabledPresetIds?: ReadonlyArray<string>;
   readonly projectInit?: Partial<StudioProjectInitDraft>;
   readonly initializationPlan?: StudioProjectInitializationPlan;
   readonly jingweiTemplate?: JingweiTemplateSelection;
@@ -69,6 +70,7 @@ export interface StudioBookConfigDraft {
   readonly targetChapters: number;
   readonly chapterWordCount: number;
   readonly language?: "zh" | "en";
+  readonly enabledPresetIds?: string[];
   readonly createdAt: string;
   readonly updatedAt: string;
 }
@@ -253,6 +255,18 @@ export function buildDefaultBookSessionTitle(title: string, language?: string): 
     : `新书《${normalizedTitle}》写作会话`;
 }
 
+function normalizeEnabledPresetIds(enabledPresetIds?: ReadonlyArray<string>): string[] {
+  if (!enabledPresetIds?.length) {
+    return [];
+  }
+
+  return [...new Set(
+    enabledPresetIds
+      .map((id) => id.trim())
+      .filter(Boolean),
+  )];
+}
+
 export function buildStudioBookConfig(body: StudioCreateBookBody, now: string): StudioBookConfigDraft {
   const normalizedId = body.title
     .toLowerCase()
@@ -269,6 +283,9 @@ export function buildStudioBookConfig(body: StudioCreateBookBody, now: string): 
     status: "outlining",
     targetChapters: body.targetChapters ?? 200,
     chapterWordCount: body.chapterWordCount ?? 3000,
+    ...(normalizeEnabledPresetIds(body.enabledPresetIds).length
+      ? { enabledPresetIds: normalizeEnabledPresetIds(body.enabledPresetIds) }
+      : {}),
     ...(body.language === "en"
       ? { language: "en" as const }
       : body.language === "zh"

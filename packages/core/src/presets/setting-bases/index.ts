@@ -1,0 +1,58 @@
+import type { Preset } from "../types.js";
+
+export const builtinSettingBasePresets = [
+  {
+    id: "victorian-industrial-occult",
+    name: "维多利亚工业神秘",
+    category: "setting-base",
+    description: "工业城市、阶层分化、报纸警察教会与神秘学并置的世界基底。",
+    promptInjection: "采用维多利亚工业神秘基底：信息依赖报纸、信件、电报和机构线人；超凡力量必须有成本；城市权力结构需影响普通人生活。",
+    compatibleGenres: ["mystery", "scifi"],
+    conflictGroup: "setting-base",
+  },
+  {
+    id: "classical-travelogue-jianghu",
+    name: "古典游历江湖",
+    category: "setting-base",
+    description: "交通慢、地方秩序强、客栈驿站寺观市集构成的古典游历基底。",
+    promptInjection: "采用古典游历江湖基底：地理距离、交通速度和地方风俗必须限制情节推进；信息不能无解释即时抵达。",
+    compatibleGenres: ["xianxia", "history"],
+    conflictGroup: "setting-base",
+  },
+  {
+    id: "sect-family-xianxia",
+    name: "宗门家族修仙社会",
+    category: "setting-base",
+    description: "由宗门、家族、资源稀缺、境界晋升和组织成本驱动的修仙社会。",
+    promptInjection: "采用宗门家族修仙社会基底：修炼资源稀缺，晋升有制度门槛，宗门和家族行动必须考虑成本、名望与收益。",
+    compatibleGenres: ["xianxia"],
+    conflictGroup: "setting-base",
+  },
+  {
+    id: "modern-platform-economy-satire",
+    name: "现代平台经济讽刺",
+    category: "setting-base",
+    description: "平台算法、绩效、贷款、教育内卷与制度话术构成的现代讽刺基底。",
+    promptInjection: "采用现代平台经济讽刺基底：冲突来自平台规则、绩效压力、债务和社会身份，不用单纯段子替代制度逻辑。",
+    compatibleGenres: ["urban", "xianxia"],
+    conflictGroup: "setting-base",
+  },
+  {
+    id: "historical-court-livelihood",
+    name: "历史朝堂民生",
+    category: "setting-base",
+    description: "朝堂、财政、军政、技术差和民生约束共同构成的历史穿越基底。",
+    promptInjection: "采用历史朝堂民生基底：技术推广要有财政、工匠、运输和政治阻力；朝堂决策必须影响税粮、兵役和地方治理。",
+    compatibleGenres: ["history"],
+    conflictGroup: "setting-base",
+  },
+  {
+    id: "near-future-industrial-scifi",
+    name: "近未来工业科幻",
+    category: "setting-base",
+    description: "工业组织、实验体系、科技治理与社会代价构成的近未来科幻基底。",
+    promptInjection: "采用近未来工业科幻基底：核心技术必须有输入、输出、失败模式和维护成本；组织响应不可无成本全知全能。",
+    compatibleGenres: ["scifi"],
+    conflictGroup: "setting-base",
+  },
+] as const satisfies ReadonlyArray<Preset>;

@@ -32,4 +32,5 @@ export { createRoutinesRouter } from "./routines.js";
 export { createSearchRouter } from "./search.js";
 export { default as sessionRouter } from "./session.js";
 export { createMonitorRouter, setupMonitorWebSocket } from "./monitor.js";
+export { createPresetsRouter } from "./presets.js";
 export type { RouterContext } from "./context.js";
