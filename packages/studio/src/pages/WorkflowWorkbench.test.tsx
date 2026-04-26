@@ -39,6 +39,16 @@ vi.mock("./AgentPanel", () => ({
   ),
 }));
 vi.mock("./MCPServerManager", () => ({ MCPServerManager: () => <div>MCPServerManager</div> }));
+vi.mock("@/components/Admin/ResourcesTab", () => ({ ResourcesTab: () => <div>ResourcesTab Mock</div> }));
+vi.mock("@/components/Admin/RequestsTab", () => ({
+  RequestsTab: ({ onNavigateSection }: { onNavigateSection?: (section: "logs", options?: { runId?: string }) => void }) => (
+    <div>
+      <div>RequestsTab Mock</div>
+      <button onClick={() => onNavigateSection?.("logs", { runId: "run-diagnostic" })}>查看日志 run-diagnostic</button>
+    </div>
+  ),
+}));
+vi.mock("@/components/Admin/LogsTab", () => ({ LogsTab: ({ runId }: { runId?: string }) => <div>LogsTab Mock {runId}</div> }));
 vi.mock("./PluginManager", () => ({ PluginManager: () => <div>PluginManager</div> }));
 vi.mock("./LLMAdvancedConfig", () => ({ LLMAdvancedConfig: () => <div>LLMAdvancedConfig</div> }));
 vi.mock("./SchedulerConfig", () => ({ SchedulerConfig: () => <div>SchedulerConfig</div> }));
@@ -53,6 +63,10 @@ const nav = {
   toBook: vi.fn(),
   toSettings: vi.fn(),
   toWorkflow: vi.fn(),
+  toAdmin: vi.fn(),
+  toImport: vi.fn(),
+  toRadar: vi.fn(),
+  toPipeline: vi.fn(),
 };
 
 afterEach(() => {
@@ -64,6 +78,10 @@ beforeEach(() => {
   nav.toBook.mockReset();
   nav.toSettings.mockReset();
   nav.toWorkflow.mockReset();
+  nav.toAdmin.mockReset();
+  nav.toImport.mockReset();
+  nav.toRadar.mockReset();
+  nav.toPipeline.mockReset();
   MockEventSource.instances = [];
 });
 
@@ -331,6 +349,55 @@ describe("WorkflowWorkbench", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "前往 MCP 管理" }));
     expect(nav.toWorkflow).toHaveBeenCalledWith("mcp");
+  });
+
+  it("exposes advanced toolchain entries with permission, risk, and author-mode return paths", () => {
+    render(
+      <WorkflowWorkbench
+        nav={nav}
+        theme="light"
+        t={(key: string) => key}
+        section="toolchain"
+      />,
+    );
+
+    expect(screen.getByText("工具权限与风险矩阵")).toBeTruthy();
+    expect(screen.getByText("Terminal / Shell")).toBeTruthy();
+    expect(screen.getByText("Browser / 抓取")).toBeTruthy();
+    expect(screen.getAllByText("MCP 工具").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("工具调用详情 / Pipeline")).toBeTruthy();
+    expect(screen.getAllByText("权限说明").length).toBeGreaterThanOrEqual(5);
+    expect(screen.getAllByText("风险说明").length).toBeGreaterThanOrEqual(5);
+    expect(screen.getAllByText("返回作者模式路径").length).toBeGreaterThanOrEqual(5);
+    expect(screen.getByText(/作者默认模式不会展示 Terminal、Browser、MCP、Admin 或 Pipeline 原始入口/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "MCP 管理" }));
+    expect(nav.toWorkflow).toHaveBeenCalledWith("mcp");
+
+    fireEvent.click(screen.getByRole("button", { name: "素材导入" }));
+    expect(nav.toImport).toHaveBeenCalled();
+  });
+
+  it("reuses admin resources, requests, and logs in the diagnostics panel", () => {
+    render(
+      <WorkflowWorkbench
+        nav={nav}
+        theme="light"
+        t={(key: string) => key}
+        section="diagnostics"
+      />,
+    );
+
+    expect(screen.getByText("高级诊断面板")).toBeTruthy();
+    expect(screen.getByText(/返回作者模式路径：点击页面顶部“切回作者模式”/)).toBeTruthy();
+    expect(screen.getByText("ResourcesTab Mock")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "请求历史" }));
+    expect(screen.getByText("RequestsTab Mock")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "查看日志 run-diagnostic" }));
+    expect(screen.getByText("LogsTab Mock run-diagnostic")).toBeTruthy();
+    expect(screen.getByText("聚焦 run：run-diagnostic")).toBeTruthy();
   });
 
 });

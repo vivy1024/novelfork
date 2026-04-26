@@ -182,16 +182,18 @@ export function Sidebar({ nav, activePage, sse, t }: {
           onClick: nav.toDoctor,
         }]
       : []),
-    {
-      label: "Pipeline",
-      icon: <Wrench size={16} />,
-      active: activePage === "pipeline",
-      onClick: () => nav.toPipeline(),
-    },
-  ], [activePage, isStandalone, isTauri, nav, t]);
+    ...(workbenchModeEnabled
+      ? [{
+          label: "Pipeline",
+          icon: <Wrench size={16} />,
+          active: activePage === "pipeline",
+          onClick: () => nav.toPipeline(),
+        }]
+      : []),
+  ], [activePage, isStandalone, isTauri, nav, t, workbenchModeEnabled]);
 
   const systemItems = useMemo(() => [
-    ...(isStandalone || isTauri
+    ...(workbenchModeEnabled && (isStandalone || isTauri)
       ? [{
           label: "守护进程",
           icon: <Zap size={16} />,
@@ -201,7 +203,7 @@ export function Sidebar({ nav, activePage, sse, t }: {
           badgeColor: daemon?.running ? "bg-emerald-500/10 text-emerald-500" : undefined,
         }]
       : []),
-    ...(isStandalone
+    ...(workbenchModeEnabled && isStandalone
       ? [{
           label: "日志",
           icon: <TerminalSquare size={16} />,
@@ -354,21 +356,23 @@ export function Sidebar({ nav, activePage, sse, t }: {
           </div>
         </SidebarSection>
 
-        <SidebarSection
-          title="系统台"
-          open={systemOpen}
-          onToggle={() => {
-            const next = !systemOpen;
-            setSystemOpen(next);
-            writeSectionState(SIDEBAR_STORAGE_KEYS.system, next);
-          }}
-        >
-          <div className="space-y-1">
-            {systemItems.map((item) => (
-              <SidebarItem key={item.label} {...item} />
-            ))}
-          </div>
-        </SidebarSection>
+        {systemItems.length > 0 ? (
+          <SidebarSection
+            title="系统台"
+            open={systemOpen}
+            onToggle={() => {
+              const next = !systemOpen;
+              setSystemOpen(next);
+              writeSectionState(SIDEBAR_STORAGE_KEYS.system, next);
+            }}
+          >
+            <div className="space-y-1">
+              {systemItems.map((item) => (
+                <SidebarItem key={item.label} {...item} />
+              ))}
+            </div>
+          </SidebarSection>
+        ) : null}
       </div>
 
       <div className="border-t border-border/60 bg-muted/30 p-4">

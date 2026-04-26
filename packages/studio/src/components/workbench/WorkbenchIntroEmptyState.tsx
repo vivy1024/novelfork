@@ -34,8 +34,9 @@ export function WorkbenchIntroEmptyState({ onEnable }: WorkbenchIntroEmptyStateP
         <div className="flex flex-wrap items-center justify-center gap-2">
           <Badge variant="secondary">高级 Agent</Badge>
           <Badge variant="outline">工具调用记录</Badge>
-          <Badge variant="outline">MCP / Worktree / Shell</Badge>
+          <Badge variant="outline">Terminal / Browser / MCP</Badge>
           <Badge variant="outline">会话权限模式</Badge>
+          <Badge variant="outline">诊断与工具日志</Badge>
           <Badge variant="outline">更高 token 消耗</Badge>
         </div>
       </FeatureEmptyState>
@@ -45,16 +46,16 @@ export function WorkbenchIntroEmptyState({ onEnable }: WorkbenchIntroEmptyStateP
           <DialogHeader>
             <DialogTitle>开启工作台模式？</DialogTitle>
             <DialogDescription>
-              工作台模式会暴露高级 Agent、MCP、Worktree、Shell 权限与更高 token 消耗。普通写作通常不需要开启。
+              工作台模式会暴露高级 Agent、Terminal / Shell、Browser 原始抓取、MCP、Worktree、Admin 诊断、Pipeline 工具详情与更高 token 消耗。普通写作通常不需要开启。
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2 text-sm text-muted-foreground">
             <p>开启后你会看到：</p>
             <ul className="list-disc space-y-1 pl-5">
               <li>Agent 控制台与工具调用记录</li>
-              <li>MCP 工具、Worktree 与高级运行治理</li>
+              <li>Terminal / Shell、Browser 原始抓取、MCP 工具、Worktree 与高级运行治理</li>
               <li>逐项询问 / 允许编辑 / 全部允许 / 只读 / 规划模式的权限入口</li>
-              <li>更偏工程化的调试与权限入口</li>
+              <li>资源、请求、日志诊断面板，以及清晰的返回作者模式路径</li>
             </ul>
           </div>
           <DialogFooter>

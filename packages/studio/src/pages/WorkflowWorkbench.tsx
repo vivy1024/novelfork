@@ -1,12 +1,18 @@
-import { Bot,
+import {
+  Activity,
+  Bot,
   Bell,
   Boxes,
+  Globe2,
   Puzzle,
   Server,
+  ShieldAlert,
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
+  TerminalSquare,
   Workflow,
+  Wrench,
 } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 
@@ -15,6 +21,9 @@ import type { StudioRun } from "@/shared/contracts";
 
 import { PageScaffold } from "@/components/layout/PageScaffold";
 import { WorkbenchModeGate } from "@/components/workbench/WorkbenchModeGate";
+import { LogsTab } from "@/components/Admin/LogsTab";
+import { RequestsTab } from "@/components/Admin/RequestsTab";
+import { ResourcesTab } from "@/components/Admin/ResourcesTab";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -40,7 +49,7 @@ import { getSessionPermissionModeOption } from "../shared/session-types";
 import type { RuntimeControlSettings } from "../types/settings";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
-import type { SettingsSection, WorkflowSection } from "../routes";
+import type { AdminSection, SettingsSection, WorkflowSection } from "../routes";
 
 
 interface Nav {
@@ -48,6 +57,10 @@ interface Nav {
   toBook: (bookId: string) => void;
   toWorkflow?: (section?: WorkflowSection) => void;
   toSettings?: (section?: SettingsSection) => void;
+  toAdmin?: (section?: AdminSection) => void;
+  toImport?: () => void;
+  toRadar?: () => void;
+  toPipeline?: (runId?: string) => void;
 }
 
 interface GovernanceSettingsResponse {
@@ -111,6 +124,17 @@ const WORKFLOW_TABS = [
     scopeDescription: "影响整套写作管线默认行为，所有项目默认继承。",
     saveStrategy: "面板内保存",
     saveDescription: "按 Agent 分组在各自面板保存，避免误改整套编排。",
+  },
+  {
+    value: "toolchain",
+    label: "工具链入口",
+    icon: TerminalSquare,
+    summary: "Terminal / Browser / MCP / Pipeline 的权限与风险入口",
+    badge: "高级",
+    scope: "工作台级",
+    scopeDescription: "只在高级工作台模式暴露，作者默认模式不显示这些 coder 向入口。",
+    saveStrategy: "只读治理",
+    saveDescription: "入口卡展示权限来源、风险边界和返回作者模式路径；具体执行仍走各子面板确认。",
   },
   {
     value: "mcp",
@@ -179,6 +203,17 @@ const WORKFLOW_TABS = [
     saveDescription: "切换区块后立即刷新当前书籍快照，保存策略沿用数据面板。",
   },
   {
+    value: "diagnostics",
+    label: "诊断面板",
+    icon: Activity,
+    summary: "资源、请求、日志与运行事实的高级诊断",
+    badge: "诊断",
+    scope: "工作台级",
+    scopeDescription: "复用管理中心诊断组件，只在工作台模式内显示本地路径、请求和日志明细。",
+    saveStrategy: "只读观察",
+    saveDescription: "诊断面板默认只读；恢复、重扫等动作仍在对应 Admin 子组件内逐项触发。",
+  },
+  {
     value: "notify",
     label: "通知",
     icon: Bell,
@@ -213,6 +248,7 @@ function GovernanceSummaryCard({ title, children }: { title: string; children: R
 type GovernanceFilter = "all" | "prompt" | "deny";
 type GovernanceSurfaceFilter = "all" | GovernanceSurface;
 type GovernanceSourceFilter = "all" | GovernanceSourceKey;
+type WorkbenchDiagnosticSection = "resources" | "requests" | "logs";
 
 interface GovernanceToolSample {
   label: string;
@@ -309,6 +345,8 @@ export function WorkflowWorkbench({
   const [governanceFilter, setGovernanceFilter] = useState<GovernanceFilter>("all");
   const [governanceSurfaceFilter, setGovernanceSurfaceFilter] = useState<GovernanceSurfaceFilter>("all");
   const [governanceSourceFilter, setGovernanceSourceFilter] = useState<GovernanceSourceFilter>("all");
+  const [diagnosticSection, setDiagnosticSection] = useState<WorkbenchDiagnosticSection>("resources");
+  const [focusedDiagnosticRunId, setFocusedDiagnosticRunId] = useState<string | undefined>(undefined);
   const currentTab = useMemo(
     () => WORKFLOW_TABS.find((tab) => tab.value === currentSection) ?? WORKFLOW_TABS[0],
     [currentSection],
@@ -466,7 +504,7 @@ export function WorkflowWorkbench({
         }
       >
         <div className="grid gap-4 lg:grid-cols-3 xl:grid-cols-5">
-        <WorkbenchStat title="已收口模块" value="9" description="从分散入口合并到统一工作台" />
+        <WorkbenchStat title="已收口模块" value={String(WORKFLOW_TABS.length)} description="从分散入口合并到统一工作台" />
         <WorkbenchStat title="一级入口" value="1" description="侧边栏只保留工作流配置" />
         <WorkbenchStat title="参考方向" value="NarraFork" description="参考其配置中心与信息架构" />
       </div>
@@ -673,12 +711,30 @@ export function WorkflowWorkbench({
 
                 {tab.value === "project" && <ConfigView nav={nav} theme={theme} t={t} />}
                 {tab.value === "agents" && <AgentPanel nav={workflowNav} theme={theme} t={t} />}
+                {tab.value === "toolchain" && (
+                  <AdvancedToolchainPanel
+                    activePermissionLabel={activePermission?.label ?? "读取中"}
+                    activePermissionDescription={activePermission?.description ?? "正在读取默认权限模式。"}
+                    builtinToolSummary={builtinToolSummary}
+                    registrySummary={registrySummary}
+                    nav={nav}
+                  />
+                )}
                 {tab.value === "mcp" && <MCPServerManager nav={nav} theme={theme} t={t} />}
                 {tab.value === "plugins" && <PluginManager nav={nav} theme={theme} t={t} />}
                 {tab.value === "advanced" && <LLMAdvancedConfig nav={workflowNav} theme={theme} t={t} />}
                 {tab.value === "scheduler" && <SchedulerConfig nav={workflowNav} theme={theme} t={t} />}
                 {tab.value === "detection" && <DetectionConfigView nav={nav} theme={theme} t={t} />}
                 {tab.value === "hooks" && <HookDashboard nav={nav} theme={theme} t={t} />}
+                {tab.value === "diagnostics" && (
+                  <AdvancedDiagnosticsPanel
+                    section={diagnosticSection}
+                    runId={focusedDiagnosticRunId}
+                    onSectionChange={setDiagnosticSection}
+                    onFocusRun={(runId) => setFocusedDiagnosticRunId(runId)}
+                    onOpenRun={(runId) => nav.toPipeline?.(runId)}
+                  />
+                )}
                 {tab.value === "notify" && <NotifyConfig nav={nav} theme={theme} t={t} />}
               </TabsContent>
             );
@@ -690,7 +746,238 @@ export function WorkflowWorkbench({
   );
 }
 
-function WorkbenchStat({ title, value, description }: { title: string; value: string; description: string }) {
+interface BuiltinToolSummary {
+  allow: number;
+  prompt: number;
+  deny: number;
+  allowlist: number;
+  blocklist: number;
+  defaultPermissionMode: number;
+  builtinRules: number;
+}
+
+interface ToolchainEntryAction {
+  label: string;
+  onClick?: () => void;
+}
+
+interface ToolchainEntry {
+  title: string;
+  icon: typeof TerminalSquare;
+  permission: string;
+  risk: string;
+  integration: string;
+  returnPath: string;
+  actions: ToolchainEntryAction[];
+}
+
+function AdvancedToolchainPanel({
+  activePermissionLabel,
+  activePermissionDescription,
+  builtinToolSummary,
+  registrySummary,
+  nav,
+}: {
+  activePermissionLabel: string;
+  activePermissionDescription: string;
+  builtinToolSummary: BuiltinToolSummary;
+  registrySummary: MCPRegistryResponse["summary"] | undefined;
+  nav: Nav;
+}) {
+  const toolEntries: ToolchainEntry[] = [
+    {
+      title: "Terminal / Shell",
+      icon: TerminalSquare,
+      permission: `默认权限：${activePermissionLabel}；Bash / Shell 类工具同时受 allowlist、blocklist 和内置写类确认规则约束。`,
+      risk: "可执行本机命令、启动进程、读写文件并暴露本地路径；请优先使用逐项询问或只读模式，避免把密钥写入日志。",
+      integration: "当前以 Bash 工具权限、守护进程状态和运行日志方式接入；不在作者模式提供独立终端入口。",
+      returnPath: "返回作者模式：使用页面顶部“切回作者模式”，侧边栏与命令面板会隐藏 Terminal / Shell 相关入口。",
+      actions: [
+        { label: "权限设置", onClick: nav.toSettings ? () => nav.toSettings?.("advanced") : undefined },
+        { label: "查看日志", onClick: nav.toAdmin ? () => nav.toAdmin?.("logs") : undefined },
+        { label: "守护进程", onClick: nav.toAdmin ? () => nav.toAdmin?.("daemon") : undefined },
+      ],
+    },
+    {
+      title: "Browser / 抓取",
+      icon: Globe2,
+      permission: "抓取能力只通过素材导入与市场雷达触发，结果进入可审阅素材区，不直接写入故事经纬或章节正文。",
+      risk: "外部网页可能包含版权、隐私、站点条款和不稳定内容；导入前需要人工确认来源与用途。",
+      integration: "把 NarraFork Browser 能力映射成作者化采风、题材扫描和素材整理，而不是默认暴露独立 Browser。",
+      returnPath: "返回作者模式：切回后仍保留作者化导入 / 雷达入口，但不会显示 Browser 原始工具链。",
+      actions: [
+        { label: "素材导入", onClick: nav.toImport },
+        { label: "市场雷达", onClick: nav.toRadar },
+      ],
+    },
+    {
+      title: "MCP 工具",
+      icon: Server,
+      permission: `MCP 策略：${registrySummary?.mcpStrategy ?? "inherit"}；allow / prompt / deny：${registrySummary?.allowTools ?? 0} / ${registrySummary?.promptTools ?? 0} / ${registrySummary?.denyTools ?? 0}。`,
+      risk: "stdio MCP 会启动本地进程，SSE MCP 会连接远端服务；工具参数和返回值可能包含本地文件、URL 或账号上下文。",
+      integration: "复用 MCP Server 管理与 /tools/list 注册表，所有调用遵循 mcpStrategy、allowlist、blocklist 与 reasonKey 解释。",
+      returnPath: "返回作者模式：切回后隐藏 MCP Server 管理与原始工具注册表，只保留写作会话的必要提示。",
+      actions: [
+        { label: "MCP 管理", onClick: nav.toWorkflow ? () => nav.toWorkflow?.("mcp") : undefined },
+        { label: "权限策略", onClick: nav.toSettings ? () => nav.toSettings?.("advanced") : undefined },
+      ],
+    },
+    {
+      title: "工具调用详情 / Pipeline",
+      icon: Wrench,
+      permission: `内置工具 allow / prompt / deny：${builtinToolSummary.allow} / ${builtinToolSummary.prompt} / ${builtinToolSummary.deny}；来源覆盖 allowlist ${builtinToolSummary.allowlist} / blocklist ${builtinToolSummary.blocklist}。`,
+      risk: "Pipeline 会展示原始工具调用、运行阶段、错误和部分模型上下文，适合排障，不适合作者默认写作流。",
+      integration: "复用 runStore、ToolCall 和 Admin Requests / Logs 串联同一条运行事实。",
+      returnPath: "返回作者模式：顶部切换后隐藏 Pipeline 与工具调用详情入口，避免把排障指标带进日常写作。",
+      actions: [
+        { label: "打开 Pipeline", onClick: nav.toPipeline ? () => nav.toPipeline?.() : undefined },
+        { label: "请求历史", onClick: nav.toAdmin ? () => nav.toAdmin?.("requests") : undefined },
+      ],
+    },
+    {
+      title: "诊断面板",
+      icon: ShieldAlert,
+      permission: "诊断默认只读观察；资源重扫、恢复重试等动作仍需要在对应面板中显式点击。",
+      risk: "会暴露本地路径、日志、请求模型、耗时、token 估算和失败摘要；仅用于维护和排障。",
+      integration: "复用 Admin Resources / Requests / Logs 组件，避免新增第二套诊断 UI。",
+      returnPath: "返回作者模式：切回后隐藏诊断面板，作者首页只保留必要失败提示。",
+      actions: [
+        { label: "打开诊断", onClick: nav.toWorkflow ? () => nav.toWorkflow?.("diagnostics") : undefined },
+        { label: "资源监控", onClick: nav.toAdmin ? () => nav.toAdmin?.("resources") : undefined },
+      ],
+    },
+  ];
+
+  return (
+    <div className="space-y-4">
+      <Card className="border-amber-500/20 bg-amber-500/10">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <ShieldAlert className="size-4 text-amber-600" />
+            工具权限与风险矩阵
+          </CardTitle>
+          <CardDescription className="text-amber-900/80">
+            {activePermissionDescription} 每个入口都标明权限来源、风险说明和返回作者模式路径；作者默认模式不会展示 Terminal、Browser、MCP、Admin 或 Pipeline 原始入口。
+          </CardDescription>
+        </CardHeader>
+      </Card>
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        {toolEntries.map((entry) => (
+          <ToolchainEntryCard key={entry.title} entry={entry} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ToolchainEntryCard({ entry }: { entry: ToolchainEntry }) {
+  const Icon = entry.icon;
+
+  return (
+    <Card className="border-border/70 bg-background/80">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Icon className="size-4 text-primary" />
+          {entry.title}
+        </CardTitle>
+        <CardDescription>{entry.integration}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3 text-sm text-muted-foreground">
+        <div className="rounded-lg border border-border/60 bg-muted/30 p-3">
+          <div className="mb-1 text-xs font-semibold uppercase tracking-[0.16em] text-foreground">权限说明</div>
+          <p>{entry.permission}</p>
+        </div>
+        <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 p-3 text-amber-900">
+          <div className="mb-1 text-xs font-semibold uppercase tracking-[0.16em]">风险说明</div>
+          <p>{entry.risk}</p>
+        </div>
+        <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-foreground">
+          <div className="mb-1 text-xs font-semibold uppercase tracking-[0.16em] text-primary">返回作者模式路径</div>
+          <p>{entry.returnPath}</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {entry.actions.map((action) => (
+            <Button key={action.label} type="button" size="sm" variant="outline" onClick={action.onClick} disabled={!action.onClick}>
+              {action.label}
+            </Button>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function AdvancedDiagnosticsPanel({
+  section,
+  runId,
+  onSectionChange,
+  onFocusRun,
+  onOpenRun,
+}: {
+  section: WorkbenchDiagnosticSection;
+  runId?: string;
+  onSectionChange: (section: WorkbenchDiagnosticSection) => void;
+  onFocusRun: (runId: string | undefined) => void;
+  onOpenRun?: (runId: string) => void;
+}) {
+  const handleNavigateSection = (nextSection: WorkbenchDiagnosticSection, options?: { runId?: string }) => {
+    onFocusRun(options?.runId);
+    onSectionChange(nextSection);
+  };
+  const handleInspectRun = (nextRunId: string) => {
+    onFocusRun(nextRunId);
+    onOpenRun?.(nextRunId);
+  };
+
+  return (
+    <div className="space-y-4">
+      <Card className="border-dashed bg-muted/20">
+        <CardHeader className="gap-3 md:flex-row md:items-start md:justify-between">
+          <div className="space-y-1">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Activity className="size-4 text-primary" />
+              高级诊断面板
+            </CardTitle>
+            <CardDescription>
+              复用 Admin Resources / Requests / Logs；这里会显示本地路径、请求耗时、token 估算、日志和运行事实，只在工作台模式内可见。
+            </CardDescription>
+            <p className="text-xs text-muted-foreground">
+              返回作者模式路径：点击页面顶部“切回作者模式”，侧边栏、命令面板与持久化入口都会隐藏诊断面板。
+            </p>
+          </div>
+          <Badge variant="outline">Resources / Requests / Logs</Badge>
+        </CardHeader>
+        <CardContent className="flex flex-wrap gap-2">
+          <Button type="button" size="sm" variant={section === "resources" ? "secondary" : "outline"} onClick={() => handleNavigateSection("resources")}>资源监控</Button>
+          <Button type="button" size="sm" variant={section === "requests" ? "secondary" : "outline"} onClick={() => handleNavigateSection("requests")}>请求历史</Button>
+          <Button type="button" size="sm" variant={section === "logs" ? "secondary" : "outline"} onClick={() => handleNavigateSection("logs")}>运行日志</Button>
+          {runId ? <Badge variant="secondary">聚焦 run：{runId}</Badge> : null}
+        </CardContent>
+      </Card>
+
+      {section === "resources" && <ResourcesTab />}
+      {section === "requests" && (
+        <RequestsTab
+          runId={runId}
+          onInspectRun={handleInspectRun}
+          onNavigateSection={handleNavigateSection}
+          onOpenRun={onOpenRun}
+        />
+      )}
+      {section === "logs" && (
+        <LogsTab
+          runId={runId}
+          onInspectRun={handleInspectRun}
+          onNavigateSection={handleNavigateSection}
+          onOpenRun={onOpenRun}
+        />
+      )}
+    </div>
+  );
+}
+
+function WorkbenchStat({ title, value, description }: { title: string; description: string; value: string }) {
   return (
     <Card size="sm">
       <CardHeader>
