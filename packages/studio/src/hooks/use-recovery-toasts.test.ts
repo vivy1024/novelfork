@@ -103,6 +103,20 @@ describe("useRecoveryToasts", () => {
     );
   });
 
+  it("fires error on recovery failure with the same stable toast id", () => {
+    act(() => {
+      useWindowRuntimeStore.getState().setRecoveryState("w1", "replaying");
+    });
+    renderHook(() => useRecoveryToasts());
+    act(() => {
+      useWindowRuntimeStore.getState().setRecoveryState("w1", "failed");
+    });
+    expect(toastMock.error).toHaveBeenCalledWith(
+      "会话恢复失败",
+      expect.objectContaining({ id: "recovery-w1" }),
+    );
+  });
+
   it("also fires success for reconnecting → idle (fast-path without replay)", () => {
     act(() => {
       useWindowRuntimeStore.getState().setRecoveryState("w2", "reconnecting");

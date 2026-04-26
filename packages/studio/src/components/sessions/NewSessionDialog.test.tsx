@@ -22,6 +22,9 @@ describe("NewSessionDialog", () => {
       agentId: "writer",
       title: "Writer 会话",
       sessionMode: "chat",
+      sessionConfig: {
+        permissionMode: "edit",
+      },
     });
 
     expect(onOpenChange).toHaveBeenCalledWith(false);
@@ -47,6 +50,35 @@ describe("NewSessionDialog", () => {
       agentId: "continuity-auditor",
       title: "连续性排查",
       sessionMode: "chat",
+      sessionConfig: {
+        permissionMode: "read",
+      },
+    });
+  });
+
+  it("lets authors choose the permission mode during session creation", () => {
+    const onCreate = vi.fn();
+
+    render(
+      <NewSessionDialog
+        open
+        initialPresetId="architect"
+        onOpenChange={() => {}}
+        onCreate={onCreate}
+      />,
+    );
+
+    expect(screen.getAllByText(/默认权限：逐项询问/).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: /全部允许/ }));
+    fireEvent.click(screen.getByRole("button", { name: "创建会话" }));
+
+    expect(onCreate).toHaveBeenCalledWith({
+      agentId: "architect",
+      title: "Architect 会话",
+      sessionMode: "chat",
+      sessionConfig: {
+        permissionMode: "allow",
+      },
     });
   });
 });

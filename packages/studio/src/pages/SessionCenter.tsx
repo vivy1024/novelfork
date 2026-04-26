@@ -14,7 +14,9 @@ import { getRecoveryPresentation } from "@/lib/windowRecoveryPresentation";
 import { maybeShowClosedWindowHint } from "@/lib/closed-window-hint";
 import { RecoveryBadge } from "@/components/RecoveryBadge";
 import { useWindowStore } from "@/stores/windowStore";
+import { getSessionPermissionModeOption, type SessionPermissionMode } from "@/shared/session-types";
 import type { Theme } from "../hooks/use-theme";
+import type { NarratorSessionRecoveryMetadata } from "../shared/session-types";
 
 export function SessionCenter({ theme }: { theme: Theme }) {
   const windows = useWindowStore((state) => state.windows);
@@ -44,6 +46,7 @@ export function SessionCenter({ theme }: { theme: Theme }) {
       SESSION_PRESETS.map((preset) => ({
         ...preset,
         affordance: preset.id === "writer" ? "直接开始写作" : preset.id === "planner" ? "先做结构规划" : preset.id === "auditor" ? "检查连续性" : "整理世界观",
+        permission: getSessionPermissionModeOption(preset.defaultPermissionMode),
       })),
     [],
   );
@@ -81,6 +84,7 @@ export function SessionCenter({ theme }: { theme: Theme }) {
       title: payload.title,
       agentId: payload.agentId,
       sessionMode: payload.sessionMode,
+      sessionConfig: payload.sessionConfig,
     });
 
     addWindow({
@@ -205,6 +209,7 @@ export function SessionCenter({ theme }: { theme: Theme }) {
                       </div>
                       <p className="text-xs leading-5 text-muted-foreground">{preset.description}</p>
                       <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-primary/80">{preset.affordance}</p>
+                      <p className="text-[10px] leading-4 text-muted-foreground">默认权限：{preset.permission.label}</p>
                     </div>
                   </div>
                 </button>
@@ -260,8 +265,10 @@ export function SessionCenter({ theme }: { theme: Theme }) {
                         agentId={session.agentId}
                         status={session.status}
                         sessionMode={session.sessionMode}
+                        permissionMode={session.sessionConfig.permissionMode}
                         model={session.sessionConfig.modelId}
                         messageCount={session.messageCount}
+                        recovery={session.recovery}
                         lastModified={session.lastModified}
                         attachedWindow={attachedWindow ? { id: attachedWindow.id, wsConnected: wsConnections[attachedWindow.id] ?? false, minimized: attachedWindow.minimized, recoveryState: recoveryStates[attachedWindow.id] ?? "idle" } : null}
                         active={attachedWindow?.id === activeWindowId}
@@ -368,8 +375,10 @@ function NarratorSessionCard({
   agentId,
   status,
   sessionMode,
+  permissionMode,
   model,
   messageCount,
+  recovery,
   lastModified,
   attachedWindow,
   active,
@@ -381,8 +390,10 @@ function NarratorSessionCard({
   agentId: string;
   status: "active" | "archived";
   sessionMode: "chat" | "plan";
+  permissionMode: SessionPermissionMode;
   model: string;
   messageCount: number;
+  recovery?: NarratorSessionRecoveryMetadata;
   lastModified: Date;
   attachedWindow: { id: string; wsConnected: boolean; minimized: boolean; recoveryState: WindowRecoveryState } | null;
   active: boolean;
@@ -390,6 +401,8 @@ function NarratorSessionCard({
   onToggleArchive: () => void;
   onCloseWindow?: () => void;
 }) {
+  const permission = getSessionPermissionModeOption(permissionMode);
+
   return (
     <Card className={active ? "border-primary/40 shadow-sm ring-1 ring-primary/10" : ""}>
       <CardHeader className="space-y-3">
@@ -399,6 +412,7 @@ function NarratorSessionCard({
               <CardTitle className="text-base">{title}</CardTitle>
               <Badge variant={status === "active" ? "secondary" : "outline"}>{status === "active" ? "活跃" : "已归档"}</Badge>
               <Badge variant="outline">{sessionMode === "plan" ? "计划模式" : "对话模式"}</Badge>
+              <Badge variant="outline">权限：{permission.label}</Badge>
               {attachedWindow && (
                 <RecoveryBadge
                   recoveryState={attachedWindow.recoveryState}
@@ -414,6 +428,12 @@ function NarratorSessionCard({
               <span>{model}</span>
               <span>•</span>
               <span>{messageCount} 条消息</span>
+              {recovery ? (
+                <>
+                  <span>•</span>
+                  <span>确认到 {recovery.lastAckedSeq}/{recovery.lastSeq}</span>
+                </>
+              ) : null}
             </CardDescription>
           </div>
           <div className="text-right text-[11px] text-muted-foreground">
@@ -429,6 +449,7 @@ function NarratorSessionCard({
               ? `已关联工作台窗口 ${attachedWindow.id}${attachedWindow.minimized ? " · 已收起" : " · 展开中"}`
               : "当前尚未打开工作台窗口，可直接从这里进入会话工作区。"}
           </div>
+          <div>权限说明：{permission.description}</div>
           {attachedWindow && (() => {
             const presentation = getRecoveryPresentation({
               recoveryState: attachedWindow.recoveryState,
@@ -439,6 +460,13 @@ function NarratorSessionCard({
             }
             return <div className="text-muted-foreground">{presentation.description}</div>;
           })()}
+          {recovery ? (
+            <div className="flex flex-wrap gap-2 text-[11px]">
+              <span className="rounded-full border border-border/60 bg-background px-2 py-0.5">确认边界 ack:{recovery.lastAckedSeq}</span>
+              <span className="rounded-full border border-border/60 bg-background px-2 py-0.5">待回放 {recovery.pendingMessageCount}</span>
+              <span className="rounded-full border border-border/60 bg-background px-2 py-0.5">未完成工具 {recovery.pendingToolCallCount}</span>
+            </div>
+          ) : null}
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" className="h-8 px-3 text-xs" onClick={onOpenWorkspace}>

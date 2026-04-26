@@ -189,7 +189,8 @@ describe("WorkflowWorkbench", () => {
     expect(screen.getByText("区块摘要：16 个写作 Agent 的路由与状态总览")).toBeTruthy();
     expect(screen.getByText("保存策略：面板内保存")).toBeTruthy();
     expect(screen.getByText("toolAccess 模式")).toBeTruthy();
-    expect(screen.getByText("ask")).toBeTruthy();
+    expect(screen.getByText("逐项询问")).toBeTruthy();
+    expect(screen.getByText(/所有工具动作先停下来/)).toBeTruthy();
     expect(screen.getByText("allowlist：2 项（Read / Write）")).toBeTruthy();
     expect(screen.getByText("blocklist：1 项（Edit）")).toBeTruthy();
     expect(screen.getByText("mcpStrategy：inherit")).toBeTruthy();

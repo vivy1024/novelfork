@@ -36,6 +36,7 @@ import {
   type GovernanceSurface,
   type ToolAccessReasonKey,
 } from "../shared/tool-access-reasons";
+import { getSessionPermissionModeOption } from "../shared/session-types";
 import type { RuntimeControlSettings } from "../types/settings";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
@@ -328,6 +329,9 @@ export function WorkflowWorkbench({
     },
   };
   const runtimeControls = workflowSettings.data?.runtimeControls;
+  const activePermission = runtimeControls?.defaultPermissionMode
+    ? getSessionPermissionModeOption(runtimeControls.defaultPermissionMode)
+    : null;
   const toolAccess = runtimeControls?.toolAccess;
   const registrySummary = mcpRegistry.data?.summary;
   const builtinToolSummary = useMemo(() => {
@@ -489,8 +493,9 @@ export function WorkflowWorkbench({
             <GovernanceSummaryCard title="工具执行边界">
               <div className="flex items-center justify-between gap-3">
                 <span className="text-foreground">toolAccess 模式</span>
-                <Badge variant="secondary">{runtimeControls?.defaultPermissionMode ?? "读取中"}</Badge>
+                <Badge variant="secondary">{activePermission?.label ?? "读取中"}</Badge>
               </div>
+              {activePermission ? <p>{activePermission.description}</p> : null}
               <p>allowlist：{formatStatusList(toolAccess?.allowlist)}</p>
               <p>blocklist：{formatStatusList(toolAccess?.blocklist)}</p>
               <p>mcpStrategy：{toolAccess?.mcpStrategy ?? registrySummary?.mcpStrategy ?? "inherit"}</p>

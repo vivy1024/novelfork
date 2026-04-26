@@ -35,6 +35,7 @@ export function WorkbenchIntroEmptyState({ onEnable }: WorkbenchIntroEmptyStateP
           <Badge variant="secondary">高级 Agent</Badge>
           <Badge variant="outline">工具调用记录</Badge>
           <Badge variant="outline">MCP / Worktree / Shell</Badge>
+          <Badge variant="outline">会话权限模式</Badge>
           <Badge variant="outline">更高 token 消耗</Badge>
         </div>
       </FeatureEmptyState>
@@ -52,6 +53,7 @@ export function WorkbenchIntroEmptyState({ onEnable }: WorkbenchIntroEmptyStateP
             <ul className="list-disc space-y-1 pl-5">
               <li>Agent 控制台与工具调用记录</li>
               <li>MCP 工具、Worktree 与高级运行治理</li>
+              <li>逐项询问 / 允许编辑 / 全部允许 / 只读 / 规划模式的权限入口</li>
               <li>更偏工程化的调试与权限入口</li>
             </ul>
           </div>

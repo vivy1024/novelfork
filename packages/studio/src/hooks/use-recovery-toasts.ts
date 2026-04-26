@@ -51,6 +51,14 @@ function emitToastForTransition(
     return;
   }
 
+  if (next === "failed" && prev !== "failed") {
+    notify.error("会话恢复失败", {
+      description: "可在会话窗口里重试、归档或新开会话。",
+      id,
+    });
+    return;
+  }
+
   if (prev === "idle" && next === "reconnecting") {
     notify.warning("连接中断，正在重连…", { id });
     return;

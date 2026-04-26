@@ -1,7 +1,111 @@
 import type { ToolAccessReasonKey } from "./tool-access-reasons.js";
 
-export type SessionPermissionMode = "allow" | "ask" | "deny";
+export const SESSION_PERMISSION_MODES = ["ask", "edit", "allow", "read", "plan"] as const;
+export type SessionPermissionMode = (typeof SESSION_PERMISSION_MODES)[number];
 export type SessionReasoningEffort = "low" | "medium" | "high";
+
+export interface SessionPermissionModeOption {
+  value: SessionPermissionMode;
+  label: string;
+  shortLabel: string;
+  description: string;
+  bestFor: string;
+}
+
+export const SESSION_PERMISSION_MODE_OPTIONS: readonly SessionPermissionModeOption[] = [
+  {
+    value: "ask",
+    label: "逐项询问",
+    shortLabel: "询问",
+    description: "所有工具动作先停下来给出权限提示，由作者逐项批准或拒绝。",
+    bestFor: "新书磨合、陌生 Agent、边界不确定的会话",
+  },
+  {
+    value: "edit",
+    label: "允许编辑",
+    shortLabel: "可编辑",
+    description: "允许读取、检索和改写正文/经纬文件；Shell、Worktree、外部 MCP 仍需确认。",
+    bestFor: "写作会话、章节续写、可回滚的正文修订",
+  },
+  {
+    value: "allow",
+    label: "全部允许",
+    shortLabel: "全允许",
+    description: "默认放行读写、Shell、Worktree 与工具链动作，仅保留显式 blocklist。",
+    bestFor: "已隔离的临时实验、可信自动化批处理",
+  },
+  {
+    value: "read",
+    label: "只读",
+    shortLabel: "只读",
+    description: "只允许读取和检索上下文，拒绝写入、Shell 与 Worktree，输出审稿意见不直接改稿。",
+    bestFor: "审稿会话、连续性排查、发布前检查",
+  },
+  {
+    value: "plan",
+    label: "规划模式",
+    shortLabel: "规划",
+    description: "允许查阅素材并产出计划，不允许直接改正文、设定或执行工程化动作。",
+    bestFor: "大纲规划、卷纲拆解、复杂任务先想清楚",
+  },
+] as const;
+
+export const SESSION_PERMISSION_MODE_LABELS: Record<SessionPermissionMode, string> = Object.fromEntries(
+  SESSION_PERMISSION_MODE_OPTIONS.map((option) => [option.value, option.label]),
+) as Record<SessionPermissionMode, string>;
+
+export function isSessionPermissionMode(value: unknown): value is SessionPermissionMode {
+  return typeof value === "string" && (SESSION_PERMISSION_MODES as readonly string[]).includes(value);
+}
+
+export function normalizeSessionPermissionMode(value: unknown, fallback: SessionPermissionMode = "edit"): SessionPermissionMode {
+  if (isSessionPermissionMode(value)) {
+    return value;
+  }
+
+  if (value === "deny") {
+    return "read";
+  }
+
+  return fallback;
+}
+
+export function getSessionPermissionModeOption(mode: SessionPermissionMode): SessionPermissionModeOption {
+  return SESSION_PERMISSION_MODE_OPTIONS.find((option) => option.value === mode) ?? SESSION_PERMISSION_MODE_OPTIONS[0]!;
+}
+
+export function getSessionPermissionModeLabel(mode: SessionPermissionMode): string {
+  return getSessionPermissionModeOption(mode).label;
+}
+
+export function getSessionPermissionModeDescription(mode: SessionPermissionMode): string {
+  return getSessionPermissionModeOption(mode).description;
+}
+
+export function getRecommendedSessionPermissionMode(input: {
+  readonly agentId?: string;
+  readonly sessionMode?: NarratorSessionMode;
+}): SessionPermissionMode {
+  const agentId = input.agentId?.toLowerCase() ?? "";
+
+  if (input.sessionMode === "plan" || agentId.includes("planner") || agentId.includes("plan")) {
+    return "plan";
+  }
+
+  if (agentId.includes("auditor") || agentId.includes("audit") || agentId.includes("review") || agentId.includes("continuity")) {
+    return "read";
+  }
+
+  if (agentId.includes("architect") || agentId.includes("setting") || agentId.includes("settler") || agentId.includes("world")) {
+    return "ask";
+  }
+
+  if (agentId.includes("writer") || agentId.includes("composer") || agentId.includes("reviser")) {
+    return "edit";
+  }
+
+  return "ask";
+}
 
 export interface SessionConfig {
   providerId: string;
@@ -13,6 +117,21 @@ export interface SessionConfig {
 export type NarratorSessionKind = "standalone" | "chapter";
 export type NarratorSessionStatus = "active" | "archived";
 export type NarratorSessionMode = "chat" | "plan";
+
+export interface NarratorSessionRecoveryMetadata {
+  lastSeq: number;
+  lastAckedSeq: number;
+  availableFromSeq: number;
+  pendingMessageCount: number;
+  pendingToolCallCount: number;
+  pendingToolCallSummary?: string[];
+  lastFailure?: {
+    reason: string;
+    message: string;
+    at: string;
+  };
+  updatedAt: string;
+}
 
 export interface NarratorSessionRecord {
   id: string;
@@ -30,6 +149,7 @@ export interface NarratorSessionRecord {
   projectId?: string;
   sessionConfig: SessionConfig;
   recentMessages?: NarratorSessionChatMessage[];
+  recovery?: NarratorSessionRecoveryMetadata;
 }
 
 export interface CreateNarratorSessionInput {
@@ -56,12 +176,13 @@ export interface UpdateNarratorSessionInput {
   projectId?: string;
   sessionConfig?: Partial<SessionConfig>;
   recentMessages?: NarratorSessionChatMessage[];
+  recovery?: NarratorSessionRecoveryMetadata;
 }
 
 export const DEFAULT_SESSION_CONFIG: SessionConfig = {
   providerId: "anthropic",
   modelId: "claude-sonnet-4-6",
-  permissionMode: "allow",
+  permissionMode: "edit",
   reasoningEffort: "medium",
 };
 
@@ -168,8 +289,8 @@ export type NarratorSessionChatClientMessage =
   | NarratorSessionChatMessageClientEnvelope
   | NarratorSessionChatAckClientEnvelope;
 
-export type NarratorSessionRecoveryState = "idle" | "recovering" | "reconnecting" | "replaying" | "resetting";
-export type NarratorSessionRecoveryReason = "initial-hydration" | "reconnect" | "replay" | "history-gap" | "server-reset";
+export type NarratorSessionRecoveryState = "idle" | "recovering" | "reconnecting" | "replaying" | "resetting" | "failed";
+export type NarratorSessionRecoveryReason = "initial-hydration" | "reconnect" | "replay" | "history-gap" | "server-reset" | "snapshot-load-failed" | "history-load-failed" | "websocket-error";
 
 export interface NarratorSessionRecoveryEnvelope {
   state: NarratorSessionRecoveryState;

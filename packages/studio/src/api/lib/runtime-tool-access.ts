@@ -14,8 +14,61 @@ export interface ToolAccessDecision {
   reasonKey: ToolAccessReasonKey;
 }
 
+const CONTEXT_READ_TOOLS = ["Read", "Glob", "Grep"] as const;
+const CONTENT_EDIT_TOOLS = ["Read", "Glob", "Grep", "Write", "Edit"] as const;
+const MUTATING_OR_SYSTEM_TOOLS = ["Write", "Edit", "Bash", "EnterWorktree", "ExitWorktree"] as const;
+
 function toPermissionAction(mode: SessionPermissionMode): ToolAccessAction {
-  return mode === "ask" ? "prompt" : mode;
+  switch (mode) {
+    case "allow":
+      return "allow";
+    case "ask":
+    case "edit":
+      return "prompt";
+    case "read":
+    case "plan":
+      return "deny";
+  }
+}
+
+function buildDefaultModeRule(mode: SessionPermissionMode): PermissionRule {
+  return {
+    toolName: "*",
+    action: toPermissionAction(mode),
+    reason: `Tool falls back to defaultPermissionMode=${mode}`,
+  };
+}
+
+function buildToolRules(
+  toolNames: readonly string[],
+  action: ToolAccessAction,
+  reason: string,
+): PermissionRule[] {
+  return toolNames.map((toolName) => ({ toolName, action, reason }));
+}
+
+function buildSessionPermissionModeRules(mode: SessionPermissionMode): PermissionRule[] {
+  switch (mode) {
+    case "ask":
+      return [buildDefaultModeRule(mode)];
+    case "edit":
+      return [
+        ...buildToolRules(CONTENT_EDIT_TOOLS, "allow", "Tool is allowed by defaultPermissionMode=edit"),
+        ...buildToolRules(["EnterWorktree", "ExitWorktree"], "prompt", "Worktree tool requires confirmation because defaultPermissionMode=edit"),
+      ];
+    case "allow":
+      return [buildDefaultModeRule(mode)];
+    case "read":
+      return [
+        ...buildToolRules(CONTEXT_READ_TOOLS, "allow", "Read-only tool is allowed by defaultPermissionMode=read"),
+        ...buildToolRules(MUTATING_OR_SYSTEM_TOOLS, "deny", "Mutating tool is blocked by defaultPermissionMode=read"),
+      ];
+    case "plan":
+      return [
+        ...buildToolRules(CONTEXT_READ_TOOLS, "allow", "Context read is allowed by defaultPermissionMode=plan"),
+        ...buildToolRules(MUTATING_OR_SYSTEM_TOOLS, "deny", "Planning mode blocks direct mutation via defaultPermissionMode=plan"),
+      ];
+  }
 }
 
 function inferDecisionSource(reason: string | undefined, fallback: string): string {
@@ -121,12 +174,9 @@ export function createRuntimePermissionManager(userConfig: Pick<UserConfig, "run
   const manager = new PermissionManager();
   const { defaultPermissionMode, toolAccess } = userConfig.runtimeControls;
 
-  manager.addRule({
-    toolName: "*",
-    action: toPermissionAction(defaultPermissionMode),
-    reason: `Tool falls back to defaultPermissionMode=${defaultPermissionMode}`,
-  });
+  manager.addRule(buildDefaultModeRule(defaultPermissionMode));
   manager.addRules(DEFAULT_PERMISSION_RULES);
+  manager.addRules(buildSessionPermissionModeRules(defaultPermissionMode));
   manager.addRules(buildAllowlistRules(toolAccess));
   manager.addRules(buildBlocklistRules(toolAccess));
 

@@ -268,9 +268,17 @@ vi.mock("@vivy1024/novelfork-core", () => {
       async deleteAllBySession(sessionId: string) {
         messageRows.delete(sessionId);
       },
+      async updateAckedSeq(sessionId: string, ackedSeq: number, recoveryJson = "{}") {
+        const rows = messageRows.get(sessionId) ?? [];
+        return { lastSeq: rows.at(-1)?.seq ?? 0, availableFromSeq: rows[0]?.seq ?? 0, ackedSeq, recoveryJson };
+      },
+      async updateRecoveryJson(sessionId: string, recoveryJson: string) {
+        const rows = messageRows.get(sessionId) ?? [];
+        return { lastSeq: rows.at(-1)?.seq ?? 0, availableFromSeq: rows[0]?.seq ?? 0, ackedSeq: 0, recoveryJson };
+      },
       async getCursor(sessionId: string) {
         const rows = messageRows.get(sessionId) ?? [];
-        return { lastSeq: rows.at(-1)?.seq ?? 0, availableFromSeq: rows[0]?.seq ?? 0 };
+        return { lastSeq: rows.at(-1)?.seq ?? 0, availableFromSeq: rows[0]?.seq ?? 0, ackedSeq: 0, recoveryJson: "{}" };
       },
     };
   }

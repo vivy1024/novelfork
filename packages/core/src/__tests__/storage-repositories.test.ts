@@ -99,7 +99,7 @@ describe("storage repositories", () => {
 
       expect(all.map((message) => message.seq)).toEqual([1, 2]);
       expect((await messages.loadSinceSeq("session-1", 1)).map((message) => message.id)).toEqual(["m2"]);
-      expect(await messages.getCursor("session-1")).toEqual({ lastSeq: 2, availableFromSeq: 1 });
+      expect(await messages.getCursor("session-1")).toEqual({ lastSeq: 2, availableFromSeq: 1, ackedSeq: 0, recoveryJson: "{}" });
       expect((await sessions.getById("session-1"))?.messageCount).toBe(2);
       expect(JSON.parse(all[0]?.metadataJson ?? "{}")).toEqual({ toolCalls: [{ toolName: "search", status: "success" }] });
     } finally {
@@ -134,7 +134,7 @@ describe("storage repositories", () => {
 
       await messages.deleteAllBySession("session-1");
       expect(await messages.loadAll("session-1")).toEqual([]);
-      expect(await messages.getCursor("session-1")).toEqual({ lastSeq: 0, availableFromSeq: 0 });
+      expect(await messages.getCursor("session-1")).toEqual({ lastSeq: 0, availableFromSeq: 0, ackedSeq: 0, recoveryJson: "{}" });
     } finally {
       storage.close();
     }
@@ -235,7 +235,7 @@ describe("storage repositories", () => {
       ])).rejects.toThrow(/Failed to append session messages/u);
 
       expect(await messages.loadAll("session-1")).toEqual([]);
-      expect(await messages.getCursor("session-1")).toEqual({ lastSeq: 0, availableFromSeq: 0 });
+      expect(await messages.getCursor("session-1")).toEqual({ lastSeq: 0, availableFromSeq: 0, ackedSeq: 0, recoveryJson: "{}" });
     } finally {
       storage.close();
     }

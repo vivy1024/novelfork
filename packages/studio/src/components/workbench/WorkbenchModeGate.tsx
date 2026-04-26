@@ -36,10 +36,18 @@ export function WorkbenchModeGate({ children }: WorkbenchModeGateProps) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-end">
-        <Button type="button" variant="outline" onClick={() => void setEnabled(false)} disabled={saving}>
-          切回作者模式
-        </Button>
+      <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4 text-sm text-amber-900">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div className="space-y-1">
+            <div className="font-medium">工作台模式已开启 · 请按会话权限执行工具</div>
+            <p className="text-xs leading-5 text-amber-800/90">
+              写作会话建议“允许编辑”，审稿会话建议“只读”，设定会话建议“逐项询问”，规划会话建议“规划模式”。Shell、MCP、Worktree 等高级入口只在这里暴露，返回作者模式后默认隐藏。
+            </p>
+          </div>
+          <Button type="button" variant="outline" onClick={() => void setEnabled(false)} disabled={saving}>
+            切回作者模式
+          </Button>
+        </div>
       </div>
       {children}
     </div>

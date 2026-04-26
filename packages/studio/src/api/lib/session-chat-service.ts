@@ -20,8 +20,17 @@ import type {
   NarratorSessionChatStateEnvelope,
   NarratorSessionRecord,
   NarratorSessionRecoveryEnvelope,
+  NarratorSessionRecoveryMetadata,
+  ToolCall,
 } from "../../shared/session-types.js";
-import { appendSessionChatHistory, loadSessionChatHistory, saveSessionChatHistory } from "./session-history-store.js";
+import {
+  appendSessionChatHistory,
+  getSessionChatCursor,
+  loadSessionChatHistory,
+  saveSessionChatHistory,
+  updateSessionChatAckedSeq,
+  updateSessionChatRecoveryJson,
+} from "./session-history-store.js";
 import { getSessionById, updateSession } from "./session-service.js";
 
 const MAX_SESSION_MESSAGES = 50;
@@ -40,6 +49,9 @@ interface SessionChatRuntimeState {
   nextSeq: number;
   messages: NarratorSessionChatMessage[];
   transports: Map<SessionChatTransport, SessionChatTransportState>;
+  persistedAckedSeq: number;
+  availableFromSeq: number;
+  recoveryJson: string;
 }
 
 interface AttachSessionChatTransportOptions {
@@ -102,6 +114,9 @@ function normalizeSessionMessages(
 function createRuntimeState(
   initialMessageCount = 0,
   initialMessages: NarratorSessionChatMessage[] = [],
+  initialAckedSeq = 0,
+  initialAvailableFromSeq = 0,
+  initialRecoveryJson = "{}",
 ): SessionChatRuntimeState {
   const normalizedMessages = normalizeSessionMessages(initialMessages, initialMessageCount);
   const lastSeq = getLastSeq(normalizedMessages);
@@ -112,6 +127,9 @@ function createRuntimeState(
     nextSeq: Math.max(messageCount, lastSeq) + 1,
     messages: normalizedMessages.slice(-MAX_SESSION_MESSAGES),
     transports: new Map(),
+    persistedAckedSeq: Math.max(0, Math.min(initialAckedSeq, Math.max(messageCount, lastSeq))),
+    availableFromSeq: initialAvailableFromSeq,
+    recoveryJson: initialRecoveryJson || "{}",
   };
 }
 
@@ -119,6 +137,9 @@ function getRuntimeState(
   sessionId: string,
   initialMessageCount = 0,
   initialMessages: NarratorSessionChatMessage[] = [],
+  initialAckedSeq = 0,
+  initialAvailableFromSeq = 0,
+  initialRecoveryJson = "{}",
 ): SessionChatRuntimeState {
   const existing = runtimeStateBySessionId.get(sessionId);
   if (existing) {
@@ -127,10 +148,13 @@ function getRuntimeState(
     }
     existing.messageCount = Math.max(existing.messageCount, initialMessageCount, getLastSeq(existing.messages));
     existing.nextSeq = Math.max(existing.nextSeq, existing.messageCount + 1, getLastSeq(existing.messages) + 1);
+    existing.persistedAckedSeq = Math.max(existing.persistedAckedSeq, Math.min(initialAckedSeq, existing.messageCount));
+    existing.availableFromSeq = initialAvailableFromSeq || existing.availableFromSeq;
+    existing.recoveryJson = initialRecoveryJson || existing.recoveryJson;
     return existing;
   }
 
-  const state = createRuntimeState(initialMessageCount, initialMessages);
+  const state = createRuntimeState(initialMessageCount, initialMessages, initialAckedSeq, initialAvailableFromSeq, initialRecoveryJson);
   runtimeStateBySessionId.set(sessionId, state);
   return state;
 }
@@ -156,23 +180,50 @@ function trimSessionMessages(state: SessionChatRuntimeState): void {
   state.messages = state.messages.slice(-MAX_SESSION_MESSAGES);
 }
 
+function getPendingToolCalls(messages: NarratorSessionChatMessage[]): ToolCall[] {
+  return messages.flatMap((message) => message.toolCalls ?? []).filter((toolCall) => toolCall.status === "pending" || toolCall.status === "running");
+}
+
+function buildRecoveryMetadata(
+  state: SessionChatRuntimeState,
+  messages: NarratorSessionChatMessage[],
+  failure?: NarratorSessionRecoveryMetadata["lastFailure"],
+): NarratorSessionRecoveryMetadata {
+  const lastSeq = Math.max(state.messageCount, getLastSeq(messages));
+  const lastAckedSeq = Math.max(0, Math.min(state.persistedAckedSeq, lastSeq));
+  const pendingToolCalls = getPendingToolCalls(messages);
+  const pendingMessageCount = messages.filter((message) => (message.seq ?? 0) > lastAckedSeq).length;
+  return {
+    lastSeq,
+    lastAckedSeq,
+    availableFromSeq: state.availableFromSeq,
+    pendingMessageCount,
+    pendingToolCallCount: pendingToolCalls.length,
+    pendingToolCallSummary: pendingToolCalls.slice(0, 5).map((toolCall) => `${toolCall.toolName}:${toolCall.status ?? "pending"}`),
+    ...(failure ? { lastFailure: failure } : {}),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function serializeRecoveryMetadata(metadata: NarratorSessionRecoveryMetadata): string {
+  return JSON.stringify(metadata);
+}
+
 function buildServerFirstSession(session: NarratorSessionRecord, state: SessionChatRuntimeState): NarratorSessionRecord {
   const recentMessages = state.messages.length > 0 ? [...state.messages] : [...(session.recentMessages ?? [])];
   const messageCount = Math.max(session.messageCount, state.messageCount, getLastSeq(recentMessages), recentMessages.length);
+  const recovery = buildRecoveryMetadata(state, recentMessages, session.recovery?.lastFailure);
 
   return {
     ...session,
     messageCount,
     recentMessages,
+    recovery,
   };
 }
 
-function createCursor(state: SessionChatRuntimeState, ackedSeq?: number): NarratorSessionChatCursor {
+function createCursor(state: SessionChatRuntimeState, ackedSeq = state.persistedAckedSeq): NarratorSessionChatCursor {
   const lastSeq = Math.max(state.messageCount, getLastSeq(state.messages));
-  if (typeof ackedSeq !== "number") {
-    return { lastSeq };
-  }
-
   return {
     lastSeq,
     ackedSeq: Math.max(0, Math.min(Math.floor(ackedSeq), lastSeq)),
@@ -247,9 +298,19 @@ async function loadSessionState(sessionId: string): Promise<{ session: NarratorS
     return null;
   }
 
-  const normalizedRecentMessages = normalizeSessionMessages(session.recentMessages, session.messageCount);
-  const normalizedMessageCount = Math.max(session.messageCount, getLastSeq(normalizedRecentMessages), normalizedRecentMessages.length);
-  const state = getRuntimeState(sessionId, normalizedMessageCount, normalizedRecentMessages);
+  const persistedCursor = await getSessionChatCursor(sessionId);
+  const persistedHistory = await loadSessionChatHistory(sessionId);
+  const sourceMessages = persistedHistory.length > 0 ? persistedHistory : session.recentMessages;
+  const normalizedRecentMessages = normalizeSessionMessages(sourceMessages, Math.max(session.messageCount, persistedCursor.lastSeq));
+  const normalizedMessageCount = Math.max(session.messageCount, persistedCursor.lastSeq, getLastSeq(normalizedRecentMessages), normalizedRecentMessages.length);
+  const state = getRuntimeState(
+    sessionId,
+    normalizedMessageCount,
+    normalizedRecentMessages,
+    persistedCursor.ackedSeq,
+    persistedCursor.availableFromSeq,
+    persistedCursor.recoveryJson,
+  );
 
   if (state.messages.length === 0 && normalizedRecentMessages.length > 0) {
     state.messages = [...normalizedRecentMessages];
@@ -412,15 +473,21 @@ export async function replaceSessionChatState(
   loaded.state.messages = normalizedMessages;
   loaded.state.messageCount = Math.max(normalizedMessages.length, getLastSeq(normalizedMessages));
   loaded.state.nextSeq = loaded.state.messageCount + 1;
+  loaded.state.persistedAckedSeq = 0;
+  loaded.state.availableFromSeq = normalizedMessages[0]?.seq ?? 0;
 
   for (const transportState of loaded.state.transports.values()) {
     transportState.ackedSeq = 0;
   }
 
   await saveSessionChatHistory(sessionId, normalizedMessages);
+  const recovery = buildRecoveryMetadata(loaded.state, normalizedMessages);
+  loaded.state.recoveryJson = serializeRecoveryMetadata(recovery);
+  await updateSessionChatRecoveryJson(sessionId, loaded.state.recoveryJson);
   const updatedSession = await updateSession(sessionId, {
     messageCount: loaded.state.messageCount,
     recentMessages: [...normalizedMessages],
+    recovery,
   });
   const serverFirstSession = buildServerFirstSession(updatedSession ?? loaded.session, loaded.state);
   const snapshot: NarratorSessionChatSnapshot = {
@@ -463,7 +530,8 @@ export async function attachSessionChatTransport(
   }
 
   const session = buildServerFirstSession(loaded.session, loaded.state);
-  const requestedResumeSeq = sanitizeSeq(options.resumeFromSeq);
+  const hasExplicitResume = options.resumeFromSeq !== undefined;
+  const requestedResumeSeq = hasExplicitResume ? sanitizeSeq(options.resumeFromSeq) : loaded.state.persistedAckedSeq;
   const cursor = createCursor(loaded.state);
   const resumeOutOfRange = requestedResumeSeq > cursor.lastSeq;
   const ackedSeq = Math.min(requestedResumeSeq, cursor.lastSeq);
@@ -471,7 +539,7 @@ export async function attachSessionChatTransport(
     ackedSeq,
   });
 
-  if (ackedSeq === 0) {
+  if (!hasExplicitResume || ackedSeq === 0) {
     sendEnvelope(transport, {
       type: "session:snapshot",
       snapshot: {
@@ -479,8 +547,24 @@ export async function attachSessionChatTransport(
         messages: [...loaded.state.messages],
         cursor: createCursor(loaded.state, ackedSeq),
       },
+      recovery: {
+        state: hasExplicitResume && ackedSeq === 0 ? "recovering" : "idle",
+        reason: hasExplicitResume ? "reconnect" : "initial-hydration",
+      },
     });
   }
+
+  console.log(JSON.stringify({
+    component: "session.recovery",
+    ok: true,
+    sessionId,
+    route: "/api/sessions/:id/chat",
+    requestedResumeSeq,
+    ackedSeq,
+    lastSeq: cursor.lastSeq,
+    pendingMessageCount: session.recovery?.pendingMessageCount ?? 0,
+    recoveryState: resumeOutOfRange ? "resetting" : "idle",
+  }));
 
   sendEnvelope(
     transport,
@@ -528,12 +612,19 @@ export async function handleSessionChatTransportMessage(
   const transportState = loaded.state.transports.get(transport);
 
   if ("ack" in payload && sanitizeSeq(payload.ack) > 0 && transportState) {
-    updateTransportAck(loaded.state, transport, sanitizeSeq(payload.ack));
+    const updatedTransportState = updateTransportAck(loaded.state, transport, sanitizeSeq(payload.ack));
+    if (updatedTransportState) {
+      loaded.state.persistedAckedSeq = Math.max(loaded.state.persistedAckedSeq, updatedTransportState.ackedSeq);
+      const recovery = buildRecoveryMetadata(loaded.state, loaded.state.messages);
+      loaded.state.recoveryJson = serializeRecoveryMetadata(recovery);
+      await updateSessionChatAckedSeq(sessionId, loaded.state.persistedAckedSeq, loaded.state.recoveryJson);
+      await updateSession(sessionId, { recovery });
+    }
   }
 
   if (payload.type === "session:ack") {
     const session = buildServerFirstSession(loaded.session, loaded.state);
-    sendEnvelope(transport, createSessionChatStateEnvelope(session, loaded.state, transportState?.ackedSeq ?? 0));
+    sendEnvelope(transport, createSessionChatStateEnvelope(session, loaded.state, transportState?.ackedSeq ?? loaded.state.persistedAckedSeq));
     return;
   }
 
@@ -565,14 +656,19 @@ export async function handleSessionChatTransportMessage(
     loaded.session.recentMessages ?? loaded.state.messages,
   );
 
-  const updatedSession = await updateSession(sessionId, {
-    messageCount: loaded.state.messageCount,
-    recentMessages: [...loaded.state.messages],
-  });
   if (persistedHistory.length > 0) {
     loaded.state.messageCount = Math.max(loaded.state.messageCount, getLastSeq(persistedHistory));
     loaded.state.nextSeq = Math.max(loaded.state.nextSeq, loaded.state.messageCount + 1);
+    loaded.state.availableFromSeq = persistedHistory[0]?.seq ?? loaded.state.availableFromSeq;
   }
+  const recovery = buildRecoveryMetadata(loaded.state, loaded.state.messages);
+  loaded.state.recoveryJson = serializeRecoveryMetadata(recovery);
+  await updateSessionChatRecoveryJson(sessionId, loaded.state.recoveryJson);
+  const updatedSession = await updateSession(sessionId, {
+    messageCount: loaded.state.messageCount,
+    recentMessages: [...loaded.state.messages],
+    recovery,
+  });
   broadcastMessageEnvelope(sessionId, loaded.state, assistantMessage);
 
   if (updatedSession) {

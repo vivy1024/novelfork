@@ -666,6 +666,122 @@ describe("session-chat-service", () => {
     });
   });
 
+  it("persists the acknowledged recovery boundary and pending metadata in SQLite", async () => {
+    const firstLoad = await loadSessionServices();
+    const session = await firstLoad.createSession({
+      title: "确认边界会话",
+      agentId: "writer",
+      sessionMode: "chat",
+    });
+    const transport = new MockTransport();
+
+    expect(await firstLoad.attachSessionChatTransport(session.id, transport)).toBe(true);
+    await firstLoad.handleSessionChatTransportMessage(
+      session.id,
+      transport,
+      JSON.stringify({
+        type: "session:message",
+        messageId: "acked-boundary-1",
+        content: "第一句",
+        sessionMode: "chat",
+      }),
+    );
+
+    const pendingSnapshot = await firstLoad.getSessionChatSnapshot(session.id);
+    expect(pendingSnapshot?.cursor).toMatchObject({ lastSeq: 2, ackedSeq: 0 });
+    expect(pendingSnapshot?.session.recovery).toMatchObject({
+      lastSeq: 2,
+      lastAckedSeq: 0,
+      pendingMessageCount: 2,
+      pendingToolCallCount: 0,
+    });
+
+    await firstLoad.handleSessionChatTransportMessage(
+      session.id,
+      transport,
+      JSON.stringify({ type: "session:ack", ack: 2 }),
+    );
+
+    const ackedSnapshot = await firstLoad.getSessionChatSnapshot(session.id);
+    expect(ackedSnapshot?.cursor).toMatchObject({ lastSeq: 2, ackedSeq: 2 });
+    expect(ackedSnapshot?.session.recovery).toMatchObject({
+      lastSeq: 2,
+      lastAckedSeq: 2,
+      pendingMessageCount: 0,
+    });
+
+    firstLoad.__testing.resetSessionStoreMutationQueue();
+    vi.resetModules();
+    const reloaded = await loadSessionServices();
+    const restoredSnapshot = await reloaded.getSessionChatSnapshot(session.id);
+
+    expect(restoredSnapshot?.cursor).toMatchObject({ lastSeq: 2, ackedSeq: 2 });
+    expect(restoredSnapshot?.session.recovery).toMatchObject({
+      lastSeq: 2,
+      lastAckedSeq: 2,
+      pendingMessageCount: 0,
+    });
+  });
+
+  it("uses the persisted ack boundary when a refreshed websocket opens without an explicit resume cursor", async () => {
+    const firstLoad = await loadSessionServices();
+    const session = await firstLoad.createSession({
+      title: "刷新恢复会话",
+      agentId: "writer",
+      sessionMode: "chat",
+    });
+    const transport = new MockTransport();
+
+    expect(await firstLoad.attachSessionChatTransport(session.id, transport)).toBe(true);
+    await firstLoad.handleSessionChatTransportMessage(
+      session.id,
+      transport,
+      JSON.stringify({
+        type: "session:message",
+        messageId: "refresh-boundary-1",
+        content: "已确认消息",
+        sessionMode: "chat",
+      }),
+    );
+    await firstLoad.handleSessionChatTransportMessage(session.id, transport, JSON.stringify({ type: "session:ack", ack: 2 }));
+    await firstLoad.handleSessionChatTransportMessage(
+      session.id,
+      transport,
+      JSON.stringify({
+        type: "session:message",
+        messageId: "refresh-boundary-2",
+        content: "未确认消息",
+        sessionMode: "chat",
+      }),
+    );
+
+    firstLoad.__testing.resetSessionStoreMutationQueue();
+    vi.resetModules();
+    const reloaded = await loadSessionServices();
+    const refreshedTransport = new MockTransport();
+    expect(await reloaded.attachSessionChatTransport(session.id, refreshedTransport)).toBe(true);
+
+    const envelopes = refreshedTransport.sent.map((entry) => JSON.parse(entry));
+    expect(envelopes[0]).toMatchObject({
+      type: "session:snapshot",
+      snapshot: {
+        cursor: { lastSeq: 4, ackedSeq: 2 },
+        session: {
+          recovery: {
+            lastSeq: 4,
+            lastAckedSeq: 2,
+            pendingMessageCount: 2,
+          },
+        },
+      },
+      recovery: { state: "idle", reason: "initial-hydration" },
+    });
+    expect(envelopes.at(-1)).toMatchObject({
+      type: "session:state",
+      cursor: { lastSeq: 4, ackedSeq: 2 },
+    });
+  });
+
   it("registers a Bun websocket route that matches concrete session chat paths", async () => {
     const { setupSessionChatWebSocket } = await loadSessionServices();
     const registerWebSocketRoute = vi.fn();

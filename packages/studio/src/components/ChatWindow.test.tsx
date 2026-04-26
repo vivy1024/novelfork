@@ -60,7 +60,7 @@ vi.mock("@/stores/windowStore", () => {
 
 function resetWindowRuntimeStore(initial?: {
   wsConnections?: Record<string, boolean>;
-  recoveryStates?: Record<string, "idle" | "recovering" | "reconnecting" | "replaying" | "resetting">;
+  recoveryStates?: Record<string, "idle" | "recovering" | "reconnecting" | "replaying" | "resetting" | "failed">;
   chatSnapshots?: Record<string, NarratorSessionChatSnapshot | null>;
 }) {
   useWindowRuntimeStore.setState({
@@ -547,6 +547,72 @@ describe("ChatWindow", () => {
     // After snapshot hydration with seq>0, the ws effect re-runs and transitions to
     // replay mode, so the authoritative store no longer sits in "recovering".
     expect(useWindowRuntimeStore.getState().recoveryStates["window-1"]).not.toBe("recovering");
+  });
+
+  it("shows retry, archive, and new-session paths when formal session recovery fails", async () => {
+    fetchJsonMock.mockImplementation((async (...args: [string, ...unknown[]]) => {
+      const [url, options] = args as [string, { method?: string } | undefined];
+      if (url === "/api/sessions/session-abc123456/chat/state") {
+        throw new Error("SQLite cursor unavailable");
+      }
+      if (url === "/api/sessions/session-abc123456" && options?.method === "PUT") {
+        return {
+          id: "session-abc123456",
+          title: "Writer 会话（已归档）",
+          agentId: "writer",
+          kind: "standalone",
+          sessionMode: "chat",
+          status: "archived",
+          createdAt: new Date().toISOString(),
+          lastModified: new Date().toISOString(),
+          messageCount: 0,
+          sortOrder: 0,
+          sessionConfig: {
+            providerId: "anthropic",
+            modelId: "claude-sonnet-4-6",
+            permissionMode: "allow",
+            reasoningEffort: "medium",
+          },
+        };
+      }
+      if (url === "/api/sessions" && options?.method === "POST") {
+        return {
+          id: "session-recovery-2",
+          title: "Writer 会话 · 恢复新会话",
+          agentId: "writer",
+          kind: "standalone",
+          sessionMode: "chat",
+          status: "active",
+          createdAt: new Date().toISOString(),
+          lastModified: new Date().toISOString(),
+          messageCount: 0,
+          sortOrder: 1,
+          sessionConfig: {
+            providerId: "anthropic",
+            modelId: "claude-sonnet-4-6",
+            permissionMode: "allow",
+            reasoningEffort: "medium",
+          },
+        };
+      }
+      return defaultFetchJsonImplementation(url, options);
+    }) as any);
+
+    render(<ChatWindow windowId="window-1" theme="light" />);
+
+    expect(await screen.findByText("会话恢复失败")).toBeTruthy();
+    expect(screen.getByText(/SQLite cursor unavailable/)).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: "重试恢复" }).length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "归档会话" })).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: "新开会话" }).length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole("button", { name: "归档会话" }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(fetchJsonMock).toHaveBeenCalledWith(
+      "/api/sessions/session-abc123456",
+      expect.objectContaining({ method: "PUT" }),
+    );
   });
 
   it("accepts authoritative recovery state overrides from the runtime store", async () => {

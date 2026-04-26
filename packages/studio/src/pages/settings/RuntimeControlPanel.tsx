@@ -15,15 +15,16 @@ import {
 } from "@/components/ui/select";
 import { fetchJson, putApi } from "@/hooks/use-api";
 import { PROVIDERS } from "@/shared/provider-catalog";
+import { SESSION_PERMISSION_MODE_OPTIONS } from "@/shared/session-types";
 import { TOOL_ACCESS_GOVERNANCE_EXPLANATIONS } from "@/shared/tool-access-reasons";
 import type { ModelDefaultSettings, RuntimeControlSettings, UserConfig } from "@/types/settings";
 import { DEFAULT_USER_CONFIG } from "@/types/settings";
 
-const PERMISSION_OPTIONS: Array<{ value: RuntimeControlSettings["defaultPermissionMode"]; label: string; description: string }> = [
-  { value: "allow", label: "直接执行", description: "适合本地可逆操作，默认尽量少打断。" },
-  { value: "ask", label: "执行前确认", description: "遇到动作前先请求确认，适合稳妥模式。" },
-  { value: "deny", label: "默认拒绝", description: "先收窄高风险动作，适合审阅和观察。" },
-];
+const PERMISSION_OPTIONS: Array<{ value: RuntimeControlSettings["defaultPermissionMode"]; label: string; description: string }> = SESSION_PERMISSION_MODE_OPTIONS.map((option) => ({
+  value: option.value,
+  label: option.label,
+  description: `${option.description} 适合：${option.bestFor}。`,
+}));
 
 const REASONING_OPTIONS: Array<{ value: RuntimeControlSettings["defaultReasoningEffort"]; label: string; description: string }> = [
   { value: "low", label: "低", description: "适合轻量查询和快速修补。" },
