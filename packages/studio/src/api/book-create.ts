@@ -254,12 +254,15 @@ export function buildDefaultBookSessionTitle(title: string, language?: string): 
 }
 
 export function buildStudioBookConfig(body: StudioCreateBookBody, now: string): StudioBookConfigDraft {
+  const normalizedId = body.title
+    .toLowerCase()
+    .replace(/[^a-z0-9\u4e00-\u9fff]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 30);
+
   return {
-    id: body.title
-      .toLowerCase()
-      .replace(/[^a-z0-9\u4e00-\u9fff]/g, "-")
-      .replace(/-+/g, "-")
-      .slice(0, 30),
+    id: normalizedId || "book",
     title: body.title,
     platform: normalizeStudioPlatform(body.platform),
     genre: body.genre,

@@ -127,6 +127,21 @@ describe("buildStudioBookConfig", () => {
     expect(config.language).toBe("en");
     expect(config.id).toBe("english-book");
   });
+
+  it("trims separator-only edges from chinese and spaced titles when deriving book ids", () => {
+    const config = buildStudioBookConfig(
+      {
+        title: "  仙路！！ 长明  ",
+        genre: "xuanhuan",
+        platform: "qidian",
+        language: "zh",
+      },
+      "2026-03-30T00:00:00.000Z",
+    );
+
+    expect(config.id).toBe("仙路-长明");
+    expect(config.title).toBe("  仙路！！ 长明  ");
+  });
 });
 
 describe("buildStudioProjectInitRecord", () => {
