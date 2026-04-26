@@ -95,6 +95,8 @@ export function routeToTabLabel(route: Route): string {
       return "数据分析";
     case "genres":
       return "题材模板";
+    case "presets":
+      return route.bookId ? `写作预设 · ${route.bookId}` : "写作预设";
     case "style":
       return "文风分析";
     case "import":

@@ -25,6 +25,7 @@ import {
   Wand2,
   Eye,
   Database,
+  Package,
   Check,
   X,
   ShieldCheck,
@@ -82,6 +83,7 @@ interface Nav {
   toChapter: (bookId: string, num: number) => void;
   toAnalytics: (bookId: string) => void;
   toDetect?: (bookId: string) => void;
+  toPresets?: (bookId: string) => void;
   toAdmin?: (section?: string) => void;
 }
 
@@ -444,6 +446,13 @@ export function BookDetail({
           >
             <BarChart2 size={14} />
             {t("book.analytics")}
+          </button>
+          <button
+            onClick={() => nav.toPresets?.(bookId)}
+            className="flex items-center gap-2 px-4 py-2 text-xs font-bold bg-secondary/50 text-muted-foreground rounded-lg hover:text-foreground hover:bg-secondary transition-all border border-border/50"
+          >
+            <Package size={14} />
+            写作预设
           </button>
           <button
             onClick={() => nav.toDetect?.(bookId)}

@@ -12,6 +12,7 @@ interface Nav {
   toSessions: () => void;
   toBookCreate: () => void;
   toGenres: () => void;
+  toPresets: () => void;
   toStyle: () => void;
   toImport: () => void;
   toRadar: () => void;
@@ -85,6 +86,7 @@ export function CommandPalette({ nav, tabs, activateTab, onClose, onNewBook, t }
             <Item onSelect={() => run(nav.toStyle)}>{t("nav.style")}</Item>
             <Item onSelect={() => run(nav.toImport)}>{t("nav.import")}</Item>
             <Item onSelect={() => run(nav.toGenres)}>{t("create.genre")}</Item>
+            <Item onSelect={() => run(nav.toPresets)}>写作预设</Item>
             <Item onSelect={() => run(nav.toRadar)}>{t("nav.radar")}</Item>
             <Item onSelect={() => run(nav.toDoctor)}>{t("nav.doctor")}</Item>
           </Command.Group>

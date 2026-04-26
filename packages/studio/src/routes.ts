@@ -44,6 +44,7 @@ export type Route =
   | { page: "analytics"; bookId: string }
   | { page: "truth"; bookId: string }
   | { page: "genres" }
+  | { page: "presets"; bookId?: string }
   | { page: "style" }
   | { page: "import" }
   | { page: "radar" }
@@ -154,6 +155,8 @@ export function canonicalRouteId(route: Route): string {
       return `truth:${route.bookId}`;
     case "genres":
       return "genres";
+    case "presets":
+      return route.bookId ? `presets:${route.bookId}` : "presets";
     case "style":
       return "style";
     case "import":
@@ -204,6 +207,11 @@ export function normalizeRoute(value: unknown): Route | undefined {
     case "backup":
     case "book-create":
       return { page: value.page };
+    case "presets":
+      return {
+        page: "presets",
+        ...(hasString(value, "bookId") ? { bookId: value.bookId as string } : {}),
+      };
     case "workflow":
       return {
         page: "workflow",
