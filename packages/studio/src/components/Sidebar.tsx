@@ -11,6 +11,7 @@ import {
   FolderGit2,
   LayoutDashboard,
   MessageSquare,
+  Package,
   ScrollText,
   Search,
   Settings,
@@ -52,6 +53,7 @@ interface Nav {
   toDaemon: () => void;
   toLogs: () => void;
   toGenres: () => void;
+  toPresets: () => void;
   toStyle: () => void;
   toImport: () => void;
   toRadar: () => void;
@@ -167,6 +169,12 @@ export function Sidebar({ nav, activePage, sse, t }: {
       icon: <Boxes size={16} />,
       active: activePage === "genres",
       onClick: nav.toGenres,
+    },
+    {
+      label: "写作预设",
+      icon: <Package size={16} />,
+      active: activePage === "presets",
+      onClick: nav.toPresets,
     },
     {
       label: t("nav.radar"),

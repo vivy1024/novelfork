@@ -20,6 +20,7 @@ const ChapterReader = lazy(() => import("./pages/ChapterReader").then((m) => ({ 
 const Analytics = lazy(() => import("./pages/Analytics").then((m) => ({ default: m.Analytics })));
 const TruthFiles = lazy(() => import("./pages/TruthFiles").then((m) => ({ default: m.TruthFiles })));
 const GenreManager = lazy(() => import("./pages/GenreManager").then((m) => ({ default: m.GenreManager })));
+const PresetManager = lazy(() => import("./pages/PresetManager"));
 const StyleManager = lazy(() => import("./pages/StyleManager").then((m) => ({ default: m.StyleManager })));
 const ImportManager = lazy(() => import("./pages/ImportManager").then((m) => ({ default: m.ImportManager })));
 const RadarView = lazy(() => import("./pages/RadarView").then((m) => ({ default: m.RadarView })));
@@ -345,6 +346,7 @@ function AppInner() {
     toDaemon: () => openTab({ page: "admin", section: "daemon" }),
     toLogs: () => openTab({ page: "admin", section: "logs" }),
     toGenres: () => openTab({ page: "genres" }),
+    toPresets: (bookId?: string) => openTab({ page: "presets", bookId }),
     toStyle: () => openTab({ page: "style" }),
     toImport: () => openTab({ page: "import" }),
     toRadar: () => openTab({ page: "radar" }),
@@ -632,6 +634,7 @@ function TabContentInner({ route, nav, theme, t, sse, setTheme }: {
     case "analytics": return <Analytics bookId={route.bookId} nav={nav} theme={theme} t={t} />;
     case "truth": return <TruthFiles bookId={route.bookId} nav={nav} theme={theme} t={t} />;
     case "genres": return <GenreManager nav={nav} theme={theme} t={t} />;
+    case "presets": return <PresetManager bookId={route.bookId} />;
     case "style": return <StyleManager nav={nav} theme={theme} t={t} />;
     case "import": return <ImportManager nav={nav} theme={theme} t={t} />;
     case "radar": return <RadarView nav={nav} theme={theme} t={t} />;
