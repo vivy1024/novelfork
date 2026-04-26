@@ -97,13 +97,14 @@
   - 覆盖 Requirements 6、7。
   - 2026-04-25 补充验证：已在 core agent / pipeline 与 studio 路由层补齐 `ai.request` 观测，记录 provider、model、duration、TTFT、token usage、status、errorSummary、bookId/sessionId/runId，并由 `runtime-log-sink` 持久化到 `novelfork.log`，Admin Requests/Logs 支持按 provider/status/bookId/sessionId/runId 筛选。验证通过：`pnpm --dir packages/studio exec -- vitest run src/api/lib/runtime-log-sink.test.ts src/api/routes/admin.test.ts src/components/Admin/RequestsTab.test.tsx src/components/Admin/LogsTab.test.tsx`（25 tests passed）、`pnpm --dir packages/core typecheck` 通过；`packages/studio` server typecheck 仍被无关的 `src/api/routes/presets.ts` 现存错误阻塞。
 
-- [ ] 11. 完善高级工作台模式
+- [x] 11. 完善高级工作台模式
   - 注意：`WorkbenchModeGate` 骨架已在 `onboarding-and-story-jingwei` spec 中实现（含持久化、确认弹窗、默认隐藏）。本任务聚焦增强：工具权限、Terminal/Browser/MCP 集成、诊断面板。
   - 定义作者模式与工作台模式的切换入口。
   - 将 Terminal、Browser、MCP、权限审批、工具调用详情放入高级工作台模式。
   - 默认作者模式隐藏这些 coder 向入口。
   - 每个高级工具入口展示权限和风险说明。
   - 覆盖 Requirements 6。
+  - 2026-04-25 补充验证：WorkflowWorkbench 新增工具链入口与诊断面板，复用 Resources/Requests/Logs，WorkbenchModeGate 与 MCP 管理页补充 Terminal / Shell、Browser、MCP、Admin、Pipeline 权限/风险说明和返回作者模式路径；默认作者模式隐藏 Pipeline、守护进程、日志、Worktree 等 coder 向入口。验证通过：`pnpm --dir packages/studio exec vitest run src/components/workbench/WorkbenchModeGate.test.tsx src/pages/WorkflowWorkbench.test.tsx src/pages/MCPServerManager.test.tsx src/components/Sidebar.test.tsx`（10 tests passed）、`pnpm --dir packages/studio exec tsc --noEmit` 通过、`pnpm --dir packages/studio exec vitest run src/routes.test.ts src/hooks/use-tabs.test.ts`（37 tests passed）。
 
 - [ ] 12. 增强启动诊断与自愈链
   - 将 unclean shutdown、孤儿 session、外部 worktree 污染、静态资源模式、compile smoke 统一归类。

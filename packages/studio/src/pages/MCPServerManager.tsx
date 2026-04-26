@@ -243,6 +243,18 @@ export function MCPServerManager({ nav, theme, t }: Props) {
         </CardContent>
       </Card>
 
+      <Card className="border-amber-500/20 bg-amber-500/10">
+        <CardHeader>
+          <CardTitle className="text-base text-amber-900">MCP 权限与风险说明</CardTitle>
+          <CardDescription className="text-amber-900/80">
+            stdio MCP 会启动本地进程，SSE MCP 会连接远端服务；工具参数、环境变量和返回值可能包含本地路径、账号上下文或敏感素材。所有调用必须遵循 mcpStrategy、allowlist、blocklist 与会话权限模式。
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="text-sm text-amber-900/90">
+          返回作者模式路径：使用页面顶部“切回作者模式”；切回后 MCP Server 管理和原始工具注册表会从侧边栏与命令面板隐藏。
+        </CardContent>
+      </Card>
+
       {editorMode && (
         <Card className="border-dashed bg-muted/20">
           <CardHeader>

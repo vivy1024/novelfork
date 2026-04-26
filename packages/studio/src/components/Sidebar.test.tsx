@@ -44,33 +44,38 @@ describe("Sidebar workbench mode", () => {
     cleanup();
   });
 
+  function createNav() {
+    return {
+      toDashboard: vi.fn(),
+      toWorkflow: vi.fn(),
+      toSessions: vi.fn(),
+      toBook: vi.fn(),
+      toBible: vi.fn(),
+      toBookCreate: vi.fn(),
+      toChapter: vi.fn(),
+      toTruth: vi.fn(),
+      toDaemon: vi.fn(),
+      toLogs: vi.fn(),
+      toGenres: vi.fn(),
+      toPresets: vi.fn(),
+      toStyle: vi.fn(),
+      toImport: vi.fn(),
+      toRadar: vi.fn(),
+      toDoctor: vi.fn(),
+      toSearch: vi.fn(),
+      toBackup: vi.fn(),
+      toState: vi.fn(),
+      toPipeline: vi.fn(),
+      toAdmin: vi.fn(),
+      toSettings: vi.fn(),
+      toWorktree: vi.fn(),
+    };
+  }
+
   it("hides workflow and worktree first-class entries in author mode", () => {
     render(
       <Sidebar
-        nav={{
-          toDashboard: vi.fn(),
-          toWorkflow: vi.fn(),
-          toSessions: vi.fn(),
-          toBook: vi.fn(),
-          toBible: vi.fn(),
-          toBookCreate: vi.fn(),
-          toChapter: vi.fn(),
-          toTruth: vi.fn(),
-          toDaemon: vi.fn(),
-          toLogs: vi.fn(),
-          toGenres: vi.fn(),
-          toStyle: vi.fn(),
-          toImport: vi.fn(),
-          toRadar: vi.fn(),
-          toDoctor: vi.fn(),
-          toSearch: vi.fn(),
-          toBackup: vi.fn(),
-          toState: vi.fn(),
-          toPipeline: vi.fn(),
-          toAdmin: vi.fn(),
-          toSettings: vi.fn(),
-          toWorktree: vi.fn(),
-        }}
+        nav={createNav()}
         activePage="dashboard"
         sse={{ messages: [] }}
         t={(key: string) => key}
@@ -80,8 +85,37 @@ describe("Sidebar workbench mode", () => {
     expect(screen.queryByText("工作流配置")).toBeNull();
     expect(screen.queryByText("管理中心")).toBeNull();
     expect(screen.queryByText("Worktree")).toBeNull();
+    expect(screen.queryByText("Pipeline")).toBeNull();
+    expect(screen.queryByText("守护进程")).toBeNull();
+    expect(screen.queryByText("日志")).toBeNull();
     expect(screen.getByText("项目总览")).toBeTruthy();
     expect(screen.getByText("设置")).toBeTruthy();
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+  });
+
+  it("shows toolchain and diagnostics entries after workbench mode is enabled", () => {
+    useApiMock.mockImplementation((path: string) => {
+      if (path === "/books") return { data: { books: [] }, refetch: vi.fn() };
+      if (path === "/daemon") return { data: { running: true }, refetch: vi.fn() };
+      if (path === "/settings/user") return { data: { preferences: { workbenchMode: true } }, refetch: vi.fn() };
+      return { data: null, refetch: vi.fn() };
+    });
+
+    render(
+      <Sidebar
+        nav={createNav()}
+        activePage="workflow"
+        sse={{ messages: [] }}
+        t={(key: string) => key}
+      />,
+    );
+
+    expect(screen.getByText("工作流配置")).toBeTruthy();
+    expect(screen.getByText("管理中心")).toBeTruthy();
+    expect(screen.getByText("Pipeline")).toBeTruthy();
+    expect(screen.getByText("守护进程")).toBeTruthy();
+    expect(screen.getByText("日志")).toBeTruthy();
+    expect(screen.getByText("Worktree")).toBeTruthy();
     expect(consoleErrorSpy).not.toHaveBeenCalled();
   });
 });

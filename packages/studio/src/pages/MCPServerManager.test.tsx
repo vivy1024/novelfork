@@ -67,6 +67,9 @@ describe("MCPServerManager", () => {
     expect(screen.getByText("prompt")).toBeTruthy();
     expect(screen.getAllByText(/来源：runtimeControls.toolAccess.mcpStrategy/).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("治理总览")).toBeTruthy();
+    expect(screen.getByText("MCP 权限与风险说明")).toBeTruthy();
+    expect(screen.getByText(/stdio MCP 会启动本地进程/)).toBeTruthy();
+    expect(screen.getByText(/返回作者模式路径：使用页面顶部“切回作者模式”/)).toBeTruthy();
     expect(screen.getByText("策略来源：runtimeControls.toolAccess")).toBeTruthy();
     expect(screen.getByText("MCP 默认策略：inherit")).toBeTruthy();
     expect(screen.getByText("治理解释：MCP 策略直接允许")).toBeTruthy();

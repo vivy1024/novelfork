@@ -1,12 +1,14 @@
 export type WorkflowSection =
   | "project"
   | "agents"
+  | "toolchain"
   | "mcp"
   | "plugins"
   | "advanced"
   | "scheduler"
   | "detection"
   | "hooks"
+  | "diagnostics"
   | "notify";
 
 export type SettingsSection =
@@ -69,12 +71,14 @@ export interface PersistedTabSessionState {
 const WORKFLOW_SECTIONS = new Set<WorkflowSection>([
   "project",
   "agents",
+  "toolchain",
   "mcp",
   "plugins",
   "advanced",
   "scheduler",
   "detection",
   "hooks",
+  "diagnostics",
   "notify",
 ]);
 

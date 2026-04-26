@@ -73,7 +73,9 @@ export function CommandPalette({ nav, tabs, activateTab, onClose, onNewBook, t }
             <Command.Group heading="Workflow" className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:text-muted-foreground">
               <Item onSelect={() => run(() => nav.toWorkflow("project"))}>项目与模型</Item>
               <Item onSelect={() => run(() => nav.toWorkflow("agents"))}>Agent</Item>
+              <Item onSelect={() => run(() => nav.toWorkflow("toolchain"))}>工具链入口</Item>
               <Item onSelect={() => run(() => nav.toWorkflow("mcp"))}>MCP 工具</Item>
+              <Item onSelect={() => run(() => nav.toWorkflow("diagnostics"))}>诊断面板</Item>
               <Item onSelect={() => run(() => nav.toWorkflow("plugins"))}>插件</Item>
             </Command.Group>
           ) : null}
@@ -90,6 +92,7 @@ export function CommandPalette({ nav, tabs, activateTab, onClose, onNewBook, t }
           {workbenchModeEnabled ? (
             <Command.Group heading="Admin" className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:text-muted-foreground">
               <Item onSelect={() => run(() => nav.toAdmin("providers"))}>供应商</Item>
+              <Item onSelect={() => run(() => nav.toAdmin("resources"))}>资源监控</Item>
               <Item onSelect={() => run(() => nav.toAdmin("requests"))}>请求历史</Item>
               <Item onSelect={() => run(() => nav.toAdmin("daemon"))}>{t("nav.daemon")}</Item>
               <Item onSelect={() => run(() => nav.toAdmin("logs"))}>{t("logs.title")}</Item>

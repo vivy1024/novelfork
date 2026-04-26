@@ -89,6 +89,8 @@ describe("WorkbenchModeGate", () => {
       expect(screen.getByText("Workbench Content")).toBeTruthy();
     });
     expect(screen.getByRole("button", { name: "切回作者模式" })).toBeTruthy();
+    expect(screen.getByText(/Terminal \/ Shell、Browser 原始抓取、MCP、Admin、Pipeline/)).toBeTruthy();
+    expect(screen.getByText(/返回作者模式路径：点击右侧“切回作者模式”/)).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "切回作者模式" }));
 

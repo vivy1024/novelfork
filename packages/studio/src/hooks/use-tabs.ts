@@ -32,12 +32,14 @@ type TabAction =
 const WORKFLOW_SECTION_LABELS: Record<WorkflowSection, string> = {
   project: "项目与模型",
   agents: "Agent",
+  toolchain: "工具链入口",
   mcp: "MCP 工具",
   plugins: "插件",
   advanced: "高级 LLM",
   scheduler: "调度",
   detection: "AIGC 检测",
   hooks: "伏笔健康",
+  diagnostics: "诊断面板",
   notify: "通知",
 };
 
