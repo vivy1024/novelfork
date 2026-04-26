@@ -94,7 +94,7 @@ describe("createToolsRouter", () => {
     );
   });
 
-  it("keeps builtin prompt tools visible when the runtime fallback allows tools", async () => {
+  it("marks write tools as directly available in the productized all-allow mode", async () => {
     const app = createToolsRouter();
     const response = await app.request("http://localhost/list");
     expect(response.status).toBe(200);
@@ -104,17 +104,17 @@ describe("createToolsRouter", () => {
       expect.arrayContaining([
         expect.objectContaining({
           name: "Write",
-          access: "prompt",
+          access: "allow",
           enabled: true,
-          requiresConfirmation: true,
-          reasonKey: "builtin-write-prompt",
+          requiresConfirmation: false,
+          reasonKey: "default-allow",
         }),
         expect.objectContaining({
           name: "Edit",
-          access: "prompt",
+          access: "allow",
           enabled: true,
-          requiresConfirmation: true,
-          reasonKey: "builtin-write-prompt",
+          requiresConfirmation: false,
+          reasonKey: "default-allow",
         }),
       ]),
     );

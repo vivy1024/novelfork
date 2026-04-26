@@ -1,6 +1,7 @@
 import {
   createSessionMessageRepository,
   type StoredSessionMessage,
+  type StoredSessionMessageCursor,
   type StoredSessionMessageInput,
 } from "@vivy1024/novelfork-core";
 
@@ -84,6 +85,25 @@ export async function appendSessionChatHistory(
     seedMessages.map(toStoredMessage),
   );
   return stored.map(toNarratorMessage);
+}
+
+export async function getSessionChatCursor(sessionId: string): Promise<StoredSessionMessageCursor> {
+  return getMessageRepo().getCursor(sessionId);
+}
+
+export async function updateSessionChatAckedSeq(
+  sessionId: string,
+  ackedSeq: number,
+  recoveryJson?: string,
+): Promise<StoredSessionMessageCursor> {
+  return getMessageRepo().updateAckedSeq(sessionId, ackedSeq, recoveryJson);
+}
+
+export async function updateSessionChatRecoveryJson(
+  sessionId: string,
+  recoveryJson: string,
+): Promise<StoredSessionMessageCursor> {
+  return getMessageRepo().updateRecoveryJson(sessionId, recoveryJson);
 }
 
 export async function deleteSessionChatHistory(sessionId: string): Promise<void> {

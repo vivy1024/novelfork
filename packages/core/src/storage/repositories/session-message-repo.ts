@@ -25,6 +25,8 @@ export interface StoredSessionMessageInput {
 export interface StoredSessionMessageCursor {
   lastSeq: number;
   availableFromSeq: number;
+  ackedSeq: number;
+  recoveryJson: string;
 }
 
 export interface SessionMessageRepositoryAppendAttemptContext {
@@ -34,7 +36,7 @@ export interface SessionMessageRepositoryAppendAttemptContext {
 }
 
 export interface SessionMessageRepositoryAppendAttemptControl {
-  cursorOverride?: StoredSessionMessageCursor;
+  cursorOverride?: Pick<StoredSessionMessageCursor, "lastSeq" | "availableFromSeq"> & Partial<StoredSessionMessageCursor>;
 }
 
 export interface CreateSessionMessageRepositoryOptions {
@@ -53,9 +55,14 @@ interface MessageRow {
   metadata_json: string;
 }
 
-interface CursorRow {
+interface CursorRangeRow {
   last_seq: number | null;
   available_from_seq: number | null;
+}
+
+interface CursorStateRow {
+  acked_seq: number | null;
+  recovery_json: string | null;
 }
 
 function toStoredMessage(row: MessageRow): StoredSessionMessage {
@@ -72,6 +79,17 @@ function toStoredMessage(row: MessageRow): StoredSessionMessage {
 
 function sanitizeSeq(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
+}
+
+function clampAckedSeq(ackedSeq: unknown, lastSeq: number): number {
+  return Math.max(0, Math.min(sanitizeSeq(ackedSeq), Math.max(0, Math.floor(lastSeq))));
+}
+
+function normalizeRecoveryJson(value: unknown): string {
+  if (typeof value === "string" && value.trim()) {
+    return value;
+  }
+  return "{}";
 }
 
 function isRetryableAppendConflict(error: unknown): boolean {
@@ -100,31 +118,52 @@ export function createSessionMessageRepository(
   `);
   const upsertCursor = storage.sqlite.prepare(`
     INSERT INTO "session_message_cursor" (
-      "session_id", "last_seq", "available_from_seq", "updated_at"
-    ) VALUES (?, ?, ?, ?)
+      "session_id", "last_seq", "available_from_seq", "acked_seq", "recovery_json", "updated_at"
+    ) VALUES (?, ?, ?, ?, ?, ?)
     ON CONFLICT("session_id") DO UPDATE SET
       "last_seq" = excluded."last_seq",
       "available_from_seq" = excluded."available_from_seq",
+      "acked_seq" = excluded."acked_seq",
+      "recovery_json" = excluded."recovery_json",
       "updated_at" = excluded."updated_at"
+  `);
+  const updateCursorRecovery = storage.sqlite.prepare(`
+    UPDATE "session_message_cursor"
+    SET "acked_seq" = ?, "recovery_json" = ?, "updated_at" = ?
+    WHERE "session_id" = ?
   `);
 
   function getCurrentCursor(sessionId: string): StoredSessionMessageCursor {
-    const row = storage.sqlite.prepare(`
+    const range = storage.sqlite.prepare(`
       SELECT MAX("seq") AS "last_seq", MIN("seq") AS "available_from_seq"
       FROM "session_message"
       WHERE "session_id" = ?
-    `).get(sessionId) as CursorRow | undefined;
+    `).get(sessionId) as CursorRangeRow | undefined;
+    const state = storage.sqlite.prepare(`
+      SELECT "acked_seq", "recovery_json"
+      FROM "session_message_cursor"
+      WHERE "session_id" = ?
+    `).get(sessionId) as CursorStateRow | undefined;
+    const lastSeq = range?.last_seq ?? 0;
     return {
-      lastSeq: row?.last_seq ?? 0,
-      availableFromSeq: row?.available_from_seq ?? 0,
+      lastSeq,
+      availableFromSeq: range?.available_from_seq ?? 0,
+      ackedSeq: clampAckedSeq(state?.acked_seq ?? 0, lastSeq),
+      recoveryJson: normalizeRecoveryJson(state?.recovery_json),
     };
   }
 
-  function refreshCursorAndSession(sessionId: string, updatedAt = new Date()): StoredSessionMessageCursor {
+  function refreshCursorAndSession(
+    sessionId: string,
+    updatedAt = new Date(),
+    options: { resetAckedSeq?: boolean; recoveryJson?: string } = {},
+  ): StoredSessionMessageCursor {
     const cursor = getCurrentCursor(sessionId);
-    upsertCursor.run(sessionId, cursor.lastSeq, cursor.availableFromSeq, updatedAt.getTime());
+    const ackedSeq = options.resetAckedSeq ? 0 : clampAckedSeq(cursor.ackedSeq, cursor.lastSeq);
+    const recoveryJson = normalizeRecoveryJson(options.recoveryJson ?? cursor.recoveryJson);
+    upsertCursor.run(sessionId, cursor.lastSeq, cursor.availableFromSeq, ackedSeq, recoveryJson, updatedAt.getTime());
     updateSessionStats.run(cursor.lastSeq, updatedAt.getTime(), sessionId);
-    return cursor;
+    return { ...cursor, ackedSeq, recoveryJson };
   }
 
   function insertMessagesStartingAt(sessionId: string, startSeq: number, messages: StoredSessionMessageInput[]): void {
@@ -149,7 +188,7 @@ export function createSessionMessageRepository(
     sessionId: string,
     messages: StoredSessionMessageInput[],
     seedMessages: StoredSessionMessageInput[],
-    cursorOverride?: StoredSessionMessageCursor,
+    cursorOverride?: SessionMessageRepositoryAppendAttemptControl["cursorOverride"],
   ) => {
     const existingCursor = cursorOverride ?? getCurrentCursor(sessionId);
     if (existingCursor.lastSeq === 0 && seedMessages.length > 0) {
@@ -163,12 +202,12 @@ export function createSessionMessageRepository(
   const replaceTransaction = storage.sqlite.transaction((sessionId: string, messages: StoredSessionMessageInput[]) => {
     deleteMessages.run(sessionId);
     insertMessagesStartingAt(sessionId, 1, messages);
-    refreshCursorAndSession(sessionId);
+    refreshCursorAndSession(sessionId, new Date(), { resetAckedSeq: true });
   });
 
   const deleteTransaction = storage.sqlite.transaction((sessionId: string) => {
     deleteMessages.run(sessionId);
-    refreshCursorAndSession(sessionId);
+    refreshCursorAndSession(sessionId, new Date(), { resetAckedSeq: true });
   });
 
   return {
@@ -251,6 +290,29 @@ export function createSessionMessageRepository(
         deleteTransaction(sessionId);
       } catch (error) {
         throw new StorageError("Failed to delete session messages.", { op: "sessionMessage.deleteAllBySession", sessionId, cause: error });
+      }
+    },
+
+    async updateAckedSeq(sessionId: string, ackedSeq: number, recoveryJson?: string): Promise<StoredSessionMessageCursor> {
+      try {
+        const cursor = refreshCursorAndSession(sessionId);
+        const nextAckedSeq = clampAckedSeq(ackedSeq, cursor.lastSeq);
+        const nextRecoveryJson = normalizeRecoveryJson(recoveryJson ?? cursor.recoveryJson);
+        updateCursorRecovery.run(nextAckedSeq, nextRecoveryJson, Date.now(), sessionId);
+        return { ...cursor, ackedSeq: nextAckedSeq, recoveryJson: nextRecoveryJson };
+      } catch (error) {
+        throw new StorageError("Failed to update session message ack cursor.", { op: "sessionMessage.updateAckedSeq", sessionId, cause: error });
+      }
+    },
+
+    async updateRecoveryJson(sessionId: string, recoveryJson: string): Promise<StoredSessionMessageCursor> {
+      try {
+        const cursor = refreshCursorAndSession(sessionId);
+        const nextRecoveryJson = normalizeRecoveryJson(recoveryJson);
+        updateCursorRecovery.run(cursor.ackedSeq, nextRecoveryJson, Date.now(), sessionId);
+        return { ...cursor, recoveryJson: nextRecoveryJson };
+      } catch (error) {
+        throw new StorageError("Failed to update session message recovery metadata.", { op: "sessionMessage.updateRecoveryJson", sessionId, cause: error });
       }
     },
 

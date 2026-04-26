@@ -18,7 +18,6 @@ import type { Theme } from "../hooks/use-theme";
 import { useColors } from "../hooks/use-colors";
 import { WindowControls } from "./WindowControls";
 import { useWindowRuntimeStore, type WindowRecoveryState } from "../stores/windowRuntimeStore";
-import { getRecoveryPresentation } from "../lib/windowRecoveryPresentation";
 import { RecoveryBadge } from "./RecoveryBadge";
 import { useWindowStore } from "../stores/windowStore";
 import type { ChatMessage, ToolCall } from "../shared/session-types";
@@ -38,14 +37,18 @@ import { notify } from "@/lib/notify";
 import { maybeShowClosedWindowHint } from "@/lib/closed-window-hint";
 import { useRunDetails } from "../hooks/use-run-events";
 import { getDefaultModel, getDefaultProvider, getModel, getProvider, PROVIDERS } from "../shared/provider-catalog";
-import type {
-  NarratorSessionChatHistory,
-  NarratorSessionChatMessage,
-  NarratorSessionChatServerEnvelope,
-  NarratorSessionChatSnapshot,
-  NarratorSessionRecord,
-  SessionPermissionMode,
-  SessionReasoningEffort,
+import {
+  SESSION_PERMISSION_MODE_OPTIONS,
+  getRecommendedSessionPermissionMode,
+  getSessionPermissionModeOption,
+  normalizeSessionPermissionMode,
+  type NarratorSessionChatHistory,
+  type NarratorSessionChatMessage,
+  type NarratorSessionChatServerEnvelope,
+  type NarratorSessionChatSnapshot,
+  type NarratorSessionRecord,
+  type SessionPermissionMode,
+  type SessionReasoningEffort,
 } from "../shared/session-types";
 
 interface ChatWindowProps {
@@ -60,12 +63,6 @@ const MODEL_OPTIONS = PROVIDERS.flatMap((provider) =>
     label: `${provider.name} · ${model.name}`,
   })),
 );
-
-const PERMISSION_OPTIONS: Array<{ value: SessionPermissionMode; label: string }> = [
-  { value: "allow", label: "全部允许" },
-  { value: "ask", label: "审批确认" },
-  { value: "deny", label: "全部拒绝" },
-];
 
 const REASONING_OPTIONS: Array<{ value: SessionReasoningEffort; label: string }> = [
   { value: "low", label: "低" },
@@ -93,6 +90,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
   const [input, setInput] = useState("");
   const [contextPanelOpen, setContextPanelOpen] = useState(false);
   const [executionChainExpanded, setExecutionChainExpanded] = useState(false);
+  const [recoveryFailure, setRecoveryFailure] = useState<string | null>(null);
   const sessionMessagesRef = useRef<ChatMessage[]>([]);
   const sessionRecordRef = useRef<NarratorSessionRecord | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -159,6 +157,9 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
   }, [chatWindow?.sessionId]);
 
   const updateRecoveryState = useCallback((nextState: WindowRecoveryState) => {
+    if (nextState !== "failed") {
+      setRecoveryFailure(null);
+    }
     setRecoveryState(windowId, nextState);
   }, [setRecoveryState, windowId]);
 
@@ -169,7 +170,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
 
     sessionRecordRef.current = authoritativeSnapshot.session;
     syncSessionMessages(authoritativeSnapshot.messages.map(toChatWindowMessage));
-    syncSessionSeq(authoritativeSnapshot.cursor?.lastSeq ?? getLastSessionSeq(authoritativeSnapshot.messages));
+    syncSessionSeq(authoritativeSnapshot.cursor?.ackedSeq ?? authoritativeSnapshot.cursor?.lastSeq ?? getLastSessionSeq(authoritativeSnapshot.messages));
   }, [authoritativeSnapshot, syncSessionMessages, syncSessionSeq]);
 
   useEffect(() => {
@@ -178,6 +179,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
     sessionRecordRef.current = null;
     setChatSnapshot(windowId, null);
     updateRecoveryState("idle");
+    setRecoveryFailure(null);
     setExecutionChainExpanded(false);
   }, [chatWindow?.sessionId, setChatSnapshot, updateRecoveryState, windowId]);
 
@@ -223,7 +225,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
         if (envelope.type === "session:snapshot") {
           updateRecoveryState(envelope.recovery?.state ?? "idle");
           const nextMessages = envelope.snapshot.messages.map(toChatWindowMessage);
-          const nextSeq = envelope.snapshot.cursor?.lastSeq ?? getLastSessionSeq(envelope.snapshot.messages);
+          const nextSeq = envelope.snapshot.cursor?.ackedSeq ?? envelope.snapshot.cursor?.lastSeq ?? getLastSessionSeq(envelope.snapshot.messages);
           syncSessionRecord(envelope.snapshot.session);
           syncSessionSeq(nextSeq);
           syncSessionMessages(nextMessages);
@@ -237,8 +239,8 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
             updateRecoveryState(envelope.recovery.state);
           }
           syncSessionRecord(envelope.session);
-          syncSessionSeq(envelope.cursor?.lastSeq);
-          syncAuthoritativeSnapshot(envelope.session, sessionMessagesRef.current, envelope.cursor?.lastSeq);
+          syncSessionSeq(envelope.cursor?.ackedSeq ?? envelope.cursor?.lastSeq);
+          syncAuthoritativeSnapshot(envelope.session, sessionMessagesRef.current, envelope.cursor?.ackedSeq ?? envelope.cursor?.lastSeq);
           return;
         }
 
@@ -270,6 +272,8 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
         if (envelope.type === "session:error") {
           console.error("Session chat error:", envelope.error);
           setWsConnected(windowId, false);
+          setRecoveryFailure(envelope.error);
+          updateRecoveryState("failed");
           return;
         }
       }
@@ -318,7 +322,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
         }
       }
     },
-    [ackSessionSeq, getCurrentSessionRecord, setWsConnected, syncAuthoritativeSnapshot, syncSessionMessages, syncSessionRecord, syncSessionSeq, windowId],
+    [ackSessionSeq, getCurrentSessionRecord, setWsConnected, syncAuthoritativeSnapshot, syncSessionMessages, syncSessionRecord, syncSessionSeq, updateRecoveryState, windowId],
   );
 
   useEffect(() => {
@@ -336,18 +340,18 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
         }
 
         const nextMessages = snapshot.messages.map(toChatWindowMessage);
-        const nextSeq = snapshot.cursor?.lastSeq ?? getLastSessionSeq(snapshot.messages);
+        const nextSeq = snapshot.cursor?.ackedSeq ?? snapshot.cursor?.lastSeq ?? getLastSessionSeq(snapshot.messages);
         syncSessionRecord(snapshot.session);
         syncSessionSeq(nextSeq);
         syncSessionMessages(nextMessages);
         syncAuthoritativeSnapshot(snapshot.session, nextMessages, nextSeq);
         updateRecoveryState("idle");
       })
-      .catch(() => {
+      .catch((error) => {
         if (!cancelled) {
-          updateRecoveryState("idle");
+          setRecoveryFailure(error instanceof Error ? error.message : "无法加载正式会话快照");
+          updateRecoveryState("failed");
         }
-        // ignore hydration errors and keep local fallback state
       });
 
     return () => {
@@ -362,56 +366,61 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
         return;
       }
 
-      if (useWindowRuntimeStore.getState().recoveryStates[windowId] !== "resetting") {
-        updateRecoveryState("replaying");
-      }
-      const history = await fetchJson<Partial<NarratorSessionChatHistory>>(`/api/sessions/${sessionId}/chat/history?sinceSeq=${sinceSeq}`);
-      if (!history || !Array.isArray(history.messages)) {
-        return;
-      }
-      if (history.resetRequired) {
-        updateRecoveryState("resetting");
-        const snapshot = await fetchJson<NarratorSessionChatSnapshot>(`/api/sessions/${sessionId}/chat/state`);
-        const nextMessages = snapshot.messages.map(toChatWindowMessage);
-        const nextSeq = snapshot.cursor?.lastSeq ?? getLastSessionSeq(snapshot.messages);
-        syncSessionRecord(snapshot.session);
-        syncSessionSeq(nextSeq);
-        syncSessionMessages(nextMessages);
-        syncAuthoritativeSnapshot(snapshot.session, nextMessages, nextSeq);
-        ackSessionSeq();
-        updateRecoveryState("idle");
-        return;
-      }
+      try {
+        if (useWindowRuntimeStore.getState().recoveryStates[windowId] !== "resetting") {
+          updateRecoveryState("replaying");
+        }
+        const history = await fetchJson<Partial<NarratorSessionChatHistory>>(`/api/sessions/${sessionId}/chat/history?sinceSeq=${sinceSeq}`);
+        if (!history || !Array.isArray(history.messages)) {
+          throw new Error("会话历史响应缺少 messages");
+        }
+        if (history.resetRequired) {
+          updateRecoveryState("resetting");
+          const snapshot = await fetchJson<NarratorSessionChatSnapshot>(`/api/sessions/${sessionId}/chat/state`);
+          const nextMessages = snapshot.messages.map(toChatWindowMessage);
+          const nextSeq = snapshot.cursor?.ackedSeq ?? snapshot.cursor?.lastSeq ?? getLastSessionSeq(snapshot.messages);
+          syncSessionRecord(snapshot.session);
+          syncSessionSeq(nextSeq);
+          syncSessionMessages(nextMessages);
+          syncAuthoritativeSnapshot(snapshot.session, nextMessages, nextSeq);
+          ackSessionSeq();
+          updateRecoveryState("idle");
+          return;
+        }
 
-      const nextSeq = history.cursor?.lastSeq ?? getLastSessionSeq(history.messages);
-      syncSessionSeq(nextSeq);
-      if (history.messages.length === 0) {
+        const nextSeq = history.cursor?.lastSeq ?? getLastSessionSeq(history.messages);
+        syncSessionSeq(nextSeq);
+        if (history.messages.length === 0) {
+          const nextSession = getCurrentSessionRecord();
+          if (nextSession) {
+            syncAuthoritativeSnapshot(nextSession, sessionMessagesRef.current, nextSeq);
+          }
+          ackSessionSeq();
+          updateRecoveryState("idle");
+          return;
+        }
+
+        const nextMessages = mergeSessionMessages(sessionMessagesRef.current, history.messages);
+        syncSessionMessages(nextMessages);
         const nextSession = getCurrentSessionRecord();
         if (nextSession) {
-          syncAuthoritativeSnapshot(nextSession, sessionMessagesRef.current, nextSeq);
+          syncAuthoritativeSnapshot(
+            {
+              ...nextSession,
+              messageCount: Math.max(nextSession.messageCount, nextMessages.length),
+            },
+            nextMessages,
+            nextSeq,
+          );
         }
         ackSessionSeq();
         updateRecoveryState("idle");
-        return;
+      } catch (error) {
+        setRecoveryFailure(error instanceof Error ? error.message : "会话历史回放失败");
+        updateRecoveryState("failed");
       }
-
-      const nextMessages = mergeSessionMessages(sessionMessagesRef.current, history.messages);
-      syncSessionMessages(nextMessages);
-      const nextSession = getCurrentSessionRecord();
-      if (nextSession) {
-        syncAuthoritativeSnapshot(
-          {
-            ...nextSession,
-            messageCount: Math.max(nextSession.messageCount, nextMessages.length),
-          },
-          nextMessages,
-          nextSeq,
-        );
-      }
-      ackSessionSeq();
-      updateRecoveryState("idle");
     },
-    [ackSessionSeq, getCurrentSessionRecord, syncAuthoritativeSnapshot, syncSessionRecord, syncSessionSeq, updateRecoveryState, windowId],
+    [ackSessionSeq, getCurrentSessionRecord, syncAuthoritativeSnapshot, syncSessionRecord, syncSessionSeq, syncSessionMessages, updateRecoveryState, windowId],
   );
 
   useEffect(() => {
@@ -590,12 +599,22 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
     sessionConfig: {
       providerId: defaultProvider.id,
       modelId: defaultModel?.id ?? "",
-      permissionMode: "allow" as SessionPermissionMode,
+      permissionMode: getRecommendedSessionPermissionMode({
+        agentId: chatWindow.agentId,
+        sessionMode: chatWindow.sessionMode ?? "chat",
+      }),
       reasoningEffort: "medium" as SessionReasoningEffort,
     },
     messageCount: effectiveMessages.length,
   };
-  const sessionConfig = sessionState.sessionConfig;
+  const sessionConfig = {
+    ...sessionState.sessionConfig,
+    permissionMode: normalizeSessionPermissionMode(
+      sessionState.sessionConfig.permissionMode,
+      getRecommendedSessionPermissionMode({ agentId: chatWindow.agentId, sessionMode: sessionState.sessionMode }),
+    ),
+  };
+  const selectedPermission = getSessionPermissionModeOption(sessionConfig.permissionMode);
 
   const selectedProvider = getProvider(sessionConfig.providerId);
   const selectedModel = getModel(sessionConfig.providerId, sessionConfig.modelId);
@@ -642,6 +661,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
         content: input,
         sessionId: chatWindow.sessionId,
         sessionMode: sessionState.sessionMode,
+        ack: lastSessionSeqRef.current,
       }),
     );
     setInput("");
@@ -655,8 +675,6 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
   const lastMessageTime = lastMessage
     ? new Date(lastMessage.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
     : "--:--";
-  const recoveryPresentation = getRecoveryPresentation({ recoveryState: authoritativeRecoveryState, wsConnected });
-
   const updateSessionConfig = (updates: Partial<NarratorSessionRecord["sessionConfig"]>) => {
     const nextSessionConfig = {
       ...sessionConfig,
@@ -694,6 +712,59 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
           // keep local state even if the persistence write fails
         });
     }
+  };
+
+  const retryRecovery = async () => {
+    if (!chatWindow.sessionId) return;
+    setRecoveryFailure(null);
+    updateRecoveryState("recovering");
+    try {
+      const snapshot = await fetchJson<NarratorSessionChatSnapshot>(`/api/sessions/${chatWindow.sessionId}/chat/state`);
+      const nextMessages = snapshot.messages.map(toChatWindowMessage);
+      const nextSeq = snapshot.cursor?.ackedSeq ?? snapshot.cursor?.lastSeq ?? getLastSessionSeq(snapshot.messages);
+      syncSessionRecord(snapshot.session);
+      syncSessionSeq(nextSeq);
+      syncSessionMessages(nextMessages);
+      syncAuthoritativeSnapshot(snapshot.session, nextMessages, nextSeq);
+      ackSessionSeq();
+      manualReconnectRef.current?.();
+      updateRecoveryState("idle");
+    } catch (error) {
+      setRecoveryFailure(error instanceof Error ? error.message : "会话恢复重试失败");
+      updateRecoveryState("failed");
+    }
+  };
+
+  const archiveFailedSession = async () => {
+    if (!chatWindow.sessionId) return;
+    const session = await fetchJson<NarratorSessionRecord>(`/api/sessions/${chatWindow.sessionId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "archived" }),
+    });
+    syncSessionRecord(session);
+    syncAuthoritativeSnapshot(session, sessionMessagesRef.current, lastSessionSeqRef.current);
+    notify.info("会话已归档", { description: "可在会话中心切到“仅看已归档”重新恢复。" });
+  };
+
+  const createRecoverySession = async () => {
+    const session = await fetchJson<NarratorSessionRecord>("/api/sessions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: `${sessionState.title} · 恢复新会话`,
+        agentId: chatWindow.agentId,
+        sessionMode: sessionState.sessionMode,
+        sessionConfig,
+      }),
+    });
+
+    addWindow({
+      agentId: chatWindow.agentId,
+      title: session.title,
+      sessionId: session.id,
+      sessionMode: session.sessionMode,
+    });
   };
 
   return (
@@ -739,6 +810,10 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
                     }`}
                   >
                     {sessionState.sessionMode === "plan" ? "计划模式" : "对话模式"}
+                  </span>
+                  <span>•</span>
+                  <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 font-medium text-amber-700">
+                    {selectedPermission.shortLabel}
                   </span>
                   <span>•</span>
                   <span>{sessionState.messageCount} 条消息</span>
@@ -824,21 +899,45 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
               wsConnected={wsConnected}
               variant="banner"
               action={
-                (!wsConnected || authoritativeRecoveryState === "reconnecting") &&
-                authoritativeRecoveryState !== "resetting"
+                authoritativeRecoveryState === "failed"
                   ? {
-                      label: "立即重连",
-                      title: "跳过 5 秒退避，立即重新握手",
-                      onClick: () => manualReconnectRef.current?.(),
+                      label: "重试恢复",
+                      title: "重新拉取服务端快照并重建 WebSocket",
+                      onClick: () => void retryRecovery(),
                     }
-                  : undefined
+                  : (!wsConnected || authoritativeRecoveryState === "reconnecting") &&
+                    authoritativeRecoveryState !== "resetting"
+                    ? {
+                        label: "立即重连",
+                        title: "跳过 5 秒退避，立即重新握手",
+                        onClick: () => manualReconnectRef.current?.(),
+                      }
+                    : undefined
               }
             />
 
-            {/* recoveryPresentation intentionally still computed above so call sites below can key off label/tone. */}
-            <div className="grid gap-2 border-b px-3 py-2 text-[10px] sm:grid-cols-3" style={{ borderColor: c.border, backgroundColor: c.bgSecondary }}>
+            {authoritativeRecoveryState === "failed" ? (
+              <div className="border-b border-rose-500/20 bg-rose-500/5 px-3 py-2 text-xs text-rose-700">
+                <div className="font-medium">恢复失败原因：{recoveryFailure ?? "服务端未返回具体原因"}</div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <Button type="button" variant="outline" size="xs" onClick={() => void retryRecovery()}>
+                    重试恢复
+                  </Button>
+                  <Button type="button" variant="outline" size="xs" onClick={() => void archiveFailedSession()}>
+                    归档会话
+                  </Button>
+                  <Button type="button" variant="outline" size="xs" onClick={() => void createRecoverySession()}>
+                    新开会话
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+
+            <div className="grid gap-2 border-b px-3 py-2 text-[10px] sm:grid-cols-5" style={{ borderColor: c.border, backgroundColor: c.bgSecondary }}>
               <SessionMetric label="连接" value={wsConnected ? "在线" : "离线"} />
+              <SessionMetric label="确认边界" value={`ack:${authoritativeSnapshot?.cursor?.ackedSeq ?? lastSessionSeqRef.current}/${authoritativeSnapshot?.cursor?.lastSeq ?? lastSessionSeqRef.current}`} />
               <SessionMetric label="位置" value={`x:${chatWindow.position.x} y:${chatWindow.position.y}`} />
+              <SessionMetric label="权限" value={selectedPermission.shortLabel} />
               <SessionMetric label="最近活动" value={lastMessageTime} />
             </div>
 
@@ -1079,14 +1178,14 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
                       onChange={(event) => updateSessionConfig({ permissionMode: event.target.value as SessionPermissionMode })}
                       className="w-full rounded-lg border border-border bg-background px-2 py-2 text-xs text-foreground"
                     >
-                      {PERMISSION_OPTIONS.map((option) => (
+                      {SESSION_PERMISSION_MODE_OPTIONS.map((option) => (
                         <option key={option.value} value={option.value}>
                           {option.label}
                         </option>
                       ))}
                     </select>
-                    <div className="mt-2 text-[10px] text-muted-foreground">
-                      当前：{PERMISSION_OPTIONS.find((option) => option.value === sessionConfig.permissionMode)?.label}
+                    <div className="mt-2 text-[10px] leading-4 text-muted-foreground">
+                      当前：{selectedPermission.label} · {selectedPermission.description}
                     </div>
                   </label>
 
@@ -1160,6 +1259,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
               <div className="mb-2 flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
                 <span className="rounded-full border border-border px-2 py-0.5">对象化会话</span>
                 <span className="rounded-full border border-border px-2 py-0.5">Agent {chatWindow.agentId}</span>
+                <span className="rounded-full border border-border px-2 py-0.5">权限 {selectedPermission.label}</span>
                 <span className="rounded-full border border-border px-2 py-0.5">{sessionState.messageCount} 条消息</span>
                 {selectedProvider ? <span className="rounded-full border border-border px-2 py-0.5">{selectedProvider.name}</span> : null}
               </div>

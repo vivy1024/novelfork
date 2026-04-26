@@ -7,7 +7,7 @@ function createRuntimeControls(
 ): Pick<UserConfig, "runtimeControls"> {
   return {
     runtimeControls: {
-      defaultPermissionMode: "allow",
+      defaultPermissionMode: "edit",
       defaultReasoningEffort: "medium",
       contextCompressionThresholdPercent: 80,
       contextTruncateTargetPercent: 70,
@@ -38,28 +38,37 @@ function createRuntimeControls(
 }
 
 describe("createRuntimePermissionManager", () => {
-  it("keeps builtin prompt rules ahead of the runtime fallback", () => {
-    const manager = createRuntimePermissionManager(createRuntimeControls());
+  it("maps product permission modes to concrete builtin tool decisions", () => {
+    const editManager = createRuntimePermissionManager(createRuntimeControls());
+    expect(getPermissionDecision(editManager, "Write", {})).toEqual({
+      action: "allow",
+      reason: "Tool is allowed by defaultPermissionMode=edit",
+      source: "runtimeControls.defaultPermissionMode",
+      reasonKey: "default-allow",
+    });
+    expect(getPermissionDecision(editManager, "Bash", { command: "printf ok" })).toEqual({
+      action: "prompt",
+      reason: "Tool falls back to defaultPermissionMode=edit",
+      source: "runtimeControls.defaultPermissionMode",
+      reasonKey: "default-prompt",
+    });
 
-    expect(getPermissionDecision(manager, "Write", {})).toEqual({
-      action: "prompt",
-      reason: undefined,
-      source: "builtin-permission-rules",
-      reasonKey: "builtin-write-prompt",
+    const readManager = createRuntimePermissionManager(createRuntimeControls({ defaultPermissionMode: "read" }));
+    expect(getPermissionDecision(readManager, "Read", {})).toEqual({
+      action: "allow",
+      reason: "Read-only tool is allowed by defaultPermissionMode=read",
+      source: "runtimeControls.defaultPermissionMode",
+      reasonKey: "default-allow",
     });
-    expect(getPermissionDecision(manager, "Edit", {})).toEqual({
-      action: "prompt",
-      reason: undefined,
-      source: "builtin-permission-rules",
-      reasonKey: "builtin-write-prompt",
+    expect(getPermissionDecision(readManager, "Edit", {})).toEqual({
+      action: "deny",
+      reason: "Mutating tool is blocked by defaultPermissionMode=read",
+      source: "runtimeControls.defaultPermissionMode",
+      reasonKey: "default-deny",
     });
-    expect(getPermissionDecision(manager, "Bash", { command: "rm -rf ./tmp" })).toEqual({
-      action: "prompt",
-      reason: "Potentially destructive command",
-      source: "builtin-permission-rules",
-      reasonKey: "builtin-bash-dangerous-prompt",
-    });
-    expect(getPermissionDecision(manager, "EnterWorktree", {})).toEqual({
+
+    const allowManager = createRuntimePermissionManager(createRuntimeControls({ defaultPermissionMode: "allow" }));
+    expect(getPermissionDecision(allowManager, "Bash", { command: "rm -rf ./tmp" })).toEqual({
       action: "allow",
       reason: "Tool falls back to defaultPermissionMode=allow",
       source: "runtimeControls.defaultPermissionMode",
@@ -86,14 +95,14 @@ describe("createRuntimePermissionManager", () => {
     });
   });
 
-  it("returns decision provenance for builtin and MCP policy checks", () => {
-    const manager = createRuntimePermissionManager(createRuntimeControls());
+  it("returns decision provenance for planning and MCP policy checks", () => {
+    const manager = createRuntimePermissionManager(createRuntimeControls({ defaultPermissionMode: "plan" }));
 
     expect(getPermissionDecision(manager, "Write", {})).toEqual({
-      action: "prompt",
-      reason: undefined,
-      source: "builtin-permission-rules",
-      reasonKey: "builtin-write-prompt",
+      action: "deny",
+      reason: "Planning mode blocks direct mutation via defaultPermissionMode=plan",
+      source: "runtimeControls.defaultPermissionMode",
+      reasonKey: "default-deny",
     });
 
     expect(

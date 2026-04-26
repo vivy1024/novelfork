@@ -12,6 +12,7 @@ import type {
   UserConfigPatch,
 } from "../../types/settings.js";
 import { DEFAULT_USER_CONFIG } from "../../types/settings.js";
+import { isSessionPermissionMode, normalizeSessionPermissionMode } from "../../shared/session-types.js";
 import { providerManager } from "./provider-manager.js";
 import { resolveRuntimeStoragePath } from "./runtime-storage-paths.js";
 
@@ -104,13 +105,11 @@ function sanitizeRuntimeDebug(runtimeDebug?: Partial<RuntimeDebugSettings> | nul
 
 function sanitizeRuntimeControls(runtimeControls?: Partial<RuntimeControlSettings> | null): RuntimeControlSettings {
   const defaults = DEFAULT_USER_CONFIG.runtimeControls;
+  const rawPermissionMode = (runtimeControls as { defaultPermissionMode?: unknown } | undefined)?.defaultPermissionMode;
   return {
-    defaultPermissionMode:
-      runtimeControls?.defaultPermissionMode === "allow"
-      || runtimeControls?.defaultPermissionMode === "ask"
-      || runtimeControls?.defaultPermissionMode === "deny"
-        ? runtimeControls.defaultPermissionMode
-        : defaults.defaultPermissionMode,
+    defaultPermissionMode: isSessionPermissionMode(rawPermissionMode)
+      ? rawPermissionMode
+      : normalizeSessionPermissionMode(rawPermissionMode, defaults.defaultPermissionMode),
     defaultReasoningEffort:
       runtimeControls?.defaultReasoningEffort === "low"
       || runtimeControls?.defaultReasoningEffort === "medium"

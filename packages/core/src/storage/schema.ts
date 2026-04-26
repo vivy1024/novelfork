@@ -36,6 +36,8 @@ export const sessionMessageCursors = sqliteTable("session_message_cursor", {
     .references(() => sessions.id, { onDelete: "cascade" }),
   lastSeq: integer("last_seq").notNull().default(0),
   availableFromSeq: integer("available_from_seq").notNull().default(0),
+  ackedSeq: integer("acked_seq").notNull().default(0),
+  recoveryJson: text("recovery_json").notNull().default("{}"),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
 });
 

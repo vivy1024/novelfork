@@ -74,8 +74,8 @@ export function createSessionRepository(storage: StorageDatabase) {
     );
     storage.sqlite.prepare(`
       INSERT OR IGNORE INTO "session_message_cursor" (
-        "session_id", "last_seq", "available_from_seq", "updated_at"
-      ) VALUES (?, 0, 0, ?)
+        "session_id", "last_seq", "available_from_seq", "acked_seq", "recovery_json", "updated_at"
+      ) VALUES (?, 0, 0, 0, '{}', ?)
     `).run(input.id, input.updatedAt.getTime());
   });
 

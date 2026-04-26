@@ -80,7 +80,7 @@ describe("BookCreate", () => {
       sessionConfig: {
         providerId: "anthropic",
         modelId: "claude-sonnet-4-6",
-        permissionMode: "allow",
+        permissionMode: "edit",
         reasoningEffort: "medium",
       },
       recentMessages: [],

@@ -6,7 +6,9 @@ import {
 
 import {
   DEFAULT_SESSION_CONFIG,
+  normalizeSessionPermissionMode,
   type CreateNarratorSessionInput,
+  type NarratorSessionRecoveryMetadata,
   type NarratorSessionRecord,
   type SessionConfig,
   type UpdateNarratorSessionInput,
@@ -51,10 +53,50 @@ function parseModelReference(reference: string | undefined): { providerId: strin
 }
 
 function normalizeSessionConfig(value: unknown): SessionConfig {
-  return {
+  const merged = {
     ...DEFAULT_SESSION_CONFIG,
     ...(typeof value === "object" && value !== null ? value : {}),
   } as SessionConfig;
+
+  return {
+    ...merged,
+    permissionMode: normalizeSessionPermissionMode(merged.permissionMode),
+  };
+}
+
+function normalizeRecoveryMetadata(value: unknown): NarratorSessionRecoveryMetadata | undefined {
+  if (typeof value !== "object" || value === null) {
+    return undefined;
+  }
+  const metadata = value as Partial<NarratorSessionRecoveryMetadata>;
+  const lastSeq = typeof metadata.lastSeq === "number" && Number.isFinite(metadata.lastSeq) ? Math.max(0, Math.floor(metadata.lastSeq)) : 0;
+  const lastAckedSeq = typeof metadata.lastAckedSeq === "number" && Number.isFinite(metadata.lastAckedSeq)
+    ? Math.max(0, Math.min(Math.floor(metadata.lastAckedSeq), lastSeq))
+    : 0;
+  const availableFromSeq = typeof metadata.availableFromSeq === "number" && Number.isFinite(metadata.availableFromSeq)
+    ? Math.max(0, Math.floor(metadata.availableFromSeq))
+    : 0;
+  return {
+    lastSeq,
+    lastAckedSeq,
+    availableFromSeq,
+    pendingMessageCount: typeof metadata.pendingMessageCount === "number" && Number.isFinite(metadata.pendingMessageCount)
+      ? Math.max(0, Math.floor(metadata.pendingMessageCount))
+      : Math.max(0, lastSeq - lastAckedSeq),
+    pendingToolCallCount: typeof metadata.pendingToolCallCount === "number" && Number.isFinite(metadata.pendingToolCallCount)
+      ? Math.max(0, Math.floor(metadata.pendingToolCallCount))
+      : 0,
+    pendingToolCallSummary: Array.isArray(metadata.pendingToolCallSummary)
+      ? metadata.pendingToolCallSummary.filter((item): item is string => typeof item === "string")
+      : undefined,
+    lastFailure: typeof metadata.lastFailure === "object" && metadata.lastFailure !== null
+      && typeof metadata.lastFailure.reason === "string"
+      && typeof metadata.lastFailure.message === "string"
+      && typeof metadata.lastFailure.at === "string"
+      ? metadata.lastFailure
+      : undefined,
+    updatedAt: typeof metadata.updatedAt === "string" ? metadata.updatedAt : new Date(0).toISOString(),
+  };
 }
 
 function toNarratorSessionRecord(record: StoredSessionRecord): NarratorSessionRecord {
@@ -79,6 +121,7 @@ function toNarratorSessionRecord(record: StoredSessionRecord): NarratorSessionRe
     projectId: metadata.projectId,
     sessionConfig,
     recentMessages: Array.isArray(metadata.recentMessages) ? metadata.recentMessages : [],
+    recovery: normalizeRecoveryMetadata(metadata.recovery),
   };
 }
 
@@ -135,14 +178,22 @@ export async function createSession(input: CreateNarratorSessionInput): Promise<
     worktree: input.worktree,
     chapterId: input.chapterId,
     projectId: input.projectId,
-    sessionConfig: {
+    sessionConfig: normalizeSessionConfig({
       ...DEFAULT_SESSION_CONFIG,
       ...(modelDefaults ?? {}),
       permissionMode: userConfig.runtimeControls.defaultPermissionMode,
       reasoningEffort: userConfig.runtimeControls.defaultReasoningEffort,
       ...input.sessionConfig,
-    },
+    }),
     recentMessages: [],
+    recovery: {
+      lastSeq: 0,
+      lastAckedSeq: 0,
+      availableFromSeq: 0,
+      pendingMessageCount: 0,
+      pendingToolCallCount: 0,
+      updatedAt: now,
+    },
   };
 
   await sessionStoreMutationHook?.();
@@ -162,10 +213,10 @@ export async function updateSession(id: string, updates: UpdateNarratorSessionIn
     ...updates,
     id,
     lastModified: new Date().toISOString(),
-    sessionConfig: {
+    sessionConfig: normalizeSessionConfig({
       ...current.sessionConfig,
       ...updates.sessionConfig,
-    },
+    }),
   };
 
   const stored = await getSessionRepo().update(id, toStoredSessionInput(updated));

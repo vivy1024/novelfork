@@ -105,6 +105,14 @@ export function getRecoveryPresentation(input: RecoveryPresentationInput): Recov
         tone: "danger",
         bannerVisible: true,
       };
+    case "failed":
+      return {
+        shortLabel: "恢复失败",
+        label: "会话恢复失败",
+        description: "当前窗口暂时无法恢复到服务端确认边界，可重试、归档当前会话，或新开会话继续写作。",
+        tone: "danger",
+        bannerVisible: true,
+      };
   }
 }
 

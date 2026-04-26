@@ -50,10 +50,10 @@ interface MockWindowStore {
 
 interface MockWindowRuntimeStore {
   wsConnections: Record<string, boolean>;
-  recoveryStates: Record<string, "idle" | "recovering" | "reconnecting" | "replaying" | "resetting">;
+  recoveryStates: Record<string, "idle" | "recovering" | "reconnecting" | "replaying" | "resetting" | "failed">;
   chatSnapshots: Record<string, NarratorSessionChatSnapshot | null>;
   setWsConnected: (windowId: string, connected: boolean) => void;
-  setRecoveryState: (windowId: string, recoveryState: "idle" | "recovering" | "reconnecting" | "replaying" | "resetting") => void;
+  setRecoveryState: (windowId: string, recoveryState: "idle" | "recovering" | "reconnecting" | "replaying" | "resetting" | "failed") => void;
   setChatSnapshot: (windowId: string, snapshot: NarratorSessionChatSnapshot | null) => void;
   clearWindowRuntime: (windowId: string) => void;
 }
@@ -129,6 +129,9 @@ describe("SessionCenter", () => {
       title: "Planner 会话",
       agentId: "planner",
       sessionMode: "plan",
+      sessionConfig: {
+        permissionMode: "plan",
+      },
     });
 
     const windows = useWindowStore.getState().windows;
@@ -174,6 +177,8 @@ describe("SessionCenter", () => {
 
     expect(screen.getByText("Writer 会话")).toBeTruthy();
     expect(screen.getByText(/Agent writer/)).toBeTruthy();
+    expect(screen.getByText("权限：允许编辑")).toBeTruthy();
+    expect(screen.getByText(/权限说明：允许读取、检索和改写正文/)).toBeTruthy();
     expect(screen.getByText("1 条消息")).toBeTruthy();
     // Online + replaying is now surfaced as a single unified badge via the shared
     // windowRecoveryPresentation module (see Package 4 / 5.6).
@@ -279,7 +284,7 @@ function createNarratorSession(overrides?: Partial<Session>): Session {
     sessionConfig: {
       providerId: "anthropic",
       modelId: "claude-sonnet-4-6",
-      permissionMode: "allow",
+      permissionMode: "edit",
       reasoningEffort: "medium",
     },
     model: "claude-sonnet-4-6",
@@ -359,7 +364,7 @@ function baseMockRuntimeState(): MockWindowRuntimeStore {
         [windowId]: connected,
       };
     },
-    setRecoveryState(windowId: string, recoveryState: "idle" | "recovering" | "reconnecting" | "replaying" | "resetting") {
+    setRecoveryState(windowId: string, recoveryState: "idle" | "recovering" | "reconnecting" | "replaying" | "resetting" | "failed") {
       state.recoveryStates = {
         ...state.recoveryStates,
         [windowId]: recoveryState,

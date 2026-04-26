@@ -24,15 +24,17 @@ describe("getRecoveryPresentation", () => {
     });
   });
 
-  it("returns transient info/warning tones for the four non-idle states", () => {
+  it("returns transient info/warning/danger tones for the non-idle states", () => {
     expect(getRecoveryPresentation({ recoveryState: "recovering", wsConnected: true }).tone).toBe("info");
     expect(getRecoveryPresentation({ recoveryState: "reconnecting", wsConnected: false }).tone).toBe("warning");
     expect(getRecoveryPresentation({ recoveryState: "replaying", wsConnected: true }).tone).toBe("warning");
     expect(getRecoveryPresentation({ recoveryState: "resetting", wsConnected: true }).tone).toBe("danger");
+    expect(getRecoveryPresentation({ recoveryState: "failed", wsConnected: false }).label).toBe("会话恢复失败");
+    expect(getRecoveryPresentation({ recoveryState: "failed", wsConnected: false }).tone).toBe("danger");
   });
 
   it("keeps banner visibility truthy for every non-idle state", () => {
-    for (const state of ["recovering", "reconnecting", "replaying", "resetting"] as const) {
+    for (const state of ["recovering", "reconnecting", "replaying", "resetting", "failed"] as const) {
       expect(getRecoveryPresentation({ recoveryState: state, wsConnected: true }).bannerVisible).toBe(true);
     }
   });
