@@ -11,7 +11,11 @@ import {
   PipelineRunner,
   applyJingweiTemplate,
   computeAnalytics,
+  createBookRepository,
+  createStoryJingweiSectionRepository,
+  getStorageDatabase,
   loadProjectConfig,
+  type BookConfig,
   type JingweiTemplateSelection,
 } from "@vivy1024/novelfork-core";
 import { ApiError, isMissingFileError } from "../errors.js";
@@ -126,6 +130,60 @@ function localStoryFiles(language?: "zh" | "en"): ReadonlyArray<{ readonly name:
   ];
 }
 
+async function syncLocalBookScaffoldToSqlite(
+  bookConfig: Pick<BookConfig, "id" | "title" | "genre" | "createdAt" | "updatedAt">,
+  jingweiTemplate?: StudioCreateBookBody["jingweiTemplate"],
+): Promise<void> {
+  const storage = getStorageDatabase();
+  const timestamp = new Date(bookConfig.createdAt);
+  const updatedAt = new Date(bookConfig.updatedAt);
+  const bookRepo = createBookRepository(storage);
+  const existingBook = await bookRepo.getById(bookConfig.id);
+  if (existingBook) {
+    await bookRepo.update(bookConfig.id, {
+      name: bookConfig.title,
+      bibleMode: "dynamic",
+      currentChapter: 0,
+      updatedAt,
+    });
+  } else {
+    await bookRepo.create({
+      id: bookConfig.id,
+      name: bookConfig.title,
+      bibleMode: "dynamic",
+      currentChapter: 0,
+      createdAt: timestamp,
+      updatedAt,
+    });
+  }
+
+  const appliedTemplate = applyJingweiTemplate(normalizeJingweiTemplateSelection(jingweiTemplate, bookConfig.genre));
+  const sectionRepo = createStoryJingweiSectionRepository(storage);
+  const existingSectionKeys = new Set((await sectionRepo.listByBook(bookConfig.id)).map((section) => section.key));
+  for (const section of appliedTemplate.sections) {
+    if (existingSectionKeys.has(section.key)) continue;
+    await sectionRepo.create({
+      id: crypto.randomUUID(),
+      bookId: bookConfig.id,
+      key: section.key,
+      name: section.name,
+      description: section.description,
+      icon: null,
+      order: section.order,
+      enabled: section.enabled,
+      showInSidebar: section.showInSidebar,
+      participatesInAi: section.participatesInAi,
+      defaultVisibility: section.defaultVisibility,
+      fieldsJson: section.fieldsJson,
+      builtinKind: section.builtinKind ?? null,
+      sourceTemplate: section.sourceTemplate ?? appliedTemplate.templateId,
+      createdAt: timestamp,
+      updatedAt,
+    });
+    existingSectionKeys.add(section.key);
+  }
+}
+
 async function writeLocalBookScaffold(
   state: RouterContext["state"],
   bookConfig: StudioBookConfigDraft,
@@ -143,6 +201,7 @@ async function writeLocalBookScaffold(
   );
   await writeFile(join(storyDir, "jingwei_sections.json"), buildJingweiSectionsManifest(jingweiTemplate, bookConfig.genre), "utf-8");
   await writeFile(join(chaptersDir, "index.json"), JSON.stringify([], null, 2), "utf-8");
+  await syncLocalBookScaffoldToSqlite(bookConfig, jingweiTemplate);
 }
 
 function normalizeOwnershipPath(targetPath: string): string {
@@ -245,10 +304,12 @@ export function createStorageRouter(ctx: RouterContext): Hono {
     const books = await Promise.all(
       bookIds.map(async (id) => {
         const book = await state.loadBookConfig(id);
-        const nextChapter = await state.getNextChapterNumber(id);
-        return { ...book, chaptersWritten: nextChapter - 1 };
+        await syncLocalBookScaffoldToSqlite(book);
+        const chapters = await state.loadChapterIndex(id).catch(() => []);
+        return { ...book, totalChapters: chapters.length, progress: chapters.filter((c) => c.status === "approved").length };
       }),
     );
+
     return c.json({ books });
   });
 
@@ -256,6 +317,7 @@ export function createStorageRouter(ctx: RouterContext): Hono {
     const id = c.req.param("id");
     try {
       const book = await state.loadBookConfig(id);
+      await syncLocalBookScaffoldToSqlite(book);
       const chapters = await state.loadChapterIndex(id);
       const nextChapter = await state.getNextChapterNumber(id);
       return c.json({ book, chapters, nextChapter });
@@ -407,6 +469,7 @@ export function createStorageRouter(ctx: RouterContext): Hono {
     try {
       const { rm } = await import("node:fs/promises");
       await rm(bookDir, { recursive: true, force: true });
+      getStorageDatabase().sqlite.prepare(`DELETE FROM "book" WHERE "id" = ?`).run(id);
       broadcast("book:deleted", { bookId: id });
       return c.json({ ok: true, bookId: id });
     } catch (e) {
