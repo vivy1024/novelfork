@@ -6,30 +6,33 @@
 
 ## P0：必须优先完成
 
-- [ ] 1. 固化 Bun-only 运行时契约
+- [x] 1. 固化 Bun-only 运行时契约
   - 检查所有 Studio 运行时入口，确认源码启动以 `bun run main.ts` 为准。
   - 检查 `packages/core`、`packages/studio` 的 package metadata，运行时引擎口径统一为 Bun。
   - 搜索运行时代码中的 `node:sqlite`、`better-sqlite3`、Node-only SQLite 驱动引用，确认不存在。
   - 明确允许保留的历史开发工具链范围：类型检查、package 脚本、发布辅助脚本；它们不得进入 Studio 启动链。
   - 验收：`bun run main.ts --port=<port>` 启动日志显示 `runtime: "bun"`。
   - 覆盖 Requirements 1、8。
+  - 2026-04-25/26 补充验证：`bun "scripts/verify-bun-runtime.ts"` 通过，输出 `{"ok":true,"runtime":"bun","counts":{"total":12,"passed":12,"failed":0}}`；启动日志包含 `runtime:"bun"`。
 
-- [ ] 2. 完成 SQLite/drizzle Bun 化收口
+- [x] 2. 完成 SQLite/drizzle Bun 化收口
   - 确认 `packages/core/src/storage/db.ts` 使用 `bun:sqlite` 与 `drizzle-orm/bun-sqlite`。
   - 保持 `StorageSqliteDatabase` facade 清晰，业务层只依赖 `.prepare/.transaction/.exec/.pragma/.open/.close`。
   - 清理 workspace importer 里的 `better-sqlite3` / `@types/better-sqlite3` 依赖。
   - 对 lockfile 中可能存在的 drizzle optional peer 残留做说明：不得成为运行时 import 路径。
   - 验收：`packages` 运行时代码搜索不到 `better-sqlite3`。
   - 覆盖 Requirements 2、8。
+  - 2026-04-25/26 补充验证：`packages/core/src/storage/db.ts`、`state/sqlite-driver.ts` 已统一为 `bun:sqlite + drizzle-orm/bun-sqlite`；`bun "scripts/verify-bun-storage.ts"` 通过；运行时代码搜索未发现 `better-sqlite3`，`node:sqlite` 仅残留在 CLI 能力探测与若干测试夹具中，不进入 Studio 运行时链。
 
-- [ ] 3. 建立 Bun 存储回归验证
+- [x] 3. 建立 Bun 存储回归验证
   - 保留或完善 `scripts/verify-bun-storage.ts`。
   - 验证内容至少包含：创建数据库、运行 migration、查询 `drizzle_migrations`、执行 transaction、执行 checkpoint。
   - 将该脚本纳入 P0 验证清单。
   - 验收：`bun "scripts/verify-bun-storage.ts"` 输出 `{ "ok": true, "runtime": "bun" }`。
   - 覆盖 Requirements 2、4。
+  - 2026-04-25/26 补充验证：脚本已覆盖 migration、`drizzle_migrations` 查询、transaction 与 checkpoint；最新输出 `{"ok":true,"runtime":"bun","appliedMigrations":7,"recordedMigrations":7}`。
 
-- [ ] 4. 修复文件书籍与 SQLite book 表一致性
+- [x] 4. 修复文件书籍与 SQLite book 表一致性
   - 检查 `packages/studio/src/api/routes/storage.ts` 的建书流程。
   - 在本地书籍创建成功时，同步 upsert SQLite `book` 记录。
   - 确认书名、slug、bookId、display title 的规则，特别是中文书名。
@@ -37,14 +40,16 @@
   - 对已存在于 `books/` 但 SQLite 缺失的书籍提供非破坏性补录策略。
   - 验收：新建书籍后，书籍总览、故事经纬 API、会话中心都识别同一 bookId。
   - 覆盖 Requirements 3。
+  - 2026-04-25/26 补充验证：已补齐文件层建书时的 SQLite `book` upsert、故事经纬默认 sections 回填与删除链清理；`bun "scripts/verify-bun-runtime.ts"` 的 `book create smoke` 通过，创建后文件层、SQLite 层、`/api/books/:bookId/jingwei/sections` 与 `/api/sessions` 共用同一 `bookId`。
 
-- [ ] 5. 整理启动与发布 smoke 验证脚本
+- [x] 5. 整理启动与发布 smoke 验证脚本
   - 新增或整理一个 Bun-first 验证入口，例如 `scripts/verify-bun-runtime.ts`。
   - 聚合执行：core typecheck、studio client typecheck、studio server typecheck、Bun storage verification、Studio 启动 smoke。
   - 启动 smoke 校验：HTTP 首页可访问、provider missing 不阻断、WebSocket route 注册日志存在。
   - 记录失败分类：runtime / storage / frontend / websocket / provider / environment pollution。
   - 验收：一条 Bun 命令能完成 P0 smoke，并输出清晰摘要。
   - 覆盖 Requirements 4、5。
+  - 2026-04-25/26 补充验证：`scripts/verify-bun-runtime.ts` 已聚合 core/studio typecheck、Bun storage 验证、首页/provider/websocket/book-create smoke 与环境污染分类；最新输出 `counts.total=12, passed=12, failed=0`。
 
 - [x] 6. 保证 provider 后置不阻断基础路径
   - 复查 onboarding、BookCreate、BookDetail、AI actions 的 provider gate。
@@ -106,11 +111,12 @@
   - 覆盖 Requirements 6。
   - 2026-04-25 补充验证：WorkflowWorkbench 新增工具链入口与诊断面板，复用 Resources/Requests/Logs，WorkbenchModeGate 与 MCP 管理页补充 Terminal / Shell、Browser、MCP、Admin、Pipeline 权限/风险说明和返回作者模式路径；默认作者模式隐藏 Pipeline、守护进程、日志、Worktree 等 coder 向入口。验证通过：`pnpm --dir packages/studio exec vitest run src/components/workbench/WorkbenchModeGate.test.tsx src/pages/WorkflowWorkbench.test.tsx src/pages/MCPServerManager.test.tsx src/components/Sidebar.test.tsx`（10 tests passed）、`pnpm --dir packages/studio exec tsc --noEmit` 通过、`pnpm --dir packages/studio exec vitest run src/routes.test.ts src/hooks/use-tabs.test.ts`（37 tests passed）。
 
-- [ ] 12. 增强启动诊断与自愈链
+- [x] 12. 增强启动诊断与自愈链
   - 将 unclean shutdown、孤儿 session、外部 worktree 污染、静态资源模式、compile smoke 统一归类。
   - 提供可执行修复动作：清理孤儿 session、忽略外部 worktree、重新构建静态资源等。
   - 参考 NarraFork 的结构化启动日志，但文案面向 NovelFork 作者和维护者。
   - 覆盖 Requirements 4、8。
+  - 2026-04-25 补充验证：已统一 `unclean-shutdown`、孤儿 session、外部 worktree 污染、静态交付模式、compile smoke 为 startup health checks，并在 Admin Resources 提供 rerun/cleanup/ignore 等自愈动作。验证证据见 `startup-diagnostics.test.ts`、`startup-orchestrator.test.ts`、`ResourcesTab.test.tsx`、`admin.test.ts`、`server.test.ts` 中对应 case。
 
 - [x] 13. 设计更新机制与 changelog 入口
   - 显示当前版本、commit、运行时、构建来源。
@@ -119,11 +125,12 @@
   - 覆盖 Requirements 6、8。
   - 2026-04-25 补充验证：已新增 `settings/release` 路由、统一 `release-manifest` / `release-metadata`、About/Status 的 `ReleaseOverview` 与 UpdateChecker changelog 入口，展示当前版本、运行时、构建来源、commit 摘要及 stable/beta 通道占位。验证通过：`pnpm --dir packages/studio exec -- vitest run src/api/routes/settings.test.ts src/components/Settings/SettingsView.test.tsx src/components/UpdateChecker.test.tsx`（5 tests passed）。
 
-- [ ] 14. 作者化 Browser / 抓取能力
+- [x] 14. 作者化 Browser / 抓取能力
   - 评估 NarraFork Browser/readability 能力在 NovelFork 的映射：市场雷达、题材分析、素材导入。
   - 不把 Browser 作为默认一等入口。
   - 所有抓取结果进入可审阅素材区，不直接污染故事经纬。
   - 覆盖 Requirements 6。
+  - 2026-04-25 补充验证：`RadarView`、`ImportManager`、`WorkflowWorkbench` 与 `/api/radar/scan` 已把 Browser/readability 能力映射为市场雷达与网页素材导入，结果仅写入 `market_radar.md` / `web_materials.md` 等作者可审阅素材区，不暴露独立 Browser 入口。验证证据见 `RadarView.test.tsx`、`ImportManager.test.tsx`、`server.test.ts`、`WorkflowWorkbench.test.tsx`。
 
 - [x] 15. 权限系统产品化
   - 学习 NarraFork 的逐项询问、允许编辑、全部允许、只读、规划模式。
@@ -138,22 +145,4 @@
 - [ ] TanStack Router 全量迁移：不做，除非当前 Tab 路由复杂度失控。
 - [ ] NarraFork 节点图作为默认作者工作流：不做，改用书籍 / 章节 / 经纬 / 会话心智。
 - [ ] Terminal / Browser / NarraForkAdmin 作者默认入口：不做，只考虑高级工作台模式。
-- [ ] 完整 MCP 工具市场：不做，先保证写作闭环。
-级工作台模式。
-- [ ] 完整 MCP 工具市场：不做，先保证写作闭环。
-盖 Requirements 6、7。
-
-## 暂不执行项
-
-- [ ] Mantine UI 栈迁移：不做，保持 shadcn/Base UI。
-- [ ] TanStack Router 全量迁移：不做，除非当前 Tab 路由复杂度失控。
-- [ ] NarraFork 节点图作为默认作者工作流：不做，改用书籍 / 章节 / 经纬 / 会话心智。
-- [ ] Terminal / Browser / NarraForkAdmin 作者默认入口：不做，只考虑高级工作台模式。
-- [ ] 完整 MCP 工具市场：不做，先保证写作闭环。
-级工作台模式。
-- [ ] 完整 MCP 工具市场：不做，先保证写作闭环。
-��流：不做，改用书籍 / 章节 / 经纬 / 会话心智。
-- [ ] Terminal / Browser / NarraForkAdmin 作者默认入口：不做，只考虑高级工作台模式。
-- [ ] 完整 MCP 工具市场：不做，先保证写作闭环。
-级工作台模式。
 - [ ] 完整 MCP 工具市场：不做，先保证写作闭环。

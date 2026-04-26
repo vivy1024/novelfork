@@ -21,6 +21,10 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
+    "./compliance": {
+      "types": "./dist/compliance/index.d.ts",
+      "import": "./dist/compliance/index.js"
+    },
     "./runtime/process-adapter": {
       "types": "./dist/runtime/process-adapter.d.ts",
       "import": "./dist/runtime/process-adapter.js"
