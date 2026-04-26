@@ -3,6 +3,11 @@ import { chatCompletion } from "../llm/provider.js";
 import { searchWeb, fetchUrl } from "../utils/web-search.js";
 import type { Logger } from "../utils/logger.js";
 
+function summarizeError(error: unknown, maxLength = 160): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.length > maxLength ? `${message.slice(0, maxLength - 1)}…` : message;
+}
+
 export interface AgentContext {
   readonly client: LLMClient;
   readonly model: string;
@@ -27,10 +32,47 @@ export abstract class BaseAgent {
     messages: ReadonlyArray<LLMMessage>,
     options?: { readonly temperature?: number; readonly maxTokens?: number },
   ): Promise<LLMResponse> {
-    return chatCompletion(this.ctx.client, this.ctx.model, messages, {
-      ...options,
-      onStreamProgress: this.ctx.onStreamProgress,
-    });
+    const startedAt = Date.now();
+    try {
+      const response = await chatCompletion(this.ctx.client, this.ctx.model, messages, {
+        ...options,
+        onStreamProgress: this.ctx.onStreamProgress,
+      });
+      this.log?.info("AI request completed", {
+        eventType: "ai.request",
+        requestDomain: "ai",
+        endpoint: `llm://agent/${this.name}`,
+        method: "LLM",
+        requestKind: "agent-chat",
+        narrator: this.name,
+        provider: this.ctx.client.provider,
+        model: this.ctx.model,
+        bookId: this.ctx.bookId,
+        durationMs: Date.now() - startedAt,
+        status: "success",
+        promptTokens: response.usage.promptTokens,
+        completionTokens: response.usage.completionTokens,
+        totalTokens: response.usage.totalTokens,
+        tokenSource: "actual",
+      });
+      return response;
+    } catch (error) {
+      this.log?.error("AI request failed", {
+        eventType: "ai.request",
+        requestDomain: "ai",
+        endpoint: `llm://agent/${this.name}`,
+        method: "LLM",
+        requestKind: "agent-chat",
+        narrator: this.name,
+        provider: this.ctx.client.provider,
+        model: this.ctx.model,
+        bookId: this.ctx.bookId,
+        durationMs: Date.now() - startedAt,
+        status: "error",
+        errorSummary: summarizeError(error),
+      });
+      throw error;
+    }
   }
 
   /**
@@ -44,11 +86,48 @@ export abstract class BaseAgent {
   ): Promise<LLMResponse> {
     // OpenAI has native search — use it directly
     if (this.ctx.client.provider === "openai") {
-      return chatCompletion(this.ctx.client, this.ctx.model, messages, {
-        ...options,
-        webSearch: true,
-        onStreamProgress: this.ctx.onStreamProgress,
-      });
+      const startedAt = Date.now();
+      try {
+        const response = await chatCompletion(this.ctx.client, this.ctx.model, messages, {
+          ...options,
+          webSearch: true,
+          onStreamProgress: this.ctx.onStreamProgress,
+        });
+        this.log?.info("AI request completed", {
+          eventType: "ai.request",
+          requestDomain: "ai",
+          endpoint: `llm://agent/${this.name}/search`,
+          method: "LLM",
+          requestKind: "agent-search",
+          narrator: this.name,
+          provider: this.ctx.client.provider,
+          model: this.ctx.model,
+          bookId: this.ctx.bookId,
+          durationMs: Date.now() - startedAt,
+          status: "success",
+          promptTokens: response.usage.promptTokens,
+          completionTokens: response.usage.completionTokens,
+          totalTokens: response.usage.totalTokens,
+          tokenSource: "actual",
+        });
+        return response;
+      } catch (error) {
+        this.log?.error("AI request failed", {
+          eventType: "ai.request",
+          requestDomain: "ai",
+          endpoint: `llm://agent/${this.name}/search`,
+          method: "LLM",
+          requestKind: "agent-search",
+          narrator: this.name,
+          provider: this.ctx.client.provider,
+          model: this.ctx.model,
+          bookId: this.ctx.bookId,
+          durationMs: Date.now() - startedAt,
+          status: "error",
+          errorSummary: summarizeError(error),
+        });
+        throw error;
+      }
     }
 
     // Other providers: self-hosted search → inject results into prompt

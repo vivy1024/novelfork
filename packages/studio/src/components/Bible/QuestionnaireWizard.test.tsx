@@ -3,9 +3,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 const postApiMock = vi.fn();
+const useApiMock = vi.fn();
 
 vi.mock("../../hooks/use-api", () => ({
   postApi: (...args: unknown[]) => postApiMock(...args),
+  useApi: (...args: unknown[]) => useApiMock(...args),
 }));
 
 import { QuestionnaireWizard, type QuestionnaireTemplateView } from "./QuestionnaireWizard";
@@ -23,6 +25,18 @@ const template: QuestionnaireTemplateView = {
 describe("QuestionnaireWizard", () => {
   beforeEach(() => {
     postApiMock.mockReset();
+    useApiMock.mockReset();
+    useApiMock.mockImplementation((path: string) => {
+      if (path === "/providers/status") {
+        return {
+          data: { status: { hasUsableModel: true } },
+          loading: false,
+          error: null,
+          refetch: vi.fn(),
+        };
+      }
+      return { data: null, loading: false, error: null, refetch: vi.fn() };
+    });
   });
 
   afterEach(() => cleanup());
@@ -60,5 +74,34 @@ describe("QuestionnaireWizard", () => {
       status: "draft",
       answers: { logline: "先存草稿" },
     }));
+  });
+
+  it("gates AI suggestions without clearing the current questionnaire answer", async () => {
+    useApiMock.mockImplementation((path: string) => {
+      if (path === "/providers/status") {
+        return {
+          data: { status: { hasUsableModel: false } },
+          loading: false,
+          error: null,
+          refetch: vi.fn(),
+        };
+      }
+      return { data: null, loading: false, error: null, refetch: vi.fn() };
+    });
+    const onConfigureModel = vi.fn();
+
+    render(<QuestionnaireWizard bookId="book-1" template={template} onConfigureModel={onConfigureModel} />);
+    fireEvent.change(screen.getByLabelText("一句话"), { target: { value: "保留当前上下文" } });
+    fireEvent.click(screen.getByRole("button", { name: "AI 建议" }));
+
+    expect(await screen.findByText("此功能需要配置 AI 模型")).toBeTruthy();
+    expect(screen.getByDisplayValue("保留当前上下文")).toBeTruthy();
+    expect(postApiMock).not.toHaveBeenCalledWith(
+      "/books/book-1/questionnaires/tier1-common-premise/ai-suggest",
+      expect.anything(),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "配置模型" }));
+    expect(onConfigureModel).toHaveBeenCalledTimes(1);
   });
 });

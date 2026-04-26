@@ -1,6 +1,11 @@
 import type { LLMClient, OnStreamProgress } from "../llm/provider.js";
 import { chatCompletion, createLLMClient } from "../llm/provider.js";
 import type { Logger } from "../utils/logger.js";
+
+function summarizeAiRequestError(error: unknown, maxLength = 160): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.length > maxLength ? `${message.slice(0, maxLength - 1)}…` : message;
+}
 import type { BookConfig, FanficMode } from "../models/book.js";
 import type { ChapterMeta } from "../models/chapter.js";
 import type { NotifyChannel, LLMConfig, AgentLLMOverride, InputGovernanceMode } from "../models/project.js";
@@ -1835,7 +1840,8 @@ export class PipelineRunner {
     await writeFile(join(storyDir, "style_profile.json"), JSON.stringify(profile, null, 2), "utf-8");
 
     // LLM qualitative extraction
-    const response = await chatCompletion(this.config.client, this.config.model, [
+    const styleGuideStartedAt = Date.now();
+    const styleGuideMessages: { role: "system" | "user"; content: string }[] = [
       {
         role: "system",
         content: `你是一位文学风格分析专家。分析参考文本的写作风格，提取可供模仿的定性特征。
@@ -1871,7 +1877,43 @@ export class PipelineRunner {
         role: "user",
         content: `分析以下参考文本的写作风格：\n\n${referenceText.slice(0, 20000)}`,
       },
-    ], { temperature: 0.3, maxTokens: 4096 });
+    ];
+    const response = await chatCompletion(this.config.client, this.config.model, styleGuideMessages, { temperature: 0.3, maxTokens: 4096 }).then((result) => {
+      this.config.logger?.info("AI request completed", {
+        eventType: "ai.request",
+        requestDomain: "ai",
+        endpoint: "llm://pipeline/style-guide",
+        method: "LLM",
+        requestKind: "style-guide",
+        narrator: "pipeline.style-guide",
+        provider: this.config.client.provider,
+        model: this.config.model,
+        bookId,
+        durationMs: Date.now() - styleGuideStartedAt,
+        status: "success",
+        promptTokens: result.usage.promptTokens,
+        completionTokens: result.usage.completionTokens,
+        totalTokens: result.usage.totalTokens,
+        tokenSource: "actual",
+      });
+      return result;
+    }, (error) => {
+      this.config.logger?.error("AI request failed", {
+        eventType: "ai.request",
+        requestDomain: "ai",
+        endpoint: "llm://pipeline/style-guide",
+        method: "LLM",
+        requestKind: "style-guide",
+        narrator: "pipeline.style-guide",
+        provider: this.config.client.provider,
+        model: this.config.model,
+        bookId,
+        durationMs: Date.now() - styleGuideStartedAt,
+        status: "error",
+        errorSummary: summarizeAiRequestError(error),
+      });
+      throw error;
+    });
 
     await writeFile(join(storyDir, "style_guide.md"), response.content, "utf-8");
     return response.content;
@@ -1914,7 +1956,8 @@ export class PipelineRunner {
         readSafe(join(parentDir, "story/character_matrix.md")),
       ]);
 
-    const response = await chatCompletion(this.config.client, this.config.model, [
+    const importCanonStartedAt = Date.now();
+    const importCanonMessages: { role: "system" | "user"; content: string }[] = [
       {
         role: "system",
         content: `你是一位网络小说架构师。基于正传的全部设定和状态文件，生成一份完整的"正传正典参照"文档，供番外写作和审计使用。
@@ -1993,7 +2036,43 @@ ${emotions}
 ## 正传角色矩阵
 ${matrix}`,
       },
-    ], { temperature: 0.3, maxTokens: 16384 });
+    ];
+    const response = await chatCompletion(this.config.client, this.config.model, importCanonMessages, { temperature: 0.3, maxTokens: 16384 }).then((result) => {
+      this.config.logger?.info("AI request completed", {
+        eventType: "ai.request",
+        requestDomain: "ai",
+        endpoint: "llm://pipeline/import-canon",
+        method: "LLM",
+        requestKind: "import-canon",
+        narrator: "pipeline.import-canon",
+        provider: this.config.client.provider,
+        model: this.config.model,
+        bookId: targetBookId,
+        durationMs: Date.now() - importCanonStartedAt,
+        status: "success",
+        promptTokens: result.usage.promptTokens,
+        completionTokens: result.usage.completionTokens,
+        totalTokens: result.usage.totalTokens,
+        tokenSource: "actual",
+      });
+      return result;
+    }, (error) => {
+      this.config.logger?.error("AI request failed", {
+        eventType: "ai.request",
+        requestDomain: "ai",
+        endpoint: "llm://pipeline/import-canon",
+        method: "LLM",
+        requestKind: "import-canon",
+        narrator: "pipeline.import-canon",
+        provider: this.config.client.provider,
+        model: this.config.model,
+        bookId: targetBookId,
+        durationMs: Date.now() - importCanonStartedAt,
+        status: "error",
+        errorSummary: summarizeAiRequestError(error),
+      });
+      throw error;
+    });
 
     // Append deterministic meta block (LLM may hallucinate timestamps)
     const metaBlock = [
@@ -2471,8 +2550,8 @@ ${matrix}`,
           if (!this.memoryIndexFallbackWarned) {
             this.memoryIndexFallbackWarned = true;
             this.logWarn(await this.resolveBookLanguageById(bookId), {
-              zh: "当前 Node 运行时不支持 SQLite 记忆索引，继续使用 Markdown 回退方案。",
-              en: "SQLite memory index unavailable on this Node runtime; continuing with markdown fallback.",
+              zh: "当前 Bun SQLite 记忆索引不可用，继续使用 Markdown 回退方案。",
+              en: "SQLite memory index unavailable on this Bun runtime; continuing with markdown fallback."
             });
             await this.logMemoryIndexDebugInfo(bookId, error);
           }
@@ -2521,8 +2600,8 @@ ${matrix}`,
           if (!this.memoryIndexFallbackWarned) {
             this.memoryIndexFallbackWarned = true;
             this.logWarn(await this.resolveBookLanguageById(bookId), {
-              zh: "当前 Node 运行时不支持 SQLite 记忆索引，继续使用 Markdown 回退方案。",
-              en: "SQLite memory index unavailable on this Node runtime; continuing with markdown fallback.",
+              zh: "当前 Bun SQLite 记忆索引不可用，继续使用 Markdown 回退方案。",
+              en: "SQLite memory index unavailable on this Bun runtime; continuing with markdown fallback."
             });
             await this.logMemoryIndexDebugInfo(bookId, error);
           }
@@ -2671,9 +2750,9 @@ ${matrix}`,
       : String(error);
     const normalizedMessage = message.trim();
 
-    return /^No such built-in module:\s*node:sqlite$/i.test(normalizedMessage)
-      || /^Cannot find module ['"]node:sqlite['"]$/i.test(normalizedMessage)
-      || (code === "ERR_UNKNOWN_BUILTIN_MODULE" && /\bnode:sqlite\b/i.test(normalizedMessage));
+    return /^No such built-in module:\s*bun:sqlite$/i.test(normalizedMessage)
+      || /^Cannot find module ['"]bun:sqlite['"]$/i.test(normalizedMessage)
+      || (code === "ERR_UNKNOWN_BUILTIN_MODULE" && /\bbun:sqlite\b/i.test(normalizedMessage));
   }
 
   private isMemoryIndexBusyError(error: unknown): boolean {

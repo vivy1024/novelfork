@@ -23,6 +23,46 @@ vi.mock("@/hooks/use-api", () => ({
         refetch: vi.fn(),
       };
     }
+    if (path === "/settings/release") {
+      return {
+        data: {
+          appName: "NovelFork Studio",
+          version: "0.0.1",
+          runtime: "bun",
+          runtimeLabel: "Bun 本地单体",
+          buildSource: "bun-source-server",
+          buildLabel: "源码启动（Bun）",
+          commit: "abc123def456",
+          changelogUrl: "https://github.com/vivy1024/novelfork/releases",
+          summary: "把版本、运行时与更新节奏放到作者看得懂的位置。",
+          channels: [
+            {
+              id: "stable",
+              label: "稳定通道",
+              description: "默认推荐，适合长期连载、日更与正式写作项目，更新节奏更稳。",
+              available: true,
+              current: true,
+            },
+            {
+              id: "beta",
+              label: "Beta 通道",
+              description: "预留给抢先体验桌面更新与平台升级的作者。",
+              available: false,
+            },
+          ],
+          changelog: [
+            {
+              title: "版本信息终于说人话了",
+              summary: "作者能直接知道自己手上的工作台来自哪套构建。",
+              highlights: ["显示版本、运行时与构建来源"],
+            },
+          ],
+        },
+        loading: false,
+        error: null,
+        refetch: vi.fn(),
+      };
+    }
     return { data: null, loading: false, error: null, refetch: vi.fn() };
   },
 }));
@@ -63,5 +103,15 @@ describe("SettingsView", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: "状态" }));
     expect(await screen.findByText("系统状态")).toBeTruthy();
+  });
+
+  it("renders author-facing release notes in the about section", async () => {
+    render(<SettingsView nav={{}} theme="light" t={t} section="about" />);
+
+    expect(screen.getByRole("heading", { name: "关于这台工作台" })).toBeTruthy();
+    expect(await screen.findByText("版本信息终于说人话了")).toBeTruthy();
+    expect(screen.getAllByText("稳定通道").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Beta 通道").length).toBeGreaterThan(0);
+    expect(screen.getByText("abc123def456")).toBeTruthy();
   });
 });

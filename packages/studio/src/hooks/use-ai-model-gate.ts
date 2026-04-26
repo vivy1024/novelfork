@@ -1,7 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 
-import { requireModelForAiAction, type AiAction, type ProviderRuntimeStatus } from "@/api/lib/ai-gate";
-import type { AiGateResult } from "@/api/lib/ai-gate";
+import { requireModelForAiAction, type AiAction, type ProviderRuntimeStatus, type AiGateResult } from "@/lib/ai-gate";
 
 import { useApi } from "./use-api";
 

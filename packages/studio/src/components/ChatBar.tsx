@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from "react";
+import { AiModelRequiredDialog } from "@/components/ai/AiModelRequiredDialog";
+import { useAiModelGate } from "@/hooks/use-ai-model-gate";
 import type { TFunction } from "../hooks/use-i18n";
 import type { SSEMessage } from "../hooks/use-sse";
 import { cn } from "../lib/utils";
@@ -192,16 +194,18 @@ function QuickChip({ icon, label, onClick }: {
 
 // ── Main Component ──
 
-export function ChatPanel({ open, onClose, t, sse, activeBookId }: {
+export function ChatPanel({ open, onClose, t, sse, activeBookId, onConfigureModel }: {
   readonly open: boolean;
   readonly onClose: () => void;
   readonly t: TFunction;
   readonly sse: { messages: ReadonlyArray<SSEMessage>; connected: boolean };
   readonly activeBookId?: string;
+  readonly onConfigureModel?: () => void;
 }) {
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<ReadonlyArray<ChatMessage>>([]);
   const [loading, setLoading] = useState(false);
+  const { ensureModelFor, blockedResult, closeGate } = useAiModelGate();
   const inputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -267,10 +271,6 @@ export function ChatPanel({ open, onClose, t, sse, activeBookId }: {
     const text = input.trim();
     if (!text || loading) return;
 
-    setInput("");
-    setMessages((prev) => [...prev, { role: "user", content: text, timestamp: Date.now() }]);
-    setLoading(true);
-
     const lower = text.toLowerCase();
 
     try {
@@ -278,27 +278,42 @@ export function ChatPanel({ open, onClose, t, sse, activeBookId }: {
         const { books } = await fetchJson<{ books: ReadonlyArray<BookRef> }>("/books");
         const target = resolveDirectWriteTarget(activeBookId, books);
 
-        if (target.bookId) {
-          setMessages((prev) => [...prev, {
+        if (!target.bookId) {
+          setInput("");
+          setMessages((prev) => [...prev, { role: "user", content: text, timestamp: Date.now() }, {
             role: "assistant",
-            content: isZh ? `⋯ 开始处理《${target.bookId}》...` : `⋯ Starting ${target.bookId}...`,
+            content:
+              target.reason === "missing"
+                ? (isZh ? "✗ 还没有书，先创建一本再写。" : "✗ No books yet. Create one first.")
+                : (isZh ? "✗ 当前有多本书，请先打开目标书籍后再执行“写下一章”。" : '✗ Multiple books found. Open the target book first, then run "write next".'),
             timestamp: Date.now(),
           }]);
-          await postApi(`/books/${target.bookId}/write-next`, {});
           return;
         }
 
-        setLoading(false);
+        if (!ensureModelFor("ai-writing")) {
+          return;
+        }
+
+        setInput("");
+        setMessages((prev) => [...prev, { role: "user", content: text, timestamp: Date.now() }]);
+        setLoading(true);
         setMessages((prev) => [...prev, {
           role: "assistant",
-          content:
-            target.reason === "missing"
-              ? (isZh ? "✗ 还没有书，先创建一本再写。" : "✗ No books yet. Create one first.")
-              : (isZh ? "✗ 当前有多本书，请先打开目标书籍后再执行“写下一章”。" : '✗ Multiple books found. Open the target book first, then run "write next".'),
+          content: isZh ? `⋯ 开始处理《${target.bookId}》...` : `⋯ Starting ${target.bookId}...`,
           timestamp: Date.now(),
         }]);
+        await postApi(`/books/${target.bookId}/write-next`, {});
         return;
       }
+
+      if (!ensureModelFor("workbench-agent")) {
+        return;
+      }
+
+      setInput("");
+      setMessages((prev) => [...prev, { role: "user", content: text, timestamp: Date.now() }]);
+      setLoading(true);
 
       const data = await fetchJson<{ response?: string; error?: string }>("/agent", {
         method: "POST",
@@ -495,6 +510,15 @@ export function ChatPanel({ open, onClose, t, sse, activeBookId }: {
           </div>
         </>
       )}
+      <AiModelRequiredDialog
+        open={Boolean(blockedResult)}
+        message={blockedResult?.message ?? ""}
+        onCancel={closeGate}
+        onConfigureModel={() => {
+          closeGate();
+          onConfigureModel?.();
+        }}
+      />
     </aside>
   );
 }

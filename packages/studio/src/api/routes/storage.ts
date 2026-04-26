@@ -42,7 +42,7 @@ const TRUTH_FILES = [
   "particle_ledger.md", "pending_hooks.md", "chapter_summaries.md",
   "subplot_board.md", "emotional_arcs.md", "character_matrix.md",
   "style_guide.md", "parent_canon.md", "fanfic_canon.md", "book_rules.md",
-  "author_intent.md", "current_focus.md",
+  "author_intent.md", "current_focus.md", "market_radar.md", "web_materials.md",
 ];
 
 interface ProjectWorktreeOwnership {

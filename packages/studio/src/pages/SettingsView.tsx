@@ -26,6 +26,7 @@ import { EditorPanel } from "./settings/EditorPanel";
 import { MonitoringPanel } from "./settings/MonitoringPanel";
 import { ProfilePanel } from "./settings/ProfilePanel";
 import { RuntimeControlPanel } from "./settings/RuntimeControlPanel";
+import { ReleaseOverview } from "../components/Settings/ReleaseOverview";
 
 interface Props {
   nav: unknown;
@@ -146,17 +147,12 @@ export function SettingsView({
               {activeSection === "about" && (
                 <div className="space-y-4">
                   <div>
-                    <p className="mb-1 text-sm text-muted-foreground">应用名称</p>
-                    <p className="font-medium text-foreground">NovelFork Studio</p>
+                    <h2 className="text-2xl font-bold text-foreground">关于这台工作台</h2>
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      这里不只展示冷冰冰的版本号，也会说明你当前拿到的是哪套构建、该走什么更新节奏，以及这一版对作者写作路径意味着什么。
+                    </p>
                   </div>
-                  <div>
-                    <p className="mb-1 text-sm text-muted-foreground">版本</p>
-                    <p className="font-medium text-foreground">v2.0.0</p>
-                  </div>
-                  <div>
-                    <p className="mb-1 text-sm text-muted-foreground">描述</p>
-                    <p className="text-foreground">AI 驱动的小说创作工作台</p>
-                  </div>
+                  <ReleaseOverview variant="about" />
                 </div>
               )}
             </CardContent>

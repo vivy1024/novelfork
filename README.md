@@ -12,7 +12,7 @@
 - **故事经纬（内部 legacy Bible 命名兼容保留）**：结构化管理角色 / 事件 / 设定 / 章节摘要 / 矛盾 / 世界模型 / 故事基线 / 角色弧线，AI 按可见性规则精准注入上下文
 - **强制 AI 味过滤**：12 本地特征规则 + 可选腾讯朱雀 API 双检 + 消 AI 味 7 招预设，写作管线必经一层（起点 / 晋江 / 番茄平台合规刚需）
 - **引导式创作**：问卷系统引导建书、CoreShift 变更协议管理核心设定漂移、PGI（Pre-Generation Interrogation）在每章生成前用启发式问题把作者意图显性化
-- **本地优先**：SQLite + drizzle ORM，Bun 单入口，`bun compile` 单可执行文件分发
+- **本地优先**：Bun 单入口 + Hono 本地服务 + React 19 工作台 + SQLite（`bun:sqlite`）+ drizzle，`bun compile` 单可执行文件分发
 
 ---
 
@@ -23,9 +23,11 @@
 | 运行时 | Bun |
 | 前端 | React 19 + Vite + TailwindCSS |
 | 后端 | Hono（本地 HTTP + WebSocket） |
-| 存储 | SQLite（better-sqlite3）+ drizzle ORM |
+| 存储 | SQLite（bun:sqlite）+ drizzle ORM |
 | AI | 多 Agent 写作管线（规划 → 编排 → 写作 → 审计 → 修订） |
 | 分发 | `bun compile` → 单可执行文件 |
+
+> 方向边界：NovelFork 学的是 NarraFork 已验证的平台底座（Bun / Hono / React 19 / SQLite + drizzle / WebSocket / 诊断链），不是照抄 NarraFork 的 Mantine、TanStack Router 或 coder 向默认 UI 依赖。
 
 ---
 
@@ -51,8 +53,9 @@ novelfork/
 ```bash
 git clone https://github.com/vivy1024/novelfork.git
 cd novelfork
-pnpm install
-pnpm dev          # 开发模式（Vite HMR）
+pnpm install              # 当前仓库仍用 pnpm 管理 workspace 依赖
+bun run main.ts           # 源码启动首选口径（Bun runtime）
+pnpm --dir packages/studio dev  # 仅前端开发时使用 Vite HMR
 ```
 
 首次打开 Studio 时，建议先配置 AI 模型；但这不是强制前置。未配置模型时，你仍然可以继续创建本地书籍、整理故事经纬、编辑章节正文。AI 续写、评点、深度 AI 味检测和工作台 Agent 任务会在真正调用时再提示配置模型。
@@ -99,7 +102,7 @@ pnpm bun:compile  # 编译为单可执行文件
 | 文档中心 | [docs/README.md](./docs/README.md) |
 | 系统架构 | [docs/02-核心架构/01-系统架构/](./docs/02-核心架构/01-系统架构/) |
 | 小说写作与 AI 调研 | [docs/03-代码参考/07-小说写作与AI调研.md](./docs/03-代码参考/07-小说写作与AI调研.md) |
-| 存储层开发指引 | docs/04-开发指南/存储层开发指引.md（待创建） |
+| 存储层开发指引 | [docs/04-开发指南/存储层开发指引.md](./docs/04-开发指南/存储层开发指引.md) |
 | Spec 文档 | [.kiro/specs/](./.kiro/specs/) |
 
 ---

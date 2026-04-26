@@ -3,6 +3,7 @@
 > **范围声明**：本文是 Package 6 / 7.5 的**纯调研产物**。
 > 不改生产代码，不进行数据迁移，只回答"如果将来要迁，代价/收益/风险是什么"。
 > 决定权留给后续独立 spec，不在本包实现。
+> **当前口径更新**：NovelFork 现行运行时与存储落地已经明确为 Bun-only `bun:sqlite + drizzle`。本文保留的是历史 spike，不代表当前推荐方案。
 
 **创建日期**: 2026-04-24
 **对应任务**: `.kiro/specs/novelfork-narrafork-closure/tasks.md` § 7.5
@@ -17,7 +18,7 @@
 | 是否应迁 | **暂不迁**。当前量级与访问模式下，文件系统方案的稳定性/可读性/排障成本仍优于引入数据库 |
 | 迁了能得到什么 | FTS 搜索、事务保证、并发读写、启动迁移化、history 翻页 O(1) |
 | 迁了会失去什么 | 可手动 `cat`/`git diff` 的纯文本资产、低门槛恢复路径、跨平台构建简单性 |
-| 若要迁，首选方案 | Tauri 侧用 `@tauri-apps/plugin-sql`（SQLCipher 可选），Node/Bun 侧用 `better-sqlite3 + drizzle-orm`；通过 `packages/core/src/storage/adapter.ts` 接口层隔离 |
+| 若要迁，首选方案 | 这是历史 spike 结论：Tauri 侧用 `@tauri-apps/plugin-sql`（SQLCipher 可选），Node/Bun 侧用 `better-sqlite3 + drizzle-orm`；当前实际产品口径已改为 Bun-only `bun:sqlite + drizzle`，此处仅保留调研背景 |
 | 首个迁移对象 | **sessions + session-history**（JSON 文件已暴露扩展瓶颈），而非章节正文 |
 
 ---
@@ -64,7 +65,7 @@ Studio 层（`packages/studio/src/api/lib/`）另外维护：
 
 > 依据：原 `06-Studio-UIUX改造清单.md`（已退役）明确提到 NarraFork 启动阶段跑 **Drizzle migration**，异常退出后会 **重建 FTS 索引**。
 
-- 栈：`better-sqlite3` + `drizzle-orm` + `drizzle-kit`（migration 生成）
+- 栈：NarraFork / 历史 spike 观察到的是 `better-sqlite3` + `drizzle-orm` + `drizzle-kit`（migration 生成）；NovelFork 当前实际落地则是 `bun:sqlite + drizzle`
 - 部署形态：embedded SQLite 文件 + migration 文件夹随二进制一起分发
 - 启动流程：
   1. 打开 db 文件 → 跑 pending migration（drizzle-kit 生成的 `.sql`）

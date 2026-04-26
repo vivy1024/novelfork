@@ -83,7 +83,7 @@ describe("GettingStartedChecklist", () => {
     expect(screen.getAllByText("已完成").length).toBeGreaterThanOrEqual(2);
   });
 
-  it("routes AI writing attempts without a model back to model configuration", () => {
+  it("delegates AI writing attempts to the parent gate even when no model is configured", () => {
     const onConfigureModel = vi.fn();
     const onTryAiWriting = vi.fn();
 
@@ -103,8 +103,8 @@ describe("GettingStartedChecklist", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /试用 AI 写作与评点/ }));
 
-    expect(onConfigureModel).toHaveBeenCalledTimes(1);
-    expect(onTryAiWriting).not.toHaveBeenCalled();
+    expect(onTryAiWriting).toHaveBeenCalledTimes(1);
+    expect(onConfigureModel).not.toHaveBeenCalled();
   });
 
   it("can be dismissed without affecting the rest of the dashboard", () => {

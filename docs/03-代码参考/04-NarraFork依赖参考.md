@@ -11,10 +11,12 @@
 
 本文件记录 NarraFork v0.1.17 的依赖结构，用来帮助判断 NovelFork 应向什么样的平台靠拢。
 
+> 口径说明：这里记录的是 **NarraFork 的依赖快照**，不是 NovelFork 当前要逐包照抄的清单。NovelFork 当前实际落地为 Bun-only `bun:sqlite + drizzle`，并继续保持 React 19 + Hono 的本地工作台路线。
+
 重点不是逐包照抄，而是观察 NarraFork 已经验证过的能力组合：
 - Bun 运行时
 - Hono 本地服务
-- better-sqlite3 + drizzle 数据层
+- 本地 SQLite + drizzle 的结构化存储思路（NovelFork 当前落地为 `bun:sqlite + drizzle`，不把 `better-sqlite3` 当现行运行时方向）
 - React 19 前端
 - MCP、PTY、浏览器抓取、拖拽、流程图、i18n 等外围基础设施
 
@@ -104,12 +106,12 @@
 
 ### 值得重点参考
 1. **Bun 运行时与单文件分发**
-2. **better-sqlite3 + drizzle 的本地数据库组合**
+2. **SQLite + drizzle 的本地数据库组合思路**（NovelFork 当前使用 `bun:sqlite + drizzle`）
 3. **Hono + React 19 的本地应用壳**
 4. **MCP / PTY / 浏览器工具形成的完整本地 AI 工作台能力**
 
 ### 不必机械照抄
-1. Mantine（NovelFork 当前是 shadcn / Base UI）
+1. Mantine（NovelFork 当前保持 React 19 + Tailwind + shadcn/Base UI，不做 Mantine parity 迁移）
 2. TanStack Router（NovelFork 目前不一定需要立刻切）
 3. 某些和通用 AI 编程工作台强相关、但与网文写作关联不大的外围能力
 

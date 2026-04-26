@@ -90,6 +90,14 @@ function mockApi({ dismissedGettingStarted = false } = {}) {
     if (path === "/daily-stats") {
       return { data: null, loading: false, error: null, refetch: vi.fn() };
     }
+    if (path === "/providers/status") {
+      return {
+        data: { status: { hasUsableModel: false } },
+        loading: false,
+        error: null,
+        refetch: vi.fn(),
+      };
+    }
     return { data: null, loading: false, error: null, refetch: vi.fn() };
   });
 }
@@ -120,6 +128,7 @@ describe("Dashboard getting started checklist", () => {
           toBook: vi.fn(),
           toAnalytics: vi.fn(),
           toBookCreate: vi.fn(),
+          toAdmin: vi.fn(),
         }}
         sse={{ messages: [] }}
         theme="light"
@@ -141,6 +150,7 @@ describe("Dashboard getting started checklist", () => {
           toBook: vi.fn(),
           toAnalytics: vi.fn(),
           toBookCreate: vi.fn(),
+          toAdmin: vi.fn(),
         }}
         sse={{ messages: [] }}
         theme="light"
@@ -167,6 +177,7 @@ describe("Dashboard getting started checklist", () => {
           toBook: vi.fn(),
           toAnalytics: vi.fn(),
           toBookCreate: vi.fn(),
+          toAdmin: vi.fn(),
         }}
         sse={{ messages: [] }}
         theme="light"
@@ -180,5 +191,47 @@ describe("Dashboard getting started checklist", () => {
       method: "PATCH",
       body: JSON.stringify({ dismissedGettingStarted: false }),
     }));
+  });
+
+  it("shows the AI gate instead of posting write-next when checklist CTA has no model", async () => {
+    render(
+      <Dashboard
+        nav={{
+          toBook: vi.fn(),
+          toAnalytics: vi.fn(),
+          toBookCreate: vi.fn(),
+          toAdmin: vi.fn(),
+        }}
+        sse={{ messages: [] }}
+        theme="light"
+        t={t}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /试用 AI 写作与评点/ }));
+
+    expect(await screen.findByText("此功能需要配置 AI 模型")).toBeTruthy();
+    expect(postApiMock).not.toHaveBeenCalled();
+  });
+
+  it("shows the AI gate instead of posting card write-next when no model is configured", async () => {
+    render(
+      <Dashboard
+        nav={{
+          toBook: vi.fn(),
+          toAnalytics: vi.fn(),
+          toBookCreate: vi.fn(),
+          toAdmin: vi.fn(),
+        }}
+        sse={{ messages: [] }}
+        theme="light"
+        t={t}
+      />,
+    );
+
+    fireEvent.click(screen.getAllByRole("button", { name: "写下一章" })[0]!);
+
+    expect(await screen.findByText("此功能需要配置 AI 模型")).toBeTruthy();
+    expect(postApiMock).not.toHaveBeenCalled();
   });
 });

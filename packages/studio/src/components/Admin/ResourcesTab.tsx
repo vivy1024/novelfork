@@ -3,7 +3,7 @@
  */
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Activity, Cpu, HardDrive, Network, RefreshCw, Search, Server } from "lucide-react";
+import { Activity, Cpu, HardDrive, Network, RefreshCw, Search, Server, ShieldAlert, Wrench } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,6 @@ interface ResourceStats {
   network: { sent: number; received: number; available: boolean };
   sampledAt: string;
 }
-
 
 interface StorageChild {
   name: string;
@@ -85,11 +84,18 @@ type StartupFailurePhase =
   | "provider-availability";
 
 interface StartupDecisionAction {
-  kind: "repair-runtime-state" | "rebuild-search-index" | "rerun-startup-recovery" | "manual-check";
+  kind:
+    | "repair-runtime-state"
+    | "rebuild-search-index"
+    | "rerun-startup-recovery"
+    | "cleanup-session-history"
+    | "ignore-external-worktrees"
+    | "manual-check";
   label: string;
   endpoint?: string;
   method?: "POST";
   payload?: Record<string, string>;
+  detail?: string;
 }
 
 interface StartupDecision {
@@ -99,6 +105,18 @@ interface StartupDecision {
   title: string;
   description: string;
   action: StartupDecisionAction;
+}
+
+interface StartupHealthCheck {
+  id: string;
+  category: "runtime" | "session" | "workspace" | "delivery" | "provider";
+  phase: "unclean-shutdown" | "session-store" | "git-worktree-pollution" | "static-delivery" | "compile-smoke" | "provider-availability";
+  title: string;
+  summary: string;
+  status: "healthy" | "warning" | "error";
+  source: "diagnostic" | "delivery";
+  detail?: string;
+  action?: StartupDecisionAction;
 }
 
 interface StartupSummarySnapshot {
@@ -128,6 +146,7 @@ interface StartupSummarySnapshot {
     phase: StartupFailurePhase;
     message: string;
   }>;
+  healthChecks?: readonly StartupHealthCheck[];
   decisions?: StartupDecision[];
 }
 
@@ -226,37 +245,46 @@ export function ResourcesTab() {
     }
   };
 
-  const executeStartupDecision = async (decision: StartupDecision) => {
-    if (!decision.action.endpoint || decision.action.kind === "manual-check") {
+  const executeStartupAction = async (actionId: string, action: StartupDecisionAction, fallbackTitle: string) => {
+    if (!action.endpoint || action.kind === "manual-check") {
       return;
     }
 
     setLoading(true);
     setError(null);
-    setPendingAction(decision.id);
+    setPendingAction(actionId);
 
     try {
       const requestInit: RequestInit = {
-        method: decision.action.method ?? "POST",
+        method: action.method ?? "POST",
       };
-      if (decision.action.payload) {
-        requestInit.body = JSON.stringify(decision.action.payload);
+      if (action.payload) {
+        requestInit.body = JSON.stringify(action.payload);
         requestInit.headers = { "Content-Type": "application/json" };
       }
-      const data = await fetchJson<ResourcesResponse>(decision.action.endpoint, requestInit);
+      const data = await fetchJson<ResourcesResponse>(action.endpoint, requestInit);
       setData(data);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : `${decision.title} 执行失败`);
+      setError(loadError instanceof Error ? loadError.message : `${fallbackTitle} 执行失败`);
     } finally {
       setLoading(false);
       setPendingAction(null);
     }
   };
 
+  const executeStartupDecision = async (decision: StartupDecision) => {
+    await executeStartupAction(decision.id, decision.action, decision.title);
+  };
+
   const stats = data?.stats ?? null;
   const storage = data?.storage ?? null;
   const startup = data?.startup ?? null;
+  const startupHealthChecks = startup?.healthChecks ?? [];
   const startupDecisions = startup?.decisions ?? [];
+  const startupHealthDecisionPhases = new Set(startupHealthChecks
+    .filter((healthCheck) => healthCheck.action)
+    .map((healthCheck) => healthCheck.phase as StartupFailurePhase));
+  const remainingStartupDecisions = startupDecisions.filter((decision) => !startupHealthDecisionPhases.has(decision.phase));
   const requestMeta = data?.requestMeta ?? null;
   const liveRunId = liveRuns[0]?.id ?? null;
   const liveRunDetails = useRunDetails(liveRunId);
@@ -300,7 +328,7 @@ export function ResourcesTab() {
             <Badge variant={storage ? "secondary" : "outline"}>{storage ? "存储扫描已接入" : "存储扫描待接入"}</Badge>
           </div>
           <p className="text-sm text-muted-foreground">
-            同一个 /api/admin/resources 现在同时返回运行快照与项目存储扫描；默认读缓存，手动重扫可强制刷新目录占用结果。
+            同一个 /api/admin/resources 现在同时返回运行快照、项目存储扫描与启动诊断；默认读缓存，手动重扫可强制刷新目录占用结果。
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -446,6 +474,104 @@ export function ResourcesTab() {
             />
           </div>
         )}
+      </section>
+
+      <section className="space-y-4" aria-labelledby="startup-health-heading">
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 id="startup-health-heading" className="text-lg font-semibold text-foreground">
+            启动诊断与自愈链
+          </h3>
+          <Badge variant={startup ? "secondary" : "outline"}>{startup ? "已接入" : "待接入"}</Badge>
+          {startup ? <Badge variant="outline">{startup.delivery.staticMode}</Badge> : null}
+        </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <ShieldAlert className="size-4 text-primary" />
+              启动健康总览
+            </CardTitle>
+            <CardDescription>把未干净退出、孤儿 session、外部 worktree 污染、静态资源模式与 compile smoke 放到同一条诊断链里查看。</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {startup ? (
+              <>
+                <div className="grid gap-4 md:grid-cols-4">
+                  <SummaryCard
+                    title="恢复结果"
+                    value={`${startup.recoveryReport.counts.success} / ${startup.recoveryReport.counts.failed}`}
+                    description="success / failed"
+                  />
+                  <SummaryCard
+                    title="诊断项"
+                    value={String(startupHealthChecks.length)}
+                    description={startupHealthChecks.length ? `${startupHealthChecks.filter((item) => item.status === "healthy").length} healthy · ${startupHealthChecks.filter((item) => item.status !== "healthy").length} need follow-up` : "等待后端汇总"}
+                  />
+                  <SummaryCard
+                    title="静态资源"
+                    value={startup.delivery.staticMode}
+                    description={startup.delivery.indexHtmlReady ? "index.html 已就绪" : "index.html 缺失"}
+                  />
+                  <SummaryCard
+                    title="compile smoke"
+                    value={startup.delivery.compileSmokeStatus}
+                    description={startup.delivery.expectedArtifactPath ?? "dist/novelfork"}
+                  />
+                </div>
+
+                {startupHealthChecks.length ? (
+                  <div className="space-y-3">
+                    {startupHealthChecks.map((healthCheck) => (
+                      <div key={healthCheck.id} className="rounded-xl border border-border/70 p-4">
+                        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                          <div className="space-y-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <div className="text-sm font-medium text-foreground">{healthCheck.title}</div>
+                              <Badge variant={healthCheck.status === "error" ? "destructive" : healthCheck.status === "warning" ? "outline" : "secondary"}>
+                                {healthCheck.status === "error" ? "需修复" : healthCheck.status === "warning" ? "需关注" : "正常"}
+                              </Badge>
+                              <Badge variant="outline">{healthCheck.category}</Badge>
+                              <Badge variant="outline">{healthCheck.phase}</Badge>
+                            </div>
+                            <p className="text-sm text-muted-foreground">{healthCheck.summary}</p>
+                            {healthCheck.detail ? <p className="text-xs text-muted-foreground">{healthCheck.detail}</p> : null}
+                            {healthCheck.action?.kind === "manual-check" && healthCheck.action.detail ? (
+                              <div className="rounded-lg border border-dashed border-border/70 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+                                {healthCheck.action.detail}
+                              </div>
+                            ) : null}
+                          </div>
+                          {healthCheck.action ? (
+                            healthCheck.action.kind === "manual-check" || !healthCheck.action.endpoint ? (
+                              <Badge variant="outline">{healthCheck.action.label}</Badge>
+                            ) : (
+                              <Button
+                                variant="outline"
+                                onClick={() => void executeStartupAction(`health:${healthCheck.id}`, healthCheck.action!, healthCheck.title)}
+                                disabled={loading && pendingAction === `health:${healthCheck.id}`}
+                              >
+                                <Wrench className="size-4" />
+                                {loading && pendingAction === `health:${healthCheck.id}` ? "执行中…" : healthCheck.action.label}
+                              </Button>
+                            )
+                          ) : null}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-dashed border-border/70 p-4 text-sm text-muted-foreground">
+                    当前 startup summary 还没有返回统一 health checks；后端接入后会在这里直接展示启动诊断与自愈入口。
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="rounded-xl border border-dashed border-border/70 p-4 text-sm text-muted-foreground">
+                等待后端返回 startup recovery / delivery summary。
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </section>
 
       <section className="space-y-4" aria-labelledby="storage-scan-heading">
@@ -599,16 +725,16 @@ export function ResourcesTab() {
                 <div className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">待接入</div>
                 <StatusRow
                   title="repair / migration 决策链"
-                  description={startupDecisions.length
-                    ? `当前已为 ${startupDecisions.length} 条启动失败生成下一步动作，其中可执行入口会直接回写最新 startup summary。`
+                  description={remainingStartupDecisions.length
+                    ? `当前仍有 ${remainingStartupDecisions.length} 条未并入统一 health check 的启动失败动作，适合处理 runtime-state / search-index 这类专门恢复链。`
                     : startup?.failures.length
-                      ? `当前已有 ${startup.failures.length} 条启动失败记录，正在等待后端生成 repair / migration 决策。`
+                      ? "当前失败项已经统一映射到启动诊断与自愈链；剩余 repair / migration 动作会在出现专门恢复需求时展示。"
                       : "当前暂无 startup failure；若后续出现 repair / migration / compile smoke 问题，会在这里展示决策链。"}
-                  badge={<Badge variant={startupDecisions.length ? "secondary" : "outline"}>{startupDecisions.length ? "已接入" : "待接入"}</Badge>}
+                  badge={<Badge variant={remainingStartupDecisions.length ? "secondary" : "outline"}>{remainingStartupDecisions.length ? "已接入" : "待接入"}</Badge>}
                 />
-                {startupDecisions.length ? (
+                {remainingStartupDecisions.length ? (
                   <div className="space-y-3 rounded-xl border border-primary/20 bg-primary/5 p-3">
-                    {startupDecisions.map((decision) => (
+                    {remainingStartupDecisions.map((decision) => (
                       <div key={decision.id} className="rounded-xl border border-border/70 bg-background/90 p-3">
                         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                           <div className="space-y-1">
@@ -617,6 +743,9 @@ export function ResourcesTab() {
                               <Badge variant={decision.severity === "error" ? "destructive" : "outline"}>{decision.phase}</Badge>
                             </div>
                             <p className="text-sm text-muted-foreground">{decision.description}</p>
+                            {decision.action.kind === "manual-check" && decision.action.detail ? (
+                              <p className="text-xs text-muted-foreground">{decision.action.detail}</p>
+                            ) : null}
                           </div>
                           {decision.action.kind === "manual-check" || !decision.action.endpoint ? (
                             <Badge variant="outline">{decision.action.label}</Badge>

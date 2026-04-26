@@ -1,7 +1,7 @@
 /**
  * Temporal memory database for NovelFork truth files.
  *
- * Uses Node.js built-in SQLite (node:sqlite, Node 22+).
+ * Uses Bun native SQLite (bun:sqlite).
  * Stores facts with temporal validity (valid_from/valid_until chapter numbers),
  * enabling precise queries like "what did character X know in chapter 5?"
  *

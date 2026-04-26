@@ -105,9 +105,13 @@ describe("RequestsTab", () => {
           narrator: "session.alpha",
           provider: "sub2api",
           model: "claude-sonnet-4.6",
-          tokens: { total: 2048 },
+          tokens: { total: 2048, estimated: true },
           cache: { status: "hit", scope: "admin" },
           details: "run=run-1",
+          aiStatus: "success",
+          bookId: "demo-book",
+          sessionId: "session-1",
+          ttftMs: 480,
         },
       ],
     });
@@ -116,10 +120,33 @@ describe("RequestsTab", () => {
 
     expect(await screen.findByText("缓存命中率")).toBeTruthy();
     expect(screen.getByText("75%")).toBeTruthy();
+    expect(screen.getByText("平均 TTFT")).toBeTruthy();
+    expect(screen.getByText("480ms")).toBeTruthy();
     expect(screen.getAllByText(/session.alpha/).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText(/claude-sonnet-4.6/)).toBeTruthy();
-    expect(screen.getByText(/2048 tokens/)).toBeTruthy();
+    expect(screen.getByText(/2048 tokens · 估算/)).toBeTruthy();
+    expect(screen.getByText(/session-1/)).toBeTruthy();
     expect(screen.getByText(/run=run-1/)).toBeTruthy();
+  });
+
+  it("sends AI history filter params from the admin controls", async () => {
+    fetchJsonMock.mockResolvedValue({ total: 0, logs: [], summary: { successRate: 0, slowRequests: 0, errorRequests: 0, averageDuration: 0, averageTtftMs: null, totalTokens: 0, totalCostUsd: 0, cacheHitRate: null, topEndpoints: [], topNarrators: [] } });
+
+    render(<RequestsTab />);
+
+    await screen.findByText("请求筛选");
+    const firstUrl = String(fetchJsonMock.mock.calls[0]?.[0]);
+    expect(firstUrl).toContain("scope=ai");
+
+    fireEvent.change(await screen.findByDisplayValue("仅 AI 请求"), { target: { value: "" } });
+    fireEvent.change(await screen.findByPlaceholderText("bookId"), { target: { value: "demo-book" } });
+    fireEvent.change(await screen.findByPlaceholderText("sessionId"), { target: { value: "session-42" } });
+
+    await waitFor(() => {
+      const urls = fetchJsonMock.mock.calls.map((call) => String(call[0]));
+      expect(urls.some((url) => url.includes("scope=ai"))).toBe(true);
+      expect(urls.some((url) => url.includes("bookId=demo-book") && url.includes("sessionId=session-42"))).toBe(true);
+    });
   });
 
   it("renders live run summary from the global run stream", async () => {

@@ -61,7 +61,17 @@ function bibleTabForSection(section: JingweiSectionView): BibleTab | null {
   }
 }
 
-export function BibleView({ bookId, nav }: { bookId: string; nav: { toDashboard: () => void; toBook: (bookId: string) => void } }) {
+export function BibleView({
+  bookId,
+  nav,
+}: {
+  bookId: string;
+  nav: {
+    toDashboard: () => void;
+    toBook: (bookId: string) => void;
+    toAdmin?: (section?: "providers") => void;
+  };
+}) {
   const [activeTab, setActiveTab] = useState<BibleTab>("characters");
   const [bibleMode, setBibleMode] = useState<"static" | "dynamic">("dynamic");
   const [savingMode, setSavingMode] = useState(false);
@@ -293,6 +303,7 @@ export function BibleView({ bookId, nav }: { bookId: string; nav: { toDashboard:
                     <QuestionnaireWizard
                       bookId={bookId}
                       template={visibleEntries[0] as QuestionnaireTemplateView}
+                      onConfigureModel={() => nav.toAdmin?.("providers")}
                       onDone={() => {
                         notify.success("问卷状态已保存");
                         void refetch();

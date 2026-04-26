@@ -558,6 +558,7 @@ function AppInner() {
             t={t}
             sse={sse}
             activeBookId={activeBookId}
+            onConfigureModel={() => nav.toAdmin("providers")}
           />
         </div>
       )}

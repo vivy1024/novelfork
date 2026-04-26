@@ -7,6 +7,11 @@ import { MCPManager } from "../mcp/manager.js";
 import type { MCPServerConfig } from "../mcp/types.js";
 import { createLogger, nullSink } from "../utils/logger.js";
 
+function summarizeAiRequestError(error: unknown, maxLength = 160): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.length > maxLength ? `${message.slice(0, maxLength - 1)}…` : message;
+}
+
 // 初始化内置工具注册表
 for (const tool of BUILTIN_TOOLS) {
   globalToolRegistry.register(tool);
@@ -385,7 +390,40 @@ export async function runAgentLoop(
   let lastAssistantMessage = "";
 
   for (let turn = 0; turn < maxTurns; turn++) {
-    const result = await chatWithTools(config.client, config.model, messages, toolsForLLM);
+    const turnStartedAt = Date.now();
+    const result = await chatWithTools(config.client, config.model, messages, toolsForLLM).then((value) => {
+      config.logger?.info("AI request completed", {
+        eventType: "ai.request",
+        requestDomain: "ai",
+        endpoint: "llm://agent-loop/tool-call",
+        method: "LLM",
+        requestKind: "agent-tool-loop",
+        narrator: "agent-loop",
+        provider: config.client.provider,
+        model: config.model,
+        durationMs: Date.now() - turnStartedAt,
+        status: "success",
+        totalTokens: 0,
+        tokensEstimated: true,
+        tokenSource: "estimated",
+      });
+      return value;
+    }, (error) => {
+      config.logger?.error("AI request failed", {
+        eventType: "ai.request",
+        requestDomain: "ai",
+        endpoint: "llm://agent-loop/tool-call",
+        method: "LLM",
+        requestKind: "agent-tool-loop",
+        narrator: "agent-loop",
+        provider: config.client.provider,
+        model: config.model,
+        durationMs: Date.now() - turnStartedAt,
+        status: "error",
+        errorSummary: summarizeAiRequestError(error),
+      });
+      throw error;
+    });
 
     // Push assistant message to history
     messages.push({

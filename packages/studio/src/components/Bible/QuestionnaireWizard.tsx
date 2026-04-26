@@ -1,5 +1,7 @@
 import { useMemo, useState } from "react";
 
+import { AiModelRequiredDialog } from "@/components/ai/AiModelRequiredDialog";
+import { useAiModelGate } from "@/hooks/use-ai-model-gate";
 import { postApi } from "../../hooks/use-api";
 
 export interface QuestionnaireQuestionView {
@@ -22,6 +24,7 @@ export interface QuestionnaireWizardProps {
   bookId: string;
   template: QuestionnaireTemplateView;
   initialAnswers?: Record<string, unknown>;
+  onConfigureModel?: () => void;
   onDone?: (response: { id?: string; status: "draft" | "submitted" | "skipped" }) => void;
 }
 
@@ -30,11 +33,18 @@ function answerToString(value: unknown): string {
   return typeof value === "string" || typeof value === "number" ? String(value) : "";
 }
 
-export function QuestionnaireWizard({ bookId, template, initialAnswers = {}, onDone }: QuestionnaireWizardProps) {
+export function QuestionnaireWizard({
+  bookId,
+  template,
+  initialAnswers = {},
+  onConfigureModel,
+  onDone,
+}: QuestionnaireWizardProps) {
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState<Record<string, unknown>>(initialAnswers);
   const [loading, setLoading] = useState(false);
   const [suggestionReason, setSuggestionReason] = useState<string | null>(null);
+  const { ensureModelFor, blockedResult, closeGate } = useAiModelGate();
   const question = template.questions[step];
   const total = template.questions.length;
   const canGoBack = step > 0;
@@ -62,6 +72,9 @@ export function QuestionnaireWizard({ bookId, template, initialAnswers = {}, onD
   };
 
   const requestSuggestion = async () => {
+    if (!ensureModelFor("generate-jingwei")) {
+      return;
+    }
     setLoading(true);
     try {
       const result = await postApi<{ suggestion: { answer: string; reason: string } }>(`/books/${bookId}/questionnaires/${template.id}/ai-suggest`, {
@@ -127,6 +140,15 @@ export function QuestionnaireWizard({ bookId, template, initialAnswers = {}, onD
           )}
         </div>
       </div>
+      <AiModelRequiredDialog
+        open={Boolean(blockedResult)}
+        message={blockedResult?.message ?? ""}
+        onCancel={closeGate}
+        onConfigureModel={() => {
+          closeGate();
+          onConfigureModel?.();
+        }}
+      />
     </section>
   );
 }
