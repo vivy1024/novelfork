@@ -138,7 +138,7 @@ export function GettingStartedChecklist({
       description: "模型配置完成后再试用续写、改写和评点。",
       completed: status.tasks.hasTriedAiWriting,
       actionLabel: status.provider.hasUsableModel ? "试用 AI 写作" : "先配置模型",
-      onClick: status.provider.hasUsableModel ? onTryAiWriting : onConfigureModel,
+      onClick: onTryAiWriting,
     },
     {
       title: "试用 AI 味检测",

@@ -10,6 +10,7 @@ import {
   PipelineRunner,
   createLLMClient,
   chatCompletion,
+  fetchUrl,
   filterHooks,
   filterSummaries,
   filterSubplots,
@@ -20,7 +21,19 @@ import {
   filterHooksByPOV,
 } from "@vivy1024/novelfork-core";
 import { join } from "node:path";
-import { readFile, readdir } from "node:fs/promises";
+import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import {
+  AUTHOR_REVIEW_FILES,
+  buildRadarReviewMarkdown,
+  buildWebCaptureReviewMarkdown,
+  type AuthorMaterialPersistenceInfo,
+  type AuthorWebCaptureInput,
+  type AuthorWebCaptureResult,
+} from "../../shared/author-materials.js";
+import {
+  logObservedAiError,
+  logObservedAiSuccess,
+} from "../lib/ai-request-observer.js";
 import type { RouterContext } from "./context.js";
 
 type EventHandler = (event: string, data: unknown) => void;
@@ -42,6 +55,59 @@ function structuredLlmConfigError() {
     code: "LLM_CONFIG_MISSING",
     message: "模型配置未完成，请先到管理中心配置 API Key 或选择可用网关。",
     hint: "打开管理中心 → 供应商，检查 API Key、Base URL 与模型配置。",
+  };
+}
+
+function normalizeCapturedText(content: string, maxChars = 8000): string {
+  return content.replace(/\r\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim().slice(0, maxChars);
+}
+
+function deriveCaptureTitle(url: string, label: string | undefined, content: string): string {
+  if (label?.trim()) return label.trim();
+  const firstLine = content.split("\n").find((line) => line.trim().length > 0)?.trim();
+  if (firstLine && firstLine.length <= 80) {
+    return firstLine;
+  }
+  try {
+    const parsed = new URL(url);
+    return parsed.hostname;
+  } catch {
+    return url;
+  }
+}
+
+
+async function persistAuthorReviewFile(options: {
+  readonly state: RouterContext["state"];
+  readonly bookId: string;
+  readonly fileName: string;
+  readonly content: string;
+  readonly mode?: "replace" | "append";
+}): Promise<AuthorMaterialPersistenceInfo> {
+  const storyDir = join(options.state.bookDir(options.bookId), "story");
+  await mkdir(storyDir, { recursive: true });
+  const targetPath = join(storyDir, options.fileName);
+
+  if (options.mode === "append") {
+    let previous = "";
+    try {
+      previous = await readFile(targetPath, "utf-8");
+    } catch {
+      previous = "";
+    }
+    const merged = previous.trim()
+      ? `${previous.trimEnd()}\n\n---\n\n${options.content.trim()}\n`
+      : `${options.content.trim()}\n`;
+    await writeFile(targetPath, merged, "utf-8");
+  } else {
+    await writeFile(targetPath, `${options.content.trim()}\n`, "utf-8");
+  }
+
+  return {
+    bookId: options.bookId,
+    file: options.fileName as AuthorMaterialPersistenceInfo["file"],
+    path: `books/${options.bookId}/story/${options.fileName}`,
+    savedAt: new Date().toISOString(),
   };
 }
 
@@ -406,19 +472,94 @@ export function createAIRouter(ctx: RouterContext): Hono {
   // --- Radar Scan ---
 
   app.post("/api/radar/scan", async (c) => {
-    broadcastStudioEvent("radar:start", {});
+    const body = await c.req.json<{ bookId?: string }>().catch(() => ({} as { bookId?: string }));
+    const targetBookId = body.bookId?.trim() || undefined;
+
+    if (targetBookId) {
+      try {
+        await state.loadBookConfig(targetBookId);
+      } catch {
+        return c.json({ error: `Book "${targetBookId}" not found` }, 404);
+      }
+    }
+
+    broadcastStudioEvent("radar:start", { bookId: targetBookId });
     try {
       const sessionLlm = await ctx.getSessionLlm(c);
       const pipeline = new PipelineRunner(await ctx.buildPipelineConfig(sessionLlm));
       const result = await pipeline.runRadar();
-      broadcastStudioEvent("radar:complete", { result });
-      return c.json(result);
+
+      let persisted: AuthorMaterialPersistenceInfo | undefined;
+      if (targetBookId) {
+        const savedAt = new Date().toISOString();
+        persisted = await persistAuthorReviewFile({
+          state,
+          bookId: targetBookId,
+          fileName: AUTHOR_REVIEW_FILES.radar,
+          content: buildRadarReviewMarkdown(result, savedAt),
+          mode: "replace",
+        });
+      }
+
+      const response = persisted ? { ...result, persisted } : result;
+      broadcastStudioEvent("radar:complete", { result: response, bookId: targetBookId });
+      return c.json(response);
     } catch (e) {
       const message = toErrorMessage(e);
-      broadcastStudioEvent("radar:error", { error: message });
+      broadcastStudioEvent("radar:error", { error: message, bookId: targetBookId });
       if (isMissingLlmConfigError(e)) {
         return c.json({ error: structuredLlmConfigError() }, 400);
       }
+      return c.json({ error: message }, 500);
+    }
+  });
+
+  // --- Authorized web capture for author materials ---
+
+  app.post("/api/books/:id/materials/web-capture", async (c) => {
+    const id = c.req.param("id");
+    const body = await c.req.json<AuthorWebCaptureInput>().catch(() => ({ url: "" } as AuthorWebCaptureInput));
+    const sourceUrl = body.url?.trim();
+    if (!sourceUrl) {
+      return c.json({ error: "url is required" }, 400);
+    }
+
+    try {
+      await state.loadBookConfig(id);
+    } catch {
+      return c.json({ error: `Book "${id}" not found` }, 404);
+    }
+
+    broadcastStudioEvent("import:start", { bookId: id, type: "web-capture", url: sourceUrl });
+    try {
+      const content = normalizeCapturedText(await fetchUrl(sourceUrl, 8000), 8000);
+      const lines = content.split("\n").map((line) => line.trim()).filter(Boolean);
+      const excerpt = lines.slice(0, 3).join(" ").slice(0, 280);
+      const capture: AuthorWebCaptureResult = {
+        title: deriveCaptureTitle(sourceUrl, body.label, content),
+        excerpt,
+        content,
+        sourceUrl,
+        label: body.label?.trim() || undefined,
+        perspective: body.perspective ?? "reference",
+        notes: body.notes?.trim() || undefined,
+        capturedAt: new Date().toISOString(),
+      };
+
+      const persisted = await persistAuthorReviewFile({
+        state,
+        bookId: id,
+        fileName: AUTHOR_REVIEW_FILES.webCapture,
+        content: buildWebCaptureReviewMarkdown(capture),
+        mode: "append",
+      });
+
+      const response = { capture, persisted };
+      broadcastStudioEvent("import:complete", { bookId: id, type: "web-capture", persisted });
+      return c.json(response);
+    } catch (e) {
+      const message = toErrorMessage(e);
+      broadcastStudioEvent("import:error", { bookId: id, type: "web-capture", error: message });
       return c.json({ error: message }, 500);
     }
   });
@@ -468,8 +609,8 @@ export function createAIRouter(ctx: RouterContext): Hono {
 
   app.post("/api/ai/transform", async (c) => {
     const body = await c.req
-      .json<{ text: string; surrounding: string; mode: string }>()
-      .catch(() => ({ text: "", surrounding: "", mode: "" }));
+      .json<{ text: string; surrounding: string; mode: string; bookId?: string; sessionId?: string; chapterNumber?: number }>()
+      .catch(() => ({ text: "", surrounding: "", mode: "", bookId: undefined, sessionId: undefined, chapterNumber: undefined }));
 
     if (!body.text?.trim()) {
       return c.json({ error: "text is required" }, 400);
@@ -483,9 +624,17 @@ export function createAIRouter(ctx: RouterContext): Hono {
 
     const mode = body.mode as TransformMode;
 
+    const startedAt = Date.now();
+    let pipelineLogger: Awaited<ReturnType<typeof ctx.buildPipelineConfig>>["logger"] | undefined;
+    let provider: string | undefined;
+    let modelId: string | undefined;
+
     try {
       const sessionLlm = await ctx.getSessionLlm(c);
       const config = await ctx.buildPipelineConfig(sessionLlm);
+      pipelineLogger = config.logger;
+      provider = config.client.provider;
+      modelId = config.model;
 
       const messages = [
         { role: "system" as const, content: TRANSFORM_PROMPTS[mode] },
@@ -496,8 +645,33 @@ export function createAIRouter(ctx: RouterContext): Hono {
       ];
 
       const response = await chatCompletion(config.client, config.model, messages);
+      logObservedAiSuccess(pipelineLogger, {
+        endpoint: "/api/ai/transform",
+        requestKind: `transform:${mode}`,
+        narrator: "studio.ai.transform",
+        provider,
+        model: modelId,
+        method: "POST",
+        bookId: body.bookId,
+        sessionId: body.sessionId,
+        chapterNumber: body.chapterNumber,
+      }, startedAt, {
+        content: response.content,
+        usage: response.usage,
+      });
       return c.json({ result: response.content, mode });
     } catch (e) {
+      logObservedAiError(pipelineLogger, {
+        endpoint: "/api/ai/transform",
+        requestKind: `transform:${mode}`,
+        narrator: "studio.ai.transform",
+        provider,
+        model: modelId,
+        method: "POST",
+        bookId: body.bookId,
+        sessionId: body.sessionId,
+        chapterNumber: body.chapterNumber,
+      }, startedAt, e);
       return c.json({ error: String(e) }, 500);
     }
   });
@@ -669,6 +843,11 @@ export function createAIRouter(ctx: RouterContext): Hono {
       return c.json({ error: `action must be one of: ${validActions.join(", ")}` }, 400);
     }
 
+    const startedAt = Date.now();
+    let pipelineLogger: Awaited<ReturnType<typeof ctx.buildPipelineConfig>>["logger"] | undefined;
+    let provider: string | undefined;
+    let modelId: string | undefined;
+
     try {
       const bookDir = state.bookDir(body.bookId);
       const storyDir = join(bookDir, "story");
@@ -704,6 +883,9 @@ export function createAIRouter(ctx: RouterContext): Hono {
       const systemPrompt = OUTLINE_PROMPTS[body.action]!;
       const sessionLlm = await ctx.getSessionLlm(c);
       const config = await ctx.buildPipelineConfig(sessionLlm);
+      pipelineLogger = config.logger;
+      provider = config.client.provider;
+      modelId = config.model;
 
       const messages = [
         { role: "system" as const, content: systemPrompt },
@@ -719,9 +901,31 @@ export function createAIRouter(ctx: RouterContext): Hono {
         content = codeBlockMatch[1]!.trim();
       }
 
+      logObservedAiSuccess(pipelineLogger, {
+        endpoint: "/api/ai/outline",
+        requestKind: `outline:${body.action}`,
+        narrator: "studio.ai.outline",
+        provider,
+        model: modelId,
+        method: "POST",
+        bookId: body.bookId,
+      }, startedAt, {
+        content,
+        usage: response.usage,
+      });
+
       const parsed = JSON.parse(content) as { nodes: unknown[]; message?: string };
       return c.json(parsed);
     } catch (e) {
+      logObservedAiError(pipelineLogger, {
+        endpoint: "/api/ai/outline",
+        requestKind: `outline:${body.action}`,
+        narrator: "studio.ai.outline",
+        provider,
+        model: modelId,
+        method: "POST",
+        bookId: body.bookId,
+      }, startedAt, e);
       return c.json({ error: String(e) }, 500);
     }
   });
@@ -729,7 +933,7 @@ export function createAIRouter(ctx: RouterContext): Hono {
   // --- Inline Completion (ghost text / Tab completion) ---
 
   app.post("/api/ai/complete", async (c) => {
-    const body = await c.req.json<{ text: string; surrounding: string }>().catch(() => ({ text: "", surrounding: "" }));
+    const body = await c.req.json<{ text: string; surrounding: string; bookId?: string; sessionId?: string; chapterNumber?: number }>().catch(() => ({ text: "", surrounding: "", bookId: undefined, sessionId: undefined, chapterNumber: undefined }));
     if (!body.text?.trim() && !body.surrounding?.trim()) {
       return c.json({ error: "text or surrounding is required" }, 400);
     }
@@ -740,6 +944,7 @@ export function createAIRouter(ctx: RouterContext): Hono {
     const systemPrompt = "你是一位小说续写助手。根据上下文，自然地续写下一句话（30-80字）。只返回续写内容，不要解释，不要重复已有文本。保持风格一致。";
 
     return streamSSE(c, async (stream) => {
+      const startedAt = Date.now();
       try {
         const messages = [
           { role: "system" as const, content: systemPrompt },
@@ -747,9 +952,23 @@ export function createAIRouter(ctx: RouterContext): Hono {
         ];
 
         const response = await chatCompletion(config.client, config.model, messages);
+        const fullText = response.content;
+        logObservedAiSuccess(config.logger, {
+          endpoint: "/api/ai/complete",
+          requestKind: "inline-complete",
+          narrator: "studio.ai.complete",
+          provider: config.client.provider,
+          model: config.model,
+          method: "POST",
+          bookId: body.bookId,
+          sessionId: body.sessionId,
+          chapterNumber: body.chapterNumber,
+        }, startedAt, {
+          content: fullText,
+          usage: response.usage,
+        });
 
         // Split response into chunks to simulate streaming
-        const fullText = response.content;
         const chunkSize = 4;
         for (let i = 0; i < fullText.length; i += chunkSize) {
           const chunk = fullText.slice(i, i + chunkSize);
@@ -763,6 +982,17 @@ export function createAIRouter(ctx: RouterContext): Hono {
           data: JSON.stringify({ text: "", done: true }),
         });
       } catch (e) {
+        logObservedAiError(config.logger, {
+          endpoint: "/api/ai/complete",
+          requestKind: "inline-complete",
+          narrator: "studio.ai.complete",
+          provider: config.client.provider,
+          model: config.model,
+          method: "POST",
+          bookId: body.bookId,
+          sessionId: body.sessionId,
+          chapterNumber: body.chapterNumber,
+        }, startedAt, e);
         await stream.writeSSE({
           event: "error",
           data: JSON.stringify({ error: String(e) }),

@@ -18,6 +18,7 @@ import {
 } from "@vivy1024/novelfork-core";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { createRuntimeJsonLineSink } from "./lib/runtime-log-sink.js";
 import { isSafeBookId } from "./safety.js";
 import { ApiError } from "./errors.js";
 import { readSessionFromCookie } from "./auth.js";
@@ -42,7 +43,10 @@ import {
   buildProviderAvailabilityDiagnostics,
   buildWorktreePollutionDiagnostics,
   checkSessionStoreConsistency,
-  clearUncleanShutdownMarker,
+  cleanupOrphanSessionHistoryFiles,
+  clearUncleanShutdownMarkerSync,
+  ignoreExternalWorktreePollution,
+  loadIgnoredExternalWorktreePaths,
   prepareUncleanShutdownMarker,
   type StartupDiagnostic,
 } from "./lib/startup-diagnostics.js";
@@ -169,6 +173,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
       broadcast("log", { level: entry.level, tag: entry.tag, message: entry.message });
     },
   };
+  const runtimeLogSink = createRuntimeJsonLineSink(join(root, "novelfork.log"));
 
   async function loadCurrentProjectConfig(
     options?: { readonly requireApiKey?: boolean },
@@ -208,7 +213,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
           ...(overrides!.provider ? { provider: overrides!.provider as typeof currentConfig.llm.provider } : {}),
         }
       : currentConfig.llm;
-    const logger = createLogger({ tag: "studio", sinks: [sseSink] });
+    const logger = createLogger({ tag: "studio", sinks: [sseSink, runtimeLogSink] });
     return {
       client: createLLMClient(llm),
       model: llm.model,
@@ -350,6 +355,19 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
         await rebuildSearchIndex(ctx.state);
         return refreshStartupSummary();
       },
+      cleanupSessionStore: async () => {
+        await cleanupOrphanSessionHistoryFiles(getSessionStoreDiagnosticDir());
+        return refreshStartupSummary();
+      },
+      ignoreExternalWorktreePollution: async () => {
+        try {
+          const worktrees = await listWorktrees(root);
+          await ignoreExternalWorktreePollution(root, worktrees);
+        } catch {
+          // 非 git 根目录下仍允许刷新 startup summary，避免管理面板动作直接 500。
+        }
+        return refreshStartupSummary();
+      },
     }));
 
     // Routines system
@@ -396,7 +414,7 @@ function registerRunningMarkerCleanup(markerPath: string): void {
   runningMarkerCleanupRegistered = true;
   const cleanup = () => {
     for (const registeredMarkerPath of registeredRunningMarkerPaths) {
-      void clearUncleanShutdownMarker(registeredMarkerPath);
+      clearUncleanShutdownMarkerSync(registeredMarkerPath);
     }
     registeredRunningMarkerPaths.clear();
   };
@@ -453,7 +471,8 @@ async function collectStartupDiagnostics(root: string, config: ProjectConfig): P
 
   try {
     const worktrees = await listWorktrees(root);
-    diagnostics.push(buildWorktreePollutionDiagnostics(root, worktrees));
+    const ignoredPaths = await loadIgnoredExternalWorktreePaths(root);
+    diagnostics.push(buildWorktreePollutionDiagnostics(root, worktrees, { ignoredPaths }));
   } catch (error) {
     diagnostics.push({
       kind: "git-worktree-pollution",
@@ -466,6 +485,25 @@ async function collectStartupDiagnostics(root: string, config: ProjectConfig): P
 
   diagnostics.push(buildProviderAvailabilityDiagnostics(buildProviderDiagnosticEntries(config)));
   return diagnostics;
+}
+
+function logStartupHealthSummary(summary: StartupOrchestratorSummary): void {
+  for (const healthCheck of summary.healthChecks) {
+    logStartupEvent({
+      level: healthCheck.status === "error" ? "error" : healthCheck.status === "warning" ? "warn" : "info",
+      component: `startup.health.${healthCheck.phase}`,
+      msg: healthCheck.title,
+      ok: healthCheck.status === "healthy",
+      skipped: healthCheck.status === "warning",
+      reason: healthCheck.summary,
+      extra: {
+        category: healthCheck.category,
+        source: healthCheck.source,
+        detail: healthCheck.detail,
+        action: healthCheck.action?.kind,
+      },
+    });
+  }
 }
 
 export async function startStudioServer(
@@ -626,9 +664,11 @@ export async function startStudioServer(
       reason: string;
       note?: string;
     },
-    diagnostics: readonly StartupDiagnostic[] = [],
+    diagnostics?: readonly StartupDiagnostic[],
   ) => {
-    const summary = await runStartupOrchestrator(ctx.state, await buildStartupOptions(bootstrapSummary, diagnostics));
+    const currentConfig = await loadProjectConfig(root, { requireApiKey: false });
+    const resolvedDiagnostics = diagnostics ?? await collectStartupDiagnostics(root, currentConfig);
+    const summary = await runStartupOrchestrator(ctx.state, await buildStartupOptions(bootstrapSummary, resolvedDiagnostics));
     ctx.setStartupSummary(summary);
     return summary;
   };
@@ -640,6 +680,7 @@ export async function startStudioServer(
     reason: "当前进程已完成启动初始化，手动重跑仅刷新恢复与交付摘要",
     note: configPathInit,
   }));
+  logStartupHealthSummary(startupSummary);
   console.log("Startup recovery report:", JSON.stringify(startupSummary.recoveryReport));
 
   if (staticProvider) {

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { globalSearchIndex } from "../search-index.js";
 import { rebuildSearchIndex } from "../search-index-rebuild.js";
-import { runStartupOrchestrator } from "../startup-orchestrator.js";
+import { buildStartupFailureDecisions, runStartupOrchestrator } from "../startup-orchestrator.js";
 
 let tempRoot = "";
 
@@ -58,6 +58,7 @@ describe("startup orchestrator", () => {
           failed: 0,
         },
       },
+      healthChecks: [],
     });
     expect(summary.indexedDocuments).toBe(0);
     expect(summary.recoveryReport.startedAt).toEqual(expect.any(String));
@@ -213,9 +214,19 @@ describe("startup orchestrator", () => {
       singleFileReady: true,
       excludedDeliveryScopes: ["installer", "signing", "auto-update", "first-launch UX"],
     });
+    expect(summary.healthChecks).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: "static-delivery",
+        status: "healthy",
+      }),
+      expect.objectContaining({
+        id: "compile-smoke",
+        status: "healthy",
+      }),
+    ]));
   });
 
-  it("includes startup diagnostics in recovery actions and failures", async () => {
+  it("includes startup diagnostics in recovery actions, failures, and unified health checks", async () => {
     const state = createState();
 
     const summary = await runStartupOrchestrator(state, {
@@ -228,6 +239,20 @@ describe("startup orchestrator", () => {
           note: "pid=123",
         },
         {
+          kind: "session-store",
+          scope: "library",
+          status: "failed",
+          reason: "会话存储存在孤儿历史文件",
+          note: "orphan=demo-session",
+        },
+        {
+          kind: "git-worktree-pollution",
+          scope: "library",
+          status: "skipped",
+          reason: "检测到的外部项目 worktree 已标记忽略",
+          note: "D:/DESKTOP/sub2api/worktrees/demo",
+        },
+        {
           kind: "provider-availability",
           scope: "library",
           status: "skipped",
@@ -235,6 +260,16 @@ describe("startup orchestrator", () => {
           note: "configured=openai;missing=claude",
         },
       ],
+      staticDelivery: {
+        mode: "filesystem",
+        hasIndexHtml: true,
+        reason: "使用文件系统静态资源启动",
+      },
+      compileSmoke: {
+        status: "failed",
+        reason: "单文件产物缺失",
+        note: "dist/novelfork",
+      },
     });
 
     expect(summary.recoveryReport.actions).toEqual(expect.arrayContaining([
@@ -254,7 +289,55 @@ describe("startup orchestrator", () => {
         phase: "unclean-shutdown",
         message: "pid=123",
       }),
+      expect.objectContaining({
+        phase: "session-store",
+        message: "orphan=demo-session",
+      }),
+      expect.objectContaining({
+        phase: "compile-smoke",
+        message: "dist/novelfork",
+      }),
     ]));
+    expect(summary.healthChecks).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: "unclean-shutdown",
+        category: "runtime",
+        status: "warning",
+        action: expect.objectContaining({ kind: "manual-check", label: "查看上次残留标记" }),
+      }),
+      expect.objectContaining({
+        id: "session-store",
+        category: "session",
+        status: "error",
+        action: expect.objectContaining({ kind: "cleanup-session-history", endpoint: "/api/admin/resources/recovery/session-store" }),
+      }),
+      expect.objectContaining({
+        id: "git-worktree-pollution",
+        category: "workspace",
+        status: "warning",
+        action: expect.objectContaining({ kind: "ignore-external-worktrees", endpoint: "/api/admin/resources/recovery/worktree-pollution" }),
+      }),
+      expect.objectContaining({
+        id: "static-delivery",
+        category: "delivery",
+        status: "warning",
+      }),
+      expect.objectContaining({
+        id: "compile-smoke",
+        category: "delivery",
+        status: "error",
+        action: expect.objectContaining({ kind: "manual-check", label: "手动执行 pnpm bun:compile" }),
+      }),
+      expect.objectContaining({
+        id: "provider-availability",
+        category: "provider",
+        status: "warning",
+      }),
+    ]));
+    expect(summary.healthChecks.find((item) => item.id === "git-worktree-pollution")?.action).toMatchObject({
+      kind: "ignore-external-worktrees",
+      endpoint: "/api/admin/resources/recovery/worktree-pollution",
+    });
   });
 
   it("keeps filesystem startup separate from the single-file delivery signal", async () => {
@@ -279,6 +362,46 @@ describe("startup orchestrator", () => {
       embeddedAssetsReady: false,
       singleFileReady: false,
     });
+    expect(summary.healthChecks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "static-delivery", status: "warning" }),
+      expect.objectContaining({ id: "compile-smoke", status: "healthy" }),
+    ]));
+  });
+
+  it("derives explicit actions for session cleanup and ignored worktree pollution", () => {
+    const decisions = buildStartupFailureDecisions({
+      failures: [
+        { phase: "session-store", message: "orphan=demo-session" },
+        { phase: "git-worktree-pollution", message: "D:/DESKTOP/sub2api/worktrees/demo" },
+      ],
+      delivery: {
+        staticMode: "embedded",
+        indexHtmlReady: true,
+        compileSmokeStatus: "success",
+        compileCommand: "pnpm bun:compile",
+        expectedArtifactPath: "dist/novelfork",
+        embeddedAssetsReady: true,
+        singleFileReady: true,
+        excludedDeliveryScopes: [],
+      },
+    });
+
+    expect(decisions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        phase: "session-store",
+        action: expect.objectContaining({
+          kind: "cleanup-session-history",
+          endpoint: "/api/admin/resources/recovery/session-store",
+        }),
+      }),
+      expect.objectContaining({
+        phase: "git-worktree-pollution",
+        action: expect.objectContaining({
+          kind: "ignore-external-worktrees",
+          endpoint: "/api/admin/resources/recovery/worktree-pollution",
+        }),
+      }),
+    ]));
   });
 
   it("rebuilds the in-memory search index from current book files", async () => {

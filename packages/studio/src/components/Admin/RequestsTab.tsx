@@ -7,60 +7,24 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useRunDetails, useRunListStream } from "@/hooks/use-run-events";
 import type { StudioRun } from "@/shared/contracts";
+import type { RequestLog, RequestSummary } from "../../shared/request-observability";
 import { fetchJson } from "../../hooks/use-api";
 
-interface RequestTokenUsage {
-  input?: number;
-  output?: number;
-  total?: number;
-}
-
-interface RequestCacheMeta {
-  status: "hit" | "miss" | "bypass";
-  scope?: string;
-  ageMs?: number;
-}
-
-interface RequestSummaryBucket {
-  label: string;
-  count: number;
-}
-
-interface RequestSummary {
-  successRate: number;
-  slowRequests: number;
-  errorRequests: number;
-  averageDuration: number;
-  averageTtftMs: number | null;
-  totalTokens: number;
-  totalCostUsd: number;
-  cacheHitRate: number | null;
-  topEndpoints: RequestSummaryBucket[];
-  topNarrators: RequestSummaryBucket[];
-}
-
-interface RequestLog {
-  id: string;
-  timestamp: Date | string;
-  method: string;
-  endpoint: string;
-  status: number;
-  duration: number;
-  userId: string;
-  requestKind?: string;
-  narrator?: string;
+interface RequestsFilters {
+  runId?: string | null;
   provider?: string;
   model?: string;
-  tokens?: RequestTokenUsage;
-  cache?: RequestCacheMeta;
-  details?: string;
+  status?: string;
+  scope?: string;
+  bookId?: string;
+  sessionId?: string;
 }
 
 interface RequestsResponse {
   logs: RequestLog[];
   total: number;
   summary?: RequestSummary;
-  filters?: { runId?: string | null };
+  filters?: RequestsFilters;
 }
 
 interface RequestsTabProps {
@@ -77,12 +41,17 @@ export function RequestsTab({ runId, onInspectRun, onNavigateSection, onOpenRun 
   const [loading, setLoading] = useState(true);
   const [limit, setLimit] = useState(100);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const [scope, setScope] = useState("ai");
+  const [providerFilter, setProviderFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [bookFilter, setBookFilter] = useState("");
+  const [sessionFilter, setSessionFilter] = useState("");
   const liveRuns = useRunListStream();
   const selectedRunDetails = useRunDetails(selectedRunId);
 
   useEffect(() => {
     void loadLogs();
-  }, [limit, runId]);
+  }, [limit, runId, scope, providerFilter, statusFilter, bookFilter, sessionFilter]);
 
   useEffect(() => {
     setSelectedRunId((current) => {
@@ -103,6 +72,11 @@ export function RequestsTab({ runId, onInspectRun, onNavigateSection, onOpenRun 
       if (runId) {
         params.set("runId", runId);
       }
+      if (scope) params.set("scope", scope);
+      if (providerFilter) params.set("provider", providerFilter);
+      if (statusFilter) params.set("status", statusFilter);
+      if (bookFilter) params.set("bookId", bookFilter);
+      if (sessionFilter) params.set("sessionId", sessionFilter);
       const data = await fetchJson<RequestsResponse>(`/api/admin/requests?${params.toString()}`);
       setLogs(data.logs);
       setSummary(data.summary ?? null);
@@ -134,6 +108,10 @@ export function RequestsTab({ runId, onInspectRun, onNavigateSection, onOpenRun 
   }, [logs]);
 
   const requestSummary = summary ?? fallbackSummary;
+  const providerOptions = useMemo(
+    () => Array.from(new Set(logs.map((log) => log.provider).filter((value): value is string => Boolean(value)))).sort((left, right) => left.localeCompare(right, "zh-CN")),
+    [logs],
+  );
 
   const runSummary = useMemo(() => {
     const running = liveRuns.filter((run) => run.status === "running" || run.status === "queued");
@@ -215,7 +193,13 @@ export function RequestsTab({ runId, onInspectRun, onNavigateSection, onOpenRun 
         <SummaryCard title="平均耗时" value={`${requestSummary.averageDuration}ms`} description="最近请求的平均响应时间" icon={RefreshCw} />
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-4">
+        <SummaryCard
+          title="平均 TTFT"
+          value={requestSummary.averageTtftMs === null ? "未上报" : `${requestSummary.averageTtftMs}ms`}
+          description={requestSummary.averageTtftMs === null ? "当前范围内还没有首 token 时间。" : "仅统计已上报 TTFT 的请求"}
+          icon={Clock3}
+        />
         <SummaryCard
           title="缓存命中率"
           value={requestSummary.cacheHitRate === null ? "—" : `${requestSummary.cacheHitRate}%`}
@@ -235,6 +219,47 @@ export function RequestsTab({ runId, onInspectRun, onNavigateSection, onOpenRun 
           icon={RefreshCw}
         />
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>请求筛选</CardTitle>
+          <CardDescription>管理中心默认聚焦 AI 请求；作者主界面不会暴露这些调试指标。</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-3 md:grid-cols-5">
+          <label className="space-y-1 text-sm">
+            <span className="text-muted-foreground">范围</span>
+            <select value={scope} onChange={(event) => setScope(event.target.value)} className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground">
+              <option value="ai">仅 AI 请求</option>
+              <option value="admin">仅管理请求</option>
+              <option value="">全部请求</option>
+            </select>
+          </label>
+          <label className="space-y-1 text-sm">
+            <span className="text-muted-foreground">Provider</span>
+            <select value={providerFilter} onChange={(event) => setProviderFilter(event.target.value)} className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground">
+              <option value="">全部</option>
+              {providerOptions.map((provider) => <option key={provider} value={provider}>{provider}</option>)}
+            </select>
+          </label>
+          <label className="space-y-1 text-sm">
+            <span className="text-muted-foreground">状态</span>
+            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground">
+              <option value="">全部</option>
+              <option value="success">成功</option>
+              <option value="error">失败</option>
+              <option value="partial">部分成功</option>
+            </select>
+          </label>
+          <label className="space-y-1 text-sm">
+            <span className="text-muted-foreground">书籍</span>
+            <input value={bookFilter} onChange={(event) => setBookFilter(event.target.value)} placeholder="bookId" className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground" />
+          </label>
+          <label className="space-y-1 text-sm">
+            <span className="text-muted-foreground">会话</span>
+            <input value={sessionFilter} onChange={(event) => setSessionFilter(event.target.value)} placeholder="sessionId" className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground" />
+          </label>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
@@ -369,10 +394,10 @@ export function RequestsTab({ runId, onInspectRun, onNavigateSection, onOpenRun 
                 <tr className="border-b text-left text-xs uppercase tracking-[0.16em] text-muted-foreground">
                   <th className="py-3 pr-4 font-medium">时间</th>
                   <th className="py-3 pr-4 font-medium">方法</th>
-                  <th className="py-3 pr-4 font-medium">端点</th>
+                  <th className="py-3 pr-4 font-medium">请求</th>
                   <th className="py-3 pr-4 font-medium">状态</th>
-                  <th className="py-3 pr-4 font-medium">耗时</th>
-                  <th className="py-3 font-medium">用户</th>
+                  <th className="py-3 pr-4 font-medium">耗时 / TTFT</th>
+                  <th className="py-3 font-medium">关联</th>
                 </tr>
               </thead>
               <tbody>
@@ -384,22 +409,29 @@ export function RequestsTab({ runId, onInspectRun, onNavigateSection, onOpenRun 
                       <td className="py-3 pr-4"><Badge variant={methodVariant(log.method)}>{log.method}</Badge></td>
                       <td className="py-3 pr-4 font-mono text-foreground">
                         <div>{log.endpoint}</div>
-                        {(log.requestKind || log.narrator || log.provider || log.model || log.cache || log.tokens || log.details) ? (
+                        {(log.requestKind || log.narrator || log.provider || log.model || log.cache || log.tokens || log.details || log.errorSummary) ? (
                           <div className="mt-2 flex flex-wrap gap-1.5 text-xs font-normal">
                             {log.requestKind ? <Badge variant="outline">{log.requestKind}</Badge> : null}
                             {log.narrator ? <Badge variant="outline">{log.narrator}</Badge> : null}
                             {log.provider ? <Badge variant="secondary">{log.provider}</Badge> : null}
                             {log.model ? <Badge variant="outline">{log.model}</Badge> : null}
+                            {log.aiStatus ? <Badge variant={log.aiStatus === "error" ? "destructive" : "secondary"}>{log.aiStatus}</Badge> : null}
                             {log.cache ? <Badge variant={log.cache.status === "hit" ? "secondary" : "outline"}>缓存 {log.cache.status}</Badge> : null}
-                            {log.tokens?.total ? <Badge variant="outline">{log.tokens.total} tokens</Badge> : null}
+                            {log.tokens?.total ? <Badge variant="outline">{formatTokenBadge(log)}</Badge> : null}
+                            {log.costUsd ? <Badge variant="outline">${log.costUsd.toFixed(4)}</Badge> : null}
                           </div>
                         ) : null}
+                        {log.errorSummary ? <div className="mt-2 text-xs text-destructive">{log.errorSummary}</div> : null}
                         {log.details ? <div className="mt-2 text-xs text-muted-foreground">{log.details}</div> : null}
                       </td>
-                      <td className={`py-3 pr-4 font-semibold ${statusClassName(log.status)}`}>{log.status}</td>
-                      <td className="py-3 pr-4 text-muted-foreground">{log.duration}ms</td>
+                      <td className={`py-3 pr-4 font-semibold ${statusClassName(log.status)}`}>{log.aiStatus === "error" ? "失败" : log.status}</td>
+                      <td className="py-3 pr-4 text-muted-foreground">
+                        <div>{log.duration}ms</div>
+                        <div className="mt-1 text-xs text-muted-foreground/80">TTFT {typeof log.ttftMs === "number" ? `${log.ttftMs}ms` : "未上报"}</div>
+                      </td>
                       <td className="py-3 text-muted-foreground">
-                        <div>{log.userId}</div>
+                        <div>{log.bookId ?? log.userId}</div>
+                        <div className="mt-1 text-xs">{log.sessionId ? `会话 ${log.sessionId}` : "无会话关联"}</div>
                         {logRunId ? (
                           <div className="mt-2 flex flex-wrap gap-2">
                             <Button variant="outline" size="xs" onClick={() => onInspectRun?.(logRunId)}>
@@ -475,4 +507,10 @@ function formatRunResult(result: unknown) {
   } catch {
     return String(result);
   }
+}
+
+function formatTokenBadge(log: RequestLog) {
+  const total = log.tokens?.total ?? ((log.tokens?.input ?? 0) + (log.tokens?.output ?? 0));
+  if (!total) return "0 tokens";
+  return `${total} tokens${log.tokens?.estimated ? " · 估算" : ""}`;
 }

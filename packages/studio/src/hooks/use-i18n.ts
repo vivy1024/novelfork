@@ -308,6 +308,8 @@ const strings = {
   "update.download": { zh: "立即更新", en: "Update Now" },
   "update.downloading": { zh: "下载中...", en: "Downloading..." },
   "update.restart": { zh: "重启应用", en: "Restart" },
+  "update.changelog": { zh: "查看更新日志", en: "View changelog" },
+  "update.channelHint": { zh: "默认走稳定通道；Beta 通道入口已预留，后续接入。", en: "Stable is the default channel; beta is reserved for a future rollout." },
 
   // Diff
   "diff.title": { zh: "版本对比", en: "Version Compare" },

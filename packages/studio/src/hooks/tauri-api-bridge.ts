@@ -6,6 +6,15 @@
 
 import type { ClientStorageAdapter } from "../storage/adapter.js";
 import { getWorkspace } from "../storage/tauri-adapter.js";
+import {
+  AUTHOR_REVIEW_FILES,
+  buildRadarReviewMarkdown,
+  buildWebCaptureReviewMarkdown,
+  type AuthorMaterialRadarRecommendation,
+  type AuthorWebCaptureInput,
+  type AuthorWebCaptureResult,
+} from "../shared/author-materials.js";
+import { createStudioReleaseSnapshot } from "../shared/release-manifest.js";
 
 // ── Tauri invoke 辅助 ──
 
@@ -136,6 +145,76 @@ function countWords(text: string): number {
   const chinese = (text.match(/[\u4e00-\u9fff]/g) ?? []).length;
   const english = text.replace(/[\u4e00-\u9fff]/g, "").split(/\s+/).filter(Boolean).length;
   return chinese + english;
+}
+
+function normalizeCapturedText(content: string, maxChars = 8000): string {
+  return content.replace(/\r\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim().slice(0, maxChars);
+}
+
+function deriveCaptureTitle(url: string, label: string | undefined, content: string): string {
+  if (label?.trim()) return label.trim();
+  const firstLine = content.split("\n").find((line) => line.trim().length > 0)?.trim();
+  if (firstLine && firstLine.length <= 80) {
+    return firstLine;
+  }
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return url;
+  }
+}
+
+async function fetchReadableUrl(url: string, maxChars = 8000): Promise<string> {
+  const response = await fetch(url, {
+    headers: {
+      "User-Agent": "Mozilla/5.0 (compatible; NovelFork-Tauri/1.0)",
+      Accept: "text/html, application/json, text/plain",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Fetch failed: ${response.status} ${response.statusText}`);
+  }
+
+  const contentType = response.headers.get("content-type") ?? "";
+  const text = await response.text();
+  if (contentType.includes("html")) {
+    return text
+      .replace(/<script[\s\S]*?<\/script>/gi, "")
+      .replace(/<style[\s\S]*?<\/style>/gi, "")
+      .replace(/<[^>]*>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, maxChars);
+  }
+
+  return text.slice(0, maxChars);
+}
+
+async function persistAuthorReviewFile(bookId: string, fileName: string, content: string, mode: "replace" | "append" = "replace") {
+  const storyDir = join(ws(), "books", bookId, "story");
+  const targetPath = join(storyDir, fileName);
+  await invoke("create_dir_all", { path: storyDir });
+
+  let output = `${content.trim()}\n`;
+  if (mode === "append") {
+    try {
+      const previous = await invoke<string>("read_file_text", { path: targetPath });
+      output = previous.trim()
+        ? `${previous.trimEnd()}\n\n---\n\n${content.trim()}\n`
+        : output;
+    } catch {
+      output = `${content.trim()}\n`;
+    }
+  }
+
+  await invoke("write_file_text", { path: targetPath, content: output });
+  return {
+    bookId,
+    file: fileName,
+    path: `books/${bookId}/story/${fileName}`,
+    savedAt: new Date().toISOString(),
+  };
 }
 
 // ── LLM 多配置管理 ──
@@ -744,6 +823,17 @@ export async function tauriFetch<T>(path: string, init?: RequestInit): Promise<T
     return { mode: "tauri" } as T;
   }
 
+  // GET /api/settings/release
+  if (path === "/api/settings/release" && method === "GET") {
+    return createStudioReleaseSnapshot({
+      runtime: "tauri",
+      runtimeLabel: "Tauri 桌面壳",
+      buildSource: "tauri-desktop-shell",
+      buildLabel: "桌面壳构建",
+      commit: null,
+    }) as T;
+  }
+
   // GET /api/daemon — 返回守护进程状态
   if (path === "/api/daemon" && method === "GET") {
     return {
@@ -1280,13 +1370,62 @@ export async function tauriFetch<T>(path: string, init?: RequestInit): Promise<T
 
   // POST /api/radar/scan — 市场趋势扫描
   if (path === "/api/radar/scan" && method === "POST") {
+    const targetBookId = typeof (body as { bookId?: unknown })?.bookId === "string"
+      ? ((body as { bookId?: string }).bookId?.trim() || undefined)
+      : undefined;
     const raw = await callUserLLM([
       { role: "system", content: "你是一个网文市场分析专家。分析当前网文/轻小说市场趋势，返回严格的 JSON（不要 markdown 代码块）：{\"marketSummary\":\"市场概况（200-400字）\",\"recommendations\":[{\"confidence\":0到1的数字,\"platform\":\"平台\",\"genre\":\"题材\",\"concept\":\"一句话概念\",\"reasoning\":\"推荐理由\",\"benchmarkTitles\":[\"参考作品\"]}]} 提供 3-5 条推荐。" },
       { role: "user", content: "请分析当前网文市场趋势，给出题材和平台推荐。" },
     ], { temperature: 0.8, maxTokens: 4096 });
     const jsonStr = raw.replace(/^```(?:json)?\s*/m, "").replace(/\s*```$/m, "").trim();
-    try { return JSON.parse(jsonStr) as T; }
+    try {
+      const result = JSON.parse(jsonStr) as Record<string, unknown>;
+      if (!targetBookId) {
+        return result as T;
+      }
+      const persisted = await persistAuthorReviewFile(
+        targetBookId,
+        AUTHOR_REVIEW_FILES.radar,
+        buildRadarReviewMarkdown({
+          marketSummary: String(result.marketSummary ?? ""),
+          recommendations: Array.isArray(result.recommendations)
+            ? result.recommendations as ReadonlyArray<AuthorMaterialRadarRecommendation>
+            : [],
+        }, new Date().toISOString()),
+        "replace",
+      );
+      return { ...result, persisted } as T;
+    }
     catch { throw new Error(`LLM 返回的市场分析结果无法解析: ${raw.slice(0, 200)}`); }
+  }
+
+  // POST /api/books/:id/materials/web-capture — 网页素材采风
+  const webCaptureMatch = path.match(/^\/api\/books\/([^/]+)\/materials\/web-capture$/);
+  if (webCaptureMatch && method === "POST") {
+    const bookId = webCaptureMatch[1]!;
+    const payload = (body ?? {}) as AuthorWebCaptureInput;
+    const sourceUrl = payload.url?.trim();
+    if (!sourceUrl) throw new Error("url is required");
+
+    const content = normalizeCapturedText(await fetchReadableUrl(sourceUrl, 8000), 8000);
+    const lines = content.split("\n").map((line) => line.trim()).filter(Boolean);
+    const capture: AuthorWebCaptureResult = {
+      title: deriveCaptureTitle(sourceUrl, payload.label, content),
+      excerpt: lines.slice(0, 3).join(" ").slice(0, 280),
+      content,
+      sourceUrl,
+      label: payload.label?.trim() || undefined,
+      perspective: payload.perspective ?? "reference",
+      notes: payload.notes?.trim() || undefined,
+      capturedAt: new Date().toISOString(),
+    };
+    const persisted = await persistAuthorReviewFile(
+      bookId,
+      AUTHOR_REVIEW_FILES.webCapture,
+      buildWebCaptureReviewMarkdown(capture),
+      "append",
+    );
+    return { capture, persisted } as T;
   }
 
   // POST /api/agent — 聊天助手

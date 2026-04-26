@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 import { createAdminRouter, resetAdminState, setupAdminWebSocket } from "./admin";
+import { logRequest } from "../lib/request-observability";
 
 describe("createAdminRouter", () => {
   let root: string;
@@ -77,6 +78,17 @@ describe("createAdminRouter", () => {
           actions: [],
         },
         failures: [],
+        healthChecks: [
+          {
+            id: "static-delivery",
+            category: "delivery",
+            phase: "static-delivery",
+            title: "静态资源模式",
+            summary: "当前使用 filesystem 静态资源启动。",
+            status: "warning",
+            source: "delivery",
+          },
+        ],
       }),
     });
 
@@ -97,6 +109,9 @@ describe("createAdminRouter", () => {
       recoveryReport: expect.objectContaining({
         counts: expect.objectContaining({ success: 4, failed: 0 }),
       }),
+      healthChecks: expect.arrayContaining([
+        expect.objectContaining({ id: "static-delivery", status: "warning" }),
+      ]),
     });
     expect(payload.requestMeta).toMatchObject({
       narrator: "admin.resources",
@@ -164,6 +179,7 @@ describe("createAdminRouter", () => {
       singleFileReady: true,
       excludedDeliveryScopes: ["installer", "signing", "auto-update", "first-launch UX"],
     });
+    expect(payload.startup.healthChecks).toEqual([]);
   });
 
   it("derives startup failure decisions for repair, rebuild, and manual delivery follow-up", async () => {
@@ -178,12 +194,14 @@ describe("createAdminRouter", () => {
           startedAt: "2026-04-20T09:59:00Z",
           finishedAt: "2026-04-20T10:00:00Z",
           durationMs: 1000,
-          counts: { success: 1, skipped: 0, failed: 3 },
+          counts: { success: 1, skipped: 0, failed: 5 },
           actions: [],
         },
         failures: [
           { bookId: "demo-book", phase: "migration", message: "runtime repair failed" },
           { phase: "search-index", message: "search rebuild failed" },
+          { phase: "session-store", message: "orphan=demo-session" },
+          { phase: "git-worktree-pollution", message: "D:/DESKTOP/sub2api/worktrees/demo" },
           { phase: "compile-smoke", message: "index missing" },
         ],
       }),
@@ -215,10 +233,27 @@ describe("createAdminRouter", () => {
           }),
         }),
         expect.objectContaining({
+          phase: "session-store",
+          action: expect.objectContaining({
+            kind: "cleanup-session-history",
+            label: "清理孤儿会话历史",
+            endpoint: "/api/admin/resources/recovery/session-store",
+          }),
+        }),
+        expect.objectContaining({
+          phase: "git-worktree-pollution",
+          action: expect.objectContaining({
+            kind: "ignore-external-worktrees",
+            label: "忽略当前外部 worktree",
+            endpoint: "/api/admin/resources/recovery/worktree-pollution",
+          }),
+        }),
+        expect.objectContaining({
           phase: "compile-smoke",
           action: expect.objectContaining({
             kind: "manual-check",
             label: "手动执行 pnpm bun:compile",
+            detail: expect.stringContaining("pnpm bun:compile"),
           }),
         }),
       ]),
@@ -255,6 +290,7 @@ describe("createAdminRouter", () => {
         actions: [],
       },
       failures: [],
+      healthChecks: [],
     };
     const rerunStartupRecovery = vi.fn(async () => refreshedSummary);
 
@@ -299,6 +335,7 @@ describe("createAdminRouter", () => {
       },
       failures: [],
       repairedBookId: bookId,
+      healthChecks: [],
     }));
 
     const app = createAdminRouter(root, {
@@ -323,6 +360,57 @@ describe("createAdminRouter", () => {
     });
   });
 
+  it("executes session-store cleanup and worktree ignore recovery endpoints", async () => {
+    const cleanupSessionStore = vi.fn(async () => ({
+      delivery: {
+        staticMode: "embedded",
+        indexHtmlReady: true,
+        compileSmokeStatus: "success",
+      },
+      recoveryReport: {
+        startedAt: "2026-04-20T10:10:00Z",
+        finishedAt: "2026-04-20T10:10:01Z",
+        durationMs: 1000,
+        counts: { success: 4, skipped: 1, failed: 0 },
+        actions: [],
+      },
+      failures: [],
+      healthChecks: [],
+    }));
+    const ignoreExternalWorktreePollution = vi.fn(async () => ({
+      delivery: {
+        staticMode: "embedded",
+        indexHtmlReady: true,
+        compileSmokeStatus: "success",
+      },
+      recoveryReport: {
+        startedAt: "2026-04-20T10:20:00Z",
+        finishedAt: "2026-04-20T10:20:01Z",
+        durationMs: 1000,
+        counts: { success: 4, skipped: 1, failed: 0 },
+        actions: [],
+      },
+      failures: [],
+      healthChecks: [],
+    }));
+
+    const app = createAdminRouter(root, {
+      getStartupSummary: () => null,
+      cleanupSessionStore,
+      ignoreExternalWorktreePollution,
+    } as never);
+
+    const cleanupResponse = await app.request("http://localhost/resources/recovery/session-store", { method: "POST" });
+    expect(cleanupResponse.status).toBe(200);
+    expect(cleanupSessionStore).toHaveBeenCalledTimes(1);
+    await expect(cleanupResponse.json()).resolves.toMatchObject({ sessionStoreCleanupTriggered: true });
+
+    const ignoreResponse = await app.request("http://localhost/resources/recovery/worktree-pollution", { method: "POST" });
+    expect(ignoreResponse.status).toBe(200);
+    expect(ignoreExternalWorktreePollution).toHaveBeenCalledTimes(1);
+    await expect(ignoreResponse.json()).resolves.toMatchObject({ worktreeIgnoreTriggered: true });
+  });
+
   it("records admin request history with cache metadata and narrator buckets", async () => {
     const app = createAdminRouter(root);
 
@@ -344,6 +432,103 @@ describe("createAdminRouter", () => {
         expect.objectContaining({ endpoint: "/resources", cache: expect.objectContaining({ status: "bypass" }) }),
       ]),
     );
+  });
+
+  it("reads persisted AI request history from novelfork.log", async () => {
+    const app = createAdminRouter(root);
+    await writeFile(
+      join(root, "novelfork.log"),
+      `${JSON.stringify({
+        timestamp: "2026-04-20T10:04:00Z",
+        level: "info",
+        tag: "studio",
+        message: "AI request completed (inline-complete)",
+        ctx: {
+          eventType: "ai.request",
+          requestDomain: "ai",
+          endpoint: "/api/ai/complete",
+          method: "POST",
+          requestKind: "inline-complete",
+          narrator: "studio.ai.complete",
+          provider: "openai",
+          model: "gpt-4-turbo",
+          bookId: "demo-book",
+          sessionId: "session-42",
+          durationMs: 321,
+          ttftMs: 88,
+          status: "success",
+          promptTokens: 100,
+          completionTokens: 50,
+          totalTokens: 150,
+          tokenSource: "actual",
+        },
+      })}\n`,
+      "utf-8",
+    );
+
+    const response = await app.request("http://localhost/requests?scope=ai&provider=openai&sessionId=session-42");
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+
+    expect(payload.total).toBe(1);
+    expect(payload.logs[0]).toMatchObject({
+      endpoint: "/api/ai/complete",
+      provider: "openai",
+      model: "gpt-4-turbo",
+      bookId: "demo-book",
+      sessionId: "session-42",
+      ttftMs: 88,
+      tokens: {
+        input: 100,
+        output: 50,
+        total: 150,
+      },
+    });
+  });
+
+  it("filters AI request history by provider, book and session", async () => {
+    logRequest({
+      timestamp: new Date("2026-04-20T10:00:00Z"),
+      method: "POST",
+      endpoint: "/api/ai/complete",
+      status: 200,
+      duration: 321,
+      userId: "system",
+      requestKind: "inline-complete",
+      narrator: "studio.ai.complete",
+      provider: "openai",
+      model: "gpt-4-turbo",
+      tokens: { input: 100, output: 50, total: 150, source: "actual" },
+      ttftMs: 88,
+      requestDomain: "ai",
+      aiStatus: "success",
+      bookId: "demo-book",
+      sessionId: "session-42",
+    });
+    logRequest({
+      timestamp: new Date("2026-04-20T10:01:00Z"),
+      method: "GET",
+      endpoint: "/resources",
+      status: 200,
+      duration: 120,
+      userId: "admin",
+      requestDomain: "admin",
+      narrator: "admin.resources",
+    });
+
+    const app = createAdminRouter(root);
+    const response = await app.request("http://localhost/requests?scope=ai&provider=openai&bookId=demo-book&sessionId=session-42");
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+
+    expect(payload.total).toBe(1);
+    expect(payload.logs[0]).toMatchObject({
+      provider: "openai",
+      model: "gpt-4-turbo",
+      bookId: "demo-book",
+      sessionId: "session-42",
+      aiStatus: "success",
+    });
   });
 
   it("returns admin log snapshots with parsed metadata from novelfork.log", async () => {

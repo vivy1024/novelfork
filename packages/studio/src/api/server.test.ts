@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -16,6 +16,7 @@ const saveChapterIndexMock = vi.fn();
 const loadChapterIndexMock = vi.fn();
 const createLLMClientMock = vi.fn(() => ({}));
 const chatCompletionMock = vi.fn();
+const fetchUrlMock = vi.fn();
 const loadProjectConfigMock = vi.fn();
 const createStorageDatabaseMock = vi.fn(() => ({ close: vi.fn(), checkpoint: vi.fn() }));
 const runStorageMigrationsMock = vi.fn(() => ({ applied: ["0001_initial.sql"] }));
@@ -50,6 +51,7 @@ const startupOrchestratorMock = vi.fn(async () => ({
     actions: [],
     counts: { success: 0, skipped: 0, failed: 0 },
   },
+  healthChecks: [],
 }));
 const pipelineConfigs: unknown[] = [];
 
@@ -91,15 +93,28 @@ vi.mock("@vivy1024/novelfork-core", () => {
     constructor(private readonly root: string) {}
 
     async listBooks(): Promise<string[]> {
-      return [];
+      const booksDir = join(this.root, "books");
+      try {
+        const entries = await readdir(booksDir, { withFileTypes: true });
+        return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
+      } catch {
+        return [];
+      }
     }
 
-    async loadBookConfig(): Promise<never> {
-      throw new Error("not implemented");
+    async loadBookConfig(bookId: string): Promise<Record<string, unknown>> {
+      return JSON.parse(await readFile(join(this.bookDir(bookId), "book.json"), "utf-8")) as Record<string, unknown>;
     }
 
-    async loadChapterIndex(bookId: string): Promise<[]> {
-      return (await loadChapterIndexMock(bookId)) as [];
+    async loadChapterIndex(bookId: string): Promise<any[]> {
+      if (loadChapterIndexMock.mock.calls.length > 0) {
+        return (await loadChapterIndexMock(bookId)) as any[];
+      }
+      try {
+        return JSON.parse(await readFile(join(this.bookDir(bookId), "chapters", "index.json"), "utf-8")) as any[];
+      } catch {
+        return [];
+      }
     }
 
     async saveChapterIndex(bookId: string, index: unknown): Promise<void> {
@@ -110,8 +125,13 @@ vi.mock("@vivy1024/novelfork-core", () => {
       return (await rollbackToChapterMock(bookId, chapterNumber)) as number[];
     }
 
-    async getNextChapterNumber(): Promise<number> {
-      return 1;
+    async getNextChapterNumber(bookId: string): Promise<number> {
+      const index = await this.loadChapterIndex(bookId);
+      const maxChapter = index.reduce((max, chapter) => {
+        const value = typeof chapter?.number === "number" ? chapter.number : 0;
+        return value > max ? value : max;
+      }, 0);
+      return maxChapter + 1;
     }
 
     async ensureRuntimeState(): Promise<void> {
@@ -157,6 +177,28 @@ vi.mock("@vivy1024/novelfork-core", () => {
   const sessionRows = new Map<string, any>();
   const messageRows = new Map<string, any[]>();
   const kvRows = new Map<string, string>();
+  const bookRows = new Map<string, any>();
+  const storyJingweiSectionRows = new Map<string, any>();
+  const storageDatabaseMock = {
+    close: vi.fn(),
+    checkpoint: vi.fn(),
+    sqlite: {
+      prepare(sql: string) {
+        return {
+          run(id: string) {
+            if (sql.includes('DELETE FROM "book"')) {
+              const deleted = bookRows.delete(id);
+              for (const [sectionId, section] of storyJingweiSectionRows.entries()) {
+                if (section.bookId === id) storyJingweiSectionRows.delete(sectionId);
+              }
+              return { changes: deleted ? 1 : 0 };
+            }
+            return { changes: 0 };
+          },
+        };
+      },
+    },
+  };
 
   function applyJingweiTemplateMock(selection: { templateId: string }) {
     const basicSections = ["人物", "事件", "设定", "章节摘要"].map((name, order) => ({ key: `section-${order}`, name, order }));
@@ -244,6 +286,48 @@ vi.mock("@vivy1024/novelfork-core", () => {
     };
   }
 
+  function createBookRepositoryMock() {
+    return {
+      async create(input: any) {
+        const row = { ...input };
+        bookRows.set(input.id, row);
+        return row;
+      },
+      async getById(id: string) {
+        return bookRows.get(id) ?? null;
+      },
+      async update(id: string, updates: any) {
+        const row = bookRows.get(id);
+        if (!row) return null;
+        const next = { ...row, ...updates };
+        bookRows.set(id, next);
+        return next;
+      },
+      async list() {
+        return [...bookRows.values()];
+      },
+    };
+  }
+
+  function createStoryJingweiSectionRepositoryMock() {
+    return {
+      async create(input: any) {
+        const row = { ...input, deletedAt: null };
+        storyJingweiSectionRows.set(input.id, row);
+        return row;
+      },
+      async getById(bookId: string, id: string) {
+        const row = storyJingweiSectionRows.get(id);
+        return row && row.bookId === bookId && !row.deletedAt ? row : null;
+      },
+      async listByBook(bookId: string) {
+        return [...storyJingweiSectionRows.values()]
+          .filter((row) => row.bookId === bookId && !row.deletedAt)
+          .sort((left, right) => left.order - right.order || left.name.localeCompare(right.name));
+      },
+    };
+  }
+
   return {
     StateManager: MockStateManager,
     PipelineRunner: MockPipelineRunner,
@@ -253,21 +337,29 @@ vi.mock("@vivy1024/novelfork-core", () => {
     createLogger: vi.fn(() => logger),
     computeAnalytics: vi.fn(() => ({})),
     chatCompletion: chatCompletionMock,
+    fetchUrl: fetchUrlMock,
     loadProjectConfig: loadProjectConfigMock,
     closeStorageDatabase: vi.fn(),
     createStorageDatabase: createStorageDatabaseMock,
-    getStorageDatabase: vi.fn(() => {
-      throw new Error("not initialized");
-    }),
+    getStorageDatabase: vi.fn(() => storageDatabaseMock),
     initializeStorageDatabase: createStorageDatabaseMock,
     runJsonImportMigrationIfNeeded: runJsonImportMigrationIfNeededMock,
     runStorageMigrations: runStorageMigrationsMock,
     seedQuestionnaireTemplates: seedQuestionnaireTemplatesMock,
+    createBookRepository: createBookRepositoryMock,
     createKvRepository: createKvRepositoryMock,
     createSessionMessageRepository: createSessionMessageRepositoryMock,
     createSessionRepository: createSessionRepositoryMock,
+    createStoryJingweiSectionRepository: createStoryJingweiSectionRepositoryMock,
     GLOBAL_ENV_PATH: join(tmpdir(), "novelfork-global.env"),
     pipelineEvents: { on: vi.fn() },
+    registerBuiltinPresets: vi.fn(),
+    listPresets: vi.fn(() => []),
+    listBundles: vi.fn(() => []),
+    listBeatTemplates: vi.fn(() => []),
+    getPreset: vi.fn(() => undefined),
+    getBundle: vi.fn(() => undefined),
+    getPresetsByGenre: vi.fn(() => []),
   };
 });
 
@@ -403,6 +495,8 @@ describe("createStudioServer daemon lifecycle", () => {
       content: "pong",
       usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
     });
+    fetchUrlMock.mockReset();
+    fetchUrlMock.mockResolvedValue("示例网页素材正文。\n这里是第二段。");
     loadProjectConfigMock.mockReset();
     startHttpServerMock.mockClear();
     createStorageDatabaseMock.mockClear();
@@ -618,6 +712,65 @@ describe("createStudioServer daemon lifecycle", () => {
     });
   });
 
+  it("persists radar scan results into the author review area when a target book is provided", async () => {
+    const bookDir = join(root, "books", "book-1", "story");
+    await mkdir(bookDir, { recursive: true });
+    await writeFile(join(root, "books", "book-1", "book.json"), JSON.stringify({ id: "book-1", title: "长夜书" }), "utf-8");
+
+    runRadarMock.mockResolvedValueOnce({
+      marketSummary: "番茄都市强势。",
+      recommendations: [
+        {
+          confidence: 0.8,
+          platform: "番茄",
+          genre: "都市",
+          concept: "债主追凶",
+          reasoning: "强冲突。",
+          benchmarkTitles: ["样书"],
+        },
+      ],
+    });
+
+    const { createStudioServer } = await import("./server.js");
+    const { app } = createStudioServer(cloneProjectConfig() as never, root);
+
+    const response = await app.request("http://localhost/api/radar/scan", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ bookId: "book-1" }),
+    });
+
+    expect(response.status).toBe(200);
+    const data = await response.json() as { persisted?: { path?: string } };
+    expect(data.persisted?.path).toBe("books/book-1/story/market_radar.md");
+    await expect(readFile(join(bookDir, "market_radar.md"), "utf-8")).resolves.toContain("作者可审阅结果");
+  });
+
+  it("captures web materials into the author review area instead of exposing a browser route", async () => {
+    const bookDir = join(root, "books", "book-1", "story");
+    await mkdir(bookDir, { recursive: true });
+    await writeFile(join(root, "books", "book-1", "book.json"), JSON.stringify({ id: "book-1", title: "长夜书" }), "utf-8");
+
+    const { createStudioServer } = await import("./server.js");
+    const { app } = createStudioServer(cloneProjectConfig() as never, root);
+
+    const response = await app.request("http://localhost/api/books/book-1/materials/web-capture", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        url: "https://example.com/topic",
+        label: "题材采风",
+        perspective: "genre",
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(fetchUrlMock).toHaveBeenCalledWith("https://example.com/topic", 8000);
+    const data = await response.json() as { persisted?: { path?: string } };
+    expect(data.persisted?.path).toBe("books/book-1/story/web_materials.md");
+    await expect(readFile(join(bookDir, "web_materials.md"), "utf-8")).resolves.toContain("题材采风");
+  });
+
   it("updates the first-run language immediately after the language selector saves", async () => {
     const { createStudioServer } = await import("./server.js");
     const { app } = createStudioServer(cloneProjectConfig() as never, root);
@@ -672,6 +825,57 @@ describe("createStudioServer daemon lifecycle", () => {
 
     const bookJson = JSON.parse(await readFile(bookJsonPath, "utf-8")) as { title?: string };
     expect(bookJson.title).toBe("Local Only Book");
+
+    const jingweiResponse = await app.request("http://localhost/api/books/local-only-book/jingwei/sections");
+    expect(jingweiResponse.status).toBe(200);
+    const jingweiPayload = await jingweiResponse.json() as { sections: Array<{ bookId: string; name: string }> };
+    expect(jingweiPayload.sections.map((section) => section.bookId)).toEqual([
+      "local-only-book",
+      "local-only-book",
+      "local-only-book",
+      "local-only-book",
+    ]);
+    expect(jingweiPayload.sections.map((section) => section.name)).toEqual(["人物", "事件", "设定", "章节摘要"]);
+
+    const deleteResponse = await app.request("http://localhost/api/books/local-only-book", { method: "DELETE" });
+    expect(deleteResponse.status).toBe(200);
+    const deletedJingweiResponse = await app.request("http://localhost/api/books/local-only-book/jingwei/sections");
+    expect(deletedJingweiResponse.status).toBe(404);
+  });
+
+  it("backfills SQLite book and jingwei sections for file-only books when listing books", async () => {
+    const now = "2026-04-25T01:00:00.000Z";
+    await mkdir(join(root, "books", "file-only-book", "story"), { recursive: true });
+    await mkdir(join(root, "books", "file-only-book", "chapters"), { recursive: true });
+    await writeFile(join(root, "books", "file-only-book", "book.json"), JSON.stringify({
+      id: "file-only-book",
+      title: "File Only Book",
+      platform: "qidian",
+      genre: "xuanhuan",
+      status: "outlining",
+      targetChapters: 10,
+      chapterWordCount: 2000,
+      language: "zh",
+      createdAt: now,
+      updatedAt: now,
+    }, null, 2), "utf-8");
+    await writeFile(join(root, "books", "file-only-book", "chapters", "index.json"), "[]", "utf-8");
+
+    const { createStudioServer } = await import("./server.js");
+    const { app } = createStudioServer(cloneProjectConfig() as never, root);
+
+    const listResponse = await app.request("http://localhost/api/books");
+    expect(listResponse.status).toBe(200);
+    const jingweiResponse = await app.request("http://localhost/api/books/file-only-book/jingwei/sections");
+    expect(jingweiResponse.status).toBe(200);
+    const jingweiPayload = await jingweiResponse.json() as { sections: Array<{ bookId: string; name: string }> };
+    expect(jingweiPayload.sections.map((section) => section.bookId)).toEqual([
+      "file-only-book",
+      "file-only-book",
+      "file-only-book",
+      "file-only-book",
+    ]);
+    expect(jingweiPayload.sections.map((section) => section.name)).toEqual(["人物", "事件", "设定", "章节摘要"]);
   });
 
   it("rejects create requests when a complete book with the same id already exists", async () => {
@@ -1428,6 +1632,130 @@ describe("createStudioServer daemon lifecycle", () => {
     const afterPayload = await afterResponse.json();
     expect(afterPayload.startup.recoveryReport.startedAt).toBe("2026-04-20T10:05:00.000Z");
     expect(afterPayload.startup.indexedDocuments).toBe(5);
+  });
+
+  it("logs structured startup health checks after recovery summary is generated", async () => {
+    startupOrchestratorMock.mockResolvedValueOnce({
+      bookCount: 0,
+      migratedBooks: 0,
+      indexedDocuments: 0,
+      skippedBooks: 0,
+      failures: [{ phase: "session-store", message: "orphan=demo-session" }],
+      delivery: {
+        staticMode: "filesystem",
+        indexHtmlReady: true,
+        compileSmokeStatus: "failed",
+      },
+      recoveryReport: {
+        startedAt: new Date(0).toISOString(),
+        finishedAt: new Date(0).toISOString(),
+        durationMs: 0,
+        actions: [],
+        counts: { success: 1, skipped: 1, failed: 1 },
+      },
+      healthChecks: [
+        {
+          id: "session-store",
+          category: "session",
+          phase: "session-store",
+          title: "会话存储",
+          summary: "会话存储存在孤儿历史文件",
+          status: "error",
+          source: "diagnostic",
+          detail: "orphan=demo-session",
+          action: { kind: "cleanup-session-history", label: "清理孤儿会话历史", endpoint: "/api/admin/resources/recovery/session-store", method: "POST" },
+        },
+        {
+          id: "static-delivery",
+          category: "delivery",
+          phase: "static-delivery",
+          title: "静态资源模式",
+          summary: "当前使用 filesystem 静态资源启动。",
+          status: "warning",
+          source: "delivery",
+        },
+      ],
+    } as never);
+    const consoleLog = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const { startStudioServer } = await import("./server.js");
+
+    await startStudioServer(root, 4567, {
+      staticProvider: {
+        describe: () => ({ source: "filesystem", root: join(root, "dist") }),
+        hasIndexHtml: vi.fn(async () => true),
+        readIndexHtml: vi.fn(async () => "<html></html>"),
+        readAsset: vi.fn(async () => null),
+      },
+      staticMode: "filesystem",
+    });
+
+    const parsedLines = consoleLog.mock.calls
+      .map(([line]) => typeof line === "string" ? line : "")
+      .filter((line) => line.startsWith("{"))
+      .map((line) => JSON.parse(line));
+
+    expect(parsedLines).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        component: "startup.health.session-store",
+        ok: false,
+        category: "session",
+        action: "cleanup-session-history",
+      }),
+      expect.objectContaining({
+        component: "startup.health.static-delivery",
+        skipped: true,
+        category: "delivery",
+      }),
+    ]));
+    consoleLog.mockRestore();
+  });
+
+  it("wires startup self-heal endpoints through the admin route", async () => {
+    const cleanupRunner = vi.fn(async () => ({
+      bookCount: 0,
+      migratedBooks: 0,
+      indexedDocuments: 0,
+      skippedBooks: 0,
+      failures: [],
+      delivery: { staticMode: "embedded", indexHtmlReady: true, compileSmokeStatus: "success" },
+      recoveryReport: {
+        startedAt: "2026-04-20T10:00:00.000Z",
+        finishedAt: "2026-04-20T10:00:01.000Z",
+        durationMs: 1000,
+        actions: [],
+        counts: { success: 3, skipped: 0, failed: 0 },
+      },
+      healthChecks: [],
+    } as never));
+    const { createStudioServer } = await import("./server.js");
+    const { app, ctx } = createStudioServer(cloneProjectConfig() as never, root);
+
+    ctx.setStartupSummary({
+      bookCount: 0,
+      migratedBooks: 0,
+      indexedDocuments: 0,
+      skippedBooks: 0,
+      failures: [{ phase: "session-store", message: "orphan=demo-session" }],
+      delivery: { staticMode: "embedded", indexHtmlReady: true, compileSmokeStatus: "success" },
+      recoveryReport: {
+        startedAt: "2026-04-20T09:59:00.000Z",
+        finishedAt: "2026-04-20T09:59:01.000Z",
+        durationMs: 1000,
+        actions: [],
+        counts: { success: 1, skipped: 0, failed: 1 },
+      },
+      healthChecks: [],
+    } as never);
+    ctx.setStartupRecoveryRunner(cleanupRunner as never);
+
+    const cleanupResponse = await app.request("http://localhost/api/admin/resources/recovery/session-store", { method: "POST" });
+    expect(cleanupResponse.status).toBe(200);
+    await expect(cleanupResponse.json()).resolves.toMatchObject({ sessionStoreCleanupTriggered: true });
+
+    const ignoreResponse = await app.request("http://localhost/api/admin/resources/recovery/worktree-pollution", { method: "POST" });
+    expect(ignoreResponse.status).toBe(200);
+    await expect(ignoreResponse.json()).resolves.toMatchObject({ worktreeIgnoreTriggered: true });
+    expect(cleanupRunner).toHaveBeenCalledTimes(2);
   });
 
   it("attaches websocket routes to the started http server", async () => {

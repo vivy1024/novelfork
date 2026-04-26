@@ -15,10 +15,21 @@ import { WebSocketServer, type WebSocket } from "ws";
 import type { BunWebSocketConnection, BunWebSocketRegistrar, StartedHttpServer } from "../start-http-server.js";
 import { providerManager } from "../lib/provider-manager.js";
 import { getWorktreeStatus, isPathInsideRoot, listWorktrees } from "../lib/git-utils.js";
-import { buildStartupFailureDecisions, type StartupFailureDecision, type StartupOrchestratorFailurePhase } from "../lib/startup-orchestrator.js";
+import { buildStartupFailureDecisions, type StartupFailureDecision, type StartupFailureDecisionAction, type StartupHealthCheck, type StartupOrchestratorFailurePhase } from "../lib/startup-orchestrator.js";
+import {
+  getRequestLogs,
+  logRequest,
+  mergeRequestLogs,
+  resetRequestHistory,
+  summarizeRequests,
+  type RequestCacheMeta,
+  type RequestLog,
+  type RequestSummary,
+  type RequestTokenUsage,
+} from "../lib/request-observability.js";
 
 const statfs = promisify(statfsCallback);
-const MAX_REQUEST_LOGS = 1000;
+const MAX_REQUEST_QUERY_LIMIT = 1000;
 const MAX_ADMIN_LOG_LINES = 500;
 const ADMIN_LOG_REFRESH_HINT_MS = 5_000;
 const STORAGE_SCAN_TTL_MS = 30_000;
@@ -64,57 +75,6 @@ const users: User[] = initialUsers.map(cloneUser);
 
 // --- 请求日志 ---
 
-type CacheStatus = "hit" | "miss" | "bypass";
-
-interface RequestCacheMeta {
-  status: CacheStatus;
-  scope?: string;
-  ageMs?: number;
-}
-
-interface RequestTokenUsage {
-  input?: number;
-  output?: number;
-  total?: number;
-}
-
-interface RequestLog {
-  id: string;
-  timestamp: Date;
-  method: string;
-  endpoint: string;
-  status: number;
-  duration: number;
-  userId: string;
-  requestKind?: string;
-  narrator?: string;
-  provider?: string;
-  model?: string;
-  tokens?: RequestTokenUsage;
-  ttftMs?: number;
-  costUsd?: number;
-  cache?: RequestCacheMeta;
-  details?: string;
-}
-
-interface RequestSummaryBucket {
-  label: string;
-  count: number;
-}
-
-interface RequestSummary {
-  successRate: number;
-  slowRequests: number;
-  errorRequests: number;
-  averageDuration: number;
-  averageTtftMs: number | null;
-  totalTokens: number;
-  totalCostUsd: number;
-  cacheHitRate: number | null;
-  topEndpoints: RequestSummaryBucket[];
-  topNarrators: RequestSummaryBucket[];
-}
-
 interface StartupActionSummary {
   kind: string;
   scope: "book" | "library";
@@ -151,6 +111,7 @@ interface StartupSummarySnapshot {
     phase: StartupOrchestratorFailurePhase;
     message: string;
   }[];
+  healthChecks?: readonly StartupHealthCheck[];
   decisions?: readonly StartupFailureDecision[];
 }
 
@@ -184,11 +145,28 @@ interface AdminLogEntry {
   message: string;
   raw: string;
   source: "json" | "text";
+  eventType?: string;
   narrator?: string;
   requestKind?: string;
   provider?: string;
   model?: string;
   runId?: string;
+  endpoint?: string;
+  method?: string;
+  durationMs?: number;
+  status?: string | number;
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+  tokenSource?: "actual" | "estimated";
+  tokensEstimated?: boolean;
+  ttftMs?: number;
+  errorSummary?: string;
+  bookId?: string;
+  sessionId?: string;
+  chapterNumber?: number;
+  costUsd?: number;
+  requestDomain?: "admin" | "ai" | "system";
 }
 
 interface AdminLogsSnapshot {
@@ -205,94 +183,6 @@ interface AdminLogsSnapshot {
   requestMeta?: {
     narrator: string;
     requestKind: string;
-  };
-}
-
-const requestLogs: RequestLog[] = [];
-let logIdCounter = 1;
-
-function normalizeTokenUsage(tokens?: RequestTokenUsage) {
-  if (!tokens) return undefined;
-
-  const input = typeof tokens.input === "number" ? tokens.input : undefined;
-  const output = typeof tokens.output === "number" ? tokens.output : undefined;
-  const total =
-    typeof tokens.total === "number"
-      ? tokens.total
-      : (input ?? 0) + (output ?? 0) > 0
-        ? (input ?? 0) + (output ?? 0)
-        : undefined;
-
-  if (input === undefined && output === undefined && total === undefined) {
-    return undefined;
-  }
-
-  return { input, output, total };
-}
-
-export function logRequest(log: Omit<RequestLog, "id">) {
-  requestLogs.push({
-    id: String(logIdCounter++),
-    ...log,
-    tokens: normalizeTokenUsage(log.tokens),
-  });
-
-  if (requestLogs.length > MAX_REQUEST_LOGS) {
-    requestLogs.shift();
-  }
-}
-
-function buildTopBuckets(values: Array<string | undefined>, limit = 3): RequestSummaryBucket[] {
-  const counts = new Map<string, number>();
-
-  for (const value of values) {
-    if (!value) continue;
-    counts.set(value, (counts.get(value) ?? 0) + 1);
-  }
-
-  return Array.from(counts.entries())
-    .sort((left, right) => {
-      if (right[1] !== left[1]) return right[1] - left[1];
-      return left[0].localeCompare(right[0], "zh-CN");
-    })
-    .slice(0, limit)
-    .map(([label, count]) => ({ label, count }));
-}
-
-function summarizeRequests(logs: RequestLog[]): RequestSummary {
-  const successful = logs.filter((log) => log.status >= 200 && log.status < 400).length;
-  const slowRequests = logs.filter((log) => log.duration >= 2_000).length;
-  const errorRequests = logs.filter((log) => log.status >= 400).length;
-  const averageDuration = logs.length === 0 ? 0 : Math.round(logs.reduce((sum, log) => sum + log.duration, 0) / logs.length);
-
-  const ttftLogs = logs.filter((log) => typeof log.ttftMs === "number");
-  const averageTtftMs =
-    ttftLogs.length === 0 ? null : Math.round(ttftLogs.reduce((sum, log) => sum + (log.ttftMs ?? 0), 0) / ttftLogs.length);
-
-  const totalTokens = logs.reduce((sum, log) => {
-    const tokens = log.tokens;
-    const total = tokens?.total ?? ((tokens?.input ?? 0) + (tokens?.output ?? 0) || 0);
-    return sum + total;
-  }, 0);
-  const totalCostUsd = Number(
-    logs.reduce((sum, log) => sum + (typeof log.costUsd === "number" ? log.costUsd : 0), 0).toFixed(4),
-  );
-
-  const cacheableLogs = logs.filter((log) => log.cache?.status === "hit" || log.cache?.status === "miss");
-  const cacheHits = cacheableLogs.filter((log) => log.cache?.status === "hit").length;
-  const cacheHitRate = cacheableLogs.length === 0 ? null : Math.round((cacheHits / cacheableLogs.length) * 100);
-
-  return {
-    successRate: logs.length === 0 ? 0 : Math.round((successful / logs.length) * 100),
-    slowRequests,
-    errorRequests,
-    averageDuration,
-    averageTtftMs,
-    totalTokens,
-    totalCostUsd,
-    cacheHitRate,
-    topEndpoints: buildTopBuckets(logs.map((log) => log.endpoint)),
-    topNarrators: buildTopBuckets(logs.map((log) => log.narrator)),
   };
 }
 
@@ -360,7 +250,8 @@ function normalizeStartupSummary(startup: StartupSummarySnapshot | null): Startu
   return {
     ...startup,
     delivery,
-    decisions: startup.decisions ?? buildStartupFailureDecisions({ ...startup, delivery }),
+    healthChecks: startup.healthChecks ?? [],
+    decisions: startup.decisions ?? buildStartupFailureDecisions({ failures: startup.failures, delivery }),
   };
 }
 
@@ -408,8 +299,13 @@ function parseAdminLogLine(line: string): AdminLogEntry {
     const parsed = JSON.parse(raw);
     if (typeof parsed === "object" && parsed !== null) {
       const record = parsed as Record<string, unknown>;
+      const ctx = typeof record.ctx === "object" && record.ctx !== null
+        ? record.ctx as Record<string, unknown>
+        : undefined;
       return {
         ...record,
+        ...(ctx ?? {}),
+        ctx,
         tag: typeof record.tag === "string" ? record.tag : undefined,
         message: typeof record.message === "string" && record.message.trim().length > 0 ? record.message : raw,
         raw,
@@ -427,6 +323,75 @@ function parseAdminLogLine(line: string): AdminLogEntry {
     raw,
     source: "text",
   };
+}
+
+function toRuntimeRequestLog(entry: AdminLogEntry): RequestLog | null {
+  if (entry.eventType !== "ai.request") {
+    return null;
+  }
+
+  const numericStatus = typeof entry.status === "number"
+    ? entry.status
+    : entry.status === "error"
+      ? 500
+      : 200;
+  const tokens = (typeof entry.promptTokens === "number" || typeof entry.completionTokens === "number" || typeof entry.totalTokens === "number")
+    ? {
+        input: typeof entry.promptTokens === "number" ? entry.promptTokens : undefined,
+        output: typeof entry.completionTokens === "number" ? entry.completionTokens : undefined,
+        total: typeof entry.totalTokens === "number"
+          ? entry.totalTokens
+          : (entry.promptTokens ?? 0) + (entry.completionTokens ?? 0) > 0
+            ? (entry.promptTokens ?? 0) + (entry.completionTokens ?? 0)
+            : undefined,
+        estimated: entry.tokensEstimated,
+        source: entry.tokenSource,
+      }
+    : undefined;
+
+  return {
+    id: `${entry.timestamp ?? "runtime"}:${entry.endpoint ?? entry.tag ?? "ai.request"}:${entry.runId ?? entry.bookId ?? entry.sessionId ?? "scope"}`,
+    timestamp: entry.timestamp ?? new Date(0).toISOString(),
+    method: entry.method ?? "AI",
+    endpoint: entry.endpoint ?? entry.tag ?? "ai.request",
+    status: numericStatus,
+    duration: Math.max(1, Math.round(entry.durationMs ?? 0)),
+    userId: "system",
+    requestKind: entry.requestKind,
+    narrator: entry.narrator,
+    provider: entry.provider,
+    model: entry.model,
+    tokens,
+    ttftMs: entry.ttftMs,
+    costUsd: typeof entry.costUsd === "number" ? entry.costUsd : undefined,
+    details: entry.message,
+    runId: entry.runId,
+    requestDomain: entry.requestDomain ?? "ai",
+    source: "runtime-log",
+    aiStatus: typeof entry.status === "string" ? entry.status as RequestLog["aiStatus"] : undefined,
+    errorSummary: entry.errorSummary,
+    bookId: entry.bookId,
+    sessionId: entry.sessionId,
+    chapterNumber: entry.chapterNumber,
+  };
+}
+
+async function readRuntimeRequestLogs(rootPath: string, filter: AdminRunFilter): Promise<RequestLog[]> {
+  const logPath = join(rootPath, "novelfork.log");
+  try {
+    const content = await readFile(logPath, "utf-8");
+    const entries = content
+      .split(/\r?\n/)
+      .map((line) => line.replace(/\r$/, ""))
+      .filter((line) => line.trim().length > 0)
+      .map((line) => parseAdminLogLine(line))
+      .filter((entry) => !filter.runId || matchesRunFilter(entry.raw, filter) || matchesRunFilter(entry.runId, filter) || matchesRunFilter(entry.message, filter))
+      .map((entry) => toRuntimeRequestLog(entry))
+      .filter((entry): entry is RequestLog => entry !== null);
+    return entries;
+  } catch {
+    return [];
+  }
 }
 
 async function readAdminLogsSnapshot(rootPath: string, limit: number, filter: AdminRunFilter) {
@@ -823,8 +788,7 @@ async function getStorageSnapshot(forceRefresh: boolean, root?: string): Promise
 
 export function resetAdminState() {
   users.splice(0, users.length, ...initialUsers.map(cloneUser));
-  requestLogs.splice(0, requestLogs.length);
-  logIdCounter = 1;
+  resetRequestHistory();
   networkStats = { sent: 0, received: 0 };
   storageSnapshotCache = null;
 }
@@ -838,6 +802,8 @@ export function createAdminRouter(
     rerunStartupRecovery?: () => Promise<StartupSummarySnapshot | null>;
     repairRuntimeState?: (bookId: string) => Promise<StartupSummarySnapshot | null>;
     rebuildSearchIndex?: () => Promise<StartupSummarySnapshot | null>;
+    cleanupSessionStore?: () => Promise<StartupSummarySnapshot | null>;
+    ignoreExternalWorktreePollution?: () => Promise<StartupSummarySnapshot | null>;
   },
 ) {
   const app = new Hono<{ Variables: { adminLogMeta?: AdminLogMeta } }>();
@@ -1049,6 +1015,58 @@ export function createAdminRouter(
     return c.json({ stats, storage, startup, searchIndexTriggered: true });
   });
 
+  app.post("/resources/recovery/session-store", async (c) => {
+    if (!options?.cleanupSessionStore) {
+      return c.json({ error: "Session-store cleanup unavailable" }, 503);
+    }
+
+    const startup = normalizeStartupSummary(await options.cleanupSessionStore());
+    if (!startup) {
+      return c.json({ error: "Session-store cleanup unavailable" }, 503);
+    }
+
+    const [stats, storage] = await Promise.all([getResourceStats(root), getStorageSnapshot(true, root)]);
+
+    c.set("adminLogMeta", {
+      narrator: "admin.resources",
+      requestKind: "resource-monitor",
+      cache: {
+        status: "bypass",
+        scope: "session-store-cleanup",
+        ageMs: 0,
+      },
+      details: `repair=session-store;failed=${startup.recoveryReport.counts.failed}`,
+    });
+
+    return c.json({ stats, storage, startup, sessionStoreCleanupTriggered: true });
+  });
+
+  app.post("/resources/recovery/worktree-pollution", async (c) => {
+    if (!options?.ignoreExternalWorktreePollution) {
+      return c.json({ error: "Worktree pollution ignore unavailable" }, 503);
+    }
+
+    const startup = normalizeStartupSummary(await options.ignoreExternalWorktreePollution());
+    if (!startup) {
+      return c.json({ error: "Worktree pollution ignore unavailable" }, 503);
+    }
+
+    const [stats, storage] = await Promise.all([getResourceStats(root), getStorageSnapshot(true, root)]);
+
+    c.set("adminLogMeta", {
+      narrator: "admin.resources",
+      requestKind: "resource-monitor",
+      cache: {
+        status: "bypass",
+        scope: "worktree-pollution-ignore",
+        ageMs: 0,
+      },
+      details: `repair=worktree-pollution;failed=${startup.recoveryReport.counts.failed}`,
+    });
+
+    return c.json({ stats, storage, startup, worktreeIgnoreTriggered: true });
+  });
+
   // ===== Worktree =====
 
   app.get("/worktrees", async (c) => {
@@ -1063,24 +1081,68 @@ export function createAdminRouter(
 
   // ===== 请求历史 =====
 
-  app.get("/requests", (c) => {
+  app.get("/requests", async (c) => {
     const rawLimit = Number.parseInt(c.req.query("limit") || "100", 10);
-    const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 1), MAX_REQUEST_LOGS) : 100;
+    const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 1), MAX_REQUEST_QUERY_LIMIT) : 100;
     const filter = readRunFilter(c.req.query("runId"));
-    const filteredLogs = filter.runId
-      ? requestLogs.filter((log) => matchesRunFilter(log.details, filter) || matchesRunFilter(log.endpoint, filter) || matchesRunFilter(log.narrator, filter))
-      : requestLogs;
+    const provider = c.req.query("provider")?.trim() || "";
+    const model = c.req.query("model")?.trim() || "";
+    const status = c.req.query("status")?.trim() || "";
+    const scope = c.req.query("scope")?.trim() || "";
+    const bookId = c.req.query("bookId")?.trim() || "";
+    const sessionId = c.req.query("sessionId")?.trim() || "";
+
+    const runtimeLogs = await readRuntimeRequestLogs(getAdminProjectRoot(root), filter);
+    const allLogs = mergeRequestLogs(getRequestLogs(), runtimeLogs);
+    const filteredLogs = allLogs.filter((log) => {
+      if (filter.runId && ![
+        matchesRunFilter(log.details, filter),
+        matchesRunFilter(log.endpoint, filter),
+        matchesRunFilter(log.narrator, filter),
+        matchesRunFilter(log.runId, filter),
+      ].some(Boolean)) {
+        return false;
+      }
+      if (provider && log.provider !== provider) return false;
+      if (model && log.model !== model) return false;
+      if (status) {
+        if (status === "success" && log.aiStatus !== "success") return false;
+        if (status === "error" && log.aiStatus !== "error") return false;
+        if (status === "partial" && log.aiStatus !== "partial") return false;
+        if (status === "http-error" && log.status < 400) return false;
+      }
+      if (scope === "ai" && log.requestDomain !== "ai") return false;
+      if (scope === "admin" && log.requestDomain !== "admin") return false;
+      if (bookId && log.bookId !== bookId) return false;
+      if (sessionId && log.sessionId !== sessionId) return false;
+      return true;
+    });
+
     const logs = filteredLogs.slice(-limit).reverse();
-    const summary = summarizeRequests(logs);
+    const summary = summarizeRequests(filteredLogs);
     const requestMeta = buildRequestMeta({ narrator: "admin.requests", requestKind: "request-audit" });
 
     c.set("adminLogMeta", {
       narrator: requestMeta.narrator,
       requestKind: requestMeta.requestKind,
-      details: `limit=${limit}${filter.runId ? `;run=${filter.runId}` : ""}`,
+      details: `limit=${limit}${filter.runId ? `;run=${filter.runId}` : ""}${provider ? `;provider=${provider}` : ""}${model ? `;model=${model}` : ""}${status ? `;status=${status}` : ""}${scope ? `;scope=${scope}` : ""}${bookId ? `;book=${bookId}` : ""}${sessionId ? `;session=${sessionId}` : ""}`,
     });
 
-    return c.json({ logs, total: filteredLogs.length, summary, filters: filter, requestMeta });
+    return c.json({
+      logs,
+      total: filteredLogs.length,
+      summary,
+      filters: {
+        ...filter,
+        provider,
+        model,
+        status,
+        scope,
+        bookId,
+        sessionId,
+      },
+      requestMeta,
+    });
   });
 
   app.get("/logs", async (c) => {

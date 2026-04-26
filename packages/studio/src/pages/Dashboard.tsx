@@ -18,10 +18,12 @@ import {
   Zap,
 } from "lucide-react";
 
+import { AiModelRequiredDialog } from "@/components/ai/AiModelRequiredDialog";
 import { PageEmptyState } from "@/components/layout/PageEmptyState";
 import { PageScaffold } from "@/components/layout/PageScaffold";
 import { GettingStartedChecklist, type GettingStartedStatus } from "@/components/onboarding/GettingStartedChecklist";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { useAiModelGate } from "../hooks/use-ai-model-gate";
 import { deriveActiveBookIds, shouldRefetchBookCollections } from "../hooks/use-book-activity";
 import { fetchJson, postApi, useApi } from "../hooks/use-api";
 import { notify } from "@/lib/notify";
@@ -143,6 +145,7 @@ function BookMenu({ bookId, bookTitle, nav, t, onDelete }: {
 
 export function Dashboard({ nav, sse, theme, t }: { nav: Nav; sse: { messages: ReadonlyArray<SSEMessage> }; theme: Theme; t: TFunction }) {
   const c = useColors(theme);
+  const { ensureModelFor, blockedResult, closeGate } = useAiModelGate();
   const { data, loading, error, refetch } = useApi<{ books: ReadonlyArray<BookSummary> }>("/books");
   const { data: onboardingData, refetch: refetchOnboarding } = useApi<{ status: GettingStartedStatus }>("/onboarding/status");
   const [gettingStartedDismissedThisSession, setGettingStartedDismissedThisSession] = useState(false);
@@ -177,6 +180,17 @@ export function Dashboard({ nav, sse, theme, t }: { nav: Nav; sse: { messages: R
     }
   };
 
+  const requestWriteNext = (bookId?: string) => {
+    if (!bookId) {
+      nav.toBookCreate();
+      return;
+    }
+    if (!ensureModelFor("ai-writing")) {
+      return;
+    }
+    void postApi(`/books/${bookId}/write-next`);
+  };
+
   const onboardingStatus = onboardingData?.status;
   const showGettingStarted = Boolean(onboardingStatus && !onboardingStatus.dismissedGettingStarted && !gettingStartedDismissedThisSession);
   const showGettingStartedReopen = Boolean(onboardingStatus && (onboardingStatus.dismissedGettingStarted || gettingStartedDismissedThisSession));
@@ -195,11 +209,7 @@ export function Dashboard({ nav, sse, theme, t }: { nav: Nav; sse: { messages: R
         }}
         onCreateChapter={openFirstBookOrCreate}
         onTryAiWriting={() => {
-          if (firstBookId) {
-            void postApi(`/books/${firstBookId}/write-next`);
-          } else {
-            nav.toBookCreate();
-          }
+          requestWriteNext(firstBookId);
         }}
         onTryAiTasteScan={() => {
           if (firstBookId && nav.toDetect) {
@@ -347,7 +357,7 @@ export function Dashboard({ nav, sse, theme, t }: { nav: Nav; sse: { messages: R
 
                   <div className="flex items-center gap-3 shrink-0 ml-6">
                     <button
-                      onClick={() => postApi(`/books/${book.id}/write-next`)}
+                      onClick={() => requestWriteNext(book.id)}
                       disabled={isWriting}
                       className={`flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold transition-all shadow-sm ${
                         isWriting
@@ -446,6 +456,15 @@ export function Dashboard({ nav, sse, theme, t }: { nav: Nav; sse: { messages: R
             100% { transform: translateX(300%); }
           }
         `}</style>
+        <AiModelRequiredDialog
+          open={Boolean(blockedResult)}
+          message={blockedResult?.message ?? ""}
+          onCancel={closeGate}
+          onConfigureModel={() => {
+            closeGate();
+            nav.toAdmin?.("providers");
+          }}
+        />
       </div>
     </PageScaffold>
   );

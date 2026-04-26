@@ -20,6 +20,13 @@ interface AdminLogEntry {
   provider?: string;
   model?: string;
   runId?: string;
+  bookId?: string;
+  sessionId?: string;
+  status?: string;
+  ttftMs?: number;
+  totalTokens?: number;
+  tokenSource?: string;
+  errorSummary?: string;
 }
 
 interface AdminLogsSnapshot {
@@ -202,12 +209,17 @@ export function LogsTab({ runId, onInspectRun, onNavigateSection, onOpenRun }: L
                       {entry.tag ? <Badge variant="outline">{entry.tag}</Badge> : null}
                       <Badge variant={entry.source === "json" ? "secondary" : "outline"}>{entry.source === "json" ? "JSON" : "文本"}</Badge>
                     </div>
-                    {(entry.narrator || entry.requestKind || entry.provider || entry.model || entry.runId) ? (
+                    {(entry.narrator || entry.requestKind || entry.provider || entry.model || entry.runId || entry.bookId || entry.sessionId || entry.status || entry.totalTokens || entry.ttftMs) ? (
                       <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
                         {entry.narrator ? <Badge variant="outline">{entry.narrator}</Badge> : null}
                         {entry.requestKind ? <Badge variant="outline">{entry.requestKind}</Badge> : null}
                         {entry.provider ? <Badge variant="secondary">{entry.provider}</Badge> : null}
                         {entry.model ? <Badge variant="outline">{entry.model}</Badge> : null}
+                        {entry.status ? <Badge variant={entry.status === "error" ? "destructive" : "secondary"}>{entry.status}</Badge> : null}
+                        {entry.bookId ? <Badge variant="outline">book:{entry.bookId}</Badge> : null}
+                        {entry.sessionId ? <Badge variant="outline">session:{entry.sessionId}</Badge> : null}
+                        {typeof entry.ttftMs === "number" ? <Badge variant="outline">TTFT {entry.ttftMs}ms</Badge> : null}
+                        {typeof entry.totalTokens === "number" && entry.totalTokens > 0 ? <Badge variant="outline">{entry.totalTokens} tokens{entry.tokenSource === "estimated" ? " · 估算" : ""}</Badge> : null}
                         {entry.runId ? <Badge variant="outline">{entry.runId}</Badge> : null}
                         {entry.runId && onOpenRun ? (
                           <Button type="button" variant="outline" size="xs" onClick={() => onOpenRun(entry.runId!)}>
@@ -216,6 +228,7 @@ export function LogsTab({ runId, onInspectRun, onNavigateSection, onOpenRun }: L
                         ) : null}
                       </div>
                     ) : null}
+                    {entry.errorSummary ? <div className="mt-2 text-xs text-destructive">{entry.errorSummary}</div> : null}
                     <div className="mt-2 whitespace-pre-wrap break-all text-foreground">{entry.message}</div>
                   </div>
                 ))}

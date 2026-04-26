@@ -1,9 +1,16 @@
 import { Hono } from "hono";
 import { loadUserConfig, updateUserConfig } from "../lib/user-config-service.js";
 import { collectMetrics } from "../lib/metrics-service.js";
+import { buildStudioReleaseSnapshot } from "../lib/release-metadata.js";
 import type { UserConfigPatch } from "../../types/settings.js";
+import type { StudioReleaseSnapshot } from "../../shared/release-manifest.js";
 
-export function createSettingsRouter() {
+interface SettingsRouterOptions {
+  readonly root?: string;
+  readonly buildReleaseSnapshot?: (root: string) => Promise<StudioReleaseSnapshot>;
+}
+
+export function createSettingsRouter(options: SettingsRouterOptions = {}) {
   const app = new Hono();
 
   // 获取完整用户配置
@@ -142,6 +149,19 @@ export function createSettingsRouter() {
     } catch (error) {
       console.error("Failed to collect metrics:", error);
       return c.json({ error: "Failed to collect metrics" }, 500);
+    }
+  });
+
+  // 获取版本 / 更新 / changelog 信息
+  app.get("/release", async (c) => {
+    try {
+      const projectRoot = options.root ?? process.env.NOVELFORK_PROJECT_ROOT ?? process.cwd();
+      const snapshotBuilder = options.buildReleaseSnapshot ?? buildStudioReleaseSnapshot;
+      const release = await snapshotBuilder(projectRoot);
+      return c.json(release);
+    } catch (error) {
+      console.error("Failed to load release metadata:", error);
+      return c.json({ error: "Failed to load release metadata" }, 500);
     }
   });
 

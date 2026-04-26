@@ -532,7 +532,7 @@ describe("ResourcesTab", () => {
     expect(await screen.findByText("接入状态")).toBeTruthy();
     expect(screen.getByText("当前展示缓存快照")).toBeTruthy();
     expect(screen.getByText("扫描失败")).toBeTruthy();
-    expect(screen.getByText(/当前已有 1 条启动失败记录/)).toBeTruthy();
+    expect(screen.getByText(/当前失败项已经统一映射到启动诊断与自愈链/)).toBeTruthy();
     expect(screen.getByText(/默认 30 秒内读缓存/)).toBeTruthy();
     expect(screen.getAllByText("异常").length).toBeGreaterThanOrEqual(1);
   });
@@ -824,5 +824,180 @@ describe("ResourcesTab", () => {
     });
 
     expect(await screen.findByText(/success 3/)).toBeTruthy();
+  });
+
+  it("renders unified startup health checks and executes self-heal actions", async () => {
+    fetchJsonMock
+      .mockResolvedValueOnce({
+        stats: {
+          cpu: { usage: 10, cores: 4 },
+          memory: { used: 4 * 1024 * 1024 * 1024, total: 8 * 1024 * 1024 * 1024, free: 4 * 1024 * 1024 * 1024, usagePercent: 50 },
+          disk: { used: 0, total: 0, free: 0, usagePercent: 0 },
+          network: { sent: 0, received: 0 },
+          sampledAt: "2026-04-20T10:00:00Z",
+        },
+        startup: {
+          delivery: { staticMode: "filesystem", indexHtmlReady: true, compileSmokeStatus: "failed", compileCommand: "pnpm bun:compile", expectedArtifactPath: "dist/novelfork" },
+          recoveryReport: { startedAt: "2026-04-20T09:59:00Z", finishedAt: "2026-04-20T10:00:00Z", durationMs: 1000, counts: { success: 1, skipped: 2, failed: 2 }, actions: [] },
+          failures: [
+            { phase: "session-store", message: "orphan=demo-session" },
+            { phase: "compile-smoke", message: "dist/novelfork" },
+          ],
+          healthChecks: [
+            {
+              id: "unclean-shutdown",
+              category: "runtime",
+              phase: "unclean-shutdown",
+              title: "未干净退出",
+              summary: "检测到上次运行未干净退出",
+              status: "warning",
+              source: "diagnostic",
+              detail: "pid=123",
+              action: { kind: "manual-check", label: "查看上次残留标记", detail: "pid=123" },
+            },
+            {
+              id: "session-store",
+              category: "session",
+              phase: "session-store",
+              title: "会话存储",
+              summary: "会话存储存在孤儿历史文件",
+              status: "error",
+              source: "diagnostic",
+              detail: "orphan=demo-session",
+              action: { kind: "cleanup-session-history", label: "清理孤儿会话历史", endpoint: "/api/admin/resources/recovery/session-store", method: "POST" },
+            },
+            {
+              id: "git-worktree-pollution",
+              category: "workspace",
+              phase: "git-worktree-pollution",
+              title: "外部 worktree 污染",
+              summary: "检测到外部项目 worktree",
+              status: "warning",
+              source: "diagnostic",
+              detail: "D:/DESKTOP/sub2api/worktrees/demo",
+              action: { kind: "ignore-external-worktrees", label: "忽略当前外部 worktree", endpoint: "/api/admin/resources/recovery/worktree-pollution", method: "POST" },
+            },
+            {
+              id: "compile-smoke",
+              category: "delivery",
+              phase: "compile-smoke",
+              title: "compile smoke",
+              summary: "compile smoke 未通过，交付链仍需人工核对。",
+              status: "error",
+              source: "delivery",
+              detail: "dist/novelfork",
+              action: { kind: "manual-check", label: "手动执行 pnpm bun:compile", detail: "命令：pnpm bun:compile；期望产物：dist/novelfork" },
+            },
+          ],
+          decisions: [
+            {
+              id: "search-index:library:0",
+              phase: "search-index",
+              severity: "error",
+              title: "搜索索引重建失败",
+              description: "当前内存搜索索引没有完成 rebuild，先单独重建搜索索引，再重新核对 startup summary。",
+              action: {
+                kind: "rebuild-search-index",
+                label: "重建搜索索引",
+                endpoint: "/api/admin/resources/recovery/search-index",
+                method: "POST",
+              },
+            },
+          ],
+        },
+        storage: {
+          rootPath: "D:/DESKTOP/novelfork",
+          scannedAt: "2026-04-20T10:05:00Z",
+          scanDurationMs: 80,
+          mode: "cached",
+          ageMs: 1200,
+          ttlMs: 30000,
+          summary: { scannedTargets: 1, existingTargets: 1, totalBytes: 1024, fileCount: 2, directoryCount: 1, largestTargetId: "books", largestTargetLabel: "书籍目录", largestTargetBytes: 1024 },
+          targets: [],
+        },
+      })
+      .mockResolvedValueOnce({
+        stats: null,
+        startup: {
+          delivery: { staticMode: "embedded", indexHtmlReady: true, compileSmokeStatus: "success" },
+          recoveryReport: { startedAt: "2026-04-20T10:10:00Z", finishedAt: "2026-04-20T10:10:01Z", durationMs: 1000, counts: { success: 4, skipped: 1, failed: 0 }, actions: [] },
+          failures: [],
+          healthChecks: [],
+          decisions: [],
+        },
+        storage: null,
+        sessionStoreCleanupTriggered: true,
+      });
+
+    render(<ResourcesTab />);
+
+    expect(await screen.findByRole("heading", { name: "启动诊断与自愈链" })).toBeTruthy();
+    expect(screen.getByText("会话存储")).toBeTruthy();
+    expect(screen.getByText("外部 worktree 污染")).toBeTruthy();
+    expect(screen.getByText(/命令：pnpm bun:compile/)).toBeTruthy();
+    expect(screen.getByText("搜索索引重建失败")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "清理孤儿会话历史" }));
+
+    await waitFor(() => {
+      expect(fetchJsonMock).toHaveBeenNthCalledWith(2, "/api/admin/resources/recovery/session-store", { method: "POST" });
+    });
+
+    expect(await screen.findByText(/success 4/)).toBeTruthy();
+  });
+
+  it("executes ignored external worktree action from startup health checks", async () => {
+    fetchJsonMock
+      .mockResolvedValueOnce({
+        stats: {
+          cpu: { usage: 10, cores: 4 },
+          memory: { used: 4 * 1024 * 1024 * 1024, total: 8 * 1024 * 1024 * 1024, free: 4 * 1024 * 1024 * 1024, usagePercent: 50 },
+          disk: { used: 0, total: 0, free: 0, usagePercent: 0 },
+          network: { sent: 0, received: 0 },
+          sampledAt: "2026-04-20T10:00:00Z",
+        },
+        startup: {
+          delivery: { staticMode: "filesystem", indexHtmlReady: true, compileSmokeStatus: "success" },
+          recoveryReport: { startedAt: "2026-04-20T09:59:00Z", finishedAt: "2026-04-20T10:00:00Z", durationMs: 1000, counts: { success: 1, skipped: 2, failed: 0 }, actions: [] },
+          failures: [],
+          healthChecks: [
+            {
+              id: "git-worktree-pollution",
+              category: "workspace",
+              phase: "git-worktree-pollution",
+              title: "外部 worktree 污染",
+              summary: "检测到外部项目 worktree",
+              status: "warning",
+              source: "diagnostic",
+              detail: "D:/DESKTOP/sub2api/worktrees/demo",
+              action: { kind: "ignore-external-worktrees", label: "忽略当前外部 worktree", endpoint: "/api/admin/resources/recovery/worktree-pollution", method: "POST" },
+            },
+          ],
+          decisions: [],
+        },
+        storage: null,
+      })
+      .mockResolvedValueOnce({
+        stats: null,
+        startup: {
+          delivery: { staticMode: "embedded", indexHtmlReady: true, compileSmokeStatus: "success" },
+          recoveryReport: { startedAt: "2026-04-20T10:20:00Z", finishedAt: "2026-04-20T10:20:01Z", durationMs: 1000, counts: { success: 4, skipped: 1, failed: 0 }, actions: [] },
+          failures: [],
+          healthChecks: [],
+          decisions: [],
+        },
+        storage: null,
+        worktreeIgnoreTriggered: true,
+      });
+
+    render(<ResourcesTab />);
+
+    expect(await screen.findByText("外部 worktree 污染")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "忽略当前外部 worktree" }));
+
+    await waitFor(() => {
+      expect(fetchJsonMock).toHaveBeenNthCalledWith(2, "/api/admin/resources/recovery/worktree-pollution", { method: "POST" });
+    });
   });
 });

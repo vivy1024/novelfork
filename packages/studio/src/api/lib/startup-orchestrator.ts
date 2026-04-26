@@ -23,11 +23,18 @@ export interface StartupOrchestratorFailure {
 }
 
 export interface StartupFailureDecisionAction {
-  readonly kind: "repair-runtime-state" | "rebuild-search-index" | "rerun-startup-recovery" | "manual-check";
+  readonly kind:
+    | "repair-runtime-state"
+    | "rebuild-search-index"
+    | "rerun-startup-recovery"
+    | "cleanup-session-history"
+    | "ignore-external-worktrees"
+    | "manual-check";
   readonly label: string;
   readonly endpoint?: string;
   readonly method?: "POST";
   readonly payload?: Readonly<Record<string, string>>;
+  readonly detail?: string;
 }
 
 export interface StartupFailureDecision {
@@ -46,6 +53,18 @@ export interface StartupOrchestratorRecoveryAction {
   readonly reason: string;
   readonly note?: string;
   readonly bookId?: string;
+}
+
+export interface StartupHealthCheck {
+  readonly id: string;
+  readonly category: "runtime" | "session" | "workspace" | "delivery" | "provider";
+  readonly phase: "unclean-shutdown" | "session-store" | "git-worktree-pollution" | "static-delivery" | "compile-smoke" | "provider-availability";
+  readonly title: string;
+  readonly summary: string;
+  readonly status: "healthy" | "warning" | "error";
+  readonly source: "diagnostic" | "delivery";
+  readonly detail?: string;
+  readonly action?: StartupFailureDecisionAction;
 }
 
 export interface StartupOrchestratorOptions {
@@ -100,6 +119,7 @@ export interface StartupOrchestratorSummary {
   readonly failures: ReadonlyArray<StartupOrchestratorFailure>;
   readonly delivery: StartupOrchestratorDeliverySummary;
   readonly recoveryReport: StartupOrchestratorRecoveryReport;
+  readonly healthChecks: ReadonlyArray<StartupHealthCheck>;
 }
 
 export async function resolveStartupFallbackChapter(
@@ -225,6 +245,47 @@ export function buildStartupFailureDecisions(summary: Pick<StartupOrchestratorSu
             label: "检查项目配置与写权限",
           },
         };
+      case "unclean-shutdown":
+        return {
+          id,
+          phase: failure.phase,
+          severity: "warning",
+          title: "检测到上次未干净退出",
+          description: "当前进程已经接管运行标记，但仍建议查看上次残留信息，确认没有因为强退留下未完成操作。",
+          action: {
+            kind: "manual-check",
+            label: "查看上次残留标记",
+            detail: failure.message,
+          },
+        };
+      case "session-store":
+        return {
+          id,
+          phase: failure.phase,
+          severity: "error",
+          title: "会话存储需要清理",
+          description: "当前检测到孤儿 session history 或旧 JSON 残留，先清理孤儿历史文件，再重新执行启动恢复。",
+          action: {
+            kind: "cleanup-session-history",
+            label: "清理孤儿会话历史",
+            endpoint: "/api/admin/resources/recovery/session-store",
+            method: "POST",
+          },
+        };
+      case "git-worktree-pollution":
+        return {
+          id,
+          phase: failure.phase,
+          severity: "warning",
+          title: "检测到外部 worktree 污染",
+          description: "当前 worktree 列表混入了仓库外目录；若确认属于长期共存环境，可记录到忽略清单，否则先手动核查来源。",
+          action: {
+            kind: "ignore-external-worktrees",
+            label: "忽略当前外部 worktree",
+            endpoint: "/api/admin/resources/recovery/worktree-pollution",
+            method: "POST",
+          },
+        };
       case "static-delivery":
         return {
           id,
@@ -238,6 +299,9 @@ export function buildStartupFailureDecisions(summary: Pick<StartupOrchestratorSu
           action: {
             kind: "manual-check",
             label: summary.delivery.staticMode === "missing" ? "补齐静态资源产物" : "检查静态资源入口",
+            detail: summary.delivery.staticMode === "missing"
+              ? "需要可访问的首页静态资源，不能只保留 API-only 启动。"
+              : "优先检查 index.html、embedded assets 或 filesystem dist 目录是否完整。",
           },
         };
       case "compile-smoke":
@@ -250,6 +314,7 @@ export function buildStartupFailureDecisions(summary: Pick<StartupOrchestratorSu
           action: {
             kind: "manual-check",
             label: "手动执行 pnpm bun:compile",
+            detail: `命令：${summary.delivery.compileCommand}；期望产物：${summary.delivery.expectedArtifactPath}`,
           },
         };
       default:
@@ -262,10 +327,156 @@ export function buildStartupFailureDecisions(summary: Pick<StartupOrchestratorSu
           action: {
             kind: "manual-check",
             label: "查看启动日志",
+            detail: failure.message,
           },
         };
     }
   });
+}
+
+function buildStartupHealthChecks(
+  summary: Pick<StartupOrchestratorSummary, "delivery" | "failures">,
+  diagnostics: readonly StartupDiagnostic[],
+  options: StartupOrchestratorOptions,
+): StartupHealthCheck[] {
+  const healthChecks: StartupHealthCheck[] = [];
+  const failureDecisions = buildStartupFailureDecisions(summary);
+  const decisionByPhase = new Map<StartupOrchestratorFailurePhase, StartupFailureDecision>();
+  for (const decision of failureDecisions) {
+    if (!decisionByPhase.has(decision.phase)) {
+      decisionByPhase.set(decision.phase, decision);
+    }
+  }
+  const failureByPhase = new Map<StartupOrchestratorFailurePhase, StartupOrchestratorFailure>();
+  for (const failure of summary.failures) {
+    if (!failureByPhase.has(failure.phase)) {
+      failureByPhase.set(failure.phase, failure);
+    }
+  }
+  const diagnosticByKind = new Map<StartupDiagnosticKind, StartupDiagnostic>();
+  for (const diagnostic of diagnostics) {
+    diagnosticByKind.set(diagnostic.kind, diagnostic);
+  }
+
+  const unclean = diagnosticByKind.get("unclean-shutdown");
+  if (unclean) {
+    healthChecks.push({
+      id: "unclean-shutdown",
+      category: "runtime",
+      phase: "unclean-shutdown",
+      title: "未干净退出",
+      summary: unclean.reason,
+      status: unclean.status === "failed" ? "warning" : unclean.status === "skipped" ? "warning" : "healthy",
+      source: "diagnostic",
+      detail: unclean.note,
+      action: decisionByPhase.get("unclean-shutdown")?.action,
+    });
+  }
+
+  const sessionStore = diagnosticByKind.get("session-store");
+  if (sessionStore) {
+    healthChecks.push({
+      id: "session-store",
+      category: "session",
+      phase: "session-store",
+      title: "会话存储",
+      summary: sessionStore.reason,
+      status: sessionStore.status === "failed" ? "error" : sessionStore.status === "skipped" ? "warning" : "healthy",
+      source: "diagnostic",
+      detail: sessionStore.note,
+      action: decisionByPhase.get("session-store")?.action,
+    });
+  }
+
+  const worktree = diagnosticByKind.get("git-worktree-pollution");
+  if (worktree) {
+    healthChecks.push({
+      id: "git-worktree-pollution",
+      category: "workspace",
+      phase: "git-worktree-pollution",
+      title: "外部 worktree 污染",
+      summary: worktree.reason,
+      status: worktree.status === "failed" ? "warning" : worktree.status === "skipped" ? "warning" : "healthy",
+      source: "diagnostic",
+      detail: worktree.note,
+      action: worktree.status === "success" ? undefined : {
+        kind: "ignore-external-worktrees",
+        label: "忽略当前外部 worktree",
+        endpoint: "/api/admin/resources/recovery/worktree-pollution",
+        method: "POST",
+      },
+    });
+  }
+
+  if (options.staticDelivery) {
+    const staticDeliveryFailure = failureByPhase.get("static-delivery");
+    healthChecks.push({
+      id: "static-delivery",
+      category: "delivery",
+      phase: "static-delivery",
+      title: "静态资源模式",
+      summary: summary.delivery.staticMode === "embedded"
+        ? "当前使用 embedded 静态资源启动。"
+        : summary.delivery.staticMode === "filesystem"
+          ? "当前使用 filesystem 静态资源启动。"
+          : "当前缺少静态资源入口，Studio 只能以 API-only 方式启动。",
+      status: summary.delivery.staticMode === "embedded"
+        ? "healthy"
+        : summary.delivery.staticMode === "filesystem"
+          ? "warning"
+          : "error",
+      source: "delivery",
+      detail: staticDeliveryFailure?.message ?? `indexHtmlReady=${summary.delivery.indexHtmlReady}`,
+      action: summary.delivery.staticMode === "embedded"
+        ? undefined
+        : decisionByPhase.get("static-delivery")?.action,
+    });
+  }
+
+  if (options.compileSmoke) {
+    const compileSmokeFailure = failureByPhase.get("compile-smoke");
+    healthChecks.push({
+      id: "compile-smoke",
+      category: "delivery",
+      phase: "compile-smoke",
+      title: "compile smoke",
+      summary: summary.delivery.compileSmokeStatus === "success"
+        ? "单文件产物与静态入口均已通过 compile smoke。"
+        : summary.delivery.compileSmokeStatus === "skipped"
+          ? "compile smoke 当前被跳过，尚未形成完整交付结论。"
+          : summary.delivery.compileSmokeStatus === "failed"
+            ? "compile smoke 未通过，交付链仍需人工核对。"
+            : "compile smoke 结果未知。",
+      status: summary.delivery.compileSmokeStatus === "success"
+        ? "healthy"
+        : summary.delivery.compileSmokeStatus === "unknown"
+          ? "warning"
+          : summary.delivery.compileSmokeStatus === "skipped"
+            ? "warning"
+            : "error",
+      source: "delivery",
+      detail: compileSmokeFailure?.message ?? `${summary.delivery.compileCommand} -> ${summary.delivery.expectedArtifactPath}`,
+      action: summary.delivery.compileSmokeStatus === "success"
+        ? undefined
+        : decisionByPhase.get("compile-smoke")?.action,
+    });
+  }
+
+  const provider = diagnosticByKind.get("provider-availability");
+  if (provider) {
+    healthChecks.push({
+      id: "provider-availability",
+      category: "provider",
+      phase: "provider-availability",
+      title: "模型配置",
+      summary: provider.reason,
+      status: provider.status === "failed" ? "error" : provider.status === "skipped" ? "warning" : "healthy",
+      source: "diagnostic",
+      detail: provider.note,
+    });
+  }
+
+  return healthChecks;
 }
 
 /**
@@ -415,6 +626,7 @@ export async function runStartupOrchestrator(
   const finishedAt = new Date();
   const counts = summarizeActions(actions);
   const delivery = buildStartupDeliverySummary(options);
+  const healthChecks = buildStartupHealthChecks({ failures, delivery }, options.diagnostics ?? [], options);
 
   return {
     bookCount: bookIds.length,
@@ -430,5 +642,6 @@ export async function runStartupOrchestrator(
       actions,
       counts,
     },
+    healthChecks,
   };
 }
