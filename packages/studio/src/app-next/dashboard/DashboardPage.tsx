@@ -1,4 +1,5 @@
-import { useApi } from "../../hooks/use-api";
+import { useState } from "react";
+import { useApi, postApi } from "../../hooks/use-api";
 import { EmptyState, InlineError } from "../components/feedback";
 
 interface BookItem {
@@ -16,6 +17,29 @@ interface DailyStats {
   readonly todayChapters: number;
   readonly trend: ReadonlyArray<{ date: string; words: number }>;
 }
+
+interface CreateBookForm {
+  title: string;
+  genre: string;
+  platform: string;
+  chapterWordCount: number;
+  targetChapters: number;
+  language: string;
+}
+
+interface CreateBookResponse {
+  readonly status: string;
+  readonly bookId: string;
+}
+
+const INITIAL_FORM: CreateBookForm = {
+  title: "",
+  genre: "xuanhuan",
+  platform: "qidian",
+  chapterWordCount: 3000,
+  targetChapters: 200,
+  language: "zh",
+};
 
 interface DashboardPageProps {
   readonly onOpenBook?: (bookId: string) => void;
@@ -37,11 +61,49 @@ const GENRE_LABELS: Record<string, string> = {
   yanqing: "言情",
 };
 
-export function DashboardPage({ onOpenBook, onCreateBook }: DashboardPageProps) {
+export function DashboardPage({ onOpenBook }: DashboardPageProps) {
   const { data: booksData, loading: booksLoading, error: booksError, refetch: refetchBooks } = useApi<{ books: BookItem[] }>("/books");
   const { data: statsData } = useApi<DailyStats>("/daily-stats");
 
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [form, setForm] = useState<CreateBookForm>(INITIAL_FORM);
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+
   const books = booksData?.books ?? [];
+
+  const handleToggle = () => {
+    setShowCreateForm((v) => !v);
+    setCreateError(null);
+  };
+
+  const handleChange = (field: keyof CreateBookForm, value: string | number) => {
+    setForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.title.trim()) return;
+    setCreating(true);
+    setCreateError(null);
+    try {
+      await postApi<CreateBookResponse>("/books/create", {
+        title: form.title.trim(),
+        genre: form.genre,
+        platform: form.platform,
+        chapterWordCount: form.chapterWordCount,
+        targetChapters: form.targetChapters,
+        language: form.language,
+      });
+      setShowCreateForm(false);
+      setForm(INITIAL_FORM);
+      void refetchBooks();
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setCreating(false);
+    }
+  };
 
   return (
     <section className="space-y-4">
@@ -49,12 +111,98 @@ export function DashboardPage({ onOpenBook, onCreateBook }: DashboardPageProps) 
         <h2 className="text-xl font-semibold">仪表盘</h2>
         <button
           className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted"
-          onClick={onCreateBook}
+          onClick={handleToggle}
           type="button"
         >
-          + 创建新书
+          {showCreateForm ? "取消" : "+ 创建新书"}
         </button>
       </div>
+
+      {showCreateForm && (
+        <form onSubmit={handleSubmit} className="rounded-lg border border-border p-4 space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <label className="col-span-2 space-y-1">
+              <span className="text-xs text-muted-foreground">书名</span>
+              <input
+                className="w-full rounded border border-border bg-background px-2 py-1 text-sm"
+                value={form.title}
+                onChange={(e) => handleChange("title", e.target.value)}
+                placeholder="输入书名"
+                required
+                autoFocus
+              />
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs text-muted-foreground">题材</span>
+              <select
+                className="w-full rounded border border-border bg-background px-2 py-1 text-sm"
+                value={form.genre}
+                onChange={(e) => handleChange("genre", e.target.value)}
+              >
+                <option value="xuanhuan">玄幻</option>
+                <option value="xianxia">仙侠</option>
+                <option value="dushi">都市</option>
+                <option value="scifi">科幻</option>
+                <option value="other">其他</option>
+              </select>
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs text-muted-foreground">平台</span>
+              <select
+                className="w-full rounded border border-border bg-background px-2 py-1 text-sm"
+                value={form.platform}
+                onChange={(e) => handleChange("platform", e.target.value)}
+              >
+                <option value="qidian">起点</option>
+                <option value="tomato">番茄</option>
+                <option value="feilu">飞卢</option>
+                <option value="other">其他</option>
+              </select>
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs text-muted-foreground">每章字数</span>
+              <input
+                type="number"
+                className="w-full rounded border border-border bg-background px-2 py-1 text-sm"
+                value={form.chapterWordCount}
+                onChange={(e) => handleChange("chapterWordCount", Number(e.target.value))}
+                min={500}
+                max={10000}
+              />
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs text-muted-foreground">目标章节数</span>
+              <input
+                type="number"
+                className="w-full rounded border border-border bg-background px-2 py-1 text-sm"
+                value={form.targetChapters}
+                onChange={(e) => handleChange("targetChapters", Number(e.target.value))}
+                min={1}
+                max={5000}
+              />
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs text-muted-foreground">语言</span>
+              <select
+                className="w-full rounded border border-border bg-background px-2 py-1 text-sm"
+                value={form.language}
+                onChange={(e) => handleChange("language", e.target.value)}
+              >
+                <option value="zh">中文</option>
+                <option value="en">English</option>
+              </select>
+            </label>
+          </div>
+          {createError && <InlineError message={createError} />}
+          <button
+            type="submit"
+            disabled={creating || !form.title.trim()}
+            className="rounded-lg bg-primary px-4 py-1.5 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+          >
+            {creating ? "创建中…" : "创建"}
+          </button>
+        </form>
+      )}
 
       {statsData && (
         <p className="text-sm text-muted-foreground">
@@ -70,7 +218,7 @@ export function DashboardPage({ onOpenBook, onCreateBook }: DashboardPageProps) 
         <EmptyState
           title="还没有作品，创建第一本书开始写作"
           actionLabel="创建新书"
-          onAction={onCreateBook}
+          onAction={handleToggle}
         />
       )}
 

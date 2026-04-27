@@ -8,6 +8,7 @@ import { DataPanel } from "../../pages/settings/DataPanel";
 import { useTheme } from "../../hooks/use-theme";
 import { useApi, putApi } from "../../hooks/use-api";
 import { InlineError } from "../components/feedback";
+import { ProjectConfigSection } from "./ProjectConfigSection";
 
 interface SettingsSectionContentProps {
   readonly sectionId: string;
@@ -34,6 +35,8 @@ export function SettingsSectionContent({ sectionId, onSectionChange }: SettingsS
       return <MonitoringWrapper />;
     case "history":
       return <HistorySection />;
+    case "config":
+      return <ProjectConfigSection />;
     case "about":
       return <AboutSection />;
     default:
