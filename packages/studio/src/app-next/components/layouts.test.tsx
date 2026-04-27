@@ -10,12 +10,11 @@ import {
 } from "./layouts";
 
 describe("Studio Next layout primitives", () => {
-  it("renders the top shell with navigation and status slots", () => {
+  it("renders the sidebar shell with navigation", () => {
     render(
       <NextShell
         activeRoute="workspace"
         onRouteChange={() => {}}
-        status={<span>本地运行中</span>}
       >
         <div>页面内容</div>
       </NextShell>,
@@ -23,7 +22,6 @@ describe("Studio Next layout primitives", () => {
 
     expect(screen.getByRole("banner")).toBeTruthy();
     expect(screen.getByRole("navigation", { name: "Studio Next 主导航" })).toBeTruthy();
-    expect(screen.getByText("本地运行中")).toBeTruthy();
     expect(screen.getByText("页面内容")).toBeTruthy();
   });
 

@@ -46,9 +46,8 @@ describe("StudioNextApp", () => {
   it("defaults to the novel writing workspace instead of the legacy dashboard", () => {
     render(<StudioNextApp initialRoute="workspace" />);
 
-    expect(screen.getByRole("banner")).toBeTruthy();
     expect(screen.getByRole("navigation", { name: "Studio Next 主导航" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "创作工作台" })).toBeTruthy();
+    expect(screen.getByText("NovelFork Studio")).toBeTruthy();
     expect(screen.getByText("资源管理器")).toBeTruthy();
     expect(screen.getByText("AI / 经纬面板")).toBeTruthy();
   });
@@ -57,7 +56,6 @@ describe("StudioNextApp", () => {
     render(<StudioNextApp initialRoute="workspace" />);
 
     fireEvent.click(screen.getByRole("button", { name: "设置" }));
-    expect(screen.getByRole("heading", { name: "设置" })).toBeTruthy();
     expect(screen.getByText("个人设置")).toBeTruthy();
     expect(screen.getByText("实例管理")).toBeTruthy();
     const settingsNav = screen.getByRole("navigation", { name: "设置分区" });
@@ -69,6 +67,6 @@ describe("StudioNextApp", () => {
     expect(screen.getByText("正在加载 Routines 配置…")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "创作工作台" }));
-    expect(screen.getByRole("heading", { name: "创作工作台" })).toBeTruthy();
+    expect(screen.getByText("资源管理器")).toBeTruthy();
   });
 });

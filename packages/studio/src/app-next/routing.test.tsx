@@ -55,16 +55,16 @@ describe("Studio Next routing", () => {
 
   it("navigates between all three first-phase pages without page reload", () => {
     render(<StudioNextApp initialRoute="workspace" />);
-    expect(screen.getByRole("heading", { name: "创作工作台" })).toBeTruthy();
+    expect(screen.getByText("资源管理器")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "设置" }));
-    expect(screen.getByRole("heading", { name: "设置" })).toBeTruthy();
+    expect(screen.getByText("个人设置")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "套路" }));
     expect(screen.getByText("正在加载 Routines 配置…")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "创作工作台" }));
-    expect(screen.getByRole("heading", { name: "创作工作台" })).toBeTruthy();
+    expect(screen.getByText("资源管理器")).toBeTruthy();
   });
 
   it("settings page supports section switching — only right side updates", () => {

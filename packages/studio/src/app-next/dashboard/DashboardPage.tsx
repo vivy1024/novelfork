@@ -49,6 +49,15 @@ interface DashboardPageProps {
 const STATUS_DOT: Record<string, string> = {
   active: "bg-green-500",
   paused: "bg-yellow-500",
+  outlining: "bg-blue-500",
+  completed: "bg-gray-400",
+};
+
+const STATUS_LABEL: Record<string, string> = {
+  active: "连载中",
+  paused: "已暂停",
+  outlining: "大纲中",
+  completed: "已完结",
 };
 
 const GENRE_LABELS: Record<string, string> = {
@@ -216,11 +225,20 @@ export function DashboardPage({ onOpenBook }: DashboardPageProps) {
 
       {showImport && <ImportPanel books={books} onDone={() => { setShowImport(false); void refetchBooks(); }} />}
 
-      {statsData && (
-        <p className="text-sm text-muted-foreground">
-          今日 {statsData.todayWords} 字 · {statsData.todayChapters} 章
-        </p>
-      )}
+      <div className="grid gap-2 sm:grid-cols-3">
+        <div className="rounded-lg border border-border p-3">
+          <div className="text-xs text-muted-foreground">作品总数</div>
+          <div className="mt-1 text-xl font-semibold">{books.length}</div>
+        </div>
+        <div className="rounded-lg border border-border p-3">
+          <div className="text-xs text-muted-foreground">今日字数</div>
+          <div className="mt-1 text-xl font-semibold">{statsData?.todayWords ?? 0}</div>
+        </div>
+        <div className="rounded-lg border border-border p-3">
+          <div className="text-xs text-muted-foreground">今日章节</div>
+          <div className="mt-1 text-xl font-semibold">{statsData?.todayChapters ?? 0}</div>
+        </div>
+      </div>
 
       {booksError && <InlineError message={booksError} onRetry={refetchBooks} />}
 
@@ -262,7 +280,10 @@ function BookCard({ book, onOpen }: { readonly book: BookItem; readonly onOpen?:
         >
           {book.title}
         </button>
-        <span className={`h-2 w-2 shrink-0 rounded-full ${statusDot}`} title={book.status ?? "unknown"} />
+        <span className="flex shrink-0 items-center gap-1">
+          <span className={`h-2 w-2 rounded-full ${statusDot}`} />
+          <span className="text-[10px] text-muted-foreground">{STATUS_LABEL[book.status ?? ""] ?? "未知"}</span>
+        </span>
       </div>
 
       {genreLabel && (
