@@ -22,6 +22,14 @@
 - 已完成的 Tasks 1-12 作为新创作工作台可复用资产，不重复实现。
 - Task 25 的浏览器验收应分两段：当前 spec 验证核心/API/组件可用；完整页面级验收并入 `studio-frontend-rewrite`。
 
+app-next 集成规范（2026-05-XX 追加）：
+
+- UI 组件（Tasks 21-24）必须遵循 NarraFork 设计语言：零冗余、内容优先、控件内联、紧凑信息密度。
+- 组件放在 `packages/studio/src/components/writing-tools/` 下，由 app-next 的 WorkspacePage WritingToolsPanel 挂载。
+- 禁止使用 useColors/Theme，直接用 Tailwind + shadcn 语义 token。
+- 禁止 MetricCard 堆砌、描述性 badge、"打开XXX"按钮。
+- 数据从 API 加载（useApi/fetchJson），不硬编码。
+
 ## Tasks
 
 - [x] 1. 定义工具类型系统
