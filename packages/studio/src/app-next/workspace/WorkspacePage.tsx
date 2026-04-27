@@ -76,6 +76,24 @@ export interface WorkspaceAssistantApi {
   readonly runAction: (action: WorkspaceAssistantActionId, context: WorkspaceAssistantContext) => Promise<{ readonly message: string }>;
 }
 
+export interface WorkspaceBibleItem {
+  readonly id: string;
+  readonly name?: string;
+  readonly title?: string;
+  readonly summary?: string;
+}
+
+export interface WorkspaceBibleRelated {
+  readonly characters: readonly WorkspaceBibleItem[];
+  readonly locations: readonly WorkspaceBibleItem[];
+  readonly foreshadowing: readonly WorkspaceBibleItem[];
+  readonly summaries: readonly WorkspaceBibleItem[];
+}
+
+export interface WorkspaceBibleApi {
+  readonly loadRelated: (context: WorkspaceAssistantContext) => Promise<WorkspaceBibleRelated>;
+}
+
 export interface WorkspaceModelGate {
   readonly blockedResult: Extract<AiGateResult, { ok: false }> | null;
   readonly closeGate: () => void;
@@ -84,6 +102,7 @@ export interface WorkspaceModelGate {
 
 interface WorkspacePageProps {
   readonly assistantApi?: WorkspaceAssistantApi;
+  readonly bibleApi?: WorkspaceBibleApi;
   readonly candidateApi?: WorkspaceCandidateApi;
   readonly chapterApi?: WorkspaceChapterApi;
   readonly modelGate?: WorkspaceModelGate;
@@ -123,8 +142,40 @@ const DEFAULT_ASSISTANT_API: WorkspaceAssistantApi = {
   },
 };
 
+const toBibleItem = (value: unknown): WorkspaceBibleItem => {
+  const item = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  return {
+    id: typeof item.id === "string" ? item.id : crypto.randomUUID(),
+    name: typeof item.name === "string" ? item.name : undefined,
+    title: typeof item.title === "string" ? item.title : undefined,
+    summary: typeof item.summary === "string" ? item.summary : typeof item.content === "string" ? item.content : undefined,
+  };
+};
+
+const DEFAULT_BIBLE_API: WorkspaceBibleApi = {
+  loadRelated: async (context) => {
+    const [charactersData, eventsData, settingsData, summariesData] = await Promise.all([
+      fetchJson<{ characters?: unknown[] }>(`/books/${context.bookId}/bible/characters`),
+      fetchJson<{ events?: unknown[] }>(`/books/${context.bookId}/bible/events`),
+      fetchJson<{ settings?: unknown[] }>(`/books/${context.bookId}/bible/settings`),
+      fetchJson<{ chapterSummaries?: unknown[] }>(`/books/${context.bookId}/bible/chapter-summaries`),
+    ]);
+    const chapterNumber = context.chapterNumber;
+    const summaries = (summariesData.chapterSummaries ?? [])
+      .filter((item) => chapterNumber === undefined || typeof (item as { chapterNumber?: unknown }).chapterNumber !== "number" || (item as { chapterNumber?: number }).chapterNumber === chapterNumber)
+      .map(toBibleItem);
+    return {
+      characters: (charactersData.characters ?? []).map(toBibleItem).slice(0, 6),
+      locations: (settingsData.settings ?? []).map(toBibleItem).slice(0, 6),
+      foreshadowing: (eventsData.events ?? []).map(toBibleItem).slice(0, 6),
+      summaries,
+    };
+  },
+};
+
 export function WorkspacePage({
   assistantApi = DEFAULT_ASSISTANT_API,
+  bibleApi = DEFAULT_BIBLE_API,
   candidateApi = DEFAULT_CANDIDATE_API,
   chapterApi = DEFAULT_CHAPTER_API,
   modelGate,
@@ -158,7 +209,7 @@ export function WorkspacePage({
       <ResourceWorkspaceLayout
         explorer={<ResourceTree nodes={tree} selectedNodeId={selectedNode.id} onSelect={setSelectedNodeId} />}
         editor={<WorkspaceEditor candidateApi={candidateApi} chapterApi={chapterApi} node={selectedNode} />}
-        assistant={<AssistantPanel assistantApi={assistantApi} modelGate={effectiveModelGate} selectedNode={selectedNode} />}
+        assistant={<AssistantPanel assistantApi={assistantApi} bibleApi={bibleApi} modelGate={effectiveModelGate} selectedNode={selectedNode} />}
       />
     </SectionLayout>
   );
@@ -443,16 +494,20 @@ const ASSISTANT_ACTIONS: ReadonlyArray<{ readonly id: WorkspaceAssistantActionId
 
 function AssistantPanel({
   assistantApi,
+  bibleApi,
   modelGate,
   selectedNode,
 }: {
   readonly assistantApi: WorkspaceAssistantApi;
+  readonly bibleApi: WorkspaceBibleApi;
   readonly modelGate: WorkspaceModelGate;
   readonly selectedNode: StudioResourceNode;
 }) {
   const [runningAction, setRunningAction] = useState<WorkspaceAssistantActionId | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [bibleRelated, setBibleRelated] = useState<WorkspaceBibleRelated | null>(null);
+  const [bibleError, setBibleError] = useState<string | null>(null);
 
   const context: WorkspaceAssistantContext = {
     bookId: typeof selectedNode.metadata?.bookId === "string" ? selectedNode.metadata.bookId : SAMPLE_BOOK.id,
@@ -460,6 +515,22 @@ function AssistantPanel({
     selectedNodeId: selectedNode.id,
     selectedNodeTitle: selectedNode.title,
   };
+
+  useEffect(() => {
+    let active = true;
+    setBibleRelated(null);
+    setBibleError(null);
+    bibleApi.loadRelated(context)
+      .then((related) => {
+        if (active) setBibleRelated(related);
+      })
+      .catch((error: unknown) => {
+        if (active) setBibleError(error instanceof Error ? error.message : String(error));
+      });
+    return () => {
+      active = false;
+    };
+  }, [bibleApi, context.bookId, context.chapterNumber, context.selectedNodeId, context.selectedNodeTitle]);
 
   const handleAction = (action: (typeof ASSISTANT_ACTIONS)[number]) => {
     setActionMessage(null);
@@ -499,11 +570,60 @@ function AssistantPanel({
           <span className="ml-2 text-xs text-muted-foreground">{runningAction === action.id ? "运行中" : "输出到候选稿"}</span>
         </button>
       ))}
-      <div className="rounded-xl border border-border bg-muted/30 p-3 text-sm">
-        <div className="font-medium">相关经纬</div>
-        <p className="mt-1 text-muted-foreground">人物、地点、伏笔、前文摘要会按当前章节展示；未关联时提供创建入口。</p>
-      </div>
+      <BibleRelatedPanel error={bibleError} related={bibleRelated} selectedTitle={selectedNode.title} />
     </div>
+  );
+}
+
+function BibleRelatedPanel({
+  error,
+  related,
+  selectedTitle,
+}: {
+  readonly error: string | null;
+  readonly related: WorkspaceBibleRelated | null;
+  readonly selectedTitle: string;
+}) {
+  const hasItems = related ? related.characters.length + related.locations.length + related.foreshadowing.length + related.summaries.length > 0 : false;
+  return (
+    <div className="rounded-xl border border-border bg-muted/30 p-3 text-sm">
+      <div className="font-medium">相关经纬：{selectedTitle}</div>
+      {error && <p className="mt-1 text-destructive">经纬资料加载失败：{error}</p>}
+      {!related && !error && <p className="mt-1 text-muted-foreground">正在读取 Bible / 经纬资料...</p>}
+      {related && hasItems && (
+        <div className="mt-2 space-y-2">
+          <BibleItemList items={related.characters} label="人物" />
+          <BibleItemList items={related.locations} label="地点" />
+          <BibleItemList items={related.foreshadowing} label="伏笔" />
+          <BibleItemList items={related.summaries} label="前文摘要" />
+          <div className="text-xs text-muted-foreground">抽取到经纬：未接入</div>
+        </div>
+      )}
+      {related && !hasItems && (
+        <div className="mt-2 space-y-2">
+          <p className="text-muted-foreground">当前章节暂无关联经纬资料</p>
+          <div className="flex flex-wrap gap-2">
+            <button className="rounded-lg border border-border px-2 py-1 text-xs hover:bg-muted" type="button">创建经纬条目</button>
+            <button className="rounded-lg border border-border px-2 py-1 text-xs hover:bg-muted" type="button">关联已有资料</button>
+          </div>
+          <div className="text-xs text-muted-foreground">抽取到经纬：未接入</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BibleItemList({ items, label }: { readonly items: readonly WorkspaceBibleItem[]; readonly label: string }) {
+  if (items.length === 0) return null;
+  return (
+    <ul className="space-y-1">
+      {items.map((item) => (
+        <li key={item.id}>
+          <span className="font-medium">{label}：{item.name ?? item.title ?? item.id}</span>
+          {item.summary && <span className="ml-1 text-muted-foreground">{item.summary}</span>}
+        </li>
+      ))}
+    </ul>
   );
 }
 
