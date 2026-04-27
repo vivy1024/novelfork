@@ -214,6 +214,7 @@ function toChapterNode(bookId: string, chapter: ChapterSummary): StudioResourceN
     status: chapter.status,
     count: chapter.wordCount,
     metadata: {
+      bookId,
       chapterNumber: chapter.number,
       auditIssueCount: chapter.auditIssueCount,
       updatedAt: chapter.updatedAt,

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { ResourceWorkspaceLayout, SectionLayout } from "../components/layouts";
 import {
@@ -7,6 +7,7 @@ import {
   type StudioResourceNode,
   type StudioResourceTreeInput,
 } from "./resource-adapter";
+import { fetchJson } from "../../hooks/use-api";
 import type { BookDetail, ChapterSummary } from "../../shared/contracts";
 
 const SAMPLE_BOOK: BookDetail = {
@@ -48,7 +49,27 @@ const SAMPLE_INPUT: StudioResourceTreeInput = {
   bibleCounts: { characters: 3, locations: 2, factions: 1, items: 4, foreshadowing: 5, worldRules: 6 },
 };
 
-export function WorkspacePage() {
+export interface WorkspaceChapterApi {
+  readonly loadChapter: (bookId: string, chapterNumber: number) => Promise<{ readonly content: string }>;
+  readonly saveChapter: (bookId: string, chapterNumber: number, content: string) => Promise<void>;
+}
+
+interface WorkspacePageProps {
+  readonly chapterApi?: WorkspaceChapterApi;
+}
+
+const DEFAULT_CHAPTER_API: WorkspaceChapterApi = {
+  loadChapter: (bookId, chapterNumber) => fetchJson<{ content: string }>(`/books/${bookId}/chapters/${chapterNumber}`),
+  saveChapter: async (bookId, chapterNumber, content) => {
+    await fetchJson(`/books/${bookId}/chapters/${chapterNumber}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content }),
+    });
+  },
+};
+
+export function WorkspacePage({ chapterApi = DEFAULT_CHAPTER_API }: WorkspacePageProps = {}) {
   const tree = useMemo(() => buildStudioResourceTree(SAMPLE_INPUT), []);
   const [selectedNodeId, setSelectedNodeId] = useState("chapter:book-1:1");
   const selectedNode = findNode(tree, selectedNodeId) ?? tree[0]!;
@@ -75,7 +96,7 @@ export function WorkspacePage() {
 
       <ResourceWorkspaceLayout
         explorer={<ResourceTree nodes={tree} selectedNodeId={selectedNode.id} onSelect={setSelectedNodeId} />}
-        editor={<WorkspaceEditor node={selectedNode} />}
+        editor={<WorkspaceEditor chapterApi={chapterApi} node={selectedNode} />}
         assistant={<AssistantPanel selectedNode={selectedNode} />}
       />
     </SectionLayout>
@@ -141,7 +162,7 @@ function ResourceNodeButton({
   );
 }
 
-function WorkspaceEditor({ node }: { readonly node: StudioResourceNode }) {
+function WorkspaceEditor({ chapterApi, node }: { readonly chapterApi: WorkspaceChapterApi; readonly node: StudioResourceNode }) {
   if (node.kind === "generated-chapter") {
     return (
       <div className="space-y-4">
@@ -160,13 +181,7 @@ function WorkspaceEditor({ node }: { readonly node: StudioResourceNode }) {
   }
 
   if (node.kind === "chapter") {
-    return (
-      <div className="space-y-4">
-        <EditorHeader title={node.title} meta={`章节状态：${node.status ?? "unknown"} · 字数：${node.count ?? 0} · 保存状态：未修改`} />
-        <textarea aria-label="章节正文" className="min-h-[26rem] w-full resize-none rounded-xl border border-border bg-background p-4 leading-7" defaultValue={`${node.title}\n\n这里会接入 ChapterReader / BookDetail 的真实章节内容与保存能力。`} />
-        <div className="rounded-xl border border-dashed border-border p-3 text-sm text-muted-foreground">生成稿 vs 已有章节</div>
-      </div>
-    );
+    return <ChapterEditor chapterApi={chapterApi} node={node} />;
   }
 
   if (node.kind === "bible-category") {
@@ -190,14 +205,107 @@ function WorkspaceEditor({ node }: { readonly node: StudioResourceNode }) {
   );
 }
 
-function EditorHeader({ title, meta }: { readonly title: string; readonly meta: string }) {
+function ChapterEditor({ chapterApi, node }: { readonly chapterApi: WorkspaceChapterApi; readonly node: StudioResourceNode }) {
+  const chapterNumber = typeof node.metadata?.chapterNumber === "number" ? node.metadata.chapterNumber : Number(node.metadata?.chapterNumber ?? 0);
+  const bookId = typeof node.metadata?.bookId === "string" ? node.metadata.bookId : SAMPLE_BOOK.id;
+  const [content, setContent] = useState(`${node.title}\n\n这里会接入 ChapterReader / BookDetail 的真实章节内容与保存能力。`);
+  const [saveStatus, setSaveStatus] = useState<"loading" | "clean" | "dirty" | "saving" | "saved" | "error">("loading");
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setSaveStatus("loading");
+    setError(null);
+    chapterApi.loadChapter(bookId, chapterNumber)
+      .then((chapter) => {
+        if (cancelled) return;
+        setContent(chapter.content);
+        setSaveStatus("clean");
+      })
+      .catch((loadError: unknown) => {
+        if (cancelled) return;
+        setError(loadError instanceof Error ? loadError.message : String(loadError));
+        setSaveStatus("error");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [bookId, chapterApi, chapterNumber]);
+
+  const handleSave = async () => {
+    setSaveStatus("saving");
+    setError(null);
+    try {
+      await chapterApi.saveChapter(bookId, chapterNumber, content);
+      setSaveStatus("saved");
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : String(saveError));
+      setSaveStatus("error");
+    }
+  };
+
+  const statusLabel = error ? `保存失败：${error}` : saveStatusToLabel(saveStatus);
+
+  return (
+    <div className="space-y-4">
+      <EditorHeader onSave={() => void handleSave()} saveDisabled={saveStatus === "loading" || saveStatus === "saving"} title={node.title} meta={`章节状态：${node.status ?? "unknown"} · 字数：${countWords(content)} · 保存状态：${statusLabel}`} />
+      {saveStatus === "loading" && <div className="rounded-xl border border-border bg-muted/20 p-3 text-sm text-muted-foreground">正在加载章节正文...</div>}
+      {error && <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">保存失败：{error}</div>}
+      <textarea
+        aria-label="章节正文"
+        className="min-h-[26rem] w-full resize-none rounded-xl border border-border bg-background p-4 leading-7"
+        onChange={(event) => {
+          setContent(event.target.value);
+          setError(null);
+          setSaveStatus("dirty");
+        }}
+        value={content}
+      />
+      <div className="rounded-xl border border-dashed border-border p-3 text-sm text-muted-foreground">生成稿 vs 已有章节</div>
+    </div>
+  );
+}
+
+function saveStatusToLabel(status: "loading" | "clean" | "dirty" | "saving" | "saved" | "error"): string {
+  switch (status) {
+    case "loading":
+      return "加载中";
+    case "dirty":
+      return "未保存";
+    case "saving":
+      return "保存中";
+    case "saved":
+      return "已保存";
+    case "error":
+      return "失败";
+    case "clean":
+    default:
+      return "未修改";
+  }
+}
+
+function countWords(content: string): number {
+  return content.replace(/\s+/g, "").length;
+}
+
+function EditorHeader({
+  title,
+  meta,
+  onSave,
+  saveDisabled = false,
+}: {
+  readonly title: string;
+  readonly meta: string;
+  readonly onSave?: () => void;
+  readonly saveDisabled?: boolean;
+}) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3">
       <div>
         <h2 className="text-xl font-semibold">{title}</h2>
         <p className="text-sm text-muted-foreground">{meta}</p>
       </div>
-      <button className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted" type="button">保存</button>
+      <button className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50" disabled={saveDisabled} onClick={onSave} type="button">保存</button>
     </div>
   );
 }
