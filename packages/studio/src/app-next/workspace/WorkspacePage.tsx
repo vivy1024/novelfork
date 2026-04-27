@@ -17,6 +17,14 @@ import { ChapterHookGenerator, type GeneratedHookOption } from "../../components
 import { DialogueAnalysis, type DialogueAnalysisResult } from "../../components/writing-tools/DialogueAnalysis";
 import { RhythmChart, type RhythmChartAnalysis } from "../../components/writing-tools/RhythmChart";
 import { DailyProgressTracker } from "../../components/writing-tools/DailyProgressTracker";
+import { InlineWritePanel } from "../../components/writing-modes/InlineWritePanel";
+import { DialogueGenerator } from "../../components/writing-modes/DialogueGenerator";
+import { VariantCompare } from "../../components/writing-modes/VariantCompare";
+import { OutlineBrancher } from "../../components/writing-modes/OutlineBrancher";
+import { BookHealthDashboard } from "../../components/writing-tools/BookHealthDashboard";
+import { ConflictMap } from "../../components/writing-tools/ConflictMap";
+import { CharacterArcDashboard } from "../../components/writing-tools/CharacterArcDashboard";
+import { ToneDriftAlert } from "../../components/writing-tools/ToneDriftAlert";
 import { InlineError, RunStatus } from "../components/feedback";
 import { InkEditor, getMarkdown } from "../../components/InkEditor";
 
@@ -589,14 +597,66 @@ function AssistantPanel({
         ))}
       </div>
       <BiblePanel bookId={context.bookId} chapterNumber={context.chapterNumber} />
+      <WritingModesPanel selectedNode={selectedNode} />
       <WritingToolsPanel selectedNode={selectedNode} />
+    </div>
+  );
+}
+
+function WritingModesPanel({ selectedNode }: { readonly selectedNode: StudioResourceNode }) {
+  const [open, setOpen] = useState(false);
+  const [activeMode, setActiveMode] = useState<"inline" | "dialogue-gen" | "variants" | "outline">("inline");
+
+  const bookId = typeof selectedNode.metadata?.bookId === "string" ? selectedNode.metadata.bookId : FALLBACK_BOOK.id;
+  const chapterNumber = typeof selectedNode.metadata?.chapterNumber === "number" ? selectedNode.metadata.chapterNumber : 1;
+  const isChapterContext = selectedNode.kind === "chapter" || selectedNode.kind === "generated-chapter";
+
+  const noop = () => { /* placeholder */ };
+
+  return (
+    <div className="rounded-xl border border-border bg-muted/30 p-3 text-sm">
+      <button className="flex w-full items-center justify-between font-medium" onClick={() => setOpen(!open)} type="button">
+        <span>写作模式</span>
+        <span className="text-xs text-muted-foreground">{open ? "收起" : "展开"}</span>
+      </button>
+      {open && (
+        <div className="mt-3 space-y-3">
+          <div className="flex flex-wrap gap-1">
+            {isChapterContext && (
+              <>
+                <button className={`rounded-lg px-2 py-1 text-xs ${activeMode === "inline" ? "bg-primary text-primary-foreground" : "border border-border hover:bg-muted"}`} onClick={() => setActiveMode("inline")} type="button">续写/扩写/补写</button>
+                <button className={`rounded-lg px-2 py-1 text-xs ${activeMode === "dialogue-gen" ? "bg-primary text-primary-foreground" : "border border-border hover:bg-muted"}`} onClick={() => setActiveMode("dialogue-gen")} type="button">对话生成</button>
+                <button className={`rounded-lg px-2 py-1 text-xs ${activeMode === "variants" ? "bg-primary text-primary-foreground" : "border border-border hover:bg-muted"}`} onClick={() => setActiveMode("variants")} type="button">多版本</button>
+              </>
+            )}
+            <button className={`rounded-lg px-2 py-1 text-xs ${activeMode === "outline" ? "bg-primary text-primary-foreground" : "border border-border hover:bg-muted"}`} onClick={() => setActiveMode("outline")} type="button">大纲分支</button>
+          </div>
+
+          {isChapterContext && activeMode === "inline" && (
+            <InlineWritePanel bookId={bookId} chapterNumber={chapterNumber} selectedText="" onAccept={noop} onDiscard={noop} />
+          )}
+          {isChapterContext && activeMode === "dialogue-gen" && (
+            <DialogueGenerator bookId={bookId} chapterNumber={chapterNumber} onInsert={noop} />
+          )}
+          {isChapterContext && activeMode === "variants" && (
+            <VariantCompare bookId={bookId} chapterNumber={chapterNumber} selectedText="" onAccept={noop} />
+          )}
+          {activeMode === "outline" && (
+            <OutlineBrancher bookId={bookId} onSelectBranch={noop} />
+          )}
+
+          {!isChapterContext && activeMode !== "outline" && (
+            <p className="text-xs text-muted-foreground">请选择一个章节以使用写作模式工具。</p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
 function WritingToolsPanel({ selectedNode }: { readonly selectedNode: StudioResourceNode }) {
   const [open, setOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<"rhythm" | "dialogue" | "hooks" | "progress">("rhythm");
+  const [activeTab, setActiveTab] = useState<"rhythm" | "dialogue" | "hooks" | "progress" | "health" | "conflicts" | "arcs" | "tone">("rhythm");
   const [rhythmAnalysis, setRhythmAnalysis] = useState<RhythmChartAnalysis | null>(null);
   const [dialogueAnalysis, setDialogueAnalysis] = useState<DialogueAnalysisResult | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
@@ -645,6 +705,12 @@ function WritingToolsPanel({ selectedNode }: { readonly selectedNode: StudioReso
               </>
             )}
             <button className={`rounded-lg px-2 py-1 text-xs ${activeTab === "progress" ? "bg-primary text-primary-foreground" : "border border-border hover:bg-muted"}`} onClick={() => setActiveTab("progress")} type="button">日更进度</button>
+            <button className={`rounded-lg px-2 py-1 text-xs ${activeTab === "health" ? "bg-primary text-primary-foreground" : "border border-border hover:bg-muted"}`} onClick={() => setActiveTab("health")} type="button">全书健康</button>
+            <button className={`rounded-lg px-2 py-1 text-xs ${activeTab === "conflicts" ? "bg-primary text-primary-foreground" : "border border-border hover:bg-muted"}`} onClick={() => setActiveTab("conflicts")} type="button">矛盾地图</button>
+            <button className={`rounded-lg px-2 py-1 text-xs ${activeTab === "arcs" ? "bg-primary text-primary-foreground" : "border border-border hover:bg-muted"}`} onClick={() => setActiveTab("arcs")} type="button">角色弧线</button>
+            {isChapterContext && (
+              <button className={`rounded-lg px-2 py-1 text-xs ${activeTab === "tone" ? "bg-primary text-primary-foreground" : "border border-border hover:bg-muted"}`} onClick={() => setActiveTab("tone")} type="button">文风守护</button>
+            )}
           </div>
 
           {isChapterContext && activeTab === "rhythm" && (
@@ -679,7 +745,17 @@ function WritingToolsPanel({ selectedNode }: { readonly selectedNode: StudioReso
 
           {activeTab === "progress" && <DailyProgressTracker />}
 
-          {!isChapterContext && activeTab !== "progress" && (
+          {activeTab === "health" && <BookHealthDashboard bookId={bookId} />}
+
+          {activeTab === "conflicts" && <ConflictMap bookId={bookId} />}
+
+          {activeTab === "arcs" && <CharacterArcDashboard bookId={bookId} />}
+
+          {isChapterContext && activeTab === "tone" && chapterNumber !== undefined && (
+            <ToneDriftAlert bookId={bookId} chapterNumber={chapterNumber} />
+          )}
+
+          {!isChapterContext && activeTab !== "progress" && activeTab !== "health" && activeTab !== "conflicts" && activeTab !== "arcs" && (
             <p className="text-xs text-muted-foreground">请选择一个章节以使用节奏分析、对话分析和钩子生成工具。</p>
           )}
         </div>

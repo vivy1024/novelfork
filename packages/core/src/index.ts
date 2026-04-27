@@ -208,3 +208,46 @@ export type {
 } from "./presets/index.js";
 export { buildPresetInjections } from "./agents/writer-prompts.js";
 export { registerBuiltinPresets } from "./presets/builtin.js";
+
+// Inline Writing Modes
+export {
+  type InlineWriteMode,
+  type InlineWriteContext,
+  type InlineWriteInput,
+  type InlineWriteResult,
+  type ContinuationInput,
+  type ExpansionDirection,
+  type ExpansionInput,
+  type ExpansionResult,
+  type BridgePurpose,
+  type BridgeInput,
+  buildContinuationPrompt,
+  parseContinuationResult,
+  buildExpansionPrompt,
+  parseExpansionResult,
+  buildBridgePrompt,
+  parseBridgeResult,
+} from "./agents/inline-writer.js";
+export {
+  type DialogueCharacter,
+  type DialogueInput,
+  type DialogueLine,
+  type DialogueResult,
+  buildDialoguePrompt,
+  parseDialogueResult,
+} from "./agents/dialogue-generator.js";
+export {
+  type VariantInput,
+  type VariantResult,
+  buildVariantPrompts,
+  parseVariantResult,
+} from "./agents/variant-generator.js";
+export {
+  type OutlineNode as OutlineBranchNode,
+  type HookState,
+  type ChapterSummary as BranchChapterSummary,
+  type OutlineBranch,
+  type OutlineBranchChapter,
+  buildBranchPrompt,
+  parseBranchResult,
+} from "./agents/outline-brancher.js";

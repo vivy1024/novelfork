@@ -36,4 +36,5 @@ export { createMonitorRouter, setupMonitorWebSocket } from "./monitor.js";
 export { createPresetsRouter } from "./presets.js";
 export { createComplianceRouter } from "./compliance.js";
 export { createWritingToolsRouter } from "./writing-tools.js";
+export { createWritingModesRouter } from "./writing-modes.js";
 export type { RouterContext } from "./context.js";

@@ -5,8 +5,10 @@ import { Hono } from "hono";
 import {
   analyzeDialogue,
   analyzeRhythm,
+  buildConflictMap,
   buildPovDashboard,
   createKvRepository,
+  detectToneDrift,
   generateChapterHooks,
   getDailyProgress,
   getProgressTrend,
@@ -148,6 +150,75 @@ export function createWritingToolsRouter(ctx: RouterContext): Hono {
     if (!content) return c.json({ error: "Chapter not found" }, 404);
     const chapterType = typeof body.chapterType === "string" ? body.chapterType as DialogueChapterType : undefined;
     return c.json({ analysis: analyzeDialogue(content, chapterType) });
+  });
+
+  app.get("/api/books/:bookId/health", async (c) => {
+    const bookId = c.req.param("bookId");
+    await ctx.state.loadBookConfig(bookId);
+    const chaptersDir = join(ctx.state.bookDir(bookId), "chapters");
+    const { readdir, readFile: rf } = await import("node:fs/promises");
+    const files = await readdir(chaptersDir).catch(() => []);
+    const mdFiles = files.filter((f) => f.endsWith(".md"));
+    let totalWords = 0;
+    for (const f of mdFiles) {
+      const content = await rf(join(chaptersDir, f), "utf-8").catch(() => "");
+      totalWords += content.length;
+    }
+    return c.json({
+      health: {
+        totalChapters: mdFiles.length,
+        totalWords,
+        consistencyScore: 100,
+        hookRecoveryRate: 0,
+        pendingHooks: [],
+        aiTasteAvg: 0,
+        aiTasteTrend: [],
+        pacingDiversityScore: 0,
+        emotionCurve: [],
+        sensitiveWordTotal: 0,
+        stalledConflicts: [],
+        hookDebtWarnings: [],
+        fatigueWarnings: [],
+        povGapWarnings: [],
+      },
+    });
+  });
+
+  app.get("/api/books/:bookId/conflicts/map", async (c) => {
+    const bookId = c.req.param("bookId");
+    await ctx.state.loadBookConfig(bookId);
+    const storage = getStorageDatabase();
+    const { createBibleConflictRepository } = await import("@vivy1024/novelfork-core");
+    const conflicts = await createBibleConflictRepository(storage).listByBook(bookId);
+    return c.json({ conflicts: buildConflictMap(conflicts) });
+  });
+
+  app.get("/api/books/:bookId/arcs", async (c) => {
+    const bookId = c.req.param("bookId");
+    await ctx.state.loadBookConfig(bookId);
+    const storage = getStorageDatabase();
+    const { createBibleCharacterArcRepository } = await import("@vivy1024/novelfork-core");
+    const arcs = await createBibleCharacterArcRepository(storage).listByBook(bookId);
+    return c.json({ arcs });
+  });
+
+  app.post("/api/books/:bookId/chapters/:ch/tone-check", async (c) => {
+    const body = await readJsonBody(c);
+    const bookId = c.req.param("bookId");
+    const chapterNumber = Number.parseInt(c.req.param("ch"), 10);
+    if (!Number.isInteger(chapterNumber) || chapterNumber <= 0) {
+      return c.json({ error: "Invalid chapter number" }, 400);
+    }
+    await ctx.state.loadBookConfig(bookId);
+    const content = typeof body.content === "string"
+      ? body.content
+      : (await readChapter(ctx, bookId, chapterNumber))?.content;
+    if (!content) return c.json({ error: "Chapter not found" }, 404);
+    const declaredTone = typeof body.declaredTone === "string" ? body.declaredTone : "冷峻质朴";
+    const referenceProfile = isRecord(body.referenceProfile)
+      ? body.referenceProfile as unknown as StyleProfile
+      : await readStyleProfile(ctx, bookId);
+    return c.json({ result: detectToneDrift(content, declaredTone, referenceProfile ?? undefined) });
   });
 
   return app;
