@@ -18,6 +18,15 @@
 - 选段续写、扩写、补写、多版本、对话生成、大纲分支、作品导入的最终挂载位置是 `studio-frontend-rewrite` 的创作工作台：编辑器浮动工具栏、右侧 AI 面板、候选稿对照区和资源管理器导入入口。
 - 若实现 UI 组件，应保持无旧路由依赖、无旧页面布局假设，等待新前端统一挂载。
 
+app-next 集成规范（2026-05-XX 追加）：
+
+- UI 组件（Tasks 12-16）必须遵循 NarraFork 设计语言：零冗余、内容优先、控件内联、紧凑信息密度。
+- 组件放在 `packages/studio/src/components/writing-modes/` 下，由 app-next 的 WorkspacePage 挂载。
+- 禁止使用 useColors/Theme，直接用 Tailwind + shadcn 语义 token。
+- 禁止 MetricCard 堆砌、描述性 badge、"打开XXX"按钮。
+- 数据从 API 加载（useApi/fetchJson），不硬编码。
+- InlineContinuation/SceneExpander/ParagraphBridge 需要与 InkEditor 集成（浮动工具栏/行间按钮）。
+
 ## Tasks
 
 - [ ] 1. 定义写作模式类型系统
