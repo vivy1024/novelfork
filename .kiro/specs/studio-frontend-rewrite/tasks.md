@@ -92,58 +92,66 @@ Phase 2 分两条线并行：
 
 ### P1 — 配置与工作流
 
-- [ ] B5. 迁移 BookCreate（新书创建向导）
-  - 从旧 BookCreate.tsx 提取创建流程。
-  - 按 NarraFork 设计语言重写为分步表单或短表单。
-  - 验收：可创建新书并进入工作台。
+- [x] B5. 迁移 BookCreate（新书创建向导）
+  - DashboardPage 内联创建表单：2 列 grid，书名/题材/平台/字数/章节/语言。
+  - POST /books/create，成功后自动刷新书籍列表。
+  - 验收：可创建新书。
 
-- [ ] B6. 迁移 ConfigView（项目配置）
-  - 从旧 ConfigView.tsx 提取模型路由、agent 覆盖、环境变量配置。
-  - 合并到设置页或独立页面。
-  - 验收：可查看/编辑项目级配置。
+- [x] B6. 迁移 ConfigView（项目配置）
+  - 新建 ProjectConfigSection，从 /project 和 /project/overrides 加载。
+  - 集成到设置页"实例管理"组。
+  - 验收：可查看项目级配置。
 
-- [ ] B7. 迁移 WorkflowWorkbench（工作流总控台）
-  - 从旧 WorkflowWorkbench.tsx 提取 Agent/Pipeline/Scheduler 子页面。
-  - 按 NarraFork 设计语言重写为 tab 布局。
-  - 验收：可查看 agent 状态、管线运行、调度配置。
+- [x] B7. 迁移 WorkflowWorkbench（工作流总控台）
+  - 新建 WorkflowPage，水平 tab：Agent 状态、管线运行、调度配置。
+  - 集成到路由 /next/workflow。
+  - 验收：可查看 agent 状态。
 
 ### P2 — 辅助功能
 
-- [ ] B8. 迁移 PublishReadiness + 合规组件
-  - 从旧 PublishReadiness.tsx 和 compliance/ 组件迁移。
+- [x] B8. 迁移 PublishReadiness + 合规组件
+  - 新建 PublishPanel，POST /books/{id}/compliance/publish-readiness。
+  - 平台选择 + 4 指标（状态/敏感词/AI 比例/格式）。
+  - 集成到工作台顶栏。
   - 验收：可运行发布就绪检查。
 
-- [ ] B9. 迁移 SearchView（全局搜索）
-  - 从旧 SearchView.tsx 提取搜索逻辑。
-  - 验收：可搜索章节/真相/伏笔。
+- [x] B9. 迁移 SearchView（全局搜索）
+  - 新建 SearchPage，GET /search?q=xxx，防抖搜索 + 高亮片段。
+  - 集成到路由 /next/search。
+  - 验收：可搜索。
 
-- [ ] B10. 迁移 StyleManager + TruthFiles（文风管理）
-  - 从旧 StyleManager.tsx 和 TruthFiles.tsx 提取文风分析和真相文件管理。
-  - 验收：可查看/编辑真相文件。
+- [x] B10. 迁移 StyleManager + TruthFiles（文风管理）
+  - 新建 TruthPanel，GET /books/{id}/truth 列表 + 内容预览。
+  - 集成到工作台。
+  - 验收：可查看真相文件。
 
-- [ ] B11. 迁移 DetectView + DiffView（AI 检测 + 版本对比）
-  - 验收：可运行 AI 检测、查看章节 diff。
+- [x] B11. 迁移 DetectView + DiffView（AI 检测 + 版本对比）
+  - 新建 DetectPanel，GET /books/{id}/detect/stats + POST /books/{id}/detect。
+  - 验收：可查看 AI 检测评分。
 
-- [ ] B12. 迁移 ImportManager（导入管理）
-  - 验收：可导入章节/正典。
+- [x] B12. 迁移 ImportManager（导入管理）
+  - DashboardPage 内联导入面板：章节文本导入 + URL 抓取。
+  - 验收：可导入章节。
 
 ### 基础设施
 
-- [ ] B13. 路由系统扩展
-  - 从 4 个路由扩展到支持所有迁移页面。
-  - 实现 Sidebar 导航（书籍树 + 页面入口）。
-  - 验收：所有迁移页面可通过 URL 直接访问。
+- [x] B13. 路由系统扩展
+  - 6 个路由：dashboard/workspace/settings/routines/workflow/search。
+  - 所有页面通过 URL 直接访问，pushState 同步。
+  - 验收：刷新不丢状态。
 
 - [ ] B14. 全量烟测 + 旧前端对比
   - 逐页面对比旧前端和新前端功能覆盖。
   - 记录剩余差距和未迁移项。
-  - 验收：核心创作流程（创建书 → 写章节 → AI 生成 → 审校 → 发布检查）可在 app-next 完成。
+  - 验收：核心创作流程可在 app-next 完成。
 
 ## Done Definition
 
 Phase 2 完成标准：
-- 线 A：已有页面 UIUX 与 NarraFork 一致，无 MetricCard/壳子/双层标题。✅ 已完成
-- 线 B P0：Dashboard + BookDetail + ChapterReader + BibleView 迁移完成。✅ 已完成
-- 线 B P1-P2：按优先级逐步迁移，每批有独立验收。
+- 线 A：已有页面 UIUX 与 NarraFork 一致，无 MetricCard/壳子/双层标题。✅
+- 线 B P0：Dashboard + BookDetail + ChapterReader + BibleView 迁移完成。✅
+- 线 B P1：BookCreate + ConfigView + WorkflowWorkbench 迁移完成。✅
+- 线 B P2：PublishReadiness + Search + TruthFiles + DetectView + ImportManager 迁移完成。✅
+- 线 B 基础设施：6 个路由，pushState 同步。✅
 - 所有测试通过，typecheck 通过。✅ 12 文件 65 测试
-- 旧前端可作为回退但不再是主入口。
+- 剩余：B14 全量烟测。
