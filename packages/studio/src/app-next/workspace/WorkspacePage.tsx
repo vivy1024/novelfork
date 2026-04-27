@@ -212,6 +212,10 @@ export function WorkspacePage({
               {books.map((b) => <option key={b.id} value={b.id}>{b.title}</option>)}
             </select>
           </label>
+          <div className="flex items-center gap-1.5">
+            <button className="rounded-md border border-border px-2 py-1 text-xs hover:bg-muted" type="button" disabled title="即将推出">新建章节</button>
+            <button className="rounded-md border border-border px-2 py-1 text-xs hover:bg-muted" type="button" disabled title="即将推出">导出</button>
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button className={`rounded border px-2 py-0.5 text-xs hover:bg-muted ${showPublishPanel ? "border-primary bg-primary/10 text-primary" : "border-border"}`} onClick={() => setShowPublishPanel(!showPublishPanel)} type="button">发布就绪</button>
@@ -262,7 +266,7 @@ function ResourceNodeButton({
     <div className="space-y-1">
       <button
         aria-current={isSelected ? "page" : undefined}
-        className={`flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition ${isSelected ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+        className={`group flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition ${isSelected ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
         onClick={() => onSelect(node.id)}
         type="button"
       >
@@ -273,6 +277,9 @@ function ResourceNodeButton({
         <span className="flex shrink-0 items-center gap-1 text-xs opacity-80">
           {node.badge && <span>{node.badge}</span>}
           {typeof node.count === "number" && <span>{node.count}</span>}
+          {node.kind === "chapter" && (
+            <span className="invisible text-muted-foreground group-hover:visible">⋯</span>
+          )}
         </span>
       </button>
       {node.emptyState && !node.children?.some((child) => (child.count ?? 0) > 0) && (
