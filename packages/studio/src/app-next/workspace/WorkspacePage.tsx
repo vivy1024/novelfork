@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { ResourceWorkspaceLayout, SectionLayout } from "../components/layouts";
 import { useAiModelGate } from "../../hooks/use-ai-model-gate";
@@ -17,6 +17,7 @@ import { DialogueAnalysis, type DialogueAnalysisResult } from "../../components/
 import { RhythmChart, type RhythmChartAnalysis } from "../../components/writing-tools/RhythmChart";
 import { DailyProgressTracker } from "../../components/writing-tools/DailyProgressTracker";
 import { InlineError, RunStatus } from "../components/feedback";
+import { InkEditor, getMarkdown } from "../../components/InkEditor";
 
 /* ── API response shapes ── */
 
@@ -409,6 +410,7 @@ function ChapterEditor({ chapterApi, node }: { readonly chapterApi: WorkspaceCha
   const [content, setContent] = useState(`${node.title}\n\n这里会接入 ChapterReader / BookDetail 的真实章节内容与保存能力。`);
   const [saveStatus, setSaveStatus] = useState<"loading" | "clean" | "dirty" | "saving" | "saved" | "error">("loading");
   const [error, setError] = useState<string | null>(null);
+  const editorRef = useRef<{ getMarkdown: () => string } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -431,10 +433,12 @@ function ChapterEditor({ chapterApi, node }: { readonly chapterApi: WorkspaceCha
   }, [bookId, chapterApi, chapterNumber]);
 
   const handleSave = async () => {
+    const currentContent = editorRef.current?.getMarkdown() ?? content;
     setSaveStatus("saving");
     setError(null);
     try {
-      await chapterApi.saveChapter(bookId, chapterNumber, content);
+      await chapterApi.saveChapter(bookId, chapterNumber, currentContent);
+      setContent(currentContent);
       setSaveStatus("saved");
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : String(saveError));
@@ -447,18 +451,23 @@ function ChapterEditor({ chapterApi, node }: { readonly chapterApi: WorkspaceCha
   return (
     <div className="space-y-4">
       <EditorHeader onSave={() => void handleSave()} saveDisabled={saveStatus === "loading" || saveStatus === "saving"} title={node.title} meta={`章节状态：${node.status ?? "unknown"} · 字数：${countWords(content)} · 保存状态：${statusLabel}`} />
-      {saveStatus === "loading" && <div className="rounded-xl border border-border bg-muted/20 p-3 text-sm text-muted-foreground">正在加载章节正文...</div>}
+      {saveStatus === "loading" && <div className="rounded-lg border border-border bg-muted/20 p-3 text-sm text-muted-foreground">正在加载章节正文...</div>}
       {error && <InlineError message={`保存失败：${error}`} />}
-      <textarea
-        aria-label="章节正文"
-        className="min-h-[26rem] w-full resize-none rounded-xl border border-border bg-background p-4 leading-7"
-        onChange={(event) => {
-          setContent(event.target.value);
-          setError(null);
-          setSaveStatus("dirty");
-        }}
-        value={content}
-      />
+      {saveStatus !== "loading" && (
+        <InkEditor
+          ref={editorRef}
+          initialContent={content}
+          onChange={(markdown) => {
+            setContent(markdown);
+            setError(null);
+            setSaveStatus("dirty");
+          }}
+          editable
+          bookId={bookId}
+          chapterNumber={chapterNumber}
+          className="min-h-[26rem]"
+        />
+      )}
       <div className="rounded-xl border border-dashed border-border p-3 text-sm text-muted-foreground">生成稿 vs 已有章节</div>
     </div>
   );
