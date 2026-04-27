@@ -1,4 +1,8 @@
 export type ProviderType = "anthropic" | "openai" | "deepseek" | "custom";
+export type ProviderCompatibility = "openai-compatible" | "anthropic-compatible";
+export type ProviderApiMode = "completions" | "responses" | "codex";
+export type ProviderThinkingStrength = "low" | "medium" | "high";
+export type ModelTestStatus = "untested" | "success" | "error";
 
 export interface Model {
   id: string;
@@ -10,6 +14,11 @@ export interface Model {
   supportsFunctionCalling?: boolean;
   supportsVision?: boolean;
   supportsStreaming?: boolean;
+  enabled?: boolean;
+  lastTestStatus?: ModelTestStatus;
+  lastTestLatency?: number;
+  lastTestError?: string;
+  lastRefreshedAt?: string;
 }
 
 export interface Provider {
@@ -18,6 +27,12 @@ export interface Provider {
   type: ProviderType;
   apiKeyRequired: boolean;
   baseUrl?: string;
+  prefix?: string;
+  compatibility?: ProviderCompatibility;
+  apiMode?: ProviderApiMode;
+  accountId?: string;
+  useResponsesWebSocket?: boolean;
+  thinkingStrength?: ProviderThinkingStrength;
   models: Model[];
 }
 
@@ -45,6 +60,11 @@ export interface ModelPoolEntry {
   maxOutputTokens: number;
 }
 
+export interface ProviderApiTransport {
+  apiFormat: "chat" | "responses" | "codex";
+  thinkingStrength?: ProviderThinkingStrength;
+}
+
 export const PROVIDERS: Provider[] = [
   {
     id: "anthropic",
@@ -52,6 +72,9 @@ export const PROVIDERS: Provider[] = [
     type: "anthropic",
     apiKeyRequired: true,
     baseUrl: "https://api.anthropic.com",
+    prefix: "anthropic",
+    compatibility: "anthropic-compatible",
+    apiMode: "completions",
     models: [
       {
         id: "claude-opus-4-7",
@@ -93,6 +116,9 @@ export const PROVIDERS: Provider[] = [
     type: "openai",
     apiKeyRequired: true,
     baseUrl: "https://api.openai.com/v1",
+    prefix: "openai",
+    compatibility: "openai-compatible",
+    apiMode: "responses",
     models: [
       {
         id: "gpt-4-turbo",
@@ -133,6 +159,9 @@ export const PROVIDERS: Provider[] = [
     type: "deepseek",
     apiKeyRequired: true,
     baseUrl: "https://api.deepseek.com",
+    prefix: "deepseek",
+    compatibility: "openai-compatible",
+    apiMode: "completions",
     models: [
       {
         id: "deepseek-chat",
@@ -160,11 +189,14 @@ export const PROVIDERS: Provider[] = [
     name: "自定义",
     type: "custom",
     apiKeyRequired: false,
+    prefix: "custom",
+    compatibility: "openai-compatible",
+    apiMode: "completions",
     models: [],
   },
 ];
 
-const providerMap = new Map(PROVIDERS.map((provider) => [provider.id, provider]));
+const providerMap = new Map(PROVIDERS.map((provider) => [provider.id, normalizeProviderForSettings(provider)]));
 
 const PROVIDER_TYPE_LABELS: Record<ProviderType, string> = {
   anthropic: "Anthropic",
@@ -173,8 +205,55 @@ const PROVIDER_TYPE_LABELS: Record<ProviderType, string> = {
   custom: "自定义",
 };
 
+function inferCompatibility(provider: Pick<Provider, "type" | "compatibility">): ProviderCompatibility {
+  if (provider.compatibility) return provider.compatibility;
+  return provider.type === "anthropic" ? "anthropic-compatible" : "openai-compatible";
+}
+
+function inferApiMode(provider: Pick<Provider, "type" | "apiMode">): ProviderApiMode {
+  if (provider.apiMode) return provider.apiMode;
+  return provider.type === "openai" ? "responses" : "completions";
+}
+
+export function normalizeModelForSettings(model: Model, lastRefreshedAt?: string): Model {
+  return {
+    ...model,
+    enabled: model.enabled ?? true,
+    lastTestStatus: model.lastTestStatus ?? "untested",
+    ...(lastRefreshedAt ? { lastRefreshedAt } : model.lastRefreshedAt ? { lastRefreshedAt: model.lastRefreshedAt } : {}),
+  };
+}
+
+export function normalizeProviderForSettings<T extends Provider>(provider: T): T {
+  return {
+    ...provider,
+    prefix: provider.prefix ?? provider.id,
+    compatibility: inferCompatibility(provider),
+    apiMode: inferApiMode(provider),
+    models: provider.models.map((model) => normalizeModelForSettings(model)),
+  };
+}
+
+export function resolveProviderApiTransport(
+  provider: Pick<Provider, "apiMode" | "thinkingStrength">,
+): ProviderApiTransport {
+  switch (provider.apiMode ?? "completions") {
+    case "responses":
+      return { apiFormat: "responses" };
+    case "codex":
+      return {
+        apiFormat: "codex",
+        ...(provider.thinkingStrength ? { thinkingStrength: provider.thinkingStrength } : {}),
+      };
+    case "completions":
+    default:
+      return { apiFormat: "chat" };
+  }
+}
+
 export function getProvider(id: string): Provider | undefined {
-  return providerMap.get(id);
+  const provider = providerMap.get(id);
+  return provider ? normalizeProviderForSettings(provider) : undefined;
 }
 
 export function getModel(providerId: string, modelId: string): Model | undefined {
@@ -182,7 +261,7 @@ export function getModel(providerId: string, modelId: string): Model | undefined
 }
 
 export function getDefaultProvider(): Provider {
-  return PROVIDERS[0];
+  return normalizeProviderForSettings(PROVIDERS[0]);
 }
 
 export function getDefaultModel(providerId = getDefaultProvider().id): Model | undefined {
@@ -195,11 +274,10 @@ export function getProviderTypeLabel(type: ProviderType): string {
 
 export function buildManagedProviders(): ManagedProvider[] {
   return PROVIDERS.map((provider, index) => ({
-    ...provider,
+    ...normalizeProviderForSettings(provider),
     enabled: true,
     priority: index + 1,
     config: {},
-    models: provider.models.map((model) => ({ ...model })),
   }));
 }
 
@@ -211,7 +289,7 @@ export function buildModelPool(providers: ManagedProvider[]): ModelPoolEntry[] {
         modelName: model.name,
         providerId: provider.id,
         providerName: provider.name,
-        enabled: provider.enabled,
+        enabled: provider.enabled && model.enabled !== false,
         contextWindow: model.contextWindow,
         maxOutputTokens: model.maxOutputTokens,
       })),

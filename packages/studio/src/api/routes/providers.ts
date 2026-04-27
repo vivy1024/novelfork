@@ -39,6 +39,70 @@ export function createProvidersRouter() {
   });
 
   /**
+   * POST /api/providers/:id/models/refresh
+   * 刷新供应商模型列表，保存模型级刷新状态
+   */
+  app.post("/:id/models/refresh", async (c) => {
+    try {
+      const id = c.req.param("id");
+      const body: { models?: AIProvider["models"] } = await c.req.json<{ models?: AIProvider["models"] }>().catch(() => ({}));
+      const provider = providerManager.refreshProviderModels(id, Array.isArray(body.models) ? body.models : undefined);
+
+      if (!provider) {
+        return c.json({ error: "Provider not found" }, 404);
+      }
+
+      return c.json({ provider, models: provider.models });
+    } catch (error) {
+      console.error("Failed to refresh provider models:", error);
+      return c.json({ error: "Failed to refresh provider models" }, 500);
+    }
+  });
+
+  /**
+   * PATCH /api/providers/:id/models/:modelId
+   * 更新单模型开关与上下文长度等设置
+   */
+  app.patch("/:id/models/:modelId", async (c) => {
+    try {
+      const id = c.req.param("id");
+      const modelId = c.req.param("modelId");
+      const updates = await c.req.json<Partial<AIProvider["models"][number]>>();
+      const model = providerManager.updateModel(id, modelId, updates);
+
+      if (!model) {
+        return c.json({ error: "Model not found" }, 404);
+      }
+
+      return c.json({ model });
+    } catch (error) {
+      console.error("Failed to update provider model:", error);
+      return c.json({ error: "Failed to update provider model" }, 500);
+    }
+  });
+
+  /**
+   * POST /api/providers/:id/models/:modelId/test
+   * 测试单个模型并写回模型级状态
+   */
+  app.post("/:id/models/:modelId/test", async (c) => {
+    try {
+      const id = c.req.param("id");
+      const modelId = c.req.param("modelId");
+      const result = await providerManager.testModelConnection(id, modelId);
+
+      if (!result.success) {
+        return c.json({ success: false, error: result.error, model: result.model }, 400);
+      }
+
+      return c.json({ success: true, latency: result.latency, model: result.model });
+    } catch (error) {
+      console.error("Failed to test provider model:", error);
+      return c.json({ error: "Failed to test provider model" }, 500);
+    }
+  });
+
+  /**
    * GET /api/providers/:id
    * 获取单个提供商
    */

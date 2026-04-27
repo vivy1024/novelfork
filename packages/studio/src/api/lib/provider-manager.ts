@@ -6,6 +6,8 @@
 import {
   buildManagedProviders,
   buildModelPool,
+  normalizeModelForSettings,
+  normalizeProviderForSettings,
   type ManagedProvider,
   type Model,
   type ModelPoolEntry,
@@ -23,8 +25,9 @@ export class ProviderManager {
   private lastConnectionErrors: Map<string, string> = new Map();
 
   private registerProvider(provider: AIProvider): void {
-    this.providers.set(provider.id, provider);
-    this.syncProviderModels(provider.id);
+    const normalized = normalizeProviderForSettings(provider);
+    this.providers.set(normalized.id, normalized);
+    this.syncProviderModels(normalized.id);
   }
 
   private syncProviderModels(providerId: string): void {
@@ -40,7 +43,7 @@ export class ProviderManager {
     }
 
     for (const model of provider.models) {
-      this.models.set(`${provider.id}:${model.id}`, { ...model });
+      this.models.set(`${provider.id}:${model.id}`, normalizeModelForSettings(model));
     }
   }
 
@@ -81,15 +84,15 @@ export class ProviderManager {
     }
 
     const { id: _ignoredId, config, models, ...restUpdates } = updates;
-    const updated: AIProvider = {
+    const updated: AIProvider = normalizeProviderForSettings({
       ...provider,
       ...restUpdates,
       config: {
         ...provider.config,
         ...config,
       },
-      models: models ? models.map((model) => ({ ...model })) : provider.models.map((model) => ({ ...model })),
-    };
+      models: models ? models.map((model) => normalizeModelForSettings(model)) : provider.models.map((model) => normalizeModelForSettings(model)),
+    });
 
     this.providers.set(id, updated);
     this.syncProviderModels(id);
@@ -145,7 +148,7 @@ export class ProviderManager {
   getRuntimeStatus(): ProviderRuntimeStatus {
     const providers = this.listProviders();
     const usableProvider = providers.find((provider) => this.isProviderUsable(provider));
-    const usableModel = usableProvider?.models[0];
+    const usableModel = usableProvider?.models.find((model) => model.enabled !== false);
 
     if (usableProvider && usableModel) {
       return {
@@ -163,7 +166,7 @@ export class ProviderManager {
   }
 
   private isProviderUsable(provider: AIProvider): boolean {
-    if (!provider.enabled || provider.models.length === 0 || this.lastConnectionErrors.has(provider.id)) {
+    if (!provider.enabled || !provider.models.some((model) => model.enabled !== false) || this.lastConnectionErrors.has(provider.id)) {
       return false;
     }
 
@@ -222,17 +225,85 @@ export class ProviderManager {
     }
   }
 
+  refreshProviderModels(id: string, models?: Model[], refreshedAt = new Date().toISOString()): AIProvider | null {
+    const provider = this.providers.get(id);
+    if (!provider) {
+      return null;
+    }
+
+    const sourceModels = models ?? provider.models;
+    const updated: AIProvider = normalizeProviderForSettings({
+      ...provider,
+      models: sourceModels.map((model) => normalizeModelForSettings(model, refreshedAt)),
+    });
+
+    this.providers.set(id, updated);
+    this.syncProviderModels(id);
+    return updated;
+  }
+
+  updateModel(providerId: string, modelId: string, updates: Partial<Model>): AIModel | null {
+    const provider = this.providers.get(providerId);
+    if (!provider) {
+      return null;
+    }
+
+    let updatedModel: AIModel | null = null;
+    const updatedModels = provider.models.map((model) => {
+      if (model.id !== modelId) return model;
+      updatedModel = normalizeModelForSettings({ ...model, ...updates });
+      return updatedModel;
+    });
+
+    if (!updatedModel) {
+      return null;
+    }
+
+    const updatedProvider: AIProvider = normalizeProviderForSettings({
+      ...provider,
+      models: updatedModels,
+    });
+    this.providers.set(providerId, updatedProvider);
+    this.syncProviderModels(providerId);
+    return updatedModel;
+  }
+
+  async testModelConnection(providerId: string, modelId: string): Promise<{ success: boolean; error?: string; latency?: number; model?: AIModel }> {
+    const provider = this.providers.get(providerId);
+    const model = provider?.models.find((candidate) => candidate.id === modelId);
+    if (!provider || !model) {
+      return { success: false, error: "Model not found" };
+    }
+
+    const result = await this.testProviderConnection(providerId);
+    const updatedModel = this.updateModel(providerId, modelId, result.success
+      ? {
+          lastTestStatus: "success",
+          lastTestLatency: result.latency ?? 0,
+          lastTestError: undefined,
+        }
+      : {
+          lastTestStatus: "error",
+          lastTestError: result.error ?? "Unknown error",
+        });
+
+    return {
+      ...result,
+      ...(updatedModel ? { model: updatedModel } : {}),
+    };
+  }
+
   /**
    * 添加自定义提供商
    */
   addProvider(provider: Omit<AIProvider, "priority">): AIProvider {
     const maxPriority = Math.max(...Array.from(this.providers.values()).map((p) => p.priority), 0);
-    const newProvider: AIProvider = {
+    const newProvider: AIProvider = normalizeProviderForSettings({
       ...provider,
       config: { ...provider.config },
-      models: provider.models.map((model) => ({ ...model })),
+      models: provider.models.map((model) => normalizeModelForSettings(model)),
       priority: maxPriority + 1,
-    };
+    });
 
     this.registerProvider(newProvider);
     return newProvider;

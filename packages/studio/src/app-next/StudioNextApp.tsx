@@ -2,22 +2,24 @@ import { useState } from "react";
 
 import { resolveStudioNextRoute, type StudioNextRoute } from "./entry";
 import { NextShell, ResourceWorkspaceLayout, SectionLayout, SettingsLayout } from "./components/layouts";
+import { ProviderSettingsPage } from "./settings/ProviderSettingsPage";
 
 interface StudioNextAppProps {
   readonly initialRoute?: StudioNextRoute;
 }
 
 const SETTINGS_SECTIONS = [
-  { id: "profile", label: "个人资料", status: "可编辑" },
-  { id: "models", label: "模型", status: "部分接入" },
-  { id: "agents", label: "AI 代理", status: "复用运行时" },
-  { id: "notifications", label: "通知", status: "未接入" },
-  { id: "appearance", label: "外观与界面", status: "可迁移" },
-  { id: "server", label: "服务器与系统", status: "只读" },
-  { id: "storage", label: "存储空间", status: "只读" },
-  { id: "resources", label: "运行资源", status: "只读" },
-  { id: "history", label: "使用历史", status: "可查看" },
-  { id: "about", label: "关于", status: "可查看" },
+  { id: "profile", label: "个人资料", status: "可编辑", group: "个人设置" },
+  { id: "models", label: "模型", status: "部分接入", group: "个人设置" },
+  { id: "agents", label: "AI 代理", status: "复用运行时", group: "个人设置" },
+  { id: "notifications", label: "通知", status: "未接入", group: "个人设置" },
+  { id: "appearance", label: "外观与界面", status: "可迁移", group: "个人设置" },
+  { id: "providers", label: "AI 供应商", status: "可管理", group: "实例管理" },
+  { id: "server", label: "服务器与系统", status: "只读", group: "实例管理" },
+  { id: "storage", label: "存储空间", status: "只读", group: "实例管理" },
+  { id: "resources", label: "运行资源", status: "只读", group: "实例管理" },
+  { id: "history", label: "使用历史", status: "可查看", group: "实例管理" },
+  { id: "about", label: "关于", status: "可查看", group: "实例管理" },
 ] as const;
 
 const ROUTINE_SECTIONS = [
@@ -127,24 +129,28 @@ function SettingsPage() {
 
   return (
     <SettingsLayout title="设置" sections={SETTINGS_SECTIONS} activeSectionId={sectionId} onSectionChange={setSectionId}>
-      <section aria-label="当前设置详情" className="space-y-4">
-        <div className="grid gap-3 md:grid-cols-3">
-          <StatusCard title="分区" value={active.label} />
-          <StatusCard title="接入状态" value={active.status} />
-          <StatusCard title="交互模式" value="总览 → 详情 → 动作" />
-        </div>
-        <div className="rounded-xl border border-border p-4">
-          <h2 className="text-lg font-semibold">{active.label}</h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            当前分区遵循 NarraFork 管理型设置范式。已接入项复用旧配置源；未接入项明确显示只读或未接入。
-          </p>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <button className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted" type="button">刷新</button>
-            <button className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted" type="button">查看详情</button>
-            <span className="rounded-lg bg-muted px-3 py-1.5 text-sm text-muted-foreground">未接入项不会伪造保存</span>
+      {sectionId === "providers" ? (
+        <ProviderSettingsPage />
+      ) : (
+        <section aria-label="当前设置详情" className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-3">
+            <StatusCard title="分区" value={active.label} />
+            <StatusCard title="接入状态" value={active.status} />
+            <StatusCard title="交互模式" value="总览 → 详情 → 动作" />
           </div>
-        </div>
-      </section>
+          <div className="rounded-xl border border-border p-4">
+            <h2 className="text-lg font-semibold">{active.label}</h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              当前分区遵循 NarraFork 管理型设置范式。已接入项复用旧配置源；未接入项明确显示只读或未接入。
+            </p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted" type="button">刷新</button>
+              <button className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted" type="button">查看详情</button>
+              <span className="rounded-lg bg-muted px-3 py-1.5 text-sm text-muted-foreground">未接入项不会伪造保存</span>
+            </div>
+          </div>
+        </section>
+      )}
     </SettingsLayout>
   );
 }
