@@ -11,20 +11,6 @@ vi.mock("../../hooks/use-api", () => ({
   putApi: putApiMock,
 }));
 
-vi.mock("../../hooks/use-theme", () => ({
-  useTheme: () => "light" as const,
-}));
-
-vi.mock("../../hooks/use-colors", () => ({
-  useColors: () => ({
-    card: "", cardStatic: "border-border", surface: "", muted: "", subtle: "",
-    link: "", input: "border border-border", btnPrimary: "bg-primary text-primary-foreground",
-    btnSecondary: "", btnSuccess: "", btnDanger: "", tableHeader: "", tableDivide: "",
-    tableHover: "", error: "", info: "", code: "", active: "", paused: "", mono: "",
-    text: "", textSecondary: "", bg: "", bgSecondary: "", border: "", accent: "",
-  }),
-}));
-
 import { SettingsSectionContent } from "./SettingsSectionContent";
 
 const sampleUser = {

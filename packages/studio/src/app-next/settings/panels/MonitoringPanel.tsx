@@ -1,7 +1,5 @@
 import { useState, useEffect } from "react";
-import { useColors } from "../../hooks/use-colors";
-import type { Theme } from "../../hooks/use-theme";
-import { fetchJson } from "../../hooks/use-api";
+import { fetchJson } from "../../../hooks/use-api";
 import { Activity, Cpu, HardDrive, MemoryStick } from "lucide-react";
 
 interface SystemMetrics {
@@ -24,10 +22,6 @@ interface SystemMetrics {
   timestamp: number;
 }
 
-interface Props {
-  theme: Theme;
-}
-
 function formatBytes(bytes: number): string {
   if (bytes === 0) return "0 B";
   const k = 1024;
@@ -36,8 +30,7 @@ function formatBytes(bytes: number): string {
   return `${(bytes / Math.pow(k, i)).toFixed(2)} ${sizes[i]}`;
 }
 
-export function MonitoringPanel({ theme }: Props) {
-  const c = useColors(theme);
+export function MonitoringPanel() {
   const [metrics, setMetrics] = useState<SystemMetrics | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -53,7 +46,7 @@ export function MonitoringPanel({ theme }: Props) {
     }
 
     loadMetrics();
-    const interval = setInterval(loadMetrics, 5000); // 每 5 秒更新一次
+    const interval = setInterval(loadMetrics, 5000);
 
     return () => clearInterval(interval);
   }, []);
@@ -77,7 +70,7 @@ export function MonitoringPanel({ theme }: Props) {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* CPU 使用率 */}
-        <div className={c.cardStatic}>
+        <div className="rounded-lg border border-border p-4">
           <div className="flex items-center gap-3 mb-4">
             <div className="p-2 rounded-lg bg-blue-500/10">
               <Cpu className="w-5 h-5 text-blue-500" />
@@ -102,7 +95,7 @@ export function MonitoringPanel({ theme }: Props) {
         </div>
 
         {/* 内存使用率 */}
-        <div className={c.cardStatic}>
+        <div className="rounded-lg border border-border p-4">
           <div className="flex items-center gap-3 mb-4">
             <div className="p-2 rounded-lg bg-green-500/10">
               <MemoryStick className="w-5 h-5 text-green-500" />
@@ -131,7 +124,7 @@ export function MonitoringPanel({ theme }: Props) {
         </div>
 
         {/* 磁盘使用率 */}
-        <div className={c.cardStatic}>
+        <div className="rounded-lg border border-border p-4">
           <div className="flex items-center gap-3 mb-4">
             <div className="p-2 rounded-lg bg-purple-500/10">
               <HardDrive className="w-5 h-5 text-purple-500" />
@@ -160,7 +153,7 @@ export function MonitoringPanel({ theme }: Props) {
         </div>
 
         {/* 更新时间 */}
-        <div className={c.cardStatic}>
+        <div className="rounded-lg border border-border p-4">
           <div className="flex items-center gap-3 mb-4">
             <div className="p-2 rounded-lg bg-orange-500/10">
               <Activity className="w-5 h-5 text-orange-500" />

@@ -10,16 +10,13 @@ import {
   Wrench,
 } from "lucide-react";
 
-import { PageEmptyState } from "@/components/layout/PageEmptyState";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { postApi, putApi, useApi } from "../hooks/use-api";
-import type { TFunction } from "../hooks/use-i18n";
-import type { Theme } from "../hooks/use-theme";
-import { describeToolAccessReason, type ToolAccessReasonKey } from "../shared/tool-access-reasons";
+import { postApi, putApi, useApi } from "../../hooks/use-api";
+import { describeToolAccessReason, type ToolAccessReasonKey } from "../../shared/tool-access-reasons";
 
 interface MCPServerTool {
   name: string;
@@ -57,12 +54,6 @@ interface MCPRegistryResponse {
     mcpStrategy?: "allow" | "ask" | "deny" | "inherit";
   };
   servers: MCPServer[];
-}
-
-interface Props {
-  nav: { toWorkflow?: () => void };
-  theme: Theme;
-  t: TFunction;
 }
 
 interface ServerFormState {
@@ -125,10 +116,7 @@ function renderStatusLabel(status: MCPServer["status"]) {
   return "未连接";
 }
 
-export function MCPServerManager({ nav, theme, t }: Props) {
-  void theme;
-  void t;
-
+export function MCPServerPanel() {
   const { data, refetch } = useApi<MCPRegistryResponse>("/mcp/registry");
   const [editorMode, setEditorMode] = useState<"create" | "edit" | "import" | null>(null);
   const [editingServerId, setEditingServerId] = useState<string | null>(null);
@@ -241,24 +229,17 @@ export function MCPServerManager({ nav, theme, t }: Props) {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex flex-wrap gap-2">
-            {nav.toWorkflow && (
-              <Button variant="outline" onClick={() => nav.toWorkflow?.()}>
-                工作流总览
-              </Button>
-            )}
-            <Button variant="outline" onClick={refetch}>
-              <RefreshCw className="size-4" />
-              刷新
-            </Button>
-            <Button variant="outline" onClick={openImportForm}>
-              导入 JSON
-            </Button>
-            <Button onClick={openCreateForm}>
-              <Plus className="size-4" />
-              添加 Server
-            </Button>
-          </div>
+          <Button variant="outline" onClick={refetch}>
+            <RefreshCw className="size-4" />
+            刷新
+          </Button>
+          <Button variant="outline" onClick={openImportForm}>
+            导入 JSON
+          </Button>
+          <Button onClick={openCreateForm}>
+            <Plus className="size-4" />
+            添加 Server
+          </Button>
         </div>
       </header>
 
@@ -289,7 +270,7 @@ export function MCPServerManager({ nav, theme, t }: Props) {
           </CardDescription>
         </CardHeader>
         <CardContent className="text-sm text-amber-900/90">
-          返回作者模式路径：使用页面顶部“切回作者模式”；切回后 MCP Server 管理和原始工具注册表会从侧边栏与命令面板隐藏。
+          返回作者模式路径：使用页面顶部"切回作者模式"；切回后 MCP Server 管理和原始工具注册表会从侧边栏与命令面板隐藏。
         </CardContent>
       </Card>
 
@@ -307,7 +288,7 @@ export function MCPServerManager({ nav, theme, t }: Props) {
                 aria-label="MCP JSON"
                 value={importJson}
                 onChange={(event) => setImportJson(event.target.value)}
-                className="min-h-40 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm font-mono"
+                className="min-h-40 w-full rounded-lg border border-input bg-background px-3 py-2 font-mono text-sm"
                 placeholder='{"mcpServers":[{"name":"memory","transport":"stdio","command":"npx","args":["-y","@modelcontextprotocol/server-memory"]}]}'
               />
             </div>
@@ -387,16 +368,17 @@ export function MCPServerManager({ nav, theme, t }: Props) {
       )}
 
       {servers.length === 0 ? (
-        <PageEmptyState
-          title="暂无 MCP Server"
-          description="点击右上角添加，接入本地或远程 MCP 工具服务。"
-          action={
-            <Button onClick={openCreateForm}>
-              <Plus className="size-4" />
-              添加 Server
-            </Button>
-          }
-        />
+        <div className="flex flex-col items-center justify-center gap-4 rounded-2xl border border-dashed border-border bg-muted/20 p-12 text-center">
+          <Server className="size-10 text-muted-foreground" />
+          <div className="space-y-1">
+            <p className="text-lg font-semibold">暂无 MCP Server</p>
+            <p className="text-sm text-muted-foreground">点击右上角添加，接入本地或远程 MCP 工具服务。</p>
+          </div>
+          <Button onClick={openCreateForm}>
+            <Plus className="size-4" />
+            添加 Server
+          </Button>
+        </div>
       ) : (
         <div className="grid gap-4">
           {servers.map((server) => (

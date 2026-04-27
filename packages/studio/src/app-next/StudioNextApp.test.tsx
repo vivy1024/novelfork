@@ -10,20 +10,6 @@ vi.mock("../hooks/use-api", () => ({
   putApi: vi.fn().mockResolvedValue({}),
 }));
 
-vi.mock("../hooks/use-theme", () => ({
-  useTheme: () => "light" as const,
-}));
-
-vi.mock("../hooks/use-colors", () => ({
-  useColors: () => ({
-    card: "", cardStatic: "border-border", surface: "", muted: "", subtle: "",
-    link: "", input: "border border-border", btnPrimary: "bg-primary text-primary-foreground",
-    btnSecondary: "", btnSuccess: "", btnDanger: "", tableHeader: "", tableDivide: "",
-    tableHover: "", error: "", info: "", code: "", active: "", paused: "", mono: "",
-    text: "", textSecondary: "", bg: "", bgSecondary: "", border: "", accent: "",
-  }),
-}));
-
 vi.mock("../hooks/use-ai-model-gate", () => ({
   useAiModelGate: () => ({ blockedResult: null, closeGate: vi.fn(), ensureModelFor: vi.fn(() => true) }),
 }));
