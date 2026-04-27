@@ -10,6 +10,7 @@ import { ToolsTab } from "../../components/Routines/ToolsTab";
 import { ROUTINES_SCOPE_META, useRoutinesEditor } from "../../components/Routines/use-routines-editor";
 import { MCPServerManager } from "../../pages/MCPServerManager";
 import type { Routines as RoutinesConfig } from "../../types/routines";
+import { InlineError } from "../components/feedback";
 
 interface RoutinesNextPageProps {
   readonly projectRoot?: string;
@@ -200,7 +201,7 @@ export function RoutinesNextPage({ projectRoot: projectRootProp }: RoutinesNextP
         <MetricCard title="当前 scope" value={scopeMeta.label} description={isReadOnly ? "只读生效视图" : "可编辑并保存"} />
       </div>
 
-      {error && <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{error}</div>}
+      {error && <InlineError message={error} />}
 
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-muted/30 p-3">
         <button
