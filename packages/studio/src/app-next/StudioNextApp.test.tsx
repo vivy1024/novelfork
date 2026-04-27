@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { StudioNextApp } from "./StudioNextApp";
@@ -23,9 +23,10 @@ describe("StudioNextApp", () => {
     expect(screen.getByRole("heading", { name: "设置" })).toBeTruthy();
     expect(screen.getByText("个人设置")).toBeTruthy();
     expect(screen.getByText("实例管理")).toBeTruthy();
-    expect(screen.getByRole("button", { name: /个人资料/ })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /模型/ })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /AI 供应商/ })).toBeTruthy();
+    const settingsNav = screen.getByRole("navigation", { name: "设置分区" });
+    expect(within(settingsNav).getByRole("button", { name: /个人资料/ })).toBeTruthy();
+    expect(within(settingsNav).getByRole("button", { name: /模型/ })).toBeTruthy();
+    expect(within(settingsNav).getByRole("button", { name: /AI 供应商/ })).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "套路" }));
     expect(screen.getByRole("heading", { name: "套路" })).toBeTruthy();

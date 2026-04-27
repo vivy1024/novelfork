@@ -3,6 +3,7 @@ import { useState } from "react";
 import { resolveStudioNextRoute, type StudioNextRoute } from "./entry";
 import { NextShell, ResourceWorkspaceLayout, SectionLayout, SettingsLayout } from "./components/layouts";
 import { ProviderSettingsPage } from "./settings/ProviderSettingsPage";
+import { SettingsSectionContent } from "./settings/SettingsSectionContent";
 
 interface StudioNextAppProps {
   readonly initialRoute?: StudioNextRoute;
@@ -125,31 +126,13 @@ function ResourceGroup({ title, items, action }: { readonly title: string; reado
 
 function SettingsPage() {
   const [sectionId, setSectionId] = useState("models");
-  const active = SETTINGS_SECTIONS.find((section) => section.id === sectionId) ?? SETTINGS_SECTIONS[1];
 
   return (
     <SettingsLayout title="设置" sections={SETTINGS_SECTIONS} activeSectionId={sectionId} onSectionChange={setSectionId}>
       {sectionId === "providers" ? (
         <ProviderSettingsPage />
       ) : (
-        <section aria-label="当前设置详情" className="space-y-4">
-          <div className="grid gap-3 md:grid-cols-3">
-            <StatusCard title="分区" value={active.label} />
-            <StatusCard title="接入状态" value={active.status} />
-            <StatusCard title="交互模式" value="总览 → 详情 → 动作" />
-          </div>
-          <div className="rounded-xl border border-border p-4">
-            <h2 className="text-lg font-semibold">{active.label}</h2>
-            <p className="mt-2 text-sm text-muted-foreground">
-              当前分区遵循 NarraFork 管理型设置范式。已接入项复用旧配置源；未接入项明确显示只读或未接入。
-            </p>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <button className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted" type="button">刷新</button>
-              <button className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted" type="button">查看详情</button>
-              <span className="rounded-lg bg-muted px-3 py-1.5 text-sm text-muted-foreground">未接入项不会伪造保存</span>
-            </div>
-          </div>
-        </section>
+        <SettingsSectionContent sectionId={sectionId} onSectionChange={setSectionId} />
       )}
     </SettingsLayout>
   );
@@ -158,7 +141,7 @@ function SettingsPage() {
 function RoutinesPage() {
   return (
     <SectionLayout title="套路" description="保留 NarraFork 固定 AI 专业功能集合，复用旧 Routines API 与类型。">
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {ROUTINE_SECTIONS.map((section) => (
           <article key={section} className="rounded-2xl border border-border bg-card p-4 shadow-sm">
             <h2 className="text-base font-semibold">{section}</h2>
@@ -170,14 +153,5 @@ function RoutinesPage() {
         ))}
       </div>
     </SectionLayout>
-  );
-}
-
-function StatusCard({ title, value }: { readonly title: string; readonly value: string }) {
-  return (
-    <div className="rounded-xl border border-border bg-muted/30 p-3">
-      <div className="text-xs text-muted-foreground">{title}</div>
-      <div className="mt-1 font-medium">{value}</div>
-    </div>
   );
 }
