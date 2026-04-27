@@ -631,18 +631,19 @@ function AssistantPanel({
       {actionMessage && <div className="rounded-xl border border-border bg-muted/30 p-3 text-sm">{actionMessage}</div>}
       {actionError && <InlineError message={`AI 动作失败：${actionError}`} />}
       {runningAction && <RunStatus action={ASSISTANT_ACTIONS.find((a) => a.id === runningAction)?.label ?? runningAction} running />}
-      {ASSISTANT_ACTIONS.map((action) => (
-        <button
-          key={action.id}
-          className="w-full rounded-xl border border-border px-3 py-2 text-left text-sm hover:bg-muted disabled:opacity-50"
-          disabled={runningAction !== null}
-          onClick={() => handleAction(action)}
-          type="button"
-        >
-          {action.label}
-          <span className="ml-2 text-xs text-muted-foreground">{runningAction === action.id ? "运行中" : "输出到候选稿"}</span>
-        </button>
-      ))}
+      <div className="grid grid-cols-2 gap-1.5">
+        {ASSISTANT_ACTIONS.map((action) => (
+          <button
+            key={action.id}
+            className="rounded-lg border border-border px-2 py-1.5 text-left text-xs hover:bg-muted disabled:opacity-50"
+            disabled={runningAction !== null}
+            onClick={() => handleAction(action)}
+            type="button"
+          >
+            {action.label}
+          </button>
+        ))}
+      </div>
       <BibleRelatedPanel error={bibleError} related={bibleRelated} selectedTitle={selectedNode.title} />
       <WritingToolsPanel selectedNode={selectedNode} />
     </div>

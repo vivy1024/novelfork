@@ -102,6 +102,7 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
   const [feedback, setFeedback] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState<ProviderFormState>(INITIAL_FORM);
+  const [showAddForm, setShowAddForm] = useState(false);
   const [accountId, setAccountId] = useState("");
   const [useResponsesWebSocket, setUseResponsesWebSocket] = useState(false);
   const [thinkingStrength, setThinkingStrength] = useState<ProviderThinkingStrength>("medium");
@@ -166,6 +167,7 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
       setSelectedProviderId(result.provider.id);
       setFeedback("供应商已保存，可继续刷新模型列表。");
       setForm(INITIAL_FORM);
+      setShowAddForm(false);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
@@ -231,10 +233,19 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
   }
 
   return (
-    <section aria-label="AI 供应商设置" className="space-y-5">
-      <div>
-        <h2 className="text-xl font-semibold">AI 供应商</h2>
-        <p className="text-sm text-muted-foreground">总览 → 分组卡片 → 单项详情 → 保存 / 刷新 / 测试 / 禁用。</p>
+    <section aria-label="AI 供应商设置" className="space-y-3">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold">AI 供应商</h2>
+          <p className="text-sm text-muted-foreground">{summary.providerCount} 供应商 · {summary.enabledCount} 已启用 · {summary.modelCount} 可用模型</p>
+        </div>
+        <button
+          type="button"
+          className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted"
+          onClick={() => setShowAddForm(!showAddForm)}
+        >
+          + 添加供应商
+        </button>
       </div>
 
       {(feedback || error) && (
@@ -243,72 +254,51 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
         </div>
       )}
 
-      <div className="grid gap-3 md:grid-cols-3">
-        <MetricCard title="供应商总数" value={String(summary.providerCount)} />
-        <MetricCard title="已启用" value={String(summary.enabledCount)} />
-        <MetricCard title="可用模型数" value={String(summary.modelCount)} />
-      </div>
+      {showAddForm && (
+        <AddProviderForm form={form} setForm={setForm} onSave={() => void saveProvider()} busy={busy === "create-provider"} />
+      )}
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
-        <div className="space-y-4">
-          <ProviderGroup title="平台集成" providers={platformProviders} selectedProviderId={selectedProvider?.id} onSelect={setSelectedProviderId} onToggle={toggleProvider} />
-          <ProviderGroup title="API key 接入" providers={apiKeyProviders} selectedProviderId={selectedProvider?.id} onSelect={setSelectedProviderId} onToggle={toggleProvider} />
-          <AddProviderForm form={form} setForm={setForm} onSave={() => void saveProvider()} busy={busy === "create-provider"} />
-        </div>
-        <aside className="space-y-4 rounded-2xl border border-border bg-muted/20 p-4">
-          <h3 className="text-base font-semibold">供应商详情</h3>
-          {selectedProvider ? (
-            <div className="space-y-4">
-              <div className="rounded-xl border border-border bg-background p-3 text-sm">
-                <div className="font-medium">{selectedProvider.name}</div>
-                <div className="mt-1 text-muted-foreground">{selectedProvider.compatibility} · {selectedProvider.apiMode}</div>
-                <div className="mt-1 text-muted-foreground">Base URL：{selectedProvider.baseUrl ?? selectedProvider.config.endpoint ?? "默认网关"}</div>
-              </div>
-              <section className="space-y-2">
-                <h4 className="font-medium">高级字段</h4>
-                <label className="block text-sm">
-                  ChatGPT 账户 ID
-                  <input className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2" value={accountId} onChange={(event) => setAccountId(event.target.value)} />
-                </label>
-                <label className="flex items-center gap-2 text-sm">
-                  <input type="checkbox" checked={useResponsesWebSocket} onChange={(event) => setUseResponsesWebSocket(event.target.checked)} />
-                  Responses WebSocket
-                </label>
-                <label className="block text-sm">
-                  Codex 思考强度
-                  <select className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2" value={thinkingStrength} onChange={(event) => setThinkingStrength(event.target.value as ProviderThinkingStrength)}>
-                    <option value="low">low</option>
-                    <option value="medium">medium</option>
-                    <option value="high">high</option>
-                  </select>
-                </label>
-              </section>
-              <button className="w-full rounded-lg border border-border px-3 py-2 text-sm hover:bg-muted" type="button" onClick={() => void refreshModels(selectedProvider.id)}>
-                刷新模型
-              </button>
-              <ModelList
-                provider={selectedProvider}
-                contextDrafts={contextDrafts}
-                setContextDrafts={setContextDrafts}
-                onTestModel={testModel}
-                onUpdateModel={updateModel}
-              />
-            </div>
-          ) : (
-            <EmptyState title="暂无供应商" description="请先使用短表单添加供应商。" actionLabel="添加供应商" onAction={() => {}} />
-          )}
-        </aside>
+      <div className="space-y-3">
+        <ProviderGroup
+          title="平台集成"
+          providers={platformProviders}
+          selectedProviderId={selectedProvider?.id}
+          onSelect={(id) => setSelectedProviderId((prev) => prev === id ? null : id)}
+          onToggle={toggleProvider}
+          busy={busy}
+          accountId={accountId}
+          setAccountId={setAccountId}
+          useResponsesWebSocket={useResponsesWebSocket}
+          setUseResponsesWebSocket={setUseResponsesWebSocket}
+          thinkingStrength={thinkingStrength}
+          setThinkingStrength={setThinkingStrength}
+          onRefreshModels={refreshModels}
+          contextDrafts={contextDrafts}
+          setContextDrafts={setContextDrafts}
+          onTestModel={testModel}
+          onUpdateModel={updateModel}
+        />
+        <ProviderGroup
+          title="API key 接入"
+          providers={apiKeyProviders}
+          selectedProviderId={selectedProvider?.id}
+          onSelect={(id) => setSelectedProviderId((prev) => prev === id ? null : id)}
+          onToggle={toggleProvider}
+          busy={busy}
+          accountId={accountId}
+          setAccountId={setAccountId}
+          useResponsesWebSocket={useResponsesWebSocket}
+          setUseResponsesWebSocket={setUseResponsesWebSocket}
+          thinkingStrength={thinkingStrength}
+          setThinkingStrength={setThinkingStrength}
+          onRefreshModels={refreshModels}
+          contextDrafts={contextDrafts}
+          setContextDrafts={setContextDrafts}
+          onTestModel={testModel}
+          onUpdateModel={updateModel}
+        />
       </div>
     </section>
-  );
-}
-
-function MetricCard({ title, value }: { readonly title: string; readonly value: string }) {
-  return (
-    <div className="rounded-xl border border-border bg-background p-3">
-      <div className="text-xs text-muted-foreground">{title}</div>
-      <div className="mt-1 text-2xl font-semibold">{value}</div>
-    </div>
   );
 }
 
@@ -318,12 +308,36 @@ function ProviderGroup({
   selectedProviderId,
   onSelect,
   onToggle,
+  busy,
+  accountId,
+  setAccountId,
+  useResponsesWebSocket,
+  setUseResponsesWebSocket,
+  thinkingStrength,
+  setThinkingStrength,
+  onRefreshModels,
+  contextDrafts,
+  setContextDrafts,
+  onTestModel,
+  onUpdateModel,
 }: {
   readonly title: string;
   readonly providers: readonly ManagedProvider[];
   readonly selectedProviderId?: string;
   readonly onSelect: (providerId: string) => void;
   readonly onToggle: (providerId: string, enabled: boolean) => void;
+  readonly busy: string | null;
+  readonly accountId: string;
+  readonly setAccountId: (value: string) => void;
+  readonly useResponsesWebSocket: boolean;
+  readonly setUseResponsesWebSocket: (value: boolean) => void;
+  readonly thinkingStrength: ProviderThinkingStrength;
+  readonly setThinkingStrength: (value: ProviderThinkingStrength) => void;
+  readonly onRefreshModels: (providerId: string) => Promise<void>;
+  readonly contextDrafts: Record<string, string>;
+  readonly setContextDrafts: (updater: (current: Record<string, string>) => Record<string, string>) => void;
+  readonly onTestModel: (providerId: string, modelId: string) => Promise<void>;
+  readonly onUpdateModel: (providerId: string, model: Model, updates: Partial<Model>) => Promise<void>;
 }) {
   return (
     <section className="space-y-2">
@@ -331,44 +345,88 @@ function ProviderGroup({
       {providers.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border p-3 text-sm text-muted-foreground">暂无供应商</div>
       ) : (
-        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="space-y-2">
           {providers.map((provider) => {
             const isSelected = selectedProviderId === provider.id;
             const enabledModels = provider.models.filter((m) => m.enabled !== false);
             const previewModels = enabledModels.slice(0, 3);
             const moreCount = enabledModels.length - previewModels.length;
             return (
-              <div
-                key={`${title}:${provider.id}`}
-                className={`rounded-lg border p-3 text-left transition ${isSelected ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <button type="button" className="min-w-0 text-left" onClick={() => onSelect(provider.id)}>
-                    <div className="font-medium leading-tight">{provider.name}</div>
-                    <span className="mt-0.5 inline-block rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                      {provider.apiMode ?? provider.compatibility?.replace("-compatible", "") ?? "API"}
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={provider.enabled}
-                    aria-label={provider.enabled ? "禁用供应商" : "启用供应商"}
-                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors ${provider.enabled ? "bg-primary" : "bg-muted"}`}
-                    onClick={(e) => { e.stopPropagation(); onToggle(provider.id, !provider.enabled); }}
-                  >
-                    <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${provider.enabled ? "translate-x-4" : "translate-x-0.5"}`} />
-                  </button>
+              <div key={`${title}:${provider.id}`}>
+                <div
+                  className={`rounded-lg border p-3 text-left transition ${isSelected ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <button type="button" className="min-w-0 text-left" onClick={() => onSelect(provider.id)}>
+                      <div className="font-medium leading-tight">{provider.name}</div>
+                      <span className="mt-0.5 inline-block rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                        {provider.apiMode ?? provider.compatibility?.replace("-compatible", "") ?? "API"}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={provider.enabled}
+                      aria-label={provider.enabled ? "禁用供应商" : "启用供应商"}
+                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors ${provider.enabled ? "bg-primary" : "bg-muted"}`}
+                      onClick={(e) => { e.stopPropagation(); onToggle(provider.id, !provider.enabled); }}
+                    >
+                      <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${provider.enabled ? "translate-x-4" : "translate-x-0.5"}`} />
+                    </button>
+                  </div>
+                  {previewModels.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {previewModels.map((m) => (
+                        <span key={m.id} className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">{m.name}</span>
+                      ))}
+                      {moreCount > 0 && <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">+{moreCount} 更多模型</span>}
+                    </div>
+                  )}
+                  <div className="mt-2 text-xs text-muted-foreground">{provider.models.length} 个模型</div>
                 </div>
-                {previewModels.length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-1">
-                    {previewModels.map((m) => (
-                      <span key={m.id} className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">{m.name}</span>
-                    ))}
-                    {moreCount > 0 && <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">+{moreCount} 更多模型</span>}
+                {isSelected && (
+                  <div className="mt-1 space-y-3 rounded-lg border border-primary/30 bg-muted/10 p-3">
+                    <div className="rounded-lg border border-border bg-background p-2 text-sm">
+                      <div className="font-medium">{provider.name}</div>
+                      <div className="mt-0.5 text-xs text-muted-foreground">{provider.compatibility} · {provider.apiMode}</div>
+                      <div className="mt-0.5 text-xs text-muted-foreground">Base URL：{provider.baseUrl ?? provider.config.endpoint ?? "默认网关"}</div>
+                    </div>
+                    <section className="space-y-2">
+                      <h4 className="text-sm font-medium">高级字段</h4>
+                      <label className="block text-sm">
+                        ChatGPT 账户 ID
+                        <input className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm" value={accountId} onChange={(event) => setAccountId(event.target.value)} />
+                      </label>
+                      <label className="flex items-center gap-2 text-sm">
+                        <input type="checkbox" checked={useResponsesWebSocket} onChange={(event) => setUseResponsesWebSocket(event.target.checked)} />
+                        Responses WebSocket
+                      </label>
+                      <label className="block text-sm">
+                        Codex 思考强度
+                        <select className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm" value={thinkingStrength} onChange={(event) => setThinkingStrength(event.target.value as ProviderThinkingStrength)}>
+                          <option value="low">low</option>
+                          <option value="medium">medium</option>
+                          <option value="high">high</option>
+                        </select>
+                      </label>
+                    </section>
+                    <button
+                      className="w-full rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-60"
+                      type="button"
+                      disabled={busy === `refresh:${provider.id}`}
+                      onClick={() => void onRefreshModels(provider.id)}
+                    >
+                      刷新模型
+                    </button>
+                    <ModelList
+                      provider={provider}
+                      contextDrafts={contextDrafts}
+                      setContextDrafts={setContextDrafts}
+                      onTestModel={onTestModel}
+                      onUpdateModel={onUpdateModel}
+                    />
                   </div>
                 )}
-                <div className="mt-2 text-xs text-muted-foreground">{provider.models.length} 个模型</div>
               </div>
             );
           })}
