@@ -40,7 +40,7 @@
   - 验收：`tasks.md` 执行前有明确复用矩阵，后续任务不得无理由新建第二套模型。
   - 覆盖 Requirement 10。
 
-- [ ] 5. 扩展 Provider 数据模型以支持 NarraFork AI 供应商范式
+- [x] 5. 扩展 Provider 数据模型以支持 NarraFork AI 供应商范式
   - 在现有 `shared/provider-catalog.ts`、`api/lib/provider-manager.ts`、`api/routes/providers.ts` 基础上扩展，而不是新建 provider 系统。
   - 增加供应商字段：`prefix`、`compatibility`（OpenAI compatible / Anthropic compatible）、`apiMode`（Completions / Responses / Codex）、`baseUrl`、`accountId`、`useResponsesWebSocket`、`thinkingStrength`。
   - 明确内部映射：UI 的 `Completions` 对应现有 Chat Completions / `apiFormat: chat`；`Responses` 对应 `apiFormat: responses`；`Codex` 走 Codex 反代模式并暴露思考强度。
@@ -48,7 +48,7 @@
   - 添加 provider model 单测，验证旧 provider 数据可兼容迁移。
   - 覆盖 Requirements 7、10、12、13。
 
-- [ ] 6. 实现 Provider API 的保存、刷新模型、单模型测试与模型开关
+- [x] 6. 实现 Provider API 的保存、刷新模型、单模型测试与模型开关
   - 扩展 `/api/providers/:id` 保存供应商详情。
   - 新增或扩展刷新模型接口，按 OpenAI-compatible / Anthropic-compatible / Codex 模式拉取模型列表。
   - 新增单模型测试接口，测试结果写回模型级状态。
@@ -57,14 +57,14 @@
   - 验收：API 测试覆盖新增供应商、保存、刷新模型、测试模型、设置上下文长度、禁用模型。
   - 覆盖 Requirements 7、10、12、13。
 
-- [ ] 7. 实现设置页壳层与统一交互模式
+- [x] 7. 实现设置页壳层与统一交互模式
   - 在新前端实现 Settings page，左侧分组为个人设置与实例管理。
   - 右侧所有分区统一遵循：总览指标 → 资源卡片/列表 → 单项详情 → 保存/刷新/测试/禁用/删除。
   - 未接入后端的设置项显示“未接入/只读”，不得伪造保存成功。
   - 验收：设置页所有分区切换只更新右侧详情，不出现所有配置铺满一页。
   - 覆盖 Requirements 7、12、13。
 
-- [ ] 8. 实现 AI 供应商设置页
+- [x] 8. 实现 AI 供应商设置页
   - 复用 `providerManager`、`createProvidersRouter` 和 provider catalog，不新建第二套 provider store。
   - 页面包含供应商总览：供应商总数、已启用、可用模型数。
   - 按“平台集成 / API key 接入”分组展示供应商卡片。

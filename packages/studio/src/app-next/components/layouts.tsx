@@ -81,6 +81,7 @@ export interface SettingsSectionItem {
   readonly id: string;
   readonly label: string;
   readonly status?: string;
+  readonly group?: string;
 }
 
 interface SettingsLayoutProps {
@@ -92,26 +93,42 @@ interface SettingsLayoutProps {
 }
 
 export function SettingsLayout({ title, sections, activeSectionId, onSectionChange, children }: SettingsLayoutProps) {
+  const groupedSections = sections.reduce<Array<{ group: string; sections: SettingsSectionItem[] }>>((groups, section) => {
+    const group = section.group ?? "设置分区";
+    const existing = groups.find((item) => item.group === group);
+    if (existing) {
+      existing.sections.push(section);
+    } else {
+      groups.push({ group, sections: [section] });
+    }
+    return groups;
+  }, []);
+
   return (
     <SectionLayout title={title} description="左侧固定分区导航，右侧只展示当前分区详情。">
       <div className="grid min-h-[36rem] gap-4 lg:grid-cols-[17rem_minmax(0,1fr)]">
         <nav aria-label="设置分区" className="rounded-2xl border border-border bg-card p-3">
           <div className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">分区导航</div>
-          <div className="space-y-1">
-            {sections.map((section) => (
-              <button
-                key={section.id}
-                type="button"
-                aria-current={section.id === activeSectionId ? "page" : undefined}
-                className={cn(
-                  "flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition",
-                  section.id === activeSectionId ? "bg-primary text-primary-foreground" : "hover:bg-muted",
-                )}
-                onClick={() => onSectionChange(section.id)}
-              >
-                <span>{section.label}</span>
-                {section.status && <span className="text-xs opacity-80">{section.status}</span>}
-              </button>
+          <div className="space-y-3">
+            {groupedSections.map(({ group, sections: groupSections }) => (
+              <div key={group} className="space-y-1">
+                <div className="px-3 text-xs font-semibold text-muted-foreground">{group}</div>
+                {groupSections.map((section) => (
+                  <button
+                    key={section.id}
+                    type="button"
+                    aria-current={section.id === activeSectionId ? "page" : undefined}
+                    className={cn(
+                      "flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition",
+                      section.id === activeSectionId ? "bg-primary text-primary-foreground" : "hover:bg-muted",
+                    )}
+                    onClick={() => onSectionChange(section.id)}
+                  >
+                    <span>{section.label}</span>
+                    {section.status && <span className="text-xs opacity-80">{section.status}</span>}
+                  </button>
+                ))}
+              </div>
             ))}
           </div>
         </nav>
