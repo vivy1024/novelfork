@@ -2,7 +2,7 @@
  * Prompts Tab - 全局/系统提示词管理
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Plus, Trash2, Edit2, Save, X, FileText, Settings } from "lucide-react";
 
 import { ConfirmDialog } from "../ConfirmDialog";
@@ -13,6 +13,8 @@ interface PromptsTabProps {
   systemPrompts: Prompt[];
   onGlobalChange: (prompts: Prompt[]) => void;
   onSystemChange: (prompts: Prompt[]) => void;
+  defaultTab?: "global" | "system";
+  lockedTab?: "global" | "system";
 }
 
 export function PromptsTab({
@@ -20,8 +22,17 @@ export function PromptsTab({
   systemPrompts,
   onGlobalChange,
   onSystemChange,
+  defaultTab,
+  lockedTab,
 }: PromptsTabProps) {
-  const [activeTab, setActiveTab] = useState<"global" | "system">("global");
+  const [selectedTab, setSelectedTab] = useState<"global" | "system">(defaultTab ?? "global");
+  const activeTab = lockedTab ?? selectedTab;
+
+  useEffect(() => {
+    if (defaultTab) {
+      setSelectedTab(defaultTab);
+    }
+  }, [defaultTab]);
   const [editing, setEditing] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<Prompt>>({});
   const [deleteTarget, setDeleteTarget] = useState<Prompt | null>(null);
@@ -87,8 +98,9 @@ export function PromptsTab({
       {/* Tab Switcher */}
       <div className="flex items-center gap-2 border-b">
         <button
-          onClick={() => setActiveTab("global")}
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${
+          onClick={() => setSelectedTab("global")}
+          disabled={lockedTab === "system"}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 disabled:opacity-50 ${
             activeTab === "global"
               ? "border-primary text-primary"
               : "border-transparent text-muted-foreground hover:text-foreground"
@@ -98,8 +110,9 @@ export function PromptsTab({
           Global Prompts ({globalPrompts.length})
         </button>
         <button
-          onClick={() => setActiveTab("system")}
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${
+          onClick={() => setSelectedTab("system")}
+          disabled={lockedTab === "global"}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 disabled:opacity-50 ${
             activeTab === "system"
               ? "border-primary text-primary"
               : "border-transparent text-muted-foreground hover:text-foreground"
@@ -109,6 +122,12 @@ export function PromptsTab({
           System Prompts ({systemPrompts.length})
         </button>
       </div>
+
+      {lockedTab && (
+        <div className="rounded-lg border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+          当前分区：{lockedTab === "global" ? "全局提示词" : "系统提示词"}
+        </div>
+      )}
 
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">

@@ -19,6 +19,18 @@ const COMMON_TOOLS = [
   "EnterWorktree", "ExitWorktree", "TodoWrite"
 ];
 
+function PermissionSummaryCard({ title, count, description }: { title: string; count: number; description: string }) {
+  return (
+    <div className="rounded-lg border bg-card p-3">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-sm font-medium">{title}</h3>
+        <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{count}</span>
+      </div>
+      <p className="mt-1 text-xs text-muted-foreground">{description}</p>
+    </div>
+  );
+}
+
 export function PermissionsTab({ permissions, onChange }: PermissionsTabProps) {
   const [newTool, setNewTool] = useState("");
   const [newPattern, setNewPattern] = useState("");
@@ -71,6 +83,10 @@ export function PermissionsTab({ permissions, onChange }: PermissionsTabProps) {
     }
   };
 
+  const bashRules = permissions.filter((perm) => perm.tool === "Bash" || perm.pattern?.toLowerCase().includes("bash"));
+  const mcpRules = permissions.filter((perm) => perm.tool.startsWith("mcp__") || perm.tool.includes("__mcp"));
+  const builtInRules = permissions.filter((perm) => !bashRules.includes(perm) && !mcpRules.includes(perm));
+
   return (
     <div className="space-y-4">
       <div>
@@ -83,6 +99,12 @@ export function PermissionsTab({ permissions, onChange }: PermissionsTabProps) {
           <p>• <strong>Deny</strong>: Tool is blocked and cannot be used</p>
           <p>• Pattern supports wildcards: <code className="bg-muted px-1 rounded">git *</code> matches all git commands</p>
         </div>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-3">
+        <PermissionSummaryCard title="Bash allowlist / blocklist" count={bashRules.length} description="按 pattern 管理 Bash 命令白名单、黑名单和询问规则" />
+        <PermissionSummaryCard title="MCP 工具权限" count={mcpRules.length} description="统一查看 mcp__server__tool 规则来源和权限" />
+        <PermissionSummaryCard title="内置工具权限" count={builtInRules.length} description="Read / Write / Edit / Browser 等工具默认行为" />
       </div>
 
       {/* Add New Permission */}
@@ -163,7 +185,7 @@ export function PermissionsTab({ permissions, onChange }: PermissionsTabProps) {
                 </span>
               </div>
               <div className="text-xs text-muted-foreground">
-                Source: {perm.source}
+                来源：{perm.source}
               </div>
             </div>
             <div className="flex items-center gap-2">

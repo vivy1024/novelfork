@@ -2,7 +2,7 @@
  * Skills Tab - 技能管理（全局/项目）
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Plus, Trash2, Edit2, Save, X, Globe, Folder } from "lucide-react";
 
 import { ConfirmDialog } from "../ConfirmDialog";
@@ -13,6 +13,8 @@ interface SkillsTabProps {
   projectSkills: Skill[];
   onGlobalChange: (skills: Skill[]) => void;
   onProjectChange: (skills: Skill[]) => void;
+  defaultTab?: "global" | "project";
+  lockedTab?: "global" | "project";
 }
 
 export function SkillsTab({
@@ -20,8 +22,17 @@ export function SkillsTab({
   projectSkills,
   onGlobalChange,
   onProjectChange,
+  defaultTab,
+  lockedTab,
 }: SkillsTabProps) {
-  const [activeTab, setActiveTab] = useState<"global" | "project">("global");
+  const [selectedTab, setSelectedTab] = useState<"global" | "project">(defaultTab ?? "global");
+  const activeTab = lockedTab ?? selectedTab;
+
+  useEffect(() => {
+    if (defaultTab) {
+      setSelectedTab(defaultTab);
+    }
+  }, [defaultTab]);
   const [editing, setEditing] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<Skill>>({});
   const [deleteTarget, setDeleteTarget] = useState<Skill | null>(null);
@@ -88,8 +99,9 @@ export function SkillsTab({
       {/* Tab Switcher */}
       <div className="flex items-center gap-2 border-b">
         <button
-          onClick={() => setActiveTab("global")}
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${
+          onClick={() => setSelectedTab("global")}
+          disabled={lockedTab === "project"}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 disabled:opacity-50 ${
             activeTab === "global"
               ? "border-primary text-primary"
               : "border-transparent text-muted-foreground hover:text-foreground"
@@ -99,8 +111,9 @@ export function SkillsTab({
           Global Skills ({globalSkills.length})
         </button>
         <button
-          onClick={() => setActiveTab("project")}
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${
+          onClick={() => setSelectedTab("project")}
+          disabled={lockedTab === "global"}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 disabled:opacity-50 ${
             activeTab === "project"
               ? "border-primary text-primary"
               : "border-transparent text-muted-foreground hover:text-foreground"
@@ -110,6 +123,12 @@ export function SkillsTab({
           Project Skills ({projectSkills.length})
         </button>
       </div>
+
+      {lockedTab && (
+        <div className="rounded-lg border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+          当前分区：{lockedTab === "global" ? "全局技能" : "项目技能"}
+        </div>
+      )}
 
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">

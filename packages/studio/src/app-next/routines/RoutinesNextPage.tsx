@@ -8,6 +8,7 @@ import { SkillsTab } from "../../components/Routines/SkillsTab";
 import { SubAgentsTab } from "../../components/Routines/SubAgentsTab";
 import { ToolsTab } from "../../components/Routines/ToolsTab";
 import { ROUTINES_SCOPE_META, useRoutinesEditor } from "../../components/Routines/use-routines-editor";
+import { MCPServerManager } from "../../pages/MCPServerManager";
 import type { Routines as RoutinesConfig } from "../../types/routines";
 
 interface RoutinesNextPageProps {
@@ -295,36 +296,104 @@ function RoutineSectionEditor({
     case "permissions":
       return <PermissionsTab permissions={routines.permissions} onChange={(permissions) => setRoutines({ ...routines, permissions })} />;
     case "globalSkills":
-    case "projectSkills":
+    case "projectSkills": {
+      const skillTab = sectionId === "globalSkills" ? "global" : "project";
       return (
         <SkillsTab
           globalSkills={routines.globalSkills}
           projectSkills={routines.projectSkills}
+          defaultTab={skillTab}
+          lockedTab={skillTab}
           onGlobalChange={(globalSkills) => setRoutines({ ...routines, globalSkills })}
           onProjectChange={(projectSkills) => setRoutines({ ...routines, projectSkills })}
         />
       );
+    }
     case "subAgents":
       return <SubAgentsTab subAgents={routines.subAgents} onChange={(subAgents) => setRoutines({ ...routines, subAgents })} />;
     case "globalPrompts":
-    case "systemPrompts":
+    case "systemPrompts": {
+      const promptTab = sectionId === "globalPrompts" ? "global" : "system";
       return (
         <PromptsTab
           globalPrompts={routines.globalPrompts}
           systemPrompts={routines.systemPrompts}
+          defaultTab={promptTab}
+          lockedTab={promptTab}
           onGlobalChange={(globalPrompts) => setRoutines({ ...routines, globalPrompts })}
           onSystemChange={(systemPrompts) => setRoutines({ ...routines, systemPrompts })}
         />
       );
+    }
     case "mcpTools":
-      return <MCPToolsTab mcpTools={routines.mcpTools} onChange={(mcpTools) => setRoutines({ ...routines, mcpTools })} />;
-    case "hooks":
       return (
-        <div className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
-          钩子分区将承接 Shell、Webhook、LLM 生命周期钩子；当前只保留入口与 scope 读写链。
+        <div className="space-y-4">
+          <MCPToolsTab mcpTools={routines.mcpTools} onChange={(mcpTools) => setRoutines({ ...routines, mcpTools })} />
+          <MCPServerManager nav={{}} theme="light" t={(key: string) => key} />
         </div>
       );
+    case "hooks":
+      return <HooksSection />;
   }
+}
+
+function HooksSection() {
+  const [draftOpen, setDraftOpen] = useState(false);
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl border border-border bg-muted/20 p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h4 className="font-semibold">生命周期节点</h4>
+            <p className="mt-1 text-sm text-muted-foreground">
+              钩子分区固定承接 Shell / Webhook / LLM 提示词三类执行方式；后续接入真实 hooks API 时沿用此入口。
+            </p>
+          </div>
+          <button className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted" onClick={() => setDraftOpen(true)} type="button">
+            创建钩子
+          </button>
+        </div>
+      </div>
+      <div className="grid gap-3 md:grid-cols-3">
+        <HookTypeCard title="Shell" description="在指定生命周期节点运行本地命令，继承当前权限模式。" />
+        <HookTypeCard title="Webhook" description="向外部服务发送事件载荷，用于通知、同步或自动化。" />
+        <HookTypeCard title="LLM 提示词" description="以当前上下文触发模型提示词，生成审查或整理结果。" />
+      </div>
+      {draftOpen && (
+        <div className="rounded-xl border border-dashed border-border bg-background p-4">
+          <h4 className="font-semibold">新建钩子草稿</h4>
+          <div className="mt-3 grid gap-3 md:grid-cols-2">
+            <label className="text-sm">
+              生命周期节点
+              <select className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" defaultValue="before_run">
+                <option value="before_run">before_run</option>
+                <option value="after_run">after_run</option>
+                <option value="on_error">on_error</option>
+              </select>
+            </label>
+            <label className="text-sm">
+              类型
+              <select className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" defaultValue="shell">
+                <option value="shell">Shell</option>
+                <option value="webhook">Webhook</option>
+                <option value="llm">LLM 提示词</option>
+              </select>
+            </label>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function HookTypeCard({ title, description }: { readonly title: string; readonly description: string }) {
+  return (
+    <div className="rounded-xl border border-border bg-background p-3">
+      <div className="font-semibold">{title}</div>
+      <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+    </div>
+  );
 }
 
 function MetricCard({ title, value, description }: { readonly title: string; readonly value: string; readonly description: string }) {

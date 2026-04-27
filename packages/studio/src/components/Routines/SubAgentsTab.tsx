@@ -6,11 +6,15 @@ import { useState } from "react";
 import { Plus, Trash2, Edit2, Save, X, Bot } from "lucide-react";
 
 import { ConfirmDialog } from "../ConfirmDialog";
-import type { SubAgent } from "../../types/routines";
+import type { SubAgent, ToolPermission } from "../../types/routines";
 
 interface SubAgentsTabProps {
   subAgents: SubAgent[];
   onChange: (subAgents: SubAgent[]) => void;
+}
+
+function formatToolPermission(permission: ToolPermission): string {
+  return `${permission.tool}: ${permission.permission}${permission.pattern ? ` ${permission.pattern}` : ""}`;
 }
 
 export function SubAgentsTab({ subAgents, onChange }: SubAgentsTabProps) {
@@ -26,6 +30,7 @@ export function SubAgentsTab({ subAgents, onChange }: SubAgentsTabProps) {
       type: "general-purpose",
       systemPrompt: "",
       enabled: true,
+      toolPermissions: [],
     };
     setEditing(newAgent.id);
     setEditForm(newAgent);
@@ -71,6 +76,17 @@ export function SubAgentsTab({ subAgents, onChange }: SubAgentsTabProps) {
         agent.id === id ? { ...agent, enabled: !agent.enabled } : agent
       )
     );
+  };
+
+  const updateToolPermissions = (value: string) => {
+    try {
+      const parsed = JSON.parse(value) as ToolPermission[];
+      if (Array.isArray(parsed)) {
+        setEditForm({ ...editForm, toolPermissions: parsed });
+      }
+    } catch {
+      // Keep the previous valid value while the user is typing invalid JSON.
+    }
   };
 
   return (
@@ -134,6 +150,16 @@ export function SubAgentsTab({ subAgents, onChange }: SubAgentsTabProps) {
                     placeholder="System prompt for this agent..."
                   />
                 </div>
+                <div>
+                  <label className="text-xs font-medium block mb-1">工具权限字段</label>
+                  <textarea
+                    value={JSON.stringify(editForm.toolPermissions ?? [], null, 2)}
+                    onChange={(e) => updateToolPermissions(e.target.value)}
+                    className="w-full px-2 py-1 text-sm border rounded bg-background font-mono"
+                    rows={4}
+                    placeholder='[{"tool":"Bash","permission":"ask","pattern":"pnpm *","source":"project"}]'
+                  />
+                </div>
                 <div className="flex gap-2">
                   <button
                     onClick={handleSave}
@@ -171,6 +197,20 @@ export function SubAgentsTab({ subAgents, onChange }: SubAgentsTabProps) {
                       {agent.systemPrompt.length > 200 && "..."}
                     </pre>
                   )}
+                  <div className="mt-2 rounded border bg-muted/30 p-2 text-xs text-muted-foreground">
+                    <div className="font-medium text-foreground">工具权限字段</div>
+                    {agent.toolPermissions?.length ? (
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {agent.toolPermissions.map((permission, index) => (
+                          <code key={`${permission.tool}-${index}`} className="rounded bg-background px-1.5 py-0.5">
+                            {formatToolPermission(permission)}
+                          </code>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="mt-1">未配置专属工具权限，沿用当前 scope 默认规则。</div>
+                    )}
+                  </div>
                 </div>
                 <div className="flex items-center gap-1">
                   <label className="relative inline-flex items-center cursor-pointer">

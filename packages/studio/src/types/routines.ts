@@ -14,6 +14,7 @@ export interface Tool {
   name: string;
   enabled: boolean;
   description?: string;
+  loadCommand?: string;
 }
 
 export type PermissionBehavior = 'allow' | 'deny' | 'ask';
@@ -40,6 +41,7 @@ export interface SubAgent {
   type: 'general-purpose' | 'specialized';
   systemPrompt: string;
   enabled: boolean;
+  toolPermissions?: ToolPermission[];
 }
 
 export interface Prompt {
