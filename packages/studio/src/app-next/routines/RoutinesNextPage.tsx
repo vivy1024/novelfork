@@ -1,5 +1,12 @@
 import { useMemo, useState } from "react";
 
+import { CommandsTab } from "../../components/Routines/CommandsTab";
+import { MCPToolsTab } from "../../components/Routines/MCPToolsTab";
+import { PermissionsTab } from "../../components/Routines/PermissionsTab";
+import { PromptsTab } from "../../components/Routines/PromptsTab";
+import { SkillsTab } from "../../components/Routines/SkillsTab";
+import { SubAgentsTab } from "../../components/Routines/SubAgentsTab";
+import { ToolsTab } from "../../components/Routines/ToolsTab";
 import { ROUTINES_SCOPE_META, useRoutinesEditor } from "../../components/Routines/use-routines-editor";
 import type { Routines as RoutinesConfig } from "../../types/routines";
 
@@ -125,6 +132,7 @@ export function RoutinesNextPage({ projectRoot: projectRootProp }: RoutinesNextP
     saved,
     saving,
     scopeMeta,
+    setRoutines,
     setViewScope,
     viewScope,
   } = useRoutinesEditor({ projectRoot });
@@ -251,13 +259,72 @@ export function RoutinesNextPage({ projectRoot: projectRootProp }: RoutinesNextP
               打开{activeSection.label}
             </button>
             {activeSection.id === "commands" && <span className="rounded-lg bg-muted px-3 py-1.5 text-sm text-muted-foreground">添加命令入口沿用旧表单逻辑</span>}
+            {activeSection.id === "tools" && <span className="rounded-lg bg-muted px-3 py-1.5 text-sm text-muted-foreground">/LOAD 等价入口待接入</span>}
+            {activeSection.id === "permissions" && <span className="rounded-lg bg-muted px-3 py-1.5 text-sm text-muted-foreground">Bash allowlist/blocklist 待细化</span>}
+            {activeSection.id === "subAgents" && <span className="rounded-lg bg-muted px-3 py-1.5 text-sm text-muted-foreground">工具权限字段待补齐</span>}
             {activeSection.id === "mcpTools" && <span className="rounded-lg bg-muted px-3 py-1.5 text-sm text-muted-foreground">导入 JSON / 添加 MCP 服务器在后续任务升级</span>}
             {activeSection.id === "hooks" && <span className="rounded-lg bg-muted px-3 py-1.5 text-sm text-muted-foreground">钩子创建入口待接入</span>}
           </div>
+          <fieldset className={`mt-5 rounded-xl border border-border bg-background p-3 ${isReadOnly ? "opacity-70" : ""}`} disabled={isReadOnly}>
+            <RoutineSectionEditor
+              routines={routines}
+              sectionId={activeSection.id}
+              setRoutines={setRoutines}
+            />
+          </fieldset>
         </article>
       </div>
     </section>
   );
+}
+
+function RoutineSectionEditor({
+  routines,
+  sectionId,
+  setRoutines,
+}: {
+  readonly routines: RoutinesConfig;
+  readonly sectionId: RoutineSectionId;
+  readonly setRoutines: (routines: RoutinesConfig) => void;
+}) {
+  switch (sectionId) {
+    case "commands":
+      return <CommandsTab commands={routines.commands} onChange={(commands) => setRoutines({ ...routines, commands })} />;
+    case "tools":
+      return <ToolsTab tools={routines.tools} onChange={(tools) => setRoutines({ ...routines, tools })} />;
+    case "permissions":
+      return <PermissionsTab permissions={routines.permissions} onChange={(permissions) => setRoutines({ ...routines, permissions })} />;
+    case "globalSkills":
+    case "projectSkills":
+      return (
+        <SkillsTab
+          globalSkills={routines.globalSkills}
+          projectSkills={routines.projectSkills}
+          onGlobalChange={(globalSkills) => setRoutines({ ...routines, globalSkills })}
+          onProjectChange={(projectSkills) => setRoutines({ ...routines, projectSkills })}
+        />
+      );
+    case "subAgents":
+      return <SubAgentsTab subAgents={routines.subAgents} onChange={(subAgents) => setRoutines({ ...routines, subAgents })} />;
+    case "globalPrompts":
+    case "systemPrompts":
+      return (
+        <PromptsTab
+          globalPrompts={routines.globalPrompts}
+          systemPrompts={routines.systemPrompts}
+          onGlobalChange={(globalPrompts) => setRoutines({ ...routines, globalPrompts })}
+          onSystemChange={(systemPrompts) => setRoutines({ ...routines, systemPrompts })}
+        />
+      );
+    case "mcpTools":
+      return <MCPToolsTab mcpTools={routines.mcpTools} onChange={(mcpTools) => setRoutines({ ...routines, mcpTools })} />;
+    case "hooks":
+      return (
+        <div className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
+          钩子分区将承接 Shell、Webhook、LLM 生命周期钩子；当前只保留入口与 scope 读写链。
+        </div>
+      );
+  }
 }
 
 function MetricCard({ title, value, description }: { readonly title: string; readonly value: string; readonly description: string }) {

@@ -67,4 +67,28 @@ describe("RoutinesNextPage", () => {
 
     await waitFor(() => expect(saveRoutinesMock).toHaveBeenCalledWith("global", sampleRoutines, "D:/workspace/novel"));
   });
+
+  it("mounts legacy routines editors inside the new fixed sections", async () => {
+    render(<RoutinesNextPage projectRoot="D:/workspace/novel" />);
+
+    await waitFor(() => expect(fetchRoutinesMock).toHaveBeenCalledWith("merged", "D:/workspace/novel"));
+    fireEvent.click(screen.getByRole("button", { name: "全局" }));
+    await waitFor(() => expect(fetchRoutinesMock).toHaveBeenLastCalledWith("global", "D:/workspace/novel"));
+
+    expect(screen.getByRole("button", { name: "Add Command" })).toBeTruthy();
+    expect(screen.getByText("/write-next")).toBeTruthy();
+
+    const routineNav = screen.getByRole("navigation", { name: "套路分区" });
+    fireEvent.click(within(routineNav).getByRole("button", { name: /可选工具/ }));
+    expect(screen.getByPlaceholderText("Search tools...")).toBeTruthy();
+    expect(screen.getByText("/LOAD 等价入口待接入")).toBeTruthy();
+
+    fireEvent.click(within(routineNav).getByRole("button", { name: /自定义子代理/ }));
+    expect(screen.getByRole("button", { name: "Add Sub-agent" })).toBeTruthy();
+    expect(screen.getByText("工具权限字段待补齐")).toBeTruthy();
+
+    fireEvent.click(within(routineNav).getByRole("button", { name: /MCP 工具/ }));
+    expect(screen.getByText("memory")).toBeTruthy();
+    expect(screen.getByText("导入 JSON / 添加 MCP 服务器在后续任务升级")).toBeTruthy();
+  });
 });
