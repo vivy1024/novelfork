@@ -22,6 +22,7 @@ export interface ChapterHookGeneratorProps {
   readonly chapterNumber: number;
   readonly chapterContent: string;
   readonly onApplyHook: (hook: GeneratedHookOption) => void;
+  readonly applyDisabled?: boolean;
 }
 
 const STYLE_LABELS: Record<string, string> = {
@@ -40,7 +41,7 @@ const RETENTION_LABELS: Record<string, string> = {
   low: "低留存",
 };
 
-export function ChapterHookGenerator({ bookId, chapterNumber, chapterContent, onApplyHook }: ChapterHookGeneratorProps) {
+export function ChapterHookGenerator({ bookId, chapterNumber, chapterContent, onApplyHook, applyDisabled }: ChapterHookGeneratorProps) {
   const [nextChapterIntent, setNextChapterIntent] = useState("");
   const [hooks, setHooks] = useState<ReadonlyArray<GeneratedHookOption>>([]);
   const [selectedHookId, setSelectedHookId] = useState<string | null>(null);
@@ -96,7 +97,7 @@ export function ChapterHookGenerator({ bookId, chapterNumber, chapterContent, on
           <Button type="button" onClick={() => void generateHooks()} disabled={generating}>
             {generating ? "生成中..." : "生成章末钩子"}
           </Button>
-          <Button type="button" variant="outline" onClick={applySelectedHook} disabled={!selectedHookId}>
+          <Button type="button" variant="outline" onClick={applySelectedHook} disabled={!selectedHookId || applyDisabled} title={applyDisabled ? "即将推出" : undefined}>
             插入所选钩子
           </Button>
         </div>

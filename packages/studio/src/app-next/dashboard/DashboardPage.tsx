@@ -134,7 +134,7 @@ export function DashboardPage({ onOpenBook }: DashboardPageProps) {
             <label className="col-span-2 space-y-1">
               <span className="text-xs text-muted-foreground">书名</span>
               <input
-                className="w-full rounded border border-border bg-background px-2 py-1 text-sm"
+                className="w-full rounded-md border border-border bg-background px-2 py-1 text-sm"
                 value={form.title}
                 onChange={(e) => handleChange("title", e.target.value)}
                 placeholder="输入书名"
@@ -145,7 +145,7 @@ export function DashboardPage({ onOpenBook }: DashboardPageProps) {
             <label className="space-y-1">
               <span className="text-xs text-muted-foreground">题材</span>
               <select
-                className="w-full rounded border border-border bg-background px-2 py-1 text-sm"
+                className="w-full rounded-md border border-border bg-background px-2 py-1 text-sm"
                 value={form.genre}
                 onChange={(e) => handleChange("genre", e.target.value)}
               >
@@ -159,7 +159,7 @@ export function DashboardPage({ onOpenBook }: DashboardPageProps) {
             <label className="space-y-1">
               <span className="text-xs text-muted-foreground">平台</span>
               <select
-                className="w-full rounded border border-border bg-background px-2 py-1 text-sm"
+                className="w-full rounded-md border border-border bg-background px-2 py-1 text-sm"
                 value={form.platform}
                 onChange={(e) => handleChange("platform", e.target.value)}
               >
@@ -173,7 +173,7 @@ export function DashboardPage({ onOpenBook }: DashboardPageProps) {
               <span className="text-xs text-muted-foreground">每章字数</span>
               <input
                 type="number"
-                className="w-full rounded border border-border bg-background px-2 py-1 text-sm"
+                className="w-full rounded-md border border-border bg-background px-2 py-1 text-sm"
                 value={form.chapterWordCount}
                 onChange={(e) => handleChange("chapterWordCount", Number(e.target.value))}
                 min={500}
@@ -184,7 +184,7 @@ export function DashboardPage({ onOpenBook }: DashboardPageProps) {
               <span className="text-xs text-muted-foreground">目标章节数</span>
               <input
                 type="number"
-                className="w-full rounded border border-border bg-background px-2 py-1 text-sm"
+                className="w-full rounded-md border border-border bg-background px-2 py-1 text-sm"
                 value={form.targetChapters}
                 onChange={(e) => handleChange("targetChapters", Number(e.target.value))}
                 min={1}
@@ -194,7 +194,7 @@ export function DashboardPage({ onOpenBook }: DashboardPageProps) {
             <label className="space-y-1">
               <span className="text-xs text-muted-foreground">语言</span>
               <select
-                className="w-full rounded border border-border bg-background px-2 py-1 text-sm"
+                className="w-full rounded-md border border-border bg-background px-2 py-1 text-sm"
                 value={form.language}
                 onChange={(e) => handleChange("language", e.target.value)}
               >
@@ -253,7 +253,7 @@ function BookCard({ book, onOpen }: { readonly book: BookItem; readonly onOpen?:
   const progress = typeof book.progress === "number" ? Math.min(book.progress, 100) : null;
 
   return (
-    <div className="rounded-lg border border-border p-3 space-y-2 hover:bg-muted/30 transition">
+    <div className="rounded-lg border border-border p-3 space-y-2 hover:border-primary/40 hover:bg-muted/30 transition">
       <div className="flex items-center justify-between gap-2">
         <button
           className="min-w-0 truncate text-sm font-medium hover:underline text-left"
@@ -339,20 +339,20 @@ function ImportPanel({ books, onDone }: { readonly books: ReadonlyArray<BookItem
     <div className="rounded-lg border border-border p-4 space-y-3">
       <div className="flex items-center gap-3">
         <span className="text-sm font-medium">导入到</span>
-        <select className="rounded border border-border bg-background px-2 py-1 text-sm" value={bookId} onChange={(e) => setBookId(e.target.value)}>
+        <select className="rounded-md border border-border bg-background px-2 py-1 text-sm" value={bookId} onChange={(e) => setBookId(e.target.value)}>
           {books.map((b) => <option key={b.id} value={b.id}>{b.title}</option>)}
           {books.length === 0 && <option value="">无可用书籍</option>}
         </select>
         <div className="flex gap-1">
-          <button className={`rounded px-2 py-1 text-xs ${mode === "chapters" ? "bg-primary text-primary-foreground" : "border border-border hover:bg-muted"}`} onClick={() => setMode("chapters")} type="button">章节文本</button>
-          <button className={`rounded px-2 py-1 text-xs ${mode === "url" ? "bg-primary text-primary-foreground" : "border border-border hover:bg-muted"}`} onClick={() => setMode("url")} type="button">URL 导入</button>
+          <button className={`rounded-md px-2 py-1 text-xs ${mode === "chapters" ? "bg-primary text-primary-foreground" : "border border-border hover:bg-muted"}`} onClick={() => setMode("chapters")} type="button">章节文本</button>
+          <button className={`rounded-md px-2 py-1 text-xs ${mode === "url" ? "bg-primary text-primary-foreground" : "border border-border hover:bg-muted"}`} onClick={() => setMode("url")} type="button">URL 导入</button>
         </div>
       </div>
 
       {mode === "chapters" && (
         <>
-          <textarea className="w-full rounded border border-border bg-background p-2 text-sm" rows={5} value={text} onChange={(e) => setText(e.target.value)} placeholder="粘贴章节文本，系统会自动按章节标题分割…" />
-          <input className="w-full rounded border border-border bg-background px-2 py-1 text-sm" value={splitRegex} onChange={(e) => setSplitRegex(e.target.value)} placeholder="自定义分割正则（可选）" />
+          <textarea className="w-full rounded-md border border-border bg-background p-2 text-sm" rows={5} value={text} onChange={(e) => setText(e.target.value)} placeholder="粘贴章节文本，系统会自动按章节标题分割…" />
+          <input className="w-full rounded-md border border-border bg-background px-2 py-1 text-sm" value={splitRegex} onChange={(e) => setSplitRegex(e.target.value)} placeholder="自定义分割正则（可选）" />
           <button className="rounded-lg bg-primary px-4 py-1.5 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-50" disabled={loading || !text.trim() || !bookId} onClick={() => void handleImportChapters()} type="button">
             {loading ? "导入中…" : "导入章节"}
           </button>
@@ -361,7 +361,7 @@ function ImportPanel({ books, onDone }: { readonly books: ReadonlyArray<BookItem
 
       {mode === "url" && (
         <>
-          <input className="w-full rounded border border-border bg-background px-2 py-1 text-sm" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="输入 URL 地址" />
+          <input className="w-full rounded-md border border-border bg-background px-2 py-1 text-sm" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="输入 URL 地址" />
           <button className="rounded-lg bg-primary px-4 py-1.5 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-50" disabled={loading || !url.trim() || !bookId} onClick={() => void handleImportUrl()} type="button">
             {loading ? "导入中…" : "导入 URL"}
           </button>

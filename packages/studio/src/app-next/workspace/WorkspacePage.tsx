@@ -65,32 +65,6 @@ interface CandidatesResponse {
   readonly candidates: ReadonlyArray<GeneratedChapterCandidate>;
 }
 
-/* ── fallback data for tests / offline ── */
-
-export const FALLBACK_BOOK: BookDetail = {
-  id: "book-1", title: "灵潮纪元", status: "active", platform: "qidian", genre: "xuanhuan",
-  targetChapters: 100, chapters: 2, chapterCount: 2, lastChapterNumber: 2, totalWords: 6200,
-  approvedChapters: 1, pendingReview: 1, pendingReviewChapters: 1, failedReview: 0, failedChapters: 0,
-  updatedAt: "2026-04-27T00:00:00.000Z", createdAt: "2026-04-20T00:00:00.000Z", chapterWordCount: 3000, language: "zh",
-};
-
-export const FALLBACK_CHAPTERS: readonly ChapterSummary[] = [
-  { number: 1, title: "第一章 灵潮初起", status: "approved", wordCount: 3100, auditIssueCount: 0, updatedAt: "2026-04-27T00:00:00.000Z", fileName: "0001-first.md" },
-  { number: 2, title: "第二章 入城", status: "ready-for-review", wordCount: 3100, auditIssueCount: 2, updatedAt: "2026-04-27T01:00:00.000Z", fileName: "0002-city.md" },
-];
-
-const FALLBACK_GENERATED: readonly GeneratedChapterCandidate[] = [
-  { id: "candidate-2", bookId: "book-1", targetChapterId: "2", title: "第二章 AI 候选", source: "write-next", createdAt: "2026-04-27T02:00:00.000Z", status: "candidate" },
-];
-
-const FALLBACK_INPUT: StudioResourceTreeInput = {
-  book: FALLBACK_BOOK,
-  chapters: FALLBACK_CHAPTERS,
-  generatedChapters: FALLBACK_GENERATED,
-  drafts: [{ id: "draft-1", bookId: "book-1", title: "城门冲突片段", updatedAt: "2026-04-27T03:00:00.000Z", wordCount: 800 }],
-  bibleCounts: { characters: 3, locations: 2, factions: 1, items: 4, foreshadowing: 5, worldRules: 6 },
-};
-
 export interface WorkspaceChapterApi {
   readonly loadChapter: (bookId: string, chapterNumber: number) => Promise<{ readonly content: string }>;
   readonly saveChapter: (bookId: string, chapterNumber: number, content: string) => Promise<void>;
@@ -159,7 +133,7 @@ const DEFAULT_ASSISTANT_API: WorkspaceAssistantApi = {
       await fetchJson(`/books/${context.bookId}/write-next`, { method: "POST" });
       return { message: "AI 输出已进入生成章节候选" };
     }
-    throw new Error("该 AI 动作尚未接入写作工具，未生成候选稿。");
+    throw new Error("此功能即将推出");
   },
 };
 
@@ -184,7 +158,15 @@ export function WorkspacePage({
 
   /* ── build resource tree from real data or fallback ── */
   const treeInput: StudioResourceTreeInput = useMemo(() => {
-    if (!bookDetail?.book) return FALLBACK_INPUT;
+    if (!bookDetail?.book) return {
+      book: {
+        id: "", title: "加载中...", status: "active", platform: "other", genre: "",
+        targetChapters: 0, chapters: 0, chapterCount: 0, lastChapterNumber: 0,
+        totalWords: 0, approvedChapters: 0, pendingReview: 0, pendingReviewChapters: 0,
+        failedReview: 0, failedChapters: 0, updatedAt: "", createdAt: "", chapterWordCount: 0, language: null,
+      },
+      chapters: [], generatedChapters: [], drafts: [], bibleCounts: {},
+    };
     const b = bookDetail.book;
     const chs = bookDetail.chapters ?? [];
     const book: BookDetail = {
@@ -216,7 +198,7 @@ export function WorkspacePage({
 
   return (
     <SectionLayout title="创作工作台" description="">
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-card px-3 py-2">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-card px-3 py-2">
         <div className="flex flex-wrap items-center gap-2">
           <label className="text-sm">
             作品选择
@@ -230,12 +212,10 @@ export function WorkspacePage({
               {books.map((b) => <option key={b.id} value={b.id}>{b.title}</option>)}
             </select>
           </label>
-          <input aria-label="资源搜索" className="min-w-[14rem] rounded-lg border border-border bg-background px-2 py-1 text-sm" placeholder="搜索章节 / 生成稿 / 经纬条目" type="search" />
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs text-muted-foreground">运行状态：空闲</span>
           <button className={`rounded border px-2 py-0.5 text-xs hover:bg-muted ${showPublishPanel ? "border-primary bg-primary/10 text-primary" : "border-border"}`} onClick={() => setShowPublishPanel(!showPublishPanel)} type="button">发布就绪</button>
-          <a className="rounded border border-border px-2 py-0.5 text-xs hover:bg-muted" href="#presets" title="跳转到旧前端预设管理页面">预设管理</a>
+          <button disabled className="rounded border border-border px-2 py-0.5 text-xs hover:bg-muted disabled:opacity-50" title="即将推出" type="button">预设管理</button>
         </div>
       </div>
 
@@ -296,9 +276,9 @@ function ResourceNodeButton({
         </span>
       </button>
       {node.emptyState && !node.children?.some((child) => (child.count ?? 0) > 0) && (
-        <div className="rounded-lg border border-dashed border-border p-2 text-xs text-muted-foreground">
+        <div className="rounded-lg border border-dashed border-border p-4 text-center text-sm text-muted-foreground">
           <div>{node.emptyState.title}</div>
-          <button className="mt-1 text-primary hover:underline" type="button">{node.emptyState.actionLabel}</button>
+          <button disabled className="mt-1 text-primary hover:underline disabled:opacity-50" type="button">{node.emptyState.actionLabel}</button>
         </div>
       )}
       {node.children?.length ? (
@@ -331,8 +311,8 @@ function WorkspaceEditor({
     return (
       <div className="space-y-4">
         <EditorHeader title={node.title} meta="经纬资料详情" />
-        <div className="rounded-xl border border-border bg-muted/20 p-4 text-sm text-muted-foreground">
-          将复用 Bible / Jingwei API 显示 {node.title} 条目；当前分类已有 {node.count ?? 0} 项。
+        <div className="rounded-lg border border-border bg-muted/20 p-4 text-sm text-muted-foreground">
+          {node.title}：{node.count ?? 0} 项
         </div>
       </div>
     );
@@ -341,8 +321,8 @@ function WorkspaceEditor({
   return (
     <div className="space-y-4">
       <EditorHeader title={node.title} meta={node.status ?? node.kind} />
-      <div className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
-        点击已有章节、生成章节、草稿或经纬分类后，这里显示对应编辑器、候选稿或详情。
+      <div className="rounded-lg border border-dashed border-border p-4 text-center text-sm text-muted-foreground">
+        选择左侧内容开始编辑
       </div>
     </div>
   );
@@ -352,7 +332,7 @@ function CandidateEditor({ candidateApi, node }: { readonly candidateApi: Worksp
   const [pendingAction, setPendingAction] = useState<"merge" | "replace" | null>(null);
   const [resultMessage, setResultMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const bookId = typeof node.metadata?.bookId === "string" ? node.metadata.bookId : FALLBACK_BOOK.id;
+  const bookId = typeof node.metadata?.bookId === "string" ? node.metadata.bookId : "";
   const candidateId = node.id.replace(/^generated:/, "");
   const targetChapterId = typeof node.metadata?.targetChapterId === "string" ? node.metadata.targetChapterId : "未指定";
 
@@ -376,20 +356,10 @@ function CandidateEditor({ candidateApi, node }: { readonly candidateApi: Worksp
   return (
     <div className="space-y-4">
       <EditorHeader title={node.title} meta="候选稿 / 不会自动覆盖正式正文" />
-      <div className="grid gap-3 rounded-xl border border-dashed border-border bg-muted/20 p-4 text-sm text-muted-foreground md:grid-cols-2">
-        <div>
-          <div className="font-medium text-foreground">生成稿 vs 已有章节</div>
-          <p className="mt-1">左侧正式章节保持不变；右侧候选稿只有在确认后才会写入。</p>
-        </div>
-        <div>
-          <div className="font-medium text-foreground">目标章节：{targetChapterId}</div>
-          <p className="mt-1">来源：{node.badge ?? "AI"}</p>
-        </div>
-      </div>
-      {resultMessage && <div className="rounded-xl border border-border bg-muted/30 p-3 text-sm">{resultMessage}</div>}
+      {resultMessage && <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm">{resultMessage}</div>}
       {actionError && <InlineError message={`候选稿操作失败：${actionError}`} />}
       {pendingAction && (
-        <div className="rounded-xl border border-border bg-background p-4 text-sm">
+        <div className="rounded-lg border border-border bg-background p-4 text-sm">
           <h3 className="font-semibold">确认{pendingAction === "merge" ? "合并" : "替换"}到正式章节</h3>
           <p className="mt-2">目标章节：{targetChapterId}</p>
           <p className="mt-1 text-muted-foreground">
@@ -403,7 +373,7 @@ function CandidateEditor({ candidateApi, node }: { readonly candidateApi: Worksp
           </div>
         </div>
       )}
-      <textarea aria-label="章节正文" className="min-h-[22rem] w-full resize-none rounded-xl border border-border bg-background p-4 leading-7" defaultValue="AI 候选正文会先进入候选区，等待用户确认。" />
+      <textarea aria-label="章节正文" className="min-h-[22rem] w-full resize-none rounded-lg border border-border bg-background p-4 leading-7" defaultValue="" />
       <div className="flex flex-wrap gap-2">
         <button className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted" onClick={() => setPendingAction("merge")} type="button">合并到正式章节</button>
         <button className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted" onClick={() => setPendingAction("replace")} type="button">替换正式章节</button>
@@ -416,8 +386,8 @@ function CandidateEditor({ candidateApi, node }: { readonly candidateApi: Worksp
 
 function ChapterEditor({ chapterApi, node }: { readonly chapterApi: WorkspaceChapterApi; readonly node: StudioResourceNode }) {
   const chapterNumber = typeof node.metadata?.chapterNumber === "number" ? node.metadata.chapterNumber : Number(node.metadata?.chapterNumber ?? 0);
-  const bookId = typeof node.metadata?.bookId === "string" ? node.metadata.bookId : FALLBACK_BOOK.id;
-  const [content, setContent] = useState(`${node.title}\n\n这里会接入 ChapterReader / BookDetail 的真实章节内容与保存能力。`);
+  const bookId = typeof node.metadata?.bookId === "string" ? node.metadata.bookId : "";
+  const [content, setContent] = useState("");
   const [saveStatus, setSaveStatus] = useState<"loading" | "clean" | "dirty" | "saving" | "saved" | "error">("loading");
   const [error, setError] = useState<string | null>(null);
   const editorRef = useRef<{ getMarkdown: () => string } | null>(null);
@@ -478,7 +448,6 @@ function ChapterEditor({ chapterApi, node }: { readonly chapterApi: WorkspaceCha
           className="min-h-[26rem]"
         />
       )}
-      <div className="rounded-xl border border-dashed border-border p-3 text-sm text-muted-foreground">生成稿 vs 已有章节</div>
     </div>
   );
 }
@@ -550,7 +519,7 @@ function AssistantPanel({
   const [actionError, setActionError] = useState<string | null>(null);
 
   const context: WorkspaceAssistantContext = {
-    bookId: typeof selectedNode.metadata?.bookId === "string" ? selectedNode.metadata.bookId : FALLBACK_BOOK.id,
+    bookId: typeof selectedNode.metadata?.bookId === "string" ? selectedNode.metadata.bookId : "",
     chapterNumber: typeof selectedNode.metadata?.chapterNumber === "number" ? selectedNode.metadata.chapterNumber : undefined,
     selectedNodeId: selectedNode.id,
     selectedNodeTitle: selectedNode.title,
@@ -572,15 +541,15 @@ function AssistantPanel({
   return (
     <div className="space-y-4">
       <h2 className="text-base font-semibold">AI / 经纬面板</h2>
-      <div className="rounded-xl border border-border bg-muted/30 p-3 text-sm text-muted-foreground">当前上下文：{selectedNode.title}</div>
+      <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm text-muted-foreground">当前上下文：{selectedNode.title}</div>
       {modelGate.blockedResult && (
-        <div className="rounded-xl border border-border bg-muted/30 p-3 text-sm">
+        <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm">
           <div className="font-medium">AI Gate</div>
           <p className="mt-1 text-muted-foreground">{modelGate.blockedResult.message}</p>
           <button className="mt-2 text-xs text-primary hover:underline" onClick={modelGate.closeGate} type="button">关闭</button>
         </div>
       )}
-      {actionMessage && <div className="rounded-xl border border-border bg-muted/30 p-3 text-sm">{actionMessage}</div>}
+      {actionMessage && <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm">{actionMessage}</div>}
       {actionError && <InlineError message={`AI 动作失败：${actionError}`} />}
       {runningAction && <RunStatus action={ASSISTANT_ACTIONS.find((a) => a.id === runningAction)?.label ?? runningAction} running />}
       <div className="grid grid-cols-2 gap-1.5">
@@ -607,14 +576,14 @@ function WritingModesPanel({ selectedNode }: { readonly selectedNode: StudioReso
   const [open, setOpen] = useState(false);
   const [activeMode, setActiveMode] = useState<"inline" | "dialogue-gen" | "variants" | "outline">("inline");
 
-  const bookId = typeof selectedNode.metadata?.bookId === "string" ? selectedNode.metadata.bookId : FALLBACK_BOOK.id;
+  const bookId = typeof selectedNode.metadata?.bookId === "string" ? selectedNode.metadata.bookId : "";
   const chapterNumber = typeof selectedNode.metadata?.chapterNumber === "number" ? selectedNode.metadata.chapterNumber : 1;
   const isChapterContext = selectedNode.kind === "chapter" || selectedNode.kind === "generated-chapter";
 
   const noop = () => { /* placeholder */ };
 
   return (
-    <div className="rounded-xl border border-border bg-muted/30 p-3 text-sm">
+    <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm">
       <button className="flex w-full items-center justify-between font-medium" onClick={() => setOpen(!open)} type="button">
         <span>写作模式</span>
         <span className="text-xs text-muted-foreground">{open ? "收起" : "展开"}</span>
@@ -662,7 +631,7 @@ function WritingToolsPanel({ selectedNode }: { readonly selectedNode: StudioReso
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
 
-  const bookId = typeof selectedNode.metadata?.bookId === "string" ? selectedNode.metadata.bookId : FALLBACK_BOOK.id;
+  const bookId = typeof selectedNode.metadata?.bookId === "string" ? selectedNode.metadata.bookId : "";
   const chapterNumber = typeof selectedNode.metadata?.chapterNumber === "number" ? selectedNode.metadata.chapterNumber : undefined;
   const isChapterContext = selectedNode.kind === "chapter" || selectedNode.kind === "generated-chapter";
 
@@ -689,7 +658,7 @@ function WritingToolsPanel({ selectedNode }: { readonly selectedNode: StudioReso
   };
 
   return (
-    <div className="rounded-xl border border-border bg-muted/30 p-3 text-sm">
+    <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm">
       <button className="flex w-full items-center justify-between font-medium" onClick={() => setOpen(!open)} type="button">
         <span>写作工具</span>
         <span className="text-xs text-muted-foreground">{open ? "收起" : "展开"}</span>
@@ -740,7 +709,7 @@ function WritingToolsPanel({ selectedNode }: { readonly selectedNode: StudioReso
           )}
 
           {isChapterContext && activeTab === "hooks" && chapterNumber !== undefined && (
-            <ChapterHookGenerator bookId={bookId} chapterNumber={chapterNumber} chapterContent="" onApplyHook={handleApplyHook} />
+            <ChapterHookGenerator bookId={bookId} chapterNumber={chapterNumber} chapterContent="" onApplyHook={handleApplyHook} applyDisabled />
           )}
 
           {activeTab === "progress" && <DailyProgressTracker />}

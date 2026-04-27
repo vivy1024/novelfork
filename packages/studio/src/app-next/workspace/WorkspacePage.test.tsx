@@ -25,16 +25,25 @@ vi.mock("../../components/InkEditor", () => {
   };
 });
 
-import { FALLBACK_BOOK, FALLBACK_CHAPTERS, WorkspacePage } from "./WorkspacePage";
+import { WorkspacePage } from "./WorkspacePage";
 
-const booksResponse = { books: [{ id: FALLBACK_BOOK.id, title: FALLBACK_BOOK.title }] };
+const TEST_BOOK = {
+  id: "book-1", title: "灵潮纪元",
+};
+
+const TEST_CHAPTERS = [
+  { number: 1, title: "第一章 灵潮初起", status: "approved", wordCount: 3100, fileName: "0001-first.md" },
+  { number: 2, title: "第二章 入城", status: "ready-for-review", wordCount: 3100, fileName: "0002-city.md" },
+];
+
+const booksResponse = { books: [{ id: TEST_BOOK.id, title: TEST_BOOK.title }] };
 const bookDetailResponse = {
-  book: { id: FALLBACK_BOOK.id, title: FALLBACK_BOOK.title, status: "active", chapterWordCount: 3000 },
-  chapters: FALLBACK_CHAPTERS.map((c) => ({ number: c.number, title: c.title, status: c.status, wordCount: c.wordCount, fileName: c.fileName })),
+  book: { id: TEST_BOOK.id, title: TEST_BOOK.title, status: "active", chapterWordCount: 3000 },
+  chapters: TEST_CHAPTERS.map((c) => ({ number: c.number, title: c.title, status: c.status, wordCount: c.wordCount, fileName: c.fileName })),
   nextChapter: 3,
 };
 const candidatesResponse = {
-  candidates: [{ id: "candidate-2", bookId: FALLBACK_BOOK.id, targetChapterId: "2", title: "第二章 AI 候选", source: "write-next", createdAt: "2026-04-27T02:00:00.000Z", status: "candidate" }],
+  candidates: [{ id: "candidate-2", bookId: TEST_BOOK.id, targetChapterId: "2", title: "第二章 AI 候选", source: "write-next", createdAt: "2026-04-27T02:00:00.000Z", status: "candidate" }],
 };
 
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
@@ -42,8 +51,8 @@ afterEach(() => { cleanup(); vi.clearAllMocks(); });
 beforeEach(() => {
   useApiMock.mockImplementation((path: string | null) => {
     if (path === "/books") return { data: booksResponse, loading: false, error: null, refetch: vi.fn() };
-    if (path === `/books/${FALLBACK_BOOK.id}`) return { data: bookDetailResponse, loading: false, error: null, refetch: vi.fn() };
-    if (path === `/books/${FALLBACK_BOOK.id}/candidates`) return { data: candidatesResponse, loading: false, error: null, refetch: vi.fn() };
+    if (path === `/books/${TEST_BOOK.id}`) return { data: bookDetailResponse, loading: false, error: null, refetch: vi.fn() };
+    if (path === `/books/${TEST_BOOK.id}/candidates`) return { data: candidatesResponse, loading: false, error: null, refetch: vi.fn() };
     return { data: null, loading: false, error: null, refetch: vi.fn() };
   });
 });
@@ -55,8 +64,6 @@ describe("WorkspacePage", () => {
     render(<WorkspacePage chapterApi={{ loadChapter, saveChapter }} />);
 
     expect(screen.getByRole("combobox", { name: "作品选择" })).toBeTruthy();
-    expect(screen.getByPlaceholderText("搜索章节 / 生成稿 / 经纬条目")).toBeTruthy();
-    expect(screen.getByText("运行状态：空闲")).toBeTruthy();
 
     const explorer = screen.getByRole("complementary", { name: "小说资源管理器" });
     expect(within(explorer).getByRole("button", { name: /已有章节/ })).toBeTruthy();

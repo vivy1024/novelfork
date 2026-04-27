@@ -32,25 +32,28 @@ interface SchedulerInfo {
   readonly strategy?: string;
 }
 
-function NotConnected({ endpoint }: { endpoint: string }) {
+function NotConnected() {
   return (
     <div className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-      未接入 · {endpoint}
+      暂无数据
     </div>
   );
 }
 
 function AgentsTab() {
-  const { data, loading, error } = useApi<AgentInfo[] | null>("/agents");
+  const { data, loading, error, refetch } = useApi<AgentInfo[] | null>("/agents");
 
   if (loading) return <p className="text-muted-foreground text-sm">加载中...</p>;
-  if (error) return <NotConnected endpoint="/api/agents" />;
+  if (error) return <NotConnected />;
   if (!data || !Array.isArray(data) || data.length === 0) {
-    return <NotConnected endpoint="/api/agents" />;
+    return <NotConnected />;
   }
 
   return (
     <div className="space-y-2">
+      <div className="flex justify-end">
+        <button type="button" className="rounded-md border border-border px-2.5 py-1 text-xs hover:bg-muted" onClick={refetch}>刷新</button>
+      </div>
       {data.map((agent) => (
         <div key={agent.name} className="flex items-center justify-between rounded-lg border border-border p-3 text-sm">
           <div className="flex items-center gap-2">
@@ -68,16 +71,19 @@ function AgentsTab() {
 }
 
 function RunsTab() {
-  const { data, loading, error } = useApi<RunInfo[] | null>("/runs");
+  const { data, loading, error, refetch } = useApi<RunInfo[] | null>("/runs");
 
   if (loading) return <p className="text-muted-foreground text-sm">加载中...</p>;
-  if (error) return <NotConnected endpoint="/api/runs" />;
+  if (error) return <NotConnected />;
   if (!data || !Array.isArray(data) || data.length === 0) {
-    return <NotConnected endpoint="/api/runs" />;
+    return <NotConnected />;
   }
 
   return (
     <div className="space-y-2">
+      <div className="flex justify-end">
+        <button type="button" className="rounded-md border border-border px-2.5 py-1 text-xs hover:bg-muted" onClick={refetch}>刷新</button>
+      </div>
       {data.map((run) => (
         <div key={run.id} className="flex items-center justify-between rounded-lg border border-border p-3 text-sm">
           <div className="flex items-center gap-2">
@@ -95,25 +101,30 @@ function RunsTab() {
 }
 
 function SchedulerTab() {
-  const { data, loading, error } = useApi<SchedulerInfo | null>("/scheduler");
+  const { data, loading, error, refetch } = useApi<SchedulerInfo | null>("/scheduler");
 
   if (loading) return <p className="text-muted-foreground text-sm">加载中...</p>;
-  if (error) return <NotConnected endpoint="/api/scheduler" />;
-  if (!data) return <NotConnected endpoint="/api/scheduler" />;
+  if (error) return <NotConnected />;
+  if (!data) return <NotConnected />;
 
   return (
-    <div className="space-y-3 rounded-lg border border-border p-4">
-      <div className="flex items-center justify-between py-1.5 text-sm">
-        <span className="text-muted-foreground">启用状态</span>
-        <span className="font-mono text-foreground">{data.enabled ? "已启用" : "未启用"}</span>
+    <div className="space-y-3">
+      <div className="flex justify-end">
+        <button type="button" className="rounded-md border border-border px-2.5 py-1 text-xs hover:bg-muted" onClick={refetch}>刷新</button>
       </div>
-      <div className="flex items-center justify-between py-1.5 text-sm">
-        <span className="text-muted-foreground">调度间隔</span>
-        <span className="font-mono text-foreground">{data.interval ? `${data.interval}s` : "—"}</span>
-      </div>
-      <div className="flex items-center justify-between py-1.5 text-sm">
-        <span className="text-muted-foreground">调度策略</span>
-        <span className="font-mono text-foreground">{data.strategy ?? "—"}</span>
+      <div className="rounded-lg border border-border p-4 space-y-3">
+        <div className="flex items-center justify-between py-1.5 text-sm">
+          <span className="text-muted-foreground">启用状态</span>
+          <span className="font-mono text-foreground">{data.enabled ? "已启用" : "未启用"}</span>
+        </div>
+        <div className="flex items-center justify-between py-1.5 text-sm">
+          <span className="text-muted-foreground">调度间隔</span>
+          <span className="font-mono text-foreground">{data.interval ? `${data.interval}s` : "—"}</span>
+        </div>
+        <div className="flex items-center justify-between py-1.5 text-sm">
+          <span className="text-muted-foreground">调度策略</span>
+          <span className="font-mono text-foreground">{data.strategy ?? "—"}</span>
+        </div>
       </div>
     </div>
   );

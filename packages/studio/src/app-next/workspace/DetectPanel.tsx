@@ -16,9 +16,9 @@ interface ChapterResult {
 }
 
 const RISK_COLORS: Record<string, string> = {
-  high: "text-red-600 bg-red-500/10",
+  high: "text-destructive bg-destructive/10",
   medium: "text-amber-600 bg-amber-500/10",
-  low: "text-green-600 bg-green-500/10",
+  low: "text-emerald-600 bg-emerald-500/10",
 };
 const RISK_LABELS: Record<string, string> = { high: "高风险", medium: "中风险", low: "低风险" };
 
@@ -65,7 +65,7 @@ export function DetectPanel({ bookId }: { readonly bookId: string }) {
           </div>
           <div className="rounded-lg border border-border p-3">
             <div className="text-xs text-muted-foreground">高风险章节</div>
-            <div className={`text-lg font-semibold ${stats.highRiskCount > 0 ? "text-red-600" : "text-green-600"}`}>{stats.highRiskCount}</div>
+            <div className={`text-lg font-semibold ${stats.highRiskCount > 0 ? "text-destructive" : "text-emerald-600"}`}>{stats.highRiskCount}</div>
           </div>
         </div>
       )}
@@ -95,7 +95,7 @@ export function DetectPanel({ bookId }: { readonly bookId: string }) {
       )}
 
       {!stats && !error && !running && results.length === 0 && (
-        <p className="text-sm text-muted-foreground">API 未接入 — 点击"运行检测"尝试调用。</p>
+        <p className="text-sm text-muted-foreground">暂无检测数据</p>
       )}
     </div>
   );

@@ -76,7 +76,7 @@ describe("SettingsSectionContent", () => {
 
   it("shows non-provider settings sections with explicit reuse or not-connected status", async () => {
     const sections = [
-      ["notifications", "通知", "未接入"],
+      ["notifications", "通知", "即将推出"],
       ["appearance", "外观"],
       ["server", "服务器与系统"],
       ["history", "使用历史"],

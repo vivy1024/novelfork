@@ -41,7 +41,7 @@ export function TruthPanel({ bookId }: { readonly bookId: string }) {
       {listError && <InlineError message={listError} onRetry={refetch} />}
       {loading && <p className="text-sm text-muted-foreground">加载中…</p>}
 
-      <div className="grid gap-3 md:grid-cols-[200px_1fr]">
+      <div className="grid gap-3 grid-cols-[12rem_1fr] lg:grid-cols-[200px_1fr]">
         <div className="space-y-1">
           {files.map((f) => (
             <button
