@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 
 import { CommandsTab } from "../../components/Routines/CommandsTab";
 import { MCPToolsTab } from "../../components/Routines/MCPToolsTab";
@@ -133,45 +133,24 @@ export function RoutinesNextPage({ projectRoot: projectRootProp }: RoutinesNextP
     routines,
     saved,
     saving,
-    scopeMeta,
     setRoutines,
     setViewScope,
     viewScope,
   } = useRoutinesEditor({ projectRoot });
-
-  const activeSection = ROUTINE_SECTIONS.find((section) => section.id === activeSectionId) ?? ROUTINE_SECTIONS[0];
-  const totals = useMemo(() => {
-    const editableCount = routines.commands.length
-      + routines.tools.length
-      + routines.permissions.length
-      + routines.globalSkills.length
-      + routines.projectSkills.length
-      + routines.subAgents.length
-      + routines.globalPrompts.length
-      + routines.systemPrompts.length
-      + routines.mcpTools.length;
-
-    return {
-      sections: ROUTINE_SECTIONS.length,
-      editableCount,
-      mcpServers: new Set(routines.mcpTools.map((tool) => tool.serverName)).size,
-    };
-  }, [routines]);
 
   if (loading) {
     return <div className="rounded-2xl border border-border bg-card p-6 text-sm text-muted-foreground">正在加载 Routines 配置…</div>;
   }
 
   return (
-    <section aria-label="新套路页" className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-border bg-card p-4">
+    <section aria-label="新套路页" className="space-y-3">
+      {/* 标题行 */}
+      <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-semibold">套路</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            global / project / merged 三种 scope 复用旧 Routines API；新布局固定 NarraFork 10 个专业分区。
-          </p>
+          <p className="text-sm text-muted-foreground">管理技能、命令和 MCP 工具。</p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex items-center gap-2">
           <button
             className={scopeButtonClass(viewScope === "merged")}
             disabled={!hasProjectScope}
@@ -191,91 +170,59 @@ export function RoutinesNextPage({ projectRoot: projectRootProp }: RoutinesNextP
           >
             {ROUTINES_SCOPE_META.project.label}
           </button>
+          <span className="mx-1 h-5 w-px bg-border" />
+          <button
+            className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50"
+            disabled={saving || isReadOnly}
+            onClick={handleSave}
+            type="button"
+          >
+            {saving ? "保存中…" : saved ? "已保存" : "保存"}
+          </button>
+          <button
+            className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50"
+            disabled={saving || isReadOnly}
+            onClick={handleReset}
+            type="button"
+          >
+            重置
+          </button>
         </div>
-      </div>
-
-      <div className="grid gap-3 md:grid-cols-4">
-        <MetricCard title="固定分区" value={`${totals.sections}`} description="NarraFork Routines 对标分区" />
-        <MetricCard title="当前资产" value={`${totals.editableCount}`} description={scopeMeta.description} />
-        <MetricCard title="MCP 服务器" value={`${totals.mcpServers}`} description="从旧 mcpTools 数据聚合" />
-        <MetricCard title="当前 scope" value={scopeMeta.label} description={isReadOnly ? "只读生效视图" : "可编辑并保存"} />
       </div>
 
       {error && <InlineError message={error} />}
 
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-muted/30 p-3">
-        <button
-          className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50"
-          disabled={saving || isReadOnly}
-          onClick={handleSave}
-          type="button"
-        >
-          {saving ? "保存中…" : saved ? "已保存" : "保存套路"}
-        </button>
-        <button
-          className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50"
-          disabled={saving || isReadOnly}
-          onClick={handleReset}
-          type="button"
-        >
-          重置当前 scope
-        </button>
-        <span className="text-sm text-muted-foreground">
-          {isReadOnly ? "生效视图为只读；切换到全局或项目后才能保存。" : "保存会写回旧 /api/routines 读写链。"}
-        </span>
+      {/* 水平 tab */}
+      <div role="tablist" aria-label="套路分区" className="flex flex-wrap gap-1 border-b border-border pb-1">
+        {ROUTINE_SECTIONS.map((section) => (
+          <button
+            key={section.id}
+            role="tab"
+            aria-selected={section.id === activeSectionId}
+            className={scopeButtonClass(
+              section.id === activeSectionId,
+              "rounded-t-lg px-3 py-1.5 text-sm transition",
+            )}
+            onClick={() => setActiveSectionId(section.id)}
+            type="button"
+          >
+            {section.label}
+          </button>
+        ))}
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[18rem_minmax(0,1fr)]">
-        <nav aria-label="套路分区" className="rounded-2xl border border-border bg-card p-3">
-          <div className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">分区导航</div>
-          <div className="space-y-1">
-            {ROUTINE_SECTIONS.map((section) => (
-              <button
-                key={section.id}
-                aria-current={section.id === activeSectionId ? "page" : undefined}
-                className={scopeButtonClass(section.id === activeSectionId, "flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition")}
-                onClick={() => setActiveSectionId(section.id)}
-                type="button"
-              >
-                <span>{section.label}</span>
-                <span className="text-xs opacity-80">{section.status ?? `${section.getCount(routines)} 项`}</span>
-              </button>
-            ))}
-          </div>
-        </nav>
-
-        <article className="rounded-2xl border border-border bg-card p-4">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h3 className="text-lg font-semibold">{activeSection.label}</h3>
-              <p className="mt-1 text-sm text-muted-foreground">{activeSection.description}</p>
-            </div>
-            <span className="rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground">{activeSection.reuse}</span>
-          </div>
-          <div className="mt-4 grid gap-3 md:grid-cols-2">
-            <MetricCard title="当前数量" value={`${activeSection.getCount(routines)}`} description={activeSection.status ?? "来自旧 routines 数据模型"} />
-            <MetricCard title="数据 scope" value={scopeMeta.label} description={isReadOnly ? "只读预览" : "可编辑保存"} />
-          </div>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <button className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted" type="button">
-              打开{activeSection.label}
-            </button>
-            {activeSection.id === "commands" && <span className="rounded-lg bg-muted px-3 py-1.5 text-sm text-muted-foreground">添加命令入口沿用旧表单逻辑</span>}
-            {activeSection.id === "tools" && <span className="rounded-lg bg-muted px-3 py-1.5 text-sm text-muted-foreground">/LOAD 等价入口待接入</span>}
-            {activeSection.id === "permissions" && <span className="rounded-lg bg-muted px-3 py-1.5 text-sm text-muted-foreground">Bash allowlist/blocklist 待细化</span>}
-            {activeSection.id === "subAgents" && <span className="rounded-lg bg-muted px-3 py-1.5 text-sm text-muted-foreground">工具权限字段待补齐</span>}
-            {activeSection.id === "mcpTools" && <span className="rounded-lg bg-muted px-3 py-1.5 text-sm text-muted-foreground">导入 JSON / 添加 MCP 服务器在后续任务升级</span>}
-            {activeSection.id === "hooks" && <span className="rounded-lg bg-muted px-3 py-1.5 text-sm text-muted-foreground">钩子创建入口待接入</span>}
-          </div>
-          <fieldset className={`mt-5 rounded-xl border border-border bg-background p-3 ${isReadOnly ? "opacity-70" : ""}`} disabled={isReadOnly}>
-            <RoutineSectionEditor
-              routines={routines}
-              sectionId={activeSection.id}
-              setRoutines={setRoutines}
-            />
-          </fieldset>
-        </article>
+      {/* tab 内容 */}
+      <div role="tabpanel">
+        <fieldset className={isReadOnly ? "opacity-70" : ""} disabled={isReadOnly}>
+          <RoutineSectionEditor
+            routines={routines}
+            sectionId={activeSectionId}
+            setRoutines={setRoutines}
+          />
+        </fieldset>
       </div>
+
+      {isReadOnly && <p className="text-xs text-muted-foreground">只读视图，切换到全局或项目 scope 后可编辑。</p>}
     </section>
   );
 }
@@ -393,16 +340,6 @@ function HookTypeCard({ title, description }: { readonly title: string; readonly
     <div className="rounded-xl border border-border bg-background p-3">
       <div className="font-semibold">{title}</div>
       <p className="mt-1 text-sm text-muted-foreground">{description}</p>
-    </div>
-  );
-}
-
-function MetricCard({ title, value, description }: { readonly title: string; readonly value: string; readonly description: string }) {
-  return (
-    <div className="rounded-xl border border-border bg-background p-3">
-      <div className="text-xs text-muted-foreground">{title}</div>
-      <div className="mt-1 text-lg font-semibold">{value}</div>
-      <p className="mt-1 text-xs text-muted-foreground">{description}</p>
     </div>
   );
 }

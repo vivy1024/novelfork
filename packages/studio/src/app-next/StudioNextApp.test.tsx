@@ -77,9 +77,9 @@ describe("StudioNextApp", () => {
     fireEvent.click(screen.getByRole("button", { name: "套路" }));
     expect(screen.getByRole("heading", { name: "套路" })).toBeTruthy();
     await waitFor(() => {
-      const routineNav = screen.getByRole("navigation", { name: "套路分区" });
-      expect(within(routineNav).getByRole("button", { name: /MCP 工具/ })).toBeTruthy();
-      expect(within(routineNav).getByRole("button", { name: /钩子/ })).toBeTruthy();
+      const routineNav = screen.getByRole("tablist", { name: "套路分区" });
+      expect(within(routineNav).getByRole("tab", { name: /MCP 工具/ })).toBeTruthy();
+      expect(within(routineNav).getByRole("tab", { name: /钩子/ })).toBeTruthy();
     });
 
     fireEvent.click(screen.getByRole("button", { name: "创作工作台" }));

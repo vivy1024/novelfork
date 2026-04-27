@@ -83,9 +83,9 @@ describe("ProviderSettingsPage", () => {
     render(<ProviderSettingsPage client={createClient()} />);
 
     expect(await screen.findByRole("heading", { name: "AI 供应商" })).toBeTruthy();
-    expect(screen.getByText("供应商总数")).toBeTruthy();
-    expect(screen.getAllByText("已启用").length).toBeGreaterThan(0);
-    expect(screen.getByText("可用模型数")).toBeTruthy();
+    expect(screen.getByText(/1 供应商/)).toBeTruthy();
+    expect(screen.getByText(/已启用/)).toBeTruthy();
+    expect(screen.getByText(/可用模型/)).toBeTruthy();
     expect(screen.getByRole("heading", { name: "平台集成" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "API key 接入" })).toBeTruthy();
     expect(screen.getAllByText("OpenAI").length).toBeGreaterThan(0);
@@ -97,6 +97,7 @@ describe("ProviderSettingsPage", () => {
     render(<ProviderSettingsPage client={client} />);
 
     await screen.findAllByText("OpenAI");
+    fireEvent.click(screen.getByRole("button", { name: /添加供应商/ }));
     fireEvent.change(screen.getByLabelText("供应商名称"), { target: { value: "Local Codex" } });
     fireEvent.change(screen.getByLabelText("供应商前缀"), { target: { value: "codex-local" } });
     fireEvent.change(screen.getByLabelText("API Key"), { target: { value: "test-key" } });
@@ -125,17 +126,17 @@ describe("ProviderSettingsPage", () => {
     render(<ProviderSettingsPage client={client} />);
 
     await screen.findAllByText("GPT-4o");
-    fireEvent.click(screen.getByRole("button", { name: "刷新模型" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "刷新模型" })[0]);
     await waitFor(() => expect(client.refreshModels).toHaveBeenCalledWith("openai"));
 
-    fireEvent.click(screen.getByRole("button", { name: "测试模型 GPT-5 Codex" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "测试模型 GPT-5 Codex" })[0]);
     await waitFor(() => expect(client.testModel).toHaveBeenCalledWith("openai", "gpt-5-codex"));
 
-    fireEvent.change(screen.getByLabelText("GPT-5 Codex 上下文长度"), { target: { value: "64000" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存 GPT-5 Codex 上下文长度" }));
+    fireEvent.change(screen.getAllByLabelText("GPT-5 Codex 上下文长度")[0], { target: { value: "64000" } });
+    fireEvent.click(screen.getAllByRole("button", { name: "保存 GPT-5 Codex 上下文长度" })[0]);
     await waitFor(() => expect(client.updateModel).toHaveBeenCalledWith("openai", "gpt-5-codex", { contextWindow: 64000 }));
 
-    fireEvent.click(screen.getByRole("button", { name: "禁用 GPT-5 Codex" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "禁用 GPT-5 Codex" })[0]);
     await waitFor(() => expect(client.updateModel).toHaveBeenCalledWith("openai", "gpt-5-codex", { enabled: false }));
   });
 
@@ -155,7 +156,7 @@ describe("ProviderSettingsPage", () => {
     render(<ProviderSettingsPage client={client} />);
 
     await screen.findAllByText("OpenAI");
-    expect(screen.getByText("暂无模型")).toBeTruthy();
+    expect(screen.getAllByText("暂无模型").length).toBeGreaterThan(0);
   });
 
   it("displays test failure status on model row", async () => {
@@ -172,7 +173,7 @@ describe("ProviderSettingsPage", () => {
     render(<ProviderSettingsPage client={client} />);
 
     await screen.findAllByText("GPT-4o");
-    const testBtn = screen.getByRole("button", { name: /测试模型.*GPT-4o/ });
+    const testBtn = screen.getAllByRole("button", { name: /测试模型.*GPT-4o/ })[0];
     fireEvent.click(testBtn);
     await waitFor(() => expect(client.testModel).toHaveBeenCalledWith("openai", "gpt-4o"));
   });
@@ -182,6 +183,7 @@ describe("ProviderSettingsPage", () => {
     render(<ProviderSettingsPage client={client} />);
 
     await screen.findAllByText("OpenAI");
+    fireEvent.click(screen.getByRole("button", { name: /添加供应商/ }));
     fireEvent.change(screen.getByLabelText("供应商名称"), { target: { value: "Anthropic" } });
     fireEvent.change(screen.getByLabelText("供应商前缀"), { target: { value: "anthropic" } });
     fireEvent.change(screen.getByLabelText("API Key"), { target: { value: "sk-ant-test" } });

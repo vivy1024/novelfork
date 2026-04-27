@@ -12,17 +12,17 @@ interface StudioNextAppProps {
 }
 
 const SETTINGS_SECTIONS = [
-  { id: "profile", label: "个人资料", status: "可编辑", group: "个人设置" },
-  { id: "models", label: "模型", status: "部分接入", group: "个人设置" },
-  { id: "agents", label: "AI 代理", status: "复用运行时", group: "个人设置" },
-  { id: "notifications", label: "通知", status: "未接入", group: "个人设置" },
-  { id: "appearance", label: "外观与界面", status: "可迁移", group: "个人设置" },
-  { id: "providers", label: "AI 供应商", status: "可管理", group: "实例管理" },
-  { id: "server", label: "服务器与系统", status: "只读", group: "实例管理" },
-  { id: "storage", label: "存储空间", status: "只读", group: "实例管理" },
-  { id: "resources", label: "运行资源", status: "只读", group: "实例管理" },
-  { id: "history", label: "使用历史", status: "可查看", group: "实例管理" },
-  { id: "about", label: "关于", status: "可查看", group: "实例管理" },
+  { id: "profile", label: "个人资料", group: "个人设置" },
+  { id: "models", label: "模型", group: "个人设置" },
+  { id: "agents", label: "AI 代理", group: "个人设置" },
+  { id: "notifications", label: "通知", group: "个人设置" },
+  { id: "appearance", label: "外观与界面", group: "个人设置" },
+  { id: "providers", label: "AI 供应商", group: "实例管理" },
+  { id: "server", label: "服务器与系统", group: "实例管理" },
+  { id: "storage", label: "存储空间", group: "实例管理" },
+  { id: "resources", label: "运行资源", group: "实例管理" },
+  { id: "history", label: "使用历史", group: "实例管理" },
+  { id: "about", label: "关于", group: "实例管理" },
 ] as const;
 
 const ROUTE_PATHS: Record<StudioNextRoute, string> = {

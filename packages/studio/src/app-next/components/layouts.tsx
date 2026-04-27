@@ -80,7 +80,6 @@ export function SectionLayout({ title, description, actions, overlay, children }
 export interface SettingsSectionItem {
   readonly id: string;
   readonly label: string;
-  readonly status?: string;
   readonly group?: string;
 }
 
@@ -125,7 +124,6 @@ export function SettingsLayout({ title, sections, activeSectionId, onSectionChan
                     onClick={() => onSectionChange(section.id)}
                   >
                     <span>{section.label}</span>
-                    {section.status && <span className="text-[10px] opacity-80">{section.status}</span>}
                   </button>
                 ))}
               </div>
