@@ -1,9 +1,55 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const useApiMock = vi.hoisted(() => vi.fn());
+const fetchJsonMock = vi.hoisted(() => vi.fn());
+
+vi.mock("../hooks/use-api", () => ({
+  useApi: useApiMock,
+  fetchJson: fetchJsonMock,
+  putApi: vi.fn().mockResolvedValue({}),
+}));
+
+vi.mock("../hooks/use-theme", () => ({
+  useTheme: () => "light" as const,
+}));
+
+vi.mock("../hooks/use-colors", () => ({
+  useColors: () => ({
+    card: "", cardStatic: "border-border", surface: "", muted: "", subtle: "",
+    link: "", input: "border border-border", btnPrimary: "bg-primary text-primary-foreground",
+    btnSecondary: "", btnSuccess: "", btnDanger: "", tableHeader: "", tableDivide: "",
+    tableHover: "", error: "", info: "", code: "", active: "", paused: "", mono: "",
+    text: "", textSecondary: "", bg: "", bgSecondary: "", border: "", accent: "",
+  }),
+}));
+
+vi.mock("../hooks/use-ai-model-gate", () => ({
+  useAiModelGate: () => ({ blockedResult: null, closeGate: vi.fn(), ensureModelFor: vi.fn(() => true) }),
+}));
 
 import { StudioNextApp } from "./StudioNextApp";
 
-afterEach(() => cleanup());
+afterEach(() => { cleanup(); vi.clearAllMocks(); });
+
+beforeEach(() => {
+  useApiMock.mockImplementation((path: string | null) => {
+    if (path === "/books") return { data: { books: [{ id: "b1", title: "测试书" }] }, loading: false, error: null, refetch: vi.fn() };
+    if (path === "/books/b1") return { data: { book: { id: "b1", title: "测试书" }, chapters: [], nextChapter: 1 }, loading: false, error: null, refetch: vi.fn() };
+    if (path === "/books/b1/candidates") return { data: { candidates: [] }, loading: false, error: null, refetch: vi.fn() };
+    if (path === "/settings/user") return { data: { modelDefaults: {}, runtimeControls: {} }, loading: false, error: null, refetch: vi.fn() };
+    if (path === "/settings/release") return { data: { version: "0.1.0" }, loading: false, error: null, refetch: vi.fn() };
+    if (path === "/settings/metrics") return { data: {}, loading: false, error: null, refetch: vi.fn() };
+    if (path === "/providers") return { data: { providers: [] }, loading: false, error: null, refetch: vi.fn() };
+    return { data: null, loading: false, error: null, refetch: vi.fn() };
+  });
+  fetchJsonMock.mockImplementation((path: string) => {
+    if (path === "/settings/user") return Promise.resolve({ profile: {}, preferences: { theme: "light", fontSize: 14 }, runtimeControls: { defaultPermissionMode: "ask", toolAccess: { mcpStrategy: "inherit" }, recovery: {}, runtimeDebug: {} }, modelDefaults: {} });
+    if (path === "/api/providers/models") return Promise.resolve({ models: [] });
+    if (path === "/settings/metrics") return Promise.resolve({});
+    return Promise.resolve({});
+  });
+});
 
 describe("StudioNextApp", () => {
   it("defaults to the novel writing workspace instead of the legacy dashboard", () => {
