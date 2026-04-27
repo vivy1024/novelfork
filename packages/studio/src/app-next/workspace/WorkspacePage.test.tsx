@@ -66,6 +66,46 @@ describe("WorkspacePage", () => {
     expect(within(editor).getByRole("button", { name: "合并到正式章节" })).toBeTruthy();
     expect(within(editor).getByRole("button", { name: "替换正式章节" })).toBeTruthy();
     expect(within(editor).getByRole("button", { name: "另存为草稿" })).toBeTruthy();
+    expect(within(editor).getByRole("button", { name: "放弃候选稿" })).toBeTruthy();
+  });
+
+  it("confirms merge or replace before accepting a generated candidate", async () => {
+    const acceptCandidate = vi.fn(async () => undefined);
+    const rejectCandidate = vi.fn(async () => undefined);
+    render(<WorkspacePage candidateApi={{ acceptCandidate, rejectCandidate }} />);
+
+    const explorer = screen.getByRole("complementary", { name: "小说资源管理器" });
+    fireEvent.click(within(explorer).getByRole("button", { name: /第二章 AI 候选/ }));
+    fireEvent.click(screen.getByRole("button", { name: "合并到正式章节" }));
+
+    expect(screen.getByText("确认合并到正式章节")).toBeTruthy();
+    expect(screen.getAllByText("目标章节：2").length).toBeGreaterThan(0);
+    expect(screen.getByText(/影响范围：追加到正式章节末尾/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "确认合并" }));
+
+    await waitFor(() => expect(acceptCandidate).toHaveBeenCalledWith("book-1", "candidate-2", "merge"));
+    expect(screen.getByText("候选稿已合并到正式章节")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "替换正式章节" }));
+    expect(screen.getByText("确认替换到正式章节")).toBeTruthy();
+    expect(screen.getByText(/影响范围：用候选稿替换目标正式章节正文/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "确认替换" }));
+    await waitFor(() => expect(acceptCandidate).toHaveBeenCalledWith("book-1", "candidate-2", "replace"));
+  });
+
+  it("can save a generated candidate as draft or abandon it without touching formal chapters", async () => {
+    const acceptCandidate = vi.fn(async () => undefined);
+    const rejectCandidate = vi.fn(async () => undefined);
+    render(<WorkspacePage candidateApi={{ acceptCandidate, rejectCandidate }} />);
+
+    const explorer = screen.getByRole("complementary", { name: "小说资源管理器" });
+    fireEvent.click(within(explorer).getByRole("button", { name: /第二章 AI 候选/ }));
+    fireEvent.click(screen.getByRole("button", { name: "另存为草稿" }));
+    await waitFor(() => expect(acceptCandidate).toHaveBeenCalledWith("book-1", "candidate-2", "draft"));
+    expect(screen.getByText("候选稿已另存为草稿")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "放弃候选稿" }));
+    await waitFor(() => expect(rejectCandidate).toHaveBeenCalledWith("book-1", "candidate-2"));
   });
 
   it("opens bible categories and keeps AI actions tied to the selected writing context", () => {

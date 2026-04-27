@@ -54,7 +54,15 @@ export interface WorkspaceChapterApi {
   readonly saveChapter: (bookId: string, chapterNumber: number, content: string) => Promise<void>;
 }
 
+export type CandidateAcceptAction = "merge" | "replace" | "draft";
+
+export interface WorkspaceCandidateApi {
+  readonly acceptCandidate: (bookId: string, candidateId: string, action: CandidateAcceptAction) => Promise<void>;
+  readonly rejectCandidate: (bookId: string, candidateId: string) => Promise<void>;
+}
+
 interface WorkspacePageProps {
+  readonly candidateApi?: WorkspaceCandidateApi;
   readonly chapterApi?: WorkspaceChapterApi;
 }
 
@@ -69,7 +77,20 @@ const DEFAULT_CHAPTER_API: WorkspaceChapterApi = {
   },
 };
 
-export function WorkspacePage({ chapterApi = DEFAULT_CHAPTER_API }: WorkspacePageProps = {}) {
+const DEFAULT_CANDIDATE_API: WorkspaceCandidateApi = {
+  acceptCandidate: async (bookId, candidateId, action) => {
+    await fetchJson(`/books/${bookId}/candidates/${candidateId}/accept`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action }),
+    });
+  },
+  rejectCandidate: async (bookId, candidateId) => {
+    await fetchJson(`/books/${bookId}/candidates/${candidateId}/reject`, { method: "POST" });
+  },
+};
+
+export function WorkspacePage({ candidateApi = DEFAULT_CANDIDATE_API, chapterApi = DEFAULT_CHAPTER_API }: WorkspacePageProps = {}) {
   const tree = useMemo(() => buildStudioResourceTree(SAMPLE_INPUT), []);
   const [selectedNodeId, setSelectedNodeId] = useState("chapter:book-1:1");
   const selectedNode = findNode(tree, selectedNodeId) ?? tree[0]!;
@@ -96,7 +117,7 @@ export function WorkspacePage({ chapterApi = DEFAULT_CHAPTER_API }: WorkspacePag
 
       <ResourceWorkspaceLayout
         explorer={<ResourceTree nodes={tree} selectedNodeId={selectedNode.id} onSelect={setSelectedNodeId} />}
-        editor={<WorkspaceEditor chapterApi={chapterApi} node={selectedNode} />}
+        editor={<WorkspaceEditor candidateApi={candidateApi} chapterApi={chapterApi} node={selectedNode} />}
         assistant={<AssistantPanel selectedNode={selectedNode} />}
       />
     </SectionLayout>
@@ -162,22 +183,17 @@ function ResourceNodeButton({
   );
 }
 
-function WorkspaceEditor({ chapterApi, node }: { readonly chapterApi: WorkspaceChapterApi; readonly node: StudioResourceNode }) {
+function WorkspaceEditor({
+  candidateApi,
+  chapterApi,
+  node,
+}: {
+  readonly candidateApi: WorkspaceCandidateApi;
+  readonly chapterApi: WorkspaceChapterApi;
+  readonly node: StudioResourceNode;
+}) {
   if (node.kind === "generated-chapter") {
-    return (
-      <div className="space-y-4">
-        <EditorHeader title={node.title} meta="候选稿 / 不会自动覆盖正式正文" />
-        <div className="rounded-xl border border-dashed border-border bg-muted/20 p-4 text-sm text-muted-foreground">
-          生成稿 vs 已有章节
-        </div>
-        <textarea aria-label="章节正文" className="min-h-[22rem] w-full resize-none rounded-xl border border-border bg-background p-4 leading-7" defaultValue="AI 候选正文会先进入候选区，等待用户确认。" />
-        <div className="flex flex-wrap gap-2">
-          <button className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted" type="button">合并到正式章节</button>
-          <button className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted" type="button">替换正式章节</button>
-          <button className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted" type="button">另存为草稿</button>
-        </div>
-      </div>
-    );
+    return <CandidateEditor candidateApi={candidateApi} node={node} />;
   }
 
   if (node.kind === "chapter") {
@@ -200,6 +216,72 @@ function WorkspaceEditor({ chapterApi, node }: { readonly chapterApi: WorkspaceC
       <EditorHeader title={node.title} meta={node.status ?? node.kind} />
       <div className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
         点击已有章节、生成章节、草稿或经纬分类后，这里显示对应编辑器、候选稿或详情。
+      </div>
+    </div>
+  );
+}
+
+function CandidateEditor({ candidateApi, node }: { readonly candidateApi: WorkspaceCandidateApi; readonly node: StudioResourceNode }) {
+  const [pendingAction, setPendingAction] = useState<"merge" | "replace" | null>(null);
+  const [resultMessage, setResultMessage] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const bookId = typeof node.metadata?.bookId === "string" ? node.metadata.bookId : SAMPLE_BOOK.id;
+  const candidateId = node.id.replace(/^generated:/, "");
+  const targetChapterId = typeof node.metadata?.targetChapterId === "string" ? node.metadata.targetChapterId : "未指定";
+
+  const accept = async (action: CandidateAcceptAction) => {
+    setActionError(null);
+    await candidateApi.acceptCandidate(bookId, candidateId, action);
+    setPendingAction(null);
+    setResultMessage(action === "merge" ? "候选稿已合并到正式章节" : action === "replace" ? "候选稿已替换正式章节" : "候选稿已另存为草稿");
+  };
+
+  const reject = async () => {
+    setActionError(null);
+    await candidateApi.rejectCandidate(bookId, candidateId);
+    setResultMessage("候选稿已放弃");
+  };
+
+  const runAction = (operation: () => Promise<void>) => {
+    operation().catch((error: unknown) => setActionError(error instanceof Error ? error.message : String(error)));
+  };
+
+  return (
+    <div className="space-y-4">
+      <EditorHeader title={node.title} meta="候选稿 / 不会自动覆盖正式正文" />
+      <div className="grid gap-3 rounded-xl border border-dashed border-border bg-muted/20 p-4 text-sm text-muted-foreground md:grid-cols-2">
+        <div>
+          <div className="font-medium text-foreground">生成稿 vs 已有章节</div>
+          <p className="mt-1">左侧正式章节保持不变；右侧候选稿只有在确认后才会写入。</p>
+        </div>
+        <div>
+          <div className="font-medium text-foreground">目标章节：{targetChapterId}</div>
+          <p className="mt-1">来源：{node.badge ?? "AI"}</p>
+        </div>
+      </div>
+      {resultMessage && <div className="rounded-xl border border-border bg-muted/30 p-3 text-sm">{resultMessage}</div>}
+      {actionError && <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">候选稿操作失败：{actionError}</div>}
+      {pendingAction && (
+        <div className="rounded-xl border border-border bg-background p-4 text-sm">
+          <h3 className="font-semibold">确认{pendingAction === "merge" ? "合并" : "替换"}到正式章节</h3>
+          <p className="mt-2">目标章节：{targetChapterId}</p>
+          <p className="mt-1 text-muted-foreground">
+            影响范围：{pendingAction === "merge" ? "追加到正式章节末尾，保留原正文。" : "用候选稿替换目标正式章节正文。"}
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted" onClick={() => runAction(() => accept(pendingAction))} type="button">
+              {pendingAction === "merge" ? "确认合并" : "确认替换"}
+            </button>
+            <button className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted" onClick={() => setPendingAction(null)} type="button">取消</button>
+          </div>
+        </div>
+      )}
+      <textarea aria-label="章节正文" className="min-h-[22rem] w-full resize-none rounded-xl border border-border bg-background p-4 leading-7" defaultValue="AI 候选正文会先进入候选区，等待用户确认。" />
+      <div className="flex flex-wrap gap-2">
+        <button className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted" onClick={() => setPendingAction("merge")} type="button">合并到正式章节</button>
+        <button className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted" onClick={() => setPendingAction("replace")} type="button">替换正式章节</button>
+        <button className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted" onClick={() => runAction(() => accept("draft"))} type="button">另存为草稿</button>
+        <button className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted" onClick={() => runAction(reject)} type="button">放弃候选稿</button>
       </div>
     </div>
   );
