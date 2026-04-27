@@ -1,9 +1,35 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { WorkspacePage } from "./WorkspacePage";
+const useApiMock = vi.hoisted(() => vi.fn());
 
-afterEach(() => cleanup());
+vi.mock("../../hooks/use-api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../hooks/use-api")>();
+  return { ...actual, useApi: useApiMock };
+});
+
+import { FALLBACK_BOOK, FALLBACK_CHAPTERS, WorkspacePage } from "./WorkspacePage";
+
+const booksResponse = { books: [{ id: FALLBACK_BOOK.id, title: FALLBACK_BOOK.title }] };
+const bookDetailResponse = {
+  book: { id: FALLBACK_BOOK.id, title: FALLBACK_BOOK.title, status: "active", chapterWordCount: 3000 },
+  chapters: FALLBACK_CHAPTERS.map((c) => ({ number: c.number, title: c.title, status: c.status, wordCount: c.wordCount, fileName: c.fileName })),
+  nextChapter: 3,
+};
+const candidatesResponse = {
+  candidates: [{ id: "candidate-2", bookId: FALLBACK_BOOK.id, targetChapterId: "2", title: "第二章 AI 候选", source: "write-next", createdAt: "2026-04-27T02:00:00.000Z", status: "candidate" }],
+};
+
+afterEach(() => { cleanup(); vi.clearAllMocks(); });
+
+beforeEach(() => {
+  useApiMock.mockImplementation((path: string | null) => {
+    if (path === "/books") return { data: booksResponse, loading: false, error: null, refetch: vi.fn() };
+    if (path === `/books/${FALLBACK_BOOK.id}`) return { data: bookDetailResponse, loading: false, error: null, refetch: vi.fn() };
+    if (path === `/books/${FALLBACK_BOOK.id}/candidates`) return { data: candidatesResponse, loading: false, error: null, refetch: vi.fn() };
+    return { data: null, loading: false, error: null, refetch: vi.fn() };
+  });
+});
 
 describe("WorkspacePage", () => {
   it("renders a book resource tree and opens an existing chapter in the central editor", () => {
