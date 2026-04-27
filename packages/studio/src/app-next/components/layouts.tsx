@@ -21,20 +21,20 @@ interface NextShellProps {
 export function NextShell({ activeRoute, onRouteChange, status, children }: NextShellProps) {
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <header className="sticky top-0 z-40 border-b border-border bg-background/90 px-5 py-3 backdrop-blur" role="banner">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+      <header className="sticky top-0 z-40 border-b border-border bg-background/90 px-4 py-2 backdrop-blur" role="banner">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <p className="text-xs font-medium uppercase tracking-[0.24em] text-muted-foreground">NovelFork Studio Next</p>
-            <h1 className="text-xl font-semibold">小说创作工作台</h1>
+            <p className="text-[10px] font-medium uppercase tracking-[0.24em] text-muted-foreground">NovelFork Studio Next</p>
+            <h1 className="text-lg font-semibold">小说创作工作台</h1>
           </div>
-          <nav aria-label="Studio Next 主导航" className="flex items-center gap-2 rounded-xl border border-border bg-card p-1">
+          <nav aria-label="Studio Next 主导航" className="flex items-center gap-1 rounded-lg border border-border bg-card p-0.5">
             {ROUTES.map((item) => (
               <button
                 key={item.route}
                 type="button"
                 aria-current={activeRoute === item.route ? "page" : undefined}
                 className={cn(
-                  "rounded-lg px-3 py-1.5 text-sm font-medium transition",
+                  "rounded-md px-3 py-1 text-sm font-medium transition",
                   activeRoute === item.route
                     ? "bg-primary text-primary-foreground shadow-sm"
                     : "text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -45,10 +45,10 @@ export function NextShell({ activeRoute, onRouteChange, status, children }: Next
               </button>
             ))}
           </nav>
-          <div className="min-w-[9rem] text-right text-sm text-muted-foreground">{status ?? "旁路入口 /next"}</div>
+          <div className="text-right text-xs text-muted-foreground">{status ?? "旁路入口 /next"}</div>
         </div>
       </header>
-      <div className="p-5">{children}</div>
+      <div className="p-4">{children}</div>
     </div>
   );
 }
@@ -63,11 +63,11 @@ interface SectionLayoutProps {
 
 export function SectionLayout({ title, description, actions, overlay, children }: SectionLayoutProps) {
   return (
-    <section className="relative space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    <section className="relative space-y-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h1 className="text-2xl font-semibold">{title}</h1>
-          {description && <p className="mt-1 max-w-3xl text-sm text-muted-foreground">{description}</p>}
+          <h1 className="text-xl font-semibold">{title}</h1>
+          {description && <p className="max-w-3xl text-sm text-muted-foreground">{description}</p>}
         </div>
         {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
       </div>
@@ -105,34 +105,34 @@ export function SettingsLayout({ title, sections, activeSectionId, onSectionChan
   }, []);
 
   return (
-    <SectionLayout title={title} description="左侧固定分区导航，右侧只展示当前分区详情。">
-      <div className="grid min-h-[36rem] gap-4 lg:grid-cols-[17rem_minmax(0,1fr)]">
-        <nav aria-label="设置分区" className="rounded-2xl border border-border bg-card p-3">
-          <div className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">分区导航</div>
-          <div className="space-y-3">
+    <SectionLayout title={title} description="">
+      <div className="grid min-h-[36rem] gap-3 lg:grid-cols-[15rem_minmax(0,1fr)]">
+        <nav aria-label="设置分区" className="rounded-lg border border-border bg-card p-2">
+          <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">分区导航</div>
+          <div className="space-y-2">
             {groupedSections.map(({ group, sections: groupSections }) => (
-              <div key={group} className="space-y-1">
-                <div className="px-3 text-xs font-semibold text-muted-foreground">{group}</div>
+              <div key={group} className="space-y-0.5">
+                <div className="px-2 text-[10px] font-semibold text-muted-foreground">{group}</div>
                 {groupSections.map((section) => (
                   <button
                     key={section.id}
                     type="button"
                     aria-current={section.id === activeSectionId ? "page" : undefined}
                     className={cn(
-                      "flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition",
+                      "flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm transition",
                       section.id === activeSectionId ? "bg-primary text-primary-foreground" : "hover:bg-muted",
                     )}
                     onClick={() => onSectionChange(section.id)}
                   >
                     <span>{section.label}</span>
-                    {section.status && <span className="text-xs opacity-80">{section.status}</span>}
+                    {section.status && <span className="text-[10px] opacity-80">{section.status}</span>}
                   </button>
                 ))}
               </div>
             ))}
           </div>
         </nav>
-        <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">{children}</div>
+        <div className="rounded-lg border border-border bg-card p-3">{children}</div>
       </div>
     </SectionLayout>
   );
@@ -146,14 +146,14 @@ interface ResourceWorkspaceLayoutProps {
 
 export function ResourceWorkspaceLayout({ explorer, editor, assistant }: ResourceWorkspaceLayoutProps) {
   return (
-    <div className="grid min-h-[42rem] gap-4 xl:grid-cols-[18rem_minmax(0,1fr)_22rem]">
-      <aside aria-label="小说资源管理器" className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+    <div className="grid min-h-[38rem] gap-3 xl:grid-cols-[16rem_minmax(0,1fr)_20rem]">
+      <aside aria-label="小说资源管理器" className="rounded-lg border border-border bg-card p-3">
         {explorer}
       </aside>
-      <main aria-label="正文编辑区" className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+      <main aria-label="正文编辑区" className="rounded-lg border border-border bg-card p-4">
         {editor}
       </main>
-      <aside aria-label="AI 与经纬面板" className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+      <aside aria-label="AI 与经纬面板" className="rounded-lg border border-border bg-card p-3">
         {assistant}
       </aside>
     </div>

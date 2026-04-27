@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
-import { resolveStudioNextRoute, type StudioNextRoute } from "./entry";
+import { resolveStudioNextRoute, STUDIO_NEXT_BASE_PATH, type StudioNextRoute } from "./entry";
 import { NextShell, SectionLayout, SettingsLayout } from "./components/layouts";
 import { ProviderSettingsPage } from "./settings/ProviderSettingsPage";
 import { SettingsSectionContent } from "./settings/SettingsSectionContent";
@@ -25,11 +25,31 @@ const SETTINGS_SECTIONS = [
   { id: "about", label: "关于", status: "可查看", group: "实例管理" },
 ] as const;
 
+const ROUTE_PATHS: Record<StudioNextRoute, string> = {
+  workspace: STUDIO_NEXT_BASE_PATH,
+  settings: `${STUDIO_NEXT_BASE_PATH}/settings`,
+  routines: `${STUDIO_NEXT_BASE_PATH}/routines`,
+};
+
 export function StudioNextApp({ initialRoute }: StudioNextAppProps) {
   const [activeRoute, setActiveRoute] = useState<StudioNextRoute>(() => initialRoute ?? resolveStudioNextRoute());
 
+  const navigate = useCallback((route: StudioNextRoute) => {
+    setActiveRoute(route);
+    if (typeof window !== "undefined" && window.history?.pushState) {
+      window.history.pushState(null, "", ROUTE_PATHS[route]);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onPop = () => setActiveRoute(resolveStudioNextRoute());
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
   return (
-    <NextShell activeRoute={activeRoute} onRouteChange={setActiveRoute} status="旧前端冻结，旁路建设中">
+    <NextShell activeRoute={activeRoute} onRouteChange={navigate} status="旧前端冻结，旁路建设中">
       {activeRoute === "workspace" && <WorkspacePage />}
       {activeRoute === "settings" && <SettingsPage />}
       {activeRoute === "routines" && <RoutinesPage />}
@@ -53,7 +73,7 @@ function SettingsPage() {
 
 function RoutinesPage() {
   return (
-    <SectionLayout title="套路" description="保留 NarraFork 固定 AI 专业功能集合，复用旧 Routines API 与类型。">
+    <SectionLayout title="套路" description="复用旧 Routines API 与类型。">
       <RoutinesNextPage />
     </SectionLayout>
   );

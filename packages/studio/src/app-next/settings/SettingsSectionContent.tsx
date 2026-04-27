@@ -1,244 +1,431 @@
-import type { ReactNode } from "react";
+import { useEffect, useState } from "react";
+
+import { useApi, fetchJson, putApi } from "../../hooks/use-api";
+import { InlineError } from "../components/feedback";
 
 interface SettingsSectionContentProps {
   readonly sectionId: string;
   readonly onSectionChange?: (sectionId: string) => void;
 }
 
-interface MetricItem {
-  readonly title: string;
-  readonly value: string;
-  readonly description?: string;
+/* ── shared types from /api/settings/user ── */
+
+interface UserProfile {
+  name?: string;
+  email?: string;
+  avatar?: string;
+  gitName?: string;
+  gitEmail?: string;
 }
 
-interface ActionItem {
-  readonly title: string;
-  readonly status: string;
-  readonly description: string;
-  readonly action?: string;
+interface UserPreferences {
+  theme?: "light" | "dark" | "auto";
+  fontSize?: number;
+  fontFamily?: string;
+  editorLineHeight?: number;
+  editorTabSize?: number;
+  autoSave?: boolean;
+  autoSaveDelay?: number;
 }
 
-interface SettingsSectionDefinition {
-  readonly id: string;
-  readonly title: string;
-  readonly description: string;
-  readonly source: string;
-  readonly metrics: readonly MetricItem[];
-  readonly items: readonly ActionItem[];
-  readonly footer?: ReactNode;
+interface RuntimeRecovery {
+  resumeOnStartup?: boolean;
+  maxRecoveryAttempts?: number;
+  maxRetryAttempts?: number;
+  initialRetryDelayMs?: number;
+  maxRetryDelayMs?: number;
 }
 
-const SETTINGS_SECTION_DEFINITIONS: Record<string, SettingsSectionDefinition> = {
-  profile: {
-    id: "profile",
-    title: "个人资料",
-    description: "迁移旧 ProfilePanel 的 Git 身份配置；头像上传暂未接入时明确标注。",
-    source: "复用 ProfilePanel / /api/settings/user",
-    metrics: [
-      { title: "身份字段", value: "4", description: "姓名、邮箱、Git 用户名、Git 邮箱" },
-      { title: "头像上传", value: "未接入", description: "头像上传未接入，不伪造成功" },
-      { title: "保存链路", value: "已映射", description: "复用旧用户设置 API" },
-    ],
-    items: [
-      { title: "Git 用户名", status: "可编辑", description: "用于 Git 提交作者名，来自旧个人资料面板。", action: "保存个人资料" },
-      { title: "Git 邮箱", status: "可编辑", description: "用于 Git 提交邮箱，来自旧个人资料面板。", action: "保存个人资料" },
-      { title: "头像上传未接入", status: "未接入", description: "等待头像存储与上传 API，当前只显示状态。" },
-    ],
-  },
-  models: {
-    id: "models",
-    title: "模型",
-    description: "展示默认模型、摘要模型、子代理偏好、模型池限制和推理强度，并连接 AI 供应商模型列表入口。",
-    source: "复用 provider catalog / provider settings API / RuntimeControlPanel model defaults",
-    metrics: [
-      { title: "默认模型", value: "已映射", description: "运行时默认模型配置入口" },
-      { title: "摘要模型", value: "已映射", description: "摘要/压缩任务使用模型" },
-      { title: "模型列表", value: "供应商页", description: "模型启用、测试、上下文长度在 AI 供应商中管理" },
-    ],
-    items: [
-      { title: "默认模型", status: "可查看", description: "复用运行时模型默认值，不新建模型 store。" },
-      { title: "摘要模型", status: "可查看", description: "用于摘要、压缩与上下文管理。" },
-      { title: "Explore 子代理模型", status: "可查看", description: "对应 Explore agent 模型偏好。" },
-      { title: "Plan 子代理模型", status: "可查看", description: "对应 Plan agent 模型偏好。" },
-      { title: "模型池限制", status: "可查看", description: "展示各类子代理可用模型池上限。" },
-      { title: "全局推理强度", status: "可查看", description: "通用推理强度默认值。" },
-      { title: "Codex 推理强度", status: "可查看", description: "Codex 模式的默认 thinking strength。", action: "打开 AI 供应商" },
-    ],
-  },
-  agents: {
-    id: "agents",
-    title: "AI 代理",
-    description: "迁移 RuntimeControlPanel 的权限、恢复、上下文、调试和请求行为配置。",
-    source: "复用 RuntimeControlPanel",
-    metrics: [
-      { title: "权限模式", value: "已映射", description: "默认 allow/ask/deny 口径" },
-      { title: "恢复/重试", value: "已映射", description: "可恢复错误与退避策略" },
-      { title: "调试观测", value: "已映射", description: "Dump 请求、token 与输出速率" },
-    ],
-    items: [
-      { title: "默认权限模式", status: "可查看", description: "会话默认权限策略。" },
-      { title: "每条消息最大轮次", status: "可查看", description: "限制 agent 单轮最大迭代。" },
-      { title: "可恢复错误最大重试次数", status: "可查看", description: "失败恢复与重试上限。" },
-      { title: "重试退避时间上限", status: "可查看", description: "请求失败后的退避上限。" },
-      { title: "WebFetch 代理模式", status: "可查看", description: "网页抓取时的代理选择策略。" },
-      { title: "上下文窗口阈值", status: "可查看", description: "触发压缩/降级的上下文阈值。" },
-      { title: "token 用量 / 输出速率", status: "可查看", description: "复用 AI 请求观测数据。" },
-      { title: "目录 / 命令白名单黑名单", status: "可查看", description: "复用工具权限与命令规则。" },
-    ],
-  },
-  notifications: {
-    id: "notifications",
-    title: "通知",
-    description: "通知配置尚未接入后端，当前只显示状态与后续入口。",
-    source: "未接入通知配置",
-    metrics: [
-      { title: "桌面通知", value: "未接入" },
-      { title: "任务完成提醒", value: "未接入" },
-      { title: "错误提醒", value: "未接入" },
-    ],
-    items: [
-      { title: "未接入通知配置", status: "未接入", description: "等待通知权限与偏好 API。" },
-    ],
-  },
-  appearance: {
-    id: "appearance",
-    title: "外观与界面",
-    description: "迁移旧 AppearancePanel 的主题与字体配置，保留短路径操作。",
-    source: "复用 AppearancePanel / /api/settings/theme",
-    metrics: [
-      { title: "主题模式", value: "浅色 / 深色 / 自动" },
-      { title: "字体大小", value: "12-20" },
-      { title: "保存链路", value: "已映射" },
-    ],
-    items: [
-      { title: "主题模式", status: "可编辑", description: "浅色、深色、跟随系统。", action: "保存外观设置" },
-      { title: "字体大小", status: "可编辑", description: "复用旧用户偏好设置。", action: "保存外观设置" },
-    ],
-  },
-  server: {
-    id: "server",
-    title: "服务器与系统",
-    description: "复用平台升级后的启动诊断、运行时信息、自愈动作与系统状态。",
-    source: "Admin Resources / startup diagnostics",
-    metrics: [
-      { title: "启动诊断", value: "可查看" },
-      { title: "运行时信息", value: "可查看" },
-      { title: "自愈动作", value: "可触发" },
-    ],
-    items: [
-      { title: "启动诊断", status: "可查看", description: "显示 unclean shutdown、静态资源、provider availability 等诊断项。", action: "刷新诊断" },
-      { title: "运行时信息", status: "只读", description: "Bun / Vite / 静态资源来源 / 项目根目录。" },
-      { title: "自愈动作", status: "可触发", description: "复用 Admin Resources 的修复入口。", action: "打开资源管理" },
-    ],
-  },
-  storage: {
-    id: "storage",
-    title: "存储空间",
-    description: "展示 SQLite、作品目录、会话存储与索引状态；危险清理动作暂不接入。",
-    source: "Admin Resources / SQLite storage diagnostics",
-    metrics: [
-      { title: "SQLite 数据库", value: "可查看" },
-      { title: "作品目录", value: "可查看" },
-      { title: "清理动作", value: "只读" },
-    ],
-    items: [
-      { title: "SQLite 数据库", status: "只读", description: "复用 storage.sqlite 诊断与数据库路径信息。" },
-      { title: "会话存储", status: "可查看", description: "显示孤儿历史、会话索引与恢复状态。" },
-      { title: "危险清理", status: "未接入", description: "不伪造删除/清理成功，后续需单独确认。" },
-    ],
-  },
-  resources: {
-    id: "resources",
-    title: "运行资源",
-    description: "复用 Admin Resources 的资源扫描、运行任务、WebSocket 状态与刷新动作。",
-    source: "Admin Resources",
-    metrics: [
-      { title: "资源扫描", value: "可刷新" },
-      { title: "运行任务", value: "可查看" },
-      { title: "WebSocket", value: "可查看" },
-    ],
-    items: [
-      { title: "Admin Resources", status: "复用", description: "查看 live runs、资源占用与工作区状态。", action: "刷新资源" },
-      { title: "启动健康", status: "可查看", description: "复用 startup recovery report。" },
-    ],
-  },
-  history: {
-    id: "history",
-    title: "使用历史",
-    description: "复用 AI request observability，查看请求历史、token、TTFT、成本与 run 关联。",
-    source: "Admin Requests",
-    metrics: [
-      { title: "请求历史", value: "可查看" },
-      { title: "token 用量", value: "可查看" },
-      { title: "TTFT / 成本", value: "可查看" },
-    ],
-    items: [
-      { title: "Admin Requests", status: "复用", description: "请求列表、provider 过滤、run drilldown。", action: "刷新历史" },
-      { title: "AI request observability", status: "复用", description: "不新建日志统计系统。" },
-    ],
-  },
-  about: {
-    id: "about",
-    title: "关于",
-    description: "复用 ReleaseOverview 的版本、commit、平台、作者向更新信息。",
-    source: "ReleaseOverview / /api/settings/release",
-    metrics: [
-      { title: "版本 / commit / 平台 / 作者", value: "可查看" },
-      { title: "更新日志", value: "入口已映射" },
-      { title: "构建来源", value: "可查看" },
-    ],
-    items: [
-      { title: "版本 / commit / 平台 / 作者", status: "可查看", description: "复用发布快照，不手写版本事实。" },
-      { title: "更新日志", status: "可打开", description: "指向 ReleaseOverview 提供的 changelog 入口。", action: "查看更新日志" },
-    ],
-  },
-};
+interface RuntimeToolAccess {
+  allowlist?: string[];
+  blocklist?: string[];
+  mcpStrategy?: string;
+}
+
+interface RuntimeDebug {
+  tokenDebugEnabled?: boolean;
+  rateDebugEnabled?: boolean;
+  dumpEnabled?: boolean;
+  traceEnabled?: boolean;
+}
+
+interface RuntimeControls {
+  defaultPermissionMode?: string;
+  defaultReasoningEffort?: string;
+  contextCompressionThresholdPercent?: number;
+  contextTruncateTargetPercent?: number;
+  recovery?: RuntimeRecovery;
+  toolAccess?: RuntimeToolAccess;
+  runtimeDebug?: RuntimeDebug;
+}
+
+interface ModelDefaults {
+  defaultSessionModel?: string;
+  summaryModel?: string;
+  subagentModelPool?: string[];
+}
+
+interface UserConfig {
+  profile: UserProfile;
+  preferences: UserPreferences;
+  runtimeControls: RuntimeControls;
+  modelDefaults: ModelDefaults;
+}
+
+interface ReleaseSnapshot {
+  version?: string;
+  commit?: string;
+  platform?: string;
+  builtAt?: string;
+  nodeVersion?: string;
+  bunVersion?: string;
+}
+
+/* ── component ── */
 
 export function SettingsSectionContent({ sectionId, onSectionChange }: SettingsSectionContentProps) {
-  const definition = SETTINGS_SECTION_DEFINITIONS[sectionId] ?? SETTINGS_SECTION_DEFINITIONS.models;
+  switch (sectionId) {
+    case "profile": return <ProfileSection />;
+    case "models": return <ModelsSection onSectionChange={onSectionChange} />;
+    case "agents": return <AgentsSection />;
+    case "notifications": return <NotificationsSection />;
+    case "appearance": return <AppearanceSection />;
+    case "server": return <ServerSection />;
+    case "storage": return <StorageSection />;
+    case "resources": return <ResourcesSection />;
+    case "history": return <HistorySection />;
+    case "about": return <AboutSection />;
+    default: return <ModelsSection onSectionChange={onSectionChange} />;
+  }
+}
+
+/* ── helpers ── */
+
+function SectionShell({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section aria-label={`${title}设置`} className="space-y-3">
+      <h2 className="text-lg font-semibold">{title}</h2>
+      {children}
+    </section>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="flex items-center justify-between gap-3 border-b border-border py-2 text-sm last:border-0">
+      <span className="text-muted-foreground">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+function ReadonlyField({ label, value }: { label: string; value: string | undefined }) {
+  return (
+    <div className="flex items-center justify-between gap-3 border-b border-border py-2 text-sm last:border-0">
+      <span className="text-muted-foreground">{label}</span>
+      <span>{value ?? "—"}</span>
+    </div>
+  );
+}
+
+function SaveBtn({ saving, onClick }: { saving: boolean; onClick: () => void }) {
+  return (
+    <button className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50" disabled={saving} onClick={onClick} type="button">
+      {saving ? "保存中…" : "保存"}
+    </button>
+  );
+}
+
+function NotConnected({ label }: { label: string }) {
+  return <span className="rounded bg-muted px-2 py-0.5 text-xs text-muted-foreground">未接入 · {label}</span>;
+}
+
+/* ── Profile ── */
+
+function ProfileSection() {
+  const { data, loading, error } = useApi<{ profile: UserProfile; preferences: UserPreferences; runtimeControls: RuntimeControls; modelDefaults: ModelDefaults }>("/settings/user");
+  const [gitName, setGitName] = useState("");
+  const [gitEmail, setGitEmail] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (data?.profile) {
+      setGitName(data.profile.gitName ?? "");
+      setGitEmail(data.profile.gitEmail ?? "");
+    }
+  }, [data]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await putApi("/settings/user", { profile: { gitName, gitEmail } });
+    } catch (e: unknown) {
+      setSaveError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
-    <section aria-label={`${definition.title}设置`} className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-xl font-semibold">{definition.title}</h2>
-          <p className="mt-1 max-w-3xl text-sm text-muted-foreground">{definition.description}</p>
-        </div>
-        <span className="rounded-full border border-border bg-muted px-3 py-1 text-xs text-muted-foreground">{definition.source}</span>
+    <SectionShell title="个人资料">
+      {loading && <p className="text-sm text-muted-foreground">加载中…</p>}
+      {error && <InlineError message={error} />}
+      {saveError && <InlineError message={saveError} />}
+      <Field label="Git 用户名">
+        <input className="w-48 rounded-lg border border-border bg-background px-2 py-1 text-sm" value={gitName} onChange={(e) => setGitName(e.target.value)} />
+      </Field>
+      <Field label="Git 邮箱">
+        <input className="w-48 rounded-lg border border-border bg-background px-2 py-1 text-sm" value={gitEmail} onChange={(e) => setGitEmail(e.target.value)} />
+      </Field>
+      <div className="flex items-center justify-between border-b border-border py-2 text-sm last:border-0">
+        <span className="text-muted-foreground">头像上传</span>
+        <NotConnected label="头像上传未接入" />
       </div>
+      <div className="pt-1">
+        <SaveBtn saving={saving} onClick={() => void handleSave()} />
+      </div>
+    </SectionShell>
+  );
+}
 
-      <div className="grid gap-3 md:grid-cols-3">
-        {definition.metrics.map((metric) => (
-          <article key={`${definition.id}:${metric.title}`} className="rounded-xl border border-border bg-background p-3">
-            <div className="text-xs text-muted-foreground">{metric.title}</div>
-            <div className="mt-1 font-semibold">{metric.value}</div>
-            {metric.description && <p className="mt-1 text-xs text-muted-foreground">{metric.description}</p>}
-          </article>
-        ))}
-      </div>
+/* ── Models ── */
 
-      <div className="grid gap-3 lg:grid-cols-2">
-        {definition.items.map((item) => (
-          <article key={`${definition.id}:${item.title}`} className="rounded-xl border border-border bg-background p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h3 className="font-medium">{item.title}</h3>
-                <p className="mt-1 text-sm text-muted-foreground">{item.description}</p>
-              </div>
-              <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{item.status}</span>
-            </div>
-            {item.action && (
-              <button
-                className="mt-3 rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted"
-                type="button"
-                onClick={() => item.action === "打开 AI 供应商" ? onSectionChange?.("providers") : undefined}
-              >
-                {item.action}
-              </button>
-            )}
-          </article>
-        ))}
+function ModelsSection({ onSectionChange }: { onSectionChange?: (id: string) => void }) {
+  const { data, loading, error } = useApi<UserConfig>("/settings/user");
+  const md = data?.modelDefaults;
+
+  return (
+    <SectionShell title="模型">
+      {loading && <p className="text-sm text-muted-foreground">加载中…</p>}
+      {error && <InlineError message={error} />}
+      <ReadonlyField label="默认模型" value={md?.defaultSessionModel} />
+      <ReadonlyField label="摘要模型" value={md?.summaryModel} />
+      <ReadonlyField label="Explore 子代理模型" value={md?.subagentModelPool?.[0]} />
+      <ReadonlyField label="Plan 子代理模型" value={md?.subagentModelPool?.[1]} />
+      <ReadonlyField label="模型池限制" value={md?.subagentModelPool ? `${md.subagentModelPool.length} 个` : "—"} />
+      <ReadonlyField label="全局推理强度" value={data?.runtimeControls?.defaultReasoningEffort} />
+      <ReadonlyField label="Codex 推理强度" value="—" />
+      <div className="pt-1">
+        <button className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted" onClick={() => onSectionChange?.("providers")} type="button">打开 AI 供应商</button>
       </div>
-    </section>
+    </SectionShell>
+  );
+}
+
+/* ── Agents ── */
+
+function AgentsSection() {
+  const { data, loading, error } = useApi<UserConfig>("/settings/user");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [permMode, setPermMode] = useState("");
+  const [compressThreshold, setCompressThreshold] = useState("80");
+  const [truncateTarget, setTruncateTarget] = useState("70");
+  const [tokenDebug, setTokenDebug] = useState(false);
+  const [rateDebug, setRateDebug] = useState(false);
+  const [dumpEnabled, setDumpEnabled] = useState(false);
+
+  useEffect(() => {
+    if (data?.runtimeControls) {
+      const rc = data.runtimeControls;
+      setPermMode(rc.defaultPermissionMode ?? "ask");
+      setCompressThreshold(String(rc.contextCompressionThresholdPercent ?? 80));
+      setTruncateTarget(String(rc.contextTruncateTargetPercent ?? 70));
+      setTokenDebug(rc.runtimeDebug?.tokenDebugEnabled ?? false);
+      setRateDebug(rc.runtimeDebug?.rateDebugEnabled ?? false);
+      setDumpEnabled(rc.runtimeDebug?.dumpEnabled ?? false);
+    }
+  }, [data]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await putApi("/settings/user", {
+        runtimeControls: {
+          defaultPermissionMode: permMode,
+          contextCompressionThresholdPercent: Number(compressThreshold),
+          contextTruncateTargetPercent: Number(truncateTarget),
+          runtimeDebug: { tokenDebugEnabled: tokenDebug, rateDebugEnabled: rateDebug, dumpEnabled: dumpEnabled },
+        },
+      });
+    } catch (e: unknown) {
+      setSaveError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const rc = data?.runtimeControls;
+
+  return (
+    <SectionShell title="AI 代理">
+      {loading && <p className="text-sm text-muted-foreground">加载中…</p>}
+      {error && <InlineError message={error} />}
+      {saveError && <InlineError message={saveError} />}
+      <Field label="默认权限模式">
+        <select className="rounded-lg border border-border bg-background px-2 py-1 text-sm" value={permMode} onChange={(e) => setPermMode(e.target.value)}>
+          <option value="allow">allow</option>
+          <option value="ask">ask</option>
+          <option value="deny">deny</option>
+        </select>
+      </Field>
+      <ReadonlyField label="每条消息最大轮次" value="—" />
+      <ReadonlyField label="可恢复错误最大重试次数" value={String(rc?.recovery?.maxRetryAttempts ?? "—")} />
+      <ReadonlyField label="重试退避时间上限" value={rc?.recovery?.maxRetryDelayMs ? `${rc.recovery.maxRetryDelayMs}ms` : "—"} />
+      <ReadonlyField label="WebFetch 代理模式" value="—" />
+      <Field label="上下文窗口阈值">
+        <input className="w-20 rounded-lg border border-border bg-background px-2 py-1 text-sm text-right" value={compressThreshold} onChange={(e) => setCompressThreshold(e.target.value)} />
+      </Field>
+      <Field label="token 用量 / 输出速率">
+        <span className="flex items-center gap-2 text-xs">
+          <label className="flex items-center gap-1"><input type="checkbox" checked={tokenDebug} onChange={(e) => setTokenDebug(e.target.checked)} /> token</label>
+          <label className="flex items-center gap-1"><input type="checkbox" checked={rateDebug} onChange={(e) => setRateDebug(e.target.checked)} /> 速率</label>
+          <label className="flex items-center gap-1"><input type="checkbox" checked={dumpEnabled} onChange={(e) => setDumpEnabled(e.target.checked)} /> dump</label>
+        </span>
+      </Field>
+      <ReadonlyField label="目录 / 命令白名单黑名单" value={rc?.toolAccess?.mcpStrategy ?? "—"} />
+      <div className="pt-1">
+        <SaveBtn saving={saving} onClick={() => void handleSave()} />
+      </div>
+    </SectionShell>
+  );
+}
+
+/* ── Notifications ── */
+
+function NotificationsSection() {
+  return (
+    <SectionShell title="通知">
+      <NotConnected label="未接入通知配置" />
+    </SectionShell>
+  );
+}
+
+/* ── Appearance ── */
+
+function AppearanceSection() {
+  const { data, loading, error } = useApi<{ theme: string }>("/settings/theme");
+  const { data: editor } = useApi<{ fontSize?: number; fontFamily?: string; lineHeight?: number; tabSize?: number }>("/settings/editor");
+  const [theme, setTheme] = useState("auto");
+  const [fontSize, setFontSize] = useState("14");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (data) setTheme(data.theme ?? "auto");
+    if (editor) setFontSize(String(editor.fontSize ?? 14));
+  }, [data, editor]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await putApi("/settings/theme", { theme });
+      await putApi("/settings/editor", { fontSize: Number(fontSize) });
+    } catch (e: unknown) {
+      setSaveError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <SectionShell title="外观与界面">
+      {loading && <p className="text-sm text-muted-foreground">加载中…</p>}
+      {error && <InlineError message={error} />}
+      {saveError && <InlineError message={saveError} />}
+      <Field label="主题模式">
+        <select className="rounded-lg border border-border bg-background px-2 py-1 text-sm" value={theme} onChange={(e) => setTheme(e.target.value)}>
+          <option value="light">浅色</option>
+          <option value="dark">深色</option>
+          <option value="auto">跟随系统</option>
+        </select>
+      </Field>
+      <Field label="字体大小">
+        <input className="w-20 rounded-lg border border-border bg-background px-2 py-1 text-sm text-right" type="number" min={12} max={20} value={fontSize} onChange={(e) => setFontSize(e.target.value)} />
+      </Field>
+      <div className="pt-1">
+        <SaveBtn saving={saving} onClick={() => void handleSave()} />
+      </div>
+    </SectionShell>
+  );
+}
+
+/* ── Server ── */
+
+function ServerSection() {
+  const { data, loading, error } = useApi<Record<string, unknown>>("/settings/metrics");
+  return (
+    <SectionShell title="服务器与系统">
+      {loading && <p className="text-sm text-muted-foreground">加载中…</p>}
+      {error && <InlineError message={error} />}
+      <ReadonlyField label="启动诊断" value={data ? "已加载" : "—"} />
+      <ReadonlyField label="运行时信息" value={typeof data?.bunVersion === "string" ? `Bun ${data.bunVersion}` : "—"} />
+      <ReadonlyField label="SQLite 数据库" value={typeof data?.dbPath === "string" ? String(data.dbPath) : "—"} />
+    </SectionShell>
+  );
+}
+
+/* ── Storage ── */
+
+function StorageSection() {
+  const { data, loading, error } = useApi<Record<string, unknown>>("/settings/metrics");
+  return (
+    <SectionShell title="存储空间">
+      {loading && <p className="text-sm text-muted-foreground">加载中…</p>}
+      {error && <InlineError message={error} />}
+      <ReadonlyField label="SQLite 数据库" value={typeof data?.dbPath === "string" ? String(data.dbPath) : "—"} />
+      <ReadonlyField label="会话存储" value="—" />
+      <div className="flex items-center justify-between border-b border-border py-2 text-sm last:border-0">
+        <span className="text-muted-foreground">危险清理</span>
+        <NotConnected label="未接入" />
+      </div>
+    </SectionShell>
+  );
+}
+
+/* ── Resources ── */
+
+function ResourcesSection() {
+  const { data, loading, error } = useApi<Record<string, unknown>>("/settings/metrics");
+  return (
+    <SectionShell title="运行资源">
+      {loading && <p className="text-sm text-muted-foreground">加载中…</p>}
+      {error && <InlineError message={error} />}
+      <ReadonlyField label="Admin Resources" value={data ? "已加载" : "—"} />
+      <ReadonlyField label="启动健康" value="—" />
+    </SectionShell>
+  );
+}
+
+/* ── History ── */
+
+function HistorySection() {
+  const { data, loading, error } = useApi<Record<string, unknown>>("/settings/metrics");
+  return (
+    <SectionShell title="使用历史">
+      {loading && <p className="text-sm text-muted-foreground">加载中…</p>}
+      {error && <InlineError message={error} />}
+      <ReadonlyField label="Admin Requests" value={data ? "已加载" : "—"} />
+      <ReadonlyField label="AI request observability" value="—" />
+    </SectionShell>
+  );
+}
+
+/* ── About ── */
+
+function AboutSection() {
+  const { data, loading, error } = useApi<ReleaseSnapshot>("/settings/release");
+  return (
+    <SectionShell title="关于">
+      {loading && <p className="text-sm text-muted-foreground">加载中…</p>}
+      {error && <InlineError message={error} />}
+      <ReadonlyField label="版本 / commit / 平台 / 作者" value={data ? `${data.version ?? "—"} · ${data.commit?.slice(0, 7) ?? "—"} · ${data.platform ?? "—"}` : "—"} />
+      <ReadonlyField label="Bun" value={data?.bunVersion} />
+      <ReadonlyField label="构建时间" value={data?.builtAt} />
+    </SectionShell>
   );
 }

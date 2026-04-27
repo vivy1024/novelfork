@@ -8,7 +8,7 @@ import {
   type StudioResourceNode,
   type StudioResourceTreeInput,
 } from "./resource-adapter";
-import { fetchJson } from "../../hooks/use-api";
+import { fetchJson, useApi } from "../../hooks/use-api";
 import type { AiAction, AiGateResult } from "../../lib/ai-gate";
 import type { BookDetail, ChapterSummary } from "../../shared/contracts";
 import { ChapterHookGenerator, type GeneratedHookOption } from "../../components/writing-tools/ChapterHookGenerator";
@@ -17,41 +17,65 @@ import { RhythmChart, type RhythmChartAnalysis } from "../../components/writing-
 import { DailyProgressTracker } from "../../components/writing-tools/DailyProgressTracker";
 import { InlineError, RunStatus } from "../components/feedback";
 
-const SAMPLE_BOOK: BookDetail = {
-  id: "book-1",
-  title: "灵潮纪元",
-  status: "active",
-  platform: "qidian",
-  genre: "xuanhuan",
-  targetChapters: 100,
-  chapters: 2,
-  chapterCount: 2,
-  lastChapterNumber: 2,
-  totalWords: 6200,
-  approvedChapters: 1,
-  pendingReview: 1,
-  pendingReviewChapters: 1,
-  failedReview: 0,
-  failedChapters: 0,
-  updatedAt: "2026-04-27T00:00:00.000Z",
-  createdAt: "2026-04-20T00:00:00.000Z",
-  chapterWordCount: 3000,
-  language: "zh",
+/* ── API response shapes ── */
+
+interface BookListItem {
+  readonly id: string;
+  readonly title: string;
+  readonly status?: string;
+  readonly totalChapters?: number;
+  readonly progress?: number;
+}
+
+interface BookDetailResponse {
+  readonly book: {
+    readonly id: string;
+    readonly title: string;
+    readonly status?: string;
+    readonly genre?: string;
+    readonly platform?: string;
+    readonly chapterWordCount?: number;
+    readonly targetChapters?: number;
+    readonly language?: string;
+    readonly createdAt?: string;
+    readonly updatedAt?: string;
+  };
+  readonly chapters: ReadonlyArray<{
+    readonly number: number;
+    readonly title?: string;
+    readonly status?: string;
+    readonly wordCount?: number;
+    readonly fileName?: string;
+  }>;
+  readonly nextChapter: number;
+}
+
+interface CandidatesResponse {
+  readonly candidates: ReadonlyArray<GeneratedChapterCandidate>;
+}
+
+/* ── fallback data for tests / offline ── */
+
+export const FALLBACK_BOOK: BookDetail = {
+  id: "book-1", title: "灵潮纪元", status: "active", platform: "qidian", genre: "xuanhuan",
+  targetChapters: 100, chapters: 2, chapterCount: 2, lastChapterNumber: 2, totalWords: 6200,
+  approvedChapters: 1, pendingReview: 1, pendingReviewChapters: 1, failedReview: 0, failedChapters: 0,
+  updatedAt: "2026-04-27T00:00:00.000Z", createdAt: "2026-04-20T00:00:00.000Z", chapterWordCount: 3000, language: "zh",
 };
 
-const SAMPLE_CHAPTERS: readonly ChapterSummary[] = [
+export const FALLBACK_CHAPTERS: readonly ChapterSummary[] = [
   { number: 1, title: "第一章 灵潮初起", status: "approved", wordCount: 3100, auditIssueCount: 0, updatedAt: "2026-04-27T00:00:00.000Z", fileName: "0001-first.md" },
   { number: 2, title: "第二章 入城", status: "ready-for-review", wordCount: 3100, auditIssueCount: 2, updatedAt: "2026-04-27T01:00:00.000Z", fileName: "0002-city.md" },
 ];
 
-const SAMPLE_GENERATED: readonly GeneratedChapterCandidate[] = [
+const FALLBACK_GENERATED: readonly GeneratedChapterCandidate[] = [
   { id: "candidate-2", bookId: "book-1", targetChapterId: "2", title: "第二章 AI 候选", source: "write-next", createdAt: "2026-04-27T02:00:00.000Z", status: "candidate" },
 ];
 
-const SAMPLE_INPUT: StudioResourceTreeInput = {
-  book: SAMPLE_BOOK,
-  chapters: SAMPLE_CHAPTERS,
-  generatedChapters: SAMPLE_GENERATED,
+const FALLBACK_INPUT: StudioResourceTreeInput = {
+  book: FALLBACK_BOOK,
+  chapters: FALLBACK_CHAPTERS,
+  generatedChapters: FALLBACK_GENERATED,
   drafts: [{ id: "draft-1", bookId: "book-1", title: "城门冲突片段", updatedAt: "2026-04-27T03:00:00.000Z", wordCount: 800 }],
   bibleCounts: { characters: 3, locations: 2, factions: 1, items: 4, foreshadowing: 5, worldRules: 6 },
 };
@@ -187,31 +211,70 @@ export function WorkspacePage({
 }: WorkspacePageProps = {}) {
   const runtimeModelGate = useAiModelGate();
   const effectiveModelGate = modelGate ?? runtimeModelGate;
-  const tree = useMemo(() => buildStudioResourceTree(SAMPLE_INPUT), []);
-  const [selectedNodeId, setSelectedNodeId] = useState("chapter:book-1:1");
-  const selectedNode = findNode(tree, selectedNodeId) ?? tree[0]!;
+
+  /* ── load books list ── */
+  const { data: booksData } = useApi<{ books: BookListItem[] }>("/books");
+  const books = booksData?.books ?? [];
+  const [selectedBookId, setSelectedBookId] = useState<string | null>(null);
+  const activeBookId = selectedBookId ?? books[0]?.id ?? null;
+
+  /* ── load selected book detail + candidates ── */
+  const { data: bookDetail } = useApi<BookDetailResponse>(activeBookId ? `/books/${activeBookId}` : null);
+  const { data: candidatesData } = useApi<CandidatesResponse>(activeBookId ? `/books/${activeBookId}/candidates` : null);
+
+  /* ── build resource tree from real data or fallback ── */
+  const treeInput: StudioResourceTreeInput = useMemo(() => {
+    if (!bookDetail?.book) return FALLBACK_INPUT;
+    const b = bookDetail.book;
+    const chs = bookDetail.chapters ?? [];
+    const book: BookDetail = {
+      id: b.id, title: b.title, status: b.status ?? "active", platform: (b.platform ?? "other") as BookDetail["platform"],
+      genre: b.genre ?? "", targetChapters: b.targetChapters ?? 100,
+      chapters: chs.length, chapterCount: chs.length, lastChapterNumber: chs.length,
+      totalWords: chs.reduce((s, c) => s + (c.wordCount ?? 0), 0),
+      approvedChapters: chs.filter((c) => c.status === "approved").length,
+      pendingReview: chs.filter((c) => c.status === "ready-for-review").length,
+      pendingReviewChapters: chs.filter((c) => c.status === "ready-for-review").length,
+      failedReview: 0, failedChapters: 0,
+      updatedAt: b.updatedAt ?? "", createdAt: b.createdAt ?? "",
+      chapterWordCount: b.chapterWordCount ?? 3000, language: (b.language ?? "zh") as "zh" | "en",
+    };
+    const chapters: ChapterSummary[] = chs.map((c) => ({
+      number: c.number, title: c.title ?? `第${c.number}章`, status: c.status ?? "draft",
+      wordCount: c.wordCount ?? 0, auditIssueCount: 0, updatedAt: "", fileName: c.fileName ?? null,
+    }));
+    const candidates = (candidatesData?.candidates ?? []).filter((c) => c.status === "candidate");
+    return { book, chapters, generatedChapters: candidates, drafts: [], bibleCounts: {} };
+  }, [bookDetail, candidatesData]);
+
+  const tree = useMemo(() => buildStudioResourceTree(treeInput), [treeInput]);
+  const defaultNodeId = tree[0]?.children?.[0]?.children?.[0]?.children?.[0]?.id ?? tree[0]?.children?.[0]?.children?.[0]?.id ?? tree[0]?.id ?? "";
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const activeNodeId = selectedNodeId ?? defaultNodeId;
+  const selectedNode = findNode(tree, activeNodeId) ?? tree[0]!;
 
   return (
-    <SectionLayout title="创作工作台" description="第一主页面：资源管理器、正文编辑器、AI / 经纬面板三栏闭环。">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-card p-3">
-        <div className="flex flex-wrap items-center gap-3">
-          <label className="text-sm font-medium">
+    <SectionLayout title="创作工作台" description="">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-card px-3 py-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="text-sm">
             作品选择
-            <select aria-label="作品选择" className="ml-2 rounded-lg border border-border bg-background px-3 py-1.5 text-sm" defaultValue="book-1">
-              <option value="book-1">灵潮纪元</option>
+            <select
+              aria-label="作品选择"
+              className="ml-2 rounded-lg border border-border bg-background px-2 py-1 text-sm"
+              value={activeBookId ?? ""}
+              onChange={(e) => { setSelectedBookId(e.target.value); setSelectedNodeId(null); }}
+            >
+              {books.length === 0 && <option value="">加载中…</option>}
+              {books.map((b) => <option key={b.id} value={b.id}>{b.title}</option>)}
             </select>
           </label>
-          <input
-            aria-label="资源搜索"
-            className="min-w-[16rem] rounded-lg border border-border bg-background px-3 py-1.5 text-sm"
-            placeholder="搜索章节 / 生成稿 / 经纬条目"
-            type="search"
-          />
+          <input aria-label="资源搜索" className="min-w-[14rem] rounded-lg border border-border bg-background px-2 py-1 text-sm" placeholder="搜索章节 / 生成稿 / 经纬条目" type="search" />
         </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <span className="text-sm text-muted-foreground">运行状态：空闲</span>
-          <a className="rounded-lg border border-border px-2 py-1 text-xs hover:bg-muted" href="#publish-readiness" title="跳转到旧前端发布就绪页面">发布就绪</a>
-          <a className="rounded-lg border border-border px-2 py-1 text-xs hover:bg-muted" href="#presets" title="跳转到旧前端预设管理页面">预设管理</a>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-muted-foreground">运行状态：空闲</span>
+          <a className="rounded border border-border px-2 py-0.5 text-xs hover:bg-muted" href="#publish-readiness" title="跳转到旧前端发布就绪页面">发布就绪</a>
+          <a className="rounded border border-border px-2 py-0.5 text-xs hover:bg-muted" href="#presets" title="跳转到旧前端预设管理页面">预设管理</a>
         </div>
       </div>
 
@@ -325,7 +388,7 @@ function CandidateEditor({ candidateApi, node }: { readonly candidateApi: Worksp
   const [pendingAction, setPendingAction] = useState<"merge" | "replace" | null>(null);
   const [resultMessage, setResultMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const bookId = typeof node.metadata?.bookId === "string" ? node.metadata.bookId : SAMPLE_BOOK.id;
+  const bookId = typeof node.metadata?.bookId === "string" ? node.metadata.bookId : FALLBACK_BOOK.id;
   const candidateId = node.id.replace(/^generated:/, "");
   const targetChapterId = typeof node.metadata?.targetChapterId === "string" ? node.metadata.targetChapterId : "未指定";
 
@@ -389,7 +452,7 @@ function CandidateEditor({ candidateApi, node }: { readonly candidateApi: Worksp
 
 function ChapterEditor({ chapterApi, node }: { readonly chapterApi: WorkspaceChapterApi; readonly node: StudioResourceNode }) {
   const chapterNumber = typeof node.metadata?.chapterNumber === "number" ? node.metadata.chapterNumber : Number(node.metadata?.chapterNumber ?? 0);
-  const bookId = typeof node.metadata?.bookId === "string" ? node.metadata.bookId : SAMPLE_BOOK.id;
+  const bookId = typeof node.metadata?.bookId === "string" ? node.metadata.bookId : FALLBACK_BOOK.id;
   const [content, setContent] = useState(`${node.title}\n\n这里会接入 ChapterReader / BookDetail 的真实章节内容与保存能力。`);
   const [saveStatus, setSaveStatus] = useState<"loading" | "clean" | "dirty" | "saving" | "saved" | "error">("loading");
   const [error, setError] = useState<string | null>(null);
@@ -519,7 +582,7 @@ function AssistantPanel({
   const [bibleError, setBibleError] = useState<string | null>(null);
 
   const context: WorkspaceAssistantContext = {
-    bookId: typeof selectedNode.metadata?.bookId === "string" ? selectedNode.metadata.bookId : SAMPLE_BOOK.id,
+    bookId: typeof selectedNode.metadata?.bookId === "string" ? selectedNode.metadata.bookId : FALLBACK_BOOK.id,
     chapterNumber: typeof selectedNode.metadata?.chapterNumber === "number" ? selectedNode.metadata.chapterNumber : undefined,
     selectedNodeId: selectedNode.id,
     selectedNodeTitle: selectedNode.title,
@@ -594,7 +657,7 @@ function WritingToolsPanel({ selectedNode }: { readonly selectedNode: StudioReso
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
 
-  const bookId = typeof selectedNode.metadata?.bookId === "string" ? selectedNode.metadata.bookId : SAMPLE_BOOK.id;
+  const bookId = typeof selectedNode.metadata?.bookId === "string" ? selectedNode.metadata.bookId : FALLBACK_BOOK.id;
   const chapterNumber = typeof selectedNode.metadata?.chapterNumber === "number" ? selectedNode.metadata.chapterNumber : undefined;
   const isChapterContext = selectedNode.kind === "chapter" || selectedNode.kind === "generated-chapter";
 
