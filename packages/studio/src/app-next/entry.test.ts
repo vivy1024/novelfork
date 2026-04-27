@@ -17,6 +17,7 @@ describe("Studio Next entry resolver", () => {
 
   it("derives the first-phase Studio Next page from the URL", () => {
     expect(resolveStudioNextRoute("/next")).toBe("workspace");
+    expect(resolveStudioNextRoute("/next/dashboard")).toBe("dashboard");
     expect(resolveStudioNextRoute("/next/settings")).toBe("settings");
     expect(resolveStudioNextRoute("/next/routines")).toBe("routines");
     expect(resolveStudioNextRoute("/next/unknown")).toBe("workspace");

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { resolveStudioNextRoute, STUDIO_NEXT_BASE_PATH, type StudioNextRoute } from "./entry";
 import { NextShell, SectionLayout, SettingsLayout } from "./components/layouts";
+import { DashboardPage } from "./dashboard/DashboardPage";
 import { ProviderSettingsPage } from "./settings/ProviderSettingsPage";
 import { SettingsSectionContent } from "./settings/SettingsSectionContent";
 import { RoutinesNextPage } from "./routines/RoutinesNextPage";
@@ -26,6 +27,7 @@ const SETTINGS_SECTIONS = [
 ] as const;
 
 const ROUTE_PATHS: Record<StudioNextRoute, string> = {
+  dashboard: `${STUDIO_NEXT_BASE_PATH}/dashboard`,
   workspace: STUDIO_NEXT_BASE_PATH,
   settings: `${STUDIO_NEXT_BASE_PATH}/settings`,
   routines: `${STUDIO_NEXT_BASE_PATH}/routines`,
@@ -50,6 +52,7 @@ export function StudioNextApp({ initialRoute }: StudioNextAppProps) {
 
   return (
     <NextShell activeRoute={activeRoute} onRouteChange={navigate} status="旧前端冻结，旁路建设中">
+      {activeRoute === "dashboard" && <DashboardPage onOpenBook={() => navigate("workspace")} />}
       {activeRoute === "workspace" && <WorkspacePage />}
       {activeRoute === "settings" && <SettingsPage />}
       {activeRoute === "routines" && <RoutinesPage />}
