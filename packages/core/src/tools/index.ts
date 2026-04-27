@@ -9,6 +9,8 @@ export { analyzeRhythm } from "./analysis/rhythm-analyzer.js";
 export type { DialogueAnalysis, DialogueChapterType } from "./analysis/dialogue-types.js";
 export { analyzeDialogue } from "./analysis/dialogue-analyzer.js";
 export type { BookHealthSummary, ChapterAuditLog } from "./health/health-types.js";
+export { persistChapterAuditLog, type PersistAuditLogInput } from "./health/audit-log-persist.js";
+export { buildBookHealthSummary } from "./health/book-health-summary.js";
 export type {
   ConflictDialecticExtension,
   ConflictNature,
@@ -16,5 +18,16 @@ export type {
   ConflictResolutionState,
   ConflictTransformation,
 } from "./conflicts/conflict-types.js";
+export type { ConflictMapEntry, MainConflictDrift } from "./conflicts/conflict-tracker.js";
+export { buildConflictMap, detectMainConflictDrift } from "./conflicts/conflict-tracker.js";
 export type { ArcBeat, ArcBeatDirection, ArcType, CharacterArc } from "./arcs/arc-types.js";
+export type { ArcInconsistency, StagnantArc } from "./arcs/character-arc-tracker.js";
+export { detectArcInconsistency, detectStagnantArc } from "./arcs/character-arc-tracker.js";
 export type { ToneDriftResult } from "./tone/tone-types.js";
+export { GENRE_TONE_MAP, detectToneDrift } from "./tone/tone-drift-detector.js";
+export type { ParsedChapter, ParseResult } from "./import/file-parser.js";
+export { parseTxt, parseFile } from "./import/file-parser.js";
+export type { StyleProfile as ImportStyleProfile, RangeStats, PersonalStyleProfile } from "./import/multi-work-style.js";
+export { mergeStyleProfiles } from "./import/multi-work-style.js";
+export type { DriftResult } from "./import/style-drift-detector.js";
+export { detectStyleDrift } from "./import/style-drift-detector.js";

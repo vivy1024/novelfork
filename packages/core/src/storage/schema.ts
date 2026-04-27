@@ -393,6 +393,30 @@ export const writingLogs = sqliteTable(
   ],
 );
 
+export const chapterAuditLogs = sqliteTable(
+  "chapter_audit_log",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    bookId: text("book_id")
+      .notNull()
+      .references(() => books.id, { onDelete: "cascade" }),
+    chapterNumber: integer("chapter_number").notNull(),
+    auditedAt: text("audited_at").notNull(),
+    continuityPassed: integer("continuity_passed", { mode: "boolean" }).notNull().default(true),
+    continuityIssueCount: integer("continuity_issue_count").notNull().default(0),
+    aiTasteScore: integer("ai_taste_score").notNull().default(0),
+    hookHealthIssues: integer("hook_health_issues").notNull().default(0),
+    longSpanFatigueIssues: integer("long_span_fatigue_issues").notNull().default(0),
+    sensitiveWordCount: integer("sensitive_word_count").notNull().default(0),
+    rhythmDiversityScore: integer("rhythm_diversity_score").notNull().default(0),
+    summary: text("summary").notNull().default(""),
+  },
+  (table) => [
+    index("chapter_audit_log_book_chapter_idx").on(table.bookId, table.chapterNumber),
+    index("chapter_audit_log_book_audited_idx").on(table.bookId, table.auditedAt),
+  ],
+);
+
 export const drizzleMigrations = sqliteTable("drizzle_migrations", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   hash: text("hash").notNull().unique(),

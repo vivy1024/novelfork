@@ -15,7 +15,9 @@ const coreMocks = vi.hoisted(() => {
     storage,
     analyzeDialogue: vi.fn(() => ({ dialogueRatio: 0.5, isHealthy: true })),
     analyzeRhythm: vi.fn(() => ({ rhythmScore: 80, sentenceHistogram: [] })),
+    buildConflictMap: vi.fn(() => [{ id: "c-1", name: "主线冲突", state: "escalating", dialectic: null, lastAdvancedChapter: 5 }]),
     buildPovDashboard: vi.fn(() => ({ characters: [{ name: "林月", totalChapters: 1, lastAppearanceChapter: 1, gapSinceLastAppearance: 1, chapterNumbers: [1] }], currentChapter: 2, warnings: [] })),
+    detectToneDrift: vi.fn(() => ({ declaredTone: "冷峻质朴", detectedTone: "冷峻质朴", driftScore: 0.1, driftDirection: "一致", isSignificant: false, consecutiveDriftChapters: 0 })),
     generateChapterHooks: vi.fn(() => Promise.resolve([{ id: "hook-1", style: "suspense", text: "门外传来第三个人的脚步声。", rationale: "制造新问题", retentionEstimate: "high" }])),
     getDailyProgress: vi.fn((_storage: unknown, config: unknown) => Promise.resolve({ today: { written: 3000, target: (config as { dailyTarget: number }).dailyTarget, completed: false }, thisWeek: { written: 3000, target: 42000 }, streak: 0, last30Days: [] })),
     getProgressTrend: vi.fn(() => Promise.resolve([{ date: "2026-04-26", wordCount: 3000 }])),
@@ -27,14 +29,24 @@ const coreMocks = vi.hoisted(() => {
         return Promise.resolve();
       }),
     })),
+    createBibleConflictRepository: vi.fn(() => ({
+      listByBook: vi.fn(() => Promise.resolve([])),
+    })),
+    createBibleCharacterArcRepository: vi.fn(() => ({
+      listByBook: vi.fn(() => Promise.resolve([{ id: "arc-1", characterId: "char-1", arcType: "positive-growth" }])),
+    })),
   };
 });
 
 vi.mock("@vivy1024/novelfork-core", () => ({
   analyzeDialogue: coreMocks.analyzeDialogue,
   analyzeRhythm: coreMocks.analyzeRhythm,
+  buildConflictMap: coreMocks.buildConflictMap,
   buildPovDashboard: coreMocks.buildPovDashboard,
+  createBibleCharacterArcRepository: coreMocks.createBibleCharacterArcRepository,
+  createBibleConflictRepository: coreMocks.createBibleConflictRepository,
   createKvRepository: coreMocks.createKvRepository,
+  detectToneDrift: coreMocks.detectToneDrift,
   generateChapterHooks: coreMocks.generateChapterHooks,
   getDailyProgress: coreMocks.getDailyProgress,
   getProgressTrend: coreMocks.getProgressTrend,
@@ -210,5 +222,48 @@ describe("writing tools routes", () => {
     const json = await response.json() as { analysis: { dialogueRatio: number } };
     expect(json.analysis.dialogueRatio).toBe(0.5);
     expect(coreMocks.analyzeDialogue).toHaveBeenCalledWith(expect.stringContaining("我们不能回头"), "daily");
+  });
+
+  it("returns book health summary", async () => {
+    const { app } = await createRoute();
+
+    const response = await app.request("http://localhost/api/books/book-1/health");
+
+    expect(response.status).toBe(200);
+    const json = await response.json() as { health: { totalChapters: number } };
+    expect(json.health.totalChapters).toBeGreaterThanOrEqual(1);
+    expect(json.health).toHaveProperty("consistencyScore");
+  });
+
+  it("returns conflict map", async () => {
+    const { app } = await createRoute();
+
+    const response = await app.request("http://localhost/api/books/book-1/conflicts/map");
+
+    expect(response.status).toBe(200);
+    const json = await response.json() as { conflicts: Array<{ id: string }> };
+    expect(json.conflicts).toBeDefined();
+    expect(coreMocks.buildConflictMap).toHaveBeenCalled();
+  });
+
+  it("returns character arcs", async () => {
+    const { app } = await createRoute();
+
+    const response = await app.request("http://localhost/api/books/book-1/arcs");
+
+    expect(response.status).toBe(200);
+    const json = await response.json() as { arcs: Array<{ id: string }> };
+    expect(json.arcs).toBeDefined();
+  });
+
+  it("performs tone check on chapter", async () => {
+    const { app } = await createRoute();
+
+    const response = await postJson(app, "/api/books/book-1/chapters/1/tone-check", { declaredTone: "冷峻质朴" });
+
+    expect(response.status).toBe(200);
+    const json = await response.json() as { result: { declaredTone: string; driftScore: number } };
+    expect(json.result.declaredTone).toBe("冷峻质朴");
+    expect(coreMocks.detectToneDrift).toHaveBeenCalled();
   });
 });

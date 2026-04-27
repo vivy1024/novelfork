@@ -89,6 +89,7 @@ import {
   createPresetsRouter,
   createComplianceRouter,
   createWritingToolsRouter,
+  createWritingModesRouter,
   setupAdminWebSocket,
   setupMonitorWebSocket,
 } from "./routes/index.js";
@@ -389,6 +390,8 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     app.route("", createComplianceRouter(ctx));
 
     app.route("", createWritingToolsRouter(ctx));
+
+    app.route("", createWritingModesRouter(ctx));
 
     // Session management
     // Search system

@@ -40,6 +40,9 @@ import { loadNarrativeMemorySeed, loadSnapshotCurrentStateFacts } from "../state
 import { rewriteStructuredStateFromMarkdown } from "../state/state-bootstrap.js";
 import { readFile, readdir, writeFile, mkdir, rename, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
+import type { StorageDatabase } from "../storage/db.js";
+import { recordChapterCompletion } from "../tools/progress/daily-tracker.js";
+import { persistChapterAuditLog } from "../tools/health/audit-log-persist.js";
 import {
   parseStateDegradedReviewNote,
   resolveStateDegradedBaseStatus,
@@ -78,6 +81,7 @@ export interface PipelineConfig {
   readonly inputGovernanceMode?: InputGovernanceMode;
   readonly logger?: Logger;
   readonly onStreamProgress?: OnStreamProgress;
+  readonly storage?: StorageDatabase;
 }
 
 export interface TokenUsageSummary {
@@ -96,6 +100,7 @@ export interface ChapterPipelineResult {
   readonly lengthWarnings?: ReadonlyArray<string>;
   readonly lengthTelemetry?: LengthTelemetry;
   readonly tokenUsage?: TokenUsageSummary;
+  readonly hookSuggestionAvailable?: boolean;
 }
 
 // Atomic operation results
@@ -1535,6 +1540,31 @@ export class PipelineRunner {
       },
     });
 
+    // Record daily writing progress
+    if (this.config.storage) {
+      const now = new Date();
+      await recordChapterCompletion(this.config.storage, {
+        bookId,
+        chapterNumber,
+        wordCount: finalWordCount,
+        completedAt: now.toISOString(),
+        date: now.toISOString().slice(0, 10),
+      }).catch((err) => {
+        this.config.logger?.warn(`Failed to record chapter completion: ${err}`);
+      });
+
+      // Persist audit log
+      try {
+        persistChapterAuditLog(this.config.storage, {
+          bookId,
+          chapterNumber,
+          auditResult,
+        });
+      } catch (err) {
+        this.config.logger?.warn(`Failed to persist audit log: ${err}`);
+      }
+    }
+
     return {
       chapterNumber,
       title: persistenceOutput.title,
@@ -1545,6 +1575,7 @@ export class PipelineRunner {
       lengthWarnings,
       lengthTelemetry,
       tokenUsage: totalUsage,
+      hookSuggestionAvailable: true,
     };
   }
 
