@@ -137,26 +137,26 @@ app-next 集成规范（2026-05-XX 追加）：
   - 添加组件测试。
   - 覆盖 Requirements 3、6。
 
-- [ ] 13. 将钩子生成器接入写作管线
+- [x] 13. 将钩子生成器接入写作管线
   - 在章节审计报告中增加"生成章末钩子"入口链接。
   - 选择钩子后自动更新 `pending_hooks.md`（新增一条 hook，status=planted）。
   - 添加集成测试：写章→审计→生成钩子→选择→hooks 更新。
   - 覆盖 Requirement 1。
 
-- [ ] 14. 将日更记录接入章节完成流程
+- [x] 14. 将日更记录接入章节完成流程
   - 在 PipelineRunner 的章节完成流程中自动调用 `recordChapterCompletion()`。
   - 确保导入已有章节时也补录写作日志。
   - 添加集成测试。
   - 覆盖 Requirement 3。
 
-- [ ] 15. 实现章节审计日志持久化
+- [x] 15. 实现章节审计日志持久化
   - 依赖：migration 编号排在 `writing_log` 之后。
   - 新增 SQLite migration：`chapter_audit_log` 表（book_id, chapter_number, audited_at, continuity_passed, continuity_issue_count, ai_taste_score, hook_health_issues, long_span_fatigue_issues, sensitive_word_count, chapter_type, mood, pov_character, conflicts_advanced JSON, arc_beats JSON）。
   - 在 `writeNextChapter()` 和 `reviseDraft()` 审计阶段末尾写入审计结果。
   - 添加单测：写入/读取/覆盖更新。
   - 覆盖 Requirement 6 前置。
 
-- [ ] 16. 实现全书健康仪表盘聚合逻辑
+- [x] 16. 实现全书健康仪表盘聚合逻辑
   - 新增 `packages/core/src/tools/health/book-health-summary.ts`。
   - 实现 `buildBookHealthSummary(bookId)` 从 `chapter_audit_log` 聚合：一致性得分、伏笔回收率、AI味均值+趋势、节奏多样性（Shannon 熵）、情绪曲线、敏感词总数。
   - 调用已有引擎汇总预警：`detectStalledConflicts`、`analyzeHookHealth`、`analyzeLongSpanFatigue`。
@@ -165,7 +165,7 @@ app-next 集成规范（2026-05-XX 追加）：
   - 添加单测：正常聚合、空数据降级、趋势截断。
   - 覆盖 Requirement 6。
 
-- [ ] 17. 实现矛盾辩证追踪
+- [x] 17. 实现矛盾辩证追踪
   - 扩展 `packages/core/src/bible/context/` 现有冲突数据模型。
   - 在 `BibleConflictRecord` 上扩展字段：`rank`（primary/secondary）、`nature`（antagonistic/non-antagonistic）、`sides`、`controllingIdea`、`transformations[]`。
   - 扩展冲突状态链：latent→emerging→escalating→transforming→climaxing→unifying→resolved。
@@ -175,7 +175,7 @@ app-next 集成规范（2026-05-XX 追加）：
   - 添加单测：主线偏离/转化记录/层级变更/空矛盾安全。
   - 覆盖 Requirement 7。
 
-- [ ] 18. 实现角色弧线长程追踪
+- [x] 18. 实现角色弧线长程追踪
   - 新增 `packages/core/src/tools/arcs/character-arc-tracker.ts`。
   - 定义 `CharacterArc`、`ArcBeat`、`ArcType` 类型。
   - 实现 `detectArcInconsistency(arc)` 弧线一致性检测。
@@ -185,7 +185,7 @@ app-next 集成规范（2026-05-XX 追加）：
   - 添加单测：正向成长+退行预警、堕落型+退行不预警、停滞检测、空弧线安全。
   - 覆盖 Requirement 8。
 
-- [ ] 19. 实现题材文风守护
+- [x] 19. 实现题材文风守护
   - 新增 `packages/core/src/tools/tone/tone-drift-detector.ts`。
   - 实现 `GENRE_TONE_MAP` 流派→文风推荐映射（12 个流派细分）。
   - 实现 `detectToneDrift(chapterText, declaredTone, styleProfile?)` 偏离检测。
@@ -195,7 +195,7 @@ app-next 集成规范（2026-05-XX 追加）：
   - 添加单测：偏离计算/连续偏离计数/推荐匹配/空 profile 安全。
   - 覆盖 Requirement 9。
 
-- [ ] 20. 扩展写作工具 API 路由（新增 4 条）
+- [x] 20. 扩展写作工具 API 路由（新增 4 条）
   - 在 `packages/studio/src/api/routes/writing-tools.ts` 中新增：
     - `GET /api/books/:bookId/health`：全书健康仪表盘。
     - `GET /api/books/:bookId/conflicts/map`：矛盾辩证地图。
@@ -204,7 +204,7 @@ app-next 集成规范（2026-05-XX 追加）：
   - 添加 API 测试。
   - 覆盖 Requirements 6-9。
 
-- [ ] 21. 实现全书健康仪表盘可复用 UI（迁入新创作工作台，不接旧前端页面）
+- [x] 21. 实现全书健康仪表盘可复用 UI（迁入新创作工作台，不接旧前端页面）
   - 新增 `packages/studio/src/components/writing-tools/BookHealthDashboard.tsx`。
   - 新创作工作台健康视图/书籍总览区域嵌入：6 个聚合指标条 + 预警汇总区 + 趋势图区。
   - 指标条：人设一致性 / 伏笔回收率 / AI 味均值 / 节奏多样性 / 敏感词 + 颜色编码。
@@ -215,7 +215,7 @@ app-next 集成规范（2026-05-XX 追加）：
   - 添加组件测试。
   - 覆盖 Requirement 6。
 
-- [ ] 22. 实现矛盾地图可复用 UI（迁入新创作工作台，不接旧前端页面）
+- [x] 22. 实现矛盾地图可复用 UI（迁入新创作工作台，不接旧前端页面）
   - 新增 `packages/studio/src/components/writing-tools/ConflictMap.tsx`。
   - 矛盾列表视图：主要矛盾（★）+ 次要矛盾（○）+ 已解决（●）。
   - 每条矛盾：性质标签 / 状态标签 / 控制观念（主矛盾时）/ 推进时间线条。
@@ -224,7 +224,7 @@ app-next 集成规范（2026-05-XX 追加）：
   - 添加组件测试。
   - 覆盖 Requirement 7。
 
-- [ ] 23. 实现角色弧线仪表盘可复用 UI（迁入新创作工作台，不接旧前端页面）
+- [x] 23. 实现角色弧线仪表盘可复用 UI（迁入新创作工作台，不接旧前端页面）
   - 新增 `packages/studio/src/components/writing-tools/CharacterArcDashboard.tsx`。
   - 群像总览：并排展示重要角色弧线进度条 + 弧线类型标签 + 最近 arc beat。
   - 单角色详情：时间线展示所有 arc beat + 方向标识（advance/regression/neutral）。
@@ -233,7 +233,7 @@ app-next 集成规范（2026-05-XX 追加）：
   - 添加组件测试。
   - 覆盖 Requirement 8。
 
-- [ ] 24. 实现文风偏离提示可复用 UI（迁入新创作工作台，不接旧前端页面）
+- [x] 24. 实现文风偏离提示可复用 UI（迁入新创作工作台，不接旧前端页面）
   - 新增 `packages/studio/src/components/writing-tools/ToneDriftAlert.tsx`。
   - 作为章节审计/右侧提示模块展示：偏离方向 + 偏离度 + 连续偏离章数。
   - 连续 3 章偏离时提示"是否更新基调声明"。
@@ -241,7 +241,7 @@ app-next 集成规范（2026-05-XX 追加）：
   - 添加组件测试。
   - 覆盖 Requirement 9。
 
-- [ ] 25. 执行全量验证
+- [x] 25. 执行全量验证
   - 运行 `pnpm typecheck` 和 `pnpm test`。
   - 真实烟测：写一章→分析节奏→分析对话→生成钩子→选择→验证 hooks 更新。
   - 真实烟测：写 2 天→查看进度→streak 正确→趋势图正确。

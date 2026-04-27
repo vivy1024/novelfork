@@ -29,13 +29,13 @@ app-next 集成规范（2026-05-XX 追加）：
 
 ## Tasks
 
-- [ ] 1. 定义写作模式类型系统
+- [x] 1. 定义写作模式类型系统
   - 新增 `packages/core/src/agents/inline-writer.ts` 类型定义。
   - 定义 `InlineWriteMode`、`InlineWriteInput`、`InlineWriteResult`、`ContinuationInput`、`ExpansionInput`、`ExpansionResult`、`BridgeInput`。
   - 定义 `InlineWriteContext` 和 `buildInlineWriteContext()` 函数，复用已有管线。
   - 覆盖 Requirement 8。
 
-- [ ] 2. 实现选段续写
+- [x] 2. 实现选段续写
   - 在 `packages/core/src/agents/inline-writer.ts` 中实现 `InlineWriterAgent`。
   - 实现 `continueFromSelection(input, context)` 方法。
   - 注入 beforeText（最后 3000 字）+ selectedText + direction + style_guide + book_rules + 预设。
@@ -43,7 +43,7 @@ app-next 集成规范（2026-05-XX 追加）：
   - 添加单测（mock LLM）：输出字数在范围内、context 包含必要字段。
   - 覆盖 Requirements 1、8。
 
-- [ ] 3. 实现场景扩写
+- [x] 3. 实现场景扩写
   - 在 `InlineWriterAgent` 中实现 `expandScene(input, context)` 方法。
   - 支持 5 种扩写方向：sensory/action/psychology/environment/dialogue。
   - 保持原段核心事件不变，只增加细节。
@@ -51,7 +51,7 @@ app-next 集成规范（2026-05-XX 追加）：
   - 添加单测：原文事件保留、字数达标、扩写方向注入 prompt。
   - 覆盖 Requirements 2、8。
 
-- [ ] 4. 实现段落补写
+- [x] 4. 实现段落补写
   - 在 `InlineWriterAgent` 中实现 `bridgeParagraphs(input, context)` 方法。
   - 读取前后段落作为上下文。
   - 支持 4 种补写目的：scene-transition/time-skip/emotional-transition/suspense-setup。
@@ -59,7 +59,7 @@ app-next 集成规范（2026-05-XX 追加）：
   - 添加单测：读取前后段、输出作为桥梁段、不重复前后内容。
   - 覆盖 Requirements 5、8。
 
-- [ ] 5. 实现对话生成
+- [x] 5. 实现对话生成
   - 新增 `packages/core/src/agents/dialogue-generator.ts`。
   - 实现 `DialogueGeneratorAgent.generateDialogue(input, context)` 方法。
   - 从 `character_matrix.md` 和经纬中读取角色性格、说话风格。
@@ -69,7 +69,7 @@ app-next 集成规范（2026-05-XX 追加）：
   - 添加单测：角色数量匹配、轮数匹配、格式正确。
   - 覆盖 Requirements 3、8。
 
-- [ ] 6. 实现多版本对比生成
+- [x] 6. 实现多版本对比生成
   - 新增 `packages/core/src/agents/variant-generator.ts`。
   - 实现 `VariantGeneratorAgent.generateVariants(input, context)` 方法。
   - 并行调用 LLM N 次（默认 3），每次使用不同的 system prompt 变体。
@@ -78,7 +78,7 @@ app-next 集成规范（2026-05-XX 追加）：
   - 添加单测：版本数量正确、版本间有差异、标签非空。
   - 覆盖 Requirements 4、8。
 
-- [ ] 7. 实现大纲续写与分支
+- [x] 7. 实现大纲续写与分支
   - 新增 `packages/core/src/agents/outline-brancher.ts`。
   - 实现 `OutlineBrancherAgent.generateBranches(input)` 方法。
   - 读取 volume_outline + pending_hooks + current_state + chapter_summaries。
@@ -88,14 +88,14 @@ app-next 集成规范（2026-05-XX 追加）：
   - 添加单测：走向数量正确、伏笔标注、扩展后格式正确。
   - 覆盖 Requirements 6、8。
 
-- [ ] 8. 实现作品导入文件解析
+- [x] 8. 实现作品导入文件解析
   - 新增 `packages/core/src/tools/import/file-parser.ts`。
   - 支持 `.txt`（按空行分章）、`.docx`（mammoth 提取文本）、`.epub`（基础 epub 解析）。
   - 统一输出 `{ chapters: Array<{ title, content }> }` 格式。
   - 添加单测：各格式解析正确、空文件安全、大文件截断。
   - 覆盖 Requirements 7、8。
 
-- [ ] 9. 实现多作品文风合并
+- [x] 9. 实现多作品文风合并
   - 新增 `packages/core/src/tools/import/multi-work-style.ts`。
   - 实现 `mergeStyleProfiles(profiles)` 合并多个 StyleProfile。
   - 计算交集特征：共同修辞、共同句长范围、共同词汇多样性范围。
@@ -104,7 +104,7 @@ app-next 集成规范（2026-05-XX 追加）：
   - 添加单测：合并统计正确、交集特征提取、空输入安全。
   - 覆盖 Requirements 7、8。
 
-- [ ] 10. 实现文风漂移检测
+- [x] 10. 实现文风漂移检测
   - 新增 `packages/core/src/tools/import/style-drift-detector.ts`。
   - 实现 `detectStyleDrift(currentProfile, baseProfile)` 计算漂移。
   - 偏差指标：句长偏差%、词汇多样性偏差%、综合偏差。
@@ -112,7 +112,7 @@ app-next 集成规范（2026-05-XX 追加）：
   - 添加单测：无漂移→0、大幅漂移→高偏差、阈值判断。
   - 覆盖 Requirements 7、8。
 
-- [ ] 11. 实现写作模式 API 路由
+- [x] 11. 实现写作模式 API 路由
   - 新增 `packages/studio/src/api/routes/writing-modes.ts`：
     - `POST /api/books/:bookId/inline-write`：续写/扩写/补写（body.mode 区分）。
     - `POST /api/books/:bookId/dialogue/generate`：对话生成。
@@ -126,7 +126,7 @@ app-next 集成规范（2026-05-XX 追加）：
   - 添加 API 测试。
   - 覆盖 Requirements 1-7、8。
 
-- [ ] 12. 实现选段续写 / 扩写 / 补写可复用 UI（迁入新创作工作台，不接旧前端页面）
+- [x] 12. 实现选段续写 / 扩写 / 补写可复用 UI（迁入新创作工作台，不接旧前端页面）
   - 新增 `packages/studio/src/components/writing-modes/InlineContinuation.tsx`。
   - 新增 `packages/studio/src/components/writing-modes/SceneExpander.tsx`。
   - 新增 `packages/studio/src/components/writing-modes/ParagraphBridge.tsx`。
@@ -138,7 +138,7 @@ app-next 集成规范（2026-05-XX 追加）：
   - 添加组件测试。
   - 覆盖 Requirements 1、2、5、8。
 
-- [ ] 13. 实现对话生成可复用 UI（迁入新创作工作台，不接旧前端页面）
+- [x] 13. 实现对话生成可复用 UI（迁入新创作工作台，不接旧前端页面）
   - 新增 `packages/studio/src/components/writing-modes/DialogueGenerator.tsx`。
   - 角色选择（从 character_matrix 多选）+ 场景描述 + 对话目的 + 轮数。
   - 结果展示：角色彩色标签 + 台词 + 可逐句编辑。
@@ -147,7 +147,7 @@ app-next 集成规范（2026-05-XX 追加）：
   - 添加组件测试。
   - 覆盖 Requirements 3、8。
 
-- [ ] 14. 实现多版本对比可复用 UI（迁入新创作工作台，不接旧前端页面）
+- [x] 14. 实现多版本对比可复用 UI（迁入新创作工作台，不接旧前端页面）
   - 新增 `packages/studio/src/components/writing-modes/VariantCompare.tsx`。
   - Tab 切换或并排展示各版本。
   - 高亮与原文的差异。
@@ -157,7 +157,7 @@ app-next 集成规范（2026-05-XX 追加）：
   - 添加组件测试。
   - 覆盖 Requirements 4、8。
 
-- [ ] 15. 实现大纲分支可复用 UI（迁入新创作工作台，不接旧前端页面）
+- [x] 15. 实现大纲分支可复用 UI（迁入新创作工作台，不接旧前端页面）
   - 新增 `packages/studio/src/components/writing-modes/OutlineBrancher.tsx`。
   - 展示 2-3 条走向卡片：核心冲突 + 转折点 + 预计章数 + 消耗伏笔。
   - 选择走向 → 扩展为完整大纲 → 保存为分支。
@@ -166,7 +166,7 @@ app-next 集成规范（2026-05-XX 追加）：
   - 添加组件测试。
   - 覆盖 Requirements 6、8。
 
-- [ ] 16. 实现作品导入可复用 UI（迁入新创作工作台，不接旧前端页面）
+- [x] 16. 实现作品导入可复用 UI（迁入新创作工作台，不接旧前端页面）
   - 新增 `packages/studio/src/components/writing-modes/WorkImporter.tsx`。
   - 拖放区域 + 粘贴文本。
   - 导入目的选择：只分析文风 / 续写。
@@ -176,7 +176,7 @@ app-next 集成规范（2026-05-XX 追加）：
   - 添加组件测试。
   - 覆盖 Requirements 7、8。
 
-- [ ] 17. 执行验证
+- [x] 17. 执行验证
   - 运行 `pnpm typecheck` 和 `pnpm test`。
   - 真实烟测：选段续写 → 预览 → 接受 → 正文更新。
   - 真实烟测：场景扩写 → 原文保留 → 细节增加。
