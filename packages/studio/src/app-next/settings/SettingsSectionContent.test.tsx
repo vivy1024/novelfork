@@ -70,8 +70,7 @@ describe("SettingsSectionContent", () => {
 
   it("mounts RuntimeControlPanel for agents section", async () => {
     render(<SettingsSectionContent sectionId="agents" />);
-    // RuntimeControlPanel loads data via fetchJson; verify it renders its title
-    expect(await screen.findByText("运行控制面板")).toBeTruthy();
+    expect(await screen.findByText("权限与推理")).toBeTruthy();
   });
 
   it("shows non-provider settings sections with explicit reuse or not-connected status", async () => {

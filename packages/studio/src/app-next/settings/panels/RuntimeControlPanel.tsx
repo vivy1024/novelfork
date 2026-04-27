@@ -1,24 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
-import { Activity, Brain, Cpu, Shield, SlidersHorizontal } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { fetchJson, putApi } from "@/hooks/use-api";
-import { PROVIDERS } from "@/shared/provider-catalog";
 import { SESSION_PERMISSION_MODE_OPTIONS } from "@/shared/session-types";
-import { TOOL_ACCESS_GOVERNANCE_EXPLANATIONS } from "@/shared/tool-access-reasons";
 import type { ModelDefaultSettings, RuntimeControlSettings, UserConfig } from "@/types/settings";
 import { DEFAULT_USER_CONFIG } from "@/types/settings";
+
+// ---------------------------------------------------------------------------
+// Extended runtime controls (behaviour switches not yet in core type)
+// ---------------------------------------------------------------------------
 
 interface ExtendedRuntimeControls extends RuntimeControlSettings {
   translateThinking?: boolean;
@@ -28,614 +18,394 @@ interface ExtendedRuntimeControls extends RuntimeControlSettings {
   forceUserLanguage?: boolean;
 }
 
-const PERMISSION_OPTIONS: Array<{ value: RuntimeControlSettings["defaultPermissionMode"]; label: string; description: string }> = SESSION_PERMISSION_MODE_OPTIONS.map((option) => ({
-  value: option.value,
-  label: option.label,
-  description: `${option.description} 适合：${option.bestFor}。`,
-}));
+// ---------------------------------------------------------------------------
+// Option definitions
+// ---------------------------------------------------------------------------
 
-const REASONING_OPTIONS: Array<{ value: RuntimeControlSettings["defaultReasoningEffort"]; label: string; description: string }> = [
-  { value: "low", label: "低", description: "适合轻量查询和快速修补。" },
-  { value: "medium", label: "中", description: "沿用当前会话默认档位。" },
-  { value: "high", label: "高", description: "适合复杂规划和长链分析。" },
+const PERMISSION_OPTIONS: Array<{
+  value: RuntimeControlSettings["defaultPermissionMode"];
+  label: string;
+}> = SESSION_PERMISSION_MODE_OPTIONS.map((o) => ({ value: o.value, label: o.label }));
+
+const REASONING_OPTIONS: Array<{
+  value: RuntimeControlSettings["defaultReasoningEffort"];
+  label: string;
+}> = [
+  { value: "low", label: "低" },
+  { value: "medium", label: "中" },
+  { value: "high", label: "高" },
 ];
 
 const MCP_POLICY_OPTIONS: Array<{
   value: RuntimeControlSettings["toolAccess"]["mcpStrategy"];
   label: string;
-  description: string;
 }> = [
-  { value: "inherit", label: "继承默认权限", description: "MCP 工具默认跟随 defaultPermissionMode 判定。" },
-  { value: "allow", label: "直接允许", description: "默认允许 MCP 工具执行，仅受 allowlist/blocklist 影响。" },
-  { value: "ask", label: "执行前确认", description: "MCP 工具执行前必须确认。" },
-  { value: "deny", label: "默认拒绝", description: "默认拒绝 MCP 工具执行。" },
+  { value: "inherit", label: "继承默认权限" },
+  { value: "allow", label: "直接允许" },
+  { value: "ask", label: "执行前确认" },
+  { value: "deny", label: "默认拒绝" },
 ];
 
 const DEFAULT_RUNTIME_CONTROLS = DEFAULT_USER_CONFIG.runtimeControls;
 const DEFAULT_MODEL_DEFAULTS = DEFAULT_USER_CONFIG.modelDefaults;
 
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
 function clampNumber(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
-function parsePercentInput(raw: string, fallback: number, min: number, max: number) {
-  if (raw.trim() === "") {
-    return fallback;
-  }
-  const parsed = Number(raw);
-  if (!Number.isFinite(parsed)) {
-    return fallback;
-  }
-  return clampNumber(parsed, min, max);
+function parseNumInput(raw: string, fallback: number, min: number, max: number) {
+  if (raw.trim() === "") return fallback;
+  const n = Number(raw);
+  return Number.isFinite(n) ? clampNumber(n, min, max) : fallback;
 }
 
+// ---------------------------------------------------------------------------
+// Tiny layout primitives
+// ---------------------------------------------------------------------------
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="border-t border-border pt-4">
+      <h3 className="mb-3 text-sm font-semibold">{title}</h3>
+      <div className="space-y-3">{children}</div>
+    </div>
+  );
+}
+
+function FieldRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <span className="text-sm text-muted-foreground">{label}</span>
+      {children}
+    </div>
+  );
+}
+
+function Switch({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors ${checked ? "bg-primary" : "bg-muted"}`}
+      onClick={() => onChange(!checked)}
+    >
+      <span
+        className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${checked ? "translate-x-4" : "translate-x-0.5"}`}
+      />
+    </button>
+  );
+}
+
+const selectCls = "rounded-md border border-border bg-background px-2 py-1 text-sm";
+const inputCls = "w-32 rounded-md border border-border bg-background px-2 py-1 text-sm text-right";
+const wideInputCls = "w-56 rounded-md border border-border bg-background px-2 py-1 text-sm";
+
+// ---------------------------------------------------------------------------
+// ListManager (simplified)
+// ---------------------------------------------------------------------------
+
+function ListManager({
+  items,
+  onChange,
+}: {
+  items: string[];
+  onChange: (items: string[]) => void;
+}) {
+  const [draft, setDraft] = useState("");
+  return (
+    <div className="space-y-1.5">
+      <div className="flex gap-2">
+        <input
+          className={`${wideInputCls} flex-1`}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          placeholder="输入路径或命令"
+        />
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => {
+            if (draft.trim()) {
+              onChange([...items, draft.trim()]);
+              setDraft("");
+            }
+          }}
+        >
+          添加
+        </Button>
+      </div>
+      {items.length > 0 ? (
+        <div className="space-y-1">
+          {items.map((item, i) => (
+            <div key={i} className="flex items-center justify-between rounded-md bg-muted px-2 py-1 text-sm">
+              <span className="font-mono">{item}</span>
+              <button
+                className="text-xs text-destructive hover:underline"
+                onClick={() => onChange(items.filter((_, j) => j !== i))}
+                type="button"
+              >
+                删除
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-muted-foreground">暂无配置</p>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main panel
+// ---------------------------------------------------------------------------
+
 export function RuntimeControlPanel() {
-  const [runtimeControls, setRuntimeControls] = useState<ExtendedRuntimeControls>(DEFAULT_RUNTIME_CONTROLS);
-  const [modelDefaults, setModelDefaults] = useState<ModelDefaultSettings>(DEFAULT_MODEL_DEFAULTS);
+  const [rc, setRc] = useState<ExtendedRuntimeControls>(DEFAULT_RUNTIME_CONTROLS);
+  const [md, setMd] = useState<ModelDefaultSettings>(DEFAULT_MODEL_DEFAULTS);
   const [modelOptions, setModelOptions] = useState<Array<{ value: string; label: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
+  // --- data loading ---
   useEffect(() => {
     let cancelled = false;
 
     fetchJson<Pick<UserConfig, "runtimeControls" | "modelDefaults">>("/settings/user")
       .then((data) => {
-        setRuntimeControls({
-          ...DEFAULT_RUNTIME_CONTROLS,
-          ...(data.runtimeControls ?? {}),
-        });
-        setModelDefaults({
+        setRc({ ...DEFAULT_RUNTIME_CONTROLS, ...(data.runtimeControls ?? {}) });
+        setMd({
           ...DEFAULT_MODEL_DEFAULTS,
           ...(data.modelDefaults ?? {}),
           subagentModelPool: data.modelDefaults?.subagentModelPool ?? DEFAULT_MODEL_DEFAULTS.subagentModelPool,
         });
         setError(null);
       })
-      .catch((loadError) => {
-        if (!cancelled) {
-          setError(loadError instanceof Error ? loadError.message : String(loadError));
-        }
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
       })
       .finally(() => {
-        if (!cancelled) {
-          setLoading(false);
-        }
+        if (!cancelled) setLoading(false);
       });
 
     void fetchJson<{ models: Array<{ modelId: string; modelName: string; providerName: string }> }>("/api/providers/models")
       .then((data) => {
-        if (cancelled) {
-          return;
+        if (!cancelled) {
+          setModelOptions(data.models.map((m) => ({ value: m.modelId, label: `${m.providerName} · ${m.modelName}` })));
         }
-
-        setModelOptions(
-          data.models.map((model) => ({
-            value: model.modelId,
-            label: `${model.providerName} · ${model.modelName}`,
-          })),
-        );
       })
       .catch(() => {
-        if (!cancelled) {
-          setModelOptions([]);
-        }
+        if (!cancelled) setModelOptions([]);
       });
 
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, []);
 
-  const activePermission = useMemo(
-    () => PERMISSION_OPTIONS.find((option) => option.value === runtimeControls.defaultPermissionMode) ?? PERMISSION_OPTIONS[0],
-    [runtimeControls.defaultPermissionMode],
-  );
-  const activeReasoning = useMemo(
-    () => REASONING_OPTIONS.find((option) => option.value === runtimeControls.defaultReasoningEffort) ?? REASONING_OPTIONS[1],
-    [runtimeControls.defaultReasoningEffort],
-  );
-  const activeMcpPolicy = useMemo(
-    () => MCP_POLICY_OPTIONS.find((option) => option.value === runtimeControls.toolAccess.mcpStrategy) ?? MCP_POLICY_OPTIONS[0],
-    [runtimeControls.toolAccess.mcpStrategy],
-  );
-
+  // --- save ---
   async function handleSave() {
     setSaving(true);
     setSaved(false);
     setError(null);
-
     try {
-      const updated = await putApi<UserConfig>("/settings/user", { runtimeControls, modelDefaults });
-      setRuntimeControls({
-        ...DEFAULT_RUNTIME_CONTROLS,
-        ...updated.runtimeControls,
-      });
-      setModelDefaults({
+      const updated = await putApi<UserConfig>("/settings/user", { runtimeControls: rc, modelDefaults: md });
+      setRc({ ...DEFAULT_RUNTIME_CONTROLS, ...updated.runtimeControls });
+      setMd({
         ...DEFAULT_MODEL_DEFAULTS,
         ...updated.modelDefaults,
         subagentModelPool: updated.modelDefaults?.subagentModelPool ?? DEFAULT_MODEL_DEFAULTS.subagentModelPool,
       });
       setSaved(true);
-    } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : String(saveError));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setSaving(false);
     }
   }
 
+  // --- shorthand updaters ---
+  const dirty = () => setSaved(false);
+  const patchRc = (patch: Partial<ExtendedRuntimeControls>) => { dirty(); setRc((c) => ({ ...c, ...patch })); };
+  const patchMd = (patch: Partial<ModelDefaultSettings>) => { dirty(); setMd((c) => ({ ...c, ...patch })); };
+  const patchToolAccess = (patch: Partial<RuntimeControlSettings["toolAccess"]>) => {
+    dirty();
+    setRc((c) => ({ ...c, toolAccess: { ...c.toolAccess, ...patch } }));
+  };
+  const patchDebug = (patch: Partial<RuntimeControlSettings["runtimeDebug"]>) => {
+    dirty();
+    setRc((c) => ({ ...c, runtimeDebug: { ...c.runtimeDebug, ...patch } }));
+  };
+
+  if (loading) {
+    return <p className="py-8 text-center text-sm text-muted-foreground">正在读取运行控制配置…</p>;
+  }
+
   return (
-    <Card className="border-dashed bg-muted/20">
-      <CardHeader className="gap-3">
-        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-          <div className="space-y-1">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <SlidersHorizontal className="size-4 text-primary" />
-              运行控制面板
-            </CardTitle>
-                  <CardDescription>
-                    本轮先把会话默认权限、推理强度和上下文压缩阈值纳入 /api/settings 主配置，避免再出现本地并行存储。Tools Execute / MCP Call / Context Manager 已接入这里的重试、退避、trace、dump 与上下文阈值配置。
-                  </CardDescription>
+    <div className="space-y-6">
+      {/* ---- 权限与推理 ---- */}
+      <Section title="权限与推理">
+        <FieldRow label="默认权限模式">
+          <select className={selectCls} value={rc.defaultPermissionMode} onChange={(e) => patchRc({ defaultPermissionMode: e.target.value as RuntimeControlSettings["defaultPermissionMode"] })}>
+            {PERMISSION_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        </FieldRow>
+        <FieldRow label="默认推理强度">
+          <select className={selectCls} value={rc.defaultReasoningEffort} onChange={(e) => patchRc({ defaultReasoningEffort: e.target.value as RuntimeControlSettings["defaultReasoningEffort"] })}>
+            {REASONING_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        </FieldRow>
+      </Section>
 
-          </div>
-          <Badge variant="outline">/api/settings/user</Badge>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        {loading ? (
-          <p className="text-sm text-muted-foreground">正在读取运行控制配置...</p>
-        ) : (
-          <>
-            <div className="grid gap-4 xl:grid-cols-2">
-              <Card size="sm">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-sm">
-                    <Cpu className="size-4 text-primary" />
-                    默认会话模型
-                  </CardTitle>
-                  <CardDescription>
-                    新建正式 session 时默认写入的 provider/model 组合；当前已接入 session 创建链。
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  <Label htmlFor="settings-default-session-model">默认会话模型</Label>
-                  <Input
-                    id="settings-default-session-model"
-                    aria-label="默认会话模型"
-                    list="settings-model-options"
-                    value={modelDefaults.defaultSessionModel}
-                    onChange={(event) => {
-                      setSaved(false);
-                      setModelDefaults((current) => ({
-                        ...current,
-                        defaultSessionModel: event.target.value.trim() || current.defaultSessionModel,
-                      }));
-                    }}
-                  />
-                </CardContent>
-              </Card>
-
-              <Card size="sm">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-sm">
-                    <Cpu className="size-4 text-primary" />
-                    摘要模型
-                  </CardTitle>
-                  <CardDescription>
-                    为摘要/压缩类链路预留的默认模型，本轮先统一进入主配置流。
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  <Label htmlFor="settings-summary-model">摘要模型</Label>
-                  <Input
-                    id="settings-summary-model"
-                    aria-label="摘要模型"
-                    list="settings-model-options"
-                    value={modelDefaults.summaryModel}
-                    onChange={(event) => {
-                      setSaved(false);
-                      setModelDefaults((current) => ({
-                        ...current,
-                        summaryModel: event.target.value.trim() || current.summaryModel,
-                      }));
-                    }}
-                  />
-                </CardContent>
-              </Card>
-            </div>
-
-            <Card size="sm">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-sm">
-                  <Cpu className="size-4 text-primary" />
-                  子代理模型池
-                </CardTitle>
-                <CardDescription>
-                  以逗号分隔的 provider:model 列表，作为子代理调度池的第一轮事实源。
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <Label htmlFor="settings-subagent-model-pool">子代理模型池</Label>
-                <Input
-                  id="settings-subagent-model-pool"
-                  aria-label="子代理模型池"
-                  value={modelDefaults.subagentModelPool.join(", ")}
-                  onChange={(event) => {
-                    setSaved(false);
-                    setModelDefaults((current) => ({
-                      ...current,
-                      subagentModelPool: event.target.value
-                        .split(",")
-                        .map((item) => item.trim())
-                        .filter(Boolean),
-                    }));
-                  }}
-                />
-                <p className="text-xs text-muted-foreground">示例：anthropic:claude-haiku-4-5, openai:gpt-4-turbo</p>
-              </CardContent>
-            </Card>
-
-            <datalist id="settings-model-options">
-              {modelOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </datalist>
-
-            <div className="grid gap-4 xl:grid-cols-2">
-              <Card size="sm">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-sm">
-                    <Shield className="size-4 text-primary" />
-                    默认权限模式
-                  </CardTitle>
-                  <CardDescription>{activePermission.description}</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  <Label htmlFor="settings-runtime-permission">默认权限模式</Label>
-                  <Select
-                    value={runtimeControls.defaultPermissionMode}
-                    onValueChange={(value) => {
-                      setSaved(false);
-                      setRuntimeControls((current) => ({
-                        ...current,
-                        defaultPermissionMode: value as RuntimeControlSettings["defaultPermissionMode"],
-                      }));
-                    }}
-                  >
-                    <SelectTrigger id="settings-runtime-permission" aria-label="默认权限模式" className="w-full">
-                      <SelectValue placeholder="选择默认权限模式" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {PERMISSION_OPTIONS.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </CardContent>
-              </Card>
-
-              <Card size="sm">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-sm">
-                    <Brain className="size-4 text-primary" />
-                    默认推理强度
-                  </CardTitle>
-                  <CardDescription>{activeReasoning.description}</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  <Label htmlFor="settings-runtime-reasoning">默认推理强度</Label>
-                  <Select
-                    value={runtimeControls.defaultReasoningEffort}
-                    onValueChange={(value) => {
-                      setSaved(false);
-                      setRuntimeControls((current) => ({
-                        ...current,
-                        defaultReasoningEffort: value as RuntimeControlSettings["defaultReasoningEffort"],
-                      }));
-                    }}
-                  >
-                    <SelectTrigger id="settings-runtime-reasoning" aria-label="默认推理强度" className="w-full">
-                      <SelectValue placeholder="选择默认推理强度" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {REASONING_OPTIONS.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </CardContent>
-              </Card>
-            </div>
-
-            <div className="grid gap-4 xl:grid-cols-3">
-              <Card size="sm">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-sm">
-                    <Shield className="size-4 text-primary" />
-                    MCP 策略
-                  </CardTitle>
-                  <CardDescription>{activeMcpPolicy.description}</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  <Label htmlFor="settings-runtime-mcp-strategy">MCP 策略</Label>
-                  <Select
-                    value={runtimeControls.toolAccess.mcpStrategy}
-                    onValueChange={(value) => {
-                      setSaved(false);
-                      setRuntimeControls((current) => ({
-                        ...current,
-                        toolAccess: {
-                          ...current.toolAccess,
-                          mcpStrategy: value as RuntimeControlSettings["toolAccess"]["mcpStrategy"],
-                        },
-                      }));
-                    }}
-                  >
-                    <SelectTrigger id="settings-runtime-mcp-strategy" aria-label="MCP 策略" className="w-full">
-                      <SelectValue placeholder="选择 MCP 策略" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {MCP_POLICY_OPTIONS.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </CardContent>
-              </Card>
-
-              <Card size="sm">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-sm">
-                    <Shield className="size-4 text-primary" />
-                    允许工具列表
-                  </CardTitle>
-                  <CardDescription>逗号分隔的工具名列表；命中后优先按允许处理。</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  <Label htmlFor="settings-runtime-tool-allowlist">允许工具列表</Label>
-                  <Input
-                    id="settings-runtime-tool-allowlist"
-                    aria-label="允许工具列表"
-                    value={runtimeControls.toolAccess.allowlist.join(", ")}
-                    onChange={(event) => {
-                      setSaved(false);
-                      setRuntimeControls((current) => ({
-                        ...current,
-                        toolAccess: {
-                          ...current.toolAccess,
-                          allowlist: event.target.value.split(",").map((item) => item.trim()).filter(Boolean),
-                        },
-                      }));
-                    }}
-                  />
-                </CardContent>
-              </Card>
-
-              <Card size="sm">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-sm">
-                    <Shield className="size-4 text-primary" />
-                    阻止工具列表
-                  </CardTitle>
-                  <CardDescription>逗号分隔的工具名列表；命中后优先按拒绝处理。</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  <Label htmlFor="settings-runtime-tool-blocklist">阻止工具列表</Label>
-                  <Input
-                    id="settings-runtime-tool-blocklist"
-                    aria-label="阻止工具列表"
-                    value={runtimeControls.toolAccess.blocklist.join(", ")}
-                    onChange={(event) => {
-                      setSaved(false);
-                      setRuntimeControls((current) => ({
-                        ...current,
-                        toolAccess: {
-                          ...current.toolAccess,
-                          blocklist: event.target.value.split(",").map((item) => item.trim()).filter(Boolean),
-                        },
-                      }));
-                    }}
-                  />
-                </CardContent>
-              </Card>
-            </div>
-
-            <Card size="sm">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-sm">
-                  <Shield className="size-4 text-primary" />
-                  治理判定说明
-                </CardTitle>
-                <CardDescription>把设置项和运行时 reasonKey 对齐，避免只看原始英文原因。</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ul className="space-y-2 text-sm text-muted-foreground">
-                  {TOOL_ACCESS_GOVERNANCE_EXPLANATIONS.map((item) => (
-                    <li key={item}>{item}</li>
-                  ))}
-                  <li>Tools Execute / MCP Call 已接入这里的重试、退避、trace、dump 配置。</li>
-                </ul>
-              </CardContent>
-            </Card>
-
-            <div className="grid gap-4 xl:grid-cols-2">
-              <Card size="sm">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-sm">
-                    <Activity className="size-4 text-primary" />
-                    上下文压缩阈值
-                  </CardTitle>
-                  <CardDescription>
-                    对齐当前 context manager 的 canCompress 口径，达到该比例后进入压缩区间。
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  <Label htmlFor="settings-runtime-compress-threshold">压缩阈值 (%)</Label>
-                  <Input
-                    id="settings-runtime-compress-threshold"
-                    aria-label="压缩阈值 (%)"
-                    type="number"
-                    min={50}
-                    max={95}
-                    value={runtimeControls.contextCompressionThresholdPercent}
-                    onChange={(event) => {
-                      setSaved(false);
-                      setRuntimeControls((current) => ({
-                        ...current,
-                        contextCompressionThresholdPercent: parsePercentInput(
-                          event.target.value,
-                          current.contextCompressionThresholdPercent,
-                          50,
-                          95,
-                        ),
-                      }));
-                    }}
-                  />
-                  <p className="text-xs text-muted-foreground">当前默认值 80%，来源于现有 /api/context/:bookId/usage 压缩判定。</p>
-                </CardContent>
-              </Card>
-
-              <Card size="sm">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-sm">
-                    <Activity className="size-4 text-primary" />
-                    上下文截断目标
-                  </CardTitle>
-                  <CardDescription>
-                    对齐当前 context manager 的 truncate 默认目标，压缩后优先回落到该比例。
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  <Label htmlFor="settings-runtime-truncate-target">截断目标 (%)</Label>
-                  <Input
-                    id="settings-runtime-truncate-target"
-                    aria-label="截断目标 (%)"
-                    type="number"
-                    min={40}
-                    max={90}
-                    value={runtimeControls.contextTruncateTargetPercent}
-                    onChange={(event) => {
-                      setSaved(false);
-                      setRuntimeControls((current) => ({
-                        ...current,
-                        contextTruncateTargetPercent: parsePercentInput(
-                          event.target.value,
-                          current.contextTruncateTargetPercent,
-                          40,
-                          90,
-                        ),
-                      }));
-                    }}
-                  />
-                  <p className="text-xs text-muted-foreground">当前默认值 70%，来源于现有 /api/context/:bookId/truncate 目标比例。</p>
-                </CardContent>
-              </Card>
-            </div>
-
-            <Card size="sm">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-sm">
-                  <Activity className="size-4 text-primary" />
-                  行为开关
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <SwitchField label="翻译思考内容" checked={runtimeControls.translateThinking ?? false} onChange={(v) => { setSaved(false); setRuntimeControls((cur) => ({ ...cur, translateThinking: v })); }} />
-                <SwitchField label="默认展开推理内容" checked={runtimeControls.expandReasoning ?? false} onChange={(v) => { setSaved(false); setRuntimeControls((cur) => ({ ...cur, expandReasoning: v })); }} />
-                <SwitchField label="默认宽松规划" checked={runtimeControls.relaxedPlanning ?? true} onChange={(v) => { setSaved(false); setRuntimeControls((cur) => ({ ...cur, relaxedPlanning: v })); }} />
-                <SwitchField label="智能检查输出中断" checked={runtimeControls.smartOutputCheck ?? true} onChange={(v) => { setSaved(false); setRuntimeControls((cur) => ({ ...cur, smartOutputCheck: v })); }} />
-              </CardContent>
-            </Card>
-
-            <Card size="sm">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-sm">
-                  <Shield className="size-4 text-primary" />
-                  目录与命令规则
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <ListManager label="全局目录白名单" items={runtimeControls.toolAccess?.allowlist ?? []} onChange={(items) => { setSaved(false); setRuntimeControls((cur) => ({ ...cur, toolAccess: { ...cur.toolAccess, allowlist: items } })); }} />
-                <ListManager label="全局目录黑名单" items={runtimeControls.toolAccess?.blocklist ?? []} onChange={(items) => { setSaved(false); setRuntimeControls((cur) => ({ ...cur, toolAccess: { ...cur.toolAccess, blocklist: items } })); }} />
-              </CardContent>
-            </Card>
-
-            <Card size="sm">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-sm">
-                  <Brain className="size-4 text-primary" />
-                  会话
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <SwitchField label="要求使用您的语言回复" checked={runtimeControls.forceUserLanguage ?? false} onChange={(v) => { setSaved(false); setRuntimeControls((cur) => ({ ...cur, forceUserLanguage: v })); }} />
-              </CardContent>
-            </Card>
-
-            <div className="flex flex-col gap-3 border-t pt-4 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
-              <div className="space-y-1">
-                <p>当前通过 /api/settings/user 统一持久化；导入/导出会自动带上这组运行控制字段。</p>
-                {error ? <p className="text-destructive">保存失败：{error}</p> : saved ? <p className="text-primary">运行控制已保存。</p> : null}
-              </div>
-              <Button type="button" onClick={handleSave} disabled={loading || saving}>
-                {saving ? "保存中..." : "保存运行控制"}
-              </Button>
-            </div>
-          </>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function SwitchField({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <div className="flex items-center justify-between">
-      <Label className="text-sm">{label}</Label>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={checked}
-        className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors ${checked ? "bg-primary" : "bg-muted"}`}
-        onClick={() => onChange(!checked)}
-      >
-        <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${checked ? "translate-x-4" : "translate-x-0.5"}`} />
-      </button>
-    </div>
-  );
-}
-
-function ListManager({ label, items, onChange }: { label: string; items: string[]; onChange: (items: string[]) => void }) {
-  const [draft, setDraft] = useState("");
-  return (
-    <div>
-      <Label className="text-sm">{label}</Label>
-      <div className="mt-1 flex gap-2">
-        <Input className="flex-1" value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="输入路径或命令" />
-        <Button size="sm" variant="outline" onClick={() => { if (draft.trim()) { onChange([...items, draft.trim()]); setDraft(""); } }}>添加</Button>
-      </div>
-      {items.length > 0 ? (
-        <div className="mt-2 space-y-1">
-          {items.map((item, i) => (
-            <div key={i} className="flex items-center justify-between rounded-md bg-muted px-2 py-1 text-sm">
-              <span className="font-mono">{item}</span>
-              <button className="text-xs text-destructive hover:underline" onClick={() => onChange(items.filter((_, j) => j !== i))} type="button">删除</button>
-            </div>
+      {/* ---- 模型 ---- */}
+      <Section title="模型">
+        <FieldRow label="默认会话模型">
+          <input
+            className={wideInputCls}
+            list="rc-model-opts"
+            value={md.defaultSessionModel}
+            onChange={(e) => patchMd({ defaultSessionModel: e.target.value.trim() || md.defaultSessionModel })}
+          />
+        </FieldRow>
+        <FieldRow label="摘要模型">
+          <input
+            className={wideInputCls}
+            list="rc-model-opts"
+            value={md.summaryModel}
+            onChange={(e) => patchMd({ summaryModel: e.target.value.trim() || md.summaryModel })}
+          />
+        </FieldRow>
+        <FieldRow label="子代理模型池">
+          <input
+            className={wideInputCls}
+            value={md.subagentModelPool.join(", ")}
+            onChange={(e) =>
+              patchMd({
+                subagentModelPool: e.target.value.split(",").map((s) => s.trim()).filter(Boolean),
+              })
+            }
+          />
+        </FieldRow>
+        <datalist id="rc-model-opts">
+          {modelOptions.map((o) => (
+            <option key={o.value} value={o.value}>{o.label}</option>
           ))}
+        </datalist>
+      </Section>
+
+      {/* ---- 行为 ---- */}
+      <Section title="行为">
+        <FieldRow label="翻译思考内容"><Switch checked={rc.translateThinking ?? false} onChange={(v) => patchRc({ translateThinking: v })} /></FieldRow>
+        <FieldRow label="默认展开推理内容"><Switch checked={rc.expandReasoning ?? false} onChange={(v) => patchRc({ expandReasoning: v })} /></FieldRow>
+        <FieldRow label="默认宽松规划"><Switch checked={rc.relaxedPlanning ?? true} onChange={(v) => patchRc({ relaxedPlanning: v })} /></FieldRow>
+        <FieldRow label="智能检查输出中断"><Switch checked={rc.smartOutputCheck ?? true} onChange={(v) => patchRc({ smartOutputCheck: v })} /></FieldRow>
+        <FieldRow label="要求使用您的语言回复"><Switch checked={rc.forceUserLanguage ?? false} onChange={(v) => patchRc({ forceUserLanguage: v })} /></FieldRow>
+      </Section>
+
+      {/* ---- MCP 策略 ---- */}
+      <Section title="MCP 策略">
+        <FieldRow label="MCP 工具策略">
+          <select className={selectCls} value={rc.toolAccess.mcpStrategy} onChange={(e) => patchToolAccess({ mcpStrategy: e.target.value as RuntimeControlSettings["toolAccess"]["mcpStrategy"] })}>
+            {MCP_POLICY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        </FieldRow>
+        <div className="space-y-1">
+          <span className="text-sm text-muted-foreground">允许工具列表</span>
+          <ListManager items={rc.toolAccess.allowlist} onChange={(items) => patchToolAccess({ allowlist: items })} />
         </div>
-      ) : (
-        <p className="mt-1 text-xs text-muted-foreground">暂无配置</p>
-      )}
+        <div className="space-y-1">
+          <span className="text-sm text-muted-foreground">阻止工具列表</span>
+          <ListManager items={rc.toolAccess.blocklist} onChange={(items) => patchToolAccess({ blocklist: items })} />
+        </div>
+      </Section>
+
+      {/* ---- 上下文 ---- */}
+      <Section title="上下文">
+        <FieldRow label="压缩阈值 %">
+          <input
+            className={inputCls}
+            type="number"
+            min={50}
+            max={95}
+            value={rc.contextCompressionThresholdPercent}
+            onChange={(e) => patchRc({ contextCompressionThresholdPercent: parseNumInput(e.target.value, rc.contextCompressionThresholdPercent, 50, 95) })}
+          />
+        </FieldRow>
+        <FieldRow label="截断目标 %">
+          <input
+            className={inputCls}
+            type="number"
+            min={40}
+            max={90}
+            value={rc.contextTruncateTargetPercent}
+            onChange={(e) => patchRc({ contextTruncateTargetPercent: parseNumInput(e.target.value, rc.contextTruncateTargetPercent, 40, 90) })}
+          />
+        </FieldRow>
+      </Section>
+
+      {/* ---- 恢复 ---- */}
+      <Section title="恢复">
+        <FieldRow label="最大重试次数">
+          <input
+            className={inputCls}
+            type="number"
+            min={0}
+            max={20}
+            value={rc.recovery.maxRetryAttempts}
+            onChange={(e) => {
+              dirty();
+              setRc((c) => ({ ...c, recovery: { ...c.recovery, maxRetryAttempts: parseNumInput(e.target.value, c.recovery.maxRetryAttempts, 0, 20) } }));
+            }}
+          />
+        </FieldRow>
+        <FieldRow label="退避上限 ms">
+          <input
+            className={inputCls}
+            type="number"
+            min={1000}
+            max={120000}
+            value={rc.recovery.maxRetryDelayMs}
+            onChange={(e) => {
+              dirty();
+              setRc((c) => ({ ...c, recovery: { ...c.recovery, maxRetryDelayMs: parseNumInput(e.target.value, c.recovery.maxRetryDelayMs, 1000, 120000) } }));
+            }}
+          />
+        </FieldRow>
+      </Section>
+
+      {/* ---- 调试 ---- */}
+      <Section title="调试">
+        <FieldRow label="显示 Token 用量"><Switch checked={rc.runtimeDebug.tokenDebugEnabled} onChange={(v) => patchDebug({ tokenDebugEnabled: v })} /></FieldRow>
+        <FieldRow label="显示实时输出速率"><Switch checked={rc.runtimeDebug.rateDebugEnabled} onChange={(v) => patchDebug({ rateDebugEnabled: v })} /></FieldRow>
+        <FieldRow label="Dump API 请求"><Switch checked={rc.runtimeDebug.dumpEnabled} onChange={(v) => patchDebug({ dumpEnabled: v })} /></FieldRow>
+      </Section>
+
+      {/* ---- 目录规则 ---- */}
+      <Section title="目录规则">
+        <div className="space-y-1">
+          <span className="text-sm text-muted-foreground">全局目录白名单</span>
+          <ListManager items={rc.toolAccess.allowlist} onChange={(items) => patchToolAccess({ allowlist: items })} />
+        </div>
+        <div className="space-y-1">
+          <span className="text-sm text-muted-foreground">全局目录黑名单</span>
+          <ListManager items={rc.toolAccess.blocklist} onChange={(items) => patchToolAccess({ blocklist: items })} />
+        </div>
+      </Section>
+
+      {/* ---- 底部状态 + 保存 ---- */}
+      <div className="flex items-center justify-between border-t border-border pt-4">
+        <div className="text-sm">
+          {error ? <span className="text-destructive">保存失败：{error}</span> : saved ? <span className="text-primary">已保存</span> : null}
+        </div>
+        <Button type="button" onClick={handleSave} disabled={loading || saving}>
+          {saving ? "保存中…" : "保存"}
+        </Button>
+      </div>
     </div>
   );
 }

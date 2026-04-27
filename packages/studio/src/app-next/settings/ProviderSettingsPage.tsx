@@ -115,7 +115,6 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
       .then(({ providers: nextProviders }) => {
         if (!mounted) return;
         setProviders(nextProviders);
-        setSelectedProviderId((current) => current ?? nextProviders[0]?.id ?? null);
         setContextDrafts(Object.fromEntries(nextProviders.flatMap((provider) => provider.models.map((model) => [`${provider.id}:${model.id}`, String(model.contextWindow)]))));
       })
       .catch((reason) => {
@@ -140,7 +139,7 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
 
   const platformProviders = providers.filter((provider) => provider.type !== "custom");
   const apiKeyProviders = providers.filter((provider) => provider.type === "custom" || provider.apiKeyRequired);
-  const selectedProvider = providers.find((provider) => provider.id === selectedProviderId) ?? providers[0];
+  const selectedProvider = providers.find((provider) => provider.id === selectedProviderId) ?? null;
 
   const saveProvider = async () => {
     const id = normalizeProviderId(form.prefix, form.name);
@@ -181,7 +180,6 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
     try {
       const result = await client.refreshModels(providerId);
       setProviders((current) => applyProvider(current, result.provider));
-      setSelectedProviderId(result.provider.id);
       setContextDrafts((current) => ({
         ...current,
         ...Object.fromEntries(result.provider.models.map((model) => [`${providerId}:${model.id}`, String(model.contextWindow)])),
@@ -235,8 +233,33 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
     return <div className="rounded-xl border border-border p-4 text-sm text-muted-foreground">正在加载 AI 供应商…</div>;
   }
 
+  /* ── 详情视图 ── */
+  if (selectedProvider) {
+    return (
+      <ProviderDetailView
+        provider={selectedProvider}
+        busy={busy}
+        feedback={feedback}
+        error={error}
+        accountId={accountId}
+        setAccountId={setAccountId}
+        useResponsesWebSocket={useResponsesWebSocket}
+        setUseResponsesWebSocket={setUseResponsesWebSocket}
+        thinkingStrength={thinkingStrength}
+        setThinkingStrength={setThinkingStrength}
+        contextDrafts={contextDrafts}
+        setContextDrafts={setContextDrafts}
+        onBack={() => setSelectedProviderId(null)}
+        onRefreshModels={refreshModels}
+        onTestModel={testModel}
+        onUpdateModel={updateModel}
+      />
+    );
+  }
+
+  /* ── 列表视图 ── */
   return (
-    <section aria-label="AI 供应商设置" className="space-y-3">
+    <section aria-label="AI 供应商设置" className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-semibold">AI 供应商</h2>
@@ -261,185 +284,195 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
         <AddProviderForm form={form} setForm={setForm} onSave={() => void saveProvider()} busy={busy === "create-provider"} />
       )}
 
-      <div className="space-y-3">
-        <ProviderGroup
-          title="平台集成"
-          providers={platformProviders}
-          selectedProviderId={selectedProvider?.id}
-          onSelect={(id) => setSelectedProviderId((prev) => prev === id ? null : id)}
-          onToggle={toggleProvider}
-          busy={busy}
-          accountId={accountId}
-          setAccountId={setAccountId}
-          useResponsesWebSocket={useResponsesWebSocket}
-          setUseResponsesWebSocket={setUseResponsesWebSocket}
-          thinkingStrength={thinkingStrength}
-          setThinkingStrength={setThinkingStrength}
-          onRefreshModels={refreshModels}
-          contextDrafts={contextDrafts}
-          setContextDrafts={setContextDrafts}
-          onTestModel={testModel}
-          onUpdateModel={updateModel}
-        />
-        <ProviderGroup
-          title="API key 接入"
-          providers={apiKeyProviders}
-          selectedProviderId={selectedProvider?.id}
-          onSelect={(id) => setSelectedProviderId((prev) => prev === id ? null : id)}
-          onToggle={toggleProvider}
-          busy={busy}
-          accountId={accountId}
-          setAccountId={setAccountId}
-          useResponsesWebSocket={useResponsesWebSocket}
-          setUseResponsesWebSocket={setUseResponsesWebSocket}
-          thinkingStrength={thinkingStrength}
-          setThinkingStrength={setThinkingStrength}
-          onRefreshModels={refreshModels}
-          contextDrafts={contextDrafts}
-          setContextDrafts={setContextDrafts}
-          onTestModel={testModel}
-          onUpdateModel={updateModel}
-        />
+      <ProviderCardGroup
+        title="平台集成"
+        providers={platformProviders}
+        onSelect={setSelectedProviderId}
+        onToggle={toggleProvider}
+      />
+      <ProviderCardGroup
+        title="API key 接入"
+        providers={apiKeyProviders}
+        onSelect={setSelectedProviderId}
+        onToggle={toggleProvider}
+      />
+    </section>
+  );
+}
+
+function ProviderCardGroup({
+  title,
+  providers,
+  onSelect,
+  onToggle,
+}: {
+  readonly title: string;
+  readonly providers: readonly ManagedProvider[];
+  readonly onSelect: (providerId: string) => void;
+  readonly onToggle: (providerId: string, enabled: boolean) => void;
+}) {
+  if (providers.length === 0) return null;
+
+  return (
+    <section className="space-y-2">
+      <h4 className="text-sm font-semibold text-muted-foreground">{title}</h4>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {providers.map((provider) => {
+          const enabledModels = provider.models.filter((m) => m.enabled !== false);
+          const previewModels = enabledModels.slice(0, 3);
+          const moreCount = enabledModels.length - previewModels.length;
+          return (
+            <div
+              key={provider.id}
+              className="cursor-pointer rounded-lg border border-border p-3 transition hover:border-primary/40 hover:shadow-sm"
+              onClick={() => onSelect(provider.id)}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onSelect(provider.id); }}
+              role="button"
+              tabIndex={0}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="font-medium leading-tight">{provider.name}</div>
+                  <span className="mt-0.5 inline-block rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    {provider.apiMode ?? provider.compatibility?.replace("-compatible", "") ?? "API"}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={provider.enabled}
+                  aria-label={provider.enabled ? "禁用供应商" : "启用供应商"}
+                  className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors ${provider.enabled ? "bg-primary" : "bg-muted"}`}
+                  onClick={(e) => { e.stopPropagation(); onToggle(provider.id, !provider.enabled); }}
+                >
+                  <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${provider.enabled ? "translate-x-4" : "translate-x-0.5"}`} />
+                </button>
+              </div>
+              {previewModels.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {previewModels.map((m) => (
+                    <span key={m.id} className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">{m.name}</span>
+                  ))}
+                  {moreCount > 0 && <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">+{moreCount} 更多模型</span>}
+                </div>
+              )}
+              <div className="mt-2 text-xs text-muted-foreground">{provider.models.length} 个模型</div>
+            </div>
+          );
+        })}
       </div>
     </section>
   );
 }
 
-function ProviderGroup({
-  title,
-  providers,
-  selectedProviderId,
-  onSelect,
-  onToggle,
+function ProviderDetailView({
+  provider,
   busy,
+  feedback,
+  error,
   accountId,
   setAccountId,
   useResponsesWebSocket,
   setUseResponsesWebSocket,
   thinkingStrength,
   setThinkingStrength,
-  onRefreshModels,
   contextDrafts,
   setContextDrafts,
+  onBack,
+  onRefreshModels,
   onTestModel,
   onUpdateModel,
 }: {
-  readonly title: string;
-  readonly providers: readonly ManagedProvider[];
-  readonly selectedProviderId?: string;
-  readonly onSelect: (providerId: string) => void;
-  readonly onToggle: (providerId: string, enabled: boolean) => void;
+  readonly provider: ManagedProvider;
   readonly busy: string | null;
+  readonly feedback: string | null;
+  readonly error: string | null;
   readonly accountId: string;
   readonly setAccountId: (value: string) => void;
   readonly useResponsesWebSocket: boolean;
   readonly setUseResponsesWebSocket: (value: boolean) => void;
   readonly thinkingStrength: ProviderThinkingStrength;
   readonly setThinkingStrength: (value: ProviderThinkingStrength) => void;
-  readonly onRefreshModels: (providerId: string) => Promise<void>;
   readonly contextDrafts: Record<string, string>;
   readonly setContextDrafts: (updater: (current: Record<string, string>) => Record<string, string>) => void;
+  readonly onBack: () => void;
+  readonly onRefreshModels: (providerId: string) => Promise<void>;
   readonly onTestModel: (providerId: string, modelId: string) => Promise<void>;
   readonly onUpdateModel: (providerId: string, model: Model, updates: Partial<Model>) => Promise<void>;
 }) {
+  const hasAdvancedFields =
+    provider.compatibility === "openai-compatible" ||
+    provider.apiMode === "responses" ||
+    provider.apiMode === "codex";
+
   return (
-    <section className="space-y-2">
-      <h4 className="text-sm font-semibold text-muted-foreground">{title}</h4>
-      {providers.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border p-3 text-sm text-muted-foreground">暂无供应商</div>
-      ) : (
-        <div className="space-y-2">
-          {providers.map((provider) => {
-            const isSelected = selectedProviderId === provider.id;
-            const enabledModels = provider.models.filter((m) => m.enabled !== false);
-            const previewModels = enabledModels.slice(0, 3);
-            const moreCount = enabledModels.length - previewModels.length;
-            return (
-              <div key={`${title}:${provider.id}`}>
-                <div
-                  className={`rounded-lg border p-3 text-left transition ${isSelected ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <button type="button" className="min-w-0 text-left" onClick={() => onSelect(provider.id)}>
-                      <div className="font-medium leading-tight">{provider.name}</div>
-                      <span className="mt-0.5 inline-block rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                        {provider.apiMode ?? provider.compatibility?.replace("-compatible", "") ?? "API"}
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={provider.enabled}
-                      aria-label={provider.enabled ? "禁用供应商" : "启用供应商"}
-                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors ${provider.enabled ? "bg-primary" : "bg-muted"}`}
-                      onClick={(e) => { e.stopPropagation(); onToggle(provider.id, !provider.enabled); }}
-                    >
-                      <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${provider.enabled ? "translate-x-4" : "translate-x-0.5"}`} />
-                    </button>
-                  </div>
-                  {previewModels.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-1">
-                      {previewModels.map((m) => (
-                        <span key={m.id} className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">{m.name}</span>
-                      ))}
-                      {moreCount > 0 && <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">+{moreCount} 更多模型</span>}
-                    </div>
-                  )}
-                  <div className="mt-2 text-xs text-muted-foreground">{provider.models.length} 个模型</div>
-                </div>
-                {isSelected && (
-                  <div className="mt-1 space-y-3 rounded-lg border border-primary/30 bg-muted/10 p-3">
-                    <div className="rounded-lg border border-border bg-background p-2 text-sm">
-                      <div className="font-medium">{provider.name}</div>
-                      <div className="mt-0.5 text-xs text-muted-foreground">{provider.compatibility} · {provider.apiMode}</div>
-                      <div className="mt-0.5 text-xs text-muted-foreground">Base URL：{provider.baseUrl ?? provider.config.endpoint ?? "默认网关"}</div>
-                    </div>
-                    <section className="space-y-2">
-                      <h4 className="text-sm font-medium">高级字段</h4>
-                      {provider.compatibility === "openai-compatible" && (
-                        <label className="block text-sm">
-                          ChatGPT 账户 ID
-                          <input className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm" value={accountId} onChange={(event) => setAccountId(event.target.value)} />
-                        </label>
-                      )}
-                      {provider.apiMode === "responses" && (
-                        <label className="flex items-center gap-2 text-sm">
-                          <input type="checkbox" checked={useResponsesWebSocket} onChange={(event) => setUseResponsesWebSocket(event.target.checked)} />
-                          Responses WebSocket
-                        </label>
-                      )}
-                      {provider.apiMode === "codex" && (
-                        <label className="block text-sm">
-                          Codex 思考强度
-                          <select className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm" value={thinkingStrength} onChange={(event) => setThinkingStrength(event.target.value as ProviderThinkingStrength)}>
-                            <option value="low">low</option>
-                            <option value="medium">medium</option>
-                            <option value="high">high</option>
-                          </select>
-                        </label>
-                      )}
-                    </section>
-                    <button
-                      className="w-full rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-60"
-                      type="button"
-                      disabled={busy === `refresh:${provider.id}`}
-                      onClick={() => void onRefreshModels(provider.id)}
-                    >
-                      刷新模型
-                    </button>
-                    <ModelList
-                      provider={provider}
-                      contextDrafts={contextDrafts}
-                      setContextDrafts={setContextDrafts}
-                      onTestModel={onTestModel}
-                      onUpdateModel={onUpdateModel}
-                    />
-                  </div>
-                )}
-              </div>
-            );
-          })}
+    <section aria-label={`${provider.name} 详情`} className="space-y-4">
+      <button type="button" className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground" onClick={onBack}>
+        ← 返回供应商列表
+      </button>
+
+      <div>
+        <h2 className="text-lg font-semibold">{provider.name}</h2>
+        <p className="text-sm text-muted-foreground">
+          {provider.compatibility} · {provider.apiMode}
+        </p>
+        <p className="text-sm text-muted-foreground">
+          Base URL：{provider.baseUrl ?? provider.config.endpoint ?? "默认网关"}
+        </p>
+      </div>
+
+      {(feedback || error) && (
+        <div className={error ? "rounded-xl border border-destructive/40 bg-destructive/5 p-3 text-sm" : "rounded-xl border border-emerald-500/40 bg-emerald-500/5 p-3 text-sm"}>
+          {error ?? feedback}
         </div>
+      )}
+
+      <button
+        className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-60"
+        type="button"
+        disabled={busy === `refresh:${provider.id}`}
+        onClick={() => void onRefreshModels(provider.id)}
+      >
+        刷新模型
+      </button>
+
+      {/* 模型列表 */}
+      <ModelList
+        provider={provider}
+        busy={busy}
+        contextDrafts={contextDrafts}
+        setContextDrafts={setContextDrafts}
+        onTestModel={onTestModel}
+        onUpdateModel={onUpdateModel}
+      />
+
+      {/* 高级字段 */}
+      {hasAdvancedFields && (
+        <section className="space-y-2">
+          <h4 className="text-sm font-medium">高级字段</h4>
+          {provider.compatibility === "openai-compatible" && (
+            <label className="block text-sm">
+              ChatGPT 账户 ID
+              <input className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm" value={accountId} onChange={(event) => setAccountId(event.target.value)} />
+            </label>
+          )}
+          {provider.apiMode === "responses" && (
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={useResponsesWebSocket} onChange={(event) => setUseResponsesWebSocket(event.target.checked)} />
+              Responses WebSocket
+            </label>
+          )}
+          {provider.apiMode === "codex" && (
+            <label className="block text-sm">
+              Codex 思考强度
+              <select className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm" value={thinkingStrength} onChange={(event) => setThinkingStrength(event.target.value as ProviderThinkingStrength)}>
+                <option value="low">low</option>
+                <option value="medium">medium</option>
+                <option value="high">high</option>
+              </select>
+            </label>
+          )}
+        </section>
       )}
     </section>
   );
@@ -499,12 +532,14 @@ function AddProviderForm({
 
 function ModelList({
   provider,
+  busy,
   contextDrafts,
   setContextDrafts,
   onTestModel,
   onUpdateModel,
 }: {
   readonly provider: ManagedProvider;
+  readonly busy: string | null;
   readonly contextDrafts: Record<string, string>;
   readonly setContextDrafts: (updater: (current: Record<string, string>) => Record<string, string>) => void;
   readonly onTestModel: (providerId: string, modelId: string) => Promise<void>;
@@ -515,39 +550,56 @@ function ModelList({
   }
 
   return (
-    <div className="space-y-3">
-      {provider.models.map((model) => {
-        const key = `${provider.id}:${model.id}`;
-        return (
-          <div key={model.id} className="space-y-2 rounded-xl border border-border bg-background p-3 text-sm">
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <div className="font-medium">{model.name}</div>
-                <div className="text-xs text-muted-foreground">{model.lastTestStatus ?? "untested"}{model.lastTestLatency ? ` · ${model.lastTestLatency}ms` : ""}</div>
+    <section className="space-y-1">
+      <h4 className="text-sm font-medium">模型列表</h4>
+      <div className="divide-y divide-border rounded-lg border border-border">
+        {provider.models.map((model) => {
+          const key = `${provider.id}:${model.id}`;
+          const isBusy = busy === `test:${provider.id}:${model.id}` || busy === `model:${provider.id}:${model.id}`;
+          return (
+            <div key={model.id} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2 text-sm">
+              <div className="min-w-0 flex-1">
+                <span className="font-medium">{model.name}</span>
+                <span className="ml-2 text-xs text-muted-foreground">{model.lastTestStatus ?? "untested"}{model.lastTestLatency ? ` · ${model.lastTestLatency}ms` : ""}</span>
               </div>
-              <button type="button" className="rounded-lg border border-border px-2 py-1 text-xs hover:bg-muted" onClick={() => void onTestModel(provider.id, model.id)}>
-                测试模型 {model.name}
-              </button>
+              <div className="flex items-center gap-2">
+                <label className="flex items-center gap-1 text-xs text-muted-foreground">
+                  上下文:
+                  <input
+                    className="w-20 rounded border border-border bg-background px-1.5 py-0.5 text-xs"
+                    value={contextDrafts[key] ?? String(model.contextWindow)}
+                    onChange={(event) => setContextDrafts((current) => ({ ...current, [key]: event.target.value }))}
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="rounded border border-border px-2 py-0.5 text-xs hover:bg-muted disabled:opacity-60"
+                  disabled={isBusy}
+                  onClick={() => void onUpdateModel(provider.id, model, { contextWindow: Number(contextDrafts[key] ?? model.contextWindow) })}
+                >
+                  保存
+                </button>
+                <button
+                  type="button"
+                  className="rounded border border-border px-2 py-0.5 text-xs hover:bg-muted disabled:opacity-60"
+                  disabled={isBusy}
+                  onClick={() => void onTestModel(provider.id, model.id)}
+                >
+                  测试
+                </button>
+                <button
+                  type="button"
+                  className="rounded border border-border px-2 py-0.5 text-xs hover:bg-muted disabled:opacity-60"
+                  disabled={isBusy}
+                  onClick={() => void onUpdateModel(provider.id, model, { enabled: model.enabled === false })}
+                >
+                  {model.enabled === false ? "启用" : "禁用"}
+                </button>
+              </div>
             </div>
-            <label className="block text-xs">
-              {model.name} 上下文长度
-              <input
-                className="mt-1 w-full rounded-lg border border-border bg-background px-2 py-1"
-                value={contextDrafts[key] ?? String(model.contextWindow)}
-                onChange={(event) => setContextDrafts((current) => ({ ...current, [key]: event.target.value }))}
-              />
-            </label>
-            <div className="flex flex-wrap gap-2">
-              <button type="button" className="rounded-lg border border-border px-2 py-1 text-xs hover:bg-muted" onClick={() => void onUpdateModel(provider.id, model, { contextWindow: Number(contextDrafts[key] ?? model.contextWindow) })}>
-                保存 {model.name} 上下文长度
-              </button>
-              <button type="button" className="rounded-lg border border-border px-2 py-1 text-xs hover:bg-muted" onClick={() => void onUpdateModel(provider.id, model, { enabled: model.enabled === false })}>
-                {model.enabled === false ? "启用" : "禁用"} {model.name}
-              </button>
-            </div>
-          </div>
-        );
-      })}
-    </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }
