@@ -108,6 +108,30 @@ describe("WorkspacePage", () => {
     await waitFor(() => expect(rejectCandidate).toHaveBeenCalledWith("book-1", "candidate-2"));
   });
 
+  it("runs the first AI panel action through the model gate and writes output to generated candidates", async () => {
+    const ensureModelFor = vi.fn(() => true);
+    const runAction = vi.fn(async () => ({ message: "AI 输出已进入生成章节候选" }));
+    render(<WorkspacePage assistantApi={{ runAction }} modelGate={{ blockedResult: null, closeGate: vi.fn(), ensureModelFor }} />);
+
+    const assistant = screen.getByRole("complementary", { name: "AI 与经纬面板" });
+    fireEvent.click(within(assistant).getByRole("button", { name: /生成下一章/ }));
+
+    expect(ensureModelFor).toHaveBeenCalledWith("ai-writing");
+    await waitFor(() => expect(runAction).toHaveBeenCalledWith("write-next", expect.objectContaining({ bookId: "book-1", selectedNodeTitle: "第一章 灵潮初起" })));
+    expect(screen.getByText("AI 输出已进入生成章节候选")).toBeTruthy();
+  });
+
+  it("opens the AI gate instead of running actions when no usable model is configured", () => {
+    const ensureModelFor = vi.fn(() => false);
+    const runAction = vi.fn(async () => ({ message: "should not run" }));
+    render(<WorkspacePage assistantApi={{ runAction }} modelGate={{ blockedResult: { ok: false, action: "ai-writing", reason: "model-not-configured", message: "此功能需要配置 AI 模型。" }, closeGate: vi.fn(), ensureModelFor }} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /生成下一章/ }));
+
+    expect(runAction).not.toHaveBeenCalled();
+    expect(screen.getByText("此功能需要配置 AI 模型。")).toBeTruthy();
+  });
+
   it("opens bible categories and keeps AI actions tied to the selected writing context", () => {
     render(<WorkspacePage />);
 

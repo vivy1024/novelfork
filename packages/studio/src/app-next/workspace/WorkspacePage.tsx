@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { ResourceWorkspaceLayout, SectionLayout } from "../components/layouts";
+import { useAiModelGate } from "../../hooks/use-ai-model-gate";
 import {
   buildStudioResourceTree,
   type GeneratedChapterCandidate,
@@ -8,6 +9,7 @@ import {
   type StudioResourceTreeInput,
 } from "./resource-adapter";
 import { fetchJson } from "../../hooks/use-api";
+import type { AiAction, AiGateResult } from "../../lib/ai-gate";
 import type { BookDetail, ChapterSummary } from "../../shared/contracts";
 
 const SAMPLE_BOOK: BookDetail = {
@@ -61,9 +63,30 @@ export interface WorkspaceCandidateApi {
   readonly rejectCandidate: (bookId: string, candidateId: string) => Promise<void>;
 }
 
+export type WorkspaceAssistantActionId = "write-next" | "continue" | "audit" | "rewrite" | "de-ai" | "continuity";
+
+export interface WorkspaceAssistantContext {
+  readonly bookId: string;
+  readonly chapterNumber?: number;
+  readonly selectedNodeId: string;
+  readonly selectedNodeTitle: string;
+}
+
+export interface WorkspaceAssistantApi {
+  readonly runAction: (action: WorkspaceAssistantActionId, context: WorkspaceAssistantContext) => Promise<{ readonly message: string }>;
+}
+
+export interface WorkspaceModelGate {
+  readonly blockedResult: Extract<AiGateResult, { ok: false }> | null;
+  readonly closeGate: () => void;
+  readonly ensureModelFor: (action: AiAction) => boolean;
+}
+
 interface WorkspacePageProps {
+  readonly assistantApi?: WorkspaceAssistantApi;
   readonly candidateApi?: WorkspaceCandidateApi;
   readonly chapterApi?: WorkspaceChapterApi;
+  readonly modelGate?: WorkspaceModelGate;
 }
 
 const DEFAULT_CHAPTER_API: WorkspaceChapterApi = {
@@ -90,7 +113,24 @@ const DEFAULT_CANDIDATE_API: WorkspaceCandidateApi = {
   },
 };
 
-export function WorkspacePage({ candidateApi = DEFAULT_CANDIDATE_API, chapterApi = DEFAULT_CHAPTER_API }: WorkspacePageProps = {}) {
+const DEFAULT_ASSISTANT_API: WorkspaceAssistantApi = {
+  runAction: async (action, context) => {
+    if (action === "write-next") {
+      await fetchJson(`/books/${context.bookId}/write-next`, { method: "POST" });
+      return { message: "AI 输出已进入生成章节候选" };
+    }
+    throw new Error("该 AI 动作尚未接入写作工具，未生成候选稿。");
+  },
+};
+
+export function WorkspacePage({
+  assistantApi = DEFAULT_ASSISTANT_API,
+  candidateApi = DEFAULT_CANDIDATE_API,
+  chapterApi = DEFAULT_CHAPTER_API,
+  modelGate,
+}: WorkspacePageProps = {}) {
+  const runtimeModelGate = useAiModelGate();
+  const effectiveModelGate = modelGate ?? runtimeModelGate;
   const tree = useMemo(() => buildStudioResourceTree(SAMPLE_INPUT), []);
   const [selectedNodeId, setSelectedNodeId] = useState("chapter:book-1:1");
   const selectedNode = findNode(tree, selectedNodeId) ?? tree[0]!;
@@ -118,7 +158,7 @@ export function WorkspacePage({ candidateApi = DEFAULT_CANDIDATE_API, chapterApi
       <ResourceWorkspaceLayout
         explorer={<ResourceTree nodes={tree} selectedNodeId={selectedNode.id} onSelect={setSelectedNodeId} />}
         editor={<WorkspaceEditor candidateApi={candidateApi} chapterApi={chapterApi} node={selectedNode} />}
-        assistant={<AssistantPanel selectedNode={selectedNode} />}
+        assistant={<AssistantPanel assistantApi={assistantApi} modelGate={effectiveModelGate} selectedNode={selectedNode} />}
       />
     </SectionLayout>
   );
@@ -392,17 +432,71 @@ function EditorHeader({
   );
 }
 
-function AssistantPanel({ selectedNode }: { readonly selectedNode: StudioResourceNode }) {
-  const actions = ["生成下一章", "续写当前段落", "审校当前章", "改写选中段落", "去 AI 味", "连续性检查"];
+const ASSISTANT_ACTIONS: ReadonlyArray<{ readonly id: WorkspaceAssistantActionId; readonly label: string; readonly gate: AiAction }> = [
+  { id: "write-next", label: "生成下一章", gate: "ai-writing" },
+  { id: "continue", label: "续写当前段落", gate: "ai-rewrite" },
+  { id: "audit", label: "审校当前章", gate: "ai-review" },
+  { id: "rewrite", label: "改写选中段落", gate: "ai-rewrite" },
+  { id: "de-ai", label: "去 AI 味", gate: "deep-ai-taste-scan" },
+  { id: "continuity", label: "连续性检查", gate: "ai-review" },
+];
+
+function AssistantPanel({
+  assistantApi,
+  modelGate,
+  selectedNode,
+}: {
+  readonly assistantApi: WorkspaceAssistantApi;
+  readonly modelGate: WorkspaceModelGate;
+  readonly selectedNode: StudioResourceNode;
+}) {
+  const [runningAction, setRunningAction] = useState<WorkspaceAssistantActionId | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const context: WorkspaceAssistantContext = {
+    bookId: typeof selectedNode.metadata?.bookId === "string" ? selectedNode.metadata.bookId : SAMPLE_BOOK.id,
+    chapterNumber: typeof selectedNode.metadata?.chapterNumber === "number" ? selectedNode.metadata.chapterNumber : undefined,
+    selectedNodeId: selectedNode.id,
+    selectedNodeTitle: selectedNode.title,
+  };
+
+  const handleAction = (action: (typeof ASSISTANT_ACTIONS)[number]) => {
+    setActionMessage(null);
+    setActionError(null);
+    if (!modelGate.ensureModelFor(action.gate)) {
+      return;
+    }
+    setRunningAction(action.id);
+    assistantApi.runAction(action.id, context)
+      .then((result) => setActionMessage(result.message))
+      .catch((error: unknown) => setActionError(error instanceof Error ? error.message : String(error)))
+      .finally(() => setRunningAction(null));
+  };
 
   return (
     <div className="space-y-4">
       <h2 className="text-base font-semibold">AI / 经纬面板</h2>
       <div className="rounded-xl border border-border bg-muted/30 p-3 text-sm text-muted-foreground">当前上下文：{selectedNode.title}</div>
-      {actions.map((label) => (
-        <button key={label} className="w-full rounded-xl border border-border px-3 py-2 text-left text-sm hover:bg-muted" type="button">
-          {label}
-          <span className="ml-2 text-xs text-muted-foreground">输出到候选稿</span>
+      {modelGate.blockedResult && (
+        <div className="rounded-xl border border-border bg-muted/30 p-3 text-sm">
+          <div className="font-medium">AI Gate</div>
+          <p className="mt-1 text-muted-foreground">{modelGate.blockedResult.message}</p>
+          <button className="mt-2 text-xs text-primary hover:underline" onClick={modelGate.closeGate} type="button">关闭</button>
+        </div>
+      )}
+      {actionMessage && <div className="rounded-xl border border-border bg-muted/30 p-3 text-sm">{actionMessage}</div>}
+      {actionError && <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">AI 动作失败：{actionError}</div>}
+      {ASSISTANT_ACTIONS.map((action) => (
+        <button
+          key={action.id}
+          className="w-full rounded-xl border border-border px-3 py-2 text-left text-sm hover:bg-muted disabled:opacity-50"
+          disabled={runningAction !== null}
+          onClick={() => handleAction(action)}
+          type="button"
+        >
+          {action.label}
+          <span className="ml-2 text-xs text-muted-foreground">{runningAction === action.id ? "运行中" : "输出到候选稿"}</span>
         </button>
       ))}
       <div className="rounded-xl border border-border bg-muted/30 p-3 text-sm">
