@@ -158,31 +158,24 @@ describe("WorkspacePage", () => {
     expect(screen.getByText("此功能需要配置 AI 模型。")).toBeTruthy();
   });
 
-  it("shows bible material related to the selected chapter in the right panel", async () => {
-    const loadRelated = vi.fn(async () => ({
-      characters: [{ id: "char-1", name: "林澈", summary: "灵潮见证者" }],
-      locations: [{ id: "loc-1", name: "青岚城", summary: "第一卷主城" }],
-      foreshadowing: [{ id: "f-1", title: "灵潮异动", summary: "后续主线伏笔" }],
-      summaries: [{ id: "s-1", title: "前文摘要", summary: "主角第一次感知灵潮。" }],
-    }));
-    render(<WorkspacePage bibleApi={{ loadRelated }} />);
+  it("shows bible panel with tab switching in the right panel", () => {
+    render(<WorkspacePage />);
 
-    await waitFor(() => expect(loadRelated).toHaveBeenCalledWith(expect.objectContaining({ bookId: "book-1", selectedNodeTitle: "第一章 灵潮初起" })));
-    expect(screen.getByText("相关经纬：第一章 灵潮初起")).toBeTruthy();
-    expect(screen.getByText("人物：林澈")).toBeTruthy();
-    expect(screen.getByText("地点：青岚城")).toBeTruthy();
-    expect(screen.getByText("伏笔：灵潮异动")).toBeTruthy();
-    expect(screen.getByText("前文摘要：前文摘要")).toBeTruthy();
+    const assistant = screen.getByRole("complementary", { name: "AI 与经纬面板" });
+    expect(within(assistant).getByText("经纬资料库")).toBeTruthy();
+    expect(within(assistant).getByRole("button", { name: "人物" })).toBeTruthy();
+    expect(within(assistant).getByRole("button", { name: "事件" })).toBeTruthy();
+    expect(within(assistant).getByRole("button", { name: "设定" })).toBeTruthy();
+    expect(within(assistant).getByRole("button", { name: "摘要" })).toBeTruthy();
   });
 
-  it("shows bible create/link CTAs when the selected chapter has no related material", async () => {
-    const loadRelated = vi.fn(async () => ({ characters: [], locations: [], foreshadowing: [], summaries: [] }));
-    render(<WorkspacePage bibleApi={{ loadRelated }} />);
+  it("shows create form for bible entries in the right panel", () => {
+    render(<WorkspacePage />);
 
-    await waitFor(() => expect(screen.getByText("当前章节暂无关联经纬资料")).toBeTruthy());
-    expect(screen.getAllByRole("button", { name: "创建经纬条目" }).length).toBeGreaterThan(0);
-    expect(screen.getByRole("button", { name: "关联已有资料" })).toBeTruthy();
-    expect(screen.getByText("抽取到经纬：未接入"));
+    const assistant = screen.getByRole("complementary", { name: "AI 与经纬面板" });
+    fireEvent.click(within(assistant).getByRole("button", { name: /新建人物/ }));
+    expect(within(assistant).getByLabelText("人物名称")).toBeTruthy();
+    expect(within(assistant).getByLabelText("人物内容")).toBeTruthy();
   });
 
   it("opens bible categories and keeps AI actions tied to the selected writing context", () => {
