@@ -1,12 +1,9 @@
-import { useEffect, useState } from "react";
-
-import { ProfilePanel } from "../../pages/settings/ProfilePanel";
-import { AppearancePanel } from "../../pages/settings/AppearancePanel";
-import { RuntimeControlPanel } from "../../pages/settings/RuntimeControlPanel";
-import { MonitoringPanel } from "../../pages/settings/MonitoringPanel";
-import { DataPanel } from "../../pages/settings/DataPanel";
-import { useTheme } from "../../hooks/use-theme";
-import { useApi, putApi } from "../../hooks/use-api";
+import { RuntimeControlPanel } from "./panels/RuntimeControlPanel";
+import { useApi } from "../../hooks/use-api";
+import { ProfilePanel } from "./panels/ProfilePanel";
+import { AppearancePanel } from "./panels/AppearancePanel";
+import { MonitoringPanel } from "./panels/MonitoringPanel";
+import { DataPanel } from "./panels/DataPanel";
 import { InlineError } from "../components/feedback";
 import { ProjectConfigSection } from "./ProjectConfigSection";
 
@@ -18,7 +15,7 @@ interface SettingsSectionContentProps {
 export function SettingsSectionContent({ sectionId, onSectionChange }: SettingsSectionContentProps) {
   switch (sectionId) {
     case "profile":
-      return <ProfileWrapper />;
+      return <ProfilePanel />;
     case "models":
       return <ModelsSection onSectionChange={onSectionChange} />;
     case "agents":
@@ -26,13 +23,13 @@ export function SettingsSectionContent({ sectionId, onSectionChange }: SettingsS
     case "notifications":
       return <NotificationsSection />;
     case "appearance":
-      return <AppearanceWrapper />;
+      return <AppearancePanel />;
     case "server":
       return <ServerSection />;
     case "storage":
-      return <DataWrapper />;
+      return <DataPanel />;
     case "resources":
-      return <MonitoringWrapper />;
+      return <MonitoringPanel />;
     case "history":
       return <HistorySection />;
     case "config":
@@ -42,26 +39,6 @@ export function SettingsSectionContent({ sectionId, onSectionChange }: SettingsS
     default:
       return <ModelsSection onSectionChange={onSectionChange} />;
   }
-}
-
-function ProfileWrapper() {
-  const theme = useTheme();
-  return <ProfilePanel theme={theme} />;
-}
-
-function AppearanceWrapper() {
-  const theme = useTheme();
-  return <AppearancePanel theme={theme} onThemeChange={() => {}} />;
-}
-
-function DataWrapper() {
-  const theme = useTheme();
-  return <DataPanel theme={theme} />;
-}
-
-function MonitoringWrapper() {
-  const theme = useTheme();
-  return <MonitoringPanel theme={theme} />;
 }
 
 /* ── Models: read-only display + link to providers ── */

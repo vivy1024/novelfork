@@ -10,20 +10,6 @@ vi.mock("../hooks/use-api", () => ({
   putApi: vi.fn().mockResolvedValue({}),
 }));
 
-vi.mock("../hooks/use-theme", () => ({
-  useTheme: () => "light" as const,
-}));
-
-vi.mock("../hooks/use-colors", () => ({
-  useColors: () => ({
-    card: "", cardStatic: "border-border", surface: "", muted: "", subtle: "",
-    link: "", input: "border border-border", btnPrimary: "bg-primary text-primary-foreground",
-    btnSecondary: "", btnSuccess: "", btnDanger: "", tableHeader: "", tableDivide: "",
-    tableHover: "", error: "", info: "", code: "", active: "", paused: "", mono: "",
-    text: "", textSecondary: "", bg: "", bgSecondary: "", border: "", accent: "",
-  }),
-}));
-
 vi.mock("../hooks/use-ai-model-gate", () => ({
   useAiModelGate: () => ({ blockedResult: null, closeGate: vi.fn(), ensureModelFor: vi.fn(() => true) }),
 }));
@@ -33,7 +19,7 @@ vi.mock("../components/InkEditor", () => ({
   InkEditor: vi.fn(() => null),
 }));
 
-import { resolveStudioEntryMode, resolveStudioNextRoute } from "./entry";
+import { resolveStudioNextRoute } from "./entry";
 import { StudioNextApp } from "./StudioNextApp";
 
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
@@ -57,24 +43,13 @@ beforeEach(() => {
 });
 
 describe("Studio Next routing", () => {
-  it("preserves legacy routes — non-/next paths stay on legacy entry", () => {
-    expect(resolveStudioEntryMode("/")).toBe("legacy");
-    expect(resolveStudioEntryMode("/books/demo")).toBe("legacy");
-    expect(resolveStudioEntryMode("/settings")).toBe("legacy");
-    expect(resolveStudioEntryMode("/routines")).toBe("legacy");
-  });
-
-  it("routes /next paths to the new entry", () => {
-    expect(resolveStudioEntryMode("/next")).toBe("next");
-    expect(resolveStudioEntryMode("/next/settings")).toBe("next");
-    expect(resolveStudioEntryMode("/next/routines")).toBe("next");
-    expect(resolveStudioEntryMode("/next/workspace")).toBe("next");
-  });
-
-  it("resolves sub-routes within the new entry", () => {
+  it("resolves sub-routes within the entry", () => {
     expect(resolveStudioNextRoute("/next")).toBe("workspace");
+    expect(resolveStudioNextRoute("/next/dashboard")).toBe("dashboard");
     expect(resolveStudioNextRoute("/next/settings")).toBe("settings");
     expect(resolveStudioNextRoute("/next/routines")).toBe("routines");
+    expect(resolveStudioNextRoute("/next/workflow")).toBe("workflow");
+    expect(resolveStudioNextRoute("/next/search")).toBe("search");
     expect(resolveStudioNextRoute("/next/unknown")).toBe("workspace");
   });
 

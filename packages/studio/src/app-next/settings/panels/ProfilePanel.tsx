@@ -1,16 +1,9 @@
 import { useState, useEffect } from "react";
-import { useColors } from "../../hooks/use-colors";
-import type { Theme } from "../../hooks/use-theme";
-import { fetchJson, putApi } from "../../hooks/use-api";
-import type { UserProfile } from "../../types/settings";
+import { fetchJson, putApi } from "../../../hooks/use-api";
+import type { UserProfile } from "../../../types/settings";
 import { User, Mail, GitBranch } from "lucide-react";
 
-interface Props {
-  theme: Theme;
-}
-
-export function ProfilePanel({ theme }: Props) {
-  const c = useColors(theme);
+export function ProfilePanel() {
   const [profile, setProfile] = useState<UserProfile>({
     name: "",
     email: "",
@@ -51,7 +44,7 @@ export function ProfilePanel({ theme }: Props) {
         </p>
       </div>
 
-      <div className={c.cardStatic + " space-y-4"}>
+      <div className="rounded-lg border border-border p-4 space-y-4">
         <div>
           <label className="flex items-center gap-2 text-sm font-medium mb-2 text-foreground">
             <User className="w-4 h-4" />
@@ -61,7 +54,7 @@ export function ProfilePanel({ theme }: Props) {
             type="text"
             value={profile.name}
             onChange={(e) => setProfile({ ...profile, name: e.target.value })}
-            className={c.input}
+            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:ring-2 focus:ring-primary/20"
             placeholder="您的姓名"
           />
         </div>
@@ -75,7 +68,7 @@ export function ProfilePanel({ theme }: Props) {
             type="email"
             value={profile.email}
             onChange={(e) => setProfile({ ...profile, email: e.target.value })}
-            className={c.input}
+            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:ring-2 focus:ring-primary/20"
             placeholder="your@email.com"
           />
         </div>
@@ -94,7 +87,7 @@ export function ProfilePanel({ theme }: Props) {
                 type="text"
                 value={profile.gitName || ""}
                 onChange={(e) => setProfile({ ...profile, gitName: e.target.value })}
-                className={c.input}
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:ring-2 focus:ring-primary/20"
                 placeholder="用于 Git 提交的用户名"
               />
             </div>
@@ -106,7 +99,7 @@ export function ProfilePanel({ theme }: Props) {
                 type="email"
                 value={profile.gitEmail || ""}
                 onChange={(e) => setProfile({ ...profile, gitEmail: e.target.value })}
-                className={c.input}
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:ring-2 focus:ring-primary/20"
                 placeholder="用于 Git 提交的邮箱"
               />
             </div>
@@ -117,7 +110,7 @@ export function ProfilePanel({ theme }: Props) {
           <button
             onClick={handleSave}
             disabled={saving}
-            className={c.btnPrimary}
+            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
           >
             {saving ? "保存中..." : "保存"}
           </button>

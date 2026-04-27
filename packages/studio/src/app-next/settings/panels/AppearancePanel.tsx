@@ -1,17 +1,9 @@
 import { useState, useEffect } from "react";
-import { useColors } from "../../hooks/use-colors";
-import type { Theme } from "../../hooks/use-theme";
-import { fetchJson, putApi } from "../../hooks/use-api";
-import { DEFAULT_USER_CONFIG, type UserPreferences } from "../../types/settings";
+import { fetchJson, putApi } from "../../../hooks/use-api";
+import { DEFAULT_USER_CONFIG, type UserPreferences } from "../../../types/settings";
 import { Sun, Moon, Monitor, Type } from "lucide-react";
 
-interface Props {
-  theme: Theme;
-  onThemeChange: (theme: "light" | "dark" | "auto") => void;
-}
-
-export function AppearancePanel({ theme, onThemeChange }: Props) {
-  const c = useColors(theme);
+export function AppearancePanel() {
   const [preferences, setPreferences] = useState<UserPreferences>(DEFAULT_USER_CONFIG.preferences);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -27,7 +19,6 @@ export function AppearancePanel({ theme, onThemeChange }: Props) {
 
   async function handleThemeChange(newTheme: "light" | "dark" | "auto") {
     setPreferences({ ...preferences, theme: newTheme });
-    onThemeChange(newTheme);
     setSaving(true);
     try {
       await putApi("/settings/theme", { theme: newTheme });
@@ -50,6 +41,12 @@ export function AppearancePanel({ theme, onThemeChange }: Props) {
     return <div className="text-muted-foreground">加载中...</div>;
   }
 
+  const themeOptions = [
+    { value: "light" as const, icon: Sun, label: "浅色" },
+    { value: "dark" as const, icon: Moon, label: "深色" },
+    { value: "auto" as const, icon: Monitor, label: "跟随系统" },
+  ];
+
   return (
     <div className="space-y-6">
       <div>
@@ -59,46 +56,27 @@ export function AppearancePanel({ theme, onThemeChange }: Props) {
         </p>
       </div>
 
-      <div className={c.cardStatic + " space-y-6"}>
+      <div className="rounded-lg border border-border p-4 space-y-6">
         {/* 主题选择 */}
         <div>
           <label className="text-sm font-medium mb-3 block text-foreground">
             主题模式
           </label>
           <div className="grid grid-cols-3 gap-3">
-            <button
-              onClick={() => handleThemeChange("light")}
-              className={`flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-colors ${
-                preferences.theme === "light"
-                  ? "border-primary bg-primary/5"
-                  : "border-border hover:border-primary/50"
-              }`}
-            >
-              <Sun className="w-6 h-6" />
-              <span className="text-sm font-medium">浅色</span>
-            </button>
-            <button
-              onClick={() => handleThemeChange("dark")}
-              className={`flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-colors ${
-                preferences.theme === "dark"
-                  ? "border-primary bg-primary/5"
-                  : "border-border hover:border-primary/50"
-              }`}
-            >
-              <Moon className="w-6 h-6" />
-              <span className="text-sm font-medium">深色</span>
-            </button>
-            <button
-              onClick={() => handleThemeChange("auto")}
-              className={`flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-colors ${
-                preferences.theme === "auto"
-                  ? "border-primary bg-primary/5"
-                  : "border-border hover:border-primary/50"
-              }`}
-            >
-              <Monitor className="w-6 h-6" />
-              <span className="text-sm font-medium">跟随系统</span>
-            </button>
+            {themeOptions.map(({ value, icon: Icon, label }) => (
+              <button
+                key={value}
+                onClick={() => handleThemeChange(value)}
+                className={`flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-colors ${
+                  preferences.theme === value
+                    ? "border-primary bg-primary/5"
+                    : "border-border hover:border-primary/50"
+                }`}
+              >
+                <Icon className="w-6 h-6" />
+                <span className="text-sm font-medium">{label}</span>
+              </button>
+            ))}
           </div>
         </div>
 
@@ -134,7 +112,7 @@ export function AppearancePanel({ theme, onThemeChange }: Props) {
           <select
             value={preferences.fontFamily}
             onChange={(e) => setPreferences({ ...preferences, fontFamily: e.target.value })}
-            className={c.input}
+            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:ring-2 focus:ring-primary/20"
           >
             <option value="system-ui, -apple-system, sans-serif">系统默认</option>
             <option value="'Segoe UI', Tahoma, Geneva, Verdana, sans-serif">Segoe UI</option>

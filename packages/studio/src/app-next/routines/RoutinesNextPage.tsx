@@ -8,7 +8,7 @@ import { SkillsTab } from "../../components/Routines/SkillsTab";
 import { SubAgentsTab } from "../../components/Routines/SubAgentsTab";
 import { ToolsTab } from "../../components/Routines/ToolsTab";
 import { ROUTINES_SCOPE_META, useRoutinesEditor } from "../../components/Routines/use-routines-editor";
-import { MCPServerManager } from "../../pages/MCPServerManager";
+import { MCPServerPanel } from "./MCPServerPanel";
 import type { Routines as RoutinesConfig } from "../../types/routines";
 import { InlineError } from "../components/feedback";
 
@@ -277,7 +277,7 @@ function RoutineSectionEditor({
       return (
         <div className="space-y-4">
           <MCPToolsTab mcpTools={routines.mcpTools} onChange={(mcpTools) => setRoutines({ ...routines, mcpTools })} />
-          <MCPServerManager nav={{}} theme="light" t={(key: string) => key} />
+          <MCPServerPanel />
         </div>
       );
     case "hooks":

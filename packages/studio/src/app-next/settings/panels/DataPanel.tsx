@@ -1,16 +1,9 @@
 import { useState } from "react";
-import { useColors } from "../../hooks/use-colors";
-import type { Theme } from "../../hooks/use-theme";
-import { fetchJson } from "../../hooks/use-api";
+import { fetchJson } from "../../../hooks/use-api";
 import { notify } from "@/lib/notify";
 import { Download, Upload, FileJson } from "lucide-react";
 
-interface Props {
-  theme: Theme;
-}
-
-export function DataPanel({ theme }: Props) {
-  const c = useColors(theme);
+export function DataPanel() {
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
 
@@ -45,12 +38,10 @@ export function DataPanel({ theme }: Props) {
         const text = await file.text();
         const config = JSON.parse(text);
 
-        // 验证配置格式
         if (!config.profile || !config.preferences) {
           throw new Error("配置文件格式不正确");
         }
 
-        // 导入配置
         await fetch("/settings/user", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -77,7 +68,7 @@ export function DataPanel({ theme }: Props) {
         </p>
       </div>
 
-      <div className={c.cardStatic + " space-y-6"}>
+      <div className="rounded-lg border border-border p-4 space-y-6">
         {/* 导出配置 */}
         <div>
           <div className="flex items-center gap-3 mb-3">
@@ -94,7 +85,7 @@ export function DataPanel({ theme }: Props) {
           <button
             onClick={handleExport}
             disabled={exporting}
-            className={c.btnPrimary}
+            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
           >
             {exporting ? "导出中..." : "导出配置"}
           </button>
@@ -116,7 +107,7 @@ export function DataPanel({ theme }: Props) {
           <button
             onClick={handleImport}
             disabled={importing}
-            className={c.btnSecondary}
+            className="rounded-lg bg-secondary px-4 py-2 text-sm text-secondary-foreground hover:bg-secondary/80"
           >
             {importing ? "导入中..." : "导入配置"}
           </button>
