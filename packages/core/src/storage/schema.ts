@@ -375,6 +375,24 @@ export const storyJingweiEntries = sqliteTable(
   ],
 );
 
+export const writingLogs = sqliteTable(
+  "writing_log",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    bookId: text("book_id")
+      .notNull()
+      .references(() => books.id, { onDelete: "cascade" }),
+    chapterNumber: integer("chapter_number").notNull(),
+    wordCount: integer("word_count").notNull(),
+    completedAt: text("completed_at").notNull(),
+    date: text("date").notNull(),
+  },
+  (table) => [
+    index("writing_log_book_date_idx").on(table.bookId, table.date),
+    index("writing_log_date_idx").on(table.date),
+  ],
+);
+
 export const drizzleMigrations = sqliteTable("drizzle_migrations", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   hash: text("hash").notNull().unique(),

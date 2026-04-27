@@ -52,6 +52,10 @@ describe("routeToTabId", () => {
   it('sessions defaults to "sessions"', () => {
     expect(routeToTabId({ page: "sessions" })).toBe("sessions");
   });
+
+  it('publish-readiness bookId "demo" → "publish-readiness:demo"', () => {
+    expect(routeToTabId({ page: "publish-readiness", bookId: "demo" })).toBe("publish-readiness:demo");
+  });
 });
 
 describe("routeToTabLabel", () => {
@@ -69,6 +73,11 @@ describe("routeToTabLabel", () => {
 
   it('bible route uses the visible "经纬" label', () => {
     expect(routeToTabLabel({ page: "bible", bookId: "demo" })).toBe("经纬 · demo");
+  });
+
+  it('publish-readiness route uses the visible label', () => {
+    expect(routeToTabId({ page: "publish-readiness", bookId: "demo" })).toBe("publish-readiness:demo");
+    expect(routeToTabLabel({ page: "publish-readiness", bookId: "demo" })).toBe("发布就绪检查");
   });
 
   it('chapter → "章节 {n}"', () => {

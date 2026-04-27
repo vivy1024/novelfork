@@ -23,6 +23,9 @@ describe("NewSessionDialog", () => {
       agentId: "writer",
       title: "Writer 会话",
       sessionMode: "chat",
+      sessionConfig: {
+        permissionMode: "edit",
+      },
     });
 
     expect(onOpenChange).toHaveBeenCalledWith(false);
@@ -69,6 +72,9 @@ describe("NewSessionDialog", () => {
       agentId: "continuity-auditor",
       title: "连续性排查",
       sessionMode: "chat",
+      sessionConfig: {
+        permissionMode: "read",
+      },
     });
   });
 });

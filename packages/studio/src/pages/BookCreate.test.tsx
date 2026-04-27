@@ -311,7 +311,7 @@ describe("BookCreate", () => {
     });
   });
 
-  it("applies a recommended bundle and lets authors remove or replace individual presets before create", async () => {
+  it("applies a recommended bundle and lets authors toggle individual preset items before create", async () => {
     const nav = {
       toDashboard: vi.fn(),
       toBook: vi.fn(),
@@ -343,25 +343,30 @@ describe("BookCreate", () => {
       />,
     );
 
-    expect(screen.getByText("推荐创作组合")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: /应用「凡人宗门修仙」/ }));
-    expect(screen.getByText("已选择组合：凡人宗门修仙")).toBeTruthy();
-    expect(screen.getByRole("switch", { name: "启用预设 冷峻质朴" }).getAttribute("aria-checked")).toBe("true");
-    expect(screen.getByRole("switch", { name: "启用预设 宗门家族修仙社会" }).getAttribute("aria-checked")).toBe("true");
-    expect(screen.getByRole("switch", { name: "启用预设 信息传播速度" }).getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByText("写作预设")).toBeTruthy();
+    const bundleButton = screen.getByRole("button", { name: /凡人宗门修仙/ });
+    fireEvent.click(bundleButton);
+    expect(bundleButton.getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByText("启用项")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "austere-pragmatic" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("button", { name: "sect-family-xianxia" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("button", { name: "information-flow" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByText("适合：凡人流")).toBeTruthy();
+    expect(screen.getByText("不适合：纯沙雕")).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("switch", { name: "启用预设 信息传播速度" }));
-    fireEvent.click(screen.getByRole("button", { name: /改用 悲苦孤独/ }));
-    fireEvent.click(screen.getByRole("button", { name: /改用 朝堂民生基底/ }));
-    fireEvent.click(screen.getByRole("button", { name: /新增 机构响应/ }));
+    fireEvent.click(screen.getByRole("button", { name: "information-flow" }));
+    expect(screen.getByRole("button", { name: "information-flow" }).getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(screen.getByRole("button", { name: "information-flow" }));
+    expect(screen.getByRole("button", { name: "information-flow" }).getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "austere-pragmatic" }));
+    expect(screen.getByRole("button", { name: "austere-pragmatic" }).getAttribute("aria-pressed")).toBe("false");
     fireEvent.click(screen.getByRole("button", { name: "创建本地书籍" }));
 
     await waitFor(() => {
       expect(postApiMock).toHaveBeenCalledWith("/books/create", expect.objectContaining({
         enabledPresetIds: [
-          "tragic-solitude",
-          "historical-court-livelihood",
-          "institution-response",
+          "sect-family-xianxia",
+          "information-flow",
         ],
       }));
     });

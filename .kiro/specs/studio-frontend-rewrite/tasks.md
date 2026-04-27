@@ -12,20 +12,20 @@
 
 ## Tasks
 
-- [ ] 1. 建立前端重写边界与旧前端冻结说明
+- [x] 1. 建立前端重写边界与旧前端冻结说明
   - 在 spec 或项目开发说明中明确：旧 `packages/studio/src` 页面只允许构建/安全/阻塞级 bug 修复，不继续做 UIUX patch。
   - 记录新前端入口、旧前端回退策略、旧页面删除条件。
   - 验收：开发文档中能看到“冻结旧前端 → 旁路重写 → 验收替换 → 删除旧页面”的执行顺序。
   - 覆盖 Requirements 1、9、10。
 
-- [ ] 2. 创建新前端隔离入口骨架
+- [x] 2. 创建新前端隔离入口骨架
   - 在 `packages/studio/src/app-next/` 下创建新前端入口、路由和顶层 shell。
   - 新入口只复用 API client、基础 shadcn/ui、主题 token，不引用旧 `App.tsx` 的页面组织。
   - 提供临时开发入口，例如 `/next` 或可切换的 dev route。
   - 验收：浏览器能打开新入口，显示空的 Studio Next shell，旧前端仍可访问。
   - 覆盖 Requirements 1、8、9。
 
-- [ ] 3. 实现新前端通用布局基元
+- [x] 3. 实现新前端通用布局基元
   - 新增或迁移 `NextShell`、`SectionLayout`、`SettingsLayout`、`ResourceWorkspaceLayout`。
   - `SettingsLayout` 必须支持左侧固定分区导航、右侧当前分区详情。
   - `ResourceWorkspaceLayout` 必须支持左侧资源管理器、中间主编辑器、右侧 AI/经纬面板。
@@ -33,7 +33,7 @@
   - 验收：布局 story/test 覆盖三个区域、滚动边界、弹窗层级。
   - 覆盖 Requirements 2、3、4、8、13。
 
-- [ ] 4. 梳理并固化可复用旧代码清单
+- [x] 4. 梳理并固化可复用旧代码清单
   - 建立实现前检查表，逐项引用已有代码：`SettingsView`、`RuntimeControlPanel`、`ReleaseOverview`、`Routines`、`types/routines.ts`、`api/routes/routines.ts`、`components/writing-tools/*`、`components/compliance/*`、`BibleView`、`api/routes/bible.ts`、`BookDetail`、`ChapterReader`。
   - 对每一项标记：直接复用、迁移包裹、重写布局但复用逻辑、暂不接入。
   - 明确吸收仍在进行的前端任务边界：`writing-modes-v1` Tasks 12-16、`writing-tools-v1` Tasks 21-24、`platform-compliance-v1` 已完成组件。

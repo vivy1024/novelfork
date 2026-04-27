@@ -1328,7 +1328,7 @@ describe("createStudioServer daemon lifecycle", () => {
   });
 
   it("uses rollback semantics for chapter rejection instead of only flipping status", async () => {
-    loadChapterIndexMock.mockResolvedValue([
+    const chapterIndex = [
       {
         number: 3,
         title: "Broken Chapter",
@@ -1349,7 +1349,13 @@ describe("createStudioServer daemon lifecycle", () => {
         auditIssues: [],
         lengthWarnings: [],
       },
-    ]);
+    ];
+    await mkdir(join(root, "books", "demo-book", "chapters"), { recursive: true });
+    await writeFile(
+      join(root, "books", "demo-book", "chapters", "index.json"),
+      JSON.stringify(chapterIndex, null, 2),
+      "utf-8",
+    );
     rollbackToChapterMock.mockResolvedValue([3, 4]);
 
     const { createStudioServer } = await import("./server.js");
