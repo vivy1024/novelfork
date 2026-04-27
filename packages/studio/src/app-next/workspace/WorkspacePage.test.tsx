@@ -1,5 +1,5 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { WorkspacePage } from "./WorkspacePage";
 
@@ -22,6 +22,36 @@ describe("WorkspacePage", () => {
     expect(within(editor).getByText(/章节状态：approved/)).toBeTruthy();
     expect(within(editor).getByLabelText("章节正文")).toBeTruthy();
     expect(within(editor).getByText("生成稿 vs 已有章节")).toBeTruthy();
+  });
+
+  it("loads, edits and saves existing chapter content through the migrated chapter API", async () => {
+    const loadChapter = vi.fn(async () => ({ content: "远端正式正文" }));
+    const saveChapter = vi.fn(async () => undefined);
+    render(<WorkspacePage chapterApi={{ loadChapter, saveChapter }} />);
+
+    const explorer = screen.getByRole("complementary", { name: "小说资源管理器" });
+    fireEvent.click(within(explorer).getByRole("button", { name: /第一章 灵潮初起/ }));
+    await waitFor(() => expect(screen.getByDisplayValue("远端正式正文")).toBeTruthy());
+
+    fireEvent.change(screen.getByLabelText("章节正文"), { target: { value: "修改后的正文" } });
+    expect(screen.getByText(/保存状态：未保存/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => expect(saveChapter).toHaveBeenCalledWith("book-1", 1, "修改后的正文"));
+    expect(screen.getByText(/保存状态：已保存/)).toBeTruthy();
+  });
+
+  it("shows save errors without losing unsaved chapter edits", async () => {
+    const loadChapter = vi.fn(async () => ({ content: "远端正式正文" }));
+    const saveChapter = vi.fn(async () => { throw new Error("disk full"); });
+    render(<WorkspacePage chapterApi={{ loadChapter, saveChapter }} />);
+
+    await waitFor(() => expect(screen.getByDisplayValue("远端正式正文")).toBeTruthy());
+    fireEvent.change(screen.getByLabelText("章节正文"), { target: { value: "仍需保留" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => expect(screen.getByText("保存失败：disk full")).toBeTruthy());
+    expect(screen.getByDisplayValue("仍需保留")).toBeTruthy();
   });
 
   it("opens generated candidates as non-destructive candidate drafts with explicit actions", () => {
