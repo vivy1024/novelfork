@@ -85,7 +85,7 @@
   - 验收：每个分区至少有总览/状态/可操作项之一，未接入项明确标注。
   - 覆盖 Requirements 7、10、12、13。
 
-- [ ] 10. 建立套路页新布局并复用 Routines 读写链
+- [x] 10. 建立套路页新布局并复用 Routines 读写链
   - 新套路页使用 NarraFork 固定 10 分区：命令、可选工具、工具权限、全局技能、项目技能、自定义子代理、全局提示词、系统提示词、MCP 工具、钩子。
   - 复用 `types/routines.ts`、`api/routes/routines.ts`、`use-routines-editor` 的 global / project / merged scope。
   - 保留保存、重置、scope 切换和只读 merged 视图。

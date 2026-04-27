@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { StudioNextApp } from "./StudioNextApp";
@@ -16,7 +16,7 @@ describe("StudioNextApp", () => {
     expect(screen.getByText("AI / 经纬面板")).toBeTruthy();
   });
 
-  it("switches between the first-phase workspace, settings and routines pages", () => {
+  it("switches between the first-phase workspace, settings and routines pages", async () => {
     render(<StudioNextApp initialRoute="workspace" />);
 
     fireEvent.click(screen.getByRole("button", { name: "设置" }));
@@ -30,8 +30,11 @@ describe("StudioNextApp", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "套路" }));
     expect(screen.getByRole("heading", { name: "套路" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "MCP 工具" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "钩子" })).toBeTruthy();
+    await waitFor(() => {
+      const routineNav = screen.getByRole("navigation", { name: "套路分区" });
+      expect(within(routineNav).getByRole("button", { name: /MCP 工具/ })).toBeTruthy();
+      expect(within(routineNav).getByRole("button", { name: /钩子/ })).toBeTruthy();
+    });
 
     fireEvent.click(screen.getByRole("button", { name: "创作工作台" }));
     expect(screen.getByRole("heading", { name: "创作工作台" })).toBeTruthy();
