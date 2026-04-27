@@ -4,6 +4,7 @@ import { resolveStudioNextRoute, type StudioNextRoute } from "./entry";
 import { NextShell, ResourceWorkspaceLayout, SectionLayout, SettingsLayout } from "./components/layouts";
 import { ProviderSettingsPage } from "./settings/ProviderSettingsPage";
 import { SettingsSectionContent } from "./settings/SettingsSectionContent";
+import { RoutinesNextPage } from "./routines/RoutinesNextPage";
 
 interface StudioNextAppProps {
   readonly initialRoute?: StudioNextRoute;
@@ -21,19 +22,6 @@ const SETTINGS_SECTIONS = [
   { id: "resources", label: "运行资源", status: "只读", group: "实例管理" },
   { id: "history", label: "使用历史", status: "可查看", group: "实例管理" },
   { id: "about", label: "关于", status: "可查看", group: "实例管理" },
-] as const;
-
-const ROUTINE_SECTIONS = [
-  "命令",
-  "可选工具",
-  "工具权限",
-  "全局技能",
-  "项目技能",
-  "自定义子代理",
-  "全局提示词",
-  "系统提示词",
-  "MCP 工具",
-  "钩子",
 ] as const;
 
 export function StudioNextApp({ initialRoute }: StudioNextAppProps) {
@@ -141,17 +129,7 @@ function SettingsPage() {
 function RoutinesPage() {
   return (
     <SectionLayout title="套路" description="保留 NarraFork 固定 AI 专业功能集合，复用旧 Routines API 与类型。">
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {ROUTINE_SECTIONS.map((section) => (
-          <article key={section} className="rounded-2xl border border-border bg-card p-4 shadow-sm">
-            <h2 className="text-base font-semibold">{section}</h2>
-            <p className="mt-2 text-sm text-muted-foreground">复用旧 Routines 读写链；缺口明确标记未接入。</p>
-            <button className="mt-4 rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted" type="button">
-              打开{section}
-            </button>
-          </article>
-        ))}
-      </div>
+      <RoutinesNextPage />
     </SectionLayout>
   );
 }
