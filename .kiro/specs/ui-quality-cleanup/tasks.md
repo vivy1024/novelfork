@@ -150,15 +150,15 @@ NarraFork 仪表盘特征：
 5. 无全局搜索框 — NarraFork 顶栏有搜索
 6. 无版本号/退出登录
 
-- [ ] 16. 仪表盘统计卡片升级
+- [x] 16. 仪表盘统计卡片升级
   - "今日 0 字 · 0 章" 改为 2-3 个统计卡片（作品总数/今日字数/今日章节），每个有数字 + 标签 + 可点击。
   - 验收：统计区有视觉层次，可点击跳转。
 
-- [ ] 17. 仪表盘书籍卡片增强
+- [x] 17. 仪表盘书籍卡片增强
   - 每本书卡片加：状态标签（active/paused/outlining 用颜色区分）、最近更新时间、章节进度条。
   - 验收：卡片信息丰富度接近 NarraFork 项目卡片。
 
-- [ ] 18. 顶栏加全局搜索框 + 版本号
+- [x] 18. 顶栏加全局搜索框 + 版本号
   - layouts.tsx 的 header 加搜索 input（点击跳转到 /next/search）。
   - header 右侧加版本号（从 /settings/release 读取）。
   - 品牌名确认为正常大小写 "NovelFork Studio"（第一阶段已修）。
@@ -223,7 +223,7 @@ NarraFork 仪表盘特征：
 
 我们目前只有顶部 5 个 tab 按钮，没有 sidebar。
 
-- [ ] 19. 实现全局 sidebar
+- [x] 19. 实现全局 sidebar
   - 在 layouts.tsx 的 NextShell 中，将顶部 tab 导航改为左侧 sidebar。
   - sidebar 内容：品牌名+版本号、导航入口（仪表盘/创作工作台/工作流/设置/套路，每项有 lucide 图标）、书籍列表（从 /books API 加载）、退出/版本号。
   - 主内容区在 sidebar 右侧。
