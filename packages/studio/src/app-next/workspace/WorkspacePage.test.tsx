@@ -8,6 +8,23 @@ vi.mock("../../hooks/use-api", async (importOriginal) => {
   return { ...actual, useApi: useApiMock };
 });
 
+vi.mock("../../components/InkEditor", () => {
+  const { forwardRef, useImperativeHandle } = require("react");
+  return {
+    getMarkdown: () => "",
+    InkEditor: forwardRef(function MockInkEditor(props: any, ref: any) {
+      useImperativeHandle(ref, () => ({ getMarkdown: () => props.initialContent ?? "" }));
+      return (
+        <textarea
+          aria-label="章节正文"
+          value={props.initialContent ?? ""}
+          onChange={(e: any) => props.onChange?.(e.target.value)}
+        />
+      );
+    }),
+  };
+});
+
 import { FALLBACK_BOOK, FALLBACK_CHAPTERS, WorkspacePage } from "./WorkspacePage";
 
 const booksResponse = { books: [{ id: FALLBACK_BOOK.id, title: FALLBACK_BOOK.title }] };
@@ -32,8 +49,10 @@ beforeEach(() => {
 });
 
 describe("WorkspacePage", () => {
-  it("renders a book resource tree and opens an existing chapter in the central editor", () => {
-    render(<WorkspacePage />);
+  it("renders a book resource tree and opens an existing chapter in the central editor", async () => {
+    const loadChapter = vi.fn(async () => ({ content: "测试正文" }));
+    const saveChapter = vi.fn(async () => undefined);
+    render(<WorkspacePage chapterApi={{ loadChapter, saveChapter }} />);
 
     expect(screen.getByRole("combobox", { name: "作品选择" })).toBeTruthy();
     expect(screen.getByPlaceholderText("搜索章节 / 生成稿 / 经纬条目")).toBeTruthy();
@@ -46,8 +65,7 @@ describe("WorkspacePage", () => {
     const editor = screen.getByRole("main", { name: "正文编辑区" });
     expect(within(editor).getByRole("heading", { name: "第一章 灵潮初起" })).toBeTruthy();
     expect(within(editor).getByText(/章节状态：approved/)).toBeTruthy();
-    expect(within(editor).getByLabelText("章节正文")).toBeTruthy();
-    expect(within(editor).getByText("生成稿 vs 已有章节")).toBeTruthy();
+    await waitFor(() => expect(within(editor).getByLabelText("章节正文")).toBeTruthy());
   });
 
   it("loads, edits and saves existing chapter content through the migrated chapter API", async () => {

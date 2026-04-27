@@ -28,6 +28,11 @@ vi.mock("../hooks/use-ai-model-gate", () => ({
   useAiModelGate: () => ({ blockedResult: null, closeGate: vi.fn(), ensureModelFor: vi.fn(() => true) }),
 }));
 
+vi.mock("../components/InkEditor", () => ({
+  getMarkdown: () => "",
+  InkEditor: vi.fn(() => null),
+}));
+
 import { resolveStudioEntryMode, resolveStudioNextRoute } from "./entry";
 import { StudioNextApp } from "./StudioNextApp";
 
