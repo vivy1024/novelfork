@@ -11,6 +11,11 @@ import {
 import { fetchJson } from "../../hooks/use-api";
 import type { AiAction, AiGateResult } from "../../lib/ai-gate";
 import type { BookDetail, ChapterSummary } from "../../shared/contracts";
+import { ChapterHookGenerator, type GeneratedHookOption } from "../../components/writing-tools/ChapterHookGenerator";
+import { DialogueAnalysis, type DialogueAnalysisResult } from "../../components/writing-tools/DialogueAnalysis";
+import { RhythmChart, type RhythmChartAnalysis } from "../../components/writing-tools/RhythmChart";
+import { DailyProgressTracker } from "../../components/writing-tools/DailyProgressTracker";
+import { InlineError, RunStatus } from "../components/feedback";
 
 const SAMPLE_BOOK: BookDetail = {
   id: "book-1",
@@ -203,7 +208,11 @@ export function WorkspacePage({
             type="search"
           />
         </div>
-        <div className="text-sm text-muted-foreground">运行状态：空闲</div>
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="text-sm text-muted-foreground">运行状态：空闲</span>
+          <a className="rounded-lg border border-border px-2 py-1 text-xs hover:bg-muted" href="#publish-readiness" title="跳转到旧前端发布就绪页面">发布就绪</a>
+          <a className="rounded-lg border border-border px-2 py-1 text-xs hover:bg-muted" href="#presets" title="跳转到旧前端预设管理页面">预设管理</a>
+        </div>
       </div>
 
       <ResourceWorkspaceLayout
@@ -351,7 +360,7 @@ function CandidateEditor({ candidateApi, node }: { readonly candidateApi: Worksp
         </div>
       </div>
       {resultMessage && <div className="rounded-xl border border-border bg-muted/30 p-3 text-sm">{resultMessage}</div>}
-      {actionError && <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">候选稿操作失败：{actionError}</div>}
+      {actionError && <InlineError message={`候选稿操作失败：${actionError}`} />}
       {pendingAction && (
         <div className="rounded-xl border border-border bg-background p-4 text-sm">
           <h3 className="font-semibold">确认{pendingAction === "merge" ? "合并" : "替换"}到正式章节</h3>
@@ -423,7 +432,7 @@ function ChapterEditor({ chapterApi, node }: { readonly chapterApi: WorkspaceCha
     <div className="space-y-4">
       <EditorHeader onSave={() => void handleSave()} saveDisabled={saveStatus === "loading" || saveStatus === "saving"} title={node.title} meta={`章节状态：${node.status ?? "unknown"} · 字数：${countWords(content)} · 保存状态：${statusLabel}`} />
       {saveStatus === "loading" && <div className="rounded-xl border border-border bg-muted/20 p-3 text-sm text-muted-foreground">正在加载章节正文...</div>}
-      {error && <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">保存失败：{error}</div>}
+      {error && <InlineError message={`保存失败：${error}`} />}
       <textarea
         aria-label="章节正文"
         className="min-h-[26rem] w-full resize-none rounded-xl border border-border bg-background p-4 leading-7"
@@ -557,7 +566,8 @@ function AssistantPanel({
         </div>
       )}
       {actionMessage && <div className="rounded-xl border border-border bg-muted/30 p-3 text-sm">{actionMessage}</div>}
-      {actionError && <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">AI 动作失败：{actionError}</div>}
+      {actionError && <InlineError message={`AI 动作失败：${actionError}`} />}
+      {runningAction && <RunStatus action={ASSISTANT_ACTIONS.find((a) => a.id === runningAction)?.label ?? runningAction} running />}
       {ASSISTANT_ACTIONS.map((action) => (
         <button
           key={action.id}
@@ -571,6 +581,101 @@ function AssistantPanel({
         </button>
       ))}
       <BibleRelatedPanel error={bibleError} related={bibleRelated} selectedTitle={selectedNode.title} />
+      <WritingToolsPanel selectedNode={selectedNode} />
+    </div>
+  );
+}
+
+function WritingToolsPanel({ selectedNode }: { readonly selectedNode: StudioResourceNode }) {
+  const [open, setOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<"rhythm" | "dialogue" | "hooks" | "progress">("rhythm");
+  const [rhythmAnalysis, setRhythmAnalysis] = useState<RhythmChartAnalysis | null>(null);
+  const [dialogueAnalysis, setDialogueAnalysis] = useState<DialogueAnalysisResult | null>(null);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
+
+  const bookId = typeof selectedNode.metadata?.bookId === "string" ? selectedNode.metadata.bookId : SAMPLE_BOOK.id;
+  const chapterNumber = typeof selectedNode.metadata?.chapterNumber === "number" ? selectedNode.metadata.chapterNumber : undefined;
+  const isChapterContext = selectedNode.kind === "chapter" || selectedNode.kind === "generated-chapter";
+
+  const loadAnalysis = async () => {
+    if (!chapterNumber) return;
+    setAnalysisLoading(true);
+    setAnalysisError(null);
+    try {
+      const [rhythm, dialogue] = await Promise.all([
+        fetchJson<RhythmChartAnalysis>(`/books/${bookId}/chapters/${chapterNumber}/rhythm`, { method: "POST" }),
+        fetchJson<DialogueAnalysisResult>(`/books/${bookId}/chapters/${chapterNumber}/dialogue`, { method: "POST" }),
+      ]);
+      setRhythmAnalysis(rhythm);
+      setDialogueAnalysis(dialogue);
+    } catch (error: unknown) {
+      setAnalysisError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setAnalysisLoading(false);
+    }
+  };
+
+  const handleApplyHook = (_hook: GeneratedHookOption) => {
+    // Hook applied — future: append to chapter content
+  };
+
+  return (
+    <div className="rounded-xl border border-border bg-muted/30 p-3 text-sm">
+      <button className="flex w-full items-center justify-between font-medium" onClick={() => setOpen(!open)} type="button">
+        <span>写作工具</span>
+        <span className="text-xs text-muted-foreground">{open ? "收起" : "展开"}</span>
+      </button>
+      {open && (
+        <div className="mt-3 space-y-3">
+          <div className="flex flex-wrap gap-1">
+            {isChapterContext && (
+              <>
+                <button className={`rounded-lg px-2 py-1 text-xs ${activeTab === "rhythm" ? "bg-primary text-primary-foreground" : "border border-border hover:bg-muted"}`} onClick={() => setActiveTab("rhythm")} type="button">节奏分析</button>
+                <button className={`rounded-lg px-2 py-1 text-xs ${activeTab === "dialogue" ? "bg-primary text-primary-foreground" : "border border-border hover:bg-muted"}`} onClick={() => setActiveTab("dialogue")} type="button">对话分析</button>
+                <button className={`rounded-lg px-2 py-1 text-xs ${activeTab === "hooks" ? "bg-primary text-primary-foreground" : "border border-border hover:bg-muted"}`} onClick={() => setActiveTab("hooks")} type="button">钩子生成</button>
+              </>
+            )}
+            <button className={`rounded-lg px-2 py-1 text-xs ${activeTab === "progress" ? "bg-primary text-primary-foreground" : "border border-border hover:bg-muted"}`} onClick={() => setActiveTab("progress")} type="button">日更进度</button>
+          </div>
+
+          {isChapterContext && activeTab === "rhythm" && (
+            <div className="space-y-2">
+              {!rhythmAnalysis && !analysisLoading && (
+                <button className="w-full rounded-lg border border-border px-3 py-1.5 text-xs hover:bg-muted" onClick={() => void loadAnalysis()} type="button">
+                  运行节奏 + 对话分析
+                </button>
+              )}
+              {analysisLoading && <p className="text-xs text-muted-foreground">正在分析...</p>}
+              {analysisError && <p className="text-xs text-destructive">分析失败：{analysisError}</p>}
+              {rhythmAnalysis && <RhythmChart analysis={rhythmAnalysis} />}
+            </div>
+          )}
+
+          {isChapterContext && activeTab === "dialogue" && (
+            <div className="space-y-2">
+              {!dialogueAnalysis && !analysisLoading && (
+                <button className="w-full rounded-lg border border-border px-3 py-1.5 text-xs hover:bg-muted" onClick={() => void loadAnalysis()} type="button">
+                  运行节奏 + 对话分析
+                </button>
+              )}
+              {analysisLoading && <p className="text-xs text-muted-foreground">正在分析...</p>}
+              {analysisError && <p className="text-xs text-destructive">分析失败：{analysisError}</p>}
+              {dialogueAnalysis && <DialogueAnalysis analysis={dialogueAnalysis} />}
+            </div>
+          )}
+
+          {isChapterContext && activeTab === "hooks" && chapterNumber !== undefined && (
+            <ChapterHookGenerator bookId={bookId} chapterNumber={chapterNumber} chapterContent="" onApplyHook={handleApplyHook} />
+          )}
+
+          {activeTab === "progress" && <DailyProgressTracker />}
+
+          {!isChapterContext && activeTab !== "progress" && (
+            <p className="text-xs text-muted-foreground">请选择一个章节以使用节奏分析、对话分析和钩子生成工具。</p>
+          )}
+        </div>
+      )}
     </div>
   );
 }

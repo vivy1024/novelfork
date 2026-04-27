@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { fetchJson } from "@/hooks/use-api";
+import { EmptyState, InlineError } from "../components/feedback";
 import type {
   ManagedProvider,
   Model,
@@ -290,7 +291,7 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
               />
             </div>
           ) : (
-            <div className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">暂无供应商，请先使用短表单添加。</div>
+            <EmptyState title="暂无供应商" description="请先使用短表单添加供应商。" actionLabel="添加供应商" onAction={() => {}} />
           )}
         </aside>
       </div>
@@ -411,7 +412,7 @@ function ModelList({
   readonly onUpdateModel: (providerId: string, model: Model, updates: Partial<Model>) => Promise<void>;
 }) {
   if (!provider.models.length) {
-    return <div className="rounded-xl border border-dashed border-border p-3 text-sm text-muted-foreground">暂无模型，点击“刷新模型”获取。</div>;
+    return <EmptyState title="暂无模型" description={'点击"刷新模型"获取模型列表。'} />;
   }
 
   return (
