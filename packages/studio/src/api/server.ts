@@ -59,6 +59,7 @@ import {
   createSnapshotsRouter,
   createAIRouter,
   createAIRelayRouter,
+  createChapterCandidatesRouter,
   createDaemonRouter,
   createMCPRouter,
   createPipelineRouter,
@@ -276,6 +277,9 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
 
     // Storage routes (books CRUD, chapters, truth, genres, config, export, logs, doctor)
     app.route("", createStorageRouter(ctx));
+
+    // Generated chapter / draft candidates — explicit accept flow, no automatic chapter overwrite.
+    app.route("", createChapterCandidatesRouter(root));
 
     // Snapshots routes (chapter version control)
     app.route("", createSnapshotsRouter(ctx));
