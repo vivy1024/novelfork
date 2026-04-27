@@ -7,6 +7,7 @@ import { ProviderSettingsPage } from "./settings/ProviderSettingsPage";
 import { SettingsSectionContent } from "./settings/SettingsSectionContent";
 import { RoutinesNextPage } from "./routines/RoutinesNextPage";
 import { WorkspacePage } from "./workspace/WorkspacePage";
+import { WorkflowPage } from "./workflow/WorkflowPage";
 
 interface StudioNextAppProps {
   readonly initialRoute?: StudioNextRoute;
@@ -23,6 +24,7 @@ const SETTINGS_SECTIONS = [
   { id: "storage", label: "存储空间", group: "实例管理" },
   { id: "resources", label: "运行资源", group: "实例管理" },
   { id: "history", label: "使用历史", group: "实例管理" },
+  { id: "config", label: "项目配置", group: "实例管理" },
   { id: "about", label: "关于", group: "实例管理" },
 ] as const;
 
@@ -31,6 +33,7 @@ const ROUTE_PATHS: Record<StudioNextRoute, string> = {
   workspace: STUDIO_NEXT_BASE_PATH,
   settings: `${STUDIO_NEXT_BASE_PATH}/settings`,
   routines: `${STUDIO_NEXT_BASE_PATH}/routines`,
+  workflow: `${STUDIO_NEXT_BASE_PATH}/workflow`,
 };
 
 export function StudioNextApp({ initialRoute }: StudioNextAppProps) {
@@ -56,6 +59,7 @@ export function StudioNextApp({ initialRoute }: StudioNextAppProps) {
       {activeRoute === "workspace" && <WorkspacePage />}
       {activeRoute === "settings" && <SettingsPage />}
       {activeRoute === "routines" && <RoutinesPage />}
+      {activeRoute === "workflow" && <WorkflowPage />}
     </NextShell>
   );
 }

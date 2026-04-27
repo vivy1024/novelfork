@@ -8,6 +8,7 @@ export const NEXT_OVERLAY_LAYER_CLASS = "z-[100]";
 const ROUTES: ReadonlyArray<{ route: StudioNextRoute; label: string }> = [
   { route: "dashboard", label: "仪表盘" },
   { route: "workspace", label: "创作工作台" },
+  { route: "workflow", label: "工作流" },
   { route: "settings", label: "设置" },
   { route: "routines", label: "套路" },
 ];
