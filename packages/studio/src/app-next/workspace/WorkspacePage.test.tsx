@@ -173,4 +173,36 @@ describe("WorkspacePage", () => {
     expect(within(assistant).getByRole("button", { name: /生成下一章/ })).toBeTruthy();
     expect(within(assistant).getByText(/当前上下文：人物/)).toBeTruthy();
   });
+
+  it("exposes writing tools panel with chapter-context tools and daily progress", () => {
+    render(<WorkspacePage />);
+
+    const assistant = screen.getByRole("complementary", { name: "AI 与经纬面板" });
+    const toolsToggle = within(assistant).getByText("写作工具");
+    expect(toolsToggle).toBeTruthy();
+
+    fireEvent.click(toolsToggle);
+    expect(within(assistant).getByText("节奏分析")).toBeTruthy();
+    expect(within(assistant).getByText("对话分析")).toBeTruthy();
+    expect(within(assistant).getByText("钩子生成")).toBeTruthy();
+    expect(within(assistant).getByText("日更进度")).toBeTruthy();
+  });
+
+  it("shows non-chapter hint when writing tools are opened on a non-chapter node", () => {
+    render(<WorkspacePage />);
+
+    const explorer = screen.getByRole("complementary", { name: "小说资源管理器" });
+    fireEvent.click(within(explorer).getByRole("button", { name: /人物/ }));
+
+    const assistant = screen.getByRole("complementary", { name: "AI 与经纬面板" });
+    fireEvent.click(within(assistant).getByText("写作工具"));
+    expect(within(assistant).getByText(/请选择一个章节/)).toBeTruthy();
+  });
+
+  it("provides publish readiness and preset manager entry links in the top bar", () => {
+    render(<WorkspacePage />);
+
+    expect(screen.getByText("发布就绪")).toBeTruthy();
+    expect(screen.getByText("预设管理")).toBeTruthy();
+  });
 });
