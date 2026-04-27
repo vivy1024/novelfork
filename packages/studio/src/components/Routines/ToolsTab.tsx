@@ -18,6 +18,12 @@ const AVAILABLE_TOOLS: Tool[] = [
   { name: "Edit", enabled: true, description: "Edit existing files" },
   { name: "Grep", enabled: true, description: "Search file contents" },
   { name: "Glob", enabled: true, description: "Find files by pattern" },
+  { name: "Terminal", enabled: false, description: "Interact with persistent terminals" },
+  { name: "ShareFile", enabled: false, description: "Generate temporary download links" },
+  { name: "Recall", enabled: false, description: "Search previous NarraFork conversations" },
+  { name: "Browser", enabled: false, description: "Control a browser for multi-step interactions" },
+  { name: "ForkNarrator", enabled: false, description: "Fork an independent narrator workstream" },
+  { name: "NarraForkAdmin", enabled: false, description: "Manage NarraFork server settings" },
   { name: "WebFetch", enabled: false, description: "Fetch web content" },
   { name: "WebSearch", enabled: false, description: "Search the web" },
   { name: "TeamCreate", enabled: false, description: "Create agent teams" },
@@ -33,15 +39,20 @@ const AVAILABLE_TOOLS: Tool[] = [
 export function ToolsTab({ tools, onChange }: ToolsTabProps) {
   const [search, setSearch] = useState("");
 
-  // 合并默认工具和用户配置
-  const mergedTools = AVAILABLE_TOOLS.map((defaultTool) => {
+  // 合并默认工具和用户配置，保留用户新增的未知工具。
+  const catalogTools = AVAILABLE_TOOLS.map((defaultTool) => {
     const userTool = tools.find((t) => t.name === defaultTool.name);
-    return userTool ?? defaultTool;
+    return { ...defaultTool, ...userTool, loadCommand: userTool?.loadCommand ?? defaultTool.loadCommand ?? `/LOAD ${defaultTool.name}` };
   });
+  const customTools = tools
+    .filter((tool) => !AVAILABLE_TOOLS.some((defaultTool) => defaultTool.name === tool.name))
+    .map((tool) => ({ ...tool, loadCommand: tool.loadCommand ?? `/LOAD ${tool.name}` }));
+  const mergedTools = [...catalogTools, ...customTools];
 
   const filteredTools = mergedTools.filter((tool) =>
     tool.name.toLowerCase().includes(search.toLowerCase()) ||
-    tool.description?.toLowerCase().includes(search.toLowerCase())
+    tool.description?.toLowerCase().includes(search.toLowerCase()) ||
+    tool.loadCommand?.toLowerCase().includes(search.toLowerCase())
   );
 
   const handleToggle = (name: string) => {
@@ -96,8 +107,11 @@ export function ToolsTab({ tools, onChange }: ToolsTabProps) {
                   <span className="text-xs text-muted-foreground">(disabled)</span>
                 )}
               </div>
+              <code className="text-xs font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                {tool.loadCommand ?? `/LOAD ${tool.name}`}
+              </code>
               {tool.description && (
-                <p className="text-xs text-muted-foreground">{tool.description}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{tool.description}</p>
               )}
             </div>
             <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">

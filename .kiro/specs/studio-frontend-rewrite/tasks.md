@@ -92,7 +92,7 @@
   - 验收：global/project/merged 三种 scope 可切换，merged 只读，保存写回原 API。
   - 覆盖 Requirements 6、10、11。
 
-- [ ] 11. 迁移并拆分旧 Routines tabs
+- [x] 11. 迁移并拆分旧 Routines tabs
   - `CommandsTab` 迁移为命令分区，保留增删改、启用、prompt 表单。
   - `SkillsTab` 拆为全局技能与项目技能两个分区。
   - `PromptsTab` 拆为全局提示词与系统提示词两个分区。
@@ -102,7 +102,7 @@
   - 验收：旧 Routines 的核心表单逻辑仍可用，但页面分区与 NarraFork 对齐。
   - 覆盖 Requirements 6、10、11。
 
-- [ ] 12. 实现 MCP 工具服务器级管理与钩子分区
+- [x] 12. 实现 MCP 工具服务器级管理与钩子分区
   - MCP 分区从旧 `MCPToolsTab` 的工具审批升级为服务器级管理。
   - 支持导入 JSON、添加 MCP 服务器、查看连接状态、传输方式、工具数量、断开、编辑。
   - 复用现有 MCP 管理/registry 能力；若旧能力只存在于 Workbench/MCP 页面，迁移逻辑但重写布局。
@@ -110,7 +110,7 @@
   - 验收：套路页可完成“导入 MCP JSON / 添加服务器入口 / 查看工具数量 / 打开钩子创建入口”。
   - 覆盖 Requirements 6、10、11。
 
-- [ ] 13. 建立创作工作台资源适配层
+- [x] 13. 建立创作工作台资源适配层
   - 从现有书籍/章节 API、`BookDetail`、`ChapterReader`、Bible API 中抽象资源节点适配器。
   - 生成 `StudioResourceNode`：作品、卷、已有章节、生成章节、草稿、大纲、经纬/资料库分组。
   - 资源树必须区分已有章节、生成章节和草稿。

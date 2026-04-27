@@ -97,6 +97,10 @@ function toFormState(server?: MCPServer): ServerFormState {
   };
 }
 
+function isMCPConfigBundle(value: unknown): value is { mcpServers: Partial<MCPServer>[] } {
+  return typeof value === "object" && value !== null && Array.isArray((value as { mcpServers?: unknown }).mcpServers);
+}
+
 function parseFormPayload(form: ServerFormState) {
   const args = form.args
     .split(",")
@@ -126,9 +130,10 @@ export function MCPServerManager({ nav, theme, t }: Props) {
   void t;
 
   const { data, refetch } = useApi<MCPRegistryResponse>("/mcp/registry");
-  const [editorMode, setEditorMode] = useState<"create" | "edit" | null>(null);
+  const [editorMode, setEditorMode] = useState<"create" | "edit" | "import" | null>(null);
   const [editingServerId, setEditingServerId] = useState<string | null>(null);
   const [formData, setFormData] = useState<ServerFormState>({ ...EMPTY_FORM });
+  const [importJson, setImportJson] = useState("");
 
   const servers = data?.servers ?? [];
   const summary = data?.summary ?? {
@@ -152,6 +157,12 @@ export function MCPServerManager({ nav, theme, t }: Props) {
     setFormData({ ...EMPTY_FORM });
   }
 
+  function openImportForm() {
+    setEditorMode("import");
+    setEditingServerId(null);
+    setImportJson(JSON.stringify({ mcpServers: [] }, null, 2));
+  }
+
   function openEditForm(server: MCPServer) {
     setEditorMode("edit");
     setEditingServerId(server.id);
@@ -162,6 +173,7 @@ export function MCPServerManager({ nav, theme, t }: Props) {
     setEditorMode(null);
     setEditingServerId(null);
     setFormData({ ...EMPTY_FORM });
+    setImportJson("");
   }
 
   async function handleStart(id: string) {
@@ -193,6 +205,29 @@ export function MCPServerManager({ nav, theme, t }: Props) {
     refetch();
   }
 
+  async function handleImportJson() {
+    const parsed = JSON.parse(importJson) as unknown;
+    const entries = Array.isArray(parsed)
+      ? parsed as Partial<MCPServer>[]
+      : isMCPConfigBundle(parsed)
+        ? parsed.mcpServers
+        : [parsed as Partial<MCPServer>];
+
+    for (const entry of entries) {
+      await postApi("/mcp/servers", {
+        name: entry.name,
+        transport: entry.transport ?? "stdio",
+        command: entry.transport === "sse" ? undefined : entry.command,
+        args: entry.transport === "sse" ? undefined : entry.args,
+        url: entry.transport === "sse" ? entry.url : undefined,
+        env: entry.env,
+      });
+    }
+
+    closeEditor();
+    refetch();
+  }
+
   return (
     <div className="space-y-6">
       <header className="flex flex-col gap-4 rounded-2xl border border-border/60 bg-card/80 p-6 shadow-sm backdrop-blur-sm lg:flex-row lg:items-start lg:justify-between">
@@ -215,6 +250,9 @@ export function MCPServerManager({ nav, theme, t }: Props) {
             <Button variant="outline" onClick={refetch}>
               <RefreshCw className="size-4" />
               刷新
+            </Button>
+            <Button variant="outline" onClick={openImportForm}>
+              导入 JSON
             </Button>
             <Button onClick={openCreateForm}>
               <Plus className="size-4" />
@@ -255,7 +293,33 @@ export function MCPServerManager({ nav, theme, t }: Props) {
         </CardContent>
       </Card>
 
-      {editorMode && (
+      {editorMode === "import" && (
+        <Card className="border-dashed bg-muted/20">
+          <CardHeader>
+            <CardTitle>导入 MCP JSON</CardTitle>
+            <CardDescription>支持粘贴 {"{ mcpServers: [...] }"}、Server 数组或单个 Server 配置，保存后逐个写入现有 MCP API。</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="mcp-import-json">MCP JSON</Label>
+              <textarea
+                id="mcp-import-json"
+                aria-label="MCP JSON"
+                value={importJson}
+                onChange={(event) => setImportJson(event.target.value)}
+                className="min-h-40 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm font-mono"
+                placeholder='{"mcpServers":[{"name":"memory","transport":"stdio","command":"npx","args":["-y","@modelcontextprotocol/server-memory"]}]}'
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button onClick={() => void handleImportJson()}>保存导入</Button>
+              <Button variant="outline" onClick={closeEditor}>取消</Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {(editorMode === "create" || editorMode === "edit") && (
         <Card className="border-dashed bg-muted/20">
           <CardHeader>
             <CardTitle>{editorMode === "edit" ? "编辑 MCP Server" : "添加 MCP Server"}</CardTitle>
