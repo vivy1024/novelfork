@@ -9,6 +9,7 @@ import {
   type StudioResourceTreeInput,
 } from "./resource-adapter";
 import { BiblePanel } from "./BiblePanel";
+import { PublishPanel } from "./PublishPanel";
 import { fetchJson, useApi } from "../../hooks/use-api";
 import type { AiAction, AiGateResult } from "../../lib/ai-gate";
 import type { BookDetail, ChapterSummary } from "../../shared/contracts";
@@ -201,6 +202,7 @@ export function WorkspacePage({
   const tree = useMemo(() => buildStudioResourceTree(treeInput), [treeInput]);
   const defaultNodeId = tree[0]?.children?.[0]?.children?.[0]?.children?.[0]?.id ?? tree[0]?.children?.[0]?.children?.[0]?.id ?? tree[0]?.id ?? "";
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [showPublishPanel, setShowPublishPanel] = useState(false);
   const activeNodeId = selectedNodeId ?? defaultNodeId;
   const selectedNode = findNode(tree, activeNodeId) ?? tree[0]!;
 
@@ -224,14 +226,14 @@ export function WorkspacePage({
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs text-muted-foreground">运行状态：空闲</span>
-          <a className="rounded border border-border px-2 py-0.5 text-xs hover:bg-muted" href="#publish-readiness" title="跳转到旧前端发布就绪页面">发布就绪</a>
+          <button className={`rounded border px-2 py-0.5 text-xs hover:bg-muted ${showPublishPanel ? "border-primary bg-primary/10 text-primary" : "border-border"}`} onClick={() => setShowPublishPanel(!showPublishPanel)} type="button">发布就绪</button>
           <a className="rounded border border-border px-2 py-0.5 text-xs hover:bg-muted" href="#presets" title="跳转到旧前端预设管理页面">预设管理</a>
         </div>
       </div>
 
       <ResourceWorkspaceLayout
-        explorer={<ResourceTree nodes={tree} selectedNodeId={selectedNode.id} onSelect={setSelectedNodeId} />}
-        editor={<WorkspaceEditor candidateApi={candidateApi} chapterApi={chapterApi} node={selectedNode} />}
+        explorer={<ResourceTree nodes={tree} selectedNodeId={selectedNode.id} onSelect={(id) => { setSelectedNodeId(id); setShowPublishPanel(false); }} />}
+        editor={showPublishPanel && activeBookId ? <PublishPanel bookId={activeBookId} /> : <WorkspaceEditor candidateApi={candidateApi} chapterApi={chapterApi} node={selectedNode} />}
         assistant={<AssistantPanel assistantApi={assistantApi} modelGate={effectiveModelGate} selectedNode={selectedNode} />}
       />
     </SectionLayout>

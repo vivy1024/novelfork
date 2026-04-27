@@ -8,6 +8,7 @@ import { SettingsSectionContent } from "./settings/SettingsSectionContent";
 import { RoutinesNextPage } from "./routines/RoutinesNextPage";
 import { WorkspacePage } from "./workspace/WorkspacePage";
 import { WorkflowPage } from "./workflow/WorkflowPage";
+import { SearchPage } from "./search/SearchPage";
 
 interface StudioNextAppProps {
   readonly initialRoute?: StudioNextRoute;
@@ -34,6 +35,7 @@ const ROUTE_PATHS: Record<StudioNextRoute, string> = {
   settings: `${STUDIO_NEXT_BASE_PATH}/settings`,
   routines: `${STUDIO_NEXT_BASE_PATH}/routines`,
   workflow: `${STUDIO_NEXT_BASE_PATH}/workflow`,
+  search: `${STUDIO_NEXT_BASE_PATH}/search`,
 };
 
 export function StudioNextApp({ initialRoute }: StudioNextAppProps) {
@@ -60,6 +62,7 @@ export function StudioNextApp({ initialRoute }: StudioNextAppProps) {
       {activeRoute === "settings" && <SettingsPage />}
       {activeRoute === "routines" && <RoutinesPage />}
       {activeRoute === "workflow" && <WorkflowPage />}
+      {activeRoute === "search" && <SearchPage />}
     </NextShell>
   );
 }

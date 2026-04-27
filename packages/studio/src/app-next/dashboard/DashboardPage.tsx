@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useApi, postApi } from "../../hooks/use-api";
+import { useApi, postApi, fetchJson } from "../../hooks/use-api";
 import { EmptyState, InlineError } from "../components/feedback";
 
 interface BookItem {
@@ -66,6 +66,7 @@ export function DashboardPage({ onOpenBook }: DashboardPageProps) {
   const { data: statsData } = useApi<DailyStats>("/daily-stats");
 
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [form, setForm] = useState<CreateBookForm>(INITIAL_FORM);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -109,13 +110,22 @@ export function DashboardPage({ onOpenBook }: DashboardPageProps) {
     <section className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-semibold">仪表盘</h2>
-        <button
-          className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted"
-          onClick={handleToggle}
-          type="button"
-        >
-          {showCreateForm ? "取消" : "+ 创建新书"}
-        </button>
+        <div className="flex gap-2">
+          <button
+            className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted"
+            onClick={() => { setShowImport(!showImport); setShowCreateForm(false); }}
+            type="button"
+          >
+            {showImport ? "取消导入" : "导入"}
+          </button>
+          <button
+            className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted"
+            onClick={handleToggle}
+            type="button"
+          >
+            {showCreateForm ? "取消" : "+ 创建新书"}
+          </button>
+        </div>
       </div>
 
       {showCreateForm && (
@@ -204,6 +214,8 @@ export function DashboardPage({ onOpenBook }: DashboardPageProps) {
         </form>
       )}
 
+      {showImport && <ImportPanel books={books} onDone={() => { setShowImport(false); void refetchBooks(); }} />}
+
       {statsData && (
         <p className="text-sm text-muted-foreground">
           今日 {statsData.todayWords} 字 · {statsData.todayChapters} 章
@@ -271,6 +283,93 @@ function BookCard({ book, onOpen }: { readonly book: BookItem; readonly onOpen?:
           />
         </div>
       )}
+    </div>
+  );
+}
+
+function ImportPanel({ books, onDone }: { readonly books: ReadonlyArray<BookItem>; readonly onDone: () => void }) {
+  const [mode, setMode] = useState<"chapters" | "url">("chapters");
+  const [bookId, setBookId] = useState(books[0]?.id ?? "");
+  const [text, setText] = useState("");
+  const [url, setUrl] = useState("");
+  const [splitRegex, setSplitRegex] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleImportChapters = async () => {
+    if (!text.trim() || !bookId) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetchJson<{ importedCount?: number }>(`/books/${bookId}/import/chapters`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, splitRegex: splitRegex || undefined }),
+      });
+      setStatus(`已导入 ${res.importedCount ?? 0} 章`);
+      onDone();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleImportUrl = async () => {
+    if (!url.trim() || !bookId) return;
+    setLoading(true);
+    setError(null);
+    try {
+      await fetchJson(`/books/${bookId}/materials/web-capture`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
+      setStatus("URL 素材已导入");
+      onDone();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="rounded-lg border border-border p-4 space-y-3">
+      <div className="flex items-center gap-3">
+        <span className="text-sm font-medium">导入到</span>
+        <select className="rounded border border-border bg-background px-2 py-1 text-sm" value={bookId} onChange={(e) => setBookId(e.target.value)}>
+          {books.map((b) => <option key={b.id} value={b.id}>{b.title}</option>)}
+          {books.length === 0 && <option value="">无可用书籍</option>}
+        </select>
+        <div className="flex gap-1">
+          <button className={`rounded px-2 py-1 text-xs ${mode === "chapters" ? "bg-primary text-primary-foreground" : "border border-border hover:bg-muted"}`} onClick={() => setMode("chapters")} type="button">章节文本</button>
+          <button className={`rounded px-2 py-1 text-xs ${mode === "url" ? "bg-primary text-primary-foreground" : "border border-border hover:bg-muted"}`} onClick={() => setMode("url")} type="button">URL 导入</button>
+        </div>
+      </div>
+
+      {mode === "chapters" && (
+        <>
+          <textarea className="w-full rounded border border-border bg-background p-2 text-sm" rows={5} value={text} onChange={(e) => setText(e.target.value)} placeholder="粘贴章节文本，系统会自动按章节标题分割…" />
+          <input className="w-full rounded border border-border bg-background px-2 py-1 text-sm" value={splitRegex} onChange={(e) => setSplitRegex(e.target.value)} placeholder="自定义分割正则（可选）" />
+          <button className="rounded-lg bg-primary px-4 py-1.5 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-50" disabled={loading || !text.trim() || !bookId} onClick={() => void handleImportChapters()} type="button">
+            {loading ? "导入中…" : "导入章节"}
+          </button>
+        </>
+      )}
+
+      {mode === "url" && (
+        <>
+          <input className="w-full rounded border border-border bg-background px-2 py-1 text-sm" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="输入 URL 地址" />
+          <button className="rounded-lg bg-primary px-4 py-1.5 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-50" disabled={loading || !url.trim() || !bookId} onClick={() => void handleImportUrl()} type="button">
+            {loading ? "导入中…" : "导入 URL"}
+          </button>
+        </>
+      )}
+
+      {error && <InlineError message={error} />}
+      {status && <p className="text-sm text-green-600">{status}</p>}
     </div>
   );
 }
