@@ -15,14 +15,21 @@
 - 角色弧线追踪在 `character_matrix` 基础上扩展 arc beat 数据。
 - 文风偏离检测复用 `style_profile` 统计特征。
 
+执行边界更新（2026-04-27）：
+
+- Tasks 13-20 可继续作为核心逻辑、持久化、Pipeline 与 API 底座推进。
+- Tasks 21-24 不再接入旧书籍详情页、旧仪表盘或旧 `App.tsx` 页面；只实现为可复用 UI 模块，最终由 `studio-frontend-rewrite` 的创作工作台、健康视图、右侧资料/审计面板挂载。
+- 已完成的 Tasks 1-12 作为新创作工作台可复用资产，不重复实现。
+- Task 25 的浏览器验收应分两段：当前 spec 验证核心/API/组件可用；完整页面级验收并入 `studio-frontend-rewrite`。
+
 ## Tasks
 
-- [ ] 1. 定义工具类型系统
+- [x] 1. 定义工具类型系统
   - 新增 `packages/core/src/tools/` 目录结构。
   - 定义类型：`GeneratedHook`、`HookStyle`、`HookGeneratorInput`、`PovCharacter`、`PovDashboard`、`PovWarning`、`WritingLog`、`DailyProgress`、`ProgressConfig`、`RhythmAnalysis`、`RhythmIssue`、`DialogueAnalysis`、`ChapterAuditLog`、`BookHealthSummary`、`ConflictDialecticExtension`、`CharacterArc`、`ArcBeat`、`ArcType`、`ToneDriftResult`。
   - 覆盖 Requirements 6-10。
 
-- [ ] 2. 实现段落节奏分析器
+- [x] 2. 实现段落节奏分析器
   - 新增 `packages/core/src/tools/analysis/rhythm-analyzer.ts`。
   - 扩展 `analyzeStyle()` 逻辑：句长直方图（5字区间分桶）、段落长度序列、节奏评分、与 `style_profile.json` 对比偏差。
   - 实现 `analyzeRhythm(text, referenceProfile?)` 纯本地函数。
@@ -30,14 +37,14 @@
   - 添加单测：均匀句长→低分、混合句长→高分、空文本→安全返回、对比偏差计算。
   - 覆盖 Requirements 4、6。
 
-- [ ] 3. 实现对话比例分析器
+- [x] 3. 实现对话比例分析器
   - 新增 `packages/core/src/tools/analysis/dialogue-analyzer.ts`。
   - 复用 Writer Agent 的对话正则，实现 `analyzeDialogue(text, chapterType?)`。
   - 计算：对话总字数、对话比例、按角色分组、参考范围判断、健康度判定。
   - 添加单测：纯叙述→0%、纯对话→100%、混合→比例正确、角色分组正确。
   - 覆盖 Requirements 5、6。
 
-- [ ] 4. 实现章节钩子生成器
+- [x] 4. 实现章节钩子生成器
   - 新增 `packages/core/src/tools/chapter-hooks/hook-generator.ts`。
   - 实现 `generateChapterHooks(input, llmConfig)` 函数，调用 LLM 生成 3-5 个钩子方案。
   - 解析 LLM 输出为 `GeneratedHook[]` 结构。
@@ -45,7 +52,7 @@
   - 添加单测（mock LLM）：输出格式正确、至少 3 个方案、每个方案有类型和 text。
   - 覆盖 Requirements 1、6。
 
-- [ ] 5. 实现 POV 视角追踪器
+- [x] 5. 实现 POV 视角追踪器
   - 新增 `packages/core/src/tools/pov/pov-tracker.ts`。
   - 实现 `buildPovDashboard(characterMatrix, chapterSummaries, currentChapter)` 纯本地函数。
   - 从 `character_matrix.md` 提取 POV 标记角色。
@@ -55,7 +62,7 @@
   - 添加单测：多视角统计、gap 警告、单视角跳过、角色缺失容错。
   - 覆盖 Requirements 2、6。
 
-- [ ] 6. 实现日更进度追踪
+- [x] 6. 实现日更进度追踪
   - 依赖：migration 编号需排在 `narrafork-platform-upgrade` 存储收口之后（Bun SQLite 驱动确认后再加表）。
   - 新增 `packages/core/src/tools/progress/daily-tracker.ts`。
   - 新增 SQLite migration：`writing_log` 表（book_id, chapter_number, word_count, completed_at, date）。
@@ -65,7 +72,7 @@
   - 添加单测：记录/查询、streak 计算、跨天边界、零数据安全。
   - 覆盖 Requirements 3、6。
 
-- [ ] 7. 实现写作工具 API 路由
+- [x] 7. 实现写作工具 API 路由
   - 新增 `packages/studio/src/api/routes/writing-tools.ts`：
     - `POST /api/books/:bookId/hooks/generate`：生成章末钩子（走 AI gate）。
     - `GET /api/books/:bookId/pov`：获取 POV 仪表盘。
@@ -76,7 +83,7 @@
   - 添加 API 测试。
   - 覆盖 Requirements 1-5、6。
 
-- [ ] 8. 实现段落节奏可视化 UI
+- [x] 8. 实现段落节奏可视化 UI
   - 新增 `packages/studio/src/components/writing-tools/RhythmChart.tsx`。
   - 句长分布直方图（当前章节蓝色 + 参考文本灰色虚线）。
   - 段落长度折线图。
@@ -85,7 +92,7 @@
   - 添加组件测试。
   - 覆盖 Requirements 4、6。
 
-- [ ] 9. 实现对话分析 UI
+- [x] 9. 实现对话分析 UI
   - 新增 `packages/studio/src/components/writing-tools/DialogueAnalysis.tsx`。
   - 对话比例条形图 + 参考范围标注。
   - 角色对话占比表格。
@@ -94,7 +101,7 @@
   - 添加组件测试。
   - 覆盖 Requirements 5、6。
 
-- [ ] 10. 实现章节钩子生成 UI
+- [x] 10. 实现章节钩子生成 UI
   - 依赖：复用 `narrafork-platform-upgrade` P0-4 的 AI gate 实现。
   - 新增 `packages/studio/src/components/writing-tools/ChapterHookGenerator.tsx`。
   - 章节编辑器侧栏入口按钮。
@@ -104,7 +111,7 @@
   - 添加组件测试。
   - 覆盖 Requirements 1、6。
 
-- [ ] 11. 实现 POV 仪表盘 UI
+- [x] 11. 实现 POV 仪表盘 UI
   - 新增 `packages/studio/src/components/writing-tools/PovDashboard.tsx`。
   - 书籍总览页嵌入：角色列表 + 章节数 + 最近出现 + gap 警告。
   - POV 建议卡片。
@@ -113,7 +120,7 @@
   - 添加组件测试。
   - 覆盖 Requirements 2、6。
 
-- [ ] 12. 实现日更进度 UI
+- [x] 12. 实现日更进度 UI
   - 新增 `packages/studio/src/components/writing-tools/DailyProgressTracker.tsx`。
   - 首页/书籍总览嵌入：今日字数环形图 + streak 显示 + 30 天趋势折线。
   - 设置日更目标入口。
@@ -189,9 +196,9 @@
   - 添加 API 测试。
   - 覆盖 Requirements 6-9。
 
-- [ ] 21. 实现全书健康仪表盘 UI
+- [ ] 21. 实现全书健康仪表盘可复用 UI（迁入新创作工作台，不接旧前端页面）
   - 新增 `packages/studio/src/components/writing-tools/BookHealthDashboard.tsx`。
-  - 书籍总览页顶部嵌入：6 个聚合指标条 + 预警汇总区 + 趋势图区。
+  - 新创作工作台健康视图/书籍总览区域嵌入：6 个聚合指标条 + 预警汇总区 + 趋势图区。
   - 指标条：人设一致性 / 伏笔回收率 / AI 味均值 / 节奏多样性 / 敏感词 + 颜色编码。
   - 预警区：矛盾停滞 / 伏笔债务 / 节奏单调 / 开头结尾同构 / POV 遗忘 / 弧线停滞。
   - 趋势区：AI 味折线 / 字数折线 / 伏笔开收比折线（最近 20 章）。
@@ -200,7 +207,7 @@
   - 添加组件测试。
   - 覆盖 Requirement 6。
 
-- [ ] 22. 实现矛盾地图 UI
+- [ ] 22. 实现矛盾地图可复用 UI（迁入新创作工作台，不接旧前端页面）
   - 新增 `packages/studio/src/components/writing-tools/ConflictMap.tsx`。
   - 矛盾列表视图：主要矛盾（★）+ 次要矛盾（○）+ 已解决（●）。
   - 每条矛盾：性质标签 / 状态标签 / 控制观念（主矛盾时）/ 推进时间线条。
@@ -209,7 +216,7 @@
   - 添加组件测试。
   - 覆盖 Requirement 7。
 
-- [ ] 23. 实现角色弧线仪表盘 UI
+- [ ] 23. 实现角色弧线仪表盘可复用 UI（迁入新创作工作台，不接旧前端页面）
   - 新增 `packages/studio/src/components/writing-tools/CharacterArcDashboard.tsx`。
   - 群像总览：并排展示重要角色弧线进度条 + 弧线类型标签 + 最近 arc beat。
   - 单角色详情：时间线展示所有 arc beat + 方向标识（advance/regression/neutral）。
@@ -218,9 +225,9 @@
   - 添加组件测试。
   - 覆盖 Requirement 8。
 
-- [ ] 24. 实现文风偏离提示 UI
+- [ ] 24. 实现文风偏离提示可复用 UI（迁入新创作工作台，不接旧前端页面）
   - 新增 `packages/studio/src/components/writing-tools/ToneDriftAlert.tsx`。
-  - 章节审计报告中嵌入：偏离方向 + 偏离度 + 连续偏离章数。
+  - 作为章节审计/右侧提示模块展示：偏离方向 + 偏离度 + 连续偏离章数。
   - 连续 3 章偏离时提示"是否更新基调声明"。
   - 使用 shadcn/ui Alert + Badge。
   - 添加组件测试。
