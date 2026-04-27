@@ -6,6 +6,7 @@ import { MonitoringPanel } from "./panels/MonitoringPanel";
 import { DataPanel } from "./panels/DataPanel";
 import { InlineError } from "../components/feedback";
 import { ProjectConfigSection } from "./ProjectConfigSection";
+import { Row } from "../components/shared";
 
 interface SettingsSectionContentProps {
   readonly sectionId: string;
@@ -61,7 +62,7 @@ function ModelsSection({ onSectionChange }: { onSectionChange?: (id: string) => 
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold mb-2 text-foreground">模型</h2>
+        <h2 className="text-lg font-semibold mb-2 text-foreground">模型</h2>
         <p className="text-sm text-muted-foreground">默认模型、摘要模型、子代理偏好和推理强度。模型启用与测试在 AI 供应商中管理。</p>
       </div>
       {loading && <p className="text-muted-foreground">加载中...</p>}
@@ -90,15 +91,6 @@ function ModelsSection({ onSectionChange }: { onSectionChange?: (id: string) => 
   );
 }
 
-function Row({ label, value }: { label: string; value: string | undefined }) {
-  return (
-    <div className="flex items-center justify-between py-1.5 text-sm">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="font-mono text-foreground">{value ?? "—"}</span>
-    </div>
-  );
-}
-
 /* ── Notifications: not connected ── */
 
 function NotificationsSection() {
@@ -106,10 +98,7 @@ function NotificationsSection() {
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-bold mb-2 text-foreground">通知</h2>
-        <p className="text-sm text-muted-foreground">通知配置尚未接入后端。</p>
-      </div>
-      <div className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-        未接入 · 等待通知权限与偏好 API
+        <p className="text-sm text-muted-foreground">即将推出</p>
       </div>
     </div>
   );
@@ -129,9 +118,8 @@ function ServerSection() {
       {error && <InlineError message={error} />}
       {data && (
         <div className="space-y-3 rounded-lg border border-border p-4">
-          <Row label="启动诊断" value="已加载" />
-          <Row label="Bun 版本" value={typeof data.bunVersion === "string" ? String(data.bunVersion) : "—"} />
-          <Row label="数据库路径" value={typeof data.dbPath === "string" ? String(data.dbPath) : "—"} />
+          {typeof data.bunVersion === "string" && <Row label="Bun 版本" value={data.bunVersion} />}
+          {typeof data.dbPath === "string" && <Row label="数据库路径" value={data.dbPath} />}
         </div>
       )}
     </div>
@@ -152,8 +140,8 @@ function HistorySection() {
       {error && <InlineError message={error} />}
       {data && (
         <div className="space-y-3 rounded-lg border border-border p-4">
-          <Row label="Admin Requests" value="已加载" />
-          <Row label="AI request observability" value="—" />
+          <Row label="请求历史" value="已加载" />
+          <Row label="AI 请求观测" value="—" />
         </div>
       )}
     </div>

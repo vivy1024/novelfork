@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { resolveStudioNextRoute, STUDIO_NEXT_BASE_PATH, type StudioNextRoute } from "./entry";
-import { NextShell, SectionLayout, SettingsLayout } from "./components/layouts";
+import { NextShell, SettingsLayout } from "./components/layouts";
 import { DashboardPage } from "./dashboard/DashboardPage";
 import { ProviderSettingsPage } from "./settings/ProviderSettingsPage";
 import { SettingsSectionContent } from "./settings/SettingsSectionContent";
@@ -56,7 +56,7 @@ export function StudioNextApp({ initialRoute }: StudioNextAppProps) {
   }, []);
 
   return (
-    <NextShell activeRoute={activeRoute} onRouteChange={navigate} status="旧前端冻结，旁路建设中">
+    <NextShell activeRoute={activeRoute} onRouteChange={navigate}>
       {activeRoute === "dashboard" && <DashboardPage onOpenBook={() => navigate("workspace")} />}
       {activeRoute === "workspace" && <WorkspacePage />}
       {activeRoute === "settings" && <SettingsPage />}
@@ -82,9 +82,5 @@ function SettingsPage() {
 }
 
 function RoutinesPage() {
-  return (
-    <SectionLayout title="套路" description="复用旧 Routines API 与类型。">
-      <RoutinesNextPage />
-    </SectionLayout>
-  );
+  return <RoutinesNextPage />;
 }

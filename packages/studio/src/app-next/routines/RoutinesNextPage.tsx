@@ -139,7 +139,7 @@ export function RoutinesNextPage({ projectRoot: projectRootProp }: RoutinesNextP
   } = useRoutinesEditor({ projectRoot });
 
   if (loading) {
-    return <div className="rounded-2xl border border-border bg-card p-6 text-sm text-muted-foreground">正在加载 Routines 配置…</div>;
+    return <div className="rounded-lg border border-border bg-card p-6 text-sm text-muted-foreground">正在加载 Routines 配置…</div>;
   }
 
   return (
@@ -287,6 +287,8 @@ function RoutineSectionEditor({
 
 function HooksSection() {
   const [draftOpen, setDraftOpen] = useState(false);
+  const [hookLifecycle, setHookLifecycle] = useState("before_run");
+  const [hookType, setHookType] = useState("shell");
 
   return (
     <div className="space-y-4">
@@ -314,7 +316,7 @@ function HooksSection() {
           <div className="mt-3 grid gap-3 md:grid-cols-2">
             <label className="text-sm">
               生命周期节点
-              <select className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" defaultValue="before_run">
+              <select className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" value={hookLifecycle} onChange={(e) => setHookLifecycle(e.target.value)}>
                 <option value="before_run">before_run</option>
                 <option value="after_run">after_run</option>
                 <option value="on_error">on_error</option>
@@ -322,12 +324,16 @@ function HooksSection() {
             </label>
             <label className="text-sm">
               类型
-              <select className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" defaultValue="shell">
+              <select className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" value={hookType} onChange={(e) => setHookType(e.target.value)}>
                 <option value="shell">Shell</option>
                 <option value="webhook">Webhook</option>
                 <option value="llm">LLM 提示词</option>
               </select>
             </label>
+          </div>
+          <div className="mt-3 flex gap-2">
+            <button className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground" type="button">创建</button>
+            <button className="rounded-md border border-border px-3 py-1.5 text-sm" type="button" onClick={() => setDraftOpen(false)}>取消</button>
           </div>
         </div>
       )}

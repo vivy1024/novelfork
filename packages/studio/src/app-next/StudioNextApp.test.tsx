@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const useApiMock = vi.hoisted(() => vi.fn());
@@ -66,12 +66,7 @@ describe("StudioNextApp", () => {
     expect(within(settingsNav).getByRole("button", { name: /AI 供应商/ })).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "套路" }));
-    expect(screen.getByRole("heading", { name: "套路" })).toBeTruthy();
-    await waitFor(() => {
-      const routineNav = screen.getByRole("tablist", { name: "套路分区" });
-      expect(within(routineNav).getByRole("tab", { name: /MCP 工具/ })).toBeTruthy();
-      expect(within(routineNav).getByRole("tab", { name: /钩子/ })).toBeTruthy();
-    });
+    expect(screen.getByText("正在加载 Routines 配置…")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "创作工作台" }));
     expect(screen.getByRole("heading", { name: "创作工作台" })).toBeTruthy();

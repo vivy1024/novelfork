@@ -13,7 +13,7 @@ interface PublishReport {
 }
 
 const STATUS_LABELS: Record<string, string> = { ready: "就绪", "has-warnings": "存在警告", blocked: "阻塞" };
-const STATUS_COLORS: Record<string, string> = { ready: "text-green-600 bg-green-500/10", "has-warnings": "text-amber-600 bg-amber-500/10", blocked: "text-red-600 bg-red-500/10" };
+const STATUS_COLORS: Record<string, string> = { ready: "text-emerald-600 bg-emerald-500/10", "has-warnings": "text-amber-600 bg-amber-500/10", blocked: "text-destructive bg-destructive/10" };
 
 const PLATFORMS = [
   { value: "qidian", label: "起点中文网" },
@@ -23,9 +23,9 @@ const PLATFORMS = [
 ] as const;
 
 function indicatorColor(value: number, warnAt: number, blockAt: number): string {
-  if (value >= blockAt) return "text-red-600";
+  if (value >= blockAt) return "text-destructive";
   if (value >= warnAt) return "text-amber-600";
-  return "text-green-600";
+  return "text-emerald-600";
 }
 
 export function PublishPanel({ bookId }: { readonly bookId: string }) {

@@ -76,13 +76,13 @@ export function SearchPage() {
       {error && <InlineError message={error} />}
 
       {searched && results.length === 0 && !loading && !error && (
-        <p className="text-sm text-muted-foreground">未找到匹配结果</p>
+        <p className="text-sm text-muted-foreground">未找到匹配内容</p>
       )}
 
       {results.length > 0 && (
         <div className="space-y-2">
           {results.map((hit, i) => (
-            <div key={i} className="rounded-lg border border-border p-3 text-sm">
+            <div key={i} className="cursor-pointer rounded-lg border border-border p-3 text-sm hover:bg-muted" onClick={() => console.log("navigate to", hit)}>
               <div className="flex items-center gap-2">
                 <span className="font-medium">{hit.bookTitle}</span>
                 <span className="text-xs text-muted-foreground">第 {hit.chapterNumber} 章</span>

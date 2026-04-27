@@ -117,7 +117,6 @@ describe("ProviderSettingsPage", () => {
     })));
     expect(screen.getByText("高级字段")).toBeTruthy();
     expect(screen.getByLabelText("ChatGPT 账户 ID")).toBeTruthy();
-    expect(screen.getByLabelText("Responses WebSocket")).toBeTruthy();
     expect(screen.getByLabelText("Codex 思考强度")).toBeTruthy();
   });
 

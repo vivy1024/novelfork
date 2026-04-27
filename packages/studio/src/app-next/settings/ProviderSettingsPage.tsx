@@ -224,8 +224,11 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
     }
   };
 
-  const toggleProvider = (providerId: string, enabled: boolean) => {
+  const toggleProvider = async (providerId: string, enabled: boolean) => {
     setProviders((current) => current.map((p) => p.id === providerId ? { ...p, enabled } : p));
+    try {
+      await fetchJson(`/providers/${providerId}/toggle`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled }) });
+    } catch {}
   };
 
   if (loading) {
@@ -393,22 +396,28 @@ function ProviderGroup({
                     </div>
                     <section className="space-y-2">
                       <h4 className="text-sm font-medium">高级字段</h4>
-                      <label className="block text-sm">
-                        ChatGPT 账户 ID
-                        <input className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm" value={accountId} onChange={(event) => setAccountId(event.target.value)} />
-                      </label>
-                      <label className="flex items-center gap-2 text-sm">
-                        <input type="checkbox" checked={useResponsesWebSocket} onChange={(event) => setUseResponsesWebSocket(event.target.checked)} />
-                        Responses WebSocket
-                      </label>
-                      <label className="block text-sm">
-                        Codex 思考强度
-                        <select className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm" value={thinkingStrength} onChange={(event) => setThinkingStrength(event.target.value as ProviderThinkingStrength)}>
-                          <option value="low">low</option>
-                          <option value="medium">medium</option>
-                          <option value="high">high</option>
-                        </select>
-                      </label>
+                      {provider.compatibility === "openai-compatible" && (
+                        <label className="block text-sm">
+                          ChatGPT 账户 ID
+                          <input className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm" value={accountId} onChange={(event) => setAccountId(event.target.value)} />
+                        </label>
+                      )}
+                      {provider.apiMode === "responses" && (
+                        <label className="flex items-center gap-2 text-sm">
+                          <input type="checkbox" checked={useResponsesWebSocket} onChange={(event) => setUseResponsesWebSocket(event.target.checked)} />
+                          Responses WebSocket
+                        </label>
+                      )}
+                      {provider.apiMode === "codex" && (
+                        <label className="block text-sm">
+                          Codex 思考强度
+                          <select className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm" value={thinkingStrength} onChange={(event) => setThinkingStrength(event.target.value as ProviderThinkingStrength)}>
+                            <option value="low">low</option>
+                            <option value="medium">medium</option>
+                            <option value="high">high</option>
+                          </select>
+                        </label>
+                      )}
                     </section>
                     <button
                       className="w-full rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-60"
@@ -448,7 +457,7 @@ function AddProviderForm({
   readonly busy: boolean;
 }) {
   return (
-    <section className="space-y-3 rounded-2xl border border-border bg-background p-4">
+    <section className="space-y-3 rounded-lg border border-border bg-background p-4">
       <h3 className="text-base font-semibold">添加供应商</h3>
       <div className="grid gap-3 md:grid-cols-2">
         <label className="text-sm">
@@ -461,7 +470,7 @@ function AddProviderForm({
         </label>
         <label className="text-sm">
           API Key
-          <input className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2" value={form.apiKey} onChange={(event) => setForm({ ...form, apiKey: event.target.value })} />
+          <input type="password" className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2" value={form.apiKey} onChange={(event) => setForm({ ...form, apiKey: event.target.value })} />
         </label>
         <label className="text-sm">
           Base URL
@@ -481,7 +490,7 @@ function AddProviderForm({
           </select>
         </label>
       </div>
-      <button className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-60" type="button" disabled={busy} onClick={onSave}>
+      <button className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-60" type="button" disabled={busy} onClick={() => { if (!form.name.trim()) return; onSave(); }}>
         保存供应商
       </button>
     </section>

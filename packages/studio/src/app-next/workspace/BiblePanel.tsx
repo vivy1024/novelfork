@@ -102,7 +102,7 @@ function EntryList({ entries }: { readonly entries: readonly BibleEntry[] }) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   return (
-    <ul className="space-y-1">
+    <ul className="max-h-[20rem] space-y-1 overflow-auto">
       {entries.map((entry) => {
         const label = entry.name ?? entry.title ?? entry.id;
         const detail = entry.content;
@@ -111,7 +111,7 @@ function EntryList({ entries }: { readonly entries: readonly BibleEntry[] }) {
         return (
           <li key={entry.id}>
             <button
-              className="w-full text-left"
+              className="w-full rounded-md px-1 text-left hover:bg-muted"
               onClick={() => setExpandedId(isExpanded ? null : entry.id)}
               type="button"
             >

@@ -26,7 +26,7 @@ export function NextShell({ activeRoute, onRouteChange, status, children }: Next
       <header className="sticky top-0 z-40 border-b border-border bg-background/90 px-4 py-2 backdrop-blur" role="banner">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <p className="text-[10px] font-medium uppercase tracking-[0.24em] text-muted-foreground">NovelFork Studio Next</p>
+            <p className="text-[10px] font-medium uppercase tracking-[0.24em] text-muted-foreground">NovelFork Studio</p>
             <h1 className="text-lg font-semibold">小说创作工作台</h1>
           </div>
           <nav aria-label="Studio Next 主导航" className="flex items-center gap-1 rounded-lg border border-border bg-card p-0.5">
@@ -47,10 +47,10 @@ export function NextShell({ activeRoute, onRouteChange, status, children }: Next
               </button>
             ))}
           </nav>
-          <div className="text-right text-xs text-muted-foreground">{status ?? "旁路入口 /next"}</div>
+          {status != null && <div className="text-right text-xs text-muted-foreground">{status}</div>}
         </div>
       </header>
-      <div className="p-4">{children}</div>
+      <div className="mx-auto max-w-7xl p-4">{children}</div>
     </div>
   );
 }
@@ -69,7 +69,7 @@ export function SectionLayout({ title, description, actions, overlay, children }
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <h1 className="text-xl font-semibold">{title}</h1>
-          {description && <p className="max-w-3xl text-sm text-muted-foreground">{description}</p>}
+          {description ? <p className="max-w-3xl text-sm text-muted-foreground">{description}</p> : null}
         </div>
         {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
       </div>
@@ -107,7 +107,7 @@ export function SettingsLayout({ title, sections, activeSectionId, onSectionChan
 
   return (
     <SectionLayout title={title} description="">
-      <div className="grid min-h-[36rem] gap-3 lg:grid-cols-[15rem_minmax(0,1fr)]">
+        <div className="grid gap-3 lg:grid-cols-[15rem_minmax(0,1fr)]">
         <nav aria-label="设置分区" className="rounded-lg border border-border bg-card p-2">
           <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">分区导航</div>
           <div className="space-y-2">

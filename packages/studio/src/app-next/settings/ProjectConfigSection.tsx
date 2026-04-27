@@ -1,5 +1,6 @@
 import { useApi } from "../../hooks/use-api";
 import { InlineError } from "../components/feedback";
+import { Row } from "../components/shared";
 
 interface ProjectInfo {
   readonly name: string;
@@ -22,15 +23,6 @@ interface OverridesResponse {
   readonly overrides?: Record<string, AgentOverride>;
 }
 
-function Row({ label, value }: { label: string; value: string | undefined }) {
-  return (
-    <div className="flex items-center justify-between py-1.5 text-sm">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="font-mono text-foreground">{value ?? "—"}</span>
-    </div>
-  );
-}
-
 export function ProjectConfigSection() {
   const { data, loading, error } = useApi<ProjectInfo>("/project");
   const { data: overrides, loading: oLoading, error: oError } = useApi<OverridesResponse>("/project/overrides");
@@ -42,7 +34,7 @@ export function ProjectConfigSection() {
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-bold mb-2 text-foreground">项目配置</h2>
-        <p className="text-sm text-muted-foreground">模型路由、Agent 覆盖与环境变量（只读）。</p>
+        <p className="text-sm text-muted-foreground">模型路由与 Agent 覆盖（只读）。</p>
       </div>
 
       {isLoading && <p className="text-muted-foreground">加载中...</p>}
@@ -78,10 +70,7 @@ export function ProjectConfigSection() {
         )}
       </div>
 
-      <div className="space-y-3 rounded-lg border border-border p-4">
-        <h3 className="text-sm font-semibold text-foreground">环境变量</h3>
-        <p className="text-sm text-muted-foreground">未接入 · 等待环境变量读取 API</p>
-      </div>
+
     </div>
   );
 }
