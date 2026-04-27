@@ -4,6 +4,8 @@
 
 本计划从 `narrafork-platform-upgrade` spec 生成，按 P0 / P1 梳理 NovelFork 继续学习 NarraFork 平台栈所需升级项。执行原则：先保证 Bun-only 运行时、SQLite 一致性、启动验证和作者基础路径稳定，再推进 NarraFork parity 的恢复链、请求历史、更新机制和高级工作台模式。
 
+当前状态：执行项（1-15）已全部完成；下方“暂不执行项”维持未勾选，表示明确不做而不是遗漏。
+
 ## P0：必须优先完成
 
 - [x] 1. 固化 Bun-only 运行时契约
@@ -86,13 +88,14 @@
 
 ## P1：P0 稳定后推进
 
-- [ ] 9. 升级 WebSocket 与会话恢复链
+- [x] 9. 升级 WebSocket 与会话恢复链
   - 梳理当前 `/api/sessions/:id/chat` 与 `/api/admin/resources/ws` 的持久化边界。
   - 将消息确认边界、未完成输出、工具调用状态写入 SQLite。
   - 刷新页面后恢复到最后确认消息，而不是只依赖内存窗口状态。
   - 会话恢复失败时提供重试、归档、新开会话三种路径。
   - 学习 NarraFork 的 buffered queue 持久化，但映射为写作会话心智。
   - 覆盖 Requirements 7。
+  - 2026-04-26 补充验证：`session-chat-service.ts` 已把 ack 边界、recent messages、pending tool metadata 与 recovery JSON 持久化到 SQLite；`ChatWindow` 恢复失败时展示“重试恢复 / 归档会话 / 新开会话”三路径；`SessionCenter` 展示会话状态、消息数、确认边界、待回放消息、未完成工具数与最近执行链入口。验证通过：`pnpm --dir packages/studio exec vitest run src/components/ChatWindow.test.tsx src/pages/SessionCenter.test.tsx`（24 tests passed），以及 Bun 原生 recovery smoke 已确认 `ackedSeq` 从 0→2 持久化并在 reload 后恢复。
 
 - [x] 10. 建立 AI 请求历史与成本观测
   - 记录每次 AI 请求的 provider、model、耗时、TTFT、token 估算、状态、错误摘要。

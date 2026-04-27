@@ -2,12 +2,26 @@
 
 ## Overview
 
-本设计为 NovelFork 的写作预设体系填充真实内容，使流派配置、文风预设、节拍模板、AI 味过滤预设、文学技法预设和经纬题材推荐从空壳变为开箱即用。
+本设计为 NovelFork 的写作预设体系填充真实内容，使流派配置、文风预设、时代/社会基底、逻辑风险自检、节拍模板、AI 味过滤预设、文学技法预设和经纬题材推荐从空壳变为开箱即用。
+
+本次升级的关键变化：`tone` 不再承担全部创作基底。文风只是语言气质；真正决定文本是否可信的，是题材、时代基底、制度逻辑、生产力水平、阶层结构、信息传播方式和人物动机共同形成的约束。
+
+因此本 spec 将预设拆成四层：
+
+1. **Genre**：题材骨架，回答“写什么类型”。
+2. **Tone**：语言气质，回答“怎么叙述”。
+3. **Setting Base**：时代/社会/制度基底，回答“这个世界如何运转”。
+4. **Logic Risk**：逻辑风险自检，回答“哪里容易违和”。
+
+`Bundle` 用于把四层组合成作者可直接选择的创作基底包。
 
 ## Goals
 
 - 预置 6+ 热门流派的完整 GenreProfile。
-- 内置 5 个文风 tone 预设模板。
+- 内置 5 个文风 tone 预设模板，但 tone 只管语言气质。
+- 内置 6 个时代/社会基底 setting base。
+- 内置一组逻辑风险 logic risk 规则，用于写前约束和写后审计。
+- 内置 6 个推荐 bundle，把 genre/tone/setting/logic 组合起来。
 - 内置 5 个叙事节拍模板。
 - 内置 4 个 AI 味过滤预设。
 - 内置 4 个文学技法预设。
@@ -18,7 +32,19 @@
 
 - 不实现完整模板市场（后续 `template-market-v1`）。
 - 不自动生成流派资产（后续 `coding-agent-workbench`）。
-- 不涉及角色弧线追踪（后续 `progressions-tracking`）。
+- 不替代作者自己的世界观设定，只提供可修改的默认基底。
+- 不把现实历史当作必须复刻的设定；历史只作为架空创作的参照锚点。
+- 不在 `platform-compliance-v1` 中处理小说内部逻辑自洽；合规只处理平台/法律/发布风险。
+
+## Cross-Spec Boundaries
+
+| Spec | 职责 | 与 writing-presets 的关系 |
+|---|---|---|
+| `writing-presets-v1` | 提供 genre/tone/setting/logic/bundle 默认内容 | 当前 spec 主体 |
+| `writing-modes-v1` | 选段续写、扩写、对话、多版本、大纲分支 | 生成时注入 tone、setting、logic 约束 |
+| `writing-tools-v1` | 文风偏离、设定漂移、全书健康、矛盾/弧线追踪 | 写后复用 logic risk 和 setting boundary 做审计 |
+| `platform-compliance-v1` | 敏感词、AI 比例、格式、发布就绪 | 与内部逻辑自检并列展示，不互相替代 |
+| `narrafork-platform-upgrade` | Bun/SQLite/API gate/恢复链底座 | 后续持久化启用预设、审计日志和书籍配置 |
 
 ## Architecture
 
@@ -27,39 +53,62 @@
 ```text
 packages/core/src/presets/
   index.ts                           ← 预设注册中心
-  types.ts                           ← Preset / PresetCategory / PresetConfig 类型
+  types.ts                           ← Preset / Tone / SettingBase / LogicRisk / Bundle 类型
   genres/
-    xianxia.md                       ← 修仙/玄幻 GenreProfile（YAML frontmatter + body）
+    xianxia.md                       ← 修仙/玄幻 GenreProfile
     urban.md                         ← 都市异能
     mystery.md                       ← 悬疑/盗墓
     romance.md                       ← 女频/宅斗
     scifi.md                         ← 科幻
     history.md                       ← 历史穿越
   tones/
-    tragic-solitude.md               ← 悲苦孤独
-    austere-pragmatic.md             ← 冷峻质朴
-    classical-imagery.md             ← 古典意境
-    dark-humor-social.md             ← 黑色幽默+社会批判
-    comedic-light.md                 ← 沙雕轻快
+    tragic-solitude.md               ← 悲苦孤独（纯语言气质）
+    austere-pragmatic.md             ← 冷峻质朴（纯语言气质）
+    classical-imagery.md             ← 古典意境（纯语言气质）
+    dark-humor-social.md             ← 黑色幽默+社会批判（纯语言气质与讽刺口吻）
+    comedic-light.md                 ← 沙雕轻快（纯语言气质）
+  setting-bases/
+    victorian-industrial-occult.md   ← 维多利亚/工业革命影子的神秘学城市
+    classical-travelogue-jianghu.md  ← 古典游历、志怪、江湖与地方秩序
+    sect-family-xianxia.md           ← 宗门/家族/资源分配修仙社会
+    modern-platform-economy-satire.md← 现代平台经济讽刺
+    historical-court-livelihood.md   ← 朝堂、民生、军政、技术差
+    near-future-industrial-scifi.md  ← 近未来工业科幻
+  logic-risks/
+    anachronism.ts                   ← 时代错位
+    information-flow.ts              ← 信息传播速度
+    economy-resource.ts              ← 经济/资源体系
+    institution-response.ts          ← 权力机构响应
+    technology-boundary.ts           ← 技术/魔法边界
+    character-motivation.ts          ← 人物动机与阶层行为
+    geography-transport.ts           ← 地理/交通
+    satisfaction-cost.ts             ← 爽点代价
+  bundles/
+    industrial-occult-mystery.ts
+    classical-travel-xianxia.ts
+    mortal-sect-xianxia.ts
+    institutional-cultivation-satire.ts
+    historical-governance.ts
+    near-future-hard-scifi.ts
   beats/
-    heros-journey.ts                 ← 英雄之旅 17 阶段
-    save-the-cat.ts                  ← 救猫咪 15 节拍
-    three-act.ts                     ← 三幕结构
-    opening-hooks.ts                 ← 网文开篇钩子 12 式
-    chapter-ending-hooks.ts          ← 章节结尾钩子生成器
+    heros-journey.ts
+    save-the-cat.ts
+    three-act.ts
+    opening-hooks.ts
+    chapter-ending-hooks.ts
   anti-ai/
-    full-scan.ts                     ← 12 特征全量扫描配置
-    sentence-variance.ts             ← 句长方差修复
-    emotion-concretize.ts            ← 情感具体化
-    dialogue-colloquial.ts           ← 口语化对话
+    full-scan.ts
+    sentence-variance.ts
+    emotion-concretize.ts
+    dialogue-colloquial.ts
   literary/
-    character-multidim.ts            ← 人物多维度展开
-    hook-four-states.ts              ← 伏笔四态追踪
-    consistency-audit.ts             ← 一致性审计
-    controlling-idea.ts              ← 控制观念锚定
+    character-multidim.ts
+    hook-four-states.ts
+    consistency-audit.ts
+    controlling-idea.ts
 
 packages/core/src/jingwei/
-  genre-recommendations.ts          ← 题材推荐栏目内容（修仙/悬疑/女频/科幻/都市/历史）
+  genre-recommendations.ts           ← 题材推荐栏目内容
 
 packages/studio/src/pages/
   PresetManager.tsx                  ← 预设管理页面
@@ -69,10 +118,17 @@ packages/studio/src/api/routes/
 
 ## Data Model
 
-### Preset 类型
+### Preset 基础类型
 
 ```ts
-export type PresetCategory = "beat" | "tone" | "anti-ai" | "literary";
+export type PresetCategory =
+  | "beat"
+  | "tone"
+  | "setting-base"
+  | "logic-risk"
+  | "bundle"
+  | "anti-ai"
+  | "literary";
 
 export interface Preset {
   id: string;
@@ -85,203 +141,211 @@ export interface Preset {
   postWriteChecks?: PostWriteCheck[];
   metadata: Record<string, unknown>;
 }
+```
 
-export interface PostWriteCheck {
-  type: "sentence-variance" | "emotion-abstract" | "dialogue-formal" | "hook-missing";
-  threshold: number;
-  suggestion: string;
-}
+### TonePreset
 
-export interface PresetConfig {
-  bookId: string;
-  enabledPresets: string[];         // preset ids
-  customOverrides: Record<string, Partial<Preset>>;
+`tone` 是预生成的 `style_guide.md` 模板，只描述语言与叙述气质，不混写时代基底。
+
+```ts
+export interface TonePreset extends Preset {
+  category: "tone";
+  dimensions: {
+    narrativeVoice: string;
+    dialogueStyle: string;
+    sceneDescription: string;
+    transitionMethod: string;
+    pacing: string;
+    vocabularyPreference: string;
+    emotionalExpression: string;
+    driftWarnings: string[];
+  };
+  sourceReferences: Array<{
+    label: string;
+    usableTechnique: string;
+    boundary: "reference-only" | "do-not-copy";
+  }>;
+  recommendedSettingBases: string[];
 }
 ```
 
-### GenreProfile 内容规范
+### SettingBasePreset
 
-每个流派 `.md` 文件包含 YAML frontmatter + Markdown body：
+`settingBase` 是可写入 `setting_guide.md` 或 `book_rules.md` 的时代/社会基底。
 
-```yaml
----
-name: 修仙/玄幻
-id: xianxia
-language: zh
-chapterTypes:
-  - 修炼突破
-  - 战斗对决
-  - 探索秘境
-  - 交易/拍卖
-  - 门派日常
-  - 炼丹/炼器
-  - 悟道/闭关
-  - 劫难
-fatigueWords:
-  - 气势如虹
-  - 杀气腾腾
-  - 天崩地裂
-  - 恐怖如斯
-  - 不可思议
-  - 浩浩荡荡
-  - 仿佛要将整个天地都...
-numericalSystem: true
-powerScaling: true
-eraResearch: false
-pacingRule: "前50章每5-8章一个小高潮；每30-50章一个境界突破；大高潮间隔80-120章"
-satisfactionTypes:
-  - 境界突破
-  - 越级战斗
-  - 获得宝物
-  - 揭露身世
-  - 复仇成功
-  - 装逼打脸
-auditDimensions: [1, 2, 3, 6, 7, 8]
----
-
-## 流派核心
-修仙/玄幻以境界体系为骨架，主角从底层向上攀登...
-
-## 常见结构
-练气 → 筑基 → 金丹 → 元婴 → 化神 → ...
-
-## 写作禁忌
-- 避免境界碾压无悬念
-- 避免资源体系崩溃（前期灵石珍贵，后期随便丢）
-...
+```ts
+export interface SettingBasePreset extends Preset {
+  category: "setting-base";
+  referenceAnchors: string[];       // 历史/现实参照，不等于复刻
+  socialHierarchy: string[];        // 阶层/职业/身份结构
+  powerInstitutions: string[];      // 教会/警察/宗门/朝廷/平台/企业等
+  economy: string[];                // 钱、资源、税、贷款、交易、生产方式
+  techMagicBoundary: string[];      // 技术/魔法/超凡/生产力边界
+  transportAndInformation: string[];// 交通速度、报纸、信件、网络、传音等
+  dailyLifeMaterials: string[];     // 日常物件、空间、职业、生活材料
+  borrowableElements: string[];     // 可借用元素
+  forbiddenElements: string[];      // 不可照搬或易违和元素
+  commonContradictions: string[];   // 常见违和点
+}
 ```
 
-### 文风 Tone 预设内容规范
+### LogicRiskRule
 
-每个 tone `.md` 是预生成的 `style_guide.md` 模板：
+`logicRisk` 同时服务写前 prompt 约束和写后审计。
+
+```ts
+export interface LogicRiskRule extends Preset {
+  category: "logic-risk";
+  riskType:
+    | "anachronism"
+    | "information-flow"
+    | "economy-resource"
+    | "institution-response"
+    | "technology-boundary"
+    | "character-motivation"
+    | "geography-transport"
+    | "satisfaction-cost";
+  appliesToSettingBases: string[];
+  writerConstraint: string;         // 生成前注入
+  auditQuestion: string;            // 写后检查问题
+  evidenceHints: string[];          // 审计时要找的证据
+  uncertainHandling: string;        // 不确定时让作者确认
+}
+```
+
+### PresetBundle
+
+`bundle` 是给作者的一键推荐组合，但必须允许拆开。
+
+```ts
+export interface PresetBundle extends Preset {
+  category: "bundle";
+  genreIds: string[];
+  toneId: string;
+  settingBaseId: string;
+  logicRiskIds: string[];
+  difficulty: "easy" | "medium" | "hard";
+  prerequisites: string[];
+  suitableFor: string[];
+  notSuitableFor: string[];
+}
+```
+
+## Content Design
+
+### Tone 预设边界
+
+Tone 文件必须回答：
+
+- 叙事声音与语气
+- 对话风格
+- 场景描写特征
+- 转折与衔接手法
+- 节奏特征
+- 词汇偏好
+- 情绪表达方式
+- 禁止漂移方向
+- 参考来源与可学习技法
+- 推荐搭配的 setting base
+
+Tone 文件不得完整描述时代制度。比如 `austere-pragmatic.md` 可以说明冷峻、克制、信息密度，但不能把维多利亚城市、警察、报纸、教会和工厂都写在 tone 里；这些应放到 `victorian-industrial-occult.md`。
+
+### Setting Base 预设内容规范
+
+每个 setting base `.md` 使用 Markdown，固定包含：
 
 ```markdown
-## 叙事声音与语气
-悲苦孤独风——叙事者保持克制的哀伤，不滥用感叹号...
-（参考：辰东《遮天》《完美世界》，耳根《仙逆》《求魔》）
-
-## 对话风格
-对话简短有力，角色说话常有未完成感...
-
-## 场景描写特征
-偏好苍茫、荒凉意象（大漠、残阳、枯木、冷月）...
-
-## 转折与衔接手法
-场景切换突兀但有情绪韵律——一个悲伤段落之后...
-
-## 节奏特征
-长句铺陈氛围 → 极短句爆发情绪...
-
-## 词汇偏好
-"苍茫"、"寂灭"、"亘古"、"孤独"...
-
-## 情绪表达方式
-不写"他很伤心"，写具体动作...
-
-## 独特习惯
-章末常用不完整句或省略号收束...
+## 现实/历史参照
+## 社会阶层
+## 权力结构
+## 经济系统
+## 技术/魔法边界
+## 交通与信息传播
+## 日常生活材料
+## 可借用元素
+## 不可照搬元素
+## 常见违和点
 ```
 
-### 节拍模板数据结构
+#### `victorian-industrial-occult`
+
+重点：工业城市、阶层分化、报纸/信件/警察/教会/工厂/码头、科学与神秘学并置。适合克苏鲁、诡秘、蒸汽、工业悬疑。风险：现代信息传播错位、超凡体系无成本、机构反应过慢或过快。
+
+#### `modern-platform-economy-satire`
+
+重点：平台经济、教育内卷、贷款、绩效、外包、算法审核、职业资格和制度话术。适合制度讽刺和黑色幽默。风险：只堆梗不形成制度逻辑；现实映射太直白导致失去架空安全距离。
+
+#### `classical-travelogue-jianghu`
+
+重点：交通慢、地理远、地方秩序、客栈/庙宇/市集/驿站、民俗和神灵。适合古典游历、志怪、轻仙侠。风险：古风辞藻替代生活材料；人物信息获取速度过快。
+
+### Logic Risk 规则设计
+
+每条 logic risk 至少包括：
+
+- 写前约束：提醒 Writer Agent 不要犯什么错。
+- 写后审计问题：供 `writing-tools-v1` 后续实现审计。
+- 证据提示：审计时应看哪些文本迹象。
+- 不确定处理：提示作者确认，而不是自动修改。
+
+示例：
 
 ```ts
-export interface BeatTemplate {
-  id: string;
-  name: string;
-  origin: string;                    // 来源/理论基础
-  beats: Beat[];
-  totalWordRatio: number;           // 各节拍字数占比之和=1
-}
-
-export interface Beat {
-  order: number;
-  name: string;
-  purpose: string;
-  wordRatio: number;                 // 占全书的字数比例
-  emotionalTone: string;
-  chapterEstimate: string;           // 如"第1-3章"或"全书5%"
-  networkNovelTip?: string;          // 网文特化建议
-}
+const informationFlowRisk: LogicRiskRule = {
+  id: "information-flow",
+  category: "logic-risk",
+  name: "信息传播速度",
+  riskType: "information-flow",
+  appliesToSettingBases: ["victorian-industrial-occult", "classical-travelogue-jianghu", "historical-court-livelihood"],
+  writerConstraint: "角色只能通过本时代允许的媒介获得信息，不得无解释地掌握远方即时消息。",
+  auditQuestion: "本章是否出现信息传播速度超过所选 setting base 边界的情况？",
+  evidenceHints: ["远方消息即时抵达", "普通人掌握机密", "机构无成本同步行动"],
+  uncertainHandling: "标注为需要作者确认，并要求补充信息来源。",
+};
 ```
 
-### 经纬题材推荐数据
+### Bundle 推荐表
 
-```ts
-export interface GenreRecommendation {
-  genreId: string;
-  genreName: string;
-  sections: RecommendedSection[];
-}
-
-export interface RecommendedSection {
-  key: string;
-  name: string;
-  description: string;
-  icon?: string;
-  defaultVisibility: "tracked" | "global" | "nested";
-  participatesInAi: boolean;
-  fields: JingweiFieldDefinition[];
-  exampleEntries?: string[];
-}
-```
-
-## Genre Profiles（6 个流派的 chapterTypes/fatigueWords 摘要）
-
-### 修仙/玄幻
-- chapterTypes: 修炼突破、战斗对决、探索秘境、交易拍卖、门派日常、炼丹炼器、悟道闭关、劫难
-- fatigueWords: 气势如虹、恐怖如斯、不可思议、仿佛整个天地、难以想象、令人窒息
-- satisfactionTypes: 境界突破、越级战斗、获得宝物、揭露身世、复仇、装逼打脸
-
-### 都市异能
-- chapterTypes: 都市奇遇、实力暴露、权贵冲突、商战布局、感情线、黑暗势力
-- fatigueWords: 不可思议、震惊了、脸色铁青、杀意弥漫
-- satisfactionTypes: 身份揭露、财富碾压、技能觉醒、权贵打脸
-
-### 悬疑/盗墓
-- chapterTypes: 线索发现、推理分析、密室/机关、追逐/逃生、真相揭露、误导
-- fatigueWords: 毛骨悚然、不寒而栗、诡异的笑容、一股寒意
-- satisfactionTypes: 真相大白、反转、解谜、逃出生天
-
-### 女频/宅斗
-- chapterTypes: 宅斗博弈、感情推进、误会/和解、家族冲突、宫廷/商场、成长蜕变
-- fatigueWords: 眼眶微红、心中一暖、嘴角微扬、美得不可方物
-- satisfactionTypes: 反杀、真相大白、甜蜜、报复成功、独立成长
-
-### 科幻
-- chapterTypes: 科技发现、星际探索、文明冲突、实验/事故、政治博弈、战争/舰战
-- fatigueWords: 不可思议的科技、超越人类想象、宇宙的奥秘
-- satisfactionTypes: 技术突破、文明发现、悬念揭晓、战术胜利
-
-### 历史穿越
-- chapterTypes: 历史事件、朝堂博弈、科技引入、民生建设、战争、文化冲突
-- fatigueWords: 震惊了朝野、前所未有、史无前例
-- satisfactionTypes: 改变历史、科技碾压、政治翻盘、民心归附
+| Bundle | Genre | Tone | SettingBase | LogicRisks | 难度 |
+|---|---|---|---|---|---|
+| 工业神秘悬疑 | 悬疑/科幻 | 冷峻质朴 | victorian-industrial-occult | 信息传播、机构响应、技术边界 | hard |
+| 古典游历仙侠 | 仙侠 | 古典意境 | classical-travelogue-jianghu | 交通地理、日常材料、人物动机 | medium |
+| 凡人宗门修仙 | 修仙 | 悲苦/克制 | sect-family-xianxia | 资源经济、境界边界、组织成本 | medium |
+| 制度修仙讽刺 | 都市/修仙 | 黑色幽默 | modern-platform-economy-satire | 制度响应、经济资源、爽点代价 | hard |
+| 历史穿越治世 | 历史 | 古典/质朴 | historical-court-livelihood | 财政、技术差、军政响应 | hard |
+| 近未来硬科幻 | 科幻 | 冷峻质朴 | near-future-industrial-scifi | 技术边界、组织响应、信息传播 | medium |
 
 ## Preset Injection 机制
 
-预设通过 `writer-prompts.ts` 的 `buildPresetInjections()` 函数注入：
+预设注入分四段，顺序固定：
 
-```ts
-function buildPresetInjections(enabledPresets: Preset[]): string {
-  const sections = enabledPresets
-    .filter(p => p.promptInjection)
-    .map(p => `## 预设：${p.name}\n\n${p.promptInjection}`);
-  return sections.join("\n\n");
-}
+```text
+## 流派规则
+{genre_profile 摘要}
+
+## 文风规则
+{tone promptInjection}
+
+## 时代/社会基底
+{settingBase promptInjection}
+
+## 逻辑风险约束
+{logicRisk writerConstraint 列表}
 ```
 
-注入位置在 `buildWriterSystemPrompt()` 中，位于 style guide 之后、output section 之前。
+`writing-modes-v1` 中的选段续写、扩写、对话生成、多版本和大纲分支都读取同一套 `enabledPresets`。`writing-tools-v1` 的文风偏离、设定漂移和逻辑自检读取同一套 setting/logic 声明。
 
 ## Post-Write Checks
 
-部分预设在写完章节后执行后置检查：
-
-| 预设 | 检查项 | 阈值 | 建议 |
-|---|---|---|---|
-| 句长方差修复 | 句长标准差 | ≥ 8.0 | "当前句长过于均匀，建议混合长短句" |
-| 情感具体化 | 抽象情绪词密度 | ≤ 2/千字 | "发现N处抽象情绪表达，建议改为具体动作" |
-| 口语化对话 | 对话书面语指标 | — | "发现N处书面语对话，建议改为口语" |
-| 伏笔四态 | 未标注状态的伏笔 | 0 | "发现N个伏笔未标注当前状态" |
+| 类型 | 来源 | 后续执行位置 |
+|---|---|---|
+| 句长方差 | anti-ai preset | Writer Agent 后置检查 / writing-tools rhythm |
+| 情感具体化 | anti-ai preset | Writer Agent 后置检查 |
+| 对话口语化 | anti-ai preset | dialogue analyzer |
+| 文风偏离 | tone preset | writing-tools tone drift |
+| 时代/设定漂移 | setting base | writing-tools setting drift |
+| 逻辑风险 | logic risk | writing-tools logic audit |
+| 伏笔四态 | literary preset | pending_hooks / health dashboard |
 
 ## UI 设计
 
@@ -289,24 +353,56 @@ function buildPresetInjections(enabledPresets: Preset[]): string {
 
 ```text
 写作预设
-  四个 Tab：节拍模板 / 文风预设 / AI味过滤 / 文学技法
-  每个 Tab 下：
-    卡片列表（名称 + 说明 + 适用流派标签 + 开关）
-    点击卡片展开详情 + 编辑入口
-  底部：当前书已启用预设摘要
+  Tab：推荐组合 / 流派 / 文风 / 时代基底 / 逻辑自检 / 节拍 / AI味 / 文学技法
+
+  推荐组合卡片：
+    - 名称 + 难度
+    - 适用题材
+    - 包含：genre/tone/setting/logic
+    - 适用/不适用场景
+    - [启用组合] [自定义拆分]
+
+  单项预设卡片：
+    - 名称 + 一句话说明
+    - 适用流派标签
+    - 冲突提示
+    - 启用/禁用
+    - 展开详情
 ```
 
-使用 shadcn/ui：`Tabs`、`Card`、`Switch`、`Badge`、`Dialog`、`Button`、`ScrollArea`。
+使用 shadcn/ui：`Tabs`、`Card`、`Switch`、`Badge`、`Dialog`、`Button`、`ScrollArea`、`Accordion`。
 
-### 流派选择器（建书 Step 1 增强）
+### 建书流程集成
 
-在 `BookCreate.tsx` 的题材字段增加流派选择下拉，选择后自动关联 GenreProfile 和推荐预设组合。
+在 `BookCreate.tsx` 的题材字段后增加：
+
+1. 选择流派。
+2. 推荐 bundle。
+3. 展示 bundle 内的 tone / settingBase / logicRisks。
+4. 作者可一键启用或拆分修改。
+5. 写入 `book_rules.md` / `style_guide.md` / `setting_guide.md` / enabled presets 配置。
 
 ## Testing Strategy
 
-- 每个 GenreProfile `.md` 文件有解析测试（YAML frontmatter 完整性）。
-- 每个 tone 预设模板有 8 维完整性断言。
-- 每个节拍模板有节拍数量和字数占比之和=1 的断言。
-- 每个 PostWriteCheck 有阈值测试。
-- 经纬题材推荐有栏目数量和名称断言。
-- PresetManager 有组件测试：启用/禁用/冲突检测。
+### Unit Tests
+
+- GenreProfile：所有 `.md` YAML 解析正确，必填字段完整。
+- Tone：包含规定维度；包含来源说明；不得包含完整 setting base 标题集合。
+- SettingBase：6 个文件存在；每个包含 10 个固定章节；包含现实/历史参照和常见违和点。
+- LogicRisk：每条规则包含 `writerConstraint`、`auditQuestion`、`uncertainHandling`。
+- Bundle：每个 bundle 引用的 genre/tone/settingBase/logicRisk 都存在；高难度 bundle 标注 prerequisite。
+- BeatTemplate：节拍数量和 wordRatio 正确。
+- AI 味过滤：promptInjection 非空，postWriteChecks 阈值合理。
+- 文学技法：promptInjection 非空。
+- 经纬推荐：栏目数量和名称正确。
+
+### Integration Tests
+
+- 启用 bundle → 生成 style_guide / setting_guide / enabled presets。
+- `writing-modes` 读取 enabled presets → prompt 中包含 tone + setting + logic。
+- 声明 setting base → logic risk 审计能读取边界。
+- 选择互斥 tone 或冲突 setting → UI 给出冲突提示。
+
+## Migration Note
+
+当前已创建的 5 个 tone 文件视为草稿。后续实现应先重写 tone，使其只承担语言气质；再新增 setting base 和 logic risk 文件。`writing-presets-v1/tasks.md` 中 Task 3 应降级为“需升级”，不能继续把当前 tone 当完成态。

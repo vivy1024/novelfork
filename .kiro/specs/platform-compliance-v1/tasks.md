@@ -11,6 +11,12 @@
 - 所有合规工具是辅助参考，不替代平台实际审核。
 - 词库和规则按平台隔离，便于独立更新。
 
+执行边界更新（2026-04-27）：
+
+- 本 spec 只剩 Task 13 验证，不再重写合规 UI。
+- `PublishReadiness` 与 `components/compliance/*` 作为 `studio-frontend-rewrite` 的复用资产。
+- 新创作工作台只提供入口或嵌入已有组件，不新建第二套合规页面。
+
 ## Tasks
 
 - [x] 1. 定义合规类型系统
@@ -87,7 +93,7 @@
   - 添加 API 测试。
   - 覆盖 Requirements 1-4、5。
 
-- [ ] 9. 实现敏感词扫描结果 UI
+- [x] 9. 实现敏感词扫描结果 UI
   - 新增 `packages/studio/src/components/compliance/SensitiveWordReport.tsx`。
   - 展示：命中列表（表格）、严重等级 Badge、上下文高亮、一键跳转章节。
   - 支持按类别/严重等级过滤。
@@ -95,7 +101,7 @@
   - 添加组件测试。
   - 覆盖 Requirements 1、5。
 
-- [ ] 10. 实现 AI 比例报告 UI
+- [x] 10. 实现 AI 比例报告 UI
   - 新增 `packages/studio/src/components/compliance/AiRatioReport.tsx`。
   - 展示：全书总比例 + 每章明细表格 + 平台阈值参考线。
   - 高 AI 比例章节标注警告。
@@ -104,7 +110,7 @@
   - 添加组件测试。
   - 覆盖 Requirements 2、5。
 
-- [ ] 11. 实现发布就绪检查页面
+- [x] 11. 实现发布就绪检查页面
   - 新增 `packages/studio/src/pages/PublishReadiness.tsx`。
   - 平台选择下拉 + 开始检查按钮。
   - 检查结果摘要（block/warn/suggest 计数）。
@@ -114,7 +120,7 @@
   - 添加组件测试。
   - 覆盖 Requirements 3、5。
 
-- [ ] 12. 实现 AI 使用标注编辑器 UI
+- [x] 12. 实现 AI 使用标注编辑器 UI
   - 新增 `packages/studio/src/components/compliance/AiDisclosureEditor.tsx`。
   - 展示生成的标注声明 + 可编辑 Textarea。
   - 导出为文本/Markdown。

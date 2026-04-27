@@ -11,6 +11,13 @@
 - 选段操作不触发真相文件更新（只有整章完成才更新真相）。
 - 大纲分支保存为独立文件，不覆盖当前大纲。
 
+执行边界更新（2026-04-27）：
+
+- Tasks 1-11 可继续作为核心能力与 API 底座推进。
+- Tasks 12-16 不再接入旧 `BookDetail` / `ChapterReader` / 旧 `App.tsx` 页面，只作为新创作工作台的可复用组件或交互能力输入。
+- 选段续写、扩写、补写、多版本、对话生成、大纲分支、作品导入的最终挂载位置是 `studio-frontend-rewrite` 的创作工作台：编辑器浮动工具栏、右侧 AI 面板、候选稿对照区和资源管理器导入入口。
+- 若实现 UI 组件，应保持无旧路由依赖、无旧页面布局假设，等待新前端统一挂载。
+
 ## Tasks
 
 - [ ] 1. 定义写作模式类型系统
@@ -110,7 +117,7 @@
   - 添加 API 测试。
   - 覆盖 Requirements 1-7、8。
 
-- [ ] 12. 实现选段续写 / 扩写 / 补写 UI
+- [ ] 12. 实现选段续写 / 扩写 / 补写可复用 UI（迁入新创作工作台，不接旧前端页面）
   - 新增 `packages/studio/src/components/writing-modes/InlineContinuation.tsx`。
   - 新增 `packages/studio/src/components/writing-modes/SceneExpander.tsx`。
   - 新增 `packages/studio/src/components/writing-modes/ParagraphBridge.tsx`。
@@ -122,7 +129,7 @@
   - 添加组件测试。
   - 覆盖 Requirements 1、2、5、8。
 
-- [ ] 13. 实现对话生成 UI
+- [ ] 13. 实现对话生成可复用 UI（迁入新创作工作台，不接旧前端页面）
   - 新增 `packages/studio/src/components/writing-modes/DialogueGenerator.tsx`。
   - 角色选择（从 character_matrix 多选）+ 场景描述 + 对话目的 + 轮数。
   - 结果展示：角色彩色标签 + 台词 + 可逐句编辑。
@@ -131,7 +138,7 @@
   - 添加组件测试。
   - 覆盖 Requirements 3、8。
 
-- [ ] 14. 实现多版本对比 UI
+- [ ] 14. 实现多版本对比可复用 UI（迁入新创作工作台，不接旧前端页面）
   - 新增 `packages/studio/src/components/writing-modes/VariantCompare.tsx`。
   - Tab 切换或并排展示各版本。
   - 高亮与原文的差异。
@@ -141,7 +148,7 @@
   - 添加组件测试。
   - 覆盖 Requirements 4、8。
 
-- [ ] 15. 实现大纲分支 UI
+- [ ] 15. 实现大纲分支可复用 UI（迁入新创作工作台，不接旧前端页面）
   - 新增 `packages/studio/src/components/writing-modes/OutlineBrancher.tsx`。
   - 展示 2-3 条走向卡片：核心冲突 + 转折点 + 预计章数 + 消耗伏笔。
   - 选择走向 → 扩展为完整大纲 → 保存为分支。
@@ -150,7 +157,7 @@
   - 添加组件测试。
   - 覆盖 Requirements 6、8。
 
-- [ ] 16. 实现作品导入 UI
+- [ ] 16. 实现作品导入可复用 UI（迁入新创作工作台，不接旧前端页面）
   - 新增 `packages/studio/src/components/writing-modes/WorkImporter.tsx`。
   - 拖放区域 + 粘贴文本。
   - 导入目的选择：只分析文风 / 续写。
