@@ -26,6 +26,11 @@ export interface UserPreferences {
   autoSaveDelay: number;
   dailyWordTarget: number;
   workbenchMode: boolean;
+  advancedAnimations: boolean;
+  wrapMarkdown: boolean;
+  wrapCode: boolean;
+  wrapDiff: boolean;
+  language: string;
 }
 
 export interface RuntimeRecoverySettings {
@@ -126,6 +131,11 @@ export const DEFAULT_USER_CONFIG: UserConfig = {
     autoSaveDelay: 2000,
     dailyWordTarget: 6000,
     workbenchMode: false,
+    advancedAnimations: true,
+    wrapMarkdown: true,
+    wrapCode: true,
+    wrapDiff: true,
+    language: "zh",
   },
   runtimeControls: {
     defaultPermissionMode: DEFAULT_SESSION_CONFIG.permissionMode,

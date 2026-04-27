@@ -20,6 +20,14 @@ import { TOOL_ACCESS_GOVERNANCE_EXPLANATIONS } from "@/shared/tool-access-reason
 import type { ModelDefaultSettings, RuntimeControlSettings, UserConfig } from "@/types/settings";
 import { DEFAULT_USER_CONFIG } from "@/types/settings";
 
+interface ExtendedRuntimeControls extends RuntimeControlSettings {
+  translateThinking?: boolean;
+  expandReasoning?: boolean;
+  relaxedPlanning?: boolean;
+  smartOutputCheck?: boolean;
+  forceUserLanguage?: boolean;
+}
+
 const PERMISSION_OPTIONS: Array<{ value: RuntimeControlSettings["defaultPermissionMode"]; label: string; description: string }> = SESSION_PERMISSION_MODE_OPTIONS.map((option) => ({
   value: option.value,
   label: option.label,
@@ -62,7 +70,7 @@ function parsePercentInput(raw: string, fallback: number, min: number, max: numb
 }
 
 export function RuntimeControlPanel() {
-  const [runtimeControls, setRuntimeControls] = useState<RuntimeControlSettings>(DEFAULT_RUNTIME_CONTROLS);
+  const [runtimeControls, setRuntimeControls] = useState<ExtendedRuntimeControls>(DEFAULT_RUNTIME_CONTROLS);
   const [modelDefaults, setModelDefaults] = useState<ModelDefaultSettings>(DEFAULT_MODEL_DEFAULTS);
   const [modelOptions, setModelOptions] = useState<Array<{ value: string; label: string }>>([]);
   const [loading, setLoading] = useState(true);
@@ -534,6 +542,46 @@ export function RuntimeControlPanel() {
               </Card>
             </div>
 
+            <Card size="sm">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-sm">
+                  <Activity className="size-4 text-primary" />
+                  行为开关
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <SwitchField label="翻译思考内容" checked={runtimeControls.translateThinking ?? false} onChange={(v) => { setSaved(false); setRuntimeControls((cur) => ({ ...cur, translateThinking: v })); }} />
+                <SwitchField label="默认展开推理内容" checked={runtimeControls.expandReasoning ?? false} onChange={(v) => { setSaved(false); setRuntimeControls((cur) => ({ ...cur, expandReasoning: v })); }} />
+                <SwitchField label="默认宽松规划" checked={runtimeControls.relaxedPlanning ?? true} onChange={(v) => { setSaved(false); setRuntimeControls((cur) => ({ ...cur, relaxedPlanning: v })); }} />
+                <SwitchField label="智能检查输出中断" checked={runtimeControls.smartOutputCheck ?? true} onChange={(v) => { setSaved(false); setRuntimeControls((cur) => ({ ...cur, smartOutputCheck: v })); }} />
+              </CardContent>
+            </Card>
+
+            <Card size="sm">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-sm">
+                  <Shield className="size-4 text-primary" />
+                  目录与命令规则
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <ListManager label="全局目录白名单" items={runtimeControls.toolAccess?.allowlist ?? []} onChange={(items) => { setSaved(false); setRuntimeControls((cur) => ({ ...cur, toolAccess: { ...cur.toolAccess, allowlist: items } })); }} />
+                <ListManager label="全局目录黑名单" items={runtimeControls.toolAccess?.blocklist ?? []} onChange={(items) => { setSaved(false); setRuntimeControls((cur) => ({ ...cur, toolAccess: { ...cur.toolAccess, blocklist: items } })); }} />
+              </CardContent>
+            </Card>
+
+            <Card size="sm">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-sm">
+                  <Brain className="size-4 text-primary" />
+                  会话
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <SwitchField label="要求使用您的语言回复" checked={runtimeControls.forceUserLanguage ?? false} onChange={(v) => { setSaved(false); setRuntimeControls((cur) => ({ ...cur, forceUserLanguage: v })); }} />
+              </CardContent>
+            </Card>
+
             <div className="flex flex-col gap-3 border-t pt-4 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
               <div className="space-y-1">
                 <p>当前通过 /api/settings/user 统一持久化；导入/导出会自动带上这组运行控制字段。</p>
@@ -547,5 +595,47 @@ export function RuntimeControlPanel() {
         )}
       </CardContent>
     </Card>
+  );
+}
+
+function SwitchField({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <div className="flex items-center justify-between">
+      <Label className="text-sm">{label}</Label>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors ${checked ? "bg-primary" : "bg-muted"}`}
+        onClick={() => onChange(!checked)}
+      >
+        <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${checked ? "translate-x-4" : "translate-x-0.5"}`} />
+      </button>
+    </div>
+  );
+}
+
+function ListManager({ label, items, onChange }: { label: string; items: string[]; onChange: (items: string[]) => void }) {
+  const [draft, setDraft] = useState("");
+  return (
+    <div>
+      <Label className="text-sm">{label}</Label>
+      <div className="mt-1 flex gap-2">
+        <Input className="flex-1" value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="输入路径或命令" />
+        <Button size="sm" variant="outline" onClick={() => { if (draft.trim()) { onChange([...items, draft.trim()]); setDraft(""); } }}>添加</Button>
+      </div>
+      {items.length > 0 ? (
+        <div className="mt-2 space-y-1">
+          {items.map((item, i) => (
+            <div key={i} className="flex items-center justify-between rounded-md bg-muted px-2 py-1 text-sm">
+              <span className="font-mono">{item}</span>
+              <button className="text-xs text-destructive hover:underline" onClick={() => onChange(items.filter((_, j) => j !== i))} type="button">删除</button>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-1 text-xs text-muted-foreground">暂无配置</p>
+      )}
+    </div>
   );
 }
