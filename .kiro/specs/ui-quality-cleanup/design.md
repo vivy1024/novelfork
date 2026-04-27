@@ -28,9 +28,68 @@
 | 输入框无功能 | 移除 |
 | 硬编码文案 | 替换为真实数据或移除 |
 
+## 供应商架构修正
+
+NarraFork 的“提供商”不是单一实体，而是两类对象：
+
+### 平台集成（Platform Integration）
+
+面向 Codex/Kiro/Cline 等平台账号。参考 NarraFork 与 cockpit-tools：
+- 不填写 API Key/Base URL。
+- 核心是账号/凭据管理：OAuth、设备码、JSON 导入、本机导入。
+- 需要显示账号状态、优先级、成功/失败次数、配额、用量窗口、最后使用时间。
+- 本阶段先做正确 UI 和类型边界，账号导入/配额刷新可 disabled。
+
+### API key 接入（API Provider）
+
+面向 OpenAI-compatible / Anthropic-compatible 等 API 服务：
+- 填写 Base URL、API Key。
+- 配置兼容格式、API 模式、上下文长度、模型刷新/测试。
+- 这是现有 provider-manager 能力的主要保留对象。
+
+### 数据模型拆分
+
+新增/调整前端类型：
+
+```ts
+interface PlatformIntegration {
+  id: string;
+  name: string;
+  platform: "codex" | "kiro" | "cline" | "antigravity" | "cursor" | "custom";
+  enabled: boolean;
+  credentials: PlatformCredential[];
+  modelCount?: number;
+}
+
+interface PlatformCredential {
+  id: string;
+  name: string;
+  accountId?: string;
+  status: "active" | "disabled" | "expired" | "error";
+  priority: number;
+  successCount: number;
+  failureCount: number;
+  quota?: {
+    hourlyPercentage?: number;
+    weeklyPercentage?: number;
+  };
+  lastUsedAt?: string;
+}
+
+interface ApiProvider {
+  id: string;
+  name: string;
+  compatibility: "openai-compatible" | "anthropic-compatible";
+  apiMode: "completions" | "responses" | "codex";
+  baseUrl: string;
+  apiKeyRequired: boolean;
+  enabled: boolean;
+  models: ApiModel[];
+}
+```
+
 ## 不做的事
 
-- 不加新页面
-- 不加新 API
-- 不改后端逻辑
-- 不改测试（除非 UI 结构变化导致测试断裂）
+- 不做真正的 OAuth/设备码登录流程。
+- 不实现完整 cockpit-tools 的本机账号注入、多实例管理、配额刷新。
+- 本阶段只修正 NovelFork 的供应商概念、UI 分区、类型边界和 API Key 接入体验。

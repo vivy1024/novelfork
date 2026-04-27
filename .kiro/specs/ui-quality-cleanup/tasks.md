@@ -172,9 +172,30 @@ NarraFork 仪表盘特征：
   - 差距：缺头像占位（首字母缩写圆形 + 上传按钮）；"分区导航"冗余文字应删除；设置分区切换不更新 URL。
   - 修复：加头像占位区；删"分区导航"文字；分区切换时 pushState 更新 URL。
 
-- [x] 模块 3：设置页 — AI 供应商
-  - 差距：设置导航无 lucide 图标（NarraFork 每项有图标）；卡片网格应为 3 列（NarraFork 是 3 列）；badge 颜色应区分（蓝色=模型数，紫色=额外数）。
-  - 修复：设置导航每项加 lucide 图标；卡片网格改为 `xl:grid-cols-3`；badge 加颜色区分。
+- [x] 模块 3：设置页 — AI 供应商（第一轮，已完成但方向不完整）
+  - 已完成：设置导航加 lucide 图标、卡片列表/详情双视图、API Key 输入隐藏、开关持久化。
+  - 问题：仍然把“平台集成”和“API key 接入”混在同一套 Provider/模型详情里。NarraFork 不是这样。
+
+- [x] 20. 供应商架构拆分：平台集成 vs API key 接入
+  - 新增前端类型：`PlatformIntegration`、`PlatformCredential`、`ApiProvider`、`ApiModel`。
+  - ProviderSettingsPage 内部不再把平台集成和 API key 接入都当成 `ManagedProvider`。
+  - 平台集成使用 mock/derived 数据：Codex、Kiro、Cline 等，只展示账号/凭据管理 UI，不展示 API Key/Base URL。
+  - API key 接入继续使用现有 `ManagedProvider` / provider-manager 数据。
+  - 验收：平台集成详情页没有 API Key/Base URL；API key 接入详情页才有 Base URL/API Key/兼容格式/API 模式。
+
+- [x] 21. 平台集成详情页对标 cockpit-tools/NarraFork
+  - 详情页结构：返回按钮、平台名、启用 switch、全局代理 URL（disabled）、默认推理强度（Codex only，disabled）、Responses WebSocket（Codex only，disabled）。
+  - 凭据管理区：浏览器添加、设备码添加、JSON 导入按钮（disabled，标注“即将推出”）。
+  - 凭据表格列：名称、账号 ID、优先级、状态、成功/失败、配额、最后使用、操作。
+  - 空态：暂无账号，提示“添加平台账号后可用于反代调用”。
+  - 验收：视觉接近 NarraFork 平台集成展开页，而不是 API Provider 表单。
+
+- [x] 22. API key 接入详情页对标 NarraFork
+  - 详情页结构：返回按钮、Provider 名、兼容格式 badge、API 模式 badge、Base URL、API Key（password）、保存按钮。
+  - 模型区：刷新模型、模型测试、上下文长度、启用/禁用。
+  - 不显示平台凭据字段（账号 ID、优先级、配额）。
+  - AddProviderForm 只出现在 API key 接入分区。
+  - 验收：API 接入页只处理 BaseURL/APIKey，不出现平台账号导入按钮。
 
 - [x] 模块 0：全局 sidebar（跨模块）
   - NarraFork 所有页面都有左侧 sidebar（仪表盘/监察者/叙事线/项目列表/叙述者列表/套路/设置/退出登录/版本号）。这是最大的结构性差距。
