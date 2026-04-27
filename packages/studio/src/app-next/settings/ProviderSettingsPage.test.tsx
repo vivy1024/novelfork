@@ -138,4 +138,62 @@ describe("ProviderSettingsPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "禁用 GPT-5 Codex" }));
     await waitFor(() => expect(client.updateModel).toHaveBeenCalledWith("openai", "gpt-5-codex", { enabled: false }));
   });
+
+  it("shows empty state when no providers exist", async () => {
+    const client = createClient();
+    (client.listProviders as ReturnType<typeof vi.fn>).mockResolvedValue({ providers: [] });
+    render(<ProviderSettingsPage client={client} />);
+
+    await screen.findByRole("heading", { name: "AI 供应商" });
+    expect(screen.getByText("暂无供应商")).toBeTruthy();
+  });
+
+  it("shows empty model state when provider has no models", async () => {
+    const client = createClient();
+    const noModelProvider = { ...openaiProvider, models: [] };
+    (client.listProviders as ReturnType<typeof vi.fn>).mockResolvedValue({ providers: [noModelProvider] });
+    render(<ProviderSettingsPage client={client} />);
+
+    await screen.findAllByText("OpenAI");
+    expect(screen.getByText("暂无模型")).toBeTruthy();
+  });
+
+  it("displays test failure status on model row", async () => {
+    const client = createClient();
+    (client.testModel as ReturnType<typeof vi.fn>).mockResolvedValue({
+      success: false,
+      error: "Connection refused",
+      model: {
+        ...openaiProvider.models[0],
+        lastTestStatus: "error",
+        lastTestError: "Connection refused",
+      },
+    });
+    render(<ProviderSettingsPage client={client} />);
+
+    await screen.findByText("GPT-4o");
+    fireEvent.click(screen.getByRole("button", { name: "测试模型 GPT-4o" }));
+    await waitFor(() => expect(client.testModel).toHaveBeenCalledWith("openai", "gpt-4o"));
+  });
+
+  it("supports Anthropic compatible provider creation", async () => {
+    const client = createClient();
+    render(<ProviderSettingsPage client={client} />);
+
+    await screen.findAllByText("OpenAI");
+    fireEvent.change(screen.getByLabelText("供应商名称"), { target: { value: "Anthropic" } });
+    fireEvent.change(screen.getByLabelText("供应商前缀"), { target: { value: "anthropic" } });
+    fireEvent.change(screen.getByLabelText("API Key"), { target: { value: "sk-ant-test" } });
+    fireEvent.change(screen.getByLabelText("Base URL"), { target: { value: "https://api.anthropic.com" } });
+    fireEvent.change(screen.getByLabelText("API 模式"), { target: { value: "completions" } });
+    fireEvent.change(screen.getByLabelText("兼容格式"), { target: { value: "anthropic-compatible" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存供应商" }));
+
+    await waitFor(() => expect(client.createProvider).toHaveBeenCalledWith(expect.objectContaining({
+      name: "Anthropic",
+      prefix: "anthropic",
+      apiMode: "completions",
+      compatibility: "anthropic-compatible",
+    })));
+  });
 });
