@@ -124,7 +124,7 @@ describe("ProviderSettingsPage", () => {
     const client = createClient();
     render(<ProviderSettingsPage client={client} />);
 
-    await screen.findByText("GPT-4o");
+    await screen.findAllByText("GPT-4o");
     fireEvent.click(screen.getByRole("button", { name: "刷新模型" }));
     await waitFor(() => expect(client.refreshModels).toHaveBeenCalledWith("openai"));
 
@@ -145,7 +145,7 @@ describe("ProviderSettingsPage", () => {
     render(<ProviderSettingsPage client={client} />);
 
     await screen.findByRole("heading", { name: "AI 供应商" });
-    expect(screen.getByText("暂无供应商")).toBeTruthy();
+    expect(screen.getAllByText("暂无供应商").length).toBeGreaterThan(0);
   });
 
   it("shows empty model state when provider has no models", async () => {
@@ -171,8 +171,9 @@ describe("ProviderSettingsPage", () => {
     });
     render(<ProviderSettingsPage client={client} />);
 
-    await screen.findByText("GPT-4o");
-    fireEvent.click(screen.getByRole("button", { name: "测试模型 GPT-4o" }));
+    await screen.findAllByText("GPT-4o");
+    const testBtn = screen.getByRole("button", { name: /测试模型.*GPT-4o/ });
+    fireEvent.click(testBtn);
     await waitFor(() => expect(client.testModel).toHaveBeenCalledWith("openai", "gpt-4o"));
   });
 

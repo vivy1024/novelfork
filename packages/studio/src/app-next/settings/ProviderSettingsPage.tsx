@@ -222,6 +222,10 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
     }
   };
 
+  const toggleProvider = (providerId: string, enabled: boolean) => {
+    setProviders((current) => current.map((p) => p.id === providerId ? { ...p, enabled } : p));
+  };
+
   if (loading) {
     return <div className="rounded-xl border border-border p-4 text-sm text-muted-foreground">正在加载 AI 供应商…</div>;
   }
@@ -247,8 +251,8 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="space-y-4">
-          <ProviderGroup title="平台集成" providers={platformProviders} selectedProviderId={selectedProvider?.id} onSelect={setSelectedProviderId} />
-          <ProviderGroup title="API key 接入" providers={apiKeyProviders} selectedProviderId={selectedProvider?.id} onSelect={setSelectedProviderId} />
+          <ProviderGroup title="平台集成" providers={platformProviders} selectedProviderId={selectedProvider?.id} onSelect={setSelectedProviderId} onToggle={toggleProvider} />
+          <ProviderGroup title="API key 接入" providers={apiKeyProviders} selectedProviderId={selectedProvider?.id} onSelect={setSelectedProviderId} onToggle={toggleProvider} />
           <AddProviderForm form={form} setForm={setForm} onSave={() => void saveProvider()} busy={busy === "create-provider"} />
         </div>
         <aside className="space-y-4 rounded-2xl border border-border bg-muted/20 p-4">
@@ -313,33 +317,61 @@ function ProviderGroup({
   providers,
   selectedProviderId,
   onSelect,
+  onToggle,
 }: {
   readonly title: string;
   readonly providers: readonly ManagedProvider[];
   readonly selectedProviderId?: string;
   readonly onSelect: (providerId: string) => void;
+  readonly onToggle: (providerId: string, enabled: boolean) => void;
 }) {
   return (
     <section className="space-y-2">
-      <h3 className="text-base font-semibold">{title}</h3>
+      <h4 className="text-sm font-semibold text-muted-foreground">{title}</h4>
       {providers.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-border p-3 text-sm text-muted-foreground">未接入，使用下方短表单添加。</div>
+        <div className="rounded-lg border border-dashed border-border p-3 text-sm text-muted-foreground">暂无供应商</div>
       ) : (
-        <div className="grid gap-2 md:grid-cols-2">
-          {providers.map((provider) => (
-            <button
-              key={`${title}:${provider.id}`}
-              type="button"
-              className={selectedProviderId === provider.id ? "rounded-xl border border-primary bg-primary/10 p-3 text-left" : "rounded-xl border border-border bg-background p-3 text-left hover:bg-muted"}
-              onClick={() => onSelect(provider.id)}
-            >
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-medium">{provider.name}</span>
-                <span className="rounded-full bg-muted px-2 py-0.5 text-xs">{provider.enabled ? "已启用" : "已禁用"}</span>
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+          {providers.map((provider) => {
+            const isSelected = selectedProviderId === provider.id;
+            const enabledModels = provider.models.filter((m) => m.enabled !== false);
+            const previewModels = enabledModels.slice(0, 3);
+            const moreCount = enabledModels.length - previewModels.length;
+            return (
+              <div
+                key={`${title}:${provider.id}`}
+                className={`rounded-lg border p-3 text-left transition ${isSelected ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <button type="button" className="min-w-0 text-left" onClick={() => onSelect(provider.id)}>
+                    <div className="font-medium leading-tight">{provider.name}</div>
+                    <span className="mt-0.5 inline-block rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      {provider.apiMode ?? provider.compatibility?.replace("-compatible", "") ?? "API"}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={provider.enabled}
+                    aria-label={provider.enabled ? "禁用供应商" : "启用供应商"}
+                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors ${provider.enabled ? "bg-primary" : "bg-muted"}`}
+                    onClick={(e) => { e.stopPropagation(); onToggle(provider.id, !provider.enabled); }}
+                  >
+                    <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${provider.enabled ? "translate-x-4" : "translate-x-0.5"}`} />
+                  </button>
+                </div>
+                {previewModels.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {previewModels.map((m) => (
+                      <span key={m.id} className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">{m.name}</span>
+                    ))}
+                    {moreCount > 0 && <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">+{moreCount} 更多模型</span>}
+                  </div>
+                )}
+                <div className="mt-2 text-xs text-muted-foreground">{provider.models.length} 个模型</div>
               </div>
-              <div className="mt-2 text-xs text-muted-foreground">{provider.apiMode} · {provider.models.length} 模型</div>
-            </button>
-          ))}
+            );
+          })}
         </div>
       )}
     </section>
