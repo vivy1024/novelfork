@@ -45,6 +45,16 @@ export function ProfilePanel() {
       </div>
 
       <div className="rounded-lg border border-border p-4 space-y-4">
+        <div className="flex items-center gap-4 pb-4 border-b border-border">
+          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted text-xl font-semibold text-muted-foreground">
+            {profile.name ? profile.name.charAt(0).toUpperCase() : "U"}
+          </div>
+          <div>
+            <p className="text-sm font-medium">{profile.name || "未设置姓名"}</p>
+            <button className="mt-1 text-xs text-primary hover:underline" type="button" disabled>上传头像</button>
+          </div>
+        </div>
+
         <div>
           <label className="flex items-center gap-2 text-sm font-medium mb-2 text-foreground">
             <User className="w-4 h-4" />

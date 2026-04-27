@@ -193,22 +193,22 @@ export function RoutinesNextPage({ projectRoot: projectRootProp }: RoutinesNextP
       {error && <InlineError message={error} />}
 
       {/* 水平 tab */}
-      <div role="tablist" aria-label="套路分区" className="flex flex-wrap gap-1 border-b border-border pb-1">
-        {ROUTINE_SECTIONS.map((section) => (
-          <button
-            key={section.id}
-            role="tab"
-            aria-selected={section.id === activeSectionId}
-            className={scopeButtonClass(
-              section.id === activeSectionId,
-              "rounded-t-lg px-3 py-1.5 text-sm transition",
-            )}
-            onClick={() => setActiveSectionId(section.id)}
-            type="button"
-          >
-            {section.label}
-          </button>
-        ))}
+      <div role="tablist" aria-label="套路分区" className="flex flex-wrap gap-1 border-b border-border">
+        {ROUTINE_SECTIONS.map((section) => {
+          const isSelected = section.id === activeSectionId;
+          return (
+            <button
+              key={section.id}
+              role="tab"
+              aria-selected={isSelected}
+              className={`rounded-t-lg px-3 py-1.5 text-sm transition ${isSelected ? "border-b-2 border-primary text-primary font-medium" : "text-muted-foreground hover:text-foreground"}`}
+              onClick={() => setActiveSectionId(section.id)}
+              type="button"
+            >
+              {section.label}
+            </button>
+          );
+        })}
       </div>
 
       {/* tab 内容 */}

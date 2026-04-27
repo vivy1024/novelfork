@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ReactNode, ComponentType } from "react";
 
 import { GitBranch, LayoutDashboard, PenTool, Search, Settings, Wrench } from "lucide-react";
 
@@ -106,6 +106,7 @@ export interface SettingsSectionItem {
   readonly id: string;
   readonly label: string;
   readonly group?: string;
+  readonly icon?: ComponentType<{ className?: string }>;
 }
 
 interface SettingsLayoutProps {
@@ -131,7 +132,6 @@ export function SettingsLayout({ title: _title, sections, activeSectionId, onSec
   return (
     <div className="grid gap-3 lg:grid-cols-[15rem_minmax(0,1fr)]">
       <nav aria-label="设置分区" className="rounded-lg border border-border bg-card p-2">
-        <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">分区导航</div>
         <div className="space-y-2">
           {groupedSections.map(({ group, sections: groupSections }) => (
             <div key={group} className="space-y-0.5">
@@ -142,11 +142,12 @@ export function SettingsLayout({ title: _title, sections, activeSectionId, onSec
                   type="button"
                   aria-current={section.id === activeSectionId ? "page" : undefined}
                   className={cn(
-                    "flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm transition",
+                    "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition",
                     section.id === activeSectionId ? "bg-primary text-primary-foreground" : "hover:bg-muted",
                   )}
                   onClick={() => onSectionChange(section.id)}
                 >
+                  {section.icon && <section.icon className="h-4 w-4 shrink-0" />}
                   <span>{section.label}</span>
                 </button>
               ))}

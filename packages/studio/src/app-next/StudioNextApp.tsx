@@ -9,24 +9,25 @@ import { RoutinesNextPage } from "./routines/RoutinesNextPage";
 import { WorkspacePage } from "./workspace/WorkspacePage";
 import { WorkflowPage } from "./workflow/WorkflowPage";
 import { SearchPage } from "./search/SearchPage";
+import { User, Cpu, Bot, Bell, Palette, Plug, Server, Database, Activity, Clock, FolderCog, Info } from "lucide-react";
 
 interface StudioNextAppProps {
   readonly initialRoute?: StudioNextRoute;
 }
 
 const SETTINGS_SECTIONS = [
-  { id: "profile", label: "个人资料", group: "个人设置" },
-  { id: "models", label: "模型", group: "个人设置" },
-  { id: "agents", label: "AI 代理", group: "个人设置" },
-  { id: "notifications", label: "通知", group: "个人设置" },
-  { id: "appearance", label: "外观与界面", group: "个人设置" },
-  { id: "providers", label: "AI 供应商", group: "实例管理" },
-  { id: "server", label: "服务器与系统", group: "实例管理" },
-  { id: "storage", label: "存储空间", group: "实例管理" },
-  { id: "resources", label: "运行资源", group: "实例管理" },
-  { id: "history", label: "使用历史", group: "实例管理" },
-  { id: "config", label: "项目配置", group: "实例管理" },
-  { id: "about", label: "关于", group: "实例管理" },
+  { id: "profile", label: "个人资料", group: "个人设置", icon: User },
+  { id: "models", label: "模型", group: "个人设置", icon: Cpu },
+  { id: "agents", label: "AI 代理", group: "个人设置", icon: Bot },
+  { id: "notifications", label: "通知", group: "个人设置", icon: Bell },
+  { id: "appearance", label: "外观与界面", group: "个人设置", icon: Palette },
+  { id: "providers", label: "AI 供应商", group: "实例管理", icon: Plug },
+  { id: "server", label: "服务器与系统", group: "实例管理", icon: Server },
+  { id: "storage", label: "存储空间", group: "实例管理", icon: Database },
+  { id: "resources", label: "运行资源", group: "实例管理", icon: Activity },
+  { id: "history", label: "使用历史", group: "实例管理", icon: Clock },
+  { id: "config", label: "项目配置", group: "实例管理", icon: FolderCog },
+  { id: "about", label: "关于", group: "实例管理", icon: Info },
 ] as const;
 
 const ROUTE_PATHS: Record<StudioNextRoute, string> = {
