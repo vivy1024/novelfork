@@ -12,6 +12,9 @@ import { HistoryPanel } from "../components/HistoryPanel";
 import { OutlinePanel } from "../components/OutlinePanel";
 import { DiffPanel } from "../components/DiffPanel";
 import { PageScaffold } from "@/components/layout/PageScaffold";
+import { ChapterHookGenerator, type GeneratedHookOption } from "@/components/writing-tools/ChapterHookGenerator";
+import { DialogueAnalysis, type DialogueAnalysisResult } from "@/components/writing-tools/DialogueAnalysis";
+import { RhythmChart, type RhythmChartAnalysis } from "@/components/writing-tools/RhythmChart";
 import { useAiModelGate } from "../hooks/use-ai-model-gate";
 import {
   ChevronLeft,
@@ -32,6 +35,7 @@ import {
   Layers,
   History,
   BookmarkPlus,
+  Sparkles,
 } from "lucide-react";
 
 interface ChapterData {
@@ -45,6 +49,26 @@ interface Nav {
   toDashboard: () => void;
   toDiff: (bookId: string, chapterNumber: number) => void;
   toAdmin?: (section?: string) => void;
+}
+
+type HighlightRange = {
+  readonly start: number;
+  readonly end: number;
+};
+
+function extractHighlightedSnippets(content: string, ranges: ReadonlyArray<HighlightRange>): ReadonlyArray<string> {
+  return ranges
+    .map((range) => content.slice(range.start, range.end).trim())
+    .filter((snippet) => snippet.length > 0);
+}
+
+function appendPendingHook(content: string | null, hook: GeneratedHookOption, chapterNumber: number): string {
+  const base = content?.trimEnd() || "# 待处理伏笔";
+  const entry = [
+    `- [planted] ${hook.id}（第 ${chapterNumber} 章，${hook.style}，留存：${hook.retentionEstimate}）：${hook.text}`,
+    `  - 理由：${hook.rationale}`,
+  ].join("\n");
+  return `${base}\n\n${entry}\n`;
 }
 
 export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
@@ -67,6 +91,13 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
   const [diffPanelData, setDiffPanelData] = useState<{ originalText: string; newText: string; mode: string; snapshotId: number } | null>(null);
   const [showSnapshotDialog, setShowSnapshotDialog] = useState(false);
   const [snapshotDescription, setSnapshotDescription] = useState("");
+  const [writingToolsOpen, setWritingToolsOpen] = useState(false);
+  const [writingToolsLoading, setWritingToolsLoading] = useState(false);
+  const [writingToolsError, setWritingToolsError] = useState<string | null>(null);
+  const [rhythmAnalysis, setRhythmAnalysis] = useState<RhythmChartAnalysis | null>(null);
+  const [dialogueAnalysis, setDialogueAnalysis] = useState<DialogueAnalysisResult | null>(null);
+  const [highlightedRanges, setHighlightedRanges] = useState<ReadonlyArray<HighlightRange>>([]);
+  const [appliedHooks, setAppliedHooks] = useState<ReadonlyArray<string>>([]);
   const editorRef = useRef<any>(null);
   const { ensureModelFor, blockedResult, closeGate } = useAiModelGate();
 
@@ -105,6 +136,53 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
       notify.error("保存失败", { description: e instanceof Error ? e.message : undefined });
     } finally {
       setManualSaving(false);
+    }
+  };
+
+  const loadWritingTools = async () => {
+    setWritingToolsLoading(true);
+    setWritingToolsError(null);
+    try {
+      const [rhythm, dialogue] = await Promise.all([
+        fetchJson<RhythmChartAnalysis>(`/books/${bookId}/chapters/${chapterNumber}/rhythm`, { method: "POST" }),
+        fetchJson<DialogueAnalysisResult>(`/books/${bookId}/chapters/${chapterNumber}/dialogue`, { method: "POST" }),
+      ]);
+      setRhythmAnalysis(rhythm);
+      setDialogueAnalysis(dialogue);
+    } catch (e) {
+      setWritingToolsError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setWritingToolsLoading(false);
+    }
+  };
+
+  const handleToggleWritingTools = () => {
+    setContextPanelOpen(false);
+    setHistoryPanelOpen(false);
+    setOutlinePanelOpen(false);
+    setWritingToolsOpen((open) => !open);
+    if (!writingToolsOpen && (!rhythmAnalysis || !dialogueAnalysis)) {
+      void loadWritingTools();
+    }
+  };
+
+  const handleApplyHook = async (hook: GeneratedHookOption) => {
+    const text = hook.text.trim();
+    if (!text) return;
+    setAppliedHooks((hooks) => hooks.includes(text) ? hooks : [...hooks, text]);
+    if (editing) {
+      setEditContent((content) => `${content.trimEnd()}\n\n${text}`);
+    }
+    try {
+      const current = await fetchJson<{ content: string | null }>(`/books/${bookId}/truth/pending_hooks.md`);
+      await fetchJson(`/books/${bookId}/truth/pending_hooks.md`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: appendPendingHook(current.content, hook, chapterNumber) }),
+      });
+      notify.success("章末钩子已插入");
+    } catch (e) {
+      notify.error("伏笔状态更新失败", { description: e instanceof Error ? e.message : undefined });
     }
   };
 
@@ -221,6 +299,7 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
     .filter((l) => l !== titleLine)
     .join("\n")
     .trim();
+  const highlightedSnippets = extractHighlightedSnippets(data.content, highlightedRanges);
 
   const handleApprove = async () => {
     await postApi(`/books/${bookId}/chapters/${chapterNumber}/approve`);
@@ -329,6 +408,14 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
             上下文
           </button>
 
+          <button
+            onClick={handleToggleWritingTools}
+            className="flex items-center gap-2 px-4 py-2 text-xs font-bold bg-secondary text-muted-foreground rounded-xl hover:text-primary hover:bg-primary/10 transition-all border border-border/50"
+          >
+            <Sparkles size={14} />
+            写作工具
+          </button>
+
           {editing && (
             <button
               onClick={() => setShowSnapshotDialog(true)}
@@ -385,6 +472,33 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
         </div>
       </div>
 
+      {writingToolsOpen && (
+        <div className="grid gap-4">
+          <ChapterHookGenerator
+            bookId={bookId}
+            chapterNumber={chapterNumber}
+            chapterContent={editing ? editContent : data.content}
+            onApplyHook={handleApplyHook}
+          />
+          {writingToolsLoading ? (
+            <div className="rounded-xl border border-border/60 bg-card p-4 text-sm text-muted-foreground">正在分析章节节奏与对话比例...</div>
+          ) : null}
+          {writingToolsError ? (
+            <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive">{writingToolsError}</div>
+          ) : null}
+          {rhythmAnalysis ? <RhythmChart analysis={rhythmAnalysis} onHighlightRanges={setHighlightedRanges} /> : null}
+          {dialogueAnalysis ? <DialogueAnalysis analysis={dialogueAnalysis} /> : null}
+          {appliedHooks.length > 0 ? (
+            <div className="rounded-xl border border-border/60 bg-card p-4">
+              <div className="mb-2 text-sm font-medium">已插入钩子</div>
+              <div className="space-y-2 text-sm text-muted-foreground">
+                {appliedHooks.map((hook) => <p key={hook}>{hook}</p>)}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      )}
+
       {/* Manuscript Sheet */}
       <div className="paper-sheet rounded-2xl p-8 md:p-16 lg:p-24 shadow-2xl shadow-primary/5 min-h-[80vh] relative overflow-hidden">
         {/* Physical Paper Details */}
@@ -406,6 +520,15 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
             <span>{chapterNumber.toString().padStart(2, '0')}</span>
           </div>
         </header>
+
+        {highlightedSnippets.length > 0 ? (
+          <div className="mb-8 rounded-xl border border-primary/20 bg-primary/5 p-4">
+            <div className="mb-2 text-xs font-bold uppercase tracking-widest text-primary">已高亮句子</div>
+            <div className="space-y-2 text-sm leading-7 text-foreground">
+              {highlightedSnippets.map((snippet, index) => <mark key={`${snippet}-${index}`} className="rounded bg-primary/20 px-1 text-foreground">{snippet}</mark>)}
+            </div>
+          </div>
+        ) : null}
 
         {editing ? (
           <>

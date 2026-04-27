@@ -19,6 +19,7 @@ const BibleView = lazy(() => import("./pages/BibleView").then((m) => ({ default:
 const ChapterReader = lazy(() => import("./pages/ChapterReader").then((m) => ({ default: m.ChapterReader })));
 const Analytics = lazy(() => import("./pages/Analytics").then((m) => ({ default: m.Analytics })));
 const TruthFiles = lazy(() => import("./pages/TruthFiles").then((m) => ({ default: m.TruthFiles })));
+const PublishReadiness = lazy(() => import("./pages/PublishReadiness").then((m) => ({ default: m.PublishReadiness })));
 const GenreManager = lazy(() => import("./pages/GenreManager").then((m) => ({ default: m.GenreManager })));
 const PresetManager = lazy(() => import("./pages/PresetManager"));
 const StyleManager = lazy(() => import("./pages/StyleManager").then((m) => ({ default: m.StyleManager })));
@@ -342,6 +343,7 @@ function AppInner() {
       openTab({ page: "chapter", bookId, chapterNumber }),
     toAnalytics: (bookId: string) => openTab({ page: "analytics", bookId }),
     toTruth: (bookId: string) => openTab({ page: "truth", bookId }),
+    toPublishReadiness: (bookId: string) => openTab({ page: "publish-readiness", bookId }),
     toAdmin: (section?: AdminSection) => openTab({ page: "admin", section }),
     toDaemon: () => openTab({ page: "admin", section: "daemon" }),
     toLogs: () => openTab({ page: "admin", section: "logs" }),
@@ -381,6 +383,7 @@ function AppInner() {
     if (!route) return "dashboard";
     if (route.page === "chapter") return `chapter:${route.bookId}:${route.chapterNumber}`;
     if (route.page === "truth") return `truth:${route.bookId}`;
+    if (route.page === "publish-readiness") return `publish-readiness:${route.bookId}`;
     if (route.page === "analytics") return `analytics:${route.bookId}`;
     if (route.page === "book") return `book:${route.bookId}`;
     if (route.page === "bible") return `bible:${route.bookId}`;
@@ -633,6 +636,7 @@ function TabContentInner({ route, nav, theme, t, sse, setTheme }: {
     case "chapter": return <ChapterReader bookId={route.bookId} chapterNumber={route.chapterNumber} nav={nav} theme={theme} t={t} />;
     case "analytics": return <Analytics bookId={route.bookId} nav={nav} theme={theme} t={t} />;
     case "truth": return <TruthFiles bookId={route.bookId} nav={nav} theme={theme} t={t} />;
+    case "publish-readiness": return <PublishReadiness bookId={route.bookId} />;
     case "genres": return <GenreManager nav={nav} theme={theme} t={t} />;
     case "presets": return <PresetManager bookId={route.bookId} />;
     case "style": return <StyleManager nav={nav} theme={theme} t={t} />;

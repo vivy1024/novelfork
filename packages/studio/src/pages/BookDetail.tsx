@@ -12,6 +12,8 @@ import { ChapterMeta as ChapterMetaPanel } from "../components/ChapterMeta";
 import { AiModelRequiredDialog } from "@/components/ai/AiModelRequiredDialog";
 import { PageEmptyState } from "@/components/layout/PageEmptyState";
 import { PageScaffold } from "@/components/layout/PageScaffold";
+import { DailyProgressTracker } from "@/components/writing-tools/DailyProgressTracker";
+import { PovDashboard, type PovDashboardData } from "@/components/writing-tools/PovDashboard";
 import { useAiModelGate } from "../hooks/use-ai-model-gate";
 import {
   AlertCircle,
@@ -83,6 +85,7 @@ interface Nav {
   toChapter: (bookId: string, num: number) => void;
   toAnalytics: (bookId: string) => void;
   toDetect?: (bookId: string) => void;
+  toPublishReadiness?: (bookId: string) => void;
   toPresets?: (bookId: string) => void;
   toAdmin?: (section?: string) => void;
 }
@@ -124,6 +127,7 @@ export function BookDetail({
   const { ai, storage } = useNovelFork();
   const { ensureModelFor, blockedResult, closeGate } = useAiModelGate();
   const { data, loading, error, refetch } = useApi<BookData>(`/books/${bookId}`);
+  const { data: povDashboard } = useApi<PovDashboardData>(`/books/${bookId}/pov`);
   const [writeRequestPending, setWriteRequestPending] = useState(false);
   const [draftRequestPending, setDraftRequestPending] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -461,6 +465,13 @@ export function BookDetail({
             <ScanEye size={14} />
             AI 检测
           </button>
+          <button
+            onClick={() => nav.toPublishReadiness?.(bookId)}
+            className="flex items-center gap-2 px-4 py-2 text-xs font-bold bg-secondary/50 text-muted-foreground rounded-lg hover:text-foreground hover:bg-secondary transition-all border border-border/50"
+          >
+            <ShieldCheck size={14} />
+            发布就绪检查
+          </button>
           <div className="flex items-center gap-2">
             <select
               value={exportFormat}
@@ -501,6 +512,11 @@ export function BookDetail({
               {t("book.export")}
             </button>
           </div>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <DailyProgressTracker />
+        {povDashboard ? <PovDashboard dashboard={povDashboard} /> : null}
       </div>
 
       {/* Book Settings */}

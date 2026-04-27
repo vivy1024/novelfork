@@ -1,4 +1,4 @@
-import type { Database } from "better-sqlite3";
+import type { StorageSqliteDatabase } from "../../storage/db.js";
 import type { QuestionnaireQuestion, QuestionnaireTargetObject } from "../types.js";
 
 export type QuestionnaireAnswers = Record<string, unknown>;
@@ -61,7 +61,7 @@ function applyPremiseField(state: Record<string, unknown>, fieldPath: string, va
   throw new Error(`Unsupported questionnaire mapping field for premise: ${fieldPath}`);
 }
 
-function readPremise(sqlite: Database, bookId: string): Record<string, unknown> {
+function readPremise(sqlite: StorageSqliteDatabase, bookId: string): Record<string, unknown> {
   const row = sqlite.prepare(`
     SELECT "id", "logline", "theme_json", "tone", "target_readers", "unique_hook", "genre_tags_json", "created_at"
     FROM "bible_premise"
@@ -79,7 +79,7 @@ function readPremise(sqlite: Database, bookId: string): Record<string, unknown> 
   };
 }
 
-function writePremise(sqlite: Database, bookId: string, state: Record<string, unknown>, timestamp: Date): string {
+function writePremise(sqlite: StorageSqliteDatabase, bookId: string, state: Record<string, unknown>, timestamp: Date): string {
   const id = String(state.id ?? crypto.randomUUID());
   const createdAt = typeof state.createdAt === "number" ? state.createdAt : timestamp.getTime();
   sqlite.prepare(`
@@ -119,7 +119,7 @@ function applyWorldModelField(state: Record<string, unknown>, fieldPath: string,
   setPath(state[dimension] as Record<string, unknown>, rest, value);
 }
 
-function readWorldModel(sqlite: Database, bookId: string): Record<string, unknown> {
+function readWorldModel(sqlite: StorageSqliteDatabase, bookId: string): Record<string, unknown> {
   const row = sqlite.prepare(`
     SELECT "id", "economy_json", "society_json", "geography_json", "power_system_json", "culture_json", "timeline_json"
     FROM "bible_world_model"
@@ -136,7 +136,7 @@ function readWorldModel(sqlite: Database, bookId: string): Record<string, unknow
   };
 }
 
-function writeWorldModel(sqlite: Database, bookId: string, state: Record<string, unknown>, timestamp: Date): string {
+function writeWorldModel(sqlite: StorageSqliteDatabase, bookId: string, state: Record<string, unknown>, timestamp: Date): string {
   const id = String(state.id ?? crypto.randomUUID());
   sqlite.prepare(`
     INSERT INTO "bible_world_model" (
@@ -164,7 +164,7 @@ function writeWorldModel(sqlite: Database, bookId: string, state: Record<string,
   return id;
 }
 
-function insertSimpleTarget(sqlite: Database, table: string, values: Record<string, unknown>, timestamp: Date): string {
+function insertSimpleTarget(sqlite: StorageSqliteDatabase, table: string, values: Record<string, unknown>, timestamp: Date): string {
   const id = String(values.id ?? crypto.randomUUID());
   if (table === "bible_conflict") {
     sqlite.prepare(`
@@ -196,7 +196,7 @@ function insertSimpleTarget(sqlite: Database, table: string, values: Record<stri
 }
 
 export function applyQuestionnaireMappings(params: {
-  sqlite: Database;
+  sqlite: StorageSqliteDatabase;
   bookId: string;
   targetObject: QuestionnaireTargetObject;
   questions: QuestionnaireQuestion[];

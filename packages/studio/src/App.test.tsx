@@ -82,6 +82,7 @@ vi.mock("./pages/ChapterReader", () => ({ ChapterReader: () => <div>ChapterReade
 vi.mock("./pages/Analytics", () => ({ Analytics: () => <div>Analytics Mock</div> }));
 vi.mock("./pages/WorkspaceSelector", () => ({ WorkspaceSelector: () => <div>WorkspaceSelector Mock</div> }));
 vi.mock("./pages/TruthFiles", () => ({ TruthFiles: () => <div>TruthFiles Mock</div> }));
+vi.mock("./pages/PublishReadiness", () => ({ PublishReadiness: () => <div>PublishReadiness Mock</div> }));
 vi.mock("./pages/DaemonControl", () => ({ DaemonControl: () => <div>DaemonControl Mock</div> }));
 vi.mock("./pages/LogViewer", () => ({ LogViewer: () => <div>LogViewer Mock</div> }));
 vi.mock("./pages/GenreManager", () => ({ GenreManager: () => <div>GenreManager Mock</div> }));
@@ -121,6 +122,7 @@ describe("deriveActiveBookId", () => {
     expect(deriveActiveBookId({ page: "book", bookId: "alpha" })).toBe("alpha");
     expect(deriveActiveBookId({ page: "chapter", bookId: "beta", chapterNumber: 3 })).toBe("beta");
     expect(deriveActiveBookId({ page: "truth", bookId: "gamma" })).toBe("gamma");
+    expect(deriveActiveBookId({ page: "publish-readiness", bookId: "omega" })).toBe("omega");
     expect(deriveActiveBookId({ page: "analytics", bookId: "delta" })).toBe("delta");
   });
 
@@ -131,7 +133,7 @@ describe("deriveActiveBookId", () => {
   });
 });
 
-describe("App admin routing", () => {
+describe("App route rendering", () => {
   function mockAppState(route: Route) {
     useNovelForkMock.mockReturnValue({
       mode: "standalone",
@@ -148,21 +150,28 @@ describe("App admin routing", () => {
     });
     useRecoveryMock.mockReturnValue({ hasRecovery: false, entries: [], recover: vi.fn(), dismissAll: vi.fn() });
     useTabsStateMock.mockReturnValue({
-      tabs: [{ id: "tab-admin", route, label: "Admin", closable: true, dirty: false }],
-      activeTabId: "tab-admin",
-      activeTab: { id: "tab-admin", route, label: "Admin", closable: true, dirty: false },
+      tabs: [{ id: "tab-active", route, label: "Active", closable: true, dirty: false }],
+      activeTabId: "tab-active",
+      activeTab: { id: "tab-active", route, label: "Active", closable: true, dirty: false },
       openTab: vi.fn(),
       closeTab: vi.fn(),
       activateTab: vi.fn(),
     });
   }
 
+  it("renders the publish readiness route inside the app tab surface", async () => {
+    mockAppState({ page: "publish-readiness", bookId: "book-1" });
+
+    render(<App />);
+
+    expect(await screen.findByText("PublishReadiness Mock")).toBeTruthy();
+  });
+
   it("renders the shared Admin logs surface instead of the legacy LogViewer route", async () => {
     mockAppState({ page: "admin", section: "logs" });
 
     render(<App />);
 
-    // Admin is React.lazy; await the Suspense resolution.
     expect(await screen.findByText("Admin Mock logs")).toBeTruthy();
     expect(screen.queryByText("LogViewer Mock")).toBeNull();
   });

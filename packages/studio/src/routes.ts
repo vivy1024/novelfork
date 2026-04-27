@@ -43,6 +43,7 @@ export type Route =
   | { page: "chapter"; bookId: string; chapterNumber: number }
   | { page: "analytics"; bookId: string }
   | { page: "truth"; bookId: string }
+  | { page: "publish-readiness"; bookId: string }
   | { page: "genres" }
   | { page: "presets"; bookId?: string }
   | { page: "style" }
@@ -153,6 +154,8 @@ export function canonicalRouteId(route: Route): string {
       return `analytics:${route.bookId}`;
     case "truth":
       return `truth:${route.bookId}`;
+    case "publish-readiness":
+      return `publish-readiness:${route.bookId}`;
     case "genres":
       return "genres";
     case "presets":
@@ -235,6 +238,8 @@ export function normalizeRoute(value: unknown): Route | undefined {
       return hasString(value, "bookId") ? { page: "analytics", bookId: value.bookId as string } : undefined;
     case "truth":
       return hasString(value, "bookId") ? { page: "truth", bookId: value.bookId as string } : undefined;
+    case "publish-readiness":
+      return hasString(value, "bookId") ? { page: "publish-readiness", bookId: value.bookId as string } : undefined;
     case "detect":
       return hasString(value, "bookId") ? { page: "detect", bookId: value.bookId as string } : undefined;
     case "intent":

@@ -114,6 +114,38 @@ vi.mock("@vivy1024/novelfork-core", () => {
 
   const sessionRows = new Map<string, any>();
   const messageRows = new Map<string, any[]>();
+  const bookRows = new Map<string, any>();
+  const storyJingweiSectionRows = new Map<string, any>();
+  const storageDatabaseMock = {
+    close: vi.fn(),
+    checkpoint: vi.fn(),
+    sqlite: {
+      prepare(sql: string) {
+        return {
+          run(id: string) {
+            if (sql.includes('DELETE FROM "book"')) {
+              const deleted = bookRows.delete(id);
+              for (const [sectionId, section] of storyJingweiSectionRows.entries()) {
+                if (section.bookId === id) storyJingweiSectionRows.delete(sectionId);
+              }
+              return { changes: deleted ? 1 : 0 };
+            }
+            return { changes: 0 };
+          },
+        };
+      },
+    },
+  };
+
+  function applyJingweiTemplateMock(selection: { templateId: string }) {
+    const basicSections = ["人物", "事件", "设定", "章节摘要"].map((name, order) => ({ key: `section-${order}`, name, order }));
+    const enhancedSections = ["伏笔", "名场面", "核心记忆"].map((name, index) => ({ key: `enhanced-${index}`, name, order: basicSections.length + index }));
+    return {
+      templateId: selection.templateId,
+      sections: selection.templateId === "enhanced" ? [...basicSections, ...enhancedSections] : basicSections,
+      availableCandidates: [],
+    };
+  }
 
   function createSessionRepositoryMock() {
     return {
@@ -188,16 +220,56 @@ vi.mock("@vivy1024/novelfork-core", () => {
     };
   }
 
+  function createBookRepositoryMock() {
+    return {
+      async create(input: any) {
+        const row = { ...input };
+        bookRows.set(input.id, row);
+        return row;
+      },
+      async getById(id: string) {
+        return bookRows.get(id) ?? null;
+      },
+      async update(id: string, updates: any) {
+        const row = bookRows.get(id);
+        if (!row) return null;
+        const next = { ...row, ...updates };
+        bookRows.set(id, next);
+        return next;
+      },
+      async list() {
+        return [...bookRows.values()];
+      },
+    };
+  }
+
+  function createStoryJingweiSectionRepositoryMock() {
+    return {
+      async create(input: any) {
+        const row = { ...input, deletedAt: null };
+        storyJingweiSectionRows.set(input.id, row);
+        return row;
+      },
+      async listByBook(bookId: string) {
+        return [...storyJingweiSectionRows.values()]
+          .filter((row) => row.bookId === bookId && !row.deletedAt)
+          .sort((left, right) => left.order - right.order || left.name.localeCompare(right.name));
+      },
+    };
+  }
+
   return {
     StateManager: MockStateManager,
     PipelineRunner: MockPipelineRunner,
     Scheduler: MockScheduler,
+    applyJingweiTemplate: applyJingweiTemplateMock,
     createLLMClient: createLLMClientMock,
     createLogger: vi.fn(() => logger),
     computeAnalytics: computeAnalyticsMock,
     chatCompletion: chatCompletionMock,
     loadProjectConfig: loadProjectConfigMock,
     analyzeAITells: analyzeAITellsMock,
+    registerBuiltinPresets: vi.fn(),
     listAvailableGenres: vi.fn(async () => [
       { id: "xuanhuan", name: "玄幻" },
       { id: "xianxia", name: "仙侠" },
@@ -221,11 +293,11 @@ vi.mock("@vivy1024/novelfork-core", () => {
     })),
     getBuiltinGenresDir: vi.fn(() => join(tmpdir(), "novelfork-builtin-genres")),
     closeStorageDatabase: vi.fn(),
-    getStorageDatabase: vi.fn(() => {
-      throw new Error("not initialized");
-    }),
-    initializeStorageDatabase: vi.fn(() => ({ databasePath: ":mock:", close: vi.fn(), checkpoint: vi.fn() })),
+    getStorageDatabase: vi.fn(() => storageDatabaseMock),
+    initializeStorageDatabase: vi.fn(() => storageDatabaseMock),
     runStorageMigrations: vi.fn(() => ({ applied: [] })),
+    createBookRepository: createBookRepositoryMock,
+    createStoryJingweiSectionRepository: createStoryJingweiSectionRepositoryMock,
     createSessionMessageRepository: createSessionMessageRepositoryMock,
     createSessionRepository: createSessionRepositoryMock,
     pipelineEvents: { on: vi.fn() },

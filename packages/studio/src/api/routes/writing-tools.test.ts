@@ -1,0 +1,214 @@
+import { mkdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { providerManager } from "../lib/provider-manager.js";
+import { createWritingToolsRouter } from "./writing-tools.js";
+
+const coreMocks = vi.hoisted(() => {
+  const kv = new Map<string, string>();
+  const storage = { id: "storage" };
+  return {
+    kv,
+    storage,
+    analyzeDialogue: vi.fn(() => ({ dialogueRatio: 0.5, isHealthy: true })),
+    analyzeRhythm: vi.fn(() => ({ rhythmScore: 80, sentenceHistogram: [] })),
+    buildPovDashboard: vi.fn(() => ({ characters: [{ name: "林月", totalChapters: 1, lastAppearanceChapter: 1, gapSinceLastAppearance: 1, chapterNumbers: [1] }], currentChapter: 2, warnings: [] })),
+    generateChapterHooks: vi.fn(() => Promise.resolve([{ id: "hook-1", style: "suspense", text: "门外传来第三个人的脚步声。", rationale: "制造新问题", retentionEstimate: "high" }])),
+    getDailyProgress: vi.fn((_storage: unknown, config: unknown) => Promise.resolve({ today: { written: 3000, target: (config as { dailyTarget: number }).dailyTarget, completed: false }, thisWeek: { written: 3000, target: 42000 }, streak: 0, last30Days: [] })),
+    getProgressTrend: vi.fn(() => Promise.resolve([{ date: "2026-04-26", wordCount: 3000 }])),
+    getStorageDatabase: vi.fn(() => storage),
+    createKvRepository: vi.fn(() => ({
+      get: vi.fn((key: string) => Promise.resolve(kv.get(key) ?? null)),
+      set: vi.fn((key: string, value: string) => {
+        kv.set(key, value);
+        return Promise.resolve();
+      }),
+    })),
+  };
+});
+
+vi.mock("@vivy1024/novelfork-core", () => ({
+  analyzeDialogue: coreMocks.analyzeDialogue,
+  analyzeRhythm: coreMocks.analyzeRhythm,
+  buildPovDashboard: coreMocks.buildPovDashboard,
+  createKvRepository: coreMocks.createKvRepository,
+  generateChapterHooks: coreMocks.generateChapterHooks,
+  getDailyProgress: coreMocks.getDailyProgress,
+  getProgressTrend: coreMocks.getProgressTrend,
+  getStorageDatabase: coreMocks.getStorageDatabase,
+}));
+
+const tempDirs: string[] = [];
+
+async function createRoute(options: { readonly sessionLlm?: boolean } = {}) {
+  const root = join(tmpdir(), `novelfork-writing-tools-route-${crypto.randomUUID()}`);
+  tempDirs.push(root);
+  const bookDir = join(root, "books", "book-1");
+  const chaptersDir = join(bookDir, "chapters");
+  const storyDir = join(bookDir, "story");
+  await mkdir(chaptersDir, { recursive: true });
+  await mkdir(storyDir, { recursive: true });
+  await writeFile(join(bookDir, "book.json"), JSON.stringify({
+    id: "book-1",
+    title: "写作工具测试书",
+    platform: "qidian",
+    genre: "xianxia",
+    status: "active",
+    targetChapters: 10,
+    chapterWordCount: 3000,
+    createdAt: "2026-04-26T00:00:00.000Z",
+    updatedAt: "2026-04-26T00:00:00.000Z",
+  }), "utf-8");
+  await writeFile(join(chaptersDir, "index.json"), JSON.stringify([{ number: 1, title: "开始" }, { number: 2, title: "继续" }]), "utf-8");
+  await writeFile(join(chaptersDir, "0001_start.md"), "# 第1章\n\n林月说道：“我们不能回头。”夜色很短。", "utf-8");
+  await writeFile(join(storyDir, "pending_hooks.md"), "| hook_id | status |\n| old-hook | open |", "utf-8");
+  await writeFile(join(storyDir, "character_matrix.md"), "| 角色 | POV |\n| 林月 | 是 |\n| 沈舟 | 是 |", "utf-8");
+  await writeFile(join(storyDir, "chapter_summaries.md"), "| chapter | title | pov |\n| 1 | 开始 | 林月 |", "utf-8");
+  await writeFile(join(storyDir, "style_profile.json"), JSON.stringify({ avgSentenceLength: 20, sentenceLengthStdDev: 8 }), "utf-8");
+
+  const state = {
+    bookDir(id: string) {
+      return join(root, "books", id);
+    },
+    async loadBookConfig(id: string) {
+      if (id !== "book-1") throw new Error("missing book");
+      const raw = await import("node:fs/promises").then((fs) => fs.readFile(join(bookDir, "book.json"), "utf-8"));
+      return JSON.parse(raw) as Record<string, unknown>;
+    },
+    async loadChapterIndex(id: string) {
+      if (id !== "book-1") throw new Error("missing book");
+      const raw = await import("node:fs/promises").then((fs) => fs.readFile(join(chaptersDir, "index.json"), "utf-8"));
+      return JSON.parse(raw) as Array<{ number: number; title: string }>;
+    },
+  };
+
+  const app = createWritingToolsRouter({
+    state,
+    root,
+    broadcast: vi.fn(),
+    buildPipelineConfig: vi.fn(() => Promise.resolve({ client: {}, model: "mock-model" })),
+    getSessionLlm: vi.fn(() => Promise.resolve(options.sessionLlm ? { apiKey: "test", baseUrl: "https://example.test", model: "mock-model", provider: "custom" } : undefined)),
+    runStore: {} as never,
+    getStartupSummary: () => null,
+    setStartupSummary: vi.fn(),
+    setStartupRecoveryRunner: vi.fn(),
+  } as never);
+
+  return { app };
+}
+
+async function postJson(app: { request: (url: string, init?: RequestInit) => Response | Promise<Response> }, path: string, body: unknown = {}) {
+  return app.request(`http://localhost${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+beforeEach(() => {
+  providerManager.initialize();
+  for (const provider of providerManager.listProviders()) {
+    providerManager.toggleProvider(provider.id, false);
+  }
+  coreMocks.kv.clear();
+  vi.clearAllMocks();
+});
+
+afterEach(async () => {
+  await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
+});
+
+describe("writing tools routes", () => {
+  it("returns AI gate result when hook generation has no usable model", async () => {
+    const { app } = await createRoute();
+
+    const response = await postJson(app, "/api/books/book-1/hooks/generate", { chapterNumber: 1 });
+
+    expect(response.status).toBe(409);
+    const json = await response.json() as { gate: { ok: boolean; reason: string } };
+    expect(json.gate.ok).toBe(false);
+    expect(json.gate.reason).toBe("model-not-configured");
+    expect(coreMocks.generateChapterHooks).not.toHaveBeenCalled();
+  });
+
+  it("generates chapter hooks when session LLM is available", async () => {
+    const { app } = await createRoute({ sessionLlm: true });
+
+    const response = await postJson(app, "/api/books/book-1/hooks/generate", { chapterNumber: 1, nextChapterIntent: "追查脚步声" });
+
+    expect(response.status).toBe(200);
+    const json = await response.json() as { hooks: Array<{ id: string; text: string }> };
+    expect(json.hooks[0]?.id).toBe("hook-1");
+    expect(coreMocks.generateChapterHooks).toHaveBeenCalledWith(expect.objectContaining({
+      input: expect.objectContaining({
+        chapterNumber: 1,
+        pendingHooks: expect.stringContaining("old-hook"),
+        chapterContent: expect.stringContaining("林月说道"),
+        bookGenre: "xianxia",
+      }),
+      model: "mock-model",
+    }));
+  });
+
+  it("returns POV dashboard from story truth files", async () => {
+    const { app } = await createRoute();
+
+    const response = await app.request("http://localhost/api/books/book-1/pov?currentChapter=2&gapWarningThreshold=3");
+
+    expect(response.status).toBe(200);
+    const json = await response.json() as { dashboard: { currentChapter: number } };
+    expect(json.dashboard.currentChapter).toBe(2);
+    expect(coreMocks.buildPovDashboard).toHaveBeenCalledWith(expect.objectContaining({
+      characterMatrix: expect.stringContaining("沈舟"),
+      chapterSummaries: expect.stringContaining("林月"),
+      currentChapter: 2,
+      gapWarningThreshold: 3,
+    }));
+  });
+
+  it("returns progress and persists progress config", async () => {
+    const { app } = await createRoute();
+
+    const putResponse = await app.request("http://localhost/api/progress/config", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dailyTarget: 7000, weeklyTarget: 42000 }),
+    });
+    expect(putResponse.status).toBe(200);
+    const putJson = await putResponse.json() as { config: { dailyTarget: number } };
+    expect(putJson.config.dailyTarget).toBe(7000);
+
+    const getResponse = await app.request("http://localhost/api/progress?today=2026-04-26&days=7");
+    expect(getResponse.status).toBe(200);
+    const getJson = await getResponse.json() as { config: { dailyTarget: number }; trend: Array<{ wordCount: number }> };
+    expect(getJson.config.dailyTarget).toBe(7000);
+    expect(getJson.trend[0]?.wordCount).toBe(3000);
+    expect(coreMocks.getDailyProgress).toHaveBeenCalledWith(coreMocks.storage, expect.objectContaining({ dailyTarget: 7000 }), expect.objectContaining({ today: "2026-04-26" }));
+    expect(coreMocks.getProgressTrend).toHaveBeenCalledWith(coreMocks.storage, 7, "2026-04-26");
+  });
+
+  it("analyzes rhythm for chapter content", async () => {
+    const { app } = await createRoute();
+
+    const response = await postJson(app, "/api/books/book-1/chapters/1/rhythm");
+
+    expect(response.status).toBe(200);
+    const json = await response.json() as { analysis: { rhythmScore: number } };
+    expect(json.analysis.rhythmScore).toBe(80);
+    expect(coreMocks.analyzeRhythm).toHaveBeenCalledWith(expect.stringContaining("夜色很短"), expect.objectContaining({ avgSentenceLength: 20 }));
+  });
+
+  it("analyzes dialogue for chapter content", async () => {
+    const { app } = await createRoute();
+
+    const response = await postJson(app, "/api/books/book-1/chapters/1/dialogue", { chapterType: "daily" });
+
+    expect(response.status).toBe(200);
+    const json = await response.json() as { analysis: { dialogueRatio: number } };
+    expect(json.analysis.dialogueRatio).toBe(0.5);
+    expect(coreMocks.analyzeDialogue).toHaveBeenCalledWith(expect.stringContaining("我们不能回头"), "daily");
+  });
+});

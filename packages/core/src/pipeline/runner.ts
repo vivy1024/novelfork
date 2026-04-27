@@ -2550,8 +2550,8 @@ ${matrix}`,
           if (!this.memoryIndexFallbackWarned) {
             this.memoryIndexFallbackWarned = true;
             this.logWarn(await this.resolveBookLanguageById(bookId), {
-              zh: "当前 Bun SQLite 记忆索引不可用，继续使用 Markdown 回退方案。",
-              en: "SQLite memory index unavailable on this Bun runtime; continuing with markdown fallback."
+              zh: "当前 Node 运行时不支持 SQLite 记忆索引，继续使用 Markdown 回退方案。",
+              en: "SQLite memory index unavailable on this runtime; continuing with markdown fallback."
             });
             await this.logMemoryIndexDebugInfo(bookId, error);
           }
@@ -2600,8 +2600,8 @@ ${matrix}`,
           if (!this.memoryIndexFallbackWarned) {
             this.memoryIndexFallbackWarned = true;
             this.logWarn(await this.resolveBookLanguageById(bookId), {
-              zh: "当前 Bun SQLite 记忆索引不可用，继续使用 Markdown 回退方案。",
-              en: "SQLite memory index unavailable on this Bun runtime; continuing with markdown fallback."
+              zh: "当前 Node 运行时不支持 SQLite 记忆索引，继续使用 Markdown 回退方案。",
+              en: "SQLite memory index unavailable on this runtime; continuing with markdown fallback."
             });
             await this.logMemoryIndexDebugInfo(bookId, error);
           }
@@ -2750,9 +2750,9 @@ ${matrix}`,
       : String(error);
     const normalizedMessage = message.trim();
 
-    return /^No such built-in module:\s*bun:sqlite$/i.test(normalizedMessage)
-      || /^Cannot find module ['"]bun:sqlite['"]$/i.test(normalizedMessage)
-      || (code === "ERR_UNKNOWN_BUILTIN_MODULE" && /\bbun:sqlite\b/i.test(normalizedMessage));
+    return /^No such built-in module:\s*(?:bun|node):sqlite$/i.test(normalizedMessage)
+      || /^Cannot find module ['"](?:bun|node):sqlite['"]$/i.test(normalizedMessage)
+      || (code === "ERR_UNKNOWN_BUILTIN_MODULE" && /\b(?:bun|node):sqlite\b/i.test(normalizedMessage));
   }
 
   private isMemoryIndexBusyError(error: unknown): boolean {

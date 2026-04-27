@@ -2,10 +2,15 @@ import { describe, expect, it } from "vitest";
 
 import { canonicalRouteId, normalizeRoute, validatePersistedTabSession } from "./routes";
 
-describe("Bible route", () => {
+describe("book-focused routes", () => {
   it("normalizes Bible book routes and uses stable tab ids", () => {
     expect(normalizeRoute({ page: "bible", bookId: "demo" })).toEqual({ page: "bible", bookId: "demo" });
     expect(canonicalRouteId({ page: "bible", bookId: "demo" })).toBe("bible:demo");
+  });
+
+  it("normalizes publish readiness routes and uses stable tab ids", () => {
+    expect(normalizeRoute({ page: "publish-readiness", bookId: "demo" })).toEqual({ page: "publish-readiness", bookId: "demo" });
+    expect(canonicalRouteId({ page: "publish-readiness", bookId: "demo" })).toBe("publish-readiness:demo");
   });
 });
 

@@ -91,6 +91,8 @@ export function routeToTabLabel(route: Route): string {
       return `章节 ${route.chapterNumber}`;
     case "truth":
       return "真相文件";
+    case "publish-readiness":
+      return "发布就绪检查";
     case "analytics":
       return "数据分析";
     case "genres":

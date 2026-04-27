@@ -147,6 +147,9 @@ export * from "./filter/index.js";
 // Compliance
 export * from "./compliance/index.js";
 
+// Writing Tools
+export * from "./tools/index.js";
+
 // Bible
 export * from "./bible/index.js";
 

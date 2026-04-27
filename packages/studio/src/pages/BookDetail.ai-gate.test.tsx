@@ -83,7 +83,7 @@ describe("BookDetail AI gate", () => {
     render(
       <BookDetail
         bookId="book-1"
-        nav={{ toDashboard: vi.fn(), toChapter: vi.fn(), toAnalytics: vi.fn(), toDetect: vi.fn(), toAdmin: vi.fn() }}
+        nav={{ toDashboard: vi.fn(), toChapter: vi.fn(), toAnalytics: vi.fn(), toDetect: vi.fn(), toPublishReadiness: vi.fn(), toAdmin: vi.fn() }}
         theme="light"
         t={((key: string) => key) as never}
         sse={{ messages: [] }}
@@ -96,5 +96,23 @@ describe("BookDetail AI gate", () => {
     fireEvent.click(screen.getByRole("button", { name: "取消" }));
 
     expect(writeNextMock).not.toHaveBeenCalled();
+  });
+
+  it("opens publish readiness from the book toolbar", () => {
+    const toPublishReadiness = vi.fn();
+
+    render(
+      <BookDetail
+        bookId="book-1"
+        nav={{ toDashboard: vi.fn(), toChapter: vi.fn(), toAnalytics: vi.fn(), toDetect: vi.fn(), toPublishReadiness, toAdmin: vi.fn() }}
+        theme="light"
+        t={((key: string) => key) as never}
+        sse={{ messages: [] }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "发布就绪检查" }));
+
+    expect(toPublishReadiness).toHaveBeenCalledWith("book-1");
   });
 });

@@ -316,6 +316,7 @@ export function BookCreate({ nav, theme, t, projectCreateDraft, flowRevision = 0
   const { data: genreData } = useApi<{ genres: ReadonlyArray<GenreInfo> }>("/genres");
   const { data: project } = useApi<{ language: string }>("/project");
   const { data: providerStatusData } = useApi<{ status: ProviderRuntimeStatus }>("/providers/status");
+  const { data: allPresetsData } = useApi<{ presets: ReadonlyArray<PresetOption> }>("/api/presets");
   const { data: presetBundlesData } = useApi<PresetBundlesResponse>("/api/presets/bundles");
   const { data: presetsData } = useApi<{ presets: ReadonlyArray<PresetOption> }>("/api/presets");
   const addWindow = useWindowStore((state) => state.addWindow);
@@ -356,12 +357,9 @@ export function BookCreate({ nav, theme, t, projectCreateDraft, flowRevision = 0
   const platforms = platformOptionsForLanguage(projectLang);
   const genreSignature = genres.map((g) => g.id).join("|");
   const platformSignature = platforms.map((p) => `${p.value}:${p.label}`).join("|");
+  const allPresets = allPresetsData?.presets ?? [];
+  const presetById = new Map(allPresets.map((preset) => [preset.id, preset]));
   const presetBundles = presetBundlesData?.bundles ?? [];
-  const allPresets = presetsData?.presets ?? [];
-  const presetById = useMemo(
-    () => new Map(allPresets.map((preset) => [preset.id, preset])),
-    [allPresets],
-  );
   const recommendedPresetBundles = presetBundles.filter((bundle) => !genre || bundle.genreIds.includes(genre));
   const presetBundleSignature = recommendedPresetBundles.map((bundle) => bundle.id).join("|");
   const managedProjectCreate = projectCreateDraft !== undefined;
@@ -577,15 +575,9 @@ export function BookCreate({ nav, theme, t, projectCreateDraft, flowRevision = 0
   const selectedLogicPresets = enabledPresetIds
     .map((id) => presetById.get(id))
     .filter((preset): preset is PresetOption => Boolean(preset && preset.category === "logic-risk"));
-  const presetGenreScope = selectedPresetBundle?.genreIds.length ? selectedPresetBundle.genreIds : genre ? [genre] : [];
-  const isPresetInScope = (preset: PresetOption) => (
-    !presetGenreScope.length
-    || !preset.compatibleGenres?.length
-    || preset.compatibleGenres.some((genreId) => presetGenreScope.includes(genreId))
-  );
-  const alternativeTonePresets = allPresets.filter((preset) => preset.category === "tone" && preset.id !== selectedTonePreset?.id && isPresetInScope(preset));
-  const alternativeSettingPresets = allPresets.filter((preset) => preset.category === "setting-base" && preset.id !== selectedSettingPreset?.id && isPresetInScope(preset));
-  const alternativeLogicPresets = allPresets.filter((preset) => preset.category === "logic-risk" && !selectedLogicPresets.some((selected) => selected.id === preset.id) && isPresetInScope(preset));
+  const alternativeTonePresets = allPresets.filter((preset) => preset.category === "tone" && preset.id !== selectedTonePreset?.id && (!genre || !preset.compatibleGenres?.length || preset.compatibleGenres.includes(genre)));
+  const alternativeSettingPresets = allPresets.filter((preset) => preset.category === "setting-base" && preset.id !== selectedSettingPreset?.id && (!genre || !preset.compatibleGenres?.length || preset.compatibleGenres.includes(genre)));
+  const alternativeLogicPresets = allPresets.filter((preset) => preset.category === "logic-risk" && !selectedLogicPresets.some((selected) => selected.id === preset.id) && (!genre || !preset.compatibleGenres?.length || preset.compatibleGenres.includes(genre)));
   const jingweiTemplate = useMemo<JingweiTemplateSelection>(() => {
     if (jingweiTemplateId === "genre-recommended") {
       return {
@@ -609,25 +601,11 @@ export function BookCreate({ nav, theme, t, projectCreateDraft, flowRevision = 0
     setEnabledPresetIds(presetIdsForBundle(bundle));
   };
   const toggleEnabledPresetId = (presetId: string) => {
-    const preset = presetById.get(presetId);
-    setEnabledPresetIds((current) => {
-      if (current.includes(presetId)) {
-        return current.filter((id) => id !== presetId);
-      }
-      if (preset?.conflictGroup) {
-        return [
-          ...current.filter((id) => presetById.get(id)?.conflictGroup !== preset.conflictGroup),
-          presetId,
-        ];
-      }
-      return [...current, presetId];
-    });
-  };
-  const replacePreset = (nextPresetId: string, category: "tone" | "setting-base") => {
-    setEnabledPresetIds((current) => {
-      const filtered = current.filter((id) => presetById.get(id)?.category !== category);
-      return [...filtered, nextPresetId];
-    });
+    setEnabledPresetIds((current) => (
+      current.includes(presetId)
+        ? current.filter((id) => id !== presetId)
+        : [...current, presetId]
+    ));
   };
 
   const handleCreate = async () => {
@@ -980,159 +958,68 @@ export function BookCreate({ nav, theme, t, projectCreateDraft, flowRevision = 0
           </p>
         </div>
 
-        <div className="space-y-2">
-          <div className="text-xs font-medium text-muted-foreground">{projectLang === "en" ? "Recommended bundles" : "推荐创作组合"}</div>
-          {recommendedPresetBundles.length > 0 ? (
-            <div className="grid gap-3">
-              {recommendedPresetBundles.map((bundle) => (
-                <div key={bundle.id} className={`rounded-xl border px-3 py-3 transition-all ${
+        {recommendedPresetBundles.length > 0 ? (
+          <div className="grid gap-3">
+            {recommendedPresetBundles.map((bundle) => (
+              <button
+                key={bundle.id}
+                type="button"
+                aria-pressed={selectedPresetBundleId === bundle.id}
+                onClick={() => selectPresetBundle(bundle)}
+                disabled={creating}
+                className={`rounded-xl border px-3 py-3 text-left transition-all disabled:opacity-50 ${
                   selectedPresetBundleId === bundle.id
-                    ? "border-primary/40 bg-primary/10"
-                    : "border-border/60 bg-secondary/30"
-                }`}>
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <div className="text-sm font-medium text-foreground">{bundle.name}</div>
-                      <div className="mt-1 text-xs leading-5 text-muted-foreground">{bundle.description}</div>
-                    </div>
-                    <span className="rounded-full border border-border/60 px-2 py-0.5 text-xs text-muted-foreground">{bundle.difficulty}</span>
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => selectPresetBundle(bundle)}
-                      disabled={creating}
-                      className={`rounded-md px-3 py-2 text-xs font-medium transition-all disabled:opacity-50 ${
-                        selectedPresetBundleId === bundle.id
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-background text-foreground border border-border/60 hover:border-primary/30"
-                      }`}
-                    >
-                      {projectLang === "en" ? `Apply “${bundle.name}”` : `应用「${bundle.name}」`}
-                    </button>
-                  </div>
+                    ? "border-primary/40 bg-primary/10 text-primary"
+                    : "border-border/60 bg-secondary/30 text-foreground hover:border-primary/30"
+                }`}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm font-medium">{bundle.name}</span>
+                  <span className="rounded-full border border-border/60 px-2 py-0.5 text-xs text-muted-foreground">{bundle.difficulty}</span>
                 </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-xs text-muted-foreground">
-              {projectLang === "en" ? "No recommended bundle for this genre yet." : "当前题材暂无推荐组合，可跳过。"}
-            </p>
-          )}
-        </div>
+                <div className="mt-1 text-xs leading-5 text-muted-foreground">{bundle.description}</div>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            {projectLang === "en" ? "No recommended bundle for this genre yet." : "当前题材暂无推荐组合，可跳过。"}
+          </p>
+        )}
 
         {selectedPresetBundle && (
-          <div className="space-y-4 rounded-xl border border-border/60 bg-secondary/20 p-3">
-            <div className="space-y-1">
-              <div className="text-xs font-medium text-muted-foreground">
-                {projectLang === "en" ? `Selected bundle: ${selectedPresetBundle.name}` : `已选择组合：${selectedPresetBundle.name}`}
-              </div>
-              {selectedPresetBundle.suitableFor.length > 0 && (
-                <div className="text-xs leading-5 text-muted-foreground">
-                  {projectLang === "en" ? "Suitable for" : "适合"}：{selectedPresetBundle.suitableFor.join("、")}
-                </div>
-              )}
-              {selectedPresetBundle.notSuitableFor.length > 0 && (
-                <div className="text-xs leading-5 text-muted-foreground">
-                  {projectLang === "en" ? "Not suitable for" : "不适合"}：{selectedPresetBundle.notSuitableFor.join("、")}
-                </div>
-              )}
+          <div className="space-y-3 rounded-xl border border-border/60 bg-secondary/20 p-3">
+            <div className="text-xs font-medium text-muted-foreground">
+              {projectLang === "en" ? "Enabled items" : "启用项"}
             </div>
-
-            {selectedTonePreset && (
-              <div className="space-y-2 rounded-xl border border-border/60 bg-background/50 p-3">
-                <div className="text-xs font-medium text-muted-foreground">{projectLang === "en" ? "Tone preset" : "文风预设"}</div>
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-sm font-medium text-foreground">{selectedTonePreset.name}</div>
-                    <div className="text-xs leading-5 text-muted-foreground">{selectedTonePreset.description}</div>
-                  </div>
-                  <Switch
-                    checked={enabledPresetIdSet.has(selectedTonePreset.id)}
-                    onCheckedChange={() => toggleEnabledPresetId(selectedTonePreset.id)}
-                    aria-label={`${projectLang === "en" ? "Enable preset" : "启用预设"} ${selectedTonePreset.name}`}
-                    disabled={creating}
-                  />
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {alternativeTonePresets.map((preset) => (
-                    <button
-                      key={preset.id}
-                      type="button"
-                      onClick={() => replacePreset(preset.id, "tone")}
-                      disabled={creating}
-                      className="rounded-md border border-border/60 bg-background px-3 py-1.5 text-xs text-foreground transition-all hover:border-primary/30 disabled:opacity-50"
-                    >
-                      {projectLang === "en" ? `Use ${preset.name}` : `改用 ${preset.name}`}
-                    </button>
-                  ))}
-                </div>
+            <div className="flex flex-wrap gap-2">
+              {presetIdsForBundle(selectedPresetBundle).map((presetId) => (
+                <button
+                  key={presetId}
+                  type="button"
+                  aria-pressed={enabledPresetIdSet.has(presetId)}
+                  onClick={() => toggleEnabledPresetId(presetId)}
+                  disabled={creating}
+                  className={`rounded-full border px-3 py-1.5 text-xs transition-all disabled:opacity-50 ${
+                    enabledPresetIdSet.has(presetId)
+                      ? "border-primary/40 bg-primary/10 text-primary"
+                      : "border-border/60 bg-background/50 text-muted-foreground hover:border-primary/30"
+                  }`}
+                >
+                  {presetId}
+                </button>
+              ))}
+            </div>
+            {selectedPresetBundle.suitableFor.length > 0 && (
+              <div className="text-xs leading-5 text-muted-foreground">
+                {projectLang === "en" ? "Suitable for" : "适合"}：{selectedPresetBundle.suitableFor.join("、")}
               </div>
             )}
-
-            {selectedSettingPreset && (
-              <div className="space-y-2 rounded-xl border border-border/60 bg-background/50 p-3">
-                <div className="text-xs font-medium text-muted-foreground">{projectLang === "en" ? "Setting base" : "时代/社会基底"}</div>
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-sm font-medium text-foreground">{selectedSettingPreset.name}</div>
-                    <div className="text-xs leading-5 text-muted-foreground">{selectedSettingPreset.description}</div>
-                  </div>
-                  <Switch
-                    checked={enabledPresetIdSet.has(selectedSettingPreset.id)}
-                    onCheckedChange={() => toggleEnabledPresetId(selectedSettingPreset.id)}
-                    aria-label={`${projectLang === "en" ? "Enable preset" : "启用预设"} ${selectedSettingPreset.name}`}
-                    disabled={creating}
-                  />
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {alternativeSettingPresets.map((preset) => (
-                    <button
-                      key={preset.id}
-                      type="button"
-                      onClick={() => replacePreset(preset.id, "setting-base")}
-                      disabled={creating}
-                      className="rounded-md border border-border/60 bg-background px-3 py-1.5 text-xs text-foreground transition-all hover:border-primary/30 disabled:opacity-50"
-                    >
-                      {projectLang === "en" ? `Use ${preset.name}` : `改用 ${preset.name}`}
-                    </button>
-                  ))}
-                </div>
+            {selectedPresetBundle.notSuitableFor.length > 0 && (
+              <div className="text-xs leading-5 text-muted-foreground">
+                {projectLang === "en" ? "Not suitable for" : "不适合"}：{selectedPresetBundle.notSuitableFor.join("、")}
               </div>
             )}
-
-            <div className="space-y-2 rounded-xl border border-border/60 bg-background/50 p-3">
-              <div className="text-xs font-medium text-muted-foreground">{projectLang === "en" ? "Logic checks" : "逻辑自检"}</div>
-              <div className="space-y-2">
-                {selectedLogicPresets.map((preset) => (
-                  <div key={preset.id} className="flex items-center justify-between gap-3">
-                    <div>
-                      <div className="text-sm font-medium text-foreground">{preset.name}</div>
-                      <div className="text-xs leading-5 text-muted-foreground">{preset.description}</div>
-                    </div>
-                    <Switch
-                      checked={enabledPresetIdSet.has(preset.id)}
-                      onCheckedChange={() => toggleEnabledPresetId(preset.id)}
-                      aria-label={`${projectLang === "en" ? "Enable preset" : "启用预设"} ${preset.name}`}
-                      disabled={creating}
-                    />
-                  </div>
-                ))}
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {alternativeLogicPresets.map((preset) => (
-                  <button
-                    key={preset.id}
-                    type="button"
-                    onClick={() => toggleEnabledPresetId(preset.id)}
-                    disabled={creating}
-                    className="rounded-md border border-border/60 bg-background px-3 py-1.5 text-xs text-foreground transition-all hover:border-primary/30 disabled:opacity-50"
-                  >
-                    {projectLang === "en" ? `Add ${preset.name}` : `新增 ${preset.name}`}
-                  </button>
-                ))}
-              </div>
-            </div>
           </div>
         )}
       </div>

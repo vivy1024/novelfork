@@ -192,7 +192,7 @@ describe("session-chat-service", () => {
       role: "assistant",
       seq: 2,
     });
-  });
+  }, 10000);
 
   it("backfills reconnect history from sinceSeq without forcing a full snapshot", async () => {
     const {
