@@ -202,14 +202,17 @@ export const MOCK_DEBT_ITEMS = [
   {
     id: "writing-tools-health",
     module: "Writing tools health",
-    files: ["packages/studio/src/api/routes/writing-tools.ts"],
-    currentBehavior: "书籍 health endpoint 返回固定默认值与满分指标，像真实评分但实际未计算。",
+    files: [
+      "packages/studio/src/api/routes/writing-tools.ts",
+      "packages/studio/src/components/writing-tools/BookHealthDashboard.tsx",
+    ],
+    currentBehavior: "书籍 health endpoint 返回章节数、总字数、今日字数、敏感词命中数和已登记矛盾数等真实可计算指标；连续性评分、钩子回收率、AI 味和节奏多样性在未接真实统计前以 unknown/未接入展示。",
     userRisk: "critical",
-    status: "must-replace",
-    targetBehavior: "真实可计算字段返回真实值；暂不能计算字段返回 unknown 或隐藏，禁止固定 consistencyScore: 100。",
+    status: "confirmed-real",
+    targetBehavior: "保持真实可计算字段来自文件、写作日志、敏感词扫描和矛盾仓库；暂不能计算字段返回 unknown 或隐藏，禁止固定 consistencyScore: 100。",
     ownerSpec: OWNER_SPEC,
     verification: [
-      "无数据时不返回固定满分",
+      "无审计数据时不返回固定满分",
       "未知指标以 unknown 状态呈现",
       "UI 不把 unknown 渲染为真实健康评分",
     ],

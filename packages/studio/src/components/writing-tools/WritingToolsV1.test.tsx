@@ -30,16 +30,22 @@ describe("BookHealthDashboard", () => {
     expect(screen.getByText("正在加载全书健康数据...")).toBeTruthy();
   });
 
-  it("renders health metrics and warnings", () => {
+  it("renders measured health facts and unknown metric placeholders", () => {
     useApiMock.mockReturnValue({
       data: {
-        consistencyScore: 0.85,
-        hookRecoveryRate: 0.72,
-        aiTasteMean: 25,
-        aiTasteTrend: [{ chapter: 1, score: 30 }, { chapter: 2, score: 25 }, { chapter: 3, score: 20 }, { chapter: 4, score: 28 }, { chapter: 5, score: 22 }],
-        rhythmDiversity: 0.65,
-        sensitiveWordCount: 3,
-        warnings: [{ type: "consistency", message: "第3章与第1章设定冲突" }],
+        health: {
+          totalChapters: { status: "measured", value: 3, source: "chapter-files" },
+          totalWords: { status: "measured", value: 9800, source: "chapter-files" },
+          dailyWords: { status: "measured", value: 3000, source: "writing-log" },
+          dailyTarget: { status: "measured", value: 6000, source: "progress-config" },
+          sensitiveWordCount: { status: "measured", value: 3, source: "sensitive-word-scan" },
+          knownConflictCount: { status: "measured", value: 1, source: "bible-conflicts" },
+          consistencyScore: { status: "unknown", reason: "连续性审计汇总尚未接入真实来源" },
+          hookRecoveryRate: { status: "unknown", reason: "钩子回收率尚未接入真实来源" },
+          aiTasteMean: { status: "unknown", reason: "AI 味均值尚未接入真实来源" },
+          rhythmDiversity: { status: "unknown", reason: "节奏多样性尚未接入真实来源" },
+          warnings: [{ type: "敏感词", message: "检测到 3 处敏感词命中" }],
+        },
       },
       loading: false,
       error: null,
@@ -47,27 +53,35 @@ describe("BookHealthDashboard", () => {
     render(<BookHealthDashboard bookId="book-1" />);
 
     expect(screen.getByText("全书健康仪表盘")).toBeTruthy();
-    expect(screen.getByText("85%")).toBeTruthy();
-    expect(screen.getByText("第3章与第1章设定冲突")).toBeTruthy();
+    expect(screen.getByText("3 章")).toBeTruthy();
+    expect(screen.getByText("9800 字")).toBeTruthy();
+    expect(screen.getAllByText("未接入").length).toBeGreaterThanOrEqual(4);
+    expect(screen.getByText("检测到 3 处敏感词命中")).toBeTruthy();
   });
 
-  it("shows insufficient data hint when < 5 chapters", () => {
+  it("shows transparent unknown hint when quality metrics are not wired", () => {
     useApiMock.mockReturnValue({
       data: {
-        consistencyScore: 0.5,
-        hookRecoveryRate: 0.5,
-        aiTasteMean: 50,
-        aiTasteTrend: [{ chapter: 1, score: 50 }],
-        rhythmDiversity: 0.5,
-        sensitiveWordCount: 0,
-        warnings: [],
+        health: {
+          totalChapters: { status: "measured", value: 1, source: "chapter-files" },
+          totalWords: { status: "measured", value: 3000, source: "chapter-files" },
+          dailyWords: { status: "measured", value: 0, source: "writing-log" },
+          dailyTarget: { status: "measured", value: 6000, source: "progress-config" },
+          sensitiveWordCount: { status: "measured", value: 0, source: "sensitive-word-scan" },
+          knownConflictCount: { status: "measured", value: 0, source: "bible-conflicts" },
+          consistencyScore: { status: "unknown", reason: "连续性审计汇总尚未接入真实来源" },
+          hookRecoveryRate: { status: "unknown", reason: "钩子回收率尚未接入真实来源" },
+          aiTasteMean: { status: "unknown", reason: "AI 味均值尚未接入真实来源" },
+          rhythmDiversity: { status: "unknown", reason: "节奏多样性尚未接入真实来源" },
+          warnings: [],
+        },
       },
       loading: false,
       error: null,
     });
     render(<BookHealthDashboard bookId="book-1" />);
 
-    expect(screen.getByText(/数据不足/)).toBeTruthy();
+    expect(screen.getByText(/质量评分未接入真实统计/)).toBeTruthy();
   });
 });
 

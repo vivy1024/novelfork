@@ -187,7 +187,7 @@
   - 成功后刷新 hook 列表；失败时显示真实错误。
   - 验证：测试断言 hook 应用后文件/repository 发生预期变化。
 
-- [ ] 23. 去除 writing-tools health 固定假指标
+- [x] 23. 去除 writing-tools health 固定假指标
   - 层级目标：真实计算 / unknown 透明状态。
   - 修改 `packages/studio/src/api/routes/writing-tools.ts` 的 `/api/books/:bookId/health`。
   - 可真实计算的字段返回真实值：章节数、字数、日进度、敏感词数量、已知冲突数量。
