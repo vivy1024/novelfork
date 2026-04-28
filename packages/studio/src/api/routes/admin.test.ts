@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 
 import { createAdminRouter, resetAdminState, setupAdminWebSocket } from "./admin";
 import { logRequest } from "../lib/request-observability";
+import { ProviderRuntimeStore } from "../lib/provider-runtime-store";
 
 describe("createAdminRouter", () => {
   let root: string;
@@ -57,6 +58,37 @@ describe("createAdminRouter", () => {
         status: "planned",
       });
     }
+  });
+
+  it("lists provider admin data from the runtime store without leaking credentials", async () => {
+    const providerStore = new ProviderRuntimeStore({ storagePath: join(root, "provider-runtime.json") });
+    await providerStore.createProvider({
+      id: "sub2api",
+      name: "Sub2API",
+      type: "custom",
+      enabled: true,
+      priority: 1,
+      apiKeyRequired: true,
+      baseUrl: "https://api.example.com/v1",
+      compatibility: "openai-compatible",
+      config: { apiKey: "sk-secret" },
+      models: [{ id: "gpt-5-codex", name: "GPT-5 Codex", contextWindow: 192000, maxOutputTokens: 8192, enabled: true, source: "detected" }],
+    });
+    const app = createAdminRouter(root, { providerStore } as never);
+
+    const response = await app.request("http://localhost/providers");
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.providers).toEqual([
+      expect.objectContaining({
+        id: "sub2api",
+        name: "Sub2API",
+        config: { apiKeyConfigured: true },
+      }),
+    ]);
+    expect(payload.providers.map((provider: { id: string }) => provider.id)).toEqual(["sub2api"]);
+    expect(JSON.stringify(payload)).not.toContain("sk-secret");
   });
 
   it("returns real storage scan structure and reuses cached snapshots until forced refresh", async () => {

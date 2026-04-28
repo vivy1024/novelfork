@@ -6,7 +6,7 @@ import {
   type RuntimeAdapterFailure,
   type RuntimeAdapterId,
 } from "../lib/provider-adapters/index.js";
-import { buildRuntimeModelPool } from "../lib/runtime-model-pool.js";
+import { buildRuntimeModelPool, buildRuntimeProviderStatus } from "../lib/runtime-model-pool.js";
 import {
   ProviderRuntimeStore,
   type CreateRuntimeProviderInput,
@@ -87,28 +87,8 @@ function withRefreshMetadata(models: readonly RuntimeModelInput[]): RuntimeModel
   }));
 }
 
-function hasConfiguredCredentials(provider: RuntimeProviderRecord): boolean {
-  return !provider.apiKeyRequired || Boolean(provider.config?.apiKey?.trim());
-}
-
 function firstEnabledModel(provider: RuntimeProviderRecord) {
   return provider.models.find((model) => model.enabled !== false);
-}
-
-async function buildRuntimeStatus(store: ProviderRuntimeStore) {
-  const providers = await store.listProviders();
-  const usableProvider = providers.find((provider) => provider.enabled && hasConfiguredCredentials(provider) && firstEnabledModel(provider));
-  const model = usableProvider ? firstEnabledModel(usableProvider) : undefined;
-
-  if (!usableProvider || !model) {
-    return { hasUsableModel: false };
-  }
-
-  return {
-    hasUsableModel: true,
-    defaultProvider: usableProvider.id,
-    defaultModel: model.id,
-  };
 }
 
 export function createProvidersRouter(options: ProvidersRouterOptions = {}) {
@@ -128,7 +108,7 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}) {
 
   app.get("/status", async (c) => {
     try {
-      return c.json({ status: await buildRuntimeStatus(store) });
+      return c.json({ status: await buildRuntimeProviderStatus(store) });
     } catch (error) {
       console.error("Failed to get provider status:", error);
       return c.json({ error: "Failed to get provider status" }, 500);

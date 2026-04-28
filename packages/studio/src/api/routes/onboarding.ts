@@ -1,5 +1,7 @@
 import { Hono } from "hono";
-import { providerManager, type ProviderRuntimeStatus } from "../lib/provider-manager.js";
+import type { ProviderRuntimeStatus } from "../lib/ai-gate.js";
+import { ProviderRuntimeStore } from "../lib/provider-runtime-store.js";
+import { buildRuntimeProviderStatus } from "../lib/runtime-model-pool.js";
 import { loadUserConfig, updateUserConfig } from "../lib/user-config-service.js";
 import type { OnboardingSettingsPatch, OnboardingTaskSettings } from "../../types/settings.js";
 import type { RouterContext } from "./context.js";
@@ -57,7 +59,8 @@ async function buildOnboardingStatus(ctx: RouterContext): Promise<OnboardingStat
     loadUserConfig(),
     ctx.state.listBooks(),
   ]);
-  const provider = providerManager.getRuntimeStatus();
+  const providerStore = ctx.providerStore ?? new ProviderRuntimeStore();
+  const provider = await buildRuntimeProviderStatus(providerStore);
   const chapterExists = await hasAnyChapter(ctx, bookIds);
 
   return {

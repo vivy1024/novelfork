@@ -1,3 +1,4 @@
+import type { ProviderRuntimeStatus } from "./ai-gate.js";
 import type { ProviderRuntimeStore, RuntimeModelSource, RuntimeModelTestStatus, RuntimePlatformId, RuntimeProviderRecord } from "./provider-runtime-store.js";
 
 export interface RuntimeModelPoolEntry {
@@ -25,6 +26,21 @@ function isPlatformProvider(provider: RuntimeProviderRecord): provider is Runtim
 
 function hasApiCredentials(provider: RuntimeProviderRecord): boolean {
   return !provider.apiKeyRequired || Boolean(provider.config.apiKey?.trim());
+}
+
+export async function buildRuntimeProviderStatus(store: ProviderRuntimeStore): Promise<ProviderRuntimeStatus> {
+  const modelPool = await buildRuntimeModelPool(store);
+  const firstModel = modelPool[0];
+
+  if (!firstModel) {
+    return { hasUsableModel: false };
+  }
+
+  return {
+    hasUsableModel: true,
+    defaultProvider: firstModel.providerId,
+    defaultModel: firstModel.modelId.slice(`${firstModel.providerId}:`.length),
+  };
 }
 
 export async function buildRuntimeModelPool(store: ProviderRuntimeStore): Promise<RuntimeModelPoolEntry[]> {

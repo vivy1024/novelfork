@@ -26,6 +26,7 @@ import { createFilesystemStaticProvider, type StaticProvider, type StaticProvide
 import { startHttpServer } from "./start-http-server.js";
 import { setupSessionChatWebSocket } from "./lib/session-chat-service.js";
 import { RunStore } from "./lib/run-store.js";
+import { ProviderRuntimeStore } from "./lib/provider-runtime-store.js";
 import {
   rebuildSearchIndex,
 } from "./lib/search-index-rebuild.js";
@@ -245,6 +246,8 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     };
   }
 
+  const providerStore = new ProviderRuntimeStore();
+
   // --- Shared router context ---
   const ctx: RouterContext = {
     state,
@@ -253,6 +256,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     buildPipelineConfig,
     getSessionLlm,
     runStore,
+    providerStore,
     getStartupSummary: () => startupSummary,
     setStartupSummary: (summary) => {
       startupSummary = summary;
@@ -314,10 +318,10 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     app.route("/api/onboarding", createOnboardingRouter(ctx));
 
     // AI Providers management
-    app.route("/api/providers", createProvidersRouter());
+    app.route("/api/providers", createProvidersRouter({ store: providerStore }));
     app.route("/api/runtime-capabilities", createRuntimeCapabilitiesRouter());
 
-    app.route("/api/platform-integrations", createPlatformIntegrationsRouter());
+    app.route("/api/platform-integrations", createPlatformIntegrationsRouter({ store: providerStore }));
 
     app.route("/api/git", createGitRouter());
 
@@ -383,6 +387,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
         }
         return refreshStartupSummary();
       },
+      providerStore,
     }));
 
     // Routines system
