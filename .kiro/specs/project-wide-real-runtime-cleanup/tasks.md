@@ -68,7 +68,7 @@
   - Anthropic/Codex/Kiro 未完整实现的能力必须返回 unsupported/auth-missing，不返回 success。
   - 验证：测试断言 fetch 被调用、参数含 baseUrl/apiKey/modelId；unsupported 不返回 success。
 
-- [ ] 8. 重写 providers route 使用 runtime store 与 adapter
+- [x] 8. 重写 providers route 使用 runtime store 与 adapter
   - 层级目标：持久化 + 真实调用边界。
   - 修改 `packages/studio/src/api/routes/providers.ts`。
   - CRUD、toggle、reorder、model patch 全部写 runtime store。
@@ -77,7 +77,7 @@
   - 删除或隔离 `provider-manager.ts` 的运行时事实源地位，仅允许作为迁移 seed/helper。
   - 验证：route 测试覆盖 refresh/test 真实 adapter 调用、写入失败非 2xx、API Key 不回传明文。
 
-- [ ] 9. 重写平台账号 JSON 导入与平台模型来源
+- [x] 9. 重写平台账号 JSON 导入与平台模型来源
   - 层级目标：持久化。
   - 修改 `packages/studio/src/api/routes/platform-integrations.ts`。
   - 删除 `accountsByPlatform` 内存数组。
@@ -86,7 +86,7 @@
   - Cline 继续 transparent unsupported，不返回假成功。
   - 验证：导入账号后重新实例化 store 仍能列出账号；模型池出现平台模型；禁用账号后模型池移除平台模型。
 
-- [ ] 10. 实现统一 runtime model pool
+- [x] 10. 实现统一 runtime model pool
   - 层级目标：持久化读取 / 真实可用过滤。
   - 新增 `packages/studio/src/api/lib/runtime-model-pool.ts`。
   - `/api/providers/models` 只从 runtime store 构建 enabled provider + enabled model + 可用凭据/账号。
@@ -94,7 +94,7 @@
   - `shared/provider-catalog.ts` 只能作为 seed/template，不再作为运行时模型池。
   - 验证：禁用 provider/model/account 后模型池同步过滤。
 
-- [ ] 11. 去除默认模型与 session config 硬编码
+- [x] 11. 去除默认模型与 session config 硬编码
   - 层级目标：真实模型池选择。
   - 修改 `packages/studio/src/types/settings.ts` 与 `packages/studio/src/shared/session-types.ts`。
   - `DEFAULT_USER_CONFIG` 不再引用不存在的固定 provider/model。

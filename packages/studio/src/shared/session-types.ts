@@ -180,8 +180,8 @@ export interface UpdateNarratorSessionInput {
 }
 
 export const DEFAULT_SESSION_CONFIG: SessionConfig = {
-  providerId: "anthropic",
-  modelId: "claude-sonnet-4-6",
+  providerId: "",
+  modelId: "",
   permissionMode: "edit",
   reasoningEffort: "medium",
 };

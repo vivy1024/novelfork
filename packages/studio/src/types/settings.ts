@@ -69,10 +69,20 @@ export interface RuntimeControlSettings {
   runtimeDebug: RuntimeDebugSettings;
 }
 
+export type ModelReferenceValidationStatus = "empty" | "valid" | "invalid";
+
+export interface ModelDefaultValidation {
+  defaultSessionModel: ModelReferenceValidationStatus;
+  summaryModel: ModelReferenceValidationStatus;
+  subagentModelPool: Record<string, ModelReferenceValidationStatus>;
+  invalidModelIds: string[];
+}
+
 export interface ModelDefaultSettings {
   defaultSessionModel: string;
   summaryModel: string;
   subagentModelPool: string[];
+  validation: ModelDefaultValidation;
 }
 
 export interface OnboardingTaskSettings {
@@ -165,9 +175,15 @@ export const DEFAULT_USER_CONFIG: UserConfig = {
     },
   },
   modelDefaults: {
-    defaultSessionModel: "anthropic:claude-sonnet-4-6",
-    summaryModel: "anthropic:claude-haiku-4-5",
-    subagentModelPool: ["anthropic:claude-haiku-4-5", "openai:gpt-4-turbo"],
+    defaultSessionModel: "",
+    summaryModel: "",
+    subagentModelPool: [],
+    validation: {
+      defaultSessionModel: "empty",
+      summaryModel: "empty",
+      subagentModelPool: {},
+      invalidModelIds: [],
+    },
   },
   onboarding: {
     dismissedFirstRun: false,
