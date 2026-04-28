@@ -1,6 +1,6 @@
 # Studio能力矩阵
 
-**版本**: v1.0.0
+**版本**: v1.0.1
 **创建日期**: 2026-04-28
 **更新日期**: 2026-04-28
 **状态**: ✅ 当前有效
@@ -27,10 +27,16 @@
 |---|---|
 | `.kiro/specs/project-wide-real-runtime-cleanup/` | 反 mock 清理要求、设计与任务完成口径 |
 | `.kiro/specs/novel-creation-workbench-complete-flow/` | 当前工作台完整闭环新主线 |
+| `.kiro/specs/archive/novel-bible-v1/` | 已实现认知层能力事实：问卷、生成前追问、核心变更、上下文装配 |
+| `.kiro/specs/archive/onboarding-and-story-jingwei/` | 首启引导、模型 gate、故事经纬命名与结构化 API / 组件事实 |
+| `.kiro/specs/archive/ai-taste-filter-v1/`、`writing-presets-v1/`、`platform-compliance-v1/` | AI 味、预设资产、发布合规已实现能力事实 |
 | `packages/studio/src/api/lib/mock-debt-ledger.ts` | mock/占位/真实化状态登记事实源 |
 | `packages/studio/src/app-next/workspace/WorkspacePage.test.tsx` | 新创作工作台资源树、章节编辑、候选稿、AI gate、经纬面板、写作工具 UI 覆盖 |
 | `packages/studio/src/api/routes/writing-tools.test.ts` | 写作工具、hook、节奏/对话/健康指标 route 覆盖 |
 | `packages/studio/src/api/routes/writing-modes.test.ts` | 写作模式 prompt-preview route 覆盖 |
+| `packages/studio/src/api/routes/bible.test.ts`、`packages/core/src/__tests__/bible-pgi.test.ts` | 问卷、CoreShift、生成前追问 route / core 规则覆盖 |
+| `packages/studio/src/api/routes/jingwei.test.ts`、`packages/core/src/__tests__/jingwei-context.test.ts` | 故事经纬栏目/条目/上下文装配覆盖 |
+| `packages/studio/src/api/routes/filter.test.ts`、`packages/studio/src/api/routes/compliance.test.ts`、`packages/studio/src/api/routes/presets.test.ts` | AI 味、发布合规、预设 API 覆盖 |
 | `packages/studio/src/components/ChatPanel.test.tsx` | 轻量 Book Chat 临时历史状态覆盖 |
 | recent commits `c4b60d4b`～`7349aad4` | runtime cleanup、mock scan、UI 透明占位、模型池边界、health 透明化等近期变更 |
 
@@ -84,13 +90,20 @@
 | Admin users | Admin 用户管理 | `api/routes/admin.ts`、`UsersTab` | 本地单用户模式 | 无多用户 store | 透明过渡 | CRUD API 返回 `501 unsupported`；按钮 disabled 并说明本地单用户阶段 | ledger `admin-users` |
 | Admin 容器、Worktree、Resources、Routines hooks、平台账号未来动作 | Admin / Settings / Routines | `UnsupportedCapability` 或等价透明占位 | 无真实后端事实源 | 无 | 透明过渡 | 未接入按钮 disabled；未来接真实运行时后再恢复交互 | ledger `transparent-admin-placeholders` |
 
-## 7. 经纬资料、合规与发布
+## 7. 故事经纬、引导式生成、AI 味、合规与预设
 
 | 功能 | 用户入口 | API / 组件入口 | 数据来源 | 持久化状态 | 当前状态 | 已知限制 | 验证文件或口径 |
 |---|---|---|---|---|---|---|---|
-| Workspace 经纬面板基础展示 | Workspace 右侧经纬 tab | `WorkspacePage`、Bible panel | Bible/经纬相关数据 | 当前视图层可切换 | 透明过渡 | 浏览器审计发现部分经纬请求存在 404；分类详情仍偏壳子，需要列表/编辑做实 | `WorkspacePage.test.tsx`；新 spec Task 32-33 |
-| 经纬条目编辑 | Workspace / Bible | `BibleView`、`api/routes/bible.ts`、Bible/Jingwei repositories | Bible repositories | 规划中复用已有仓储 | 透明过渡 | 工作台内人物、地点、势力、物品、伏笔、世界规则的完整 CRUD 仍需接入 | 新 spec Task 33-34 |
-| 合规 / 发布就绪入口 | Workspace 顶部 | `PublishReadiness`、`components/compliance/*` | 合规组件/核心扫描 | 复用已有资产 | 待迁移 | 新工作台只提供入口或嵌入，不新建第二套合规页面 | `.kiro/specs/README.md` platform-compliance 边界 |
+| Workspace 经纬面板基础展示 | Workspace 右侧经纬 tab | `WorkspacePage`、Bible panel | 兼容层与经纬相关数据 | 当前视图层可切换 | 透明过渡 | 浏览器审计发现部分经纬请求存在 404；分类详情仍偏壳子，需要列表/编辑做实 | `WorkspacePage.test.tsx`；新 spec Task 32-33 |
+| 故事经纬结构化 API | 经纬页面 / 新建书籍模板 / 后续工作台联动 | `api/routes/jingwei.ts` | `story_jingwei_section`、`story_jingwei_entry` | SQLite 持久化 | 真实可用 | API 与组件底座已落地；新工作台资源树深度编辑仍需接入 | `jingwei.test.ts`；`jingwei` core tests |
+| 经纬模板应用 | 新建作品 / 模板应用入口 | `/api/books/:bookId/jingwei/templates/apply`、`applyJingweiTemplate` | 空白、基础、增强、题材推荐模板 | 写入经纬 section | 真实可用 | 题材推荐是可勾选候选项，不代表固定标准结构 | `server.test.ts`；`jingwei.test.ts` |
+| 经纬上下文装配 | AI 写作上下文预览 / 后续生成上下文 | `/api/books/:bookId/jingwei/preview-context`、`buildJingweiContext` | 启用且参与 AI 的栏目与条目 | 即时装配，不自动改正文 | 真实可用 | 按 tracked/global/nested 和章节时间线裁剪；资料不完整会影响注入质量 | `jingwei.test.ts`；core context tests |
+| 问卷中心 | 书籍资料页 / 问卷向导组件 | `/api/questionnaires`、`/api/books/:bookId/questionnaires/:templateId/responses`、`QuestionnaireWizard` | 内置问卷模板与回答 | 模板 seed + response 持久化 | 真实可用 | 当前需确认实际页面挂载；AI 建议必须经过模型 gate | `bible.test.ts`；`QuestionnaireWizard.test.tsx` |
+| 生成前追问 | 生成章节前的引导问题 | `/api/books/:bookId/chapters/:chapter/pre-generation-questions`、`generatePGIQuestions` | escalating 矛盾、临近回收窗口伏笔等规则 | 返回问题；答案进入生成上下文/审计 metadata | 真实可用 | 规则当前只实现部分启发式；人设漂移、大纲偏离仍是 stub 边界；若 UI 未弹出则属于入口待接 | `bible-pgi.test.ts`；`bible.test.ts` |
+| 核心设定变更历史 | 变更历史 / 复核流程 | `/api/books/:bookId/core-shifts`、`accept`、`reject` | premise、主线冲突、世界规则、人物弧等核心对象快照 | SQLite 持久化 | 真实可用 | propose 只记录影响；accept 才应用并标记受影响章节；不自动重写正文 | `bible-core-shift.test.ts`；`bible.test.ts` |
+| AI 味过滤与报告 | AI 味报告 / 去 AI 味建议 | `/api/filter/*`、`components/filter/*` | 本地 12 规则、可选朱雀配置、章节报告 | `filter_report` 持久化 | 真实可用 | 朱雀未配置时本地规则仍可用；建议不自动覆盖正文 | `filter.test.ts`；filter component tests |
+| 预设资产 | 预设管理 / 新建书籍预设绑定 | `/api/presets`、`/api/books/:id/presets` | genre、tone、beat、logic、AI 味、技法、bundle | 书籍预设可持久化 | 真实可用 | 不是模板市场终态；preset 只提供写作约束和推荐组合 | `presets.test.ts` |
+| 合规 / 发布就绪 | 发布检查入口 / 合规组件 | `/api/books/:bookId/compliance/*`、`components/compliance/*` | 敏感词、AI 比例、格式规则、平台字典 | 即时扫描或导入词库 | 真实可用 / 待迁移 UI | 新工作台只提供入口或嵌入，不新建第二套合规页面 | `compliance.test.ts`；`.kiro/specs/README.md` platform-compliance 边界 |
 | 导出 | Workspace 顶部 | 待新增 export route | 已保存章节数据 | 未接入 | 透明过渡 | 当前 disabled；至少需要全书 Markdown/TXT | 新 spec Task 37-38 |
 
 ## 8. 内部示例与低风险项
@@ -110,14 +123,15 @@
 | 新建章节 disabled | 当前不是可用闭环 | Task 19-20 |
 | 导出 disabled | 当前不是可用闭环 | Task 37-38 |
 | 写作模式应用 disabled / prompt-preview | 当前不写入正式正文，且应保持透明 | Task 26-28 |
-| 经纬面板 404 与分类壳子 | 部分路径或视图未接真实列表/编辑 | Task 32-33 |
+| 经纬面板 404 与分类壳子 | 结构化经纬 API 已可用，但 Workspace 分类视图仍未完整接入 | Task 32-33 |
+| 引导式生成入口串联 | 问卷、生成前追问、核心变更和 AI 味报告已有底座，仍需确认当前主工作台是否完整串起 | `novel-creation-workbench-complete-flow` 后续流程任务 |
 | Typecheck 仍失败 | 已知 `routes`、`novelfork-context`、`use-tabs` 类型问题 | Task 41 |
 
 ## 10. 完成口径
 
 本文当前只完成 `novel-creation-workbench-complete-flow` Task 1 的事实沉淀：
 
-- 已把 runtime/provider/model/session、资源管理器、章节编辑、候选稿、writing tools、writing modes、transparent placeholders、internal demo 统一归档。
+- 已把 runtime/provider/model/session、资源管理器、章节编辑、候选稿、writing tools、writing modes、故事经纬、引导式生成、AI 味、预设、合规、transparent placeholders、internal demo 统一归档。
 - 已明确哪些能力真实可用，哪些只是透明过渡。
 - 已保留已知缺口，避免把 spec 后续任务提前写成完成。
 
