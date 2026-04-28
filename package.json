@@ -31,6 +31,7 @@
     "bun:build-client": "pnpm --dir packages/studio build:client",
     "bun:embed-assets": "node scripts/generate-embedded-assets.mjs",
     "bun:compile": "pnpm bun:build-client && pnpm bun:embed-assets && bun build ./main.ts --compile --outfile dist/novelfork",
+    "docs:verify": "bun run scripts/verify-docs.ts",
     "verify:publish-manifests": "node scripts/verify-no-workspace-protocol.mjs packages/core packages/cli packages/studio",
     "release": "pnpm build && pnpm test",
     "version": "pnpm -r exec npm version"
