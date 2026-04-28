@@ -128,7 +128,7 @@
 
 ### Phase 3：Studio runtime 状态去内存假实现
 
-- [ ] 15. 处理轻量 `/api/chat` 内存历史
+- [x] 15. 处理轻量 `/api/chat` 内存历史
   - 层级目标：持久化或透明临时状态。
   - 推荐：并入正式 session/message repository，废弃第二套 `messageStore`。
   - 如果短期不能并入，API 和 `ChatPanel` 必须标注 `persistence: "process-memory"` 与“当前进程临时历史”。

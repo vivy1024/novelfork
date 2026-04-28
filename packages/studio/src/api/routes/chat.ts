@@ -17,6 +17,12 @@ interface Message {
   timestamp: number;
 }
 
+const PROCESS_MEMORY_HISTORY = {
+  persistence: "process-memory" as const,
+  persistenceLabel: "当前进程临时历史",
+  persistenceDescription: "轻量 ChatPanel 历史仅保存在当前服务进程，刷新服务或重启后可能丢失；正式长期历史请使用会话中心。",
+};
+
 export function createChatRouter(ctx: RouterContext): Hono {
   const app = new Hono();
   const { state } = ctx;
@@ -106,7 +112,7 @@ Be concise and actionable.`;
       messages.push(assistantMsg);
       messageStore.set(bookId, messages);
 
-      return c.json({ message: assistantMsg });
+      return c.json({ message: assistantMsg, ...PROCESS_MEMORY_HISTORY });
     } catch (error) {
       logObservedAiError(pipelineLogger, {
         endpoint: "/api/chat/:bookId/send",
@@ -129,14 +135,14 @@ Be concise and actionable.`;
   app.get("/api/chat/:bookId/messages", (c) => {
     const bookId = c.req.param("bookId");
     const messages = messageStore.get(bookId) || [];
-    return c.json({ messages });
+    return c.json({ messages, ...PROCESS_MEMORY_HISTORY });
   });
 
   // DELETE /api/chat/:bookId/messages - Clear history
   app.delete("/api/chat/:bookId/messages", (c) => {
     const bookId = c.req.param("bookId");
     messageStore.delete(bookId);
-    return c.json({ status: "cleared" });
+    return c.json({ status: "cleared", ...PROCESS_MEMORY_HISTORY });
   });
 
   return app;

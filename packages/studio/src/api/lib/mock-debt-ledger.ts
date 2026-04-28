@@ -111,10 +111,10 @@ export const MOCK_DEBT_ITEMS = [
     id: "book-chat-history",
     module: "Book chat history",
     files: ["packages/studio/src/api/routes/chat.ts"],
-    currentBehavior: "轻量 book chat 的 messageStore 是进程内 Map，刷新或重启后历史丢失但接口表现像正式历史。",
+    currentBehavior: "轻量 book chat 仍使用当前进程内存历史，但 API 响应与 ChatPanel 已明确标注 process-memory / 当前进程临时历史。",
     userRisk: "critical",
-    status: "must-replace",
-    targetBehavior: "并入正式 session/message repository，或降级为明确 process-memory 的透明临时面板。",
+    status: "transparent-placeholder",
+    targetBehavior: "短期保持明确 process-memory 的透明临时面板；后续并入正式 session/message repository。",
     ownerSpec: OWNER_SPEC,
     verification: [
       "持久化路径验证重启后历史仍在",
