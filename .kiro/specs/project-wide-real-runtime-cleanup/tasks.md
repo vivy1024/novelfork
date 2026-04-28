@@ -157,7 +157,7 @@
   - 端口分配使用 `net` 尝试监听检测真实占用；结果持久化或标注 best-effort。
   - 验证：配置重启测试、端口占用测试、unknown 字段测试。
 
-- [ ] 19. Admin 用户管理降级或持久化
+- [x] 19. Admin 用户管理降级或持久化
   - 层级目标：持久化或透明占位。
   - 修改 `packages/studio/src/api/routes/admin.ts` 与 Admin Users UI。
   - 推荐：本地单用户阶段移除/禁用用户 CRUD，显示“本地单用户模式”。

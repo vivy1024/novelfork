@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const fetchJsonMock = vi.fn();
@@ -18,39 +18,25 @@ describe("UsersTab", () => {
     cleanup();
   });
 
-  it("opens a dialog before deleting a user", async () => {
-    fetchJsonMock
-      .mockResolvedValueOnce({
-        users: [
-          {
-            id: "1",
-            username: "admin",
-            email: "admin@novelfork.local",
-            role: "admin",
-            createdAt: "2026-01-01T00:00:00.000Z",
-            lastLogin: "2026-04-20T10:00:00.000Z",
-          },
-        ],
-      })
-      .mockResolvedValueOnce({ success: true })
-      .mockResolvedValue({ users: [] });
-
-    const confirmSpy = vi.spyOn(window, "confirm").mockImplementation(() => true);
+  it("shows local single-user mode and disables editable user CRUD", async () => {
+    fetchJsonMock.mockResolvedValueOnce({
+      mode: "local-single-user",
+      users: [],
+      userManagement: {
+        code: "unsupported",
+        capability: "admin.users.crud",
+        status: "planned",
+        reason: "当前是本地单用户工具，用户管理 CRUD 尚未接入持久化用户系统。",
+      },
+    });
 
     render(<UsersTab />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "删除用户 admin" }));
-
-    expect(screen.getByRole("dialog")).toBeTruthy();
-    expect(screen.getByText("确认删除用户")).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("button", { name: "删除" }));
-
-    await waitFor(() => {
-      expect(fetchJsonMock).toHaveBeenCalledWith("/api/admin/users/1", { method: "DELETE" });
-    });
-    expect(confirmSpy).not.toHaveBeenCalled();
-
-    confirmSpy.mockRestore();
+    expect((await screen.findAllByText("本地单用户模式")).length).toBeGreaterThan(0);
+    expect(screen.getByText(/用户管理 CRUD 尚未接入持久化用户系统/)).toBeTruthy();
+    for (const button of screen.getAllByRole("button", { name: /添加用户/ }) as HTMLButtonElement[]) {
+      expect(button.disabled).toBe(true);
+    }
+    expect(screen.queryByRole("button", { name: /删除用户/ })).toBeNull();
   });
 });
