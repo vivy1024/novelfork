@@ -582,12 +582,13 @@ function AssistantPanel({
 function WritingModesPanel({ selectedNode }: { readonly selectedNode: StudioResourceNode }) {
   const [open, setOpen] = useState(false);
   const [activeMode, setActiveMode] = useState<"inline" | "dialogue-gen" | "variants" | "outline">("inline");
+  const [applyNotice, setApplyNotice] = useState<string | null>(null);
 
   const bookId = typeof selectedNode.metadata?.bookId === "string" ? selectedNode.metadata.bookId : "";
   const chapterNumber = typeof selectedNode.metadata?.chapterNumber === "number" ? selectedNode.metadata.chapterNumber : 1;
   const isChapterContext = selectedNode.kind === "chapter" || selectedNode.kind === "generated-chapter";
-
-  const noop = () => { /* placeholder */ };
+  const applyDisabledReason = "当前工作台尚未暴露安全写入目标，应用按钮已禁用。";
+  const handleBlockedApply = () => setApplyNotice(applyDisabledReason);
 
   return (
     <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm">
@@ -608,17 +609,22 @@ function WritingModesPanel({ selectedNode }: { readonly selectedNode: StudioReso
             <button className={`rounded-lg px-2 py-1 text-xs ${activeMode === "outline" ? "bg-primary text-primary-foreground" : "border border-border hover:bg-muted"}`} onClick={() => setActiveMode("outline")} type="button">大纲分支</button>
           </div>
 
+          <p className="rounded-lg border border-dashed border-border bg-background/60 p-2 text-xs text-muted-foreground">
+            {applyDisabledReason}
+          </p>
+          {applyNotice && <p className="text-xs text-muted-foreground">{applyNotice}</p>}
+
           {isChapterContext && activeMode === "inline" && (
-            <InlineWritePanel bookId={bookId} chapterNumber={chapterNumber} selectedText="" onAccept={noop} onDiscard={noop} />
+            <InlineWritePanel bookId={bookId} chapterNumber={chapterNumber} selectedText="" onAccept={handleBlockedApply} onDiscard={() => setOpen(false)} applyDisabledReason={applyDisabledReason} />
           )}
           {isChapterContext && activeMode === "dialogue-gen" && (
-            <DialogueGenerator bookId={bookId} chapterNumber={chapterNumber} onInsert={noop} />
+            <DialogueGenerator bookId={bookId} chapterNumber={chapterNumber} onInsert={handleBlockedApply} applyDisabledReason={applyDisabledReason} />
           )}
           {isChapterContext && activeMode === "variants" && (
-            <VariantCompare bookId={bookId} chapterNumber={chapterNumber} selectedText="" onAccept={noop} />
+            <VariantCompare bookId={bookId} chapterNumber={chapterNumber} selectedText="" onAccept={handleBlockedApply} applyDisabledReason={applyDisabledReason} />
           )}
           {activeMode === "outline" && (
-            <OutlineBrancher bookId={bookId} onSelectBranch={noop} />
+            <OutlineBrancher bookId={bookId} onSelectBranch={handleBlockedApply} applyDisabledReason={applyDisabledReason} />
           )}
 
           {!isChapterContext && activeMode !== "outline" && (

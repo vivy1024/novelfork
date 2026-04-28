@@ -7,6 +7,7 @@ import { postApi } from "@/hooks/use-api";
 export interface OutlineBrancherProps {
   readonly bookId: string;
   readonly onSelectBranch: (outline: string) => void;
+  readonly applyDisabledReason?: string;
 }
 
 interface Branch {
@@ -16,7 +17,7 @@ interface Branch {
   readonly estimatedChapters: number;
 }
 
-export function OutlineBrancher({ bookId, onSelectBranch }: OutlineBrancherProps) {
+export function OutlineBrancher({ bookId, onSelectBranch, applyDisabledReason }: OutlineBrancherProps) {
   const [branches, setBranches] = useState<readonly Branch[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [expandedContent, setExpandedContent] = useState<string | null>(null);
@@ -80,6 +81,8 @@ export function OutlineBrancher({ bookId, onSelectBranch }: OutlineBrancherProps
         </div>
       )}
 
+      {applyDisabledReason && <p className="text-xs text-muted-foreground">{applyDisabledReason}</p>}
+
       <div className="space-y-2">
         {branches.map((b) => (
           <Card key={b.id} size="sm">
@@ -94,7 +97,9 @@ export function OutlineBrancher({ bookId, onSelectBranch }: OutlineBrancherProps
                   {expanding && expandedId === b.id ? "展开中..." : "展开"}
                 </Button>
                 {expandedId === b.id && expandedContent && (
-                  <Button type="button" size="xs" onClick={() => onSelectBranch(expandedContent)}>选择此走向</Button>
+                  <Button type="button" size="xs" onClick={() => onSelectBranch(expandedContent)} disabled={Boolean(applyDisabledReason)} title={applyDisabledReason}>
+                    {applyDisabledReason ? "选择此走向（未接入）" : "选择此走向"}
+                  </Button>
                 )}
               </div>
               {expandedId === b.id && expandedContent && (

@@ -218,6 +218,14 @@ describe("WorkspacePage", () => {
     expect(within(assistant).getByText(/当前上下文：人物/)).toBeTruthy();
   });
 
+  it("shows writing mode application as disabled when no editor write target is wired", () => {
+    render(<WorkspacePage />);
+
+    const assistant = screen.getByRole("complementary", { name: "AI 与经纬面板" });
+    fireEvent.click(within(assistant).getByText("写作模式"));
+    expect(within(assistant).getByText(/当前工作台尚未暴露安全写入目标/)).toBeTruthy();
+  });
+
   it("exposes writing tools panel with chapter-context tools and daily progress", () => {
     render(<WorkspacePage />);
 

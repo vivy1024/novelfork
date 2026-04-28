@@ -9,6 +9,7 @@ export interface VariantCompareProps {
   readonly chapterNumber: number;
   readonly selectedText: string;
   readonly onAccept: (content: string) => void;
+  readonly applyDisabledReason?: string;
 }
 
 interface Variant {
@@ -16,7 +17,7 @@ interface Variant {
   readonly content: string;
 }
 
-export function VariantCompare({ bookId, chapterNumber, selectedText, onAccept }: VariantCompareProps) {
+export function VariantCompare({ bookId, chapterNumber, selectedText, onAccept, applyDisabledReason }: VariantCompareProps) {
   const [variants, setVariants] = useState<readonly Variant[]>([]);
   const [promptPreviews, setPromptPreviews] = useState<readonly string[]>([]);
   const [activeIdx, setActiveIdx] = useState(0);
@@ -93,7 +94,10 @@ export function VariantCompare({ bookId, chapterNumber, selectedText, onAccept }
               <div className="max-h-48 overflow-y-auto rounded-lg border border-border bg-muted/20 p-3 leading-7">
                 {active.content}
               </div>
-              <Button type="button" size="xs" onClick={() => onAccept(active.content)}>选择此版本</Button>
+              {applyDisabledReason && <p className="text-xs text-muted-foreground">{applyDisabledReason}</p>}
+              <Button type="button" size="xs" onClick={() => onAccept(active.content)} disabled={Boolean(applyDisabledReason)} title={applyDisabledReason}>
+                {applyDisabledReason ? "选择此版本（未接入）" : "选择此版本"}
+              </Button>
             </div>
           )}
         </div>

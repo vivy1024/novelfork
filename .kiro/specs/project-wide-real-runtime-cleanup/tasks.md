@@ -173,7 +173,7 @@
   - UI 文案显示“复制 prompt / 执行生成”，不能把 prompt preview 叫成已生成正文。
   - 验证：route/UI 测试覆盖 prompt-preview 标记和真实生成路径。
 
-- [ ] 21. 修复 Workspace 写作模式 noop 回调
+- [x] 21. 修复 Workspace 写作模式 noop 回调
   - 层级目标：真实应用或透明 disabled。
   - 修改 `packages/studio/src/app-next/workspace/WorkspacePage.tsx`。
   - `InlineWritePanel.onAccept`、`DialogueGenerator.onInsert`、`VariantCompare.onAccept`、`OutlineBrancher.onSelectBranch` 不得再绑定空 noop。

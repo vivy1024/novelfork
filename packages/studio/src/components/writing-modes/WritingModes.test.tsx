@@ -83,6 +83,24 @@ describe("InlineWritePanel", () => {
 });
 
 describe("DialogueGenerator", () => {
+  it("disables insert when workspace cannot provide a safe write target", async () => {
+    const onInsert = vi.fn();
+    postApiMock.mockResolvedValueOnce({
+      lines: [{ character: "林月", line: "你来了。" }],
+    });
+
+    render(<DialogueGenerator bookId="book-1" chapterNumber={5} onInsert={onInsert} applyDisabledReason="当前工作台尚未暴露安全写入目标。" />);
+
+    fireEvent.change(screen.getByLabelText("角色"), { target: { value: "林月" } });
+    fireEvent.click(screen.getByRole("button", { name: "生成对话" }));
+
+    const insertButton = await screen.findByRole("button", { name: "插入到正文（未接入）" }) as HTMLButtonElement;
+    expect(insertButton.disabled).toBe(true);
+    expect(screen.getByText("当前工作台尚未暴露安全写入目标。")).toBeTruthy();
+    fireEvent.click(insertButton);
+    expect(onInsert).not.toHaveBeenCalled();
+  });
+
   it("generates dialogue and inserts formatted text", async () => {
     const onInsert = vi.fn();
     postApiMock.mockResolvedValueOnce({
