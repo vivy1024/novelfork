@@ -1,10 +1,26 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { NewSessionDialog } from "./NewSessionDialog";
 
+const fetchJsonMock = vi.fn();
+
+vi.mock("@/hooks/use-api", () => ({
+  fetchJson: (path: string) => fetchJsonMock(path),
+}));
+
+function mockRuntimeModels(models = [{ modelId: "sub2api:gpt-5-codex", modelName: "GPT-5 Codex", providerName: "Sub2API" }]) {
+  fetchJsonMock.mockResolvedValue({ models });
+}
+
+afterEach(() => {
+  cleanup();
+  fetchJsonMock.mockReset();
+});
+
 describe("NewSessionDialog", () => {
-  it("creates a session from a preset agent with generated title", () => {
+  it("creates a session from a preset agent with generated title and runtime model", async () => {
+    mockRuntimeModels();
     const onCreate = vi.fn();
     const onOpenChange = vi.fn();
 
@@ -16,6 +32,7 @@ describe("NewSessionDialog", () => {
       />,
     );
 
+    expect(await screen.findByText("Sub2API · GPT-5 Codex")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "创建会话" }));
 
     expect(onCreate).toHaveBeenCalledWith({
@@ -23,6 +40,8 @@ describe("NewSessionDialog", () => {
       title: "Writer 会话",
       sessionMode: "chat",
       sessionConfig: {
+        providerId: "sub2api",
+        modelId: "gpt-5-codex",
         permissionMode: "edit",
       },
     });
@@ -30,7 +49,8 @@ describe("NewSessionDialog", () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
-  it("allows overriding title and agent id before submit", () => {
+  it("allows overriding title and agent id before submit", async () => {
+    mockRuntimeModels();
     const onCreate = vi.fn();
 
     render(
@@ -40,6 +60,8 @@ describe("NewSessionDialog", () => {
         onCreate={onCreate}
       />,
     );
+
+    await screen.findByText("Sub2API · GPT-5 Codex");
 
     fireEvent.click(screen.getByRole("button", { name: /审计 Auditor/ }));
     fireEvent.change(screen.getAllByLabelText("Agent ID").at(-1) as HTMLElement, { target: { value: "continuity-auditor" } });
@@ -51,12 +73,15 @@ describe("NewSessionDialog", () => {
       title: "连续性排查",
       sessionMode: "chat",
       sessionConfig: {
+        providerId: "sub2api",
+        modelId: "gpt-5-codex",
         permissionMode: "read",
       },
     });
   });
 
-  it("lets authors choose the permission mode during session creation", () => {
+  it("lets authors choose the permission mode during session creation", async () => {
+    mockRuntimeModels();
     const onCreate = vi.fn();
 
     render(
@@ -68,6 +93,8 @@ describe("NewSessionDialog", () => {
       />,
     );
 
+    await screen.findByText("Sub2API · GPT-5 Codex");
+
     expect(screen.getAllByText(/默认权限：逐项询问/).length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole("button", { name: /全部允许/ }));
     fireEvent.click(screen.getByRole("button", { name: "创建会话" }));
@@ -77,8 +104,28 @@ describe("NewSessionDialog", () => {
       title: "Architect 会话",
       sessionMode: "chat",
       sessionConfig: {
+        providerId: "sub2api",
+        modelId: "gpt-5-codex",
         permissionMode: "allow",
       },
     });
+  });
+
+  it("blocks creation when the unified runtime model pool is empty", async () => {
+    mockRuntimeModels([]);
+    const onCreate = vi.fn();
+
+    render(
+      <NewSessionDialog
+        open
+        onOpenChange={() => {}}
+        onCreate={onCreate}
+      />,
+    );
+
+    expect(await screen.findByText("尚未配置可用模型")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "创建会话" })).toHaveProperty("disabled", true);
+    fireEvent.click(screen.getByRole("button", { name: "创建会话" }));
+    expect(onCreate).not.toHaveBeenCalled();
   });
 });

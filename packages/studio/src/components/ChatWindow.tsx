@@ -35,8 +35,15 @@ import { Button } from "./ui/button";
 import { fetchJson } from "../hooks/use-api";
 import { notify } from "@/lib/notify";
 import { maybeShowClosedWindowHint } from "@/lib/closed-window-hint";
+import {
+  findRuntimeModelByRef,
+  runtimeModelLabel,
+  runtimeModelRef,
+  splitRuntimeModelRef,
+  usableRuntimeModels,
+  type RuntimeModelOption,
+} from "@/lib/runtime-model-options";
 import { useRunDetails } from "../hooks/use-run-events";
-import { getDefaultModel, getDefaultProvider, getModel, getProvider, PROVIDERS } from "../shared/provider-catalog";
 import {
   SESSION_PERMISSION_MODE_OPTIONS,
   getRecommendedSessionPermissionMode,
@@ -55,14 +62,6 @@ interface ChatWindowProps {
   windowId: string;
   theme: Theme;
 }
-
-const MODEL_OPTIONS = PROVIDERS.flatMap((provider) =>
-  provider.models.map((model) => ({
-    providerId: provider.id,
-    modelId: model.id,
-    label: `${provider.name} · ${model.name}`,
-  })),
-);
 
 const REASONING_OPTIONS: Array<{ value: SessionReasoningEffort; label: string }> = [
   { value: "low", label: "低" },
@@ -91,6 +90,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
   const [contextPanelOpen, setContextPanelOpen] = useState(false);
   const [executionChainExpanded, setExecutionChainExpanded] = useState(false);
   const [recoveryFailure, setRecoveryFailure] = useState<string | null>(null);
+  const [runtimeModels, setRuntimeModels] = useState<RuntimeModelOption[] | null>(null);
   const sessionMessagesRef = useRef<ChatMessage[]>([]);
   const sessionRecordRef = useRef<NarratorSessionRecord | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -182,6 +182,25 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
     setRecoveryFailure(null);
     setExecutionChainExpanded(false);
   }, [chatWindow?.sessionId, setChatSnapshot, updateRecoveryState, windowId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchJson<{ models?: RuntimeModelOption[] }>("/api/providers/models")
+      .then((response) => {
+        if (!cancelled) {
+          setRuntimeModels(usableRuntimeModels(response.models));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setRuntimeModels([]);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const persistSessionMessages = useCallback(
     async (nextMessages: ChatMessage[]) => {
@@ -591,14 +610,15 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
 
   if (!chatWindow) return null;
 
-  const defaultProvider = getDefaultProvider();
-  const defaultModel = getDefaultModel(defaultProvider.id);
+  const runtimeModelOptions = runtimeModels ?? [];
+  const defaultRuntimeModel = runtimeModelOptions[0] ?? null;
+  const defaultRuntimeModelSelection = defaultRuntimeModel ? splitRuntimeModelRef(defaultRuntimeModel) : null;
   const sessionState = authoritativeSnapshot?.session ?? {
     title: chatWindow.title,
     sessionMode: chatWindow.sessionMode ?? "chat",
     sessionConfig: {
-      providerId: defaultProvider.id,
-      modelId: defaultModel?.id ?? "",
+      providerId: defaultRuntimeModelSelection?.providerId ?? "",
+      modelId: defaultRuntimeModelSelection?.modelId ?? "",
       permissionMode: getRecommendedSessionPermissionMode({
         agentId: chatWindow.agentId,
         sessionMode: chatWindow.sessionMode ?? "chat",
@@ -607,8 +627,14 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
     },
     messageCount: effectiveMessages.length,
   };
+  const storedModelRef = runtimeModelRef(sessionState.sessionConfig.providerId, sessionState.sessionConfig.modelId);
+  const selectedRuntimeModel = findRuntimeModelByRef(runtimeModelOptions, storedModelRef);
+  const activeRuntimeModel = selectedRuntimeModel ?? defaultRuntimeModel;
+  const activeRuntimeModelSelection = activeRuntimeModel ? splitRuntimeModelRef(activeRuntimeModel) : null;
   const sessionConfig = {
     ...sessionState.sessionConfig,
+    providerId: activeRuntimeModelSelection?.providerId ?? sessionState.sessionConfig.providerId ?? "",
+    modelId: activeRuntimeModelSelection?.modelId ?? sessionState.sessionConfig.modelId ?? "",
     permissionMode: normalizeSessionPermissionMode(
       sessionState.sessionConfig.permissionMode,
       getRecommendedSessionPermissionMode({ agentId: chatWindow.agentId, sessionMode: sessionState.sessionMode }),
@@ -616,9 +642,10 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
   };
   const selectedPermission = getSessionPermissionModeOption(sessionConfig.permissionMode);
 
-  const selectedProvider = getProvider(sessionConfig.providerId);
-  const selectedModel = getModel(sessionConfig.providerId, sessionConfig.modelId);
-  const tokenBudget = selectedModel?.contextWindow ?? 200000;
+  const activeModelRefValue = activeRuntimeModelSelection?.modelRef ?? "";
+  const hasRuntimeModels = runtimeModelOptions.length > 0;
+  const modelPoolEmpty = runtimeModels !== null && !hasRuntimeModels;
+  const tokenBudget = activeRuntimeModel?.contextWindow ?? 200000;
   const contextSummary = buildSessionContextSummary(effectiveMessages, tokenBudget);
   const contextEntries = buildContextEntries(effectiveMessages);
   const contextSeverityLabel =
@@ -632,7 +659,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
   const sessionBreadcrumb = buildSessionBreadcrumb(chatWindow);
 
   const handleSend = () => {
-    if (!input.trim() || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+    if (modelPoolEmpty || !input.trim() || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
 
     const messageId = `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
     const userMessage: ChatMessage = {
@@ -1146,24 +1173,36 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
                       <Bot className="size-3.5 text-primary" />
                       模型
                     </span>
+                    {modelPoolEmpty ? (
+                      <div className="mb-2 rounded-lg border border-dashed border-border/60 bg-muted/10 px-2 py-2 text-[10px] text-muted-foreground">
+                        尚未配置可用模型
+                      </div>
+                    ) : null}
                     <select
                       aria-label="模型选择器"
-                      value={`${sessionConfig.providerId}:${sessionConfig.modelId}`}
+                      value={activeModelRefValue}
+                      disabled={modelPoolEmpty}
                       onChange={(event) => {
-                        const [providerId, modelId] = event.target.value.split(":");
-                        if (!providerId || !modelId) return;
-                        updateSessionConfig({ providerId, modelId });
+                        const model = findRuntimeModelByRef(runtimeModelOptions, event.target.value);
+                        if (!model) return;
+                        const nextModel = splitRuntimeModelRef(model);
+                        if (!nextModel.providerId || !nextModel.modelId) return;
+                        updateSessionConfig({ providerId: nextModel.providerId, modelId: nextModel.modelId });
                       }}
-                      className="w-full rounded-lg border border-border bg-background px-2 py-2 text-xs text-foreground"
+                      className="w-full rounded-lg border border-border bg-background px-2 py-2 text-xs text-foreground disabled:opacity-60"
                     >
-                      {MODEL_OPTIONS.map((option) => (
-                        <option key={`${option.providerId}:${option.modelId}`} value={`${option.providerId}:${option.modelId}`}>
-                          {option.label}
-                        </option>
-                      ))}
+                      {modelPoolEmpty ? <option value="">无可用模型</option> : null}
+                      {runtimeModelOptions.map((model) => {
+                        const optionRef = splitRuntimeModelRef(model);
+                        return (
+                          <option key={optionRef.modelRef} value={optionRef.modelRef}>
+                            {runtimeModelLabel(model)}
+                          </option>
+                        );
+                      })}
                     </select>
                     <div className="mt-2 text-[10px] text-muted-foreground">
-                      {selectedModel ? `${(selectedModel.contextWindow / 1000).toFixed(0)}K context` : "模型信息不可用"}
+                      {activeRuntimeModel ? `${((activeRuntimeModel.contextWindow ?? 0) / 1000).toFixed(0)}K context` : "模型信息不可用"}
                     </div>
                   </label>
 
@@ -1261,7 +1300,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
                 <span className="rounded-full border border-border px-2 py-0.5">Agent {chatWindow.agentId}</span>
                 <span className="rounded-full border border-border px-2 py-0.5">权限 {selectedPermission.label}</span>
                 <span className="rounded-full border border-border px-2 py-0.5">{sessionState.messageCount} 条消息</span>
-                {selectedProvider ? <span className="rounded-full border border-border px-2 py-0.5">{selectedProvider.name}</span> : null}
+                {activeRuntimeModel ? <span className="rounded-full border border-border px-2 py-0.5">{activeRuntimeModel.providerName}</span> : null}
               </div>
               {(() => {
                 // 5.6.3 — recovery-state-aware input affordance:
@@ -1272,7 +1311,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
                 const isReconnecting = authoritativeRecoveryState === "reconnecting";
                 const isReplaying = authoritativeRecoveryState === "replaying";
                 const inputDisabled = isResetting;
-                const sendBlocked = !wsConnected || isResetting || isReconnecting || isReplaying;
+                const sendBlocked = modelPoolEmpty || !wsConnected || isResetting || isReconnecting || isReplaying;
                 // Connection-offline state is already surfaced by the RecoveryBadge
                 // banner + chip; do not repeat it in the placeholder so the baseline
                 // "输入消息..." text stays stable for both humans and tests.
@@ -1283,13 +1322,15 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
                     : isReplaying
                       ? "正在回放历史…（可先输入）"
                       : "输入消息...";
-                const sendTooltip = isResetting
-                  ? "会话正在重置，暂不可发送"
-                  : isReconnecting || isReplaying
-                    ? "等待连接恢复后发送"
-                    : !wsConnected
-                      ? "连接已断开"
-                      : "发送消息";
+                const sendTooltip = modelPoolEmpty
+                  ? "尚未配置可用模型"
+                  : isResetting
+                    ? "会话正在重置，暂不可发送"
+                    : isReconnecting || isReplaying
+                      ? "等待连接恢复后发送"
+                      : !wsConnected
+                        ? "连接已断开"
+                        : "发送消息";
                 return (
                   <div className="flex gap-2">
                     <input

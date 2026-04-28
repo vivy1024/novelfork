@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { fetchJson, putApi } from "@/hooks/use-api";
+import { runtimeModelLabel, usableRuntimeModels, type RuntimeModelOption } from "@/lib/runtime-model-options";
 import { SESSION_PERMISSION_MODE_OPTIONS } from "@/shared/session-types";
 import type { ModelDefaultSettings, RuntimeControlSettings, UserConfig } from "@/types/settings";
 import { DEFAULT_USER_CONFIG } from "@/types/settings";
@@ -168,7 +169,7 @@ function ListManager({
 export function RuntimeControlPanel() {
   const [rc, setRc] = useState<ExtendedRuntimeControls>(DEFAULT_RUNTIME_CONTROLS);
   const [md, setMd] = useState<ModelDefaultSettings>(DEFAULT_MODEL_DEFAULTS);
-  const [modelOptions, setModelOptions] = useState<Array<{ value: string; label: string }>>([]);
+  const [modelOptions, setModelOptions] = useState<RuntimeModelOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -195,10 +196,10 @@ export function RuntimeControlPanel() {
         if (!cancelled) setLoading(false);
       });
 
-    void fetchJson<{ models: Array<{ modelId: string; modelName: string; providerName: string }> }>("/api/providers/models")
+    void fetchJson<{ models?: RuntimeModelOption[] }>("/api/providers/models")
       .then((data) => {
         if (!cancelled) {
-          setModelOptions(data.models.map((m) => ({ value: m.modelId, label: `${m.providerName} · ${m.modelName}` })));
+          setModelOptions(usableRuntimeModels(data.models));
         }
       })
       .catch(() => {
@@ -241,6 +242,7 @@ export function RuntimeControlPanel() {
     dirty();
     setRc((c) => ({ ...c, runtimeDebug: { ...c.runtimeDebug, ...patch } }));
   };
+  const hasModelOptions = modelOptions.length > 0;
 
   if (loading) {
     return <p className="py-8 text-center text-sm text-muted-foreground">正在读取运行控制配置…</p>;
@@ -264,38 +266,61 @@ export function RuntimeControlPanel() {
 
       {/* ---- 模型 ---- */}
       <Section title="模型">
+        {hasModelOptions ? (
+          <p className="rounded-md border border-border/60 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+            {runtimeModelLabel(modelOptions[0])}
+          </p>
+        ) : (
+          <p className="rounded-md border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
+            尚未配置可用模型
+          </p>
+        )}
         <FieldRow label="默认会话模型">
-          <input
+          <select
+            aria-label="默认会话模型"
             className={wideInputCls}
-            list="rc-model-opts"
             value={md.defaultSessionModel}
-            onChange={(e) => patchMd({ defaultSessionModel: e.target.value.trim() || md.defaultSessionModel })}
-          />
+            disabled={!hasModelOptions}
+            onChange={(e) => patchMd({ defaultSessionModel: e.target.value })}
+          >
+            <option value="" disabled>请选择模型</option>
+            {modelOptions.map((model) => (
+              <option key={model.modelId} value={model.modelId}>{runtimeModelLabel(model)}（会话）</option>
+            ))}
+          </select>
         </FieldRow>
         <FieldRow label="摘要模型">
-          <input
+          <select
+            aria-label="摘要模型"
             className={wideInputCls}
-            list="rc-model-opts"
             value={md.summaryModel}
-            onChange={(e) => patchMd({ summaryModel: e.target.value.trim() || md.summaryModel })}
-          />
+            disabled={!hasModelOptions}
+            onChange={(e) => patchMd({ summaryModel: e.target.value })}
+          >
+            <option value="" disabled>请选择模型</option>
+            {modelOptions.map((model) => (
+              <option key={model.modelId} value={model.modelId}>{runtimeModelLabel(model)}（摘要）</option>
+            ))}
+          </select>
         </FieldRow>
         <FieldRow label="子代理模型池">
-          <input
-            className={wideInputCls}
-            value={md.subagentModelPool.join(", ")}
+          <select
+            aria-label="子代理模型池"
+            className={`${wideInputCls} min-h-20`}
+            multiple
+            value={md.subagentModelPool}
+            disabled={!hasModelOptions}
             onChange={(e) =>
               patchMd({
-                subagentModelPool: e.target.value.split(",").map((s) => s.trim()).filter(Boolean),
+                subagentModelPool: Array.from(e.currentTarget.selectedOptions, (option) => option.value),
               })
             }
-          />
+          >
+            {modelOptions.map((model) => (
+              <option key={model.modelId} value={model.modelId}>{runtimeModelLabel(model)}（子代理）</option>
+            ))}
+          </select>
         </FieldRow>
-        <datalist id="rc-model-opts">
-          {modelOptions.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
-        </datalist>
       </Section>
 
       {/* ---- 行为 ---- */}

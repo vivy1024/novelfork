@@ -219,6 +219,25 @@ function defaultFetchJsonImplementation(url: string, ...rest: unknown[]) {
     });
   }
 
+  if (url === "/api/providers/models") {
+    return Promise.resolve({
+      models: [
+        {
+          modelId: "sub2api:gpt-5-codex",
+          modelName: "GPT-5 Codex",
+          providerId: "sub2api",
+          providerName: "Sub2API",
+          enabled: true,
+          contextWindow: 192000,
+          maxOutputTokens: 8192,
+          source: "detected",
+          lastTestStatus: "success",
+          capabilities: { functionCalling: true, vision: false, streaming: true },
+        },
+      ],
+    });
+  }
+
   return Promise.resolve({ success: true });
 }
 
@@ -231,10 +250,13 @@ describe("ChatWindow", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(screen.getByText("当前会话控制")).toBeTruthy();
+    expect(await screen.findByText("Sub2API · GPT-5 Codex")).toBeTruthy();
+    expect(fetchJsonMock).toHaveBeenCalledWith("/api/providers/models");
     expect(screen.getByLabelText("模型选择器")).toBeTruthy();
     expect(screen.getByLabelText("权限模式选择器")).toBeTruthy();
     expect(screen.getByLabelText("推理强度选择器")).toBeTruthy();
 
+    fireEvent.change(screen.getByLabelText("模型选择器"), { target: { value: "sub2api:gpt-5-codex" } });
     fireEvent.change(screen.getByLabelText("权限模式选择器"), { target: { value: "ask" } });
     fireEvent.change(screen.getByLabelText("推理强度选择器"), { target: { value: "high" } });
 
@@ -251,10 +273,28 @@ describe("ChatWindow", () => {
     const latestCall = sessionConfigCalls.at(-1) as [string, { body?: string }];
     expect(JSON.parse(latestCall[1].body ?? "{}")).toMatchObject({
       sessionConfig: {
+        providerId: "sub2api",
+        modelId: "gpt-5-codex",
         permissionMode: "ask",
         reasoningEffort: "high",
       },
     });
+  });
+
+  it("blocks sending when the unified runtime model pool is empty", async () => {
+    fetchJsonMock.mockImplementation((async (...args: [string, ...unknown[]]) => {
+      const [url, options] = args as [string, { method?: string; body?: string } | undefined];
+      if (url === "/api/providers/models") {
+        return { models: [] };
+      }
+      return defaultFetchJsonImplementation(url, options);
+    }) as any);
+
+    render(<ChatWindow windowId="window-1" theme="light" />);
+
+    expect(await screen.findByText("尚未配置可用模型")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("消息输入框"), { target: { value: "你好" } });
+    expect(screen.getByRole("button", { name: "发送" })).toHaveProperty("disabled", true);
   });
 
   it("shows run-level facts in the recent execution chain shell when the latest tool call belongs to a live run", async () => {
@@ -667,7 +707,6 @@ describe("ChatWindow", () => {
   });
 
   it("syncs compressed session messages through the server-first chat state endpoint", async () => {
-
     fetchJsonMock.mockImplementation((async (...args: [string, ...unknown[]]) => {
       const [url, options] = args as [string, { method?: string; body?: string } | undefined];
       if (url === "/api/sessions/session-abc123456/chat/state" && options?.method === "PUT") {

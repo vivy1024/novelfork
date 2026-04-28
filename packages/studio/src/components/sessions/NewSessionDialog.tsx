@@ -1,6 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { Bot, PenTool, ShieldAlert, Sparkles } from "lucide-react";
 
+import { fetchJson } from "@/hooks/use-api";
+import {
+  runtimeModelLabel,
+  splitRuntimeModelRef,
+  usableRuntimeModels,
+  type RuntimeModelOption,
+} from "@/lib/runtime-model-options";
+
 import {
   SESSION_PERMISSION_MODE_OPTIONS,
   getRecommendedSessionPermissionMode,
@@ -26,6 +34,8 @@ export interface NewSessionPayload {
   readonly title: string;
   readonly sessionMode: NarratorSessionMode;
   readonly sessionConfig: {
+    readonly providerId: string;
+    readonly modelId: string;
     readonly permissionMode: SessionPermissionMode;
   };
 }
@@ -100,6 +110,8 @@ export function NewSessionDialog({ open, initialPresetId = "writer", onOpenChang
   );
   const [permissionTouched, setPermissionTouched] = useState(false);
   const [titleTouched, setTitleTouched] = useState(false);
+  const [runtimeModels, setRuntimeModels] = useState<RuntimeModelOption[]>([]);
+  const [modelsLoading, setModelsLoading] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -113,11 +125,40 @@ export function NewSessionDialog({ open, initialPresetId = "writer", onOpenChang
     setTitleTouched(false);
   }, [initialPresetId, open]);
 
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setModelsLoading(true);
+    void fetchJson<{ models?: RuntimeModelOption[] }>("/api/providers/models")
+      .then((response) => {
+        if (!cancelled) {
+          setRuntimeModels(usableRuntimeModels(response.models));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setRuntimeModels([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setModelsLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
   const selectedPreset = useMemo(
     () => SESSION_PRESETS.find((item) => item.id === presetId) ?? SESSION_PRESETS[0],
     [presetId],
   );
   const selectedPermission = getSessionPermissionModeOption(permissionMode);
+  const selectedRuntimeModel = useMemo(() => runtimeModels[0] ?? null, [runtimeModels]);
+  const selectedRuntimeModelRef = selectedRuntimeModel ? splitRuntimeModelRef(selectedRuntimeModel) : null;
+  const hasRuntimeModels = runtimeModels.length > 0;
 
   const handlePresetSelect = (nextPresetId: (typeof SESSION_PRESETS)[number]["id"]) => {
     setPresetId(nextPresetId);
@@ -148,13 +189,15 @@ export function NewSessionDialog({ open, initialPresetId = "writer", onOpenChang
   const handleSubmit = () => {
     const trimmedAgentId = agentId.trim();
     const trimmedTitle = title.trim() || defaultTitleFor(presetId);
-    if (!trimmedAgentId) return;
+    if (!trimmedAgentId || !selectedRuntimeModelRef) return;
 
     onCreate({
       agentId: trimmedAgentId,
       title: trimmedTitle,
       sessionMode,
       sessionConfig: {
+        providerId: selectedRuntimeModelRef.providerId,
+        modelId: selectedRuntimeModelRef.modelId,
         permissionMode,
       },
     });
@@ -253,6 +296,26 @@ export function NewSessionDialog({ open, initialPresetId = "writer", onOpenChang
 
           <div className="space-y-3">
             <div>
+              <Label>运行时模型</Label>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                新会话默认使用统一运行时模型池中的首个可用模型；模型池为空时禁止创建。
+              </p>
+            </div>
+            {modelsLoading ? (
+              <p className="text-xs text-muted-foreground">正在读取统一模型池…</p>
+            ) : selectedRuntimeModel ? (
+              <div className="rounded-xl border border-border/60 bg-muted/30 px-3 py-3 text-sm text-foreground">
+                {runtimeModelLabel(selectedRuntimeModel)}
+              </div>
+            ) : (
+              <div className="rounded-xl border border-dashed border-border px-3 py-3 text-sm text-muted-foreground">
+                尚未配置可用模型
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-3">
+            <div>
               <Label>权限模式</Label>
               <p className="mt-1 text-xs leading-5 text-muted-foreground">
                 创建时就决定本会话能否读资料、改正文、运行 Shell 或进入 Worktree；后续仍可在会话详情中调整。
@@ -321,7 +384,7 @@ export function NewSessionDialog({ open, initialPresetId = "writer", onOpenChang
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             取消
           </Button>
-          <Button onClick={handleSubmit} disabled={!agentId.trim()}>
+          <Button onClick={handleSubmit} disabled={!agentId.trim() || !hasRuntimeModels || modelsLoading}>
             创建会话
           </Button>
         </DialogFooter>
