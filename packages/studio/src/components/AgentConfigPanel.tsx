@@ -17,8 +17,8 @@ export function AgentConfigPanel({ onBack }: AgentConfigPanelProps) {
   const [config, setConfig] = useState<AgentConfig | null>(null);
   const [usage, setUsage] = useState<AgentResourceUsage | null>(null);
   const [stats, setStats] = useState<{
-    workspaceUsagePercent: number;
-    containerUsagePercent: number;
+    workspaceUsagePercent: number | null;
+    containerUsagePercent: number | null;
     portUsagePercent: number;
   } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -48,7 +48,7 @@ export function AgentConfigPanel({ onBack }: AgentConfigPanelProps) {
     try {
       const data = await fetchJson<{
         usage: AgentResourceUsage;
-        stats: { workspaceUsagePercent: number; containerUsagePercent: number; portUsagePercent: number };
+        stats: { workspaceUsagePercent: number | null; containerUsagePercent: number | null; portUsagePercent: number };
       }>("/api/agent/config/usage");
       setUsage(data.usage);
       setStats(data.stats);
@@ -90,11 +90,15 @@ export function AgentConfigPanel({ onBack }: AgentConfigPanelProps) {
     }
   };
 
-  const getUsageColor = (percent: number) => {
+  const getUsageColor = (percent: number | null) => {
+    if (percent === null) return "text-muted-foreground";
     if (percent >= 90) return "text-red-600";
     if (percent >= 70) return "text-yellow-600";
     return "text-green-600";
   };
+
+  const formatUsageValue = (value: number | null) => value === null ? "未知" : String(value);
+  const formatUsagePercent = (value: number | null) => value === null ? "未接入真实运行时" : `${value}% used`;
 
   if (loading || !config) {
     return <div className="p-8 text-center text-muted-foreground">Loading...</div>;
@@ -141,29 +145,36 @@ export function AgentConfigPanel({ onBack }: AgentConfigPanelProps) {
         {/* Resource Usage Overview */}
         {usage && stats && (
           <div className="border rounded-lg p-4 bg-card">
-            <h2 className="text-sm font-medium mb-3">Current Resource Usage</h2>
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h2 className="text-sm font-medium">Current Resource Usage</h2>
+              {usage.source === "unknown" && (
+                <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-700">
+                  资源事实源未接入
+                </span>
+              )}
+            </div>
             <div className="grid grid-cols-3 gap-4">
               <div>
                 <div className="text-xs text-muted-foreground mb-1">Workspaces</div>
                 <div className={`text-2xl font-bold ${getUsageColor(stats.workspaceUsagePercent)}`}>
-                  {usage.activeWorkspaces} / {config.maxActiveWorkspaces}
+                  {formatUsageValue(usage.activeWorkspaces)} / {config.maxActiveWorkspaces}
                 </div>
-                <div className="text-xs text-muted-foreground">{stats.workspaceUsagePercent}% used</div>
+                <div className="text-xs text-muted-foreground">{formatUsagePercent(stats.workspaceUsagePercent)}</div>
               </div>
               <div>
                 <div className="text-xs text-muted-foreground mb-1">Containers</div>
                 <div className={`text-2xl font-bold ${getUsageColor(stats.containerUsagePercent)}`}>
-                  {usage.activeContainers} / {config.maxActiveContainers}
+                  {formatUsageValue(usage.activeContainers)} / {config.maxActiveContainers}
                 </div>
-                <div className="text-xs text-muted-foreground">{stats.containerUsagePercent}% used</div>
+                <div className="text-xs text-muted-foreground">{formatUsagePercent(stats.containerUsagePercent)}</div>
               </div>
               <div>
                 <div className="text-xs text-muted-foreground mb-1">Workspace Size</div>
                 <div className="text-2xl font-bold">
-                  {usage.totalWorkspaceSize.toFixed(0)} MB
+                  {usage.totalWorkspaceSize === null ? "未知" : `${usage.totalWorkspaceSize.toFixed(0)} MB`}
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  {usage.totalWorkspaceSize >= config.workspaceSizeWarning && (
+                  {usage.totalWorkspaceSize === null ? "未接入真实运行时" : usage.totalWorkspaceSize >= config.workspaceSizeWarning && (
                     <span className="text-yellow-600 flex items-center gap-1">
                       <AlertTriangle size={12} />
                       Above threshold
@@ -262,7 +273,7 @@ export function AgentConfigPanel({ onBack }: AgentConfigPanelProps) {
             </div>
           </div>
           <p className="text-xs text-muted-foreground mt-2">
-            Available ports: {config.portRangeEnd - config.portRangeStart}
+            Available ports: {usage?.availablePorts ?? config.portRangeEnd - config.portRangeStart + 1}
             {config.portRangeEnd - config.portRangeStart < 100 && (
               <span className="text-yellow-600 ml-2">⚠ Minimum 100 ports recommended</span>
             )}

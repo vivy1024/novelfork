@@ -149,7 +149,7 @@
   - WebSocket 未订阅真实事件前不得发出“实时监控已接入”语义。
   - 验证：测试断言不再固定 200 stopped；unsupported 或真实状态路径明确。
 
-- [ ] 18. 持久化 Agent config，并修正资源/端口语义
+- [x] 18. 持久化 Agent config，并修正资源/端口语义
   - 层级目标：持久化 + 真实本地检查。
   - 修改 `packages/studio/src/api/lib/agent-config-service.ts`。
   - Agent config 写 runtime config file，重新实例化仍在。

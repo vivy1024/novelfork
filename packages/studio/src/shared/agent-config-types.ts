@@ -8,8 +8,9 @@ export interface AgentConfig {
 }
 
 export interface AgentResourceUsage {
-  activeWorkspaces: number;
-  activeContainers: number;
-  totalWorkspaceSize: number;
+  activeWorkspaces: number | null;
+  activeContainers: number | null;
+  totalWorkspaceSize: number | null;
   availablePorts: number;
+  source: "unknown" | "runtime";
 }

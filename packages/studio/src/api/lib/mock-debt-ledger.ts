@@ -154,10 +154,10 @@ export const MOCK_DEBT_ITEMS = [
     id: "agent-config-service",
     module: "Agent config service",
     files: ["packages/studio/src/api/lib/agent-config-service.ts"],
-    currentBehavior: "Agent 配置、资源使用和端口分配都保存在内存，端口分配不检测真实占用。",
+    currentBehavior: "Agent 配置写入 runtime JSON；资源使用在未接 runtime 事实源时返回 unknown；端口分配会通过本机 listen 探测真实占用并持久化保留端口。",
     userRisk: "critical",
-    status: "must-replace",
-    targetBehavior: "Agent 配置写 runtime config file；资源未知字段返回 unknown/unsupported；端口分配使用 net 真实探测。",
+    status: "confirmed-real",
+    targetBehavior: "继续保持配置持久化与真实端口探测；后续接入 worktree/container/run stores 后把资源使用 source 从 unknown 升级为 runtime。",
     ownerSpec: OWNER_SPEC,
     verification: [
       "配置重新实例化后仍存在",
