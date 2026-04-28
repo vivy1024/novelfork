@@ -180,7 +180,7 @@
   - 能定位章节文件/编辑器时写入目标；不能定位时禁用按钮并显示原因。
   - 验证：UI 测试覆盖应用写入或 disabled 状态。
 
-- [ ] 22. 实现 Hook 应用持久化
+- [x] 22. 实现 Hook 应用持久化
   - 层级目标：持久化。
   - 修改 `WorkspacePage.tsx` 的 `handleApplyHook`。
   - 将 `GeneratedHookOption` 写入 `pending_hooks.md` 或结构化 hooks repository。

@@ -1,11 +1,19 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const useApiMock = vi.hoisted(() => vi.fn());
+const { fetchJsonMock, useApiMock } = vi.hoisted(() => ({
+  fetchJsonMock: vi.fn(),
+  useApiMock: vi.fn(),
+}));
 
 vi.mock("../../hooks/use-api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../hooks/use-api")>();
-  return { ...actual, useApi: useApiMock };
+  return { ...actual, fetchJson: fetchJsonMock, useApi: useApiMock };
+});
+
+vi.mock("@/hooks/use-api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../hooks/use-api")>();
+  return { ...actual, fetchJson: fetchJsonMock, useApi: useApiMock };
 });
 
 vi.mock("../../components/InkEditor", () => {
@@ -49,6 +57,12 @@ const candidatesResponse = {
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 beforeEach(() => {
+  fetchJsonMock.mockReset();
+  fetchJsonMock.mockImplementation(async (path: string) => {
+    if (path === `/books/${TEST_BOOK.id}/chapters/1`) return { content: "测试正文" };
+    if (path === `/books/${TEST_BOOK.id}/chapters/2`) return { content: "第二章正文" };
+    return {};
+  });
   useApiMock.mockImplementation((path: string | null) => {
     if (path === "/books") return { data: booksResponse, loading: false, error: null, refetch: vi.fn() };
     if (path === `/books/${TEST_BOOK.id}`) return { data: bookDetailResponse, loading: false, error: null, refetch: vi.fn() };
@@ -224,6 +238,38 @@ describe("WorkspacePage", () => {
     const assistant = screen.getByRole("complementary", { name: "AI 与经纬面板" });
     fireEvent.click(within(assistant).getByText("写作模式"));
     expect(within(assistant).getByText(/当前工作台尚未暴露安全写入目标/)).toBeTruthy();
+  });
+
+  it("persists applied chapter hooks through the workspace hook action", async () => {
+    fetchJsonMock.mockImplementation(async (path: string) => {
+      if (path === `/books/${TEST_BOOK.id}/chapters/1`) return { content: "测试正文" };
+      if (path === `/books/${TEST_BOOK.id}/hooks/generate`) {
+        return {
+          hooks: [{
+            id: "hook-new",
+            style: "suspense",
+            text: "门外传来第三个人的脚步声。",
+            rationale: "制造新问题",
+            retentionEstimate: "high",
+          }],
+        };
+      }
+      if (path === `/books/${TEST_BOOK.id}/hooks/apply`) return { persisted: true, file: "pending_hooks.md" };
+      return {};
+    });
+
+    render(<WorkspacePage />);
+
+    const assistant = screen.getByRole("complementary", { name: "AI 与经纬面板" });
+    fireEvent.click(within(assistant).getByText("写作工具"));
+    fireEvent.click(within(assistant).getByRole("button", { name: "钩子生成" }));
+    fireEvent.click(within(assistant).getByRole("button", { name: "生成章末钩子" }));
+
+    expect(await within(assistant).findByText("门外传来第三个人的脚步声。")).toBeTruthy();
+    fireEvent.click(within(assistant).getByRole("button", { name: "插入所选钩子" }));
+
+    await waitFor(() => expect(fetchJsonMock).toHaveBeenLastCalledWith("/books/book-1/hooks/apply", expect.objectContaining({ method: "POST" })));
+    expect(await within(assistant).findByText("钩子已写入 pending_hooks.md")).toBeTruthy();
   });
 
   it("exposes writing tools panel with chapter-context tools and daily progress", () => {

@@ -643,6 +643,9 @@ function WritingToolsPanel({ selectedNode }: { readonly selectedNode: StudioReso
   const [dialogueAnalysis, setDialogueAnalysis] = useState<DialogueAnalysisResult | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [hookApplying, setHookApplying] = useState(false);
+  const [hookApplyStatus, setHookApplyStatus] = useState<string | null>(null);
+  const [hookApplyError, setHookApplyError] = useState<string | null>(null);
 
   const bookId = typeof selectedNode.metadata?.bookId === "string" ? selectedNode.metadata.bookId : "";
   const chapterNumber = typeof selectedNode.metadata?.chapterNumber === "number" ? selectedNode.metadata.chapterNumber : undefined;
@@ -666,8 +669,28 @@ function WritingToolsPanel({ selectedNode }: { readonly selectedNode: StudioReso
     }
   };
 
-  const handleApplyHook = (_hook: GeneratedHookOption) => {
-    // Hook applied — future: append to chapter content
+  const handleApplyHook = async (hook: GeneratedHookOption) => {
+    if (!bookId || chapterNumber === undefined) {
+      setHookApplyError("缺少可写入的书籍或章节上下文");
+      return;
+    }
+
+    setHookApplying(true);
+    setHookApplyStatus(null);
+    setHookApplyError(null);
+    try {
+      const response = await fetchJson<{ readonly persisted: boolean; readonly file?: string }>(`/books/${bookId}/hooks/apply`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chapterNumber, hook }),
+      });
+      if (!response.persisted) throw new Error("钩子未写入持久化文件");
+      setHookApplyStatus(`钩子已写入 ${response.file ?? "pending_hooks.md"}`);
+    } catch (error: unknown) {
+      setHookApplyError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setHookApplying(false);
+    }
   };
 
   return (
@@ -722,7 +745,18 @@ function WritingToolsPanel({ selectedNode }: { readonly selectedNode: StudioReso
           )}
 
           {isChapterContext && activeTab === "hooks" && chapterNumber !== undefined && (
-            <ChapterHookGenerator bookId={bookId} chapterNumber={chapterNumber} chapterContent="" onApplyHook={handleApplyHook} applyDisabled />
+            <div className="space-y-2">
+              <ChapterHookGenerator
+                bookId={bookId}
+                chapterNumber={chapterNumber}
+                chapterContent=""
+                onApplyHook={handleApplyHook}
+                applyDisabled={hookApplying || !bookId}
+                applyDisabledReason={hookApplying ? "正在写入 pending_hooks.md" : "缺少可写入的书籍上下文"}
+              />
+              {hookApplyStatus && <p className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-300">{hookApplyStatus}</p>}
+              {hookApplyError && <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">钩子写入失败：{hookApplyError}</p>}
+            </div>
           )}
 
           {activeTab === "progress" && <DailyProgressTracker />}
