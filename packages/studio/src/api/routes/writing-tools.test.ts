@@ -15,6 +15,10 @@ const coreMocks = vi.hoisted(() => {
     storage,
     analyzeDialogue: vi.fn(() => ({ dialogueRatio: 0.5, isHealthy: true })),
     analyzeRhythm: vi.fn(() => ({ rhythmScore: 80, sentenceHistogram: [] })),
+    analyzeSensitiveWords: vi.fn((content: string) => ({
+      issues: [],
+      found: content.includes("肢解") ? [{ word: "肢解", count: 1, severity: "warn" }] : [],
+    })),
     buildConflictMap: vi.fn(() => [{ id: "c-1", name: "主线冲突", state: "escalating", dialectic: null, lastAdvancedChapter: 5 }]),
     buildPovDashboard: vi.fn(() => ({ characters: [{ name: "林月", totalChapters: 1, lastAppearanceChapter: 1, gapSinceLastAppearance: 1, chapterNumbers: [1] }], currentChapter: 2, warnings: [] })),
     detectToneDrift: vi.fn(() => ({ declaredTone: "冷峻质朴", detectedTone: "冷峻质朴", driftScore: 0.1, driftDirection: "一致", isSignificant: false, consecutiveDriftChapters: 0 })),
@@ -22,6 +26,7 @@ const coreMocks = vi.hoisted(() => {
     getDailyProgress: vi.fn((_storage: unknown, config: unknown) => Promise.resolve({ today: { written: 3000, target: (config as { dailyTarget: number }).dailyTarget, completed: false }, thisWeek: { written: 3000, target: 42000 }, streak: 0, last30Days: [] })),
     getProgressTrend: vi.fn(() => Promise.resolve([{ date: "2026-04-26", wordCount: 3000 }])),
     getStorageDatabase: vi.fn(() => storage),
+    conflictRecords: [] as unknown[],
     createKvRepository: vi.fn(() => ({
       get: vi.fn((key: string) => Promise.resolve(kv.get(key) ?? null)),
       set: vi.fn((key: string, value: string) => {
@@ -30,7 +35,7 @@ const coreMocks = vi.hoisted(() => {
       }),
     })),
     createBibleConflictRepository: vi.fn(() => ({
-      listByBook: vi.fn(() => Promise.resolve([])),
+      listByBook: vi.fn(() => Promise.resolve(coreMocks.conflictRecords)),
     })),
     createBibleCharacterArcRepository: vi.fn(() => ({
       listByBook: vi.fn(() => Promise.resolve([{ id: "arc-1", characterId: "char-1", arcType: "positive-growth" }])),
@@ -41,6 +46,7 @@ const coreMocks = vi.hoisted(() => {
 vi.mock("@vivy1024/novelfork-core", () => ({
   analyzeDialogue: coreMocks.analyzeDialogue,
   analyzeRhythm: coreMocks.analyzeRhythm,
+  analyzeSensitiveWords: coreMocks.analyzeSensitiveWords,
   buildConflictMap: coreMocks.buildConflictMap,
   buildPovDashboard: coreMocks.buildPovDashboard,
   createBibleCharacterArcRepository: coreMocks.createBibleCharacterArcRepository,
@@ -75,7 +81,7 @@ async function createRoute(options: { readonly sessionLlm?: boolean } = {}) {
     updatedAt: "2026-04-26T00:00:00.000Z",
   }), "utf-8");
   await writeFile(join(chaptersDir, "index.json"), JSON.stringify([{ number: 1, title: "开始" }, { number: 2, title: "继续" }]), "utf-8");
-  await writeFile(join(chaptersDir, "0001_start.md"), "# 第1章\n\n林月说道：“我们不能回头。”夜色很短。", "utf-8");
+  await writeFile(join(chaptersDir, "0001_start.md"), "# 第1章\n\n林月说道：“我们不能回头。”夜色很短。她在卷宗边看到肢解二字。", "utf-8");
   await writeFile(join(storyDir, "pending_hooks.md"), "| hook_id | status |\n| old-hook | open |", "utf-8");
   await writeFile(join(storyDir, "character_matrix.md"), "| 角色 | POV |\n| 林月 | 是 |\n| 沈舟 | 是 |", "utf-8");
   await writeFile(join(storyDir, "chapter_summaries.md"), "| chapter | title | pov |\n| 1 | 开始 | 林月 |", "utf-8");
@@ -126,6 +132,7 @@ beforeEach(() => {
     providerManager.toggleProvider(provider.id, false);
   }
   coreMocks.kv.clear();
+  coreMocks.conflictRecords.length = 0;
   vi.clearAllMocks();
 });
 
@@ -250,15 +257,31 @@ describe("writing tools routes", () => {
     expect(coreMocks.analyzeDialogue).toHaveBeenCalledWith(expect.stringContaining("我们不能回头"), "daily");
   });
 
-  it("returns book health summary", async () => {
+  it("returns measured health facts and unknown placeholders instead of fixed scores", async () => {
+    coreMocks.conflictRecords.push({ id: "conflict-main" });
     const { app } = await createRoute();
 
     const response = await app.request("http://localhost/api/books/book-1/health");
 
     expect(response.status).toBe(200);
-    const json = await response.json() as { health: { totalChapters: number } };
-    expect(json.health.totalChapters).toBeGreaterThanOrEqual(1);
-    expect(json.health).toHaveProperty("consistencyScore");
+    const json = await response.json() as {
+      health: {
+        totalChapters: { status: string; value: number };
+        totalWords: { status: string; value: number };
+        dailyWords: { status: string; value: number };
+        sensitiveWordCount: { status: string; value: number };
+        knownConflictCount: { status: string; value: number };
+        consistencyScore: { status: string; value?: number };
+      };
+    };
+    expect(json.health.totalChapters).toMatchObject({ status: "measured", value: 1 });
+    expect(json.health.totalWords.status).toBe("measured");
+    expect(json.health.totalWords.value).toBeGreaterThan(0);
+    expect(json.health.dailyWords).toMatchObject({ status: "measured", value: 3000 });
+    expect(json.health.sensitiveWordCount).toMatchObject({ status: "measured", value: 1 });
+    expect(json.health.knownConflictCount).toMatchObject({ status: "measured", value: 1 });
+    expect(json.health.consistencyScore).toMatchObject({ status: "unknown" });
+    expect(json.health.consistencyScore.value).toBeUndefined();
   });
 
   it("returns conflict map", async () => {

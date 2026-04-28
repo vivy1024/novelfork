@@ -5,6 +5,7 @@ import { Hono } from "hono";
 import {
   analyzeDialogue,
   analyzeRhythm,
+  analyzeSensitiveWords,
   buildConflictMap,
   buildPovDashboard,
   createKvRepository,
@@ -36,6 +37,22 @@ type GeneratedHookPayload = {
   readonly rationale: string;
   readonly retentionEstimate: string;
   readonly relatedHookIds?: readonly string[];
+};
+
+type MeasuredMetric = {
+  readonly status: "measured";
+  readonly value: number;
+  readonly source: string;
+};
+
+type UnknownMetric = {
+  readonly status: "unknown";
+  readonly reason: string;
+};
+
+type BookHealthWarning = {
+  readonly type: string;
+  readonly message: string;
 };
 
 type ChapterLookup = {
@@ -185,32 +202,30 @@ export function createWritingToolsRouter(ctx: RouterContext): Hono {
 
   app.get("/api/books/:bookId/health", async (c) => {
     const bookId = c.req.param("bookId");
-    await ctx.state.loadBookConfig(bookId);
-    const chaptersDir = join(ctx.state.bookDir(bookId), "chapters");
-    const { readdir, readFile: rf } = await import("node:fs/promises");
-    const files = await readdir(chaptersDir).catch(() => []);
-    const mdFiles = files.filter((f) => f.endsWith(".md"));
-    let totalWords = 0;
-    for (const f of mdFiles) {
-      const content = await rf(join(chaptersDir, f), "utf-8").catch(() => "");
-      totalWords += content.length;
-    }
+    const book = await ctx.state.loadBookConfig(bookId);
+    const chapters = await readBookChapters(ctx, bookId);
+    const storage = getStorageDatabase();
+    const config = await loadProgressConfig(storage);
+    const progress = await getDailyProgress(storage, config);
+    const { createBibleConflictRepository } = await import("@vivy1024/novelfork-core");
+    const conflicts = await createBibleConflictRepository(storage).listByBook(bookId);
+    const language = isRecord(book) && book.language === "en" ? "en" : "zh";
+    const sensitiveWordCount = chapters.reduce((total, chapter) => total + countSensitiveHits(chapter.content, language), 0);
+    const warnings = buildHealthWarnings(sensitiveWordCount, conflicts.length);
+
     return c.json({
       health: {
-        totalChapters: mdFiles.length,
-        totalWords,
-        consistencyScore: 100,
-        hookRecoveryRate: 0,
-        pendingHooks: [],
-        aiTasteAvg: 0,
-        aiTasteTrend: [],
-        pacingDiversityScore: 0,
-        emotionCurve: [],
-        sensitiveWordTotal: 0,
-        stalledConflicts: [],
-        hookDebtWarnings: [],
-        fatigueWarnings: [],
-        povGapWarnings: [],
+        totalChapters: measuredMetric(chapters.length, "chapter-files"),
+        totalWords: measuredMetric(chapters.reduce((total, chapter) => total + countContentWords(chapter.content), 0), "chapter-files"),
+        dailyWords: measuredMetric(progress.today.written, "writing-log"),
+        dailyTarget: measuredMetric(progress.today.target, "progress-config"),
+        sensitiveWordCount: measuredMetric(sensitiveWordCount, "sensitive-word-scan"),
+        knownConflictCount: measuredMetric(conflicts.length, "bible-conflicts"),
+        consistencyScore: unknownMetric("连续性审计汇总未接入真实来源"),
+        hookRecoveryRate: unknownMetric("钩子回收率未接入真实来源"),
+        aiTasteMean: unknownMetric("AI 味均值未接入真实来源"),
+        rhythmDiversity: unknownMetric("节奏多样性未接入真实来源"),
+        warnings,
       },
     });
   });
@@ -257,6 +272,45 @@ export function createWritingToolsRouter(ctx: RouterContext): Hono {
 
 async function readJsonBody(c: JsonContext): Promise<Record<string, unknown>> {
   return c.req.json<Record<string, unknown>>().catch(() => ({}));
+}
+
+async function readBookChapters(ctx: RouterContext, bookId: string): Promise<ChapterLookup[]> {
+  const chaptersDir = join(ctx.state.bookDir(bookId), "chapters");
+  const files = await readdir(chaptersDir).catch(() => []);
+  const chapters: ChapterLookup[] = [];
+  for (const filename of files.filter((file) => file.endsWith(".md")).sort()) {
+    const content = await readFile(join(chaptersDir, filename), "utf-8").catch(() => "");
+    const chapterNumber = readPositiveInteger(filename.match(/^(\d+)/)?.[1]) ?? chapters.length + 1;
+    chapters.push({ chapterNumber, filename, content });
+  }
+  return chapters;
+}
+
+function measuredMetric(value: number, source: string): MeasuredMetric {
+  return { status: "measured", value, source };
+}
+
+function unknownMetric(reason: string): UnknownMetric {
+  return { status: "unknown", reason };
+}
+
+function countContentWords(content: string): number {
+  return content.replace(/\s+/g, "").length;
+}
+
+function countSensitiveHits(content: string, language: "zh" | "en"): number {
+  return analyzeSensitiveWords(content, undefined, language).found.reduce((total, hit) => total + hit.count, 0);
+}
+
+function buildHealthWarnings(sensitiveWordCount: number, knownConflictCount: number): BookHealthWarning[] {
+  const warnings: BookHealthWarning[] = [];
+  if (sensitiveWordCount > 0) {
+    warnings.push({ type: "敏感词", message: `检测到 ${sensitiveWordCount} 处敏感词命中` });
+  }
+  if (knownConflictCount > 0) {
+    warnings.push({ type: "矛盾", message: `已登记 ${knownConflictCount} 个矛盾条目，请结合矛盾地图判断状态` });
+  }
+  return warnings;
 }
 
 function normalizeGeneratedHook(value: unknown): GeneratedHookPayload | null {

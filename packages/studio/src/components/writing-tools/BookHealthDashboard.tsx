@@ -4,38 +4,88 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Progress } from "@/components/ui/progress";
 import { useApi } from "@/hooks/use-api";
 
+type MeasuredMetric = {
+  readonly status: "measured";
+  readonly value: number;
+  readonly source: string;
+};
+
+type UnknownMetric = {
+  readonly status: "unknown";
+  readonly reason: string;
+};
+
+type HealthMetric = MeasuredMetric | UnknownMetric;
+
 export interface BookHealthData {
-  readonly consistencyScore: number;
-  readonly hookRecoveryRate: number;
-  readonly aiTasteMean: number;
-  readonly aiTasteTrend: ReadonlyArray<{ readonly chapter: number; readonly score: number }>;
-  readonly rhythmDiversity: number;
-  readonly sensitiveWordCount: number;
+  readonly totalChapters: HealthMetric;
+  readonly totalWords: HealthMetric;
+  readonly dailyWords: HealthMetric;
+  readonly dailyTarget: HealthMetric;
+  readonly sensitiveWordCount: HealthMetric;
+  readonly knownConflictCount: HealthMetric;
+  readonly consistencyScore: HealthMetric;
+  readonly hookRecoveryRate: HealthMetric;
+  readonly aiTasteMean: HealthMetric;
+  readonly rhythmDiversity: HealthMetric;
   readonly warnings: ReadonlyArray<{ readonly type: string; readonly message: string }>;
+}
+
+interface BookHealthResponse {
+  readonly health: BookHealthData;
 }
 
 interface MetricConfig {
   readonly label: string;
-  readonly value: number;
-  readonly max: number;
-  readonly format: (v: number) => string;
-  readonly thresholds: { readonly good: number; readonly warn: number };
+  readonly metric: HealthMetric;
+  readonly format: (value: number) => string;
+  readonly progressValue?: (value: number) => number;
+  readonly lowerIsBetter?: boolean;
 }
 
-function metricVariant(value: number, thresholds: { good: number; warn: number }): "outline" | "secondary" | "destructive" {
-  if (value >= thresholds.good) return "outline";
-  if (value >= thresholds.warn) return "secondary";
-  return "destructive";
+function isMeasured(metric: HealthMetric): metric is MeasuredMetric {
+  return metric.status === "measured";
 }
 
-function progressColor(value: number, thresholds: { good: number; warn: number }): string {
-  if (value >= thresholds.good) return "";
-  if (value >= thresholds.warn) return "[&>div]:bg-amber-500";
-  return "[&>div]:bg-destructive";
+function metricVariant(metric: HealthMetric, lowerIsBetter = false): "outline" | "secondary" | "destructive" {
+  if (!isMeasured(metric)) return "secondary";
+  if (lowerIsBetter) {
+    if (metric.value === 0) return "outline";
+    if (metric.value <= 5) return "secondary";
+    return "destructive";
+  }
+  return "outline";
+}
+
+function MetricCard({ config }: { readonly config: MetricConfig }) {
+  const { label, metric, format, lowerIsBetter } = config;
+  const measured = isMeasured(metric);
+  const progress = measured
+    ? config.progressValue?.(metric.value) ?? (lowerIsBetter ? (metric.value === 0 ? 0 : 100) : 100)
+    : 0;
+  const progressClass = lowerIsBetter && measured && metric.value > 0
+    ? metric.value <= 5 ? "[&>div]:bg-amber-500" : "[&>div]:bg-destructive"
+    : "";
+
+  return (
+    <div className="space-y-2 rounded-xl border border-border/60 bg-muted/20 p-3">
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-xs text-muted-foreground">{label}</span>
+        <Badge variant={metricVariant(metric, lowerIsBetter)} className="text-xs">
+          {measured ? format(metric.value) : "未接入"}
+        </Badge>
+      </div>
+      {measured ? (
+        <Progress aria-label={label} value={progress} className={progressClass} />
+      ) : (
+        <p className="text-xs text-muted-foreground">{metric.reason}</p>
+      )}
+    </div>
+  );
 }
 
 export function BookHealthDashboard({ bookId }: { readonly bookId: string }) {
-  const { data, loading, error } = useApi<BookHealthData>(`/books/${bookId}/health`);
+  const { data, loading, error } = useApi<BookHealthResponse>(`/books/${bookId}/health`);
 
   if (loading) {
     return <Card><CardContent className="py-6 text-sm text-muted-foreground">正在加载全书健康数据...</CardContent></Card>;
@@ -43,75 +93,59 @@ export function BookHealthDashboard({ bookId }: { readonly bookId: string }) {
   if (error) {
     return <Card><CardContent className="py-6 text-sm text-destructive">加载失败：{error}</CardContent></Card>;
   }
-  if (!data) {
+  if (!data?.health) {
     return <Card><CardContent className="py-6 text-sm text-muted-foreground">暂无健康数据</CardContent></Card>;
   }
 
-  const insufficient = data.aiTasteTrend.length < 5;
+  const health = data.health;
+  const dailyTarget = isMeasured(health.dailyTarget) ? health.dailyTarget.value : 0;
+  const unknownMetrics = [health.consistencyScore, health.hookRecoveryRate, health.aiTasteMean, health.rhythmDiversity]
+    .filter((metric) => metric.status === "unknown");
 
   const metrics: MetricConfig[] = [
-    { label: "连续性评分", value: data.consistencyScore, max: 1, format: (v) => `${(v * 100).toFixed(0)}%`, thresholds: { good: 0.8, warn: 0.6 } },
-    { label: "钩子回收率", value: data.hookRecoveryRate, max: 1, format: (v) => `${(v * 100).toFixed(0)}%`, thresholds: { good: 0.7, warn: 0.5 } },
-    { label: "AI 味均值", value: data.aiTasteMean, max: 100, format: (v) => `${v.toFixed(0)}/100`, thresholds: { good: 30, warn: 60 } },
-    { label: "节奏多样性", value: data.rhythmDiversity, max: 1, format: (v) => `${(v * 100).toFixed(0)}%`, thresholds: { good: 0.6, warn: 0.4 } },
-    { label: "敏感词数量", value: data.sensitiveWordCount, max: Math.max(data.sensitiveWordCount, 50), format: (v) => `${v} 处`, thresholds: { good: 0, warn: 0 } },
+    { label: "章节数量", metric: health.totalChapters, format: (value) => `${value} 章` },
+    { label: "总字数", metric: health.totalWords, format: (value) => `${value} 字` },
+    {
+      label: "今日字数",
+      metric: health.dailyWords,
+      format: (value) => dailyTarget > 0 ? `${value} / ${dailyTarget} 字` : `${value} 字`,
+      progressValue: (value) => dailyTarget > 0 ? Math.min(100, (value / dailyTarget) * 100) : 0,
+    },
+    { label: "敏感词数量", metric: health.sensitiveWordCount, format: (value) => `${value} 处`, lowerIsBetter: true },
+    { label: "已登记矛盾", metric: health.knownConflictCount, format: (value) => `${value} 个` },
+    { label: "连续性评分", metric: health.consistencyScore, format: (value) => `${(value * 100).toFixed(0)}%` },
+    { label: "钩子回收率", metric: health.hookRecoveryRate, format: (value) => `${(value * 100).toFixed(0)}%` },
+    { label: "AI 味均值", metric: health.aiTasteMean, format: (value) => `${value.toFixed(0)}/100` },
+    { label: "节奏多样性", metric: health.rhythmDiversity, format: (value) => `${(value * 100).toFixed(0)}%` },
   ];
-
-  // AI taste: lower is better, invert for badge
-  const aiTasteVariant = data.aiTasteMean <= 30 ? "outline" as const : data.aiTasteMean <= 60 ? "secondary" as const : "destructive" as const;
 
   return (
     <Card>
       <CardHeader className="space-y-3">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-          <div className="space-y-1">
-            <CardTitle>全书健康仪表盘</CardTitle>
-            <CardDescription>综合评估连续性、钩子回收、AI 味、节奏多样性与敏感词。</CardDescription>
-          </div>
-          <Badge variant={aiTasteVariant}>AI 味 {data.aiTasteMean.toFixed(0)}</Badge>
+        <div className="space-y-1">
+          <CardTitle>全书健康仪表盘</CardTitle>
+          <CardDescription>展示可真实计算的章节、字数、进度、敏感词与矛盾数据；未接入的质量评分保持透明。</CardDescription>
         </div>
-        {insufficient && (
+        {unknownMetrics.length > 0 ? (
           <div className="rounded-lg border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
-            数据不足（&lt;5 章），部分指标为估算值。
+            质量评分未接入真实统计，已显示为未接入状态。
           </div>
-        )}
+        ) : null}
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-          {metrics.map((m) => {
-            const pct = m.max > 0 ? Math.min(100, (m.value / m.max) * 100) : 0;
-            // Sensitive words: lower is better
-            const variant = m.label === "敏感词数量"
-              ? (m.value === 0 ? "outline" as const : m.value <= 5 ? "secondary" as const : "destructive" as const)
-              : m.label === "AI 味均值"
-                ? aiTasteVariant
-                : metricVariant(m.value, m.thresholds);
-            const pColor = m.label === "敏感词数量"
-              ? (m.value === 0 ? "" : m.value <= 5 ? "[&>div]:bg-amber-500" : "[&>div]:bg-destructive")
-              : m.label === "AI 味均值"
-                ? (data.aiTasteMean <= 30 ? "" : data.aiTasteMean <= 60 ? "[&>div]:bg-amber-500" : "[&>div]:bg-destructive")
-                : progressColor(m.value, m.thresholds);
-            return (
-              <div key={m.label} className="space-y-2 rounded-xl border border-border/60 bg-muted/20 p-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-muted-foreground">{m.label}</span>
-                  <Badge variant={variant} className="text-xs">{m.format(m.value)}</Badge>
-                </div>
-                <Progress aria-label={m.label} value={pct} className={pColor} />
-              </div>
-            );
-          })}
+          {metrics.map((metric) => <MetricCard key={metric.label} config={metric} />)}
         </div>
 
-        {data.warnings.length > 0 && (
+        {health.warnings.length > 0 && (
           <Alert className="border-destructive/20 bg-destructive/5">
-            <AlertTitle>预警汇总（{data.warnings.length}）</AlertTitle>
+            <AlertTitle>预警汇总（{health.warnings.length}）</AlertTitle>
             <AlertDescription>
               <ul className="mt-2 space-y-1">
-                {data.warnings.map((w) => (
-                  <li key={`${w.type}-${w.message}`} className="flex items-start gap-2">
-                    <Badge variant="secondary" className="shrink-0 text-xs">{w.type}</Badge>
-                    <span>{w.message}</span>
+                {health.warnings.map((warning) => (
+                  <li key={`${warning.type}-${warning.message}`} className="flex items-start gap-2">
+                    <Badge variant="secondary" className="shrink-0 text-xs">{warning.type}</Badge>
+                    <span>{warning.message}</span>
                   </li>
                 ))}
               </ul>
