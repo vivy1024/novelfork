@@ -20,6 +20,7 @@ interface ChatPanelProps {
 export function ChatPanel({ bookId, onClose }: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [historyPersistence, setHistoryPersistence] = useState<"process-memory" | null>(null);
   const { editingMessageId, startEdit, cancelEdit, saveEdit } = useMessageEdit();
   const lastMessage = messages[messages.length - 1];
   const lastMessageTime = lastMessage
@@ -34,6 +35,7 @@ export function ChatPanel({ bookId, onClose }: ChatPanelProps) {
         if (data.messages) {
           setMessages(data.messages);
         }
+        setHistoryPersistence(data.persistence === "process-memory" ? "process-memory" : null);
       })
       .catch((err) => console.error("Failed to load messages:", err));
   }, [bookId]);
@@ -62,6 +64,10 @@ export function ChatPanel({ bookId, onClose }: ChatPanelProps) {
       }
 
       const data = await response.json();
+
+      if (data.persistence === "process-memory") {
+        setHistoryPersistence("process-memory");
+      }
 
       if (data.message) {
         setMessages((prev) => [...prev, data.message]);
@@ -107,6 +113,10 @@ export function ChatPanel({ bookId, onClose }: ChatPanelProps) {
         }
 
         const data = await response.json();
+
+        if (data.persistence === "process-memory") {
+          setHistoryPersistence("process-memory");
+        }
 
         if (data.message) {
           setMessages((prev) => [...prev, data.message]);
@@ -156,6 +166,13 @@ export function ChatPanel({ bookId, onClose }: ChatPanelProps) {
           )}
         </div>
       </div>
+
+      {historyPersistence === "process-memory" && (
+        <div role="status" className="border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs text-amber-700 dark:text-amber-200">
+          <span className="font-medium">当前进程临时历史</span>
+          <span className="ml-2">刷新或重启后可能丢失；需要长期历史请使用会话中心。</span>
+        </div>
+      )}
 
       <div className="grid gap-2 border-b border-border/50 bg-muted/20 px-4 py-3 text-[10px] text-muted-foreground sm:grid-cols-3">
         <SummaryBlock label="消息数" value={String(messages.length)} />
