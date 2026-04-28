@@ -204,7 +204,7 @@
   - 长期如接 provider 原生 stream，则移除切片模拟并透传上游 chunk。
   - 验证：测试断言 chunked-buffer 标记存在，UI 不称其为真实上游流式。
 
-- [ ] 25. 隔离或删除 `ToolUsageExample` 模拟工具执行
+- [x] 25. 隔离或删除 `ToolUsageExample` 模拟工具执行
   - 层级目标：内部辅助隔离。
   - 处理 `packages/studio/src/components/ToolUsageExample.tsx`。
   - 移到 demo-only 路径、改名标注 demo/mock，或删除未使用组件。

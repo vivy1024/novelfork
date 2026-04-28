@@ -235,10 +235,10 @@ export const MOCK_DEBT_ITEMS = [
     id: "tool-usage-example",
     module: "Tool usage demo",
     files: ["packages/studio/src/components/ToolUsageExample.tsx"],
-    currentBehavior: "组件内 executeToolMock() 模拟工具执行，若进入生产入口会误导用户。",
+    currentBehavior: "组件保留为明确的内部 Demo / Mock 示例，不从生产组件 barrel 导出；executeToolMock() 仅用于展示 ToolUseCard/ToolResultCard/PermissionPrompt 交互。",
     userRisk: "critical",
-    status: "must-replace",
-    targetBehavior: "删除未使用组件，或移入 demo-only 并明确 internal-demo；生产入口不得引用。",
+    status: "internal-demo",
+    targetBehavior: "保持 internal-demo 明确标注；生产入口不得引用该示例，真实工具执行 UI 必须调用 tool executor。",
     ownerSpec: OWNER_SPEC,
     verification: [
       "生产入口无 ToolUsageExample 引用",
