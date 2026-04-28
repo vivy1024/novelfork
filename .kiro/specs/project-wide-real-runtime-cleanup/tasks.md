@@ -102,7 +102,7 @@
   - 已保存配置引用失效模型时标记 invalid，不静默 fallback。
   - 验证：配置测试覆盖模型池为空、模型失效、有效模型保存三种情况。
 
-- [ ] 12. 改造所有模型选择 UI 使用统一模型池
+- [x] 12. 改造所有模型选择 UI 使用统一模型池
   - 层级目标：真实模型池选择。
   - 修改 `ChatWindow.tsx`：删除 `PROVIDERS.flatMap`，加载 `/api/providers/models`。
   - 修改 Runtime settings：默认会话模型、摘要模型、子代理模型池使用统一模型池 select/multiselect。
@@ -110,7 +110,7 @@
   - 模型池为空时显示“尚未配置可用模型”，阻止 AI 动作。
   - 验证：UI 测试断言不读取静态 PROVIDERS，选项来自 `/api/providers/models`。
 
-- [ ] 13. 删除或迁移旧 `ModelPicker` / `ProviderConfig` 双轨配置
+- [x] 13. 删除或迁移旧 `ModelPicker` / `ProviderConfig` 双轨配置
   - 层级目标：移除假实现 / 单一事实源。
   - 处理 `packages/studio/src/components/Model/ModelPicker.tsx` 与 `ProviderConfig.tsx`。
   - 推荐：移除生产入口或重定向到 app-next AI Provider 设置。

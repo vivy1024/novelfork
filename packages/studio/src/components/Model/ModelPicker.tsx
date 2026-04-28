@@ -1,7 +1,14 @@
-import React, { useState, useEffect } from "react";
-import { Eye, EyeOff, Check, AlertCircle } from "lucide-react";
-import { PROVIDERS } from "../../shared/provider-catalog";
-import { openDB, IDBPDatabase } from "idb";
+import React, { useEffect, useMemo, useState } from "react";
+
+import { fetchJson } from "@/hooks/use-api";
+import {
+  findRuntimeModelByRef,
+  runtimeModelLabel,
+  runtimeModelRef,
+  splitRuntimeModelRef,
+  usableRuntimeModels,
+  type RuntimeModelOption,
+} from "@/lib/runtime-model-options";
 
 interface ModelPickerProps {
   value?: { providerId: string; modelId: string };
@@ -9,274 +16,120 @@ interface ModelPickerProps {
   theme: "light" | "dark";
 }
 
-interface ProviderConfig {
-  apiKey?: string;
-  baseUrl?: string;
-}
-
-const DB_NAME = "novelfork-settings";
-const DB_VERSION = 1;
-const STORE_NAME = "provider-config";
-
-async function getDB(): Promise<IDBPDatabase> {
-  return openDB(DB_NAME, DB_VERSION, {
-    upgrade(db) {
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME);
-      }
-    },
-  });
-}
-
-async function loadProviderConfig(providerId: string): Promise<ProviderConfig> {
-  try {
-    const db = await getDB();
-    const config = await db.get(STORE_NAME, providerId);
-    return config || {};
-  } catch {
-    return {};
-  }
-}
-
-async function saveProviderConfig(providerId: string, config: ProviderConfig): Promise<void> {
-  try {
-    const db = await getDB();
-    await db.put(STORE_NAME, config, providerId);
-  } catch (e) {
-    console.error("Failed to save provider config:", e);
-  }
-}
-
 export const ModelPicker = React.memo(function ModelPicker({
   value,
   onChange,
   theme,
 }: ModelPickerProps) {
-  const [selectedProviderId, setSelectedProviderId] = useState(value?.providerId || "anthropic");
-  const [selectedModelId, setSelectedModelId] = useState(value?.modelId || "");
-  const [providerConfig, setProviderConfig] = useState<ProviderConfig>({});
-  const [showApiKey, setShowApiKey] = useState(false);
-  const [testingConnection, setTestingConnection] = useState(false);
-  const [connectionStatus, setConnectionStatus] = useState<"idle" | "success" | "error">("idle");
-
-  const currentProvider = PROVIDERS.find((p) => p.id === selectedProviderId);
+  const [runtimeModels, setRuntimeModels] = useState<RuntimeModelOption[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
-    loadProviderConfig(selectedProviderId).then(setProviderConfig);
-  }, [selectedProviderId]);
+    let cancelled = false;
+    setLoading(true);
+    setLoadError(null);
 
-  useEffect(() => {
-    if (currentProvider && currentProvider.models.length > 0 && !selectedModelId) {
-      setSelectedModelId(currentProvider.models[0].id);
-    }
-  }, [currentProvider, selectedModelId]);
+    void fetchJson<{ models?: RuntimeModelOption[] }>("/api/providers/models")
+      .then((response) => {
+        if (!cancelled) {
+          setRuntimeModels(usableRuntimeModels(response.models));
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setRuntimeModels([]);
+          setLoadError(error instanceof Error ? error.message : "模型池加载失败");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      });
 
-  const handleProviderChange = (providerId: string) => {
-    setSelectedProviderId(providerId);
-    const provider = PROVIDERS.find((p) => p.id === providerId);
-    if (provider && provider.models.length > 0) {
-      const newModelId = provider.models[0].id;
-      setSelectedModelId(newModelId);
-      onChange(providerId, newModelId);
-    }
-    setConnectionStatus("idle");
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const selectedModelRef = value ? runtimeModelRef(value.providerId, value.modelId) : "";
+  const selectedRuntimeModel = selectedModelRef ? findRuntimeModelByRef(runtimeModels, selectedModelRef) : undefined;
+  const activeModelRef = selectedRuntimeModel
+    ? splitRuntimeModelRef(selectedRuntimeModel).modelRef
+    : runtimeModels[0]
+      ? splitRuntimeModelRef(runtimeModels[0]).modelRef
+      : "";
+  const currentModel = selectedRuntimeModel ?? runtimeModels[0];
+  const cardClassName = useMemo(
+    () => theme === "dark"
+      ? "rounded-lg border border-slate-700 bg-slate-900/60 p-3 text-slate-100"
+      : "rounded-lg border border-slate-200 bg-white p-3 text-slate-900",
+    [theme],
+  );
+
+  const handleModelChange = (modelRef: string) => {
+    const model = findRuntimeModelByRef(runtimeModels, modelRef);
+    if (!model) return;
+
+    const selection = splitRuntimeModelRef(model);
+    if (!selection.providerId || !selection.modelId) return;
+    onChange(selection.providerId, selection.modelId);
   };
 
-  const handleModelChange = (modelId: string) => {
-    setSelectedModelId(modelId);
-    onChange(selectedProviderId, modelId);
-  };
-
-  const handleConfigChange = async (key: keyof ProviderConfig, value: string) => {
-    const newConfig = { ...providerConfig, [key]: value };
-    setProviderConfig(newConfig);
-    await saveProviderConfig(selectedProviderId, newConfig);
-    setConnectionStatus("idle");
-  };
-
-  const handleTestConnection = async () => {
-    if (!currentProvider?.apiKeyRequired || !providerConfig.apiKey) {
-      return;
-    }
-
-    setTestingConnection(true);
-    setConnectionStatus("idle");
-
-    try {
-      // 简单测试：验证 API Key 格式
-      await new Promise((resolve) => setTimeout(resolve, 500));
-
-      if (providerConfig.apiKey.length < 10) {
-        throw new Error("API Key 格式无效");
-      }
-
-      setConnectionStatus("success");
-    } catch (error) {
-      setConnectionStatus("error");
-    } finally {
-      setTestingConnection(false);
-    }
-  };
-
-  const currentModel = currentProvider?.models.find((m) => m.id === selectedModelId);
-  const hasApiKey = !!providerConfig.apiKey;
+  const hasModels = runtimeModels.length > 0;
+  const selectedModelMissing = !!selectedModelRef && !selectedRuntimeModel && hasModels;
 
   return (
     <div className="space-y-4">
-      {/* 供应商选择 */}
       <div>
-        <label className="block text-sm font-medium text-foreground mb-2">
-          AI 供应商
+        <label className="mb-2 block text-sm font-medium text-foreground" htmlFor="runtime-model-picker">
+          运行时模型
         </label>
         <select
-          value={selectedProviderId}
-          onChange={(e) => handleProviderChange(e.target.value)}
-          className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+          id="runtime-model-picker"
+          aria-label="运行时模型"
+          value={activeModelRef}
+          disabled={loading || !hasModels}
+          onChange={(event) => handleModelChange(event.target.value)}
+          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-60"
         >
-          {PROVIDERS.map((provider) => (
-            <option key={provider.id} value={provider.id}>
-              {provider.name}
-            </option>
-          ))}
+          {!hasModels ? <option value="">无可用模型</option> : null}
+          {runtimeModels.map((model) => {
+            const selection = splitRuntimeModelRef(model);
+            return (
+              <option key={selection.modelRef} value={selection.modelRef}>
+                {runtimeModelLabel(model)}
+              </option>
+            );
+          })}
         </select>
       </div>
 
-      {/* 模型选择 */}
-      {currentProvider && currentProvider.models.length > 0 && (
-        <div>
-          <label className="block text-sm font-medium text-foreground mb-2">
-            模型
-          </label>
-          <select
-            value={selectedModelId}
-            onChange={(e) => handleModelChange(e.target.value)}
-            className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-          >
-            {currentProvider.models.map((model) => (
-              <option key={model.id} value={model.id}>
-                {model.name}
-              </option>
-            ))}
-          </select>
+      {loading ? (
+        <p className="text-sm text-muted-foreground">正在读取统一模型池…</p>
+      ) : loadError ? (
+        <p className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {loadError}
+        </p>
+      ) : hasModels ? (
+        <div className={cardClassName}>
+          <div className="text-sm font-medium">{currentModel ? runtimeModelLabel(currentModel) : "模型信息不可用"}</div>
+          {currentModel ? (
+            <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+              <span>上下文：{((currentModel.contextWindow ?? 0) / 1000).toFixed(0)}K</span>
+              <span>最大输出：{((currentModel.maxOutputTokens ?? 0) / 1000).toFixed(0)}K</span>
+              <span>来源：{currentModel.source ?? "unknown"}</span>
+              <span>测试：{currentModel.lastTestStatus ?? "untested"}</span>
+            </div>
+          ) : null}
+          {selectedModelMissing ? (
+            <p className="mt-2 text-xs text-amber-600">当前模型不可用，请重新选择。</p>
+          ) : null}
         </div>
-      )}
-
-      {/* 模型信息 */}
-      {currentModel && (
-        <div className="p-3 rounded-lg bg-secondary/50 border border-border">
-          <div className="grid grid-cols-2 gap-2 text-xs">
-            <div>
-              <span className="text-muted-foreground">上下文窗口:</span>
-              <span className="ml-2 text-foreground font-medium">
-                {(currentModel.contextWindow / 1000).toFixed(0)}K
-              </span>
-            </div>
-            <div>
-              <span className="text-muted-foreground">最大输出:</span>
-              <span className="ml-2 text-foreground font-medium">
-                {(currentModel.maxOutputTokens / 1000).toFixed(0)}K
-              </span>
-            </div>
-            {currentModel.inputPrice !== undefined && (
-              <div>
-                <span className="text-muted-foreground">输入价格:</span>
-                <span className="ml-2 text-foreground font-medium">
-                  ${currentModel.inputPrice}/M
-                </span>
-              </div>
-            )}
-            {currentModel.outputPrice !== undefined && (
-              <div>
-                <span className="text-muted-foreground">输出价格:</span>
-                <span className="ml-2 text-foreground font-medium">
-                  ${currentModel.outputPrice}/M
-                </span>
-              </div>
-            )}
-          </div>
-          {(currentModel.supportsFunctionCalling || currentModel.supportsVision) && (
-            <div className="mt-2 flex gap-2">
-              {currentModel.supportsFunctionCalling && (
-                <span className="px-2 py-0.5 rounded text-xs bg-primary/10 text-primary">
-                  函数调用
-                </span>
-              )}
-              {currentModel.supportsVision && (
-                <span className="px-2 py-0.5 rounded text-xs bg-primary/10 text-primary">
-                  视觉
-                </span>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* API Key 输入 */}
-      {currentProvider?.apiKeyRequired && (
-        <div>
-          <label className="block text-sm font-medium text-foreground mb-2">
-            API Key
-          </label>
-          <div className="relative">
-            <input
-              type={showApiKey ? "text" : "password"}
-              placeholder="输入 API Key..."
-              value={providerConfig.apiKey || ""}
-              onChange={(e) => handleConfigChange("apiKey", e.target.value)}
-              className="w-full px-3 py-2 pr-20 rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-            />
-            <button
-              type="button"
-              onClick={() => setShowApiKey(!showApiKey)}
-              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-secondary rounded transition-colors"
-            >
-              {showApiKey ? (
-                <EyeOff className="w-4 h-4 text-muted-foreground" />
-              ) : (
-                <Eye className="w-4 h-4 text-muted-foreground" />
-              )}
-            </button>
-          </div>
-          {hasApiKey && (
-            <button
-              onClick={handleTestConnection}
-              disabled={testingConnection}
-              className="mt-2 text-xs text-primary hover:underline disabled:opacity-50"
-            >
-              {testingConnection ? "测试中..." : "测试连接"}
-            </button>
-          )}
-          {connectionStatus === "success" && (
-            <div className="mt-2 flex items-center gap-1 text-xs text-green-600">
-              <Check className="w-3 h-3" />
-              <span>连接成功</span>
-            </div>
-          )}
-          {connectionStatus === "error" && (
-            <div className="mt-2 flex items-center gap-1 text-xs text-red-600">
-              <AlertCircle className="w-3 h-3" />
-              <span>连接失败</span>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Base URL（可选） */}
-      {currentProvider && (
-        <div>
-          <label className="block text-sm font-medium text-foreground mb-2">
-            Base URL（可选）
-          </label>
-          <input
-            type="text"
-            placeholder={currentProvider.baseUrl || "自定义 API 端点..."}
-            value={providerConfig.baseUrl || ""}
-            onChange={(e) => handleConfigChange("baseUrl", e.target.value)}
-            className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-          />
-          <p className="mt-1 text-xs text-muted-foreground">
-            留空使用默认端点
-          </p>
+      ) : (
+        <div className="rounded-lg border border-dashed border-border px-3 py-3 text-sm text-muted-foreground">
+          尚未配置可用模型
         </div>
       )}
     </div>
