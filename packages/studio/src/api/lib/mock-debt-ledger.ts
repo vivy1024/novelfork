@@ -221,10 +221,10 @@ export const MOCK_DEBT_ITEMS = [
     id: "ai-complete-streaming",
     module: "Inline completion streaming",
     files: ["packages/studio/src/api/routes/ai.ts"],
-    currentBehavior: "接口先拿完整 LLM 结果，再按 4 字切片模拟 SSE streaming。",
+    currentBehavior: "接口先拿完整 LLM 结果，再按 4 字切片发送 SSE，payload 已明确标注 streamSource: chunked-buffer，不再伪装为上游原生流式。",
     userRisk: "critical",
-    status: "must-replace",
-    targetBehavior: "未接原生流式前标注 streamSource: chunked-buffer；接入后直接透传上游 chunk。",
+    status: "transparent-placeholder",
+    targetBehavior: "未接原生流式前保持 streamSource: chunked-buffer 透明标注；接入后直接透传上游 chunk。",
     ownerSpec: OWNER_SPEC,
     verification: [
       "SSE payload 包含 streamSource: chunked-buffer",

@@ -974,12 +974,12 @@ export function createAIRouter(ctx: RouterContext): Hono {
           const chunk = fullText.slice(i, i + chunkSize);
           await stream.writeSSE({
             event: "chunk",
-            data: JSON.stringify({ text: chunk, done: false }),
+            data: JSON.stringify({ text: chunk, done: false, streamSource: "chunked-buffer" }),
           });
         }
         await stream.writeSSE({
           event: "chunk",
-          data: JSON.stringify({ text: "", done: true }),
+          data: JSON.stringify({ text: "", done: true, streamSource: "chunked-buffer" }),
         });
       } catch (e) {
         logObservedAiError(config.logger, {

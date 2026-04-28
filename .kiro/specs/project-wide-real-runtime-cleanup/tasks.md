@@ -197,7 +197,7 @@
 
 ### Phase 5：模拟流式、工具示例与透明占位治理
 
-- [ ] 24. 标注或实现 `/api/ai/complete` 真实流式
+- [x] 24. 标注或实现 `/api/ai/complete` 真实流式
   - 层级目标：透明 chunked-buffer 或真实流式。
   - 修改 `packages/studio/src/api/routes/ai.ts`。
   - 短期允许保留完整回复后切片，但 SSE payload 必须标注 `streamSource: "chunked-buffer"`。
