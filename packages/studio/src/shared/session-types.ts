@@ -188,6 +188,12 @@ export const DEFAULT_SESSION_CONFIG: SessionConfig = {
 
 export type NarratorSessionChatRole = "user" | "assistant" | "system";
 
+export interface NarratorSessionRuntimeMetadata {
+  providerId: string;
+  providerName?: string;
+  modelId: string;
+}
+
 export interface NarratorSessionChatMessage {
   id: string;
   role: NarratorSessionChatRole;
@@ -195,6 +201,7 @@ export interface NarratorSessionChatMessage {
   timestamp: number;
   seq?: number;
   toolCalls?: ToolCall[];
+  runtime?: NarratorSessionRuntimeMetadata;
 }
 
 export type ToolCallStatus = "pending" | "running" | "success" | "error";
@@ -321,6 +328,8 @@ export interface NarratorSessionChatErrorEnvelope {
   type: "session:error";
   sessionId?: string;
   error: string;
+  code?: string;
+  runtime?: Partial<NarratorSessionRuntimeMetadata>;
 }
 
 export type NarratorSessionChatServerEnvelope =
