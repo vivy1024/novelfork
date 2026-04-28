@@ -2,6 +2,7 @@ import { Box, Workflow } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { Badge } from "@/components/ui/badge";
+import { UnsupportedCapability } from "@/components/runtime/UnsupportedCapability";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 export function ContainerTab() {
@@ -19,6 +20,13 @@ export function ContainerTab() {
           </p>
         </div>
       </div>
+
+      <UnsupportedCapability
+        title="容器运行时未接入"
+        reason="当前没有可验证的 Docker / 兼容运行时 adapter，因此不展示可点击的容器列表、exec 或日志按钮。"
+        status="planned"
+        capability="container.runtime"
+      />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>

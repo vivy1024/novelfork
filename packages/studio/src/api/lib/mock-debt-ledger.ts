@@ -1,0 +1,318 @@
+export type MockDebtStatus =
+  | "must-replace"
+  | "transparent-placeholder"
+  | "internal-demo"
+  | "confirmed-real"
+  | "test-only";
+
+export type MockDebtRisk = "critical" | "high" | "medium" | "low";
+
+export interface MockDebtItem {
+  id: string;
+  module: string;
+  files: string[];
+  currentBehavior: string;
+  userRisk: MockDebtRisk;
+  status: MockDebtStatus;
+  targetBehavior: string;
+  ownerSpec: string;
+  verification: string[];
+}
+
+const OWNER_SPEC = "project-wide-real-runtime-cleanup";
+
+export const MOCK_DEBT_ITEMS = [
+  {
+    id: "provider-runtime",
+    module: "Provider runtime",
+    files: [
+      "packages/studio/src/api/lib/provider-manager.ts",
+      "packages/studio/src/api/routes/providers.ts",
+    ],
+    currentBehavior: "Provider 与 model 状态由内存 Map 维护，刷新模型不请求上游，测试模型只检查 apiKey 是否存在。",
+    userRisk: "critical",
+    status: "must-replace",
+    targetBehavior: "Provider CRUD、模型刷新、模型测试写入持久化 runtime store，并通过 adapter 访问真实上游；未支持能力返回 unsupported。",
+    ownerSpec: OWNER_SPEC,
+    verification: [
+      "provider store 重新实例化后数据仍存在",
+      "刷新模型调用 adapter.listModels",
+      "测试模型调用 adapter.testModel 且 API 响应不回传明文密钥",
+    ],
+  },
+  {
+    id: "platform-integrations",
+    module: "Platform integrations",
+    files: ["packages/studio/src/api/routes/platform-integrations.ts"],
+    currentBehavior: "Codex/Kiro 等平台账号保存在 route 级内存数组，重启后丢失；Cline 后续接入路径可能误导为已导入。",
+    userRisk: "critical",
+    status: "must-replace",
+    targetBehavior: "平台账号 JSON 导入写入 runtime store；账号缺失、禁用或删除时模型池同步过滤；未接入平台返回 unsupported。",
+    ownerSpec: OWNER_SPEC,
+    verification: [
+      "导入账号后重新实例化 store 仍能列出账号",
+      "禁用账号后模型池不返回对应平台模型",
+      "Cline 未接入路径返回 unsupported 或透明占位",
+    ],
+  },
+  {
+    id: "runtime-model-pool",
+    module: "Runtime model pool",
+    files: [
+      "packages/studio/src/shared/provider-catalog.ts",
+      "packages/studio/src/api/routes/providers.ts",
+      "packages/studio/src/components/ChatWindow.tsx",
+    ],
+    currentBehavior: "静态 provider catalog 被当作运行时真实模型池，不能反映用户配置、账号状态或模型禁用状态。",
+    userRisk: "critical",
+    status: "must-replace",
+    targetBehavior: "/api/providers/models 成为唯一运行时模型池，只返回 enabled provider、enabled model 与可用凭据/账号组合。",
+    ownerSpec: OWNER_SPEC,
+    verification: [
+      "禁用 provider 后模型池移除其模型",
+      "禁用 model 后模型池移除该模型",
+      "shared provider catalog 仅作为 seed/template 使用",
+    ],
+  },
+  {
+    id: "session-chat-runtime",
+    module: "Session chat runtime",
+    files: ["packages/studio/src/api/lib/session-chat-service.ts"],
+    currentBehavior: "buildAssistantReply() 使用本地模板返回“已收到”，用户会误以为收到真实 AI 回复。",
+    userRisk: "critical",
+    status: "must-replace",
+    targetBehavior: "会话发送校验 runtime model pool 并调用 llm runtime；失败返回错误 envelope，成功内容来自上游响应。",
+    ownerSpec: OWNER_SPEC,
+    verification: [
+      "测试断言 assistant 内容来自 llmRuntimeService 返回值",
+      "adapter unsupported 或凭据缺失时没有假 assistant 正文",
+      "成功响应记录 provider/model/run metadata",
+    ],
+  },
+  {
+    id: "legacy-model-ui",
+    module: "Legacy model UI",
+    files: [
+      "packages/studio/src/components/Model/ModelPicker.tsx",
+      "packages/studio/src/components/Model/ProviderConfig.tsx",
+    ],
+    currentBehavior: "旧模型组件维护 IndexedDB provider-config 双轨配置，模型与连接测试逻辑不来自后端模型池。",
+    userRisk: "critical",
+    status: "must-replace",
+    targetBehavior: "删除生产入口或迁移为统一模型池客户端，不再读取 IndexedDB provider-config。",
+    ownerSpec: OWNER_SPEC,
+    verification: [
+      "生产入口不再引用旧双轨组件或组件改读 /api/providers/models",
+      "静态扫描不再命中 key 长度测试或 IndexedDB provider-config 作为运行时事实源",
+    ],
+  },
+  {
+    id: "book-chat-history",
+    module: "Book chat history",
+    files: ["packages/studio/src/api/routes/chat.ts"],
+    currentBehavior: "轻量 book chat 的 messageStore 是进程内 Map，刷新或重启后历史丢失但接口表现像正式历史。",
+    userRisk: "critical",
+    status: "must-replace",
+    targetBehavior: "并入正式 session/message repository，或降级为明确 process-memory 的透明临时面板。",
+    ownerSpec: OWNER_SPEC,
+    verification: [
+      "持久化路径验证重启后历史仍在",
+      "透明临时路径验证 API 与 UI 均标注 persistence: process-memory",
+    ],
+  },
+  {
+    id: "pipeline-runs",
+    module: "Pipeline runs",
+    files: ["packages/studio/src/api/routes/pipeline.ts"],
+    currentBehavior: "Pipeline route 使用标注为 temporary implementation 的内存状态保存 runs。",
+    userRisk: "critical",
+    status: "must-replace",
+    targetBehavior: "复用 RunStore 事实流持久化 run/stage/event，或明确返回 process-memory 并在 UI 标注当前进程状态。",
+    ownerSpec: OWNER_SPEC,
+    verification: [
+      "route 测试覆盖 run 状态来源于持久化 store 或响应包含 process-memory 标记",
+      "UI 不暗示临时 run 历史已持久化",
+    ],
+  },
+  {
+    id: "monitor-status",
+    module: "Monitor status",
+    files: ["packages/studio/src/api/routes/monitor.ts"],
+    currentBehavior: "/api/monitor/status 固定返回 stopped，WebSocket 事件订阅仍是 TODO。",
+    userRisk: "critical",
+    status: "must-replace",
+    targetBehavior: "接入真实 daemon/runtime 状态；如果没有事实源则返回 501 unsupported，WS 未接入前不得表现为实时日志。",
+    ownerSpec: OWNER_SPEC,
+    verification: [
+      "route 测试断言不再固定 200 stopped",
+      "unsupported 路径返回 code: unsupported 与 capability",
+      "WS 未接入时 UI 或接口语义保持透明",
+    ],
+  },
+  {
+    id: "agent-config-service",
+    module: "Agent config service",
+    files: ["packages/studio/src/api/lib/agent-config-service.ts"],
+    currentBehavior: "Agent 配置、资源使用和端口分配都保存在内存，端口分配不检测真实占用。",
+    userRisk: "critical",
+    status: "must-replace",
+    targetBehavior: "Agent 配置写 runtime config file；资源未知字段返回 unknown/unsupported；端口分配使用 net 真实探测。",
+    ownerSpec: OWNER_SPEC,
+    verification: [
+      "配置重新实例化后仍存在",
+      "端口占用测试证明真实 listen 检测生效",
+      "无法获取的资源字段返回 unknown 或 unsupported",
+    ],
+  },
+  {
+    id: "admin-users",
+    module: "Admin users",
+    files: ["packages/studio/src/api/routes/admin.ts", "packages/studio/src/components/Admin/UsersTab.tsx"],
+    currentBehavior: "Admin 用户管理使用 initialUsers 与内存 users 数组，CRUD 重启丢失。",
+    userRisk: "critical",
+    status: "must-replace",
+    targetBehavior: "本地单用户阶段禁用用户 CRUD 并显示透明占位，或将用户系统写入持久化 store/SQLite。",
+    ownerSpec: OWNER_SPEC,
+    verification: [
+      "透明占位路径按钮 disabled 并展示本地单用户说明",
+      "若保留 CRUD，测试验证重新实例化后用户仍存在",
+    ],
+  },
+  {
+    id: "writing-modes-apply",
+    module: "Writing modes apply",
+    files: [
+      "packages/studio/src/api/routes/writing-modes.ts",
+      "packages/studio/src/app-next/workspace/WorkspacePage.tsx",
+    ],
+    currentBehavior: "多个 writing modes endpoint 只返回 prompt，Workspace 的 accept/insert/select 回调绑定 noop，生成内容不会应用。",
+    userRisk: "critical",
+    status: "must-replace",
+    targetBehavior: "区分 prompt-preview 与真实 generate；可定位目标时写入章节/编辑器，无法定位时禁用应用按钮。",
+    ownerSpec: OWNER_SPEC,
+    verification: [
+      "route/UI 测试覆盖 mode: prompt-preview 或真实生成路径",
+      "UI 测试覆盖应用写入或 disabled 状态",
+      "静态扫描不再命中 Workspace 写作模式 noop 回调",
+    ],
+  },
+  {
+    id: "writing-tools-health",
+    module: "Writing tools health",
+    files: ["packages/studio/src/api/routes/writing-tools.ts"],
+    currentBehavior: "书籍 health endpoint 返回固定默认值与满分指标，像真实评分但实际未计算。",
+    userRisk: "critical",
+    status: "must-replace",
+    targetBehavior: "真实可计算字段返回真实值；暂不能计算字段返回 unknown 或隐藏，禁止固定 consistencyScore: 100。",
+    ownerSpec: OWNER_SPEC,
+    verification: [
+      "无数据时不返回固定满分",
+      "未知指标以 unknown 状态呈现",
+      "UI 不把 unknown 渲染为真实健康评分",
+    ],
+  },
+  {
+    id: "ai-complete-streaming",
+    module: "Inline completion streaming",
+    files: ["packages/studio/src/api/routes/ai.ts"],
+    currentBehavior: "接口先拿完整 LLM 结果，再按 4 字切片模拟 SSE streaming。",
+    userRisk: "critical",
+    status: "must-replace",
+    targetBehavior: "未接原生流式前标注 streamSource: chunked-buffer；接入后直接透传上游 chunk。",
+    ownerSpec: OWNER_SPEC,
+    verification: [
+      "SSE payload 包含 streamSource: chunked-buffer",
+      "UI 不将 chunked-buffer 描述为真实上游流式",
+    ],
+  },
+  {
+    id: "tool-usage-example",
+    module: "Tool usage demo",
+    files: ["packages/studio/src/components/ToolUsageExample.tsx"],
+    currentBehavior: "组件内 executeToolMock() 模拟工具执行，若进入生产入口会误导用户。",
+    userRisk: "critical",
+    status: "must-replace",
+    targetBehavior: "删除未使用组件，或移入 demo-only 并明确 internal-demo；生产入口不得引用。",
+    ownerSpec: OWNER_SPEC,
+    verification: [
+      "生产入口无 ToolUsageExample 引用",
+      "若保留，路径或 UI 明确 demo/mock 且 ledger 状态为 internal-demo",
+    ],
+  },
+  {
+    id: "transparent-admin-placeholders",
+    module: "Transparent admin placeholders",
+    files: [
+      "packages/studio/src/components/Admin/ContainerTab.tsx",
+      "packages/studio/src/components/Admin/ResourcesTab.tsx",
+      "packages/studio/src/components/Admin/WorktreesTab.tsx",
+      "packages/studio/src/app-next/routines/RoutinesNextPage.tsx",
+      "packages/studio/src/app-next/settings/providers/PlatformAccountTable.tsx",
+      "packages/studio/src/app-next/settings/providers/PlatformIntegrationCard.tsx",
+      "packages/studio/src/app-next/settings/providers/PlatformIntegrationDetail.tsx",
+    ],
+    currentBehavior: "部分页面已说明未接入，但文案与按钮状态分散，缺少统一 UnsupportedCapability 口径。",
+    userRisk: "medium",
+    status: "transparent-placeholder",
+    targetBehavior: "统一使用 UnsupportedCapability 或等价组件，所有未接入按钮 disabled 并展示原因。",
+    ownerSpec: OWNER_SPEC,
+    verification: [
+      "UI 测试断言未接入按钮 disabled",
+      "页面展示明确未接入或当前进程临时状态文案",
+      "未接入 API 返回 unsupported 而非 200 success",
+    ],
+  },
+  {
+    id: "core-missing-file-sentinel",
+    module: "Core missing file sentinel",
+    files: ["packages/core/src/**"],
+    currentBehavior: "Core 中的“(文件尚未创建)”用于表示缺文件哨兵，不是用户可点击假实现。",
+    userRisk: "low",
+    status: "confirmed-real",
+    targetBehavior: "保留为缺文件哨兵，并确保 noop-model 只在 requireApiKey=false 的非真实调用路径使用。",
+    ownerSpec: OWNER_SPEC,
+    verification: [
+      "静态扫描将该项归类为低风险哨兵",
+      "确认真实 LLM 调用路径不使用 noop-model",
+    ],
+  },
+  {
+    id: "cli-production-source",
+    module: "CLI production source",
+    files: ["packages/cli/src/**"],
+    currentBehavior: "当前生产源码未发现 mock 债务；测试 mock 不纳入产品债务。",
+    userRisk: "low",
+    status: "confirmed-real",
+    targetBehavior: "保持扫描确认；后续生产源码若新增高风险命中必须追加 ledger。",
+    ownerSpec: OWNER_SPEC,
+    verification: [
+      "生产源码 mock scan 不发现未登记 CLI 命中",
+      "测试目录 mock 不作为产品债务处理",
+    ],
+  },
+] as const satisfies readonly MockDebtItem[];
+
+export function listMockDebtItems(items: readonly MockDebtItem[] = MOCK_DEBT_ITEMS): MockDebtItem[] {
+  return items.map((item) => ({ ...item, files: [...item.files], verification: [...item.verification] }));
+}
+
+export function getMockDebtItem(id: string, items: readonly MockDebtItem[] = MOCK_DEBT_ITEMS): MockDebtItem | undefined {
+  const item = items.find((candidate) => candidate.id === id);
+  return item ? { ...item, files: [...item.files], verification: [...item.verification] } : undefined;
+}
+
+export function updateMockDebtItemStatus(
+  id: string,
+  status: MockDebtStatus,
+  items: readonly MockDebtItem[] = MOCK_DEBT_ITEMS,
+): MockDebtItem[] {
+  if (!items.some((item) => item.id === id)) {
+    throw new Error(`Unknown mock debt item: ${id}`);
+  }
+
+  return items.map((item) =>
+    item.id === id
+      ? { ...item, status, files: [...item.files], verification: [...item.verification] }
+      : { ...item, files: [...item.files], verification: [...item.verification] },
+  );
+}

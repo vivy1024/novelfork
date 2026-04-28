@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { FolderGit2, GitBranch, RefreshCw, Terminal } from "lucide-react";
 
 import { PageEmptyState } from "@/components/layout/PageEmptyState";
+import { UnsupportedCapability } from "@/components/runtime/UnsupportedCapability";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -201,16 +202,22 @@ export function WorktreesTab() {
                 description="每个 worktree 会汇总 modified / added / deleted / untracked 四类计数。"
                 badge={<Badge variant="secondary">已接入</Badge>}
               />
-              <StatusRow
-                title="终端入口"
-                description="当前仅展示真实路径与分支信息，不伪造打开终端能力。"
-                badge={<Badge variant="outline">待接入</Badge>}
-                icon={<Terminal className="size-4 text-muted-foreground" />}
-              />
-              <StatusRow
-                title="容器入口"
-                description="尚未检测到可验证的容器执行器，因此先保留接口说明。"
-                badge={<Badge variant="outline">待接入</Badge>}
+              <UnsupportedCapability
+                title="Worktree 终端未接入"
+                reason="当前仅展示真实路径与分支信息，未接入可验证的终端打开 adapter。"
+                status="planned"
+                capability="worktree.terminal.open"
+              >
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Terminal className="size-4" aria-hidden="true" />
+                  终端按钮在接入真实执行器前保持隐藏或 disabled。
+                </div>
+              </UnsupportedCapability>
+              <UnsupportedCapability
+                title="Worktree 容器执行未接入"
+                reason="尚未检测到可验证的容器执行器，因此不提供假 exec、inspect 或容器日志按钮。"
+                status="planned"
+                capability="worktree.container.exec"
               />
             </CardContent>
           </Card>

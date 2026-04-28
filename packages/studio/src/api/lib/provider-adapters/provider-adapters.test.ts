@@ -1,0 +1,119 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { createProviderAdapterRegistry } from "./index";
+
+describe("provider adapter registry", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("calls the OpenAI-compatible models endpoint with provider credentials", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      data: [
+        { id: "gpt-5-codex", context_window: 192000, max_output_tokens: 8192 },
+      ],
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    const adapter = createProviderAdapterRegistry().get("openai-compatible");
+
+    const result = await adapter.listModels({
+      providerId: "sub2api",
+      providerName: "Sub2API",
+      baseUrl: "https://api.example.com/v1",
+      apiKey: "sk-test",
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith("https://api.example.com/v1/models", expect.objectContaining({
+      method: "GET",
+      headers: expect.objectContaining({ Authorization: "Bearer sk-test" }),
+    }));
+    expect(result).toEqual({
+      success: true,
+      models: [expect.objectContaining({
+        id: "gpt-5-codex",
+        name: "gpt-5-codex",
+        contextWindow: 192000,
+        maxOutputTokens: 8192,
+        source: "detected",
+      })],
+    });
+  });
+
+  it("tests an OpenAI-compatible target model with a minimal chat request", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      choices: [{ message: { content: "ok" } }],
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    const adapter = createProviderAdapterRegistry().get("openai-compatible");
+
+    const result = await adapter.testModel({
+      providerId: "sub2api",
+      providerName: "Sub2API",
+      baseUrl: "https://api.example.com/v1",
+      apiKey: "sk-test",
+      modelId: "gpt-5-codex",
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith("https://api.example.com/v1/chat/completions", expect.objectContaining({
+      method: "POST",
+      headers: expect.objectContaining({ Authorization: "Bearer sk-test" }),
+      body: expect.stringContaining("gpt-5-codex"),
+    }));
+    expect(result).toMatchObject({ success: true, latency: expect.any(Number) });
+  });
+
+  it("generates OpenAI-compatible text from the upstream response", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      choices: [{ message: { content: "真实回复" } }],
+    }), { status: 200, headers: { "Content-Type": "application/json" } })));
+    const adapter = createProviderAdapterRegistry().get("openai-compatible");
+
+    const result = await adapter.generate({
+      providerId: "sub2api",
+      providerName: "Sub2API",
+      baseUrl: "https://api.example.com/v1",
+      apiKey: "sk-test",
+      modelId: "gpt-5-codex",
+      messages: [{ role: "user", content: "你好" }],
+    });
+
+    expect(result).toEqual({ success: true, content: "真实回复" });
+  });
+
+  it("returns auth-missing before fetch when OpenAI-compatible credentials are absent", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const adapter = createProviderAdapterRegistry().get("openai-compatible");
+
+    const result = await adapter.testModel({
+      providerId: "sub2api",
+      providerName: "Sub2API",
+      baseUrl: "https://api.example.com/v1",
+      modelId: "gpt-5-codex",
+    });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ success: false, code: "auth-missing" });
+  });
+
+  it("does not fake success for unimplemented platform and Anthropic adapters", async () => {
+    const registry = createProviderAdapterRegistry();
+
+    await expect(registry.get("anthropic-compatible").listModels({
+      providerId: "anthropic",
+      providerName: "Anthropic",
+      apiKey: "sk-ant",
+    })).resolves.toMatchObject({ success: false, code: "unsupported" });
+    await expect(registry.get("codex-platform").testModel({
+      providerId: "codex",
+      providerName: "Codex",
+      modelId: "gpt-5-codex",
+    })).resolves.toMatchObject({ success: false, code: "unsupported" });
+    await expect(registry.get("kiro-platform").generate({
+      providerId: "kiro",
+      providerName: "Kiro",
+      modelId: "kiro-default",
+      messages: [{ role: "user", content: "hello" }],
+    })).resolves.toMatchObject({ success: false, code: "unsupported" });
+  });
+});
