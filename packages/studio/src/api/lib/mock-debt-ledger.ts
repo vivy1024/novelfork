@@ -125,10 +125,10 @@ export const MOCK_DEBT_ITEMS = [
     id: "pipeline-runs",
     module: "Pipeline runs",
     files: ["packages/studio/src/api/routes/pipeline.ts"],
-    currentBehavior: "Pipeline route 使用标注为 temporary implementation 的内存状态保存 runs。",
+    currentBehavior: "Pipeline route 仍使用当前进程内存保存 run/stage 状态，但 status/stages/list/SSE 响应已明确标注 process-memory 与当前进程临时运行状态。",
     userRisk: "critical",
-    status: "must-replace",
-    targetBehavior: "复用 RunStore 事实流持久化 run/stage/event，或明确返回 process-memory 并在 UI 标注当前进程状态。",
+    status: "transparent-placeholder",
+    targetBehavior: "短期保持明确 process-memory 的临时运行状态；后续复用 RunStore 事实流持久化 run/stage/event。",
     ownerSpec: OWNER_SPEC,
     verification: [
       "route 测试覆盖 run 状态来源于持久化 store 或响应包含 process-memory 标记",

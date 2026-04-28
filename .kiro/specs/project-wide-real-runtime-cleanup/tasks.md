@@ -134,7 +134,7 @@
   - 如果短期不能并入，API 和 `ChatPanel` 必须标注 `persistence: "process-memory"` 与“当前进程临时历史”。
   - 验证：选择持久化则重启后历史仍在；选择透明临时则 UI 文案与 API 元数据明确临时状态。
 
-- [ ] 16. 处理 pipeline runs temporary in-memory implementation
+- [x] 16. 处理 pipeline runs temporary in-memory implementation
   - 层级目标：持久化或透明临时状态。
   - 修改 `packages/studio/src/api/routes/pipeline.ts`。
   - 推荐：复用现有 `RunStore` 事实流，废弃 route 内部 `pipelineRuns` Map。
