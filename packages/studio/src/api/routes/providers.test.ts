@@ -9,9 +9,9 @@ import { createProvidersRouter } from "./providers";
 
 function okAdapter(models: RuntimeModelInput[] = []): RuntimeAdapter {
   return {
-    listModels: vi.fn(async () => ({ success: true, models })),
-    testModel: vi.fn(async () => ({ success: true, latency: 7 })),
-    generate: vi.fn(async () => ({ success: true, content: "ok" })),
+    listModels: vi.fn(async () => ({ success: true as const, models })),
+    testModel: vi.fn(async () => ({ success: true as const, latency: 7 })),
+    generate: vi.fn(async () => ({ success: true as const, content: "ok" })),
   };
 }
 

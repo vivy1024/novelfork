@@ -69,4 +69,49 @@ describe("runtime model pool", () => {
     await store.importPlatformAccount({ id: "codex-1", platformId: "codex", displayName: "主力", authMode: "json-account", status: "disabled", current: true, priority: 1, successCount: 0, failureCount: 0, credentialSource: "json", credentialJson: { refresh_token: "rt" } });
     await expect(buildRuntimeModelPool(store)).resolves.toEqual([]);
   });
+
+  it("excludes disabled providers, disabled models and API providers without credentials", async () => {
+    await store.createProvider({
+      id: "missing-key",
+      name: "Missing Key",
+      type: "custom",
+      enabled: true,
+      priority: 1,
+      apiKeyRequired: true,
+      baseUrl: "https://api.example.com/v1",
+      compatibility: "openai-compatible",
+      config: {},
+      models: [{ id: "gpt-no-key", name: "GPT No Key", contextWindow: 128000, maxOutputTokens: 4096, enabled: true, source: "manual" }],
+    });
+    await store.createProvider({
+      id: "disabled-provider",
+      name: "Disabled Provider",
+      type: "custom",
+      enabled: false,
+      priority: 2,
+      apiKeyRequired: false,
+      compatibility: "openai-compatible",
+      config: {},
+      models: [{ id: "disabled-provider-model", name: "Disabled Provider Model", contextWindow: 128000, maxOutputTokens: 4096, enabled: true, source: "manual" }],
+    });
+    await store.createProvider({
+      id: "usable",
+      name: "Usable",
+      type: "custom",
+      enabled: true,
+      priority: 3,
+      apiKeyRequired: true,
+      baseUrl: "https://api.usable.example/v1",
+      compatibility: "openai-compatible",
+      config: { apiKey: "sk-usable" },
+      models: [
+        { id: "gpt-disabled", name: "GPT Disabled", contextWindow: 128000, maxOutputTokens: 4096, enabled: false, source: "manual" },
+        { id: "gpt-usable", name: "GPT Usable", contextWindow: 128000, maxOutputTokens: 4096, enabled: true, source: "manual" },
+      ],
+    });
+
+    await expect(buildRuntimeModelPool(store)).resolves.toEqual([
+      expect.objectContaining({ modelId: "usable:gpt-usable", enabled: true }),
+    ]);
+  });
 });

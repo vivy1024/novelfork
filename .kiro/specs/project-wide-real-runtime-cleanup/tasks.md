@@ -226,7 +226,7 @@
   - 登记 CLI 生产源码当前无 mock 命中；测试 mock 不计入产品债务。
   - 验证：静态扫描与 ledger 一致。
 
-- [ ] 28. 更新测试，确保验证真实边界而不是 mock 表象
+- [x] 28. 更新测试，确保验证真实边界而不是 mock 表象
   - 层级目标：验收门禁。
   - Provider：store reinit、adapter fetch 调用、unsupported 不 success。
   - Session：assistant 内容来自 LLM runtime，失败无假回复。
