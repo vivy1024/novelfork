@@ -1,5 +1,7 @@
 # Provider Integration Rewrite Design
 
+> Superseded: 此设计保留作历史记录；它没有覆盖 Provider 持久化、真实模型检测、真实模型测试、统一模型池和会话真实调用。真实修复以 `.kiro/specs/real-provider-model-runtime/` 为准。
+
 ## 总体设计
 
 供应商页拆成两条完全独立的数据路径和 UI 路径：
@@ -10,8 +12,7 @@ ProviderSettingsPage
 │   ├── PlatformIntegrationCard[]
 │   └── PlatformIntegrationDetail
 │       ├── PlatformOverview
-│       ├── LocalAccessPanel（Codex only）
-│       ├── CredentialImportActions
+│       ├── JsonAccountImportForm
 │       └── PlatformAccountTable
 └── ApiProvidersSection
     ├── ApiProviderCard[]
@@ -35,7 +36,6 @@ interface PlatformIntegrationCatalogItem {
   name: string;
   description: string;
   enabled: boolean;
-  supportsLocalAccess: boolean;
   supportedImportMethods: PlatformImportMethod[];
   modelCount?: number;
 }
@@ -43,11 +43,10 @@ interface PlatformIntegrationCatalogItem {
 type PlatformId = "codex" | "kiro" | "cline";
 
 type PlatformImportMethod =
-  | "local"
+  | "json-account"
+  | "local-auth-json"
   | "oauth"
-  | "device-code"
-  | "token-json"
-  | "api-key";
+  | "device-code";
 ```
 
 ### PlatformAccount
@@ -61,7 +60,7 @@ interface PlatformAccount {
   displayName: string;
   email?: string;
   accountId?: string;
-  authMode: "oauth" | "local" | "token-json" | "api-key";
+  authMode: "json-account" | "local-auth-json" | "oauth" | "device-code";
   planType?: string;
   status: "active" | "disabled" | "expired" | "error";
   current: boolean;
@@ -75,31 +74,18 @@ interface PlatformAccount {
     weeklyResetAt?: string;
   };
   tags?: string[];
+  credentialSource?: "json" | "local" | "oauth";
   createdAt?: string;
   lastUsedAt?: string;
 }
 ```
 
-### PlatformLocalAccessState
-
-借鉴 cockpit-tools `CodexLocalAccessState`。
+### PlatformJsonImportPayload
 
 ```ts
-interface PlatformLocalAccessState {
-  platformId: PlatformId;
-  enabled: boolean;
-  running: boolean;
-  baseUrl: string;
-  apiKeyMask: string;
-  modelIds: string[];
-  memberAccountIds: string[];
-  stats?: {
-    requestCount: number;
-    successCount: number;
-    failureCount: number;
-    totalTokens?: number;
-    avgLatencyMs?: number;
-  };
+interface PlatformJsonImportPayload {
+  accountJson: unknown;
+  displayName?: string;
 }
 ```
 
@@ -114,7 +100,7 @@ type ApiModel = Model;
 
 ## API 设计
 
-当前阶段为了避免伪造成功，平台集成后端先只做只读 catalog + 空账号状态。
+当前阶段为了避免伪造成功，平台集成后端提供 catalog、账号列表，以及 Codex/Kiro JSON 账号导入。账号导入先进入平台账号列表；切号、配额刷新、真实调用链路作为后续任务接入。
 
 ```http
 GET /api/platform-integrations
@@ -123,19 +109,17 @@ GET /api/platform-integrations
 GET /api/platform-integrations/:platformId/accounts
 → { accounts: PlatformAccount[] }
 
-GET /api/platform-integrations/:platformId/local-access
-→ { state: PlatformLocalAccessState | null }
+POST /api/platform-integrations/:platformId/accounts/import-json
+Body: { accountJson: object|string, displayName?: string }
+→ { account: PlatformAccount }
 ```
 
-导入/切号/刷新配额/启停本地服务暂不实现，前端按钮 disabled：
+切号/刷新配额/删除账号暂不实现，前端按钮 disabled：
 
 ```http
-POST /api/platform-integrations/:platformId/import/local       # future
-POST /api/platform-integrations/:platformId/import/oauth       # future
-POST /api/platform-integrations/:platformId/import/token-json  # future
 POST /api/platform-integrations/:platformId/accounts/:id/switch # future
 POST /api/platform-integrations/:platformId/accounts/:id/refresh-quota # future
-POST /api/platform-integrations/:platformId/local-access/toggle # future
+DELETE /api/platform-integrations/:platformId/accounts/:id # future
 ```
 
 API key 接入继续使用现有：
@@ -143,6 +127,7 @@ API key 接入继续使用现有：
 ```http
 GET /api/providers
 POST /api/providers
+PUT /api/providers/:id
 POST /api/providers/:id/models/refresh
 POST /api/providers/:id/models/:modelId/test
 PATCH /api/providers/:id/models/:modelId
@@ -156,8 +141,8 @@ PATCH /api/providers/:id/models/:modelId
 
 - 左上：平台名 + `平台` badge。
 - 右上：启用 switch。
-- 中部：账号数、本地服务状态、模型数。
-- 底部：支持的导入方式标签（本机 / OAuth / JSON / API Key）。
+- 中部：账号数、模型数、导入能力状态（JSON 可导入 / 待接入）。
+- 底部：支持的导入方式标签（JSON 账号 / 本机 auth.json / OAuth / 设备码）。
 - 点击进入平台详情。
 
 #### API key 接入卡片
@@ -174,28 +159,16 @@ PATCH /api/providers/:id/models/:modelId
 
 展示平台说明、启用状态、支持导入方式。
 
-#### LocalAccessPanel（Codex only）
+#### JsonAccountImportForm
 
-展示：
+Codex / Kiro 可用：
 
-- 状态：已停用/未运行/运行中。
-- Base URL：如 `http://127.0.0.1:54140/v1`。
-- API Key：脱敏。
-- 模型数、成员账号数。
-- 统计：请求数、成功/失败、Token、平均延迟（没有后端时显示 `--`）。
-- 操作按钮：启停、测试、轮换 API Key、成员账号（全部 disabled，标注后续接入）。
+- 账号显示名（可选）。
+- JSON 账号数据 textarea。
+- 导入按钮：JSON 为空时 disabled。
+- 导入后把账号加入 PlatformAccountTable，并显示成功反馈。
 
-#### CredentialImportActions
-
-按钮：
-
-- 本机导入
-- OAuth / 浏览器添加
-- 设备码添加
-- Token / JSON 导入
-- API Key 账号（Codex only）
-
-当前全部 disabled，但 tooltip/说明明确“后续接入平台账号后端”。
+Cline 等未接入平台显示“该平台当前尚未开放 JSON 账号导入”。
 
 #### PlatformAccountTable
 
@@ -213,7 +186,7 @@ PATCH /api/providers/:id/models/:modelId
 - 最后使用
 - 操作
 
-空态：暂无平台账号。
+空态：暂无平台账号，导入 JSON 账号数据后会显示真实账号。
 
 ### API Provider 详情页
 
@@ -223,15 +196,14 @@ PATCH /api/providers/:id/models/:modelId
 - API Key password input
 - compatibility select
 - apiMode select
-- 保存按钮（若后端没有 provider 更新接口，先 disabled 并说明）
+- 保存按钮
 - 模型列表继续保留刷新/测试/上下文长度/启用禁用。
 
 ## 与 cockpit-tools 的边界
 
 本 spec 不完整复刻 cockpit-tools。只吸收它的平台账号模型和 UI 信息架构：
 
-- 账号管理：借鉴 `CodexAccount`、store actions、quota fields。
-- 本地反代：借鉴 `CodexLocalAccessModal` 的 Base URL/API Key/端口/统计/成员账号结构。
+- 账号管理：借鉴 `CodexAccount`、store actions、quota fields、JSON import。
 - API model provider：借鉴 `CodexModelProviderManager` 的 provider preset + apiKeys[] 概念，但 NovelFork 仍沿用现有 provider-manager。
 
 不做：
