@@ -87,4 +87,17 @@ describe("mock debt scan", () => {
     ]);
     expect(cliHits).toEqual([]);
   });
+
+  it("keeps residual production hits out of must-replace status", async () => {
+    const repoRoot = join(process.cwd(), "../..");
+    const statusByDebt = new Map(MOCK_DEBT_ITEMS.map((item) => [item.id, item.status]));
+    const report = await scanMockDebtLedgerCoverage({
+      rootDir: repoRoot,
+      ledger: MOCK_DEBT_ITEMS,
+    });
+
+    const mustReplaceHits = report.registered.filter((hit) => statusByDebt.get(hit.debtId) === "must-replace");
+
+    expect(mustReplaceHits).toEqual([]);
+  });
 });

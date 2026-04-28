@@ -235,7 +235,7 @@
   - Health：unknown 不显示固定满分。
   - 验证：相关测试套件通过。
 
-- [ ] 29. 运行全项目 mock scan 并更新 ledger 剩余项
+- [x] 29. 运行全项目 mock scan 并更新 ledger 剩余项
   - 层级目标：最终验收。
   - 运行生产源码 mock scan。
   - 所有剩余命中必须在 ledger 中有状态：confirmed-real、transparent-placeholder、internal-demo、test-only 或 must-replace。
