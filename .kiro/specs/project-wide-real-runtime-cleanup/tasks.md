@@ -166,7 +166,7 @@
 
 ### Phase 4：写作模式、写作工具与应用链路
 
-- [ ] 20. 区分 writing-modes 的 prompt preview 与真实 generate
+- [x] 20. 区分 writing-modes 的 prompt preview 与真实 generate
   - 层级目标：透明预览或真实调用。
   - 修改 `packages/studio/src/api/routes/writing-modes.ts`。
   - 当前只返回 prompt 的 endpoint 必须响应 `mode: "prompt-preview"` / `promptPreview`，或新增真实 generate endpoint 调 LLM。

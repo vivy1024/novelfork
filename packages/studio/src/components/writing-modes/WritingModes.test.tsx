@@ -59,6 +59,27 @@ describe("InlineWritePanel", () => {
     expect(screen.getByText("动作")).toBeTruthy();
     expect(screen.getByText("心理")).toBeTruthy();
   });
+
+  it("renders prompt preview without accepting it as generated content", async () => {
+    const onAccept = vi.fn();
+    postApiMock.mockResolvedValueOnce({
+      mode: "prompt-preview",
+      promptPreview: "请根据选段续写下一段。",
+      prompt: "请根据选段续写下一段。",
+    });
+
+    render(
+      <InlineWritePanel bookId="book-1" chapterNumber={3} selectedText="前文内容" onAccept={onAccept} onDiscard={vi.fn()} />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "生成" }));
+
+    expect(await screen.findByText("Prompt 预览")).toBeTruthy();
+    expect(screen.getByText("请根据选段续写下一段。")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "复制 prompt" })).toBeTruthy();
+    expect((screen.getByRole("button", { name: "执行生成（未接入）" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByRole("button", { name: "接受" })).toBeNull();
+  });
 });
 
 describe("DialogueGenerator", () => {

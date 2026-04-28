@@ -61,8 +61,12 @@ describe("writing-modes router", () => {
       chapterNumber: 3,
     });
     expect(status).toBe(200);
-    expect(json.prompt).toBe("continuation-prompt");
-    expect(json.mode).toBe("continuation");
+    expect(json).toMatchObject({
+      mode: "prompt-preview",
+      writingMode: "continuation",
+      promptPreview: "continuation-prompt",
+      prompt: "continuation-prompt",
+    });
   });
 
   it("POST /api/books/:bookId/inline-write — invalid mode", async () => {
@@ -77,7 +81,11 @@ describe("writing-modes router", () => {
       purpose: "争论",
     });
     expect(status).toBe(200);
-    expect(json.prompt).toBe("dialogue-prompt");
+    expect(json).toMatchObject({
+      mode: "prompt-preview",
+      promptPreview: "dialogue-prompt",
+      prompt: "dialogue-prompt",
+    });
   });
 
   it("POST /api/books/:bookId/dialogue/generate — no characters", async () => {
@@ -93,6 +101,8 @@ describe("writing-modes router", () => {
       count: 3,
     });
     expect(status).toBe(200);
+    expect(json.mode).toBe("prompt-preview");
+    expect(json.promptPreviews).toHaveLength(3);
     expect(json.prompts).toHaveLength(3);
     expect(json.count).toBe(3);
   });
@@ -105,7 +115,11 @@ describe("writing-modes router", () => {
       summaries: [],
     });
     expect(status).toBe(200);
-    expect(json.prompt).toBe("branch-prompt");
+    expect(json).toMatchObject({
+      mode: "prompt-preview",
+      promptPreview: "branch-prompt",
+      prompt: "branch-prompt",
+    });
   });
 
   it("POST /api/books/:bookId/outline/branch/:branchId/expand", async () => {
@@ -116,7 +130,8 @@ describe("writing-modes router", () => {
     });
     expect(status).toBe(200);
     expect(json.branchId).toBe("b1");
-    expect(json.prompt).toContain("大纲分支扩展任务");
+    expect(json.mode).toBe("prompt-preview");
+    expect(json.promptPreview).toContain("大纲分支扩展任务");
   });
 
   it("POST /api/works/import", async () => {
