@@ -139,10 +139,10 @@ export const MOCK_DEBT_ITEMS = [
     id: "monitor-status",
     module: "Monitor status",
     files: ["packages/studio/src/api/routes/monitor.ts"],
-    currentBehavior: "/api/monitor/status 固定返回 stopped，WebSocket 事件订阅仍是 TODO。",
+    currentBehavior: "/api/monitor/status 在缺少 daemon/runtime 事实源时返回 501 unsupported；Monitor WebSocket 连接后发送 unsupported 并关闭，不再伪造 stopped 或实时日志。",
     userRisk: "critical",
-    status: "must-replace",
-    targetBehavior: "接入真实 daemon/runtime 状态；如果没有事实源则返回 501 unsupported，WS 未接入前不得表现为实时日志。",
+    status: "transparent-placeholder",
+    targetBehavior: "保持无事实源时返回 unsupported；后续接入真实 daemon/runtime 状态与事件订阅后再恢复实时监控。",
     ownerSpec: OWNER_SPEC,
     verification: [
       "route 测试断言不再固定 200 stopped",

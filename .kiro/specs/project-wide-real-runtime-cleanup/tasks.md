@@ -141,7 +141,7 @@
   - 如果短期保留进程内状态，API 必须返回 `persistence: "process-memory"`，UI 不得暗示历史持久化。
   - 验证：route 测试覆盖 run 状态来源或 process-memory 标记。
 
-- [ ] 17. 修正 monitor 固定 stopped 与未订阅 WS
+- [x] 17. 修正 monitor 固定 stopped 与未订阅 WS
   - 层级目标：真实运行时或 transparent unsupported。
   - 修改 `packages/studio/src/api/routes/monitor.ts`。
   - 若可接 daemon/runtime 状态，则 `/api/monitor/status` 返回真实状态。
