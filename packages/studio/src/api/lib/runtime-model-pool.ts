@@ -48,21 +48,27 @@ export async function buildRuntimeModelPool(store: ProviderRuntimeStore): Promis
     }
 
     const providerUsable = isPlatformProvider(provider) || hasApiCredentials(provider);
-    return provider.models.map((model) => ({
-      modelId: `${provider.id}:${model.id}`,
-      modelName: model.name,
-      providerId: provider.id,
-      providerName: provider.name,
-      enabled: providerUsable && model.enabled !== false,
-      contextWindow: model.contextWindow,
-      maxOutputTokens: model.maxOutputTokens,
-      source: model.source,
-      lastTestStatus: model.lastTestStatus,
-      capabilities: {
-        functionCalling: model.supportsFunctionCalling === true,
-        vision: model.supportsVision === true,
-        streaming: model.supportsStreaming === true,
-      },
-    }));
+    if (!providerUsable) {
+      return [];
+    }
+
+    return provider.models
+      .filter((model) => model.enabled !== false)
+      .map((model) => ({
+        modelId: `${provider.id}:${model.id}`,
+        modelName: model.name,
+        providerId: provider.id,
+        providerName: provider.name,
+        enabled: true,
+        contextWindow: model.contextWindow,
+        maxOutputTokens: model.maxOutputTokens,
+        source: model.source,
+        lastTestStatus: model.lastTestStatus,
+        capabilities: {
+          functionCalling: model.supportsFunctionCalling === true,
+          vision: model.supportsVision === true,
+          streaming: model.supportsStreaming === true,
+        },
+      }));
   });
 }
