@@ -1,0 +1,124 @@
+# Studio能力矩阵
+
+**版本**: v1.0.0
+**创建日期**: 2026-04-28
+**更新日期**: 2026-04-28
+**状态**: ✅ 当前有效
+**文档类型**: current
+
+---
+
+## 1. 文档目的
+
+本文记录 NovelFork Studio 当前功能真实状态，作为后续 `novel-creation-workbench-complete-flow` spec 的 Phase 0 事实源之一。
+
+本文只描述当前已经能从代码、测试或浏览器审计中确认的事实：
+
+- **真实可用**：有真实 API、持久化或真实 runtime 调用，失败时返回真实错误。
+- **透明过渡**：功能仍是临时态、`process-memory`、`prompt-preview`、`chunked-buffer` 或 `unsupported`，但 UI/API 已明确标注，不冒充正式完成。
+- **内部示例**：只用于开发、测试或 demo，不应出现在生产入口。
+- **待迁移**：存在旧入口或兼容入口，当前不应继续扩展。
+
+> 本文不是产品完成声明。`透明过渡` 和 `内部示例` 只能说明“没有再假装完成”，不能说明功能已经完整可用。
+
+## 2. 主要事实来源
+
+| 来源 | 用途 |
+|---|---|
+| `.kiro/specs/project-wide-real-runtime-cleanup/` | 反 mock 清理要求、设计与任务完成口径 |
+| `.kiro/specs/novel-creation-workbench-complete-flow/` | 当前工作台完整闭环新主线 |
+| `packages/studio/src/api/lib/mock-debt-ledger.ts` | mock/占位/真实化状态登记事实源 |
+| `packages/studio/src/app-next/workspace/WorkspacePage.test.tsx` | 新创作工作台资源树、章节编辑、候选稿、AI gate、经纬面板、写作工具 UI 覆盖 |
+| `packages/studio/src/api/routes/writing-tools.test.ts` | 写作工具、hook、节奏/对话/健康指标 route 覆盖 |
+| `packages/studio/src/api/routes/writing-modes.test.ts` | 写作模式 prompt-preview route 覆盖 |
+| `packages/studio/src/components/ChatPanel.test.tsx` | 轻量 Book Chat 临时历史状态覆盖 |
+| recent commits `c4b60d4b`～`7349aad4` | runtime cleanup、mock scan、UI 透明占位、模型池边界、health 透明化等近期变更 |
+
+## 3. AI Provider、模型池与会话运行时
+
+| 功能 | 用户入口 | API / 组件入口 | 数据来源 | 持久化状态 | 当前状态 | 已知限制 | 验证文件或口径 |
+|---|---|---|---|---|---|---|---|
+| Provider runtime store | 设置页 → AI 供应商；Admin/Onboarding/WritingTools 内部读取 | `provider-runtime-store.ts`、`api/routes/providers.ts` | `ProviderRuntimeStore` | 真实持久化 | 真实可用 | 旧 `provider-manager` 仍作为兼容类和测试对象保留，但不应重新接入生产路由 | ledger `provider-runtime`；provider/admin/onboarding/writing-tools 相关测试 |
+| Codex/Kiro 平台账号导入 | 设置页 → 平台集成 | `api/routes/platform-integrations.ts` | runtime store | Codex/Kiro JSON 账号持久化 | 真实可用 | 账号缺失或禁用时对应平台模型会从模型池过滤 | ledger `platform-integrations`；PlatformIntegration 相关测试 |
+| Cline 平台账号导入 | 设置页 → 平台集成 | `api/routes/platform-integrations.ts` | 未接入 | 无 | 透明过渡 | 当前返回 `501 unsupported`，UI 需显示透明未接入 | ledger `platform-integrations`；PlatformIntegration 相关测试 |
+| Runtime model pool | ChatWindow、Settings、NewSessionDialog、WritingTools AI gate | `/api/providers/models` | runtime provider/model/account store | 从持久化 runtime store 派生 | 真实可用 | 共享 provider catalog 只作为模板/类型来源，不是运行时模型池 | ledger `runtime-model-pool`；runtime-model-pool/provider route/UI 测试 |
+| Session chat runtime | 会话中心 / ChatWindow | `session-chat-service.ts` | LLM runtime service + session config | 成功/失败响应携带 runtime metadata | 真实可用 | adapter 未接入、凭据缺失时返回 error envelope，不生成假 assistant 正文 | ledger `session-chat-runtime`；session-chat-service 测试 |
+| Legacy Model UI | 旧模型选择组件 | `components/Model/ModelPicker.tsx`、`ProviderConfig.tsx` | `/api/providers/models` 或停用说明 | 不再维护第二套浏览器本地 provider 配置 | 待迁移 | 旧组件只保留兼容/引导，不应扩展新功能 | ledger `legacy-model-ui`；ModelPicker/ProviderConfig 测试 |
+
+## 4. 创作工作台与小说资源
+
+| 功能 | 用户入口 | API / 组件入口 | 数据来源 | 持久化状态 | 当前状态 | 已知限制 | 验证文件或口径 |
+|---|---|---|---|---|---|---|---|
+| 作品创建基础配置 | Dashboard 创建作品 | `book-create.ts`、Dashboard 创建表单 | 作品创建 payload 与项目初始化记录 | 真实持久化路径由书籍创建流程负责 | 真实可用 | 当前文档仅确认标准化和等待可读逻辑；完整创建 E2E 归入新 spec 后续任务 | `book-create.test.ts` |
+| 章节资源树 | Workspace 左侧“小说资源管理器” | `WorkspacePage`、`resource-adapter.ts` | `/books`、`/books/:id`、候选稿 API | 从真实书籍/章节/候选稿数据派生 | 真实可用 | 目前主要覆盖作品、卷、已有章节、生成候选稿、大纲/经纬分类入口；不是完整文件/资料管理器 | `WorkspacePage.test.tsx` |
+| 章节打开、编辑、保存 | Workspace 中央编辑器 | `ChapterEditor` / migrated chapter API | 章节正文 API | 真实保存 | 真实可用 | `新建章节` 仍未接入；保存失败恢复已覆盖 | `WorkspacePage.test.tsx` |
+| AI 候选稿查看与处理 | Workspace 资源树 → 生成章节候选 | Candidate editor/actions | 候选稿 API | 候选稿状态与章节写入由 API 处理 | 真实可用 | 草稿资源树仍需做实；候选稿另存草稿后资源树完整刷新归入新 spec | `WorkspacePage.test.tsx` |
+| 章节 hooks 应用 | Workspace → 写作工具 / hooks action | `api/routes/writing-tools.ts` | `pending_hooks.md` | 写入 story truth 文件 | 真实可用 | hook 与经纬伏笔结构化追踪仍需后续做实 | `writing-tools.test.ts`；`WorkspacePage.test.tsx` |
+| 大纲入口 | Workspace 资源树 | resource tree outline node | 当前书籍/资源树派生 | 当前仅入口/空态为主 | 透明过渡 | 还不能作为完整大纲 viewer/editor | 新 spec Phase 4 |
+| 完整小说资源管理器 | Workspace 左侧资源区 | 规划中的 resource snapshot + editor/viewer registry | 章节、草稿、候选稿、经纬、story/truth、素材、发布报告 | 规划中 | 透明过渡 | 仍缺 story/truth viewer、DraftEditor、BibleEntryEditor、素材/发布报告 viewer | 新 spec Phase 2 |
+| 新建章节 | Workspace 顶部按钮 | 待新增 `POST /books/:bookId/chapters` | 待接章节存储 | 未接入 | 透明过渡 | 当前按钮 disabled；必须在新 spec 中做实 | `novel-creation-workbench-complete-flow` Task 19-20 |
+| 导出 | Workspace 顶部按钮 | 待新增 export route | 已保存章节数据 | 未接入 | 透明过渡 | 当前按钮 disabled；至少需支持 Markdown/TXT | `novel-creation-workbench-complete-flow` Task 37-38 |
+
+## 5. 写作工具、写作模式与 AI 动作
+
+| 功能 | 用户入口 | API / 组件入口 | 数据来源 | 持久化状态 | 当前状态 | 已知限制 | 验证文件或口径 |
+|---|---|---|---|---|---|---|---|
+| Writing tools：hooks | Workspace 右侧写作工具 | `api/routes/writing-tools.ts` | Runtime model pool 或 session LLM | hook apply 写入 `pending_hooks.md` | 真实可用 | 模型不可用时返回 AI gate，不假生成 | `writing-tools.test.ts` |
+| Writing tools：节奏分析 | Workspace 右侧写作工具 | `/writing-tools/rhythm` | 章节正文 | 即时计算 | 真实可用 | 指标以当前章节文本为准 | `writing-tools.test.ts` |
+| Writing tools：对话分析 | Workspace 右侧写作工具 | `/writing-tools/dialogue` | 章节正文 | 即时计算 | 真实可用 | 指标以当前章节文本为准 | `writing-tools.test.ts` |
+| Writing tools：书籍健康 | Workspace / 健康面板 | `/writing-tools/health`、`BookHealthDashboard` | 章节数、字数、敏感词、矛盾登记等 | 从真实文件/记录计算 | 真实可用 | 连续性评分、hook 回收率、AI 味、节奏多样性等未接统计显示 `unknown`，不得固定满分 | ledger `writing-tools-health`；`writing-tools.test.ts` |
+| Conflict map / character arcs / tone check | Workspace 写作工具 | `api/routes/writing-tools.ts` | story truth / 章节文本 | 即时计算或读取文件 | 真实可用 | 输出受现有 story truth 文件完整度限制 | `writing-tools.test.ts` |
+| Writing modes route | Workspace 写作模式 | `api/routes/writing-modes.ts` | prompt 构建逻辑 | 不写入正文 | 透明过渡 | 当前主要是 `prompt-preview`；应用按钮在无安全写入目标时 disabled | ledger `writing-modes-apply`；`writing-modes.test.ts`；`WorkspacePage.test.tsx` |
+| Writing modes apply | Workspace 写作模式应用按钮 | 待新增安全 apply route | 预览、候选稿、草稿、章节目标 | 未接入 | 透明过渡 | Inline write、dialogue、variants、outline branch 不得 noop；后续必须走预览→确认→写入 candidate/draft/chapter | 新 spec Task 26-28 |
+| Workspace AI actions | Workspace 右侧 AI/经纬面板 | action router / writing route | Runtime model pool + 章节上下文 | write-next 已走候选稿路径 | 透明过渡 | 除生成下一章外，续写、审校、改写、去 AI 味、连续性检查需要真实 route 或 unsupported | 新 spec Task 29-31 |
+| Inline completion streaming | 编辑器/AI completion API | `api/routes/ai.ts` | 先取完整 LLM 结果再切片 SSE | 不代表上游原生流式 | 透明过渡 | payload 已标注 `streamSource: chunked-buffer`；不能称为原生 streaming | ledger `ai-complete-streaming` |
+
+## 6. 轻量 Chat、Pipeline、Monitor 与 Admin
+
+| 功能 | 用户入口 | API / 组件入口 | 数据来源 | 持久化状态 | 当前状态 | 已知限制 | 验证文件或口径 |
+|---|---|---|---|---|---|---|---|
+| 轻量 Book Chat | 书籍聊天面板 | `api/routes/chat.ts`、`ChatPanel` | 当前进程内存 Map | `process-memory`，不持久化 | 透明过渡 | 重启后历史不保证存在；UI/API 已标注当前进程临时历史 | ledger `book-chat-history`；`ChatPanel.test.tsx` |
+| Pipeline runs | Pipeline API/页面 | `api/routes/pipeline.ts` | 当前进程内存 | `process-memory`，不持久化 | 透明过渡 | run/stage/list/SSE 仍是临时运行状态 | ledger `pipeline-runs` |
+| Monitor status | Admin/Monitor | `api/routes/monitor.ts` | 未接 daemon/runtime 事实源 | 无持久化 | 透明过渡 | 无事实源时返回 `501 unsupported`，WS 发送 unsupported 后关闭 | ledger `monitor-status` |
+| Agent config service | 设置/Agent 配置 | `agent-config-service.ts` | runtime JSON + 本机端口 listen 探测 | 配置与端口保留持久化 | 真实可用 | 资源使用未接真实 runtime 时返回 unknown | ledger `agent-config-service` |
+| Admin users | Admin 用户管理 | `api/routes/admin.ts`、`UsersTab` | 本地单用户模式 | 无多用户 store | 透明过渡 | CRUD API 返回 `501 unsupported`；按钮 disabled 并说明本地单用户阶段 | ledger `admin-users` |
+| Admin 容器、Worktree、Resources、Routines hooks、平台账号未来动作 | Admin / Settings / Routines | `UnsupportedCapability` 或等价透明占位 | 无真实后端事实源 | 无 | 透明过渡 | 未接入按钮 disabled；未来接真实运行时后再恢复交互 | ledger `transparent-admin-placeholders` |
+
+## 7. 经纬资料、合规与发布
+
+| 功能 | 用户入口 | API / 组件入口 | 数据来源 | 持久化状态 | 当前状态 | 已知限制 | 验证文件或口径 |
+|---|---|---|---|---|---|---|---|
+| Workspace 经纬面板基础展示 | Workspace 右侧经纬 tab | `WorkspacePage`、Bible panel | Bible/经纬相关数据 | 当前视图层可切换 | 透明过渡 | 浏览器审计发现部分经纬请求存在 404；分类详情仍偏壳子，需要列表/编辑做实 | `WorkspacePage.test.tsx`；新 spec Task 32-33 |
+| 经纬条目编辑 | Workspace / Bible | `BibleView`、`api/routes/bible.ts`、Bible/Jingwei repositories | Bible repositories | 规划中复用已有仓储 | 透明过渡 | 工作台内人物、地点、势力、物品、伏笔、世界规则的完整 CRUD 仍需接入 | 新 spec Task 33-34 |
+| 合规 / 发布就绪入口 | Workspace 顶部 | `PublishReadiness`、`components/compliance/*` | 合规组件/核心扫描 | 复用已有资产 | 待迁移 | 新工作台只提供入口或嵌入，不新建第二套合规页面 | `.kiro/specs/README.md` platform-compliance 边界 |
+| 导出 | Workspace 顶部 | 待新增 export route | 已保存章节数据 | 未接入 | 透明过渡 | 当前 disabled；至少需要全书 Markdown/TXT | 新 spec Task 37-38 |
+
+## 8. 内部示例与低风险项
+
+| 功能 | 用户入口 | API / 组件入口 | 数据来源 | 持久化状态 | 当前状态 | 已知限制 | 验证文件或口径 |
+|---|---|---|---|---|---|---|---|
+| ToolUsageExample | 无生产入口 | `components/ToolUsageExample.tsx` | `executeToolMock()` demo | 无 | 内部示例 | 仅展示 ToolUseCard/ToolResultCard/PermissionPrompt 交互；不得从生产组件 barrel 导出 | ledger `tool-usage-example` |
+| Core 缺文件哨兵 | Core 内部 | `packages/core/src/**` | `(文件尚未创建)` 哨兵 | 非业务状态 | 真实可用 | 不是用户功能 mock；`noop-model` 仅能在 `requireApiKey=false` 非真实路径使用 | ledger `core-missing-file-sentinel`；core config-loader 测试 |
+| CLI 生产源码 | CLI | `packages/cli/src/**` | CLI 生产源码 | 非 Studio UI 状态 | 真实可用 | 当前生产源码扫描无 mock 债务；测试目录 mock 不计入产品债务 | ledger `cli-production-source` |
+
+## 9. 当前已知阻塞与后续主线
+
+| 问题 | 当前事实 | 后续任务 |
+|---|---|---|
+| UI 看起来像同色 mock 壳 | 浏览器审计发现 Tailwind theme token 未生成，导致大量按钮样式高度相似 | `novel-creation-workbench-complete-flow` Phase 1 |
+| 资源管理器不完整 | 已能查看章节和候选稿，但 story/truth、草稿、大纲、经纬、素材、发布报告仍未完整做实 | `novel-creation-workbench-complete-flow` Phase 2 |
+| 新建章节 disabled | 当前不是可用闭环 | Task 19-20 |
+| 导出 disabled | 当前不是可用闭环 | Task 37-38 |
+| 写作模式应用 disabled / prompt-preview | 当前不写入正式正文，且应保持透明 | Task 26-28 |
+| 经纬面板 404 与分类壳子 | 部分路径或视图未接真实列表/编辑 | Task 32-33 |
+| Typecheck 仍失败 | 已知 `routes`、`novelfork-context`、`use-tabs` 类型问题 | Task 41 |
+
+## 10. 完成口径
+
+本文当前只完成 `novel-creation-workbench-complete-flow` Task 1 的事实沉淀：
+
+- 已把 runtime/provider/model/session、资源管理器、章节编辑、候选稿、writing tools、writing modes、transparent placeholders、internal demo 统一归档。
+- 已明确哪些能力真实可用，哪些只是透明过渡。
+- 已保留已知缺口，避免把 spec 后续任务提前写成完成。
+
+后续 Task 2 会单独从用户视角整理完整小说创作流程。Task 3 会整理 API 文档，Task 4 会形成测试报告，Task 5 会处理 README 与重复文档索引。
