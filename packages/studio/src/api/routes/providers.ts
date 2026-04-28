@@ -1,22 +1,124 @@
-/**
- * AI 提供商管理 API
- * 提供商 CRUD、排序、启用/禁用、模型池、连通性测试
- */
-
 import { Hono } from "hono";
-import { providerManager } from "../lib/provider-manager.js";
-import type { AIProvider } from "../lib/provider-manager.js";
 
-export function createProvidersRouter() {
+import {
+  createProviderAdapterRegistry,
+  type ProviderAdapterRegistry,
+  type RuntimeAdapterFailure,
+  type RuntimeAdapterId,
+} from "../lib/provider-adapters/index.js";
+import { buildRuntimeModelPool } from "../lib/runtime-model-pool.js";
+import {
+  ProviderRuntimeStore,
+  type CreateRuntimeProviderInput,
+  type RuntimeModelInput,
+  type RuntimeProviderRecord,
+  type RuntimeProviderUpdates,
+} from "../lib/provider-runtime-store.js";
+
+export interface ProvidersRouterOptions {
+  readonly store?: ProviderRuntimeStore;
+  readonly adapters?: ProviderAdapterRegistry;
+}
+
+type ProviderBody = Partial<CreateRuntimeProviderInput> & { id?: string; name?: string; type?: CreateRuntimeProviderInput["type"] };
+
+function sanitizeProvider(provider: RuntimeProviderRecord) {
+  const { apiKey, ...restConfig } = provider.config ?? {};
+  return {
+    ...provider,
+    config: {
+      ...restConfig,
+      apiKeyConfigured: Boolean(apiKey?.trim()),
+    },
+  };
+}
+
+function failureStatus(failure: RuntimeAdapterFailure): 400 | 422 | 500 | 501 | 502 {
+  switch (failure.code) {
+    case "unsupported":
+      return 501;
+    case "auth-missing":
+    case "config-missing":
+      return 422;
+    case "upstream-error":
+    case "network-error":
+      return 502;
+    default:
+      return 500;
+  }
+}
+
+function failureEnvelope(failure: RuntimeAdapterFailure) {
+  return {
+    success: false,
+    code: failure.code,
+    error: failure.error,
+    ...(failure.capability ? { capability: failure.capability } : {}),
+  };
+}
+
+function adapterIdForProvider(provider: RuntimeProviderRecord): RuntimeAdapterId {
+  if (provider.id === "codex") return "codex-platform";
+  if (provider.id === "kiro") return "kiro-platform";
+  if (provider.compatibility === "anthropic-compatible") return "anthropic-compatible";
+  return "openai-compatible";
+}
+
+function providerRef(provider: RuntimeProviderRecord) {
+  return {
+    providerId: provider.id,
+    providerName: provider.name,
+    ...(provider.baseUrl ? { baseUrl: provider.baseUrl } : {}),
+    ...(provider.config?.apiKey ? { apiKey: provider.config.apiKey } : {}),
+  };
+}
+
+function isNotFound(error: unknown): boolean {
+  return error instanceof Error && /not found/i.test(error.message);
+}
+
+function withRefreshMetadata(models: readonly RuntimeModelInput[]): RuntimeModelInput[] {
+  const lastRefreshedAt = new Date().toISOString();
+  return models.map((model) => ({
+    ...model,
+    lastRefreshedAt,
+    source: model.source ?? "detected",
+    lastTestStatus: model.lastTestStatus ?? "untested",
+  }));
+}
+
+function hasConfiguredCredentials(provider: RuntimeProviderRecord): boolean {
+  return !provider.apiKeyRequired || Boolean(provider.config?.apiKey?.trim());
+}
+
+function firstEnabledModel(provider: RuntimeProviderRecord) {
+  return provider.models.find((model) => model.enabled !== false);
+}
+
+async function buildRuntimeStatus(store: ProviderRuntimeStore) {
+  const providers = await store.listProviders();
+  const usableProvider = providers.find((provider) => provider.enabled && hasConfiguredCredentials(provider) && firstEnabledModel(provider));
+  const model = usableProvider ? firstEnabledModel(usableProvider) : undefined;
+
+  if (!usableProvider || !model) {
+    return { hasUsableModel: false };
+  }
+
+  return {
+    hasUsableModel: true,
+    defaultProvider: usableProvider.id,
+    defaultModel: model.id,
+  };
+}
+
+export function createProvidersRouter(options: ProvidersRouterOptions = {}) {
   const app = new Hono();
+  const store = options.store ?? new ProviderRuntimeStore();
+  const adapters = options.adapters ?? createProviderAdapterRegistry();
 
-  /**
-   * GET /api/providers
-   * 列出所有提供商
-   */
   app.get("/", async (c) => {
     try {
-      const providers = providerManager.listProviders();
+      const providers = (await store.listProviders()).map(sanitizeProvider);
       return c.json({ providers });
     } catch (error) {
       console.error("Failed to list providers:", error);
@@ -24,202 +126,155 @@ export function createProvidersRouter() {
     }
   });
 
-  /**
-   * GET /api/providers/status
-   * 获取当前默认模型可用状态
-   */
   app.get("/status", async (c) => {
     try {
-      const status = providerManager.getRuntimeStatus();
-      return c.json({ status });
+      return c.json({ status: await buildRuntimeStatus(store) });
     } catch (error) {
       console.error("Failed to get provider status:", error);
       return c.json({ error: "Failed to get provider status" }, 500);
     }
   });
 
-  /**
-   * POST /api/providers/:id/models/refresh
-   * 刷新供应商模型列表，保存模型级刷新状态
-   */
-  app.post("/:id/models/refresh", async (c) => {
-    try {
-      const id = c.req.param("id");
-      const body: { models?: AIProvider["models"] } = await c.req.json<{ models?: AIProvider["models"] }>().catch(() => ({}));
-      const provider = providerManager.refreshProviderModels(id, Array.isArray(body.models) ? body.models : undefined);
-
-      if (!provider) {
-        return c.json({ error: "Provider not found" }, 404);
-      }
-
-      return c.json({ provider, models: provider.models });
-    } catch (error) {
-      console.error("Failed to refresh provider models:", error);
-      return c.json({ error: "Failed to refresh provider models" }, 500);
-    }
-  });
-
-  /**
-   * PATCH /api/providers/:id/models/:modelId
-   * 更新单模型开关与上下文长度等设置
-   */
-  app.patch("/:id/models/:modelId", async (c) => {
-    try {
-      const id = c.req.param("id");
-      const modelId = c.req.param("modelId");
-      const updates = await c.req.json<Partial<AIProvider["models"][number]>>();
-      const model = providerManager.updateModel(id, modelId, updates);
-
-      if (!model) {
-        return c.json({ error: "Model not found" }, 404);
-      }
-
-      return c.json({ model });
-    } catch (error) {
-      console.error("Failed to update provider model:", error);
-      return c.json({ error: "Failed to update provider model" }, 500);
-    }
-  });
-
-  /**
-   * POST /api/providers/:id/models/:modelId/test
-   * 测试单个模型并写回模型级状态
-   */
-  app.post("/:id/models/:modelId/test", async (c) => {
-    try {
-      const id = c.req.param("id");
-      const modelId = c.req.param("modelId");
-      const result = await providerManager.testModelConnection(id, modelId);
-
-      if (!result.success) {
-        return c.json({ success: false, error: result.error, model: result.model }, 400);
-      }
-
-      return c.json({ success: true, latency: result.latency, model: result.model });
-    } catch (error) {
-      console.error("Failed to test provider model:", error);
-      return c.json({ error: "Failed to test provider model" }, 500);
-    }
-  });
-
-  /**
-   * GET /api/providers/:id
-   * 获取单个提供商
-   */
-  app.get("/:id", async (c) => {
-    try {
-      const id = c.req.param("id");
-      const provider = providerManager.getProvider(id);
-
-      if (!provider) {
-        return c.json({ error: "Provider not found" }, 404);
-      }
-
-      return c.json({ provider });
-    } catch (error) {
-      console.error("Failed to get provider:", error);
-      return c.json({ error: "Failed to get provider" }, 500);
-    }
-  });
-
-  /**
-   * PUT /api/providers/:id
-   * 更新提供商配置
-   */
-  app.put("/:id", async (c) => {
-    try {
-      const id = c.req.param("id");
-      const updates = await c.req.json<Partial<AIProvider>>();
-
-      const updated = providerManager.updateProvider(id, updates);
-
-      if (!updated) {
-        return c.json({ error: "Provider not found" }, 404);
-      }
-
-      return c.json({ provider: updated });
-    } catch (error) {
-      console.error("Failed to update provider:", error);
-      return c.json({ error: "Failed to update provider" }, 500);
-    }
-  });
-
-  /**
-   * POST /api/providers/:id/toggle
-   * 启用/禁用提供商
-   */
-  app.post("/:id/toggle", async (c) => {
-    try {
-      const id = c.req.param("id");
-      const { enabled } = await c.req.json<{ enabled: boolean }>();
-
-      const success = providerManager.toggleProvider(id, enabled);
-
-      if (!success) {
-        return c.json({ error: "Provider not found" }, 404);
-      }
-
-      const provider = providerManager.getProvider(id);
-      return c.json({ provider });
-    } catch (error) {
-      console.error("Failed to toggle provider:", error);
-      return c.json({ error: "Failed to toggle provider" }, 500);
-    }
-  });
-
-  /**
-   * POST /api/providers/reorder
-   * 拖拽排序提供商
-   */
-  app.post("/reorder", async (c) => {
-    try {
-      const { orderedIds } = await c.req.json<{ orderedIds: string[] }>();
-
-      if (!Array.isArray(orderedIds)) {
-        return c.json({ error: "orderedIds must be an array" }, 400);
-      }
-
-      const success = providerManager.reorderProviders(orderedIds);
-
-      if (!success) {
-        return c.json({ error: "Invalid provider IDs" }, 400);
-      }
-
-      const providers = providerManager.listProviders();
-      return c.json({ providers });
-    } catch (error) {
-      console.error("Failed to reorder providers:", error);
-      return c.json({ error: "Failed to reorder providers" }, 500);
-    }
-  });
-
-  /**
-   * GET /api/providers/models
-   * 获取模型池（所有可用模型）
-   */
   app.get("/models", async (c) => {
     try {
-      const modelPool = providerManager.getModelPool();
-      return c.json({ models: modelPool });
+      return c.json({ models: await buildRuntimeModelPool(store) });
     } catch (error) {
       console.error("Failed to get model pool:", error);
       return c.json({ error: "Failed to get model pool" }, 500);
     }
   });
 
-  /**
-   * POST /api/providers/:id/test
-   * 测试提供商连通性
-   */
-  app.post("/:id/test", async (c) => {
+  app.post("/reorder", async (c) => {
+    try {
+      const { orderedIds } = await c.req.json<{ orderedIds?: string[] }>();
+      if (!Array.isArray(orderedIds)) return c.json({ error: "orderedIds must be an array" }, 400);
+      const existing = await store.listProviders();
+      if (orderedIds.some((id) => !existing.some((provider) => provider.id === id))) {
+        return c.json({ error: "Invalid provider IDs" }, 400);
+      }
+      for (const [index, id] of orderedIds.entries()) {
+        await store.updateProvider(id, { priority: index + 1 });
+      }
+      return c.json({ providers: (await store.listProviders()).map(sanitizeProvider) });
+    } catch (error) {
+      console.error("Failed to reorder providers:", error);
+      return c.json({ error: "Failed to reorder providers" }, 500);
+    }
+  });
+
+  app.post("/", async (c) => {
+    try {
+      const body = await c.req.json<ProviderBody>();
+      if (!body.id || !body.name || !body.type) {
+        return c.json({ error: "Missing required fields: id, name, type" }, 400);
+      }
+      const provider = await store.createProvider({
+        ...body,
+        id: body.id,
+        name: body.name,
+        type: body.type,
+        enabled: body.enabled ?? true,
+        priority: body.priority ?? (await store.listProviders()).length + 1,
+        apiKeyRequired: body.apiKeyRequired ?? false,
+        config: body.config ?? {},
+        models: body.models ?? [],
+      });
+      return c.json({ provider: sanitizeProvider(provider) }, 201);
+    } catch (error) {
+      console.error("Failed to add provider:", error);
+      return c.json({ error: "Failed to add provider" }, 500);
+    }
+  });
+
+  app.post("/:id/models/refresh", async (c) => {
     try {
       const id = c.req.param("id");
-      const result = await providerManager.testProviderConnection(id);
+      const provider = await store.getProvider(id);
+      if (!provider) return c.json({ error: "Provider not found" }, 404);
+      const result = await adapters.get(adapterIdForProvider(provider)).listModels(providerRef(provider));
+      if (!result.success) return c.json(failureEnvelope(result), failureStatus(result));
+      const models = await store.upsertModels(id, withRefreshMetadata(result.models));
+      const updated = await store.getProvider(id);
+      return c.json({ provider: updated ? sanitizeProvider(updated) : undefined, models });
+    } catch (error) {
+      console.error("Failed to refresh provider models:", error);
+      return c.json({ error: "Failed to refresh provider models" }, 500);
+    }
+  });
 
-      if (!result.success) {
-        return c.json({ success: false, error: result.error }, 400);
-      }
+  app.patch("/:id/models/:modelId", async (c) => {
+    try {
+      const model = await store.patchModel(c.req.param("id"), c.req.param("modelId"), await c.req.json());
+      return c.json({ model });
+    } catch (error) {
+      if (isNotFound(error)) return c.json({ error: "Model not found" }, 404);
+      console.error("Failed to update provider model:", error);
+      return c.json({ error: "Failed to update provider model" }, 500);
+    }
+  });
 
+  app.post("/:id/models/:modelId/test", async (c) => {
+    try {
+      const id = c.req.param("id");
+      const modelId = c.req.param("modelId");
+      const provider = await store.getProvider(id);
+      if (!provider) return c.json({ error: "Provider not found" }, 404);
+      const model = provider.models.find((candidate) => candidate.id === modelId);
+      if (!model) return c.json({ error: "Model not found" }, 404);
+      const result = await adapters.get(adapterIdForProvider(provider)).testModel({ ...providerRef(provider), modelId });
+      const patched = await store.patchModel(id, modelId, result.success
+        ? { lastTestStatus: "success", lastTestLatency: result.latency, lastTestError: undefined }
+        : { lastTestStatus: result.code === "unsupported" ? "unsupported" : "error", lastTestError: result.error });
+      if (!result.success) return c.json({ ...failureEnvelope(result), model: patched }, failureStatus(result));
+      return c.json({ success: true, latency: result.latency, model: patched });
+    } catch (error) {
+      console.error("Failed to test provider model:", error);
+      return c.json({ error: "Failed to test provider model" }, 500);
+    }
+  });
+
+  app.get("/:id", async (c) => {
+    try {
+      const provider = await store.getProvider(c.req.param("id"));
+      if (!provider) return c.json({ error: "Provider not found" }, 404);
+      return c.json({ provider: sanitizeProvider(provider) });
+    } catch (error) {
+      console.error("Failed to get provider:", error);
+      return c.json({ error: "Failed to get provider" }, 500);
+    }
+  });
+
+  app.put("/:id", async (c) => {
+    try {
+      const provider = await store.updateProvider(c.req.param("id"), await c.req.json<RuntimeProviderUpdates>());
+      return c.json({ provider: sanitizeProvider(provider) });
+    } catch (error) {
+      if (isNotFound(error)) return c.json({ error: "Provider not found" }, 404);
+      console.error("Failed to update provider:", error);
+      return c.json({ error: "Failed to update provider" }, 500);
+    }
+  });
+
+  app.post("/:id/toggle", async (c) => {
+    try {
+      const { enabled } = await c.req.json<{ enabled: boolean }>();
+      const provider = await store.updateProvider(c.req.param("id"), { enabled });
+      return c.json({ provider: sanitizeProvider(provider) });
+    } catch (error) {
+      if (isNotFound(error)) return c.json({ error: "Provider not found" }, 404);
+      console.error("Failed to toggle provider:", error);
+      return c.json({ error: "Failed to toggle provider" }, 500);
+    }
+  });
+
+  app.post("/:id/test", async (c) => {
+    try {
+      const provider = await store.getProvider(c.req.param("id"));
+      if (!provider) return c.json({ error: "Provider not found" }, 404);
+      const model = firstEnabledModel(provider);
+      if (!model) return c.json({ success: false, error: "No enabled model" }, 400);
+      const result = await adapters.get(adapterIdForProvider(provider)).testModel({ ...providerRef(provider), modelId: model.id });
+      if (!result.success) return c.json(failureEnvelope(result), failureStatus(result));
       return c.json({ success: true, latency: result.latency });
     } catch (error) {
       console.error("Failed to test provider:", error);
@@ -227,40 +282,9 @@ export function createProvidersRouter() {
     }
   });
 
-  /**
-   * POST /api/providers
-   * 添加自定义提供商
-   */
-  app.post("/", async (c) => {
-    try {
-      const providerData = await c.req.json<Omit<AIProvider, "priority">>();
-
-      // 验证必需字段
-      if (!providerData.id || !providerData.name || !providerData.type) {
-        return c.json({ error: "Missing required fields: id, name, type" }, 400);
-      }
-
-      const provider = providerManager.addProvider(providerData);
-      return c.json({ provider }, 201);
-    } catch (error) {
-      console.error("Failed to add provider:", error);
-      return c.json({ error: "Failed to add provider" }, 500);
-    }
-  });
-
-  /**
-   * DELETE /api/providers/:id
-   * 删除提供商
-   */
   app.delete("/:id", async (c) => {
     try {
-      const id = c.req.param("id");
-      const success = providerManager.removeProvider(id);
-
-      if (!success) {
-        return c.json({ error: "Provider not found" }, 404);
-      }
-
+      await store.deleteProvider(c.req.param("id"));
       return c.json({ success: true });
     } catch (error) {
       console.error("Failed to delete provider:", error);

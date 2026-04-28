@@ -13,7 +13,8 @@ import type {
 } from "../../types/settings.js";
 import { DEFAULT_USER_CONFIG } from "../../types/settings.js";
 import { isSessionPermissionMode, normalizeSessionPermissionMode } from "../../shared/session-types.js";
-import { providerManager } from "./provider-manager.js";
+import { ProviderRuntimeStore } from "./provider-runtime-store.js";
+import { buildRuntimeModelPool } from "./runtime-model-pool.js";
 import { resolveRuntimeStoragePath } from "./runtime-storage-paths.js";
 
 /**
@@ -134,31 +135,43 @@ function sanitizeRuntimeControls(runtimeControls?: Partial<RuntimeControlSetting
   };
 }
 
-function normalizeKnownModelId(value: unknown): string | undefined {
-  if (typeof value !== "string") {
-    return undefined;
-  }
-
-  const normalized = value.trim();
-  if (!normalized) {
-    return undefined;
-  }
-
-  return providerManager.getModel(normalized) ? normalized : undefined;
+function normalizeModelReference(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
 }
 
-function sanitizeModelDefaults(modelDefaults?: Partial<ModelDefaultSettings> | null): ModelDefaultSettings {
+async function getRuntimeModelIds(): Promise<Set<string>> {
+  const pool = await buildRuntimeModelPool(new ProviderRuntimeStore());
+  return new Set(pool.map((model) => model.modelId));
+}
+
+function modelReferenceStatus(modelId: string, validModelIds: ReadonlySet<string>) {
+  if (!modelId) return "empty" as const;
+  return validModelIds.has(modelId) ? "valid" as const : "invalid" as const;
+}
+
+async function sanitizeModelDefaults(modelDefaults?: Partial<ModelDefaultSettings> | null): Promise<ModelDefaultSettings> {
   const defaultModelDefaults = DEFAULT_USER_CONFIG.modelDefaults;
-  const defaultSessionModel = normalizeKnownModelId(modelDefaults?.defaultSessionModel);
-  const summaryModel = normalizeKnownModelId(modelDefaults?.summaryModel);
+  const validModelIds = await getRuntimeModelIds();
+  const defaultSessionModel = normalizeModelReference(modelDefaults?.defaultSessionModel ?? defaultModelDefaults.defaultSessionModel);
+  const summaryModel = normalizeModelReference(modelDefaults?.summaryModel ?? defaultModelDefaults.summaryModel);
   const subagentModelPool = Array.isArray(modelDefaults?.subagentModelPool)
-    ? modelDefaults.subagentModelPool.map(normalizeKnownModelId).filter((value): value is string => Boolean(value))
+    ? modelDefaults.subagentModelPool.map(normalizeModelReference).filter(Boolean)
     : defaultModelDefaults.subagentModelPool;
+  const validation = {
+    defaultSessionModel: modelReferenceStatus(defaultSessionModel, validModelIds),
+    summaryModel: modelReferenceStatus(summaryModel, validModelIds),
+    subagentModelPool: Object.fromEntries(
+      subagentModelPool.map((modelId) => [modelId, modelReferenceStatus(modelId, validModelIds)]),
+    ),
+    invalidModelIds: [defaultSessionModel, summaryModel, ...subagentModelPool]
+      .filter((modelId, index, values) => modelId && modelReferenceStatus(modelId, validModelIds) === "invalid" && values.indexOf(modelId) === index),
+  } satisfies ModelDefaultSettings["validation"];
 
   return {
-    defaultSessionModel: defaultSessionModel ?? defaultModelDefaults.defaultSessionModel,
-    summaryModel: summaryModel ?? defaultModelDefaults.summaryModel,
-    subagentModelPool: subagentModelPool.length > 0 ? subagentModelPool : defaultModelDefaults.subagentModelPool,
+    defaultSessionModel,
+    summaryModel,
+    subagentModelPool,
+    validation,
   };
 }
 
@@ -185,8 +198,12 @@ export async function loadUserConfig(): Promise<UserConfig> {
 
   if (!existsSync(configPath)) {
     // 首次运行，创建默认配置
-    await saveUserConfig(DEFAULT_USER_CONFIG);
-    return DEFAULT_USER_CONFIG;
+    const defaults = {
+      ...DEFAULT_USER_CONFIG,
+      modelDefaults: await sanitizeModelDefaults(DEFAULT_USER_CONFIG.modelDefaults),
+    };
+    await saveUserConfig(defaults);
+    return defaults;
   }
 
   try {
@@ -199,7 +216,7 @@ export async function loadUserConfig(): Promise<UserConfig> {
       profile: { ...DEFAULT_USER_CONFIG.profile, ...config.profile },
       preferences: { ...DEFAULT_USER_CONFIG.preferences, ...config.preferences },
       runtimeControls: sanitizeRuntimeControls(config.runtimeControls),
-      modelDefaults: sanitizeModelDefaults(config.modelDefaults),
+      modelDefaults: await sanitizeModelDefaults(config.modelDefaults),
       onboarding: sanitizeOnboarding(config.onboarding),
     };
   } catch (error) {
@@ -262,7 +279,7 @@ export async function updateUserConfig(partial: UserConfigPatch): Promise<UserCo
     profile: { ...current.profile, ...(partial.profile ?? {}) },
     preferences: { ...current.preferences, ...(partial.preferences ?? {}) },
     runtimeControls: sanitizeRuntimeControls(mergedRuntimeControls),
-    modelDefaults: sanitizeModelDefaults({ ...current.modelDefaults, ...(partial.modelDefaults ?? {}) }),
+    modelDefaults: await sanitizeModelDefaults({ ...current.modelDefaults, ...(partial.modelDefaults ?? {}) }),
     onboarding: sanitizeOnboarding({
       ...current.onboarding,
       ...(partial.onboarding ?? {}),
