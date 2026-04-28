@@ -1,4 +1,4 @@
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -109,7 +109,7 @@ async function createRoute(options: { readonly sessionLlm?: boolean } = {}) {
     setStartupRecoveryRunner: vi.fn(),
   } as never);
 
-  return { app };
+  return { app, bookDir };
 }
 
 async function postJson(app: { request: (url: string, init?: RequestInit) => Response | Promise<Response> }, path: string, body: unknown = {}) {
@@ -163,6 +163,32 @@ describe("writing tools routes", () => {
       }),
       model: "mock-model",
     }));
+  });
+
+  it("persists an applied hook to pending_hooks.md", async () => {
+    const { app, bookDir } = await createRoute();
+
+    const response = await postJson(app, "/api/books/book-1/hooks/apply", {
+      chapterNumber: 1,
+      hook: {
+        id: "hook-new",
+        style: "suspense",
+        text: "门外传来第三个人的脚步声。",
+        rationale: "制造新问题",
+        retentionEstimate: "high",
+        relatedHookIds: ["old-hook"],
+      },
+    });
+
+    expect(response.status).toBe(200);
+    const json = await response.json() as { persisted: boolean; file: string };
+    expect(json.persisted).toBe(true);
+    expect(json.file).toBe("pending_hooks.md");
+    const pendingHooks = await readFile(join(bookDir, "story", "pending_hooks.md"), "utf-8");
+    expect(pendingHooks).toContain("old-hook");
+    expect(pendingHooks).toContain("hook-new");
+    expect(pendingHooks).toContain("门外传来第三个人的脚步声。");
+    expect(pendingHooks).toContain("chapter: 1");
   });
 
   it("returns POV dashboard from story truth files", async () => {

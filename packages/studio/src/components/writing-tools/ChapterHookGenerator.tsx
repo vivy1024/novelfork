@@ -21,8 +21,9 @@ export interface ChapterHookGeneratorProps {
   readonly bookId: string;
   readonly chapterNumber: number;
   readonly chapterContent: string;
-  readonly onApplyHook: (hook: GeneratedHookOption) => void;
+  readonly onApplyHook: (hook: GeneratedHookOption) => void | Promise<void>;
   readonly applyDisabled?: boolean;
+  readonly applyDisabledReason?: string;
 }
 
 const STYLE_LABELS: Record<string, string> = {
@@ -41,7 +42,7 @@ const RETENTION_LABELS: Record<string, string> = {
   low: "低留存",
 };
 
-export function ChapterHookGenerator({ bookId, chapterNumber, chapterContent, onApplyHook, applyDisabled }: ChapterHookGeneratorProps) {
+export function ChapterHookGenerator({ bookId, chapterNumber, chapterContent, onApplyHook, applyDisabled, applyDisabledReason }: ChapterHookGeneratorProps) {
   const [nextChapterIntent, setNextChapterIntent] = useState("");
   const [hooks, setHooks] = useState<ReadonlyArray<GeneratedHookOption>>([]);
   const [selectedHookId, setSelectedHookId] = useState<string | null>(null);
@@ -57,7 +58,7 @@ export function ChapterHookGenerator({ bookId, chapterNumber, chapterContent, on
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           chapterNumber,
-          chapterContent,
+          ...(chapterContent.trim() ? { chapterContent } : {}),
           ...(nextChapterIntent.trim() ? { nextChapterIntent: nextChapterIntent.trim() } : {}),
         }),
       });
@@ -97,7 +98,7 @@ export function ChapterHookGenerator({ bookId, chapterNumber, chapterContent, on
           <Button type="button" onClick={() => void generateHooks()} disabled={generating}>
             {generating ? "生成中..." : "生成章末钩子"}
           </Button>
-          <Button type="button" variant="outline" onClick={applySelectedHook} disabled={!selectedHookId || applyDisabled} title={applyDisabled ? "即将推出" : undefined}>
+          <Button type="button" variant="outline" onClick={applySelectedHook} disabled={!selectedHookId || applyDisabled} title={applyDisabled ? applyDisabledReason : undefined}>
             插入所选钩子
           </Button>
         </div>
