@@ -65,6 +65,10 @@ describe("WorktreesTab", () => {
     expect(screen.getByText("主仓库")).toBeTruthy();
     expect(screen.getAllByText("总变更").length).toBeGreaterThanOrEqual(1);
     expect(fetchJsonMock).toHaveBeenCalledWith("/api/admin/worktrees");
+    expect(screen.getByRole("heading", { name: "Worktree 终端未接入" })).toBeTruthy();
+    expect(screen.getByText("worktree.terminal.open")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Worktree 容器执行未接入" })).toBeTruthy();
+    expect(screen.getByText("worktree.container.exec")).toBeTruthy();
   });
 
   it("hides external worktrees by default and can reveal them", async () => {

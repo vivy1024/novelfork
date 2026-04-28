@@ -68,6 +68,8 @@ import {
   createSettingsRouter,
   createOnboardingRouter,
   createProvidersRouter,
+  createRuntimeCapabilitiesRouter,
+  createPlatformIntegrationsRouter,
   createGitRouter,
   createAgentConfigRouter,
   createToolsRouter,
@@ -313,8 +315,10 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
 
     // AI Providers management
     app.route("/api/providers", createProvidersRouter());
+    app.route("/api/runtime-capabilities", createRuntimeCapabilitiesRouter());
 
-    // Git operations for browser clients
+    app.route("/api/platform-integrations", createPlatformIntegrationsRouter());
+
     app.route("/api/git", createGitRouter());
 
     // Agent configuration
