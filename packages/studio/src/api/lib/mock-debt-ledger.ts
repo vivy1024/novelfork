@@ -257,10 +257,10 @@ export const MOCK_DEBT_ITEMS = [
       "packages/studio/src/app-next/settings/providers/PlatformIntegrationCard.tsx",
       "packages/studio/src/app-next/settings/providers/PlatformIntegrationDetail.tsx",
     ],
-    currentBehavior: "部分页面已说明未接入，但文案与按钮状态分散，缺少统一 UnsupportedCapability 口径。",
+    currentBehavior: "Container、Worktree terminal/container、Resources 缺失字段、Routines hooks、平台账号 future actions 与 Cline import 均使用 UnsupportedCapability 或等价透明占位；未接入按钮保持 disabled。",
     userRisk: "medium",
     status: "transparent-placeholder",
-    targetBehavior: "统一使用 UnsupportedCapability 或等价组件，所有未接入按钮 disabled 并展示原因。",
+    targetBehavior: "保持统一 UnsupportedCapability 口径，所有未接入按钮 disabled 并展示原因；后续接入真实运行时或 API 后再恢复交互。",
     ownerSpec: OWNER_SPEC,
     verification: [
       "UI 测试断言未接入按钮 disabled",

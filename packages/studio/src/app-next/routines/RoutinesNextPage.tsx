@@ -7,6 +7,7 @@ import { PromptsTab } from "../../components/Routines/PromptsTab";
 import { SkillsTab } from "../../components/Routines/SkillsTab";
 import { SubAgentsTab } from "../../components/Routines/SubAgentsTab";
 import { ToolsTab } from "../../components/Routines/ToolsTab";
+import { UnsupportedCapability } from "../../components/runtime/UnsupportedCapability";
 import { ROUTINES_SCOPE_META, useRoutinesEditor } from "../../components/Routines/use-routines-editor";
 import { MCPServerPanel } from "./MCPServerPanel";
 import type { Routines as RoutinesConfig } from "../../types/routines";
@@ -286,12 +287,14 @@ function RoutineSectionEditor({
 }
 
 function HooksSection() {
-  const [draftOpen, setDraftOpen] = useState(false);
-  const [hookLifecycle, setHookLifecycle] = useState("before_run");
-  const [hookType, setHookType] = useState("shell");
-
   return (
     <div className="space-y-4">
+      <UnsupportedCapability
+        title="Hooks API 未接入"
+        reason="Routines 钩子仍等待真实 hooks API 与持久化执行链路；创建入口保持 disabled，避免生成只存在前端草稿的假钩子。"
+        status="planned"
+        capability="routines.hooks.api"
+      />
       <div className="rounded-xl border border-border bg-muted/20 p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -300,8 +303,12 @@ function HooksSection() {
               钩子分区固定承接 Shell / Webhook / LLM 提示词三类执行方式；后续接入真实 hooks API 时沿用此入口。
             </p>
           </div>
-          <button className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted" onClick={() => setDraftOpen(true)} type="button">
-            创建钩子
+          <button
+            className="rounded-lg border border-border px-3 py-1.5 text-sm text-muted-foreground disabled:opacity-60"
+            disabled
+            type="button"
+          >
+            创建钩子（未接入）
           </button>
         </div>
       </div>
@@ -310,33 +317,6 @@ function HooksSection() {
         <HookTypeCard title="Webhook" description="向外部服务发送事件载荷，用于通知、同步或自动化。" />
         <HookTypeCard title="LLM 提示词" description="以当前上下文触发模型提示词，生成审查或整理结果。" />
       </div>
-      {draftOpen && (
-        <div className="rounded-xl border border-dashed border-border bg-background p-4">
-          <h4 className="font-semibold">新建钩子草稿</h4>
-          <div className="mt-3 grid gap-3 md:grid-cols-2">
-            <label className="text-sm">
-              生命周期节点
-              <select className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" value={hookLifecycle} onChange={(e) => setHookLifecycle(e.target.value)}>
-                <option value="before_run">before_run</option>
-                <option value="after_run">after_run</option>
-                <option value="on_error">on_error</option>
-              </select>
-            </label>
-            <label className="text-sm">
-              类型
-              <select className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" value={hookType} onChange={(e) => setHookType(e.target.value)}>
-                <option value="shell">Shell</option>
-                <option value="webhook">Webhook</option>
-                <option value="llm">LLM 提示词</option>
-              </select>
-            </label>
-          </div>
-          <div className="mt-3 flex gap-2">
-            <button className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground" type="button">创建</button>
-            <button className="rounded-md border border-border px-3 py-1.5 text-sm" type="button" onClick={() => setDraftOpen(false)}>取消</button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

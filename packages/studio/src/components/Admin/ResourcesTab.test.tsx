@@ -946,6 +946,32 @@ describe("ResourcesTab", () => {
     expect(await screen.findByText(/success 4/)).toBeTruthy();
   });
 
+  it("renders missing resource follow-ups as explicit unsupported capabilities", async () => {
+    fetchJsonMock.mockResolvedValueOnce({
+      stats: null,
+      startup: {
+        delivery: { staticMode: "embedded", indexHtmlReady: true, compileSmokeStatus: "success" },
+        recoveryReport: { startedAt: "2026-04-20T10:00:00Z", finishedAt: "2026-04-20T10:00:01Z", durationMs: 1000, counts: { success: 1, skipped: 0, failed: 0 }, actions: [] },
+        failures: [],
+        healthChecks: [],
+        decisions: [],
+      },
+      storage: null,
+    });
+
+    render(<ResourcesTab />);
+
+    expect(await screen.findByText("接入状态")).toBeTruthy();
+    for (const [title, capability] of [
+      ["异常资源列表未接入", "resources.anomaly-list"],
+      ["清理建议未接入", "resources.cleanup-suggestions"],
+      ["扫描历史队列未接入", "resources.scan-history"],
+    ] as const) {
+      expect(screen.getByRole("heading", { name: title })).toBeTruthy();
+      expect(screen.getByText(capability)).toBeTruthy();
+    }
+  });
+
   it("executes ignored external worktree action from startup health checks", async () => {
     fetchJsonMock
       .mockResolvedValueOnce({

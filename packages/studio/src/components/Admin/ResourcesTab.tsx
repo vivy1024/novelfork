@@ -5,6 +5,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Activity, Cpu, HardDrive, Network, RefreshCw, Search, Server, ShieldAlert, Wrench } from "lucide-react";
 
+import { UnsupportedCapability } from "@/components/runtime/UnsupportedCapability";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -763,20 +764,23 @@ export function ResourcesTab() {
                     ))}
                   </div>
                 ) : null}
-                <StatusRow
-                  title="异常资源列表"
-                  description="按文件级别列出损坏附件、孤儿缓存和可疑大文件，而不止目录汇总。"
-                  badge={<Badge variant="outline">待接入</Badge>}
+                <UnsupportedCapability
+                  title="异常资源列表未接入"
+                  reason="当前仅展示目录级扫描汇总；文件级损坏附件、孤儿缓存和可疑大文件列表还没有真实扫描来源。"
+                  status="planned"
+                  capability="resources.anomaly-list"
                 />
-                <StatusRow
-                  title="清理建议"
-                  description="结合扫描历史给出缓存清理、导出产物回收与附件治理建议。"
-                  badge={<Badge variant="outline">待接入</Badge>}
+                <UnsupportedCapability
+                  title="清理建议未接入"
+                  reason="当前不会根据扫描结果生成清理动作，避免把未验证的缓存回收建议展示为可执行治理。"
+                  status="planned"
+                  capability="resources.cleanup-suggestions"
                 />
-                <StatusRow
-                  title="扫描历史队列"
-                  description="保留最近多次扫描的时间序列，方便观察容量增长与异常波动。"
-                  badge={<Badge variant="outline">待接入</Badge>}
+                <UnsupportedCapability
+                  title="扫描历史队列未接入"
+                  reason="当前只展示最新扫描或缓存快照；多次扫描时间序列尚未持久化。"
+                  status="planned"
+                  capability="resources.scan-history"
                 />
               </div>
             </CardContent>
