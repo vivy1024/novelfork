@@ -18,6 +18,7 @@ interface Variant {
 
 export function VariantCompare({ bookId, chapterNumber, selectedText, onAccept }: VariantCompareProps) {
   const [variants, setVariants] = useState<readonly Variant[]>([]);
+  const [promptPreviews, setPromptPreviews] = useState<readonly string[]>([]);
   const [activeIdx, setActiveIdx] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -26,11 +27,17 @@ export function VariantCompare({ bookId, chapterNumber, selectedText, onAccept }
     setLoading(true);
     setError(null);
     try {
-      const res = await postApi<{ variants: readonly Variant[] }>(`/books/${bookId}/variants/generate`, {
+      const res = await postApi<{ variants?: readonly Variant[]; mode?: "prompt-preview"; promptPreviews?: readonly string[]; prompts?: readonly string[] }>(`/books/${bookId}/variants/generate`, {
         selectedText,
         chapterNumber,
       });
-      setVariants(res.variants);
+      if (res.mode === "prompt-preview" || res.promptPreviews) {
+        setPromptPreviews(res.promptPreviews ?? res.prompts ?? []);
+        setVariants([]);
+      } else {
+        setVariants(res.variants ?? []);
+        setPromptPreviews([]);
+      }
       setActiveIdx(0);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -50,6 +57,20 @@ export function VariantCompare({ bookId, chapterNumber, selectedText, onAccept }
       </Button>
 
       {error && <p className="text-xs text-destructive">{error}</p>}
+
+      {promptPreviews.length > 0 && (
+        <div className="space-y-2 rounded-lg border border-dashed border-border bg-muted/20 p-3">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-medium text-amber-600 dark:text-amber-400">Prompt 预览</span>
+            <Button type="button" size="xs" disabled>执行生成（未接入）</Button>
+          </div>
+          <div className="space-y-2">
+            {promptPreviews.map((prompt, index) => (
+              <pre key={index} className="max-h-32 overflow-y-auto whitespace-pre-wrap rounded border border-border bg-background/60 p-2 text-xs leading-6 text-muted-foreground">{prompt}</pre>
+            ))}
+          </div>
+        </div>
+      )}
 
       {variants.length > 0 && (
         <div className="space-y-2">

@@ -27,6 +27,7 @@ export function InlineWritePanel({ bookId, chapterNumber, selectedText, onAccept
   const [mode, setMode] = useState<InlineWriteMode>("continuation");
   const [direction, setDirection] = useState("");
   const [result, setResult] = useState<string | null>(null);
+  const [promptPreview, setPromptPreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -34,13 +35,19 @@ export function InlineWritePanel({ bookId, chapterNumber, selectedText, onAccept
     setLoading(true);
     setError(null);
     try {
-      const res = await postApi<{ content: string }>(`/books/${bookId}/inline-write`, {
+      const res = await postApi<{ content?: string; mode?: "prompt-preview"; promptPreview?: string; prompt?: string }>(`/books/${bookId}/inline-write`, {
         mode,
         selectedText,
         direction: direction.trim() || undefined,
         chapterNumber,
       });
-      setResult(res.content);
+      if (res.mode === "prompt-preview" || res.promptPreview) {
+        setPromptPreview(res.promptPreview ?? res.prompt ?? "");
+        setResult(null);
+      } else {
+        setResult(res.content ?? "");
+        setPromptPreview(null);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -92,6 +99,19 @@ export function InlineWritePanel({ bookId, chapterNumber, selectedText, onAccept
       </Button>
 
       {error && <p className="text-xs text-destructive">{error}</p>}
+
+      {promptPreview && (
+        <div className="space-y-2 rounded-lg border border-dashed border-border bg-muted/20 p-3">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-medium text-amber-600 dark:text-amber-400">Prompt 预览</span>
+            <div className="flex gap-2">
+              <Button type="button" size="xs" variant="outline" onClick={() => void navigator.clipboard?.writeText(promptPreview)}>复制 prompt</Button>
+              <Button type="button" size="xs" disabled>执行生成（未接入）</Button>
+            </div>
+          </div>
+          <pre className="max-h-48 overflow-y-auto whitespace-pre-wrap text-xs leading-6 text-muted-foreground">{promptPreview}</pre>
+        </div>
+      )}
 
       {result && (
         <div className="space-y-2">

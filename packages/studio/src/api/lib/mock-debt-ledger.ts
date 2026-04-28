@@ -184,9 +184,10 @@ export const MOCK_DEBT_ITEMS = [
     module: "Writing modes apply",
     files: [
       "packages/studio/src/api/routes/writing-modes.ts",
+      "packages/studio/src/components/writing-modes/*.tsx",
       "packages/studio/src/app-next/workspace/WorkspacePage.tsx",
     ],
-    currentBehavior: "多个 writing modes endpoint 只返回 prompt，Workspace 的 accept/insert/select 回调绑定 noop，生成内容不会应用。",
+    currentBehavior: "writing modes endpoint 已标注 mode: prompt-preview，相关 UI 显示 Prompt 预览/复制 prompt/执行生成未接入；Workspace 的 accept/insert/select 回调仍待 Task21 处理。",
     userRisk: "critical",
     status: "must-replace",
     targetBehavior: "区分 prompt-preview 与真实 generate；可定位目标时写入章节/编辑器，无法定位时禁用应用按钮。",

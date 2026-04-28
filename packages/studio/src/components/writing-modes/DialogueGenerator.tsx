@@ -24,6 +24,7 @@ export function DialogueGenerator({ bookId, chapterNumber, onInsert }: DialogueG
   const [purpose, setPurpose] = useState<string>(PURPOSE_OPTIONS[0]);
   const [rounds, setRounds] = useState(5);
   const [lines, setLines] = useState<readonly DialogueLine[]>([]);
+  const [promptPreview, setPromptPreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -31,14 +32,20 @@ export function DialogueGenerator({ bookId, chapterNumber, onInsert }: DialogueG
     setLoading(true);
     setError(null);
     try {
-      const res = await postApi<{ lines: readonly DialogueLine[] }>(`/books/${bookId}/dialogue/generate`, {
+      const res = await postApi<{ lines?: readonly DialogueLine[]; mode?: "prompt-preview"; promptPreview?: string; prompt?: string }>(`/books/${bookId}/dialogue/generate`, {
         characters: characters.split(/[,，]/).map((s) => s.trim()).filter(Boolean),
         scene: scene.trim(),
         purpose,
         rounds,
         chapterNumber,
       });
-      setLines(res.lines);
+      if (res.mode === "prompt-preview" || res.promptPreview) {
+        setPromptPreview(res.promptPreview ?? res.prompt ?? "");
+        setLines([]);
+      } else {
+        setLines(res.lines ?? []);
+        setPromptPreview(null);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -75,6 +82,19 @@ export function DialogueGenerator({ bookId, chapterNumber, onInsert }: DialogueG
       </Button>
 
       {error && <p className="text-xs text-destructive">{error}</p>}
+
+      {promptPreview && (
+        <div className="space-y-2 rounded-lg border border-dashed border-border bg-muted/20 p-3">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-medium text-amber-600 dark:text-amber-400">Prompt 预览</span>
+            <div className="flex gap-2">
+              <Button type="button" size="xs" variant="outline" onClick={() => void navigator.clipboard?.writeText(promptPreview)}>复制 prompt</Button>
+              <Button type="button" size="xs" disabled>执行生成（未接入）</Button>
+            </div>
+          </div>
+          <pre className="max-h-48 overflow-y-auto whitespace-pre-wrap text-xs leading-6 text-muted-foreground">{promptPreview}</pre>
+        </div>
+      )}
 
       {lines.length > 0 && (
         <div className="space-y-2">

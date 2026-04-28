@@ -68,7 +68,7 @@ export function createWritingModesRouter(_ctx: RouterContext): Hono {
       prompt = buildBridgePrompt(input, context);
     }
 
-    return c.json({ prompt, mode, bookId });
+    return c.json(buildPromptPreviewResponse(prompt, { bookId, writingMode: mode }));
   });
 
   // ---- POST /api/books/:bookId/dialogue/generate ----
@@ -106,7 +106,7 @@ export function createWritingModesRouter(_ctx: RouterContext): Hono {
     };
 
     const prompt = buildDialoguePrompt(input, context);
-    return c.json({ prompt, bookId });
+    return c.json(buildPromptPreviewResponse(prompt, { bookId }));
   });
 
   // ---- POST /api/books/:bookId/variants/generate ----
@@ -131,7 +131,13 @@ export function createWritingModesRouter(_ctx: RouterContext): Hono {
 
     const count = Math.min(5, Math.max(2, asNumber(body.count) ?? 3));
     const prompts = buildVariantPrompts(input, context, count);
-    return c.json({ prompts, count, bookId });
+    return c.json({
+      mode: "prompt-preview",
+      promptPreviews: prompts,
+      prompts,
+      count,
+      bookId,
+    });
   });
 
   // ---- POST /api/books/:bookId/outline/branch ----
@@ -145,7 +151,7 @@ export function createWritingModesRouter(_ctx: RouterContext): Hono {
     const summaries = Array.isArray(body.summaries) ? body.summaries as { chapterNumber: number; summary: string }[] : [];
 
     const prompt = buildBranchPrompt(outline, hooks, state, summaries);
-    return c.json({ prompt, bookId });
+    return c.json(buildPromptPreviewResponse(prompt, { bookId }));
   });
 
   // ---- POST /api/books/:bookId/outline/branch/:branchId/expand ----
@@ -173,7 +179,7 @@ export function createWritingModesRouter(_ctx: RouterContext): Hono {
       "- 标注伏笔的埋设和回收时机",
     ].join("\n\n");
 
-    return c.json({ prompt, bookId, branchId });
+    return c.json(buildPromptPreviewResponse(prompt, { bookId, branchId }));
   });
 
   // ---- POST /api/works/import ----
@@ -232,6 +238,15 @@ export function createWritingModesRouter(_ctx: RouterContext): Hono {
 }
 
 // ---- Helpers ----
+
+function buildPromptPreviewResponse<T extends Record<string, unknown>>(prompt: string, extra: T) {
+  return {
+    mode: "prompt-preview" as const,
+    promptPreview: prompt,
+    prompt,
+    ...extra,
+  };
+}
 
 type JsonContext = { readonly req: { json: <T>() => Promise<T> } };
 

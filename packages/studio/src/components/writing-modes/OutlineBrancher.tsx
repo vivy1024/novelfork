@@ -20,6 +20,7 @@ export function OutlineBrancher({ bookId, onSelectBranch }: OutlineBrancherProps
   const [branches, setBranches] = useState<readonly Branch[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [expandedContent, setExpandedContent] = useState<string | null>(null);
+  const [promptPreview, setPromptPreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [expanding, setExpanding] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -28,8 +29,14 @@ export function OutlineBrancher({ bookId, onSelectBranch }: OutlineBrancherProps
     setLoading(true);
     setError(null);
     try {
-      const res = await postApi<{ branches: readonly Branch[] }>(`/books/${bookId}/outline/branch`, {});
-      setBranches(res.branches);
+      const res = await postApi<{ branches?: readonly Branch[]; mode?: "prompt-preview"; promptPreview?: string; prompt?: string }>(`/books/${bookId}/outline/branch`, {});
+      if (res.mode === "prompt-preview" || res.promptPreview) {
+        setPromptPreview(res.promptPreview ?? res.prompt ?? "");
+        setBranches([]);
+      } else {
+        setBranches(res.branches ?? []);
+        setPromptPreview(null);
+      }
       setExpandedId(null);
       setExpandedContent(null);
     } catch (e) {
@@ -43,9 +50,9 @@ export function OutlineBrancher({ bookId, onSelectBranch }: OutlineBrancherProps
     setExpanding(true);
     setError(null);
     try {
-      const res = await postApi<{ outline: string }>(`/books/${bookId}/outline/expand`, { branchId });
+      const res = await postApi<{ outline?: string; mode?: "prompt-preview"; promptPreview?: string; prompt?: string }>(`/books/${bookId}/outline/expand`, { branchId });
       setExpandedId(branchId);
-      setExpandedContent(res.outline);
+      setExpandedContent(res.mode === "prompt-preview" || res.promptPreview ? (res.promptPreview ?? res.prompt ?? "") : (res.outline ?? ""));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -62,6 +69,16 @@ export function OutlineBrancher({ bookId, onSelectBranch }: OutlineBrancherProps
       </Button>
 
       {error && <p className="text-xs text-destructive">{error}</p>}
+
+      {promptPreview && (
+        <div className="space-y-2 rounded-lg border border-dashed border-border bg-muted/20 p-3">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-medium text-amber-600 dark:text-amber-400">Prompt 预览</span>
+            <Button type="button" size="xs" disabled>执行生成（未接入）</Button>
+          </div>
+          <pre className="max-h-48 overflow-y-auto whitespace-pre-wrap text-xs leading-6 text-muted-foreground">{promptPreview}</pre>
+        </div>
+      )}
 
       <div className="space-y-2">
         {branches.map((b) => (
