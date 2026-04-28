@@ -107,11 +107,11 @@ export function createAgentConfigRouter() {
    */
   app.post("/allocate-port", async (c) => {
     try {
-      const result = agentConfigService.allocatePort();
+      const result = await agentConfigService.allocatePort();
       if (!result.port) {
         return c.json({ error: result.error }, 400);
       }
-      return c.json({ port: result.port });
+      return c.json({ port: result.port, allocation: result.allocation });
     } catch (error) {
       console.error("Failed to allocate port:", error);
       return c.json({ error: "Failed to allocate port" }, 500);
