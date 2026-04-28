@@ -211,7 +211,7 @@
   - 确认生产主入口不引用该 demo。
   - 验证：静态扫描命中时 ledger 状态为 internal-demo；生产入口无引用。
 
-- [ ] 26. 统一透明占位页面与按钮
+- [x] 26. 统一透明占位页面与按钮
   - 层级目标：透明占位。
   - 用 `UnsupportedCapability` 或等价组件治理 Container、Worktree terminal/container、Resources 缺失字段、Routines hooks、平台账号 future actions、Cline import。
   - 未接入按钮必须 disabled；未接入 API 返回 unsupported。

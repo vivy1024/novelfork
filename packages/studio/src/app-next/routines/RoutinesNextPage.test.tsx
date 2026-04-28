@@ -161,7 +161,7 @@ describe("RoutinesNextPage", () => {
     expect(screen.getByText("memory")).toBeTruthy();
   });
 
-  it("reuses MCP server registry management and exposes hook creation in Task 12 sections", async () => {
+  it("reuses MCP server registry management and renders hooks as transparent unsupported", async () => {
     render(<RoutinesNextPage projectRoot="D:/workspace/novel" />);
 
     await waitFor(() => expect(fetchRoutinesMock).toHaveBeenCalledWith("merged", "D:/workspace/novel"));
@@ -177,11 +177,11 @@ describe("RoutinesNextPage", () => {
     expect(screen.getAllByText(/2 个工具/).length).toBeGreaterThan(0);
 
     fireEvent.click(within(routineNav).getByRole("tab", { name: /钩子/ }));
-    expect(screen.getByText("生命周期节点")).toBeTruthy();
-    expect(screen.getByText("Shell")).toBeTruthy();
-    expect(screen.getByText("Webhook")).toBeTruthy();
-    expect(screen.getByText("LLM 提示词")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "创建钩子" }));
-    expect(screen.getByText("新建钩子草稿")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Hooks API 未接入" })).toBeTruthy();
+    expect(screen.getByText("routines.hooks.api")).toBeTruthy();
+    const createHook = screen.getByRole("button", { name: "创建钩子（未接入）" });
+    expect(createHook.hasAttribute("disabled")).toBe(true);
+    fireEvent.click(createHook);
+    expect(screen.queryByText("新建钩子草稿")).toBeNull();
   });
 });
