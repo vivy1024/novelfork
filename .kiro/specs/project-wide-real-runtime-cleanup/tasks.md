@@ -219,7 +219,7 @@
 
 ### Phase 6：Core / CLI 口径确认与最终反 mock 验收
 
-- [ ] 27. 登记 Core 与 CLI 低风险项
+- [x] 27. 登记 Core 与 CLI 低风险项
   - 层级目标：审计确认。
   - 将 `packages/core/src/**` 的 `(文件尚未创建)` 登记为缺文件哨兵。
   - 确认 `noop-model` 只在 `requireApiKey=false` 的非真实调用路径使用。
