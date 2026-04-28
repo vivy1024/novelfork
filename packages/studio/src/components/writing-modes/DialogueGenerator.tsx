@@ -9,6 +9,7 @@ export interface DialogueGeneratorProps {
   readonly bookId: string;
   readonly chapterNumber: number;
   readonly onInsert: (text: string) => void;
+  readonly applyDisabledReason?: string;
 }
 
 interface DialogueLine {
@@ -18,7 +19,7 @@ interface DialogueLine {
 
 const PURPOSE_OPTIONS = ["推进剧情", "揭示性格", "制造冲突", "传递信息", "缓和气氛"] as const;
 
-export function DialogueGenerator({ bookId, chapterNumber, onInsert }: DialogueGeneratorProps) {
+export function DialogueGenerator({ bookId, chapterNumber, onInsert, applyDisabledReason }: DialogueGeneratorProps) {
   const [characters, setCharacters] = useState("");
   const [scene, setScene] = useState("");
   const [purpose, setPurpose] = useState<string>(PURPOSE_OPTIONS[0]);
@@ -103,7 +104,16 @@ export function DialogueGenerator({ bookId, chapterNumber, onInsert }: DialogueG
               <p key={i}><span className="font-medium">{l.character}</span>："{l.line}"</p>
             ))}
           </div>
-          <Button type="button" size="xs" onClick={() => onInsert(formatDialogue())}>插入到正文</Button>
+          {applyDisabledReason && <p className="text-xs text-muted-foreground">{applyDisabledReason}</p>}
+          <Button
+            type="button"
+            size="xs"
+            onClick={() => onInsert(formatDialogue())}
+            disabled={Boolean(applyDisabledReason)}
+            title={applyDisabledReason}
+          >
+            {applyDisabledReason ? "插入到正文（未接入）" : "插入到正文"}
+          </Button>
         </div>
       )}
     </div>

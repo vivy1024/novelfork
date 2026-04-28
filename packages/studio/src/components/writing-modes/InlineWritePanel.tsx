@@ -11,6 +11,7 @@ export interface InlineWritePanelProps {
   readonly selectedText: string;
   readonly onAccept: (content: string) => void;
   readonly onDiscard: () => void;
+  readonly applyDisabledReason?: string;
 }
 
 type InlineWriteMode = "continuation" | "expansion" | "bridge";
@@ -23,7 +24,7 @@ const MODE_LABELS: Record<InlineWriteMode, string> = {
 
 const EXPANSION_DIRECTIONS = ["感官", "动作", "心理", "环境", "对话"] as const;
 
-export function InlineWritePanel({ bookId, chapterNumber, selectedText, onAccept, onDiscard }: InlineWritePanelProps) {
+export function InlineWritePanel({ bookId, chapterNumber, selectedText, onAccept, onDiscard, applyDisabledReason }: InlineWritePanelProps) {
   const [mode, setMode] = useState<InlineWriteMode>("continuation");
   const [direction, setDirection] = useState("");
   const [result, setResult] = useState<string | null>(null);
@@ -119,8 +120,9 @@ export function InlineWritePanel({ bookId, chapterNumber, selectedText, onAccept
             <span className="text-muted-foreground">{selectedText}</span>
             <span className="text-blue-600 dark:text-blue-400">{result}</span>
           </div>
+          {applyDisabledReason && <p className="text-xs text-muted-foreground">{applyDisabledReason}</p>}
           <div className="flex gap-2">
-            <Button type="button" size="xs" onClick={() => onAccept(result)}>接受</Button>
+            <Button type="button" size="xs" onClick={() => onAccept(result)} disabled={Boolean(applyDisabledReason)} title={applyDisabledReason}>{applyDisabledReason ? "接受（未接入）" : "接受"}</Button>
             <Button type="button" size="xs" variant="outline" onClick={() => void generate()}>重新生成</Button>
             <Button type="button" size="xs" variant="ghost" onClick={onDiscard}>丢弃</Button>
           </div>
