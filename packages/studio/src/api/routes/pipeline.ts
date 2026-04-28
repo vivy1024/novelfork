@@ -34,8 +34,24 @@ interface PipelineRun {
   readonly stages: ReadonlyArray<PipelineStage>;
 }
 
-// In-memory storage for pipeline runs (temporary implementation)
+const PROCESS_MEMORY_PIPELINE_STATE = {
+  persistence: "process-memory" as const,
+  persistenceLabel: "当前进程临时运行状态",
+  persistenceDescription: "Pipeline route 的 run/stage 状态保存在当前 Studio 服务进程中；服务刷新或重启后会丢失，正式持久化将接入 RunStore。",
+};
+
 const pipelineRuns = new Map<string, PipelineRun>();
+
+function withPipelinePersistence<T extends object>(value: T): T & typeof PROCESS_MEMORY_PIPELINE_STATE {
+  return { ...value, ...PROCESS_MEMORY_PIPELINE_STATE };
+}
+
+function withPipelineRunPersistence(run: PipelineRun) {
+  return withPipelinePersistence({
+    ...run,
+    stages: run.stages.map((stage) => withPipelinePersistence(stage)),
+  });
+}
 
 // Listen to pipeline events from core
 pipelineEvents.on((event) => {
@@ -57,10 +73,10 @@ export function createPipelineRouter(ctx: RouterContext): Hono {
     const run = pipelineRuns.get(runId);
 
     if (!run) {
-      return c.json({ error: "Pipeline run not found" }, 404);
+      return c.json({ error: "Pipeline run not found", ...PROCESS_MEMORY_PIPELINE_STATE }, 404);
     }
 
-    return c.json(run);
+    return c.json(withPipelineRunPersistence(run));
   });
 
   // Get all stages for a pipeline run
@@ -69,10 +85,10 @@ export function createPipelineRouter(ctx: RouterContext): Hono {
     const run = pipelineRuns.get(runId);
 
     if (!run) {
-      return c.json({ error: "Pipeline run not found" }, 404);
+      return c.json({ error: "Pipeline run not found", ...PROCESS_MEMORY_PIPELINE_STATE }, 404);
     }
 
-    return c.json({ stages: run.stages });
+    return c.json({ stages: run.stages.map((stage) => withPipelinePersistence(stage)), ...PROCESS_MEMORY_PIPELINE_STATE });
   });
 
   // Get a specific stage
@@ -82,17 +98,17 @@ export function createPipelineRouter(ctx: RouterContext): Hono {
     const run = pipelineRuns.get(runId);
 
     if (!run) {
-      return c.json({ error: "Pipeline run not found" }, 404);
+      return c.json({ error: "Pipeline run not found", ...PROCESS_MEMORY_PIPELINE_STATE }, 404);
     }
 
     const stageIndex = parseInt(stageId, 10);
     const stage = run.stages[stageIndex];
 
     if (!stage) {
-      return c.json({ error: "Stage not found" }, 404);
+      return c.json({ error: "Stage not found", ...PROCESS_MEMORY_PIPELINE_STATE }, 404);
     }
 
-    return c.json(stage);
+    return c.json(withPipelinePersistence(stage));
   });
 
   // SSE endpoint for real-time pipeline events
@@ -103,7 +119,7 @@ export function createPipelineRouter(ctx: RouterContext): Hono {
       // Send initial connection event
       await stream.writeSSE({
         event: "connected",
-        data: JSON.stringify({ runId }),
+        data: JSON.stringify({ runId, ...PROCESS_MEMORY_PIPELINE_STATE }),
       });
 
       const interval = setInterval(async () => {
@@ -115,14 +131,14 @@ export function createPipelineRouter(ctx: RouterContext): Hono {
 
         await stream.writeSSE({
           event: "pipeline:update",
-          data: JSON.stringify(run),
+          data: JSON.stringify(withPipelineRunPersistence(run)),
         });
 
         if (run.status === "completed" || run.status === "failed") {
           clearInterval(interval);
           await stream.writeSSE({
             event: "pipeline:done",
-            data: JSON.stringify({ status: run.status }),
+            data: JSON.stringify({ status: run.status, ...PROCESS_MEMORY_PIPELINE_STATE }),
           });
         }
       }, 1000);
@@ -138,8 +154,8 @@ export function createPipelineRouter(ctx: RouterContext): Hono {
 
   // List all pipeline runs (for debugging)
   app.get("/", (c) => {
-    const runs = Array.from(pipelineRuns.values());
-    return c.json({ runs });
+    const runs = Array.from(pipelineRuns.values()).map((run) => withPipelineRunPersistence(run));
+    return c.json({ runs, ...PROCESS_MEMORY_PIPELINE_STATE });
   });
 
   return app;
