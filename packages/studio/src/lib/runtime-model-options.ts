@@ -6,6 +6,9 @@ export interface RuntimeModelOption {
   readonly enabled?: boolean;
   readonly contextWindow?: number;
   readonly maxOutputTokens?: number;
+  readonly source?: string;
+  readonly lastTestStatus?: string;
+  readonly capabilities?: Record<string, boolean>;
 }
 
 export interface RuntimeModelSelection {
