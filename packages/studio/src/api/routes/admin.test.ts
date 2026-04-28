@@ -25,6 +25,40 @@ describe("createAdminRouter", () => {
     await rm(root, { recursive: true, force: true });
   });
 
+  it("exposes admin users as local single-user read-only mode and rejects CRUD", async () => {
+    const app = createAdminRouter(root);
+
+    const listResponse = await app.request("http://localhost/users");
+    expect(listResponse.status).toBe(200);
+    await expect(listResponse.json()).resolves.toMatchObject({
+      mode: "local-single-user",
+      users: [],
+      userManagement: {
+        code: "unsupported",
+        capability: "admin.users.crud",
+        status: "planned",
+      },
+    });
+
+    for (const [method, url] of [
+      ["POST", "http://localhost/users"],
+      ["PUT", "http://localhost/users/1"],
+      ["DELETE", "http://localhost/users/1"],
+    ] as const) {
+      const response = await app.request(url, {
+        method,
+        body: method === "DELETE" ? undefined : JSON.stringify({ username: "alice", email: "alice@example.com", role: "user" }),
+        headers: method === "DELETE" ? undefined : { "Content-Type": "application/json" },
+      });
+      expect(response.status).toBe(501);
+      await expect(response.json()).resolves.toMatchObject({
+        code: "unsupported",
+        capability: "admin.users.crud",
+        status: "planned",
+      });
+    }
+  });
+
   it("returns real storage scan structure and reuses cached snapshots until forced refresh", async () => {
     const app = createAdminRouter(root);
 

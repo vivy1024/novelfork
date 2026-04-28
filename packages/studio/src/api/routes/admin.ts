@@ -15,6 +15,7 @@ import { WebSocketServer, type WebSocket } from "ws";
 import type { BunWebSocketConnection, BunWebSocketRegistrar, StartedHttpServer } from "../start-http-server.js";
 import { providerManager } from "../lib/provider-manager.js";
 import { getWorktreeStatus, isPathInsideRoot, listWorktrees } from "../lib/git-utils.js";
+import { buildUnsupportedCapabilityResponse } from "../../lib/runtime-capabilities.js";
 import { buildStartupFailureDecisions, type StartupFailureDecision, type StartupFailureDecisionAction, type StartupHealthCheck, type StartupOrchestratorFailurePhase } from "../lib/startup-orchestrator.js";
 import {
   getRequestLogs,
@@ -43,35 +44,10 @@ const STORAGE_TARGETS = [
 
 // --- 用户管理 ---
 
-interface User {
-  id: string;
-  username: string;
-  email: string;
-  role: "admin" | "user";
-  createdAt: Date;
-  lastLogin: Date;
-}
-
-const initialUsers: User[] = [
-  {
-    id: "1",
-    username: "admin",
-    email: "admin@novelfork.local",
-    role: "admin",
-    createdAt: new Date("2026-01-01T00:00:00.000Z"),
-    lastLogin: new Date(),
-  },
-];
-
-function cloneUser(user: User): User {
-  return {
-    ...user,
-    createdAt: new Date(user.createdAt),
-    lastLogin: new Date(user.lastLogin),
-  };
-}
-
-const users: User[] = initialUsers.map(cloneUser);
+const ADMIN_USERS_UNSUPPORTED = buildUnsupportedCapabilityResponse("admin.users.crud", {
+  status: "planned",
+  reason: "NovelFork Studio 当前按本地单用户工具运行，用户管理 CRUD 尚未接入持久化用户系统。",
+});
 
 // --- 请求日志 ---
 
@@ -787,7 +763,6 @@ async function getStorageSnapshot(forceRefresh: boolean, root?: string): Promise
 }
 
 export function resetAdminState() {
-  users.splice(0, users.length, ...initialUsers.map(cloneUser));
   resetRequestHistory();
   networkStats = { sent: 0, received: 0 };
   storageSnapshotCache = null;
@@ -845,60 +820,36 @@ export function createAdminRouter(
   // ===== 用户管理 =====
 
   app.get("/users", (c) => {
-    c.set("adminLogMeta", { narrator: "admin.users", requestKind: "user-admin" });
-    return c.json({ users });
+    c.set("adminLogMeta", {
+      narrator: "admin.users",
+      requestKind: "user-admin",
+      details: "mode=local-single-user;crud=unsupported",
+    });
+    return c.json({
+      mode: "local-single-user",
+      users: [],
+      userManagement: ADMIN_USERS_UNSUPPORTED,
+    });
   });
 
   app.get("/users/:id", (c) => {
-    const id = c.req.param("id");
-    const user = users.find((candidate) => candidate.id === id);
-    c.set("adminLogMeta", { narrator: "admin.users", requestKind: "user-admin" });
-
-    if (!user) {
-      return c.json({ error: "User not found" }, 404);
-    }
-
-    return c.json({ user });
+    c.set("adminLogMeta", { narrator: "admin.users", requestKind: "user-admin", details: "crud=unsupported" });
+    return c.json(ADMIN_USERS_UNSUPPORTED, 501);
   });
 
-  app.post("/users", async (c) => {
-    const body = await c.req.json<Omit<User, "id" | "createdAt" | "lastLogin">>();
-    const newUser: User = {
-      id: String(users.length + 1),
-      ...body,
-      createdAt: new Date(),
-      lastLogin: new Date(),
-    };
-    users.push(newUser);
-    c.set("adminLogMeta", { narrator: "admin.users", requestKind: "user-admin" });
-    return c.json({ user: newUser }, 201);
+  app.post("/users", (c) => {
+    c.set("adminLogMeta", { narrator: "admin.users", requestKind: "user-admin", details: "crud=unsupported" });
+    return c.json(ADMIN_USERS_UNSUPPORTED, 501);
   });
 
-  app.put("/users/:id", async (c) => {
-    const id = c.req.param("id");
-    const updates = await c.req.json<Partial<User>>();
-    const index = users.findIndex((candidate) => candidate.id === id);
-    c.set("adminLogMeta", { narrator: "admin.users", requestKind: "user-admin" });
-
-    if (index === -1) {
-      return c.json({ error: "User not found" }, 404);
-    }
-
-    users[index] = { ...users[index], ...updates };
-    return c.json({ user: users[index] });
+  app.put("/users/:id", (c) => {
+    c.set("adminLogMeta", { narrator: "admin.users", requestKind: "user-admin", details: "crud=unsupported" });
+    return c.json(ADMIN_USERS_UNSUPPORTED, 501);
   });
 
   app.delete("/users/:id", (c) => {
-    const id = c.req.param("id");
-    const index = users.findIndex((candidate) => candidate.id === id);
-    c.set("adminLogMeta", { narrator: "admin.users", requestKind: "user-admin" });
-
-    if (index === -1) {
-      return c.json({ error: "User not found" }, 404);
-    }
-
-    users.splice(index, 1);
-    return c.json({ success: true });
+    c.set("adminLogMeta", { narrator: "admin.users", requestKind: "user-admin", details: "crud=unsupported" });
+    return c.json(ADMIN_USERS_UNSUPPORTED, 501);
   });
 
   // ===== API 供应商管理（复用 providerManager）=====

@@ -169,10 +169,10 @@ export const MOCK_DEBT_ITEMS = [
     id: "admin-users",
     module: "Admin users",
     files: ["packages/studio/src/api/routes/admin.ts", "packages/studio/src/components/Admin/UsersTab.tsx"],
-    currentBehavior: "Admin 用户管理使用 initialUsers 与内存 users 数组，CRUD 重启丢失。",
+    currentBehavior: "Admin 用户管理已降级为本地单用户透明占位：列表不返回伪用户，CRUD API 返回 501 unsupported，UsersTab 按钮 disabled 并显示未接入说明。",
     userRisk: "critical",
-    status: "must-replace",
-    targetBehavior: "本地单用户阶段禁用用户 CRUD 并显示透明占位，或将用户系统写入持久化 store/SQLite。",
+    status: "transparent-placeholder",
+    targetBehavior: "本地单用户阶段保持用户 CRUD disabled/unsupported；后续如启用多用户系统，必须写入持久化 store/SQLite。",
     ownerSpec: OWNER_SPEC,
     verification: [
       "透明占位路径按钮 disabled 并展示本地单用户说明",
