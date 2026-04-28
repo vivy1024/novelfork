@@ -7,7 +7,8 @@
 export { ToolUseCard } from "./ToolUseCard";
 export { ToolResultCard } from "./ToolResultCard";
 export { PermissionPrompt } from "./PermissionPrompt";
-export { ToolUsageExample } from "./ToolUsageExample";
+
+// ToolUsageExample 是内部演示示例，不从生产组件 barrel 导出。
 
 // 类型导出
 export type { ToolUseCardProps } from "./ToolUseCard";
