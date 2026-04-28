@@ -31,6 +31,7 @@ import {
   updateSessionChatAckedSeq,
   updateSessionChatRecoveryJson,
 } from "./session-history-store.js";
+import { generateSessionReply, type LlmRuntimeGenerateResult } from "./llm-runtime-service.js";
 import { getSessionById, updateSession } from "./session-service.js";
 
 const MAX_SESSION_MESSAGES = 50;
@@ -323,11 +324,6 @@ async function loadSessionState(sessionId: string): Promise<{ session: NarratorS
   return { session, state };
 }
 
-function buildAssistantReply(session: NarratorSessionRecord, content: string, sessionMode?: string): string {
-  const modeLabel = sessionMode === "plan" ? "计划模式" : session.sessionMode === "plan" ? "计划模式" : "对话模式";
-  return `【${session.title} · ${modeLabel}】已收到：${content}`;
-}
-
 function normalizeMessageText(raw: RawData | string | ArrayBuffer | ArrayBufferView | Blob | unknown): Promise<string | null> | string | null {
   if (typeof raw === "string") {
     return raw;
@@ -383,11 +379,16 @@ function parseClientMessage(text: string): NarratorSessionChatClientMessage {
   return { content: text };
 }
 
-function createSessionChatError(sessionId: string, error: string): NarratorSessionChatErrorEnvelope {
+function createSessionChatError(
+  sessionId: string,
+  error: string,
+  details: Partial<Omit<NarratorSessionChatErrorEnvelope, "type" | "sessionId" | "error">> = {},
+): NarratorSessionChatErrorEnvelope {
   return {
     type: "session:error",
     sessionId,
     error,
+    ...details,
   };
 }
 
@@ -419,6 +420,35 @@ function updateTransportAck(
 
   transportState.ackedSeq = Math.max(transportState.ackedSeq, Math.min(sanitizeSeq(ackCandidate), createCursor(state).lastSeq));
   return transportState;
+}
+
+async function persistSessionChatProgress(
+  sessionId: string,
+  session: NarratorSessionRecord,
+  state: SessionChatRuntimeState,
+  messages: NarratorSessionChatMessage[],
+  failure?: NarratorSessionRecoveryMetadata["lastFailure"],
+): Promise<NarratorSessionRecord | null> {
+  const persistedHistory = await appendSessionChatHistory(
+    sessionId,
+    messages,
+    session.recentMessages ?? state.messages,
+  );
+
+  if (persistedHistory.length > 0) {
+    state.messageCount = Math.max(state.messageCount, getLastSeq(persistedHistory));
+    state.nextSeq = Math.max(state.nextSeq, state.messageCount + 1);
+    state.availableFromSeq = persistedHistory[0]?.seq ?? state.availableFromSeq;
+  }
+
+  const recovery = buildRecoveryMetadata(state, state.messages, failure);
+  state.recoveryJson = serializeRecoveryMetadata(recovery);
+  await updateSessionChatRecoveryJson(sessionId, state.recoveryJson);
+  return updateSession(sessionId, {
+    messageCount: state.messageCount,
+    recentMessages: [...state.messages],
+    recovery,
+  });
 }
 
 export async function getSessionChatSnapshot(sessionId: string): Promise<NarratorSessionChatSnapshot | null> {
@@ -643,32 +673,51 @@ export async function handleSessionChatTransportMessage(
   });
   broadcastMessageEnvelope(sessionId, loaded.state, userMessage);
 
+  let reply: LlmRuntimeGenerateResult;
+  try {
+    reply = await generateSessionReply({
+      sessionConfig: loaded.session.sessionConfig,
+      messages: loaded.state.messages,
+    });
+  } catch (error) {
+    reply = {
+      success: false,
+      code: "provider-unavailable",
+      error: error instanceof Error ? error.message : "LLM runtime request failed",
+      metadata: {
+        providerId: loaded.session.sessionConfig.providerId,
+        modelId: loaded.session.sessionConfig.modelId,
+      },
+    };
+  }
+
+  if (!reply.success) {
+    const failure = {
+      reason: reply.code,
+      message: reply.error,
+      at: new Date().toISOString(),
+    };
+    const updatedSession = await persistSessionChatProgress(sessionId, loaded.session, loaded.state, [userMessage], failure);
+    sendEnvelope(transport, createSessionChatError(sessionId, reply.error, {
+      code: reply.code,
+      runtime: reply.metadata,
+    }));
+
+    if (updatedSession) {
+      broadcastStateEnvelope(buildServerFirstSession(updatedSession, loaded.state), loaded.state);
+    }
+    return;
+  }
+
   const assistantMessage = appendMessageToState(loaded.state, {
     id: `${userMessage.id}-assistant`,
     role: "assistant",
-    content: buildAssistantReply(loaded.session, content, payload.sessionMode),
+    content: reply.content,
     timestamp: timestamp + 1,
+    runtime: reply.metadata,
   });
 
-  const persistedHistory = await appendSessionChatHistory(
-    sessionId,
-    [userMessage, assistantMessage],
-    loaded.session.recentMessages ?? loaded.state.messages,
-  );
-
-  if (persistedHistory.length > 0) {
-    loaded.state.messageCount = Math.max(loaded.state.messageCount, getLastSeq(persistedHistory));
-    loaded.state.nextSeq = Math.max(loaded.state.nextSeq, loaded.state.messageCount + 1);
-    loaded.state.availableFromSeq = persistedHistory[0]?.seq ?? loaded.state.availableFromSeq;
-  }
-  const recovery = buildRecoveryMetadata(loaded.state, loaded.state.messages);
-  loaded.state.recoveryJson = serializeRecoveryMetadata(recovery);
-  await updateSessionChatRecoveryJson(sessionId, loaded.state.recoveryJson);
-  const updatedSession = await updateSession(sessionId, {
-    messageCount: loaded.state.messageCount,
-    recentMessages: [...loaded.state.messages],
-    recovery,
-  });
+  const updatedSession = await persistSessionChatProgress(sessionId, loaded.session, loaded.state, [userMessage, assistantMessage]);
   broadcastMessageEnvelope(sessionId, loaded.state, assistantMessage);
 
   if (updatedSession) {

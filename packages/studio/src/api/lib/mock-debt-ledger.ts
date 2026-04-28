@@ -78,10 +78,10 @@ export const MOCK_DEBT_ITEMS = [
     id: "session-chat-runtime",
     module: "Session chat runtime",
     files: ["packages/studio/src/api/lib/session-chat-service.ts"],
-    currentBehavior: "buildAssistantReply() 使用本地模板返回“已收到”，用户会误以为收到真实 AI 回复。",
+    currentBehavior: "session-chat-service 已调用 llm runtime service，成功回复来自 provider adapter，失败返回 error envelope 且不生成假 assistant 正文。",
     userRisk: "critical",
-    status: "must-replace",
-    targetBehavior: "会话发送校验 runtime model pool 并调用 llm runtime；失败返回错误 envelope，成功内容来自上游响应。",
+    status: "confirmed-real",
+    targetBehavior: "保持会话发送校验 runtime model pool 并调用 llm runtime；失败返回错误 envelope，成功内容来自上游响应。",
     ownerSpec: OWNER_SPEC,
     verification: [
       "测试断言 assistant 内容来自 llmRuntimeService 返回值",

@@ -3,6 +3,8 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
+let generateSessionReplyMock: ReturnType<typeof vi.fn>;
+
 vi.mock("./user-config-service.js", () => ({
   loadUserConfig: vi.fn(async () => ({
     runtimeControls: {
@@ -15,6 +17,12 @@ vi.mock("./user-config-service.js", () => ({
       subagentModelPool: ["anthropic:claude-sonnet-4-6"],
     },
   })),
+}));
+
+vi.mock("./llm-runtime-service.js", () => ({
+  generateSessionReply: (...args: unknown[]) =>
+    (globalThis as typeof globalThis & { __novelforkGenerateSessionReplyMock: (...args: unknown[]) => unknown })
+      .__novelforkGenerateSessionReplyMock(...args),
 }));
 
 async function loadSessionServices() {
@@ -45,11 +53,21 @@ describe("session-chat-service", () => {
   beforeEach(async () => {
     sessionStoreDir = await mkdtemp(join(tmpdir(), "novelfork-session-chat-"));
     process.env.NOVELFORK_SESSION_STORE_DIR = sessionStoreDir;
+    generateSessionReplyMock = vi.fn().mockResolvedValue({
+      success: true,
+      content: "运行时真实回复",
+      metadata: { providerId: "anthropic", providerName: "Anthropic", modelId: "claude-sonnet-4-6" },
+    });
+    (globalThis as typeof globalThis & { __novelforkGenerateSessionReplyMock: typeof generateSessionReplyMock })
+      .__novelforkGenerateSessionReplyMock = generateSessionReplyMock;
   });
 
   afterEach(async () => {
     const { __testing } = await import("./session-service");
     __testing.resetSessionStoreMutationQueue();
+    generateSessionReplyMock.mockReset();
+    delete (globalThis as typeof globalThis & { __novelforkGenerateSessionReplyMock?: typeof generateSessionReplyMock })
+      .__novelforkGenerateSessionReplyMock;
     delete process.env.NOVELFORK_SESSION_STORE_DIR;
     await rm(sessionStoreDir, { recursive: true, force: true });
   });
@@ -131,12 +149,24 @@ describe("session-chat-service", () => {
         lastSeq: 1,
       },
     });
+    expect(generateSessionReplyMock).toHaveBeenCalledWith(expect.objectContaining({
+      sessionConfig: expect.objectContaining({ providerId: "anthropic", modelId: "claude-sonnet-4-6" }),
+      messages: expect.arrayContaining([
+        expect.objectContaining({ id: "client-message-1", role: "user", content: "继续这一章" }),
+      ]),
+    }));
     expect(assistantEnvelope).toMatchObject({
       type: "session:message",
       message: {
         id: "client-message-1-assistant",
         role: "assistant",
+        content: "运行时真实回复",
         seq: 2,
+        runtime: {
+          providerId: "anthropic",
+          providerName: "Anthropic",
+          modelId: "claude-sonnet-4-6",
+        },
       },
       cursor: {
         lastSeq: 2,
@@ -191,6 +221,62 @@ describe("session-chat-service", () => {
     expect(snapshot?.messages[1]).toMatchObject({
       role: "assistant",
       seq: 2,
+    });
+  }, 10000);
+
+  it("sends an error envelope without fake assistant content when llm runtime fails", async () => {
+    generateSessionReplyMock.mockResolvedValueOnce({
+      success: false,
+      code: "model-unavailable",
+      error: "Runtime model is not available: anthropic:claude-sonnet-4-6",
+      metadata: { providerId: "anthropic", modelId: "claude-sonnet-4-6" },
+    });
+    const {
+      createSession,
+      attachSessionChatTransport,
+      getSessionChatSnapshot,
+      handleSessionChatTransportMessage,
+    } = await loadSessionServices();
+
+    const session = await createSession({
+      title: "失败会话",
+      agentId: "writer",
+      sessionMode: "chat",
+    });
+    const transport = new MockTransport();
+
+    expect(await attachSessionChatTransport(session.id, transport)).toBe(true);
+    await handleSessionChatTransportMessage(
+      session.id,
+      transport,
+      JSON.stringify({
+        type: "session:message",
+        messageId: "client-message-failed",
+        content: "继续写",
+        sessionMode: "chat",
+      }),
+    );
+
+    const envelopes = transport.sent.map((entry) => JSON.parse(entry));
+    expect(envelopes.some((entry) => entry.type === "session:message" && entry.message?.role === "assistant")).toBe(false);
+    expect(envelopes.find((entry) => entry.type === "session:error")).toMatchObject({
+      type: "session:error",
+      code: "model-unavailable",
+      error: "Runtime model is not available: anthropic:claude-sonnet-4-6",
+    });
+
+    const snapshot = await getSessionChatSnapshot(session.id);
+    expect(snapshot?.cursor.lastSeq).toBe(1);
+    expect(snapshot?.messages).toHaveLength(1);
+    expect(snapshot?.messages[0]).toMatchObject({
+      id: "client-message-failed",
+      role: "user",
+      content: "继续写",
+      seq: 1,
+    });
+    expect(snapshot?.session.recovery?.lastFailure).toMatchObject({
+      reason: "model-unavailable",
+      message: "Runtime model is not available: anthropic:claude-sonnet-4-6",
     });
   }, 10000);
 

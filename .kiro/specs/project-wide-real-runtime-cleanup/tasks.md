@@ -117,7 +117,7 @@
   - 如保留组件，必须改为统一模型池客户端，不得继续使用 IndexedDB `provider-config`。
   - 验证：静态扫描不再命中旧组件的 key 长度测试、IndexedDB provider-config 双轨路径。
 
-- [ ] 14. 实现 LLM runtime service 并替换会话假回复
+- [x] 14. 实现 LLM runtime service 并替换会话假回复
   - 层级目标：真实调用。
   - 新增 `packages/studio/src/api/lib/llm-runtime-service.ts`。
   - `session-chat-service.ts` 处理用户消息时读取 sessionConfig provider/model，校验 runtime model pool，然后调用 adapter.generate。
