@@ -71,4 +71,20 @@ describe("mock debt scan", () => {
     expect(report.hits.length).toBeGreaterThan(0);
     expect(report.unregistered).toEqual([]);
   });
+
+  it("confirms Core and CLI low-risk audit boundaries", async () => {
+    const repoRoot = join(process.cwd(), "../..");
+    const hits = await scanProductionSourceForMockDebt(repoRoot);
+    const coreHits = hits.filter((hit) => hit.relativePath.startsWith("packages/core/src/"));
+    const cliHits = hits.filter((hit) => hit.relativePath.startsWith("packages/cli/src/"));
+
+    expect(coreHits).toEqual([
+      expect.objectContaining({
+        relativePath: "packages/core/src/utils/config-loader.ts",
+        keyword: "noop",
+        lineText: expect.stringContaining("noop-model"),
+      }),
+    ]);
+    expect(cliHits).toEqual([]);
+  });
 });

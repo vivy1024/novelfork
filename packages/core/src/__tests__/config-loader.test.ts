@@ -77,4 +77,28 @@ describe("loadProjectConfig local provider auth", () => {
     await writeFile(join(root, ".env"), "", "utf-8");
     await expect(loadProjectConfig(root)).rejects.toThrow(/NOVELFORK_LLM_API_KEY not set/i);
   });
+
+  it("only injects noop-model when API keys are explicitly optional", async () => {
+    root = await mkdtemp(join(tmpdir(), "inkos-config-loader-noop-"));
+    for (const key of ENV_KEYS) {
+      previousEnv.set(key, process.env[key]);
+      process.env[key] = "";
+    }
+
+    await writeFile(join(root, "novelfork.json"), JSON.stringify({
+      name: "audit-project",
+      version: "0.1.0",
+      llm: {},
+    }, null, 2), "utf-8");
+    await writeFile(join(root, ".env"), "", "utf-8");
+
+    await expect(loadProjectConfig(root)).rejects.toThrow(/NOVELFORK_LLM_API_KEY not set/i);
+
+    const config = await loadProjectConfig(root, { requireApiKey: false });
+
+    expect(config.llm.provider).toBe("openai");
+    expect(config.llm.baseUrl).toBe("https://example.invalid/v1");
+    expect(config.llm.model).toBe("noop-model");
+    expect(config.llm.apiKey).toBe("");
+  });
 });
