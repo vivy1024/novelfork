@@ -61,12 +61,21 @@ describe("mock debt ledger", () => {
 
   it("can query and update a ledger copy without mutating the default ledger", () => {
     const original = getMockDebtItem("provider-runtime");
-    const updatedItems = updateMockDebtItemStatus("provider-runtime", "confirmed-real");
+    const updatedItems = updateMockDebtItemStatus("provider-runtime", "transparent-placeholder");
     const updated = getMockDebtItem("provider-runtime", updatedItems);
 
-    expect(original?.status).toBe("must-replace");
-    expect(updated?.status).toBe("confirmed-real");
-    expect(getMockDebtItem("provider-runtime")?.status).toBe("must-replace");
+    expect(original?.status).toBe("confirmed-real");
+    expect(updated?.status).toBe("transparent-placeholder");
+    expect(getMockDebtItem("provider-runtime")?.status).toBe("confirmed-real");
     expect(listMockDebtItems(updatedItems)).toHaveLength(MOCK_DEBT_ITEMS.length);
+  });
+
+  it("has no must-replace items left after final provider-runtime cleanup", () => {
+    const remainingMustReplaceIds = MOCK_DEBT_ITEMS
+      .map((item) => ({ id: item.id, status: String(item.status) }))
+      .filter((item) => item.status === "must-replace")
+      .map((item) => item.id);
+
+    expect(remainingMustReplaceIds).toEqual([]);
   });
 });

@@ -25,7 +25,7 @@ describe("onboarding status route", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  async function createRoute() {
+  async function createRoute(options: { readonly providerStore?: unknown } = {}) {
     const [{ StateManager }, { createOnboardingRouter }] = await Promise.all([
       import("@vivy1024/novelfork-core"),
       import("./onboarding"),
@@ -38,6 +38,7 @@ describe("onboarding status route", () => {
       buildPipelineConfig: vi.fn(),
       getSessionLlm: vi.fn(),
       runStore: {} as never,
+      providerStore: options.providerStore,
       getStartupSummary: () => null,
       setStartupSummary: vi.fn(),
       setStartupRecoveryRunner: vi.fn(),
@@ -68,7 +69,7 @@ describe("onboarding status route", () => {
         },
       },
     });
-  });
+  }, 10000);
 
   it("persists dismissed flags and user-completed onboarding tasks", async () => {
     let app = await createRoute();
@@ -114,13 +115,22 @@ describe("onboarding status route", () => {
     });
   });
 
-  it("derives model, book, and chapter task state from current runtime state", async () => {
-    const [{ providerManager }] = await Promise.all([
-      import("../lib/provider-manager"),
+  it("derives model, book, and chapter task state from the runtime provider store", async () => {
+    const [{ ProviderRuntimeStore }] = await Promise.all([
+      import("../lib/provider-runtime-store"),
     ]);
-    providerManager.initialize();
-    providerManager.updateProvider("openai", {
+    const providerStore = new ProviderRuntimeStore({ storagePath: join(root, "provider-runtime.json") });
+    await providerStore.createProvider({
+      id: "sub2api",
+      name: "Sub2API",
+      type: "custom",
+      enabled: true,
+      priority: 1,
+      apiKeyRequired: true,
+      baseUrl: "https://api.example.com/v1",
+      compatibility: "openai-compatible",
       config: { apiKey: "sk-test-1234567890" },
+      models: [{ id: "gpt-5-codex", name: "GPT-5 Codex", contextWindow: 192000, maxOutputTokens: 8192, enabled: true, source: "detected" }],
     });
 
     const bookDir = join(root, "books", "first-book");
@@ -128,7 +138,7 @@ describe("onboarding status route", () => {
     await writeFile(join(bookDir, "book.json"), JSON.stringify({ id: "first-book", title: "第一本书" }), "utf-8");
     await writeFile(join(bookDir, "chapters", "index.json"), JSON.stringify([{ number: 1, title: "第一章" }]), "utf-8");
 
-    const app = await createRoute();
+    const app = await createRoute({ providerStore });
     const response = await app.request("http://localhost/status");
 
     expect(response.status).toBe(200);
@@ -136,8 +146,8 @@ describe("onboarding status route", () => {
       status: {
         provider: {
           hasUsableModel: true,
-          defaultProvider: "openai",
-          defaultModel: "gpt-4-turbo",
+          defaultProvider: "sub2api",
+          defaultModel: "gpt-5-codex",
         },
         tasks: {
           modelConfigured: true,

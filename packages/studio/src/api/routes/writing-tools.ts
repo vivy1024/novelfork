@@ -20,7 +20,8 @@ import {
 } from "@vivy1024/novelfork-core";
 
 import { requireModelForAiAction } from "../lib/ai-gate.js";
-import { providerManager } from "../lib/provider-manager.js";
+import { ProviderRuntimeStore } from "../lib/provider-runtime-store.js";
+import { buildRuntimeProviderStatus } from "../lib/runtime-model-pool.js";
 import type { RouterContext } from "./context.js";
 
 const PROGRESS_CONFIG_KEY = "writing-tools:progress-config";
@@ -67,7 +68,8 @@ export function createWritingToolsRouter(ctx: RouterContext): Hono {
   app.post("/api/books/:bookId/hooks/generate", async (c) => {
     const body = await readJsonBody(c);
     const sessionLlm = await ctx.getSessionLlm(c);
-    const gate = requireModelForAiAction("ai-writing", providerManager.getRuntimeStatus());
+    const providerStore = ctx.providerStore ?? new ProviderRuntimeStore();
+    const gate = requireModelForAiAction("ai-writing", await buildRuntimeProviderStatus(providerStore));
     if (!gate.ok && !sessionLlm) {
       return c.json({ gate }, 409);
     }

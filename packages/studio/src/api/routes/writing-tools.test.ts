@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { providerManager } from "../lib/provider-manager.js";
+import { ProviderRuntimeStore } from "../lib/provider-runtime-store.js";
 import { createWritingToolsRouter } from "./writing-tools.js";
 
 const coreMocks = vi.hoisted(() => {
@@ -61,7 +61,7 @@ vi.mock("@vivy1024/novelfork-core", () => ({
 
 const tempDirs: string[] = [];
 
-async function createRoute(options: { readonly sessionLlm?: boolean } = {}) {
+async function createRoute(options: { readonly sessionLlm?: boolean; readonly providerStore?: ProviderRuntimeStore } = {}) {
   const root = join(tmpdir(), `novelfork-writing-tools-route-${crypto.randomUUID()}`);
   tempDirs.push(root);
   const bookDir = join(root, "books", "book-1");
@@ -110,6 +110,7 @@ async function createRoute(options: { readonly sessionLlm?: boolean } = {}) {
     buildPipelineConfig: vi.fn(() => Promise.resolve({ client: {}, model: "mock-model" })),
     getSessionLlm: vi.fn(() => Promise.resolve(options.sessionLlm ? { apiKey: "test", baseUrl: "https://example.test", model: "mock-model", provider: "custom" } : undefined)),
     runStore: {} as never,
+    providerStore: options.providerStore,
     getStartupSummary: () => null,
     setStartupSummary: vi.fn(),
     setStartupRecoveryRunner: vi.fn(),
@@ -126,11 +127,26 @@ async function postJson(app: { request: (url: string, init?: RequestInit) => Res
   });
 }
 
+async function createUsableProviderStore() {
+  const runtimeDir = join(tmpdir(), `novelfork-writing-tools-runtime-${crypto.randomUUID()}`);
+  tempDirs.push(runtimeDir);
+  const providerStore = new ProviderRuntimeStore({ storagePath: join(runtimeDir, "provider-runtime.json") });
+  await providerStore.createProvider({
+    id: "sub2api",
+    name: "Sub2API",
+    type: "custom",
+    enabled: true,
+    priority: 1,
+    apiKeyRequired: true,
+    baseUrl: "https://api.example.com/v1",
+    compatibility: "openai-compatible",
+    config: { apiKey: "sk-test" },
+    models: [{ id: "gpt-5-codex", name: "GPT-5 Codex", contextWindow: 192000, maxOutputTokens: 8192, enabled: true, source: "detected" }],
+  });
+  return providerStore;
+}
+
 beforeEach(() => {
-  providerManager.initialize();
-  for (const provider of providerManager.listProviders()) {
-    providerManager.toggleProvider(provider.id, false);
-  }
   coreMocks.kv.clear();
   coreMocks.conflictRecords.length = 0;
   vi.clearAllMocks();
@@ -151,6 +167,26 @@ describe("writing tools routes", () => {
     expect(json.gate.ok).toBe(false);
     expect(json.gate.reason).toBe("model-not-configured");
     expect(coreMocks.generateChapterHooks).not.toHaveBeenCalled();
+  });
+
+  it("generates chapter hooks when the runtime provider store has a usable model", async () => {
+    const providerStore = await createUsableProviderStore();
+    const { app } = await createRoute({ providerStore });
+
+    const response = await postJson(app, "/api/books/book-1/hooks/generate", { chapterNumber: 1, nextChapterIntent: "追查脚步声" });
+
+    expect(response.status).toBe(200);
+    const json = await response.json() as { hooks: Array<{ id: string; text: string }> };
+    expect(json.hooks[0]?.id).toBe("hook-1");
+    expect(coreMocks.generateChapterHooks).toHaveBeenCalledWith(expect.objectContaining({
+      input: expect.objectContaining({
+        chapterNumber: 1,
+        pendingHooks: expect.stringContaining("old-hook"),
+        chapterContent: expect.stringContaining("林月说道"),
+        bookGenre: "xianxia",
+      }),
+      model: "mock-model",
+    }));
   });
 
   it("generates chapter hooks when session LLM is available", async () => {

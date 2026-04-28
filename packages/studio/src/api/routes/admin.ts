@@ -13,7 +13,7 @@ import { promisify } from "node:util";
 import { WebSocketServer, type WebSocket } from "ws";
 
 import type { BunWebSocketConnection, BunWebSocketRegistrar, StartedHttpServer } from "../start-http-server.js";
-import { providerManager } from "../lib/provider-manager.js";
+import { ProviderRuntimeStore } from "../lib/provider-runtime-store.js";
 import { getWorktreeStatus, isPathInsideRoot, listWorktrees } from "../lib/git-utils.js";
 import { buildUnsupportedCapabilityResponse } from "../../lib/runtime-capabilities.js";
 import { buildStartupFailureDecisions, type StartupFailureDecision, type StartupFailureDecisionAction, type StartupHealthCheck, type StartupOrchestratorFailurePhase } from "../lib/startup-orchestrator.js";
@@ -779,6 +779,7 @@ export function createAdminRouter(
     rebuildSearchIndex?: () => Promise<StartupSummarySnapshot | null>;
     cleanupSessionStore?: () => Promise<StartupSummarySnapshot | null>;
     ignoreExternalWorktreePollution?: () => Promise<StartupSummarySnapshot | null>;
+    providerStore?: ProviderRuntimeStore;
   },
 ) {
   const app = new Hono<{ Variables: { adminLogMeta?: AdminLogMeta } }>();
@@ -852,10 +853,11 @@ export function createAdminRouter(
     return c.json(ADMIN_USERS_UNSUPPORTED, 501);
   });
 
-  // ===== API 供应商管理（复用 providerManager）=====
+  // ===== API 供应商管理（读取 provider runtime store）=====
 
-  app.get("/providers", (c) => {
-    const providers = providerManager.listProviders();
+  app.get("/providers", async (c) => {
+    const providerStore = options?.providerStore ?? new ProviderRuntimeStore();
+    const providers = await providerStore.listProviderViews();
     c.set("adminLogMeta", {
       narrator: "admin.providers",
       requestKind: "provider-admin",

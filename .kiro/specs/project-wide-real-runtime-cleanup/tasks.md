@@ -242,7 +242,7 @@
   - 如果仍存在 must-replace，不能宣布 spec 完成。
   - 验证：扫描测试通过，ledger 没有未处理命中。
 
-- [ ] 30. 最终验收与报告
+- [x] 30. 最终验收与报告
   - 层级目标：完成确认。
   - 运行相关单元测试、route 测试、UI 测试、typecheck。
   - 核对 `git status --short` 与相关 diff。
