@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const useApiMock = vi.hoisted(() => vi.fn());
@@ -68,5 +68,45 @@ describe("StudioNextApp", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "创作工作台" }));
     expect(screen.getByText("资源管理器")).toBeTruthy();
+  });
+
+  it("shows imported chapters in the workspace resource tree after dashboard chapter import", async () => {
+    let bookDetail: {
+      book: { id: string; title: string };
+      chapters: Array<{ number: number; title: string; status: string; wordCount: number; updatedAt: string }>;
+      nextChapter: number;
+    } = { book: { id: "b1", title: "测试书" }, chapters: [], nextChapter: 1 };
+    useApiMock.mockImplementation((path: string | null) => {
+      if (path === "/books") return { data: { books: [{ id: "b1", title: "测试书" }] }, loading: false, error: null, refetch: vi.fn() };
+      if (path === "/books/b1") return { data: bookDetail, loading: false, error: null, refetch: vi.fn() };
+      if (path === "/books/b1/candidates") return { data: { candidates: [] }, loading: false, error: null, refetch: vi.fn() };
+      if (path === "/books/b1/story-files") return { data: { files: [] }, loading: false, error: null, refetch: vi.fn() };
+      if (path === "/books/b1/truth-files") return { data: { files: [] }, loading: false, error: null, refetch: vi.fn() };
+      if (path === "/books/b1/drafts") return { data: { drafts: [] }, loading: false, error: null, refetch: vi.fn() };
+      return { data: null, loading: false, error: null, refetch: vi.fn() };
+    });
+    fetchJsonMock.mockImplementation((path: string) => {
+      if (path === "/books/b1/import/chapters") {
+        bookDetail = {
+          book: { id: "b1", title: "测试书" },
+          chapters: [{ number: 1, title: "第一章 导入章", status: "imported", wordCount: 8, updatedAt: "2026-04-29T00:00:00.000Z" }],
+          nextChapter: 2,
+        };
+        return Promise.resolve({ importedCount: 1 });
+      }
+      if (path === "/books/b1/chapters/1") return Promise.resolve({ content: "# 第一章 导入章\n\n导入正文" });
+      return Promise.resolve({});
+    });
+
+    render(<StudioNextApp initialRoute="dashboard" />);
+    fireEvent.click(screen.getByRole("button", { name: "导入" }));
+    fireEvent.change(screen.getByPlaceholderText("粘贴章节文本，系统会自动按章节标题分割…"), { target: { value: "第一章 导入章\n导入正文" } });
+    fireEvent.click(screen.getByRole("button", { name: "导入章节" }));
+
+    await waitFor(() => expect(fetchJsonMock).toHaveBeenCalledWith("/books/b1/import/chapters", expect.objectContaining({ method: "POST" })));
+    fireEvent.click(screen.getByRole("button", { name: "测试书" }));
+
+    const explorer = await screen.findByRole("complementary", { name: "小说资源管理器" });
+    expect(within(explorer).getByRole("button", { name: /第一章 导入章/ })).toBeTruthy();
   });
 });

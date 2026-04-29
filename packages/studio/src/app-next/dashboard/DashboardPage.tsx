@@ -338,24 +338,7 @@ function ImportPanel({ books, onDone }: { readonly books: ReadonlyArray<BookItem
     }
   };
 
-  const handleImportUrl = async () => {
-    if (!url.trim() || !bookId) return;
-    setLoading(true);
-    setError(null);
-    try {
-      await fetchJson(`/books/${bookId}/materials/web-capture`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url }),
-      });
-      setStatus("URL 素材已导入");
-      onDone();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
-    }
-  };
+  const urlImportMessage = "URL 章节导入暂未接入；请先使用章节文本导入，或将网页内容复制为章节文本后导入。";
 
   return (
     <div className="rounded-lg border border-border p-4 space-y-3">
@@ -384,8 +367,14 @@ function ImportPanel({ books, onDone }: { readonly books: ReadonlyArray<BookItem
       {mode === "url" && (
         <>
           <input className="w-full rounded-md border border-border bg-background px-2 py-1 text-sm" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="输入 URL 地址" />
-          <button className="rounded-lg bg-primary px-4 py-1.5 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-50" disabled={loading || !url.trim() || !bookId} onClick={() => void handleImportUrl()} type="button">
-            {loading ? "导入中…" : "导入 URL"}
+          <p className="text-xs text-muted-foreground">{urlImportMessage}</p>
+          <button
+            className="rounded-lg bg-primary px-4 py-1.5 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            disabled
+            title={urlImportMessage}
+            type="button"
+          >
+            URL 导入暂未接入
           </button>
         </>
       )}

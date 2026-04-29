@@ -120,7 +120,7 @@
 |---|---|---|
 | UI 看起来像同色 mock 壳 | 浏览器审计发现 Tailwind theme token 未生成，导致大量按钮样式高度相似 | `novel-creation-workbench-complete-flow` Phase 1 |
 | 资源管理器不完整 | 已能查看章节、候选稿、草稿、story/truth 文件和注册 viewer；mutation 后刷新已统一，仍需做实大纲、经纬、素材、发布报告 | `novel-creation-workbench-complete-flow` Phase 2 |
-| 新建章节、候选稿、草稿与 hook mutation 已形成刷新闭环 | route 已能创建章节记录和正文存储；Workspace mutation 统一重新读取章节、候选、草稿、Story 文件资源，不再维护前端临时节点 | Task 25+ 章节导入联动 |
+| 新建章节、章节导入、候选稿、草稿与 hook mutation 已形成刷新闭环 | route 已能创建章节记录、导入章节文本并写入正文/索引；Workspace mutation 统一重新读取章节、候选、草稿、Story 文件资源，不再维护前端临时节点 | Task 26+ 写作模式应用 |
 | 导出 disabled | 当前不是可用闭环 | Task 37-38 |
 | 写作模式应用 disabled / prompt-preview | 当前不写入正式正文，且应保持透明 | Task 26-28 |
 | 经纬面板 404 与分类壳子 | 结构化经纬 API 已可用，但 Workspace 分类视图仍未完整接入 | Task 32-33 |
@@ -133,7 +133,7 @@
 
 - 已把 runtime/provider/model/session、资源管理器、章节编辑、候选稿、writing tools、writing modes、故事经纬、引导式生成、AI 味、预设、合规、transparent placeholders、internal demo 统一归档。
 - 已明确哪些能力真实可用，哪些只是透明过渡。
-- 已同步小说创作流程、API 文档、测试报告、旧前端退役、新建章节、草稿、候选稿与资源树刷新闭环的当前边界。
+- 已同步小说创作流程、API 文档、测试报告、旧前端退役、新建章节、章节导入、草稿、候选稿与资源树刷新闭环的当前边界。
 - 已保留已知缺口，避免把 spec 后续任务提前写成完成。
 
-后续优先继续 Task 25，补齐章节导入与资源树联动测试。
+后续优先继续 Task 26-28，补齐 writing modes 安全应用 route 与 UI 流程。

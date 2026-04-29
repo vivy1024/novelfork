@@ -15,6 +15,7 @@ const resyncChapterArtifactsMock = vi.fn();
 const writeNextChapterMock = vi.fn();
 const writeDraftMock = vi.fn();
 const rollbackToChapterMock = vi.fn();
+const importChaptersMock = vi.fn();
 const saveChapterIndexMock = vi.fn();
 const loadChapterIndexMock = vi.fn();
 const saveBookConfigMock = vi.fn();
@@ -91,6 +92,7 @@ vi.mock("@vivy1024/novelfork-core", () => {
     resyncChapterArtifacts = resyncChapterArtifactsMock;
     writeNextChapter = writeNextChapterMock;
     writeDraft = writeDraftMock;
+    importChapters = importChaptersMock;
   }
 
   class MockScheduler {
@@ -362,6 +364,7 @@ describe("server integration — core 20 endpoints", () => {
     writeNextChapterMock.mockReset();
     writeDraftMock.mockReset();
     rollbackToChapterMock.mockReset();
+    importChaptersMock.mockReset();
     saveChapterIndexMock.mockReset();
     loadChapterIndexMock.mockReset();
     saveBookConfigMock.mockReset();
@@ -410,6 +413,7 @@ describe("server integration — core 20 endpoints", () => {
       title: "Draft 1",
       wordCount: 3000,
     });
+    importChaptersMock.mockResolvedValue({ bookId: "book-1", importedCount: 1, totalWords: 12, nextChapter: 2 });
 
     loadProjectConfigMock.mockImplementation(async () => {
       const raw = JSON.parse(
@@ -644,6 +648,33 @@ describe("server integration — core 20 endpoints", () => {
       const data = await res.json() as { chapterNumber: number; content: string };
       expect(data.chapterNumber).toBe(1);
       expect(data.content).toContain("重启后仍在");
+    });
+  });
+
+  // ================================================================
+  // 6c. POST /api/books/:id/import/chapters — import chapter text
+  // ================================================================
+
+  describe("POST /api/books/:id/import/chapters", () => {
+    it("splits pasted chapter text and delegates to the import pipeline", async () => {
+      const res = await jsonReq("/api/books/book-1/import/chapters", "POST", {
+        text: "第一章 灵潮初起\n灵气复苏。\n第二章 风起青萍\n山雨欲来。",
+      });
+
+      expect(res.status).toBe(200);
+      const data = await res.json() as { bookId: string; importedCount: number; nextChapter: number };
+      expect(data).toMatchObject({ bookId: "book-1", importedCount: 1, nextChapter: 2 });
+      expect(importChaptersMock).toHaveBeenCalledWith({
+        bookId: "book-1",
+        chapters: [{ title: "Chapter 1", content: "第一章 灵潮初起\n灵气复苏。\n第二章 风起青萍\n山雨欲来。" }],
+      });
+    });
+
+    it("rejects empty chapter imports without starting the pipeline", async () => {
+      const res = await jsonReq("/api/books/book-1/import/chapters", "POST", { text: "   " });
+
+      expect(res.status).toBe(400);
+      expect(importChaptersMock).not.toHaveBeenCalled();
     });
   });
 
