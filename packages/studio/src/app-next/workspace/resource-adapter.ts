@@ -1,4 +1,15 @@
-import type { BookDetail, ChapterSummary } from "../../shared/contracts";
+import type {
+  BibleEntryResource,
+  BibleResourceCounts,
+  BookDetail,
+  ChapterSummary,
+  DraftResource,
+  GeneratedChapterCandidate,
+  MaterialResource,
+  PublishReportResource,
+  TextFileResource,
+  WorkspaceResourceSnapshot,
+} from "../../shared/contracts";
 
 export type StudioResourceKind =
   | "book"
@@ -9,6 +20,11 @@ export type StudioResourceKind =
   | "outline"
   | "bible"
   | "bible-category"
+  | "bible-entry"
+  | "story-file"
+  | "truth-file"
+  | "material"
+  | "publish-report"
   | "group";
 
 export interface StudioResourceEmptyState {
@@ -31,40 +47,7 @@ export interface StudioResourceNode {
   readonly children?: readonly StudioResourceNode[];
 }
 
-export interface GeneratedChapterCandidate {
-  readonly id: string;
-  readonly bookId: string;
-  readonly targetChapterId?: string;
-  readonly title: string;
-  readonly source: string;
-  readonly createdAt: string;
-  readonly status: "candidate" | "accepted" | "rejected" | "archived";
-}
-
-export interface DraftResource {
-  readonly id: string;
-  readonly bookId: string;
-  readonly title: string;
-  readonly updatedAt: string;
-  readonly wordCount?: number;
-}
-
-export interface BibleResourceCounts {
-  readonly characters?: number;
-  readonly locations?: number;
-  readonly factions?: number;
-  readonly items?: number;
-  readonly foreshadowing?: number;
-  readonly worldRules?: number;
-}
-
-export interface StudioResourceTreeInput {
-  readonly book: BookDetail;
-  readonly chapters: readonly ChapterSummary[];
-  readonly generatedChapters?: readonly GeneratedChapterCandidate[];
-  readonly drafts?: readonly DraftResource[];
-  readonly bibleCounts?: BibleResourceCounts;
-}
+export type StudioResourceTreeInput = WorkspaceResourceSnapshot;
 
 const BIBLE_CATEGORIES: ReadonlyArray<{
   readonly key: keyof BibleResourceCounts;
@@ -79,17 +62,35 @@ const BIBLE_CATEGORIES: ReadonlyArray<{
 ];
 
 export function buildStudioResourceTree(input: StudioResourceTreeInput): readonly StudioResourceNode[] {
-  const { book, chapters, generatedChapters = [], drafts = [], bibleCounts = {} } = input;
+  const {
+    book,
+    chapters,
+    generatedChapters = [],
+    drafts = [],
+    bibleCounts = {},
+    bibleEntries = [],
+    storyFiles = [],
+    truthFiles = [],
+    materials = [],
+    publishReports = [],
+  } = input;
   const formalChapterNodes = chapters.map((chapter) => toChapterNode(book.id, chapter));
   const generatedNodes = generatedChapters.map(toGeneratedChapterNode);
   const draftNodes = drafts.map(toDraftNode);
-  const bibleCategoryNodes = BIBLE_CATEGORIES.map(({ key, title }) => ({
-    id: `bible:${key}`,
-    kind: "bible-category" as const,
-    title,
-    count: bibleCounts[key] ?? 0,
-    metadata: { category: key },
-  }));
+  const bibleCategoryNodes = BIBLE_CATEGORIES.map(({ key, title }) => {
+    const entryNodes = bibleEntries
+      .filter((entry) => entry.category === key)
+      .map(toBibleEntryNode);
+
+    return {
+      id: `bible:${String(key)}`,
+      kind: "bible-category" as const,
+      title,
+      count: bibleCounts[key] ?? entryNodes.length,
+      metadata: { category: key },
+      children: entryNodes,
+    };
+  });
 
   const formalGroup = groupNode({
     id: "group:formal-chapters",
@@ -161,6 +162,30 @@ export function buildStudioResourceTree(input: StudioResourceTreeInput): readonl
     forceEmptyWhenEveryChildCountIsZero: true,
   });
 
+  const storyFilesGroup = groupNode({
+    id: "group:story-files",
+    title: "Story 文件",
+    children: storyFiles.map((file) => toStoryFileNode(book.id, file)),
+  });
+
+  const truthFilesGroup = groupNode({
+    id: "group:truth-files",
+    title: "Truth 文件",
+    children: truthFiles.map((file) => toTruthFileNode(book.id, file)),
+  });
+
+  const materialsGroup = groupNode({
+    id: "group:materials",
+    title: "素材",
+    children: materials.map(toMaterialNode),
+  });
+
+  const publishReportsGroup = groupNode({
+    id: "group:publish-reports",
+    title: "发布报告",
+    children: publishReports.map(toPublishReportNode),
+  });
+
   return [
     {
       id: `book:${book.id}`,
@@ -174,7 +199,7 @@ export function buildStudioResourceTree(input: StudioResourceTreeInput): readonl
         totalWords: book.totalWords,
         updatedAt: book.updatedAt,
       },
-      children: [volumeNode, generatedGroup, draftsGroup, outlineNode, bibleGroup],
+      children: [volumeNode, generatedGroup, draftsGroup, outlineNode, bibleGroup, storyFilesGroup, truthFilesGroup, materialsGroup, publishReportsGroup],
     },
   ];
 }
@@ -189,11 +214,13 @@ function groupNode({
   readonly id: string;
   readonly title: string;
   readonly children: readonly StudioResourceNode[];
-  readonly emptyState: StudioResourceEmptyState;
+  readonly emptyState?: StudioResourceEmptyState;
   readonly forceEmptyWhenEveryChildCountIsZero?: boolean;
 }): StudioResourceNode {
   const hasChildren = children.length > 0;
   const everyChildCountIsZero = hasChildren && children.every((child) => (child.count ?? 0) === 0);
+
+  const shouldShowEmptyState = Boolean(emptyState) && (!hasChildren || (forceEmptyWhenEveryChildCountIsZero && everyChildCountIsZero));
 
   return {
     id,
@@ -201,7 +228,7 @@ function groupNode({
     title,
     count: children.reduce((sum, child) => sum + (child.count ?? 1), 0),
     children,
-    emptyState: !hasChildren || (forceEmptyWhenEveryChildCountIsZero && everyChildCountIsZero) ? emptyState : undefined,
+    emptyState: shouldShowEmptyState ? emptyState : undefined,
   };
 }
 
@@ -249,6 +276,74 @@ function toDraftNode(draft: DraftResource): StudioResourceNode {
     metadata: {
       bookId: draft.bookId,
       updatedAt: draft.updatedAt,
+    },
+  };
+}
+
+function toBibleEntryNode(entry: BibleEntryResource): StudioResourceNode {
+  return {
+    id: `bible-entry:${entry.category}:${entry.id}`,
+    kind: "bible-entry",
+    title: entry.title,
+    subtitle: entry.summary,
+    metadata: {
+      category: entry.category,
+      entryId: entry.id,
+    },
+  };
+}
+
+function toStoryFileNode(bookId: string, file: TextFileResource): StudioResourceNode {
+  return {
+    id: `story-file:${file.id}`,
+    kind: "story-file",
+    title: file.title,
+    subtitle: file.path,
+    metadata: {
+      bookId,
+      path: file.path,
+      fileType: file.fileType ?? "markdown",
+    },
+  };
+}
+
+function toTruthFileNode(bookId: string, file: TextFileResource): StudioResourceNode {
+  return {
+    id: `truth-file:${file.id}`,
+    kind: "truth-file",
+    title: file.title,
+    subtitle: file.path,
+    metadata: {
+      bookId,
+      path: file.path,
+      fileType: file.fileType ?? "markdown",
+    },
+  };
+}
+
+function toMaterialNode(material: MaterialResource): StudioResourceNode {
+  return {
+    id: `material:${material.id}`,
+    kind: "material",
+    title: material.title,
+    subtitle: material.source,
+    metadata: {
+      source: material.source,
+      updatedAt: material.updatedAt,
+    },
+  };
+}
+
+function toPublishReportNode(report: PublishReportResource): StudioResourceNode {
+  return {
+    id: `publish-report:${report.id}`,
+    kind: "publish-report",
+    title: report.title,
+    subtitle: report.channel,
+    status: report.status,
+    metadata: {
+      channel: report.channel,
+      updatedAt: report.updatedAt,
     },
   };
 }

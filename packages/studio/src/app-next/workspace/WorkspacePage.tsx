@@ -4,7 +4,6 @@ import { ResourceWorkspaceLayout, SectionLayout } from "../components/layouts";
 import { useAiModelGate } from "../../hooks/use-ai-model-gate";
 import {
   buildStudioResourceTree,
-  type GeneratedChapterCandidate,
   type StudioResourceNode,
   type StudioResourceTreeInput,
 } from "./resource-adapter";
@@ -12,7 +11,7 @@ import { BiblePanel } from "./BiblePanel";
 import { PublishPanel } from "./PublishPanel";
 import { fetchJson, useApi } from "../../hooks/use-api";
 import type { AiAction, AiGateResult } from "../../lib/ai-gate";
-import type { BookDetail, ChapterSummary } from "../../shared/contracts";
+import type { BookDetail, ChapterSummary, GeneratedChapterCandidate } from "../../shared/contracts";
 import { ChapterHookGenerator, type GeneratedHookOption } from "../../components/writing-tools/ChapterHookGenerator";
 import { DialogueAnalysis, type DialogueAnalysisResult } from "../../components/writing-tools/DialogueAnalysis";
 import { RhythmChart, type RhythmChartAnalysis } from "../../components/writing-tools/RhythmChart";
@@ -27,6 +26,17 @@ import { CharacterArcDashboard } from "../../components/writing-tools/CharacterA
 import { ToneDriftAlert } from "../../components/writing-tools/ToneDriftAlert";
 import { InlineError, RunStatus } from "../components/feedback";
 import { InkEditor, getMarkdown } from "../../components/InkEditor";
+import { Button } from "../../components/ui/button";
+import {
+  BibleEntryEditor,
+  DraftEditor,
+  MarkdownViewer,
+  MaterialViewer,
+  OutlineEditor,
+  PublishReportViewer,
+  resolveWorkspaceNodeViewKind,
+  UnsupportedWorkspaceNodeView,
+} from "./resource-view-registry";
 
 /* ── API response shapes ── */
 
@@ -63,6 +73,16 @@ interface BookDetailResponse {
 
 interface CandidatesResponse {
   readonly candidates: ReadonlyArray<GeneratedChapterCandidate>;
+}
+
+interface WorkspaceTextFileSummary {
+  readonly name: string;
+  readonly size: number;
+  readonly preview: string;
+}
+
+interface WorkspaceTextFileListResponse {
+  readonly files: ReadonlyArray<WorkspaceTextFileSummary>;
 }
 
 export interface WorkspaceChapterApi {
@@ -155,6 +175,8 @@ export function WorkspacePage({
   /* ── load selected book detail + candidates ── */
   const { data: bookDetail } = useApi<BookDetailResponse>(activeBookId ? `/books/${activeBookId}` : null);
   const { data: candidatesData } = useApi<CandidatesResponse>(activeBookId ? `/books/${activeBookId}/candidates` : null);
+  const { data: storyFilesData } = useApi<WorkspaceTextFileListResponse>(activeBookId ? `/books/${activeBookId}/story-files` : null);
+  const { data: truthFilesData } = useApi<WorkspaceTextFileListResponse>(activeBookId ? `/books/${activeBookId}/truth-files` : null);
 
   /* ── build resource tree from real data or fallback ── */
   const treeInput: StudioResourceTreeInput = useMemo(() => {
@@ -165,7 +187,7 @@ export function WorkspacePage({
         totalWords: 0, approvedChapters: 0, pendingReview: 0, pendingReviewChapters: 0,
         failedReview: 0, failedChapters: 0, updatedAt: "", createdAt: "", chapterWordCount: 0, language: null,
       },
-      chapters: [], generatedChapters: [], drafts: [], bibleCounts: {},
+      chapters: [], generatedChapters: [], drafts: [], bibleCounts: {}, bibleEntries: [], storyFiles: [], truthFiles: [], materials: [], publishReports: [],
     };
     const b = bookDetail.book;
     const chs = bookDetail.chapters ?? [];
@@ -186,8 +208,31 @@ export function WorkspacePage({
       wordCount: c.wordCount ?? 0, auditIssueCount: 0, updatedAt: "", fileName: c.fileName ?? null,
     }));
     const candidates = (candidatesData?.candidates ?? []).filter((c) => c.status === "candidate");
-    return { book, chapters, generatedChapters: candidates, drafts: [], bibleCounts: {} };
-  }, [bookDetail, candidatesData]);
+    const storyFiles = (storyFilesData?.files ?? []).map((file) => ({
+      id: file.name,
+      title: file.name,
+      path: `story/${file.name}`,
+      fileType: file.name.endsWith(".json") ? "text" as const : "markdown" as const,
+    }));
+    const truthFiles = (truthFilesData?.files ?? []).map((file) => ({
+      id: file.name,
+      title: file.name,
+      path: `truth/${file.name}`,
+      fileType: file.name.endsWith(".json") ? "text" as const : "markdown" as const,
+    }));
+    return {
+      book,
+      chapters,
+      generatedChapters: candidates,
+      drafts: [],
+      bibleCounts: {},
+      bibleEntries: [],
+      storyFiles,
+      truthFiles,
+      materials: [],
+      publishReports: [],
+    };
+  }, [bookDetail, candidatesData, storyFilesData, truthFilesData]);
 
   const tree = useMemo(() => buildStudioResourceTree(treeInput), [treeInput]);
   const defaultNodeId = tree[0]?.children?.[0]?.children?.[0]?.children?.[0]?.id ?? tree[0]?.children?.[0]?.children?.[0]?.id ?? tree[0]?.id ?? "";
@@ -213,13 +258,13 @@ export function WorkspacePage({
             </select>
           </label>
           <div className="flex items-center gap-1.5">
-            <button className="rounded-md border border-border px-2 py-1 text-xs hover:bg-muted" type="button" disabled title="即将推出">新建章节</button>
-            <button className="rounded-md border border-border px-2 py-1 text-xs hover:bg-muted" type="button" disabled title="即将推出">导出</button>
+            <Button size="sm" variant="default" type="button" disabled title="即将推出">新建章节</Button>
+            <Button size="sm" variant="outline" type="button" disabled title="即将推出">导出</Button>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <button className={`rounded border px-2 py-0.5 text-xs hover:bg-muted ${showPublishPanel ? "border-primary bg-primary/10 text-primary" : "border-border"}`} onClick={() => setShowPublishPanel(!showPublishPanel)} type="button">发布就绪</button>
-          <button disabled className="rounded border border-border px-2 py-0.5 text-xs hover:bg-muted disabled:opacity-50" title="即将推出" type="button">预设管理</button>
+          <Button size="sm" variant={showPublishPanel ? "default" : "outline"} onClick={() => setShowPublishPanel(!showPublishPanel)} type="button">发布就绪</Button>
+          <Button size="sm" variant="outline" disabled title="即将推出" type="button">预设管理</Button>
         </div>
       </div>
 
@@ -306,33 +351,36 @@ function WorkspaceEditor({
   readonly chapterApi: WorkspaceChapterApi;
   readonly node: StudioResourceNode;
 }) {
-  if (node.kind === "generated-chapter") {
-    return <CandidateEditor candidateApi={candidateApi} node={node} />;
-  }
-
-  if (node.kind === "chapter") {
-    return <ChapterEditor chapterApi={chapterApi} node={node} />;
-  }
-
-  if (node.kind === "bible-category") {
-    return (
-      <div className="space-y-4">
-        <EditorHeader title={node.title} meta="经纬资料详情" />
-        <div className="rounded-lg border border-border bg-muted/20 p-4 text-sm text-muted-foreground">
-          {node.title}：{node.count ?? 0} 项
+  switch (resolveWorkspaceNodeViewKind(node)) {
+    case "candidate-editor":
+      return <CandidateEditor candidateApi={candidateApi} node={node} />;
+    case "chapter-editor":
+      return <ChapterEditor chapterApi={chapterApi} node={node} />;
+    case "bible-category-view":
+      return (
+        <div className="space-y-4">
+          <EditorHeader title={node.title} meta="经纬资料详情" />
+          <div className="rounded-lg border border-dashed border-border p-4 text-center text-sm text-muted-foreground">
+            后续会在这里接入当前分类的真实条目列表与编辑器。
+          </div>
         </div>
-      </div>
-    );
+      );
+    case "draft-editor":
+      return <DraftEditor node={node} />;
+    case "outline-editor":
+      return <OutlineEditor node={node} />;
+    case "bible-entry-editor":
+      return <BibleEntryEditor node={node} />;
+    case "markdown-viewer":
+      return <MarkdownViewer node={node} />;
+    case "material-viewer":
+      return <MaterialViewer node={node} />;
+    case "publish-report-viewer":
+      return <PublishReportViewer node={node} />;
+    case "unsupported":
+    default:
+      return <UnsupportedWorkspaceNodeView node={node} />;
   }
-
-  return (
-    <div className="space-y-4">
-      <EditorHeader title={node.title} meta={node.status ?? node.kind} />
-      <div className="rounded-lg border border-dashed border-border p-4 text-center text-sm text-muted-foreground">
-        选择左侧内容开始编辑
-      </div>
-    </div>
-  );
 }
 
 function CandidateEditor({ candidateApi, node }: { readonly candidateApi: WorkspaceCandidateApi; readonly node: StudioResourceNode }) {
@@ -373,19 +421,19 @@ function CandidateEditor({ candidateApi, node }: { readonly candidateApi: Worksp
             影响范围：{pendingAction === "merge" ? "追加到正式章节末尾，保留原正文。" : "用候选稿替换目标正式章节正文。"}
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
-            <button className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted" onClick={() => runAction(() => accept(pendingAction))} type="button">
+            <Button size="sm" onClick={() => runAction(() => accept(pendingAction))} type="button">
               {pendingAction === "merge" ? "确认合并" : "确认替换"}
-            </button>
-            <button className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted" onClick={() => setPendingAction(null)} type="button">取消</button>
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setPendingAction(null)} type="button">取消</Button>
           </div>
         </div>
       )}
       <textarea aria-label="章节正文" className="min-h-[22rem] w-full resize-none rounded-lg border border-border bg-background p-4 leading-7" defaultValue="" />
       <div className="flex flex-wrap gap-2">
-        <button className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted" onClick={() => setPendingAction("merge")} type="button">合并到正式章节</button>
-        <button className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted" onClick={() => setPendingAction("replace")} type="button">替换正式章节</button>
-        <button className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted" onClick={() => runAction(() => accept("draft"))} type="button">另存为草稿</button>
-        <button className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted" onClick={() => runAction(reject)} type="button">放弃候选稿</button>
+        <Button size="sm" variant="outline" onClick={() => setPendingAction("merge")} type="button">合并到正式章节</Button>
+        <Button size="sm" variant="outline" onClick={() => setPendingAction("replace")} type="button">替换正式章节</Button>
+        <Button size="sm" variant="outline" onClick={() => runAction(() => accept("draft"))} type="button">另存为草稿</Button>
+        <Button size="sm" variant="destructive" onClick={() => runAction(reject)} type="button">放弃候选稿</Button>
       </div>
     </div>
   );
@@ -601,12 +649,12 @@ function WritingModesPanel({ selectedNode }: { readonly selectedNode: StudioReso
           <div className="flex flex-wrap gap-1">
             {isChapterContext && (
               <>
-                <button className={`rounded-lg px-2 py-1 text-xs ${activeMode === "inline" ? "bg-primary text-primary-foreground" : "border border-border hover:bg-muted"}`} onClick={() => setActiveMode("inline")} type="button">续写/扩写/补写</button>
-                <button className={`rounded-lg px-2 py-1 text-xs ${activeMode === "dialogue-gen" ? "bg-primary text-primary-foreground" : "border border-border hover:bg-muted"}`} onClick={() => setActiveMode("dialogue-gen")} type="button">对话生成</button>
-                <button className={`rounded-lg px-2 py-1 text-xs ${activeMode === "variants" ? "bg-primary text-primary-foreground" : "border border-border hover:bg-muted"}`} onClick={() => setActiveMode("variants")} type="button">多版本</button>
+                <Button size="xs" variant={activeMode === "inline" ? "default" : "outline"} onClick={() => setActiveMode("inline")} type="button">续写/扩写/补写</Button>
+                <Button size="xs" variant={activeMode === "dialogue-gen" ? "default" : "outline"} onClick={() => setActiveMode("dialogue-gen")} type="button">对话生成</Button>
+                <Button size="xs" variant={activeMode === "variants" ? "default" : "outline"} onClick={() => setActiveMode("variants")} type="button">多版本</Button>
               </>
             )}
-            <button className={`rounded-lg px-2 py-1 text-xs ${activeMode === "outline" ? "bg-primary text-primary-foreground" : "border border-border hover:bg-muted"}`} onClick={() => setActiveMode("outline")} type="button">大纲分支</button>
+            <Button size="xs" variant={activeMode === "outline" ? "default" : "outline"} onClick={() => setActiveMode("outline")} type="button">大纲分支</Button>
           </div>
 
           <p className="rounded-lg border border-dashed border-border bg-background/60 p-2 text-xs text-muted-foreground">
@@ -704,26 +752,26 @@ function WritingToolsPanel({ selectedNode }: { readonly selectedNode: StudioReso
           <div className="flex flex-wrap gap-1">
             {isChapterContext && (
               <>
-                <button className={`rounded-lg px-2 py-1 text-xs ${activeTab === "rhythm" ? "bg-primary text-primary-foreground" : "border border-border hover:bg-muted"}`} onClick={() => setActiveTab("rhythm")} type="button">节奏分析</button>
-                <button className={`rounded-lg px-2 py-1 text-xs ${activeTab === "dialogue" ? "bg-primary text-primary-foreground" : "border border-border hover:bg-muted"}`} onClick={() => setActiveTab("dialogue")} type="button">对话分析</button>
-                <button className={`rounded-lg px-2 py-1 text-xs ${activeTab === "hooks" ? "bg-primary text-primary-foreground" : "border border-border hover:bg-muted"}`} onClick={() => setActiveTab("hooks")} type="button">钩子生成</button>
+                <Button size="xs" variant={activeTab === "rhythm" ? "default" : "outline"} onClick={() => setActiveTab("rhythm")} type="button">节奏分析</Button>
+                <Button size="xs" variant={activeTab === "dialogue" ? "default" : "outline"} onClick={() => setActiveTab("dialogue")} type="button">对话分析</Button>
+                <Button size="xs" variant={activeTab === "hooks" ? "default" : "outline"} onClick={() => setActiveTab("hooks")} type="button">钩子生成</Button>
               </>
             )}
-            <button className={`rounded-lg px-2 py-1 text-xs ${activeTab === "progress" ? "bg-primary text-primary-foreground" : "border border-border hover:bg-muted"}`} onClick={() => setActiveTab("progress")} type="button">日更进度</button>
-            <button className={`rounded-lg px-2 py-1 text-xs ${activeTab === "health" ? "bg-primary text-primary-foreground" : "border border-border hover:bg-muted"}`} onClick={() => setActiveTab("health")} type="button">全书健康</button>
-            <button className={`rounded-lg px-2 py-1 text-xs ${activeTab === "conflicts" ? "bg-primary text-primary-foreground" : "border border-border hover:bg-muted"}`} onClick={() => setActiveTab("conflicts")} type="button">矛盾地图</button>
-            <button className={`rounded-lg px-2 py-1 text-xs ${activeTab === "arcs" ? "bg-primary text-primary-foreground" : "border border-border hover:bg-muted"}`} onClick={() => setActiveTab("arcs")} type="button">角色弧线</button>
+            <Button size="xs" variant={activeTab === "progress" ? "default" : "outline"} onClick={() => setActiveTab("progress")} type="button">日更进度</Button>
+            <Button size="xs" variant={activeTab === "health" ? "default" : "outline"} onClick={() => setActiveTab("health")} type="button">全书健康</Button>
+            <Button size="xs" variant={activeTab === "conflicts" ? "default" : "outline"} onClick={() => setActiveTab("conflicts")} type="button">矛盾地图</Button>
+            <Button size="xs" variant={activeTab === "arcs" ? "default" : "outline"} onClick={() => setActiveTab("arcs")} type="button">角色弧线</Button>
             {isChapterContext && (
-              <button className={`rounded-lg px-2 py-1 text-xs ${activeTab === "tone" ? "bg-primary text-primary-foreground" : "border border-border hover:bg-muted"}`} onClick={() => setActiveTab("tone")} type="button">文风守护</button>
+              <Button size="xs" variant={activeTab === "tone" ? "default" : "outline"} onClick={() => setActiveTab("tone")} type="button">文风守护</Button>
             )}
           </div>
 
           {isChapterContext && activeTab === "rhythm" && (
             <div className="space-y-2">
               {!rhythmAnalysis && !analysisLoading && (
-                <button className="w-full rounded-lg border border-border px-3 py-1.5 text-xs hover:bg-muted" onClick={() => void loadAnalysis()} type="button">
+                <Button className="w-full" size="sm" onClick={() => void loadAnalysis()} type="button">
                   运行节奏 + 对话分析
-                </button>
+                </Button>
               )}
               {analysisLoading && <p className="text-xs text-muted-foreground">正在分析...</p>}
               {analysisError && <p className="text-xs text-destructive">分析失败：{analysisError}</p>}
@@ -734,9 +782,9 @@ function WritingToolsPanel({ selectedNode }: { readonly selectedNode: StudioReso
           {isChapterContext && activeTab === "dialogue" && (
             <div className="space-y-2">
               {!dialogueAnalysis && !analysisLoading && (
-                <button className="w-full rounded-lg border border-border px-3 py-1.5 text-xs hover:bg-muted" onClick={() => void loadAnalysis()} type="button">
+                <Button className="w-full" size="sm" onClick={() => void loadAnalysis()} type="button">
                   运行节奏 + 对话分析
-                </button>
+                </Button>
               )}
               {analysisLoading && <p className="text-xs text-muted-foreground">正在分析...</p>}
               {analysisError && <p className="text-xs text-destructive">分析失败：{analysisError}</p>}

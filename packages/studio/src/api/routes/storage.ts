@@ -111,6 +111,25 @@ function presetPromptLines(presets: ReadonlyArray<Preset>): string {
   return presets.map((preset) => `## ${preset.name}\n\n${preset.promptInjection}`).join("\n\n");
 }
 
+function isSafeStoryFileName(file: string): boolean {
+  return /^[A-Za-z0-9_.-]+$/.test(file) && /\.(md|json|txt)$/i.test(file);
+}
+
+async function listStoryFiles(storyDir: string, filter?: (file: string) => boolean): Promise<Array<{ name: string; size: number; preview: string }>> {
+  try {
+    const files = await readdir(storyDir);
+    const allowedFiles = files.filter((file) => isSafeStoryFileName(file) && (!filter || filter(file)));
+    return await Promise.all(
+      allowedFiles.map(async (file) => {
+        const content = await readFile(join(storyDir, file), "utf-8");
+        return { name: file, size: content.length, preview: content.slice(0, 200) };
+      }),
+    );
+  } catch {
+    return [];
+  }
+}
+
 function resolveEnabledPresets(bookConfig: Pick<StudioBookConfigDraft, "enabledPresetIds">): ReadonlyArray<Preset> {
   return (bookConfig.enabledPresetIds ?? [])
     .map((id) => getPreset(id))
@@ -665,6 +684,23 @@ export function createStorageRouter(ctx: RouterContext): Hono {
     }
   });
 
+  app.get("/api/books/:id/truth-files/:file", async (c) => {
+    const id = c.req.param("id");
+    const file = c.req.param("file");
+
+    if (!TRUTH_FILES.includes(file)) {
+      return c.json({ error: "Invalid truth file" }, 400);
+    }
+
+    const bookDir = state.bookDir(id);
+    try {
+      const content = await readFile(join(bookDir, "story", file), "utf-8");
+      return c.json({ file, content });
+    } catch {
+      return c.json({ file, content: null });
+    }
+  });
+
   app.put("/api/books/:id/truth/:file", async (c) => {
     const id = c.req.param("id");
     const file = c.req.param("file");
@@ -683,18 +719,37 @@ export function createStorageRouter(ctx: RouterContext): Hono {
     const id = c.req.param("id");
     const bookDir = state.bookDir(id);
     const storyDir = join(bookDir, "story");
+    return c.json({ files: await listStoryFiles(storyDir, (file) => TRUTH_FILES.includes(file)) });
+  });
+
+  app.get("/api/books/:id/truth-files", async (c) => {
+    const id = c.req.param("id");
+    const bookDir = state.bookDir(id);
+    const storyDir = join(bookDir, "story");
+    return c.json({ files: await listStoryFiles(storyDir, (file) => TRUTH_FILES.includes(file)) });
+  });
+
+  app.get("/api/books/:id/story-files", async (c) => {
+    const id = c.req.param("id");
+    const bookDir = state.bookDir(id);
+    const storyDir = join(bookDir, "story");
+    return c.json({ files: await listStoryFiles(storyDir) });
+  });
+
+  app.get("/api/books/:id/story-files/:file", async (c) => {
+    const id = c.req.param("id");
+    const file = c.req.param("file");
+
+    if (!isSafeStoryFileName(file)) {
+      return c.json({ error: "Invalid story file" }, 400);
+    }
+
+    const bookDir = state.bookDir(id);
     try {
-      const files = await readdir(storyDir);
-      const mdFiles = files.filter((f) => f.endsWith(".md") || f.endsWith(".json"));
-      const result = await Promise.all(
-        mdFiles.map(async (f) => {
-          const content = await readFile(join(storyDir, f), "utf-8");
-          return { name: f, size: content.length, preview: content.slice(0, 200) };
-        }),
-      );
-      return c.json({ files: result });
+      const content = await readFile(join(bookDir, "story", file), "utf-8");
+      return c.json({ file, content });
     } catch {
-      return c.json({ files: [] });
+      return c.json({ file, content: null });
     }
   });
 
