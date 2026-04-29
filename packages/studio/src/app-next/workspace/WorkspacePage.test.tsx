@@ -1,19 +1,20 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { fetchJsonMock, useApiMock } = vi.hoisted(() => ({
+const { fetchJsonMock, postApiMock, useApiMock } = vi.hoisted(() => ({
   fetchJsonMock: vi.fn(),
+  postApiMock: vi.fn(),
   useApiMock: vi.fn(),
 }));
 
 vi.mock("../../hooks/use-api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../hooks/use-api")>();
-  return { ...actual, fetchJson: fetchJsonMock, useApi: useApiMock };
+  return { ...actual, fetchJson: fetchJsonMock, postApi: postApiMock, useApi: useApiMock };
 });
 
 vi.mock("@/hooks/use-api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../hooks/use-api")>();
-  return { ...actual, fetchJson: fetchJsonMock, useApi: useApiMock };
+  return { ...actual, fetchJson: fetchJsonMock, postApi: postApiMock, useApi: useApiMock };
 });
 
 vi.mock("../../components/InkEditor", () => {
@@ -67,6 +68,7 @@ afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 beforeEach(() => {
   fetchJsonMock.mockReset();
+  postApiMock.mockReset();
   fetchJsonMock.mockImplementation(async (path: string) => {
     if (path === `/books/${TEST_BOOK.id}/chapters/1`) return { content: "测试正文" };
     if (path === `/books/${TEST_BOOK.id}/chapters/2`) return { content: "第二章正文" };
@@ -370,6 +372,73 @@ describe("WorkspacePage", () => {
     expect(screen.getByText("AI 输出已进入生成章节候选")).toBeTruthy();
   });
 
+  it("maps every Workspace AI action to a concrete route and status message", async () => {
+    const candidatesRefetch = vi.fn(async () => undefined);
+    useApiMock.mockImplementation((path: string | null) => {
+      if (path === "/books") return { data: booksResponse, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}`) return { data: bookDetailResponse, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}/candidates`) return { data: candidatesResponse, loading: false, error: null, refetch: candidatesRefetch };
+      if (path === `/books/${TEST_BOOK.id}/story-files`) return { data: storyFilesResponse, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}/truth-files`) return { data: truthFilesResponse, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}/drafts`) return { data: draftsResponse, loading: false, error: null, refetch: vi.fn() };
+      return { data: null, loading: false, error: null, refetch: vi.fn() };
+    });
+    const ensureModelFor = vi.fn(() => true);
+    render(<WorkspacePage modelGate={{ blockedResult: null, closeGate: vi.fn(), ensureModelFor }} />);
+
+    const assistant = screen.getByRole("complementary", { name: "AI 与经纬面板" });
+    fireEvent.click(within(assistant).getByRole("button", { name: /生成下一章/ }));
+    await waitFor(() => expect(fetchJsonMock).toHaveBeenCalledWith(`/books/${TEST_BOOK.id}/write-next`, { method: "POST" }));
+    await waitFor(() => expect(candidatesRefetch).toHaveBeenCalled());
+    expect(await within(assistant).findByText("AI 输出已进入生成章节候选")).toBeTruthy();
+
+    const routedActions = [
+      {
+        label: /续写当前段落/,
+        gate: "ai-rewrite",
+        route: `/books/${TEST_BOOK.id}/inline-write`,
+        request: expect.objectContaining({ method: "POST", body: expect.stringContaining('"mode":"continuation"') }),
+        message: "续写当前段落已生成 prompt-preview，请在写作模式面板确认后写入。",
+      },
+      {
+        label: /审校当前章/,
+        gate: "ai-review",
+        route: `/books/${TEST_BOOK.id}/audit/1`,
+        request: { method: "POST" },
+        message: "审校当前章已完成。",
+      },
+      {
+        label: /改写选中段落/,
+        gate: "ai-rewrite",
+        route: `/books/${TEST_BOOK.id}/revise/1`,
+        request: expect.objectContaining({ method: "POST", body: expect.stringContaining('"mode":"rewrite"') }),
+        message: "改写请求已提交到修订 route。",
+      },
+      {
+        label: /去 AI 味/,
+        gate: "deep-ai-taste-scan",
+        route: `/books/${TEST_BOOK.id}/detect/1`,
+        request: { method: "POST" },
+        message: "去 AI 味检测已完成。",
+      },
+      {
+        label: /连续性检查/,
+        gate: "ai-review",
+        route: `/books/${TEST_BOOK.id}/audit/1`,
+        request: { method: "POST" },
+        message: "连续性检查已完成。",
+      },
+    ] as const;
+
+    for (const item of routedActions) {
+      fireEvent.click(within(assistant).getByRole("button", { name: item.label }));
+      expect(ensureModelFor).toHaveBeenCalledWith(item.gate);
+      await waitFor(() => expect(fetchJsonMock).toHaveBeenCalledWith(item.route, item.request));
+      expect(await within(assistant).findByText(item.message)).toBeTruthy();
+      expect(within(assistant).queryByText(/即将推出|unsupported/)).toBeNull();
+    }
+  });
+
   it("opens the AI gate instead of running actions when no usable model is configured", () => {
     const ensureModelFor = vi.fn(() => false);
     const runAction = vi.fn(async () => ({ message: "should not run" }));
@@ -416,12 +485,87 @@ describe("WorkspacePage", () => {
     expect(within(assistant).getByText(/当前上下文：人物/)).toBeTruthy();
   });
 
-  it("shows writing mode application as disabled when no editor write target is wired", () => {
-    render(<WorkspacePage />);
+  it("applies generated dialogue to a draft through the writing modes confirmation flow", async () => {
+    const draftsRefetch = vi.fn(async () => undefined);
+    useApiMock.mockImplementation((path: string | null) => {
+      if (path === "/books") return { data: booksResponse, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}`) return { data: bookDetailResponse, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}/candidates`) return { data: candidatesResponse, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}/story-files`) return { data: storyFilesResponse, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}/truth-files`) return { data: truthFilesResponse, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}/drafts`) return { data: draftsResponse, loading: false, error: null, refetch: draftsRefetch };
+      return { data: null, loading: false, error: null, refetch: vi.fn() };
+    });
+    postApiMock.mockImplementation(async (path: string) => {
+      if (path === `/books/${TEST_BOOK.id}/dialogue/generate`) return { lines: [{ character: "林月", line: "你终于来了。" }] };
+      if (path === `/books/${TEST_BOOK.id}/writing-modes/apply`) return { target: "draft", resourceId: "draft-dialogue", status: "draft" };
+      return {};
+    });
 
+    render(<WorkspacePage />);
     const assistant = screen.getByRole("complementary", { name: "AI 与经纬面板" });
     fireEvent.click(within(assistant).getByText("写作模式"));
-    expect(within(assistant).getByText(/当前工作台尚未暴露安全写入目标/)).toBeTruthy();
+    fireEvent.click(within(assistant).getByRole("button", { name: "对话生成" }));
+    fireEvent.change(within(assistant).getByLabelText("角色"), { target: { value: "林月" } });
+    fireEvent.click(within(assistant).getByRole("button", { name: "生成对话" }));
+
+    expect(await within(assistant).findByText(/你终于来了/)).toBeTruthy();
+    fireEvent.click(within(assistant).getByRole("button", { name: "插入到正文" }));
+    fireEvent.click(within(assistant).getByRole("button", { name: "保存为草稿" }));
+    fireEvent.click(within(assistant).getByRole("button", { name: "确认应用写作结果" }));
+
+    await waitFor(() => expect(postApiMock).toHaveBeenCalledWith(`/books/${TEST_BOOK.id}/writing-modes/apply`, expect.objectContaining({ target: "draft", sourceMode: "dialogue-generator" })));
+    await waitFor(() => expect(draftsRefetch).toHaveBeenCalled());
+    expect(await within(assistant).findByText("写作结果已保存到草稿 draft-dialogue")).toBeTruthy();
+  });
+
+  it("keeps prompt-preview writing modes transparent and blocks applying prompt text as content", async () => {
+    postApiMock.mockImplementation(async (path: string) => {
+      if (path === `/books/${TEST_BOOK.id}/dialogue/generate`) return { mode: "prompt-preview", promptPreview: "请生成一段对话" };
+      return {};
+    });
+
+    render(<WorkspacePage />);
+    const assistant = screen.getByRole("complementary", { name: "AI 与经纬面板" });
+    fireEvent.click(within(assistant).getByText("写作模式"));
+    fireEvent.click(within(assistant).getByRole("button", { name: "对话生成" }));
+    fireEvent.change(within(assistant).getByLabelText("角色"), { target: { value: "林月" } });
+    fireEvent.click(within(assistant).getByRole("button", { name: "生成对话" }));
+
+    expect(await within(assistant).findByText("Prompt 预览")).toBeTruthy();
+    expect(within(assistant).getByRole("button", { name: "执行生成（未接入）" }).hasAttribute("disabled")).toBe(true);
+    expect(within(assistant).queryByRole("button", { name: "确认应用写作结果" })).toBeNull();
+  });
+
+  it("shows a writing mode apply error without creating fake resources", async () => {
+    const draftsRefetch = vi.fn(async () => undefined);
+    useApiMock.mockImplementation((path: string | null) => {
+      if (path === "/books") return { data: booksResponse, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}`) return { data: bookDetailResponse, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}/candidates`) return { data: candidatesResponse, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}/story-files`) return { data: storyFilesResponse, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}/truth-files`) return { data: truthFilesResponse, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}/drafts`) return { data: draftsResponse, loading: false, error: null, refetch: draftsRefetch };
+      return { data: null, loading: false, error: null, refetch: vi.fn() };
+    });
+    postApiMock.mockImplementation(async (path: string) => {
+      if (path === `/books/${TEST_BOOK.id}/dialogue/generate`) return { lines: [{ character: "林月", line: "你终于来了。" }] };
+      if (path === `/books/${TEST_BOOK.id}/writing-modes/apply`) throw new Error("磁盘只读");
+      return {};
+    });
+
+    render(<WorkspacePage />);
+    const assistant = screen.getByRole("complementary", { name: "AI 与经纬面板" });
+    fireEvent.click(within(assistant).getByText("写作模式"));
+    fireEvent.click(within(assistant).getByRole("button", { name: "对话生成" }));
+    fireEvent.change(within(assistant).getByLabelText("角色"), { target: { value: "林月" } });
+    fireEvent.click(within(assistant).getByRole("button", { name: "生成对话" }));
+    fireEvent.click(await within(assistant).findByRole("button", { name: "插入到正文" }));
+    fireEvent.click(within(assistant).getByRole("button", { name: "保存为草稿" }));
+    fireEvent.click(within(assistant).getByRole("button", { name: "确认应用写作结果" }));
+
+    expect(await within(assistant).findByText("写作模式应用失败：磁盘只读")).toBeTruthy();
+    expect(draftsRefetch).not.toHaveBeenCalled();
   });
 
   it("persists applied chapter hooks through the workspace hook action", async () => {
@@ -637,7 +781,7 @@ describe("WorkspacePage", () => {
     expect(writingModeInline.className).toContain("bg-primary");
     expect(writingModeInline.className).toContain("text-primary-foreground");
     expect(writingModeDialogue.className).toContain("border-border");
-    expect(within(assistant).getByText(/当前工作台尚未暴露安全写入目标/)).toBeTruthy();
+    expect(within(assistant).getByText(/真实生成结果必须先选择候选稿或草稿/)).toBeTruthy();
 
     fireEvent.click(within(assistant).getByText("写作工具"));
     const rhythmTab = within(assistant).getByRole("button", { name: "节奏分析" });
