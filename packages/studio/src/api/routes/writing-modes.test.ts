@@ -154,15 +154,29 @@ describe("writing-modes router", () => {
       content: "他推门而入，风雪随之涌进。",
       sourceMode: "inline-continuation",
       chapterNumber: 3,
+      provider: "openai-compatible",
+      model: "gpt-5.4",
+      runId: "run-candidate-1",
+      requestId: "req-candidate-1",
+      metadata: { endpoint: "/api/books/book1/inline-write" },
     });
 
     expect(status).toBe(201);
     expect(json).toMatchObject({ target: "candidate", status: "candidate" });
     expect(json.resourceId).toEqual(expect.any(String));
-    expect(json.metadata).toMatchObject({ bookId: "book1", sourceMode: "inline-continuation", chapterNumber: 3 });
+    expect(json.metadata).toMatchObject({
+      bookId: "book1",
+      sourceMode: "inline-continuation",
+      chapterNumber: 3,
+      provider: "openai-compatible",
+      model: "gpt-5.4",
+      runId: "run-candidate-1",
+      requestId: "req-candidate-1",
+      endpoint: "/api/books/book1/inline-write",
+    });
 
-    const index = JSON.parse(await readFile(join(root, "books", "book1", "generated-candidates", "index.json"), "utf-8")) as Array<{ id: string; title: string; targetChapterId?: string }>;
-    expect(index).toMatchObject([{ id: json.resourceId, title: "续写候选", targetChapterId: "3" }]);
+    const index = JSON.parse(await readFile(join(root, "books", "book1", "generated-candidates", "index.json"), "utf-8")) as Array<{ id: string; title: string; targetChapterId?: string; metadata?: Record<string, unknown> }>;
+    expect(index).toMatchObject([{ id: json.resourceId, title: "续写候选", targetChapterId: "3", metadata: expect.objectContaining({ provider: "openai-compatible", model: "gpt-5.4", runId: "run-candidate-1" }) }]);
     await expect(readFile(join(root, "books", "book1", "generated-candidates", `${json.resourceId}.md`), "utf-8"))
       .resolves.toBe("他推门而入，风雪随之涌进。");
   });

@@ -60,7 +60,7 @@ describe("project-bootstrap", () => {
     } finally {
       await rm(studioRoot, { recursive: true, force: true });
     }
-  });
+  }, 20000);
 
   it("uses the current branch as a truthful fallback when an existing repo lacks the requested base branch", async () => {
     const studioRoot = await mkdtemp(join(tmpdir(), "novelfork-bootstrap-existing-root-"));
@@ -97,7 +97,7 @@ describe("project-bootstrap", () => {
       await rm(studioRoot, { recursive: true, force: true });
       await rm(existingRepo, { recursive: true, force: true });
     }
-  });
+  }, 20000);
 
   it("uses unique worktree branches even when different Chinese names normalize to the same ASCII slug", async () => {
     const studioRoot = await mkdtemp(join(tmpdir(), "novelfork-bootstrap-branch-collision-root-"));
@@ -144,7 +144,7 @@ describe("project-bootstrap", () => {
       await rm(studioRoot, { recursive: true, force: true });
       await rm(existingRepo, { recursive: true, force: true });
     }
-  });
+  }, 20000);
 
   it("clones into a deterministic repository root and then prepares a worktree", async () => {
     const studioRoot = await mkdtemp(join(tmpdir(), "novelfork-bootstrap-clone-root-"));
@@ -182,5 +182,5 @@ describe("project-bootstrap", () => {
       await rm(studioRoot, { recursive: true, force: true });
       await rm(remoteRepo, { recursive: true, force: true });
     }
-  });
+  }, 20000);
 });

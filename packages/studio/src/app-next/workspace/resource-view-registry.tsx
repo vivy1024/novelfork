@@ -75,6 +75,16 @@ function resolveDraftEndpoint(node: StudioResourceNode): string | null {
   return `/books/${bookId}/drafts/${encodeURIComponent(draftId)}`;
 }
 
+function formatAiResultMetadata(value: unknown): string | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const metadata = value as Record<string, unknown>;
+  const provider = typeof metadata.provider === "string" ? metadata.provider : null;
+  const model = typeof metadata.model === "string" ? metadata.model : null;
+  const request = typeof metadata.runId === "string" ? metadata.runId : typeof metadata.requestId === "string" ? metadata.requestId : null;
+  const parts = [provider, model, request].filter((part): part is string => Boolean(part));
+  return parts.length > 0 ? `AI 来源：${parts.join(" / ")}` : null;
+}
+
 export function DraftEditor({ node }: { readonly node: StudioResourceNode }) {
   const endpoint = useMemo(() => resolveDraftEndpoint(node), [node]);
   const [draft, setDraft] = useState<DraftResource | null>(null);
@@ -140,6 +150,7 @@ export function DraftEditor({ node }: { readonly node: StudioResourceNode }) {
         : saveState === "saved" ? "已保存"
           : saveState === "failed" ? "失败"
             : "未修改";
+  const aiMetadataText = formatAiResultMetadata(draft?.metadata ?? node.metadata?.aiMetadata);
 
   return (
     <div className="space-y-4">
@@ -147,6 +158,7 @@ export function DraftEditor({ node }: { readonly node: StudioResourceNode }) {
         <div>
           <h2 className="text-xl font-semibold">{draft?.title ?? node.title}</h2>
           <p className="text-sm text-muted-foreground">DraftEditor · {draft?.wordCount ?? node.count ?? 0} 字 · 草稿保存状态：{statusText}</p>
+          {aiMetadataText && <p className="text-xs text-muted-foreground">{aiMetadataText}</p>}
         </div>
         <Button size="sm" variant="outline" type="button" disabled={!draft || saveState === "loading" || saveState === "saving"} onClick={() => void saveDraft()}>
           保存草稿

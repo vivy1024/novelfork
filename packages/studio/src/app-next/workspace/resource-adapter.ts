@@ -265,6 +265,7 @@ function toGeneratedChapterNode(candidate: GeneratedChapterCandidate): StudioRes
       createdAt: candidate.createdAt,
       content: candidate.content,
       contentError: candidate.contentError,
+      aiMetadata: candidate.metadata,
     },
   };
 }
@@ -280,6 +281,7 @@ function toDraftNode(draft: DraftResource): StudioResourceNode {
       bookId: draft.bookId,
       draftId: draft.id,
       updatedAt: draft.updatedAt,
+      aiMetadata: draft.metadata,
     },
   };
 }

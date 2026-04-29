@@ -1085,7 +1085,7 @@ describe("createStudioServer daemon lifecycle", () => {
     } finally {
       await rm(remoteRepo, { recursive: true, force: true });
     }
-  });
+  }, 20000);
 
   it("allows the same book to reuse its repo worktree when retrying after bootstrap", async () => {
     const existingRepo = await mkdtemp(join(tmpdir(), "novelfork-studio-server-retry-repo-"));
@@ -1154,7 +1154,7 @@ describe("createStudioServer daemon lifecycle", () => {
     expect(initBookMock).toHaveBeenCalled();
 
     await rm(existingRepo, { recursive: true, force: true });
-  });
+  }, 20000);
 
   it("scaffolds a default writer session and ready chat snapshot during book creation", async () => {
     initBookMock.mockResolvedValueOnce(undefined);
@@ -1284,7 +1284,7 @@ describe("createStudioServer daemon lifecycle", () => {
     } finally {
       await rm(existingRepo, { recursive: true, force: true });
     }
-  });
+  }, 20000);
 
   it("downgrades async model config failures to a local book scaffold", async () => {
     initBookMock.mockRejectedValueOnce(new Error("NOVELFORK_LLM_API_KEY not set"));

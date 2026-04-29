@@ -16,6 +16,7 @@ interface ChapterCandidateRecord {
   readonly updatedAt: string;
   readonly status: ChapterCandidateStatus;
   readonly contentFileName: string;
+  readonly metadata?: Record<string, unknown>;
   readonly acceptedAction?: ChapterCandidateAcceptAction;
   readonly draftId?: string;
 }
@@ -34,6 +35,7 @@ export interface DraftCandidateRecord {
   readonly updatedAt: string;
   readonly wordCount: number;
   readonly fileName: string;
+  readonly metadata?: Record<string, unknown>;
 }
 
 export interface DraftCandidate extends DraftCandidateRecord {
@@ -45,11 +47,13 @@ interface CreateCandidateBody {
   readonly title?: string;
   readonly content?: string;
   readonly source?: string;
+  readonly metadata?: Record<string, unknown>;
 }
 
 interface CreateDraftBody {
   readonly title?: string;
   readonly content?: string;
+  readonly metadata?: Record<string, unknown>;
 }
 
 interface UpdateDraftBody {
@@ -113,6 +117,7 @@ export function createChapterCandidatesRouter(root: string, options: ChapterCand
       updatedAt: timestamp,
       wordCount: countWords(body.content),
       fileName: `${id}.md`,
+      ...(hasMetadata(body.metadata) ? { metadata: body.metadata } : {}),
     };
     await saveDraft(bookDir, draft, body.content);
     return c.json({ draft: toDraft(draft, body.content) }, 201);
@@ -163,6 +168,7 @@ export function createChapterCandidatesRouter(root: string, options: ChapterCand
       updatedAt: timestamp,
       status: "candidate",
       contentFileName,
+      ...(hasMetadata(body.metadata) ? { metadata: body.metadata } : {}),
     };
 
     const candidates = await loadCandidates(bookDir);
@@ -299,6 +305,7 @@ async function saveDraftCandidate(bookDir: string, record: ChapterCandidateRecor
     updatedAt: timestamp,
     wordCount: countWords(content),
     fileName: `${draftId}.md`,
+    ...(record.metadata ? { metadata: { ...record.metadata, sourceCandidateId: record.id, acceptedAction: "draft" } } : {}),
   };
   await saveDraft(bookDir, draft, content);
   return toDraft(draft, content);
@@ -371,6 +378,10 @@ async function findFormalChapterFile(bookDir: string, targetChapterId: string): 
   const prefix = String(chapterNumber).padStart(4, "0");
   const files = await readdir(join(bookDir, "chapters"));
   return files.find((file) => file.startsWith(prefix) && file.endsWith(".md"));
+}
+
+function hasMetadata(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value) && Object.keys(value).length > 0;
 }
 
 function countWords(content: string): number {

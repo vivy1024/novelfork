@@ -106,6 +106,21 @@ export interface TruthFileDetail extends TruthFileSummary {
 
 // --- Workspace Resource Snapshot ---
 
+export interface AiResultMetadata {
+  readonly provider?: string;
+  readonly model?: string;
+  readonly runId?: string;
+  readonly requestId?: string;
+  readonly temperature?: number;
+  readonly maxTokens?: number;
+  readonly promptTokens?: number;
+  readonly completionTokens?: number;
+  readonly totalTokens?: number;
+  readonly finishReason?: string;
+  readonly timestamp?: string;
+  readonly [key: string]: unknown;
+}
+
 export interface GeneratedChapterCandidate {
   readonly id: string;
   readonly bookId: string;
@@ -114,6 +129,7 @@ export interface GeneratedChapterCandidate {
   readonly source: string;
   readonly createdAt: string;
   readonly status: "candidate" | "accepted" | "rejected" | "archived";
+  readonly metadata?: AiResultMetadata;
   readonly content?: string | null;
   readonly contentError?: string;
 }
@@ -125,6 +141,7 @@ export interface DraftResource {
   readonly content: string;
   readonly updatedAt: string;
   readonly wordCount: number;
+  readonly metadata?: AiResultMetadata;
 }
 
 export interface BibleResourceCounts {
