@@ -82,6 +82,8 @@ interface BibleWorkspaceEntry {
   readonly lastChapter?: number;
   readonly chapterStart?: number;
   readonly chapterEnd?: number;
+  readonly relatedHookIds?: readonly string[];
+  readonly source?: string;
 }
 
 interface BibleCategoryConfig {
@@ -141,6 +143,31 @@ function bibleEntryChapterText(entry: BibleWorkspaceEntry): string | null {
     .filter((value): value is number => typeof value === "number");
   if (chapters.length === 0) return null;
   return `关联章节：${[...new Set(chapters)].join("、")}`;
+}
+
+function parsePendingHookEntries(content: string | null | undefined): readonly BibleWorkspaceEntry[] {
+  if (!content) return [];
+  const sections = content.split(/\n(?=##\s+)/g);
+  return sections.flatMap((section): BibleWorkspaceEntry[] => {
+    const id = section.match(/^##\s+(.+)$/m)?.[1]?.trim();
+    if (!id) return [];
+    const fields = new Map<string, string>();
+    for (const line of section.split("\n")) {
+      const match = line.match(/^-\s*([^:]+):\s*(.*)$/);
+      if (match) fields.set(match[1].trim(), match[2].trim());
+    }
+    const chapter = Number(fields.get("chapter"));
+    const related = fields.get("related")?.split(",").map((item) => item.trim()).filter(Boolean) ?? [];
+    return [{
+      id,
+      name: id,
+      summary: fields.get("text") ?? "",
+      eventType: "foreshadow",
+      chapterStart: Number.isFinite(chapter) ? chapter : undefined,
+      relatedHookIds: related,
+      source: "pending_hooks.md",
+    }];
+  });
 }
 
 function buildBibleEntryPayload(config: BibleCategoryConfig, title: string, detail: string): Record<string, unknown> {
@@ -347,6 +374,8 @@ function BibleEntryCard({ entry, config, onEdit }: { readonly entry: BibleWorksp
       </div>
       {detail ? <p className="whitespace-pre-wrap text-sm text-muted-foreground">{detail}</p> : <p className="text-sm text-muted-foreground">暂无内容</p>}
       {chapterText && <p className="text-xs text-muted-foreground">{chapterText}</p>}
+      {entry.relatedHookIds?.length ? <p className="text-xs text-muted-foreground">关联伏笔：{entry.relatedHookIds.join("、")}</p> : null}
+      {entry.source && <p className="text-xs text-muted-foreground">来源：{entry.source}</p>}
       {config.eventType && <p className="text-xs text-muted-foreground">伏笔状态：{entry.eventType ?? config.eventType}</p>}
     </div>
   );
@@ -356,7 +385,9 @@ export function BibleCategoryView({ node }: { readonly node: StudioResourceNode 
   const config = resolveBibleCategoryConfig(node);
   const bookId = resolveBibleBookId(node);
   const endpoint = config && bookId ? bibleCategoryPath(bookId, config) : null;
+  const pendingHooksPath = config?.key === "foreshadowing" && bookId ? `/books/${bookId}/story-files/pending_hooks.md` : null;
   const { data, loading, error, refetch } = useApi<Record<string, unknown>>(endpoint);
+  const pendingHooks = useApi<{ readonly file: string; readonly content: string | null }>(pendingHooksPath);
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
 
@@ -371,7 +402,11 @@ export function BibleCategoryView({ node }: { readonly node: StudioResourceNode 
     );
   }
 
-  const entries = normalizeBibleEntries(data, config);
+  const routeEntries = normalizeBibleEntries(data, config);
+  const pendingHookEntries = config.key === "foreshadowing" ? parsePendingHookEntries(pendingHooks.data?.content) : [];
+  const entries = [...routeEntries, ...pendingHookEntries];
+  const isLoading = loading || pendingHooks.loading;
+  const loadError = error ?? pendingHooks.error;
   const editingEntry = entries.find((entry) => entry.id === editingId);
 
   const createEntry = async (title: string, detail: string) => {
@@ -398,9 +433,9 @@ export function BibleCategoryView({ node }: { readonly node: StudioResourceNode 
         </Button>
       </div>
 
-      {loading && <p className="text-sm text-muted-foreground">加载{config.label}中…</p>}
-      {error && <InlineError message={error} />}
-      {!loading && !error && entries.length === 0 && <p className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">暂无{config.label}，可以新建第一条。</p>}
+      {isLoading && <p className="text-sm text-muted-foreground">加载{config.label}中…</p>}
+      {loadError && <InlineError message={loadError} />}
+      {!isLoading && !loadError && entries.length === 0 && <p className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">暂无{config.label}，可以新建第一条。</p>}
 
       {creating && <BibleEntryForm config={config} onCancel={() => setCreating(false)} onSubmit={createEntry} />}
 

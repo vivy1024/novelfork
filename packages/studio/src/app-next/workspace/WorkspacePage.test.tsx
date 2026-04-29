@@ -561,6 +561,32 @@ describe("WorkspacePage", () => {
     expect(within(assistant).getByText(/当前上下文：人物/)).toBeTruthy();
   });
 
+  it("shows pending hook trace records in the foreshadowing bible category", () => {
+    useApiMock.mockImplementation((path: string | null) => {
+      if (path === "/books") return { data: booksResponse, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}`) return { data: bookDetailResponse, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}/candidates`) return { data: candidatesResponse, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}/story-files`) return { data: storyFilesResponse, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}/truth-files`) return { data: truthFilesResponse, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}/drafts`) return { data: draftsResponse, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}/bible/events`) return { data: { events: [] }, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}/story-files/pending_hooks.md`) {
+        return { data: { file: "pending_hooks.md", content: "## hook-new\n- status: open\n- chapter: 1\n- text: 门外传来第三个人的脚步声。\n- related: old-hook" }, loading: false, error: null, refetch: vi.fn() };
+      }
+      return { data: null, loading: false, error: null, refetch: vi.fn() };
+    });
+
+    render(<WorkspacePage />);
+    const explorer = screen.getByRole("complementary", { name: "小说资源管理器" });
+    fireEvent.click(within(explorer).getByRole("button", { name: /伏笔/ }));
+
+    const editor = screen.getByRole("main", { name: "正文编辑区" });
+    expect(within(editor).getByText("hook-new")).toBeTruthy();
+    expect(within(editor).getByText("门外传来第三个人的脚步声。")).toBeTruthy();
+    expect(within(editor).getByText(/关联章节：1/)).toBeTruthy();
+    expect(within(editor).getByText(/关联伏笔：old-hook/)).toBeTruthy();
+  });
+
   it("applies generated dialogue to a draft through the writing modes confirmation flow", async () => {
     const draftsRefetch = vi.fn(async () => undefined);
     useApiMock.mockImplementation((path: string | null) => {
