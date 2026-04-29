@@ -28,6 +28,7 @@ import { InlineError, RunStatus } from "../components/feedback";
 import { InkEditor, getMarkdown } from "../../components/InkEditor";
 import { Button } from "../../components/ui/button";
 import {
+  BibleCategoryView,
   BibleEntryEditor,
   DraftEditor,
   MarkdownViewer,
@@ -505,14 +506,7 @@ function WorkspaceEditor({
     case "chapter-editor":
       return <ChapterEditor chapterApi={chapterApi} node={node} />;
     case "bible-category-view":
-      return (
-        <div className="space-y-4">
-          <EditorHeader title={node.title} meta="经纬资料详情" />
-          <div className="rounded-lg border border-dashed border-border p-4 text-center text-sm text-muted-foreground">
-            后续会在这里接入当前分类的真实条目列表与编辑器。
-          </div>
-        </div>
-      );
+      return <BibleCategoryView node={node} />;
     case "draft-editor":
       return <DraftEditor node={node} />;
     case "outline-editor":

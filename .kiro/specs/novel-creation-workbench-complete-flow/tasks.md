@@ -215,11 +215,11 @@
   - 修正经纬列表展示字段，兼容 route 返回的 `summary` 与 `content`，避免人物/事件/摘要加载后只有标题没有详情。
   - 验证：`pnpm --dir packages/studio exec vitest run src/api/routes/bible.test.ts src/app-next/workspace/WorkspacePage.test.tsx` 通过；UI 测试覆盖人物/事件/设定/摘要加载成功，route 测试覆盖真实 API。
 
-- [ ] 33. 实现 BibleCategoryView 与 BibleEntryEditor
-  - Workspace 中点击人物、地点、势力、物品、伏笔、世界规则后显示真实列表。
-  - 支持新建、查看、编辑条目，并持久化。
-  - 未接的高级能力使用 UnsupportedCapability，不返回假成功。
-  - 验证：UI/route 测试覆盖新建、编辑、刷新后仍存在。
+- [x] 33. 实现 BibleCategoryView 与 BibleEntryEditor
+  - Workspace 中点击人物、地点、势力、物品、伏笔、世界规则后进入真实 `BibleCategoryView`；人物走 `characters`，伏笔走 `events`，地点/势力/物品/世界规则走带 category 过滤的 `settings`。
+  - 支持新建、查看、编辑条目，并在保存后 refetch；route 层已有创建、更新、再次列表读取的持久化测试。
+  - 缺少 bookId 或未知分类时使用 `UnsupportedCapability`，不返回假成功。
+  - 验证：`pnpm --dir packages/studio exec vitest run src/app-next/workspace/WorkspacePage.test.tsx src/app-next/workspace/resource-adapter.test.ts src/app-next/workspace/resource-view-registry.test.ts src/api/routes/bible.test.ts src/api/routes/jingwei.test.ts` 通过；UI/route 测试覆盖新建、编辑、刷新后仍存在。
 
 - [ ] 34. 建立伏笔与 pending hooks 的可追踪关系
   - 在 hook 应用或经纬伏笔条目中记录来源章节、hook id、写入文件或结构化记录。
