@@ -483,6 +483,40 @@ describe("WorkspacePage", () => {
     expect(within(assistant).getByLabelText("人物内容")).toBeTruthy();
   });
 
+  it("loads real bible route data for characters, events, settings and chapter summaries", () => {
+    useApiMock.mockImplementation((path: string | null) => {
+      if (path === "/books") return { data: booksResponse, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}`) return { data: bookDetailResponse, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}/candidates`) return { data: candidatesResponse, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}/story-files`) return { data: storyFilesResponse, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}/truth-files`) return { data: truthFilesResponse, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}/drafts`) return { data: draftsResponse, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}/bible/characters`) return { data: { characters: [{ id: "char-1", name: "林月", summary: "城门守卫" }] }, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}/bible/events`) return { data: { events: [{ id: "event-1", name: "入城冲突", summary: "与守卫交锋" }] }, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}/bible/settings`) return { data: { settings: [{ id: "setting-1", name: "灵潮", content: "周期性灵力涨落" }] }, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}/bible/chapter-summaries`) return { data: { chapterSummaries: [{ id: "summary-1", title: "第一章摘要", summary: "灵潮初起", chapterNumber: 1 }] }, loading: false, error: null, refetch: vi.fn() };
+      return { data: null, loading: false, error: null, refetch: vi.fn() };
+    });
+
+    render(<WorkspacePage />);
+    const assistant = screen.getByRole("complementary", { name: "AI 与经纬面板" });
+
+    fireEvent.click(within(assistant).getByRole("button", { name: /林月/ }));
+    expect(within(assistant).getByText("城门守卫")).toBeTruthy();
+
+    fireEvent.click(within(assistant).getByRole("button", { name: "事件" }));
+    fireEvent.click(within(assistant).getByRole("button", { name: /入城冲突/ }));
+    expect(within(assistant).getByText("与守卫交锋")).toBeTruthy();
+
+    fireEvent.click(within(assistant).getByRole("button", { name: "设定" }));
+    fireEvent.click(within(assistant).getByRole("button", { name: /灵潮/ }));
+    expect(within(assistant).getByText("周期性灵力涨落")).toBeTruthy();
+
+    fireEvent.click(within(assistant).getByRole("button", { name: "摘要" }));
+    fireEvent.click(within(assistant).getByRole("button", { name: /第一章摘要/ }));
+    expect(within(assistant).getByText("灵潮初起")).toBeTruthy();
+  });
+
   it("opens bible categories and keeps AI actions tied to the selected writing context", () => {
     render(<WorkspacePage />);
 
