@@ -221,10 +221,10 @@
   - 缺少 bookId 或未知分类时使用 `UnsupportedCapability`，不返回假成功。
   - 验证：`pnpm --dir packages/studio exec vitest run src/app-next/workspace/WorkspacePage.test.tsx src/app-next/workspace/resource-adapter.test.ts src/app-next/workspace/resource-view-registry.test.ts src/api/routes/bible.test.ts src/api/routes/jingwei.test.ts` 通过；UI/route 测试覆盖新建、编辑、刷新后仍存在。
 
-- [ ] 34. 建立伏笔与 pending hooks 的可追踪关系
-  - 在 hook 应用或经纬伏笔条目中记录来源章节、hook id、写入文件或结构化记录。
-  - 资源树中 `pending_hooks.md` viewer 和伏笔列表能展示相关信息。
-  - 验证：测试覆盖 hook apply 后可在 story file viewer 和伏笔视图中追踪。
+- [x] 34. 建立伏笔与 pending hooks 的可追踪关系
+  - hook 应用已在 `pending_hooks.md` 中记录来源章节、hook id、相关 hook id 与文本；伏笔分类会解析 `pending_hooks.md` 作为可追踪条目来源。
+  - 资源树中 `pending_hooks.md` viewer 展示原始文件内容，伏笔列表展示 hook id、文本、关联章节、关联伏笔与来源文件。
+  - 验证：`pnpm --dir packages/studio exec vitest run src/app-next/workspace/WorkspacePage.test.tsx src/api/routes/writing-tools.test.ts` 通过；测试覆盖 hook apply 后可在 story file viewer 和伏笔视图中追踪。
 
 - [ ] 35. 实现大纲 viewer/editor
   - 大纲节点打开真实大纲内容；无大纲时显示创建入口。
