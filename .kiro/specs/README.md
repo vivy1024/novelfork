@@ -8,7 +8,7 @@
 
 | Spec | 角色 | 当前进度 | 执行口径 |
 |---|---|---:|---|
-| `novel-creation-workbench-complete-flow` | 当前唯一主线 | 28 / 45 | 推进小说创作工作台完整闭环；继续执行未完成 tasks，不能恢复 mock/fake/noop 假成功。 |
+| `novel-creation-workbench-complete-flow` | 当前唯一主线 | 29 / 45 | 推进小说创作工作台完整闭环；继续执行未完成 tasks，不能恢复 mock/fake/noop 假成功。 |
 
 除 `novel-creation-workbench-complete-flow` 外，其余 spec 已归档到 `.kiro/specs/archive/`。归档 spec 只作为历史、参考或可复用资产来源，不再作为当前任务入口。
 
@@ -119,8 +119,7 @@
 
 ## 当前推荐执行顺序
 
-1. 补 Phase 1 未完成项：浏览器 UI 可辨识度审计。
-2. 补 Phase 2 未完成项：Story/Truth 文件列表与读取 API、Markdown/Text viewer。
-3. 进入 Phase 4：经纬资料、大纲、发布检查与导出。
-4. 执行 Phase 5：状态模型、真实统计、typecheck 阻塞项。
-5. 执行 Phase 6：mock scan、浏览器闭环验收、最终报告。
+1. 补 Phase 2 未完成项：Story/Truth 文件列表与读取 API、Markdown/Text viewer。
+2. 进入 Phase 4：经纬资料、大纲、发布检查与导出。
+3. 执行 Phase 5：状态模型、真实统计、typecheck 阻塞项。
+4. 执行 Phase 6：mock scan、浏览器闭环验收、最终报告。
