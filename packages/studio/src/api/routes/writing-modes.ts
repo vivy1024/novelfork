@@ -1,3 +1,7 @@
+import { randomUUID } from "node:crypto";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+
 import { Hono } from "hono";
 import {
   buildContinuationPrompt,
@@ -23,7 +27,31 @@ import {
 
 import type { RouterContext } from "./context.js";
 
-export function createWritingModesRouter(_ctx: RouterContext): Hono {
+type WritingModeApplyTarget = "candidate" | "draft" | "chapter-insert" | "chapter-replace";
+
+interface CandidateRecord {
+  readonly id: string;
+  readonly bookId: string;
+  readonly targetChapterId?: string;
+  readonly title: string;
+  readonly source: string;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  readonly status: "candidate";
+  readonly contentFileName: string;
+}
+
+interface DraftRecord {
+  readonly id: string;
+  readonly bookId: string;
+  readonly title: string;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  readonly wordCount: number;
+  readonly fileName: string;
+}
+
+export function createWritingModesRouter(ctx: RouterContext): Hono {
   const app = new Hono();
 
   // ---- POST /api/books/:bookId/inline-write ----
@@ -182,6 +210,70 @@ export function createWritingModesRouter(_ctx: RouterContext): Hono {
     return c.json(buildPromptPreviewResponse(prompt, { bookId, branchId }));
   });
 
+  // ---- POST /api/books/:bookId/writing-modes/apply ----
+  app.post("/api/books/:bookId/writing-modes/apply", async (c) => {
+    const bookId = c.req.param("bookId");
+    const body = await readJsonBody(c);
+    const requestedTarget = parseApplyTarget(body.target);
+    if (!requestedTarget) {
+      return c.json({ error: "Apply target must be candidate, draft, chapter-insert, or chapter-replace." }, 400);
+    }
+
+    const rawContent = asString(body.content) ?? "";
+    const content = rawContent.trim();
+    if (!content) return c.json({ error: "Generated content is required." }, 400);
+
+    const sourceMode = asString(body.sourceMode) ?? "writing-mode";
+    const chapterNumber = asNumber(body.chapterNumber);
+    const title = asString(body.title)?.trim() || defaultApplyTitle(requestedTarget, sourceMode);
+    const timestamp = new Date().toISOString();
+    const bookDir = join(ctx.root, "books", bookId);
+    await mkdir(bookDir, { recursive: true });
+
+    if (requestedTarget === "draft") {
+      const resourceId = buildSafeId("draft");
+      const record: DraftRecord = {
+        id: resourceId,
+        bookId,
+        title,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        wordCount: countWords(content),
+        fileName: `${resourceId}.md`,
+      };
+      await saveDraftRecord(bookDir, record, content);
+      return c.json({
+        target: "draft",
+        requestedTarget,
+        resourceId,
+        status: "draft",
+        metadata: { bookId, sourceMode, ...(chapterNumber ? { chapterNumber } : {}) },
+      }, 201);
+    }
+
+    const resourceId = buildSafeId("wm-candidate");
+    const record: CandidateRecord = {
+      id: resourceId,
+      bookId,
+      ...(chapterNumber ? { targetChapterId: String(chapterNumber) } : {}),
+      title,
+      source: `writing-mode:${sourceMode}`,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      status: "candidate",
+      contentFileName: `${resourceId}.md`,
+    };
+    await saveCandidateRecord(bookDir, record, content);
+    const nonDestructive = requestedTarget === "chapter-insert" || requestedTarget === "chapter-replace";
+    return c.json({
+      target: "candidate",
+      requestedTarget,
+      resourceId,
+      status: "candidate",
+      metadata: { bookId, sourceMode, nonDestructive, ...(chapterNumber ? { chapterNumber } : {}) },
+    }, 201);
+  });
+
   // ---- POST /api/works/import ----
   app.post("/api/works/import", async (c) => {
     const body = await readJsonBody(c);
@@ -265,4 +357,48 @@ function asNumber(value: unknown): number | undefined {
     return Number.isFinite(n) ? n : undefined;
   }
   return undefined;
+}
+
+function parseApplyTarget(value: unknown): WritingModeApplyTarget | undefined {
+  if (value === "candidate" || value === "draft" || value === "chapter-insert" || value === "chapter-replace") return value;
+  return undefined;
+}
+
+function defaultApplyTitle(target: WritingModeApplyTarget, sourceMode: string): string {
+  if (target === "draft") return `写作模式草稿：${sourceMode}`;
+  if (target === "chapter-insert") return `正文插入候选：${sourceMode}`;
+  if (target === "chapter-replace") return `正文替换候选：${sourceMode}`;
+  return `写作模式候选：${sourceMode}`;
+}
+
+function buildSafeId(prefix: string): string {
+  return `${prefix}-${randomUUID()}`;
+}
+
+async function saveCandidateRecord(bookDir: string, record: CandidateRecord, content: string): Promise<void> {
+  const dir = join(bookDir, "generated-candidates");
+  await mkdir(dir, { recursive: true });
+  await writeFile(join(dir, record.contentFileName), content, "utf-8");
+  const candidates = await loadIndex<CandidateRecord>(join(dir, "index.json"));
+  await writeFile(join(dir, "index.json"), JSON.stringify([...candidates, record], null, 2), "utf-8");
+}
+
+async function saveDraftRecord(bookDir: string, record: DraftRecord, content: string): Promise<void> {
+  const dir = join(bookDir, "drafts");
+  await mkdir(dir, { recursive: true });
+  await writeFile(join(dir, record.fileName), content, "utf-8");
+  const drafts = await loadIndex<DraftRecord>(join(dir, "index.json"));
+  await writeFile(join(dir, "index.json"), JSON.stringify([...drafts, record], null, 2), "utf-8");
+}
+
+async function loadIndex<T>(filePath: string): Promise<T[]> {
+  try {
+    return JSON.parse(await readFile(filePath, "utf-8")) as T[];
+  } catch {
+    return [];
+  }
+}
+
+function countWords(content: string): number {
+  return content.replace(/\s+/g, "").length;
 }

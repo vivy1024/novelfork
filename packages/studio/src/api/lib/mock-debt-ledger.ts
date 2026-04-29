@@ -187,10 +187,10 @@ export const MOCK_DEBT_ITEMS = [
       "packages/studio/src/components/writing-modes/*.tsx",
       "packages/studio/src/app-next/workspace/WorkspacePage.tsx",
     ],
-    currentBehavior: "writing modes endpoint 已标注 mode: prompt-preview，相关 UI 显示 Prompt 预览/复制 prompt/执行生成未接入；Workspace 写作模式应用按钮在无安全写入目标时 disabled 并显示原因；章节钩子插入会写入 pending_hooks.md。",
+    currentBehavior: "writing modes 生成端点仍标注 mode: prompt-preview；安全 apply route 已能写入 candidate/draft，章节 insert/replace 会转为非破坏性候选稿；Workspace 写作模式应用按钮尚未接确认流程时仍 disabled 并显示原因；章节钩子插入会写入 pending_hooks.md。",
     userRisk: "critical",
     status: "transparent-placeholder",
-    targetBehavior: "保持 prompt-preview 与 disabled 透明语义；章节钩子应用必须持续写入 pending_hooks.md 或结构化 hooks repository；后续新增真实 generate/apply 时必须定位章节文件/编辑器并写入目标。",
+    targetBehavior: "保持 prompt-preview 与 disabled 透明语义；章节钩子应用必须持续写入 pending_hooks.md 或结构化 hooks repository；UI 接入真实 apply 时必须先确认目标并写入 candidate/draft，正式章节 insert/replace 不得无确认直改正文。",
     ownerSpec: OWNER_SPEC,
     verification: [
       "route/UI 测试覆盖 mode: prompt-preview 或真实生成路径",
