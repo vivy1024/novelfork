@@ -29,7 +29,7 @@ describe("createChapterCandidatesRouter", () => {
     const response = await app.request("http://localhost/api/books/book-1/candidates", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ targetChapterId: "1", title: "第一章 AI 候选", content: "AI 候选正文", source: "write-next" }),
+      body: JSON.stringify({ targetChapterId: "1", title: "第一章 AI 候选", content: "AI 候选正文", source: "write-next", metadata: { provider: "sub2api", model: "gpt-5.4", runId: "run-cand-1" } }),
     });
 
     expect(response.status).toBe(200);
@@ -43,13 +43,14 @@ describe("createChapterCandidatesRouter", () => {
       status: "candidate",
       createdAt: "2026-04-27T12:00:00.000Z",
       content: "AI 候选正文",
+      metadata: { provider: "sub2api", model: "gpt-5.4", runId: "run-cand-1" },
     });
     await expect(readFile(join(root, "books", "book-1", "chapters", "0001-first.md"), "utf-8")).resolves.toBe("# 第一章\n\n正式正文");
 
     const listResponse = await app.request("http://localhost/api/books/book-1/candidates");
     const listPayload = await listResponse.json();
     expect(listPayload.candidates).toHaveLength(1);
-    expect(listPayload.candidates[0]).toMatchObject({ id: "cand-1", status: "candidate", content: "AI 候选正文" });
+    expect(listPayload.candidates[0]).toMatchObject({ id: "cand-1", status: "candidate", content: "AI 候选正文", metadata: { provider: "sub2api", model: "gpt-5.4", runId: "run-cand-1" } });
   });
 
   it("keeps candidate list readable and marks candidates when stored content is missing", async () => {
@@ -80,7 +81,7 @@ describe("createChapterCandidatesRouter", () => {
     const createResponse = await app.request("http://localhost/api/books/book-1/drafts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: "城门冲突片段", content: "草稿正文" }),
+      body: JSON.stringify({ title: "城门冲突片段", content: "草稿正文", metadata: { provider: "openai", model: "gpt-5.3", requestId: "req-draft-manual" } }),
     });
 
     expect(createResponse.status).toBe(201);
@@ -97,7 +98,7 @@ describe("createChapterCandidatesRouter", () => {
 
     const readResponse = await app.request("http://localhost/api/books/book-1/drafts/draft-manual-1");
     expect(readResponse.status).toBe(200);
-    expect((await readResponse.json()).draft).toMatchObject({ id: "draft-manual-1", content: "草稿正文" });
+    expect((await readResponse.json()).draft).toMatchObject({ id: "draft-manual-1", content: "草稿正文", metadata: { provider: "openai", model: "gpt-5.3", requestId: "req-draft-manual" } });
 
     currentNow = new Date("2026-04-27T13:00:00.000Z");
     const updateResponse = await app.request("http://localhost/api/books/book-1/drafts/draft-manual-1", {

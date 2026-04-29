@@ -204,7 +204,7 @@
   - 每个 action 必须经过 runtime model gate，并显示运行中、成功、失败状态。
   - 验证：route/UI 测试覆盖成功、模型不可用、adapter unsupported、上游失败。
 
-- [ ] 31. 记录 AI 结果 metadata
+- [x] 31. 记录 AI 结果 metadata
   - 候选稿、草稿、报告类 AI 结果保存 provider、model、run id 或 request metadata。
   - UI 中显示最小来源信息，便于用户知道结果来自哪个模型。
   - 验证：测试断言 metadata 被保存和返回。

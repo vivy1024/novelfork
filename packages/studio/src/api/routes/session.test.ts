@@ -1,7 +1,15 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+let generateSessionReplyMock: ReturnType<typeof vi.fn>;
+
+vi.mock("../lib/llm-runtime-service.js", () => ({
+  generateSessionReply: (...args: unknown[]) =>
+    (globalThis as typeof globalThis & { __novelforkGenerateSessionReplyMock: (...args: unknown[]) => unknown })
+      .__novelforkGenerateSessionReplyMock(...args),
+}));
 
 import sessionRouter from "./session";
 import {
@@ -25,11 +33,21 @@ describe("sessionRouter", () => {
   beforeEach(async () => {
     sessionStoreDir = await mkdtemp(join(tmpdir(), "novelfork-session-route-"));
     process.env.NOVELFORK_SESSION_STORE_DIR = sessionStoreDir;
+    generateSessionReplyMock = vi.fn().mockResolvedValue({
+      success: true,
+      content: "运行时真实回复",
+      metadata: { providerId: "anthropic", providerName: "Anthropic", modelId: "claude-sonnet-4-6" },
+    });
+    (globalThis as typeof globalThis & { __novelforkGenerateSessionReplyMock: typeof generateSessionReplyMock })
+      .__novelforkGenerateSessionReplyMock = generateSessionReplyMock;
   });
 
   afterEach(async () => {
     const { __testing } = await import("../lib/session-service");
     __testing.resetSessionStoreMutationQueue();
+    generateSessionReplyMock.mockReset();
+    delete (globalThis as typeof globalThis & { __novelforkGenerateSessionReplyMock?: typeof generateSessionReplyMock })
+      .__novelforkGenerateSessionReplyMock;
     delete process.env.NOVELFORK_SESSION_STORE_DIR;
     await rm(sessionStoreDir, { recursive: true, force: true });
   });

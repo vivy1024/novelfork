@@ -52,7 +52,19 @@ const bookDetailResponse = {
   nextChapter: 3,
 };
 const candidatesResponse = {
-  candidates: [{ id: "candidate-2", bookId: TEST_BOOK.id, targetChapterId: "2", title: "第二章 AI 候选", source: "write-next", createdAt: "2026-04-27T02:00:00.000Z", status: "candidate", content: "AI 候选正文" }],
+  candidates: [
+    {
+      id: "candidate-2",
+      bookId: TEST_BOOK.id,
+      targetChapterId: "2",
+      title: "第二章 AI 候选",
+      source: "write-next",
+      createdAt: "2026-04-27T02:00:00.000Z",
+      status: "candidate",
+      content: "AI 候选正文",
+      metadata: { provider: "sub2api", model: "gpt-5.4", requestId: "run-cand-2" },
+    },
+  ],
 };
 const storyFilesResponse = {
   files: [{ name: "pending_hooks.md", size: 128, preview: "# hooks" }],
@@ -144,6 +156,7 @@ describe("WorkspacePage", () => {
     const editor = screen.getByRole("main", { name: "正文编辑区" });
     expect(within(editor).getByRole("heading", { name: "第二章 AI 候选" })).toBeTruthy();
     expect(within(editor).getByText("候选稿 / 不会自动覆盖正式正文")).toBeTruthy();
+    expect(within(editor).getByText("AI 来源：sub2api / gpt-5.4 / run-cand-2")).toBeTruthy();
     expect(within(editor).getByDisplayValue("AI 候选正文")).toBeTruthy();
     expect(within(editor).getByRole("button", { name: "合并到正式章节" })).toBeTruthy();
     expect(within(editor).getByRole("button", { name: "替换正式章节" })).toBeTruthy();

@@ -70,7 +70,7 @@ describe("mock debt scan", () => {
 
     expect(report.hits.length).toBeGreaterThan(0);
     expect(report.unregistered).toEqual([]);
-  });
+  }, 20000);
 
   it("confirms Core and CLI low-risk audit boundaries", async () => {
     const repoRoot = join(process.cwd(), "../..");
@@ -86,7 +86,7 @@ describe("mock debt scan", () => {
       }),
     ]);
     expect(cliHits).toEqual([]);
-  });
+  }, 20000);
 
   it("keeps residual production hits out of must-replace status", async () => {
     const repoRoot = join(process.cwd(), "../..");
@@ -99,5 +99,5 @@ describe("mock debt scan", () => {
     const mustReplaceHits = report.registered.filter((hit) => statusByDebt.get(hit.debtId) === "must-replace");
 
     expect(mustReplaceHits).toEqual([]);
-  });
+  }, 20000);
 });

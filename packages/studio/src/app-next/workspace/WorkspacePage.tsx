@@ -531,6 +531,16 @@ function WorkspaceEditor({
   }
 }
 
+function formatAiResultMetadata(value: unknown): string | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const metadata = value as Record<string, unknown>;
+  const provider = typeof metadata.provider === "string" ? metadata.provider : null;
+  const model = typeof metadata.model === "string" ? metadata.model : null;
+  const request = typeof metadata.runId === "string" ? metadata.runId : typeof metadata.requestId === "string" ? metadata.requestId : null;
+  const parts = [provider, model, request].filter((part): part is string => Boolean(part));
+  return parts.length > 0 ? `AI 来源：${parts.join(" / ")}` : null;
+}
+
 function CandidateEditor({
   candidateApi,
   node,
@@ -549,6 +559,7 @@ function CandidateEditor({
   const targetChapterId = typeof node.metadata?.targetChapterId === "string" ? node.metadata.targetChapterId : "未指定";
   const candidateContent = typeof node.metadata?.content === "string" ? node.metadata.content : null;
   const contentError = typeof node.metadata?.contentError === "string" ? node.metadata.contentError : null;
+  const aiMetadataText = formatAiResultMetadata(node.metadata?.aiMetadata);
   const hasContent = candidateContent !== null;
 
   const accept = async (action: CandidateAcceptAction) => {
@@ -574,6 +585,7 @@ function CandidateEditor({
   return (
     <div className="space-y-4">
       <EditorHeader title={node.title} meta="候选稿 / 不会自动覆盖正式正文" />
+      {aiMetadataText && <p className="text-xs text-muted-foreground">{aiMetadataText}</p>}
       {actionError && <InlineError message={`候选稿操作失败：${actionError}`} />}
       {pendingAction && (
         <div className="rounded-lg border border-border bg-background p-4 text-sm">

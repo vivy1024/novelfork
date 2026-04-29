@@ -39,6 +39,7 @@ interface CandidateRecord {
   readonly updatedAt: string;
   readonly status: "candidate";
   readonly contentFileName: string;
+  readonly metadata?: Record<string, unknown>;
 }
 
 interface DraftRecord {
@@ -49,6 +50,7 @@ interface DraftRecord {
   readonly updatedAt: string;
   readonly wordCount: number;
   readonly fileName: string;
+  readonly metadata?: Record<string, unknown>;
 }
 
 export function createWritingModesRouter(ctx: RouterContext): Hono {
@@ -226,6 +228,7 @@ export function createWritingModesRouter(ctx: RouterContext): Hono {
     const sourceMode = asString(body.sourceMode) ?? "writing-mode";
     const chapterNumber = asNumber(body.chapterNumber);
     const title = asString(body.title)?.trim() || defaultApplyTitle(requestedTarget, sourceMode);
+    const baseMetadata = buildAiResultMetadata(body, { bookId, sourceMode, ...(chapterNumber !== undefined ? { chapterNumber } : {}) });
     const timestamp = new Date().toISOString();
     const bookDir = join(ctx.root, "books", bookId);
     await mkdir(bookDir, { recursive: true });
@@ -240,6 +243,7 @@ export function createWritingModesRouter(ctx: RouterContext): Hono {
         updatedAt: timestamp,
         wordCount: countWords(content),
         fileName: `${resourceId}.md`,
+        metadata: baseMetadata,
       };
       await saveDraftRecord(bookDir, record, content);
       return c.json({
@@ -247,11 +251,13 @@ export function createWritingModesRouter(ctx: RouterContext): Hono {
         requestedTarget,
         resourceId,
         status: "draft",
-        metadata: { bookId, sourceMode, ...(chapterNumber ? { chapterNumber } : {}) },
+        metadata: baseMetadata,
       }, 201);
     }
 
     const resourceId = buildSafeId("wm-candidate");
+    const nonDestructive = requestedTarget === "chapter-insert" || requestedTarget === "chapter-replace";
+    const metadata = { ...baseMetadata, nonDestructive };
     const record: CandidateRecord = {
       id: resourceId,
       bookId,
@@ -262,15 +268,15 @@ export function createWritingModesRouter(ctx: RouterContext): Hono {
       updatedAt: timestamp,
       status: "candidate",
       contentFileName: `${resourceId}.md`,
+      metadata,
     };
     await saveCandidateRecord(bookDir, record, content);
-    const nonDestructive = requestedTarget === "chapter-insert" || requestedTarget === "chapter-replace";
     return c.json({
       target: "candidate",
       requestedTarget,
       resourceId,
       status: "candidate",
-      metadata: { bookId, sourceMode, nonDestructive, ...(chapterNumber ? { chapterNumber } : {}) },
+      metadata,
     }, 201);
   });
 
@@ -357,6 +363,20 @@ function asNumber(value: unknown): number | undefined {
     return Number.isFinite(n) ? n : undefined;
   }
   return undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function buildAiResultMetadata(body: Record<string, unknown>, defaults: Record<string, unknown>): Record<string, unknown> {
+  const nested = isRecord(body.metadata) ? body.metadata : {};
+  const metadata: Record<string, unknown> = { ...nested, ...defaults };
+  for (const key of ["provider", "model", "runId", "requestId"] as const) {
+    const value = asString(body[key]);
+    if (value) metadata[key] = value;
+  }
+  return metadata;
 }
 
 function parseApplyTarget(value: unknown): WritingModeApplyTarget | undefined {
