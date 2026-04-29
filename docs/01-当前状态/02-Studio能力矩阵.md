@@ -74,8 +74,8 @@
 | Writing tools：对话分析 | Workspace 右侧写作工具 | `/writing-tools/dialogue` | 章节正文 | 即时计算 | 真实可用 | 指标以当前章节文本为准 | `writing-tools.test.ts` |
 | Writing tools：书籍健康 | Workspace / 健康面板 | `/writing-tools/health`、`BookHealthDashboard` | 章节数、字数、敏感词、矛盾登记等 | 从真实文件/记录计算 | 真实可用 | 连续性评分、hook 回收率、AI 味、节奏多样性等未接统计显示 `unknown`，不得固定满分 | ledger `writing-tools-health`；`writing-tools.test.ts` |
 | Conflict map / character arcs / tone check | Workspace 写作工具 | `api/routes/writing-tools.ts` | story truth / 章节文本 | 即时计算或读取文件 | 真实可用 | 输出受现有 story truth 文件完整度限制 | `writing-tools.test.ts` |
-| Writing modes route | Workspace 写作模式 | `api/routes/writing-modes.ts` | prompt 构建逻辑 | 不写入正文 | 透明过渡 | 当前主要是 `prompt-preview`；应用按钮在无安全写入目标时 disabled | ledger `writing-modes-apply`；`writing-modes.test.ts`；`WorkspacePage.test.tsx` |
-| Writing modes apply | Workspace 写作模式应用按钮 | 待新增安全 apply route | 预览、候选稿、草稿、章节目标 | 未接入 | 透明过渡 | Inline write、dialogue、variants、outline branch 不得 noop；后续必须走预览→确认→写入 candidate/draft/chapter | 新 spec Task 26-28 |
+| Writing modes route | Workspace 写作模式 | `api/routes/writing-modes.ts` | prompt 构建逻辑 + apply 请求 | candidate/draft 真实落库；章节 insert/replace 转候选稿 | current / transparent 混合 | 生成接口仍主要是提示词预览；安全 apply route 已可落库 candidate/draft，但 UI 确认流程仍待接入 | ledger `writing-modes-apply`；`writing-modes.test.ts`；`WorkspacePage.test.tsx` |
+| Writing modes apply UI | Workspace 写作模式应用按钮 | `/api/books/:bookId/writing-modes/apply` | 预览、候选稿、草稿、章节目标 | route 已接，UI 未接 | 透明过渡 | Inline write、dialogue、variants、outline branch 不得 noop；Task 28 需要走预览→确认→写入 candidate/draft | 新 spec Task 28 |
 | Workspace AI actions | Workspace 右侧 AI/经纬面板 | action router / writing route | Runtime model pool + 章节上下文 | write-next 已走候选稿路径 | 透明过渡 | 除生成下一章外，续写、审校、改写、去 AI 味、连续性检查需要真实 route 或 unsupported | 新 spec Task 29-31 |
 | Inline completion streaming | 编辑器/AI completion API | `api/routes/ai.ts` | 先取完整 LLM 结果再切片 SSE | 不代表上游原生流式 | 透明过渡 | payload 已标注 `streamSource: chunked-buffer`；不能称为原生 streaming | ledger `ai-complete-streaming` |
 
@@ -120,9 +120,9 @@
 |---|---|---|
 | UI 看起来像同色 mock 壳 | 浏览器审计发现 Tailwind theme token 未生成，导致大量按钮样式高度相似 | `novel-creation-workbench-complete-flow` Phase 1 |
 | 资源管理器不完整 | 已能查看章节、候选稿、草稿、story/truth 文件和注册 viewer；mutation 后刷新已统一，仍需做实大纲、经纬、素材、发布报告 | `novel-creation-workbench-complete-flow` Phase 2 |
-| 新建章节、章节导入、候选稿、草稿与 hook mutation 已形成刷新闭环 | route 已能创建章节记录、导入章节文本并写入正文/索引；Workspace mutation 统一重新读取章节、候选、草稿、Story 文件资源，不再维护前端临时节点 | Task 26+ 写作模式应用 |
+| 新建章节、章节导入、候选稿、草稿与 hook mutation 已形成刷新闭环 | route 已能创建章节记录、导入章节文本、写作模式结果落库，并写入正文/索引、候选稿或草稿；Workspace mutation 统一重新读取章节、候选、草稿、Story 文件资源，不再维护前端临时节点 | Task 28+ 写作模式 UI 应用 |
 | 导出 disabled | 当前不是可用闭环 | Task 37-38 |
-| 写作模式应用 disabled / prompt-preview | 当前不写入正式正文，且应保持透明 | Task 26-28 |
+| 写作模式应用 UI 仍 disabled / 预览态 | apply route 已能安全落库 candidate/draft，正式章节 insert/replace 转候选稿；Workspace UI 仍需接确认流程 | Task 28 |
 | 经纬面板 404 与分类壳子 | 结构化经纬 API 已可用，但 Workspace 分类视图仍未完整接入 | Task 32-33 |
 | 引导式生成入口串联 | 问卷、生成前追问、核心变更和 AI 味报告已有底座，仍需确认当前主工作台是否完整串起 | `novel-creation-workbench-complete-flow` 后续流程任务 |
 | Typecheck 阻塞已清理 | 旧 `routes`、`novelfork-context`、`use-tabs` 阻塞已通过旧前端退役清理，Studio typecheck 需先构建 core dist | 已在 `old-frontend-decommission` 完成 |
@@ -136,4 +136,4 @@
 - 已同步小说创作流程、API 文档、测试报告、旧前端退役、新建章节、章节导入、草稿、候选稿与资源树刷新闭环的当前边界。
 - 已保留已知缺口，避免把 spec 后续任务提前写成完成。
 
-后续优先继续 Task 26-28，补齐 writing modes 安全应用 route 与 UI 流程。
+后续优先继续 Task 28，接入 writing modes UI 应用确认流程。

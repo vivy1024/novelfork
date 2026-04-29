@@ -174,13 +174,13 @@
   - URL 导入若未完成，改为明确 unsupported 或透明过渡响应。
   - 验证：导入章节 route/UI 测试通过，URL 未接入路径不会假成功。
 
-- [ ] 26. 为 writing modes apply 写失败优先测试
+- [x] 26. 为 writing modes apply 写失败优先测试
   - 新增 route 测试覆盖 `POST /books/:bookId/writing-modes/apply` 或等价应用端点。
   - 覆盖目标为 candidate、draft、chapter-insert、chapter-replace 的请求语义。
   - 首版正式章节 insert/replace 可转为 candidate，但必须返回非破坏性结果。
   - 验证：测试先因端点缺失或 noop 失败。
 
-- [ ] 27. 实现 writing modes 安全应用 route
+- [x] 27. 实现 writing modes 安全应用 route
   - 实现生成/预览结果写入 candidate 或 draft 的安全路径。
   - 正式章节写入必须经过确认；首版将 insert/replace 转成 candidate，避免编辑器 range 风险。
   - 返回写入目标、resource id、status 和可追踪 metadata。

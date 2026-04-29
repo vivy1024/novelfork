@@ -1,3 +1,7 @@
+import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { describe, expect, it, vi } from "vitest";
 import { createWritingModesRouter } from "./writing-modes.js";
 
@@ -29,10 +33,10 @@ vi.mock("@vivy1024/novelfork-core", () => ({
   ...coreMocks,
 }));
 
-function buildCtx(): Parameters<typeof createWritingModesRouter>[0] {
+function buildCtx(root = "/tmp/test"): Parameters<typeof createWritingModesRouter>[0] {
   return {
     state: {} as never,
-    root: "/tmp/test",
+    root,
     broadcast: vi.fn(),
     buildPipelineConfig: vi.fn(),
     getSessionLlm: vi.fn(),
@@ -47,10 +51,16 @@ describe("writing-modes router", () => {
   const router = createWritingModesRouter(buildCtx());
 
   async function request(method: string, path: string, body?: unknown) {
+    return requestWithRouter(router, method, path, body);
+  }
+
+  async function requestWithRouter(targetRouter: ReturnType<typeof createWritingModesRouter>, method: string, path: string, body?: unknown) {
     const init: RequestInit = { method, headers: { "Content-Type": "application/json" } };
     if (body) init.body = JSON.stringify(body);
-    const res = await router.request(new Request(`http://localhost${path}`, init));
-    return { status: res.status, json: await res.json() };
+    const res = await targetRouter.request(new Request(`http://localhost${path}`, init));
+    const text = await res.text();
+    const json = text.trim().startsWith("{") || text.trim().startsWith("[") ? JSON.parse(text) : { error: text };
+    return { status: res.status, json: json as Record<string, any> };
   }
 
   it("POST /api/books/:bookId/inline-write — continuation", async () => {
@@ -132,6 +142,83 @@ describe("writing-modes router", () => {
     expect(json.branchId).toBe("b1");
     expect(json.mode).toBe("prompt-preview");
     expect(json.promptPreview).toContain("大纲分支扩展任务");
+  });
+
+  it("POST /api/books/:bookId/writing-modes/apply — writes generated content to a candidate", async () => {
+    const root = await mkdtemp(join(tmpdir(), "novelfork-writing-modes-"));
+    const testRouter = createWritingModesRouter(buildCtx(root));
+
+    const { status, json } = await requestWithRouter(testRouter, "POST", "/api/books/book1/writing-modes/apply", {
+      target: "candidate",
+      title: "续写候选",
+      content: "他推门而入，风雪随之涌进。",
+      sourceMode: "inline-continuation",
+      chapterNumber: 3,
+    });
+
+    expect(status).toBe(201);
+    expect(json).toMatchObject({ target: "candidate", status: "candidate" });
+    expect(json.resourceId).toEqual(expect.any(String));
+    expect(json.metadata).toMatchObject({ bookId: "book1", sourceMode: "inline-continuation", chapterNumber: 3 });
+
+    const index = JSON.parse(await readFile(join(root, "books", "book1", "generated-candidates", "index.json"), "utf-8")) as Array<{ id: string; title: string; targetChapterId?: string }>;
+    expect(index).toMatchObject([{ id: json.resourceId, title: "续写候选", targetChapterId: "3" }]);
+    await expect(readFile(join(root, "books", "book1", "generated-candidates", `${json.resourceId}.md`), "utf-8"))
+      .resolves.toBe("他推门而入，风雪随之涌进。");
+  });
+
+  it("POST /api/books/:bookId/writing-modes/apply — writes generated content to a draft", async () => {
+    const root = await mkdtemp(join(tmpdir(), "novelfork-writing-modes-"));
+    const testRouter = createWritingModesRouter(buildCtx(root));
+
+    const { status, json } = await requestWithRouter(testRouter, "POST", "/api/books/book1/writing-modes/apply", {
+      target: "draft",
+      title: "对话草稿",
+      content: "林月：\"你终于来了。\"",
+      sourceMode: "dialogue-generator",
+    });
+
+    expect(status).toBe(201);
+    expect(json).toMatchObject({ target: "draft", status: "draft" });
+    expect(json.resourceId).toEqual(expect.stringMatching(/^draft-/));
+    const drafts = JSON.parse(await readFile(join(root, "books", "book1", "drafts", "index.json"), "utf-8")) as Array<{ id: string; title: string; wordCount: number }>;
+    expect(drafts).toMatchObject([{ id: json.resourceId, title: "对话草稿", wordCount: 11 }]);
+    await expect(readFile(join(root, "books", "book1", "drafts", `${json.resourceId}.md`), "utf-8"))
+      .resolves.toBe("林月：\"你终于来了。\"");
+  });
+
+  it("POST /api/books/:bookId/writing-modes/apply — converts chapter insert/replace into non-destructive candidates", async () => {
+    const root = await mkdtemp(join(tmpdir(), "novelfork-writing-modes-"));
+    const chapterDir = join(root, "books", "book1", "chapters");
+    await mkdir(chapterDir, { recursive: true });
+    await writeFile(join(chapterDir, "0003_old.md"), "旧正文", "utf-8");
+    const testRouter = createWritingModesRouter(buildCtx(root));
+
+    const { status, json } = await requestWithRouter(testRouter, "POST", "/api/books/book1/writing-modes/apply", {
+      target: "chapter-replace",
+      title: "替换候选",
+      content: "新正文",
+      sourceMode: "variant-compare",
+      chapterNumber: 3,
+    });
+
+    expect(status).toBe(201);
+    expect(json).toMatchObject({ target: "candidate", requestedTarget: "chapter-replace", status: "candidate" });
+    expect(json.metadata).toMatchObject({ nonDestructive: true, chapterNumber: 3 });
+    await expect(readFile(join(chapterDir, "0003_old.md"), "utf-8")).resolves.toBe("旧正文");
+  });
+
+  it("POST /api/books/:bookId/writing-modes/apply — rejects empty generated content", async () => {
+    const root = await mkdtemp(join(tmpdir(), "novelfork-writing-modes-"));
+    const testRouter = createWritingModesRouter(buildCtx(root));
+
+    const { status, json } = await requestWithRouter(testRouter, "POST", "/api/books/book1/writing-modes/apply", {
+      target: "candidate",
+      content: "   ",
+    });
+
+    expect(status).toBe(400);
+    expect(json).toMatchObject({ error: "Generated content is required." });
   });
 
   it("POST /api/works/import", async () => {
