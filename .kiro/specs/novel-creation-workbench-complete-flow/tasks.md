@@ -119,11 +119,11 @@
   - 删除静默 fallback 到空壳详情的路径。
   - 验证：UI 测试点击每类节点后都能看到明确 editor/viewer/unsupported。
 
-- [ ] 17. 实现 Story/Truth 文件列表与读取 API
-  - 新增或复用 route：列出 story files、truth files，并读取指定 Markdown/Text 文件。
+- [x] 17. 实现 Story/Truth 文件列表与读取 API
+  - 已复用 `storage.ts` 中 `/api/books/:id/story-files`、`/api/books/:id/story-files/:file`、`/api/books/:id/truth-files`、`/api/books/:id/truth-files/:file` route，列出 story/truth files 并读取指定 Markdown/Text 文件。
   - 首批覆盖 `pending_hooks.md`、`chapter_summaries.md`、style/profile、book rules。
-  - 文件不存在返回明确 empty/404 语义，不能返回假内容。
-  - 验证：route 测试覆盖存在文件、缺失文件和路径安全边界。
+  - 文件不存在返回 `{ file, content: null }`，路径不安全返回 400，不返回假内容。
+  - 验证：`pnpm --dir packages/studio exec vitest run src/api/__tests__/server-integration.test.ts` 通过；route 测试覆盖存在文件、缺失文件和路径安全边界。
 
 - [ ] 18. 实现 Markdown/Text viewer
   - 新增 Workspace viewer 组件展示 story/truth/material 文本内容。
