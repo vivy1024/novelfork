@@ -94,11 +94,11 @@
   - 合并/替换确认使用主操作，放弃候选使用 destructive，取消使用 outline。
   - 验证：UI 测试覆盖按钮文案、variant class 和禁用原因。
 
-- [ ] 13. 建立浏览器 UI 可辨识度审计脚本
-  - 新增浏览器实测脚本或测试说明，启动 `/app-next` 后读取 CSSOM 和 button computed style。
-  - 断言主题类存在，启用按钮、禁用按钮、主操作、active tab 至少有不同 style groups。
-  - 将脚本结果写入后续验收报告。
-  - 验证：修复前的同色问题会失败，修复后通过。
+- [x] 13. 建立浏览器 UI 可辨识度审计脚本
+  - 已使用 `packages/studio/public/audits/app-next-visual-audit.js` 作为浏览器实测脚本；当前新入口路由为 `/next`，脚本读取 CSSOM 和 button computed style。
+  - `packages/studio/src/app-next/visual-audit.test.ts` 断言主题类存在，启用按钮、禁用按钮、主操作、active tab 至少有不同 style groups。
+  - 已将脚本路径、手动执行方式和边界写入 `docs/08-测试与质量/02-真实运行时与Mock清理验收报告.md`。
+  - 验证：`pnpm --dir packages/studio exec vitest run src/app-next/visual-audit.test.ts src/tailwind-theme.test.ts` 通过；测试覆盖同色问题失败和修复后通过两类样式组。
 
 ### Phase 2：小说资源管理器做实
 

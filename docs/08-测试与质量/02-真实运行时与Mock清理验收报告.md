@@ -113,28 +113,26 @@ pnpm --dir packages/studio exec vitest run src/api/lib/mock-debt-ledger.test.ts 
 
 ## 4. 浏览器 UI 审计当前结论
 
-本报告记录的是**当前已知浏览器审计结论**，不是本轮 fresh browser run 结果。
-
-已知结论：
-
-- `bg-primary`、`text-primary`、`border-border` 等 Tailwind theme token 未正确生成。
-- `/app-next` 中大量按钮在浏览器 computed style 上表现为同一类透明背景、黑字、灰边。
-- 这会导致主操作、次操作、危险操作、disabled、active route/resource node 缺乏足够视觉分层。
+本报告记录当前已知浏览器审计边界。Tailwind token 的配置和生成检查已经有自动化证据；完整 `/next` 浏览器实测仍留到主线 Task 43 的端到端验收中执行。
 
 当前代码证据：
 
-- `packages/studio/tailwind.config.js` 仍然是：
-  - `theme.extend = {}`
-  - 没有把 `index.css` 中的 CSS variables 映射到 Tailwind colors
+- `packages/studio/tailwind.config.js` 已将 `index.css` 中的 CSS variables 映射到 Tailwind colors。
+- `packages/studio/src/tailwind-theme.test.ts` 会生成 Tailwind utilities，并断言 `.bg-primary`、`.text-primary`、`.text-primary-foreground`、`.bg-muted`、`.text-muted-foreground`、`.border-border`、`.bg-card`、`.bg-destructive` 存在。
+- `packages/studio/src/app-next/visual-audit.test.ts` 覆盖两类状态：同色样式组会失败，主操作/次操作/active/disabled 分层会通过。
+- 浏览器脚本位于 `packages/studio/public/audits/app-next-visual-audit.js`，会读取 CSSOM 与 `getComputedStyle(button)`，并输出主题类缺失、样式组和关键按钮对比结果。
 
-因此本报告保留结论：
+浏览器手动执行方式：
 
-> **UI 主题 token 问题仍是 `novel-creation-workbench-complete-flow` Phase 1 的明确阻塞项。**
+```js
+const audit = await import("/audits/app-next-visual-audit.js");
+await audit.runNovelForkAppNextVisualAudit();
+```
 
 ### 当前不能写成已完成的内容
 
-- 不能写“Tailwind 主题修复已完成”。
-- 不能写“按钮状态已经明显分层”。
+- 不能把 helper/unit test 写成完整浏览器 E2E 已通过。
+- 不能把 `/next` 页面上所有按钮都写成已经完成浏览器验收。
 - 不能把设计稿或 className 设想写成浏览器已验收事实。
 
 ## 5. 当前 typecheck 阻塞
