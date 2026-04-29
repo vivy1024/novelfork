@@ -59,6 +59,9 @@ const storyFilesResponse = {
 const truthFilesResponse = {
   files: [{ name: "chapter_summaries.md", size: 256, preview: "# summaries" }],
 };
+const draftsResponse = {
+  drafts: [{ id: "draft-1", bookId: TEST_BOOK.id, title: "城门冲突片段", content: "草稿正文", updatedAt: "2026-04-27T03:00:00.000Z", wordCount: 4 }],
+};
 
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
@@ -77,6 +80,7 @@ beforeEach(() => {
     if (path === `/books/${TEST_BOOK.id}/candidates`) return { data: candidatesResponse, loading: false, error: null, refetch: vi.fn() };
     if (path === `/books/${TEST_BOOK.id}/story-files`) return { data: storyFilesResponse, loading: false, error: null, refetch: vi.fn() };
     if (path === `/books/${TEST_BOOK.id}/truth-files`) return { data: truthFilesResponse, loading: false, error: null, refetch: vi.fn() };
+    if (path === `/books/${TEST_BOOK.id}/drafts`) return { data: draftsResponse, loading: false, error: null, refetch: vi.fn() };
     return { data: null, loading: false, error: null, refetch: vi.fn() };
   });
 });
@@ -166,6 +170,66 @@ describe("WorkspacePage", () => {
 
     fireEvent.click(within(explorer).getByRole("button", { name: /^chapter_summaries\.md/ }));
     expect(await screen.findByText(/第一章摘要/)).toBeTruthy();
+  });
+
+  it("lists real drafts and saves draft content through DraftEditor", async () => {
+    fetchJsonMock.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path === `/books/${TEST_BOOK.id}/drafts/draft-1` && init?.method === "PUT") {
+        return { draft: { ...draftsResponse.drafts[0], content: "修改后的草稿", wordCount: 6, updatedAt: "2026-04-27T04:00:00.000Z" } };
+      }
+      if (path === `/books/${TEST_BOOK.id}/drafts/draft-1`) return { draft: draftsResponse.drafts[0] };
+      if (path === `/books/${TEST_BOOK.id}/chapters/1`) return { content: "测试正文" };
+      if (path === `/books/${TEST_BOOK.id}/chapters/2`) return { content: "第二章正文" };
+      return {};
+    });
+
+    render(<WorkspacePage />);
+    const explorer = screen.getByRole("complementary", { name: "小说资源管理器" });
+    fireEvent.click(within(explorer).getByRole("button", { name: /城门冲突片段/ }));
+
+    expect(await screen.findByDisplayValue("草稿正文")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("草稿正文"), { target: { value: "修改后的草稿" } });
+    expect(screen.getByText(/草稿保存状态：未保存/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "保存草稿" }));
+
+    await waitFor(() => expect(fetchJsonMock).toHaveBeenCalledWith(`/books/${TEST_BOOK.id}/drafts/draft-1`, expect.objectContaining({ method: "PUT" })));
+    expect(await screen.findByText(/草稿保存状态：已保存/)).toBeTruthy();
+  });
+
+  it("refreshes draft resources when a candidate is saved as draft", async () => {
+    const draftsRefetch = vi.fn(async () => undefined);
+    useApiMock.mockImplementation((path: string | null) => {
+      if (path === "/books") return { data: booksResponse, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}`) return { data: bookDetailResponse, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}/candidates`) return { data: candidatesResponse, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}/story-files`) return { data: storyFilesResponse, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}/truth-files`) return { data: truthFilesResponse, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}/drafts`) return { data: { drafts: [] }, loading: false, error: null, refetch: draftsRefetch };
+      return { data: null, loading: false, error: null, refetch: vi.fn() };
+    });
+    fetchJsonMock.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path === `/books/${TEST_BOOK.id}/candidates/candidate-2/accept` && init?.method === "POST") {
+        return { draft: { id: "draft-candidate-2", bookId: TEST_BOOK.id, title: "第二章 AI 候选", content: "候选另存草稿", updatedAt: "2026-04-27T04:00:00.000Z", wordCount: 6 } };
+      }
+      if (path === `/books/${TEST_BOOK.id}/drafts/draft-candidate-2`) {
+        return { draft: { id: "draft-candidate-2", bookId: TEST_BOOK.id, title: "第二章 AI 候选", content: "候选另存草稿", updatedAt: "2026-04-27T04:00:00.000Z", wordCount: 6 } };
+      }
+      if (path === `/books/${TEST_BOOK.id}/chapters/1`) return { content: "测试正文" };
+      if (path === `/books/${TEST_BOOK.id}/chapters/2`) return { content: "第二章正文" };
+      return {};
+    });
+
+    render(<WorkspacePage />);
+    const explorer = screen.getByRole("complementary", { name: "小说资源管理器" });
+    fireEvent.click(within(explorer).getByRole("button", { name: /第二章 AI 候选/ }));
+    fireEvent.click(screen.getByRole("button", { name: "另存为草稿" }));
+
+    await waitFor(() => expect(draftsRefetch).toHaveBeenCalled());
+    const matchingNodes = await within(explorer).findAllByRole("button", { name: /第二章 AI 候选/ });
+    const draftNode = matchingNodes.find((button) => button.getAttribute("aria-current") === null && button.textContent?.includes("6"));
+    expect(draftNode).toBeTruthy();
+    fireEvent.click(draftNode!);
+    expect(await screen.findByDisplayValue("候选另存草稿")).toBeTruthy();
   });
 
   it("confirms merge or replace before accepting a generated candidate", async () => {
