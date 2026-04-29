@@ -563,6 +563,91 @@ describe("server integration — core 20 endpoints", () => {
   });
 
   // ================================================================
+  // 6b. POST /api/books/:id/chapters — create chapter
+  // ================================================================
+
+  describe("POST /api/books/:id/chapters", () => {
+    async function scaffoldBook(bookId = "test-book", language: "zh" | "en" = "zh") {
+      const bookDir = join(root, "books", bookId);
+      await mkdir(join(bookDir, "chapters"), { recursive: true });
+      await writeFile(join(bookDir, "book.json"), JSON.stringify({ id: bookId, title: "测试书", language }, null, 2), "utf-8");
+      await writeFile(join(bookDir, "chapters", "index.json"), "[]", "utf-8");
+    }
+
+    function useFileBackedChapterState() {
+      loadBookConfigMock.mockImplementation(async (bookId: string) => JSON.parse(
+        await readFile(join(root, "books", bookId, "book.json"), "utf-8"),
+      ));
+      loadChapterIndexMock.mockImplementation(async (bookId: string) => JSON.parse(
+        await readFile(join(root, "books", bookId, "chapters", "index.json"), "utf-8").catch(() => "[]"),
+      ));
+      saveChapterIndexMock.mockImplementation(async (bookId: string, index: unknown) => {
+        const chaptersDir = join(root, "books", bookId, "chapters");
+        await mkdir(chaptersDir, { recursive: true });
+        await writeFile(join(chaptersDir, "index.json"), JSON.stringify(index, null, 2), "utf-8");
+      });
+      getNextChapterNumberMock.mockImplementation(async (bookId: string) => {
+        const index = await loadChapterIndexMock(bookId) as Array<{ number: number }>;
+        return Math.max(0, ...index.map((chapter) => chapter.number)) + 1;
+      });
+    }
+
+    it("creates the first chapter with a default title and persists content plus index", async () => {
+      await scaffoldBook();
+      useFileBackedChapterState();
+
+      const res = await jsonReq("/api/books/test-book/chapters", "POST", {});
+
+      expect(res.status).toBe(201);
+      const data = await res.json() as { chapter: { number: number; title: string; status: string; fileName: string | null } };
+      expect(data.chapter).toMatchObject({
+        number: 1,
+        title: "第 1 章",
+        status: "drafting",
+        fileName: "0001_第_1_章.md",
+      });
+      await expect(readFile(join(root, "books", "test-book", "chapters", "0001_第_1_章.md"), "utf-8"))
+        .resolves.toContain("# 第 1 章");
+      const index = JSON.parse(await readFile(join(root, "books", "test-book", "chapters", "index.json"), "utf-8")) as Array<{ number: number; title: string }>;
+      expect(index).toEqual([expect.objectContaining({ number: 1, title: "第 1 章" })]);
+    });
+
+    it("creates the next chapter with a custom title", async () => {
+      await scaffoldBook();
+      useFileBackedChapterState();
+      await saveChapterIndexMock("test-book", [
+        { number: 1, title: "第一章", status: "approved", wordCount: 10, createdAt: "2026-04-28T00:00:00.000Z", updatedAt: "2026-04-28T00:00:00.000Z", auditIssues: [], lengthWarnings: [] },
+        { number: 2, title: "第二章", status: "drafted", wordCount: 20, createdAt: "2026-04-28T00:00:00.000Z", updatedAt: "2026-04-28T00:00:00.000Z", auditIssues: [], lengthWarnings: [] },
+      ]);
+
+      const res = await jsonReq("/api/books/test-book/chapters", "POST", { title: "风起青萍" });
+
+      expect(res.status).toBe(201);
+      const data = await res.json() as { chapter: { number: number; title: string; fileName: string | null } };
+      expect(data.chapter).toMatchObject({ number: 3, title: "风起青萍", fileName: "0003_风起青萍.md" });
+      await expect(readFile(join(root, "books", "test-book", "chapters", "0003_风起青萍.md"), "utf-8"))
+        .resolves.toContain("# 风起青萍");
+    });
+
+    it("keeps the created chapter readable after recreating the server app", async () => {
+      await scaffoldBook();
+      useFileBackedChapterState();
+      const createRes = await jsonReq("/api/books/test-book/chapters", "POST", { title: "重启后仍在" });
+      expect(createRes.status).toBe(201);
+
+      const { createStudioServer } = await import("../server.js");
+      app = createStudioServer(cloneConfig() as never, root).app;
+
+      const res = await req("/api/books/test-book/chapters/1");
+
+      expect(res.status).toBe(200);
+      const data = await res.json() as { chapterNumber: number; content: string };
+      expect(data.chapterNumber).toBe(1);
+      expect(data.content).toContain("重启后仍在");
+    });
+  });
+
+  // ================================================================
   // 7. PUT /api/books/:id/chapters/:num — update chapter
   // ================================================================
 

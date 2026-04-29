@@ -80,6 +80,15 @@ export interface SaveChapterPayload {
   readonly content: string;
 }
 
+export interface CreateChapterPayload {
+  readonly title?: string;
+  readonly afterChapterNumber?: number;
+}
+
+export interface CreateChapterResponse {
+  readonly chapter: ChapterSummary;
+}
+
 // --- Truth Files ---
 
 export interface TruthFileSummary {

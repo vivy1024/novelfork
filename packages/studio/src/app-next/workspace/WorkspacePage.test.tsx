@@ -346,10 +346,9 @@ describe("WorkspacePage", () => {
     const publishButton = screen.getByRole("button", { name: "发布就绪" });
     const presetButton = screen.getByRole("button", { name: "预设管理" });
 
-    expect(newChapterButton.hasAttribute("disabled")).toBe(true);
-    expect(newChapterButton.getAttribute("title")).toBe("即将推出");
+    expect(newChapterButton.hasAttribute("disabled")).toBe(false);
+    expect(newChapterButton.getAttribute("title")).toBeNull();
     expect(newChapterButton.className).toContain("bg-primary");
-    expect(newChapterButton.className).toContain("disabled:opacity-50");
 
     expect(exportButton.hasAttribute("disabled")).toBe(true);
     expect(exportButton.className).toContain("border-border");
@@ -375,6 +374,68 @@ describe("WorkspacePage", () => {
     expect(candidateNode.className).toContain("bg-primary");
     expect(candidateNode.className).toContain("text-primary-foreground");
     expect(selectedNode.getAttribute("aria-current")).toBeNull();
+  });
+
+  it("creates a chapter from the workspace, refreshes resources and opens the new editor", async () => {
+    const bookRefetch = vi.fn(async () => undefined);
+    useApiMock.mockImplementation((path: string | null) => {
+      if (path === "/books") return { data: booksResponse, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}`) return { data: bookDetailResponse, loading: false, error: null, refetch: bookRefetch };
+      if (path === `/books/${TEST_BOOK.id}/candidates`) return { data: candidatesResponse, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}/story-files`) return { data: storyFilesResponse, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}/truth-files`) return { data: truthFilesResponse, loading: false, error: null, refetch: vi.fn() };
+      return { data: null, loading: false, error: null, refetch: vi.fn() };
+    });
+    fetchJsonMock.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path === `/books/${TEST_BOOK.id}/chapters` && init?.method === "POST") {
+        return {
+          chapter: {
+            number: 3,
+            title: "第三章",
+            status: "drafting",
+            wordCount: 0,
+            auditIssueCount: 0,
+            updatedAt: "2026-04-29T00:00:00.000Z",
+            fileName: "0003_第三章.md",
+          },
+        };
+      }
+      if (path === `/books/${TEST_BOOK.id}/chapters/3`) return { content: "# 第三章\n\n" };
+      if (path === `/books/${TEST_BOOK.id}/chapters/1`) return { content: "测试正文" };
+      if (path === `/books/${TEST_BOOK.id}/chapters/2`) return { content: "第二章正文" };
+      return {};
+    });
+
+    render(<WorkspacePage />);
+    fireEvent.click(screen.getByRole("button", { name: "新建章节" }));
+
+    await waitFor(() => expect(fetchJsonMock).toHaveBeenCalledWith(`/books/${TEST_BOOK.id}/chapters`, expect.objectContaining({ method: "POST" })));
+    await waitFor(() => expect(bookRefetch).toHaveBeenCalled());
+    const explorer = screen.getByRole("complementary", { name: "小说资源管理器" });
+    const newChapterNode = await within(explorer).findByRole("button", { name: /第三章/ });
+    expect(newChapterNode.getAttribute("aria-current")).toBe("page");
+    const editor = screen.getByRole("main", { name: "正文编辑区" });
+    expect(within(editor).getByRole("heading", { name: "第三章" })).toBeTruthy();
+    await waitFor(() => expect((within(editor).getByLabelText("章节正文") as HTMLTextAreaElement).value).toBe("# 第三章\n\n"));
+  });
+
+  it("shows a real create error without adding a front-end fake chapter node", async () => {
+    fetchJsonMock.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path === `/books/${TEST_BOOK.id}/chapters` && init?.method === "POST") {
+        throw new Error("disk full");
+      }
+      if (path === `/books/${TEST_BOOK.id}/chapters/1`) return { content: "测试正文" };
+      if (path === `/books/${TEST_BOOK.id}/chapters/2`) return { content: "第二章正文" };
+      return {};
+    });
+
+    render(<WorkspacePage />);
+    fireEvent.click(screen.getByRole("button", { name: "新建章节" }));
+
+    expect(await screen.findByText("新建章节失败：disk full")).toBeTruthy();
+    const explorer = screen.getByRole("complementary", { name: "小说资源管理器" });
+    expect(within(explorer).queryByRole("button", { name: /第三章/ })).toBeNull();
+    expect(within(explorer).getByRole("button", { name: /第一章 灵潮初起/ }).getAttribute("aria-current")).toBe("page");
   });
 
   it("uses semantic candidate actions and writing tool buttons for non-destructive workflow", () => {

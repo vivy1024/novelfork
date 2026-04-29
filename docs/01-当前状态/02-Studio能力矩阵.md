@@ -56,13 +56,13 @@
 | 功能 | 用户入口 | API / 组件入口 | 数据来源 | 持久化状态 | 当前状态 | 已知限制 | 验证文件或口径 |
 |---|---|---|---|---|---|---|---|
 | 作品创建基础配置 | Dashboard 创建作品 | `book-create.ts`、Dashboard 创建表单 | 作品创建 payload 与项目初始化记录 | 真实持久化路径由书籍创建流程负责 | 真实可用 | 当前文档仅确认标准化和等待可读逻辑；完整创建 E2E 归入新 spec 后续任务 | `book-create.test.ts` |
-| 章节资源树 | Workspace 左侧“小说资源管理器” | `WorkspacePage`、`resource-adapter.ts` | `/books`、`/books/:id`、候选稿 API | 从真实书籍/章节/候选稿数据派生 | 真实可用 | 目前主要覆盖作品、卷、已有章节、生成候选稿、大纲/经纬分类入口；不是完整文件/资料管理器 | `WorkspacePage.test.tsx` |
-| 章节打开、编辑、保存 | Workspace 中央编辑器 | `ChapterEditor` / migrated chapter API | 章节正文 API | 真实保存 | 真实可用 | `新建章节` 仍未接入；保存失败恢复已覆盖 | `WorkspacePage.test.tsx` |
+| 章节资源树 | Workspace 左侧“小说资源管理器” | `WorkspacePage`、`resource-adapter.ts` | `/books`、`/books/:id`、候选稿 API | 从真实书籍/章节/候选稿数据派生 | 真实可用 | 目前覆盖作品、卷、已有章节、生成候选稿、大纲/经纬分类入口、story/truth 文件入口 | `WorkspacePage.test.tsx` |
+| 章节创建、打开、编辑、保存 | Workspace 顶部按钮与中央编辑器 | `WorkspacePage`、`ChapterEditor` / migrated chapter API | 章节创建与正文 API | 创建章节 Markdown 与章节索引；正文真实保存 | 真实可用 | 新建后刷新资源树并打开新章节；保存失败恢复已覆盖 | `WorkspacePage.test.tsx`；`server-integration.test.ts` |
 | AI 候选稿查看与处理 | Workspace 资源树 → 生成章节候选 | Candidate editor/actions | 候选稿 API | 候选稿状态与章节写入由 API 处理 | 真实可用 | 草稿资源树仍需做实；候选稿另存草稿后资源树完整刷新归入新 spec | `WorkspacePage.test.tsx` |
 | 章节 hooks 应用 | Workspace → 写作工具 / hooks action | `api/routes/writing-tools.ts` | `pending_hooks.md` | 写入 story truth 文件 | 真实可用 | hook 与经纬伏笔结构化追踪仍需后续做实 | `writing-tools.test.ts`；`WorkspacePage.test.tsx` |
 | 大纲入口 | Workspace 资源树 | resource tree outline node | 当前书籍/资源树派生 | 当前仅入口/空态为主 | 透明过渡 | 还不能作为完整大纲 viewer/editor | 新 spec Phase 4 |
-| 完整小说资源管理器 | Workspace 左侧资源区 | 规划中的 resource snapshot + editor/viewer registry | 章节、草稿、候选稿、经纬、story/truth、素材、发布报告 | 规划中 | 透明过渡 | 仍缺 story/truth viewer、DraftEditor、BibleEntryEditor、素材/发布报告 viewer | 新 spec Phase 2 |
-| 新建章节 | Workspace 顶部按钮 | 待新增 `POST /books/:bookId/chapters` | 待接章节存储 | 未接入 | 透明过渡 | 当前按钮 disabled；必须在新 spec 中做实 | `novel-creation-workbench-complete-flow` Task 19-20 |
+| 完整小说资源管理器 | Workspace 左侧资源区 | resource snapshot + editor/viewer registry | 章节、草稿、候选稿、经纬、story/truth、素材、发布报告 | 部分真实、部分透明 | 透明过渡 | 章节、候选稿、story/truth viewer 已接入；草稿、大纲、经纬编辑、素材/发布报告仍需做实 | 新 spec Phase 2+ |
+| 新建章节 | Workspace 顶部按钮 | `POST /books/:id/chapters` + Workspace action | 章节存储与章节索引 | 创建章节 Markdown、更新索引并刷新资源树 | 真实可用 | 成功后自动选中新章节；失败显示真实错误且不创建前端假节点 | `novel-creation-workbench-complete-flow` Task 19-20 |
 | 导出 | Workspace 顶部按钮 | 待新增 export route | 已保存章节数据 | 未接入 | 透明过渡 | 当前按钮 disabled；至少需支持 Markdown/TXT | `novel-creation-workbench-complete-flow` Task 37-38 |
 
 ## 5. 写作工具、写作模式与 AI 动作
@@ -119,20 +119,21 @@
 | 问题 | 当前事实 | 后续任务 |
 |---|---|---|
 | UI 看起来像同色 mock 壳 | 浏览器审计发现 Tailwind theme token 未生成，导致大量按钮样式高度相似 | `novel-creation-workbench-complete-flow` Phase 1 |
-| 资源管理器不完整 | 已能查看章节和候选稿，但 story/truth、草稿、大纲、经纬、素材、发布报告仍未完整做实 | `novel-creation-workbench-complete-flow` Phase 2 |
-| 新建章节 disabled | 当前不是可用闭环 | Task 19-20 |
+| 资源管理器不完整 | 已能查看章节、候选稿、story/truth 文件和注册 viewer；草稿、大纲、经纬、素材、发布报告仍未完整做实 | `novel-creation-workbench-complete-flow` Phase 2 |
+| 新建章节已形成首版闭环 | route 已能创建章节记录和正文存储，Workspace 按钮会刷新资源树并打开新章节 | Task 21+ 草稿闭环 |
 | 导出 disabled | 当前不是可用闭环 | Task 37-38 |
 | 写作模式应用 disabled / prompt-preview | 当前不写入正式正文，且应保持透明 | Task 26-28 |
 | 经纬面板 404 与分类壳子 | 结构化经纬 API 已可用，但 Workspace 分类视图仍未完整接入 | Task 32-33 |
 | 引导式生成入口串联 | 问卷、生成前追问、核心变更和 AI 味报告已有底座，仍需确认当前主工作台是否完整串起 | `novel-creation-workbench-complete-flow` 后续流程任务 |
-| Typecheck 仍失败 | 已知 `routes`、`novelfork-context`、`use-tabs` 类型问题 | Task 41 |
+| Typecheck 阻塞已清理 | 旧 `routes`、`novelfork-context`、`use-tabs` 阻塞已通过旧前端退役清理，Studio typecheck 需先构建 core dist | 已在 `old-frontend-decommission` 完成 |
 
 ## 10. 完成口径
 
-本文当前只完成 `novel-creation-workbench-complete-flow` Task 1 的事实沉淀：
+本文当前作为 `novel-creation-workbench-complete-flow` 的当前能力事实沉淀：
 
 - 已把 runtime/provider/model/session、资源管理器、章节编辑、候选稿、writing tools、writing modes、故事经纬、引导式生成、AI 味、预设、合规、transparent placeholders、internal demo 统一归档。
 - 已明确哪些能力真实可用，哪些只是透明过渡。
+- 已同步小说创作流程、API 文档、测试报告、旧前端退役和新建章节首版闭环的当前边界。
 - 已保留已知缺口，避免把 spec 后续任务提前写成完成。
 
-后续 Task 2 会单独从用户视角整理完整小说创作流程。Task 3 会整理 API 文档，Task 4 会形成测试报告，Task 5 会处理 README 与重复文档索引。
+后续优先继续 Task 21-22，补齐草稿 API、存储边界与 DraftEditor 资源树闭环。

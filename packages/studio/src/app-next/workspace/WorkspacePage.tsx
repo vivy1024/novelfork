@@ -11,7 +11,7 @@ import { BiblePanel } from "./BiblePanel";
 import { PublishPanel } from "./PublishPanel";
 import { fetchJson, useApi } from "../../hooks/use-api";
 import type { AiAction, AiGateResult } from "../../lib/ai-gate";
-import type { BookDetail, ChapterSummary, GeneratedChapterCandidate } from "../../shared/contracts";
+import type { BookDetail, ChapterSummary, CreateChapterResponse, GeneratedChapterCandidate } from "../../shared/contracts";
 import { ChapterHookGenerator, type GeneratedHookOption } from "../../components/writing-tools/ChapterHookGenerator";
 import { DialogueAnalysis, type DialogueAnalysisResult } from "../../components/writing-tools/DialogueAnalysis";
 import { RhythmChart, type RhythmChartAnalysis } from "../../components/writing-tools/RhythmChart";
@@ -173,10 +173,18 @@ export function WorkspacePage({
   const activeBookId = selectedBookId ?? books[0]?.id ?? null;
 
   /* ── load selected book detail + candidates ── */
-  const { data: bookDetail } = useApi<BookDetailResponse>(activeBookId ? `/books/${activeBookId}` : null);
+  const { data: bookDetail, refetch: refetchBookDetail } = useApi<BookDetailResponse>(activeBookId ? `/books/${activeBookId}` : null);
   const { data: candidatesData } = useApi<CandidatesResponse>(activeBookId ? `/books/${activeBookId}/candidates` : null);
   const { data: storyFilesData } = useApi<WorkspaceTextFileListResponse>(activeBookId ? `/books/${activeBookId}/story-files` : null);
   const { data: truthFilesData } = useApi<WorkspaceTextFileListResponse>(activeBookId ? `/books/${activeBookId}/truth-files` : null);
+  const [createdChapters, setCreatedChapters] = useState<ChapterSummary[]>([]);
+  const [creatingChapter, setCreatingChapter] = useState(false);
+  const [createChapterError, setCreateChapterError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setCreatedChapters([]);
+    setCreateChapterError(null);
+  }, [activeBookId]);
 
   /* ── build resource tree from real data or fallback ── */
   const treeInput: StudioResourceTreeInput = useMemo(() => {
@@ -191,22 +199,24 @@ export function WorkspacePage({
     };
     const b = bookDetail.book;
     const chs = bookDetail.chapters ?? [];
+    const chaptersFromBook: ChapterSummary[] = chs.map((c) => ({
+      number: c.number, title: c.title ?? `第${c.number}章`, status: c.status ?? "draft",
+      wordCount: c.wordCount ?? 0, auditIssueCount: 0, updatedAt: "", fileName: c.fileName ?? null,
+    }));
+    const createdOnlyChapters = createdChapters.filter((created) => !chaptersFromBook.some((chapter) => chapter.number === created.number));
+    const chapters = [...chaptersFromBook, ...createdOnlyChapters].sort((left, right) => left.number - right.number);
     const book: BookDetail = {
       id: b.id, title: b.title, status: b.status ?? "active", platform: (b.platform ?? "other") as BookDetail["platform"],
       genre: b.genre ?? "", targetChapters: b.targetChapters ?? 100,
-      chapters: chs.length, chapterCount: chs.length, lastChapterNumber: chs.length,
-      totalWords: chs.reduce((s, c) => s + (c.wordCount ?? 0), 0),
-      approvedChapters: chs.filter((c) => c.status === "approved").length,
-      pendingReview: chs.filter((c) => c.status === "ready-for-review").length,
-      pendingReviewChapters: chs.filter((c) => c.status === "ready-for-review").length,
+      chapters: chapters.length, chapterCount: chapters.length, lastChapterNumber: Math.max(0, ...chapters.map((chapter) => chapter.number)),
+      totalWords: chapters.reduce((s, c) => s + (c.wordCount ?? 0), 0),
+      approvedChapters: chapters.filter((c) => c.status === "approved").length,
+      pendingReview: chapters.filter((c) => c.status === "ready-for-review").length,
+      pendingReviewChapters: chapters.filter((c) => c.status === "ready-for-review").length,
       failedReview: 0, failedChapters: 0,
       updatedAt: b.updatedAt ?? "", createdAt: b.createdAt ?? "",
       chapterWordCount: b.chapterWordCount ?? 3000, language: (b.language ?? "zh") as "zh" | "en",
     };
-    const chapters: ChapterSummary[] = chs.map((c) => ({
-      number: c.number, title: c.title ?? `第${c.number}章`, status: c.status ?? "draft",
-      wordCount: c.wordCount ?? 0, auditIssueCount: 0, updatedAt: "", fileName: c.fileName ?? null,
-    }));
     const candidates = (candidatesData?.candidates ?? []).filter((c) => c.status === "candidate");
     const storyFiles = (storyFilesData?.files ?? []).map((file) => ({
       id: file.name,
@@ -232,7 +242,7 @@ export function WorkspacePage({
       materials: [],
       publishReports: [],
     };
-  }, [bookDetail, candidatesData, storyFilesData, truthFilesData]);
+  }, [bookDetail, candidatesData, createdChapters, storyFilesData, truthFilesData]);
 
   const tree = useMemo(() => buildStudioResourceTree(treeInput), [treeInput]);
   const defaultNodeId = tree[0]?.children?.[0]?.children?.[0]?.children?.[0]?.id ?? tree[0]?.children?.[0]?.children?.[0]?.id ?? tree[0]?.id ?? "";
@@ -241,8 +251,36 @@ export function WorkspacePage({
   const activeNodeId = selectedNodeId ?? defaultNodeId;
   const selectedNode = findNode(tree, activeNodeId) ?? tree[0]!;
 
+  const handleCreateChapter = async () => {
+    if (!activeBookId) {
+      setCreateChapterError("请先选择作品");
+      return;
+    }
+    setCreatingChapter(true);
+    setCreateChapterError(null);
+    try {
+      const response = await fetchJson<CreateChapterResponse>(`/books/${activeBookId}/chapters`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      setCreatedChapters((current) => {
+        const withoutDuplicate = current.filter((chapter) => chapter.number !== response.chapter.number);
+        return [...withoutDuplicate, response.chapter];
+      });
+      setSelectedNodeId(`chapter:${activeBookId}:${response.chapter.number}`);
+      setShowPublishPanel(false);
+      await refetchBookDetail();
+    } catch (error) {
+      setCreateChapterError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setCreatingChapter(false);
+    }
+  };
+
   return (
     <SectionLayout title="创作工作台" description="">
+      {createChapterError && <InlineError message={`新建章节失败：${createChapterError}`} />}
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-card px-3 py-2">
         <div className="flex flex-wrap items-center gap-2">
           <label className="text-sm">
@@ -258,7 +296,9 @@ export function WorkspacePage({
             </select>
           </label>
           <div className="flex items-center gap-1.5">
-            <Button size="sm" variant="default" type="button" disabled title="即将推出">新建章节</Button>
+            <Button size="sm" variant="default" type="button" disabled={!activeBookId || creatingChapter} title={activeBookId ? undefined : "请先选择作品"} onClick={() => void handleCreateChapter()}>
+              {creatingChapter ? "新建中…" : "新建章节"}
+            </Button>
             <Button size="sm" variant="outline" type="button" disabled title="即将推出">导出</Button>
           </div>
         </div>

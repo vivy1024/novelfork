@@ -114,7 +114,7 @@
   - 首版可由前端并行 API 聚合；若新增 `/books/:id/resources`，route 必须返回同一结构。
   - 验证：类型和 adapter 测试覆盖空数据和有数据两类场景。
 
-- [ ] 16. 实现资源节点 editor/viewer registry
+- [x] 16. 实现资源节点 editor/viewer registry
   - 在 Workspace 中抽出 `renderResourceNode` 或等价 registry。
   - 每个主要 node kind 必须映射到 ChapterEditor、CandidateEditor、DraftEditor、OutlineEditor、BibleCategoryView、BibleEntryEditor、MarkdownViewer、MaterialViewer、PublishReportViewer 或 UnsupportedCapability。
   - 删除静默 fallback 到空壳详情的路径。
@@ -132,13 +132,13 @@
   - 点击 `pending_hooks.md` 时能显示真实内容或明确空态。
   - 验证：UI 测试覆盖 viewer 加载成功、404、空内容。
 
-- [ ] 19. 实现新建章节 route
+- [x] 19. 实现新建章节 route
   - 新增 `POST /books/:bookId/chapters` 或复用现有 route，实现创建新章节记录和正文存储。
   - 支持默认标题和用户传入标题。
   - 创建后更新章节索引并返回 `ChapterSummary`。
   - 验证：route 测试覆盖默认标题、自定义标题、重新实例化后章节仍存在。
 
-- [ ] 20. 接入 Workspace 新建章节 UI
+- [x] 20. 接入 Workspace 新建章节 UI
   - 将 `新建章节` 从 disabled 改为真实操作。
   - 用户触发后创建章节，刷新资源树，自动选中新章节并打开 ChapterEditor。
   - 创建失败显示真实错误，不能产生前端假节点。
