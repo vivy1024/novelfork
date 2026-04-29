@@ -114,6 +114,8 @@ export interface GeneratedChapterCandidate {
   readonly source: string;
   readonly createdAt: string;
   readonly status: "candidate" | "accepted" | "rejected" | "archived";
+  readonly content?: string | null;
+  readonly contentError?: string;
 }
 
 export interface DraftResource {

@@ -52,6 +52,27 @@ describe("createChapterCandidatesRouter", () => {
     expect(listPayload.candidates[0]).toMatchObject({ id: "cand-1", status: "candidate", content: "AI 候选正文" });
   });
 
+  it("keeps candidate list readable and marks candidates when stored content is missing", async () => {
+    const app = createChapterCandidatesRouter(root, { now: () => new Date("2026-04-27T12:00:00.000Z"), createId: () => "cand-1" });
+    await app.request("http://localhost/api/books/book-1/candidates", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ targetChapterId: "1", title: "缺正文候选", content: "临时正文", source: "write-next" }),
+    });
+    await rm(join(root, "books", "book-1", "generated-candidates", "cand-1.md"), { force: true });
+
+    const listResponse = await app.request("http://localhost/api/books/book-1/candidates");
+
+    expect(listResponse.status).toBe(200);
+    const payload = await listResponse.json();
+    expect(payload.candidates[0]).toMatchObject({
+      id: "cand-1",
+      title: "缺正文候选",
+      content: null,
+      contentError: "候选稿正文缺失：cand-1.md",
+    });
+  });
+
   it("creates, reads, updates and reloads drafts without touching formal chapters", async () => {
     let currentNow = new Date("2026-04-27T12:00:00.000Z");
     const app = createChapterCandidatesRouter(root, { now: () => currentNow, createId: () => "manual-1" });
