@@ -1,7 +1,20 @@
+import postcss from "postcss";
+import tailwindcss from "tailwindcss";
 import { describe, expect, it } from "vitest";
 
 // @ts-expect-error tailwind.config.js is authored as JavaScript in this package.
 import baseConfig from "../tailwind.config.js";
+
+const requiredTokenClasses = [
+  [".bg-primary", "background-color: var(--primary)"],
+  [".text-primary", "color: var(--primary)"],
+  [".text-primary-foreground", "color: var(--primary-foreground)"],
+  [".bg-muted", "background-color: var(--muted)"],
+  [".text-muted-foreground", "color: var(--muted-foreground)"],
+  [".border-border", "border-color: var(--border)"],
+  [".bg-card", "background-color: var(--card)"],
+  [".bg-destructive", "background-color: var(--destructive)"],
+] as const;
 
 describe("tailwind theme tokens", () => {
   it("maps the required Studio color tokens into theme.extend.colors", () => {
@@ -28,5 +41,26 @@ describe("tailwind theme tokens", () => {
       input: "var(--input)",
       ring: "var(--ring)",
     });
+  });
+
+  it("generates CSS utilities for required Studio color classes", async () => {
+    const result = await postcss([
+      tailwindcss({
+        ...baseConfig,
+        content: [
+          {
+            raw: requiredTokenClasses.map(([className]) => className.slice(1)).join(" "),
+            extension: "html",
+          },
+        ],
+      }),
+    ]).process("@tailwind utilities;", { from: undefined });
+
+    const css = result.css.replace(/\s+/g, " ");
+
+    for (const [selector, declaration] of requiredTokenClasses) {
+      expect(css).toContain(selector);
+      expect(css).toContain(declaration);
+    }
   });
 });
