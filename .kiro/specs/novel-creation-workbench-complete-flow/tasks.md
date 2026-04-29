@@ -125,11 +125,11 @@
   - 文件不存在返回 `{ file, content: null }`，路径不安全返回 400，不返回假内容。
   - 验证：`pnpm --dir packages/studio exec vitest run src/api/__tests__/server-integration.test.ts` 通过；route 测试覆盖存在文件、缺失文件和路径安全边界。
 
-- [ ] 18. 实现 Markdown/Text viewer
-  - 新增 Workspace viewer 组件展示 story/truth/material 文本内容。
-  - 支持加载中、错误、空内容、只读状态。
+- [x] 18. 实现 Markdown/Text viewer
+  - `WorkspaceFileViewer` 已展示 story/truth/material 文本内容，`MaterialViewer` 已接入同一 viewer。
+  - 支持加载中、错误、空内容、只读状态；material 可从 inline content 展示，缺内容时明确空态。
   - 点击 `pending_hooks.md` 时能显示真实内容或明确空态。
-  - 验证：UI 测试覆盖 viewer 加载成功、404、空内容。
+  - 验证：`pnpm --dir packages/studio exec vitest run src/app-next/workspace/WorkspaceFileViewer.test.tsx src/app-next/workspace/resource-adapter.test.ts src/app-next/workspace/resource-view-registry.test.ts` 通过；UI 测试覆盖 viewer 加载成功、404、空内容和 material 文本。
 
 - [x] 19. 实现新建章节 route
   - 新增 `POST /books/:bookId/chapters` 或复用现有 route，实现创建新章节记录和正文存储。

@@ -172,6 +172,9 @@ export interface MaterialResource {
   readonly title: string;
   readonly source?: string;
   readonly updatedAt?: string;
+  readonly path?: string;
+  readonly fileType?: "markdown" | "text";
+  readonly content?: string | null;
 }
 
 export interface PublishReportResource {

@@ -5,12 +5,29 @@ import { InlineError } from "../components/feedback";
 import type { StudioResourceNode } from "./resource-adapter";
 
 function buildViewerMeta(node: StudioResourceNode): string {
-  return node.kind === "truth-file" ? "MarkdownViewer · Truth 文件" : "MarkdownViewer · Story 文件";
+  if (node.kind === "material") return "TextViewer · 素材";
+  const viewer = node.metadata?.fileType === "text" ? "TextViewer" : "MarkdownViewer";
+  return node.kind === "truth-file" ? `${viewer} · Truth 文件` : `${viewer} · Story 文件`;
+}
+
+function resolveInlineContent(node: StudioResourceNode): string | null | undefined {
+  if (node.kind !== "material") return undefined;
+  const content = node.metadata?.content;
+  return typeof content === "string" || content === null ? content : undefined;
+}
+
+function resolveStoryFileNameFromPath(path: string): string | null {
+  const normalizedPath = path.replace(/\\/g, "/");
+  if (!normalizedPath.startsWith("story/")) return null;
+  const fileName = normalizedPath.slice("story/".length);
+  return fileName && !fileName.includes("/") ? fileName : null;
 }
 
 function resolveFileEndpoint(node: StudioResourceNode): string | null {
   const bookId = typeof node.metadata?.bookId === "string" ? node.metadata.bookId : "";
-  const fileName = node.title;
+  const fileName = node.kind === "material" && typeof node.metadata?.path === "string"
+    ? resolveStoryFileNameFromPath(node.metadata.path)
+    : node.title;
   if (!bookId || !fileName) return null;
   return node.kind === "truth-file"
     ? `/books/${bookId}/truth-files/${encodeURIComponent(fileName)}`
@@ -19,15 +36,29 @@ function resolveFileEndpoint(node: StudioResourceNode): string | null {
 
 export function WorkspaceFileViewer({ node }: { readonly node: StudioResourceNode }) {
   const endpoint = useMemo(() => resolveFileEndpoint(node), [node]);
+  const inlineContent = useMemo(() => resolveInlineContent(node), [node]);
   const [content, setContent] = useState<string | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
+    if (inlineContent !== undefined) {
+      setContent(inlineContent);
+      setError(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+
     if (!endpoint) {
-      setError("缺少文件定位信息");
-      setContent(null);
+      if (node.kind === "material") {
+        setError(null);
+        setContent(null);
+      } else {
+        setError("缺少文件定位信息");
+        setContent(null);
+      }
       return () => {
         cancelled = true;
       };
@@ -47,7 +78,7 @@ export function WorkspaceFileViewer({ node }: { readonly node: StudioResourceNod
     return () => {
       cancelled = true;
     };
-  }, [endpoint]);
+  }, [endpoint, inlineContent, node.kind]);
 
   return (
     <div className="space-y-4">
