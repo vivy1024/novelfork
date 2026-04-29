@@ -92,9 +92,23 @@ describe("DashboardPage", () => {
     expect(importChapters.hasAttribute("disabled")).toBe(false);
 
     fireEvent.click(urlMode);
-    const importUrl = screen.getByRole("button", { name: "导入 URL" });
+    const importUrl = screen.getByRole("button", { name: "URL 导入暂未接入" });
     expect(importUrl.hasAttribute("disabled")).toBe(true);
+    expect(screen.getByText(/URL 章节导入暂未接入/)).toBeTruthy();
     fireEvent.change(screen.getByPlaceholderText("输入 URL 地址"), { target: { value: "https://example.com/chapter-1" } });
-    expect(importUrl.hasAttribute("disabled")).toBe(false);
+    expect(importUrl.hasAttribute("disabled")).toBe(true);
+  });
+
+  it("keeps URL chapter import transparent instead of calling a fake success path", () => {
+    render(<DashboardPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "导入" }));
+    fireEvent.click(screen.getByRole("button", { name: "URL 导入" }));
+    fireEvent.change(screen.getByPlaceholderText("输入 URL 地址"), { target: { value: "https://example.com/chapter-1" } });
+
+    const importUrl = screen.getByRole("button", { name: "URL 导入暂未接入" });
+    expect(importUrl.hasAttribute("disabled")).toBe(true);
+    expect(fetchJsonMock).not.toHaveBeenCalled();
+    expect(screen.getByText(/请先使用章节文本导入/)).toBeTruthy();
   });
 });
