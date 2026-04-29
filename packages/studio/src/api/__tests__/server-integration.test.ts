@@ -799,6 +799,25 @@ describe("server integration — core 20 endpoints", () => {
       expect(data.content).toContain("chapter_summaries");
     });
 
+    it("returns null content when a story file does not exist", async () => {
+      await mkdir(join(root, "books", "test-book", "story"), { recursive: true });
+
+      const res = await req("/api/books/test-book/story-files/book_rules.md");
+
+      expect(res.status).toBe(200);
+      const data = await res.json() as { file: string; content: string | null };
+      expect(data.file).toBe("book_rules.md");
+      expect(data.content).toBeNull();
+    });
+
+    it("rejects unsafe story file names with 400", async () => {
+      const res = await req("/api/books/test-book/story-files/..%2Fsecrets.md");
+
+      expect(res.status).toBe(400);
+      const data = await res.json() as { error: string };
+      expect(data.error).toBe("Invalid story file");
+    });
+
     it("returns null content when truth file does not exist", async () => {
       await mkdir(join(root, "books", "test-book", "story"), {
         recursive: true,
