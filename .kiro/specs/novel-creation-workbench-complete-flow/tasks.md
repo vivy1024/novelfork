@@ -34,15 +34,15 @@
   - 明确 `process-memory`、`prompt-preview`、`chunked-buffer`、`unsupported` 的限制。
   - 验证：文档中所有“真实可用”条目必须能找到对应 API/组件/测试。
 
-- [ ] 3. 建立创作工作台 API 文档
-  - 创建 `docs/05-API文档/02-创作工作台接口.md`。
+- [x] 3. 建立创作工作台 API 文档
+  - 当前文档体系已迁移到 `docs/06-API与数据契约/02-创作工作台接口.md`。
   - 整理作品、章节、候选稿、草稿、story/truth 文件、经纬、writing modes、writing tools、providers/models、export 相关 API。
   - 标注请求体、响应体、持久化边界、错误语义和 transparent unsupported 语义。
   - 明确 writing modes 当前 prompt-preview 与后续 apply route 的边界。
   - 验证：API 文档路径必须能映射到 `packages/studio/src/api/routes/*` 或明确写为规划中的本 spec 目标。
 
-- [ ] 4. 建立真实运行时与 mock 清理验收报告
-  - 创建 `docs/07-测试报告/03-真实运行时与Mock清理验收报告.md`。
+- [x] 4. 建立真实运行时与 mock 清理验收报告
+  - 当前文档体系已迁移到 `docs/08-测试与质量/02-真实运行时与Mock清理验收报告.md`。
   - 记录 `project-wide-real-runtime-cleanup` 的 30 个任务完成口径、mock scan 摘要、ledger 状态统计和剩余 transparent placeholders。
   - 写入浏览器 UI 审计结论：Tailwind token 未生成导致按钮同色。
   - 写入当前 `pnpm run typecheck` 失败项：`routes`、`novelfork-context`、`use-tabs` 类型问题。
@@ -56,8 +56,8 @@
   - 更新 `docs/README.md`、`docs/05-API文档/README.md`、相关目录 README 的文件列表。
   - 验证：docs 目录中不再有两个并列当前口径的 Studio API 总览；快速导航不再指向过时口径。
 
-- [ ] 6. 添加 docs 状态一致性检查
-  - 新增轻量测试或脚本，扫描本 spec 新增 docs。
+- [x] 6. 添加 docs 状态一致性检查
+  - 复用并验证现有 `bun run docs:verify` 规则，扫描本 spec 新增/更新 docs。
   - 规则：`process-memory` 必须伴随“临时”或“不持久化”；`prompt-preview` 必须伴随“预览”或“未写入”；`unsupported` 不得与“已完成/真实可用”出现在同一功能状态中。
   - 将检查纳入相关 vitest 或 node 脚本。
   - 验证：故意违反规则时测试失败，恢复正确文案后通过。
@@ -74,23 +74,23 @@
   - 保持 light/dark 主题继续由 CSS variables 驱动。
   - 验证：第 7 项测试通过，Vite 页面实际生成主题类。
 
-- [ ] 9. 统一 Button/Badge/Card 视觉语义测试
+- [x] 9. 统一 Button/Badge/Card 视觉语义测试
   - 为 `Button`、`Badge` 或集中 UI primitives 添加 variant 测试，覆盖 default、outline、secondary、ghost、destructive、link、disabled。
   - 测试主操作、次操作、危险操作、禁用操作的 class 差异。
   - 验证：组件 variant 差异可被测试断言捕捉。
 
-- [ ] 10. 迁移 Workspace 顶部和资源树高频按钮
+- [x] 10. 迁移 Workspace 顶部和资源树高频按钮
   - 修改 `WorkspacePage` 顶部 `新建章节`、`导出`、`发布就绪`、`预设管理` 和资源树节点 action，使其使用 `Button`/统一语义 class。
   - Active resource node 使用清晰 primary 或 selected state。
   - Disabled action 必须有 title 或文案说明。
   - 验证：`WorkspacePage.test.tsx` 覆盖 active/disabled/primary/outline 状态。
 
-- [ ] 11. 迁移 Dashboard 创建/导入高频按钮
+- [x] 11. 迁移 Dashboard 创建/导入高频按钮
   - 修改 `DashboardPage` 创建新书、导入、提交创建、导入章节、导入 URL 等按钮语义。
   - 保持表单行为不变，视觉主次明确。
   - 验证：Dashboard 相关测试覆盖创建/导入按钮可用态与禁用态。
 
-- [ ] 12. 迁移写作模式、写作工具和候选稿操作按钮
+- [x] 12. 迁移写作模式、写作工具和候选稿操作按钮
   - 修改 Writing Modes tabs/actions、Writing Tools tabs/actions、CandidateEditor 合并/替换/另存草稿/放弃操作。
   - 合并/替换确认使用主操作，放弃候选使用 destructive，取消使用 outline。
   - 验证：UI 测试覆盖按钮文案、variant class 和禁用原因。
@@ -103,12 +103,12 @@
 
 ### Phase 2：小说资源管理器做实
 
-- [ ] 14. 扩展资源节点类型与 adapter 测试
+- [x] 14. 扩展资源节点类型与 adapter 测试
   - 扩展 `packages/studio/src/app-next/workspace/resource-adapter.ts` 的 node kind，覆盖 bible-entry、story-file、truth-file、material、publish-report。
   - 先写 `resource-adapter.test.ts` 用真实输入断言章节、候选稿、草稿、大纲、经纬、story/truth、素材、发布报告节点都生成。
   - 验证：新增测试先因缺节点类型或缺数据映射失败，再实现通过。
 
-- [ ] 15. 设计并实现 Workspace resource snapshot 数据结构
+- [x] 15. 设计并实现 Workspace resource snapshot 数据结构
   - 新增共享类型 `WorkspaceResourceSnapshot` 或等价 contract。
   - 聚合 book、chapters、candidates、drafts、outline、bible summaries、storyFiles、truthFiles、materials、publishReports。
   - 首版可由前端并行 API 聚合；若新增 `/books/:id/resources`，route 必须返回同一结构。

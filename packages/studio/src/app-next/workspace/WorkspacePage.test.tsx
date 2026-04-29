@@ -53,6 +53,12 @@ const bookDetailResponse = {
 const candidatesResponse = {
   candidates: [{ id: "candidate-2", bookId: TEST_BOOK.id, targetChapterId: "2", title: "第二章 AI 候选", source: "write-next", createdAt: "2026-04-27T02:00:00.000Z", status: "candidate" }],
 };
+const storyFilesResponse = {
+  files: [{ name: "pending_hooks.md", size: 128, preview: "# hooks" }],
+};
+const truthFilesResponse = {
+  files: [{ name: "chapter_summaries.md", size: 256, preview: "# summaries" }],
+};
 
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
@@ -61,12 +67,16 @@ beforeEach(() => {
   fetchJsonMock.mockImplementation(async (path: string) => {
     if (path === `/books/${TEST_BOOK.id}/chapters/1`) return { content: "测试正文" };
     if (path === `/books/${TEST_BOOK.id}/chapters/2`) return { content: "第二章正文" };
+    if (path === `/books/${TEST_BOOK.id}/story-files/pending_hooks.md`) return { file: "pending_hooks.md", content: "# hooks\n\n待处理伏笔" };
+    if (path === `/books/${TEST_BOOK.id}/truth-files/chapter_summaries.md`) return { file: "chapter_summaries.md", content: "# summaries\n\n第一章摘要" };
     return {};
   });
   useApiMock.mockImplementation((path: string | null) => {
     if (path === "/books") return { data: booksResponse, loading: false, error: null, refetch: vi.fn() };
     if (path === `/books/${TEST_BOOK.id}`) return { data: bookDetailResponse, loading: false, error: null, refetch: vi.fn() };
     if (path === `/books/${TEST_BOOK.id}/candidates`) return { data: candidatesResponse, loading: false, error: null, refetch: vi.fn() };
+    if (path === `/books/${TEST_BOOK.id}/story-files`) return { data: storyFilesResponse, loading: false, error: null, refetch: vi.fn() };
+    if (path === `/books/${TEST_BOOK.id}/truth-files`) return { data: truthFilesResponse, loading: false, error: null, refetch: vi.fn() };
     return { data: null, loading: false, error: null, refetch: vi.fn() };
   });
 });
@@ -132,6 +142,30 @@ describe("WorkspacePage", () => {
     expect(within(editor).getByRole("button", { name: "替换正式章节" })).toBeTruthy();
     expect(within(editor).getByRole("button", { name: "另存为草稿" })).toBeTruthy();
     expect(within(editor).getByRole("button", { name: "放弃候选稿" })).toBeTruthy();
+  });
+
+  it("uses explicit registered viewers for outline nodes and transparent unsupported state for structural groups", () => {
+    render(<WorkspacePage />);
+
+    const explorer = screen.getByRole("complementary", { name: "小说资源管理器" });
+    fireEvent.click(within(explorer).getByRole("button", { name: /^大纲$/ }));
+    expect(screen.getByText("OutlineEditor")).toBeTruthy();
+    expect(screen.getByText(/大纲查看与编辑将在后续任务接入真实 story\/truth 文件/)).toBeTruthy();
+
+    fireEvent.click(within(explorer).getByRole("button", { name: /^草稿/ }));
+    expect(screen.getByText("草稿 当前不可直接编辑")).toBeTruthy();
+    expect(screen.getByText(/该资源节点当前只作为结构容器存在/)).toBeTruthy();
+  });
+
+  it("loads real story and truth file content through the registered markdown viewer", async () => {
+    render(<WorkspacePage />);
+
+    const explorer = screen.getByRole("complementary", { name: "小说资源管理器" });
+    fireEvent.click(within(explorer).getByRole("button", { name: /^pending_hooks\.md/ }));
+    expect(await screen.findByText(/待处理伏笔/)).toBeTruthy();
+
+    fireEvent.click(within(explorer).getByRole("button", { name: /^chapter_summaries\.md/ }));
+    expect(await screen.findByText(/第一章摘要/)).toBeTruthy();
   });
 
   it("confirms merge or replace before accepting a generated candidate", async () => {
@@ -302,5 +336,88 @@ describe("WorkspacePage", () => {
 
     expect(screen.getByText("发布就绪")).toBeTruthy();
     expect(screen.getByText("预设管理")).toBeTruthy();
+  });
+
+  it("uses unified primary/outline button semantics for the top bar and selected resource node", () => {
+    render(<WorkspacePage />);
+
+    const newChapterButton = screen.getByRole("button", { name: "新建章节" });
+    const exportButton = screen.getByRole("button", { name: "导出" });
+    const publishButton = screen.getByRole("button", { name: "发布就绪" });
+    const presetButton = screen.getByRole("button", { name: "预设管理" });
+
+    expect(newChapterButton.hasAttribute("disabled")).toBe(true);
+    expect(newChapterButton.getAttribute("title")).toBe("即将推出");
+    expect(newChapterButton.className).toContain("bg-primary");
+    expect(newChapterButton.className).toContain("disabled:opacity-50");
+
+    expect(exportButton.hasAttribute("disabled")).toBe(true);
+    expect(exportButton.className).toContain("border-border");
+    expect(exportButton.className).toContain("hover:bg-muted");
+
+    expect(presetButton.hasAttribute("disabled")).toBe(true);
+    expect(presetButton.getAttribute("title")).toBe("即将推出");
+    expect(presetButton.className).toContain("border-border");
+
+    fireEvent.click(publishButton);
+    expect(publishButton.className).toContain("bg-primary");
+    expect(publishButton.className).toContain("text-primary-foreground");
+
+    const explorer = screen.getByRole("complementary", { name: "小说资源管理器" });
+    const selectedNode = within(explorer).getByRole("button", { name: /第一章 灵潮初起/ });
+    expect(selectedNode.getAttribute("aria-current")).toBe("page");
+    expect(selectedNode.className).toContain("bg-primary");
+    expect(selectedNode.className).toContain("text-primary-foreground");
+
+    const candidateNode = within(explorer).getByRole("button", { name: /第二章 AI 候选/ });
+    fireEvent.click(candidateNode);
+    expect(candidateNode.getAttribute("aria-current")).toBe("page");
+    expect(candidateNode.className).toContain("bg-primary");
+    expect(candidateNode.className).toContain("text-primary-foreground");
+    expect(selectedNode.getAttribute("aria-current")).toBeNull();
+  });
+
+  it("uses semantic candidate actions and writing tool buttons for non-destructive workflow", () => {
+    render(<WorkspacePage />);
+
+    const explorer = screen.getByRole("complementary", { name: "小说资源管理器" });
+    fireEvent.click(within(explorer).getByRole("button", { name: /第二章 AI 候选/ }));
+
+    const mergeButton = screen.getByRole("button", { name: "合并到正式章节" });
+    const replaceButton = screen.getByRole("button", { name: "替换正式章节" });
+    const draftButton = screen.getByRole("button", { name: "另存为草稿" });
+    const abandonButton = screen.getByRole("button", { name: "放弃候选稿" });
+
+    expect(mergeButton.className).toContain("border-border");
+    expect(replaceButton.className).toContain("border-border");
+    expect(draftButton.className).toContain("border-border");
+    expect(abandonButton.className).toContain("bg-destructive/10");
+    expect(abandonButton.className).toContain("text-destructive");
+
+    fireEvent.click(mergeButton);
+    const confirmMerge = screen.getByRole("button", { name: "确认合并" });
+    const cancelMerge = screen.getByRole("button", { name: "取消" });
+    expect(confirmMerge.className).toContain("bg-primary");
+    expect(confirmMerge.className).toContain("text-primary-foreground");
+    expect(cancelMerge.className).toContain("border-border");
+
+    const assistant = screen.getByRole("complementary", { name: "AI 与经纬面板" });
+    fireEvent.click(within(assistant).getByText("写作模式"));
+    const writingModeInline = within(assistant).getByRole("button", { name: "续写/扩写/补写" });
+    const writingModeDialogue = within(assistant).getByRole("button", { name: "对话生成" });
+    expect(writingModeInline.className).toContain("bg-primary");
+    expect(writingModeInline.className).toContain("text-primary-foreground");
+    expect(writingModeDialogue.className).toContain("border-border");
+    expect(within(assistant).getByText(/当前工作台尚未暴露安全写入目标/)).toBeTruthy();
+
+    fireEvent.click(within(assistant).getByText("写作工具"));
+    const rhythmTab = within(assistant).getByRole("button", { name: "节奏分析" });
+    const dialogueTab = within(assistant).getByRole("button", { name: "对话分析" });
+    const runAnalysis = within(assistant).getByRole("button", { name: "运行节奏 + 对话分析" });
+    expect(rhythmTab.className).toContain("bg-primary");
+    expect(rhythmTab.className).toContain("text-primary-foreground");
+    expect(dialogueTab.className).toContain("border-border");
+    expect(runAnalysis.className).toContain("bg-primary");
+    expect(runAnalysis.className).toContain("text-primary-foreground");
   });
 });

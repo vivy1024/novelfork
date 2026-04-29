@@ -631,6 +631,58 @@ describe("server integration — core 20 endpoints", () => {
       expect(data.content).toContain("Core setting.");
     });
 
+    it("lists truth files through the dedicated truth-files route", async () => {
+      const storyDir = join(root, "books", "test-book", "story");
+      await mkdir(storyDir, { recursive: true });
+      await writeFile(join(storyDir, "pending_hooks.md"), "# hooks", "utf-8");
+      await writeFile(join(storyDir, "chapter_summaries.md"), "# summaries", "utf-8");
+
+      const res = await req("/api/books/test-book/truth-files");
+
+      expect(res.status).toBe(200);
+      const data = await res.json() as { files: Array<{ name: string }> };
+      expect(data.files.map((file) => file.name)).toEqual(expect.arrayContaining(["pending_hooks.md", "chapter_summaries.md"]));
+    });
+
+    it("reads truth files through the dedicated truth-files route", async () => {
+      const storyDir = join(root, "books", "test-book", "story");
+      await mkdir(storyDir, { recursive: true });
+      await writeFile(join(storyDir, "pending_hooks.md"), "# hooks\n\n待处理伏笔", "utf-8");
+
+      const res = await req("/api/books/test-book/truth-files/pending_hooks.md");
+
+      expect(res.status).toBe(200);
+      const data = await res.json() as { file: string; content: string | null };
+      expect(data.file).toBe("pending_hooks.md");
+      expect(data.content).toContain("待处理伏笔");
+    });
+
+    it("lists story files through the dedicated story-files route", async () => {
+      const storyDir = join(root, "books", "test-book", "story");
+      await mkdir(storyDir, { recursive: true });
+      await writeFile(join(storyDir, "pending_hooks.md"), "# hooks", "utf-8");
+      await writeFile(join(storyDir, "style_profile.json"), '{"tone":"稳"}', "utf-8");
+
+      const res = await req("/api/books/test-book/story-files");
+
+      expect(res.status).toBe(200);
+      const data = await res.json() as { files: Array<{ name: string }> };
+      expect(data.files.map((file) => file.name)).toEqual(expect.arrayContaining(["pending_hooks.md", "style_profile.json"]));
+    });
+
+    it("reads story files through the dedicated story-files route", async () => {
+      const storyDir = join(root, "books", "test-book", "story");
+      await mkdir(storyDir, { recursive: true });
+      await writeFile(join(storyDir, "chapter_summaries.md"), "# chapter_summaries", "utf-8");
+
+      const res = await req("/api/books/test-book/story-files/chapter_summaries.md");
+
+      expect(res.status).toBe(200);
+      const data = await res.json() as { file: string; content: string | null };
+      expect(data.file).toBe("chapter_summaries.md");
+      expect(data.content).toContain("chapter_summaries");
+    });
+
     it("returns null content when truth file does not exist", async () => {
       await mkdir(join(root, "books", "test-book", "story"), {
         recursive: true,

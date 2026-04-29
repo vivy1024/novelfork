@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useApi, postApi, fetchJson } from "../../hooks/use-api";
 import { EmptyState, InlineError } from "../components/feedback";
+import { Button } from "../../components/ui/button";
 
 interface BookItem {
   readonly id: string;
@@ -120,20 +121,20 @@ export function DashboardPage({ onOpenBook }: DashboardPageProps) {
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-semibold">仪表盘</h2>
         <div className="flex gap-2">
-          <button
-            className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted"
+          <Button
+            variant={showImport ? "default" : "outline"}
             onClick={() => { setShowImport(!showImport); setShowCreateForm(false); }}
             type="button"
           >
             {showImport ? "取消导入" : "导入"}
-          </button>
-          <button
-            className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted"
+          </Button>
+          <Button
+            variant={showCreateForm ? "secondary" : "default"}
             onClick={handleToggle}
             type="button"
           >
             {showCreateForm ? "取消" : "+ 创建新书"}
-          </button>
+          </Button>
         </div>
       </div>
 

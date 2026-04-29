@@ -95,6 +95,77 @@ export interface TruthFileDetail extends TruthFileSummary {
   readonly content: string | null;
 }
 
+// --- Workspace Resource Snapshot ---
+
+export interface GeneratedChapterCandidate {
+  readonly id: string;
+  readonly bookId: string;
+  readonly targetChapterId?: string;
+  readonly title: string;
+  readonly source: string;
+  readonly createdAt: string;
+  readonly status: "candidate" | "accepted" | "rejected" | "archived";
+}
+
+export interface DraftResource {
+  readonly id: string;
+  readonly bookId: string;
+  readonly title: string;
+  readonly updatedAt: string;
+  readonly wordCount?: number;
+}
+
+export interface BibleResourceCounts {
+  readonly characters?: number;
+  readonly locations?: number;
+  readonly factions?: number;
+  readonly items?: number;
+  readonly foreshadowing?: number;
+  readonly worldRules?: number;
+}
+
+export interface BibleEntryResource {
+  readonly id: string;
+  readonly category: keyof BibleResourceCounts;
+  readonly title: string;
+  readonly summary?: string;
+}
+
+export interface TextFileResource {
+  readonly id: string;
+  readonly title: string;
+  readonly path: string;
+  readonly fileType?: "markdown" | "text";
+}
+
+export interface MaterialResource {
+  readonly id: string;
+  readonly title: string;
+  readonly source?: string;
+  readonly updatedAt?: string;
+}
+
+export interface PublishReportResource {
+  readonly id: string;
+  readonly title: string;
+  readonly channel?: string;
+  readonly updatedAt?: string;
+  readonly status?: string;
+}
+
+export interface WorkspaceResourceSnapshot {
+  readonly book: BookDetail;
+  readonly chapters: readonly ChapterSummary[];
+  readonly generatedChapters?: readonly GeneratedChapterCandidate[];
+  readonly drafts?: readonly DraftResource[];
+  readonly bibleCounts?: BibleResourceCounts;
+  readonly bibleEntries?: readonly BibleEntryResource[];
+  readonly storyFiles?: readonly TextFileResource[];
+  readonly truthFiles?: readonly TextFileResource[];
+  readonly materials?: readonly MaterialResource[];
+  readonly publishReports?: readonly PublishReportResource[];
+}
+
 // --- Review ---
 
 export interface ReviewActionPayload {
