@@ -9,6 +9,7 @@ interface BibleEntry {
   readonly name?: string;
   readonly title?: string;
   readonly content?: string;
+  readonly summary?: string;
   readonly chapterNumber?: number;
 }
 
@@ -105,7 +106,7 @@ function EntryList({ entries }: { readonly entries: readonly BibleEntry[] }) {
     <ul className="max-h-[20rem] space-y-1 overflow-auto">
       {entries.map((entry) => {
         const label = entry.name ?? entry.title ?? entry.id;
-        const detail = entry.content;
+        const detail = entry.content ?? entry.summary;
         const isExpanded = expandedId === entry.id;
 
         return (

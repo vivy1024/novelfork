@@ -210,10 +210,10 @@
 
 ### Phase 4：经纬、大纲、发布检查与导出
 
-- [ ] 32. 修复 Workspace 经纬面板 404 并接入真实经纬数据
-  - 检查 `BiblePanel` 使用的 API 路径与 `api/routes/bible.ts` 实际路径。
-  - 修正路径或新增兼容 route，避免浏览器实测中的 404。
-  - 验证：UI 测试和 route 测试覆盖人物/事件/设定/摘要加载成功或明确空态。
+- [x] 32. 修复 Workspace 经纬面板 404 并接入真实经纬数据
+  - 已检查 `BiblePanel` 使用的 API 路径与 `api/routes/bible.ts` 实际路径，Workspace 右侧面板使用 `/books/:bookId/bible/characters|events|settings|chapter-summaries`。
+  - 修正经纬列表展示字段，兼容 route 返回的 `summary` 与 `content`，避免人物/事件/摘要加载后只有标题没有详情。
+  - 验证：`pnpm --dir packages/studio exec vitest run src/api/routes/bible.test.ts src/app-next/workspace/WorkspacePage.test.tsx` 通过；UI 测试覆盖人物/事件/设定/摘要加载成功，route 测试覆盖真实 API。
 
 - [ ] 33. 实现 BibleCategoryView 与 BibleEntryEditor
   - Workspace 中点击人物、地点、势力、物品、伏笔、世界规则后显示真实列表。
