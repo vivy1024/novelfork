@@ -122,7 +122,7 @@
 | 资源管理器不完整 | 已能查看章节、候选稿、草稿、story/truth 文件和注册 viewer；mutation 后刷新已统一，仍需做实大纲、经纬、素材、发布报告 | `novel-creation-workbench-complete-flow` Phase 2 |
 | 新建章节、章节导入、候选稿、草稿与 hook mutation 已形成刷新闭环 | route 已能创建章节记录、导入章节文本、写作模式结果落库，并写入正文/索引、候选稿或草稿；Workspace mutation 统一重新读取章节、候选、草稿、Story 文件资源，不再维护前端临时节点 | Task 28+ 写作模式 UI 应用 |
 | 导出 disabled | 当前不是可用闭环 | Task 37-38 |
-| 写作模式应用 UI 仍 disabled / 预览态 | apply route 已能安全落库 candidate/draft，正式章节 insert/replace 转候选稿；Workspace UI 仍需接确认流程 | Task 28 |
+| 写作模式生成接口仍主要是 prompt-preview | apply route 和 Workspace UI 已能安全落库 candidate/draft，正式章节 insert/replace 转候选稿；生成接口仍需保持 prompt-preview 透明说明，不能写成已直接生成正文 | 后续按真实模型生成能力逐步扩展 |
 | 经纬面板 404 与分类壳子 | 结构化经纬 API 已可用，但 Workspace 分类视图仍未完整接入 | Task 32-33 |
 | 引导式生成入口串联 | 问卷、生成前追问、核心变更和 AI 味报告已有底座，仍需确认当前主工作台是否完整串起 | `novel-creation-workbench-complete-flow` 后续流程任务 |
 | Typecheck 阻塞已清理 | 旧 `routes`、`novelfork-context`、`use-tabs` 阻塞已通过旧前端退役清理，Studio typecheck 需先构建 core dist | 已在 `old-frontend-decommission` 完成 |
@@ -136,4 +136,4 @@
 - 已同步小说创作流程、API 文档、测试报告、旧前端退役、新建章节、章节导入、草稿、候选稿与资源树刷新闭环的当前边界。
 - 已保留已知缺口，避免把 spec 后续任务提前写成完成。
 
-后续优先继续 Task 28，接入 writing modes UI 应用确认流程。
+后续优先补齐主线 Phase 0/1/2 遗留项，然后进入 Task 32+ 经纬、大纲、发布检查与导出闭环。

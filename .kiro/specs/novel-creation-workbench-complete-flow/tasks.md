@@ -27,8 +27,8 @@
   - 对齐 `packages/studio/src/api/lib/mock-debt-ledger.ts`，不得把 transparent-placeholder 写成真实可用。
   - 验证：人工对照 ledger、recent commits 与现有 route/UI 测试。
 
-- [ ] 2. 建立小说创作流程总览文档
-  - 创建 `docs/02-核心架构/02-Studio工作台/02-小说创作流程总览.md`。
+- [x] 2. 建立小说创作流程总览文档
+  - 当前文档体系已迁移到 `docs/03-产品与流程/01-小说创作流程.md`。
   - 用用户视角描述创建作品、资源管理器、章节创建/导入、正文编辑保存、AI 候选稿、候选稿处理、经纬资料、写作工具、发布检查和导出流程。
   - 每一步标注当前状态：真实可用、透明过渡、内部示例、待迁移。
   - 明确 `process-memory`、`prompt-preview`、`chunked-buffer`、`unsupported` 的限制。
@@ -48,12 +48,11 @@
   - 写入当前 `pnpm run typecheck` 失败项：`routes`、`novelfork-context`、`use-tabs` 类型问题。
   - 验证：报告中的 scan 摘要与 `mock-debt-scan.test.ts` 当前期望一致。
 
-- [ ] 5. 合并重复 API 总览、更新过时文档并刷新 docs 索引
-  - 对比 `docs/05-API文档/01-Studio API总览.md` 与 `docs/05-API文档/01-Studio接口总览.md`。
-  - 保留一个当前 API 总览，另一个删除或移入 `docs/07-测试报告/02-历史归档/` 并标注归档状态。
-  - 审计 docs 中仍引用旧前端主线、旧 provider/mock 口径、旧 Bible 用户命名、旧路线图或已被新 spec 替代的内容。
-  - 对过时文档执行三选一：更新为当前事实、明确标注历史归档、或迁入 `docs/07-测试报告/02-历史归档/`。
-  - 更新 `docs/README.md`、`docs/05-API文档/README.md`、相关目录 README 的文件列表。
+- [x] 5. 合并重复 API 总览、更新过时文档并刷新 docs 索引
+  - 当前文档体系只保留 `docs/06-API与数据契约/01-Studio API总览.md` 作为 Studio API 总览当前入口。
+  - 旧 `docs/05-API文档/01-Studio API总览.md` 与 `docs/05-API文档/01-Studio接口总览.md` 已由 docs 重构合并/删除，迁移映射记录在 `docs/00-文档治理/02-迁移映射.md`。
+  - 已审计并更新当前执行主线、Studio 能力矩阵、创作工作台接口和 mock 清理报告中的过时 active spec / Task 28 口径。
+  - 已更新 `.kiro/specs/README.md`，当前只保留一个 active spec，其他 spec 均移入 archive。
   - 验证：docs 目录中不再有两个并列当前口径的 Studio API 总览；快速导航不再指向过时口径。
 
 - [x] 6. 添加 docs 状态一致性检查
@@ -64,15 +63,15 @@
 
 ### Phase 1：UI/UX 主题与组件可辨识度
 
-- [ ] 7. 为 Tailwind theme token 写失败优先测试
-  - 新增测试或构建检查，断言生成 CSS 包含 `.bg-primary`、`.text-primary`、`.text-primary-foreground`、`.bg-muted`、`.text-muted-foreground`、`.border-border`、`.bg-card`、`.bg-destructive`。
-  - 先运行测试并确认当前失败原因是 Tailwind theme token 未映射。
-  - 验证：测试失败输出能定位到缺失类名。
+- [x] 7. 为 Tailwind theme token 写失败优先测试
+  - 已扩展 `packages/studio/src/tailwind-theme.test.ts`，断言 Tailwind 生成 CSS 包含 `.bg-primary`、`.text-primary`、`.text-primary-foreground`、`.bg-muted`、`.text-muted-foreground`、`.border-border`、`.bg-card`、`.bg-destructive`。
+  - 当前基线已经存在 theme token 映射，新增生成 CSS 检查运行即通过；未修改生产代码。
+  - 验证：`pnpm --dir packages/studio exec vitest run src/tailwind-theme.test.ts` 通过。
 
-- [ ] 8. 映射 Tailwind 主题色到 CSS variables
-  - 修改 `packages/studio/tailwind.config.js`，在 `theme.extend.colors` 中映射 `index.css` 已定义的 background、foreground、card、popover、primary、secondary、muted、accent、destructive、border、input、ring 及 foreground variants。
+- [x] 8. 映射 Tailwind 主题色到 CSS variables
+  - `packages/studio/tailwind.config.js` 已在 `theme.extend.colors` 中映射 `index.css` 已定义的 background、foreground、card、popover、primary、secondary、muted、accent、destructive、border、input、ring 及 foreground variants。
   - 保持 light/dark 主题继续由 CSS variables 驱动。
-  - 验证：第 7 项测试通过，Vite 页面实际生成主题类。
+  - 验证：第 7 项生成 CSS 测试通过，Tailwind 能生成主题类。
 
 - [x] 9. 统一 Button/Badge/Card 视觉语义测试
   - 为 `Button`、`Badge` 或集中 UI primitives 添加 variant 测试，覆盖 default、outline、secondary、ghost、destructive、link、disabled。
