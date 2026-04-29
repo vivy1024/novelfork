@@ -18,6 +18,7 @@ import {
   registerBuiltinPresets,
   loadProjectConfig,
   type BookConfig,
+  type ChapterMeta,
   type JingweiTemplateSelection,
   type Preset,
 } from "@vivy1024/novelfork-core";
@@ -113,6 +114,27 @@ function presetPromptLines(presets: ReadonlyArray<Preset>): string {
 
 function isSafeStoryFileName(file: string): boolean {
   return /^[A-Za-z0-9_.-]+$/.test(file) && /\.(md|json|txt)$/i.test(file);
+}
+
+function sanitizeChapterFileTitle(title: string): string {
+  const sanitized = title.replace(/[\\/?%*:|"<>]/g, "").replace(/\s+/g, "_").slice(0, 50);
+  return sanitized || "chapter";
+}
+
+function countChapterWords(content: string): number {
+  return content.replace(/\s+/g, "").length;
+}
+
+async function listExistingChapterNumbers(chaptersDir: string): Promise<number[]> {
+  try {
+    const files = await readdir(chaptersDir);
+    return files.flatMap((file) => {
+      const match = file.match(/^(\d{4})/);
+      return match ? [Number.parseInt(match[1]!, 10)] : [];
+    });
+  } catch {
+    return [];
+  }
 }
 
 async function listStoryFiles(storyDir: string, filter?: (file: string) => boolean): Promise<Array<{ name: string; size: number; preview: string }>> {
@@ -584,6 +606,65 @@ export function createStorageRouter(ctx: RouterContext): Hono {
   });
 
   // --- Chapters ---
+
+  app.post("/api/books/:id/chapters", async (c) => {
+    const id = c.req.param("id");
+    const bookDir = state.bookDir(id);
+    const chaptersDir = join(bookDir, "chapters");
+
+    try {
+      const book = await state.loadBookConfig(id);
+      const body: { title?: string; afterChapterNumber?: number } = await c.req.json<{ title?: string; afterChapterNumber?: number }>().catch(() => ({}));
+      const existingIndex = [...await state.loadChapterIndex(id)] as ChapterMeta[];
+      const existingFileNumbers = await listExistingChapterNumbers(chaptersDir);
+      const nextFromIndex = Math.max(0, ...existingIndex.map((chapter) => chapter.number)) + 1;
+      const nextFromFiles = Math.max(0, ...existingFileNumbers) + 1;
+      const nextFromState = await state.getNextChapterNumber(id).catch(() => 1);
+      const requestedAfterChapterNumber = body.afterChapterNumber;
+      const afterChapterNumber = typeof requestedAfterChapterNumber === "number"
+        && Number.isInteger(requestedAfterChapterNumber)
+        && requestedAfterChapterNumber > 0
+        ? requestedAfterChapterNumber + 1
+        : 1;
+      const chapterNumber = Math.max(nextFromIndex, nextFromFiles, nextFromState, afterChapterNumber);
+      const defaultTitle = book.language === "en" ? `Chapter ${chapterNumber}` : `第 ${chapterNumber} 章`;
+      const title = body.title?.trim() || defaultTitle;
+      const fileName = `${String(chapterNumber).padStart(4, "0")}_${sanitizeChapterFileTitle(title)}.md`;
+      const now = new Date().toISOString();
+      const content = `# ${title}\n\n`;
+      const entry: ChapterMeta = {
+        number: chapterNumber,
+        title,
+        status: "drafting",
+        wordCount: countChapterWords(content.replace(/^# .*\n\n/, "")),
+        createdAt: now,
+        updatedAt: now,
+        auditIssues: [],
+        lengthWarnings: [],
+      };
+
+      await mkdir(chaptersDir, { recursive: true });
+      await writeFile(join(chaptersDir, fileName), content, "utf-8");
+      await state.saveChapterIndex(id, [...existingIndex, entry].sort((left, right) => left.number - right.number));
+
+      return c.json({
+        chapter: {
+          number: entry.number,
+          title: entry.title,
+          status: entry.status,
+          wordCount: entry.wordCount,
+          auditIssueCount: entry.auditIssues.length,
+          updatedAt: entry.updatedAt,
+          fileName,
+        },
+      }, 201);
+    } catch (error) {
+      if (isMissingFileError(error)) {
+        return c.json({ error: `Book "${id}" not found` }, 404);
+      }
+      return c.json({ error: String(error) }, 500);
+    }
+  });
 
   app.get("/api/books/:id/chapters/:num", async (c) => {
     const id = c.req.param("id");
