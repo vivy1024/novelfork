@@ -92,13 +92,14 @@ export interface WorkspaceChapterApi {
 
 export type CandidateAcceptAction = "merge" | "replace" | "draft";
 
-export interface CandidateAcceptResult {
+export interface CandidateMutationResult {
+  readonly candidate?: GeneratedChapterCandidate;
   readonly draft?: DraftResource;
 }
 
 export interface WorkspaceCandidateApi {
-  readonly acceptCandidate: (bookId: string, candidateId: string, action: CandidateAcceptAction) => Promise<CandidateAcceptResult | void>;
-  readonly rejectCandidate: (bookId: string, candidateId: string) => Promise<void>;
+  readonly acceptCandidate: (bookId: string, candidateId: string, action: CandidateAcceptAction) => Promise<CandidateMutationResult | void>;
+  readonly rejectCandidate: (bookId: string, candidateId: string) => Promise<CandidateMutationResult | void>;
 }
 
 export type WorkspaceAssistantActionId = "write-next" | "continue" | "audit" | "rewrite" | "de-ai" | "continuity";
@@ -113,6 +114,9 @@ export interface WorkspaceAssistantContext {
 export interface WorkspaceAssistantApi {
   readonly runAction: (action: WorkspaceAssistantActionId, context: WorkspaceAssistantContext) => Promise<{ readonly message: string }>;
 }
+
+type WorkspaceResourceMutationTarget = "chapters" | "candidates" | "drafts" | "candidate-draft" | "candidate-chapter" | "story-files" | "all";
+type WorkspaceResourceMutationHandler = (target: WorkspaceResourceMutationTarget) => Promise<void>;
 
 export interface WorkspaceModelGate {
   readonly blockedResult: Extract<AiGateResult, { ok: false }> | null;
@@ -139,7 +143,7 @@ const DEFAULT_CHAPTER_API: WorkspaceChapterApi = {
 };
 
 const DEFAULT_CANDIDATE_API: WorkspaceCandidateApi = {
-  acceptCandidate: async (bookId, candidateId, action) => fetchJson<CandidateAcceptResult>(`/books/${bookId}/candidates/${candidateId}/accept`, {
+  acceptCandidate: async (bookId, candidateId, action) => fetchJson<CandidateMutationResult>(`/books/${bookId}/candidates/${candidateId}/accept`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ action }),
@@ -176,20 +180,28 @@ export function WorkspacePage({
 
   /* ── load selected book detail + candidates ── */
   const { data: bookDetail, refetch: refetchBookDetail } = useApi<BookDetailResponse>(activeBookId ? `/books/${activeBookId}` : null);
-  const { data: candidatesData } = useApi<CandidatesResponse>(activeBookId ? `/books/${activeBookId}/candidates` : null);
-  const { data: storyFilesData } = useApi<WorkspaceTextFileListResponse>(activeBookId ? `/books/${activeBookId}/story-files` : null);
-  const { data: truthFilesData } = useApi<WorkspaceTextFileListResponse>(activeBookId ? `/books/${activeBookId}/truth-files` : null);
+  const { data: candidatesData, refetch: refetchCandidates } = useApi<CandidatesResponse>(activeBookId ? `/books/${activeBookId}/candidates` : null);
+  const { data: storyFilesData, refetch: refetchStoryFiles } = useApi<WorkspaceTextFileListResponse>(activeBookId ? `/books/${activeBookId}/story-files` : null);
+  const { data: truthFilesData, refetch: refetchTruthFiles } = useApi<WorkspaceTextFileListResponse>(activeBookId ? `/books/${activeBookId}/truth-files` : null);
   const { data: draftsData, refetch: refetchDrafts } = useApi<{ drafts: DraftResource[] }>(activeBookId ? `/books/${activeBookId}/drafts` : null);
-  const [createdChapters, setCreatedChapters] = useState<ChapterSummary[]>([]);
-  const [savedDrafts, setSavedDrafts] = useState<DraftResource[]>([]);
   const [creatingChapter, setCreatingChapter] = useState(false);
   const [createChapterError, setCreateChapterError] = useState<string | null>(null);
+  const [workspaceNotice, setWorkspaceNotice] = useState<string | null>(null);
 
   useEffect(() => {
-    setCreatedChapters([]);
-    setSavedDrafts([]);
     setCreateChapterError(null);
+    setWorkspaceNotice(null);
   }, [activeBookId]);
+
+  const refreshWorkspaceResources: WorkspaceResourceMutationHandler = async (target) => {
+    const refreshers: Array<Promise<unknown>> = [];
+    if (target === "all" || target === "chapters" || target === "candidate-chapter") refreshers.push(refetchBookDetail());
+    if (target === "all" || target === "candidates" || target === "candidate-draft" || target === "candidate-chapter") refreshers.push(refetchCandidates());
+    if (target === "all" || target === "drafts" || target === "candidate-draft") refreshers.push(refetchDrafts());
+    if (target === "all" || target === "story-files") refreshers.push(refetchStoryFiles());
+    if (target === "all") refreshers.push(refetchTruthFiles());
+    await Promise.all(refreshers);
+  };
 
   /* ── build resource tree from real data or fallback ── */
   const treeInput: StudioResourceTreeInput = useMemo(() => {
@@ -208,8 +220,7 @@ export function WorkspacePage({
       number: c.number, title: c.title ?? `第${c.number}章`, status: c.status ?? "draft",
       wordCount: c.wordCount ?? 0, auditIssueCount: 0, updatedAt: "", fileName: c.fileName ?? null,
     }));
-    const createdOnlyChapters = createdChapters.filter((created) => !chaptersFromBook.some((chapter) => chapter.number === created.number));
-    const chapters = [...chaptersFromBook, ...createdOnlyChapters].sort((left, right) => left.number - right.number);
+    const chapters = [...chaptersFromBook].sort((left, right) => left.number - right.number);
     const book: BookDetail = {
       id: b.id, title: b.title, status: b.status ?? "active", platform: (b.platform ?? "other") as BookDetail["platform"],
       genre: b.genre ?? "", targetChapters: b.targetChapters ?? 100,
@@ -223,8 +234,7 @@ export function WorkspacePage({
       chapterWordCount: b.chapterWordCount ?? 3000, language: (b.language ?? "zh") as "zh" | "en",
     };
     const candidates = (candidatesData?.candidates ?? []).filter((c) => c.status === "candidate");
-    const draftsFromApi = draftsData?.drafts ?? [];
-    const draftResources = [...draftsFromApi, ...savedDrafts.filter((saved) => !draftsFromApi.some((draft) => draft.id === saved.id))]
+    const draftResources = [...(draftsData?.drafts ?? [])]
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
     const storyFiles = (storyFilesData?.files ?? []).map((file) => ({
       id: file.name,
@@ -250,7 +260,7 @@ export function WorkspacePage({
       materials: [],
       publishReports: [],
     };
-  }, [bookDetail, candidatesData, createdChapters, draftsData, savedDrafts, storyFilesData, truthFilesData]);
+  }, [bookDetail, candidatesData, draftsData, storyFilesData, truthFilesData]);
 
   const tree = useMemo(() => buildStudioResourceTree(treeInput), [treeInput]);
   const defaultNodeId = tree[0]?.children?.[0]?.children?.[0]?.children?.[0]?.id ?? tree[0]?.children?.[0]?.children?.[0]?.id ?? tree[0]?.id ?? "";
@@ -272,13 +282,9 @@ export function WorkspacePage({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
       });
-      setCreatedChapters((current) => {
-        const withoutDuplicate = current.filter((chapter) => chapter.number !== response.chapter.number);
-        return [...withoutDuplicate, response.chapter];
-      });
       setSelectedNodeId(`chapter:${activeBookId}:${response.chapter.number}`);
       setShowPublishPanel(false);
-      await refetchBookDetail();
+      await refreshWorkspaceResources("chapters");
     } catch (error) {
       setCreateChapterError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -316,13 +322,12 @@ export function WorkspacePage({
         </div>
       </div>
 
+      {workspaceNotice && <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm">{workspaceNotice}</div>}
+
       <ResourceWorkspaceLayout
         explorer={<ResourceTree nodes={tree} selectedNodeId={selectedNode.id} onSelect={(id) => { setSelectedNodeId(id); setShowPublishPanel(false); }} />}
-        editor={showPublishPanel && activeBookId ? <PublishPanel bookId={activeBookId} /> : <WorkspaceEditor candidateApi={candidateApi} chapterApi={chapterApi} node={selectedNode} onDraftCreated={(draft) => {
-          setSavedDrafts((current) => [...current.filter((item) => item.id !== draft.id), draft]);
-          void refetchDrafts();
-        }} />}
-        assistant={<AssistantPanel assistantApi={assistantApi} modelGate={effectiveModelGate} selectedNode={selectedNode} />}
+        editor={showPublishPanel && activeBookId ? <PublishPanel bookId={activeBookId} /> : <WorkspaceEditor candidateApi={candidateApi} chapterApi={chapterApi} node={selectedNode} onResourceMutation={refreshWorkspaceResources} onCandidateResult={(message) => setWorkspaceNotice(message)} />}
+        assistant={<AssistantPanel assistantApi={assistantApi} modelGate={effectiveModelGate} selectedNode={selectedNode} onResourceMutation={refreshWorkspaceResources} />}
       />
     </SectionLayout>
   );
@@ -397,16 +402,18 @@ function WorkspaceEditor({
   candidateApi,
   chapterApi,
   node,
-  onDraftCreated,
+  onResourceMutation,
+  onCandidateResult,
 }: {
   readonly candidateApi: WorkspaceCandidateApi;
   readonly chapterApi: WorkspaceChapterApi;
   readonly node: StudioResourceNode;
-  readonly onDraftCreated: (draft: DraftResource) => void;
+  readonly onResourceMutation: WorkspaceResourceMutationHandler;
+  readonly onCandidateResult: (message: string) => void;
 }) {
   switch (resolveWorkspaceNodeViewKind(node)) {
     case "candidate-editor":
-      return <CandidateEditor candidateApi={candidateApi} node={node} onDraftCreated={onDraftCreated} />;
+      return <CandidateEditor candidateApi={candidateApi} node={node} onResourceMutation={onResourceMutation} onCandidateResult={onCandidateResult} />;
     case "chapter-editor":
       return <ChapterEditor chapterApi={chapterApi} node={node} />;
     case "bible-category-view":
@@ -439,33 +446,37 @@ function WorkspaceEditor({
 function CandidateEditor({
   candidateApi,
   node,
-  onDraftCreated,
+  onResourceMutation,
+  onCandidateResult,
 }: {
   readonly candidateApi: WorkspaceCandidateApi;
   readonly node: StudioResourceNode;
-  readonly onDraftCreated: (draft: DraftResource) => void;
+  readonly onResourceMutation: WorkspaceResourceMutationHandler;
+  readonly onCandidateResult: (message: string) => void;
 }) {
   const [pendingAction, setPendingAction] = useState<"merge" | "replace" | null>(null);
-  const [resultMessage, setResultMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const bookId = typeof node.metadata?.bookId === "string" ? node.metadata.bookId : "";
   const candidateId = node.id.replace(/^generated:/, "");
   const targetChapterId = typeof node.metadata?.targetChapterId === "string" ? node.metadata.targetChapterId : "未指定";
+  const candidateContent = typeof node.metadata?.content === "string" ? node.metadata.content : null;
+  const contentError = typeof node.metadata?.contentError === "string" ? node.metadata.contentError : null;
+  const hasContent = candidateContent !== null;
 
   const accept = async (action: CandidateAcceptAction) => {
     setActionError(null);
-    const result = await candidateApi.acceptCandidate(bookId, candidateId, action);
-    if (action === "draft" && result?.draft) {
-      onDraftCreated(result.draft);
-    }
+    await candidateApi.acceptCandidate(bookId, candidateId, action);
+    const message = action === "merge" ? "候选稿已合并到正式章节" : action === "replace" ? "候选稿已替换正式章节" : "候选稿已另存为草稿";
+    await onResourceMutation(action === "draft" ? "candidate-draft" : "candidate-chapter");
+    onCandidateResult(message);
     setPendingAction(null);
-    setResultMessage(action === "merge" ? "候选稿已合并到正式章节" : action === "replace" ? "候选稿已替换正式章节" : "候选稿已另存为草稿");
   };
 
   const reject = async () => {
     setActionError(null);
     await candidateApi.rejectCandidate(bookId, candidateId);
-    setResultMessage("候选稿已放弃");
+    await onResourceMutation("candidates");
+    onCandidateResult("候选稿已放弃");
   };
 
   const runAction = (operation: () => Promise<void>) => {
@@ -475,7 +486,6 @@ function CandidateEditor({
   return (
     <div className="space-y-4">
       <EditorHeader title={node.title} meta="候选稿 / 不会自动覆盖正式正文" />
-      {resultMessage && <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm">{resultMessage}</div>}
       {actionError && <InlineError message={`候选稿操作失败：${actionError}`} />}
       {pendingAction && (
         <div className="rounded-lg border border-border bg-background p-4 text-sm">
@@ -492,11 +502,14 @@ function CandidateEditor({
           </div>
         </div>
       )}
-      <textarea aria-label="章节正文" className="min-h-[22rem] w-full resize-none rounded-lg border border-border bg-background p-4 leading-7" defaultValue="" />
+      {contentError ? <InlineError message={contentError} /> : null}
+      {hasContent ? (
+        <textarea aria-label="候选稿正文" className="min-h-[22rem] w-full resize-none rounded-lg border border-border bg-background p-4 leading-7" readOnly value={candidateContent} />
+      ) : null}
       <div className="flex flex-wrap gap-2">
-        <Button size="sm" variant="outline" onClick={() => setPendingAction("merge")} type="button">合并到正式章节</Button>
-        <Button size="sm" variant="outline" onClick={() => setPendingAction("replace")} type="button">替换正式章节</Button>
-        <Button size="sm" variant="outline" onClick={() => runAction(() => accept("draft"))} type="button">另存为草稿</Button>
+        <Button size="sm" variant="outline" disabled={!hasContent} onClick={() => setPendingAction("merge")} type="button">合并到正式章节</Button>
+        <Button size="sm" variant="outline" disabled={!hasContent} onClick={() => setPendingAction("replace")} type="button">替换正式章节</Button>
+        <Button size="sm" variant="outline" disabled={!hasContent} onClick={() => runAction(() => accept("draft"))} type="button">另存为草稿</Button>
         <Button size="sm" variant="destructive" onClick={() => runAction(reject)} type="button">放弃候选稿</Button>
       </div>
     </div>
@@ -628,10 +641,12 @@ function AssistantPanel({
   assistantApi,
   modelGate,
   selectedNode,
+  onResourceMutation,
 }: {
   readonly assistantApi: WorkspaceAssistantApi;
   readonly modelGate: WorkspaceModelGate;
   readonly selectedNode: StudioResourceNode;
+  readonly onResourceMutation: WorkspaceResourceMutationHandler;
 }) {
   const [runningAction, setRunningAction] = useState<WorkspaceAssistantActionId | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
@@ -652,7 +667,10 @@ function AssistantPanel({
     }
     setRunningAction(action.id);
     assistantApi.runAction(action.id, context)
-      .then((result) => setActionMessage(result.message))
+      .then(async (result) => {
+        if (action.id === "write-next") await onResourceMutation("candidates");
+        setActionMessage(result.message);
+      })
       .catch((error: unknown) => setActionError(error instanceof Error ? error.message : String(error)))
       .finally(() => setRunningAction(null));
   };
@@ -686,7 +704,7 @@ function AssistantPanel({
       </div>
       <BiblePanel bookId={context.bookId} chapterNumber={context.chapterNumber} />
       <WritingModesPanel selectedNode={selectedNode} />
-      <WritingToolsPanel selectedNode={selectedNode} />
+      <WritingToolsPanel selectedNode={selectedNode} onResourceMutation={onResourceMutation} />
     </div>
   );
 }
@@ -748,7 +766,7 @@ function WritingModesPanel({ selectedNode }: { readonly selectedNode: StudioReso
   );
 }
 
-function WritingToolsPanel({ selectedNode }: { readonly selectedNode: StudioResourceNode }) {
+function WritingToolsPanel({ selectedNode, onResourceMutation }: { readonly selectedNode: StudioResourceNode; readonly onResourceMutation: WorkspaceResourceMutationHandler }) {
   const [open, setOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"rhythm" | "dialogue" | "hooks" | "progress" | "health" | "conflicts" | "arcs" | "tone">("rhythm");
   const [rhythmAnalysis, setRhythmAnalysis] = useState<RhythmChartAnalysis | null>(null);
@@ -797,6 +815,7 @@ function WritingToolsPanel({ selectedNode }: { readonly selectedNode: StudioReso
         body: JSON.stringify({ chapterNumber, hook }),
       });
       if (!response.persisted) throw new Error("钩子未写入持久化文件");
+      await onResourceMutation("story-files");
       setHookApplyStatus(`钩子已写入 ${response.file ?? "pending_hooks.md"}`);
     } catch (error: unknown) {
       setHookApplyError(error instanceof Error ? error.message : String(error));

@@ -260,8 +260,11 @@ function toGeneratedChapterNode(candidate: GeneratedChapterCandidate): StudioRes
     badge: candidate.source,
     metadata: {
       bookId: candidate.bookId,
+      candidateId: candidate.id,
       targetChapterId: candidate.targetChapterId,
       createdAt: candidate.createdAt,
+      content: candidate.content,
+      contentError: candidate.contentError,
     },
   };
 }

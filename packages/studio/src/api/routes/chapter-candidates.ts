@@ -21,7 +21,8 @@ interface ChapterCandidateRecord {
 }
 
 export interface ChapterCandidate extends Omit<ChapterCandidateRecord, "contentFileName"> {
-  readonly content: string;
+  readonly content: string | null;
+  readonly contentError?: string;
 }
 
 export interface DraftCandidateRecord {
@@ -251,12 +252,18 @@ async function loadCandidateContent(bookDir: string, fileName: string): Promise<
 }
 
 async function hydrateCandidates(bookDir: string, candidates: readonly ChapterCandidateRecord[]): Promise<ChapterCandidate[]> {
-  return Promise.all(candidates.map(async (candidate) => toCandidate(candidate, await loadCandidateContent(bookDir, candidate.contentFileName))));
+  return Promise.all(candidates.map(async (candidate) => {
+    try {
+      return toCandidate(candidate, await loadCandidateContent(bookDir, candidate.contentFileName));
+    } catch {
+      return toCandidate(candidate, null, `候选稿正文缺失：${candidate.contentFileName}`);
+    }
+  }));
 }
 
-function toCandidate(record: ChapterCandidateRecord, content: string): ChapterCandidate {
+function toCandidate(record: ChapterCandidateRecord, content: string | null, contentError?: string): ChapterCandidate {
   const { contentFileName: _contentFileName, ...candidate } = record;
-  return { ...candidate, content };
+  return { ...candidate, content, ...(contentError ? { contentError } : {}) };
 }
 
 function findCandidate(candidates: readonly ChapterCandidateRecord[], candidateId: string): ChapterCandidateRecord | undefined {
@@ -272,10 +279,13 @@ async function updateCandidateStatus(root: string, bookId: string, candidateId: 
   const candidates = await loadCandidates(bookDir);
   const record = findCandidate(candidates, candidateId);
   if (!record) return { error: "Candidate not found" };
-  const content = await loadCandidateContent(bookDir, record.contentFileName);
   const updated = { ...record, status, updatedAt };
   await saveCandidates(bookDir, replaceCandidate(candidates, updated));
-  return { candidate: toCandidate(updated, content) };
+  try {
+    return { candidate: toCandidate(updated, await loadCandidateContent(bookDir, record.contentFileName)) };
+  } catch {
+    return { candidate: toCandidate(updated, null, `候选稿正文缺失：${record.contentFileName}`) };
+  }
 }
 
 async function saveDraftCandidate(bookDir: string, record: ChapterCandidateRecord, content: string, timestamp: string): Promise<DraftCandidate> {
