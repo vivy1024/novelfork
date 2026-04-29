@@ -9,7 +9,7 @@ import {
 } from "./resource-adapter";
 import { BiblePanel } from "./BiblePanel";
 import { PublishPanel } from "./PublishPanel";
-import { fetchJson, useApi } from "../../hooks/use-api";
+import { fetchJson, postApi, useApi } from "../../hooks/use-api";
 import type { AiAction, AiGateResult } from "../../lib/ai-gate";
 import type { BookDetail, ChapterSummary, CreateChapterResponse, DraftResource, GeneratedChapterCandidate } from "../../shared/contracts";
 import { ChapterHookGenerator, type GeneratedHookOption } from "../../components/writing-tools/ChapterHookGenerator";
@@ -111,12 +111,40 @@ export interface WorkspaceAssistantContext {
   readonly selectedNodeTitle: string;
 }
 
+export interface WorkspaceAssistantActionResult {
+  readonly message: string;
+  readonly resourceMutationTarget?: WorkspaceResourceMutationTarget;
+}
+
 export interface WorkspaceAssistantApi {
-  readonly runAction: (action: WorkspaceAssistantActionId, context: WorkspaceAssistantContext) => Promise<{ readonly message: string }>;
+  readonly runAction: (action: WorkspaceAssistantActionId, context: WorkspaceAssistantContext) => Promise<WorkspaceAssistantActionResult>;
 }
 
 type WorkspaceResourceMutationTarget = "chapters" | "candidates" | "drafts" | "candidate-draft" | "candidate-chapter" | "story-files" | "all";
 type WorkspaceResourceMutationHandler = (target: WorkspaceResourceMutationTarget) => Promise<void>;
+type WritingModeApplyTarget = "candidate" | "draft" | "chapter-insert" | "chapter-replace";
+
+interface WritingModeApplyPayload {
+  readonly target: WritingModeApplyTarget;
+  readonly title?: string;
+  readonly content: string;
+  readonly sourceMode: string;
+  readonly chapterNumber?: number;
+}
+
+interface WritingModeApplyResponse {
+  readonly target: "candidate" | "draft";
+  readonly requestedTarget: WritingModeApplyTarget;
+  readonly resourceId: string;
+  readonly status: string;
+  readonly metadata?: Record<string, unknown>;
+}
+
+interface PendingWritingModeApply {
+  readonly content: string;
+  readonly sourceMode: string;
+  readonly title: string;
+}
 
 export interface WorkspaceModelGate {
   readonly blockedResult: Extract<AiGateResult, { ok: false }> | null;
@@ -153,13 +181,73 @@ const DEFAULT_CANDIDATE_API: WorkspaceCandidateApi = {
   },
 };
 
+interface WorkspaceAssistantActionRouteConfig {
+  readonly route: (context: WorkspaceAssistantContext) => string;
+  readonly method?: "POST";
+  readonly body?: (context: WorkspaceAssistantContext) => Record<string, unknown>;
+  readonly message: string;
+  readonly resourceMutationTarget?: WorkspaceResourceMutationTarget;
+}
+
+function resolveAssistantChapterNumber(context: WorkspaceAssistantContext): number {
+  return context.chapterNumber ?? 1;
+}
+
+const WORKSPACE_ASSISTANT_ACTION_ROUTE_MAP: Record<WorkspaceAssistantActionId, WorkspaceAssistantActionRouteConfig> = {
+  "write-next": {
+    route: (context) => `/books/${context.bookId}/write-next`,
+    method: "POST",
+    message: "AI 输出已进入生成章节候选",
+    resourceMutationTarget: "candidates",
+  },
+  continue: {
+    route: (context) => `/books/${context.bookId}/inline-write`,
+    method: "POST",
+    body: (context) => ({
+      mode: "continuation",
+      chapterNumber: resolveAssistantChapterNumber(context),
+      selectedText: "",
+      beforeText: context.selectedNodeTitle,
+    }),
+    message: "续写当前段落已生成 prompt-preview，请在写作模式面板确认后写入。",
+  },
+  audit: {
+    route: (context) => `/books/${context.bookId}/audit/${resolveAssistantChapterNumber(context)}`,
+    method: "POST",
+    message: "审校当前章已完成。",
+  },
+  rewrite: {
+    route: (context) => `/books/${context.bookId}/revise/${resolveAssistantChapterNumber(context)}`,
+    method: "POST",
+    body: () => ({ mode: "rewrite" }),
+    message: "改写请求已提交到修订 route。",
+  },
+  "de-ai": {
+    route: (context) => `/books/${context.bookId}/detect/${resolveAssistantChapterNumber(context)}`,
+    method: "POST",
+    message: "去 AI 味检测已完成。",
+  },
+  continuity: {
+    route: (context) => `/books/${context.bookId}/audit/${resolveAssistantChapterNumber(context)}`,
+    method: "POST",
+    message: "连续性检查已完成。",
+  },
+};
+
 const DEFAULT_ASSISTANT_API: WorkspaceAssistantApi = {
   runAction: async (action, context) => {
-    if (action === "write-next") {
-      await fetchJson(`/books/${context.bookId}/write-next`, { method: "POST" });
-      return { message: "AI 输出已进入生成章节候选" };
+    const routeConfig = WORKSPACE_ASSISTANT_ACTION_ROUTE_MAP[action];
+    const body = routeConfig.body?.(context);
+    const request: { method: "POST"; headers?: Record<string, string>; body?: string } = { method: routeConfig.method ?? "POST" };
+    if (body) {
+      request.headers = { "Content-Type": "application/json" };
+      request.body = JSON.stringify(body);
     }
-    throw new Error("此功能即将推出");
+    await fetchJson(routeConfig.route(context), request);
+    return {
+      message: routeConfig.message,
+      resourceMutationTarget: routeConfig.resourceMutationTarget,
+    };
   },
 };
 
@@ -668,7 +756,8 @@ function AssistantPanel({
     setRunningAction(action.id);
     assistantApi.runAction(action.id, context)
       .then(async (result) => {
-        if (action.id === "write-next") await onResourceMutation("candidates");
+        const resourceMutationTarget = result.resourceMutationTarget ?? (action.id === "write-next" ? "candidates" : null);
+        if (resourceMutationTarget) await onResourceMutation(resourceMutationTarget);
         setActionMessage(result.message);
       })
       .catch((error: unknown) => setActionError(error instanceof Error ? error.message : String(error)))
@@ -703,22 +792,56 @@ function AssistantPanel({
         ))}
       </div>
       <BiblePanel bookId={context.bookId} chapterNumber={context.chapterNumber} />
-      <WritingModesPanel selectedNode={selectedNode} />
+      <WritingModesPanel selectedNode={selectedNode} onResourceMutation={onResourceMutation} />
       <WritingToolsPanel selectedNode={selectedNode} onResourceMutation={onResourceMutation} />
     </div>
   );
 }
 
-function WritingModesPanel({ selectedNode }: { readonly selectedNode: StudioResourceNode }) {
+function WritingModesPanel({ selectedNode, onResourceMutation }: { readonly selectedNode: StudioResourceNode; readonly onResourceMutation: WorkspaceResourceMutationHandler }) {
   const [open, setOpen] = useState(false);
   const [activeMode, setActiveMode] = useState<"inline" | "dialogue-gen" | "variants" | "outline">("inline");
+  const [pendingApply, setPendingApply] = useState<PendingWritingModeApply | null>(null);
+  const [applyTarget, setApplyTarget] = useState<WritingModeApplyTarget>("candidate");
+  const [applying, setApplying] = useState(false);
   const [applyNotice, setApplyNotice] = useState<string | null>(null);
+  const [applyError, setApplyError] = useState<string | null>(null);
 
   const bookId = typeof selectedNode.metadata?.bookId === "string" ? selectedNode.metadata.bookId : "";
   const chapterNumber = typeof selectedNode.metadata?.chapterNumber === "number" ? selectedNode.metadata.chapterNumber : 1;
   const isChapterContext = selectedNode.kind === "chapter" || selectedNode.kind === "generated-chapter";
-  const applyDisabledReason = "当前工作台尚未暴露安全写入目标，应用按钮已禁用。";
-  const handleBlockedApply = () => setApplyNotice(applyDisabledReason);
+  const selectedText = isChapterContext ? selectedNode.title : "";
+
+  const beginApply = (content: string, sourceMode: string, title: string) => {
+    setPendingApply({ content, sourceMode, title });
+    setApplyTarget(sourceMode === "outline-branch" ? "candidate" : "candidate");
+    setApplyNotice(null);
+    setApplyError(null);
+  };
+
+  const applyWritingMode = async () => {
+    if (!pendingApply || !bookId) return;
+    setApplying(true);
+    setApplyError(null);
+    try {
+      const payload: WritingModeApplyPayload = {
+        target: applyTarget,
+        title: pendingApply.title,
+        content: pendingApply.content,
+        sourceMode: pendingApply.sourceMode,
+        ...(isChapterContext ? { chapterNumber } : {}),
+      };
+      const response = await postApi<WritingModeApplyResponse>(`/books/${bookId}/writing-modes/apply`, payload);
+      await onResourceMutation(response.target === "draft" ? "drafts" : "candidates");
+      const targetLabel = response.target === "draft" ? "草稿" : "候选稿";
+      setApplyNotice(`写作结果已保存到${targetLabel} ${response.resourceId}`);
+      setPendingApply(null);
+    } catch (error: unknown) {
+      setApplyError(`写作模式应用失败：${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setApplying(false);
+    }
+  };
 
   return (
     <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm">
@@ -740,21 +863,39 @@ function WritingModesPanel({ selectedNode }: { readonly selectedNode: StudioReso
           </div>
 
           <p className="rounded-lg border border-dashed border-border bg-background/60 p-2 text-xs text-muted-foreground">
-            {applyDisabledReason}
+            生成接口若返回 Prompt 预览会保持未接入按钮；真实生成结果必须先选择候选稿或草稿，再确认应用。正式章节插入/替换会转成非破坏性候选稿。
           </p>
           {applyNotice && <p className="text-xs text-muted-foreground">{applyNotice}</p>}
+          {applyError && <p className="text-xs text-destructive">{applyError}</p>}
 
           {isChapterContext && activeMode === "inline" && (
-            <InlineWritePanel bookId={bookId} chapterNumber={chapterNumber} selectedText="" onAccept={handleBlockedApply} onDiscard={() => setOpen(false)} applyDisabledReason={applyDisabledReason} />
+            <InlineWritePanel bookId={bookId} chapterNumber={chapterNumber} selectedText={selectedText} onAccept={(content) => beginApply(content, "inline-write", "续写结果")} onDiscard={() => setPendingApply(null)} />
           )}
           {isChapterContext && activeMode === "dialogue-gen" && (
-            <DialogueGenerator bookId={bookId} chapterNumber={chapterNumber} onInsert={handleBlockedApply} applyDisabledReason={applyDisabledReason} />
+            <DialogueGenerator bookId={bookId} chapterNumber={chapterNumber} onInsert={(content) => beginApply(content, "dialogue-generator", "对话生成结果")} />
           )}
           {isChapterContext && activeMode === "variants" && (
-            <VariantCompare bookId={bookId} chapterNumber={chapterNumber} selectedText="" onAccept={handleBlockedApply} applyDisabledReason={applyDisabledReason} />
+            <VariantCompare bookId={bookId} chapterNumber={chapterNumber} selectedText={selectedText} onAccept={(content) => beginApply(content, "variant-compare", "多版本候选结果")} />
           )}
           {activeMode === "outline" && (
-            <OutlineBrancher bookId={bookId} onSelectBranch={handleBlockedApply} applyDisabledReason={applyDisabledReason} />
+            <OutlineBrancher bookId={bookId} onSelectBranch={(content) => beginApply(content, "outline-branch", "大纲分支结果")} />
+          )}
+
+          {pendingApply && (
+            <div className="space-y-2 rounded-lg border border-border bg-background/70 p-3 text-xs">
+              <div className="font-medium">应用写作结果</div>
+              <pre className="max-h-32 overflow-y-auto whitespace-pre-wrap rounded border border-border bg-muted/20 p-2 leading-6 text-muted-foreground">{pendingApply.content}</pre>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" size="xs" variant={applyTarget === "candidate" ? "default" : "outline"} onClick={() => setApplyTarget("candidate")}>保存为候选稿</Button>
+                <Button type="button" size="xs" variant={applyTarget === "draft" ? "default" : "outline"} onClick={() => setApplyTarget("draft")}>保存为草稿</Button>
+                {isChapterContext && <Button type="button" size="xs" variant={applyTarget === "chapter-insert" ? "default" : "outline"} onClick={() => setApplyTarget("chapter-insert")}>插入为候选</Button>}
+                {isChapterContext && <Button type="button" size="xs" variant={applyTarget === "chapter-replace" ? "default" : "outline"} onClick={() => setApplyTarget("chapter-replace")}>替换为候选</Button>}
+              </div>
+              <div className="flex gap-2">
+                <Button type="button" size="xs" onClick={() => void applyWritingMode()} disabled={applying}>{applying ? "应用中..." : "确认应用写作结果"}</Button>
+                <Button type="button" size="xs" variant="outline" onClick={() => setPendingApply(null)} disabled={applying}>取消</Button>
+              </div>
+            </div>
           )}
 
           {!isChapterContext && activeMode !== "outline" && (

@@ -186,18 +186,18 @@
   - 返回写入目标、resource id、status 和可追踪 metadata。
   - 验证：第 26 项测试通过，AI 失败不产生假结果。
 
-- [ ] 28. 接入 writing modes UI 应用流程
+- [x] 28. 接入 writing modes UI 应用流程
   - InlineWritePanel、DialogueGenerator、VariantCompare、OutlineBrancher 的应用按钮不再是 noop。
   - UI 显示预览、目标选择、确认、写入结果和错误状态。
   - 未接真实生成的模式保持 disabled 或 prompt-preview 透明说明。
   - 验证：UI 测试覆盖应用到 candidate/draft、错误展示、disabled 原因。
 
-- [ ] 29. 建立 Workspace AI action route map 测试
+- [x] 29. 建立 Workspace AI action route map 测试
   - 为 `write-next`、`continue`、`audit`、`rewrite`、`de-ai`、`continuity` 建立 action 到 route/result 的测试表。
   - 未实现 route 必须返回 unsupported，并在 UI 上透明显示。
   - 验证：测试防止 action 再次回到“即将推出”或本地假成功。
 
-- [ ] 30. 补齐 Workspace AI action 实现或 unsupported 语义
+- [x] 30. 补齐 Workspace AI action 实现或 unsupported 语义
   - `write-next` 保持真实生成候选稿路径。
   - `continue` 接 writing modes apply 或 preview/candidate 路径。
   - `audit`、`rewrite`、`de-ai`、`continuity` 接现有真实 route；没有真实 route 的返回 unsupported。
