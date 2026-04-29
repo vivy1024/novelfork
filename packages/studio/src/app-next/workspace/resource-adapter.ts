@@ -275,6 +275,7 @@ function toDraftNode(draft: DraftResource): StudioResourceNode {
     count: draft.wordCount,
     metadata: {
       bookId: draft.bookId,
+      draftId: draft.id,
       updatedAt: draft.updatedAt,
     },
   };

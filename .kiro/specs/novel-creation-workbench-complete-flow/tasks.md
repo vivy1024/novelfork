@@ -144,13 +144,13 @@
   - 创建失败显示真实错误，不能产生前端假节点。
   - 验证：`WorkspacePage.test.tsx` 覆盖新建章节成功、失败、自动选中。
 
-- [ ] 21. 实现草稿 API 和存储边界
+- [x] 21. 实现草稿 API 和存储边界
   - 新增或补齐 drafts list/read/write API。
   - 草稿必须包含 id、bookId、title、content、updatedAt、wordCount。
   - 候选稿另存草稿时必须创建可读取草稿。
   - 验证：route 测试覆盖草稿创建、读取、更新、重新实例化后仍存在。
 
-- [ ] 22. 接入 DraftEditor 与资源树草稿节点
+- [x] 22. 接入 DraftEditor 与资源树草稿节点
   - 资源树从真实 drafts 数据生成草稿节点，不再永久使用 `drafts: []`。
   - 点击草稿打开 DraftEditor，可查看和保存草稿。
   - 候选稿另存草稿后刷新资源树并显示新草稿。

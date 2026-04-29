@@ -28,11 +28,15 @@ export interface DraftCandidateRecord {
   readonly id: string;
   readonly bookId: string;
   readonly title: string;
-  readonly sourceCandidateId: string;
+  readonly sourceCandidateId?: string;
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly wordCount: number;
   readonly fileName: string;
+}
+
+export interface DraftCandidate extends DraftCandidateRecord {
+  readonly content: string;
 }
 
 interface CreateCandidateBody {
@@ -40,6 +44,16 @@ interface CreateCandidateBody {
   readonly title?: string;
   readonly content?: string;
   readonly source?: string;
+}
+
+interface CreateDraftBody {
+  readonly title?: string;
+  readonly content?: string;
+}
+
+interface UpdateDraftBody {
+  readonly title?: string;
+  readonly content?: string;
 }
 
 interface ChapterCandidatesRouterOptions {
@@ -61,6 +75,68 @@ export function createChapterCandidatesRouter(root: string, options: ChapterCand
     const bookDir = join(root, "books", bookId);
     const candidates = await loadCandidates(bookDir);
     return c.json({ candidates: await hydrateCandidates(bookDir, candidates) });
+  });
+
+  app.get("/api/books/:id/drafts", async (c) => {
+    const bookId = c.req.param("id");
+    const bookDir = join(root, "books", bookId);
+    const drafts = await loadDrafts(bookDir);
+    return c.json({ drafts: await hydrateDrafts(bookDir, drafts) });
+  });
+
+  app.get("/api/books/:id/drafts/:draftId", async (c) => {
+    const bookId = c.req.param("id");
+    const draftId = c.req.param("draftId");
+    const bookDir = join(root, "books", bookId);
+    const draft = findDraft(await loadDrafts(bookDir), draftId);
+    if (!draft) return c.json({ error: "Draft not found" }, 404);
+    return c.json({ draft: await hydrateDraft(bookDir, draft) });
+  });
+
+  app.post("/api/books/:id/drafts", async (c) => {
+    const bookId = c.req.param("id");
+    const bookDir = join(root, "books", bookId);
+    await ensureBookDir(bookDir);
+
+    const body: CreateDraftBody = await c.req.json<CreateDraftBody>().catch(() => ({}));
+    if (!body.title?.trim()) return c.json({ error: "Draft title is required" }, 400);
+    if (typeof body.content !== "string") return c.json({ error: "Draft content is required" }, 400);
+
+    const timestamp = now().toISOString();
+    const id = buildDraftId(createId());
+    const draft: DraftCandidateRecord = {
+      id,
+      bookId,
+      title: body.title.trim(),
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      wordCount: countWords(body.content),
+      fileName: `${id}.md`,
+    };
+    await saveDraft(bookDir, draft, body.content);
+    return c.json({ draft: toDraft(draft, body.content) }, 201);
+  });
+
+  app.put("/api/books/:id/drafts/:draftId", async (c) => {
+    const bookId = c.req.param("id");
+    const draftId = c.req.param("draftId");
+    const bookDir = join(root, "books", bookId);
+    const drafts = await loadDrafts(bookDir);
+    const existing = findDraft(drafts, draftId);
+    if (!existing) return c.json({ error: "Draft not found" }, 404);
+
+    const body: UpdateDraftBody = await c.req.json<UpdateDraftBody>().catch(() => ({}));
+    const currentContent = await loadDraftContent(bookDir, existing.fileName);
+    const content = typeof body.content === "string" ? body.content : currentContent;
+    const timestamp = now().toISOString();
+    const updated: DraftCandidateRecord = {
+      ...existing,
+      title: body.title?.trim() || existing.title,
+      updatedAt: timestamp,
+      wordCount: countWords(content),
+    };
+    await saveDraft(bookDir, updated, content);
+    return c.json({ draft: toDraft(updated, content) });
   });
 
   app.post("/api/books/:id/candidates", async (c) => {
@@ -111,7 +187,7 @@ export function createChapterCandidatesRouter(root: string, options: ChapterCand
     const content = await loadCandidateContent(bookDir, record.contentFileName);
     const timestamp = now().toISOString();
 
-    let draft: DraftCandidateRecord | undefined;
+    let draft: DraftCandidate | undefined;
     if (action === "draft") {
       draft = await saveDraftCandidate(bookDir, record, content, timestamp);
     } else {
@@ -202,9 +278,8 @@ async function updateCandidateStatus(root: string, bookId: string, candidateId: 
   return { candidate: toCandidate(updated, content) };
 }
 
-async function saveDraftCandidate(bookDir: string, record: ChapterCandidateRecord, content: string, timestamp: string): Promise<DraftCandidateRecord> {
+async function saveDraftCandidate(bookDir: string, record: ChapterCandidateRecord, content: string, timestamp: string): Promise<DraftCandidate> {
   const draftId = `draft-${record.id}`;
-  const fileName = `${draftId}.md`;
   const draft: DraftCandidateRecord = {
     id: draftId,
     bookId: record.bookId,
@@ -213,14 +288,10 @@ async function saveDraftCandidate(bookDir: string, record: ChapterCandidateRecor
     createdAt: timestamp,
     updatedAt: timestamp,
     wordCount: countWords(content),
-    fileName,
+    fileName: `${draftId}.md`,
   };
-  const draftsDir = join(bookDir, DRAFTS_DIR);
-  await mkdir(draftsDir, { recursive: true });
-  await writeFile(join(draftsDir, fileName), content, "utf-8");
-  const drafts = await loadDrafts(bookDir);
-  await writeFile(join(draftsDir, INDEX_FILE), JSON.stringify([...drafts.filter((item) => item.id !== draftId), draft], null, 2), "utf-8");
-  return draft;
+  await saveDraft(bookDir, draft, content);
+  return toDraft(draft, content);
 }
 
 async function loadDrafts(bookDir: string): Promise<DraftCandidateRecord[]> {
@@ -230,6 +301,45 @@ async function loadDrafts(bookDir: string): Promise<DraftCandidateRecord[]> {
   } catch {
     return [];
   }
+}
+
+async function saveDrafts(bookDir: string, drafts: readonly DraftCandidateRecord[]): Promise<void> {
+  const draftsDir = join(bookDir, DRAFTS_DIR);
+  await mkdir(draftsDir, { recursive: true });
+  await writeFile(join(draftsDir, INDEX_FILE), JSON.stringify(drafts, null, 2), "utf-8");
+}
+
+async function saveDraft(bookDir: string, draft: DraftCandidateRecord, content: string): Promise<void> {
+  const draftsDir = join(bookDir, DRAFTS_DIR);
+  await mkdir(draftsDir, { recursive: true });
+  await writeFile(join(draftsDir, draft.fileName), content, "utf-8");
+  const drafts = await loadDrafts(bookDir);
+  await saveDrafts(bookDir, [...drafts.filter((item) => item.id !== draft.id), draft]);
+}
+
+async function loadDraftContent(bookDir: string, fileName: string): Promise<string> {
+  return readFile(join(bookDir, DRAFTS_DIR, fileName), "utf-8");
+}
+
+async function hydrateDraft(bookDir: string, draft: DraftCandidateRecord): Promise<DraftCandidate> {
+  return toDraft(draft, await loadDraftContent(bookDir, draft.fileName));
+}
+
+async function hydrateDrafts(bookDir: string, drafts: readonly DraftCandidateRecord[]): Promise<DraftCandidate[]> {
+  return Promise.all(drafts.map((draft) => hydrateDraft(bookDir, draft)));
+}
+
+function toDraft(record: DraftCandidateRecord, content: string): DraftCandidate {
+  return { ...record, content };
+}
+
+function findDraft(drafts: readonly DraftCandidateRecord[], draftId: string): DraftCandidateRecord | undefined {
+  return drafts.find((draft) => draft.id === draftId);
+}
+
+function buildDraftId(rawId: string): string {
+  const safeId = rawId.replace(/[^A-Za-z0-9_-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+  return safeId.startsWith("draft-") ? safeId : `draft-${safeId || "untitled"}`;
 }
 
 async function writeAcceptedContentToFormalChapter(bookDir: string, record: ChapterCandidateRecord, content: string, action: "merge" | "replace"): Promise<void> {

@@ -47,7 +47,7 @@ describe("buildStudioResourceTree", () => {
       generatedChapters: [
         { id: "gen-1", bookId: "book-1", targetChapterId: "2", title: "第二章 AI 候选", source: "write-next", createdAt: "2026-04-27T02:00:00.000Z", status: "candidate" },
       ],
-      drafts: [{ id: "draft-1", bookId: "book-1", title: "城门冲突片段", updatedAt: "2026-04-27T03:00:00.000Z", wordCount: 800 }],
+      drafts: [{ id: "draft-1", bookId: "book-1", title: "城门冲突片段", content: "草稿正文", updatedAt: "2026-04-27T03:00:00.000Z", wordCount: 800 }],
       bibleCounts: { characters: 3, locations: 2, factions: 1, items: 4, foreshadowing: 5, worldRules: 6 },
       bibleEntries: [],
       storyFiles: [],

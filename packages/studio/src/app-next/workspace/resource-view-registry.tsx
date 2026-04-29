@@ -1,4 +1,10 @@
+import { useEffect, useMemo, useState } from "react";
+
 import { UnsupportedCapability } from "../../components/runtime/UnsupportedCapability";
+import { Button } from "../../components/ui/button";
+import { fetchJson } from "../../hooks/use-api";
+import type { DraftResource } from "../../shared/contracts";
+import { InlineError } from "../components/feedback";
 import type { StudioResourceNode } from "./resource-adapter";
 import { WorkspaceFileViewer } from "./WorkspaceFileViewer";
 
@@ -62,8 +68,104 @@ function PlaceholderSection({
   );
 }
 
+function resolveDraftEndpoint(node: StudioResourceNode): string | null {
+  const bookId = typeof node.metadata?.bookId === "string" ? node.metadata.bookId : "";
+  const draftId = typeof node.metadata?.draftId === "string" ? node.metadata.draftId : String(node.id).replace(/^draft:/, "");
+  if (!bookId || !draftId) return null;
+  return `/books/${bookId}/drafts/${encodeURIComponent(draftId)}`;
+}
+
 export function DraftEditor({ node }: { readonly node: StudioResourceNode }) {
-  return <PlaceholderSection title={node.title} meta="DraftEditor" description="草稿编辑器将在后续任务接入真实正文读取与保存。" />;
+  const endpoint = useMemo(() => resolveDraftEndpoint(node), [node]);
+  const [draft, setDraft] = useState<DraftResource | null>(null);
+  const [content, setContent] = useState("");
+  const [saveState, setSaveState] = useState<"loading" | "clean" | "dirty" | "saving" | "saved" | "failed">("loading");
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!endpoint) {
+      setError("缺少草稿定位信息");
+      setSaveState("failed");
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setDraft(null);
+    setContent("");
+    setSaveState("loading");
+    setError(null);
+
+    void fetchJson<{ draft: DraftResource }>(endpoint)
+      .then((result) => {
+        if (cancelled) return;
+        setDraft(result.draft);
+        setContent(result.draft.content);
+        setSaveState("clean");
+      })
+      .catch((loadError: unknown) => {
+        if (cancelled) return;
+        setError(loadError instanceof Error ? loadError.message : String(loadError));
+        setSaveState("failed");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [endpoint]);
+
+  const saveDraft = async () => {
+    if (!endpoint || !draft) return;
+    setSaveState("saving");
+    setError(null);
+    try {
+      const result = await fetchJson<{ draft: DraftResource }>(endpoint, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: draft.title, content }),
+      });
+      setDraft(result.draft);
+      setContent(result.draft.content);
+      setSaveState("saved");
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : String(saveError));
+      setSaveState("failed");
+    }
+  };
+
+  const statusText = saveState === "loading" ? "加载中"
+    : saveState === "dirty" ? "未保存"
+      : saveState === "saving" ? "保存中"
+        : saveState === "saved" ? "已保存"
+          : saveState === "failed" ? "失败"
+            : "未修改";
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3">
+        <div>
+          <h2 className="text-xl font-semibold">{draft?.title ?? node.title}</h2>
+          <p className="text-sm text-muted-foreground">DraftEditor · {draft?.wordCount ?? node.count ?? 0} 字 · 草稿保存状态：{statusText}</p>
+        </div>
+        <Button size="sm" variant="outline" type="button" disabled={!draft || saveState === "loading" || saveState === "saving"} onClick={() => void saveDraft()}>
+          保存草稿
+        </Button>
+      </div>
+      {error && <InlineError message={error} />}
+      {saveState === "loading" && !error ? <p className="text-sm text-muted-foreground">加载草稿中…</p> : (
+        <textarea
+          aria-label="草稿正文"
+          className="min-h-[55vh] w-full rounded-lg border border-border bg-background p-3 font-serif text-base leading-8 outline-none focus:ring-2 focus:ring-ring/50"
+          value={content}
+          onChange={(event) => {
+            setContent(event.target.value);
+            setSaveState("dirty");
+          }}
+        />
+      )}
+    </div>
+  );
 }
 
 export function OutlineEditor({ node }: { readonly node: StudioResourceNode }) {

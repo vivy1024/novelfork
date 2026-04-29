@@ -11,7 +11,7 @@ import { BiblePanel } from "./BiblePanel";
 import { PublishPanel } from "./PublishPanel";
 import { fetchJson, useApi } from "../../hooks/use-api";
 import type { AiAction, AiGateResult } from "../../lib/ai-gate";
-import type { BookDetail, ChapterSummary, CreateChapterResponse, GeneratedChapterCandidate } from "../../shared/contracts";
+import type { BookDetail, ChapterSummary, CreateChapterResponse, DraftResource, GeneratedChapterCandidate } from "../../shared/contracts";
 import { ChapterHookGenerator, type GeneratedHookOption } from "../../components/writing-tools/ChapterHookGenerator";
 import { DialogueAnalysis, type DialogueAnalysisResult } from "../../components/writing-tools/DialogueAnalysis";
 import { RhythmChart, type RhythmChartAnalysis } from "../../components/writing-tools/RhythmChart";
@@ -92,8 +92,12 @@ export interface WorkspaceChapterApi {
 
 export type CandidateAcceptAction = "merge" | "replace" | "draft";
 
+export interface CandidateAcceptResult {
+  readonly draft?: DraftResource;
+}
+
 export interface WorkspaceCandidateApi {
-  readonly acceptCandidate: (bookId: string, candidateId: string, action: CandidateAcceptAction) => Promise<void>;
+  readonly acceptCandidate: (bookId: string, candidateId: string, action: CandidateAcceptAction) => Promise<CandidateAcceptResult | void>;
   readonly rejectCandidate: (bookId: string, candidateId: string) => Promise<void>;
 }
 
@@ -135,13 +139,11 @@ const DEFAULT_CHAPTER_API: WorkspaceChapterApi = {
 };
 
 const DEFAULT_CANDIDATE_API: WorkspaceCandidateApi = {
-  acceptCandidate: async (bookId, candidateId, action) => {
-    await fetchJson(`/books/${bookId}/candidates/${candidateId}/accept`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action }),
-    });
-  },
+  acceptCandidate: async (bookId, candidateId, action) => fetchJson<CandidateAcceptResult>(`/books/${bookId}/candidates/${candidateId}/accept`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action }),
+  }),
   rejectCandidate: async (bookId, candidateId) => {
     await fetchJson(`/books/${bookId}/candidates/${candidateId}/reject`, { method: "POST" });
   },
@@ -177,12 +179,15 @@ export function WorkspacePage({
   const { data: candidatesData } = useApi<CandidatesResponse>(activeBookId ? `/books/${activeBookId}/candidates` : null);
   const { data: storyFilesData } = useApi<WorkspaceTextFileListResponse>(activeBookId ? `/books/${activeBookId}/story-files` : null);
   const { data: truthFilesData } = useApi<WorkspaceTextFileListResponse>(activeBookId ? `/books/${activeBookId}/truth-files` : null);
+  const { data: draftsData, refetch: refetchDrafts } = useApi<{ drafts: DraftResource[] }>(activeBookId ? `/books/${activeBookId}/drafts` : null);
   const [createdChapters, setCreatedChapters] = useState<ChapterSummary[]>([]);
+  const [savedDrafts, setSavedDrafts] = useState<DraftResource[]>([]);
   const [creatingChapter, setCreatingChapter] = useState(false);
   const [createChapterError, setCreateChapterError] = useState<string | null>(null);
 
   useEffect(() => {
     setCreatedChapters([]);
+    setSavedDrafts([]);
     setCreateChapterError(null);
   }, [activeBookId]);
 
@@ -218,6 +223,9 @@ export function WorkspacePage({
       chapterWordCount: b.chapterWordCount ?? 3000, language: (b.language ?? "zh") as "zh" | "en",
     };
     const candidates = (candidatesData?.candidates ?? []).filter((c) => c.status === "candidate");
+    const draftsFromApi = draftsData?.drafts ?? [];
+    const draftResources = [...draftsFromApi, ...savedDrafts.filter((saved) => !draftsFromApi.some((draft) => draft.id === saved.id))]
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
     const storyFiles = (storyFilesData?.files ?? []).map((file) => ({
       id: file.name,
       title: file.name,
@@ -234,7 +242,7 @@ export function WorkspacePage({
       book,
       chapters,
       generatedChapters: candidates,
-      drafts: [],
+      drafts: draftResources,
       bibleCounts: {},
       bibleEntries: [],
       storyFiles,
@@ -242,7 +250,7 @@ export function WorkspacePage({
       materials: [],
       publishReports: [],
     };
-  }, [bookDetail, candidatesData, createdChapters, storyFilesData, truthFilesData]);
+  }, [bookDetail, candidatesData, createdChapters, draftsData, savedDrafts, storyFilesData, truthFilesData]);
 
   const tree = useMemo(() => buildStudioResourceTree(treeInput), [treeInput]);
   const defaultNodeId = tree[0]?.children?.[0]?.children?.[0]?.children?.[0]?.id ?? tree[0]?.children?.[0]?.children?.[0]?.id ?? tree[0]?.id ?? "";
@@ -310,7 +318,10 @@ export function WorkspacePage({
 
       <ResourceWorkspaceLayout
         explorer={<ResourceTree nodes={tree} selectedNodeId={selectedNode.id} onSelect={(id) => { setSelectedNodeId(id); setShowPublishPanel(false); }} />}
-        editor={showPublishPanel && activeBookId ? <PublishPanel bookId={activeBookId} /> : <WorkspaceEditor candidateApi={candidateApi} chapterApi={chapterApi} node={selectedNode} />}
+        editor={showPublishPanel && activeBookId ? <PublishPanel bookId={activeBookId} /> : <WorkspaceEditor candidateApi={candidateApi} chapterApi={chapterApi} node={selectedNode} onDraftCreated={(draft) => {
+          setSavedDrafts((current) => [...current.filter((item) => item.id !== draft.id), draft]);
+          void refetchDrafts();
+        }} />}
         assistant={<AssistantPanel assistantApi={assistantApi} modelGate={effectiveModelGate} selectedNode={selectedNode} />}
       />
     </SectionLayout>
@@ -386,14 +397,16 @@ function WorkspaceEditor({
   candidateApi,
   chapterApi,
   node,
+  onDraftCreated,
 }: {
   readonly candidateApi: WorkspaceCandidateApi;
   readonly chapterApi: WorkspaceChapterApi;
   readonly node: StudioResourceNode;
+  readonly onDraftCreated: (draft: DraftResource) => void;
 }) {
   switch (resolveWorkspaceNodeViewKind(node)) {
     case "candidate-editor":
-      return <CandidateEditor candidateApi={candidateApi} node={node} />;
+      return <CandidateEditor candidateApi={candidateApi} node={node} onDraftCreated={onDraftCreated} />;
     case "chapter-editor":
       return <ChapterEditor chapterApi={chapterApi} node={node} />;
     case "bible-category-view":
@@ -423,7 +436,15 @@ function WorkspaceEditor({
   }
 }
 
-function CandidateEditor({ candidateApi, node }: { readonly candidateApi: WorkspaceCandidateApi; readonly node: StudioResourceNode }) {
+function CandidateEditor({
+  candidateApi,
+  node,
+  onDraftCreated,
+}: {
+  readonly candidateApi: WorkspaceCandidateApi;
+  readonly node: StudioResourceNode;
+  readonly onDraftCreated: (draft: DraftResource) => void;
+}) {
   const [pendingAction, setPendingAction] = useState<"merge" | "replace" | null>(null);
   const [resultMessage, setResultMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -433,7 +454,10 @@ function CandidateEditor({ candidateApi, node }: { readonly candidateApi: Worksp
 
   const accept = async (action: CandidateAcceptAction) => {
     setActionError(null);
-    await candidateApi.acceptCandidate(bookId, candidateId, action);
+    const result = await candidateApi.acceptCandidate(bookId, candidateId, action);
+    if (action === "draft" && result?.draft) {
+      onDraftCreated(result.draft);
+    }
     setPendingAction(null);
     setResultMessage(action === "merge" ? "候选稿已合并到正式章节" : action === "replace" ? "候选稿已替换正式章节" : "候选稿已另存为草稿");
   };

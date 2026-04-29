@@ -120,8 +120,9 @@ export interface DraftResource {
   readonly id: string;
   readonly bookId: string;
   readonly title: string;
+  readonly content: string;
   readonly updatedAt: string;
-  readonly wordCount?: number;
+  readonly wordCount: number;
 }
 
 export interface BibleResourceCounts {
