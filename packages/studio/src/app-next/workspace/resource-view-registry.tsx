@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { UnsupportedCapability } from "../../components/runtime/UnsupportedCapability";
 import { Button } from "../../components/ui/button";
-import { fetchJson } from "../../hooks/use-api";
+import { fetchJson, postApi, putApi, useApi } from "../../hooks/use-api";
 import type { DraftResource } from "../../shared/contracts";
 import { InlineError } from "../components/feedback";
 import type { StudioResourceNode } from "./resource-adapter";
@@ -66,6 +66,92 @@ function PlaceholderSection({
       </div>
     </div>
   );
+}
+
+type BibleCategoryKey = "characters" | "locations" | "factions" | "items" | "foreshadowing" | "worldRules";
+
+interface BibleWorkspaceEntry {
+  readonly id: string;
+  readonly name?: string;
+  readonly title?: string;
+  readonly content?: string;
+  readonly summary?: string;
+  readonly category?: string;
+  readonly eventType?: string;
+  readonly firstChapter?: number;
+  readonly lastChapter?: number;
+  readonly chapterStart?: number;
+  readonly chapterEnd?: number;
+}
+
+interface BibleCategoryConfig {
+  readonly key: BibleCategoryKey;
+  readonly label: string;
+  readonly endpointKind: "characters" | "events" | "settings";
+  readonly dataKey: "characters" | "events" | "settings";
+  readonly settingCategory?: string;
+  readonly eventType?: string;
+  readonly detailField: "summary" | "content";
+}
+
+const BIBLE_CATEGORY_CONFIG: Record<BibleCategoryKey, BibleCategoryConfig> = {
+  characters: { key: "characters", label: "人物", endpointKind: "characters", dataKey: "characters", detailField: "summary" },
+  locations: { key: "locations", label: "地点", endpointKind: "settings", dataKey: "settings", settingCategory: "location", detailField: "content" },
+  factions: { key: "factions", label: "势力", endpointKind: "settings", dataKey: "settings", settingCategory: "faction", detailField: "content" },
+  items: { key: "items", label: "物品", endpointKind: "settings", dataKey: "settings", settingCategory: "item", detailField: "content" },
+  foreshadowing: { key: "foreshadowing", label: "伏笔", endpointKind: "events", dataKey: "events", eventType: "foreshadow", detailField: "summary" },
+  worldRules: { key: "worldRules", label: "世界规则", endpointKind: "settings", dataKey: "settings", settingCategory: "world-rule", detailField: "content" },
+};
+
+function isBibleCategoryKey(value: unknown): value is BibleCategoryKey {
+  return typeof value === "string" && value in BIBLE_CATEGORY_CONFIG;
+}
+
+function resolveBibleCategoryConfig(node: StudioResourceNode): BibleCategoryConfig | null {
+  const category = node.metadata?.category;
+  return isBibleCategoryKey(category) ? BIBLE_CATEGORY_CONFIG[category] : null;
+}
+
+function resolveBibleBookId(node: StudioResourceNode): string {
+  return typeof node.metadata?.bookId === "string" ? node.metadata.bookId : "";
+}
+
+function bibleCategoryPath(bookId: string, config: BibleCategoryConfig): string {
+  return `/books/${bookId}/bible/${config.endpointKind}`;
+}
+
+function normalizeBibleEntries(data: Record<string, unknown> | null | undefined, config: BibleCategoryConfig): readonly BibleWorkspaceEntry[] {
+  const rawEntries = data?.[config.dataKey];
+  const entries = Array.isArray(rawEntries) ? rawEntries as BibleWorkspaceEntry[] : [];
+  if (config.settingCategory) return entries.filter((entry) => entry.category === config.settingCategory);
+  if (config.eventType) return entries.filter((entry) => entry.eventType === config.eventType);
+  return entries;
+}
+
+function bibleEntryTitle(entry: BibleWorkspaceEntry): string {
+  return entry.name ?? entry.title ?? entry.id;
+}
+
+function bibleEntryDetail(entry: BibleWorkspaceEntry): string {
+  return entry.content ?? entry.summary ?? "";
+}
+
+function bibleEntryChapterText(entry: BibleWorkspaceEntry): string | null {
+  const chapters = [entry.firstChapter, entry.lastChapter, entry.chapterStart, entry.chapterEnd]
+    .filter((value): value is number => typeof value === "number");
+  if (chapters.length === 0) return null;
+  return `关联章节：${[...new Set(chapters)].join("、")}`;
+}
+
+function buildBibleEntryPayload(config: BibleCategoryConfig, title: string, detail: string): Record<string, unknown> {
+  const payload: Record<string, unknown> = { name: title };
+  payload[config.detailField] = detail;
+  if (config.settingCategory) payload.category = config.settingCategory;
+  if (config.eventType) {
+    payload.eventType = config.eventType;
+    payload.foreshadowState = "buried";
+  }
+  return payload;
 }
 
 function resolveDraftEndpoint(node: StudioResourceNode): string | null {
@@ -180,12 +266,188 @@ export function DraftEditor({ node }: { readonly node: StudioResourceNode }) {
   );
 }
 
+function BibleEntryForm({
+  entry,
+  config,
+  onCancel,
+  onSubmit,
+}: {
+  readonly entry?: BibleWorkspaceEntry;
+  readonly config: BibleCategoryConfig;
+  readonly onCancel: () => void;
+  readonly onSubmit: (title: string, detail: string) => Promise<void>;
+}) {
+  const [title, setTitle] = useState(entry ? bibleEntryTitle(entry) : "");
+  const [detail, setDetail] = useState(entry ? bibleEntryDetail(entry) : "");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submitLabel = entry ? `保存${config.label}` : `创建${config.label}`;
+
+  const handleSubmit = async () => {
+    if (!title.trim()) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await onSubmit(title.trim(), detail.trim());
+      if (!entry) {
+        setTitle("");
+        setDetail("");
+      }
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : String(submitError));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="space-y-2 rounded-lg border border-border bg-background/60 p-3 text-sm">
+      <input
+        aria-label={`${config.label}名称`}
+        className="w-full rounded border border-border bg-background px-2 py-1"
+        onChange={(event) => setTitle(event.target.value)}
+        placeholder={`${config.label}名称`}
+        value={title}
+      />
+      <textarea
+        aria-label={`${config.label}内容`}
+        className="min-h-24 w-full rounded border border-border bg-background px-2 py-1"
+        onChange={(event) => setDetail(event.target.value)}
+        placeholder="内容、摘要或规则说明"
+        value={detail}
+      />
+      {error && <InlineError message={error} />}
+      <div className="flex gap-2">
+        <Button size="sm" type="button" disabled={submitting || !title.trim()} onClick={() => void handleSubmit()}>
+          {submitting ? "保存中…" : submitLabel}
+        </Button>
+        <Button size="sm" variant="outline" type="button" onClick={onCancel}>
+          取消
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function BibleEntryCard({ entry, config, onEdit }: { readonly entry: BibleWorkspaceEntry; readonly config: BibleCategoryConfig; readonly onEdit: () => void }) {
+  const title = bibleEntryTitle(entry);
+  const detail = bibleEntryDetail(entry);
+  const chapterText = bibleEntryChapterText(entry);
+
+  return (
+    <div className="space-y-2 rounded-lg border border-border bg-background/60 p-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <button className="text-left font-medium hover:text-primary" type="button" onClick={onEdit}>
+          {title}
+        </button>
+        <Button size="sm" variant="outline" type="button" aria-label={`编辑${title}`} onClick={onEdit}>
+          编辑
+        </Button>
+      </div>
+      {detail ? <p className="whitespace-pre-wrap text-sm text-muted-foreground">{detail}</p> : <p className="text-sm text-muted-foreground">暂无内容</p>}
+      {chapterText && <p className="text-xs text-muted-foreground">{chapterText}</p>}
+      {config.eventType && <p className="text-xs text-muted-foreground">伏笔状态：{entry.eventType ?? config.eventType}</p>}
+    </div>
+  );
+}
+
+export function BibleCategoryView({ node }: { readonly node: StudioResourceNode }) {
+  const config = resolveBibleCategoryConfig(node);
+  const bookId = resolveBibleBookId(node);
+  const endpoint = config && bookId ? bibleCategoryPath(bookId, config) : null;
+  const { data, loading, error, refetch } = useApi<Record<string, unknown>>(endpoint);
+  const [creating, setCreating] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  if (!config || !bookId || !endpoint) {
+    return (
+      <UnsupportedCapability
+        title={`${node.title} 暂未接入经纬编辑`}
+        reason="缺少 bookId 或经纬分类映射，不能伪造成功。"
+        status="planned"
+        capability={`workspace.bible.${String(node.metadata?.category ?? node.id)}`}
+      />
+    );
+  }
+
+  const entries = normalizeBibleEntries(data, config);
+  const editingEntry = entries.find((entry) => entry.id === editingId);
+
+  const createEntry = async (title: string, detail: string) => {
+    await postApi(endpoint, buildBibleEntryPayload(config, title, detail));
+    setCreating(false);
+    await refetch();
+  };
+
+  const updateEntry = async (entry: BibleWorkspaceEntry, title: string, detail: string) => {
+    await putApi(`${endpoint}/${encodeURIComponent(entry.id)}`, buildBibleEntryPayload(config, title, detail));
+    setEditingId(null);
+    await refetch();
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border pb-3">
+        <div>
+          <h2 className="text-xl font-semibold">{node.title}</h2>
+          <p className="text-sm text-muted-foreground">BibleCategoryView · {config.label}</p>
+        </div>
+        <Button size="sm" type="button" onClick={() => setCreating(true)}>
+          新建{config.label}
+        </Button>
+      </div>
+
+      {loading && <p className="text-sm text-muted-foreground">加载{config.label}中…</p>}
+      {error && <InlineError message={error} />}
+      {!loading && !error && entries.length === 0 && <p className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">暂无{config.label}，可以新建第一条。</p>}
+
+      {creating && <BibleEntryForm config={config} onCancel={() => setCreating(false)} onSubmit={createEntry} />}
+
+      {editingEntry && (
+        <BibleEntryForm
+          key={editingEntry.id}
+          entry={editingEntry}
+          config={config}
+          onCancel={() => setEditingId(null)}
+          onSubmit={(title, detail) => updateEntry(editingEntry, title, detail)}
+        />
+      )}
+
+      <div className="space-y-2">
+        {entries.map((entry) => (
+          <BibleEntryCard key={entry.id} entry={entry} config={config} onEdit={() => setEditingId(entry.id)} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function OutlineEditor({ node }: { readonly node: StudioResourceNode }) {
   return <PlaceholderSection title={node.title} meta="OutlineEditor" description="大纲查看与编辑将在后续任务接入真实 story/truth 文件。" />;
 }
 
 export function BibleEntryEditor({ node }: { readonly node: StudioResourceNode }) {
-  return <PlaceholderSection title={node.title} meta="BibleEntryEditor" description="经纬条目编辑器将在后续任务接入真实资料读取与保存。" />;
+  const config = resolveBibleCategoryConfig(node);
+  const inlineEntry: BibleWorkspaceEntry = {
+    id: typeof node.metadata?.entryId === "string" ? node.metadata.entryId : node.id,
+    name: node.title,
+    summary: node.subtitle,
+  };
+
+  if (!config) {
+    return <PlaceholderSection title={node.title} meta="BibleEntryEditor" description="经纬条目缺少分类映射，不能伪造编辑成功。" />;
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="space-y-1 border-b border-border pb-3">
+        <h2 className="text-xl font-semibold">{node.title}</h2>
+        <p className="text-sm text-muted-foreground">BibleEntryEditor · {config.label}</p>
+      </div>
+      <BibleEntryCard entry={inlineEntry} config={config} onEdit={() => undefined} />
+    </div>
+  );
 }
 
 export function MarkdownViewer({ node }: { readonly node: StudioResourceNode }) {

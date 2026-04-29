@@ -1,20 +1,21 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { fetchJsonMock, postApiMock, useApiMock } = vi.hoisted(() => ({
+const { fetchJsonMock, postApiMock, putApiMock, useApiMock } = vi.hoisted(() => ({
   fetchJsonMock: vi.fn(),
   postApiMock: vi.fn(),
+  putApiMock: vi.fn(),
   useApiMock: vi.fn(),
 }));
 
 vi.mock("../../hooks/use-api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../hooks/use-api")>();
-  return { ...actual, fetchJson: fetchJsonMock, postApi: postApiMock, useApi: useApiMock };
+  return { ...actual, fetchJson: fetchJsonMock, postApi: postApiMock, putApi: putApiMock, useApi: useApiMock };
 });
 
 vi.mock("@/hooks/use-api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../hooks/use-api")>();
-  return { ...actual, fetchJson: fetchJsonMock, postApi: postApiMock, useApi: useApiMock };
+  return { ...actual, fetchJson: fetchJsonMock, postApi: postApiMock, putApi: putApiMock, useApi: useApiMock };
 });
 
 vi.mock("../../components/InkEditor", () => {
@@ -517,15 +518,43 @@ describe("WorkspacePage", () => {
     expect(within(assistant).getByText("灵潮初起")).toBeTruthy();
   });
 
-  it("opens bible categories and keeps AI actions tied to the selected writing context", () => {
+  it("opens bible categories as real lists and supports creating and editing entries", async () => {
+    const refetchCharacters = vi.fn();
+    useApiMock.mockImplementation((path: string | null) => {
+      if (path === "/books") return { data: booksResponse, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}`) return { data: bookDetailResponse, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}/candidates`) return { data: candidatesResponse, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}/story-files`) return { data: storyFilesResponse, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}/truth-files`) return { data: truthFilesResponse, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}/drafts`) return { data: draftsResponse, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}/bible/characters`) return { data: { characters: [{ id: "char-1", name: "林月", summary: "城门守卫", firstChapter: 1 }] }, loading: false, error: null, refetch: refetchCharacters };
+      return { data: null, loading: false, error: null, refetch: vi.fn() };
+    });
+    postApiMock.mockResolvedValue({ character: { id: "char-2", name: "韩烛", summary: "地下线人" } });
+    putApiMock.mockResolvedValue({ character: { id: "char-1", name: "林月", summary: "守卫队长" } });
+
     render(<WorkspacePage />);
 
     const explorer = screen.getByRole("complementary", { name: "小说资源管理器" });
     fireEvent.click(within(explorer).getByRole("button", { name: /人物/ }));
 
     const editor = screen.getByRole("main", { name: "正文编辑区" });
-    expect(within(editor).getByRole("heading", { name: "人物" })).toBeTruthy();
-    expect(within(editor).getByText("经纬资料详情")).toBeTruthy();
+    expect(within(editor).getByText("BibleCategoryView · 人物")).toBeTruthy();
+    expect(within(editor).getByText("城门守卫")).toBeTruthy();
+    expect(within(editor).getByText(/关联章节：1/)).toBeTruthy();
+
+    fireEvent.click(within(editor).getByRole("button", { name: "新建人物" }));
+    fireEvent.change(within(editor).getByLabelText("人物名称"), { target: { value: "韩烛" } });
+    fireEvent.change(within(editor).getByLabelText("人物内容"), { target: { value: "地下线人" } });
+    fireEvent.click(within(editor).getByRole("button", { name: "创建人物" }));
+    await waitFor(() => expect(postApiMock).toHaveBeenCalledWith(`/books/${TEST_BOOK.id}/bible/characters`, { name: "韩烛", summary: "地下线人" }));
+    expect(refetchCharacters).toHaveBeenCalled();
+
+    fireEvent.click(within(editor).getByRole("button", { name: "编辑林月" }));
+    fireEvent.change(within(editor).getByLabelText("人物内容"), { target: { value: "守卫队长" } });
+    fireEvent.click(within(editor).getByRole("button", { name: "保存人物" }));
+    await waitFor(() => expect(putApiMock).toHaveBeenCalledWith(`/books/${TEST_BOOK.id}/bible/characters/char-1`, { name: "林月", summary: "守卫队长" }));
+    expect(refetchCharacters).toHaveBeenCalledTimes(2);
 
     const assistant = screen.getByRole("complementary", { name: "AI 与经纬面板" });
     expect(within(assistant).getByRole("button", { name: /生成下一章/ })).toBeTruthy();

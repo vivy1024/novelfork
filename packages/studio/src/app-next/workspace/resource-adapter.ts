@@ -80,14 +80,14 @@ export function buildStudioResourceTree(input: StudioResourceTreeInput): readonl
   const bibleCategoryNodes = BIBLE_CATEGORIES.map(({ key, title }) => {
     const entryNodes = bibleEntries
       .filter((entry) => entry.category === key)
-      .map(toBibleEntryNode);
+      .map((entry) => toBibleEntryNode(book.id, entry));
 
     return {
       id: `bible:${String(key)}`,
       kind: "bible-category" as const,
       title,
       count: bibleCounts[key] ?? entryNodes.length,
-      metadata: { category: key },
+      metadata: { bookId: book.id, category: key },
       children: entryNodes,
     };
   });
@@ -286,13 +286,14 @@ function toDraftNode(draft: DraftResource): StudioResourceNode {
   };
 }
 
-function toBibleEntryNode(entry: BibleEntryResource): StudioResourceNode {
+function toBibleEntryNode(bookId: string, entry: BibleEntryResource): StudioResourceNode {
   return {
     id: `bible-entry:${entry.category}:${entry.id}`,
     kind: "bible-entry",
     title: entry.title,
     subtitle: entry.summary,
     metadata: {
+      bookId,
       category: entry.category,
       entryId: entry.id,
     },
