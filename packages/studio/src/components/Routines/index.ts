@@ -1,4 +1,3 @@
-export { Routines } from "./Routines";
 export { CommandsTab } from "./CommandsTab";
 export { PermissionsTab } from "./PermissionsTab";
 export { SkillsTab } from "./SkillsTab";

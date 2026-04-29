@@ -28,7 +28,7 @@
     "build:server": "pnpm --dir ../core build && tsc -p tsconfig.server.json",
     "preview": "vite preview",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit && tsc -p tsconfig.server.json --noEmit"
+    "typecheck": "pnpm --dir ../core build && tsc --noEmit && tsc -p tsconfig.server.json --noEmit"
   },
   "dependencies": {
     "@base-ui/react": "1.3.0",
