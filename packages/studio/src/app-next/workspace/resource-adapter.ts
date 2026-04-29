@@ -177,7 +177,7 @@ export function buildStudioResourceTree(input: StudioResourceTreeInput): readonl
   const materialsGroup = groupNode({
     id: "group:materials",
     title: "素材",
-    children: materials.map(toMaterialNode),
+    children: materials.map((material) => toMaterialNode(book.id, material)),
   });
 
   const publishReportsGroup = groupNode({
@@ -327,15 +327,19 @@ function toTruthFileNode(bookId: string, file: TextFileResource): StudioResource
   };
 }
 
-function toMaterialNode(material: MaterialResource): StudioResourceNode {
+function toMaterialNode(bookId: string, material: MaterialResource): StudioResourceNode {
   return {
     id: `material:${material.id}`,
     kind: "material",
     title: material.title,
     subtitle: material.source,
     metadata: {
+      bookId,
       source: material.source,
       updatedAt: material.updatedAt,
+      path: material.path,
+      fileType: material.fileType ?? "text",
+      content: material.content,
     },
   };
 }

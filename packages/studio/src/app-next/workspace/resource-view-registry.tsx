@@ -193,7 +193,7 @@ export function MarkdownViewer({ node }: { readonly node: StudioResourceNode }) 
 }
 
 export function MaterialViewer({ node }: { readonly node: StudioResourceNode }) {
-  return <PlaceholderSection title={node.title} meta="MaterialViewer" description="素材查看器已注册，等待后续任务接入真实采风内容。" />;
+  return <WorkspaceFileViewer node={node} />;
 }
 
 export function PublishReportViewer({ node }: { readonly node: StudioResourceNode }) {

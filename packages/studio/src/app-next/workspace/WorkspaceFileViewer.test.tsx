@@ -11,7 +11,11 @@ vi.mock("../../hooks/use-api", async (importOriginal) => {
 import type { StudioResourceNode } from "./resource-adapter";
 import { WorkspaceFileViewer } from "./WorkspaceFileViewer";
 
-function node(kind: "story-file" | "truth-file", title: string): StudioResourceNode {
+function node(
+  kind: "story-file" | "truth-file" | "material",
+  title: string,
+  metadata: Record<string, unknown> = {},
+): StudioResourceNode {
   return {
     id: `${kind}:${title}`,
     kind,
@@ -19,6 +23,7 @@ function node(kind: "story-file" | "truth-file", title: string): StudioResourceN
     metadata: {
       bookId: "book-1",
       path: `story/${title}`,
+      ...metadata,
     },
   };
 }
@@ -55,5 +60,13 @@ describe("WorkspaceFileViewer", () => {
     render(<WorkspaceFileViewer node={node("story-file", "missing.md")} />);
 
     expect(await screen.findByText("404 not found")).toBeTruthy();
+  });
+
+  it("renders readonly material text content without fetching", async () => {
+    render(<WorkspaceFileViewer node={node("material", "城门设定摘录", { content: "# 城门\n\n青铜兽首门环。", source: "web-capture" })} />);
+
+    expect(fetchJsonMock).not.toHaveBeenCalled();
+    expect(screen.getByText("TextViewer · 素材")).toBeTruthy();
+    expect(screen.getByText(/青铜兽首门环/)).toBeTruthy();
   });
 });
