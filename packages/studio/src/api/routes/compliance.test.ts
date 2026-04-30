@@ -121,7 +121,7 @@ describe("compliance routes", () => {
     const readinessJson = await readinessResponse.json() as { report: { status: string; totalBlockCount: number; continuity: { status: string; reason: string } } };
     expect(readinessJson.report.status).toBe("blocked");
     expect(readinessJson.report.totalBlockCount).toBeGreaterThan(0);
-    expect(readinessJson.report.continuity).toMatchObject({ status: "unknown" });
+    expect(readinessJson.report.continuity).toMatchObject({ status: "passed" });
 
     const disclosureResponse = await postJson(app, "/api/books/book-1/compliance/ai-disclosure", {
       platform: "qidian",
@@ -132,6 +132,34 @@ describe("compliance routes", () => {
     expect(disclosureResponse.status).toBe(200);
     const disclosureJson = await disclosureResponse.json() as { disclosure: { markdownText: string } };
     expect(disclosureJson.disclosure.markdownText).toContain("test-model");
+  });
+
+  it("passes chapter audit continuity facts into publish readiness", async () => {
+    const { app } = await createRoute();
+
+    const response = await postJson(app, "/api/books/book-1/compliance/publish-readiness", {
+      platform: "generic",
+    });
+
+    expect(response.status).toBe(200);
+    const json = await response.json() as {
+      report: {
+        continuity: {
+          status: string;
+          source?: string;
+          checkedChapterCount?: number;
+          issueCount?: number;
+          score?: number;
+        };
+      };
+    };
+    expect(json.report.continuity).toMatchObject({
+      status: "passed",
+      source: "chapter-audit-issues",
+      checkedChapterCount: 2,
+      issueCount: 0,
+      score: 1,
+    });
   });
 
   it("lists dictionaries and accepts custom dictionary import", async () => {

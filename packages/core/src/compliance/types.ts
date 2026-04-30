@@ -130,16 +130,43 @@ export interface FormatCheckResult {
 
 export type PublishReadinessStatus = "ready" | "has-warnings" | "blocked";
 
+export interface ContinuityIssue {
+  readonly chapterNumber: number;
+  readonly category: string;
+  readonly severity: "critical" | "warning";
+  readonly message: string;
+}
+
+export type ContinuityCheckResult =
+  | {
+      readonly status: "has-issues";
+      readonly source: string;
+      readonly checkedChapterCount: number;
+      readonly issueCount: number;
+      readonly blockCount: number;
+      readonly warnCount: number;
+      readonly score: number;
+      readonly issues: ReadonlyArray<ContinuityIssue>;
+    }
+  | {
+      readonly status: "unknown";
+      readonly reason: string;
+    }
+  | {
+      readonly status: "passed";
+      readonly source: string;
+      readonly checkedChapterCount: number;
+      readonly issueCount: number;
+      readonly score: number;
+    };
+
 export interface PublishReadinessReport {
   readonly platform: SupportedPlatform;
   readonly status: PublishReadinessStatus;
   readonly sensitiveScan: BookSensitiveScanResult;
   readonly aiRatio: BookAiRatioReport;
   readonly formatCheck: FormatCheckResult;
-  readonly continuity: {
-    readonly status: "unknown";
-    readonly reason: string;
-  };
+  readonly continuity: ContinuityCheckResult;
   readonly totalBlockCount: number;
   readonly totalWarnCount: number;
   readonly totalSuggestCount: number;

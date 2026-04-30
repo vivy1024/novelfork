@@ -840,7 +840,6 @@ describe("ResourcesTab", () => {
           delivery: { staticMode: "filesystem", indexHtmlReady: true, compileSmokeStatus: "failed", compileCommand: "pnpm bun:compile", expectedArtifactPath: "dist/novelfork" },
           recoveryReport: { startedAt: "2026-04-20T09:59:00Z", finishedAt: "2026-04-20T10:00:00Z", durationMs: 1000, counts: { success: 1, skipped: 2, failed: 2 }, actions: [] },
           failures: [
-            { phase: "session-store", message: "orphan=demo-session" },
             { phase: "compile-smoke", message: "dist/novelfork" },
           ],
           healthChecks: [
@@ -860,11 +859,11 @@ describe("ResourcesTab", () => {
               category: "session",
               phase: "session-store",
               title: "会话存储",
-              summary: "会话存储存在孤儿历史文件",
-              status: "error",
+              summary: "会话存储存在孤儿历史文件，已保留为可恢复记录",
+              status: "warning",
               source: "diagnostic",
               detail: "orphan=demo-session",
-              action: { kind: "cleanup-session-history", label: "清理孤儿会话历史", endpoint: "/api/admin/resources/recovery/session-store", method: "POST" },
+              action: { kind: "cleanup-session-history", label: "隔离孤儿会话历史", endpoint: "/api/admin/resources/recovery/session-store", method: "POST" },
             },
             {
               id: "git-worktree-pollution",
@@ -926,7 +925,7 @@ describe("ResourcesTab", () => {
           decisions: [],
         },
         storage: null,
-        sessionStoreCleanupTriggered: true,
+        sessionStoreQuarantineTriggered: true,
       });
 
     render(<ResourcesTab />);
@@ -937,7 +936,7 @@ describe("ResourcesTab", () => {
     expect(screen.getByText(/命令：pnpm bun:compile/)).toBeTruthy();
     expect(screen.getByText("搜索索引重建失败")).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "清理孤儿会话历史" }));
+    fireEvent.click(screen.getByRole("button", { name: "隔离孤儿会话历史" }));
 
     await waitFor(() => {
       expect(fetchJsonMock).toHaveBeenNthCalledWith(2, "/api/admin/resources/recovery/session-store", { method: "POST" });

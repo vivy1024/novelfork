@@ -15,6 +15,7 @@
 - Phase 4 → Requirement 8、Requirement 9、Requirement 10、Requirement 11；对应经纬资料、大纲、发布检查、导出。
 - Phase 5 → Requirement 10、Requirement 11；对应统一状态、真实统计、typecheck 阻塞修复。
 - Phase 6 → Requirement 1 到 Requirement 11；对应 mock scan、浏览器闭环验收、最终测试报告。
+- Phase 7 → Requirement 1、Requirement 9、Requirement 10、Requirement 11；对应透明过渡项转正、启动健康诊断收敛、E2E 项目根诊断清理和维护验收报告。
 
 ## Tasks
 
@@ -313,3 +314,71 @@
   - 已运行 Core 状态/发布检查测试、Studio mock/route/UI/visual/Tailwind 测试、Studio typecheck、docs verify、git diff check 和 Playwright 最小创作闭环。
   - 验证：Core 2 个测试文件/5 个测试通过；Studio 9 个测试文件/114 个测试通过；`pnpm --dir packages/studio run typecheck` 通过；`bun run docs:verify` 通过；`git diff --check` 退出码 0；`pnpm exec playwright test e2e/workspace-creation-flow.spec.ts` 1 个浏览器测试通过。
   - 最终报告已更新到 `docs/08-测试与质量/02-真实运行时与Mock清理验收报告.md` v1.0.3，列出剩余透明过渡项和浏览器启动期间的非阻塞运行诊断。
+
+### Phase 7：透明过渡项转正与运行诊断收敛
+
+- [x] 46. 收敛启动健康诊断噪音
+  - 梳理 `compile-smoke`、provider availability、external worktree、session-store orphan 等启动诊断的触发条件。
+  - 区分真实失败、E2E 临时项目根可预期缺失、开发环境提示和需要人工处理的风险。
+  - 不得通过隐藏错误、吞掉诊断或把失败写成成功来降低噪音。
+  - 验证：相关 startup health 单元/集成测试覆盖每类诊断的新口径；浏览器验收日志中不再出现误导性失败。
+  - 已将源码/E2E 启动下缺少单文件产物的 `compile-smoke` 降级为 `skipped`，生产模式仍保持缺失产物为 `failed`。
+  - 已将嵌套 E2E 项目根下的父级仓库 worktree 识别为宿主上下文记录，避免误判为外部污染失败。
+  - 已让 Playwright API web server 使用 E2E 项目根内隔离 session store，避免读取用户机器上的 orphan session 历史文件。
+  - 验证：`pnpm --filter @vivy1024/novelfork-studio test -- src/api/lib/startup-diagnostics.test.ts src/api/lib/__tests__/startup-orchestrator.test.ts` 通过，2 个测试文件/16 个测试通过。
+  - 验证：`pnpm --filter @vivy1024/novelfork-studio test -- src/api/server.test.ts -t "startup orchestrator|missing single-file|startup repair diagnostics|structured startup health"` 通过，4 个启动相关测试通过。
+  - 验证：`pnpm exec playwright test e2e/workspace-creation-flow.spec.ts` 通过；启动 recovery report 结果为 failed=0，compile-smoke/provider/worktree 为 skipped/warn，session-store 为 success。
+  - 验证：`pnpm --dir packages/studio run typecheck`、`bun run docs:verify`、`git diff --check` 均通过。
+
+- [x] 47. 调整 E2E 临时项目根下的 compile smoke 判定
+  - 为 Playwright/E2E 临时项目根建立明确诊断口径，避免缺少单文件产物被误判为交付链失败。
+  - 保留正式运行或发布模式下对单文件产物缺失的失败提示。
+  - 验证：E2E 启动路径与正式启动路径分别覆盖；`pnpm exec playwright test e2e/workspace-creation-flow.spec.ts` 通过。
+  - 已将非生产源码启动下缺少 `dist/novelfork(.exe)` 的 compile smoke 结果标记为 `skipped`，并保留生产模式下缺失产物为 `failed`。
+  - 已新增 server 启动测试覆盖源码启动 skipped 与 production 启动 failed 两种路径。
+  - 验证：`pnpm --filter @vivy1024/novelfork-studio test -- src/api/server.test.ts -t "startup orchestrator|missing single-file|startup repair diagnostics|structured startup health"` 通过，4 个启动相关测试通过。
+  - 验证：`pnpm exec playwright test e2e/workspace-creation-flow.spec.ts` 通过；E2E 启动报告中 compile-smoke 为 `skipped`，recovery report failed=0。
+
+- [x] 48. 处理 orphan session 历史文件诊断
+  - 明确 orphan session 文件的来源、保留策略、清理策略和错误展示边界。
+  - 提供安全清理或只读诊断入口，不得删除用户可能需要恢复的数据。
+  - 验证：session-store 相关测试覆盖 orphan 检测、保留和清理策略；`git diff --check` 通过。
+  - 已将 orphan `session-history/*.json` 判定为可恢复历史记录：启动诊断为 `skipped`，统一 health check 显示为 warning，不再进入 failed/error 计数。
+  - 已将 session-store 自愈动作改为隔离保留：孤儿历史文件移动到 `session-history-orphans/`，API 返回 `sessionStoreQuarantineTriggered`，不再暴露旧 `sessionStoreCleanupTriggered`。
+  - 已保留 `sessions.json` 解析失败为真实 failed/manual-check，避免把结构损坏误降级为可忽略警告。
+  - 验证：`pnpm --filter @vivy1024/novelfork-studio test -- src/api/lib/startup-diagnostics.test.ts src/api/lib/__tests__/startup-orchestrator.test.ts src/api/routes/admin.test.ts src/components/Admin/ResourcesTab.test.tsx` 通过，4 个测试文件/45 个测试通过。
+  - 验证：`pnpm --filter @vivy1024/novelfork-studio test -- src/api/lib/startup-diagnostics.test.ts src/api/lib/__tests__/startup-orchestrator.test.ts src/api/routes/admin.test.ts src/components/Admin/ResourcesTab.test.tsx src/api/server.test.ts -t "session|startup health|self-heal|failure decisions"` 通过，5 个测试文件/11 个相关测试通过。
+  - 验证：`pnpm --dir packages/studio run typecheck`、`bun run docs:verify`、`git diff --check` 均通过。
+
+- [x] 49. 收敛 provider API Key 缺失提示
+  - 将未配置 OpenAI/API Key 的提示区分为配置提醒、禁用供应商和运行失败。
+  - 未配置密钥时不得写入或暴露任何 Token，也不得伪造 provider 可用。
+  - 验证：provider availability 测试覆盖 configured=none、missing key 和可用 provider 三类状态。
+  - 已将 provider availability 诊断细分为：未配置启用供应商、全部禁用、部分启用供应商缺 key、至少一个启用供应商可用。
+  - 已让启动诊断优先读取 runtime provider store 的 `enabled` 与 `config.apiKey` 是否存在；无 runtime provider 且 legacy LLM key 为空时报告 `configured=none;missing=none;disabled=none`，不再误报 `missing=openai`。
+  - 已确保诊断 note/details 只输出 provider id 与 key 是否存在的布尔结论，不输出任何 API Key 内容。
+  - 验证：`pnpm --filter @vivy1024/novelfork-studio test -- src/api/lib/startup-diagnostics.test.ts -t "provider"` 通过，2 个 provider 诊断测试通过。
+  - 验证：`pnpm --filter @vivy1024/novelfork-studio test -- src/api/server.test.ts -t "provider configuration reminder"` 通过，启动集成层无 key 时展示配置提醒。
+  - 验证：`pnpm --filter @vivy1024/novelfork-studio test -- src/api/lib/startup-diagnostics.test.ts src/api/lib/__tests__/startup-orchestrator.test.ts src/api/verify-bun-runtime.test.ts src/api/server.test.ts -t "provider|startup orchestrator|provider configuration reminder|bun startup"` 通过，4 个测试文件/14 个相关测试通过。
+  - 验证：`pnpm --dir packages/studio run typecheck` 通过。
+
+- [ ] 50. 将发布检查连续性指标接入真实数据源或保持明确 unknown
+  - 为 publish readiness continuity 定义事实源、数据契约和缺失时的 `unknown` 原因。
+  - 有真实连续性数据时展示可追溯指标；无事实源时继续透明显示 `unknown`，不得写成通过。
+  - 验证：core compliance 与 studio route 测试覆盖有数据、无数据和异常数据三类路径。
+
+- [ ] 51. 将 process-memory 能力转为持久化或明确会话级边界
+  - 覆盖轻量 Book Chat 历史、Pipeline runs 等当前 process-memory 能力。
+  - 对每项能力选择真实持久化、显式 session-only 或正式 unsupported，不允许含糊写成长期保存。
+  - 验证：存储/route/UI 测试覆盖重启后行为或 session-only 提示；docs verify 通过。
+
+- [ ] 52. 推进 prompt-preview 能力转入真实候选稿/草稿闭环
+  - 梳理仍显示 `prompt-preview` 的写作能力，优先接入候选稿或草稿，不直接覆盖正式正文。
+  - 保留无法接入能力的 disabled/原因文案，不得把预览写成已写入正文。
+  - 验证：writing modes、AI actions、Workspace UI 测试覆盖预览、保存候选稿、另存草稿和用户确认后合并。
+
+- [ ] 53. 补齐 unsupported 占位的上下文和最终维护验收报告
+  - 覆盖 Monitor status、Workspace 大纲/经纬缺少 `bookId` 或分类映射、Admin users 本地单用户占位等 unsupported 口径。
+  - 能接入真实上下文的改为真实能力；不能接入的继续明确 unsupported/只读/本地单用户边界。
+  - 更新最终维护验收报告、docs 索引和 mock debt ledger/scan。
+  - 验证：相关 route/UI/unit 测试、mock debt scan、`pnpm --dir packages/studio run typecheck`、`bun run docs:verify`、`git diff --check` 与浏览器回归验收通过。

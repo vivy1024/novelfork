@@ -263,13 +263,12 @@ export function buildStartupFailureDecisions(summary: Pick<StartupOrchestratorSu
           id,
           phase: failure.phase,
           severity: "error",
-          title: "会话存储需要清理",
-          description: "当前检测到孤儿 session history 或旧 JSON 残留，先清理孤儿历史文件，再重新执行启动恢复。",
+          title: "会话存储需要人工核对",
+          description: "当前会话存储存在解析失败或结构异常，先检查 sessions.json 与历史目录，再重新执行启动恢复。",
           action: {
-            kind: "cleanup-session-history",
-            label: "清理孤儿会话历史",
-            endpoint: "/api/admin/resources/recovery/session-store",
-            method: "POST",
+            kind: "manual-check",
+            label: "检查会话存储文件",
+            detail: failure.message,
           },
         };
       case "git-worktree-pollution":
@@ -375,6 +374,7 @@ function buildStartupHealthChecks(
 
   const sessionStore = diagnosticByKind.get("session-store");
   if (sessionStore) {
+    const sessionStoreDecision = decisionByPhase.get("session-store");
     healthChecks.push({
       id: "session-store",
       category: "session",
@@ -384,7 +384,15 @@ function buildStartupHealthChecks(
       status: sessionStore.status === "failed" ? "error" : sessionStore.status === "skipped" ? "warning" : "healthy",
       source: "diagnostic",
       detail: sessionStore.note,
-      action: decisionByPhase.get("session-store")?.action,
+      action: sessionStore.status === "skipped" && sessionStore.note?.startsWith("orphan=")
+        ? {
+            kind: "cleanup-session-history",
+            label: "隔离孤儿会话历史",
+            endpoint: "/api/admin/resources/recovery/session-store",
+            method: "POST",
+            detail: "将孤儿 session-history 文件移动到 session-history-orphans，保留可恢复数据。",
+          }
+        : sessionStoreDecision?.action,
     });
   }
 

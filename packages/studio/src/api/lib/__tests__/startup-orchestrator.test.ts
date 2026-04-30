@@ -241,8 +241,8 @@ describe("startup orchestrator", () => {
         {
           kind: "session-store",
           scope: "library",
-          status: "failed",
-          reason: "会话存储存在孤儿历史文件",
+          status: "skipped",
+          reason: "会话存储存在孤儿历史文件，已保留为可恢复记录",
           note: "orphan=demo-session",
         },
         {
@@ -257,7 +257,7 @@ describe("startup orchestrator", () => {
           scope: "library",
           status: "skipped",
           reason: "部分启用供应商缺少 API Key",
-          note: "configured=openai;missing=claude",
+          note: "configured=openai;missing=claude;disabled=none",
         },
       ],
       staticDelivery: {
@@ -290,10 +290,6 @@ describe("startup orchestrator", () => {
         message: "pid=123",
       }),
       expect.objectContaining({
-        phase: "session-store",
-        message: "orphan=demo-session",
-      }),
-      expect.objectContaining({
         phase: "compile-smoke",
         message: "dist/novelfork",
       }),
@@ -308,8 +304,8 @@ describe("startup orchestrator", () => {
       expect.objectContaining({
         id: "session-store",
         category: "session",
-        status: "error",
-        action: expect.objectContaining({ kind: "cleanup-session-history", endpoint: "/api/admin/resources/recovery/session-store" }),
+        status: "warning",
+        action: expect.objectContaining({ kind: "cleanup-session-history", label: "隔离孤儿会话历史" }),
       }),
       expect.objectContaining({
         id: "git-worktree-pollution",
@@ -368,10 +364,10 @@ describe("startup orchestrator", () => {
     ]));
   });
 
-  it("derives explicit actions for session cleanup and ignored worktree pollution", () => {
+  it("derives explicit actions for session parse failures and ignored worktree pollution", () => {
     const decisions = buildStartupFailureDecisions({
       failures: [
-        { phase: "session-store", message: "orphan=demo-session" },
+        { phase: "session-store", message: "sessions.json 解析失败：Unexpected token" },
         { phase: "git-worktree-pollution", message: "D:/DESKTOP/sub2api/worktrees/demo" },
       ],
       delivery: {
@@ -390,8 +386,9 @@ describe("startup orchestrator", () => {
       expect.objectContaining({
         phase: "session-store",
         action: expect.objectContaining({
-          kind: "cleanup-session-history",
-          endpoint: "/api/admin/resources/recovery/session-store",
+          kind: "manual-check",
+          label: "检查会话存储文件",
+          detail: expect.stringContaining("Unexpected token"),
         }),
       }),
       expect.objectContaining({
