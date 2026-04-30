@@ -3,6 +3,8 @@
  * Ported from PR #96 (Te9ui1a) — prevents client/server type drift.
  */
 
+import type { BibleEntryStatus, CanonicalBookStatus, CanonicalChapterStatus, CandidateStatus } from "@vivy1024/novelfork-core";
+
 // --- Health ---
 
 export interface HealthStatus {
@@ -22,7 +24,7 @@ export interface HealthStatus {
 export interface BookSummary {
   readonly id: string;
   readonly title: string;
-  readonly status: string;
+  readonly status: CanonicalBookStatus;
   readonly platform: string;
   readonly genre: string;
   readonly targetChapters: number;
@@ -50,7 +52,7 @@ export interface BookDetail extends BookSummary {
 export interface ChapterSummary {
   readonly number: number;
   readonly title: string;
-  readonly status: string;
+  readonly status: CanonicalChapterStatus;
   readonly wordCount: number;
   readonly auditIssueCount: number;
   readonly updatedAt: string;
@@ -128,7 +130,7 @@ export interface GeneratedChapterCandidate {
   readonly title: string;
   readonly source: string;
   readonly createdAt: string;
-  readonly status: "candidate" | "accepted" | "rejected" | "archived";
+  readonly status: CandidateStatus;
   readonly metadata?: AiResultMetadata;
   readonly content?: string | null;
   readonly contentError?: string;
@@ -158,6 +160,7 @@ export interface BibleEntryResource {
   readonly category: keyof BibleResourceCounts;
   readonly title: string;
   readonly summary?: string;
+  readonly status?: BibleEntryStatus;
 }
 
 export interface TextFileResource {
@@ -183,6 +186,7 @@ export interface PublishReportResource {
   readonly channel?: string;
   readonly updatedAt?: string;
   readonly status?: string;
+  readonly content?: string;
 }
 
 export interface WorkspaceResourceSnapshot {

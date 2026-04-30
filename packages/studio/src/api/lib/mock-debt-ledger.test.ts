@@ -26,6 +26,8 @@ const REQUIRED_DEBT_IDS = [
   "transparent-admin-placeholders",
   "core-missing-file-sentinel",
   "cli-production-source",
+  "publish-readiness-continuity-placeholder",
+  "workspace-outline-bible-placeholders",
 ] as const;
 
 const VALID_STATUSES: MockDebtStatus[] = [
@@ -37,6 +39,7 @@ const VALID_STATUSES: MockDebtStatus[] = [
 ];
 
 const VALID_RISKS = ["critical", "high", "medium", "low"];
+const VALID_OWNER_SPECS = ["project-wide-real-runtime-cleanup", "novel-creation-workbench-complete-flow"];
 
 describe("mock debt ledger", () => {
   it("registers every known project-wide runtime cleanup debt item", () => {
@@ -54,7 +57,7 @@ describe("mock debt ledger", () => {
       expect(VALID_RISKS, item.id).toContain(item.userRisk);
       expect(VALID_STATUSES, item.id).toContain(item.status);
       expect(item.targetBehavior, item.id).not.toBe("");
-      expect(item.ownerSpec, item.id).toBe("project-wide-real-runtime-cleanup");
+      expect(VALID_OWNER_SPECS, item.id).toContain(item.ownerSpec);
       expect(item.verification.length, item.id).toBeGreaterThan(0);
     }
   });

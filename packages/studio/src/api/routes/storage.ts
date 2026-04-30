@@ -17,6 +17,8 @@ import {
   getStorageDatabase,
   registerBuiltinPresets,
   loadProjectConfig,
+  normalizeBookStatus,
+  normalizeChapterStatus,
   type BookConfig,
   type ChapterMeta,
   type JingweiTemplateSelection,
@@ -123,6 +125,98 @@ function sanitizeChapterFileTitle(title: string): string {
 
 function countChapterWords(content: string): number {
   return content.replace(/\s+/g, "").length;
+}
+
+function normalizeApiChapter(chapter: Record<string, unknown>): Record<string, unknown> {
+  return {
+    ...chapter,
+    status: normalizeChapterStatus(chapter.status),
+  };
+}
+
+function normalizeApiChapters(chapters: ReadonlyArray<Record<string, unknown>>): ReadonlyArray<Record<string, unknown>> {
+  return chapters.map(normalizeApiChapter);
+}
+
+function numericField(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function normalizeApiBook(book: Record<string, unknown>, chapters: ReadonlyArray<Record<string, unknown>>): Record<string, unknown> {
+  const normalizedChapters = normalizeApiChapters(chapters);
+  const approvedChapters = normalizedChapters.filter((chapter) => chapter.status === "approved" || chapter.status === "published").length;
+  const pendingReviewChapters = normalizedChapters.filter((chapter) => chapter.status === "ready-for-review").length;
+  return {
+    ...book,
+    status: normalizeBookStatus(book.status),
+    chapters: normalizedChapters.length,
+    chapterCount: normalizedChapters.length,
+    totalChapters: normalizedChapters.length,
+    totalWords: normalizedChapters.reduce((sum, chapter) => sum + numericField(chapter.wordCount), 0),
+    approvedChapters,
+    pendingReview: pendingReviewChapters,
+    pendingReviewChapters,
+    failedReview: 0,
+    failedChapters: 0,
+    progress: approvedChapters,
+  };
+}
+
+type ExportFormat = "markdown" | "txt";
+
+interface ExportChapter {
+  readonly number: number;
+  readonly fileName: string;
+  readonly content: string;
+}
+
+function normalizeExportFormat(value: unknown): ExportFormat | null {
+  if (value === undefined || value === null || value === "" || value === "txt") return "txt";
+  if (value === "markdown" || value === "md") return "markdown";
+  return null;
+}
+
+function exportContentType(format: ExportFormat): string {
+  return format === "markdown" ? "text/markdown; charset=utf-8" : "text/plain; charset=utf-8";
+}
+
+function exportFileName(bookId: string, format: ExportFormat): string {
+  return `${bookId}.${format === "markdown" ? "md" : "txt"}`;
+}
+
+async function resolveChapterFileName(chaptersDir: string, chapterNumber: number, meta: Record<string, unknown>): Promise<string> {
+  if (typeof meta.fileName === "string" && meta.fileName.trim()) return meta.fileName;
+  if (typeof meta.filename === "string" && meta.filename.trim()) return meta.filename;
+  const prefix = String(chapterNumber).padStart(4, "0");
+  const files = await readdir(chaptersDir);
+  const matched = files.find((file) => file.startsWith(prefix) && file.endsWith(".md"));
+  if (!matched) throw new Error(`Chapter ${chapterNumber} has no saved markdown file`);
+  return matched;
+}
+
+async function loadExportChapters(chaptersDir: string, index: ReadonlyArray<Record<string, unknown>>, approvedOnly: boolean): Promise<ReadonlyArray<ExportChapter>> {
+  const selected = approvedOnly ? index.filter((chapter) => chapter.status === "approved") : index;
+  return Promise.all(selected.map(async (meta) => {
+    const number = typeof meta.number === "number" ? meta.number : 0;
+    const fileName = await resolveChapterFileName(chaptersDir, number, meta);
+    try {
+      return {
+        number,
+        fileName,
+        content: await readFile(join(chaptersDir, fileName), "utf-8"),
+      };
+    } catch (error) {
+      throw new Error(`Failed to read chapter file ${fileName}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }));
+}
+
+function buildExportContent(chapters: ReadonlyArray<ExportChapter>, format: ExportFormat): string {
+  return chapters
+    .slice()
+    .sort((left, right) => left.number - right.number)
+    .map((chapter) => chapter.content)
+    .join(format === "markdown" ? "\n\n---\n\n" : "\n\n");
 }
 
 async function listExistingChapterNumbers(chaptersDir: string): Promise<number[]> {
@@ -425,7 +519,7 @@ export function createStorageRouter(ctx: RouterContext): Hono {
         const book = await state.loadBookConfig(id);
         await syncLocalBookScaffoldToSqlite(book);
         const chapters = await state.loadChapterIndex(id).catch(() => []);
-        return { ...book, totalChapters: chapters.length, progress: chapters.filter((c) => c.status === "approved").length };
+        return normalizeApiBook(book as unknown as Record<string, unknown>, chapters as unknown as ReadonlyArray<Record<string, unknown>>);
       }),
     );
 
@@ -439,7 +533,11 @@ export function createStorageRouter(ctx: RouterContext): Hono {
       await syncLocalBookScaffoldToSqlite(book);
       const chapters = await state.loadChapterIndex(id);
       const nextChapter = await state.getNextChapterNumber(id);
-      return c.json({ book, chapters, nextChapter });
+      return c.json({
+        book: normalizeApiBook(book as unknown as Record<string, unknown>, chapters as unknown as ReadonlyArray<Record<string, unknown>>),
+        chapters: normalizeApiChapters(chapters as unknown as ReadonlyArray<Record<string, unknown>>),
+        nextChapter,
+      });
     } catch {
       return c.json({ error: `Book "${id}" not found` }, 404);
     }
@@ -1155,6 +1253,28 @@ export function createStorageRouter(ctx: RouterContext): Hono {
   });
 
   // --- Export ---
+
+  app.post("/api/books/:id/export", async (c) => {
+    const id = c.req.param("id");
+    const body: { format?: unknown; approvedOnly?: boolean } = await c.req.json<{ format?: unknown; approvedOnly?: boolean }>().catch(() => ({}));
+    const format = normalizeExportFormat(body.format);
+    if (!format) return c.json({ error: `Unsupported export format: ${String(body.format)}` }, 400);
+
+    const chaptersDir = join(state.bookDir(id), "chapters");
+    try {
+      await state.loadBookConfig(id);
+      const index = await state.loadChapterIndex(id) as ReadonlyArray<Record<string, unknown>>;
+      const chapters = await loadExportChapters(chaptersDir, index, Boolean(body.approvedOnly));
+      return c.json({
+        fileName: exportFileName(id, format),
+        contentType: exportContentType(format),
+        content: buildExportContent(chapters, format),
+        chapterCount: chapters.length,
+      });
+    } catch (error) {
+      return c.json({ error: error instanceof Error ? error.message : String(error) }, 500);
+    }
+  });
 
   app.get("/api/books/:id/export", async (c) => {
     const id = c.req.param("id");

@@ -458,8 +458,98 @@ export function BibleCategoryView({ node }: { readonly node: StudioResourceNode 
   );
 }
 
+const DEFAULT_OUTLINE_FILE = "volume_outline.md";
+const DEFAULT_OUTLINE_CONTENT = "# 大纲\n\n## 第一卷\n\n- 核心目标：\n- 主要冲突：\n- 关键转折：\n";
+
 export function OutlineEditor({ node }: { readonly node: StudioResourceNode }) {
-  return <PlaceholderSection title={node.title} meta="OutlineEditor" description="大纲查看与编辑将在后续任务接入真实 story/truth 文件。" />;
+  const bookId = typeof node.metadata?.bookId === "string" ? node.metadata.bookId : "";
+  const fileName = typeof node.metadata?.fileName === "string" ? node.metadata.fileName : DEFAULT_OUTLINE_FILE;
+  const endpoint = bookId ? `/books/${bookId}/truth-files/${encodeURIComponent(fileName)}` : null;
+  const saveEndpoint = bookId ? `/books/${bookId}/truth/${encodeURIComponent(fileName)}` : null;
+  const { data, loading, error, refetch } = useApi<{ readonly file: string; readonly content: string | null }>(endpoint);
+  const [content, setContent] = useState("");
+  const [status, setStatus] = useState<"idle" | "dirty" | "saving" | "saved" | "failed">("idle");
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!data) return;
+    setContent(data.content ?? "");
+    setStatus("idle");
+    setSaveError(null);
+  }, [data?.file, data?.content]);
+
+  if (!bookId || !saveEndpoint) {
+    return (
+      <UnsupportedCapability
+        title="大纲暂未接入编辑"
+        reason="缺少 bookId，不能伪造大纲保存成功。"
+        status="planned"
+        capability="workspace.outline.editor"
+      />
+    );
+  }
+
+  const hasOutline = Boolean(data?.content?.trim());
+  const statusText = status === "dirty" ? "未保存"
+    : status === "saving" ? "保存中"
+      : status === "saved" ? "已保存"
+        : status === "failed" ? "保存失败"
+          : hasOutline ? "已加载" : "空状态";
+
+  const saveOutline = async () => {
+    setStatus("saving");
+    setSaveError(null);
+    try {
+      await putApi(saveEndpoint, { content });
+      setStatus("saved");
+      await refetch();
+    } catch (outlineError) {
+      setSaveError(outlineError instanceof Error ? outlineError.message : String(outlineError));
+      setStatus("failed");
+    }
+  };
+
+  const createDefaultOutline = () => {
+    setContent(DEFAULT_OUTLINE_CONTENT);
+    setStatus("dirty");
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3">
+        <div>
+          <h2 className="text-xl font-semibold">{node.title}</h2>
+          <p className="text-sm text-muted-foreground">OutlineEditor · {fileName}</p>
+          <p className="text-xs text-muted-foreground">大纲保存状态：{statusText}</p>
+        </div>
+        <Button size="sm" type="button" disabled={loading || status === "saving"} onClick={() => void saveOutline()}>
+          保存大纲
+        </Button>
+      </div>
+
+      {loading && <p className="text-sm text-muted-foreground">加载大纲中…</p>}
+      {error && <InlineError message={error} />}
+      {saveError && <InlineError message={saveError} />}
+      {!loading && !error && !hasOutline && status === "idle" && (
+        <div className="space-y-3 rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
+          <p>暂无大纲。可以创建默认 Markdown 大纲，再保存到 {fileName}。</p>
+          <Button size="sm" type="button" onClick={createDefaultOutline}>创建默认大纲</Button>
+        </div>
+      )}
+      {!loading && !error && (
+        <textarea
+          aria-label="大纲内容"
+          className="min-h-[50vh] w-full rounded-lg border border-border bg-background p-3 font-serif text-base leading-8 outline-none focus:ring-2 focus:ring-ring/50"
+          value={content}
+          placeholder="# 大纲\n\n## 第一卷"
+          onChange={(event) => {
+            setContent(event.target.value);
+            setStatus("dirty");
+          }}
+        />
+      )}
+    </div>
+  );
 }
 
 export function BibleEntryEditor({ node }: { readonly node: StudioResourceNode }) {
@@ -494,7 +584,22 @@ export function MaterialViewer({ node }: { readonly node: StudioResourceNode }) 
 }
 
 export function PublishReportViewer({ node }: { readonly node: StudioResourceNode }) {
-  return <PlaceholderSection title={node.title} meta="PublishReportViewer" description="发布报告查看器已注册，等待后续任务接入真实发布检查结果。" />;
+  const content = typeof node.metadata?.content === "string" ? node.metadata.content : "";
+  return (
+    <div className="space-y-4">
+      <div className="space-y-1 border-b border-border pb-3">
+        <h2 className="text-xl font-semibold">{node.title}</h2>
+        <p className="text-sm text-muted-foreground">PublishReportViewer · {node.subtitle ?? "unknown"}</p>
+      </div>
+      {content ? (
+        <pre className="whitespace-pre-wrap rounded-lg border border-border bg-background p-3 text-sm leading-6">{content}</pre>
+      ) : (
+        <div className="rounded-lg border border-dashed border-border bg-background/60 p-4 text-sm text-muted-foreground">
+          发布报告缺少可展示内容。
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function UnsupportedWorkspaceNodeView({ node }: { readonly node: StudioResourceNode }) {

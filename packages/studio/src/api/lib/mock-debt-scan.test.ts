@@ -80,6 +80,11 @@ describe("mock debt scan", () => {
 
     expect(coreHits).toEqual([
       expect.objectContaining({
+        relativePath: "packages/core/src/compliance/publish-readiness.ts",
+        keyword: "尚未接入",
+        lineText: expect.stringContaining("连续性指标尚未接入发布检查数据源"),
+      }),
+      expect.objectContaining({
         relativePath: "packages/core/src/utils/config-loader.ts",
         keyword: "noop",
         lineText: expect.stringContaining("noop-model"),

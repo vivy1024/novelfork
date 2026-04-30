@@ -226,71 +226,90 @@
   - 资源树中 `pending_hooks.md` viewer 展示原始文件内容，伏笔列表展示 hook id、文本、关联章节、关联伏笔与来源文件。
   - 验证：`pnpm --dir packages/studio exec vitest run src/app-next/workspace/WorkspacePage.test.tsx src/api/routes/writing-tools.test.ts` 通过；测试覆盖 hook apply 后可在 story file viewer 和伏笔视图中追踪。
 
-- [ ] 35. 实现大纲 viewer/editor
+- [x] 35. 实现大纲 viewer/editor
   - 大纲节点打开真实大纲内容；无大纲时显示创建入口。
   - 支持创建和保存大纲 Markdown 或结构化 outline 记录。
   - 大纲分支生成进入 preview/candidate，不直接覆盖正式大纲。
-  - 验证：route/UI 测试覆盖查看、创建、保存、生成预览。
+  - 已接入 `volume_outline.md` truth file 的加载、创建默认大纲与保存；大纲分支生成仍走候选/预览路径，不写回正式大纲。
+  - 验证：`pnpm --filter @vivy1024/novelfork-studio test -- src/api/routes/compliance.test.ts src/api/__tests__/server-integration.test.ts src/app-next/workspace/resource-adapter.test.ts src/app-next/workspace/WorkspacePage.test.tsx` 通过；`pnpm --filter @vivy1024/novelfork-studio typecheck` 通过。
 
-- [ ] 36. 做实发布检查数据来源
+- [x] 36. 做实发布检查数据来源
   - 发布检查读取真实章节、字数、敏感词、AI 痕迹、连续性指标或 unknown。
   - 不能固定成功、固定满分或隐藏 unknown。
   - 结果可在资源树 publish-report 节点查看。
-  - 验证：route/UI 测试覆盖有问题、无问题、unknown 指标三类结果。
+  - 已让发布检查 route 返回真实章节聚合的敏感词、AI 痕迹、格式检查，并显式返回连续性 unknown；Workspace 发布面板会将结果写入 publish-report 节点查看。
+  - 验证：`pnpm --filter @vivy1024/novelfork-core test -- src/__tests__/compliance-publish-readiness.test.ts` 通过；`pnpm --filter @vivy1024/novelfork-studio test -- src/api/routes/compliance.test.ts src/api/__tests__/server-integration.test.ts src/app-next/workspace/resource-adapter.test.ts src/app-next/workspace/WorkspacePage.test.tsx` 通过；`pnpm --filter @vivy1024/novelfork-core typecheck` 与 `pnpm --filter @vivy1024/novelfork-studio typecheck` 通过。
 
-- [ ] 37. 实现导出 route
+- [x] 37. 实现导出 route
   - 新增 `POST /books/:bookId/export` 或等价 route。
   - 首版支持全书 Markdown 和 TXT 导出，内容来自已保存章节。
   - 返回 fileName、contentType、content 或下载响应。
-  - 验证：route 测试覆盖 markdown、txt、空书、章节读取失败。
+  - 已新增 `POST /api/books/:id/export`，支持 Markdown/TXT 全书导出，返回 `fileName`、`contentType`、`content`、`chapterCount`。
+  - 验证：`pnpm --filter @vivy1024/novelfork-studio test -- src/api/routes/compliance.test.ts src/api/__tests__/server-integration.test.ts src/app-next/workspace/resource-adapter.test.ts src/app-next/workspace/WorkspacePage.test.tsx` 通过；route 测试覆盖 markdown、txt、空书、章节读取失败。
 
-- [ ] 38. 接入 Workspace 导出 UI
+- [x] 38. 接入 Workspace 导出 UI
   - 将 `导出` 从 disabled 改为真实入口。
   - 支持选择格式并触发导出；失败显示真实错误。
   - 导出范围首版至少支持全书；如果支持单章，UI 必须显示当前范围。
-  - 验证：UI 测试覆盖导出成功、失败、按钮状态和下载/内容结果。
+  - 已启用 Workspace 顶部导出入口，提供全书导出范围、Markdown/TXT 格式选择、真实错误展示与导出结果元信息展示。
+  - 验证：`pnpm --filter @vivy1024/novelfork-studio test -- src/api/routes/compliance.test.ts src/api/__tests__/server-integration.test.ts src/app-next/workspace/resource-adapter.test.ts src/app-next/workspace/WorkspacePage.test.tsx` 通过；`pnpm --filter @vivy1024/novelfork-studio typecheck` 通过。
 
 ### Phase 5：状态模型、统计与类型修复
 
-- [ ] 39. 统一作品、章节、候选稿、经纬状态类型
+- [x] 39. 统一作品、章节、候选稿、经纬状态类型
   - 建立或收敛 BookStatus、ChapterStatus、CandidateStatus、BibleEntryStatus 类型。
   - API/repository 返回状态必须使用统一枚举或明确映射。
   - 前端只展示 API 状态，不在本地伪造业务状态。
   - 验证：类型测试和 route 测试覆盖有效状态、未知状态 fallback。
+  - 已新增 core canonical status 模型与 legacy fallback：`BookStatus`、`ChapterStatus`、`CandidateStatus`、`BibleEntryStatus`，并在 storage API 与 Workspace resource adapter 边界归一旧状态。
+  - 验证：`pnpm --filter @vivy1024/novelfork-core test -- src/__tests__/status-models.test.ts` 通过；`pnpm --filter @vivy1024/novelfork-studio test -- src/api/__tests__/server-integration.test.ts src/app-next/workspace/resource-adapter.test.ts src/app-next/workspace/WorkspacePage.test.tsx` 通过。
 
-- [ ] 40. 让资源树 badge 和统计来自真实数据
+- [x] 40. 让资源树 badge 和统计来自真实数据
   - 章节字数、候选稿数量、草稿数量、经纬数量、发布报告数量从 resource snapshot/API 计算。
   - 暂不能计算的指标显示 unknown 或空态，不固定为成功。
   - 验证：resource adapter 测试覆盖统计和 badge 显示。
+  - 已让 book、formal chapters、generated candidates、drafts、bible categories、materials、publish reports 的 count/badge 从 `WorkspaceResourceSnapshot` 实际数组或条目数计算；经纬条目优先使用真实 `bibleEntries`，无条目时回退 snapshot count。
+  - 验证：`pnpm --filter @vivy1024/novelfork-studio test -- src/app-next/workspace/resource-adapter.test.ts` 通过；目标集合测试同上通过。
 
-- [ ] 41. 修复当前 typecheck 阻塞
+- [x] 41. 修复当前 typecheck 阻塞
   - 修复 `routes` 模块缺失、`novelfork-context` 模块缺失、`use-tabs.ts` 的 `Route`/`never` 类型问题。
   - 确认修复不违反旧前端冻结边界；旧前端只做类型/构建阻塞修复。
   - 验证：`pnpm --dir packages/studio run typecheck` 通过，或剩余失败被记录为本 spec 新阻塞任务。
+  - 已通过收紧 contracts 状态类型、在 WorkspacePage/API/resource adapter 边界归一状态，并确认当前 Studio typecheck 无剩余阻塞。
+  - 验证：`pnpm --dir packages/studio run typecheck` 通过。
 
 ### Phase 6：全链路测试与最终验收
 
-- [ ] 42. 扩展 mock debt scan 防回归
+- [x] 42. 扩展 mock debt scan 防回归
   - 新增本 spec 新功能涉及的 mock/fake/noop 高风险词扫描规则或登记项。
   - 确认新增 transparent placeholders 都在 ledger 或 docs 中有明确状态。
   - 验证：`mock-debt-scan.test.ts` 与 `mock-debt-ledger.test.ts` 通过，新增未登记高风险命中会失败。
+  - 已新增发布检查连续性 unknown 与 Workspace 大纲/经纬缺上下文 `UnsupportedCapability` 两类透明过渡登记，scan 期望同步覆盖新增关键词。
+  - 验证：`pnpm --dir packages/studio exec vitest run src/api/lib/mock-debt-ledger.test.ts src/api/lib/mock-debt-scan.test.ts` 通过；当前统计为 ledger 19 项、scan hits 35、registered 27、allowed 8、unregistered 0。
 
-- [ ] 43. 建立最小创作闭环浏览器验收
+- [x] 43. 建立最小创作闭环浏览器验收
   - 启动 `/app-next`，执行：创建作品 → 新建章节 → 写正文 → 保存 → 刷新打开 → 生成候选 → 另存草稿 → 合并/替换 → 健康检查 → 导出 Markdown/TXT。
   - 同时执行 CSSOM 与 computed style 检查。
   - 保存截图或记录关键输出到测试报告。
   - 验证：流程中任何一步失败都不能标记本 spec 完成。
+  - 已新增 `playwright.config.ts` 与 `e2e/workspace-creation-flow.spec.ts`，使用 Bun API + Vite 前端 + Playwright 浏览器覆盖最小创作闭环和视觉审计。
+  - 验证：`pnpm exec playwright test e2e/workspace-creation-flow.spec.ts` 通过，报告已记录端口、临时项目根、覆盖流程和 CSSOM 审计结论。
 
-- [ ] 44. 更新最终验收测试报告和 docs 索引
-  - 更新 `docs/07-测试报告/03-真实运行时与Mock清理验收报告.md` 或新增后续验收章节。
+- [x] 44. 更新最终验收测试报告和 docs 索引
+  - 更新 `docs/08-测试与质量/02-真实运行时与Mock清理验收报告.md` 或新增后续验收章节。
   - 记录 vitest、typecheck、browser audit、mock scan、git diff check 的实际结果。
   - 更新 docs README 和相关目录 README 文件列表。
   - 验证：文档状态与实际测试结果一致。
+  - 已更新验收报告到 v1.0.2，补入 mock debt 最新统计、Task 43 Playwright 浏览器闭环、CSSOM 审计、typecheck 当前结果和剩余透明过渡项。
+  - 已更新 `docs/README.md` 当前事实入口与 `docs/08-测试与质量/README.md` 文件说明。
 
-- [ ] 45. 执行最终验证并整理剩余透明过渡项
+- [x] 45. 执行最终验证并整理剩余透明过渡项
   - 运行本 spec 涉及的 route/UI/unit 测试集合。
   - 运行 `pnpm --dir packages/studio run typecheck`。
   - 运行 mock debt scan。
   - 运行浏览器 UI/流程验收。
   - 运行 `git diff --check`。
   - 输出最终报告，列出真实完成项、仍保留的 transparent placeholders、未纳入范围的 non-goals。
+  - 已运行 Core 状态/发布检查测试、Studio mock/route/UI/visual/Tailwind 测试、Studio typecheck、docs verify、git diff check 和 Playwright 最小创作闭环。
+  - 验证：Core 2 个测试文件/5 个测试通过；Studio 9 个测试文件/114 个测试通过；`pnpm --dir packages/studio run typecheck` 通过；`bun run docs:verify` 通过；`git diff --check` 退出码 0；`pnpm exec playwright test e2e/workspace-creation-flow.spec.ts` 1 个浏览器测试通过。
+  - 最终报告已更新到 `docs/08-测试与质量/02-真实运行时与Mock清理验收报告.md` v1.0.3，列出剩余透明过渡项和浏览器启动期间的非阻塞运行诊断。

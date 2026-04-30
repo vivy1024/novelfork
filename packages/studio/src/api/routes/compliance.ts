@@ -230,7 +230,16 @@ export function createComplianceRouter(ctx: RouterContext): Hono {
     const bookId = c.req.param("bookId");
     const book = await ctx.state.loadBookConfig(bookId) as unknown as Record<string, unknown>;
     const chapters = await loadChapters(ctx, bookId, body);
-    return c.json({ report: checkPublishReadiness(bookId, platform, toPublishChapters(chapters), buildBookFormatConfig(book, body)) });
+    const report = checkPublishReadiness(bookId, platform, toPublishChapters(chapters), buildBookFormatConfig(book, body));
+    return c.json({
+      report: {
+        ...report,
+        continuity: report.continuity ?? {
+          status: "unknown",
+          reason: "连续性指标尚未接入发布检查数据源。",
+        },
+      },
+    });
   });
 
   app.post("/api/books/:bookId/compliance/ai-disclosure", async (c) => {

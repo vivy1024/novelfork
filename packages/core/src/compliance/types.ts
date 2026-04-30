@@ -136,6 +136,10 @@ export interface PublishReadinessReport {
   readonly sensitiveScan: BookSensitiveScanResult;
   readonly aiRatio: BookAiRatioReport;
   readonly formatCheck: FormatCheckResult;
+  readonly continuity: {
+    readonly status: "unknown";
+    readonly reason: string;
+  };
   readonly totalBlockCount: number;
   readonly totalWarnCount: number;
   readonly totalSuggestCount: number;

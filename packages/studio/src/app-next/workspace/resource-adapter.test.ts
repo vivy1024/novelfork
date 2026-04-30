@@ -6,7 +6,7 @@ import { buildStudioResourceTree, type StudioResourceNode } from "./resource-ada
 const book = {
   id: "book-1",
   title: "灵潮纪元",
-  status: "active",
+  status: "drafting",
   platform: "qidian",
   genre: "xuanhuan",
   targetChapters: 100,
@@ -23,12 +23,12 @@ const book = {
   createdAt: "2026-04-20T00:00:00.000Z",
   chapterWordCount: 3000,
   language: "zh" as const,
-};
+} satisfies WorkspaceResourceSnapshot["book"];
 
 const chapters = [
   { number: 1, title: "第一章 灵潮初起", status: "approved", wordCount: 3100, auditIssueCount: 0, updatedAt: "2026-04-27T00:00:00.000Z", fileName: "001.md" },
   { number: 2, title: "第二章 入城", status: "ready-for-review", wordCount: 3100, auditIssueCount: 2, updatedAt: "2026-04-27T01:00:00.000Z", fileName: "002.md" },
-];
+] satisfies WorkspaceResourceSnapshot["chapters"];
 
 function findNode(nodes: readonly StudioResourceNode[], id: string): StudioResourceNode | undefined {
   for (const node of nodes) {
@@ -64,6 +64,43 @@ describe("buildStudioResourceTree", () => {
     expect(findNode(tree, "draft:draft-1")).toMatchObject({ kind: "draft", title: "城门冲突片段" });
     expect(findNode(tree, "bible:characters")).toMatchObject({ kind: "bible-category", title: "人物", count: 3 });
     expect(findNode(tree, "group:formal-chapters")?.children).toHaveLength(2);
+  });
+
+  it("derives resource tree statistics and badges from the snapshot data", () => {
+    const snapshot: WorkspaceResourceSnapshot = {
+      book: { ...book, chapterCount: 99, chapters: 99, totalWords: 99999, status: "active" as never },
+      chapters,
+      generatedChapters: [
+        { id: "gen-1", bookId: "book-1", title: "候选一", source: "write-next", createdAt: "2026-04-27T02:00:00.000Z", status: "candidate" },
+        { id: "gen-2", bookId: "book-1", title: "已接受候选", source: "rewrite", createdAt: "2026-04-27T03:00:00.000Z", status: "accepted" },
+      ],
+      drafts: [
+        { id: "draft-1", bookId: "book-1", title: "草稿一", content: "甲乙", updatedAt: "2026-04-27T03:00:00.000Z", wordCount: 2 },
+      ],
+      bibleCounts: { characters: 0 },
+      bibleEntries: [
+        { id: "char-1", category: "characters", title: "沈舟", summary: "主角" },
+        { id: "char-2", category: "characters", title: "林月", summary: "搭档" },
+      ],
+      storyFiles: [],
+      truthFiles: [],
+      materials: [
+        { id: "material-1", title: "素材一" },
+        { id: "material-2", title: "素材二" },
+      ],
+      publishReports: [
+        { id: "publish-1", title: "报告一", status: "blocked" },
+      ],
+    };
+
+    const tree = buildStudioResourceTree(snapshot);
+
+    expect(findNode(tree, "book:book-1")).toMatchObject({ status: "drafting", count: 2, badge: "6200 字" });
+    expect(findNode(tree, "group:generated-chapters")).toMatchObject({ count: 2, badge: "2 个" });
+    expect(findNode(tree, "group:drafts")).toMatchObject({ count: 1, badge: "2 字" });
+    expect(findNode(tree, "bible:characters")).toMatchObject({ count: 2, badge: "2 条" });
+    expect(findNode(tree, "group:materials")).toMatchObject({ count: 2, badge: "2 个" });
+    expect(findNode(tree, "group:publish-reports")).toMatchObject({ count: 1, badge: "1 份" });
   });
 
   it("provides actionable empty-state CTAs when the book has no chapters or bible data", () => {
@@ -108,7 +145,7 @@ describe("buildStudioResourceTree", () => {
         { id: "material-1", title: "城门设定摘录", source: "web-capture", updatedAt: "2026-04-27T04:00:00.000Z" },
       ],
       publishReports: [
-        { id: "publish-1", title: "起点发布就绪报告", channel: "qidian", updatedAt: "2026-04-27T05:00:00.000Z", status: "ready" },
+        { id: "publish-1", title: "起点发布就绪报告", channel: "qidian", updatedAt: "2026-04-27T05:00:00.000Z", status: "ready", content: "敏感词：0\n连续性：unknown" },
       ],
     };
 
@@ -118,6 +155,10 @@ describe("buildStudioResourceTree", () => {
     expect(findNode(tree, "story-file:story-1")).toMatchObject({ kind: "story-file", title: "pending_hooks.md" });
     expect(findNode(tree, "truth-file:truth-1")).toMatchObject({ kind: "truth-file", title: "chapter_summaries.md" });
     expect(findNode(tree, "material:material-1")).toMatchObject({ kind: "material", title: "城门设定摘录" });
-    expect(findNode(tree, "publish-report:publish-1")).toMatchObject({ kind: "publish-report", title: "起点发布就绪报告" });
+    expect(findNode(tree, "publish-report:publish-1")).toMatchObject({
+      kind: "publish-report",
+      title: "起点发布就绪报告",
+      metadata: expect.objectContaining({ content: "敏感词：0\n连续性：unknown" }),
+    });
   });
 });

@@ -25,6 +25,10 @@
       "types": "./dist/compliance/index.d.ts",
       "import": "./dist/compliance/index.js"
     },
+    "./models/status": {
+      "types": "./dist/models/status.d.ts",
+      "import": "./dist/models/status.js"
+    },
     "./runtime/process-adapter": {
       "types": "./dist/runtime/process-adapter.d.ts",
       "import": "./dist/runtime/process-adapter.js"

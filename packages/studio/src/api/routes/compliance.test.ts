@@ -118,9 +118,10 @@ describe("compliance routes", () => {
 
     const readinessResponse = await postJson(app, "/api/books/book-1/compliance/publish-readiness", { platform: "qidian" });
     expect(readinessResponse.status).toBe(200);
-    const readinessJson = await readinessResponse.json() as { report: { status: string; totalBlockCount: number } };
+    const readinessJson = await readinessResponse.json() as { report: { status: string; totalBlockCount: number; continuity: { status: string; reason: string } } };
     expect(readinessJson.report.status).toBe("blocked");
     expect(readinessJson.report.totalBlockCount).toBeGreaterThan(0);
+    expect(readinessJson.report.continuity).toMatchObject({ status: "unknown" });
 
     const disclosureResponse = await postJson(app, "/api/books/book-1/compliance/ai-disclosure", {
       platform: "qidian",

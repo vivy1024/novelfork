@@ -302,6 +302,20 @@ vi.mock("@vivy1024/novelfork-core", () => {
     createStoryJingweiSectionRepository: createStoryJingweiSectionRepositoryMock,
     createSessionMessageRepository: createSessionMessageRepositoryMock,
     createSessionRepository: createSessionRepositoryMock,
+    normalizeBookStatus: vi.fn((value: unknown) => {
+      if (value === "incubating") return "idea";
+      if (value === "active") return "drafting";
+      if (value === "paused") return "revising";
+      if (value === "completed") return "publishing";
+      if (value === "dropped") return "archived";
+      return ["idea", "outlining", "drafting", "revising", "reviewing", "publishing", "archived"].includes(String(value)) ? String(value) : "drafting";
+    }),
+    normalizeChapterStatus: vi.fn((value: unknown) => {
+      if (value === "drafting" || value === "state-degraded" || value === "revising") return "writing";
+      if (value === "auditing" || value === "audit-failed" || value === "rejected") return "ready-for-review";
+      if (value === "audit-passed") return "approved";
+      return ["ready-for-review", "approved", "published"].includes(String(value)) ? String(value) : "draft";
+    }),
     pipelineEvents: { on: vi.fn() },
   };
 });
@@ -521,6 +535,39 @@ describe("server integration — core 20 endpoints", () => {
       });
 
       expect(res.status).toBe(409);
+    });
+  });
+
+  describe("GET /api/books status normalization", () => {
+    it("returns canonical Phase 5 statuses for legacy book and chapter records", async () => {
+      listBooksMock.mockResolvedValue(["legacy-book"]);
+      loadBookConfigMock.mockResolvedValue({
+        id: "legacy-book",
+        title: "旧状态测试书",
+        platform: "qidian",
+        genre: "xianxia",
+        status: "active",
+        targetChapters: 10,
+        chapterWordCount: 3000,
+        createdAt: "2026-04-28T00:00:00.000Z",
+        updatedAt: "2026-04-28T00:00:00.000Z",
+      });
+      loadChapterIndexMock.mockResolvedValue([
+        { number: 1, title: "第一章", status: "drafted", wordCount: 1000, createdAt: "2026-04-28T00:00:00.000Z", updatedAt: "2026-04-28T00:00:00.000Z", auditIssues: [], lengthWarnings: [] },
+        { number: 2, title: "第二章", status: "not-a-status", wordCount: 1200, createdAt: "2026-04-28T00:00:00.000Z", updatedAt: "2026-04-28T00:00:00.000Z", auditIssues: [], lengthWarnings: [] },
+      ]);
+      getNextChapterNumberMock.mockResolvedValue(3);
+
+      const listResponse = await req("/api/books");
+      expect(listResponse.status).toBe(200);
+      const listJson = await listResponse.json() as { books: Array<{ status: string }> };
+      expect(listJson.books[0]?.status).toBe("drafting");
+
+      const detailResponse = await req("/api/books/legacy-book");
+      expect(detailResponse.status).toBe(200);
+      const detailJson = await detailResponse.json() as { book: { status: string }; chapters: Array<{ status: string }> };
+      expect(detailJson.book.status).toBe("drafting");
+      expect(detailJson.chapters.map((chapter) => chapter.status)).toEqual(["draft", "draft"]);
     });
   });
 
@@ -887,6 +934,69 @@ describe("server integration — core 20 endpoints", () => {
       );
 
       expect([400, 404]).toContain(res.status);
+    });
+  });
+
+  describe("POST /api/books/:id/export", () => {
+    async function scaffoldExportBook() {
+      const bookDir = join(root, "books", "export-book");
+      const chaptersDir = join(bookDir, "chapters");
+      await mkdir(chaptersDir, { recursive: true });
+      await writeFile(join(bookDir, "book.json"), JSON.stringify({ id: "export-book", title: "导出测试书" }, null, 2), "utf-8");
+      await writeFile(join(chaptersDir, "index.json"), JSON.stringify([
+        { number: 1, title: "第一章", status: "approved", wordCount: 4, fileName: "0001_first.md" },
+        { number: 2, title: "第二章", status: "drafting", wordCount: 4, fileName: "0002_second.md" },
+      ], null, 2), "utf-8");
+      await writeFile(join(chaptersDir, "0001_first.md"), "# 第一章\n\n甲乙丙丁", "utf-8");
+      await writeFile(join(chaptersDir, "0002_second.md"), "# 第二章\n\n风起云涌", "utf-8");
+      loadBookConfigMock.mockImplementation(async (bookId: string) => JSON.parse(await readFile(join(root, "books", bookId, "book.json"), "utf-8")));
+      loadChapterIndexMock.mockImplementation(async (bookId: string) => JSON.parse(await readFile(join(root, "books", bookId, "chapters", "index.json"), "utf-8")));
+    }
+
+    it("exports the full book as markdown or txt from saved chapters", async () => {
+      await scaffoldExportBook();
+
+      const markdownResponse = await jsonReq("/api/books/export-book/export", "POST", { format: "markdown" });
+      expect(markdownResponse.status).toBe(200);
+      await expect(markdownResponse.json()).resolves.toMatchObject({
+        fileName: "export-book.md",
+        contentType: "text/markdown; charset=utf-8",
+        content: expect.stringContaining("# 第一章"),
+        chapterCount: 2,
+      });
+
+      const txtResponse = await jsonReq("/api/books/export-book/export", "POST", { format: "txt" });
+      expect(txtResponse.status).toBe(200);
+      const txt = await txtResponse.json() as { content: string; contentType: string };
+      expect(txt.contentType).toBe("text/plain; charset=utf-8");
+      expect(txt.content).toContain("甲乙丙丁");
+      expect(txt.content).not.toContain("---");
+    });
+
+    it("returns an empty export for books without chapters", async () => {
+      const bookDir = join(root, "books", "empty-export");
+      await mkdir(join(bookDir, "chapters"), { recursive: true });
+      await writeFile(join(bookDir, "book.json"), JSON.stringify({ id: "empty-export", title: "空书" }, null, 2), "utf-8");
+      await writeFile(join(bookDir, "chapters", "index.json"), "[]", "utf-8");
+      loadBookConfigMock.mockResolvedValue({ id: "empty-export", title: "空书" });
+      loadChapterIndexMock.mockResolvedValue([]);
+
+      const response = await jsonReq("/api/books/empty-export/export", "POST", { format: "markdown" });
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toMatchObject({ content: "", chapterCount: 0 });
+    });
+
+    it("reports the failed chapter when saved chapter content cannot be read", async () => {
+      await scaffoldExportBook();
+      await rm(join(root, "books", "export-book", "chapters", "0002_second.md"));
+
+      const response = await jsonReq("/api/books/export-book/export", "POST", { format: "txt" });
+
+      expect(response.status).toBe(500);
+      await expect(response.json()).resolves.toMatchObject({
+        error: expect.stringContaining("0002_second.md"),
+      });
     });
   });
 

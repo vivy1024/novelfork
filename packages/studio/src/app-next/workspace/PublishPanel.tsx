@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { fetchJson } from "../../hooks/use-api";
+import type { PublishReportResource } from "../../shared/contracts";
 import { InlineError } from "../components/feedback";
 
 interface PublishReport {
@@ -7,9 +8,21 @@ interface PublishReport {
   readonly totalBlockCount: number;
   readonly totalWarnCount: number;
   readonly totalSuggestCount: number;
-  readonly sensitiveWordCount?: number;
-  readonly aiRatio?: number;
-  readonly formatIssues?: number;
+  readonly sensitiveScan?: {
+    readonly totalBlockCount?: number;
+    readonly totalWarnCount?: number;
+    readonly totalSuggestCount?: number;
+  };
+  readonly aiRatio?: {
+    readonly overallAiRatio?: number;
+  };
+  readonly formatCheck?: {
+    readonly issues?: readonly unknown[];
+  };
+  readonly continuity?: {
+    readonly status: "unknown";
+    readonly reason: string;
+  };
 }
 
 const STATUS_LABELS: Record<string, string> = { ready: "就绪", "has-warnings": "存在警告", blocked: "阻塞" };
@@ -28,7 +41,38 @@ function indicatorColor(value: number, warnAt: number, blockAt: number): string 
   return "text-emerald-600";
 }
 
-export function PublishPanel({ bookId }: { readonly bookId: string }) {
+function sensitiveIssueCount(report: PublishReport): number {
+  const scan = report.sensitiveScan;
+  if (!scan) return report.totalBlockCount;
+  return (scan.totalBlockCount ?? 0) + (scan.totalWarnCount ?? 0) + (scan.totalSuggestCount ?? 0);
+}
+
+function formatIssueCount(report: PublishReport): number {
+  return report.formatCheck?.issues?.length ?? report.totalSuggestCount;
+}
+
+function reportMarkdown(platform: string, report: PublishReport): string {
+  const aiRatio = report.aiRatio?.overallAiRatio;
+  return [
+    `# 发布就绪报告`,
+    "",
+    `- 平台：${platform}`,
+    `- 状态：${STATUS_LABELS[report.status] ?? report.status}`,
+    `- 敏感词指标：${sensitiveIssueCount(report)}`,
+    `- AI 痕迹：${aiRatio == null ? "unknown" : `${(aiRatio * 100).toFixed(0)}%`}`,
+    `- 格式问题：${formatIssueCount(report)}`,
+    `- 连续性：${report.continuity?.status ?? "unknown"}`,
+    `- 连续性说明：${report.continuity?.reason ?? "连续性指标未知"}`,
+  ].join("\n");
+}
+
+export function PublishPanel({
+  bookId,
+  onReport,
+}: {
+  readonly bookId: string;
+  readonly onReport?: (report: PublishReportResource) => void;
+}) {
   const [platform, setPlatform] = useState("qidian");
   const [report, setReport] = useState<PublishReport | null>(null);
   const [checking, setChecking] = useState(false);
@@ -44,6 +88,14 @@ export function PublishPanel({ bookId }: { readonly bookId: string }) {
         body: JSON.stringify({ platform }),
       });
       setReport(res.report);
+      onReport?.({
+        id: `publish-readiness:${platform}`,
+        title: `${platform} 发布就绪报告`,
+        channel: platform,
+        status: res.report.status,
+        updatedAt: new Date().toISOString(),
+        content: reportMarkdown(platform, res.report),
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -73,10 +125,15 @@ export function PublishPanel({ bookId }: { readonly bookId: string }) {
             {STATUS_LABELS[report.status] ?? report.status}
           </div>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <Metric label="敏感词" value={report.sensitiveWordCount ?? report.totalBlockCount} color={indicatorColor(report.sensitiveWordCount ?? report.totalBlockCount, 1, 5)} />
-            <Metric label="AI 比例" value={report.aiRatio != null ? `${(report.aiRatio * 100).toFixed(0)}%` : "N/A"} color={indicatorColor(report.aiRatio ?? 0, 0.3, 0.7)} />
-            <Metric label="格式问题" value={report.formatIssues ?? report.totalSuggestCount} color={indicatorColor(report.formatIssues ?? report.totalSuggestCount, 3, 10)} />
+            <Metric label="敏感词" value={sensitiveIssueCount(report)} color={indicatorColor(sensitiveIssueCount(report), 1, 5)} />
+            <Metric label="AI 比例" value={report.aiRatio?.overallAiRatio != null ? `${(report.aiRatio.overallAiRatio * 100).toFixed(0)}%` : "unknown"} color={indicatorColor(report.aiRatio?.overallAiRatio ?? 0, 0.3, 0.7)} />
+            <Metric label="格式问题" value={formatIssueCount(report)} color={indicatorColor(formatIssueCount(report), 3, 10)} />
             <Metric label="警告数" value={report.totalWarnCount} color={indicatorColor(report.totalWarnCount, 1, 5)} />
+          </div>
+          <div className="rounded-lg border border-border p-3 text-sm">
+            <div className="text-xs text-muted-foreground">连续性指标</div>
+            <div className="font-medium">{report.continuity?.status ?? "unknown"}</div>
+            <div className="text-muted-foreground">{report.continuity?.reason ?? "连续性指标未知"}</div>
           </div>
         </div>
       )}

@@ -1,8 +1,8 @@
 # 真实运行时与Mock清理验收报告
 
-**版本**: v1.0.1
+**版本**: v1.0.3
 **创建日期**: 2026-04-28
-**更新日期**: 2026-04-28
+**更新日期**: 2026-04-30
 **状态**: ✅ 当前有效
 **文档类型**: current
 
@@ -10,18 +10,20 @@
 
 ## 本文定位
 
-本文记录 `project-wide-real-runtime-cleanup` 相关验收事实，并给出当前 NovelFork 在 mock、transparent placeholder、typecheck 和浏览器 UI 审计上的已知结果。
+本文记录 `project-wide-real-runtime-cleanup` 与当前主线 `novel-creation-workbench-complete-flow` Phase 6 的验收事实，并给出当前 NovelFork 在 mock、transparent placeholder、typecheck、浏览器 UI 审计、最小创作闭环和最终验证集合上的已知结果。
 
 它是**验收事实文档**，不是未来承诺文档。凡是没有 fresh evidence 的内容，必须明确写成“当前已知”“浏览器审计结论”或“仍待后续处理”，不能包装成已完成。
 
 ## 验收范围
 
-本报告聚焦四件事：
+本报告聚焦六件事：
 
 1. `project-wide-real-runtime-cleanup` 的任务完成口径。
 2. `mock-debt-ledger` 与 `mock-debt-scan` 的当前结果。
-3. 浏览器 UI 审计已经发现、但尚未在本 spec 后续阶段修复的主题 token 问题。
-4. `pnpm --dir packages/studio run typecheck` 的当前阻塞项。
+3. 浏览器 UI 审计和最小创作闭环的当前结果。
+4. `pnpm --dir packages/studio run typecheck` 的当前结果。
+5. Phase 6 最终验证集合的当前结果。
+6. 仍保留的透明过渡项。
 
 ## 1. 上游清理 spec 完成口径
 
@@ -40,9 +42,9 @@
 
 | 项 | 数量 |
 |---|---:|
-| ledger 总条目 | 17 |
+| ledger 总条目 | 19 |
 | `confirmed-real` | 9 |
-| `transparent-placeholder` | 7 |
+| `transparent-placeholder` | 9 |
 | `internal-demo` | 1 |
 | `must-replace` | 0 |
 | `test-only` | 0 |
@@ -52,7 +54,7 @@
 | 风险 | 数量 |
 |---|---:|
 | `critical` | 14 |
-| `medium` | 1 |
+| `medium` | 3 |
 | `low` | 2 |
 
 ### 当前 ledger 中最关键的确认项
@@ -77,6 +79,8 @@
 - Writing modes apply：`prompt-preview` / disabled
 - 透明 Admin placeholders
 - AI complete streaming：`chunked-buffer`
+- 发布检查连续性：未接入事实源时 `unknown`
+- Workspace 大纲/经纬缺少上下文时：`UnsupportedCapability`
 
 #### 内部示例
 
@@ -100,8 +104,8 @@ pnpm --dir packages/studio exec vitest run src/api/lib/mock-debt-ledger.test.ts 
 
 | 项 | 数量 |
 |---|---:|
-| 总命中 `hits` | 29 |
-| 已登记 `registered` | 21 |
+| 总命中 `hits` | 35 |
+| 已登记 `registered` | 27 |
 | 允许命中 `allowed` | 8 |
 | 未登记 `unregistered` | 0 |
 
@@ -111,9 +115,34 @@ pnpm --dir packages/studio exec vitest run src/api/lib/mock-debt-ledger.test.ts 
 2. 扫描门禁是有效的：如果出现未登记命中，测试会失败。
 3. 当前状态符合“透明治理”目标，不符合“全部清零”叙事；因此文档必须继续保留 transparent placeholder 说明。
 
-## 4. 浏览器 UI 审计当前结论
+## 4. 浏览器 UI 与最小创作闭环当前结论
 
-本报告记录当前已知浏览器审计边界。Tailwind token 的配置和生成检查已经有自动化证据；完整 `/next` 浏览器实测仍留到主线 Task 43 的端到端验收中执行。
+已运行：
+
+```bash
+pnpm exec playwright test e2e/workspace-creation-flow.spec.ts
+```
+
+结果：
+
+- **1 个 Playwright 测试通过**
+- 浏览器路由：`/next/dashboard` 和 `/next`
+- 前端：Vite `127.0.0.1:4587`
+- API：`bun run main.ts` 单进程 API，测试端口 `4589`
+- 临时项目根：`.novelfork/e2e-workspace-flow-*`
+
+覆盖的关键事实：
+
+- 创建作品。
+- 新建章节。
+- 写入并保存正文。
+- 刷新后重新打开章节并读取已保存内容。
+- 通过浏览器上下文调用真实 `writing-modes/apply` route 生成候选稿；该步骤不依赖外部 LLM，也不是前端假节点。
+- 候选稿另存草稿。
+- 候选稿替换正式章节。
+- 全书健康仪表盘展示真实可计算指标，并把质量评分显示为未接入。
+- 导出 Markdown 并显示 `fileName` 与章节数。
+- 运行 CSSOM 与 `getComputedStyle` 审计，确认主题 utilities 存在且关键按钮状态可区分。
 
 当前代码证据：
 
@@ -121,6 +150,8 @@ pnpm --dir packages/studio exec vitest run src/api/lib/mock-debt-ledger.test.ts 
 - `packages/studio/src/tailwind-theme.test.ts` 会生成 Tailwind utilities，并断言 `.bg-primary`、`.text-primary`、`.text-primary-foreground`、`.bg-muted`、`.text-muted-foreground`、`.border-border`、`.bg-card`、`.bg-destructive` 存在。
 - `packages/studio/src/app-next/visual-audit.test.ts` 覆盖两类状态：同色样式组会失败，主操作/次操作/active/disabled 分层会通过。
 - 浏览器脚本位于 `packages/studio/public/audits/app-next-visual-audit.js`，会读取 CSSOM 与 `getComputedStyle(button)`，并输出主题类缺失、样式组和关键按钮对比结果。
+- 浏览器闭环测试位于 `e2e/workspace-creation-flow.spec.ts`。
+- Playwright 启动配置位于 `playwright.config.ts`。
 
 浏览器手动执行方式：
 
@@ -131,11 +162,11 @@ await audit.runNovelForkAppNextVisualAudit();
 
 ### 当前不能写成已完成的内容
 
-- 不能把 helper/unit test 写成完整浏览器 E2E 已通过。
-- 不能把 `/next` 页面上所有按钮都写成已经完成浏览器验收。
-- 不能把设计稿或 className 设想写成浏览器已验收事实。
+- 不能把外部 LLM 生成写成已验收；当前候选稿验收使用真实 `writing-modes/apply` 写入路径，不要求外部模型可用。
+- 不能把 `/next` 页面上所有按钮都写成已经完成浏览器验收；当前只覆盖最小创作闭环和视觉审计目标。
+- 不能把 `unknown`、`prompt-preview`、`UnsupportedCapability` 写成真实完成。
 
-## 5. 当前 typecheck 阻塞
+## 5. 当前 typecheck 结果
 
 已运行：
 
@@ -143,59 +174,55 @@ await audit.runNovelForkAppNextVisualAudit();
 pnpm --dir packages/studio run typecheck
 ```
 
-结果：**失败，退出码 2**。
+结果：**通过**。
 
-当前错误集中在三类：
+当前结论：
 
-### 5.1 `routes` 模块缺失
+- Requirement 11 / Task 41 的 typecheck 阻塞已修复。
+- 状态类型收敛后，Workspace/API/resource adapter 边界已显式归一旧状态。
+- 最终完成声明前仍需在 Task 45 中重新运行一次完整验证集合。
 
-涉及文件包括：
+## 6. 当前文档与 diff 检查结果
 
-- `src/components/Admin/Admin.tsx`
-- `src/components/CommandPalette.tsx`
-- `src/hooks/use-tabs.test.ts`
-- `src/hooks/use-tabs.ts`
-- `src/route-utils.ts`
-- `src/routes.test.ts`
+已运行：
 
-典型错误：
-
-```text
-Cannot find module '../routes' or its corresponding type declarations.
+```bash
+bun run docs:verify
+git diff --check
 ```
 
-### 5.2 `novelfork-context` 模块缺失
+结果：
 
-涉及文件包括：
+- `docs:verify` 通过：83 个 Markdown 文件、22 个目录。
+- `git diff --check` 退出码为 0；当前输出仅包含 Windows 工作区换行提示，未发现 whitespace error。
 
-- `src/components/Routines/Routines.tsx`
-- `src/components/Sidebar.tsx`
-- `src/components/UpdateChecker.tsx`
-- `src/hooks/use-backup.ts`
-- `src/hooks/use-crash-recovery.ts`
-- `src/hooks/use-llm-config.ts`
+## 7. Phase 6 最终验证集合
 
-典型错误：
+已运行：
 
-```text
-Cannot find module '../providers/novelfork-context' or its corresponding type declarations.
+```bash
+pnpm --filter @vivy1024/novelfork-core test -- src/__tests__/status-models.test.ts src/__tests__/compliance-publish-readiness.test.ts
+pnpm --filter @vivy1024/novelfork-studio test -- src/api/lib/mock-debt-ledger.test.ts src/api/lib/mock-debt-scan.test.ts src/api/routes/compliance.test.ts src/api/__tests__/server-integration.test.ts src/app-next/workspace/resource-adapter.test.ts src/app-next/workspace/resource-view-registry.test.ts src/app-next/workspace/WorkspacePage.test.tsx src/app-next/visual-audit.test.ts src/tailwind-theme.test.ts
+pnpm --dir packages/studio run typecheck
+bun run docs:verify
+git diff --check
+pnpm exec playwright test e2e/workspace-creation-flow.spec.ts
 ```
 
-### 5.3 `use-tabs.ts` 类型错误
+结果：
 
-典型错误：
+| 验证项 | 结果 |
+|---|---|
+| Core 状态/发布检查测试 | 2 个测试文件通过，5 个测试通过 |
+| Studio mock/route/UI/visual/Tailwind 测试 | 9 个测试文件通过，114 个测试通过 |
+| Studio typecheck | 通过 |
+| docs verify | 通过，83 个 Markdown 文件、22 个目录 |
+| git diff check | 退出码 0，仅有 Windows 换行提示，无 whitespace error |
+| Playwright 最小创作闭环 | 1 个浏览器测试通过 |
 
-```text
-Type 'Route' is not assignable to type 'never'.
-```
+浏览器启动期间仍会输出非阻塞运行诊断，包括临时 E2E 项目根缺少单文件产物、未配置 OpenAI API Key、检测到外部 worktree 和孤儿会话文件。这些诊断没有阻断本次浏览器验收，但不应被写成已解决。
 
-### 当前结论
-
-- `pnpm --dir packages/studio run typecheck` **还没有通过**。
-- Requirement 11 / Task 41 仍然是当前 spec 的明确后续任务。
-- 在 typecheck 修复前，不能把本 spec 写成“已完成验收”。
-
-## 6. 与当前文档体系的关系
+## 8. 与当前文档体系的关系
 
 本报告与以下 current 文档协同使用：
 
@@ -211,7 +238,7 @@ Type 'Route' is not assignable to type 'never'.
 - `unsupported` 不能写成已完成。
 - `chunked-buffer` 不能写成原生流式。
 
-## 7. 当前仍保留的透明过渡项
+## 9. 当前仍保留的透明过渡项
 
 以下能力仍然必须按透明过渡理解：
 
@@ -223,24 +250,29 @@ Type 'Route' is not assignable to type 'never'.
 | Writing modes apply | `prompt-preview` + disabled/原因文案 |
 | Admin users | 本地单用户透明占位 |
 | AI complete streaming | `chunked-buffer` |
+| 发布检查连续性 | `unknown`，连续性指标尚未接入发布检查事实源 |
+| Workspace 大纲/经纬缺上下文 | `UnsupportedCapability`，缺少 `bookId` 或分类映射时不伪造成功 |
 
-## 8. 本报告的验收结论
+## 10. 本报告的验收结论
 
 基于当前已运行的测试和读取到的代码事实，可以确认：
 
 1. `archive/project-wide-real-runtime-cleanup` 的 30 个任务当前已全部勾选完成。
 2. `mock-debt-ledger` 与 `mock-debt-scan` 的门禁当前有效。
 3. 当前没有未登记的高风险 mock debt 命中。
-4. Tailwind 主题 token 问题仍是后续 spec 的实际阻塞项。
-5. Studio `typecheck` 当前仍失败，不能写成通过。
-6. 透明过渡项仍然存在，且必须继续透明表达。
+4. Tailwind 主题 token 与关键按钮状态已有单元测试和浏览器 CSSOM 证据。
+5. Studio `typecheck` 当前已通过。
+6. 最小创作闭环浏览器验收已通过。
+7. Phase 6 最终验证集合已完成；当前 fresh evidence 中没有失败命令。
+8. 透明过渡项和非阻塞运行诊断仍然存在，且必须继续透明表达。
 
-## 9. 相关验证命令
+## 11. 相关验证命令
 
 ```bash
 pnpm --dir packages/studio exec vitest run src/api/lib/mock-debt-ledger.test.ts src/api/lib/mock-debt-scan.test.ts
 pnpm --dir packages/studio test src/app-next/visual-audit.test.ts
-pnpm --dir packages/studio dev
+pnpm exec playwright test e2e/workspace-creation-flow.spec.ts
 pnpm --dir packages/studio run typecheck
 bun run docs:verify
+git diff --check
 ```
