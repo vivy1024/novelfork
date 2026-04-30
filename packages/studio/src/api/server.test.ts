@@ -1536,11 +1536,78 @@ describe("createStudioServer daemon lifecycle", () => {
     expect(startupOptions?.[1].projectBootstrap.reason).toBe("项目配置已存在，无需自动初始化");
     expect(startupOptions?.[1].staticDelivery.mode).toBe("embedded");
     expect(startupOptions?.[1].staticDelivery.hasIndexHtml).toBe(true);
-    expect(startupOptions?.[1].compileSmoke.status).toBe("failed");
-    expect(startupOptions?.[1].compileSmoke.reason).toBe("单文件产物缺失");
+    expect(startupOptions?.[1].compileSmoke.status).toBe("skipped");
+    expect(startupOptions?.[1].compileSmoke.reason).toBe("源码启动未检查单文件产物");
     expect(startupOptions?.[1].compileSmoke.note).toContain("dist");
     expect(startupOptions?.[1].compileSmoke.note).toContain("novelfork");
     expect(startHttpServerMock).toHaveBeenCalledWith(expect.objectContaining({ port: 4567 }));
+  });
+
+  it("treats a missing legacy LLM API key as a provider configuration reminder at startup", async () => {
+    loadProjectConfigMock.mockResolvedValue({
+      ...cloneProjectConfig(),
+      llm: {
+        ...cloneProjectConfig().llm,
+        apiKey: "",
+      },
+    });
+    const { startStudioServer } = await import("./server.js");
+
+    await startStudioServer(root, 4567, {
+      staticProvider: {
+        describe: () => ({ source: "embedded", assetCount: 0 }),
+        hasIndexHtml: vi.fn(async () => true),
+        readIndexHtml: vi.fn(async () => "<html></html>"),
+        readAsset: vi.fn(async () => null),
+      },
+      staticMode: "embedded",
+    });
+
+    const startupOptions = (startupOrchestratorMock.mock.calls as unknown[])[0] as [unknown, {
+      diagnostics: Array<{ kind: string; status: string; reason: string; note?: string }>;
+    }] | undefined;
+    expect(startupOptions?.[1].diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: "provider-availability",
+        status: "skipped",
+        reason: "未配置启用供应商，AI 功能保持未启用",
+        note: "configured=none;missing=none;disabled=none",
+      }),
+    ]));
+  });
+
+  it("keeps missing single-file artifacts as failures in production startup", async () => {
+    const previousNodeEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    const { startStudioServer } = await import("./server.js");
+
+    try {
+      await startStudioServer(root, 4567, {
+        staticProvider: {
+          describe: () => ({ source: "embedded", assetCount: 0 }),
+          hasIndexHtml: vi.fn(async () => true),
+          readIndexHtml: vi.fn(async () => "<html></html>"),
+          readAsset: vi.fn(async () => null),
+        },
+        staticMode: "embedded",
+      });
+    } finally {
+      if (previousNodeEnv === undefined) {
+        delete process.env.NODE_ENV;
+      } else {
+        process.env.NODE_ENV = previousNodeEnv;
+      }
+    }
+
+    expect(startupOrchestratorMock).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        compileSmoke: expect.objectContaining({
+          status: "failed",
+          reason: "单文件产物缺失",
+        }),
+      }),
+    );
   });
 
   it("logs structured runtime and static delivery facts at startup", async () => {
@@ -1708,7 +1775,7 @@ describe("createStudioServer daemon lifecycle", () => {
       migratedBooks: 0,
       indexedDocuments: 0,
       skippedBooks: 0,
-      failures: [{ phase: "session-store", message: "orphan=demo-session" }],
+      failures: [],
       delivery: {
         staticMode: "filesystem",
         indexHtmlReady: true,
@@ -1719,7 +1786,7 @@ describe("createStudioServer daemon lifecycle", () => {
         finishedAt: new Date(0).toISOString(),
         durationMs: 0,
         actions: [],
-        counts: { success: 1, skipped: 1, failed: 1 },
+        counts: { success: 1, skipped: 2, failed: 0 },
       },
       healthChecks: [
         {
@@ -1727,11 +1794,11 @@ describe("createStudioServer daemon lifecycle", () => {
           category: "session",
           phase: "session-store",
           title: "会话存储",
-          summary: "会话存储存在孤儿历史文件",
-          status: "error",
+          summary: "会话存储存在孤儿历史文件，已保留为可恢复记录",
+          status: "warning",
           source: "diagnostic",
           detail: "orphan=demo-session",
-          action: { kind: "cleanup-session-history", label: "清理孤儿会话历史", endpoint: "/api/admin/resources/recovery/session-store", method: "POST" },
+          action: { kind: "cleanup-session-history", label: "隔离孤儿会话历史", endpoint: "/api/admin/resources/recovery/session-store", method: "POST" },
         },
         {
           id: "static-delivery",
@@ -1803,14 +1870,14 @@ describe("createStudioServer daemon lifecycle", () => {
       migratedBooks: 0,
       indexedDocuments: 0,
       skippedBooks: 0,
-      failures: [{ phase: "session-store", message: "orphan=demo-session" }],
+      failures: [],
       delivery: { staticMode: "embedded", indexHtmlReady: true, compileSmokeStatus: "success" },
       recoveryReport: {
         startedAt: "2026-04-20T09:59:00.000Z",
         finishedAt: "2026-04-20T09:59:01.000Z",
         durationMs: 1000,
         actions: [],
-        counts: { success: 1, skipped: 0, failed: 1 },
+        counts: { success: 1, skipped: 1, failed: 0 },
       },
       healthChecks: [],
     } as never);
@@ -1818,7 +1885,7 @@ describe("createStudioServer daemon lifecycle", () => {
 
     const cleanupResponse = await app.request("http://localhost/api/admin/resources/recovery/session-store", { method: "POST" });
     expect(cleanupResponse.status).toBe(200);
-    await expect(cleanupResponse.json()).resolves.toMatchObject({ sessionStoreCleanupTriggered: true });
+    await expect(cleanupResponse.json()).resolves.toMatchObject({ sessionStoreQuarantineTriggered: true });
 
     const ignoreResponse = await app.request("http://localhost/api/admin/resources/recovery/worktree-pollution", { method: "POST" });
     expect(ignoreResponse.status).toBe(200);

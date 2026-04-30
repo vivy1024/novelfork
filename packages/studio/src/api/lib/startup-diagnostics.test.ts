@@ -71,14 +71,14 @@ describe("startup diagnostics", () => {
 
     await expect(checkSessionStoreConsistency(root)).resolves.toEqual(expect.objectContaining({
       kind: "session-store",
-      status: "failed",
-      reason: "会话存储存在孤儿历史文件",
+      status: "skipped",
+      reason: "会话存储存在孤儿历史文件，已保留为可恢复记录",
       note: expect.stringContaining("orphan"),
       details: expect.objectContaining({ orphanHistoryIds: ["orphan"] }),
     }));
   });
 
-  it("inspects and cleans orphan session history files", async () => {
+  it("inspects and quarantines orphan session history files without deleting recovery data", async () => {
     const root = await makeTempRoot();
     await mkdir(join(root, "session-history"), { recursive: true });
     await writeFile(join(root, "sessions.json"), JSON.stringify([{ id: "known" }, { id: "dangling" }]), "utf-8");
@@ -94,9 +94,12 @@ describe("startup diagnostics", () => {
     const cleaned = await cleanupOrphanSessionHistoryFiles(root);
     expect(cleaned).toEqual({
       sessionStoreDir: root,
-      removedHistoryIds: ["orphan"],
+      quarantineDir: join(root, "session-history-orphans"),
+      quarantinedHistoryIds: ["orphan"],
     });
     expect(existsSync(join(root, "session-history", "orphan.json"))).toBe(false);
+    expect(existsSync(join(root, "session-history-orphans", "orphan.json"))).toBe(true);
+    await expect(readFile(join(root, "session-history-orphans", "orphan.json"), "utf-8")).resolves.toBe("[]");
     expect(existsSync(join(root, "session-history", "known.json"))).toBe(true);
   });
 
@@ -112,6 +115,18 @@ describe("startup diagnostics", () => {
       details: expect.objectContaining({
         externalWorktrees: ["D:/DESKTOP/sub2api/inkos-master/packages/studio/.test-workspace/.inkos-worktrees/feature-test"],
       }),
+    }));
+  });
+
+  it("treats parent repository worktrees as expected when the project root is a nested E2E workspace", () => {
+    expect(buildWorktreePollutionDiagnostics("D:/DESKTOP/novelfork/.novelfork/e2e-workspace-flow-123", [
+      { path: "D:/DESKTOP/novelfork" },
+      { path: "D:/DESKTOP/novelfork/.worktrees/spec任务4-XvCRK-" },
+    ])).toEqual(expect.objectContaining({
+      kind: "git-worktree-pollution",
+      status: "skipped",
+      reason: "当前项目根位于父级 git worktree 内，外部 worktree 仅作为宿主仓库上下文记录",
+      note: expect.stringContaining("D:/DESKTOP/novelfork"),
     }));
   });
 
@@ -139,14 +154,58 @@ describe("startup diagnostics", () => {
     expect(buildProviderAvailabilityDiagnostics([
       { id: "openai", enabled: true, apiKeyConfigured: true },
       { id: "claude", enabled: true, apiKeyConfigured: false },
+      { id: "disabled-provider", enabled: false, apiKeyConfigured: false },
     ])).toEqual(expect.objectContaining({
       kind: "provider-availability",
       status: "skipped",
       reason: "部分启用供应商缺少 API Key",
-      note: "configured=openai;missing=claude",
+      note: "configured=openai;missing=claude;disabled=disabled-provider",
       details: {
         configured: ["openai"],
         missing: ["claude"],
+        disabled: ["disabled-provider"],
+      },
+    }));
+  });
+
+  it("reports provider configuration reminders separately from disabled or usable providers", () => {
+    expect(buildProviderAvailabilityDiagnostics([])).toEqual(expect.objectContaining({
+      kind: "provider-availability",
+      status: "skipped",
+      reason: "未配置启用供应商，AI 功能保持未启用",
+      note: "configured=none;missing=none;disabled=none",
+      details: {
+        configured: [],
+        missing: [],
+        disabled: [],
+      },
+    }));
+
+    expect(buildProviderAvailabilityDiagnostics([
+      { id: "openai", enabled: false, apiKeyConfigured: false },
+    ])).toEqual(expect.objectContaining({
+      kind: "provider-availability",
+      status: "skipped",
+      reason: "所有供应商均已禁用，AI 功能保持未启用",
+      note: "configured=none;missing=none;disabled=openai",
+      details: {
+        configured: [],
+        missing: [],
+        disabled: ["openai"],
+      },
+    }));
+
+    expect(buildProviderAvailabilityDiagnostics([
+      { id: "openai", enabled: true, apiKeyConfigured: true },
+    ])).toEqual(expect.objectContaining({
+      kind: "provider-availability",
+      status: "success",
+      reason: "至少一个启用供应商已配置 API Key",
+      note: "configured=openai;missing=none;disabled=none",
+      details: {
+        configured: ["openai"],
+        missing: [],
+        disabled: [],
       },
     }));
   });

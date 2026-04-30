@@ -481,16 +481,29 @@ function registerStorageDatabaseShutdown(storageDatabase: StorageDatabase): void
   process.once("beforeExit", cleanup);
 }
 
-function buildProviderDiagnosticEntries(config: ProjectConfig) {
+async function buildProviderDiagnosticEntries(config: ProjectConfig, providerStore: ProviderRuntimeStore) {
+  const runtimeProviders = await providerStore.listProviders();
+  if (runtimeProviders.length > 0) {
+    return runtimeProviders.map((provider) => ({
+      id: provider.id,
+      enabled: provider.enabled,
+      apiKeyConfigured: Boolean(provider.config?.apiKey?.trim()),
+    }));
+  }
+
   const llmConfig = config.llm as { provider?: string; apiKey?: string } | undefined;
+  if (!llmConfig?.apiKey?.trim()) {
+    return [];
+  }
+
   return [{
     id: llmConfig?.provider ?? "default",
     enabled: true,
-    apiKeyConfigured: Boolean(llmConfig?.apiKey),
+    apiKeyConfigured: true,
   }];
 }
 
-async function collectStartupDiagnostics(root: string, config: ProjectConfig): Promise<StartupDiagnostic[]> {
+async function collectStartupDiagnostics(root: string, config: ProjectConfig, providerStore: ProviderRuntimeStore): Promise<StartupDiagnostic[]> {
   const diagnostics: StartupDiagnostic[] = [];
   const markerPath = join(root, ".novelfork", "running.pid");
 
@@ -512,7 +525,7 @@ async function collectStartupDiagnostics(root: string, config: ProjectConfig): P
     });
   }
 
-  diagnostics.push(buildProviderAvailabilityDiagnostics(buildProviderDiagnosticEntries(config)));
+  diagnostics.push(buildProviderAvailabilityDiagnostics(await buildProviderDiagnosticEntries(config, providerStore)));
   return diagnostics;
 }
 
@@ -631,6 +644,7 @@ export async function startStudioServer(
   });
 
   const { app, ctx } = createStudioServer(config, root);
+  const startupProviderStore = ctx.providerStore ?? new ProviderRuntimeStore();
 
   // Serve frontend static files — single process for API + frontend
   const staticProvider = options?.staticProvider
@@ -658,6 +672,24 @@ export async function startStudioServer(
     const indexHtmlReady = staticProvider ? await staticProvider.hasIndexHtml() : false;
     const artifactCandidates = [join(root, "dist", "novelfork.exe"), join(root, "dist", "novelfork")];
     const artifactPath = artifactCandidates.find((candidate) => existsSyncInit(candidate));
+    const runtimeMode = detectRuntimeMode();
+    const compileSmoke = artifactPath && indexHtmlReady
+      ? {
+          status: "success" as const,
+          reason: "单文件产物与静态入口均可用",
+          note: artifactPath,
+        }
+      : runtimeMode.isProd
+        ? {
+            status: "failed" as const,
+            reason: artifactPath ? "静态资源入口缺失" : "单文件产物缺失",
+            note: artifactPath ?? artifactCandidates.join(" | "),
+          }
+        : {
+            status: "skipped" as const,
+            reason: artifactPath ? "源码启动静态入口缺失" : "源码启动未检查单文件产物",
+            note: artifactPath ?? artifactCandidates.join(" | "),
+          };
 
     return {
       ...(bootstrapSummary ? { projectBootstrap: bootstrapSummary } : {}),
@@ -672,17 +704,7 @@ export async function startStudioServer(
               ? "使用文件系统静态资源启动"
               : "未提供前端静态资源，启动为 API-only 模式",
       },
-      compileSmoke: artifactPath && indexHtmlReady
-        ? {
-            status: "success",
-            reason: "单文件产物与静态入口均可用",
-            note: artifactPath,
-          }
-        : {
-            status: "failed",
-            reason: artifactPath ? "静态资源入口缺失" : "单文件产物缺失",
-            note: artifactPath ?? artifactCandidates.join(" | "),
-          },
+      compileSmoke,
       diagnostics,
     };
   };
@@ -696,13 +718,13 @@ export async function startStudioServer(
     diagnostics?: readonly StartupDiagnostic[],
   ) => {
     const currentConfig = await loadProjectConfig(root, { requireApiKey: false });
-    const resolvedDiagnostics = diagnostics ?? await collectStartupDiagnostics(root, currentConfig);
+    const resolvedDiagnostics = diagnostics ?? await collectStartupDiagnostics(root, currentConfig, startupProviderStore);
     const summary = await runStartupOrchestrator(ctx.state, await buildStartupOptions(bootstrapSummary, resolvedDiagnostics));
     ctx.setStartupSummary(summary);
     return summary;
   };
 
-  const startupDiagnostics = await collectStartupDiagnostics(root, config);
+  const startupDiagnostics = await collectStartupDiagnostics(root, config, startupProviderStore);
   const startupSummary = await runStartupRecovery(projectBootstrap, startupDiagnostics);
   ctx.setStartupRecoveryRunner(() => runStartupRecovery({
     status: "skipped",

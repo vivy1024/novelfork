@@ -970,12 +970,12 @@ export function createAdminRouter(
 
   app.post("/resources/recovery/session-store", async (c) => {
     if (!options?.cleanupSessionStore) {
-      return c.json({ error: "Session-store cleanup unavailable" }, 503);
+      return c.json({ error: "Session-store quarantine unavailable" }, 503);
     }
 
     const startup = normalizeStartupSummary(await options.cleanupSessionStore());
     if (!startup) {
-      return c.json({ error: "Session-store cleanup unavailable" }, 503);
+      return c.json({ error: "Session-store quarantine unavailable" }, 503);
     }
 
     const [stats, storage] = await Promise.all([getResourceStats(root), getStorageSnapshot(true, root)]);
@@ -985,13 +985,13 @@ export function createAdminRouter(
       requestKind: "resource-monitor",
       cache: {
         status: "bypass",
-        scope: "session-store-cleanup",
+        scope: "session-store-quarantine",
         ageMs: 0,
       },
-      details: `repair=session-store;failed=${startup.recoveryReport.counts.failed}`,
+      details: `quarantine=session-store;failed=${startup.recoveryReport.counts.failed}`,
     });
 
-    return c.json({ stats, storage, startup, sessionStoreCleanupTriggered: true });
+    return c.json({ stats, storage, startup, sessionStoreQuarantineTriggered: true });
   });
 
   app.post("/resources/recovery/worktree-pollution", async (c) => {

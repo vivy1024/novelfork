@@ -8,7 +8,7 @@
 
 | Spec | 角色 | 当前进度 | 执行口径 |
 |---|---|---:|---|
-| `novel-creation-workbench-complete-flow` | 当前唯一主线 | 45 / 45 | 小说创作工作台完整闭环已完成最终验证；后续只能基于新 spec 或明确维护任务继续推进，不能恢复 mock/fake/noop 假成功。 |
+| `novel-creation-workbench-complete-flow` | 当前唯一主线 | 49 / 53 | Phase 0-6 已完成最终验证；Phase 7 正在承接透明过渡项转正与运行诊断收敛，不能恢复 mock/fake/noop 假成功。 |
 
 除 `novel-creation-workbench-complete-flow` 外，其余 spec 已归档到 `.kiro/specs/archive/`。归档 spec 只作为历史、参考或可复用资产来源，不再作为当前任务入口。
 
@@ -55,6 +55,7 @@
 - Phase 4 继续补经纬、大纲、发布检查与导出。
 - Phase 5 收敛状态模型、真实统计和 typecheck 阻塞项。
 - Phase 6 执行 mock scan、浏览器闭环验收和最终测试报告。
+- Phase 7 收敛透明过渡项、启动健康诊断、E2E 临时项目根诊断、process-memory/prompt-preview/unsupported 边界和最终维护验收。
 - 所有 AI 输出必须先进入预览、候选稿或草稿，用户确认后才影响正式章节。
 - 未接入能力继续用 unsupported / transparent placeholder，禁止恢复假成功。
 
@@ -119,6 +120,6 @@
 
 ## 当前后续口径
 
-1. `novel-creation-workbench-complete-flow` 已完成 45/45 验证任务。
-2. 后续新增功能、遗留透明过渡项转正或运行诊断清理，应先建立新的 spec 或明确维护任务。
-3. 当前已完成任务不得作为恢复 mock/fake/noop 假成功的理由；透明过渡项仍按报告继续透明表达。
+1. `novel-creation-workbench-complete-flow` 已新增 Phase 7，当前进度为 49/53。
+2. Phase 7 只处理已透明记录的过渡项和运行诊断收敛，不扩大到新的产品大功能。
+3. Phase 0-6 已完成任务不得作为恢复 mock/fake/noop 假成功的理由；Phase 7 未完成前，相关透明过渡项仍按报告继续透明表达。

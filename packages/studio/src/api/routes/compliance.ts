@@ -27,6 +27,8 @@ interface LoadedChapter {
   readonly title: string;
   readonly content: string;
   readonly aiTasteScore: number;
+  readonly status?: string;
+  readonly auditIssues?: ReadonlyArray<string>;
 }
 
 function isSupportedPlatform(value: unknown): value is SupportedPlatform {
@@ -89,11 +91,15 @@ async function loadChapters(ctx: RouterContext, bookId: string, body: Record<str
   return Promise.all(index.map(async (meta) => {
     const record = meta as Record<string, unknown>;
     const chapterNumber = typeof record.number === "number" ? record.number : 0;
+    const rawStatus = typeof record.status === "string" ? record.status : undefined;
+    const rawAuditIssues = Array.isArray(record.auditIssues) ? record.auditIssues.filter((item): item is string => typeof item === "string") : undefined;
     return {
       chapterNumber,
       title: typeof record.title === "string" ? record.title : `第${chapterNumber}章`,
       content: await readChapterFile(ctx, bookId, chapterNumber),
       aiTasteScore: resolveChapterAiScore(record, body, chapterNumber),
+      ...(rawStatus ? { status: rawStatus } : {}),
+      ...(rawAuditIssues ? { auditIssues: rawAuditIssues } : {}),
     };
   }));
 }
@@ -121,6 +127,8 @@ function toPublishChapters(chapters: ReadonlyArray<LoadedChapter>): ReadonlyArra
     title: chapter.title,
     content: chapter.content,
     aiTasteScore: chapter.aiTasteScore,
+    ...(chapter.status ? { status: chapter.status } : {}),
+    ...(chapter.auditIssues ? { auditIssues: chapter.auditIssues } : {}),
   }));
 }
 

@@ -1,5 +1,5 @@
 import { existsSync, rmSync } from "node:fs";
-import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import { isPathInsideRoot } from "./git-utils.js";
@@ -49,7 +49,8 @@ export interface SessionStoreConsistencyInspection {
 
 export interface CleanupOrphanSessionHistoryResult {
   readonly sessionStoreDir: string;
-  readonly removedHistoryIds: readonly string[];
+  readonly quarantineDir: string;
+  readonly quarantinedHistoryIds: readonly string[];
 }
 
 function success(
@@ -222,13 +223,18 @@ export async function cleanupOrphanSessionHistoryFiles(sessionStoreDir: string):
     throw new Error(`sessions.json 解析失败：${inspection.parseError}`);
   }
 
+  const quarantineDir = join(sessionStoreDir, "session-history-orphans");
+  await mkdir(quarantineDir, { recursive: true });
   await Promise.all(
-    inspection.orphanHistoryIds.map((sessionId) => rm(join(inspection.historyDir, `${sessionId}.json`), { force: true })),
+    inspection.orphanHistoryIds.map((sessionId) =>
+      rename(join(inspection.historyDir, `${sessionId}.json`), join(quarantineDir, `${sessionId}.json`)),
+    ),
   );
 
   return {
     sessionStoreDir,
-    removedHistoryIds: inspection.orphanHistoryIds,
+    quarantineDir,
+    quarantinedHistoryIds: inspection.orphanHistoryIds,
   };
 }
 
@@ -248,9 +254,9 @@ export async function checkSessionStoreConsistency(sessionStoreDir: string): Pro
   }
 
   if (inspection.orphanHistoryIds.length > 0) {
-    return failed(
+    return skipped(
       "session-store",
-      "会话存储存在孤儿历史文件",
+      "会话存储存在孤儿历史文件，已保留为可恢复记录",
       `orphan=${inspection.orphanHistoryIds.join(",")}`,
       {
         sessionStoreDir,
@@ -293,8 +299,11 @@ export function buildWorktreePollutionDiagnostics(
   const externalWorktrees = worktrees
     .map((entry) => normalizeDiagnosticPath(entry.path))
     .filter((path) => !isPathInsideRoot(path, normalizedProjectRoot));
-  const ignoredExternalWorktrees = externalWorktrees.filter((path) => ignoredPaths.has(path));
-  const actionableExternalWorktrees = externalWorktrees.filter((path) => !ignoredPaths.has(path));
+  const parentWorktreeRoots = externalWorktrees.filter((path) => isPathInsideRoot(normalizedProjectRoot, path));
+  const hostContextWorktrees = externalWorktrees.filter((path) => parentWorktreeRoots.some((root) => isPathInsideRoot(path, root)));
+  const pollutionCandidates = externalWorktrees.filter((path) => !hostContextWorktrees.includes(path));
+  const ignoredExternalWorktrees = pollutionCandidates.filter((path) => ignoredPaths.has(path));
+  const actionableExternalWorktrees = pollutionCandidates.filter((path) => !ignoredPaths.has(path));
 
   if (actionableExternalWorktrees.length > 0) {
     return failed(
@@ -303,6 +312,18 @@ export function buildWorktreePollutionDiagnostics(
       actionableExternalWorktrees.join(" | "),
       {
         externalWorktrees: actionableExternalWorktrees,
+        ignoredExternalWorktrees,
+      },
+    );
+  }
+
+  if (hostContextWorktrees.length > 0) {
+    return skipped(
+      "git-worktree-pollution",
+      "当前项目根位于父级 git worktree 内，外部 worktree 仅作为宿主仓库上下文记录",
+      hostContextWorktrees.join(" | "),
+      {
+        hostContextWorktrees,
         ignoredExternalWorktrees,
       },
     );
@@ -326,19 +347,38 @@ export function buildWorktreePollutionDiagnostics(
 
 export function buildProviderAvailabilityDiagnostics(providers: ReadonlyArray<ProviderDiagnosticEntry>): StartupDiagnostic {
   const enabledProviders = providers.filter((provider) => provider.enabled !== false);
+  const disabled = providers.filter((provider) => provider.enabled === false).map((provider) => provider.id);
   const configured = enabledProviders.filter((provider) => provider.apiKeyConfigured === true).map((provider) => provider.id);
   const missing = enabledProviders.filter((provider) => provider.apiKeyConfigured !== true).map((provider) => provider.id);
+  const note = `configured=${configured.join(",") || "none"};missing=${missing.join(",") || "none"};disabled=${disabled.join(",") || "none"}`;
+  const details = { configured, missing, disabled };
+
+  if (providers.length === 0) {
+    return skipped(
+      "provider-availability",
+      "未配置启用供应商，AI 功能保持未启用",
+      note,
+      details,
+    );
+  }
+
+  if (enabledProviders.length === 0) {
+    return skipped(
+      "provider-availability",
+      "所有供应商均已禁用，AI 功能保持未启用",
+      note,
+      details,
+    );
+  }
 
   if (missing.length > 0) {
     return skipped(
       "provider-availability",
       "部分启用供应商缺少 API Key",
-      `configured=${configured.join(",") || "none"};missing=${missing.join(",")}`,
-      { configured, missing },
+      note,
+      details,
     );
   }
 
-  return success("provider-availability", "启用供应商均已配置", `configured=${configured.join(",") || "none"}`, {
-    configured,
-  });
+  return success("provider-availability", "至少一个启用供应商已配置 API Key", note, details);
 }

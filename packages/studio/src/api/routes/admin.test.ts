@@ -266,7 +266,7 @@ describe("createAdminRouter", () => {
         failures: [
           { bookId: "demo-book", phase: "migration", message: "runtime repair failed" },
           { phase: "search-index", message: "search rebuild failed" },
-          { phase: "session-store", message: "orphan=demo-session" },
+          { phase: "session-store", message: "sessions.json 解析失败：Unexpected token" },
           { phase: "git-worktree-pollution", message: "D:/DESKTOP/sub2api/worktrees/demo" },
           { phase: "compile-smoke", message: "index missing" },
         ],
@@ -301,9 +301,9 @@ describe("createAdminRouter", () => {
         expect.objectContaining({
           phase: "session-store",
           action: expect.objectContaining({
-            kind: "cleanup-session-history",
-            label: "清理孤儿会话历史",
-            endpoint: "/api/admin/resources/recovery/session-store",
+            kind: "manual-check",
+            label: "检查会话存储文件",
+            detail: expect.stringContaining("Unexpected token"),
           }),
         }),
         expect.objectContaining({
@@ -426,7 +426,7 @@ describe("createAdminRouter", () => {
     });
   });
 
-  it("executes session-store cleanup and worktree ignore recovery endpoints", async () => {
+  it("executes session-store quarantine and worktree ignore recovery endpoints", async () => {
     const cleanupSessionStore = vi.fn(async () => ({
       delivery: {
         staticMode: "embedded",
@@ -469,7 +469,7 @@ describe("createAdminRouter", () => {
     const cleanupResponse = await app.request("http://localhost/resources/recovery/session-store", { method: "POST" });
     expect(cleanupResponse.status).toBe(200);
     expect(cleanupSessionStore).toHaveBeenCalledTimes(1);
-    await expect(cleanupResponse.json()).resolves.toMatchObject({ sessionStoreCleanupTriggered: true });
+    await expect(cleanupResponse.json()).resolves.toMatchObject({ sessionStoreQuarantineTriggered: true });
 
     const ignoreResponse = await app.request("http://localhost/resources/recovery/worktree-pollution", { method: "POST" });
     expect(ignoreResponse.status).toBe(200);

@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 const frontendPort = 4587;
 const apiPort = 4589;
 const e2eProjectRoot = resolve(__dirname, ".novelfork", `e2e-workspace-flow-${Date.now()}`).replace(/\\/g, "/");
+const e2eSessionStoreDir = `${e2eProjectRoot}/.runtime/sessions`;
 
 export default defineConfig({
   testDir: "./e2e",
@@ -22,6 +23,9 @@ export default defineConfig({
       url: `http://127.0.0.1:${apiPort}/api/books`,
       timeout: 120_000,
       reuseExistingServer: false,
+      env: {
+        NOVELFORK_SESSION_STORE_DIR: e2eSessionStoreDir,
+      },
       stdout: "pipe",
       stderr: "pipe",
     },
