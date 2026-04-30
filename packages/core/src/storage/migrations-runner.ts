@@ -24,6 +24,7 @@ function resolveDefaultMigrationsDir(): string {
     join(process.cwd(), "src", "storage", "migrations"),
     join(process.cwd(), "..", "core", "src", "storage", "migrations"),
     join(process.cwd(), "packages", "core", "src", "storage", "migrations"),
+    join(process.cwd(), "..", "packages", "core", "src", "storage", "migrations"),
   ];
   const existingPath = candidatePaths.find((candidate) => existsSync(candidate));
   return existingPath ?? candidatePaths[0]!;

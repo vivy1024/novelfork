@@ -529,13 +529,15 @@ async function collectStartupDiagnostics(root: string, config: ProjectConfig, pr
   return diagnostics;
 }
 
-function logStartupHealthSummary(summary: StartupOrchestratorSummary): void {
+function logStartupHealthSummary(summary: StartupOrchestratorSummary, options?: { readonly includeWarnings?: boolean }): void {
   for (const healthCheck of summary.healthChecks) {
+    if (healthCheck.status === "healthy") continue;
+    if (healthCheck.status === "warning" && !options?.includeWarnings) continue;
     logStartupEvent({
-      level: healthCheck.status === "error" ? "error" : healthCheck.status === "warning" ? "warn" : "info",
+      level: healthCheck.status === "error" ? "error" : "warn",
       component: `startup.health.${healthCheck.phase}`,
       msg: healthCheck.title,
-      ok: healthCheck.status === "healthy",
+      ok: false,
       skipped: healthCheck.status === "warning",
       reason: healthCheck.summary,
       extra: {
@@ -551,7 +553,7 @@ function logStartupHealthSummary(summary: StartupOrchestratorSummary): void {
 export async function startStudioServer(
   root: string,
   port = 4567,
-  options?: { readonly staticDir?: string; readonly staticProvider?: StaticProvider; readonly staticMode?: StartupStaticMode },
+  options?: { readonly staticDir?: string; readonly staticProvider?: StaticProvider; readonly staticMode?: StartupStaticMode; readonly foregroundDiagnostics?: boolean },
 ): Promise<void> {
   // Auto-init project directory if novelfork.json doesn't exist (Zeabur / Docker deployment)
   const { existsSync: existsSyncInit } = await import("node:fs");
@@ -731,8 +733,10 @@ export async function startStudioServer(
     reason: "当前进程已完成启动初始化，手动重跑仅刷新恢复与交付摘要",
     note: configPathInit,
   }));
-  logStartupHealthSummary(startupSummary);
-  console.log("Startup recovery report:", JSON.stringify(startupSummary.recoveryReport));
+  logStartupHealthSummary(startupSummary, { includeWarnings: options?.foregroundDiagnostics });
+  if (options?.foregroundDiagnostics) {
+    console.log("Startup recovery report:", JSON.stringify(startupSummary.recoveryReport));
+  }
 
   if (staticProvider) {
     app.get("*", async (c) => {
