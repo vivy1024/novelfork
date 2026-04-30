@@ -10,6 +10,7 @@ import type {
   TextFileResource,
   WorkspaceResourceSnapshot,
 } from "../../shared/contracts";
+import { normalizeBookStatus, normalizeCandidateStatus, normalizeChapterStatus, normalizeBibleEntryStatus } from "../../../../core/src/models/status";
 
 export type StudioResourceKind =
   | "book"
@@ -77,16 +78,20 @@ export function buildStudioResourceTree(input: StudioResourceTreeInput): readonl
   const formalChapterNodes = chapters.map((chapter) => toChapterNode(book.id, chapter));
   const generatedNodes = generatedChapters.map(toGeneratedChapterNode);
   const draftNodes = drafts.map(toDraftNode);
+  const totalWords = chapters.reduce((sum, chapter) => sum + chapter.wordCount, 0);
+  const draftWordCount = drafts.reduce((sum, draft) => sum + draft.wordCount, 0);
   const bibleCategoryNodes = BIBLE_CATEGORIES.map(({ key, title }) => {
     const entryNodes = bibleEntries
       .filter((entry) => entry.category === key)
       .map((entry) => toBibleEntryNode(book.id, entry));
+    const count = entryNodes.length > 0 ? entryNodes.length : bibleCounts[key] ?? 0;
 
     return {
       id: `bible:${String(key)}`,
       kind: "bible-category" as const,
       title,
-      count: bibleCounts[key] ?? entryNodes.length,
+      count,
+      badge: count > 0 ? `${count} 条` : undefined,
       metadata: { bookId: book.id, category: key },
       children: entryNodes,
     };
@@ -96,6 +101,7 @@ export function buildStudioResourceTree(input: StudioResourceTreeInput): readonl
     id: "group:formal-chapters",
     title: "已有章节",
     children: formalChapterNodes,
+    badge: `${totalWords} 字`,
     emptyState: {
       title: "还没有正式章节",
       description: "创建第一章或导入已有稿件后，正式章节会出现在这里。",
@@ -116,6 +122,7 @@ export function buildStudioResourceTree(input: StudioResourceTreeInput): readonl
     id: "group:generated-chapters",
     title: "生成章节",
     children: generatedNodes,
+    badge: `${generatedNodes.length} 个`,
     emptyState: {
       title: "还没有 AI 候选稿",
       description: "生成下一章会先进入候选区，不会覆盖正式章节。",
@@ -128,6 +135,7 @@ export function buildStudioResourceTree(input: StudioResourceTreeInput): readonl
     id: "group:drafts",
     title: "草稿",
     children: draftNodes,
+    badge: `${draftWordCount} 字`,
     emptyState: {
       title: "草稿箱为空",
       description: "导入章节或另存片段后，未定稿内容会留在这里。",
@@ -141,6 +149,7 @@ export function buildStudioResourceTree(input: StudioResourceTreeInput): readonl
     kind: "outline",
     title: "大纲",
     subtitle: "复用现有 truth / outline 文件入口",
+    metadata: { bookId: book.id, fileName: "volume_outline.md" },
     emptyState: {
       title: "暂无大纲",
       description: "后续可从 truth 文件或章节规划导入大纲。",
@@ -178,12 +187,14 @@ export function buildStudioResourceTree(input: StudioResourceTreeInput): readonl
     id: "group:materials",
     title: "素材",
     children: materials.map((material) => toMaterialNode(book.id, material)),
+    badge: `${materials.length} 个`,
   });
 
   const publishReportsGroup = groupNode({
     id: "group:publish-reports",
     title: "发布报告",
     children: publishReports.map(toPublishReportNode),
+    badge: `${publishReports.length} 份`,
   });
 
   return [
@@ -192,11 +203,12 @@ export function buildStudioResourceTree(input: StudioResourceTreeInput): readonl
       kind: "book",
       title: book.title,
       subtitle: `${book.genre} · ${book.platform}`,
-      status: book.status,
-      count: book.chapterCount,
+      status: normalizeBookStatus(book.status),
+      badge: `${totalWords} 字`,
+      count: chapters.length,
       metadata: {
         bookId: book.id,
-        totalWords: book.totalWords,
+        totalWords,
         updatedAt: book.updatedAt,
       },
       children: [volumeNode, generatedGroup, draftsGroup, outlineNode, bibleGroup, storyFilesGroup, truthFilesGroup, materialsGroup, publishReportsGroup],
@@ -208,12 +220,14 @@ function groupNode({
   id,
   title,
   children,
+  badge,
   emptyState,
   forceEmptyWhenEveryChildCountIsZero = false,
 }: {
   readonly id: string;
   readonly title: string;
   readonly children: readonly StudioResourceNode[];
+  readonly badge?: string;
   readonly emptyState?: StudioResourceEmptyState;
   readonly forceEmptyWhenEveryChildCountIsZero?: boolean;
 }): StudioResourceNode {
@@ -226,7 +240,8 @@ function groupNode({
     id,
     kind: "group",
     title,
-    count: children.reduce((sum, child) => sum + (child.count ?? 1), 0),
+    badge,
+    count: children.length,
     children,
     emptyState: shouldShowEmptyState ? emptyState : undefined,
   };
@@ -238,7 +253,7 @@ function toChapterNode(bookId: string, chapter: ChapterSummary): StudioResourceN
     kind: "chapter",
     title: chapter.title,
     subtitle: `第 ${chapter.number} 章 · ${chapter.wordCount} 字`,
-    status: chapter.status,
+    status: normalizeChapterStatus(chapter.status),
     count: chapter.wordCount,
     metadata: {
       bookId,
@@ -256,7 +271,7 @@ function toGeneratedChapterNode(candidate: GeneratedChapterCandidate): StudioRes
     kind: "generated-chapter",
     title: candidate.title,
     subtitle: candidate.targetChapterId ? `目标章节 ${candidate.targetChapterId}` : "未指定目标章节",
-    status: candidate.status,
+    status: normalizeCandidateStatus(candidate.status),
     badge: candidate.source,
     metadata: {
       bookId: candidate.bookId,
@@ -292,6 +307,7 @@ function toBibleEntryNode(bookId: string, entry: BibleEntryResource): StudioReso
     kind: "bible-entry",
     title: entry.title,
     subtitle: entry.summary,
+    status: normalizeBibleEntryStatus(entry.status),
     metadata: {
       bookId,
       category: entry.category,
@@ -355,6 +371,7 @@ function toPublishReportNode(report: PublishReportResource): StudioResourceNode 
     metadata: {
       channel: report.channel,
       updatedAt: report.updatedAt,
+      content: report.content,
     },
   };
 }

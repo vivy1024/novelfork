@@ -63,6 +63,10 @@ export function checkPublishReadiness(
     sensitiveScan,
     aiRatio,
     formatCheck,
+    continuity: {
+      status: "unknown",
+      reason: "连续性指标尚未接入发布检查数据源。",
+    },
     totalBlockCount,
     totalWarnCount,
     totalSuggestCount,

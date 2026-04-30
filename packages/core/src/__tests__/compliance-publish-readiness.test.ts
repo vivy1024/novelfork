@@ -17,6 +17,8 @@ describe("publish readiness", () => {
     expect(report.aiRatio.chapters[1]!.isAboveThreshold).toBe(true);
     expect(report.formatCheck.chapterCount).toBe(2);
     expect(report.status).toBe("blocked");
+    expect(report.continuity.status).toBe("unknown");
+    expect(report.continuity.reason).toContain("连续性");
   });
 
   it("returns ready when no block or warning exists", () => {

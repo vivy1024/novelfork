@@ -20,6 +20,7 @@ export interface MockDebtItem {
 }
 
 const OWNER_SPEC = "project-wide-real-runtime-cleanup";
+const NOVEL_CREATION_WORKBENCH_SPEC = "novel-creation-workbench-complete-flow";
 
 export const MOCK_DEBT_ITEMS = [
   {
@@ -295,6 +296,41 @@ export const MOCK_DEBT_ITEMS = [
     verification: [
       "生产源码 mock scan 不发现 CLI 命中",
       "测试目录 mock 不作为产品债务处理",
+    ],
+  },
+  {
+    id: "publish-readiness-continuity-placeholder",
+    module: "Publish readiness continuity placeholder",
+    files: [
+      "packages/core/src/compliance/publish-readiness.ts",
+      "packages/studio/src/api/routes/compliance.ts",
+    ],
+    currentBehavior: "发布检查已接入敏感词、AI 比例和格式检查真实数据；连续性指标缺少发布检查数据源时返回 status: unknown 与明确原因，不计入 ready 成功。",
+    userRisk: "medium",
+    status: "transparent-placeholder",
+    targetBehavior: "后续接入连续性审计事实源后，continuity 必须来自真实审计结果；未接入前保持 unknown，禁止固定成功。",
+    ownerSpec: NOVEL_CREATION_WORKBENCH_SPEC,
+    verification: [
+      "publish readiness 测试断言 continuity.status 为 unknown 且包含未接入原因",
+      "Workspace 发布报告展示 unknown 连续性，不渲染为真实通过",
+      "mock debt scan 将连续性未接入文案登记为透明占位",
+    ],
+  },
+  {
+    id: "workspace-outline-bible-placeholders",
+    module: "Workspace outline and bible fallback placeholders",
+    files: [
+      "packages/studio/src/app-next/workspace/resource-view-registry.tsx",
+    ],
+    currentBehavior: "Workspace 大纲编辑器和经纬分类视图已接入真实 bookId/endpoint 时可读取和保存；缺少 bookId 或分类映射时显示 UnsupportedCapability，避免伪造保存或编辑成功。",
+    userRisk: "medium",
+    status: "transparent-placeholder",
+    targetBehavior: "保持缺少事实上下文时 disabled/unsupported；后续补齐 bookId 与分类映射后再启用真实读写，不得返回假成功。",
+    ownerSpec: NOVEL_CREATION_WORKBENCH_SPEC,
+    verification: [
+      "resource view 测试覆盖大纲/经纬真实路径或 unsupported 透明路径",
+      "缺少 bookId 或分类映射时显示 UnsupportedCapability",
+      "mock debt scan 将暂未接入文案登记为透明占位",
     ],
   },
 ] as const satisfies readonly MockDebtItem[];

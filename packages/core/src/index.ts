@@ -1,6 +1,7 @@
 // Models
 export { type BookConfig, type Platform, type Genre, type BookStatus, type FanficMode, BookConfigSchema, PlatformSchema, GenreSchema, BookStatusSchema, FanficModeSchema } from "./models/book.js";
 export { type ChapterMeta, type ChapterStatus, ChapterMetaSchema, ChapterStatusSchema } from "./models/chapter.js";
+export { type BookStatus as CanonicalBookStatus, type ChapterStatus as CanonicalChapterStatus, type CandidateStatus, type BibleEntryStatus, BookStatusSchema as CanonicalBookStatusSchema, ChapterStatusSchema as CanonicalChapterStatusSchema, CandidateStatusSchema, BibleEntryStatusSchema, normalizeBookStatus, normalizeChapterStatus, normalizeCandidateStatus, normalizeBibleEntryStatus } from "./models/status.js";
 export { type ProjectConfig, type LLMConfig, type NotifyChannel, type DetectionConfig, type QualityGates, type AgentLLMOverride, type InputGovernanceMode, ProjectConfigSchema, LLMConfigSchema, AgentLLMOverrideSchema, DetectionConfigSchema, QualityGatesSchema, InputGovernanceModeSchema } from "./models/project.js";
 export { type CurrentState, type ParticleLedger, type PendingHooks, type PendingHook, type LedgerEntry } from "./models/state.js";
 export { type GenreProfile, type ParsedGenreProfile, GenreProfileSchema, parseGenreProfile } from "./models/genre-profile.js";

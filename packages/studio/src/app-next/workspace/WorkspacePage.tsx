@@ -11,7 +11,8 @@ import { BiblePanel } from "./BiblePanel";
 import { PublishPanel } from "./PublishPanel";
 import { fetchJson, postApi, useApi } from "../../hooks/use-api";
 import type { AiAction, AiGateResult } from "../../lib/ai-gate";
-import type { BookDetail, ChapterSummary, CreateChapterResponse, DraftResource, GeneratedChapterCandidate } from "../../shared/contracts";
+import type { BookDetail, ChapterSummary, CreateChapterResponse, DraftResource, GeneratedChapterCandidate, PublishReportResource } from "../../shared/contracts";
+import { normalizeBookStatus, normalizeChapterStatus } from "../../../../core/src/models/status";
 import { ChapterHookGenerator, type GeneratedHookOption } from "../../components/writing-tools/ChapterHookGenerator";
 import { DialogueAnalysis, type DialogueAnalysisResult } from "../../components/writing-tools/DialogueAnalysis";
 import { RhythmChart, type RhythmChartAnalysis } from "../../components/writing-tools/RhythmChart";
@@ -70,6 +71,13 @@ interface BookDetailResponse {
     readonly fileName?: string;
   }>;
   readonly nextChapter: number;
+}
+
+interface BookExportResponse {
+  readonly fileName: string;
+  readonly contentType: string;
+  readonly content: string;
+  readonly chapterCount: number;
 }
 
 interface CandidatesResponse {
@@ -276,10 +284,20 @@ export function WorkspacePage({
   const [creatingChapter, setCreatingChapter] = useState(false);
   const [createChapterError, setCreateChapterError] = useState<string | null>(null);
   const [workspaceNotice, setWorkspaceNotice] = useState<string | null>(null);
+  const [showExportPanel, setShowExportPanel] = useState(false);
+  const [exportFormat, setExportFormat] = useState<"markdown" | "txt">("markdown");
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [exportResult, setExportResult] = useState<BookExportResponse | null>(null);
+  const [publishReports, setPublishReports] = useState<PublishReportResource[]>([]);
 
   useEffect(() => {
     setCreateChapterError(null);
     setWorkspaceNotice(null);
+    setShowExportPanel(false);
+    setExportError(null);
+    setExportResult(null);
+    setPublishReports([]);
   }, [activeBookId]);
 
   const refreshWorkspaceResources: WorkspaceResourceMutationHandler = async (target) => {
@@ -296,7 +314,7 @@ export function WorkspacePage({
   const treeInput: StudioResourceTreeInput = useMemo(() => {
     if (!bookDetail?.book) return {
       book: {
-        id: "", title: "加载中...", status: "active", platform: "other", genre: "",
+        id: "", title: "加载中...", status: "drafting", platform: "other", genre: "",
         targetChapters: 0, chapters: 0, chapterCount: 0, lastChapterNumber: 0,
         totalWords: 0, approvedChapters: 0, pendingReview: 0, pendingReviewChapters: 0,
         failedReview: 0, failedChapters: 0, updatedAt: "", createdAt: "", chapterWordCount: 0, language: null,
@@ -306,12 +324,12 @@ export function WorkspacePage({
     const b = bookDetail.book;
     const chs = bookDetail.chapters ?? [];
     const chaptersFromBook: ChapterSummary[] = chs.map((c) => ({
-      number: c.number, title: c.title ?? `第${c.number}章`, status: c.status ?? "draft",
+      number: c.number, title: c.title ?? `第${c.number}章`, status: normalizeChapterStatus(c.status),
       wordCount: c.wordCount ?? 0, auditIssueCount: 0, updatedAt: "", fileName: c.fileName ?? null,
     }));
     const chapters = [...chaptersFromBook].sort((left, right) => left.number - right.number);
     const book: BookDetail = {
-      id: b.id, title: b.title, status: b.status ?? "active", platform: (b.platform ?? "other") as BookDetail["platform"],
+      id: b.id, title: b.title, status: normalizeBookStatus(b.status), platform: (b.platform ?? "other") as BookDetail["platform"],
       genre: b.genre ?? "", targetChapters: b.targetChapters ?? 100,
       chapters: chapters.length, chapterCount: chapters.length, lastChapterNumber: Math.max(0, ...chapters.map((chapter) => chapter.number)),
       totalWords: chapters.reduce((s, c) => s + (c.wordCount ?? 0), 0),
@@ -347,9 +365,9 @@ export function WorkspacePage({
       storyFiles,
       truthFiles,
       materials: [],
-      publishReports: [],
+      publishReports,
     };
-  }, [bookDetail, candidatesData, draftsData, storyFilesData, truthFilesData]);
+  }, [bookDetail, candidatesData, draftsData, storyFilesData, truthFilesData, publishReports]);
 
   const tree = useMemo(() => buildStudioResourceTree(treeInput), [treeInput]);
   const defaultNodeId = tree[0]?.children?.[0]?.children?.[0]?.children?.[0]?.id ?? tree[0]?.children?.[0]?.children?.[0]?.id ?? tree[0]?.id ?? "";
@@ -381,6 +399,31 @@ export function WorkspacePage({
     }
   };
 
+  const handleExportBook = async () => {
+    if (!activeBookId) {
+      setExportError("请先选择作品");
+      return;
+    }
+    setExporting(true);
+    setExportError(null);
+    setExportResult(null);
+    try {
+      const response = await fetchJson<BookExportResponse>(`/books/${activeBookId}/export`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ format: exportFormat, scope: "book" }),
+      });
+      setExportResult(response);
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handlePublishReport = (report: PublishReportResource) => {
+    setPublishReports((current) => [report, ...current.filter((item) => item.id !== report.id)]);
+  };
   return (
     <SectionLayout title="创作工作台" description="">
       {createChapterError && <InlineError message={`新建章节失败：${createChapterError}`} />}
@@ -402,7 +445,7 @@ export function WorkspacePage({
             <Button size="sm" variant="default" type="button" disabled={!activeBookId || creatingChapter} title={activeBookId ? undefined : "请先选择作品"} onClick={() => void handleCreateChapter()}>
               {creatingChapter ? "新建中…" : "新建章节"}
             </Button>
-            <Button size="sm" variant="outline" type="button" disabled title="即将推出">导出</Button>
+            <Button size="sm" variant={showExportPanel ? "default" : "outline"} type="button" disabled={!activeBookId} title={activeBookId ? undefined : "请先选择作品"} onClick={() => { setShowExportPanel(!showExportPanel); setShowPublishPanel(false); }}>导出</Button>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -412,16 +455,70 @@ export function WorkspacePage({
       </div>
 
       {workspaceNotice && <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm">{workspaceNotice}</div>}
+      {showExportPanel && (
+        <ExportPanel
+          error={exportError}
+          exporting={exporting}
+          format={exportFormat}
+          result={exportResult}
+          onExport={() => void handleExportBook()}
+          onFormatChange={setExportFormat}
+        />
+      )}
 
       <ResourceWorkspaceLayout
-        explorer={<ResourceTree nodes={tree} selectedNodeId={selectedNode.id} onSelect={(id) => { setSelectedNodeId(id); setShowPublishPanel(false); }} />}
-        editor={showPublishPanel && activeBookId ? <PublishPanel bookId={activeBookId} /> : <WorkspaceEditor candidateApi={candidateApi} chapterApi={chapterApi} node={selectedNode} onResourceMutation={refreshWorkspaceResources} onCandidateResult={(message) => setWorkspaceNotice(message)} />}
+        explorer={<ResourceTree nodes={tree} selectedNodeId={selectedNode.id} onSelect={(id) => { setSelectedNodeId(id); setShowPublishPanel(false); setShowExportPanel(false); }} />}
+        editor={showPublishPanel && activeBookId ? <PublishPanel bookId={activeBookId} onReport={handlePublishReport} /> : <WorkspaceEditor candidateApi={candidateApi} chapterApi={chapterApi} node={selectedNode} onResourceMutation={refreshWorkspaceResources} onCandidateResult={(message) => setWorkspaceNotice(message)} />}
         assistant={<AssistantPanel assistantApi={assistantApi} modelGate={effectiveModelGate} selectedNode={selectedNode} onResourceMutation={refreshWorkspaceResources} />}
       />
     </SectionLayout>
   );
 }
 
+
+function ExportPanel({
+  error,
+  exporting,
+  format,
+  result,
+  onExport,
+  onFormatChange,
+}: {
+  readonly error: string | null;
+  readonly exporting: boolean;
+  readonly format: "markdown" | "txt";
+  readonly result: BookExportResponse | null;
+  readonly onExport: () => void;
+  readonly onFormatChange: (format: "markdown" | "txt") => void;
+}) {
+  return (
+    <div className="mb-3 space-y-3 rounded-lg border border-border bg-card p-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-base font-semibold">导出作品</h2>
+          <p className="text-xs text-muted-foreground">导出范围：全书</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <label className="text-sm">
+            导出格式
+            <select aria-label="导出格式" className="ml-2 rounded border border-border bg-background px-2 py-1 text-sm" value={format} onChange={(event) => onFormatChange(event.target.value === "txt" ? "txt" : "markdown")}>
+              <option value="markdown">Markdown</option>
+              <option value="txt">TXT</option>
+            </select>
+          </label>
+          <Button size="sm" type="button" disabled={exporting} onClick={onExport}>{exporting ? "导出中…" : "开始导出"}</Button>
+        </div>
+      </div>
+      {error && <InlineError message={`导出失败：${error}`} />}
+      {result && (
+        <div className="rounded-lg border border-border bg-background p-3 text-sm">
+          <div className="font-medium">{result.fileName}</div>
+          <div className="text-muted-foreground">{result.contentType} · 已导出 {result.chapterCount} 章</div>
+        </div>
+      )}
+    </div>
+  );
+}
 function ResourceTree({
   nodes,
   onSelect,

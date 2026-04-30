@@ -8,7 +8,7 @@
 
 | Spec | 角色 | 当前进度 | 执行口径 |
 |---|---|---:|---|
-| `novel-creation-workbench-complete-flow` | 当前唯一主线 | 34 / 45 | 推进小说创作工作台完整闭环；继续执行未完成 tasks，不能恢复 mock/fake/noop 假成功。 |
+| `novel-creation-workbench-complete-flow` | 当前唯一主线 | 45 / 45 | 小说创作工作台完整闭环已完成最终验证；后续只能基于新 spec 或明确维护任务继续推进，不能恢复 mock/fake/noop 假成功。 |
 
 除 `novel-creation-workbench-complete-flow` 外，其余 spec 已归档到 `.kiro/specs/archive/`。归档 spec 只作为历史、参考或可复用资产来源，不再作为当前任务入口。
 
@@ -117,8 +117,8 @@
 - [ ] 已明确验证方式：route 测试、UI 测试、docs verify、typecheck、browser audit 或人工说明。
 - [ ] 已确认未接入能力会显示 unsupported / 未接入 / 只读，而不是伪造成功。
 
-## 当前推荐执行顺序
+## 当前后续口径
 
-1. 继续 Phase 4：大纲、发布检查与导出。
-2. 执行 Phase 5：状态模型、真实统计、typecheck 阻塞项。
-3. 执行 Phase 6：mock scan、浏览器闭环验收、最终报告。
+1. `novel-creation-workbench-complete-flow` 已完成 45/45 验证任务。
+2. 后续新增功能、遗留透明过渡项转正或运行诊断清理，应先建立新的 spec 或明确维护任务。
+3. 当前已完成任务不得作为恢复 mock/fake/noop 假成功的理由；透明过渡项仍按报告继续透明表达。

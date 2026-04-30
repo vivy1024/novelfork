@@ -165,17 +165,59 @@ describe("WorkspacePage", () => {
     expect(within(editor).getByRole("button", { name: "放弃候选稿" })).toBeTruthy();
   });
 
-  it("uses explicit registered viewers for outline nodes and transparent unsupported state for structural groups", () => {
+  it("opens the outline node as a real markdown editor and saves volume_outline.md", async () => {
+    const outlineRefetch = vi.fn(async () => undefined);
+    useApiMock.mockImplementation((path: string | null) => {
+      if (path === "/books") return { data: booksResponse, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}`) return { data: bookDetailResponse, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}/candidates`) return { data: candidatesResponse, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}/story-files`) return { data: storyFilesResponse, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}/truth-files`) return { data: truthFilesResponse, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}/drafts`) return { data: draftsResponse, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}/truth-files/volume_outline.md`) return { data: { file: "volume_outline.md", content: "# 卷纲\n\n- 第一卷：灵潮初起" }, loading: false, error: null, refetch: outlineRefetch };
+      return { data: null, loading: false, error: null, refetch: vi.fn() };
+    });
+    putApiMock.mockResolvedValue({ ok: true });
+
     render(<WorkspacePage />);
 
     const explorer = screen.getByRole("complementary", { name: "小说资源管理器" });
     fireEvent.click(within(explorer).getByRole("button", { name: /^大纲$/ }));
-    expect(screen.getByText("OutlineEditor")).toBeTruthy();
-    expect(screen.getByText(/大纲查看与编辑将在后续任务接入真实 story\/truth 文件/)).toBeTruthy();
+    const editor = screen.getByRole("main", { name: "正文编辑区" });
+    expect(within(editor).getByText("OutlineEditor · volume_outline.md")).toBeTruthy();
+    expect(within(editor).getByDisplayValue(/第一卷：灵潮初起/)).toBeTruthy();
+
+    const outlineTextarea = within(editor).getByLabelText("大纲内容") as HTMLTextAreaElement;
+    fireEvent.change(outlineTextarea, { target: { value: "# 新卷纲\n\n- 第二卷：破局" } });
+    await waitFor(() => expect(outlineTextarea.value).toBe("# 新卷纲\n\n- 第二卷：破局"));
+    fireEvent.click(within(editor).getByRole("button", { name: "保存大纲" }));
+    await waitFor(() => expect(putApiMock).toHaveBeenCalledWith(`/books/${TEST_BOOK.id}/truth/volume_outline.md`, { content: "# 新卷纲\n\n- 第二卷：破局" }));
+    expect(outlineRefetch).toHaveBeenCalled();
 
     fireEvent.click(within(explorer).getByRole("button", { name: /^草稿/ }));
     expect(screen.getByText("草稿 当前不可直接编辑")).toBeTruthy();
     expect(screen.getByText(/该资源节点当前只作为结构容器存在/)).toBeTruthy();
+  });
+
+  it("shows a create entry when outline markdown is missing", async () => {
+    useApiMock.mockImplementation((path: string | null) => {
+      if (path === "/books") return { data: booksResponse, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}`) return { data: bookDetailResponse, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}/candidates`) return { data: candidatesResponse, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}/story-files`) return { data: storyFilesResponse, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}/truth-files`) return { data: truthFilesResponse, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}/drafts`) return { data: draftsResponse, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}/truth-files/volume_outline.md`) return { data: { file: "volume_outline.md", content: null }, loading: false, error: null, refetch: vi.fn() };
+      return { data: null, loading: false, error: null, refetch: vi.fn() };
+    });
+
+    render(<WorkspacePage />);
+    const explorer = screen.getByRole("complementary", { name: "小说资源管理器" });
+    fireEvent.click(within(explorer).getByRole("button", { name: /^大纲$/ }));
+    const editor = screen.getByRole("main", { name: "正文编辑区" });
+    expect(within(editor).getByText(/暂无大纲/)).toBeTruthy();
+    fireEvent.click(within(editor).getByRole("button", { name: "创建默认大纲" }));
+    expect(within(editor).getByDisplayValue(/# 大纲/)).toBeTruthy();
   });
 
   it("loads real story and truth file content through the registered markdown viewer", async () => {
@@ -757,7 +799,7 @@ describe("WorkspacePage", () => {
     expect(newChapterButton.getAttribute("title")).toBeNull();
     expect(newChapterButton.className).toContain("bg-primary");
 
-    expect(exportButton.hasAttribute("disabled")).toBe(true);
+    expect(exportButton.hasAttribute("disabled")).toBe(false);
     expect(exportButton.className).toContain("border-border");
     expect(exportButton.className).toContain("hover:bg-muted");
 
@@ -781,6 +823,89 @@ describe("WorkspacePage", () => {
     expect(candidateNode.className).toContain("bg-primary");
     expect(candidateNode.className).toContain("text-primary-foreground");
     expect(selectedNode.getAttribute("aria-current")).toBeNull();
+  });
+
+  it("runs publish readiness from real API data and shows unknown continuity", async () => {
+    fetchJsonMock.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path === `/books/${TEST_BOOK.id}/compliance/publish-readiness` && init?.method === "POST") {
+        return {
+          report: {
+            status: "has-warnings",
+            totalBlockCount: 0,
+            totalWarnCount: 1,
+            totalSuggestCount: 2,
+            sensitiveScan: { totalBlockCount: 0, totalWarnCount: 0, totalSuggestCount: 0 },
+            aiRatio: { overallAiRatio: 0.42 },
+            formatCheck: { issues: [{ type: "missing-synopsis" }] },
+            continuity: { status: "unknown", reason: "连续性审计数据缺失" },
+          },
+        };
+      }
+      if (path === `/books/${TEST_BOOK.id}/chapters/1`) return { content: "测试正文" };
+      if (path === `/books/${TEST_BOOK.id}/chapters/2`) return { content: "第二章正文" };
+      return {};
+    });
+
+    render(<WorkspacePage />);
+    fireEvent.click(screen.getByRole("button", { name: "发布就绪" }));
+    fireEvent.click(screen.getByRole("button", { name: "运行检查" }));
+
+    await waitFor(() => expect(fetchJsonMock).toHaveBeenCalledWith(
+      `/books/${TEST_BOOK.id}/compliance/publish-readiness`,
+      expect.objectContaining({ method: "POST" }),
+    ));
+    expect(await screen.findByText("存在警告")).toBeTruthy();
+    expect(screen.getByText("42%")).toBeTruthy();
+    expect(screen.getByText("unknown")).toBeTruthy();
+    expect(screen.getByText(/连续性审计数据缺失/)).toBeTruthy();
+  });
+
+  it("exports the selected book and shows returned filename and content type", async () => {
+    fetchJsonMock.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path === `/books/${TEST_BOOK.id}/export` && init?.method === "POST") {
+        return {
+          fileName: "book-1.md",
+          contentType: "text/markdown; charset=utf-8",
+          content: "# 第一章\n\n正文",
+          chapterCount: 2,
+        };
+      }
+      if (path === `/books/${TEST_BOOK.id}/chapters/1`) return { content: "测试正文" };
+      if (path === `/books/${TEST_BOOK.id}/chapters/2`) return { content: "第二章正文" };
+      return {};
+    });
+
+    render(<WorkspacePage />);
+    fireEvent.click(screen.getByRole("button", { name: "导出" }));
+
+    expect(screen.getByText("导出作品")).toBeTruthy();
+    expect(screen.getByLabelText("导出格式")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "开始导出" }));
+
+    await waitFor(() => expect(fetchJsonMock).toHaveBeenCalledWith(
+      `/books/${TEST_BOOK.id}/export`,
+      expect.objectContaining({ method: "POST" }),
+    ));
+    expect(await screen.findByText(/book-1\.md/)).toBeTruthy();
+    expect(screen.getByText(/text\/markdown/)).toBeTruthy();
+    expect(screen.getByText(/已导出 2 章/)).toBeTruthy();
+  });
+
+  it("shows a real export error", async () => {
+    fetchJsonMock.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path === `/books/${TEST_BOOK.id}/export` && init?.method === "POST") {
+        throw new Error("chapter read failed");
+      }
+      if (path === `/books/${TEST_BOOK.id}/chapters/1`) return { content: "测试正文" };
+      if (path === `/books/${TEST_BOOK.id}/chapters/2`) return { content: "第二章正文" };
+      return {};
+    });
+
+    render(<WorkspacePage />);
+    fireEvent.click(screen.getByRole("button", { name: "导出" }));
+    fireEvent.click(screen.getByRole("button", { name: "开始导出" }));
+
+    expect(await screen.findByText(/导出失败：chapter read failed/)).toBeTruthy();
   });
 
   it("creates a chapter from the workspace, refreshes resources and opens the new editor", async () => {
