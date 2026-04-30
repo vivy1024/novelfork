@@ -39,6 +39,33 @@ describe("provider adapter registry", () => {
     });
   });
 
+  it("falls back to /v1 when an OpenAI-compatible gateway root returns non-JSON", async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url === "https://api.example.com/models") {
+        return new Response("<html>gateway</html>", { status: 200, headers: { "Content-Type": "text/html" } });
+      }
+      return new Response(JSON.stringify({
+        data: [{ id: "gpt-5-codex", context_window: 192000, max_output_tokens: 8192 }],
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const adapter = createProviderAdapterRegistry().get("openai-compatible");
+
+    const result = await adapter.listModels({
+      providerId: "sub-tokyo",
+      providerName: "Sub Tokyo",
+      baseUrl: "https://api.example.com",
+      apiKey: "sk-test",
+    });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, "https://api.example.com/models", expect.any(Object));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, "https://api.example.com/v1/models", expect.any(Object));
+    expect(result).toMatchObject({
+      success: true,
+      models: [expect.objectContaining({ id: "gpt-5-codex" })],
+    });
+  });
+
   it("tests an OpenAI-compatible target model with a minimal chat request", async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({
       choices: [{ message: { content: "ok" } }],
