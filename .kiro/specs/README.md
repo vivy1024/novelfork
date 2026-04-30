@@ -4,18 +4,19 @@
 
 ## 当前状态
 
-当前只保留一个 active spec：
+当前主线 spec 已完成；下一阶段 spec 处于待审批：
 
 | Spec | 角色 | 当前进度 | 执行口径 |
 |---|---|---:|---|
-| `novel-creation-workbench-complete-flow` | 当前唯一主线 | 49 / 53 | Phase 0-6 已完成最终验证；Phase 7 正在承接透明过渡项转正与运行诊断收敛，不能恢复 mock/fake/noop 假成功。 |
+| `novel-creation-workbench-complete-flow` | 当前主线收尾完成 | 53 / 53 | Phase 0-7 已完成；继续禁止恢复 mock/fake/noop 假成功。 |
+| `longform-cockpit-v1` | 下一阶段待审批 spec | 0 / 15 | 暂不执行；需用户确认 requirements/design/tasks 后再进入实现。 |
 
-除 `novel-creation-workbench-complete-flow` 外，其余 spec 已归档到 `.kiro/specs/archive/`。归档 spec 只作为历史、参考或可复用资产来源，不再作为当前任务入口。
+除上述 spec 外，其余 spec 已归档到 `.kiro/specs/archive/`。归档 spec 只作为历史、参考或可复用资产来源，不再作为当前任务入口。
 
 ## 当前总原则
 
-1. **当前主线只认 `novel-creation-workbench-complete-flow`**
-   - 新工作台闭环、资源管理器、章节/候选/草稿、经纬、大纲、发布检查、导出与最终验收都在该 spec 内推进。
+1. **当前主线已完成，后续实现必须先确认新 spec**
+   - 新工作台闭环、资源管理器、章节/候选/草稿、经纬、大纲、发布检查、导出与最终验收已在 `novel-creation-workbench-complete-flow` 内完成。
    - 旧 `studio-frontend-rewrite` 已归档，只作为新入口和布局基线参考。
    - `project-wide-real-runtime-cleanup`、`ui-quality-cleanup`、`docs-system-rearchitecture` 等已归档底座只作为事实来源和约束引用。
 
@@ -55,7 +56,7 @@
 - Phase 4 继续补经纬、大纲、发布检查与导出。
 - Phase 5 收敛状态模型、真实统计和 typecheck 阻塞项。
 - Phase 6 执行 mock scan、浏览器闭环验收和最终测试报告。
-- Phase 7 收敛透明过渡项、启动健康诊断、E2E 临时项目根诊断、process-memory/prompt-preview/unsupported 边界和最终维护验收。
+- Phase 7 已收敛透明过渡项、启动健康诊断、E2E 临时项目根诊断、process-memory/prompt-preview/unsupported 边界和最终维护验收。
 - 所有 AI 输出必须先进入预览、候选稿或草稿，用户确认后才影响正式章节。
 - 未接入能力继续用 unsupported / transparent placeholder，禁止恢复假成功。
 

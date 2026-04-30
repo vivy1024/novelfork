@@ -367,6 +367,8 @@ vi.mock("@vivy1024/novelfork-core", () => {
     createLLMClient: createLLMClientMock,
     createLogger: vi.fn(() => logger),
     computeAnalytics: vi.fn(() => ({})),
+    normalizeBookStatus: vi.fn((status: unknown) => typeof status === "string" ? status : "idea"),
+    normalizeChapterStatus: vi.fn((status: unknown) => typeof status === "string" ? status : "draft"),
     chatCompletion: chatCompletionMock,
     fetchUrl: fetchUrlMock,
     loadProjectConfig: loadProjectConfigMock,
