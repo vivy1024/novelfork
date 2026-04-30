@@ -1771,7 +1771,7 @@ describe("createStudioServer daemon lifecycle", () => {
     expect(afterPayload.startup.indexedDocuments).toBe(5);
   });
 
-  it("logs structured startup health checks after recovery summary is generated", async () => {
+  it("keeps warning startup health checks out of foreground logs by default", async () => {
     startupOrchestratorMock.mockResolvedValueOnce({
       bookCount: 0,
       migratedBooks: 0,
@@ -1831,19 +1831,7 @@ describe("createStudioServer daemon lifecycle", () => {
       .filter((line) => line.startsWith("{"))
       .map((line) => JSON.parse(line));
 
-    expect(parsedLines).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        component: "startup.health.session-store",
-        ok: false,
-        category: "session",
-        action: "cleanup-session-history",
-      }),
-      expect.objectContaining({
-        component: "startup.health.static-delivery",
-        skipped: true,
-        category: "delivery",
-      }),
-    ]));
+    expect(parsedLines.some((line) => String(line.component).startsWith("startup.health."))).toBe(false);
     consoleLog.mockRestore();
   });
 
