@@ -76,10 +76,10 @@
 - Pipeline runs：`process-memory`
 - Monitor status：无事实源时 `unsupported`
 - Admin users：本地单用户透明占位
-- Writing modes apply：`prompt-preview` / disabled
+- Writing modes：生成端点可返回 `prompt-preview`；apply route 真实落库 candidate/draft
 - 透明 Admin placeholders
 - AI complete streaming：`chunked-buffer`
-- 发布检查连续性：未接入事实源时 `unknown`
+- 发布检查连续性：有审计事实源时返回真实指标；缺事实源时 `unknown`
 - Workspace 大纲/经纬缺少上下文时：`UnsupportedCapability`
 
 #### 内部示例
@@ -247,10 +247,10 @@ pnpm exec playwright test e2e/workspace-creation-flow.spec.ts
 | 轻量 Book Chat 历史 | `process-memory`，仅当前进程临时状态 |
 | Pipeline runs | `process-memory` |
 | Monitor status | 无事实源时 `unsupported` |
-| Writing modes apply | `prompt-preview` + disabled/原因文案 |
-| Admin users | 本地单用户透明占位 |
+| Writing modes apply | 生成端点可返回 `prompt-preview`；apply route 另行持久化 candidate/draft，章节 insert/replace 转候选稿 |
+| Admin users | 本地单用户透明占位，CRUD 返回 `unsupported` |
 | AI complete streaming | `chunked-buffer` |
-| 发布检查连续性 | `unknown`，连续性指标尚未接入发布检查事实源 |
+| 发布检查连续性 | 有章节审计事实源时返回 `passed` / `has-issues` 指标；缺事实源或格式异常时返回 `unknown` |
 | Workspace 大纲/经纬缺上下文 | `UnsupportedCapability`，缺少 `bookId` 或分类映射时不伪造成功 |
 
 ## 10. 本报告的验收结论
@@ -263,8 +263,9 @@ pnpm exec playwright test e2e/workspace-creation-flow.spec.ts
 4. Tailwind 主题 token 与关键按钮状态已有单元测试和浏览器 CSSOM 证据。
 5. Studio `typecheck` 当前已通过。
 6. 最小创作闭环浏览器验收已通过。
-7. Phase 6 最终验证集合已完成；当前 fresh evidence 中没有失败命令。
-8. 透明过渡项和非阻塞运行诊断仍然存在，且必须继续透明表达。
+7. Phase 6 最终验证集合已完成。
+8. Phase 7 透明过渡项已收敛：provider key 提示、发布检查连续性、process-memory 边界、prompt-preview apply 闭环、unsupported 占位上下文均有明确事实源或透明边界。
+9. 透明过渡项和非阻塞运行诊断仍然存在，但必须按本报告口径继续透明表达。
 
 ## 11. 相关验证命令
 

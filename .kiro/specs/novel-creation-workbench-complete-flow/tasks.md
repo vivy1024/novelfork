@@ -362,23 +362,28 @@
   - 验证：`pnpm --filter @vivy1024/novelfork-studio test -- src/api/lib/startup-diagnostics.test.ts src/api/lib/__tests__/startup-orchestrator.test.ts src/api/verify-bun-runtime.test.ts src/api/server.test.ts -t "provider|startup orchestrator|provider configuration reminder|bun startup"` 通过，4 个测试文件/14 个相关测试通过。
   - 验证：`pnpm --dir packages/studio run typecheck` 通过。
 
-- [ ] 50. 将发布检查连续性指标接入真实数据源或保持明确 unknown
+- [x] 50. 将发布检查连续性指标接入真实数据源或保持明确 unknown
   - 为 publish readiness continuity 定义事实源、数据契约和缺失时的 `unknown` 原因。
   - 有真实连续性数据时展示可追溯指标；无事实源时继续透明显示 `unknown`，不得写成通过。
-  - 验证：core compliance 与 studio route 测试覆盖有数据、无数据和异常数据三类路径。
+  - 已新增 `ContinuityCheckResult` 数据契约：`passed` / `has-issues` / `unknown`，事实源为章节索引中的 `auditIssues`；缺少审计事实源返回 `unknown`，格式异常返回 `unknown` + 格式原因。
+  - 已让 compliance route 从章节索引传递 `auditIssues`，有审计数据时返回 `source=chapter-audit-issues`、`checkedChapterCount`、`issueCount`、`score` 与可追溯 issues。
+  - 验证：`pnpm --dir packages/core exec vitest run src/__tests__/compliance-publish-readiness.test.ts` 通过；`pnpm --dir packages/studio exec vitest run src/api/routes/compliance.test.ts` 通过。
 
-- [ ] 51. 将 process-memory 能力转为持久化或明确会话级边界
+- [x] 51. 将 process-memory 能力转为持久化或明确会话级边界
   - 覆盖轻量 Book Chat 历史、Pipeline runs 等当前 process-memory 能力。
   - 对每项能力选择真实持久化、显式 session-only 或正式 unsupported，不允许含糊写成长期保存。
-  - 验证：存储/route/UI 测试覆盖重启后行为或 session-only 提示；docs verify 通过。
+  - 当前收敛口径：轻量 Book Chat 与 Pipeline runs 保持 `process-memory`，API/UI/docs 明确标注“当前进程临时状态，重启后不保证保留”；正式 Session Chat 已走 session/message repository 持久化，不与轻量 Book Chat 混淆。
+  - 验证：`pnpm --dir packages/studio exec vitest run src/api/routes/chat.test.ts src/api/routes/pipeline.test.ts src/components/ChatPanel.test.tsx` 通过。
 
-- [ ] 52. 推进 prompt-preview 能力转入真实候选稿/草稿闭环
+- [x] 52. 推进 prompt-preview 能力转入真实候选稿/草稿闭环
   - 梳理仍显示 `prompt-preview` 的写作能力，优先接入候选稿或草稿，不直接覆盖正式正文。
   - 保留无法接入能力的 disabled/原因文案，不得把预览写成已写入正文。
-  - 验证：writing modes、AI actions、Workspace UI 测试覆盖预览、保存候选稿、另存草稿和用户确认后合并。
+  - 当前收敛口径：生成端点仍可返回 `prompt-preview`；真实落库必须经过 `/writing-modes/apply`，目标为 candidate/draft，正式章节 insert/replace 转候选稿，避免无确认覆盖正文。
+  - 验证：`pnpm --dir packages/studio exec vitest run src/api/routes/writing-modes.test.ts src/app-next/workspace/WorkspacePage.test.tsx` 通过。
 
-- [ ] 53. 补齐 unsupported 占位的上下文和最终维护验收报告
+- [x] 53. 补齐 unsupported 占位的上下文和最终维护验收报告
   - 覆盖 Monitor status、Workspace 大纲/经纬缺少 `bookId` 或分类映射、Admin users 本地单用户占位等 unsupported 口径。
   - 能接入真实上下文的改为真实能力；不能接入的继续明确 unsupported/只读/本地单用户边界。
-  - 更新最终维护验收报告、docs 索引和 mock debt ledger/scan。
-  - 验证：相关 route/UI/unit 测试、mock debt scan、`pnpm --dir packages/studio run typecheck`、`bun run docs:verify`、`git diff --check` 与浏览器回归验收通过。
+  - 已确认 Monitor status 缺事实源时返回 501 `unsupported`，Admin users 为本地单用户 `unsupported`，资源视图缺上下文时走 `UnsupportedCapability`；发布检查连续性已从透明 `unknown` 升级为有事实源时真实指标、无事实源时 `unknown`。
+  - 已更新最终维护验收报告与能力矩阵口径。
+  - 验证：`pnpm --dir packages/studio exec vitest run src/api/routes/monitor.test.ts src/api/routes/admin.test.ts src/app-next/workspace/resource-view-registry.test.ts src/api/lib/mock-debt-ledger.test.ts src/api/lib/mock-debt-scan.test.ts` 通过；`pnpm --dir packages/studio exec tsc --noEmit --pretty false`、`pnpm docs:verify`、`git diff --check` 通过。

@@ -81,6 +81,33 @@ describe("storage SQLite database", () => {
     }
   });
 
+  it("falls back to the SQLite facade ORM when bundled drizzle resolution is unavailable", async () => {
+    const previous = process.env.NOVELFORK_FORCE_STORAGE_ORM_FALLBACK;
+    process.env.NOVELFORK_FORCE_STORAGE_ORM_FALLBACK = "1";
+    const databasePath = await createTempDbPath();
+    const storage = createStorageDatabase({ databasePath });
+
+    try {
+      runStorageMigrations(storage);
+      await storage.db.insert(sessions).values({
+        id: "fallback-session",
+        createdAt: new Date("2026-04-30T00:00:00.000Z"),
+        updatedAt: new Date("2026-04-30T00:00:00.000Z"),
+        messageCount: 0,
+        configJson: "{}",
+        metadataJson: JSON.stringify({ title: "fallback" }),
+      });
+
+      const rows = await storage.db.select().from(sessions).where(eq(sessions.id, "fallback-session"));
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.metadataJson).toBe(JSON.stringify({ title: "fallback" }));
+    } finally {
+      storage.close();
+      if (previous === undefined) delete process.env.NOVELFORK_FORCE_STORAGE_ORM_FALLBACK;
+      else process.env.NOVELFORK_FORCE_STORAGE_ORM_FALLBACK = previous;
+    }
+  });
+
   it("throws on invalid migration SQL and does not mark it applied", async () => {
     const databasePath = await createTempDbPath();
     const migrationsDir = join(databasePath, "..", "bad-migrations");

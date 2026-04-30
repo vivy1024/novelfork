@@ -109,15 +109,132 @@ function createStorageSqliteFacade(sqlite: SQLiteDatabaseLike): StorageSqliteDat
   return facade;
 }
 
+function tableSymbol(table: object, name: string): symbol | undefined {
+  return Object.getOwnPropertySymbols(table).find((symbol) => String(symbol) === `Symbol(drizzle:${name})`);
+}
+
+function tableName(table: object): string {
+  const symbol = tableSymbol(table, "Name");
+  const value = symbol ? (table as Record<symbol, unknown>)[symbol] : undefined;
+  if (typeof value !== "string" || value.length === 0) {
+    throw new Error("Unable to resolve SQLite table name from drizzle table metadata.");
+  }
+  return value;
+}
+
+function tableColumns(table: object): Record<string, { name: string; mapToDriverValue?: (value: unknown) => unknown; mapFromDriverValue?: (value: unknown) => unknown }> {
+  const symbol = tableSymbol(table, "Columns");
+  const value = symbol ? (table as Record<symbol, unknown>)[symbol] : undefined;
+  if (!value || typeof value !== "object") {
+    throw new Error(`Unable to resolve SQLite columns for table ${tableName(table)}.`);
+  }
+  return value as Record<string, { name: string; mapToDriverValue?: (value: unknown) => unknown; mapFromDriverValue?: (value: unknown) => unknown }>;
+}
+
+function normalizeInsertValue(column: { mapToDriverValue?: (value: unknown) => unknown }, value: unknown): unknown {
+  if (value === undefined) return undefined;
+  return column.mapToDriverValue ? column.mapToDriverValue(value) : value;
+}
+
+function denormalizeRow(table: object, row: Record<string, unknown>): Record<string, unknown> {
+  const columns = tableColumns(table);
+  const result: Record<string, unknown> = {};
+  for (const [propertyName, column] of Object.entries(columns)) {
+    if (!(column.name in row)) continue;
+    const value = row[column.name];
+    result[propertyName] = column.mapFromDriverValue ? column.mapFromDriverValue(value) : value;
+  }
+  return result;
+}
+
+function parseSimpleEqWhere(where: unknown): { columnName: string; value: unknown } | null {
+  const chunks = (where as { queryChunks?: unknown[] } | undefined)?.queryChunks;
+  if (!Array.isArray(chunks)) return null;
+  const column = chunks.find((chunk) => chunk && typeof chunk === "object" && typeof (chunk as { name?: unknown }).name === "string") as { name: string } | undefined;
+  const param = chunks.find((chunk) => chunk && typeof chunk === "object" && "value" in chunk && "encoder" in chunk) as { value: unknown } | undefined;
+  return column && param ? { columnName: column.name, value: param.value } : null;
+}
+
+function createSqliteOrmFallback(sqlite: StorageSqliteDatabase): StorageOrmDatabase {
+  return {
+    insert(table: object) {
+      return {
+        values(values: Record<string, unknown>) {
+          const columns = tableColumns(table);
+          const entries: Array<readonly [string, unknown]> = [];
+          for (const [propertyName, value] of Object.entries(values)) {
+            const column = columns[propertyName];
+            if (!column) continue;
+            const normalized = normalizeInsertValue(column, value);
+            if (normalized !== undefined) entries.push([column.name, normalized]);
+          }
+          if (entries.length === 0) {
+            throw new Error(`Cannot insert empty values into ${tableName(table)}.`);
+          }
+          const sql = `INSERT INTO "${tableName(table)}" (${entries.map(([name]) => `"${name}"`).join(", ")}) VALUES (${entries.map(() => "?").join(", ")})`;
+          const params = entries.map(([, value]) => value);
+          const run = () => sqlite.prepare(sql).run(...params);
+          return {
+            run,
+            then(resolve: (value: SQLiteChanges) => unknown, reject?: (reason: unknown) => unknown) {
+              try {
+                return Promise.resolve(run()).then(resolve, reject);
+              } catch (error) {
+                return Promise.reject(error).then(resolve, reject);
+              }
+            },
+          };
+        },
+      };
+    },
+    select() {
+      return {
+        from(table: object) {
+          const runSelect = (where?: unknown) => {
+            const parsedWhere = parseSimpleEqWhere(where);
+            const sql = `SELECT * FROM "${tableName(table)}"${parsedWhere ? ` WHERE "${parsedWhere.columnName}" = ?` : ""}`;
+            const rows = parsedWhere
+              ? sqlite.prepare<Record<string, unknown>>(sql).all(parsedWhere.value)
+              : sqlite.prepare<Record<string, unknown>>(sql).all();
+            return rows.map((row) => denormalizeRow(table, row));
+          };
+          return {
+            where(where: unknown) {
+              return Promise.resolve(runSelect(where));
+            },
+            then(resolve: (value: Record<string, unknown>[]) => unknown, reject?: (reason: unknown) => unknown) {
+              try {
+                return Promise.resolve(runSelect()).then(resolve, reject);
+              } catch (error) {
+                return Promise.reject(error).then(resolve, reject);
+              }
+            },
+          };
+        },
+      };
+    },
+  } as StorageOrmDatabase;
+}
+
 function createDrizzleDatabase(
   databasePath: string,
   sqliteConnection?: StorageSqliteDatabase,
 ): StorageOrmDatabase {
+  if (process.env.NOVELFORK_FORCE_STORAGE_ORM_FALLBACK === "1") {
+    if (!sqliteConnection) throw new Error("SQLite ORM fallback requires an existing SQLite connection.");
+    return createSqliteOrmFallback(sqliteConnection);
+  }
+
   if (process.versions.bun) {
-    const { drizzle } = require("drizzle-orm/bun-sqlite") as {
-      drizzle: (connection: string | object, config: { schema: typeof schema }) => StorageOrmDatabase;
-    };
-    return sqliteConnection ? drizzle(sqliteConnection as object, { schema }) : drizzle(databasePath, { schema });
+    try {
+      const { drizzle } = require("drizzle-orm/bun-sqlite") as {
+        drizzle: (connection: string | object, config: { schema: typeof schema }) => StorageOrmDatabase;
+      };
+      return sqliteConnection ? drizzle(sqliteConnection as object, { schema }) : drizzle(databasePath, { schema });
+    } catch (error) {
+      if (!sqliteConnection) throw error;
+      return createSqliteOrmFallback(sqliteConnection);
+    }
   }
 
   const { drizzle } = require("drizzle-orm/better-sqlite3") as {

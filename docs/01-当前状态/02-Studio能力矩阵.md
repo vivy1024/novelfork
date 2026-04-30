@@ -72,7 +72,7 @@
 | Writing tools：hooks | Workspace 右侧写作工具 | `api/routes/writing-tools.ts` | Runtime model pool 或 session LLM | hook apply 写入 `pending_hooks.md` | 真实可用 | 模型不可用时返回 AI gate，不假生成 | `writing-tools.test.ts` |
 | Writing tools：节奏分析 | Workspace 右侧写作工具 | `/writing-tools/rhythm` | 章节正文 | 即时计算 | 真实可用 | 指标以当前章节文本为准 | `writing-tools.test.ts` |
 | Writing tools：对话分析 | Workspace 右侧写作工具 | `/writing-tools/dialogue` | 章节正文 | 即时计算 | 真实可用 | 指标以当前章节文本为准 | `writing-tools.test.ts` |
-| Writing tools：书籍健康 | Workspace / 健康面板 | `/writing-tools/health`、`BookHealthDashboard` | 章节数、字数、敏感词、矛盾登记等 | 从真实文件/记录计算 | 真实可用 | 连续性评分、hook 回收率、AI 味、节奏多样性等未接统计显示 `unknown`，不得固定满分 | ledger `writing-tools-health`；`writing-tools.test.ts` |
+| Writing tools：书籍健康 | Workspace / 健康面板 | `/writing-tools/health`、`BookHealthDashboard` | 章节数、字数、敏感词、矛盾登记等 | 从真实文件/记录计算 | 真实可用 | 缺少事实源的健康指标显示 `unknown`，不得固定满分 | ledger `writing-tools-health`；`writing-tools.test.ts` |
 | Conflict map / character arcs / tone check | Workspace 写作工具 | `api/routes/writing-tools.ts` | story truth / 章节文本 | 即时计算或读取文件 | 真实可用 | 输出受现有 story truth 文件完整度限制 | `writing-tools.test.ts` |
 | Writing modes route | Workspace 写作模式 | `api/routes/writing-modes.ts` | prompt 构建逻辑 + apply 请求 | candidate/draft 真实落库；章节 insert/replace 转候选稿 | current / transparent 混合 | 生成接口仍主要是提示词预览；安全 apply route 已可落库 candidate/draft；正式章节写入仍走非破坏候选稿 | ledger `writing-modes-apply`；`writing-modes.test.ts`；`WorkspacePage.test.tsx` |
 | Writing modes apply UI | Workspace 写作模式应用按钮 | `/api/books/:bookId/writing-modes/apply` | 真实生成结果、目标选择、确认面板 | candidate/draft 真实落库；章节目标转候选稿 | 真实可用 / 透明过渡混合 | UI 已支持预览→目标选择→确认→写入 candidate/draft；prompt-preview 结果仍只能复制/查看，不会当正文写入 | `WorkspacePage.test.tsx`；新 spec Task 28 |
@@ -83,8 +83,8 @@
 
 | 功能 | 用户入口 | API / 组件入口 | 数据来源 | 持久化状态 | 当前状态 | 已知限制 | 验证文件或口径 |
 |---|---|---|---|---|---|---|---|
-| 轻量 Book Chat | 书籍聊天面板 | `api/routes/chat.ts`、`ChatPanel` | 当前进程内存 Map | `process-memory`，不持久化 | 透明过渡 | 重启后历史不保证存在；UI/API 已标注当前进程临时历史 | ledger `book-chat-history`；`ChatPanel.test.tsx` |
-| Pipeline runs | Pipeline API/页面 | `api/routes/pipeline.ts` | 当前进程内存 | `process-memory`，不持久化 | 透明过渡 | run/stage/list/SSE 仍是临时运行状态 | ledger `pipeline-runs` |
+| 轻量 Book Chat | 书籍聊天面板 | `api/routes/chat.ts`、`ChatPanel` | 当前进程内存 Map | `process-memory`，不持久化 | 透明过渡 / 会话级边界明确 | 重启后历史不保证存在；UI/API 已标注当前进程临时历史；正式 Session Chat 使用 session/message repository 持久化 | ledger `book-chat-history`；`ChatPanel.test.tsx`；`chat.test.ts` |
+| Pipeline runs | Pipeline API/页面 | `api/routes/pipeline.ts` | 当前进程内存 | `process-memory`，不持久化 | 透明过渡 / 会话级边界明确 | run/stage/list/SSE 仍是临时运行状态，响应标注 `persistence: process-memory` | ledger `pipeline-runs`；`pipeline.test.ts` |
 | Monitor status | Admin/Monitor | `api/routes/monitor.ts` | 未接 daemon/runtime 事实源 | 无持久化 | 透明过渡 | 无事实源时返回 `501 unsupported`，WS 发送 unsupported 后关闭 | ledger `monitor-status` |
 | Agent config service | 设置/Agent 配置 | `agent-config-service.ts` | runtime JSON + 本机端口 listen 探测 | 配置与端口保留持久化 | 真实可用 | 资源使用未接真实 runtime 时返回 unknown | ledger `agent-config-service` |
 | Admin users | Admin 用户管理 | `api/routes/admin.ts`、`UsersTab` | 本地单用户模式 | 无多用户 store | 透明过渡 | CRUD API 返回 `501 unsupported`；按钮 disabled 并说明本地单用户阶段 | ledger `admin-users` |
@@ -103,8 +103,8 @@
 | 核心设定变更历史 | 变更历史 / 复核流程 | `/api/books/:bookId/core-shifts`、`accept`、`reject` | premise、主线冲突、世界规则、人物弧等核心对象快照 | SQLite 持久化 | 真实可用 | propose 只记录影响；accept 才应用并标记受影响章节；不自动重写正文 | `bible-core-shift.test.ts`；`bible.test.ts` |
 | AI 味过滤与报告 | AI 味报告 / 去 AI 味建议 | `/api/filter/*`、`components/filter/*` | 本地 12 规则、可选朱雀配置、章节报告 | `filter_report` 持久化 | 真实可用 | 朱雀未配置时本地规则仍可用；建议不自动覆盖正文 | `filter.test.ts`；filter component tests |
 | 预设资产 | 预设管理 / 新建书籍预设绑定 | `/api/presets`、`/api/books/:id/presets` | genre、tone、beat、logic、AI 味、技法、bundle | 书籍预设可持久化 | 真实可用 | 不是模板市场终态；preset 只提供写作约束和推荐组合 | `presets.test.ts` |
-| 合规 / 发布就绪 | 发布检查入口 / 合规组件 | `/api/books/:bookId/compliance/*`、`components/compliance/*` | 敏感词、AI 比例、格式规则、平台字典 | 即时扫描或导入词库 | 真实可用 / 待迁移 UI | 新工作台只提供入口或嵌入，不新建第二套合规页面 | `compliance.test.ts`；`.kiro/specs/README.md` platform-compliance 边界 |
-| 导出 | Workspace 顶部 | 待新增 export route | 已保存章节数据 | 未接入 | 透明过渡 | 当前 disabled；至少需要全书 Markdown/TXT | 新 spec Task 37-38 |
+| 合规 / 发布就绪 | 发布检查入口 / 合规组件 | `/api/books/:bookId/compliance/*`、`components/compliance/*` | 敏感词、AI 比例、格式规则、平台字典、章节审计 `auditIssues` | 即时扫描或导入词库 | 真实可用 | 发布检查连续性有审计事实源时返回真实指标；无事实源或格式异常时返回 `unknown` | `compliance.test.ts`；core `compliance-publish-readiness.test.ts` |
+| 导出 | Workspace 顶部 | `POST /api/books/:id/export`、Workspace 导出 UI | 已保存章节数据 | 即时生成导出内容 | 真实可用 | 首版支持全书 Markdown/TXT；不代表第三方平台发布 | 新 spec Task 37-38；`server-integration.test.ts`；`WorkspacePage.test.tsx` |
 
 ## 8. 内部示例与低风险项
 

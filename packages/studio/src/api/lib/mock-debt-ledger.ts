@@ -300,20 +300,20 @@ export const MOCK_DEBT_ITEMS = [
   },
   {
     id: "publish-readiness-continuity-placeholder",
-    module: "Publish readiness continuity placeholder",
+    module: "Publish readiness continuity metrics",
     files: [
       "packages/core/src/compliance/publish-readiness.ts",
       "packages/studio/src/api/routes/compliance.ts",
     ],
-    currentBehavior: "发布检查已接入敏感词、AI 比例和格式检查真实数据；连续性指标缺少发布检查数据源时返回 status: unknown 与明确原因，不计入 ready 成功。",
+    currentBehavior: "发布检查已接入敏感词、AI 比例、格式检查和章节审计连续性事实源；有 auditIssues 时返回 passed/has-issues 与可追溯指标，缺少事实源或格式异常时返回 unknown。",
     userRisk: "medium",
-    status: "transparent-placeholder",
-    targetBehavior: "后续接入连续性审计事实源后，continuity 必须来自真实审计结果；未接入前保持 unknown，禁止固定成功。",
+    status: "confirmed-real",
+    targetBehavior: "保持连续性指标来自真实章节审计事实源；无事实源时继续 unknown，禁止固定成功。",
     ownerSpec: NOVEL_CREATION_WORKBENCH_SPEC,
     verification: [
-      "publish readiness 测试断言 continuity.status 为 unknown 且包含未接入原因",
-      "Workspace 发布报告展示 unknown 连续性，不渲染为真实通过",
-      "mock debt scan 将连续性未接入文案登记为透明占位",
+      "core publish readiness 测试覆盖有审计数据、缺失数据和异常格式",
+      "studio compliance route 测试覆盖章节 auditIssues 传入 publish readiness",
+      "mock debt scan 不再登记连续性未接入文案",
     ],
   },
   {
