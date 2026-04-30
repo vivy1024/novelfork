@@ -68,8 +68,13 @@ function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, "");
 }
 
-function openAiUrl(ref: RuntimeProviderRef, path: string): string {
-  return `${trimTrailingSlash(ref.baseUrl ?? "")}${path}`;
+function openAiUrls(ref: RuntimeProviderRef, path: string): string[] {
+  const baseUrl = trimTrailingSlash(ref.baseUrl ?? "");
+  const candidates = [`${baseUrl}${path}`];
+  if (!/\/v1$/u.test(baseUrl)) {
+    candidates.push(`${baseUrl}/v1${path}`);
+  }
+  return [...new Set(candidates)];
 }
 
 function openAiHeaders(apiKey: string): Record<string, string> {
@@ -83,6 +88,49 @@ async function parseJsonResponse(response: Response): Promise<unknown> {
   const text = await response.text();
   if (!text.trim()) return {};
   return JSON.parse(text);
+}
+
+async function requestOpenAiJson(ref: RuntimeProviderRef, path: string, init: RequestInit): Promise<
+  | { readonly success: true; readonly response: Response; readonly payload: unknown }
+  | RuntimeAdapterFailure
+> {
+  const urls = openAiUrls(ref, path);
+  let lastError = "OpenAI-compatible request failed";
+
+  for (const [index, url] of urls.entries()) {
+    const canRetry = index < urls.length - 1;
+    try {
+      const response = await fetch(url, init);
+      const contentType = response.headers.get("content-type") ?? "";
+      if (!contentType.includes("application/json")) {
+        lastError = `Upstream returned non-JSON response from ${url}`;
+        if (canRetry) continue;
+        return failure("upstream-error", lastError);
+      }
+
+      let payload: unknown;
+      try {
+        payload = await parseJsonResponse(response);
+      } catch (error) {
+        lastError = error instanceof Error ? error.message : String(error);
+        if (canRetry) continue;
+        return failure("upstream-error", lastError);
+      }
+
+      if (!response.ok && canRetry && (response.status === 404 || response.status === 405)) {
+        lastError = readOpenAiError(payload, `OpenAI-compatible request failed with HTTP ${response.status}`);
+        continue;
+      }
+
+      return { success: true, response, payload };
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+      if (canRetry) continue;
+      return failure("network-error", lastError);
+    }
+  }
+
+  return failure("network-error", lastError);
 }
 
 function readOpenAiError(payload: unknown, fallback: string): string {
@@ -133,26 +181,23 @@ class OpenAiCompatibleAdapter implements RuntimeAdapter {
     const configFailure = requireOpenAiConfig(ref);
     if (configFailure) return configFailure;
 
-    try {
-      const response = await fetch(openAiUrl(ref, "/models"), {
-        method: "GET",
-        headers: openAiHeaders(ref.apiKey!),
-      });
-      const payload = await parseJsonResponse(response);
-      if (!response.ok) {
-        return failure("upstream-error", readOpenAiError(payload, `Model list failed with HTTP ${response.status}`));
-      }
-
-      const data = payload && typeof payload === "object" && Array.isArray((payload as { data?: unknown }).data)
-        ? (payload as { data: unknown[] }).data
-        : [];
-      return {
-        success: true,
-        models: data.map((model) => normalizeOpenAiModel(model)).filter((model): model is RuntimeModelInput => Boolean(model)),
-      };
-    } catch (error) {
-      return failure("network-error", error instanceof Error ? error.message : String(error));
+    const result = await requestOpenAiJson(ref, "/models", {
+      method: "GET",
+      headers: openAiHeaders(ref.apiKey!),
+    });
+    if (!result.success) return result;
+    const { response, payload } = result;
+    if (!response.ok) {
+      return failure("upstream-error", readOpenAiError(payload, `Model list failed with HTTP ${response.status}`));
     }
+
+    const data = payload && typeof payload === "object" && Array.isArray((payload as { data?: unknown }).data)
+      ? (payload as { data: unknown[] }).data
+      : [];
+    return {
+      success: true,
+      models: data.map((model) => normalizeOpenAiModel(model)).filter((model): model is RuntimeModelInput => Boolean(model)),
+    };
   }
 
   async testModel(input: TestModelInput): Promise<TestModelResult> {
@@ -183,37 +228,34 @@ class OpenAiCompatibleAdapter implements RuntimeAdapter {
     messages: readonly RuntimeChatMessage[],
     maxTokens?: number,
   ): Promise<GenerateResult> {
-    try {
-      const body = {
-        model: input.modelId,
-        messages,
-        stream: false,
-        ...(maxTokens ? { max_tokens: maxTokens } : {}),
-      };
-      const response = await fetch(openAiUrl(input, "/chat/completions"), {
-        method: "POST",
-        headers: openAiHeaders(input.apiKey!),
-        body: JSON.stringify(body),
-      });
-      const payload = await parseJsonResponse(response);
-      if (!response.ok) {
-        return failure("upstream-error", readOpenAiError(payload, `Chat completion failed with HTTP ${response.status}`));
-      }
-
-      const choices = payload && typeof payload === "object" && Array.isArray((payload as { choices?: unknown }).choices)
-        ? (payload as { choices: unknown[] }).choices
-        : [];
-      const firstChoice = choices[0];
-      const content = firstChoice && typeof firstChoice === "object"
-        && "message" in firstChoice
-        && (firstChoice as { message?: unknown }).message
-        && typeof (firstChoice as { message: { content?: unknown } }).message.content === "string"
-          ? (firstChoice as { message: { content: string } }).message.content
-          : "";
-      return { success: true, content };
-    } catch (error) {
-      return failure("network-error", error instanceof Error ? error.message : String(error));
+    const body = {
+      model: input.modelId,
+      messages,
+      stream: false,
+      ...(maxTokens ? { max_tokens: maxTokens } : {}),
+    };
+    const result = await requestOpenAiJson(input, "/chat/completions", {
+      method: "POST",
+      headers: openAiHeaders(input.apiKey!),
+      body: JSON.stringify(body),
+    });
+    if (!result.success) return result;
+    const { response, payload } = result;
+    if (!response.ok) {
+      return failure("upstream-error", readOpenAiError(payload, `Chat completion failed with HTTP ${response.status}`));
     }
+
+    const choices = payload && typeof payload === "object" && Array.isArray((payload as { choices?: unknown }).choices)
+      ? (payload as { choices: unknown[] }).choices
+      : [];
+    const firstChoice = choices[0];
+    const content = firstChoice && typeof firstChoice === "object"
+      && "message" in firstChoice
+      && (firstChoice as { message?: unknown }).message
+      && typeof (firstChoice as { message: { content?: unknown } }).message.content === "string"
+        ? (firstChoice as { message: { content: string } }).message.content
+        : "";
+    return { success: true, content };
   }
 }
 

@@ -171,6 +171,18 @@ describe("ProviderSettingsPage", () => {
     expect(screen.queryByText("账号管理")).toBeNull();
   });
 
+  it("shows saved API key state when provider views are sanitized", async () => {
+    const client = createClient();
+    (client.listProviders as ReturnType<typeof vi.fn>).mockResolvedValue({
+      providers: [{ ...openaiProvider, config: { apiKeyConfigured: true } as never }],
+    });
+    render(<ProviderSettingsPage client={client} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "查看 OpenAI API key 接入详情" }));
+
+    expect((await screen.findByLabelText("API Key")).getAttribute("placeholder")).toBe("已配置，留空不变");
+  });
+
   it("refreshes models in API provider detail view", async () => {
     const client = createClient();
     render(<ProviderSettingsPage client={client} />);

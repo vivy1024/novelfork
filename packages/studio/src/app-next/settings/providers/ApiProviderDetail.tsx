@@ -14,6 +14,10 @@ function providerTypeFromCompatibility(compatibility: ProviderCompatibility): Pr
   return compatibility === "anthropic-compatible" ? "anthropic" : "custom";
 }
 
+function hasConfiguredApiKey(provider: ApiProvider): boolean {
+  return Boolean(provider.config.apiKey || (provider.config as { apiKeyConfigured?: unknown }).apiKeyConfigured);
+}
+
 export function ApiProviderDetail({
   provider,
   busy,
@@ -58,7 +62,7 @@ export function ApiProviderDetail({
       compatibility,
       apiMode,
       type: providerTypeFromCompatibility(compatibility),
-      config: trimmedApiKey ? { ...provider.config, apiKey: trimmedApiKey } : provider.config,
+      ...(trimmedApiKey ? { config: { apiKey: trimmedApiKey } } : {}),
     });
     setApiKey("");
   };
@@ -93,7 +97,7 @@ export function ApiProviderDetail({
               type="password"
               className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2"
               value={apiKey}
-              placeholder={provider.config.apiKey ? "已配置，留空不变" : "请输入 API Key"}
+              placeholder={hasConfiguredApiKey(provider) ? "已配置，留空不变" : "请输入 API Key"}
               onChange={(event) => setApiKey(event.target.value)}
             />
           </label>
