@@ -26,7 +26,7 @@ vi.mock("../../hooks/use-api", () => ({
 
 import { RoutinesNextPage } from "./RoutinesNextPage";
 
-const sampleRoutines: RoutinesConfig = {
+const sampleRoutines = {
   commands: [{ id: "cmd-1", name: "write-next", description: "生成下一章", prompt: "/write-next", enabled: true }],
   tools: [{ name: "Terminal", enabled: true, description: "Interactive shell" }],
   permissions: [
@@ -47,7 +47,8 @@ const sampleRoutines: RoutinesConfig = {
   globalPrompts: [{ id: "prompt-1", name: "global", content: "global", enabled: true }],
   systemPrompts: [{ id: "prompt-2", name: "system", content: "system", enabled: true }],
   mcpTools: [{ id: "mcp-1", serverName: "memory", toolName: "recall", enabled: true, approved: true }],
-};
+  hooks: [{ id: "hook-1", name: "审稿后通知", event: "after-audit", kind: "webhook", target: "https://hooks.example/audit", enabled: true }],
+} as unknown as RoutinesConfig;
 
 afterEach(() => {
   cleanup();
@@ -138,9 +139,11 @@ describe("RoutinesNextPage", () => {
     expect(screen.getByText("/LOAD ShareFile")).toBeTruthy();
 
     fireEvent.click(within(routineNav).getByRole("tab", { name: /工具权限/ }));
-    expect(screen.getByText("Bash allowlist / blocklist")).toBeTruthy();
+    expect(screen.getByText("Bash 命令规则")).toBeTruthy();
     expect(screen.getByText("MCP 工具权限")).toBeTruthy();
-    expect(screen.getByText("来源：managed")).toBeTruthy();
+    expect(screen.getByText("来源：托管规则")).toBeTruthy();
+    expect(screen.getAllByText("需确认").length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Bash allowlist|\ballow\b|\bask\b|\bdeny\b|来源：managed|来源：user/)).toBeNull();
 
     fireEvent.click(within(routineNav).getByRole("tab", { name: /项目技能/ }));
     expect(screen.getByText("当前分区：项目技能")).toBeTruthy();
@@ -154,14 +157,15 @@ describe("RoutinesNextPage", () => {
 
     fireEvent.click(within(routineNav).getByRole("tab", { name: /自定义子代理/ }));
     expect(screen.getByRole("button", { name: "Add Sub-agent" })).toBeTruthy();
-    expect(screen.getByText("工具权限字段")).toBeTruthy();
-    expect(screen.getByText("Bash: allow pnpm *")).toBeTruthy();
+    expect(screen.getByText("工具权限规则")).toBeTruthy();
+    expect(screen.getByText("Bash：直接允许 · 规则 pnpm *")).toBeTruthy();
+    expect(screen.queryByText("Bash: allow pnpm *")).toBeNull();
 
     fireEvent.click(within(routineNav).getByRole("tab", { name: /MCP 工具/ }));
     expect(screen.getByText("memory")).toBeTruthy();
   });
 
-  it("reuses MCP server registry management and renders hooks as transparent unsupported", async () => {
+  it("reuses MCP server registry management and edits lifecycle hooks through routines", async () => {
     render(<RoutinesNextPage projectRoot="D:/workspace/novel" />);
 
     await waitFor(() => expect(fetchRoutinesMock).toHaveBeenCalledWith("merged", "D:/workspace/novel"));
@@ -175,13 +179,32 @@ describe("RoutinesNextPage", () => {
     expect(screen.getByRole("button", { name: /添加 Server/ })).toBeTruthy();
     expect(screen.getByText("Memory")).toBeTruthy();
     expect(screen.getAllByText(/2 个工具/).length).toBeGreaterThan(0);
+    expect(screen.getByText("策略来源：工具访问策略")).toBeTruthy();
+    expect(screen.getAllByText("来源：MCP 默认策略").length).toBeGreaterThan(0);
+    expect(screen.getByText("直接允许")).toBeTruthy();
+    expect(screen.getByText("需确认")).toBeTruthy();
+    expect(screen.queryByText(/runtimeControls\.toolAccess|\ballow\b|\bprompt\b/)).toBeNull();
 
     fireEvent.click(within(routineNav).getByRole("tab", { name: /钩子/ }));
-    expect(screen.getByRole("heading", { name: "Hooks API 未接入" })).toBeTruthy();
-    expect(screen.getByText("routines.hooks.api")).toBeTruthy();
-    const createHook = screen.getByRole("button", { name: "创建钩子（未接入）" });
-    expect(createHook.hasAttribute("disabled")).toBe(true);
-    fireEvent.click(createHook);
-    expect(screen.queryByText("新建钩子草稿")).toBeNull();
+    expect(screen.getByRole("heading", { name: "生命周期钩子" })).toBeTruthy();
+    expect(screen.getByDisplayValue("审稿后通知")).toBeTruthy();
+    expect(screen.getByDisplayValue("https://hooks.example/audit")).toBeTruthy();
+    expect(screen.queryByText(/未接入|UnsupportedCapability/)).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "创建钩子" }));
+    const hookNameInputs = screen.getAllByLabelText("钩子名称");
+    const hookEventInputs = screen.getAllByLabelText("触发节点");
+    const hookTargetInputs = screen.getAllByLabelText("执行目标");
+    fireEvent.change(hookNameInputs.at(-1) as HTMLElement, { target: { value: "章节后整理" } });
+    fireEvent.change(hookEventInputs.at(-1) as HTMLElement, { target: { value: "after-chapter-save" } });
+    fireEvent.change(hookTargetInputs.at(-1) as HTMLElement, { target: { value: "bun scripts/after-chapter.ts" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => expect(saveRoutinesMock).toHaveBeenCalled());
+    const [, saved] = saveRoutinesMock.mock.calls.at(-1) ?? [];
+    expect((saved as unknown as { hooks: Array<{ name: string; event: string; kind: string; target: string }> }).hooks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: "审稿后通知", kind: "webhook" }),
+      expect.objectContaining({ name: "章节后整理", event: "after-chapter-save", kind: "shell", target: "bun scripts/after-chapter.ts" }),
+    ]));
   });
 });

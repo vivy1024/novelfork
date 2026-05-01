@@ -25,8 +25,10 @@ export function DialogueGenerator({ bookId, chapterNumber, onInsert, applyDisabl
   const [purpose, setPurpose] = useState<string>(PURPOSE_OPTIONS[0]);
   const [rounds, setRounds] = useState(5);
   const [lines, setLines] = useState<readonly DialogueLine[]>([]);
+  const [generatedText, setGeneratedText] = useState<string | null>(null);
   const [promptPreview, setPromptPreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [executingPrompt, setExecutingPrompt] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const generate = async () => {
@@ -40,17 +42,39 @@ export function DialogueGenerator({ bookId, chapterNumber, onInsert, applyDisabl
         rounds,
         chapterNumber,
       });
-      if (res.mode === "prompt-preview" || res.promptPreview) {
+      if (res.mode === "prompt-preview") {
         setPromptPreview(res.promptPreview ?? res.prompt ?? "");
         setLines([]);
+        setGeneratedText(null);
       } else {
         setLines(res.lines ?? []);
+        setGeneratedText(null);
         setPromptPreview(null);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const executePromptPreview = async () => {
+    if (!promptPreview) return;
+    setExecutingPrompt(true);
+    setError(null);
+    try {
+      const res = await postApi<{ content?: string }>(`/books/${bookId}/writing-modes/execute-prompt`, {
+        prompt: promptPreview,
+        sourceMode: "dialogue-generator",
+        chapterNumber,
+      });
+      setGeneratedText(res.content ?? "");
+      setLines([]);
+      setPromptPreview(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setExecutingPrompt(false);
     }
   };
 
@@ -87,13 +111,21 @@ export function DialogueGenerator({ bookId, chapterNumber, onInsert, applyDisabl
       {promptPreview && (
         <div className="space-y-2 rounded-lg border border-dashed border-border bg-muted/20 p-3">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-xs font-medium text-amber-600 dark:text-amber-400">Prompt 预览</span>
+            <span className="text-xs font-medium text-amber-600 dark:text-amber-400">提示词预览</span>
             <div className="flex gap-2">
-              <Button type="button" size="xs" variant="outline" onClick={() => void navigator.clipboard?.writeText(promptPreview)}>复制 prompt</Button>
-              <Button type="button" size="xs" disabled>执行生成（未接入）</Button>
+              <Button type="button" size="xs" variant="outline" onClick={() => void navigator.clipboard?.writeText(promptPreview)}>复制提示词</Button>
+              <Button type="button" size="xs" onClick={() => void executePromptPreview()} disabled={executingPrompt}>{executingPrompt ? "执行中..." : "执行生成"}</Button>
             </div>
           </div>
           <pre className="max-h-48 overflow-y-auto whitespace-pre-wrap text-xs leading-6 text-muted-foreground">{promptPreview}</pre>
+        </div>
+      )}
+
+      {generatedText && (
+        <div className="space-y-2">
+          <div className="max-h-48 overflow-y-auto whitespace-pre-wrap rounded-lg border border-border bg-muted/20 p-3 leading-7">{generatedText}</div>
+          {applyDisabledReason && <p className="text-xs text-muted-foreground">{applyDisabledReason}</p>}
+          <Button type="button" size="xs" onClick={() => onInsert(generatedText)} disabled={Boolean(applyDisabledReason)} title={applyDisabledReason}>插入到正文</Button>
         </div>
       )}
 
@@ -112,7 +144,7 @@ export function DialogueGenerator({ bookId, chapterNumber, onInsert, applyDisabl
             disabled={Boolean(applyDisabledReason)}
             title={applyDisabledReason}
           >
-            {applyDisabledReason ? "插入到正文（未接入）" : "插入到正文"}
+            插入到正文
           </Button>
         </div>
       )}

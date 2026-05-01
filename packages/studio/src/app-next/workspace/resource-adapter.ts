@@ -32,7 +32,7 @@ export interface StudioResourceEmptyState {
   readonly title: string;
   readonly description: string;
   readonly actionLabel: string;
-  readonly action: "create-chapter" | "generate-next" | "create-bible-entry" | "import-chapter";
+  readonly action: "create-chapter" | "generate-next" | "create-bible-entry" | "import-chapter" | "edit-outline";
 }
 
 export interface StudioResourceNode {
@@ -152,9 +152,9 @@ export function buildStudioResourceTree(input: StudioResourceTreeInput): readonl
     metadata: { bookId: book.id, fileName: "volume_outline.md" },
     emptyState: {
       title: "暂无大纲",
-      description: "后续可从 truth 文件或章节规划导入大纲。",
-      actionLabel: "创建经纬条目",
-      action: "create-bible-entry",
+      description: "打开大纲编辑器后，可以创建默认 Markdown 大纲并保存到 truth 文件。",
+      actionLabel: "打开大纲编辑器",
+      action: "edit-outline",
     },
   };
 
@@ -173,13 +173,13 @@ export function buildStudioResourceTree(input: StudioResourceTreeInput): readonl
 
   const storyFilesGroup = groupNode({
     id: "group:story-files",
-    title: "Story 文件",
+    title: "故事文件",
     children: storyFiles.map((file) => toStoryFileNode(book.id, file)),
   });
 
   const truthFilesGroup = groupNode({
     id: "group:truth-files",
-    title: "Truth 文件",
+    title: "真相文件",
     children: truthFiles.map((file) => toTruthFileNode(book.id, file)),
   });
 
@@ -320,7 +320,7 @@ function toStoryFileNode(bookId: string, file: TextFileResource): StudioResource
   return {
     id: `story-file:${file.id}`,
     kind: "story-file",
-    title: file.title,
+    title: "label" in file && typeof (file as { label?: string }).label === "string" ? (file as { label: string }).label : file.title,
     subtitle: file.path,
     metadata: {
       bookId,
@@ -334,7 +334,7 @@ function toTruthFileNode(bookId: string, file: TextFileResource): StudioResource
   return {
     id: `truth-file:${file.id}`,
     kind: "truth-file",
-    title: file.title,
+    title: "label" in file && typeof (file as { label?: string }).label === "string" ? (file as { label: string }).label : file.title,
     subtitle: file.path,
     metadata: {
       bookId,

@@ -110,7 +110,7 @@ async function createRoute(options: { readonly sessionLlm?: boolean; readonly pr
     buildPipelineConfig: vi.fn(() => Promise.resolve({ client: {}, model: "mock-model" })),
     getSessionLlm: vi.fn(() => Promise.resolve(options.sessionLlm ? { apiKey: "test", baseUrl: "https://example.test", model: "mock-model", provider: "custom" } : undefined)),
     runStore: {} as never,
-    providerStore: options.providerStore,
+    providerStore: options.providerStore ?? new ProviderRuntimeStore({ storagePath: join(root, ".runtime", "provider-runtime.json") }),
     getStartupSummary: () => null,
     setStartupSummary: vi.fn(),
     setStartupRecoveryRunner: vi.fn(),

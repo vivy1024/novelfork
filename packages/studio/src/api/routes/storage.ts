@@ -51,6 +51,27 @@ const TRUTH_FILES = [
   "author_intent.md", "current_focus.md", "market_radar.md", "web_materials.md",
 ];
 
+const TRUTH_FILE_LABELS: Record<string, string> = {
+  "story_bible.md": "故事经纬",
+  "volume_outline.md": "卷大纲",
+  "current_state.md": "当前状态",
+  "particle_ledger.md": "资源账本",
+  "pending_hooks.md": "待处理伏笔",
+  "chapter_summaries.md": "章节摘要",
+  "subplot_board.md": "支线看板",
+  "emotional_arcs.md": "情绪弧线",
+  "character_matrix.md": "角色矩阵",
+  "style_guide.md": "风格指南",
+  "setting_guide.md": "设定指南",
+  "parent_canon.md": "原著设定（同人）",
+  "fanfic_canon.md": "二设记录（同人）",
+  "book_rules.md": "书籍规则",
+  "author_intent.md": "创作意图",
+  "current_focus.md": "当前焦点",
+  "market_radar.md": "市场雷达",
+  "web_materials.md": "网络素材",
+};
+
 interface ProjectWorktreeOwnership {
   readonly repositoryRoot: string;
   readonly worktreeName: string;
@@ -231,14 +252,14 @@ async function listExistingChapterNumbers(chaptersDir: string): Promise<number[]
   }
 }
 
-async function listStoryFiles(storyDir: string, filter?: (file: string) => boolean): Promise<Array<{ name: string; size: number; preview: string }>> {
+async function listStoryFiles(storyDir: string, filter?: (file: string) => boolean): Promise<Array<{ name: string; label: string; size: number; preview: string }>> {
   try {
     const files = await readdir(storyDir);
     const allowedFiles = files.filter((file) => isSafeStoryFileName(file) && (!filter || filter(file)));
     return await Promise.all(
       allowedFiles.map(async (file) => {
         const content = await readFile(join(storyDir, file), "utf-8");
-        return { name: file, size: content.length, preview: content.slice(0, 200) };
+        return { name: file, label: TRUTH_FILE_LABELS[file] ?? file.replace(/\.md$/, ""), size: content.length, preview: content.slice(0, 200) };
       }),
     );
   } catch {
@@ -803,6 +824,29 @@ export function createStorageRouter(ctx: RouterContext): Hono {
     }
   });
 
+  app.delete("/api/books/:id/chapters/:num", async (c) => {
+    const id = c.req.param("id");
+    const num = parseInt(c.req.param("num"), 10);
+    const bookDir = state.bookDir(id);
+    const chaptersDir = join(bookDir, "chapters");
+
+    try {
+      const files = await readdir(chaptersDir);
+      const paddedNum = String(num).padStart(4, "0");
+      const match = files.find((f) => f.startsWith(paddedNum) && f.endsWith(".md"));
+      if (!match) return c.json({ error: "Chapter not found" }, 404);
+
+      const { rm } = await import("node:fs/promises");
+      await rm(join(chaptersDir, match));
+      const index = await state.loadChapterIndex(id);
+      const updated = index.filter((ch) => ch.number !== num);
+      await state.saveChapterIndex(id, updated);
+      return c.json({ ok: true, chapterNumber: num });
+    } catch (e) {
+      return c.json({ error: String(e) }, 500);
+    }
+  });
+
   app.post("/api/books/:id/chapters/:num/approve", async (c) => {
     const id = c.req.param("id");
     const num = parseInt(c.req.param("num"), 10);
@@ -892,6 +936,34 @@ export function createStorageRouter(ctx: RouterContext): Hono {
     await mkdirFs(join(bookDir, "story"), { recursive: true });
     await writeFileFs(join(bookDir, "story", file), content, "utf-8");
     return c.json({ ok: true });
+  });
+
+  app.delete("/api/books/:id/truth-files/:file", async (c) => {
+    const id = c.req.param("id");
+    const file = c.req.param("file");
+    if (!isSafeStoryFileName(file)) return c.json({ error: "Invalid file name" }, 400);
+    const bookDir = state.bookDir(id);
+    try {
+      const { rm } = await import("node:fs/promises");
+      await rm(join(bookDir, "story", file));
+      return c.json({ ok: true, file });
+    } catch (e) {
+      return c.json({ error: String(e) }, 500);
+    }
+  });
+
+  app.delete("/api/books/:id/story-files/:file", async (c) => {
+    const id = c.req.param("id");
+    const file = c.req.param("file");
+    if (!isSafeStoryFileName(file)) return c.json({ error: "Invalid file name" }, 400);
+    const bookDir = state.bookDir(id);
+    try {
+      const { rm } = await import("node:fs/promises");
+      await rm(join(bookDir, "story", file));
+      return c.json({ ok: true, file });
+    } catch (e) {
+      return c.json({ error: String(e) }, 500);
+    }
   });
 
   app.get("/api/books/:id/truth", async (c) => {

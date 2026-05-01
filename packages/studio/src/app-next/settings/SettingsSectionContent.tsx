@@ -98,7 +98,7 @@ function NotificationsSection() {
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-bold mb-2 text-foreground">通知</h2>
-        <p className="text-sm text-muted-foreground">即将推出</p>
+        <p className="text-sm text-muted-foreground">此功能尚未开放。通知配置将在后续版本中提供。</p>
       </div>
     </div>
   );

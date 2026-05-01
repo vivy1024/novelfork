@@ -80,10 +80,10 @@ describe("Studio Next routing", () => {
     expect(within(explorer).getByText("资源管理器")).toBeTruthy();
   });
 
-  it("workspace top bar has publish readiness and preset manager entry links", () => {
+  it("workspace top bar has publish readiness without exposing preset management", () => {
     render(<StudioNextApp initialRoute="workspace" />);
     expect(screen.getByText("发布就绪")).toBeTruthy();
-    expect(screen.getByText("预设管理")).toBeTruthy();
+    expect(screen.queryByText("预设管理")).toBeNull();
   });
 
   it("workspace writing tools panel is accessible from the assistant panel", () => {

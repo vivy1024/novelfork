@@ -22,6 +22,7 @@ export function VariantCompare({ bookId, chapterNumber, selectedText, onAccept, 
   const [promptPreviews, setPromptPreviews] = useState<readonly string[]>([]);
   const [activeIdx, setActiveIdx] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [executingPrompts, setExecutingPrompts] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const generate = async () => {
@@ -32,7 +33,7 @@ export function VariantCompare({ bookId, chapterNumber, selectedText, onAccept, 
         selectedText,
         chapterNumber,
       });
-      if (res.mode === "prompt-preview" || res.promptPreviews) {
+      if (res.mode === "prompt-preview") {
         setPromptPreviews(res.promptPreviews ?? res.prompts ?? []);
         setVariants([]);
       } else {
@@ -44,6 +45,30 @@ export function VariantCompare({ bookId, chapterNumber, selectedText, onAccept, 
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const executePromptPreviews = async () => {
+    if (promptPreviews.length === 0) return;
+    setExecutingPrompts(true);
+    setError(null);
+    try {
+      const results = await Promise.all(promptPreviews.map(async (prompt, index) => {
+        const res = await postApi<{ content?: string }>(`/books/${bookId}/writing-modes/execute-prompt`, {
+          prompt,
+          sourceMode: "variant-compare",
+          variantIndex: index,
+          chapterNumber,
+        });
+        return { label: `版本 ${index + 1}`, content: res.content ?? "" };
+      }));
+      setVariants(results);
+      setPromptPreviews([]);
+      setActiveIdx(0);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setExecutingPrompts(false);
     }
   };
 
@@ -62,8 +87,8 @@ export function VariantCompare({ bookId, chapterNumber, selectedText, onAccept, 
       {promptPreviews.length > 0 && (
         <div className="space-y-2 rounded-lg border border-dashed border-border bg-muted/20 p-3">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-xs font-medium text-amber-600 dark:text-amber-400">Prompt 预览</span>
-            <Button type="button" size="xs" disabled>执行生成（未接入）</Button>
+            <span className="text-xs font-medium text-amber-600 dark:text-amber-400">提示词预览</span>
+            <Button type="button" size="xs" onClick={() => void executePromptPreviews()} disabled={executingPrompts}>{executingPrompts ? "执行中..." : "执行生成"}</Button>
           </div>
           <div className="space-y-2">
             {promptPreviews.map((prompt, index) => (
@@ -96,7 +121,7 @@ export function VariantCompare({ bookId, chapterNumber, selectedText, onAccept, 
               </div>
               {applyDisabledReason && <p className="text-xs text-muted-foreground">{applyDisabledReason}</p>}
               <Button type="button" size="xs" onClick={() => onAccept(active.content)} disabled={Boolean(applyDisabledReason)} title={applyDisabledReason}>
-                {applyDisabledReason ? "选择此版本（未接入）" : "选择此版本"}
+                选择此版本
               </Button>
             </div>
           )}

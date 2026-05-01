@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { postApi, putApi, useApi } from "../../hooks/use-api";
 import { describeToolAccessReason, type ToolAccessReasonKey } from "../../shared/tool-access-reasons";
+import { runtimePolicySourceLabel } from "../lib/display-labels";
 
 interface MCPServerTool {
   name: string;
@@ -114,6 +115,20 @@ function renderStatusLabel(status: MCPServer["status"]) {
   if (status === "reconnecting") return "重连中";
   if (status === "failed") return "失败";
   return "未连接";
+}
+
+function renderAccessLabel(access: MCPServerTool["access"]): string {
+  if (access === "allow") return "直接允许";
+  if (access === "prompt") return "需确认";
+  if (access === "deny") return "拒绝";
+  return "未配置";
+}
+
+function renderMcpStrategyLabel(strategy: MCPRegistryResponse["summary"]["mcpStrategy"]): string {
+  if (strategy === "allow") return "直接允许";
+  if (strategy === "ask") return "执行前确认";
+  if (strategy === "deny") return "默认拒绝";
+  return "继承系统设置";
 }
 
 export function MCPServerPanel() {
@@ -246,7 +261,7 @@ export function MCPServerPanel() {
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <SummaryCard title="已注册 Server" value={String(summary.totalServers)} description="当前已写入 novelfork.json 的 MCP 服务数" />
         <SummaryCard title="已连接" value={String(summary.connectedServers)} description={`连接占比 ${connectedRatio}`} />
-        <SummaryCard title="已发现工具" value={String(summary.discoveredTools)} description={`allow ${summary.allowTools ?? 0} / prompt ${summary.promptTools ?? 0} / deny ${summary.denyTools ?? 0}`} />
+        <SummaryCard title="已发现工具" value={String(summary.discoveredTools)} description={`允许 ${summary.allowTools ?? 0} / 确认 ${summary.promptTools ?? 0} / 拒绝 ${summary.denyTools ?? 0}`} />
         <SummaryCard title="已启用工具" value={String(summary.enabledTools)} description="当前进入系统注册视图的工具数量" />
       </div>
 
@@ -256,9 +271,9 @@ export function MCPServerPanel() {
           <CardDescription>让 MCP 注册表直接映射 Settings 的权限策略，而不是只显示连接与工具数量。</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3 text-sm text-muted-foreground md:grid-cols-3">
-          <div>策略来源：{summary.policySource ?? "runtimeControls.toolAccess"}</div>
-          <div>MCP 默认策略：{summary.mcpStrategy ?? "inherit"}</div>
-          <div>调用执行链：遵循 Settings 的重试 / trace / dump 配置</div>
+          <div>策略来源：{runtimePolicySourceLabel(summary.policySource)}</div>
+          <div>MCP 默认策略：{renderMcpStrategyLabel(summary.mcpStrategy)}</div>
+          <div>调用执行链：遵循设置中心的重试、追踪与记录配置</div>
         </CardContent>
       </Card>
 
@@ -266,7 +281,7 @@ export function MCPServerPanel() {
         <CardHeader>
           <CardTitle className="text-base text-amber-900">MCP 权限与风险说明</CardTitle>
           <CardDescription className="text-amber-900/80">
-            stdio MCP 会启动本地进程，SSE MCP 会连接远端服务；工具参数、环境变量和返回值可能包含本地路径、账号上下文或敏感素材。所有调用必须遵循 mcpStrategy、allowlist、blocklist 与会话权限模式。
+            stdio MCP 会启动本地进程，SSE MCP 会连接远端服务；工具参数、环境变量和返回值可能包含本地路径、账号上下文或敏感素材。所有调用必须遵循 MCP 策略、允许列表、阻止列表与会话权限模式。
           </CardDescription>
         </CardHeader>
         <CardContent className="text-sm text-amber-900/90">
@@ -388,7 +403,7 @@ export function MCPServerPanel() {
                   <div className="flex flex-wrap items-center gap-2">
                     <CardTitle className="text-lg">{server.name}</CardTitle>
                     <Badge variant="outline">{server.transport.toUpperCase()}</Badge>
-                    <Badge variant={server.status === "connected" ? "secondary" : "outline"}>{server.status}</Badge>
+                    <Badge variant={server.status === "connected" ? "secondary" : "outline"}>{renderStatusLabel(server.status)}</Badge>
                     <Badge variant="outline">{server.toolCount} 个工具</Badge>
                   </div>
                   <CardDescription>
@@ -437,12 +452,12 @@ export function MCPServerPanel() {
                               <span className="font-mono text-foreground">{tool.name}</span>
                               {tool.access ? (
                                 <Badge variant={tool.access === "allow" ? "secondary" : tool.access === "prompt" ? "outline" : "destructive"}>
-                                  {tool.access}
+                                  {renderAccessLabel(tool.access)}
                                 </Badge>
                               ) : null}
                             </div>
                             <div className="mt-1 text-muted-foreground">— {tool.description}</div>
-                            {tool.source ? <div className="mt-1 text-muted-foreground">来源：{tool.source}</div> : null}
+                            {tool.source ? <div className="mt-1 text-muted-foreground">来源：{runtimePolicySourceLabel(tool.source)}</div> : null}
                             {(tool.reasonKey || tool.reason) ? (
                               <div className="mt-1 text-muted-foreground">治理解释：{describeToolAccessReason(tool.reasonKey, tool.reason)}</div>
                             ) : null}

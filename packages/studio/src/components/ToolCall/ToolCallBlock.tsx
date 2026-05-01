@@ -23,7 +23,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { fetchJson } from "@/hooks/use-api";
 import { useRunDetails } from "@/hooks/use-run-events";
-import { describeToolAccessReason } from "@/shared/tool-access-reasons";
+import { describeToolAccessReason, normalizeGovernanceSourceKey, type ToolAccessReasonKey } from "@/shared/tool-access-reasons";
 
 import { ToolIcon } from "./ToolIcon";
 import {
@@ -197,7 +197,7 @@ export function ToolCallBlock({ toolCall, defaultExpanded = false, className, on
                     <span key={item}>{item}</span>
                   ))}
                   {toolCall.error?.trim() ? (
-                    <span className="text-destructive">错误：{truncate(toolCall.error.trim(), 80)}</span>
+                    <span className="text-destructive">错误：{truncate(formatGovernanceReason(toolCall.error.trim()) ?? toolCall.error.trim(), 80)}</span>
                   ) : null}
                 </div>
               )}
@@ -494,7 +494,7 @@ function buildHighlightBadges(toolCall: ToolCall, toolKind: ReturnType<typeof ge
   }
 
   if (toolCall.error?.trim()) {
-    badges.push({ label: "错误", value: truncate(toolCall.error.trim(), 48), tone: "error" });
+    badges.push({ label: "错误", value: truncate(formatGovernanceReason(toolCall.error.trim()) ?? toolCall.error.trim(), 48), tone: "error" });
   }
 
   return badges.slice(0, 4);
@@ -539,7 +539,7 @@ function buildDetailSections(toolCall: ToolCall, toolKind: ReturnType<typeof get
     {
       key: "error",
       label: "错误",
-      value: toolCall.error,
+      value: formatGovernanceReason(toolCall.error) ?? toolCall.error,
       tone: "error" as const,
     },
   ];
@@ -673,6 +673,37 @@ function summarizeLineCount(value: string) {
   return `${Math.max(lineCount, 1)} 行`;
 }
 
+function formatGovernanceSource(source: string | undefined): string | undefined {
+  switch (normalizeGovernanceSourceKey(source)) {
+    case "allowlist":
+      return "允许列表";
+    case "blocklist":
+      return "拒绝列表";
+    case "default":
+      return "默认权限模式";
+    case "builtin":
+      return "内置工具规则";
+    case "mcpStrategy":
+      return "MCP 默认策略";
+    default:
+      return source ? "运行策略" : undefined;
+  }
+}
+
+function formatGovernanceReason(reason: string | undefined): string | undefined {
+  if (!reason) return undefined;
+  return reason
+    .replace(/Tool falls back to defaultPermissionMode=ask/g, "工具按默认权限模式进入确认")
+    .replace(/defaultPermissionMode=ask/g, "默认权限模式=需确认")
+    .replace(/runtimeControls\.defaultPermissionMode/g, "默认权限模式")
+    .replace(/runtimeControls\.toolAccess\.mcpStrategy/g, "MCP 默认策略")
+    .replace(/runtimeControls\.toolAccess\.allowlist/g, "允许列表")
+    .replace(/runtimeControls\.toolAccess\.blocklist/g, "拒绝列表")
+    .replace(/\bask\b/g, "需确认")
+    .replace(/\ballow\b/g, "直接允许")
+    .replace(/\bdeny\b/g, "拒绝");
+}
+
 function GovernanceCard({
   governanceMeta,
 }: {
@@ -757,12 +788,14 @@ function extractToolGovernance(toolCall: ToolCall) {
     return null;
   }
 
+  const formattedReason = formatGovernanceReason(reason);
+
   return {
-    source,
-    reason,
+    source: formatGovernanceSource(source),
+    reason: formattedReason,
     confirmationRequired,
     allowed,
-    reasonLabel: describeToolAccessReason(reasonKey as never, reason),
+    reasonLabel: describeToolAccessReason(reasonKey as ToolAccessReasonKey | undefined, formattedReason ?? reason),
   };
 }
 

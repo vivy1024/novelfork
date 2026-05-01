@@ -27,6 +27,7 @@ const coreMocks = vi.hoisted(() => ({
     overallDrift: 0.075,
     isSignificant: false,
   })),
+  chatCompletion: vi.fn(() => Promise.resolve({ content: "模型生成内容", usage: { promptTokens: 3, completionTokens: 4, totalTokens: 7 } })),
 }));
 
 vi.mock("@vivy1024/novelfork-core", () => ({
@@ -38,8 +39,19 @@ function buildCtx(root = "/tmp/test"): Parameters<typeof createWritingModesRoute
     state: {} as never,
     root,
     broadcast: vi.fn(),
-    buildPipelineConfig: vi.fn(),
-    getSessionLlm: vi.fn(),
+    buildPipelineConfig: vi.fn(() =>
+      Promise.resolve({
+        client: {
+          provider: "openai" as const,
+          apiFormat: "chat" as const,
+          stream: false as const,
+          defaults: { temperature: 0.7, maxTokens: 1000, maxTokensCap: null, thinkingBudget: 0, extra: {} },
+        },
+        model: "test-model",
+        projectRoot: root,
+      }),
+    ),
+    getSessionLlm: vi.fn(() => Promise.resolve({ apiKey: "key", baseUrl: "https://example.com/v1", model: "session-model", provider: "custom" })),
     runStore: {} as never,
     getStartupSummary: vi.fn(() => null),
     setStartupSummary: vi.fn(),
@@ -72,16 +84,40 @@ describe("writing-modes router", () => {
     });
     expect(status).toBe(200);
     expect(json).toMatchObject({
-      mode: "prompt-preview",
+      mode: "generated",
       writingMode: "continuation",
+      content: "模型生成内容",
       promptPreview: "continuation-prompt",
-      prompt: "continuation-prompt",
+      model: "test-model",
     });
+    expect(json.usage).toBeDefined();
   });
 
   it("POST /api/books/:bookId/inline-write — invalid mode", async () => {
     const { status } = await request("POST", "/api/books/book1/inline-write", { mode: "invalid" });
     expect(status).toBe(400);
+  });
+
+  it("POST /api/books/:bookId/writing-modes/execute-prompt — calls configured runtime and returns content", async () => {
+    const ctx = buildCtx();
+    const targetRouter = createWritingModesRouter(ctx);
+    const { status, json } = await requestWithRouter(targetRouter, "POST", "/api/books/book1/writing-modes/execute-prompt", {
+      prompt: "请继续写下一段",
+      sourceMode: "inline-write",
+      temperature: 0.6,
+      maxTokens: 1200,
+    });
+
+    expect(status).toBe(200);
+    expect(json).toMatchObject({ content: "模型生成内容", sourceMode: "inline-write", model: "test-model" });
+    expect(ctx.getSessionLlm).toHaveBeenCalled();
+    expect(ctx.buildPipelineConfig).toHaveBeenCalledWith(expect.objectContaining({ model: "session-model" }));
+    expect(coreMocks.chatCompletion).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: "openai" }),
+      "test-model",
+      expect.arrayContaining([expect.objectContaining({ role: "user", content: "请继续写下一段" })]),
+      expect.objectContaining({ temperature: 0.6, maxTokens: 1200 }),
+    );
   });
 
   it("POST /api/books/:bookId/dialogue/generate", async () => {
@@ -92,10 +128,12 @@ describe("writing-modes router", () => {
     });
     expect(status).toBe(200);
     expect(json).toMatchObject({
-      mode: "prompt-preview",
+      mode: "generated",
+      content: "模型生成内容",
       promptPreview: "dialogue-prompt",
-      prompt: "dialogue-prompt",
+      model: "test-model",
     });
+    expect(json.usage).toBeDefined();
   });
 
   it("POST /api/books/:bookId/dialogue/generate — no characters", async () => {
@@ -111,10 +149,10 @@ describe("writing-modes router", () => {
       count: 3,
     });
     expect(status).toBe(200);
-    expect(json.mode).toBe("prompt-preview");
-    expect(json.promptPreviews).toHaveLength(3);
-    expect(json.prompts).toHaveLength(3);
+    expect(json.mode).toBe("generated");
+    expect(json.variants).toHaveLength(3);
     expect(json.count).toBe(3);
+    expect(json.model).toBe("test-model");
   });
 
   it("POST /api/books/:bookId/outline/branch", async () => {
@@ -126,10 +164,12 @@ describe("writing-modes router", () => {
     });
     expect(status).toBe(200);
     expect(json).toMatchObject({
-      mode: "prompt-preview",
+      mode: "generated",
+      content: "模型生成内容",
       promptPreview: "branch-prompt",
-      prompt: "branch-prompt",
+      model: "test-model",
     });
+    expect(json.usage).toBeDefined();
   });
 
   it("POST /api/books/:bookId/outline/branch/:branchId/expand", async () => {
@@ -140,7 +180,8 @@ describe("writing-modes router", () => {
     });
     expect(status).toBe(200);
     expect(json.branchId).toBe("b1");
-    expect(json.mode).toBe("prompt-preview");
+    expect(json.mode).toBe("generated");
+    expect(json.content).toBe("模型生成内容");
     expect(json.promptPreview).toContain("大纲分支扩展任务");
   });
 
