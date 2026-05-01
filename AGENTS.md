@@ -6,7 +6,7 @@
 
 ## 版本与发布
 
-- **当前版本**: v0.0.1
+- **当前版本**: v0.0.2
 - **版本管理**: `CLAUDE.md` 标题 → `package.json` → `CHANGELOG.md` → `git tag`
 - **每次功能合入**: 在 `CHANGELOG.md` 的 `## Unreleased` 段下记录
 - **正式发版时**: 将 Unreleased 内容移到新版本号下，打 `git tag vX.Y.Z`
