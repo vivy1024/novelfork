@@ -594,7 +594,7 @@ export function WorkspacePage({
           />
         )}
         editor={showPublishPanel && activeBookId ? <PublishPanel bookId={activeBookId} onReport={handlePublishReport} /> : <WorkspaceEditor candidateApi={candidateApi} chapterApi={chapterApi} node={selectedNode} onResourceMutation={refreshWorkspaceResources} onCandidateResult={(message) => setWorkspaceNotice(message)} />}
-        assistant={<AssistantPanel assistantApi={assistantApi} modelGate={effectiveModelGate} selectedNode={selectedNode} onResourceMutation={refreshWorkspaceResources} />}
+        assistant={<RightPanelWithTabs assistantApi={assistantApi} modelGate={effectiveModelGate} selectedNode={selectedNode} onResourceMutation={refreshWorkspaceResources} />}
       />
     </SectionLayout>
   );
@@ -1022,6 +1022,114 @@ const ASSISTANT_ACTIONS: ReadonlyArray<{ readonly id: WorkspaceAssistantActionId
   { id: "continuity", label: "连续性检查", gate: "ai-review" },
 ];
 
+/* ── 右侧面板 Tab 切换 ── */
+
+type RightPanelTab = "cockpit" | "bible" | "writing";
+
+function RightPanelWithTabs({
+  assistantApi, modelGate, selectedNode, onResourceMutation,
+}: {
+  readonly assistantApi: WorkspaceAssistantApi;
+  readonly modelGate: WorkspaceModelGate;
+  readonly selectedNode: StudioResourceNode;
+  readonly onResourceMutation: WorkspaceResourceMutationHandler;
+}) {
+  const [activeTab, setActiveTab] = useState<RightPanelTab>("cockpit");
+  const bookId = typeof selectedNode.metadata?.bookId === "string" ? selectedNode.metadata.bookId : "";
+
+  const tabs: { id: RightPanelTab; label: string }[] = [
+    { id: "cockpit", label: "驾驶舱" },
+    { id: "bible", label: "经纬" },
+    { id: "writing", label: "写作" },
+  ];
+
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-1 rounded-lg bg-muted p-1">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            className={`flex-1 rounded-md px-2 py-1 text-xs font-medium transition-colors ${
+              activeTab === tab.id ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+            }`}
+            onClick={() => setActiveTab(tab.id)}
+            type="button"
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === "cockpit" && (
+        <div className="space-y-3">
+          <CockpitOverviewPanel bookId={bookId} />
+        </div>
+      )}
+      {activeTab === "bible" && (
+        <BiblePanel bookId={bookId} chapterNumber={typeof selectedNode.metadata?.chapterNumber === "number" ? selectedNode.metadata.chapterNumber : undefined} />
+      )}
+      {activeTab === "writing" && (
+        <AssistantPanel assistantApi={assistantApi} modelGate={modelGate} selectedNode={selectedNode} onResourceMutation={onResourceMutation} />
+      )}
+    </div>
+  );
+}
+
+/* ── 驾驶舱总览面板 ── */
+
+function CockpitOverviewPanel({ bookId }: { readonly bookId: string }) {
+  const { data: progress } = useApi<{ progress?: { today: { written: number; target: number; completed: boolean }; thisWeek: { written: number; target: number }; streak: number } }>(`/progress`);
+  const { data: book } = useApi<BookDetailResponse>(`/books/${bookId}`);
+
+  const p = progress?.progress;
+  const chapters = book?.chapters ?? [];
+  const chapterCount = chapters.length;
+
+  const riskyChapters = chapters.filter((c) => (c.status === "failed" || c.status === "rejected"));
+
+  if (!bookId) return <p className="text-xs text-muted-foreground p-2">请先选择一本书。</p>;
+
+  return (
+    <div className="rounded-lg border border-border bg-card p-3 space-y-2">
+      <div className="flex items-center gap-2">
+        <span className="text-sm font-medium">创作总览</span>
+        <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">Beta</span>
+      </div>
+
+      {p && (
+        <div className="rounded-lg border border-border bg-muted/30 p-2">
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-muted-foreground">今日进度</span>
+            <span className="font-medium">{p.today.written} / {p.today.target} 字</span>
+          </div>
+          {p.streak > 1 && <div className="mt-1 text-[11px] text-muted-foreground">连续 {p.streak} 天达标</div>}
+        </div>
+      )}
+
+      <div className="rounded-lg border border-border bg-muted/30 p-2">
+        <div className="text-xs text-muted-foreground">
+          进度 {chapterCount} / {book?.book?.targetChapters ?? "?"} 章 · {chapters.reduce((s, c) => s + (c.wordCount ?? 0), 0)} 字
+        </div>
+      </div>
+
+      {riskyChapters.length > 0 && (
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-2">
+          <div className="text-xs font-medium text-amber-600 dark:text-amber-400">待处理问题</div>
+          {riskyChapters.slice(0, 3).map((c) => (
+            <div key={c.number} className="mt-1 text-[11px] text-muted-foreground">第 {c.number} 章 · {c.status}</div>
+          ))}
+        </div>
+      )}
+
+      {riskyChapters.length === 0 && chapterCount > 0 && (
+        <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-2 text-[11px] text-emerald-600 dark:text-emerald-400">
+          暂无风险 ✓
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AssistantPanel({
   assistantApi,
   modelGate,
@@ -1097,7 +1205,6 @@ function AssistantPanel({
         ))}
       </div>
       <AgentWritingEntry bookId={context.bookId} modelGate={modelGate} />
-      <BiblePanel bookId={context.bookId} chapterNumber={context.chapterNumber} />
       <WritingModesPanel selectedNode={selectedNode} onResourceMutation={onResourceMutation} />
       <WritingToolsPanel selectedNode={selectedNode} onResourceMutation={onResourceMutation} />
     </div>
