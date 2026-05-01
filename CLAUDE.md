@@ -1,6 +1,6 @@
 # NovelFork Studio
 
-**v1.0.0** | 2026-04-19 | 始终使用中文回复
+**v1.0.0** | 2026-04-19 | 最后更新 2026-05-01 | 始终使用中文回复
 
 你是 Claude Code。配置以本文件 + `.kiro/steering/` 为准。
 
@@ -30,6 +30,18 @@
 - **文风仿写**: 基于真相文件（ground truth）的风格迁移
 - **去 AI 味**: 检测并优化 AI 生成痕迹
 - **题材支持**: 玄幻、仙侠、都市、科幻等
+
+---
+
+## 当前状态
+
+| 指标 | 值 |
+|------|----|
+| Specs | 全部完成并归档（~308 任务） |
+| TypeScript | typecheck 通过 |
+| 测试 | 137 文件 / 801 测试 |
+| 编译 | `bun run compile` → `dist/novelfork.exe` 115MB |
+| 运行 | `./novelfork.exe` → `http://localhost:4567` |
 
 ---
 
