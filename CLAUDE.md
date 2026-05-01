@@ -1,12 +1,24 @@
 # NovelFork Studio
 
-**v1.0.0** | 2026-04-19 | 最后更新 2026-05-01 | 始终使用中文回复
+**v0.0.1** | 2026-04-19 | 最后更新 2026-05-01 | 始终使用中文回复
 
 你是 Claude Code。配置以本文件 + `.kiro/steering/` 为准。
 
 **项目**: NovelFork — 网文小说 AI 辅助创作工作台（TypeScript + Bun + React 19 + Hono + SQLite + AI Agents）
 **开发者**: 薛小川 | GitHub `vivy1024` — ❌ 禁止虚构
 **上游**: Fork 自 [InkOS](https://github.com/Narcooo/inkos)，专注中文网文创作场景
+
+---
+
+## 版本管理
+
+| 规则 | 说明 |
+|------|------|
+| 版本号 | `v0.0.1` 起，语义化版本（主.次.修订） |
+| 标记位置 | `CLAUDE.md` 标题、`package.json`、`CHANGELOG.md`、Git tag |
+| 提交后 | 每次功能合入后更新 `CHANGELOG.md` Unreleased 段 |
+| 发版时 | 将 Unreleased 内容移到新版本号下，打 `git tag vX.Y.Z` |
+| 禁止 | 禁止手动改版本号到未来版本；禁止虚构 changelog 条目 |
 
 ---
 
