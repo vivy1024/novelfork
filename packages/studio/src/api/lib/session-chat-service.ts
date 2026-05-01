@@ -33,6 +33,8 @@ import {
 } from "./session-history-store.js";
 import { generateSessionReply, type LlmRuntimeGenerateResult } from "./llm-runtime-service.js";
 import { getSessionById, updateSession } from "./session-service.js";
+import { buildAgentContext } from "./agent-context.js";
+import { getAgentSystemPrompt } from "@vivy1024/novelfork-core";
 
 const MAX_SESSION_MESSAGES = 50;
 
@@ -675,9 +677,20 @@ export async function handleSessionChatTransportMessage(
 
   let reply: LlmRuntimeGenerateResult;
   try {
+    // 注入 Agent 专属 system prompt 和作品上下文
+    const agentSystemPrompt = getAgentSystemPrompt(loaded.session.agentId);
+    const projectId = (loaded.session as { projectId?: string }).projectId;
+    let bookContext = "";
+    if (projectId) {
+      try {
+        bookContext = await buildAgentContext({ bookId: projectId });
+      } catch { /* context build failure is non-fatal */ }
+    }
+    const enhancedMessages = injectSystemPrompt(loaded.state.messages, agentSystemPrompt, bookContext);
+
     reply = await generateSessionReply({
       sessionConfig: loaded.session.sessionConfig,
-      messages: loaded.state.messages,
+      messages: enhancedMessages,
     });
   } catch (error) {
     reply = {
@@ -738,6 +751,37 @@ function parseSessionChatUrl(url: URL): { sessionId: string; resumeFromSeq: numb
 
 function isBunWebSocketRegistrar(server: StartedHttpServer): server is BunWebSocketRegistrar {
   return typeof server === "object" && server !== null && "runtime" in server && server.runtime === "bun";
+}
+
+/**
+ * 在消息列表开头注入 Agent 专属 system prompt 和作品上下文。
+ * 如果第一个消息已是 system 类型，替换内容；否则在开头插入。
+ */
+function injectSystemPrompt(
+  messages: NarratorSessionChatMessage[],
+  systemPrompt: string,
+  bookContext: string,
+): NarratorSessionChatMessage[] {
+  const contextBlock = bookContext ? `\n\n${bookContext}` : "";
+  const fullPrompt = `${systemPrompt}${contextBlock}`;
+
+  const result = [...messages];
+  const firstMessage = result[0];
+
+  if (firstMessage?.role === "system") {
+    // Replace existing system message with agent-specific prompt
+    result[0] = { ...firstMessage, content: fullPrompt };
+  } else {
+    // Prepend system message
+    result.unshift({
+      id: `agent-system-${Date.now()}`,
+      role: "system",
+      content: fullPrompt,
+      timestamp: Date.now(),
+      seq: (firstMessage?.seq ?? 1) - 1,
+    });
+  }
+  return result;
 }
 
 export function setupSessionChatWebSocket(server: StartedHttpServer): void {
