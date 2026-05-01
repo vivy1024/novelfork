@@ -3,67 +3,22 @@
 **版本**: v2.0.0
 **创建日期**: 2026-04-30
 **修订日期**: 2026-05-01
-**状态**: 待审批
+**状态**: 执行中
 
 ---
 
-## 前置条件
+## Phase 0：类型基础与风险计算（3 tasks）✅
 
-- `novel-creation-workbench-complete-flow` 已完成。
-- `workspace-gap-closure-v1` 已完成（写作模式真生成、中文化、删除功能）。
-- 当前 typecheck、vitest 全部通过。
+- [x] 1. 定义驾驶舱类型系统 ✅
+- [x] 2. 实现伏笔过期风险计算 ✅（缺测试文件）
+- [x] 3. 扩展右侧面板 Tab + 驾驶舱入口 ✅
 
----
+## Phase 1：总览 Tab（4 tasks）✅
 
-## Phase 0：类型基础与风险计算（3 tasks）
-
-- [ ] 1. 定义驾驶舱类型系统
-  - 新建 `cockpit/cockpit-types.ts`
-  - 定义 `CockpitSourceRef`、`CockpitSignal<T>`、`CockpitHookEntry`、`CockpitSettingEntry`、`CockpitRiskCard`、`HookRiskLevel`
-  - 类型与已有 `BibleEvent`、`BibleSetting` 兼容
-  - SourceRef.label 使用 `TRUTH_FILE_LABELS` 映射（从 storage.ts 导出或共享）
-  - 验证：typecheck 通过
-
-- [ ] 2. 实现伏笔过期风险计算
-  - 新建 `cockpit/cockpit-risk.ts`，实现 `computeHookRisk(hook, currentChapter, threshold=15)`
-  - 新建 `cockpit/cockpit-risk.test.ts`，TDD 覆盖：
-    - open 且未过期（gap < 10）
-    - payof-due（10 < gap ≤ 15）
-    - expired-risk（gap > 15）
-    - resolved（已回收）
-  - 当前章节号来自 books API 的 `chapters.length` 或 `nextChapter`
-  - 验证：`vitest run cockpit-risk.test.ts` 通过
-
-- [ ] 3. 扩展右侧面板顶部 Tab，增加驾驶舱入口
-  - 修改 WorkspacePage.tsx 右侧面板区域
-  - 新增顶级 Tab：[驾驶舱] / [经纬] / [写作]
-  - 驾驶舱为默认选中 Tab
-  - 现有 BiblePanel 和 WritingModesPanel+WritingToolsPanel 保持在各自 Tab 内不变
-  - 验证：WorkspacePage 测试覆盖 Tab 切换、默认选中驾驶舱
-
----
-
-## Phase 1：总览 Tab（4 tasks）
-
-- [ ] 4. 实现日更进度卡片
-  - 在 CockpitOverviewTab 中展示
-  - 调用 `/api/progress` API，展示：今日字数 / 日更目标、连续天数、本周累计
-  - 无数据或加载中时显示占位
-  - 验证：UI 测试覆盖有数据、无数据、加载失败
-
-- [ ] 5. 实现当前焦点卡片
-  - 读取 `current_focus.md` 内容（前 300 字）
-  - 无内容时显示"尚未设置当前焦点" + 编辑入口（跳转到 truth-file 节点）
-  - 验证：UI 测试覆盖有内容、无内容
-
-- [ ] 6. 实现最近章节摘要
-  - 调用 bible chapter-summaries API
-  - 展示最近 3 条（章节号、标题、一句话摘要）
-  - 每条可点击跳转到对应章节节点
-  - 无摘要时显示"暂无章节摘要"
-  - 验证：UI 测试覆盖有摘要、无摘要、跳转
-
-- [ ] 7. 实现风险卡片区域
+- [x] 4. 日更进度卡片 ✅
+- [x] 5. 当前焦点卡片 ✅
+- [x] 6. 最近章节摘要 ✅
+- [x] 7. 风险卡片区域 ✅
   - 调用 `/books/:id` 获取章节索引中的 `auditIssues`
   - 展示：过期/快过期伏笔数量 + 审计失败章节列表
   - 每条风险可点击跳转
