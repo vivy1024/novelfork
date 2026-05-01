@@ -135,8 +135,8 @@ describe("RoutinesNextPage", () => {
     const routineNav = screen.getByRole("tablist", { name: "套路分区" });
     fireEvent.click(within(routineNav).getByRole("tab", { name: /可选工具/ }));
     expect(screen.getByPlaceholderText("Search tools...")).toBeTruthy();
-    expect(screen.getByText("/LOAD Terminal")).toBeTruthy();
-    expect(screen.getByText("/LOAD ShareFile")).toBeTruthy();
+    expect(screen.getByText("/load terminal")).toBeTruthy();
+    expect(screen.getByText("/load share_file")).toBeTruthy();
 
     fireEvent.click(within(routineNav).getByRole("tab", { name: /工具权限/ }));
     expect(screen.getByText("Bash 命令规则")).toBeTruthy();

@@ -89,6 +89,7 @@ describe("Studio Next routing", () => {
   it("workspace writing tools panel is accessible from the assistant panel", () => {
     render(<StudioNextApp initialRoute="workspace" />);
     const assistant = screen.getByRole("complementary", { name: "AI 与经纬面板" });
+    fireEvent.click(within(assistant).getByRole("button", { name: "写作" }));
     expect(within(assistant).getByText("写作工具")).toBeTruthy();
   });
 });
