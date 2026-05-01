@@ -16,7 +16,7 @@ describe("ContinuityAuditor", () => {
   });
 
   it("prefers book language override when building audit prompts", async () => {
-    const root = await mkdtemp(join(tmpdir(), "inkos-auditor-lang-test-"));
+    const root = await mkdtemp(join(tmpdir(), "novelfork-auditor-lang-test-"));
     const bookDir = join(root, "book");
     const storyDir = join(bookDir, "story");
     await mkdir(storyDir, { recursive: true });
@@ -88,7 +88,7 @@ describe("ContinuityAuditor", () => {
   });
 
   it("localizes English audit prompts instead of mixing Chinese control text", async () => {
-    const root = await mkdtemp(join(tmpdir(), "inkos-auditor-en-prompt-test-"));
+    const root = await mkdtemp(join(tmpdir(), "novelfork-auditor-en-prompt-test-"));
     const bookDir = join(root, "book");
     const storyDir = join(bookDir, "story");
     await mkdir(storyDir, { recursive: true });
@@ -177,7 +177,7 @@ describe("ContinuityAuditor", () => {
   });
 
   it("uses selected summary and hook evidence instead of full long-history markdown in governed mode", async () => {
-    const root = await mkdtemp(join(tmpdir(), "inkos-auditor-test-"));
+    const root = await mkdtemp(join(tmpdir(), "novelfork-auditor-test-"));
     const bookDir = join(root, "book");
     const storyDir = join(bookDir, "story");
     await mkdir(storyDir, { recursive: true });

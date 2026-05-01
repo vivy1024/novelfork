@@ -191,7 +191,7 @@ export class MCPClientImpl implements MCPClient {
         tools: { listChanged: true },
       },
       clientInfo: {
-        name: "inkos-mcp-client",
+        name: "novelfork-mcp-client",
         version: "1.0.0",
       },
     };

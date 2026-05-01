@@ -16,7 +16,7 @@ describe("lorebook-rag", () => {
 
   beforeEach(() => {
     // 创建临时测试目录
-    testDir = mkdtempSync(join(tmpdir(), "inkos-test-"));
+    testDir = mkdtempSync(join(tmpdir(), "novelfork-test-"));
     // 创建 story 子目录（MemoryDB 需要）
     mkdirSync(join(testDir, "story"), { recursive: true });
     memoryDb = new MemoryDB(testDir);

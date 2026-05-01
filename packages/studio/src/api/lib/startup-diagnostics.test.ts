@@ -106,14 +106,14 @@ describe("startup diagnostics", () => {
   it("reports external git worktrees as pollution diagnostics", () => {
     expect(buildWorktreePollutionDiagnostics("D:/DESKTOP/novelfork", [
       { path: "D:/DESKTOP/novelfork/.novelfork-worktrees/feature-a" },
-      { path: "D:/DESKTOP/sub2api/inkos-master/packages/studio/.test-workspace/.inkos-worktrees/feature-test" },
+      { path: "D:/DESKTOP/sub2api/novelfork-legacy/packages/studio/.test-workspace/.novelfork-worktrees/feature-test" },
     ])).toEqual(expect.objectContaining({
       kind: "git-worktree-pollution",
       status: "failed",
       reason: "检测到外部项目 worktree",
       note: expect.stringContaining("sub2api"),
       details: expect.objectContaining({
-        externalWorktrees: ["D:/DESKTOP/sub2api/inkos-master/packages/studio/.test-workspace/.inkos-worktrees/feature-test"],
+        externalWorktrees: ["D:/DESKTOP/sub2api/novelfork-legacy/packages/studio/.test-workspace/.novelfork-worktrees/feature-test"],
       }),
     }));
   });

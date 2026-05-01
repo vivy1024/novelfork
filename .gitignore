@@ -1,6 +1,12 @@
 node_modules/
 dist/
 target/
+books/
+plugins/
+skills/
+novelfork.json
+*.log
+package-lock.json
 .env
 .env.local
 .npmrc

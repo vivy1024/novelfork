@@ -11,7 +11,7 @@ describe("StateManager", () => {
   let manager: StateManager;
 
   beforeEach(async () => {
-    tempDir = await mkdtemp(join(tmpdir(), "inkos-test-"));
+    tempDir = await mkdtemp(join(tmpdir(), "novelfork-test-"));
     manager = new StateManager(tempDir);
   });
 

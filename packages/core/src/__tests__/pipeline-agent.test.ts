@@ -13,7 +13,7 @@ describe("agent pipeline tools", () => {
   let bookId: string;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "inkos-agent-tools-"));
+    root = await mkdtemp(join(tmpdir(), "novelfork-agent-tools-"));
     state = new StateManager(root);
     bookId = "agent-book";
 

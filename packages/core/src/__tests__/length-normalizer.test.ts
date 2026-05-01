@@ -23,7 +23,7 @@ const AGENT_CONTEXT = {
     },
   } as const,
   model: "test-model",
-  projectRoot: "/tmp/inkos-length-normalizer-test",
+  projectRoot: "/tmp/novelfork-length-normalizer-test",
 };
 
 function createAgent(): LengthNormalizerAgent {

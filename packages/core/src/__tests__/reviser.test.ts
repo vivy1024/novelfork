@@ -25,7 +25,7 @@ describe("ReviserAgent", () => {
   });
 
   it("prefers book language override when building revision prompts", async () => {
-    const root = await mkdtemp(join(tmpdir(), "inkos-reviser-lang-test-"));
+    const root = await mkdtemp(join(tmpdir(), "novelfork-reviser-lang-test-"));
     const bookDir = join(root, "book");
     await mkdir(join(bookDir, "story"), { recursive: true });
 
@@ -95,7 +95,7 @@ describe("ReviserAgent", () => {
   });
 
   it("keeps rewrite mode local-first instead of encouraging full-chapter replacement", async () => {
-    const root = await mkdtemp(join(tmpdir(), "inkos-reviser-rewrite-guardrail-test-"));
+    const root = await mkdtemp(join(tmpdir(), "novelfork-reviser-rewrite-guardrail-test-"));
     const bookDir = join(root, "book");
     await mkdir(join(bookDir, "story"), { recursive: true });
 
@@ -153,7 +153,7 @@ describe("ReviserAgent", () => {
   });
 
   it("tells the model to preserve the target range when a length spec is provided", async () => {
-    const root = await mkdtemp(join(tmpdir(), "inkos-reviser-test-"));
+    const root = await mkdtemp(join(tmpdir(), "novelfork-reviser-test-"));
     const bookDir = join(root, "book");
     await mkdir(join(bookDir, "story"), { recursive: true });
 
@@ -225,7 +225,7 @@ describe("ReviserAgent", () => {
   });
 
   it("reconstructs revised content from spot-fix patches and preserves untouched text", async () => {
-    const root = await mkdtemp(join(tmpdir(), "inkos-reviser-spotfix-patch-test-"));
+    const root = await mkdtemp(join(tmpdir(), "novelfork-reviser-spotfix-patch-test-"));
     const bookDir = join(root, "book");
     await mkdir(join(bookDir, "story"), { recursive: true });
 
@@ -301,7 +301,7 @@ describe("ReviserAgent", () => {
   });
 
   it("uses selected summary and hook evidence instead of full long-history markdown in governed mode", async () => {
-    const root = await mkdtemp(join(tmpdir(), "inkos-reviser-governed-test-"));
+    const root = await mkdtemp(join(tmpdir(), "novelfork-reviser-governed-test-"));
     const bookDir = join(root, "book");
     const storyDir = join(bookDir, "story");
     await mkdir(storyDir, { recursive: true });
