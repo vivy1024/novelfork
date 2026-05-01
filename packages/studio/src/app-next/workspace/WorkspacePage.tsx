@@ -11,6 +11,7 @@ import {
 import { BiblePanel } from "./BiblePanel";
 import { PublishPanel } from "./PublishPanel";
 import { fetchJson, postApi, useApi } from "../../hooks/use-api";
+import { appStore } from "../../stores/app-store";
 import type { AiAction, AiGateResult } from "../../lib/ai-gate";
 import type { BookDetail, ChapterSummary, CreateChapterResponse, DraftResource, GeneratedChapterCandidate, PublishReportResource } from "../../shared/contracts";
 import { normalizeBookStatus, normalizeChapterStatus } from "../../../../core/src/models/status";
@@ -289,6 +290,14 @@ export function WorkspacePage({
   const books = booksData?.books ?? [];
   const [selectedBookId, setSelectedBookId] = useState<string | null>(null);
   const activeBookId = selectedBookId ?? books[0]?.id ?? null;
+
+  // Sync to global appStore so Agent/ChatWindow can read current book
+  useEffect(() => {
+    appStore.setState((prev) => {
+      if (prev.activeBookId === activeBookId) return prev;
+      return { ...prev, activeBookId };
+    });
+  }, [activeBookId]);
 
   /* ── load selected book detail + candidates ── */
   const { data: bookDetail, refetch: refetchBookDetail } = useApi<BookDetailResponse>(activeBookId ? `/books/${activeBookId}` : null);
