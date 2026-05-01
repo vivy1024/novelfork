@@ -14,7 +14,7 @@ let tempRoot: string;
 
 describe("runtime requirements", () => {
   beforeEach(async () => {
-    tempRoot = await mkdtemp(join(tmpdir(), "inkos-runtime-requirements-"));
+    tempRoot = await mkdtemp(join(tmpdir(), "novelfork-runtime-requirements-"));
   });
 
   afterEach(async () => {

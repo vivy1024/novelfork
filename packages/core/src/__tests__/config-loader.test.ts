@@ -34,7 +34,7 @@ describe("loadProjectConfig local provider auth", () => {
   });
 
   it("allows missing API keys for localhost OpenAI-compatible endpoints", async () => {
-    root = await mkdtemp(join(tmpdir(), "inkos-config-loader-local-"));
+    root = await mkdtemp(join(tmpdir(), "novelfork-config-loader-local-"));
     for (const key of ENV_KEYS) {
       previousEnv.set(key, process.env[key]);
       process.env[key] = "";
@@ -59,7 +59,7 @@ describe("loadProjectConfig local provider auth", () => {
   });
 
   it("still requires API keys for remote hosted endpoints", async () => {
-    root = await mkdtemp(join(tmpdir(), "inkos-config-loader-remote-"));
+    root = await mkdtemp(join(tmpdir(), "novelfork-config-loader-remote-"));
     for (const key of ENV_KEYS) {
       previousEnv.set(key, process.env[key]);
       process.env[key] = "";
@@ -79,7 +79,7 @@ describe("loadProjectConfig local provider auth", () => {
   });
 
   it("only injects noop-model when API keys are explicitly optional", async () => {
-    root = await mkdtemp(join(tmpdir(), "inkos-config-loader-noop-"));
+    root = await mkdtemp(join(tmpdir(), "novelfork-config-loader-noop-"));
     for (const key of ENV_KEYS) {
       previousEnv.set(key, process.env[key]);
       process.env[key] = "";

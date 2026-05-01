@@ -25,6 +25,7 @@ export default defineConfig({
       reuseExistingServer: false,
       env: {
         NOVELFORK_SESSION_STORE_DIR: e2eSessionStoreDir,
+        NOVELFORK_NO_BROWSER: "1",
       },
       stdout: "pipe",
       stderr: "pipe",

@@ -30,7 +30,7 @@ describe("classifyWorktrees", () => {
   it("flags worktrees outside the project root as external via heuristic", () => {
     const result = classifyWorktrees([
       makeWorktree({ path: "D:/DESKTOP/novelfork" }),
-      makeWorktree({ path: "D:/DESKTOP/sub2api/inkos-master/.test-workspace/.inkos-worktrees/feature-test" }),
+      makeWorktree({ path: "D:/DESKTOP/sub2api/novelfork-legacy/.test-workspace/.novelfork-worktrees/feature-test" }),
     ]);
     expect(result[0].externalReason).toBeUndefined();
     expect(result[1].externalReason).toBe("heuristic");
@@ -74,7 +74,7 @@ describe("classifyWorktrees", () => {
   it("hides external worktrees by default and includes them when requested", () => {
     const classified = classifyWorktrees([
       makeWorktree({ path: "D:/DESKTOP/novelfork" }),
-      makeWorktree({ path: "D:/DESKTOP/sub2api/.inkos-worktrees/feature-test" }),
+      makeWorktree({ path: "D:/DESKTOP/sub2api/.novelfork-worktrees/feature-test" }),
     ]);
 
     expect(getVisibleWorktrees(classified, false).map((w) => w.path)).toEqual(["D:/DESKTOP/novelfork"]);

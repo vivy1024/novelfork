@@ -50,21 +50,21 @@ const failingLlmEnv = {
 
 describe("CLI integration", () => {
   beforeAll(async () => {
-    projectDir = await mkdtemp(join(tmpdir(), "inkos-cli-test-"));
+    projectDir = await mkdtemp(join(tmpdir(), "novelfork-cli-test-"));
   });
 
   afterAll(async () => {
     await rm(projectDir, { recursive: true, force: true });
   });
 
-  describe("inkos --version", () => {
+  describe("novelfork --version", () => {
     it("prints version number", () => {
       const output = run(["--version"]);
       expect(output.trim()).toMatch(/^\d+\.\d+\.\d+$/);
     });
   });
 
-  describe("inkos --help", () => {
+  describe("novelfork --help", () => {
     it("prints help with command list", () => {
       const output = run(["--help"]);
       expect(output).toContain("novelfork");
@@ -74,7 +74,7 @@ describe("CLI integration", () => {
     });
   });
 
-  describe("inkos init", () => {
+  describe("novelfork init", () => {
     it("initializes project in current directory", () => {
       const output = run(["init"]);
       expect(output).toContain("Project initialized");
@@ -113,7 +113,7 @@ describe("CLI integration", () => {
     });
   });
 
-  describe("inkos init <name>", () => {
+  describe("novelfork init <name>", () => {
     it("creates project in subdirectory", () => {
       const output = run(["init", "subproject"]);
       expect(output).toContain("Project initialized");
@@ -126,7 +126,7 @@ describe("CLI integration", () => {
     });
 
     it("supports absolute project paths instead of nesting them under cwd", async () => {
-      const absoluteDir = await mkdtemp(join(tmpdir(), "inkos-cli-abs-init-"));
+      const absoluteDir = await mkdtemp(join(tmpdir(), "novelfork-cli-abs-init-"));
 
       try {
         const output = run(["init", absoluteDir]);
@@ -141,7 +141,7 @@ describe("CLI integration", () => {
     });
 
     it("prints English next steps when initialized with --lang en", async () => {
-      const englishDir = await mkdtemp(join(tmpdir(), "inkos-cli-en-init-"));
+      const englishDir = await mkdtemp(join(tmpdir(), "novelfork-cli-en-init-"));
 
       try {
         const output = run(["init", englishDir, "--lang", "en"]);
@@ -259,7 +259,7 @@ describe("CLI integration", () => {
     });
   });
 
-  describe("inkos status", () => {
+  describe("novelfork status", () => {
     it("shows project status with zero books", () => {
       const output = run(["status"]);
       expect(output).toContain("Books: 0");
@@ -463,7 +463,7 @@ describe("CLI integration", () => {
     });
   });
 
-  describe("inkos doctor", () => {
+  describe("novelfork doctor", () => {
     it("checks environment health", () => {
       const { stdout } = runStderr(["doctor"]);
       expect(stdout).toContain("NovelFork Doctor");
@@ -657,14 +657,14 @@ describe("CLI integration", () => {
     });
   });
 
-  describe("inkos analytics", () => {
+  describe("novelfork analytics", () => {
     it("errors when no book exists", () => {
       const { exitCode } = runStderr(["analytics"]);
       expect(exitCode).not.toBe(0);
     });
   });
 
-  describe("inkos review", () => {
+  describe("novelfork review", () => {
     it("preserves the original chapter snapshot when approving review", async () => {
       const configPath = join(projectDir, "novelfork.json");
       const initialized = await stat(configPath).then(() => true).catch(() => false);
@@ -733,7 +733,7 @@ describe("CLI integration", () => {
     });
   });
 
-  describe("inkos plan/compose", () => {
+  describe("novelfork plan/compose", () => {
     beforeAll(async () => {
       const configPath = join(projectDir, "novelfork.json");
       const initialized = await stat(configPath).then(() => true).catch(() => false);
@@ -812,7 +812,7 @@ describe("CLI integration", () => {
     });
   });
 
-  describe("inkos export", () => {
+  describe("novelfork export", () => {
     beforeAll(async () => {
       const configPath = join(projectDir, "novelfork.json");
       const initialized = await stat(configPath).then(() => true).catch(() => false);

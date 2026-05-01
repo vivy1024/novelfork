@@ -48,7 +48,7 @@ export const doctorCommand = new Command("doctor")
       await readFile(join(root, "novelfork.json"), "utf-8");
       checks.push({ name: "novelfork.json", ok: true, detail: "Found" });
     } catch {
-      checks.push({ name: "novelfork.json", ok: false, detail: "Not found. Run 'inkos init'" });
+      checks.push({ name: "novelfork.json", ok: false, detail: "Not found. Run 'novelfork init'" });
     }
 
     // 3. Check .env exists

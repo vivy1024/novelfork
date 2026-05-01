@@ -38,7 +38,7 @@ describe("WriterAgent", () => {
   });
 
   it("uses compact summary context plus selected long-range evidence during governed settlement", async () => {
-    const root = await mkdtemp(join(tmpdir(), "inkos-writer-test-"));
+    const root = await mkdtemp(join(tmpdir(), "novelfork-writer-test-"));
     const bookDir = join(root, "book");
     const storyDir = join(bookDir, "story");
     await mkdir(storyDir, { recursive: true });
@@ -242,7 +242,7 @@ describe("WriterAgent", () => {
   });
 
   it("builds structured runtime-state artifacts when settler returns a delta", async () => {
-    const root = await mkdtemp(join(tmpdir(), "inkos-writer-runtime-state-test-"));
+    const root = await mkdtemp(join(tmpdir(), "novelfork-writer-runtime-state-test-"));
     const bookDir = join(root, "book");
     const storyDir = join(bookDir, "story");
     const chaptersDir = join(bookDir, "chapters");
@@ -391,7 +391,7 @@ describe("WriterAgent", () => {
   });
 
   it("overrides hallucinated chapter numbers across both delta and summary row", async () => {
-    const root = await mkdtemp(join(tmpdir(), "inkos-writer-runtime-state-hallucinated-chapter-test-"));
+    const root = await mkdtemp(join(tmpdir(), "novelfork-writer-runtime-state-hallucinated-chapter-test-"));
     const bookDir = join(root, "book");
     const storyDir = join(bookDir, "story");
     const chaptersDir = join(bookDir, "chapters");
@@ -541,7 +541,7 @@ describe("WriterAgent", () => {
   });
 
   it("returns the arbiter-resolved delta instead of raw new-hook candidates", async () => {
-    const root = await mkdtemp(join(tmpdir(), "inkos-writer-arbiter-test-"));
+    const root = await mkdtemp(join(tmpdir(), "novelfork-writer-arbiter-test-"));
     const bookDir = join(root, "book");
     const storyDir = join(bookDir, "story");
     const chaptersDir = join(bookDir, "chapters");
@@ -686,7 +686,7 @@ describe("WriterAgent", () => {
   });
 
   it("logs localized phase messages for Chinese books", async () => {
-    const root = await mkdtemp(join(tmpdir(), "inkos-writer-test-"));
+    const root = await mkdtemp(join(tmpdir(), "novelfork-writer-test-"));
     const bookDir = join(root, "book");
     const storyDir = join(bookDir, "story");
     const { logger, infos } = createCaptureLogger();
@@ -796,7 +796,7 @@ describe("WriterAgent", () => {
   });
 
   it("injects an English variance brief into governed creative prompts", async () => {
-    const root = await mkdtemp(join(tmpdir(), "inkos-writer-variance-test-"));
+    const root = await mkdtemp(join(tmpdir(), "novelfork-writer-variance-test-"));
     const bookDir = join(root, "book");
     const storyDir = join(bookDir, "story");
     const chaptersDir = join(bookDir, "chapters");
@@ -935,7 +935,7 @@ describe("WriterAgent", () => {
   });
 
   it("renders explicit title history, mood trail, and canon blocks in governed creative prompts", async () => {
-    const root = await mkdtemp(join(tmpdir(), "inkos-writer-governed-evidence-test-"));
+    const root = await mkdtemp(join(tmpdir(), "novelfork-writer-governed-evidence-test-"));
     const bookDir = join(root, "book");
     const storyDir = join(bookDir, "story");
     await mkdir(storyDir, { recursive: true });
@@ -1078,7 +1078,7 @@ describe("WriterAgent", () => {
   });
 
   it("renders an explicit hook agenda block and removes placeholder hook ids from the governed write contract", async () => {
-    const root = await mkdtemp(join(tmpdir(), "inkos-writer-hook-agenda-test-"));
+    const root = await mkdtemp(join(tmpdir(), "novelfork-writer-hook-agenda-test-"));
     const bookDir = join(root, "book");
     const storyDir = join(bookDir, "story");
     await mkdir(storyDir, { recursive: true });

@@ -12,7 +12,7 @@ describe("PlannerAgent", () => {
   let book: BookConfig;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "inkos-planner-test-"));
+    root = await mkdtemp(join(tmpdir(), "novelfork-planner-test-"));
     bookDir = join(root, "books", "planner-book");
     storyDir = join(bookDir, "story");
     await mkdir(join(storyDir, "runtime"), { recursive: true });

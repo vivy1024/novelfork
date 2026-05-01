@@ -14,7 +14,7 @@ describe("Hooks Countdown System", () => {
   let db: MemoryDB;
 
   beforeEach(() => {
-    testDir = mkdtempSync(join(tmpdir(), "inkos-hooks-test-"));
+    testDir = mkdtempSync(join(tmpdir(), "novelfork-hooks-test-"));
     mkdirSync(join(testDir, "story"), { recursive: true });
     db = new MemoryDB(testDir);
   });

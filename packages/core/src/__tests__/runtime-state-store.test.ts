@@ -20,7 +20,7 @@ describe("runtime-state-store memory helpers", () => {
   });
 
   it("prefers structured runtime state over stale markdown projections for narrative memory", async () => {
-    root = await mkdtemp(join(tmpdir(), "inkos-runtime-state-store-"));
+    root = await mkdtemp(join(tmpdir(), "novelfork-runtime-state-store-"));
     const bookDir = join(root, "book");
     const storyDir = join(bookDir, "story");
     const stateDir = join(storyDir, "state");
@@ -116,7 +116,7 @@ describe("runtime-state-store memory helpers", () => {
   });
 
   it("prefers structured snapshot state over stale markdown snapshots for fact history rebuild", async () => {
-    root = await mkdtemp(join(tmpdir(), "inkos-runtime-state-snapshot-"));
+    root = await mkdtemp(join(tmpdir(), "novelfork-runtime-state-snapshot-"));
     const bookDir = join(root, "book");
     const snapshotDir = join(bookDir, "story", "snapshots", "5");
     const snapshotStateDir = join(snapshotDir, "state");
@@ -175,7 +175,7 @@ describe("runtime-state-store memory helpers", () => {
   });
 
   it("rejects persisted duplicate summary chapters in structured runtime state", async () => {
-    root = await mkdtemp(join(tmpdir(), "inkos-runtime-state-invalid-"));
+    root = await mkdtemp(join(tmpdir(), "novelfork-runtime-state-invalid-"));
     const bookDir = join(root, "book");
     const storyDir = join(bookDir, "story");
     const stateDir = join(storyDir, "state");
@@ -238,7 +238,7 @@ describe("runtime-state-store memory helpers", () => {
   });
 
   it("arbitrates new hook candidates before applying structured state updates", async () => {
-    root = await mkdtemp(join(tmpdir(), "inkos-runtime-state-arbiter-"));
+    root = await mkdtemp(join(tmpdir(), "novelfork-runtime-state-arbiter-"));
     const bookDir = join(root, "book");
     const storyDir = join(bookDir, "story");
     const stateDir = join(storyDir, "state");

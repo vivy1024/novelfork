@@ -6,7 +6,7 @@ import { loadPersistedPlan, relativeToBookDir } from "../pipeline/persisted-gove
 
 describe("persisted governed plan helpers", () => {
   it("parses a persisted intent markdown file into a reusable plan", async () => {
-    const bookDir = await mkdtemp(join(tmpdir(), "inkos-persisted-plan-"));
+    const bookDir = await mkdtemp(join(tmpdir(), "novelfork-persisted-plan-"));
     const runtimeDir = join(bookDir, "story", "runtime");
     await mkdir(runtimeDir, { recursive: true });
 
@@ -64,7 +64,7 @@ describe("persisted governed plan helpers", () => {
   });
 
   it("rejects persisted intents whose goal is still a placeholder", async () => {
-    const bookDir = await mkdtemp(join(tmpdir(), "inkos-persisted-plan-invalid-"));
+    const bookDir = await mkdtemp(join(tmpdir(), "novelfork-persisted-plan-invalid-"));
     const runtimeDir = join(bookDir, "story", "runtime");
     await mkdir(runtimeDir, { recursive: true });
 

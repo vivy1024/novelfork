@@ -26,7 +26,7 @@ describe("ComposerAgent - Lorebook RAG Integration", () => {
   let plan: PlanChapterOutput;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "inkos-lorebook-test-"));
+    root = await mkdtemp(join(tmpdir(), "novelfork-lorebook-test-"));
     bookDir = join(root, "books", "lorebook-book");
     storyDir = join(bookDir, "story");
     await mkdir(join(storyDir, "runtime"), { recursive: true });
