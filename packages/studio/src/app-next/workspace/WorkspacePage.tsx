@@ -1080,12 +1080,15 @@ function RightPanelWithTabs({
 function CockpitOverviewPanel({ bookId }: { readonly bookId: string }) {
   const { data: progress } = useApi<{ progress?: { today: { written: number; target: number; completed: boolean }; thisWeek: { written: number; target: number }; streak: number } }>(`/progress`);
   const { data: book } = useApi<BookDetailResponse>(`/books/${bookId}`);
+  const { data: focusData } = useApi<{ file?: string; content?: string | null }>(`/books/${bookId}/truth-files/current_focus.md`);
+  const { data: summariesData } = useApi<{ summaries?: Array<{ number: number; title?: string; summary?: string }> }>(`/books/${bookId}/bible/chapter-summaries`);
 
   const p = progress?.progress;
   const chapters = book?.chapters ?? [];
   const chapterCount = chapters.length;
-
   const riskyChapters = chapters.filter((c) => (c.status === "failed" || c.status === "rejected"));
+  const focus = focusData?.content?.trim();
+  const summaries = (summariesData?.summaries ?? []).slice(-3);
 
   if (!bookId) return <p className="text-xs text-muted-foreground p-2">请先选择一本书。</p>;
 
@@ -1096,6 +1099,7 @@ function CockpitOverviewPanel({ bookId }: { readonly bookId: string }) {
         <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">Beta</span>
       </div>
 
+      {/* 日更进度 */}
       {p && (
         <div className="rounded-lg border border-border bg-muted/30 p-2">
           <div className="flex items-center justify-between text-xs">
@@ -1106,12 +1110,39 @@ function CockpitOverviewPanel({ bookId }: { readonly bookId: string }) {
         </div>
       )}
 
+      {/* 书籍状态 */}
       <div className="rounded-lg border border-border bg-muted/30 p-2">
         <div className="text-xs text-muted-foreground">
           进度 {chapterCount} / {book?.book?.targetChapters ?? "?"} 章 · {chapters.reduce((s, c) => s + (c.wordCount ?? 0), 0)} 字
         </div>
       </div>
 
+      {/* 当前焦点 */}
+      {focus ? (
+        <div className="rounded-lg border border-border bg-muted/30 p-2">
+          <div className="text-[11px] text-muted-foreground mb-1">当前焦点</div>
+          <div className="text-xs leading-relaxed">{focus.length > 120 ? focus.slice(0, 120) + "..." : focus}</div>
+        </div>
+      ) : (
+        <div className="rounded-lg border border-dashed border-border bg-muted/20 p-2 text-[11px] text-muted-foreground">
+          尚未设置当前焦点
+        </div>
+      )}
+
+      {/* 最近章节摘要 */}
+      {summaries.length > 0 && (
+        <div className="rounded-lg border border-border bg-muted/30 p-2">
+          <div className="text-[11px] text-muted-foreground mb-1">最近章节</div>
+          {summaries.map((s) => (
+            <div key={s.number} className="text-xs leading-relaxed mt-0.5">
+              <span className="font-medium text-foreground">第{s.number}章</span>
+              {s.summary ? <span className="text-muted-foreground"> · {s.summary.length > 60 ? s.summary.slice(0, 60) + "..." : s.summary}</span> : null}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* 风险提示 */}
       {riskyChapters.length > 0 && (
         <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-2">
           <div className="text-xs font-medium text-amber-600 dark:text-amber-400">待处理问题</div>
