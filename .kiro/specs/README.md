@@ -9,8 +9,9 @@
 | Spec | 角色 | 当前进度 | 执行口径 |
 |---|---|---|---|---:|---|
 | `novel-creation-workbench-complete-flow` | 当前主线收尾完成 | 53 / 53 | Phase 0-7 已完成。 |
-| `workspace-gap-closure-v1` | 工作台缺口收敛 | 25 / 25 | ✅ 已完成。写作模式真实化、Truth/Story 中文化、删除功能、设置页补齐。 |
-| `longform-cockpit-v1` | 长篇驾驶舱待审批 spec | 0 / 15 | 暂不执行；需用户确认 requirements/design/tasks 后再进入实现。 |
+| `workspace-gap-closure-v1` | 工作台缺口收敛 | 25 / 25 | ✅ 已完成。 |
+| `agent-writing-pipeline-v1` | Agent 写作管线 | 0 / 15 | 待审批。Agent 工具注册 + 角色 + 上下文注入 + 编排。 |
+| `longform-cockpit-v1` | 长篇驾驶舱 | 0 / 15 | 已修订为 v2.0.0。排在 agent-pipeline 之后执行。 |
 
 除上述 spec 外，其余 spec 已归档到 `.kiro/specs/archive/`。归档 spec 只作为历史、参考或可复用资产来源，不再作为当前任务入口。
 

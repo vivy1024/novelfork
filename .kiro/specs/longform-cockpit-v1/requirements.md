@@ -1,122 +1,153 @@
-# 长篇驾驶舱 v1 — Requirements
+# 长篇驾驶舱 v2 — Requirements
 
-**版本**: v1.0.0
+**版本**: v2.0.0
 **创建日期**: 2026-04-30
+**修订日期**: 2026-05-01
 **状态**: 待审批
 
 ---
 
 ## 前置条件
 
-本 spec 假设 `novel-creation-workbench-complete-flow` Phase 7 剩余 5 项已完成或明确标记为 deferred。如果 Phase 7 未收尾，本 spec 不应开始执行。
+1. `novel-creation-workbench-complete-flow` Phase 0-7 已完成（53/53 ✅）
+2. `workspace-gap-closure-v1` 已完成（25/25 ✅）
+3. 写作模式真实生成、Truth/Story 中文化、删除功能已交付
 
 ---
 
-## Requirement 1：右侧驾驶舱 Shell 必须可用
+## 创作流程设计
 
-**User Story:** 作为作者，我需要在工作台右侧看到一个常驻的长篇驾驶舱面板，帮我快速了解当前创作状态，而不是在多个 Tab 之间来回切换。
+作者在 NovelFork 中的完整创作流程：
+
+```
+打开 NovelFork
+  → Dashboard（所有作品 + 日更总览）
+    → 进入某本书的 Workspace
+      → 右侧默认显示「驾驶舱」总览 Tab
+        ├─ 看到：今天写了多少、当前焦点、最近章节摘要、待处理风险
+        ├─ 点击风险/伏笔 → 跳转到对应文件或章节
+        ├─ 点击「开始写作」→ 编辑器获得焦点
+      → 需要管理设定时 → 切换到「经纬」Tab
+      → 需要 AI 辅助时 → 切换到「写作」Tab
+        ├─ AI 动作按钮（生成下一章/审校/去AI味…）
+        ├─ 写作模式（续写/扩写/对话…）
+        └─ 写作工具（节奏/钩子/健康…）
+      → 准备发布时 → 顶栏「发布就绪」
+```
+
+---
+
+## Requirement 1：驾驶舱必须是右侧面板的默认视图
+
+**User Story:** 作为作者，我进入工作台后第一眼看到的应该是当前创作状态和下一步该做什么，而不是空白的经纬面板。
+
+**当前事实**: 右侧面板默认显示 BiblePanel（经纬/资料库），但新书打开时经纬是空的——第一眼看到的是空白列表。
 
 ### Acceptance Criteria
 
-1. 工作台右侧必须新增一个可折叠的"长篇驾驶舱"面板，与现有 BiblePanel / WritingModesPanel / WritingToolsPanel 并列或替代右侧默认视图。
-2. 驾驶舱必须包含至少 4 个 Tab：总览、伏笔、设定、AI 运行。
+1. 右侧面板的三个顶级 Tab 重排为：**驾驶舱** / 经纬 / 写作。
+2. 驾驶舱 Tab 必须是默认选中。
 3. 窄屏（<1280px）时驾驶舱收起为抽屉或隐藏，不压缩中间编辑器。
-4. 驾驶舱面板不得阻塞资源树或中间编辑区的正常操作。
-5. 驾驶舱面板加载失败时显示 InlineError，不崩溃整个 WorkspacePage。
+4. 驾驶舱面板加载失败时显示 InlineError，不崩溃整个 WorkspacePage。
 
 ---
 
-## Requirement 2：总览 Tab 必须展示当前创作决策所需信息
+## Requirement 2：总览 Tab 必须回答「下一章该怎么写」
 
-**User Story:** 作为作者，我需要在一个页面内回答"下一章该怎么写"，而不是分别打开 5 个文件。
+**User Story:** 作为作者，我需要在总览 Tab 一个页面内获得当前创作决策所需的所有信息。
 
 ### Acceptance Criteria
 
-1. 总览 Tab 必须展示当前焦点（来自 `current_focus.md`，无内容时显示空状态提示）。
-2. 总览 Tab 必须展示最近章节摘要（来自 bible chapter_summaries 或 `chapter_summaries.md`，最多 3 条）。
-3. 总览 Tab 必须展示待处理风险卡片（快过期伏笔、审计失败章节、state-degraded），无风险时显示"暂无风险"。
-4. 每条风险卡片必须可点击跳转到对应资源节点（章节、伏笔条目、Truth 文件）。
-5. 数据来源必须标注 source（文件名或 API 路径），不得伪造来源。
-6. 无法解析的数据必须显示 unknown 或 empty，不得显示假内容。
+1. **日更进度条**（来自 writing tools progress API）：今日字数 / 日更目标、连续达标天数、本周累计。
+2. **当前焦点**（来自 `current_focus.md`）：无内容时显示"尚未设置当前焦点，可在真相文件中编辑"。
+3. **最近章节摘要**（来自 bible chapter_summaries，最多 3 条）：展示最近完成的章节标题 + 一句话摘要。
+4. **待处理风险卡片**：
+   - 快过期/已过期伏笔（距来源章节 >10 章亮黄，>15 章亮红）
+   - 审计失败章节（status 包含 "audit-failed" 或 auditIssues 非空）
+   - 无风险时显示"暂无风险 ✓"
+5. 每条风险卡片可点击跳转到对应资源节点。
+6. 每条数据标注来源（文件名或 API 路径）。
 
 ---
 
 ## Requirement 3：伏笔 Tab 必须聚合所有伏笔来源
 
-**User Story:** 作为作者，我需要在一个列表中看到所有伏笔的状态、来源和关联，判断哪些需要回收。
+**User Story:** 作为作者，我需要在一个列表中看到所有伏笔的状态，判断哪些需要回收。
 
 ### Acceptance Criteria
 
-1. 伏笔 Tab 必须聚合两个来源：经纬 events（eventType=foreshadow）和 `pending_hooks.md` 解析结果。
-2. 每条伏笔必须展示：hook id、文本摘要、来源章节、当前状态、来源文件。
-3. 伏笔状态至少区分：open（已埋）、reinforced（待强化）、payoff-due（待回收）、expired-risk（过期风险）、resolved（已回收）。
-4. 过期风险的判定规则：open 状态且距离来源章节超过 N 章（N 可配置，默认 15）。
-5. 点击伏笔必须能跳转到来源资源节点（`pending_hooks.md` viewer 或经纬伏笔条目）。
-6. 标记伏笔状态变更必须通过真实 API（经纬 events update 或 pending_hooks.md 编辑），不允许仅 UI 本地改状态。
+1. 聚合两个来源：经纬 events（eventType=foreshadow）和 `pending_hooks.md` 解析结果。
+2. 每条伏笔展示：hook id、文本摘要、来源章节、状态、来源文件（使用中文 label）。
+3. 伏笔状态：open（已埋）、payoff-due（待回收，距来源 >10 章）、expired-risk（过期风险，>15 章）、resolved（已回收）。
+4. 支持按状态过滤。
+5. 点击伏笔跳转到来源资源节点。
+6. 过期风险计算使用可配置的阈值，默认 15 章。
 
 ---
 
-## Requirement 4：设定 Tab 必须展示世界规则和风险
+## Requirement 4：设定 Tab 必须展示世界规则和资源
 
-**User Story:** 作为作者，我需要快速看到当前世界规则、战力体系和资源账本，避免下一章写崩设定。
+**User Story:** 作为作者，我需要快速看到世界规则、战力体系和资源账本，避免写崩设定。
 
 ### Acceptance Criteria
 
-1. 设定 Tab 必须展示经纬 settings 条目（按 category 分组：world-rule、location、faction、item）。
-2. 设定 Tab 必须展示 `book_rules.md` 内容（如果存在）。
-3. 设定 Tab 必须展示 `particle_ledger.md` 摘要（如果存在）。
-4. 点击设定条目必须能跳转到经纬编辑器或 Truth 文件 viewer。
-5. 无设定数据时显示空状态提示，不显示假规则。
+1. 展示经纬 settings 条目（按 category 分组）。
+2. 展示 `book_rules.md` 内容摘要（前 500 字）。
+3. 展示 `particle_ledger.md` 摘要（前 500 字）。
+4. 所有 Truth 文件标题使用中文本地化 label。
+5. 点击条目跳转到经纬编辑器或 Truth 文件 viewer。
+6. 无数据时显示空状态。
 
 ---
 
-## Requirement 5：AI 运行 Tab 必须展示透明的 AI 状态
+## Requirement 5：AI 运行 Tab 必须展示透明的 AI 状态和最近活动
 
-**User Story:** 作为作者，我需要知道 AI 当前在做什么、用了什么模型、结果去了哪里。
+**User Story:** 作为作者，我需要知道 AI 当前是否可用、最近做了什么、结果去了哪里。
 
 ### Acceptance Criteria
 
-1. AI 运行 Tab 必须展示当前 provider / model 状态（来自 model gate）。
-2. AI 运行 Tab 必须展示最近一次 AI action 的类型、状态、输出容器（候选稿/草稿/报告/预览）。
-3. 候选稿和草稿必须展示 AI metadata（provider、model、runId/requestId）。
-4. 模型不可用时必须显示原因，不允许静默失败。
+1. 展示 provider / model 状态（来自 model gate，可用/不可用/原因）。
+2. 展示最近生成/审校/检测的摘要（来自候选稿 metadata + AI 动作记录）。
+3. 候选稿和草稿展示 AI metadata（provider、model、来源 action）。
+4. 模型不可用时显示原因和快速配置入口（跳转设置页）。
 5. route 不存在或未接入时显示 unsupported。
 
 ---
 
-## Requirement 6：驾驶舱数据必须来自已有 API，不新增写入能力
+## Requirement 6：驾驶舱只做只读聚合，不增写入
 
-**User Story:** 作为开发者，我需要驾驶舱 v1 只做只读聚合，不引入新的写入路径，避免破坏现有数据流。
+**User Story:** 作为开发者，驾驶舱 v2 只做只读聚合，不引入新的写入路径。
 
 ### Acceptance Criteria
 
-1. 驾驶舱 v1 不得新增任何修改章节、候选稿、草稿、经纬或 Truth 文件的 API。
-2. 驾驶舱数据必须通过前端聚合已有 API 获取（books、chapters、candidates、drafts、bible、truth-files、story-files、providers/status）。
-3. 如果需要新增 API，只允许新增只读聚合接口（如 `GET /api/books/:id/cockpit/snapshot`），且该接口不修改任何数据。
-4. 驾驶舱中的"跳转"操作必须复用现有资源树节点选择机制，不新增独立导航体系。
+1. 不新增任何修改章节、候选稿、草稿、经纬或 Truth 文件的 API。
+2. 数据通过前端并行调用已有 API 获取。
+3. 跳转操作复用现有 `setSelectedNodeId` 机制。
+4. 不新增独立导航体系或路由。
 
 ---
 
-## Requirement 7：驾驶舱必须有测试覆盖
+## Requirement 7：必须有测试覆盖
 
-**User Story:** 作为开发者，我需要驾驶舱的每个 Tab 都有 UI 测试，防止回归。
+**User Story:** 作为开发者，驾驶舱每个 Tab 都有 UI 测试。
 
 ### Acceptance Criteria
 
-1. 每个 Tab 必须有至少一个 UI 测试覆盖：有数据、无数据、加载失败三种状态。
-2. 跳转到资源节点的交互必须有测试覆盖。
-3. 伏笔过期风险计算必须有单元测试。
-4. 如果新增 cockpit snapshot API，必须有 route 测试覆盖有数据、空数据、book 不存在三种情况。
-5. typecheck 必须通过。
+1. 每个 Tab 至少有 UI 测试覆盖：有数据、无数据、加载失败三种状态。
+2. 跳转交互有测试覆盖。
+3. 伏笔过期风险计算有单元测试。
+4. typecheck 全量通过。
+5. `bun run test` 全量通过。
 
 ---
 
 ## Non-goals
 
-- 不做章节作战卡生成（Phase 2 目标）。
-- 不做主线偏航分析（Phase 3 目标）。
-- 不做人物反差 Tab（Phase 2 目标，数据模型需要扩展）。
-- 不做章节影响 Tab（Phase 3 目标，依赖 RuntimeStateDelta）。
-- 不做驾驶舱内的直接编辑操作（所有编辑回到已有 editor）。
-- 不做 Cockpit Snapshot API（Phase 2 目标，v1 用前端聚合）。
-- 不做多用户、云同步、桌面安装器。
+- 不做章节作战卡生成（Phase 2 目标）
+- 不做主线偏航分析（Phase 3 目标）
+- 不做人物反差 Tab（Phase 2 目标）
+- 不做章节影响 Tab（Phase 3 目标）
+- 不做驾驶舱内的直接编辑（所有编辑回到已有 editor）
+- 不做 Cockpit Snapshot API（v2 用前端聚合）
+- 不做多用户、云同步
+- **不做 ChatWindow 嵌入**（独立评估，不在本 spec）
