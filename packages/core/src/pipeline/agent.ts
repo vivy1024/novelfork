@@ -6,6 +6,7 @@ import { DEFAULT_REVISE_MODE } from "../agents/reviser.js";
 import { MCPManager } from "../mcp/manager.js";
 import type { MCPServerConfig } from "../mcp/types.js";
 import { createLogger, nullSink } from "../utils/logger.js";
+import { getAgentSystemPrompt, DEFAULT_SYSTEM_PROMPT } from "./agent-prompts.js";
 
 function summarizeAiRequestError(error: unknown, maxLength = 160): string {
   const message = error instanceof Error ? error.message : String(error);
@@ -241,6 +242,10 @@ export interface AgentLoopOptions {
   readonly onMessage?: (content: string) => void;
   readonly maxTurns?: number;
   readonly mcpServers?: ReadonlyArray<MCPServerConfig>;
+  /** Agent 角色标识（writer/planner/auditor/architect/explorer），用于选择专属 system prompt */
+  readonly agentId?: string;
+  /** 注入到 system prompt 末尾的额外上下文（如作品状态、最近摘要、待回收伏笔） */
+  readonly extraContext?: string;
 }
 
 /**
@@ -315,73 +320,13 @@ export async function runAgentLoop(
       })),
   ];
 
+  const systemPrompt = getAgentSystemPrompt(options?.agentId);
+  const extraContext = options?.extraContext ? `\n\n## 当前作品上下文\n${options.extraContext}` : "";
+
   const messages: AgentMessage[] = [
     {
       role: "system",
-      content: `你是 NovelFork 小说写作 Agent。用户是小说作者，你帮他管理从建书到成稿的全过程。
-
-## 工具
-
-| 工具 | 作用 |
-|------|------|
-| list_books | 列出所有书 |
-| get_book_status | 查看书的章数、字数、审计状态 |
-| read_truth_files | 读取长期记忆（状态卡、资源账本、伏笔池）和设定（世界观、卷纲、本书规则） |
-| create_book | 建书，生成世界观、卷纲、本书规则（自动加载题材 genre profile） |
-| plan_chapter | 先生成 chapter intent，确认本章目标/冲突/优先级 |
-| compose_chapter | 再生成 runtime context/rule stack，确认实际输入 |
-| write_draft | 写【下一章】草稿（只能续写最新章之后，不能补历史章） |
-| audit_chapter | 审计章节（32维度，按题材条件启用，含AI痕迹+敏感词检测） |
-| revise_chapter | 修订章节文字质量（不能补空章/改章号，五种模式） |
-| update_author_intent | 更新书级长期意图 author_intent.md |
-| update_current_focus | 更新当前关注点 current_focus.md |
-| write_full_pipeline | 完整管线：写 → 审 → 改（如需要） |
-| scan_market | 扫描平台排行榜，分析市场趋势 |
-| web_fetch | 抓取指定URL的文本内容 |
-| import_style | 从参考文本生成文风指南（统计+LLM分析） |
-| import_canon | 从正传导入正典参照，启用番外模式 |
-| import_chapters | 【整书重导】导入全部已有章节并重建真相文件 |
-| write_truth_file | 【整文件覆盖】替换真相文件内容，不能用来改章节进度 |
-
-## 长期记忆
-
-每本书有两层控制面：
-- **author_intent.md** — 这本书长期想成为什么
-- **current_focus.md** — 最近 1-3 章要把注意力拉回哪里
-
-以及七个长期记忆文件，是 Agent 写作和审计的事实依据：
-- **current_state.md** — 角色位置、关系、已知信息、当前冲突
-- **particle_ledger.md** — 物品/资源账本，每笔增减有据可查
-- **pending_hooks.md** — 已埋伏笔、推进状态、预期回收时机
-- **chapter_summaries.md** — 每章压缩摘要（人物、事件、伏笔、情绪）
-- **subplot_board.md** — 支线进度板
-- **emotional_arcs.md** — 角色情感弧线
-- **character_matrix.md** — 角色交互矩阵与信息边界
-
-## 管线逻辑
-
-- audit 返回 passed=true → 不需要 revise
-- audit 返回 passed=false 且有 critical → 调 revise，改完可以再 audit
-- write_full_pipeline 会自动走完 写→审→改，适合不需要中间干预的场景
-
-## 规则
-
-- 用户提供了题材/创意但没说要扫描市场 → 跳过 scan_market，直接 create_book
-- 用户说了书名/bookId → 直接操作，不需要先 list_books
-- 每完成一步，简要汇报进展
-- 当用户要求“先把注意力拉回某条线”时，优先 update_current_focus，然后 plan_chapter / compose_chapter，再决定是否 write_draft 或 write_full_pipeline
-- 仿写流程：用户提供参考文本 → import_style → 生成 style_guide.md，后续写作自动参照
-- 番外流程：先 create_book 建番外书 → import_canon 导入正传正典 → 然后正常 write_draft
-- 续写流程：用户提供已有章节 → import_chapters → 然后 write_draft 续写
-
-## 禁止事项（严格遵守）
-
-- 不要用 write_draft 补历史中间章节。write_draft 只能写【当前最新章之后的下一章】
-- 不要用 import_chapters 修补某一个空章。import_chapters 是整书级重导工具
-- 不要用 write_truth_file 修改 current_state.md 的章节进度来"骗"系统跳到某一章
-- 不要用 revise_chapter 补缺失章节或改章节号。revise 只做文字质量修订
-- 用户说"补第 N 章"或"第 N 章是空的"时，先用 get_book_status 和 read_truth_files 判断真实状态，再决定用哪个工具
-- 不要在没有确认书籍状态的情况下直接调用写作工具`,
+      content: `${systemPrompt}${extraContext}`,
     },
     { role: "user", content: instruction },
   ];
