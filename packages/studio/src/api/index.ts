@@ -2,6 +2,7 @@ import { startStudioServer } from "./server.js";
 import { resolve, join, dirname } from "node:path";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { createEmbeddedStaticProvider } from "./static-provider.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -12,14 +13,27 @@ const studioRoot = resolve(__dirname, "../..");
 const distDir = join(studioRoot, "dist");
 const hasFrontendAssets = existsSync(join(distDir, "index.html"));
 
+let staticProvider: ReturnType<typeof createEmbeddedStaticProvider> | undefined;
+
 if (!hasFrontendAssets) {
-  console.warn("Frontend assets not found. Starting in API-only mode.");
-  console.warn("Run 'bun run build:client' to build frontend assets, or use 'bun run dev' for development.");
+  try {
+    const { embeddedIndexHtml, embeddedAssets } = await import("./embedded-assets.generated.js");
+    if (embeddedAssets && Object.keys(embeddedAssets).length > 0) {
+      const files: Record<string, { content: Uint8Array; contentType: string }> = {};
+      for (const [k, v] of Object.entries(embeddedAssets as Record<string, { content: Uint8Array; contentType: string }>)) {
+        files[k] = v;
+      }
+      staticProvider = createEmbeddedStaticProvider({ indexHtml: embeddedIndexHtml, files });
+    }
+  } catch {
+    console.warn("Frontend assets not found. Starting in API-only mode.");
+  }
 }
 
 startStudioServer(root, port, {
   staticDir: hasFrontendAssets ? distDir : undefined,
-  staticMode: hasFrontendAssets ? "filesystem" : "missing",
+  staticProvider,
+  staticMode: hasFrontendAssets ? "filesystem" : (staticProvider ? "embedded" : "missing"),
 }).catch((e) => {
   console.error("Failed to start studio:", e);
   process.exit(1);
