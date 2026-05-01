@@ -1,183 +1,158 @@
 # Agent 写作管线 v1 — Requirements
 
-**版本**: v1.0.0
+**版本**: v2.0.0
 **创建日期**: 2026-05-01
+**修订日期**: 2026-05-01
 **状态**: 待审批
 
 ---
 
 ## 前置条件
 
-1. `workspace-gap-closure-v1` 已完成 — 写作模式真生成、AI 动作真实化、中文化、删除功能
-2. ChatWindow + session-chat-service 已可用（WebSocket + SQLite 持久化）
-3. 所有写作 API 已稳定（writing-modes、writing-tools、bible、storage）
-4. Routines 页面工具注册体系已可用
+1. `workspace-gap-closure-v1` 已完成 — 写作模式真生成、AI 动作、中文化、删除功能
+2. Core 层 13 个 Agent 类已存在、18 个内置工具已注册
+3. ToolsTab 中 22 个 NarraFork 通用工具已定义
+4. ChatWindow + session-chat-service 已可用
+5. Routines 子代理系统 + `/api/routines` API 已可用
 
 ---
 
-## 设计核心
+## Requirement 1：Agent 工具默认开关必须按角色推荐
 
-当前 NovelFork 的创作流程是**按钮驱动的**：
+**User Story:** 作者启动 Writer Agent 时，不应该看到 Terminal、Browser、ForkNarrator 等无关工具。Auditor Agent 不需要写文件权限，Planner Agent 可能需要联网搜索参考。
 
-```
-作者点「生成下一章」→ API 调用 → 结果进候选区 → 作者点「合并」
-```
-
-目标流程是**Agent 驱动的**：
-
-```
-作者说「帮我写第 5 章，注意回收第 3 章的玉佩伏笔，保持林月的冷峻性格」
-  → Agent 自动读取第 4 章、相关设定、伏笔列表
-  → Agent 调用生成工具
-  → Agent 调用审校工具自检
-  → Agent 展示结果 + 审计报告，等作者确认
-  → 作者说「好」→ Agent 保存到候选区
-```
-
----
-
-## Requirement 1：小说创作工具必须注册到 Agent 工具系统
-
-**User Story:** Agent 需要能调用 NovelFork 的写作能力——不只是通用工具（读文件、跑命令），还包括小说专有工具（生成章节、审校、读取设定）。
+**当前事实:** ToolsTab 中所有可选工具默认全关（除 6 个核心工具），但工具开关是全局的——不是按 Agent 角色分的。作者需要手动配置每个 Agent 的工具。
 
 ### Acceptance Criteria
 
-1. 新增小说专有工具定义文件 `packages/studio/src/api/lib/tools/novel-tools.ts`。
-2. 注册以下工具到 Agent 工具注册表：
-
-| 工具名 | 功能 | 对应 API |
-|--------|------|---------|
-| `read_chapter` | 读取指定章节正文 | GET chapters/:num |
-| `read_truth_file` | 读取真相文件 | GET truth-files/:file |
-| `read_story_file` | 读取故事文件 | GET story-files/:file |
-| `get_chapter_summaries` | 获取章节摘要列表 | bible chapter-summaries |
-| `get_bible_characters` | 获取人物列表 | bible characters |
-| `get_bible_events` | 获取事件/伏笔列表 | bible events |
-| `get_bible_settings` | 获取设定列表 | bible settings |
-| `get_pending_hooks` | 获取待处理伏笔 | story-files/pending_hooks.md |
-| `get_writing_progress` | 获取写作进度 | progress API |
-| `generate_continuation` | 续写当前段落 | inline-write |
-| `generate_dialogue` | 生成角色对话 | dialogue/generate |
-| `generate_variants` | 生成多个版本 | variants/generate |
-| `generate_next_chapter` | 生成下一章 | write-next |
-| `audit_chapter` | 审校章节 | audit/:chapter |
-| `detect_ai_taste` | 检测 AI 痕迹 | detect/:chapter |
-| `create_candidate` | 创建候选稿 | POST candidates |
-| `accept_candidate` | 接受候选稿（合并/替换/另存草稿）| candidates/:id/accept |
-
-3. 每个工具必须有清晰的参数定义、返回值 schema 和中文描述。
-4. 工具注册后，现有 ChatWindow 中的 Agent 能通过 `/LOAD` 或工具列表发现并使用这些工具。
-5. 验证：工具注册测试覆盖每个工具的调用成功和参数校验失败。
+1. Writer Agent 默认开启：Bash, Read, Write, Edit, Grep, Glob, EnterWorktree, ExitWorktree, TodoWrite。关闭：Terminal, Browser, ForkNarrator, NarraForkAdmin, Recall, ShareFile。
+2. Planner Agent 默认开启：Read, Grep, Glob, WebSearch, WebFetch, TodoWrite。关闭：Bash, Write, Edit, Terminal。
+3. Auditor Agent 默认开启：Read, Grep, Glob。关闭：Write, Edit, Bash, Terminal。
+4. Explorer Agent（新）默认开启：Read, Grep, Glob, Recall。所有写入工具全部关闭。
+5. Architect Agent 默认开启：Read, Write, Grep, Glob, WebSearch。关闭：Bash, Terminal。
+6. 作者在套路页→工具 Tab 中仍可手动覆盖。
+7. 验证：每个 Agent 预设的工具列表测试通过。
 
 ---
 
-## Requirement 2：必须有小说创作专用 Agent 角色
+## Requirement 2：Agent 必须有角色专属的 system prompt
 
-**User Story:** 作者不需要每次告诉 Agent"你是一个网文作者，帮我做......"。系统应该提供预设的小说创作 Agent 角色，自带领域知识。
+**User Story:** Writer Agent 被选中后，它的 system prompt 应该包含网文创作领域知识和写作指导。Planner Agent 的 system prompt 应该专注于大纲规划。不能所有 Agent 共用一个通用 system prompt。
+
+**当前事实:** `runAgentLoop` 在 `pipeline/agent.ts` 第 321-384 行使用硬编码的通用 system prompt，不区分 agentId。13 个 Agent 类各自有 `name` 和独立逻辑，但 system prompt 层没有差异化。
 
 ### Acceptance Criteria
 
-1. 新增至少 3 个小说创作专用 Agent 预设（子代理类型）：
+1. 新增 `packages/core/src/pipeline/agent-prompts.ts`，为每种 agentId 定义专属 system prompt：
+   - `writer` — 写作指导、文风建议、伏笔回收、非破坏性写入原则
+   - `planner` — 大纲规划、情节点设计、节奏控制、伏笔部署
+   - `auditor` — 连续性检查、设定一致性、AI 味检测、人物行为逻辑
+   - `architect` — 世界观构建、规则体系、力量体系、社会结构
+   - `explorer` — 只读分析、状态聚合、发现可回收伏笔、识别角色入场时机
 
-| Agent | 系统提示词核心 | 工具权限 |
-|-------|--------------|---------|
-| **探索 Agent** | 分析当前作品状态，输出当前应该关注的重点 | 所有读取工具 |
-| **写作 Agent** | 根据规划和上下文生成正文内容 | 读取工具 + 生成工具 |
-| **审计 Agent** | 检查连续性、设定一致性、AI 味、字数合理性 | 读取工具 + 审校工具 |
-
-2. 每个 Agent 的系统提示词必须包含：
-   - 网文创作的领域知识（题材特征、节奏规则、爽点设计、伏笔管理）
-   - 当前作品的基本信息（书名、题材、目标字数、章节规模）
-   - 使用工具的指导（什么场景用什么工具）
-
-3. Agent 预设保存到 routines 子代理配置中，通过 `/api/routines` API 持久化。
-4. 作者在 ChatWindow 中创建新会话时能选择这些 Agent 角色。
-5. 验证：Agent 预设的持久化/读取测试通过。
+2. `runAgentLoop` 新增 `agentId` 参数，用于选择对应的 system prompt。
+3. SubAgentsTab 中用户定义的 systemPrompt 和 toolPermissions 也必须生效——如果用户为某个 Agent 定义了自定义 systemPrompt，优先使用用户的。
+4. 验证：agent-prompts.ts 的 prompt 字符串非空、包含领域知识关键词测试通过。
 
 ---
 
-## Requirement 3：Agent 必须能获取当前作品上下文
+## Requirement 3：必须有 Agent 上下文自动注入
 
-**User Story:** Agent 不应该从头开始了解作品——它应该能自动获取当前打开的作品和章节信息。
+**User Story:** 作者打开 Writer Agent 开始对话时，不应该手动粘贴「我现在的书名是 XXX、第 5 章、主角林月正在……」——Agent 应该自动知道当前打开的是哪本书、什么状态。
+
+**当前事实:** session 有 `projectId` 字段可关联 bookId，但 session-chat-service 在构建消息时不注入作品上下文。Agent 不知道当前作品信息。
 
 ### Acceptance Criteria
 
-1. 当 ChatWindow 会话绑定到某本书时（通过 session 的 projectId = bookId），Agent 的系统提示词自动注入：
-   - 书名、题材、当前章节数
-   - 最近 3 章的摘要
-   - 当前待回收的伏笔列表
-   - 当前焦点（从 `current_focus.md`）
+1. 当 session.projectId 匹配某 bookId 时，在系统消息中自动注入上下文块：
+   - 书名、题材、当前章节数/目标章节
+   - 最近 3 章的摘要（来自 bible chapter-summaries）
+   - 当前焦点（来自 current_focus.md）
+   - 待回收伏笔列表（来自 bible events foreshadow + pending_hooks.md）
+   - 最近审计失败章节（来自章节索引中的 auditIssues）
 
-2. 注入的内容来自已有 API（books、bible、truth-files），不新增存储。
-3. Agent 首次调用时不需要作者手动粘贴上下文——上下文已自动注入 system prompt。
-4. 验证：session chat 测试覆盖 book 绑定后上下文注入。
+2. 上下文注入在 session-chat-service 构建初始消息时完成。
+3. 上下文数据通过调用已有 API 获取，不新增存储。
+4. 验证：session-chat-service 测试覆盖有 bookId 和无 bookId 两种上下文注入状态。
 
 ---
 
-## Requirement 4：必须有最小可用的多 Agent 写作流程
+## Requirement 4：必须有 Explorer Agent
 
-**User Story:** 作者说"写下一章"，Agent 自动完成「探索→规划→写作→审计→展示结果」的全流程，而不是只做一个步骤。
+**User Story:** 作者说「帮我看看现在该写什么」，Agent 自动读取作品状态、分析上下文、给出建议。
+
+**当前事实:** 13 个 Core Agent 类中没有只读的探索角色。Reader 类工具（Read/Grep/Glob）存在但没被组织成一个独立的探索 Agent。
 
 ### Acceptance Criteria
 
-1. 新增一个「写作流程」Agent，它作为编排者，按顺序调用：
-   - 探索 Agent（分析当前状态）
-   - 写作 Agent（生成正文）
-   - 审计 Agent（检查质量）
-2. 结果以结构化的方式展示给作者：
-   - 生成的正文
-   - 审计报告（连续性问题、AI 味评分、伏笔状态更新建议）
-   - 可执行的动作按钮（接受/修改/重新生成）
-3. 流程中任何一步失败时，向作者报告具体失败原因，不假装成功。
-4. 验证：集成测试覆盖完整流程（mock LLM 响应）。
+1. 新增 Explorer Agent 的 system prompt（在 agent-prompts.ts 中）。
+2. Explorer Agent 的系统提示词包含：
+   - "你是只读探索 Agent。你只能读取信息，不能写入任何内容。"
+   - 指导：先读 current_focus → 再读 chapter_summaries → 再查 pending hooks → 再查角色列表
+   - 输出格式：当前状态摘要 + 下一章 3 个方向建议 + 待回收伏笔 + 需注意的角色变化
+3. Explorer Agent 在 ChatWindow 中可选（作为第 5 个预设）。
+4. 验证：Explorer system prompt 测试通过。
 
 ---
 
-## Requirement 5：Agent 不能绕过非破坏性写入原则
+## Requirement 5：必须有编排函数串联多 Agent 流程
 
-**User Story:** Agent 调用生成工具后，结果不能直接覆盖正式章节。
+**User Story:** 作者说「写下一章」，系统自动完成「探索→规划→写作→审计→展示」的全流程，不需要作者手动在 Agent 之间切换、传递上下文。
+
+**当前事实:** `runAgentLoop` 是单 Agent 循环。没有多 Agent 编排函数。
 
 ### Acceptance Criteria
 
-1. 所有 Agent 调用的生成工具 SHALL 将结果写入候选稿或草稿，不得直接修改正式章节。
-2. Agent 展示结果后 SHALL 等待作者确认，才能执行 accept 操作。
-3. Agent 不得在作者未确认的情况下自动调用 `accept_candidate` 工具。
-4. 验证：Agent 测试覆盖非破坏性写入路径。
+1. 新增 `packages/core/src/pipeline/agent-pipeline.ts`。
+2. 实现 `runWritingPipeline(bookId, intent, config)` 函数，串行执行：
+   - Step 1: 调用 Explorer Agent — 分析当前状态
+   - Step 2: 调用 Planner Agent — 制定章节大纲（输入：探索结果）
+   - Step 3: 调用 Writer Agent — 生成正文（输入：大纲）
+   - Step 4: 调用 Auditor Agent — 审校正文（输入：生成的正文）
+   - Step 5: 返回结果：正文 + 审计报告 + 元数据
+
+3. 每步之间的上下文自动传递，不需要作者手动复制粘贴。
+4. 任一步失败时，返回具体失败原因，不假装成功。
+5. 生成结果写入候选区，不直接覆盖正文。
+6. 验证：pipeline 单元测试覆盖成功流程和中间步骤失败。
 
 ---
 
-## Requirement 6：必须复用现有基础设施
+## Requirement 6：编排函数必须有「Agent 写作」快捷入口
 
-**User Story:** 作为开发者，Agent 系统不能另起炉灶——必须复用 ChatWindow、session-chat-service、Routines 和现有 API。
+**User Story:** 作者在工作台不用打开 ChatWindow 手动选 Agent——工作台右侧直接有一个「Agent 写作」按钮，点击后自动启动编排流程。
+
+**当前事实:** WorkspacePage 右侧面板有 AI 动作按钮（生成下一章/审校/去AI味等），但没有「启动 Agent 写作流程」的入口。
 
 ### Acceptance Criteria
 
-1. 小说工具注册复用现有 tool registry（`packages/studio/src/api/lib/tools/` 或 `packages/core/src/registry/`）。
-2. Agent 预设复用现有 Routines 子代理系统（`routines-api.ts`、`/api/routines`）。
-3. Agent 调用 LLM 复用现有 session-chat-service 和 LLM runtime service。
-4. 上下文注入复用现有 `GET /api/sessions/:id/chat` WebSocket 协议的 snapshot 机制。
-5. 不新建独立的路由或 websocket 端点。
+1. WorkspacePage 右侧 AI 面板新增一个「Agent 写作」入口。
+2. 点击后自动创建 Writer Agent 会话，发送「根据当前作品状态写下一章」指令。
+3. 或：点击后展示一个快捷面板，让作者输入意图（如「写下一章，回收玉佩伏笔」），然后启动编排流程。
+4. 验证：WorkspacePage 测试覆盖 Agent 写作入口和流程启动。
 
 ---
 
-## Requirement 7：必须有测试覆盖
+## Requirement 7：所有能力必须有测试覆盖
 
-**User Story:** 作为开发者，Agent 工具和流程必须有自动化测试。
+**User Story:** 作为开发者，Agent 系统必须有自动化测试，防止回归。
 
 ### Acceptance Criteria
 
-1. 每个小说工具必须有测试覆盖：成功调用、参数校验失败。
-2. Agent 预设的持久化/读取有测试覆盖。
-3. 多 Agent 流程有集成测试（mock LLM）。
-4. `bun run typecheck` + `bun run test` 全量通过。
+1. Agent 工具默认开关配置有测试覆盖。
+2. 每个 Agent 的 system prompt 有非空验证测试。
+3. 上下文注入有 session-chat-service 测试覆盖。
+4. `runWritingPipeline` 有集成测试（mock LLM 响应）。
+5. `bun run typecheck` + `bun run test` 全量通过。
+6. 无新增 mock/fake/noop 假成功。
 
 ---
 
 ## Non-goals
 
-- 不做独立的 Agent 运行时（复用现有 ChatWindow + session-chat-service）
-- 不做 UI 重构（ChatWindow 已有完整 UI）
-- 不做 Agent 并行执行（v1 串行：探索→写作→审计）
-- 不做 Agent 训练/fine-tuning
-- 不做 Agent 记忆系统（复用现有 session message history）
-- 不做驾驶舱聚合 API（Agent 直接调用各数据源）
+- 不做 Agent 并行执行（v1 串行）
+- 不做 Agent fine-tuning
+- 不做新的 Agent 类（13 个够用，只补 Explorer）
+- 不做全新的 UI（复用 ChatWindow + WorkspacePage）
+- 不做场景模板系统（v2）
+- 不做跨书籍知识共享（v2）

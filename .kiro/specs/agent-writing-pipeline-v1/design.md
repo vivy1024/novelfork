@@ -1,273 +1,315 @@
 # Agent 写作管线 v1 — Design
 
-**版本**: v1.0.0
+**版本**: v2.0.0
 **创建日期**: 2026-05-01
+**修订日期**: 2026-05-01
 **状态**: 待审批
 
 ---
 
 ## 设计定位
 
-本 spec 将 NovelFork 从「按钮驱动的工具集」推进到「Agent 驱动的创作工作台」。核心改动：
-
-1. **工具层**：将已有的写作 API 暴露为 Agent 可调用的工具
-2. **Agent 层**：创建小说创作专用 Agent 角色
-3. **上下文层**：Agent 自动获取当前作品上下文
-4. **编排层**：多 Agent 串行协作完成完整写作流程
-
-不新建 UI、不新建后端架构、不复写 LLM 调用逻辑。全部复用现有基础设施。
+本 spec 打通 NovelFork 已有的三层 Agent 系统，让它们真正协同工作。不新建 Agent 类（13 个够用）、不新建工具（Core 18 + NarraFork 22 = 40 个够用）、不新建 Agent 循环。只做「打通」和「补缺」。
 
 ---
 
-## 1. 工具注册
+## 1. 工具默认开关（R1）
 
-### 1.1 工具定义
+### 1.1 设计思路
 
-在 `packages/studio/src/api/lib/tools/novel-tools.ts` 中定义：
+不是新建工具配置系统，而是利用已有的 `ToolsTab.AVAILABLE_TOOLS` + `/api/routines` 持久化。默认开关在 `AVAILABLE_TOOLS` 数组的 `enabled` 字段中定义，作者可在套路页手动调整。
 
-```typescript
-export const NOVEL_TOOLS: ToolDefinition[] = [
-  // 读取类
-  { name: "read_chapter", description: "读取指定章节的正文内容", parameters: { bookId: "string", chapterNumber: "number" } },
-  { name: "read_truth_file", description: "读取真相文件", parameters: { bookId: "string", fileName: "string" } },
-  // ... 等 16 个工具
-];
-```
-
-每个工具的 `execute` 函数直接调用已有的 API handler 或 storage 函数，不重复实现业务逻辑。
-
-### 1.2 注册到 Agent 系统
-
-工具通过 `globalToolRegistry.register()` 注册，与现有 ChatWindow 的 tool-calling 机制一致。
+### 1.2 推荐的工具分配
 
 ```typescript
-// 在 server 启动时调用
-import { registerNovelTools } from "./lib/tools/novel-tools.js";
-registerNovelTools();
+// ToolsTab.tsx 中修改 AVAILABLE_TOOLS 的默认 enabled 值
+
+// Writer Agent 推荐
+{ name: "Bash", enabled: true }       // 需审批 — 执行 gen 脚本等
+{ name: "Read", enabled: true }        // 只读
+{ name: "Write", enabled: true }       // 需审批 — 写候选稿
+{ name: "Edit", enabled: true }        // 需审批
+{ name: "Grep", enabled: true }        // 只读
+{ name: "Glob", enabled: true }        // 只读
+{ name: "EnterWorktree", enabled: true }
+{ name: "ExitWorktree", enabled: true }
+{ name: "TodoWrite", enabled: true }
+
+// 以下默认关闭（Writer 不需要）
+{ name: "Terminal", enabled: false }
+{ name: "Browser", enabled: false }
+{ name: "ForkNarrator", enabled: false }
+{ name: "NarraForkAdmin", enabled: false }
+{ name: "Recall", enabled: false }
+{ name: "ShareFile", enabled: false }
+{ name: "WebSearch", enabled: false }
+{ name: "WebFetch", enabled: false }
 ```
 
-Agent 在调用 LLM 时，工具列表包含通用工具（Bash/Read/Write/...）+ 小说专有工具。
+工具开关是全局的，但权限模式（allow/ask/deny）已在 PermissionsTab 中可按工具粒度和 Agent 角色细化。不新增按 Agent 角色独立的工具开关——保持现有架构。
 
 ---
 
-## 2. Agent 角色设计
+## 2. Agent System Prompt 差异化（R2）
 
-### 2.1 系统提示词结构
+### 2.1 设计思路
 
-每个 Agent 的系统提示词分为三部分：
+当前 `runAgentLoop` 在 `pipeline/agent.ts` 中硬编码 system prompt（L321-384）。需要：
 
-```
-[角色定义] — 你是谁、擅长什么
-[领域知识] — 网文创作的常识（题材特征、节奏、伏笔管理）
-[作品上下文] — 当前书名、题材、章节数、最近摘要、待回收伏笔
-[工具指导] — 什么场景该用什么工具
-[输出规范] — 如何结构化输出、何时等待确认
-```
+1. 将 system prompt 从函数体内提取到独立文件 `agent-prompts.ts`
+2. `runAgentLoop` 新增 `agentId` 参数
+3. 根据 agentId 选择对应的 system prompt 模板
+4. 注入作品上下文（R3）到 system prompt 末尾
 
-### 2.2 三个 Agent 角色
-
-**探索 Agent** (`novel-explorer`)
-
-```
-角色：你是 NovelFork 的小说创作探索 Agent。
-     你的职责是分析当前作品状态，告诉作者下一章应该关注什么。
-
-领域知识：你熟悉网文的节奏设计（3+1 模式）、伏笔管理（埋/长/收）、
-         爽点类型（打脸/升级/奇遇/揭秘）、人物弧线。
-
-工具使用：
-- 首先用 read_chapter 读最近完成的章节
-- 用 get_pending_hooks 找出需要回收的伏笔
-- 用 get_bible_characters 了解当前出场角色
-- 用 get_chapter_summaries 回顾前文
-
-输出格式：
-1. 一句话总结当前状态
-2. 下一章的 3 个可能方向
-3. 需要回收的伏笔清单
-4. 需要注意的角色关系
-```
-
-**写作 Agent** (`novel-writer`)
-
-```
-角色：你是 NovelFork 的小说写作 Agent。
-     你根据规划和上下文生成章节正文、对话或变体。
-
-领域知识：你擅长仙侠/玄幻/都市/科幻的写法，能模仿冷峻质朴、
-         古典意境、沙雕轻快等文风。注重画面感和节奏感。
-
-工具使用：
-- 生成前用 read_chapter 获取前后文
-- 用 generate_continuation 续写段落
-- 用 generate_dialogue 生成角色对话
-- 用 generate_next_chapter 写完整一章
-- 结果用 create_candidate 保存到候选区
-
-输出格式：直接输出正文内容，前后标注工具调用来源。
-         正式章节写入前必须等作者确认。
-```
-
-**审计 Agent** (`novel-auditor`)
-
-```
-角色：你是 NovelFork 的小说审计 Agent。
-     你检查生成内容的连续性、设定一致性、AI 痕迹和字数合理性。
-
-工具使用：
-- 用 audit_chapter 运行连续性审计
-- 用 detect_ai_taste 检查 AI 痕迹
-- 用 read_truth_file 对照设定文件检查一致性
-- 用 get_bible_characters 检查人物行为是否符合性格
-
-输出格式：
-1. 连续性检查结果（冲突项列表）
-2. 设定一致性检查（与 truth 文件的差异）
-3. AI 味评分及具体问题
-4. 字数统计与目标对比
-5. 是否需要修订的判断
-```
-
-### 2.3 Agent 持久化
-
-Agent 预设通过 `POST /api/routines` 保存到子代理（subAgent）配置中。重用现有 `SubAgent` 类型：
+### 2.2 agent-prompts.ts 结构
 
 ```typescript
-{
-  id: "novel-writer-v1",
-  name: "写作 Agent",
-  description: "根据上下文生成章节正文、对话或变体",
-  systemPrompt: "...",  // 完整的系统提示词
-  allowedTools: ["read_chapter", "generate_*", "create_candidate"],
-  enabled: true,
+// packages/core/src/pipeline/agent-prompts.ts
+
+export const AGENT_SYSTEM_PROMPTS: Record<string, string> = {
+  writer: `你是 NovelFork 的小说写作 Agent。
+    [领域知识] 你熟悉仙侠/玄幻/都市/科幻的写作范式...
+    [工具使用] 用 read_truth_files 获取上下文，用 write_draft 续写...
+    [输出规范] 直接输出正文，不要复述提示词...
+    [安全约束] 生成结果只写入候选稿，不直接覆盖正式章节...`,
+  
+  planner: `你是 NovelFork 的小说规划 Agent。
+    [领域知识] 你擅长章节大纲设计、情节点编排、伏笔部署、节奏控制...
+    [工具使用] 用 plan_chapter 制定大纲，用 get_book_status 了解进度...
+    [输出规范] 输出结构化的大纲，包含场景/情节点/伏笔节点/情绪曲线...`,
+  
+  auditor: `你是 NovelFork 的小说审计 Agent。
+    [领域知识] 你擅长人物设定一致性检查、伏笔回收跟踪、AI痕迹识别...
+    [工具使用] 用 audit_chapter 审查章节，用 read_truth_files 对照设定...
+    [输出规范] 输出结构化的审计报告...`,
+  
+  architect: `你是 NovelFork 的小说世界观架构 Agent。
+    [领域知识] 你擅长构建完整的世界观体系...
+    [工具使用] 用 write_truth_file 写入设定，用 import_canon 导入原著...
+    [输出规范] 输出结构化的世界观文档...`,
+  
+  explorer: `你是 NovelFork 的小说探索 Agent。你是只读角色，不执行任何写入操作。
+    [领域知识] 你擅长分析当前创作状态，识别优先需要关注的问题...
+    [工具使用] 只用读取类工具：read_truth_files, get_book_status, Read, Grep, Glob...
+    [输出规范] 输出当前状态摘要 + 下一章方向建议 + 待回收伏笔 + 角色变化提示...`,
+};
+
+export function getAgentSystemPrompt(agentId: string): string {
+  // 优先匹配精确 ID
+  for (const [key, prompt] of Object.entries(AGENT_SYSTEM_PROMPTS)) {
+    if (agentId.includes(key)) return prompt;
+  }
+  // fallback: 通用写作 Agent prompt
+  return DEFAULT_SYSTEM_PROMPT;
+}
+```
+
+### 2.3 用户自定义 SubAgent prompt 优先
+
+当 session 关联的 SubAgent 配置中有 `systemPrompt` 字段且非空时，优先使用用户定义的 prompt，不覆盖。
+
+```typescript
+// session-chat-service 中
+const subAgent = await getSubAgentConfig(agentId);
+const basePrompt = subAgent?.systemPrompt 
+  || getAgentSystemPrompt(agentId);
+const finalPrompt = basePrompt + buildBookContext(bookId);
+```
+
+### 2.4 runAgentLoop 改动
+
+```typescript
+// 修改前
+export async function runAgentLoop(config, instruction, options?)
+
+// 修改后
+export async function runAgentLoop(config, instruction, options?) {
+  const { agentId, ...rest } = options ?? {};
+  const systemPrompt = agentId 
+    ? getUserOrSystemPrompt(agentId) 
+    : DEFAULT_SYSTEM_PROMPT;
+  // ... 后续不变
 }
 ```
 
 ---
 
-## 3. 上下文注入
+## 3. 上下文自动注入（R3）
 
-### 3.1 触发时机
+### 3.1 注入时机
 
-当 session 的 `projectId` 字段等于某个 bookId 时，session-chat-service 在构建 LLM 消息时自动注入作品上下文。
+当 session 创建或恢复时，检查 `session.projectId`：
+- 如果值匹配已知 bookId → 注入作品上下文
+- 如果值不存在或不匹配 → 不注入，Agent 使用通用 system prompt
 
 ### 3.2 注入内容
 
 ```typescript
-const contextBlock = `
+// packages/studio/src/api/lib/agent-context.ts
+
+async function buildBookContext(bookId: string): Promise<string> {
+  const [book, summaries, hooks, focus] = await Promise.all([
+    getBookDetail(bookId),           // GET /books/:id
+    getChapterSummaries(bookId),     // bible chapter-summaries
+    getPendingHooks(bookId),         // story-files/pending_hooks.md
+    getCurrentFocus(bookId),         // truth-files/current_focus.md
+  ]);
+
+  return `
 ## 当前作品上下文
-- 书名：${book.title}
+- 作品：${book.title}
 - 题材：${book.genre}
-- 平台：${book.platform}
-- 当前章节数：${book.chapterCount}
-- 目标章节：${book.targetChapters}
-- 最近章节摘要：
-${summaries.map(s => `  - 第${s.chapter}章 ${s.title}: ${s.summary}`).join('\n')}
-- 待回收伏笔：
-${pendingHooks.map(h => `  - ${h.id}: ${h.text}（来源：第${h.sourceChapter}章，状态：${h.status}）`).join('\n')}
-- 当前焦点：${currentFocus ?? '未设置'}
-`;
-```
+- 章节：${book.chapterCount}/${book.targetChapters} 章
+- 当前焦点：${focus ?? '未设置'}
 
-注入到 system prompt 中（第一条 system message 的末尾或单独一条 system message）。
+## 最近章节摘要
+${summaries.slice(-3).map(s => `- 第${s.number}章: ${s.summary}`).join('\n')}
 
-### 3.3 数据来源
-
-所有数据来自已有 API 调用，不新增存储，不新增缓存。每次 Agent 启动对话时实时获取。
-
----
-
-## 4. 多 Agent 编排
-
-### 4.1 编排 Agent
-
-新增「写作流程」Agent（`novel-pipeline`），它是一个编排者 Agent：
-
-```
-收到用户指令「写下一章」
-  →
-  [Step 1] 调用子 Agent: novel-explorer
-    输入：bookId, 用户意图
-    输出：当前状态分析 + 下一章方向建议
-  →
-  [Step 2] 调用子 Agent: novel-writer
-    输入：探索结果 + 用户意图 + 上下文
-    输出：生成的正文
-  →
-  [Step 3] 调用子 Agent: novel-auditor
-    输入：生成的正文 + 上下文
-    输出：审计报告
-  →
-  [展示] 正文 + 审计报告 + 动作按钮
-```
-
-### 4.2 实现方式
-
-编排 Agent 不是一个真正独立的 Agent 进程，而是一个**编排函数**：
-
-```typescript
-async function runWritingPipeline(bookId: string, userIntent: string) {
-  const context = await buildBookContext(bookId);
-  
-  // Step 1: 探索
-  const exploration = await callAgent("novel-explorer", 
-    `分析书籍 ${bookId} 的当前状态，用户意图：${userIntent}`, 
-    context);
-  
-  // Step 2: 写作
-  const draft = await callAgent("novel-writer",
-    `根据以下分析生成内容：${exploration}`,
-    context);
-  
-  // Step 3: 审计
-  const audit = await callAgent("novel-auditor",
-    `审计以下内容：${draft.content}`,
-    context);
-  
-  return { draft, audit, exploration };
+## 待回收伏笔
+${hooks.map(h => `- ${h.id}: ${h.text}（来源第${h.sourceChapter}章，状态：${h.status}）`).join('\n')}
+`.trim();
 }
 ```
 
-### 4.3 串行编排（v1 限制）
+### 3.3 注入位置
 
-v1 中 Agent 串行执行。并行（探索和审计独立执行、多候选方案并行生成）留到 v2。
-
----
-
-## 5. 复用现有基础设施
-
-| 基础设施 | 用途 |
-|---------|------|
-| `session-chat-service.ts` | Agent 调用 LLM 的载体 |
-| `ChatWindow` | Agent 对话 UI |
-| Routines subAgent | Agent 角色持久化 |
-| `globalToolRegistry` | 工具注册 |
-| `api/routes/` 中已有 handlers | 工具执行逻辑 |
-| `ProviderRuntimeStore` | 获取 LLM 配置 |
+在 session-chat-service 构建 message list 时，将上下文字符串追加到第一条 system message 的末尾。
 
 ---
 
-## 6. 文件结构
+## 4. Explorer Agent（R4）
+
+### 4.1 设计
+
+Explorer 不新建 Core Agent 类——它只是一个专用的 system prompt + 严格的工具限制。
+
+- `agentId`: `explorer`
+- System prompt: 只读分析指导（见 2.2）
+- 工具限制: Read, Grep, Glob, Recall, read_truth_files, get_book_status
+- 权限模式: `read`（全部只读，不可写入）
+- 在 ChatWindow 预设列表中新增一条
+
+### 4.2 实现路径
+
+1. 在 `agent-prompts.ts` 中添加 `explorer` 的 system prompt
+2. 在 `ChatWindow.tsx` 的 `SESSION_PRESETS` 中新增 explorer 预设
+3. Explorer 的工具集在 SubAgent 配置中定义（重用现有机制）
+
+---
+
+## 5. 编排函数（R5）
+
+### 5.1 设计
+
+```typescript
+// packages/core/src/pipeline/agent-pipeline.ts
+
+export interface PipelineStep {
+  agentId: string;
+  instruction: string;
+}
+
+export interface PipelineResult {
+  exploration?: string;
+  plan?: string;
+  draft?: string;
+  audit?: { issues: string[]; suggestions: string[] };
+  metadata: { bookId: string; model: string; duration: number };
+}
+
+export async function runWritingPipeline(
+  bookId: string,
+  userIntent: string,
+  config: PipelineConfig,
+): Promise<PipelineResult> {
+  const started = Date.now();
+  
+  // Step 1: 探索
+  const exploration = await runAgentLoop(config,
+    `分析书籍 ${bookId} 的当前状态。用户意图：${userIntent}`,
+    { agentId: "explorer", maxTurns: 5 });
+  
+  // Step 2: 规划
+  const plan = await runAgentLoop(config,
+    `根据以下探索结果制定下一章大纲：\n${exploration}\n用户意图：${userIntent}`,
+    { agentId: "planner", maxTurns: 5 });
+  
+  // Step 3: 写作
+  const draft = await runAgentLoop(config,
+    `根据以下大纲生成章节正文：\n${plan}`,
+    { agentId: "writer", maxTurns: 5 });
+  
+  // Step 4: 审计
+  const audit = await runAgentLoop(config,
+    `审计以下章节正文：\n${draft}`,
+    { agentId: "auditor", maxTurns: 5 });
+  
+  return {
+    exploration,
+    plan,
+    draft,
+    audit: parseAuditResult(audit),
+    metadata: { bookId, model: config.model, duration: Date.now() - started },
+  };
+}
+```
+
+### 5.2 编排是前端驱动还是后端驱动
+
+编排函数运行在 Studio 后端（`chatCompletion` 调用 LLM）。ChatWindow 中的 Agent 按钮触发编排函数，结果通过 WebSocket 推送给前端。
+
+---
+
+## 6. Workspace 入口（R6）
+
+在 WorkspacePage 右侧面板新增「Agent 写作」入口：
 
 ```
-packages/studio/src/api/lib/tools/
-├── novel-tools.ts          # 小说工具定义与注册（新）
-└── novel-tools.test.ts     # 工具测试（新）
+右侧面板 > 写作 Tab
+  ├─ AI 动作按钮（生成下一章/审校/去AI味/连续性 — 已有）
+  ├─ 写作模式（已有）
+  ├─ 写作工具（已有）
+  └─ 【Agent 写作】← 新增
+        ├─ 输入框：写下一章，回收玉佩伏笔，保持林月冷峻性格
+        └─ 点击后 → 启动 runWritingPipeline → 结果展示在 ChatWindow
+```
+
+点击后：
+1. 自动创建或复用当前 book 关联的 Writer session
+2. 发送 `runWritingPipeline(bookId, intent)` 调用
+3. 结果通过 ChatWindow 中的结构化消息展示：正文 + 审计报告 + 动作按钮
+
+---
+
+## 7. 文件结构
+
+```
+packages/core/src/pipeline/
+├── agent.ts              # [改] agentId 参数 + system prompt 选择
+├── agent-prompts.ts      # [新] 5 种 Agent 的专属 system prompt
+└── agent-pipeline.ts     # [新] 编排函数
 
 packages/studio/src/api/lib/
-├── agent-context.ts        # 作品上下文构建（新）
-└── agent-pipeline.ts       # 多 Agent 编排（新）
+├── agent-context.ts      # [新] buildBookContext(bookId)
+└── agent-pipeline.test.ts # [新] 编排函数测试
 
-packages/studio/src/app-next/
-├── (无新 UI，复用 ChatWindow)
+packages/studio/src/session-chat-service.ts  # [改] 上下文注入
+
+packages/studio/src/components/
+├── Routines/ToolsTab.tsx    # [改] 默认开关调整
+├── ChatWindow.tsx           # [改] SESSION_PRESETS 加 explorer
+└── sessions/NewSessionDialog.tsx # [改] 预设更新
+
+packages/studio/src/app-next/workspace/
+└── WorkspacePage.tsx        # [改] Agent 写作入口
 ```
 
 ---
 
-## 7. 约束与边界
+## 8. 约束与边界
 
-- 不新增 UI 页面
-- 不新增 LLM 调用方式（复用 chatCompletion + session-chat-service）
-- Agent 生成结果只写入候选稿/草稿，不直接覆盖正文
-- 工具失败返回真实错误，不伪造成功
-- v1 只做串行编排，不做并行
+- 不新建设计系统的架构层
+- Agent 生成结果只进候选区，不直接覆盖正文
+- 编排函数串行执行（v1 不做并行）
+- 上下文数据只来自已有 API，不新增后端聚合端点
+- 无新增 mock/fake/noop
