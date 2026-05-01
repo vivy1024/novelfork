@@ -1062,7 +1062,7 @@ function RightPanelWithTabs({
 
       {activeTab === "cockpit" && (
         <div className="space-y-3">
-          <CockpitOverviewPanel bookId={bookId} />
+          <CockpitPanel bookId={bookId} />
         </div>
       )}
       {activeTab === "bible" && (
@@ -1071,6 +1071,45 @@ function RightPanelWithTabs({
       {activeTab === "writing" && (
         <AssistantPanel assistantApi={assistantApi} modelGate={modelGate} selectedNode={selectedNode} onResourceMutation={onResourceMutation} />
       )}
+    </div>
+  );
+}
+
+/* ── 驾驶舱面板（二级 Tab） ── */
+
+type CockpitSubTab = "overview" | "hooks" | "settings" | "ai";
+
+function CockpitPanel({ bookId }: { readonly bookId: string }) {
+  const [subTab, setSubTab] = useState<CockpitSubTab>("overview");
+
+  const subTabs: { id: CockpitSubTab; label: string }[] = [
+    { id: "overview", label: "总览" },
+    { id: "hooks", label: "伏笔" },
+    { id: "settings", label: "设定" },
+    { id: "ai", label: "AI" },
+  ];
+
+  return (
+    <div className="rounded-lg border border-border bg-card p-3 space-y-3">
+      <div className="flex gap-1 rounded-lg bg-muted p-0.5">
+        {subTabs.map((tab) => (
+          <button
+            key={tab.id}
+            className={`flex-1 rounded-sm px-2 py-0.5 text-[11px] font-medium transition-colors ${
+              subTab === tab.id ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+            }`}
+            onClick={() => setSubTab(tab.id)}
+            type="button"
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {subTab === "overview" && <CockpitOverviewPanel bookId={bookId} />}
+      {subTab === "hooks" && <CockpitHooksPanel bookId={bookId} />}
+      {subTab === "settings" && <CockpitSettingsPanel bookId={bookId} />}
+      {subTab === "ai" && <CockpitAiPanel bookId={bookId} />}
     </div>
   );
 }
@@ -1093,12 +1132,7 @@ function CockpitOverviewPanel({ bookId }: { readonly bookId: string }) {
   if (!bookId) return <p className="text-xs text-muted-foreground p-2">请先选择一本书。</p>;
 
   return (
-    <div className="rounded-lg border border-border bg-card p-3 space-y-2">
-      <div className="flex items-center gap-2">
-        <span className="text-sm font-medium">创作总览</span>
-        <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">Beta</span>
-      </div>
-
+    <div className="space-y-2">
       {/* 日更进度 */}
       {p && (
         <div className="rounded-lg border border-border bg-muted/30 p-2">
@@ -1155,6 +1189,144 @@ function CockpitOverviewPanel({ bookId }: { readonly bookId: string }) {
       {riskyChapters.length === 0 && chapterCount > 0 && (
         <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-2 text-[11px] text-emerald-600 dark:text-emerald-400">
           暂无风险 ✓
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── 伏笔面板 ── */
+
+function CockpitHooksPanel({ bookId }: { readonly bookId: string }) {
+  const { data: eventsData } = useApi<{ events?: Array<{ id: string; title: string; summary?: string; eventType?: string; chapterNumber?: number }> }>(`/books/${bookId}/bible/events`);
+  const { data: hooksData } = useApi<{ file?: string; content?: string | null }>(`/books/${bookId}/story-files/pending_hooks.md`);
+
+  const foreshadowEvents = (eventsData?.events ?? []).filter((e) => e.eventType === "foreshadow");
+  const pendingHooksRaw = hooksData?.content ?? "";
+
+  if (!bookId) return <p className="text-xs text-muted-foreground p-2">请先选择一本书。</p>;
+
+  return (
+    <div className="space-y-2">
+      {foreshadowEvents.length > 0 && (
+        <div>
+          <div className="text-[11px] text-muted-foreground mb-1">经纬事件 · 伏笔 ({foreshadowEvents.length})</div>
+          {foreshadowEvents.map((e) => (
+            <div key={e.id} className="rounded border border-border bg-muted/30 px-2 py-1 text-xs mb-1">
+              <span className="font-medium">{e.title}</span>
+              {e.summary && <span className="text-muted-foreground"> — {e.summary}</span>}
+              {e.chapterNumber && <span className="text-[10px] text-muted-foreground ml-1">第{e.chapterNumber}章</span>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {pendingHooksRaw && (
+        <div>
+          <div className="text-[11px] text-muted-foreground mb-1">pending_hooks.md</div>
+          <pre className="rounded border border-border bg-muted/30 px-2 py-1 text-[10px] leading-relaxed whitespace-pre-wrap max-h-48 overflow-y-auto">
+            {pendingHooksRaw.slice(0, 1000)}
+          </pre>
+        </div>
+      )}
+
+      {foreshadowEvents.length === 0 && !pendingHooksRaw && (
+        <div className="rounded-lg border border-dashed border-border bg-muted/20 p-2 text-[11px] text-muted-foreground">
+          暂无伏笔数据
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── 设定面板 ── */
+
+function CockpitSettingsPanel({ bookId }: { readonly bookId: string }) {
+  const { data: settingsData } = useApi<{ settings?: Array<{ id: string; title: string; summary?: string; category?: string }> }>(`/books/${bookId}/bible/settings`);
+  const { data: rulesData } = useApi<{ file?: string; content?: string | null }>(`/books/${bookId}/truth-files/book_rules.md`);
+
+  const settings = settingsData?.settings ?? [];
+  const rules = rulesData?.content?.trim();
+
+  if (!bookId) return <p className="text-xs text-muted-foreground p-2">请先选择一本书。</p>;
+
+  return (
+    <div className="space-y-2">
+      {settings.length > 0 && (
+        <div>
+          <div className="text-[11px] text-muted-foreground mb-1">世界设定 ({settings.length})</div>
+          {settings.map((s) => (
+            <div key={s.id} className="rounded border border-border bg-muted/30 px-2 py-1 text-xs mb-1">
+              <span className="font-medium">{s.title}</span>
+              {s.category && <span className="text-[10px] text-muted-foreground ml-1">· {s.category}</span>}
+              {s.summary && <span className="text-muted-foreground"> — {s.summary}</span>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {rules && (
+        <div>
+          <div className="text-[11px] text-muted-foreground mb-1">书籍规则</div>
+          <div className="rounded border border-border bg-muted/30 px-2 py-1 text-[10px] leading-relaxed whitespace-pre-wrap max-h-32 overflow-y-auto">
+            {rules.slice(0, 500)}
+          </div>
+        </div>
+      )}
+
+      {settings.length === 0 && !rules && (
+        <div className="rounded-lg border border-dashed border-border bg-muted/20 p-2 text-[11px] text-muted-foreground">
+          暂无设定数据
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── AI 运行面板 ── */
+
+function CockpitAiPanel({ bookId }: { readonly bookId: string }) {
+  const { data: providerStatus } = useApi<{ status?: string; defaultProvider?: string; defaultModel?: string; hasUsableModel?: boolean }>("/providers/status");
+  const { data: candidates } = useApi<{ candidates?: Array<{ id: string; title: string; source: string; metadata?: Record<string, unknown>; createdAt?: string }> }>(`/books/${bookId}/candidates`);
+
+  const status = providerStatus;
+  const recentCandidates = (candidates?.candidates ?? []).slice(0, 5);
+
+  return (
+    <div className="space-y-2">
+      {/* Provider 状态 */}
+      <div className="rounded-lg border border-border bg-muted/30 p-2">
+        <div className="text-[11px] text-muted-foreground mb-1">AI 模型状态</div>
+        {status?.hasUsableModel ? (
+          <div className="text-xs">
+            <span className="text-emerald-600 dark:text-emerald-400">可用</span>
+            <span className="text-muted-foreground"> · {status.defaultProvider} / {status.defaultModel}</span>
+          </div>
+        ) : (
+          <div className="text-xs">
+            <span className="text-amber-600 dark:text-amber-400">不可用</span>
+            <span className="text-muted-foreground"> · 请先配置 AI 模型</span>
+          </div>
+        )}
+      </div>
+
+      {/* 最近候选稿 */}
+      {recentCandidates.length > 0 && (
+        <div>
+          <div className="text-[11px] text-muted-foreground mb-1">最近候选稿</div>
+          {recentCandidates.map((c) => (
+            <div key={c.id} className="rounded border border-border bg-muted/30 px-2 py-1 text-xs mb-1">
+              <span className="font-medium">{c.title}</span>
+              <span className="text-[10px] text-muted-foreground ml-1">· {c.source}</span>
+              {typeof c.metadata?.model === "string" && <div className="text-[10px] text-muted-foreground">模型: {c.metadata.model}</div>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {recentCandidates.length === 0 && (
+        <div className="rounded-lg border border-dashed border-border bg-muted/20 p-2 text-[11px] text-muted-foreground">
+          暂无 AI 活动记录
         </div>
       )}
     </div>
