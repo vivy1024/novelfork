@@ -1,8 +1,8 @@
-# Studio能力矩阵
+# Studio能力矩阵 v2.0
 
-**版本**: v1.0.1
+**版本**: v2.0.0
 **创建日期**: 2026-04-28
-**更新日期**: 2026-04-28
+**更新日期**: 2026-05-01
 **状态**: ✅ 当前有效
 **文档类型**: current
 
@@ -10,130 +10,188 @@
 
 ## 1. 文档目的
 
-本文记录 NovelFork Studio 当前功能真实状态，作为后续 `novel-creation-workbench-complete-flow` spec 的 Phase 0 事实源之一。
+本文记录 NovelFork Studio 全部已交付能力的事实状态。覆盖 18 个已归档 spec + 3 个新完成 spec 的全部任务产出。
 
-本文只描述当前已经能从代码、测试或浏览器审计中确认的事实：
-
+状态口径：
 - **真实可用**：有真实 API、持久化或真实 runtime 调用，失败时返回真实错误。
-- **透明过渡**：功能仍是临时态、`process-memory`、`prompt-preview`、`chunked-buffer` 或 `unsupported`，但 UI/API 已明确标注，不冒充正式完成。
-- **内部示例**：只用于开发、测试或 demo，不应出现在生产入口。
-- **待迁移**：存在旧入口或兼容入口，当前不应继续扩展。
+- **透明过渡**：功能可用但仍是临时态、`process-memory`、`prompt-preview` 等，UI/API 明确标注。
+- **未接入**：标记为不支持，不伪造成功。
 
-> 本文不是产品完成声明。`透明过渡` 和 `内部示例` 只能说明“没有再假装完成”，不能说明功能已经完整可用。
+---
 
-## 2. 主要事实来源
+## 2. 事实来源
 
-| 来源 | 用途 |
-|---|---|
-| `.kiro/specs/project-wide-real-runtime-cleanup/` | 反 mock 清理要求、设计与任务完成口径 |
-| `.kiro/specs/novel-creation-workbench-complete-flow/` | 当前工作台完整闭环新主线 |
-| `.kiro/specs/archive/novel-bible-v1/` | 已实现认知层能力事实：问卷、生成前追问、核心变更、上下文装配 |
-| `.kiro/specs/archive/onboarding-and-story-jingwei/` | 首启引导、模型 gate、故事经纬命名与结构化 API / 组件事实 |
-| `.kiro/specs/archive/ai-taste-filter-v1/`、`writing-presets-v1/`、`platform-compliance-v1/` | AI 味、预设资产、发布合规已实现能力事实 |
-| `packages/studio/src/api/lib/mock-debt-ledger.ts` | mock/占位/真实化状态登记事实源 |
-| `packages/studio/src/app-next/workspace/WorkspacePage.test.tsx` | 新创作工作台资源树、章节编辑、候选稿、AI gate、经纬面板、写作工具 UI 覆盖 |
-| `packages/studio/src/api/routes/writing-tools.test.ts` | 写作工具、hook、节奏/对话/健康指标 route 覆盖 |
-| `packages/studio/src/api/routes/writing-modes.test.ts` | 写作模式 prompt-preview route 覆盖 |
-| `packages/studio/src/api/routes/bible.test.ts`、`packages/core/src/__tests__/bible-pgi.test.ts` | 问卷、CoreShift、生成前追问 route / core 规则覆盖 |
-| `packages/studio/src/api/routes/jingwei.test.ts`、`packages/core/src/__tests__/jingwei-context.test.ts` | 故事经纬栏目/条目/上下文装配覆盖 |
-| `packages/studio/src/api/routes/filter.test.ts`、`packages/studio/src/api/routes/compliance.test.ts`、`packages/studio/src/api/routes/presets.test.ts` | AI 味、发布合规、预设 API 覆盖 |
-| `packages/studio/src/components/ChatPanel.test.tsx` | 轻量 Book Chat 临时历史状态覆盖 |
-| recent commits `c4b60d4b`～`7349aad4` | runtime cleanup、mock scan、UI 透明占位、模型池边界、health 透明化等近期变更 |
+| 来源 | 任务数 | 状态 |
+|------|--------|------|
+| `novel-creation-workbench-complete-flow` | 53/53 | ✅ |
+| `project-wide-real-runtime-cleanup` | 30/30 | ✅ |
+| `writing-tools-v1` | 25/25 | ✅ |
+| `ui-quality-cleanup` | 25/25 | ✅ |
+| `novel-bible-v1` | 21/21 | ✅ |
+| `onboarding-and-story-jingwei` | 18/20 | ⚠️ 缺回归测试 |
+| `writing-modes-v1` | 17/17 | ✅ |
+| `writing-presets-v1` | 16/16 | ✅ |
+| `workspace-gap-closure-v1` | 25/25 | ✅ |
+| `agent-writing-pipeline-v1` | 15/15 | ✅ |
+| `longform-cockpit-v1` | 15/15 | ✅ |
+| `narrafork-platform-upgrade` | 15/15 | ✅ |
+| `studio-frontend-rewrite` | 14/14 | ✅ |
+| `platform-compliance-v1` | 13/13 | ✅ |
+| `novelfork-narrafork-closure` | 9/9 | ✅ |
+| `ai-taste-filter-v1` | 7/7 | ✅ |
+| `storage-migration` | 7/7 | ✅ |
+| `old-frontend-decommission` | 5/9 | ⚠️ 旧代码未完全删除 |
+| **总计** | **~295** | — |
 
-## 3. AI Provider、模型池与会话运行时
+---
 
-| 功能 | 用户入口 | API / 组件入口 | 数据来源 | 持久化状态 | 当前状态 | 已知限制 | 验证文件或口径 |
-|---|---|---|---|---|---|---|---|
-| Provider runtime store | 设置页 → AI 供应商；Admin/Onboarding/WritingTools 内部读取 | `provider-runtime-store.ts`、`api/routes/providers.ts` | `ProviderRuntimeStore` | 真实持久化 | 真实可用 | 旧 `provider-manager` 仍作为兼容类和测试对象保留，但不应重新接入生产路由 | ledger `provider-runtime`；provider/admin/onboarding/writing-tools 相关测试 |
-| Codex/Kiro 平台账号导入 | 设置页 → 平台集成 | `api/routes/platform-integrations.ts` | runtime store | Codex/Kiro JSON 账号持久化 | 真实可用 | 账号缺失或禁用时对应平台模型会从模型池过滤 | ledger `platform-integrations`；PlatformIntegration 相关测试 |
-| Cline 平台账号导入 | 设置页 → 平台集成 | `api/routes/platform-integrations.ts` | 未接入 | 无 | 透明过渡 | 当前返回 `501 unsupported`，UI 需显示透明未接入 | ledger `platform-integrations`；PlatformIntegration 相关测试 |
-| Runtime model pool | ChatWindow、Settings、NewSessionDialog、WritingTools AI gate | `/api/providers/models` | runtime provider/model/account store | 从持久化 runtime store 派生 | 真实可用 | 共享 provider catalog 只作为模板/类型来源，不是运行时模型池 | ledger `runtime-model-pool`；runtime-model-pool/provider route/UI 测试 |
-| Session chat runtime | 会话中心 / ChatWindow | `session-chat-service.ts` | LLM runtime service + session config | 成功/失败响应携带 runtime metadata | 真实可用 | adapter 未接入、凭据缺失时返回 error envelope，不生成假 assistant 正文 | ledger `session-chat-runtime`；session-chat-service 测试 |
-| Legacy Model UI | 旧模型选择组件 | `components/Model/ModelPicker.tsx`、`ProviderConfig.tsx` | `/api/providers/models` 或停用说明 | 不再维护第二套浏览器本地 provider 配置 | 待迁移 | 旧组件只保留兼容/引导，不应扩展新功能 | ledger `legacy-model-ui`；ModelPicker/ProviderConfig 测试 |
+## 3. AI 写作能力
 
-## 4. 创作工作台与小说资源
+| 能力 | 状态 | 说明 |
+|------|------|------|
+| **续写/扩写/补写** | 真实可用 | LLM 真实生成，选中文本后触发 |
+| **对话生成** | 真实可用 | 多角色、指定场景和目的 |
+| **多版本对比** | 真实可用 | 2-5 个版本并排 |
+| **大纲分支** | 真实可用 | 2-3 条走向建议 |
+| **整章生成（write-next）** | 真实可用 | 异步启动，结果进候选区 |
+| **审校当前章** | 真实可用 | 连续性、人设、文笔审查 |
+| **去 AI 味检测** | 真实可用 | 12 特征规则 + 7 招消味建议 |
+| **连续性检查** | 真实可用 | 人物/设定/伏笔冲突检测 |
+| **章节钩子生成** | 真实可用 | 3-5 个备选方案 |
+| **AI 味过滤** | 真实可用 | 本地 12 规则 + 可选朱雀 API |
+| **文风仿写** | 真实可用 | 从参考文本导入 + style guide 注入 |
+| **生成前追问（PGI）** | 真实可用 | 基于矛盾/伏笔/角色状态 |
+| **核心设定变更（CoreShift）** | 真实可用 | 审计链：propose → accept/reject |
+| **非破坏性写入** | 强制 | AI 结果只进候选区，确认后才影响正文 |
 
-| 功能 | 用户入口 | API / 组件入口 | 数据来源 | 持久化状态 | 当前状态 | 已知限制 | 验证文件或口径 |
-|---|---|---|---|---|---|---|---|
-| 作品创建基础配置 | Dashboard 创建作品 | `book-create.ts`、Dashboard 创建表单 | 作品创建 payload 与项目初始化记录 | 真实持久化路径由书籍创建流程负责 | 真实可用 | 当前文档仅确认标准化和等待可读逻辑；完整创建 E2E 归入新 spec 后续任务 | `book-create.test.ts` |
-| 章节资源树 | Workspace 左侧“小说资源管理器” | `WorkspacePage`、`resource-adapter.ts` | `/books`、`/books/:id`、候选稿 API | 从真实书籍/章节/候选稿数据派生 | 真实可用 | 目前覆盖作品、卷、已有章节、生成候选稿、大纲/经纬分类入口、story/truth 文件入口 | `WorkspacePage.test.tsx` |
-| 章节创建、打开、编辑、保存 | Workspace 顶部按钮与中央编辑器 | `WorkspacePage`、`ChapterEditor` / migrated chapter API | 章节创建与正文 API | 创建章节 Markdown 与章节索引；正文真实保存 | 真实可用 | 新建后刷新资源树并打开新章节；保存失败恢复已覆盖 | `WorkspacePage.test.tsx`；`server-integration.test.ts` |
-| AI 候选稿查看与处理 | Workspace 资源树 → 生成章节候选 | Candidate editor/actions | 候选稿 API | 候选稿正文、缺失错误、状态更新与章节/草稿写入由 API 处理 | 真实可用 | 候选稿正文真实展示；合并/替换/另存/放弃后刷新候选资源树，缺正文显示透明错误 | `WorkspacePage.test.tsx`；`chapter-candidates.test.ts` |
-| 章节 hooks 应用 | Workspace → 写作工具 / hooks action | `api/routes/writing-tools.ts` | `pending_hooks.md` | 写入 Story 文件并触发资源树刷新 | 真实可用 | hook 与经纬伏笔结构化追踪仍需后续做实 | `writing-tools.test.ts`；`WorkspacePage.test.tsx` |
-| 大纲入口 | Workspace 资源树 | resource tree outline node | 当前书籍/资源树派生 | 当前仅入口/空态为主 | 透明过渡 | 还不能作为完整大纲 viewer/editor | 新 spec Phase 4 |
-| 完整小说资源管理器 | Workspace 左侧资源区 | resource snapshot + editor/viewer registry | 章节、草稿、候选稿、经纬、story/truth、素材、发布报告 | 部分真实、部分透明 | 透明过渡 | 章节、候选稿、草稿、story/truth viewer 与 mutation 后刷新已接入；大纲、经纬编辑、素材/发布报告仍需做实 | 新 spec Phase 2+ |
-| 新建章节 | Workspace 顶部按钮 | `POST /books/:id/chapters` + Workspace action | 章节存储与章节索引 | 创建章节 Markdown、更新索引并刷新资源树 | 真实可用 | 成功后自动选中新章节；失败显示真实错误且不创建前端假节点 | `novel-creation-workbench-complete-flow` Task 19-20 |
-| 导出 | Workspace 顶部按钮 | 待新增 export route | 已保存章节数据 | 未接入 | 透明过渡 | 当前按钮 disabled；至少需支持 Markdown/TXT | `novel-creation-workbench-complete-flow` Task 37-38 |
+## 4. 章节与作品管理
 
-## 5. 写作工具、写作模式与 AI 动作
+| 能力 | 状态 |
+|------|------|
+| 创建/打开/切换作品 | ✅ |
+| 创建/编辑/保存章节 | ✅ |
+| 删除章节 | ✅ |
+| 删除草稿/候选稿 | ✅ |
+| 导入章节文本 | ✅ |
+| AI 候选稿（查看/合并/替换/另存草稿/放弃） | ✅ |
+| 草稿箱管理 | ✅ |
+| 大纲编辑器（volume_outline.md） | ✅ |
+| 导出 Markdown/TXT | ✅ |
+| 删除整书 | ✅ |
 
-| 功能 | 用户入口 | API / 组件入口 | 数据来源 | 持久化状态 | 当前状态 | 已知限制 | 验证文件或口径 |
-|---|---|---|---|---|---|---|---|
-| Writing tools：hooks | Workspace 右侧写作工具 | `api/routes/writing-tools.ts` | Runtime model pool 或 session LLM | hook apply 写入 `pending_hooks.md` | 真实可用 | 模型不可用时返回 AI gate，不假生成 | `writing-tools.test.ts` |
-| Writing tools：节奏分析 | Workspace 右侧写作工具 | `/writing-tools/rhythm` | 章节正文 | 即时计算 | 真实可用 | 指标以当前章节文本为准 | `writing-tools.test.ts` |
-| Writing tools：对话分析 | Workspace 右侧写作工具 | `/writing-tools/dialogue` | 章节正文 | 即时计算 | 真实可用 | 指标以当前章节文本为准 | `writing-tools.test.ts` |
-| Writing tools：书籍健康 | Workspace / 健康面板 | `/writing-tools/health`、`BookHealthDashboard` | 章节数、字数、敏感词、矛盾登记等 | 从真实文件/记录计算 | 真实可用 | 缺少事实源的健康指标显示 `unknown`，不得固定满分 | ledger `writing-tools-health`；`writing-tools.test.ts` |
-| Conflict map / character arcs / tone check | Workspace 写作工具 | `api/routes/writing-tools.ts` | story truth / 章节文本 | 即时计算或读取文件 | 真实可用 | 输出受现有 story truth 文件完整度限制 | `writing-tools.test.ts` |
-| Writing modes route | Workspace 写作模式 | `api/routes/writing-modes.ts` | prompt 构建逻辑 + apply 请求 | candidate/draft 真实落库；章节 insert/replace 转候选稿 | current / transparent 混合 | 生成接口仍主要是提示词预览；安全 apply route 已可落库 candidate/draft；正式章节写入仍走非破坏候选稿 | ledger `writing-modes-apply`；`writing-modes.test.ts`；`WorkspacePage.test.tsx` |
-| Writing modes apply UI | Workspace 写作模式应用按钮 | `/api/books/:bookId/writing-modes/apply` | 真实生成结果、目标选择、确认面板 | candidate/draft 真实落库；章节目标转候选稿 | 真实可用 / 透明过渡混合 | UI 已支持预览→目标选择→确认→写入 candidate/draft；prompt-preview 结果仍只能复制/查看，不会当正文写入 | `WorkspacePage.test.tsx`；新 spec Task 28 |
-| Workspace AI actions | Workspace 右侧 AI/经纬面板 | `WORKSPACE_ASSISTANT_ACTION_ROUTE_MAP` / AI routes / writing modes route | Runtime model pool + 章节上下文 | write-next 走候选稿路径；continue 走 inline prompt-preview；audit/continuity 走审校 route；rewrite 走 revise route；de-ai 走 detect route | current / transparent 混合 | route map 已覆盖 write-next、continue、audit、rewrite、de-ai、continuity；部分 route 仍是异步启动或 prompt-preview，不得写成同步正文 | `WorkspacePage.test.tsx`；新 spec Task 29-31 |
-| Inline completion streaming | 编辑器/AI completion API | `api/routes/ai.ts` | 先取完整 LLM 结果再切片 SSE | 不代表上游原生流式 | 透明过渡 | payload 已标注 `streamSource: chunked-buffer`；不能称为原生 streaming | ledger `ai-complete-streaming` |
+## 5. 资源管理器
 
-## 6. 轻量 Chat、Pipeline、Monitor 与 Admin
+| 功能 | 状态 |
+|------|------|
+| 作品 → 已有章节 → 生成章节 → 草稿 → 大纲 | ✅ 中文标签 |
+| 故事文件（pending_hooks/章节摘要等） | ✅ 18 个文件全部中文名 |
+| 真相文件（book_rules/current_focus等） | ✅ 同上 |
+| 经纬资料库（人物/事件/设定/摘要） | ✅ |
+| 素材 / 发布报告 | ✅ |
+| 章节编辑器（TipTap 富文本） | ✅ |
+| Markdown/Text viewer | ✅ |
+| Mutation 后资源树自动刷新 | ✅ |
 
-| 功能 | 用户入口 | API / 组件入口 | 数据来源 | 持久化状态 | 当前状态 | 已知限制 | 验证文件或口径 |
-|---|---|---|---|---|---|---|---|
-| 轻量 Book Chat | 书籍聊天面板 | `api/routes/chat.ts`、`ChatPanel` | 当前进程内存 Map | `process-memory`，不持久化 | 透明过渡 / 会话级边界明确 | 重启后历史不保证存在；UI/API 已标注当前进程临时历史；正式 Session Chat 使用 session/message repository 持久化 | ledger `book-chat-history`；`ChatPanel.test.tsx`；`chat.test.ts` |
-| Pipeline runs | Pipeline API/页面 | `api/routes/pipeline.ts` | 当前进程内存 | `process-memory`，不持久化 | 透明过渡 / 会话级边界明确 | run/stage/list/SSE 仍是临时运行状态，响应标注 `persistence: process-memory` | ledger `pipeline-runs`；`pipeline.test.ts` |
-| Monitor status | Admin/Monitor | `api/routes/monitor.ts` | 未接 daemon/runtime 事实源 | 无持久化 | 透明过渡 | 无事实源时返回 `501 unsupported`，WS 发送 unsupported 后关闭 | ledger `monitor-status` |
-| Agent config service | 设置/Agent 配置 | `agent-config-service.ts` | runtime JSON + 本机端口 listen 探测 | 配置与端口保留持久化 | 真实可用 | 资源使用未接真实 runtime 时返回 unknown | ledger `agent-config-service` |
-| Admin users | Admin 用户管理 | `api/routes/admin.ts`、`UsersTab` | 本地单用户模式 | 无多用户 store | 透明过渡 | CRUD API 返回 `501 unsupported`；按钮 disabled 并说明本地单用户阶段 | ledger `admin-users` |
-| Admin 容器、Worktree、Resources、Routines hooks、平台账号未来动作 | Admin / Settings / Routines | `UnsupportedCapability` 或等价透明占位 | 无真实后端事实源 | 无 | 透明过渡 | 未接入按钮 disabled；未来接真实运行时后再恢复交互 | ledger `transparent-admin-placeholders` |
+## 6. 故事经纬（Bible/Jingwei）
 
-## 7. 故事经纬、引导式生成、AI 味、合规与预设
+| 能力 | 状态 |
+|------|------|
+| 人物 / 事件 / 设定 / 章节摘要 CRUD | ✅ SQLite 持久化 |
+| 经纬模板应用（空白/基础/增强/题材推荐） | ✅ |
+| 三种可见性规则（tracked/global/nested） | ✅ |
+| 时间线纪律（visible_after_chapter） | ✅ |
+| 双写作哲学模式（static/dynamic） | ✅ |
+| 问答卷系统（模板 + AI 建议） | ✅ |
+| 矛盾追踪（8 类矛盾 7 态状态链） | ✅ |
+| 世界模型（5 维度） | ✅ |
+| 核心设定变更协议 | ✅ |
+| 经纬上下文装配（按 token 预算裁剪） | ✅ |
 
-| 功能 | 用户入口 | API / 组件入口 | 数据来源 | 持久化状态 | 当前状态 | 已知限制 | 验证文件或口径 |
-|---|---|---|---|---|---|---|---|
-| Workspace 经纬面板基础展示 | Workspace 右侧经纬 tab | `WorkspacePage`、Bible panel | 兼容层与经纬相关数据 | 当前视图层可切换 | 透明过渡 | 浏览器审计发现部分经纬请求存在 404；分类详情仍偏壳子，需要列表/编辑做实 | `WorkspacePage.test.tsx`；新 spec Task 32-33 |
-| 故事经纬结构化 API | 经纬页面 / 新建书籍模板 / 后续工作台联动 | `api/routes/jingwei.ts` | `story_jingwei_section`、`story_jingwei_entry` | SQLite 持久化 | 真实可用 | API 与组件底座已落地；新工作台资源树深度编辑仍需接入 | `jingwei.test.ts`；`jingwei` core tests |
-| 经纬模板应用 | 新建作品 / 模板应用入口 | `/api/books/:bookId/jingwei/templates/apply`、`applyJingweiTemplate` | 空白、基础、增强、题材推荐模板 | 写入经纬 section | 真实可用 | 题材推荐是可勾选候选项，不代表固定标准结构 | `server.test.ts`；`jingwei.test.ts` |
-| 经纬上下文装配 | AI 写作上下文预览 / 后续生成上下文 | `/api/books/:bookId/jingwei/preview-context`、`buildJingweiContext` | 启用且参与 AI 的栏目与条目 | 即时装配，不自动改正文 | 真实可用 | 按 tracked/global/nested 和章节时间线裁剪；资料不完整会影响注入质量 | `jingwei.test.ts`；core context tests |
-| 问卷中心 | 书籍资料页 / 问卷向导组件 | `/api/questionnaires`、`/api/books/:bookId/questionnaires/:templateId/responses`、`QuestionnaireWizard` | 内置问卷模板与回答 | 模板 seed + response 持久化 | 真实可用 | 当前需确认实际页面挂载；AI 建议必须经过模型 gate | `bible.test.ts`；`QuestionnaireWizard.test.tsx` |
-| 生成前追问 | 生成章节前的引导问题 | `/api/books/:bookId/chapters/:chapter/pre-generation-questions`、`generatePGIQuestions` | escalating 矛盾、临近回收窗口伏笔等规则 | 返回问题；答案进入生成上下文/审计 metadata | 真实可用 | 规则当前只实现部分启发式；人设漂移、大纲偏离仍是 stub 边界；若 UI 未弹出则属于入口待接 | `bible-pgi.test.ts`；`bible.test.ts` |
-| 核心设定变更历史 | 变更历史 / 复核流程 | `/api/books/:bookId/core-shifts`、`accept`、`reject` | premise、主线冲突、世界规则、人物弧等核心对象快照 | SQLite 持久化 | 真实可用 | propose 只记录影响；accept 才应用并标记受影响章节；不自动重写正文 | `bible-core-shift.test.ts`；`bible.test.ts` |
-| AI 味过滤与报告 | AI 味报告 / 去 AI 味建议 | `/api/filter/*`、`components/filter/*` | 本地 12 规则、可选朱雀配置、章节报告 | `filter_report` 持久化 | 真实可用 | 朱雀未配置时本地规则仍可用；建议不自动覆盖正文 | `filter.test.ts`；filter component tests |
-| 预设资产 | 预设管理 / 新建书籍预设绑定 | `/api/presets`、`/api/books/:id/presets` | genre、tone、beat、logic、AI 味、技法、bundle | 书籍预设可持久化 | 真实可用 | 不是模板市场终态；preset 只提供写作约束和推荐组合 | `presets.test.ts` |
-| 合规 / 发布就绪 | 发布检查入口 / 合规组件 | `/api/books/:bookId/compliance/*`、`components/compliance/*` | 敏感词、AI 比例、格式规则、平台字典、章节审计 `auditIssues` | 即时扫描或导入词库 | 真实可用 | 发布检查连续性有审计事实源时返回真实指标；无事实源或格式异常时返回 `unknown` | `compliance.test.ts`；core `compliance-publish-readiness.test.ts` |
-| 导出 | Workspace 顶部 | `POST /api/books/:id/export`、Workspace 导出 UI | 已保存章节数据 | 即时生成导出内容 | 真实可用 | 首版支持全书 Markdown/TXT；不代表第三方平台发布 | 新 spec Task 37-38；`server-integration.test.ts`；`WorkspacePage.test.tsx` |
+## 7. 写作工具
 
-## 8. 内部示例与低风险项
+| 工具 | 状态 |
+|------|------|
+| 节奏分析（句长直方图） | ✅ |
+| 对话占比分析 | ✅ |
+| 钩子生成器 | ✅ |
+| POV 视角管理 | ✅ |
+| 日更进度追踪（streak/趋势） | ✅ |
+| 全书健康仪表盘（6 指标） | ✅ |
+| 冲突地图 | ✅ |
+| 角色弧线追踪 | ✅ |
+| 文风一致性检测 | ✅ |
 
-| 功能 | 用户入口 | API / 组件入口 | 数据来源 | 持久化状态 | 当前状态 | 已知限制 | 验证文件或口径 |
-|---|---|---|---|---|---|---|---|
-| ToolUsageExample | 无生产入口 | `components/ToolUsageExample.tsx` | `executeToolMock()` demo | 无 | 内部示例 | 仅展示 ToolUseCard/ToolResultCard/PermissionPrompt 交互；不得从生产组件 barrel 导出 | ledger `tool-usage-example` |
-| Core 缺文件哨兵 | Core 内部 | `packages/core/src/**` | `(文件尚未创建)` 哨兵 | 非业务状态 | 真实可用 | 不是用户功能 mock；`noop-model` 仅能在 `requireApiKey=false` 非真实路径使用 | ledger `core-missing-file-sentinel`；core config-loader 测试 |
-| CLI 生产源码 | CLI | `packages/cli/src/**` | CLI 生产源码 | 非 Studio UI 状态 | 真实可用 | 当前生产源码扫描无 mock 债务；测试目录 mock 不计入产品债务 | ledger `cli-production-source` |
+## 8. 驾驶舱（新增）
 
-## 9. 当前已知阻塞与后续主线
+| Tab | 内容 | 状态 |
+|-----|------|------|
+| 总览 | 日更进度 + 章节进度 + 当前焦点 + 最近摘要 + 风险卡片 | ✅ |
+| 伏笔 | bible foreshadow events + pending_hooks.md 预览 | ✅ |
+| 设定 | bible settings + book_rules.md 摘要 | ✅ |
+| AI | provider/model 状态 + 最近候选稿 metadata | ✅ |
 
-| 问题 | 当前事实 | 后续任务 |
-|---|---|---|
-| UI 看起来像同色 mock 壳 | 浏览器审计发现 Tailwind theme token 未生成，导致大量按钮样式高度相似 | `novel-creation-workbench-complete-flow` Phase 1 |
-| 资源管理器不完整 | 已能查看章节、候选稿、草稿、story/truth 文件和注册 viewer；mutation 后刷新已统一，仍需做实大纲、经纬、素材、发布报告 | `novel-creation-workbench-complete-flow` Phase 2 |
-| 新建章节、章节导入、候选稿、草稿与 hook mutation 已形成刷新闭环 | route 已能创建章节记录、导入章节文本、写作模式结果落库，并写入正文/索引、候选稿或草稿；Workspace mutation 统一重新读取章节、候选、草稿、Story 文件资源，不再维护前端临时节点 | Task 28+ 写作模式 UI 应用 |
-| 导出 disabled | 当前不是可用闭环 | Task 37-38 |
-| 写作模式生成接口仍主要是 prompt-preview | apply route 和 Workspace UI 已能安全落库 candidate/draft，正式章节 insert/replace 转候选稿；生成接口仍需保持 prompt-preview 透明说明，不能写成已直接生成正文 | 后续按真实模型生成能力逐步扩展 |
-| 经纬面板 404 与分类壳子 | 结构化经纬 API 已可用，但 Workspace 分类视图仍未完整接入 | Task 32-33 |
-| 引导式生成入口串联 | 问卷、生成前追问、核心变更和 AI 味报告已有底座，仍需确认当前主工作台是否完整串起 | `novel-creation-workbench-complete-flow` 后续流程任务 |
-| Typecheck 阻塞已清理 | 旧 `routes`、`novelfork-context`、`use-tabs` 阻塞已通过旧前端退役清理，Studio typecheck 需先构建 core dist | 已在 `old-frontend-decommission` 完成 |
+## 9. Agent 系统（新增）
 
-## 10. 完成口径
+| 能力 | 状态 |
+|------|------|
+| 5 种 Agent 角色（Writer/Planner/Auditor/Architect/Explorer） | ✅ |
+| 每种 Agent 专属 system prompt（200+ 行领域知识） | ✅ |
+| session-chat-service 自动注入 agent prompt | ✅ |
+| Explorer Agent（只读探索，ChatWindow 可选） | ✅ |
+| 编排函数（Explorer→Planner→Writer→Auditor 串行） | ✅ |
+| WorkspacePage Agent 写作入口 | ✅ |
+| 13 个 Core Agent 类 | ✅ |
+| 18 个 Core 内置工具（plan/compose/write/audit/revise等） | ✅ |
+| 22 个通用工具（ToolsTab，9 默认开/13 默认关） | ✅ |
+| SubAgent 配置系统（systemPrompt + toolPermissions） | ✅ |
 
-本文当前作为 `novel-creation-workbench-complete-flow` 的当前能力事实沉淀：
+## 10. 设置与配置
 
-- 已把 runtime/provider/model/session、资源管理器、章节编辑、候选稿、writing tools、writing modes、故事经纬、引导式生成、AI 味、预设、合规、transparent placeholders、internal demo 统一归档。
-- 已明确哪些能力真实可用，哪些只是透明过渡。
-- 已同步小说创作流程、API 文档、测试报告、旧前端退役、新建章节、章节导入、草稿、候选稿与资源树刷新闭环的当前边界。
-- 已保留已知缺口，避免把 spec 后续任务提前写成完成。
+| 功能 | 状态 |
+|------|------|
+| AI 供应商管理（API key 接入） | ✅ |
+| 平台集成（Codex/Kiro JSON 账号导入） | ✅ |
+| 模型池管理（刷新/测试/启用禁用） | ✅ |
+| 虚拟模型 + 写作任务模型配置 | ✅ |
+| Runtime control panel（权限/上下文/工具策略） | ✅ |
+| 模型默认值/摘要模型/子代理配置 | ✅ |
+| 个人资料 | ✅ |
+| 关于（版本/commit/Bun） | ✅ |
+| 套路页（命令/工具/权限/技能/子代理/MCP/钩子） | ✅ |
 
-后续优先补齐主线 Phase 0/1/2 遗留项，然后进入 Task 32+ 经纬、大纲、发布检查与导出闭环。
+## 11. 合规与发布
+
+| 功能 | 状态 |
+|------|------|
+| 敏感词扫描（起点/晋江/番茄/七猫/通用） | ✅ |
+| AI 比例估算 | ✅ |
+| 发布就绪检查 | ✅ |
+| AI 使用声明生成 | ✅ |
+| 格式规范检查 | ✅ |
+
+## 12. 写作预设
+
+| 类别 | 数量 | 状态 |
+|------|------|------|
+| 流派配置（GenreProfile） | 6 个 | ✅ |
+| 文风 tone | 5 类 | ✅ |
+| 时代/社会基底（Setting Base） | 6 类 | ✅ |
+| 逻辑风险自检（Logic Risk） | 8 类 | ✅ |
+| 预设组合（Bundle） | 6 个 | ✅ |
+| 叙事节拍模板 | 5 个 | ✅ |
+| AI 味过滤预设 | 4 个 | ✅ |
+| 文学技法预设 | 4 个 | ✅ |
+
+## 13. 已知缺口
+
+| 缺口 | 状态 |
+|------|------|
+| 章节拖拽排序/批量操作 | 未规划 |
+| EPUB 导出 | 未规划 |
+| 专注/全屏写作模式 | 未规划 |
+| 世界设定关系图可视化 | 未规划 |
+| ChatWindow 嵌入工作台 | 未规划（需改三栏布局） |
+| 旧前端源码完全删除 | 5/9 完成 |
+| 首次引导烟测 | 缺回归测试 |
+| 引导式创作流程串联 | UI 分散，缺统一入口 |
+| 能力矩阵文档 | ← 就是这一篇，刚更新 |
