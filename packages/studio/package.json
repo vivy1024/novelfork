@@ -28,6 +28,7 @@
     "build:server": "pnpm --dir ../core build && tsc -p tsconfig.server.json",
     "preview": "vite preview",
     "test": "vitest run",
+    "compile": "bun run build && bun scripts/compile.ts",
     "typecheck": "pnpm --dir ../core build && tsc --noEmit && tsc -p tsconfig.server.json --noEmit"
   },
   "dependencies": {
