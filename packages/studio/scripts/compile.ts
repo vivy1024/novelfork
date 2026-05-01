@@ -12,45 +12,29 @@ const DIST = join(ROOT, "dist");
 async function main() {
   await mkdir(DIST, { recursive: true });
 
-  // Step 1: Build full project
-  console.log("[1/3] Building project...");
-  const build = Bun.spawn(["bun", "run", "build"], {
-    cwd: ROOT,
-    stdout: "inherit",
-    stderr: "inherit",
-  });
-  await build.exited;
-  if (build.exitCode !== 0) {
-    console.error("Build failed");
-    process.exit(1);
-  }
+  // Step 1: Build frontend
+  console.log("[1/4] Building frontend...");
+  const buildClient = Bun.spawn(["bun", "run", "build:client"], { cwd: ROOT, stdout: "inherit", stderr: "inherit" });
+  await buildClient.exited;
 
-  // Step 2: Compile to single executable
-  console.log("[2/3] Compiling single executable...");
-  const entryPoint = join(ROOT, "dist", "api", "index.js");
-  const outFile = join(DIST, process.platform === "win32" ? "novelfork.exe" : "novelfork");
+  // Step 2: Generate embedded assets
+  console.log("[2/4] Generating embedded assets...");
+  const gen = Bun.spawn(["bun", "scripts/generate-embedded-assets.mjs"], { cwd: ROOT, stdout: "inherit", stderr: "inherit" });
+  await gen.exited;
 
-  const compile = Bun.spawn([
-    "bun", "build",
-    "--compile",
-    "--target=bun",
-    entryPoint,
-    "--outfile", outFile,
-  ], {
-    cwd: ROOT,
-    stdout: "inherit",
-    stderr: "inherit",
-  });
-  await compile.exited;
+  // Step 3: Build server (compiles the generated file)
+  console.log("[3/4] Building server...");
+  const buildServer = Bun.spawn(["bun", "run", "build:server"], { cwd: ROOT, stdout: "inherit", stderr: "inherit" });
+  await buildServer.exited;
+  if (buildServer.exitCode !== 0) { console.error("Build failed"); process.exit(1); }
 
-  if (compile.exitCode === 0) {
-    console.log("[Done] Output: dist/novelfork");
-    console.log("  Note: Starts in API-only mode (frontend assets not embedded).");
-    console.log("  Run with hot-reload: bun run dev");
-  } else {
-    console.error("Compile failed");
-    process.exit(1);
-  }
+  // Step 4: Compile
+  console.log("[4/4] Compiling...");
+  const entry = join(ROOT, "dist", "api", "index.js");
+  const out = join(DIST, process.platform === "win32" ? "novelfork.exe" : "novelfork");
+  const c = Bun.spawn(["bun", "build", "--compile", "--target=bun", entry, "--outfile", out], { cwd: ROOT, stdout: "inherit", stderr: "inherit" });
+  await c.exited;
+  console.log(c.exitCode === 0 ? "[Done] Output: dist/novelfork" : "Compile failed");
 }
 
 main();
