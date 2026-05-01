@@ -12,16 +12,19 @@ const port = parseInt(process.env.NOVELFORK_STUDIO_PORT ?? "4567", 10);
 const studioRoot = resolve(__dirname, "../..");
 const distDir = join(studioRoot, "dist");
 
-// Package entrypoint for published Studio package usage only.
-// The repository-level Bun main entry is `D:/DESKTOP/novelfork/main.ts`.
-// Keep this file as a thin package launcher; do not treat it as the primary runtime path.
-if (!existsSync(join(distDir, "index.html"))) {
-  console.error("Built frontend assets not found for the Studio package entry.");
-  console.error("Run 'pnpm bun:build-client' or 'cd packages/studio && pnpm build' before using this package entry.");
-  process.exit(1);
+// When running as compiled binary, frontend assets may not exist on filesystem.
+// Allow the server to start in API-only mode, or with embedded assets.
+const hasFrontendAssets = existsSync(join(distDir, "index.html"));
+
+if (!hasFrontendAssets && !process.env.NOVELFORK_API_ONLY) {
+  console.warn("Frontend assets not found. Starting in API-only mode.");
+  console.warn("Run 'pnpm build:client' to build frontend assets.");
 }
 
-startStudioServer(root, port, { staticDir: distDir, staticMode: "filesystem" }).catch((e) => {
+startStudioServer(root, port, {
+  staticDir: hasFrontendAssets ? distDir : undefined,
+  staticMode: hasFrontendAssets ? "filesystem" : "missing",
+}).catch((e) => {
   console.error("Failed to start studio:", e);
   process.exit(1);
 });

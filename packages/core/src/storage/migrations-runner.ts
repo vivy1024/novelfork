@@ -47,7 +47,8 @@ function hashSql(sql: string): string {
 
 function listMigrationFiles(migrationsDir: string): string[] {
   if (!existsSync(migrationsDir)) {
-    throw new Error(`Storage migrations directory not found: ${migrationsDir}`);
+    // In compiled mode or when migrations dir is not available, skip migrations gracefully
+    return [];
   }
 
   return readdirSync(migrationsDir)
