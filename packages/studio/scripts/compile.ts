@@ -3,7 +3,7 @@
  * 用法: bun run compile
  * 输出: dist/novelfork (Linux) / dist/novelfork.exe (Windows)
  */
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 
 const ROOT = join(import.meta.dirname, "..");
@@ -12,7 +12,7 @@ const DIST = join(ROOT, "dist");
 async function main() {
   await mkdir(DIST, { recursive: true });
 
-  // Step 1: Build full project (frontend + server)
+  // Step 1: Build full project
   console.log("[1/3] Building project...");
   const build = Bun.spawn(["bun", "run", "build"], {
     cwd: ROOT,
@@ -29,7 +29,7 @@ async function main() {
   console.log("[2/3] Compiling single executable...");
   const entryPoint = join(ROOT, "dist", "api", "index.js");
   const outFile = join(DIST, process.platform === "win32" ? "novelfork.exe" : "novelfork");
-  
+
   const compile = Bun.spawn([
     "bun", "build",
     "--compile",
@@ -44,7 +44,9 @@ async function main() {
   await compile.exited;
 
   if (compile.exitCode === 0) {
-    console.log("[3/3] Done! Output: dist/novelfork");
+    console.log("[Done] Output: dist/novelfork");
+    console.log("  Note: Starts in API-only mode (frontend assets not embedded).");
+    console.log("  Run with hot-reload: bun run dev");
   } else {
     console.error("Compile failed");
     process.exit(1);
