@@ -4,6 +4,7 @@ import { useApi } from "../../hooks/use-api";
 import { InlineError } from "../components/feedback";
 import { SectionLayout } from "../components/layouts";
 import { cn } from "@/lib/utils";
+import { workflowStatusLabel } from "../lib/display-labels";
 
 const TABS = [
   { id: "agents", label: "Agent 状态" },
@@ -62,7 +63,7 @@ function AgentsTab() {
           </div>
           <div className="flex items-center gap-3 text-muted-foreground">
             {agent.model && <span className="font-mono text-xs">{agent.model}</span>}
-            <span className="text-xs">{agent.status}</span>
+            <span className="text-xs">{workflowStatusLabel(agent.status)}</span>
           </div>
         </div>
       ))}
@@ -92,7 +93,7 @@ function RunsTab() {
           </div>
           <div className="flex items-center gap-3">
             <span className="text-xs text-muted-foreground">{run.startedAt ?? "—"}</span>
-            <span className={cn("rounded px-1.5 py-0.5 text-xs font-medium", run.status === "running" ? "bg-green-500/10 text-green-600" : run.status === "failed" ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground")}>{run.status}</span>
+            <span className={cn("rounded px-1.5 py-0.5 text-xs font-medium", run.status === "running" ? "bg-green-500/10 text-green-600" : run.status === "failed" ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground")}>{workflowStatusLabel(run.status)}</span>
           </div>
         </div>
       ))}

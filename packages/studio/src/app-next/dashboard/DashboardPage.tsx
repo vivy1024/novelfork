@@ -310,10 +310,8 @@ function BookCard({ book, onOpen }: { readonly book: BookItem; readonly onOpen?:
 }
 
 function ImportPanel({ books, onDone }: { readonly books: ReadonlyArray<BookItem>; readonly onDone: () => void }) {
-  const [mode, setMode] = useState<"chapters" | "url">("chapters");
   const [bookId, setBookId] = useState(books[0]?.id ?? "");
   const [text, setText] = useState("");
-  const [url, setUrl] = useState("");
   const [splitRegex, setSplitRegex] = useState("");
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
@@ -338,8 +336,6 @@ function ImportPanel({ books, onDone }: { readonly books: ReadonlyArray<BookItem
     }
   };
 
-  const urlImportMessage = "URL 章节导入暂未接入；请先使用章节文本导入，或将网页内容复制为章节文本后导入。";
-
   return (
     <div className="rounded-lg border border-border p-4 space-y-3">
       <div className="flex items-center gap-3">
@@ -349,35 +345,17 @@ function ImportPanel({ books, onDone }: { readonly books: ReadonlyArray<BookItem
           {books.length === 0 && <option value="">无可用书籍</option>}
         </select>
         <div className="flex gap-1">
-          <button className={`rounded-md px-2 py-1 text-xs ${mode === "chapters" ? "bg-primary text-primary-foreground" : "border border-border hover:bg-muted"}`} onClick={() => setMode("chapters")} type="button">章节文本</button>
-          <button className={`rounded-md px-2 py-1 text-xs ${mode === "url" ? "bg-primary text-primary-foreground" : "border border-border hover:bg-muted"}`} onClick={() => setMode("url")} type="button">URL 导入</button>
+          <span className="rounded-md bg-primary px-2 py-1 text-xs text-primary-foreground">章节文本</span>
         </div>
       </div>
 
-      {mode === "chapters" && (
-        <>
-          <textarea className="w-full rounded-md border border-border bg-background p-2 text-sm" rows={5} value={text} onChange={(e) => setText(e.target.value)} placeholder="粘贴章节文本，系统会自动按章节标题分割…" />
-          <input className="w-full rounded-md border border-border bg-background px-2 py-1 text-sm" value={splitRegex} onChange={(e) => setSplitRegex(e.target.value)} placeholder="自定义分割正则（可选）" />
-          <button className="rounded-lg bg-primary px-4 py-1.5 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-50" disabled={loading || !text.trim() || !bookId} onClick={() => void handleImportChapters()} type="button">
-            {loading ? "导入中…" : "导入章节"}
-          </button>
-        </>
-      )}
-
-      {mode === "url" && (
-        <>
-          <input className="w-full rounded-md border border-border bg-background px-2 py-1 text-sm" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="输入 URL 地址" />
-          <p className="text-xs text-muted-foreground">{urlImportMessage}</p>
-          <button
-            className="rounded-lg bg-primary px-4 py-1.5 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-            disabled
-            title={urlImportMessage}
-            type="button"
-          >
-            URL 导入暂未接入
-          </button>
-        </>
-      )}
+      <>
+        <textarea className="w-full rounded-md border border-border bg-background p-2 text-sm" rows={5} value={text} onChange={(e) => setText(e.target.value)} placeholder="粘贴章节文本，系统会自动按章节标题分割…" />
+        <input className="w-full rounded-md border border-border bg-background px-2 py-1 text-sm" value={splitRegex} onChange={(e) => setSplitRegex(e.target.value)} placeholder="自定义分割正则（可选）" />
+        <button className="rounded-lg bg-primary px-4 py-1.5 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-50" disabled={loading || !text.trim() || !bookId} onClick={() => void handleImportChapters()} type="button">
+          {loading ? "导入中…" : "导入章节"}
+        </button>
+      </>
 
       {error && <InlineError message={error} />}
       {status && <p className="text-sm text-green-600">{status}</p>}

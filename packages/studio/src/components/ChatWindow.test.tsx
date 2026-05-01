@@ -439,7 +439,8 @@ describe("ChatWindow", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "重跑" }).at(-1)!);
 
     expect((await screen.findAllByText(/默认权限要求确认/)).length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/来源：runtimeControls.defaultPermissionMode/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/来源：默认权限模式/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/来源：runtimeControls.defaultPermissionMode/)).toBeNull();
     expect(screen.getAllByText(/执行：需确认/).length).toBeGreaterThan(0);
   });
 
@@ -920,7 +921,8 @@ describe("ChatWindow", () => {
 
     expect(screen.getByText("本次读取被权限链拦下。")).toBeTruthy();
     expect(screen.getAllByText(/默认权限要求确认/).length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/来源：runtimeControls.defaultPermissionMode/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/来源：默认权限模式/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/来源：runtimeControls.defaultPermissionMode/)).toBeNull();
     expect(screen.getAllByText(/执行：需确认/).length).toBeGreaterThan(0);
   });
 

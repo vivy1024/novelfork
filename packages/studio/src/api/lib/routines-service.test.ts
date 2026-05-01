@@ -16,6 +16,7 @@ describe("routines-service", () => {
     expect(routines.globalPrompts).toEqual([]);
     expect(routines.systemPrompts).toEqual([]);
     expect(routines.mcpTools).toEqual([]);
+    expect(routines.hooks).toEqual([]);
   });
 
   it("builds merged view with project overrides as effective result", () => {
@@ -55,6 +56,9 @@ describe("routines-service", () => {
         mcpTools: [
           { id: "shared-mcp", serverName: "global-server", toolName: "global-tool", enabled: true, approved: false },
         ],
+        hooks: [
+          { id: "shared-hook", name: "Global Hook", event: "after-agent-run", kind: "shell", target: "global.sh", enabled: true },
+        ],
       },
       {
         commands: [
@@ -87,6 +91,9 @@ describe("routines-service", () => {
         ],
         mcpTools: [
           { id: "shared-mcp", serverName: "project-server", toolName: "project-tool", enabled: false, approved: true },
+        ],
+        hooks: [
+          { id: "shared-hook", name: "Project Hook", event: "after-chapter-save", kind: "webhook", target: "https://hook.example", enabled: false },
         ],
       },
     );
@@ -127,6 +134,9 @@ describe("routines-service", () => {
     ]);
     expect(merged.mcpTools).toEqual([
       { id: "shared-mcp", serverName: "project-server", toolName: "project-tool", enabled: false, approved: true },
+    ]);
+    expect(merged.hooks).toEqual([
+      { id: "shared-hook", name: "Project Hook", event: "after-chapter-save", kind: "webhook", target: "https://hook.example", enabled: false },
     ]);
   });
 });

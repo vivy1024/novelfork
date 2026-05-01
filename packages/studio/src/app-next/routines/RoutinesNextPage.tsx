@@ -7,10 +7,9 @@ import { PromptsTab } from "../../components/Routines/PromptsTab";
 import { SkillsTab } from "../../components/Routines/SkillsTab";
 import { SubAgentsTab } from "../../components/Routines/SubAgentsTab";
 import { ToolsTab } from "../../components/Routines/ToolsTab";
-import { UnsupportedCapability } from "../../components/runtime/UnsupportedCapability";
 import { ROUTINES_SCOPE_META, useRoutinesEditor } from "../../components/Routines/use-routines-editor";
 import { MCPServerPanel } from "./MCPServerPanel";
-import type { Routines as RoutinesConfig } from "../../types/routines";
+import type { RoutineHook, RoutineHookKind, Routines as RoutinesConfig } from "../../types/routines";
 import { InlineError } from "../components/feedback";
 
 interface RoutinesNextPageProps {
@@ -56,7 +55,7 @@ const ROUTINE_SECTIONS: readonly RoutineSectionDefinition[] = [
   {
     id: "permissions",
     label: "工具权限",
-    description: "内置工具、MCP 工具权限、Bash allowlist/blocklist 规则来源。",
+    description: "内置工具、MCP 工具权限、Bash 命令允许/拒绝规则来源。",
     reuse: "复用 PermissionsTab / permissions 数据",
     getCount: (routines) => routines.permissions.length,
   },
@@ -84,14 +83,14 @@ const ROUTINE_SECTIONS: readonly RoutineSectionDefinition[] = [
   {
     id: "globalPrompts",
     label: "全局提示词",
-    description: "全局 prompt 资产和编辑入口。",
+    description: "全局提示词资产和编辑入口。",
     reuse: "拆分 PromptsTab globalPrompts",
     getCount: (routines) => routines.globalPrompts.length,
   },
   {
     id: "systemPrompts",
     label: "系统提示词",
-    description: "系统 prompt 资产和编辑入口。",
+    description: "系统提示词资产和编辑入口。",
     reuse: "拆分 PromptsTab systemPrompts",
     getCount: (routines) => routines.systemPrompts.length,
   },
@@ -106,9 +105,8 @@ const ROUTINE_SECTIONS: readonly RoutineSectionDefinition[] = [
     id: "hooks",
     label: "钩子",
     description: "Shell / Webhook / LLM 生命周期钩子入口。",
-    reuse: "旧 Routines 缺口，后续复用 Workbench hooks 能力",
-    getCount: () => 0,
-    status: "未接入",
+    reuse: "复用 Routines hooks 数据并直接编辑生命周期钩子",
+    getCount: (routines) => routines.hooks.length,
   },
 ];
 
@@ -282,41 +280,96 @@ function RoutineSectionEditor({
         </div>
       );
     case "hooks":
-      return <HooksSection />;
+      return <HooksTab hooks={routines.hooks} onChange={(hooks) => setRoutines({ ...routines, hooks })} />;
   }
 }
 
-function HooksSection() {
+const HOOK_KIND_LABELS: Record<RoutineHookKind, string> = {
+  shell: "Shell",
+  webhook: "Webhook",
+  llm: "LLM 提示词",
+};
+
+const HOOK_EVENT_PRESETS = ["before-agent-run", "after-agent-run", "after-chapter-save", "after-audit", "on-error"];
+
+function createHookDraft(): RoutineHook {
+  return {
+    id: `hook-${Date.now()}`,
+    name: "新建钩子",
+    event: "after-chapter-save",
+    kind: "shell",
+    target: "",
+    enabled: true,
+  };
+}
+
+function HooksTab({ hooks, onChange }: { readonly hooks: RoutineHook[]; readonly onChange: (hooks: RoutineHook[]) => void }) {
+  const updateHook = (id: string, updates: Partial<RoutineHook>) => {
+    onChange(hooks.map((hook) => (hook.id === id ? { ...hook, ...updates } : hook)));
+  };
+
+  const addHook = () => onChange([...hooks, createHookDraft()]);
+  const removeHook = (id: string) => onChange(hooks.filter((hook) => hook.id !== id));
+
   return (
     <div className="space-y-4">
-      <UnsupportedCapability
-        title="Hooks API 未接入"
-        reason="Routines 钩子仍等待真实 hooks API 与持久化执行链路；创建入口保持 disabled，避免生成只存在前端草稿的假钩子。"
-        status="planned"
-        capability="routines.hooks.api"
-      />
-      <div className="rounded-xl border border-border bg-muted/20 p-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h4 className="font-semibold">生命周期节点</h4>
-            <p className="mt-1 text-sm text-muted-foreground">
-              钩子分区固定承接 Shell / Webhook / LLM 提示词三类执行方式；后续接入真实 hooks API 时沿用此入口。
-            </p>
-          </div>
-          <button
-            className="rounded-lg border border-border px-3 py-1.5 text-sm text-muted-foreground disabled:opacity-60"
-            disabled
-            type="button"
-          >
-            创建钩子（未接入）
-          </button>
+      <div className="flex items-start justify-between gap-3 rounded-xl border border-border bg-muted/20 p-4">
+        <div>
+          <h4 className="font-semibold">生命周期钩子</h4>
+          <p className="mt-1 text-sm text-muted-foreground">
+            为 Shell、Webhook 或 LLM 提示词配置真实生命周期触发点，保存后写入当前 Routines 作用域。
+          </p>
         </div>
+        <button className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted" onClick={addHook} type="button">
+          创建钩子
+        </button>
       </div>
+
       <div className="grid gap-3 md:grid-cols-3">
         <HookTypeCard title="Shell" description="在指定生命周期节点运行本地命令，继承当前权限模式。" />
         <HookTypeCard title="Webhook" description="向外部服务发送事件载荷，用于通知、同步或自动化。" />
         <HookTypeCard title="LLM 提示词" description="以当前上下文触发模型提示词，生成审查或整理结果。" />
       </div>
+
+      {hooks.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-border bg-background p-4 text-sm text-muted-foreground">暂无生命周期钩子，点击“创建钩子”添加第一条。</div>
+      ) : (
+        <div className="space-y-3">
+          {hooks.map((hook) => (
+            <div key={hook.id} className="grid gap-3 rounded-xl border border-border bg-background p-4 md:grid-cols-[1fr_1fr_1fr_auto]">
+              <label className="text-sm">
+                钩子名称
+                <input className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2" value={hook.name} onChange={(event) => updateHook(hook.id, { name: event.target.value })} />
+              </label>
+              <label className="text-sm">
+                触发节点
+                <input className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2" list="routine-hook-events" value={hook.event} onChange={(event) => updateHook(hook.id, { event: event.target.value })} />
+              </label>
+              <label className="text-sm">
+                执行方式
+                <select className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2" value={hook.kind} onChange={(event) => updateHook(hook.id, { kind: event.target.value as RoutineHookKind })}>
+                  {(Object.keys(HOOK_KIND_LABELS) as RoutineHookKind[]).map((kind) => <option key={kind} value={kind}>{HOOK_KIND_LABELS[kind]}</option>)}
+                </select>
+              </label>
+              <div className="flex items-end gap-2">
+                <button className="rounded-lg border border-border px-3 py-2 text-sm hover:bg-muted" type="button" onClick={() => updateHook(hook.id, { enabled: !hook.enabled })}>
+                  {hook.enabled ? "停用" : "启用"}
+                </button>
+                <button className="rounded-lg border border-destructive/40 px-3 py-2 text-sm text-destructive hover:bg-destructive/10" type="button" onClick={() => removeHook(hook.id)}>
+                  删除
+                </button>
+              </div>
+              <label className="text-sm md:col-span-4">
+                执行目标
+                <input className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2" value={hook.target} onChange={(event) => updateHook(hook.id, { target: event.target.value })} placeholder="命令、Webhook URL 或 LLM 提示词" />
+              </label>
+            </div>
+          ))}
+        </div>
+      )}
+      <datalist id="routine-hook-events">
+        {HOOK_EVENT_PRESETS.map((event) => <option key={event} value={event} />)}
+      </datalist>
     </div>
   );
 }

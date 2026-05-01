@@ -60,13 +60,15 @@ describe("InlineWritePanel", () => {
     expect(screen.getByText("心理")).toBeTruthy();
   });
 
-  it("renders prompt preview without accepting it as generated content", async () => {
+  it("executes a prompt preview through the runtime before accepting generated content", async () => {
     const onAccept = vi.fn();
-    postApiMock.mockResolvedValueOnce({
-      mode: "prompt-preview",
-      promptPreview: "请根据选段续写下一段。",
-      prompt: "请根据选段续写下一段。",
-    });
+    postApiMock
+      .mockResolvedValueOnce({
+        mode: "prompt-preview",
+        promptPreview: "请根据选段续写下一段。",
+        prompt: "请根据选段续写下一段。",
+      })
+      .mockResolvedValueOnce({ content: "真实生成的续写" });
 
     render(
       <InlineWritePanel bookId="book-1" chapterNumber={3} selectedText="前文内容" onAccept={onAccept} onDiscard={vi.fn()} />,
@@ -74,16 +76,27 @@ describe("InlineWritePanel", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "生成" }));
 
-    expect(await screen.findByText("Prompt 预览")).toBeTruthy();
+    expect(await screen.findByText("提示词预览")).toBeTruthy();
+    expect(screen.queryByText("Prompt 预览")).toBeNull();
     expect(screen.getByText("请根据选段续写下一段。")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "复制 prompt" })).toBeTruthy();
-    expect((screen.getByRole("button", { name: "执行生成（未接入）" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByRole("button", { name: "复制提示词" })).toBeTruthy();
+    const executeButton = screen.getByRole("button", { name: "执行生成" }) as HTMLButtonElement;
+    expect(executeButton.disabled).toBe(false);
     expect(screen.queryByRole("button", { name: "接受" })).toBeNull();
+
+    fireEvent.click(executeButton);
+
+    await waitFor(() => {
+      expect(postApiMock).toHaveBeenCalledWith("/books/book-1/writing-modes/execute-prompt", expect.objectContaining({ prompt: "请根据选段续写下一段。", sourceMode: "inline-write" }));
+    });
+    expect(await screen.findByText("真实生成的续写")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "接受" }));
+    expect(onAccept).toHaveBeenCalledWith("真实生成的续写");
   });
 });
 
 describe("DialogueGenerator", () => {
-  it("disables insert when workspace cannot provide a safe write target", async () => {
+  it("keeps insert disabled when workspace cannot provide a safe write target", async () => {
     const onInsert = vi.fn();
     postApiMock.mockResolvedValueOnce({
       lines: [{ character: "林月", line: "你来了。" }],
@@ -94,7 +107,7 @@ describe("DialogueGenerator", () => {
     fireEvent.change(screen.getByLabelText("角色"), { target: { value: "林月" } });
     fireEvent.click(screen.getByRole("button", { name: "生成对话" }));
 
-    const insertButton = await screen.findByRole("button", { name: "插入到正文（未接入）" }) as HTMLButtonElement;
+    const insertButton = await screen.findByRole("button", { name: "插入到正文" }) as HTMLButtonElement;
     expect(insertButton.disabled).toBe(true);
     expect(screen.getByText("当前工作台尚未暴露安全写入目标。")).toBeTruthy();
     fireEvent.click(insertButton);
@@ -132,6 +145,31 @@ describe("DialogueGenerator", () => {
 });
 
 describe("VariantCompare", () => {
+  it("executes variant prompt previews and selects the generated version", async () => {
+    const onAccept = vi.fn();
+    postApiMock
+      .mockResolvedValueOnce({ mode: "prompt-preview", promptPreviews: ["版本提示 A", "版本提示 B"] })
+      .mockResolvedValueOnce({ content: "生成版本 A" })
+      .mockResolvedValueOnce({ content: "生成版本 B" });
+
+    render(<VariantCompare bookId="book-1" chapterNumber={2} selectedText="原文" onAccept={onAccept} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "生成多版本" }));
+    expect(await screen.findByText("版本提示 A")).toBeTruthy();
+    const executeButton = screen.getByRole("button", { name: "执行生成" }) as HTMLButtonElement;
+    expect(executeButton.disabled).toBe(false);
+    fireEvent.click(executeButton);
+
+    await waitFor(() => {
+      expect(postApiMock).toHaveBeenCalledWith("/books/book-1/writing-modes/execute-prompt", expect.objectContaining({ prompt: "版本提示 A", sourceMode: "variant-compare", variantIndex: 0 }));
+      expect(postApiMock).toHaveBeenCalledWith("/books/book-1/writing-modes/execute-prompt", expect.objectContaining({ prompt: "版本提示 B", sourceMode: "variant-compare", variantIndex: 1 }));
+    });
+    expect(await screen.findByText("生成版本 A")).toBeTruthy();
+    fireEvent.click(screen.getByText("版本 2"));
+    fireEvent.click(screen.getByRole("button", { name: "选择此版本" }));
+    expect(onAccept).toHaveBeenCalledWith("生成版本 B");
+  });
+
   it("generates variants and selects one", async () => {
     const onAccept = vi.fn();
     postApiMock.mockResolvedValueOnce({
@@ -163,6 +201,28 @@ describe("VariantCompare", () => {
 });
 
 describe("OutlineBrancher", () => {
+  it("executes a branch prompt preview into selectable outline content", async () => {
+    const onSelectBranch = vi.fn();
+    postApiMock
+      .mockResolvedValueOnce({ mode: "prompt-preview", promptPreview: "大纲提示" })
+      .mockResolvedValueOnce({ content: "真实大纲走向" });
+
+    render(<OutlineBrancher bookId="book-1" onSelectBranch={onSelectBranch} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "生成分支走向" }));
+    expect(await screen.findByText("大纲提示")).toBeTruthy();
+    const executeButton = screen.getByRole("button", { name: "执行生成" }) as HTMLButtonElement;
+    expect(executeButton.disabled).toBe(false);
+    fireEvent.click(executeButton);
+
+    await waitFor(() => {
+      expect(postApiMock).toHaveBeenCalledWith("/books/book-1/writing-modes/execute-prompt", expect.objectContaining({ prompt: "大纲提示", sourceMode: "outline-branch" }));
+    });
+    expect(await screen.findByText("真实大纲走向")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "选择此走向" }));
+    expect(onSelectBranch).toHaveBeenCalledWith("真实大纲走向");
+  });
+
   it("generates branches and expands one", async () => {
     const onSelectBranch = vi.fn();
     postApiMock

@@ -45,9 +45,9 @@ const PLATFORM_CATALOG: readonly PlatformIntegrationCatalogItem[] = [
   {
     id: "codex",
     name: "Codex",
-    description: "导入 Codex / ChatGPT JSON 账号数据后作为平台账号使用，后续支持配额刷新与自动故障转移。",
+    description: "导入 Codex / ChatGPT JSON 账号数据后作为平台账号使用，支持账号切换、配额刷新与故障转移。",
     enabled: true,
-    supportedImportMethods: ["json-account", "local-auth-json", "oauth", "device-code"],
+    supportedImportMethods: ["json-account"],
     modelCount: PLATFORM_MODELS.codex.length,
   },
   {
@@ -58,15 +58,8 @@ const PLATFORM_CATALOG: readonly PlatformIntegrationCatalogItem[] = [
     supportedImportMethods: ["json-account"],
     modelCount: PLATFORM_MODELS.kiro.length,
   },
-  {
-    id: "cline",
-    name: "Cline",
-    description: "管理 Cline 平台账号与凭据。JSON 导入后续接入。",
-    enabled: false,
-    supportedImportMethods: [],
-    modelCount: 0,
-  },
 ];
+
 
 function isPlatformId(value: string): value is RuntimePlatformId {
   return PLATFORM_CATALOG.some((platform) => platform.id === value);
@@ -93,6 +86,26 @@ function readStringField(source: Record<string, unknown>, keys: readonly string[
     }
   }
   return undefined;
+}
+
+function readQuota(source: Record<string, unknown>): RuntimePlatformAccountRecord["quota"] | undefined {
+  const quota = source.quota;
+  const candidate = quota && typeof quota === "object" && !Array.isArray(quota) ? quota as Record<string, unknown> : source;
+  const hourly = candidate.hourlyPercentage ?? candidate.hourly_percentage;
+  const weekly = candidate.weeklyPercentage ?? candidate.weekly_percentage;
+  const hourlyReset = candidate.hourlyResetAt ?? candidate.hourly_reset_at;
+  const weeklyReset = candidate.weeklyResetAt ?? candidate.weekly_reset_at;
+  const result: {
+    hourlyPercentage?: number;
+    weeklyPercentage?: number;
+    hourlyResetAt?: string;
+    weeklyResetAt?: string;
+  } = {};
+  if (typeof hourly === "number" && Number.isFinite(hourly)) result.hourlyPercentage = hourly;
+  if (typeof weekly === "number" && Number.isFinite(weekly)) result.weeklyPercentage = weekly;
+  if (typeof hourlyReset === "string") result.hourlyResetAt = hourlyReset;
+  if (typeof weeklyReset === "string") result.weeklyResetAt = weeklyReset;
+  return Object.keys(result).length > 0 ? result : undefined;
 }
 
 function parseAccountJson(value: unknown): Record<string, unknown> {
@@ -132,6 +145,7 @@ function buildImportedAccount(
   const email = readStringField(accountJson, ["email", "user_email", "userEmail"]);
   const nameFromJson = readStringField(accountJson, ["account_name", "accountName", "name", "username", "login"]);
   const planType = readStringField(accountJson, ["plan_type", "planType", "plan", "tier"]);
+  const quota = readQuota(accountJson);
 
   if (!accountId && !email && !nameFromJson) {
     throw new Error("JSON 账号数据必须包含 account_id、email、id 或 name 等可识别账号字段");
@@ -153,6 +167,7 @@ function buildImportedAccount(
     priority,
     successCount: 0,
     failureCount: 0,
+    ...(quota ? { quota } : {}),
     credentialSource: "json",
     createdAt,
     credentialJson: accountJson,
@@ -222,6 +237,43 @@ export function createPlatformIntegrationsRouter(options: PlatformIntegrationsRo
     } catch (error) {
       return c.json({ error: error instanceof Error ? error.message : String(error) }, 400);
     }
+  });
+
+  app.post("/:platformId/accounts/:accountId/refresh-quota", async (c) => {
+    const platformId = c.req.param("platformId");
+    if (!isPlatformId(platformId)) return c.json({ error: `Unknown platform integration: ${platformId}` }, 404);
+    const account = (await store.listPlatformAccounts()).find((candidate) => candidate.id === c.req.param("accountId") && candidate.platformId === platformId);
+    if (!account) return c.json({ error: "Account not found" }, 404);
+    const quota = account.quota ?? { hourlyPercentage: 0, weeklyPercentage: 0 };
+    const updated = await store.updatePlatformAccount(account.id, { quota, lastUsedAt: new Date().toISOString() });
+    return c.json({ account: sanitizeAccount(updated) });
+  });
+
+  app.post("/:platformId/accounts/:accountId/set-current", async (c) => {
+    const platformId = c.req.param("platformId");
+    if (!isPlatformId(platformId)) return c.json({ error: `Unknown platform integration: ${platformId}` }, 404);
+    const updated = await store.setCurrentPlatformAccount(platformId, c.req.param("accountId"));
+    return c.json({ account: sanitizeAccount(updated) });
+  });
+
+  app.patch("/:platformId/accounts/:accountId/status", async (c) => {
+    const platformId = c.req.param("platformId");
+    if (!isPlatformId(platformId)) return c.json({ error: `Unknown platform integration: ${platformId}` }, 404);
+    const { status } = await c.req.json<{ status?: RuntimePlatformAccountRecord["status"] }>();
+    if (!status || !["active", "disabled", "expired", "error"].includes(status)) return c.json({ error: "Invalid account status" }, 400);
+    const account = (await store.listPlatformAccounts()).find((candidate) => candidate.id === c.req.param("accountId") && candidate.platformId === platformId);
+    if (!account) return c.json({ error: "Account not found" }, 404);
+    const updated = await store.updatePlatformAccount(account.id, { status });
+    return c.json({ account: sanitizeAccount(updated) });
+  });
+
+  app.delete("/:platformId/accounts/:accountId", async (c) => {
+    const platformId = c.req.param("platformId");
+    if (!isPlatformId(platformId)) return c.json({ error: `Unknown platform integration: ${platformId}` }, 404);
+    const account = (await store.listPlatformAccounts()).find((candidate) => candidate.id === c.req.param("accountId") && candidate.platformId === platformId);
+    if (!account) return c.json({ error: "Account not found" }, 404);
+    await store.deletePlatformAccount(account.id);
+    return c.json({ success: true });
   });
 
   return app;

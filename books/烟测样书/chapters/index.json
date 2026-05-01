@@ -1,1 +1,22 @@
-[]
+[
+  {
+    "number": 1,
+    "title": "第 1 章",
+    "status": "drafting",
+    "wordCount": 0,
+    "createdAt": "2026-04-30T14:06:33.019Z",
+    "updatedAt": "2026-04-30T14:06:33.019Z",
+    "auditIssues": [],
+    "lengthWarnings": []
+  },
+  {
+    "number": 2,
+    "title": "第 2 章",
+    "status": "drafting",
+    "wordCount": 0,
+    "createdAt": "2026-04-30T14:06:33.772Z",
+    "updatedAt": "2026-04-30T14:06:33.772Z",
+    "auditIssues": [],
+    "lengthWarnings": []
+  }
+]

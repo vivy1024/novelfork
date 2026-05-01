@@ -13,8 +13,23 @@ interface SubAgentsTabProps {
   onChange: (subAgents: SubAgent[]) => void;
 }
 
+const PERMISSION_LABELS: Record<ToolPermission["permission"], string> = {
+  allow: "直接允许",
+  ask: "需确认",
+  deny: "拒绝",
+};
+
+const SUB_AGENT_TYPE_LABELS: Record<SubAgent["type"], string> = {
+  "general-purpose": "通用代理",
+  specialized: "专用代理",
+};
+
 function formatToolPermission(permission: ToolPermission): string {
-  return `${permission.tool}: ${permission.permission}${permission.pattern ? ` ${permission.pattern}` : ""}`;
+  return `${permission.tool}：${PERMISSION_LABELS[permission.permission]}${permission.pattern ? ` · 规则 ${permission.pattern}` : ""}`;
+}
+
+function subAgentTypeLabel(type: SubAgent["type"]): string {
+  return SUB_AGENT_TYPE_LABELS[type];
 }
 
 export function SubAgentsTab({ subAgents, onChange }: SubAgentsTabProps) {
@@ -151,7 +166,7 @@ export function SubAgentsTab({ subAgents, onChange }: SubAgentsTabProps) {
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-medium block mb-1">工具权限字段</label>
+                  <label className="text-xs font-medium block mb-1">工具权限规则</label>
                   <textarea
                     value={JSON.stringify(editForm.toolPermissions ?? [], null, 2)}
                     onChange={(e) => updateToolPermissions(e.target.value)}
@@ -183,9 +198,9 @@ export function SubAgentsTab({ subAgents, onChange }: SubAgentsTabProps) {
                   <div className="flex items-center gap-2 mb-1">
                     <Bot size={16} className="text-primary" />
                     <span className="text-sm font-medium">{agent.name}</span>
-                    <span className="text-xs text-muted-foreground">({agent.type})</span>
+                    <span className="text-xs text-muted-foreground">（{subAgentTypeLabel(agent.type)}）</span>
                     {!agent.enabled && (
-                      <span className="text-xs text-muted-foreground">(disabled)</span>
+                      <span className="text-xs text-muted-foreground">（已停用）</span>
                     )}
                   </div>
                   {agent.description && (
@@ -198,7 +213,7 @@ export function SubAgentsTab({ subAgents, onChange }: SubAgentsTabProps) {
                     </pre>
                   )}
                   <div className="mt-2 rounded border bg-muted/30 p-2 text-xs text-muted-foreground">
-                    <div className="font-medium text-foreground">工具权限字段</div>
+                    <div className="font-medium text-foreground">工具权限规则</div>
                     {agent.toolPermissions?.length ? (
                       <div className="mt-1 flex flex-wrap gap-1">
                         {agent.toolPermissions.map((permission, index) => (

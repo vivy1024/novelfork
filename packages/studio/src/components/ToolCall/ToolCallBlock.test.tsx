@@ -340,10 +340,11 @@ describe("ToolCallBlock", () => {
     expect(screen.getByTestId("tool-governance-card")).toBeTruthy();
     expect(screen.getByText("治理解释")).toBeTruthy();
     expect(screen.getByText(/默认权限要求确认/)).toBeTruthy();
-    expect(screen.getByText(/来源：runtimeControls.defaultPermissionMode/)).toBeTruthy();
+    expect(screen.getByText(/来源：默认权限模式/)).toBeTruthy();
     expect(screen.getByText(/执行：拒绝/)).toBeTruthy();
     expect(screen.getByText(/执行：需确认/)).toBeTruthy();
-    expect(screen.getByText(/原因：Tool falls back to defaultPermissionMode=ask/)).toBeTruthy();
+    expect(screen.getByText(/原因：工具按默认权限模式进入确认/)).toBeTruthy();
+    expect(screen.queryByText(/runtimeControls\.defaultPermissionMode|defaultPermissionMode=ask|Tool falls back/)).toBeNull();
   });
 
   it("shows fullscreen, view-source and rerun actions for completed tool calls", async () => {

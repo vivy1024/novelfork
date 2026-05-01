@@ -59,6 +59,17 @@ export interface MCPTool {
   approved: boolean;
 }
 
+export type RoutineHookKind = 'shell' | 'webhook' | 'llm';
+
+export interface RoutineHook {
+  id: string;
+  name: string;
+  event: string;
+  kind: RoutineHookKind;
+  target: string;
+  enabled: boolean;
+}
+
 export interface Routines {
   commands: Command[];
   tools: Tool[];
@@ -69,6 +80,7 @@ export interface Routines {
   globalPrompts: Prompt[];
   systemPrompts: Prompt[];
   mcpTools: MCPTool[];
+  hooks: RoutineHook[];
 }
 
 export const DEFAULT_ROUTINES: Routines = {
@@ -81,4 +93,5 @@ export const DEFAULT_ROUTINES: Routines = {
   globalPrompts: [],
   systemPrompts: [],
   mcpTools: [],
+  hooks: [],
 };

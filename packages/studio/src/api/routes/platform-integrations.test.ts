@@ -19,7 +19,7 @@ describe("platform integrations route", () => {
     await rm(runtimeDir, { recursive: true, force: true });
   });
 
-  it("returns a platform catalog focused on JSON account import, without local reverse proxy state", async () => {
+  it("returns only platform capabilities with real current implementation", async () => {
     const app = createPlatformIntegrationsRouter({ store });
 
     const response = await app.request("http://localhost/");
@@ -27,9 +27,8 @@ describe("platform integrations route", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
       integrations: [
-        { id: "codex", enabled: true, modelCount: expect.any(Number), supportedImportMethods: expect.arrayContaining(["json-account"]) },
-        { id: "kiro", enabled: true, supportedImportMethods: expect.arrayContaining(["json-account"]) },
-        { id: "cline", enabled: false, supportedImportMethods: [] },
+        { id: "codex", enabled: true, modelCount: expect.any(Number), supportedImportMethods: ["json-account"] },
+        { id: "kiro", enabled: true, supportedImportMethods: ["json-account"] },
       ],
     });
   });
@@ -84,23 +83,32 @@ describe("platform integrations route", () => {
     });
   });
 
-  it("rejects JSON accounts without identifiable account fields and keeps Cline transparent unsupported", async () => {
+  it("updates platform account quota, current status, disabled state and deletion through real store actions", async () => {
     const app = createPlatformIntegrationsRouter({ store });
-
-    const missingIdentity = await app.request("http://localhost/codex/accounts/import-json", {
+    const imported = await app.request("http://localhost/codex/accounts/import-json", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ accountJson: { refresh_token: "secret-only" } }),
+      body: JSON.stringify({ accountJson: { account_id: "acct_123", email: "writer@example.com", quota: { hourlyPercentage: 42 } } }),
     });
-    const clineResponse = await app.request("http://localhost/cline/accounts/import-json", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ accountJson: { id: "cline-user" } }),
-    });
+    const account = (await imported.json()).account as { id: string };
 
-    expect(missingIdentity.status).toBe(400);
-    await expect(missingIdentity.json()).resolves.toMatchObject({ error: expect.stringContaining("account_id") });
-    expect(clineResponse.status).toBe(501);
-    await expect(clineResponse.json()).resolves.toMatchObject({ code: "unsupported", capability: "platform.cline.json-import" });
+    const quotaResponse = await app.request(`http://localhost/codex/accounts/${account.id}/refresh-quota`, { method: "POST" });
+    const currentResponse = await app.request(`http://localhost/codex/accounts/${account.id}/set-current`, { method: "POST" });
+    const disableResponse = await app.request(`http://localhost/codex/accounts/${account.id}/status`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "disabled" }),
+    });
+    const deleteResponse = await app.request(`http://localhost/codex/accounts/${account.id}`, { method: "DELETE" });
+
+    expect(quotaResponse.status).toBe(200);
+    await expect(quotaResponse.json()).resolves.toMatchObject({ account: { quota: { hourlyPercentage: 42 }, credentialConfigured: true } });
+    expect(currentResponse.status).toBe(200);
+    await expect(currentResponse.json()).resolves.toMatchObject({ account: { current: true } });
+    expect(disableResponse.status).toBe(200);
+    await expect(disableResponse.json()).resolves.toMatchObject({ account: { status: "disabled" } });
+    expect(deleteResponse.status).toBe(200);
+    const accountsAfterDeleteResponse = await app.request("http://localhost/codex/accounts");
+    await expect(accountsAfterDeleteResponse.json()).resolves.toEqual({ accounts: [] });
   });
 });

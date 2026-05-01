@@ -55,7 +55,9 @@ describe("BookHealthDashboard", () => {
     expect(screen.getByText("全书健康仪表盘")).toBeTruthy();
     expect(screen.getByText("3 章")).toBeTruthy();
     expect(screen.getByText("9800 字")).toBeTruthy();
-    expect(screen.getAllByText("未接入").length).toBeGreaterThanOrEqual(4);
+    expect(screen.getAllByText("待评估").length).toBeGreaterThanOrEqual(4);
+    expect(screen.getByText(/连续性审计汇总等待统计数据/)).toBeTruthy();
+    expect(screen.queryByText(/未接入|尚未接入/)).toBeNull();
     expect(screen.getByText("检测到 3 处敏感词命中")).toBeTruthy();
   });
 
@@ -81,7 +83,8 @@ describe("BookHealthDashboard", () => {
     });
     render(<BookHealthDashboard bookId="book-1" />);
 
-    expect(screen.getByText(/质量评分未接入真实统计/)).toBeTruthy();
+    expect(screen.getByText(/质量评分等待统计数据/)).toBeTruthy();
+    expect(screen.queryByText(/未接入|尚未接入/)).toBeNull();
   });
 });
 

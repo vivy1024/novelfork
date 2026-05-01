@@ -67,11 +67,66 @@ export interface RuntimePlatformAccountView extends Omit<RuntimePlatformAccountR
   credentialConfigured: boolean;
 }
 
+export type RuntimeModelCapability = "tools" | "vision" | "streaming" | "large-context" | "long-output" | "low-cost" | "draft" | "audit" | "summary";
+export type VirtualModelRoutingMode = "manual" | "priority" | "fallback" | "quota-aware";
+
+export interface RuntimeVirtualModelMember {
+  readonly providerId: string;
+  readonly modelId: string;
+  readonly priority: number;
+  readonly enabled: boolean;
+  readonly note?: string;
+}
+
+export interface RuntimeVirtualModelRecord {
+  readonly id: string;
+  readonly name: string;
+  readonly description?: string;
+  readonly enabled: boolean;
+  readonly routingMode: VirtualModelRoutingMode;
+  readonly members: readonly RuntimeVirtualModelMember[];
+  readonly tags: readonly string[];
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+export type WritingTaskKind = "outline" | "draft" | "continue" | "revision" | "continuity-audit" | "character-audit" | "worldbuilding-analysis" | "style-imitation" | "de-ai" | "summary" | "title-blurb";
+export type ModelReferenceValidationStatus = "empty" | "valid" | "invalid";
+
+export interface RuntimeWritingModelProfileValidation {
+  readonly defaultDraftModel: ModelReferenceValidationStatus;
+  readonly defaultAnalysisModel: ModelReferenceValidationStatus;
+  readonly taskModels: Readonly<Record<string, ModelReferenceValidationStatus>>;
+  readonly invalidModelIds: readonly string[];
+}
+
+export interface RuntimeWritingModelProfile {
+  readonly defaultDraftModel: string;
+  readonly defaultAnalysisModel: string;
+  readonly taskModels: Partial<Record<WritingTaskKind, string>>;
+  readonly advancedAgentModels: {
+    readonly explore?: string;
+    readonly plan?: string;
+    readonly generalPool: readonly string[];
+  };
+  readonly validation: RuntimeWritingModelProfileValidation;
+}
+
+export interface ResolvedRuntimeModelRoute {
+  readonly virtualModelId: string;
+  readonly providerId: string;
+  readonly modelId: string;
+  readonly routingMode: VirtualModelRoutingMode;
+  readonly reason: string;
+}
+
 export interface ProviderRuntimeState {
   version: 1;
   updatedAt: string;
   providers: RuntimeProviderRecord[];
   platformAccounts: RuntimePlatformAccountRecord[];
+  virtualModels: RuntimeVirtualModelRecord[];
+  writingModelProfile: RuntimeWritingModelProfile;
 }
 
 export type CreateRuntimeProviderInput = Omit<RuntimeProviderRecord, "models"> & {
@@ -85,6 +140,9 @@ export type RuntimeProviderUpdates = Partial<Omit<RuntimeProviderRecord, "id" | 
 
 export type RuntimeModelInput = Partial<RuntimeModelRecord> & Pick<RuntimeModelRecord, "id" | "name" | "contextWindow" | "maxOutputTokens">;
 export type RuntimeModelPatch = Partial<Omit<RuntimeModelRecord, "id">>;
+export type CreateRuntimeVirtualModelInput = Omit<RuntimeVirtualModelRecord, "createdAt" | "updatedAt"> & Partial<Pick<RuntimeVirtualModelRecord, "createdAt" | "updatedAt">>;
+export type RuntimeVirtualModelUpdates = Partial<Omit<RuntimeVirtualModelRecord, "id" | "createdAt" | "updatedAt">>;
+export type RuntimeWritingModelProfileInput = Omit<RuntimeWritingModelProfile, "validation"> & { readonly validation?: RuntimeWritingModelProfileValidation };
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -94,12 +152,23 @@ function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
+function createDefaultWritingModelProfile(virtualModelIds: readonly string[] = []): RuntimeWritingModelProfile {
+  return normalizeWritingModelProfile({
+    defaultDraftModel: "",
+    defaultAnalysisModel: "",
+    taskModels: {},
+    advancedAgentModels: { generalPool: [] },
+  }, virtualModelIds);
+}
+
 function createEmptyState(): ProviderRuntimeState {
   return {
     version: 1,
     updatedAt: nowIso(),
     providers: [],
     platformAccounts: [],
+    virtualModels: [],
+    writingModelProfile: createDefaultWritingModelProfile(),
   };
 }
 
@@ -122,17 +191,73 @@ function normalizeProvider(provider: CreateRuntimeProviderInput | RuntimeProvide
   };
 }
 
+function normalizeVirtualModel(model: CreateRuntimeVirtualModelInput | RuntimeVirtualModelRecord): RuntimeVirtualModelRecord {
+  const timestamp = nowIso();
+  return {
+    ...model,
+    enabled: model.enabled ?? true,
+    routingMode: model.routingMode ?? "priority",
+    members: (model.members ?? []).map((member) => ({ ...member, enabled: member.enabled ?? true, priority: member.priority ?? 1 })),
+    tags: [...(model.tags ?? [])],
+    createdAt: model.createdAt ?? timestamp,
+    updatedAt: model.updatedAt ?? timestamp,
+  };
+}
+
+function validateModelReference(value: string | undefined, virtualModelIds: ReadonlySet<string>): ModelReferenceValidationStatus {
+  if (!value) return "empty";
+  return virtualModelIds.has(value) ? "valid" : "invalid";
+}
+
+function normalizeWritingModelProfile(value: Partial<RuntimeWritingModelProfileInput> | undefined, virtualModelIds: readonly string[]): RuntimeWritingModelProfile {
+  const idSet = new Set(virtualModelIds);
+  const taskModels = { ...(value?.taskModels ?? {}) } as Partial<Record<WritingTaskKind, string>>;
+  const invalid = new Set<string>();
+  const taskValidation: Record<string, ModelReferenceValidationStatus> = {};
+  const defaultDraftModel = value?.defaultDraftModel ?? "";
+  const defaultAnalysisModel = value?.defaultAnalysisModel ?? "";
+
+  for (const id of [defaultDraftModel, defaultAnalysisModel]) {
+    if (id && !idSet.has(id)) invalid.add(id);
+  }
+  for (const [task, id] of Object.entries(taskModels)) {
+    const status = validateModelReference(id, idSet);
+    taskValidation[task] = status;
+    if (id && status === "invalid") invalid.add(id);
+  }
+
+  return {
+    defaultDraftModel,
+    defaultAnalysisModel,
+    taskModels,
+    advancedAgentModels: {
+      ...(value?.advancedAgentModels?.explore ? { explore: value.advancedAgentModels.explore } : {}),
+      ...(value?.advancedAgentModels?.plan ? { plan: value.advancedAgentModels.plan } : {}),
+      generalPool: [...(value?.advancedAgentModels?.generalPool ?? [])],
+    },
+    validation: {
+      defaultDraftModel: validateModelReference(defaultDraftModel, idSet),
+      defaultAnalysisModel: validateModelReference(defaultAnalysisModel, idSet),
+      taskModels: taskValidation,
+      invalidModelIds: [...invalid],
+    },
+  };
+}
+
 function normalizeState(value: unknown): ProviderRuntimeState {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("Provider runtime state must be an object");
   }
 
   const candidate = value as Partial<ProviderRuntimeState>;
+  const virtualModels = Array.isArray(candidate.virtualModels) ? candidate.virtualModels.map((model) => normalizeVirtualModel(model)) : [];
   return {
     version: 1,
     updatedAt: typeof candidate.updatedAt === "string" ? candidate.updatedAt : nowIso(),
     providers: Array.isArray(candidate.providers) ? candidate.providers.map((provider) => normalizeProvider(provider)) : [],
     platformAccounts: Array.isArray(candidate.platformAccounts) ? candidate.platformAccounts.map((account) => ({ ...account })) : [],
+    virtualModels,
+    writingModelProfile: normalizeWritingModelProfile(candidate.writingModelProfile, virtualModels.map((model) => model.id)),
   };
 }
 
@@ -313,5 +438,133 @@ export class ProviderRuntimeStore {
         credentialConfigured: credentialJson !== undefined,
       };
     });
+  }
+
+  async updatePlatformAccount(accountId: string, updates: Partial<Omit<RuntimePlatformAccountRecord, "id" | "credentialJson">>): Promise<RuntimePlatformAccountRecord> {
+    const state = await this.loadState();
+    const index = state.platformAccounts.findIndex((account) => account.id === accountId);
+    if (index === -1) throw new Error(`Platform account not found: ${accountId}`);
+    const updated = { ...state.platformAccounts[index], ...updates };
+    state.platformAccounts[index] = updated;
+    state.updatedAt = nowIso();
+    await this.saveState(state);
+    return clone(updated);
+  }
+
+  async setCurrentPlatformAccount(platformId: RuntimePlatformId, accountId: string): Promise<RuntimePlatformAccountRecord> {
+    const state = await this.loadState();
+    const index = state.platformAccounts.findIndex((account) => account.id === accountId && account.platformId === platformId);
+    if (index === -1) throw new Error(`Platform account not found: ${accountId}`);
+    state.platformAccounts = state.platformAccounts.map((account) => account.platformId === platformId
+      ? { ...account, current: account.id === accountId }
+      : account);
+    state.updatedAt = nowIso();
+    await this.saveState(state);
+    return clone(state.platformAccounts[index]);
+  }
+
+  async deletePlatformAccount(accountId: string): Promise<void> {
+    const state = await this.loadState();
+    state.platformAccounts = state.platformAccounts.filter((account) => account.id !== accountId);
+    state.updatedAt = nowIso();
+    await this.saveState(state);
+  }
+
+  async listVirtualModels(): Promise<RuntimeVirtualModelRecord[]> {
+    const state = await this.loadState();
+    return clone(state.virtualModels);
+  }
+
+  async getVirtualModel(id: string): Promise<RuntimeVirtualModelRecord | undefined> {
+    const state = await this.loadState();
+    const model = state.virtualModels.find((candidate) => candidate.id === id);
+    return model ? clone(model) : undefined;
+  }
+
+  async createVirtualModel(model: CreateRuntimeVirtualModelInput): Promise<RuntimeVirtualModelRecord> {
+    const state = await this.loadState();
+    if (state.virtualModels.some((candidate) => candidate.id === model.id)) {
+      throw new Error(`Virtual model already exists: ${model.id}`);
+    }
+    const created = normalizeVirtualModel(model);
+    state.virtualModels.push(created);
+    state.writingModelProfile = normalizeWritingModelProfile(state.writingModelProfile, state.virtualModels.map((candidate) => candidate.id));
+    state.updatedAt = nowIso();
+    await this.saveState(state);
+    return clone(created);
+  }
+
+  async updateVirtualModel(id: string, updates: RuntimeVirtualModelUpdates): Promise<RuntimeVirtualModelRecord> {
+    const state = await this.loadState();
+    const index = state.virtualModels.findIndex((candidate) => candidate.id === id);
+    if (index === -1) throw new Error(`Virtual model not found: ${id}`);
+    const updated = normalizeVirtualModel({ ...state.virtualModels[index], ...updates, id, updatedAt: nowIso() });
+    state.virtualModels[index] = updated;
+    state.writingModelProfile = normalizeWritingModelProfile(state.writingModelProfile, state.virtualModels.map((candidate) => candidate.id));
+    state.updatedAt = nowIso();
+    await this.saveState(state);
+    return clone(updated);
+  }
+
+  async deleteVirtualModel(id: string): Promise<void> {
+    const state = await this.loadState();
+    state.virtualModels = state.virtualModels.filter((model) => model.id !== id);
+    state.writingModelProfile = normalizeWritingModelProfile(state.writingModelProfile, state.virtualModels.map((model) => model.id));
+    state.updatedAt = nowIso();
+    await this.saveState(state);
+  }
+
+  async resolveVirtualModelRoute(id: string): Promise<ResolvedRuntimeModelRoute> {
+    const state = await this.loadState();
+    const virtualModel = state.virtualModels.find((candidate) => candidate.id === id && candidate.enabled !== false);
+    if (!virtualModel) throw new Error(`Virtual model not found: ${id}`);
+    const providers = new Map(state.providers.map((provider) => [provider.id, provider]));
+    const currentAccounts = state.platformAccounts.filter((account) => account.current !== false && account.status === "active");
+    const accountByPlatform = new Map(currentAccounts.map((account) => [account.platformId, account]));
+    const candidates = virtualModel.members
+      .filter((member) => member.enabled !== false)
+      .map((member) => {
+        const provider = providers.get(member.providerId);
+        const model = provider?.models.find((candidate) => candidate.id === member.modelId);
+        const account = accountByPlatform.get(member.providerId as RuntimePlatformId);
+        const quota = Math.max(account?.quota?.hourlyPercentage ?? -1, account?.quota?.weeklyPercentage ?? -1);
+        return { member, provider, model, account, quota };
+      })
+      .filter((candidate) => candidate.provider?.enabled !== false && candidate.model?.enabled !== false && candidate.provider && candidate.model);
+
+    if (candidates.length === 0) throw new Error(`Virtual model has no available candidates: ${id}`);
+    const sorted = [...candidates].sort((left, right) => {
+      if (virtualModel.routingMode === "quota-aware") {
+        const leftScore = left.quota < 0 ? 0 : left.quota;
+        const rightScore = right.quota < 0 ? 0 : right.quota;
+        if (leftScore !== rightScore) return leftScore - rightScore;
+      }
+      return left.member.priority - right.member.priority;
+    });
+    const selected = sorted[0];
+    const reason = virtualModel.routingMode === "quota-aware" && selected.quota < 0
+      ? `按优先级选择；${selected.provider!.name} 未记录配额`
+      : `按${virtualModel.routingMode}策略选择 ${selected.provider!.name}`;
+    return {
+      virtualModelId: id,
+      providerId: selected.member.providerId,
+      modelId: selected.member.modelId,
+      routingMode: virtualModel.routingMode,
+      reason,
+    };
+  }
+
+  async getWritingModelProfile(): Promise<RuntimeWritingModelProfile> {
+    const state = await this.loadState();
+    return clone(state.writingModelProfile);
+  }
+
+  async updateWritingModelProfile(profile: RuntimeWritingModelProfileInput): Promise<RuntimeWritingModelProfile> {
+    const state = await this.loadState();
+    const updated = normalizeWritingModelProfile(profile, state.virtualModels.map((model) => model.id));
+    state.writingModelProfile = updated;
+    state.updatedAt = nowIso();
+    await this.saveState(state);
+    return clone(updated);
   }
 }

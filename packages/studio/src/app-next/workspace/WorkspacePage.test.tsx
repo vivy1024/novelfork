@@ -101,6 +101,53 @@ beforeEach(() => {
 });
 
 describe("WorkspacePage", () => {
+  it("connects resource-tree empty-state actions to real workspace operations", async () => {
+    const refetchBookDetail = vi.fn(async () => undefined);
+    const refetchCandidates = vi.fn(async () => undefined);
+    useApiMock.mockImplementation((path: string | null) => {
+      if (path === "/books") return { data: booksResponse, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}`) return { data: { ...bookDetailResponse, chapters: [], nextChapter: 1 }, loading: false, error: null, refetch: refetchBookDetail };
+      if (path === `/books/${TEST_BOOK.id}/candidates`) return { data: { candidates: [] }, loading: false, error: null, refetch: refetchCandidates };
+      if (path === `/books/${TEST_BOOK.id}/story-files`) return { data: { files: [] }, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}/truth-files`) return { data: { files: [] }, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}/drafts`) return { data: { drafts: [] }, loading: false, error: null, refetch: vi.fn() };
+      return { data: null, loading: false, error: null, refetch: vi.fn() };
+    });
+    fetchJsonMock.mockImplementation(async (path: string) => {
+      if (path === `/books/${TEST_BOOK.id}/chapters`) return { chapter: { number: 1 } };
+      if (path === `/books/${TEST_BOOK.id}/import/chapters`) return { importedCount: 1 };
+      return {};
+    });
+    const assistantApi = { runAction: vi.fn(async () => ({ message: "AI 输出已进入生成章节候选", resourceMutationTarget: "candidates" as const })) };
+
+    render(<WorkspacePage assistantApi={assistantApi} />);
+    const explorer = screen.getByRole("complementary", { name: "小说资源管理器" });
+
+    const createButton = within(explorer).getByRole("button", { name: "创建章节" }) as HTMLButtonElement;
+    expect(createButton.disabled).toBe(false);
+    fireEvent.click(createButton);
+    await waitFor(() => expect(fetchJsonMock).toHaveBeenCalledWith(`/books/${TEST_BOOK.id}/chapters`, expect.objectContaining({ method: "POST" })));
+
+    const generateButton = within(explorer).getByRole("button", { name: "生成下一章" }) as HTMLButtonElement;
+    expect(generateButton.disabled).toBe(false);
+    fireEvent.click(generateButton);
+    await waitFor(() => expect(assistantApi.runAction).toHaveBeenCalledWith("write-next", expect.objectContaining({ bookId: TEST_BOOK.id })));
+    await waitFor(() => expect(refetchCandidates).toHaveBeenCalled());
+
+    const importButton = within(explorer).getByRole("button", { name: "导入章节" }) as HTMLButtonElement;
+    expect(importButton.disabled).toBe(false);
+    fireEvent.click(importButton);
+    fireEvent.change(screen.getByLabelText("导入章节文本"), { target: { value: "第一章 新章\n正文" } });
+    fireEvent.click(screen.getByRole("button", { name: "导入章节" }));
+    await waitFor(() => expect(fetchJsonMock).toHaveBeenCalledWith(`/books/${TEST_BOOK.id}/import/chapters`, expect.objectContaining({ method: "POST" })));
+    await waitFor(() => expect(refetchBookDetail).toHaveBeenCalled());
+
+    const outlineButton = within(explorer).getByRole("button", { name: "打开大纲编辑器" }) as HTMLButtonElement;
+    expect(outlineButton.disabled).toBe(false);
+    fireEvent.click(outlineButton);
+    expect(screen.getByRole("heading", { name: "大纲" })).toBeTruthy();
+  });
+
   it("renders a book resource tree and opens an existing chapter in the central editor", async () => {
     const loadChapter = vi.fn(async () => ({ content: "测试正文" }));
     const saveChapter = vi.fn(async () => undefined);
@@ -114,7 +161,8 @@ describe("WorkspacePage", () => {
 
     const editor = screen.getByRole("main", { name: "正文编辑区" });
     expect(within(editor).getByRole("heading", { name: "第一章 灵潮初起" })).toBeTruthy();
-    expect(within(editor).getByText(/章节状态：approved/)).toBeTruthy();
+    expect(within(editor).getByText(/章节状态：已定稿/)).toBeTruthy();
+    expect(within(editor).queryByText(/章节状态：approved|章节状态：unknown/)).toBeNull();
     await waitFor(() => expect(within(editor).getByLabelText("章节正文")).toBeTruthy());
   });
 
@@ -184,7 +232,7 @@ describe("WorkspacePage", () => {
     const explorer = screen.getByRole("complementary", { name: "小说资源管理器" });
     fireEvent.click(within(explorer).getByRole("button", { name: /^大纲$/ }));
     const editor = screen.getByRole("main", { name: "正文编辑区" });
-    expect(within(editor).getByText("OutlineEditor · volume_outline.md")).toBeTruthy();
+    expect(within(editor).getByText("大纲编辑器 · volume_outline.md")).toBeTruthy();
     expect(within(editor).getByDisplayValue(/第一卷：灵潮初起/)).toBeTruthy();
 
     const outlineTextarea = within(editor).getByLabelText("大纲内容") as HTMLTextAreaElement;
@@ -195,8 +243,9 @@ describe("WorkspacePage", () => {
     expect(outlineRefetch).toHaveBeenCalled();
 
     fireEvent.click(within(explorer).getByRole("button", { name: /^草稿/ }));
-    expect(screen.getByText("草稿 当前不可直接编辑")).toBeTruthy();
-    expect(screen.getByText(/该资源节点当前只作为结构容器存在/)).toBeTruthy();
+    const draftsEditor = screen.getByRole("main", { name: "正文编辑区" });
+    expect(within(draftsEditor).getByText("草稿")).toBeTruthy();
+    expect(within(draftsEditor).getByText(/该资源节点作为结构容器存在/)).toBeTruthy();
   });
 
   it("shows a create entry when outline markdown is missing", async () => {
@@ -226,9 +275,11 @@ describe("WorkspacePage", () => {
     const explorer = screen.getByRole("complementary", { name: "小说资源管理器" });
     fireEvent.click(within(explorer).getByRole("button", { name: /^pending_hooks\.md/ }));
     expect(await screen.findByText(/待处理伏笔/)).toBeTruthy();
+    expect(screen.queryByText(/MarkdownViewer|TextViewer/)).toBeNull();
 
     fireEvent.click(within(explorer).getByRole("button", { name: /^chapter_summaries\.md/ }));
     expect(await screen.findByText(/第一章摘要/)).toBeTruthy();
+    expect(screen.queryByText(/MarkdownViewer|TextViewer/)).toBeNull();
   });
 
   it("lists real drafts and saves draft content through DraftEditor", async () => {
@@ -247,6 +298,7 @@ describe("WorkspacePage", () => {
     fireEvent.click(within(explorer).getByRole("button", { name: /城门冲突片段/ }));
 
     expect(await screen.findByDisplayValue("草稿正文")).toBeTruthy();
+    expect(screen.queryByText(/DraftEditor/)).toBeNull();
     fireEvent.change(screen.getByLabelText("草稿正文"), { target: { value: "修改后的草稿" } });
     expect(screen.getByText(/草稿保存状态：未保存/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "保存草稿" }));
@@ -454,7 +506,7 @@ describe("WorkspacePage", () => {
         gate: "ai-rewrite",
         route: `/books/${TEST_BOOK.id}/inline-write`,
         request: expect.objectContaining({ method: "POST", body: expect.stringContaining('"mode":"continuation"') }),
-        message: "续写当前段落已生成 prompt-preview，请在写作模式面板确认后写入。",
+        message: "续写当前段落已生成提示词预览，请在写作模式面板确认后写入。",
       },
       {
         label: /审校当前章/,
@@ -581,7 +633,7 @@ describe("WorkspacePage", () => {
     fireEvent.click(within(explorer).getByRole("button", { name: /人物/ }));
 
     const editor = screen.getByRole("main", { name: "正文编辑区" });
-    expect(within(editor).getByText("BibleCategoryView · 人物")).toBeTruthy();
+    expect(within(editor).getByText("经纬分类 · 人物")).toBeTruthy();
     expect(within(editor).getByText("城门守卫")).toBeTruthy();
     expect(within(editor).getByText(/关联章节：1/)).toBeTruthy();
 
@@ -627,6 +679,8 @@ describe("WorkspacePage", () => {
     expect(within(editor).getByText("门外传来第三个人的脚步声。")).toBeTruthy();
     expect(within(editor).getByText(/关联章节：1/)).toBeTruthy();
     expect(within(editor).getByText(/关联伏笔：old-hook/)).toBeTruthy();
+    expect(within(editor).getByText("伏笔状态：伏笔")).toBeTruthy();
+    expect(within(editor).queryByText("伏笔状态：foreshadow")).toBeNull();
   });
 
   it("applies generated dialogue to a draft through the writing modes confirmation flow", async () => {
@@ -663,9 +717,10 @@ describe("WorkspacePage", () => {
     expect(await within(assistant).findByText("写作结果已保存到草稿 draft-dialogue")).toBeTruthy();
   });
 
-  it("keeps prompt-preview writing modes transparent and blocks applying prompt text as content", async () => {
+  it("executes prompt-preview writing modes before allowing generated content to be applied", async () => {
     postApiMock.mockImplementation(async (path: string) => {
       if (path === `/books/${TEST_BOOK.id}/dialogue/generate`) return { mode: "prompt-preview", promptPreview: "请生成一段对话" };
+      if (path === `/books/${TEST_BOOK.id}/writing-modes/execute-prompt`) return { content: "林月：\"你终于来了。\"" };
       return {};
     });
 
@@ -676,9 +731,14 @@ describe("WorkspacePage", () => {
     fireEvent.change(within(assistant).getByLabelText("角色"), { target: { value: "林月" } });
     fireEvent.click(within(assistant).getByRole("button", { name: "生成对话" }));
 
-    expect(await within(assistant).findByText("Prompt 预览")).toBeTruthy();
-    expect(within(assistant).getByRole("button", { name: "执行生成（未接入）" }).hasAttribute("disabled")).toBe(true);
-    expect(within(assistant).queryByRole("button", { name: "确认应用写作结果" })).toBeNull();
+    expect(await within(assistant).findByText("提示词预览")).toBeTruthy();
+    expect(within(assistant).queryByText("Prompt 预览")).toBeNull();
+    expect(within(assistant).queryByRole("button", { name: "执行生成（未接入）" })).toBeNull();
+    fireEvent.click(within(assistant).getByRole("button", { name: "执行生成" }));
+    await waitFor(() => expect(postApiMock).toHaveBeenCalledWith(`/books/${TEST_BOOK.id}/writing-modes/execute-prompt`, expect.objectContaining({ prompt: "请生成一段对话", sourceMode: "dialogue-generator" })));
+    expect(await within(assistant).findByText(/你终于来了/)).toBeTruthy();
+    fireEvent.click(within(assistant).getByRole("button", { name: "插入到正文" }));
+    expect(within(assistant).getByRole("button", { name: "确认应用写作结果" })).toBeTruthy();
   });
 
   it("shows a writing mode apply error without creating fake resources", async () => {
@@ -784,7 +844,7 @@ describe("WorkspacePage", () => {
     render(<WorkspacePage />);
 
     expect(screen.getByText("发布就绪")).toBeTruthy();
-    expect(screen.getByText("预设管理")).toBeTruthy();
+    expect(screen.queryByText("预设管理")).toBeNull();
   });
 
   it("uses unified primary/outline button semantics for the top bar and selected resource node", () => {
@@ -793,7 +853,6 @@ describe("WorkspacePage", () => {
     const newChapterButton = screen.getByRole("button", { name: "新建章节" });
     const exportButton = screen.getByRole("button", { name: "导出" });
     const publishButton = screen.getByRole("button", { name: "发布就绪" });
-    const presetButton = screen.getByRole("button", { name: "预设管理" });
 
     expect(newChapterButton.hasAttribute("disabled")).toBe(false);
     expect(newChapterButton.getAttribute("title")).toBeNull();
@@ -803,9 +862,7 @@ describe("WorkspacePage", () => {
     expect(exportButton.className).toContain("border-border");
     expect(exportButton.className).toContain("hover:bg-muted");
 
-    expect(presetButton.hasAttribute("disabled")).toBe(true);
-    expect(presetButton.getAttribute("title")).toBe("即将推出");
-    expect(presetButton.className).toContain("border-border");
+    expect(screen.queryByRole("button", { name: "预设管理" })).toBeNull();
 
     fireEvent.click(publishButton);
     expect(publishButton.className).toContain("bg-primary");
@@ -825,7 +882,7 @@ describe("WorkspacePage", () => {
     expect(selectedNode.getAttribute("aria-current")).toBeNull();
   });
 
-  it("runs publish readiness from real API data and shows unknown continuity", async () => {
+  it("runs publish readiness from real API data and shows continuity fallback as a friendly label", async () => {
     fetchJsonMock.mockImplementation(async (path: string, init?: RequestInit) => {
       if (path === `/books/${TEST_BOOK.id}/compliance/publish-readiness` && init?.method === "POST") {
         return {
@@ -856,8 +913,9 @@ describe("WorkspacePage", () => {
     ));
     expect(await screen.findByText("存在警告")).toBeTruthy();
     expect(screen.getByText("42%")).toBeTruthy();
-    expect(screen.getByText("unknown")).toBeTruthy();
+    expect(screen.getByText("未完成审计")).toBeTruthy();
     expect(screen.getByText(/连续性审计数据缺失/)).toBeTruthy();
+    expect(screen.queryByText("unknown")).toBeNull();
   });
 
   it("exports the selected book and shows returned filename and content type", async () => {
