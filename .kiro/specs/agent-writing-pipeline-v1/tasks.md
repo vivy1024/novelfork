@@ -1,7 +1,8 @@
 # Agent 写作管线 v1 — Tasks
 
-**版本**: v1.0.0
+**版本**: v2.0.0
 **创建日期**: 2026-05-01
+**修订日期**: 2026-05-01
 **状态**: 待审批
 
 ---
@@ -9,123 +10,125 @@
 ## 前置条件
 
 - `workspace-gap-closure-v1` 已完成（25/25 ✅）
-- ChatWindow + session-chat-service 已可用
-- Routines 子代理系统已可用
+- Core 13 Agent 类 / 18 内置工具 / 22 NarraFork 工具均已存在
+- ChatWindow + session-chat-service + Routines API 可用
 
 ---
 
-## Phase 0：工具注册（3 tasks）
+## Phase 0：基础设施 — System Prompt + 上下文（3 tasks）
 
-- [ ] 1. 定义小说工具 schema
-  - 新建 `api/lib/tools/novel-tools.ts`
-  - 定义 16 个工具的 name / description / parameters / execute
-  - 复用已有 API handler 逻辑，不重复实现
-  - 验证：typecheck 通过
+- [ ] 1. 新建 `agent-prompts.ts`，定义 5 种 Agent 专属 system prompt
+  - 新建 `packages/core/src/pipeline/agent-prompts.ts`
+  - 定义 `AGENT_SYSTEM_PROMPTS`: writer, planner, auditor, architect, explorer
+  - 每个 prompt 包含：领域知识 + 工具使用指导 + 输出规范 + 安全约束
+  - `getAgentSystemPrompt(agentId)` 按 agentId 前缀匹配选择 prompt
+  - 验证：prompt 非空测试通过
 
-- [ ] 2. 实现工具执行函数
-  - 读取类工具：bookId 参数传入或从 session context 获取
-  - 生成类工具：调用 writing-modes API 或 core 函数
-  - 审校类工具：调用 audit/detect API
-  - 管理类工具：调用 candidates API
-  - 验证：每个工具有参数校验失败测试
+- [ ] 2. 修改 `runAgentLoop` 接收 `agentId` 参数
+  - 修改 `packages/core/src/pipeline/agent.ts`
+  - `AgentLoopOptions` 新增 `agentId?: string`
+  - system prompt 从 `getAgentSystemPrompt(agentId)` 获取，非通用硬编码
+  - SubAgent 自定义 systemPrompt 优先（通过 session 元数据传入）
+  - 验证：现有 agent loop 测试仍通过（不带 agentId 时使用默认 prompt）
 
-- [ ] 3. 注册工具到 Agent 系统
-  - 在 server 启动时调用 `registerNovelTools()`
-  - 工具出现在 ChatWindow 的 tool list 中
-  - 验证：工具注册测试通过；Agent 能发现并使用小说工具
-
----
-
-## Phase 1：Agent 角色（3 tasks）
-
-- [ ] 4. 定义三个 Agent 系统提示词
-  - 新建 `api/lib/agent-prompts.ts`
-  - 定义 novel-explorer、novel-writer、novel-auditor 的完整 system prompt
-  - 包含领域知识（网文节奏、爽点、伏笔管理、题材特征）
-  - 包含工具使用指导
-  - 验证：prompt 字符串可正确导入、非空
-
-- [ ] 5. 实现 Agent 角色持久化
-  - 在 server 启动时将三个 Agent 预设写入 routines subAgent 配置
-  - 复用 `POST /api/routines`（subAgent upsert）
-  - 确保重启后 Agent 预设仍在
-  - 验证：routines 测试覆盖 subAgent 持久化
-
-- [ ] 6. 在 ChatWindow 中可选用 Agent 角色
-  - NewSessionDialog 中显示三个小说 Agent 选项
-  - 选择后自动设置 system prompt 和允许的工具列表
-  - 验证：ChatWindow 测试覆盖 Agent 角色选择
+- [ ] 3. 实现上下文自动注入
+  - 新建 `packages/studio/src/api/lib/agent-context.ts`
+  - `buildBookContext(bookId)` — 并行调用 books API + bible summaries + pending hooks + current_focus
+  - 在 `session-chat-service.ts` 的消息构建阶段，检测 session.projectId → 注入上下文
+  - 验证：session-chat-service 测试覆盖有 bookId / 无 bookId 两种注入状态
 
 ---
 
-## Phase 2：上下文注入（2 tasks）
+## Phase 1：Explorer Agent + 工具开关（3 tasks）
 
-- [ ] 7. 实现作品上下文构建
-  - 新建 `api/lib/agent-context.ts`
-  - `buildBookContext(bookId)` 函数并行调用：books API + bible summaries + pending hooks + current_focus.md
-  - 返回结构化的上下文字符串，用于注入 system prompt
-  - 验证：context 构建测试覆盖有数据和无数据场景
+- [ ] 4. 新增 Explorer Agent 预设
+  - `agent-prompts.ts` 中已有 explorer prompt（Task 1）
+  - 在 `ChatWindow.tsx` 的 `SESSION_PRESETS` 中新增：`{ id: "explorer", title: "Explorer", label: "探索 Explorer", defaultSessionMode: "chat", defaultPermissionMode: "read" }`
+  - Explorer 工具集：Read, Grep, Glob, Recall, read_truth_files, get_book_status（全部只读）
+  - 验证：Explorer 在 NewSessionDialog 中可选
 
-- [ ] 8. session 绑定书籍时自动注入上下文
-  - 当 session.projectId 匹配 bookId 时，snapshot 的 system prompt 中自动包含上下文
-  - 上下文注入在 session-chat-service 的 buildMessages 或 session recovery 流程中完成
-  - 验证：session-chat-service 测试覆盖上下文注入
+- [ ] 5. 调整 ToolsTab 默认工具开关
+  - 修改 `AVAILABLE_TOOLS` 的默认 `enabled` 值
+  - Bash/Read/Write/Edit/Grep/Glob → true（核心创作工具）
+  - EnterWorktree/ExitWorktree/TodoWrite → true（工作区管理）
+  - Terminal/Browser/ForkNarrator/NarraForkAdmin/Recall/ShareFile → false（运维工具默认关）
+  - WebSearch/WebFetch → false（联网工具默认关）
+  - 验证：ToolsTab 测试通过，默认开关值正确
 
----
-
-## Phase 3：多 Agent 编排（3 tasks）
-
-- [ ] 9. 实现编排函数
-  - 新建 `api/lib/agent-pipeline.ts`
-  - `runWritingPipeline(bookId, userIntent)` — 串行编排：探索 → 写作 → 审计
-  - `runAuditPipeline(bookId, chapterNumber)` — 审计流程
-  - 每步调用 `chatCompletion`，传输上一步的上下文
-  - 验证：pipeline 单元测试覆盖成功和中间步骤失败
-
-- [ ] 10. 实现编排结果展示
-  - ChatWindow 中收到 pipeline 结果后，展示结构化视图
-  - 包含：生成的正文 / 审计报告 / 可执行动作
-  - 复用现有 ToolCallBlock 的结果展示模式
-  - 验证：ChatWindow 测试覆盖 pipeline 结果展示
-
-- [ ] 11. 实现「写下一章」快捷入口
-  - WorkspacePage 右侧面板新增一个「Agent 写作」入口
-  - 点击后自动创建一个 novel-pipeline session
-  - 发送「请根据当前作品状态写下一章」指令
-  - 验证：WorkspacePage 测试覆盖 Agent 写作入口
+- [ ] 6. SubAgent 配置集成测试
+  - SubAgentsTab 中定义的 systemPrompt 和 toolPermissions 能正确传递到 session 创建
+  - 验证：routines 测试覆盖 SubAgent CRUD + session 关联
 
 ---
 
-## Phase 4：集成验证（4 tasks）
+## Phase 2：编排函数（3 tasks）
 
-- [ ] 12. 新增工具测试
-  - 为 16 个工具的 execute 函数编写测试
-  - 覆盖成功调用和参数校验失败
-  - 验证：`bun run test -- novel-tools.test.ts` 通过
+- [ ] 7. 实现 `runWritingPipeline` 编排函数
+  - 新建 `packages/core/src/pipeline/agent-pipeline.ts`
+  - `runWritingPipeline(bookId, userIntent, config)` — 串行：Explorer → Planner → Writer → Auditor
+  - 每步结果传给下一步作为上下文
+  - 任一步失败返回 `{ error: string, step: number }`，不假装成功
+  - 验证：pipeline 单元测试 mock LLM 覆盖成功/失败流程
 
-- [ ] 13. 新增 pipeline 集成测试
-  - 使用 mock LLM 响应测试完整 pipeline
-  - 覆盖探索→写作→审计的完整流程
+- [ ] 8. 实现编排结果的 ChatWindow 展示
+  - 收到 pipeline 完成后，ChatWindow 展示结构化结果
+  - 正文区域 + 审计报告区域 + 操作按钮（接受/修改/重新生成）
+  - 复用 ToolCallBlock 的结果展示模式
+  - 验证：ChatWindow 测试覆盖 pipeline 结果渲染
+
+- [ ] 9. WorkspacePage 新增「Agent 写作」入口
+  - 右侧面板→写作 Tab→新增「Agent 写作」按钮/输入区
+  - 作者输入意图 → 启动 `runWritingPipeline` → 结果在 ChatWindow 中展示
+  - 自动创建/复用当前 book 的 Writer session
+  - 验证：WorkspacePage 测试覆盖 Agent 写作入口和流程启动
+
+---
+
+## Phase 3：集成验证（4 tasks）
+
+- [ ] 10. 新增 agent-prompts 测试
+  - 5 种 Agent 的 system prompt 非空 + 包含领域知识关键词
+  - `getAgentSystemPrompt` 按 prefix 匹配正确
+  - 验证：`bun run test -- agent-prompts.test.ts` 通过
+
+- [ ] 11. 新增 agent-pipeline 集成测试
+  - mock LLM 响应，测试完整 Explorer→Planner→Writer→Auditor 流程
+  - 覆盖中间步骤失败、空结果、超时
   - 验证：pipeline 测试通过
 
-- [ ] 14. 全量 typecheck + test
+- [ ] 12. 新增 agent-context 测试
+  - `buildBookContext(bookId)` 有数据/无数据场景
+  - session 绑定/不绑定 bookId 的上下文注入
+  - 验证：agent-context 测试通过
+
+- [ ] 13. 全量 typecheck + test
   - `bun run typecheck` 通过
   - `bun run test` 全量通过
-  - 验证：typecheck + vitest 均 exit 0
+  - `bun run docs:verify` 通过
 
-- [ ] 15. 更新文档
-  - 更新 `docs/01-当前状态/02-Studio能力矩阵.md`，新增 Agent 写作管线能力行
-  - 更新 `.kiro/specs/README.md`
+---
+
+## Phase 4：文档更新（2 tasks）
+
+- [ ] 14. 更新能力矩阵
+  - 更新 `docs/01-当前状态/02-Studio能力矩阵.md`：
+    - 新增 Agent 写作管线能力行（Explorer/Planner/Writer/Auditor + 编排函数）
+    - 更新工具清单行（Core 18 + NarraFork 22 = 40 个工具）
   - 验证：`bun run docs:verify` 通过
+
+- [ ] 15. 更新 spec README
+  - `.kiro/specs/README.md` 中 `agent-writing-pipeline-v1` 状态更新为已完成
+  - 标注下一阶段 spec 优先级
+  - 验证：文档内容一致
 
 ---
 
 ## Done Definition
 
-1. Agent 在 ChatWindow 中能调用小说专有工具（读章节、生成、审校等）
-2. 三个小说创作 Agent 角色可用（探索/写作/审计）
-3. 启动作家 Agent 时自动注入当前作品上下文
-4. Agent 写作流程「探索→规划→写作→审计→展示」可用
-5. Agent 生成结果进候选区，不直接覆盖正文
+1. 5 种 Agent 各有专属 system prompt，按 agentId 自动选择
+2. Explorer Agent 在 ChatWindow 中可选，只读权限
+3. session 绑定 bookId 后自动注入作品上下文
+4. `runWritingPipeline` 串行执行 Explorer→Planner→Writer→Auditor
+5. WorkspacePage 有「Agent 写作」入口
 6. `bun run typecheck` + `bun run test` 全量通过
 7. 无新增 mock/fake/noop 假成功
