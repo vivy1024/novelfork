@@ -1,6 +1,6 @@
 /** NovelFork API Client — 统一的前端 API 调用层 */
 
-import { fetchJson, postApi, putApi } from "../hooks/use-api";
+import { fetchJson, postApi, putApi } from "../hooks/use-api.js";
 
 // ── Books ──
 

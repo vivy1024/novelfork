@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { isTauriBridgeActive, tauriFetch } from "./tauri-api-bridge";
+import { isTauriBridgeActive, tauriFetch } from "./tauri-api-bridge.js";
 
 const BASE = "/api";
 const API_INVALIDATE_EVENT = "novelfork:api-invalidate";

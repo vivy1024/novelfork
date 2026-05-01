@@ -12,28 +12,30 @@ const DIST = join(ROOT, "dist");
 async function main() {
   await mkdir(DIST, { recursive: true });
 
-  // Step 1: Build frontend (Vite)
-  console.log("[1/3] Building frontend...");
-  const buildClient = Bun.spawn(["bun", "run", "build:client"], {
+  // Step 1: Build full project (frontend + server)
+  console.log("[1/3] Building project...");
+  const build = Bun.spawn(["bun", "run", "build"], {
     cwd: ROOT,
     stdout: "inherit",
     stderr: "inherit",
   });
-  await buildClient.exited;
-  if (buildClient.exitCode !== 0) {
-    console.error("Frontend build failed");
+  await build.exited;
+  if (build.exitCode !== 0) {
+    console.error("Build failed");
     process.exit(1);
   }
 
-  // Step 2: Build server (tsc) is already done as part of the normal build
-  // The entry point is dist/api/index.js which is produced by tsc
+  // Step 2: Compile to single executable
   console.log("[2/3] Compiling single executable...");
+  const entryPoint = join(ROOT, "dist", "api", "index.js");
+  const outFile = join(DIST, process.platform === "win32" ? "novelfork.exe" : "novelfork");
+  
   const compile = Bun.spawn([
     "bun", "build",
     "--compile",
     "--target=bun",
-    join(ROOT, "dist", "api", "index.js"),
-    "--outfile", join(DIST, "novelfork"),
+    entryPoint,
+    "--outfile", outFile,
   ], {
     cwd: ROOT,
     stdout: "inherit",
