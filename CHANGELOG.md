@@ -1,37 +1,79 @@
 # Changelog
 
-本文件记录 **NovelFork** 仓库当前阶段的重要变更。
-
-> 说明：
-> 过去一段时间的 changelog 混杂了大量旧路线时期内容（PWA、旧 monorepo 叙事、InkOS 口径）。
-> 为避免继续误导，当前先收敛为 NovelFork 视角的简化变更记录。
+本文件记录 **NovelFork** 的版本变更。
 
 ---
 
-## Unreleased
+## v0.0.1 (2026-05-01)
 
-### Docs
-- 重构 docs 目录结构，统一为 `00-07` 编号体系
-- 新增 `docs/00-文档命名整理规则.md`
-- 新增平台纠偏文档，明确 NovelFork 当前目标是回归 NarraFork 路线
-- 新增平台迁移方案、回正规划和迁移待办清单
-- 删除误导性的 `docs/05-发布文档/` 整组文档
-- 将旧架构、实现参考、规划、测试和历史分析重新归档到新目录
-- 新增 NarraFork 依赖参考与更新日志参考文档
+### 创作工作台
+- 三栏布局：资源树 / TipTap 富文本编辑器 / 右侧面板
+- 资源管理器：章节、候选稿、草稿、大纲、经纬、故事文件、真相文件、素材、发布报告
+- Truth/Story 文件全部中文化（18 个映射）
+- 章节/草稿/候选稿/文件删除功能（6 个 DELETE API）
+- 导出 Markdown/TXT
 
-### Planning
-- 明确当前阶段不是继续强化旧 PWA/Node 外壳，而是进行平台回正
-- 形成 Bun 单入口、本地单体应用、`bun compile` 单文件分发的目标口径
+### 写作模式
+- 6 种写作模式接入 LLM 真实生成（续写/扩写/补写/对话/多版本/大纲分支）
+- 非破坏性写入：AI 结果只进候选区
+- prompt-preview 降级路径（无 session LLM 时）
 
-### Cleanup
-- 将 `VERSION_HISTORY.md` 迁入 docs 体系
-- 将 `TEST_REPORT.md` 迁入 docs 体系
-- 重写根目录 `README.md` 与 `ROADMAP.md`，去除 InkOS 主叙事
+### AI 动作
+- 生成下一章 / 续写段落 / 审校 / 改写 / 去 AI 味 / 连续性检查
+- 所有动作返回真实 API 数据（非固定文案）
+
+### Agent 系统
+- 5 种 Agent 角色：Writer / Planner / Auditor / Architect / Explorer
+- agentId → 专属 system prompt（200+ 行领域知识/角色）
+- session-chat-service 自动注入 agent prompt
+- 编排函数 runWritingPipeline（Explorer → Planner → Writer → Auditor）
+- Explorer Agent 新增（只读探索角色）
+- ToolsTab 默认开关调整：9 开 / 13 关
+
+### 驾驶舱
+- 右侧面板默认 Tab：总览 / 伏笔 / 设定 / AI
+- 总览：日更进度 + 章节进度 + 当前焦点 + 最近摘要 + 风险
+- 伏笔：bible foreshadow events + pending_hooks.md 预览
+- 设定：bible settings + book_rules.md
+- AI：provider/model 状态 + 最近候选稿 metadata
+
+### 故事经纬
+- Bible/Jingwei API：人物/事件/设定/章节摘要 CRUD
+- 三种可见性：tracked / global / nested
+- 时间线纪律（防剧透）
+- 经纬模板应用
+- 问卷系统 + AI 建议 + 核心设定变更协议
+
+### 合规与预设
+- 敏感词扫描（5 平台规则集）
+- AI 味检测（12 规则本地 + 朱雀 API）
+- 发布就绪检查 + AI 使用声明生成
+- 6 流派 / 5 文风 / 6 基底 / 8 逻辑规则预设
+
+### 工程底座
+- createAppStore：全局状态 pub/sub（35 行）
+- API Client：15+ typed 方法（books/chapters/candidates/progress）
+- 统一工具目录：Core 18 + NarraFork 22 = 40 个工具
+- bun compile：单文件可执行程序（115MB）
+
+### 平台
+- PWA 支持（autoUpdate + standalone）
+- Bun + Hono + React 19 + SQLite + Vite
+- 137 测试文件 / 801 测试 / typecheck 通过
+
+### 文档
+- 能力矩阵 v2.0（覆盖全部 spec）
+- 系统架构 / 创作流程 / 使用指南 / API 接口 全部更新
+- AI 写作工具对比分析
+- 根/包/文档 README 完善
 
 ---
 
-## Historical Note
+## v0.0.0 (2026-04-19)
 
-如果需要查看旧路线时期的历史资料，请看：
-- `docs/07-测试报告/02-历史归档/`
-- `docs/04-开发指南/05-调研规划/05-版本演进历史.md`
+### 项目基础
+- Fork 自 InkOS，专注中文网文创作
+- monorepo 结构：core / studio / cli
+- Bun + React 19 + Hono + SQLite 技术栈
+- 多 Agent 写作管线骨架
+- 旧平台纠偏，文档重构
