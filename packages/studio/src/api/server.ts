@@ -71,6 +71,8 @@ import {
   createProvidersRouter,
   createRuntimeCapabilitiesRouter,
   createPlatformIntegrationsRouter,
+  createVirtualModelsRouter,
+  createWritingModelProfileRouter,
   createGitRouter,
   createAgentConfigRouter,
   createToolsRouter,
@@ -322,6 +324,8 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     app.route("/api/runtime-capabilities", createRuntimeCapabilitiesRouter());
 
     app.route("/api/platform-integrations", createPlatformIntegrationsRouter({ store: providerStore }));
+    app.route("/api/virtual-models", createVirtualModelsRouter({ store: providerStore }));
+    app.route("/api/settings/writing-model-profile", createWritingModelProfileRouter({ store: providerStore }));
 
     app.route("/api/git", createGitRouter());
 

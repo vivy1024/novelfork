@@ -1,3 +1,4 @@
+import { providerApiModeLabel, providerCompatibilityLabel } from "../../lib/display-labels";
 import type { ApiProvider } from "../provider-types";
 
 export function ApiProviderCard({
@@ -33,12 +34,12 @@ export function ApiProviderCard({
           <div className="mt-1 flex flex-wrap gap-1">
             {provider.apiMode && (
               <span className="inline-block rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                {provider.apiMode}
+                {providerApiModeLabel(provider.apiMode)}
               </span>
             )}
             {provider.compatibility && (
               <span className="inline-block rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                {provider.compatibility.replace("-compatible", "")}
+                {providerCompatibilityLabel(provider.compatibility)}
               </span>
             )}
           </div>

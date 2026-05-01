@@ -23,6 +23,7 @@ function cloneDefaultRoutines(): Routines {
     globalPrompts: [...DEFAULT_ROUTINES.globalPrompts],
     systemPrompts: [...DEFAULT_ROUTINES.systemPrompts],
     mcpTools: [...DEFAULT_ROUTINES.mcpTools],
+    hooks: [...DEFAULT_ROUTINES.hooks],
   };
 }
 
@@ -40,6 +41,7 @@ export function normalizeRoutines(input: Partial<Routines> | null | undefined): 
     globalPrompts: Array.isArray(source.globalPrompts) ? [...source.globalPrompts] : fallback.globalPrompts,
     systemPrompts: Array.isArray(source.systemPrompts) ? [...source.systemPrompts] : fallback.systemPrompts,
     mcpTools: Array.isArray(source.mcpTools) ? [...source.mcpTools] : fallback.mcpTools,
+    hooks: Array.isArray(source.hooks) ? [...source.hooks] : fallback.hooks,
   };
 }
 
@@ -125,6 +127,7 @@ export function mergeRoutines(global: Routines, project: Routines | null): Routi
     globalPrompts: [...globalRoutines.globalPrompts],
     systemPrompts: mergeByKey(globalRoutines.systemPrompts, projectRoutines.systemPrompts, (item) => item.id),
     mcpTools: mergeByKey(globalRoutines.mcpTools, projectRoutines.mcpTools, (item) => item.id),
+    hooks: mergeByKey(globalRoutines.hooks, projectRoutines.hooks, (item) => item.id),
   };
 }
 

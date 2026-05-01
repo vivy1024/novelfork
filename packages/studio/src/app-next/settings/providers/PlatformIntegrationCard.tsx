@@ -8,7 +8,7 @@ const IMPORT_METHOD_LABELS: Record<PlatformImportMethod, string> = {
 };
 
 function importStatusLabel(integration: PlatformIntegrationCatalogItem): string {
-  return integration.supportedImportMethods.includes("json-account") ? "JSON 可导入" : "待接入";
+  return integration.supportedImportMethods.includes("json-account") ? "JSON 可导入" : "未开放";
 }
 
 export function PlatformIntegrationCard({
@@ -46,18 +46,9 @@ export function PlatformIntegrationCard({
             </span>
           </div>
         </div>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={integration.enabled}
-          aria-label={`${integration.name} 平台启用状态（后续接入）`}
-          className={`relative inline-flex h-5 w-9 shrink-0 cursor-not-allowed items-center rounded-full transition-colors ${integration.enabled ? "bg-primary" : "bg-muted"}`}
-          disabled
-          onClick={(event) => event.stopPropagation()}
-          title="后续接入平台启停后端"
-        >
-          <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${integration.enabled ? "translate-x-4" : "translate-x-0.5"}`} />
-        </button>
+        <span className={`rounded px-2 py-0.5 text-xs font-medium ${integration.enabled ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>
+          {integration.enabled ? "可用" : "不可用"}
+        </span>
       </div>
 
       <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">{integration.description}</p>
@@ -78,9 +69,7 @@ export function PlatformIntegrationCard({
       </div>
 
       <div className="mt-3 flex flex-wrap gap-1">
-        {integration.supportedImportMethods.length === 0 ? (
-          <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">后续接入</span>
-        ) : integration.supportedImportMethods.map((method) => (
+        {integration.supportedImportMethods.map((method) => (
           <span key={method} className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
             {IMPORT_METHOD_LABELS[method]}
           </span>

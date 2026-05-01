@@ -37,6 +37,9 @@ describe("ModelPicker", () => {
     render(<ModelPicker theme="light" onChange={onChange} />);
 
     expect((await screen.findAllByText("Sub2API · GPT-5 Codex")).length).toBeGreaterThan(0);
+    expect(screen.getByText("来源：自动发现")).toBeTruthy();
+    expect(screen.getByText("测试：连接成功")).toBeTruthy();
+    expect(screen.queryByText(/来源：detected|测试：success/)).toBeNull();
     expect(fetchJsonMock).toHaveBeenCalledWith("/api/providers/models");
 
     onChange.mockClear();

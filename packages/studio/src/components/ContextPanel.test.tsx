@@ -8,7 +8,7 @@ vi.mock("../hooks/use-api", () => ({
 }));
 
 vi.mock("./AutoCompressToggle", () => ({
-  AutoCompressToggle: () => <div>AutoCompressToggle</div>,
+  AutoCompressToggle: () => <div>自动压缩（超过 80%）</div>,
 }));
 
 import { ContextPanel } from "./ContextPanel";
@@ -70,9 +70,11 @@ describe("ContextPanel", () => {
     expect(screen.getByText("上下文治理")).toBeTruthy();
     expect(screen.getByText(/压缩阈值 90%/)).toBeTruthy();
     expect(screen.getByText(/截断目标 60%/)).toBeTruthy();
-    expect(screen.getByText("策略来源：runtimeControls.contextCompressionThresholdPercent")).toBeTruthy();
-    expect(screen.getByText(/当前上下文未达到 runtimeControls.contextCompressionThresholdPercent=90% 的压缩阈值/)).toBeTruthy();
-    expect(screen.getByText("AutoCompressToggle")).toBeTruthy();
+    expect(screen.getByText("策略来源：上下文压缩阈值")).toBeTruthy();
+    expect(screen.getByText(/当前上下文未达到上下文压缩阈值=90% 的压缩阈值/)).toBeTruthy();
+    expect(screen.queryByText("chapter_summaries")).toBeNull();
+    expect(screen.getByText("自动压缩（超过 80%）")).toBeTruthy();
+    expect(screen.queryByText("AutoCompressToggle")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "压缩上下文" }));
     expect(fetchJsonMock).toHaveBeenCalledWith("/api/context/book-demo/compress", { method: "POST" });

@@ -103,6 +103,20 @@ describe("providers route runtime store", () => {
     expect(JSON.stringify(body)).not.toContain("sk-secret");
   });
 
+  it("returns provider summary and grouped model inventory for the control plane", async () => {
+    await store.createProvider({ id: "sub2api", name: "Sub2API", type: "custom", enabled: true, priority: 1, apiKeyRequired: true, config: { apiKey: "sk-secret" }, models: [{ id: "gpt-5-codex", name: "GPT-5 Codex", contextWindow: 192000, maxOutputTokens: 8192, source: "detected", lastTestStatus: "success" }] });
+    await store.createVirtualModel({ id: "draft", name: "正文模型", enabled: true, routingMode: "priority", tags: ["正文"], members: [{ providerId: "sub2api", modelId: "gpt-5-codex", priority: 1, enabled: true }] });
+    const app = createProvidersRouter({ store, adapters: createProviderAdapterRegistry() });
+
+    const summary = await app.request("http://localhost/summary");
+    const grouped = await app.request("http://localhost/models/grouped");
+
+    expect(summary.status).toBe(200);
+    await expect(summary.json()).resolves.toMatchObject({ summary: { providerCount: 1, enabledProviderCount: 1, physicalModelCount: 1, virtualModelCount: 1, issueCount: 0 } });
+    expect(grouped.status).toBe(200);
+    await expect(grouped.json()).resolves.toMatchObject({ groups: [{ providerId: "sub2api", providerName: "Sub2API", models: [expect.objectContaining({ id: "gpt-5-codex", lastTestStatus: "success" })] }] });
+  });
+
   it("returns non-2xx for unsupported adapters and store write failures", async () => {
     await store.createProvider({ id: "anthropic", name: "Anthropic", type: "anthropic", enabled: true, priority: 1, apiKeyRequired: true, compatibility: "anthropic-compatible", config: { apiKey: "sk-ant" }, models: [] });
     const app = createProvidersRouter({ store, adapters: createProviderAdapterRegistry() });

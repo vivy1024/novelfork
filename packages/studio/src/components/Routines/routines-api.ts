@@ -20,6 +20,7 @@ function cloneDefaultRoutines(): Routines {
     globalPrompts: [...DEFAULT_ROUTINES.globalPrompts],
     systemPrompts: [...DEFAULT_ROUTINES.systemPrompts],
     mcpTools: [...DEFAULT_ROUTINES.mcpTools],
+    hooks: [...DEFAULT_ROUTINES.hooks],
   };
 }
 

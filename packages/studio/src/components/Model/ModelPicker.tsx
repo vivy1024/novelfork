@@ -16,6 +16,28 @@ interface ModelPickerProps {
   theme: "light" | "dark";
 }
 
+const MODEL_SOURCE_LABELS: Record<string, string> = {
+  detected: "自动发现",
+  manual: "手动配置",
+  imported: "配置导入",
+};
+
+const MODEL_TEST_STATUS_LABELS: Record<string, string> = {
+  success: "连接成功",
+  failed: "连接失败",
+  error: "连接异常",
+  pending: "待测试",
+  untested: "未测试",
+};
+
+function modelSourceLabel(source: string | undefined): string {
+  return source ? MODEL_SOURCE_LABELS[source] ?? "运行时模型池" : "运行时模型池";
+}
+
+function modelTestStatusLabel(status: string | undefined): string {
+  return status ? MODEL_TEST_STATUS_LABELS[status] ?? "待确认" : "未测试";
+}
+
 export const ModelPicker = React.memo(function ModelPicker({
   value,
   onChange,
@@ -119,8 +141,8 @@ export const ModelPicker = React.memo(function ModelPicker({
             <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-muted-foreground">
               <span>上下文：{((currentModel.contextWindow ?? 0) / 1000).toFixed(0)}K</span>
               <span>最大输出：{((currentModel.maxOutputTokens ?? 0) / 1000).toFixed(0)}K</span>
-              <span>来源：{currentModel.source ?? "unknown"}</span>
-              <span>测试：{currentModel.lastTestStatus ?? "untested"}</span>
+              <span>来源：{modelSourceLabel(currentModel.source)}</span>
+              <span>测试：{modelTestStatusLabel(currentModel.lastTestStatus)}</span>
             </div>
           ) : null}
           {selectedModelMissing ? (

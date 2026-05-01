@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { UnsupportedCapability } from "../../components/runtime/UnsupportedCapability";
 import { Button } from "../../components/ui/button";
 import { fetchJson, postApi, putApi, useApi } from "../../hooks/use-api";
+import { internalViewLabel } from "../lib/display-labels";
 import type { DraftResource } from "../../shared/contracts";
 import { InlineError } from "../components/feedback";
 import type { StudioResourceNode } from "./resource-adapter";
@@ -105,8 +105,24 @@ const BIBLE_CATEGORY_CONFIG: Record<BibleCategoryKey, BibleCategoryConfig> = {
   worldRules: { key: "worldRules", label: "世界规则", endpointKind: "settings", dataKey: "settings", settingCategory: "world-rule", detailField: "content" },
 };
 
+const BIBLE_EVENT_TYPE_LABELS: Record<string, string> = {
+  foreshadow: "伏笔",
+};
+
+const BIBLE_ENTRY_SOURCE_LABELS: Record<string, string> = {
+  "pending_hooks.md": "伏笔追踪文件（pending_hooks.md）",
+};
+
 function isBibleCategoryKey(value: unknown): value is BibleCategoryKey {
   return typeof value === "string" && value in BIBLE_CATEGORY_CONFIG;
+}
+
+function bibleEventTypeLabel(value: string | undefined): string {
+  return value ? BIBLE_EVENT_TYPE_LABELS[value] ?? "事件" : "事件";
+}
+
+function bibleEntrySourceLabel(value: string): string {
+  return BIBLE_ENTRY_SOURCE_LABELS[value] ?? value;
 }
 
 function resolveBibleCategoryConfig(node: StudioResourceNode): BibleCategoryConfig | null {
@@ -270,7 +286,7 @@ export function DraftEditor({ node }: { readonly node: StudioResourceNode }) {
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3">
         <div>
           <h2 className="text-xl font-semibold">{draft?.title ?? node.title}</h2>
-          <p className="text-sm text-muted-foreground">DraftEditor · {draft?.wordCount ?? node.count ?? 0} 字 · 草稿保存状态：{statusText}</p>
+          <p className="text-sm text-muted-foreground">草稿 · {draft?.wordCount ?? node.count ?? 0} 字 · 草稿保存状态：{statusText}</p>
           {aiMetadataText && <p className="text-xs text-muted-foreground">{aiMetadataText}</p>}
         </div>
         <Button size="sm" variant="outline" type="button" disabled={!draft || saveState === "loading" || saveState === "saving"} onClick={() => void saveDraft()}>
@@ -375,8 +391,8 @@ function BibleEntryCard({ entry, config, onEdit }: { readonly entry: BibleWorksp
       {detail ? <p className="whitespace-pre-wrap text-sm text-muted-foreground">{detail}</p> : <p className="text-sm text-muted-foreground">暂无内容</p>}
       {chapterText && <p className="text-xs text-muted-foreground">{chapterText}</p>}
       {entry.relatedHookIds?.length ? <p className="text-xs text-muted-foreground">关联伏笔：{entry.relatedHookIds.join("、")}</p> : null}
-      {entry.source && <p className="text-xs text-muted-foreground">来源：{entry.source}</p>}
-      {config.eventType && <p className="text-xs text-muted-foreground">伏笔状态：{entry.eventType ?? config.eventType}</p>}
+      {entry.source && <p className="text-xs text-muted-foreground">来源：{bibleEntrySourceLabel(entry.source)}</p>}
+      {config.eventType && <p className="text-xs text-muted-foreground">伏笔状态：{bibleEventTypeLabel(entry.eventType ?? config.eventType)}</p>}
     </div>
   );
 }
@@ -393,12 +409,9 @@ export function BibleCategoryView({ node }: { readonly node: StudioResourceNode 
 
   if (!config || !bookId || !endpoint) {
     return (
-      <UnsupportedCapability
-        title={`${node.title} 暂未接入经纬编辑`}
-        reason="缺少 bookId 或经纬分类映射，不能伪造成功。"
-        status="planned"
-        capability={`workspace.bible.${String(node.metadata?.category ?? node.id)}`}
-      />
+      <div className="rounded-lg border border-border bg-muted/20 p-4 text-sm text-muted-foreground">
+        当前资源缺少作品或经纬分类映射，无法编辑。请选择具体作品下的经纬资源。
+      </div>
     );
   }
 
@@ -426,7 +439,7 @@ export function BibleCategoryView({ node }: { readonly node: StudioResourceNode 
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border pb-3">
         <div>
           <h2 className="text-xl font-semibold">{node.title}</h2>
-          <p className="text-sm text-muted-foreground">BibleCategoryView · {config.label}</p>
+          <p className="text-sm text-muted-foreground">经纬分类 · {config.label}</p>
         </div>
         <Button size="sm" type="button" onClick={() => setCreating(true)}>
           新建{config.label}
@@ -480,12 +493,9 @@ export function OutlineEditor({ node }: { readonly node: StudioResourceNode }) {
 
   if (!bookId || !saveEndpoint) {
     return (
-      <UnsupportedCapability
-        title="大纲暂未接入编辑"
-        reason="缺少 bookId，不能伪造大纲保存成功。"
-        status="planned"
-        capability="workspace.outline.editor"
-      />
+      <div className="rounded-lg border border-border bg-muted/20 p-4 text-sm text-muted-foreground">
+        当前资源缺少作品信息，无法保存大纲。请选择具体作品下的大纲文件。
+      </div>
     );
   }
 
@@ -519,7 +529,7 @@ export function OutlineEditor({ node }: { readonly node: StudioResourceNode }) {
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3">
         <div>
           <h2 className="text-xl font-semibold">{node.title}</h2>
-          <p className="text-sm text-muted-foreground">OutlineEditor · {fileName}</p>
+          <p className="text-sm text-muted-foreground">{internalViewLabel("OutlineEditor")} · {fileName}</p>
           <p className="text-xs text-muted-foreground">大纲保存状态：{statusText}</p>
         </div>
         <Button size="sm" type="button" disabled={loading || status === "saving"} onClick={() => void saveOutline()}>
@@ -561,14 +571,14 @@ export function BibleEntryEditor({ node }: { readonly node: StudioResourceNode }
   };
 
   if (!config) {
-    return <PlaceholderSection title={node.title} meta="BibleEntryEditor" description="经纬条目缺少分类映射，不能伪造编辑成功。" />;
+    return <PlaceholderSection title={node.title} meta={internalViewLabel("BibleEntryEditor")} description="经纬条目缺少分类映射，不能伪造编辑成功。" />;
   }
 
   return (
     <div className="space-y-4">
       <div className="space-y-1 border-b border-border pb-3">
         <h2 className="text-xl font-semibold">{node.title}</h2>
-        <p className="text-sm text-muted-foreground">BibleEntryEditor · {config.label}</p>
+        <p className="text-sm text-muted-foreground">{internalViewLabel("BibleEntryEditor")} · {config.label}</p>
       </div>
       <BibleEntryCard entry={inlineEntry} config={config} onEdit={() => undefined} />
     </div>
@@ -589,7 +599,7 @@ export function PublishReportViewer({ node }: { readonly node: StudioResourceNod
     <div className="space-y-4">
       <div className="space-y-1 border-b border-border pb-3">
         <h2 className="text-xl font-semibold">{node.title}</h2>
-        <p className="text-sm text-muted-foreground">PublishReportViewer · {node.subtitle ?? "unknown"}</p>
+        <p className="text-sm text-muted-foreground">{internalViewLabel("PublishReportViewer")} · {node.subtitle ?? "未知"}</p>
       </div>
       {content ? (
         <pre className="whitespace-pre-wrap rounded-lg border border-border bg-background p-3 text-sm leading-6">{content}</pre>
@@ -604,11 +614,9 @@ export function PublishReportViewer({ node }: { readonly node: StudioResourceNod
 
 export function UnsupportedWorkspaceNodeView({ node }: { readonly node: StudioResourceNode }) {
   return (
-    <UnsupportedCapability
-      title={`${node.title} 当前不可直接编辑`}
-      reason="该资源节点当前只作为结构容器存在；后续若接入真实 viewer/editor，会在资源 registry 中显式替换。"
-      status="planned"
-      capability={`workspace.resource.${node.kind}`}
-    />
+    <div className="rounded-lg border border-border bg-muted/20 p-4 text-sm text-muted-foreground">
+      <div className="font-medium text-foreground">{node.title}</div>
+      <p className="mt-1">该资源节点作为结构容器存在，请在左侧选择具体章节、经纬条目、大纲或报告。</p>
+    </div>
   );
 }

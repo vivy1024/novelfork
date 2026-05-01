@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 
-import { UnsupportedCapability } from "@/components/runtime/UnsupportedCapability";
 import type { PlatformAccount, PlatformId, PlatformImportMethod, PlatformIntegrationCatalogItem, PlatformJsonImportPayload } from "../provider-types";
 import { PlatformAccountTable } from "./PlatformAccountTable";
 
@@ -11,22 +10,38 @@ const IMPORT_METHOD_LABELS: Record<PlatformImportMethod, string> = {
   "device-code": "设备码添加",
 };
 
+function applyAccount(accounts: PlatformAccount[], account: PlatformAccount): PlatformAccount[] {
+  const exists = accounts.some((candidate) => candidate.id === account.id);
+  return exists
+    ? accounts.map((candidate) => (candidate.id === account.id ? account : candidate))
+    : [account, ...accounts];
+}
+
 export function PlatformIntegrationDetail({
   integration,
   onBack,
   listAccounts,
   importJsonAccount,
+  refreshAccountQuota,
+  setCurrentAccount,
+  updateAccountStatus,
+  deleteAccount,
   onAccountImported,
 }: {
   readonly integration: PlatformIntegrationCatalogItem;
   readonly onBack: () => void;
   readonly listAccounts: (platformId: PlatformId) => Promise<{ accounts: PlatformAccount[] }>;
   readonly importJsonAccount: (platformId: PlatformId, payload: PlatformJsonImportPayload) => Promise<{ account: PlatformAccount }>;
+  readonly refreshAccountQuota: (platformId: PlatformId, accountId: string) => Promise<{ account: PlatformAccount }>;
+  readonly setCurrentAccount: (platformId: PlatformId, accountId: string) => Promise<{ account: PlatformAccount }>;
+  readonly updateAccountStatus: (platformId: PlatformId, accountId: string, status: PlatformAccount["status"]) => Promise<{ account: PlatformAccount }>;
+  readonly deleteAccount: (platformId: PlatformId, accountId: string) => Promise<{ success: boolean }>;
   readonly onAccountImported: (platformId: PlatformId, account: PlatformAccount) => void;
 }) {
   const [accounts, setAccounts] = useState<PlatformAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
+  const [busyAccountId, setBusyAccountId] = useState<string | null>(null);
   const [jsonText, setJsonText] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -64,7 +79,7 @@ export function PlatformIntegrationDetail({
         accountJson: jsonText,
         ...(displayName.trim() ? { displayName: displayName.trim() } : {}),
       });
-      setAccounts((current) => [result.account, ...current.filter((account) => account.id !== result.account.id)]);
+      setAccounts((current) => applyAccount(current, result.account));
       onAccountImported(integration.id, result.account);
       setFeedback("JSON 账号已导入，可在账号表格中管理。");
       setJsonText("");
@@ -73,6 +88,42 @@ export function PlatformIntegrationDetail({
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
       setImporting(false);
+    }
+  };
+
+  const runAccountAction = async (account: PlatformAccount, action: () => Promise<{ account?: PlatformAccount; success?: boolean }>, successMessage: string) => {
+    setBusyAccountId(account.id);
+    setError(null);
+    setFeedback(null);
+    try {
+      const result = await action();
+      if (result.account) {
+        const updatedAccount = result.account;
+        setAccounts((current) => applyAccount(
+          current.map((candidate) => updatedAccount.current && candidate.platformId === updatedAccount.platformId ? { ...candidate, current: candidate.id === updatedAccount.id } : candidate),
+          updatedAccount,
+        ));
+      }
+      setFeedback(successMessage);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setBusyAccountId(null);
+    }
+  };
+
+  const removeAccount = async (account: PlatformAccount) => {
+    setBusyAccountId(account.id);
+    setError(null);
+    setFeedback(null);
+    try {
+      await deleteAccount(integration.id, account.id);
+      setAccounts((current) => current.filter((candidate) => candidate.id !== account.id));
+      setFeedback("账号已删除。");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setBusyAccountId(null);
     }
   };
 
@@ -103,9 +154,7 @@ export function PlatformIntegrationDetail({
           </span>
         </div>
         <div className="flex flex-wrap gap-1">
-          {integration.supportedImportMethods.length === 0 ? (
-            <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">后续接入</span>
-          ) : integration.supportedImportMethods.map((method) => (
+          {integration.supportedImportMethods.map((method) => (
             <span key={method} className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
               {IMPORT_METHOD_LABELS[method]}
             </span>
@@ -113,12 +162,12 @@ export function PlatformIntegrationDetail({
         </div>
       </section>
 
-      <section className="space-y-3 rounded-lg border border-border p-4">
-        <div>
-          <h3 className="text-base font-semibold">JSON 账号导入</h3>
-          <p className="text-xs text-muted-foreground">Codex / Kiro 平台集成通过导入账号 JSON 建立平台账号；导入后账号进入下方表格，后续用于配额刷新、切号和调用链路。</p>
-        </div>
-        {supportsJsonImport ? (
+      {supportsJsonImport && (
+        <section className="space-y-3 rounded-lg border border-border p-4">
+          <div>
+            <h3 className="text-base font-semibold">JSON 账号导入</h3>
+            <p className="text-xs text-muted-foreground">Codex / Kiro 平台集成通过导入账号 JSON 建立平台账号；导入后账号进入下方表格，用于配额刷新、切号和调用链路。</p>
+          </div>
           <div className="space-y-3">
             <label className="block text-sm">
               账号显示名（可选）
@@ -142,45 +191,32 @@ export function PlatformIntegrationDetail({
               type="button"
               className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-60"
               disabled={!jsonText.trim() || importing}
+              title={!jsonText.trim() ? "请先粘贴 JSON 账号数据" : undefined}
               onClick={() => void submitJsonImport()}
             >
-              导入 JSON 账号
+              {importing ? "正在导入…" : "导入 JSON 账号"}
             </button>
           </div>
-        ) : (
-          <UnsupportedCapability
-            title={`${integration.name} JSON 导入未接入`}
-            reason="该平台当前尚未开放 JSON 账号导入，接口接入前不会展示可提交的导入按钮。"
-            status="planned"
-            capability={`platform.${integration.id}.json-import`}
-          />
-        )}
-      </section>
+        </section>
+      )}
 
       <section className="space-y-3 rounded-lg border border-border p-4">
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <div>
-            <h3 className="text-base font-semibold">账号管理</h3>
-            <p className="text-xs text-muted-foreground">平台账号来自真实导入数据；未导入时显示空态，不伪造账号或配额。</p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <button type="button" disabled className="rounded-lg border border-border px-3 py-1.5 text-sm text-muted-foreground disabled:opacity-60">切换账号（后续接入）</button>
-            <button type="button" disabled className="rounded-lg border border-border px-3 py-1.5 text-sm text-muted-foreground disabled:opacity-60">刷新配额（后续接入）</button>
-            <button type="button" disabled className="rounded-lg border border-border px-3 py-1.5 text-sm text-muted-foreground disabled:opacity-60">删除账号（后续接入）</button>
-          </div>
+        <div>
+          <h3 className="text-base font-semibold">账号管理</h3>
+          <p className="text-xs text-muted-foreground">平台账号来自真实导入数据；未导入时显示空态，不伪造账号或配额。</p>
         </div>
-
-        <UnsupportedCapability
-          title="平台账号操作未接入"
-          reason="切换账号、刷新配额和删除账号还没有真实后端 adapter；按钮保持 disabled，避免假成功。"
-          status="planned"
-          capability="platform.account.actions"
-        />
 
         {loading ? (
           <div className="rounded-lg border border-border p-3 text-sm text-muted-foreground">正在加载平台账号…</div>
         ) : (
-          <PlatformAccountTable accounts={accounts} />
+          <PlatformAccountTable
+            accounts={accounts}
+            busyAccountId={busyAccountId}
+            onRefreshQuota={(account) => void runAccountAction(account, () => refreshAccountQuota(integration.id, account.id), "配额已刷新。")}
+            onSetCurrent={(account) => void runAccountAction(account, () => setCurrentAccount(integration.id, account.id), "已设为当前账号。")}
+            onToggleStatus={(account) => void runAccountAction(account, () => updateAccountStatus(integration.id, account.id, account.status === "disabled" ? "active" : "disabled"), account.status === "disabled" ? "账号已启用。" : "账号已停用。")}
+            onDelete={(account) => void removeAccount(account)}
+          />
         )}
       </section>
     </section>

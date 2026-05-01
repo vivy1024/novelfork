@@ -1,5 +1,6 @@
 import { EmptyState } from "../../components/feedback";
 import type { ProviderApiMode, ProviderCompatibility } from "@/shared/provider-catalog";
+import { providerApiModeLabel, providerCompatibilityLabel } from "../../lib/display-labels";
 import type { ApiProvider } from "../provider-types";
 import { ApiProviderCard } from "./ApiProviderCard";
 
@@ -12,11 +13,7 @@ export interface ProviderFormState {
   readonly compatibility: ProviderCompatibility;
 }
 
-const API_MODE_LABELS: Record<ProviderApiMode, string> = {
-  completions: "Completions",
-  responses: "Responses",
-  codex: "Codex",
-};
+const API_MODES: ProviderApiMode[] = ["completions", "responses", "codex"];
 
 function isFormValid(form: ProviderFormState): boolean {
   return Boolean(form.name.trim() && form.baseUrl.trim() && form.apiKey.trim());
@@ -47,8 +44,8 @@ export function ApiProvidersSection({
     <section className="space-y-3">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h3 className="text-base font-semibold">API key 接入</h3>
-          <p className="text-xs text-muted-foreground">仅管理 Base URL、API Key、兼容格式和模型列表；不展示平台账号、配额或切号。</p>
+          <h3 className="text-base font-semibold">密钥接入</h3>
+          <p className="text-xs text-muted-foreground">仅管理接口地址、访问密钥、兼容格式和模型列表；不展示平台账号、配额或切号。</p>
         </div>
         <button
           type="button"
@@ -64,7 +61,7 @@ export function ApiProvidersSection({
       )}
 
       {providers.length === 0 ? (
-        <EmptyState title="暂无 API key 供应商" description="点击“添加供应商”接入 OpenAI-compatible 或 Anthropic-compatible API。" />
+        <EmptyState title="暂无密钥供应商" description="点击“添加供应商”接入 OpenAI 或 Anthropic 兼容接口。" />
       ) : (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {providers.map((provider) => (
@@ -117,14 +114,14 @@ function AddProviderForm({
         <label className="text-sm">
           API 模式
           <select className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2" value={form.apiMode} onChange={(event) => setForm({ ...form, apiMode: event.target.value as ProviderApiMode })}>
-            {Object.entries(API_MODE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            {API_MODES.map((value) => <option key={value} value={value}>{providerApiModeLabel(value)}</option>)}
           </select>
         </label>
         <label className="text-sm">
           兼容格式
           <select className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2" value={form.compatibility} onChange={(event) => setForm({ ...form, compatibility: event.target.value as ProviderCompatibility })}>
-            <option value="openai-compatible">OpenAI-compatible</option>
-            <option value="anthropic-compatible">Anthropic-compatible</option>
+            <option value="openai-compatible">{providerCompatibilityLabel("openai-compatible")}</option>
+            <option value="anthropic-compatible">{providerCompatibilityLabel("anthropic-compatible")}</option>
           </select>
         </label>
       </div>

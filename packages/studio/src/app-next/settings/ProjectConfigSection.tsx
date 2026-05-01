@@ -46,11 +46,11 @@ export function ProjectConfigSection() {
           <Row label="项目名称" value={data.name} />
           <Row label="模型" value={data.model} />
           <Row label="供应商" value={data.provider} />
-          <Row label="Base URL" value={data.baseUrl} />
+          <Row label="接口地址" value={data.baseUrl} />
           <Row label="语言" value={data.language} />
           <Row label="流式输出" value={data.stream ? "是" : "否"} />
-          <Row label="Temperature" value={String(data.temperature)} />
-          <Row label="Max Tokens" value={String(data.maxTokens)} />
+          <Row label="随机性" value={String(data.temperature)} />
+          <Row label="最大令牌数" value={String(data.maxTokens)} />
         </div>
       )}
 

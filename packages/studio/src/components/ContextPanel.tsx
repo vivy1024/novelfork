@@ -93,6 +93,35 @@ const CONTEXT_LAYER_LABELS: Record<ContextEntryLayer, string> = {
   tool: "工具层",
 };
 
+const GOVERNANCE_SOURCE_LABELS: Record<string, string> = {
+  "runtimeControls.contextCompressionThresholdPercent": "上下文压缩阈值",
+  "runtimeControls.contextTruncateTargetPercent": "上下文截断目标",
+};
+
+const CONTEXT_SOURCE_LABELS: Record<string, string> = {
+  chapter_summaries: "章节摘要",
+  story_bible: "故事经纬",
+  truth_files: "真相文件",
+  assistant: "AI 回复",
+  user: "用户消息",
+  system: "系统提示",
+};
+
+function governanceSourceLabel(source: string): string {
+  return GOVERNANCE_SOURCE_LABELS[source] ?? "上下文治理策略";
+}
+
+function contextSourceLabel(source: string): string {
+  return CONTEXT_SOURCE_LABELS[source] ?? "上下文来源";
+}
+
+function formatGovernanceReason(reason: string | undefined): string | null {
+  if (!reason) return null;
+  return Object.entries(GOVERNANCE_SOURCE_LABELS)
+    .reduce((text, [key, label]) => text.replaceAll(key, label), reason)
+    .replace(/\s+(上下文压缩阈值|上下文截断目标)/g, "$1");
+}
+
 export function ContextPanel({
   visible,
   onClose,
@@ -245,6 +274,8 @@ export function ContextPanel({
 
   const ratio = budgetMax > 0 ? activeTokens / budgetMax : 0;
   const sessionMessageCount = sessionSummary?.messageCount ?? entries.length;
+  const governanceCompressionReason = formatGovernanceReason(governance?.compressionReason);
+  const governanceTruncateReason = formatGovernanceReason(governance?.truncateReason);
 
   if (!visible) return null;
 
@@ -297,9 +328,9 @@ export function ContextPanel({
           <div className="rounded-lg border border-border/60 bg-background px-3 py-2 text-[11px] text-muted-foreground">
             <p className="text-xs font-semibold text-foreground">上下文治理</p>
             <p>压缩阈值 {governance.compressionThresholdPercent}% / 截断目标 {governance.truncateTargetPercent}%</p>
-            <p>策略来源：{governance.source}</p>
-            {governance.compressionReason ? <p>{governance.compressionReason}</p> : null}
-            {governance.truncateReason ? <p>{governance.truncateReason}</p> : null}
+            <p>策略来源：{governanceSourceLabel(governance.source)}</p>
+            {governanceCompressionReason ? <p>{governanceCompressionReason}</p> : null}
+            {governanceTruncateReason ? <p>{governanceTruncateReason}</p> : null}
           </div>
         ) : null}
       </div>
@@ -390,7 +421,7 @@ export function ContextPanel({
                     )}
 
                     <span className="inline-flex items-center rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-bold text-primary shrink-0">
-                      {entry.source}
+                      {contextSourceLabel(entry.source)}
                     </span>
 
                     {entry.layer ? (

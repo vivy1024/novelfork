@@ -1,14 +1,11 @@
 import { useEffect, useState } from "react";
 
 import { EmptyState } from "../../components/feedback";
+import { modelTestStatusLabel, providerApiModeLabel, providerCompatibilityLabel } from "../../lib/display-labels";
 import type { ManagedProvider, Model, ProviderApiMode, ProviderCompatibility, ProviderType } from "@/shared/provider-catalog";
 import type { ApiProvider } from "../provider-types";
 
-const API_MODE_LABELS: Record<ProviderApiMode, string> = {
-  completions: "Completions",
-  responses: "Responses",
-  codex: "Codex",
-};
+const API_MODES: ProviderApiMode[] = ["completions", "responses", "codex"];
 
 function providerTypeFromCompatibility(compatibility: ProviderCompatibility): ProviderType {
   return compatibility === "anthropic-compatible" ? "anthropic" : "custom";
@@ -104,14 +101,14 @@ export function ApiProviderDetail({
           <label className="text-sm">
             兼容格式
             <select className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2" value={compatibility} onChange={(event) => setCompatibility(event.target.value as ProviderCompatibility)}>
-              <option value="openai-compatible">OpenAI-compatible</option>
-              <option value="anthropic-compatible">Anthropic-compatible</option>
+              <option value="openai-compatible">{providerCompatibilityLabel("openai-compatible")}</option>
+              <option value="anthropic-compatible">{providerCompatibilityLabel("anthropic-compatible")}</option>
             </select>
           </label>
           <label className="text-sm">
             API 模式
             <select className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2" value={apiMode} onChange={(event) => setApiMode(event.target.value as ProviderApiMode)}>
-              {Object.entries(API_MODE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              {API_MODES.map((value) => <option key={value} value={value}>{providerApiModeLabel(value)}</option>)}
             </select>
           </label>
         </div>
@@ -178,7 +175,7 @@ function ModelList({
             <div key={model.id} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2 text-sm">
               <div className="min-w-0 flex-1">
                 <span className="font-medium">{model.name}</span>
-                <span className="ml-2 text-xs text-muted-foreground">{model.lastTestStatus ?? "untested"}{model.lastTestLatency ? ` · ${model.lastTestLatency}ms` : ""}</span>
+                <span className="ml-2 text-xs text-muted-foreground">{modelTestStatusLabel(model.lastTestStatus)}{model.lastTestLatency ? ` · ${model.lastTestLatency}ms` : ""}</span>
               </div>
               <div className="flex items-center gap-2">
                 <label className="flex items-center gap-1 text-xs text-muted-foreground">

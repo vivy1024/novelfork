@@ -19,6 +19,26 @@ const COMMON_TOOLS = [
   "EnterWorktree", "ExitWorktree", "TodoWrite"
 ];
 
+const PERMISSION_LABELS: Record<PermissionBehavior, string> = {
+  allow: "直接允许",
+  ask: "需确认",
+  deny: "拒绝",
+};
+
+const PERMISSION_SOURCE_LABELS: Record<ToolPermission["source"], string> = {
+  user: "用户规则",
+  project: "项目规则",
+  managed: "托管规则",
+};
+
+function permissionLabel(permission: PermissionBehavior): string {
+  return PERMISSION_LABELS[permission];
+}
+
+function permissionSourceLabel(source: ToolPermission["source"]): string {
+  return PERMISSION_SOURCE_LABELS[source];
+}
+
 function PermissionSummaryCard({ title, count, description }: { title: string; count: number; description: string }) {
   return (
     <div className="rounded-lg border bg-card p-3">
@@ -91,28 +111,28 @@ export function PermissionsTab({ permissions, onChange }: PermissionsTabProps) {
     <div className="space-y-4">
       <div>
         <p className="text-sm text-muted-foreground mb-3">
-          Control which tools can be used automatically, require approval, or are blocked
+          配置哪些工具可自动执行、需要确认，或应被阻止。
         </p>
         <div className="text-xs text-muted-foreground space-y-1 mb-4">
-          <p>• <strong>Allow</strong>: Tool executes automatically without prompts</p>
-          <p>• <strong>Ask</strong>: Requires user approval before execution</p>
-          <p>• <strong>Deny</strong>: Tool is blocked and cannot be used</p>
-          <p>• Pattern supports wildcards: <code className="bg-muted px-1 rounded">git *</code> matches all git commands</p>
+          <p>• <strong>直接允许</strong>：命中规则后自动执行。</p>
+          <p>• <strong>需确认</strong>：执行前需要用户批准。</p>
+          <p>• <strong>拒绝</strong>：命中规则后阻止执行。</p>
+          <p>• 命令匹配支持通配符：<code className="bg-muted px-1 rounded">git *</code> 可匹配全部 git 命令。</p>
         </div>
       </div>
 
       <div className="grid gap-3 md:grid-cols-3">
-        <PermissionSummaryCard title="Bash allowlist / blocklist" count={bashRules.length} description="按 pattern 管理 Bash 命令白名单、黑名单和询问规则" />
+        <PermissionSummaryCard title="Bash 命令规则" count={bashRules.length} description="按命令匹配管理 Bash 的允许、确认和拒绝规则" />
         <PermissionSummaryCard title="MCP 工具权限" count={mcpRules.length} description="统一查看 mcp__server__tool 规则来源和权限" />
         <PermissionSummaryCard title="内置工具权限" count={builtInRules.length} description="Read / Write / Edit / Browser 等工具默认行为" />
       </div>
 
       {/* Add New Permission */}
       <div className="border rounded-lg p-3 bg-card">
-        <h3 className="text-sm font-medium mb-3">Add Permission Rule</h3>
+        <h3 className="text-sm font-medium mb-3">添加工具权限规则</h3>
         <div className="grid grid-cols-12 gap-2">
           <div className="col-span-4">
-            <label className="text-xs font-medium block mb-1">Tool Name</label>
+            <label className="text-xs font-medium block mb-1">工具名称</label>
             <input
               type="text"
               list="common-tools"
@@ -128,7 +148,7 @@ export function PermissionsTab({ permissions, onChange }: PermissionsTabProps) {
             </datalist>
           </div>
           <div className="col-span-3">
-            <label className="text-xs font-medium block mb-1">Pattern (optional)</label>
+            <label className="text-xs font-medium block mb-1">命令匹配（可选）</label>
             <input
               type="text"
               value={newPattern}
@@ -138,15 +158,15 @@ export function PermissionsTab({ permissions, onChange }: PermissionsTabProps) {
             />
           </div>
           <div className="col-span-3">
-            <label className="text-xs font-medium block mb-1">Permission</label>
+            <label className="text-xs font-medium block mb-1">权限策略</label>
             <select
               value={newPermission}
               onChange={(e) => setNewPermission(e.target.value as PermissionBehavior)}
               className="w-full px-2 py-1 text-sm border rounded bg-background"
             >
-              <option value="allow">Allow</option>
-              <option value="ask">Ask</option>
-              <option value="deny">Deny</option>
+              <option value="allow">直接允许</option>
+              <option value="ask">需确认</option>
+              <option value="deny">拒绝</option>
             </select>
           </div>
           <div className="col-span-2 flex items-end">
@@ -156,7 +176,7 @@ export function PermissionsTab({ permissions, onChange }: PermissionsTabProps) {
               className="w-full px-3 py-1 text-sm rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 flex items-center justify-center gap-1"
             >
               <Plus size={14} />
-              Add
+              添加
             </button>
           </div>
         </div>
@@ -181,11 +201,11 @@ export function PermissionsTab({ permissions, onChange }: PermissionsTabProps) {
                   </code>
                 )}
                 <span className={`text-xs font-medium ${getPermissionColor(perm.permission)}`}>
-                  {perm.permission}
+                  {permissionLabel(perm.permission)}
                 </span>
               </div>
               <div className="text-xs text-muted-foreground">
-                来源：{perm.source}
+                来源：{permissionSourceLabel(perm.source)}
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -194,14 +214,14 @@ export function PermissionsTab({ permissions, onChange }: PermissionsTabProps) {
                 onChange={(e) => handleUpdate(index, { permission: e.target.value as PermissionBehavior })}
                 className="px-2 py-1 text-xs border rounded bg-background"
               >
-                <option value="allow">Allow</option>
-                <option value="ask">Ask</option>
-                <option value="deny">Deny</option>
+                <option value="allow">直接允许</option>
+                <option value="ask">需确认</option>
+                <option value="deny">拒绝</option>
               </select>
               <button
                 onClick={() => setDeleteTarget(index)}
                 className="p-1 hover:bg-accent rounded text-red-600"
-                aria-label={`Delete permission rule for ${perm.tool}`}
+                aria-label={`删除 ${perm.tool} 的权限规则`}
               >
                 <Trash2 size={14} />
               </button>
@@ -211,17 +231,17 @@ export function PermissionsTab({ permissions, onChange }: PermissionsTabProps) {
 
         {permissions.length === 0 && (
           <div className="text-center py-8 text-sm text-muted-foreground">
-            No permission rules defined. All tools will use default behavior.
+            暂无工具权限规则，所有工具将沿用默认行为。
           </div>
         )}
       </div>
 
       <ConfirmDialog
         open={deleteTarget !== null}
-        title="Delete Permission Rule"
-        message={deleteTarget !== null ? `Delete the permission rule for ${permissions[deleteTarget]?.tool ?? "this tool"}? This cannot be undone.` : "Delete this permission rule? This cannot be undone."}
-        confirmLabel="Delete"
-        cancelLabel="Cancel"
+        title="删除工具权限规则"
+        message={deleteTarget !== null ? `删除 ${permissions[deleteTarget]?.tool ?? "这个工具"} 的权限规则？此操作不可撤销。` : "删除这条权限规则？此操作不可撤销。"}
+        confirmLabel="删除"
+        cancelLabel="取消"
         variant="danger"
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}

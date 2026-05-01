@@ -14,6 +14,8 @@ export { createOnboardingRouter } from "./onboarding.js";
 export { createProvidersRouter } from "./providers.js";
 export { createRuntimeCapabilitiesRouter } from "./runtime-capabilities.js";
 export { createPlatformIntegrationsRouter } from "./platform-integrations.js";
+export { createVirtualModelsRouter } from "./virtual-models.js";
+export { createWritingModelProfileRouter } from "./writing-model-profile.js";
 export { createGitRouter } from "./git.js";
 export { createAgentConfigRouter } from "./agent-config.js";
 export { createToolsRouter } from "./tools.js";

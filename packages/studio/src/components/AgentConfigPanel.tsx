@@ -97,8 +97,8 @@ export function AgentConfigPanel({ onBack }: AgentConfigPanelProps) {
     return "text-green-600";
   };
 
-  const formatUsageValue = (value: number | null) => value === null ? "未知" : String(value);
-  const formatUsagePercent = (value: number | null) => value === null ? "未接入真实运行时" : `${value}% used`;
+  const formatUsageValue = (value: number | null) => value === null ? "等待数据" : String(value);
+  const formatUsagePercent = (value: number | null) => value === null ? "等待运行时数据" : `${value}% 已使用`;
 
   if (loading || !config) {
     return <div className="p-8 text-center text-muted-foreground">Loading...</div>;
@@ -149,7 +149,7 @@ export function AgentConfigPanel({ onBack }: AgentConfigPanelProps) {
               <h2 className="text-sm font-medium">Current Resource Usage</h2>
               {usage.source === "unknown" && (
                 <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-700">
-                  资源事实源未接入
+                  资源数据待确认
                 </span>
               )}
             </div>
@@ -171,10 +171,10 @@ export function AgentConfigPanel({ onBack }: AgentConfigPanelProps) {
               <div>
                 <div className="text-xs text-muted-foreground mb-1">Workspace Size</div>
                 <div className="text-2xl font-bold">
-                  {usage.totalWorkspaceSize === null ? "未知" : `${usage.totalWorkspaceSize.toFixed(0)} MB`}
+                  {usage.totalWorkspaceSize === null ? "等待数据" : `${usage.totalWorkspaceSize.toFixed(0)} MB`}
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  {usage.totalWorkspaceSize === null ? "未接入真实运行时" : usage.totalWorkspaceSize >= config.workspaceSizeWarning && (
+                  {usage.totalWorkspaceSize === null ? "等待运行时数据" : usage.totalWorkspaceSize >= config.workspaceSizeWarning && (
                     <span className="text-yellow-600 flex items-center gap-1">
                       <AlertTriangle size={12} />
                       Above threshold

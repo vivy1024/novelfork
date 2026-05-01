@@ -57,6 +57,13 @@ function metricVariant(metric: HealthMetric, lowerIsBetter = false): "outline" |
   return "outline";
 }
 
+function formatUnknownMetricReason(reason: string): string {
+  return reason
+    .replace(/尚未接入真实来源/g, "等待统计数据")
+    .replace(/未接入真实统计/g, "等待统计数据")
+    .replace(/未接入/g, "待评估");
+}
+
 function MetricCard({ config }: { readonly config: MetricConfig }) {
   const { label, metric, format, lowerIsBetter } = config;
   const measured = isMeasured(metric);
@@ -72,13 +79,13 @@ function MetricCard({ config }: { readonly config: MetricConfig }) {
       <div className="flex items-center justify-between gap-3">
         <span className="text-xs text-muted-foreground">{label}</span>
         <Badge variant={metricVariant(metric, lowerIsBetter)} className="text-xs">
-          {measured ? format(metric.value) : "未接入"}
+          {measured ? format(metric.value) : "待评估"}
         </Badge>
       </div>
       {measured ? (
         <Progress aria-label={label} value={progress} className={progressClass} />
       ) : (
-        <p className="text-xs text-muted-foreground">{metric.reason}</p>
+        <p className="text-xs text-muted-foreground">{formatUnknownMetricReason(metric.reason)}</p>
       )}
     </div>
   );
@@ -124,11 +131,11 @@ export function BookHealthDashboard({ bookId }: { readonly bookId: string }) {
       <CardHeader className="space-y-3">
         <div className="space-y-1">
           <CardTitle>全书健康仪表盘</CardTitle>
-          <CardDescription>展示可真实计算的章节、字数、进度、敏感词与矛盾数据；未接入的质量评分保持透明。</CardDescription>
+          <CardDescription>展示可真实计算的章节、字数、进度、敏感词与矛盾数据；质量评分等待统计时保持透明。</CardDescription>
         </div>
         {unknownMetrics.length > 0 ? (
           <div className="rounded-lg border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
-            质量评分未接入真实统计，已显示为未接入状态。
+            质量评分等待统计数据，已显示为待评估状态。
           </div>
         ) : null}
       </CardHeader>

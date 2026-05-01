@@ -27,6 +27,7 @@ interface PublishReport {
 
 const STATUS_LABELS: Record<string, string> = { ready: "就绪", "has-warnings": "存在警告", blocked: "阻塞" };
 const STATUS_COLORS: Record<string, string> = { ready: "text-emerald-600 bg-emerald-500/10", "has-warnings": "text-amber-600 bg-amber-500/10", blocked: "text-destructive bg-destructive/10" };
+const CONTINUITY_STATUS_LABELS: Record<string, string> = { unknown: "未完成审计", ready: "连续性正常", "has-warnings": "存在警告", blocked: "需处理" };
 
 const PLATFORMS = [
   { value: "qidian", label: "起点中文网" },
@@ -51,17 +52,32 @@ function formatIssueCount(report: PublishReport): number {
   return report.formatCheck?.issues?.length ?? report.totalSuggestCount;
 }
 
+function platformLabel(value: string): string {
+  return PLATFORMS.find((platform) => platform.value === value)?.label ?? "通用参考";
+}
+
+function publishStatusLabel(value: string | undefined): string {
+  return value ? STATUS_LABELS[value] ?? "状态待确认" : "状态待确认";
+}
+
+function continuityStatusLabel(value: string | undefined): string {
+  return value ? CONTINUITY_STATUS_LABELS[value] ?? "未完成审计" : "未完成审计";
+}
+
+function formatAiRatio(value: number | undefined): string {
+  return value == null ? "未检测" : `${(value * 100).toFixed(0)}%`;
+}
+
 function reportMarkdown(platform: string, report: PublishReport): string {
-  const aiRatio = report.aiRatio?.overallAiRatio;
   return [
     `# 发布就绪报告`,
     "",
-    `- 平台：${platform}`,
-    `- 状态：${STATUS_LABELS[report.status] ?? report.status}`,
+    `- 平台：${platformLabel(platform)}`,
+    `- 状态：${publishStatusLabel(report.status)}`,
     `- 敏感词指标：${sensitiveIssueCount(report)}`,
-    `- AI 痕迹：${aiRatio == null ? "unknown" : `${(aiRatio * 100).toFixed(0)}%`}`,
+    `- AI 痕迹：${formatAiRatio(report.aiRatio?.overallAiRatio)}`,
     `- 格式问题：${formatIssueCount(report)}`,
-    `- 连续性：${report.continuity?.status ?? "unknown"}`,
+    `- 连续性：${continuityStatusLabel(report.continuity?.status)}`,
     `- 连续性说明：${report.continuity?.reason ?? "连续性指标未知"}`,
   ].join("\n");
 }
@@ -122,17 +138,17 @@ export function PublishPanel({
       {report && (
         <div className="space-y-3">
           <div className={`inline-block rounded-lg px-3 py-1.5 text-sm font-medium ${STATUS_COLORS[report.status] ?? ""}`}>
-            {STATUS_LABELS[report.status] ?? report.status}
+            {publishStatusLabel(report.status)}
           </div>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Metric label="敏感词" value={sensitiveIssueCount(report)} color={indicatorColor(sensitiveIssueCount(report), 1, 5)} />
-            <Metric label="AI 比例" value={report.aiRatio?.overallAiRatio != null ? `${(report.aiRatio.overallAiRatio * 100).toFixed(0)}%` : "unknown"} color={indicatorColor(report.aiRatio?.overallAiRatio ?? 0, 0.3, 0.7)} />
+            <Metric label="AI 比例" value={formatAiRatio(report.aiRatio?.overallAiRatio)} color={indicatorColor(report.aiRatio?.overallAiRatio ?? 0, 0.3, 0.7)} />
             <Metric label="格式问题" value={formatIssueCount(report)} color={indicatorColor(formatIssueCount(report), 3, 10)} />
             <Metric label="警告数" value={report.totalWarnCount} color={indicatorColor(report.totalWarnCount, 1, 5)} />
           </div>
           <div className="rounded-lg border border-border p-3 text-sm">
             <div className="text-xs text-muted-foreground">连续性指标</div>
-            <div className="font-medium">{report.continuity?.status ?? "unknown"}</div>
+            <div className="font-medium">{continuityStatusLabel(report.continuity?.status)}</div>
             <div className="text-muted-foreground">{report.continuity?.reason ?? "连续性指标未知"}</div>
           </div>
         </div>

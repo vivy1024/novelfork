@@ -5,8 +5,8 @@ import { InlineError } from "../components/feedback";
 import type { StudioResourceNode } from "./resource-adapter";
 
 function buildViewerMeta(node: StudioResourceNode): string {
-  if (node.kind === "material") return "TextViewer · 素材";
-  const viewer = node.metadata?.fileType === "text" ? "TextViewer" : "MarkdownViewer";
+  if (node.kind === "material") return "素材文件 · 素材";
+  const viewer = node.metadata?.fileType === "text" ? "文本文件" : "Markdown 文件";
   return node.kind === "truth-file" ? `${viewer} · Truth 文件` : `${viewer} · Story 文件`;
 }
 

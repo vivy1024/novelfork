@@ -75,15 +75,10 @@ describe("DashboardPage", () => {
 
     fireEvent.click(importToggle);
 
-    const chaptersMode = screen.getByRole("button", { name: "章节文本" });
-    const urlMode = screen.getByRole("button", { name: "URL 导入" });
+    expect(screen.getByText("章节文本").className).toContain("bg-primary");
     const importChapters = screen.getByRole("button", { name: "导入章节" });
 
-    expect(chaptersMode.className).toContain("bg-primary");
-    expect(chaptersMode.className).toContain("text-primary-foreground");
-    expect(urlMode.className).toContain("border-border");
-    expect(urlMode.className).toContain("hover:bg-muted");
-
+    expect(screen.queryByRole("button", { name: "URL 导入" })).toBeNull();
     expect(importChapters.hasAttribute("disabled")).toBe(true);
     expect(importChapters.className).toContain("bg-primary");
     expect(importChapters.className).toContain("disabled:opacity-50");
@@ -91,24 +86,6 @@ describe("DashboardPage", () => {
     fireEvent.change(screen.getByPlaceholderText("粘贴章节文本，系统会自动按章节标题分割…"), { target: { value: "第一章\n测试内容" } });
     expect(importChapters.hasAttribute("disabled")).toBe(false);
 
-    fireEvent.click(urlMode);
-    const importUrl = screen.getByRole("button", { name: "URL 导入暂未接入" });
-    expect(importUrl.hasAttribute("disabled")).toBe(true);
-    expect(screen.getByText(/URL 章节导入暂未接入/)).toBeTruthy();
-    fireEvent.change(screen.getByPlaceholderText("输入 URL 地址"), { target: { value: "https://example.com/chapter-1" } });
-    expect(importUrl.hasAttribute("disabled")).toBe(true);
-  });
-
-  it("keeps URL chapter import transparent instead of calling a fake success path", () => {
-    render(<DashboardPage />);
-
-    fireEvent.click(screen.getByRole("button", { name: "导入" }));
-    fireEvent.click(screen.getByRole("button", { name: "URL 导入" }));
-    fireEvent.change(screen.getByPlaceholderText("输入 URL 地址"), { target: { value: "https://example.com/chapter-1" } });
-
-    const importUrl = screen.getByRole("button", { name: "URL 导入暂未接入" });
-    expect(importUrl.hasAttribute("disabled")).toBe(true);
-    expect(fetchJsonMock).not.toHaveBeenCalled();
-    expect(screen.getByText(/请先使用章节文本导入/)).toBeTruthy();
+    expect(screen.queryByPlaceholderText("输入 URL 地址")).toBeNull();
   });
 });

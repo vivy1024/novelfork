@@ -91,6 +91,44 @@ function firstEnabledModel(provider: RuntimeProviderRecord) {
   return provider.models.find((model) => model.enabled !== false);
 }
 
+function modelCapabilities(model: RuntimeProviderRecord["models"][number]): string[] {
+  const capabilities: string[] = [];
+  if (model.contextWindow >= 128000) capabilities.push("大上下文");
+  if (model.maxOutputTokens >= 8192) capabilities.push("长输出");
+  if (model.supportsFunctionCalling) capabilities.push("工具调用");
+  if (model.supportsStreaming) capabilities.push("流式");
+  if (model.supportsVision) capabilities.push("视觉");
+  return capabilities.length > 0 ? capabilities : ["能力待确认"];
+}
+
+async function buildProviderSummary(store: ProviderRuntimeStore) {
+  const [providers, virtualModels] = await Promise.all([store.listProviders(), store.listVirtualModels()]);
+  const physicalModelCount = providers.reduce((sum, provider) => sum + provider.models.length, 0);
+  const issueCount = providers.filter((provider) => !provider.enabled || provider.models.some((model) => model.lastTestStatus === "error")).length
+    + virtualModels.filter((model) => model.enabled && model.members.length === 0).length;
+  return {
+    providerCount: providers.length,
+    enabledProviderCount: providers.filter((provider) => provider.enabled).length,
+    physicalModelCount,
+    virtualModelCount: virtualModels.length,
+    issueCount,
+  };
+}
+
+async function buildGroupedModels(store: ProviderRuntimeStore) {
+  const providers = await store.listProviders();
+  return providers.map((provider) => ({
+    providerId: provider.id,
+    providerName: provider.name,
+    enabled: provider.enabled,
+    health: provider.enabled ? "可用" : "已停用",
+    models: provider.models.map((model) => ({
+      ...model,
+      capabilities: modelCapabilities(model),
+    })),
+  }));
+}
+
 export function createProvidersRouter(options: ProvidersRouterOptions = {}) {
   const app = new Hono();
   const store = options.store ?? new ProviderRuntimeStore();
@@ -112,6 +150,24 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}) {
     } catch (error) {
       console.error("Failed to get provider status:", error);
       return c.json({ error: "Failed to get provider status" }, 500);
+    }
+  });
+
+  app.get("/summary", async (c) => {
+    try {
+      return c.json({ summary: await buildProviderSummary(store) });
+    } catch (error) {
+      console.error("Failed to get provider summary:", error);
+      return c.json({ error: "Failed to get provider summary" }, 500);
+    }
+  });
+
+  app.get("/models/grouped", async (c) => {
+    try {
+      return c.json({ groups: await buildGroupedModels(store) });
+    } catch (error) {
+      console.error("Failed to get grouped models:", error);
+      return c.json({ error: "Failed to get grouped models" }, 500);
     }
   });
 
@@ -232,6 +288,33 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}) {
       if (isNotFound(error)) return c.json({ error: "Provider not found" }, 404);
       console.error("Failed to update provider:", error);
       return c.json({ error: "Failed to update provider" }, 500);
+    }
+  });
+
+  app.patch("/:id/advanced", async (c) => {
+    try {
+      const provider = await store.updateProvider(c.req.param("id"), await c.req.json<RuntimeProviderUpdates>());
+      return c.json({ provider: sanitizeProvider(provider) });
+    } catch (error) {
+      if (isNotFound(error)) return c.json({ error: "Provider not found" }, 404);
+      console.error("Failed to update provider advanced settings:", error);
+      return c.json({ error: "Failed to update provider advanced settings" }, 500);
+    }
+  });
+
+  app.post("/:id/health-check", async (c) => {
+    try {
+      const provider = await store.getProvider(c.req.param("id"));
+      if (!provider) return c.json({ error: "Provider not found" }, 404);
+      const model = firstEnabledModel(provider);
+      if (!model) return c.json({ health: { status: "error", message: "没有启用模型" } }, 400);
+      const result = await adapters.get(adapterIdForProvider(provider)).testModel({ ...providerRef(provider), modelId: model.id });
+      return c.json(result.success
+        ? { health: { status: "success", latency: result.latency, checkedAt: new Date().toISOString() } }
+        : { health: { status: "error", message: result.error, checkedAt: new Date().toISOString() } });
+    } catch (error) {
+      console.error("Failed to check provider health:", error);
+      return c.json({ error: "Failed to check provider health" }, 500);
     }
   });
 

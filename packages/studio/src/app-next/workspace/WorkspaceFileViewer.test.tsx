@@ -66,7 +66,8 @@ describe("WorkspaceFileViewer", () => {
     render(<WorkspaceFileViewer node={node("material", "城门设定摘录", { content: "# 城门\n\n青铜兽首门环。", source: "web-capture" })} />);
 
     expect(fetchJsonMock).not.toHaveBeenCalled();
-    expect(screen.getByText("TextViewer · 素材")).toBeTruthy();
+    expect(screen.getByText("素材文件 · 素材")).toBeTruthy();
+    expect(screen.queryByText(/TextViewer|MarkdownViewer/)).toBeNull();
     expect(screen.getByText(/青铜兽首门环/)).toBeTruthy();
   });
 });
