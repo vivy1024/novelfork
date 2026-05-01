@@ -11,7 +11,7 @@
 | `novel-creation-workbench-complete-flow` | 当前主线收尾完成 | 53 / 53 | Phase 0-7 已完成。 |
 | `workspace-gap-closure-v1` | 工作台缺口收敛 | 25 / 25 | ✅ 已完成。 |
 | `agent-writing-pipeline-v1` | Agent 写作管线 | 15 / 15 | ✅ 已完成。system prompt 差异化、上下文注入、编排函数、Explorer、Agent 写作入口。 |
-| `longform-cockpit-v1` | 长篇驾驶舱 | 13 / 15 | 🔄 执行中。总览/伏笔/设定/AI Tab 已完成，待集成验证。 |
+| `longform-cockpit-v1` | 长篇驾驶舱 | 15 / 15 | ✅ 已完成。驾驶舱默认Tab，总览/伏笔/设定/AI 四面板。 |
 
 除上述 spec 外，其余 spec 已归档到 `.kiro/specs/archive/`。归档 spec 只作为历史、参考或可复用资产来源，不再作为当前任务入口。
 
