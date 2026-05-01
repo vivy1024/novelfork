@@ -3,6 +3,7 @@ import { resolve, join, dirname } from "node:path";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { createEmbeddedStaticProvider } from "./static-provider.js";
+import { openStudioWindow } from "./desktop-window.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -30,11 +31,22 @@ if (!hasFrontendAssets) {
   }
 }
 
+const serverUrl = `http://localhost:${port}`;
+
 startStudioServer(root, port, {
   staticDir: hasFrontendAssets ? distDir : undefined,
   staticProvider,
   staticMode: hasFrontendAssets ? "filesystem" : (staticProvider ? "embedded" : "missing"),
-}).catch((e) => {
-  console.error("Failed to start studio:", e);
-  process.exit(1);
-});
+})
+  .then(() => {
+    const launchPlan = openStudioWindow(serverUrl);
+    if (launchPlan.kind === "app") {
+      console.log(`NovelFork app window opened via ${launchPlan.command}`);
+    } else if (launchPlan.kind === "browser") {
+      console.log(`NovelFork opened in default browser via ${launchPlan.command}`);
+    }
+  })
+  .catch((e) => {
+    console.error("Failed to start studio:", e);
+    process.exit(1);
+  });

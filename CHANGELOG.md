@@ -4,6 +4,18 @@
 
 ---
 
+## Unreleased
+
+## v0.0.2 (2026-05-01)
+
+### 桌面应用
+- 默认启动 NarraFork 风格应用窗口：底层使用 Edge/Chrome app mode 渲染 Studio，不显示浏览器地址栏、标签页或普通浏览器外壳。
+- 新增 `NOVELFORK_NO_BROWSER=1`、`NOVELFORK_WINDOW_MODE=none|browser|app`、`NOVELFORK_BROWSER_PATH` 等窗口启动控制。
+
+### 构建与发布
+- 恢复 `bun compile` 前端资源嵌入，单文件产物内置 Studio 静态资源。
+- 编译脚本同步生成根目录 `dist/novelfork.exe` 和带版本号的 release 产物。
+
 ## v0.0.1 (2026-05-01)
 
 ### 创作工作台

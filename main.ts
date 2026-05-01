@@ -1,8 +1,8 @@
 import { existsSync } from "node:fs";
-import { spawn } from "node:child_process";
 import { basename, dirname, join, resolve } from "node:path";
 import { startStudioServer } from "./packages/studio/src/api/server.ts";
 import { createEmbeddedStaticProvider, createFilesystemStaticProvider } from "./packages/studio/src/api/static-provider.ts";
+import { openStudioWindow } from "./packages/studio/src/api/desktop-window.ts";
 
 function parseArg(name: string): string | undefined {
   const prefix = `${name}=`;
@@ -16,13 +16,6 @@ function defaultProjectRoot(): string {
     return parentDir;
   }
   return process.cwd();
-}
-
-function openDefaultBrowser(url: string): void {
-  if (process.env.NOVELFORK_NO_BROWSER === "1") return;
-  const command = process.platform === "win32" ? "explorer.exe" : process.platform === "darwin" ? "open" : "xdg-open";
-  const child = spawn(command, [url], { detached: true, stdio: "ignore" });
-  child.unref();
 }
 
 const projectRoot = resolve(
@@ -48,7 +41,7 @@ try {
   if (embeddedAssets.embeddedIndexHtml) {
     staticProvider = createEmbeddedStaticProvider({
       indexHtml: embeddedAssets.embeddedIndexHtml,
-      files: embeddedAssets.embeddedFiles,
+      files: embeddedAssets.embeddedAssets,
     });
     usingEmbeddedAssets = true;
   }
@@ -67,6 +60,8 @@ if (!staticProvider) {
   console.log("[bun:main] Using embedded Studio assets.");
 }
 
+const serverUrl = `http://localhost:${port}`;
+
 await startStudioServer(projectRoot, port, {
   staticDir: hasStatic ? staticDir : undefined,
   staticProvider,
@@ -74,4 +69,9 @@ await startStudioServer(projectRoot, port, {
   foregroundDiagnostics: process.env.NOVELFORK_STARTUP_VERBOSE === "1",
 });
 
-openDefaultBrowser(`http://localhost:${port}`);
+const launchPlan = openStudioWindow(serverUrl);
+if (launchPlan.kind === "app") {
+  console.log(`NovelFork app window opened via ${launchPlan.command}`);
+} else if (launchPlan.kind === "browser") {
+  console.log(`NovelFork opened in default browser via ${launchPlan.command}`);
+}
