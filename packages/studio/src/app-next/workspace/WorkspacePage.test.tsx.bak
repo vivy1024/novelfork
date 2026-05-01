@@ -479,7 +479,6 @@ describe("WorkspacePage", () => {
     switchToTab("写作");
 
     const assistant = screen.getByRole("complementary", { name: "AI 与经纬面板" });
-    switchToTab("写作");
     fireEvent.click(within(assistant).getByRole("button", { name: /生成下一章/ }));
 
     expect(ensureModelFor).toHaveBeenCalledWith("ai-writing");
@@ -503,7 +502,6 @@ describe("WorkspacePage", () => {
     render(<WorkspacePage modelGate={{ blockedResult: null, closeGate: vi.fn(), ensureModelFor }} />);
 
     const assistant = screen.getByRole("complementary", { name: "AI 与经纬面板" });
-    switchToTab("写作");
     fireEvent.click(within(assistant).getByRole("button", { name: /生成下一章/ }));
     await waitFor(() => expect(fetchJsonMock).toHaveBeenCalledWith(`/books/${TEST_BOOK.id}/write-next`, { method: "POST" }));
     await waitFor(() => expect(candidatesRefetch).toHaveBeenCalled());
@@ -560,7 +558,6 @@ describe("WorkspacePage", () => {
     const ensureModelFor = vi.fn(() => false);
     const runAction = vi.fn(async () => ({ message: "should not run" }));
     render(<WorkspacePage assistantApi={{ runAction }} modelGate={{ blockedResult: { ok: false, action: "ai-writing", reason: "model-not-configured", message: "此功能需要配置 AI 模型。" }, closeGate: vi.fn(), ensureModelFor }} />);
-    switchToTab("写作");
 
     fireEvent.click(screen.getByRole("button", { name: /生成下一章/ }));
 
@@ -572,7 +569,6 @@ describe("WorkspacePage", () => {
     render(<WorkspacePage />);
 
     const assistant = screen.getByRole("complementary", { name: "AI 与经纬面板" });
-    switchToTab("经纬");
     expect(within(assistant).getByText("经纬资料库")).toBeTruthy();
     expect(within(assistant).getByRole("button", { name: "人物" })).toBeTruthy();
     expect(within(assistant).getByRole("button", { name: "事件" })).toBeTruthy();
@@ -584,7 +580,6 @@ describe("WorkspacePage", () => {
     render(<WorkspacePage />);
 
     const assistant = screen.getByRole("complementary", { name: "AI 与经纬面板" });
-    switchToTab("经纬");
     fireEvent.click(within(assistant).getByRole("button", { name: /新建人物/ }));
     expect(within(assistant).getByLabelText("人物名称")).toBeTruthy();
     expect(within(assistant).getByLabelText("人物内容")).toBeTruthy();
@@ -607,7 +602,6 @@ describe("WorkspacePage", () => {
 
     render(<WorkspacePage />);
     const assistant = screen.getByRole("complementary", { name: "AI 与经纬面板" });
-    switchToTab("经纬");
 
     fireEvent.click(within(assistant).getByRole("button", { name: /林月/ }));
     expect(within(assistant).getByText("城门守卫")).toBeTruthy();
@@ -664,7 +658,6 @@ describe("WorkspacePage", () => {
     expect(refetchCharacters).toHaveBeenCalledTimes(2);
 
     const assistant = screen.getByRole("complementary", { name: "AI 与经纬面板" });
-    switchToTab("写作");
     expect(within(assistant).getByRole("button", { name: /生成下一章/ })).toBeTruthy();
     expect(within(assistant).getByText(/当前上下文：人物/)).toBeTruthy();
   });
@@ -716,8 +709,6 @@ describe("WorkspacePage", () => {
 
     render(<WorkspacePage />);
     const assistant = screen.getByRole("complementary", { name: "AI 与经纬面板" });
-    switchToTab("经纬");
-    switchToTab("写作");
     fireEvent.click(within(assistant).getByText("写作模式"));
     fireEvent.click(within(assistant).getByRole("button", { name: "对话生成" }));
     fireEvent.change(within(assistant).getByLabelText("角色"), { target: { value: "林月" } });
@@ -742,8 +733,6 @@ describe("WorkspacePage", () => {
 
     render(<WorkspacePage />);
     const assistant = screen.getByRole("complementary", { name: "AI 与经纬面板" });
-    switchToTab("经纬");
-    switchToTab("写作");
     fireEvent.click(within(assistant).getByText("写作模式"));
     fireEvent.click(within(assistant).getByRole("button", { name: "对话生成" }));
     fireEvent.change(within(assistant).getByLabelText("角色"), { target: { value: "林月" } });
@@ -778,8 +767,6 @@ describe("WorkspacePage", () => {
 
     render(<WorkspacePage />);
     const assistant = screen.getByRole("complementary", { name: "AI 与经纬面板" });
-    switchToTab("经纬");
-    switchToTab("写作");
     fireEvent.click(within(assistant).getByText("写作模式"));
     fireEvent.click(within(assistant).getByRole("button", { name: "对话生成" }));
     fireEvent.change(within(assistant).getByLabelText("角色"), { target: { value: "林月" } });
@@ -823,7 +810,6 @@ describe("WorkspacePage", () => {
     render(<WorkspacePage />);
 
     const assistant = screen.getByRole("complementary", { name: "AI 与经纬面板" });
-    switchToTab("写作");
     fireEvent.click(within(assistant).getByText("写作工具"));
     fireEvent.click(within(assistant).getByRole("button", { name: "钩子生成" }));
     fireEvent.click(within(assistant).getByRole("button", { name: "生成章末钩子" }));
@@ -838,7 +824,6 @@ describe("WorkspacePage", () => {
 
   it("exposes writing tools panel with chapter-context tools and daily progress", () => {
     render(<WorkspacePage />);
-    switchToTab("写作");
 
     const assistant = screen.getByRole("complementary", { name: "AI 与经纬面板" });
     const toolsToggle = within(assistant).getByText("写作工具");
@@ -858,7 +843,6 @@ describe("WorkspacePage", () => {
     fireEvent.click(within(explorer).getByRole("button", { name: /人物/ }));
 
     const assistant = screen.getByRole("complementary", { name: "AI 与经纬面板" });
-    switchToTab("写作");
     fireEvent.click(within(assistant).getByText("写作工具"));
     expect(within(assistant).getByText(/请选择一个章节/)).toBeTruthy();
   });
@@ -1083,7 +1067,6 @@ describe("WorkspacePage", () => {
     expect(cancelMerge.className).toContain("border-border");
 
     const assistant = screen.getByRole("complementary", { name: "AI 与经纬面板" });
-    switchToTab("写作");
     fireEvent.click(within(assistant).getByText("写作模式"));
     const writingModeInline = within(assistant).getByRole("button", { name: "续写/扩写/补写" });
     const writingModeDialogue = within(assistant).getByRole("button", { name: "对话生成" });
@@ -1092,7 +1075,6 @@ describe("WorkspacePage", () => {
     expect(writingModeDialogue.className).toContain("border-border");
     expect(within(assistant).getByText(/真实生成结果必须先选择候选稿或草稿/)).toBeTruthy();
 
-    switchToTab("写作");
     fireEvent.click(within(assistant).getByText("写作工具"));
     const rhythmTab = within(assistant).getByRole("button", { name: "节奏分析" });
     const dialogueTab = within(assistant).getByRole("button", { name: "对话分析" });
