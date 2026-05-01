@@ -46,19 +46,20 @@ describe("agent-context", () => {
 
   it("includes recent chapter summaries", () => {
     const { contextBlock } = buildBookContextBlock({
-      book: { id: "t", title: "T", chapterCount: 3 },
+      book: { id: "t", title: "T", chapterCount: 4 },
       chapterSummaries: [
         { number: 1, summary: "开端" },
         { number: 2, summary: "发展" },
         { number: 3, summary: "高潮" },
+        { number: 4, summary: "结局" },
       ],
       pendingHooks: "",
       currentFocus: null,
       auditIssues: [],
     });
 
-    expect(contextBlock).toContain("第2章");
     expect(contextBlock).toContain("第3章");
+    expect(contextBlock).toContain("第4章");
     // Should only show last 3
     expect(contextBlock).not.toContain("第1章");
   });

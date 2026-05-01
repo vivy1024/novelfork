@@ -49,7 +49,7 @@ describe("StudioNextApp", () => {
     expect(screen.getByRole("navigation", { name: "Studio Next 主导航" })).toBeTruthy();
     expect(screen.getByText("NovelFork Studio")).toBeTruthy();
     expect(screen.getByText("资源管理器")).toBeTruthy();
-    expect(screen.getByText("AI / 经纬面板")).toBeTruthy();
+    expect(screen.getByText("驾驶舱")).toBeTruthy();
   });
 
   it("switches between the first-phase workspace, settings and routines pages", async () => {
