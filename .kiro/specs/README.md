@@ -12,7 +12,7 @@
 | `workspace-gap-closure-v1` | 缺口收敛 | 25/25 | ✅ |
 | `agent-writing-pipeline-v1` | Agent管线 | 15/15 | ✅ |
 | `longform-cockpit-v1` | 驾驶舱 | 15/15 | ✅ |
-| `engineering-foundation-v1` | 工程底座 | 0/10 | 待审批 |
+| `engineering-foundation-v1` | 工程底座 | 10/10 | ✅ 已完成。 |
 
 除上述 spec 外，其余 spec 已归档到 `.kiro/specs/archive/`。归档 spec 只作为历史、参考或可复用资产来源，不再作为当前任务入口。
 
