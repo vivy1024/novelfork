@@ -137,6 +137,8 @@ export { analyzeChapterCadence, isHighTensionMood, type CadenceSummaryRow, type 
 export { PipelineRunner, type PipelineConfig, type ChapterPipelineResult, type DraftResult, type PlanChapterResult, type ComposeChapterResult, type ReviseResult, type TruthFiles, type BookStatusInfo, type ImportChaptersInput, type ImportChaptersResult, type TokenUsageSummary } from "./pipeline/runner.js";
 export { Scheduler, type SchedulerConfig } from "./pipeline/scheduler.js";
 export { runAgentLoop, AGENT_TOOLS as AGENT_TOOLS, type AgentLoopOptions } from "./pipeline/agent.js";
+export { getAgentSystemPrompt, AGENT_SYSTEM_PROMPTS } from "./pipeline/agent-prompts.js";
+export { runWritingPipeline, runAuditPipeline, type PipelineResult, type PipelineError } from "./pipeline/agent-pipeline.js";
 export { detectChapter, detectAndRewrite, loadDetectionHistory, type DetectChapterResult, type DetectAndRewriteResult } from "./pipeline/detection-runner.js";
 
 // Storage
