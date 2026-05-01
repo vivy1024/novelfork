@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Bot, PenTool, ShieldAlert, Sparkles } from "lucide-react";
+import { Bot, PenTool, Search, ShieldAlert, Sparkles } from "lucide-react";
 
 import { fetchJson } from "@/hooks/use-api";
 import {
@@ -90,6 +90,15 @@ export const SESSION_PRESETS = [
     icon: Bot,
     defaultSessionMode: "chat",
     defaultPermissionMode: "ask",
+  },
+  {
+    id: "explorer",
+    title: "Explorer",
+    label: "探索 Explorer",
+    description: "只读分析创作状态、伏笔、角色变化。",
+    icon: Search,
+    defaultSessionMode: "chat",
+    defaultPermissionMode: "read",
   },
 ] as const;
 

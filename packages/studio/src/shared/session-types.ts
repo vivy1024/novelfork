@@ -92,7 +92,7 @@ export function getRecommendedSessionPermissionMode(input: {
     return "plan";
   }
 
-  if (agentId.includes("auditor") || agentId.includes("audit") || agentId.includes("review") || agentId.includes("continuity")) {
+  if (agentId.includes("explorer") || agentId.includes("auditor") || agentId.includes("audit") || agentId.includes("review") || agentId.includes("continuity")) {
     return "read";
   }
 
