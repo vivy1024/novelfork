@@ -1096,9 +1096,69 @@ function AssistantPanel({
           </button>
         ))}
       </div>
+      <AgentWritingEntry bookId={context.bookId} modelGate={modelGate} />
       <BiblePanel bookId={context.bookId} chapterNumber={context.chapterNumber} />
       <WritingModesPanel selectedNode={selectedNode} onResourceMutation={onResourceMutation} />
       <WritingToolsPanel selectedNode={selectedNode} onResourceMutation={onResourceMutation} />
+    </div>
+  );
+}
+
+/* ── Agent 写作入口 ── */
+
+function AgentWritingEntry({ bookId, modelGate }: { readonly bookId: string; readonly modelGate: WorkspaceModelGate }) {
+  const [intent, setIntent] = useState("");
+  const [status, setStatus] = useState<"idle" | "sending" | "done" | "error">("idle");
+  const [message, setMessage] = useState<string | null>(null);
+
+  const handleAgentWrite = async () => {
+    if (!intent.trim() || !bookId) return;
+    if (!modelGate.ensureModelFor("ai-writing")) return;
+
+    setStatus("sending");
+    setMessage(null);
+    try {
+      // 创建 writer session 并注入上下文
+      await postApi(`/sessions`, {
+        agentId: "writer",
+        projectId: bookId,
+        initialMessage: `请分析 ${bookId} 的当前创作状态，然后根据以下意图处理：${intent.trim()}`,
+      });
+      setStatus("done");
+      setMessage(`Agent 写作流程已启动。在 ChatWindow 中查看 Writer 会话。`);
+    } catch (error) {
+      setStatus("error");
+      setMessage(error instanceof Error ? error.message : "启动 Agent 写作失败");
+    }
+  };
+
+  return (
+    <div className="rounded-lg border border-border bg-card p-3 space-y-2">
+      <div className="flex items-center gap-2">
+        <span className="text-xs font-medium">Agent 写作</span>
+        <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">Beta</span>
+      </div>
+      <p className="text-[11px] text-muted-foreground">输入你想让 Agent 做的事情，Agent 会自动探索、规划、写作、审校。</p>
+      <input
+        className="w-full rounded-lg border border-border bg-background px-2 py-1.5 text-xs"
+        placeholder="例：写下一章，回收玉佩伏笔，保持林月冷峻性格"
+        value={intent}
+        onChange={(e) => setIntent(e.target.value)}
+        disabled={status === "sending"}
+      />
+      <div className="flex items-center gap-2">
+        <button
+          className="rounded-lg bg-primary px-3 py-1 text-xs text-primary-foreground hover:opacity-90 disabled:opacity-50"
+          disabled={!intent.trim() || !bookId || status === "sending"}
+          onClick={() => void handleAgentWrite()}
+          type="button"
+        >
+          {status === "sending" ? "启动中..." : "启动 Agent 写作"}
+        </button>
+      </div>
+      {message && (
+        <p className={`text-[11px] ${status === "error" ? "text-destructive" : "text-muted-foreground"}`}>{message}</p>
+      )}
     </div>
   );
 }
