@@ -12,25 +12,30 @@ interface ToolsTabProps {
 }
 
 const AVAILABLE_TOOLS: Tool[] = [
-  { name: "Bash", enabled: true, description: "Execute shell commands" },
-  { name: "Read", enabled: true, description: "Read file contents" },
-  { name: "Write", enabled: true, description: "Write files" },
-  { name: "Edit", enabled: true, description: "Edit existing files" },
-  { name: "Grep", enabled: true, description: "Search file contents" },
-  { name: "Glob", enabled: true, description: "Find files by pattern" },
-  { name: "Terminal", enabled: false, description: "Interact with persistent terminals" },
-  { name: "ShareFile", enabled: false, description: "Generate temporary download links" },
-  { name: "Recall", enabled: false, description: "Search previous NarraFork conversations" },
-  { name: "Browser", enabled: false, description: "Control a browser for multi-step interactions" },
-  { name: "ForkNarrator", enabled: false, description: "Fork an independent narrator workstream" },
-  { name: "NarraForkAdmin", enabled: false, description: "Manage NarraFork server settings" },
-  { name: "WebFetch", enabled: false, description: "Fetch web content" },
-  { name: "WebSearch", enabled: false, description: "Search the web" },
+  // 核心创作工具（默认开启）
+  { name: "Bash", enabled: true, description: "Execute shell commands", loadCommand: "/load bash" },
+  { name: "Read", enabled: true, description: "Read file contents", loadCommand: "/load read" },
+  { name: "Write", enabled: true, description: "Write files", loadCommand: "/load write" },
+  { name: "Edit", enabled: true, description: "Edit existing files", loadCommand: "/load edit" },
+  { name: "Grep", enabled: true, description: "Search file contents", loadCommand: "/load grep" },
+  { name: "Glob", enabled: true, description: "Find files by pattern", loadCommand: "/load glob" },
+  // 工作区管理（默认开启）
+  { name: "EnterWorktree", enabled: true, description: "Enter git worktree", loadCommand: "/load enter_worktree" },
+  { name: "ExitWorktree", enabled: true, description: "Exit git worktree", loadCommand: "/load exit_worktree" },
+  { name: "TodoWrite", enabled: true, description: "Write todo lists", loadCommand: "/load todo_write" },
+  // 联网工具（默认关闭，按需开启）
+  { name: "WebFetch", enabled: false, description: "Fetch web content", loadCommand: "/load web_fetch" },
+  { name: "WebSearch", enabled: false, description: "Search the web", loadCommand: "/load web_search" },
+  // NarraFork 运维工具（默认关闭）
+  { name: "Terminal", enabled: false, description: "Interact with persistent terminals", loadCommand: "/load terminal" },
+  { name: "Recall", enabled: false, description: "Search previous NarraFork conversations", loadCommand: "/load recall" },
+  { name: "Browser", enabled: false, description: "Control a browser for multi-step interactions", loadCommand: "/load browser" },
+  { name: "ShareFile", enabled: false, description: "Generate temporary download links", loadCommand: "/load share_file" },
+  { name: "ForkNarrator", enabled: false, description: "Fork an independent narrator workstream", loadCommand: "/load fork_narrator" },
+  { name: "NarraForkAdmin", enabled: false, description: "Manage NarraFork server settings", loadCommand: "/load narrafork_admin" },
+  // 团队协作（默认关闭）
   { name: "TeamCreate", enabled: false, description: "Create agent teams" },
   { name: "TeamDelete", enabled: false, description: "Delete agent teams" },
-  { name: "EnterWorktree", enabled: false, description: "Enter git worktree" },
-  { name: "ExitWorktree", enabled: false, description: "Exit git worktree" },
-  { name: "TodoWrite", enabled: false, description: "Write todo lists" },
   { name: "Monitor", enabled: false, description: "Monitor processes" },
   { name: "SendMessage", enabled: false, description: "Send messages" },
   { name: "PushNotification", enabled: false, description: "Push notifications" },
