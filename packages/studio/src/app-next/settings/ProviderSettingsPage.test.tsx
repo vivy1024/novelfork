@@ -10,7 +10,7 @@ const platformCatalog: PlatformIntegrationCatalogItem[] = [
     name: "Codex",
     description: "导入 Codex / ChatGPT JSON 账号数据后作为平台账号使用。",
     enabled: true,
-    supportedImportMethods: ["json-account", "local-auth-json", "oauth", "device-code"],
+    supportedImportMethods: ["json-account"],
     modelCount: 4,
   },
   {
@@ -19,14 +19,6 @@ const platformCatalog: PlatformIntegrationCatalogItem[] = [
     description: "导入 Kiro JSON 账号数据后作为平台账号使用。",
     enabled: true,
     supportedImportMethods: ["json-account"],
-    modelCount: 0,
-  },
-  {
-    id: "cline",
-    name: "Cline",
-    description: "管理 Cline 平台账号与凭据。",
-    enabled: false,
-    supportedImportMethods: [],
     modelCount: 0,
   },
 ];
@@ -70,6 +62,10 @@ function createClient(): ProviderSettingsClient {
     listPlatformIntegrations: vi.fn(async () => ({ integrations: platformCatalog })),
     listPlatformAccounts: vi.fn(async () => ({ accounts: [] })),
     importPlatformAccountJson: vi.fn(async () => ({ account: importedCodexAccount })),
+    refreshPlatformAccountQuota: vi.fn(async () => ({ account: { ...importedCodexAccount, quota: { hourlyPercentage: 42 } } })),
+    setCurrentPlatformAccount: vi.fn(async () => ({ account: { ...importedCodexAccount, current: true } })),
+    updatePlatformAccountStatus: vi.fn(async (_platformId, _accountId, status) => ({ account: { ...importedCodexAccount, status } })),
+    deletePlatformAccount: vi.fn(async () => ({ success: true })),
     listProviders: vi.fn(async () => ({ providers: [openaiProvider] })),
     createProvider: vi.fn(async (provider) => ({ provider: { ...provider, priority: 2, models: [] } })),
     updateProvider: vi.fn(async (providerId, updates) => ({ provider: { ...openaiProvider, id: providerId, ...updates, config: { ...openaiProvider.config, ...updates.config } } })),
@@ -83,10 +79,6 @@ function createClient(): ProviderSettingsClient {
   };
 }
 
-function disabledButton(name: string): HTMLButtonElement {
-  return screen.getByRole("button", { name }) as HTMLButtonElement;
-}
-
 afterEach(() => cleanup());
 
 describe("ProviderSettingsPage", () => {
@@ -96,12 +88,16 @@ describe("ProviderSettingsPage", () => {
 
     expect(await screen.findByRole("heading", { name: "AI 供应商" })).toBeTruthy();
     await waitFor(() => expect(client.listPlatformIntegrations).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole("heading", { name: "运行态总览" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "平台集成" })).toBeTruthy();
     expect(screen.getByText(/平台账号通过 JSON 账号数据导入后使用/)).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "API key 接入" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "密钥接入" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "模型库存" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "虚拟模型" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "写作任务模型" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "运行策略" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "查看 Codex 平台集成详情" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "查看 Kiro 平台集成详情" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "查看 Cline 平台集成详情" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "查看 OpenAI API key 接入详情" })).toBeTruthy();
   });
 
@@ -114,10 +110,9 @@ describe("ProviderSettingsPage", () => {
     expect(await screen.findByRole("heading", { name: "JSON 账号导入" })).toBeTruthy();
     expect(screen.queryByText("本地 API 服务")).toBeNull();
     expect(screen.getByText("导入 JSON 账号数据后会在这里显示真实账号。")).toBeTruthy();
-    expect(disabledButton("导入 JSON 账号").disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "导入 JSON 账号" }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByText("暂无平台账号")).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "平台账号操作未接入" })).toBeTruthy();
-    expect(screen.getByText("platform.account.actions")).toBeTruthy();
+    expect(screen.queryByText(/后续接入|暂未接入|即将推出|UnsupportedCapability/)).toBeNull();
     await waitFor(() => expect(client.listPlatformAccounts).toHaveBeenCalledWith("codex"));
   });
 
@@ -139,16 +134,12 @@ describe("ProviderSettingsPage", () => {
     expect(screen.getByText("JSON 账号")).toBeTruthy();
   });
 
-  it("opens Cline platform detail as a transparent unsupported import placeholder", async () => {
+  it("does not render platform cards without real JSON account support", async () => {
     const client = createClient();
     render(<ProviderSettingsPage client={client} />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "查看 Cline 平台集成详情" }));
-
-    expect(await screen.findByRole("heading", { name: "Cline JSON 导入未接入" })).toBeTruthy();
-    expect(screen.getByText("platform.cline.json-import")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "导入 JSON 账号" })).toBeNull();
-    await waitFor(() => expect(client.listPlatformAccounts).toHaveBeenCalledWith("cline"));
+    await screen.findByRole("heading", { name: "AI 供应商" });
+    expect(screen.queryByRole("button", { name: "查看 Cline 平台集成详情" })).toBeNull();
   });
 
   it("opens OpenAI API provider detail with editable API fields, model list and refresh action", async () => {
@@ -201,7 +192,7 @@ describe("ProviderSettingsPage", () => {
 
     await screen.findByRole("heading", { name: "AI 供应商" });
     expect(screen.getByText(/0 API key 供应商/)).toBeTruthy();
-    expect(screen.getByText("暂无 API key 供应商")).toBeTruthy();
+    expect(screen.getByText("暂无密钥供应商")).toBeTruthy();
     expect(screen.getByRole("button", { name: "查看 Codex 平台集成详情" })).toBeTruthy();
   });
 
@@ -210,11 +201,11 @@ describe("ProviderSettingsPage", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "+ 添加供应商" }));
 
-    expect(disabledButton("保存供应商").disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "保存供应商" }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.change(screen.getByLabelText("供应商名称"), { target: { value: "Sub2API" } });
-    fireEvent.change(screen.getByLabelText("Base URL"), { target: { value: "https://api.example.com/v1" } });
-    expect(disabledButton("保存供应商").disabled).toBe(true);
-    fireEvent.change(screen.getByLabelText("API Key"), { target: { value: "sk-test" } });
-    expect(disabledButton("保存供应商").disabled).toBe(false);
+    fireEvent.change(screen.getByLabelText("API Key"), { target: { value: "sk-sub" } });
+    expect((screen.getByRole("button", { name: "保存供应商" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText("Base URL"), { target: { value: "https://gateway.example/v1" } });
+    expect((screen.getByRole("button", { name: "保存供应商" }) as HTMLButtonElement).disabled).toBe(false);
   });
 });

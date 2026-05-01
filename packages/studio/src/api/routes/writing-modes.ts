@@ -13,6 +13,7 @@ import {
   parseFile,
   mergeStyleProfiles,
   detectStyleDrift,
+  chatCompletion,
   type InlineWriteContext,
   type ContinuationInput,
   type ExpansionInput,
@@ -98,7 +99,53 @@ export function createWritingModesRouter(ctx: RouterContext): Hono {
       prompt = buildBridgePrompt(input, context);
     }
 
-    return c.json(buildPromptPreviewResponse(prompt, { bookId, writingMode: mode }));
+    const sessionLlm = await ctx.getSessionLlm(c);
+    if (!sessionLlm) {
+      return c.json(buildPromptPreviewResponse(prompt, { bookId, writingMode: mode, reason: "no-session-llm" }));
+    }
+    const runtimeConfig = await ctx.buildPipelineConfig(sessionLlm);
+    const response = await chatCompletion(runtimeConfig.client, runtimeConfig.model, [
+      { role: "system", content: "你是 NovelFork 的小说创作执行模型。请只输出可直接进入作品候选区的正文内容，不要复述提示词。" },
+      { role: "user", content: prompt },
+    ], { temperature: 0.7, maxTokens: 2048 });
+
+    return c.json({
+      mode: "generated",
+      writingMode: mode,
+      content: response.content,
+      promptPreview: prompt,
+      model: runtimeConfig.model,
+      usage: response.usage,
+      bookId,
+    });
+  });
+
+  // ---- POST /api/books/:bookId/writing-modes/execute-prompt ----
+  app.post("/api/books/:bookId/writing-modes/execute-prompt", async (c) => {
+    const body = await readJsonBody(c);
+    const bookId = c.req.param("bookId");
+    const prompt = asString(body.prompt)?.trim();
+    if (!prompt) return c.json({ error: "Prompt is required." }, 400);
+
+    const sessionLlm = await ctx.getSessionLlm(c);
+    const runtimeConfig = await ctx.buildPipelineConfig(sessionLlm);
+    const temperature = clampNumber(asNumber(body.temperature) ?? 0.7, 0, 2);
+    const maxTokens = Math.min(8192, Math.max(256, asNumber(body.maxTokens) ?? 2048));
+    const response = await chatCompletion(runtimeConfig.client, runtimeConfig.model, [
+      {
+        role: "system",
+        content: "你是 NovelFork 的小说创作执行模型。请只输出可直接进入作品候选区的正文、对话或大纲内容，不要复述提示词。",
+      },
+      { role: "user", content: prompt },
+    ], { temperature, maxTokens });
+
+    return c.json({
+      bookId,
+      sourceMode: asString(body.sourceMode) ?? "writing-mode",
+      content: response.content,
+      model: runtimeConfig.model,
+      usage: response.usage,
+    });
   });
 
   // ---- POST /api/books/:bookId/dialogue/generate ----
@@ -136,7 +183,25 @@ export function createWritingModesRouter(ctx: RouterContext): Hono {
     };
 
     const prompt = buildDialoguePrompt(input, context);
-    return c.json(buildPromptPreviewResponse(prompt, { bookId }));
+
+    const sessionLlm = await ctx.getSessionLlm(c);
+    if (!sessionLlm) {
+      return c.json(buildPromptPreviewResponse(prompt, { bookId, reason: "no-session-llm" }));
+    }
+    const runtimeConfig = await ctx.buildPipelineConfig(sessionLlm);
+    const response = await chatCompletion(runtimeConfig.client, runtimeConfig.model, [
+      { role: "system", content: "你是 NovelFork 的小说创作执行模型。请只输出符合角色性格的对话内容，不要复述提示词。" },
+      { role: "user", content: prompt },
+    ], { temperature: 0.8, maxTokens: 2048 });
+
+    return c.json({
+      mode: "generated",
+      content: response.content,
+      promptPreview: prompt,
+      model: runtimeConfig.model,
+      usage: response.usage,
+      bookId,
+    });
   });
 
   // ---- POST /api/books/:bookId/variants/generate ----
@@ -161,11 +226,34 @@ export function createWritingModesRouter(ctx: RouterContext): Hono {
 
     const count = Math.min(5, Math.max(2, asNumber(body.count) ?? 3));
     const prompts = buildVariantPrompts(input, context, count);
+
+    const sessionLlm = await ctx.getSessionLlm(c);
+    if (!sessionLlm) {
+      return c.json({
+        mode: "prompt-preview",
+        promptPreviews: prompts,
+        prompts,
+        count,
+        bookId,
+        reason: "no-session-llm",
+      });
+    }
+    const runtimeConfig = await ctx.buildPipelineConfig(sessionLlm);
+    const variants: { content: string; prompt: string }[] = [];
+    for (const prompt of prompts) {
+      const response = await chatCompletion(runtimeConfig.client, runtimeConfig.model, [
+        { role: "system", content: "你是 NovelFork 的小说创作执行模型。请只输出变体内容，不要复述提示词。" },
+        { role: "user", content: prompt },
+      ], { temperature: 0.9, maxTokens: 2048 });
+      variants.push({ content: response.content, prompt });
+    }
+
     return c.json({
-      mode: "prompt-preview",
-      promptPreviews: prompts,
-      prompts,
+      mode: "generated",
+      variants,
       count,
+      model: runtimeConfig.model,
+      usage: { total: variants.length },
       bookId,
     });
   });
@@ -181,7 +269,25 @@ export function createWritingModesRouter(ctx: RouterContext): Hono {
     const summaries = Array.isArray(body.summaries) ? body.summaries as { chapterNumber: number; summary: string }[] : [];
 
     const prompt = buildBranchPrompt(outline, hooks, state, summaries);
-    return c.json(buildPromptPreviewResponse(prompt, { bookId }));
+
+    const sessionLlm = await ctx.getSessionLlm(c);
+    if (!sessionLlm) {
+      return c.json(buildPromptPreviewResponse(prompt, { bookId, reason: "no-session-llm" }));
+    }
+    const runtimeConfig = await ctx.buildPipelineConfig(sessionLlm);
+    const response = await chatCompletion(runtimeConfig.client, runtimeConfig.model, [
+      { role: "system", content: "你是 NovelFork 的小说创作执行模型。请输出大纲分支建议，不要复述提示词。" },
+      { role: "user", content: prompt },
+    ], { temperature: 0.8, maxTokens: 2048 });
+
+    return c.json({
+      mode: "generated",
+      content: response.content,
+      promptPreview: prompt,
+      model: runtimeConfig.model,
+      usage: response.usage,
+      bookId,
+    });
   });
 
   // ---- POST /api/books/:bookId/outline/branch/:branchId/expand ----
@@ -190,7 +296,6 @@ export function createWritingModesRouter(ctx: RouterContext): Hono {
     const branchId = c.req.param("branchId");
     const body = await readJsonBody(c);
 
-    // 扩展分支为完整大纲 — 构建 prompt 返回给前端
     const branchTitle = asString(body.title) ?? "";
     const branchDescription = asString(body.description) ?? "";
     const chapters = Array.isArray(body.chapters) ? body.chapters : [];
@@ -209,7 +314,25 @@ export function createWritingModesRouter(ctx: RouterContext): Hono {
       "- 标注伏笔的埋设和回收时机",
     ].join("\n\n");
 
-    return c.json(buildPromptPreviewResponse(prompt, { bookId, branchId }));
+    const sessionLlm = await ctx.getSessionLlm(c);
+    if (!sessionLlm) {
+      return c.json(buildPromptPreviewResponse(prompt, { bookId, branchId, reason: "no-session-llm" }));
+    }
+    const runtimeConfig = await ctx.buildPipelineConfig(sessionLlm);
+    const response = await chatCompletion(runtimeConfig.client, runtimeConfig.model, [
+      { role: "system", content: "你是 NovelFork 的小说创作执行模型。请输出扩展后的章节大纲，不要复述提示词。" },
+      { role: "user", content: prompt },
+    ], { temperature: 0.7, maxTokens: 3072 });
+
+    return c.json({
+      mode: "generated",
+      content: response.content,
+      promptPreview: prompt,
+      model: runtimeConfig.model,
+      usage: response.usage,
+      bookId,
+      branchId,
+    });
   });
 
   // ---- POST /api/books/:bookId/writing-modes/apply ----
@@ -363,6 +486,10 @@ function asNumber(value: unknown): number | undefined {
     return Number.isFinite(n) ? n : undefined;
   }
   return undefined;
+}
+
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

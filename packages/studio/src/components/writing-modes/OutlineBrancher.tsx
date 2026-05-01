@@ -24,6 +24,7 @@ export function OutlineBrancher({ bookId, onSelectBranch, applyDisabledReason }:
   const [promptPreview, setPromptPreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [expanding, setExpanding] = useState(false);
+  const [executingPrompt, setExecutingPrompt] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const generate = async () => {
@@ -31,7 +32,7 @@ export function OutlineBrancher({ bookId, onSelectBranch, applyDisabledReason }:
     setError(null);
     try {
       const res = await postApi<{ branches?: readonly Branch[]; mode?: "prompt-preview"; promptPreview?: string; prompt?: string }>(`/books/${bookId}/outline/branch`, {});
-      if (res.mode === "prompt-preview" || res.promptPreview) {
+      if (res.mode === "prompt-preview") {
         setPromptPreview(res.promptPreview ?? res.prompt ?? "");
         setBranches([]);
       } else {
@@ -44,6 +45,26 @@ export function OutlineBrancher({ bookId, onSelectBranch, applyDisabledReason }:
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const executePromptPreview = async () => {
+    if (!promptPreview) return;
+    setExecutingPrompt(true);
+    setError(null);
+    try {
+      const res = await postApi<{ content?: string }>(`/books/${bookId}/writing-modes/execute-prompt`, {
+        prompt: promptPreview,
+        sourceMode: "outline-branch",
+      });
+      setExpandedId("executed-prompt");
+      setExpandedContent(res.content ?? "");
+      setBranches([{ id: "executed-prompt", conflict: "模型生成走向", turningPoint: "已由提示词执行生成", estimatedChapters: 0 }]);
+      setPromptPreview(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setExecutingPrompt(false);
     }
   };
 
@@ -74,8 +95,8 @@ export function OutlineBrancher({ bookId, onSelectBranch, applyDisabledReason }:
       {promptPreview && (
         <div className="space-y-2 rounded-lg border border-dashed border-border bg-muted/20 p-3">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-xs font-medium text-amber-600 dark:text-amber-400">Prompt 预览</span>
-            <Button type="button" size="xs" disabled>执行生成（未接入）</Button>
+            <span className="text-xs font-medium text-amber-600 dark:text-amber-400">提示词预览</span>
+            <Button type="button" size="xs" onClick={() => void executePromptPreview()} disabled={executingPrompt}>{executingPrompt ? "执行中..." : "执行生成"}</Button>
           </div>
           <pre className="max-h-48 overflow-y-auto whitespace-pre-wrap text-xs leading-6 text-muted-foreground">{promptPreview}</pre>
         </div>
@@ -98,7 +119,7 @@ export function OutlineBrancher({ bookId, onSelectBranch, applyDisabledReason }:
                 </Button>
                 {expandedId === b.id && expandedContent && (
                   <Button type="button" size="xs" onClick={() => onSelectBranch(expandedContent)} disabled={Boolean(applyDisabledReason)} title={applyDisabledReason}>
-                    {applyDisabledReason ? "选择此走向（未接入）" : "选择此走向"}
+                    选择此走向
                   </Button>
                 )}
               </div>

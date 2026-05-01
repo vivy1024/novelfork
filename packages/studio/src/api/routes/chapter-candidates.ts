@@ -221,6 +221,36 @@ export function createChapterCandidatesRouter(root: string, options: ChapterCand
     return c.json(await updateCandidateStatus(root, c.req.param("id"), c.req.param("candidateId"), "archived", now().toISOString()));
   });
 
+  app.delete("/api/books/:id/drafts/:draftId", async (c) => {
+    const bookId = c.req.param("id");
+    const draftId = c.req.param("draftId");
+    const bookDir = join(root, "books", bookId);
+    const drafts = await loadDrafts(bookDir);
+    const existing = findDraft(drafts, draftId);
+    if (!existing) return c.json({ error: "Draft not found" }, 404);
+    try {
+      const { rm } = await import("node:fs/promises");
+      await rm(join(bookDir, DRAFTS_DIR, existing.fileName));
+    } catch { /* file may already be gone */ }
+    await saveDrafts(bookDir, drafts.filter((d) => d.id !== draftId));
+    return c.json({ ok: true, draftId });
+  });
+
+  app.delete("/api/books/:id/candidates/:candidateId", async (c) => {
+    const bookId = c.req.param("id");
+    const candidateId = c.req.param("candidateId");
+    const bookDir = join(root, "books", bookId);
+    const candidates = await loadCandidates(bookDir);
+    const record = findCandidate(candidates, candidateId);
+    if (!record) return c.json({ error: "Candidate not found" }, 404);
+    try {
+      const { rm } = await import("node:fs/promises");
+      await rm(join(bookDir, CANDIDATES_DIR, record.contentFileName));
+    } catch { /* file may already be gone */ }
+    await saveCandidates(bookDir, candidates.filter((c) => c.id !== candidateId));
+    return c.json({ ok: true, candidateId });
+  });
+
   return app;
 }
 

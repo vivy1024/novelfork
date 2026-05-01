@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { access, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -480,6 +480,31 @@ async function waitForPath(targetPath: string): Promise<void> {
 
 describe("createStudioServer daemon lifecycle", () => {
   let root: string;
+  let runtimeHome: string;
+  let previousHome: string | undefined;
+  let previousUserProfile: string | undefined;
+
+  beforeAll(async () => {
+    previousHome = process.env.HOME;
+    previousUserProfile = process.env.USERPROFILE;
+    runtimeHome = await mkdtemp(join(tmpdir(), "novelfork-studio-server-home-"));
+    process.env.HOME = runtimeHome;
+    process.env.USERPROFILE = runtimeHome;
+  });
+
+  afterAll(async () => {
+    if (previousHome === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = previousHome;
+    }
+    if (previousUserProfile === undefined) {
+      delete process.env.USERPROFILE;
+    } else {
+      process.env.USERPROFILE = previousUserProfile;
+    }
+    await rm(runtimeHome, { recursive: true, force: true });
+  });
 
   beforeEach(async () => {
     root = await mkdtemp(join(tmpdir(), "novelfork-studio-server-"));

@@ -4,6 +4,7 @@ import { ResourceWorkspaceLayout, SectionLayout } from "../components/layouts";
 import { useAiModelGate } from "../../hooks/use-ai-model-gate";
 import {
   buildStudioResourceTree,
+  type StudioResourceEmptyState,
   type StudioResourceNode,
   type StudioResourceTreeInput,
 } from "./resource-adapter";
@@ -113,6 +114,18 @@ export interface WorkspaceCandidateApi {
 
 export type WorkspaceAssistantActionId = "write-next" | "continue" | "audit" | "rewrite" | "de-ai" | "continuity";
 
+const CHAPTER_STATUS_LABELS: Record<string, string> = {
+  draft: "草稿",
+  writing: "撰写中",
+  "ready-for-review": "待审阅",
+  approved: "已定稿",
+  published: "已发布",
+};
+
+function chapterStatusLabel(value: string | undefined): string {
+  return value ? CHAPTER_STATUS_LABELS[value] ?? "状态待确认" : "状态待确认";
+}
+
 export interface WorkspaceAssistantContext {
   readonly bookId: string;
   readonly chapterNumber?: number;
@@ -122,6 +135,7 @@ export interface WorkspaceAssistantContext {
 
 export interface WorkspaceAssistantActionResult {
   readonly message: string;
+  readonly data?: Record<string, unknown>;
   readonly resourceMutationTarget?: WorkspaceResourceMutationTarget;
 }
 
@@ -218,7 +232,7 @@ const WORKSPACE_ASSISTANT_ACTION_ROUTE_MAP: Record<WorkspaceAssistantActionId, W
       selectedText: "",
       beforeText: context.selectedNodeTitle,
     }),
-    message: "续写当前段落已生成 prompt-preview，请在写作模式面板确认后写入。",
+    message: "续写当前段落已生成提示词预览，请在写作模式面板确认后写入。"
   },
   audit: {
     route: (context) => `/books/${context.bookId}/audit/${resolveAssistantChapterNumber(context)}`,
@@ -252,9 +266,10 @@ const DEFAULT_ASSISTANT_API: WorkspaceAssistantApi = {
       request.headers = { "Content-Type": "application/json" };
       request.body = JSON.stringify(body);
     }
-    await fetchJson(routeConfig.route(context), request);
+    const data = await fetchJson(routeConfig.route(context), request) as Record<string, unknown>;
     return {
       message: routeConfig.message,
+      data,
       resourceMutationTarget: routeConfig.resourceMutationTarget,
     };
   },
@@ -284,6 +299,11 @@ export function WorkspacePage({
   const [creatingChapter, setCreatingChapter] = useState(false);
   const [createChapterError, setCreateChapterError] = useState<string | null>(null);
   const [workspaceNotice, setWorkspaceNotice] = useState<string | null>(null);
+  const [runningEmptyAction, setRunningEmptyAction] = useState<StudioResourceEmptyState["action"] | null>(null);
+  const [showImportPanel, setShowImportPanel] = useState(false);
+  const [importText, setImportText] = useState("");
+  const [importingChapters, setImportingChapters] = useState(false);
+  const [importChapterError, setImportChapterError] = useState<string | null>(null);
   const [showExportPanel, setShowExportPanel] = useState(false);
   const [exportFormat, setExportFormat] = useState<"markdown" | "txt">("markdown");
   const [exporting, setExporting] = useState(false);
@@ -294,6 +314,10 @@ export function WorkspacePage({
   useEffect(() => {
     setCreateChapterError(null);
     setWorkspaceNotice(null);
+    setRunningEmptyAction(null);
+    setShowImportPanel(false);
+    setImportText("");
+    setImportChapterError(null);
     setShowExportPanel(false);
     setExportError(null);
     setExportResult(null);
@@ -345,13 +369,15 @@ export function WorkspacePage({
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
     const storyFiles = (storyFilesData?.files ?? []).map((file) => ({
       id: file.name,
-      title: file.name,
+      title: (file as { label?: string }).label ?? file.name,
+      label: (file as { label?: string }).label,
       path: `story/${file.name}`,
       fileType: file.name.endsWith(".json") ? "text" as const : "markdown" as const,
     }));
     const truthFiles = (truthFilesData?.files ?? []).map((file) => ({
       id: file.name,
-      title: file.name,
+      title: (file as { label?: string }).label ?? file.name,
+      label: (file as { label?: string }).label,
       path: `truth/${file.name}`,
       fileType: file.name.endsWith(".json") ? "text" as const : "markdown" as const,
     }));
@@ -396,6 +422,88 @@ export function WorkspacePage({
       setCreateChapterError(error instanceof Error ? error.message : String(error));
     } finally {
       setCreatingChapter(false);
+    }
+  };
+
+  const handleGenerateNextFromResourceTree = async () => {
+    if (!activeBookId) {
+      setWorkspaceNotice("请先选择作品");
+      return;
+    }
+
+    setWorkspaceNotice(null);
+    setRunningEmptyAction("generate-next");
+    try {
+      const result = await assistantApi.runAction("write-next", {
+        bookId: activeBookId,
+        chapterNumber: typeof selectedNode.metadata?.chapterNumber === "number" ? selectedNode.metadata.chapterNumber : undefined,
+        selectedNodeId: selectedNode.id,
+        selectedNodeTitle: selectedNode.title,
+      });
+      await refreshWorkspaceResources(result.resourceMutationTarget ?? "candidates");
+      setWorkspaceNotice(result.message);
+    } catch (error) {
+      setWorkspaceNotice(`生成下一章失败：${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setRunningEmptyAction(null);
+    }
+  };
+
+  const handleImportChapters = async () => {
+    if (!activeBookId) {
+      setImportChapterError("请先选择作品");
+      return;
+    }
+    if (!importText.trim()) {
+      setImportChapterError("请先粘贴章节文本");
+      return;
+    }
+
+    setImportingChapters(true);
+    setImportChapterError(null);
+    try {
+      const response = await fetchJson<{ readonly importedCount?: number }>(`/books/${activeBookId}/import/chapters`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: importText }),
+      });
+      await refreshWorkspaceResources("chapters");
+      setWorkspaceNotice(`已导入 ${response.importedCount ?? 0} 章`);
+      setImportText("");
+      setShowImportPanel(false);
+    } catch (error) {
+      setImportChapterError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setImportingChapters(false);
+    }
+  };
+
+  const handleResourceEmptyStateAction = async (node: StudioResourceNode, emptyState: StudioResourceEmptyState) => {
+    setShowPublishPanel(false);
+    setShowExportPanel(false);
+    setWorkspaceNotice(null);
+
+    switch (emptyState.action) {
+      case "create-chapter":
+        setRunningEmptyAction("create-chapter");
+        await handleCreateChapter();
+        setRunningEmptyAction(null);
+        break;
+      case "generate-next":
+        await handleGenerateNextFromResourceTree();
+        break;
+      case "import-chapter":
+        setSelectedNodeId(node.id);
+        setShowImportPanel(true);
+        setImportChapterError(null);
+        break;
+      case "create-bible-entry":
+        setSelectedNodeId(node.kind === "bible-category" ? node.id : "bible:characters");
+        setWorkspaceNotice("已打开经纬分类，请使用新建按钮创建第一条资料。");
+        break;
+      case "edit-outline":
+        setSelectedNodeId("outline:root");
+        break;
     }
   };
 
@@ -450,11 +558,20 @@ export function WorkspacePage({
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button size="sm" variant={showPublishPanel ? "default" : "outline"} onClick={() => setShowPublishPanel(!showPublishPanel)} type="button">发布就绪</Button>
-          <Button size="sm" variant="outline" disabled title="即将推出" type="button">预设管理</Button>
         </div>
       </div>
 
       {workspaceNotice && <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm">{workspaceNotice}</div>}
+      {showImportPanel && (
+        <ImportChaptersPanel
+          error={importChapterError}
+          importing={importingChapters}
+          text={importText}
+          onCancel={() => setShowImportPanel(false)}
+          onImport={() => void handleImportChapters()}
+          onTextChange={setImportText}
+        />
+      )}
       {showExportPanel && (
         <ExportPanel
           error={exportError}
@@ -467,7 +584,15 @@ export function WorkspacePage({
       )}
 
       <ResourceWorkspaceLayout
-        explorer={<ResourceTree nodes={tree} selectedNodeId={selectedNode.id} onSelect={(id) => { setSelectedNodeId(id); setShowPublishPanel(false); setShowExportPanel(false); }} />}
+        explorer={(
+          <ResourceTree
+            activeEmptyAction={showImportPanel ? "import-chapter" : runningEmptyAction}
+            nodes={tree}
+            selectedNodeId={selectedNode.id}
+            onEmptyStateAction={(node, emptyState) => void handleResourceEmptyStateAction(node, emptyState)}
+            onSelect={(id) => { setSelectedNodeId(id); setShowPublishPanel(false); setShowExportPanel(false); }}
+          />
+        )}
         editor={showPublishPanel && activeBookId ? <PublishPanel bookId={activeBookId} onReport={handlePublishReport} /> : <WorkspaceEditor candidateApi={candidateApi} chapterApi={chapterApi} node={selectedNode} onResourceMutation={refreshWorkspaceResources} onCandidateResult={(message) => setWorkspaceNotice(message)} />}
         assistant={<AssistantPanel assistantApi={assistantApi} modelGate={effectiveModelGate} selectedNode={selectedNode} onResourceMutation={refreshWorkspaceResources} />}
       />
@@ -475,6 +600,43 @@ export function WorkspacePage({
   );
 }
 
+
+function ImportChaptersPanel({
+  error,
+  importing,
+  text,
+  onCancel,
+  onImport,
+  onTextChange,
+}: {
+  readonly error: string | null;
+  readonly importing: boolean;
+  readonly text: string;
+  readonly onCancel: () => void;
+  readonly onImport: () => void;
+  readonly onTextChange: (text: string) => void;
+}) {
+  return (
+    <div className="mb-3 space-y-3 rounded-lg border border-border bg-card p-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-base font-semibold">导入章节</h2>
+          <p className="text-xs text-muted-foreground">粘贴章节文本后，后端会按章节标题分割并写入正式章节。</p>
+        </div>
+        <Button size="sm" variant="outline" type="button" disabled={importing} onClick={onCancel}>取消</Button>
+      </div>
+      <textarea
+        aria-label="导入章节文本"
+        className="min-h-32 w-full rounded-lg border border-border bg-background p-3 text-sm leading-6"
+        onChange={(event) => onTextChange(event.target.value)}
+        placeholder="第一章 标题\n正文……"
+        value={text}
+      />
+      {error && <InlineError message={`导入章节失败：${error}`} />}
+      <Button size="sm" type="button" disabled={importing || !text.trim()} onClick={onImport}>{importing ? "导入中…" : "导入章节"}</Button>
+    </div>
+  );
+}
 
 function ExportPanel({
   error,
@@ -520,34 +682,44 @@ function ExportPanel({
   );
 }
 function ResourceTree({
+  activeEmptyAction,
   nodes,
+  onEmptyStateAction,
   onSelect,
   selectedNodeId,
 }: {
+  readonly activeEmptyAction: StudioResourceEmptyState["action"] | null;
   readonly nodes: readonly StudioResourceNode[];
   readonly selectedNodeId: string;
+  readonly onEmptyStateAction: (node: StudioResourceNode, emptyState: StudioResourceEmptyState) => void;
   readonly onSelect: (nodeId: string) => void;
 }) {
   return (
     <div className="space-y-3">
       <h2 className="text-base font-semibold">资源管理器</h2>
       <div className="space-y-1">
-        {nodes.map((node) => <ResourceNodeButton key={node.id} node={node} onSelect={onSelect} selectedNodeId={selectedNodeId} />)}
+        {nodes.map((node) => <ResourceNodeButton key={node.id} activeEmptyAction={activeEmptyAction} node={node} onEmptyStateAction={onEmptyStateAction} onSelect={onSelect} selectedNodeId={selectedNodeId} />)}
       </div>
     </div>
   );
 }
 
 function ResourceNodeButton({
+  activeEmptyAction,
   node,
+  onEmptyStateAction,
   onSelect,
   selectedNodeId,
 }: {
+  readonly activeEmptyAction: StudioResourceEmptyState["action"] | null;
   readonly node: StudioResourceNode;
   readonly selectedNodeId: string;
+  readonly onEmptyStateAction: (node: StudioResourceNode, emptyState: StudioResourceEmptyState) => void;
   readonly onSelect: (nodeId: string) => void;
 }) {
   const isSelected = node.id === selectedNodeId;
+  const emptyActionActive = Boolean(node.emptyState && activeEmptyAction === node.emptyState.action);
+  const emptyActionLabel = node.emptyState ? formatEmptyActionLabel(node.emptyState, emptyActionActive) : "";
 
   return (
     <div className="space-y-1">
@@ -572,16 +744,38 @@ function ResourceNodeButton({
       {node.emptyState && !node.children?.some((child) => (child.count ?? 0) > 0) && (
         <div className="rounded-lg border border-dashed border-border p-4 text-center text-sm text-muted-foreground">
           <div>{node.emptyState.title}</div>
-          <button disabled className="mt-1 text-primary hover:underline disabled:opacity-50" type="button">{node.emptyState.actionLabel}</button>
+          <p className="mt-1 text-xs">{node.emptyState.description}</p>
+          <button
+            className="mt-2 text-primary hover:underline disabled:opacity-50"
+            disabled={emptyActionActive && node.emptyState.action !== "import-chapter"}
+            onClick={() => onEmptyStateAction(node, node.emptyState!)}
+            type="button"
+          >
+            {emptyActionLabel}
+          </button>
         </div>
       )}
       {node.children?.length ? (
         <div className="ml-3 border-l border-border pl-2">
-          {node.children.map((child) => <ResourceNodeButton key={child.id} node={child} onSelect={onSelect} selectedNodeId={selectedNodeId} />)}
+          {node.children.map((child) => <ResourceNodeButton key={child.id} activeEmptyAction={activeEmptyAction} node={child} onEmptyStateAction={onEmptyStateAction} onSelect={onSelect} selectedNodeId={selectedNodeId} />)}
         </div>
       ) : null}
     </div>
   );
+}
+
+function formatEmptyActionLabel(emptyState: StudioResourceEmptyState, isActive: boolean): string {
+  if (!isActive) return emptyState.actionLabel;
+  switch (emptyState.action) {
+    case "create-chapter":
+      return "创建中…";
+    case "generate-next":
+      return "生成中…";
+    case "import-chapter":
+      return "导入面板已打开";
+    default:
+      return emptyState.actionLabel;
+  }
 }
 
 function WorkspaceEditor({
@@ -753,7 +947,7 @@ function ChapterEditor({ chapterApi, node }: { readonly chapterApi: WorkspaceCha
 
   return (
     <div className="space-y-4">
-      <EditorHeader onSave={() => void handleSave()} saveDisabled={saveStatus === "loading" || saveStatus === "saving"} title={node.title} meta={`章节状态：${node.status ?? "unknown"} · 字数：${countWords(content)} · 保存状态：${statusLabel}`} />
+      <EditorHeader onSave={() => void handleSave()} saveDisabled={saveStatus === "loading" || saveStatus === "saving"} title={node.title} meta={`章节状态：${chapterStatusLabel(node.status)} · 字数：${countWords(content)} · 保存状态：${statusLabel}`} />
       {saveStatus === "loading" && <div className="rounded-lg border border-border bg-muted/20 p-3 text-sm text-muted-foreground">正在加载章节正文...</div>}
       {error && <InlineError message={`保存失败：${error}`} />}
       {saveStatus !== "loading" && (
@@ -842,6 +1036,7 @@ function AssistantPanel({
   const [runningAction, setRunningAction] = useState<WorkspaceAssistantActionId | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [actionData, setActionData] = useState<Record<string, unknown> | null>(null);
 
   const context: WorkspaceAssistantContext = {
     bookId: typeof selectedNode.metadata?.bookId === "string" ? selectedNode.metadata.bookId : "",
@@ -853,6 +1048,7 @@ function AssistantPanel({
   const handleAction = (action: (typeof ASSISTANT_ACTIONS)[number]) => {
     setActionMessage(null);
     setActionError(null);
+    setActionData(null);
     if (!modelGate.ensureModelFor(action.gate)) {
       return;
     }
@@ -862,6 +1058,7 @@ function AssistantPanel({
         const resourceMutationTarget = result.resourceMutationTarget ?? (action.id === "write-next" ? "candidates" : null);
         if (resourceMutationTarget) await onResourceMutation(resourceMutationTarget);
         setActionMessage(result.message);
+        if (result.data) setActionData(result.data);
       })
       .catch((error: unknown) => setActionError(error instanceof Error ? error.message : String(error)))
       .finally(() => setRunningAction(null));
@@ -879,6 +1076,11 @@ function AssistantPanel({
         </div>
       )}
       {actionMessage && <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm">{actionMessage}</div>}
+      {actionData && !actionError && (
+        <div className="rounded-lg border border-border bg-card p-3 text-xs max-h-64 overflow-y-auto">
+          <pre className="whitespace-pre-wrap break-words">{JSON.stringify(actionData, null, 2)}</pre>
+        </div>
+      )}
       {actionError && <InlineError message={`AI 动作失败：${actionError}`} />}
       {runningAction && <RunStatus action={ASSISTANT_ACTIONS.find((a) => a.id === runningAction)?.label ?? runningAction} running />}
       <div className="grid grid-cols-2 gap-1.5">
@@ -966,7 +1168,7 @@ function WritingModesPanel({ selectedNode, onResourceMutation }: { readonly sele
           </div>
 
           <p className="rounded-lg border border-dashed border-border bg-background/60 p-2 text-xs text-muted-foreground">
-            生成接口若返回 Prompt 预览会保持未接入按钮；真实生成结果必须先选择候选稿或草稿，再确认应用。正式章节插入/替换会转成非破坏性候选稿。
+            生成接口返回预览时会直接转入候选确认流程；真实生成结果必须先选择候选稿或草稿，再确认应用。正式章节插入/替换会转成非破坏性候选稿。
           </p>
           {applyNotice && <p className="text-xs text-muted-foreground">{applyNotice}</p>}
           {applyError && <p className="text-xs text-destructive">{applyError}</p>}
