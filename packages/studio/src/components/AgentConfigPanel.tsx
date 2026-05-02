@@ -38,7 +38,7 @@ export function AgentConfigPanel({ onBack }: AgentConfigPanelProps) {
       const data = await fetchJson<{ config: AgentConfig }>("/api/agent/config");
       setConfig(data.config);
     } catch (error) {
-      console.error("Failed to load agent config:", error);
+      console.error("加载 Agent 配置失败：", error);
     } finally {
       setLoading(false);
     }
@@ -53,7 +53,7 @@ export function AgentConfigPanel({ onBack }: AgentConfigPanelProps) {
       setUsage(data.usage);
       setStats(data.stats);
     } catch (error) {
-      console.error("Failed to load resource usage:", error);
+      console.error("加载资源使用情况失败：", error);
     }
   };
 
@@ -78,7 +78,7 @@ export function AgentConfigPanel({ onBack }: AgentConfigPanelProps) {
   };
 
   const handleReset = async () => {
-    if (!confirm("Reset all settings to default values?")) return;
+    if (!confirm("确定将所有设置重置为默认值？")) return;
 
     try {
       const data = await fetchJson<{ config: AgentConfig }>("/api/agent/config/reset", {
@@ -101,23 +101,22 @@ export function AgentConfigPanel({ onBack }: AgentConfigPanelProps) {
   const formatUsagePercent = (value: number | null) => value === null ? "等待运行时数据" : `${value}% 已使用`;
 
   if (loading || !config) {
-    return <div className="p-8 text-center text-muted-foreground">Loading...</div>;
+    return <div className="p-8 text-center text-muted-foreground">加载中...</div>;
   }
 
   return (
     <div className="h-full flex flex-col">
-      {/* Header */}
       <div className="border-b p-4">
         <div className="flex items-center justify-between">
           <div>
             {onBack && (
               <button onClick={onBack} className="text-sm text-muted-foreground hover:text-foreground mb-2">
-                ← Back
+                ← 返回
               </button>
             )}
-            <h1 className="text-2xl font-serif">Agent Configuration</h1>
+            <h1 className="text-2xl font-serif">Agent 配置</h1>
             <p className="text-sm text-muted-foreground mt-1">
-              Control Agent resource usage and runtime behavior
+              控制 Agent 资源使用和运行时行为
             </p>
           </div>
           <div className="flex gap-2">
@@ -126,7 +125,7 @@ export function AgentConfigPanel({ onBack }: AgentConfigPanelProps) {
               className="px-3 py-2 text-sm rounded border hover:bg-accent flex items-center gap-2"
             >
               <RotateCcw size={14} />
-              Reset
+              重置
             </button>
             <button
               onClick={handleSave}
@@ -134,19 +133,17 @@ export function AgentConfigPanel({ onBack }: AgentConfigPanelProps) {
               className="px-3 py-2 text-sm rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 flex items-center gap-2"
             >
               {saved ? <CheckCircle size={14} /> : <Save size={14} />}
-              {saving ? "Saving..." : saved ? "Saved" : "Save"}
+              {saving ? "保存中..." : saved ? "已保存" : "保存"}
             </button>
           </div>
         </div>
       </div>
 
-      {/* Content */}
       <div className="flex-1 overflow-y-auto p-4 space-y-6">
-        {/* Resource Usage Overview */}
         {usage && stats && (
           <div className="border rounded-lg p-4 bg-card">
             <div className="mb-3 flex items-center justify-between gap-3">
-              <h2 className="text-sm font-medium">Current Resource Usage</h2>
+              <h2 className="text-sm font-medium">当前资源使用</h2>
               {usage.source === "unknown" && (
                 <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-700">
                   资源数据待确认
@@ -155,21 +152,21 @@ export function AgentConfigPanel({ onBack }: AgentConfigPanelProps) {
             </div>
             <div className="grid grid-cols-3 gap-4">
               <div>
-                <div className="text-xs text-muted-foreground mb-1">Workspaces</div>
+                <div className="text-xs text-muted-foreground mb-1">工作区</div>
                 <div className={`text-2xl font-bold ${getUsageColor(stats.workspaceUsagePercent)}`}>
                   {formatUsageValue(usage.activeWorkspaces)} / {config.maxActiveWorkspaces}
                 </div>
                 <div className="text-xs text-muted-foreground">{formatUsagePercent(stats.workspaceUsagePercent)}</div>
               </div>
               <div>
-                <div className="text-xs text-muted-foreground mb-1">Containers</div>
+                <div className="text-xs text-muted-foreground mb-1">容器</div>
                 <div className={`text-2xl font-bold ${getUsageColor(stats.containerUsagePercent)}`}>
                   {formatUsageValue(usage.activeContainers)} / {config.maxActiveContainers}
                 </div>
                 <div className="text-xs text-muted-foreground">{formatUsagePercent(stats.containerUsagePercent)}</div>
               </div>
               <div>
-                <div className="text-xs text-muted-foreground mb-1">Workspace Size</div>
+                <div className="text-xs text-muted-foreground mb-1">工作区大小</div>
                 <div className="text-2xl font-bold">
                   {usage.totalWorkspaceSize === null ? "等待数据" : `${usage.totalWorkspaceSize.toFixed(0)} MB`}
                 </div>
@@ -177,7 +174,7 @@ export function AgentConfigPanel({ onBack }: AgentConfigPanelProps) {
                   {usage.totalWorkspaceSize === null ? "等待运行时数据" : usage.totalWorkspaceSize >= config.workspaceSizeWarning && (
                     <span className="text-yellow-600 flex items-center gap-1">
                       <AlertTriangle size={12} />
-                      Above threshold
+                      已超过阈值
                     </span>
                   )}
                 </div>
@@ -186,13 +183,12 @@ export function AgentConfigPanel({ onBack }: AgentConfigPanelProps) {
           </div>
         )}
 
-        {/* Workspace Settings */}
         <div className="border rounded-lg p-4 bg-card">
-          <h2 className="text-sm font-medium mb-3">Workspace Settings</h2>
+          <h2 className="text-sm font-medium mb-3">工作区设置</h2>
           <div className="space-y-4">
             <div>
               <label className="text-sm font-medium block mb-2">
-                Max Active Workspaces
+                最大活跃工作区数
                 <span className="text-xs text-muted-foreground ml-2">(1-100)</span>
               </label>
               <input
@@ -207,7 +203,7 @@ export function AgentConfigPanel({ onBack }: AgentConfigPanelProps) {
 
             <div>
               <label className="text-sm font-medium block mb-2">
-                Workspace Size Warning (MB)
+                工作区大小告警阈值 (MB)
                 <span className="text-xs text-muted-foreground ml-2">(10-10000)</span>
               </label>
               <input
@@ -220,18 +216,17 @@ export function AgentConfigPanel({ onBack }: AgentConfigPanelProps) {
                 className="w-full px-3 py-2 text-sm border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary"
               />
               <p className="text-xs text-muted-foreground mt-1">
-                Show warning when workspace size exceeds this threshold
+                当工作区大小超过该阈值时显示告警
               </p>
             </div>
           </div>
         </div>
 
-        {/* Container Settings */}
         <div className="border rounded-lg p-4 bg-card">
-          <h2 className="text-sm font-medium mb-3">Container Settings</h2>
+          <h2 className="text-sm font-medium mb-3">容器设置</h2>
           <div>
             <label className="text-sm font-medium block mb-2">
-              Max Active Containers
+              最大活跃容器数
               <span className="text-xs text-muted-foreground ml-2">(1-50)</span>
             </label>
             <input
@@ -245,12 +240,11 @@ export function AgentConfigPanel({ onBack }: AgentConfigPanelProps) {
           </div>
         </div>
 
-        {/* Port Range Settings */}
         <div className="border rounded-lg p-4 bg-card">
-          <h2 className="text-sm font-medium mb-3">Port Range</h2>
+          <h2 className="text-sm font-medium mb-3">端口范围</h2>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="text-sm font-medium block mb-2">Start Port</label>
+              <label className="text-sm font-medium block mb-2">起始端口</label>
               <input
                 type="number"
                 min={1024}
@@ -261,7 +255,7 @@ export function AgentConfigPanel({ onBack }: AgentConfigPanelProps) {
               />
             </div>
             <div>
-              <label className="text-sm font-medium block mb-2">End Port</label>
+              <label className="text-sm font-medium block mb-2">结束端口</label>
               <input
                 type="number"
                 min={1024}
@@ -273,16 +267,15 @@ export function AgentConfigPanel({ onBack }: AgentConfigPanelProps) {
             </div>
           </div>
           <p className="text-xs text-muted-foreground mt-2">
-            Available ports: {usage?.availablePorts ?? config.portRangeEnd - config.portRangeStart + 1}
+            可用端口：{usage?.availablePorts ?? config.portRangeEnd - config.portRangeStart + 1}
             {config.portRangeEnd - config.portRangeStart < 100 && (
-              <span className="text-yellow-600 ml-2">⚠ Minimum 100 ports recommended</span>
+              <span className="text-yellow-600 ml-2">⚠ 建议至少保留 100 个端口</span>
             )}
           </p>
         </div>
 
-        {/* Behavior Settings */}
         <div className="border rounded-lg p-4 bg-card">
-          <h2 className="text-sm font-medium mb-3">Behavior</h2>
+          <h2 className="text-sm font-medium mb-3">行为设置</h2>
           <label className="flex items-center gap-2 cursor-pointer">
             <input
               type="checkbox"
@@ -290,10 +283,10 @@ export function AgentConfigPanel({ onBack }: AgentConfigPanelProps) {
               onChange={(e) => setConfig({ ...config, autoSaveOnSleep: e.target.checked })}
               className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
             />
-            <span className="text-sm">Auto-save on sleep</span>
+            <span className="text-sm">休眠时自动保存</span>
           </label>
           <p className="text-xs text-muted-foreground mt-1 ml-6">
-            Automatically save workspace state when Agent goes to sleep
+            Agent 进入休眠时自动保存工作区状态
           </p>
         </div>
       </div>

@@ -7,7 +7,7 @@ interface ChatInputProps {
   placeholder?: string;
 }
 
-export function ChatInput({ onSend, disabled, placeholder = "Ask about your novel..." }: ChatInputProps) {
+export function ChatInput({ onSend, disabled, placeholder = "输入与小说相关的问题..." }: ChatInputProps) {
   const [input, setInput] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -52,12 +52,13 @@ export function ChatInput({ onSend, disabled, placeholder = "Ask about your nove
           onClick={handleSubmit}
           disabled={disabled || !input.trim()}
           className="shrink-0 w-10 h-10 rounded-lg bg-primary text-primary-foreground flex items-center justify-center hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          aria-label="发送消息"
         >
           {disabled ? <Loader2 size={18} className="animate-spin" /> : <ArrowUp size={18} />}
         </button>
       </div>
       <p className="text-[10px] text-muted-foreground/60 mt-2 text-center">
-        Press Enter to send, Shift+Enter for new line
+        Enter 发送，Shift+Enter 换行
       </p>
     </div>
   );

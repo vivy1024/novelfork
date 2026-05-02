@@ -19,14 +19,14 @@ export function LogViewer({ logs }: LogViewerProps) {
 
   const handleClear = () => {
     // 清空日志需要通过父组件状态管理
-    console.log("Clear logs requested");
+    console.log("请求清空日志");
   };
 
   return (
     <div className="flex flex-col border rounded-md">
       <div className="flex items-center justify-between px-3 py-2 border-b bg-muted/30">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium">Logs</span>
+          <span className="text-sm font-medium">日志</span>
           <span className="text-xs text-muted-foreground">({logs.length})</span>
         </div>
         <div className="flex gap-1">
@@ -57,7 +57,7 @@ export function LogViewer({ logs }: LogViewerProps) {
         <ScrollArea className="h-48" ref={scrollRef}>
           <div className="p-3 space-y-1 font-mono text-xs">
             {logs.length === 0 ? (
-              <div className="text-muted-foreground italic">No logs yet</div>
+              <div className="text-muted-foreground italic">暂无日志</div>
             ) : (
               logs.map((log, idx) => (
                 <div key={idx} className="text-foreground/80">

@@ -13,32 +13,32 @@ interface ToolsTabProps {
 
 const AVAILABLE_TOOLS: Tool[] = [
   // 核心创作工具（默认开启）
-  { name: "Bash", enabled: true, description: "Execute shell commands", loadCommand: "/load bash" },
-  { name: "Read", enabled: true, description: "Read file contents", loadCommand: "/load read" },
-  { name: "Write", enabled: true, description: "Write files", loadCommand: "/load write" },
-  { name: "Edit", enabled: true, description: "Edit existing files", loadCommand: "/load edit" },
-  { name: "Grep", enabled: true, description: "Search file contents", loadCommand: "/load grep" },
-  { name: "Glob", enabled: true, description: "Find files by pattern", loadCommand: "/load glob" },
+  { name: "Bash", enabled: true, description: "执行 shell 命令", loadCommand: "/load bash" },
+  { name: "Read", enabled: true, description: "读取文件内容", loadCommand: "/load read" },
+  { name: "Write", enabled: true, description: "写入文件", loadCommand: "/load write" },
+  { name: "Edit", enabled: true, description: "编辑已有文件", loadCommand: "/load edit" },
+  { name: "Grep", enabled: true, description: "搜索文件内容", loadCommand: "/load grep" },
+  { name: "Glob", enabled: true, description: "按模式查找文件", loadCommand: "/load glob" },
   // 工作区管理（默认开启）
-  { name: "EnterWorktree", enabled: true, description: "Enter git worktree", loadCommand: "/load enter_worktree" },
-  { name: "ExitWorktree", enabled: true, description: "Exit git worktree", loadCommand: "/load exit_worktree" },
-  { name: "TodoWrite", enabled: true, description: "Write todo lists", loadCommand: "/load todo_write" },
+  { name: "EnterWorktree", enabled: true, description: "进入 Git 工作树", loadCommand: "/load enter_worktree" },
+  { name: "ExitWorktree", enabled: true, description: "退出 Git 工作树", loadCommand: "/load exit_worktree" },
+  { name: "TodoWrite", enabled: true, description: "维护待办清单", loadCommand: "/load todo_write" },
   // 联网工具（默认关闭，按需开启）
-  { name: "WebFetch", enabled: false, description: "Fetch web content", loadCommand: "/load web_fetch" },
-  { name: "WebSearch", enabled: false, description: "Search the web", loadCommand: "/load web_search" },
+  { name: "WebFetch", enabled: false, description: "抓取网页内容", loadCommand: "/load web_fetch" },
+  { name: "WebSearch", enabled: false, description: "搜索网页", loadCommand: "/load web_search" },
   // NarraFork 运维工具（默认关闭）
-  { name: "Terminal", enabled: false, description: "Interact with persistent terminals", loadCommand: "/load terminal" },
-  { name: "Recall", enabled: false, description: "Search previous NarraFork conversations", loadCommand: "/load recall" },
-  { name: "Browser", enabled: false, description: "Control a browser for multi-step interactions", loadCommand: "/load browser" },
-  { name: "ShareFile", enabled: false, description: "Generate temporary download links", loadCommand: "/load share_file" },
-  { name: "ForkNarrator", enabled: false, description: "Fork an independent narrator workstream", loadCommand: "/load fork_narrator" },
-  { name: "NarraForkAdmin", enabled: false, description: "Manage NarraFork server settings", loadCommand: "/load narrafork_admin" },
+  { name: "Terminal", enabled: false, description: "操作持久终端", loadCommand: "/load terminal" },
+  { name: "Recall", enabled: false, description: "搜索历史对话", loadCommand: "/load recall" },
+  { name: "Browser", enabled: false, description: "控制浏览器执行多步操作", loadCommand: "/load browser" },
+  { name: "ShareFile", enabled: false, description: "生成临时下载链接", loadCommand: "/load share_file" },
+  { name: "ForkNarrator", enabled: false, description: "分叉独立叙述者工作流", loadCommand: "/load fork_narrator" },
+  { name: "NarraForkAdmin", enabled: false, description: "管理 NarraFork 服务器设置", loadCommand: "/load narrafork_admin" },
   // 团队协作（默认关闭）
-  { name: "TeamCreate", enabled: false, description: "Create agent teams" },
-  { name: "TeamDelete", enabled: false, description: "Delete agent teams" },
-  { name: "Monitor", enabled: false, description: "Monitor processes" },
-  { name: "SendMessage", enabled: false, description: "Send messages" },
-  { name: "PushNotification", enabled: false, description: "Push notifications" },
+  { name: "TeamCreate", enabled: false, description: "创建代理团队" },
+  { name: "TeamDelete", enabled: false, description: "删除代理团队" },
+  { name: "Monitor", enabled: false, description: "监控进程" },
+  { name: "SendMessage", enabled: false, description: "发送消息" },
+  { name: "PushNotification", enabled: false, description: "推送通知" },
 ];
 
 export function ToolsTab({ tools, onChange }: ToolsTabProps) {
@@ -80,7 +80,7 @@ export function ToolsTab({ tools, onChange }: ToolsTabProps) {
     <div className="space-y-4">
       <div>
         <p className="text-sm text-muted-foreground mb-3">
-          Enable or disable optional tools. Core tools (Bash, Read, Write, Edit) are always available.
+          启用或停用可选工具。核心工具（Bash、Read、Write、Edit）始终可用。
         </p>
         <div className="flex items-center justify-between mb-4">
           <div className="relative flex-1 max-w-md">
@@ -89,12 +89,12 @@ export function ToolsTab({ tools, onChange }: ToolsTabProps) {
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search tools..."
+              placeholder="搜索工具..."
               className="w-full pl-9 pr-3 py-2 text-sm border rounded-lg bg-background"
             />
           </div>
           <div className="text-sm text-muted-foreground">
-            {enabledCount} / {filteredTools.length} enabled
+            已启用 {enabledCount} / {filteredTools.length}
           </div>
         </div>
       </div>
@@ -109,7 +109,7 @@ export function ToolsTab({ tools, onChange }: ToolsTabProps) {
               <div className="flex items-center gap-2 mb-1">
                 <span className="text-sm font-medium font-mono">{tool.name}</span>
                 {!tool.enabled && (
-                  <span className="text-xs text-muted-foreground">(disabled)</span>
+                  <span className="text-xs text-muted-foreground">（已停用）</span>
                 )}
               </div>
               <code className="text-xs font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
@@ -134,7 +134,7 @@ export function ToolsTab({ tools, onChange }: ToolsTabProps) {
 
       {filteredTools.length === 0 && (
         <div className="text-center py-8 text-sm text-muted-foreground">
-          No tools found matching "{search}"
+          未找到匹配“{search}”的工具
         </div>
       )}
     </div>

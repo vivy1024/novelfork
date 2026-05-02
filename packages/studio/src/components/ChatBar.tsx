@@ -89,8 +89,8 @@ function EmptyState() {
       <div className="w-14 h-14 rounded-2xl border border-dashed border-border flex items-center justify-center mb-4 bg-secondary/30">
         <BotMessageSquare size={24} className="text-muted-foreground" />
       </div>
-      <p className="text-sm italic font-serif mb-1">How shall we proceed today?</p>
-      <p className="text-[10px] text-muted-foreground/60 uppercase tracking-widest">Type a command below</p>
+      <p className="text-sm italic font-serif mb-1">今天想推进什么？</p>
+      <p className="text-[10px] text-muted-foreground/60 uppercase tracking-widest">在下方输入指令</p>
     </div>
   );
 }
@@ -152,13 +152,13 @@ function MessageBubble({ msg }: { readonly msg: ChatMessage }) {
         {isSuccess && (
           <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-sans font-medium text-[10px] mb-1 uppercase tracking-wider">
             <BadgeCheck size={11} />
-            Complete
+            完成
           </span>
         )}
         {isError && (
           <span className="flex items-center gap-1.5 text-destructive font-sans font-medium text-[10px] mb-1 uppercase tracking-wider">
             <CircleAlert size={11} />
-            Error
+            错误
           </span>
         )}
 
@@ -232,10 +232,10 @@ export function ChatPanel({ open, onClose, t, sse, activeBookId, onConfigureMode
 
     if (recent.event === "write:complete" || recent.event === "draft:complete") {
       setLoading(false);
-      const title = d.title ?? `Chapter ${d.chapterNumber}`;
+      const title = d.title ?? `第 ${d.chapterNumber} 章`;
       setMessages((prev) => [...prev, {
         role: "assistant",
-        content: `✓ ${title} (${(d.wordCount as number)?.toLocaleString() ?? "?"} chars)`,
+        content: `✓ ${title}（${(d.wordCount as number)?.toLocaleString() ?? "?"} 字）`,
         timestamp: Date.now(),
       }]);
     }
@@ -243,7 +243,7 @@ export function ChatPanel({ open, onClose, t, sse, activeBookId, onConfigureMode
       setLoading(false);
       setMessages((prev) => [...prev, {
         role: "assistant",
-        content: `✗ ${d.error ?? "Unknown error"}`,
+        content: `✗ ${d.error ?? "未知错误"}`,
         timestamp: Date.now(),
       }]);
     }
@@ -264,7 +264,7 @@ export function ChatPanel({ open, onClose, t, sse, activeBookId, onConfigureMode
   // Current phase for status bar
   const currentPhase = useMemo(() => {
     const lastStatus = [...messages].reverse().find((m) => m.role === "assistant" && m.content.startsWith("⋯"));
-    return lastStatus?.content.replace("⋯ ", "") ?? "Initializing...";
+    return lastStatus?.content.replace("⋯ ", "") ?? "初始化中...";
   }, [messages]);
 
   const handleSubmit = async () => {
@@ -284,8 +284,8 @@ export function ChatPanel({ open, onClose, t, sse, activeBookId, onConfigureMode
             role: "assistant",
             content:
               target.reason === "missing"
-                ? (isZh ? "✗ 还没有书，先创建一本再写。" : "✗ No books yet. Create one first.")
-                : (isZh ? "✗ 当前有多本书，请先打开目标书籍后再执行“写下一章”。" : '✗ Multiple books found. Open the target book first, then run "write next".'),
+                ? "✗ 还没有书，先创建一本再写。"
+                : "✗ 当前有多本书，请先打开目标书籍后再执行“写下一章”。",
             timestamp: Date.now(),
           }]);
           return;
@@ -300,7 +300,7 @@ export function ChatPanel({ open, onClose, t, sse, activeBookId, onConfigureMode
         setLoading(true);
         setMessages((prev) => [...prev, {
           role: "assistant",
-          content: isZh ? `⋯ 开始处理《${target.bookId}》...` : `⋯ Starting ${target.bookId}...`,
+          content: `⋯ 开始处理《${target.bookId}》...`,
           timestamp: Date.now(),
         }]);
         await postApi(`/books/${target.bookId}/write-next`, {});
@@ -323,7 +323,7 @@ export function ChatPanel({ open, onClose, t, sse, activeBookId, onConfigureMode
       setLoading(false);
       setMessages((prev) => [...prev, {
         role: "assistant",
-        content: data.response ?? data.error ?? "Acknowledged.",
+        content: data.response ?? data.error ?? "已收到。",
         timestamp: Date.now(),
       }]);
     } catch (e) {
@@ -351,12 +351,7 @@ export function ChatPanel({ open, onClose, t, sse, activeBookId, onConfigureMode
     "扫描市场趋势", "导出全书为 epub", "分析文风 → 导入到我的书",
     "导入已有章节续写", "创建一个玄幻题材的同人", "修订第5章，spot-fix",
   ];
-  const TIPS_EN = [
-    "write next chapter", "audit chapter 5", "create a LitRPG novel",
-    "scan market trends", "export book as epub", "analyze style → import",
-    "import chapters to continue", "create a progression fantasy fanfic", "revise chapter 5, spot-fix",
-  ];
-  const tips = isZh ? TIPS_ZH : TIPS_EN;
+  const tips = TIPS_ZH;
   const [tipIndex, setTipIndex] = useState(() => Math.floor(Math.random() * tips.length));
 
   useEffect(() => {
@@ -392,14 +387,14 @@ export function ChatPanel({ open, onClose, t, sse, activeBookId, onConfigureMode
               <button
                 onClick={() => setMessages([])}
                 className="p-1.5 rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors group"
-                title="Clear conversation"
+                title="清空对话"
               >
                 <Trash2 size={14} className="group-hover:animate-[shake_0.3s_ease-in-out]" />
               </button>
               <button
                 onClick={onClose}
                 className="p-1.5 rounded-md text-muted-foreground hover:bg-secondary transition-colors group"
-                title="Close panel"
+                title="关闭面板"
               >
                 <PanelRightClose size={14} className="group-hover:translate-x-0.5 transition-transform" />
               </button>
@@ -444,22 +439,22 @@ export function ChatPanel({ open, onClose, t, sse, activeBookId, onConfigureMode
             <QuickChip
               icon={<Zap size={11} />}
               label={t("dash.writeNext")}
-              onClick={() => handleQuickCommand(isZh ? "写下一章" : "write next")}
+              onClick={() => handleQuickCommand("写下一章")}
             />
             <QuickChip
               icon={<Search size={11} />}
               label={t("book.audit")}
-              onClick={() => handleQuickCommand(isZh ? "审计第1章" : "audit chapter 1")}
+              onClick={() => handleQuickCommand("审计第1章")}
             />
             <QuickChip
               icon={<FileOutput size={11} />}
               label={t("book.export")}
-              onClick={() => handleQuickCommand(isZh ? "导出全书" : "export book as epub")}
+              onClick={() => handleQuickCommand("导出全书")}
             />
             <QuickChip
               icon={<TrendingUp size={11} />}
               label={t("nav.radar")}
-              onClick={() => handleQuickCommand(isZh ? "扫描市场趋势" : "scan market trends")}
+              onClick={() => handleQuickCommand("扫描市场趋势")}
             />
           </div>
 

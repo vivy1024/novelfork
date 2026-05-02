@@ -16,6 +16,7 @@
 |------|------|
 | 版本号 | `v0.0.1` 起，语义化版本（主.次.修订） |
 | 标记位置 | `CLAUDE.md` 标题、`package.json`、`CHANGELOG.md`、Git tag |
+| 版本变动 | 任何版本号变动必须同步更新 release 资料：`package.json`、`CLAUDE.md`、`AGENTS.md`、`CHANGELOG.md`；正式发布还必须提交、打 `git tag vX.Y.Z` 并推送提交与 tag |
 | 提交后 | 每次功能合入后更新 `CHANGELOG.md` Unreleased 段 |
 | 发版时 | 将 Unreleased 内容移到新版本号下，打 `git tag vX.Y.Z` |
 | 禁止 | 禁止手动改版本号到未来版本；禁止虚构 changelog 条目 |

@@ -37,6 +37,14 @@ git cherry-pick <commit>               # 选择性拿
 
 ---
 
+## 版本与发布
+
+- 任何版本号变动必须同步更新 release 资料：`package.json`、`CLAUDE.md`、`AGENTS.md`、`CHANGELOG.md`。
+- 正式发版还必须在同一发布流程中提交、打 `git tag vX.Y.Z`，并推送提交与 tag。
+- 发版前不得虚构 changelog 条目；只迁移已经验证的 Unreleased 内容。
+
+---
+
 ## 提交规范
 
 ```

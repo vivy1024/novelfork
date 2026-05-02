@@ -43,7 +43,7 @@ export function SkillsTab({
   const handleAdd = () => {
     const newSkill: Skill = {
       id: `skill_${Date.now()}`,
-      name: "New Skill",
+      name: "新技能",
       description: "",
       instructions: "",
       enabled: true,
@@ -96,7 +96,6 @@ export function SkillsTab({
 
   return (
     <div className="space-y-4">
-      {/* Tab Switcher */}
       <div className="flex items-center gap-2 border-b">
         <button
           onClick={() => setSelectedTab("global")}
@@ -108,7 +107,7 @@ export function SkillsTab({
           }`}
         >
           <Globe size={14} />
-          Global Skills ({globalSkills.length})
+          全局技能（{globalSkills.length}）
         </button>
         <button
           onClick={() => setSelectedTab("project")}
@@ -120,7 +119,7 @@ export function SkillsTab({
           }`}
         >
           <Folder size={14} />
-          Project Skills ({projectSkills.length})
+          项目技能（{projectSkills.length}）
         </button>
       </div>
 
@@ -133,15 +132,15 @@ export function SkillsTab({
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
           {activeTab === "global"
-            ? "Skills available across all projects"
-            : "Skills specific to this project"}
+            ? "所有项目都可使用的技能"
+            : "仅当前项目可使用的技能"}
         </p>
         <button
           onClick={handleAdd}
           className="px-3 py-1.5 text-sm rounded border hover:bg-accent flex items-center gap-2"
         >
           <Plus size={14} />
-          Add Skill
+          添加技能
         </button>
       </div>
 
@@ -151,33 +150,33 @@ export function SkillsTab({
             {editing === skill.id ? (
               <div className="space-y-3">
                 <div>
-                  <label className="text-xs font-medium block mb-1">Name</label>
+                  <label className="text-xs font-medium block mb-1">名称</label>
                   <input
                     type="text"
                     value={editForm.name ?? ""}
                     onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
                     className="w-full px-2 py-1 text-sm border rounded bg-background"
-                    placeholder="skill-name"
+                    placeholder="技能名称"
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-medium block mb-1">Description</label>
+                  <label className="text-xs font-medium block mb-1">描述</label>
                   <input
                     type="text"
                     value={editForm.description ?? ""}
                     onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
                     className="w-full px-2 py-1 text-sm border rounded bg-background"
-                    placeholder="What does this skill do?"
+                    placeholder="这个技能做什么？"
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-medium block mb-1">Instructions</label>
+                  <label className="text-xs font-medium block mb-1">说明</label>
                   <textarea
                     value={editForm.instructions ?? ""}
                     onChange={(e) => setEditForm({ ...editForm, instructions: e.target.value })}
                     className="w-full px-2 py-1 text-sm border rounded bg-background font-mono"
                     rows={6}
-                    placeholder="Step-by-step instructions for this skill..."
+                    placeholder="这个技能的分步说明..."
                   />
                 </div>
                 <div className="flex gap-2">
@@ -186,14 +185,14 @@ export function SkillsTab({
                     className="px-3 py-1 text-sm rounded bg-primary text-primary-foreground hover:bg-primary/90 flex items-center gap-1"
                   >
                     <Save size={12} />
-                    Save
+                    保存
                   </button>
                   <button
                     onClick={handleCancel}
                     className="px-3 py-1 text-sm rounded border hover:bg-accent flex items-center gap-1"
                   >
                     <X size={12} />
-                    Cancel
+                    取消
                   </button>
                 </div>
               </div>
@@ -203,7 +202,7 @@ export function SkillsTab({
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-sm font-medium">{skill.name}</span>
                     {!skill.enabled && (
-                      <span className="text-xs text-muted-foreground">(disabled)</span>
+                      <span className="text-xs text-muted-foreground">（已停用）</span>
                     )}
                   </div>
                   {skill.description && (
@@ -229,13 +228,14 @@ export function SkillsTab({
                   <button
                     onClick={() => handleEdit(skill)}
                     className="p-1 hover:bg-accent rounded"
+                    aria-label={`编辑技能 ${skill.name}`}
                   >
                     <Edit2 size={14} />
                   </button>
                   <button
                     onClick={() => setDeleteTarget(skill)}
                     className="p-1 hover:bg-accent rounded text-red-600"
-                    aria-label={`Delete skill ${skill.name}`}
+                    aria-label={`删除技能 ${skill.name}`}
                   >
                     <Trash2 size={14} />
                   </button>
@@ -247,17 +247,17 @@ export function SkillsTab({
 
         {skills.length === 0 && (
           <div className="text-center py-8 text-sm text-muted-foreground">
-            No {activeTab} skills defined
+            还没有{activeTab === "global" ? "全局" : "项目"}技能
           </div>
         )}
       </div>
 
       <ConfirmDialog
         open={Boolean(deleteTarget)}
-        title="Delete Skill"
-        message={deleteTarget ? `Delete ${deleteTarget.name}? This cannot be undone.` : "Delete this skill? This cannot be undone."}
-        confirmLabel="Delete"
-        cancelLabel="Cancel"
+        title="删除技能"
+        message={deleteTarget ? `确定删除 ${deleteTarget.name}？此操作不可撤销。` : "确定删除这个技能？此操作不可撤销。"}
+        confirmLabel="删除"
+        cancelLabel="取消"
         variant="danger"
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}

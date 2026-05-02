@@ -116,7 +116,7 @@ export function WorktreesTab() {
       <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
         <div className="space-y-1">
           <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-xl font-semibold text-foreground">Worktree</h2>
+            <h2 className="text-xl font-semibold text-foreground">工作树</h2>
             <Badge variant={snapshot.status === "ready" ? "secondary" : "destructive"}>{snapshot.status === "ready" ? "列表已接入" : "读取失败"}</Badge>
             <Badge variant="outline">轮询 {Math.round(snapshot.refreshHintMs / 1000)}s</Badge>
           </div>
@@ -139,7 +139,7 @@ export function WorktreesTab() {
         <SummaryCard title="工作树总数" value={snapshot.summary.total.toLocaleString()} description="含主仓库与附加 worktree" />
         <SummaryCard title="脏 worktree" value={snapshot.summary.dirty.toLocaleString()} description="含未提交或未跟踪变更" />
         <SummaryCard title="干净 worktree" value={snapshot.summary.clean.toLocaleString()} description="当前无变更工作树" />
-        <SummaryCard title="Bare" value={snapshot.summary.bare.toLocaleString()} description={`根目录：${snapshot.rootPath}`} />
+        <SummaryCard title="裸仓库" value={snapshot.summary.bare.toLocaleString()} description={`根目录：${snapshot.rootPath}`} />
       </div>
 
       {snapshot.status === "error" ? (
@@ -161,7 +161,7 @@ export function WorktreesTab() {
                       {worktree.isPrimary ? <Badge variant="secondary">主仓库</Badge> : null}
                       {worktree.isExternal ? <Badge variant="outline">外部项目</Badge> : null}
                       {worktree.dirty ? <Badge variant="destructive">有变更</Badge> : <Badge variant="outline">干净</Badge>}
-                      {worktree.bare ? <Badge variant="outline">Bare</Badge> : null}
+                      {worktree.bare ? <Badge variant="outline">裸仓库</Badge> : null}
                     </div>
                     <CardDescription>{worktree.path}</CardDescription>
                   </div>

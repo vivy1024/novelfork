@@ -67,7 +67,7 @@ export function SessionsTab() {
                 <tr className="border-b text-xs uppercase tracking-[0.14em] text-muted-foreground">
                   <th className="py-2 pr-3 font-medium">窗口 ID</th>
                   <th className="py-2 pr-3 font-medium">会话 ID</th>
-                  <th className="py-2 pr-3 font-medium">Agent</th>
+                  <th className="py-2 pr-3 font-medium">代理</th>
                   <th className="py-2 pr-3 font-medium">模式</th>
                   <th className="py-2 pr-3 font-medium">连接 & 恢复态</th>
                   <th className="py-2 pr-3 font-medium">布局</th>

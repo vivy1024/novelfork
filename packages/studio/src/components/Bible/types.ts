@@ -72,14 +72,14 @@ export interface BibleContextPreview {
 }
 
 export const BIBLE_TABS: ReadonlyArray<{ id: BibleTab; label: string; singular: string }> = [
-  { id: "characters", label: "Characters", singular: "character" },
-  { id: "events", label: "Events", singular: "event" },
-  { id: "settings", label: "Settings", singular: "setting" },
-  { id: "chapter-summaries", label: "Chapter Summaries", singular: "chapterSummary" },
-  { id: "conflicts", label: "Conflicts", singular: "conflict" },
-  { id: "world-model", label: "World", singular: "worldModel" },
-  { id: "premise", label: "Premise", singular: "premise" },
-  { id: "character-arcs", label: "Character Arcs", singular: "characterArc" },
+  { id: "characters", label: "角色", singular: "character" },
+  { id: "events", label: "事件", singular: "event" },
+  { id: "settings", label: "设定", singular: "setting" },
+  { id: "chapter-summaries", label: "章节摘要", singular: "chapterSummary" },
+  { id: "conflicts", label: "冲突", singular: "conflict" },
+  { id: "world-model", label: "世界", singular: "worldModel" },
+  { id: "premise", label: "前提", singular: "premise" },
+  { id: "character-arcs", label: "角色弧光", singular: "characterArc" },
   { id: "questionnaires", label: "问卷中心", singular: "template" },
   { id: "core-shifts", label: "变更历史", singular: "coreShift" },
   { id: "ai-filter", label: "AI 味报告", singular: "filterReport" },

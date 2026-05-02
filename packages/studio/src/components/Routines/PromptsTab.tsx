@@ -43,7 +43,7 @@ export function PromptsTab({
   const handleAdd = () => {
     const newPrompt: Prompt = {
       id: `prompt_${Date.now()}`,
-      name: "New Prompt",
+      name: "新提示词",
       content: "",
       enabled: true,
     };
@@ -95,7 +95,6 @@ export function PromptsTab({
 
   return (
     <div className="space-y-4">
-      {/* Tab Switcher */}
       <div className="flex items-center gap-2 border-b">
         <button
           onClick={() => setSelectedTab("global")}
@@ -107,7 +106,7 @@ export function PromptsTab({
           }`}
         >
           <FileText size={14} />
-          Global Prompts ({globalPrompts.length})
+          全局提示词（{globalPrompts.length}）
         </button>
         <button
           onClick={() => setSelectedTab("system")}
@@ -119,7 +118,7 @@ export function PromptsTab({
           }`}
         >
           <Settings size={14} />
-          System Prompts ({systemPrompts.length})
+          系统提示词（{systemPrompts.length}）
         </button>
       </div>
 
@@ -132,15 +131,15 @@ export function PromptsTab({
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
           {activeTab === "global"
-            ? "Prompts injected into all conversations"
-            : "System-level prompts that define AI behavior"}
+            ? "注入到所有会话的提示词"
+            : "定义 AI 行为边界的系统级提示词"}
         </p>
         <button
           onClick={handleAdd}
           className="px-3 py-1.5 text-sm rounded border hover:bg-accent flex items-center gap-2"
         >
           <Plus size={14} />
-          Add Prompt
+          添加提示词
         </button>
       </div>
 
@@ -150,23 +149,23 @@ export function PromptsTab({
             {editing === prompt.id ? (
               <div className="space-y-3">
                 <div>
-                  <label className="text-xs font-medium block mb-1">Name</label>
+                  <label className="text-xs font-medium block mb-1">名称</label>
                   <input
                     type="text"
                     value={editForm.name ?? ""}
                     onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
                     className="w-full px-2 py-1 text-sm border rounded bg-background"
-                    placeholder="prompt-name"
+                    placeholder="提示词名称"
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-medium block mb-1">Content</label>
+                  <label className="text-xs font-medium block mb-1">内容</label>
                   <textarea
                     value={editForm.content ?? ""}
                     onChange={(e) => setEditForm({ ...editForm, content: e.target.value })}
                     className="w-full px-2 py-1 text-sm border rounded bg-background font-mono"
                     rows={10}
-                    placeholder="Prompt content..."
+                    placeholder="提示词内容..."
                   />
                 </div>
                 <div className="flex gap-2">
@@ -175,14 +174,14 @@ export function PromptsTab({
                     className="px-3 py-1 text-sm rounded bg-primary text-primary-foreground hover:bg-primary/90 flex items-center gap-1"
                   >
                     <Save size={12} />
-                    Save
+                    保存
                   </button>
                   <button
                     onClick={handleCancel}
                     className="px-3 py-1 text-sm rounded border hover:bg-accent flex items-center gap-1"
                   >
                     <X size={12} />
-                    Cancel
+                    取消
                   </button>
                 </div>
               </div>
@@ -192,7 +191,7 @@ export function PromptsTab({
                   <div className="flex items-center gap-2 mb-2">
                     <span className="text-sm font-medium">{prompt.name}</span>
                     {!prompt.enabled && (
-                      <span className="text-xs text-muted-foreground">(disabled)</span>
+                      <span className="text-xs text-muted-foreground">（已停用）</span>
                     )}
                   </div>
                   {prompt.content && (
@@ -215,13 +214,14 @@ export function PromptsTab({
                   <button
                     onClick={() => handleEdit(prompt)}
                     className="p-1 hover:bg-accent rounded"
+                    aria-label={`编辑提示词 ${prompt.name}`}
                   >
                     <Edit2 size={14} />
                   </button>
                   <button
                     onClick={() => setDeleteTarget(prompt)}
                     className="p-1 hover:bg-accent rounded text-red-600"
-                    aria-label={`Delete prompt ${prompt.name}`}
+                    aria-label={`删除提示词 ${prompt.name}`}
                   >
                     <Trash2 size={14} />
                   </button>
@@ -233,17 +233,17 @@ export function PromptsTab({
 
         {prompts.length === 0 && (
           <div className="text-center py-8 text-sm text-muted-foreground">
-            No {activeTab} prompts defined
+            还没有{activeTab === "global" ? "全局" : "系统"}提示词
           </div>
         )}
       </div>
 
       <ConfirmDialog
         open={Boolean(deleteTarget)}
-        title="Delete Prompt"
-        message={deleteTarget ? `Delete ${deleteTarget.name}? This cannot be undone.` : "Delete this prompt? This cannot be undone."}
-        confirmLabel="Delete"
-        cancelLabel="Cancel"
+        title="删除提示词"
+        message={deleteTarget ? `确定删除 ${deleteTarget.name}？此操作不可撤销。` : "确定删除这个提示词？此操作不可撤销。"}
+        confirmLabel="删除"
+        cancelLabel="取消"
         variant="danger"
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}

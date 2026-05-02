@@ -74,7 +74,7 @@ export function FileModPanel({ worktreePath }: FileModPanelProps) {
 
         setFiles(fileList);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to fetch file list");
+        setError(err instanceof Error ? err.message : "获取文件列表失败");
         setFiles([]);
       } finally {
         setLoadingFiles(false);
@@ -102,7 +102,7 @@ export function FileModPanel({ worktreePath }: FileModPanelProps) {
         );
         setDiff(data.diff || "");
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to fetch diff");
+        setError(err instanceof Error ? err.message : "获取 diff 失败");
         setDiff("");
       } finally {
         setLoading(false);
