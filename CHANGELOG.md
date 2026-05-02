@@ -17,6 +17,7 @@
 - 将 Questionnaire 能力接入 session tools，支持列出模板、启动结构化问题卡、提交回答复用现有 Bible/Jingwei mapping 事务写入，并在未配置真实 provider/model 时返回明确 unsupported AI 建议状态。
 - 将 PGI 能力接入 session tools，支持基于 escalating 矛盾和临近伏笔生成生成前追问、记录回答/跳过审计 metadata，并格式化为 writer 可用的本章作者指示。
 - 实现 Guided Generation Mode 基础状态机与 session tools，支持进入只读引导模式、回答/跳过结构化问题、提交计划到确认门，并在批准或拒绝后记录可恢复的 guided metadata 与画布 artifact。
+- 实现 `candidate.create_chapter` session tool，生成内容默认写入 `generated-candidates/` 候选区并返回 `candidate.created` artifact，确保不覆盖正式章节；未配置可用模型时返回 prompt-preview/unsupported 状态。
 
 ### 文档
 - 同步 README、Studio README、`CLAUDE.md` 与 `AGENTS.md` 的 Studio 全量测试数量口径为 149 files / 854 tests。

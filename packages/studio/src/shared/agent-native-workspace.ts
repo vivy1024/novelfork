@@ -1,6 +1,6 @@
-import type { SessionPermissionMode } from "./session-types.js";
+import type { SessionConfig, SessionPermissionMode } from "./session-types.js";
 
-export type { SessionPermissionMode } from "./session-types.js";
+export type { SessionConfig, SessionPermissionMode } from "./session-types.js";
 
 export const SESSION_TOOL_RISKS = ["read", "draft-write", "confirmed-write", "destructive"] as const;
 export type SessionToolRisk = (typeof SESSION_TOOL_RISKS)[number];
@@ -353,6 +353,7 @@ export type SessionToolExecutionInput = {
   readonly toolName: string;
   readonly input: Record<string, unknown>;
   readonly permissionMode: SessionPermissionMode;
+  readonly sessionConfig?: SessionConfig;
   readonly canvasContext?: CanvasContext;
   readonly confirmationDecision?: ToolConfirmationDecision;
 };

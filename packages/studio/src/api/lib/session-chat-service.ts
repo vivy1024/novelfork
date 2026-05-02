@@ -877,6 +877,7 @@ export async function confirmSessionToolDecision(
       toolName,
       input: match.confirmation.input,
       permissionMode: loaded.session.sessionConfig.permissionMode,
+      sessionConfig: loaded.session.sessionConfig,
       confirmationDecision: decision,
     })
     : createRejectedToolResult(toolName, match.confirmation, decision);
@@ -1292,6 +1293,7 @@ export async function handleSessionChatTransportMessage(
           toolName: toolUse.toolName,
           input: toolUse.input,
           permissionMode: loaded.session.sessionConfig.permissionMode,
+          sessionConfig: loaded.session.sessionConfig,
         });
         executedToolSteps += 1;
         const toolResultCall = buildToolResultCall(toolUse, toolResult);

@@ -87,7 +87,7 @@
   - 验证：状态机测试覆盖 enter、answer、approve、reject、execute、complete、refresh recovery。
   - 覆盖需求：R4、R6、R9、R10。
 
-- [ ] 11. 实现候选稿创建 session tool
+- [x] 11. 实现候选稿创建 session tool
   - 实现 `candidate.create_chapter`，复用现有候选稿/写作生成 API 或 service，确保 AI 输出默认进入候选区。
   - 工具输入接收 `bookId`、chapter intent、PGI 指示、GuidedGenerationPlan 引用。
   - 工具结果返回 candidate ID、chapter number、title、summary、artifact ref，并声明 `renderer: "candidate.created"`。
