@@ -6,6 +6,16 @@
 
 ## Unreleased
 
+### 修复
+- 修复根 `bun:compile` 与 Studio 权威编译链路不一致的问题，删除旧资源生成器入口。
+- 修复 Studio Next 搜索、项目模型覆盖、工作流页面与现有 API 的契约断链。
+- 修复 CI / release 工作流、CLI 当前文案、Node 版本口径与仓库本地残留追踪问题。
+- 清理已退役 Tauri 桥接代码、依赖与前端运行时残留，补充插件生命周期解绑能力。
+
+### 测试与文档
+- 新增 compile、search、app-next API、CI/release、仓库卫生、Tauri 退役边界、CLI 口径、插件生命周期回归测试。
+- 修正文档头信息与视觉审计标记，恢复 `docs:verify` 与 Studio Next 视觉审计验证。
+
 ## v0.0.2 (2026-05-01)
 
 ### 桌面应用

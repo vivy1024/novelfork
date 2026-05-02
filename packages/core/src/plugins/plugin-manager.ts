@@ -49,6 +49,7 @@ export class PluginManager {
   private instances = new Map<string, NovelForkPlugin>();
   private config: PluginManagerConfig;
   private userConfigs = new Map<string, Record<string, unknown>>();
+  private registeredHooks = new Map<string, ReturnType<NovelForkPlugin["getHooks"]>>();
 
   constructor(config: PluginManagerConfig) {
     this.config = config;
@@ -241,6 +242,7 @@ export class PluginManager {
       for (const hook of hooks) {
         this.config.hookManager.register(hook.stage, hook.handler);
       }
+      this.registeredHooks.set(pluginName, hooks);
       metadata.hooksCount = hooks.length;
 
       metadata.state = "active";
@@ -281,8 +283,11 @@ export class PluginManager {
         this.config.toolRegistry.unregister(tool.definition.name);
       }
 
-      // Note: HookManager doesn't have unregister yet - would need to add it
-      // For now, hooks remain registered until system restart
+      const hooks = this.registeredHooks.get(pluginName) ?? [];
+      for (const hook of hooks) {
+        this.config.hookManager.unregister(hook.stage, hook.handler);
+      }
+      this.registeredHooks.delete(pluginName);
 
       metadata.state = "terminated";
       metadata.toolsCount = 0;

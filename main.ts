@@ -55,7 +55,7 @@ if (!staticProvider && hasStatic) {
 
 if (!staticProvider) {
   console.warn("[bun:main] No embedded assets or packages/studio/dist/index.html found; starting API without frontend assets.");
-  console.warn("[bun:main] Run 'pnpm bun:build-client' and 'pnpm bun:embed-assets' before compile.");
+  console.warn("[bun:main] Run 'pnpm --dir packages/studio compile' to build the single-exe artifact.");
 } else if (usingEmbeddedAssets) {
   console.log("[bun:main] Using embedded Studio assets.");
 }

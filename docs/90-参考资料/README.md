@@ -18,6 +18,7 @@
 
 | 文件 | 类型 | 状态 | 说明 |
 |---|---|---|---|
+| [03-AI写小说工具对比.md](./03-AI写小说工具对比.md) | 文档 | 参考资料 | 对比 NovelFork 与常见 AI 写小说工具。 |
 | [Claude-Code参考](./Claude-Code参考/README.md) | 目录 | 目录 | 保存 Claude Code 相关经验参考。 |
 | [NarraFork参考](./NarraFork参考/README.md) | 目录 | 目录 | 保存 NarraFork 相关参考资料。 |
 | [小说写作与AI调研](./小说写作与AI调研/README.md) | 目录 | 目录 | 保存小说写作和 AI 调研参考。 |

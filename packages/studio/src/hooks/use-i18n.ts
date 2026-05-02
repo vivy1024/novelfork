@@ -268,7 +268,7 @@ const strings = {
   "workspace.select": { zh: "选择工作区文件夹", en: "Select Workspace Folder" },
   "workspace.hint": { zh: "建议选择一个空文件夹或已有的 NovelFork 项目文件夹", en: "Recommend an empty folder or an existing NovelFork project folder" },
 
-  // Tauri Login
+  // Sub2API Login
   "login.description": { zh: "请从 Sub2API 控制台登录以连接 AI 写作服务。", en: "Log in from the Sub2API console to connect AI writing services." },
   "login.openSub2api": { zh: "打开 Sub2API 控制台", en: "Open Sub2API Console" },
   "login.orPasteToken": { zh: "或粘贴登录令牌", en: "or paste login token" },
@@ -348,19 +348,10 @@ const strings = {
 export type StringKey = keyof typeof strings;
 export type TFunction = (key: StringKey) => string;
 
-function isTauri(): boolean {
-  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-}
-
 export function useI18n() {
-  const skipApi = isTauri();
-  const { data } = useApi<{ language: string }>(skipApi ? null : "/project");
+  const { data } = useApi<{ language: string }>("/project");
 
-  const lang: Lang = skipApi
-    ? ((localStorage.getItem("novelfork-language") ?? "zh") as Lang)
-    : data?.language === "en"
-      ? "en"
-      : "zh";
+  const lang: Lang = data?.language === "en" ? "en" : "zh";
 
   function t(key: StringKey): string {
     return strings[key][lang];

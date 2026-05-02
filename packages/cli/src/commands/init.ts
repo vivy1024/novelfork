@@ -125,7 +125,7 @@ export const initCommand = new Command("init")
       log("");
       const isEnglish = (opts.lang ?? "zh") === "en";
       const exampleCreate = isEnglish
-        ? "  novelfork book create --title 'My Novel' --genre progression --platform royalroad --lang en"
+        ? "  novelfork book create --title 'My Novel' --genre progression --platform other --lang en"
         : "  novelfork book create --title '我的小说' --genre xuanhuan --platform tomato";
       if (global) {
         log("Global LLM config detected. Ready to go!");

@@ -1,6 +1,6 @@
 /**
  * HttpStorageAdapter — calls existing /api/* endpoints via fetch.
- * Used in web (standalone) mode. Tauri mode will swap this out.
+ * Used by the current Studio web runtime.
  */
 
 import type {

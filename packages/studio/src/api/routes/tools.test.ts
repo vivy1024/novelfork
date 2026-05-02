@@ -303,7 +303,7 @@ describe("createToolsRouter", () => {
       line: 2,
     });
     expect(payload.snippet).toContain('"name": "@vivy1024/novelfork-studio"');
-    expect(payload.snippet).toContain('"version": "0.0.1"');
+    expect(payload.snippet).toContain('"version": "0.0.2"');
     expect(payload.snippet).not.toContain('"description": "NovelFork Studio');
   });
 

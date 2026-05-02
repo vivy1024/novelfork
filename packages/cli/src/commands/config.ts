@@ -9,7 +9,7 @@ export const configCommand = new Command("config")
 configCommand
   .command("set")
   .description("Set a configuration value")
-  .argument("<key>", "Config key (e.g., llm.apiKey)")
+  .argument("<key>", "Config key (e.g., llm.model)")
   .argument("<value>", "Config value")
   .action(async (key: string, value: string) => {
     const root = findProjectRoot();
