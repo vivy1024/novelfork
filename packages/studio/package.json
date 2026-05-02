@@ -1,6 +1,6 @@
 {
   "name": "@vivy1024/novelfork-studio",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "NovelFork Studio — Web workbench for Chinese web novel writing",
   "type": "module",
   "main": "dist/api/index.js",
