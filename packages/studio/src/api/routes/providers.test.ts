@@ -11,7 +11,7 @@ function okAdapter(models: RuntimeModelInput[] = []): RuntimeAdapter {
   return {
     listModels: vi.fn(async () => ({ success: true as const, models })),
     testModel: vi.fn(async () => ({ success: true as const, latency: 7 })),
-    generate: vi.fn(async () => ({ success: true as const, content: "ok" })),
+    generate: vi.fn(async () => ({ success: true as const, type: "message" as const, content: "ok" })),
   };
 }
 

@@ -29,7 +29,7 @@
   - 验证：单元测试覆盖 unknown tool、schema 错误、read/plan 写入阻断、执行异常不伪造成功。
   - 覆盖需求：R3、R9。
 
-- [ ] 4. 为 LLM runtime 增加工具调用契约和 unsupported 降级
+- [x] 4. 为 LLM runtime 增加工具调用契约和 unsupported 降级
   - 扩展 `packages/studio/src/api/lib/llm-runtime-service.ts` 的输入输出类型，支持 `tools?: SessionToolDefinition[]` 与 `type: "message" | "tool_use"` 结果。
   - 扩展 provider adapter 通用接口，支持传入工具定义与返回 `RuntimeToolUse[]`。
   - 对不支持 tools 的 provider/model 返回明确 `unsupported-tools` 或等价错误码，不退化为“已执行”。
