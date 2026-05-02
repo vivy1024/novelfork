@@ -15,7 +15,7 @@ NovelFork 是一个专注中文网文创作的本地 AI 工作台。作者可以
 - 检测 AI 痕迹、敏感词、设定冲突
 - 导出 Markdown/TXT 发布到起点/晋江等平台
 
-**完全本地运行，数据不出本机。** `bun run compile` 生成单可执行文件。
+**完全本地运行，数据不出本机。** `pnpm --dir packages/studio compile` 生成单可执行文件与版本化 release 产物。
 
 ---
 
@@ -32,10 +32,10 @@ cd packages/studio
 bun run dev          # http://localhost:4567
 
 # 测试
-bun run test         # 137 files / 801 tests
+pnpm --dir packages/studio exec vitest run  # 144 files / 819 tests
 
 # 编译
-bun run compile      # → dist/novelfork.exe (115MB)
+pnpm --dir packages/studio compile          # → dist/novelfork.exe + dist/novelfork-vX.Y.Z-windows-x64.exe (~117MB)
 ```
 
 ---

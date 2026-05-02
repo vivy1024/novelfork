@@ -6,6 +6,9 @@
 
 ## Unreleased
 
+### 文档
+- 同步 README、Studio README、测试状态与架构总览中的 v0.0.4 测试数量、编译命令和 release 产物口径。
+
 ## v0.0.4 (2026-05-02)
 
 ### 改进
