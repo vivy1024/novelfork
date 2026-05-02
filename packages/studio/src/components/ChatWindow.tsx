@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import {
   Bot,
   Braces,
@@ -63,6 +63,70 @@ interface ChatWindowProps {
   theme: Theme;
 }
 
+type ChatHostMode = "floating" | "docked";
+
+interface ChatWindowHostProps extends ChatWindowProps {
+  hostMode: ChatHostMode;
+}
+
+interface ChatWindowShellProps {
+  children: ReactNode;
+  hostMode: ChatHostMode;
+  isActive: boolean;
+  theme: Theme;
+  onActivate?: () => void;
+}
+
+interface ChatSessionHeaderProps {
+  chatWindow: ChatWindowState;
+  closeControls?: ReactNode;
+  hostMode: ChatHostMode;
+  isActive: boolean;
+  selectedPermission: ReturnType<typeof getSessionPermissionModeOption>;
+  sessionBreadcrumb: string[];
+  sessionState: Pick<NarratorSessionRecord, "title" | "sessionMode" | "messageCount">;
+  theme: Theme;
+  wsConnected: boolean;
+}
+
+interface ChatSessionMetricsProps {
+  ackedSeq: number;
+  chatWindow: ChatWindowState;
+  hostMode: ChatHostMode;
+  lastMessageTime: string;
+  lastSeq: number;
+  selectedPermission: ReturnType<typeof getSessionPermissionModeOption>;
+  theme: Theme;
+  wsConnected: boolean;
+}
+
+interface ChatToolCallListProps {
+  className?: string;
+  defaultPrefix: string;
+  onReplay: (toolCall: ToolCall) => void;
+  toolCalls: ToolCall[];
+}
+
+interface ChatMessageListProps {
+  messages: ChatMessage[];
+  messagesEndRef: RefObject<HTMLDivElement | null>;
+  onReplay: (toolCall: ToolCall) => void;
+  theme: Theme;
+}
+
+interface ChatInputBarProps {
+  activeRuntimeModel: RuntimeModelOption | null;
+  input: string;
+  modelPoolEmpty: boolean;
+  onChange: (value: string) => void;
+  onSend: () => void;
+  permissionLabel: string;
+  recoveryState: WindowRecoveryState;
+  sessionState: Pick<NarratorSessionRecord, "messageCount">;
+  theme: Theme;
+  wsConnected: boolean;
+}
+
 const REASONING_OPTIONS: Array<{ value: SessionReasoningEffort; label: string }> = [
   { value: "low", label: "低" },
   { value: "medium", label: "中" },
@@ -70,6 +134,14 @@ const REASONING_OPTIONS: Array<{ value: SessionReasoningEffort; label: string }>
 ];
 
 export function ChatWindow({ windowId, theme }: ChatWindowProps) {
+  return <ChatWindowHost windowId={windowId} theme={theme} hostMode="floating" />;
+}
+
+export function NarratorPanel({ windowId, theme }: ChatWindowProps) {
+  return <ChatWindowHost windowId={windowId} theme={theme} hostMode="docked" />;
+}
+
+function ChatWindowHost({ windowId, theme, hostMode }: ChatWindowHostProps) {
   const c = useColors(theme);
   const chatWindow = useWindowStore((state) => state.windows.find((w) => w.id === windowId));
   const isActive = useWindowStore((state) => state.activeWindowId === windowId);
@@ -794,132 +866,53 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
     });
   };
 
+  const closeControls = hostMode === "floating"
+    ? (() => {
+        // 5.7.2 / 5.7.3 — close-button affordance reflects whether the window
+        // carries real content. We do not want a toast on "opened and closed
+        // immediately" flows (empty window), but we do want exactly one
+        // "session is kept" hint the first time a user closes a populated window.
+        const hasContent = (sessionState.messageCount ?? 0) > 0 || effectiveMessages.length > 0;
+        const closeTooltip = hasContent ? "关闭窗口 · 会话仍保留在会话中心" : "关闭窗口（会话为空）";
+        const handleClose = () => {
+          maybeShowClosedWindowHint({ hasContent });
+          clearWindowRuntime(windowId);
+          removeWindow(windowId);
+        };
+        return (
+          <WindowControls
+            theme={theme}
+            minimized={chatWindow.minimized}
+            onMinimize={() => toggleMinimize(windowId)}
+            onMaximize={handleMaximize}
+            onClose={handleClose}
+            closeTooltip={closeTooltip}
+          />
+        );
+      })()
+    : undefined;
+
   return (
     <>
-      <div
-        className={`flex h-full flex-col overflow-hidden rounded-lg shadow-lg transition-shadow ${isActive ? "ring-1 ring-primary/20" : ""}`}
-        style={{ backgroundColor: c.bg, border: `1px solid ${c.border}` }}
-        onClick={() => setActiveWindow(windowId)}
+      <ChatWindowShell
+        hostMode={hostMode}
+        isActive={isActive}
+        theme={theme}
+        onActivate={hostMode === "floating" ? () => setActiveWindow(windowId) : undefined}
       >
-        <div
-          className="cursor-move px-3 py-2"
-          style={{ backgroundColor: c.bgSecondary, borderBottom: `1px solid ${c.border}` }}
-        >
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex min-w-0 items-start gap-2">
-              <Bot size={16} style={{ color: c.accent }} className="mt-0.5 shrink-0" />
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <span
-                    className="shrink-0 rounded-sm border border-border/60 bg-background/70 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.14em] text-muted-foreground"
-                    title="这是会话的工作台视图 · 关闭窗口不会结束会话"
-                  >
-                    工作台
-                  </span>
-                  <span className="max-w-[180px] truncate text-sm font-medium" style={{ color: c.text }}>
-                    {sessionState.title}
-                  </span>
-                  {isActive && (
-                    <span className="rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
-                      聚焦
-                    </span>
-                  )}
-                </div>
-                <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
-                  <span>Agent {chatWindow.agentId}</span>
-                  <span>•</span>
-                  {/* 5.7.1 sessionMode as a colored chip so users can distinguish modes at a glance. */}
-                  <span
-                    className={`rounded-full border px-1.5 py-0.5 font-medium ${
-                      sessionState.sessionMode === "plan"
-                        ? "border-violet-500/30 bg-violet-500/10 text-violet-700"
-                        : "border-sky-500/30 bg-sky-500/10 text-sky-700"
-                    }`}
-                  >
-                    {sessionState.sessionMode === "plan" ? "计划模式" : "对话模式"}
-                  </span>
-                  <span>•</span>
-                  <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 font-medium text-amber-700">
-                    {selectedPermission.shortLabel}
-                  </span>
-                  <span>•</span>
-                  <span>{sessionState.messageCount} 条消息</span>
-                  {chatWindow.sessionId ? (
-                    <>
-                      <span>•</span>
-                      {/* 5.7.1 click-to-copy sessionId gives a tangible "session is the object" signal. */}
-                      <button
-                        type="button"
-                        title={`点击复制完整 session ID: ${chatWindow.sessionId}`}
-                        onClick={async (e) => {
-                          e.stopPropagation();
-                          const sid = chatWindow.sessionId;
-                          if (!sid) return;
-                          try {
-                            await navigator.clipboard.writeText(sid);
-                            notify.success("会话 ID 已复制");
-                          } catch {
-                            notify.error("复制失败", { description: "浏览器拒绝了剪贴板写入" });
-                          }
-                        }}
-                        className="rounded border border-transparent px-1 font-mono hover:border-border hover:bg-muted/60 transition-colors"
-                      >
-                        #{shortSessionId(chatWindow.sessionId)}
-                      </button>
-                    </>
-                  ) : null}
-                </div>
-                <div className="mt-1 flex flex-wrap items-center gap-1 text-[10px] text-muted-foreground">
-                  {sessionBreadcrumb.map((segment, index) => (
-                    <Fragment key={`${segment}-${index}`}>
-                      {index > 0 ? <ChevronRight className="size-3 opacity-50" /> : null}
-                      <span className="rounded-full border border-border/60 bg-background/70 px-2 py-0.5">{segment}</span>
-                    </Fragment>
-                  ))}
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              {wsConnected ? (
-                <span title="已连接">
-                  <Wifi size={12} style={{ color: "#10b981" }} />
-                </span>
-              ) : (
-                <span title="未连接">
-                  <WifiOff size={12} style={{ color: "#ef4444" }} />
-                </span>
-              )}
-              {(() => {
-                // 5.7.2 / 5.7.3 — close-button affordance reflects whether the window
-                // carries real content. We do not want a toast on "opened and closed
-                // immediately" flows (empty window), but we do want exactly one
-                // "session is kept" hint the first time a user closes a populated window.
-                const hasContent =
-                  (sessionState.messageCount ?? 0) > 0 || effectiveMessages.length > 0;
-                const closeTooltip = hasContent
-                  ? "关闭窗口 · 会话仍保留在会话中心"
-                  : "关闭窗口（会话为空）";
-                const handleClose = () => {
-                  maybeShowClosedWindowHint({ hasContent });
-                  clearWindowRuntime(windowId);
-                  removeWindow(windowId);
-                };
-                return (
-                  <WindowControls
-                    theme={theme}
-                    minimized={chatWindow.minimized}
-                    onMinimize={() => toggleMinimize(windowId)}
-                    onMaximize={handleMaximize}
-                    onClose={handleClose}
-                    closeTooltip={closeTooltip}
-                  />
-                );
-              })()}
-            </div>
-          </div>
-        </div>
+        <ChatSessionHeader
+          chatWindow={chatWindow}
+          closeControls={closeControls}
+          hostMode={hostMode}
+          isActive={isActive}
+          selectedPermission={selectedPermission}
+          sessionBreadcrumb={sessionBreadcrumb}
+          sessionState={sessionState}
+          theme={theme}
+          wsConnected={wsConnected}
+        />
 
-        {!chatWindow.minimized && (
+        {(hostMode === "docked" || !chatWindow.minimized) && (
           <>
             <RecoveryBadge
               recoveryState={authoritativeRecoveryState}
@@ -960,13 +953,16 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
               </div>
             ) : null}
 
-            <div className="grid gap-2 border-b px-3 py-2 text-[10px] sm:grid-cols-5" style={{ borderColor: c.border, backgroundColor: c.bgSecondary }}>
-              <SessionMetric label="连接" value={wsConnected ? "在线" : "离线"} />
-              <SessionMetric label="确认边界" value={`ack:${authoritativeSnapshot?.cursor?.ackedSeq ?? lastSessionSeqRef.current}/${authoritativeSnapshot?.cursor?.lastSeq ?? lastSessionSeqRef.current}`} />
-              <SessionMetric label="位置" value={`x:${chatWindow.position.x} y:${chatWindow.position.y}`} />
-              <SessionMetric label="权限" value={selectedPermission.shortLabel} />
-              <SessionMetric label="最近活动" value={lastMessageTime} />
-            </div>
+            <ChatSessionMetrics
+              ackedSeq={authoritativeSnapshot?.cursor?.ackedSeq ?? lastSessionSeqRef.current}
+              chatWindow={chatWindow}
+              hostMode={hostMode}
+              lastMessageTime={lastMessageTime}
+              lastSeq={authoritativeSnapshot?.cursor?.lastSeq ?? lastSessionSeqRef.current}
+              selectedPermission={selectedPermission}
+              theme={theme}
+              wsConnected={wsConnected}
+            />
 
             <div className="border-b px-3 py-3" style={{ borderColor: c.border, backgroundColor: c.bgSecondary }}>
               <div className="mb-3 flex items-start justify-between gap-3">
@@ -1147,16 +1143,12 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
                           </Button>
                         </div>
                         {executionChainExpanded ? (
-                          <div className="mt-3 space-y-2 rounded-xl border border-border/60 bg-muted/10 p-2">
-                            {recentExecutionChain.calls.map((toolCall, idx) => (
-                              <ToolCallBlock
-                                key={`execution-chain-${toolCall.id ?? `${toolCall.toolName}-${idx}`}`}
-                                toolCall={toolCall}
-                                defaultExpanded={toolCall.status === "error" || toolCall.status === "running"}
-                                onReplay={handleReplayToolCall}
-                              />
-                            ))}
-                          </div>
+                          <ChatToolCallList
+                            className="mt-3"
+                            defaultPrefix="execution-chain"
+                            onReplay={handleReplayToolCall}
+                            toolCalls={recentExecutionChain.calls}
+                          />
                         ) : null}
                       </>
                     ) : (
@@ -1253,117 +1245,28 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
               </div>
             </div>
 
-            <div className="flex-1 space-y-2 overflow-y-auto p-3">
-              {effectiveMessages.map((msg) => (
-                <div key={msg.id} className="space-y-2">
-                  {msg.content ? (
-                    <div className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-                      <div
-                        className="max-w-[80%] rounded-lg px-3 py-2 text-sm"
-                        style={{
-                          backgroundColor: msg.role === "user" ? c.accent : c.bgSecondary,
-                          color: msg.role === "user" ? "#fff" : c.text,
-                        }}
-                      >
-                        {msg.content}
-                      </div>
-                    </div>
-                  ) : null}
-                  {msg.toolCalls && msg.toolCalls.length > 0 && (
-                    <div className="ml-4 space-y-2 rounded-xl border border-border/40 bg-muted/20 p-2">
-                      <div className="flex items-center justify-between gap-2 px-1">
-                        <div className="text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                          工具调用日志
-                        </div>
-                        <div className="text-[10px] text-muted-foreground">
-                          {msg.toolCalls.length} 步 · {sumToolCallDurations(msg.toolCalls)}
-                        </div>
-                      </div>
-                      {msg.toolCalls.map((toolCall, idx) => (
-                        <ToolCallBlock
-                          key={toolCall.id ?? `${msg.id}-tool-${idx}`}
-                          toolCall={toolCall}
-                          defaultExpanded={toolCall.status === "error" || toolCall.status === "running"}
-                          onReplay={handleReplayToolCall}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
-              <div ref={messagesEndRef} />
-            </div>
+            <ChatMessageList
+              messages={effectiveMessages}
+              messagesEndRef={messagesEndRef}
+              onReplay={handleReplayToolCall}
+              theme={theme}
+            />
 
-            <div className="border-t px-3 py-2" style={{ borderColor: c.border }}>
-              <div className="mb-2 flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
-                <span className="rounded-full border border-border px-2 py-0.5">对象化会话</span>
-                <span className="rounded-full border border-border px-2 py-0.5">Agent {chatWindow.agentId}</span>
-                <span className="rounded-full border border-border px-2 py-0.5">权限 {selectedPermission.label}</span>
-                <span className="rounded-full border border-border px-2 py-0.5">{sessionState.messageCount} 条消息</span>
-                {activeRuntimeModel ? <span className="rounded-full border border-border px-2 py-0.5">{activeRuntimeModel.providerName}</span> : null}
-              </div>
-              {(() => {
-                // 5.6.3 — recovery-state-aware input affordance:
-                //   - `resetting`  → disable entirely, show why in the placeholder
-                //   - `reconnecting` / `replaying` → allow typing but defer send until healthy
-                //   - otherwise fall back to wsConnected gate
-                const isResetting = authoritativeRecoveryState === "resetting";
-                const isReconnecting = authoritativeRecoveryState === "reconnecting";
-                const isReplaying = authoritativeRecoveryState === "replaying";
-                const inputDisabled = isResetting;
-                const sendBlocked = modelPoolEmpty || !wsConnected || isResetting || isReconnecting || isReplaying;
-                // Connection-offline state is already surfaced by the RecoveryBadge
-                // banner + chip; do not repeat it in the placeholder so the baseline
-                // "输入消息..." text stays stable for both humans and tests.
-                const placeholder = isResetting
-                  ? "会话重置中，稍候…"
-                  : isReconnecting
-                    ? "连接中断，正在重连…（可先输入）"
-                    : isReplaying
-                      ? "正在回放历史…（可先输入）"
-                      : "输入消息...";
-                const sendTooltip = modelPoolEmpty
-                  ? "尚未配置可用模型"
-                  : isResetting
-                    ? "会话正在重置，暂不可发送"
-                    : isReconnecting || isReplaying
-                      ? "等待连接恢复后发送"
-                      : !wsConnected
-                        ? "连接已断开"
-                        : "发送消息";
-                return (
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={input}
-                      onChange={(e) => setInput(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && !sendBlocked && handleSend()}
-                      placeholder={placeholder}
-                      className="flex-1 rounded px-3 py-2 text-sm transition-opacity disabled:opacity-60"
-                      style={{
-                        backgroundColor: c.bgSecondary,
-                        color: c.text,
-                        border: `1px solid ${c.border}`,
-                      }}
-                      disabled={inputDisabled}
-                      aria-label="消息输入框"
-                    />
-                    <button
-                      onClick={handleSend}
-                      disabled={sendBlocked || !input.trim()}
-                      title={sendTooltip}
-                      className="rounded px-4 py-2 text-sm font-medium transition-opacity disabled:cursor-not-allowed disabled:opacity-50"
-                      style={{ backgroundColor: c.accent, color: "#fff" }}
-                    >
-                      发送
-                    </button>
-                  </div>
-                );
-              })()}
-            </div>
+            <ChatInputBar
+              activeRuntimeModel={activeRuntimeModel}
+              input={input}
+              modelPoolEmpty={modelPoolEmpty}
+              onChange={setInput}
+              onSend={handleSend}
+              permissionLabel={selectedPermission.label}
+              recoveryState={authoritativeRecoveryState}
+              sessionState={sessionState}
+              theme={theme}
+              wsConnected={wsConnected}
+            />
           </>
         )}
-      </div>
+      </ChatWindowShell>
 
       <ContextPanel
         mode="session"
@@ -1381,6 +1284,281 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
         onClear={() => persistSessionMessages([])}
       />
     </>
+  );
+}
+
+function ChatWindowShell({ children, hostMode, isActive, theme, onActivate }: ChatWindowShellProps) {
+  const c = useColors(theme);
+  return (
+    <div
+      className={`flex h-full flex-col overflow-hidden rounded-lg border shadow-lg transition-shadow ${
+        hostMode === "docked" ? "rounded-none shadow-none" : ""
+      } ${isActive && hostMode === "floating" ? "ring-1 ring-primary/20" : ""}`}
+      style={{ backgroundColor: c.bg, borderColor: c.border }}
+      onClick={onActivate}
+      data-testid="chat-window-shell"
+      data-host-mode={hostMode}
+    >
+      {children}
+    </div>
+  );
+}
+
+function ChatSessionHeader({
+  chatWindow,
+  closeControls,
+  hostMode,
+  isActive,
+  selectedPermission,
+  sessionBreadcrumb,
+  sessionState,
+  theme,
+  wsConnected,
+}: ChatSessionHeaderProps) {
+  const c = useColors(theme);
+  return (
+    <div
+      className={`${hostMode === "floating" ? "cursor-move" : ""} px-3 py-2`}
+      style={{ backgroundColor: c.bgSecondary, borderBottom: `1px solid ${c.border}` }}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-2">
+          <Bot size={16} style={{ color: c.accent }} className="mt-0.5 shrink-0" />
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span
+                className="shrink-0 rounded-sm border border-border/60 bg-background/70 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.14em] text-muted-foreground"
+                title={hostMode === "docked" ? "右侧固定叙述者面板 · 会话是主对象" : "这是会话的工作台视图 · 关闭窗口不会结束会话"}
+              >
+                {hostMode === "docked" ? "叙述者" : "工作台"}
+              </span>
+              <span className="max-w-[180px] truncate text-sm font-medium" style={{ color: c.text }}>
+                {sessionState.title}
+              </span>
+              {isActive && hostMode === "floating" ? (
+                <span className="rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+                  聚焦
+                </span>
+              ) : null}
+            </div>
+            <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
+              <span>Agent {chatWindow.agentId}</span>
+              <span>•</span>
+              <span
+                className={`rounded-full border px-1.5 py-0.5 font-medium ${
+                  sessionState.sessionMode === "plan"
+                    ? "border-violet-500/30 bg-violet-500/10 text-violet-700"
+                    : "border-sky-500/30 bg-sky-500/10 text-sky-700"
+                }`}
+              >
+                {sessionState.sessionMode === "plan" ? "计划模式" : "对话模式"}
+              </span>
+              <span>•</span>
+              <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 font-medium text-amber-700">
+                {selectedPermission.shortLabel}
+              </span>
+              <span>•</span>
+              <span>{sessionState.messageCount} 条消息</span>
+              {chatWindow.sessionId ? (
+                <>
+                  <span>•</span>
+                  <button
+                    type="button"
+                    title={`点击复制完整 session ID: ${chatWindow.sessionId}`}
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      const sid = chatWindow.sessionId;
+                      if (!sid) return;
+                      try {
+                        await navigator.clipboard.writeText(sid);
+                        notify.success("会话 ID 已复制");
+                      } catch {
+                        notify.error("复制失败", { description: "浏览器拒绝了剪贴板写入" });
+                      }
+                    }}
+                    className="rounded border border-transparent px-1 font-mono transition-colors hover:border-border hover:bg-muted/60"
+                  >
+                    #{shortSessionId(chatWindow.sessionId)}
+                  </button>
+                </>
+              ) : null}
+            </div>
+            <div className="mt-1 flex flex-wrap items-center gap-1 text-[10px] text-muted-foreground">
+              {sessionBreadcrumb.map((segment, index) => (
+                <Fragment key={`${segment}-${index}`}>
+                  {index > 0 ? <ChevronRight className="size-3 opacity-50" /> : null}
+                  <span className="rounded-full border border-border/60 bg-background/70 px-2 py-0.5">{segment}</span>
+                </Fragment>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {wsConnected ? (
+            <span title="已连接">
+              <Wifi size={12} style={{ color: "#10b981" }} />
+            </span>
+          ) : (
+            <span title="未连接">
+              <WifiOff size={12} style={{ color: "#ef4444" }} />
+            </span>
+          )}
+          {closeControls}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ChatSessionMetrics({
+  ackedSeq,
+  chatWindow,
+  hostMode,
+  lastMessageTime,
+  lastSeq,
+  selectedPermission,
+  theme,
+  wsConnected,
+}: ChatSessionMetricsProps) {
+  const c = useColors(theme);
+  return (
+    <div
+      className={`grid gap-2 border-b px-3 py-2 text-[10px] ${hostMode === "docked" ? "sm:grid-cols-4" : "sm:grid-cols-5"}`}
+      style={{ borderColor: c.border, backgroundColor: c.bgSecondary }}
+    >
+      <SessionMetric label="连接" value={wsConnected ? "在线" : "离线"} />
+      <SessionMetric label="确认边界" value={`ack:${ackedSeq}/${lastSeq}`} />
+      {hostMode === "floating" ? <SessionMetric label="位置" value={`x:${chatWindow.position.x} y:${chatWindow.position.y}`} /> : null}
+      <SessionMetric label="权限" value={selectedPermission.shortLabel} />
+      <SessionMetric label="最近活动" value={lastMessageTime} />
+    </div>
+  );
+}
+
+function ChatMessageList({ messages, messagesEndRef, onReplay, theme }: ChatMessageListProps) {
+  const c = useColors(theme);
+  return (
+    <div className="flex-1 space-y-2 overflow-y-auto p-3">
+      {messages.map((msg) => (
+        <div key={msg.id} className="space-y-2">
+          {msg.content ? (
+            <div className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+              <div
+                className="max-w-[80%] rounded-lg px-3 py-2 text-sm"
+                style={{
+                  backgroundColor: msg.role === "user" ? c.accent : c.bgSecondary,
+                  color: msg.role === "user" ? "#fff" : c.text,
+                }}
+              >
+                {msg.content}
+              </div>
+            </div>
+          ) : null}
+          {msg.toolCalls?.length ? (
+            <div className="ml-4 space-y-2 rounded-xl border border-border/40 bg-muted/20 p-2">
+              <div className="flex items-center justify-between gap-2 px-1">
+                <div className="text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                  工具调用日志
+                </div>
+                <div className="text-[10px] text-muted-foreground">
+                  {msg.toolCalls.length} 步 · {sumToolCallDurations(msg.toolCalls)}
+                </div>
+              </div>
+              <ChatToolCallList defaultPrefix={msg.id} onReplay={onReplay} toolCalls={msg.toolCalls} />
+            </div>
+          ) : null}
+        </div>
+      ))}
+      <div ref={messagesEndRef} />
+    </div>
+  );
+}
+
+function ChatToolCallList({ className = "", defaultPrefix, onReplay, toolCalls }: ChatToolCallListProps) {
+  return (
+    <div className={`${className} space-y-2 rounded-xl border border-border/60 bg-muted/10 p-2`}>
+      {toolCalls.map((toolCall, idx) => (
+        <ToolCallBlock
+          key={`${defaultPrefix}-${toolCall.id ?? `${toolCall.toolName}-${idx}`}`}
+          toolCall={toolCall}
+          defaultExpanded={toolCall.status === "error" || toolCall.status === "running"}
+          onReplay={onReplay}
+        />
+      ))}
+    </div>
+  );
+}
+
+function ChatInputBar({
+  activeRuntimeModel,
+  input,
+  modelPoolEmpty,
+  onChange,
+  onSend,
+  permissionLabel,
+  recoveryState,
+  sessionState,
+  theme,
+  wsConnected,
+}: ChatInputBarProps) {
+  const c = useColors(theme);
+  const isResetting = recoveryState === "resetting";
+  const isReconnecting = recoveryState === "reconnecting";
+  const isReplaying = recoveryState === "replaying";
+  const inputDisabled = isResetting;
+  const sendBlocked = modelPoolEmpty || !wsConnected || isResetting || isReconnecting || isReplaying;
+  const placeholder = isResetting
+    ? "会话重置中，稍候…"
+    : isReconnecting
+      ? "连接中断，正在重连…（可先输入）"
+      : isReplaying
+        ? "正在回放历史…（可先输入）"
+        : "输入消息...";
+  const sendTooltip = modelPoolEmpty
+    ? "尚未配置可用模型"
+    : isResetting
+      ? "会话正在重置，暂不可发送"
+      : isReconnecting || isReplaying
+        ? "等待连接恢复后发送"
+        : !wsConnected
+          ? "连接已断开"
+          : "发送消息";
+
+  return (
+    <div className="border-t px-3 py-2" style={{ borderColor: c.border }}>
+      <div className="mb-2 flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
+        <span className="rounded-full border border-border px-2 py-0.5">对象化会话</span>
+        <span className="rounded-full border border-border px-2 py-0.5">权限 {permissionLabel}</span>
+        <span className="rounded-full border border-border px-2 py-0.5">{sessionState.messageCount} 条消息</span>
+        {activeRuntimeModel ? <span className="rounded-full border border-border px-2 py-0.5">{activeRuntimeModel.providerName}</span> : null}
+      </div>
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={input}
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && !sendBlocked && onSend()}
+          placeholder={placeholder}
+          className="flex-1 rounded px-3 py-2 text-sm transition-opacity disabled:opacity-60"
+          style={{
+            backgroundColor: c.bgSecondary,
+            color: c.text,
+            border: `1px solid ${c.border}`,
+          }}
+          disabled={inputDisabled}
+          aria-label="消息输入框"
+        />
+        <button
+          onClick={onSend}
+          disabled={sendBlocked || !input.trim()}
+          title={sendTooltip}
+          className="rounded px-4 py-2 text-sm font-medium transition-opacity disabled:cursor-not-allowed disabled:opacity-50"
+          style={{ backgroundColor: c.accent, color: "#fff" }}
+        >
+          发送
+        </button>
+      </div>
+    </div>
   );
 }
 

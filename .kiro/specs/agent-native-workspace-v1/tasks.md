@@ -103,7 +103,7 @@
   - 验证：UI 测试覆盖 renderer 命中、fallback、错误态、pending/running/success/error 状态。
   - 覆盖需求：R3、R4、R5、R6、R7、R9。
 
-- [ ] 13. 提取 ChatWindow 可复用结构并支持 docked 模式
+- [x] 13. 提取 ChatWindow 可复用结构并支持 docked 模式
   - 从 `ChatWindow.tsx` 提取 `ChatWindowShell`、`ChatMessageList`、`ChatInputBar`、`ChatSessionHeader`、`ChatToolCallList` 或等价结构。
   - 保留 legacy floating host 的行为，新增 docked host 给右侧叙述者面板使用。
   - docked 模式保留模型选择、权限模式、reasoning effort、连接状态、recovery banner、recent execution chain、tool call blocks。
