@@ -6,6 +6,15 @@
 
 ## Unreleased
 
+## v0.0.4 (2026-05-02)
+
+### 改进
+- 将 Studio 共享可见 UI 文案统一归入中文口径，覆盖聊天、Routines、Provider、权限、监控、搜索与工具结果等组件。
+- 强化 release 版本管理规则，明确版本变动需同步 package、CLAUDE、AGENTS、CHANGELOG 及正式发布 tag/push。
+
+### 测试
+- 更新 Studio 本地化断言，并新增 UI completion audit，防止核心共享 UI 文案回退为英文。
+
 ## v0.0.3 (2026-05-02)
 
 ### 修复

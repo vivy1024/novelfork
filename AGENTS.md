@@ -6,7 +6,7 @@
 
 ## 版本与发布
 
-- **当前版本**: v0.0.3
+- **当前版本**: v0.0.4
 - **版本管理**: `CLAUDE.md` 标题 → `package.json` → `AGENTS.md` → `CHANGELOG.md` → `git tag`
 - **版本变动**: 任何版本号变动必须同步更新 release 资料：`package.json`、`CLAUDE.md`、`AGENTS.md`、`CHANGELOG.md`；正式发布还必须提交、打 `git tag vX.Y.Z` 并推送提交与 tag
 - **每次功能合入**: 在 `CHANGELOG.md` 的 `## Unreleased` 段下记录
