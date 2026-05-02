@@ -19,6 +19,7 @@
 | 版本变动 | 任何版本号变动必须同步更新 release 资料：`package.json`、`packages/*/package.json`、`CLAUDE.md`、`AGENTS.md`、`CHANGELOG.md` |
 | 任务验收 | 用户要求提交、验收完成或明确要求收尾时，视为授权执行：相关验证 → Git 提交 → `git push origin <branch>`；不得只停留在本地提交 |
 | 提交后 | 每次功能合入后更新 `CHANGELOG.md` Unreleased 段，并随提交一起 push |
+| 文档同步 | 代码、配置、流程、测试数量、构建命令、产物路径、发布状态任一变化，必须同步相关 README、`docs/`、包级 README、`CLAUDE.md`、`AGENTS.md`；文档更新本身也必须记录到 `CHANGELOG.md` Unreleased |
 | 发版时 | 将 Unreleased 内容移到新版本号下；运行 typecheck/test/compile/smoke；提交 release commit；打 `git tag vX.Y.Z`；推送提交与 tag；上传 GitHub Release 产物 |
 | 发布产物 | GitHub Release 是正式分发源；必须上传 `dist/novelfork-vX.Y.Z-windows-x64.exe` 与 SHA256；本地 dist 不等于已发布 |
 | 禁止 | 禁止手动改版本号到未来版本；禁止虚构 changelog 条目；禁止只打本地 tag 或只本地构建就宣称 release 完成 |
@@ -67,11 +68,15 @@
 ```
 
 ```
-验收完成 → 更新 CHANGELOG Unreleased → 相关验证 → Git 提交 → git push origin <branch>
+验收完成 → 更新 CHANGELOG Unreleased → 同步相关文档 → 相关验证 → Git 提交 → git push origin <branch>
 ```
 
 ```
-正式发版 → 同步版本资料 → typecheck/test/compile/smoke → release commit → git tag → push commit/tag → GitHub Release 上传 exe + SHA256
+文档/规则变更 → 核对关联 README/docs/包 README/规则文件 → 更新 CHANGELOG Unreleased → docs:verify → Git 提交 → git push origin <branch>
+```
+
+```
+正式发版 → 同步版本资料与发布文档 → typecheck/test/compile/smoke → release commit → git tag → push commit/tag → GitHub Release 上传 exe + SHA256
 ```
 
 ```
@@ -96,6 +101,11 @@ Git 检查 → git status --short
 - 不顺手重构、补功能、加抽象、补注释
 - 不为不可能的场景加错误处理
 - 文档任务专注文档，代码任务专注代码
+
+### 文档纪律
+- 修改代码/配置/流程后必须同步受影响文档与 CHANGELOG；禁止只改实现不改文档口径
+- 更新测试数量、构建命令、产物名称、端口、运行方式、发布状态时，必须全仓搜索旧口径并更新当前文档
+- 删除或迁移 `.md` 前必须先读取、提取有效信息、整合到目标文档；禁止创建一次性“完成报告/修复说明/实施总结”类临时文档
 
 ### 错误恢复
 - 先读报错 → 验证假设 → 看代码配置 → 再决定换不换方案

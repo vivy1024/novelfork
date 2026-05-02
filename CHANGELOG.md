@@ -8,6 +8,7 @@
 
 ### 文档
 - 同步 README、Studio README、测试状态与架构总览中的 v0.0.4 测试数量、编译命令和 release 产物口径。
+- 将“代码/配置/流程变更必须同步文档与 CHANGELOG、验收前全仓核对旧口径”的文档纪律写入 `CLAUDE.md` 与 `AGENTS.md`。
 
 ## v0.0.4 (2026-05-02)
 
