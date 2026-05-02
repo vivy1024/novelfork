@@ -1,3 +1,4 @@
+import type { AgentNativeMessageMetadata, AgentNativeToolMetadata, SessionToolExecutionResult } from "./agent-native-workspace.js";
 import type { ToolAccessReasonKey } from "./tool-access-reasons.js";
 
 export const SESSION_PERMISSION_MODES = ["ask", "edit", "allow", "read", "plan"] as const;
@@ -202,6 +203,7 @@ export interface NarratorSessionChatMessage {
   seq?: number;
   toolCalls?: ToolCall[];
   runtime?: NarratorSessionRuntimeMetadata;
+  metadata?: AgentNativeMessageMetadata & Record<string, unknown>;
 }
 
 export type ToolCallStatus = "pending" | "running" | "success" | "error";
@@ -231,7 +233,13 @@ export interface ToolCall {
   input?: unknown;
   duration?: number;
   output?: string;
-  result?: ToolCallGovernanceEnvelope | Record<string, unknown>;
+  result?: ToolCallGovernanceEnvelope | SessionToolExecutionResult | AgentNativeToolMetadata | Record<string, unknown>;
+  renderer?: AgentNativeToolMetadata["renderer"];
+  artifact?: AgentNativeToolMetadata["artifact"];
+  confirmation?: AgentNativeToolMetadata["confirmation"];
+  guided?: AgentNativeToolMetadata["guided"];
+  pgi?: AgentNativeToolMetadata["pgi"];
+  narrative?: AgentNativeToolMetadata["narrative"];
   allowed?: boolean;
   confirmationRequired?: boolean;
   source?: string;
@@ -251,6 +259,7 @@ export interface ChatMessage {
   timestamp: number;
   seq?: number;
   toolCalls?: ToolCall[];
+  metadata?: AgentNativeMessageMetadata & Record<string, unknown>;
 }
 
 export interface NarratorSessionChatCursor {
