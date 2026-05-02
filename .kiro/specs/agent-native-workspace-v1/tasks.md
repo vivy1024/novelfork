@@ -46,7 +46,7 @@
   - 验证：集成测试覆盖单工具成功、工具失败、超过步数、刷新恢复、无工具模型 unsupported。
   - 覆盖需求：R2、R3、R9。
 
-- [ ] 6. 实现工具确认门 API 与恢复
+- [x] 6. 实现工具确认门 API 与恢复
   - 新增/扩展 API：`GET /api/sessions/:id/tools`、`POST /api/sessions/:id/tools/:toolName/confirm`，以及 pending confirmation 查询/提交能力。
   - confirmation 数据持久化到 session recovery 或 session message metadata，包含工具名、目标资源、风险、摘要、diff、批准/拒绝记录。
   - 用户批准后执行被挂起的工具或把批准结果作为 tool_result 回灌模型；用户拒绝后不执行写入并回灌拒绝结果。

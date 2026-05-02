@@ -74,7 +74,7 @@ export async function executeSessionTool(
     }, startedAt, options);
   }
 
-  if (riskDecision === "confirm") {
+  if (riskDecision === "confirm" && input.confirmationDecision?.decision !== "approved") {
     return withDuration({
       ok: true,
       renderer: definition.renderer,
