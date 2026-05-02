@@ -1,3 +1,4 @@
+import type { SessionToolDefinition } from "../../shared/agent-native-workspace.js";
 import type { NarratorSessionChatMessage, SessionConfig } from "../../shared/session-types.js";
 import {
   createProviderAdapterRegistry,
@@ -5,11 +6,12 @@ import {
   type RuntimeAdapterFailureCode,
   type RuntimeAdapterId,
   type RuntimeChatMessage,
+  type RuntimeToolUse,
 } from "./provider-adapters/index.js";
 import { buildRuntimeModelPool } from "./runtime-model-pool.js";
 import { ProviderRuntimeStore, type RuntimeProviderRecord } from "./provider-runtime-store.js";
 
-export type LlmRuntimeFailureCode = RuntimeAdapterFailureCode | "model-unavailable" | "provider-unavailable" | "empty-response";
+export type LlmRuntimeFailureCode = RuntimeAdapterFailureCode | "model-unavailable" | "provider-unavailable" | "empty-response" | "unsupported-tools";
 
 export interface LlmRuntimeMetadata {
   readonly providerId: string;
@@ -18,12 +20,14 @@ export interface LlmRuntimeMetadata {
 }
 
 export type LlmRuntimeGenerateResult =
-  | { readonly success: true; readonly content: string; readonly metadata: LlmRuntimeMetadata }
+  | { readonly success: true; readonly type: "message"; readonly content: string; readonly metadata: LlmRuntimeMetadata }
+  | { readonly success: true; readonly type: "tool_use"; readonly toolUses: readonly RuntimeToolUse[]; readonly metadata: LlmRuntimeMetadata }
   | { readonly success: false; readonly code: LlmRuntimeFailureCode; readonly error: string; readonly metadata?: Partial<LlmRuntimeMetadata> };
 
 export interface LlmRuntimeGenerateInput {
   readonly sessionConfig: SessionConfig;
   readonly messages: readonly NarratorSessionChatMessage[];
+  readonly tools?: readonly SessionToolDefinition[];
 }
 
 export interface LlmRuntimeServiceOptions {
@@ -101,11 +105,22 @@ export class LlmRuntimeService {
       };
     }
 
+    const requestedTools = input.tools?.length ? input.tools : undefined;
+    if (requestedTools && poolEntry.capabilities.functionCalling !== true) {
+      return {
+        success: false,
+        code: "unsupported-tools",
+        error: "当前模型不支持工具循环",
+        metadata: { providerId, modelId, providerName: poolEntry.providerName },
+      };
+    }
+
     const adapter = this.adapters.get(adapterIdForProvider(provider));
     const result = await adapter.generate({
       ...providerRef(provider),
       modelId,
       messages: toRuntimeMessages(input.messages),
+      ...(requestedTools ? { tools: requestedTools } : {}),
     });
 
     const metadata: LlmRuntimeMetadata = {
@@ -123,6 +138,15 @@ export class LlmRuntimeService {
       };
     }
 
+    if (result.type === "tool_use") {
+      return {
+        success: true,
+        type: "tool_use",
+        toolUses: result.toolUses,
+        metadata,
+      };
+    }
+
     if (!result.content.trim()) {
       return {
         success: false,
@@ -134,6 +158,7 @@ export class LlmRuntimeService {
 
     return {
       success: true,
+      type: "message",
       content: result.content,
       metadata,
     };

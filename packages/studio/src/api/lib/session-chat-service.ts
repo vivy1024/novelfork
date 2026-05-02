@@ -722,6 +722,25 @@ export async function handleSessionChatTransportMessage(
     return;
   }
 
+  if (reply.type === "tool_use") {
+    const errorMessage = "当前会话暂不能处理工具调用结果";
+    const failure = {
+      reason: "tool-loop-unavailable",
+      message: errorMessage,
+      at: new Date().toISOString(),
+    };
+    const updatedSession = await persistSessionChatProgress(sessionId, loaded.session, loaded.state, [userMessage], failure);
+    sendEnvelope(transport, createSessionChatError(sessionId, errorMessage, {
+      code: "tool-loop-unavailable",
+      runtime: reply.metadata,
+    }));
+
+    if (updatedSession) {
+      broadcastStateEnvelope(buildServerFirstSession(updatedSession, loaded.state), loaded.state);
+    }
+    return;
+  }
+
   const assistantMessage = appendMessageToState(loaded.state, {
     id: `${userMessage.id}-assistant`,
     role: "assistant",

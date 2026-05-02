@@ -19,9 +19,22 @@ export interface TestModelInput extends RuntimeProviderRef {
   readonly modelId: string;
 }
 
+export interface RuntimeToolDefinition {
+  readonly name: string;
+  readonly description: string;
+  readonly inputSchema: Record<string, unknown>;
+}
+
+export interface RuntimeToolUse {
+  readonly id: string;
+  readonly name: string;
+  readonly input: Record<string, unknown>;
+}
+
 export interface GenerateInput extends RuntimeProviderRef {
   readonly modelId: string;
   readonly messages: readonly RuntimeChatMessage[];
+  readonly tools?: readonly RuntimeToolDefinition[];
 }
 
 export type RuntimeAdapterFailure = {
@@ -33,7 +46,10 @@ export type RuntimeAdapterFailure = {
 
 export type ListModelsResult = { readonly success: true; readonly models: RuntimeModelInput[] } | RuntimeAdapterFailure;
 export type TestModelResult = { readonly success: true; readonly latency: number } | RuntimeAdapterFailure;
-export type GenerateResult = { readonly success: true; readonly content: string } | RuntimeAdapterFailure;
+export type GenerateResult =
+  | { readonly success: true; readonly type: "message"; readonly content: string }
+  | { readonly success: true; readonly type: "tool_use"; readonly toolUses: readonly RuntimeToolUse[] }
+  | RuntimeAdapterFailure;
 
 export interface RuntimeAdapter {
   listModels(ref: RuntimeProviderRef): Promise<ListModelsResult>;
@@ -144,6 +160,68 @@ function readOpenAiError(payload: unknown, fallback: string): string {
   return fallback;
 }
 
+function toOpenAiTools(tools: readonly RuntimeToolDefinition[]): Array<Record<string, unknown>> {
+  return tools.map((tool) => ({
+    type: "function",
+    function: {
+      name: tool.name,
+      description: tool.description,
+      parameters: tool.inputSchema,
+    },
+  }));
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parseToolArguments(value: unknown): Record<string, unknown> {
+  if (isRecord(value)) {
+    return value;
+  }
+
+  if (typeof value !== "string" || value.trim().length === 0) {
+    return {};
+  }
+
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return isRecord(parsed) ? parsed : { value: parsed };
+  } catch {
+    return { rawArguments: value };
+  }
+}
+
+function readOpenAiToolUses(payload: unknown): RuntimeToolUse[] {
+  const choices = payload && typeof payload === "object" && Array.isArray((payload as { choices?: unknown }).choices)
+    ? (payload as { choices: unknown[] }).choices
+    : [];
+  const firstChoice = choices[0];
+  const message = firstChoice && typeof firstChoice === "object" && "message" in firstChoice
+    ? (firstChoice as { message?: unknown }).message
+    : undefined;
+  const toolCalls = message && typeof message === "object" && Array.isArray((message as { tool_calls?: unknown }).tool_calls)
+    ? (message as { tool_calls: unknown[] }).tool_calls
+    : [];
+
+  return toolCalls.flatMap((toolCall, index) => {
+    if (!isRecord(toolCall) || toolCall.type !== "function" || !isRecord(toolCall.function)) {
+      return [];
+    }
+
+    const name = typeof toolCall.function.name === "string" ? toolCall.function.name : "";
+    if (!name) {
+      return [];
+    }
+
+    return [{
+      id: typeof toolCall.id === "string" && toolCall.id.trim().length > 0 ? toolCall.id : `tool-call-${index + 1}`,
+      name,
+      input: parseToolArguments(toolCall.function.arguments),
+    }];
+  });
+}
+
 function normalizeOpenAiModel(value: unknown): RuntimeModelInput | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
@@ -216,23 +294,22 @@ class OpenAiCompatibleAdapter implements RuntimeAdapter {
     const configFailure = requireOpenAiConfig(input);
     if (configFailure) return configFailure;
 
-    const result = await this.sendChatCompletion(input, input.messages);
-    if (!result.success) {
-      return result;
-    }
-    return { success: true, content: result.content };
+    return this.sendChatCompletion(input, input.messages, undefined, input.tools);
   }
 
   private async sendChatCompletion(
     input: TestModelInput | GenerateInput,
     messages: readonly RuntimeChatMessage[],
     maxTokens?: number,
+    tools?: readonly RuntimeToolDefinition[],
   ): Promise<GenerateResult> {
+    const hasTools = Boolean(tools?.length);
     const body = {
       model: input.modelId,
       messages,
       stream: false,
       ...(maxTokens ? { max_tokens: maxTokens } : {}),
+      ...(hasTools ? { tools: toOpenAiTools(tools!), tool_choice: "auto" } : {}),
     };
     const result = await requestOpenAiJson(input, "/chat/completions", {
       method: "POST",
@@ -245,6 +322,11 @@ class OpenAiCompatibleAdapter implements RuntimeAdapter {
       return failure("upstream-error", readOpenAiError(payload, `Chat completion failed with HTTP ${response.status}`));
     }
 
+    const toolUses = readOpenAiToolUses(payload);
+    if (toolUses.length > 0) {
+      return { success: true, type: "tool_use", toolUses };
+    }
+
     const choices = payload && typeof payload === "object" && Array.isArray((payload as { choices?: unknown }).choices)
       ? (payload as { choices: unknown[] }).choices
       : [];
@@ -255,7 +337,7 @@ class OpenAiCompatibleAdapter implements RuntimeAdapter {
       && typeof (firstChoice as { message: { content?: unknown } }).message.content === "string"
         ? (firstChoice as { message: { content: string } }).message.content
         : "";
-    return { success: true, content };
+    return { success: true, type: "message", content };
   }
 }
 

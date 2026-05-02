@@ -104,7 +104,70 @@ describe("provider adapter registry", () => {
       messages: [{ role: "user", content: "你好" }],
     });
 
-    expect(result).toEqual({ success: true, content: "真实回复" });
+    expect(result).toEqual({ success: true, type: "message", content: "真实回复" });
+  });
+
+  it("sends OpenAI-compatible tools and returns structured tool_use calls", async () => {
+    let requestBody: Record<string, unknown> | undefined;
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init?: RequestInit) => {
+      requestBody = JSON.parse(String(init?.body));
+      return new Response(JSON.stringify({
+        choices: [{
+          message: {
+            tool_calls: [{
+              id: "call-1",
+              type: "function",
+              function: {
+                name: "cockpit.get_snapshot",
+                arguments: JSON.stringify({ bookId: "book-1" }),
+              },
+            }],
+          },
+        }],
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }));
+    const adapter = createProviderAdapterRegistry().get("openai-compatible");
+
+    const result = await adapter.generate({
+      providerId: "sub2api",
+      providerName: "Sub2API",
+      baseUrl: "https://api.example.com/v1",
+      apiKey: "sk-test",
+      modelId: "gpt-5-codex",
+      messages: [{ role: "user", content: "看看当前状态" }],
+      tools: [{
+        name: "cockpit.get_snapshot",
+        description: "读取当前书籍驾驶舱快照",
+        inputSchema: {
+          type: "object",
+          properties: { bookId: { type: "string" } },
+          required: ["bookId"],
+          additionalProperties: false,
+        },
+      }],
+    });
+
+    expect(requestBody).toMatchObject({
+      tools: [{
+        type: "function",
+        function: {
+          name: "cockpit.get_snapshot",
+          description: "读取当前书籍驾驶舱快照",
+          parameters: {
+            type: "object",
+            properties: { bookId: { type: "string" } },
+            required: ["bookId"],
+            additionalProperties: false,
+          },
+        },
+      }],
+      tool_choice: "auto",
+    });
+    expect(result).toEqual({
+      success: true,
+      type: "tool_use",
+      toolUses: [{ id: "call-1", name: "cockpit.get_snapshot", input: { bookId: "book-1" } }],
+    });
   });
 
   it("returns auth-missing before fetch when OpenAI-compatible credentials are absent", async () => {
