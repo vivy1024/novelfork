@@ -21,7 +21,7 @@
   - 验证：单元测试确认不同 permission mode 下可见工具集合正确；read/plan 下不暴露写入工具。
   - 覆盖需求：R3、R5、R6、R8、R9。
 
-- [ ] 3. 实现 Session Tool Executor 骨架和权限拦截
+- [x] 3. 实现 Session Tool Executor 骨架和权限拦截
   - 新增 `packages/studio/src/api/lib/session-tool-executor.ts`，接收 session、toolName、input、permissionMode、canvasContext 并返回统一 `SessionToolExecutionResult`。
   - 先实现通用流程：工具存在性校验、参数 schema 校验、权限校验、执行计时、错误包装、renderer/artifact/confirmation 透传。
   - 将 `confirmed-write` 与 `destructive` 工具转换为 pending confirmation，不直接执行正式写入。

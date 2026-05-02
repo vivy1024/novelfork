@@ -55,7 +55,7 @@
 |------|----|
 | Specs | 全部完成并归档（~308 任务） |
 | TypeScript | typecheck 通过 |
-| 测试 | 146 文件 / 826 测试 |
+| 测试 | 147 文件 / 832 测试 |
 | 编译 | `pnpm --dir packages/studio compile` → `dist/novelfork.exe` / 版本化 release 产物约 117MB |
 | 运行 | `./novelfork.exe` → `http://localhost:4567` |
 
