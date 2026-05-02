@@ -2,7 +2,7 @@ import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 
-import { ChatWindow } from "./ChatWindow";
+import { ChatWindow, NarratorPanel } from "./ChatWindow";
 import { useWindowRuntimeStore } from "@/stores/windowRuntimeStore";
 import { useWindowStore } from "@/stores/windowStore";
 import type { StudioRun } from "@/shared/contracts";
@@ -244,6 +244,58 @@ function defaultFetchJsonImplementation(url: string, ...rest: unknown[]) {
 fetchJsonMock.mockImplementation(defaultFetchJsonImplementation as any);
 
 describe("ChatWindow", () => {
+  it("renders legacy floating host chrome and controls", async () => {
+    render(<ChatWindow windowId="window-1" theme="light" />);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(screen.getByTestId("chat-window-shell").getAttribute("data-host-mode")).toBe("floating");
+    expect(screen.getByText("工作台")).toBeTruthy();
+    expect(screen.getByTestId("window-controls")).toBeTruthy();
+    expect(screen.getByText(/x:0 y:0/)).toBeTruthy();
+    expect(screen.getByLabelText("消息输入框")).toBeTruthy();
+  });
+
+  it("renders a docked narrator host without floating window chrome", async () => {
+    render(<NarratorPanel windowId="window-1" theme="light" />);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(screen.getByTestId("chat-window-shell").getAttribute("data-host-mode")).toBe("docked");
+    expect(screen.getByText("叙述者")).toBeTruthy();
+    expect(screen.queryByText("工作台")).toBeNull();
+    expect(screen.queryByTestId("window-controls")).toBeNull();
+    expect(screen.queryByText(/x:0 y:0/)).toBeNull();
+    expect(screen.getByLabelText("模型选择器")).toBeTruthy();
+    expect(screen.getByLabelText("权限模式选择器")).toBeTruthy();
+    expect(screen.getByLabelText("推理强度选择器")).toBeTruthy();
+    expect(screen.getByLabelText("消息输入框")).toBeTruthy();
+    expect(MockWebSocket.instances[0]?.url).toContain("/api/sessions/session-abc123456/chat");
+  });
+
+  it("keeps docked narrator input when unrelated workspace state changes", async () => {
+    function DockedHarness() {
+      const [selectedResource, setSelectedResource] = React.useState("chapter-1");
+      return (
+        <div>
+          <button type="button" onClick={() => setSelectedResource("chapter-2")}>切换画布资源</button>
+          <div data-testid="active-resource">{selectedResource}</div>
+          <NarratorPanel windowId="window-1" theme="light" />
+        </div>
+      );
+    }
+
+    render(<DockedHarness />);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    fireEvent.change(screen.getByLabelText("消息输入框"), { target: { value: "先保留这句输入" } });
+    fireEvent.click(screen.getByRole("button", { name: "切换画布资源" }));
+
+    expect(screen.getByTestId("active-resource").textContent).toBe("chapter-2");
+    expect(screen.getByLabelText("消息输入框")).toHaveProperty("value", "先保留这句输入");
+    expect(MockWebSocket.instances.length).toBe(1);
+  });
+
   it("renders NarraFork-like session controls and updates current session config", async () => {
     render(<ChatWindow windowId="window-1" theme="light" />);
 
