@@ -26,6 +26,7 @@ import { useRunDetails } from "@/hooks/use-run-events";
 import { describeToolAccessReason, normalizeGovernanceSourceKey, type ToolAccessReasonKey } from "@/shared/tool-access-reasons";
 
 import { ToolIcon } from "./ToolIcon";
+import { getToolResultRenderer } from "./tool-result-renderer-registry";
 import {
   buildToolCallSummary,
   buildToolCallTranscript,
@@ -54,6 +55,15 @@ interface SourcePreview {
 }
 
 export function ToolCallBlock({ toolCall, defaultExpanded = false, className, onReplay, onInspectRun }: ToolCallBlockProps) {
+  const Renderer = getToolResultRenderer(toolCall);
+  if (Renderer) {
+    return <Renderer toolCall={toolCall} defaultExpanded={defaultExpanded} className={className} />;
+  }
+
+  return <GenericToolCallBlock toolCall={toolCall} defaultExpanded={defaultExpanded} className={className} onReplay={onReplay} onInspectRun={onInspectRun} />;
+}
+
+function GenericToolCallBlock({ toolCall, defaultExpanded = false, className, onReplay, onInspectRun }: ToolCallBlockProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [rawExpanded, setRawExpanded] = useState(false);
   const [sourceOpen, setSourceOpen] = useState(false);
