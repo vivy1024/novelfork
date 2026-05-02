@@ -396,12 +396,12 @@ describe("ToolCallBlock", () => {
     expect(screen.getByText("工具源码")).toBeTruthy();
     expect(await screen.findByText("定位信息")).toBeTruthy();
     expect(screen.getByText(/packages\/studio\/src\/components\/ChatWindow\.tsx/)).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    fireEvent.click(screen.getByRole("button", { name: "关闭" }));
 
     fireEvent.click(screen.getByRole("button", { name: "全屏查看" }));
     expect(screen.getByText("工具调用全屏详情")).toBeTruthy();
     expect(screen.getAllByText("原始载荷").length).toBeGreaterThan(1);
-    fireEvent.click(screen.getAllByRole("button", { name: "Close" }).at(-1)!);
+    fireEvent.click(screen.getAllByRole("button", { name: "关闭" }).at(-1)!);
 
     fireEvent.click(screen.getByRole("button", { name: "重跑" }));
     expect(onReplay).toHaveBeenCalledWith(
