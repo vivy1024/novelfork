@@ -41,7 +41,7 @@ import { generateSessionReply, type LlmRuntimeMetadata } from "./llm-runtime-ser
 import { getSessionById, updateSession } from "./session-service.js";
 import { buildAgentContext } from "./agent-context.js";
 import { getAgentSystemPrompt } from "@vivy1024/novelfork-core";
-import { createSessionToolExecutor } from "./session-tool-executor.js";
+import { createSessionToolExecutor, type SessionToolExecutorOptions } from "./session-tool-executor.js";
 import { getEnabledSessionTools } from "./session-tool-registry.js";
 
 const MAX_SESSION_MESSAGES = 50;
@@ -119,7 +119,11 @@ export type ConfirmSessionToolDecisionResult =
   }
   | { readonly ok: false; readonly status: 400 | 404; readonly error: string };
 
-const sessionToolExecutor = createSessionToolExecutor();
+let sessionToolExecutor = createSessionToolExecutor();
+
+export function configureSessionToolExecutor(options: SessionToolExecutorOptions): void {
+  sessionToolExecutor = createSessionToolExecutor(options);
+}
 
 interface SessionChatTransport {
   send(data: string): void;

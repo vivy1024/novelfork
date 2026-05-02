@@ -1,3 +1,4 @@
+import type { CockpitService } from "./cockpit-service.js";
 import {
   getSessionToolRiskDecision,
   type SessionToolDefinition,
@@ -17,6 +18,7 @@ export type SessionToolHandler = (
 
 export type SessionToolExecutorOptions = {
   readonly handlers?: Readonly<Record<string, SessionToolHandler>>;
+  readonly cockpitService?: CockpitService;
   readonly now?: () => number;
   readonly createConfirmationId?: (input: SessionToolExecutionInput, definition: SessionToolDefinition) => string;
 };
@@ -84,7 +86,7 @@ export async function executeSessionTool(
     }, startedAt, options);
   }
 
-  const handler = options.handlers?.[definition.name];
+  const handler = options.handlers?.[definition.name] ?? getDefaultHandler(definition.name, options);
   if (!handler) {
     return withDuration({
       ok: false,
@@ -108,6 +110,55 @@ export async function executeSessionTool(
       error: "tool-execution-failed",
       summary: `工具 ${definition.name} 执行失败：${message}`,
     }, startedAt, options);
+  }
+}
+
+function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions): SessionToolHandler | undefined {
+  const cockpitService = options.cockpitService;
+  if (!cockpitService) return undefined;
+  switch (toolName) {
+    case "cockpit.get_snapshot":
+      return async ({ input, definition }) => {
+        const snapshot = await cockpitService.getSnapshot({
+          bookId: String(input.bookId),
+          includeModelStatus: input.includeModelStatus === true,
+        });
+        return {
+          ok: true,
+          renderer: definition.renderer,
+          summary: "已读取驾驶舱快照。",
+          data: snapshot,
+          artifact: {
+            id: `cockpit:${input.bookId}:snapshot`,
+            kind: "tool-result",
+            title: "驾驶舱快照",
+            renderer: definition.renderer,
+            openInCanvas: true,
+          },
+        };
+      };
+    case "cockpit.list_open_hooks":
+      return async ({ input, definition }) => {
+        const hooks = await cockpitService.listOpenHooks({ bookId: String(input.bookId), limit: Number(input.limit) });
+        return {
+          ok: true,
+          renderer: definition.renderer,
+          summary: `已读取 ${hooks.items.length} 条开放伏笔。`,
+          data: hooks,
+        };
+      };
+    case "cockpit.list_recent_candidates":
+      return async ({ input, definition }) => {
+        const candidates = await cockpitService.listRecentCandidates({ bookId: String(input.bookId), limit: Number(input.limit) });
+        return {
+          ok: true,
+          renderer: definition.renderer,
+          summary: `已读取 ${candidates.items.length} 条候选稿。`,
+          data: candidates,
+        };
+      };
+    default:
+      return undefined;
   }
 }
 
