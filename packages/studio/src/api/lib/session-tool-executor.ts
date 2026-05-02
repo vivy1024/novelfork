@@ -6,6 +6,7 @@ import {
   type SessionToolExecutionResult,
   type ToolConfirmationRequest,
 } from "../../shared/agent-native-workspace.js";
+import type { QuestionnaireToolService } from "./questionnaire-tool-service.js";
 import { getSessionToolDefinition } from "./session-tool-registry.js";
 
 export type SessionToolHandlerContext = SessionToolExecutionInput & {
@@ -19,6 +20,7 @@ export type SessionToolHandler = (
 export type SessionToolExecutorOptions = {
   readonly handlers?: Readonly<Record<string, SessionToolHandler>>;
   readonly cockpitService?: CockpitService;
+  readonly questionnaireService?: QuestionnaireToolService;
   readonly now?: () => number;
   readonly createConfirmationId?: (input: SessionToolExecutionInput, definition: SessionToolDefinition) => string;
 };
@@ -114,12 +116,11 @@ export async function executeSessionTool(
 }
 
 function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions): SessionToolHandler | undefined {
-  const cockpitService = options.cockpitService;
-  if (!cockpitService) return undefined;
   switch (toolName) {
     case "cockpit.get_snapshot":
+      if (!options.cockpitService) return undefined;
       return async ({ input, definition }) => {
-        const snapshot = await cockpitService.getSnapshot({
+        const snapshot = await options.cockpitService!.getSnapshot({
           bookId: String(input.bookId),
           includeModelStatus: input.includeModelStatus === true,
         });
@@ -138,8 +139,9 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
         };
       };
     case "cockpit.list_open_hooks":
+      if (!options.cockpitService) return undefined;
       return async ({ input, definition }) => {
-        const hooks = await cockpitService.listOpenHooks({ bookId: String(input.bookId), limit: Number(input.limit) });
+        const hooks = await options.cockpitService!.listOpenHooks({ bookId: String(input.bookId), limit: Number(input.limit) });
         return {
           ok: true,
           renderer: definition.renderer,
@@ -148,8 +150,9 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
         };
       };
     case "cockpit.list_recent_candidates":
+      if (!options.cockpitService) return undefined;
       return async ({ input, definition }) => {
-        const candidates = await cockpitService.listRecentCandidates({ bookId: String(input.bookId), limit: Number(input.limit) });
+        const candidates = await options.cockpitService!.listRecentCandidates({ bookId: String(input.bookId), limit: Number(input.limit) });
         return {
           ok: true,
           renderer: definition.renderer,
@@ -157,9 +160,23 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
           data: candidates,
         };
       };
+    case "questionnaire.list_templates":
+      return async ({ input }) => (await resolveQuestionnaireService(options)).listTemplates(input);
+    case "questionnaire.start":
+      return async ({ input }) => (await resolveQuestionnaireService(options)).start(input);
+    case "questionnaire.suggest_answer":
+      return async ({ input }) => (await resolveQuestionnaireService(options)).suggestAnswer(input);
+    case "questionnaire.submit_response":
+      return async ({ input }) => (await resolveQuestionnaireService(options)).submitResponse(input);
     default:
       return undefined;
   }
+}
+
+async function resolveQuestionnaireService(options: SessionToolExecutorOptions): Promise<QuestionnaireToolService> {
+  if (options.questionnaireService) return options.questionnaireService;
+  const { createQuestionnaireToolService } = await import("./questionnaire-tool-service.js");
+  return createQuestionnaireToolService();
 }
 
 function withDuration(
