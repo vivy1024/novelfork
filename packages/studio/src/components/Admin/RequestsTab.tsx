@@ -235,7 +235,7 @@ export function RequestsTab({ runId, onInspectRun, onNavigateSection, onOpenRun 
             </select>
           </label>
           <label className="space-y-1 text-sm">
-            <span className="text-muted-foreground">Provider</span>
+            <span className="text-muted-foreground">供应商</span>
             <select value={providerFilter} onChange={(event) => setProviderFilter(event.target.value)} className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground">
               <option value="">全部</option>
               {providerOptions.map((provider) => <option key={provider} value={provider}>{provider}</option>)}

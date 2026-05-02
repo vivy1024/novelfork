@@ -11,16 +11,16 @@ interface SearchDialogProps {
 }
 
 const FILTER_OPTIONS: Array<{ value: SearchType; label: string }> = [
-  { value: 'all', label: 'All' },
-  { value: 'chapter', label: 'Chapters' },
-  { value: 'setting', label: 'Settings' },
-  { value: 'message', label: 'Messages' },
-  { value: 'file', label: 'Files' },
+  { value: "all", label: "全部" },
+  { value: "chapter", label: "章节" },
+  { value: "setting", label: "设定" },
+  { value: "message", label: "消息" },
+  { value: "file", label: "文件" },
 ];
 
 export function SearchDialog({ open, onClose, onNavigate }: SearchDialogProps) {
-  const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState<SearchType>('all');
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<SearchType>("all");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -34,9 +34,9 @@ export function SearchDialog({ open, onClose, onNavigate }: SearchDialogProps) {
 
     setLoading(true);
     try {
-      const response = await fetch('/api/search', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("/api/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query: searchQuery, type: searchType }),
       });
 
@@ -46,7 +46,7 @@ export function SearchDialog({ open, onClose, onNavigate }: SearchDialogProps) {
         setSelectedIndex(0);
       }
     } catch (error) {
-      console.error('Search failed:', error);
+      console.error("搜索失败：", error);
       setResults([]);
     } finally {
       setLoading(false);
@@ -67,29 +67,29 @@ export function SearchDialog({ open, onClose, onNavigate }: SearchDialogProps) {
     if (!open) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (e.key === "Escape") {
         onClose();
-      } else if (e.key === 'ArrowDown') {
+      } else if (e.key === "ArrowDown") {
         e.preventDefault();
         setSelectedIndex(prev => Math.min(prev + 1, results.length - 1));
-      } else if (e.key === 'ArrowUp') {
+      } else if (e.key === "ArrowUp") {
         e.preventDefault();
         setSelectedIndex(prev => Math.max(prev - 1, 0));
-      } else if (e.key === 'Enter' && results[selectedIndex]) {
+      } else if (e.key === "Enter" && results[selectedIndex]) {
         e.preventDefault();
         onNavigate(results[selectedIndex]);
         onClose();
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, [open, results, selectedIndex, onClose, onNavigate]);
 
   // Reset on close
   useEffect(() => {
     if (!open) {
-      setQuery('');
+      setQuery("");
       setResults([]);
       setSelectedIndex(0);
     }
@@ -98,14 +98,14 @@ export function SearchDialog({ open, onClose, onNavigate }: SearchDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-2xl max-h-[80vh] p-0 gap-0">
-        <DialogTitle className="sr-only">Global Search</DialogTitle>
+        <DialogTitle className="sr-only">全局搜索</DialogTitle>
 
         {/* Search Input */}
         <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
           <SearchIcon className="w-5 h-5 text-muted-foreground" />
           <input
             type="text"
-            placeholder="Search chapters, settings, messages..."
+            placeholder="搜索章节、设定、消息..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             className="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground"
@@ -118,6 +118,7 @@ export function SearchDialog({ open, onClose, onNavigate }: SearchDialogProps) {
           <button
             onClick={onClose}
             className="p-1 hover:bg-accent rounded-md transition-colors"
+            aria-label="关闭搜索"
           >
             <XIcon className="w-4 h-4" />
           </button>
@@ -131,8 +132,8 @@ export function SearchDialog({ open, onClose, onNavigate }: SearchDialogProps) {
               onClick={() => setFilter(option.value)}
               className={`px-3 py-1 text-xs rounded-full whitespace-nowrap transition-colors ${
                 filter === option.value
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-accent text-accent-foreground hover:bg-accent/80'
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-accent text-accent-foreground hover:bg-accent/80"
               }`}
             >
               {option.label}
@@ -144,13 +145,13 @@ export function SearchDialog({ open, onClose, onNavigate }: SearchDialogProps) {
         <div className="overflow-y-auto max-h-[calc(80vh-140px)]" data-testid="search-results">
           {results.length === 0 && query.trim() && !loading && (
             <div className="px-4 py-8 text-center text-sm text-muted-foreground">
-              No results found for "{query}"
+              未找到匹配“{query}”的结果
             </div>
           )}
 
           {results.length === 0 && !query.trim() && (
             <div className="px-4 py-8 text-center text-sm text-muted-foreground">
-              Start typing to search...
+              输入关键词开始搜索...
             </div>
           )}
 
@@ -171,7 +172,7 @@ export function SearchDialog({ open, onClose, onNavigate }: SearchDialogProps) {
         {/* Footer */}
         {results.length > 0 && (
           <div className="px-4 py-2 border-t border-border text-xs text-muted-foreground">
-            {results.length} result{results.length !== 1 ? 's' : ''}
+            共 {results.length} 条结果
           </div>
         )}
       </DialogContent>

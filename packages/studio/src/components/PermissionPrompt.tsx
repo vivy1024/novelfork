@@ -14,14 +14,14 @@ export interface PermissionPromptProps {
 const DANGEROUS_TOOLS = ["Bash", "Write", "ExitWorktree"];
 
 const TOOL_DESCRIPTIONS: Record<string, string> = {
-  Read: "Read file contents from the filesystem",
-  Write: "Create or overwrite a file on the filesystem",
-  Edit: "Modify existing file contents",
-  Bash: "Execute a shell command",
-  Glob: "Search for files matching a pattern",
-  Grep: "Search for text content in files",
-  EnterWorktree: "Create and enter a Git worktree",
-  ExitWorktree: "Exit and optionally remove a Git worktree",
+  Read: "从文件系统读取文件内容",
+  Write: "在文件系统中创建或覆盖文件",
+  Edit: "修改已有文件内容",
+  Bash: "执行 shell 命令",
+  Glob: "按模式搜索文件",
+  Grep: "在文件中搜索文本内容",
+  EnterWorktree: "创建并进入 Git worktree",
+  ExitWorktree: "退出并可选择移除 Git worktree",
 };
 
 export function PermissionPrompt({
@@ -33,7 +33,7 @@ export function PermissionPrompt({
   onClose
 }: PermissionPromptProps) {
   const isDangerous = DANGEROUS_TOOLS.includes(toolName);
-  const description = TOOL_DESCRIPTIONS[toolName] || "Execute a tool operation";
+  const description = TOOL_DESCRIPTIONS[toolName] || "执行工具操作";
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -41,7 +41,7 @@ export function PermissionPrompt({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {isDangerous && <AlertTriangle className="text-yellow-500" size={20} />}
-            Permission Required
+            需要权限确认
           </DialogTitle>
         </DialogHeader>
 
@@ -52,13 +52,13 @@ export function PermissionPrompt({
             {isDangerous && (
               <p className="text-sm text-yellow-600 dark:text-yellow-500 mt-2 flex items-center gap-2">
                 <AlertTriangle size={16} />
-                This tool can modify your system. Review carefully before approving.
+                此工具可能修改系统或工作区，请确认参数无误后再批准。
               </p>
             )}
           </div>
 
           <div>
-            <p className="text-sm font-medium mb-2">Parameters:</p>
+            <p className="text-sm font-medium mb-2">参数：</p>
             <pre className="text-xs bg-muted p-3 rounded overflow-auto max-h-64 border">
               {JSON.stringify(params, null, 2)}
             </pre>
@@ -67,10 +67,10 @@ export function PermissionPrompt({
 
         <DialogFooter className="gap-2">
           <Button variant="outline" onClick={onDeny}>
-            Deny
+            拒绝
           </Button>
           <Button onClick={onApprove} variant={isDangerous ? "destructive" : "default"}>
-            Approve
+            批准
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -58,7 +58,7 @@ export function MCPToolsTab({ mcpTools, onChange }: MCPToolsTabProps) {
     <div className="space-y-4">
       <div>
         <p className="text-sm text-muted-foreground mb-3">
-          Manage MCP (Model Context Protocol) tools from external servers
+          管理外部服务器提供的 MCP（Model Context Protocol）工具
         </p>
         <div className="flex items-center justify-between mb-4">
           <div className="relative flex-1 max-w-md">
@@ -67,19 +67,19 @@ export function MCPToolsTab({ mcpTools, onChange }: MCPToolsTabProps) {
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search MCP tools..."
+              placeholder="搜索 MCP 工具..."
               className="w-full pl-9 pr-3 py-2 text-sm border rounded-lg bg-background"
             />
           </div>
           <div className="text-sm text-muted-foreground">
-            {approvedCount} approved · {enabledCount} enabled
+            已通过 {approvedCount} · 已启用 {enabledCount}
           </div>
         </div>
       </div>
 
       {Object.keys(groupedByServer).length === 0 ? (
         <div className="text-center py-8 text-sm text-muted-foreground">
-          {search ? `No MCP tools found matching "${search}"` : "No MCP tools configured"}
+          {search ? `未找到匹配“${search}”的 MCP 工具` : "还没有配置 MCP 工具"}
         </div>
       ) : (
         <div className="space-y-4">
@@ -89,7 +89,7 @@ export function MCPToolsTab({ mcpTools, onChange }: MCPToolsTabProps) {
                 <Server size={16} className="text-primary" />
                 <h3 className="text-sm font-medium">{serverName}</h3>
                 <span className="text-xs text-muted-foreground">
-                  ({tools.length} {tools.length === 1 ? "tool" : "tools"})
+                  （{tools.length} 个工具）
                 </span>
               </div>
 
@@ -109,7 +109,7 @@ export function MCPToolsTab({ mcpTools, onChange }: MCPToolsTabProps) {
                         mcp__{serverName}__{tool.toolName}
                       </code>
                       {!tool.enabled && (
-                        <span className="text-xs text-muted-foreground">(disabled)</span>
+                        <span className="text-xs text-muted-foreground">（已停用）</span>
                       )}
                     </div>
 
@@ -120,13 +120,13 @@ export function MCPToolsTab({ mcpTools, onChange }: MCPToolsTabProps) {
                             onClick={() => handleApprove(tool.id)}
                             className="px-2 py-1 text-xs rounded bg-green-600 text-white hover:bg-green-700"
                           >
-                            Approve
+                            通过
                           </button>
                           <button
                             onClick={() => handleDeny(tool.id)}
                             className="px-2 py-1 text-xs rounded bg-red-600 text-white hover:bg-red-700"
                           >
-                            Deny
+                            拒绝
                           </button>
                         </>
                       )}

@@ -28,7 +28,7 @@ export function ProviderCard({ provider, onToggle, onConfigure, onTest }: Provid
     } catch (error) {
       setTestResult({
         success: false,
-        error: error instanceof Error ? error.message : "Test failed",
+        error: error instanceof Error ? error.message : "测试失败",
       });
     } finally {
       setTesting(false);
@@ -48,12 +48,12 @@ export function ProviderCard({ provider, onToggle, onConfigure, onTest }: Provid
 
   return (
     <div className={`border rounded-lg p-4 ${provider.enabled ? "bg-card" : "bg-muted/30"}`}>
-      {/* Header */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-3">
           <button
             onClick={() => setExpanded(!expanded)}
             className="p-1 hover:bg-accent rounded transition-colors"
+            aria-label={expanded ? "收起供应商详情" : "展开供应商详情"}
           >
             {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
           </button>
@@ -64,12 +64,10 @@ export function ProviderCard({ provider, onToggle, onConfigure, onTest }: Provid
         </div>
 
         <div className="flex items-center gap-2">
-          {/* 模型数量 */}
           <span className="text-xs text-muted-foreground">
-            {provider.models.length} {provider.models.length === 1 ? "model" : "models"}
+            {provider.models.length} 个模型
           </span>
 
-          {/* 启用开关 */}
           <button
             onClick={() => onToggle(provider.id, !provider.enabled)}
             className={`p-1.5 rounded transition-colors ${
@@ -77,48 +75,44 @@ export function ProviderCard({ provider, onToggle, onConfigure, onTest }: Provid
                 ? "bg-green-500/20 text-green-600 hover:bg-green-500/30"
                 : "bg-muted text-muted-foreground hover:bg-muted/80"
             }`}
-            title={provider.enabled ? "Disable provider" : "Enable provider"}
+            title={provider.enabled ? "停用供应商" : "启用供应商"}
           >
             <Power size={14} />
           </button>
 
-          {/* 配置按钮 */}
           <button
             onClick={() => onConfigure(provider.id)}
             className="p-1.5 rounded hover:bg-accent transition-colors"
-            title="Configure provider"
+            title="配置供应商"
           >
             <Settings size={14} />
           </button>
         </div>
       </div>
 
-      {/* 展开内容 */}
       {expanded && (
         <div className="space-y-3 pt-3 border-t">
-          {/* 模型列表 */}
           <div>
-            <h4 className="text-xs font-medium text-muted-foreground mb-2">Models</h4>
+            <h4 className="text-xs font-medium text-muted-foreground mb-2">模型</h4>
             <div className="space-y-1">
               {provider.models.map((model) => (
                 <div key={model.id} className="flex items-center justify-between text-xs py-1 px-2 rounded bg-muted/50">
                   <span>{model.name}</span>
                   <span className="text-muted-foreground">
-                    {(model.contextWindow / 1000).toFixed(0)}K context
+                    上下文 {(model.contextWindow / 1000).toFixed(0)}K
                   </span>
                 </div>
               ))}
             </div>
           </div>
 
-          {/* 连通性测试 */}
           <div>
             <button
               onClick={handleTest}
               disabled={testing || !provider.enabled}
               className="w-full px-3 py-1.5 text-xs rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
-              {testing ? "Testing..." : "Test Connection"}
+              {testing ? "测试中..." : "测试连接"}
             </button>
 
             {testResult && (
@@ -131,18 +125,17 @@ export function ProviderCard({ provider, onToggle, onConfigure, onTest }: Provid
                   {testResult.success ? <Wifi size={12} /> : <WifiOff size={12} />}
                   <span>
                     {testResult.success
-                      ? `Connected (${testResult.latency}ms)`
-                      : testResult.error || "Connection failed"}
+                      ? `已连接（${testResult.latency}ms）`
+                      : testResult.error || "连接失败"}
                   </span>
                 </div>
               </div>
             )}
           </div>
 
-          {/* 配置信息 */}
           {provider.config.endpoint && (
             <div className="text-xs">
-              <span className="text-muted-foreground">Endpoint: </span>
+              <span className="text-muted-foreground">端点：</span>
               <span className="font-mono">{provider.config.endpoint}</span>
             </div>
           )}

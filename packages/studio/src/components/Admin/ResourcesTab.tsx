@@ -514,7 +514,7 @@ export function ResourcesTab() {
                     description={startup.delivery.indexHtmlReady ? "index.html 已就绪" : "index.html 缺失"}
                   />
                   <SummaryCard
-                    title="compile smoke"
+                    title="编译冒烟"
                     value={startup.delivery.compileSmokeStatus}
                     description={startup.delivery.expectedArtifactPath ?? "dist/novelfork"}
                   />

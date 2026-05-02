@@ -46,27 +46,27 @@ export function MessageEditor({ initialContent, onSave, onCancel }: MessageEdito
         onChange={(e) => setContent(e.target.value)}
         onKeyDown={handleKeyDown}
         className="w-full min-h-[60px] px-3 py-2 text-sm bg-background border border-primary rounded-lg resize-y focus:outline-none focus:ring-2 focus:ring-primary/50"
-        placeholder="Edit message..."
+        placeholder="编辑消息..."
       />
       <div className="flex items-center gap-2 mt-2">
         <button
           onClick={handleSave}
           className="flex items-center gap-1 px-3 py-1 text-xs bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
-          title="Save (Ctrl+Enter)"
+          title="保存（Ctrl+Enter）"
         >
           <Check size={14} />
-          Save
+          保存
         </button>
         <button
           onClick={onCancel}
           className="flex items-center gap-1 px-3 py-1 text-xs bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/80 transition-colors"
-          title="Cancel (Esc)"
+          title="取消（Esc）"
         >
           <X size={14} />
-          Cancel
+          取消
         </button>
         <span className="text-xs text-muted-foreground ml-2">
-          Ctrl+Enter to save, Esc to cancel
+          Ctrl+Enter 保存，Esc 取消
         </span>
       </div>
     </div>

@@ -34,7 +34,7 @@ export function WorkbenchIntroEmptyState({ onEnable }: WorkbenchIntroEmptyStateP
         <div className="flex flex-wrap items-center justify-center gap-2">
           <Badge variant="secondary">高级 Agent</Badge>
           <Badge variant="outline">工具调用记录</Badge>
-          <Badge variant="outline">Terminal / Browser / MCP</Badge>
+          <Badge variant="outline">终端 / 浏览器 / MCP</Badge>
           <Badge variant="outline">会话权限模式</Badge>
           <Badge variant="outline">诊断与工具日志</Badge>
           <Badge variant="outline">更高 token 消耗</Badge>

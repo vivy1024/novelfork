@@ -55,7 +55,7 @@ function CodeBlock({ inline, className, children }: CodeBlockProps) {
           className="flex items-center gap-1 px-2 py-1 text-xs rounded hover:bg-secondary transition-colors"
         >
           {copied ? <Check size={12} /> : <Copy size={12} />}
-          <span>{copied ? "Copied" : "Copy"}</span>
+          <span>{copied ? "已复制" : "复制"}</span>
         </button>
       </div>
       {!collapsed && (

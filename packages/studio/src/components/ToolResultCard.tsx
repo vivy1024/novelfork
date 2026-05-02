@@ -35,7 +35,7 @@ export function ToolResultCard({ toolName, result, timestamp }: ToolResultCardPr
         onClick={() => setExpanded(!expanded)}
       >
         {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-        <h3 className="font-medium">{toolName} Result</h3>
+        <h3 className="font-medium">{toolName} 结果</h3>
         <span className="text-xs text-muted-foreground ml-auto">
           {timestamp.toLocaleTimeString()}
         </span>
@@ -49,7 +49,7 @@ export function ToolResultCard({ toolName, result, timestamp }: ToolResultCardPr
             </pre>
           ) : (
             <div className="text-sm text-red-600 dark:text-red-400 font-medium">
-              {result.error || "Unknown error"}
+              {result.error || "未知错误"}
             </div>
           )}
         </div>

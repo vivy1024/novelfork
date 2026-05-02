@@ -75,7 +75,7 @@ export function useRoutinesEditor({
         }
       } catch (loadError) {
         if (!cancelled) {
-          setError(loadError instanceof Error ? loadError.message : "Failed to load routines");
+          setError(loadError instanceof Error ? loadError.message : "加载 routines 配置失败");
           setRoutines(cloneDefaultRoutines());
         }
       } finally {
@@ -116,7 +116,7 @@ export function useRoutinesEditor({
       await saveRoutines(viewScope as EditableRoutinesScope, routines, projectRoot);
       setSaved(true);
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Failed to save routines");
+      setError(saveError instanceof Error ? saveError.message : "保存 routines 配置失败");
     } finally {
       setSaving(false);
     }
@@ -127,7 +127,7 @@ export function useRoutinesEditor({
       return;
     }
 
-    if (!window.confirm("Reset current routines scope to default values?")) {
+    if (!window.confirm("确定将当前 routines 作用域重置为默认值？")) {
       return;
     }
 
@@ -139,7 +139,7 @@ export function useRoutinesEditor({
       setRoutines(next);
       setSaved(true);
     } catch (resetError) {
-      setError(resetError instanceof Error ? resetError.message : "Failed to reset routines");
+      setError(resetError instanceof Error ? resetError.message : "重置 routines 配置失败");
     } finally {
       setSaving(false);
     }

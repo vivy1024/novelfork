@@ -40,7 +40,7 @@ export function SubAgentsTab({ subAgents, onChange }: SubAgentsTabProps) {
   const handleAdd = () => {
     const newAgent: SubAgent = {
       id: `agent_${Date.now()}`,
-      name: "New Agent",
+      name: "新代理",
       description: "",
       type: "general-purpose",
       systemPrompt: "",
@@ -108,14 +108,14 @@ export function SubAgentsTab({ subAgents, onChange }: SubAgentsTabProps) {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
-          Define custom sub-agents with specialized system prompts and behaviors
+          定义带有专用系统提示词和行为边界的自定义子代理
         </p>
         <button
           onClick={handleAdd}
           className="px-3 py-1.5 text-sm rounded border hover:bg-accent flex items-center gap-2"
         >
           <Plus size={14} />
-          Add Sub-agent
+          添加子代理
         </button>
       </div>
 
@@ -125,44 +125,44 @@ export function SubAgentsTab({ subAgents, onChange }: SubAgentsTabProps) {
             {editing === agent.id ? (
               <div className="space-y-3">
                 <div>
-                  <label className="text-xs font-medium block mb-1">Name</label>
+                  <label className="text-xs font-medium block mb-1">名称</label>
                   <input
                     type="text"
                     value={editForm.name ?? ""}
                     onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
                     className="w-full px-2 py-1 text-sm border rounded bg-background"
-                    placeholder="agent-name"
+                    placeholder="代理名称"
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-medium block mb-1">Description</label>
+                  <label className="text-xs font-medium block mb-1">描述</label>
                   <input
                     type="text"
                     value={editForm.description ?? ""}
                     onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
                     className="w-full px-2 py-1 text-sm border rounded bg-background"
-                    placeholder="What does this agent do?"
+                    placeholder="这个代理做什么？"
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-medium block mb-1">Type</label>
+                  <label className="text-xs font-medium block mb-1">类型</label>
                   <select
                     value={editForm.type ?? "general-purpose"}
                     onChange={(e) => setEditForm({ ...editForm, type: e.target.value as SubAgent["type"] })}
                     className="w-full px-2 py-1 text-sm border rounded bg-background"
                   >
-                    <option value="general-purpose">General Purpose</option>
-                    <option value="specialized">Specialized</option>
+                    <option value="general-purpose">通用代理</option>
+                    <option value="specialized">专用代理</option>
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs font-medium block mb-1">System Prompt</label>
+                  <label className="text-xs font-medium block mb-1">系统提示词</label>
                   <textarea
                     value={editForm.systemPrompt ?? ""}
                     onChange={(e) => setEditForm({ ...editForm, systemPrompt: e.target.value })}
                     className="w-full px-2 py-1 text-sm border rounded bg-background font-mono"
                     rows={8}
-                    placeholder="System prompt for this agent..."
+                    placeholder="这个代理的系统提示词..."
                   />
                 </div>
                 <div>
@@ -181,14 +181,14 @@ export function SubAgentsTab({ subAgents, onChange }: SubAgentsTabProps) {
                     className="px-3 py-1 text-sm rounded bg-primary text-primary-foreground hover:bg-primary/90 flex items-center gap-1"
                   >
                     <Save size={12} />
-                    Save
+                    保存
                   </button>
                   <button
                     onClick={handleCancel}
                     className="px-3 py-1 text-sm rounded border hover:bg-accent flex items-center gap-1"
                   >
                     <X size={12} />
-                    Cancel
+                    取消
                   </button>
                 </div>
               </div>
@@ -240,13 +240,14 @@ export function SubAgentsTab({ subAgents, onChange }: SubAgentsTabProps) {
                   <button
                     onClick={() => handleEdit(agent)}
                     className="p-1 hover:bg-accent rounded"
+                    aria-label={`编辑子代理 ${agent.name}`}
                   >
                     <Edit2 size={14} />
                   </button>
                   <button
                     onClick={() => setDeleteTarget(agent)}
                     className="p-1 hover:bg-accent rounded text-red-600"
-                    aria-label={`Delete sub-agent ${agent.name}`}
+                    aria-label={`删除子代理 ${agent.name}`}
                   >
                     <Trash2 size={14} />
                   </button>
@@ -258,17 +259,17 @@ export function SubAgentsTab({ subAgents, onChange }: SubAgentsTabProps) {
 
         {subAgents.length === 0 && (
           <div className="text-center py-8 text-sm text-muted-foreground">
-            No custom sub-agents defined
+            还没有自定义子代理
           </div>
         )}
       </div>
 
       <ConfirmDialog
         open={Boolean(deleteTarget)}
-        title="Delete Sub-agent"
-        message={deleteTarget ? `Delete ${deleteTarget.name}? This cannot be undone.` : "Delete this sub-agent? This cannot be undone."}
-        confirmLabel="Delete"
-        cancelLabel="Cancel"
+        title="删除子代理"
+        message={deleteTarget ? `确定删除 ${deleteTarget.name}？此操作不可撤销。` : "确定删除这个子代理？此操作不可撤销。"}
+        confirmLabel="删除"
+        cancelLabel="取消"
         variant="danger"
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}

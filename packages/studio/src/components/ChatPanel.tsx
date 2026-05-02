@@ -150,7 +150,7 @@ export function ChatPanel({ bookId, onClose }: ChatPanelProps) {
           <button
             onClick={handleClear}
             className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-secondary"
-            title="Clear messages"
+            title="清空消息"
           >
             <Trash2 size={14} className="inline-block -translate-y-px" />
             清空
@@ -159,7 +159,7 @@ export function ChatPanel({ bookId, onClose }: ChatPanelProps) {
             <button
               onClick={onClose}
               className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-secondary"
-              title="Close panel"
+              title="关闭面板"
             >
               关闭
             </button>

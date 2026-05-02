@@ -21,7 +21,7 @@ export function CommandsTab({ commands, onChange }: CommandsTabProps) {
   const handleAdd = () => {
     const newCommand: Command = {
       id: `cmd_${Date.now()}`,
-      name: "New Command",
+      name: "新命令",
       description: "",
       prompt: "",
       enabled: true,
@@ -76,14 +76,14 @@ export function CommandsTab({ commands, onChange }: CommandsTabProps) {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
-          Define custom commands that can be invoked with slash syntax
+          定义可通过斜杠语法调用的自定义命令
         </p>
         <button
           onClick={handleAdd}
           className="px-3 py-1.5 text-sm rounded border hover:bg-accent flex items-center gap-2"
         >
           <Plus size={14} />
-          Add Command
+          添加命令
         </button>
       </div>
 
@@ -96,33 +96,33 @@ export function CommandsTab({ commands, onChange }: CommandsTabProps) {
             {editing === cmd.id ? (
               <div className="space-y-3">
                 <div>
-                  <label className="text-xs font-medium block mb-1">Name</label>
+                  <label className="text-xs font-medium block mb-1">名称</label>
                   <input
                     type="text"
                     value={editForm.name ?? ""}
                     onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
                     className="w-full px-2 py-1 text-sm border rounded bg-background"
-                    placeholder="command-name"
+                    placeholder="命令名称"
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-medium block mb-1">Description</label>
+                  <label className="text-xs font-medium block mb-1">描述</label>
                   <input
                     type="text"
                     value={editForm.description ?? ""}
                     onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
                     className="w-full px-2 py-1 text-sm border rounded bg-background"
-                    placeholder="What does this command do?"
+                    placeholder="这个命令做什么？"
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-medium block mb-1">Prompt</label>
+                  <label className="text-xs font-medium block mb-1">提示词</label>
                   <textarea
                     value={editForm.prompt ?? ""}
                     onChange={(e) => setEditForm({ ...editForm, prompt: e.target.value })}
                     className="w-full px-2 py-1 text-sm border rounded bg-background font-mono"
                     rows={4}
-                    placeholder="Instructions for the AI..."
+                    placeholder="给 AI 的执行说明..."
                   />
                 </div>
                 <div className="flex gap-2">
@@ -131,14 +131,14 @@ export function CommandsTab({ commands, onChange }: CommandsTabProps) {
                     className="px-3 py-1 text-sm rounded bg-primary text-primary-foreground hover:bg-primary/90 flex items-center gap-1"
                   >
                     <Save size={12} />
-                    Save
+                    保存
                   </button>
                   <button
                     onClick={handleCancel}
                     className="px-3 py-1 text-sm rounded border hover:bg-accent flex items-center gap-1"
                   >
                     <X size={12} />
-                    Cancel
+                    取消
                   </button>
                 </div>
               </div>
@@ -148,7 +148,7 @@ export function CommandsTab({ commands, onChange }: CommandsTabProps) {
                   <div className="flex items-center gap-2 mb-1">
                     <code className="text-sm font-mono">/{cmd.name}</code>
                     {!cmd.enabled && (
-                      <span className="text-xs text-muted-foreground">(disabled)</span>
+                      <span className="text-xs text-muted-foreground">（已停用）</span>
                     )}
                   </div>
                   {cmd.description && (
@@ -168,13 +168,14 @@ export function CommandsTab({ commands, onChange }: CommandsTabProps) {
                   <button
                     onClick={() => handleEdit(cmd)}
                     className="p-1 hover:bg-accent rounded"
+                    aria-label={`编辑命令 ${cmd.name}`}
                   >
                     <Edit2 size={14} />
                   </button>
                   <button
                     onClick={() => setDeleteTarget(cmd)}
                     className="p-1 hover:bg-accent rounded text-red-600"
-                    aria-label={`Delete command ${cmd.name}`}
+                    aria-label={`删除命令 ${cmd.name}`}
                   >
                     <Trash2 size={14} />
                   </button>
@@ -186,17 +187,17 @@ export function CommandsTab({ commands, onChange }: CommandsTabProps) {
 
         {commands.length === 0 && (
           <div className="text-center py-8 text-sm text-muted-foreground">
-            No custom commands defined
+            还没有自定义命令
           </div>
         )}
       </div>
 
       <ConfirmDialog
         open={Boolean(deleteTarget)}
-        title="Delete Command"
-        message={deleteTarget ? `Delete /${deleteTarget.name}? This cannot be undone.` : "Delete this command? This cannot be undone."}
-        confirmLabel="Delete"
-        cancelLabel="Cancel"
+        title="删除命令"
+        message={deleteTarget ? `确定删除 /${deleteTarget.name}？此操作不可撤销。` : "确定删除这个命令？此操作不可撤销。"}
+        confirmLabel="删除"
+        cancelLabel="取消"
         variant="danger"
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}

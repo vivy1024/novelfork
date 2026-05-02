@@ -172,8 +172,8 @@ export function DaemonTab() {
 
       <div className="grid gap-4 md:grid-cols-4">
         <SummaryCard title="运行状态" value={snapshot.running ? "运行中" : "已停止"} description={`最近刷新 ${formatDateTime(snapshot.refreshedAt)}`} />
-        <SummaryCard title="Radar Cron" value={snapshot.schedule.radarCron} description="雷达/巡检任务计划" />
-        <SummaryCard title="Write Cron" value={snapshot.schedule.writeCron} description="写作任务计划" />
+        <SummaryCard title="雷达计划" value={snapshot.schedule.radarCron} description="雷达/巡检任务计划" />
+        <SummaryCard title="写作计划" value={snapshot.schedule.writeCron} description="写作任务计划" />
         <SummaryCard title="并发上限" value={String(snapshot.limits.maxConcurrentBooks)} description={snapshot.limits.chaptersPerCycle === null ? "按默认章节节奏运行" : `每轮 ${snapshot.limits.chaptersPerCycle} 章`} />
       </div>
 

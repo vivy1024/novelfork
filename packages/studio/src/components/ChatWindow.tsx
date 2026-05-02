@@ -980,7 +980,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
                   </p>
                 </div>
                 <div className="rounded-full border border-border/70 bg-background px-2.5 py-1 text-[10px] font-medium text-muted-foreground">
-                  Session Control
+                  会话控制
                 </div>
               </div>
 
@@ -989,7 +989,7 @@ export function ChatWindow({ windowId, theme }: ChatWindowProps) {
                   <div className="rounded-xl border border-border/70 bg-background/80 p-3">
                     <div className="flex items-center justify-between gap-2">
                       <div>
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Context</div>
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">上下文</div>
                         <div className={`mt-1 text-2xl font-semibold ${contextSeverityClassName}`}>{contextSummary.percentage}%</div>
                       </div>
                       <div className="text-right text-xs text-muted-foreground">

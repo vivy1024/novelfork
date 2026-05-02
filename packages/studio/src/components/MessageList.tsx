@@ -24,8 +24,8 @@ function EmptyState() {
       <div className="w-14 h-14 rounded-2xl border border-dashed border-border flex items-center justify-center mb-4 bg-secondary/30">
         <BotMessageSquare size={24} className="text-muted-foreground" />
       </div>
-      <p className="text-sm italic font-serif mb-1">Start a conversation</p>
-      <p className="text-[10px] text-muted-foreground/60 uppercase tracking-widest">Ask me anything about your novel</p>
+      <p className="text-sm italic font-serif mb-1">开始一段对话</p>
+      <p className="text-[10px] text-muted-foreground/60 uppercase tracking-widest">随时询问你的小说创作问题</p>
     </div>
   );
 }
@@ -65,7 +65,7 @@ export function MessageList({
       ))}
       {isStreaming && (
         <div className="px-4 py-4 bg-secondary/20 text-sm text-muted-foreground italic">
-          Thinking...
+          思考中...
         </div>
       )}
     </div>

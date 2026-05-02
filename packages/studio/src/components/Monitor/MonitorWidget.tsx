@@ -164,7 +164,7 @@ export function MonitorWidget({ className }: MonitorWidgetProps) {
             disabled={state.status === 'stopped'}
           >
             <Square className="w-4 h-4 mr-1" />
-            Stop
+            停止
           </Button>
           <Button
             size="sm"
@@ -172,7 +172,7 @@ export function MonitorWidget({ className }: MonitorWidgetProps) {
             onClick={handleInterrupt}
           >
             <Pause className="w-4 h-4 mr-1" />
-            Interrupt
+            中断
           </Button>
         </div>
       </div>
@@ -180,7 +180,7 @@ export function MonitorWidget({ className }: MonitorWidgetProps) {
       {state.progress !== undefined && (
         <div className="space-y-1">
           <div className="flex justify-between text-xs text-muted-foreground">
-            <span>Progress</span>
+            <span>进度</span>
             <span>{Math.round(state.progress)}%</span>
           </div>
           <Progress value={state.progress} />

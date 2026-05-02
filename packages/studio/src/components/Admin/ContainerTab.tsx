@@ -66,7 +66,7 @@ export function ContainerTab() {
               badge={<Badge variant="outline">规划中</Badge>}
             />
             <StatusRow
-              title="exec / inspect"
+              title="执行 / 检查"
               description="后续补上容器内命令执行与状态检查。"
               badge={<Badge variant="outline">规划中</Badge>}
             />

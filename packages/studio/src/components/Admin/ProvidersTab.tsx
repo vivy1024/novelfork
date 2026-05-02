@@ -200,7 +200,7 @@ export function ProvidersTab() {
                 <CardContent className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px]">
                   <div className="space-y-3">
                     <div className="rounded-xl border border-border/70 bg-muted/30 p-3">
-                      <div className="mb-1 text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">API Key</div>
+                      <div className="mb-1 text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">API 密钥</div>
                       <div className="flex items-center gap-2 text-sm text-foreground">
                         <span className="font-mono">{showKeys[provider.id] ? provider.apiKey || "未配置" : maskApiKey(provider.apiKey)}</span>
                         <Button

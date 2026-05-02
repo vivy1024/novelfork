@@ -105,7 +105,7 @@ export function ToolUsageExample() {
                   status: "error" as const,
                   result: {
                     success: false,
-                    error: error instanceof Error ? error.message : "Unknown error",
+                    error: error instanceof Error ? error.message : "未知错误",
                   },
                 }
               : tc
@@ -233,7 +233,7 @@ async function executeToolMock(
     default:
       return {
         success: true,
-        data: `Tool ${toolName} executed with params: ${JSON.stringify(params)}`,
+        data: `工具 ${toolName} 已执行，参数：${JSON.stringify(params)}`,
       };
   }
 }

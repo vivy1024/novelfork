@@ -12,22 +12,22 @@ const statusConfig: Record<MonitorStatus, {
   icon: React.ComponentType<{ className?: string }>;
 }> = {
   running: {
-    label: "Running",
+    label: "运行中",
     variant: "default",
     icon: CheckCircle2,
   },
   stopped: {
-    label: "Stopped",
+    label: "已停止",
     variant: "secondary",
     icon: Circle,
   },
   interrupted: {
-    label: "Interrupted",
+    label: "已中断",
     variant: "outline",
     icon: AlertCircle,
   },
   error: {
-    label: "Error",
+    label: "错误",
     variant: "destructive",
     icon: XCircle,
   },
