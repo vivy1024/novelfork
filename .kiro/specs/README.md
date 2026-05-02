@@ -1,13 +1,17 @@
 # Kiro Specs Execution Guardrails
 
-本目录记录 NovelFork 的 Kiro specs。所有 spec 已归档到 `archive/`。
+本目录记录 NovelFork 的 Kiro specs。已完成 spec 归档到 `archive/`，当前 active spec 保留在本目录下。
 
 ## 当前状态
 
-**全部 spec 已完成并归档。** 下一个 spec 待制定。
+**当前 active spec：** `agent-native-workspace-v1` — 恢复 Agent-native/session-first 工作台，主布局为左资源栏 / 中间画布 / 右侧叙述者会话。
+
+| 当前 Spec | 任务数 | 状态 |
+|---|---:|---|
+| `agent-native-workspace-v1` | 23 | 🟡 tasks 已生成，待执行 |
 
 | 已归档 Spec | 任务数 | 状态 |
-|---|---|---|
+|---|---:|---|
 | `novel-creation-workbench-complete-flow` | 53 | ✅ |
 | `workspace-gap-closure-v1` | 25 | ✅ |
 | `agent-writing-pipeline-v1` | 15 | ✅ |
