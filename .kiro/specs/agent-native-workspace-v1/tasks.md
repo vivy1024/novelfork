@@ -37,7 +37,7 @@
   - 验证：adapter 层测试覆盖无工具、支持工具、不支持工具三种分支。
   - 覆盖需求：R3。
 
-- [ ] 5. 在 session-chat-service 中实现有界 tool loop
+- [x] 5. 在 session-chat-service 中实现有界 tool loop
   - 修改 `packages/studio/src/api/lib/session-chat-service.ts`，在单次用户消息处理中执行最多 6 步的 tool loop。
   - 当模型返回 `tool_use` 时，持久化 assistant tool-use 消息，调用 `SessionToolExecutor`，再持久化 tool-result 消息并回灌给模型。
   - 当工具返回 pending confirmation 时停止后续模型调用，等待用户确认。
