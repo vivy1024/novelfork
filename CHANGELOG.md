@@ -15,6 +15,7 @@
 - 新增 session tools 确认门 API，支持查询 pending confirmations、提交批准/拒绝决策、记录审计字段，并在拒绝后回灌错误 tool result 且清除待确认状态。
 - 抽出 Cockpit 共享数据服务并接入 `cockpit.get_snapshot`、`cockpit.list_open_hooks`、`cockpit.list_recent_candidates` session tools 与 REST drilldown routes，确保缺失焦点、无候选稿、无模型配置等状态返回真实 missing/empty 信息而非 mock 数据。
 - 将 Questionnaire 能力接入 session tools，支持列出模板、启动结构化问题卡、提交回答复用现有 Bible/Jingwei mapping 事务写入，并在未配置真实 provider/model 时返回明确 unsupported AI 建议状态。
+- 将 PGI 能力接入 session tools，支持基于 escalating 矛盾和临近伏笔生成生成前追问、记录回答/跳过审计 metadata，并格式化为 writer 可用的本章作者指示。
 
 ### 文档
 - 同步 README、Studio README、`CLAUDE.md` 与 `AGENTS.md` 的 Studio 全量测试数量口径为 149 files / 854 tests。

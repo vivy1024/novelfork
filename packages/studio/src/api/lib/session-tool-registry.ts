@@ -160,7 +160,9 @@ export const SESSION_TOOL_DEFINITIONS = [
     inputSchema: objectSchema({
       bookId: stringSchema("当前书籍 ID。"),
       sessionId: stringSchema("当前会话 ID。"),
+      questions: arraySchema("PGI 问题及触发原因列表。"),
       answers: arraySchema("PGI 问题回答列表。"),
+      heuristicsTriggered: arraySchema("本轮触发的 PGI 启发式。"),
       skippedReason: stringSchema("跳过 PGI 时的原因。"),
     }, ["bookId", "sessionId"]),
     risk: "draft-write",

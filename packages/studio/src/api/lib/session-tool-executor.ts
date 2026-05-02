@@ -6,6 +6,7 @@ import {
   type SessionToolExecutionResult,
   type ToolConfirmationRequest,
 } from "../../shared/agent-native-workspace.js";
+import type { PGIToolService } from "./pgi-tool-service.js";
 import type { QuestionnaireToolService } from "./questionnaire-tool-service.js";
 import { getSessionToolDefinition } from "./session-tool-registry.js";
 
@@ -21,6 +22,7 @@ export type SessionToolExecutorOptions = {
   readonly handlers?: Readonly<Record<string, SessionToolHandler>>;
   readonly cockpitService?: CockpitService;
   readonly questionnaireService?: QuestionnaireToolService;
+  readonly pgiService?: PGIToolService;
   readonly now?: () => number;
   readonly createConfirmationId?: (input: SessionToolExecutionInput, definition: SessionToolDefinition) => string;
 };
@@ -168,6 +170,12 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
       return async ({ input }) => (await resolveQuestionnaireService(options)).suggestAnswer(input);
     case "questionnaire.submit_response":
       return async ({ input }) => (await resolveQuestionnaireService(options)).submitResponse(input);
+    case "pgi.generate_questions":
+      return async ({ input }) => (await resolvePGIService(options)).generateQuestions(input);
+    case "pgi.record_answers":
+      return async ({ input }) => (await resolvePGIService(options)).recordAnswers(input);
+    case "pgi.format_answers_for_prompt":
+      return async ({ input }) => (await resolvePGIService(options)).formatAnswersForPrompt(input);
     default:
       return undefined;
   }
@@ -177,6 +185,12 @@ async function resolveQuestionnaireService(options: SessionToolExecutorOptions):
   if (options.questionnaireService) return options.questionnaireService;
   const { createQuestionnaireToolService } = await import("./questionnaire-tool-service.js");
   return createQuestionnaireToolService();
+}
+
+async function resolvePGIService(options: SessionToolExecutorOptions): Promise<PGIToolService> {
+  if (options.pgiService) return options.pgiService;
+  const { createPGIToolService } = await import("./pgi-tool-service.js");
+  return createPGIToolService();
 }
 
 function withDuration(

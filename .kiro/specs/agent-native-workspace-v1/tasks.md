@@ -70,7 +70,7 @@
   - 验证：单元/集成测试覆盖模板列表、提交映射、AI 建议 unsupported、真实 provider 参数传递。
   - 覆盖需求：R4、R6。
 
-- [ ] 9. 工具化 PGI 能力
+- [x] 9. 工具化 PGI 能力
   - 将 `packages/core/src/bible/pgi/pgi-engine.ts` 接入 session tools：`pgi.generate_questions`、`pgi.record_answers`、`pgi.format_answers_for_prompt`。
   - 工具结果必须包含触发原因 `heuristicsTriggered` 与每个问题的 reason。
   - 用户回答后将 PGI metadata 写入 session message metadata 和候选稿 metadata；跳过时记录 `pgi.used=false` 与 skippedReason。
