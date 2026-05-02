@@ -15,11 +15,13 @@
 | 规则 | 说明 |
 |------|------|
 | 版本号 | `v0.0.1` 起，语义化版本（主.次.修订） |
-| 标记位置 | `CLAUDE.md` 标题、`package.json`、`CHANGELOG.md`、Git tag |
-| 版本变动 | 任何版本号变动必须同步更新 release 资料：`package.json`、`CLAUDE.md`、`AGENTS.md`、`CHANGELOG.md`；正式发布还必须提交、打 `git tag vX.Y.Z` 并推送提交与 tag |
-| 提交后 | 每次功能合入后更新 `CHANGELOG.md` Unreleased 段 |
-| 发版时 | 将 Unreleased 内容移到新版本号下，打 `git tag vX.Y.Z` |
-| 禁止 | 禁止手动改版本号到未来版本；禁止虚构 changelog 条目 |
+| 标记位置 | `CLAUDE.md` 标题、根/包级 `package.json`、`AGENTS.md`、`CHANGELOG.md`、Git tag、GitHub Release |
+| 版本变动 | 任何版本号变动必须同步更新 release 资料：`package.json`、`packages/*/package.json`、`CLAUDE.md`、`AGENTS.md`、`CHANGELOG.md` |
+| 任务验收 | 用户要求提交、验收完成或明确要求收尾时，视为授权执行：相关验证 → Git 提交 → `git push origin <branch>`；不得只停留在本地提交 |
+| 提交后 | 每次功能合入后更新 `CHANGELOG.md` Unreleased 段，并随提交一起 push |
+| 发版时 | 将 Unreleased 内容移到新版本号下；运行 typecheck/test/compile/smoke；提交 release commit；打 `git tag vX.Y.Z`；推送提交与 tag；上传 GitHub Release 产物 |
+| 发布产物 | GitHub Release 是正式分发源；必须上传 `dist/novelfork-vX.Y.Z-windows-x64.exe` 与 SHA256；本地 dist 不等于已发布 |
+| 禁止 | 禁止手动改版本号到未来版本；禁止虚构 changelog 条目；禁止只打本地 tag 或只本地构建就宣称 release 完成 |
 
 ---
 
@@ -52,8 +54,8 @@
 |------|----|
 | Specs | 全部完成并归档（~308 任务） |
 | TypeScript | typecheck 通过 |
-| 测试 | 137 文件 / 801 测试 |
-| 编译 | `bun run compile` → `dist/novelfork.exe` 115MB |
+| 测试 | 144 文件 / 819 测试 |
+| 编译 | `pnpm --dir packages/studio compile` → `dist/novelfork.exe` / 版本化 release 产物约 117MB |
 | 运行 | `./novelfork.exe` → `http://localhost:4567` |
 
 ---
@@ -62,6 +64,14 @@
 
 ```
 代码修改 → 运行相关测试 → Git 提交 → git push origin <branch>
+```
+
+```
+验收完成 → 更新 CHANGELOG Unreleased → 相关验证 → Git 提交 → git push origin <branch>
+```
+
+```
+正式发版 → 同步版本资料 → typecheck/test/compile/smoke → release commit → git tag → push commit/tag → GitHub Release 上传 exe + SHA256
 ```
 
 ```
