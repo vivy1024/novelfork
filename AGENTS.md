@@ -51,6 +51,6 @@
 ## 构建与测试
 
 - `pnpm typecheck` — 类型检查
-- `pnpm --dir packages/studio exec vitest run` — 全量 Studio 测试（147 files / 842 tests）
+- `pnpm --dir packages/studio exec vitest run` — 全量 Studio 测试（149 files / 854 tests）
 - `pnpm --dir packages/studio compile` — 单文件编译（→ dist/novelfork.exe / dist/novelfork-vX.Y.Z-windows-x64.exe，约 117MB）
 - `bun run docs:verify` — 文档验证

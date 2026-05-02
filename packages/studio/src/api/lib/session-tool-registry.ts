@@ -121,6 +121,7 @@ export const SESSION_TOOL_DEFINITIONS = [
       questionId: stringSchema("需要建议答案的问题 ID。"),
       providerId: stringSchema("用于生成建议的 provider ID。"),
       modelId: stringSchema("用于生成建议的 model ID。"),
+      existingAnswers: { type: "object", description: "当前已填写的问卷答案。" },
       context: stringSchema("用户已提供的上下文或现有答案摘要。"),
     }, ["bookId", "templateId", "questionId"]),
     risk: "read",
