@@ -78,7 +78,7 @@
   - 验证：测试覆盖有 escalating 矛盾、有临近伏笔、无问题、用户跳过、答案格式化。
   - 覆盖需求：R4、R6、R10。
 
-- [ ] 10. 实现 Guided Generation Mode 状态机与工具
+- [x] 10. 实现 Guided Generation Mode 状态机与工具
   - 实现 `guided.enter`：创建 `GuidedGenerationState`，进入只读 planning/awaiting-user 状态，不执行写入。
   - 实现 `guided.exit`：提交 `GuidedGenerationPlan` 到确认门，批准后进入 executing，拒绝后回到 planning 或 rejected。
   - 支持 `GuidedQuestion` 回答、跳过、编辑、采纳 AI 建议，并写入 state。

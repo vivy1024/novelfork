@@ -6,6 +6,7 @@ import {
   type SessionToolExecutionResult,
   type ToolConfirmationRequest,
 } from "../../shared/agent-native-workspace.js";
+import type { GuidedGenerationToolService } from "./guided-generation-tool-service.js";
 import type { PGIToolService } from "./pgi-tool-service.js";
 import type { QuestionnaireToolService } from "./questionnaire-tool-service.js";
 import { getSessionToolDefinition } from "./session-tool-registry.js";
@@ -23,6 +24,7 @@ export type SessionToolExecutorOptions = {
   readonly cockpitService?: CockpitService;
   readonly questionnaireService?: QuestionnaireToolService;
   readonly pgiService?: PGIToolService;
+  readonly guidedService?: GuidedGenerationToolService;
   readonly now?: () => number;
   readonly createConfirmationId?: (input: SessionToolExecutionInput, definition: SessionToolDefinition) => string;
 };
@@ -71,6 +73,23 @@ export async function executeSessionTool(
   }
 
   const riskDecision = getSessionToolRiskDecision(input.permissionMode, definition.risk);
+  if (definition.name === "guided.exit" && input.confirmationDecision?.decision === "rejected") {
+    const handler = options.handlers?.[definition.name] ?? getDefaultHandler(definition.name, options);
+    if (!handler) {
+      return withDuration({
+        ok: false,
+        renderer: definition.renderer,
+        error: "tool-handler-missing",
+        summary: `session tool ${definition.name} 未配置执行处理器。`,
+      }, startedAt, options);
+    }
+    const result = await handler({ ...input, definition });
+    return withDuration({
+      ...result,
+      renderer: result.renderer ?? definition.renderer,
+    }, startedAt, options);
+  }
+
   if (riskDecision === "deny") {
     return withDuration({
       ok: false,
@@ -176,6 +195,12 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
       return async ({ input }) => (await resolvePGIService(options)).recordAnswers(input);
     case "pgi.format_answers_for_prompt":
       return async ({ input }) => (await resolvePGIService(options)).formatAnswersForPrompt(input);
+    case "guided.enter":
+      return async ({ input }) => (await resolveGuidedService(options)).enter(input);
+    case "guided.answer_question":
+      return async ({ input }) => (await resolveGuidedService(options)).answerQuestion(input);
+    case "guided.exit":
+      return async ({ input, confirmationDecision }) => (await resolveGuidedService(options)).exit(input, confirmationDecision);
     default:
       return undefined;
   }
@@ -191,6 +216,12 @@ async function resolvePGIService(options: SessionToolExecutorOptions): Promise<P
   if (options.pgiService) return options.pgiService;
   const { createPGIToolService } = await import("./pgi-tool-service.js");
   return createPGIToolService();
+}
+
+async function resolveGuidedService(options: SessionToolExecutorOptions): Promise<GuidedGenerationToolService> {
+  if (options.guidedService) return options.guidedService;
+  const { createGuidedGenerationToolService } = await import("./guided-generation-tool-service.js");
+  return createGuidedGenerationToolService();
 }
 
 function withDuration(
