@@ -8,7 +8,7 @@
 
 | 当前 Spec | 任务数 | 状态 |
 |---|---:|---|
-| `agent-native-workspace-v1` | 23 | 🟡 执行中（5/23 已完成） |
+| `agent-native-workspace-v1` | 23 | 🟡 执行中（6/23 已完成） |
 
 | 已归档 Spec | 任务数 | 状态 |
 |---|---:|---|

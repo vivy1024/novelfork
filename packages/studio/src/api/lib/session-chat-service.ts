@@ -11,6 +11,8 @@ import type {
 import type {
   SessionToolDefinition,
   SessionToolExecutionResult,
+  ToolConfirmationDecision,
+  ToolConfirmationRequest,
 } from "../../shared/agent-native-workspace.js";
 import type {
   NarratorSessionChatClientMessage,
@@ -86,6 +88,36 @@ type NormalizedRuntimeToolUse = {
   readonly toolName: string;
   readonly input: Record<string, unknown>;
 };
+
+export type PendingSessionToolConfirmation = ToolConfirmationRequest & {
+  readonly sessionId: string;
+  readonly messageId: string;
+  readonly toolUseId?: string;
+  readonly input: Record<string, unknown>;
+  readonly status: "pending";
+};
+
+export type SessionToolState = {
+  readonly sessionId: string;
+  readonly tools: readonly SessionToolDefinition[];
+  readonly pendingConfirmations: readonly PendingSessionToolConfirmation[];
+};
+
+export type ConfirmSessionToolDecisionInput = {
+  readonly confirmationId?: string;
+  readonly decision?: "approve" | "approved" | "reject" | "rejected";
+  readonly action?: "approve" | "reject";
+  readonly reason?: string;
+};
+
+export type ConfirmSessionToolDecisionResult =
+  | {
+    readonly ok: true;
+    readonly decision: ToolConfirmationDecision;
+    readonly toolResult: SessionToolExecutionResult;
+    readonly snapshot: NarratorSessionChatSnapshot;
+  }
+  | { readonly ok: false; readonly status: 400 | 404; readonly error: string };
 
 const sessionToolExecutor = createSessionToolExecutor();
 
@@ -548,12 +580,14 @@ function normalizeRuntimeToolUse(toolUse: RuntimeToolUse, fallbackId: string): N
 }
 
 function isPendingConfirmationResult(result: SessionToolExecutionResult): boolean {
-  return Boolean(result.confirmation)
+  return result.ok && (
+    Boolean(result.confirmation)
     || (
       result.data !== null
       && typeof result.data === "object"
       && (result.data as { status?: unknown }).status === "pending-confirmation"
-    );
+    )
+  );
 }
 
 function buildToolResultStatus(result: SessionToolExecutionResult): ToolCall["status"] {
@@ -595,6 +629,294 @@ function buildToolResultCall(
     ...(result.pgi ? { pgi: result.pgi } : {}),
     ...(result.narrative ? { narrative: result.narrative } : {}),
     ...(!result.ok && result.error ? { error: result.error } : {}),
+  };
+}
+
+function extractPendingToolConfirmations(sessionId: string, messages: readonly NarratorSessionChatMessage[]): PendingSessionToolConfirmation[] {
+  return messages.flatMap((message) => (message.toolCalls ?? []).flatMap((toolCall) => {
+    const confirmation = toolCall.confirmation ?? message.metadata?.confirmation;
+    if (!confirmation || toolCall.status !== "pending") {
+      return [];
+    }
+
+    return [{
+      ...confirmation,
+      sessionId,
+      messageId: message.id,
+      toolUseId: toolCall.id,
+      toolName: confirmation.toolName || toolCall.toolName,
+      input: normalizeRuntimeToolInput(toolCall.input),
+      status: "pending" as const,
+    }];
+  }));
+}
+
+type PendingConfirmationMatch = {
+  readonly message: NarratorSessionChatMessage;
+  readonly toolCall: ToolCall;
+  readonly confirmation: PendingSessionToolConfirmation;
+};
+
+function findPendingToolConfirmation(
+  sessionId: string,
+  messages: NarratorSessionChatMessage[],
+  toolName: string,
+  confirmationId?: string,
+): PendingConfirmationMatch | null {
+  for (let messageIndex = messages.length - 1; messageIndex >= 0; messageIndex -= 1) {
+    const message = messages[messageIndex]!;
+    for (const toolCall of message.toolCalls ?? []) {
+      const confirmation = toolCall.confirmation ?? message.metadata?.confirmation;
+      if (!confirmation || toolCall.status !== "pending") {
+        continue;
+      }
+      if ((confirmation.toolName || toolCall.toolName) !== toolName) {
+        continue;
+      }
+      if (confirmationId && confirmation.id !== confirmationId) {
+        continue;
+      }
+
+      return {
+        message,
+        toolCall,
+        confirmation: {
+          ...confirmation,
+          sessionId,
+          messageId: message.id,
+          toolUseId: toolCall.id,
+          toolName: confirmation.toolName || toolCall.toolName,
+          input: normalizeRuntimeToolInput(toolCall.input),
+          status: "pending",
+        },
+      };
+    }
+  }
+
+  return null;
+}
+
+function normalizeConfirmationDecision(input: ConfirmSessionToolDecisionInput): "approved" | "rejected" | null {
+  const rawDecision = input.decision ?? input.action;
+  if (rawDecision === "approve" || rawDecision === "approved") {
+    return "approved";
+  }
+  if (rawDecision === "reject" || rawDecision === "rejected") {
+    return "rejected";
+  }
+  return null;
+}
+
+function createRejectedToolResult(
+  toolName: string,
+  confirmation: PendingSessionToolConfirmation,
+  decision: ToolConfirmationDecision,
+): SessionToolExecutionResult {
+  const reasonSuffix = decision.reason ? `：${decision.reason}` : "";
+  return {
+    ok: false,
+    error: "confirmation-rejected",
+    summary: `用户已拒绝执行 ${toolName}${reasonSuffix}`,
+    data: { status: "rejected", decision },
+    confirmation,
+  };
+}
+
+function resolvePendingToolCall(
+  match: PendingConfirmationMatch,
+  result: SessionToolExecutionResult,
+): void {
+  const nextCall = buildToolResultCall({
+    id: match.toolCall.id ?? match.confirmation.id,
+    toolName: match.confirmation.toolName,
+    input: match.confirmation.input,
+  }, result);
+  match.message.toolCalls = (match.message.toolCalls ?? []).map((toolCall) => (
+    toolCall === match.toolCall || (toolCall.id && toolCall.id === match.toolCall.id)
+      ? { ...toolCall, ...nextCall, confirmation: match.confirmation }
+      : toolCall
+  ));
+}
+
+async function buildEnhancedMessagesForSession(
+  session: NarratorSessionRecord,
+  state: SessionChatRuntimeState,
+): Promise<NarratorSessionChatMessage[]> {
+  const agentSystemPrompt = getAgentSystemPrompt(session.agentId);
+  const projectId = (session as { projectId?: string }).projectId;
+  let bookContext = "";
+  if (projectId) {
+    try {
+      bookContext = await buildAgentContext({ bookId: projectId });
+    } catch { /* context build failure is non-fatal */ }
+  }
+  return injectSystemPrompt(state.messages, agentSystemPrompt, bookContext);
+}
+
+async function appendModelContinuationAfterToolDecision(
+  loaded: { session: NarratorSessionRecord; state: SessionChatRuntimeState },
+  timestamp: number,
+): Promise<NarratorSessionRecoveryMetadata["lastFailure"] | undefined> {
+  try {
+    const reply = await generateSessionChatReply({
+      sessionConfig: loaded.session.sessionConfig,
+      messages: await buildEnhancedMessagesForSession(loaded.session, loaded.state),
+      tools: getEnabledSessionTools(loaded.session.sessionConfig.permissionMode),
+    });
+
+    if (!reply.success) {
+      return { reason: reply.code, message: reply.error, at: new Date().toISOString() };
+    }
+
+    if (isSessionToolUseReply(reply)) {
+      return {
+        reason: "tool-loop-paused-after-confirmation",
+        message: "确认处理后模型继续请求工具，已等待下一轮会话处理。",
+        at: new Date().toISOString(),
+      };
+    }
+
+    const assistantMessage = appendMessageToState(loaded.state, {
+      id: `confirmation-continuation-${timestamp}`,
+      role: "assistant",
+      content: reply.content,
+      timestamp,
+      runtime: reply.metadata,
+    });
+    broadcastMessageEnvelope(loaded.session.id, loaded.state, assistantMessage);
+    return undefined;
+  } catch (error) {
+    return {
+      reason: "provider-unavailable",
+      message: error instanceof Error ? error.message : "LLM runtime request failed",
+      at: new Date().toISOString(),
+    };
+  }
+}
+
+async function persistMergedSessionChatProgress(
+  sessionId: string,
+  session: NarratorSessionRecord,
+  state: SessionChatRuntimeState,
+  failure?: NarratorSessionRecoveryMetadata["lastFailure"],
+): Promise<NarratorSessionRecord | null> {
+  trimSessionMessages(state);
+  const persistedHistory = await loadSessionChatHistory(sessionId);
+  const recentById = new Map(state.messages.map((message) => [message.id, message]));
+  const merged = persistedHistory.length > 0
+    ? persistedHistory.map((message) => recentById.get(message.id) ?? message)
+    : [];
+  const mergedIds = new Set(merged.map((message) => message.id));
+  for (const message of state.messages) {
+    if (!mergedIds.has(message.id)) {
+      merged.push(message);
+      mergedIds.add(message.id);
+    }
+  }
+  merged.sort((left, right) => (left.seq ?? 0) - (right.seq ?? 0));
+
+  await saveSessionChatHistory(sessionId, merged);
+  state.availableFromSeq = merged[0]?.seq ?? state.messages[0]?.seq ?? state.availableFromSeq;
+  const recovery = buildRecoveryMetadata(state, state.messages, failure);
+  state.recoveryJson = serializeRecoveryMetadata(recovery);
+  await updateSessionChatRecoveryJson(sessionId, state.recoveryJson);
+  return updateSession(sessionId, {
+    messageCount: state.messageCount,
+    recentMessages: [...state.messages],
+    recovery,
+  });
+}
+
+export async function getSessionToolState(sessionId: string): Promise<SessionToolState | null> {
+  const loaded = await loadSessionState(sessionId);
+  if (!loaded) {
+    return null;
+  }
+
+  return {
+    sessionId,
+    tools: getEnabledSessionTools(loaded.session.sessionConfig.permissionMode),
+    pendingConfirmations: extractPendingToolConfirmations(sessionId, loaded.state.messages),
+  };
+}
+
+export async function confirmSessionToolDecision(
+  sessionId: string,
+  toolName: string,
+  input: ConfirmSessionToolDecisionInput,
+): Promise<ConfirmSessionToolDecisionResult> {
+  const normalizedDecision = normalizeConfirmationDecision(input);
+  if (!normalizedDecision) {
+    return { ok: false, status: 400, error: "Invalid confirmation decision" };
+  }
+
+  const loaded = await loadSessionState(sessionId);
+  if (!loaded) {
+    return { ok: false, status: 404, error: "Session not found" };
+  }
+
+  const match = findPendingToolConfirmation(sessionId, loaded.state.messages, toolName, input.confirmationId);
+  if (!match) {
+    return { ok: false, status: 404, error: "Pending confirmation not found" };
+  }
+
+  const decision: ToolConfirmationDecision = {
+    confirmationId: match.confirmation.id,
+    decision: normalizedDecision,
+    ...(input.reason?.trim() ? { reason: input.reason.trim() } : {}),
+    decidedAt: new Date().toISOString(),
+    sessionId,
+  };
+  const toolResult = normalizedDecision === "approved"
+    ? await sessionToolExecutor.execute({
+      sessionId,
+      toolName,
+      input: match.confirmation.input,
+      permissionMode: loaded.session.sessionConfig.permissionMode,
+      confirmationDecision: decision,
+    })
+    : createRejectedToolResult(toolName, match.confirmation, decision);
+
+  resolvePendingToolCall(match, toolResult);
+  match.message.metadata = {
+    ...match.message.metadata,
+    confirmation: match.confirmation,
+    confirmationDecision: decision,
+  };
+
+  const timestamp = Date.now();
+  const resultMessage = appendMessageToState(loaded.state, {
+    id: `confirmation-result-${match.confirmation.id}-${timestamp}`,
+    role: "assistant",
+    content: toolResult.summary,
+    timestamp,
+    runtime: match.message.runtime,
+    toolCalls: [buildToolResultCall({
+      id: match.confirmation.toolUseId ?? match.confirmation.id,
+      toolName,
+      input: match.confirmation.input,
+    }, toolResult)],
+    metadata: {
+      ...buildToolResultMetadata(toolResult),
+      confirmation: match.confirmation,
+      confirmationDecision: decision,
+    },
+  });
+  broadcastMessageEnvelope(sessionId, loaded.state, resultMessage);
+  const failure = await appendModelContinuationAfterToolDecision(loaded, timestamp + 1);
+  const updatedSession = await persistMergedSessionChatProgress(sessionId, loaded.session, loaded.state, failure);
+  const serverFirstSession = buildServerFirstSession(updatedSession ?? loaded.session, loaded.state);
+  broadcastStateEnvelope(serverFirstSession, loaded.state);
+
+  return {
+    ok: true,
+    decision,
+    toolResult,
+    snapshot: {
+      session: serverFirstSession,
+      messages: [...loaded.state.messages],
+      cursor: createCursor(loaded.state),
+    },
   };
 }
 

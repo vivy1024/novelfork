@@ -12,6 +12,7 @@
 - 新增 Session Tool Executor 骨架，统一处理工具存在性校验、输入 schema 校验、权限风险拦截、pending confirmation、执行计时与错误包装，避免写入类 session tools 在 read/plan 模式或确认前执行。
 - 扩展 LLM runtime 与 provider adapter 工具调用契约，支持向工具能力模型传入 session tools、解析结构化 `tool_use`，并在模型不支持工具循环时返回明确 `unsupported-tools` 降级。
 - 在 session chat service 中实现最多 6 步的有界工具循环，持久化 tool-use/tool-result 消息，处理工具失败、pending confirmation、循环上限与 unsupported tools 错误恢复。
+- 新增 session tools 确认门 API，支持查询 pending confirmations、提交批准/拒绝决策、记录审计字段，并在拒绝后回灌错误 tool result 且清除待确认状态。
 
 ### 文档
 - 同步 README、Studio README、`CLAUDE.md` 与 `AGENTS.md` 的 Studio 全量测试数量口径为 147 files / 842 tests。

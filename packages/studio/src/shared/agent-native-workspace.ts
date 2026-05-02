@@ -354,6 +354,7 @@ export type SessionToolExecutionInput = {
   readonly input: Record<string, unknown>;
   readonly permissionMode: SessionPermissionMode;
   readonly canvasContext?: CanvasContext;
+  readonly confirmationDecision?: ToolConfirmationDecision;
 };
 
 export type SessionToolExecutionResult = AgentNativeToolMetadata & {

@@ -6,9 +6,12 @@ import { Hono } from "hono";
 
 import type { CreateNarratorSessionInput, UpdateNarratorSessionChatStateInput, UpdateNarratorSessionInput } from "../../shared/session-types.js";
 import {
+  confirmSessionToolDecision,
   getSessionChatHistory,
   getSessionChatSnapshot,
+  getSessionToolState,
   replaceSessionChatState,
+  type ConfirmSessionToolDecisionInput,
 } from "../lib/session-chat-service.js";
 import {
   createSession,
@@ -69,6 +72,26 @@ app.put("/:id/chat/state", async (c) => {
     return c.json({ error: "Session not found" }, 404);
   }
   return c.json(snapshot);
+});
+
+app.get("/:id/tools", async (c) => {
+  const id = c.req.param("id");
+  const state = await getSessionToolState(id);
+  if (!state) {
+    return c.json({ error: "Session not found" }, 404);
+  }
+  return c.json(state);
+});
+
+app.post("/:id/tools/:toolName/confirm", async (c) => {
+  const id = c.req.param("id");
+  const toolName = c.req.param("toolName");
+  const body = await c.req.json<ConfirmSessionToolDecisionInput>();
+  const result = await confirmSessionToolDecision(id, toolName, body);
+  if (!result.ok) {
+    return c.json({ error: result.error }, result.status);
+  }
+  return c.json(result);
 });
 
 app.post("/", async (c) => {
