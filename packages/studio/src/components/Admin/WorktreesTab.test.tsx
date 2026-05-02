@@ -60,7 +60,7 @@ describe("WorktreesTab", () => {
 
     render(<WorktreesTab />);
 
-    expect(await screen.findByRole("heading", { name: "Worktree" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "工作树" })).toBeTruthy();
     expect(screen.getByText("feature-a")).toBeTruthy();
     expect(screen.getByText("主仓库")).toBeTruthy();
     expect(screen.getAllByText("总变更").length).toBeGreaterThanOrEqual(1);

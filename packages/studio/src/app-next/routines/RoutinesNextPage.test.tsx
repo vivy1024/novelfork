@@ -129,12 +129,12 @@ describe("RoutinesNextPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "全局" }));
     await waitFor(() => expect(fetchRoutinesMock).toHaveBeenLastCalledWith("global", "D:/workspace/novel"));
 
-    expect(screen.getByRole("button", { name: "Add Command" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "添加命令" })).toBeTruthy();
     expect(screen.getByText("/write-next")).toBeTruthy();
 
     const routineNav = screen.getByRole("tablist", { name: "套路分区" });
     fireEvent.click(within(routineNav).getByRole("tab", { name: /可选工具/ }));
-    expect(screen.getByPlaceholderText("Search tools...")).toBeTruthy();
+    expect(screen.getByPlaceholderText("搜索工具...")).toBeTruthy();
     expect(screen.getByText("/load terminal")).toBeTruthy();
     expect(screen.getByText("/load share_file")).toBeTruthy();
 
@@ -156,7 +156,7 @@ describe("RoutinesNextPage", () => {
     expect(screen.getAllByText("system").length).toBeGreaterThan(0);
 
     fireEvent.click(within(routineNav).getByRole("tab", { name: /自定义子代理/ }));
-    expect(screen.getByRole("button", { name: "Add Sub-agent" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "添加子代理" })).toBeTruthy();
     expect(screen.getByText("工具权限规则")).toBeTruthy();
     expect(screen.getByText("Bash：直接允许 · 规则 pnpm *")).toBeTruthy();
     expect(screen.queryByText("Bash: allow pnpm *")).toBeNull();
