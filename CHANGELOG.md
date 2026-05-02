@@ -13,9 +13,10 @@
 - 扩展 LLM runtime 与 provider adapter 工具调用契约，支持向工具能力模型传入 session tools、解析结构化 `tool_use`，并在模型不支持工具循环时返回明确 `unsupported-tools` 降级。
 - 在 session chat service 中实现最多 6 步的有界工具循环，持久化 tool-use/tool-result 消息，处理工具失败、pending confirmation、循环上限与 unsupported tools 错误恢复。
 - 新增 session tools 确认门 API，支持查询 pending confirmations、提交批准/拒绝决策、记录审计字段，并在拒绝后回灌错误 tool result 且清除待确认状态。
+- 将 Questionnaire 能力接入 session tools，支持列出模板、启动结构化问题卡、提交回答复用现有 Bible/Jingwei mapping 事务写入，并在未配置真实 provider/model 时返回明确 unsupported AI 建议状态。
 
 ### 文档
-- 同步 README、Studio README、`CLAUDE.md` 与 `AGENTS.md` 的 Studio 全量测试数量口径为 147 files / 842 tests。
+- 同步 README、Studio README、`CLAUDE.md` 与 `AGENTS.md` 的 Studio 全量测试数量口径为 148 files / 848 tests。
 - 新增 `agent-native-workspace-v1` spec 与任务文档，明确工作台恢复为右侧叙述者会话主入口、中间画布、左侧资源栏，并将引导式生成定义为 Plan Mode 风格的工具链与确认门；同步 `.kiro/specs/README.md` 当前 active spec 索引。
 - 同步 README、Studio README、测试状态与架构总览中的 v0.0.4 测试数量、编译命令和 release 产物口径。
 - 将“代码/配置/流程变更必须同步文档与 CHANGELOG、验收前全仓核对旧口径”的文档纪律写入 `CLAUDE.md` 与 `AGENTS.md`。

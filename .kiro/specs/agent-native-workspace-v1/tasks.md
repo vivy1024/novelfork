@@ -62,7 +62,7 @@
   - 验证：单元测试覆盖空书、缺失 `current_focus.md`、无候选稿、无模型配置、有真实数据。
   - 覆盖需求：R5、R10。
 
-- [ ] 8. 工具化 Questionnaire 能力
+- [x] 8. 工具化 Questionnaire 能力
   - 将现有 questionnaire 模块接入 session tools：`questionnaire.list_templates`、`questionnaire.start`、`questionnaire.suggest_answer`、`questionnaire.submit_response`。
   - `submit_response` 继续使用现有 mapping 事务化写入 Bible/Jingwei，并保留 response。
   - `suggest_answer` 必须接收真实 provider/model 上下文；模型不可用时返回 unsupported，不返回虚假建议。
