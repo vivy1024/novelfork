@@ -9,6 +9,10 @@ import type {
 } from "../start-http-server.js";
 
 import type {
+  SessionToolDefinition,
+  SessionToolExecutionResult,
+} from "../../shared/agent-native-workspace.js";
+import type {
   NarratorSessionChatClientMessage,
   NarratorSessionChatCursor,
   NarratorSessionChatErrorEnvelope,
@@ -31,12 +35,59 @@ import {
   updateSessionChatAckedSeq,
   updateSessionChatRecoveryJson,
 } from "./session-history-store.js";
-import { generateSessionReply, type LlmRuntimeGenerateResult } from "./llm-runtime-service.js";
+import { generateSessionReply, type LlmRuntimeMetadata } from "./llm-runtime-service.js";
 import { getSessionById, updateSession } from "./session-service.js";
 import { buildAgentContext } from "./agent-context.js";
 import { getAgentSystemPrompt } from "@vivy1024/novelfork-core";
+import { createSessionToolExecutor } from "./session-tool-executor.js";
+import { getEnabledSessionTools } from "./session-tool-registry.js";
 
 const MAX_SESSION_MESSAGES = 50;
+const MAX_SESSION_TOOL_LOOP_STEPS = 6;
+
+type RuntimeToolUse = {
+  readonly id?: string;
+  readonly name?: string;
+  readonly toolName?: string;
+  readonly input?: unknown;
+  readonly arguments?: unknown;
+};
+
+type LlmRuntimeToolUseResult = {
+  readonly success: true;
+  readonly type: "tool_use";
+  readonly content?: string;
+  readonly toolUses: readonly RuntimeToolUse[];
+  readonly metadata: LlmRuntimeMetadata;
+};
+
+type LlmRuntimeMessageResult = {
+  readonly success: true;
+  readonly type?: "message";
+  readonly content: string;
+  readonly metadata: LlmRuntimeMetadata;
+};
+
+type LlmRuntimeFailureResult = {
+  readonly success: false;
+  readonly code: string;
+  readonly error: string;
+  readonly metadata?: Partial<LlmRuntimeMetadata>;
+};
+
+type SessionChatGenerateInput = Parameters<typeof generateSessionReply>[0] & {
+  readonly tools?: readonly SessionToolDefinition[];
+};
+
+type SessionChatGenerateResult = LlmRuntimeMessageResult | LlmRuntimeToolUseResult | LlmRuntimeFailureResult;
+
+type NormalizedRuntimeToolUse = {
+  readonly id: string;
+  readonly toolName: string;
+  readonly input: Record<string, unknown>;
+};
+
+const sessionToolExecutor = createSessionToolExecutor();
 
 interface SessionChatTransport {
   send(data: string): void;
@@ -453,6 +504,100 @@ async function persistSessionChatProgress(
   });
 }
 
+async function generateSessionChatReply(input: SessionChatGenerateInput): Promise<SessionChatGenerateResult> {
+  const result = await generateSessionReply(input as Parameters<typeof generateSessionReply>[0]);
+  return result as unknown as SessionChatGenerateResult;
+}
+
+function isSessionToolUseReply(reply: SessionChatGenerateResult): reply is LlmRuntimeToolUseResult {
+  return reply.success === true
+    && (reply as { type?: unknown }).type === "tool_use"
+    && Array.isArray((reply as { toolUses?: unknown }).toolUses);
+}
+
+function normalizeRuntimeToolInput(value: unknown): Record<string, unknown> {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      return { rawInput: value };
+    }
+  }
+
+  return {};
+}
+
+function normalizeRuntimeToolUse(toolUse: RuntimeToolUse, fallbackId: string): NormalizedRuntimeToolUse | null {
+  const toolName = toolUse.name?.trim() || toolUse.toolName?.trim();
+  if (!toolName) {
+    return null;
+  }
+
+  return {
+    id: toolUse.id?.trim() || fallbackId,
+    toolName,
+    input: normalizeRuntimeToolInput(toolUse.input ?? toolUse.arguments),
+  };
+}
+
+function isPendingConfirmationResult(result: SessionToolExecutionResult): boolean {
+  return Boolean(result.confirmation)
+    || (
+      result.data !== null
+      && typeof result.data === "object"
+      && (result.data as { status?: unknown }).status === "pending-confirmation"
+    );
+}
+
+function buildToolResultStatus(result: SessionToolExecutionResult): ToolCall["status"] {
+  if (isPendingConfirmationResult(result)) {
+    return "pending";
+  }
+  return result.ok ? "success" : "error";
+}
+
+function buildToolResultMetadata(result: SessionToolExecutionResult): NarratorSessionChatMessage["metadata"] {
+  return {
+    ...(result.renderer ? { renderer: result.renderer } : {}),
+    ...(result.artifact ? { artifact: result.artifact } : {}),
+    ...(result.confirmation ? { confirmation: result.confirmation } : {}),
+    ...(result.guided ? { guided: result.guided } : {}),
+    ...(result.pgi ? { pgi: result.pgi } : {}),
+    ...(result.narrative ? { narrative: result.narrative } : {}),
+    toolResult: result,
+  };
+}
+
+function buildToolResultCall(
+  toolUse: NormalizedRuntimeToolUse,
+  result: SessionToolExecutionResult,
+): ToolCall {
+  const status = buildToolResultStatus(result);
+  return {
+    id: toolUse.id,
+    toolName: toolUse.toolName,
+    status,
+    summary: result.summary,
+    input: toolUse.input,
+    duration: result.durationMs,
+    result,
+    ...(result.renderer ? { renderer: result.renderer } : {}),
+    ...(result.artifact ? { artifact: result.artifact } : {}),
+    ...(result.confirmation ? { confirmation: result.confirmation } : {}),
+    ...(result.guided ? { guided: result.guided } : {}),
+    ...(result.pgi ? { pgi: result.pgi } : {}),
+    ...(result.narrative ? { narrative: result.narrative } : {}),
+    ...(!result.ok && result.error ? { error: result.error } : {}),
+  };
+}
+
 export async function getSessionChatSnapshot(sessionId: string): Promise<NarratorSessionChatSnapshot | null> {
   const loaded = await loadSessionState(sessionId);
   if (!loaded) {
@@ -675,7 +820,12 @@ export async function handleSessionChatTransportMessage(
   });
   broadcastMessageEnvelope(sessionId, loaded.state, userMessage);
 
-  let reply: LlmRuntimeGenerateResult;
+  const messagesToPersist: NarratorSessionChatMessage[] = [userMessage];
+  const sessionTools = getEnabledSessionTools(loaded.session.sessionConfig.permissionMode);
+  let executedToolSteps = 0;
+  let failure: NarratorSessionRecoveryMetadata["lastFailure"] | undefined;
+  let errorEnvelope: NarratorSessionChatErrorEnvelope | undefined;
+
   try {
     // 注入 Agent 专属 system prompt 和作品上下文
     const agentSystemPrompt = getAgentSystemPrompt(loaded.session.agentId);
@@ -686,71 +836,181 @@ export async function handleSessionChatTransportMessage(
         bookContext = await buildAgentContext({ bookId: projectId });
       } catch { /* context build failure is non-fatal */ }
     }
-    const enhancedMessages = injectSystemPrompt(loaded.state.messages, agentSystemPrompt, bookContext);
 
-    reply = await generateSessionReply({
-      sessionConfig: loaded.session.sessionConfig,
-      messages: enhancedMessages,
-    });
+    for (;;) {
+      const enhancedMessages = injectSystemPrompt(loaded.state.messages, agentSystemPrompt, bookContext);
+      const reply = await generateSessionChatReply({
+        sessionConfig: loaded.session.sessionConfig,
+        messages: enhancedMessages,
+        tools: sessionTools,
+      });
+
+      if (!reply.success) {
+        failure = {
+          reason: reply.code,
+          message: reply.error,
+          at: new Date().toISOString(),
+        };
+        errorEnvelope = createSessionChatError(sessionId, reply.error, {
+          code: reply.code,
+          runtime: reply.metadata,
+        });
+        break;
+      }
+
+      if (!isSessionToolUseReply(reply)) {
+        const assistantMessage = appendMessageToState(loaded.state, {
+          id: `${userMessage.id}-assistant`,
+          role: "assistant",
+          content: reply.content,
+          timestamp: timestamp + messagesToPersist.length,
+          runtime: reply.metadata,
+        });
+        messagesToPersist.push(assistantMessage);
+        broadcastMessageEnvelope(sessionId, loaded.state, assistantMessage);
+        break;
+      }
+
+      if (executedToolSteps >= MAX_SESSION_TOOL_LOOP_STEPS) {
+        const message = `工具循环超过 ${MAX_SESSION_TOOL_LOOP_STEPS} 步，已停止本轮调用。`;
+        failure = {
+          reason: "tool-loop-limit",
+          message,
+          at: new Date().toISOString(),
+        };
+        const assistantMessage = appendMessageToState(loaded.state, {
+          id: `${userMessage.id}-tool-loop-limit`,
+          role: "assistant",
+          content: message,
+          timestamp: timestamp + messagesToPersist.length,
+          runtime: reply.metadata,
+          metadata: {
+            toolLoop: {
+              error: "tool-loop-limit",
+              maxSteps: MAX_SESSION_TOOL_LOOP_STEPS,
+            },
+          },
+        });
+        messagesToPersist.push(assistantMessage);
+        broadcastMessageEnvelope(sessionId, loaded.state, assistantMessage);
+        break;
+      }
+
+      const toolUses = reply.toolUses
+        .map((toolUse, index) => normalizeRuntimeToolUse(
+          toolUse,
+          `${userMessage.id}-tool-${executedToolSteps + 1}-${index + 1}`,
+        ))
+        .filter((toolUse): toolUse is NormalizedRuntimeToolUse => Boolean(toolUse));
+
+      if (toolUses.length === 0) {
+        const assistantMessage = appendMessageToState(loaded.state, {
+          id: `${userMessage.id}-empty-tool-use`,
+          role: "assistant",
+          content: reply.content?.trim() || "模型请求了工具调用，但没有返回可执行工具。",
+          timestamp: timestamp + messagesToPersist.length,
+          runtime: reply.metadata,
+        });
+        messagesToPersist.push(assistantMessage);
+        broadcastMessageEnvelope(sessionId, loaded.state, assistantMessage);
+        break;
+      }
+
+      let stopForConfirmation = false;
+      for (const toolUse of toolUses) {
+        if (executedToolSteps >= MAX_SESSION_TOOL_LOOP_STEPS) {
+          const message = `工具循环超过 ${MAX_SESSION_TOOL_LOOP_STEPS} 步，已停止本轮调用。`;
+          failure = {
+            reason: "tool-loop-limit",
+            message,
+            at: new Date().toISOString(),
+          };
+          const assistantMessage = appendMessageToState(loaded.state, {
+            id: `${userMessage.id}-tool-loop-limit`,
+            role: "assistant",
+            content: message,
+            timestamp: timestamp + messagesToPersist.length,
+            runtime: reply.metadata,
+            metadata: {
+              toolLoop: {
+                error: "tool-loop-limit",
+                maxSteps: MAX_SESSION_TOOL_LOOP_STEPS,
+              },
+            },
+          });
+          messagesToPersist.push(assistantMessage);
+          broadcastMessageEnvelope(sessionId, loaded.state, assistantMessage);
+          stopForConfirmation = true;
+          break;
+        }
+
+        const toolUseMessage = appendMessageToState(loaded.state, {
+          id: `${userMessage.id}-tool-use-${toolUse.id}`,
+          role: "assistant",
+          content: reply.content?.trim() || `请求调用工具 ${toolUse.toolName}。`,
+          timestamp: timestamp + messagesToPersist.length,
+          runtime: reply.metadata,
+          toolCalls: [
+            {
+              id: toolUse.id,
+              toolName: toolUse.toolName,
+              input: toolUse.input,
+            },
+          ],
+        });
+        messagesToPersist.push(toolUseMessage);
+        broadcastMessageEnvelope(sessionId, loaded.state, toolUseMessage);
+
+        const toolResult = await sessionToolExecutor.execute({
+          sessionId,
+          toolName: toolUse.toolName,
+          input: toolUse.input,
+          permissionMode: loaded.session.sessionConfig.permissionMode,
+        });
+        executedToolSteps += 1;
+        const toolResultCall = buildToolResultCall(toolUse, toolResult);
+        const toolResultMessage = appendMessageToState(loaded.state, {
+          id: `${userMessage.id}-tool-result-${toolUse.id}`,
+          role: "assistant",
+          content: toolResult.summary,
+          timestamp: timestamp + messagesToPersist.length,
+          runtime: reply.metadata,
+          toolCalls: [toolResultCall],
+          metadata: buildToolResultMetadata(toolResult),
+        });
+        messagesToPersist.push(toolResultMessage);
+        broadcastMessageEnvelope(sessionId, loaded.state, toolResultMessage);
+
+        if (isPendingConfirmationResult(toolResult)) {
+          stopForConfirmation = true;
+          break;
+        }
+      }
+
+      if (stopForConfirmation || failure) {
+        break;
+      }
+    }
   } catch (error) {
-    reply = {
-      success: false,
+    const message = error instanceof Error ? error.message : "LLM runtime request failed";
+    failure = {
+      reason: "provider-unavailable",
+      message,
+      at: new Date().toISOString(),
+    };
+    errorEnvelope = createSessionChatError(sessionId, message, {
       code: "provider-unavailable",
-      error: error instanceof Error ? error.message : "LLM runtime request failed",
-      metadata: {
+      runtime: {
         providerId: loaded.session.sessionConfig.providerId,
         modelId: loaded.session.sessionConfig.modelId,
       },
-    };
+    });
   }
 
-  if (!reply.success) {
-    const failure = {
-      reason: reply.code,
-      message: reply.error,
-      at: new Date().toISOString(),
-    };
-    const updatedSession = await persistSessionChatProgress(sessionId, loaded.session, loaded.state, [userMessage], failure);
-    sendEnvelope(transport, createSessionChatError(sessionId, reply.error, {
-      code: reply.code,
-      runtime: reply.metadata,
-    }));
-
-    if (updatedSession) {
-      broadcastStateEnvelope(buildServerFirstSession(updatedSession, loaded.state), loaded.state);
-    }
-    return;
+  const updatedSession = await persistSessionChatProgress(sessionId, loaded.session, loaded.state, messagesToPersist, failure);
+  if (errorEnvelope) {
+    sendEnvelope(transport, errorEnvelope);
   }
-
-  if (reply.type === "tool_use") {
-    const errorMessage = "当前会话暂不能处理工具调用结果";
-    const failure = {
-      reason: "tool-loop-unavailable",
-      message: errorMessage,
-      at: new Date().toISOString(),
-    };
-    const updatedSession = await persistSessionChatProgress(sessionId, loaded.session, loaded.state, [userMessage], failure);
-    sendEnvelope(transport, createSessionChatError(sessionId, errorMessage, {
-      code: "tool-loop-unavailable",
-      runtime: reply.metadata,
-    }));
-
-    if (updatedSession) {
-      broadcastStateEnvelope(buildServerFirstSession(updatedSession, loaded.state), loaded.state);
-    }
-    return;
-  }
-
-  const assistantMessage = appendMessageToState(loaded.state, {
-    id: `${userMessage.id}-assistant`,
-    role: "assistant",
-    content: reply.content,
-    timestamp: timestamp + 1,
-    runtime: reply.metadata,
-  });
-
-  const updatedSession = await persistSessionChatProgress(sessionId, loaded.session, loaded.state, [userMessage, assistantMessage]);
-  broadcastMessageEnvelope(sessionId, loaded.state, assistantMessage);
 
   if (updatedSession) {
     broadcastStateEnvelope(buildServerFirstSession(updatedSession, loaded.state), loaded.state);

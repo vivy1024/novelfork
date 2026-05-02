@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 let generateSessionReplyMock: ReturnType<typeof vi.fn>;
+let executeSessionToolMock: ReturnType<typeof vi.fn>;
 
 vi.mock("./user-config-service.js", () => ({
   loadUserConfig: vi.fn(async () => ({
@@ -23,6 +24,14 @@ vi.mock("./llm-runtime-service.js", () => ({
   generateSessionReply: (...args: unknown[]) =>
     (globalThis as typeof globalThis & { __novelforkGenerateSessionReplyMock: (...args: unknown[]) => unknown })
       .__novelforkGenerateSessionReplyMock(...args),
+}));
+
+vi.mock("./session-tool-executor.js", () => ({
+  createSessionToolExecutor: () => ({
+    execute: (...args: unknown[]) =>
+      (globalThis as typeof globalThis & { __novelforkExecuteSessionToolMock: (...args: unknown[]) => unknown })
+        .__novelforkExecuteSessionToolMock(...args),
+  }),
 }));
 
 async function loadSessionServices() {
@@ -60,6 +69,15 @@ describe("session-chat-service", () => {
     });
     (globalThis as typeof globalThis & { __novelforkGenerateSessionReplyMock: typeof generateSessionReplyMock })
       .__novelforkGenerateSessionReplyMock = generateSessionReplyMock;
+    executeSessionToolMock = vi.fn().mockResolvedValue({
+      ok: true,
+      renderer: "cockpit.snapshot",
+      summary: "已读取驾驶舱快照。",
+      data: { bookId: "book-1" },
+      durationMs: 12,
+    });
+    (globalThis as typeof globalThis & { __novelforkExecuteSessionToolMock: typeof executeSessionToolMock })
+      .__novelforkExecuteSessionToolMock = executeSessionToolMock;
   });
 
   afterEach(async () => {
@@ -68,6 +86,8 @@ describe("session-chat-service", () => {
     generateSessionReplyMock.mockReset();
     delete (globalThis as typeof globalThis & { __novelforkGenerateSessionReplyMock?: typeof generateSessionReplyMock })
       .__novelforkGenerateSessionReplyMock;
+    delete (globalThis as typeof globalThis & { __novelforkExecuteSessionToolMock?: typeof executeSessionToolMock })
+      .__novelforkExecuteSessionToolMock;
     delete process.env.NOVELFORK_SESSION_STORE_DIR;
     await rm(sessionStoreDir, { recursive: true, force: true });
   });
@@ -865,6 +885,366 @@ describe("session-chat-service", () => {
     expect(envelopes.at(-1)).toMatchObject({
       type: "session:state",
       cursor: { lastSeq: 4, ackedSeq: 2 },
+    });
+  });
+
+  it("executes a single runtime tool_use, persists tool result, and continues to a final assistant message", async () => {
+    const runtimeMetadata = { providerId: "anthropic", providerName: "Anthropic", modelId: "claude-sonnet-4-6" };
+    generateSessionReplyMock
+      .mockResolvedValueOnce({
+        success: true,
+        type: "tool_use",
+        toolUses: [
+          { id: "tool-use-1", name: "cockpit.get_snapshot", input: { bookId: "book-1" } },
+        ],
+        metadata: runtimeMetadata,
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        type: "message",
+        content: "已基于驾驶舱快照继续。",
+        metadata: runtimeMetadata,
+      });
+    const {
+      createSession,
+      attachSessionChatTransport,
+      getSessionChatSnapshot,
+      handleSessionChatTransportMessage,
+    } = await loadSessionServices();
+    const session = await createSession({
+      title: "工具循环会话",
+      agentId: "writer",
+      sessionMode: "chat",
+    });
+    const transport = new MockTransport();
+
+    expect(await attachSessionChatTransport(session.id, transport)).toBe(true);
+    await handleSessionChatTransportMessage(
+      session.id,
+      transport,
+      JSON.stringify({
+        type: "session:message",
+        messageId: "tool-loop-1",
+        content: "先看驾驶舱再继续",
+        sessionMode: "chat",
+      }),
+    );
+
+    expect(generateSessionReplyMock).toHaveBeenCalledTimes(2);
+    expect(generateSessionReplyMock.mock.calls[0]?.[0]).toMatchObject({
+      tools: expect.arrayContaining([
+        expect.objectContaining({ name: "cockpit.get_snapshot" }),
+      ]),
+    });
+    expect(executeSessionToolMock).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: session.id,
+      toolName: "cockpit.get_snapshot",
+      input: { bookId: "book-1" },
+      permissionMode: "allow",
+    }));
+    expect(generateSessionReplyMock.mock.calls[1]?.[0]).toMatchObject({
+      messages: expect.arrayContaining([
+        expect.objectContaining({
+          metadata: expect.objectContaining({
+            toolResult: expect.objectContaining({ ok: true, summary: "已读取驾驶舱快照。" }),
+          }),
+        }),
+      ]),
+    });
+
+    const snapshot = await getSessionChatSnapshot(session.id);
+    expect(snapshot?.messages).toHaveLength(4);
+    expect(snapshot?.messages[1]).toMatchObject({
+      role: "assistant",
+      toolCalls: [
+        expect.objectContaining({
+          id: "tool-use-1",
+          toolName: "cockpit.get_snapshot",
+          input: { bookId: "book-1" },
+        }),
+      ],
+    });
+    expect(snapshot?.messages[2]).toMatchObject({
+      role: "assistant",
+      content: "已读取驾驶舱快照。",
+      toolCalls: [
+        expect.objectContaining({
+          id: "tool-use-1",
+          toolName: "cockpit.get_snapshot",
+          status: "success",
+          renderer: "cockpit.snapshot",
+          result: expect.objectContaining({ ok: true }),
+        }),
+      ],
+      metadata: {
+        renderer: "cockpit.snapshot",
+        toolResult: expect.objectContaining({ ok: true }),
+      },
+    });
+    expect(snapshot?.messages[3]).toMatchObject({
+      role: "assistant",
+      content: "已基于驾驶舱快照继续。",
+      runtime: runtimeMetadata,
+    });
+  });
+
+  it("persists failed tool results without fake success and lets the model respond to the failure", async () => {
+    const runtimeMetadata = { providerId: "anthropic", providerName: "Anthropic", modelId: "claude-sonnet-4-6" };
+    generateSessionReplyMock
+      .mockResolvedValueOnce({
+        success: true,
+        type: "tool_use",
+        toolUses: [
+          { id: "tool-use-failed", name: "cockpit.get_snapshot", input: { bookId: "book-1" } },
+        ],
+        metadata: runtimeMetadata,
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        type: "message",
+        content: "驾驶舱读取失败，我会说明无法继续。",
+        metadata: runtimeMetadata,
+      });
+    executeSessionToolMock.mockResolvedValueOnce({
+      ok: false,
+      renderer: "cockpit.snapshot",
+      error: "tool-execution-failed",
+      summary: "工具 cockpit.get_snapshot 执行失败：storage offline",
+      durationMs: 8,
+    });
+    const {
+      createSession,
+      attachSessionChatTransport,
+      getSessionChatSnapshot,
+      handleSessionChatTransportMessage,
+    } = await loadSessionServices();
+    const session = await createSession({ title: "工具失败会话", agentId: "writer", sessionMode: "chat" });
+    const transport = new MockTransport();
+
+    expect(await attachSessionChatTransport(session.id, transport)).toBe(true);
+    await handleSessionChatTransportMessage(
+      session.id,
+      transport,
+      JSON.stringify({ type: "session:message", messageId: "tool-failure-1", content: "读取驾驶舱", sessionMode: "chat" }),
+    );
+
+    const snapshot = await getSessionChatSnapshot(session.id);
+    expect(snapshot?.messages[2]).toMatchObject({
+      role: "assistant",
+      content: "工具 cockpit.get_snapshot 执行失败：storage offline",
+      toolCalls: [
+        expect.objectContaining({
+          id: "tool-use-failed",
+          status: "error",
+          error: "tool-execution-failed",
+          result: expect.objectContaining({ ok: false }),
+        }),
+      ],
+      metadata: {
+        toolResult: expect.objectContaining({ ok: false, error: "tool-execution-failed" }),
+      },
+    });
+    expect(snapshot?.messages[3]).toMatchObject({
+      role: "assistant",
+      content: "驾驶舱读取失败，我会说明无法继续。",
+    });
+  });
+
+  it("stops the tool loop when a tool result requires pending confirmation", async () => {
+    const runtimeMetadata = { providerId: "anthropic", providerName: "Anthropic", modelId: "claude-sonnet-4-6" };
+    generateSessionReplyMock.mockResolvedValueOnce({
+      success: true,
+      type: "tool_use",
+      toolUses: [
+        {
+          id: "tool-use-confirm",
+          name: "guided.exit",
+          input: { bookId: "book-1", sessionId: "session-1", guidedStateId: "guided-state-1", plan: { title: "计划" } },
+        },
+      ],
+      metadata: runtimeMetadata,
+    });
+    executeSessionToolMock.mockResolvedValueOnce({
+      ok: true,
+      renderer: "guided.plan",
+      summary: "工具 guided.exit 需要确认后执行。",
+      data: { status: "pending-confirmation" },
+      confirmation: {
+        id: "confirm-1",
+        toolName: "guided.exit",
+        target: "book-1",
+        risk: "confirmed-write",
+        summary: "等待确认",
+        options: ["approve", "reject", "open-in-canvas"],
+        sessionId: "session-1",
+      },
+      durationMs: 6,
+    });
+    const {
+      createSession,
+      attachSessionChatTransport,
+      getSessionChatSnapshot,
+      handleSessionChatTransportMessage,
+    } = await loadSessionServices();
+    const session = await createSession({ title: "确认门会话", agentId: "writer", sessionMode: "chat" });
+    const transport = new MockTransport();
+
+    expect(await attachSessionChatTransport(session.id, transport)).toBe(true);
+    await handleSessionChatTransportMessage(
+      session.id,
+      transport,
+      JSON.stringify({ type: "session:message", messageId: "pending-confirmation-1", content: "生成计划", sessionMode: "chat" }),
+    );
+
+    expect(generateSessionReplyMock).toHaveBeenCalledTimes(1);
+    const snapshot = await getSessionChatSnapshot(session.id);
+    expect(snapshot?.messages).toHaveLength(3);
+    expect(snapshot?.messages[2]).toMatchObject({
+      role: "assistant",
+      toolCalls: [
+        expect.objectContaining({
+          id: "tool-use-confirm",
+          toolName: "guided.exit",
+          status: "pending",
+          confirmation: expect.objectContaining({ id: "confirm-1", risk: "confirmed-write" }),
+        }),
+      ],
+      metadata: {
+        confirmation: expect.objectContaining({ id: "confirm-1" }),
+        toolResult: expect.objectContaining({ data: { status: "pending-confirmation" } }),
+      },
+    });
+    expect(snapshot?.session.recovery).toMatchObject({
+      pendingToolCallCount: 1,
+      pendingToolCallSummary: ["guided.exit:pending"],
+    });
+  });
+
+  it("persists an assistant error and stops when the bounded tool loop exceeds six steps", async () => {
+    const runtimeMetadata = { providerId: "anthropic", providerName: "Anthropic", modelId: "claude-sonnet-4-6" };
+    for (let index = 0; index < 7; index += 1) {
+      generateSessionReplyMock.mockResolvedValueOnce({
+        success: true,
+        type: "tool_use",
+        toolUses: [
+          { id: `tool-use-loop-${index + 1}`, name: "cockpit.get_snapshot", input: { bookId: `book-${index + 1}` } },
+        ],
+        metadata: runtimeMetadata,
+      });
+    }
+    const {
+      createSession,
+      attachSessionChatTransport,
+      getSessionChatSnapshot,
+      handleSessionChatTransportMessage,
+    } = await loadSessionServices();
+    const session = await createSession({ title: "循环上限会话", agentId: "writer", sessionMode: "chat" });
+    const transport = new MockTransport();
+
+    expect(await attachSessionChatTransport(session.id, transport)).toBe(true);
+    await handleSessionChatTransportMessage(
+      session.id,
+      transport,
+      JSON.stringify({ type: "session:message", messageId: "tool-loop-limit-1", content: "连续查工具", sessionMode: "chat" }),
+    );
+
+    expect(generateSessionReplyMock).toHaveBeenCalledTimes(7);
+    expect(executeSessionToolMock).toHaveBeenCalledTimes(6);
+    const snapshot = await getSessionChatSnapshot(session.id);
+    expect(snapshot?.messages.at(-1)).toMatchObject({
+      role: "assistant",
+      content: expect.stringContaining("工具循环超过 6 步"),
+      metadata: expect.objectContaining({ toolLoop: expect.objectContaining({ error: "tool-loop-limit" }) }),
+    });
+    expect(snapshot?.session.recovery?.lastFailure).toMatchObject({
+      reason: "tool-loop-limit",
+      message: expect.stringContaining("工具循环超过 6 步"),
+    });
+  });
+
+  it("restores persisted tool-use and tool-result messages after runtime reload", async () => {
+    const runtimeMetadata = { providerId: "anthropic", providerName: "Anthropic", modelId: "claude-sonnet-4-6" };
+    generateSessionReplyMock
+      .mockResolvedValueOnce({
+        success: true,
+        type: "tool_use",
+        toolUses: [
+          { id: "tool-use-reload", name: "cockpit.get_snapshot", input: { bookId: "book-1" } },
+        ],
+        metadata: runtimeMetadata,
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        type: "message",
+        content: "已恢复工具结果。",
+        metadata: runtimeMetadata,
+      });
+    const firstLoad = await loadSessionServices();
+    const session = await firstLoad.createSession({ title: "工具恢复会话", agentId: "writer", sessionMode: "chat" });
+    const transport = new MockTransport();
+
+    expect(await firstLoad.attachSessionChatTransport(session.id, transport)).toBe(true);
+    await firstLoad.handleSessionChatTransportMessage(
+      session.id,
+      transport,
+      JSON.stringify({ type: "session:message", messageId: "tool-reload-1", content: "读取后恢复", sessionMode: "chat" }),
+    );
+
+    firstLoad.__testing.resetSessionStoreMutationQueue();
+    vi.resetModules();
+    const reloaded = await loadSessionServices();
+    const snapshot = await reloaded.getSessionChatSnapshot(session.id);
+
+    expect(snapshot?.messages).toHaveLength(4);
+    expect(snapshot?.messages[1]).toMatchObject({
+      toolCalls: [
+        expect.objectContaining({ id: "tool-use-reload", toolName: "cockpit.get_snapshot" }),
+      ],
+    });
+    expect(snapshot?.messages[2]).toMatchObject({
+      metadata: {
+        toolResult: expect.objectContaining({ ok: true, summary: "已读取驾驶舱快照。" }),
+      },
+    });
+    expect(snapshot?.cursor.lastSeq).toBe(4);
+  });
+
+  it("surfaces unsupported-tools failures without executing tools or faking assistant content", async () => {
+    generateSessionReplyMock.mockResolvedValueOnce({
+      success: false,
+      code: "unsupported-tools",
+      error: "当前 provider/model 不支持 session tools",
+      metadata: { providerId: "anthropic", providerName: "Anthropic", modelId: "claude-sonnet-4-6" },
+    });
+    const {
+      createSession,
+      attachSessionChatTransport,
+      getSessionChatSnapshot,
+      handleSessionChatTransportMessage,
+    } = await loadSessionServices();
+    const session = await createSession({ title: "工具不支持会话", agentId: "writer", sessionMode: "chat" });
+    const transport = new MockTransport();
+
+    expect(await attachSessionChatTransport(session.id, transport)).toBe(true);
+    await handleSessionChatTransportMessage(
+      session.id,
+      transport,
+      JSON.stringify({ type: "session:message", messageId: "unsupported-tools-1", content: "调用工具", sessionMode: "chat" }),
+    );
+
+    const envelopes = transport.sent.map((entry) => JSON.parse(entry));
+    expect(envelopes.find((entry) => entry.type === "session:error")).toMatchObject({
+      type: "session:error",
+      code: "unsupported-tools",
+      error: "当前 provider/model 不支持 session tools",
+    });
+    expect(envelopes.some((entry) => entry.type === "session:message" && entry.message?.role === "assistant")).toBe(false);
+    expect(executeSessionToolMock).not.toHaveBeenCalled();
+    const snapshot = await getSessionChatSnapshot(session.id);
+    expect(snapshot?.messages).toHaveLength(1);
+    expect(snapshot?.session.recovery?.lastFailure).toMatchObject({
+      reason: "unsupported-tools",
+      message: "当前 provider/model 不支持 session tools",
     });
   });
 

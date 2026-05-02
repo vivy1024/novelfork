@@ -32,7 +32,7 @@ cd packages/studio
 bun run dev          # http://localhost:4567
 
 # 测试
-pnpm --dir packages/studio exec vitest run  # 147 files / 836 tests
+pnpm --dir packages/studio exec vitest run  # 147 files / 842 tests
 
 # 编译
 pnpm --dir packages/studio compile          # → dist/novelfork.exe + dist/novelfork-vX.Y.Z-windows-x64.exe (~117MB)
