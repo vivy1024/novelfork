@@ -20,6 +20,7 @@ const EXPECTED_INITIAL_TOOL_NAMES = [
   "pgi.record_answers",
   "pgi.format_answers_for_prompt",
   "guided.enter",
+  "guided.answer_question",
   "guided.exit",
   "candidate.create_chapter",
   "narrative.read_line",
