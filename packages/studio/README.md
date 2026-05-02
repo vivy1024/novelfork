@@ -81,10 +81,10 @@ bun run dev            # http://localhost:4567
 bun run build
 
 # 编译单文件
-bun run compile        # → dist/novelfork.exe (115MB)
+pnpm --dir packages/studio compile  # → dist/novelfork.exe + dist/novelfork-vX.Y.Z-windows-x64.exe (~117MB)
 
 # 测试
-bun run test           # 137 files / 801 tests
+pnpm --dir packages/studio exec vitest run  # 144 files / 819 tests
 
 # 类型检查
 bun run typecheck

@@ -43,7 +43,7 @@
 
 ## 构建与测试
 
-- `bun run typecheck` — 类型检查
-- `bun run test` — 全量测试（137 files / 801 tests）
-- `bun run compile` — 单文件编译（→ dist/novelfork.exe 115MB）
+- `pnpm typecheck` — 类型检查
+- `pnpm --dir packages/studio exec vitest run` — 全量 Studio 测试（144 files / 819 tests）
+- `pnpm --dir packages/studio compile` — 单文件编译（→ dist/novelfork.exe / dist/novelfork-vX.Y.Z-windows-x64.exe，约 117MB）
 - `bun run docs:verify` — 文档验证
