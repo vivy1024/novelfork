@@ -39,7 +39,9 @@ import {
   resolveStudioProjectRepositoryRoot,
   type PreparedStudioProjectBootstrap,
 } from "../lib/project-bootstrap.js";
+import { createCandidateToolService } from "../lib/candidate-tool-service.js";
 import { createCockpitService } from "../lib/cockpit-service.js";
+import { createLlmRuntimeService } from "../lib/llm-runtime-service.js";
 import { configureSessionToolExecutor, getSessionChatSnapshot } from "../lib/session-chat-service.js";
 import { createSession } from "../lib/session-service.js";
 import type { RouterContext } from "./context.js";
@@ -527,7 +529,8 @@ export function createStorageRouter(ctx: RouterContext): Hono {
   const app = new Hono();
   const { state, root, broadcast } = ctx;
   const cockpitService = createCockpitService({ state, providerStore: ctx.providerStore });
-  configureSessionToolExecutor({ cockpitService });
+  const candidateService = createCandidateToolService({ root, runtimeService: createLlmRuntimeService(ctx.providerStore ? { store: ctx.providerStore } : {}) });
+  configureSessionToolExecutor({ cockpitService, candidateService });
 
   // Note: bookId validation middleware is registered globally in server.ts
 

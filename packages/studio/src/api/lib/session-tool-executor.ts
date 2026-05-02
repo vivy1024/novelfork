@@ -6,6 +6,7 @@ import {
   type SessionToolExecutionResult,
   type ToolConfirmationRequest,
 } from "../../shared/agent-native-workspace.js";
+import type { CandidateToolService } from "./candidate-tool-service.js";
 import type { GuidedGenerationToolService } from "./guided-generation-tool-service.js";
 import type { PGIToolService } from "./pgi-tool-service.js";
 import type { QuestionnaireToolService } from "./questionnaire-tool-service.js";
@@ -25,6 +26,7 @@ export type SessionToolExecutorOptions = {
   readonly questionnaireService?: QuestionnaireToolService;
   readonly pgiService?: PGIToolService;
   readonly guidedService?: GuidedGenerationToolService;
+  readonly candidateService?: CandidateToolService;
   readonly now?: () => number;
   readonly createConfirmationId?: (input: SessionToolExecutionInput, definition: SessionToolDefinition) => string;
 };
@@ -201,6 +203,8 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
       return async ({ input }) => (await resolveGuidedService(options)).answerQuestion(input);
     case "guided.exit":
       return async ({ input, confirmationDecision }) => (await resolveGuidedService(options)).exit(input, confirmationDecision);
+    case "candidate.create_chapter":
+      return async ({ input, sessionConfig }) => (await resolveCandidateService(options)).createChapter({ ...input, ...(sessionConfig ? { sessionConfig } : {}) });
     default:
       return undefined;
   }
@@ -222,6 +226,11 @@ async function resolveGuidedService(options: SessionToolExecutorOptions): Promis
   if (options.guidedService) return options.guidedService;
   const { createGuidedGenerationToolService } = await import("./guided-generation-tool-service.js");
   return createGuidedGenerationToolService();
+}
+
+async function resolveCandidateService(options: SessionToolExecutorOptions): Promise<CandidateToolService> {
+  if (options.candidateService) return options.candidateService;
+  throw new Error("candidate.create_chapter requires a configured CandidateToolService.");
 }
 
 function withDuration(
