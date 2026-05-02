@@ -39,7 +39,8 @@ import {
   resolveStudioProjectRepositoryRoot,
   type PreparedStudioProjectBootstrap,
 } from "../lib/project-bootstrap.js";
-import { getSessionChatSnapshot } from "../lib/session-chat-service.js";
+import { createCockpitService } from "../lib/cockpit-service.js";
+import { configureSessionToolExecutor, getSessionChatSnapshot } from "../lib/session-chat-service.js";
 import { createSession } from "../lib/session-service.js";
 import type { RouterContext } from "./context.js";
 
@@ -525,6 +526,8 @@ async function findConflictingBookOwner(
 export function createStorageRouter(ctx: RouterContext): Hono {
   const app = new Hono();
   const { state, root, broadcast } = ctx;
+  const cockpitService = createCockpitService({ state, providerStore: ctx.providerStore });
+  configureSessionToolExecutor({ cockpitService });
 
   // Note: bookId validation middleware is registered globally in server.ts
 
@@ -683,6 +686,27 @@ export function createStorageRouter(ctx: RouterContext): Hono {
       return c.json({ status: "missing" }, 404);
     }
     return c.json(status);
+  });
+
+  app.get("/api/books/:id/cockpit/snapshot", async (c) => {
+    const id = c.req.param("id");
+    const snapshot = await cockpitService.getSnapshot({
+      bookId: id,
+      includeModelStatus: c.req.query("includeModelStatus") !== "false",
+    });
+    return c.json(snapshot, snapshot.status === "missing" ? 404 : 200);
+  });
+
+  app.get("/api/books/:id/cockpit/open-hooks", async (c) => {
+    const id = c.req.param("id");
+    const result = await cockpitService.listOpenHooks({ bookId: id, limit: Number(c.req.query("limit")) });
+    return c.json(result, result.status === "missing" ? 404 : 200);
+  });
+
+  app.get("/api/books/:id/cockpit/recent-candidates", async (c) => {
+    const id = c.req.param("id");
+    const result = await cockpitService.listRecentCandidates({ bookId: id, limit: Number(c.req.query("limit")) });
+    return c.json(result, result.status === "missing" ? 404 : 200);
   });
 
   app.put("/api/books/:id", async (c) => {

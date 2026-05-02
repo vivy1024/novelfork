@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { SessionToolExecutionInput } from "../../shared/agent-native-workspace.js";
 import { createSessionToolExecutor } from "./session-tool-executor.js";
+import { createCockpitService } from "./cockpit-service.js";
 
 function input(overrides: Partial<SessionToolExecutionInput> = {}): SessionToolExecutionInput {
   return {
@@ -142,5 +143,40 @@ describe("session tool executor", () => {
       artifact: { id: "artifact-cockpit-1", openInCanvas: true },
     });
     expect(typeof result.durationMs).toBe("number");
+  });
+
+  it("wires default cockpit handlers to the shared cockpit service", async () => {
+    const cockpitService = createCockpitService({
+      state: {
+        loadBookConfig: vi.fn().mockResolvedValue({
+          id: "book-1",
+          title: "天墟试炼",
+          platform: "qidian",
+          genre: "玄幻",
+          status: "active",
+          targetChapters: 100,
+          chapterWordCount: 3000,
+        }),
+        loadChapterIndex: vi.fn().mockResolvedValue([]),
+        bookDir: vi.fn(() => "D:/missing/book-1"),
+      } as never,
+      providerStore: { listProviders: vi.fn().mockResolvedValue([]), listPlatformAccounts: vi.fn().mockResolvedValue([]) } as never,
+      now: () => new Date("2026-05-02T00:00:00.000Z"),
+    });
+    const executor = createSessionToolExecutor({ cockpitService });
+
+    const snapshot = await executor.execute(input({ toolName: "cockpit.get_snapshot", input: { bookId: "book-1", includeModelStatus: true } }));
+    const hooks = await executor.execute(input({ toolName: "cockpit.list_open_hooks", input: { bookId: "book-1", limit: 5 } }));
+    const candidates = await executor.execute(input({ toolName: "cockpit.list_recent_candidates", input: { bookId: "book-1", limit: 5 } }));
+
+    expect(snapshot).toMatchObject({
+      ok: true,
+      renderer: "cockpit.snapshot",
+      summary: "已读取驾驶舱快照。",
+      data: { status: "available", book: { id: "book-1" } },
+      artifact: { kind: "tool-result", renderer: "cockpit.snapshot", openInCanvas: true },
+    });
+    expect(hooks).toMatchObject({ ok: true, renderer: "cockpit.openHooks", summary: "已读取 0 条开放伏笔。", data: { status: "empty", items: [] } });
+    expect(candidates).toMatchObject({ ok: true, renderer: "cockpit.recentCandidates", summary: "已读取 0 条候选稿。", data: { status: "empty", items: [] } });
   });
 });

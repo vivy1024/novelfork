@@ -829,6 +829,59 @@ describe("createStudioServer daemon lifecycle", () => {
     await expect(readFile(join(bookDir, "web_materials.md"), "utf-8")).resolves.toContain("题材采风");
   });
 
+  it("serves cockpit snapshot and drilldown routes from real workspace data", async () => {
+    const bookDir = join(root, "books", "book-1");
+    await mkdir(join(bookDir, "story"), { recursive: true });
+    await mkdir(join(bookDir, "chapters"), { recursive: true });
+    await mkdir(join(bookDir, "generated-candidates"), { recursive: true });
+    await writeFile(join(bookDir, "book.json"), JSON.stringify({
+      id: "book-1",
+      title: "长夜书",
+      platform: "qidian",
+      genre: "都市",
+      status: "active",
+      targetChapters: 80,
+      chapterWordCount: 2600,
+      language: "zh",
+      createdAt: "2026-05-01T00:00:00.000Z",
+      updatedAt: "2026-05-02T00:00:00.000Z",
+    }), "utf-8");
+    await writeFile(join(bookDir, "chapters", "index.json"), JSON.stringify([
+      { number: 1, title: "第一章", status: "approved", wordCount: 2600, auditIssues: [], lengthWarnings: [], createdAt: "2026-05-01T00:00:00.000Z", updatedAt: "2026-05-01T01:00:00.000Z" },
+      { number: 2, title: "第二章", status: "audit-failed", wordCount: 2500, auditIssues: ["情节矛盾"], lengthWarnings: [], createdAt: "2026-05-02T00:00:00.000Z", updatedAt: "2026-05-02T01:00:00.000Z" },
+    ], null, 2), "utf-8");
+    await writeFile(join(bookDir, "story", "current_focus.md"), "# 当前聚焦\n\n锁定城中追债冲突。\n", "utf-8");
+    await writeFile(join(bookDir, "story", "pending_hooks.md"), "# 待处理伏笔\n\n- [ ] 第1章：旧账本失踪\n", "utf-8");
+    await writeFile(join(bookDir, "story", "chapter_summaries.md"), "# 章节摘要\n\n- 第1章：主角接下追债委托。\n- 第2章：旧账本线索断裂。\n", "utf-8");
+    await writeFile(join(bookDir, "generated-candidates", "index.json"), JSON.stringify([
+      { id: "cand-1", bookId: "book-1", title: "第三章候选", source: "write-next", status: "candidate", createdAt: "2026-05-02T10:00:00.000Z", updatedAt: "2026-05-02T10:00:00.000Z", contentFileName: "cand-1.md" },
+    ]), "utf-8");
+
+    const { createStudioServer } = await import("./server.js");
+    const { app } = createStudioServer(cloneProjectConfig() as never, root);
+
+    const snapshotResponse = await app.request("http://localhost/api/books/book-1/cockpit/snapshot?includeModelStatus=true");
+    expect(snapshotResponse.status).toBe(200);
+    await expect(snapshotResponse.json()).resolves.toMatchObject({
+      status: "available",
+      book: { id: "book-1", title: "长夜书" },
+      progress: { chapterCount: 2, totalWords: 5100, failedChapters: 1 },
+      currentFocus: { status: "available", content: expect.stringContaining("锁定城中追债冲突") },
+      openHooks: { items: [expect.objectContaining({ text: "第1章：旧账本失踪" })] },
+      recentCandidates: { items: [expect.objectContaining({ id: "cand-1", artifact: expect.objectContaining({ openInCanvas: true }) })] },
+      riskCards: { items: [expect.objectContaining({ kind: "audit-failure", chapterNumber: 2 })] },
+      modelStatus: { hasUsableModel: false, status: "missing" },
+    });
+
+    const hooksResponse = await app.request("http://localhost/api/books/book-1/cockpit/open-hooks?limit=1");
+    expect(hooksResponse.status).toBe(200);
+    await expect(hooksResponse.json()).resolves.toMatchObject({ status: "available", items: [expect.objectContaining({ sourceFile: "pending_hooks.md" })] });
+
+    const candidatesResponse = await app.request("http://localhost/api/books/book-1/cockpit/recent-candidates?limit=1");
+    expect(candidatesResponse.status).toBe(200);
+    await expect(candidatesResponse.json()).resolves.toMatchObject({ status: "available", items: [expect.objectContaining({ id: "cand-1" })] });
+  });
+
   it("updates the first-run language immediately after the language selector saves", async () => {
     const { createStudioServer } = await import("./server.js");
     const { app } = createStudioServer(cloneProjectConfig() as never, root);

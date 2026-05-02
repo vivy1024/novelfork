@@ -54,7 +54,7 @@
   - 验证：集成测试覆盖批准执行、拒绝不写、刷新恢复、审计字段记录。
   - 覆盖需求：R3、R4、R9。
 
-- [ ] 7. 实现 Cockpit 数据服务与 session tools
+- [x] 7. 实现 Cockpit 数据服务与 session tools
   - 从现有驾驶舱页面/API 数据源抽出共享服务，例如 `cockpit-service.ts`，返回 `CockpitSnapshot`、open hooks、recent candidates。
   - 实现 `cockpit.get_snapshot`、`cockpit.list_open_hooks`、`cockpit.list_recent_candidates` executor。
   - 保证缺失数据返回 `null`、`[]`、`unsupported` 或 `missing` 状态，不使用 mock 数据。
