@@ -345,14 +345,14 @@ function ImportPanel({ books, onDone }: { readonly books: ReadonlyArray<BookItem
           {books.length === 0 && <option value="">无可用书籍</option>}
         </select>
         <div className="flex gap-1">
-          <span className="rounded-md bg-primary px-2 py-1 text-xs text-primary-foreground">章节文本</span>
+          <span data-visual-audit="activeTab" className="rounded-md bg-primary px-2 py-1 text-xs text-primary-foreground">章节文本</span>
         </div>
       </div>
 
       <>
         <textarea className="w-full rounded-md border border-border bg-background p-2 text-sm" rows={5} value={text} onChange={(e) => setText(e.target.value)} placeholder="粘贴章节文本，系统会自动按章节标题分割…" />
         <input className="w-full rounded-md border border-border bg-background px-2 py-1 text-sm" value={splitRegex} onChange={(e) => setSplitRegex(e.target.value)} placeholder="自定义分割正则（可选）" />
-        <button className="rounded-lg bg-primary px-4 py-1.5 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-50" disabled={loading || !text.trim() || !bookId} onClick={() => void handleImportChapters()} type="button">
+        <button data-visual-audit="disabledAction" className="rounded-lg bg-primary px-4 py-1.5 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-50" disabled={loading || !text.trim() || !bookId} onClick={() => void handleImportChapters()} type="button">
           {loading ? "导入中…" : "导入章节"}
         </button>
       </>

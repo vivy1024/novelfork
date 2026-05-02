@@ -63,11 +63,6 @@ export function useSSE(url = "/api/events") {
   const esRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
-    // Tauri mode has no server-side SSE endpoint
-    if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
-      return;
-    }
-
     const es = new EventSource(url);
     esRef.current = es;
 

@@ -30,8 +30,8 @@ export const doctorCommand = new Command("doctor")
     const nodeVersion = process.version;
     const major = parseInt(nodeVersion.slice(1).split(".")[0]!, 10);
     checks.push({
-      name: "Node.js >= 20",
-      ok: major >= 20,
+      name: "Node.js >= 22",
+      ok: major >= 22,
       detail: nodeVersion,
     });
     checks.push({

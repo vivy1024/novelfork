@@ -18,6 +18,15 @@ _notes/
 _tmp_*
 test-project/
 packages/studio/.test-workspace/
+packages/studio/books/
+packages/studio/novelfork.json
+*.db
+*.sqlite
+*.sqlite3
+*-wal
+*-shm
+bun.lock*
+yarn.lock
 .venv*/
 .gstack/
 .worktrees/

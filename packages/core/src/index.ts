@@ -180,6 +180,10 @@ export type { MCPTransportType, MCPServerConfig, MCPTool, MCPToolCallRequest, MC
 // Registry
 export { ToolRegistry, globalToolRegistry, type ToolParameter, type ToolHandler, type GenericToolHandler, type RegisteredTool } from "./registry/tool-registry.js";
 
+// Plugins
+export { NovelForkPlugin, PluginManager } from "./plugins/index.js";
+export type { PluginManifest, PluginState, PluginTool, PluginHook, PluginContext, PluginMetadata, PluginManagerConfig } from "./plugins/index.js";
+
 // Presets
 export {
   registerPreset,

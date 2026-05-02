@@ -25,7 +25,7 @@ interface OverridesResponse {
 
 export function ProjectConfigSection() {
   const { data, loading, error } = useApi<ProjectInfo>("/project");
-  const { data: overrides, loading: oLoading, error: oError } = useApi<OverridesResponse>("/project/overrides");
+  const { data: overrides, loading: oLoading, error: oError } = useApi<OverridesResponse>("/project/model-overrides");
 
   const isLoading = loading || oLoading;
   const firstError = error || oError;

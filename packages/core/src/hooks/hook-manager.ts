@@ -54,6 +54,18 @@ export class HookManager {
     this.hooks.get(stage)!.push(handler);
   }
 
+  unregister(stage: PipelineStage, handler: HookHandler): boolean {
+    const handlers = this.hooks.get(stage);
+    if (!handlers) return false;
+    const index = handlers.indexOf(handler);
+    if (index < 0) return false;
+    handlers.splice(index, 1);
+    if (handlers.length === 0) {
+      this.hooks.delete(stage);
+    }
+    return true;
+  }
+
   /**
    * Register multiple hooks from a PipelineHooks object
    */

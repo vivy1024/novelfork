@@ -1,6 +1,6 @@
 /**
  * Client-side storage abstraction — decouples React components from transport.
- * HttpStorageAdapter (web) calls /api/*; TauriStorageAdapter (Phase 3) uses invoke.
+ * HttpStorageAdapter calls /api/* through the local Studio HTTP server.
  */
 
 export interface BookSummary {

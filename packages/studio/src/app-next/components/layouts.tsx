@@ -3,6 +3,7 @@ import type { ReactNode, ComponentType } from "react";
 import { GitBranch, LayoutDashboard, PenTool, Search, Settings, Wrench } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import studioPackageJson from "../../../package.json";
 import type { StudioNextRoute } from "../entry";
 
 export const NEXT_OVERLAY_LAYER_CLASS = "z-[100]";
@@ -20,6 +21,8 @@ interface NextShellProps {
   readonly onRouteChange: (route: StudioNextRoute) => void;
   readonly children: ReactNode;
 }
+
+const STUDIO_VERSION = studioPackageJson.version;
 
 export function NextShell({ activeRoute, onRouteChange, children }: NextShellProps) {
   return (
@@ -64,7 +67,7 @@ export function NextShell({ activeRoute, onRouteChange, children }: NextShellPro
 
         {/* 底部 */}
         <div className="border-t border-border px-4 py-2 text-xs text-muted-foreground">
-          v0.0.1
+          v{STUDIO_VERSION}
         </div>
       </aside>
 

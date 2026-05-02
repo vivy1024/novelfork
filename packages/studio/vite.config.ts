@@ -102,14 +102,6 @@ export default defineConfig({
       "@": resolve(__dirname, "src"),
     },
   },
-  optimizeDeps: {
-    include: [
-      "@tauri-apps/api/core",
-      "@tauri-apps/api/event",
-      "@tauri-apps/plugin-updater",
-      "@tauri-apps/plugin-process",
-    ],
-  },
   build: {
     // Package 6 / 7.1: route-level code splitting lives in src/App.tsx (React.lazy);
     // this config only carves out the heavy third-party vendors so they do not
@@ -117,14 +109,6 @@ export default defineConfig({
     chunkSizeWarningLimit: 900,
     rollupOptions: {
       external: [
-        "@tauri-apps/api",
-        "@tauri-apps/api/core",
-        "@tauri-apps/api/event",
-        "@tauri-apps/plugin-dialog",
-        "@tauri-apps/plugin-fs",
-        "@tauri-apps/plugin-updater",
-        "@tauri-apps/plugin-process",
-        "@tauri-apps/plugin-shell",
         "node:child_process",
         "node:util",
         "node:path",

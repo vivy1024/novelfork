@@ -100,6 +100,10 @@ function findButtonByName(name) {
   return Array.from(document.querySelectorAll("button")).find((button) => normalizeButtonText(button.textContent) === name) ?? null;
 }
 
+function findAuditTarget(name) {
+  return document.querySelector(`[data-visual-audit="${name}"]`);
+}
+
 function nextFrame() {
   return new Promise((resolve) => requestAnimationFrame(() => resolve()));
 }
@@ -109,29 +113,26 @@ export async function runNovelForkAppNextVisualAudit() {
     throw new Error(`当前页面不是 /next 路由：${location.pathname}`);
   }
 
-  const createToggle = findButtonByName("+ 创建新书") ?? findButtonByName("取消");
-  const importToggle = findButtonByName("导入") ?? findButtonByName("取消导入");
+  const importToggle = findAuditTarget("outlineAction") ?? findButtonByName("导入") ?? findButtonByName("取消导入");
 
   if (!importToggle) {
     throw new Error("找不到 Dashboard 导入按钮，无法建立 active tab / disabled state 审计场景。");
   }
 
-  if (!findButtonByName("章节文本")) {
+  if (!findAuditTarget("activeTab")) {
     importToggle.click();
     await nextFrame();
   }
 
-  const activeTab = findButtonByName("章节文本");
-  const disabledAction = findButtonByName("导入章节");
   const cssText = collectCssText();
 
   return auditVisualStates({
     cssText,
     snapshots: {
-      primaryAction: readSnapshot(createToggle, "primaryAction"),
-      outlineAction: readSnapshot(importToggle, "outlineAction"),
-      activeTab: readSnapshot(activeTab, "activeTab"),
-      disabledAction: readSnapshot(disabledAction, "disabledAction"),
+      primaryAction: readSnapshot(findAuditTarget("primaryAction") ?? findButtonByName("+ 创建新书") ?? findButtonByName("取消"), "primaryAction"),
+      outlineAction: readSnapshot(findAuditTarget("outlineAction") ?? importToggle, "outlineAction"),
+      activeTab: readSnapshot(findAuditTarget("activeTab") ?? findButtonByName("章节文本"), "activeTab"),
+      disabledAction: readSnapshot(findAuditTarget("disabledAction") ?? findButtonByName("导入章节"), "disabledAction"),
     },
   });
 }

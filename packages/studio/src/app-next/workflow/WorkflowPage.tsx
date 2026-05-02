@@ -7,30 +7,36 @@ import { cn } from "@/lib/utils";
 import { workflowStatusLabel } from "../lib/display-labels";
 
 const TABS = [
-  { id: "agents", label: "Agent 状态" },
+  { id: "agents", label: "Agent 配置" },
   { id: "runs", label: "管线运行" },
-  { id: "scheduler", label: "调度配置" },
+  { id: "scheduler", label: "调度状态" },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
 
-interface AgentInfo {
-  readonly name: string;
-  readonly status: string;
-  readonly model?: string;
+interface AgentConfigResponse {
+  readonly config?: {
+    readonly maxActiveWorkspaces: number;
+    readonly maxActiveContainers: number;
+    readonly workspaceSizeWarning: number;
+    readonly autoSaveOnSleep: boolean;
+    readonly portRangeStart: number;
+    readonly portRangeEnd: number;
+  };
 }
 
 interface RunInfo {
   readonly id: string;
   readonly status: string;
-  readonly startedAt?: string;
+  readonly stage?: string;
+  readonly action?: string;
+  readonly createdAt?: string;
+  readonly startedAt?: string | null;
   readonly bookId?: string;
 }
 
-interface SchedulerInfo {
-  readonly enabled?: boolean;
-  readonly interval?: number;
-  readonly strategy?: string;
+interface DaemonInfo {
+  readonly running: boolean;
 }
 
 function NotConnected() {
@@ -42,31 +48,34 @@ function NotConnected() {
 }
 
 function AgentsTab() {
-  const { data, loading, error, refetch } = useApi<AgentInfo[] | null>("/agents");
+  const { data, loading, error, refetch } = useApi<AgentConfigResponse>("/agent/config");
+  const config = data?.config;
 
   if (loading) return <p className="text-muted-foreground text-sm">加载中...</p>;
-  if (error) return <NotConnected />;
-  if (!data || !Array.isArray(data) || data.length === 0) {
-    return <NotConnected />;
-  }
+  if (error) return <InlineError message={error} />;
+  if (!config) return <NotConnected />;
+
+  const rows = [
+    ["最大活动工作区", String(config.maxActiveWorkspaces)],
+    ["最大活动容器", String(config.maxActiveContainers)],
+    ["工作区大小警戒", `${config.workspaceSizeWarning} MB`],
+    ["休眠自动保存", config.autoSaveOnSleep ? "已启用" : "未启用"],
+    ["端口范围", `${config.portRangeStart}–${config.portRangeEnd}`],
+  ] as const;
 
   return (
     <div className="space-y-2">
       <div className="flex justify-end">
         <button type="button" className="rounded-md border border-border px-2.5 py-1 text-xs hover:bg-muted" onClick={refetch}>刷新</button>
       </div>
-      {data.map((agent) => (
-        <div key={agent.name} className="flex items-center justify-between rounded-lg border border-border p-3 text-sm">
-          <div className="flex items-center gap-2">
-            <span className={cn("inline-block h-2 w-2 rounded-full", agent.status === "running" ? "bg-green-500" : "bg-gray-400")} />
-            <span className="font-medium text-foreground">{agent.name}</span>
+      <div className="rounded-lg border border-border p-4 space-y-3 text-sm">
+        {rows.map(([label, value]) => (
+          <div key={label} className="flex items-center justify-between gap-4 py-1.5">
+            <span className="text-muted-foreground">{label}</span>
+            <span className="font-mono text-foreground">{value}</span>
           </div>
-          <div className="flex items-center gap-3 text-muted-foreground">
-            {agent.model && <span className="font-mono text-xs">{agent.model}</span>}
-            <span className="text-xs">{workflowStatusLabel(agent.status)}</span>
-          </div>
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   );
 }
@@ -75,7 +84,7 @@ function RunsTab() {
   const { data, loading, error, refetch } = useApi<RunInfo[] | null>("/runs");
 
   if (loading) return <p className="text-muted-foreground text-sm">加载中...</p>;
-  if (error) return <NotConnected />;
+  if (error) return <InlineError message={error} />;
   if (!data || !Array.isArray(data) || data.length === 0) {
     return <NotConnected />;
   }
@@ -90,9 +99,10 @@ function RunsTab() {
           <div className="flex items-center gap-2">
             <span className="font-mono text-xs text-foreground">{run.id.slice(0, 8)}</span>
             {run.bookId && <span className="text-xs text-muted-foreground">书籍: {run.bookId}</span>}
+            {run.action && <span className="text-xs text-muted-foreground">动作: {run.action}</span>}
           </div>
           <div className="flex items-center gap-3">
-            <span className="text-xs text-muted-foreground">{run.startedAt ?? "—"}</span>
+            <span className="text-xs text-muted-foreground">{run.startedAt ?? run.createdAt ?? "—"}</span>
             <span className={cn("rounded px-1.5 py-0.5 text-xs font-medium", run.status === "running" ? "bg-green-500/10 text-green-600" : run.status === "failed" ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground")}>{workflowStatusLabel(run.status)}</span>
           </div>
         </div>
@@ -102,10 +112,10 @@ function RunsTab() {
 }
 
 function SchedulerTab() {
-  const { data, loading, error, refetch } = useApi<SchedulerInfo | null>("/scheduler");
+  const { data, loading, error, refetch } = useApi<DaemonInfo | null>("/daemon");
 
   if (loading) return <p className="text-muted-foreground text-sm">加载中...</p>;
-  if (error) return <NotConnected />;
+  if (error) return <InlineError message={error} />;
   if (!data) return <NotConnected />;
 
   return (
@@ -115,16 +125,10 @@ function SchedulerTab() {
       </div>
       <div className="rounded-lg border border-border p-4 space-y-3">
         <div className="flex items-center justify-between py-1.5 text-sm">
-          <span className="text-muted-foreground">启用状态</span>
-          <span className="font-mono text-foreground">{data.enabled ? "已启用" : "未启用"}</span>
-        </div>
-        <div className="flex items-center justify-between py-1.5 text-sm">
-          <span className="text-muted-foreground">调度间隔</span>
-          <span className="font-mono text-foreground">{data.interval ? `${data.interval}s` : "—"}</span>
-        </div>
-        <div className="flex items-center justify-between py-1.5 text-sm">
-          <span className="text-muted-foreground">调度策略</span>
-          <span className="font-mono text-foreground">{data.strategy ?? "—"}</span>
+          <span className="text-muted-foreground">守护进程</span>
+          <span className={cn("rounded px-2 py-0.5 text-xs font-medium", data.running ? "bg-green-500/10 text-green-600" : "bg-muted text-muted-foreground")}>
+            {data.running ? "运行中" : "未运行"}
+          </span>
         </div>
       </div>
     </div>
@@ -135,7 +139,7 @@ export function WorkflowPage() {
   const [activeTab, setActiveTab] = useState<TabId>("agents");
 
   return (
-    <SectionLayout title="工作流" description="Agent 状态、管线运行与调度配置。">
+    <SectionLayout title="工作流" description="Agent 配置、管线运行与调度状态。">
       <nav aria-label="工作流 Tab" className="flex gap-1 rounded-lg border border-border bg-card p-0.5 w-fit">
         {TABS.map((tab) => (
           <button

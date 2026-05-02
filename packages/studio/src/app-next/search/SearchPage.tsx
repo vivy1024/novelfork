@@ -1,16 +1,35 @@
 import { useEffect, useRef, useState } from "react";
 import { fetchJson } from "../../hooks/use-api";
 import { InlineError } from "../components/feedback";
+import type { SearchResult as ApiSearchResult } from "../../shared/search-types";
 
 interface SearchHit {
   readonly bookId: string;
   readonly bookTitle: string;
   readonly chapterNumber: number;
   readonly snippet: string;
-  readonly contentType?: "chapter" | "truth" | "hook" | "lorebook";
+  readonly contentType?: ApiSearchResult["type"];
 }
 
-const TYPE_LABELS: Record<string, string> = { chapter: "章节", truth: "真相", hook: "伏笔", lorebook: "世界观" };
+const TYPE_LABELS: Record<string, string> = { chapter: "章节", setting: "设定", message: "消息", file: "文件" };
+
+function toNumber(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function toSearchHit(result: ApiSearchResult): SearchHit {
+  const metadata = result.metadata ?? {};
+  const bookTitle = typeof metadata.bookTitle === "string" && metadata.bookTitle.trim() ? metadata.bookTitle : result.title;
+  const snippet = result.highlights[0] ?? result.content.slice(0, 120);
+
+  return {
+    bookId: result.bookId,
+    bookTitle,
+    chapterNumber: toNumber(metadata.chapterNumber),
+    snippet,
+    contentType: result.type,
+  };
+}
 
 function highlightSnippet(snippet: string, query: string) {
   if (!query.trim()) return snippet;
@@ -46,8 +65,12 @@ export function SearchPage() {
       setLoading(true);
       setError(null);
       try {
-        const data = await fetchJson<{ hits: ReadonlyArray<SearchHit> }>(`/search?q=${encodeURIComponent(trimmed)}`);
-        setResults(data.hits);
+        const data = await fetchJson<{ results: ReadonlyArray<ApiSearchResult> }>("/search", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ query: trimmed }),
+        });
+        setResults(data.results.map(toSearchHit));
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
         setResults([]);
