@@ -95,7 +95,7 @@
   - 验证：集成测试确认候选稿创建成功、正式章节未被覆盖、资源树数据可刷新。
   - 覆盖需求：R2、R4、R7、R10。
 
-- [ ] 12. 建立 Tool Result Renderer Registry
+- [x] 12. 建立 Tool Result Renderer Registry
   - 在 ChatWindow 工具块 UI 附近新增 renderer registry，按 `toolCall.result.renderer` 或工具名选择专用 renderer。
   - 实现首批 renderer：`CockpitSnapshotCard`、`OpenHooksCard`、`GuidedQuestionsCard`、`PgiQuestionsCard`、`GuidedGenerationPlanCard`、`CandidateCreatedCard`、`JingweiMutationPreviewCard`。
   - fallback 继续使用现有 generic `ToolCallBlock`。

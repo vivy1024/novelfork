@@ -18,9 +18,10 @@
 - 将 PGI 能力接入 session tools，支持基于 escalating 矛盾和临近伏笔生成生成前追问、记录回答/跳过审计 metadata，并格式化为 writer 可用的本章作者指示。
 - 实现 Guided Generation Mode 基础状态机与 session tools，支持进入只读引导模式、回答/跳过结构化问题、提交计划到确认门，并在批准或拒绝后记录可恢复的 guided metadata 与画布 artifact。
 - 实现 `candidate.create_chapter` session tool，生成内容默认写入 `generated-candidates/` 候选区并返回 `candidate.created` artifact，确保不覆盖正式章节；未配置可用模型时返回 prompt-preview/unsupported 状态。
+- 建立 Tool Result Renderer Registry，按 tool result renderer 或工具名渲染驾驶舱快照、开放伏笔、Guided/PGI 问题、引导计划、候选稿产物与经纬变更预览，并保留 generic ToolCallBlock fallback。
 
 ### 文档
-- 同步 README、Studio README、`CLAUDE.md` 与 `AGENTS.md` 的 Studio 全量测试数量口径为 149 files / 854 tests。
+- 同步 README、Studio README、`CLAUDE.md` 与 `AGENTS.md` 的 Studio 全量测试数量口径为 152 files / 868 tests。
 - 新增 `agent-native-workspace-v1` spec 与任务文档，明确工作台恢复为右侧叙述者会话主入口、中间画布、左侧资源栏，并将引导式生成定义为 Plan Mode 风格的工具链与确认门；同步 `.kiro/specs/README.md` 当前 active spec 索引。
 - 同步 README、Studio README、测试状态与架构总览中的 v0.0.4 测试数量、编译命令和 release 产物口径。
 - 将“代码/配置/流程变更必须同步文档与 CHANGELOG、验收前全仓核对旧口径”的文档纪律写入 `CLAUDE.md` 与 `AGENTS.md`。

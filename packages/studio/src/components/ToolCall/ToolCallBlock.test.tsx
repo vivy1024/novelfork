@@ -88,9 +88,216 @@ afterEach(() => {
   fetchJsonMock.mockImplementation(defaultFetchJsonImplementation as typeof defaultFetchJsonImplementation);
 });
 
+const cockpitSnapshotResult = {
+  ok: true,
+  renderer: "cockpit.snapshot",
+  summary: "已读取驾驶舱快照。",
+  data: {
+    status: "available",
+    generatedAt: "2026-05-02T09:00:00.000Z",
+    book: { id: "book-1", title: "灵潮纪元", genre: "玄幻", platform: "起点" },
+    progress: {
+      status: "available",
+      chapterCount: 2,
+      targetChapters: 10,
+      totalWords: 6200,
+      approvedChapters: 1,
+      failedChapters: 1,
+      todayWords: 1200,
+      dailyTarget: 3000,
+      streak: 3,
+      weeklyWords: 8200,
+    },
+    currentFocus: { status: "available", content: "本章推进灵潮试炼", sourceFile: "current_focus.md" },
+    recentChapterSummaries: { status: "available", items: [{ number: 2, summary: "主角夺回灵钥", sourceFile: "chapter_summaries.md" }] },
+    openHooks: { status: "available", items: [{ id: "hook-1", text: "第1章埋下灵钥裂纹", sourceChapter: 1, status: "payoff-due", sourceFile: "pending_hooks.md", sourceKind: "pending-hooks" }] },
+    recentCandidates: { status: "available", items: [{ id: "cand-1", bookId: "book-1", title: "第三章候选", source: "session-tool", status: "candidate", createdAt: "2026-05-02T08:00:00.000Z", updatedAt: "2026-05-02T08:00:00.000Z" }] },
+    riskCards: { status: "available", items: [{ id: "risk-1", kind: "audit-failure", title: "第2章存在审计问题", detail: "人物动机冲突", chapterNumber: 2, navigateTo: "chapter:2", level: "danger" }] },
+    modelStatus: { status: "available", hasUsableModel: true, defaultProvider: "sub2api", defaultModel: "gpt-5.4", supportsToolUse: true },
+  },
+};
+
+const guidedPlan = {
+  title: "第三章候选稿计划",
+  goal: "写下一章",
+  target: "chapter-candidate",
+  contextSummary: "承接灵潮试炼，先回收灵钥裂纹伏笔。",
+  contextSources: [{ id: "ctx-1", type: "chapter", title: "第二章摘要", excerpt: "主角夺回灵钥" }],
+  authorDecisions: ["本章不直接暴露反派身份"],
+  proposedJingweiMutations: [{ id: "mut-1", target: "foreshadow", operation: "update", summary: "标记灵钥裂纹进入回收窗口" }],
+  proposedCandidate: { chapterNumber: 3, title: "灵钥裂纹", intent: "生成第三章候选稿", expectedLength: 3200 },
+  risks: ["伏笔回收过早"],
+  confirmationItems: ["是否创建候选稿"],
+};
+
 describe("ToolCallBlock", () => {
   beforeEach(() => {
     MockEventSource.instances = [];
+  });
+
+  it("selects the cockpit snapshot renderer from tool result JSON without refetching business data", () => {
+    render(
+      <ToolCallBlock
+        toolCall={{
+          toolName: "cockpit.get_snapshot",
+          status: "success",
+          summary: "已读取驾驶舱快照。",
+          input: { bookId: "book-1", includeModelStatus: true },
+          result: cockpitSnapshotResult,
+          duration: 86,
+        }}
+      />,
+    );
+
+    const card = screen.getByTestId("cockpit-snapshot-card");
+    expect(card.textContent).toContain("驾驶舱快照");
+    expect(card.textContent).toContain("灵潮纪元");
+    expect(card.textContent).toContain("2 / 10 章");
+    expect(card.textContent).toContain("今日 1200 / 3000 字");
+    expect(card.textContent).toContain("本章推进灵潮试炼");
+    expect(card.textContent).toContain("主角夺回灵钥");
+    expect(card.textContent).toContain("第1章埋下灵钥裂纹");
+    expect(card.textContent).toContain("第三章候选");
+    expect(card.textContent).toContain("第2章存在审计问题");
+    expect(fetchJsonMock).not.toHaveBeenCalledWith(expect.stringMatching(/^\/api\/books/), expect.anything());
+  });
+
+  it("renders first-class guided, PGI, candidate and mutation cards through the registry", () => {
+    render(
+      <>
+        <ToolCallBlock
+          toolCall={{
+            toolName: "questionnaire.start",
+            status: "success",
+            result: {
+              ok: true,
+              renderer: "guided.questions",
+              summary: "已启动问卷。",
+              data: {
+                status: "available",
+                goal: "补全人物弧光",
+                questions: [{ id: "q1", prompt: "主角这一卷最大的代价是什么？", type: "text", reason: "写入人物弧光", required: true, source: "questionnaire" }],
+              },
+            },
+          }}
+        />
+        <ToolCallBlock
+          toolCall={{
+            toolName: "pgi.generate_questions",
+            status: "success",
+            result: {
+              ok: true,
+              renderer: "pgi.questions",
+              summary: "已生成 1 个生成前追问。",
+              data: {
+                status: "available",
+                chapterNumber: 3,
+                heuristicsTriggered: ["foreshadow-due"],
+                questions: [{ id: "p1", prompt: "本章是否回收灵钥裂纹？", type: "single", reason: "临近回收伏笔", required: true, source: "pgi", heuristicsTriggered: ["foreshadow-due"] }],
+              },
+            },
+          }}
+        />
+        <ToolCallBlock
+          toolCall={{
+            toolName: "guided.exit",
+            status: "pending",
+            result: {
+              ok: true,
+              renderer: "guided.plan",
+              summary: "工具 guided.exit 需要确认后执行。",
+              data: { status: "pending-confirmation", plan: guidedPlan },
+              confirmation: { id: "confirm-plan-1", toolName: "guided.exit", target: "book-1", risk: "confirmed-write", summary: "需要确认", options: ["approve", "reject", "open-in-canvas"] },
+            },
+          }}
+        />
+        <ToolCallBlock
+          toolCall={{
+            toolName: "candidate.create_chapter",
+            status: "success",
+            result: {
+              ok: true,
+              renderer: "candidate.created",
+              summary: "已创建第 3 章候选稿：灵钥裂纹。",
+              data: { status: "candidate", candidate: { id: "cand-3", bookId: "book-1", title: "灵钥裂纹", chapterNumber: 3, content: "灵钥裂纹在掌心亮起。", metadata: { nonDestructive: true } } },
+              artifact: { id: "candidate:book-1:cand-3", kind: "candidate", title: "灵钥裂纹", renderer: "candidate.created", openInCanvas: true },
+            },
+          }}
+        />
+        <ToolCallBlock
+          toolCall={{
+            toolName: "questionnaire.submit_response",
+            status: "success",
+            result: {
+              ok: true,
+              renderer: "jingwei.mutationPreview",
+              summary: "已提交问卷回答 response-1。",
+              data: { status: "submitted", response: { id: "response-1" }, targetObjectId: "character:hero", mutations: [{ id: "mut-2", target: "character:hero", operation: "update", summary: "补充代价动机" }] },
+            },
+          }}
+        />
+      </>,
+    );
+
+    expect(screen.getByTestId("guided-questions-card").textContent).toContain("主角这一卷最大的代价是什么？");
+    expect(screen.getByTestId("pgi-questions-card").textContent).toContain("本章是否回收灵钥裂纹？");
+    expect(screen.getByTestId("guided-generation-plan-card").textContent).toContain("第三章候选稿计划");
+    expect(screen.getByTestId("guided-generation-plan-card").textContent).toContain("待作者确认");
+    expect(screen.getByTestId("candidate-created-card").textContent).toContain("灵钥裂纹");
+    expect(screen.getByTestId("candidate-created-card").textContent).toContain("非破坏性候选稿");
+    expect(screen.getByTestId("jingwei-mutation-preview-card").textContent).toContain("补充代价动机");
+  });
+
+  it("uses toolCall.result.renderer before tool name and falls back to the generic block", () => {
+    render(
+      <>
+        <ToolCallBlock
+          toolCall={{
+            toolName: "custom.wrapper",
+            status: "success",
+            result: {
+              ok: true,
+              renderer: "cockpit.openHooks",
+              summary: "已读取开放伏笔。",
+              data: { status: "available", items: [{ id: "hook-2", text: "第2章留下血誓", sourceChapter: 2, status: "open" }] },
+            },
+          }}
+        />
+        <ToolCallBlock
+          toolCall={{
+            toolName: "unknown.tool",
+            status: "success",
+            summary: "未知工具仍使用 generic block",
+            result: { ok: true, renderer: "unknown.renderer", data: { hello: "world" } },
+          }}
+        />
+      </>,
+    );
+
+    expect(screen.getByTestId("open-hooks-card").textContent).toContain("第2章留下血誓");
+    expect(screen.getByText("unknown.tool")).toBeTruthy();
+    expect(screen.getByText("未知工具仍使用 generic block")).toBeTruthy();
+    expect(screen.queryByTestId("unknown.renderer")).toBeNull();
+  });
+
+  it("keeps renderer cards state-aware for pending, running, success and error tool calls", () => {
+    render(
+      <>
+        <ToolCallBlock toolCall={{ toolName: "cockpit.get_snapshot", status: "pending", result: { ok: true, renderer: "cockpit.snapshot", summary: "等待执行", data: { status: "empty", progress: { chapterCount: 0, targetChapters: null, todayWords: 0, dailyTarget: 3000 }, openHooks: { items: [] }, recentCandidates: { items: [] }, riskCards: { items: [] } } } }} />
+        <ToolCallBlock toolCall={{ toolName: "cockpit.get_snapshot", status: "running", result: { ok: true, renderer: "cockpit.snapshot", summary: "正在读取", data: { status: "empty", progress: { chapterCount: 0, targetChapters: null, todayWords: 0, dailyTarget: 3000 }, openHooks: { items: [] }, recentCandidates: { items: [] }, riskCards: { items: [] } } } }} />
+        <ToolCallBlock toolCall={{ toolName: "candidate.create_chapter", status: "success", result: { ok: true, renderer: "candidate.created", summary: "已创建候选", data: { candidate: { id: "cand-ok", title: "成功候选", content: "正文" } } } }} />
+        <ToolCallBlock toolCall={{ toolName: "candidate.create_chapter", status: "error", error: "模型不可用", result: { ok: false, renderer: "candidate.created", summary: "候选稿生成需要配置支持模型。", error: "unsupported-model", data: { status: "unsupported", reason: "当前会话未配置可用模型。" } } }} />
+      </>,
+    );
+
+    const cockpitCards = screen.getAllByTestId("cockpit-snapshot-card");
+    expect(cockpitCards[0]?.textContent).toContain("待执行");
+    expect(cockpitCards[1]?.textContent).toContain("执行中");
+    expect(screen.getByText("成功候选")).toBeTruthy();
+    const candidateCards = screen.getAllByTestId("candidate-created-card");
+    expect(candidateCards[0]?.textContent).toContain("完成");
+    expect(candidateCards[1]?.textContent).toContain("失败");
+    expect(candidateCards[1]?.textContent).toContain("当前会话未配置可用模型");
   });
 
   it("renders status, summary and differentiated bash details", () => {
