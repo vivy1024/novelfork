@@ -1,6 +1,6 @@
 {
   "name": "@vivy1024/novelfork-cli",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "NovelFork CLI — AI-assisted command line workflow for Chinese web novel creation",
   "keywords": [
     "ai-novel-writing",
