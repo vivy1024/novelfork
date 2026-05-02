@@ -39,8 +39,10 @@ git cherry-pick <commit>               # 选择性拿
 
 ## 版本与发布
 
-- 任何版本号变动必须同步更新 release 资料：`package.json`、`CLAUDE.md`、`AGENTS.md`、`CHANGELOG.md`。
-- 正式发版还必须在同一发布流程中提交、打 `git tag vX.Y.Z`，并推送提交与 tag。
+- 任何版本号变动必须同步更新 release 资料：`package.json`、`packages/*/package.json`、`CLAUDE.md`、`AGENTS.md`、`CHANGELOG.md`。
+- 用户要求提交、验收完成或明确要求收尾时，视为授权执行相关验证、Git 提交与 `git push origin <branch>`；不得只停留本地提交。
+- 正式发版必须在同一发布流程中完成：迁移已验证的 Unreleased 内容 → typecheck/test/compile/smoke → release commit → `git tag vX.Y.Z` → `git push origin <branch>` → `git push origin vX.Y.Z` → 上传 GitHub Release 产物。
+- GitHub Release 是正式分发源；必须上传 `dist/novelfork-vX.Y.Z-windows-x64.exe` 与 SHA256；本地 dist 或本地 tag 不等于已发布。
 - 发版前不得虚构 changelog 条目；只迁移已经验证的 Unreleased 内容。
 
 ---
