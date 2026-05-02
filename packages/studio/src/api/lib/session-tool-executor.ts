@@ -5,6 +5,7 @@ import {
   type SessionToolExecutionResult,
   type ToolConfirmationRequest,
 } from "../../shared/agent-native-workspace.js";
+import type { QuestionnaireToolService } from "./questionnaire-tool-service.js";
 import { getSessionToolDefinition } from "./session-tool-registry.js";
 
 export type SessionToolHandlerContext = SessionToolExecutionInput & {
@@ -17,6 +18,7 @@ export type SessionToolHandler = (
 
 export type SessionToolExecutorOptions = {
   readonly handlers?: Readonly<Record<string, SessionToolHandler>>;
+  readonly questionnaireService?: QuestionnaireToolService;
   readonly now?: () => number;
   readonly createConfirmationId?: (input: SessionToolExecutionInput, definition: SessionToolDefinition) => string;
 };
@@ -84,7 +86,7 @@ export async function executeSessionTool(
     }, startedAt, options);
   }
 
-  const handler = options.handlers?.[definition.name];
+  const handler = options.handlers?.[definition.name] ?? getDefaultHandler(definition.name, options);
   if (!handler) {
     return withDuration({
       ok: false,
@@ -109,6 +111,27 @@ export async function executeSessionTool(
       summary: `工具 ${definition.name} 执行失败：${message}`,
     }, startedAt, options);
   }
+}
+
+function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions): SessionToolHandler | undefined {
+  switch (toolName) {
+    case "questionnaire.list_templates":
+      return async ({ input }) => (await resolveQuestionnaireService(options)).listTemplates(input);
+    case "questionnaire.start":
+      return async ({ input }) => (await resolveQuestionnaireService(options)).start(input);
+    case "questionnaire.suggest_answer":
+      return async ({ input }) => (await resolveQuestionnaireService(options)).suggestAnswer(input);
+    case "questionnaire.submit_response":
+      return async ({ input }) => (await resolveQuestionnaireService(options)).submitResponse(input);
+    default:
+      return undefined;
+  }
+}
+
+async function resolveQuestionnaireService(options: SessionToolExecutorOptions): Promise<QuestionnaireToolService> {
+  if (options.questionnaireService) return options.questionnaireService;
+  const { createQuestionnaireToolService } = await import("./questionnaire-tool-service.js");
+  return createQuestionnaireToolService();
 }
 
 function withDuration(
