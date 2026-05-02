@@ -7,7 +7,7 @@
 | origin | `vivy1024/novelfork` | 本项目推送目标 |
 | upstream | `Narcooo/inkos` | 上游 InkOS 源 |
 
-注意：本项目主仓库地址已是 `vivy1024/novelfork`；上游仍是 `Narcooo/inkos`。
+注意：本项目主仓库地址已是 `vivy1024/novelfork`；上游仍是 `Narcooo/inkos`。GitHub CLI 可能因 fork/upstream 关系误判默认仓库，release / issue / PR / api 命令必须显式带 `--repo vivy1024/novelfork`。
 
 ---
 
@@ -41,6 +41,7 @@ git cherry-pick <commit>               # 选择性拿
 
 - 任何版本号变动必须同步更新 release 资料：`package.json`、`packages/*/package.json`、`CLAUDE.md`、`AGENTS.md`、`CHANGELOG.md`。
 - 用户要求提交、验收完成或明确要求收尾时，视为授权执行相关验证、Git 提交与 `git push origin <branch>`；不得只停留本地提交。
+- 代码、配置、流程、测试数量、构建命令、产物路径、发布状态任一变化，必须同步相关 README、`docs/`、包级 README、`CLAUDE.md`、`AGENTS.md`，并记录到 `CHANGELOG.md` Unreleased。
 - 正式发版必须在同一发布流程中完成：迁移已验证的 Unreleased 内容 → typecheck/test/compile/smoke → release commit → `git tag vX.Y.Z` → `git push origin <branch>` → `git push origin vX.Y.Z` → 上传 GitHub Release 产物。
 - GitHub Release 是正式分发源；必须上传 `dist/novelfork-vX.Y.Z-windows-x64.exe` 与 SHA256；本地 dist 或本地 tag 不等于已发布。
 - 发版前不得虚构 changelog 条目；只迁移已经验证的 Unreleased 内容。
@@ -62,7 +63,7 @@ type(scope): description
 | test | 测试 |
 | chore | 构建/工具/依赖 |
 
-scope 可选：`core`、`cli`、`studio`、`desktop`、`pipeline`、`agents`
+scope 可选：`core`、`cli`、`studio`、`pipeline`、`agents`、`docs`、`release`
 
 ---
 
