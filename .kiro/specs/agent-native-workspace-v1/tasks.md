@@ -111,7 +111,7 @@
   - 验证：组件测试覆盖 floating 仍可渲染、docked 渲染、输入内容保持、权限/模型控件存在。
   - 覆盖需求：R1、R2、R3。
 
-- [ ] 14. 实现 WorkspaceCanvas 打开资源模型
+- [x] 14. 实现 WorkspaceCanvas 打开资源模型
   - 新增 `WorkspaceCanvas` 与 open tab store/state，管理 `OpenResourceTab[]`、active tab、dirty 状态和 agent artifact 打开。
   - 复用 `resource-view-registry.tsx` 渲染章节、候选稿、草稿、经纬、故事文件、素材、发布报告。
   - 支持工具结果通过 `artifact` 或 `openInCanvas` 打开 guided plan、candidate、tool result、narrative line。
@@ -119,7 +119,7 @@
   - 验证：UI 测试覆盖资源点击打开、多个 tab、dirty 拦截、工具产物打开。
   - 覆盖需求：R1、R7、R9、R10。
 
-- [ ] 15. 实现 WorkspaceLeftRail
+- [x] 15. 实现 WorkspaceLeftRail
   - 新增 `WorkspaceLeftRail`，合并 compact global navigation、book switcher、当前书籍资源树与可选 session list。
   - 复用 `buildStudioResourceTree`，点击资源只更新 canvas，不影响 narrator session。
   - 当前无书籍时显示选择/创建入口，并联动右侧叙述者创建新书会话入口。
@@ -127,7 +127,7 @@
   - 验证：UI 测试覆盖导航存在、资源树存在、无书籍空态、折叠行为、资源点击不重置 narrator。
   - 覆盖需求：R1、R2、R7。
 
-- [ ] 16. 将工作台装配为左资源 / 中画布 / 右叙述者
+- [x] 16. 将工作台装配为左资源 / 中画布 / 右叙述者
   - 在 `WorkspacePage.tsx` 或工作台入口使用 `AgentWorkspaceLayout` / 演进后的 `ResourceWorkspaceLayout` 装配 `WorkspaceLeftRail`、`WorkspaceCanvas`、`NarratorPanel`。
   - 打开已有书籍时自动定位或创建默认 narrator/writer session，并 dock 到右侧。
   - 创建新书成功后进入该书叙述者会话，不提示用户去 ChatWindow。

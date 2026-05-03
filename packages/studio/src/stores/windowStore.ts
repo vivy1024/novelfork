@@ -23,7 +23,7 @@ export interface AddWindowInput {
 interface WindowStore {
   windows: ChatWindow[];
   activeWindowId: string | null;
-  addWindow: (input: AddWindowInput) => void;
+  addWindow: (input: AddWindowInput) => string;
   removeWindow: (id: string) => void;
   updateWindow: (id: string, updates: Partial<ChatWindow>) => void;
   toggleMinimize: (id: string) => void;
@@ -37,9 +37,9 @@ export const useWindowStore = create<WindowStore>()(
       windows: [],
       activeWindowId: null,
 
-      addWindow: (input) =>
+      addWindow: (input) => {
+        const id = `window-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
         set((state) => {
-          const id = `window-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
           const newWindow: ChatWindow = {
             id,
             title: input.title,
@@ -55,7 +55,9 @@ export const useWindowStore = create<WindowStore>()(
             minimized: false,
           };
           return { windows: [...state.windows, newWindow], activeWindowId: id };
-        }),
+        });
+        return id;
+      },
 
       removeWindow: (id) =>
         set((state) => {

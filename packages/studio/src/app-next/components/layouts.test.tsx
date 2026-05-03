@@ -51,13 +51,13 @@ describe("Studio Next layout primitives", () => {
       <ResourceWorkspaceLayout
         explorer={<div>作品 / 卷 / 已有章节 / 生成章节 / 草稿</div>}
         editor={<div>正文编辑器</div>}
-        assistant={<div>生成下一章 / 经纬资料</div>}
+        assistant={<div>叙述者会话</div>}
       />,
     );
 
     expect(screen.getByRole("complementary", { name: "小说资源管理器" })).toBeTruthy();
     expect(screen.getByRole("main", { name: "正文编辑区" })).toBeTruthy();
-    expect(screen.getByRole("complementary", { name: "AI 与经纬面板" })).toBeTruthy();
+    expect(screen.getByRole("complementary", { name: "叙述者会话" })).toBeTruthy();
   });
 
   it("keeps overlay content on the shared high z-index layer", () => {

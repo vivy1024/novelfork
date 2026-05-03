@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ResourceWorkspaceLayout, SectionLayout } from "../components/layouts";
 import { useAiModelGate } from "../../hooks/use-ai-model-gate";
@@ -8,7 +8,7 @@ import {
   type StudioResourceNode,
   type StudioResourceTreeInput,
 } from "./resource-adapter";
-import { BiblePanel } from "./BiblePanel";
+import { NarratorPanel } from "../../components/ChatWindow";
 import { PublishPanel } from "./PublishPanel";
 import { fetchJson, postApi, useApi } from "../../hooks/use-api";
 import { appStore } from "../../stores/app-store";
@@ -29,10 +29,12 @@ import { CharacterArcDashboard } from "../../components/writing-tools/CharacterA
 import { ToneDriftAlert } from "../../components/writing-tools/ToneDriftAlert";
 import { InlineError, RunStatus } from "../components/feedback";
 import { InkEditor, getMarkdown } from "../../components/InkEditor";
+import type { CanvasArtifact, OpenResourceTab, WorkspaceResourceViewKind } from "../../shared/agent-native-workspace";
+import type { NarratorSessionRecord } from "../../shared/session-types";
 import { Button } from "../../components/ui/button";
+import { useWindowStore } from "../../stores/windowStore";
 import {
   BibleCategoryView,
-  BibleEntryEditor,
   DraftEditor,
   MarkdownViewer,
   MaterialViewer,
@@ -127,6 +129,44 @@ function chapterStatusLabel(value: string | undefined): string {
   return value ? CHAPTER_STATUS_LABELS[value] ?? "状态待确认" : "状态待确认";
 }
 
+function normalizeWorkspaceChapterSummary(chapter: {
+  readonly number: number;
+  readonly title?: string;
+  readonly status?: string;
+  readonly wordCount?: number;
+  readonly auditIssueCount?: number;
+  readonly updatedAt?: string;
+  readonly fileName?: string | null;
+}): ChapterSummary {
+  return {
+    number: chapter.number,
+    title: chapter.title ?? `第${chapter.number}章`,
+    status: normalizeChapterStatus(chapter.status),
+    wordCount: chapter.wordCount ?? 0,
+    auditIssueCount: chapter.auditIssueCount ?? 0,
+    updatedAt: chapter.updatedAt ?? "",
+    fileName: chapter.fileName ?? null,
+  };
+}
+
+function createChapterResourceNode(bookId: string, chapter: ChapterSummary): StudioResourceNode {
+  return {
+    id: `chapter:${bookId}:${chapter.number}`,
+    kind: "chapter",
+    title: chapter.title,
+    subtitle: `第 ${chapter.number} 章 · ${chapter.wordCount} 字`,
+    status: chapter.status,
+    count: chapter.wordCount,
+    metadata: {
+      bookId,
+      chapterNumber: chapter.number,
+      auditIssueCount: chapter.auditIssueCount,
+      updatedAt: chapter.updatedAt,
+      fileName: chapter.fileName,
+    },
+  };
+}
+
 export interface WorkspaceAssistantContext {
   readonly bookId: string;
   readonly chapterNumber?: number;
@@ -146,6 +186,7 @@ export interface WorkspaceAssistantApi {
 
 type WorkspaceResourceMutationTarget = "chapters" | "candidates" | "drafts" | "candidate-draft" | "candidate-chapter" | "story-files" | "all";
 type WorkspaceResourceMutationHandler = (target: WorkspaceResourceMutationTarget) => Promise<void>;
+type WorkspaceCanvasDirtyAction = "save" | "discard" | "save-as-candidate";
 type WritingModeApplyTarget = "candidate" | "draft" | "chapter-insert" | "chapter-replace";
 
 interface WritingModeApplyPayload {
@@ -276,6 +317,111 @@ const DEFAULT_ASSISTANT_API: WorkspaceAssistantApi = {
   },
 };
 
+const CANVAS_ARTIFACT_EVENT = "novelfork:open-canvas-artifact";
+
+declare global {
+  interface Window {
+    __NOVELFORK_OPEN_CANVAS_ARTIFACT__?: (artifact: CanvasArtifact) => void;
+  }
+}
+
+type CanvasNavigationRequest =
+  | { readonly type: "node"; readonly nodeId: string; readonly source: "user" | "agent" }
+  | { readonly type: "artifact"; readonly artifact: CanvasArtifact }
+  | { readonly type: "tab"; readonly tabId: string }
+  | { readonly type: "close"; readonly tabId: string };
+
+interface PendingCanvasNavigation {
+  readonly dirtyTabId: string;
+  readonly next: CanvasNavigationRequest;
+}
+
+function createOpenResourceTabFromNode(node: StudioResourceNode, source: "user" | "agent"): OpenResourceTab {
+  return {
+    id: node.id,
+    nodeId: node.id,
+    kind: resolveWorkspaceNodeViewKind(node) as WorkspaceResourceViewKind,
+    title: node.title,
+    dirty: false,
+    source,
+  };
+}
+
+function createOpenResourceTabFromArtifact(artifact: CanvasArtifact): OpenResourceTab {
+  return {
+    id: artifact.id,
+    nodeId: artifact.resourceRef?.id ?? artifact.id,
+    kind: resolveArtifactViewKind(artifact),
+    title: artifact.title,
+    dirty: false,
+    source: "agent",
+    payloadRef: artifact.payloadRef,
+    artifact,
+  };
+}
+
+function resolveArtifactViewKind(artifact: CanvasArtifact): WorkspaceResourceViewKind {
+  switch (artifact.kind) {
+    case "guided-plan":
+      return "guided-plan";
+    case "tool-result":
+      return "tool-result";
+    case "narrative-line":
+      return "narrative-line";
+    case "candidate":
+      return "candidate-editor";
+    case "chapter":
+      return "chapter-editor";
+    case "draft":
+      return "draft-editor";
+    case "outline":
+      return "outline-editor";
+    case "jingwei":
+      return "bible-entry-editor";
+    case "story-file":
+    case "truth-file":
+      return "markdown-viewer";
+    case "material":
+      return "material-viewer";
+    case "publish-report":
+      return "publish-report-viewer";
+    default:
+      return artifact.renderer === "guided.plan" ? "guided-plan" : artifact.renderer === "narrative.line" ? "narrative-line" : "tool-result";
+  }
+}
+
+function resolveArtifactNodeId(artifact: CanvasArtifact): string | null {
+  const ref = artifact.resourceRef;
+  const kind = String(ref?.kind ?? artifact.kind);
+  const id = String(ref?.id ?? "").trim();
+  const bookId = ref?.bookId;
+  if (!id) return null;
+  switch (kind) {
+    case "candidate":
+      return `generated:${id}`;
+    case "chapter":
+      return bookId ? `chapter:${bookId}:${id}` : null;
+    case "draft":
+      return `draft:${id}`;
+    case "story-file":
+      return `story-file:${id}`;
+    case "truth-file":
+      return `truth-file:${id}`;
+    case "material":
+      return `material:${id}`;
+    case "publish-report":
+      return `publish-report:${id}`;
+    default:
+      return null;
+  }
+}
+
+function isCanvasArtifact(value: unknown): value is CanvasArtifact {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const artifact = value as Record<string, unknown>;
+  return typeof artifact.id === "string" && typeof artifact.kind === "string" && typeof artifact.title === "string";
+}
+
 export function WorkspacePage({
   assistantApi = DEFAULT_ASSISTANT_API,
   candidateApi = DEFAULT_CANDIDATE_API,
@@ -319,6 +465,7 @@ export function WorkspacePage({
   const [exportError, setExportError] = useState<string | null>(null);
   const [exportResult, setExportResult] = useState<BookExportResponse | null>(null);
   const [publishReports, setPublishReports] = useState<PublishReportResource[]>([]);
+  const [optimisticChapterNodes, setOptimisticChapterNodes] = useState<StudioResourceNode[]>([]);
 
   useEffect(() => {
     setCreateChapterError(null);
@@ -331,6 +478,10 @@ export function WorkspacePage({
     setExportError(null);
     setExportResult(null);
     setPublishReports([]);
+    setOptimisticChapterNodes([]);
+    setOpenTabs([]);
+    setActiveCanvasTabId(null);
+    setPendingCanvasNavigation(null);
   }, [activeBookId]);
 
   const refreshWorkspaceResources: WorkspaceResourceMutationHandler = async (target) => {
@@ -356,10 +507,7 @@ export function WorkspacePage({
     };
     const b = bookDetail.book;
     const chs = bookDetail.chapters ?? [];
-    const chaptersFromBook: ChapterSummary[] = chs.map((c) => ({
-      number: c.number, title: c.title ?? `第${c.number}章`, status: normalizeChapterStatus(c.status),
-      wordCount: c.wordCount ?? 0, auditIssueCount: 0, updatedAt: "", fileName: c.fileName ?? null,
-    }));
+    const chaptersFromBook: ChapterSummary[] = chs.map((c) => normalizeWorkspaceChapterSummary(c));
     const chapters = [...chaptersFromBook].sort((left, right) => left.number - right.number);
     const book: BookDetail = {
       id: b.id, title: b.title, status: normalizeBookStatus(b.status), platform: (b.platform ?? "other") as BookDetail["platform"],
@@ -404,12 +552,107 @@ export function WorkspacePage({
     };
   }, [bookDetail, candidatesData, draftsData, storyFilesData, truthFilesData, publishReports]);
 
-  const tree = useMemo(() => buildStudioResourceTree(treeInput), [treeInput]);
+  const baseTree = useMemo(() => buildStudioResourceTree(treeInput), [treeInput]);
+  const tree = useMemo(() => mergeOptimisticChapterNodes(baseTree, optimisticChapterNodes), [baseTree, optimisticChapterNodes]);
   const defaultNodeId = tree[0]?.children?.[0]?.children?.[0]?.children?.[0]?.id ?? tree[0]?.children?.[0]?.children?.[0]?.id ?? tree[0]?.id ?? "";
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [showPublishPanel, setShowPublishPanel] = useState(false);
   const activeNodeId = selectedNodeId ?? defaultNodeId;
   const selectedNode = findNode(tree, activeNodeId) ?? tree[0]!;
+  const [openTabs, setOpenTabs] = useState<OpenResourceTab[]>([]);
+  const [activeCanvasTabId, setActiveCanvasTabId] = useState<string | null>(null);
+  const [pendingCanvasNavigation, setPendingCanvasNavigation] = useState<PendingCanvasNavigation | null>(null);
+  const activeCanvasTab = activeCanvasTabId ? openTabs.find((tab) => tab.id === activeCanvasTabId) ?? null : null;
+  const activeCanvasNode = activeCanvasTab ? findNode(tree, activeCanvasTab.nodeId) : undefined;
+  const narratorWindowId = useDefaultNarratorWindow(activeBookId, bookDetail?.book?.title);
+
+  const markCanvasTabDirty = useCallback((tabId: string, dirty = true) => {
+    setOpenTabs((tabs) => tabs.map((tab) => tab.id === tabId ? { ...tab, dirty } : tab));
+  }, []);
+
+  const openCanvasRequest = useCallback((request: CanvasNavigationRequest, force = false) => {
+    const dirtyActiveTab = activeCanvasTab?.dirty ? activeCanvasTab : null;
+    const isSameTarget = request.type === "node" ? request.nodeId === dirtyActiveTab?.nodeId : request.type === "tab" || request.type === "close" ? request.tabId === dirtyActiveTab?.id : request.type === "artifact" ? request.artifact.id === dirtyActiveTab?.id : false;
+    if (!force && dirtyActiveTab && !isSameTarget) {
+      setPendingCanvasNavigation({ dirtyTabId: dirtyActiveTab.id, next: request });
+      return;
+    }
+
+    if (request.type === "node") {
+      const node = findNode(tree, request.nodeId);
+      if (!node) return;
+      const tab = createOpenResourceTabFromNode(node, request.source);
+      const nodeId = node.id;
+      setOpenTabs((tabs) => tabs.some((item) => item.id === tab.id) ? tabs : [...tabs, tab]);
+      setActiveCanvasTabId(tab.id);
+      setSelectedNodeId(nodeId);
+      return;
+    }
+
+    if (request.type === "artifact") {
+      const nodeId = resolveArtifactNodeId(request.artifact);
+      const node = nodeId ? findNode(tree, nodeId) : undefined;
+      const tab = node ? createOpenResourceTabFromNode(node, "agent") : createOpenResourceTabFromArtifact(request.artifact);
+      setOpenTabs((tabs) => tabs.some((item) => item.id === tab.id) ? tabs : [...tabs, tab]);
+      setActiveCanvasTabId(tab.id);
+      if (node) setSelectedNodeId(node.id);
+      return;
+    }
+
+    if (request.type === "tab") {
+      const tab = openTabs.find((item) => item.id === request.tabId);
+      if (!tab) return;
+      setActiveCanvasTabId(tab.id);
+      if (findNode(tree, tab.nodeId)) setSelectedNodeId(tab.nodeId);
+      return;
+    }
+
+    setOpenTabs((tabs) => tabs.filter((tab) => tab.id !== request.tabId));
+    if (activeCanvasTabId === request.tabId) {
+      const remaining = openTabs.filter((tab) => tab.id !== request.tabId);
+      const nextTab = remaining[remaining.length - 1] ?? null;
+      setActiveCanvasTabId(nextTab?.id ?? null);
+      if (nextTab && findNode(tree, nextTab.nodeId)) setSelectedNodeId(nextTab.nodeId);
+    }
+  }, [activeCanvasTab, activeCanvasTabId, openTabs, tree]);
+
+  useEffect(() => {
+    if (!defaultNodeId || openTabs.length > 0) return;
+    openCanvasRequest({ type: "node", nodeId: defaultNodeId, source: "user" });
+  }, [defaultNodeId, openCanvasRequest, openTabs.length]);
+
+  useEffect(() => {
+    const openArtifact = (artifact: CanvasArtifact) => {
+      if (artifact.openInCanvas === false) return;
+      openCanvasRequest({ type: "artifact", artifact });
+    };
+    const handleArtifactEvent = (event: Event) => {
+      const detail = (event as CustomEvent<unknown>).detail;
+      if (isCanvasArtifact(detail)) openArtifact(detail);
+    };
+    window.__NOVELFORK_OPEN_CANVAS_ARTIFACT__ = openArtifact;
+    window.addEventListener(CANVAS_ARTIFACT_EVENT, handleArtifactEvent);
+    return () => {
+      if (window.__NOVELFORK_OPEN_CANVAS_ARTIFACT__ === openArtifact) delete window.__NOVELFORK_OPEN_CANVAS_ARTIFACT__;
+      window.removeEventListener(CANVAS_ARTIFACT_EVENT, handleArtifactEvent);
+    };
+  }, [openCanvasRequest]);
+
+  const resolvePendingCanvasNavigation = (action: WorkspaceCanvasDirtyAction) => {
+    if (!pendingCanvasNavigation) return;
+    if (action === "save-as-candidate") {
+      setWorkspaceNotice("另存为候选将在任务 17 接入会话确认门；本次已阻止覆盖当前未保存资源。");
+      return;
+    }
+    if (action === "save") {
+      setWorkspaceNotice("请先使用当前编辑器的保存按钮保存资源，再继续切换。已保持当前资源不变。");
+      return;
+    }
+    markCanvasTabDirty(pendingCanvasNavigation.dirtyTabId, false);
+    const next = pendingCanvasNavigation.next;
+    setPendingCanvasNavigation(null);
+    openCanvasRequest(next, true);
+  };
 
   const handleCreateChapter = async () => {
     if (!activeBookId) {
@@ -424,7 +667,18 @@ export function WorkspacePage({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
       });
-      setSelectedNodeId(`chapter:${activeBookId}:${response.chapter.number}`);
+      if (!response.chapter || typeof response.chapter.number !== "number") {
+        throw new Error("新建章节接口未返回章节编号");
+      }
+      const chapter = normalizeWorkspaceChapterSummary(response.chapter);
+      const optimisticNode = createChapterResourceNode(activeBookId, chapter);
+      setOptimisticChapterNodes((nodes) => [
+        ...nodes.filter((node) => node.id !== optimisticNode.id),
+        optimisticNode,
+      ]);
+      setSelectedNodeId(optimisticNode.id);
+      setOpenTabs((tabs) => tabs.some((tab) => tab.id === optimisticNode.id) ? tabs : [...tabs, createOpenResourceTabFromNode(optimisticNode, "user")]);
+      setActiveCanvasTabId(optimisticNode.id);
       setShowPublishPanel(false);
       await refreshWorkspaceResources("chapters");
     } catch (error) {
@@ -502,16 +756,18 @@ export function WorkspacePage({
         await handleGenerateNextFromResourceTree();
         break;
       case "import-chapter":
-        setSelectedNodeId(node.id);
+        openCanvasRequest({ type: "node", nodeId: node.id, source: "user" });
         setShowImportPanel(true);
         setImportChapterError(null);
         break;
-      case "create-bible-entry":
-        setSelectedNodeId(node.kind === "bible-category" ? node.id : "bible:characters");
+      case "create-bible-entry": {
+        const nodeId = node.kind === "bible-category" ? node.id : "bible:characters";
+        openCanvasRequest({ type: "node", nodeId, source: "user" });
         setWorkspaceNotice("已打开经纬分类，请使用新建按钮创建第一条资料。");
         break;
+      }
       case "edit-outline":
-        setSelectedNodeId("outline:root");
+        openCanvasRequest({ type: "node", nodeId: "outline:root", source: "user" });
         break;
     }
   };
@@ -552,7 +808,7 @@ export function WorkspacePage({
               aria-label="作品选择"
               className="ml-2 rounded-lg border border-border bg-background px-2 py-1 text-sm"
               value={activeBookId ?? ""}
-              onChange={(e) => { setSelectedBookId(e.target.value); setSelectedNodeId(null); }}
+              onChange={(e) => { setSelectedBookId(e.target.value); setSelectedNodeId(null); setOpenTabs([]); setActiveCanvasTabId(null); }}
             >
               {books.length === 0 && <option value="">加载中…</option>}
               {books.map((b) => <option key={b.id} value={b.id}>{b.title}</option>)}
@@ -594,21 +850,116 @@ export function WorkspacePage({
 
       <ResourceWorkspaceLayout
         explorer={(
-          <ResourceTree
+          <WorkspaceLeftRail
+            activeBookId={activeBookId}
             activeEmptyAction={showImportPanel ? "import-chapter" : runningEmptyAction}
+            books={books}
             nodes={tree}
             selectedNodeId={selectedNode.id}
+            onBookChange={(bookId) => { setSelectedBookId(bookId); setSelectedNodeId(null); setOpenTabs([]); setActiveCanvasTabId(null); }}
             onEmptyStateAction={(node, emptyState) => void handleResourceEmptyStateAction(node, emptyState)}
-            onSelect={(id) => { setSelectedNodeId(id); setShowPublishPanel(false); setShowExportPanel(false); }}
+            onSelect={(id) => { openCanvasRequest({ type: "node", nodeId: id, source: "user" }); setShowPublishPanel(false); setShowExportPanel(false); }}
           />
         )}
-        editor={showPublishPanel && activeBookId ? <PublishPanel bookId={activeBookId} onReport={handlePublishReport} /> : <WorkspaceEditor candidateApi={candidateApi} chapterApi={chapterApi} node={selectedNode} onResourceMutation={refreshWorkspaceResources} onCandidateResult={(message) => setWorkspaceNotice(message)} />}
-        assistant={<RightPanelWithTabs assistantApi={assistantApi} modelGate={effectiveModelGate} selectedNode={selectedNode} onResourceMutation={refreshWorkspaceResources} />}
+        editor={showPublishPanel && activeBookId ? <PublishPanel bookId={activeBookId} onReport={handlePublishReport} /> : <WorkspaceCanvas activeTab={activeCanvasTab} assistantApi={assistantApi} candidateApi={candidateApi} chapterApi={chapterApi} modelGate={effectiveModelGate} node={activeCanvasNode ?? selectedNode} openTabs={openTabs} pendingNavigation={pendingCanvasNavigation} onCloseTab={(tabId) => openCanvasRequest({ type: "close", tabId })} onDirtyChange={markCanvasTabDirty} onResolvePendingNavigation={resolvePendingCanvasNavigation} onResourceMutation={refreshWorkspaceResources} onCandidateResult={(message) => setWorkspaceNotice(message)} onSelectTab={(tabId) => openCanvasRequest({ type: "tab", tabId })} />}
+        assistant={<WorkspaceNarratorHost windowId={narratorWindowId} />}
       />
     </SectionLayout>
   );
 }
 
+function useDefaultNarratorWindow(activeBookId: string | null, activeBookTitle?: string): string | null {
+  const addWindow = useWindowStore((state) => state.addWindow);
+  const updateWindow = useWindowStore((state) => state.updateWindow);
+  const windows = useWindowStore((state) => state.windows);
+  const loadingBookIdRef = useRef<string | null>(null);
+  const [failedBookId, setFailedBookId] = useState<string | null>(null);
+  const [placeholderWindowId, setPlaceholderWindowId] = useState<string | null>(null);
+
+  const existingWindow = useMemo(() => {
+    if (!activeBookId) return null;
+    return windows.find((window) => window.agentId === "writer" && window.sessionId && window.sessionMode === "chat" && window.title.includes(activeBookTitle ?? "叙述者"))
+      ?? windows.find((window) => window.agentId === "writer" && window.sessionId && window.sessionMode === "chat")
+      ?? null;
+  }, [activeBookId, activeBookTitle, windows]);
+
+  useEffect(() => {
+    if (!activeBookId || existingWindow || loadingBookIdRef.current === activeBookId || failedBookId === activeBookId) return;
+    const createdPlaceholderWindowId = addWindow({
+      agentId: "writer",
+      title: `${activeBookTitle ?? "当前作品"} · 叙述者`,
+      sessionMode: "chat",
+    });
+    setPlaceholderWindowId(createdPlaceholderWindowId);
+    let cancelled = false;
+    loadingBookIdRef.current = activeBookId;
+
+    const attachNarratorSession = async () => {
+      try {
+        const sessions = await fetchJson<NarratorSessionRecord[]>("/api/sessions");
+        const existingSession = sessions.find((session) => session.projectId === activeBookId && session.agentId === "writer" && session.sessionMode === "chat" && session.status === "active")
+          ?? sessions.find((session) => session.projectId === activeBookId && session.agentId === "writer" && session.status === "active");
+        const session = existingSession ?? await fetchJson<NarratorSessionRecord>("/api/sessions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: `${activeBookTitle ?? "当前作品"} · 叙述者`,
+            agentId: "writer",
+            projectId: activeBookId,
+            sessionMode: "chat",
+            sessionConfig: { permissionMode: "edit" },
+          }),
+        });
+        if (cancelled) return;
+
+        const existingShell = useWindowStore.getState().windows.find((window) => window.sessionId === session.id && window.id !== createdPlaceholderWindowId);
+        if (existingShell) {
+          updateWindow(createdPlaceholderWindowId, {
+            title: session.title,
+            sessionId: session.id,
+            sessionMode: session.sessionMode,
+            agentId: session.agentId,
+          });
+          return;
+        }
+
+        updateWindow(createdPlaceholderWindowId, {
+          agentId: session.agentId,
+          title: session.title,
+          sessionId: session.id,
+          sessionMode: session.sessionMode,
+        });
+      } catch {
+        if (!cancelled) {
+          setFailedBookId(activeBookId);
+          updateWindow(createdPlaceholderWindowId, { title: `${activeBookTitle ?? "当前作品"} · 叙述者（离线）` });
+        }
+      } finally {
+        if (!cancelled && loadingBookIdRef.current === activeBookId) loadingBookIdRef.current = null;
+      }
+    };
+
+    void attachNarratorSession();
+    return () => {
+      cancelled = true;
+      if (loadingBookIdRef.current === activeBookId) loadingBookIdRef.current = null;
+    };
+  }, [activeBookId, activeBookTitle, addWindow, existingWindow, failedBookId, updateWindow]);
+
+  return existingWindow?.id ?? placeholderWindowId;
+}
+
+function WorkspaceNarratorHost({ windowId }: { readonly windowId: string | null }) {
+  if (!windowId) {
+    return (
+      <div className="flex h-full min-h-[28rem] items-center justify-center p-4 text-center text-sm text-muted-foreground">
+        正在准备叙述者会话…
+      </div>
+    );
+  }
+
+  return <NarratorPanel windowId={windowId} theme="light" />;
+}
 
 function ImportChaptersPanel({
   error,
@@ -690,6 +1041,46 @@ function ExportPanel({
     </div>
   );
 }
+function WorkspaceLeftRail({
+  activeBookId,
+  activeEmptyAction,
+  books,
+  nodes,
+  onBookChange,
+  onEmptyStateAction,
+  onSelect,
+  selectedNodeId,
+}: {
+  readonly activeBookId: string | null;
+  readonly activeEmptyAction: StudioResourceEmptyState["action"] | null;
+  readonly books: readonly BookListItem[];
+  readonly nodes: readonly StudioResourceNode[];
+  readonly selectedNodeId: string;
+  readonly onBookChange: (bookId: string) => void;
+  readonly onEmptyStateAction: (node: StudioResourceNode, emptyState: StudioResourceEmptyState) => void;
+  readonly onSelect: (nodeId: string) => void;
+}) {
+  return (
+    <div className="space-y-4">
+      <nav aria-label="工作台全局入口" className="space-y-1 rounded-lg border border-border bg-background/60 p-2">
+        {["仪表盘", "创作工作台", "工作流", "设置", "套路"].map((label) => (
+          <button key={label} className="w-full rounded-md px-2 py-1 text-left text-xs text-muted-foreground hover:bg-muted hover:text-foreground" type="button">
+            {label}
+          </button>
+        ))}
+      </nav>
+      <label className="block text-xs font-medium text-muted-foreground">
+        当前作品
+        <select aria-label="资源栏作品选择" className="mt-1 w-full rounded-lg border border-border bg-background px-2 py-1.5 text-sm text-foreground" value={activeBookId ?? ""} onChange={(event) => onBookChange(event.target.value)}>
+          {books.length === 0 && <option value="">暂无作品</option>}
+          {books.map((book) => <option key={book.id} value={book.id}>{book.title}</option>)}
+        </select>
+      </label>
+      <ResourceTree activeEmptyAction={activeEmptyAction} nodes={nodes} selectedNodeId={selectedNodeId} onEmptyStateAction={onEmptyStateAction} onSelect={onSelect} />
+    </div>
+  );
+}
+
 function ResourceTree({
   activeEmptyAction,
   nodes,
@@ -787,16 +1178,120 @@ function formatEmptyActionLabel(emptyState: StudioResourceEmptyState, isActive: 
   }
 }
 
+function WorkspaceCanvas({
+  activeTab,
+  assistantApi,
+  candidateApi,
+  chapterApi,
+  modelGate,
+  node,
+  openTabs,
+  pendingNavigation,
+  onCloseTab,
+  onDirtyChange,
+  onResolvePendingNavigation,
+  onResourceMutation,
+  onCandidateResult,
+  onSelectTab,
+}: {
+  readonly activeTab: OpenResourceTab | null;
+  readonly assistantApi: WorkspaceAssistantApi;
+  readonly candidateApi: WorkspaceCandidateApi;
+  readonly chapterApi: WorkspaceChapterApi;
+  readonly modelGate: WorkspaceModelGate;
+  readonly node: StudioResourceNode;
+  readonly openTabs: readonly OpenResourceTab[];
+  readonly pendingNavigation: PendingCanvasNavigation | null;
+  readonly onCloseTab: (tabId: string) => void;
+  readonly onDirtyChange: (tabId: string, dirty?: boolean) => void;
+  readonly onResolvePendingNavigation: (action: WorkspaceCanvasDirtyAction) => void;
+  readonly onResourceMutation: WorkspaceResourceMutationHandler;
+  readonly onCandidateResult: (message: string) => void;
+  readonly onSelectTab: (tabId: string) => void;
+}) {
+  const dirtyTab = pendingNavigation ? openTabs.find((tab) => tab.id === pendingNavigation.dirtyTabId) : null;
+
+  return (
+    <div className="relative space-y-3">
+      <div className="flex items-center justify-between gap-2 border-b border-border pb-2">
+        <div role="tablist" aria-label="打开的资源" className="flex min-w-0 flex-1 gap-1 overflow-x-auto">
+          {openTabs.map((tab) => (
+            <button
+              key={tab.id}
+              aria-selected={tab.id === activeTab?.id}
+              className={`flex max-w-48 shrink-0 items-center gap-1 rounded-md border px-2 py-1 text-xs ${tab.id === activeTab?.id ? "border-primary bg-primary/10 text-primary" : "border-border bg-muted/30 text-muted-foreground hover:text-foreground"}`}
+              onClick={() => onSelectTab(tab.id)}
+              role="tab"
+              type="button"
+            >
+              <span className="truncate">{tab.title}</span>
+              {tab.dirty ? <span aria-label="未保存">●</span> : null}
+              <span
+                aria-label={`关闭 ${tab.title}`}
+                className="rounded px-1 hover:bg-background"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onCloseTab(tab.id);
+                }}
+                role="button"
+                tabIndex={0}
+              >
+                ×
+              </span>
+            </button>
+          ))}
+        </div>
+        <div className="text-xs text-muted-foreground">{openTabs.length} 个已打开</div>
+      </div>
+      {pendingNavigation && dirtyTab ? (
+        <div aria-label="未保存资源拦截" role="dialog" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-100">
+          <h3 className="font-semibold">未保存资源拦截</h3>
+          <p className="mt-1">{dirtyTab.title} 有未保存编辑。切换、关闭或 Agent 写入前，请先选择处理方式。</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button size="sm" type="button" onClick={() => onResolvePendingNavigation("save")}>保存</Button>
+            <Button size="sm" variant="outline" type="button" onClick={() => onResolvePendingNavigation("discard")}>放弃更改</Button>
+            <Button size="sm" variant="outline" type="button" onClick={() => onResolvePendingNavigation("save-as-candidate")}>另存为候选</Button>
+          </div>
+        </div>
+      ) : null}
+      {activeTab?.artifact && !findNode([node], activeTab.nodeId) && !activeTab.artifact.resourceRef ? (
+        <AgentArtifactCanvas artifact={activeTab.artifact} />
+      ) : (
+        <WorkspaceEditor candidateApi={candidateApi} chapterApi={chapterApi} node={node} tabId={activeTab?.id ?? node.id} onDirtyChange={onDirtyChange} onResourceMutation={onResourceMutation} onCandidateResult={onCandidateResult} />
+      )}
+      <AssistantPanel assistantApi={assistantApi} modelGate={modelGate} selectedNode={node} onResourceMutation={onResourceMutation} />
+    </div>
+  );
+}
+
+function AgentArtifactCanvas({ artifact }: { readonly artifact: CanvasArtifact }) {
+  return (
+    <div className="space-y-3">
+      <EditorHeader title={artifact.title} meta={`Agent 产物 · ${artifact.kind}`} />
+      {artifact.summary ? <p className="rounded-lg border border-border bg-muted/30 p-3 text-sm leading-6 text-muted-foreground">{artifact.summary}</p> : null}
+      <div className="rounded-lg border border-border bg-background p-3 text-xs text-muted-foreground">
+        <div>ID：{artifact.id}</div>
+        {artifact.renderer ? <div>Renderer：{artifact.renderer}</div> : null}
+        {artifact.payloadRef ? <div>Payload：{artifact.payloadRef}</div> : null}
+      </div>
+    </div>
+  );
+}
+
 function WorkspaceEditor({
   candidateApi,
   chapterApi,
   node,
+  tabId,
+  onDirtyChange,
   onResourceMutation,
   onCandidateResult,
 }: {
   readonly candidateApi: WorkspaceCandidateApi;
   readonly chapterApi: WorkspaceChapterApi;
   readonly node: StudioResourceNode;
+  readonly tabId: string;
+  readonly onDirtyChange: (tabId: string, dirty?: boolean) => void;
   readonly onResourceMutation: WorkspaceResourceMutationHandler;
   readonly onCandidateResult: (message: string) => void;
 }) {
@@ -804,7 +1299,7 @@ function WorkspaceEditor({
     case "candidate-editor":
       return <CandidateEditor candidateApi={candidateApi} node={node} onResourceMutation={onResourceMutation} onCandidateResult={onCandidateResult} />;
     case "chapter-editor":
-      return <ChapterEditor chapterApi={chapterApi} node={node} />;
+      return <ChapterEditor chapterApi={chapterApi} node={node} tabId={tabId} onDirtyChange={onDirtyChange} />;
     case "bible-category-view":
       return <BibleCategoryView node={node} />;
     case "draft-editor":
@@ -812,7 +1307,7 @@ function WorkspaceEditor({
     case "outline-editor":
       return <OutlineEditor node={node} />;
     case "bible-entry-editor":
-      return <BibleEntryEditor node={node} />;
+      return <BibleCategoryView node={node} />;
     case "markdown-viewer":
       return <MarkdownViewer node={node} />;
     case "material-viewer":
@@ -910,7 +1405,7 @@ function CandidateEditor({
   );
 }
 
-function ChapterEditor({ chapterApi, node }: { readonly chapterApi: WorkspaceChapterApi; readonly node: StudioResourceNode }) {
+function ChapterEditor({ chapterApi, node, tabId, onDirtyChange }: { readonly chapterApi: WorkspaceChapterApi; readonly node: StudioResourceNode; readonly tabId: string; readonly onDirtyChange: (tabId: string, dirty?: boolean) => void }) {
   const chapterNumber = typeof node.metadata?.chapterNumber === "number" ? node.metadata.chapterNumber : Number(node.metadata?.chapterNumber ?? 0);
   const bookId = typeof node.metadata?.bookId === "string" ? node.metadata.bookId : "";
   const [content, setContent] = useState("");
@@ -946,6 +1441,7 @@ function ChapterEditor({ chapterApi, node }: { readonly chapterApi: WorkspaceCha
       await chapterApi.saveChapter(bookId, chapterNumber, currentContent);
       setContent(currentContent);
       setSaveStatus("saved");
+      onDirtyChange(tabId, false);
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : String(saveError));
       setSaveStatus("error");
@@ -967,6 +1463,7 @@ function ChapterEditor({ chapterApi, node }: { readonly chapterApi: WorkspaceCha
             setContent(markdown);
             setError(null);
             setSaveStatus("dirty");
+            onDirtyChange(tabId, true);
           }}
           editable
           bookId={bookId}
@@ -996,8 +1493,8 @@ function saveStatusToLabel(status: "loading" | "clean" | "dirty" | "saving" | "s
   }
 }
 
-function countWords(content: string): number {
-  return content.replace(/\s+/g, "").length;
+function countWords(content: string | null | undefined): number {
+  return (content ?? "").replace(/\s+/g, "").length;
 }
 
 function EditorHeader({
@@ -1031,316 +1528,8 @@ const ASSISTANT_ACTIONS: ReadonlyArray<{ readonly id: WorkspaceAssistantActionId
   { id: "continuity", label: "连续性检查", gate: "ai-review" },
 ];
 
-/* ── 右侧面板 Tab 切换 ── */
-
-type RightPanelTab = "cockpit" | "bible" | "writing";
-
-function RightPanelWithTabs({
-  assistantApi, modelGate, selectedNode, onResourceMutation,
-}: {
-  readonly assistantApi: WorkspaceAssistantApi;
-  readonly modelGate: WorkspaceModelGate;
-  readonly selectedNode: StudioResourceNode;
-  readonly onResourceMutation: WorkspaceResourceMutationHandler;
-}) {
-  const [activeTab, setActiveTab] = useState<RightPanelTab>("cockpit");
-  const bookId = typeof selectedNode.metadata?.bookId === "string" ? selectedNode.metadata.bookId : "";
-
-  const tabs: { id: RightPanelTab; label: string }[] = [
-    { id: "cockpit", label: "驾驶舱" },
-    { id: "bible", label: "经纬" },
-    { id: "writing", label: "写作" },
-  ];
-
-  return (
-    <div className="space-y-3">
-      <div className="flex gap-1 rounded-lg bg-muted p-1">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            className={`flex-1 rounded-md px-2 py-1 text-xs font-medium transition-colors ${
-              activeTab === tab.id ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-            }`}
-            onClick={() => setActiveTab(tab.id)}
-            type="button"
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      {activeTab === "cockpit" && (
-        <div className="space-y-3">
-          <CockpitPanel bookId={bookId} />
-        </div>
-      )}
-      {activeTab === "bible" && (
-        <BiblePanel bookId={bookId} chapterNumber={typeof selectedNode.metadata?.chapterNumber === "number" ? selectedNode.metadata.chapterNumber : undefined} />
-      )}
-      {activeTab === "writing" && (
-        <AssistantPanel assistantApi={assistantApi} modelGate={modelGate} selectedNode={selectedNode} onResourceMutation={onResourceMutation} />
-      )}
-    </div>
-  );
-}
-
 /* ── 驾驶舱面板（二级 Tab） ── */
 
-type CockpitSubTab = "overview" | "hooks" | "settings" | "ai";
-
-function CockpitPanel({ bookId }: { readonly bookId: string }) {
-  const [subTab, setSubTab] = useState<CockpitSubTab>("overview");
-
-  const subTabs: { id: CockpitSubTab; label: string }[] = [
-    { id: "overview", label: "总览" },
-    { id: "hooks", label: "伏笔" },
-    { id: "settings", label: "设定" },
-    { id: "ai", label: "AI" },
-  ];
-
-  return (
-    <div className="rounded-lg border border-border bg-card p-3 space-y-3">
-      <div className="flex gap-1 rounded-lg bg-muted p-0.5">
-        {subTabs.map((tab) => (
-          <button
-            key={tab.id}
-            className={`flex-1 rounded-sm px-2 py-0.5 text-[11px] font-medium transition-colors ${
-              subTab === tab.id ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-            }`}
-            onClick={() => setSubTab(tab.id)}
-            type="button"
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      {subTab === "overview" && <CockpitOverviewPanel bookId={bookId} />}
-      {subTab === "hooks" && <CockpitHooksPanel bookId={bookId} />}
-      {subTab === "settings" && <CockpitSettingsPanel bookId={bookId} />}
-      {subTab === "ai" && <CockpitAiPanel bookId={bookId} />}
-    </div>
-  );
-}
-
-/* ── 驾驶舱总览面板 ── */
-
-function CockpitOverviewPanel({ bookId }: { readonly bookId: string }) {
-  const { data: progress } = useApi<{ progress?: { today: { written: number; target: number; completed: boolean }; thisWeek: { written: number; target: number }; streak: number } }>(`/progress`);
-  const { data: book } = useApi<BookDetailResponse>(`/books/${bookId}`);
-  const { data: focusData } = useApi<{ file?: string; content?: string | null }>(`/books/${bookId}/truth-files/current_focus.md`);
-  const { data: summariesData } = useApi<{ summaries?: Array<{ number: number; title?: string; summary?: string }> }>(`/books/${bookId}/bible/chapter-summaries`);
-
-  const p = progress?.progress;
-  const chapters = book?.chapters ?? [];
-  const chapterCount = chapters.length;
-  const riskyChapters = chapters.filter((c) => (c.status === "failed" || c.status === "rejected"));
-  const focus = focusData?.content?.trim();
-  const summaries = (summariesData?.summaries ?? []).slice(-3);
-
-  if (!bookId) return <p className="text-xs text-muted-foreground p-2">请先选择一本书。</p>;
-
-  return (
-    <div className="space-y-2">
-      {/* 日更进度 */}
-      {p && (
-        <div className="rounded-lg border border-border bg-muted/30 p-2">
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-muted-foreground">今日进度</span>
-            <span className="font-medium">{p.today.written} / {p.today.target} 字</span>
-          </div>
-          {p.streak > 1 && <div className="mt-1 text-[11px] text-muted-foreground">连续 {p.streak} 天达标</div>}
-        </div>
-      )}
-
-      {/* 书籍状态 */}
-      <div className="rounded-lg border border-border bg-muted/30 p-2">
-        <div className="text-xs text-muted-foreground">
-          进度 {chapterCount} / {book?.book?.targetChapters ?? "?"} 章 · {chapters.reduce((s, c) => s + (c.wordCount ?? 0), 0)} 字
-        </div>
-      </div>
-
-      {/* 当前焦点 */}
-      {focus ? (
-        <div className="rounded-lg border border-border bg-muted/30 p-2">
-          <div className="text-[11px] text-muted-foreground mb-1">当前焦点</div>
-          <div className="text-xs leading-relaxed">{focus.length > 120 ? focus.slice(0, 120) + "..." : focus}</div>
-        </div>
-      ) : (
-        <div className="rounded-lg border border-dashed border-border bg-muted/20 p-2 text-[11px] text-muted-foreground">
-          尚未设置当前焦点
-        </div>
-      )}
-
-      {/* 最近章节摘要 */}
-      {summaries.length > 0 && (
-        <div className="rounded-lg border border-border bg-muted/30 p-2">
-          <div className="text-[11px] text-muted-foreground mb-1">最近章节</div>
-          {summaries.map((s) => (
-            <div key={s.number} className="text-xs leading-relaxed mt-0.5">
-              <span className="font-medium text-foreground">第{s.number}章</span>
-              {s.summary ? <span className="text-muted-foreground"> · {s.summary.length > 60 ? s.summary.slice(0, 60) + "..." : s.summary}</span> : null}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* 风险提示 */}
-      {riskyChapters.length > 0 && (
-        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-2">
-          <div className="text-xs font-medium text-amber-600 dark:text-amber-400">待处理问题</div>
-          {riskyChapters.slice(0, 3).map((c) => (
-            <div key={c.number} className="mt-1 text-[11px] text-muted-foreground">第 {c.number} 章 · {c.status}</div>
-          ))}
-        </div>
-      )}
-
-      {riskyChapters.length === 0 && chapterCount > 0 && (
-        <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-2 text-[11px] text-emerald-600 dark:text-emerald-400">
-          暂无风险 ✓
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ── 伏笔面板 ── */
-
-function CockpitHooksPanel({ bookId }: { readonly bookId: string }) {
-  const { data: eventsData } = useApi<{ events?: Array<{ id: string; title: string; summary?: string; eventType?: string; chapterNumber?: number }> }>(`/books/${bookId}/bible/events`);
-  const { data: hooksData } = useApi<{ file?: string; content?: string | null }>(`/books/${bookId}/story-files/pending_hooks.md`);
-
-  const foreshadowEvents = (eventsData?.events ?? []).filter((e) => e.eventType === "foreshadow");
-  const pendingHooksRaw = hooksData?.content ?? "";
-
-  if (!bookId) return <p className="text-xs text-muted-foreground p-2">请先选择一本书。</p>;
-
-  return (
-    <div className="space-y-2">
-      {foreshadowEvents.length > 0 && (
-        <div>
-          <div className="text-[11px] text-muted-foreground mb-1">经纬事件 · 伏笔 ({foreshadowEvents.length})</div>
-          {foreshadowEvents.map((e) => (
-            <div key={e.id} className="rounded border border-border bg-muted/30 px-2 py-1 text-xs mb-1">
-              <span className="font-medium">{e.title}</span>
-              {e.summary && <span className="text-muted-foreground"> — {e.summary}</span>}
-              {e.chapterNumber && <span className="text-[10px] text-muted-foreground ml-1">第{e.chapterNumber}章</span>}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {pendingHooksRaw && (
-        <div>
-          <div className="text-[11px] text-muted-foreground mb-1">pending_hooks.md</div>
-          <pre className="rounded border border-border bg-muted/30 px-2 py-1 text-[10px] leading-relaxed whitespace-pre-wrap max-h-48 overflow-y-auto">
-            {pendingHooksRaw.slice(0, 1000)}
-          </pre>
-        </div>
-      )}
-
-      {foreshadowEvents.length === 0 && !pendingHooksRaw && (
-        <div className="rounded-lg border border-dashed border-border bg-muted/20 p-2 text-[11px] text-muted-foreground">
-          暂无伏笔数据
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ── 设定面板 ── */
-
-function CockpitSettingsPanel({ bookId }: { readonly bookId: string }) {
-  const { data: settingsData } = useApi<{ settings?: Array<{ id: string; title: string; summary?: string; category?: string }> }>(`/books/${bookId}/bible/settings`);
-  const { data: rulesData } = useApi<{ file?: string; content?: string | null }>(`/books/${bookId}/truth-files/book_rules.md`);
-
-  const settings = settingsData?.settings ?? [];
-  const rules = rulesData?.content?.trim();
-
-  if (!bookId) return <p className="text-xs text-muted-foreground p-2">请先选择一本书。</p>;
-
-  return (
-    <div className="space-y-2">
-      {settings.length > 0 && (
-        <div>
-          <div className="text-[11px] text-muted-foreground mb-1">世界设定 ({settings.length})</div>
-          {settings.map((s) => (
-            <div key={s.id} className="rounded border border-border bg-muted/30 px-2 py-1 text-xs mb-1">
-              <span className="font-medium">{s.title}</span>
-              {s.category && <span className="text-[10px] text-muted-foreground ml-1">· {s.category}</span>}
-              {s.summary && <span className="text-muted-foreground"> — {s.summary}</span>}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {rules && (
-        <div>
-          <div className="text-[11px] text-muted-foreground mb-1">书籍规则</div>
-          <div className="rounded border border-border bg-muted/30 px-2 py-1 text-[10px] leading-relaxed whitespace-pre-wrap max-h-32 overflow-y-auto">
-            {rules.slice(0, 500)}
-          </div>
-        </div>
-      )}
-
-      {settings.length === 0 && !rules && (
-        <div className="rounded-lg border border-dashed border-border bg-muted/20 p-2 text-[11px] text-muted-foreground">
-          暂无设定数据
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ── AI 运行面板 ── */
-
-function CockpitAiPanel({ bookId }: { readonly bookId: string }) {
-  const { data: providerStatus } = useApi<{ status?: string; defaultProvider?: string; defaultModel?: string; hasUsableModel?: boolean }>("/providers/status");
-  const { data: candidates } = useApi<{ candidates?: Array<{ id: string; title: string; source: string; metadata?: Record<string, unknown>; createdAt?: string }> }>(`/books/${bookId}/candidates`);
-
-  const status = providerStatus;
-  const recentCandidates = (candidates?.candidates ?? []).slice(0, 5);
-
-  return (
-    <div className="space-y-2">
-      {/* Provider 状态 */}
-      <div className="rounded-lg border border-border bg-muted/30 p-2">
-        <div className="text-[11px] text-muted-foreground mb-1">AI 模型状态</div>
-        {status?.hasUsableModel ? (
-          <div className="text-xs">
-            <span className="text-emerald-600 dark:text-emerald-400">可用</span>
-            <span className="text-muted-foreground"> · {status.defaultProvider} / {status.defaultModel}</span>
-          </div>
-        ) : (
-          <div className="text-xs">
-            <span className="text-amber-600 dark:text-amber-400">不可用</span>
-            <span className="text-muted-foreground"> · 请先配置 AI 模型</span>
-          </div>
-        )}
-      </div>
-
-      {/* 最近候选稿 */}
-      {recentCandidates.length > 0 && (
-        <div>
-          <div className="text-[11px] text-muted-foreground mb-1">最近候选稿</div>
-          {recentCandidates.map((c) => (
-            <div key={c.id} className="rounded border border-border bg-muted/30 px-2 py-1 text-xs mb-1">
-              <span className="font-medium">{c.title}</span>
-              <span className="text-[10px] text-muted-foreground ml-1">· {c.source}</span>
-              {typeof c.metadata?.model === "string" && <div className="text-[10px] text-muted-foreground">模型: {c.metadata.model}</div>}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {recentCandidates.length === 0 && (
-        <div className="rounded-lg border border-dashed border-border bg-muted/20 p-2 text-[11px] text-muted-foreground">
-          暂无 AI 活动记录
-        </div>
-      )}
-    </div>
-  );
-}
 
 function AssistantPanel({
   assistantApi,
@@ -1736,8 +1925,39 @@ function WritingToolsPanel({ selectedNode, onResourceMutation }: { readonly sele
   );
 }
 
-function findNode(nodes: readonly StudioResourceNode[], nodeId: string): StudioResourceNode | undefined {
-  for (const node of nodes) {
+function mergeOptimisticChapterNodes(tree: readonly StudioResourceNode[], optimisticNodes: readonly StudioResourceNode[]): readonly StudioResourceNode[] {
+  if (optimisticNodes.length === 0 || tree.length === 0) return tree;
+  const [bookNode, ...rest] = tree;
+  const optimisticById = new Map(optimisticNodes.map((node) => [node.id, node]));
+  const chapterGroup = bookNode.children?.[0]?.children?.[0];
+  const existingChapterIds = new Set(chapterGroup?.children?.map((node) => node.id) ?? []);
+  const missingOptimisticNodes = optimisticNodes.filter((node) => !existingChapterIds.has(node.id));
+  if (!chapterGroup || missingOptimisticNodes.length === 0) return tree;
+
+  const mergedChapterGroup: StudioResourceNode = {
+    ...chapterGroup,
+    children: [...(chapterGroup.children ?? []).map((node) => optimisticById.get(node.id) ?? node), ...missingOptimisticNodes].sort((left, right) => {
+      const leftNumber = typeof left.metadata?.chapterNumber === "number" ? left.metadata.chapterNumber : Number.MAX_SAFE_INTEGER;
+      const rightNumber = typeof right.metadata?.chapterNumber === "number" ? right.metadata.chapterNumber : Number.MAX_SAFE_INTEGER;
+      return leftNumber - rightNumber;
+    }),
+  };
+  const volumeNode = bookNode.children?.[0];
+  if (!volumeNode) return tree;
+  const mergedVolumeNode: StudioResourceNode = {
+    ...volumeNode,
+    children: [mergedChapterGroup, ...(volumeNode.children ?? []).slice(1)],
+  };
+  const mergedBookNode: StudioResourceNode = {
+    ...bookNode,
+    children: [mergedVolumeNode, ...(bookNode.children ?? []).slice(1)],
+  };
+  return [mergedBookNode, ...rest];
+}
+
+function findNode(nodes: readonly StudioResourceNode[] | StudioResourceNode, nodeId: string): StudioResourceNode | undefined {
+  const list = Array.isArray(nodes) ? nodes : [nodes];
+  for (const node of list) {
     if (node.id === nodeId) return node;
     const found = findNode(node.children ?? [], nodeId);
     if (found) return found;

@@ -8,6 +8,14 @@ const { fetchJsonMock, postApiMock, putApiMock, useApiMock } = vi.hoisted(() => 
   useApiMock: vi.fn(),
 }));
 
+vi.mock("zustand/middleware", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("zustand/middleware")>();
+  return {
+    ...actual,
+    persist: (config: unknown) => config,
+  };
+});
+
 vi.mock("../../hooks/use-api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../hooks/use-api")>();
   return { ...actual, fetchJson: fetchJsonMock, postApi: postApiMock, putApi: putApiMock, useApi: useApiMock };
@@ -36,6 +44,65 @@ vi.mock("../../components/InkEditor", () => {
 });
 
 import { WorkspacePage } from "./WorkspacePage";
+import { useWindowRuntimeStore } from "../../stores/windowRuntimeStore";
+import { useWindowStore } from "../../stores/windowStore";
+import type { NarratorSessionChatSnapshot } from "../../shared/session-types";
+
+class MockWebSocket {
+  static OPEN = 1;
+  static instances: MockWebSocket[] = [];
+  readyState = 1;
+  readonly url: string;
+  readonly sentMessages: string[] = [];
+  onopen: (() => void) | null = null;
+  onmessage: ((event: { data: string }) => void) | null = null;
+  onerror: (() => void) | null = null;
+  onclose: (() => void) | null = null;
+
+  constructor(url: string) {
+    this.url = url;
+    MockWebSocket.instances.push(this);
+    queueMicrotask(() => this.onopen?.());
+  }
+
+  send(message: string) {
+    this.sentMessages.push(message);
+  }
+
+  close() {}
+}
+
+vi.stubGlobal("WebSocket", MockWebSocket as unknown as typeof WebSocket);
+Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+  value: vi.fn(),
+  writable: true,
+});
+
+function createSessionSnapshot(sessionId: string, projectId = TEST_BOOK.id): NarratorSessionChatSnapshot {
+  return {
+    session: {
+      id: sessionId,
+      title: "灵潮纪元 · 叙述者",
+      agentId: "writer",
+      kind: "standalone",
+      sessionMode: "chat",
+      status: "active",
+      createdAt: "2026-05-02T00:00:00.000Z",
+      lastModified: "2026-05-02T00:00:00.000Z",
+      messageCount: 0,
+      sortOrder: 0,
+      projectId,
+      sessionConfig: {
+        providerId: "anthropic",
+        modelId: "claude-sonnet-4-6",
+        permissionMode: "edit",
+        reasoningEffort: "medium",
+      },
+    },
+    messages: [],
+    cursor: { lastSeq: 0 },
+  };
+}
 
 const TEST_BOOK = {
   id: "book-1", title: "灵潮纪元",
@@ -77,12 +144,25 @@ const draftsResponse = {
   drafts: [{ id: "draft-1", bookId: TEST_BOOK.id, title: "城门冲突片段", content: "草稿正文", updatedAt: "2026-04-27T03:00:00.000Z", wordCount: 4 }],
 };
 
-afterEach(() => { cleanup(); vi.clearAllMocks(); });
+afterEach(() => {
+  cleanup();
+  vi.clearAllMocks();
+  MockWebSocket.instances = [];
+  useWindowStore.setState({ windows: [], activeWindowId: null });
+  useWindowRuntimeStore.setState({ wsConnections: {}, recoveryStates: {}, chatSnapshots: {} });
+});
 
 beforeEach(() => {
+  MockWebSocket.instances = [];
+  useWindowStore.setState({ windows: [], activeWindowId: null });
+  useWindowRuntimeStore.setState({ wsConnections: {}, recoveryStates: {}, chatSnapshots: {} });
   fetchJsonMock.mockReset();
   postApiMock.mockReset();
-  fetchJsonMock.mockImplementation(async (path: string) => {
+  fetchJsonMock.mockImplementation(async (path: string, init?: RequestInit) => {
+    if (path === "/api/providers/models") return { models: [{ providerId: "anthropic", providerName: "Anthropic", modelId: "anthropic:claude-sonnet-4-6", modelName: "Claude Sonnet 4.6", contextWindow: 200000, capabilities: { functionCalling: true } }] };
+    if (path === "/api/sessions" && init?.method === "POST") return createSessionSnapshot("session-auto").session;
+    if (path === "/api/sessions") return [];
+    if (path === `/api/sessions/session-auto/chat/state`) return createSessionSnapshot("session-auto");
     if (path === `/books/${TEST_BOOK.id}/chapters/1`) return { content: "测试正文" };
     if (path === `/books/${TEST_BOOK.id}/chapters/2`) return { content: "第二章正文" };
     if (path === `/books/${TEST_BOOK.id}/story-files/pending_hooks.md`) return { file: "pending_hooks.md", content: "# hooks\n\n待处理伏笔" };
@@ -101,11 +181,66 @@ beforeEach(() => {
 });
 
 describe("WorkspacePage", () => {
-  /** Helper: 切换右侧面板 Tab */
-  function switchToTab(name: "写作" | "经纬") {
-    const assistant = screen.getByRole("complementary", { name: "AI 与经纬面板" });
-    fireEvent.click(within(assistant).getByRole("button", { name }));
-  }
+  it("docks the default narrator session on the right instead of legacy cockpit tabs", async () => {
+    render(<WorkspacePage />);
+
+    await waitFor(() => expect(fetchJsonMock).toHaveBeenCalledWith("/api/sessions"));
+    await waitFor(() => expect(useWindowStore.getState().windows).toHaveLength(1));
+    const [windowState] = useWindowStore.getState().windows;
+    expect(windowState).toMatchObject({ agentId: "writer", sessionId: "session-auto", sessionMode: "chat" });
+
+    const narrator = screen.getByRole("complementary", { name: "叙述者会话" });
+    expect(within(narrator).getByTestId("chat-window-shell").getAttribute("data-host-mode")).toBe("docked");
+    expect(within(narrator).getByText("叙述者")).toBeTruthy();
+    expect(within(narrator).getByLabelText("消息输入框")).toBeTruthy();
+    expect(within(narrator).queryByRole("button", { name: "驾驶舱" })).toBeNull();
+    expect(within(narrator).queryByRole("button", { name: "经纬" })).toBeNull();
+    expect(within(narrator).queryByRole("button", { name: "写作" })).toBeNull();
+  });
+
+  it("reuses an existing book narrator session instead of creating a duplicate", async () => {
+    fetchJsonMock.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path === "/api/providers/models") return { models: [{ providerId: "anthropic", providerName: "Anthropic", modelId: "anthropic:claude-sonnet-4-6", modelName: "Claude Sonnet 4.6", contextWindow: 200000, capabilities: { functionCalling: true } }] };
+      if (path === "/api/sessions") return [createSessionSnapshot("session-existing").session];
+      if (path === `/api/sessions/session-existing/chat/state`) return createSessionSnapshot("session-existing");
+      if (path === `/books/${TEST_BOOK.id}/chapters/1`) return { content: "测试正文" };
+      if (path === `/books/${TEST_BOOK.id}/chapters/2`) return { content: "第二章正文" };
+      if (path === `/books/${TEST_BOOK.id}/story-files/pending_hooks.md`) return { file: "pending_hooks.md", content: "# hooks\n\n待处理伏笔" };
+      if (path === `/books/${TEST_BOOK.id}/truth-files/chapter_summaries.md`) return { file: "chapter_summaries.md", content: "# summaries\n\n第一章摘要" };
+      return {};
+    });
+
+    render(<WorkspacePage />);
+
+    await waitFor(() => expect(useWindowStore.getState().windows[0]?.sessionId).toBe("session-existing"));
+    expect(fetchJsonMock).not.toHaveBeenCalledWith("/api/sessions", expect.objectContaining({ method: "POST" }));
+  });
+
+  it("keeps the docked narrator input while switching canvas resources", async () => {
+    render(<WorkspacePage />);
+
+    const narrator = await screen.findByRole("complementary", { name: "叙述者会话" });
+    const input = within(narrator).getByLabelText("消息输入框") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "保持这个输入" } });
+
+    const explorer = screen.getByRole("complementary", { name: "小说资源管理器" });
+    fireEvent.click(within(explorer).getByRole("button", { name: /^pending_hooks\.md/ }));
+
+    expect((within(narrator).getByLabelText("消息输入框") as HTMLInputElement).value).toBe("保持这个输入");
+    expect(screen.getByRole("main", { name: "正文编辑区" })).toBeTruthy();
+    expect(await screen.findByText(/待处理伏笔/)).toBeTruthy();
+  });
+
+  it("renders WorkspaceLeftRail with compact global navigation, book switcher and resource tree", () => {
+    render(<WorkspacePage />);
+
+    const explorer = screen.getByRole("complementary", { name: "小说资源管理器" });
+    expect(within(explorer).getByRole("navigation", { name: "工作台全局入口" })).toBeTruthy();
+    expect(within(explorer).getByRole("button", { name: "仪表盘" })).toBeTruthy();
+    expect(within(explorer).getByRole("button", { name: "工作流" })).toBeTruthy();
+    expect(within(explorer).getByRole("combobox", { name: "资源栏作品选择" })).toHaveProperty("value", TEST_BOOK.id);
+    expect(within(explorer).getByRole("button", { name: /第一章 灵潮初起/ })).toBeTruthy();
+  });
 
   it("connects resource-tree empty-state actions to real workspace operations", async () => {
     const refetchBookDetail = vi.fn(async () => undefined);
@@ -170,6 +305,45 @@ describe("WorkspacePage", () => {
     expect(within(editor).getByText(/章节状态：已定稿/)).toBeTruthy();
     expect(within(editor).queryByText(/章节状态：approved|章节状态：unknown/)).toBeNull();
     await waitFor(() => expect(within(editor).getByLabelText("章节正文")).toBeTruthy());
+  });
+
+  it("opens multiple resource tabs in WorkspaceCanvas instead of replacing the current editor", async () => {
+    render(<WorkspacePage />);
+
+    const explorer = screen.getByRole("complementary", { name: "小说资源管理器" });
+    fireEvent.click(within(explorer).getByRole("button", { name: /第一章 灵潮初起/ }));
+    fireEvent.click(within(explorer).getByRole("button", { name: /^pending_hooks\.md/ }));
+
+    const editor = screen.getByRole("main", { name: "正文编辑区" });
+    const tabList = within(editor).getByRole("tablist", { name: "打开的资源" });
+    expect(within(tabList).getByRole("tab", { name: /第一章 灵潮初起/ })).toBeTruthy();
+    expect(within(tabList).getByRole("tab", { name: /pending_hooks\.md/ })).toBeTruthy();
+    expect(await within(editor).findByText(/待处理伏笔/)).toBeTruthy();
+
+    fireEvent.click(within(tabList).getByRole("tab", { name: /第一章 灵潮初起/ }));
+    expect(within(editor).getByRole("heading", { name: "第一章 灵潮初起" })).toBeTruthy();
+  });
+
+  it("blocks switching away from a dirty canvas tab until the author chooses how to handle it", async () => {
+    const loadChapter = vi.fn(async (bookId: string, chapterNumber: number) => ({ content: chapterNumber === 1 ? "远端正式正文" : "第二章正文" }));
+    const saveChapter = vi.fn(async () => undefined);
+    render(<WorkspacePage chapterApi={{ loadChapter, saveChapter }} />);
+
+    const explorer = screen.getByRole("complementary", { name: "小说资源管理器" });
+    fireEvent.click(within(explorer).getByRole("button", { name: /第一章 灵潮初起/ }));
+    await waitFor(() => expect(screen.getByDisplayValue("远端正式正文")).toBeTruthy());
+    fireEvent.change(screen.getByLabelText("章节正文"), { target: { value: "未保存正文" } });
+
+    fireEvent.click(within(explorer).getByRole("button", { name: /第二章 入城/ }));
+
+    const editor = screen.getByRole("main", { name: "正文编辑区" });
+    const dialog = within(editor).getByRole("dialog", { name: "未保存资源拦截" });
+    expect(within(dialog).getByText(/第一章 灵潮初起/)).toBeTruthy();
+    expect(within(editor).getByRole("heading", { name: "第一章 灵潮初起" })).toBeTruthy();
+    expect(within(editor).queryByRole("heading", { name: "第二章 入城" })).toBeNull();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "放弃更改" }));
+    await waitFor(() => expect(within(editor).getByRole("heading", { name: "第二章 入城" })).toBeTruthy());
   });
 
   it("loads, edits and saves existing chapter content through the migrated chapter API", async () => {
@@ -250,7 +424,7 @@ describe("WorkspacePage", () => {
 
     fireEvent.click(within(explorer).getByRole("button", { name: /^草稿/ }));
     const draftsEditor = screen.getByRole("main", { name: "正文编辑区" });
-    expect(within(draftsEditor).getByText("草稿")).toBeTruthy();
+    expect(within(draftsEditor).getAllByText("草稿").length).toBeGreaterThan(0);
     expect(within(draftsEditor).getByText(/该资源节点作为结构容器存在/)).toBeTruthy();
   });
 
@@ -462,6 +636,44 @@ describe("WorkspacePage", () => {
     await waitFor(() => expect(rejectCandidate).toHaveBeenCalledWith("book-1", "candidate-2"));
   });
 
+  it("opens agent artifacts in WorkspaceCanvas from tool result metadata", async () => {
+    const candidateApi = {
+      acceptCandidate: vi.fn(async () => undefined),
+      rejectCandidate: vi.fn(async () => undefined),
+    };
+    render(<WorkspacePage candidateApi={candidateApi} />);
+
+    const openArtifact = (window as unknown as { __NOVELFORK_OPEN_CANVAS_ARTIFACT__?: (artifact: unknown) => void }).__NOVELFORK_OPEN_CANVAS_ARTIFACT__;
+    expect(openArtifact).toBeTypeOf("function");
+    fireEvent.click(screen.getByRole("tab", { name: /第一章 灵潮初起/ }));
+    openArtifact?.({
+      id: "candidate:book-1:candidate-2",
+      kind: "candidate",
+      title: "第二章 AI 候选",
+      renderer: "candidate.created",
+      openInCanvas: true,
+      resourceRef: { kind: "candidate", id: "candidate-2", bookId: "book-1", title: "第二章 AI 候选" },
+    });
+
+    const editor = screen.getByRole("main", { name: "正文编辑区" });
+    await waitFor(() => expect(within(editor).getByRole("tab", { name: /第二章 AI 候选/ })).toBeTruthy());
+    expect(within(editor).getByText("候选稿 / 不会自动覆盖正式正文")).toBeTruthy();
+    expect(within(editor).getByDisplayValue("AI 候选正文")).toBeTruthy();
+
+    openArtifact?.({
+      id: "guided:state-1:plan",
+      kind: "guided-plan",
+      title: "第三章候选稿计划",
+      summary: "先回收灵钥裂纹伏笔。",
+      renderer: "guided.plan",
+      openInCanvas: true,
+      metadata: { status: "awaiting-user", target: "chapter-candidate" },
+    });
+
+    await waitFor(() => expect(within(editor).getByRole("tab", { name: /第三章候选稿计划/ })).toBeTruthy());
+    expect(within(editor).getByText("先回收灵钥裂纹伏笔。")).toBeTruthy();
+  });
+
   it("runs the first AI panel action through the model gate and writes output to generated candidates", async () => {
     const candidatesRefetch = vi.fn(async () => undefined);
     useApiMock.mockImplementation((path: string | null) => {
@@ -476,10 +688,8 @@ describe("WorkspacePage", () => {
     const ensureModelFor = vi.fn(() => true);
     const runAction = vi.fn(async () => ({ message: "AI 输出已进入生成章节候选" }));
     render(<WorkspacePage assistantApi={{ runAction }} modelGate={{ blockedResult: null, closeGate: vi.fn(), ensureModelFor }} />);
-    switchToTab("写作");
 
-    const assistant = screen.getByRole("complementary", { name: "AI 与经纬面板" });
-    switchToTab("写作");
+    const assistant = screen.getByRole("main", { name: "正文编辑区" });
     fireEvent.click(within(assistant).getByRole("button", { name: /生成下一章/ }));
 
     expect(ensureModelFor).toHaveBeenCalledWith("ai-writing");
@@ -502,8 +712,7 @@ describe("WorkspacePage", () => {
     const ensureModelFor = vi.fn(() => true);
     render(<WorkspacePage modelGate={{ blockedResult: null, closeGate: vi.fn(), ensureModelFor }} />);
 
-    const assistant = screen.getByRole("complementary", { name: "AI 与经纬面板" });
-    switchToTab("写作");
+    const assistant = screen.getByRole("main", { name: "正文编辑区" });
     fireEvent.click(within(assistant).getByRole("button", { name: /生成下一章/ }));
     await waitFor(() => expect(fetchJsonMock).toHaveBeenCalledWith(`/books/${TEST_BOOK.id}/write-next`, { method: "POST" }));
     await waitFor(() => expect(candidatesRefetch).toHaveBeenCalled());
@@ -560,7 +769,6 @@ describe("WorkspacePage", () => {
     const ensureModelFor = vi.fn(() => false);
     const runAction = vi.fn(async () => ({ message: "should not run" }));
     render(<WorkspacePage assistantApi={{ runAction }} modelGate={{ blockedResult: { ok: false, action: "ai-writing", reason: "model-not-configured", message: "此功能需要配置 AI 模型。" }, closeGate: vi.fn(), ensureModelFor }} />);
-    switchToTab("写作");
 
     fireEvent.click(screen.getByRole("button", { name: /生成下一章/ }));
 
@@ -568,29 +776,27 @@ describe("WorkspacePage", () => {
     expect(screen.getByText("此功能需要配置 AI 模型。")).toBeTruthy();
   });
 
-  it("shows bible panel with tab switching in the right panel", () => {
+  it("keeps legacy writing tools available in the central canvas", () => {
     render(<WorkspacePage />);
 
-    const assistant = screen.getByRole("complementary", { name: "AI 与经纬面板" });
-    switchToTab("经纬");
-    expect(within(assistant).getByText("经纬资料库")).toBeTruthy();
-    expect(within(assistant).getByRole("button", { name: "人物" })).toBeTruthy();
-    expect(within(assistant).getByRole("button", { name: "事件" })).toBeTruthy();
-    expect(within(assistant).getByRole("button", { name: "设定" })).toBeTruthy();
-    expect(within(assistant).getByRole("button", { name: "摘要" })).toBeTruthy();
+    const assistant = screen.getByRole("main", { name: "正文编辑区" });
+    expect(within(assistant).getByText("AI / 经纬面板")).toBeTruthy();
+    expect(within(assistant).getByRole("button", { name: /生成下一章/ })).toBeTruthy();
+    expect(within(assistant).getByText("写作模式")).toBeTruthy();
+    expect(within(assistant).getByText("写作工具")).toBeTruthy();
   });
 
-  it("shows create form for bible entries in the right panel", () => {
+  it("shows create form for bible entries from the central canvas tools", () => {
     render(<WorkspacePage />);
 
-    const assistant = screen.getByRole("complementary", { name: "AI 与经纬面板" });
-    switchToTab("经纬");
-    fireEvent.click(within(assistant).getByRole("button", { name: /新建人物/ }));
+    const assistant = screen.getByRole("main", { name: "正文编辑区" });
+    fireEvent.click(within(screen.getByRole("complementary", { name: "小说资源管理器" })).getByRole("button", { name: /人物/ }));
+    fireEvent.click(within(assistant).getByRole("button", { name: "新建人物" }));
     expect(within(assistant).getByLabelText("人物名称")).toBeTruthy();
     expect(within(assistant).getByLabelText("人物内容")).toBeTruthy();
   });
 
-  it("loads real bible route data for characters, events, settings and chapter summaries", () => {
+  it("loads real bible route data for characters, foreshadowing and world settings through canvas resources", () => {
     useApiMock.mockImplementation((path: string | null) => {
       if (path === "/books") return { data: booksResponse, loading: false, error: null, refetch: vi.fn() };
       if (path === `/books/${TEST_BOOK.id}`) return { data: bookDetailResponse, loading: false, error: null, refetch: vi.fn() };
@@ -599,30 +805,24 @@ describe("WorkspacePage", () => {
       if (path === `/books/${TEST_BOOK.id}/truth-files`) return { data: truthFilesResponse, loading: false, error: null, refetch: vi.fn() };
       if (path === `/books/${TEST_BOOK.id}/drafts`) return { data: draftsResponse, loading: false, error: null, refetch: vi.fn() };
       if (path === `/books/${TEST_BOOK.id}/bible/characters`) return { data: { characters: [{ id: "char-1", name: "林月", summary: "城门守卫" }] }, loading: false, error: null, refetch: vi.fn() };
-      if (path === `/books/${TEST_BOOK.id}/bible/events`) return { data: { events: [{ id: "event-1", name: "入城冲突", summary: "与守卫交锋" }] }, loading: false, error: null, refetch: vi.fn() };
-      if (path === `/books/${TEST_BOOK.id}/bible/settings`) return { data: { settings: [{ id: "setting-1", name: "灵潮", content: "周期性灵力涨落" }] }, loading: false, error: null, refetch: vi.fn() };
-      if (path === `/books/${TEST_BOOK.id}/bible/chapter-summaries`) return { data: { chapterSummaries: [{ id: "summary-1", title: "第一章摘要", summary: "灵潮初起", chapterNumber: 1 }] }, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}/bible/events`) return { data: { events: [{ id: "event-1", name: "入城冲突", summary: "与守卫交锋", eventType: "foreshadow" }] }, loading: false, error: null, refetch: vi.fn() };
+      if (path === `/books/${TEST_BOOK.id}/bible/settings`) return { data: { settings: [{ id: "setting-1", name: "灵潮", content: "周期性灵力涨落", category: "world-rule" }] }, loading: false, error: null, refetch: vi.fn() };
       return { data: null, loading: false, error: null, refetch: vi.fn() };
     });
 
     render(<WorkspacePage />);
-    const assistant = screen.getByRole("complementary", { name: "AI 与经纬面板" });
-    switchToTab("经纬");
+    const explorer = screen.getByRole("complementary", { name: "小说资源管理器" });
+    const editor = screen.getByRole("main", { name: "正文编辑区" });
 
-    fireEvent.click(within(assistant).getByRole("button", { name: /林月/ }));
-    expect(within(assistant).getByText("城门守卫")).toBeTruthy();
+    fireEvent.click(within(explorer).getByRole("button", { name: /人物/ }));
+    expect(within(editor).getByText("城门守卫")).toBeTruthy();
 
-    fireEvent.click(within(assistant).getByRole("button", { name: "事件" }));
-    fireEvent.click(within(assistant).getByRole("button", { name: /入城冲突/ }));
-    expect(within(assistant).getByText("与守卫交锋")).toBeTruthy();
+    fireEvent.click(within(explorer).getByRole("button", { name: /伏笔/ }));
+    expect(within(editor).getByText("与守卫交锋")).toBeTruthy();
+    expect(within(editor).getByText("伏笔状态：伏笔")).toBeTruthy();
 
-    fireEvent.click(within(assistant).getByRole("button", { name: "设定" }));
-    fireEvent.click(within(assistant).getByRole("button", { name: /灵潮/ }));
-    expect(within(assistant).getByText("周期性灵力涨落")).toBeTruthy();
-
-    fireEvent.click(within(assistant).getByRole("button", { name: "摘要" }));
-    fireEvent.click(within(assistant).getByRole("button", { name: /第一章摘要/ }));
-    expect(within(assistant).getByText("灵潮初起")).toBeTruthy();
+    fireEvent.click(within(explorer).getByRole("button", { name: /世界规则/ }));
+    expect(within(editor).getByText("周期性灵力涨落")).toBeTruthy();
   });
 
   it("opens bible categories as real lists and supports creating and editing entries", async () => {
@@ -663,8 +863,7 @@ describe("WorkspacePage", () => {
     await waitFor(() => expect(putApiMock).toHaveBeenCalledWith(`/books/${TEST_BOOK.id}/bible/characters/char-1`, { name: "林月", summary: "守卫队长" }));
     expect(refetchCharacters).toHaveBeenCalledTimes(2);
 
-    const assistant = screen.getByRole("complementary", { name: "AI 与经纬面板" });
-    switchToTab("写作");
+    const assistant = screen.getByRole("main", { name: "正文编辑区" });
     expect(within(assistant).getByRole("button", { name: /生成下一章/ })).toBeTruthy();
     expect(within(assistant).getByText(/当前上下文：人物/)).toBeTruthy();
   });
@@ -715,9 +914,7 @@ describe("WorkspacePage", () => {
     });
 
     render(<WorkspacePage />);
-    const assistant = screen.getByRole("complementary", { name: "AI 与经纬面板" });
-    switchToTab("经纬");
-    switchToTab("写作");
+    const assistant = screen.getByRole("main", { name: "正文编辑区" });
     fireEvent.click(within(assistant).getByText("写作模式"));
     fireEvent.click(within(assistant).getByRole("button", { name: "对话生成" }));
     fireEvent.change(within(assistant).getByLabelText("角色"), { target: { value: "林月" } });
@@ -741,9 +938,7 @@ describe("WorkspacePage", () => {
     });
 
     render(<WorkspacePage />);
-    const assistant = screen.getByRole("complementary", { name: "AI 与经纬面板" });
-    switchToTab("经纬");
-    switchToTab("写作");
+    const assistant = screen.getByRole("main", { name: "正文编辑区" });
     fireEvent.click(within(assistant).getByText("写作模式"));
     fireEvent.click(within(assistant).getByRole("button", { name: "对话生成" }));
     fireEvent.change(within(assistant).getByLabelText("角色"), { target: { value: "林月" } });
@@ -777,9 +972,7 @@ describe("WorkspacePage", () => {
     });
 
     render(<WorkspacePage />);
-    const assistant = screen.getByRole("complementary", { name: "AI 与经纬面板" });
-    switchToTab("经纬");
-    switchToTab("写作");
+    const assistant = screen.getByRole("main", { name: "正文编辑区" });
     fireEvent.click(within(assistant).getByText("写作模式"));
     fireEvent.click(within(assistant).getByRole("button", { name: "对话生成" }));
     fireEvent.change(within(assistant).getByLabelText("角色"), { target: { value: "林月" } });
@@ -822,8 +1015,7 @@ describe("WorkspacePage", () => {
 
     render(<WorkspacePage />);
 
-    const assistant = screen.getByRole("complementary", { name: "AI 与经纬面板" });
-    switchToTab("写作");
+    const assistant = screen.getByRole("main", { name: "正文编辑区" });
     fireEvent.click(within(assistant).getByText("写作工具"));
     fireEvent.click(within(assistant).getByRole("button", { name: "钩子生成" }));
     fireEvent.click(within(assistant).getByRole("button", { name: "生成章末钩子" }));
@@ -838,9 +1030,8 @@ describe("WorkspacePage", () => {
 
   it("exposes writing tools panel with chapter-context tools and daily progress", () => {
     render(<WorkspacePage />);
-    switchToTab("写作");
 
-    const assistant = screen.getByRole("complementary", { name: "AI 与经纬面板" });
+    const assistant = screen.getByRole("main", { name: "正文编辑区" });
     const toolsToggle = within(assistant).getByText("写作工具");
     expect(toolsToggle).toBeTruthy();
 
@@ -857,8 +1048,7 @@ describe("WorkspacePage", () => {
     const explorer = screen.getByRole("complementary", { name: "小说资源管理器" });
     fireEvent.click(within(explorer).getByRole("button", { name: /人物/ }));
 
-    const assistant = screen.getByRole("complementary", { name: "AI 与经纬面板" });
-    switchToTab("写作");
+    const assistant = screen.getByRole("main", { name: "正文编辑区" });
     fireEvent.click(within(assistant).getByText("写作工具"));
     expect(within(assistant).getByText(/请选择一个章节/)).toBeTruthy();
   });
@@ -1082,8 +1272,7 @@ describe("WorkspacePage", () => {
     expect(confirmMerge.className).toContain("text-primary-foreground");
     expect(cancelMerge.className).toContain("border-border");
 
-    const assistant = screen.getByRole("complementary", { name: "AI 与经纬面板" });
-    switchToTab("写作");
+    const assistant = screen.getByRole("main", { name: "正文编辑区" });
     fireEvent.click(within(assistant).getByText("写作模式"));
     const writingModeInline = within(assistant).getByRole("button", { name: "续写/扩写/补写" });
     const writingModeDialogue = within(assistant).getByRole("button", { name: "对话生成" });
@@ -1092,7 +1281,6 @@ describe("WorkspacePage", () => {
     expect(writingModeDialogue.className).toContain("border-border");
     expect(within(assistant).getByText(/真实生成结果必须先选择候选稿或草稿/)).toBeTruthy();
 
-    switchToTab("写作");
     fireEvent.click(within(assistant).getByText("写作工具"));
     const rhythmTab = within(assistant).getByRole("button", { name: "节奏分析" });
     const dialogueTab = within(assistant).getByRole("button", { name: "对话分析" });
