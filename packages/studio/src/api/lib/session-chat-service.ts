@@ -31,6 +31,8 @@ import type {
   NarratorSessionRecord,
   NarratorSessionRecoveryEnvelope,
   NarratorSessionRecoveryMetadata,
+  SessionCumulativeUsage,
+  TokenUsage,
   ToolCall,
 } from "../../shared/session-types.js";
 import {
@@ -51,6 +53,7 @@ import { runAgentTurn, type AgentTurnItem, type AgentGenerateResult } from "./ag
 import { loadUserConfig } from "./user-config-service.js";
 import { generateSessionTitle } from "./session-auto-title.js";
 import { microCompact } from "./compact/micro-compact.js";
+import { translateThinkingBlocks } from "./thinking-translator.js";
 
 const MAX_SESSION_MESSAGES = 500;
 const MAX_SESSION_TOOL_LOOP_STEPS = 200;
@@ -133,6 +136,7 @@ interface SessionChatRuntimeState {
   persistedAckedSeq: number;
   availableFromSeq: number;
   recoveryJson: string;
+  cumulativeUsage: SessionCumulativeUsage;
 }
 
 interface AttachSessionChatTransportOptions {
@@ -140,6 +144,55 @@ interface AttachSessionChatTransportOptions {
 }
 
 const runtimeStateBySessionId = new Map<string, SessionChatRuntimeState>();
+
+function createEmptyCumulativeUsage(): SessionCumulativeUsage {
+  return { totalInputTokens: 0, totalOutputTokens: 0, totalCacheCreationInputTokens: 0, totalCacheReadInputTokens: 0, turnCount: 0 };
+}
+
+function accumulateUsage(cumulative: SessionCumulativeUsage, usage: TokenUsage | undefined): void {
+  if (!usage) return;
+  cumulative.totalInputTokens += usage.input_tokens ?? 0;
+  cumulative.totalOutputTokens += usage.output_tokens ?? 0;
+  cumulative.totalCacheCreationInputTokens += usage.cache_creation_input_tokens ?? 0;
+  cumulative.totalCacheReadInputTokens += usage.cache_read_input_tokens ?? 0;
+  cumulative.turnCount += 1;
+}
+const abortControllerBySessionId = new Map<string, AbortController>();
+
+function abortSession(sessionId: string): void {
+  const controller = abortControllerBySessionId.get(sessionId);
+  if (controller) {
+    controller.abort();
+    abortControllerBySessionId.delete(sessionId);
+  }
+}
+
+function createSessionAbortController(sessionId: string): AbortController {
+  abortSession(sessionId);
+  const controller = new AbortController();
+  abortControllerBySessionId.set(sessionId, controller);
+  return controller;
+}
+
+function clearSessionAbortController(sessionId: string): void {
+  abortControllerBySessionId.delete(sessionId);
+}
+
+function broadcastStreamChunk(sessionId: string, state: SessionChatRuntimeState, content: string): void {
+  const envelope: NarratorSessionChatServerEnvelope = {
+    type: "session:stream",
+    sessionId,
+    content,
+  };
+  const payload = serializeEnvelope(envelope);
+  for (const transport of state.transports.keys()) {
+    try {
+      transport.send(payload);
+    } catch {
+      state.transports.delete(transport);
+    }
+  }
+}
 
 function sanitizeSeq(value: unknown): number {
   if (typeof value === "number" && Number.isFinite(value) && value > 0) {
@@ -198,6 +251,7 @@ function createRuntimeState(
   initialAckedSeq = 0,
   initialAvailableFromSeq = 0,
   initialRecoveryJson = "{}",
+  initialCumulativeUsage?: SessionCumulativeUsage,
 ): SessionChatRuntimeState {
   const normalizedMessages = normalizeSessionMessages(initialMessages, initialMessageCount);
   const lastSeq = getLastSeq(normalizedMessages);
@@ -211,6 +265,7 @@ function createRuntimeState(
     persistedAckedSeq: Math.max(0, Math.min(initialAckedSeq, Math.max(messageCount, lastSeq))),
     availableFromSeq: initialAvailableFromSeq,
     recoveryJson: initialRecoveryJson || "{}",
+    cumulativeUsage: initialCumulativeUsage ?? createEmptyCumulativeUsage(),
   };
 }
 
@@ -221,6 +276,7 @@ function getRuntimeState(
   initialAckedSeq = 0,
   initialAvailableFromSeq = 0,
   initialRecoveryJson = "{}",
+  initialCumulativeUsage?: SessionCumulativeUsage,
 ): SessionChatRuntimeState {
   const existing = runtimeStateBySessionId.get(sessionId);
   if (existing) {
@@ -235,7 +291,7 @@ function getRuntimeState(
     return existing;
   }
 
-  const state = createRuntimeState(initialMessageCount, initialMessages, initialAckedSeq, initialAvailableFromSeq, initialRecoveryJson);
+  const state = createRuntimeState(initialMessageCount, initialMessages, initialAckedSeq, initialAvailableFromSeq, initialRecoveryJson, initialCumulativeUsage);
   runtimeStateBySessionId.set(sessionId, state);
   return state;
 }
@@ -300,6 +356,7 @@ function buildServerFirstSession(session: NarratorSessionRecord, state: SessionC
     messageCount,
     recentMessages,
     recovery,
+    cumulativeUsage: state.cumulativeUsage,
   };
 }
 
@@ -391,6 +448,7 @@ async function loadSessionState(sessionId: string): Promise<{ session: NarratorS
     persistedCursor.ackedSeq,
     persistedCursor.availableFromSeq,
     persistedCursor.recoveryJson,
+    session.cumulativeUsage,
   );
 
   if (state.messages.length === 0 && normalizedRecentMessages.length > 0) {
@@ -443,6 +501,12 @@ function parseClientMessage(text: string): NarratorSessionChatClientMessage {
         type: "session:ack",
         sessionId: parsed.sessionId,
         ack: sanitizeSeq((parsed as { ack?: unknown }).ack),
+      };
+    }
+    if (parsed?.type === "session:abort") {
+      return {
+        type: "session:abort",
+        sessionId: (parsed as { sessionId?: string }).sessionId,
       };
     }
     if (parsed && typeof (parsed as { content?: unknown }).content === "string") {
@@ -611,6 +675,7 @@ async function persistSessionChatProgress(
     messageCount: state.messageCount,
     recentMessages: [...state.messages],
     recovery,
+    cumulativeUsage: state.cumulativeUsage,
   });
 }
 
@@ -850,11 +915,16 @@ async function appendModelContinuationAfterToolDecision(
       ...(canvasContext ? { canvasContext } : {}),
       maxSteps,
       shouldContinueAfterToolResult,
+      onStreamChunk: (chunk: string) => {
+        broadcastStreamChunk(loaded.session.id, loaded.state, chunk);
+      },
       generate: async (generateInput): Promise<AgentGenerateResult> => {
         const result = await generateSessionReply({
           sessionConfig: generateInput.sessionConfig,
           messages: generateInput.messages,
           tools: generateInput.tools,
+          onStreamChunk: generateInput.onStreamChunk,
+          signal: generateInput.signal,
         });
         return result as AgentGenerateResult;
       },
@@ -866,12 +936,14 @@ async function appendModelContinuationAfterToolDecision(
     let assistantIndex = 0;
     for (const event of runtimeEvents) {
       if (event.type === "assistant_message") {
+        accumulateUsage(loaded.state.cumulativeUsage, event.runtime?.usage);
         const assistantMessage = appendMessageToState(loaded.state, {
           id: assistantIndex === 0 ? `confirmation-continuation-${timestamp}` : `confirmation-continuation-${timestamp}-${assistantIndex + 1}`,
           role: "assistant",
           content: event.content,
           timestamp: nextTimestamp,
           runtime: event.runtime,
+          ...(event.runtime?.usage ? { metadata: { usage: event.runtime.usage } } : {}),
         });
         assistantIndex += 1;
         nextTimestamp += 1;
@@ -914,7 +986,7 @@ async function appendModelContinuationAfterToolDecision(
         continue;
       }
 
-      if (event.type === "confirmation_required" || event.type === "turn_completed") {
+      if (event.type === "confirmation_required" || event.type === "turn_completed" || event.type === "streaming_chunk") {
         continue;
       }
 
@@ -962,6 +1034,7 @@ async function persistMergedSessionChatProgress(
     messageCount: state.messageCount,
     recentMessages: [...state.messages],
     recovery,
+    cumulativeUsage: state.cumulativeUsage,
   });
 }
 
@@ -1341,7 +1414,12 @@ export async function handleSessionChatTransportMessage(
     return;
   }
 
-  const content = payload.content.trim();
+  if (payload.type === "session:abort") {
+    abortSession(sessionId);
+    return;
+  }
+
+  const content = ("content" in payload ? payload.content : "").trim();
   if (!content) {
     sendEnvelope(transport, createSessionChatError(sessionId, "Empty message payload"));
     return;
@@ -1375,6 +1453,7 @@ export async function handleSessionChatTransportMessage(
     const fullSystemPrompt = `${agentSystemPrompt}${AGENT_NATIVE_WRITE_NEXT_INSTRUCTIONS}`;
     const maxSteps = await resolveMaxTurnSteps();
     const compactedMessages = microCompact(sessionMessagesToTurnItems(loaded.state.messages));
+    const abortController = createSessionAbortController(sessionId);
     const runtimeEvents = await runAgentTurn({
       sessionId,
       sessionConfig: loaded.session.sessionConfig,
@@ -1386,27 +1465,36 @@ export async function handleSessionChatTransportMessage(
       ...(canvasContext ? { canvasContext } : {}),
       maxSteps,
       shouldContinueAfterToolResult,
+      onStreamChunk: (chunk: string) => {
+        broadcastStreamChunk(sessionId, loaded.state, chunk);
+      },
+      signal: abortController.signal,
       generate: async (generateInput): Promise<AgentGenerateResult> => {
         const result = await generateSessionReply({
           sessionConfig: generateInput.sessionConfig,
           messages: generateInput.messages,
           tools: generateInput.tools,
+          onStreamChunk: generateInput.onStreamChunk,
+          signal: generateInput.signal,
         });
         return result as AgentGenerateResult;
       },
       executeTool: (toolInput) => sessionToolExecutor.execute(toolInput),
     });
+    clearSessionAbortController(sessionId);
 
     const toolInputsById = new Map<string, Record<string, unknown>>();
     let assistantIndex = 0;
     for (const event of runtimeEvents) {
       if (event.type === "assistant_message") {
+        accumulateUsage(loaded.state.cumulativeUsage, event.runtime?.usage);
         const assistantMessage = appendMessageToState(loaded.state, {
           id: assistantIndex === 0 ? `${userMessage.id}-assistant` : `${userMessage.id}-assistant-${assistantIndex + 1}`,
           role: "assistant",
           content: event.content,
           timestamp: timestamp + messagesToPersist.length,
           runtime: event.runtime,
+          ...(event.runtime?.usage ? { metadata: { usage: event.runtime.usage } } : {}),
         });
         assistantIndex += 1;
         messagesToPersist.push(assistantMessage);
@@ -1456,6 +1544,10 @@ export async function handleSessionChatTransportMessage(
       }
 
       if (event.type === "confirmation_required") {
+        continue;
+      }
+
+      if (event.type === "streaming_chunk") {
         continue;
       }
 
@@ -1514,6 +1606,30 @@ export async function handleSessionChatTransportMessage(
 
   if (updatedSession) {
     broadcastStateEnvelope(buildServerFirstSession(updatedSession, loaded.state), loaded.state);
+  }
+
+  // 翻译思考内容：异步翻译 assistant 消息中的 thinking/reasoning block
+  const assistantMessages = messagesToPersist.filter((m) => m.role === "assistant");
+  if (assistantMessages.length > 0) {
+    void (async () => {
+      try {
+        const config = await loadUserConfig();
+        if (!config.runtimeControls?.translateThinking) return;
+        const summaryModel = config.modelDefaults?.summaryModel;
+        if (!summaryModel) return;
+
+        for (const msg of assistantMessages) {
+          const result = await translateThinkingBlocks(msg.content, {
+            summaryModel,
+            targetLanguage: "zh",
+          });
+          if (result.hasThinkingBlocks && result.translatedContent !== result.originalContent) {
+            msg.metadata = { ...msg.metadata, thinkingTranslation: result.translatedContent };
+            broadcastMessageEnvelope(sessionId, loaded.state, msg);
+          }
+        }
+      } catch { /* thinking translation failure is non-fatal */ }
+    })();
   }
 
   // 自动命名：第一轮对话且标题为默认值时，异步生成标题

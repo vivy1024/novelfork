@@ -151,6 +151,7 @@ export interface NarratorSessionRecord {
   sessionConfig: SessionConfig;
   recentMessages?: NarratorSessionChatMessage[];
   recovery?: NarratorSessionRecoveryMetadata;
+  cumulativeUsage?: SessionCumulativeUsage;
 }
 
 export interface CreateNarratorSessionInput {
@@ -178,6 +179,7 @@ export interface UpdateNarratorSessionInput {
   sessionConfig?: Partial<SessionConfig>;
   recentMessages?: NarratorSessionChatMessage[];
   recovery?: NarratorSessionRecoveryMetadata;
+  cumulativeUsage?: SessionCumulativeUsage;
 }
 
 export const DEFAULT_SESSION_CONFIG: SessionConfig = {
@@ -189,10 +191,26 @@ export const DEFAULT_SESSION_CONFIG: SessionConfig = {
 
 export type NarratorSessionChatRole = "user" | "assistant" | "system";
 
+export interface TokenUsage {
+  input_tokens: number;
+  output_tokens: number;
+  cache_creation_input_tokens?: number;
+  cache_read_input_tokens?: number;
+}
+
+export interface SessionCumulativeUsage {
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalCacheCreationInputTokens: number;
+  totalCacheReadInputTokens: number;
+  turnCount: number;
+}
+
 export interface NarratorSessionRuntimeMetadata {
   providerId: string;
   providerName?: string;
   modelId: string;
+  usage?: TokenUsage;
 }
 
 export interface NarratorSessionChatMessage {
@@ -302,9 +320,15 @@ export interface NarratorSessionChatAckClientEnvelope {
   ack: number;
 }
 
+export interface NarratorSessionChatAbortClientEnvelope {
+  type: "session:abort";
+  sessionId?: string;
+}
+
 export type NarratorSessionChatClientMessage =
   | NarratorSessionChatMessageClientEnvelope
-  | NarratorSessionChatAckClientEnvelope;
+  | NarratorSessionChatAckClientEnvelope
+  | NarratorSessionChatAbortClientEnvelope;
 
 export type NarratorSessionRecoveryState = "idle" | "recovering" | "reconnecting" | "replaying" | "resetting" | "failed";
 export type NarratorSessionRecoveryReason = "initial-hydration" | "reconnect" | "replay" | "history-gap" | "server-reset" | "snapshot-load-failed" | "history-load-failed" | "websocket-error";
@@ -342,8 +366,15 @@ export interface NarratorSessionChatErrorEnvelope {
   runtime?: Partial<NarratorSessionRuntimeMetadata>;
 }
 
+export interface NarratorSessionChatStreamEnvelope {
+  type: "session:stream";
+  sessionId: string;
+  content: string;
+}
+
 export type NarratorSessionChatServerEnvelope =
   | NarratorSessionChatSnapshotEnvelope
   | NarratorSessionChatStateEnvelope
   | NarratorSessionChatMessageEnvelope
-  | NarratorSessionChatErrorEnvelope;
+  | NarratorSessionChatErrorEnvelope
+  | NarratorSessionChatStreamEnvelope;

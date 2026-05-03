@@ -34,6 +34,8 @@ export interface GenerateInput extends RuntimeProviderRef {
   readonly modelId: string;
   readonly messages: readonly RuntimeChatMessage[];
   readonly tools?: readonly RuntimeToolDefinition[];
+  readonly onStreamChunk?: (chunk: string) => void;
+  readonly signal?: AbortSignal;
 }
 
 export type RuntimeAdapterFailure = {
@@ -354,7 +356,151 @@ class OpenAiCompatibleAdapter implements RuntimeAdapter {
     const configFailure = requireOpenAiConfig(input);
     if (configFailure) return configFailure;
 
-    return this.sendChatCompletion(input, input.messages, undefined, input.tools);
+    const hasTools = Boolean(input.tools?.length);
+    const useStreaming = Boolean(input.onStreamChunk) && !hasTools;
+
+    if (useStreaming) {
+      return this.sendStreamingChatCompletion(input, input.messages, input.tools, input.onStreamChunk!, input.signal);
+    }
+
+    return this.sendChatCompletion(input, input.messages, undefined, input.tools, input.signal);
+  }
+
+  private async sendStreamingChatCompletion(
+    input: GenerateInput,
+    messages: readonly RuntimeChatMessage[],
+    tools: readonly RuntimeToolDefinition[] | undefined,
+    onStreamChunk: (chunk: string) => void,
+    signal?: AbortSignal,
+  ): Promise<GenerateResult> {
+    const hasTools = Boolean(tools?.length);
+    const body = {
+      model: input.modelId,
+      messages: toOpenAiMessages(messages),
+      stream: true,
+      stream_options: { include_usage: true },
+      ...(hasTools ? { tools: toOpenAiTools(tools!), tool_choice: "auto" } : {}),
+    };
+
+    const urls = openAiUrls(input, "/chat/completions");
+    let lastError = "OpenAI-compatible streaming request failed";
+
+    for (const [index, url] of urls.entries()) {
+      const canRetry = index < urls.length - 1;
+      try {
+        const response = await fetch(url, {
+          method: "POST",
+          headers: openAiHeaders(input.apiKey!),
+          body: JSON.stringify(body),
+          signal,
+        });
+
+        if (!response.ok) {
+          let errorMessage = `Chat completion failed with HTTP ${response.status}`;
+          try {
+            const errorPayload = await parseJsonResponse(response);
+            errorMessage = readOpenAiError(errorPayload, errorMessage);
+          } catch { /* use default error message */ }
+          if (canRetry && (response.status === 404 || response.status === 405)) {
+            lastError = errorMessage;
+            continue;
+          }
+          return failure("upstream-error", errorMessage);
+        }
+
+        if (!response.body) {
+          return failure("upstream-error", "Streaming response has no body");
+        }
+
+        return await this.consumeStream(response.body, onStreamChunk, signal);
+      } catch (error) {
+        if (signal?.aborted) {
+          return failure("network-error", "Request aborted");
+        }
+        lastError = error instanceof Error ? error.message : String(error);
+        if (canRetry) continue;
+        return failure("network-error", lastError);
+      }
+    }
+
+    return failure("network-error", lastError);
+  }
+
+  private async consumeStream(
+    body: ReadableStream<Uint8Array>,
+    onStreamChunk: (chunk: string) => void,
+    signal?: AbortSignal,
+  ): Promise<GenerateResult> {
+    const reader = body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let fullContent = "";
+    let usage: GenerateUsage | undefined;
+
+    try {
+      for (;;) {
+        if (signal?.aborted) {
+          reader.cancel().catch(() => {});
+          return {
+            success: true,
+            type: "message",
+            content: fullContent,
+            ...(usage ? { usage } : {}),
+          };
+        }
+
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || !trimmed.startsWith("data: ")) continue;
+          const data = trimmed.slice(6);
+          if (data === "[DONE]") continue;
+
+          try {
+            const parsed = JSON.parse(data) as Record<string, unknown>;
+
+            // Extract usage from the final chunk
+            if (parsed.usage && typeof parsed.usage === "object") {
+              const u = parsed.usage as Record<string, unknown>;
+              const promptTokens = typeof u.prompt_tokens === "number" ? u.prompt_tokens : 0;
+              const completionTokens = typeof u.completion_tokens === "number" ? u.completion_tokens : 0;
+              if (promptTokens > 0 || completionTokens > 0) {
+                usage = { input_tokens: promptTokens, output_tokens: completionTokens };
+              }
+            }
+
+            const choices = Array.isArray(parsed.choices) ? parsed.choices : [];
+            const delta = choices[0] && typeof choices[0] === "object" && "delta" in choices[0]
+              ? (choices[0] as { delta?: unknown }).delta
+              : undefined;
+            if (delta && typeof delta === "object" && "content" in delta) {
+              const content = (delta as { content?: unknown }).content;
+              if (typeof content === "string" && content.length > 0) {
+                fullContent += content;
+                onStreamChunk(content);
+              }
+            }
+          } catch {
+            // Skip malformed SSE lines
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+
+    return {
+      success: true,
+      type: "message",
+      content: fullContent,
+      ...(usage ? { usage } : {}),
+    };
   }
 
   private async sendChatCompletion(
@@ -362,6 +508,7 @@ class OpenAiCompatibleAdapter implements RuntimeAdapter {
     messages: readonly RuntimeChatMessage[],
     maxTokens?: number,
     tools?: readonly RuntimeToolDefinition[],
+    signal?: AbortSignal,
   ): Promise<GenerateResult> {
     const hasTools = Boolean(tools?.length);
     const body = {
@@ -375,6 +522,7 @@ class OpenAiCompatibleAdapter implements RuntimeAdapter {
       method: "POST",
       headers: openAiHeaders(input.apiKey!),
       body: JSON.stringify(body),
+      ...(signal ? { signal } : {}),
     });
     if (!result.success) return result;
     const { response, payload } = result;

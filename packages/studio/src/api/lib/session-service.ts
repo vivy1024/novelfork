@@ -137,6 +137,7 @@ function toNarratorSessionRecord(record: StoredSessionRecord): NarratorSessionRe
     sessionConfig,
     recentMessages: Array.isArray(metadata.recentMessages) ? metadata.recentMessages : [],
     recovery: normalizeRecoveryMetadata(metadata.recovery),
+    ...(metadata.cumulativeUsage ? { cumulativeUsage: metadata.cumulativeUsage } : {}),
   };
 }
 

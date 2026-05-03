@@ -30,6 +30,7 @@ import { ProviderRuntimeStore } from "./lib/provider-runtime-store.js";
 import {
   rebuildSearchIndex,
 } from "./lib/search-index-rebuild.js";
+import { SearchIndex, setGlobalSearchIndex } from "./lib/search-index.js";
 import {
   runStartupOrchestrator,
   resolveStartupFallbackChapter,
@@ -640,6 +641,19 @@ export async function startStudioServer(
     throw error;
   }
   registerStorageDatabaseShutdown(storageDatabase);
+
+  // Initialize persistent FTS5 search index (separate database file alongside the main one)
+  const searchDbPath = join(sessionStoreDir, "novelfork-search.db");
+  const persistentSearchIndex = new SearchIndex(searchDbPath);
+  setGlobalSearchIndex(persistentSearchIndex);
+  logStartupEvent({
+    level: "info",
+    component: "search.fts5",
+    msg: "FTS5 search index ready",
+    ok: true,
+    extra: { databasePath: searchDbPath },
+  });
+
   logStartupEvent({
     level: "info",
     component: "storage.sqlite",
