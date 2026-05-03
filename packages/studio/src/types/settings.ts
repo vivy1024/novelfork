@@ -106,6 +106,24 @@ export interface ModelDefaultValidation {
   invalidModelIds: string[];
 }
 
+export interface ModelAggregationMember {
+  providerId: string;
+  modelId: string;
+  /** 优先级，数字越小越优先 */
+  priority: number;
+}
+
+export interface ModelAggregation {
+  /** 聚合 ID */
+  id: string;
+  /** 显示名称（如 "DeepSeek V4 Flash"） */
+  displayName: string;
+  /** 聚合的供应商模型列表 */
+  members: ModelAggregationMember[];
+  /** 路由策略 */
+  routingStrategy: "priority" | "round-robin" | "random";
+}
+
 export interface ModelDefaultSettings {
   defaultSessionModel: string;
   summaryModel: string;
@@ -119,6 +137,8 @@ export interface ModelDefaultSettings {
   /** Codex 专属推理强度 */
   codexReasoningEffort: SessionReasoningEffort;
   validation: ModelDefaultValidation;
+  /** 模型聚合配置 */
+  aggregations: ModelAggregation[];
 }
 
 export interface OnboardingTaskSettings {
@@ -140,6 +160,17 @@ export interface OnboardingSettingsPatch {
   tasks?: Partial<OnboardingTaskSettings>;
 }
 
+export interface WorkspaceSettings {
+  /** 最大活跃工作区数 */
+  maxActiveWorktrees: number;
+  /** 工作区大小警告阈值（MB） */
+  sizeWarningMb: number;
+  /** 休眠时自动保存 */
+  autoSaveOnHibernate: boolean;
+  /** 不活跃自动休眠时间（分钟，0=禁用） */
+  hibernateAfterMinutes: number;
+}
+
 export interface ProxySettings {
   /** 每个供应商的代理配置，key 是 providerId */
   providers: Record<string, string>;
@@ -158,6 +189,7 @@ export interface UserConfig {
   shortcuts: Record<string, string>;
   recentWorkspaces: string[];
   proxy: ProxySettings;
+  workspace: WorkspaceSettings;
 }
 
 export interface UserConfigPatch {
@@ -169,6 +201,7 @@ export interface UserConfigPatch {
   shortcuts?: Record<string, string>;
   recentWorkspaces?: string[];
   proxy?: Partial<ProxySettings>;
+  workspace?: Partial<WorkspaceSettings>;
 }
 
 export const DEFAULT_USER_CONFIG: UserConfig = {
@@ -249,6 +282,7 @@ export const DEFAULT_USER_CONFIG: UserConfig = {
       subagentModelPool: {},
       invalidModelIds: [],
     },
+    aggregations: [],
   },
   onboarding: {
     dismissedFirstRun: false,
@@ -266,5 +300,11 @@ export const DEFAULT_USER_CONFIG: UserConfig = {
     providers: {},
     webFetch: "",
     platforms: {},
+  },
+  workspace: {
+    maxActiveWorktrees: 5,
+    sizeWarningMb: 500,
+    autoSaveOnHibernate: true,
+    hibernateAfterMinutes: 30,
   },
 };

@@ -76,6 +76,7 @@ import {
   createAgentConfigRouter,
   createToolsRouter,
   createWorktreeRouter,
+  createWorkspaceManagementRouter,
   // createPoisonDetectorRouter, // TODO: 需要重构为 Hono，暂时禁用
   createRhythmRouter,
   // createHooksCountdownRouter, // TODO: 需要重构为 Hono，暂时禁用
@@ -97,6 +98,7 @@ import {
   createWritingModesRouter,
   createExecRouter,
   createProxyRouter,
+  createAggregationsRouter,
   createTerminalsRouter,
   setupAdminWebSocket,
   setupMonitorWebSocket,
@@ -324,6 +326,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
 
     // AI Providers management
     app.route("/api/providers", createProvidersRouter({ store: providerStore }));
+    app.route("/api/models/aggregations", createAggregationsRouter());
     app.route("/api/runtime-capabilities", createRuntimeCapabilitiesRouter());
 
     app.route("/api/platform-integrations", createPlatformIntegrationsRouter({ store: providerStore }));
@@ -341,6 +344,9 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
 
     // Worktree management
     app.route("/api/worktree", createWorktreeRouter(root));
+
+    // Workspace management (settings + worktree lifecycle)
+    app.route("/api/workspace", createWorkspaceManagementRouter(root));
 
     // Poison detector - TODO: 需要重构为 Hono，暂时禁用
     // app.route("", createPoisonDetectorRouter(ctx));

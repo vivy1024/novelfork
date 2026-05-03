@@ -1,6 +1,7 @@
 import type { SessionToolDefinition } from "../../shared/agent-native-workspace.js";
 import type { NarratorSessionChatMessage, SessionConfig } from "../../shared/session-types.js";
 import type { AgentTurnItem } from "./agent-turn-runtime.js";
+import { getAggregation, isAggregationId, resolveAggregation } from "./model-aggregation-service.js";
 import {
   createProviderAdapterRegistry,
   type ProviderAdapterRegistry,
@@ -98,8 +99,33 @@ export class LlmRuntimeService {
   }
 
   async generate(input: LlmRuntimeGenerateInput): Promise<LlmRuntimeGenerateResult> {
-    const providerId = input.sessionConfig.providerId?.trim();
-    const modelId = input.sessionConfig.modelId?.trim();
+    let providerId = input.sessionConfig.providerId?.trim();
+    let modelId = input.sessionConfig.modelId?.trim();
+
+    // 聚合模型解析：如果 modelId 匹配聚合 ID，解析为实际的 provider/model
+    if (modelId && isAggregationId(modelId)) {
+      const aggregation = await getAggregation(modelId);
+      if (!aggregation) {
+        return {
+          success: false,
+          code: "model-unavailable",
+          error: `Aggregation not found: ${modelId}`,
+          metadata: { providerId: providerId ?? "", modelId: modelId ?? "" },
+        };
+      }
+      const resolved = await resolveAggregation(aggregation, { store: this.store });
+      if (!resolved) {
+        return {
+          success: false,
+          code: "model-unavailable",
+          error: `No available member in aggregation: ${aggregation.displayName}`,
+          metadata: { providerId: providerId ?? "", modelId: modelId ?? "" },
+        };
+      }
+      providerId = resolved.providerId;
+      modelId = resolved.modelId;
+    }
+
     if (!providerId || !modelId) {
       return {
         success: false,

@@ -2,6 +2,7 @@ import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { existsSync } from "node:fs";
 import type {
+  ModelAggregation,
   ModelDefaultSettings,
   OnboardingSettings,
   ProxySettings,
@@ -11,6 +12,7 @@ import type {
   RuntimeRecoverySettings,
   UserConfig,
   UserConfigPatch,
+  WorkspaceSettings,
 } from "../../types/settings.js";
 import { DEFAULT_USER_CONFIG } from "../../types/settings.js";
 import { isSessionPermissionMode, normalizeSessionPermissionMode } from "../../shared/session-types.js";
@@ -164,6 +166,17 @@ function modelReferenceStatus(modelId: string, validModelIds: ReadonlySet<string
   return validModelIds.has(modelId) ? "valid" as const : "invalid" as const;
 }
 
+function sanitizeAggregations(aggregations: unknown): ModelAggregation[] {
+  if (!Array.isArray(aggregations)) return [];
+  return aggregations.filter((item): item is ModelAggregation =>
+    item && typeof item === "object"
+    && typeof item.id === "string" && item.id.trim().length > 0
+    && typeof item.displayName === "string"
+    && Array.isArray(item.members)
+    && (item.routingStrategy === "priority" || item.routingStrategy === "round-robin" || item.routingStrategy === "random"),
+  );
+}
+
 async function sanitizeModelDefaults(modelDefaults?: Partial<ModelDefaultSettings> | null): Promise<ModelDefaultSettings> {
   const defaultModelDefaults = DEFAULT_USER_CONFIG.modelDefaults;
   const validModelIds = await getRuntimeModelIds();
@@ -196,6 +209,7 @@ async function sanitizeModelDefaults(modelDefaults?: Partial<ModelDefaultSetting
         ? modelDefaults.codexReasoningEffort
         : defaultModelDefaults.codexReasoningEffort,
     validation,
+    aggregations: sanitizeAggregations(modelDefaults?.aggregations ?? defaultModelDefaults.aggregations),
   };
 }
 
@@ -235,6 +249,16 @@ function sanitizeProxy(proxy?: Partial<ProxySettings> | null): ProxySettings {
   };
 }
 
+function sanitizeWorkspace(workspace?: Partial<WorkspaceSettings> | null): WorkspaceSettings {
+  const defaults = DEFAULT_USER_CONFIG.workspace;
+  return {
+    maxActiveWorktrees: clampNumber(workspace?.maxActiveWorktrees, defaults.maxActiveWorktrees, 1, 20),
+    sizeWarningMb: clampNumber(workspace?.sizeWarningMb, defaults.sizeWarningMb, 50, 10000),
+    autoSaveOnHibernate: typeof workspace?.autoSaveOnHibernate === "boolean" ? workspace.autoSaveOnHibernate : defaults.autoSaveOnHibernate,
+    hibernateAfterMinutes: clampNumber(workspace?.hibernateAfterMinutes, defaults.hibernateAfterMinutes, 0, 1440),
+  };
+}
+
 /**
  * 加载用户配置
  */
@@ -265,6 +289,7 @@ export async function loadUserConfig(): Promise<UserConfig> {
       modelDefaults: await sanitizeModelDefaults(config.modelDefaults),
       onboarding: sanitizeOnboarding(config.onboarding),
       proxy: sanitizeProxy(config.proxy),
+      workspace: sanitizeWorkspace(config.workspace),
     };
   } catch (error) {
     console.error("Failed to load user config, using default:", error);
@@ -342,6 +367,10 @@ export async function updateUserConfig(partial: UserConfigPatch): Promise<UserCo
       ...(partial.proxy ?? {}),
       providers: { ...current.proxy.providers, ...(partial.proxy?.providers ?? {}) },
       platforms: { ...current.proxy.platforms, ...(partial.proxy?.platforms ?? {}) },
+    }),
+    workspace: sanitizeWorkspace({
+      ...current.workspace,
+      ...(partial.workspace ?? {}),
     }),
   };
   await saveUserConfig(updated);

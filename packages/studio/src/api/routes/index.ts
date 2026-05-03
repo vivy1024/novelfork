@@ -18,6 +18,7 @@ export { createGitRouter } from "./git.js";
 export { createAgentConfigRouter } from "./agent-config.js";
 export { createToolsRouter } from "./tools.js";
 export { createWorktreeRouter } from "./worktree.js";
+export { createWorkspaceManagementRouter } from "./workspace-management.js";
 // TODO: 需要重构为 Hono，暂时禁用
 // export { createPoisonDetectorRouter } from "./poison-detector.js";
 export { createRhythmRouter } from "./rhythm.js";
@@ -43,4 +44,5 @@ export { createWritingModesRouter } from "./writing-modes.js";
 export { createExecRouter } from "./exec.js";
 export { createTerminalsRouter } from "./terminals.js";
 export { createProxyRouter } from "./proxy.js";
+export { createAggregationsRouter } from "./aggregations.js";
 export type { RouterContext } from "./context.js";
