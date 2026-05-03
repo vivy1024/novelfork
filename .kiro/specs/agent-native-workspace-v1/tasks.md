@@ -181,7 +181,7 @@
   - 未运行的验证必须在交付说明中明确标注，不得声明通过。
   - 覆盖需求：全部。
 
-- [ ] 23. 收尾与回归检查
+- [x] 23. 收尾与回归检查
   - 检查 `git status --short`、相关 diff、主动文档、CHANGELOG、测试输出。
   - 确认没有引入旧前端 shim/noop adapter、mock/fake success、直接覆盖正式正文路径。
   - 确认现有章节/资源编辑仍可用，ChatWindow floating 模式若保留则仍可渲染。
