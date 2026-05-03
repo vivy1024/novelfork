@@ -88,6 +88,7 @@ import {
   createJingweiRouter,
   createFilterRouter,
   createRoutinesRouter,
+  createNarrativeLineRouter,
   sessionRouter,
   createSearchRouter,
   createMonitorRouter,
@@ -405,6 +406,8 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     app.route("", createWritingToolsRouter(ctx));
 
     app.route("", createWritingModesRouter(ctx));
+
+    app.route("", createNarrativeLineRouter({ state: ctx.state }));
 
     // Session management
     // Search system

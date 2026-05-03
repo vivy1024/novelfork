@@ -34,6 +34,7 @@ export { createJingweiRouter } from "./jingwei.js";
 export { createFilterRouter } from "./filter.js";
 export { createRoutinesRouter } from "./routines.js";
 export { createChapterCandidatesRouter } from "./chapter-candidates.js";
+export { createNarrativeLineRouter } from "./narrative-line.js";
 export { createSearchRouter } from "./search.js";
 export { default as sessionRouter } from "./session.js";
 export { createMonitorRouter, setupMonitorWebSocket } from "./monitor.js";
