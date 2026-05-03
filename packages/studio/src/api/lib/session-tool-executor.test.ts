@@ -174,6 +174,34 @@ describe("session tool executor", () => {
     expect(typeof result.durationMs).toBe("number");
   });
 
+  it("wires narrative.read_line to the narrative line service", async () => {
+    const narrativeService = {
+      getSnapshot: vi.fn(async () => ({
+        bookId: "book-1",
+        nodes: [],
+        edges: [],
+        warnings: [],
+        generatedAt: "2026-05-03T00:00:00.000Z",
+      })),
+    };
+    const executor = createSessionToolExecutor({ narrativeService });
+
+    const result = await executor.execute(input({
+      toolName: "narrative.read_line",
+      permissionMode: "read",
+      input: { bookId: "book-1", includeWarnings: true },
+    }));
+
+    expect(narrativeService.getSnapshot).toHaveBeenCalledWith({ bookId: "book-1", includeWarnings: true });
+    expect(result).toMatchObject({
+      ok: true,
+      renderer: "narrative.line",
+      summary: "已读取叙事线快照。",
+      narrative: { snapshot: { bookId: "book-1" } },
+      artifact: { kind: "narrative-line", renderer: "narrative.line", openInCanvas: true },
+    });
+  });
+
   it("wires default cockpit handlers to the shared cockpit service", async () => {
     const cockpitService = createCockpitService({
       state: {

@@ -8,6 +8,7 @@ import {
 } from "../../shared/agent-native-workspace.js";
 import type { CandidateToolService } from "./candidate-tool-service.js";
 import type { GuidedGenerationToolService } from "./guided-generation-tool-service.js";
+import type { NarrativeLineService } from "./narrative-line-service.js";
 import type { PGIToolService } from "./pgi-tool-service.js";
 import type { QuestionnaireToolService } from "./questionnaire-tool-service.js";
 import { getSessionToolDefinition } from "./session-tool-registry.js";
@@ -27,6 +28,7 @@ export type SessionToolExecutorOptions = {
   readonly pgiService?: PGIToolService;
   readonly guidedService?: GuidedGenerationToolService;
   readonly candidateService?: CandidateToolService;
+  readonly narrativeService?: Pick<NarrativeLineService, "getSnapshot">;
   readonly now?: () => number;
   readonly createConfirmationId?: (input: SessionToolExecutionInput, definition: SessionToolDefinition) => string;
 };
@@ -219,6 +221,28 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
       return async ({ input, confirmationDecision }) => (await resolveGuidedService(options)).exit(input, confirmationDecision);
     case "candidate.create_chapter":
       return async ({ input, sessionConfig }) => (await resolveCandidateService(options)).createChapter({ ...input, ...(sessionConfig ? { sessionConfig } : {}) });
+    case "narrative.read_line":
+      return async ({ input, definition }) => {
+        const snapshot = await resolveNarrativeService(options).getSnapshot({
+          bookId: String(input.bookId),
+          includeWarnings: input.includeWarnings !== false,
+        });
+        return {
+          ok: true,
+          renderer: definition.renderer,
+          summary: "已读取叙事线快照。",
+          data: snapshot,
+          narrative: { snapshot },
+          artifact: {
+            id: `narrative:${input.bookId}:line`,
+            kind: "narrative-line",
+            title: "叙事线快照",
+            renderer: definition.renderer,
+            openInCanvas: true,
+            resourceRef: { kind: "narrative-line", id: `narrative:${input.bookId}:line`, bookId: String(input.bookId), title: "叙事线快照" },
+          },
+        };
+      };
     default:
       return undefined;
   }
@@ -245,6 +269,11 @@ async function resolveGuidedService(options: SessionToolExecutorOptions): Promis
 async function resolveCandidateService(options: SessionToolExecutorOptions): Promise<CandidateToolService> {
   if (options.candidateService) return options.candidateService;
   throw new Error("candidate.create_chapter requires a configured CandidateToolService.");
+}
+
+function resolveNarrativeService(options: SessionToolExecutorOptions): Pick<NarrativeLineService, "getSnapshot"> {
+  if (options.narrativeService) return options.narrativeService;
+  throw new Error("narrative.read_line requires a configured NarrativeLineService.");
 }
 
 function withDuration(

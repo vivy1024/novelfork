@@ -142,7 +142,7 @@
   - 验证：集成测试覆盖 current canvas context 被传入、dirty 状态阻断写入。
   - 覆盖需求：R7、R9。
 
-- [ ] 18. 实现 Narrative Line 只读快照服务与工具
+- [x] 18. 实现 Narrative Line 只读快照服务与工具
   - 新增 narrative line 服务，从章节、章节摘要、经纬事件、冲突、伏笔和人物弧光生成 `NarrativeLineSnapshot`。
   - 实现 `narrative.read_line` tool 与 `GET /api/books/:bookId/narrative-line`。
   - 快照包含 nodes、edges、warnings；warnings 至少覆盖断线伏笔、长期未推进冲突、无 payoff、章节推进缺口、主线偏离风险中的可计算部分。
