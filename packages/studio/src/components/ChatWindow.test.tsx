@@ -899,6 +899,41 @@ describe("ChatWindow", () => {
     expect(fetchJsonMock).toHaveBeenCalledWith("/api/sessions/session-abc123456/chat/state");
   });
 
+  it("sends canvas context with outgoing docked narrator messages", async () => {
+    render(
+      <NarratorPanel
+        windowId="window-1"
+        theme="light"
+        canvasContext={{
+          activeTabId: "chapter:book-1:2",
+          activeResource: { kind: "chapter", id: "chapter:book-1:2", bookId: "book-1", title: "第二章 入城" },
+          dirty: true,
+          selection: { text: "灵钥裂纹", start: 12, end: 16 },
+          openTabs: [
+            { id: "chapter:book-1:2", nodeId: "chapter:book-1:2", kind: "chapter-editor", title: "第二章 入城", dirty: true, source: "user" },
+          ],
+        }}
+      />,
+    );
+
+    fireEvent.change(screen.getByPlaceholderText("输入消息..."), {
+      target: { value: "围绕当前选区续写" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const payload = JSON.parse(MockWebSocket.instances[0]?.sentMessages[0] ?? "{}");
+    expect(payload.canvasContext).toMatchObject({
+      activeTabId: "chapter:book-1:2",
+      activeResource: { kind: "chapter", id: "chapter:book-1:2", bookId: "book-1", title: "第二章 入城" },
+      dirty: true,
+      selection: { text: "灵钥裂纹", start: 12, end: 16 },
+      openTabs: [expect.objectContaining({ id: "chapter:book-1:2", dirty: true })],
+    });
+    expect(JSON.stringify(payload.canvasContext)).not.toContain("正文");
+  });
+
   it("creates a formal narrator session when opening a follow-up session", async () => {
     fetchJsonMock.mockImplementation((async (...args: [string, ...unknown[]]) => {
       const [url, options] = args as [string, { method?: string } | undefined];

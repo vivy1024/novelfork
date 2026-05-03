@@ -1,4 +1,4 @@
-import type { AgentNativeMessageMetadata, AgentNativeToolMetadata, SessionToolExecutionResult } from "./agent-native-workspace.js";
+import type { AgentNativeMessageMetadata, AgentNativeToolMetadata, CanvasContext, SessionToolExecutionResult } from "./agent-native-workspace.js";
 import type { ToolAccessReasonKey } from "./tool-access-reasons.js";
 
 export const SESSION_PERMISSION_MODES = ["ask", "edit", "allow", "read", "plan"] as const;
@@ -293,6 +293,7 @@ export interface NarratorSessionChatMessageClientEnvelope {
   content: string;
   sessionMode?: NarratorSessionMode;
   ack?: number;
+  canvasContext?: CanvasContext;
 }
 
 export interface NarratorSessionChatAckClientEnvelope {

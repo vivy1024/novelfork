@@ -13,6 +13,7 @@ import {
   Wrench,
 } from "lucide-react";
 
+import type { CanvasContext } from "../shared/agent-native-workspace";
 import type { StudioRun } from "../shared/contracts";
 import type { Theme } from "../hooks/use-theme";
 import { useColors } from "../hooks/use-colors";
@@ -61,6 +62,7 @@ import {
 interface ChatWindowProps {
   windowId: string;
   theme: Theme;
+  canvasContext?: CanvasContext;
 }
 
 type ChatHostMode = "floating" | "docked";
@@ -133,15 +135,15 @@ const REASONING_OPTIONS: Array<{ value: SessionReasoningEffort; label: string }>
   { value: "high", label: "高" },
 ];
 
-export function ChatWindow({ windowId, theme }: ChatWindowProps) {
-  return <ChatWindowHost windowId={windowId} theme={theme} hostMode="floating" />;
+export function ChatWindow({ windowId, theme, canvasContext }: ChatWindowProps) {
+  return <ChatWindowHost windowId={windowId} theme={theme} hostMode="floating" canvasContext={canvasContext} />;
 }
 
-export function NarratorPanel({ windowId, theme }: ChatWindowProps) {
-  return <ChatWindowHost windowId={windowId} theme={theme} hostMode="docked" />;
+export function NarratorPanel({ windowId, theme, canvasContext }: ChatWindowProps) {
+  return <ChatWindowHost windowId={windowId} theme={theme} hostMode="docked" canvasContext={canvasContext} />;
 }
 
-function ChatWindowHost({ windowId, theme, hostMode }: ChatWindowHostProps) {
+function ChatWindowHost({ windowId, theme, hostMode, canvasContext }: ChatWindowHostProps) {
   const c = useColors(theme);
   const chatWindow = useWindowStore((state) => state.windows.find((w) => w.id === windowId));
   const isActive = useWindowStore((state) => state.activeWindowId === windowId);
@@ -761,6 +763,7 @@ function ChatWindowHost({ windowId, theme, hostMode }: ChatWindowHostProps) {
         sessionId: chatWindow.sessionId,
         sessionMode: sessionState.sessionMode,
         ack: lastSessionSeqRef.current,
+        ...(canvasContext ? { canvasContext } : {}),
       }),
     );
     setInput("");

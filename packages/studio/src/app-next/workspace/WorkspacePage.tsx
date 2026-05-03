@@ -29,7 +29,7 @@ import { CharacterArcDashboard } from "../../components/writing-tools/CharacterA
 import { ToneDriftAlert } from "../../components/writing-tools/ToneDriftAlert";
 import { InlineError, RunStatus } from "../components/feedback";
 import { InkEditor, getMarkdown } from "../../components/InkEditor";
-import type { CanvasArtifact, OpenResourceTab, WorkspaceResourceViewKind } from "../../shared/agent-native-workspace";
+import type { CanvasArtifact, CanvasContext, OpenResourceTab, WorkspaceResourceViewKind } from "../../shared/agent-native-workspace";
 import type { NarratorSessionRecord } from "../../shared/session-types";
 import { Button } from "../../components/ui/button";
 import { useWindowStore } from "../../stores/windowStore";
@@ -360,6 +360,48 @@ function createOpenResourceTabFromArtifact(artifact: CanvasArtifact): OpenResour
   };
 }
 
+function createCanvasContext(activeTab: OpenResourceTab | null, activeNode: StudioResourceNode | undefined, openTabs: readonly OpenResourceTab[]): CanvasContext {
+  const activeResource = activeTab?.artifact?.resourceRef ?? (activeNode ? createCanvasResourceRef(activeNode) : undefined);
+  const selection = currentCanvasSelection();
+  return {
+    activeTabId: activeTab?.id ?? activeNode?.id,
+    activeResource,
+    dirty: activeTab?.dirty ?? false,
+    ...(selection ? { selection } : {}),
+    openTabs: openTabs.map((tab) => ({
+      id: tab.id,
+      nodeId: tab.nodeId,
+      kind: tab.kind,
+      title: tab.title,
+      dirty: tab.dirty,
+      source: tab.source,
+      ...(tab.payloadRef ? { payloadRef: tab.payloadRef } : {}),
+    })),
+  };
+}
+
+function createCanvasResourceRef(node: StudioResourceNode): NonNullable<CanvasContext["activeResource"]> {
+  const bookId = typeof node.metadata?.bookId === "string" ? node.metadata.bookId : undefined;
+  const path = typeof node.metadata?.path === "string"
+    ? node.metadata.path
+    : typeof node.metadata?.fileName === "string"
+      ? node.metadata.fileName
+      : undefined;
+  return {
+    kind: node.kind,
+    id: node.id,
+    ...(bookId ? { bookId } : {}),
+    title: node.title,
+    ...(path ? { path } : {}),
+  };
+}
+
+function currentCanvasSelection(): CanvasContext["selection"] | undefined {
+  if (typeof window === "undefined") return undefined;
+  const text = window.getSelection?.()?.toString().trim();
+  return text ? { text } : undefined;
+}
+
 function resolveArtifactViewKind(artifact: CanvasArtifact): WorkspaceResourceViewKind {
   switch (artifact.kind) {
     case "guided-plan":
@@ -564,6 +606,10 @@ export function WorkspacePage({
   const [pendingCanvasNavigation, setPendingCanvasNavigation] = useState<PendingCanvasNavigation | null>(null);
   const activeCanvasTab = activeCanvasTabId ? openTabs.find((tab) => tab.id === activeCanvasTabId) ?? null : null;
   const activeCanvasNode = activeCanvasTab ? findNode(tree, activeCanvasTab.nodeId) : undefined;
+  const activeNarratorCanvasContext = useMemo(
+    () => createCanvasContext(activeCanvasTab, activeCanvasNode ?? selectedNode, openTabs),
+    [activeCanvasNode, activeCanvasTab, openTabs, selectedNode],
+  );
   const narratorWindowId = useDefaultNarratorWindow(activeBookId, bookDetail?.book?.title);
 
   const markCanvasTabDirty = useCallback((tabId: string, dirty = true) => {
@@ -862,7 +908,7 @@ export function WorkspacePage({
           />
         )}
         editor={showPublishPanel && activeBookId ? <PublishPanel bookId={activeBookId} onReport={handlePublishReport} /> : <WorkspaceCanvas activeTab={activeCanvasTab} assistantApi={assistantApi} candidateApi={candidateApi} chapterApi={chapterApi} modelGate={effectiveModelGate} node={activeCanvasNode ?? selectedNode} openTabs={openTabs} pendingNavigation={pendingCanvasNavigation} onCloseTab={(tabId) => openCanvasRequest({ type: "close", tabId })} onDirtyChange={markCanvasTabDirty} onResolvePendingNavigation={resolvePendingCanvasNavigation} onResourceMutation={refreshWorkspaceResources} onCandidateResult={(message) => setWorkspaceNotice(message)} onSelectTab={(tabId) => openCanvasRequest({ type: "tab", tabId })} />}
-        assistant={<WorkspaceNarratorHost windowId={narratorWindowId} />}
+        assistant={<WorkspaceNarratorHost windowId={narratorWindowId} canvasContext={activeNarratorCanvasContext} />}
       />
     </SectionLayout>
   );
@@ -949,7 +995,7 @@ function useDefaultNarratorWindow(activeBookId: string | null, activeBookTitle?:
   return existingWindow?.id ?? placeholderWindowId;
 }
 
-function WorkspaceNarratorHost({ windowId }: { readonly windowId: string | null }) {
+function WorkspaceNarratorHost({ windowId, canvasContext }: { readonly windowId: string | null; readonly canvasContext?: CanvasContext }) {
   if (!windowId) {
     return (
       <div className="flex h-full min-h-[28rem] items-center justify-center p-4 text-center text-sm text-muted-foreground">
@@ -958,7 +1004,7 @@ function WorkspaceNarratorHost({ windowId }: { readonly windowId: string | null 
     );
   }
 
-  return <NarratorPanel windowId={windowId} theme="light" />;
+  return <NarratorPanel windowId={windowId} theme="light" canvasContext={canvasContext} />;
 }
 
 function ImportChaptersPanel({

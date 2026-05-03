@@ -9,10 +9,13 @@ import type {
 } from "../start-http-server.js";
 
 import type {
+  CanvasContext,
+  OpenResourceTab,
   SessionToolDefinition,
   SessionToolExecutionResult,
   ToolConfirmationDecision,
   ToolConfirmationRequest,
+  WorkspaceResourceRef,
 } from "../../shared/agent-native-workspace.js";
 import type {
   NarratorSessionChatClientMessage,
@@ -468,6 +471,89 @@ function parseClientMessage(text: string): NarratorSessionChatClientMessage {
   return { content: text };
 }
 
+function sanitizeCanvasContext(value: unknown): CanvasContext | undefined {
+  if (!isRecord(value)) return undefined;
+  const activeTabId = sanitizeOptionalString(value.activeTabId);
+  const activeResource = sanitizeWorkspaceResourceRef(value.activeResource);
+  const selection = sanitizeCanvasSelection(value.selection);
+  const dirty = typeof value.dirty === "boolean" ? value.dirty : undefined;
+  const openTabs = Array.isArray(value.openTabs)
+    ? value.openTabs.map(sanitizeOpenResourceTab).filter((tab): tab is OpenResourceTab => Boolean(tab))
+    : undefined;
+
+  if (!activeTabId && !activeResource && !selection && dirty === undefined && !openTabs?.length) return undefined;
+  return {
+    ...(activeTabId ? { activeTabId } : {}),
+    ...(activeResource ? { activeResource } : {}),
+    ...(selection ? { selection } : {}),
+    ...(dirty !== undefined ? { dirty } : {}),
+    ...(openTabs?.length ? { openTabs } : {}),
+  };
+}
+
+function sanitizeWorkspaceResourceRef(value: unknown): WorkspaceResourceRef | undefined {
+  if (!isRecord(value)) return undefined;
+  const kind = sanitizeOptionalString(value.kind);
+  const id = sanitizeOptionalString(value.id);
+  if (!kind || !id) return undefined;
+  const bookId = sanitizeOptionalString(value.bookId);
+  const title = sanitizeOptionalString(value.title);
+  const path = sanitizeOptionalString(value.path);
+  return {
+    kind,
+    id,
+    ...(bookId ? { bookId } : {}),
+    ...(title ? { title } : {}),
+    ...(path ? { path } : {}),
+  };
+}
+
+function sanitizeCanvasSelection(value: unknown): CanvasContext["selection"] | undefined {
+  if (!isRecord(value)) return undefined;
+  const text = sanitizeOptionalString(value.text);
+  const start = sanitizeOptionalNumber(value.start);
+  const end = sanitizeOptionalNumber(value.end);
+  if (!text && start === undefined && end === undefined) return undefined;
+  return {
+    ...(text ? { text } : {}),
+    ...(start !== undefined ? { start } : {}),
+    ...(end !== undefined ? { end } : {}),
+  };
+}
+
+function sanitizeOpenResourceTab(value: unknown): OpenResourceTab | undefined {
+  if (!isRecord(value)) return undefined;
+  const id = sanitizeOptionalString(value.id);
+  const nodeId = sanitizeOptionalString(value.nodeId);
+  const kind = sanitizeOptionalString(value.kind);
+  const title = sanitizeOptionalString(value.title);
+  if (!id || !nodeId || !kind || !title) return undefined;
+  const dirty = typeof value.dirty === "boolean" ? value.dirty : false;
+  const source = value.source === "agent" ? "agent" : "user";
+  const payloadRef = sanitizeOptionalString(value.payloadRef);
+  return {
+    id,
+    nodeId,
+    kind: kind as OpenResourceTab["kind"],
+    title,
+    dirty,
+    source,
+    ...(payloadRef ? { payloadRef } : {}),
+  };
+}
+
+function sanitizeOptionalString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function sanitizeOptionalNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function createSessionChatError(
   sessionId: string,
   error: string,
@@ -754,7 +840,7 @@ async function buildEnhancedMessagesForSession(
       bookContext = await buildAgentContext({ bookId: projectId });
     } catch { /* context build failure is non-fatal */ }
   }
-  return injectSystemPrompt(state.messages, agentSystemPrompt, bookContext);
+  return injectSystemPrompt(state.messages, agentSystemPrompt, bookContext, latestCanvasContextFromMessages(state.messages));
 }
 
 async function appendModelContinuationAfterToolDecision(
@@ -1113,6 +1199,7 @@ export async function handleSessionChatTransportMessage(
   }
 
   const payload = parseClientMessage(text);
+  const canvasContext = sanitizeCanvasContext("canvasContext" in payload ? payload.canvasContext : undefined);
   const transportState = loaded.state.transports.get(transport);
 
   if ("ack" in payload && sanitizeSeq(payload.ack) > 0 && transportState) {
@@ -1144,6 +1231,7 @@ export async function handleSessionChatTransportMessage(
     role: "user",
     content,
     timestamp,
+    ...(canvasContext ? { metadata: { canvasContext } } : {}),
   });
   broadcastMessageEnvelope(sessionId, loaded.state, userMessage);
 
@@ -1165,7 +1253,7 @@ export async function handleSessionChatTransportMessage(
     }
 
     for (;;) {
-      const enhancedMessages = injectSystemPrompt(loaded.state.messages, agentSystemPrompt, bookContext);
+      const enhancedMessages = injectSystemPrompt(loaded.state.messages, agentSystemPrompt, bookContext, canvasContext);
       const reply = await generateSessionChatReply({
         sessionConfig: loaded.session.sessionConfig,
         messages: enhancedMessages,
@@ -1294,6 +1382,7 @@ export async function handleSessionChatTransportMessage(
           input: toolUse.input,
           permissionMode: loaded.session.sessionConfig.permissionMode,
           sessionConfig: loaded.session.sessionConfig,
+          ...(canvasContext ? { canvasContext } : {}),
         });
         executedToolSteps += 1;
         const toolResultCall = buildToolResultCall(toolUse, toolResult);
@@ -1360,17 +1449,49 @@ function isBunWebSocketRegistrar(server: StartedHttpServer): server is BunWebSoc
   return typeof server === "object" && server !== null && "runtime" in server && server.runtime === "bun";
 }
 
+function latestCanvasContextFromMessages(messages: readonly NarratorSessionChatMessage[]): CanvasContext | undefined {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const canvasContext = messages[index]?.metadata?.canvasContext;
+    if (canvasContext) return canvasContext;
+  }
+  return undefined;
+}
+
+function formatCanvasContextForPrompt(canvasContext: CanvasContext): string {
+  const lines = ["## 当前画布上下文"];
+  if (canvasContext.activeTabId) lines.push(`- activeTabId: ${canvasContext.activeTabId}`);
+  if (canvasContext.activeResource) {
+    const resourceParts = [
+      `kind=${canvasContext.activeResource.kind}`,
+      `id=${canvasContext.activeResource.id}`,
+      canvasContext.activeResource.bookId ? `bookId=${canvasContext.activeResource.bookId}` : null,
+      canvasContext.activeResource.title ? `title=${canvasContext.activeResource.title}` : null,
+      canvasContext.activeResource.path ? `path=${canvasContext.activeResource.path}` : null,
+    ].filter((part): part is string => Boolean(part));
+    lines.push(`- activeResource: ${resourceParts.join(", ")}`);
+  }
+  lines.push(`- dirty: ${canvasContext.dirty === true ? "true" : "false"}`);
+  if (canvasContext.selection?.text) lines.push(`- selection: ${canvasContext.selection.text}`);
+  if (canvasContext.openTabs?.length) {
+    lines.push(`- openTabs: ${canvasContext.openTabs.map((tab) => `${tab.title}(${tab.kind}${tab.dirty ? ", dirty" : ""})`).join("；")}`);
+  }
+  lines.push("- 注意：dirty=true 表示作者有未保存编辑，任何写入类工具都必须先要求作者处理该资源；当前上下文不会包含未保存正文全文。");
+  return lines.join("\n");
+}
+
 /**
- * 在消息列表开头注入 Agent 专属 system prompt 和作品上下文。
+ * 在消息列表开头注入 Agent 专属 system prompt、作品上下文与当前画布上下文。
  * 如果第一个消息已是 system 类型，替换内容；否则在开头插入。
  */
 function injectSystemPrompt(
   messages: NarratorSessionChatMessage[],
   systemPrompt: string,
   bookContext: string,
+  canvasContext?: CanvasContext,
 ): NarratorSessionChatMessage[] {
   const contextBlock = bookContext ? `\n\n${bookContext}` : "";
-  const fullPrompt = `${systemPrompt}${contextBlock}`;
+  const canvasBlock = canvasContext ? `\n\n${formatCanvasContextForPrompt(canvasContext)}` : "";
+  const fullPrompt = `${systemPrompt}${contextBlock}${canvasBlock}`;
 
   const result = [...messages];
   const firstMessage = result[0];

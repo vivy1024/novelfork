@@ -97,6 +97,35 @@ describe("session tool executor", () => {
     expect(handler).not.toHaveBeenCalled();
   });
 
+  it("blocks write-risk tools when the active canvas resource is dirty", async () => {
+    const handler = vi.fn();
+    const executor = createSessionToolExecutor({ handlers: { "candidate.create_chapter": handler } });
+
+    const result = await executor.execute(input({
+      toolName: "candidate.create_chapter",
+      permissionMode: "edit",
+      input: { bookId: "book-1", chapterIntent: "写下一章" },
+      canvasContext: {
+        activeTabId: "chapter:book-1:2",
+        activeResource: { kind: "chapter", id: "chapter:book-1:2", bookId: "book-1", title: "第二章 入城" },
+        dirty: true,
+      },
+    }));
+
+    expect(result).toMatchObject({
+      ok: false,
+      renderer: "candidate.created",
+      error: "dirty-resource-blocked",
+      data: {
+        status: "dirty-resource-blocked",
+        activeTabId: "chapter:book-1:2",
+        activeResource: { id: "chapter:book-1:2", title: "第二章 入城" },
+      },
+    });
+    expect(result.summary).toContain("未保存编辑");
+    expect(handler).not.toHaveBeenCalled();
+  });
+
   it("wraps handler exceptions as failed tool results without fake success", async () => {
     const executor = createSessionToolExecutor({
       handlers: {
