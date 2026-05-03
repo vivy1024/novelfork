@@ -23,6 +23,8 @@ export interface AgentGenerateInput {
   readonly tools: readonly SessionToolDefinition[];
   readonly permissionMode: SessionPermissionMode;
   readonly canvasContext?: CanvasContext;
+  readonly onStreamChunk?: (chunk: string) => void;
+  readonly signal?: AbortSignal;
 }
 
 export type AgentGenerateResult =
@@ -36,6 +38,7 @@ export type AgentToolExecutionInput = Omit<SessionToolExecutionInput, "sessionCo
 
 export type AgentTurnEvent =
   | { readonly type: "assistant_message"; readonly content: string; readonly runtime: NarratorSessionRuntimeMetadata }
+  | { readonly type: "streaming_chunk"; readonly content: string }
   | { readonly type: "tool_call"; readonly id: string; readonly toolName: string; readonly input: Record<string, unknown>; readonly runtime: NarratorSessionRuntimeMetadata }
   | { readonly type: "tool_result"; readonly id: string; readonly toolName: string; readonly result: SessionToolExecutionResult; readonly runtime?: NarratorSessionRuntimeMetadata }
   | { readonly type: "confirmation_required"; readonly id: string; readonly toolName: string; readonly result: SessionToolExecutionResult }
@@ -55,6 +58,8 @@ export interface AgentTurnRuntimeInput {
   readonly executeTool: (input: AgentToolExecutionInput) => Promise<SessionToolExecutionResult>;
   readonly shouldContinueAfterToolResult?: (input: { readonly toolName: string; readonly result: SessionToolExecutionResult }) => boolean;
   readonly maxSteps?: number;
+  readonly onStreamChunk?: (chunk: string) => void;
+  readonly signal?: AbortSignal;
 }
 
 function buildSystemContent(systemPrompt: string, context?: string): string {
@@ -139,13 +144,27 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
   const recentToolCalls: string[] = [];
   const toolResultsBySignature = new Map<string, SessionToolExecutionResult>();
 
+  const emitStreamChunk = input.onStreamChunk
+    ? (chunk: string) => {
+        events.push({ type: "streaming_chunk", content: chunk });
+        input.onStreamChunk!(chunk);
+      }
+    : undefined;
+
   for (;;) {
+    if (input.signal?.aborted) {
+      events.push({ type: "turn_completed" });
+      return events;
+    }
+
     const reply = await input.generate({
       sessionConfig: input.sessionConfig,
       messages,
       tools: input.tools,
       permissionMode: input.permissionMode,
       ...(input.canvasContext ? { canvasContext: input.canvasContext } : {}),
+      ...(emitStreamChunk ? { onStreamChunk: emitStreamChunk } : {}),
+      ...(input.signal ? { signal: input.signal } : {}),
     });
 
     if (!reply.success) {

@@ -37,6 +37,8 @@ export interface LlmRuntimeGenerateInput {
   readonly sessionConfig: SessionConfig;
   readonly messages: readonly LlmRuntimeInputMessage[];
   readonly tools?: readonly SessionToolDefinition[];
+  readonly onStreamChunk?: (chunk: string) => void;
+  readonly signal?: AbortSignal;
 }
 
 export interface LlmRuntimeServiceOptions {
@@ -145,6 +147,8 @@ export class LlmRuntimeService {
       modelId,
       messages: toRuntimeMessages(input.messages),
       ...(requestedTools ? { tools: requestedTools } : {}),
+      ...(input.onStreamChunk ? { onStreamChunk: input.onStreamChunk } : {}),
+      ...(input.signal ? { signal: input.signal } : {}),
     });
 
     const metadata: LlmRuntimeMetadata = {

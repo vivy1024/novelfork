@@ -28,7 +28,7 @@
   - 验证：折叠/展开、套路/设置跳转。
   - 覆盖需求：R2。
 
-- [ ] 4. 迁移叙事线（书籍资源树）到 Sidebar
+- [x] 4. 迁移叙事线（书籍资源树）到 Sidebar
   - 将现有 `ResourceTree` 和书籍选择逻辑迁移到 `StorylineTree` 组件。
   - 每本书可展开显示章节、经纬、大纲、故事文件等子节点。
   - 点击子节点在中间 EditorArea 打开 tab。
@@ -36,7 +36,7 @@
   - 验证：资源树渲染、点击打开 tab、写书方式入口。
   - 覆盖需求：R2。
 
-- [ ] 5. 迁移叙述者（会话列表）到 Sidebar
+- [x] 5. 迁移叙述者（会话列表）到 Sidebar
   - 将现有 `SessionCenter` 逻辑迁移到 `NarratorList` 组件。
   - 显示活跃会话列表，支持点击切换、新建、清理。
   - 从叙事线选择写书方式时自动创建绑定会话。
@@ -45,7 +45,7 @@
   - 验证：会话列表、切换、新建、自动命名、全屏页面。
   - 覆盖需求：R2。
 
-- [ ] 6. 实现中间 EditorArea 多 Tab 系统
+- [x] 6. 实现中间 EditorArea 多 Tab 系统
   - 新增 `EditorArea` 组件，包含 `TabBar` + `TabContent`。
   - 支持多 tab 打开/切换/关闭，dirty 标记，关闭时保存提示。
   - 复用现有编辑器组件：`InkEditor`（章节）、候选稿预览、经纬详情、大纲编辑器。
@@ -53,7 +53,7 @@
   - 验证：多 tab 操作、dirty 拦截、组件复用。
   - 覆盖需求：R3。
 
-- [ ] 7. 重写右侧 ConversationPanel 骨架
+- [x] 7. 重写右侧 ConversationPanel 骨架
   - 新增 `ConversationPanel` 组件，包含 ConversationHeader + ConversationBody + GitStatusBar + InputArea。
   - ConversationBody 支持对话视图和 Git 视图切换。
   - 对话视图复用现有 `ChatWindow` 的消息渲染逻辑。
@@ -166,7 +166,7 @@
   - 验证：token 数据准确、显示/隐藏开关、累计统计。
   - 覆盖需求：R11。
 
-- [ ] 21. 实现翻译思考内容
+- [x] 21. 实现翻译思考内容
   - 检测 AI 回复中的 thinking/reasoning block。
   - 当"翻译思考内容"开关开启且摘要模型已配置时，异步调用摘要模型翻译为用户语言。
   - 前端同时保留原始内容和翻译内容，支持切换查看。
