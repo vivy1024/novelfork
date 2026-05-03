@@ -53,9 +53,9 @@
 
 | 指标 | 值 |
 |------|----|
-| Specs | `agent-native-workspace-v1` 执行中（22/23 已完成） |
+| Specs | `agent-native-workspace-v1` 已完成（23/23 已完成） |
 | TypeScript | typecheck 通过 |
-| 测试 | 155 文件 / 893 测试 |
+| 测试 | 155 文件 / 895 测试 |
 | 编译 | `pnpm --dir packages/studio compile` → `dist/novelfork.exe` / 版本化 release 产物约 117MB |
 | 运行 | `./novelfork.exe` → `http://localhost:4567` |
 

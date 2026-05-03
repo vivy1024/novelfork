@@ -7,7 +7,7 @@
 ## Unreleased
 
 ### 改进
-- 完成 Agent-native Workspace v1 task22 测试矩阵与质量门验收：补齐/核对 session tool loop、confirmation gate、GuidedGenerationState、cockpit snapshot、PGI metadata、renderer registry、workspace 三栏布局、canvas 打开候选稿和最小“写下一章”链路覆盖，并修复 Node/jsdom 下 `windowStore` 持久化 fallback。
+- 完成 Agent-native Workspace v1 task22-task23 测试矩阵与收尾回归验收：补齐/核对 session tool loop、confirmation gate、GuidedGenerationState、cockpit snapshot、PGI metadata、renderer registry、workspace 三栏布局、canvas 打开候选稿和最小“写下一章”链路覆盖，并修复 Node/jsdom 下 `windowStore` 持久化 fallback；localStorage 写入失败时降级为内存存储并输出 warning，避免静默丢失持久化语义。
 - 建立 Agent-native Workspace 共享类型契约，覆盖中间画布资源、工具执行结果、确认门、Guided Generation、PGI、叙事线快照与会话工具结果 metadata，并补齐权限风险映射测试。
 - 新增 Studio-facing Session Tool Registry，注册首批 cockpit、questionnaire、PGI、guided、candidate 与 narrative session tools，支持按会话权限模式过滤与 provider tool schema 序列化，并复用 agent-native workspace 共享风险契约。
 - 新增 Session Tool Executor 骨架，统一处理工具存在性校验、输入 schema 校验、权限风险拦截、pending confirmation、执行计时与错误包装，避免写入类 session tools 在 read/plan 模式或确认前执行。
@@ -29,7 +29,7 @@
 - 更新主动文档与产品口径为 Agent-native session-first 工作台：右侧固定叙述者会话、中间多资源画布、左侧资源栏；历史驾驶舱/经纬/写作面板降级为工具结果卡片和画布组件，并补充 `unsupported-tools` 模型降级说明。
 
 ### 文档
-- 同步 README、Studio README、`CLAUDE.md`、`AGENTS.md` 与测试状态文档的 Studio 全量测试数量口径为 155 files / 893 tests，并更新 active spec 进度为 22/23。
+- 同步 README、Studio README、`CLAUDE.md`、`AGENTS.md` 与测试状态文档的 Studio 全量测试数量口径为 155 files / 895 tests，并更新 active spec 进度为 23/23。
 - 新增 `agent-native-workspace-v1` spec 与任务文档，明确工作台恢复为右侧叙述者会话主入口、中间画布、左侧资源栏，并将引导式生成定义为 Plan Mode 风格的工具链与确认门；同步 `.kiro/specs/README.md` 当前 active spec 索引。
 - 同步 README、Studio README、测试状态与架构总览中的 v0.0.4 测试数量、编译命令和 release 产物口径。
 - 将“代码/配置/流程变更必须同步文档与 CHANGELOG、验收前全仓核对旧口径”的文档纪律写入 `CLAUDE.md` 与 `AGENTS.md`。

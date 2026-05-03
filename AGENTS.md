@@ -32,7 +32,7 @@
 
 - 新功能必须先写 spec（`requirements.md` → `design.md` → `tasks.md`）再实现
 - 归档目录：`.kiro/specs/archive/`
-- 活跃 spec 在 `.kiro/specs/` 根目录（当前为 `agent-native-workspace-v1`，22/23 已完成）
+- 活跃 spec 在 `.kiro/specs/` 根目录（当前为 `agent-native-workspace-v1`，23/23 已完成）
 - 每个 spec 必须通过 typecheck + test 才能标记完成
 
 ## AI 输出原则
@@ -53,6 +53,6 @@
 ## 构建与测试
 
 - `pnpm typecheck` — 类型检查
-- `pnpm --dir packages/studio exec vitest run` — 全量 Studio 测试（155 files / 893 tests）
+- `pnpm --dir packages/studio exec vitest run` — 全量 Studio 测试（155 files / 895 tests）
 - `pnpm --dir packages/studio compile` — 单文件编译（→ dist/novelfork.exe / dist/novelfork-vX.Y.Z-windows-x64.exe，约 117MB）
 - `bun run docs:verify` — 文档验证
