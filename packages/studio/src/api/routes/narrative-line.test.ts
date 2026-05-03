@@ -58,4 +58,49 @@ describe("narrative line route", () => {
       harness.storage.close();
     }
   });
+
+  it("proposes and applies narrative line mutations through explicit approval", async () => {
+    const harness = await createHarness();
+    try {
+      const proposedNode = {
+        id: "route-node-1",
+        bookId: "book-1",
+        type: "event",
+        title: "路由写入节点",
+        summary: "通过 apply route 写入的叙事节点。",
+      };
+      const proposeResponse = await harness.router.request("http://localhost/api/books/book-1/narrative-line/propose", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ summary: "补路由节点", nodes: [proposedNode], reason: "route test" }),
+      });
+      expect(proposeResponse.status).toBe(200);
+      const proposed = await proposeResponse.json() as { preview: { id: string; nodes: unknown[] } };
+      expect(proposed.preview).toMatchObject({ bookId: "book-1", nodes: [expect.objectContaining({ id: "route-node-1" })] });
+
+      const rejectedResponse = await harness.router.request("http://localhost/api/books/book-1/narrative-line/apply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decision: "rejected", preview: proposed.preview, sessionId: "session-route" }),
+      });
+      expect(rejectedResponse.status).toBe(200);
+      expect(await rejectedResponse.json()).toMatchObject({ result: { applied: false } });
+      expect(await (await harness.router.request("http://localhost/api/books/book-1/narrative-line")).json()).toMatchObject({
+        snapshot: { nodes: expect.not.arrayContaining([expect.objectContaining({ id: "route-node-1" })]) },
+      });
+
+      const approvedResponse = await harness.router.request("http://localhost/api/books/book-1/narrative-line/apply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decision: "approved", preview: proposed.preview, sessionId: "session-route", confirmationId: "confirm-route" }),
+      });
+      expect(approvedResponse.status).toBe(200);
+      expect(await approvedResponse.json()).toMatchObject({ result: { applied: true, audit: { sessionId: "session-route", confirmationId: "confirm-route" } } });
+      expect(await (await harness.router.request("http://localhost/api/books/book-1/narrative-line")).json()).toMatchObject({
+        snapshot: { nodes: expect.arrayContaining([expect.objectContaining({ id: "route-node-1", title: "路由写入节点" })]) },
+      });
+    } finally {
+      harness.storage.close();
+    }
+  });
 });

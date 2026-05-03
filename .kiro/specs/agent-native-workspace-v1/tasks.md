@@ -150,7 +150,7 @@
   - 验证：单元测试覆盖空书、有章节摘要、有伏笔/回收、有冲突、多 warning。
   - 覆盖需求：R8。
 
-- [ ] 19. 实现 Narrative Line 变更草案与确认写入
+- [x] 19. 实现 Narrative Line 变更草案与确认写入
   - 实现 `narrative.propose_change`，只返回 `NarrativeLineMutationPreview`，不直接写入正式叙事线。
   - 新增 propose/apply routes：`POST /api/books/:bookId/narrative-line/propose`、`POST /api/books/:bookId/narrative-line/apply`。
   - apply 必须经过确认门，记录批准时间、session ID、目标节点/边与变更摘要。
