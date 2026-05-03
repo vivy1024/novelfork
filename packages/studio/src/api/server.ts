@@ -96,6 +96,8 @@ import {
   createWritingToolsRouter,
   createWritingModesRouter,
   createExecRouter,
+  createProxyRouter,
+  createTerminalsRouter,
   setupAdminWebSocket,
   setupMonitorWebSocket,
 } from "./routes/index.js";
@@ -326,6 +328,9 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
 
     app.route("/api/platform-integrations", createPlatformIntegrationsRouter({ store: providerStore }));
 
+    // Proxy management — per-provider HTTP proxy for accessing overseas APIs
+    app.route("/api/proxy", createProxyRouter());
+
     app.route("/api/git", createGitRouter());
 
     // Agent configuration
@@ -415,6 +420,9 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
 
     // Headless exec — non-interactive agent execution
     app.route("/api/exec", createExecRouter());
+
+    // Terminal management — agent Terminal 工具创建的终端进程管理
+    app.route("/api/terminals", createTerminalsRouter());
 
     // Monitor visualization
     app.route("", createMonitorRouter(ctx));

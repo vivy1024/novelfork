@@ -41,4 +41,6 @@ export { createComplianceRouter } from "./compliance.js";
 export { createWritingToolsRouter } from "./writing-tools.js";
 export { createWritingModesRouter } from "./writing-modes.js";
 export { createExecRouter } from "./exec.js";
+export { createTerminalsRouter } from "./terminals.js";
+export { createProxyRouter } from "./proxy.js";
 export type { RouterContext } from "./context.js";

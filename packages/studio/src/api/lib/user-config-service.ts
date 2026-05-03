@@ -4,6 +4,7 @@ import { existsSync } from "node:fs";
 import type {
   ModelDefaultSettings,
   OnboardingSettings,
+  ProxySettings,
   RuntimeControlSettings,
   ToolAccessSettings,
   RuntimeDebugSettings,
@@ -212,6 +213,28 @@ function sanitizeOnboarding(onboarding?: Partial<OnboardingSettings> | null): On
   };
 }
 
+function sanitizeStringRecord(record: unknown, fallback: Record<string, string> = {}): Record<string, string> {
+  if (!record || typeof record !== "object" || Array.isArray(record)) {
+    return fallback;
+  }
+  const result: Record<string, string> = {};
+  for (const [key, value] of Object.entries(record)) {
+    if (typeof value === "string") {
+      result[key] = value.trim();
+    }
+  }
+  return result;
+}
+
+function sanitizeProxy(proxy?: Partial<ProxySettings> | null): ProxySettings {
+  const defaults = DEFAULT_USER_CONFIG.proxy;
+  return {
+    providers: sanitizeStringRecord(proxy?.providers, defaults.providers),
+    webFetch: typeof proxy?.webFetch === "string" ? proxy.webFetch.trim() : defaults.webFetch,
+    platforms: sanitizeStringRecord(proxy?.platforms, defaults.platforms),
+  };
+}
+
 /**
  * 加载用户配置
  */
@@ -241,6 +264,7 @@ export async function loadUserConfig(): Promise<UserConfig> {
       runtimeControls: sanitizeRuntimeControls(config.runtimeControls),
       modelDefaults: await sanitizeModelDefaults(config.modelDefaults),
       onboarding: sanitizeOnboarding(config.onboarding),
+      proxy: sanitizeProxy(config.proxy),
     };
   } catch (error) {
     console.error("Failed to load user config, using default:", error);
@@ -313,6 +337,12 @@ export async function updateUserConfig(partial: UserConfigPatch): Promise<UserCo
     }),
     shortcuts: { ...current.shortcuts, ...(partial.shortcuts ?? {}) },
     recentWorkspaces: partial.recentWorkspaces ?? current.recentWorkspaces,
+    proxy: sanitizeProxy({
+      ...current.proxy,
+      ...(partial.proxy ?? {}),
+      providers: { ...current.proxy.providers, ...(partial.proxy?.providers ?? {}) },
+      platforms: { ...current.proxy.platforms, ...(partial.proxy?.platforms ?? {}) },
+    }),
   };
   await saveUserConfig(updated);
   return updated;

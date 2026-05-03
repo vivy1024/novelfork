@@ -317,6 +317,9 @@ function normalizeOpenAiModel(value: unknown): RuntimeModelInput | null {
 }
 
 class OpenAiCompatibleAdapter implements RuntimeAdapter {
+  // TODO: 代理注入 — 当 ProxySettings.providers[providerId] 非空时，
+  // 通过 https-proxy-agent 或 undici ProxyAgent 将请求经代理发出。
+  // 当前仅实现配置存储，实际注入需引入 proxy-agent 依赖后完成。
   async listModels(ref: RuntimeProviderRef): Promise<ListModelsResult> {
     const configFailure = requireOpenAiConfig(ref);
     if (configFailure) return configFailure;

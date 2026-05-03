@@ -314,9 +314,27 @@ export class SearchIndex {
   }
 }
 
-// Global singleton instance (in-memory by default; server.ts replaces this
-// with a persistent instance after the storage directory is resolved).
-export let globalSearchIndex = new SearchIndex();
+// Global singleton instance — lazily initialized on first access.
+// server.ts replaces this with a persistent instance after the storage
+// directory is resolved via setGlobalSearchIndex().
+let _globalSearchIndex: SearchIndex | null = null;
+
+export function getGlobalSearchIndex(): SearchIndex {
+  if (!_globalSearchIndex) {
+    _globalSearchIndex = new SearchIndex();
+  }
+  return _globalSearchIndex;
+}
+
+/**
+ * Convenience accessor kept for backward compatibility with existing
+ * call-sites that reference `globalSearchIndex` directly.
+ */
+export const globalSearchIndex: SearchIndex = new Proxy({} as SearchIndex, {
+  get(_target, prop, receiver) {
+    return Reflect.get(getGlobalSearchIndex(), prop, receiver);
+  },
+});
 
 /**
  * Replace the global search index singleton with a new instance.
@@ -324,5 +342,5 @@ export let globalSearchIndex = new SearchIndex();
  * persistent SQLite-backed index after the storage database is ready.
  */
 export function setGlobalSearchIndex(index: SearchIndex): void {
-  globalSearchIndex = index;
+  _globalSearchIndex = index;
 }
