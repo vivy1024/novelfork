@@ -2,7 +2,7 @@
 
 **版本**: v2.0.0
 **创建日期**: 2026-04-28
-**更新日期**: 2026-05-01
+**更新日期**: 2026-05-03
 **状态**: ✅ 当前有效
 **文档类型**: current
 
@@ -10,7 +10,7 @@
 
 ## 1. 文档目的
 
-本文记录 NovelFork Studio 全部已交付能力的事实状态。覆盖 18 个已归档 spec + 3 个新完成 spec 的全部任务产出。
+本文记录 NovelFork Studio 全部已交付能力的事实状态。覆盖已归档 spec 与当前 `agent-native-workspace-v1` 已完成任务；当前主产品口径是 session-first 的 Agent-native 创作工作台。
 
 状态口径：
 - **真实可用**：有真实 API、持久化或真实 runtime 调用，失败时返回真实错误。
@@ -53,7 +53,7 @@
 | **对话生成** | 真实可用 | 多角色、指定场景和目的 |
 | **多版本对比** | 真实可用 | 2-5 个版本并排 |
 | **大纲分支** | 真实可用 | 2-3 条走向建议 |
-| **整章生成（write-next）** | 真实可用 | 异步启动，结果进候选区 |
+| **整章生成（write-next）** | 真实可用 | 右侧叙述者按 cockpit → PGI → guided plan → approve → candidate 工具链生成候选稿 |
 | **审校当前章** | 真实可用 | 连续性、人设、文笔审查 |
 | **去 AI 味检测** | 真实可用 | 12 特征规则 + 7 招消味建议 |
 | **连续性检查** | 真实可用 | 人物/设定/伏笔冲突检测 |
@@ -121,14 +121,17 @@
 | 角色弧线追踪 | ✅ |
 | 文风一致性检测 | ✅ |
 
-## 8. 驾驶舱（新增）
+## 8. Agent-native 工作台与工具化驾驶舱
 
-| Tab | 内容 | 状态 |
+| 能力 | 内容 | 状态 |
 |-----|------|------|
-| 总览 | 日更进度 + 章节进度 + 当前焦点 + 最近摘要 + 风险卡片 | ✅ |
-| 伏笔 | bible foreshadow events + pending_hooks.md 预览 | ✅ |
-| 设定 | bible settings + book_rules.md 摘要 | ✅ |
-| AI | provider/model 状态 + 最近候选稿 metadata | ✅ |
+| 左侧资源栏 | 全局导航 + 当前书籍资源树；章节、候选稿、草稿、经纬、Story/Truth、素材、发布报告 | ✅ |
+| 中间画布 | 多资源 Tab、章节编辑、候选稿、经纬详情、工具产物、dirty 切换拦截 | ✅ |
+| 右侧叙述者会话 | 固定 Writer/Narrator 会话、模型/权限控件、工具调用流、恢复状态 | ✅ |
+| cockpit 工具结果 | `cockpit.get_snapshot` / hooks / candidates 等通过工具卡片和画布组件展示 | ✅ |
+| PGI + GuidedGenerationPlan | 生成前追问、计划卡片、批准/拒绝确认门 | ✅ |
+| Narrative Line | 只读快照、mutation preview、approve 后写入审计 | ✅ |
+| unsupported-tools 降级 | 模型或 provider 不支持工具循环时返回明确错误，降级只读解释 / prompt-preview | ✅ |
 
 ## 9. Agent 系统（新增）
 
@@ -139,7 +142,7 @@
 | session-chat-service 自动注入 agent prompt | ✅ |
 | Explorer Agent（只读探索，ChatWindow 可选） | ✅ |
 | 编排函数（Explorer→Planner→Writer→Auditor 串行） | ✅ |
-| WorkspacePage Agent 写作入口 | ✅ |
+| WorkspacePage 右侧固定叙述者会话入口 | ✅ |
 | 13 个 Core Agent 类 | ✅ |
 | 18 个 Core 内置工具（plan/compose/write/audit/revise等） | ✅ |
 | 22 个通用工具（ToolsTab，9 默认开/13 默认关） | ✅ |
@@ -190,8 +193,7 @@
 | EPUB 导出 | 未规划 |
 | 专注/全屏写作模式 | 未规划 |
 | 世界设定关系图可视化 | 未规划 |
-| ChatWindow 嵌入工作台 | 未规划（需改三栏布局） |
 | 旧前端源码完全删除 | 5/9 完成 |
 | 首次引导烟测 | 缺回归测试 |
-| 引导式创作流程串联 | UI 分散，缺统一入口 |
+| 引导式创作流程串联 | 已有 session-first 最小链路，完整体验仍需后续验活 |
 | 能力矩阵文档 | ← 就是这一篇，刚更新 |

@@ -31,9 +31,11 @@ src/
 │   ├── workspace/      # 创作工作台
 │   │   ├── WorkspacePage.tsx   # 主页面
 │   │   ├── resource-adapter.ts # 资源树
-│   │   ├── BiblePanel.tsx      # 经纬面板
-│   │   ├── PublishPanel.tsx    # 发布面板
-│   │   ├── cockpit/            # 驾驶舱
+│   │   ├── WorkspaceCanvas.tsx # 中间多资源画布
+│   │   ├── NarratorPanel.tsx   # 右侧固定叙述者会话
+│   │   ├── BiblePanel.tsx      # 经纬画布/工具复用面板
+│   │   ├── PublishPanel.tsx    # 发布画布面板
+│   │   ├── cockpit/            # cockpit 工具结果与画布组件
 │   │   │   ├── cockpit-types.ts
 │   │   │   └── cockpit-risk.ts
 │   │   └── ...
@@ -41,7 +43,8 @@ src/
 │   ├── routines/       # 套路页 (工具/命令/技能/子代理)
 │   ├── dashboard/      # 仪表盘
 │   ├── workflow/       # 工作流
-│   ├── components/     # app-next 组件
+│   ├── sessions/           # 叙述者会话 UI 与工具链展示
+│   ├── components/         # app-next 组件
 │   ├── lib/            # 前端工具
 │   │   └── display-labels.ts  # 中文标签
 │   └── entry.ts        # 路由入口
@@ -128,6 +131,7 @@ bun run typecheck
 | 写作工具 | `/api/books/:id/hooks`, `/api/progress` 等 |
 | 经纬 | `/api/books/:id/bible/*`, `/api/books/:id/jingwei/*` |
 | 供应商 | `/api/providers` |
-| 会话 | `/api/sessions` |
+| 会话 / session tools | `/api/sessions`, `/api/sessions/:id/chat` |
 | 导出 | `/api/books/:id/export` |
 | Truth/Story | `/api/books/:id/truth-files`, `/api/books/:id/story-files` |
+| Narrative Line | `/api/books/:id/narrative-line`, `/api/books/:id/narrative-line/propose`, `/api/books/:id/narrative-line/apply` |

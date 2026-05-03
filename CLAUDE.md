@@ -41,7 +41,7 @@
 ## 核心功能
 
 - **多 Agent 写作管线**: 规划 → 编排 → 写作 → 审计 → 修订
-- **NovelFork Studio**: 本地 Web 工作台，书籍管理、章节编辑、实时进度、数据分析
+- **NovelFork Studio**: Agent-native 本地 Web 工作台，左资源栏 / 中间画布 / 右侧固定叙述者会话
 - **连续性审计**: 自动检测剧情矛盾、人物设定冲突
 - **文风仿写**: 基于真相文件（ground truth）的风格迁移
 - **去 AI 味**: 检测并优化 AI 生成痕迹
@@ -53,7 +53,7 @@
 
 | 指标 | 值 |
 |------|----|
-| Specs | `agent-native-workspace-v1` 执行中（13/23 已完成） |
+| Specs | `agent-native-workspace-v1` 执行中（21/23 已完成） |
 | TypeScript | typecheck 通过 |
 | 测试 | 152 文件 / 871 测试 |
 | 编译 | `pnpm --dir packages/studio compile` → `dist/novelfork.exe` / 版本化 release 产物约 117MB |

@@ -25,6 +25,7 @@
 - 新增 Narrative Line 只读快照服务、`GET /api/books/:bookId/narrative-line` route 与 `narrative.read_line` session tool，基于章节、章节摘要、经纬事件/设定、冲突、伏笔和人物弧光生成 nodes/edges/threads/warnings，并以画布 artifact 展示。
 - 新增 Narrative Line 变更草案与确认写入链路：`narrative.propose_change` 仅生成 mutation preview，`POST /api/books/:bookId/narrative-line/propose|apply` 在用户明确 approve 后写入 `story/narrative_line.json`，并记录批准时间、session ID、confirmation ID、目标节点/边与变更摘要。
 - 打通最小「写下一章」session-first 链路：system prompt 明确 cockpit snapshot → PGI → guided plan → 用户批准 → candidate.create_chapter 顺序；确认 guided plan 后可继续执行模型返回的 candidate tool_use，候选生成失败时停止后续写入并保留已完成调查结果。
+- 更新主动文档与产品口径为 Agent-native session-first 工作台：右侧固定叙述者会话、中间多资源画布、左侧资源栏；历史驾驶舱/经纬/写作面板降级为工具结果卡片和画布组件，并补充 `unsupported-tools` 模型降级说明。
 
 ### 文档
 - 同步 README、Studio README、`CLAUDE.md` 与 `AGENTS.md` 的 Studio 全量测试数量口径为 152 files / 871 tests，并更新 active spec 进度口径。
