@@ -21,6 +21,7 @@
 - 建立 Tool Result Renderer Registry，按 tool result renderer 或工具名渲染驾驶舱快照、开放伏笔、Guided/PGI 问题、引导计划、候选稿产物与经纬变更预览，并保留 generic ToolCallBlock fallback。
 - 提取 ChatWindow 可复用结构，新增 docked 叙述者面板宿主，保留 floating 工作台宿主、模型/权限/推理控制、recovery banner、最近执行链、工具调用块与输入状态。
 - 将工作台装配为左侧 WorkspaceLeftRail、中间 WorkspaceCanvas 与右侧固定叙述者会话，支持多资源 tab、dirty 切换拦截、Agent artifact 打开、默认 writer 会话自动创建/复用，并将旧驾驶舱/经纬/写作入口降级为画布/工具复用能力而非右侧主 Tab。
+- 扩展叙述者会话 canvas context 协议，将当前 active resource、open tabs、选区与 dirty 状态随消息发送给 session runtime，后端净化后注入 system prompt、用户消息 metadata 和 session tool 上下文，并在 dirty 资源存在时阻断写入类工具执行。
 
 ### 文档
 - 同步 README、Studio README、`CLAUDE.md` 与 `AGENTS.md` 的 Studio 全量测试数量口径为 152 files / 871 tests，并更新 active spec 进度口径。

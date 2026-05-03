@@ -101,6 +101,20 @@ export async function executeSessionTool(
     }, startedAt, options);
   }
 
+  if (definition.risk !== "read" && input.canvasContext?.dirty === true) {
+    return withDuration({
+      ok: false,
+      renderer: definition.renderer,
+      error: "dirty-resource-blocked",
+      summary: `当前画布资源存在未保存编辑，请先保存、放弃或另存为候选后再执行 ${definition.name}。`,
+      data: {
+        status: "dirty-resource-blocked",
+        activeTabId: input.canvasContext.activeTabId,
+        activeResource: input.canvasContext.activeResource,
+      },
+    }, startedAt, options);
+  }
+
   if (riskDecision === "confirm" && input.confirmationDecision?.decision !== "approved") {
     return withDuration({
       ok: true,

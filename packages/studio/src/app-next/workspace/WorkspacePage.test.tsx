@@ -231,6 +231,34 @@ describe("WorkspacePage", () => {
     expect(await screen.findByText(/待处理伏笔/)).toBeTruthy();
   });
 
+  it("sends the active canvas resource context from the workspace narrator", async () => {
+    render(<WorkspacePage />);
+
+    const explorer = screen.getByRole("complementary", { name: "小说资源管理器" });
+    fireEvent.click(within(explorer).getByRole("button", { name: /^pending_hooks\.md/ }));
+    await screen.findByText(/待处理伏笔/);
+
+    const narrator = await screen.findByRole("complementary", { name: "叙述者会话" });
+    fireEvent.change(within(narrator).getByLabelText("消息输入框"), { target: { value: "基于当前资源继续" } });
+    fireEvent.click(within(narrator).getByRole("button", { name: "发送" }));
+
+    const payload = JSON.parse(MockWebSocket.instances[0]?.sentMessages.at(-1) ?? "{}");
+    expect(payload.canvasContext).toMatchObject({
+      activeTabId: expect.stringContaining("pending_hooks.md"),
+      activeResource: {
+        kind: "story-file",
+        bookId: TEST_BOOK.id,
+        title: "pending_hooks.md",
+        path: "story/pending_hooks.md",
+      },
+      dirty: false,
+      openTabs: expect.arrayContaining([
+        expect.objectContaining({ title: "pending_hooks.md", kind: "markdown-viewer", dirty: false }),
+      ]),
+    });
+    expect(JSON.stringify(payload.canvasContext)).not.toContain("待处理伏笔");
+  });
+
   it("renders WorkspaceLeftRail with compact global navigation, book switcher and resource tree", () => {
     render(<WorkspacePage />);
 

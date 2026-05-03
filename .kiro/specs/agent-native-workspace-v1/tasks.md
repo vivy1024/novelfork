@@ -135,7 +135,7 @@
   - 验证：路由/UI 测试覆盖三栏布局、默认会话打开、新书创建后右侧会话可用。
   - 覆盖需求：R1、R2、R5。
 
-- [ ] 17. 增加 canvas context 到会话请求
+- [x] 17. 增加 canvas context 到会话请求
   - 扩展前端发送消息协议，将当前 active resource tab、resource kind、resource ID、可用选区和 dirty 状态作为 canvas context 传给 session runtime。
   - 后端将 canvas context 注入工具执行上下文和必要的 system/user context，但不得把未保存正文误写入正式资源。
   - 工具确认门遇到 dirty resource 时阻止覆盖并要求用户处理。

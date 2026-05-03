@@ -988,6 +988,91 @@ describe("session-chat-service", () => {
     });
   });
 
+  it("passes sanitized canvas context into system prompt, user metadata and session tools", async () => {
+    const runtimeMetadata = { providerId: "anthropic", providerName: "Anthropic", modelId: "claude-sonnet-4-6" };
+    generateSessionReplyMock
+      .mockResolvedValueOnce({
+        success: true,
+        type: "tool_use",
+        toolUses: [
+          { id: "tool-use-canvas", name: "candidate.create_chapter", input: { bookId: "book-1", chapterIntent: "写下一章" } },
+        ],
+        metadata: runtimeMetadata,
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        type: "message",
+        content: "已根据当前画布上下文生成候选稿。",
+        metadata: runtimeMetadata,
+      });
+    const {
+      createSession,
+      attachSessionChatTransport,
+      getSessionChatSnapshot,
+      handleSessionChatTransportMessage,
+    } = await loadSessionServices();
+    const session = await createSession({
+      title: "画布上下文会话",
+      agentId: "writer",
+      sessionMode: "chat",
+      projectId: "book-1",
+    });
+    const transport = new MockTransport();
+
+    expect(await attachSessionChatTransport(session.id, transport)).toBe(true);
+    await handleSessionChatTransportMessage(
+      session.id,
+      transport,
+      JSON.stringify({
+        type: "session:message",
+        messageId: "canvas-context-1",
+        content: "写下一章",
+        sessionMode: "chat",
+        canvasContext: {
+          activeTabId: "chapter:book-1:2",
+          activeResource: { kind: "chapter", id: "chapter:book-1:2", bookId: "book-1", title: "第二章 入城" },
+          dirty: true,
+          selection: { text: "灵钥裂纹", start: 12, end: 16 },
+          openTabs: [
+            { id: "chapter:book-1:2", nodeId: "chapter:book-1:2", kind: "chapter-editor", title: "第二章 入城", dirty: true, source: "user", content: "不应传入正文" },
+          ],
+        },
+      }),
+    );
+
+    expect(generateSessionReplyMock.mock.calls[0]?.[0]).toMatchObject({
+      messages: expect.arrayContaining([
+        expect.objectContaining({
+          role: "system",
+          content: expect.stringContaining("当前画布上下文"),
+        }),
+        expect.objectContaining({
+          id: "canvas-context-1",
+          metadata: expect.objectContaining({
+            canvasContext: expect.objectContaining({ activeTabId: "chapter:book-1:2", dirty: true }),
+          }),
+        }),
+      ]),
+    });
+    expect(JSON.stringify(generateSessionReplyMock.mock.calls[0]?.[0])).not.toContain("不应传入正文");
+    expect(executeSessionToolMock).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: session.id,
+      toolName: "candidate.create_chapter",
+      canvasContext: expect.objectContaining({
+        activeResource: expect.objectContaining({ id: "chapter:book-1:2" }),
+        dirty: true,
+      }),
+    }));
+
+    const snapshot = await getSessionChatSnapshot(session.id);
+    expect(snapshot?.messages[0]).toMatchObject({
+      role: "user",
+      metadata: {
+        canvasContext: expect.objectContaining({ activeTabId: "chapter:book-1:2", dirty: true }),
+      },
+    });
+  });
+
   it("persists failed tool results without fake success and lets the model respond to the failure", async () => {
     const runtimeMetadata = { providerId: "anthropic", providerName: "Anthropic", modelId: "claude-sonnet-4-6" };
     generateSessionReplyMock
