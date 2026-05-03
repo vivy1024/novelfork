@@ -9,6 +9,8 @@ import { RoutinesNextPage } from "./routines/RoutinesNextPage";
 import { WorkspacePage } from "./workspace/WorkspacePage";
 import { WorkflowPage } from "./workflow/WorkflowPage";
 import { SearchPage } from "./search/SearchPage";
+import { SessionCenterPage } from "./sessions/SessionCenterPage";
+import { StudioApp } from "./StudioApp";
 import { User, Cpu, Bot, Bell, Palette, Plug, Server, Database, Activity, Clock, FolderCog, Info } from "lucide-react";
 
 interface StudioNextAppProps {
@@ -37,6 +39,8 @@ const ROUTE_PATHS: Record<StudioNextRoute, string> = {
   routines: `${STUDIO_NEXT_BASE_PATH}/routines`,
   workflow: `${STUDIO_NEXT_BASE_PATH}/workflow`,
   search: `${STUDIO_NEXT_BASE_PATH}/search`,
+  sessions: `${STUDIO_NEXT_BASE_PATH}/sessions`,
+  studio: `${STUDIO_NEXT_BASE_PATH}/studio`,
 };
 
 export function StudioNextApp({ initialRoute }: StudioNextAppProps) {
@@ -64,6 +68,8 @@ export function StudioNextApp({ initialRoute }: StudioNextAppProps) {
       {activeRoute === "routines" && <RoutinesPage />}
       {activeRoute === "workflow" && <WorkflowPage />}
       {activeRoute === "search" && <SearchPage />}
+      {activeRoute === "sessions" && <SessionCenterPage />}
+      {activeRoute === "studio" && <StudioApp />}
     </NextShell>
   );
 }

@@ -13,6 +13,7 @@ import type {
   OpenResourceTab,
   SessionToolDefinition,
   SessionToolExecutionResult,
+  ToolConfirmationAudit,
   ToolConfirmationDecision,
   ToolConfirmationRequest,
   WorkspaceResourceRef,
@@ -46,45 +47,32 @@ import { buildAgentContext } from "./agent-context.js";
 import { getAgentSystemPrompt } from "@vivy1024/novelfork-core";
 import { createSessionToolExecutor, type SessionToolExecutorOptions } from "./session-tool-executor.js";
 import { getEnabledSessionTools } from "./session-tool-registry.js";
+import { runAgentTurn, type AgentTurnItem, type AgentGenerateResult } from "./agent-turn-runtime.js";
+import { loadUserConfig } from "./user-config-service.js";
+import { generateSessionTitle } from "./session-auto-title.js";
+import { microCompact } from "./compact/micro-compact.js";
 
-const MAX_SESSION_MESSAGES = 50;
-const MAX_SESSION_TOOL_LOOP_STEPS = 6;
+const MAX_SESSION_MESSAGES = 500;
+const MAX_SESSION_TOOL_LOOP_STEPS = 200;
 
-type RuntimeToolUse = {
-  readonly id?: string;
-  readonly name?: string;
-  readonly toolName?: string;
-  readonly input?: unknown;
-  readonly arguments?: unknown;
-};
+async function resolveMaxTurnSteps(): Promise<number> {
+  try {
+    const config = await loadUserConfig();
+    const steps = config.runtimeControls?.maxTurnSteps;
+    return typeof steps === "number" && steps > 0 ? steps : MAX_SESSION_TOOL_LOOP_STEPS;
+  } catch {
+    return MAX_SESSION_TOOL_LOOP_STEPS;
+  }
+}
 
-type LlmRuntimeToolUseResult = {
-  readonly success: true;
-  readonly type: "tool_use";
-  readonly content?: string;
-  readonly toolUses: readonly RuntimeToolUse[];
-  readonly metadata: LlmRuntimeMetadata;
-};
-
-type LlmRuntimeMessageResult = {
-  readonly success: true;
-  readonly type?: "message";
-  readonly content: string;
-  readonly metadata: LlmRuntimeMetadata;
-};
-
-type LlmRuntimeFailureResult = {
-  readonly success: false;
-  readonly code: string;
-  readonly error: string;
-  readonly metadata?: Partial<LlmRuntimeMetadata>;
-};
-
-type SessionChatGenerateInput = Parameters<typeof generateSessionReply>[0] & {
-  readonly tools?: readonly SessionToolDefinition[];
-};
-
-type SessionChatGenerateResult = LlmRuntimeMessageResult | LlmRuntimeToolUseResult | LlmRuntimeFailureResult;
+function shouldContinueAfterToolResult({ result }: { readonly toolName: string; readonly result: SessionToolExecutionResult }): boolean {
+  // 确认门暂停 — 不继续（由 isPendingConfirmationResult 在 agent-turn-runtime 中处理）
+  if (!result.ok && result.error === "pending-confirmation") return false;
+  // 成功或确认被拒绝 — 继续
+  if (result.ok || result.error === "confirmation-rejected") return true;
+  // 工具失败 — 继续（让模型决定下一步），agent-turn-runtime 内部已有重复检测
+  return true;
+}
 
 type NormalizedRuntimeToolUse = {
   readonly id: string;
@@ -626,17 +614,6 @@ async function persistSessionChatProgress(
   });
 }
 
-async function generateSessionChatReply(input: SessionChatGenerateInput): Promise<SessionChatGenerateResult> {
-  const result = await generateSessionReply(input as Parameters<typeof generateSessionReply>[0]);
-  return result as unknown as SessionChatGenerateResult;
-}
-
-function isSessionToolUseReply(reply: SessionChatGenerateResult): reply is LlmRuntimeToolUseResult {
-  return reply.success === true
-    && (reply as { type?: unknown }).type === "tool_use"
-    && Array.isArray((reply as { toolUses?: unknown }).toolUses);
-}
-
 function normalizeRuntimeToolInput(value: unknown): Record<string, unknown> {
   if (value && typeof value === "object" && !Array.isArray(value)) {
     return value as Record<string, unknown>;
@@ -654,19 +631,6 @@ function normalizeRuntimeToolInput(value: unknown): Record<string, unknown> {
   }
 
   return {};
-}
-
-function normalizeRuntimeToolUse(toolUse: RuntimeToolUse, fallbackId: string): NormalizedRuntimeToolUse | null {
-  const toolName = toolUse.name?.trim() || toolUse.toolName?.trim();
-  if (!toolName) {
-    return null;
-  }
-
-  return {
-    id: toolUse.id?.trim() || fallbackId,
-    toolName,
-    input: normalizeRuntimeToolInput(toolUse.input ?? toolUse.arguments),
-  };
 }
 
 function isPendingConfirmationResult(result: SessionToolExecutionResult): boolean {
@@ -692,6 +656,7 @@ function buildToolResultMetadata(result: SessionToolExecutionResult): NarratorSe
     ...(result.renderer ? { renderer: result.renderer } : {}),
     ...(result.artifact ? { artifact: result.artifact } : {}),
     ...(result.confirmation ? { confirmation: result.confirmation } : {}),
+    ...(result.confirmationAudit ? { confirmationAudit: result.confirmationAudit } : {}),
     ...(result.guided ? { guided: result.guided } : {}),
     ...(result.pgi ? { pgi: result.pgi } : {}),
     ...(result.narrative ? { narrative: result.narrative } : {}),
@@ -797,19 +762,49 @@ function normalizeConfirmationDecision(input: ConfirmSessionToolDecisionInput): 
   return null;
 }
 
+function buildSessionConfirmationAudit(
+  confirmation: PendingSessionToolConfirmation,
+  decision: ToolConfirmationDecision,
+  summary: string,
+): ToolConfirmationAudit {
+  return {
+    confirmationId: confirmation.id,
+    sessionId: decision.sessionId,
+    toolName: confirmation.toolName,
+    targetResources: confirmation.targetResource ? [confirmation.targetResource] : [{ kind: confirmation.toolName, id: confirmation.target, ...(typeof confirmation.target === "string" ? { bookId: confirmation.target } : {}) }],
+    summary,
+    risk: confirmation.risk,
+    decision: decision.decision,
+    decidedAt: decision.decidedAt,
+    ...(decision.reason ? { reason: decision.reason } : {}),
+  };
+}
+
+function withSessionConfirmationAudit(
+  result: SessionToolExecutionResult,
+  confirmation: PendingSessionToolConfirmation,
+  decision: ToolConfirmationDecision,
+): SessionToolExecutionResult {
+  return {
+    ...result,
+    confirmationAudit: buildSessionConfirmationAudit(confirmation, decision, result.summary),
+  };
+}
+
 function createRejectedToolResult(
   toolName: string,
   confirmation: PendingSessionToolConfirmation,
   decision: ToolConfirmationDecision,
 ): SessionToolExecutionResult {
   const reasonSuffix = decision.reason ? `：${decision.reason}` : "";
-  return {
+  const result: SessionToolExecutionResult = {
     ok: false,
     error: "confirmation-rejected",
     summary: `用户已拒绝执行 ${toolName}${reasonSuffix}`,
     data: { status: "rejected", decision },
     confirmation,
   };
+  return withSessionConfirmationAudit(result, confirmation, decision);
 }
 
 function resolvePendingToolCall(
@@ -828,109 +823,106 @@ function resolvePendingToolCall(
   ));
 }
 
-async function buildEnhancedMessagesForSession(
-  session: NarratorSessionRecord,
-  state: SessionChatRuntimeState,
-): Promise<NarratorSessionChatMessage[]> {
-  const agentSystemPrompt = getAgentSystemPrompt(session.agentId);
-  const projectId = (session as { projectId?: string }).projectId;
-  let bookContext = "";
-  if (projectId) {
-    try {
-      bookContext = await buildAgentContext({ bookId: projectId });
-    } catch { /* context build failure is non-fatal */ }
-  }
-  return injectSystemPrompt(state.messages, agentSystemPrompt, bookContext, latestCanvasContextFromMessages(state.messages));
-}
-
 async function appendModelContinuationAfterToolDecision(
   loaded: { session: NarratorSessionRecord; state: SessionChatRuntimeState },
   timestamp: number,
 ): Promise<NarratorSessionRecoveryMetadata["lastFailure"] | undefined> {
   try {
+    const agentSystemPrompt = getAgentSystemPrompt(loaded.session.agentId);
+    const projectId = (loaded.session as { projectId?: string }).projectId;
+    let bookContext = "";
+    if (projectId) {
+      try {
+        bookContext = await buildAgentContext({ bookId: projectId });
+      } catch { /* context build failure is non-fatal */ }
+    }
+    const canvasContext = latestCanvasContextFromMessages(loaded.state.messages);
+    const maxSteps = await resolveMaxTurnSteps();
+    const compactedMessages = microCompact(sessionMessagesToTurnItems(loaded.state.messages));
+    const runtimeEvents = await runAgentTurn({
+      sessionId: loaded.session.id,
+      sessionConfig: loaded.session.sessionConfig,
+      messages: compactedMessages,
+      systemPrompt: `${agentSystemPrompt}${AGENT_NATIVE_WRITE_NEXT_INSTRUCTIONS}`,
+      context: createRuntimeContext(bookContext, canvasContext),
+      tools: getEnabledSessionTools(loaded.session.sessionConfig.permissionMode),
+      permissionMode: loaded.session.sessionConfig.permissionMode,
+      ...(canvasContext ? { canvasContext } : {}),
+      maxSteps,
+      shouldContinueAfterToolResult,
+      generate: async (generateInput): Promise<AgentGenerateResult> => {
+        const result = await generateSessionReply({
+          sessionConfig: generateInput.sessionConfig,
+          messages: generateInput.messages,
+          tools: generateInput.tools,
+        });
+        return result as AgentGenerateResult;
+      },
+      executeTool: (toolInput) => sessionToolExecutor.execute(toolInput),
+    });
+
+    const toolInputsById = new Map<string, Record<string, unknown>>();
     let nextTimestamp = timestamp;
-    for (let step = 0; step < MAX_SESSION_TOOL_LOOP_STEPS; step += 1) {
-      const reply = await generateSessionChatReply({
-        sessionConfig: loaded.session.sessionConfig,
-        messages: await buildEnhancedMessagesForSession(loaded.session, loaded.state),
-        tools: getEnabledSessionTools(loaded.session.sessionConfig.permissionMode),
-      });
-
-      if (!reply.success) {
-        return { reason: reply.code, message: reply.error, at: new Date().toISOString() };
-      }
-
-      if (!isSessionToolUseReply(reply)) {
+    let assistantIndex = 0;
+    for (const event of runtimeEvents) {
+      if (event.type === "assistant_message") {
         const assistantMessage = appendMessageToState(loaded.state, {
-          id: `confirmation-continuation-${nextTimestamp}`,
+          id: assistantIndex === 0 ? `confirmation-continuation-${timestamp}` : `confirmation-continuation-${timestamp}-${assistantIndex + 1}`,
           role: "assistant",
-          content: reply.content,
+          content: event.content,
           timestamp: nextTimestamp,
-          runtime: reply.metadata,
+          runtime: event.runtime,
         });
+        assistantIndex += 1;
+        nextTimestamp += 1;
         broadcastMessageEnvelope(loaded.session.id, loaded.state, assistantMessage);
-        return undefined;
+        continue;
       }
 
-      const toolUses = reply.toolUses
-        .map((toolUse, index) => normalizeRuntimeToolUse(toolUse, `confirmation-tool-${nextTimestamp}-${index + 1}`))
-        .filter((toolUse): toolUse is NormalizedRuntimeToolUse => Boolean(toolUse));
-      if (toolUses.length === 0) {
-        const message = reply.content?.trim() || "确认处理后模型请求了工具调用，但没有返回可执行工具。";
-        const assistantMessage = appendMessageToState(loaded.state, {
-          id: `confirmation-empty-tool-use-${nextTimestamp}`,
-          role: "assistant",
-          content: message,
-          timestamp: nextTimestamp,
-          runtime: reply.metadata,
-        });
-        broadcastMessageEnvelope(loaded.session.id, loaded.state, assistantMessage);
-        return undefined;
-      }
-
-      for (const toolUse of toolUses) {
+      if (event.type === "tool_call") {
+        toolInputsById.set(event.id, event.input);
         const toolUseMessage = appendMessageToState(loaded.state, {
-          id: `confirmation-tool-use-${toolUse.id}-${nextTimestamp}`,
+          id: `confirmation-tool-use-${event.id}-${nextTimestamp}`,
           role: "assistant",
-          content: reply.content?.trim() || `请求调用工具 ${toolUse.toolName}。`,
+          content: `请求调用工具 ${event.toolName}。`,
           timestamp: nextTimestamp,
-          runtime: reply.metadata,
-          toolCalls: [{ id: toolUse.id, toolName: toolUse.toolName, input: toolUse.input }],
+          runtime: event.runtime,
+          toolCalls: [{ id: event.id, toolName: event.toolName, input: event.input }],
         });
+        nextTimestamp += 1;
         broadcastMessageEnvelope(loaded.session.id, loaded.state, toolUseMessage);
-        nextTimestamp += 1;
+        continue;
+      }
 
-        const toolResult = await sessionToolExecutor.execute({
-          sessionId: loaded.session.id,
-          toolName: toolUse.toolName,
-          input: toolUse.input,
-          permissionMode: loaded.session.sessionConfig.permissionMode,
-          sessionConfig: loaded.session.sessionConfig,
-          ...(latestCanvasContextFromMessages(loaded.state.messages) ? { canvasContext: latestCanvasContextFromMessages(loaded.state.messages) } : {}),
-        });
+      if (event.type === "tool_result") {
+        const toolUse = {
+          id: event.id,
+          toolName: event.toolName,
+          input: toolInputsById.get(event.id) ?? {},
+        };
         const toolResultMessage = appendMessageToState(loaded.state, {
-          id: `confirmation-tool-result-${toolUse.id}-${nextTimestamp}`,
+          id: `confirmation-tool-result-${event.id}-${nextTimestamp}`,
           role: "assistant",
-          content: toolResult.summary,
+          content: event.result.summary,
           timestamp: nextTimestamp,
-          runtime: reply.metadata,
-          toolCalls: [buildToolResultCall(toolUse, toolResult)],
-          metadata: buildToolResultMetadata(toolResult),
+          runtime: event.runtime,
+          toolCalls: [buildToolResultCall(toolUse, event.result)],
+          metadata: buildToolResultMetadata(event.result),
         });
-        broadcastMessageEnvelope(loaded.session.id, loaded.state, toolResultMessage);
         nextTimestamp += 1;
+        broadcastMessageEnvelope(loaded.session.id, loaded.state, toolResultMessage);
+        continue;
+      }
 
-        if (isPendingConfirmationResult(toolResult)) return undefined;
-        if (!toolResult.ok) {
-          return { reason: toolResult.error ?? "tool-execution-failed", message: toolResult.summary, at: new Date().toISOString() };
-        }
+      if (event.type === "confirmation_required" || event.type === "turn_completed") {
+        continue;
+      }
+
+      if (event.type === "turn_failed") {
+        return { reason: event.reason, message: event.message, at: new Date().toISOString() };
       }
     }
-    return {
-      reason: "tool-loop-limit",
-      message: `确认处理后的工具循环超过 ${MAX_SESSION_TOOL_LOOP_STEPS} 步，已停止。`,
-      at: new Date().toISOString(),
-    };
+    return undefined;
   } catch (error) {
     return {
       reason: "provider-unavailable",
@@ -1013,7 +1005,7 @@ export async function confirmSessionToolDecision(
     decidedAt: new Date().toISOString(),
     sessionId,
   };
-  const toolResult = normalizedDecision === "approved"
+  const rawToolResult = normalizedDecision === "approved"
     ? await sessionToolExecutor.execute({
       sessionId,
       toolName,
@@ -1023,12 +1015,14 @@ export async function confirmSessionToolDecision(
       confirmationDecision: decision,
     })
     : createRejectedToolResult(toolName, match.confirmation, decision);
+  const toolResult = withSessionConfirmationAudit(rawToolResult, match.confirmation, decision);
 
   resolvePendingToolCall(match, toolResult);
   match.message.metadata = {
     ...match.message.metadata,
     confirmation: match.confirmation,
     confirmationDecision: decision,
+    ...(toolResult.confirmationAudit ? { confirmationAudit: toolResult.confirmationAudit } : {}),
   };
 
   const timestamp = Date.now();
@@ -1236,6 +1230,78 @@ export function detachSessionChatTransport(sessionId: string, transport: Session
   }
 }
 
+const SESSION_TOOL_RESULT_CONTINUATION_INSTRUCTION = "工具已完成。请先总结已经获得的信息，判断是否足够进入下一步。如果信息足够，请继续执行下一步；不要重复读取同一资源。";
+
+function formatSessionToolResultContent(result: SessionToolExecutionResult): string {
+  return result.summary ? `${result.summary}\n\n${SESSION_TOOL_RESULT_CONTINUATION_INSTRUCTION}` : SESSION_TOOL_RESULT_CONTINUATION_INSTRUCTION;
+}
+
+function extractMessageToolResult(message: NarratorSessionChatMessage): SessionToolExecutionResult | undefined {
+  const toolResult = message.metadata?.toolResult;
+  if (!isRecord(toolResult) || typeof toolResult.ok !== "boolean" || typeof toolResult.summary !== "string") {
+    return undefined;
+  }
+  return toolResult as unknown as SessionToolExecutionResult;
+}
+
+function sessionMessagesToTurnItems(messages: readonly NarratorSessionChatMessage[]): AgentTurnItem[] {
+  const latestResultIndexByToolCallId = new Map<string, number>();
+  messages.forEach((message, index) => {
+    if (!extractMessageToolResult(message)) return;
+    for (const toolCall of message.toolCalls ?? []) {
+      if (toolCall.id) latestResultIndexByToolCallId.set(toolCall.id, index);
+    }
+  });
+
+  return messages.flatMap((message, messageIndex): AgentTurnItem[] => {
+    if (message.role !== "system" && message.role !== "user" && message.role !== "assistant") {
+      return [];
+    }
+
+    const toolCalls = message.toolCalls ?? [];
+    if (toolCalls.length > 0) {
+      const toolResult = extractMessageToolResult(message);
+      if (toolResult) {
+        return toolCalls.flatMap((toolCall): AgentTurnItem[] => {
+          if (!toolCall.id || latestResultIndexByToolCallId.get(toolCall.id) !== messageIndex) return [];
+          return [{
+            type: "tool_result",
+            toolCallId: toolCall.id,
+            name: toolCall.toolName,
+            content: formatSessionToolResultContent(toolResult),
+            ...(toolResult.data !== undefined ? { data: toolResult.data } : {}),
+            metadata: { toolResult },
+          }];
+        });
+      }
+
+      return toolCalls.flatMap((toolCall): AgentTurnItem[] => {
+        if (!toolCall.id) return [];
+        return [{
+          type: "tool_call",
+          id: toolCall.id,
+          name: toolCall.toolName,
+          input: normalizeRuntimeToolInput(toolCall.input),
+        }];
+      });
+    }
+
+    if (!message.content.trim()) return [];
+    return [{
+      type: "message",
+      id: message.id,
+      role: message.role,
+      content: message.content,
+      ...(message.metadata ? { metadata: message.metadata } : {}),
+    }];
+  });
+}
+
+function createRuntimeContext(bookContext: string, canvasContext?: CanvasContext): string {
+  const parts = [bookContext.trim(), canvasContext ? formatCanvasContextForPrompt(canvasContext) : ""].filter(Boolean);
+  return parts.join("\n\n");
+}
+
 export async function handleSessionChatTransportMessage(
   sessionId: string,
   transport: SessionChatTransport,
@@ -1293,12 +1359,10 @@ export async function handleSessionChatTransportMessage(
 
   const messagesToPersist: NarratorSessionChatMessage[] = [userMessage];
   const sessionTools = getEnabledSessionTools(loaded.session.sessionConfig.permissionMode);
-  let executedToolSteps = 0;
   let failure: NarratorSessionRecoveryMetadata["lastFailure"] | undefined;
   let errorEnvelope: NarratorSessionChatErrorEnvelope | undefined;
 
   try {
-    // 注入 Agent 专属 system prompt 和作品上下文
     const agentSystemPrompt = getAgentSystemPrompt(loaded.session.agentId);
     const projectId = (loaded.session as { projectId?: string }).projectId;
     let bookContext = "";
@@ -1308,159 +1372,122 @@ export async function handleSessionChatTransportMessage(
       } catch { /* context build failure is non-fatal */ }
     }
 
-    for (;;) {
-      const enhancedMessages = injectSystemPrompt(loaded.state.messages, agentSystemPrompt, bookContext, canvasContext);
-      const reply = await generateSessionChatReply({
-        sessionConfig: loaded.session.sessionConfig,
-        messages: enhancedMessages,
-        tools: sessionTools,
-      });
-
-      if (!reply.success) {
-        failure = {
-          reason: reply.code,
-          message: reply.error,
-          at: new Date().toISOString(),
-        };
-        errorEnvelope = createSessionChatError(sessionId, reply.error, {
-          code: reply.code,
-          runtime: reply.metadata,
+    const fullSystemPrompt = `${agentSystemPrompt}${AGENT_NATIVE_WRITE_NEXT_INSTRUCTIONS}`;
+    const maxSteps = await resolveMaxTurnSteps();
+    const compactedMessages = microCompact(sessionMessagesToTurnItems(loaded.state.messages));
+    const runtimeEvents = await runAgentTurn({
+      sessionId,
+      sessionConfig: loaded.session.sessionConfig,
+      messages: compactedMessages,
+      systemPrompt: fullSystemPrompt,
+      context: createRuntimeContext(bookContext, canvasContext),
+      tools: sessionTools,
+      permissionMode: loaded.session.sessionConfig.permissionMode,
+      ...(canvasContext ? { canvasContext } : {}),
+      maxSteps,
+      shouldContinueAfterToolResult,
+      generate: async (generateInput): Promise<AgentGenerateResult> => {
+        const result = await generateSessionReply({
+          sessionConfig: generateInput.sessionConfig,
+          messages: generateInput.messages,
+          tools: generateInput.tools,
         });
-        break;
-      }
+        return result as AgentGenerateResult;
+      },
+      executeTool: (toolInput) => sessionToolExecutor.execute(toolInput),
+    });
 
-      if (!isSessionToolUseReply(reply)) {
+    const toolInputsById = new Map<string, Record<string, unknown>>();
+    let assistantIndex = 0;
+    for (const event of runtimeEvents) {
+      if (event.type === "assistant_message") {
         const assistantMessage = appendMessageToState(loaded.state, {
-          id: `${userMessage.id}-assistant`,
+          id: assistantIndex === 0 ? `${userMessage.id}-assistant` : `${userMessage.id}-assistant-${assistantIndex + 1}`,
           role: "assistant",
-          content: reply.content,
+          content: event.content,
           timestamp: timestamp + messagesToPersist.length,
-          runtime: reply.metadata,
+          runtime: event.runtime,
         });
+        assistantIndex += 1;
         messagesToPersist.push(assistantMessage);
         broadcastMessageEnvelope(sessionId, loaded.state, assistantMessage);
-        break;
+        continue;
       }
 
-      if (executedToolSteps >= MAX_SESSION_TOOL_LOOP_STEPS) {
-        const message = `工具循环超过 ${MAX_SESSION_TOOL_LOOP_STEPS} 步，已停止本轮调用。`;
-        failure = {
-          reason: "tool-loop-limit",
-          message,
-          at: new Date().toISOString(),
-        };
-        const assistantMessage = appendMessageToState(loaded.state, {
-          id: `${userMessage.id}-tool-loop-limit`,
-          role: "assistant",
-          content: message,
-          timestamp: timestamp + messagesToPersist.length,
-          runtime: reply.metadata,
-          metadata: {
-            toolLoop: {
-              error: "tool-loop-limit",
-              maxSteps: MAX_SESSION_TOOL_LOOP_STEPS,
-            },
-          },
-        });
-        messagesToPersist.push(assistantMessage);
-        broadcastMessageEnvelope(sessionId, loaded.state, assistantMessage);
-        break;
-      }
-
-      const toolUses = reply.toolUses
-        .map((toolUse, index) => normalizeRuntimeToolUse(
-          toolUse,
-          `${userMessage.id}-tool-${executedToolSteps + 1}-${index + 1}`,
-        ))
-        .filter((toolUse): toolUse is NormalizedRuntimeToolUse => Boolean(toolUse));
-
-      if (toolUses.length === 0) {
-        const assistantMessage = appendMessageToState(loaded.state, {
-          id: `${userMessage.id}-empty-tool-use`,
-          role: "assistant",
-          content: reply.content?.trim() || "模型请求了工具调用，但没有返回可执行工具。",
-          timestamp: timestamp + messagesToPersist.length,
-          runtime: reply.metadata,
-        });
-        messagesToPersist.push(assistantMessage);
-        broadcastMessageEnvelope(sessionId, loaded.state, assistantMessage);
-        break;
-      }
-
-      let stopForConfirmation = false;
-      for (const toolUse of toolUses) {
-        if (executedToolSteps >= MAX_SESSION_TOOL_LOOP_STEPS) {
-          const message = `工具循环超过 ${MAX_SESSION_TOOL_LOOP_STEPS} 步，已停止本轮调用。`;
-          failure = {
-            reason: "tool-loop-limit",
-            message,
-            at: new Date().toISOString(),
-          };
-          const assistantMessage = appendMessageToState(loaded.state, {
-            id: `${userMessage.id}-tool-loop-limit`,
-            role: "assistant",
-            content: message,
-            timestamp: timestamp + messagesToPersist.length,
-            runtime: reply.metadata,
-            metadata: {
-              toolLoop: {
-                error: "tool-loop-limit",
-                maxSteps: MAX_SESSION_TOOL_LOOP_STEPS,
-              },
-            },
-          });
-          messagesToPersist.push(assistantMessage);
-          broadcastMessageEnvelope(sessionId, loaded.state, assistantMessage);
-          stopForConfirmation = true;
-          break;
-        }
-
+      if (event.type === "tool_call") {
+        toolInputsById.set(event.id, event.input);
         const toolUseMessage = appendMessageToState(loaded.state, {
-          id: `${userMessage.id}-tool-use-${toolUse.id}`,
+          id: `${userMessage.id}-tool-use-${event.id}`,
           role: "assistant",
-          content: reply.content?.trim() || `请求调用工具 ${toolUse.toolName}。`,
+          content: `请求调用工具 ${event.toolName}。`,
           timestamp: timestamp + messagesToPersist.length,
-          runtime: reply.metadata,
+          runtime: event.runtime,
           toolCalls: [
             {
-              id: toolUse.id,
-              toolName: toolUse.toolName,
-              input: toolUse.input,
+              id: event.id,
+              toolName: event.toolName,
+              input: event.input,
             },
           ],
         });
         messagesToPersist.push(toolUseMessage);
         broadcastMessageEnvelope(sessionId, loaded.state, toolUseMessage);
+        continue;
+      }
 
-        const toolResult = await sessionToolExecutor.execute({
-          sessionId,
-          toolName: toolUse.toolName,
-          input: toolUse.input,
-          permissionMode: loaded.session.sessionConfig.permissionMode,
-          sessionConfig: loaded.session.sessionConfig,
-          ...(canvasContext ? { canvasContext } : {}),
-        });
-        executedToolSteps += 1;
-        const toolResultCall = buildToolResultCall(toolUse, toolResult);
+      if (event.type === "tool_result") {
+        const toolUse = {
+          id: event.id,
+          toolName: event.toolName,
+          input: toolInputsById.get(event.id) ?? {},
+        };
         const toolResultMessage = appendMessageToState(loaded.state, {
-          id: `${userMessage.id}-tool-result-${toolUse.id}`,
+          id: `${userMessage.id}-tool-result-${event.id}`,
           role: "assistant",
-          content: toolResult.summary,
+          content: event.result.summary,
           timestamp: timestamp + messagesToPersist.length,
-          runtime: reply.metadata,
-          toolCalls: [toolResultCall],
-          metadata: buildToolResultMetadata(toolResult),
+          runtime: event.runtime,
+          toolCalls: [buildToolResultCall(toolUse, event.result)],
+          metadata: buildToolResultMetadata(event.result),
         });
         messagesToPersist.push(toolResultMessage);
         broadcastMessageEnvelope(sessionId, loaded.state, toolResultMessage);
-
-        if (isPendingConfirmationResult(toolResult)) {
-          stopForConfirmation = true;
-          break;
-        }
+        continue;
       }
 
-      if (stopForConfirmation || failure) {
+      if (event.type === "confirmation_required") {
+        continue;
+      }
+
+      if (event.type === "turn_failed") {
+        failure = {
+          reason: event.reason,
+          message: event.message,
+          at: new Date().toISOString(),
+        };
+
+        if (event.reason === "model-unavailable" || event.reason === "provider-unavailable" || event.reason === "unsupported-tools") {
+          const metadata = event.data?.metadata as Partial<LlmRuntimeMetadata> | undefined;
+          errorEnvelope = createSessionChatError(sessionId, event.message, {
+            code: event.reason,
+            ...(metadata ? { runtime: metadata } : {}),
+          });
+        } else {
+          const assistantMessage = appendMessageToState(loaded.state, {
+            id: `${userMessage.id}-${event.reason}`,
+            role: "assistant",
+            content: event.message,
+            timestamp: timestamp + messagesToPersist.length,
+            metadata: event.reason === "tool-loop-limit" ? {
+              toolLoop: {
+                error: "tool-loop-limit",
+                maxSteps: event.data?.maxSteps,
+              },
+            } : undefined,
+          });
+          messagesToPersist.push(assistantMessage);
+          broadcastMessageEnvelope(sessionId, loaded.state, assistantMessage);
+        }
         break;
       }
     }
@@ -1487,6 +1514,21 @@ export async function handleSessionChatTransportMessage(
 
   if (updatedSession) {
     broadcastStateEnvelope(buildServerFirstSession(updatedSession, loaded.state), loaded.state);
+  }
+
+  // 自动命名：第一轮对话且标题为默认值时，异步生成标题
+  const hasAssistantReply = messagesToPersist.some((m) => m.role === "assistant");
+  const userMessageCount = loaded.state.messages.filter((m) => m.role === "user").length;
+  const currentTitle = loaded.session.title;
+  const needsAutoTitle = hasAssistantReply
+    && userMessageCount <= 1
+    && (currentTitle === "Untitled Session" || currentTitle.startsWith("Headless:"));
+  if (needsAutoTitle) {
+    void generateSessionTitle(loaded.state.messages).then((title) => {
+      if (title && title !== "Untitled Session") {
+        void updateSession(sessionId, { title });
+      }
+    }).catch(() => { /* auto-title failure is non-fatal */ });
   }
 }
 
@@ -1542,39 +1584,6 @@ function formatCanvasContextForPrompt(canvasContext: CanvasContext): string {
   }
   lines.push("- 注意：dirty=true 表示作者有未保存编辑，任何写入类工具都必须先要求作者处理该资源；当前上下文不会包含未保存正文全文。");
   return lines.join("\n");
-}
-
-/**
- * 在消息列表开头注入 Agent 专属 system prompt、作品上下文与当前画布上下文。
- * 如果第一个消息已是 system 类型，替换内容；否则在开头插入。
- */
-function injectSystemPrompt(
-  messages: NarratorSessionChatMessage[],
-  systemPrompt: string,
-  bookContext: string,
-  canvasContext?: CanvasContext,
-): NarratorSessionChatMessage[] {
-  const contextBlock = bookContext ? `\n\n${bookContext}` : "";
-  const canvasBlock = canvasContext ? `\n\n${formatCanvasContextForPrompt(canvasContext)}` : "";
-  const fullPrompt = `${systemPrompt}${AGENT_NATIVE_WRITE_NEXT_INSTRUCTIONS}${contextBlock}${canvasBlock}`;
-
-  const result = [...messages];
-  const firstMessage = result[0];
-
-  if (firstMessage?.role === "system") {
-    // Replace existing system message with agent-specific prompt
-    result[0] = { ...firstMessage, content: fullPrompt };
-  } else {
-    // Prepend system message
-    result.unshift({
-      id: `agent-system-${Date.now()}`,
-      role: "system",
-      content: fullPrompt,
-      timestamp: Date.now(),
-      seq: (firstMessage?.seq ?? 1) - 1,
-    });
-  }
-  return result;
 }
 
 export function setupSessionChatWebSocket(server: StartedHttpServer): void {

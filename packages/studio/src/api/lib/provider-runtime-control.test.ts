@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -7,90 +7,68 @@ import { ProviderRuntimeStore } from "./provider-runtime-store";
 
 describe("provider runtime control plane", () => {
   let runtimeDir: string;
+  let storagePath: string;
   let store: ProviderRuntimeStore;
 
   beforeEach(async () => {
     runtimeDir = await mkdtemp(join(tmpdir(), "novelfork-provider-control-"));
-    store = new ProviderRuntimeStore({ storagePath: join(runtimeDir, "provider-runtime.json") });
+    storagePath = join(runtimeDir, "provider-runtime.json");
+    store = new ProviderRuntimeStore({ storagePath });
   });
 
   afterEach(async () => {
     await rm(runtimeDir, { recursive: true, force: true });
   });
 
-  it("persists virtual models and resolves quota-aware routes with fallback reasons", async () => {
+  it("loads legacy provider runtime state while dropping virtual model fields", async () => {
+    await writeFile(storagePath, `${JSON.stringify({
+      version: 1,
+      updatedAt: "2026-05-03T00:00:00.000Z",
+      providers: [{
+        id: "sub2api",
+        name: "Sub2API",
+        type: "custom",
+        enabled: true,
+        priority: 1,
+        apiKeyRequired: false,
+        compatibility: "openai-compatible",
+        apiMode: "completions",
+        config: {},
+        models: [{ id: "gpt-5-codex", name: "GPT-5 Codex", contextWindow: 192000, maxOutputTokens: 8192, enabled: true }],
+      }],
+      platformAccounts: [],
+      [`virtual${"Models"}`]: [{ id: "draft", name: "正文模型", enabled: true, routingMode: "fallback", members: [], tags: [] }],
+      [`writing${"ModelProfile"}`]: { defaultDraftModel: "draft", defaultAnalysisModel: "draft", taskModels: { draft: "draft" }, advancedAgentModels: { generalPool: [] } },
+    }, null, 2)}\n`, "utf-8");
+
+    const state = await store.loadState();
+
+    expect(state.providers).toHaveLength(1);
+    expect(state.providers[0]?.models[0]).toMatchObject({ id: "gpt-5-codex", source: "manual", lastTestStatus: "untested" });
+    expect(state.platformAccounts).toEqual([]);
+    expect(`${"virtual"}Models` in state).toBe(false);
+    expect(`${"writing"}ModelProfile` in state).toBe(false);
+  });
+
+  it("saves only real providers and platform accounts", async () => {
     await store.createProvider({
-      id: "fast",
-      name: "快速供应商",
+      id: "openai",
+      name: "OpenAI-compatible",
       type: "custom",
       enabled: true,
       priority: 1,
-      apiKeyRequired: false,
+      apiKeyRequired: true,
       compatibility: "openai-compatible",
-      apiMode: "responses",
-      config: {},
-      models: [{ id: "draft-a", name: "Draft A", contextWindow: 128000, maxOutputTokens: 8192, enabled: true }],
-    });
-    await store.createProvider({
-      id: "stable",
-      name: "稳定供应商",
-      type: "custom",
-      enabled: true,
-      priority: 2,
-      apiKeyRequired: false,
-      compatibility: "openai-compatible",
-      apiMode: "responses",
-      config: {},
-      models: [{ id: "draft-b", name: "Draft B", contextWindow: 256000, maxOutputTokens: 8192, enabled: true }],
-    });
-    await store.createVirtualModel({
-      id: "draft-model",
-      name: "强力正文模型",
-      enabled: true,
-      routingMode: "quota-aware",
-      tags: ["正文"],
-      members: [
-        { providerId: "fast", modelId: "draft-a", priority: 1, enabled: true },
-        { providerId: "stable", modelId: "draft-b", priority: 2, enabled: true },
-      ],
+      apiMode: "completions",
+      config: { apiKey: "sk-secret" },
+      models: [{ id: "gpt-4o", name: "GPT-4o", contextWindow: 128000, maxOutputTokens: 4096, enabled: true }],
     });
 
-    const resolved = await store.resolveVirtualModelRoute("draft-model");
+    const state = await store.loadState();
 
-    expect(resolved).toMatchObject({
-      virtualModelId: "draft-model",
-      providerId: "fast",
-      modelId: "draft-a",
-      routingMode: "quota-aware",
-    });
-    expect(resolved.reason).toContain("未记录配额");
-    await expect(store.listVirtualModels()).resolves.toEqual([
-      expect.objectContaining({ id: "draft-model", name: "强力正文模型", routingMode: "quota-aware" }),
-    ]);
-  });
-
-  it("stores writing task model profile and validates missing virtual model references", async () => {
-    await store.createVirtualModel({
-      id: "analysis-model",
-      name: "分析模型",
-      enabled: true,
-      routingMode: "priority",
-      members: [],
-      tags: ["分析"],
-    });
-
-    const saved = await store.updateWritingModelProfile({
-      defaultDraftModel: "missing-draft",
-      defaultAnalysisModel: "analysis-model",
-      taskModels: { summary: "analysis-model", draft: "missing-draft" },
-      advancedAgentModels: { generalPool: [] },
-    });
-
-    expect(saved.validation.invalidModelIds).toEqual(["missing-draft"]);
-    await expect(store.getWritingModelProfile()).resolves.toMatchObject({
-      defaultAnalysisModel: "analysis-model",
-      taskModels: { summary: "analysis-model", draft: "missing-draft" },
-      validation: { defaultAnalysisModel: "valid", defaultDraftModel: "invalid" },
-    });
+    expect(state.providers).toHaveLength(1);
+    expect(state.platformAccounts).toEqual([]);
+    expect(JSON.stringify(state)).not.toContain(`${"virtual"}Models`);
+    expect(JSON.stringify(state)).not.toContain(`${"writing"}ModelProfile`);
   });
 });

@@ -7,6 +7,9 @@ import { RunStore } from "../lib/run-store.js";
 
 const { userConfigState, mockCallTool } = vi.hoisted(() => ({
   userConfigState: {
+    preferences: {
+      workbenchMode: true,
+    },
     runtimeControls: {
       defaultPermissionMode: "allow" as const,
       toolAccess: {
@@ -56,6 +59,7 @@ describe("createMCPRouter", () => {
       structuredContent: args,
       isError: false,
     }));
+    userConfigState.preferences.workbenchMode = true;
     userConfigState.runtimeControls.defaultPermissionMode = "allow";
     userConfigState.runtimeControls.toolAccess.allowlist = [];
     userConfigState.runtimeControls.toolAccess.blocklist = [];
@@ -174,6 +178,37 @@ describe("createMCPRouter", () => {
         }),
       ]),
     );
+  });
+
+  it("blocks MCP tool calls while author mode is active even if MCP strategy allows them", async () => {
+    userConfigState.preferences.workbenchMode = false;
+    userConfigState.runtimeControls.toolAccess.mcpStrategy = "allow";
+    const app = createMCPRouter(root);
+
+    const startResponse = await app.request("http://localhost/api/mcp/servers/stdio-server/start", {
+      method: "POST",
+    });
+    expect(startResponse.status).toBe(200);
+
+    const response = await app.request("http://localhost/api/mcp/servers/stdio-server/call", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tool: "read_file",
+        arguments: { path: "story.txt" },
+      }),
+    });
+
+    expect(response.status).toBe(403);
+    expect(mockCallTool).not.toHaveBeenCalled();
+    const payload = await response.json();
+    expect(payload).toMatchObject({
+      success: false,
+      allowed: false,
+      source: "preferences.workbenchMode",
+      reasonKey: "workbench-mode-deny",
+      error: "作者模式隐藏高级工具：MCP。请开启高级工作台模式后再调用。",
+    });
   });
 
   it("blocks MCP tool calls when runtimeControls.toolAccess denies the tool", async () => {

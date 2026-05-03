@@ -10,7 +10,23 @@
 
 /* ── Light Mode: Warm Parchment & Ink ── */
 :root {
-  --radius: 0.6rem;
+  /* Typography */
+  --font-sans: 'DM Sans', system-ui, -apple-system, sans-serif;
+  --font-serif: 'Instrument Serif', Georgia, 'Noto Serif SC', serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', monospace;
+
+  /* Border Radius — 4px base grid */
+  --radius-sm: 0.375rem;  /* 6px — small controls, badges */
+  --radius-md: 0.5rem;    /* 8px — buttons, inputs, cards */
+  --radius-lg: 0.75rem;   /* 12px — dialogs, popovers, panels */
+  --radius: 0.5rem;       /* default = md */
+
+  /* Elevation — warm ink shadows */
+  --shadow-sm: 0 1px 2px oklch(0.13 0.02 60 / 0.05);
+  --shadow-md: 0 2px 8px -2px oklch(0.13 0.02 60 / 0.08);
+  --shadow-lg: 0 4px 16px -4px oklch(0.13 0.02 60 / 0.1);
+  --shadow-3d: 0 1px 2px oklch(0.13 0.02 60 / 0.06), 0 4px 12px -4px oklch(0.13 0.02 60 / 0.08);
+  --shadow-3d-hover: 0 2px 4px oklch(0.13 0.02 60 / 0.08), 0 8px 24px -6px oklch(0.13 0.02 60 / 0.12);
 
   /* Background: Warm, aged paper with subtle radial light */
   --background: oklch(0.985 0.005 80);
@@ -50,6 +66,13 @@
 
 /* ── Dark Mode: Obsidian & Candlelight ── */
 .dark {
+  /* Elevation — deep obsidian shadows */
+  --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.15);
+  --shadow-md: 0 2px 8px -2px oklch(0 0 0 / 0.3);
+  --shadow-lg: 0 4px 16px -4px oklch(0 0 0 / 0.35);
+  --shadow-3d: 0 1px 2px oklch(0 0 0 / 0.2), 0 4px 12px -4px oklch(0 0 0 / 0.3);
+  --shadow-3d-hover: 0 2px 4px oklch(0 0 0 / 0.3), 0 8px 24px -6px oklch(0 0 0 / 0.4);
+
   /* Background: Deep obsidian with soft top glow */
   --background: oklch(0.12 0.01 250);
   --background-radial: radial-gradient(circle at 50% 0%, oklch(0.16 0.015 250) 0%, oklch(0.12 0.01 250) 100%);

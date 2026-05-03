@@ -102,15 +102,16 @@ function modelCapabilities(model: RuntimeProviderRecord["models"][number]): stri
 }
 
 async function buildProviderSummary(store: ProviderRuntimeStore) {
-  const [providers, virtualModels] = await Promise.all([store.listProviders(), store.listVirtualModels()]);
+  const [providers, platformAccounts] = await Promise.all([store.listProviders(), store.listPlatformAccounts()]);
   const physicalModelCount = providers.reduce((sum, provider) => sum + provider.models.length, 0);
   const issueCount = providers.filter((provider) => !provider.enabled || provider.models.some((model) => model.lastTestStatus === "error")).length
-    + virtualModels.filter((model) => model.enabled && model.members.length === 0).length;
+    + platformAccounts.filter((account) => account.status !== "active").length;
   return {
     providerCount: providers.length,
     enabledProviderCount: providers.filter((provider) => provider.enabled).length,
     physicalModelCount,
-    virtualModelCount: virtualModels.length,
+    platformAccountCount: platformAccounts.length,
+    enabledPlatformAccountCount: platformAccounts.filter((account) => account.status === "active").length,
     issueCount,
   };
 }

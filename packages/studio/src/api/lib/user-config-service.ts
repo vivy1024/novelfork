@@ -132,6 +132,20 @@ function sanitizeRuntimeControls(runtimeControls?: Partial<RuntimeControlSetting
     recovery: sanitizeRecovery(runtimeControls?.recovery),
     toolAccess: sanitizeToolAccess(runtimeControls?.toolAccess),
     runtimeDebug: sanitizeRuntimeDebug(runtimeControls?.runtimeDebug),
+    maxTurnSteps: clampNumber(runtimeControls?.maxTurnSteps, defaults.maxTurnSteps, 1, 1000),
+    relaxedPlanning: typeof runtimeControls?.relaxedPlanning === "boolean" ? runtimeControls.relaxedPlanning : defaults.relaxedPlanning,
+    yoloSkipReadonlyConfirmation: typeof runtimeControls?.yoloSkipReadonlyConfirmation === "boolean" ? runtimeControls.yoloSkipReadonlyConfirmation : defaults.yoloSkipReadonlyConfirmation,
+    translateThinking: typeof runtimeControls?.translateThinking === "boolean" ? runtimeControls.translateThinking : defaults.translateThinking,
+    expandReasoning: typeof runtimeControls?.expandReasoning === "boolean" ? runtimeControls.expandReasoning : defaults.expandReasoning,
+    smartOutputCheck: typeof runtimeControls?.smartOutputCheck === "boolean" ? runtimeControls.smartOutputCheck : defaults.smartOutputCheck,
+    forceUserLanguage: typeof runtimeControls?.forceUserLanguage === "boolean" ? runtimeControls.forceUserLanguage : defaults.forceUserLanguage,
+    showTokenUsage: typeof runtimeControls?.showTokenUsage === "boolean" ? runtimeControls.showTokenUsage : defaults.showTokenUsage,
+    showOutputRate: typeof runtimeControls?.showOutputRate === "boolean" ? runtimeControls.showOutputRate : defaults.showOutputRate,
+    scrollAutoLoadHistory: typeof runtimeControls?.scrollAutoLoadHistory === "boolean" ? runtimeControls.scrollAutoLoadHistory : defaults.scrollAutoLoadHistory,
+    dumpApiRequests: typeof runtimeControls?.dumpApiRequests === "boolean" ? runtimeControls.dumpApiRequests : defaults.dumpApiRequests,
+    sendMode: runtimeControls?.sendMode === "ctrl-enter" ? "ctrl-enter" : defaults.sendMode,
+    largeWindowCompressionThresholdPercent: clampNumber(runtimeControls?.largeWindowCompressionThresholdPercent, defaults.largeWindowCompressionThresholdPercent, 30, 95),
+    largeWindowTruncateTargetPercent: clampNumber(runtimeControls?.largeWindowTruncateTargetPercent, defaults.largeWindowTruncateTargetPercent, 20, 90),
   };
 }
 
@@ -170,7 +184,16 @@ async function sanitizeModelDefaults(modelDefaults?: Partial<ModelDefaultSetting
   return {
     defaultSessionModel,
     summaryModel,
+    exploreSubagentModel: normalizeModelReference(modelDefaults?.exploreSubagentModel ?? defaultModelDefaults.exploreSubagentModel),
+    planSubagentModel: normalizeModelReference(modelDefaults?.planSubagentModel ?? defaultModelDefaults.planSubagentModel),
+    generalSubagentModel: normalizeModelReference(modelDefaults?.generalSubagentModel ?? defaultModelDefaults.generalSubagentModel),
     subagentModelPool,
+    codexReasoningEffort:
+      modelDefaults?.codexReasoningEffort === "low"
+      || modelDefaults?.codexReasoningEffort === "medium"
+      || modelDefaults?.codexReasoningEffort === "high"
+        ? modelDefaults.codexReasoningEffort
+        : defaultModelDefaults.codexReasoningEffort,
     validation,
   };
 }

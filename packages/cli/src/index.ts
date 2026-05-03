@@ -28,6 +28,7 @@ import { importCommand } from "./commands/import.js";
 import { fanficCommand } from "./commands/fanfic.js";
 import { studioCommand } from "./commands/studio.js";
 import { consolidateCommand } from "./commands/consolidate.js";
+import { execCommand } from "./commands/exec.js";
 
 const { version } = JSON.parse(
   readFileSync(new URL("../package.json", import.meta.url), "utf-8"),
@@ -67,5 +68,6 @@ program.addCommand(importCommand);
 program.addCommand(fanficCommand);
 program.addCommand(studioCommand);
 program.addCommand(consolidateCommand);
+program.addCommand(execCommand);
 
 program.parse();

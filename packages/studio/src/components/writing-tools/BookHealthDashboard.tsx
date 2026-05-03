@@ -15,7 +15,7 @@ type UnknownMetric = {
   readonly reason: string;
 };
 
-type HealthMetric = MeasuredMetric | UnknownMetric;
+type HealthMetric = MeasuredMetric | UnknownMetric | null;
 
 export interface BookHealthData {
   readonly totalChapters: HealthMetric;
@@ -44,17 +44,21 @@ interface MetricConfig {
 }
 
 function isMeasured(metric: HealthMetric): metric is MeasuredMetric {
-  return metric.status === "measured";
+  return metric !== null && metric.status === "measured";
 }
 
 function metricVariant(metric: HealthMetric, lowerIsBetter = false): "outline" | "secondary" | "destructive" {
-  if (!isMeasured(metric)) return "secondary";
+  if (!metric || !isMeasured(metric)) return "secondary";
   if (lowerIsBetter) {
     if (metric.value === 0) return "outline";
     if (metric.value <= 5) return "secondary";
     return "destructive";
   }
   return "outline";
+}
+
+function formatNullMetricLabel(): string {
+  return "暂无数据";
 }
 
 function formatUnknownMetricReason(reason: string): string {
@@ -67,6 +71,7 @@ function formatUnknownMetricReason(reason: string): string {
 function MetricCard({ config }: { readonly config: MetricConfig }) {
   const { label, metric, format, lowerIsBetter } = config;
   const measured = isMeasured(metric);
+  const isNull = metric === null;
   const progress = measured
     ? config.progressValue?.(metric.value) ?? (lowerIsBetter ? (metric.value === 0 ? 0 : 100) : 100)
     : 0;
@@ -79,11 +84,13 @@ function MetricCard({ config }: { readonly config: MetricConfig }) {
       <div className="flex items-center justify-between gap-3">
         <span className="text-xs text-muted-foreground">{label}</span>
         <Badge variant={metricVariant(metric, lowerIsBetter)} className="text-xs">
-          {measured ? format(metric.value) : "待评估"}
+          {measured ? format(metric.value) : isNull ? formatNullMetricLabel() : "待评估"}
         </Badge>
       </div>
       {measured ? (
         <Progress aria-label={label} value={progress} className={progressClass} />
+      ) : isNull ? (
+        <p className="text-xs text-muted-foreground">暂无数据</p>
       ) : (
         <p className="text-xs text-muted-foreground">{formatUnknownMetricReason(metric.reason)}</p>
       )}
@@ -107,7 +114,7 @@ export function BookHealthDashboard({ bookId }: { readonly bookId: string }) {
   const health = data.health;
   const dailyTarget = isMeasured(health.dailyTarget) ? health.dailyTarget.value : 0;
   const unknownMetrics = [health.consistencyScore, health.hookRecoveryRate, health.aiTasteMean, health.rhythmDiversity]
-    .filter((metric) => metric.status === "unknown");
+    .filter((metric) => metric === null || metric.status === "unknown");
 
   const metrics: MetricConfig[] = [
     { label: "章节数量", metric: health.totalChapters, format: (value) => `${value} 章` },

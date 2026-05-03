@@ -8,14 +8,29 @@ import {
   DEFAULT_SESSION_CONFIG,
   normalizeSessionPermissionMode,
   type CreateNarratorSessionInput,
+  type NarratorSessionKind,
   type NarratorSessionRecoveryMetadata,
   type NarratorSessionRecord,
+  type NarratorSessionStatus,
   type SessionConfig,
   type UpdateNarratorSessionInput,
 } from "../../shared/session-types.js";
 import { deleteSessionChatHistory, markSessionChatHistoryDeleted } from "./session-history-store.js";
 import { getSessionStorageDatabase } from "./session-storage.js";
 import { loadUserConfig } from "./user-config-service.js";
+
+export type SessionListBinding = "standalone" | "book" | "chapter";
+export type SessionListSort = "manual" | "recent";
+
+export interface ListSessionsOptions {
+  readonly kind?: NarratorSessionKind;
+  readonly projectId?: string;
+  readonly chapterId?: string;
+  readonly status?: NarratorSessionStatus;
+  readonly binding?: SessionListBinding;
+  readonly search?: string;
+  readonly sort?: SessionListSort;
+}
 
 export let sessionStoreMutationQueue: Promise<void> = Promise.resolve();
 let sessionStoreMutationHook: (() => Promise<void> | void) | undefined;
@@ -145,13 +160,57 @@ function sortSessions(records: NarratorSessionRecord[]): NarratorSessionRecord[]
   });
 }
 
+function sortSessionsByRecentActivity(records: NarratorSessionRecord[]): NarratorSessionRecord[] {
+  return [...records].sort((a, b) => {
+    const modifiedDelta = new Date(b.lastModified).getTime() - new Date(a.lastModified).getTime();
+    if (modifiedDelta !== 0) return modifiedDelta;
+    return a.sortOrder - b.sortOrder;
+  });
+}
+
+function getSessionBinding(session: NarratorSessionRecord): SessionListBinding {
+  if (session.chapterId) return "chapter";
+  if (session.projectId) return "book";
+  return "standalone";
+}
+
+function normalizeSearch(value: string | undefined): string {
+  return value?.trim().toLowerCase() ?? "";
+}
+
+function matchesSessionSearch(session: NarratorSessionRecord, search: string): boolean {
+  if (!search) return true;
+  return [
+    session.id,
+    session.title,
+    session.agentId,
+    session.projectId,
+    session.chapterId,
+    session.sessionConfig.providerId,
+    session.sessionConfig.modelId,
+  ].some((value) => value?.toLowerCase().includes(search));
+}
+
+function filterSessions(records: NarratorSessionRecord[], options: ListSessionsOptions): NarratorSessionRecord[] {
+  const search = normalizeSearch(options.search);
+  return records.filter((session) => {
+    if (options.kind && session.kind !== options.kind) return false;
+    if (options.status && session.status !== options.status) return false;
+    if (options.projectId && session.projectId !== options.projectId) return false;
+    if (options.chapterId && session.chapterId !== options.chapterId) return false;
+    if (options.binding && getSessionBinding(session) !== options.binding) return false;
+    return matchesSessionSearch(session, search);
+  });
+}
+
 async function loadSessionRecords(): Promise<NarratorSessionRecord[]> {
   const records = await getSessionRepo().list();
   return records.map(toNarratorSessionRecord);
 }
 
-export async function listSessions(): Promise<NarratorSessionRecord[]> {
-  return sortSessions(await loadSessionRecords());
+export async function listSessions(options: ListSessionsOptions = {}): Promise<NarratorSessionRecord[]> {
+  const sessions = filterSessions(await loadSessionRecords(), options);
+  return options.sort === "recent" ? sortSessionsByRecentActivity(sessions) : sortSessions(sessions);
 }
 
 export async function getSessionById(id: string): Promise<NarratorSessionRecord | null> {

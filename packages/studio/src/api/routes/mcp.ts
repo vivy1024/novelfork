@@ -97,13 +97,13 @@ export function createMCPRouter(projectRoot: string, options: MCPRouterOptions =
 
   function serializeServer(
     entry: MCPServerEntry,
-    runtimeControls: Awaited<ReturnType<typeof loadUserConfig>>["runtimeControls"],
+    userConfig: Awaited<ReturnType<typeof loadUserConfig>>,
   ): MCPRegistryServer {
     const managed = managedServers.get(entry.id);
     const client = managed?.client;
     const tools = client
       ? [...client.tools].map((tool) => {
-          const decision = getMCPToolDecision(tool.name, runtimeControls);
+          const decision = getMCPToolDecision(tool.name, userConfig.runtimeControls, userConfig.preferences);
           return {
             name: tool.name,
             description: tool.description,
@@ -127,7 +127,7 @@ export function createMCPRouter(projectRoot: string, options: MCPRouterOptions =
   async function buildRegistry() {
     const entries = await loadConfig();
     const userConfig = await loadUserConfig();
-    const servers = entries.map((entry) => serializeServer(entry, userConfig.runtimeControls));
+    const servers = entries.map((entry) => serializeServer(entry, userConfig));
     const connectedServers = servers.filter((server) => server.status === "connected").length;
     const discoveredTools = servers.reduce((sum, server) => sum + server.toolCount, 0);
     const allowTools = servers.reduce((sum, server) => sum + server.tools.filter((tool) => tool.access === "allow").length, 0);
@@ -215,7 +215,7 @@ export function createMCPRouter(projectRoot: string, options: MCPRouterOptions =
     entries[index] = updated;
     await saveConfig(entries);
     const userConfig = await loadUserConfig();
-    return c.json({ ok: true, server: serializeServer(updated, userConfig.runtimeControls) });
+    return c.json({ ok: true, server: serializeServer(updated, userConfig) });
   });
 
   app.post("/api/mcp/servers/:id/start", async (c) => {
@@ -270,7 +270,7 @@ export function createMCPRouter(projectRoot: string, options: MCPRouterOptions =
 
     const body = await c.req.json<{ tool: string; arguments?: Record<string, unknown> }>();
     const userConfig = await loadUserConfig();
-    const decision = getMCPToolDecision(body.tool, userConfig.runtimeControls);
+    const decision = getMCPToolDecision(body.tool, userConfig.runtimeControls, userConfig.preferences);
 
     if (decision.action === "deny") {
       return c.json(

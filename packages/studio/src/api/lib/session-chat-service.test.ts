@@ -11,6 +11,7 @@ vi.mock("./user-config-service.js", () => ({
     runtimeControls: {
       defaultPermissionMode: "allow",
       defaultReasoningEffort: "medium",
+      maxTurnSteps: 6,
     },
     modelDefaults: {
       defaultSessionModel: "anthropic:claude-sonnet-4-6",
@@ -1282,6 +1283,18 @@ describe("session-chat-service", () => {
     const approved = await confirmSessionToolDecision(session.id, "guided.exit", { decision: "approve", confirmationId: "confirm-write-next" });
 
     expect(approved.ok).toBe(true);
+    expect(generateSessionReplyMock.mock.calls[1]?.[0]).toMatchObject({
+      messages: expect.arrayContaining([
+        expect.objectContaining({
+          type: "tool_result",
+          toolCallId: "tool-use-plan",
+          name: "guided.exit",
+          metadata: expect.objectContaining({
+            toolResult: expect.objectContaining({ ok: true, summary: "引导式生成计划已批准，进入执行阶段。" }),
+          }),
+        }),
+      ]),
+    });
     expect(executeSessionToolMock).toHaveBeenNthCalledWith(3, expect.objectContaining({
       toolName: "candidate.create_chapter",
       input: expect.objectContaining({ bookId: "book-1", chapterIntent: "写下一章" }),
@@ -1297,7 +1310,7 @@ describe("session-chat-service", () => {
     ]));
   });
 
-  it("stops after candidate creation failure in the write-next chain", async () => {
+  it("lets the model respond after candidate creation failure in the write-next chain", async () => {
     const runtimeMetadata = { providerId: "anthropic", providerName: "Anthropic", modelId: "claude-sonnet-4-6" };
     generateSessionReplyMock
       .mockResolvedValueOnce({
@@ -1310,6 +1323,12 @@ describe("session-chat-service", () => {
         success: true,
         type: "tool_use",
         toolUses: [{ id: "tool-use-candidate-fail", name: "candidate.create_chapter", input: { bookId: "book-1", chapterIntent: "写下一章" } }],
+        metadata: runtimeMetadata,
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        type: "message",
+        content: "候选稿生成失败，需要配置支持模型。",
         metadata: runtimeMetadata,
       });
     executeSessionToolMock
@@ -1332,11 +1351,11 @@ describe("session-chat-service", () => {
     const approved = await confirmSessionToolDecision(session.id, "guided.exit", { decision: "approve", confirmationId: "confirm-write-next-fail" });
 
     expect(approved.ok).toBe(true);
-    expect(generateSessionReplyMock).toHaveBeenCalledTimes(2);
+    expect(generateSessionReplyMock).toHaveBeenCalledTimes(3);
     const snapshot = await getSessionChatSnapshot(session.id);
     expect(snapshot?.messages.at(-1)).toMatchObject({
-      content: "候选稿生成需要配置支持模型。",
-      metadata: expect.objectContaining({ toolResult: expect.objectContaining({ ok: false, error: "unsupported-model" }) }),
+      role: "assistant",
+      content: "候选稿生成失败，需要配置支持模型。",
     });
   });
 

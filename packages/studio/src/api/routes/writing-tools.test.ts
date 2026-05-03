@@ -27,6 +27,7 @@ const coreMocks = vi.hoisted(() => {
     getProgressTrend: vi.fn(() => Promise.resolve([{ date: "2026-04-26", wordCount: 3000 }])),
     getStorageDatabase: vi.fn(() => storage),
     conflictRecords: [] as unknown[],
+    filterReportRecords: [] as Array<{ aiTasteScore: number; chapterNumber: number }>,
     createKvRepository: vi.fn(() => ({
       get: vi.fn((key: string) => Promise.resolve(kv.get(key) ?? null)),
       set: vi.fn((key: string, value: string) => {
@@ -36,6 +37,9 @@ const coreMocks = vi.hoisted(() => {
     })),
     createBibleConflictRepository: vi.fn(() => ({
       listByBook: vi.fn(() => Promise.resolve(coreMocks.conflictRecords)),
+    })),
+    createFilterReportRepository: vi.fn(() => ({
+      listByBook: vi.fn(() => Promise.resolve(coreMocks.filterReportRecords)),
     })),
     createBibleCharacterArcRepository: vi.fn(() => ({
       listByBook: vi.fn(() => Promise.resolve([{ id: "arc-1", characterId: "char-1", arcType: "positive-growth" }])),
@@ -51,6 +55,7 @@ vi.mock("@vivy1024/novelfork-core", () => ({
   buildPovDashboard: coreMocks.buildPovDashboard,
   createBibleCharacterArcRepository: coreMocks.createBibleCharacterArcRepository,
   createBibleConflictRepository: coreMocks.createBibleConflictRepository,
+  createFilterReportRepository: coreMocks.createFilterReportRepository,
   createKvRepository: coreMocks.createKvRepository,
   detectToneDrift: coreMocks.detectToneDrift,
   generateChapterHooks: coreMocks.generateChapterHooks,
@@ -149,6 +154,7 @@ async function createUsableProviderStore() {
 beforeEach(() => {
   coreMocks.kv.clear();
   coreMocks.conflictRecords.length = 0;
+  coreMocks.filterReportRecords.length = 0;
   vi.clearAllMocks();
 });
 
@@ -293,7 +299,7 @@ describe("writing tools routes", () => {
     expect(coreMocks.analyzeDialogue).toHaveBeenCalledWith(expect.stringContaining("我们不能回头"), "daily");
   });
 
-  it("returns measured health facts and unknown placeholders instead of fixed scores", async () => {
+  it("returns measured health facts and null for unavailable quality metrics", async () => {
     coreMocks.conflictRecords.push({ id: "conflict-main" });
     const { app } = await createRoute();
 
@@ -307,7 +313,10 @@ describe("writing tools routes", () => {
         dailyWords: { status: string; value: number };
         sensitiveWordCount: { status: string; value: number };
         knownConflictCount: { status: string; value: number };
-        consistencyScore: { status: string; value?: number };
+        consistencyScore: { status: string; value?: number } | null;
+        hookRecoveryRate: { status: string; value?: number } | null;
+        aiTasteMean: { status: string; value?: number } | null;
+        rhythmDiversity: { status: string; value?: number } | null;
       };
     };
     expect(json.health.totalChapters).toMatchObject({ status: "measured", value: 1 });
@@ -316,8 +325,80 @@ describe("writing tools routes", () => {
     expect(json.health.dailyWords).toMatchObject({ status: "measured", value: 3000 });
     expect(json.health.sensitiveWordCount).toMatchObject({ status: "measured", value: 1 });
     expect(json.health.knownConflictCount).toMatchObject({ status: "measured", value: 1 });
-    expect(json.health.consistencyScore).toMatchObject({ status: "unknown" });
-    expect(json.health.consistencyScore.value).toBeUndefined();
+    // No audit data in chapter index → null
+    expect(json.health.consistencyScore).toBeNull();
+    // pending_hooks.md has no ## sections with status → null
+    expect(json.health.hookRecoveryRate).toBeNull();
+    // No filter reports → null
+    expect(json.health.aiTasteMean).toBeNull();
+    // Only 1 chapter → insufficient for rhythm diversity → null
+    expect(json.health.rhythmDiversity).toBeNull();
+  });
+
+  it("returns measured consistencyScore when chapter index has audit data", async () => {
+    const { app, bookDir } = await createRoute();
+    const chaptersDir = join(bookDir, "chapters");
+    await writeFile(join(chaptersDir, "index.json"), JSON.stringify([
+      { number: 1, title: "开始", auditIssues: ["[warning] 人物年龄矛盾"] },
+      { number: 2, title: "继续", auditIssues: [] },
+    ]), "utf-8");
+
+    const response = await app.request("http://localhost/api/books/book-1/health");
+
+    expect(response.status).toBe(200);
+    const json = await response.json() as { health: { consistencyScore: { status: string; value: number; source: string } } };
+    expect(json.health.consistencyScore.status).toBe("measured");
+    expect(json.health.consistencyScore.source).toBe("chapter-audit-issues");
+    // 1 issue across 2 chapters → 1 - (1/2) = 0.5
+    expect(json.health.consistencyScore.value).toBe(0.5);
+  });
+
+  it("returns measured hookRecoveryRate from pending_hooks.md", async () => {
+    const { app, bookDir } = await createRoute();
+    const storyDir = join(bookDir, "story");
+    await writeFile(join(storyDir, "pending_hooks.md"), [
+      "# 伏笔清单",
+      "",
+      "## hook-001",
+      "- status: open",
+      "- chapter: 1",
+      "- text: 门外传来脚步声",
+      "",
+      "## hook-002",
+      "- status: resolved",
+      "- chapter: 2",
+      "- text: 神秘信件",
+      "",
+      "## hook-003",
+      "- status: open",
+      "- chapter: 3",
+      "- text: 消失的钥匙",
+    ].join("\n"), "utf-8");
+
+    const response = await app.request("http://localhost/api/books/book-1/health");
+
+    expect(response.status).toBe(200);
+    const json = await response.json() as { health: { hookRecoveryRate: { status: string; value: number; source: string } } };
+    expect(json.health.hookRecoveryRate.status).toBe("measured");
+    expect(json.health.hookRecoveryRate.source).toBe("pending-hooks-md");
+    // 1 resolved out of 3 → 0.333
+    expect(json.health.hookRecoveryRate.value).toBeCloseTo(0.333, 2);
+  });
+
+  it("returns measured aiTasteMean from filter reports", async () => {
+    coreMocks.filterReportRecords.push(
+      { aiTasteScore: 60, chapterNumber: 1 },
+      { aiTasteScore: 80, chapterNumber: 2 },
+    );
+    const { app } = await createRoute();
+
+    const response = await app.request("http://localhost/api/books/book-1/health");
+
+    expect(response.status).toBe(200);
+    const json = await response.json() as { health: { aiTasteMean: { status: string; value: number; source: string } } };
+    expect(json.health.aiTasteMean.status).toBe("measured");
+    expect(json.health.aiTasteMean.source).toBe("filter-reports");
+    expect(json.health.aiTasteMean.value).toBe(70);
   });
 
   it("returns conflict map", async () => {

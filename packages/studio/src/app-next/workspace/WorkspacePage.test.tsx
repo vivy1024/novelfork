@@ -216,6 +216,53 @@ describe("WorkspacePage", () => {
     expect(fetchJsonMock).not.toHaveBeenCalledWith("/api/sessions", expect.objectContaining({ method: "POST" }));
   });
 
+  it("opens the session center from the docked narrator and switches sessions", async () => {
+    const currentSnapshot = createSessionSnapshot("session-existing");
+    const targetSnapshot: NarratorSessionChatSnapshot = {
+      ...createSessionSnapshot("session-other"),
+      session: {
+        ...createSessionSnapshot("session-other").session,
+        title: "Planner 会话",
+        agentId: "planner",
+        sessionMode: "plan",
+        projectId: TEST_BOOK.id,
+        sessionConfig: {
+          providerId: "openai",
+          modelId: "gpt-5.4-mini",
+          permissionMode: "plan",
+          reasoningEffort: "medium",
+        },
+      },
+    };
+    fetchJsonMock.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path === "/api/providers/models") return { models: [{ providerId: "anthropic", providerName: "Anthropic", modelId: "anthropic:claude-sonnet-4-6", modelName: "Claude Sonnet 4.6", contextWindow: 200000, capabilities: { functionCalling: true } }] };
+      if (path === "/api/sessions") return [currentSnapshot.session];
+      if (path === "/api/sessions?sort=recent&status=active") return [targetSnapshot.session, currentSnapshot.session];
+      if (path === `/api/sessions/session-existing/chat/state`) return currentSnapshot;
+      if (path === `/api/sessions/session-other/chat/state`) return targetSnapshot;
+      if (path === `/books/${TEST_BOOK.id}/chapters/1`) return { content: "测试正文" };
+      if (path === `/books/${TEST_BOOK.id}/chapters/2`) return { content: "第二章正文" };
+      if (path === `/books/${TEST_BOOK.id}/story-files/pending_hooks.md`) return { file: "pending_hooks.md", content: "# hooks\n\n待处理伏笔" };
+      if (path === `/books/${TEST_BOOK.id}/truth-files/chapter_summaries.md`) return { file: "chapter_summaries.md", content: "# summaries\n\n第一章摘要" };
+      return init?.method === "PUT" ? targetSnapshot.session : {};
+    });
+
+    render(<WorkspacePage />);
+
+    const narrator = await screen.findByRole("complementary", { name: "叙述者会话" });
+    fireEvent.click(within(narrator).getByRole("button", { name: "会话中心" }));
+    const targetRow = await screen.findByTestId("session-center-row-session-other");
+    fireEvent.click(within(targetRow).getByRole("button", { name: "打开" }));
+
+    await waitFor(() => expect(useWindowStore.getState().windows[0]).toMatchObject({
+      sessionId: "session-other",
+      agentId: "planner",
+      sessionMode: "plan",
+      title: "Planner 会话",
+    }));
+    expect(fetchJsonMock).toHaveBeenCalledWith("/api/sessions/session-other/chat/state");
+  });
+
   it("keeps the docked narrator input while switching canvas resources", async () => {
     render(<WorkspacePage />);
 
@@ -259,13 +306,10 @@ describe("WorkspacePage", () => {
     expect(JSON.stringify(payload.canvasContext)).not.toContain("待处理伏笔");
   });
 
-  it("renders WorkspaceLeftRail with compact global navigation, book switcher and resource tree", () => {
+  it("renders WorkspaceLeftRail with book switcher and resource tree", () => {
     render(<WorkspacePage />);
 
     const explorer = screen.getByRole("complementary", { name: "小说资源管理器" });
-    expect(within(explorer).getByRole("navigation", { name: "工作台全局入口" })).toBeTruthy();
-    expect(within(explorer).getByRole("button", { name: "仪表盘" })).toBeTruthy();
-    expect(within(explorer).getByRole("button", { name: "工作流" })).toBeTruthy();
     expect(within(explorer).getByRole("combobox", { name: "资源栏作品选择" })).toHaveProperty("value", TEST_BOOK.id);
     expect(within(explorer).getByRole("button", { name: /第一章 灵潮初起/ })).toBeTruthy();
   });

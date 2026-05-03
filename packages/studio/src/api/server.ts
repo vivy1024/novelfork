@@ -71,8 +71,6 @@ import {
   createProvidersRouter,
   createRuntimeCapabilitiesRouter,
   createPlatformIntegrationsRouter,
-  createVirtualModelsRouter,
-  createWritingModelProfileRouter,
   createGitRouter,
   createAgentConfigRouter,
   createToolsRouter,
@@ -96,6 +94,7 @@ import {
   createComplianceRouter,
   createWritingToolsRouter,
   createWritingModesRouter,
+  createExecRouter,
   setupAdminWebSocket,
   setupMonitorWebSocket,
 } from "./routes/index.js";
@@ -325,8 +324,6 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     app.route("/api/runtime-capabilities", createRuntimeCapabilitiesRouter());
 
     app.route("/api/platform-integrations", createPlatformIntegrationsRouter({ store: providerStore }));
-    app.route("/api/virtual-models", createVirtualModelsRouter({ store: providerStore }));
-    app.route("/api/settings/writing-model-profile", createWritingModelProfileRouter({ store: providerStore }));
 
     app.route("/api/git", createGitRouter());
 
@@ -414,6 +411,9 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     app.route("", createSearchRouter(ctx));
 
     app.route("/api/sessions", sessionRouter);
+
+    // Headless exec — non-interactive agent execution
+    app.route("/api/exec", createExecRouter());
 
     // Monitor visualization
     app.route("", createMonitorRouter(ctx));

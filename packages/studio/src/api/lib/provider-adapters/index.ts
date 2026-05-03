@@ -10,10 +10,9 @@ export interface RuntimeProviderRef {
   readonly apiKey?: string;
 }
 
-export interface RuntimeChatMessage {
-  readonly role: "system" | "user" | "assistant";
-  readonly content: string;
-}
+export type RuntimeChatMessage =
+  | { readonly role: "system" | "user" | "assistant"; readonly content: string; readonly toolCalls?: readonly RuntimeToolUse[] }
+  | { readonly role: "tool"; readonly toolCallId: string; readonly name?: string; readonly content: string };
 
 export interface TestModelInput extends RuntimeProviderRef {
   readonly modelId: string;
@@ -46,9 +45,16 @@ export type RuntimeAdapterFailure = {
 
 export type ListModelsResult = { readonly success: true; readonly models: RuntimeModelInput[] } | RuntimeAdapterFailure;
 export type TestModelResult = { readonly success: true; readonly latency: number } | RuntimeAdapterFailure;
+export interface GenerateUsage {
+  readonly input_tokens: number;
+  readonly output_tokens: number;
+  readonly cache_creation_input_tokens?: number;
+  readonly cache_read_input_tokens?: number;
+}
+
 export type GenerateResult =
-  | { readonly success: true; readonly type: "message"; readonly content: string }
-  | { readonly success: true; readonly type: "tool_use"; readonly toolUses: readonly RuntimeToolUse[] }
+  | { readonly success: true; readonly type: "message"; readonly content: string; readonly usage?: GenerateUsage }
+  | { readonly success: true; readonly type: "tool_use"; readonly toolUses: readonly RuntimeToolUse[]; readonly usage?: GenerateUsage }
   | RuntimeAdapterFailure;
 
 export interface RuntimeAdapter {
@@ -182,6 +188,35 @@ function toOpenAiTools(tools: readonly RuntimeToolDefinition[]): Array<Record<st
   });
 }
 
+function toOpenAiMessages(messages: readonly RuntimeChatMessage[]): Array<Record<string, unknown>> {
+  return messages.map((message) => {
+    if (message.role === "tool") {
+      return {
+        role: "tool",
+        tool_call_id: message.toolCallId,
+        content: message.content,
+      };
+    }
+
+    if (message.role === "assistant" && message.toolCalls?.length) {
+      return {
+        role: "assistant",
+        content: message.content,
+        tool_calls: message.toolCalls.map((toolCall) => ({
+          id: toolCall.id,
+          type: "function",
+          function: {
+            name: toProviderSafeToolName(toolCall.name),
+            arguments: JSON.stringify(toolCall.input),
+          },
+        })),
+      };
+    }
+
+    return { role: message.role, content: message.content };
+  });
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -201,6 +236,20 @@ function parseToolArguments(value: unknown): Record<string, unknown> {
   } catch {
     return { rawArguments: value };
   }
+}
+
+function readOpenAiUsage(payload: unknown): GenerateUsage | undefined {
+  if (!payload || typeof payload !== "object" || !("usage" in payload)) return undefined;
+  const usage = (payload as { usage?: unknown }).usage;
+  if (!usage || typeof usage !== "object") return undefined;
+  const u = usage as Record<string, unknown>;
+  const promptTokens = typeof u.prompt_tokens === "number" ? u.prompt_tokens : 0;
+  const completionTokens = typeof u.completion_tokens === "number" ? u.completion_tokens : 0;
+  if (promptTokens === 0 && completionTokens === 0) return undefined;
+  return {
+    input_tokens: promptTokens,
+    output_tokens: completionTokens,
+  };
 }
 
 function readOpenAiToolUses(payload: unknown, tools: readonly RuntimeToolDefinition[] = []): RuntimeToolUse[] {
@@ -317,7 +366,7 @@ class OpenAiCompatibleAdapter implements RuntimeAdapter {
     const hasTools = Boolean(tools?.length);
     const body = {
       model: input.modelId,
-      messages,
+      messages: toOpenAiMessages(messages),
       stream: false,
       ...(maxTokens ? { max_tokens: maxTokens } : {}),
       ...(hasTools ? { tools: toOpenAiTools(tools!), tool_choice: "auto" } : {}),
@@ -334,8 +383,9 @@ class OpenAiCompatibleAdapter implements RuntimeAdapter {
     }
 
     const toolUses = readOpenAiToolUses(payload, tools);
+    const usage = readOpenAiUsage(payload);
     if (toolUses.length > 0) {
-      return { success: true, type: "tool_use", toolUses };
+      return { success: true, type: "tool_use", toolUses, ...(usage ? { usage } : {}) };
     }
 
     const choices = payload && typeof payload === "object" && Array.isArray((payload as { choices?: unknown }).choices)
@@ -348,7 +398,7 @@ class OpenAiCompatibleAdapter implements RuntimeAdapter {
       && typeof (firstChoice as { message: { content?: unknown } }).message.content === "string"
         ? (firstChoice as { message: { content: string } }).message.content
         : "";
-    return { success: true, type: "message", content };
+    return { success: true, type: "message", content, ...(usage ? { usage } : {}) };
   }
 }
 

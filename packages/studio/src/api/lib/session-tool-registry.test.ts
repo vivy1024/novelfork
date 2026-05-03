@@ -41,6 +41,7 @@ describe("session tool registry", () => {
       expect(tool.inputSchema).toMatchObject({ type: "object" });
       expect(["read", "draft-write", "confirmed-write", "destructive"]).toContain(tool.risk);
       expect(tool.enabledForModes.length).toBeGreaterThan(0);
+      expect(tool.visibility).toBe("author");
       expect(typeof tool.renderer).toBe("string");
       expect("execute" in tool).toBe(false);
       expect(JSON.parse(JSON.stringify(tool))).toEqual(tool);
@@ -97,5 +98,6 @@ describe("session tool registry", () => {
     expect(providerTools.some((tool) => tool.function.name === "candidate.create_chapter")).toBe(false);
     expect(providerTools.every((tool) => !("renderer" in tool.function))).toBe(true);
     expect(providerTools.every((tool) => !("risk" in tool.function))).toBe(true);
+    expect(providerTools.every((tool) => !("visibility" in tool.function))).toBe(true);
   });
 });

@@ -18,6 +18,7 @@ import {
   type ProgressConfig,
   type StyleProfile,
 } from "@vivy1024/novelfork-core";
+import { analyzeRhythm as analyzeBookRhythm } from "../lib/rhythm-analyzer.js";
 
 import { requireModelForAiAction } from "../lib/ai-gate.js";
 import { ProviderRuntimeStore } from "../lib/provider-runtime-store.js";
@@ -209,11 +210,16 @@ export function createWritingToolsRouter(ctx: RouterContext): Hono {
     const storage = getStorageDatabase();
     const config = await loadProgressConfig(storage);
     const progress = await getDailyProgress(storage, config);
-    const { createBibleConflictRepository } = await import("@vivy1024/novelfork-core");
+    const { createBibleConflictRepository, createFilterReportRepository } = await import("@vivy1024/novelfork-core");
     const conflicts = await createBibleConflictRepository(storage).listByBook(bookId);
     const language = isRecord(book) && book.language === "en" ? "en" : "zh";
     const sensitiveWordCount = chapters.reduce((total, chapter) => total + countSensitiveHits(chapter.content, language), 0);
     const warnings = buildHealthWarnings(sensitiveWordCount, conflicts.length);
+
+    const consistencyScore = await computeConsistencyScore(ctx, bookId);
+    const hookRecoveryRate = await computeHookRecoveryRate(ctx, bookId);
+    const aiTasteMean = await computeAiTasteMean(createFilterReportRepository, storage, bookId);
+    const rhythmDiversity = computeRhythmDiversity(chapters);
 
     return c.json({
       health: {
@@ -223,10 +229,10 @@ export function createWritingToolsRouter(ctx: RouterContext): Hono {
         dailyTarget: measuredMetric(progress.today.target, "progress-config"),
         sensitiveWordCount: measuredMetric(sensitiveWordCount, "sensitive-word-scan"),
         knownConflictCount: measuredMetric(conflicts.length, "bible-conflicts"),
-        consistencyScore: unknownMetric("连续性审计汇总未接入真实来源"),
-        hookRecoveryRate: unknownMetric("钩子回收率未接入真实来源"),
-        aiTasteMean: unknownMetric("AI 味均值未接入真实来源"),
-        rhythmDiversity: unknownMetric("节奏多样性未接入真实来源"),
+        consistencyScore,
+        hookRecoveryRate,
+        aiTasteMean,
+        rhythmDiversity,
         warnings,
       },
     });
@@ -422,4 +428,100 @@ function readPositiveInteger(value: unknown): number | undefined {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+async function computeConsistencyScore(ctx: RouterContext, bookId: string): Promise<MeasuredMetric | null> {
+  try {
+    const index = await ctx.state.loadChapterIndex(bookId).catch(() => []);
+    const chaptersWithAudit = index.filter((ch) => {
+      const record = ch as Record<string, unknown>;
+      return Array.isArray(record.auditIssues);
+    });
+    if (chaptersWithAudit.length === 0) return null;
+    const totalIssues = chaptersWithAudit.reduce((sum, ch) => {
+      const record = ch as Record<string, unknown>;
+      return sum + (Array.isArray(record.auditIssues) ? (record.auditIssues as unknown[]).length : 0);
+    }, 0);
+    const score = Math.max(0, 1 - totalIssues / chaptersWithAudit.length);
+    return measuredMetric(Math.round(score * 1000) / 1000, "chapter-audit-issues");
+  } catch {
+    return null;
+  }
+}
+
+async function computeHookRecoveryRate(ctx: RouterContext, bookId: string): Promise<MeasuredMetric | null> {
+  try {
+    const content = await readStoryFile(ctx, bookId, "pending_hooks.md");
+    if (!content.trim()) return null;
+    const hookEntries = content.split(/^## /m).filter((section) => section.trim().length > 0);
+    if (hookEntries.length === 0) return null;
+    const statusPattern = /- status:\s*(\S+)/i;
+    let total = 0;
+    let recovered = 0;
+    for (const entry of hookEntries) {
+      const match = statusPattern.exec(entry);
+      if (!match) continue;
+      total += 1;
+      const status = match[1]?.toLowerCase() ?? "";
+      if (status === "resolved" || status === "closed" || status === "recovered") {
+        recovered += 1;
+      }
+    }
+    if (total === 0) return null;
+    return measuredMetric(Math.round((recovered / total) * 1000) / 1000, "pending-hooks-md");
+  } catch {
+    return null;
+  }
+}
+
+async function computeAiTasteMean(
+  createFilterReportRepository: (storage: ReturnType<typeof getStorageDatabase>) => { listByBook: (bookId: string) => Promise<ReadonlyArray<{ aiTasteScore: number; chapterNumber: number }>> },
+  storage: ReturnType<typeof getStorageDatabase>,
+  bookId: string,
+): Promise<MeasuredMetric | null> {
+  try {
+    const rows = await createFilterReportRepository(storage).listByBook(bookId);
+    if (rows.length === 0) return null;
+    const latestByChapter = new Map<number, number>();
+    for (const row of rows) {
+      if (!latestByChapter.has(row.chapterNumber)) {
+        latestByChapter.set(row.chapterNumber, row.aiTasteScore);
+      }
+    }
+    if (latestByChapter.size === 0) return null;
+    const scores = [...latestByChapter.values()];
+    const avg = Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length);
+    return measuredMetric(avg, "filter-reports");
+  } catch {
+    return null;
+  }
+}
+
+function computeRhythmDiversity(chapters: ChapterLookup[]): MeasuredMetric | null {
+  const validChapters = chapters.filter((ch) => ch.content.trim().length > 0);
+  if (validChapters.length < 2) return null;
+  try {
+    const analysis = analyzeBookRhythm(validChapters.map((ch) => ({ number: ch.chapterNumber, content: ch.content })));
+    if (analysis.chapters.length < 2) return null;
+    const typeCounts = new Map<string, number>();
+    for (const ch of analysis.chapters) {
+      typeCounts.set(ch.type, (typeCounts.get(ch.type) ?? 0) + 1);
+    }
+    const total = analysis.chapters.length;
+    const typeCount = typeCounts.size;
+    const maxTypes = 3;
+    const distributionScore = typeCount / maxTypes;
+    const evenness = typeCount <= 1 ? 0 : (() => {
+      let entropy = 0;
+      for (const count of typeCounts.values()) {
+        const p = count / total;
+        if (p > 0) entropy -= p * Math.log2(p);
+      }
+      return entropy / Math.log2(typeCount);
+    })();
+    const diversity = Math.round(distributionScore * 0.5 * 1000 + evenness * 0.5 * 1000) / 1000;
+    return measuredMetric(Math.min(1, diversity), "rhythm-analysis");
+  } catch {
+    return null;
+  }
 }

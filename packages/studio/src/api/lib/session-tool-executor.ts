@@ -4,6 +4,7 @@ import {
   type SessionToolDefinition,
   type SessionToolExecutionInput,
   type SessionToolExecutionResult,
+  type ToolConfirmationAudit,
   type ToolConfirmationRequest,
 } from "../../shared/agent-native-workspace.js";
 import type { CandidateToolService } from "./candidate-tool-service.js";
@@ -88,10 +89,10 @@ export async function executeSessionTool(
       }, startedAt, options);
     }
     const result = await handler({ ...input, definition });
-    return withDuration({
+    return withDuration(withConfirmationAudit({
       ...result,
       renderer: result.renderer ?? definition.renderer,
-    }, startedAt, options);
+    }, input, definition), startedAt, options);
   }
 
   if (riskDecision === "deny") {
@@ -118,13 +119,15 @@ export async function executeSessionTool(
   }
 
   if (riskDecision === "confirm" && input.confirmationDecision?.decision !== "approved") {
-    return withDuration({
+    const confirmation = createConfirmationRequest(input, definition, options);
+    const result: SessionToolExecutionResult = {
       ok: true,
       renderer: definition.renderer,
       summary: `工具 ${definition.name} 需要确认后执行。`,
       data: { status: "pending-confirmation" },
-      confirmation: createConfirmationRequest(input, definition, options),
-    }, startedAt, options);
+      confirmation,
+    };
+    return withDuration(withConfirmationAudit(result, input, definition, confirmation), startedAt, options);
   }
 
   const handler = options.handlers?.[definition.name] ?? getDefaultHandler(definition.name, options);
@@ -139,10 +142,10 @@ export async function executeSessionTool(
 
   try {
     const result = await handler({ ...input, definition });
-    return withDuration({
+    return withDuration(withConfirmationAudit({
       ...result,
       renderer: result.renderer ?? definition.renderer,
-    }, startedAt, options);
+    }, input, definition), startedAt, options);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return withDuration({
@@ -317,6 +320,56 @@ function withDuration(
   };
 }
 
+function withConfirmationAudit(
+  result: SessionToolExecutionResult,
+  input: SessionToolExecutionInput,
+  definition: SessionToolDefinition,
+  confirmation?: ToolConfirmationRequest,
+): SessionToolExecutionResult {
+  if (!confirmation && !input.confirmationDecision && definition.risk === "read") {
+    return result;
+  }
+
+  return {
+    ...result,
+    confirmationAudit: createConfirmationAudit(result, input, definition, confirmation),
+  };
+}
+
+function createConfirmationAudit(
+  result: SessionToolExecutionResult,
+  input: SessionToolExecutionInput,
+  definition: SessionToolDefinition,
+  confirmation?: ToolConfirmationRequest,
+): ToolConfirmationAudit {
+  const decision = input.confirmationDecision;
+  return {
+    confirmationId: decision?.confirmationId ?? confirmation?.id ?? `confirm:${input.sessionId}:${definition.name}`,
+    sessionId: decision?.sessionId ?? confirmation?.sessionId ?? input.sessionId,
+    toolName: definition.name,
+    targetResources: getConfirmationTargetResources(input, definition, confirmation),
+    summary: result.summary,
+    risk: definition.risk,
+    ...(decision ? { decision: decision.decision, decidedAt: decision.decidedAt } : {}),
+    ...(decision?.reason ? { reason: decision.reason } : {}),
+  };
+}
+
+function getConfirmationTargetResources(
+  input: SessionToolExecutionInput,
+  definition: SessionToolDefinition,
+  confirmation?: ToolConfirmationRequest,
+): NonNullable<ToolConfirmationAudit["targetResources"]> {
+  if (confirmation?.targetResource) {
+    return [confirmation.targetResource];
+  }
+
+  const target = stringifyTarget(input.input.bookId ?? input.input.target ?? input.input.resourceId ?? definition.name);
+  return [typeof input.input.bookId === "string"
+    ? { kind: definition.name, id: target, bookId: input.input.bookId }
+    : { kind: definition.name, id: target }];
+}
+
 function createConfirmationRequest(
   input: SessionToolExecutionInput,
   definition: SessionToolDefinition,
@@ -331,6 +384,7 @@ function createConfirmationRequest(
     target,
     risk: definition.risk === "destructive" ? "destructive" : "confirmed-write",
     summary: `${definition.description}（需要用户确认）`,
+    ...(createConfirmationDiff(input, definition) !== undefined ? { diff: createConfirmationDiff(input, definition) } : {}),
     options: CONFIRMATION_OPTIONS,
     targetResource: typeof toolInput.bookId === "string"
       ? { kind: definition.name, id: target, bookId: toolInput.bookId }
@@ -338,6 +392,31 @@ function createConfirmationRequest(
     sessionId: input.sessionId,
     createdAt: new Date(now).toISOString(),
   };
+}
+
+function createConfirmationDiff(input: SessionToolExecutionInput, definition: SessionToolDefinition): unknown | undefined {
+  if (definition.name === "questionnaire.submit_response") {
+    return {
+      status: "mapping-preview",
+      bookId: input.input.bookId,
+      templateId: input.input.templateId,
+      ...(input.input.responseId ? { responseId: input.input.responseId } : {}),
+      answers: input.input.answers ?? {},
+    };
+  }
+
+  if (definition.name === "narrative.propose_change") {
+    return {
+      status: "mutation-preview",
+      bookId: input.input.bookId,
+      summary: input.input.summary,
+      ...(Array.isArray(input.input.nodes) ? { nodes: input.input.nodes } : {}),
+      ...(Array.isArray(input.input.edges) ? { edges: input.input.edges } : {}),
+      ...(typeof input.input.reason === "string" ? { reason: input.input.reason } : {}),
+    };
+  }
+
+  return undefined;
 }
 
 function stringifyTarget(value: unknown): string {

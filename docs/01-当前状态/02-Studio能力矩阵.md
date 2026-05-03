@@ -1,6 +1,6 @@
-# Studio能力矩阵 v2.0
+# Studio能力矩阵 v2.1
 
-**版本**: v2.0.0
+**版本**: v2.1.0
 **创建日期**: 2026-04-28
 **更新日期**: 2026-05-03
 **状态**: ✅ 当前有效
@@ -10,7 +10,7 @@
 
 ## 1. 文档目的
 
-本文记录 NovelFork Studio 全部已交付能力的事实状态。覆盖已归档 spec 与当前 `agent-native-workspace-v1` 已完成任务；当前主产品口径是 session-first 的 Agent-native 创作工作台。
+本文记录 NovelFork Studio 全部已交付能力的事实状态。覆盖已归档 spec、`agent-native-workspace-v1` 已完成任务与 `web-agent-runtime-v1` 已完成任务；当前主产品口径是 session-first 的 Agent-native 创作工作台 + Web Agent Runtime。
 
 状态口径：
 - **真实可用**：有真实 API、持久化或真实 runtime 调用，失败时返回真实错误。
@@ -41,7 +41,8 @@
 | `ai-taste-filter-v1` | 7/7 | ✅ |
 | `storage-migration` | 7/7 | ✅ |
 | `old-frontend-decommission` | 5/9 | ⚠️ 旧代码未完全删除 |
-| **总计** | **~295** | — |
+| `web-agent-runtime-v1` | 16/16 | ✅ |
+| **总计** | **~309** | — |
 
 ---
 
@@ -156,7 +157,7 @@
 | AI 供应商管理（API key 接入） | ✅ |
 | 平台集成（Codex/Kiro JSON 账号导入） | ✅ |
 | 模型池管理（刷新/测试/启用禁用） | ✅ |
-| 虚拟模型 + 写作任务模型配置 | ✅ |
+| 真实 Provider/Model 管理（显式选择，无虚拟模型/自动 fallback） | ✅ |
 | Runtime control panel（权限/上下文/工具策略） | ✅ |
 | 模型默认值/摘要模型/子代理配置 | ✅ |
 | 个人资料 | ✅ |
@@ -186,7 +187,22 @@
 | AI 味过滤预设 | 4 个 | ✅ |
 | 文学技法预设 | 4 个 | ✅ |
 
-## 13. 已知缺口
+## 13. Web Agent Runtime（新增）
+
+| 能力 | 状态 | 说明 |
+|------|------|------|
+| **通用 Agent Turn Runtime** | 真实可用 | provider-agnostic 工具循环引擎，支持 message/tool_call/tool_result canonical items |
+| **重复工具调用保护** | 真实可用 | 同一 turn 内相同 toolName+input 签名超阈值自动拦截 |
+| **continuation 指令** | 真实可用 | 工具结果回灌时追加"总结已获信息、判断是否足够"指令 |
+| **OpenAI-compatible 工具上下文** | 真实可用 | canonical items 转 assistant tool_calls + tool role message |
+| **会话中心** | 真实可用 | 独立/书籍/章节绑定筛选、归档/恢复、模型/权限状态 |
+| **高级工作台模式** | 真实可用 | workbenchMode=false 隐藏 Terminal/Browser/Bash/MCP/Admin 等高级工具 |
+| **Headless Exec 服务** | 真实可用 | `POST /api/exec` 非交互执行，遇确认门停止返回 pending |
+| **`novelfork exec` CLI** | 真实可用 | 通过 HTTP 调用 Studio headless exec，支持 --json/--model/--book/--session |
+| **真实 Provider/Model 选择** | 强制 | 无虚拟模型、无自动 fallback；未配置返回 model-unavailable |
+| **Anthropic/Responses API adapter** | 未接入 | 预留转换接口，当前返回 unsupported |
+
+## 14. 已知缺口
 
 | 缺口 | 状态 |
 |------|------|

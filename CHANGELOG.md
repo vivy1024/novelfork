@@ -6,6 +6,20 @@
 
 ## Unreleased
 
+### 改进
+- 移除当前 Provider Runtime 的虚拟模型 API/UI/store 口径，恢复为真实供应商、真实模型、平台账号与显式模型选择；运行策略不再展示虚拟模型 fallback、配额路由或写作任务虚拟绑定。
+- 引入通用 Agent Turn Runtime 与 canonical message/tool_call/tool_result 工具循环协议，session chat 改为通过运行时事件持久化工具调用和结果，并在工具失败时把失败 tool_result 回传给模型生成最终说明。
+- 统一 session tools 的确认/写入审计 metadata：confirmed-write 工具记录 confirmationAudit，questionnaire 提交确认前展示 mapping preview，candidate/narrative draft-write 结果记录目标资源与风险。
+- 新增会话中心 API 与页面，支持独立/书籍/章节绑定筛选、归档/恢复、模型/权限/状态显示，并从工作台右侧叙述者入口可打开会话中心切换会话。
+- 新增高级工作台模式（workbenchMode）隔离：作者模式下隐藏 Terminal/Browser/Bash/MCP/Admin 等高级工具入口和后端调用；高级模式下仍受权限模式与确认门约束。
+- 新增 Headless Exec 服务（`POST /api/exec`）：非交互执行写作任务，复用 AgentTurnRuntime，遇确认门停止返回 pending 状态（exitCode=2），失败返回工具链摘要（exitCode=1）。
+- 新增 `novelfork exec` CLI 命令：通过 HTTP 调用 Studio headless exec API，支持 `--json` JSONL 事件流、`--model provider:model`、`--book`、`--session`、`--stdin`、`--max-steps`。
+
+### 文档
+- 新增 `web-agent-runtime-v1` Kiro spec，将下一阶段统一为 Web 版通用 Agent Runtime：移除虚拟模型方向，保留真实 provider/model 显式选择，并规划结构化工具循环、会话中心、高级工作台模式、headless exec 与统一确认门。
+- 更新能力矩阵至 v2.1，新增 Web Agent Runtime 能力段落，记录 Agent Turn Runtime、重复工具保护、会话中心、高级工作台模式、Headless Exec 与 CLI 的真实可用状态。
+- 更新 spec 索引进度为 14/16 已完成。
+
 ## v0.0.5 (2026-05-03)
 
 ### 改进

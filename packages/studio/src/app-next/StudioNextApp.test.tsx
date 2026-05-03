@@ -28,7 +28,7 @@ beforeEach(() => {
     if (path === "/books") return { data: { books: [{ id: "b1", title: "测试书" }] }, loading: false, error: null, refetch: vi.fn() };
     if (path === "/books/b1") return { data: { book: { id: "b1", title: "测试书" }, chapters: [], nextChapter: 1 }, loading: false, error: null, refetch: vi.fn() };
     if (path === "/books/b1/candidates") return { data: { candidates: [] }, loading: false, error: null, refetch: vi.fn() };
-    if (path === "/settings/user") return { data: { modelDefaults: {}, runtimeControls: {} }, loading: false, error: null, refetch: vi.fn() };
+    if (path === "/settings/user") return { data: { preferences: { workbenchMode: true }, modelDefaults: {}, runtimeControls: {} }, loading: false, error: null, refetch: vi.fn() };
     if (path === "/settings/release") return { data: { version: "0.1.0" }, loading: false, error: null, refetch: vi.fn() };
     if (path === "/settings/metrics") return { data: {}, loading: false, error: null, refetch: vi.fn() };
     if (path === "/providers") return { data: { providers: [] }, loading: false, error: null, refetch: vi.fn() };

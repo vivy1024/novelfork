@@ -2,17 +2,26 @@ import { useState } from "react";
 import { postApi, useApi } from "../../hooks/use-api";
 import { InlineError } from "../components/feedback";
 
-interface DetectStats {
-  readonly totalChapters: number;
-  readonly averageScore: number;
-  readonly highRiskCount: number;
+/** Shape returned by GET /api/books/:bookId/filter/report */
+interface FilterReportResponse {
+  readonly overall: { readonly avgScore: number; readonly totalChapters: number };
+  readonly reports: ReadonlyArray<FilterChapterReport>;
 }
 
-interface ChapterResult {
-  readonly chapter: number;
-  readonly score: number;
-  readonly riskLevel: "low" | "medium" | "high";
-  readonly issues: ReadonlyArray<{ type: string; description: string; severity: string }>;
+interface FilterChapterReport {
+  readonly chapterNumber: number;
+  readonly aiTasteScore: number;
+  readonly level: "clean" | "mild" | "moderate" | "severe";
+  readonly hitCounts: Readonly<Record<string, number>>;
+  readonly details: Readonly<Record<string, unknown>>;
+  readonly engineVersion: string;
+}
+
+/** Map filter level → display risk */
+function toRiskLevel(level: FilterChapterReport["level"]): "low" | "medium" | "high" {
+  if (level === "severe") return "high";
+  if (level === "moderate") return "medium";
+  return "low";
 }
 
 const RISK_COLORS: Record<string, string> = {
@@ -22,25 +31,61 @@ const RISK_COLORS: Record<string, string> = {
 };
 const RISK_LABELS: Record<string, string> = { high: "高风险", medium: "中风险", low: "低风险" };
 
+interface ChapterResult {
+  readonly chapter: number;
+  readonly score: number;
+  readonly riskLevel: "low" | "medium" | "high";
+  readonly issues: ReadonlyArray<{ type: string; description: string; severity: string }>;
+}
+
+function toChapterResults(reports: ReadonlyArray<FilterChapterReport>): ReadonlyArray<ChapterResult> {
+  return reports.map((r) => {
+    const issues: Array<{ type: string; description: string; severity: string }> = [];
+    for (const [ruleId, count] of Object.entries(r.hitCounts)) {
+      if (typeof count === "number" && count > 0) {
+        issues.push({ type: ruleId, description: `命中 ${count} 次`, severity: r.level });
+      }
+    }
+    return {
+      chapter: r.chapterNumber,
+      score: r.aiTasteScore,
+      riskLevel: toRiskLevel(r.level),
+      issues,
+    };
+  });
+}
+
 export function DetectPanel({ bookId }: { readonly bookId: string }) {
-  const { data: stats, error: statsError } = useApi<DetectStats>(`/books/${bookId}/detect/stats`);
+  const { data: reportData, error: statsError, refetch } = useApi<FilterReportResponse>(`/books/${bookId}/filter/report`);
   const [results, setResults] = useState<ReadonlyArray<ChapterResult>>([]);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<number | null>(null);
 
+  const stats = reportData
+    ? {
+        totalChapters: reportData.overall.totalChapters,
+        averageScore: reportData.overall.avgScore,
+        highRiskCount: reportData.reports.filter((r) => r.level === "severe").length,
+      }
+    : null;
+
   const runDetect = async () => {
     setRunning(true);
     setError(null);
     try {
-      const res = await postApi<{ results: ReadonlyArray<ChapterResult> }>(`/books/${bookId}/detect`);
-      setResults(res.results);
+      const res = await postApi<{ count: number; reports: ReadonlyArray<FilterChapterReport> }>(`/books/${bookId}/filter/batch-rescan`);
+      setResults(toChapterResults(res.reports));
+      void refetch();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setRunning(false);
     }
   };
+
+  // Show stored results on initial load when no manual scan has been triggered
+  const displayResults = results.length > 0 ? results : (reportData ? toChapterResults(reportData.reports) : []);
 
   return (
     <div className="space-y-4">
@@ -72,9 +117,9 @@ export function DetectPanel({ bookId }: { readonly bookId: string }) {
 
       {error && <InlineError message={error} onRetry={() => void runDetect()} />}
 
-      {results.length > 0 && (
+      {displayResults.length > 0 && (
         <div className="space-y-1">
-          {results.map((r) => (
+          {displayResults.map((r) => (
             <div key={r.chapter} className="rounded-lg border border-border">
               <button className="flex w-full items-center justify-between px-3 py-2 text-sm" onClick={() => setExpanded(expanded === r.chapter ? null : r.chapter)} type="button">
                 <span>第 {r.chapter} 章 · 分数 {r.score.toFixed(1)} · 问题 {r.issues.length}</span>
@@ -94,7 +139,7 @@ export function DetectPanel({ bookId }: { readonly bookId: string }) {
         </div>
       )}
 
-      {!stats && !error && !running && results.length === 0 && (
+      {!stats && !error && !running && displayResults.length === 0 && (
         <p className="text-sm text-muted-foreground">暂无检测数据</p>
       )}
     </div>
