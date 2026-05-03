@@ -50,7 +50,7 @@ novelfork/
 │   └── cli/           # CLI 工具 (novelfork 命令)
 ├── docs/              # 文档中心 (产品/架构/API/指南)
 ├── .kiro/
-│   ├── specs/         # 开发规格 (已全部归档)
+│   ├── specs/         # 开发规格（当前 active：agent-native-workspace-v1）
 │   └── steering/      # 项目原则与约束
 ├── claude/            # Claude Code 源码参考
 └── scripts/           # 工具脚本
@@ -66,12 +66,12 @@ novelfork/
 
 ## 核心能力
 
-### 创作工作台
-- 章节资源树（已有章节 / 候选稿 / 草稿 / 大纲 / 经纬 / 故事文件 / 真相文件）
-- TipTap 富文本编辑器
-- 写作模式：续写、扩写、补写、对话生成、多版本对比、大纲分支
-- AI 动作：生成下一章、审校、去 AI 味、连续性检查
-- 删除/保存/导出 Markdown & TXT
+### Agent-native 创作工作台
+- 三栏 session-first 布局：左侧资源栏 / 中间多资源画布 / 右侧固定叙述者会话
+- 章节、候选稿、草稿、经纬、故事文件、真相文件、发布报告都在中间画布打开，不替换右侧会话
+- 叙述者会话支持工具调用、工具结果卡片、确认门、权限模式和当前画布上下文注入
+- 「写下一章」最小链路：驾驶舱快照 → PGI 生成前追问 → GuidedGenerationPlan → 用户批准 → 候选稿生成
+- AI 输出默认进入候选区 / 草稿区；正式正文覆盖必须由用户确认
 
 ### 故事经纬（Bible/Jingwei）
 - 人物/事件/设定/章节摘要 CRUD（SQLite 持久化）
@@ -87,11 +87,11 @@ novelfork/
 - agentId → 专属 system prompt 自动选择
 - 上下文自动注入
 
-### 驾驶舱
-- 右侧面板默认 Tab：总览 / 伏笔 / 设定 / AI
-- 日更进度、当前焦点、最近章节摘要
-- 伏笔聚合（bible events + pending_hooks.md）
-- AI 模型状态 + 候选稿追踪
+### 工具化驾驶舱与叙事线
+- 驾驶舱已降级为 `cockpit.*` 工具结果卡片和画布组件，不再是右侧主 Tab
+- `cockpit.get_snapshot` 汇总日更进度、当前焦点、最近章节摘要、伏笔、风险和模型状态
+- Narrative Line v1 可读取章节、经纬、伏笔、冲突和人物弧光，并在确认后写入叙事线变更
+- 模型 / provider 不支持工具调用时返回 `unsupported-tools`，降级到只读解释或 prompt-preview，不伪造执行成功
 
 ### 合规与预设
 - 敏感词扫描（起点/晋江/番茄/七猫/通用）
