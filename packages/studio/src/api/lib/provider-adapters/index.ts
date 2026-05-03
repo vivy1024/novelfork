@@ -160,15 +160,26 @@ function readOpenAiError(payload: unknown, fallback: string): string {
   return fallback;
 }
 
+function toProviderSafeToolName(name: string): string {
+  return name.replace(/[^a-zA-Z0-9_-]/gu, "_");
+}
+
+function toInternalToolName(name: string, tools: readonly RuntimeToolDefinition[]): string {
+  return tools.find((tool) => toProviderSafeToolName(tool.name) === name)?.name ?? name;
+}
+
 function toOpenAiTools(tools: readonly RuntimeToolDefinition[]): Array<Record<string, unknown>> {
-  return tools.map((tool) => ({
-    type: "function",
-    function: {
-      name: tool.name,
-      description: tool.description,
-      parameters: tool.inputSchema,
-    },
-  }));
+  return tools.map((tool) => {
+    const safeName = toProviderSafeToolName(tool.name);
+    return {
+      type: "function",
+      function: {
+        name: safeName,
+        description: safeName === tool.name ? tool.description : `${tool.description}\n\nInternal tool name: ${tool.name}`,
+        parameters: tool.inputSchema,
+      },
+    };
+  });
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -192,7 +203,7 @@ function parseToolArguments(value: unknown): Record<string, unknown> {
   }
 }
 
-function readOpenAiToolUses(payload: unknown): RuntimeToolUse[] {
+function readOpenAiToolUses(payload: unknown, tools: readonly RuntimeToolDefinition[] = []): RuntimeToolUse[] {
   const choices = payload && typeof payload === "object" && Array.isArray((payload as { choices?: unknown }).choices)
     ? (payload as { choices: unknown[] }).choices
     : [];
@@ -209,14 +220,14 @@ function readOpenAiToolUses(payload: unknown): RuntimeToolUse[] {
       return [];
     }
 
-    const name = typeof toolCall.function.name === "string" ? toolCall.function.name : "";
-    if (!name) {
+    const providerName = typeof toolCall.function.name === "string" ? toolCall.function.name : "";
+    if (!providerName) {
       return [];
     }
 
     return [{
       id: typeof toolCall.id === "string" && toolCall.id.trim().length > 0 ? toolCall.id : `tool-call-${index + 1}`,
-      name,
+      name: toInternalToolName(providerName, tools),
       input: parseToolArguments(toolCall.function.arguments),
     }];
   });
@@ -322,7 +333,7 @@ class OpenAiCompatibleAdapter implements RuntimeAdapter {
       return failure("upstream-error", readOpenAiError(payload, `Chat completion failed with HTTP ${response.status}`));
     }
 
-    const toolUses = readOpenAiToolUses(payload);
+    const toolUses = readOpenAiToolUses(payload, tools);
     if (toolUses.length > 0) {
       return { success: true, type: "tool_use", toolUses };
     }

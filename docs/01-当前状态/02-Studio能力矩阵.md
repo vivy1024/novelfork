@@ -132,6 +132,7 @@
 | PGI + GuidedGenerationPlan | 生成前追问、计划卡片、批准/拒绝确认门 | ✅ |
 | Narrative Line | 只读快照、mutation preview、approve 后写入审计 | ✅ |
 | unsupported-tools 降级 | 模型或 provider 不支持工具循环时返回明确错误，降级只读解释 / prompt-preview | ✅ |
+| OpenAI-compatible 工具名映射 | 内部点号 session tool 名映射为 provider-safe function name，并在返回 tool call 后还原内部工具名 | ✅ |
 
 ## 9. Agent 系统（新增）
 

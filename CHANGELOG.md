@@ -39,6 +39,7 @@
 
 ### 修复
 - 修复单文件 release 产物入口对 `--root` / `--port` 命名启动参数的解析，保留旧版 positional root fallback，确保 `dist/novelfork-v0.0.5-windows-x64.exe --root=. --port=<port>` 可直接冒烟启动。
+- 修复 OpenAI-compatible provider 不能调用含点号 session tool 的问题：发送给上游前将内部工具名映射为 provider-safe function name，并在返回 tool call 时还原内部工具名，确保官方 DeepSeek 等严格校验 function name 的 provider 可执行 `cockpit.get_snapshot`、PGI 与 Guided 工具链。
 
 ## v0.0.4 (2026-05-02)
 
