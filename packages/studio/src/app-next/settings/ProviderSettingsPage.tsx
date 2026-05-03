@@ -22,7 +22,8 @@ interface ProviderRuntimeSummary {
   readonly providerCount: number;
   readonly enabledProviderCount: number;
   readonly physicalModelCount: number;
-  readonly virtualModelCount: number;
+  readonly platformAccountCount?: number;
+  readonly enabledPlatformAccountCount?: number;
   readonly issueCount: number;
 }
 
@@ -32,21 +33,6 @@ interface GroupedModelInventory {
   readonly enabled: boolean;
   readonly health: string;
   readonly models: Array<Model & { readonly capabilities?: readonly string[] }>;
-}
-
-interface VirtualModelListItem {
-  readonly id: string;
-  readonly name: string;
-  readonly enabled: boolean;
-  readonly routingMode: string;
-  readonly members: readonly { readonly providerId: string; readonly modelId: string; readonly priority: number; readonly enabled: boolean }[];
-}
-
-interface WritingModelProfileView {
-  readonly defaultDraftModel: string;
-  readonly defaultAnalysisModel: string;
-  readonly taskModels: Record<string, string>;
-  readonly validation?: { readonly invalidModelIds?: readonly string[] };
 }
 
 interface LocalProviderSummary {
@@ -67,8 +53,6 @@ export interface ProviderSettingsClient {
   deletePlatformAccount: (platformId: PlatformId, accountId: string) => Promise<{ success: boolean }>;
   getProviderSummary?: () => Promise<{ summary: ProviderRuntimeSummary }>;
   listGroupedModels?: () => Promise<{ groups: GroupedModelInventory[] }>;
-  listVirtualModels?: () => Promise<{ virtualModels: VirtualModelListItem[] }>;
-  getWritingModelProfile?: () => Promise<{ profile: WritingModelProfileView }>;
   listProviders: () => Promise<{ providers: ManagedProvider[] }>;
   createProvider: (provider: Omit<ManagedProvider, "priority">) => Promise<{ provider: ManagedProvider }>;
   updateProvider: (providerId: string, updates: Partial<ManagedProvider>) => Promise<{ provider: ManagedProvider }>;
@@ -95,8 +79,6 @@ const defaultClient: ProviderSettingsClient = {
   deletePlatformAccount: (platformId, accountId) => fetchJson<{ success: boolean }>(`/platform-integrations/${platformId}/accounts/${accountId}`, { method: "DELETE" }),
   getProviderSummary: () => fetchJson<{ summary: ProviderRuntimeSummary }>("/providers/summary"),
   listGroupedModels: () => fetchJson<{ groups: GroupedModelInventory[] }>("/providers/models/grouped"),
-  listVirtualModels: () => fetchJson<{ virtualModels: VirtualModelListItem[] }>("/virtual-models"),
-  getWritingModelProfile: () => fetchJson<{ profile: WritingModelProfileView }>("/writing-model-profile"),
   listProviders: () => fetchJson<{ providers: ManagedProvider[] }>("/providers"),
   createProvider: (provider) => fetchJson<{ provider: ManagedProvider }>("/providers", {
     method: "POST",
@@ -186,21 +168,21 @@ function RuntimeOverviewSection({ summary, fallback }: { readonly summary: Provi
     providerCount: fallback.providerCount,
     enabledProviderCount: fallback.enabledProviderCount,
     physicalModelCount: fallback.modelCount,
-    virtualModelCount: 0,
+    platformAccountCount: fallback.platformCount,
+    enabledPlatformAccountCount: fallback.enabledPlatformCount,
     issueCount: 0,
   };
   return (
     <section className="space-y-3">
       <div>
         <h3 className="text-base font-semibold">运行态总览</h3>
-        <p className="text-xs text-muted-foreground">把供应商、模型库存、虚拟模型和写作任务绑定作为同一个运行时资源池观察。</p>
+        <p className="text-xs text-muted-foreground">按真实供应商、真实模型、平台账号和运行策略观察当前 Agent Runtime。</p>
       </div>
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <ControlCard label="供应商" value={`${data.enabledProviderCount}/${data.providerCount}`} detail="已启用 / 总数" />
         <ControlCard label="物理模型" value={data.physicalModelCount} />
-        <ControlCard label="虚拟模型" value={data.virtualModelCount} />
         <ControlCard label="异常项" value={data.issueCount} />
-        <ControlCard label="平台账号" value={fallback.platformCount} detail={`${fallback.enabledPlatformCount} 个平台可用`} />
+        <ControlCard label="平台账号" value={data.platformAccountCount ?? fallback.platformCount} detail={`${data.enabledPlatformAccountCount ?? fallback.enabledPlatformCount} 个平台可用`} />
       </div>
     </section>
   );
@@ -231,57 +213,17 @@ function ModelInventorySection({ groups }: { readonly groups: readonly GroupedMo
   );
 }
 
-function VirtualModelsSection({ models }: { readonly models: readonly VirtualModelListItem[] }) {
-  return (
-    <section className="space-y-3">
-      <div>
-        <h3 className="text-base font-semibold">虚拟模型</h3>
-        <p className="text-xs text-muted-foreground">虚拟模型把多个 provider/model 聚合成面向写作任务的能力入口。</p>
-      </div>
-      <div className="grid gap-3 md:grid-cols-2">
-        {models.map((model) => (
-          <div key={model.id} className="rounded-lg border border-border p-3">
-            <div className="flex items-center justify-between gap-2">
-              <div className="font-medium">{model.name}</div>
-              <span className="rounded bg-muted px-2 py-0.5 text-xs text-muted-foreground">{model.routingMode}</span>
-            </div>
-            <div className="mt-2 text-xs text-muted-foreground">{model.members.length} 个候选来源</div>
-          </div>
-        ))}
-        {models.length === 0 && <div className="rounded-lg border border-border p-3 text-sm text-muted-foreground">没有虚拟模型；运行时会继续使用物理供应商模型，后端 `/virtual-models` 已提供完整管理接口。</div>}
-      </div>
-    </section>
-  );
-}
-
-function WritingModelProfileSection({ profile }: { readonly profile: WritingModelProfileView | null }) {
-  const taskCount = Object.keys(profile?.taskModels ?? {}).length;
-  return (
-    <section className="space-y-3">
-      <div>
-        <h3 className="text-base font-semibold">写作任务模型</h3>
-        <p className="text-xs text-muted-foreground">把大纲、正文、审稿、修订、连续性审计等写作任务绑定到虚拟模型。</p>
-      </div>
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-        <ControlCard label="默认正文模型" value={profile?.defaultDraftModel || "未绑定"} />
-        <ControlCard label="默认分析模型" value={profile?.defaultAnalysisModel || "未绑定"} />
-        <ControlCard label="任务绑定" value={taskCount} detail={profile?.validation?.invalidModelIds?.length ? "存在失效绑定" : "绑定校验正常"} />
-      </div>
-    </section>
-  );
-}
-
 function RuntimePolicySection() {
   return (
     <section className="space-y-3">
       <div>
         <h3 className="text-base font-semibold">运行策略</h3>
-        <p className="text-xs text-muted-foreground">当前已接入 provider 健康检查、模型测试、账号配额刷新、启停降权和虚拟模型 fallback 路由。</p>
+        <p className="text-xs text-muted-foreground">当前运行时使用真实模型显式选择、能力校验、权限模式和工具支持状态，不自动切换模型。</p>
       </div>
       <div className="grid gap-3 md:grid-cols-4">
-        <ControlCard label="健康检查" value="已接入" detail="/providers/:id/health-check" />
-        <ControlCard label="配额路由" value="已接入" detail="quota-aware" />
-        <ControlCard label="失败回退" value="已接入" detail="fallback/priority" />
+        <ControlCard label="显式模型选择" value="已接入" detail="providerId + modelId" />
+        <ControlCard label="能力校验" value="已接入" detail="tools / vision / streaming" />
+        <ControlCard label="权限模式" value="已接入" detail="read / plan / edit / allow" />
         <ControlCard label="上下文窗口" value="已接入" detail="模型库存维护" />
       </div>
     </section>
@@ -303,8 +245,6 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
   const [contextDrafts, setContextDrafts] = useState<Record<string, string>>({});
   const [providerRuntimeSummary, setProviderRuntimeSummary] = useState<ProviderRuntimeSummary | null>(null);
   const [groupedModels, setGroupedModels] = useState<GroupedModelInventory[]>([]);
-  const [virtualModels, setVirtualModels] = useState<VirtualModelListItem[]>([]);
-  const [writingModelProfile, setWritingModelProfile] = useState<WritingModelProfileView | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -317,15 +257,11 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
         { providers: nextProviders },
         runtimeSummaryResult,
         groupedModelsResult,
-        virtualModelsResult,
-        writingProfileResult,
       ] = await Promise.all([
         client.listPlatformIntegrations(),
         client.listProviders(),
         client.getProviderSummary?.().catch(() => null) ?? Promise.resolve(null),
         client.listGroupedModels?.().catch(() => null) ?? Promise.resolve(null),
-        client.listVirtualModels?.().catch(() => null) ?? Promise.resolve(null),
-        client.getWritingModelProfile?.().catch(() => null) ?? Promise.resolve(null),
       ]);
 
       const accountResults = await Promise.all(integrations.map(async (integration) => {
@@ -350,8 +286,6 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
         health: provider.enabled ? "可用" : "已停用",
         models: provider.models,
       })));
-      setVirtualModels(virtualModelsResult?.virtualModels ?? []);
-      setWritingModelProfile(writingProfileResult?.profile ?? null);
     }
 
     load()
@@ -562,8 +496,6 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
       />
 
       <ModelInventorySection groups={groupedModels} />
-      <VirtualModelsSection models={virtualModels} />
-      <WritingModelProfileSection profile={writingModelProfile} />
       <RuntimePolicySection />
     </section>
   );

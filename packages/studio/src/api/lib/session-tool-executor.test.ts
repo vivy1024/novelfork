@@ -93,8 +93,110 @@ describe("session tool executor", () => {
         target: "book-1",
         options: ["approve", "reject", "open-in-canvas"],
       },
+      confirmationAudit: {
+        confirmationId: expect.any(String),
+        sessionId: "session-1",
+        toolName: "guided.exit",
+        risk: "confirmed-write",
+        targetResources: [{ kind: "guided.exit", id: "book-1", bookId: "book-1" }],
+        summary: "工具 guided.exit 需要确认后执行。",
+      },
     });
     expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("adds confirmation audit metadata after approval", async () => {
+    const executor = createSessionToolExecutor({
+      handlers: {
+        "guided.exit": async () => ({ ok: true, renderer: "guided.plan", summary: "计划已批准。", data: { status: "executing" } }),
+      },
+    });
+
+    const result = await executor.execute(input({
+      toolName: "guided.exit",
+      permissionMode: "edit",
+      confirmationDecision: { confirmationId: "confirm-guided-plan-1", decision: "approved", decidedAt: "2026-05-03T05:03:00.000Z", sessionId: "session-1" },
+      input: {
+        bookId: "book-1",
+        sessionId: "session-1",
+        guidedStateId: "guided-state-1",
+        plan: { title: "第二章计划" },
+      },
+    }));
+
+    expect(result).toMatchObject({
+      ok: true,
+      confirmationAudit: {
+        confirmationId: "confirm-guided-plan-1",
+        sessionId: "session-1",
+        toolName: "guided.exit",
+        risk: "confirmed-write",
+        decision: "approved",
+        decidedAt: "2026-05-03T05:03:00.000Z",
+        targetResources: [{ kind: "guided.exit", id: "book-1", bookId: "book-1" }],
+        summary: "计划已批准。",
+      },
+    });
+  });
+
+  it("includes questionnaire mapping preview in pending confirmation", async () => {
+    const handler = vi.fn();
+    const executor = createSessionToolExecutor({ handlers: { "questionnaire.submit_response": handler } });
+
+    const result = await executor.execute(input({
+      toolName: "questionnaire.submit_response",
+      permissionMode: "edit",
+      input: {
+        bookId: "book-1",
+        templateId: "foundation",
+        responseId: "response-1",
+        answers: { premise: "少年入山" },
+      },
+    }));
+
+    expect(result).toMatchObject({
+      ok: true,
+      renderer: "jingwei.mutationPreview",
+      confirmation: {
+        diff: {
+          status: "mapping-preview",
+          bookId: "book-1",
+          templateId: "foundation",
+          answers: { premise: "少年入山" },
+        },
+      },
+      confirmationAudit: {
+        toolName: "questionnaire.submit_response",
+        risk: "confirmed-write",
+        targetResources: [{ kind: "questionnaire.submit_response", id: "book-1", bookId: "book-1" }],
+      },
+    });
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("adds draft-write audit metadata for candidate chapter creation", async () => {
+    const executor = createSessionToolExecutor({
+      handlers: {
+        "candidate.create_chapter": async () => ({ ok: true, renderer: "candidate.created", summary: "已创建候选稿。", data: { candidateId: "candidate-1" } }),
+      },
+    });
+
+    const result = await executor.execute(input({
+      toolName: "candidate.create_chapter",
+      permissionMode: "edit",
+      input: { bookId: "book-1", chapterIntent: "写下一章", title: "第二章" },
+    }));
+
+    expect(result).toMatchObject({
+      ok: true,
+      confirmationAudit: {
+        sessionId: "session-1",
+        toolName: "candidate.create_chapter",
+        risk: "draft-write",
+        targetResources: [{ kind: "candidate.create_chapter", id: "book-1", bookId: "book-1" }],
+        summary: "已创建候选稿。",
+      },
+    });
   });
 
   it("blocks write-risk tools when the active canvas resource is dirty", async () => {

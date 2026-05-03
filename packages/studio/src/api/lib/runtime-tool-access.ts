@@ -17,6 +17,46 @@ export interface ToolAccessDecision {
 const CONTEXT_READ_TOOLS = ["Read", "Glob", "Grep"] as const;
 const CONTENT_EDIT_TOOLS = ["Read", "Glob", "Grep", "Write", "Edit"] as const;
 const MUTATING_OR_SYSTEM_TOOLS = ["Write", "Edit", "Bash", "EnterWorktree", "ExitWorktree"] as const;
+const ADVANCED_RUNTIME_TOOLS = [
+  "Bash",
+  "Read",
+  "Write",
+  "Edit",
+  "Grep",
+  "Glob",
+  "EnterWorktree",
+  "ExitWorktree",
+  "TodoWrite",
+  "Terminal",
+  "Browser",
+  "WebFetch",
+  "WebSearch",
+  "Recall",
+  "ShareFile",
+  "ForkNarrator",
+  "NarraForkAdmin",
+  "TeamCreate",
+  "TeamDelete",
+  "Monitor",
+  "SendMessage",
+  "PushNotification",
+] as const;
+
+export type RuntimeToolAccessConfig = Pick<UserConfig, "runtimeControls"> & {
+  readonly preferences?: Partial<Pick<UserConfig["preferences"], "workbenchMode">>;
+};
+
+export function isAdvancedRuntimeTool(toolName: string): boolean {
+  return (ADVANCED_RUNTIME_TOOLS as readonly string[]).includes(toolName) || toolName.startsWith("mcp__") || toolName.startsWith("mcp.");
+}
+
+export function isToolVisibleInWorkbenchMode(toolName: string, workbenchMode: boolean): boolean {
+  return workbenchMode || !isAdvancedRuntimeTool(toolName);
+}
+
+export function createWorkbenchModeDenyReason(toolName: string): string {
+  return `作者模式隐藏高级工具：${toolName}。请开启高级工作台模式后再调用。`;
+}
 
 function toPermissionAction(mode: SessionPermissionMode): ToolAccessAction {
   switch (mode) {
@@ -47,7 +87,7 @@ function buildToolRules(
   return toolNames.map((toolName) => ({ toolName, action, reason }));
 }
 
-function buildSessionPermissionModeRules(mode: SessionPermissionMode): PermissionRule[] {
+function buildSessionPermissionModeRules(mode: SessionPermissionMode, options?: { relaxedPlanning?: boolean }): PermissionRule[] {
   switch (mode) {
     case "ask":
       return [buildDefaultModeRule(mode)];
@@ -64,6 +104,12 @@ function buildSessionPermissionModeRules(mode: SessionPermissionMode): Permissio
         ...buildToolRules(MUTATING_OR_SYSTEM_TOOLS, "deny", "Mutating tool is blocked by defaultPermissionMode=read"),
       ];
     case "plan":
+      if (options?.relaxedPlanning) {
+        return [
+          ...buildToolRules(CONTEXT_READ_TOOLS, "allow", "Context read is allowed by defaultPermissionMode=plan"),
+          ...buildToolRules(MUTATING_OR_SYSTEM_TOOLS, "prompt", "Relaxed planning mode requires confirmation for mutation via defaultPermissionMode=plan+relaxedPlanning"),
+        ];
+      }
       return [
         ...buildToolRules(CONTEXT_READ_TOOLS, "allow", "Context read is allowed by defaultPermissionMode=plan"),
         ...buildToolRules(MUTATING_OR_SYSTEM_TOOLS, "deny", "Planning mode blocks direct mutation via defaultPermissionMode=plan"),
@@ -81,6 +127,12 @@ function inferDecisionSource(reason: string | undefined, fallback: string): stri
   }
   if (reason.includes("runtimeControls.toolAccess.blocklist")) {
     return "runtimeControls.toolAccess.blocklist";
+  }
+  if (reason.includes("作者模式隐藏高级工具")) {
+    return "preferences.workbenchMode";
+  }
+  if (reason.includes("YOLO mode")) {
+    return "runtimeControls.defaultPermissionMode";
   }
   if (reason.includes("defaultPermissionMode")) {
     return "runtimeControls.defaultPermissionMode";
@@ -105,6 +157,10 @@ function inferDecisionReasonKey(
 
   if (source === "runtimeControls.toolAccess.blocklist") {
     return "blocklist-deny";
+  }
+
+  if (source === "preferences.workbenchMode") {
+    return "workbench-mode-deny";
   }
 
   if (source === "builtin-permission-rules") {
@@ -170,15 +226,34 @@ function buildBlocklistRules(toolAccess: ToolAccessSettings): PermissionRule[] {
   }));
 }
 
-export function createRuntimePermissionManager(userConfig: Pick<UserConfig, "runtimeControls">): PermissionManager {
+export function createRuntimePermissionManager(userConfig: RuntimeToolAccessConfig): PermissionManager {
   const manager = new PermissionManager();
   const { defaultPermissionMode, toolAccess } = userConfig.runtimeControls;
+  const relaxedPlanning = userConfig.runtimeControls.relaxedPlanning === true;
 
   manager.addRule(buildDefaultModeRule(defaultPermissionMode));
   manager.addRules(DEFAULT_PERMISSION_RULES);
-  manager.addRules(buildSessionPermissionModeRules(defaultPermissionMode));
+  manager.addRules(buildSessionPermissionModeRules(defaultPermissionMode, { relaxedPlanning }));
   manager.addRules(buildAllowlistRules(toolAccess));
   manager.addRules(buildBlocklistRules(toolAccess));
+
+  if (userConfig.preferences?.workbenchMode === false) {
+    manager.addRules(ADVANCED_RUNTIME_TOOLS.map((toolName) => ({
+      toolName,
+      action: "deny" as const,
+      reason: createWorkbenchModeDenyReason(toolName),
+    })));
+  }
+
+  // YOLO 模式：allow 权限下跳过 read/draft-write 工具的确认暂停
+  // 添加显式 allow 规则覆盖所有可能的 prompt 规则（Write/Edit 等）
+  if (userConfig.runtimeControls.yoloSkipReadonlyConfirmation === true && defaultPermissionMode === "allow") {
+    manager.addRules(buildToolRules(
+      [...CONTENT_EDIT_TOOLS],
+      "allow",
+      "YOLO mode auto-approves read/draft-write tools in allow mode",
+    ));
+  }
 
   return manager;
 }
@@ -202,7 +277,18 @@ export function getPermissionDecision(
 export function getMCPToolDecision(
   toolName: string,
   runtimeControls: Pick<UserConfig["runtimeControls"], "defaultPermissionMode" | "toolAccess">,
+  preferences?: Partial<Pick<UserConfig["preferences"], "workbenchMode">>,
 ): ToolAccessDecision {
+  if (preferences?.workbenchMode === false) {
+    const reason = createWorkbenchModeDenyReason("MCP");
+    return {
+      action: "deny",
+      reason,
+      source: "preferences.workbenchMode",
+      reasonKey: "workbench-mode-deny",
+    };
+  }
+
   const toolAccess = runtimeControls.toolAccess;
   const blocklist = new Set(toolAccess.blocklist);
   if (blocklist.has(toolName)) {

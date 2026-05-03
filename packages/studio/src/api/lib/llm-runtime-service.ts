@@ -1,5 +1,6 @@
 import type { SessionToolDefinition } from "../../shared/agent-native-workspace.js";
 import type { NarratorSessionChatMessage, SessionConfig } from "../../shared/session-types.js";
+import type { AgentTurnItem } from "./agent-turn-runtime.js";
 import {
   createProviderAdapterRegistry,
   type ProviderAdapterRegistry,
@@ -17,6 +18,12 @@ export interface LlmRuntimeMetadata {
   readonly providerId: string;
   readonly providerName: string;
   readonly modelId: string;
+  readonly usage?: {
+    input_tokens: number;
+    output_tokens: number;
+    cache_creation_input_tokens?: number;
+    cache_read_input_tokens?: number;
+  };
 }
 
 export type LlmRuntimeGenerateResult =
@@ -24,9 +31,11 @@ export type LlmRuntimeGenerateResult =
   | { readonly success: true; readonly type: "tool_use"; readonly toolUses: readonly RuntimeToolUse[]; readonly metadata: LlmRuntimeMetadata }
   | { readonly success: false; readonly code: LlmRuntimeFailureCode; readonly error: string; readonly metadata?: Partial<LlmRuntimeMetadata> };
 
+export type LlmRuntimeInputMessage = NarratorSessionChatMessage | AgentTurnItem;
+
 export interface LlmRuntimeGenerateInput {
   readonly sessionConfig: SessionConfig;
-  readonly messages: readonly NarratorSessionChatMessage[];
+  readonly messages: readonly LlmRuntimeInputMessage[];
   readonly tools?: readonly SessionToolDefinition[];
 }
 
@@ -55,11 +64,26 @@ function providerRef(provider: RuntimeProviderRecord) {
   };
 }
 
-function toRuntimeMessages(messages: readonly NarratorSessionChatMessage[]): RuntimeChatMessage[] {
-  return messages
-    .filter((message) => message.role === "user" || message.role === "assistant" || message.role === "system")
-    .map((message) => ({ role: message.role, content: message.content }))
-    .filter((message) => message.content.trim().length > 0);
+function toRuntimeMessages(messages: readonly LlmRuntimeInputMessage[]): RuntimeChatMessage[] {
+  return messages.flatMap((message): RuntimeChatMessage[] => {
+    if ("type" in message) {
+      if (message.type === "message") {
+        return message.content.trim().length > 0 ? [{ role: message.role, content: message.content }] : [];
+      }
+      if (message.type === "tool_call") {
+        return [{ role: "assistant", content: "", toolCalls: [{ id: message.id, name: message.name, input: message.input }] }];
+      }
+      return [{ role: "tool", toolCallId: message.toolCallId, name: message.name, content: message.content }];
+    }
+
+    if (message.role !== "user" && message.role !== "assistant" && message.role !== "system") {
+      return [];
+    }
+    if (message.content.trim().length === 0) {
+      return [];
+    }
+    return [{ role: message.role, content: message.content }];
+  });
 }
 
 export class LlmRuntimeService {
@@ -127,6 +151,7 @@ export class LlmRuntimeService {
       providerId,
       providerName: provider.name,
       modelId,
+      ...(result.success && result.usage ? { usage: result.usage } : {}),
     };
 
     if (!result.success) {

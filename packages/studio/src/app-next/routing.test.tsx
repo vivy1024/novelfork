@@ -1,8 +1,11 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const useApiMock = vi.hoisted(() => vi.fn());
-const fetchJsonMock = vi.hoisted(() => vi.fn());
+const { useApiMock, fetchJsonMock, settingsUserState } = vi.hoisted(() => ({
+  useApiMock: vi.fn(),
+  fetchJsonMock: vi.fn(),
+  settingsUserState: { preferences: { workbenchMode: true } },
+}));
 
 vi.mock("../hooks/use-api", () => ({
   useApi: useApiMock,
@@ -25,11 +28,12 @@ import { StudioNextApp } from "./StudioNextApp";
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 beforeEach(() => {
+  settingsUserState.preferences.workbenchMode = true;
   useApiMock.mockImplementation((path: string | null) => {
     if (path === "/books") return { data: { books: [{ id: "b1", title: "测试书" }] }, loading: false, error: null, refetch: vi.fn() };
     if (path === "/books/b1") return { data: { book: { id: "b1", title: "测试书" }, chapters: [], nextChapter: 1 }, loading: false, error: null, refetch: vi.fn() };
     if (path === "/books/b1/candidates") return { data: { candidates: [] }, loading: false, error: null, refetch: vi.fn() };
-    if (path === "/settings/user") return { data: { modelDefaults: {}, runtimeControls: {} }, loading: false, error: null, refetch: vi.fn() };
+    if (path === "/settings/user") return { data: { preferences: settingsUserState.preferences, modelDefaults: {}, runtimeControls: {} }, loading: false, error: null, refetch: vi.fn() };
     if (path === "/settings/release") return { data: { version: "0.1.0" }, loading: false, error: null, refetch: vi.fn() };
     if (path === "/settings/metrics") return { data: {}, loading: false, error: null, refetch: vi.fn() };
     if (path === "/providers") return { data: { providers: [] }, loading: false, error: null, refetch: vi.fn() };
@@ -50,6 +54,7 @@ describe("Studio Next routing", () => {
     expect(resolveStudioNextRoute("/next/routines")).toBe("routines");
     expect(resolveStudioNextRoute("/next/workflow")).toBe("workflow");
     expect(resolveStudioNextRoute("/next/search")).toBe("search");
+    expect(resolveStudioNextRoute("/next/sessions")).toBe("sessions");
     expect(resolveStudioNextRoute("/next/unknown")).toBe("workspace");
   });
 
@@ -63,8 +68,22 @@ describe("Studio Next routing", () => {
     fireEvent.click(within(screen.getByRole("navigation", { name: "Studio Next 主导航" })).getByRole("button", { name: "套路" }));
     expect(screen.getByText("正在加载 Routines 配置…")).toBeTruthy();
 
+    fireEvent.click(within(screen.getByRole("navigation", { name: "Studio Next 主导航" })).getByRole("button", { name: "会话" }));
+    expect(screen.getByRole("heading", { name: "会话中心", level: 1 })).toBeTruthy();
+
     fireEvent.click(within(screen.getByRole("navigation", { name: "Studio Next 主导航" })).getByRole("button", { name: "创作工作台" }));
     expect(screen.getByText("资源管理器")).toBeTruthy();
+  });
+
+  it("hides advanced routines navigation while author mode is active", () => {
+    settingsUserState.preferences.workbenchMode = false;
+
+    render(<StudioNextApp initialRoute="workspace" />);
+
+    const primaryNav = screen.getByRole("navigation", { name: "Studio Next 主导航" });
+    expect(within(primaryNav).queryByRole("button", { name: "套路" })).toBeNull();
+    expect(within(primaryNav).getByRole("button", { name: "创作工作台" })).toBeTruthy();
+    expect(within(primaryNav).getByRole("button", { name: "会话" })).toBeTruthy();
   });
 
   it("settings page supports section switching — only right side updates", () => {

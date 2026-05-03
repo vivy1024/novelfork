@@ -19,6 +19,9 @@ import {
   getSessionById,
   listSessions,
   updateSession,
+  type ListSessionsOptions,
+  type SessionListBinding,
+  type SessionListSort,
 } from "../lib/session-service.js";
 
 const app = new Hono();
@@ -32,8 +35,41 @@ function parseSinceSeq(value: string | undefined): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 }
 
+function cleanQueryText(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+function parseSessionKind(value: string | undefined): ListSessionsOptions["kind"] {
+  return value === "standalone" || value === "chapter" ? value : undefined;
+}
+
+function parseSessionStatus(value: string | undefined): ListSessionsOptions["status"] {
+  return value === "active" || value === "archived" ? value : undefined;
+}
+
+function parseSessionBinding(value: string | undefined): SessionListBinding | undefined {
+  return value === "standalone" || value === "book" || value === "chapter" ? value : undefined;
+}
+
+function parseSessionSort(value: string | undefined): SessionListSort | undefined {
+  return value === "recent" || value === "manual" ? value : undefined;
+}
+
+function parseListSessionsOptions(c: { req: { query: (name: string) => string | undefined } }): ListSessionsOptions {
+  return {
+    kind: parseSessionKind(c.req.query("kind")),
+    status: parseSessionStatus(c.req.query("status")),
+    binding: parseSessionBinding(c.req.query("binding")),
+    projectId: cleanQueryText(c.req.query("projectId")),
+    chapterId: cleanQueryText(c.req.query("chapterId")),
+    search: cleanQueryText(c.req.query("search") ?? c.req.query("q")),
+    sort: parseSessionSort(c.req.query("sort")),
+  };
+}
+
 app.get("/", async (c) => {
-  const sessions = await listSessions();
+  const sessions = await listSessions(parseListSessionsOptions(c));
   return c.json(sessions);
 });
 

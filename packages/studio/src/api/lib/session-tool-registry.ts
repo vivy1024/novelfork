@@ -50,9 +50,9 @@ function arraySchema(description: string, items: Record<string, unknown> = { typ
 }
 
 function sessionTool(
-  definition: SessionToolDefinition,
+  definition: Omit<SessionToolDefinition, "visibility"> & Partial<Pick<SessionToolDefinition, "visibility">>,
 ): SessionToolDefinition {
-  return definition;
+  return { visibility: "author", ...definition };
 }
 
 export const SESSION_TOOL_DEFINITIONS = [

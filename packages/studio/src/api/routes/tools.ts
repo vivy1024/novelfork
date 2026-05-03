@@ -13,7 +13,7 @@ import type { RunStore } from "../lib/run-store.js";
 import { executeWithRuntimePolicy } from "../lib/execution-runtime.js";
 import { ALL_TOOLS } from "../lib/tools/index.js";
 import { loadUserConfig } from "../lib/user-config-service.js";
-import { createRuntimePermissionManager, getPermissionDecision } from "../lib/runtime-tool-access.js";
+import { createRuntimePermissionManager, getPermissionDecision, isToolVisibleInWorkbenchMode } from "../lib/runtime-tool-access.js";
 
 interface ToolsRouterOptions {
   readonly executor?: ToolExecutor;
@@ -187,7 +187,7 @@ export function createToolsRouter(options: ToolsRouterOptions = {}) {
     try {
       const userConfig = await loadUserConfig();
       const permissionManager = createRuntimePermissionManager(userConfig);
-      const tools = executor.listTools().map((tool) => {
+      const tools = executor.listTools().filter((tool) => isToolVisibleInWorkbenchMode(tool.name, userConfig.preferences?.workbenchMode === true)).map((tool) => {
         const permission = getPermissionDecision(permissionManager, tool.name, {});
         return {
           name: tool.name,

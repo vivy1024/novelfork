@@ -27,8 +27,25 @@ export default {
         input: "var(--input)",
         ring: "var(--ring)",
       },
+      fontFamily: {
+        sans: ["var(--font-sans)"],
+        serif: ["var(--font-serif)"],
+        mono: ["var(--font-mono)"],
+      },
+      borderRadius: {
+        sm: "var(--radius-sm)",
+        md: "var(--radius-md)",
+        lg: "var(--radius-lg)",
+        DEFAULT: "var(--radius)",
+      },
+      boxShadow: {
+        sm: "var(--shadow-sm)",
+        md: "var(--shadow-md)",
+        lg: "var(--shadow-lg)",
+        "3d": "var(--shadow-3d)",
+        "3d-hover": "var(--shadow-3d-hover)",
+      },
     },
   },
   plugins: [],
 }
-

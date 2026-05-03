@@ -93,8 +93,9 @@ describe("ProviderSettingsPage", () => {
     expect(screen.getByText(/平台账号通过 JSON 账号数据导入后使用/)).toBeTruthy();
     expect(screen.getByRole("heading", { name: "密钥接入" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "模型库存" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "虚拟模型" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "写作任务模型" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: `${"虚拟"}模型` })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "写作任务模型" })).toBeNull();
+    expect(screen.queryByText(/配额路由|失败回退|fallback|quota-aware/)).toBeNull();
     expect(screen.getByRole("heading", { name: "运行策略" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "查看 Codex 平台集成详情" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "查看 Kiro 平台集成详情" })).toBeTruthy();

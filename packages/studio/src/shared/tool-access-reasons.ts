@@ -13,6 +13,7 @@ export type ToolAccessReasonKey =
   | "mcp-inherit-allow"
   | "mcp-inherit-prompt"
   | "mcp-inherit-deny"
+  | "workbench-mode-deny"
   | "unknown";
 
 export function describeToolAccessReason(reasonKey: ToolAccessReasonKey | undefined, reason?: string) {
@@ -45,6 +46,8 @@ export function describeToolAccessReason(reasonKey: ToolAccessReasonKey | undefi
       return "MCP 继承默认确认";
     case "mcp-inherit-deny":
       return "MCP 继承默认拒绝";
+    case "workbench-mode-deny":
+      return "作者模式隐藏高级工具";
     default:
       return reason ?? "未说明原因";
   }
@@ -72,6 +75,8 @@ export function normalizeGovernanceSourceKey(source: string | undefined): Govern
       return "builtin";
     case "runtimeControls.toolAccess.mcpStrategy":
       return "mcpStrategy";
+    case "preferences.workbenchMode":
+      return "builtin";
     default:
       return "unknown";
   }

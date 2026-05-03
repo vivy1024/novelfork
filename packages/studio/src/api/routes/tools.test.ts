@@ -3,6 +3,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { RunStore } from "../lib/run-store.js";
 
 const userConfigState = {
+  preferences: {
+    workbenchMode: true,
+  },
   runtimeControls: {
     defaultPermissionMode: "allow",
     defaultReasoningEffort: "medium",
@@ -40,6 +43,7 @@ import { createToolsRouter } from "./tools";
 
 describe("createToolsRouter", () => {
   beforeEach(() => {
+    userConfigState.preferences.workbenchMode = true;
     userConfigState.runtimeControls.defaultPermissionMode = "allow";
     userConfigState.runtimeControls.toolAccess.allowlist = [];
     userConfigState.runtimeControls.toolAccess.blocklist = [];
@@ -118,6 +122,36 @@ describe("createToolsRouter", () => {
         }),
       ]),
     );
+  });
+
+  it("hides and blocks advanced raw tools while author mode is active", async () => {
+    userConfigState.preferences.workbenchMode = false;
+    userConfigState.runtimeControls.defaultPermissionMode = "allow";
+
+    const app = createToolsRouter();
+    const listResponse = await app.request("http://localhost/list");
+    expect(listResponse.status).toBe(200);
+    const listPayload = await listResponse.json();
+    expect(listPayload.tools.map((tool: { name: string }) => tool.name)).not.toContain("Bash");
+
+    const executeResponse = await app.request("http://localhost/execute", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        toolName: "Bash",
+        params: { command: "printf 'ok'" },
+      }),
+    });
+
+    expect(executeResponse.status).toBe(403);
+    const executePayload = await executeResponse.json();
+    expect(executePayload).toMatchObject({
+      success: false,
+      allowed: false,
+      source: "preferences.workbenchMode",
+      reasonKey: "workbench-mode-deny",
+      error: "作者模式隐藏高级工具：Bash。请开启高级工作台模式后再调用。",
+    });
   });
 
   it("executes allowlisted tools", async () => {

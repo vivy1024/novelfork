@@ -8,16 +8,10 @@ import type { ModelDefaultSettings, RuntimeControlSettings, UserConfig } from "@
 import { DEFAULT_USER_CONFIG } from "@/types/settings";
 
 // ---------------------------------------------------------------------------
-// Extended runtime controls (behaviour switches not yet in core type)
+// Extended runtime controls — all switches now in core RuntimeControlSettings
 // ---------------------------------------------------------------------------
 
-interface ExtendedRuntimeControls extends RuntimeControlSettings {
-  translateThinking?: boolean;
-  expandReasoning?: boolean;
-  relaxedPlanning?: boolean;
-  smartOutputCheck?: boolean;
-  forceUserLanguage?: boolean;
-}
+type ExtendedRuntimeControls = RuntimeControlSettings;
 
 // ---------------------------------------------------------------------------
 // Option definitions

@@ -20,6 +20,7 @@ const cockpitSnapshotTool: SessionToolDefinition = {
   risk: "read",
   renderer: "cockpit.snapshot",
   enabledForModes: ["read", "plan", "ask", "edit", "allow"],
+  visibility: "author",
 };
 
 const okAdapter = (content = "来自真实 adapter 的回复"): RuntimeAdapter => ({
@@ -165,6 +166,44 @@ describe("llm-runtime-service", () => {
         description: "读取当前书籍驾驶舱快照",
         inputSchema: cockpitSnapshotTool.inputSchema,
       })],
+    }));
+  });
+
+  it("passes canonical tool calls and tool results to adapters", async () => {
+    const adapter = okAdapter("已基于工具结果继续");
+    await store.createProvider({
+      id: "sub2api",
+      name: "Sub2API",
+      type: "custom",
+      enabled: true,
+      priority: 1,
+      apiKeyRequired: true,
+      baseUrl: "https://gateway.example/v1",
+      compatibility: "openai-compatible",
+      config: { apiKey: "sk-live" },
+      models: [{ id: "tool-model", name: "Tool Model", contextWindow: 128000, maxOutputTokens: 4096, enabled: true, source: "manual", supportsFunctionCalling: true }],
+    });
+    const service = createLlmRuntimeService({
+      store,
+      adapters: createProviderAdapterRegistry({ "openai-compatible": adapter }),
+    });
+
+    await service.generate({
+      sessionConfig: { providerId: "sub2api", modelId: "tool-model", permissionMode: "edit", reasoningEffort: "medium" },
+      messages: [
+        { type: "message", role: "user", content: "看看当前状态" },
+        { type: "tool_call", id: "call-1", name: "cockpit.get_snapshot", input: { bookId: "book-1" } },
+        { type: "tool_result", toolCallId: "call-1", name: "cockpit.get_snapshot", content: "已读取。" },
+      ],
+      tools: [cockpitSnapshotTool],
+    });
+
+    expect(adapter.generate).toHaveBeenCalledWith(expect.objectContaining({
+      messages: [
+        { role: "user", content: "看看当前状态" },
+        { role: "assistant", content: "", toolCalls: [{ id: "call-1", name: "cockpit.get_snapshot", input: { bookId: "book-1" } }] },
+        { role: "tool", toolCallId: "call-1", name: "cockpit.get_snapshot", content: "已读取。" },
+      ],
     }));
   });
 

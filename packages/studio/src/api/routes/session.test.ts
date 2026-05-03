@@ -152,6 +152,90 @@ describe("sessionRouter", () => {
     });
   });
 
+  it("filters the session center list by binding, resource, status, search, and recent activity", async () => {
+    const create = async (body: Record<string, unknown>) => {
+      const response = await sessionRouter.request("http://localhost/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      expect(response.status).toBe(201);
+      return response.json();
+    };
+
+    const standalone = await create({ title: "自由讨论", agentId: "planner", kind: "standalone", sessionMode: "plan" });
+    const bookBound = await create({ title: "灵潮纪元 · 叙述者", agentId: "writer", kind: "standalone", projectId: "book-1", sessionMode: "chat" });
+    const chapterBound = await create({ title: "第二章入城 · 修订", agentId: "reviser", kind: "chapter", projectId: "book-1", chapterId: "2", sessionMode: "chat" });
+    const archived = await create({ title: "旧书归档会话", agentId: "auditor", kind: "standalone", projectId: "book-2", sessionMode: "chat" });
+
+    const archiveResponse = await sessionRouter.request(`http://localhost/${archived.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "archived" }),
+    });
+    expect(archiveResponse.status).toBe(200);
+
+    const projectResponse = await sessionRouter.request("http://localhost/?projectId=book-1&status=active&sort=recent");
+    expect(projectResponse.status).toBe(200);
+    const projectSessions = await projectResponse.json();
+    expect(projectSessions.map((session: { id: string }) => session.id)).toEqual([chapterBound.id, bookBound.id]);
+
+    const chapterResponse = await sessionRouter.request("http://localhost/?kind=chapter&chapterId=2");
+    const chapterSessions = await chapterResponse.json();
+    expect(chapterSessions.map((session: { id: string }) => session.id)).toEqual([chapterBound.id]);
+
+    const bindingResponse = await sessionRouter.request("http://localhost/?binding=book&projectId=book-1");
+    const bindingSessions = await bindingResponse.json();
+    expect(bindingSessions.map((session: { id: string }) => session.id)).toEqual([bookBound.id]);
+
+    const archivedResponse = await sessionRouter.request("http://localhost/?status=archived");
+    const archivedSessions = await archivedResponse.json();
+    expect(archivedSessions.map((session: { id: string }) => session.id)).toEqual([archived.id]);
+
+    const searchResponse = await sessionRouter.request("http://localhost/?search=%E7%81%B5%E6%BD%AE");
+    const searchSessions = await searchResponse.json();
+    expect(searchSessions.map((session: { id: string }) => session.id)).toEqual([bookBound.id]);
+
+    const standaloneResponse = await sessionRouter.request("http://localhost/?binding=standalone");
+    const standaloneSessions = await standaloneResponse.json();
+    expect(standaloneSessions.map((session: { id: string }) => session.id)).toEqual([standalone.id]);
+  });
+
+  it("archives and restores sessions without deleting chat history", async () => {
+    const createResponse = await sessionRouter.request("http://localhost/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "可恢复会话", agentId: "writer", sessionMode: "chat" }),
+    });
+    const created = await createResponse.json();
+
+    await sessionRouter.request(`http://localhost/${created.id}/chat/state`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages: [{ id: "history-kept", role: "user", content: "保留这条历史", timestamp: 1710000000000 }] }),
+    });
+
+    const archiveResponse = await sessionRouter.request(`http://localhost/${created.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "archived" }),
+    });
+    expect(archiveResponse.status).toBe(200);
+    expect(await archiveResponse.json()).toMatchObject({ id: created.id, status: "archived" });
+
+    const restoreResponse = await sessionRouter.request(`http://localhost/${created.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "active" }),
+    });
+    expect(restoreResponse.status).toBe(200);
+    expect(await restoreResponse.json()).toMatchObject({ id: created.id, status: "active" });
+
+    const stateResponse = await sessionRouter.request(`http://localhost/${created.id}/chat/state`);
+    const state = await stateResponse.json();
+    expect(state.messages).toMatchObject([{ id: "history-kept", content: "保留这条历史" }]);
+  });
+
   it("serves incremental chat history by sinceSeq", async () => {
     const createResponse = await sessionRouter.request("http://localhost/", {
       method: "POST",

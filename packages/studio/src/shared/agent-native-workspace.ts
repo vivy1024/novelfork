@@ -5,6 +5,7 @@ export type { SessionConfig, SessionPermissionMode } from "./session-types.js";
 export const SESSION_TOOL_RISKS = ["read", "draft-write", "confirmed-write", "destructive"] as const;
 export type SessionToolRisk = (typeof SESSION_TOOL_RISKS)[number];
 export type SessionToolRiskDecision = "allow" | "confirm" | "deny";
+export type SessionToolVisibility = "author" | "advanced";
 
 export type JsonObjectSchema = {
   readonly type: "object";
@@ -20,6 +21,7 @@ export type SessionToolDefinition = {
   readonly risk: SessionToolRisk;
   readonly renderer: string;
   readonly enabledForModes: readonly SessionPermissionMode[];
+  readonly visibility: SessionToolVisibility;
 };
 
 export type WorkspaceResourceViewKind =
@@ -120,6 +122,18 @@ export type ToolConfirmationDecision = {
   readonly reason?: string;
   readonly decidedAt: string;
   readonly sessionId: string;
+};
+
+export type ToolConfirmationAudit = {
+  readonly confirmationId: string;
+  readonly sessionId: string;
+  readonly toolName: string;
+  readonly targetResources: readonly WorkspaceResourceRef[];
+  readonly summary: string;
+  readonly risk: SessionToolRisk;
+  readonly decision?: ToolConfirmationDecision["decision"];
+  readonly decidedAt?: string;
+  readonly reason?: string;
 };
 
 export type GuidedGenerationStatus =
@@ -343,6 +357,7 @@ export type AgentNativeToolMetadata = {
   readonly renderer?: string;
   readonly artifact?: CanvasArtifact;
   readonly confirmation?: ToolConfirmationRequest;
+  readonly confirmationAudit?: ToolConfirmationAudit;
   readonly guided?: GuidedToolMetadata;
   readonly pgi?: PgiMetadata;
   readonly narrative?: NarrativeToolMetadata;

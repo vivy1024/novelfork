@@ -64,9 +64,37 @@ export interface RuntimeControlSettings {
   defaultReasoningEffort: SessionReasoningEffort;
   contextCompressionThresholdPercent: number;
   contextTruncateTargetPercent: number;
+  /** 大窗口（>600k）裁剪起始 % */
+  largeWindowCompressionThresholdPercent: number;
+  /** 大窗口（>600k）压缩起始 % */
+  largeWindowTruncateTargetPercent: number;
   recovery: RuntimeRecoverySettings;
   toolAccess: ToolAccessSettings;
   runtimeDebug: RuntimeDebugSettings;
+  /** Agent 工具循环最大步数（默认 200，对齐 NarraFork） */
+  maxTurnSteps: number;
+  /** 宽松规划模式：plan 模式下写入工具改为 prompt 而非 deny */
+  relaxedPlanning: boolean;
+  /** YOLO 模式：allow 权限下跳过 read/draft-write 工具的确认暂停 */
+  yoloSkipReadonlyConfirmation: boolean;
+  /** 翻译思考内容：推理块完成后通过摘要模型翻译为用户语言 */
+  translateThinking: boolean;
+  /** 默认展开推理内容 */
+  expandReasoning: boolean;
+  /** 智能检查输出中断：自动检测截断并发送继续消息 */
+  smartOutputCheck: boolean;
+  /** 要求叙述者使用用户语言回复 */
+  forceUserLanguage: boolean;
+  /** 显示每轮对话的 Token 用量 */
+  showTokenUsage: boolean;
+  /** 显示实时 AI 输出速率 */
+  showOutputRate: boolean;
+  /** 滚动时自动加载更早消息 */
+  scrollAutoLoadHistory: boolean;
+  /** Dump 每条 API 请求 */
+  dumpApiRequests: boolean;
+  /** 发送方式：enter 或 ctrl-enter */
+  sendMode: "enter" | "ctrl-enter";
 }
 
 export type ModelReferenceValidationStatus = "empty" | "valid" | "invalid";
@@ -81,7 +109,15 @@ export interface ModelDefaultValidation {
 export interface ModelDefaultSettings {
   defaultSessionModel: string;
   summaryModel: string;
+  /** Explore 子代理默认模型 */
+  exploreSubagentModel: string;
+  /** Plan 子代理默认模型 */
+  planSubagentModel: string;
+  /** General 子代理默认模型 */
+  generalSubagentModel: string;
   subagentModelPool: string[];
+  /** Codex 专属推理强度 */
+  codexReasoningEffort: SessionReasoningEffort;
   validation: ModelDefaultValidation;
 }
 
@@ -173,11 +209,29 @@ export const DEFAULT_USER_CONFIG: UserConfig = {
       traceEnabled: false,
       traceSampleRatePercent: 0,
     },
+    maxTurnSteps: 200,
+    relaxedPlanning: false,
+    yoloSkipReadonlyConfirmation: false,
+    translateThinking: false,
+    expandReasoning: false,
+    smartOutputCheck: false,
+    forceUserLanguage: true,
+    showTokenUsage: false,
+    showOutputRate: false,
+    scrollAutoLoadHistory: true,
+    dumpApiRequests: false,
+    sendMode: "enter",
+    largeWindowCompressionThresholdPercent: 60,
+    largeWindowTruncateTargetPercent: 50,
   },
   modelDefaults: {
     defaultSessionModel: "",
     summaryModel: "",
+    exploreSubagentModel: "",
+    planSubagentModel: "",
+    generalSubagentModel: "",
     subagentModelPool: [],
+    codexReasoningEffort: "high",
     validation: {
       defaultSessionModel: "empty",
       summaryModel: "empty",
