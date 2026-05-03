@@ -107,7 +107,7 @@ describe("provider adapter registry", () => {
     expect(result).toEqual({ success: true, type: "message", content: "真实回复" });
   });
 
-  it("sends OpenAI-compatible tools and returns structured tool_use calls", async () => {
+  it("maps dotted session tool names to provider-safe OpenAI-compatible function names", async () => {
     let requestBody: Record<string, unknown> | undefined;
     vi.stubGlobal("fetch", vi.fn(async (_url: string, init?: RequestInit) => {
       requestBody = JSON.parse(String(init?.body));
@@ -118,7 +118,7 @@ describe("provider adapter registry", () => {
               id: "call-1",
               type: "function",
               function: {
-                name: "cockpit.get_snapshot",
+                name: "cockpit_get_snapshot",
                 arguments: JSON.stringify({ bookId: "book-1" }),
               },
             }],
@@ -151,8 +151,8 @@ describe("provider adapter registry", () => {
       tools: [{
         type: "function",
         function: {
-          name: "cockpit.get_snapshot",
-          description: "读取当前书籍驾驶舱快照",
+          name: "cockpit_get_snapshot",
+          description: "读取当前书籍驾驶舱快照\n\nInternal tool name: cockpit.get_snapshot",
           parameters: {
             type: "object",
             properties: { bookId: { type: "string" } },
