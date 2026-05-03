@@ -32,7 +32,7 @@ vi.mock("./WindowControls", () => ({
 interface MockWindowStore {
   windows: ChatWindowState[];
   activeWindowId: string | null;
-  addWindow: (input: AddWindowInput) => void;
+  addWindow: (input: AddWindowInput) => string;
   removeWindow: (id: string) => void;
   updateWindow: (id: string, updates: Partial<ChatWindowState>) => void;
   toggleMinimize: (id: string) => void;
@@ -1208,16 +1208,18 @@ function baseMockState(): MockWindowStore {
         minimized: false,
       });
       state.activeWindowId = id;
+      return id;
     },
-    removeWindow(id: string) {
-      state.windows = state.windows.filter((window) => window.id !== id);
-      if (state.activeWindowId === id) state.activeWindowId = null;
-    },
+
     updateWindow(id: string, updates: Partial<ChatWindowState>) {
       updateWindowSpy(id, updates);
       state.windows = state.windows.map((window) =>
         window.id === id ? { ...window, ...updates } : window,
       );
+    },
+    removeWindow(id: string) {
+      state.windows = state.windows.filter((window) => window.id !== id);
+      if (state.activeWindowId === id) state.activeWindowId = state.windows[0]?.id ?? null;
     },
     toggleMinimize(id: string) {
       state.windows = state.windows.map((window) =>

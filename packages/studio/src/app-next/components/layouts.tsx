@@ -171,14 +171,14 @@ interface ResourceWorkspaceLayoutProps {
 
 export function ResourceWorkspaceLayout({ explorer, editor, assistant }: ResourceWorkspaceLayoutProps) {
   return (
-    <div className="grid min-h-[calc(100vh-4rem)] gap-3 xl:grid-cols-[16rem_minmax(0,1fr)_20rem]">
+    <div className="grid min-h-[calc(100vh-4rem)] gap-3 xl:grid-cols-[16rem_minmax(0,1fr)_24rem]">
       <aside aria-label="小说资源管理器" className="rounded-lg border border-border bg-card p-3">
         {explorer}
       </aside>
       <main aria-label="正文编辑区" className="rounded-lg border border-border bg-card p-4">
         {editor}
       </main>
-      <aside aria-label="AI 与经纬面板" className="rounded-lg border border-border bg-card p-3">
+      <aside aria-label="叙述者会话" className="min-h-0 overflow-hidden rounded-lg border border-border bg-card">
         {assistant}
       </aside>
     </div>

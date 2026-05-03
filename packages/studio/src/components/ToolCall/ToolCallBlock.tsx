@@ -13,6 +13,7 @@ import {
   TimerReset,
 } from "lucide-react";
 
+import type { CanvasArtifact } from "@/shared/agent-native-workspace";
 import type { StudioRun } from "@/shared/contracts";
 import type { ToolCall } from "@/shared/session-types";
 import { Badge } from "@/components/ui/badge";
@@ -43,6 +44,7 @@ interface ToolCallBlockProps {
   className?: string;
   onReplay?: (toolCall: ToolCall) => void;
   onInspectRun?: (executionMeta: { runId: string; attempts?: number; traceEnabled?: boolean; dumpEnabled?: boolean }, toolCall: ToolCall) => void;
+  onOpenCanvas?: (artifact: CanvasArtifact) => void;
 }
 
 interface SourcePreview {
@@ -54,13 +56,22 @@ interface SourcePreview {
   snippet: string;
 }
 
-export function ToolCallBlock({ toolCall, defaultExpanded = false, className, onReplay, onInspectRun }: ToolCallBlockProps) {
+export function ToolCallBlock({ toolCall, defaultExpanded = false, className, onReplay, onInspectRun, onOpenCanvas }: ToolCallBlockProps) {
   const Renderer = getToolResultRenderer(toolCall);
   if (Renderer) {
-    return <Renderer toolCall={toolCall} defaultExpanded={defaultExpanded} className={className} />;
+    return <Renderer toolCall={toolCall} defaultExpanded={defaultExpanded} className={className} onOpenCanvas={onOpenCanvas ?? dispatchCanvasArtifactOpen} />;
   }
 
   return <GenericToolCallBlock toolCall={toolCall} defaultExpanded={defaultExpanded} className={className} onReplay={onReplay} onInspectRun={onInspectRun} />;
+}
+
+function dispatchCanvasArtifactOpen(artifact: CanvasArtifact) {
+  if (typeof window === "undefined") return;
+  if (typeof window.__NOVELFORK_OPEN_CANVAS_ARTIFACT__ === "function") {
+    window.__NOVELFORK_OPEN_CANVAS_ARTIFACT__(artifact);
+    return;
+  }
+  window.dispatchEvent(new CustomEvent("novelfork:open-canvas-artifact", { detail: artifact }));
 }
 
 function GenericToolCallBlock({ toolCall, defaultExpanded = false, className, onReplay, onInspectRun }: ToolCallBlockProps) {

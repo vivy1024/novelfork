@@ -9,7 +9,7 @@ import type { WindowRecoveryState } from "@/stores/windowRuntimeStore";
 interface MockWindowStore {
   windows: ChatWindowState[];
   activeWindowId: string | null;
-  addWindow: (input: AddWindowInput) => void;
+  addWindow: (input: AddWindowInput) => string;
   removeWindow: (id: string) => void;
   updateWindow: (id: string, updates: Partial<ChatWindowState>) => void;
   toggleMinimize: (id: string) => void;
@@ -136,7 +136,7 @@ function emptyWindowMock(): MockWindowStore {
   return {
     windows: [],
     activeWindowId: null,
-    addWindow: () => {},
+    addWindow: () => "window-mock",
     removeWindow: () => {},
     updateWindow: () => {},
     toggleMinimize: () => {},
