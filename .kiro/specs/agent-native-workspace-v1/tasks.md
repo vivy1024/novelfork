@@ -157,7 +157,7 @@
   - 验证：测试覆盖 propose 不写入、拒绝不写入、批准写入、canvas 刷新。
   - 覆盖需求：R8、R9。
 
-- [ ] 20. 打通最小“写下一章”链路
+- [x] 20. 打通最小“写下一章”链路
   - 在 narrator system prompt 或 session orchestration 中明确：用户请求“写下一章”时按 cockpit snapshot → PGI → GuidedGenerationPlan → 用户批准 → candidate.create_chapter 执行。
   - 确保每一步作为工具调用显示在右侧消息流中。
   - PGI 无问题时显示明确原因并继续计划生成。

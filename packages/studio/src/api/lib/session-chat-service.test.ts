@@ -1044,6 +1044,14 @@ describe("session-chat-service", () => {
       messages: expect.arrayContaining([
         expect.objectContaining({
           role: "system",
+          content: expect.stringContaining("写下一章"),
+        }),
+        expect.objectContaining({
+          role: "system",
+          content: expect.stringContaining("cockpit.get_snapshot → pgi.generate_questions → guided.enter/guided.exit → candidate.create_chapter"),
+        }),
+        expect.objectContaining({
+          role: "system",
           content: expect.stringContaining("当前画布上下文"),
         }),
         expect.objectContaining({
@@ -1202,6 +1210,133 @@ describe("session-chat-service", () => {
     expect(snapshot?.session.recovery).toMatchObject({
       pendingToolCallCount: 1,
       pendingToolCallSummary: ["guided.exit:pending"],
+    });
+  });
+
+  it("continues the write-next chain after guided plan approval and executes candidate creation", async () => {
+    const runtimeMetadata = { providerId: "anthropic", providerName: "Anthropic", modelId: "claude-sonnet-4-6" };
+    generateSessionReplyMock
+      .mockResolvedValueOnce({
+        success: true,
+        type: "tool_use",
+        toolUses: [
+          { id: "tool-use-plan", name: "guided.exit", input: { bookId: "book-1", sessionId: "session-1", guidedStateId: "guided-state-1", plan: { title: "下一章计划" } } },
+        ],
+        metadata: runtimeMetadata,
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        type: "tool_use",
+        toolUses: [
+          { id: "tool-use-candidate", name: "candidate.create_chapter", input: { bookId: "book-1", chapterIntent: "写下一章", guidedPlanId: "guided-state-1" } },
+        ],
+        metadata: runtimeMetadata,
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        type: "message",
+        content: "下一章候选稿已创建并可在画布打开。",
+        metadata: runtimeMetadata,
+      });
+    executeSessionToolMock
+      .mockResolvedValueOnce({
+        ok: true,
+        renderer: "guided.plan",
+        summary: "工具 guided.exit 需要确认后执行。",
+        data: { status: "pending-confirmation" },
+        confirmation: { id: "confirm-write-next", toolName: "guided.exit", target: "book-1", risk: "confirmed-write", summary: "等待批准", options: ["approve", "reject", "open-in-canvas"], sessionId: "session-1" },
+        durationMs: 4,
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        renderer: "guided.plan",
+        summary: "引导式生成计划已批准，进入执行阶段。",
+        data: { status: "executing", guidedStateId: "guided-state-1" },
+        durationMs: 8,
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        renderer: "candidate.created",
+        summary: "已创建下一章候选稿。",
+        data: { candidate: { id: "candidate-1", title: "第二章" } },
+        artifact: { id: "candidate-1", kind: "candidate", title: "第二章", renderer: "candidate.created", openInCanvas: true },
+        durationMs: 15,
+      });
+    const {
+      createSession,
+      attachSessionChatTransport,
+      confirmSessionToolDecision,
+      getSessionChatSnapshot,
+      handleSessionChatTransportMessage,
+    } = await loadSessionServices();
+    const session = await createSession({ title: "写下一章确认链", agentId: "writer", sessionMode: "chat" });
+    const transport = new MockTransport();
+
+    expect(await attachSessionChatTransport(session.id, transport)).toBe(true);
+    await handleSessionChatTransportMessage(
+      session.id,
+      transport,
+      JSON.stringify({ type: "session:message", messageId: "write-next-confirm-chain", content: "写下一章", sessionMode: "chat" }),
+    );
+
+    const approved = await confirmSessionToolDecision(session.id, "guided.exit", { decision: "approve", confirmationId: "confirm-write-next" });
+
+    expect(approved.ok).toBe(true);
+    expect(executeSessionToolMock).toHaveBeenNthCalledWith(3, expect.objectContaining({
+      toolName: "candidate.create_chapter",
+      input: expect.objectContaining({ bookId: "book-1", chapterIntent: "写下一章" }),
+    }));
+    expect(generateSessionReplyMock).toHaveBeenCalledTimes(3);
+    const snapshot = await getSessionChatSnapshot(session.id);
+    expect(snapshot?.messages).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        content: "已创建下一章候选稿。",
+        metadata: expect.objectContaining({ toolResult: expect.objectContaining({ renderer: "candidate.created" }) }),
+      }),
+      expect.objectContaining({ role: "assistant", content: "下一章候选稿已创建并可在画布打开。" }),
+    ]));
+  });
+
+  it("stops after candidate creation failure in the write-next chain", async () => {
+    const runtimeMetadata = { providerId: "anthropic", providerName: "Anthropic", modelId: "claude-sonnet-4-6" };
+    generateSessionReplyMock
+      .mockResolvedValueOnce({
+        success: true,
+        type: "tool_use",
+        toolUses: [{ id: "tool-use-plan-fail", name: "guided.exit", input: { bookId: "book-1", sessionId: "session-1", guidedStateId: "guided-state-1", plan: { title: "下一章计划" } } }],
+        metadata: runtimeMetadata,
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        type: "tool_use",
+        toolUses: [{ id: "tool-use-candidate-fail", name: "candidate.create_chapter", input: { bookId: "book-1", chapterIntent: "写下一章" } }],
+        metadata: runtimeMetadata,
+      });
+    executeSessionToolMock
+      .mockResolvedValueOnce({
+        ok: true,
+        renderer: "guided.plan",
+        summary: "工具 guided.exit 需要确认后执行。",
+        data: { status: "pending-confirmation" },
+        confirmation: { id: "confirm-write-next-fail", toolName: "guided.exit", target: "book-1", risk: "confirmed-write", summary: "等待批准", options: ["approve", "reject", "open-in-canvas"], sessionId: "session-1" },
+        durationMs: 4,
+      })
+      .mockResolvedValueOnce({ ok: true, renderer: "guided.plan", summary: "计划已批准。", data: { status: "executing" }, durationMs: 8 })
+      .mockResolvedValueOnce({ ok: false, renderer: "candidate.created", summary: "候选稿生成需要配置支持模型。", error: "unsupported-model", durationMs: 12 });
+    const { createSession, attachSessionChatTransport, confirmSessionToolDecision, getSessionChatSnapshot, handleSessionChatTransportMessage } = await loadSessionServices();
+    const session = await createSession({ title: "写下一章失败链", agentId: "writer", sessionMode: "chat" });
+    const transport = new MockTransport();
+
+    expect(await attachSessionChatTransport(session.id, transport)).toBe(true);
+    await handleSessionChatTransportMessage(session.id, transport, JSON.stringify({ type: "session:message", messageId: "write-next-fail-chain", content: "写下一章", sessionMode: "chat" }));
+    const approved = await confirmSessionToolDecision(session.id, "guided.exit", { decision: "approve", confirmationId: "confirm-write-next-fail" });
+
+    expect(approved.ok).toBe(true);
+    expect(generateSessionReplyMock).toHaveBeenCalledTimes(2);
+    const snapshot = await getSessionChatSnapshot(session.id);
+    expect(snapshot?.messages.at(-1)).toMatchObject({
+      content: "候选稿生成需要配置支持模型。",
+      metadata: expect.objectContaining({ toolResult: expect.objectContaining({ ok: false, error: "unsupported-model" }) }),
     });
   });
 
