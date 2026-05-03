@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { persist, type PersistStorage, type StorageValue } from "zustand/middleware";
 
 import { type NarratorSessionMode } from "../shared/session-types";
 
@@ -30,6 +30,60 @@ interface WindowStore {
   setActiveWindow: (id: string | null) => void;
   updateLayout: (id: string, position: { x: number; y: number; w: number; h: number }) => void;
 }
+
+type PersistedWindowStore = Pick<WindowStore, "windows" | "activeWindowId">;
+
+type JsonStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
+
+const memoryWindowStoreStorage = new Map<string, string>();
+
+function getUsableLocalStorage(): JsonStorage | null {
+  const storage = globalThis.localStorage;
+  if (
+    typeof storage?.getItem === "function" &&
+    typeof storage.setItem === "function" &&
+    typeof storage.removeItem === "function"
+  ) {
+    return storage;
+  }
+  return null;
+}
+
+const windowStoreStorage: PersistStorage<PersistedWindowStore> = {
+  getItem: (name) => {
+    try {
+      const raw = getUsableLocalStorage()?.getItem(name) ?? memoryWindowStoreStorage.get(name) ?? null;
+      return raw ? JSON.parse(raw) as StorageValue<PersistedWindowStore> : null;
+    } catch {
+      return null;
+    }
+  },
+  setItem: (name, value) => {
+    const serialized = JSON.stringify(value);
+    try {
+      const storage = getUsableLocalStorage();
+      if (storage) {
+        storage.setItem(name, serialized);
+        return;
+      }
+    } catch {
+      // Fall through to memory storage.
+    }
+    memoryWindowStoreStorage.set(name, serialized);
+  },
+  removeItem: (name) => {
+    try {
+      const storage = getUsableLocalStorage();
+      if (storage) {
+        storage.removeItem(name);
+        return;
+      }
+    } catch {
+      // Fall through to memory storage cleanup.
+    }
+    memoryWindowStoreStorage.delete(name);
+  },
+};
 
 export const useWindowStore = create<WindowStore>()(
   persist(
@@ -90,6 +144,7 @@ export const useWindowStore = create<WindowStore>()(
     }),
     {
       name: "novelfork-window-store",
+      storage: windowStoreStorage,
       partialize: (state) => ({
         windows: state.windows.map(({ id, title, agentId, sessionId, sessionMode, position, minimized }) => ({
           id,
