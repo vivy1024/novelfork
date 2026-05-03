@@ -848,33 +848,89 @@ async function appendModelContinuationAfterToolDecision(
   timestamp: number,
 ): Promise<NarratorSessionRecoveryMetadata["lastFailure"] | undefined> {
   try {
-    const reply = await generateSessionChatReply({
-      sessionConfig: loaded.session.sessionConfig,
-      messages: await buildEnhancedMessagesForSession(loaded.session, loaded.state),
-      tools: getEnabledSessionTools(loaded.session.sessionConfig.permissionMode),
-    });
+    let nextTimestamp = timestamp;
+    for (let step = 0; step < MAX_SESSION_TOOL_LOOP_STEPS; step += 1) {
+      const reply = await generateSessionChatReply({
+        sessionConfig: loaded.session.sessionConfig,
+        messages: await buildEnhancedMessagesForSession(loaded.session, loaded.state),
+        tools: getEnabledSessionTools(loaded.session.sessionConfig.permissionMode),
+      });
 
-    if (!reply.success) {
-      return { reason: reply.code, message: reply.error, at: new Date().toISOString() };
+      if (!reply.success) {
+        return { reason: reply.code, message: reply.error, at: new Date().toISOString() };
+      }
+
+      if (!isSessionToolUseReply(reply)) {
+        const assistantMessage = appendMessageToState(loaded.state, {
+          id: `confirmation-continuation-${nextTimestamp}`,
+          role: "assistant",
+          content: reply.content,
+          timestamp: nextTimestamp,
+          runtime: reply.metadata,
+        });
+        broadcastMessageEnvelope(loaded.session.id, loaded.state, assistantMessage);
+        return undefined;
+      }
+
+      const toolUses = reply.toolUses
+        .map((toolUse, index) => normalizeRuntimeToolUse(toolUse, `confirmation-tool-${nextTimestamp}-${index + 1}`))
+        .filter((toolUse): toolUse is NormalizedRuntimeToolUse => Boolean(toolUse));
+      if (toolUses.length === 0) {
+        const message = reply.content?.trim() || "确认处理后模型请求了工具调用，但没有返回可执行工具。";
+        const assistantMessage = appendMessageToState(loaded.state, {
+          id: `confirmation-empty-tool-use-${nextTimestamp}`,
+          role: "assistant",
+          content: message,
+          timestamp: nextTimestamp,
+          runtime: reply.metadata,
+        });
+        broadcastMessageEnvelope(loaded.session.id, loaded.state, assistantMessage);
+        return undefined;
+      }
+
+      for (const toolUse of toolUses) {
+        const toolUseMessage = appendMessageToState(loaded.state, {
+          id: `confirmation-tool-use-${toolUse.id}-${nextTimestamp}`,
+          role: "assistant",
+          content: reply.content?.trim() || `请求调用工具 ${toolUse.toolName}。`,
+          timestamp: nextTimestamp,
+          runtime: reply.metadata,
+          toolCalls: [{ id: toolUse.id, toolName: toolUse.toolName, input: toolUse.input }],
+        });
+        broadcastMessageEnvelope(loaded.session.id, loaded.state, toolUseMessage);
+        nextTimestamp += 1;
+
+        const toolResult = await sessionToolExecutor.execute({
+          sessionId: loaded.session.id,
+          toolName: toolUse.toolName,
+          input: toolUse.input,
+          permissionMode: loaded.session.sessionConfig.permissionMode,
+          sessionConfig: loaded.session.sessionConfig,
+          ...(latestCanvasContextFromMessages(loaded.state.messages) ? { canvasContext: latestCanvasContextFromMessages(loaded.state.messages) } : {}),
+        });
+        const toolResultMessage = appendMessageToState(loaded.state, {
+          id: `confirmation-tool-result-${toolUse.id}-${nextTimestamp}`,
+          role: "assistant",
+          content: toolResult.summary,
+          timestamp: nextTimestamp,
+          runtime: reply.metadata,
+          toolCalls: [buildToolResultCall(toolUse, toolResult)],
+          metadata: buildToolResultMetadata(toolResult),
+        });
+        broadcastMessageEnvelope(loaded.session.id, loaded.state, toolResultMessage);
+        nextTimestamp += 1;
+
+        if (isPendingConfirmationResult(toolResult)) return undefined;
+        if (!toolResult.ok) {
+          return { reason: toolResult.error ?? "tool-execution-failed", message: toolResult.summary, at: new Date().toISOString() };
+        }
+      }
     }
-
-    if (isSessionToolUseReply(reply)) {
-      return {
-        reason: "tool-loop-paused-after-confirmation",
-        message: "确认处理后模型继续请求工具，已等待下一轮会话处理。",
-        at: new Date().toISOString(),
-      };
-    }
-
-    const assistantMessage = appendMessageToState(loaded.state, {
-      id: `confirmation-continuation-${timestamp}`,
-      role: "assistant",
-      content: reply.content,
-      timestamp,
-      runtime: reply.metadata,
-    });
-    broadcastMessageEnvelope(loaded.session.id, loaded.state, assistantMessage);
-    return undefined;
+    return {
+      reason: "tool-loop-limit",
+      message: `确认处理后的工具循环超过 ${MAX_SESSION_TOOL_LOOP_STEPS} 步，已停止。`,
+      at: new Date().toISOString(),
+    };
   } catch (error) {
     return {
       reason: "provider-unavailable",
@@ -1434,6 +1490,15 @@ export async function handleSessionChatTransportMessage(
   }
 }
 
+const AGENT_NATIVE_WRITE_NEXT_INSTRUCTIONS = `
+
+## Agent-native 写下一章链路
+当用户请求「写下一章」「生成下一章」或 write next 时，必须按顺序推进：cockpit.get_snapshot → pgi.generate_questions → guided.enter/guided.exit → candidate.create_chapter。
+- PGI 无问题时也要明确说明 skippedReason=no-questions，并继续形成 GuidedGenerationPlan。
+- guided.exit 必须等待用户批准；拒绝后不得执行 candidate.create_chapter。
+- 批准后才允许调用 candidate.create_chapter，结果只进入候选稿并通过 artifact 在中间画布打开。
+- 任一步失败时停止后续写入，展示失败原因，并保留已完成的只读调查结果。`;
+
 const SESSION_CHAT_WS_PATH = "/api/sessions/:id/chat";
 const SESSION_CHAT_PATHNAME_REGEX = /^\/api\/sessions\/([^/]+)\/chat$/;
 
@@ -1491,7 +1556,7 @@ function injectSystemPrompt(
 ): NarratorSessionChatMessage[] {
   const contextBlock = bookContext ? `\n\n${bookContext}` : "";
   const canvasBlock = canvasContext ? `\n\n${formatCanvasContextForPrompt(canvasContext)}` : "";
-  const fullPrompt = `${systemPrompt}${contextBlock}${canvasBlock}`;
+  const fullPrompt = `${systemPrompt}${AGENT_NATIVE_WRITE_NEXT_INSTRUCTIONS}${contextBlock}${canvasBlock}`;
 
   const result = [...messages];
   const firstMessage = result[0];
