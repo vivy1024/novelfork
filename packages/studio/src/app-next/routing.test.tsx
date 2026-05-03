@@ -57,13 +57,13 @@ describe("Studio Next routing", () => {
     render(<StudioNextApp initialRoute="workspace" />);
     expect(screen.getByText("资源管理器")).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "设置" }));
+    fireEvent.click(within(screen.getByRole("navigation", { name: "Studio Next 主导航" })).getByRole("button", { name: "设置" }));
     expect(screen.getByText("个人设置")).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "套路" }));
+    fireEvent.click(within(screen.getByRole("navigation", { name: "Studio Next 主导航" })).getByRole("button", { name: "套路" }));
     expect(screen.getByText("正在加载 Routines 配置…")).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "创作工作台" }));
+    fireEvent.click(within(screen.getByRole("navigation", { name: "Studio Next 主导航" })).getByRole("button", { name: "创作工作台" }));
     expect(screen.getByText("资源管理器")).toBeTruthy();
   });
 
@@ -86,10 +86,12 @@ describe("Studio Next routing", () => {
     expect(screen.queryByText("预设管理")).toBeNull();
   });
 
-  it("workspace writing tools panel is accessible from the assistant panel", () => {
+  it("workspace exposes the docked narrator panel as the right-side entry", () => {
     render(<StudioNextApp initialRoute="workspace" />);
-    const assistant = screen.getByRole("complementary", { name: "AI 与经纬面板" });
-    fireEvent.click(within(assistant).getByRole("button", { name: "写作" }));
-    expect(within(assistant).getByText("写作工具")).toBeTruthy();
+    const narrator = screen.getByRole("complementary", { name: "叙述者会话" });
+    expect(within(narrator).getByTestId("chat-window-shell").getAttribute("data-host-mode")).toBe("docked");
+    expect(within(narrator).getByText("叙述者")).toBeTruthy();
+    expect(within(narrator).getByLabelText("消息输入框")).toBeTruthy();
+    expect(within(narrator).queryByRole("button", { name: "写作" })).toBeNull();
   });
 });

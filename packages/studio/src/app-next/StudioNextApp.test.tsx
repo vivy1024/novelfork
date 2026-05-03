@@ -47,15 +47,17 @@ describe("StudioNextApp", () => {
     render(<StudioNextApp initialRoute="workspace" />);
 
     expect(screen.getByRole("navigation", { name: "Studio Next 主导航" })).toBeTruthy();
-    expect(screen.getByText("NovelFork Studio")).toBeTruthy();
+    expect(within(screen.getByRole("banner")).getByText("NovelFork Studio")).toBeTruthy();
     expect(screen.getByText("资源管理器")).toBeTruthy();
-    expect(screen.getByText("驾驶舱")).toBeTruthy();
+    const narrator = screen.getByRole("complementary", { name: "叙述者会话" });
+    expect(narrator).toBeTruthy();
+    expect(within(narrator).queryByRole("button", { name: "驾驶舱" })).toBeNull();
   });
 
   it("switches between the first-phase workspace, settings and routines pages", async () => {
     render(<StudioNextApp initialRoute="workspace" />);
 
-    fireEvent.click(screen.getByRole("button", { name: "设置" }));
+    fireEvent.click(within(screen.getByRole("navigation", { name: "Studio Next 主导航" })).getByRole("button", { name: "设置" }));
     expect(screen.getByText("个人设置")).toBeTruthy();
     expect(screen.getByText("实例管理")).toBeTruthy();
     const settingsNav = screen.getByRole("navigation", { name: "设置分区" });
@@ -63,10 +65,10 @@ describe("StudioNextApp", () => {
     expect(within(settingsNav).getByRole("button", { name: /模型/ })).toBeTruthy();
     expect(within(settingsNav).getByRole("button", { name: /AI 供应商/ })).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "套路" }));
+    fireEvent.click(within(screen.getByRole("navigation", { name: "Studio Next 主导航" })).getByRole("button", { name: "套路" }));
     expect(screen.getByText("正在加载 Routines 配置…")).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "创作工作台" }));
+    fireEvent.click(within(screen.getByRole("navigation", { name: "Studio Next 主导航" })).getByRole("button", { name: "创作工作台" }));
     expect(screen.getByText("资源管理器")).toBeTruthy();
   });
 

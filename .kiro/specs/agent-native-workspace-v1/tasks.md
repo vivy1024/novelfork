@@ -174,7 +174,7 @@
   - 验证：全仓搜索旧口径关键词，确保主动文档不再误导为 page-first。
   - 覆盖需求：R1、R2、R3、R5。
 
-- [ ] 22. 完成测试矩阵与质量门
+- [x] 22. 完成测试矩阵与质量门
   - 补齐 design 中列出的 unit、integration、UI、non-regression 测试。
   - 至少运行相关测试、typecheck，并按修改范围运行 Studio 编译或 smoke 验证。
   - 验证项必须包含：session tool loop、confirmation gate、GuidedGenerationState、cockpit snapshot、PGI metadata、renderer registry、workspace 三栏布局、canvas 打开候选稿、最小“写下一章”链路。

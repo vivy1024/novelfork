@@ -87,7 +87,7 @@ bun run build
 pnpm --dir packages/studio compile  # → dist/novelfork.exe + dist/novelfork-vX.Y.Z-windows-x64.exe (~117MB)
 
 # 测试
-pnpm --dir packages/studio exec vitest run  # 152 files / 871 tests
+pnpm --dir packages/studio exec vitest run  # 155 files / 893 tests
 
 # 类型检查
 bun run typecheck
