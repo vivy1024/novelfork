@@ -1,6 +1,6 @@
 {
   "name": "@vivy1024/novelfork-core",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "NovelFork core engine — multi-agent novel writing pipeline for Chinese web novels",
   "keywords": [
     "ai-novel-writing",

@@ -4,11 +4,12 @@ import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { createEmbeddedStaticProvider } from "./static-provider.js";
 import { openStudioWindow } from "./desktop-window.js";
+import { resolveStartupPort, resolveStartupRoot } from "./startup-args.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-const root = process.argv[2] ?? process.env.NOVELFORK_PROJECT_ROOT ?? process.cwd();
-const port = parseInt(process.env.NOVELFORK_STUDIO_PORT ?? "4567", 10);
+const root = resolveStartupRoot(process.argv, process.env, () => process.cwd());
+const port = resolveStartupPort(process.argv, process.env);
 
 const studioRoot = resolve(__dirname, "../..");
 const distDir = join(studioRoot, "dist");
