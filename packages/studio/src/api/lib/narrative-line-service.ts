@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { ChapterMeta, StateManager, StorageDatabase } from "@vivy1024/novelfork-core";
@@ -16,6 +16,7 @@ import type {
   ForeshadowThread,
   NarrativeEdge,
   NarrativeLine,
+  NarrativeLineMutationPreview,
   NarrativeLineSnapshot,
   NarrativeNode,
   NarrativeWarning,
@@ -88,6 +89,31 @@ interface ConflictEvolutionStep {
   readonly summary?: string;
 }
 
+interface NarrativeLineApplyAudit {
+  readonly previewId: string;
+  readonly approvedAt: string;
+  readonly sessionId?: string;
+  readonly confirmationId?: string;
+  readonly targetNodeIds: readonly string[];
+  readonly targetEdgeIds: readonly string[];
+  readonly summary: string;
+}
+
+interface NarrativeLineStore {
+  readonly version: 1;
+  readonly nodes: readonly NarrativeNode[];
+  readonly edges: readonly NarrativeEdge[];
+  readonly appliedMutations: readonly NarrativeLineApplyAudit[];
+}
+
+export interface NarrativeLineApplyResult {
+  readonly applied: boolean;
+  readonly reason?: "rejected";
+  readonly preview: NarrativeLineMutationPreview;
+  readonly audit?: NarrativeLineApplyAudit;
+  readonly snapshot?: NarrativeLineSnapshot;
+}
+
 const FORESHADOW_DUE_GAP = 10;
 const STALLED_CONFLICT_GAP = 5;
 
@@ -125,7 +151,8 @@ export class NarrativeLineService {
     const settingNodes = settings.map((setting) => settingNode(input.bookId, setting));
     const conflictNodes = conflicts.map((conflict) => conflictNode(input.bookId, conflict));
     const arcNodes = arcs.map((arc) => characterArcNode(input.bookId, arc));
-    const nodes = [...chapterNodes, ...eventNodes, ...settingNodes, ...conflictNodes, ...arcNodes];
+    const store = await this.loadStore(input.bookId);
+    const nodes = mergeNodes([...chapterNodes, ...eventNodes, ...settingNodes, ...conflictNodes, ...arcNodes], store.nodes);
 
     const beats = chapters.map((chapter) => storyBeat(input.bookId, chapter, summaryByChapter.get(chapter.number)));
     const foreshadowThreads = [
@@ -134,7 +161,7 @@ export class NarrativeLineService {
     ];
     const payoffLinks = events.filter(isPayoffEvent).map((event) => payoffLink(input.bookId, event));
     const conflictThreads = conflicts.map((conflict) => conflictThread(input.bookId, conflict));
-    const edges = buildEdges(input.bookId, chapters, events, conflicts);
+    const edges = mergeEdges(buildEdges(input.bookId, chapters, events, conflicts), store.edges);
     const warnings = input.includeWarnings === false ? [] : buildWarnings({ chapters, currentChapter, foreshadowThreads, conflicts });
     const lines = buildLines(input.bookId, nodes, edges);
 
@@ -150,6 +177,55 @@ export class NarrativeLineService {
       warnings,
       generatedAt,
     };
+  }
+
+  async proposeChange(input: {
+    readonly bookId: string;
+    readonly summary: string;
+    readonly nodes?: readonly unknown[];
+    readonly edges?: readonly unknown[];
+    readonly reason?: string;
+  }): Promise<NarrativeLineMutationPreview> {
+    const nodes = normalizeProposedNodes(input.bookId, input.nodes ?? []);
+    const edges = normalizeProposedEdges(input.bookId, input.edges ?? []);
+    const warnings = validateMutationPreview(nodes, edges);
+    return {
+      id: `narrative-preview:${input.bookId}:${this.now().getTime()}`,
+      bookId: input.bookId,
+      summary: input.summary,
+      nodes,
+      edges,
+      warnings,
+    };
+  }
+
+  async applyChange(input: {
+    readonly bookId: string;
+    readonly preview: NarrativeLineMutationPreview;
+    readonly decision: "approved" | "rejected";
+    readonly sessionId?: string;
+    readonly confirmationId?: string;
+  }): Promise<NarrativeLineApplyResult> {
+    const preview = normalizePreviewForBook(input.bookId, input.preview);
+    if (input.decision === "rejected") {
+      return { applied: false, reason: "rejected", preview };
+    }
+
+    const store = await this.loadStore(input.bookId);
+    const nodes = mergeNodes(store.nodes, preview.nodes ?? []);
+    const edges = mergeEdges(store.edges, preview.edges ?? []);
+    const audit: NarrativeLineApplyAudit = {
+      previewId: preview.id,
+      approvedAt: this.now().toISOString(),
+      ...(input.sessionId ? { sessionId: input.sessionId } : {}),
+      ...(input.confirmationId ? { confirmationId: input.confirmationId } : {}),
+      targetNodeIds: (preview.nodes ?? []).map((node) => node.id),
+      targetEdgeIds: (preview.edges ?? []).map((edge) => edge.id),
+      summary: preview.summary,
+    };
+    await this.writeStore(input.bookId, { version: 1, nodes, edges, appliedMutations: [...store.appliedMutations, audit] });
+    const snapshot = await this.getSnapshot({ bookId: input.bookId });
+    return { applied: true, preview, audit, snapshot };
   }
 
   private async loadChapters(bookId: string): Promise<readonly ChapterMeta[]> {
@@ -224,6 +300,22 @@ export class NarrativeLineService {
     }
   }
 
+  private async loadStore(bookId: string): Promise<NarrativeLineStore> {
+    const raw = await this.readStoryFile(bookId, "narrative_line.json");
+    if (!raw) return emptyStore();
+    try {
+      return normalizeStore(JSON.parse(raw) as unknown, bookId);
+    } catch {
+      return emptyStore();
+    }
+  }
+
+  private async writeStore(bookId: string, store: NarrativeLineStore): Promise<void> {
+    const storyDir = join(this.state.bookDir(bookId), "story");
+    await mkdir(storyDir, { recursive: true });
+    await writeFile(join(storyDir, "narrative_line.json"), `${JSON.stringify(store, null, 2)}\n`, "utf-8");
+  }
+
   private async readStoryFile(bookId: string, fileName: string): Promise<string | null> {
     try {
       return await readFile(join(this.state.bookDir(bookId), "story", fileName), "utf-8");
@@ -240,6 +332,124 @@ export class NarrativeLineService {
       return null;
     }
   }
+}
+
+function emptyStore(): NarrativeLineStore {
+  return { version: 1, nodes: [], edges: [], appliedMutations: [] };
+}
+
+function normalizeStore(value: unknown, bookId: string): NarrativeLineStore {
+  if (!isRecord(value)) return emptyStore();
+  return {
+    version: 1,
+    nodes: normalizeProposedNodes(bookId, Array.isArray(value.nodes) ? value.nodes : []),
+    edges: normalizeProposedEdges(bookId, Array.isArray(value.edges) ? value.edges : []),
+    appliedMutations: Array.isArray(value.appliedMutations)
+      ? value.appliedMutations.flatMap((entry) => normalizeAudit(entry))
+      : [],
+  };
+}
+
+function normalizeAudit(value: unknown): readonly NarrativeLineApplyAudit[] {
+  if (!isRecord(value) || typeof value.previewId !== "string" || typeof value.approvedAt !== "string" || typeof value.summary !== "string") {
+    return [];
+  }
+  return [{
+    previewId: value.previewId,
+    approvedAt: value.approvedAt,
+    ...(typeof value.sessionId === "string" ? { sessionId: value.sessionId } : {}),
+    ...(typeof value.confirmationId === "string" ? { confirmationId: value.confirmationId } : {}),
+    targetNodeIds: Array.isArray(value.targetNodeIds) ? value.targetNodeIds.filter((id): id is string => typeof id === "string") : [],
+    targetEdgeIds: Array.isArray(value.targetEdgeIds) ? value.targetEdgeIds.filter((id): id is string => typeof id === "string") : [],
+    summary: value.summary,
+  }];
+}
+
+function normalizePreviewForBook(bookId: string, preview: NarrativeLineMutationPreview): NarrativeLineMutationPreview {
+  return {
+    id: preview.id,
+    bookId,
+    summary: preview.summary,
+    nodes: normalizeProposedNodes(bookId, preview.nodes ?? []),
+    edges: normalizeProposedEdges(bookId, preview.edges ?? []),
+    warnings: preview.warnings ?? [],
+  };
+}
+
+function normalizeProposedNodes(bookId: string, values: readonly unknown[]): readonly NarrativeNode[] {
+  return values.flatMap((value, index) => {
+    if (!isRecord(value)) return [];
+    const title = typeof value.title === "string" && value.title.trim().length > 0 ? value.title.trim() : "未命名叙事节点";
+    const type = normalizeNodeType(value.type);
+    return [{
+      id: typeof value.id === "string" && value.id.trim().length > 0 ? value.id.trim() : `agent-node:${bookId}:${index + 1}`,
+      bookId,
+      type,
+      title,
+      ...(typeof value.summary === "string" ? { summary: value.summary } : {}),
+      ...(normalizeChapterNumber(value.chapterNumber) ? { chapterNumber: normalizeChapterNumber(value.chapterNumber) } : {}),
+      ...(typeof value.status === "string" ? { status: value.status } : {}),
+    }];
+  });
+}
+
+function normalizeProposedEdges(bookId: string, values: readonly unknown[]): readonly NarrativeEdge[] {
+  return values.flatMap((value, index) => {
+    if (!isRecord(value) || typeof value.fromNodeId !== "string" || typeof value.toNodeId !== "string") return [];
+    return [{
+      id: typeof value.id === "string" && value.id.trim().length > 0 ? value.id.trim() : `agent-edge:${bookId}:${index + 1}`,
+      bookId,
+      fromNodeId: value.fromNodeId,
+      toNodeId: value.toNodeId,
+      type: normalizeEdgeType(value.type),
+      ...(typeof value.label === "string" ? { label: value.label } : {}),
+      confidence: "agent-proposed",
+    }];
+  });
+}
+
+function validateMutationPreview(nodes: readonly NarrativeNode[], edges: readonly NarrativeEdge[]): readonly NarrativeWarning[] {
+  const nodeIds = new Set(nodes.map((node) => node.id));
+  return edges.flatMap((edge) => {
+    if (nodeIds.has(edge.fromNodeId) && nodeIds.has(edge.toNodeId)) return [];
+    return [{
+      type: "mutation-preview-risk",
+      severity: "info" as const,
+      summary: `边 ${edge.id} 引用的节点可能来自现有叙事线，apply 前需确认。`,
+      nodeIds: [edge.fromNodeId, edge.toNodeId],
+    }];
+  });
+}
+
+function mergeNodes(base: readonly NarrativeNode[], overlay: readonly NarrativeNode[]): readonly NarrativeNode[] {
+  return mergeById(base, overlay);
+}
+
+function mergeEdges(base: readonly NarrativeEdge[], overlay: readonly NarrativeEdge[]): readonly NarrativeEdge[] {
+  return mergeById(base, overlay);
+}
+
+function mergeById<T extends { readonly id: string }>(base: readonly T[], overlay: readonly T[]): readonly T[] {
+  const merged = new Map<string, T>();
+  for (const item of base) merged.set(item.id, item);
+  for (const item of overlay) merged.set(item.id, item);
+  return [...merged.values()];
+}
+
+function normalizeNodeType(value: unknown): NarrativeNode["type"] {
+  return value === "chapter" || value === "event" || value === "conflict" || value === "foreshadow" || value === "payoff" || value === "character-arc" || value === "setting"
+    ? value
+    : "event";
+}
+
+function normalizeEdgeType(value: unknown): NarrativeEdge["type"] {
+  return value === "causes" || value === "reveals" || value === "escalates" || value === "resolves" || value === "foreshadows" || value === "pays-off" || value === "contradicts" || value === "supports"
+    ? value
+    : "supports";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
 function chapterNode(bookId: string, chapter: ChapterMeta, summary?: ChapterSummaryItem): NarrativeNode {

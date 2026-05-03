@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -229,6 +229,73 @@ describe("narrative-line-service", () => {
         expect.objectContaining({ id: "conflict-thread:conflict-1", status: "escalating" }),
       ]));
       expect(snapshot.warnings.map((warning) => warning.type)).toEqual(expect.arrayContaining(["open-foreshadow", "missing-payoff", "stalled-conflict", "chapter-drift"]));
+    } finally {
+      harness.storage.close();
+    }
+  });
+
+  it("previews narrative changes without writing, rejects without writing, and applies approved changes with audit metadata", async () => {
+    const harness = await createHarness();
+    try {
+      await createBookFiles(harness.root, [{ number: 1, title: "入山" }]);
+      const proposedNode = {
+        id: "agent-node-1",
+        bookId: "book-1",
+        type: "event" as const,
+        title: "林月守铃",
+        summary: "林月第一次主动守住青铜铃。",
+        chapterNumber: 1,
+      };
+
+      const preview = await harness.service.proposeChange({
+        bookId: "book-1",
+        summary: "补充林月守铃事件",
+        nodes: [proposedNode],
+        reason: "章节推进需要明确人物弧光节点。",
+      });
+
+      expect(preview).toMatchObject({
+        bookId: "book-1",
+        summary: "补充林月守铃事件",
+        nodes: [expect.objectContaining({ id: "agent-node-1", title: "林月守铃" })],
+      });
+      await expect(harness.service.getSnapshot({ bookId: "book-1" })).resolves.not.toMatchObject({
+        nodes: expect.arrayContaining([expect.objectContaining({ id: "agent-node-1" })]),
+      });
+
+      const rejected = await harness.service.applyChange({
+        bookId: "book-1",
+        preview,
+        decision: "rejected",
+        sessionId: "session-1",
+      });
+      expect(rejected).toMatchObject({ applied: false, reason: "rejected" });
+      await expect(harness.service.getSnapshot({ bookId: "book-1" })).resolves.not.toMatchObject({
+        nodes: expect.arrayContaining([expect.objectContaining({ id: "agent-node-1" })]),
+      });
+
+      const applied = await harness.service.applyChange({
+        bookId: "book-1",
+        preview,
+        decision: "approved",
+        sessionId: "session-1",
+        confirmationId: "confirm-1",
+      });
+      expect(applied).toMatchObject({
+        applied: true,
+        audit: {
+          approvedAt: "2026-05-03T00:00:00.000Z",
+          sessionId: "session-1",
+          confirmationId: "confirm-1",
+          targetNodeIds: ["agent-node-1"],
+          summary: "补充林月守铃事件",
+        },
+      });
+      await expect(harness.service.getSnapshot({ bookId: "book-1" })).resolves.toMatchObject({
+        nodes: expect.arrayContaining([expect.objectContaining({ id: "agent-node-1", title: "林月守铃" })]),
+      });
+      const persisted = JSON.parse(await readFile(join(harness.root, "books", "book-1", "story", "narrative_line.json"), "utf-8")) as { appliedMutations: Array<{ sessionId: string }> };
+      expect(persisted.appliedMutations).toEqual([expect.objectContaining({ sessionId: "session-1" })]);
     } finally {
       harness.storage.close();
     }

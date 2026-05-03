@@ -202,6 +202,39 @@ describe("session tool executor", () => {
     });
   });
 
+  it("wires narrative.propose_change to mutation preview without confirmation in edit mode", async () => {
+    const narrativeService = {
+      getSnapshot: vi.fn(),
+      proposeChange: vi.fn(async () => ({
+        id: "preview-1",
+        bookId: "book-1",
+        summary: "补节点",
+        nodes: [{ id: "node-1", bookId: "book-1", type: "event" as const, title: "补节点" }],
+      })),
+    };
+    const executor = createSessionToolExecutor({ narrativeService });
+
+    const result = await executor.execute(input({
+      toolName: "narrative.propose_change",
+      permissionMode: "edit",
+      input: { bookId: "book-1", summary: "补节点", nodes: [{ id: "node-1", title: "补节点" }], reason: "补齐主线" },
+    }));
+
+    expect(narrativeService.proposeChange).toHaveBeenCalledWith({
+      bookId: "book-1",
+      summary: "补节点",
+      nodes: [{ id: "node-1", title: "补节点" }],
+      reason: "补齐主线",
+    });
+    expect(result).toMatchObject({
+      ok: true,
+      renderer: "narrative.mutationPreview",
+      summary: "已生成叙事线变更草案。",
+      narrative: { mutationPreview: { id: "preview-1", bookId: "book-1" } },
+      artifact: { kind: "narrative-line", renderer: "narrative.mutationPreview", openInCanvas: true },
+    });
+  });
+
   it("wires default cockpit handlers to the shared cockpit service", async () => {
     const cockpitService = createCockpitService({
       state: {

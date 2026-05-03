@@ -261,7 +261,7 @@ export const SESSION_TOOL_DEFINITIONS = [
       edges: arraySchema("拟新增或修改的叙事边。"),
       reason: stringSchema("提出该变更的原因。"),
     }, ["bookId", "summary"]),
-    risk: "confirmed-write",
+    risk: "draft-write",
     renderer: "narrative.mutationPreview",
     enabledForModes: WRITE_SESSION_PERMISSION_MODES,
   }),

@@ -28,7 +28,7 @@ export type SessionToolExecutorOptions = {
   readonly pgiService?: PGIToolService;
   readonly guidedService?: GuidedGenerationToolService;
   readonly candidateService?: CandidateToolService;
-  readonly narrativeService?: Pick<NarrativeLineService, "getSnapshot">;
+  readonly narrativeService?: Partial<Pick<NarrativeLineService, "getSnapshot" | "proposeChange" | "applyChange">>;
   readonly now?: () => number;
   readonly createConfirmationId?: (input: SessionToolExecutionInput, definition: SessionToolDefinition) => string;
 };
@@ -223,7 +223,9 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
       return async ({ input, sessionConfig }) => (await resolveCandidateService(options)).createChapter({ ...input, ...(sessionConfig ? { sessionConfig } : {}) });
     case "narrative.read_line":
       return async ({ input, definition }) => {
-        const snapshot = await resolveNarrativeService(options).getSnapshot({
+        const service = resolveNarrativeService(options);
+        if (!service.getSnapshot) throw new Error("narrative.read_line requires getSnapshot.");
+        const snapshot = await service.getSnapshot({
           bookId: String(input.bookId),
           includeWarnings: input.includeWarnings !== false,
         });
@@ -240,6 +242,33 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
             renderer: definition.renderer,
             openInCanvas: true,
             resourceRef: { kind: "narrative-line", id: `narrative:${input.bookId}:line`, bookId: String(input.bookId), title: "叙事线快照" },
+          },
+        };
+      };
+    case "narrative.propose_change":
+      return async ({ input, definition }) => {
+        const service = resolveNarrativeService(options);
+        if (!service.proposeChange) throw new Error("narrative.propose_change requires proposeChange.");
+        const preview = await service.proposeChange({
+          bookId: String(input.bookId),
+          summary: String(input.summary),
+          nodes: Array.isArray(input.nodes) ? input.nodes : [],
+          ...(Array.isArray(input.edges) ? { edges: input.edges } : {}),
+          ...(typeof input.reason === "string" ? { reason: input.reason } : {}),
+        });
+        return {
+          ok: true,
+          renderer: definition.renderer,
+          summary: "已生成叙事线变更草案。",
+          data: preview,
+          narrative: { mutationPreview: preview },
+          artifact: {
+            id: preview.id,
+            kind: "narrative-line",
+            title: "叙事线变更草案",
+            renderer: definition.renderer,
+            openInCanvas: true,
+            resourceRef: { kind: "narrative-line", id: preview.id, bookId: String(input.bookId), title: "叙事线变更草案" },
           },
         };
       };
@@ -271,9 +300,9 @@ async function resolveCandidateService(options: SessionToolExecutorOptions): Pro
   throw new Error("candidate.create_chapter requires a configured CandidateToolService.");
 }
 
-function resolveNarrativeService(options: SessionToolExecutorOptions): Pick<NarrativeLineService, "getSnapshot"> {
+function resolveNarrativeService(options: SessionToolExecutorOptions): Partial<Pick<NarrativeLineService, "getSnapshot" | "proposeChange" | "applyChange">> {
   if (options.narrativeService) return options.narrativeService;
-  throw new Error("narrative.read_line requires a configured NarrativeLineService.");
+  throw new Error("narrative tools require a configured NarrativeLineService.");
 }
 
 function withDuration(
