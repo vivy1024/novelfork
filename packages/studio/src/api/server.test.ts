@@ -97,6 +97,23 @@ vi.mock("./routes/index.js", async (importOriginal) => {
   };
 });
 
+vi.mock("./lib/search-index.js", () => {
+  const mockIndex = {
+    index: vi.fn(),
+    remove: vi.fn(),
+    clear: vi.fn(),
+    search: vi.fn(() => []),
+    size: vi.fn(() => 0),
+    get: vi.fn(),
+    close: vi.fn(),
+  };
+  return {
+    SearchIndex: vi.fn(() => mockIndex),
+    globalSearchIndex: mockIndex,
+    setGlobalSearchIndex: vi.fn(),
+  };
+});
+
 vi.mock("./lib/startup-orchestrator.js", () => ({
   runStartupOrchestrator: startupOrchestratorMock,
   resolveStartupFallbackChapter: vi.fn(async () => 0),

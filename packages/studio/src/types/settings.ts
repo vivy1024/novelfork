@@ -140,6 +140,15 @@ export interface OnboardingSettingsPatch {
   tasks?: Partial<OnboardingTaskSettings>;
 }
 
+export interface ProxySettings {
+  /** 每个供应商的代理配置，key 是 providerId */
+  providers: Record<string, string>;
+  /** WebFetch 工具的代理 */
+  webFetch: string;
+  /** 平台集成的代理（Codex/Kiro） */
+  platforms: Record<string, string>;
+}
+
 export interface UserConfig {
   profile: UserProfile;
   preferences: UserPreferences;
@@ -148,6 +157,7 @@ export interface UserConfig {
   onboarding: OnboardingSettings;
   shortcuts: Record<string, string>;
   recentWorkspaces: string[];
+  proxy: ProxySettings;
 }
 
 export interface UserConfigPatch {
@@ -158,6 +168,7 @@ export interface UserConfigPatch {
   onboarding?: OnboardingSettingsPatch;
   shortcuts?: Record<string, string>;
   recentWorkspaces?: string[];
+  proxy?: Partial<ProxySettings>;
 }
 
 export const DEFAULT_USER_CONFIG: UserConfig = {
@@ -251,4 +262,9 @@ export const DEFAULT_USER_CONFIG: UserConfig = {
   },
   shortcuts: {},
   recentWorkspaces: [],
+  proxy: {
+    providers: {},
+    webFetch: "",
+    platforms: {},
+  },
 };

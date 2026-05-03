@@ -1502,4 +1502,162 @@ describe("session-chat-service", () => {
     expect(route.matchPath("/api/sessions/demo-session/chat")).toBe(true);
     expect(route.matchPath("/api/sessions/demo-session/chat/state")).toBe(false);
   });
+
+  it("records per-message usage metadata and accumulates session-level cumulative usage", async () => {
+    const usage1 = { input_tokens: 100, output_tokens: 50, cache_creation_input_tokens: 10, cache_read_input_tokens: 5 };
+    const usage2 = { input_tokens: 200, output_tokens: 80 };
+    const runtimeMetadata1 = { providerId: "anthropic", providerName: "Anthropic", modelId: "claude-sonnet-4-6", usage: usage1 };
+    const runtimeMetadata2 = { providerId: "anthropic", providerName: "Anthropic", modelId: "claude-sonnet-4-6", usage: usage2 };
+    generateSessionReplyMock
+      .mockResolvedValueOnce({
+        success: true,
+        content: "第一轮回复",
+        metadata: runtimeMetadata1,
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        content: "第二轮回复",
+        metadata: runtimeMetadata2,
+      });
+    const {
+      createSession,
+      attachSessionChatTransport,
+      getSessionChatSnapshot,
+      handleSessionChatTransportMessage,
+    } = await loadSessionServices();
+    const session = await createSession({
+      title: "Token 用量会话",
+      agentId: "writer",
+      sessionMode: "chat",
+    });
+    const transport = new MockTransport();
+
+    expect(await attachSessionChatTransport(session.id, transport)).toBe(true);
+
+    await handleSessionChatTransportMessage(
+      session.id,
+      transport,
+      JSON.stringify({ type: "session:message", messageId: "usage-msg-1", content: "第一句", sessionMode: "chat" }),
+    );
+
+    await handleSessionChatTransportMessage(
+      session.id,
+      transport,
+      JSON.stringify({ type: "session:message", messageId: "usage-msg-2", content: "第二句", sessionMode: "chat" }),
+    );
+
+    const snapshot = await getSessionChatSnapshot(session.id);
+
+    // Per-message usage metadata
+    const assistantMessages = snapshot?.messages.filter((m) => m.role === "assistant");
+    expect(assistantMessages?.[0]?.metadata?.usage).toEqual(usage1);
+    expect(assistantMessages?.[0]?.runtime?.usage).toEqual(usage1);
+    expect(assistantMessages?.[1]?.metadata?.usage).toEqual(usage2);
+    expect(assistantMessages?.[1]?.runtime?.usage).toEqual(usage2);
+
+    // Session-level cumulative usage
+    expect(snapshot?.session.cumulativeUsage).toEqual({
+      totalInputTokens: 300,
+      totalOutputTokens: 130,
+      totalCacheCreationInputTokens: 10,
+      totalCacheReadInputTokens: 5,
+      turnCount: 2,
+    });
+  });
+
+  it("handles missing usage data gracefully without errors", async () => {
+    const runtimeMetadataNoUsage = { providerId: "anthropic", providerName: "Anthropic", modelId: "claude-sonnet-4-6" };
+    generateSessionReplyMock.mockResolvedValueOnce({
+      success: true,
+      content: "无用量数据回复",
+      metadata: runtimeMetadataNoUsage,
+    });
+    const {
+      createSession,
+      attachSessionChatTransport,
+      getSessionChatSnapshot,
+      handleSessionChatTransportMessage,
+    } = await loadSessionServices();
+    const session = await createSession({
+      title: "无用量会话",
+      agentId: "writer",
+      sessionMode: "chat",
+    });
+    const transport = new MockTransport();
+
+    expect(await attachSessionChatTransport(session.id, transport)).toBe(true);
+
+    await handleSessionChatTransportMessage(
+      session.id,
+      transport,
+      JSON.stringify({ type: "session:message", messageId: "no-usage-1", content: "测试", sessionMode: "chat" }),
+    );
+
+    const snapshot = await getSessionChatSnapshot(session.id);
+    const assistantMessage = snapshot?.messages.find((m) => m.role === "assistant");
+    expect(assistantMessage?.metadata?.usage).toBeUndefined();
+    expect(snapshot?.session.cumulativeUsage).toEqual({
+      totalInputTokens: 0,
+      totalOutputTokens: 0,
+      totalCacheCreationInputTokens: 0,
+      totalCacheReadInputTokens: 0,
+      turnCount: 0,
+    });
+  });
+
+  it("accumulates usage across tool-use turns within a single conversation round", async () => {
+    const toolCallUsage = { input_tokens: 150, output_tokens: 30 };
+    const finalUsage = { input_tokens: 200, output_tokens: 100 };
+    const runtimeMetadata = { providerId: "anthropic", providerName: "Anthropic", modelId: "claude-sonnet-4-6", usage: toolCallUsage };
+    const finalMetadata = { providerId: "anthropic", providerName: "Anthropic", modelId: "claude-sonnet-4-6", usage: finalUsage };
+    generateSessionReplyMock
+      .mockResolvedValueOnce({
+        success: true,
+        type: "tool_use",
+        toolUses: [
+          { id: "tool-usage-1", name: "cockpit.get_snapshot", input: { bookId: "book-1" } },
+        ],
+        metadata: runtimeMetadata,
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        type: "message",
+        content: "工具调用后的回复。",
+        metadata: finalMetadata,
+      });
+    const {
+      createSession,
+      attachSessionChatTransport,
+      getSessionChatSnapshot,
+      handleSessionChatTransportMessage,
+    } = await loadSessionServices();
+    const session = await createSession({
+      title: "工具用量会话",
+      agentId: "writer",
+      sessionMode: "chat",
+    });
+    const transport = new MockTransport();
+
+    expect(await attachSessionChatTransport(session.id, transport)).toBe(true);
+
+    await handleSessionChatTransportMessage(
+      session.id,
+      transport,
+      JSON.stringify({ type: "session:message", messageId: "tool-usage-msg", content: "查看驾驶舱", sessionMode: "chat" }),
+    );
+
+    const snapshot = await getSessionChatSnapshot(session.id);
+
+    // Only the final assistant_message event accumulates usage (tool_call and tool_result don't)
+    const finalAssistant = snapshot?.messages.find((m) => m.role === "assistant" && m.content === "工具调用后的回复。");
+    expect(finalAssistant?.metadata?.usage).toEqual(finalUsage);
+
+    expect(snapshot?.session.cumulativeUsage).toEqual({
+      totalInputTokens: 200,
+      totalOutputTokens: 100,
+      totalCacheCreationInputTokens: 0,
+      totalCacheReadInputTokens: 0,
+      turnCount: 1,
+    });
+  });
 });
