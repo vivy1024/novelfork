@@ -6,6 +6,8 @@
 
 ## Unreleased
 
+## v0.0.6 (2026-05-04)
+
 ### 改进
 - 移除当前 Provider Runtime 的虚拟模型 API/UI/store 口径，恢复为真实供应商、真实模型、平台账号与显式模型选择；运行策略不再展示虚拟模型 fallback、配额路由或写作任务虚拟绑定。
 - 引入通用 Agent Turn Runtime 与 canonical message/tool_call/tool_result 工具循环协议，session chat 改为通过运行时事件持久化工具调用和结果，并在工具失败时把失败 tool_result 回传给模型生成最终说明。
