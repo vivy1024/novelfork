@@ -34,7 +34,7 @@
   - 模型池为空或 unsupported-tools 时禁用发送并展示说明。
   - 验证：模型池为空、切换成功、切换失败、unsupported-tools 测试。
 
-- [ ] 6. 建立 Tool Result Renderer Registry
+- [x] 6. 建立 Tool Result Renderer Registry
   - 新增 `tool-results/` registry 与 cockpit、questionnaire、pgi、guided、candidate、narrative、generic renderer。
   - 支持 artifact 的“在画布打开”动作。
   - 验证：每个 renderer 至少一个 smoke test，unknown fallback 保留 raw data。

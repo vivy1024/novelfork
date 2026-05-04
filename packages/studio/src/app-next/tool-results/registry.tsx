@@ -1,15 +1,26 @@
 import type { ReactNode } from "react";
 
-export interface ToolResultRendererContext {
-  toolName: string;
-  result: unknown;
-}
+import { CandidateCreatedCard } from "./CandidateCreatedCard";
+import { CockpitSnapshotCard } from "./CockpitSnapshotCard";
+import { GenericToolResultRenderer } from "./GenericToolResultCard";
+import { GuidedPlanCard } from "./GuidedPlanCard";
+import { NarrativeLineCard } from "./NarrativeLineCard";
+import { PgiCard } from "./PgiCard";
+import { QuestionnaireCard } from "./QuestionnaireCard";
+import type { ToolResultRenderer, ToolResultRendererContext } from "./types";
 
-export type ToolResultRenderer = (context: ToolResultRendererContext) => ReactNode;
-
-const renderers = new Map<string, ToolResultRenderer>();
+const customRenderers = new Map<string, ToolResultRenderer>();
 
 export const RESERVED_TOOL_RESULT_RENDERERS = ["cockpit", "questionnaire", "pgi", "guided", "candidate", "narrative"] as const;
+
+const DEFAULT_RENDERERS: Record<(typeof RESERVED_TOOL_RESULT_RENDERERS)[number], ToolResultRenderer> = {
+  cockpit: CockpitSnapshotCard,
+  questionnaire: QuestionnaireCard,
+  pgi: PgiCard,
+  guided: GuidedPlanCard,
+  candidate: CandidateCreatedCard,
+  narrative: NarrativeLineCard,
+};
 
 const TOOL_PREFIX_TO_RENDERER: Record<string, (typeof RESERVED_TOOL_RESULT_RENDERERS)[number]> = {
   cockpit: "cockpit",
@@ -37,11 +48,13 @@ export function resolveToolResultRendererKey(context: ToolResultRendererContext)
 }
 
 export function registerToolResultRenderer(key: string, renderer: ToolResultRenderer) {
-  renderers.set(key, renderer);
+  customRenderers.set(key, renderer);
 }
 
 export function getToolResultRenderer(key: string): ToolResultRenderer {
-  return renderers.get(key) ?? GenericToolResultRenderer;
+  if (customRenderers.has(key)) return customRenderers.get(key)!;
+  if (key in DEFAULT_RENDERERS) return DEFAULT_RENDERERS[key as keyof typeof DEFAULT_RENDERERS];
+  return GenericToolResultRenderer;
 }
 
 export function renderToolResult(context: ToolResultRendererContext): ReactNode {
@@ -50,11 +63,5 @@ export function renderToolResult(context: ToolResultRendererContext): ReactNode 
   return renderer(context);
 }
 
-export function GenericToolResultRenderer({ toolName, result }: ToolResultRendererContext) {
-  return (
-    <section data-testid="tool-result-generic">
-      <h4>{toolName}</h4>
-      <pre>{JSON.stringify(result, null, 2)}</pre>
-    </section>
-  );
-}
+export { GenericToolResultRenderer };
+export type { ToolResultArtifact, ToolResultRenderer, ToolResultRendererContext } from "./types";
