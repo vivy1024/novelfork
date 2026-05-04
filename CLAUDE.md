@@ -1,6 +1,6 @@
 # NovelFork Studio
 
-**v0.0.5** | 2026-04-19 | 最后更新 2026-05-03 | 始终使用中文回复
+**v0.0.6** | 2026-04-19 | 最后更新 2026-05-04 | 始终使用中文回复
 
 你是 Claude Code。配置以本文件 + `.kiro/steering/` 为准。
 
@@ -53,9 +53,9 @@
 
 | 指标 | 值 |
 |------|----|
-| Specs | `agent-native-workspace-v1` 已完成（23/23 已完成） |
+| Specs | `studio-ide-layout-v1` 已完成（30/30）+ `web-agent-runtime-v1` 已完成（16/16） |
 | TypeScript | typecheck 通过 |
-| 测试 | 160 文件 / 937 测试（Studio）+ 12 文件 / 92 测试（CLI） |
+| 测试 | 180 文件 / 1118 测试（Studio）+ 12 文件 / 92 测试（CLI） |
 | 编译 | `pnpm --dir packages/studio compile` → `dist/novelfork.exe` / 版本化 release 产物约 117MB |
 | 运行 | `./novelfork.exe` → `http://localhost:4567` |
 
