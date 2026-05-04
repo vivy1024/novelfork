@@ -60,6 +60,20 @@ describe("StudioNextApp", () => {
     expect(within(screen.getByTestId("shell-main")).getByRole("heading", { name: "Agent Shell" })).toBeTruthy();
   });
 
+  it("mounts Agent Conversation for narrator routes", () => {
+    render(<StudioNextApp initialRoute={{ kind: "narrator", sessionId: "session-1" }} />);
+
+    expect(screen.getByTestId("conversation-route").getAttribute("data-session-id")).toBe("session-1");
+    expect(screen.getByText("session-1")).toBeTruthy();
+  });
+
+  it("mounts Writing Workbench for book routes", () => {
+    render(<StudioNextApp initialRoute={{ kind: "book", bookId: "b1" }} />);
+
+    expect(screen.getByTestId("writing-workbench-route").getAttribute("data-book-id")).toBe("b1");
+    expect(screen.getByText("选择左侧资源开始写作")).toBeTruthy();
+  });
+
   it("renders settings mount point when navigated", () => {
     render(<StudioNextApp initialRoute={{ kind: "settings" }} />);
 
