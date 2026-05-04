@@ -6,3 +6,5 @@ export * from "./resource-tree-adapter";
 export * from "./session-client";
 export * from "./writing-action-adapter";
 export * from "./writing-action-client";
+export * from "./backend-contract-verification";
+export * from "./fetch-json-contract-client";

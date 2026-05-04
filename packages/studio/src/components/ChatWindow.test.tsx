@@ -1202,7 +1202,7 @@ describe("ChatWindow", () => {
       });
       await Promise.resolve();
 
-      expect(fetchJsonMock).toHaveBeenCalledWith("/api/sessions/session-abc123456/chat/history?sinceSeq=1");
+      expect(fetchJsonMock).toHaveBeenCalledWith("/api/sessions/session-abc123456/chat/history?sinceSeq=2");
       expect(fetchJsonMock.mock.calls.filter(([url]) => url === "/api/sessions/session-abc123456/chat/state").length).toBeGreaterThanOrEqual(1);
       expect(screen.getByText("需要整包重放")).toBeTruthy();
       expect(useWindowRuntimeStore.getState().recoveryStates["window-1"]).toBe("idle");

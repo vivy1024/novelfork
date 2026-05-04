@@ -1,3 +1,5 @@
+import type { ProviderRuntimeStatus } from "../shared/provider-catalog.js";
+
 export type AiAction =
   | "ai-writing"
   | "ai-rewrite"
@@ -6,12 +8,8 @@ export type AiAction =
   | "deep-ai-taste-scan"
   | "workbench-agent";
 
-export interface ProviderRuntimeStatus {
-  readonly hasUsableModel: boolean;
-  readonly defaultProvider?: string;
-  readonly defaultModel?: string;
-  readonly lastConnectionError?: string;
-}
+
+export type { ProviderRuntimeStatus } from "../shared/provider-catalog.js";
 
 export type AiGateResult =
   | {

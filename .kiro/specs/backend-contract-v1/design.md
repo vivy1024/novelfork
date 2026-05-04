@@ -117,7 +117,9 @@ packages/studio/src/app-next/backend-contract/
 ├── session-client.ts          # REST + WS envelope helpers
 ├── resource-client.ts         # books/chapters/candidates/drafts/files
 ├── provider-client.ts         # provider/model/status
-└── writing-action-client.ts   # writing modes/session tools/AI action wrappers
+├── writing-action-client.ts   # writing modes/session tools/AI action wrappers
+├── fetch-json-contract-client.ts       # 前端 fetchJson 到 ContractClient 的桥接
+└── backend-contract-verification.ts    # task 9 验证命令清单与 app-next API guard
 ```
 
 规则：
@@ -133,7 +135,8 @@ packages/studio/src/app-next/backend-contract/
 2. Route 契约测试：覆盖核心成功和失败 envelope。
 3. Contract client 测试：验证 unsupported/prompt-preview/process-memory 映射不丢失。
 4. 前端替换测试：新 UI 只通过 contract client 获取数据。
-5. 文档核对：`docs/06-API与数据契约/02-创作工作台接口.md` 与本矩阵一致。
+5. 验证收口：`backend-contract-verification.ts` 记录 Backend Contract 聚焦测试、Studio typecheck、docs verify、`git diff --check` 与 app-next API guard；未运行项必须保持 `unverified`。
+6. 文档核对：`docs/06-API与数据契约/02-创作工作台接口.md` 与本矩阵一致。
 
 ## 不做的事
 

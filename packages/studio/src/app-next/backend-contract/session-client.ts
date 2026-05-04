@@ -295,7 +295,12 @@ export function getSessionResumeFromSeq(state: SessionWebSocketRuntimeState): nu
 
 export function createSessionClient(contract: ContractClient) {
   return {
-    listActiveSessions: <T = readonly NarratorSessionRecord[]>() => contract.get<T>("/api/sessions?sort=recent&status=active", { capability: { id: "sessions.active", status: "current" } }),
+    listActiveSessions: <T = readonly NarratorSessionRecord[]>(query?: { status?: string; binding?: string; search?: string }) => {
+      const params = new URLSearchParams({ sort: "recent", status: query?.status ?? "active" });
+      if (query?.binding) params.set("binding", query.binding);
+      if (query?.search) params.set("search", query.search);
+      return contract.get<T>(`/api/sessions?${params.toString()}`, { capability: { id: "sessions.active", status: "current" } });
+    },
     createSession: <T = NarratorSessionRecord>(payload: CreateNarratorSessionInput) => contract.post<T>("/api/sessions", payload, { capability: { id: "sessions.create", status: "current" } }),
     updateSession: <T = NarratorSessionRecord>(sessionId: string, payload: UpdateNarratorSessionInput) =>
       contract.put<T>(`/api/sessions/${encodeURIComponent(sessionId)}`, payload, { capability: { id: "sessions.update", status: "current" } }),

@@ -1,15 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { createContractClient } from "./contract-client";
+import { createFetchJsonContractClient } from "./fetch-json-contract-client";
 import { createProviderClient } from "./provider-client";
 import { createResourceClient } from "./resource-client";
 import { buildChatWebSocketUrl, createSessionClient } from "./session-client";
 import { createWritingActionClient } from "./writing-action-client";
 import type { BookDetailResponse, BookListResponse, ChapterContentResponse } from "../../shared/contracts";
 import type { ContractResult } from "./contract-client";
-import type { ProviderRuntimeStatus } from "../../lib/ai-gate";
-import type { RuntimeModelPoolEntry } from "../../api/lib/runtime-model-pool";
-import type { RuntimeProviderView } from "../../api/lib/provider-runtime-store";
+import type { ProviderRuntimeStatus, RuntimeModelPoolEntry, RuntimeProviderView } from "../../shared/provider-catalog";
 import type { NarratorSessionChatHistory, NarratorSessionChatSnapshot, NarratorSessionRecord } from "../../shared/session-types";
 
 describe("domain contract clients", () => {
@@ -42,6 +41,23 @@ describe("domain contract clients", () => {
     const typedModelTest: Promise<ContractResult<{ success: true; model?: RuntimeProviderView["models"][number] }>> = modelTest;
 
     void [typedListBooks, typedGetBook, typedGetChapter, typedActiveSessions, typedChatState, typedChatHistory, typedProviderStatus, typedModelPool, typedProviderSummary, typedModelTest];
+  });
+
+  it("converts fetchJson failures into contract error results without losing status", async () => {
+    const error = Object.assign(new Error("真实后端失败"), { status: 409, code: "ai-gate" });
+    const fetchJsonMock = vi.fn(async () => {
+      throw error;
+    });
+    const contract = createFetchJsonContractClient(fetchJsonMock as unknown as <T>(path: string, init?: RequestInit) => Promise<T>);
+
+    const result = await contract.get("/api/providers/models");
+
+    expect(fetchJsonMock).toHaveBeenCalledWith("/api/providers/models");
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("expected contract failure");
+    expect(result.httpStatus).toBe(409);
+    expect(result.code).toBe("ai-gate");
+    expect(result.error).toEqual({ error: { message: "真实后端失败", code: "ai-gate" } });
   });
 
   it("wraps first-screen resource/provider/session routes with registered capabilities", async () => {
