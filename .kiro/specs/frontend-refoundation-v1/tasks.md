@@ -6,14 +6,14 @@
 
 ## Tasks
 
-> 暂停前端任务完成标记：需先完成并验收 `backend-contract-v1`，当前前端侧已有未提交接线草稿，但不计为本 spec 完成项。
+> `backend-contract-v1` 已完成验收；本 spec 从 Backend Contract client 接入与 Agent Shell 路由壳开始正式计入进度。
 
-- [ ] 1. 接入 Backend Contract client
+- [x] 1. 接入 Backend Contract client
   - 依赖 `backend-contract-v1` 的 capability status、session/resource/provider/writing action clients。
   - 在新前端中禁止组件散写未登记 API。
   - 验证：contract client 单测和 typecheck 通过。
 
-- [ ] 2. 建立 Agent Shell 路由壳
+- [x] 2. 建立 Agent Shell 路由壳
   - 新增 `app-next/shell/AgentShell.tsx`、`ShellSidebar.tsx`、`shell-route.ts`、`useShellData.ts`。
   - `/next`、`/next/narrators/:sessionId`、`/next/books/:bookId`、`/next/search`、`/next/routines`、`/next/settings` 统一在 shell 内切换。
   - 验证：路由和 sidebar active 状态测试。

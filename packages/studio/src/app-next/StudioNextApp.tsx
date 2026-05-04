@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 
+import { ConversationRoute } from "./agent-conversation";
 import { resolveStudioNextRoute, type StudioNextRoute } from "./entry";
 import { AgentShell, toShellPath, useShellData, type ShellRoute } from "./shell";
+import { WritingWorkbenchRoute } from "./writing-workbench";
 
 interface StudioNextAppProps {
   readonly initialRoute?: StudioNextRoute;
@@ -20,9 +22,9 @@ function ShellPlaceholder({ title, description }: { readonly title: string; read
 function RouteMountPoint({ route }: { readonly route: ShellRoute }) {
   switch (route.kind) {
     case "narrator":
-      return <ShellPlaceholder title="Agent Conversation 挂载点" description={`会话 ${route.sessionId} 已由 Shell 路由接管；实时连接将在后续批次接入。`} />;
+      return <ConversationRoute sessionId={route.sessionId} title={route.sessionId} />;
     case "book":
-      return <ShellPlaceholder title="Writing Workbench 挂载点" description={`书籍 ${route.bookId} 已由 Shell 路由接管；完整资源树与编辑器将在后续批次接入。`} />;
+      return <WritingWorkbenchRoute bookId={route.bookId} nodes={[]} selectedNode={null} onOpen={() => undefined} onSave={() => undefined} />;
     case "search":
       return <ShellPlaceholder title="搜索" description="跨项目搜索入口已接入 Agent Shell，搜索运行时稍后接线。" />;
     case "routines":
