@@ -28,23 +28,16 @@ src/
 │   └── server.ts       # 服务启动
 │
 ├── app-next/           # 新前端 (React 19 + Tailwind + shadcn/ui)
-│   ├── workspace/      # 创作工作台
-│   │   ├── WorkspacePage.tsx   # 主页面
-│   │   ├── resource-adapter.ts # 资源树
-│   │   ├── WorkspaceCanvas.tsx # 中间多资源画布
-│   │   ├── NarratorPanel.tsx   # 右侧固定叙述者会话
-│   │   ├── BiblePanel.tsx      # 经纬画布/工具复用面板
-│   │   ├── PublishPanel.tsx    # 发布画布面板
-│   │   ├── cockpit/            # cockpit 工具结果与画布组件
-│   │   │   ├── cockpit-types.ts
-│   │   │   └── cockpit-risk.ts
-│   │   └── ...
+│   ├── backend-contract/ # 目标合同适配层：能力状态、typed client、session/resource/provider/writing action client
+│   ├── shell/            # 目标 Agent Shell：一级导航、路由壳、全局状态
+│   ├── agent-conversation/ # 目标单栏叙述者对话：runtime + surface + composer/status/tool cards
+│   ├── writing-workbench/  # 目标独立写作工作区：资源树、canvas、resource viewers、写作动作
+│   ├── tool-results/       # 目标工具结果 renderer registry
+│   ├── workspace/      # 现有工作台资产，重建期间按合同迁移/退役
 │   ├── settings/       # 设置页
 │   ├── routines/       # 套路页 (工具/命令/技能/子代理)
-│   ├── dashboard/      # 仪表盘
-│   ├── workflow/       # 工作流
-│   ├── sessions/           # 叙述者会话 UI 与工具链展示
-│   ├── components/         # app-next 组件
+│   ├── sessions/       # 叙述者会话 UI 与工具链展示
+│   ├── components/     # app-next 组件
 │   ├── lib/            # 前端工具
 │   │   └── display-labels.ts  # 中文标签
 │   └── entry.ts        # 路由入口
@@ -112,10 +105,12 @@ bun run typecheck
 
 | 路由 | 说明 |
 |------|------|
-| `/next/workspace` | 创作工作台（默认） |
-| `/next/dashboard` | 仪表盘 |
+| `/next` | 当前入口；重建目标为 Agent Shell 默认对话页 |
+| `/next/narrators/:sessionId` | 重建目标：单栏叙述者会话 |
+| `/next/books/:bookId` | 重建目标：独立 Writing Workbench |
 | `/next/settings` | 设置 |
 | `/next/routines` | 套路 |
+| `/next/search` | 搜索 |
 
 ---
 
