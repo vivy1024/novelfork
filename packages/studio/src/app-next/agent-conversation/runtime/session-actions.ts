@@ -1,4 +1,4 @@
-import type { AgentCanvasContext } from "../../../shared/agent-native-workspace";
+import type { CanvasContext } from "../../../shared/agent-native-workspace";
 
 export interface BuildMessageEnvelopeInput {
   sessionId: string;
@@ -6,7 +6,7 @@ export interface BuildMessageEnvelopeInput {
   content: string;
   sessionMode?: string;
   ack?: number;
-  canvasContext?: AgentCanvasContext;
+  canvasContext?: CanvasContext;
 }
 
 export function buildMessageEnvelope(input: BuildMessageEnvelopeInput) {

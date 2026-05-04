@@ -11,12 +11,14 @@ export interface CapabilityUiDecision {
   allowsFormalWrite: boolean;
   allowedActions: string[];
   recoveryNote?: string;
+  disabledReason?: string;
 }
 
 export interface BackendCapability {
   id: string;
   status: CapabilityStatus;
   ui: CapabilityUiDecision;
+  metadata?: Record<string, unknown>;
 }
 
 const CURRENT_ACTIONS = ["read", "write", "delete", "apply"];
@@ -82,6 +84,7 @@ export function getCapabilityUiDecision(status: CapabilityStatus): CapabilityUiD
         previewOnly: false,
         errorVisible: true,
         recoveryNoteVisible: false,
+        disabledReason: "当前后端或模型适配器不支持该能力。",
         allowsFetch: false,
         allowsFormalWrite: false,
         allowedActions: [],
@@ -94,6 +97,7 @@ export function getCapabilityUiDecision(status: CapabilityStatus): CapabilityUiD
         previewOnly: false,
         errorVisible: false,
         recoveryNoteVisible: false,
+        disabledReason: "该能力仍处于规划状态，当前不可调用。",
         allowsFetch: false,
         allowsFormalWrite: false,
         allowedActions: [],
@@ -101,13 +105,14 @@ export function getCapabilityUiDecision(status: CapabilityStatus): CapabilityUiD
   }
 }
 
-export function normalizeCapability(capability?: { id?: string; status?: CapabilityStatus }): BackendCapability {
+export function normalizeCapability(capability?: { id?: string; status?: CapabilityStatus; metadata?: Record<string, unknown> }): BackendCapability {
   const status = capability?.status ?? "current";
 
   return {
     id: capability?.id ?? "unknown",
     status,
     ui: getCapabilityUiDecision(status),
+    ...(capability?.metadata ? { metadata: capability.metadata } : {}),
   };
 }
 

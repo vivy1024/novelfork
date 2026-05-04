@@ -6,7 +6,7 @@ export interface ContractClientOptions {
 }
 
 export interface ContractRequestOptions {
-  capability?: { id?: string; status?: CapabilityStatus };
+  capability?: { id?: string; status?: CapabilityStatus; metadata?: Record<string, unknown> };
   headers?: HeadersInit;
   signal?: AbortSignal;
 }
@@ -50,26 +50,18 @@ function extractCode(payload: unknown): string | undefined {
   return typeof error === "string" ? error : undefined;
 }
 
-function splitBodyAndOptions(body: unknown, options?: ContractRequestOptions): { body: unknown; options?: ContractRequestOptions } {
-  if (options === undefined && body && typeof body === "object" && "capability" in (body as Record<string, unknown>)) {
-    return { body: undefined, options: body as ContractRequestOptions };
-  }
-  return { body, options };
-}
-
 export function createContractClient(options: ContractClientOptions = {}): ContractClient {
   const fetchImpl = options.fetch ?? fetch;
   const baseUrl = options.baseUrl ?? "";
 
   async function request<T = unknown>(method: string, path: string, rawBody?: unknown, rawOptions?: ContractRequestOptions): Promise<ContractResult<T>> {
-    const { body, options: requestOptions } = splitBodyAndOptions(rawBody, rawOptions);
-    const capability = normalizeCapability(requestOptions?.capability);
-    const headers = new Headers(requestOptions?.headers);
-    const init: RequestInit = { method, headers, signal: requestOptions?.signal };
+    const capability = normalizeCapability(rawOptions?.capability);
+    const headers = new Headers(rawOptions?.headers);
+    const init: RequestInit = { method, headers, signal: rawOptions?.signal };
 
-    if (body !== undefined) {
+    if (rawBody !== undefined) {
       if (!headers.has("content-type")) headers.set("content-type", "application/json");
-      init.body = typeof body === "string" ? body : JSON.stringify(body);
+      init.body = typeof rawBody === "string" ? rawBody : JSON.stringify(rawBody);
     }
 
     try {

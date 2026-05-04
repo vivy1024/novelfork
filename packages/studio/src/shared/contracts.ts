@@ -47,6 +47,16 @@ export interface BookDetail extends BookSummary {
   readonly language: "zh" | "en" | null;
 }
 
+export interface BookListResponse {
+  readonly books: readonly BookSummary[];
+}
+
+export interface BookDetailResponse {
+  readonly book: BookDetail;
+  readonly chapters: readonly ChapterSummary[];
+  readonly nextChapter: number;
+}
+
 // --- Chapters ---
 
 export interface ChapterSummary {
@@ -76,6 +86,17 @@ export interface ChapterDetail extends ChapterSummary {
   };
   readonly lengthWarnings?: ReadonlyArray<string>;
   readonly content: string;
+}
+
+export interface ChapterContentResponse {
+  readonly chapterNumber: number;
+  readonly filename: string;
+  readonly content: string;
+}
+
+export interface SaveChapterResponse {
+  readonly ok: true;
+  readonly chapterNumber: number;
 }
 
 export interface SaveChapterPayload {
