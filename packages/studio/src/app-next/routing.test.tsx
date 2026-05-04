@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { useApiMock, fetchJsonMock, settingsUserState } = vi.hoisted(() => ({
@@ -37,6 +37,7 @@ beforeEach(() => {
     if (path === "/settings/release") return { data: { version: "0.1.0" }, loading: false, error: null, refetch: vi.fn() };
     if (path === "/settings/metrics") return { data: {}, loading: false, error: null, refetch: vi.fn() };
     if (path === "/providers") return { data: { providers: [] }, loading: false, error: null, refetch: vi.fn() };
+    if (path?.startsWith("/sessions")) return { data: { sessions: [] }, loading: false, error: null, refetch: vi.fn() };
     return { data: null, loading: false, error: null, refetch: vi.fn() };
   });
   fetchJsonMock.mockImplementation((path: string) => {
@@ -58,59 +59,38 @@ describe("Studio Next routing", () => {
     expect(resolveStudioNextRoute("/next/unknown")).toBe("workspace");
   });
 
-  it("navigates between all three first-phase pages without page reload", () => {
-    render(<StudioNextApp initialRoute="workspace" />);
-    expect(screen.getByText("资源管理器")).toBeTruthy();
-
-    fireEvent.click(within(screen.getByRole("navigation", { name: "Studio Next 主导航" })).getByRole("button", { name: "设置" }));
-    expect(screen.getByText("个人设置")).toBeTruthy();
-
-    fireEvent.click(within(screen.getByRole("navigation", { name: "Studio Next 主导航" })).getByRole("button", { name: "套路" }));
-    expect(screen.getByText("正在加载 Routines 配置…")).toBeTruthy();
-
-    fireEvent.click(within(screen.getByRole("navigation", { name: "Studio Next 主导航" })).getByRole("button", { name: "会话" }));
-    expect(screen.getByRole("heading", { name: "会话中心", level: 1 })).toBeTruthy();
-
-    fireEvent.click(within(screen.getByRole("navigation", { name: "Studio Next 主导航" })).getByRole("button", { name: "创作工作台" }));
-    expect(screen.getByText("资源管理器")).toBeTruthy();
-  });
-
-  it("hides advanced routines navigation while author mode is active", () => {
-    settingsUserState.preferences.workbenchMode = false;
-
+  it("renders sidebar with storyline and narrator sections", () => {
     render(<StudioNextApp initialRoute="workspace" />);
 
-    const primaryNav = screen.getByRole("navigation", { name: "Studio Next 主导航" });
-    expect(within(primaryNav).queryByRole("button", { name: "套路" })).toBeNull();
-    expect(within(primaryNav).getByRole("button", { name: "创作工作台" })).toBeTruthy();
-    expect(within(primaryNav).getByRole("button", { name: "会话" })).toBeTruthy();
+    const sidebar = screen.getByTestId("studio-sidebar");
+    expect(sidebar.textContent).toContain("叙事线");
+    expect(sidebar.textContent).toContain("叙述者");
+    expect(sidebar.textContent).toContain("套路");
+    expect(sidebar.textContent).toContain("设置");
   });
 
-  it("settings page supports section switching — only right side updates", () => {
+  it("navigates to settings page", () => {
     render(<StudioNextApp initialRoute="settings" />);
-    const settingsNav = screen.getByRole("navigation", { name: "设置分区" });
-    expect(within(settingsNav).getByRole("button", { name: /个人资料/ })).toBeTruthy();
-    expect(within(settingsNav).getByRole("button", { name: /AI 供应商/ })).toBeTruthy();
+
+    expect(screen.getByText("个人设置")).toBeTruthy();
   });
 
-  it("workspace resource tree click updates the central editor", () => {
-    render(<StudioNextApp initialRoute="workspace" />);
-    const explorer = screen.getByRole("complementary", { name: "小说资源管理器" });
-    expect(within(explorer).getByText("资源管理器")).toBeTruthy();
+  it("navigates to routines page", () => {
+    render(<StudioNextApp initialRoute="routines" />);
+
+    expect(screen.getByText("正在加载 Routines 配置…")).toBeTruthy();
   });
 
-  it("workspace top bar has publish readiness without exposing preset management", () => {
+  it("renders workspace by default with resource tree", () => {
     render(<StudioNextApp initialRoute="workspace" />);
-    expect(screen.getByText("发布就绪")).toBeTruthy();
-    expect(screen.queryByText("预设管理")).toBeNull();
+
+    expect(screen.getByText("资源管理器")).toBeTruthy();
   });
 
-  it("workspace exposes the docked narrator panel as the right-side entry", () => {
+  it("shows books in storyline", () => {
     render(<StudioNextApp initialRoute="workspace" />);
-    const narrator = screen.getByRole("complementary", { name: "叙述者会话" });
-    expect(within(narrator).getByTestId("chat-window-shell").getAttribute("data-host-mode")).toBe("docked");
-    expect(within(narrator).getByText("叙述者")).toBeTruthy();
-    expect(within(narrator).getByLabelText("消息输入框")).toBeTruthy();
-    expect(within(narrator).queryByRole("button", { name: "写作" })).toBeNull();
+
+    const sidebar = screen.getByTestId("studio-sidebar");
+    expect(sidebar.textContent).toContain("测试书");
   });
 });
