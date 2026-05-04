@@ -50,7 +50,7 @@ novelfork/
 │   └── cli/           # CLI 工具 (novelfork 命令)
 ├── docs/              # 文档中心 (产品/架构/API/指南)
 ├── .kiro/
-│   ├── specs/         # 开发规格（当前 active：agent-native-workspace-v1）
+│   ├── specs/         # 开发规格（当前 active：backend-contract-v1 → frontend-refoundation-v1）
 │   └── steering/      # 项目原则与约束
 ├── claude/            # Claude Code 源码参考
 └── scripts/           # 工具脚本
@@ -67,9 +67,9 @@ novelfork/
 ## 核心能力
 
 ### Agent-native 创作工作台
-- 三栏 session-first 布局：左侧资源栏 / 中间多资源画布 / 右侧固定叙述者会话
-- 章节、候选稿、草稿、经纬、故事文件、真相文件、发布报告都在中间画布打开，不替换右侧会话
-- 叙述者会话支持工具调用、工具结果卡片、确认门、权限模式和当前画布上下文注入
+- 当前重建主线：先冻结 Backend Contract，再基于 Agent Shell + Writing Workbench 重建前端，避免继续修补失败三栏实验
+- 已有后端能力保留：叙述者会话、WebSocket、工具调用、确认门、权限模式、模型池、候选稿/草稿/经纬/叙事线等真实合同
+- 新前端目标：左侧一级导航、单栏 Agent Conversation、独立 Writing Workbench；所有按钮和资源节点必须来自真实后端合同
 - 「写下一章」最小链路：驾驶舱快照 → PGI 生成前追问 → GuidedGenerationPlan → 用户批准 → 候选稿生成
 - AI 输出默认进入候选区 / 草稿区；正式正文覆盖必须由用户确认
 

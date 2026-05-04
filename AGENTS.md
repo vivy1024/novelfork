@@ -32,13 +32,13 @@
 
 - 新功能必须先写 spec（`requirements.md` → `design.md` → `tasks.md`）再实现
 - 归档目录：`.kiro/specs/archive/`
-- 活跃 spec 在 `.kiro/specs/` 根目录（当前为 `agent-native-workspace-v1`，23/23 已完成）
+- 活跃 spec 在 `.kiro/specs/` 根目录；当前主线为 `backend-contract-v1` → `frontend-refoundation-v1`，`backend-core-refactor-v1` 作为后续整理阶段
 - 每个 spec 必须通过 typecheck + test 才能标记完成
 
 ## AI 输出原则
 
 - AI 结果只进候选区/草稿区，用户确认后才影响正式正文
-- Studio 当前口径是 session-first：右侧固定叙述者会话，中间画布承载资源和工具产物，左侧资源栏只负责导航
+- Studio 已交付口径是 session-first 工作台；当前重建主线先冻结 Backend Contract，再基于 Agent Shell + Writing Workbench 重建前端，所有按钮和资源节点必须来自真实合同
 - 历史驾驶舱/经纬/写作面板只能作为工具结果卡片或画布组件复用，不再作为右侧主 Tab
 - 不恢复 mock/fake/noop 假成功
 - 未接入能力标记 unsupported；模型不支持工具循环时返回 `unsupported-tools` 或只读 / prompt-preview 降级，不伪造执行

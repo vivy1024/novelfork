@@ -1,5 +1,7 @@
 # NovelFork UI v1 Tasks
 
+> **Superseded / 不再执行**：本任务清单已被 `backend-contract-v1` 与 `frontend-refoundation-v1` 取代。不要从这里继续派发实现任务；仅作历史过渡参考。
+
 ## Overview
 
 重做前端布局：NarraFork 风格的 sidebar + 全宽内容区，叙事线详情页独立。
