@@ -93,7 +93,7 @@
   - 验证：消息渲染、工具卡片、确认门、滚动性能。
   - 覆盖需求：R4。
 
-- [ ] 12. 退役旧布局并更新文档
+- [ ] 12. 退役旧布局并更新文档（延后：新布局骨架已完成，但数据接入和核心逻辑迁移需要后续 spec）
   - 移除 `StudioNextApp` + `NextShell` + `ResourceWorkspaceLayout` 旧布局。
   - 更新路由入口指向新 `StudioApp`。
   - 移除 `DashboardPage`、`WorkflowPage` 等独立页面（功能收入 Sidebar 或设置）。
@@ -238,7 +238,7 @@
   - 验证：配置保存、章节列表、合并、清理、自动休眠。
   - 覆盖需求：R20。
 
-- [ ] 30. 回归验证与收尾
+- [x] 30. 回归验证与收尾
   - 运行全量 typecheck 和测试。
   - 核对 NarraFork 设置/套路页的每个字段在 NovelFork 中都有对应。
   - 核对全部已完成 spec 的功能无回归。
