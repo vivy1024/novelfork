@@ -174,7 +174,7 @@ export function ChatPanel({ bookId, onClose }: ChatPanelProps) {
         </div>
       )}
 
-      <div className="grid gap-2 border-b border-border/50 bg-muted/20 px-4 py-3 text-[10px] text-muted-foreground sm:grid-cols-3">
+      <div className="flex flex-wrap gap-2 border-b border-border/50 bg-muted/20 px-4 py-3 text-[10px] text-muted-foreground">
         <SummaryBlock label="消息数" value={String(messages.length)} />
         <SummaryBlock label="最近活动" value={lastMessageTime} />
         <SummaryBlock label="状态" value={isStreaming ? "生成中" : "空闲"} />
