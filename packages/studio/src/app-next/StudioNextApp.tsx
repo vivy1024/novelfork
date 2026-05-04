@@ -1,31 +1,40 @@
 /**
  * StudioNextApp — 顶层入口
  *
- * 左侧 Sidebar（叙事线/叙述者/套路/设置）+ 右侧内容区。
- * workspace 路由下内容区渲染 WorkspacePage（它内部有自己的三栏布局）。
- * 其他路由下内容区渲染对应页面。
+ * 对标 Claude Code REPL.tsx 的数据中心模式：
+ * 顶层持有所有数据，通过 props 分发给 Sidebar / EditorArea / ConversationPanel。
+ *
+ * 当前阶段：Sidebar 接入真实资源树，中间面板复用 WorkspacePage（含编辑器+AI面板），
+ * 右侧面板独立渲染 NarratorPanel（从 WorkspacePage 提取）。
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { resolveStudioNextRoute, STUDIO_NEXT_BASE_PATH, type StudioNextRoute } from "./entry";
 import { SplitView, usePanelLayout, type SplitViewHandle, type SplitViewPanel } from "@/components/split-view/SplitView";
-import { useApi } from "@/hooks/use-api";
 import { Sidebar } from "./sidebar/Sidebar";
-import { StorylineTree, type BookListItem } from "./sidebar/StorylineTree";
+import { StorylineTree } from "./sidebar/StorylineTree";
 import { NarratorList, NarratorActions, type NarratorSession } from "./sidebar/NarratorList";
+import { useStudioData } from "./hooks/useStudioData";
+
+// 页面组件
 import { DashboardPage } from "./dashboard/DashboardPage";
 import { ProviderSettingsPage } from "./settings/ProviderSettingsPage";
 import { SettingsSectionContent } from "./settings/SettingsSectionContent";
-import { SettingsLayout, SectionLayout } from "./components/layouts";
+import { SettingsLayout } from "./components/layouts";
 import { RoutinesNextPage } from "./routines/RoutinesNextPage";
 import { WorkspacePage } from "./workspace/WorkspacePage";
 import { WorkflowPage } from "./workflow/WorkflowPage";
 import { SearchPage } from "./search/SearchPage";
 import { SessionCenterPage } from "./sessions/SessionCenterPage";
+import { NarratorPanel } from "../components/ChatWindow";
+import { SessionCenter } from "../components/sessions/SessionCenter";
+import { Button } from "../components/ui/button";
+import { useWindowStore } from "../stores/windowStore";
 import { User, Cpu, Bot, Bell, Palette, Plug, Server, Database, Activity, Clock, FolderCog, Info } from "lucide-react";
 
 import type { NarratorSessionRecord } from "@/shared/session-types";
+import type { CanvasContext } from "@/shared/agent-native-workspace";
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                          */
@@ -63,8 +72,8 @@ const ROUTE_PATHS: Record<StudioNextRoute, string> = {
 
 const LAYOUT_KEY = "studio-main";
 const LAYOUT_DEFAULTS = {
-  widths: { sidebar: 220, content: 1060 },
-  collapsed: { sidebar: false, content: false },
+  widths: { sidebar: 220, content: 700, conversation: 380 },
+  collapsed: { sidebar: false, content: false, conversation: false },
 } as const;
 
 /* ------------------------------------------------------------------ */
@@ -94,10 +103,10 @@ export function StudioNextApp({ initialRoute }: StudioNextAppProps) {
   }, []);
 
   // --- Data ---
-  const { data: booksData } = useApi<{ books: BookListItem[] }>("/books");
-  const { data: sessionsData } = useApi<{ sessions: NarratorSessionRecord[] }>("/sessions?sort=recent&status=active");
-  const books: BookListItem[] = booksData?.books ?? [];
-  const sessions: NarratorSession[] = (sessionsData?.sessions ?? []).map((s) => ({
+  const studioData = useStudioData();
+  const { books, activeBookId, setActiveBookId, resourceNodes, sessions, activeSessionId, setActiveSessionId } = studioData;
+
+  const narratorSessions: NarratorSession[] = sessions.map((s) => ({
     id: s.id,
     title: s.title,
     status: s.status,
@@ -107,12 +116,14 @@ export function StudioNextApp({ initialRoute }: StudioNextAppProps) {
     lastModified: s.lastModified,
   }));
 
-  // --- Content area ---
-  const contentArea = useMemo(() => {
+  // --- Center content ---
+  const isWorkspace = activeRoute === "workspace" || activeRoute === "studio";
+
+  const centerContent = useMemo(() => {
     switch (activeRoute) {
       case "workspace":
-        // WorkspacePage 有自己的三栏布局（资源树+编辑器+叙述者），直接全宽渲染
-        return <WorkspacePage />;
+      case "studio":
+        return <WorkspacePage hideNarrator />;
       case "dashboard":
         return <DashboardPage onOpenBook={() => navigate("workspace")} />;
       case "settings":
@@ -134,7 +145,7 @@ export function StudioNextApp({ initialRoute }: StudioNextAppProps) {
     }
   }, [activeRoute, settingsSectionId, navigate]);
 
-  // --- Panels: Sidebar + Content ---
+  // --- Panels ---
   const panels: SplitViewPanel[] = useMemo(
     () => [
       {
@@ -143,17 +154,23 @@ export function StudioNextApp({ initialRoute }: StudioNextAppProps) {
           <Sidebar
             storylineContent={
               <StorylineTree
-                activeBookId={books[0]?.id ?? null}
+                activeBookId={activeBookId}
                 books={books}
-                onBookChange={() => navigate("workspace")}
+                onBookChange={(id) => {
+                  setActiveBookId(id);
+                  navigate("workspace");
+                }}
                 onBookClick={() => navigate("workspace")}
               />
             }
             narratorContent={
               <NarratorList
-                sessions={sessions}
-                activeSessionId={null}
-                onSessionClick={() => navigate("workspace")}
+                sessions={narratorSessions}
+                activeSessionId={activeSessionId}
+                onSessionClick={(id) => {
+                  setActiveSessionId(id);
+                  navigate("workspace");
+                }}
               />
             }
             narratorActions={<NarratorActions onNewSession={() => navigate("sessions")} />}
@@ -161,7 +178,7 @@ export function StudioNextApp({ initialRoute }: StudioNextAppProps) {
             onSettingsClick={() => navigate("settings")}
           />
         ),
-        defaultWidth: 220,
+        defaultWidth: LAYOUT_DEFAULTS.widths.sidebar,
         minWidth: 180,
         collapsible: true,
         collapsed: layout.collapsed.sidebar,
@@ -169,24 +186,42 @@ export function StudioNextApp({ initialRoute }: StudioNextAppProps) {
       {
         id: "content",
         content: (
-          <div className="h-full overflow-hidden p-2">
-            {contentArea}
+          <div className="h-full overflow-hidden">
+            {centerContent}
           </div>
         ),
-        defaultWidth: 1060,
-        minWidth: 600,
+        defaultWidth: LAYOUT_DEFAULTS.widths.content,
+        minWidth: 400,
+      },
+      {
+        id: "conversation",
+        content: (
+          <div className="flex h-full flex-col overflow-hidden bg-card">
+            <RightPanelContent isWorkspace={isWorkspace} />
+          </div>
+        ),
+        defaultWidth: LAYOUT_DEFAULTS.widths.conversation,
+        minWidth: 300,
+        collapsible: true,
+        collapsed: layout.collapsed.conversation,
       },
     ],
-    [layout.collapsed.sidebar, books, sessions, contentArea, navigate],
+    [layout.collapsed.sidebar, layout.collapsed.conversation, books, activeBookId, narratorSessions, activeSessionId, centerContent, isWorkspace, navigate, setActiveBookId, setActiveSessionId],
   );
 
   // --- Keyboard shortcuts ---
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     const ctrl = e.ctrlKey || e.metaKey;
     if (!ctrl) return;
-    if (e.key.toLowerCase() === "b") {
-      e.preventDefault();
-      splitRef.current?.toggleCollapse("sidebar");
+    switch (e.key.toLowerCase()) {
+      case "b":
+        e.preventDefault();
+        splitRef.current?.toggleCollapse("sidebar");
+        break;
+      case "j":
+        e.preventDefault();
+        splitRef.current?.toggleCollapse("conversation");
+        break;
     }
   }, []);
 
@@ -198,6 +233,86 @@ export function StudioNextApp({ initialRoute }: StudioNextAppProps) {
   return (
     <div className="h-screen w-screen bg-background text-foreground">
       <SplitView ref={splitRef} panels={panels} className="h-full w-full" />
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Right panel — NarratorPanel (extracted from WorkspacePage)          */
+/* ------------------------------------------------------------------ */
+
+function RightPanelContent({ isWorkspace }: { readonly isWorkspace: boolean }) {
+  const windows = useWindowStore((s) => s.windows);
+  const addWindow = useWindowStore((s) => s.addWindow);
+  const updateWindow = useWindowStore((s) => s.updateWindow);
+  const setActiveWindow = useWindowStore((s) => s.setActiveWindow);
+  const [showSessionCenter, setShowSessionCenter] = useState(false);
+
+  // Find or create a narrator window
+  const windowId = useMemo(() => {
+    const existing = windows.find((w) => w.agentId === "writer" && w.sessionMode === "chat");
+    if (existing) return existing.id;
+    return null;
+  }, [windows]);
+
+  // Create window if none exists
+  const [createdWindowId, setCreatedWindowId] = useState<string | null>(null);
+  useEffect(() => {
+    if (windowId || createdWindowId) return;
+    const id = addWindow({
+      title: "叙述者",
+      agentId: "writer",
+      sessionMode: "chat",
+    });
+    setCreatedWindowId(id);
+  }, [windowId, createdWindowId, addWindow]);
+
+  const effectiveWindowId = windowId ?? createdWindowId;
+
+  const openSession = useCallback((session: NarratorSessionRecord) => {
+    if (!effectiveWindowId) return;
+    updateWindow(effectiveWindowId, {
+      title: session.title,
+      agentId: session.agentId,
+      sessionId: session.id,
+      sessionMode: session.sessionMode,
+      minimized: false,
+    });
+    setActiveWindow(effectiveWindowId);
+    setShowSessionCenter(false);
+  }, [setActiveWindow, updateWindow, effectiveWindowId]);
+
+  if (!isWorkspace) {
+    return (
+      <div className="flex h-full items-center justify-center p-4 text-center text-sm text-muted-foreground">
+        在工作台模式下使用叙述者对话。
+      </div>
+    );
+  }
+
+  if (!effectiveWindowId) {
+    return (
+      <div className="flex h-full items-center justify-center p-4 text-center text-sm text-muted-foreground">
+        正在准备叙述者会话…
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-full flex-col overflow-hidden">
+      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border bg-muted/30 px-3 py-2">
+        <div className="text-xs font-medium text-muted-foreground">叙述者</div>
+        <Button type="button" size="xs" variant="outline" onClick={() => setShowSessionCenter((v) => !v)}>
+          {showSessionCenter ? "返回叙述者" : "会话中心"}
+        </Button>
+      </div>
+      <div className="min-h-0 flex-1 overflow-hidden">
+        {showSessionCenter ? (
+          <SessionCenter className="p-3" onOpenSession={openSession} />
+        ) : (
+          <NarratorPanel windowId={effectiveWindowId} theme="light" />
+        )}
+      </div>
     </div>
   );
 }
