@@ -33,6 +33,8 @@ import {
 } from "./ToolCall";
 import { ContextPanel, type ContextEntry } from "./ContextPanel";
 import { Button } from "./ui/button";
+import { SessionCenter } from "./sessions/SessionCenter";
+import { createLenientFetchJsonContractClient, createProviderClient, createSessionClient } from "@/app-next/backend-contract";
 import { fetchJson } from "../hooks/use-api";
 import { notify } from "@/lib/notify";
 import { maybeShowClosedWindowHint } from "@/lib/closed-window-hint";
@@ -63,6 +65,7 @@ interface ChatWindowProps {
   windowId: string;
   theme: Theme;
   canvasContext?: CanvasContext;
+  onOpenSessionCenter?: (session: NarratorSessionRecord) => void | Promise<void>;
 }
 
 type ChatHostMode = "floating" | "docked";
@@ -135,15 +138,15 @@ const REASONING_OPTIONS: Array<{ value: SessionReasoningEffort; label: string }>
   { value: "high", label: "高" },
 ];
 
-export function ChatWindow({ windowId, theme, canvasContext }: ChatWindowProps) {
-  return <ChatWindowHost windowId={windowId} theme={theme} hostMode="floating" canvasContext={canvasContext} />;
+export function ChatWindow({ windowId, theme, canvasContext, onOpenSessionCenter }: ChatWindowProps) {
+  return <ChatWindowHost windowId={windowId} theme={theme} hostMode="floating" canvasContext={canvasContext} onOpenSessionCenter={onOpenSessionCenter} />;
 }
 
-export function NarratorPanel({ windowId, theme, canvasContext }: ChatWindowProps) {
-  return <ChatWindowHost windowId={windowId} theme={theme} hostMode="docked" canvasContext={canvasContext} />;
+export function NarratorPanel({ windowId, theme, canvasContext, onOpenSessionCenter }: ChatWindowProps) {
+  return <ChatWindowHost windowId={windowId} theme={theme} hostMode="docked" canvasContext={canvasContext} onOpenSessionCenter={onOpenSessionCenter} />;
 }
 
-function ChatWindowHost({ windowId, theme, hostMode, canvasContext }: ChatWindowHostProps) {
+function ChatWindowHost({ windowId, theme, hostMode, canvasContext, onOpenSessionCenter }: ChatWindowHostProps) {
   const c = useColors(theme);
   const chatWindow = useWindowStore((state) => state.windows.find((w) => w.id === windowId));
   const isActive = useWindowStore((state) => state.activeWindowId === windowId);
@@ -165,6 +168,7 @@ function ChatWindowHost({ windowId, theme, hostMode, canvasContext }: ChatWindow
   const [executionChainExpanded, setExecutionChainExpanded] = useState(false);
   const [recoveryFailure, setRecoveryFailure] = useState<string | null>(null);
   const [runtimeModels, setRuntimeModels] = useState<RuntimeModelOption[] | null>(null);
+  const [sessionCenterOpen, setSessionCenterOpen] = useState(false);
   const sessionMessagesRef = useRef<ChatMessage[]>([]);
   const sessionRecordRef = useRef<NarratorSessionRecord | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -259,10 +263,10 @@ function ChatWindowHost({ windowId, theme, hostMode, canvasContext }: ChatWindow
 
   useEffect(() => {
     let cancelled = false;
-    void fetchJson<{ models?: RuntimeModelOption[] }>("/api/providers/models")
-      .then((response) => {
+    void createProviderClient(createLenientFetchJsonContractClient(fetchJson)).listModels<{ models?: RuntimeModelOption[] }>()
+      .then((result) => {
         if (!cancelled) {
-          setRuntimeModels(usableRuntimeModels(response.models));
+          setRuntimeModels(usableRuntimeModels(result.ok ? result.data.models : []));
         }
       })
       .catch(() => {
@@ -425,21 +429,31 @@ function ChatWindowHost({ windowId, theme, hostMode, canvasContext }: ChatWindow
     }
 
     let cancelled = false;
+    const hydrateStartSeq = lastSessionSeqRef.current;
     updateRecoveryState("recovering");
-    void fetchJson<NarratorSessionChatSnapshot>(`/api/sessions/${sessionId}/chat/state`)
-      .then((snapshot) => {
+    void createSessionClient(createLenientFetchJsonContractClient(fetchJson)).getChatState<NarratorSessionChatSnapshot>(sessionId)
+      .then((result) => {
+        if (!result.ok) throw new Error(contractResultErrorMessage(result, "会话快照加载失败"));
+        const snapshot = result.data;
         if (cancelled || !snapshot?.session?.sessionConfig) {
           return;
         }
 
-        const nextMessages = snapshot.messages.map(toChatWindowMessage);
-        const nextSeq = snapshot.cursor?.ackedSeq ?? snapshot.cursor?.lastSeq ?? getLastSessionSeq(snapshot.messages);
+        const snapshotMessages = snapshot.messages.map(toChatWindowMessage);
+        const snapshotSeq = snapshot.cursor?.ackedSeq ?? snapshot.cursor?.lastSeq ?? getLastSessionSeq(snapshot.messages);
+        const hasLiveMessagesAfterHydrateStarted = lastSessionSeqRef.current > hydrateStartSeq;
+        const nextMessages = hasLiveMessagesAfterHydrateStarted
+          ? mergeSessionMessages(snapshotMessages, sessionMessagesRef.current.map(toNarratorSessionChatMessage))
+          : snapshotMessages;
+        const nextSeq = Math.max(snapshotSeq, lastSessionSeqRef.current);
         syncSessionRecord(snapshot.session);
         syncSessionSeq(nextSeq);
         syncSessionMessages(nextMessages);
         syncAuthoritativeSnapshot(snapshot.session, nextMessages, nextSeq);
+        ackSessionSeq();
         updateRecoveryState("idle");
       })
+
       .catch((error) => {
         if (!cancelled) {
           setRecoveryFailure(error instanceof Error ? error.message : "无法加载正式会话快照");
@@ -463,13 +477,17 @@ function ChatWindowHost({ windowId, theme, hostMode, canvasContext }: ChatWindow
         if (useWindowRuntimeStore.getState().recoveryStates[windowId] !== "resetting") {
           updateRecoveryState("replaying");
         }
-        const history = await fetchJson<Partial<NarratorSessionChatHistory>>(`/api/sessions/${sessionId}/chat/history?sinceSeq=${sinceSeq}`);
+        const historyResult = await createSessionClient(createLenientFetchJsonContractClient(fetchJson)).getChatHistory<Partial<NarratorSessionChatHistory>>(sessionId, sinceSeq);
+        if (!historyResult.ok) throw new Error(contractResultErrorMessage(historyResult, "会话历史加载失败"));
+        const history = historyResult.data;
         if (!history || !Array.isArray(history.messages)) {
           throw new Error("会话历史响应缺少 messages");
         }
         if (history.resetRequired) {
           updateRecoveryState("resetting");
-          const snapshot = await fetchJson<NarratorSessionChatSnapshot>(`/api/sessions/${sessionId}/chat/state`);
+          const snapshotResult = await createSessionClient(createLenientFetchJsonContractClient(fetchJson)).getChatState<NarratorSessionChatSnapshot>(sessionId);
+          if (!snapshotResult.ok) throw new Error(contractResultErrorMessage(snapshotResult, "会话快照加载失败"));
+          const snapshot = snapshotResult.data;
           const nextMessages = snapshot.messages.map(toChatWindowMessage);
           const nextSeq = snapshot.cursor?.ackedSeq ?? snapshot.cursor?.lastSeq ?? getLastSessionSeq(snapshot.messages);
           syncSessionRecord(snapshot.session);
@@ -821,7 +839,9 @@ function ChatWindowHost({ windowId, theme, hostMode, canvasContext }: ChatWindow
     setRecoveryFailure(null);
     updateRecoveryState("recovering");
     try {
-      const snapshot = await fetchJson<NarratorSessionChatSnapshot>(`/api/sessions/${chatWindow.sessionId}/chat/state`);
+      const snapshotResult = await createSessionClient(createLenientFetchJsonContractClient(fetchJson)).getChatState<NarratorSessionChatSnapshot>(chatWindow.sessionId);
+      if (!snapshotResult.ok) throw new Error(contractResultErrorMessage(snapshotResult, "会话快照加载失败"));
+      const snapshot = snapshotResult.data;
       const nextMessages = snapshot.messages.map(toChatWindowMessage);
       const nextSeq = snapshot.cursor?.ackedSeq ?? snapshot.cursor?.lastSeq ?? getLastSessionSeq(snapshot.messages);
       syncSessionRecord(snapshot.session);
@@ -850,16 +870,14 @@ function ChatWindowHost({ windowId, theme, hostMode, canvasContext }: ChatWindow
   };
 
   const createRecoverySession = async () => {
-    const session = await fetchJson<NarratorSessionRecord>("/api/sessions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title: `${sessionState.title} · 恢复新会话`,
-        agentId: chatWindow.agentId,
-        sessionMode: sessionState.sessionMode,
-        sessionConfig,
-      }),
+    const result = await createSessionClient(createLenientFetchJsonContractClient(fetchJson)).createSession<NarratorSessionRecord>({
+      title: `${sessionState.title} · 恢复新会话`,
+      agentId: chatWindow.agentId,
+      sessionMode: sessionState.sessionMode,
+      sessionConfig,
     });
+    if (!result.ok) throw new Error(contractResultErrorMessage(result, "恢复会话创建失败"));
+    const session = result.data;
 
     addWindow({
       agentId: chatWindow.agentId,
@@ -984,6 +1002,16 @@ function ChatWindowHost({ windowId, theme, hostMode, canvasContext }: ChatWindow
               </div>
 
               <div className="space-y-3">
+                {sessionCenterOpen && onOpenSessionCenter ? (
+                  <div className="rounded-xl border border-border/70 bg-background/80 p-3">
+                    <SessionCenter
+                      onOpenSession={(session) => {
+                        void onOpenSessionCenter(session);
+                        setSessionCenterOpen(false);
+                      }}
+                    />
+                  </div>
+                ) : null}
                 <div className="space-y-3">
                   <div className="rounded-xl border border-border/70 bg-background/80 p-3">
                     <div className="flex items-center justify-between gap-2">
@@ -1030,19 +1058,26 @@ function ChatWindowHost({ windowId, theme, hostMode, canvasContext }: ChatWindow
                       >
                         裁剪
                       </button>
+                      {onOpenSessionCenter ? (
+                        <button
+                          type="button"
+                          onClick={() => setSessionCenterOpen((open) => !open)}
+                          className="rounded-full border border-border/70 bg-background px-2 py-1 text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
+                        >
+                          会话中心
+                        </button>
+                      ) : null}
                       <button
                         type="button"
                         onClick={async () => {
-                          const session = await fetchJson<NarratorSessionRecord>("/api/sessions", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({
-                              title: `${sessionState.title} · 新会话`,
-                              agentId: chatWindow.agentId,
-                              sessionMode: sessionState.sessionMode,
-                              sessionConfig,
-                            }),
+                          const result = await createSessionClient(createLenientFetchJsonContractClient(fetchJson)).createSession<NarratorSessionRecord>({
+                            title: `${sessionState.title} · 新会话`,
+                            agentId: chatWindow.agentId,
+                            sessionMode: sessionState.sessionMode,
+                            sessionConfig,
                           });
+                          if (!result.ok) throw new Error(contractResultErrorMessage(result, "新会话创建失败"));
+                          const session = result.data;
 
                           addWindow({
                             agentId: chatWindow.agentId,
@@ -1941,6 +1976,21 @@ async function normalizeSessionChatPayloadText(rawData: unknown): Promise<string
   }
 
   return null;
+}
+
+function contractResultErrorMessage(result: { readonly error?: unknown; readonly code?: string }, fallback: string): string {
+  const error = result.error;
+  if (error && typeof error === "object") {
+    const record = error as Record<string, unknown>;
+    if (typeof record.message === "string") return record.message;
+    if (typeof record.error === "string") return record.error;
+    if (record.error && typeof record.error === "object") {
+      const nested = record.error as Record<string, unknown>;
+      if (typeof nested.message === "string") return nested.message;
+    }
+  }
+  if (typeof error === "string") return error;
+  return result.code ? `${fallback}：${result.code}` : fallback;
 }
 
 function parseSessionChatEnvelope(rawText: string): NarratorSessionChatServerEnvelope | null {

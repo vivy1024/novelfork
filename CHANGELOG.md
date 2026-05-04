@@ -8,11 +8,12 @@
 
 ### 改进
 - Backend Contract：新增可测试的 MVP 能力矩阵，固化启动/侧栏、session、资源工作台、AI 写作动作与 provider/model 的关键能力到真实 route、WebSocket 或 session tool source，并保留 `process-memory`、`prompt-preview`、`chunked-buffer` 等非 current 语义；完善 capability status UI 决策表，为 unsupported/planned 能力提供可见 disabled reason，避免前端只有禁用态却没有真实说明；确认 typed contract client 覆盖 2xx、4xx、5xx、非法 JSON、network error，并保留 gate、streamSource、null/unknown metric 与 capability metadata；补齐 session/resource/provider/writing action 领域 client 的默认共享响应类型，减少组件侧重复声明核心 API 类型；补充 session WebSocket 合同 helper，封装 `resumeFromSeq` URL、client envelope、server envelope 解析与 replay/resetRequired 状态归并；新增资源树 contract adapter，用真实 books/chapters/candidates/drafts/story/truth/jingwei/narrative-line route 组装资源节点，并为 read/edit/delete/apply/unsupported 显式挂载 capability；新增写作动作 contract adapter，区分 session-native 候选链、异步 write-next、AI draft、writing modes、hooks、审校/检测与 gate/unsupported 结果，确保 AI 输出默认进入 candidate/draft/preview 边界。
+- Backend Contract：完成 task 9 验证收口，新增 `backend-contract-verification` 命令报告与 app-next API guard，补齐 `fetchJson` 到 `ContractClient` 的桥接和错误 envelope 转换；将 ChatWindow/WorkspacePage 的关键 session、provider、资源入口接入领域 client，并修复 NodeNext 导入、Workspace sessions 查询 mock 与会话快照/增量消息竞态。
 - Frontend Refoundation：将 `/next` 入口切到 Agent Shell 路由壳，并让 Shell 首屏数据通过 Backend Contract domain clients 读取 books、sessions 与 provider 状态；补充合同 client 对 session/resource/provider/writing action 的显式 helper 与类型约束，继续保留 `prompt-preview`、`process-memory`、`unsupported` 等能力状态；该前端接线仍等待 `backend-contract-v1` 全部验收后再计入前端任务完成。
 
 ### 文档
 - 新增 `backend-contract-v1`、`frontend-refoundation-v1` 与 `backend-core-refactor-v1` Kiro specs，将后续主线调整为先冻结真实后端能力合同，再基于 Agent Shell + Writing Workbench 重建前端，最后按合同分阶段整理后端核心；`novelfork-ui-v1` 保留为被取代的过渡参考。
-- 更新 specs 索引、README、Studio README、AGENTS、当前执行主线与 API 文档口径，明确新前端不得绕过 Backend Contract client 接入未登记能力，`prompt-preview`、`process-memory`、`chunked-buffer`、`unsupported` 和 `unknown` 必须透明呈现；同步 `backend-contract-v1` 进度为 8/9，并记录 app-next 组件禁止散写未登记 API 字符串。
+- 更新 specs 索引、README、Studio README、AGENTS、当前执行主线与 API 文档口径，明确新前端不得绕过 Backend Contract client 接入未登记能力，`prompt-preview`、`process-memory`、`chunked-buffer`、`unsupported` 和 `unknown` 必须透明呈现；同步 `backend-contract-v1` 进度为 9/9，并记录 app-next 组件禁止散写未登记 API 字符串与验证 guard。
 
 ## v0.0.6 (2026-05-04)
 

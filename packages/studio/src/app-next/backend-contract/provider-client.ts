@@ -1,6 +1,4 @@
-import type { ProviderRuntimeStatus } from "../../lib/ai-gate";
-import type { RuntimeModelPoolEntry } from "../../api/lib/runtime-model-pool";
-import type { RuntimeProviderView } from "../../api/lib/provider-runtime-store";
+import type { ProviderRuntimeStatus, RuntimeModelPoolEntry, RuntimeProviderView } from "../../shared/provider-catalog";
 import type { ContractClient } from "./contract-client";
 
 const PROVIDER_REDACTION_METADATA = {

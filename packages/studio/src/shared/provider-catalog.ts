@@ -3,6 +3,11 @@ export type ProviderCompatibility = "openai-compatible" | "anthropic-compatible"
 export type ProviderApiMode = "completions" | "responses" | "codex";
 export type ProviderThinkingStrength = "low" | "medium" | "high";
 export type ModelTestStatus = "untested" | "success" | "error";
+export type RuntimeModelTestStatus = ModelTestStatus | "unsupported";
+export type RuntimeModelSource = "detected" | "builtin-platform" | "manual" | "seed";
+export type RuntimePlatformId = "codex" | "kiro" | "cline";
+export type RuntimePlatformAccountAuthMode = "json-account" | "local-auth-json" | "oauth" | "device-code";
+export type RuntimePlatformAccountStatus = "active" | "disabled" | "expired" | "error";
 
 export interface Model {
   id: string;
@@ -15,7 +20,7 @@ export interface Model {
   supportsVision?: boolean;
   supportsStreaming?: boolean;
   enabled?: boolean;
-  lastTestStatus?: ModelTestStatus;
+  lastTestStatus?: RuntimeModelTestStatus;
   lastTestLatency?: number;
   lastTestError?: string;
   lastRefreshedAt?: string;
@@ -58,6 +63,71 @@ export interface ModelPoolEntry {
   enabled: boolean;
   contextWindow: number;
   maxOutputTokens: number;
+}
+
+export interface RuntimeModelPoolEntry {
+  readonly modelId: string;
+  readonly modelName: string;
+  readonly providerId: string;
+  readonly providerName: string;
+  readonly enabled: boolean;
+  readonly contextWindow: number;
+  readonly maxOutputTokens: number;
+  readonly source: RuntimeModelSource;
+  readonly lastTestStatus: RuntimeModelTestStatus;
+  readonly capabilities: {
+    readonly functionCalling: boolean;
+    readonly vision: boolean;
+    readonly streaming: boolean;
+  };
+}
+
+export interface ProviderRuntimeStatus {
+  readonly hasUsableModel: boolean;
+  readonly defaultProvider?: string;
+  readonly defaultModel?: string;
+  readonly lastConnectionError?: string;
+}
+
+export interface RuntimePlatformAccountRecord {
+  readonly id: string;
+  readonly platformId: RuntimePlatformId;
+  readonly displayName: string;
+  readonly email?: string;
+  readonly accountId?: string;
+  readonly authMode: RuntimePlatformAccountAuthMode;
+  readonly planType?: string;
+  readonly status: RuntimePlatformAccountStatus;
+  readonly current: boolean;
+  readonly priority: number;
+  readonly successCount: number;
+  readonly failureCount: number;
+  readonly quota?: {
+    readonly hourlyPercentage?: number;
+    readonly hourlyResetAt?: string;
+    readonly weeklyPercentage?: number;
+    readonly weeklyResetAt?: string;
+  };
+  readonly tags?: readonly string[];
+  readonly credentialSource?: "json" | "local" | "oauth";
+  readonly createdAt?: string;
+  readonly lastUsedAt?: string;
+  readonly credentialJson?: unknown;
+}
+
+export interface RuntimeProviderView extends Omit<ManagedProvider, "config" | "models"> {
+  config: Omit<ProviderConfig, "apiKey"> & { apiKeyConfigured: boolean };
+  models: RuntimeModelView[];
+}
+
+export interface RuntimeModelView extends Model {
+  source: RuntimeModelSource;
+  enabled: boolean;
+  lastTestStatus: RuntimeModelTestStatus;
+}
+
+export interface RuntimePlatformAccountView extends Omit<RuntimePlatformAccountRecord, "credentialJson"> {
+  credentialConfigured: boolean;
 }
 
 export interface ProviderApiTransport {

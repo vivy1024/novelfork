@@ -9,13 +9,27 @@ import type {
   ProviderCompatibility,
   ProviderApiMode,
   ProviderThinkingStrength,
+  RuntimeModelSource,
+  RuntimeModelTestStatus,
+  RuntimePlatformAccountAuthMode,
+  RuntimePlatformAccountStatus,
+  RuntimePlatformAccountView,
+  RuntimePlatformId,
+  RuntimeProviderView,
 } from "../../shared/provider-catalog.js";
 import { resolveRuntimeStoragePath } from "./runtime-storage-paths.js";
 
-export type RuntimeModelSource = "detected" | "builtin-platform" | "manual" | "seed";
-export type RuntimeModelTestStatus = "untested" | "success" | "error" | "unsupported";
+export type {
+  RuntimeModelSource,
+  RuntimeModelTestStatus,
+  RuntimePlatformAccountAuthMode,
+  RuntimePlatformAccountStatus,
+  RuntimePlatformAccountView,
+  RuntimePlatformId,
+  RuntimeProviderView,
+} from "../../shared/provider-catalog.js";
 
-export interface RuntimeModelRecord extends Omit<Model, "lastTestStatus"> {
+export interface RuntimeModelRecord extends Model {
   source: RuntimeModelSource;
   enabled: boolean;
   lastTestStatus: RuntimeModelTestStatus;
@@ -28,10 +42,6 @@ export interface RuntimeProviderRecord extends Omit<ManagedProvider, "models"> {
   thinkingStrength?: ProviderThinkingStrength;
   models: RuntimeModelRecord[];
 }
-
-export type RuntimePlatformId = "codex" | "kiro" | "cline";
-export type RuntimePlatformAccountAuthMode = "json-account" | "local-auth-json" | "oauth" | "device-code";
-export type RuntimePlatformAccountStatus = "active" | "disabled" | "expired" | "error";
 
 export interface RuntimePlatformAccountRecord {
   readonly id: string;
@@ -57,14 +67,6 @@ export interface RuntimePlatformAccountRecord {
   readonly createdAt?: string;
   readonly lastUsedAt?: string;
   readonly credentialJson?: unknown;
-}
-
-export interface RuntimeProviderView extends Omit<RuntimeProviderRecord, "config"> {
-  config: Omit<ProviderConfig, "apiKey"> & { apiKeyConfigured: boolean };
-}
-
-export interface RuntimePlatformAccountView extends Omit<RuntimePlatformAccountRecord, "credentialJson"> {
-  credentialConfigured: boolean;
 }
 
 export interface ProviderRuntimeState {
