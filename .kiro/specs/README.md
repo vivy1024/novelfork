@@ -4,10 +4,11 @@
 
 ## 当前状态
 
-**当前 active spec：** `studio-ide-layout-v1` — 将 NovelFork Studio 从固定三栏布局重写为 IDE 风格可拖拽多面板布局：左侧叙事线/叙述者 Sidebar、中间多 Tab 编辑器、右侧对话框（对话流 + Git 面板 + 上下文监控）。参考 NarraFork、Claude Code Desktop、VS Code。
+**当前 active spec：** `studio-frontend-integration-v1` — 拆解 WorkspacePage 单体，将数据逻辑分发到 SplitView 三面板（Sidebar/EditorArea/ConversationPanel），对标 Claude Code CLI 的 REPL 数据流和 Codex CLI 的 chatwidget 架构。
 
 | 当前 Spec | 任务数 | 状态 |
 |---|---:|---|
+| `studio-frontend-integration-v1` | 10 | ⏳ 待执行（0/10 已完成） |
 | `studio-ide-layout-v1` | 30 | ✅ 已完成（30/30 已完成） |
 | `web-agent-runtime-v1` | 16 | ✅ 已完成（16/16 已完成） |
 | `agent-native-workspace-v1` | 23 | ✅ 已完成（23/23 已完成） |
