@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const useApiMock = vi.hoisted(() => vi.fn());
@@ -38,8 +38,8 @@ beforeEach(() => {
   fetchJsonMock.mockResolvedValue({});
 });
 
-describe("StudioNextApp (IDE layout)", () => {
-  it("renders sidebar with storyline and narrator sections", () => {
+describe("StudioNextApp", () => {
+  it("renders NarraFork-style sidebar with storyline and narrator sections", () => {
     render(<StudioNextApp initialRoute="workspace" />);
 
     const sidebar = screen.getByTestId("studio-sidebar");
@@ -50,29 +50,28 @@ describe("StudioNextApp (IDE layout)", () => {
     expect(sidebar.textContent).toContain("设置");
   });
 
-  it("shows books in storyline section", () => {
+  it("shows books in sidebar storyline", () => {
     render(<StudioNextApp initialRoute="workspace" />);
 
     const sidebar = screen.getByTestId("studio-sidebar");
     expect(sidebar.textContent).toContain("测试书");
   });
 
-  it("navigates to settings when settings button is clicked", () => {
+  it("renders workspace page in main content area", () => {
+    render(<StudioNextApp initialRoute="workspace" />);
+
+    expect(screen.getByText("资源管理器")).toBeTruthy();
+  });
+
+  it("renders settings page when navigated", () => {
     render(<StudioNextApp initialRoute="settings" />);
 
     expect(screen.getByText("个人设置")).toBeTruthy();
   });
 
-  it("navigates to routines when routines button is clicked", () => {
+  it("renders routines page when navigated", () => {
     render(<StudioNextApp initialRoute="routines" />);
 
     expect(screen.getByText("正在加载 Routines 配置…")).toBeTruthy();
-  });
-
-  it("renders workspace page by default", () => {
-    render(<StudioNextApp initialRoute="workspace" />);
-
-    // WorkspacePage 内部会渲染资源管理器
-    expect(screen.getByText("资源管理器")).toBeTruthy();
   });
 });
