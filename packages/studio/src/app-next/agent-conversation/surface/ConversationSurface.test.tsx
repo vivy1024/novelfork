@@ -123,4 +123,22 @@ describe("Conversation Surface", () => {
     fireEvent.click(within(screen.getByTestId("confirmation-gate")).getByRole("button", { name: "批准" }));
     expect(onApprove).toHaveBeenCalledWith("confirm-surface");
   });
+
+  it("使用 flex-column 对话布局并以内联 notice 呈现恢复状态", () => {
+    render(
+      <ConversationSurface
+        title="叙述者"
+        status={{ state: "replaying", label: "回放中" }}
+        messages={messages}
+        recoveryNotice={{ state: "replaying", reason: "history-gap" }}
+        onApproveConfirmation={vi.fn()}
+        onRejectConfirmation={vi.fn()}
+        onSend={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId("conversation-surface").className).toContain("flex-col");
+    expect(screen.getByTestId("message-stream").className).toContain("flex-1");
+    expect(screen.getByTestId("conversation-recovery-notice").textContent).toContain("history-gap");
+  });
 });
