@@ -4,12 +4,13 @@
 
 ## 当前状态
 
-**当前 active spec：** `studio-frontend-integration-v1` — 拆解 WorkspacePage 单体，将数据逻辑分发到 SplitView 三面板（Sidebar/EditorArea/ConversationPanel），对标 Claude Code CLI 的 REPL 数据流和 Codex CLI 的 chatwidget 架构。
+**当前 active spec：** `novelfork-ui-v1` — NarraFork 风格布局：sidebar + 全宽对话框（对标 Claude Code CLI），叙事线详情页独立（写作工作台）。回退之前失败的三栏 IDE 布局实验。
 
 | 当前 Spec | 任务数 | 状态 |
 |---|---:|---|
-| `studio-frontend-integration-v1` | 10 | ⏳ 待执行（0/10 已完成） |
-| `studio-ide-layout-v1` | 30 | ✅ 已完成（30/30 已完成） |
+| `novelfork-ui-v1` | 8 | ⏳ 待执行（0/8 已完成） |
+| `studio-ide-layout-v1` | 30 | ❌ 归档（前端布局失败，后端功能保留） |
+| `studio-frontend-integration-v1` | 10 | ❌ 归档（未完成） |
 | `web-agent-runtime-v1` | 16 | ✅ 已完成（16/16 已完成） |
 | `agent-native-workspace-v1` | 23 | ✅ 已完成（23/23 已完成） |
 
