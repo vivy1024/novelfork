@@ -100,7 +100,7 @@ interface SectionLayoutProps {
 
 export function SectionLayout({ title, description, actions, overlay, children }: SectionLayoutProps) {
   return (
-    <section className="relative mx-auto max-w-7xl space-y-3 overflow-y-auto" style={{ maxHeight: "calc(100vh - 4rem)" }}>
+    <section className="relative h-full space-y-3 overflow-y-auto">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <h1 className="text-xl font-semibold">{title}</h1>
@@ -180,7 +180,7 @@ interface ResourceWorkspaceLayoutProps {
 
 export function ResourceWorkspaceLayout({ explorer, editor, assistant }: ResourceWorkspaceLayoutProps) {
   return (
-    <div className="grid h-[calc(100vh-4rem)] gap-3 xl:grid-cols-[16rem_minmax(0,1fr)_24rem]">
+    <div className="grid h-full gap-2 grid-cols-[12rem_minmax(0,1fr)_minmax(20rem,28rem)]">
       <aside aria-label="小说资源管理器" className="overflow-y-auto rounded-lg border border-border bg-card p-3">
         {explorer}
       </aside>

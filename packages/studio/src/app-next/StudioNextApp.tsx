@@ -1,8 +1,9 @@
 /**
  * StudioNextApp — 顶层入口
  *
- * 使用 SplitView IDE 布局替代旧的 NextShell 固定三栏。
- * 左侧 Sidebar（叙事线/叙述者/套路/设置），中间内容区（路由页面），右侧对话面板暂留占位。
+ * 左侧 Sidebar（叙事线/叙述者/套路/设置）+ 右侧内容区。
+ * workspace 路由下内容区渲染 WorkspacePage（它内部有自己的三栏布局）。
+ * 其他路由下内容区渲染对应页面。
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -16,7 +17,7 @@ import { NarratorList, NarratorActions, type NarratorSession } from "./sidebar/N
 import { DashboardPage } from "./dashboard/DashboardPage";
 import { ProviderSettingsPage } from "./settings/ProviderSettingsPage";
 import { SettingsSectionContent } from "./settings/SettingsSectionContent";
-import { SettingsLayout } from "./components/layouts";
+import { SettingsLayout, SectionLayout } from "./components/layouts";
 import { RoutinesNextPage } from "./routines/RoutinesNextPage";
 import { WorkspacePage } from "./workspace/WorkspacePage";
 import { WorkflowPage } from "./workflow/WorkflowPage";
@@ -62,8 +63,8 @@ const ROUTE_PATHS: Record<StudioNextRoute, string> = {
 
 const LAYOUT_KEY = "studio-main";
 const LAYOUT_DEFAULTS = {
-  widths: { sidebar: 220, content: 0, conversation: 0 },
-  collapsed: { sidebar: false, content: false, conversation: true },
+  widths: { sidebar: 220, content: 1060 },
+  collapsed: { sidebar: false, content: false },
 } as const;
 
 /* ------------------------------------------------------------------ */
@@ -106,10 +107,11 @@ export function StudioNextApp({ initialRoute }: StudioNextAppProps) {
     lastModified: s.lastModified,
   }));
 
-  // --- Center content ---
-  const centerContent = useMemo(() => {
+  // --- Content area ---
+  const contentArea = useMemo(() => {
     switch (activeRoute) {
       case "workspace":
+        // WorkspacePage 有自己的三栏布局（资源树+编辑器+叙述者），直接全宽渲染
         return <WorkspacePage />;
       case "dashboard":
         return <DashboardPage onOpenBook={() => navigate("workspace")} />;
@@ -132,7 +134,7 @@ export function StudioNextApp({ initialRoute }: StudioNextAppProps) {
     }
   }, [activeRoute, settingsSectionId, navigate]);
 
-  // --- Panels ---
+  // --- Panels: Sidebar + Content ---
   const panels: SplitViewPanel[] = useMemo(
     () => [
       {
@@ -166,12 +168,16 @@ export function StudioNextApp({ initialRoute }: StudioNextAppProps) {
       },
       {
         id: "content",
-        content: <div className="h-full overflow-auto p-3">{centerContent}</div>,
-        defaultWidth: 0,
-        minWidth: 200,
+        content: (
+          <div className="h-full overflow-hidden p-2">
+            {contentArea}
+          </div>
+        ),
+        defaultWidth: 1060,
+        minWidth: 600,
       },
     ],
-    [layout.collapsed.sidebar, books, sessions, centerContent, navigate],
+    [layout.collapsed.sidebar, books, sessions, contentArea, navigate],
   );
 
   // --- Keyboard shortcuts ---
