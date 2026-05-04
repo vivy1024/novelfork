@@ -46,7 +46,7 @@
   - 明确新前端不得在组件内散写未登记 API。
   - 验证：全仓搜索旧 active spec 和 mock/fake 口径，必要处同步。
 
-- [ ] 9. 验证合同层
+- [x] 9. 验证合同层
   - 运行相关 Vitest、`pnpm --dir packages/studio typecheck`。
   - 文档改动运行 `pnpm docs:verify`。
   - 输出未验证项清单，不把未运行命令写成已通过。

@@ -1,22 +1,7 @@
-import type { ProviderRuntimeStatus } from "./ai-gate.js";
-import type { ProviderRuntimeStore, RuntimeModelSource, RuntimeModelTestStatus, RuntimePlatformId, RuntimeProviderRecord } from "./provider-runtime-store.js";
+import type { ProviderRuntimeStatus, RuntimeModelPoolEntry } from "../../shared/provider-catalog.js";
+import type { ProviderRuntimeStore, RuntimePlatformId, RuntimeProviderRecord } from "./provider-runtime-store.js";
 
-export interface RuntimeModelPoolEntry {
-  readonly modelId: string;
-  readonly modelName: string;
-  readonly providerId: string;
-  readonly providerName: string;
-  readonly enabled: boolean;
-  readonly contextWindow: number;
-  readonly maxOutputTokens: number;
-  readonly source: RuntimeModelSource;
-  readonly lastTestStatus: RuntimeModelTestStatus;
-  readonly capabilities: {
-    readonly functionCalling: boolean;
-    readonly vision: boolean;
-    readonly streaming: boolean;
-  };
-}
+export type { RuntimeModelPoolEntry } from "../../shared/provider-catalog.js";
 
 const PLATFORM_PROVIDER_IDS = new Set<RuntimePlatformId>(["codex", "kiro", "cline"]);
 

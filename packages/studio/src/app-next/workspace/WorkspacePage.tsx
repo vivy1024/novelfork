@@ -10,6 +10,7 @@ import {
 } from "./resource-adapter";
 import { NarratorPanel } from "../../components/ChatWindow";
 import { PublishPanel } from "./PublishPanel";
+import { createFetchJsonContractClient, createSessionClient } from "../backend-contract";
 import { fetchJson, postApi, useApi } from "../../hooks/use-api";
 import { appStore } from "../../stores/app-store";
 import type { AiAction, AiGateResult } from "../../lib/ai-gate";
@@ -30,9 +31,10 @@ import { ToneDriftAlert } from "../../components/writing-tools/ToneDriftAlert";
 import { InlineError, RunStatus } from "../components/feedback";
 import { InkEditor, getMarkdown } from "../../components/InkEditor";
 import type { CanvasArtifact, CanvasContext, OpenResourceTab, WorkspaceResourceViewKind } from "../../shared/agent-native-workspace";
-import type { NarratorSessionRecord } from "../../shared/session-types";
+import type { NarratorSessionChatSnapshot, NarratorSessionRecord } from "../../shared/session-types";
 import { Button } from "../../components/ui/button";
 import { useWindowStore } from "../../stores/windowStore";
+import { useWindowRuntimeStore } from "../../stores/windowRuntimeStore";
 import {
   BibleCategoryView,
   DraftEditor,
@@ -917,6 +919,7 @@ export function WorkspacePage({
 function useDefaultNarratorWindow(activeBookId: string | null, activeBookTitle?: string): string | null {
   const addWindow = useWindowStore((state) => state.addWindow);
   const updateWindow = useWindowStore((state) => state.updateWindow);
+  const setActiveWindow = useWindowStore((state) => state.setActiveWindow);
   const windows = useWindowStore((state) => state.windows);
   const loadingBookIdRef = useRef<string | null>(null);
   const [failedBookId, setFailedBookId] = useState<string | null>(null);
@@ -942,20 +945,23 @@ function useDefaultNarratorWindow(activeBookId: string | null, activeBookTitle?:
 
     const attachNarratorSession = async () => {
       try {
-        const sessions = await fetchJson<NarratorSessionRecord[]>("/api/sessions");
-        const existingSession = sessions.find((session) => session.projectId === activeBookId && session.agentId === "writer" && session.sessionMode === "chat" && session.status === "active")
-          ?? sessions.find((session) => session.projectId === activeBookId && session.agentId === "writer" && session.status === "active");
-        const session = existingSession ?? await fetchJson<NarratorSessionRecord>("/api/sessions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            title: `${activeBookTitle ?? "当前作品"} · 叙述者`,
-            agentId: "writer",
-            projectId: activeBookId,
-            sessionMode: "chat",
-            sessionConfig: { permissionMode: "edit" },
-          }),
-        });
+        const sessionsClient = createSessionClient(createFetchJsonContractClient(fetchJson));
+        const sessionsResult = await sessionsClient.listActiveSessions<NarratorSessionRecord[]>();
+        if (!sessionsResult.ok) throw new Error("叙述者会话列表加载失败");
+        const existingSession = sessionsResult.data.find((session) => session.projectId === activeBookId && session.agentId === "writer" && session.sessionMode === "chat" && session.status === "active")
+          ?? sessionsResult.data.find((session) => session.projectId === activeBookId && session.agentId === "writer" && session.status === "active");
+        const createResult = existingSession
+          ? null
+          : await sessionsClient.createSession<NarratorSessionRecord>({
+              title: `${activeBookTitle ?? "当前作品"} · 叙述者`,
+              agentId: "writer",
+              projectId: activeBookId,
+              sessionMode: "chat",
+              sessionConfig: { permissionMode: "edit" },
+            });
+        if (createResult && !createResult.ok) throw new Error("叙述者会话创建失败");
+        const session = existingSession ?? createResult?.data;
+        if (!session) throw new Error("叙述者会话不存在");
         if (cancelled) return;
 
         const existingShell = useWindowStore.getState().windows.find((window) => window.sessionId === session.id && window.id !== createdPlaceholderWindowId);
@@ -975,6 +981,7 @@ function useDefaultNarratorWindow(activeBookId: string | null, activeBookTitle?:
           sessionId: session.id,
           sessionMode: session.sessionMode,
         });
+        setActiveWindow(createdPlaceholderWindowId);
       } catch {
         if (!cancelled) {
           setFailedBookId(activeBookId);
@@ -990,7 +997,7 @@ function useDefaultNarratorWindow(activeBookId: string | null, activeBookTitle?:
       cancelled = true;
       if (loadingBookIdRef.current === activeBookId) loadingBookIdRef.current = null;
     };
-  }, [activeBookId, activeBookTitle, addWindow, existingWindow, failedBookId, updateWindow]);
+  }, [activeBookId, activeBookTitle, addWindow, existingWindow, failedBookId, setActiveWindow, updateWindow]);
 
   return existingWindow?.id ?? placeholderWindowId;
 }
@@ -1004,7 +1011,21 @@ function WorkspaceNarratorHost({ windowId, canvasContext }: { readonly windowId:
     );
   }
 
-  return <NarratorPanel windowId={windowId} theme="light" canvasContext={canvasContext} />;
+  return <NarratorPanel windowId={windowId} theme="light" canvasContext={canvasContext} onOpenSessionCenter={(session) => openNarratorSession(windowId, session)} />;
+}
+
+async function openNarratorSession(windowId: string, session: NarratorSessionRecord): Promise<void> {
+  const result = await createSessionClient(createFetchJsonContractClient(fetchJson)).getChatState<NarratorSessionChatSnapshot>(session.id);
+  if (!result.ok) throw new Error("会话快照加载失败");
+
+  useWindowRuntimeStore.getState().setChatSnapshot(windowId, result.data);
+  useWindowStore.getState().updateWindow(windowId, {
+    agentId: result.data.session.agentId,
+    title: result.data.session.title,
+    sessionId: result.data.session.id,
+    sessionMode: result.data.session.sessionMode,
+  });
+  useWindowStore.getState().setActiveWindow(windowId);
 }
 
 function ImportChaptersPanel({

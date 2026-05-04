@@ -161,7 +161,7 @@ beforeEach(() => {
   fetchJsonMock.mockImplementation(async (path: string, init?: RequestInit) => {
     if (path === "/api/providers/models") return { models: [{ providerId: "anthropic", providerName: "Anthropic", modelId: "anthropic:claude-sonnet-4-6", modelName: "Claude Sonnet 4.6", contextWindow: 200000, capabilities: { functionCalling: true } }] };
     if (path === "/api/sessions" && init?.method === "POST") return createSessionSnapshot("session-auto").session;
-    if (path === "/api/sessions") return [];
+    if (path === "/api/sessions?sort=recent&status=active") return [];
     if (path === `/api/sessions/session-auto/chat/state`) return createSessionSnapshot("session-auto");
     if (path === `/books/${TEST_BOOK.id}/chapters/1`) return { content: "测试正文" };
     if (path === `/books/${TEST_BOOK.id}/chapters/2`) return { content: "第二章正文" };
@@ -184,7 +184,7 @@ describe("WorkspacePage", () => {
   it("docks the default narrator session on the right instead of legacy cockpit tabs", async () => {
     render(<WorkspacePage />);
 
-    await waitFor(() => expect(fetchJsonMock).toHaveBeenCalledWith("/api/sessions"));
+    await waitFor(() => expect(fetchJsonMock).toHaveBeenCalledWith("/api/sessions?sort=recent&status=active"));
     await waitFor(() => expect(useWindowStore.getState().windows).toHaveLength(1));
     const [windowState] = useWindowStore.getState().windows;
     expect(windowState).toMatchObject({ agentId: "writer", sessionId: "session-auto", sessionMode: "chat" });
@@ -201,7 +201,7 @@ describe("WorkspacePage", () => {
   it("reuses an existing book narrator session instead of creating a duplicate", async () => {
     fetchJsonMock.mockImplementation(async (path: string, init?: RequestInit) => {
       if (path === "/api/providers/models") return { models: [{ providerId: "anthropic", providerName: "Anthropic", modelId: "anthropic:claude-sonnet-4-6", modelName: "Claude Sonnet 4.6", contextWindow: 200000, capabilities: { functionCalling: true } }] };
-      if (path === "/api/sessions") return [createSessionSnapshot("session-existing").session];
+      if (path === "/api/sessions?sort=recent&status=active") return [createSessionSnapshot("session-existing").session];
       if (path === `/api/sessions/session-existing/chat/state`) return createSessionSnapshot("session-existing");
       if (path === `/books/${TEST_BOOK.id}/chapters/1`) return { content: "测试正文" };
       if (path === `/books/${TEST_BOOK.id}/chapters/2`) return { content: "第二章正文" };
@@ -234,10 +234,13 @@ describe("WorkspacePage", () => {
         },
       },
     };
+    let activeSessionListCalls = 0;
     fetchJsonMock.mockImplementation(async (path: string, init?: RequestInit) => {
       if (path === "/api/providers/models") return { models: [{ providerId: "anthropic", providerName: "Anthropic", modelId: "anthropic:claude-sonnet-4-6", modelName: "Claude Sonnet 4.6", contextWindow: 200000, capabilities: { functionCalling: true } }] };
-      if (path === "/api/sessions") return [currentSnapshot.session];
-      if (path === "/api/sessions?sort=recent&status=active") return [targetSnapshot.session, currentSnapshot.session];
+      if (path === "/api/sessions?sort=recent&status=active") {
+        activeSessionListCalls += 1;
+        return activeSessionListCalls === 1 ? [currentSnapshot.session] : [targetSnapshot.session, currentSnapshot.session];
+      }
       if (path === `/api/sessions/session-existing/chat/state`) return currentSnapshot;
       if (path === `/api/sessions/session-other/chat/state`) return targetSnapshot;
       if (path === `/books/${TEST_BOOK.id}/chapters/1`) return { content: "测试正文" };

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { fetchJson, putApi } from "@/hooks/use-api";
+import { createLenientFetchJsonContractClient, createProviderClient } from "@/app-next/backend-contract";
 import { runtimeModelLabel, usableRuntimeModels, type RuntimeModelOption } from "@/lib/runtime-model-options";
 import { SESSION_PERMISSION_MODE_OPTIONS } from "@/shared/session-types";
 import type { ModelDefaultSettings, RuntimeControlSettings, UserConfig } from "@/types/settings";
@@ -190,10 +191,10 @@ export function RuntimeControlPanel() {
         if (!cancelled) setLoading(false);
       });
 
-    void fetchJson<{ models?: RuntimeModelOption[] }>("/api/providers/models")
-      .then((data) => {
+    void createProviderClient(createLenientFetchJsonContractClient(fetchJson)).listModels<{ models?: RuntimeModelOption[] }>()
+      .then((result) => {
         if (!cancelled) {
-          setModelOptions(usableRuntimeModels(data.models));
+          setModelOptions(usableRuntimeModels(result.ok ? result.data.models : []));
         }
       })
       .catch(() => {
