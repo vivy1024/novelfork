@@ -31,7 +31,7 @@
   - 保留 `session:error`、`session:stream`、`session:snapshot`、`session:state` 的原始语义。
   - 验证：单测覆盖 snapshot hydration、stream chunk、abort、replay resetRequired。
 
-- [ ] 6. 建立资源树 contract adapter
+- [x] 6. 建立资源树 contract adapter
   - 用 contract client 组装 books、chapters、candidates、drafts、story/truth files、jingwei 和 narrative line 的资源节点。
   - 每个资源节点带 capability：read/edit/delete/apply/unsupported。
   - 验证：单测覆盖章节、候选稿、草稿、只读文件、unsupported 资源。

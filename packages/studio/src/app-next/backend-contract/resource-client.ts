@@ -1,3 +1,4 @@
+import type { NarrativeLineSnapshot } from "../../shared/agent-native-workspace";
 import type { BookDetailResponse, BookListResponse, ChapterContentResponse, SaveChapterPayload, SaveChapterResponse } from "../../shared/contracts";
 import type { ContractClient } from "./contract-client";
 
@@ -33,5 +34,27 @@ export function createResourceClient(contract: ContractClient) {
     },
     deleteDraft: <T = unknown>(bookId: string, draftId: string) =>
       contract.delete<T>(`/api/books/${encodeURIComponent(bookId)}/drafts/${encodeURIComponent(draftId)}`, { capability: { id: "drafts.delete", status: "current" } }),
+    listStoryFiles: <T = unknown>(bookId: string) =>
+      contract.get<T>(`/api/books/${encodeURIComponent(bookId)}/story-files`, { capability: { id: "story-files.list", status: "current" } }),
+    getStoryFile: <T = { file: string; content: string | null }>(bookId: string, fileName: string) =>
+      contract.get<T>(`/api/books/${encodeURIComponent(bookId)}/story-files/${encodeURIComponent(fileName)}`, { capability: { id: "story-files.detail", status: "current" } }),
+    deleteStoryFile: <T = { ok: true; file: string }>(bookId: string, fileName: string) =>
+      contract.delete<T>(`/api/books/${encodeURIComponent(bookId)}/story-files/${encodeURIComponent(fileName)}`, { capability: { id: "story-files.delete", status: "current" } }),
+    listTruthFiles: <T = unknown>(bookId: string) =>
+      contract.get<T>(`/api/books/${encodeURIComponent(bookId)}/truth-files`, { capability: { id: "truth-files.list", status: "current" } }),
+    getTruthFile: <T = { file: string; content: string | null }>(bookId: string, fileName: string) =>
+      contract.get<T>(`/api/books/${encodeURIComponent(bookId)}/truth-files/${encodeURIComponent(fileName)}`, { capability: { id: "truth-files.detail", status: "current" } }),
+    saveTruthFile: <T = { ok: true }>(bookId: string, fileName: string, payload: { content: string }) =>
+      contract.put<T>(`/api/books/${encodeURIComponent(bookId)}/truth/${encodeURIComponent(fileName)}`, payload, { capability: { id: "truth-files.save", status: "current" } }),
+    deleteTruthFile: <T = { ok: true; file: string }>(bookId: string, fileName: string) =>
+      contract.delete<T>(`/api/books/${encodeURIComponent(bookId)}/truth-files/${encodeURIComponent(fileName)}`, { capability: { id: "truth-files.delete", status: "current" } }),
+    listJingweiSections: <T = unknown>(bookId: string) =>
+      contract.get<T>(`/api/books/${encodeURIComponent(bookId)}/jingwei/sections`, { capability: { id: "jingwei.sections", status: "current" } }),
+    listJingweiEntries: <T = unknown>(bookId: string, sectionId?: string) => {
+      const query = sectionId ? `?sectionId=${encodeURIComponent(sectionId)}` : "";
+      return contract.get<T>(`/api/books/${encodeURIComponent(bookId)}/jingwei/entries${query}`, { capability: { id: "jingwei.entries", status: "current" } });
+    },
+    getNarrativeLine: <T = { snapshot: NarrativeLineSnapshot }>(bookId: string) =>
+      contract.get<T>(`/api/books/${encodeURIComponent(bookId)}/narrative-line`, { capability: { id: "narrative-line.read", status: "current" } }),
   };
 }
