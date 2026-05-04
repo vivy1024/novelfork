@@ -36,7 +36,7 @@
   - 每个资源节点带 capability：read/edit/delete/apply/unsupported。
   - 验证：单测覆盖章节、候选稿、草稿、只读文件、unsupported 资源。
 
-- [ ] 7. 建立写作动作 contract adapter
+- [x] 7. 建立写作动作 contract adapter
   - 明确 session-native 工具链、异步 `write-next`、AI draft、writing modes、hooks、审校/检测的差异。
   - 所有 AI 输出默认 candidate/draft/preview，正式正文写入必须显式确认。
   - 验证：单测覆盖 prompt-preview 不写正文、candidate artifact、unsupported-tools、gate 409。
