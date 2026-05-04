@@ -69,7 +69,7 @@ novelfork/
 ### Agent-native 创作工作台
 - 当前重建主线：先冻结 Backend Contract，再基于 Agent Shell + Writing Workbench 重建前端，避免继续修补失败三栏实验
 - 已有后端能力保留：叙述者会话、WebSocket、工具调用、确认门、权限模式、模型池、候选稿/草稿/经纬/叙事线等真实合同
-- 新前端目标：左侧一级导航、单栏 Agent Conversation、独立 Writing Workbench；所有按钮和资源节点必须来自真实后端合同
+- 新前端目标：左侧一级导航、单栏 Agent Conversation、独立 Writing Workbench；所有按钮、资源节点和写作动作必须来自 `packages/studio/src/app-next/backend-contract/` 中登记的真实后端合同
 - 「写下一章」最小链路：驾驶舱快照 → PGI 生成前追问 → GuidedGenerationPlan → 用户批准 → 候选稿生成
 - AI 输出默认进入候选区 / 草稿区；正式正文覆盖必须由用户确认
 
@@ -119,8 +119,9 @@ novelfork/
 
 1. 所有新功能必须先写 spec（requirements → design → tasks）
 2. AI 输出只进候选区，用户确认后才影响正文
-3. 不恢复 mock/fake/noop 假成功
-4. 未接入能力标记 unsupported，不伪造
+3. app-next 访问后端必须走 Backend Contract client / adapter，不在组件内散写未登记 API
+4. 不恢复 mock/fake/noop 假成功
+5. 未接入能力标记 unsupported，不伪造
 
 ## License
 

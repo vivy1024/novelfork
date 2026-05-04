@@ -28,7 +28,7 @@ src/
 │   └── server.ts       # 服务启动
 │
 ├── app-next/           # 新前端 (React 19 + Tailwind + shadcn/ui)
-│   ├── backend-contract/ # 目标合同适配层：能力状态、typed client、session/resource/provider/writing action client
+│   ├── backend-contract/ # 当前合同适配层：能力状态、typed client、session/resource/provider/writing action client、资源树/写作动作 adapter、session WS helper
 │   ├── shell/            # 目标 Agent Shell：一级导航、路由壳、全局状态
 │   ├── agent-conversation/ # 目标单栏叙述者对话：runtime + surface + composer/status/tool cards
 │   ├── writing-workbench/  # 目标独立写作工作区：资源树、canvas、resource viewers、写作动作
@@ -98,6 +98,14 @@ bun run typecheck
 | 后端 | Hono (REST + WebSocket) |
 | 存储 | SQLite (bun:sqlite) + 文件系统 |
 | PWA | vite-plugin-pwa (autoUpdate, standalone) |
+
+---
+
+## app-next 合同访问规则
+
+- 新前端访问后端必须优先使用 `src/app-next/backend-contract/`：`createContractClient`、domain clients、`resource-tree-adapter`、`writing-action-adapter` 与 session WebSocket helper。
+- 组件内不得散写未登记 API 字符串；新增能力必须先补 Backend Contract 矩阵、共享类型和 contract 测试，再接 UI。
+- contract 返回 `prompt-preview`、`process-memory`、`chunked-buffer`、`unsupported`、gate 或 `unknown/null` 指标时，UI 必须透明展示原始语义，不得 mock/fake/noop 假成功。
 
 ---
 

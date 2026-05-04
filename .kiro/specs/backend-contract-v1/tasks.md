@@ -41,7 +41,7 @@
   - 所有 AI 输出默认 candidate/draft/preview，正式正文写入必须显式确认。
   - 验证：单测覆盖 prompt-preview 不写正文、candidate artifact、unsupported-tools、gate 409。
 
-- [ ] 8. 更新前端使用约束与文档索引
+- [x] 8. 更新前端使用约束与文档索引
   - 更新 `.kiro/specs/README.md`、相关 API 文档入口和 CHANGELOG。
   - 明确新前端不得在组件内散写未登记 API。
   - 验证：全仓搜索旧 active spec 和 mock/fake 口径，必要处同步。
