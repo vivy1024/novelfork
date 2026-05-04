@@ -10,8 +10,8 @@
 
 | 当前 Spec | 任务数 | 状态 |
 |---|---:|---|
-| `backend-contract-v1` | 9 | ⏳ 待执行（0/9 已完成） |
-| `frontend-refoundation-v1` | 12 | ⏳ 待执行（0/12 已完成，依赖 backend-contract-v1） |
+| `backend-contract-v1` | 9 | ⏳ 执行中（8/9 已完成） |
+| `frontend-refoundation-v1` | 12 | ⏸️ 待执行（0/12 已完成，依赖 backend-contract-v1 完成验收） |
 | `backend-core-refactor-v1` | 10 | ⏸️ 后续阶段（依赖前端合同稳定） |
 | `novelfork-ui-v1` | 8 | ⏸️ 已被重建主线取代，保留作历史参考 |
 | `studio-ide-layout-v1` | 30 | ❌ 归档（前端布局失败，后端功能保留） |
@@ -37,8 +37,8 @@
 ## 当前总原则
 
 1. 新功能必须先写 spec（requirements → design → tasks）再实现。
-2. 新前端先走 `backend-contract-v1`，所有 UI 能力必须来自真实 route / WebSocket / session tool 合同。
-3. `frontend-refoundation-v1` 是当前前端实现主线：Agent Shell + Backend Contract Adapter + Writing Workbench。
+2. 新前端先走 `backend-contract-v1`，所有 UI 能力必须来自真实 route / WebSocket / session tool 合同，并通过 `packages/studio/src/app-next/backend-contract/` 的集中 contract client / adapter 访问。
+3. `frontend-refoundation-v1` 是当前前端实现主线：Agent Shell + Backend Contract Adapter + Writing Workbench；组件内不得散写未登记 API 字符串。
 4. `backend-core-refactor-v1` 是后续整理主线：只在合同稳定后拆分后端巨型 route/service。
 5. 不恢复 mock/fake/noop 假成功。
 6. AI 输出只进候选区，不直接覆盖正文。
