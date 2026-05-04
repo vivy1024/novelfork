@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { getCapabilityUiDecision, isCapabilityInteractive } from "./capability-status";
+import { getCapabilityUiDecision, isCapabilityInteractive, normalizeCapability } from "./capability-status";
 
 describe("capability status UI decision", () => {
   it("maps current capabilities to enabled interactive UI", () => {
@@ -41,6 +41,20 @@ describe("capability status UI decision", () => {
       allowsFetch: false,
     });
     expect(isCapabilityInteractive("unsupported")).toBe(false);
+  });
+
+  it("keeps visible disabled reasons for unsupported and planned capabilities", () => {
+    expect(getCapabilityUiDecision("unsupported")).toMatchObject({
+      disabled: true,
+      disabledReason: "当前后端或模型适配器不支持该能力。",
+      errorVisible: true,
+    });
+    expect(getCapabilityUiDecision("planned")).toMatchObject({
+      disabled: true,
+      disabledReason: "该能力仍处于规划状态，当前不可调用。",
+      errorVisible: false,
+    });
+    expect(normalizeCapability({ id: "future.tool", status: "planned" }).ui.disabledReason).toContain("规划");
   });
 
   it("maps process-memory to enabled UI with recovery note", () => {

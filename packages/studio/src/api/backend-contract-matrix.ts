@@ -1,0 +1,235 @@
+export type BackendContractStatus = "current" | "process-memory" | "prompt-preview" | "chunked-buffer" | "unsupported" | "planned";
+
+export type BackendContractSourceKind = "route" | "websocket" | "session-tool" | "shared-type";
+
+export interface BackendContractCapability {
+  readonly id: string;
+  readonly userCapability: string;
+  readonly entry: string;
+  readonly status: BackendContractStatus;
+  readonly dataSource: string;
+  readonly failureBoundary: string;
+  readonly frontendRule: string;
+  readonly source: {
+    readonly kind: BackendContractSourceKind;
+    readonly file: string;
+    readonly exportName?: string;
+  };
+}
+
+export const BACKEND_CONTRACT_CAPABILITIES: readonly BackendContractCapability[] = [
+  {
+    id: "books.list",
+    userCapability: "书籍列表",
+    entry: "GET /api/books",
+    status: "current",
+    dataSource: "book.json + chapters index",
+    failureBoundary: "route 失败时返回真实错误，前端显示空状态/错误。",
+    frontendRule: "Sidebar 叙事线唯一来源。",
+    source: { kind: "route", file: "packages/studio/src/api/routes/storage.ts", exportName: "createStorageRouter" },
+  },
+  {
+    id: "books.detail",
+    userCapability: "书籍详情",
+    entry: "GET /api/books/:id",
+    status: "current",
+    dataSource: "书籍配置 + 章节索引",
+    failureBoundary: "不存在或非法 bookId 返回真实 4xx。",
+    frontendRule: "Workbench 主数据来源。",
+    source: { kind: "route", file: "packages/studio/src/api/routes/storage.ts", exportName: "createStorageRouter" },
+  },
+  {
+    id: "books.create-status",
+    userCapability: "建书状态",
+    entry: "GET /api/books/:id/create-status",
+    status: "process-memory",
+    dataSource: "当前进程 create state + 文件产物",
+    failureBoundary: "进程重启后只以书籍文件是否存在为准。",
+    frontendRule: "显示临时/可恢复边界，不当作长期状态。",
+    source: { kind: "route", file: "packages/studio/src/api/routes/storage.ts", exportName: "createStorageRouter" },
+  },
+  {
+    id: "sessions.active",
+    userCapability: "活跃会话列表",
+    entry: "GET /api/sessions?sort=recent&status=active",
+    status: "current",
+    dataSource: "session store",
+    failureBoundary: "失败返回真实错误或空列表，不填充 demo 会话。",
+    frontendRule: "Sidebar 叙述者唯一来源。",
+    source: { kind: "route", file: "packages/studio/src/api/routes/session.ts", exportName: "sessionRouter" },
+  },
+  {
+    id: "sessions.crud",
+    userCapability: "会话 CRUD",
+    entry: "POST/PUT/DELETE /api/sessions/:id?",
+    status: "current",
+    dataSource: "session service",
+    failureBoundary: "找不到会话返回 404，创建返回真实 session。",
+    frontendRule: "创建、更新、归档、恢复、新建绑定会话。",
+    source: { kind: "route", file: "packages/studio/src/api/routes/session.ts", exportName: "sessionRouter" },
+  },
+  {
+    id: "sessions.chat.state",
+    userCapability: "会话初始快照",
+    entry: "GET /api/sessions/:id/chat/state",
+    status: "current",
+    dataSource: "session history + runtime state",
+    failureBoundary: "会话不存在返回 404。",
+    frontendRule: "打开会话先 hydrate，不能构造假消息。",
+    source: { kind: "route", file: "packages/studio/src/api/routes/session.ts", exportName: "sessionRouter" },
+  },
+  {
+    id: "sessions.chat.history",
+    userCapability: "增量历史",
+    entry: "GET /api/sessions/:id/chat/history?sinceSeq=",
+    status: "current",
+    dataSource: "持久化 chat history",
+    failureBoundary: "history gap 使用 resetRequired，不拼接错乱消息。",
+    frontendRule: "WebSocket 断线 replay 来源。",
+    source: { kind: "route", file: "packages/studio/src/api/routes/session.ts", exportName: "sessionRouter" },
+  },
+  {
+    id: "sessions.chat.websocket",
+    userCapability: "实时会话 WebSocket",
+    entry: "WS /api/sessions/:id/chat",
+    status: "current",
+    dataSource: "session chat runtime",
+    failureBoundary: "保留 session:error / recovery envelope。",
+    frontendRule: "处理 snapshot/state/message/stream/error，不伪造运行状态。",
+    source: { kind: "websocket", file: "packages/studio/src/api/server.ts", exportName: "setupSessionWebSocket" },
+  },
+  {
+    id: "sessions.tools.confirm",
+    userCapability: "工具确认门",
+    entry: "GET /api/sessions/:id/tools + POST /api/sessions/:id/tools/:toolName/confirm",
+    status: "current",
+    dataSource: "session tool state",
+    failureBoundary: "确认失败返回真实错误，批准/拒绝后刷新 snapshot。",
+    frontendRule: "内联确认门，不用假成功按钮。",
+    source: { kind: "route", file: "packages/studio/src/api/routes/session.ts", exportName: "sessionRouter" },
+  },
+  {
+    id: "chapters.detail",
+    userCapability: "章节读取/保存",
+    entry: "GET/PUT /api/books/:id/chapters/:num",
+    status: "current",
+    dataSource: "chapters/*.md + index",
+    failureBoundary: "章节不存在、非法 bookId 或保存失败返回真实错误。",
+    frontendRule: "可编辑章节 viewer/editor 的唯一保存入口。",
+    source: { kind: "route", file: "packages/studio/src/api/routes/storage.ts", exportName: "createStorageRouter" },
+  },
+  {
+    id: "candidates.accept",
+    userCapability: "候选稿接受",
+    entry: "POST /api/books/:id/candidates/:candidateId/accept",
+    status: "current",
+    dataSource: "generated-candidates + chapters/drafts",
+    failureBoundary: "action 必须是 merge/replace/draft；候选不存在返回 404。",
+    frontendRule: "候选稿只能通过显式 merge/replace/draft 应用。",
+    source: { kind: "route", file: "packages/studio/src/api/routes/chapter-candidates.ts", exportName: "createChapterCandidatesRouter" },
+  },
+  {
+    id: "drafts.crud",
+    userCapability: "草稿 CRUD",
+    entry: "GET/POST/PUT/DELETE /api/books/:id/drafts*",
+    status: "current",
+    dataSource: "drafts/ files + index",
+    failureBoundary: "草稿不存在返回 404，创建缺 title/content 返回 400。",
+    frontendRule: "草稿资源 CRUD；不得等同 AI draft 异步动作。",
+    source: { kind: "route", file: "packages/studio/src/api/routes/chapter-candidates.ts", exportName: "createChapterCandidatesRouter" },
+  },
+  {
+    id: "narrative.line.snapshot",
+    userCapability: "叙事线只读快照",
+    entry: "GET /api/books/:bookId/narrative-line 或 narrative.read_line",
+    status: "current",
+    dataSource: "章节/经纬/冲突/伏笔聚合",
+    failureBoundary: "聚合失败显示真实错误；变更写入需走 propose/apply。",
+    frontendRule: "只读图谱/画布 artifact。",
+    source: { kind: "route", file: "packages/studio/src/api/routes/narrative-line.ts", exportName: "createNarrativeLineRouter" },
+  },
+  {
+    id: "session-native.write-next",
+    userCapability: "Session-native 写下一章",
+    entry: "cockpit.get_snapshot → pgi.generate_questions → guided.enter/guided.exit → candidate.create_chapter",
+    status: "current",
+    dataSource: "session tools + candidate service",
+    failureBoundary: "模型不可用或工具失败时返回 tool_result 失败，不写正式章节。",
+    frontendRule: "首选链路；成功只进入候选区。",
+    source: { kind: "session-tool", file: "packages/studio/src/api/lib/session-tool-registry.ts", exportName: "SESSION_TOOL_DEFINITIONS" },
+  },
+  {
+    id: "writing-modes.preview",
+    userCapability: "Writing modes 预览",
+    entry: "POST /api/books/:bookId/inline-write",
+    status: "prompt-preview",
+    dataSource: "LLM 或 prompt preview fallback",
+    failureBoundary: "无 session LLM 返回 prompt-preview，不代表生成正文。",
+    frontendRule: "只允许预览、复制或显式 apply。",
+    source: { kind: "route", file: "packages/studio/src/api/routes/writing-modes.ts", exportName: "createWritingModesRouter" },
+  },
+  {
+    id: "writing-modes.apply",
+    userCapability: "Writing modes 安全应用",
+    entry: "POST /api/books/:bookId/writing-modes/apply",
+    status: "current",
+    dataSource: "candidate/draft 写入",
+    failureBoundary: "正式章节 insert/replace 首版转候选，避免无确认覆盖。",
+    frontendRule: "AI 输出默认 candidate/draft/preview，正式正文写入需显式动作。",
+    source: { kind: "route", file: "packages/studio/src/api/routes/writing-modes.ts", exportName: "createWritingModesRouter" },
+  },
+  {
+    id: "ai.complete.chunked-buffer",
+    userCapability: "行内补全 SSE",
+    entry: "POST /api/ai/complete",
+    status: "chunked-buffer",
+    dataSource: "完整 AI 结果后分块发送",
+    failureBoundary: "不是上游原生流式；失败保留错误 envelope。",
+    frontendRule: "可流式显示但标注 chunked-buffer 边界。",
+    source: { kind: "route", file: "packages/studio/src/api/routes/ai.ts", exportName: "createAIRouter" },
+  },
+  {
+    id: "providers.status",
+    userCapability: "Provider 状态",
+    entry: "GET /api/providers/status",
+    status: "current",
+    dataSource: "runtime provider store",
+    failureBoundary: "失败显示真实错误，不展示虚拟模型 fallback。",
+    frontendRule: "模型状态栏来源。",
+    source: { kind: "route", file: "packages/studio/src/api/routes/providers.ts", exportName: "createProvidersRouter" },
+  },
+  {
+    id: "providers.models",
+    userCapability: "模型池",
+    entry: "GET /api/providers/models",
+    status: "current",
+    dataSource: "enabled provider/model/account",
+    failureBoundary: "adapter failure code 原样展示。",
+    frontendRule: "模型选择器唯一来源。",
+    source: { kind: "route", file: "packages/studio/src/api/routes/providers.ts", exportName: "createProvidersRouter" },
+  },
+  {
+    id: "providers.summary",
+    userCapability: "Provider 概览",
+    entry: "GET /api/providers/summary",
+    status: "current",
+    dataSource: "provider runtime store",
+    failureBoundary: "不回传明文 apiKey。",
+    frontendRule: "设置页统计来源。",
+    source: { kind: "route", file: "packages/studio/src/api/routes/providers.ts", exportName: "createProvidersRouter" },
+  },
+  {
+    id: "providers.model.test",
+    userCapability: "模型测试",
+    entry: "POST /api/providers/:id/models/:modelId/test",
+    status: "current",
+    dataSource: "provider adapter + runtime store",
+    failureBoundary: "保留 unsupported/auth-missing/config-missing/upstream-error/network-error。",
+    frontendRule: "显示真实失败 envelope，不吞 code。",
+    source: { kind: "route", file: "packages/studio/src/api/routes/providers.ts", exportName: "createProvidersRouter" },
+  },
+];
+
+export function findBackendContractCapability(id: string): BackendContractCapability | undefined {
+  return BACKEND_CONTRACT_CAPABILITIES.find((capability) => capability.id === id);
+}

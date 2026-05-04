@@ -56,35 +56,35 @@ export function buildWorkbenchResourceTree(snapshot: WorkspaceResourceSnapshot):
     title: chapter.title || `第 ${chapter.number} 章`,
     capabilities: EDITABLE,
   }));
-  const candidates = snapshot.generatedChapters.map((candidate) => ({
+  const candidates = (snapshot.generatedChapters ?? []).map((candidate) => ({
     id: `candidate:${candidate.id}`,
     kind: "candidate" as const,
     title: candidate.title,
-    content: candidate.content,
+    content: candidate.content ?? undefined,
     capabilities: CANDIDATE,
   }));
-  const drafts = snapshot.drafts.map((draft) => ({
+  const drafts = (snapshot.drafts ?? []).map((draft) => ({
     id: `draft:${draft.id}`,
     kind: "draft" as const,
     title: draft.title,
     content: draft.content,
     capabilities: MUTABLE,
   }));
-  const storyFiles = snapshot.storyFiles.map((file) => ({
+  const storyFiles = (snapshot.storyFiles ?? []).map((file) => ({
     id: `story-file:${file.id}`,
     kind: "story" as const,
     title: file.title,
     path: file.path,
     capabilities: READONLY,
   }));
-  const truthFiles = snapshot.truthFiles.map((file) => ({
+  const truthFiles = (snapshot.truthFiles ?? []).map((file) => ({
     id: `truth-file:${file.id}`,
     kind: "truth" as const,
     title: file.title,
     path: file.path,
     capabilities: READONLY,
   }));
-  const bibleEntries = snapshot.bibleEntries.map((entry) => ({
+  const bibleEntries = (snapshot.bibleEntries ?? []).map((entry) => ({
     id: `bible-entry:${entry.category}:${entry.id}`,
     kind: "bible-entry" as const,
     title: entry.title,

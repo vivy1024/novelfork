@@ -6,6 +6,8 @@
 
 ## Tasks
 
+> 暂停前端任务完成标记：需先完成并验收 `backend-contract-v1`，当前前端侧已有未提交接线草稿，但不计为本 spec 完成项。
+
 - [ ] 1. 接入 Backend Contract client
   - 依赖 `backend-contract-v1` 的 capability status、session/resource/provider/writing action clients。
   - 在新前端中禁止组件散写未登记 API。
