@@ -23,7 +23,7 @@
   - 处理 snapshot、state、message、stream、error、ack、abort、resumeFromSeq。
   - 验证：runtime reducer 和 WebSocket envelope 单测。
 
-- [ ] 4. 实现 Conversation surface
+- [x] 4. 实现 Conversation surface
   - 新增 `ConversationSurface`、`MessageStream`、`MessageItem`、`ToolCallCard`、`ConfirmationGate`、`ConversationStatusBar`、`Composer`。
   - 移除旧 ChatWindow 常驻控制大卡片视觉层。
   - 验证：消息流、工具卡、确认门、状态栏、发送/中断测试。
