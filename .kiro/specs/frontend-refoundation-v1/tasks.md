@@ -28,7 +28,7 @@
   - 移除旧 ChatWindow 常驻控制大卡片视觉层。
   - 验证：消息流、工具卡、确认门、状态栏、发送/中断测试。
 
-- [ ] 5. 实现模型、权限与状态栏动作
+- [x] 5. 实现模型、权限与状态栏动作
   - 状态栏使用 provider/model/session config 合同。
   - 切换模型、权限、推理强度必须调用 session update。
   - 模型池为空或 unsupported-tools 时禁用发送并展示说明。

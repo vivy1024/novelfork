@@ -4,6 +4,7 @@ import { buildAbortEnvelope, buildMessageEnvelope } from "./runtime";
 import {
   ConversationSurface,
   type ConversationConfirmation,
+  type ConversationSessionConfigPatch,
   type ConversationStatus,
   type ConversationSurfaceMessage,
 } from "./surface";
@@ -25,6 +26,7 @@ export interface ConversationRouteProps {
   initialConfirmation?: ConversationRouteConfirmation | null;
   createMessageId?: () => string;
   onClientEnvelope?: (envelope: ConversationRouteClientEnvelope) => void;
+  onUpdateSessionConfig?: (patch: ConversationSessionConfigPatch) => Promise<void> | void;
   onApproveConfirmation?: (id: string) => void;
   onRejectConfirmation?: (id: string) => void;
 }
@@ -50,6 +52,7 @@ export function ConversationRoute({
   initialConfirmation = null,
   createMessageId = createDefaultMessageId,
   onClientEnvelope = () => undefined,
+  onUpdateSessionConfig = () => undefined,
   onApproveConfirmation = () => undefined,
   onRejectConfirmation = () => undefined,
 }: ConversationRouteProps) {
@@ -91,6 +94,7 @@ export function ConversationRoute({
         onRejectConfirmation={onRejectConfirmation}
         onSend={handleSend}
         onAbort={handleAbort}
+        onUpdateSessionConfig={onUpdateSessionConfig}
       />
     </section>
   );

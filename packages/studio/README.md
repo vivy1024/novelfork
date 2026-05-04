@@ -114,7 +114,7 @@ bun run typecheck
 | 路由 | 说明 |
 |------|------|
 | `/next` | 当前入口；Agent Shell 路由壳 |
-| `/next/narrators/:sessionId` | 已挂载单栏 Conversation 壳，接入合同快照、WebSocket `resumeFromSeq`、ack/message/abort runtime，并具备消息流/工具卡/确认门/状态栏/Composer 与 recovery notice |
+| `/next/narrators/:sessionId` | 已挂载单栏 Conversation 壳，接入合同快照、WebSocket `resumeFromSeq`、ack/message/abort runtime，并具备消息流/工具卡/确认门/状态栏/Composer、recovery notice 与模型/权限状态栏动作 |
 | `/next/books/:bookId` | 已挂载独立 Writing Workbench 壳，后续继续接入真实资源数据 |
 | `/next/settings` | 设置 |
 | `/next/routines` | 套路 |
