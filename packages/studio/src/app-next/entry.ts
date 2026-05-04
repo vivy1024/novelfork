@@ -1,4 +1,4 @@
-export type StudioNextRoute = "dashboard" | "workspace" | "settings" | "routines" | "workflow" | "search" | "sessions" | "studio";
+export type StudioNextRoute = "dashboard" | "workspace" | "settings" | "routines" | "workflow" | "search";
 
 export const STUDIO_NEXT_BASE_PATH = "/next";
 
@@ -15,7 +15,5 @@ export function resolveStudioNextRoute(pathname = globalThis.location?.pathname 
   if (normalized === `${STUDIO_NEXT_BASE_PATH}/routines`) return "routines";
   if (normalized === `${STUDIO_NEXT_BASE_PATH}/workflow`) return "workflow";
   if (normalized === `${STUDIO_NEXT_BASE_PATH}/search`) return "search";
-  if (normalized === `${STUDIO_NEXT_BASE_PATH}/sessions`) return "sessions";
-  if (normalized === `${STUDIO_NEXT_BASE_PATH}/studio`) return "studio";
   return "workspace";
 }

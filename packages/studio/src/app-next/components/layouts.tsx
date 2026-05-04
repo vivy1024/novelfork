@@ -1,23 +1,19 @@
-import { useMemo, type ReactNode, type ComponentType } from "react";
+import type { ReactNode, ComponentType } from "react";
 
-import { GitBranch, LayoutDashboard, MessageSquareText, PenTool, Search, Settings, Wrench } from "lucide-react";
+import { GitBranch, LayoutDashboard, PenTool, Search, Settings, Wrench } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { useWorkbenchMode } from "../../hooks/use-workbench-mode";
 import studioPackageJson from "../../../package.json";
 import type { StudioNextRoute } from "../entry";
 
 export const NEXT_OVERLAY_LAYER_CLASS = "z-[100]";
 
-type RouteVisibility = "author" | "advanced";
-
-const ROUTES: ReadonlyArray<{ route: StudioNextRoute; label: string; icon: typeof LayoutDashboard; visibility: RouteVisibility }> = [
-  { route: "dashboard", label: "仪表盘", icon: LayoutDashboard, visibility: "author" },
-  { route: "workspace", label: "创作工作台", icon: PenTool, visibility: "author" },
-  { route: "workflow", label: "工作流", icon: GitBranch, visibility: "author" },
-  { route: "sessions", label: "会话", icon: MessageSquareText, visibility: "author" },
-  { route: "settings", label: "设置", icon: Settings, visibility: "author" },
-  { route: "routines", label: "套路", icon: Wrench, visibility: "advanced" },
+const ROUTES: ReadonlyArray<{ route: StudioNextRoute; label: string; icon: typeof LayoutDashboard }> = [
+  { route: "dashboard", label: "仪表盘", icon: LayoutDashboard },
+  { route: "workspace", label: "创作工作台", icon: PenTool },
+  { route: "workflow", label: "工作流", icon: GitBranch },
+  { route: "settings", label: "设置", icon: Settings },
+  { route: "routines", label: "套路", icon: Wrench },
 ];
 
 interface NextShellProps {
@@ -29,13 +25,6 @@ interface NextShellProps {
 const STUDIO_VERSION = studioPackageJson.version;
 
 export function NextShell({ activeRoute, onRouteChange, children }: NextShellProps) {
-  const { enabled: workbenchMode } = useWorkbenchMode();
-
-  const visibleRoutes = useMemo(
-    () => (workbenchMode ? ROUTES : ROUTES.filter((r) => r.visibility === "author")),
-    [workbenchMode],
-  );
-
   return (
     <div className="flex h-screen bg-background text-foreground">
       {/* 左侧 sidebar */}
@@ -57,7 +46,7 @@ export function NextShell({ activeRoute, onRouteChange, children }: NextShellPro
 
         {/* 导航 */}
         <nav aria-label="Studio Next 主导航" className="flex-1 space-y-0.5 px-2">
-          {visibleRoutes.map((item) => (
+          {ROUTES.map((item) => (
             <button
               key={item.route}
               type="button"
@@ -83,8 +72,10 @@ export function NextShell({ activeRoute, onRouteChange, children }: NextShellPro
       </aside>
 
       {/* 右侧内容 */}
-      <main className="flex-1 overflow-hidden p-3">
-        {children}
+      <main className="flex-1 overflow-auto">
+        <div className="mx-auto max-w-7xl p-4">
+          {children}
+        </div>
       </main>
     </div>
   );
@@ -100,7 +91,7 @@ interface SectionLayoutProps {
 
 export function SectionLayout({ title, description, actions, overlay, children }: SectionLayoutProps) {
   return (
-    <section className="relative h-full space-y-3 overflow-y-auto">
+    <section className="relative space-y-3">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <h1 className="text-xl font-semibold">{title}</h1>
@@ -175,24 +166,21 @@ export function SettingsLayout({ title: _title, sections, activeSectionId, onSec
 interface ResourceWorkspaceLayoutProps {
   readonly explorer: ReactNode;
   readonly editor: ReactNode;
-  readonly assistant?: ReactNode;
+  readonly assistant: ReactNode;
 }
 
 export function ResourceWorkspaceLayout({ explorer, editor, assistant }: ResourceWorkspaceLayoutProps) {
-  const hasAssistant = assistant !== undefined;
   return (
-    <div className={cn("grid h-full gap-2", hasAssistant ? "grid-cols-[12rem_minmax(0,1fr)_minmax(20rem,28rem)]" : "grid-cols-[12rem_minmax(0,1fr)]")}>
-      <aside aria-label="小说资源管理器" className="overflow-y-auto rounded-lg border border-border bg-card p-3">
+    <div className="grid min-h-[calc(100vh-4rem)] gap-3 xl:grid-cols-[16rem_minmax(0,1fr)_24rem]">
+      <aside aria-label="小说资源管理器" className="rounded-lg border border-border bg-card p-3">
         {explorer}
       </aside>
-      <main aria-label="正文编辑区" className="overflow-y-auto rounded-lg border border-border bg-card p-4">
+      <main aria-label="正文编辑区" className="rounded-lg border border-border bg-card p-4">
         {editor}
       </main>
-      {hasAssistant && (
-        <aside aria-label="叙述者会话" className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-card">
-          {assistant}
-        </aside>
-      )}
+      <aside aria-label="叙述者会话" className="min-h-0 overflow-hidden rounded-lg border border-border bg-card">
+        {assistant}
+      </aside>
     </div>
   );
 }

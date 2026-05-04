@@ -9,7 +9,6 @@ import {
   type StudioResourceTreeInput,
 } from "./resource-adapter";
 import { NarratorPanel } from "../../components/ChatWindow";
-import { SessionCenter } from "../../components/sessions/SessionCenter";
 import { PublishPanel } from "./PublishPanel";
 import { fetchJson, postApi, useApi } from "../../hooks/use-api";
 import { appStore } from "../../stores/app-store";
@@ -223,8 +222,6 @@ interface WorkspacePageProps {
   readonly candidateApi?: WorkspaceCandidateApi;
   readonly chapterApi?: WorkspaceChapterApi;
   readonly modelGate?: WorkspaceModelGate;
-  /** 隐藏右侧叙述者面板（在新 IDE 布局中由独立面板渲染） */
-  readonly hideNarrator?: boolean;
 }
 
 const DEFAULT_CHAPTER_API: WorkspaceChapterApi = {
@@ -472,7 +469,6 @@ export function WorkspacePage({
   candidateApi = DEFAULT_CANDIDATE_API,
   chapterApi = DEFAULT_CHAPTER_API,
   modelGate,
-  hideNarrator = false,
 }: WorkspacePageProps = {}) {
   const runtimeModelGate = useAiModelGate();
   const effectiveModelGate = modelGate ?? runtimeModelGate;
@@ -912,7 +908,7 @@ export function WorkspacePage({
           />
         )}
         editor={showPublishPanel && activeBookId ? <PublishPanel bookId={activeBookId} onReport={handlePublishReport} /> : <WorkspaceCanvas activeTab={activeCanvasTab} assistantApi={assistantApi} candidateApi={candidateApi} chapterApi={chapterApi} modelGate={effectiveModelGate} node={activeCanvasNode ?? selectedNode} openTabs={openTabs} pendingNavigation={pendingCanvasNavigation} onCloseTab={(tabId) => openCanvasRequest({ type: "close", tabId })} onDirtyChange={markCanvasTabDirty} onResolvePendingNavigation={resolvePendingCanvasNavigation} onResourceMutation={refreshWorkspaceResources} onCandidateResult={(message) => setWorkspaceNotice(message)} onSelectTab={(tabId) => openCanvasRequest({ type: "tab", tabId })} />}
-        assistant={hideNarrator ? undefined : <WorkspaceNarratorHost windowId={narratorWindowId} canvasContext={activeNarratorCanvasContext} />}
+        assistant={<WorkspaceNarratorHost windowId={narratorWindowId} canvasContext={activeNarratorCanvasContext} />}
       />
     </SectionLayout>
   );
@@ -1000,23 +996,6 @@ function useDefaultNarratorWindow(activeBookId: string | null, activeBookTitle?:
 }
 
 function WorkspaceNarratorHost({ windowId, canvasContext }: { readonly windowId: string | null; readonly canvasContext?: CanvasContext }) {
-  const [showSessionCenter, setShowSessionCenter] = useState(false);
-  const updateWindow = useWindowStore((state) => state.updateWindow);
-  const setActiveWindow = useWindowStore((state) => state.setActiveWindow);
-
-  const openSession = useCallback((session: NarratorSessionRecord) => {
-    if (!windowId) return;
-    updateWindow(windowId, {
-      title: session.title,
-      agentId: session.agentId,
-      sessionId: session.id,
-      sessionMode: session.sessionMode,
-      minimized: false,
-    });
-    setActiveWindow(windowId);
-    setShowSessionCenter(false);
-  }, [setActiveWindow, updateWindow, windowId]);
-
   if (!windowId) {
     return (
       <div className="flex h-full min-h-[28rem] items-center justify-center p-4 text-center text-sm text-muted-foreground">
@@ -1025,23 +1004,7 @@ function WorkspaceNarratorHost({ windowId, canvasContext }: { readonly windowId:
     );
   }
 
-  return (
-    <div className="flex h-full min-h-[28rem] flex-col overflow-hidden">
-      <div className="flex items-center justify-between gap-2 border-b border-border bg-muted/30 px-3 py-2">
-        <div className="text-xs font-medium text-muted-foreground">叙述者入口</div>
-        <Button type="button" size="xs" variant="outline" onClick={() => setShowSessionCenter((value) => !value)}>
-          {showSessionCenter ? "返回叙述者" : "会话中心"}
-        </Button>
-      </div>
-      <div className="min-h-0 flex-1 overflow-auto">
-        {showSessionCenter ? (
-          <SessionCenter className="p-3" onOpenSession={openSession} />
-        ) : (
-          <NarratorPanel windowId={windowId} theme="light" canvasContext={canvasContext} />
-        )}
-      </div>
-    </div>
-  );
+  return <NarratorPanel windowId={windowId} theme="light" canvasContext={canvasContext} />;
 }
 
 function ImportChaptersPanel({
@@ -1144,7 +1107,14 @@ function WorkspaceLeftRail({
   readonly onSelect: (nodeId: string) => void;
 }) {
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
+      <nav aria-label="工作台全局入口" className="space-y-1 rounded-lg border border-border bg-background/60 p-2">
+        {["仪表盘", "创作工作台", "工作流", "设置", "套路"].map((label) => (
+          <button key={label} className="w-full rounded-md px-2 py-1 text-left text-xs text-muted-foreground hover:bg-muted hover:text-foreground" type="button">
+            {label}
+          </button>
+        ))}
+      </nav>
       <label className="block text-xs font-medium text-muted-foreground">
         当前作品
         <select aria-label="资源栏作品选择" className="mt-1 w-full rounded-lg border border-border bg-background px-2 py-1.5 text-sm text-foreground" value={activeBookId ?? ""} onChange={(event) => onBookChange(event.target.value)}>
