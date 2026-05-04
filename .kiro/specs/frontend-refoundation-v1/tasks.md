@@ -18,7 +18,7 @@
   - `/next`、`/next/narrators/:sessionId`、`/next/books/:bookId`、`/next/search`、`/next/routines`、`/next/settings` 统一在 shell 内切换。
   - 验证：路由和 sidebar active 状态测试。
 
-- [ ] 3. 实现 Conversation runtime
+- [x] 3. 实现 Conversation runtime
   - 新增 `agent-conversation/runtime/useAgentConversationRuntime.ts`、`ws-envelope-reducer.ts`、`session-actions.ts`。
   - 处理 snapshot、state、message、stream、error、ack、abort、resumeFromSeq。
   - 验证：runtime reducer 和 WebSocket envelope 单测。

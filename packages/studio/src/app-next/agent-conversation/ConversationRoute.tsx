@@ -1,4 +1,5 @@
 import type { CanvasContext } from "../../shared/agent-native-workspace";
+import type { NarratorSessionMode } from "../../shared/session-types";
 import { buildAbortEnvelope, buildMessageEnvelope } from "./runtime";
 import {
   ConversationSurface,
@@ -16,7 +17,7 @@ export type ConversationRouteClientEnvelope = ReturnType<typeof buildMessageEnve
 export interface ConversationRouteProps {
   sessionId?: string;
   title?: string;
-  sessionMode?: string;
+  sessionMode?: NarratorSessionMode;
   initialAck?: number;
   canvasContext?: CanvasContext;
   initialMessages?: readonly ConversationRouteMessage[];

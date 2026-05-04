@@ -1,10 +1,11 @@
 import type { CanvasContext } from "../../../shared/agent-native-workspace";
+import type { NarratorSessionChatMessageClientEnvelope } from "../../../shared/session-types";
 
 export interface BuildMessageEnvelopeInput {
   sessionId: string;
   messageId: string;
   content: string;
-  sessionMode?: string;
+  sessionMode?: NarratorSessionChatMessageClientEnvelope["sessionMode"];
   ack?: number;
   canvasContext?: CanvasContext;
 }
