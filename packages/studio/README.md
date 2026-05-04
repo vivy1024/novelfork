@@ -113,9 +113,9 @@ bun run typecheck
 
 | 路由 | 说明 |
 |------|------|
-| `/next` | 当前入口；重建目标为 Agent Shell 默认对话页 |
-| `/next/narrators/:sessionId` | 重建目标：单栏叙述者会话 |
-| `/next/books/:bookId` | 重建目标：独立 Writing Workbench |
+| `/next` | 当前入口；Agent Shell 路由壳 |
+| `/next/narrators/:sessionId` | 已挂载单栏 Conversation 壳，后续继续接入 runtime |
+| `/next/books/:bookId` | 已挂载独立 Writing Workbench 壳，后续继续接入真实资源数据 |
 | `/next/settings` | 设置 |
 | `/next/routines` | 套路 |
 | `/next/search` | 搜索 |
