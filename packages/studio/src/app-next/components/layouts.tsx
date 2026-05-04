@@ -175,21 +175,24 @@ export function SettingsLayout({ title: _title, sections, activeSectionId, onSec
 interface ResourceWorkspaceLayoutProps {
   readonly explorer: ReactNode;
   readonly editor: ReactNode;
-  readonly assistant: ReactNode;
+  readonly assistant?: ReactNode;
 }
 
 export function ResourceWorkspaceLayout({ explorer, editor, assistant }: ResourceWorkspaceLayoutProps) {
+  const hasAssistant = assistant !== undefined;
   return (
-    <div className="grid h-full gap-2 grid-cols-[12rem_minmax(0,1fr)_minmax(20rem,28rem)]">
+    <div className={cn("grid h-full gap-2", hasAssistant ? "grid-cols-[12rem_minmax(0,1fr)_minmax(20rem,28rem)]" : "grid-cols-[12rem_minmax(0,1fr)]")}>
       <aside aria-label="小说资源管理器" className="overflow-y-auto rounded-lg border border-border bg-card p-3">
         {explorer}
       </aside>
       <main aria-label="正文编辑区" className="overflow-y-auto rounded-lg border border-border bg-card p-4">
         {editor}
       </main>
-      <aside aria-label="叙述者会话" className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-card">
-        {assistant}
-      </aside>
+      {hasAssistant && (
+        <aside aria-label="叙述者会话" className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-card">
+          {assistant}
+        </aside>
+      )}
     </div>
   );
 }

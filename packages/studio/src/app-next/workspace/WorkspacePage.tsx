@@ -223,6 +223,8 @@ interface WorkspacePageProps {
   readonly candidateApi?: WorkspaceCandidateApi;
   readonly chapterApi?: WorkspaceChapterApi;
   readonly modelGate?: WorkspaceModelGate;
+  /** 隐藏右侧叙述者面板（在新 IDE 布局中由独立面板渲染） */
+  readonly hideNarrator?: boolean;
 }
 
 const DEFAULT_CHAPTER_API: WorkspaceChapterApi = {
@@ -470,6 +472,7 @@ export function WorkspacePage({
   candidateApi = DEFAULT_CANDIDATE_API,
   chapterApi = DEFAULT_CHAPTER_API,
   modelGate,
+  hideNarrator = false,
 }: WorkspacePageProps = {}) {
   const runtimeModelGate = useAiModelGate();
   const effectiveModelGate = modelGate ?? runtimeModelGate;
@@ -909,7 +912,7 @@ export function WorkspacePage({
           />
         )}
         editor={showPublishPanel && activeBookId ? <PublishPanel bookId={activeBookId} onReport={handlePublishReport} /> : <WorkspaceCanvas activeTab={activeCanvasTab} assistantApi={assistantApi} candidateApi={candidateApi} chapterApi={chapterApi} modelGate={effectiveModelGate} node={activeCanvasNode ?? selectedNode} openTabs={openTabs} pendingNavigation={pendingCanvasNavigation} onCloseTab={(tabId) => openCanvasRequest({ type: "close", tabId })} onDirtyChange={markCanvasTabDirty} onResolvePendingNavigation={resolvePendingCanvasNavigation} onResourceMutation={refreshWorkspaceResources} onCandidateResult={(message) => setWorkspaceNotice(message)} onSelectTab={(tabId) => openCanvasRequest({ type: "tab", tabId })} />}
-        assistant={<WorkspaceNarratorHost windowId={narratorWindowId} canvasContext={activeNarratorCanvasContext} />}
+        assistant={hideNarrator ? undefined : <WorkspaceNarratorHost windowId={narratorWindowId} canvasContext={activeNarratorCanvasContext} />}
       />
     </SectionLayout>
   );
