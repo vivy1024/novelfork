@@ -89,7 +89,7 @@ export function CockpitSnapshotCard({ toolCall, className, onOpenCanvas }: ToolR
       tone={toolCall.status === "error" ? "error" : "default"}
       action={artifact ? { label: "在画布打开", onClick: () => onOpenCanvas?.(artifact) } : undefined}
     >
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="flex flex-wrap gap-2">
         <Metric label="书籍" value={stringValue(book?.title) ?? "未接入书籍"} hint={[stringValue(book?.genre), stringValue(book?.platform)].filter(Boolean).join(" · ")} />
         <Metric label="章节进度" value={`${chapterCount}${targetChapters ? ` / ${targetChapters}` : ""} 章`} hint={`${numberValue(progress?.totalWords) ?? 0} 字 · 已通过 ${numberValue(progress?.approvedChapters) ?? 0} 章`} />
         <Metric label="日更" value={`今日 ${todayWords} / ${dailyTarget} 字`} hint={`连续 ${numberValue(progress?.streak) ?? 0} 天 · 本周 ${numberValue(progress?.weeklyWords) ?? 0} 字`} />
@@ -100,7 +100,7 @@ export function CockpitSnapshotCard({ toolCall, className, onOpenCanvas }: ToolR
         {stringValue(focus?.content) ? <p className="line-clamp-3 text-xs leading-5 text-foreground">{stringValue(focus?.content)}</p> : null}
       </Section>
 
-      <div className="grid gap-3 lg:grid-cols-2">
+      <div className="space-y-3">
         <ListSection title="最近章节摘要" items={recentSummaries} emptyText={stringValue(asRecord(snapshot.recentChapterSummaries)?.reason) ?? "暂无章节摘要。"} renderItem={(item) => (
           <>
             <span className="font-medium">第{numberValue(asRecord(item)?.number) ?? "?"}章</span>
@@ -226,7 +226,7 @@ export function GuidedGenerationPlanCard({ toolCall, className, onOpenCanvas }: 
         </div>
         <p className="text-xs leading-5 text-muted-foreground">{stringValue(plan?.contextSummary) ?? stringValue(plan?.goal) ?? toolCall.summary ?? "暂无计划摘要。"}</p>
       </div>
-      <div className="grid gap-2 sm:grid-cols-3">
+      <div className="flex flex-wrap gap-2">
         <Metric label="上下文来源" value={`${sources.length} 项`} hint={sources.map((source) => stringValue(asRecord(source)?.title)).filter(Boolean).slice(0, 2).join(" · ")} />
         <Metric label="经纬变更" value={`${mutations.length} 项`} hint={mutations.map((mutation) => stringValue(asRecord(mutation)?.summary)).filter(Boolean).slice(0, 1).join(" · ")} />
         <Metric label="候选稿" value={candidate ? (stringValue(candidate.title) ?? `第 ${numberValue(candidate.chapterNumber) ?? "?"} 章`) : "未计划"} hint={stringValue(candidate?.intent)} />
@@ -260,7 +260,7 @@ export function CandidateCreatedCard({ toolCall, className, onOpenCanvas }: Tool
       </div>
       {stringValue(candidate.content) ? <p className="line-clamp-3 rounded-lg border border-border/60 bg-muted/30 p-2 text-xs leading-5 text-muted-foreground">{stringValue(candidate.content)}</p> : null}
       {statusReason ? <p className={cn("text-xs leading-5", toolCall.status === "error" || result?.ok === false ? "text-destructive" : "text-muted-foreground")}>{statusReason}</p> : null}
-      <div className="grid gap-2 sm:grid-cols-3">
+      <div className="flex flex-wrap gap-2">
         <Metric label="ID" value={stringValue(candidate.id) ?? stringValue(artifact?.id) ?? "未返回"} />
         <Metric label="状态" value={stringValue(candidate.status) ?? stringValue(data.status) ?? "unknown"} />
         <Metric label="来源" value={stringValue(candidate.source) ?? "session tool"} />
@@ -283,7 +283,7 @@ export function JingweiMutationPreviewCard({ toolCall, className, onOpenCanvas }
       tone={toolCall.status === "error" ? "error" : "default"}
       action={artifact ? { label: "在画布打开", onClick: () => onOpenCanvas?.(artifact) } : undefined}
     >
-      <div className="grid gap-2 sm:grid-cols-3">
+      <div className="flex flex-wrap gap-2">
         <Metric label="状态" value={stringValue(data.status) ?? "unknown"} />
         <Metric label="目标对象" value={stringValue(data.targetObjectId) ?? stringValue(data.target) ?? "未返回"} />
         <Metric label="变更数" value={`${mutations.length} 项`} />

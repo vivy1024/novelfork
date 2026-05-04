@@ -983,7 +983,7 @@ function ChatWindowHost({ windowId, theme, hostMode, canvasContext }: ChatWindow
                 </div>
               </div>
 
-              <div className="grid gap-3 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,1fr)]">
+              <div className="space-y-3">
                 <div className="space-y-3">
                   <div className="rounded-xl border border-border/70 bg-background/80 p-3">
                     <div className="flex items-center justify-between gap-2">

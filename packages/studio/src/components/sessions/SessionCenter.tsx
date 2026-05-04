@@ -113,7 +113,7 @@ export function SessionCenter({ className, initialBinding = "all", initialStatus
       </div>
 
       <div className="space-y-3 rounded-lg border border-border bg-card p-3">
-        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
+        <div className="flex flex-wrap items-start justify-between gap-3">
           <label className="block space-y-1 text-sm">
             <span className="text-xs font-medium text-muted-foreground">搜索会话</span>
             <input

@@ -465,7 +465,7 @@ function SubagentCard({
         <Badge variant="secondary">子代理卡片</Badge>
         <span className="text-xs font-medium text-foreground">{card.title}</span>
       </div>
-      <div className="grid gap-2 sm:grid-cols-2">
+      <div className="flex flex-wrap gap-2">
         {card.fields.map((field) => (
           <div key={`${field.label}-${field.value}`} className="rounded-md border border-border/60 bg-background/80 px-2 py-1.5">
             <div className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">{field.label}</div>
