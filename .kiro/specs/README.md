@@ -8,7 +8,7 @@
 
 | 当前 Spec | 任务数 | 状态 |
 |---|---:|---|
-| `studio-ide-layout-v1` | 30 | ⏳ 待执行（0/30 已完成） |
+| `studio-ide-layout-v1` | 30 | ⏳ 29/30 完成（Task 12 延后：旧布局退役需要数据接入迁移） |
 | `web-agent-runtime-v1` | 16 | ✅ 已完成（16/16 已完成） |
 | `agent-native-workspace-v1` | 23 | ✅ 已完成（23/23 已完成） |
 
