@@ -12,7 +12,7 @@
 
 ### 文档
 - 新增 `backend-contract-v1`、`frontend-refoundation-v1` 与 `backend-core-refactor-v1` Kiro specs，将后续主线调整为先冻结真实后端能力合同，再基于 Agent Shell + Writing Workbench 重建前端，最后按合同分阶段整理后端核心；`novelfork-ui-v1` 保留为被取代的过渡参考。
-- 更新 specs 索引、README、Studio README、AGENTS、当前执行主线与 API 文档口径，明确新前端不得绕过 Backend Contract client 接入未登记能力，`prompt-preview`、`process-memory`、`chunked-buffer`、`unsupported` 和 `unknown` 必须透明呈现。
+- 更新 specs 索引、README、Studio README、AGENTS、当前执行主线与 API 文档口径，明确新前端不得绕过 Backend Contract client 接入未登记能力，`prompt-preview`、`process-memory`、`chunked-buffer`、`unsupported` 和 `unknown` 必须透明呈现；同步 `backend-contract-v1` 进度为 8/9，并记录 app-next 组件禁止散写未登记 API 字符串。
 
 ## v0.0.6 (2026-05-04)
 
