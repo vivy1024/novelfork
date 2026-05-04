@@ -11,7 +11,7 @@
 | 当前 Spec | 任务数 | 状态 |
 |---|---:|---|
 | `backend-contract-v1` | 9 | ✅ 已完成（9/9 已完成） |
-| `frontend-refoundation-v1` | 12 | ⏳ 执行中（3/12 已完成） |
+| `frontend-refoundation-v1` | 12 | ⏳ 执行中（4/12 已完成） |
 | `backend-core-refactor-v1` | 10 | ⏸️ 后续阶段（依赖前端合同稳定） |
 | `novelfork-ui-v1` | 8 | ⏸️ 已被重建主线取代，保留作历史参考 |
 | `studio-ide-layout-v1` | 30 | ❌ 归档（前端布局失败，后端功能保留） |
