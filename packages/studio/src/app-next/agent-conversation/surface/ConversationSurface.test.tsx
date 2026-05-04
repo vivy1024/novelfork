@@ -1,9 +1,10 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ConversationSurface, type ConversationSurfaceMessage } from "./ConversationSurface";
 import { Composer } from "./Composer";
 import { ConfirmationGate } from "./ConfirmationGate";
+import { ConversationStatusBar } from "./ConversationStatusBar";
 import { MessageStream } from "./MessageStream";
 import { ToolCallCard } from "./ToolCallCard";
 
@@ -140,5 +141,80 @@ describe("Conversation Surface", () => {
     expect(screen.getByTestId("conversation-surface").className).toContain("flex-col");
     expect(screen.getByTestId("message-stream").className).toContain("flex-1");
     expect(screen.getByTestId("conversation-recovery-notice").textContent).toContain("history-gap");
+  });
+
+  it("状态栏展示合同模型配置并通过 session update 回调切换模型、权限和推理强度", async () => {
+    const onUpdateSessionConfig = vi.fn().mockResolvedValue(undefined);
+    render(
+      <ConversationStatusBar
+        status={{
+          state: "connected",
+          label: "已连接",
+          providerId: "sub2api",
+          providerLabel: "Sub2API",
+          modelId: "gpt-5.4",
+          modelLabel: "GPT-5.4",
+          permissionMode: "edit",
+          reasoningEffort: "medium",
+          usage: { promptTokens: 100, completionTokens: 20, totalTokens: 120 },
+          modelOptions: [
+            { providerId: "sub2api", providerLabel: "Sub2API", modelId: "gpt-5.4", modelLabel: "GPT-5.4", supportsTools: true },
+            { providerId: "sub2api", providerLabel: "Sub2API", modelId: "gpt-5.5", modelLabel: "GPT-5.5", supportsTools: true },
+          ],
+        }}
+        onUpdateSessionConfig={onUpdateSessionConfig}
+      />,
+    );
+
+    expect(screen.getAllByText("Sub2API / GPT-5.4").length).toBeGreaterThan(0);
+    expect(screen.getByText("权限：编辑")).toBeTruthy();
+    expect(screen.getByText("推理：medium")).toBeTruthy();
+    expect(screen.getByText("Tokens：120")).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText("模型"), { target: { value: "sub2api::gpt-5.5" } });
+    fireEvent.change(screen.getByLabelText("权限"), { target: { value: "ask" } });
+    fireEvent.change(screen.getByLabelText("推理强度"), { target: { value: "high" } });
+
+    await waitFor(() => expect(onUpdateSessionConfig).toHaveBeenCalledWith({ providerId: "sub2api", modelId: "gpt-5.5" }));
+    expect(onUpdateSessionConfig).toHaveBeenCalledWith({ permissionMode: "ask" });
+    expect(onUpdateSessionConfig).toHaveBeenCalledWith({ reasoningEffort: "high" });
+  });
+
+  it("模型池为空时禁用发送并引导到设置页", () => {
+    const onSend = vi.fn();
+    render(<Composer onSend={onSend} onAbort={vi.fn()} disabledReason="模型池为空，请先到设置页启用模型" settingsHref="/next/settings" />);
+
+    fireEvent.change(screen.getByLabelText("对话输入框"), { target: { value: "继续写" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    expect(onSend).not.toHaveBeenCalled();
+    expect((screen.getByRole("button", { name: "发送" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByRole("alert").textContent).toContain("模型池为空，请先到设置页启用模型");
+    expect(screen.getByRole("link", { name: "打开设置" }).getAttribute("href")).toBe("/next/settings");
+  });
+
+  it("模型不支持工具时显示 unsupported-tools 降级说明，并暴露 session update 失败", async () => {
+    const onUpdateSessionConfig = vi.fn().mockRejectedValue(new Error("session update 失败"));
+    render(
+      <ConversationStatusBar
+        status={{
+          state: "connected",
+          label: "已连接",
+          providerId: "sub2api",
+          providerLabel: "Sub2API",
+          modelId: "chat-only",
+          modelLabel: "Chat Only",
+          permissionMode: "edit",
+          reasoningEffort: "medium",
+          modelOptions: [{ providerId: "sub2api", providerLabel: "Sub2API", modelId: "chat-only", modelLabel: "Chat Only", supportsTools: false }],
+        }}
+        onUpdateSessionConfig={onUpdateSessionConfig}
+      />,
+    );
+
+    expect(screen.getByTestId("unsupported-tools-notice").textContent).toContain("当前模型不支持工具调用");
+    fireEvent.change(screen.getByLabelText("权限"), { target: { value: "allow" } });
+
+    await waitFor(() => expect(screen.getByTestId("status-update-error").textContent).toContain("session update 失败"));
   });
 });
