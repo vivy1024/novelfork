@@ -1,14 +1,15 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const useApiMock = vi.hoisted(() => vi.fn());
-const fetchJsonMock = vi.hoisted(() => vi.fn());
+const useShellDataMock = vi.hoisted(() => vi.fn());
 
-vi.mock("../hooks/use-api", () => ({
-  useApi: useApiMock,
-  fetchJson: fetchJsonMock,
-  putApi: vi.fn().mockResolvedValue({}),
-}));
+vi.mock("./shell", async () => {
+  const actual = await vi.importActual<typeof import("./shell")>("./shell");
+  return {
+    ...actual,
+    useShellData: useShellDataMock,
+  };
+});
 
 vi.mock("../hooks/use-ai-model-gate", () => ({
   useAiModelGate: () => ({ blockedResult: null, closeGate: vi.fn(), ensureModelFor: vi.fn(() => true) }),
@@ -24,25 +25,21 @@ import { StudioNextApp } from "./StudioNextApp";
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 beforeEach(() => {
-  useApiMock.mockImplementation((path: string | null) => {
-    if (path === "/books") return { data: { books: [{ id: "b1", title: "测试书" }] }, loading: false, error: null, refetch: vi.fn() };
-    if (path === "/books/b1") return { data: { book: { id: "b1", title: "测试书" }, chapters: [], nextChapter: 1 }, loading: false, error: null, refetch: vi.fn() };
-    if (path === "/books/b1/candidates") return { data: { candidates: [] }, loading: false, error: null, refetch: vi.fn() };
-    if (path === "/settings/user") return { data: { preferences: { workbenchMode: true }, modelDefaults: {}, runtimeControls: {} }, loading: false, error: null, refetch: vi.fn() };
-    if (path === "/settings/release") return { data: { version: "0.1.0" }, loading: false, error: null, refetch: vi.fn() };
-    if (path === "/settings/metrics") return { data: {}, loading: false, error: null, refetch: vi.fn() };
-    if (path === "/providers") return { data: { providers: [] }, loading: false, error: null, refetch: vi.fn() };
-    if (path?.startsWith("/sessions")) return { data: { sessions: [] }, loading: false, error: null, refetch: vi.fn() };
-    return { data: null, loading: false, error: null, refetch: vi.fn() };
+  useShellDataMock.mockReturnValue({
+    books: [{ id: "b1", title: "测试书" }],
+    sessions: [],
+    providerSummary: null,
+    providerStatus: null,
+    loading: false,
+    error: null,
   });
-  fetchJsonMock.mockResolvedValue({});
 });
 
 describe("StudioNextApp", () => {
-  it("renders NarraFork-style sidebar with storyline and narrator sections", () => {
-    render(<StudioNextApp initialRoute="workspace" />);
+  it("renders Agent Shell sidebar with storyline and narrator sections", () => {
+    render(<StudioNextApp initialRoute={{ kind: "home" }} />);
 
-    const sidebar = screen.getByTestId("studio-sidebar");
+    const sidebar = screen.getByTestId("shell-sidebar");
     expect(sidebar.textContent).toContain("NovelFork Studio");
     expect(sidebar.textContent).toContain("叙事线");
     expect(sidebar.textContent).toContain("叙述者");
@@ -51,27 +48,28 @@ describe("StudioNextApp", () => {
   });
 
   it("shows books in sidebar storyline", () => {
-    render(<StudioNextApp initialRoute="workspace" />);
+    render(<StudioNextApp initialRoute={{ kind: "home" }} />);
 
-    const sidebar = screen.getByTestId("studio-sidebar");
+    const sidebar = screen.getByTestId("shell-sidebar");
     expect(sidebar.textContent).toContain("测试书");
   });
 
-  it("renders workspace page in main content area", () => {
-    render(<StudioNextApp initialRoute="workspace" />);
+  it("renders shell home placeholder in main content area", () => {
+    render(<StudioNextApp initialRoute={{ kind: "home" }} />);
 
-    expect(screen.getByText("资源管理器")).toBeTruthy();
+    expect(within(screen.getByTestId("shell-main")).getByRole("heading", { name: "Agent Shell" })).toBeTruthy();
   });
 
-  it("renders settings page when navigated", () => {
-    render(<StudioNextApp initialRoute="settings" />);
+  it("renders settings mount point when navigated", () => {
+    render(<StudioNextApp initialRoute={{ kind: "settings" }} />);
 
-    expect(screen.getByText("个人设置")).toBeTruthy();
+    expect(within(screen.getByTestId("shell-main")).getByRole("heading", { name: "设置" })).toBeTruthy();
+    expect(screen.getByText("设置入口已接入 Agent Shell，详细面板稍后接线。")).toBeTruthy();
   });
 
-  it("renders routines page when navigated", () => {
-    render(<StudioNextApp initialRoute="routines" />);
+  it("renders routines mount point when navigated", () => {
+    render(<StudioNextApp initialRoute={{ kind: "routines" }} />);
 
-    expect(screen.getByText("正在加载 Routines 配置…")).toBeTruthy();
+    expect(screen.getByText("Routines 入口已接入 Agent Shell，配置面板稍后接线。")).toBeTruthy();
   });
 });

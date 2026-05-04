@@ -29,7 +29,7 @@ const book = {
 const snapshot: WorkspaceResourceSnapshot = {
   book,
   chapters: [
-    { number: 1, title: "第一章 灵潮初起", status: "drafting", wordCount: 3000, auditIssueCount: 1, updatedAt: "2026-05-04T01:00:00.000Z", fileName: "001.md" },
+    { number: 1, title: "第一章 灵潮初起", status: "draft", wordCount: 3000, auditIssueCount: 1, updatedAt: "2026-05-04T01:00:00.000Z", fileName: "001.md" },
   ],
   generatedChapters: [
     { id: "candidate-1", bookId: "book-1", title: "第二章 候选稿", source: "write-next", createdAt: "2026-05-04T02:00:00.000Z", status: "candidate", content: "候选正文" },

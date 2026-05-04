@@ -1,6 +1,6 @@
 import type { ReactNode, ComponentType } from "react";
 
-import { GitBranch, LayoutDashboard, PenTool, Search, Settings, Wrench } from "lucide-react";
+import { BookOpen, Home, MessageSquareText, Search, Settings, Wrench } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import studioPackageJson from "../../../package.json";
@@ -8,12 +8,12 @@ import type { StudioNextRoute } from "../entry";
 
 export const NEXT_OVERLAY_LAYER_CLASS = "z-[100]";
 
-const ROUTES: ReadonlyArray<{ route: StudioNextRoute; label: string; icon: typeof LayoutDashboard }> = [
-  { route: "dashboard", label: "仪表盘", icon: LayoutDashboard },
-  { route: "workspace", label: "创作工作台", icon: PenTool },
-  { route: "workflow", label: "工作流", icon: GitBranch },
-  { route: "settings", label: "设置", icon: Settings },
-  { route: "routines", label: "套路", icon: Wrench },
+const ROUTES: ReadonlyArray<{ route: StudioNextRoute; label: string; icon: typeof Home; key: string }> = [
+  { route: { kind: "home" }, label: "Agent Shell", icon: Home, key: "home" },
+  { route: { kind: "book", bookId: "default" }, label: "创作工作台", icon: BookOpen, key: "book" },
+  { route: { kind: "narrator", sessionId: "default" }, label: "叙述者", icon: MessageSquareText, key: "narrator" },
+  { route: { kind: "settings" }, label: "设置", icon: Settings, key: "settings" },
+  { route: { kind: "routines" }, label: "套路", icon: Wrench, key: "routines" },
 ];
 
 interface NextShellProps {
@@ -37,7 +37,7 @@ export function NextShell({ activeRoute, onRouteChange, children }: NextShellPro
         {/* 搜索 */}
         <button
           className="mx-2 mb-1 flex w-[calc(100%-1rem)] items-center gap-2 rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted"
-          onClick={() => onRouteChange("search")}
+          onClick={() => onRouteChange({ kind: "search" })}
           type="button"
         >
           <Search className="h-4 w-4" />
@@ -48,12 +48,12 @@ export function NextShell({ activeRoute, onRouteChange, children }: NextShellPro
         <nav aria-label="Studio Next 主导航" className="flex-1 space-y-0.5 px-2">
           {ROUTES.map((item) => (
             <button
-              key={item.route}
+              key={item.key}
               type="button"
-              aria-current={activeRoute === item.route ? "page" : undefined}
+              aria-current={activeRoute.kind === item.route.kind ? "page" : undefined}
               className={cn(
                 "flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-sm transition",
-                activeRoute === item.route
+                activeRoute.kind === item.route.kind
                   ? "bg-primary/10 text-primary font-medium"
                   : "text-muted-foreground hover:bg-muted hover:text-foreground",
               )}

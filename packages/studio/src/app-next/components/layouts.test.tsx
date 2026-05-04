@@ -13,7 +13,7 @@ describe("Studio Next layout primitives", () => {
   it("renders the sidebar shell with navigation", () => {
     render(
       <NextShell
-        activeRoute="workspace"
+        activeRoute={{ kind: "book", bookId: "default" }}
         onRouteChange={() => {}}
       >
         <div>页面内容</div>

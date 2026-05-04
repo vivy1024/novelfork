@@ -6,27 +6,27 @@
 
 ## Tasks
 
-- [ ] 1. 固化 MVP 能力矩阵
+- [x] 1. 固化 MVP 能力矩阵
   - 逐项核对 `packages/studio/src/api/routes/`、`packages/studio/src/api/lib/session-tool-registry.ts`、`packages/studio/src/shared/*` 与 `docs/06-API与数据契约/02-创作工作台接口.md`。
   - 输出能力、入口、状态、数据来源、失败边界和前端规则表。
   - 验证：矩阵中每个 `current` 能力都能反查真实 route/tool。
 
-- [ ] 2. 建立 capability status 类型与 UI 决策表
+- [x] 2. 建立 capability status 类型与 UI 决策表
   - 新增或整理 `app-next/backend-contract/capability-status.ts`。
   - 定义 `current`、`process-memory`、`prompt-preview`、`chunked-buffer`、`unsupported`、`planned` 的前端行为。
   - 验证：单测覆盖 disabled、readonly、preview-only、error-visible 等决策。
 
-- [ ] 3. 建立 typed contract client 基础层
+- [x] 3. 建立 typed contract client 基础层
   - 新增 `app-next/backend-contract/contract-client.ts`，统一 fetch、错误 envelope、JSON 解析和 capability metadata。
   - 不吞掉后端原始 `error`、`code`、`gate`、`streamSource`、`null` 指标、`unknown` metric 等字段。
   - 验证：mock fetch 单测覆盖 2xx、4xx、5xx、非法 JSON、network error。
 
-- [ ] 4. 拆分核心领域 client
+- [x] 4. 拆分核心领域 client
   - 新增 `session-client.ts`、`resource-client.ts`、`provider-client.ts`、`writing-action-client.ts`。
   - 复用 `shared/contracts.ts`、`shared/session-types.ts`、`shared/agent-native-workspace.ts`。
   - 验证：类型检查确保组件不需要重新声明核心响应类型。
 
-- [ ] 5. 建立 session WebSocket envelope helper
+- [x] 5. 建立 session WebSocket envelope helper
   - 封装 `/api/sessions/:id/chat` URL、`resumeFromSeq`、`session:message`、`session:ack`、`session:abort` 和 server envelope 解析。
   - 保留 `session:error`、`session:stream`、`session:snapshot`、`session:state` 的原始语义。
   - 验证：单测覆盖 snapshot hydration、stream chunk、abort、replay resetRequired。
