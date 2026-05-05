@@ -1,11 +1,12 @@
 import { renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+import { normalizeCapability } from "../backend-contract/capability-status";
 import type { ContractResourceNode } from "../backend-contract/resource-tree-adapter";
 import { buildWorkbenchResourceTree, flattenWorkbenchResourceTree, loadWorkbenchResourcesFromContract, useWorkbenchResources } from "./useWorkbenchResources";
 
-const current = (id: string) => ({ id, status: "current" as const });
-const unsupported = (id: string) => ({ id, status: "unsupported" as const });
+const current = (id: string) => normalizeCapability({ id, status: "current" });
+const unsupported = (id: string) => normalizeCapability({ id, status: "unsupported" });
 
 const contractTree: ContractResourceNode[] = [
   {
