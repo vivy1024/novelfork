@@ -32,7 +32,7 @@
 
 - 新功能必须先写 spec（`requirements.md` → `design.md` → `tasks.md`）再实现
 - 归档目录：`.kiro/specs/archive/`
-- 活跃 spec 在 `.kiro/specs/` 根目录；`backend-contract-v1` 与 `frontend-refoundation-v1` 已完成，当前主线进入 `backend-core-refactor-v1`（1/10 已完成）
+- 活跃 spec 在 `.kiro/specs/` 根目录；`backend-contract-v1` 与 `frontend-refoundation-v1` 已完成，当前主线进入 `backend-core-refactor-v1`（2/10 已完成）
 - 每个 spec 必须通过 typecheck + test 才能标记完成
 
 ## AI 输出原则
