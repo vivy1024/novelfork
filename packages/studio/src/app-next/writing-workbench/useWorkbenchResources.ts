@@ -7,7 +7,7 @@ import {
   type ResourceDomainClient,
 } from "../backend-contract/resource-tree-adapter";
 
-export type WorkbenchResourceKind = ContractResourceNode["kind"] | "bible-entry" | "storyline";
+export type WorkbenchResourceKind = ContractResourceNode["kind"] | "bible-entry" | "storyline" | "tool-result";
 
 export interface WorkbenchResourceCapabilities {
   open: boolean;

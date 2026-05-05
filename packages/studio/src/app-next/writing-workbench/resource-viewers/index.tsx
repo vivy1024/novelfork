@@ -10,12 +10,17 @@ export type ResourceViewerKind =
   | "truth"
   | "bible-entry"
   | "storyline"
+  | "tool-result"
   | "generic";
+
+export interface ResourceViewerRenderOptions {
+  onContentChange?: (content: string) => void;
+}
 
 export interface ResourceViewerDefinition {
   kind: ResourceViewerKind;
   label: string;
-  render: (node: WorkbenchResourceNode) => ReactNode;
+  render: (node: WorkbenchResourceNode, options?: ResourceViewerRenderOptions) => ReactNode;
 }
 
 const editableLabels: Record<string, string> = {
@@ -47,26 +52,26 @@ function ViewerShell({ node, label, children }: { node: WorkbenchResourceNode; l
   );
 }
 
-function TextBody({ node, label }: { node: WorkbenchResourceNode; label: string }) {
+function TextBody({ node, label, onContentChange }: { node: WorkbenchResourceNode; label: string; onContentChange?: (content: string) => void }) {
   const readonly = node.capabilities.readonly || !node.capabilities.edit || node.capabilities.unsupported;
 
-  return <textarea aria-label={label} readOnly={readonly} value={node.content ?? ""} rows={18} onChange={() => undefined} />;
+  return <textarea aria-label={label} readOnly={readonly} value={node.content ?? ""} rows={18} onChange={(event) => onContentChange?.(event.currentTarget.value)} />;
 }
 
-function renderEditableText(node: WorkbenchResourceNode) {
+function renderEditableText(node: WorkbenchResourceNode, options: ResourceViewerRenderOptions = {}) {
   const label = editableLabels[node.kind] ?? "资源正文";
   return (
     <ViewerShell node={node} label={resourceViewerRegistry[node.kind as ResourceViewerKind]?.label ?? "资源"}>
-      <TextBody node={node} label={label} />
+      <TextBody node={node} label={label} onContentChange={options.onContentChange} />
     </ViewerShell>
   );
 }
 
-function renderTextFile(node: WorkbenchResourceNode) {
+function renderTextFile(node: WorkbenchResourceNode, options: ResourceViewerRenderOptions = {}) {
   return (
     <ViewerShell node={node} label={node.kind === "truth" ? "Truth 文本文件" : "Story 文本文件"}>
       {node.path ? <p className="resource-viewer__path">{node.path}</p> : null}
-      <TextBody node={node} label="文本文件正文" />
+      <TextBody node={node} label="文本文件正文" onContentChange={options.onContentChange} />
     </ViewerShell>
   );
 }
@@ -87,6 +92,14 @@ function renderGeneric(node: WorkbenchResourceNode) {
   );
 }
 
+function renderToolResult(node: WorkbenchResourceNode) {
+  return (
+    <ViewerShell node={node} label="工具结果">
+      <pre data-testid="raw-resource-node">{node.content ?? JSON.stringify(node.metadata ?? {}, null, 2)}</pre>
+    </ViewerShell>
+  );
+}
+
 export const resourceViewerRegistry: Record<ResourceViewerKind, ResourceViewerDefinition> = {
   chapter: { kind: "chapter", label: "章节", render: renderEditableText },
   candidate: { kind: "candidate", label: "候选稿", render: renderEditableText },
@@ -95,6 +108,7 @@ export const resourceViewerRegistry: Record<ResourceViewerKind, ResourceViewerDe
   truth: { kind: "truth", label: "Truth 文件", render: renderTextFile },
   "bible-entry": { kind: "bible-entry", label: "经纬资料", render: renderReadonlySummary },
   storyline: { kind: "storyline", label: "叙事线", render: renderReadonlySummary },
+  "tool-result": { kind: "tool-result", label: "工具结果", render: renderToolResult },
   generic: { kind: "generic", label: "通用资源", render: renderGeneric },
 };
 
@@ -106,6 +120,7 @@ const viewerKinds = new Set<WorkbenchResourceKind | ResourceViewerKind>([
   "truth",
   "bible-entry",
   "storyline",
+  "tool-result",
 ]);
 
 export function getResourceViewer(node: WorkbenchResourceNode): ResourceViewerDefinition {
@@ -116,6 +131,6 @@ export function getResourceViewer(node: WorkbenchResourceNode): ResourceViewerDe
   return resourceViewerRegistry[node.kind as ResourceViewerKind] ?? resourceViewerRegistry.generic;
 }
 
-export function ResourceViewer({ node }: { node: WorkbenchResourceNode }) {
-  return <>{getResourceViewer(node).render(node)}</>;
+export function ResourceViewer({ node, onContentChange }: { node: WorkbenchResourceNode; onContentChange?: (content: string) => void }) {
+  return <>{getResourceViewer(node).render(node, { onContentChange })}</>;
 }
