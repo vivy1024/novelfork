@@ -14,12 +14,14 @@
 - Backend Core Refactor：完成 Task 4 storage.ts 只读 service 拆分，新增 `books-service.ts` / `story-file-service.ts` 与单测，将 books list/detail、story/truth list/read 的业务逻辑从 route adapter 中迁出；cockpit drilldown 继续复用既有 `cockpit-service.ts` 领域服务。
 - Backend Core Refactor：完成 Task 5 storage.ts 非破坏写入拆分，新增 `storage-write-service.ts` 与 service 单测，将 books update、chapter create/save、truth write 与 JSON export 生成逻辑从 route adapter 中迁出，并通过聚焦 service/route Vitest 与 Studio/Core TypeScript 检查。
 - Backend Core Refactor：完成 Task 6 destructive 能力拆分，新增 `storage-destructive-service.ts` / `candidate-destructive-service.ts` 与 service 单测，将 book/chapter/story file/truth file/candidate/draft 硬删除逻辑从 route adapter 中迁出，保留 route 层确认入口、旧 envelope 与不存在/非法文件名失败状态。
+- Backend Core Refactor：完成 Task 7 session runtime 内聚拆分，新增 `session-runtime/transport.ts` 与 `session-runtime/recovery.ts`，先以 envelope/recovery golden tests 固化 WebSocket envelope、payload parse、cursor、ack、replay metadata 与 failure recovery，再让 `session-chat-service.ts` 复用这些 helper，保持 REST snapshot/history、WebSocket replay/ack/abort 与 confirmation API 行为不变。
 
 ### 文档
 - 新增 `backend-contract-v1`、`frontend-refoundation-v1` 与 `backend-core-refactor-v1` Kiro specs，将后续主线调整为先冻结真实后端能力合同，再基于 Agent Shell + Writing Workbench 重建前端，最后按合同分阶段整理后端核心；`novelfork-ui-v1` 保留为被取代的过渡参考。
 - 更新 specs 索引、README、Studio README、AGENTS、当前执行主线与 API 文档口径，明确新前端不得绕过 Backend Contract client 接入未登记能力，`prompt-preview`、`process-memory`、`chunked-buffer`、`unsupported` 和 `unknown` 必须透明呈现；同步 `backend-contract-v1` 进度为 9/9，并记录 app-next 组件禁止散写未登记 API 字符串与验证 guard。
 - 同步 `backend-core-refactor-v1` Task 3 文档口径：tasks/spec 索引更新为 3/10，API 文档记录统一错误 helper、provider failure 状态码、writing tools gate 与平台集成 unsupported 边界。
 - 同步 `backend-core-refactor-v1` Task 4/5/6 文档口径：tasks/spec 索引更新为 6/10，Studio README 与 API 验证事实源记录 storage 只读、非破坏写入和 destructive service 拆分。
+- 同步 `backend-core-refactor-v1` Task 7 文档口径：tasks/spec 索引更新为 7/10，README、AGENTS、当前执行主线、Studio README 与 API 文档记录 session runtime transport/recovery helper 边界和验证事实源。
 
 ## v0.0.6 (2026-05-04)
 

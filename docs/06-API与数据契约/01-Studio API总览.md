@@ -22,7 +22,7 @@
 | `packages/studio/src/api/errors.ts` | 统一结构化错误、provider failure envelope、unsupported failure 与错误状态码 helper |
 | `packages/studio/src/api/routes/index.ts` | 路由导出聚合入口 |
 | `packages/studio/src/api/routes/*.ts` | 各能力域的 Hono route 实现 |
-| `packages/studio/src/api/lib/*` | runtime store、session chat、startup diagnostics 等服务 |
+| `packages/studio/src/api/lib/*` | runtime store、session chat orchestrator、session-runtime transport/recovery、startup diagnostics 等服务 |
 
 `createStudioServer(initialConfig, root)` 是主要 server factory。它会创建共享 `RouterContext`，再根据运行模式挂载不同路由。
 
