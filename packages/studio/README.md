@@ -26,6 +26,8 @@ src/
 │   │   ├── storage-write-service.ts # storage 非破坏写入 service
 │   │   ├── storage-destructive-service.ts # storage 硬删除 service
 │   │   ├── candidate-destructive-service.ts # 候选/草稿硬删除 service
+│   │   ├── provider-runtime-store.ts # Provider/runtime store 与脱敏视图
+│   │   ├── runtime-model-pool.ts # 真实运行时模型池与 provider 状态
 │   │   ├── session-chat-service.ts # Agent 会话 orchestrator
 │   │   ├── session-runtime/       # session WebSocket envelope、payload parse、cursor/recovery helper
 │   │   ├── agent-context.ts       # 上下文注入

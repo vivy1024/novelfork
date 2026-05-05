@@ -314,6 +314,9 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}) {
       const model = firstEnabledModel(provider);
       if (!model) return c.json({ success: false, error: "No enabled model" }, 400);
       const result = await adapters.get(adapterIdForProvider(provider)).testModel({ ...providerRef(provider), modelId: model.id });
+      await store.patchModel(provider.id, model.id, result.success
+        ? { lastTestStatus: "success", lastTestLatency: result.latency, lastTestError: undefined }
+        : { lastTestStatus: result.code === "unsupported" ? "unsupported" : "error", lastTestError: result.error });
       if (!result.success) return c.json(buildProviderFailureEnvelope(result), getProviderFailureHttpStatus(result));
       return c.json({ success: true, latency: result.latency });
     } catch (error) {
