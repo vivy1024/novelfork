@@ -18,15 +18,18 @@ function node(overrides: Partial<WorkbenchResourceNode> = {}): WorkbenchResource
 afterEach(() => cleanup());
 
 describe("WorkbenchCanvas", () => {
-  it("支持打开资源、标记 dirty 并触发保存回调", async () => {
+  it("支持打开资源、标记 dirty、输出 canvasContext 并触发保存回调", async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
-    render(<WorkbenchCanvas node={node()} onSave={onSave} />);
+    const onCanvasContextChange = vi.fn();
+    render(<WorkbenchCanvas node={node()} onSave={onSave} onCanvasContextChange={onCanvasContextChange} />);
 
-    expect(screen.getByRole("heading", { name: "城门片段" })).toBeTruthy();
+    expect(screen.getAllByRole("heading", { name: "城门片段" }).length).toBeGreaterThan(0);
     expect(screen.getByText("已保存")).toBeTruthy();
+    await waitFor(() => expect(onCanvasContextChange).toHaveBeenLastCalledWith(expect.objectContaining({ activeResourceId: "draft:1", dirty: false })));
 
-    fireEvent.change(screen.getByLabelText("资源正文"), { target: { value: "修改正文" } });
-    expect(screen.getByText("未保存")) .toBeTruthy();
+    fireEvent.change(screen.getByLabelText("草稿正文"), { target: { value: "修改正文" } });
+    expect(screen.getByText("未保存")).toBeTruthy();
+    await waitFor(() => expect(onCanvasContextChange).toHaveBeenLastCalledWith(expect.objectContaining({ activeResourceId: "draft:1", dirty: true, contentPreview: "修改正文" })));
 
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
     await waitFor(() => expect(onSave).toHaveBeenCalledWith(node(), "修改正文"));
@@ -37,7 +40,7 @@ describe("WorkbenchCanvas", () => {
     const onSave = vi.fn();
     render(<WorkbenchCanvas node={node({ kind: "truth", title: "真相文件", capabilities: { open: true, readonly: true, unsupported: false, edit: false, delete: false, apply: false } })} onSave={onSave} />);
 
-    expect(screen.getByLabelText("资源正文")).toHaveProperty("readOnly", true);
+    expect(screen.getByLabelText("文本文件正文")).toHaveProperty("readOnly", true);
     expect(screen.getByRole("button", { name: "保存" })).toHaveProperty("disabled", true);
     expect(screen.getByText("只读资源，当前画布禁用编辑。")) .toBeTruthy();
   });
@@ -45,6 +48,21 @@ describe("WorkbenchCanvas", () => {
   it("未选择资源时显示占位状态", () => {
     render(<WorkbenchCanvas node={null} onSave={vi.fn()} />);
 
-    expect(screen.getByText("选择左侧资源开始写作")) .toBeTruthy();
+    expect(screen.getByText("选择左侧资源开始写作")).toBeTruthy();
+  });
+
+  it("artifact 打开后可渲染工具结果 viewer 并输出 canvasContext", async () => {
+    const onCanvasContextChange = vi.fn();
+    render(
+      <WorkbenchCanvas
+        node={node({ id: "tool-result:1", kind: "tool-result", title: "生成结果", content: JSON.stringify({ renderer: "candidate.created", data: { title: "候选稿" } }) })}
+        onSave={vi.fn()}
+        onCanvasContextChange={onCanvasContextChange}
+      />,
+    );
+
+    expect(screen.getByText("工具结果")).toBeTruthy();
+    expect(screen.getByTestId("raw-resource-node").textContent).toContain("candidate.created");
+    await waitFor(() => expect(onCanvasContextChange).toHaveBeenLastCalledWith(expect.objectContaining({ activeResourceId: "tool-result:1", activeKind: "tool-result" })));
   });
 });

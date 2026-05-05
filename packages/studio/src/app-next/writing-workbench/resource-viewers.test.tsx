@@ -24,7 +24,7 @@ afterEach(() => cleanup());
 
 describe("resource viewer registry", () => {
   it("注册 writing workbench 支持的最小 viewer", () => {
-    const kinds: ResourceViewerKind[] = ["chapter", "candidate", "draft", "story", "truth", "bible-entry", "storyline", "generic"];
+    const kinds: ResourceViewerKind[] = ["chapter", "candidate", "draft", "story", "truth", "bible-entry", "storyline", "tool-result", "generic"];
 
     for (const kind of kinds) {
       expect(resourceViewerRegistry[kind]).toBeTruthy();
@@ -34,6 +34,7 @@ describe("resource viewer registry", () => {
   it("按资源 kind 选择 viewer，并为未知 kind 回退 generic", () => {
     expect(getResourceViewer(node({ kind: "candidate" })).kind).toBe("candidate");
     expect(getResourceViewer(node({ kind: "truth" })).kind).toBe("truth");
+    expect(getResourceViewer(node({ kind: "tool-result" })).kind).toBe("tool-result");
     expect(getResourceViewer(node({ kind: "unsupported" })).kind).toBe("generic");
     expect(getResourceViewer(node({ kind: "mystery" as WorkbenchResourceNode["kind"] })).kind).toBe("generic");
   });
