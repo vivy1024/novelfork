@@ -44,7 +44,7 @@
   - 通过 resource contract adapter 组装章节、候选稿、草稿、经纬、story/truth、叙事线资源节点。
   - 验证：资源节点类型、unsupported/readonly/edit capability 测试。
 
-- [ ] 8. 实现 Workbench canvas 与资源 viewer
+- [x] 8. 实现 Workbench canvas 与资源 viewer
   - 新增 `WorkbenchCanvas.tsx` 和章节、候选稿、草稿、文本文件、工具结果 viewer。
   - 支持 dirty 状态、保存、只读、artifact 打开。
   - 验证：打开资源、保存章节/草稿、只读禁用、dirty canvasContext 测试。
