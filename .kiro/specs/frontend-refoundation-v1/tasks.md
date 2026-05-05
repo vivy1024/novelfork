@@ -54,7 +54,7 @@
   - 续写、扩写、审校、生成下一章、去 AI 味、连续性检查等动作创建/复用绑定 bookId 的 session 并跳转 Conversation。
   - 验证：会话创建/复用、路由跳转、unsupported 动作禁用。
 
-- [ ] 10. 切断主路由旧三栏依赖
+- [x] 10. 切断主路由旧三栏依赖
   - `/next` 默认入口改为 Agent Shell + Conversation。
   - 旧 WorkspacePage 不再作为主路由默认内容。
   - 验证：全仓搜索主路由导入，typecheck 通过。

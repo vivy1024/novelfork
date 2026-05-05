@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -58,6 +61,16 @@ describe("StudioNextApp", () => {
     render(<StudioNextApp initialRoute={{ kind: "home" }} />);
 
     expect(within(screen.getByTestId("shell-main")).getByRole("heading", { name: "Agent Shell" })).toBeTruthy();
+  });
+
+  it("keeps the main /next route free of legacy WorkspacePage and three-column StudioApp", () => {
+    const mainSource = readFileSync(join(process.cwd(), "src", "main.tsx"), "utf-8");
+    const studioNextSource = readFileSync(join(process.cwd(), "src", "app-next", "StudioNextApp.tsx"), "utf-8");
+
+    expect(mainSource).toContain('import { StudioNextApp } from "./app-next"');
+    expect(mainSource).not.toContain("StudioApp");
+    expect(studioNextSource).not.toContain("WorkspacePage");
+    expect(studioNextSource).not.toContain("SplitView");
   });
 
   it("mounts Agent Conversation for narrator routes", () => {
