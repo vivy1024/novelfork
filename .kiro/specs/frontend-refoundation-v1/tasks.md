@@ -64,7 +64,7 @@
   - 有真实复用价值则迁移到新边界；无价值则从构建路径删除。
   - 验证：无 shim/noop adapter，相关测试更新。
 
-- [ ] 12. 文档、变更记录与冒烟
+- [x] 12. 文档、变更记录与冒烟
   - 更新 README、Studio README、API/架构文档和 CHANGELOG。
   - 运行相关 Vitest、`pnpm --dir packages/studio typecheck`、`pnpm docs:verify`。
   - 手动冒烟：`/next` 对话、叙述者会话、书籍工作台、设置、套路、搜索、工具确认门。

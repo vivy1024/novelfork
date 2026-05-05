@@ -38,7 +38,7 @@
 ## AI 输出原则
 
 - AI 结果只进候选区/草稿区，用户确认后才影响正式正文
-- Studio 已交付口径是 session-first 工作台；当前重建主线已完成 Backend Contract 验收收口，Frontend Refoundation 执行中（11/12）：`/next` 使用 Agent Shell 路由壳，Conversation runtime、单栏 surface、模型/权限状态栏动作、Tool Result Renderer Registry、Workbench 资源树、canvas/viewer 与写作动作入口已接入，主入口已切断旧三栏 WorkspacePage 默认依赖，失败三栏实验已从 Studio typecheck 构建路径正式退役；所有按钮、资源节点和写作动作必须来自 `packages/studio/src/app-next/backend-contract/` 的真实合同 client / adapter
+- Studio 已交付口径是 session-first 工作台；Backend Contract 与 Frontend Refoundation 已完成验收收口（12/12）：`/next` 使用 Agent Shell 路由壳，Conversation runtime、单栏 surface、模型/权限状态栏动作、Tool Result Renderer Registry、Workbench 资源树、canvas/viewer 与写作动作入口已接入，主入口已切断旧三栏 WorkspacePage 默认依赖，失败三栏实验已从 Studio typecheck 构建路径正式退役；所有按钮、资源节点和写作动作必须来自 `packages/studio/src/app-next/backend-contract/` 的真实合同 client / adapter
 - 历史驾驶舱/经纬/写作面板只能作为工具结果卡片或画布组件复用，不再作为右侧主 Tab
 - app-next 组件不得散写未登记 API 字符串；新增后端能力必须先补 Backend Contract 矩阵、共享类型和 contract 测试
 - 不恢复 mock/fake/noop 假成功
