@@ -21,6 +21,7 @@ import {
 import { analyzeRhythm as analyzeBookRhythm } from "../lib/rhythm-analyzer.js";
 
 import { requireModelForAiAction } from "../lib/ai-gate.js";
+import { buildStructuredErrorEnvelope } from "../errors.js";
 import { ProviderRuntimeStore } from "../lib/provider-runtime-store.js";
 import { buildRuntimeProviderStatus } from "../lib/runtime-model-pool.js";
 import type { RouterContext } from "./context.js";
@@ -72,7 +73,15 @@ export function createWritingToolsRouter(ctx: RouterContext): Hono {
     const providerStore = ctx.providerStore ?? new ProviderRuntimeStore();
     const gate = requireModelForAiAction("ai-writing", await buildRuntimeProviderStatus(providerStore));
     if (!gate.ok && !sessionLlm) {
-      return c.json({ gate }, 409);
+      return c.json({
+        ...buildStructuredErrorEnvelope({
+          code: "MODEL_NOT_CONFIGURED",
+          message: "未配置可用模型，请先在管理中心配置供应商和模型。",
+          capability: "hooks.generate",
+          gate,
+          mirrorCode: true,
+        }),
+      }, 409);
     }
 
     const bookId = c.req.param("bookId");

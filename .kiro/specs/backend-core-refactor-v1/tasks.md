@@ -16,22 +16,22 @@
   - 覆盖成功、404/400、unsupported/gate、脱敏输出。
   - 验证：相关 Vitest 通过。
 
-- [ ] 3. 整理错误与状态 helper
+- [x] 3. 整理错误与状态 helper
   - 抽出现有结构化错误、provider failure envelope、unsupported helper。
   - 新迁移 route 使用 helper；旧 route 不做破坏性改写。
   - 验证：错误响应测试覆盖 code/message/capability/gate 保留。
 
-- [ ] 4. 拆分 storage.ts 只读能力
+- [x] 4. 拆分 storage.ts 只读能力
   - 优先迁移 books list/detail、story/truth list/read、cockpit drilldown 只读入口到领域 service。
   - Route adapter 只做参数解析和响应。
   - 验证：原 route 测试与新增 service 测试通过。
 
-- [ ] 5. 拆分 storage.ts 非破坏写入能力
+- [x] 5. 拆分 storage.ts 非破坏写入能力
   - 迁移 books update、chapter create/save、story/truth write、export 生成等非破坏写入。
   - 保持文件系统 index 与内容一致。
   - 验证：写入测试覆盖文件内容、index、错误路径。
 
-- [ ] 6. 拆分 destructive 能力
+- [x] 6. 拆分 destructive 能力
   - 迁移 book/chapter/file delete、candidate/draft delete 等破坏性入口。
   - 明确软删除/硬删除、前端确认和失败状态。
   - 验证：删除测试覆盖不存在、非法文件名、真实删除结果。

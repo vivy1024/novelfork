@@ -17,10 +17,7 @@ import {
   getStorageDatabase,
   registerBuiltinPresets,
   loadProjectConfig,
-  normalizeBookStatus,
-  normalizeChapterStatus,
   type BookConfig,
-  type ChapterMeta,
   type JingweiTemplateSelection,
   type Preset,
 } from "@vivy1024/novelfork-core";
@@ -39,42 +36,17 @@ import {
   resolveStudioProjectRepositoryRoot,
   type PreparedStudioProjectBootstrap,
 } from "../lib/project-bootstrap.js";
+import { createBooksReadService } from "../lib/books-service.js";
 import { createCandidateToolService } from "../lib/candidate-tool-service.js";
 import { createCockpitService } from "../lib/cockpit-service.js";
 import { createLlmRuntimeService } from "../lib/llm-runtime-service.js";
 import { createNarrativeLineService } from "../lib/narrative-line-service.js";
+import { createStorageDestructiveService } from "../lib/storage-destructive-service.js";
+import { createStorageWriteService } from "../lib/storage-write-service.js";
+import { createStoryFileReadService } from "../lib/story-file-service.js";
 import { configureSessionToolExecutor, getSessionChatSnapshot } from "../lib/session-chat-service.js";
 import { createSession } from "../lib/session-service.js";
 import type { RouterContext } from "./context.js";
-
-const TRUTH_FILES = [
-  "story_bible.md", "volume_outline.md", "current_state.md",
-  "particle_ledger.md", "pending_hooks.md", "chapter_summaries.md",
-  "subplot_board.md", "emotional_arcs.md", "character_matrix.md",
-  "style_guide.md", "setting_guide.md", "parent_canon.md", "fanfic_canon.md", "book_rules.md",
-  "author_intent.md", "current_focus.md", "market_radar.md", "web_materials.md",
-];
-
-const TRUTH_FILE_LABELS: Record<string, string> = {
-  "story_bible.md": "故事经纬",
-  "volume_outline.md": "卷大纲",
-  "current_state.md": "当前状态",
-  "particle_ledger.md": "资源账本",
-  "pending_hooks.md": "待处理伏笔",
-  "chapter_summaries.md": "章节摘要",
-  "subplot_board.md": "支线看板",
-  "emotional_arcs.md": "情绪弧线",
-  "character_matrix.md": "角色矩阵",
-  "style_guide.md": "风格指南",
-  "setting_guide.md": "设定指南",
-  "parent_canon.md": "原著设定（同人）",
-  "fanfic_canon.md": "二设记录（同人）",
-  "book_rules.md": "书籍规则",
-  "author_intent.md": "创作意图",
-  "current_focus.md": "当前焦点",
-  "market_radar.md": "市场雷达",
-  "web_materials.md": "网络素材",
-};
 
 interface ProjectWorktreeOwnership {
   readonly repositoryRoot: string;
@@ -137,138 +109,6 @@ function presetSummaryLines(presets: ReadonlyArray<Preset>): string {
 
 function presetPromptLines(presets: ReadonlyArray<Preset>): string {
   return presets.map((preset) => `## ${preset.name}\n\n${preset.promptInjection}`).join("\n\n");
-}
-
-function isSafeStoryFileName(file: string): boolean {
-  return /^[A-Za-z0-9_.-]+$/.test(file) && /\.(md|json|txt)$/i.test(file);
-}
-
-function sanitizeChapterFileTitle(title: string): string {
-  const sanitized = title.replace(/[\\/?%*:|"<>]/g, "").replace(/\s+/g, "_").slice(0, 50);
-  return sanitized || "chapter";
-}
-
-function countChapterWords(content: string): number {
-  return content.replace(/\s+/g, "").length;
-}
-
-function normalizeApiChapter(chapter: Record<string, unknown>): Record<string, unknown> {
-  return {
-    ...chapter,
-    status: normalizeChapterStatus(chapter.status),
-  };
-}
-
-function normalizeApiChapters(chapters: ReadonlyArray<Record<string, unknown>>): ReadonlyArray<Record<string, unknown>> {
-  return chapters.map(normalizeApiChapter);
-}
-
-function numericField(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : 0;
-}
-
-function normalizeApiBook(book: Record<string, unknown>, chapters: ReadonlyArray<Record<string, unknown>>): Record<string, unknown> {
-  const normalizedChapters = normalizeApiChapters(chapters);
-  const approvedChapters = normalizedChapters.filter((chapter) => chapter.status === "approved" || chapter.status === "published").length;
-  const pendingReviewChapters = normalizedChapters.filter((chapter) => chapter.status === "ready-for-review").length;
-  return {
-    ...book,
-    status: normalizeBookStatus(book.status),
-    chapters: normalizedChapters.length,
-    chapterCount: normalizedChapters.length,
-    totalChapters: normalizedChapters.length,
-    totalWords: normalizedChapters.reduce((sum, chapter) => sum + numericField(chapter.wordCount), 0),
-    approvedChapters,
-    pendingReview: pendingReviewChapters,
-    pendingReviewChapters,
-    failedReview: 0,
-    failedChapters: 0,
-    progress: approvedChapters,
-  };
-}
-
-type ExportFormat = "markdown" | "txt";
-
-interface ExportChapter {
-  readonly number: number;
-  readonly fileName: string;
-  readonly content: string;
-}
-
-function normalizeExportFormat(value: unknown): ExportFormat | null {
-  if (value === undefined || value === null || value === "" || value === "txt") return "txt";
-  if (value === "markdown" || value === "md") return "markdown";
-  return null;
-}
-
-function exportContentType(format: ExportFormat): string {
-  return format === "markdown" ? "text/markdown; charset=utf-8" : "text/plain; charset=utf-8";
-}
-
-function exportFileName(bookId: string, format: ExportFormat): string {
-  return `${bookId}.${format === "markdown" ? "md" : "txt"}`;
-}
-
-async function resolveChapterFileName(chaptersDir: string, chapterNumber: number, meta: Record<string, unknown>): Promise<string> {
-  if (typeof meta.fileName === "string" && meta.fileName.trim()) return meta.fileName;
-  if (typeof meta.filename === "string" && meta.filename.trim()) return meta.filename;
-  const prefix = String(chapterNumber).padStart(4, "0");
-  const files = await readdir(chaptersDir);
-  const matched = files.find((file) => file.startsWith(prefix) && file.endsWith(".md"));
-  if (!matched) throw new Error(`Chapter ${chapterNumber} has no saved markdown file`);
-  return matched;
-}
-
-async function loadExportChapters(chaptersDir: string, index: ReadonlyArray<Record<string, unknown>>, approvedOnly: boolean): Promise<ReadonlyArray<ExportChapter>> {
-  const selected = approvedOnly ? index.filter((chapter) => chapter.status === "approved") : index;
-  return Promise.all(selected.map(async (meta) => {
-    const number = typeof meta.number === "number" ? meta.number : 0;
-    const fileName = await resolveChapterFileName(chaptersDir, number, meta);
-    try {
-      return {
-        number,
-        fileName,
-        content: await readFile(join(chaptersDir, fileName), "utf-8"),
-      };
-    } catch (error) {
-      throw new Error(`Failed to read chapter file ${fileName}: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }));
-}
-
-function buildExportContent(chapters: ReadonlyArray<ExportChapter>, format: ExportFormat): string {
-  return chapters
-    .slice()
-    .sort((left, right) => left.number - right.number)
-    .map((chapter) => chapter.content)
-    .join(format === "markdown" ? "\n\n---\n\n" : "\n\n");
-}
-
-async function listExistingChapterNumbers(chaptersDir: string): Promise<number[]> {
-  try {
-    const files = await readdir(chaptersDir);
-    return files.flatMap((file) => {
-      const match = file.match(/^(\d{4})/);
-      return match ? [Number.parseInt(match[1]!, 10)] : [];
-    });
-  } catch {
-    return [];
-  }
-}
-
-async function listStoryFiles(storyDir: string, filter?: (file: string) => boolean): Promise<Array<{ name: string; label: string; size: number; preview: string }>> {
-  try {
-    const files = await readdir(storyDir);
-    const allowedFiles = files.filter((file) => isSafeStoryFileName(file) && (!filter || filter(file)));
-    return await Promise.all(
-      allowedFiles.map(async (file) => {
-        const content = await readFile(join(storyDir, file), "utf-8");
-        return { name: file, label: TRUTH_FILE_LABELS[file] ?? file.replace(/\.md$/, ""), size: content.length, preview: content.slice(0, 200) };
-      }),
-    );
-  } catch {
-    return [];
-  }
 }
 
 function resolveEnabledPresets(bookConfig: Pick<StudioBookConfigDraft, "enabledPresetIds">): ReadonlyArray<Preset> {
@@ -529,6 +369,16 @@ async function findConflictingBookOwner(
 export function createStorageRouter(ctx: RouterContext): Hono {
   const app = new Hono();
   const { state, root, broadcast } = ctx;
+  const booksReadService = createBooksReadService({
+    state,
+    syncBookScaffold: (bookConfig) => syncLocalBookScaffoldToSqlite(bookConfig as Pick<BookConfig, "id" | "title" | "genre" | "createdAt" | "updatedAt">),
+  });
+  const storyFileReadService = createStoryFileReadService({ resolveBookDir: state.bookDir.bind(state) });
+  const storageWriteService = createStorageWriteService({ state });
+  const storageDestructiveService = createStorageDestructiveService({
+    state,
+    deleteBookRecord: (bookId) => getStorageDatabase().sqlite.prepare(`DELETE FROM "book" WHERE "id" = ?`).run(bookId),
+  });
   const cockpitService = createCockpitService({ state, providerStore: ctx.providerStore });
   const candidateService = createCandidateToolService({ root, runtimeService: createLlmRuntimeService(ctx.providerStore ? { store: ctx.providerStore } : {}) });
   const narrativeService = createNarrativeLineService({ state });
@@ -542,31 +392,13 @@ export function createStorageRouter(ctx: RouterContext): Hono {
   // --- Books ---
 
   app.get("/api/books", async (c) => {
-    const bookIds = await state.listBooks();
-    const books = await Promise.all(
-      bookIds.map(async (id) => {
-        const book = await state.loadBookConfig(id);
-        await syncLocalBookScaffoldToSqlite(book);
-        const chapters = await state.loadChapterIndex(id).catch(() => []);
-        return normalizeApiBook(book as unknown as Record<string, unknown>, chapters as unknown as ReadonlyArray<Record<string, unknown>>);
-      }),
-    );
-
-    return c.json({ books });
+    return c.json(await booksReadService.listBooks());
   });
 
   app.get("/api/books/:id", async (c) => {
     const id = c.req.param("id");
     try {
-      const book = await state.loadBookConfig(id);
-      await syncLocalBookScaffoldToSqlite(book);
-      const chapters = await state.loadChapterIndex(id);
-      const nextChapter = await state.getNextChapterNumber(id);
-      return c.json({
-        book: normalizeApiBook(book as unknown as Record<string, unknown>, chapters as unknown as ReadonlyArray<Record<string, unknown>>),
-        chapters: normalizeApiChapters(chapters as unknown as ReadonlyArray<Record<string, unknown>>),
-        nextChapter,
-      });
+      return c.json(await booksReadService.getBookDetail(id));
     } catch {
       return c.json({ error: `Book "${id}" not found` }, 404);
     }
@@ -723,17 +555,7 @@ export function createStorageRouter(ctx: RouterContext): Hono {
       language?: string;
     }>();
     try {
-      const book = await state.loadBookConfig(id);
-      const updated = {
-        ...book,
-        ...(updates.chapterWordCount !== undefined ? { chapterWordCount: Number(updates.chapterWordCount) } : {}),
-        ...(updates.targetChapters !== undefined ? { targetChapters: Number(updates.targetChapters) } : {}),
-        ...(updates.status !== undefined ? { status: updates.status as typeof book.status } : {}),
-        ...(updates.language !== undefined ? { language: updates.language as "zh" | "en" } : {}),
-        updatedAt: new Date().toISOString(),
-      };
-      await state.saveBookConfig(id, updated);
-      return c.json({ ok: true, book: updated });
+      return c.json(await storageWriteService.updateBook(id, updates));
     } catch (e) {
       return c.json({ error: String(e) }, 500);
     }
@@ -741,13 +563,10 @@ export function createStorageRouter(ctx: RouterContext): Hono {
 
   app.delete("/api/books/:id", async (c) => {
     const id = c.req.param("id");
-    const bookDir = state.bookDir(id);
     try {
-      const { rm } = await import("node:fs/promises");
-      await rm(bookDir, { recursive: true, force: true });
-      getStorageDatabase().sqlite.prepare(`DELETE FROM "book" WHERE "id" = ?`).run(id);
+      const result = await storageDestructiveService.deleteBook(id);
       broadcast("book:deleted", { bookId: id });
-      return c.json({ ok: true, bookId: id });
+      return c.json({ ok: result.ok, bookId: result.bookId });
     } catch (e) {
       return c.json({ error: String(e) }, 500);
     }
@@ -757,55 +576,9 @@ export function createStorageRouter(ctx: RouterContext): Hono {
 
   app.post("/api/books/:id/chapters", async (c) => {
     const id = c.req.param("id");
-    const bookDir = state.bookDir(id);
-    const chaptersDir = join(bookDir, "chapters");
-
     try {
-      const book = await state.loadBookConfig(id);
       const body: { title?: string; afterChapterNumber?: number } = await c.req.json<{ title?: string; afterChapterNumber?: number }>().catch(() => ({}));
-      const existingIndex = [...await state.loadChapterIndex(id)] as ChapterMeta[];
-      const existingFileNumbers = await listExistingChapterNumbers(chaptersDir);
-      const nextFromIndex = Math.max(0, ...existingIndex.map((chapter) => chapter.number)) + 1;
-      const nextFromFiles = Math.max(0, ...existingFileNumbers) + 1;
-      const nextFromState = await state.getNextChapterNumber(id).catch(() => 1);
-      const requestedAfterChapterNumber = body.afterChapterNumber;
-      const afterChapterNumber = typeof requestedAfterChapterNumber === "number"
-        && Number.isInteger(requestedAfterChapterNumber)
-        && requestedAfterChapterNumber > 0
-        ? requestedAfterChapterNumber + 1
-        : 1;
-      const chapterNumber = Math.max(nextFromIndex, nextFromFiles, nextFromState, afterChapterNumber);
-      const defaultTitle = book.language === "en" ? `Chapter ${chapterNumber}` : `第 ${chapterNumber} 章`;
-      const title = body.title?.trim() || defaultTitle;
-      const fileName = `${String(chapterNumber).padStart(4, "0")}_${sanitizeChapterFileTitle(title)}.md`;
-      const now = new Date().toISOString();
-      const content = `# ${title}\n\n`;
-      const entry: ChapterMeta = {
-        number: chapterNumber,
-        title,
-        status: "drafting",
-        wordCount: countChapterWords(content.replace(/^# .*\n\n/, "")),
-        createdAt: now,
-        updatedAt: now,
-        auditIssues: [],
-        lengthWarnings: [],
-      };
-
-      await mkdir(chaptersDir, { recursive: true });
-      await writeFile(join(chaptersDir, fileName), content, "utf-8");
-      await state.saveChapterIndex(id, [...existingIndex, entry].sort((left, right) => left.number - right.number));
-
-      return c.json({
-        chapter: {
-          number: entry.number,
-          title: entry.title,
-          status: entry.status,
-          wordCount: entry.wordCount,
-          auditIssueCount: entry.auditIssues.length,
-          updatedAt: entry.updatedAt,
-          fileName,
-        },
-      }, 201);
+      return c.json(await storageWriteService.createChapter(id, body), 201);
     } catch (error) {
       if (isMissingFileError(error)) {
         return c.json({ error: `Book "${id}" not found` }, 404);
@@ -835,19 +608,12 @@ export function createStorageRouter(ctx: RouterContext): Hono {
   app.put("/api/books/:id/chapters/:num", async (c) => {
     const id = c.req.param("id");
     const num = parseInt(c.req.param("num"), 10);
-    const bookDir = state.bookDir(id);
-    const chaptersDir = join(bookDir, "chapters");
     const { content } = await c.req.json<{ content: string }>();
 
     try {
-      const files = await readdir(chaptersDir);
-      const paddedNum = String(num).padStart(4, "0");
-      const match = files.find((f) => f.startsWith(paddedNum) && f.endsWith(".md"));
-      if (!match) return c.json({ error: "Chapter not found" }, 404);
-
-      const { writeFile: writeFileFs } = await import("node:fs/promises");
-      await writeFileFs(join(chaptersDir, match), content, "utf-8");
-      return c.json({ ok: true, chapterNumber: num });
+      const result = await storageWriteService.updateChapterContent(id, num, content);
+      if ("error" in result) return c.json({ error: result.error }, 404);
+      return c.json(result);
     } catch (e) {
       return c.json({ error: String(e) }, 500);
     }
@@ -856,21 +622,11 @@ export function createStorageRouter(ctx: RouterContext): Hono {
   app.delete("/api/books/:id/chapters/:num", async (c) => {
     const id = c.req.param("id");
     const num = parseInt(c.req.param("num"), 10);
-    const bookDir = state.bookDir(id);
-    const chaptersDir = join(bookDir, "chapters");
 
     try {
-      const files = await readdir(chaptersDir);
-      const paddedNum = String(num).padStart(4, "0");
-      const match = files.find((f) => f.startsWith(paddedNum) && f.endsWith(".md"));
-      if (!match) return c.json({ error: "Chapter not found" }, 404);
-
-      const { rm } = await import("node:fs/promises");
-      await rm(join(chaptersDir, match));
-      const index = await state.loadChapterIndex(id);
-      const updated = index.filter((ch) => ch.number !== num);
-      await state.saveChapterIndex(id, updated);
-      return c.json({ ok: true, chapterNumber: num });
+      const result = await storageDestructiveService.deleteChapter(id, num);
+      if ("error" in result) return c.json({ error: result.error }, 404);
+      return c.json({ ok: result.ok, chapterNumber: result.chapterNumber });
     } catch (e) {
       return c.json({ error: String(e) }, 500);
     }
@@ -922,60 +678,41 @@ export function createStorageRouter(ctx: RouterContext): Hono {
   app.get("/api/books/:id/truth/:file", async (c) => {
     const id = c.req.param("id");
     const file = c.req.param("file");
-
-    if (!TRUTH_FILES.includes(file)) {
-      return c.json({ error: "Invalid truth file" }, 400);
+    const result = await storyFileReadService.readTruthFile(id, file);
+    if ("error" in result) {
+      return c.json({ error: result.error }, 400);
     }
-
-    const bookDir = state.bookDir(id);
-    try {
-      const content = await readFile(join(bookDir, "story", file), "utf-8");
-      return c.json({ file, content });
-    } catch {
-      return c.json({ file, content: null });
-    }
+    return c.json(result);
   });
 
   app.get("/api/books/:id/truth-files/:file", async (c) => {
     const id = c.req.param("id");
     const file = c.req.param("file");
-
-    if (!TRUTH_FILES.includes(file)) {
-      return c.json({ error: "Invalid truth file" }, 400);
+    const result = await storyFileReadService.readTruthFile(id, file);
+    if ("error" in result) {
+      return c.json({ error: result.error }, 400);
     }
-
-    const bookDir = state.bookDir(id);
-    try {
-      const content = await readFile(join(bookDir, "story", file), "utf-8");
-      return c.json({ file, content });
-    } catch {
-      return c.json({ file, content: null });
-    }
+    return c.json(result);
   });
 
   app.put("/api/books/:id/truth/:file", async (c) => {
     const id = c.req.param("id");
     const file = c.req.param("file");
-    if (!TRUTH_FILES.includes(file)) {
-      return c.json({ error: "Invalid truth file" }, 400);
-    }
     const { content } = await c.req.json<{ content: string }>();
-    const bookDir = state.bookDir(id);
-    const { writeFile: writeFileFs, mkdir: mkdirFs } = await import("node:fs/promises");
-    await mkdirFs(join(bookDir, "story"), { recursive: true });
-    await writeFileFs(join(bookDir, "story", file), content, "utf-8");
-    return c.json({ ok: true });
+    const result = await storageWriteService.writeTruthFile(id, file, content);
+    if ("error" in result) {
+      return c.json({ error: result.error }, 400);
+    }
+    return c.json(result);
   });
 
   app.delete("/api/books/:id/truth-files/:file", async (c) => {
     const id = c.req.param("id");
     const file = c.req.param("file");
-    if (!isSafeStoryFileName(file)) return c.json({ error: "Invalid file name" }, 400);
-    const bookDir = state.bookDir(id);
     try {
-      const { rm } = await import("node:fs/promises");
-      await rm(join(bookDir, "story", file));
-      return c.json({ ok: true, file });
+      const result = await storageDestructiveService.deleteStoryFile(id, file);
+      if ("error" in result) return c.json({ error: result.error }, 400);
+      return c.json({ ok: result.ok, file: result.file });
     } catch (e) {
       return c.json({ error: String(e) }, 500);
     }
@@ -984,12 +721,10 @@ export function createStorageRouter(ctx: RouterContext): Hono {
   app.delete("/api/books/:id/story-files/:file", async (c) => {
     const id = c.req.param("id");
     const file = c.req.param("file");
-    if (!isSafeStoryFileName(file)) return c.json({ error: "Invalid file name" }, 400);
-    const bookDir = state.bookDir(id);
     try {
-      const { rm } = await import("node:fs/promises");
-      await rm(join(bookDir, "story", file));
-      return c.json({ ok: true, file });
+      const result = await storageDestructiveService.deleteStoryFile(id, file);
+      if ("error" in result) return c.json({ error: result.error }, 400);
+      return c.json({ ok: result.ok, file: result.file });
     } catch (e) {
       return c.json({ error: String(e) }, 500);
     }
@@ -997,40 +732,27 @@ export function createStorageRouter(ctx: RouterContext): Hono {
 
   app.get("/api/books/:id/truth", async (c) => {
     const id = c.req.param("id");
-    const bookDir = state.bookDir(id);
-    const storyDir = join(bookDir, "story");
-    return c.json({ files: await listStoryFiles(storyDir, (file) => TRUTH_FILES.includes(file)) });
+    return c.json(await storyFileReadService.listTruthFiles(id));
   });
 
   app.get("/api/books/:id/truth-files", async (c) => {
     const id = c.req.param("id");
-    const bookDir = state.bookDir(id);
-    const storyDir = join(bookDir, "story");
-    return c.json({ files: await listStoryFiles(storyDir, (file) => TRUTH_FILES.includes(file)) });
+    return c.json(await storyFileReadService.listTruthFiles(id));
   });
 
   app.get("/api/books/:id/story-files", async (c) => {
     const id = c.req.param("id");
-    const bookDir = state.bookDir(id);
-    const storyDir = join(bookDir, "story");
-    return c.json({ files: await listStoryFiles(storyDir) });
+    return c.json(await storyFileReadService.listStoryFiles(id));
   });
 
   app.get("/api/books/:id/story-files/:file", async (c) => {
     const id = c.req.param("id");
     const file = c.req.param("file");
-
-    if (!isSafeStoryFileName(file)) {
-      return c.json({ error: "Invalid story file" }, 400);
+    const result = await storyFileReadService.readStoryFile(id, file);
+    if ("error" in result) {
+      return c.json({ error: result.error }, 400);
     }
-
-    const bookDir = state.bookDir(id);
-    try {
-      const content = await readFile(join(bookDir, "story", file), "utf-8");
-      return c.json({ file, content });
-    } catch {
-      return c.json({ file, content: null });
-    }
+    return c.json(result);
   });
 
   // --- State Projections ---
@@ -1358,20 +1080,10 @@ export function createStorageRouter(ctx: RouterContext): Hono {
   app.post("/api/books/:id/export", async (c) => {
     const id = c.req.param("id");
     const body: { format?: unknown; approvedOnly?: boolean } = await c.req.json<{ format?: unknown; approvedOnly?: boolean }>().catch(() => ({}));
-    const format = normalizeExportFormat(body.format);
-    if (!format) return c.json({ error: `Unsupported export format: ${String(body.format)}` }, 400);
-
-    const chaptersDir = join(state.bookDir(id), "chapters");
     try {
-      await state.loadBookConfig(id);
-      const index = await state.loadChapterIndex(id) as ReadonlyArray<Record<string, unknown>>;
-      const chapters = await loadExportChapters(chaptersDir, index, Boolean(body.approvedOnly));
-      return c.json({
-        fileName: exportFileName(id, format),
-        contentType: exportContentType(format),
-        content: buildExportContent(chapters, format),
-        chapterCount: chapters.length,
-      });
+      const result = await storageWriteService.buildExport(id, body);
+      if ("error" in result) return c.json({ error: result.error }, 400);
+      return c.json(result);
     } catch (error) {
       return c.json({ error: error instanceof Error ? error.message : String(error) }, 500);
     }

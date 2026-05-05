@@ -169,7 +169,10 @@ describe("writing tools routes", () => {
     const response = await postJson(app, "/api/books/book-1/hooks/generate", { chapterNumber: 1 });
 
     expect(response.status).toBe(409);
-    const json = await response.json() as { gate: { ok: boolean; reason: string } };
+    const json = await response.json() as { error: { code: string; message: string }; code: string; capability: string; gate: { ok: boolean; reason: string } };
+    expect(json.error.code).toBe("MODEL_NOT_CONFIGURED");
+    expect(json.code).toBe("MODEL_NOT_CONFIGURED");
+    expect(json.capability).toBe("hooks.generate");
     expect(json.gate.ok).toBe(false);
     expect(json.gate.reason).toBe("model-not-configured");
     expect(coreMocks.generateChapterHooks).not.toHaveBeenCalled();

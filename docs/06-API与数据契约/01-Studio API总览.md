@@ -2,7 +2,7 @@
 
 **版本**: v1.0.2
 **创建日期**: 2026-04-28
-**更新日期**: 2026-05-04
+**更新日期**: 2026-05-05
 **状态**: ✅ 当前有效
 **文档类型**: current
 
@@ -19,6 +19,7 @@
 | 文件 | 作用 |
 |---|---|
 | `packages/studio/src/api/server.ts` | 创建 Hono app，挂载路由，处理 startup、static provider、WebSocket |
+| `packages/studio/src/api/errors.ts` | 统一结构化错误、provider failure envelope、unsupported failure 与错误状态码 helper |
 | `packages/studio/src/api/routes/index.ts` | 路由导出聚合入口 |
 | `packages/studio/src/api/routes/*.ts` | 各能力域的 Hono route 实现 |
 | `packages/studio/src/api/lib/*` | runtime store、session chat、startup diagnostics 等服务 |
@@ -56,6 +57,18 @@ server 对 `/*` 启用 CORS。
 ```
 
 未知错误返回 `INTERNAL_ERROR`。
+
+`packages/studio/src/api/errors.ts` 是当前统一错误 helper 入口：
+
+| helper | 用途 | 当前响应形状 |
+|---|---|---|
+| `buildApiErrorResponse()` | 全局 `ApiError` 转 HTTP status + body | `{ error: { code, message } }` |
+| `buildStructuredErrorEnvelope()` | route 内需要保留 `capability` / `gate` 的结构化失败 | `{ error: { code, message }, code?, capability?, gate? }` |
+| `buildProviderFailureEnvelope()` | provider adapter 失败 | `{ success: false, code, error, capability? }` |
+| `buildUnsupportedCapabilityFailure()` | 未接入能力的 transparent unsupported | `{ success: false, code: "unsupported", error, capability }` |
+| `getProviderFailureHttpStatus()` | provider failure code 到 HTTP 状态码 | `unsupported`→501，`auth-missing`/`config-missing`→422，`upstream-error`/`network-error`→502，未知→500 |
+
+新迁移 route 不应在 route 内部重新拼装 provider failure 或 unsupported envelope；旧 route 的既有错误形状不在 Task 3 中做破坏性改写。
 
 ### Book ID 安全校验
 

@@ -3,10 +3,10 @@ import { Hono } from "hono";
 import {
   createProviderAdapterRegistry,
   type ProviderAdapterRegistry,
-  type RuntimeAdapterFailure,
   type RuntimeAdapterId,
 } from "../lib/provider-adapters/index.js";
 import { buildRuntimeModelPool, buildRuntimeProviderStatus } from "../lib/runtime-model-pool.js";
+import { buildProviderFailureEnvelope, getProviderFailureHttpStatus } from "../errors.js";
 import {
   ProviderRuntimeStore,
   type CreateRuntimeProviderInput,
@@ -30,30 +30,6 @@ function sanitizeProvider(provider: RuntimeProviderRecord) {
       ...restConfig,
       apiKeyConfigured: Boolean(apiKey?.trim()),
     },
-  };
-}
-
-function failureStatus(failure: RuntimeAdapterFailure): 400 | 422 | 500 | 501 | 502 {
-  switch (failure.code) {
-    case "unsupported":
-      return 501;
-    case "auth-missing":
-    case "config-missing":
-      return 422;
-    case "upstream-error":
-    case "network-error":
-      return 502;
-    default:
-      return 500;
-  }
-}
-
-function failureEnvelope(failure: RuntimeAdapterFailure) {
-  return {
-    success: false,
-    code: failure.code,
-    error: failure.error,
-    ...(failure.capability ? { capability: failure.capability } : {}),
   };
 }
 
@@ -229,7 +205,7 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}) {
       const provider = await store.getProvider(id);
       if (!provider) return c.json({ error: "Provider not found" }, 404);
       const result = await adapters.get(adapterIdForProvider(provider)).listModels(providerRef(provider));
-      if (!result.success) return c.json(failureEnvelope(result), failureStatus(result));
+      if (!result.success) return c.json(buildProviderFailureEnvelope(result), getProviderFailureHttpStatus(result));
       const models = await store.upsertModels(id, withRefreshMetadata(result.models));
       const updated = await store.getProvider(id);
       return c.json({ provider: updated ? sanitizeProvider(updated) : undefined, models });
@@ -262,7 +238,7 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}) {
       const patched = await store.patchModel(id, modelId, result.success
         ? { lastTestStatus: "success", lastTestLatency: result.latency, lastTestError: undefined }
         : { lastTestStatus: result.code === "unsupported" ? "unsupported" : "error", lastTestError: result.error });
-      if (!result.success) return c.json({ ...failureEnvelope(result), model: patched }, failureStatus(result));
+      if (!result.success) return c.json({ ...buildProviderFailureEnvelope(result), model: patched }, getProviderFailureHttpStatus(result));
       return c.json({ success: true, latency: result.latency, model: patched });
     } catch (error) {
       console.error("Failed to test provider model:", error);
@@ -338,7 +314,7 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}) {
       const model = firstEnabledModel(provider);
       if (!model) return c.json({ success: false, error: "No enabled model" }, 400);
       const result = await adapters.get(adapterIdForProvider(provider)).testModel({ ...providerRef(provider), modelId: model.id });
-      if (!result.success) return c.json(failureEnvelope(result), failureStatus(result));
+      if (!result.success) return c.json(buildProviderFailureEnvelope(result), getProviderFailureHttpStatus(result));
       return c.json({ success: true, latency: result.latency });
     } catch (error) {
       console.error("Failed to test provider:", error);
