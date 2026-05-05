@@ -49,7 +49,7 @@
   - 支持 dirty 状态、保存、只读、artifact 打开。
   - 验证：打开资源、保存章节/草稿、只读禁用、dirty canvasContext 测试。
 
-- [ ] 9. 实现 Workbench 写作动作入口
+- [x] 9. 实现 Workbench 写作动作入口
   - 新增 `WorkbenchWritingActions.tsx`。
   - 续写、扩写、审校、生成下一章、去 AI 味、连续性检查等动作创建/复用绑定 bookId 的 session 并跳转 Conversation。
   - 验证：会话创建/复用、路由跳转、unsupported 动作禁用。
