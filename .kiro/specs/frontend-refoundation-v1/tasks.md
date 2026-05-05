@@ -59,7 +59,7 @@
   - 旧 WorkspacePage 不再作为主路由默认内容。
   - 验证：全仓搜索主路由导入，typecheck 通过。
 
-- [ ] 11. 迁移或删除失败三栏实验组件
+- [x] 11. 迁移或删除失败三栏实验组件
   - 审计 `SplitView`、`EditorArea`、`ConversationPanel`、`useStudioData`、旧 ChatWindow floating/docked 依赖。
   - 有真实复用价值则迁移到新边界；无价值则从构建路径删除。
   - 验证：无 shim/noop adapter，相关测试更新。
