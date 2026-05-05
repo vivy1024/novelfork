@@ -67,7 +67,7 @@ novelfork/
 ## 核心能力
 
 ### Agent-native 创作工作台
-- 当前重建主线：Backend Contract 已完成验收收口，Frontend Refoundation 执行中（6/12），`/next` 使用 Agent Shell 路由壳，Conversation runtime、单栏 surface、模型/权限状态栏动作与 Tool Result Renderer Registry 已接入，避免继续修补失败三栏实验
+- 当前重建主线：Backend Contract 已完成验收收口，Frontend Refoundation 执行中（7/12），`/next` 使用 Agent Shell 路由壳，Conversation runtime、单栏 surface、模型/权限状态栏动作、Tool Result Renderer Registry 与 Workbench 资源树已接入，避免继续修补失败三栏实验
 - 已有后端能力保留：叙述者会话、WebSocket、工具调用、确认门、权限模式、模型池、候选稿/草稿/经纬/叙事线等真实合同
 - 新前端目标：左侧一级导航、单栏 Agent Conversation、独立 Writing Workbench；所有按钮、资源节点和写作动作必须来自 `packages/studio/src/app-next/backend-contract/` 中登记的真实后端合同
 - 「写下一章」最小链路：驾驶舱快照 → PGI 生成前追问 → GuidedGenerationPlan → 用户批准 → 候选稿生成
