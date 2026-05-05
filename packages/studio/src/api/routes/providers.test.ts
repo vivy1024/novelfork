@@ -91,6 +91,28 @@ describe("providers route runtime store", () => {
     await expect(store.getModel("sub2api", "gpt-5-codex")).resolves.toMatchObject({ lastTestStatus: "success", lastTestLatency: 7 });
   });
 
+  it("provider-level tests persist first model failure status without leaking credentials", async () => {
+    const adapter: RuntimeAdapter = {
+      listModels: vi.fn(async () => ({ success: true as const, models: [] })),
+      testModel: vi.fn(async () => ({ success: false as const, code: "upstream-error" as const, error: "网关 502" })),
+      generate: vi.fn(async () => ({ success: true as const, type: "message" as const, content: "ok" })),
+    };
+    await store.createProvider({ id: "sub2api", name: "Sub2API", type: "custom", enabled: true, priority: 1, apiKeyRequired: true, baseUrl: "https://api.example.com/v1", compatibility: "openai-compatible", apiMode: "responses", config: { apiKey: "sk-secret" }, models: [] });
+    await store.upsertModels("sub2api", [{ id: "gpt-5-codex", name: "GPT-5 Codex", contextWindow: 192000, maxOutputTokens: 8192, source: "detected" }]);
+    const app = createProvidersRouter({ store, adapters: createProviderAdapterRegistry({ "openai-compatible": adapter }) });
+
+    const response = await app.request("http://localhost/sub2api/test", { method: "POST" });
+    const body = await response.json();
+
+    expect(response.status).toBe(502);
+    expect(body).toMatchObject({ success: false, code: "upstream-error", error: "网关 502" });
+    expect(JSON.stringify(body)).not.toContain("sk-secret");
+    await expect(store.getModel("sub2api", "gpt-5-codex")).resolves.toMatchObject({
+      lastTestStatus: "error",
+      lastTestError: "网关 502",
+    });
+  });
+
   it("returns the unified runtime model pool from /models", async () => {
     await store.createProvider({ id: "sub2api", name: "Sub2API", type: "custom", enabled: true, priority: 1, apiKeyRequired: true, config: { apiKey: "sk-secret" }, models: [{ id: "gpt-5-codex", name: "GPT-5 Codex", contextWindow: 192000, maxOutputTokens: 8192, source: "detected" }] });
     const app = createProvidersRouter({ store, adapters: createProviderAdapterRegistry() });
