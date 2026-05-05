@@ -11,7 +11,7 @@
   - 标记不可破坏合同：sessions、providers、books/chapters、candidates/drafts、session tools。
   - 验证：每个清单项有对应测试或需补测试项。
 
-- [ ] 2. 补齐 contract regression tests
+- [x] 2. 补齐 contract regression tests
   - 针对 books、sessions、providers、resources、writing actions 建立回归测试入口。
   - 覆盖成功、404/400、unsupported/gate、脱敏输出。
   - 验证：相关 Vitest 通过。
