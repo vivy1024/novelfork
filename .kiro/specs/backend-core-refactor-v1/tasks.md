@@ -36,7 +36,7 @@
   - 明确软删除/硬删除、前端确认和失败状态。
   - 验证：删除测试覆盖不存在、非法文件名、真实删除结果。
 
-- [ ] 7. 规划 session runtime 内聚拆分
+- [x] 7. 规划 session runtime 内聚拆分
   - 在不改行为的前提下为 transport、recovery、message-store、turn-runner、confirmation 设计边界。
   - 先补 envelope/recovery golden tests，再拆文件。
   - 验证：WebSocket snapshot/replay/ack/abort/confirmation 测试通过。
