@@ -35,6 +35,12 @@ describe("backend contract capability matrix", () => {
     expect(findBackendContractCapability("books.create-status")).toMatchObject({ status: "process-memory" });
     expect(findBackendContractCapability("ai.complete.chunked-buffer")).toMatchObject({ status: "chunked-buffer" });
     expect(findBackendContractCapability("writing-modes.preview")).toMatchObject({ status: "prompt-preview" });
+    expect(findBackendContractCapability("legacy.book-chat.process-memory")).toMatchObject({ status: "process-memory" });
+    expect(findBackendContractCapability("legacy.pipeline-runs.process-memory")).toMatchObject({ status: "process-memory" });
+    expect(findBackendContractCapability("legacy.monitor.unsupported")).toMatchObject({ status: "unsupported" });
+    expect(findBackendContractCapability("legacy.ai-agent.deprecated")).toMatchObject({ status: "deprecated" });
+    expect(findBackendContractCapability("legacy.export.deprecated")).toMatchObject({ status: "deprecated" });
+    expect(findBackendContractCapability("legacy.disabled-routers.unsupported")).toMatchObject({ status: "unsupported" });
   });
 
   it("keeps ids unique so frontend clients can depend on stable capability keys", () => {

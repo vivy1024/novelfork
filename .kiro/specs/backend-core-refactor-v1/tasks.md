@@ -46,7 +46,7 @@
   - 移除任何残留虚拟模型/fallback 口径。
   - 验证：provider routes、model refresh/test、runtime model pool 测试通过。
 
-- [ ] 9. 标记并退役 legacy route
+- [x] 9. 标记并退役 legacy route
   - 全仓搜索 frontend client、docs、tests 中的 legacy 入口。
   - 对仍需保留的写 transparent/deprecated 状态；确认无人依赖后删除。
   - 验证：typecheck、route tests、docs verify。

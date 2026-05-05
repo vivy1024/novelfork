@@ -1,4 +1,4 @@
-export type CapabilityStatus = "current" | "process-memory" | "prompt-preview" | "chunked-buffer" | "unsupported" | "planned";
+export type CapabilityStatus = "current" | "process-memory" | "prompt-preview" | "chunked-buffer" | "unsupported" | "planned" | "deprecated";
 
 export interface CapabilityUiDecision {
   enabled: boolean;
@@ -98,6 +98,20 @@ export function getCapabilityUiDecision(status: CapabilityStatus): CapabilityUiD
         errorVisible: false,
         recoveryNoteVisible: false,
         disabledReason: "该能力仍处于规划状态，当前不可调用。",
+        allowsFetch: false,
+        allowsFormalWrite: false,
+        allowedActions: [],
+      };
+    case "deprecated":
+      return {
+        enabled: false,
+        disabled: true,
+        readonly: true,
+        previewOnly: false,
+        errorVisible: true,
+        recoveryNoteVisible: true,
+        recoveryNote: "该能力是 legacy/deprecated 过渡入口，只允许保留既有依赖，不能新增前端调用。",
+        disabledReason: "该能力已标记为 deprecated，新前端不可新增依赖。",
         allowsFetch: false,
         allowsFormalWrite: false,
         allowedActions: [],
