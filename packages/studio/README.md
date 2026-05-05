@@ -144,6 +144,6 @@ bun run typecheck
 | 经纬 | `/api/books/:id/bible/*`, `/api/books/:id/jingwei/*` |
 | 供应商 | `/api/providers` |
 | 会话 / session tools | `/api/sessions`, `/api/sessions/:id/chat` |
-| 导出 | `/api/books/:id/export` |
+| 导出 | `/api/books/:id/export`（legacy/deprecated，统一导出合同未收敛） |
 | Truth/Story | `/api/books/:id/truth-files`, `/api/books/:id/story-files` |
 | Narrative Line | `/api/books/:id/narrative-line`, `/api/books/:id/narrative-line/propose`, `/api/books/:id/narrative-line/apply` |

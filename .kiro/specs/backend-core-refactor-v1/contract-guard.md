@@ -48,6 +48,20 @@
 
 `createStudioServer` 当前在 standalone 模式挂载的核心 route 包括：auth、runs、workbench、AI、storage、chapter-candidates、snapshots、daemon、MCP、lorebook、bible、jingwei、filter、pipeline、settings、onboarding、providers、aggregations、runtime-capabilities、platform-integrations、proxy、git、agent-config、tools、worktree、workspace、rhythm、golden-chapters、chat、context-manager、admin、routines、presets、compliance、writing-tools、writing-modes、narrative-line、search、sessions、exec、terminals、monitor。Relay 模式仅挂载 auth/runs 与 AI relay。
 
+## Task 9 legacy route 依赖调查记录
+
+2026-05-05 全仓搜索 `packages/studio/src/api/routes`、前端 client、docs 与 tests 后，Task 9 只做标记与依赖冻结，不在本任务中删除仍可能被外部调用的 route。
+
+| 入口 | 搜索到的依赖 | 当前标记 | Task 9 结论 |
+|---|---|---|---|
+| `POST/GET/DELETE /api/chat/:bookId/*` | `ChatPanel`、`chat.test.ts`、API 总览和历史文档；未发现 app-next current contract client 依赖 | `process-memory` / legacy | 保留；长期会话必须走 `/api/sessions` 与 `/api/sessions/:id/chat`，退役前先移除 legacy ChatPanel/tests/docs。 |
+| `GET /api/pipeline*` | `server.ts` mount 与 API 总览；未发现前端 current client 依赖 | `process-memory` / transparent | 保留为调试透明运行态；不得描述为持久化 run history。 |
+| `GET /api/monitor/status`、`WS /api/monitor/logs` | `MonitorWidget`、`monitor.test.ts`、mock debt ledger 和 API 总览 | `unsupported` / planned | 保留 visible unsupported；接入真实 daemon/runtime 事件源前不得返回假 stopped 或实时日志。 |
+| `POST /api/agent` | 仅 route 定义命中；未发现前端 client、docs 或 tests 依赖 | `deprecated` / candidate-retirement | 候选退役；新入口使用 `/api/sessions`、`/api/exec` 或 session tools。 |
+| `GET/POST /api/books/:id/export`、`POST /api/books/:id/export-save` | README、创作流程、API 文档与 server integration tests 仍引用 | `deprecated` / legacy export | 保留到统一导出 contract/client 落地；新 UI 接入前先补 matrix、client/adapter 与 route tests。 |
+| `POST /api/ai/transform`、`/api/ai/context-assembly`、`/api/ai/outline` | 旧 `ContextPanel` / `OutlinePanel` 及测试仍引用，app-next current contract 主线不依赖 | `deprecated` / legacy panel | 禁止新增直连依赖；后续迁入 session tools 或 resource/writing action adapter。 |
+| `src/api/routes/poison-detector.ts`、`hooks-countdown.ts` | `tsconfig`/`tsconfig.server` exclude、`routes/index.ts` 与 `server.ts` 注释导出 | `unsupported` / unmounted | 保持不挂载；恢复前必须重构为 Hono/current route 并补 contract。 |
+
 ## Task 2 补测清单
 
 - `routes/storage.ts` 中 books/detail/chapter create-save-read-delete/story/truth 的 route regression 需要补齐，避免 task 4-6 拆 storage 时只靠前端 adapter test。

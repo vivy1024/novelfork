@@ -16,6 +16,7 @@
 - Backend Core Refactor：完成 Task 6 destructive 能力拆分，新增 `storage-destructive-service.ts` / `candidate-destructive-service.ts` 与 service 单测，将 book/chapter/story file/truth file/candidate/draft 硬删除逻辑从 route adapter 中迁出，保留 route 层确认入口、旧 envelope 与不存在/非法文件名失败状态。
 - Backend Core Refactor：完成 Task 7 session runtime 内聚拆分，新增 `session-runtime/transport.ts` 与 `session-runtime/recovery.ts`，先以 envelope/recovery golden tests 固化 WebSocket envelope、payload parse、cursor、ack、replay metadata 与 failure recovery，再让 `session-chat-service.ts` 复用这些 helper，保持 REST snapshot/history、WebSocket replay/ack/abort 与 confirmation API 行为不变。
 - Backend Core Refactor：完成 Task 8 Provider/runtime store 边界收敛，新增 provider-level test 状态写回回归测试，让 `POST /api/providers/:id/test` 与单模型测试一致将真实 `lastTestStatus/lastTestError` 写回 runtime store，同时保留脱敏输出、真实模型池与 adapter failure code。
+- Backend Core Refactor：完成 Task 9 legacy route 依赖调查与标记，扩展 Backend Contract matrix 支持 `deprecated` 状态，并登记轻量 `/api/chat`、`/api/pipeline`、`/api/monitor`、旧 `/api/agent`、旧导出入口、旧 AI 面板直连接口与未挂载 router 的保留/候选退役边界。
 
 ### 文档
 - 新增 `backend-contract-v1`、`frontend-refoundation-v1` 与 `backend-core-refactor-v1` Kiro specs，将后续主线调整为先冻结真实后端能力合同，再基于 Agent Shell + Writing Workbench 重建前端，最后按合同分阶段整理后端核心；`novelfork-ui-v1` 保留为被取代的过渡参考。
@@ -24,6 +25,7 @@
 - 同步 `backend-core-refactor-v1` Task 4/5/6 文档口径：tasks/spec 索引更新为 6/10，Studio README 与 API 验证事实源记录 storage 只读、非破坏写入和 destructive service 拆分。
 - 同步 `backend-core-refactor-v1` Task 7 文档口径：tasks/spec 索引更新为 7/10，README、AGENTS、当前执行主线、Studio README 与 API 文档记录 session runtime transport/recovery helper 边界和验证事实源。
 - 同步 `backend-core-refactor-v1` Task 8 文档口径：tasks/spec 索引更新为 8/10，README、AGENTS、当前执行主线与 API 文档记录 provider test 状态写回、runtime store 脱敏和真实模型池边界。
+- 同步 `backend-core-refactor-v1` Task 9 文档口径：tasks/spec 索引更新为 9/10，contract guard、Studio API 文档与 Studio README 记录 legacy/deprecated route 依赖调查、保留条件与候选退役清单。
 
 ## v0.0.6 (2026-05-04)
 
