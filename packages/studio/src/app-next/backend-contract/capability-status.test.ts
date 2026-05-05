@@ -24,7 +24,7 @@ describe("capability status UI decision", () => {
     expect(decision.allowedActions).toEqual(["preview", "copy", "convert-to-candidate", "convert-to-draft", "explicit-apply"]);
   });
 
-  it("maps unsupported and planned to disabled UI with visible explanation", () => {
+  it("maps unsupported, planned and deprecated to disabled UI with visible explanation", () => {
     expect(getCapabilityUiDecision("unsupported")).toMatchObject({
       enabled: false,
       disabled: true,
@@ -40,10 +40,20 @@ describe("capability status UI decision", () => {
       errorVisible: false,
       allowsFetch: false,
     });
+    expect(getCapabilityUiDecision("deprecated")).toMatchObject({
+      enabled: false,
+      disabled: true,
+      readonly: true,
+      errorVisible: true,
+      recoveryNoteVisible: true,
+      allowsFetch: false,
+      allowsFormalWrite: false,
+    });
     expect(isCapabilityInteractive("unsupported")).toBe(false);
+    expect(isCapabilityInteractive("deprecated")).toBe(false);
   });
 
-  it("keeps visible disabled reasons for unsupported and planned capabilities", () => {
+  it("keeps visible disabled reasons for unsupported, planned and deprecated capabilities", () => {
     expect(getCapabilityUiDecision("unsupported")).toMatchObject({
       disabled: true,
       disabledReason: "当前后端或模型适配器不支持该能力。",
@@ -54,7 +64,13 @@ describe("capability status UI decision", () => {
       disabledReason: "该能力仍处于规划状态，当前不可调用。",
       errorVisible: false,
     });
+    expect(getCapabilityUiDecision("deprecated")).toMatchObject({
+      disabled: true,
+      disabledReason: "该能力已标记为 deprecated，新前端不可新增依赖。",
+      errorVisible: true,
+    });
     expect(normalizeCapability({ id: "future.tool", status: "planned" }).ui.disabledReason).toContain("规划");
+    expect(normalizeCapability({ id: "legacy.agent", status: "deprecated" }).ui.recoveryNote).toContain("legacy/deprecated");
   });
 
   it("maps process-memory to enabled UI with recovery note", () => {
