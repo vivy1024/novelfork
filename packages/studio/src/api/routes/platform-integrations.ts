@@ -7,6 +7,7 @@ import {
   type RuntimePlatformAccountView,
   type RuntimePlatformId,
 } from "../lib/provider-runtime-store.js";
+import { buildUnsupportedCapabilityFailure } from "../errors.js";
 
 export type PlatformImportMethod = "json-account" | "local-auth-json" | "oauth" | "device-code";
 
@@ -67,15 +68,6 @@ function isPlatformId(value: string): value is RuntimePlatformId {
 
 function supportsImport(platformId: RuntimePlatformId, method: PlatformImportMethod): boolean {
   return PLATFORM_CATALOG.find((platform) => platform.id === platformId)?.supportedImportMethods.includes(method) ?? false;
-}
-
-function unsupported(capability: string) {
-  return {
-    success: false,
-    code: "unsupported",
-    capability,
-    error: `Capability unsupported: ${capability}`,
-  };
 }
 
 function readStringField(source: Record<string, unknown>, keys: readonly string[]): string | undefined {
@@ -225,7 +217,7 @@ export function createPlatformIntegrationsRouter(options: PlatformIntegrationsRo
     }
 
     if (!supportsImport(platformId, "json-account")) {
-      return c.json(unsupported(`platform.${platformId}.json-import`), 501);
+      return c.json(buildUnsupportedCapabilityFailure(`platform.${platformId}.json-import`), 501);
     }
 
     try {

@@ -20,7 +20,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createRuntimeJsonLineSink } from "./lib/runtime-log-sink.js";
 import { isSafeBookId } from "./safety.js";
-import { ApiError } from "./errors.js";
+import { ApiError, buildApiErrorResponse } from "./errors.js";
 import { readSessionFromCookie } from "./auth.js";
 import { createFilesystemStaticProvider, type StaticProvider, type StaticProviderDescription } from "./static-provider.js";
 import { startHttpServer } from "./start-http-server.js";
@@ -161,7 +161,8 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
   // Structured error handler
   app.onError((error, c) => {
     if (error instanceof ApiError) {
-      return c.json({ error: { code: error.code, message: error.message } }, error.status as 400);
+      const response = buildApiErrorResponse(error);
+      return c.json(response.body, response.status);
     }
     return c.json(
       { error: { code: "INTERNAL_ERROR", message: "Unexpected server error." } },

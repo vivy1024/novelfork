@@ -19,7 +19,13 @@ src/
 │   │   ├── providers.ts     # AI 供应商
 │   │   ├── compliance.ts    # 合规/发布检查
 │   │   └── ...
+│   ├── errors.ts       # 统一 API 错误与状态 helper
 │   ├── lib/            # 业务逻辑
+│   │   ├── books-service.ts        # 书籍只读 service
+│   │   ├── story-file-service.ts   # story/truth 只读 service
+│   │   ├── storage-write-service.ts # storage 非破坏写入 service
+│   │   ├── storage-destructive-service.ts # storage 硬删除 service
+│   │   ├── candidate-destructive-service.ts # 候选/草稿硬删除 service
 │   │   ├── session-chat-service.ts # Agent 会话
 │   │   ├── agent-context.ts       # 上下文注入
 │   │   ├── tool-catalog.ts        # 统一工具目录
