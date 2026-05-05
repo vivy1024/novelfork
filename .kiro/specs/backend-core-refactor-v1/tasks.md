@@ -41,7 +41,7 @@
   - 先补 envelope/recovery golden tests，再拆文件。
   - 验证：WebSocket snapshot/replay/ack/abort/confirmation 测试通过。
 
-- [ ] 8. 收敛 Provider/runtime store 边界
+- [x] 8. 收敛 Provider/runtime store 边界
   - 保持脱敏输出、真实模型池、adapter failure code。
   - 移除任何残留虚拟模型/fallback 口径。
   - 验证：provider routes、model refresh/test、runtime model pool 测试通过。
