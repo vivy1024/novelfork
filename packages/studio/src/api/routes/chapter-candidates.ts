@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { access, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
+import { createCandidateDestructiveService } from "../lib/candidate-destructive-service.js";
 
 export type ChapterCandidateStatus = "candidate" | "accepted" | "rejected" | "archived";
 export type ChapterCandidateAcceptAction = "merge" | "replace" | "draft";
@@ -74,6 +75,7 @@ export function createChapterCandidatesRouter(root: string, options: ChapterCand
   const app = new Hono();
   const now = options.now ?? (() => new Date());
   const createId = options.createId ?? (() => randomUUID());
+  const destructiveService = createCandidateDestructiveService({ root });
 
   app.get("/api/books/:id/candidates", async (c) => {
     const bookId = c.req.param("id");
@@ -222,33 +224,15 @@ export function createChapterCandidatesRouter(root: string, options: ChapterCand
   });
 
   app.delete("/api/books/:id/drafts/:draftId", async (c) => {
-    const bookId = c.req.param("id");
-    const draftId = c.req.param("draftId");
-    const bookDir = join(root, "books", bookId);
-    const drafts = await loadDrafts(bookDir);
-    const existing = findDraft(drafts, draftId);
-    if (!existing) return c.json({ error: "Draft not found" }, 404);
-    try {
-      const { rm } = await import("node:fs/promises");
-      await rm(join(bookDir, DRAFTS_DIR, existing.fileName));
-    } catch { /* file may already be gone */ }
-    await saveDrafts(bookDir, drafts.filter((d) => d.id !== draftId));
-    return c.json({ ok: true, draftId });
+    const result = await destructiveService.deleteDraft(c.req.param("id"), c.req.param("draftId"));
+    if ("error" in result) return c.json({ error: result.error }, 404);
+    return c.json({ ok: result.ok, draftId: result.draftId });
   });
 
   app.delete("/api/books/:id/candidates/:candidateId", async (c) => {
-    const bookId = c.req.param("id");
-    const candidateId = c.req.param("candidateId");
-    const bookDir = join(root, "books", bookId);
-    const candidates = await loadCandidates(bookDir);
-    const record = findCandidate(candidates, candidateId);
-    if (!record) return c.json({ error: "Candidate not found" }, 404);
-    try {
-      const { rm } = await import("node:fs/promises");
-      await rm(join(bookDir, CANDIDATES_DIR, record.contentFileName));
-    } catch { /* file may already be gone */ }
-    await saveCandidates(bookDir, candidates.filter((c) => c.id !== candidateId));
-    return c.json({ ok: true, candidateId });
+    const result = await destructiveService.deleteCandidate(c.req.param("id"), c.req.param("candidateId"));
+    if ("error" in result) return c.json({ error: result.error }, 404);
+    return c.json({ ok: result.ok, candidateId: result.candidateId });
   });
 
   return app;
