@@ -115,7 +115,7 @@ bun run typecheck
 |------|------|
 | `/next` | 当前入口；Agent Shell 路由壳 |
 | `/next/narrators/:sessionId` | 已挂载单栏 Conversation 壳，接入合同快照、WebSocket `resumeFromSeq`、ack/message/abort runtime，并具备消息流/工具卡/确认门/状态栏/Composer、recovery notice、模型/权限状态栏动作与 Tool Result Renderer Registry |
-| `/next/books/:bookId` | 已挂载独立 Writing Workbench 壳，后续继续接入真实资源数据 |
+| `/next/books/:bookId` | 已挂载独立 Writing Workbench 壳，Workbench 资源树已接入 resource contract adapter 映射，后续继续完善 canvas 与资源 viewer |
 | `/next/settings` | 设置 |
 | `/next/routines` | 套路 |
 | `/next/search` | 搜索 |

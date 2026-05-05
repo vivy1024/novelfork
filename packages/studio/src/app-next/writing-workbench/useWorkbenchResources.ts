@@ -1,18 +1,13 @@
 import { useMemo } from "react";
 
-import type { WorkspaceResourceSnapshot } from "../../shared/contracts";
+import {
+  loadResourceTreeFromContract,
+  type ContractResourceCapabilities,
+  type ContractResourceNode,
+  type ResourceDomainClient,
+} from "../backend-contract/resource-tree-adapter";
 
-export type WorkbenchResourceKind =
-  | "book"
-  | "group"
-  | "chapter"
-  | "candidate"
-  | "draft"
-  | "story"
-  | "truth"
-  | "bible-entry"
-  | "storyline"
-  | "unsupported";
+export type WorkbenchResourceKind = ContractResourceNode["kind"] | "bible-entry" | "storyline";
 
 export interface WorkbenchResourceCapabilities {
   open: boolean;
@@ -29,89 +24,62 @@ export interface WorkbenchResourceNode {
   title: string;
   content?: string;
   path?: string;
+  metadata?: Record<string, unknown>;
   capabilities: WorkbenchResourceCapabilities;
   children?: WorkbenchResourceNode[];
 }
 
-const READONLY: WorkbenchResourceCapabilities = { open: true, readonly: true, unsupported: false, edit: false, delete: false, apply: false };
-const EDITABLE: WorkbenchResourceCapabilities = { open: true, readonly: false, unsupported: false, edit: true, delete: false, apply: false };
-const MUTABLE: WorkbenchResourceCapabilities = { open: true, readonly: false, unsupported: false, edit: true, delete: true, apply: false };
-const CANDIDATE: WorkbenchResourceCapabilities = { open: true, readonly: false, unsupported: false, edit: true, delete: true, apply: true };
+export interface WorkbenchResourcesResult {
+  tree: WorkbenchResourceNode[];
+  resourceMap: Map<string, WorkbenchResourceNode>;
+  openableNodes: WorkbenchResourceNode[];
+  errors: WorkbenchResourceNode[];
+}
 
-function group(id: string, title: string, children: WorkbenchResourceNode[]): WorkbenchResourceNode {
+function isCurrent(capability: ContractResourceCapabilities[keyof ContractResourceCapabilities] | undefined): boolean {
+  return capability?.status === "current";
+}
+
+function isUnsupported(capability: ContractResourceCapabilities[keyof ContractResourceCapabilities] | undefined): boolean {
+  return capability?.status === "unsupported";
+}
+
+function mapCapabilities(kind: WorkbenchResourceKind, capabilities: ContractResourceCapabilities): WorkbenchResourceCapabilities {
+  const edit = isCurrent(capabilities.edit);
+  const unsupported = kind === "unsupported" || isUnsupported(capabilities.unsupported);
+  const open = kind !== "group" && (isCurrent(capabilities.read) || unsupported);
+
   return {
-    id,
-    kind: "group",
-    title,
-    capabilities: { open: false, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
-    children,
+    open,
+    readonly: !edit,
+    unsupported,
+    edit,
+    delete: isCurrent(capabilities.delete),
+    apply: isCurrent(capabilities.apply),
   };
 }
 
-export function buildWorkbenchResourceTree(snapshot: WorkspaceResourceSnapshot): WorkbenchResourceNode[] {
-  const bookId = snapshot.book.id;
-  const chapters = snapshot.chapters.map((chapter) => ({
-    id: `chapter:${bookId}:${chapter.number}`,
-    kind: "chapter" as const,
-    title: chapter.title || `第 ${chapter.number} 章`,
-    capabilities: EDITABLE,
-  }));
-  const candidates = (snapshot.generatedChapters ?? []).map((candidate) => ({
-    id: `candidate:${candidate.id}`,
-    kind: "candidate" as const,
-    title: candidate.title,
-    content: candidate.content ?? undefined,
-    capabilities: CANDIDATE,
-  }));
-  const drafts = (snapshot.drafts ?? []).map((draft) => ({
-    id: `draft:${draft.id}`,
-    kind: "draft" as const,
-    title: draft.title,
-    content: draft.content,
-    capabilities: MUTABLE,
-  }));
-  const storyFiles = (snapshot.storyFiles ?? []).map((file) => ({
-    id: `story-file:${file.id}`,
-    kind: "story" as const,
-    title: file.title,
-    path: file.path,
-    capabilities: READONLY,
-  }));
-  const truthFiles = (snapshot.truthFiles ?? []).map((file) => ({
-    id: `truth-file:${file.id}`,
-    kind: "truth" as const,
-    title: file.title,
-    path: file.path,
-    capabilities: READONLY,
-  }));
-  const bibleEntries = (snapshot.bibleEntries ?? []).map((entry) => ({
-    id: `bible-entry:${entry.category}:${entry.id}`,
-    kind: "bible-entry" as const,
-    title: entry.title,
-    content: entry.summary,
-    capabilities: READONLY,
-  }));
+function toWorkbenchResourceNode(node: ContractResourceNode): WorkbenchResourceNode {
+  return {
+    id: node.id,
+    kind: node.kind,
+    title: node.title,
+    content: node.content ?? undefined,
+    path: node.path,
+    metadata: node.metadata,
+    capabilities: mapCapabilities(node.kind, node.capabilities),
+    children: node.children?.map(toWorkbenchResourceNode),
+  };
+}
 
-  return [
-    {
-      id: `book:${bookId}`,
-      kind: "book",
-      title: snapshot.book.title,
-      capabilities: { open: true, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
-      children: [
-        group("group:chapters", "章节", chapters),
-        group("group:candidates", "候选稿", candidates),
-        group("group:drafts", "草稿", drafts),
-        group("group:story", "Story 文件", storyFiles),
-        group("group:truth", "Truth 文件", truthFiles),
-        group("group:bible", "经纬资料", bibleEntries),
-        group("group:storyline", "叙事线", [
-          { id: "storyline:foreshadowing", kind: "storyline", title: "伏笔线", capabilities: READONLY },
-          { id: "storyline:conflicts", kind: "storyline", title: "冲突线", capabilities: READONLY },
-        ]),
-      ],
-    },
-  ];
+function createWorkbenchResourcesResult(tree: WorkbenchResourceNode[], errors: WorkbenchResourceNode[] = []): WorkbenchResourcesResult {
+  const resourceMap = flattenWorkbenchResourceTree(tree);
+  const openableNodes = Array.from(resourceMap.values()).filter((node) => node.capabilities.open);
+  return { tree, resourceMap, openableNodes, errors };
+}
+
+export function buildWorkbenchResourceTree(nodes: readonly ContractResourceNode[]): WorkbenchResourceNode[] {
+  return nodes.map(toWorkbenchResourceNode);
 }
 
 export function flattenWorkbenchResourceTree(nodes: readonly WorkbenchResourceNode[]): Map<string, WorkbenchResourceNode> {
@@ -124,12 +92,13 @@ export function flattenWorkbenchResourceTree(nodes: readonly WorkbenchResourceNo
   return result;
 }
 
-export function useWorkbenchResources(snapshot: WorkspaceResourceSnapshot) {
-  return useMemo(() => {
-    const tree = buildWorkbenchResourceTree(snapshot);
-    const resourceMap = flattenWorkbenchResourceTree(tree);
-    const openableNodes = Array.from(resourceMap.values()).filter((node) => node.capabilities.open);
+export async function loadWorkbenchResourcesFromContract(resource: ResourceDomainClient, bookId: string): Promise<WorkbenchResourcesResult> {
+  const result = await loadResourceTreeFromContract(resource, bookId);
+  const tree = buildWorkbenchResourceTree(result.tree);
+  const errors = buildWorkbenchResourceTree(result.errors);
+  return createWorkbenchResourcesResult(tree, errors);
+}
 
-    return { tree, resourceMap, openableNodes };
-  }, [snapshot]);
+export function useWorkbenchResources(nodes: readonly ContractResourceNode[]) {
+  return useMemo(() => createWorkbenchResourcesResult(buildWorkbenchResourceTree(nodes)), [nodes]);
 }
