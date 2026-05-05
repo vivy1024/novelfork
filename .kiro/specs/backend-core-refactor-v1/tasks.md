@@ -6,7 +6,7 @@
 
 ## Tasks
 
-- [ ] 1. 建立后端合同守护清单
+- [x] 1. 建立后端合同守护清单
   - 从 backend-contract-v1 提取 route/tool/shared type 映射。
   - 标记不可破坏合同：sessions、providers、books/chapters、candidates/drafts、session tools。
   - 验证：每个清单项有对应测试或需补测试项。
