@@ -19,8 +19,6 @@ import type {
   WorkspaceResourceRef,
 } from "../../shared/agent-native-workspace.js";
 import type {
-  NarratorSessionChatClientMessage,
-  NarratorSessionChatCursor,
   NarratorSessionChatErrorEnvelope,
   NarratorSessionChatHistory,
   NarratorSessionChatMessage,
@@ -43,6 +41,21 @@ import {
   updateSessionChatAckedSeq,
   updateSessionChatRecoveryJson,
 } from "./session-history-store.js";
+import {
+  normalizeSessionTransportPayload as normalizeMessageText,
+  parseSessionClientMessage as parseClientMessage,
+  sendSessionEnvelope as sendEnvelope,
+  serializeSessionEnvelope as serializeEnvelope,
+  type SessionChatTransport,
+} from "./session-runtime/transport.js";
+import {
+  buildSessionRecoveryMetadata as buildRecoveryMetadata,
+  createSessionChatCursor as createCursor,
+  getLastSessionSeq as getLastSeq,
+  normalizeSessionMessages,
+  sanitizeSeq,
+  serializeSessionRecoveryMetadata as serializeRecoveryMetadata,
+} from "./session-runtime/recovery.js";
 import { generateSessionReply, type LlmRuntimeMetadata } from "./llm-runtime-service.js";
 import { getSessionById, updateSession } from "./session-service.js";
 import { buildAgentContext } from "./agent-context.js";
@@ -119,11 +132,6 @@ export function configureSessionToolExecutor(options: SessionToolExecutorOptions
   sessionToolExecutor = createSessionToolExecutor(options);
 }
 
-interface SessionChatTransport {
-  send(data: string): void;
-  close(code?: number, reason?: string): void;
-}
-
 interface SessionChatTransportState {
   ackedSeq: number;
 }
@@ -194,57 +202,6 @@ function broadcastStreamChunk(sessionId: string, state: SessionChatRuntimeState,
   }
 }
 
-function sanitizeSeq(value: unknown): number {
-  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
-    return Math.floor(value);
-  }
-  if (typeof value === "string") {
-    const parsed = Number.parseInt(value, 10);
-    if (Number.isFinite(parsed) && parsed > 0) {
-      return parsed;
-    }
-  }
-  return 0;
-}
-
-function normalizeTimestamp(value: unknown): number {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return value;
-  }
-  if (typeof value === "string") {
-    const parsed = Date.parse(value);
-    if (Number.isFinite(parsed)) {
-      return parsed;
-    }
-  }
-  return Date.now();
-}
-
-function getLastSeq(messages: NarratorSessionChatMessage[]): number {
-  return messages.at(-1)?.seq ?? 0;
-}
-
-function normalizeSessionMessages(
-  messages: NarratorSessionChatMessage[] | undefined,
-  messageCount: number,
-): NarratorSessionChatMessage[] {
-  const sourceMessages = Array.isArray(messages) ? messages : [];
-  const effectiveCount = Math.max(messageCount, sourceMessages.length);
-  let nextSeq = Math.max(1, effectiveCount - sourceMessages.length + 1);
-
-  return sourceMessages.map((message) => {
-    const candidateSeq = sanitizeSeq(message.seq);
-    const seq = candidateSeq >= nextSeq ? candidateSeq : nextSeq;
-    nextSeq = seq + 1;
-
-    return {
-      ...message,
-      timestamp: normalizeTimestamp(message.timestamp),
-      seq,
-    };
-  });
-}
-
 function createRuntimeState(
   initialMessageCount = 0,
   initialMessages: NarratorSessionChatMessage[] = [],
@@ -296,54 +253,12 @@ function getRuntimeState(
   return state;
 }
 
-function serializeEnvelope(envelope: NarratorSessionChatServerEnvelope): string {
-  return JSON.stringify(envelope);
-}
-
-function sendEnvelope(transport: SessionChatTransport, envelope: NarratorSessionChatServerEnvelope): boolean {
-  try {
-    transport.send(serializeEnvelope(envelope));
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 function trimSessionMessages(state: SessionChatRuntimeState): void {
   if (state.messages.length <= MAX_SESSION_MESSAGES) {
     return;
   }
 
   state.messages = state.messages.slice(-MAX_SESSION_MESSAGES);
-}
-
-function getPendingToolCalls(messages: NarratorSessionChatMessage[]): ToolCall[] {
-  return messages.flatMap((message) => message.toolCalls ?? []).filter((toolCall) => toolCall.status === "pending" || toolCall.status === "running");
-}
-
-function buildRecoveryMetadata(
-  state: SessionChatRuntimeState,
-  messages: NarratorSessionChatMessage[],
-  failure?: NarratorSessionRecoveryMetadata["lastFailure"],
-): NarratorSessionRecoveryMetadata {
-  const lastSeq = Math.max(state.messageCount, getLastSeq(messages));
-  const lastAckedSeq = Math.max(0, Math.min(state.persistedAckedSeq, lastSeq));
-  const pendingToolCalls = getPendingToolCalls(messages);
-  const pendingMessageCount = messages.filter((message) => (message.seq ?? 0) > lastAckedSeq).length;
-  return {
-    lastSeq,
-    lastAckedSeq,
-    availableFromSeq: state.availableFromSeq,
-    pendingMessageCount,
-    pendingToolCallCount: pendingToolCalls.length,
-    pendingToolCallSummary: pendingToolCalls.slice(0, 5).map((toolCall) => `${toolCall.toolName}:${toolCall.status ?? "pending"}`),
-    ...(failure ? { lastFailure: failure } : {}),
-    updatedAt: new Date().toISOString(),
-  };
-}
-
-function serializeRecoveryMetadata(metadata: NarratorSessionRecoveryMetadata): string {
-  return JSON.stringify(metadata);
 }
 
 function buildServerFirstSession(session: NarratorSessionRecord, state: SessionChatRuntimeState): NarratorSessionRecord {
@@ -357,14 +272,6 @@ function buildServerFirstSession(session: NarratorSessionRecord, state: SessionC
     recentMessages,
     recovery,
     cumulativeUsage: state.cumulativeUsage,
-  };
-}
-
-function createCursor(state: SessionChatRuntimeState, ackedSeq = state.persistedAckedSeq): NarratorSessionChatCursor {
-  const lastSeq = Math.max(state.messageCount, getLastSeq(state.messages));
-  return {
-    lastSeq,
-    ackedSeq: Math.max(0, Math.min(Math.floor(ackedSeq), lastSeq)),
   };
 }
 
@@ -460,67 +367,6 @@ async function loadSessionState(sessionId: string): Promise<{ session: NarratorS
   state.nextSeq = Math.max(state.nextSeq, state.messageCount + 1, getLastSeq(state.messages) + 1);
 
   return { session, state };
-}
-
-function normalizeMessageText(raw: RawData | string | ArrayBuffer | ArrayBufferView | Blob | unknown): Promise<string | null> | string | null {
-  if (typeof raw === "string") {
-    return raw;
-  }
-
-  if (typeof Blob !== "undefined" && raw instanceof Blob) {
-    return raw.text();
-  }
-
-  if (raw instanceof Uint8Array) {
-    return new TextDecoder().decode(raw);
-  }
-
-  if (raw instanceof ArrayBuffer) {
-    return new TextDecoder().decode(new Uint8Array(raw));
-  }
-
-  if (ArrayBuffer.isView(raw)) {
-    return new TextDecoder().decode(new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength));
-  }
-
-  if (typeof raw === "object" && raw !== null && "toString" in raw) {
-    return String(raw);
-  }
-
-  return null;
-}
-
-function parseClientMessage(text: string): NarratorSessionChatClientMessage {
-  try {
-    const parsed = JSON.parse(text) as Partial<NarratorSessionChatClientMessage> | string;
-    if (typeof parsed === "string") {
-      return { content: parsed };
-    }
-    if (parsed?.type === "session:ack") {
-      return {
-        type: "session:ack",
-        sessionId: parsed.sessionId,
-        ack: sanitizeSeq((parsed as { ack?: unknown }).ack),
-      };
-    }
-    if (parsed?.type === "session:abort") {
-      return {
-        type: "session:abort",
-        sessionId: (parsed as { sessionId?: string }).sessionId,
-      };
-    }
-    if (parsed && typeof (parsed as { content?: unknown }).content === "string") {
-      return {
-        ...(parsed as Record<string, unknown>),
-        content: (parsed as { content: string }).content,
-        ack: sanitizeSeq((parsed as { ack?: unknown }).ack),
-      } as NarratorSessionChatClientMessage;
-    }
-  } catch {
-    // Treat raw text as a chat message payload.
-  }
-
-  return { content: text };
 }
 
 function sanitizeCanvasContext(value: unknown): CanvasContext | undefined {
