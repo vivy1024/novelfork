@@ -39,7 +39,7 @@
   - 支持 artifact 的“在画布打开”动作。
   - 验证：每个 renderer 至少一个 smoke test，unknown fallback 保留 raw data。
 
-- [ ] 7. 实现 Writing Workbench 数据和资源树
+- [x] 7. 实现 Writing Workbench 数据和资源树
   - 新增 `writing-workbench/useWorkbenchResources.ts`、`WorkbenchResourceTree.tsx`。
   - 通过 resource contract adapter 组装章节、候选稿、草稿、经纬、story/truth、叙事线资源节点。
   - 验证：资源节点类型、unsupported/readonly/edit capability 测试。
