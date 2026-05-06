@@ -20,15 +20,23 @@
 - Backend Core Refactor：完成 Task 7 session runtime 内聚拆分，新增 `session-runtime/transport.ts` 与 `session-runtime/recovery.ts`，先以 envelope/recovery golden tests 固化 WebSocket envelope、payload parse、cursor、ack、replay metadata 与 failure recovery，再让 `session-chat-service.ts` 复用这些 helper，保持 REST snapshot/history、WebSocket replay/ack/abort 与 confirmation API 行为不变。
 - Backend Core Refactor：完成 Task 8 Provider/runtime store 边界收敛，新增 provider-level test 状态写回回归测试，让 `POST /api/providers/:id/test` 与单模型测试一致将真实 `lastTestStatus/lastTestError` 写回 runtime store，同时保留脱敏输出、真实模型池与 adapter failure code。
 - Backend Core Refactor：完成 Task 9 legacy route 依赖调查与标记，扩展 Backend Contract matrix 支持 `deprecated` 状态，并登记轻量 `/api/chat`、`/api/pipeline`、`/api/monitor`、旧 `/api/agent`、旧导出入口、旧 AI 面板直连接口与未挂载 router 的保留/候选退役边界。
+- Backend Core Refactor：完成 Task 10 文档与验收收口，更新 API 文档、存储层开发指引、README、AGENTS、spec 索引、当前执行主线、测试状态与 CHANGELOG，将 `backend-core-refactor-v1` 标记为 10/10 已完成，并记录后端合同/storage/session/provider/legacy route 聚焦回归、Studio typecheck、docs verify 证据。
+
+### 修复
+- UI Live Parity Hardening Task 2：工作台资源打开改为先通过 `ResourceDetailLoader` hydrate 详情，再渲染可编辑画布；章节、Story/Truth、草稿 preview 会调用真实详情 API，候选稿、经纬条目、叙事线按当前合同透明处理；列表预览节点标记为 preview，未 hydrate 时禁用编辑器与保存，避免空 textarea 覆盖正文；资源切换加载详情期间保留当前画布并显示真实 loading/error/retry 状态。当前验证包含 `ResourceDetailLoader`、`WorkbenchCanvas`、`StudioNextApp`、`useWorkbenchResources` 定向回归和 Studio typecheck；打开→修改→保存→刷新读回浏览器闭环仍留给 Task 3-4。
+- UI Live Parity Hardening Task 3：新增 `ResourceSaveController` 保存控制器，保存前拒绝未 hydrate preview、列表预览与候选稿直接覆盖，章节/Truth/草稿/经纬条目按 kind 调真实合同；章节、Truth 与草稿保存后重新读取详情并回填画布，保存失败保留本地 dirty 内容；工作台切换资源时 dirty guard 会阻止丢弃未保存文本并提供“放弃并切换”，dirty 状态下禁用写作动作启动，防止带未保存上下文触发写入链路。当前验证包含保存控制器、资源详情、WorkbenchCanvas、StudioNextApp、useWorkbenchResources 与 domain client 聚焦回归，Studio typecheck 与 docs verify 通过；真实浏览器刷新读回仍留给 Task 4。
+- UI Live Parity Hardening Task 4：新增 `e2e/workbench-resource-edit.spec.ts`，通过真实 Playwright 浏览器启动 Bun API + Vite 前端，走 `/next/books/:bookId` 页面完成章节打开、textarea 正文显示、修改、保存、刷新后重新打开并读回修改内容；测试用真实 Studio API 创建书籍与章节，并用 `GET /api/books/:id/chapters/1` 校验持久化结果。验证 `pnpm exec playwright test e2e/workbench-resource-edit.spec.ts` 通过（1 passed）。
+- UI Live Parity Hardening Task 5：Shell 数据切换为 `useSyncExternalStore` store，新增 `upsertSession` 与 `invalidate`，工作台写作动作创建 session 后乐观插入左侧“叙述者”并触发 sessions refetch；对话 recovery notice 改为归一化中文状态、最近成功 cursor 与恢复动作展示，不再直接泄露 raw state；状态栏在 session config 未加载时隐藏模型/权限/推理编辑控件。验证包含 StudioNextApp、ConversationSurface、useShellData 与 WorkbenchWritingActions 聚焦回归（50 tests）、Studio typecheck 与 docs verify。
 
 ### 文档
+- 新增并补强 `ui-live-parity-hardening-v1` Kiro spec，聚焦真实浏览器暴露的工作台资源编辑器未加载章节正文、设置页硬编码/伪接线、对话窗口运行态不透明、Shell 会话状态不同步，以及 Claude Code CLI / OpenAI Codex CLI parity 口径守护；基于 7778 端口 NarraFork 设置页/对话窗口实测和本地 Claude 源码参考，要求 NovelFork 借鉴信息架构但所有 UI 可用声明必须有自身真实合同与打开→编辑→保存→刷新读回等浏览器证据；新增 14 项 `tasks.md`，按资源详情/保存、Shell 同步、设置 truth model、provider callable、对话透明化、Claude/Codex parity、浏览器 E2E 与文档验收顺序拆分执行；完成 Task 1 hardening RED 回归基线，新增 6 条失败优先测试暴露章节未 hydrate 仍可编辑/保存、设置页 Codex 空字段、默认模型 first fallback、平台 0 账号可用误导和对话控件无 session config 来源等缺口。
 - 新增 `backend-contract-v1`、`frontend-refoundation-v1` 与 `backend-core-refactor-v1` Kiro specs，将后续主线调整为先冻结真实后端能力合同，再基于 Agent Shell + Writing Workbench 重建前端，最后按合同分阶段整理后端核心；`novelfork-ui-v1` 保留为被取代的过渡参考。
 - 更新 specs 索引、README、Studio README、AGENTS、当前执行主线与 API 文档口径，明确新前端不得绕过 Backend Contract client 接入未登记能力，`prompt-preview`、`process-memory`、`chunked-buffer`、`unsupported` 和 `unknown` 必须透明呈现；同步 `backend-contract-v1` 进度为 9/9，并记录 app-next 组件禁止散写未登记 API 字符串与验证 guard。
 - 同步 `backend-core-refactor-v1` Task 3 文档口径：tasks/spec 索引更新为 3/10，API 文档记录统一错误 helper、provider failure 状态码、writing tools gate 与平台集成 unsupported 边界。
 - 同步 `backend-core-refactor-v1` Task 4/5/6 文档口径：tasks/spec 索引更新为 6/10，Studio README 与 API 验证事实源记录 storage 只读、非破坏写入和 destructive service 拆分。
 - 同步 `backend-core-refactor-v1` Task 7 文档口径：tasks/spec 索引更新为 7/10，README、AGENTS、当前执行主线、Studio README 与 API 文档记录 session runtime transport/recovery helper 边界和验证事实源。
 - 同步 `backend-core-refactor-v1` Task 8 文档口径：tasks/spec 索引更新为 8/10，README、AGENTS、当前执行主线与 API 文档记录 provider test 状态写回、runtime store 脱敏和真实模型池边界。
-- 同步 `backend-core-refactor-v1` Task 9 文档口径：tasks/spec 索引更新为 9/10，contract guard、Studio API 文档与 Studio README 记录 legacy/deprecated route 依赖调查、保留条件与候选退役清单。
+- 同步 `backend-core-refactor-v1` Task 9/10 文档口径：tasks/spec 索引更新为 10/10，contract guard、Studio API 文档、存储层开发指引、Studio README、当前执行主线与测试状态记录 legacy/deprecated route 边界、后端领域 service 拆分纪律与最终验收结果。
 - 新增 `frontend-live-wiring-v1`、`legacy-source-retirement-v1` 与 `conversation-parity-v1` specs：分别规划新前端 live 接线、旧三栏/旧 ChatWindow 源码退役、参考 Claude Code CLI 补齐叙述者会话能力，并同步 spec 索引当前主线。
 
 ## v0.0.6 (2026-05-04)

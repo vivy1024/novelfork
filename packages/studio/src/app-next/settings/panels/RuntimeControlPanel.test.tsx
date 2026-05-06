@@ -86,4 +86,31 @@ describe("RuntimeControlPanel", () => {
     expect(screen.getByLabelText("摘要模型")).toHaveProperty("disabled", true);
     expect(screen.getByLabelText("子代理模型池")).toHaveProperty("disabled", true);
   });
+
+  it("RED: 不用模型池第一项冒充未配置的默认模型", async () => {
+    const models = [{ modelId: "sub2api:gpt-5-codex", modelName: "GPT-5 Codex", providerName: "Sub2API" }];
+    fetchJsonMock.mockImplementation((path: string) => {
+      if (path === "/settings/user") {
+        return Promise.resolve({
+          runtimeControls,
+          modelDefaults: {
+            defaultSessionModel: "",
+            summaryModel: "",
+            subagentModelPool: [],
+            validation: { defaultSessionModel: "empty", summaryModel: "empty", subagentModelPool: {}, invalidModelIds: [] },
+          },
+        });
+      }
+      if (path === "/api/providers/models") {
+        return Promise.resolve({ models });
+      }
+      return Promise.reject(new Error(`unexpected ${path}`));
+    });
+
+    render(<RuntimeControlPanel />);
+
+    expect(await screen.findByLabelText("默认会话模型")).toHaveProperty("value", "");
+    expect(screen.queryByText("Sub2API · GPT-5 Codex")).toBeNull();
+    expect(screen.getByText(/默认会话模型.*未配置|请选择模型/)).toBeTruthy();
+  });
 });

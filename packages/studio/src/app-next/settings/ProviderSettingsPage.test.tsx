@@ -102,6 +102,18 @@ describe("ProviderSettingsPage", () => {
     expect(screen.getByRole("button", { name: "查看 OpenAI API key 接入详情" })).toBeTruthy();
   });
 
+  it("RED: 平台集成无账号时只能显示可导入/未配置账号/不可调用", async () => {
+    const client = createClient();
+    render(<ProviderSettingsPage client={client} />);
+
+    const codexCard = await screen.findByRole("button", { name: "查看 Codex 平台集成详情" });
+
+    expect(codexCard.textContent).toContain("可导入");
+    expect(codexCard.textContent).toContain("未配置账号");
+    expect(codexCard.textContent).toContain("不可调用");
+    expect(codexCard.textContent).not.toContain("可用");
+  });
+
   it("opens Codex platform detail with JSON account import and real empty account state", async () => {
     const client = createClient();
     render(<ProviderSettingsPage client={client} />);

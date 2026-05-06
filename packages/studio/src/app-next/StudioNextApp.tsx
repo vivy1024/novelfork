@@ -24,14 +24,19 @@ import { RoutinesNextPage } from "./routines/RoutinesNextPage";
 import { SettingsLayout, type SettingsSectionItem } from "./components/layouts";
 import { ProviderSettingsPage } from "./settings/ProviderSettingsPage";
 import { SettingsSectionContent } from "./settings/SettingsSectionContent";
-import { AgentShell, toShellPath, useShellData, type ShellRoute } from "./shell";
+import { AgentShell, toShellPath, useShellData, useShellDataStore, type ShellRoute } from "./shell";
 import {
+  applyResourceDetailToNode,
+  loadResourceDetailState,
+  resourceNeedsDetailHydration,
+  saveResourceAndHydrate,
   loadWorkbenchResourcesFromContract,
   WorkbenchWritingActions,
   WritingWorkbenchRoute,
   type WorkbenchCanvasContext,
   type WorkbenchResourceNode,
   type WorkbenchResourcesResult,
+  type WorkbenchWritingActionsSessionClient,
 } from "./writing-workbench";
 
 interface StudioNextAppProps {
@@ -90,38 +95,13 @@ function contractErrorMessage(result: ContractResult<unknown>, fallback: string)
   return result.code ? `${fallback}：${result.code}` : fallback;
 }
 
-function metadataString(node: WorkbenchResourceNode, key: string): string | undefined {
-  const value = node.metadata?.[key];
-  return typeof value === "string" && value.length > 0 ? value : undefined;
-}
-
-function metadataNumberOrString(node: WorkbenchResourceNode, key: string): number | string | undefined {
-  const value = node.metadata?.[key];
-  if (typeof value === "number" || (typeof value === "string" && value.length > 0)) return value;
-  return undefined;
-}
-
-function nodeIdSuffix(node: WorkbenchResourceNode, prefix: string): string | undefined {
-  return node.id.startsWith(prefix) ? node.id.slice(prefix.length) : undefined;
-}
-
-function chapterNumberFromNode(node: WorkbenchResourceNode): number | string | undefined {
-  const metadataChapter = metadataNumberOrString(node, "chapterNumber");
-  if (metadataChapter !== undefined) return metadataChapter;
-  if (!node.id.startsWith("chapter:")) return undefined;
-  return node.id.split(":").at(-1);
-}
-
-async function assertContractSave(result: ContractResult<unknown>, fallback: string): Promise<void> {
-  if (!result.ok) throw new Error(contractErrorMessage(result, fallback));
-}
-
 type SessionToolStatePayload = {
   readonly pending?: readonly ToolConfirmationRequest[];
   readonly pendingConfirmations?: readonly ToolConfirmationRequest[];
 };
 
-type WorkbenchSessionClient = Pick<ReturnType<typeof createSessionClient>, "listActiveSessions" | "createSession">;
+type SessionDomainClient = ReturnType<typeof createSessionClient>;
+type WorkbenchSessionClient = WorkbenchWritingActionsSessionClient;
 
 type SessionToolConfirmationPayload = {
   readonly ok?: boolean;
@@ -154,34 +134,6 @@ function toConversationConfirmation(
     busy: options.busy,
     ...(options.error ? { error: options.error } : {}),
   };
-}
-
-async function saveWorkbenchResource(resourceClient: ResourceDomainClient, bookId: string, node: WorkbenchResourceNode, content: string) {
-  if (!node.capabilities.edit || node.capabilities.readonly || node.capabilities.unsupported) {
-    throw new Error("当前资源只读或不支持保存");
-  }
-
-  if (node.kind === "chapter") {
-    const chapterNumber = chapterNumberFromNode(node);
-    if (chapterNumber === undefined) throw new Error("章节资源缺少章节编号，无法保存");
-    await assertContractSave(await resourceClient.saveChapter(bookId, chapterNumber, { content }), "章节保存失败");
-    return;
-  }
-
-  if (node.kind === "draft") {
-    const draftId = metadataString(node, "draftId") ?? nodeIdSuffix(node, "draft:");
-    await assertContractSave(await resourceClient.saveDraft(bookId, { id: draftId, title: node.title, content }), "草稿保存失败");
-    return;
-  }
-
-  if (node.kind === "truth") {
-    const fileName = metadataString(node, "fileName") ?? nodeIdSuffix(node, "truth-file:") ?? node.path?.split("/").at(-1);
-    if (!fileName) throw new Error("Truth 资源缺少文件名，无法保存");
-    await assertContractSave(await resourceClient.saveTruthFile(bookId, fileName, { content }), "Truth 文件保存失败");
-    return;
-  }
-
-  throw new Error(`${node.title} 暂不支持从工作台保存`);
 }
 
 interface SessionCompactCommandPayload {
@@ -464,14 +416,51 @@ function toConversationStatus(
     modelOptions,
     toolPolicySummary: sessionConfig?.toolPolicy,
     unsupportedToolsReason: selectedModel?.supportsTools === false ? "当前模型不支持工具调用" : undefined,
+    sessionConfigLoaded: Boolean(sessionConfig),
+  };
+}
+
+function replaceResourceNode(nodes: readonly WorkbenchResourceNode[], nextNode: WorkbenchResourceNode): WorkbenchResourceNode[] {
+  return nodes.map((node) => {
+    if (node.id === nextNode.id) return nextNode;
+    if (node.children?.length) return { ...node, children: replaceResourceNode(node.children, nextNode) };
+    return node;
+  });
+}
+
+function withSavedResource(resources: WorkbenchResourcesResult, nextNode: WorkbenchResourceNode): WorkbenchResourcesResult {
+  const resourceMap = new Map(resources.resourceMap);
+  resourceMap.set(nextNode.id, nextNode);
+  return {
+    ...resources,
+    tree: replaceResourceNode(resources.tree, nextNode),
+    openableNodes: resources.openableNodes.map((node) => (node.id === nextNode.id ? nextNode : node)),
+    resourceMap,
   };
 }
 
 function WritingWorkbenchRouteLive({ bookId, onCanvasContextChange, onNavigateToConversation }: { readonly bookId: string; readonly onCanvasContextChange: (context: WorkbenchCanvasContext) => void; readonly onNavigateToConversation: (sessionId: string) => void }) {
   const resourceClient = useMemo(() => createDefaultResourceClient(), []);
-  const sessionClient = useMemo<WorkbenchSessionClient>(() => createDefaultSessionClient(), []);
+  const rawSessionClient = useMemo<SessionDomainClient>(() => createDefaultSessionClient(), []);
+  const shellDataStore = useShellDataStore();
+  const sessionClient = useMemo<WorkbenchSessionClient>(() => ({
+    listActiveSessions: rawSessionClient.listActiveSessions,
+    createSession: async (payload) => {
+      const result = await rawSessionClient.createSession(payload);
+      if (result.ok) {
+        shellDataStore.upsertSession(result.data);
+        shellDataStore.invalidate("sessions");
+      }
+      return result;
+    },
+  }), [rawSessionClient, shellDataStore]);
   const [resources, setResources] = useState<WorkbenchResourcesResult>({ tree: [], resourceMap: new Map(), openableNodes: [], errors: [] });
   const [selectedNode, setSelectedNode] = useState<WorkbenchResourceNode | null>(null);
+  const [pendingDetailNode, setPendingDetailNode] = useState<WorkbenchResourceNode | null>(null);
+  const [detailError, setDetailError] = useState<{ readonly node: WorkbenchResourceNode; readonly message: string } | null>(null);
+  const [switchGuard, setSwitchGuard] = useState<{ readonly target: WorkbenchResourceNode; readonly message: string } | null>(null);
+  const [localCanvasContext, setLocalCanvasContext] = useState<WorkbenchCanvasContext | null>(null);
+  const detailRequestSeq = useRef(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -491,6 +480,10 @@ function WritingWorkbenchRouteLive({ bookId, onCanvasContextChange, onNavigateTo
         if (!active) return;
         setResources({ tree: [], resourceMap: new Map(), openableNodes: [], errors: [] });
         setSelectedNode(null);
+        setPendingDetailNode(null);
+        setDetailError(null);
+        setSwitchGuard(null);
+        setLocalCanvasContext(null);
         setError(cause instanceof Error ? cause.message : String(cause));
         setLoading(false);
       },
@@ -501,23 +494,86 @@ function WritingWorkbenchRouteLive({ bookId, onCanvasContextChange, onNavigateTo
     };
   }, [bookId, resourceClient]);
 
-  const handleSave = useCallback(
-    (node: WorkbenchResourceNode, content: string) => saveWorkbenchResource(resourceClient, bookId, node, content),
+  const openResourceNode = useCallback(
+    (node: WorkbenchResourceNode) => {
+      setError(null);
+      setDetailError(null);
+      setSwitchGuard(null);
+      const requestSeq = detailRequestSeq.current + 1;
+      detailRequestSeq.current = requestSeq;
+
+      if (!resourceNeedsDetailHydration(node)) {
+        setPendingDetailNode(null);
+        setSelectedNode(node);
+        return;
+      }
+
+      setPendingDetailNode(node);
+      void loadResourceDetailState(resourceClient, bookId, node).then((detail) => {
+        if (detailRequestSeq.current !== requestSeq) return;
+        setPendingDetailNode(null);
+        if (detail.status === "ready") {
+          setSelectedNode(applyResourceDetailToNode(node, detail));
+          return;
+        }
+        if (detail.status === "error") {
+          setDetailError({ node, message: detail.message });
+        }
+      });
+    },
     [bookId, resourceClient],
   );
+
+  const handleOpen = useCallback(
+    (node: WorkbenchResourceNode) => {
+      if (localCanvasContext?.dirty && selectedNode && selectedNode.id !== node.id) {
+        setSwitchGuard({ target: node, message: "当前画布有未保存内容，请先保存或放弃后再切换资源。" });
+        return;
+      }
+      openResourceNode(node);
+    },
+    [localCanvasContext?.dirty, openResourceNode, selectedNode],
+  );
+
+  const handleSave = useCallback(
+    async (node: WorkbenchResourceNode, content: string) => {
+      const savedNode = await saveResourceAndHydrate(resourceClient, bookId, node, content);
+      setResources((current) => withSavedResource(current, savedNode));
+      setSelectedNode((current) => (current?.id === savedNode.id ? savedNode : current));
+    },
+    [bookId, resourceClient],
+  );
+
+  const handleCanvasContextChange = useCallback((context: WorkbenchCanvasContext) => {
+    setLocalCanvasContext(context);
+    onCanvasContextChange(context);
+  }, [onCanvasContextChange]);
 
   return (
     <>
       {loading ? <p role="status">资源加载中…</p> : null}
+      {pendingDetailNode ? <p role="status">正在加载 {pendingDetailNode.title} 详情…</p> : null}
       {error ? <p role="alert">资源加载失败：{error}</p> : null}
+      {detailError ? (
+        <p role="alert">
+          {detailError.node.title} 详情加载失败：{detailError.message}
+          <button type="button" onClick={() => handleOpen(detailError.node)}>重试</button>
+        </p>
+      ) : null}
+      {switchGuard ? (
+        <p role="alert">
+          {switchGuard.message}
+          <button type="button" onClick={() => openResourceNode(switchGuard.target)}>放弃并切换</button>
+        </p>
+      ) : null}
       <WritingWorkbenchRoute
         bookId={bookId}
         nodes={resources.tree}
         selectedNode={selectedNode}
-        onOpen={setSelectedNode}
+        onOpen={handleOpen}
         onSave={handleSave}
-        onCanvasContextChange={onCanvasContextChange}
-        writingActions={<WorkbenchWritingActions bookId={bookId} sessions={sessionClient} onNavigateToConversation={onNavigateToConversation} />}
+        onCanvasContextChange={handleCanvasContextChange}
+        writingActions={<WorkbenchWritingActions bookId={bookId} sessions={sessionClient} blockedReason={localCanvasContext?.dirty ? "当前画布有未保存内容，请先保存或放弃后再启动写作动作。" : undefined} onNavigateToConversation={onNavigateToConversation} />}
       />
     </>
   );

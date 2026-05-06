@@ -153,6 +153,7 @@ describe("domain contract clients", () => {
     await resources.deleteDraft("book/1", "draft/1");
     await resources.listCandidates("book/1");
     await resources.acceptCandidate("book/1", "cand/1", { action: "draft" });
+    await resources.saveJingweiEntry("book/1", "entry/1", { title: "人物", contentMd: "正文" });
 
     expect(fetchMock).toHaveBeenNthCalledWith(1, "/api/books/book%2F1/chapters/12", expect.objectContaining({ method: "GET" }));
     expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/books/book%2F1/chapters/12", expect.objectContaining({ method: "PUT", body: JSON.stringify({ content: "正式正文" }) }));
@@ -165,6 +166,7 @@ describe("domain contract clients", () => {
     expect(fetchMock).toHaveBeenNthCalledWith(9, "/api/books/book%2F1/drafts/draft%2F1", expect.objectContaining({ method: "DELETE" }));
     expect(fetchMock).toHaveBeenNthCalledWith(10, "/api/books/book%2F1/candidates", expect.objectContaining({ method: "GET" }));
     expect(fetchMock).toHaveBeenNthCalledWith(11, "/api/books/book%2F1/candidates/cand%2F1/accept", expect.objectContaining({ method: "POST", body: JSON.stringify({ action: "draft" }) }));
+    expect(fetchMock).toHaveBeenNthCalledWith(12, "/api/books/book%2F1/jingwei/entries/entry%2F1", expect.objectContaining({ method: "PUT", body: JSON.stringify({ title: "人物", contentMd: "正文" }) }));
   });
 
   it("marks writing mode prompt preview as prompt-preview capability", async () => {
