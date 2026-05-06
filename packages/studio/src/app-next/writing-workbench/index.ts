@@ -1,3 +1,5 @@
+export * from "./ResourceDetailLoader";
+export * from "./ResourceSaveController";
 export * from "./WorkbenchCanvas";
 export * from "./WorkbenchResourceTree";
 export * from "./WorkbenchTopBar";

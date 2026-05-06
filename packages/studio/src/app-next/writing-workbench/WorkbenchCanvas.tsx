@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 
+import { resourceNeedsDetailHydration } from "./ResourceDetailLoader";
 import { ResourceViewer } from "./resource-viewers";
 import type { CanvasContext, OpenResourceTab, WorkspaceResourceRef, WorkspaceResourceViewKind } from "../../shared/agent-native-workspace";
 import type { WorkbenchResourceKind, WorkbenchResourceNode } from "./useWorkbenchResources";
@@ -96,9 +97,11 @@ export function WorkbenchCanvas({ node, onSave, onCanvasContextChange = () => un
   }
 
   const readonly = node.capabilities.readonly || !node.capabilities.edit || node.capabilities.unsupported;
+  const needsHydration = resourceNeedsDetailHydration(node);
+  const hydrateError = typeof node.metadata?.detailError === "string" ? node.metadata.detailError : null;
 
   async function handleSave() {
-    if (!node || readonly) return;
+    if (!node || readonly || needsHydration) return;
     setSaveError(null);
     try {
       await onSave(node, content);
@@ -115,13 +118,17 @@ export function WorkbenchCanvas({ node, onSave, onCanvasContextChange = () => un
         <span>{dirty ? "未保存" : "已保存"}</span>
       </header>
       {readonly ? <p>只读资源，当前画布禁用编辑。</p> : null}
+      {needsHydration ? <p role="alert">章节详情未加载：正在等待详情 hydrate，禁止从空编辑器保存。</p> : null}
+      {hydrateError ? <p role="alert">详情加载失败：{hydrateError}</p> : null}
       {saveError ? <p role="alert">保存失败：{saveError}</p> : null}
-      <ResourceViewer node={{ ...node, content }} onContentChange={(nextContent) => {
-        setContent(nextContent);
-        setDirty(true);
-        setSaveError(null);
-      }} />
-      <button type="button" disabled={readonly || !dirty} onClick={handleSave}>
+      {needsHydration ? null : (
+        <ResourceViewer node={{ ...node, content }} onContentChange={(nextContent) => {
+          setContent(nextContent);
+          setDirty(true);
+          setSaveError(null);
+        }} />
+      )}
+      <button type="button" disabled={readonly || needsHydration || !dirty} onClick={handleSave}>
         保存
       </button>
     </section>

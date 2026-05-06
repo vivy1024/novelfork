@@ -10,6 +10,9 @@ import { MessageStream, type ConversationSurfaceMessage } from "./MessageStream"
 export interface ConversationRecoveryNotice {
   state: string;
   reason?: string;
+  lastSeq?: number;
+  ackedSeq?: number;
+  actionLabel?: string;
 }
 
 export interface ConversationSurfaceProps {
@@ -30,6 +33,18 @@ export interface ConversationSurfaceProps {
   onCompactSession?: SlashCommandExecutionContext["compactSession"];
   onSlashCommandResult?: (result: SlashCommandExecutionResult) => void;
   onOpenArtifact?: (artifact: ToolResultArtifact) => void;
+}
+
+function recoveryTitle(notice: ConversationRecoveryNotice): string {
+  if (notice.state === "resetting") return "需要重新加载快照";
+  if (notice.state === "replaying") return "正在恢复会话历史";
+  if (notice.state === "failed") return "会话恢复失败";
+  return "会话恢复状态";
+}
+
+function recoveryCursorText(notice: ConversationRecoveryNotice): string | null {
+  if (typeof notice.lastSeq !== "number" && typeof notice.ackedSeq !== "number") return null;
+  return `最近成功 cursor：${notice.ackedSeq ?? 0} / ${notice.lastSeq ?? 0}`;
 }
 
 export function ConversationSurface({
@@ -68,7 +83,10 @@ export function ConversationSurface({
       </header>
       {showRecoveryNotice ? (
         <aside data-testid="conversation-recovery-notice" className="conversation-recovery-notice shrink-0">
-          恢复状态：{recoveryNotice.state}{recoveryNotice.reason ? ` / ${recoveryNotice.reason}` : ""}
+          <strong>{recoveryTitle(recoveryNotice)}</strong>
+          {recoveryNotice.reason ? <span> / {recoveryNotice.reason}</span> : null}
+          {recoveryCursorText(recoveryNotice) ? <span> / {recoveryCursorText(recoveryNotice)}</span> : null}
+          {recoveryNotice.actionLabel ? <button type="button" onClick={() => undefined}>{recoveryNotice.actionLabel}</button> : null}
         </aside>
       ) : null}
       {pendingConfirmation ? (

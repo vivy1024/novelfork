@@ -32,8 +32,8 @@
 
 - 新功能必须先写 spec（`requirements.md` → `design.md` → `tasks.md`）再实现
 - 归档目录：`.kiro/specs/archive/`
-- 活跃 spec 在 `.kiro/specs/` 根目录；`backend-contract-v1`、`frontend-refoundation-v1`、`frontend-live-wiring-v1` 与 `legacy-source-retirement-v1` 已完成，`conversation-parity-v1` 已完成（13/13 已完成）
-- 同时保持 `backend-core-refactor-v1`（9/10 已完成）合同整理口径
+- 活跃 spec 在 `.kiro/specs/` 根目录；`backend-contract-v1`、`frontend-refoundation-v1`、`frontend-live-wiring-v1`、`legacy-source-retirement-v1`、`conversation-parity-v1` 与 `backend-core-refactor-v1` 均已完成
+- 后续继续保持合同优先、route adapter 与领域 service 分离、legacy transparent/deprecated 边界
 - 每个 spec 必须通过 typecheck + test 才能标记完成
 
 ## AI 输出原则

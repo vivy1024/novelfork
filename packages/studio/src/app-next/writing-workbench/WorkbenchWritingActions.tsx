@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 
 import type { BackendCapability } from "../backend-contract/capability-status";
 import { listWritingActionDescriptors, type SessionDomainClient, type WritingActionDescriptor } from "../backend-contract/writing-action-adapter";
+import type { ContractResult } from "../backend-contract";
 import type { CreateNarratorSessionInput, NarratorSessionRecord } from "../../shared/session-types";
 
 export interface WorkbenchWritingAction {
@@ -13,10 +14,16 @@ export interface WorkbenchWritingAction {
   disabledReason?: string;
 }
 
+export interface WorkbenchWritingActionsSessionClient {
+  readonly listActiveSessions: SessionDomainClient["listActiveSessions"];
+  readonly createSession: (payload: CreateNarratorSessionInput) => Promise<ContractResult<NarratorSessionRecord>>;
+}
+
 export interface WorkbenchWritingActionsProps {
   bookId: string;
-  sessions: Pick<SessionDomainClient, "listActiveSessions" | "createSession">;
+  sessions: WorkbenchWritingActionsSessionClient;
   actions?: readonly WorkbenchWritingAction[];
+  blockedReason?: string;
   onNavigateToConversation: (sessionId: string, action: WorkbenchWritingAction) => void;
 }
 
@@ -92,13 +99,13 @@ async function ensureWorkbenchSession(bookId: string, action: WorkbenchWritingAc
   return sessionId;
 }
 
-export function WorkbenchWritingActions({ bookId, sessions, actions, onNavigateToConversation }: WorkbenchWritingActionsProps) {
+export function WorkbenchWritingActions({ bookId, sessions, actions, blockedReason, onNavigateToConversation }: WorkbenchWritingActionsProps) {
   const [runningActionId, setRunningActionId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const resolvedActions = useMemo(() => actions ?? buildDefaultWorkbenchWritingActions(), [actions]);
 
   async function runAction(action: WorkbenchWritingAction) {
-    if (isDisabled(action) || runningActionId) return;
+    if (blockedReason || isDisabled(action) || runningActionId) return;
     setRunningActionId(action.id);
     setError(null);
     try {
@@ -115,8 +122,8 @@ export function WorkbenchWritingActions({ bookId, sessions, actions, onNavigateT
     <section className="workbench-writing-actions" aria-label="写作动作入口">
       {error ? <p role="alert">{error}</p> : null}
       {resolvedActions.map((action) => {
-        const disabled = isDisabled(action);
-        const disabledReason = getDisabledReason(action);
+        const disabled = Boolean(blockedReason) || isDisabled(action);
+        const disabledReason = blockedReason ?? getDisabledReason(action);
         return (
           <div key={action.id} className="workbench-writing-actions__item">
             <button type="button" disabled={disabled || runningActionId !== null} onClick={() => void runAction(action)}>

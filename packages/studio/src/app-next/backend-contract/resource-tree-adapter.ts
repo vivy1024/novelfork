@@ -182,7 +182,7 @@ function toChapterNode(bookId: string, chapter: ChapterSummary): ContractResourc
       delete: CURRENT_DELETE("chapters.delete"),
       apply: UNSUPPORTED("chapters.apply"),
     },
-    metadata: { bookId, chapterNumber: chapter.number, status: chapter.status, fileName: chapter.fileName },
+    metadata: { bookId, chapterNumber: chapter.number, status: chapter.status, fileName: chapter.fileName, source: "list-preview" },
   };
 }
 
@@ -231,7 +231,7 @@ function toStoryFileNode(bookId: string, file: StoryListFile): ContractResourceN
       delete: CURRENT_DELETE("story-files.delete"),
       apply: UNSUPPORTED("story-files.apply"),
     },
-    metadata: { bookId, fileName: file.name, size: file.size },
+    metadata: { bookId, fileName: file.name, size: file.size, source: "preview" },
   };
 }
 
@@ -248,7 +248,7 @@ function toTruthFileNode(bookId: string, file: StoryListFile): ContractResourceN
       delete: CURRENT_DELETE("truth-files.delete"),
       apply: UNSUPPORTED("truth-files.apply"),
     },
-    metadata: { bookId, fileName: file.name, size: file.size },
+    metadata: { bookId, fileName: file.name, size: file.size, source: "preview" },
   };
 }
 
