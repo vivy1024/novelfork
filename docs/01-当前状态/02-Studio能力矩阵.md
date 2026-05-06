@@ -155,10 +155,10 @@
 
 | 功能 | 状态 |
 |------|------|
-| AI 供应商管理（API key 接入） | ✅ |
-| 平台集成（Codex/Kiro JSON 账号导入） | ✅ |
-| 模型池管理（刷新/测试/启用禁用） | ✅ |
-| 真实 Provider/Model 管理（显式选择，无虚拟模型/自动 fallback） | ✅ |
+| AI 供应商管理（API key 接入） | ✅ Task 8：区分可配置、已配置、已验证、可调用；缺配置或测试失败显示 degraded/error 与恢复动作 |
+| 平台集成（Codex/Kiro JSON 账号导入） | ✅ Task 8：无账号显示“可导入 / 未配置账号 / 不可调用”，0 模型显示“未验证 / 0 个模型 / 不可调用” |
+| 模型池管理（刷新/测试/启用禁用） | ✅ Task 8：运行态总览拆分 provider total、enabled provider、available models、total catalog models、callable models |
+| 真实 Provider/Model 管理（显式选择，无虚拟模型/自动 fallback） | ✅ 模型能力标签只来自真实 inventory（大上下文、多模态、思考链、工具调用）；未知能力显示 unknown |
 | Runtime control panel（权限/上下文/工具策略） | ✅ Task 7：运行策略逐项经 `deriveAgentRuntimeSettingsFacts` 展示来源、状态、读写 API 与 planned 缺口 |
 | 设置 Truth Model（来源/状态/API/未配置原因） | ✅ Task 6-7：模型页与 Agent runtime 可见 setting 通过 `SettingsFact` 展示真实来源、状态、读写 API；无 schema 来源项显示 planned/unsupported 或隐藏，空值显示“未配置” |
 | 模型默认值/摘要模型/子代理配置 | ✅ 默认/摘要/Explore/Plan/General/Codex 推理强度均来自 user settings，不用模型池第一项冒充当前值；运行控制保存后回读 `/api/settings/user` |

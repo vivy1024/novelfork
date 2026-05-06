@@ -4,6 +4,15 @@ import { providerApiModeLabel, providerCompatibilityLabel } from "../../lib/disp
 import type { ApiProvider } from "../provider-types";
 import { ApiProviderCard } from "./ApiProviderCard";
 
+export interface ApiProviderStatusSummary {
+  readonly status: "callable" | "degraded" | "error";
+  readonly catalogEnabled: boolean;
+  readonly configured: boolean;
+  readonly verified: boolean;
+  readonly reasons: readonly string[];
+  readonly callableModelCount: number;
+}
+
 export interface ProviderFormState {
   readonly name: string;
   readonly prefix: string;
@@ -21,6 +30,7 @@ function isFormValid(form: ProviderFormState): boolean {
 
 export function ApiProvidersSection({
   providers,
+  providerStatuses,
   showAddForm,
   form,
   busy,
@@ -31,6 +41,7 @@ export function ApiProvidersSection({
   onToggleProvider,
 }: {
   readonly providers: readonly ApiProvider[];
+  readonly providerStatuses?: Readonly<Record<string, ApiProviderStatusSummary>>;
   readonly showAddForm: boolean;
   readonly form: ProviderFormState;
   readonly busy: string | null;
@@ -68,6 +79,7 @@ export function ApiProvidersSection({
             <ApiProviderCard
               key={provider.id}
               provider={provider}
+              status={providerStatuses?.[provider.id]}
               onSelect={onSelectProvider}
               onToggle={onToggleProvider}
             />
