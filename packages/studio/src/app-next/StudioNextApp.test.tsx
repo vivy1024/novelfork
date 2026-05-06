@@ -338,6 +338,114 @@ describe("StudioNextApp", () => {
     expect(screen.getByRole("link", { name: "新建会话" }).getAttribute("href")).toBe("/next");
   });
 
+  it("session config 更新成功后回读 chat state 并同步 ShellDataProvider", async () => {
+    const updatedSession = {
+      id: "session-1",
+      title: "第三章续写",
+      agentId: "writer",
+      kind: "standalone",
+      sessionMode: "chat",
+      status: "active",
+      createdAt: "2026-05-05T00:00:00.000Z",
+      lastModified: "2026-05-05T00:01:00.000Z",
+      messageCount: 2,
+      sortOrder: 0,
+      projectId: "book-1",
+      chapterId: "3",
+      worktree: "D:/novel-worktree",
+      sessionConfig: { providerId: "sub2api", modelId: "gpt-5.5", permissionMode: "edit", reasoningEffort: "medium" },
+    };
+    const shellDataStore = { upsertSession: vi.fn(), invalidate: vi.fn() };
+    useShellDataStoreMock.mockReturnValue(shellDataStore);
+    const applyEnvelopeMock = vi.fn();
+    fetchMock.mockImplementation(async (url: string, options?: { method?: string; body?: string }) => {
+      if (url === "/api/providers/models") {
+        return { models: [
+          { modelId: "sub2api:gpt-5.4", modelName: "GPT-5.4", providerId: "sub2api", providerName: "Sub2API", enabled: true, contextWindow: 128000, maxOutputTokens: 8192, source: "detected", lastTestStatus: "success", capabilities: { functionCalling: true, vision: false, streaming: true } },
+          { modelId: "sub2api:gpt-5.5", modelName: "GPT-5.5", providerId: "sub2api", providerName: "Sub2API", enabled: true, contextWindow: 200000, maxOutputTokens: 16384, source: "detected", lastTestStatus: "success", capabilities: { functionCalling: true, vision: false, streaming: true } },
+        ] };
+      }
+      if (url === "/api/sessions/session-1" && options?.method === "PUT") return updatedSession;
+      if (url === "/api/sessions/session-1/chat/state") return { session: updatedSession, messages: [{ id: "m1", role: "assistant", content: "已切换模型", timestamp: 1, seq: 1 }], cursor: { lastSeq: 1, ackedSeq: 1 } };
+      if (url === "/api/worktree/status?path=D%3A%2Fnovel-worktree") return { status: { modified: [], added: [], deleted: [], untracked: [] } };
+      throw new Error(`Unhandled fetch: ${url}`);
+    });
+    useAgentConversationRuntimeMock.mockReturnValue({
+      state: {
+        session: { ...updatedSession, messageCount: 1, sessionConfig: { providerId: "sub2api", modelId: "gpt-5.4", permissionMode: "edit", reasoningEffort: "medium" } },
+        messages: [],
+        cursor: null,
+        lastSeq: 0,
+        streamingMessageId: null,
+        error: null,
+        recovery: { state: "idle" },
+        resetRequired: false,
+      },
+      sendMessage: sendMessageMock,
+      abort: abortMock,
+      ack: ackMock,
+      applyEnvelope: applyEnvelopeMock,
+      getResumeFromSeq: () => 0,
+    });
+
+    render(<StudioNextApp initialRoute={{ kind: "narrator", sessionId: "session-1" }} />);
+
+    await screen.findByLabelText("模型");
+    fireEvent.change(screen.getByLabelText("模型"), { target: { value: "sub2api::gpt-5.5" } });
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/sessions/session-1/chat/state"));
+    expect(shellDataStore.upsertSession).toHaveBeenCalledWith(expect.objectContaining({ id: "session-1", sessionConfig: expect.objectContaining({ modelId: "gpt-5.5" }) }));
+    expect(shellDataStore.invalidate).toHaveBeenCalledWith("sessions");
+    expect(applyEnvelopeMock).toHaveBeenCalledWith(expect.objectContaining({ type: "session:snapshot", snapshot: expect.objectContaining({ session: expect.objectContaining({ id: "session-1" }) }) }));
+  });
+
+  it("narrator route header facts 来自真实 session binding 与 worktree status API", async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url === "/api/providers/models") return { models: [] };
+      if (url === "/api/worktree/status?path=D%3A%2Fmissing-worktree") throw new Error("not a git repository");
+      throw new Error(`Unhandled fetch: ${url}`);
+    });
+    useAgentConversationRuntimeMock.mockReturnValue({
+      state: {
+        session: {
+          id: "session-1",
+          title: "第三章续写",
+          agentId: "writer",
+          kind: "chapter",
+          sessionMode: "chat",
+          status: "active",
+          createdAt: "2026-05-05T00:00:00.000Z",
+          lastModified: "2026-05-05T00:00:00.000Z",
+          messageCount: 7,
+          sortOrder: 0,
+          projectId: "book-1",
+          chapterId: "3",
+          worktree: "D:/missing-worktree",
+          sessionConfig: { providerId: "sub2api", modelId: "gpt-5.4", permissionMode: "edit", reasoningEffort: "medium" },
+        },
+        messages: [],
+        cursor: null,
+        lastSeq: 0,
+        streamingMessageId: null,
+        error: null,
+        recovery: { state: "idle" },
+        resetRequired: false,
+      },
+      sendMessage: sendMessageMock,
+      abort: abortMock,
+      ack: ackMock,
+      applyEnvelope: vi.fn(),
+      getResumeFromSeq: () => 0,
+    });
+
+    render(<StudioNextApp initialRoute={{ kind: "narrator", sessionId: "session-1" }} />);
+
+    expect(await screen.findByText("绑定：book-1 / 章节 3")).toBeTruthy();
+    expect(screen.getByText("消息：7")).toBeTruthy();
+    expect(screen.getByText("工作区：D:/missing-worktree")).toBeTruthy();
+    expect(await screen.findByText(/Git：不可用/)).toBeTruthy();
+  });
+
   it("loads model pool into the status bar and updates session config through the session contract", async () => {
     fetchMock.mockImplementation(async (url: string, options?: { method?: string; body?: string }) => {
       if (url === "/api/providers/models") {
