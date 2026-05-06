@@ -102,7 +102,7 @@ describe("ProviderSettingsPage", () => {
     expect(screen.getByRole("button", { name: "查看 OpenAI API key 接入详情" })).toBeTruthy();
   });
 
-  it("RED: 平台集成无账号时只能显示可导入/未配置账号/不可调用", async () => {
+  it("平台集成无账号时只能显示可导入/未配置账号/不可调用", async () => {
     const client = createClient();
     render(<ProviderSettingsPage client={client} />);
 
@@ -112,6 +112,117 @@ describe("ProviderSettingsPage", () => {
     expect(codexCard.textContent).toContain("未配置账号");
     expect(codexCard.textContent).toContain("不可调用");
     expect(codexCard.textContent).not.toContain("可用");
+    expect(codexCard.textContent).not.toContain("已启用");
+  });
+
+  it("平台集成有账号但 0 模型时显示未验证/0 个模型/不可调用", async () => {
+    const client = createClient();
+    client.listPlatformAccounts = vi.fn(async (platformId) => ({
+      accounts: platformId === "kiro" ? [{ ...importedCodexAccount, id: "kiro-acct-123", platformId: "kiro" as const }] : [],
+    }));
+    render(<ProviderSettingsPage client={client} />);
+
+    const kiroCard = await screen.findByRole("button", { name: "查看 Kiro 平台集成详情" });
+
+    expect(kiroCard.textContent).toContain("未验证 / 0 个模型 / 不可调用");
+    expect(kiroCard.textContent).not.toContain("已启用");
+    expect(kiroCard.textContent).not.toContain("可用");
+  });
+
+  it("API key provider 区分可配置/已配置/已验证/可调用四态", async () => {
+    const client = createClient();
+    (client.listProviders as ReturnType<typeof vi.fn>).mockResolvedValue({
+      providers: [{
+        ...openaiProvider,
+        models: [{ ...openaiProvider.models[0], lastTestStatus: "success" as const }],
+      }],
+    });
+    render(<ProviderSettingsPage client={client} />);
+
+    const openaiCard = await screen.findByRole("button", { name: "查看 OpenAI API key 接入详情" });
+
+    expect(openaiCard.textContent).toContain("可配置");
+    expect(openaiCard.textContent).toContain("已配置");
+    expect(openaiCard.textContent).toContain("已验证");
+    expect(openaiCard.textContent).toContain("可调用");
+  });
+
+  it("运行态总览拆分 total / available / callable 模型统计口径", async () => {
+    const client = createClient();
+    client.getProviderSummary = vi.fn(async () => ({
+      summary: {
+        providerCount: 3,
+        enabledProviderCount: 2,
+        physicalModelCount: 9,
+        availableModelCount: 4,
+        totalCatalogModelCount: 5,
+        callableModelCount: 1,
+        platformAccountCount: 0,
+        enabledPlatformAccountCount: 0,
+        issueCount: 2,
+      },
+    }));
+    render(<ProviderSettingsPage client={client} />);
+
+    await screen.findByRole("heading", { name: "运行态总览" });
+
+    expect(screen.getByText("1")).toBeTruthy();
+    expect(screen.getByText("可调用模型")).toBeTruthy();
+    expect(screen.getByText("available model / total catalog model：4 / 5")).toBeTruthy();
+    expect(screen.getByText("enabled provider / provider total：2 / 3")).toBeTruthy();
+  });
+
+  it("API key provider 缺配置或测试失败时显示 degraded/error 与真实恢复动作", async () => {
+    const client = createClient();
+    (client.listProviders as ReturnType<typeof vi.fn>).mockResolvedValue({
+      providers: [{
+        ...openaiProvider,
+        baseUrl: "",
+        config: {},
+        models: [{ ...openaiProvider.models[0], lastTestStatus: "error" as const, lastTestError: "网关 502" }],
+      }],
+    });
+    render(<ProviderSettingsPage client={client} />);
+
+    const openaiCard = await screen.findByRole("button", { name: "查看 OpenAI API key 接入详情" });
+
+    expect(openaiCard.textContent).toContain("degraded");
+    expect(openaiCard.textContent).toContain("可配置");
+    expect(openaiCard.textContent).toContain("未配置");
+    expect(openaiCard.textContent).toContain("未验证");
+    expect(openaiCard.textContent).toContain("缺少 Base URL");
+    expect(openaiCard.textContent).toContain("缺少 API Key");
+    expect(openaiCard.textContent).toContain("测试失败");
+    expect(openaiCard.textContent).toContain("不可调用");
+    expect(openaiCard.textContent).toContain("添加密钥");
+    expect(openaiCard.textContent).toContain("刷新模型");
+    expect(openaiCard.textContent).toContain("测试模型");
+  });
+
+  it("模型能力标签只来自真实 inventory，未知能力显示 unknown", async () => {
+    const client = createClient();
+    client.listGroupedModels = vi.fn(async () => ({
+      groups: [{
+        providerId: "openai",
+        providerName: "OpenAI",
+        enabled: true,
+        health: "partial",
+        models: [
+          { ...openaiProvider.models[0], capabilities: ["大上下文", "工具调用"] },
+          { id: "unknown-model", name: "Unknown Model", enabled: true, contextWindow: 32000, maxOutputTokens: 4096, lastTestStatus: "untested" as const },
+        ],
+      }],
+    }));
+    render(<ProviderSettingsPage client={client} />);
+
+    await screen.findByRole("heading", { name: "模型库存" });
+
+    expect(screen.getByText("大上下文")).toBeTruthy();
+    expect(screen.getByText("工具调用")).toBeTruthy();
+    expect(screen.getByText("unknown")).toBeTruthy();
+    expect(screen.queryByText("streaming")).toBeNull();
+    expect(screen.queryByText("vision")).toBeNull();
+    expect(screen.queryByText("reasoning")).toBeNull();
   });
 
   it("opens Codex platform detail with JSON account import and real empty account state", async () => {

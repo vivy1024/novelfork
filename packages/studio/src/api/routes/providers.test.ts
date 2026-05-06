@@ -126,7 +126,7 @@ describe("providers route runtime store", () => {
   });
 
   it("returns provider summary and grouped physical model inventory for the control plane", async () => {
-    await store.createProvider({ id: "sub2api", name: "Sub2API", type: "custom", enabled: true, priority: 1, apiKeyRequired: true, config: { apiKey: "sk-secret" }, models: [{ id: "gpt-5-codex", name: "GPT-5 Codex", contextWindow: 192000, maxOutputTokens: 8192, source: "detected", lastTestStatus: "success" }] });
+    await store.createProvider({ id: "sub2api", name: "Sub2API", type: "custom", enabled: true, priority: 1, apiKeyRequired: true, config: { apiKey: "sk-secret" }, models: [{ id: "gpt-5-codex", name: "GPT-5 Codex", contextWindow: 192000, maxOutputTokens: 8192, source: "detected", lastTestStatus: "success", supportsFunctionCalling: true, supportsStreaming: true }] });
     const app = createProvidersRouter({ store, adapters: createProviderAdapterRegistry() });
 
     const summary = await app.request("http://localhost/summary");
@@ -134,10 +134,10 @@ describe("providers route runtime store", () => {
     const summaryBody = await summary.json();
 
     expect(summary.status).toBe(200);
-    expect(summaryBody.summary).toMatchObject({ providerCount: 1, enabledProviderCount: 1, physicalModelCount: 1, issueCount: 0 });
+    expect(summaryBody.summary).toMatchObject({ providerCount: 1, enabledProviderCount: 1, physicalModelCount: 1, availableModelCount: 1, totalCatalogModelCount: 1, callableModelCount: 1, issueCount: 0 });
     expect(summaryBody.summary).not.toHaveProperty(`${"virtual"}ModelCount`);
     expect(grouped.status).toBe(200);
-    await expect(grouped.json()).resolves.toMatchObject({ groups: [{ providerId: "sub2api", providerName: "Sub2API", models: [expect.objectContaining({ id: "gpt-5-codex", lastTestStatus: "success" })] }] });
+    await expect(grouped.json()).resolves.toMatchObject({ groups: [{ providerId: "sub2api", providerName: "Sub2API", models: [expect.objectContaining({ id: "gpt-5-codex", lastTestStatus: "success", capabilities: expect.arrayContaining(["大上下文", "工具调用"]) })] }] });
   });
 
   it("returns non-2xx for unsupported adapters and store write failures", async () => {
