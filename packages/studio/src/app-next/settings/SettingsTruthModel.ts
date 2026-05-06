@@ -21,6 +21,7 @@ export type SettingsFactSource =
   | "capability-matrix"
   | "narrafork-reference"
   | "claude-source-reference"
+  | "official-docs"
   | "default";
 
 export type SettingsFactStatus = "current" | "partial" | "unconfigured" | "unsupported" | "planned" | "unknown";
@@ -222,6 +223,44 @@ export function deriveAgentRuntimeSettingsFacts(config: AgentRuntimeSettingsInpu
   ];
 }
 
+export function deriveClaudeParitySettingsFacts(): Array<SettingsFact<string>> {
+  return [
+    {
+      id: "parity.claude.terminalTui",
+      label: "Claude Code 终端 TUI",
+      value: "non-goal",
+      group: "parity",
+      source: "claude-source-reference",
+      status: "unsupported",
+      writable: false,
+      reason: "ui-live-parity-hardening-v1 明确不复制完整 Claude Code 终端 TUI；NovelFork 使用 Web 工作台单栏对话实现 partial parity。",
+      verifiedBy: "manual-source",
+    },
+    {
+      id: "parity.claude.chromeBridge",
+      label: "Claude Chrome bridge",
+      value: "non-goal",
+      group: "parity",
+      source: "claude-source-reference",
+      status: "unsupported",
+      writable: false,
+      reason: "Claude 源码/CLI 暴露 --chrome，但 NovelFork 当前 non-goal，不在设置页显示为已接入。",
+      verifiedBy: "manual-source",
+    },
+    {
+      id: "parity.claude.permissions",
+      label: "Claude permission modes 映射",
+      value: "partial",
+      group: "parity",
+      source: "claude-source-reference",
+      status: "partial",
+      writable: false,
+      reason: "Claude external modes acceptEdits/bypassPermissions/default/dontAsk/plan 映射到 NovelFork ask/edit/allow/read/plan 的产品化语义，非 1:1 sandbox。",
+      verifiedBy: "manual-source",
+    },
+  ];
+}
+
 export function settingsFactDisplayValue(fact: SettingsFact<unknown>) {
   if (Array.isArray(fact.value)) return fact.value.length ? fact.value.join("、") : "空列表";
   if (typeof fact.value === "string") return fact.value.trim() ? fact.value : "未配置";
@@ -240,6 +279,7 @@ export function settingsFactSourceLabel(source: SettingsFactSource) {
     "capability-matrix": "能力矩阵",
     "narrafork-reference": "NarraFork 参考",
     "claude-source-reference": "Claude 源码参考",
+    "official-docs": "官方文档",
     default: "默认值",
   };
   return labels[source];

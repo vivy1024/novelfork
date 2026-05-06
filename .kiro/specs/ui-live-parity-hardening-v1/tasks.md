@@ -95,13 +95,14 @@
   - 覆盖：Requirement 8、9；Design: Conversation Runtime Transparency。
   - 证据：`ToolCallCard` 简化分支补齐复制摘要、全屏详情、raw 展开脱敏，敏感 key/value（apiKey/access_token/sk-* 等）显示和 clipboard 均替换为 `[REDACTED]`；`ConfirmationGate` 展示目标、风险、permission source 与操作说明，仍通过真实 approve/reject 回调进入 pending confirmation 流程；`ConversationStatusBar` 展示 context used/max、trim/compact threshold warning、checkpoint notice 和 planned runtime panel 列表；`ConversationSurface` 新增 runtime controls，running 才启用中断，idle 显示“无运行中的会话”，Compact 只有接入真实 handler 时启用，Retry/Clear/Fork/Resume 不做假 current 而显示 disabled reason。验证：`pnpm --dir packages/studio test src/app-next/agent-conversation/surface/ConversationSurface.test.tsx` 通过（1 file / 23 tests passed），`pnpm --dir packages/studio test src/app-next/StudioNextApp.test.tsx src/api/routes/session.test.ts` 通过（2 files / 46 tests passed），`pnpm --dir packages/studio exec tsc --noEmit` 与 `pnpm --dir packages/studio exec tsc -p tsconfig.server.json --noEmit` 通过。
 
-- [ ] 11. 建立 Claude Code parity baseline 与守护验证
+- [x] 11. 建立 Claude Code parity baseline 与守护验证
   - 新增或更新 `claude-code-parity-baseline.md`，记录本机 CLI help/version、官方文档、本地 Claude 源码路径与读取日期。
   - 矩阵覆盖 continue/resume/fork、print/headless、stream-json、permission-mode、allowed/disallowed tools、tool set filtering、MCP config、permission prompt tool、settings file/json、agents json、add-dir、plugins、worktree、Chrome/IDE/server、usage/result。
   - 将 NovelFork 状态标为 current/partial/planned/non-goal/unknown，并说明 UI/API/CLI surface 与验证证据。
   - 权限模式中文产品文案必须映射到真实 internal value 和差异，不能把 NarraFork 文案当 Claude 原生枚举。
   - 验证：parity matrix validator 测试覆盖状态枚举、来源日期、non-goal 不进入 UI “已接入”。
   - 覆盖：Requirement 6、10；Design: Claude Code Parity Guard。
+  - 证据：新增 `.kiro/specs/ui-live-parity-hardening-v1/claude-code-parity-baseline.md`，记录 `claude --version` 本机返回 `2.1.69 (Claude Code)`、同日旧 baseline 的 help surface、官方 CLI reference（2026-05-06 访问）和本地 `claude/restored-cli-src/src/main.tsx`、`src/types/permissions.ts`、`src/utils/permissions/permissions.ts` 源码路径；矩阵覆盖 continue/resume/fork、print/headless、stream-json、permission-mode、allowed/disallowed tools、`--tools`、MCP config、permission prompt tool、settings file/json、agents json、add-dir、worktree、tmux、Chrome bridge、IDE/server、plugins 与 usage/result，并将 NovelFork 状态标为 current/partial/planned/non-goal。新增 `parity-matrix.ts` validator 与测试，覆盖非法状态、缺来源、缺日期、non-goal 不得进入 UI current claim；`deriveClaudeParitySettingsFacts()` 把 Claude TUI/Chrome bridge 显示为 unsupported/non-goal，permission modes 显示 partial。验证：`pnpm --dir packages/studio test src/app-next/settings/parity-matrix.test.ts src/app-next/settings/SettingsTruthModel.test.ts` 通过（2 files / 6 tests passed），`pnpm --dir packages/studio exec tsc --noEmit` 与 `pnpm --dir packages/studio exec tsc -p tsconfig.server.json --noEmit` 通过。
 
 - [ ] 12. 建立 Codex CLI parity baseline 与 sandbox/approval 差异守护
   - 新增 `codex-cli-parity-baseline.md`，记录官方/本机可确认来源与访问日期。

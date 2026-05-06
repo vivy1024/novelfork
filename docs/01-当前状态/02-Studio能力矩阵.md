@@ -163,6 +163,7 @@
 | 设置 Truth Model（来源/状态/API/未配置原因） | ✅ Task 6-7：模型页与 Agent runtime 可见 setting 通过 `SettingsFact` 展示真实来源、状态、读写 API；无 schema 来源项显示 planned/unsupported 或隐藏，空值显示“未配置” |
 | 模型默认值/摘要模型/子代理配置 | ✅ 默认/摘要/Explore/Plan/General/Codex 推理强度均来自 user settings，不用模型池第一项冒充当前值；运行控制保存后回读 `/api/settings/user` |
 | Agent runtime 来源事实 | ✅ 覆盖 default permission、max turns、retry/backoff、WebFetch proxy、上下文/大窗口阈值、debug、allowlist/blocklist、sendMode；first-token timeout 标记 planned |
+| Claude Code parity guard | ✅ Task 11：基于本机 2.1.69、官方 CLI reference 与本地 Claude 源码建立 baseline；Claude TUI/Chrome bridge/tmux/IDE server/plugin 等 non-goal 不进入 UI current claim，权限模式仅标 partial 映射 |
 | 设置分组 IA | ✅ 个人设置、实例管理、运行资源与审计、关于与项目；借鉴 NarraFork 分组但字段回到 NovelFork schema |
 | 个人资料 | ✅ |
 | 关于（版本/commit/Bun） | ✅ |
