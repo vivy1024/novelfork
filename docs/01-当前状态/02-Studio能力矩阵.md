@@ -129,7 +129,7 @@
 |-----|------|------|
 | 左侧资源栏 | 全局导航 + 当前书籍资源树；章节、候选稿、草稿、经纬、Story/Truth、素材、发布报告 | ✅ |
 | 中间画布 | 多资源 Tab、章节编辑、候选稿、经纬详情、工具产物、dirty 切换拦截；`ui-live-parity-hardening-v1` Task 2-4 已补资源详情 hydrate、保存控制器、dirty guard 与 Playwright 浏览器保存刷新读回 | ✅ 资源 hydrate/保存防覆盖/浏览器读回已验证；更广 E2E 仍随后续任务扩展 |
-| 右侧叙述者会话 | 固定 Writer/Narrator 会话、模型/权限控件、工具调用流、恢复状态；Task 9 已补真实 session binding、消息数、context usage、工作区/Git unavailable facts，并在 session config 更新后回读 chat state 同步 ShellDataProvider；Task 10 已补工具卡复制/全屏/raw 脱敏、审批目标/风险/来源/操作、context threshold/checkpoint notice 和运行控制 disabled reason | ✅ header facts/配置回读/工具透明化已验证；完整对话窗口浏览器 E2E 仍随后续任务扩展 |
+| 右侧叙述者会话 | 固定 Writer/Narrator 会话、模型/权限控件、工具调用流、恢复状态；Task 9 已补真实 session binding、消息数、context usage、工作区/Git unavailable facts，并在 session config 更新后回读 chat state 同步 ShellDataProvider；Task 10 已补工具卡复制/全屏/raw 脱敏、审批目标/风险/来源/操作、context threshold/checkpoint notice 和运行控制 disabled reason；Task 13 浏览器 E2E 覆盖工作台创建 session、Shell 同步、narrator route header、工具卡 raw 脱敏、模型/权限/推理回读、idle/running 中断状态 | ✅ header facts/配置回读/工具透明化/对话窗口浏览器 E2E 已验证 |
 | cockpit 工具结果 | `cockpit.get_snapshot` / hooks / candidates 等通过工具卡片和画布组件展示 | ✅ |
 | PGI + GuidedGenerationPlan | 生成前追问、计划卡片、批准/拒绝确认门 | ✅ |
 | Narrative Line | 只读快照、mutation preview、approve 后写入审计 | ✅ |
@@ -156,13 +156,13 @@
 | 功能 | 状态 |
 |------|------|
 | AI 供应商管理（API key 接入） | ✅ Task 8：区分可配置、已配置、已验证、可调用；缺配置或测试失败显示 degraded/error 与恢复动作 |
-| 平台集成（Codex/Kiro JSON 账号导入） | ✅ Task 8：无账号显示“可导入 / 未配置账号 / 不可调用”，0 模型显示“未验证 / 0 个模型 / 不可调用” |
+| 平台集成（Codex/Kiro JSON 账号导入） | ✅ Task 8：无账号显示“可导入 / 未配置账号 / 不可调用”，0 模型显示“未验证 / 0 个模型 / 不可调用”；Task 13 Playwright 已在 `/next/settings` 验活 Codex 无账号不可调用 |
 | 模型池管理（刷新/测试/启用禁用） | ✅ Task 8：运行态总览拆分 provider total、enabled provider、available models、total catalog models、callable models |
 | 真实 Provider/Model 管理（显式选择，无虚拟模型/自动 fallback） | ✅ 模型能力标签只来自真实 inventory（大上下文、多模态、思考链、工具调用）；未知能力显示 unknown |
 | Runtime control panel（权限/上下文/工具策略） | ✅ Task 7：运行策略逐项经 `deriveAgentRuntimeSettingsFacts` 展示来源、状态、读写 API 与 planned 缺口 |
-| 设置 Truth Model（来源/状态/API/未配置原因） | ✅ Task 6-7：模型页与 Agent runtime 可见 setting 通过 `SettingsFact` 展示真实来源、状态、读写 API；无 schema 来源项显示 planned/unsupported 或隐藏，空值显示“未配置” |
+| 设置 Truth Model（来源/状态/API/未配置原因） | ✅ Task 6-7：模型页与 Agent runtime 可见 setting 通过 `SettingsFact` 展示真实来源、状态、读写 API；无 schema 来源项显示 planned/unsupported 或隐藏，空值显示“未配置”；Task 13 浏览器 E2E 已验活默认模型未配置不 fallback、Codex 推理强度来自真实 schema |
 | 模型默认值/摘要模型/子代理配置 | ✅ 默认/摘要/Explore/Plan/General/Codex 推理强度均来自 user settings，不用模型池第一项冒充当前值；运行控制保存后回读 `/api/settings/user` |
-| Agent runtime 来源事实 | ✅ 覆盖 default permission、max turns、retry/backoff、WebFetch proxy、上下文/大窗口阈值、debug、allowlist/blocklist、sendMode；first-token timeout 标记 planned |
+| Agent runtime 来源事实 | ✅ 覆盖 default permission、max turns、retry/backoff、WebFetch proxy、上下文/大窗口阈值、debug、allowlist/blocklist、sendMode；first-token timeout 标记 planned；Task 13 浏览器 E2E 确认不出现“已接入/Codex sandbox 已接入”假 current |
 | Claude Code parity guard | ✅ Task 11：基于本机 2.1.69、官方 CLI reference 与本地 Claude 源码建立 baseline；Claude TUI/Chrome bridge/tmux/IDE server/plugin 等 non-goal 不进入 UI current claim，权限模式仅标 partial 映射 |
 | Codex CLI parity guard | ✅ Task 12：基于本机 `codex-cli 0.80.0` help、官方 CLI/config/non-interactive/subagents/Windows 文档建立 baseline；TUI 为 non-goal，exec/config/subagents/web search/approval/Windows 边界为 partial，sandbox/MCP/image input/review 为 planned；Codex sandbox 不进入 UI current claim |
 | 设置分组 IA | ✅ 个人设置、实例管理、运行资源与审计、关于与项目；借鉴 NarraFork 分组但字段回到 NovelFork schema |
