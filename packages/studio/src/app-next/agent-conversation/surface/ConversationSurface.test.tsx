@@ -259,6 +259,26 @@ describe("Conversation Surface", () => {
     expect(screen.getByTestId("conversation-recovery-notice").textContent).toContain("history-gap");
   });
 
+  it("RED: recovery notice exposes one normalized state, actionable copy, and last cursor without raw state leakage", () => {
+    render(
+      <ConversationSurface
+        title="叙述者"
+        status={{ state: "error", label: "WebSocket 失败" }}
+        messages={[]}
+        recoveryNotice={{ state: "resetting", reason: "history-gap", lastSeq: 12, ackedSeq: 9, actionLabel: "重新加载快照" }}
+        onApproveConfirmation={vi.fn()}
+        onRejectConfirmation={vi.fn()}
+        onSend={vi.fn()}
+      />,
+    );
+
+    const notice = screen.getByTestId("conversation-recovery-notice");
+    expect(notice.textContent).toContain("需要重新加载快照");
+    expect(notice.textContent).toContain("最近成功 cursor：9 / 12");
+    expect(notice.textContent).toContain("重新加载快照");
+    expect(notice.textContent).not.toContain("恢复状态：resetting");
+  });
+
   it("状态栏展示合同模型配置并通过 session update 回调切换模型、权限和推理强度", async () => {
     const onUpdateSessionConfig = vi.fn().mockResolvedValue(undefined);
     render(
@@ -356,5 +376,29 @@ describe("Conversation Surface", () => {
     fireEvent.change(screen.getByLabelText("权限"), { target: { value: "allow" } });
 
     await waitFor(() => expect(screen.getByTestId("status-update-error").textContent).toContain("session update 失败"));
+  });
+
+  it("RED: 没有持久化 session config 时不展示可编辑模型/权限/推理控件", () => {
+    render(
+      <ConversationSurface
+        title="叙述者"
+        status={{
+          state: "ready",
+          label: "就绪",
+          modelOptions: [
+            { providerId: "sub2api", providerLabel: "Sub2API", modelId: "gpt-5.4", modelLabel: "GPT-5.4", supportsTools: true },
+          ],
+        }}
+        messages={messages}
+        onApproveConfirmation={vi.fn()}
+        onRejectConfirmation={vi.fn()}
+        onSend={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByLabelText("模型")).toBeNull();
+    expect(screen.queryByLabelText("权限")).toBeNull();
+    expect(screen.queryByLabelText("推理强度")).toBeNull();
+    expect(screen.getByText(/session config.*未加载|未配置会话模型/)).toBeTruthy();
   });
 });

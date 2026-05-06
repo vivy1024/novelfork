@@ -68,6 +68,13 @@ describe("SettingsSectionContent", () => {
     expect(screen.getByRole("button", { name: "打开 AI 供应商" })).toBeTruthy();
   });
 
+  it("RED: 没有真实 settings schema 来源时不展示 Codex 推理强度空字段", () => {
+    render(<SettingsSectionContent sectionId="models" />);
+
+    expect(screen.queryByText("Codex 推理强度")).toBeNull();
+    expect(screen.queryByText("—")).toBeNull();
+  });
+
   it("mounts RuntimeControlPanel for agents section", async () => {
     render(<SettingsSectionContent sectionId="agents" />);
     expect(await screen.findByText("权限与推理")).toBeTruthy();

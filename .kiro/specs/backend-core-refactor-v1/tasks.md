@@ -51,7 +51,8 @@
   - 对仍需保留的写 transparent/deprecated 状态；确认无人依赖后删除。
   - 验证：typecheck、route tests、docs verify。
 
-- [ ] 10. 文档与验收
+- [x] 10. 文档与验收
   - 更新 API 文档、存储层开发指引、CHANGELOG 和必要 README。
   - 运行相关 Vitest、`pnpm --dir packages/studio typecheck`、`pnpm docs:verify`。
   - 未跑的验证必须明确写“未运行”。
+  - 证据：已同步 `.kiro/specs/README.md`、`AGENTS.md`、`README.md`、`packages/studio/README.md`、`CHANGELOG.md`、`docs/01-当前状态/03-当前执行主线.md`、`docs/05-开发者指南/02-存储层开发指引.md`、`docs/06-API与数据契约/02-创作工作台接口.md` 与 `docs/08-测试与质量/01-当前测试状态.md`。验证：`pnpm --dir packages/studio exec vitest run src/api/routes/contract-regression.test.ts src/api/backend-contract-matrix.test.ts src/api/lib/storage-read-service.test.ts src/api/lib/storage-write-service.test.ts src/api/lib/storage-destructive-service.test.ts src/api/lib/candidate-destructive-service.test.ts src/api/lib/session-chat-service.test.ts src/api/lib/provider-runtime-store.test.ts src/api/lib/provider-runtime-control.test.ts src/api/lib/provider-adapters.test.ts src/api/routes/providers.test.ts src/api/routes/session.test.ts src/api/routes/storage.test.ts src/api/routes/ai.test.ts src/api/routes/pipeline.test.ts src/api/routes/monitor.test.ts --reporter=verbose` 通过（14 files / 78 tests，输出含 SQLite experimental warning 与 session.recovery stdout）；`pnpm --dir packages/studio typecheck` 通过（包含 Core build、client/server TypeScript）；`pnpm docs:verify` 通过（84 markdown files / 22 directories）。未运行验证：完整 Studio 全量测试与手动浏览器冒烟未运行，本任务为后端核心文档/验收收口，已用后端合同、storage/session/provider/legacy route 聚焦回归覆盖。

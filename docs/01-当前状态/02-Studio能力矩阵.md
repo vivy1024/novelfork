@@ -15,6 +15,7 @@
 状态口径：
 - **真实可用**：有真实 API、持久化或真实 runtime 调用，失败时返回真实错误。
 - **透明过渡**：功能可用但仍是临时态、`process-memory`、`prompt-preview` 等，UI/API 明确标注。
+- **需浏览器验活**：已有合同/组件回归，但尚未完成真实浏览器端到端路径，不能写成最终 UI 可用。
 - **未接入**：标记为不支持，不伪造成功。
 
 ---
@@ -127,7 +128,7 @@
 | 能力 | 内容 | 状态 |
 |-----|------|------|
 | 左侧资源栏 | 全局导航 + 当前书籍资源树；章节、候选稿、草稿、经纬、Story/Truth、素材、发布报告 | ✅ |
-| 中间画布 | 多资源 Tab、章节编辑、候选稿、经纬详情、工具产物、dirty 切换拦截 | ✅ |
+| 中间画布 | 多资源 Tab、章节编辑、候选稿、经纬详情、工具产物、dirty 切换拦截；`ui-live-parity-hardening-v1` Task 2-4 已补资源详情 hydrate、保存控制器、dirty guard 与 Playwright 浏览器保存刷新读回 | ✅ 资源 hydrate/保存防覆盖/浏览器读回已验证；更广 E2E 仍随后续任务扩展 |
 | 右侧叙述者会话 | 固定 Writer/Narrator 会话、模型/权限控件、工具调用流、恢复状态 | ✅ |
 | cockpit 工具结果 | `cockpit.get_snapshot` / hooks / candidates 等通过工具卡片和画布组件展示 | ✅ |
 | PGI + GuidedGenerationPlan | 生成前追问、计划卡片、批准/拒绝确认门 | ✅ |

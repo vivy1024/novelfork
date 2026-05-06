@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 
 import { createContractClient, createProviderClient, createResourceClient, createSessionClient, type ContractResult } from "../backend-contract";
 import type { BookListResponse } from "../../shared/contracts";
@@ -43,6 +43,65 @@ const EMPTY_SHELL_DATA: UseShellDataResult = {
   loading: false,
   error: null,
 };
+
+type ShellDataInvalidationScope = "all" | "books" | "sessions" | "providers";
+
+type ShellDataListener = () => void;
+
+interface ShellDataStoreSnapshot extends UseShellDataResult {
+  readonly revision: number;
+}
+
+interface ShellDataStoreActions {
+  readonly invalidate: (scope?: ShellDataInvalidationScope) => void;
+  readonly upsertSession: (session: NarratorSessionRecord | ShellSessionItem) => void;
+}
+
+const shellDataListeners = new Set<ShellDataListener>();
+let shellDataSnapshot: ShellDataStoreSnapshot = { ...EMPTY_SHELL_DATA, loading: true, revision: 0 };
+let shellDataClients: ShellDataClients | undefined;
+let shellDataLoadSeq = 0;
+
+function notifyShellDataListeners() {
+  shellDataListeners.forEach((listener) => listener());
+}
+
+function setShellDataSnapshot(next: Omit<ShellDataStoreSnapshot, "revision"> | ((current: ShellDataStoreSnapshot) => Omit<ShellDataStoreSnapshot, "revision">)) {
+  const resolved = typeof next === "function" ? next(shellDataSnapshot) : next;
+  shellDataSnapshot = { ...resolved, revision: shellDataSnapshot.revision + 1 };
+  notifyShellDataListeners();
+}
+
+function subscribeShellData(listener: ShellDataListener) {
+  shellDataListeners.add(listener);
+  return () => shellDataListeners.delete(listener);
+}
+
+function getShellDataSnapshot() {
+  return shellDataSnapshot;
+}
+
+function ensureShellDataClients(clients?: ShellDataClients) {
+  if (clients) shellDataClients = clients;
+  shellDataClients ??= createShellDataClients();
+  return shellDataClients;
+}
+
+function reloadShellData(clients?: ShellDataClients) {
+  const requestSeq = ++shellDataLoadSeq;
+  const activeClients = ensureShellDataClients(clients);
+  setShellDataSnapshot((current) => ({ ...current, loading: true, error: null }));
+  void loadShellData(activeClients).then(
+    (result) => {
+      if (requestSeq !== shellDataLoadSeq) return;
+      setShellDataSnapshot({ ...result, loading: false });
+    },
+    (error: unknown) => {
+      if (requestSeq !== shellDataLoadSeq) return;
+      setShellDataSnapshot({ ...EMPTY_SHELL_DATA, error: error instanceof Error ? error.message : String(error), loading: false });
+    },
+  );
+}
 
 function resultError(result: ContractResult<unknown>): string | null {
   if (result.ok) return null;
@@ -103,28 +162,42 @@ export async function loadShellData(clients: ShellDataClients = createShellDataC
   };
 }
 
+function toShellSessionItem(session: NarratorSessionRecord | ShellSessionItem, books: readonly ShellBookItem[]): ShellSessionItem {
+  return {
+    id: session.id,
+    title: session.title,
+    status: session.status,
+    projectId: session.projectId,
+    projectName: session.projectId ? books.find((book) => book.id === session.projectId)?.title : ("projectName" in session ? session.projectName : undefined),
+    agentId: session.agentId,
+    lastModified: "lastModified" in session ? session.lastModified : undefined,
+  };
+}
+
+export function useShellDataStore(): ShellDataStoreActions {
+  return {
+    invalidate: (scope: ShellDataInvalidationScope = "all") => {
+      if (scope === "sessions" || scope === "all") reloadShellData();
+      if (scope === "books" || scope === "providers") reloadShellData();
+    },
+    upsertSession: (session) => {
+      setShellDataSnapshot((current) => {
+        const nextSession = toShellSessionItem(session, current.books);
+        const sessions = current.sessions.some((candidate) => candidate.id === nextSession.id)
+          ? current.sessions.map((candidate) => (candidate.id === nextSession.id ? nextSession : candidate))
+          : [nextSession, ...current.sessions];
+        return { ...current, sessions };
+      });
+    },
+  };
+}
+
 export function useShellData(clients?: ShellDataClients): UseShellDataResult {
-  const [state, setState] = useState<UseShellDataResult>({ ...EMPTY_SHELL_DATA, loading: true });
+  const snapshot = useSyncExternalStore(subscribeShellData, getShellDataSnapshot, getShellDataSnapshot);
 
   useEffect(() => {
-    let cancelled = false;
-
-    setState((current) => ({ ...current, loading: true, error: null }));
-    void loadShellData(clients).then(
-      (result) => {
-        if (!cancelled) setState({ ...result, loading: false });
-      },
-      (error: unknown) => {
-        if (!cancelled) {
-          setState({ ...EMPTY_SHELL_DATA, error: error instanceof Error ? error.message : String(error), loading: false });
-        }
-      },
-    );
-
-    return () => {
-      cancelled = true;
-    };
+    reloadShellData(clients);
   }, [clients]);
 
-  return state;
+  return snapshot;
 }

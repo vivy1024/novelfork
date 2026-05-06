@@ -43,6 +43,7 @@ export interface ConversationStatus {
   modelOptions?: readonly ConversationModelOption[];
   toolPolicySummary?: SessionToolPolicy;
   unsupportedToolsReason?: string;
+  sessionConfigLoaded?: boolean;
 }
 
 export interface ConversationSessionConfigPatch {
@@ -119,6 +120,7 @@ export function ConversationStatusBar({ status, onUpdateSessionConfig = () => un
   const selectedModel = status.modelOptions?.find((option) => option.providerId === status.providerId && option.modelId === status.modelId);
   const toolsUnsupported = selectedModel?.supportsTools === false || Boolean(status.unsupportedToolsReason);
   const toolPolicySummary = formatToolPolicySummary(status.toolPolicySummary);
+  const sessionConfigLoaded = status.sessionConfigLoaded ?? Boolean(status.providerId || status.modelId || status.permissionMode || status.reasoningEffort);
 
   async function updateSessionConfig(patch: ConversationSessionConfigPatch) {
     setUpdateError(null);
@@ -137,8 +139,9 @@ export function ConversationStatusBar({ status, onUpdateSessionConfig = () => un
       {status.reasoningEffort ? <span>推理：{status.reasoningEffort}</span> : null}
       {status.usage ? <span>{formatTokens(status.usage)}</span> : null}
       {toolPolicySummary ? <span data-testid="tool-policy-summary">工具策略：{toolPolicySummary}</span> : null}
+      {!sessionConfigLoaded ? <span>session config 未加载：未配置会话模型</span> : null}
 
-      {status.modelOptions?.length ? (
+      {sessionConfigLoaded && status.modelOptions?.length ? (
         <label>
           模型
           <select
@@ -158,7 +161,7 @@ export function ConversationStatusBar({ status, onUpdateSessionConfig = () => un
         </label>
       ) : null}
 
-      {status.permissionMode ? (
+      {sessionConfigLoaded && status.permissionMode ? (
         <label>
           权限
           <select aria-label="权限" value={status.permissionMode} onChange={(event) => void updateSessionConfig({ permissionMode: event.currentTarget.value as SessionPermissionMode })}>
@@ -169,7 +172,7 @@ export function ConversationStatusBar({ status, onUpdateSessionConfig = () => un
         </label>
       ) : null}
 
-      {status.reasoningEffort ? (
+      {sessionConfigLoaded && status.reasoningEffort ? (
         <label>
           推理强度
           <select aria-label="推理强度" value={status.reasoningEffort} onChange={(event) => void updateSessionConfig({ reasoningEffort: event.currentTarget.value as SessionReasoningEffort })}>

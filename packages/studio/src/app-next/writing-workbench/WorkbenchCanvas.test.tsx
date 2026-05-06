@@ -99,4 +99,46 @@ describe("WorkbenchCanvas", () => {
     expect(screen.getByTestId("raw-resource-node").textContent).toContain("candidate.created");
     await waitFor(() => expect(onCanvasContextChange).toHaveBeenLastCalledWith(expect.objectContaining({ activeResourceId: "tool-result:1", activeKind: "tool-result" })));
   });
+
+  it("RED: 不把未 hydrate 的章节列表预览当作已加载正文编辑器", () => {
+    render(
+      <WorkbenchCanvas
+        node={node({
+          id: "chapter:book-1:1",
+          kind: "chapter",
+          title: "第一章",
+          content: "",
+          metadata: { bookId: "book-1", chapterNumber: 1, source: "list-preview" },
+          capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: false, apply: false },
+        })}
+        onSave={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByLabelText("章节正文")).toBeNull();
+    expect(screen.getByText(/章节详情.*加载|未完成详情 hydrate/)).toBeTruthy();
+  });
+
+  it("RED: 详情未 hydrate 前禁止把章节 textarea 内容保存回正式资源", () => {
+    const onSave = vi.fn();
+    render(
+      <WorkbenchCanvas
+        node={node({
+          id: "chapter:book-1:1",
+          kind: "chapter",
+          title: "第一章",
+          content: "",
+          metadata: { bookId: "book-1", chapterNumber: 1, source: "list-preview" },
+          capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: false, apply: false },
+        })}
+        onSave={onSave}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    expect(onSave).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "保存" })).toHaveProperty("disabled", true);
+    expect(screen.getByRole("alert").textContent).toMatch(/详情.*未加载|hydrate/);
+  });
 });

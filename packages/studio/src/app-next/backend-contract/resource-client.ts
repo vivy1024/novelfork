@@ -7,6 +7,13 @@ export interface SaveDraftPayload {
   readonly [key: string]: unknown;
 }
 
+export interface SaveJingweiEntryPayload {
+  readonly title?: string;
+  readonly contentMd?: string;
+  readonly sectionId?: string;
+  readonly [key: string]: unknown;
+}
+
 export function createResourceClient(contract: ContractClient) {
   return {
     listBooks: <T = BookListResponse>() => contract.get<T>("/api/books", { capability: { id: "books.list", status: "current" } }),
@@ -58,6 +65,8 @@ export function createResourceClient(contract: ContractClient) {
       const query = sectionId ? `?sectionId=${encodeURIComponent(sectionId)}` : "";
       return contract.get<T>(`/api/books/${encodeURIComponent(bookId)}/jingwei/entries${query}`, { capability: { id: "jingwei.entries", status: "current" } });
     },
+    saveJingweiEntry: <T = unknown>(bookId: string, entryId: string, payload: SaveJingweiEntryPayload) =>
+      contract.put<T>(`/api/books/${encodeURIComponent(bookId)}/jingwei/entries/${encodeURIComponent(entryId)}`, payload, { capability: { id: "jingwei.entries.update", status: "current" } }),
     getNarrativeLine: <T = { snapshot: NarrativeLineSnapshot }>(bookId: string) =>
       contract.get<T>(`/api/books/${encodeURIComponent(bookId)}/narrative-line`, { capability: { id: "narrative-line.read", status: "current" } }),
   };

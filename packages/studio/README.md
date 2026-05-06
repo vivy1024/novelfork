@@ -10,7 +10,7 @@ Web 工作台 — React 19 + Hono + Vite + SQLite。NovelFork 的主用户界面
 src/
 ├── api/                # Hono 后端
 │   ├── routes/         # REST API 路由
-│   │   ├── storage.ts       # 书籍/章节 CRUD
+│   │   ├── storage.ts       # 书籍/章节资源 HTTP adapter（复杂业务已迁入领域 service）
 │   │   ├── writing-modes.ts # 写作模式
 │   │   ├── writing-tools.ts # 写作工具
 │   │   ├── bible.ts         # 故事经纬
@@ -26,6 +26,8 @@ src/
 │   │   ├── storage-write-service.ts # storage 非破坏写入 service
 │   │   ├── storage-destructive-service.ts # storage 硬删除 service
 │   │   ├── candidate-destructive-service.ts # 候选/草稿硬删除 service
+│   │   ├── resource-checkpoint-service.ts # 正式资源写入前 checkpoint
+│   │   ├── resource-rewind-service.ts # checkpoint rewind preview/apply
 │   │   ├── provider-runtime-store.ts # Provider/runtime store 与脱敏视图
 │   │   ├── runtime-model-pool.ts # 真实运行时模型池与 provider 状态
 │   │   ├── session-chat-service.ts # Agent 会话 orchestrator
