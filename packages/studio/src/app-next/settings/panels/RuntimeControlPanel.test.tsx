@@ -65,7 +65,7 @@ describe("RuntimeControlPanel", () => {
 
     render(<RuntimeControlPanel />);
 
-    expect(await screen.findByText("Sub2API · GPT-5 Codex")).toBeTruthy();
+    expect(await screen.findByRole("option", { name: "Sub2API · GPT-5 Codex（会话）" })).toBeTruthy();
     expect(fetchJsonMock).toHaveBeenCalledWith("/api/providers/models");
 
     fireEvent.change(screen.getByLabelText("默认会话模型"), { target: { value: "sub2api:gpt-5-codex" } });
@@ -111,6 +111,45 @@ describe("RuntimeControlPanel", () => {
 
     expect(await screen.findByLabelText("默认会话模型")).toHaveProperty("value", "");
     expect(screen.queryByText("Sub2API · GPT-5 Codex")).toBeNull();
-    expect(screen.getByText(/默认会话模型.*未配置|请选择模型/)).toBeTruthy();
+    expect(screen.getByText(/默认会话模型未配置，请选择模型池中的可用模型/)).toBeTruthy();
+  });
+
+  it("RED: 保存运行控制后重新读取服务器配置作为最终事实", async () => {
+    const models = [{ modelId: "sub2api:gpt-5-codex", modelName: "GPT-5 Codex", providerName: "Sub2API" }];
+    let userReads = 0;
+    const modelDefaults = {
+      defaultSessionModel: "sub2api:gpt-5-codex",
+      summaryModel: "sub2api:gpt-5-codex",
+      subagentModelPool: ["sub2api:gpt-5-codex"],
+      validation: { defaultSessionModel: "valid", summaryModel: "valid", subagentModelPool: {}, invalidModelIds: [] },
+    };
+    fetchJsonMock.mockImplementation((path: string) => {
+      if (path === "/settings/user") {
+        userReads += 1;
+        return Promise.resolve({
+          runtimeControls: {
+            ...runtimeControls,
+            defaultReasoningEffort: userReads === 1 ? "medium" : "low",
+          },
+          modelDefaults,
+        });
+      }
+      if (path === "/api/providers/models") {
+        return Promise.resolve({ models });
+      }
+      return Promise.reject(new Error(`unexpected ${path}`));
+    });
+    putApiMock.mockResolvedValue({
+      runtimeControls: { ...runtimeControls, defaultReasoningEffort: "high" },
+      modelDefaults,
+    });
+
+    render(<RuntimeControlPanel />);
+
+    fireEvent.change(await screen.findByDisplayValue("中"), { target: { value: "high" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => expect(fetchJsonMock.mock.calls.filter(([path]) => path === "/settings/user")).toHaveLength(2));
+    await waitFor(() => expect(screen.getByDisplayValue("低")).toBeTruthy());
   });
 });

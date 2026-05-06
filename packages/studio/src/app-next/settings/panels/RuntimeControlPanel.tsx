@@ -170,18 +170,27 @@ export function RuntimeControlPanel() {
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
+  function applyUserConfig(data: Pick<UserConfig, "runtimeControls" | "modelDefaults">) {
+    setRc({ ...DEFAULT_RUNTIME_CONTROLS, ...(data.runtimeControls ?? {}) });
+    setMd({
+      ...DEFAULT_MODEL_DEFAULTS,
+      ...(data.modelDefaults ?? {}),
+      subagentModelPool: data.modelDefaults?.subagentModelPool ?? DEFAULT_MODEL_DEFAULTS.subagentModelPool,
+    });
+  }
+
+  async function refetchUserConfig() {
+    const data = await fetchJson<Pick<UserConfig, "runtimeControls" | "modelDefaults">>("/settings/user");
+    applyUserConfig(data);
+    return data;
+  }
+
   // --- data loading ---
   useEffect(() => {
     let cancelled = false;
 
-    fetchJson<Pick<UserConfig, "runtimeControls" | "modelDefaults">>("/settings/user")
-      .then((data) => {
-        setRc({ ...DEFAULT_RUNTIME_CONTROLS, ...(data.runtimeControls ?? {}) });
-        setMd({
-          ...DEFAULT_MODEL_DEFAULTS,
-          ...(data.modelDefaults ?? {}),
-          subagentModelPool: data.modelDefaults?.subagentModelPool ?? DEFAULT_MODEL_DEFAULTS.subagentModelPool,
-        });
+    refetchUserConfig()
+      .then(() => {
         setError(null);
       })
       .catch((e) => {
@@ -210,13 +219,8 @@ export function RuntimeControlPanel() {
     setSaved(false);
     setError(null);
     try {
-      const updated = await putApi<UserConfig>("/settings/user", { runtimeControls: rc, modelDefaults: md });
-      setRc({ ...DEFAULT_RUNTIME_CONTROLS, ...updated.runtimeControls });
-      setMd({
-        ...DEFAULT_MODEL_DEFAULTS,
-        ...updated.modelDefaults,
-        subagentModelPool: updated.modelDefaults?.subagentModelPool ?? DEFAULT_MODEL_DEFAULTS.subagentModelPool,
-      });
+      await putApi<UserConfig>("/settings/user", { runtimeControls: rc, modelDefaults: md });
+      await refetchUserConfig();
       setSaved(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -263,7 +267,7 @@ export function RuntimeControlPanel() {
       <Section title="模型">
         {hasModelOptions ? (
           <p className="rounded-md border border-border/60 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-            {runtimeModelLabel(modelOptions[0])}
+            默认会话模型{md.defaultSessionModel ? "已从用户设置读取" : "未配置，请选择模型池中的可用模型"}
           </p>
         ) : (
           <p className="rounded-md border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">

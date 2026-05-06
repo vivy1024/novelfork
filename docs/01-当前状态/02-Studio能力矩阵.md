@@ -160,7 +160,9 @@
 | 模型池管理（刷新/测试/启用禁用） | ✅ |
 | 真实 Provider/Model 管理（显式选择，无虚拟模型/自动 fallback） | ✅ |
 | Runtime control panel（权限/上下文/工具策略） | ✅ |
-| 模型默认值/摘要模型/子代理配置 | ✅ |
+| 设置 Truth Model（来源/状态/API/未配置原因） | ✅ Task 6：模型页可见 setting 通过 `SettingsFact` 展示真实来源、状态、读写 API；无 schema 来源的 Codex 推理强度隐藏，空值显示“未配置” |
+| 模型默认值/摘要模型/子代理配置 | ✅ 不用模型池第一项冒充当前值；运行控制保存后回读 `/api/settings/user` |
+| 设置分组 IA | ✅ 个人设置、实例管理、运行资源与审计、关于与项目；借鉴 NarraFork 分组但字段回到 NovelFork schema |
 | 个人资料 | ✅ |
 | 关于（版本/commit/Bun） | ✅ |
 | 套路页（命令/工具/权限/技能/子代理/MCP/钩子） | ✅ |

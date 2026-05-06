@@ -64,7 +64,7 @@ describe("SettingsSectionContent", () => {
     expect(screen.getByText("Plan 子代理模型")).toBeTruthy();
     expect(screen.getByText("模型池限制")).toBeTruthy();
     expect(screen.getByText("全局推理强度")).toBeTruthy();
-    expect(screen.getByText("Codex 推理强度")).toBeTruthy();
+    expect(screen.queryByText("Codex 推理强度")).toBeNull();
     expect(screen.getByRole("button", { name: "打开 AI 供应商" })).toBeTruthy();
   });
 
@@ -72,6 +72,16 @@ describe("SettingsSectionContent", () => {
     render(<SettingsSectionContent sectionId="models" />);
 
     expect(screen.queryByText("Codex 推理强度")).toBeNull();
+    expect(screen.queryByText("—")).toBeNull();
+  });
+
+  it("RED: 模型设置通过 SettingsTruthModel 展示来源、状态和读写 API", () => {
+    render(<SettingsSectionContent sectionId="models" />);
+
+    expect(screen.getAllByText("来源：用户设置").length).toBeGreaterThanOrEqual(4);
+    expect(screen.getAllByText("读取：/api/settings/user").length).toBeGreaterThanOrEqual(4);
+    expect(screen.getAllByText("写入：/api/settings/user").length).toBeGreaterThanOrEqual(4);
+    expect(screen.getAllByText("状态：已配置").length).toBeGreaterThanOrEqual(3);
     expect(screen.queryByText("—")).toBeNull();
   });
 
