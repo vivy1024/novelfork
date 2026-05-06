@@ -113,13 +113,14 @@
   - 覆盖：Requirement 7、10；Design: Codex CLI Parity Guard。
   - 证据：新增 `.kiro/specs/ui-live-parity-hardening-v1/codex-cli-parity-baseline.md`，记录本机 `codex --version` 返回 `codex-cli 0.80.0`，并用 `codex --help` / `codex exec --help` / `codex mcp --help` / `codex review --help` / `codex sandbox --help`、官方 CLI/config/non-interactive/subagents/Windows 文档（2026-05-06 访问）作为来源；`codex sandbox windows --help` 被权限层拒绝，未虚构细项。新增 `CODEX_CLI_PARITY_MATRIX`，覆盖 TUI、exec、config/profile、sandbox、approval、MCP、subagents、web search、image input、review 与 Windows native boundary，标记 TUI non-goal，exec/config/subagents/web search/approval/Windows partial，sandbox/MCP/image input/review planned；明确 sandbox `read-only` / `workspace-write` / `danger-full-access` 均非 current，approval 区分本机 `untrusted/on-failure/on-request/never` 与官方 `untrusted/on-request/never/granular` 差异。`deriveCodexParitySettingsFacts()` 将 Codex sandbox 显示为 planned、approval 显示为 partial，来源限制为 capability-matrix/official-docs/user-settings。先运行 RED 聚焦测试确认 2 failed tests；实现后运行 `pnpm --dir packages/studio exec vitest run src/app-next/settings/parity-matrix.test.ts src/app-next/settings/SettingsTruthModel.test.ts` 通过（2 files / 8 tests passed），`pnpm --dir packages/studio exec tsc --noEmit` 与 `pnpm --dir packages/studio exec tsc -p tsconfig.server.json --noEmit` 通过。
 
-- [ ] 13. 建立设置页与对话窗口浏览器 E2E 验收
+- [x] 13. 建立设置页与对话窗口浏览器 E2E 验收
   - 设置页 E2E：打开设置 → provider/模型/AI 代理 → 断言 0 账号平台不可调用、默认模型不来自列表第一个、运行策略不固定“已接入”、Codex 推理强度按真实 schema 显示或隐藏。
   - 会话创建 E2E：从工作台动作创建 session → Shell 侧栏出现 session → narrator route 可打开 → recovery 进入 ready/idle 或显示真实失败。
   - 对话窗口 E2E：打开 narrator route → 断言 header 使用真实 session config → 切换模型/推理/权限并回读 → 展开真实 tool card → running 时中断按钮可用，idle 时不可显示假运行。
   - E2E 记录命令、覆盖路径和不调用真实模型的降级边界。
   - 验证：Playwright/Browser E2E 在本地可重复运行，失败时输出真实错误而非吞掉断言。
   - 覆盖：Requirement 3、4、5、8、9；Design: Browser E2E Gate。
+  - 证据：新增 `e2e/settings-session-conversation.spec.ts`，通过真实 Playwright 启动 Bun API + Vite 前端，在隔离 `.novelfork/e2e-workspace-flow-*` 根目录内准备真实 provider/runtime settings 与书籍，不调用真实模型。场景 1 覆盖 `/next/settings` 模型页默认模型未配置不从模型池第一项 fallback、`Codex 推理强度` 来自真实 settings schema、AI 供应商页 Codex 平台无账号显示“可导入 / 未配置账号 / 不可调用”、AI 代理页 first-token timeout 为 planned 且无“已接入/Codex sandbox 已接入”假 current。场景 2 覆盖 `/next/books/:bookId` 点击“生成下一章”创建真实 session、Shell 侧栏出现写作会话、跳转 `/next/narrators/:sessionId`，header 显示真实 binding/model/权限/推理，注入真实 chat state 后工具卡展开 raw 且脱敏 `apiKey/sk-*`，模型/权限/推理控件调用真实 session API 并轮询回读，idle 中断禁用、持久化 running tool call 刷新后中断启用。RED 先暴露 running tool call 刷新后仍禁用中断的问题；修复 `toConversationStatus()` 纳入持久化 running tool call。验证 `pnpm exec -- playwright test e2e/settings-session-conversation.spec.ts` 通过（2 passed）。
 
 - [ ] 14. 文档、能力矩阵、CHANGELOG 与最终验收收口
   - 更新 `docs/01-当前状态/02-Studio能力矩阵.md`，把资源编辑、设置页、provider、对话窗口、Claude/Codex parity 按 current/partial/planned/non-goal/needs-browser-verification 记录。
