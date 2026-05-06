@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { deriveAgentRuntimeSettingsFacts, deriveModelSettingsFacts, settingsFactDisplayValue } from "./SettingsTruthModel";
+import { deriveAgentRuntimeSettingsFacts, deriveClaudeParitySettingsFacts, deriveModelSettingsFacts, settingsFactDisplayValue } from "./SettingsTruthModel";
 
 const sampleConfig = {
   modelDefaults: {
@@ -67,7 +67,7 @@ describe("SettingsTruthModel", () => {
     expect(facts.every((fact) => settingsFactDisplayValue(fact) === "未配置")).toBe(true);
   });
 
-  it("RED: derives agent runtime facts from user settings, proxy config, and planned gaps", () => {
+  it("derives agent runtime facts from user settings, proxy config, and planned gaps", () => {
     const facts = deriveAgentRuntimeSettingsFacts(sampleConfig);
 
     expect(facts.map((fact) => fact.id)).toEqual([
@@ -111,5 +111,30 @@ describe("SettingsTruthModel", () => {
       expect(fact.writeApi).toBeTruthy();
       expect(settingsFactDisplayValue(fact)).not.toBe("—");
     }
+  });
+
+  it("derives Claude parity facts without advertising non-goals as current", () => {
+    const facts = deriveClaudeParitySettingsFacts();
+
+    expect(facts.map((fact) => fact.id)).toEqual([
+      "parity.claude.terminalTui",
+      "parity.claude.chromeBridge",
+      "parity.claude.permissions",
+    ]);
+    expect(facts.find((fact) => fact.id === "parity.claude.terminalTui")).toMatchObject({
+      group: "parity",
+      source: "claude-source-reference",
+      status: "unsupported",
+      writable: false,
+      value: "non-goal",
+    });
+    expect(facts.find((fact) => fact.id === "parity.claude.chromeBridge")).toMatchObject({
+      status: "unsupported",
+      reason: expect.stringContaining("non-goal"),
+    });
+    expect(facts.find((fact) => fact.id === "parity.claude.permissions")).toMatchObject({
+      status: "partial",
+      reason: expect.stringContaining("acceptEdits"),
+    });
   });
 });
