@@ -8,7 +8,7 @@ import type {
   ProviderType,
 } from "@/shared/provider-catalog";
 import { ApiProviderDetail } from "./providers/ApiProviderDetail";
-import { ApiProvidersSection, type ProviderFormState } from "./providers/ApiProvidersSection";
+import { ApiProvidersSection, type ApiProviderStatusSummary, type ProviderFormState } from "./providers/ApiProvidersSection";
 import { PlatformIntegrationDetail } from "./providers/PlatformIntegrationDetail";
 import { PlatformIntegrationsSection } from "./providers/PlatformIntegrationsSection";
 import type {
@@ -22,6 +22,9 @@ interface ProviderRuntimeSummary {
   readonly providerCount: number;
   readonly enabledProviderCount: number;
   readonly physicalModelCount: number;
+  readonly availableModelCount?: number;
+  readonly totalCatalogModelCount?: number;
+  readonly callableModelCount?: number;
   readonly platformAccountCount?: number;
   readonly enabledPlatformAccountCount?: number;
   readonly issueCount: number;
@@ -163,15 +166,53 @@ function ControlCard({ label, value, detail }: { readonly label: string; readonl
   );
 }
 
+function modelIsCallable(model: Model): boolean {
+  return model.enabled !== false && model.lastTestStatus !== "error" && model.lastTestStatus !== "unsupported";
+}
+
+function providerHasApiKey(provider: ManagedProvider): boolean {
+  return !provider.apiKeyRequired || Boolean(provider.config.apiKey || (provider.config as { apiKeyConfigured?: unknown }).apiKeyConfigured);
+}
+
+function providerStatus(provider: ManagedProvider): ApiProviderStatusSummary {
+  const reasons: string[] = [];
+  const enabledModels = provider.models.filter((model) => model.enabled !== false);
+  const configured = Boolean(provider.baseUrl?.trim()) && providerHasApiKey(provider);
+  const verified = enabledModels.some((model) => model.lastTestStatus === "success");
+  const callableModelCount = provider.enabled && configured && verified ? enabledModels.filter(modelIsCallable).length : 0;
+
+  if (!provider.enabled) reasons.push("已停用");
+  if (!provider.baseUrl?.trim()) reasons.push("缺少 Base URL");
+  if (!providerHasApiKey(provider)) reasons.push("缺少 API Key");
+  if (enabledModels.length === 0) reasons.push("0 个模型");
+  if (enabledModels.some((model) => model.lastTestStatus === "error")) reasons.push("测试失败");
+  if (!verified) reasons.push("未验证");
+
+  return {
+    status: reasons.includes("测试失败") ? "error" : callableModelCount > 0 && verified ? "callable" : "degraded",
+    catalogEnabled: true,
+    configured,
+    verified,
+    reasons: callableModelCount > 0 && verified ? ["可调用"] : [...new Set(reasons)],
+    callableModelCount,
+  };
+}
+
 function RuntimeOverviewSection({ summary, fallback }: { readonly summary: ProviderRuntimeSummary | null; readonly fallback: LocalProviderSummary }) {
   const data = summary ?? {
     providerCount: fallback.providerCount,
     enabledProviderCount: fallback.enabledProviderCount,
     physicalModelCount: fallback.modelCount,
+    availableModelCount: fallback.modelCount,
+    totalCatalogModelCount: fallback.modelCount,
+    callableModelCount: 0,
     platformAccountCount: fallback.platformCount,
     enabledPlatformAccountCount: fallback.enabledPlatformCount,
     issueCount: 0,
   };
+  const availableModelCount = data.availableModelCount ?? data.physicalModelCount;
+  const totalCatalogModelCount = data.totalCatalogModelCount ?? data.physicalModelCount;
+  const callableModelCount = data.callableModelCount ?? 0;
   return (
     <section className="space-y-3">
       <div>
@@ -179,10 +220,11 @@ function RuntimeOverviewSection({ summary, fallback }: { readonly summary: Provi
         <p className="text-xs text-muted-foreground">按真实供应商、真实模型、平台账号和运行策略观察当前 Agent Runtime。</p>
       </div>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <ControlCard label="供应商" value={`${data.enabledProviderCount}/${data.providerCount}`} detail="已启用 / 总数" />
-        <ControlCard label="物理模型" value={data.physicalModelCount} />
-        <ControlCard label="异常项" value={data.issueCount} />
+        <ControlCard label="供应商" value={`${data.enabledProviderCount}/${data.providerCount}`} detail={`enabled provider / provider total：${data.enabledProviderCount} / ${data.providerCount}`} />
+        <ControlCard label="可调用模型" value={callableModelCount} detail={`available model / total catalog model：${availableModelCount} / ${totalCatalogModelCount}`} />
+        <ControlCard label="物理模型" value={data.physicalModelCount} detail="provider runtime store physical models" />
         <ControlCard label="平台账号" value={data.platformAccountCount ?? fallback.platformCount} detail={`${data.enabledPlatformAccountCount ?? fallback.enabledPlatformCount} 个平台可用`} />
+        <ControlCard label="异常项" value={data.issueCount} detail="degraded/error provider + inactive account" />
       </div>
     </section>
   );
@@ -202,8 +244,18 @@ function ModelInventorySection({ groups }: { readonly groups: readonly GroupedMo
               <div className="font-medium">{group.providerName}</div>
               <span className="rounded bg-muted px-2 py-0.5 text-xs text-muted-foreground">{group.health}</span>
             </div>
-            <div className="mt-2 flex flex-wrap gap-1">
-              {group.models.slice(0, 6).map((model) => <span key={model.id} className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">{model.name}</span>)}
+            <div className="mt-2 space-y-2">
+              {group.models.slice(0, 6).map((model) => {
+                const capabilities = model.capabilities?.length ? model.capabilities : ["unknown"];
+                return (
+                  <div key={model.id} className="rounded bg-muted/40 px-2 py-1.5">
+                    <div className="text-xs font-medium text-foreground">{model.name}</div>
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {capabilities.map((capability) => <span key={capability} className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">{capability}</span>)}
+                    </div>
+                  </div>
+                );
+              })}
               {group.models.length === 0 && <span className="text-xs text-muted-foreground">没有模型，请先刷新供应商模型列表。</span>}
             </div>
           </div>
@@ -213,7 +265,8 @@ function ModelInventorySection({ groups }: { readonly groups: readonly GroupedMo
   );
 }
 
-function RuntimePolicySection() {
+function RuntimePolicySection({ callableModelCount }: { readonly callableModelCount: number }) {
+  const modelStatus = callableModelCount > 0 ? "current" : "degraded";
   return (
     <section className="space-y-3">
       <div>
@@ -221,10 +274,10 @@ function RuntimePolicySection() {
         <p className="text-xs text-muted-foreground">当前运行时使用真实模型显式选择、能力校验、权限模式和工具支持状态，不自动切换模型。</p>
       </div>
       <div className="grid gap-3 md:grid-cols-4">
-        <ControlCard label="显式模型选择" value="已接入" detail="providerId + modelId" />
-        <ControlCard label="能力校验" value="已接入" detail="tools / vision / streaming" />
-        <ControlCard label="权限模式" value="已接入" detail="read / plan / edit / allow" />
-        <ControlCard label="上下文窗口" value="已接入" detail="模型库存维护" />
+        <ControlCard label="显式模型选择" value={modelStatus} detail={`callable models：${callableModelCount}`} />
+        <ControlCard label="能力校验" value="partial" detail="仅展示真实 inventory 能力；unknown 不补造" />
+        <ControlCard label="权限模式" value="current" detail="read / plan / edit / allow" />
+        <ControlCard label="上下文窗口" value="current" detail="模型库存维护；缺失显示 unknown" />
       </div>
     </section>
   );
@@ -311,6 +364,9 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
       modelCount: providers.reduce((total, provider) => total + provider.models.filter((model) => model.enabled !== false).length, 0),
     };
   }, [platformIntegrations, providers]);
+
+  const localCallableModelCount = useMemo(() => providers.reduce((total, provider) => total + providerStatus(provider).callableModelCount, 0), [providers]);
+  const callableModelCount = providerRuntimeSummary?.callableModelCount ?? localCallableModelCount;
 
   const selectedPlatform = platformIntegrations.find((integration) => integration.id === selectedPlatformId) ?? null;
   const selectedApiProvider = providers.find((provider) => provider.id === selectedApiProviderId) ?? null;
@@ -465,7 +521,7 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
       <div>
         <h2 className="text-lg font-semibold">AI 供应商</h2>
         <p className="text-sm text-muted-foreground">
-          {summary.platformCount} 平台集成（{summary.enabledPlatformCount} 已启用） · {summary.providerCount} API key 供应商（{summary.enabledProviderCount} 已启用） · {summary.modelCount} 可用模型
+          {summary.platformCount} 平台集成（{summary.enabledPlatformCount} 可配置） · {summary.providerCount} API key 供应商（{summary.enabledProviderCount} enabled provider） · {summary.modelCount} available model
         </p>
       </div>
 
@@ -485,6 +541,7 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
 
       <ApiProvidersSection
         providers={providers}
+        providerStatuses={Object.fromEntries(providers.map((provider) => [provider.id, providerStatus(provider)]))}
         showAddForm={showAddForm}
         form={form}
         busy={busy}
@@ -496,7 +553,7 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
       />
 
       <ModelInventorySection groups={groupedModels} />
-      <RuntimePolicySection />
+      <RuntimePolicySection callableModelCount={callableModelCount} />
     </section>
   );
 }

@@ -70,22 +70,27 @@ function firstEnabledModel(provider: RuntimeProviderRecord) {
 function modelCapabilities(model: RuntimeProviderRecord["models"][number]): string[] {
   const capabilities: string[] = [];
   if (model.contextWindow >= 128000) capabilities.push("大上下文");
-  if (model.maxOutputTokens >= 8192) capabilities.push("长输出");
-  if (model.supportsFunctionCalling) capabilities.push("工具调用");
-  if (model.supportsStreaming) capabilities.push("流式");
-  if (model.supportsVision) capabilities.push("视觉");
-  return capabilities.length > 0 ? capabilities : ["能力待确认"];
+  if (model.supportsVision === true) capabilities.push("多模态");
+  if ((model as { supportsReasoning?: boolean }).supportsReasoning === true) capabilities.push("思考链");
+  if (model.supportsFunctionCalling === true) capabilities.push("工具调用");
+  return capabilities.length > 0 ? capabilities : ["unknown"];
 }
 
 async function buildProviderSummary(store: ProviderRuntimeStore) {
-  const [providers, platformAccounts] = await Promise.all([store.listProviders(), store.listPlatformAccounts()]);
+  const [providers, platformAccounts, runtimeModels] = await Promise.all([store.listProviders(), store.listPlatformAccounts(), buildRuntimeModelPool(store)]);
   const physicalModelCount = providers.reduce((sum, provider) => sum + provider.models.length, 0);
+  const totalCatalogModelCount = physicalModelCount;
+  const availableModelCount = runtimeModels.length;
+  const callableModelCount = runtimeModels.filter((model) => model.lastTestStatus === "success").length;
   const issueCount = providers.filter((provider) => !provider.enabled || provider.models.some((model) => model.lastTestStatus === "error")).length
     + platformAccounts.filter((account) => account.status !== "active").length;
   return {
     providerCount: providers.length,
     enabledProviderCount: providers.filter((provider) => provider.enabled).length,
     physicalModelCount,
+    availableModelCount,
+    totalCatalogModelCount,
+    callableModelCount,
     platformAccountCount: platformAccounts.length,
     enabledPlatformAccountCount: platformAccounts.filter((account) => account.status === "active").length,
     issueCount,

@@ -8,7 +8,21 @@ const IMPORT_METHOD_LABELS: Record<PlatformImportMethod, string> = {
 };
 
 function importStatusLabel(integration: PlatformIntegrationCatalogItem): string {
-  return integration.supportedImportMethods.includes("json-account") ? "JSON 可导入" : "未开放";
+  return integration.supportedImportMethods.includes("json-account") ? "可导入" : "未开放";
+}
+
+function buildPlatformState(integration: PlatformIntegrationCatalogItem, accountCount: number) {
+  const modelCount = integration.modelCount ?? 0;
+  if (!integration.enabled) {
+    return { catalog: "未开放", account: accountCount > 0 ? "已配置账号" : "未配置账号", summary: "未开放 / 不可调用", callable: false };
+  }
+  if (accountCount === 0) {
+    return { catalog: "可导入", account: "未配置账号", summary: "可导入 / 未配置账号 / 不可调用", callable: false };
+  }
+  if (modelCount === 0) {
+    return { catalog: "未验证", account: "已配置账号", summary: "未验证 / 0 个模型 / 不可调用", callable: false };
+  }
+  return { catalog: "可配置", account: "已配置账号", summary: "可配置 / 已配置账号 / 可调用", callable: true };
 }
 
 export function PlatformIntegrationCard({
@@ -20,6 +34,8 @@ export function PlatformIntegrationCard({
   readonly accountCount: number;
   readonly onSelect: (platformId: PlatformIntegrationCatalogItem["id"]) => void;
 }) {
+  const state = buildPlatformState(integration, accountCount);
+
   return (
     <div
       aria-label={`查看 ${integration.name} 平台集成详情`}
@@ -41,13 +57,16 @@ export function PlatformIntegrationCard({
             <span className="inline-block rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold tracking-wider text-muted-foreground">
               平台
             </span>
-            <span className={integration.enabled ? "inline-block rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-600" : "inline-block rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground"}>
-              {integration.enabled ? "已启用" : "未启用"}
+            <span className="inline-block rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
+              {state.catalog}
+            </span>
+            <span className="inline-block rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
+              {state.account}
             </span>
           </div>
         </div>
-        <span className={`rounded px-2 py-0.5 text-xs font-medium ${integration.enabled ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>
-          {integration.enabled ? "可用" : "不可用"}
+        <span className={`rounded px-2 py-0.5 text-xs font-medium ${state.callable ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>
+          {state.callable ? "可调用" : "不可调用"}
         </span>
       </div>
 
@@ -67,6 +86,8 @@ export function PlatformIntegrationCard({
           <div>导入</div>
         </div>
       </div>
+
+      <div className="mt-2 text-xs text-muted-foreground">{state.summary}</div>
 
       <div className="mt-3 flex flex-wrap gap-1">
         {integration.supportedImportMethods.map((method) => (

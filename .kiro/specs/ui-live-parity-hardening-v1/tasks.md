@@ -67,13 +67,14 @@
   - 覆盖：Requirement 4；Design: Settings Truth Model、NarraFork-Inspired Settings IA。
   - 证据：`deriveModelSettingsFacts` 改为直接读取 `exploreSubagentModel`、`planSubagentModel`、`generalSubagentModel` 与真实 `codexReasoningEffort` schema 字段，不再用 `subagentModelPool[0/1]` 回填；新增 `deriveAgentRuntimeSettingsFacts` 覆盖权限、默认推理、max turns、上下文/大窗口阈值、retry/backoff、WebFetch proxy、MCP/allowlist/blocklist、debug 与 sendMode，并把 first-token timeout 标为 `planned` / `capability-matrix`；`RuntimeControlPanel` 展示每项来源事实、Explore/Plan/General 子代理模型和 Codex 推理强度真实控件，WebFetch proxy 走 `/api/proxy`，保存后仍回读 `/api/settings/user`。先运行 Task 7 RED 聚焦测试，确认 2 files / 4 failed tests；实现后运行 `pnpm --dir packages/studio test src/app-next/settings/SettingsTruthModel.test.ts src/app-next/settings/panels/RuntimeControlPanel.test.tsx` 通过（2 files / 8 tests passed），`pnpm --dir packages/studio test src/app-next/settings/SettingsSectionContent.test.tsx src/app-next/StudioNextApp.test.tsx` 通过（2 files / 34 tests passed），`pnpm --dir packages/studio typecheck` 通过。
 
-- [ ] 8. 修复 provider 与平台账号 callable 状态模型
+- [x] 8. 修复 provider 与平台账号 callable 状态模型
   - 建立 provider 状态派生：catalog enabled、configured、verified、callable；统计 provider total、enabled provider、available models、total catalog models、callable models。
   - 平台集成账号数为 0 或模型数为 0 时显示“可导入 / 未配置账号 / 不可调用”或“未验证 / 0 个模型 / 不可调用”。
   - API key provider 缺 baseUrl/apiKey/models 或最近测试失败时显示 degraded/error，并暴露添加密钥、刷新模型、测试模型、启停 provider 的真实动作。
   - 模型能力标签只来自真实 inventory；unknown 不补造；secret/token/account JSON 只显示脱敏摘要。
   - 验证：provider runtime/store/component tests 覆盖 0 账号、未验证、模型数口径、测试失败、secret 脱敏、统计卡口径。
   - 覆盖：Requirement 5；Design: Provider and Platform Account Status。
+  - 证据：`ProviderSettingsPage` 增加 API provider 状态派生，卡片分开展示“可配置 / 已配置或未配置 / 已验证或未验证 / 可调用或不可调用”，测试失败时显示 `degraded/error`、缺 Base URL/API Key/未验证原因和“添加密钥 / 刷新模型 / 测试模型 / 启停 provider”恢复动作；平台卡片按账号数和 catalog 模型数显示“可导入 / 未配置账号 / 不可调用”或“未验证 / 0 个模型 / 不可调用”，不再用平台 catalog 冒充“已启用/可用”。`/api/providers/summary` 拆出 provider total、enabled provider、available model、total catalog model、callable model；`/api/providers/models/grouped` 只从真实 inventory 派生“大上下文 / 多模态 / 思考链 / 工具调用”，未知显示 `unknown`。验证先补 Task 8 RED 用例暴露缺口；实现后运行 `pnpm --dir packages/studio exec vitest run src/app-next/settings/ProviderSettingsPage.test.tsx src/api/routes/providers.test.ts` 通过（2 files / 22 tests passed），`pnpm --dir packages/studio typecheck` 通过。
 
 - [ ] 9. 实现会话配置真实读写与对话窗口 header facts
   - 对 narrator route / 工作台右侧对话补齐 session header facts：title、binding（book/chapter/workdir）、model、reasoning effort、permission mode、message count、runtime status、context usage。
