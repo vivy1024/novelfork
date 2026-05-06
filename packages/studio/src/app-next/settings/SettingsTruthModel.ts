@@ -26,6 +26,18 @@ export type SettingsFactSource =
 
 export type SettingsFactStatus = "current" | "partial" | "unconfigured" | "unsupported" | "planned" | "unknown";
 
+export type CodexParityFactId =
+  | "parity.codex.tui"
+  | "parity.codex.exec"
+  | "parity.codex.sandbox"
+  | "parity.codex.approval"
+  | "parity.codex.mcp"
+  | "parity.codex.subagents"
+  | "parity.codex.webSearch"
+  | "parity.codex.imageInput"
+  | "parity.codex.review"
+  | "parity.codex.windowsNative";
+
 export type SettingsFactVerifiedBy = "browser" | "unit" | "integration" | "manual-source";
 
 export interface SettingsFact<T> {
@@ -223,6 +235,34 @@ export function deriveAgentRuntimeSettingsFacts(config: AgentRuntimeSettingsInpu
   ];
 }
 
+function codexParityFact({
+  id,
+  label,
+  value,
+  status,
+  source = "capability-matrix",
+  reason,
+}: {
+  readonly id: CodexParityFactId;
+  readonly label: string;
+  readonly value: string;
+  readonly status: SettingsFactStatus;
+  readonly source?: "capability-matrix" | "official-docs" | "user-settings";
+  readonly reason: string;
+}): SettingsFact<string> {
+  return {
+    id,
+    label,
+    value,
+    group: "parity",
+    source,
+    status,
+    writable: false,
+    reason,
+    verifiedBy: "manual-source",
+  };
+}
+
 export function deriveClaudeParitySettingsFacts(): Array<SettingsFact<string>> {
   return [
     {
@@ -258,6 +298,81 @@ export function deriveClaudeParitySettingsFacts(): Array<SettingsFact<string>> {
       reason: "Claude external modes acceptEdits/bypassPermissions/default/dontAsk/plan 映射到 NovelFork ask/edit/allow/read/plan 的产品化语义，非 1:1 sandbox。",
       verifiedBy: "manual-source",
     },
+  ];
+}
+
+export function deriveCodexParitySettingsFacts(): Array<SettingsFact<string>> {
+  return [
+    codexParityFact({
+      id: "parity.codex.tui",
+      label: "Codex 终端 TUI",
+      value: "non-goal",
+      status: "unsupported",
+      reason: "Codex CLI `codex` 提供交互式终端 TUI；NovelFork 当前采用 Web 工作台，不复制完整 Codex TUI，不能在设置页显示为已接入。",
+    }),
+    codexParityFact({
+      id: "parity.codex.exec",
+      label: "Codex non-interactive exec",
+      value: "partial",
+      status: "partial",
+      reason: "NovelFork 已有 headless chat / stream-json envelope，但不是 Codex `codex exec` 的完整 JSONL event taxonomy、schema output 或 CI API key 语义。",
+    }),
+    codexParityFact({
+      id: "parity.codex.sandbox",
+      label: "Codex sandbox 模式",
+      value: "planned",
+      status: "planned",
+      reason: "Codex sandbox 区分 read-only / workspace-write / danger-full-access，并有 Windows 原生 restricted-token sandbox；NovelFork 当前没有真实 OS sandbox，只能以 permissionMode/toolPolicy 做运行前审批。",
+    }),
+    codexParityFact({
+      id: "parity.codex.approval",
+      label: "Codex approval policy",
+      value: "partial",
+      status: "partial",
+      reason: "Codex approval policy 包含 untrusted / on-request / never / granular（本机 0.80.0 help 仍列 on-failure）；NovelFork permissionMode/toolPolicy 可表达 ask/allow/deny，但没有 Codex sandbox escalation 或 granular approval_policy 完整模型。",
+    }),
+    codexParityFact({
+      id: "parity.codex.mcp",
+      label: "Codex MCP 配置",
+      value: "planned",
+      status: "planned",
+      reason: "Codex 支持 mcp server/client 配置和 `codex mcp` 管理；NovelFork 当前仅有 MCP 工具策略字段，不等价于 Codex MCP server 管理。",
+    }),
+    codexParityFact({
+      id: "parity.codex.subagents",
+      label: "Codex subagents",
+      value: "partial",
+      status: "partial",
+      reason: "NovelFork 有 Explore/Plan/General 子代理模型设置和内部代理流程，但没有 `.codex/agents` TOML、Codex custom agent 格式或 sandbox/approval 继承语义。",
+    }),
+    codexParityFact({
+      id: "parity.codex.webSearch",
+      label: "Codex web search",
+      value: "partial",
+      status: "partial",
+      reason: "Codex `--search` 启用 native web_search；NovelFork 暴露 WebFetch/proxy 与工具能力，但不是 Codex native web_search flag。",
+    }),
+    codexParityFact({
+      id: "parity.codex.imageInput",
+      label: "Codex image input",
+      value: "planned",
+      status: "planned",
+      reason: "Codex CLI 支持 `--image/-i`；NovelFork 当前 composer 没有等价图片附件合同，不能宣称已接入。",
+    }),
+    codexParityFact({
+      id: "parity.codex.review",
+      label: "Codex code review",
+      value: "planned",
+      status: "planned",
+      reason: "本机 Codex CLI 暴露 `review` 子命令；NovelFork 当前没有 Codex-style review subcommand/UI。",
+    }),
+    codexParityFact({
+      id: "parity.codex.windowsNative",
+      label: "Codex Windows 原生边界",
+      value: "partial",
+      status: "partial",
+      reason: "NovelFork 运行纪律要求 Windows 原生且不要求 WSL；Codex 官方也有 Windows 原生 sandbox 文档，但 NovelFork 尚未实现 Codex restricted-token sandbox。",
+    }),
   ];
 }
 
