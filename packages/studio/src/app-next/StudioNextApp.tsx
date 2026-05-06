@@ -131,6 +131,10 @@ function toConversationConfirmation(
     id: confirmation.id,
     title: confirmation.toolName,
     summary: details.join(" / "),
+    target: confirmation.target,
+    risk: confirmation.risk,
+    permissionSource: "pending confirmation API",
+    operation: confirmation.summary,
     busy: options.busy,
     ...(options.error ? { error: options.error } : {}),
   };

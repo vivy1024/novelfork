@@ -38,6 +38,14 @@ export interface ConversationCostSummary {
   currency?: string;
 }
 
+export interface ConversationContextUsage {
+  usedTokens: number;
+  maxTokens?: number;
+  trimThreshold?: number;
+  compactThreshold?: number;
+  checkpointNotice?: string;
+}
+
 export interface ConversationUsage extends ConversationUsageBucket {
   currentTurn?: ConversationUsageBucket;
   cumulative?: ConversationUsageBucket;
@@ -54,6 +62,8 @@ export interface ConversationStatus {
   permissionMode?: SessionPermissionMode;
   reasoningEffort?: SessionReasoningEffort;
   usage?: ConversationUsage;
+  contextUsage?: ConversationContextUsage;
+  plannedRuntimePanels?: readonly string[];
   messageCount?: number;
   binding?: ConversationBindingFact;
   workspace?: ConversationWorkspaceFact;
@@ -141,6 +151,23 @@ function formatGitFact(git?: ConversationWorkspaceFact["git"]): string | null {
   return `Git：不可用（${git.reason}）`;
 }
 
+function formatContextUsage(context?: ConversationContextUsage): string | null {
+  if (!context) return null;
+  return `上下文：${context.usedTokens}${context.maxTokens ? ` / ${context.maxTokens}` : ""} tokens`;
+}
+
+function contextWarnings(context?: ConversationContextUsage): string[] {
+  if (!context) return [];
+  const warnings: string[] = [];
+  if (context.trimThreshold && context.usedTokens > context.trimThreshold) warnings.push(`超过裁剪阈值 ${context.trimThreshold} tokens`);
+  if (context.compactThreshold) {
+    const distance = context.compactThreshold - context.usedTokens;
+    warnings.push(distance > 0 ? `距离 compact 阈值 ${distance} tokens` : `超过 compact 阈值 ${context.compactThreshold} tokens`);
+  }
+  if (context.checkpointNotice) warnings.push(context.checkpointNotice);
+  return warnings;
+}
+
 export function ConversationStatusBar({ status, onUpdateSessionConfig = () => undefined }: ConversationStatusBarProps) {
   const [updateError, setUpdateError] = useState<string | null>(null);
   const selectedModel = status.modelOptions?.find((option) => option.providerId === status.providerId && option.modelId === status.modelId);
@@ -148,6 +175,8 @@ export function ConversationStatusBar({ status, onUpdateSessionConfig = () => un
   const toolPolicySummary = formatToolPolicySummary(status.toolPolicySummary);
   const sessionConfigLoaded = status.sessionConfigLoaded ?? Boolean(status.providerId || status.modelId || status.permissionMode || status.reasoningEffort);
   const gitFact = formatGitFact(status.workspace?.git);
+  const contextFact = formatContextUsage(status.contextUsage);
+  const contextWarningList = contextWarnings(status.contextUsage);
   const reasoningDisabled = Boolean(status.reasoningUnsupportedReason || selectedModel?.supportsReasoning === false);
 
   async function updateSessionConfig(patch: ConversationSessionConfigPatch) {
@@ -170,6 +199,9 @@ export function ConversationStatusBar({ status, onUpdateSessionConfig = () => un
       {status.workspace?.path ? <span>工作区：{status.workspace.path}</span> : null}
       {gitFact ? <span>{gitFact}</span> : null}
       {status.usage ? <span>{formatTokens(status.usage)}</span> : null}
+      {contextFact ? <span>{contextFact}</span> : null}
+      {contextWarningList.map((warning) => <span key={warning}>{warning}</span>)}
+      {status.plannedRuntimePanels?.length ? <span>planned 面板：{status.plannedRuntimePanels.join("、")}</span> : null}
       {toolPolicySummary ? <span data-testid="tool-policy-summary">工具策略：{toolPolicySummary}</span> : null}
       {!sessionConfigLoaded ? <span>session config 未加载：未配置会话模型</span> : null}
 

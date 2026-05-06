@@ -85,7 +85,7 @@
   - 覆盖：Requirement 3、8；Design: Conversation Runtime Transparency。
   - 证据：`ConversationStatusBar` 增加 binding、messageCount、workspace/Git fact、reasoning unsupported 与 permission mode disabled reason 展示；`StudioNextApp` 在 narrator route 从真实 session record 派生 book/chapter/worktree binding，通过 `/api/worktree/status?path=` 读取 Git 状态，失败显示 unavailable reason；模型/权限/推理强度更新先 `PUT /api/sessions/:id`，成功后 `GET /api/sessions/:id/chat/state` 回读并 `runtime.applyEnvelope` 刷新 header/control，同时 `ShellDataProvider.upsertSession()` + `invalidate("sessions")` 同步侧栏。`session` route 对 plan session 的 `allow/edit` 权限更新返回 `UNSUPPORTED_PERMISSION_MODE` 结构化错误。先补 Task 9 RED 用例；实现后运行 `pnpm --dir packages/studio exec vitest run src/app-next/agent-conversation/surface/ConversationSurface.test.tsx src/app-next/StudioNextApp.test.tsx src/api/routes/session.test.ts` 通过（3 files / 65 tests passed），`pnpm --dir packages/core build`、`pnpm --dir packages/studio exec tsc --noEmit`、`pnpm --dir packages/studio exec tsc -p tsconfig.server.json --noEmit` 通过。
 
-- [ ] 10. 实现工具调用、审批、运行控制与上下文透明化
+- [x] 10. 实现工具调用、审批、运行控制与上下文透明化
   - 对话 tool card 显示 tool name、input summary、duration、status、error、collapsed output、copy/fullscreen action；长输出折叠，secret 脱敏。
   - pending permission request 显示工具、风险、permission source、allow/deny，并写入真实 pending confirmation / tool policy 流程。
   - running 状态显示真实中断/停止动作；idle 状态不得显示假“思考中”或可点击中断。
@@ -93,6 +93,7 @@
   - Git/容器/快照/变更 side panel 只在真实 API current 时显示；未实现隐藏或标 planned。
   - 验证：ConversationSurface tests 覆盖 tool card 展开、approval 决策、running/idle 控制、context usage、secret 脱敏、planned 面板不冒充 current。
   - 覆盖：Requirement 8、9；Design: Conversation Runtime Transparency。
+  - 证据：`ToolCallCard` 简化分支补齐复制摘要、全屏详情、raw 展开脱敏，敏感 key/value（apiKey/access_token/sk-* 等）显示和 clipboard 均替换为 `[REDACTED]`；`ConfirmationGate` 展示目标、风险、permission source 与操作说明，仍通过真实 approve/reject 回调进入 pending confirmation 流程；`ConversationStatusBar` 展示 context used/max、trim/compact threshold warning、checkpoint notice 和 planned runtime panel 列表；`ConversationSurface` 新增 runtime controls，running 才启用中断，idle 显示“无运行中的会话”，Compact 只有接入真实 handler 时启用，Retry/Clear/Fork/Resume 不做假 current 而显示 disabled reason。验证：`pnpm --dir packages/studio test src/app-next/agent-conversation/surface/ConversationSurface.test.tsx` 通过（1 file / 23 tests passed），`pnpm --dir packages/studio test src/app-next/StudioNextApp.test.tsx src/api/routes/session.test.ts` 通过（2 files / 46 tests passed），`pnpm --dir packages/studio exec tsc --noEmit` 与 `pnpm --dir packages/studio exec tsc -p tsconfig.server.json --noEmit` 通过。
 
 - [ ] 11. 建立 Claude Code parity baseline 与守护验证
   - 新增或更新 `claude-code-parity-baseline.md`，记录本机 CLI help/version、官方文档、本地 Claude 源码路径与读取日期。
