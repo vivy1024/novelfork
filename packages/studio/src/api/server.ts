@@ -77,11 +77,8 @@ import {
   createToolsRouter,
   createWorktreeRouter,
   createWorkspaceManagementRouter,
-  // createPoisonDetectorRouter, // TODO: 需要重构为 Hono，暂时禁用
   createRhythmRouter,
-  // createHooksCountdownRouter, // TODO: 需要重构为 Hono，暂时禁用
   createGoldenChaptersRouter,
-  createChatRouter,
   createContextManagerRouter,
   createAdminRouter,
   createBibleRouter,
@@ -349,20 +346,11 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     // Workspace management (settings + worktree lifecycle)
     app.route("/api/workspace", createWorkspaceManagementRouter(root));
 
-    // Poison detector - TODO: 需要重构为 Hono，暂时禁用
-    // app.route("", createPoisonDetectorRouter(ctx));
-
     // Rhythm analysis
     app.route("", createRhythmRouter(ctx));
 
-    // Hooks countdown - TODO: 需要重构为 Hono
-    // app.route("/api/hooks", createHooksCountdownRouter(ctx));
-
     // Golden chapters analysis
     app.route("", createGoldenChaptersRouter(ctx));
-
-    // Chat interface
-    app.route("", createChatRouter(ctx));
 
     // Context manager
     app.route("", createContextManagerRouter(ctx));

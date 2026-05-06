@@ -19,7 +19,9 @@ import {
 } from "./ws-envelope-reducer";
 
 export interface AgentConversationRuntimeSocket {
+  readonly readyState?: number;
   onmessage: ((event: any) => void) | null;
+  onopen?: ((event?: any) => void) | null;
   onerror?: ((event: any) => void) | null;
   onclose?: ((event: any) => void) | null;
   send(payload: string): void;
@@ -68,8 +70,14 @@ function contractResultErrorMessage(result: ContractResult<unknown>, fallback: s
   return result.code ? `${fallback}：${result.code}` : fallback;
 }
 
+const WEB_SOCKET_OPEN = 1;
+
 function dispatchRuntimeError(dispatch: (envelope: SessionServerEnvelope) => void, sessionId: string | undefined, message: string, runtime?: unknown) {
   dispatch({ type: "session:error", sessionId, error: message, code: "runtime-error", runtime });
+}
+
+function isRuntimeSocketOpen(socket: AgentConversationRuntimeSocket): boolean {
+  return typeof socket.readyState !== "number" || socket.readyState === WEB_SOCKET_OPEN;
 }
 
 export function useAgentConversationRuntime(options: UseAgentConversationRuntimeOptions = {}) {
@@ -84,8 +92,16 @@ export function useAgentConversationRuntime(options: UseAgentConversationRuntime
   } = options;
   const [state, dispatch] = useReducer(reduceSessionEnvelope, undefined, createInitialAgentConversationRuntimeState);
   const socketRef = useRef<AgentConversationRuntimeSocket | null>(null);
+  const pendingClientEnvelopesRef = useRef<string[]>([]);
 
   const applyEnvelope = useCallback((envelope: SessionServerEnvelope) => dispatch(envelope), []);
+  const flushPendingClientEnvelopes = useCallback((socket: AgentConversationRuntimeSocket | null = socketRef.current) => {
+    if (!socket || !isRuntimeSocketOpen(socket)) return;
+    const pending = pendingClientEnvelopesRef.current.splice(0);
+    for (const payload of pending) {
+      socket.send(payload);
+    }
+  }, []);
 
   useEffect(() => {
     if (!sessionId) return undefined;
@@ -114,6 +130,9 @@ export function useAgentConversationRuntime(options: UseAgentConversationRuntime
             dispatchRuntimeError(dispatch, sessionId, error instanceof Error ? error.message : String(error), error);
           }
         };
+        socket.onopen = () => {
+          if (socketRef.current === socket) flushPendingClientEnvelopes(socket);
+        };
         socket.onerror = (event) => dispatchRuntimeError(dispatch, sessionId, "会话 WebSocket 连接失败", event);
       },
       (error: unknown) => {
@@ -123,13 +142,21 @@ export function useAgentConversationRuntime(options: UseAgentConversationRuntime
 
     return () => {
       cancelled = true;
+      pendingClientEnvelopesRef.current = [];
       socket?.close();
       if (socketRef.current === socket) socketRef.current = null;
     };
-  }, [baseUrl, sessionId]);
+  }, [baseUrl, flushPendingClientEnvelopes, sessionId]);
 
   const sendClientEnvelope = useCallback((envelope: ReturnType<typeof buildMessageEnvelope> | ReturnType<typeof buildAckEnvelope> | ReturnType<typeof buildAbortEnvelope>) => {
-    socketRef.current?.send(serializeSessionClientEnvelope(envelope));
+    const payload = serializeSessionClientEnvelope(envelope);
+    const socket = socketRef.current;
+    if (!socket) return envelope;
+    if (!isRuntimeSocketOpen(socket)) {
+      pendingClientEnvelopesRef.current.push(payload);
+      return envelope;
+    }
+    socket.send(payload);
     return envelope;
   }, []);
 

@@ -17,7 +17,7 @@ describe("exec command", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.stubGlobal("fetch", fetchMock);
-    vi.spyOn(process, "exit").mockImplementation(processExitMock as unknown as (code?: number) => never);
+    vi.spyOn(process, "exit").mockImplementation(processExitMock as unknown as (code?: string | number | null) => never);
   });
 
   afterEach(() => {
@@ -110,6 +110,40 @@ describe("exec command", () => {
     expect(logErrorMock).toHaveBeenCalledWith(expect.stringContaining("model-unavailable"));
     expect(logErrorMock).toHaveBeenCalledWith(expect.stringContaining("cockpit.get_snapshot"));
     expect(processExitMock).toHaveBeenCalledWith(1);
+  });
+
+  it("passes stream-json, input-format, and no-session-persistence options to the headless chat API", async () => {
+    fetchMock.mockResolvedValue({
+      text: async () => [
+        JSON.stringify({ type: "user_message", content: "写" }),
+        JSON.stringify({ type: "result", success: true, exit_code: 0 }),
+      ].join("\n"),
+    });
+
+    const { execCommand } = await import("../commands/exec.js");
+    await execCommand.parseAsync([
+      "node", "exec", "写",
+      "--input-format", "stream-json",
+      "--output-format", "stream-json",
+      "--no-session-persistence",
+      "--max-turns", "1",
+    ]);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:4567/api/sessions/headless-chat",
+      expect.objectContaining({ method: "POST" }),
+    );
+    const callBody = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    expect(callBody).toMatchObject({
+      inputFormat: "stream-json",
+      outputFormat: "stream-json",
+      noSessionPersistence: true,
+      maxTurns: 1,
+      events: [{ type: "user_message", content: "写" }],
+    });
+    const jsonCalls = logMock.mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string));
+    expect(jsonCalls.at(-1)).toEqual(expect.objectContaining({ type: "result", success: true }));
+    expect(processExitMock).toHaveBeenCalledWith(0);
   });
 
   it("passes --model, --book, --session and --max-steps to the API", async () => {

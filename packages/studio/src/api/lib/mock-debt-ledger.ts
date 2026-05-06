@@ -62,7 +62,7 @@ export const MOCK_DEBT_ITEMS = [
     files: [
       "packages/studio/src/shared/provider-catalog.ts",
       "packages/studio/src/api/routes/providers.ts",
-      "packages/studio/src/components/ChatWindow.tsx",
+      "packages/studio/src/app-next/agent-conversation/surface/ConversationStatusBar.tsx",
     ],
     currentBehavior: "/api/providers/models 已从 runtime store 构建统一模型池，并只返回 enabled provider、enabled model 与可用凭据/活跃平台账号组合；shared provider catalog 仅作为设置页模板/类型来源。",
     userRisk: "critical",
@@ -72,7 +72,7 @@ export const MOCK_DEBT_ITEMS = [
     verification: [
       "runtime-model-pool 测试覆盖禁用 provider、禁用 model 与缺凭据 API provider 均被过滤",
       "platform account 测试覆盖无活跃账号时平台模型不返回",
-      "ChatWindow/Runtime settings/NewSessionDialog 测试断言模型选项来自 /api/providers/models",
+      "ConversationStatusBar/Runtime settings/NewSessionDialog 测试断言模型选项来自 /api/providers/models",
     ],
   },
   {
@@ -106,20 +106,6 @@ export const MOCK_DEBT_ITEMS = [
       "ModelPicker 测试断言选项来自 /api/providers/models",
       "ProviderConfig 测试断言旧本地编辑器不可用",
       "静态扫描不再命中 key 长度测试或浏览器本地 provider 配置作为运行时事实源",
-    ],
-  },
-  {
-    id: "book-chat-history",
-    module: "Book chat history",
-    files: ["packages/studio/src/api/routes/chat.ts"],
-    currentBehavior: "轻量 book chat 仍使用当前进程内存历史，但 API 响应与 ChatPanel 已明确标注 process-memory / 当前进程临时历史。",
-    userRisk: "critical",
-    status: "transparent-placeholder",
-    targetBehavior: "短期保持明确 process-memory 的透明临时面板；后续并入正式 session/message repository。",
-    ownerSpec: OWNER_SPEC,
-    verification: [
-      "持久化路径验证重启后历史仍在",
-      "透明临时路径验证 API 与 UI 均标注 persistence: process-memory",
     ],
   },
   {
@@ -186,7 +172,7 @@ export const MOCK_DEBT_ITEMS = [
     files: [
       "packages/studio/src/api/routes/writing-modes.ts",
       "packages/studio/src/components/writing-modes/*.tsx",
-      "packages/studio/src/app-next/workspace/WorkspacePage.tsx",
+      "packages/studio/src/app-next/writing-workbench/WorkbenchWritingActions.tsx",
     ],
     currentBehavior: "writing modes 生成端点仍可返回 mode: prompt-preview；真实生成结果可通过 Workspace 目标选择与确认流程调用安全 apply route 写入 candidate/draft，章节 insert/replace 会转为非破坏性候选稿；章节钩子插入会写入 pending_hooks.md。",
     userRisk: "critical",
@@ -274,6 +260,20 @@ export const MOCK_DEBT_ITEMS = [
     ],
   },
   {
+    id: "legacy-monitor-contract-unsupported",
+    module: "Backend contract monitor unsupported status",
+    files: ["packages/studio/src/api/backend-contract-matrix.ts"],
+    currentBehavior: "Backend Contract matrix 将 legacy monitor 标记为 unsupported，因为 daemon/runtime 事件事实源尚未接入；route 返回 501，不伪造 stopped、实时日志或绿色状态。",
+    userRisk: "medium",
+    status: "transparent-placeholder",
+    targetBehavior: "接入真实 daemon/runtime 事件事实源前保持 unsupported 透明状态；接入后必须同步合同矩阵、route 和 UI 说明。",
+    ownerSpec: "backend-core-refactor-v1",
+    verification: [
+      "backend-contract-matrix 测试覆盖 monitor unsupported/deprecated 边界",
+      "mock debt scan 将 backend-contract-matrix 的尚未接入文案登记为透明 unsupported 债务",
+    ],
+  },
+  {
     id: "core-missing-file-sentinel",
     module: "Core missing file sentinel",
     files: ["packages/core/src/**"],
@@ -323,7 +323,7 @@ export const MOCK_DEBT_ITEMS = [
     id: "workspace-outline-bible-placeholders",
     module: "Workspace outline and bible fallback placeholders",
     files: [
-      "packages/studio/src/app-next/workspace/resource-view-registry.tsx",
+      "packages/studio/src/app-next/writing-workbench/resource-viewers/index.tsx",
     ],
     currentBehavior: "Workspace 大纲编辑器和经纬分类视图已接入真实 bookId/endpoint 时可读取和保存；缺少 bookId 或分类映射时显示 UnsupportedCapability，避免伪造保存或编辑成功。",
     userRisk: "medium",

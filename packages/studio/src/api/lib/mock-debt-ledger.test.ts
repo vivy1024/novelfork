@@ -14,7 +14,6 @@ const REQUIRED_DEBT_IDS = [
   "runtime-model-pool",
   "session-chat-runtime",
   "legacy-model-ui",
-  "book-chat-history",
   "pipeline-runs",
   "monitor-status",
   "agent-config-service",
@@ -24,6 +23,7 @@ const REQUIRED_DEBT_IDS = [
   "ai-complete-streaming",
   "tool-usage-example",
   "transparent-admin-placeholders",
+  "legacy-monitor-contract-unsupported",
   "core-missing-file-sentinel",
   "cli-production-source",
   "publish-readiness-continuity-placeholder",
@@ -39,7 +39,7 @@ const VALID_STATUSES: MockDebtStatus[] = [
 ];
 
 const VALID_RISKS = ["critical", "high", "medium", "low"];
-const VALID_OWNER_SPECS = ["project-wide-real-runtime-cleanup", "novel-creation-workbench-complete-flow"];
+const VALID_OWNER_SPECS = ["project-wide-real-runtime-cleanup", "novel-creation-workbench-complete-flow", "backend-core-refactor-v1"];
 
 describe("mock debt ledger", () => {
   it("registers every known project-wide runtime cleanup debt item", () => {

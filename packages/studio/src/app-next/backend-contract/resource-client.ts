@@ -17,6 +17,10 @@ export function createResourceClient(contract: ContractClient) {
       contract.get<T>(`/api/books/${encodeURIComponent(bookId)}/chapters/${encodeURIComponent(String(chapterNumber))}`, { capability: { id: "chapters.detail", status: "current" } }),
     saveChapter: <T = SaveChapterResponse>(bookId: string, chapterNumber: number | string, payload: SaveChapterPayload) =>
       contract.put<T>(`/api/books/${encodeURIComponent(bookId)}/chapters/${encodeURIComponent(String(chapterNumber))}`, payload, { capability: { id: "chapters.save", status: "current" } }),
+    previewRewind: <T = unknown>(bookId: string, checkpointId: string) =>
+      contract.get<T>(`/api/books/${encodeURIComponent(bookId)}/checkpoints/${encodeURIComponent(checkpointId)}/rewind/preview`, { capability: { id: "resources.rewind.preview", status: "current" } }),
+    applyRewind: <T = unknown>(bookId: string, checkpointId: string, payload: unknown) =>
+      contract.post<T>(`/api/books/${encodeURIComponent(bookId)}/checkpoints/${encodeURIComponent(checkpointId)}/rewind/apply`, payload, { capability: { id: "resources.rewind.apply", status: "current" } }),
     listCandidates: <T = unknown>(bookId: string) =>
       contract.get<T>(`/api/books/${encodeURIComponent(bookId)}/candidates`, { capability: { id: "candidates.list", status: "current" } }),
     acceptCandidate: <T = unknown>(bookId: string, candidateId: string, payload: unknown) =>

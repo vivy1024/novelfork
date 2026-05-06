@@ -1,36 +1,15 @@
 import { MessageSquareText } from "lucide-react";
 
 import { SectionLayout } from "../components/layouts";
+import { toShellPath } from "../shell";
 import { SessionCenter } from "../../components/sessions/SessionCenter";
 import type { NarratorSessionRecord } from "../../shared/session-types";
-import { useWindowStore } from "../../stores/windowStore";
 
 export function SessionCenterPage() {
-  const windows = useWindowStore((state) => state.windows);
-  const addWindow = useWindowStore((state) => state.addWindow);
-  const updateWindow = useWindowStore((state) => state.updateWindow);
-  const setActiveWindow = useWindowStore((state) => state.setActiveWindow);
-
   const openSession = (session: NarratorSessionRecord) => {
-    const existingWindow = windows.find((window) => window.sessionId === session.id);
-    if (existingWindow) {
-      updateWindow(existingWindow.id, {
-        title: session.title,
-        agentId: session.agentId,
-        sessionId: session.id,
-        sessionMode: session.sessionMode,
-        minimized: false,
-      });
-      setActiveWindow(existingWindow.id);
-      return;
-    }
-
-    addWindow({
-      title: session.title,
-      agentId: session.agentId,
-      sessionId: session.id,
-      sessionMode: session.sessionMode,
-    });
+    if (typeof window === "undefined" || !window.history?.pushState) return;
+    window.history.pushState(null, "", toShellPath({ kind: "narrator", sessionId: session.id }));
+    window.dispatchEvent(new PopStateEvent("popstate"));
   };
 
   return (

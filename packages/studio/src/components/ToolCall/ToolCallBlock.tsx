@@ -439,6 +439,10 @@ function DetailSection({
   value: string;
   tone?: "error";
 }) {
+  const collapseThreshold = 500;
+  const [collapsed, setCollapsed] = useState(value.length > collapseThreshold);
+  const displayValue = collapsed ? value.slice(0, collapseThreshold) : value;
+
   return (
     <section className="space-y-1.5">
       <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">{label}</div>
@@ -448,8 +452,20 @@ function DetailSection({
           tone === "error" && "border-destructive/30 bg-destructive/5 text-destructive",
         )}
       >
-        {value}
+        {displayValue}
+        {collapsed ? "…" : ""}
       </pre>
+      {value.length > collapseThreshold ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="xs"
+          onClick={() => setCollapsed((current) => !current)}
+          aria-label={collapsed ? `显示剩余 ${value.length - collapseThreshold} 个字符` : "收起详情"}
+        >
+          {collapsed ? `显示剩余 ${value.length - collapseThreshold} 个字符` : "收起"}
+        </Button>
+      ) : null}
     </section>
   );
 }

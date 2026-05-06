@@ -48,8 +48,8 @@ describe("RequestsTab", () => {
       total: 3,
       logs: [
         { id: "1", timestamp: "2026-04-20T10:00:00Z", method: "GET", endpoint: "/api/books", status: 200, duration: 120, userId: "u1" },
-        { id: "2", timestamp: "2026-04-20T10:01:00Z", method: "POST", endpoint: "/api/chat", status: 500, duration: 2100, userId: "u1" },
-        { id: "3", timestamp: "2026-04-20T10:02:00Z", method: "POST", endpoint: "/api/chat", status: 201, duration: 430, userId: "u2" },
+        { id: "2", timestamp: "2026-04-20T10:01:00Z", method: "POST", endpoint: "/api/sessions/session-alpha/chat", status: 500, duration: 2100, userId: "u1" },
+        { id: "3", timestamp: "2026-04-20T10:02:00Z", method: "POST", endpoint: "/api/sessions/session-alpha/chat", status: 201, duration: 430, userId: "u2" },
       ],
     });
 
@@ -66,13 +66,13 @@ describe("RequestsTab", () => {
     fetchJsonMock.mockResolvedValueOnce({
       total: 1,
       logs: [
-        { id: "1", timestamp: "2026-04-20T10:00:00Z", method: "POST", endpoint: "/api/chat", status: 200, duration: 320, userId: "writer" },
+        { id: "1", timestamp: "2026-04-20T10:00:00Z", method: "POST", endpoint: "/api/sessions/session-alpha/chat", status: 200, duration: 320, userId: "writer" },
       ],
     });
 
     render(<RequestsTab />);
 
-    expect(await screen.findByText("/api/chat")).toBeTruthy();
+    expect(await screen.findByText("/api/sessions/session-alpha/chat")).toBeTruthy();
     expect(screen.getByText("writer")).toBeTruthy();
     expect(screen.getAllByText("320ms").length).toBeGreaterThanOrEqual(1);
   });
@@ -89,7 +89,7 @@ describe("RequestsTab", () => {
         totalTokens: 2048,
         totalCostUsd: 0.1234,
         cacheHitRate: 75,
-        topEndpoints: [{ label: "/api/chat", count: 3 }],
+        topEndpoints: [{ label: "/api/sessions/session-alpha/chat", count: 3 }],
         topNarrators: [{ label: "session.alpha", count: 2 }],
       },
       logs: [
@@ -97,7 +97,7 @@ describe("RequestsTab", () => {
           id: "1",
           timestamp: "2026-04-20T10:00:00Z",
           method: "POST",
-          endpoint: "/api/chat",
+          endpoint: "/api/sessions/session-alpha/chat",
           status: 200,
           duration: 320,
           userId: "writer",

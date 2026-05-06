@@ -1,8 +1,8 @@
 /**
  * StorylineTree — 叙事线书籍资源树
  *
- * 从 WorkspacePage 的 WorkspaceLeftRail 提取，
- * 作为 Sidebar 叙事线区域的内容组件。
+ * 原型来自旧三栏 WorkspaceLeftRail；当前作为 Agent Shell Sidebar
+ * 叙事线区域的独立组件。
  */
 
 import type { ReactNode } from "react";

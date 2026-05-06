@@ -13,6 +13,7 @@ import type { NarrativeLineService } from "./narrative-line-service.js";
 import type { PGIToolService } from "./pgi-tool-service.js";
 import type { QuestionnaireToolService } from "./questionnaire-tool-service.js";
 import { getSessionToolDefinition } from "./session-tool-registry.js";
+import { getSessionToolPolicyDecision } from "./session-tool-policy.js";
 
 export type SessionToolHandlerContext = SessionToolExecutionInput & {
   readonly definition: SessionToolDefinition;
@@ -44,6 +45,58 @@ type ValidationIssue = {
 };
 
 const CONFIRMATION_OPTIONS = ["approve", "reject", "open-in-canvas"] as const;
+
+function riskDecisionFromPolicy(
+  input: SessionToolExecutionInput,
+  definition: SessionToolDefinition,
+): { action: "inherit" | "deny" | "ask" | "allow"; source?: string; pattern?: string } {
+  const decision = getSessionToolPolicyDecision(definition.name, input.sessionConfig?.toolPolicy);
+  return decision;
+}
+
+function createPolicyDeniedResult(
+  input: SessionToolExecutionInput,
+  definition: SessionToolDefinition,
+  source: string | undefined,
+  pattern: string | undefined,
+): SessionToolExecutionResult {
+  return {
+    ok: false,
+    renderer: definition.renderer,
+    error: "policy-denied",
+    summary: `工具策略禁止执行 ${definition.name}。`,
+    data: {
+      status: "policy-denied",
+      toolName: definition.name,
+      ...(source ? { source } : {}),
+      ...(pattern ? { pattern } : {}),
+      risk: definition.risk,
+      permissionMode: input.permissionMode,
+    },
+  };
+}
+
+function createPolicyAskResult(
+  input: SessionToolExecutionInput,
+  definition: SessionToolDefinition,
+  source: string | undefined,
+  pattern: string | undefined,
+  options: SessionToolExecutorOptions,
+): SessionToolExecutionResult {
+  const confirmation = createConfirmationRequest(input, definition, options);
+  return withConfirmationAudit({
+    ok: true,
+    renderer: definition.renderer,
+    summary: `工具 ${definition.name} 需要确认后执行。`,
+    data: {
+      status: "pending-confirmation",
+      code: "permission-required",
+      ...(source ? { source } : {}),
+      ...(pattern ? { pattern } : {}),
+    },
+    confirmation,
+  }, input, definition, confirmation);
+}
 
 export function createSessionToolExecutor(options: SessionToolExecutorOptions = {}): SessionToolExecutor {
   return {
@@ -77,7 +130,12 @@ export async function executeSessionTool(
     }, startedAt, options);
   }
 
-  const riskDecision = getSessionToolRiskDecision(input.permissionMode, definition.risk);
+  const policyDecision = riskDecisionFromPolicy(input, definition);
+  if (policyDecision.action === "deny") {
+    return withDuration(createPolicyDeniedResult(input, definition, policyDecision.source, policyDecision.pattern), startedAt, options);
+  }
+
+  const riskDecision = policyDecision.action === "allow" ? "allow" : getSessionToolRiskDecision(input.permissionMode, definition.risk);
   if (definition.name === "guided.exit" && input.confirmationDecision?.decision === "rejected") {
     const handler = options.handlers?.[definition.name] ?? getDefaultHandler(definition.name, options);
     if (!handler) {
@@ -102,6 +160,10 @@ export async function executeSessionTool(
       error: "permission-denied",
       summary: `权限模式 ${input.permissionMode} 不允许执行 ${definition.risk} 工具 ${definition.name}`,
     }, startedAt, options);
+  }
+
+  if (policyDecision.action === "ask" && input.confirmationDecision?.decision !== "approved") {
+    return withDuration(createPolicyAskResult(input, definition, policyDecision.source, policyDecision.pattern, options), startedAt, options);
   }
 
   if (definition.risk !== "read" && input.canvasContext?.dirty === true) {

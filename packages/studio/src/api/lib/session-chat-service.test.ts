@@ -506,7 +506,7 @@ describe("session-chat-service", () => {
               toolName: "Bash",
               status: "error",
               command: "git status --short",
-              output: " M packages/studio/src/components/ChatWindow.tsx",
+              output: " M packages/studio/src/app-next/agent-conversation/surface/ConversationSurface.tsx",
               duration: 420,
               error: "Tool falls back to defaultPermissionMode=ask",
               result: {

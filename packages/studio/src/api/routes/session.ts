@@ -23,8 +23,13 @@ import {
   type SessionListBinding,
   type SessionListSort,
 } from "../lib/session-service.js";
+import { compactSession } from "../lib/session-compact-service.js";
+import { executeHeadlessChat, encodeHeadlessChatEventsAsNdjson, type HeadlessChatInput } from "../lib/session-headless-chat-service.js";
+import { continueLatestSession, forkSession, restoreSessionForContinue } from "../lib/session-lifecycle-service.js";
+import { createSessionMemoryBoundaryService, type SessionMemoryCandidate } from "../lib/session-memory-boundary-service.js";
 
 const app = new Hono();
+const memoryBoundaryService = createSessionMemoryBoundaryService();
 
 function parseSinceSeq(value: string | undefined): number {
   if (!value) {
@@ -71,6 +76,31 @@ function parseListSessionsOptions(c: { req: { query: (name: string) => string | 
 app.get("/", async (c) => {
   const sessions = await listSessions(parseListSessionsOptions(c));
   return c.json(sessions);
+});
+
+app.get("/lifecycle/latest", async (c) => {
+  const result = await continueLatestSession({
+    projectId: cleanQueryText(c.req.query("projectId")),
+    chapterId: cleanQueryText(c.req.query("chapterId")),
+  });
+  if (!result.ok) {
+    return c.json(result, result.status);
+  }
+  return c.json(result);
+});
+
+app.post("/headless-chat", async (c) => {
+  const body: HeadlessChatInput = await c.req.json<HeadlessChatInput>().catch(() => ({} as HeadlessChatInput));
+  const result = await executeHeadlessChat(body);
+  const status = result.exitCode === 2 ? 202 : result.success ? 200 : 500;
+
+  if (body.outputFormat === "stream-json") {
+    return c.body(encodeHeadlessChatEventsAsNdjson(result.events), status, {
+      "Content-Type": "application/x-ndjson; charset=utf-8",
+    });
+  }
+
+  return c.json(result, status);
 });
 
 app.get("/:id", async (c) => {
@@ -134,6 +164,67 @@ app.post("/", async (c) => {
   const body = await c.req.json<CreateNarratorSessionInput>();
   const session = await createSession(body);
   return c.json(session, 201);
+});
+
+app.post("/:id/fork", async (c) => {
+  const id = c.req.param("id");
+  const body: { title?: string; inheritanceNote?: string } = await c.req.json<{ title?: string; inheritanceNote?: string }>().catch(() => ({}));
+  const result = await forkSession({ sourceSessionId: id, title: body.title, inheritanceNote: body.inheritanceNote });
+  if (!result.ok) {
+    return c.json(result, result.status);
+  }
+  return c.json(result, 201);
+});
+
+app.post("/:id/restore", async (c) => {
+  const id = c.req.param("id");
+  const result = await restoreSessionForContinue(id);
+  if (!result.ok) {
+    return c.json(result, result.status);
+  }
+  return c.json(result);
+});
+
+app.post("/:id/compact", async (c) => {
+  const id = c.req.param("id");
+  const body: { preserveRecentMessages?: number; instructions?: string } = await c.req.json<{ preserveRecentMessages?: number; instructions?: string }>().catch(() => ({}));
+  const result = await compactSession({ sessionId: id, preserveRecentMessages: body.preserveRecentMessages, instructions: body.instructions });
+  if (!result.ok) {
+    return c.json(result, result.status);
+  }
+  return c.json(result);
+});
+
+app.get("/:id/memory/status", async (c) => {
+  const id = c.req.param("id");
+  const session = await getSessionById(id);
+  if (!session) {
+    return c.json({ error: "Session not found" }, 404);
+  }
+  return c.json(await memoryBoundaryService.getStatus(id));
+});
+
+app.post("/:id/memory", async (c) => {
+  const id = c.req.param("id");
+  const session = await getSessionById(id);
+  if (!session) {
+    return c.json({ error: "Session not found" }, 404);
+  }
+  const body: Partial<SessionMemoryCandidate> = await c.req.json<Partial<SessionMemoryCandidate>>().catch(() => ({}));
+  const result = await memoryBoundaryService.commitMemory({
+    sessionId: id,
+    projectId: body.projectId ?? session.projectId,
+    content: body.content ?? "",
+    classification: body.classification,
+    source: body.source ?? { kind: "message", messageId: "unknown" },
+    confirmation: body.confirmation,
+    createdBy: body.createdBy ?? "user",
+    tags: body.tags,
+  });
+  if (!result.ok) {
+    return c.json(result, result.status);
+  }
+  return c.json(result);
 });
 
 app.put("/:id", async (c) => {

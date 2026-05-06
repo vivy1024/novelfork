@@ -202,7 +202,7 @@ git diff --check
 
 ```bash
 pnpm --filter @vivy1024/novelfork-core test -- src/__tests__/status-models.test.ts src/__tests__/compliance-publish-readiness.test.ts
-pnpm --filter @vivy1024/novelfork-studio test -- src/api/lib/mock-debt-ledger.test.ts src/api/lib/mock-debt-scan.test.ts src/api/routes/compliance.test.ts src/api/__tests__/server-integration.test.ts src/app-next/workspace/resource-adapter.test.ts src/app-next/workspace/resource-view-registry.test.ts src/app-next/workspace/WorkspacePage.test.tsx src/app-next/visual-audit.test.ts src/tailwind-theme.test.ts
+pnpm --filter @vivy1024/novelfork-studio test -- src/api/lib/mock-debt-ledger.test.ts src/api/lib/mock-debt-scan.test.ts src/api/routes/compliance.test.ts src/api/__tests__/server-integration.test.ts src/app-next/backend-contract/resource-tree-adapter.test.ts src/app-next/writing-workbench/useWorkbenchResources.test.ts src/app-next/writing-workbench/WorkbenchCanvas.test.tsx src/app-next/writing-workbench/resource-viewers.test.tsx src/app-next/visual-audit.test.ts src/tailwind-theme.test.ts
 pnpm --dir packages/studio run typecheck
 bun run docs:verify
 git diff --check

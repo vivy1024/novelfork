@@ -44,6 +44,90 @@ describe("Conversation Surface", () => {
     expect(card.textContent).toContain("42ms");
   });
 
+  it("工具卡接入 Tool Result Renderer Registry 并保留 artifact 打开动作", () => {
+    const onOpenArtifact = vi.fn();
+    render(
+      <MessageStream
+        messages={[
+          {
+            id: "m-rendered-tool",
+            role: "assistant",
+            content: "已创建候选稿。",
+            toolCalls: [
+              {
+                id: "tool-rendered",
+                toolName: "candidate.create_chapter",
+                status: "success",
+                result: {
+                  renderer: "candidate.created",
+                  data: { title: "第三章候选稿", wordCount: 3200 },
+                  artifact: { kind: "candidate", id: "candidate-3", title: "第三章候选稿" },
+                },
+              },
+            ],
+          },
+        ]}
+        onOpenArtifact={onOpenArtifact}
+      />,
+    );
+
+    expect(screen.getByTestId("tool-result-candidate")).toBeTruthy();
+    expect(screen.getByText("3200 字")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "在画布打开" }));
+
+    expect(onOpenArtifact).toHaveBeenCalledWith({ kind: "candidate", id: "candidate-3", title: "第三章候选稿" });
+  });
+
+  it("工具卡保留可复用 ToolCallBlock 的折叠输出、图标和错误展示资产", () => {
+    const longOutput = `${"灵潮".repeat(260)}\n最后一行`;
+    render(
+      <ToolCallCard
+        toolCall={{
+          id: "tool-reused-block",
+          toolName: "Bash",
+          status: "error",
+          summary: "执行失败",
+          input: { command: "bun test" },
+          result: { ok: false },
+          output: longOutput,
+          error: "命令失败",
+          exitCode: 1,
+        }}
+      />,
+    );
+
+    const card = screen.getByTestId("tool-call-card-tool-reused-block");
+    expect(card.textContent).toContain("Bash");
+    expect(card.textContent).toContain("失败");
+    expect(card.textContent).toContain("Exit 1");
+    expect(card.textContent).toContain("命令失败");
+    expect(card.textContent).toContain("显示剩余");
+    expect(card.querySelector("svg")).toBeTruthy();
+    fireEvent.click(within(card).getByRole("button", { name: /显示剩余/ }));
+    expect(card.textContent).toContain("最后一行");
+  });
+
+  it("工具卡展示 checkpoint 与受影响资源，便于按消息查看恢复来源", () => {
+    render(
+      <ToolCallCard
+        toolCall={{
+          id: "tool-checkpoint",
+          toolName: "resource.rewind",
+          status: "success",
+          summary: "已恢复资源。",
+          result: {
+            checkpointId: "checkpoint-1",
+            restoredResources: [{ path: "chapters/0001_first.md" }, { path: "story/story_bible.md" }],
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Checkpoint checkpoint-1")).toBeTruthy();
+    expect(screen.getByText("chapters/0001_first.md")).toBeTruthy();
+    expect(screen.getByText("story/story_bible.md")).toBeTruthy();
+  });
+
   it("工具卡保留输入和结果的 raw data 展开能力", () => {
     render(
       <ToolCallCard
@@ -102,6 +186,38 @@ describe("Conversation Surface", () => {
     expect(onAbort).toHaveBeenCalledOnce();
   });
 
+  it("composer displays slash suggestions and handles command errors without sending to the model", async () => {
+    const onSend = vi.fn();
+    const onSlashCommandResult = vi.fn();
+    render(<Composer onSend={onSend} onAbort={vi.fn()} onSlashCommandResult={onSlashCommandResult} />);
+
+    const input = screen.getByLabelText("对话输入框") as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: "/p" } });
+
+    expect(screen.getByRole("listbox", { name: "斜杠命令建议" }).textContent).toContain("/permission");
+
+    fireEvent.change(input, { target: { value: "/permission root" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    expect(onSend).not.toHaveBeenCalled();
+    expect((await screen.findByRole("status")).textContent).toContain("无效权限模式");
+    expect(onSlashCommandResult).toHaveBeenCalledWith(expect.objectContaining({ ok: false, code: "invalid_permission_mode" }));
+  });
+
+  it("composer executes structured slash commands without sending raw slash text", async () => {
+    const onSend = vi.fn();
+    const onSlashCommandResult = vi.fn();
+    render(<Composer onSend={onSend} onAbort={vi.fn()} onSlashCommandResult={onSlashCommandResult} />);
+
+    const input = screen.getByLabelText("对话输入框") as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: "/permission ask" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    await waitFor(() => expect(onSlashCommandResult).toHaveBeenCalledWith(expect.objectContaining({ ok: true, kind: "update-session-config", patch: { permissionMode: "ask" } })));
+    expect(onSend).not.toHaveBeenCalled();
+    expect(input.value).toBe("");
+  });
+
   it("ConversationSurface 组合状态栏、确认门、消息流和 composer", () => {
     const onApprove = vi.fn();
     const onReject = vi.fn();
@@ -156,7 +272,11 @@ describe("Conversation Surface", () => {
           modelLabel: "GPT-5.4",
           permissionMode: "edit",
           reasoningEffort: "medium",
-          usage: { promptTokens: 100, completionTokens: 20, totalTokens: 120 },
+          usage: {
+            currentTurn: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
+            cumulative: { promptTokens: 100, completionTokens: 20, totalTokens: 120 },
+            cost: { status: "unknown" },
+          },
           modelOptions: [
             { providerId: "sub2api", providerLabel: "Sub2API", modelId: "gpt-5.4", modelLabel: "GPT-5.4", supportsTools: true },
             { providerId: "sub2api", providerLabel: "Sub2API", modelId: "gpt-5.5", modelLabel: "GPT-5.5", supportsTools: true },
@@ -169,7 +289,7 @@ describe("Conversation Surface", () => {
     expect(screen.getAllByText("Sub2API / GPT-5.4").length).toBeGreaterThan(0);
     expect(screen.getByText("权限：编辑")).toBeTruthy();
     expect(screen.getByText("推理：medium")).toBeTruthy();
-    expect(screen.getByText("Tokens：120")).toBeTruthy();
+    expect(screen.getByText("Tokens：当前 15 / 累计 120 / 成本 未知")).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText("模型"), { target: { value: "sub2api::gpt-5.5" } });
     fireEvent.change(screen.getByLabelText("权限"), { target: { value: "ask" } });
@@ -178,6 +298,26 @@ describe("Conversation Surface", () => {
     await waitFor(() => expect(onUpdateSessionConfig).toHaveBeenCalledWith({ providerId: "sub2api", modelId: "gpt-5.5" }));
     expect(onUpdateSessionConfig).toHaveBeenCalledWith({ permissionMode: "ask" });
     expect(onUpdateSessionConfig).toHaveBeenCalledWith({ reasoningEffort: "high" });
+  });
+
+  it("状态栏展示 session tool policy 可用/禁用/询问概览", () => {
+    render(
+      <ConversationStatusBar
+        status={{
+          state: "connected",
+          label: "已连接",
+          providerId: "sub2api",
+          modelId: "gpt-5.4",
+          permissionMode: "edit",
+          reasoningEffort: "medium",
+          toolPolicySummary: { allow: ["cockpit.*"], deny: ["candidate.create_chapter"], ask: ["guided.exit"] },
+        }}
+      />,
+    );
+
+    expect(screen.getByTestId("tool-policy-summary").textContent).toContain("可用：cockpit.*");
+    expect(screen.getByTestId("tool-policy-summary").textContent).toContain("禁用：candidate.create_chapter");
+    expect(screen.getByTestId("tool-policy-summary").textContent).toContain("询问：guided.exit");
   });
 
   it("模型池为空时禁用发送并引导到设置页", () => {

@@ -92,15 +92,42 @@ describe("domain contract clients", () => {
 
     const created = await session.createSession({ title: "新会话", agentId: "writer" });
     const updated = await session.updateSession("session/1", { title: "改名" });
+    const continued = await session.continueLatestSession("book/1");
+    const forked = await session.forkSession("session/1", { title: "支线" });
+    const restored = await session.restoreSessionForContinue("session/1");
+    const compacted = await session.compactSession("session/1", { preserveRecentMessages: 4, instructions: "保留主线" });
+    const headless = await session.headlessChat({ prompt: "写下一章", outputFormat: "stream-json" });
+    const memoryStatus = await session.getMemoryStatus("session/1");
+    const memoryCommit = await session.commitMemory("session/1", {
+      classification: "temporary-story-draft",
+      content: "临时试写不进长期记忆。",
+      source: { kind: "message", messageId: "m1", seq: 1 },
+      createdBy: "assistant",
+    });
     const confirmed = await session.confirmTool("session/1", "guided.exit", { decision: "approve", confirmationId: "c1", reason: null });
     const deleted = await session.deleteSession("session/1");
 
     expect(fetchMock).toHaveBeenNthCalledWith(1, "/api/sessions", expect.objectContaining({ method: "POST", body: JSON.stringify({ title: "新会话", agentId: "writer" }) }));
     expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/sessions/session%2F1", expect.objectContaining({ method: "PUT" }));
-    expect(fetchMock).toHaveBeenNthCalledWith(3, "/api/sessions/session%2F1/tools/guided.exit/confirm", expect.objectContaining({ method: "POST" }));
-    expect(fetchMock).toHaveBeenNthCalledWith(4, "/api/sessions/session%2F1", expect.objectContaining({ method: "DELETE" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(3, "/api/sessions/lifecycle/latest?projectId=book%2F1", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(4, "/api/sessions/session%2F1/fork", expect.objectContaining({ method: "POST", body: JSON.stringify({ title: "支线" }) }));
+    expect(fetchMock).toHaveBeenNthCalledWith(5, "/api/sessions/session%2F1/restore", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(6, "/api/sessions/session%2F1/compact", expect.objectContaining({ method: "POST", body: JSON.stringify({ preserveRecentMessages: 4, instructions: "保留主线" }) }));
+    expect(fetchMock).toHaveBeenNthCalledWith(7, "/api/sessions/headless-chat", expect.objectContaining({ method: "POST", body: JSON.stringify({ prompt: "写下一章", outputFormat: "stream-json" }) }));
+    expect(fetchMock).toHaveBeenNthCalledWith(8, "/api/sessions/session%2F1/memory/status", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(9, "/api/sessions/session%2F1/memory", expect.objectContaining({ method: "POST", body: JSON.stringify({ classification: "temporary-story-draft", content: "临时试写不进长期记忆。", source: { kind: "message", messageId: "m1", seq: 1 }, createdBy: "assistant" }) }));
+    expect(fetchMock).toHaveBeenNthCalledWith(10, "/api/sessions/session%2F1/tools/guided.exit/confirm", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(11, "/api/sessions/session%2F1", expect.objectContaining({ method: "DELETE" }));
     expect(created.ok && created.data).toMatchObject({ error: null, gate: { mode: "chat" } });
     expect(updated.capability.id).toBe("sessions.update");
+    expect(continued.capability.id).toBe("sessions.lifecycle.continue");
+    expect(forked.capability.id).toBe("sessions.lifecycle.fork");
+    expect(restored.capability.id).toBe("sessions.lifecycle.restore");
+    expect(compacted.capability.id).toBe("sessions.compact");
+    expect(headless.capability.id).toBe("sessions.headless-chat");
+    expect(memoryStatus.capability.id).toBe("sessions.memory.status");
+    expect(memoryStatus.capability.metadata).toMatchObject({ readonlyFallback: true });
+    expect(memoryCommit.capability.id).toBe("sessions.memory.write");
     expect(confirmed.capability.id).toBe("sessions.tools.confirm");
     expect(deleted.ok && deleted.data).toEqual({ success: true, gate: null });
   });
@@ -117,23 +144,27 @@ describe("domain contract clients", () => {
 
     await resources.getChapter("book/1", 12);
     await resources.saveChapter("book/1", 12, { content: "正式正文" });
+    await resources.previewRewind("book/1", "checkpoint/1");
+    await resources.applyRewind("book/1", "checkpoint/1", { expectedCurrentHashes: { "chapters/0001.md": "sha256:now" } });
     await resources.listDrafts("book/1");
     await resources.getDraft("book/1", "draft/1");
-    await resources.saveDraft("book/1", { title: "草稿", content: "草稿正文" });
-    await resources.saveDraft("book/1", { id: "draft/1", title: "草稿", content: "更新" });
+    await resources.saveDraft("book/1", { title: "新草稿" });
+    await resources.saveDraft("book/1", { id: "draft/1", title: "旧草稿" });
     await resources.deleteDraft("book/1", "draft/1");
     await resources.listCandidates("book/1");
     await resources.acceptCandidate("book/1", "cand/1", { action: "draft" });
 
     expect(fetchMock).toHaveBeenNthCalledWith(1, "/api/books/book%2F1/chapters/12", expect.objectContaining({ method: "GET" }));
     expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/books/book%2F1/chapters/12", expect.objectContaining({ method: "PUT", body: JSON.stringify({ content: "正式正文" }) }));
-    expect(fetchMock).toHaveBeenNthCalledWith(3, "/api/books/book%2F1/drafts", expect.objectContaining({ method: "GET" }));
-    expect(fetchMock).toHaveBeenNthCalledWith(4, "/api/books/book%2F1/drafts/draft%2F1", expect.objectContaining({ method: "GET" }));
-    expect(fetchMock).toHaveBeenNthCalledWith(5, "/api/books/book%2F1/drafts", expect.objectContaining({ method: "POST" }));
-    expect(fetchMock).toHaveBeenNthCalledWith(6, "/api/books/book%2F1/drafts/draft%2F1", expect.objectContaining({ method: "PUT" }));
-    expect(fetchMock).toHaveBeenNthCalledWith(7, "/api/books/book%2F1/drafts/draft%2F1", expect.objectContaining({ method: "DELETE" }));
-    expect(fetchMock).toHaveBeenNthCalledWith(8, "/api/books/book%2F1/candidates", expect.objectContaining({ method: "GET" }));
-    expect(fetchMock).toHaveBeenNthCalledWith(9, "/api/books/book%2F1/candidates/cand%2F1/accept", expect.objectContaining({ method: "POST", body: JSON.stringify({ action: "draft" }) }));
+    expect(fetchMock).toHaveBeenNthCalledWith(3, "/api/books/book%2F1/checkpoints/checkpoint%2F1/rewind/preview", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(4, "/api/books/book%2F1/checkpoints/checkpoint%2F1/rewind/apply", expect.objectContaining({ method: "POST", body: JSON.stringify({ expectedCurrentHashes: { "chapters/0001.md": "sha256:now" } }) }));
+    expect(fetchMock).toHaveBeenNthCalledWith(5, "/api/books/book%2F1/drafts", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(6, "/api/books/book%2F1/drafts/draft%2F1", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(7, "/api/books/book%2F1/drafts", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(8, "/api/books/book%2F1/drafts/draft%2F1", expect.objectContaining({ method: "PUT" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(9, "/api/books/book%2F1/drafts/draft%2F1", expect.objectContaining({ method: "DELETE" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(10, "/api/books/book%2F1/candidates", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(11, "/api/books/book%2F1/candidates/cand%2F1/accept", expect.objectContaining({ method: "POST", body: JSON.stringify({ action: "draft" }) }));
   });
 
   it("marks writing mode prompt preview as prompt-preview capability", async () => {

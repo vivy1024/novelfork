@@ -41,6 +41,8 @@ import { createCandidateToolService } from "../lib/candidate-tool-service.js";
 import { createCockpitService } from "../lib/cockpit-service.js";
 import { createLlmRuntimeService } from "../lib/llm-runtime-service.js";
 import { createNarrativeLineService } from "../lib/narrative-line-service.js";
+import { createResourceCheckpointService } from "../lib/resource-checkpoint-service.js";
+import { createResourceRewindService } from "../lib/resource-rewind-service.js";
 import { createStorageDestructiveService } from "../lib/storage-destructive-service.js";
 import { createStorageWriteService } from "../lib/storage-write-service.js";
 import { createStoryFileReadService } from "../lib/story-file-service.js";
@@ -374,14 +376,16 @@ export function createStorageRouter(ctx: RouterContext): Hono {
     syncBookScaffold: (bookConfig) => syncLocalBookScaffoldToSqlite(bookConfig as Pick<BookConfig, "id" | "title" | "genre" | "createdAt" | "updatedAt">),
   });
   const storyFileReadService = createStoryFileReadService({ resolveBookDir: state.bookDir.bind(state) });
-  const storageWriteService = createStorageWriteService({ state });
+  const resourceCheckpointService = createResourceCheckpointService({ bookDir: state.bookDir.bind(state) });
+  const resourceRewindService = createResourceRewindService({ bookDir: state.bookDir.bind(state) });
+  const storageWriteService = createStorageWriteService({ state, checkpoint: resourceCheckpointService });
   const storageDestructiveService = createStorageDestructiveService({
     state,
     deleteBookRecord: (bookId) => getStorageDatabase().sqlite.prepare(`DELETE FROM "book" WHERE "id" = ?`).run(bookId),
   });
   const cockpitService = createCockpitService({ state, providerStore: ctx.providerStore });
   const candidateService = createCandidateToolService({ root, runtimeService: createLlmRuntimeService(ctx.providerStore ? { store: ctx.providerStore } : {}) });
-  const narrativeService = createNarrativeLineService({ state });
+  const narrativeService = createNarrativeLineService({ state, checkpoint: resourceCheckpointService });
   configureSessionToolExecutor({ cockpitService, candidateService, narrativeService });
 
   // Note: bookId validation middleware is registered globally in server.ts
@@ -608,10 +612,10 @@ export function createStorageRouter(ctx: RouterContext): Hono {
   app.put("/api/books/:id/chapters/:num", async (c) => {
     const id = c.req.param("id");
     const num = parseInt(c.req.param("num"), 10);
-    const { content } = await c.req.json<{ content: string }>();
+    const { content, sessionId, messageId, toolUseId } = await c.req.json<{ content: string; sessionId?: string; messageId?: string; toolUseId?: string }>();
 
     try {
-      const result = await storageWriteService.updateChapterContent(id, num, content);
+      const result = await storageWriteService.updateChapterContent(id, num, content, { sessionId, messageId, toolUseId });
       if ("error" in result) return c.json({ error: result.error }, 404);
       return c.json(result);
     } catch (e) {
@@ -698,8 +702,8 @@ export function createStorageRouter(ctx: RouterContext): Hono {
   app.put("/api/books/:id/truth/:file", async (c) => {
     const id = c.req.param("id");
     const file = c.req.param("file");
-    const { content } = await c.req.json<{ content: string }>();
-    const result = await storageWriteService.writeTruthFile(id, file, content);
+    const { content, sessionId, messageId, toolUseId } = await c.req.json<{ content: string; sessionId?: string; messageId?: string; toolUseId?: string }>();
+    const result = await storageWriteService.writeTruthFile(id, file, content, { sessionId, messageId, toolUseId });
     if ("error" in result) {
       return c.json({ error: result.error }, 400);
     }
@@ -753,6 +757,35 @@ export function createStorageRouter(ctx: RouterContext): Hono {
       return c.json({ error: result.error }, 400);
     }
     return c.json(result);
+  });
+
+  // --- Checkpoint Rewind ---
+
+  app.get("/api/books/:id/checkpoints/:checkpointId/rewind/preview", async (c) => {
+    const id = c.req.param("id");
+    const checkpointId = c.req.param("checkpointId");
+    const result = await resourceRewindService.previewRewind({ bookId: id, checkpointId });
+    return c.json(result, result.ok ? 200 : 404);
+  });
+
+  app.post("/api/books/:id/checkpoints/:checkpointId/rewind/apply", async (c) => {
+    const id = c.req.param("id");
+    const checkpointId = c.req.param("checkpointId");
+    const body = await c.req.json<Record<string, unknown>>().catch((): Record<string, unknown> => ({}));
+    const expectedCurrentHashes = typeof body.expectedCurrentHashes === "object" && body.expectedCurrentHashes !== null
+      ? Object.fromEntries(Object.entries(body.expectedCurrentHashes as Record<string, unknown>).filter((entry): entry is [string, string] => typeof entry[1] === "string"))
+      : undefined;
+    const confirmationDecision = typeof body.confirmationDecision === "object" && body.confirmationDecision !== null ? body.confirmationDecision as never : undefined;
+    const result = await resourceRewindService.applyRewind({
+      bookId: id,
+      checkpointId,
+      ...(expectedCurrentHashes ? { expectedCurrentHashes } : {}),
+      ...(confirmationDecision ? { confirmationDecision } : {}),
+    });
+    const status = result.ok
+      ? result.status === "pending-confirmation" ? 202 : 200
+      : result.error === "checkpoint-not-found" ? 404 : 409;
+    return c.json(result, status);
   });
 
   // --- State Projections ---
