@@ -76,13 +76,14 @@
   - 覆盖：Requirement 5；Design: Provider and Platform Account Status。
   - 证据：`ProviderSettingsPage` 增加 API provider 状态派生，卡片分开展示“可配置 / 已配置或未配置 / 已验证或未验证 / 可调用或不可调用”，测试失败时显示 `degraded/error`、缺 Base URL/API Key/未验证原因和“添加密钥 / 刷新模型 / 测试模型 / 启停 provider”恢复动作；平台卡片按账号数和 catalog 模型数显示“可导入 / 未配置账号 / 不可调用”或“未验证 / 0 个模型 / 不可调用”，不再用平台 catalog 冒充“已启用/可用”。`/api/providers/summary` 拆出 provider total、enabled provider、available model、total catalog model、callable model；`/api/providers/models/grouped` 只从真实 inventory 派生“大上下文 / 多模态 / 思考链 / 工具调用”，未知显示 `unknown`。验证先补 Task 8 RED 用例暴露缺口；实现后运行 `pnpm --dir packages/studio exec vitest run src/app-next/settings/ProviderSettingsPage.test.tsx src/api/routes/providers.test.ts` 通过（2 files / 22 tests passed），`pnpm --dir packages/studio typecheck` 通过。
 
-- [ ] 9. 实现会话配置真实读写与对话窗口 header facts
+- [x] 9. 实现会话配置真实读写与对话窗口 header facts
   - 对 narrator route / 工作台右侧对话补齐 session header facts：title、binding（book/chapter/workdir）、model、reasoning effort、permission mode、message count、runtime status、context usage。
   - 模型、推理强度、权限模式控件通过真实 session config API 更新，成功后 refetch chat state/session summary，并同步 ShellDataProvider。
   - provider 不支持 reasoning 或 session 不允许某 permission mode 时禁用控件并显示 validation error 或 unsupported reason。
   - 工作区/Git 状态摘要只来自真实 API；不可读或无 Git 显示 unavailable reason。
   - 验证：component/API tests 覆盖读写回读、unsupported 控件禁用、Shell 同步、无 Git/unavailable 显示。
   - 覆盖：Requirement 3、8；Design: Conversation Runtime Transparency。
+  - 证据：`ConversationStatusBar` 增加 binding、messageCount、workspace/Git fact、reasoning unsupported 与 permission mode disabled reason 展示；`StudioNextApp` 在 narrator route 从真实 session record 派生 book/chapter/worktree binding，通过 `/api/worktree/status?path=` 读取 Git 状态，失败显示 unavailable reason；模型/权限/推理强度更新先 `PUT /api/sessions/:id`，成功后 `GET /api/sessions/:id/chat/state` 回读并 `runtime.applyEnvelope` 刷新 header/control，同时 `ShellDataProvider.upsertSession()` + `invalidate("sessions")` 同步侧栏。`session` route 对 plan session 的 `allow/edit` 权限更新返回 `UNSUPPORTED_PERMISSION_MODE` 结构化错误。先补 Task 9 RED 用例；实现后运行 `pnpm --dir packages/studio exec vitest run src/app-next/agent-conversation/surface/ConversationSurface.test.tsx src/app-next/StudioNextApp.test.tsx src/api/routes/session.test.ts` 通过（3 files / 65 tests passed），`pnpm --dir packages/core build`、`pnpm --dir packages/studio exec tsc --noEmit`、`pnpm --dir packages/studio exec tsc -p tsconfig.server.json --noEmit` 通过。
 
 - [ ] 10. 实现工具调用、审批、运行控制与上下文透明化
   - 对话 tool card 显示 tool name、input summary、duration、status、error、collapsed output、copy/fullscreen action；长输出折叠，secret 脱敏。

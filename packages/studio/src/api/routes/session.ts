@@ -4,6 +4,7 @@
 
 import { Hono } from "hono";
 
+import { buildStructuredErrorEnvelope } from "../errors.js";
 import type { CreateNarratorSessionInput, UpdateNarratorSessionChatStateInput, UpdateNarratorSessionInput } from "../../shared/session-types.js";
 import {
   confirmSessionToolDecision,
@@ -71,6 +72,16 @@ function parseListSessionsOptions(c: { req: { query: (name: string) => string | 
     search: cleanQueryText(c.req.query("search") ?? c.req.query("q")),
     sort: parseSessionSort(c.req.query("sort")),
   };
+}
+
+function unsupportedSessionConfigReason(currentSessionMode: string | undefined, updates: UpdateNarratorSessionInput): string | null {
+  if (currentSessionMode === "plan" && updates.sessionConfig?.permissionMode === "allow") {
+    return "规划会话不允许全部允许";
+  }
+  if (currentSessionMode === "plan" && updates.sessionConfig?.permissionMode === "edit") {
+    return "规划会话不允许直接编辑";
+  }
+  return null;
 }
 
 app.get("/", async (c) => {
@@ -230,6 +241,14 @@ app.post("/:id/memory", async (c) => {
 app.put("/:id", async (c) => {
   const id = c.req.param("id");
   const body = await c.req.json<UpdateNarratorSessionInput>();
+  const current = await getSessionById(id);
+  if (!current) {
+    return c.json({ error: "Session not found" }, 404);
+  }
+  const unsupportedReason = unsupportedSessionConfigReason(current.sessionMode, body);
+  if (unsupportedReason) {
+    return c.json(buildStructuredErrorEnvelope({ code: "UNSUPPORTED_PERMISSION_MODE", message: unsupportedReason, mirrorCode: true }), 400);
+  }
   const updated = await updateSession(id, body);
   if (!updated) {
     return c.json({ error: "Session not found" }, 404);

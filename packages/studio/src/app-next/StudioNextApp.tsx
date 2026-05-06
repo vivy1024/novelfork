@@ -17,7 +17,7 @@ import {
 import type { ConversationConfirmation, ConversationSessionConfigPatch } from "./agent-conversation/surface";
 import type { RuntimeModelPoolEntry } from "../shared/provider-catalog";
 import type { CanvasContext, ToolConfirmationRequest } from "../shared/agent-native-workspace";
-import type { NarratorSessionChatMessage, NarratorSessionChatSnapshot, SessionCumulativeUsage, TokenUsage, UpdateNarratorSessionInput } from "../shared/session-types";
+import type { NarratorSessionChatMessage, NarratorSessionChatSnapshot, NarratorSessionRecord, SessionCumulativeUsage, SessionPermissionMode, TokenUsage, UpdateNarratorSessionInput } from "../shared/session-types";
 import { resolveStudioNextRoute, type StudioNextRoute } from "./entry";
 import { SearchPage } from "./search/SearchPage";
 import { RoutinesNextPage } from "./routines/RoutinesNextPage";
@@ -154,7 +154,9 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
   const [pendingConfirmations, setPendingConfirmations] = useState<readonly ToolConfirmationRequest[]>([]);
   const [confirmationError, setConfirmationError] = useState<string | null>(null);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
-  const status = toConversationStatus(runtime.state, sessionId, modelOptions, modelPoolError);
+  const [workspaceFact, setWorkspaceFact] = useState<ConversationRouteStatus["workspace"] | undefined>(undefined);
+  const shellDataStore = useShellDataStore();
+  const status = toConversationStatus(runtime.state, sessionId, modelOptions, modelPoolError, workspaceFact);
   const ackedSeqRef = useRef<number | null>(null);
   const confirmingIdRef = useRef<string | null>(null);
   const resumeFromSeq = runtime.getResumeFromSeq();
@@ -169,6 +171,38 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
     runtime.ack(resumeFromSeq);
     ackedSeqRef.current = resumeFromSeq;
   }, [resumeFromSeq, runtime]);
+
+  useEffect(() => {
+    const worktree = runtime.state.session?.worktree?.trim();
+    if (!worktree) {
+      setWorkspaceFact(undefined);
+      return;
+    }
+    let active = true;
+    setWorkspaceFact({ path: worktree, git: { status: "unavailable", reason: "正在读取 Git 状态" } });
+    void contractClient.get<{ status: { modified?: unknown[]; added?: unknown[]; deleted?: unknown[]; untracked?: unknown[] } }>(`/api/worktree/status?path=${encodeURIComponent(worktree)}`, { capability: { id: "worktree.status", status: "current" } }).then((result) => {
+      if (!active) return;
+      if (!result.ok) {
+        setWorkspaceFact({ path: worktree, git: { status: "unavailable", reason: contractErrorMessage(result, "Git 状态不可读") } });
+        return;
+      }
+      const status = result.data.status;
+      const modified = Array.isArray(status.modified) ? status.modified.length : 0;
+      const added = Array.isArray(status.added) ? status.added.length : 0;
+      const deleted = Array.isArray(status.deleted) ? status.deleted.length : 0;
+      const untracked = Array.isArray(status.untracked) ? status.untracked.length : 0;
+      const total = modified + added + deleted + untracked;
+      setWorkspaceFact({
+        path: worktree,
+        git: total > 0
+          ? { status: "dirty", summary: `modified ${modified} / added ${added} / deleted ${deleted} / untracked ${untracked}` }
+          : { status: "clean", summary: "干净" },
+      });
+    });
+    return () => {
+      active = false;
+    };
+  }, [contractClient, runtime.state.session?.worktree]);
 
   useEffect(() => {
     let active = true;
@@ -278,9 +312,14 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
 
   const updateSessionConfig = useCallback(async (patch: ConversationSessionConfigPatch) => {
     const payload: UpdateNarratorSessionInput = { sessionConfig: patch };
-    const result = await sessionClient.updateSession(sessionId, payload);
+    const result = await sessionClient.updateSession<NarratorSessionRecord>(sessionId, payload);
     if (!result.ok) throw new Error(contractErrorMessage(result, "会话配置更新失败"));
-  }, [sessionClient, sessionId]);
+    shellDataStore.upsertSession(result.data);
+    shellDataStore.invalidate("sessions");
+    const refreshed = await sessionClient.getChatState<NarratorSessionChatSnapshot>(sessionId);
+    if (!refreshed.ok) throw new Error(contractErrorMessage(refreshed, "会话配置更新后刷新状态失败"));
+    runtime.applyEnvelope({ type: "session:snapshot", snapshot: refreshed.data, recovery: { state: "idle", reason: "session-config-refetch" } });
+  }, [runtime, sessionClient, sessionId, shellDataStore]);
 
   const compactSessionForCommand = useCallback(async (instructions?: string): Promise<SessionCompactCommandPayload> => {
     const result = await sessionClient.compactSession<SessionCompactCommandPayload>(sessionId, { instructions });
@@ -330,6 +369,7 @@ function toConversationModelOptions(models: readonly RuntimeModelPoolEntry[]): N
       modelId: model.modelId.startsWith(`${model.providerId}:`) ? model.modelId.slice(model.providerId.length + 1) : model.modelId,
       modelLabel: model.modelName,
       supportsTools: model.capabilities.functionCalling,
+      supportsReasoning: (model.capabilities as { reasoning?: boolean }).reasoning,
     }));
 }
 
@@ -391,11 +431,28 @@ function usageFromSessionState(session: ReturnType<typeof useAgentConversationRu
   };
 }
 
+function bindingLabel(session: ReturnType<typeof useAgentConversationRuntime>["state"]["session"]): string | undefined {
+  if (!session) return undefined;
+  if (session.projectId && session.chapterId) return `${session.projectId} / 章节 ${session.chapterId}`;
+  if (session.projectId) return `书籍 ${session.projectId}`;
+  if (session.worktree) return `工作目录 ${session.worktree}`;
+  return "standalone";
+}
+
+function permissionModeDisabledReasons(session: ReturnType<typeof useAgentConversationRuntime>["state"]["session"]): Partial<Record<SessionPermissionMode, string>> | undefined {
+  if (session?.sessionMode !== "plan") return undefined;
+  return {
+    allow: "规划会话不允许全部允许",
+    edit: "规划会话不允许直接编辑",
+  };
+}
+
 function toConversationStatus(
   state: ReturnType<typeof useAgentConversationRuntime>["state"],
   sessionId: string,
   modelOptions: ConversationRouteStatus["modelOptions"] = [],
   modelPoolError: string | null = null,
+  workspaceFact?: ConversationRouteStatus["workspace"],
 ): ConversationRouteStatus {
   const sessionConfig = state.session?.sessionConfig;
   const providerId = sessionConfig?.providerId || undefined;
@@ -413,9 +470,14 @@ function toConversationStatus(
     permissionMode: sessionConfig?.permissionMode,
     reasoningEffort: sessionConfig?.reasoningEffort,
     usage: usageFromSessionState(state.session, state.messages),
+    messageCount: state.session?.messageCount,
+    binding: state.session ? { label: bindingLabel(state.session) ?? "standalone", ...(state.session.worktree ? { worktree: state.session.worktree } : {}) } : undefined,
+    workspace: workspaceFact,
     modelOptions,
     toolPolicySummary: sessionConfig?.toolPolicy,
     unsupportedToolsReason: selectedModel?.supportsTools === false ? "当前模型不支持工具调用" : undefined,
+    reasoningUnsupportedReason: selectedModel?.supportsReasoning === false ? "当前 provider 不支持 reasoning effort 调整" : undefined,
+    permissionModeDisabledReasons: permissionModeDisabledReasons(state.session),
     sessionConfigLoaded: Boolean(sessionConfig),
   };
 }

@@ -8,6 +8,20 @@ export interface ConversationModelOption {
   modelId: string;
   modelLabel?: string;
   supportsTools?: boolean;
+  supportsReasoning?: boolean;
+}
+
+export interface ConversationBindingFact {
+  label: string;
+  worktree?: string;
+}
+
+export interface ConversationWorkspaceFact {
+  path?: string;
+  git?:
+    | { status: "clean"; summary?: string }
+    | { status: "dirty"; summary: string }
+    | { status: "unavailable"; reason: string };
 }
 
 export interface ConversationUsageBucket {
@@ -40,9 +54,14 @@ export interface ConversationStatus {
   permissionMode?: SessionPermissionMode;
   reasoningEffort?: SessionReasoningEffort;
   usage?: ConversationUsage;
+  messageCount?: number;
+  binding?: ConversationBindingFact;
+  workspace?: ConversationWorkspaceFact;
   modelOptions?: readonly ConversationModelOption[];
   toolPolicySummary?: SessionToolPolicy;
   unsupportedToolsReason?: string;
+  reasoningUnsupportedReason?: string;
+  permissionModeDisabledReasons?: Partial<Record<SessionPermissionMode, string>>;
   sessionConfigLoaded?: boolean;
 }
 
@@ -115,12 +134,21 @@ function formatToolPolicySummary(policy?: SessionToolPolicy): string | null {
   return parts.length ? parts.join("；") : null;
 }
 
+function formatGitFact(git?: ConversationWorkspaceFact["git"]): string | null {
+  if (!git) return null;
+  if (git.status === "clean") return `Git：${git.summary ?? "干净"}`;
+  if (git.status === "dirty") return `Git：${git.summary}`;
+  return `Git：不可用（${git.reason}）`;
+}
+
 export function ConversationStatusBar({ status, onUpdateSessionConfig = () => undefined }: ConversationStatusBarProps) {
   const [updateError, setUpdateError] = useState<string | null>(null);
   const selectedModel = status.modelOptions?.find((option) => option.providerId === status.providerId && option.modelId === status.modelId);
   const toolsUnsupported = selectedModel?.supportsTools === false || Boolean(status.unsupportedToolsReason);
   const toolPolicySummary = formatToolPolicySummary(status.toolPolicySummary);
   const sessionConfigLoaded = status.sessionConfigLoaded ?? Boolean(status.providerId || status.modelId || status.permissionMode || status.reasoningEffort);
+  const gitFact = formatGitFact(status.workspace?.git);
+  const reasoningDisabled = Boolean(status.reasoningUnsupportedReason || selectedModel?.supportsReasoning === false);
 
   async function updateSessionConfig(patch: ConversationSessionConfigPatch) {
     setUpdateError(null);
@@ -137,6 +165,10 @@ export function ConversationStatusBar({ status, onUpdateSessionConfig = () => un
       <span>{formatModelLabel(status)}</span>
       {status.permissionMode ? <span>权限：{PERMISSION_LABELS[status.permissionMode]}</span> : null}
       {status.reasoningEffort ? <span>推理：{status.reasoningEffort}</span> : null}
+      {typeof status.messageCount === "number" ? <span>消息：{status.messageCount}</span> : null}
+      {status.binding?.label ? <span>绑定：{status.binding.label}</span> : null}
+      {status.workspace?.path ? <span>工作区：{status.workspace.path}</span> : null}
+      {gitFact ? <span>{gitFact}</span> : null}
       {status.usage ? <span>{formatTokens(status.usage)}</span> : null}
       {toolPolicySummary ? <span data-testid="tool-policy-summary">工具策略：{toolPolicySummary}</span> : null}
       {!sessionConfigLoaded ? <span>session config 未加载：未配置会话模型</span> : null}
@@ -166,7 +198,7 @@ export function ConversationStatusBar({ status, onUpdateSessionConfig = () => un
           权限
           <select aria-label="权限" value={status.permissionMode} onChange={(event) => void updateSessionConfig({ permissionMode: event.currentTarget.value as SessionPermissionMode })}>
             {PERMISSION_OPTIONS.map((mode) => (
-              <option key={mode} value={mode}>{PERMISSION_LABELS[mode]}</option>
+              <option key={mode} value={mode} disabled={Boolean(status.permissionModeDisabledReasons?.[mode])}>{PERMISSION_LABELS[mode]}</option>
             ))}
           </select>
         </label>
@@ -175,7 +207,7 @@ export function ConversationStatusBar({ status, onUpdateSessionConfig = () => un
       {sessionConfigLoaded && status.reasoningEffort ? (
         <label>
           推理强度
-          <select aria-label="推理强度" value={status.reasoningEffort} onChange={(event) => void updateSessionConfig({ reasoningEffort: event.currentTarget.value as SessionReasoningEffort })}>
+          <select aria-label="推理强度" value={status.reasoningEffort} disabled={reasoningDisabled} onChange={(event) => void updateSessionConfig({ reasoningEffort: event.currentTarget.value as SessionReasoningEffort })}>
             {REASONING_OPTIONS.map((effort) => (
               <option key={effort} value={effort}>{effort}</option>
             ))}
@@ -184,6 +216,8 @@ export function ConversationStatusBar({ status, onUpdateSessionConfig = () => un
       ) : null}
 
       {toolsUnsupported ? <span data-testid="unsupported-tools-notice">{status.unsupportedToolsReason ?? "当前模型不支持工具调用"}</span> : null}
+      {status.reasoningUnsupportedReason ? <span data-testid="reasoning-unsupported-notice">{status.reasoningUnsupportedReason}</span> : null}
+      {Object.entries(status.permissionModeDisabledReasons ?? {}).map(([mode, reason]) => reason ? <span key={mode}>{reason}</span> : null)}
       {updateError ? <span data-testid="status-update-error">{updateError}</span> : null}
     </div>
   );
