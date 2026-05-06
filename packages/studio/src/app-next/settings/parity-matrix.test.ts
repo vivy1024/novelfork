@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import * as parityMatrixModule from "./parity-matrix";
 import { parityEntryCanBeAdvertisedAsCurrent, validateParityMatrix, type ParityMatrixEntry } from "./parity-matrix";
 
 const evidence = {
@@ -37,5 +38,37 @@ describe("parity matrix validator", () => {
     expect(validateParityMatrix([nonGoal])).toContainEqual(expect.objectContaining({ capability: "Chrome bridge", code: "NON_GOAL_UI_CLAIM" }));
     expect(parityEntryCanBeAdvertisedAsCurrent({ ...nonGoal, uiClaimAllowed: false })).toBe(false);
     expect(parityEntryCanBeAdvertisedAsCurrent({ ...nonGoal, novelForkStatus: "current" })).toBe(true);
+  });
+
+  it("ships a dated Codex CLI parity baseline that keeps sandbox and approval out of current UI claims", () => {
+    const entries = (parityMatrixModule as { CODEX_CLI_PARITY_MATRIX?: readonly ParityMatrixEntry[] }).CODEX_CLI_PARITY_MATRIX ?? [];
+
+    expect(entries.map((entry) => entry.capability)).toEqual([
+      "Codex TUI",
+      "Codex non-interactive exec",
+      "Codex config file and profile overrides",
+      "Codex sandbox modes",
+      "Codex approval policy",
+      "Codex MCP server/client configuration",
+      "Codex subagents",
+      "Codex web search",
+      "Codex image input",
+      "Codex code review",
+      "Codex Windows native support boundary",
+    ]);
+    expect(validateParityMatrix(entries)).toEqual([]);
+
+    const sandbox = entries.find((entry) => entry.capability === "Codex sandbox modes");
+    expect(sandbox).toMatchObject({ novelForkStatus: "planned", uiClaimAllowed: false });
+    expect(sandbox?.notes).toContain("read-only");
+    expect(sandbox?.notes).toContain("workspace-write");
+    expect(sandbox?.notes).toContain("danger-full-access");
+
+    const approval = entries.find((entry) => entry.capability === "Codex approval policy");
+    expect(approval).toMatchObject({ novelForkStatus: "partial", uiClaimAllowed: false });
+    expect(approval?.notes).toContain("untrusted");
+    expect(approval?.notes).toContain("on-request");
+    expect(approval?.notes).toContain("never");
+    expect(approval?.notes).toContain("granular");
   });
 });
