@@ -451,6 +451,10 @@ function permissionModeDisabledReasons(session: ReturnType<typeof useAgentConver
   };
 }
 
+function hasRunningToolCall(messages: ReturnType<typeof useAgentConversationRuntime>["state"]["messages"]): boolean {
+  return messages.some((message) => message.toolCalls?.some((toolCall) => toolCall.status === "running"));
+}
+
 function toConversationStatus(
   state: ReturnType<typeof useAgentConversationRuntime>["state"],
   sessionId: string,
@@ -462,7 +466,7 @@ function toConversationStatus(
   const providerId = sessionConfig?.providerId || undefined;
   const modelId = sessionConfig?.modelId || undefined;
   const selectedModel = modelOptions?.find((option) => option.providerId === providerId && option.modelId === modelId);
-  const runtimeState = state.error ? "error" : state.streamingMessageId ? "running" : state.session ? "ready" : "loading";
+  const runtimeState = state.error ? "error" : state.streamingMessageId || hasRunningToolCall(state.messages) ? "running" : state.session ? "ready" : "loading";
 
   return {
     state: runtimeState,
