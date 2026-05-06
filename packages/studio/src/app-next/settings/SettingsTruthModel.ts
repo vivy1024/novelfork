@@ -47,11 +47,43 @@ export interface ModelSettingsInput {
     readonly summaryModel?: string;
     readonly exploreSubagentModel?: string;
     readonly planSubagentModel?: string;
+    readonly generalSubagentModel?: string;
     readonly subagentModelPool?: readonly string[];
     readonly codexReasoningEffort?: string;
   };
   readonly runtimeControls?: {
     readonly defaultReasoningEffort?: string;
+  };
+}
+
+export interface AgentRuntimeSettingsInput extends ModelSettingsInput {
+  readonly runtimeControls?: ModelSettingsInput["runtimeControls"] & {
+    readonly defaultPermissionMode?: string;
+    readonly maxTurnSteps?: number;
+    readonly contextCompressionThresholdPercent?: number;
+    readonly contextTruncateTargetPercent?: number;
+    readonly largeWindowCompressionThresholdPercent?: number;
+    readonly largeWindowTruncateTargetPercent?: number;
+    readonly recovery?: {
+      readonly maxRetryAttempts?: number;
+      readonly initialRetryDelayMs?: number;
+      readonly maxRetryDelayMs?: number;
+      readonly backoffMultiplier?: number;
+    };
+    readonly toolAccess?: {
+      readonly mcpStrategy?: string;
+      readonly allowlist?: readonly string[];
+      readonly blocklist?: readonly string[];
+    };
+    readonly runtimeDebug?: {
+      readonly tokenDebugEnabled?: boolean;
+      readonly rateDebugEnabled?: boolean;
+      readonly dumpEnabled?: boolean;
+    };
+    readonly sendMode?: string;
+  };
+  readonly proxy?: {
+    readonly webFetch?: string;
   };
 }
 
@@ -93,30 +125,105 @@ function userSettingsFact<T>({
   };
 }
 
+function agentRuntimeFact<T>({
+  id,
+  label,
+  value,
+  readApi = USER_SETTINGS_API,
+  writeApi = USER_SETTINGS_API,
+  reason,
+}: {
+  readonly id: string;
+  readonly label: string;
+  readonly value: T | undefined;
+  readonly readApi?: string;
+  readonly writeApi?: string;
+  readonly reason?: string;
+}): SettingsFact<T> {
+  const configured = Array.isArray(value) ? true : isConfigured(value);
+  return {
+    id,
+    label,
+    value,
+    group: "agent-runtime",
+    source: "user-settings",
+    status: configured ? "current" : "unconfigured",
+    writable: true,
+    readApi,
+    writeApi,
+    reason: configured ? undefined : (reason ?? "用户设置尚未配置该字段"),
+    verifiedBy: "unit",
+  };
+}
+
 export function deriveModelSettingsFacts(config: ModelSettingsInput | null | undefined): Array<SettingsFact<string>> {
   const modelDefaults = config?.modelDefaults;
   const runtimeControls = config?.runtimeControls;
   const subagentPool = modelDefaults?.subagentModelPool ?? [];
-  const exploreModel = modelDefaults?.exploreSubagentModel || subagentPool[0];
-  const planModel = modelDefaults?.planSubagentModel || subagentPool[1];
   const facts: Array<SettingsFact<string>> = [
     userSettingsFact({ id: "model.defaultSessionModel", label: "默认模型", value: modelDefaults?.defaultSessionModel }),
     userSettingsFact({ id: "model.summaryModel", label: "摘要模型", value: modelDefaults?.summaryModel }),
-    userSettingsFact({ id: "model.exploreSubagentModel", label: "Explore 子代理模型", value: exploreModel }),
-    userSettingsFact({ id: "model.planSubagentModel", label: "Plan 子代理模型", value: planModel }),
-    userSettingsFact({ id: "model.subagentModelPool", label: "模型池限制", value: subagentPool.length ? `${subagentPool.length} 个` : undefined }),
-    userSettingsFact({ id: "runtime.defaultReasoningEffort", label: "全局推理强度", value: runtimeControls?.defaultReasoningEffort }),
+    userSettingsFact({ id: "model.exploreSubagentModel", label: "Explore 子代理模型", value: modelDefaults?.exploreSubagentModel }),
+    userSettingsFact({ id: "model.planSubagentModel", label: "Plan 子代理模型", value: modelDefaults?.planSubagentModel }),
   ];
+
+  if (hasOwn(modelDefaults, "generalSubagentModel")) {
+    facts.push(userSettingsFact({ id: "model.generalSubagentModel", label: "General 子代理模型", value: modelDefaults?.generalSubagentModel }));
+  }
 
   if (hasOwn(modelDefaults, "codexReasoningEffort")) {
     facts.push(userSettingsFact({ id: "model.codexReasoningEffort", label: "Codex 推理强度", value: modelDefaults?.codexReasoningEffort }));
   }
 
+  facts.push(
+    userSettingsFact({ id: "model.subagentModelPool", label: "模型池限制", value: subagentPool.length ? `${subagentPool.length} 个` : undefined }),
+    userSettingsFact({ id: "runtime.defaultReasoningEffort", label: "全局推理强度", value: runtimeControls?.defaultReasoningEffort }),
+  );
+
   return facts;
 }
 
+export function deriveAgentRuntimeSettingsFacts(config: AgentRuntimeSettingsInput | null | undefined): Array<SettingsFact<unknown>> {
+  const runtimeControls = config?.runtimeControls;
+  const recovery = runtimeControls?.recovery;
+  const toolAccess = runtimeControls?.toolAccess;
+  const debug = runtimeControls?.runtimeDebug;
+
+  return [
+    agentRuntimeFact({ id: "runtime.defaultPermissionMode", label: "默认权限模式", value: runtimeControls?.defaultPermissionMode }),
+    agentRuntimeFact({ id: "runtime.defaultReasoningEffort", label: "默认推理强度", value: runtimeControls?.defaultReasoningEffort }),
+    agentRuntimeFact({ id: "runtime.maxTurnSteps", label: "最大轮次", value: runtimeControls?.maxTurnSteps }),
+    agentRuntimeFact({ id: "runtime.contextCompressionThresholdPercent", label: "上下文压缩阈值 %", value: runtimeControls?.contextCompressionThresholdPercent }),
+    agentRuntimeFact({ id: "runtime.contextTruncateTargetPercent", label: "上下文截断目标 %", value: runtimeControls?.contextTruncateTargetPercent }),
+    agentRuntimeFact({ id: "runtime.largeWindowCompressionThresholdPercent", label: "大窗口压缩阈值 %", value: runtimeControls?.largeWindowCompressionThresholdPercent }),
+    agentRuntimeFact({ id: "runtime.largeWindowTruncateTargetPercent", label: "大窗口截断目标 %", value: runtimeControls?.largeWindowTruncateTargetPercent }),
+    agentRuntimeFact({ id: "runtime.recovery.maxRetryAttempts", label: "最大重试次数", value: recovery?.maxRetryAttempts }),
+    agentRuntimeFact({ id: "runtime.recovery.initialRetryDelayMs", label: "初始重试延迟 ms", value: recovery?.initialRetryDelayMs }),
+    agentRuntimeFact({ id: "runtime.recovery.maxRetryDelayMs", label: "退避上限 ms", value: recovery?.maxRetryDelayMs }),
+    agentRuntimeFact({ id: "runtime.recovery.backoffMultiplier", label: "退避倍率", value: recovery?.backoffMultiplier }),
+    {
+      id: "runtime.firstTokenTimeoutMs",
+      label: "首 token 超时",
+      group: "agent-runtime",
+      source: "capability-matrix",
+      status: "planned",
+      writable: false,
+      reason: "NovelFork settings schema 尚无 first-token timeout 字段",
+      verifiedBy: "unit",
+    },
+    agentRuntimeFact({ id: "runtime.proxy.webFetch", label: "WebFetch 代理", value: config?.proxy?.webFetch, readApi: "/api/proxy", writeApi: "/api/proxy" }),
+    agentRuntimeFact({ id: "runtime.toolAccess.mcpStrategy", label: "MCP 工具策略", value: toolAccess?.mcpStrategy }),
+    agentRuntimeFact({ id: "runtime.toolAccess.allowlist", label: "全局目录/命令白名单", value: toolAccess?.allowlist }),
+    agentRuntimeFact({ id: "runtime.toolAccess.blocklist", label: "全局目录/命令黑名单", value: toolAccess?.blocklist }),
+    agentRuntimeFact({ id: "runtime.debug.tokenUsage", label: "显示 Token 用量", value: debug?.tokenDebugEnabled }),
+    agentRuntimeFact({ id: "runtime.debug.outputRate", label: "显示实时输出速率", value: debug?.rateDebugEnabled }),
+    agentRuntimeFact({ id: "runtime.debug.dumpApiRequests", label: "Dump API 请求", value: debug?.dumpEnabled }),
+    agentRuntimeFact({ id: "runtime.sendMode", label: "发送方式", value: runtimeControls?.sendMode }),
+  ];
+}
+
 export function settingsFactDisplayValue(fact: SettingsFact<unknown>) {
-  if (Array.isArray(fact.value)) return fact.value.length ? fact.value.join("、") : "未配置";
+  if (Array.isArray(fact.value)) return fact.value.length ? fact.value.join("、") : "空列表";
   if (typeof fact.value === "string") return fact.value.trim() ? fact.value : "未配置";
   if (fact.value === undefined || fact.value === null) return "未配置";
   return String(fact.value);

@@ -1,16 +1,33 @@
 import { describe, expect, it } from "vitest";
 
-import { deriveModelSettingsFacts, settingsFactDisplayValue } from "./SettingsTruthModel";
+import { deriveAgentRuntimeSettingsFacts, deriveModelSettingsFacts, settingsFactDisplayValue } from "./SettingsTruthModel";
 
 const sampleConfig = {
   modelDefaults: {
     defaultSessionModel: "gpt-4o",
     summaryModel: "gpt-4o-mini",
+    exploreSubagentModel: "gpt-4o-explore",
+    planSubagentModel: "gpt-4o-plan",
+    generalSubagentModel: "gpt-4o-general",
+    codexReasoningEffort: "high",
     subagentModelPool: ["gpt-4o", "gpt-4o-mini"],
     validation: { defaultSessionModel: "valid", summaryModel: "valid", subagentModelPool: {}, invalidModelIds: [] },
   },
   runtimeControls: {
+    defaultPermissionMode: "edit",
     defaultReasoningEffort: "medium",
+    maxTurnSteps: 200,
+    contextCompressionThresholdPercent: 80,
+    contextTruncateTargetPercent: 70,
+    largeWindowCompressionThresholdPercent: 60,
+    largeWindowTruncateTargetPercent: 50,
+    recovery: { maxRetryAttempts: 5, initialRetryDelayMs: 1000, maxRetryDelayMs: 30000, backoffMultiplier: 2 },
+    toolAccess: { allowlist: ["Read"], blocklist: ["Bash"], mcpStrategy: "ask" },
+    runtimeDebug: { tokenDebugEnabled: true, rateDebugEnabled: false, dumpEnabled: false },
+    sendMode: "enter",
+  },
+  proxy: {
+    webFetch: "http://127.0.0.1:7890",
   },
 } as const;
 
@@ -23,6 +40,8 @@ describe("SettingsTruthModel", () => {
       "model.summaryModel",
       "model.exploreSubagentModel",
       "model.planSubagentModel",
+      "model.generalSubagentModel",
+      "model.codexReasoningEffort",
       "model.subagentModelPool",
       "runtime.defaultReasoningEffort",
     ]);
@@ -41,10 +60,56 @@ describe("SettingsTruthModel", () => {
   });
 
   it("marks missing user settings as unconfigured with a reason instead of a dash", () => {
-    const facts = deriveModelSettingsFacts({ modelDefaults: { defaultSessionModel: "", summaryModel: "", subagentModelPool: [] }, runtimeControls: {} });
+    const facts = deriveModelSettingsFacts({ modelDefaults: { defaultSessionModel: "", summaryModel: "", exploreSubagentModel: "", planSubagentModel: "", subagentModelPool: [] }, runtimeControls: {} });
 
     expect(facts.every((fact) => fact.status === "unconfigured")).toBe(true);
     expect(facts.every((fact) => fact.reason)).toBe(true);
     expect(facts.every((fact) => settingsFactDisplayValue(fact) === "未配置")).toBe(true);
+  });
+
+  it("RED: derives agent runtime facts from user settings, proxy config, and planned gaps", () => {
+    const facts = deriveAgentRuntimeSettingsFacts(sampleConfig);
+
+    expect(facts.map((fact) => fact.id)).toEqual([
+      "runtime.defaultPermissionMode",
+      "runtime.defaultReasoningEffort",
+      "runtime.maxTurnSteps",
+      "runtime.contextCompressionThresholdPercent",
+      "runtime.contextTruncateTargetPercent",
+      "runtime.largeWindowCompressionThresholdPercent",
+      "runtime.largeWindowTruncateTargetPercent",
+      "runtime.recovery.maxRetryAttempts",
+      "runtime.recovery.initialRetryDelayMs",
+      "runtime.recovery.maxRetryDelayMs",
+      "runtime.recovery.backoffMultiplier",
+      "runtime.firstTokenTimeoutMs",
+      "runtime.proxy.webFetch",
+      "runtime.toolAccess.mcpStrategy",
+      "runtime.toolAccess.allowlist",
+      "runtime.toolAccess.blocklist",
+      "runtime.debug.tokenUsage",
+      "runtime.debug.outputRate",
+      "runtime.debug.dumpApiRequests",
+      "runtime.sendMode",
+    ]);
+    expect(facts.find((fact) => fact.id === "runtime.firstTokenTimeoutMs")).toMatchObject({
+      status: "planned",
+      writable: false,
+      source: "capability-matrix",
+      reason: "NovelFork settings schema 尚无 first-token timeout 字段",
+    });
+    expect(facts.find((fact) => fact.id === "runtime.proxy.webFetch")).toMatchObject({
+      source: "user-settings",
+      readApi: "/api/proxy",
+      writeApi: "/api/proxy",
+      status: "current",
+      writable: true,
+    });
+    for (const fact of facts.filter((fact) => fact.status === "current")) {
+      expect(fact.group).toBe("agent-runtime");
+      expect(fact.readApi).toBeTruthy();
+      expect(fact.writeApi).toBeTruthy();
+      expect(settingsFactDisplayValue(fact)).not.toBe("—");
+    }
   });
 });

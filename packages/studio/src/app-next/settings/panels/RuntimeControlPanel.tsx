@@ -5,8 +5,9 @@ import { fetchJson, putApi } from "@/hooks/use-api";
 import { createLenientFetchJsonContractClient, createProviderClient } from "@/app-next/backend-contract";
 import { runtimeModelLabel, usableRuntimeModels, type RuntimeModelOption } from "@/lib/runtime-model-options";
 import { SESSION_PERMISSION_MODE_OPTIONS } from "@/shared/session-types";
-import type { ModelDefaultSettings, RuntimeControlSettings, UserConfig } from "@/types/settings";
+import type { ModelDefaultSettings, ProxySettings, RuntimeControlSettings, UserConfig } from "@/types/settings";
 import { DEFAULT_USER_CONFIG } from "@/types/settings";
+import { deriveAgentRuntimeSettingsFacts, settingsFactDisplayValue, settingsFactStatusLabel, type SettingsFact } from "../SettingsTruthModel";
 
 // ---------------------------------------------------------------------------
 // Extended runtime controls — all switches now in core RuntimeControlSettings
@@ -44,6 +45,7 @@ const MCP_POLICY_OPTIONS: Array<{
 
 const DEFAULT_RUNTIME_CONTROLS = DEFAULT_USER_CONFIG.runtimeControls;
 const DEFAULT_MODEL_DEFAULTS = DEFAULT_USER_CONFIG.modelDefaults;
+const DEFAULT_PROXY_SETTINGS = DEFAULT_USER_CONFIG.proxy;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -77,6 +79,34 @@ function FieldRow({ label, children }: { label: string; children: React.ReactNod
     <div className="flex items-center justify-between gap-4">
       <span className="text-sm text-muted-foreground">{label}</span>
       {children}
+    </div>
+  );
+}
+
+function RuntimeFactRow({ fact }: { readonly fact: SettingsFact<unknown> }) {
+  return (
+    <div className="rounded-md border border-border/60 bg-muted/10 px-3 py-2 text-xs" data-setting-fact-id={fact.id}>
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-muted-foreground">{fact.label}</span>
+        <span className="font-mono text-foreground">{settingsFactDisplayValue(fact)}</span>
+      </div>
+      <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-muted-foreground">
+        <span>状态：{settingsFactStatusLabel(fact.status)}</span>
+        {fact.readApi && <span>读取：{fact.readApi}</span>}
+        {fact.writeApi && <span>写入：{fact.writeApi}</span>}
+        {fact.reason && <span>{settingsFactStatusLabel(fact.status)}：{fact.reason}</span>}
+      </div>
+    </div>
+  );
+}
+
+function RuntimeFactsSummary({ facts }: { readonly facts: ReadonlyArray<SettingsFact<unknown>> }) {
+  const userSettingsFact = facts.find((fact) => fact.readApi === "/api/settings/user");
+  const proxyFact = facts.find((fact) => fact.readApi === "/api/proxy");
+  return (
+    <div className="rounded-md border border-border/60 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+      {userSettingsFact?.readApi && <span>来源：{userSettingsFact.readApi}</span>}
+      {proxyFact?.readApi && <span className="ml-3">代理来源：{proxyFact.readApi}</span>}
     </div>
   );
 }
@@ -164,23 +194,25 @@ function ListManager({
 export function RuntimeControlPanel() {
   const [rc, setRc] = useState<ExtendedRuntimeControls>(DEFAULT_RUNTIME_CONTROLS);
   const [md, setMd] = useState<ModelDefaultSettings>(DEFAULT_MODEL_DEFAULTS);
+  const [proxy, setProxy] = useState<ProxySettings>(DEFAULT_PROXY_SETTINGS);
   const [modelOptions, setModelOptions] = useState<RuntimeModelOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
-  function applyUserConfig(data: Pick<UserConfig, "runtimeControls" | "modelDefaults">) {
+  function applyUserConfig(data: Pick<UserConfig, "runtimeControls" | "modelDefaults" | "proxy">) {
     setRc({ ...DEFAULT_RUNTIME_CONTROLS, ...(data.runtimeControls ?? {}) });
     setMd({
       ...DEFAULT_MODEL_DEFAULTS,
       ...(data.modelDefaults ?? {}),
       subagentModelPool: data.modelDefaults?.subagentModelPool ?? DEFAULT_MODEL_DEFAULTS.subagentModelPool,
     });
+    setProxy({ ...DEFAULT_PROXY_SETTINGS, ...(data.proxy ?? {}) });
   }
 
   async function refetchUserConfig() {
-    const data = await fetchJson<Pick<UserConfig, "runtimeControls" | "modelDefaults">>("/settings/user");
+    const data = await fetchJson<Pick<UserConfig, "runtimeControls" | "modelDefaults" | "proxy">>("/settings/user");
     applyUserConfig(data);
     return data;
   }
@@ -220,6 +252,7 @@ export function RuntimeControlPanel() {
     setError(null);
     try {
       await putApi<UserConfig>("/settings/user", { runtimeControls: rc, modelDefaults: md });
+      await putApi<ProxySettings>("/api/proxy", proxy);
       await refetchUserConfig();
       setSaved(true);
     } catch (e) {
@@ -233,6 +266,7 @@ export function RuntimeControlPanel() {
   const dirty = () => setSaved(false);
   const patchRc = (patch: Partial<ExtendedRuntimeControls>) => { dirty(); setRc((c) => ({ ...c, ...patch })); };
   const patchMd = (patch: Partial<ModelDefaultSettings>) => { dirty(); setMd((c) => ({ ...c, ...patch })); };
+  const patchProxy = (patch: Partial<ProxySettings>) => { dirty(); setProxy((c) => ({ ...c, ...patch })); };
   const patchToolAccess = (patch: Partial<RuntimeControlSettings["toolAccess"]>) => {
     dirty();
     setRc((c) => ({ ...c, toolAccess: { ...c.toolAccess, ...patch } }));
@@ -242,6 +276,10 @@ export function RuntimeControlPanel() {
     setRc((c) => ({ ...c, runtimeDebug: { ...c.runtimeDebug, ...patch } }));
   };
   const hasModelOptions = modelOptions.length > 0;
+  const runtimeFacts = useMemo(
+    () => deriveAgentRuntimeSettingsFacts({ runtimeControls: rc, modelDefaults: md, proxy }),
+    [md, proxy, rc],
+  );
 
   if (loading) {
     return <p className="py-8 text-center text-sm text-muted-foreground">正在读取运行控制配置…</p>;
@@ -249,6 +287,13 @@ export function RuntimeControlPanel() {
 
   return (
     <div className="space-y-6">
+      <Section title="运行策略来源">
+        <RuntimeFactsSummary facts={runtimeFacts} />
+        <div className="grid gap-2 md:grid-cols-2">
+          {runtimeFacts.map((fact) => <RuntimeFactRow key={fact.id} fact={fact} />)}
+        </div>
+      </Section>
+
       {/* ---- 权限与推理 ---- */}
       <Section title="权限与推理">
         <FieldRow label="默认权限模式">
@@ -260,6 +305,16 @@ export function RuntimeControlPanel() {
           <select className={selectCls} value={rc.defaultReasoningEffort} onChange={(e) => patchRc({ defaultReasoningEffort: e.target.value as RuntimeControlSettings["defaultReasoningEffort"] })}>
             {REASONING_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
+        </FieldRow>
+        <FieldRow label="每条消息最大轮次">
+          <input
+            className={inputCls}
+            type="number"
+            min={1}
+            max={1000}
+            value={rc.maxTurnSteps}
+            onChange={(e) => patchRc({ maxTurnSteps: parseNumInput(e.target.value, rc.maxTurnSteps, 1, 1000) })}
+          />
         </FieldRow>
       </Section>
 
@@ -300,6 +355,58 @@ export function RuntimeControlPanel() {
             {modelOptions.map((model) => (
               <option key={model.modelId} value={model.modelId}>{runtimeModelLabel(model)}（摘要）</option>
             ))}
+          </select>
+        </FieldRow>
+        <FieldRow label="Explore 子代理模型">
+          <select
+            aria-label="Explore 子代理模型"
+            className={wideInputCls}
+            value={md.exploreSubagentModel}
+            disabled={!hasModelOptions}
+            onChange={(e) => patchMd({ exploreSubagentModel: e.target.value })}
+          >
+            <option value="" disabled>请选择模型</option>
+            {modelOptions.map((model) => (
+              <option key={model.modelId} value={model.modelId}>{runtimeModelLabel(model)}（Explore）</option>
+            ))}
+          </select>
+        </FieldRow>
+        <FieldRow label="Plan 子代理模型">
+          <select
+            aria-label="Plan 子代理模型"
+            className={wideInputCls}
+            value={md.planSubagentModel}
+            disabled={!hasModelOptions}
+            onChange={(e) => patchMd({ planSubagentModel: e.target.value })}
+          >
+            <option value="" disabled>请选择模型</option>
+            {modelOptions.map((model) => (
+              <option key={model.modelId} value={model.modelId}>{runtimeModelLabel(model)}（Plan）</option>
+            ))}
+          </select>
+        </FieldRow>
+        <FieldRow label="General 子代理模型">
+          <select
+            aria-label="General 子代理模型"
+            className={wideInputCls}
+            value={md.generalSubagentModel}
+            disabled={!hasModelOptions}
+            onChange={(e) => patchMd({ generalSubagentModel: e.target.value })}
+          >
+            <option value="" disabled>请选择模型</option>
+            {modelOptions.map((model) => (
+              <option key={model.modelId} value={model.modelId}>{runtimeModelLabel(model)}（General）</option>
+            ))}
+          </select>
+        </FieldRow>
+        <FieldRow label="Codex 推理强度">
+          <select
+            aria-label="Codex 推理强度"
+            className={selectCls}
+            value={md.codexReasoningEffort}
+            onChange={(e) => patchMd({ codexReasoningEffort: e.target.value as ModelDefaultSettings["codexReasoningEffort"] })}
+          >
+            {REASONING_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
         </FieldRow>
         <FieldRow label="子代理模型池">
@@ -368,6 +475,39 @@ export function RuntimeControlPanel() {
             max={90}
             value={rc.contextTruncateTargetPercent}
             onChange={(e) => patchRc({ contextTruncateTargetPercent: parseNumInput(e.target.value, rc.contextTruncateTargetPercent, 40, 90) })}
+          />
+        </FieldRow>
+        <FieldRow label="大窗口压缩起始 %">
+          <input
+            className={inputCls}
+            type="number"
+            min={50}
+            max={95}
+            value={rc.largeWindowCompressionThresholdPercent}
+            onChange={(e) => patchRc({ largeWindowCompressionThresholdPercent: parseNumInput(e.target.value, rc.largeWindowCompressionThresholdPercent, 50, 95) })}
+          />
+        </FieldRow>
+        <FieldRow label="大窗口截断目标 %">
+          <input
+            className={inputCls}
+            type="number"
+            min={40}
+            max={90}
+            value={rc.largeWindowTruncateTargetPercent}
+            onChange={(e) => patchRc({ largeWindowTruncateTargetPercent: parseNumInput(e.target.value, rc.largeWindowTruncateTargetPercent, 40, 90) })}
+          />
+        </FieldRow>
+      </Section>
+
+      {/* ---- 代理 ---- */}
+      <Section title="代理">
+        <FieldRow label="WebFetch 代理 URL">
+          <input
+            aria-label="WebFetch 代理"
+            className={wideInputCls}
+            value={proxy.webFetch}
+            onChange={(e) => patchProxy({ webFetch: e.target.value })}
+            placeholder="http://127.0.0.1:7890"
           />
         </FieldRow>
       </Section>
