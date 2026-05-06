@@ -51,11 +51,11 @@ const SETTINGS_SECTIONS: readonly SettingsSectionItem[] = [
   { id: "appearance", label: "外观与界面", group: "个人设置" },
   { id: "providers", label: "AI 供应商", group: "实例管理" },
   { id: "server", label: "服务器与系统", group: "实例管理" },
-  { id: "storage", label: "存储空间", group: "实例管理" },
-  { id: "resources", label: "运行资源", group: "实例管理" },
-  { id: "history", label: "使用历史", group: "实例管理" },
   { id: "config", label: "项目配置", group: "实例管理" },
-  { id: "about", label: "关于", group: "实例管理" },
+  { id: "storage", label: "存储空间", group: "运行资源与审计" },
+  { id: "resources", label: "运行资源", group: "运行资源与审计" },
+  { id: "history", label: "使用历史", group: "运行资源与审计" },
+  { id: "about", label: "关于", group: "关于与项目" },
 ];
 
 function ShellPlaceholder({ title, description }: { readonly title: string; readonly description: string }) {

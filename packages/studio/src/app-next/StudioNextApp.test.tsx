@@ -976,6 +976,10 @@ describe("StudioNextApp", () => {
     cleanup();
     render(<StudioNextApp initialRoute={{ kind: "settings" }} />);
     expect(screen.getByTestId("settings-section-content").textContent).toContain("models");
+    expect(screen.getByText("个人设置")).toBeTruthy();
+    expect(screen.getByText("实例管理")).toBeTruthy();
+    expect(screen.getByText("运行资源与审计")).toBeTruthy();
+    expect(screen.getByText("关于与项目")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "打开 AI 供应商" }));
     expect(screen.getByTestId("provider-settings-page")).toBeTruthy();
     expect(screen.queryByText(/稍后接线/)).toBeNull();
