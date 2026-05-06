@@ -7,6 +7,13 @@ import { DataPanel } from "./panels/DataPanel";
 import { InlineError } from "../components/feedback";
 import { ProjectConfigSection } from "./ProjectConfigSection";
 import { Row } from "../components/shared";
+import {
+  deriveModelSettingsFacts,
+  settingsFactDisplayValue,
+  settingsFactSourceLabel,
+  settingsFactStatusLabel,
+  type SettingsFact,
+} from "./SettingsTruthModel";
 
 interface SettingsSectionContentProps {
   readonly sectionId: string;
@@ -48,7 +55,10 @@ interface UserConfig {
   modelDefaults?: {
     defaultSessionModel?: string;
     summaryModel?: string;
+    exploreSubagentModel?: string;
+    planSubagentModel?: string;
     subagentModelPool?: string[];
+    codexReasoningEffort?: string;
   };
   runtimeControls?: {
     defaultReasoningEffort?: string;
@@ -57,7 +67,10 @@ interface UserConfig {
 
 function ModelsSection({ onSectionChange }: { onSectionChange?: (id: string) => void }) {
   const { data, loading, error } = useApi<UserConfig>("/settings/user");
-  const md = data?.modelDefaults;
+  const facts = deriveModelSettingsFacts(data);
+  const modelFacts = facts.filter((fact) => fact.id === "model.defaultSessionModel" || fact.id === "model.summaryModel");
+  const subagentFacts = facts.filter((fact) => fact.id.startsWith("model.") && fact.id !== "model.defaultSessionModel" && fact.id !== "model.summaryModel" && fact.id !== "model.codexReasoningEffort");
+  const reasoningFacts = facts.filter((fact) => fact.id.startsWith("runtime.") || fact.id === "model.codexReasoningEffort");
 
   return (
     <div className="space-y-6">
@@ -68,24 +81,38 @@ function ModelsSection({ onSectionChange }: { onSectionChange?: (id: string) => 
       {loading && <p className="text-muted-foreground">加载中...</p>}
       {error && <InlineError message={error} />}
       <div className="space-y-3 rounded-lg border border-border p-4">
-        <Row label="默认模型" value={md?.defaultSessionModel} />
-        <Row label="摘要模型" value={md?.summaryModel} />
+        {modelFacts.map((fact) => <FactRow key={fact.id} fact={fact} />)}
         <div className="border-t border-border pt-3">
           <h3 className="text-sm font-semibold mb-2 text-foreground">子代理模型池</h3>
-          <Row label="Explore 子代理模型" value={md?.subagentModelPool?.[0]} />
-          <Row label="Plan 子代理模型" value={md?.subagentModelPool?.[1]} />
-          <Row label="模型池限制" value={md?.subagentModelPool ? `${md.subagentModelPool.length} 个` : undefined} />
+          {subagentFacts.map((fact) => <FactRow key={fact.id} fact={fact} />)}
         </div>
         <div className="border-t border-border pt-3">
           <h3 className="text-sm font-semibold mb-2 text-foreground">推理强度</h3>
-          <Row label="全局推理强度" value={data?.runtimeControls?.defaultReasoningEffort} />
-          <Row label="Codex 推理强度" value={undefined} />
+          {reasoningFacts.map((fact) => <FactRow key={fact.id} fact={fact} />)}
         </div>
         <div className="pt-3">
           <button className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 transition-opacity" onClick={() => onSectionChange?.("providers")} type="button">
             打开 AI 供应商
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function FactRow({ fact }: { readonly fact: SettingsFact<unknown> }) {
+  return (
+    <div className="space-y-1 py-1.5 text-sm" data-setting-fact-id={fact.id}>
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-muted-foreground">{fact.label}</span>
+        <span className="font-mono text-foreground">{settingsFactDisplayValue(fact)}</span>
+      </div>
+      <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-muted-foreground">
+        <span>来源：{settingsFactSourceLabel(fact.source)}</span>
+        <span>状态：{settingsFactStatusLabel(fact.status)}</span>
+        {fact.readApi && <span>读取：{fact.readApi}</span>}
+        {fact.writeApi && <span>写入：{fact.writeApi}</span>}
+        {fact.reason && <span>原因：{fact.reason}</span>}
       </div>
     </div>
   );

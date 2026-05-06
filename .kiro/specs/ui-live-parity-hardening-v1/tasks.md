@@ -49,13 +49,14 @@
   - 覆盖：Requirement 3、9；Design: Shell Session Synchronization。
   - 证据：`useShellData` 收敛为 `useSyncExternalStore` 驱动的 Shell 数据 store，暴露 `useShellDataStore().upsertSession()/invalidate()`；工作台写作动作新建 session 后乐观插入侧栏并触发 sessions refetch；`ConversationSurface` recovery notice 改为中文归一化状态、最近成功 cursor 与恢复动作，不再直接泄露 raw state；状态栏在 session config 未加载时隐藏模型/权限/推理编辑控件。运行 `pnpm --dir packages/studio exec vitest run src/app-next/StudioNextApp.test.tsx src/app-next/agent-conversation/surface/ConversationSurface.test.tsx src/app-next/shell/useShellData.test.ts src/app-next/writing-workbench/WorkbenchWritingActions.test.tsx` 通过（4 files / 50 tests passed）；`pnpm --dir packages/studio typecheck` 与 `pnpm docs:verify` 通过。
 
-- [ ] 6. 建立 SettingsTruthModel 与 NarraFork-inspired 设置分组
+- [x] 6. 建立 SettingsTruthModel 与 NarraFork-inspired 设置分组
   - 实现 `SettingsFact<T>` 派生层，字段包含 id、label、group、source、status、writable、readApi、writeApi、reason、verifiedBy。
   - 设置页按 NovelFork 自有 schema 组织为个人设置、实例管理、运行资源/关于等分组；借鉴 NarraFork IA，但字段必须来自真实 NovelFork source。
   - 对未接入字段显示 planned/unsupported 或隐藏，不渲染可编辑假控件；移除无来源破折号、固定“已接入”、硬编码可用状态。
   - 保存设置后重新读取服务器值；保存失败保留草稿并允许恢复服务器值。
   - 验证：unit/component tests 覆盖每个可见 setting 的 source/status/writable/readApi/writeApi，禁止无来源“已接入/可用/—”。
   - 覆盖：Requirement 4、10；Design: Settings Truth Model、NarraFork-Inspired Settings IA。
+  - 证据：新增 `SettingsTruthModel.ts` / `SettingsTruthModel.test.ts`，模型设置页通过 `SettingsFact` 展示来源、状态、读写 API 与未配置原因；无真实 schema 来源时隐藏普通模型页的 `Codex 推理强度`，共享 Row 空值改为“未配置”而非破折号；`RuntimeControlPanel` 保存后重新读取 `/api/settings/user`，并删除模型池第一项冒充当前默认模型的展示；设置导航分为个人设置、实例管理、运行资源与审计、关于与项目。先运行 RED 聚焦测试，确认 3 files / 5 failed tests；实现后运行 `pnpm --dir packages/studio exec vitest run src/app-next/settings/SettingsTruthModel.test.ts src/app-next/settings/SettingsSectionContent.test.tsx src/app-next/settings/panels/RuntimeControlPanel.test.tsx src/app-next/StudioNextApp.test.tsx` 通过（4 files / 40 tests passed）；`pnpm --dir packages/studio typecheck` 通过。
 
 - [ ] 7. 收敛模型与 Agent runtime 设置页真实来源
   - 默认模型、摘要模型、Explore/Plan 子代理模型、子代理模型池、全局默认推理强度、平台专项推理强度全部从 user settings 或明确 runtime source 派生。
