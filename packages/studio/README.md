@@ -117,7 +117,7 @@ bun run typecheck
 - 新前端访问后端必须优先使用 `src/app-next/backend-contract/`：`createContractClient`、domain clients、`resource-tree-adapter`、`writing-action-adapter` 与 session WebSocket helper。
 - 组件内不得散写未登记 API 字符串；新增能力必须先补 Backend Contract 矩阵、共享类型和 contract 测试，再接 UI。
 - contract 返回 `prompt-preview`、`process-memory`、`chunked-buffer`、`unsupported`、gate 或 `unknown/null` 指标时，UI 必须透明展示原始语义，不得 mock/fake/noop 假成功。
-- 设置页必须经 `src/app-next/settings/SettingsTruthModel.ts` 派生可见字段的来源、状态、读写 API、可写性与未配置原因；普通模型页不得展示无 schema 来源的 `Codex 推理强度` 或用模型池第一项冒充当前默认模型；运行控制保存后必须重新读取 `/api/settings/user` 作为最终事实。
+- 设置页必须经 `src/app-next/settings/SettingsTruthModel.ts` 派生可见字段的来源、状态、读写 API、可写性与未配置原因；普通模型页不得展示无 schema 来源的 `Codex 推理强度` 或用模型池第一项冒充当前默认模型；Agent runtime 设置必须登记权限、max turns、retry/backoff、WebFetch proxy、上下文阈值、调试、allow/deny 与 planned 缺口；运行控制保存后必须重新读取 `/api/settings/user` 作为最终事实。
 
 ---
 
@@ -128,7 +128,7 @@ bun run typecheck
 | `/next` | 当前入口；Agent Shell 路由壳，主入口已切断旧三栏 WorkspacePage 默认依赖，失败三栏实验与旧 ChatWindow/轻量 `/api/chat` 源码已从 Studio typecheck 构建路径正式退役，并已完成前端重建与旧源码退役阶段验收 |
 | `/next/narrators/:sessionId` | 已挂载单栏 Conversation 壳，接入合同快照、WebSocket `resumeFromSeq`、ack/message/abort runtime，并具备消息流/工具卡/确认门/状态栏/Composer、recovery notice、模型/权限状态栏动作与 Tool Result Renderer Registry |
 | `/next/books/:bookId` | 已挂载独立 Writing Workbench 壳，Workbench 资源树已接入 resource contract adapter 映射，并支持 canvas/viewer、保存、只读禁用、tool-result viewer、dirty canvasContext 与写作动作入口 |
-| `/next/settings` | 已挂载 SettingsLayout、SettingsSectionContent 与 ProviderSettingsPage；设置分组为个人设置、实例管理、运行资源与审计、关于与项目，模型页通过 SettingsTruthModel 展示来源/状态/API，provider/model/runtime 配置入口可达 |
+| `/next/settings` | 已挂载 SettingsLayout、SettingsSectionContent 与 ProviderSettingsPage；设置分组为个人设置、实例管理、运行资源与审计、关于与项目，模型页和 Agent runtime 面板通过 SettingsTruthModel 展示来源/状态/API，provider/model/runtime 配置入口可达 |
 | `/next/routines` | 已挂载 RoutinesNextPage，复用 routines/MCP/tools/skills/subagents 管理能力 |
 | `/next/search` | 已挂载 SearchPage，使用真实搜索 API 或展示真实错误/空状态 |
 
