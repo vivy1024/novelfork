@@ -107,6 +107,36 @@ describe("Conversation Surface", () => {
     expect(card.textContent).toContain("最后一行");
   });
 
+  it("简化工具卡也提供复制/全屏动作并脱敏 raw input/result", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    render(
+      <ToolCallCard
+        toolCall={{
+          id: "tool-secret",
+          toolName: "provider.test",
+          status: "success",
+          summary: "测试 provider",
+          input: { apiKey: "sk-live-secret", query: "ping" },
+          result: { ok: true, access_token: "secret-token" },
+          durationMs: 42,
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "复制工具调用摘要" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalled());
+    expect(writeText.mock.calls[0]?.[0]).not.toContain("sk-live-secret");
+    expect(writeText.mock.calls[0]?.[0]).toContain("[REDACTED]");
+    expect(screen.getByRole("button", { name: "全屏查看" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "展开工具原始数据" }));
+    const card = screen.getByTestId("tool-call-card-tool-secret");
+    expect(card.textContent).not.toContain("sk-live-secret");
+    expect(card.textContent).not.toContain("secret-token");
+    expect(card.textContent).toContain("[REDACTED]");
+  });
+
   it("工具卡展示 checkpoint 与受影响资源，便于按消息查看恢复来源", () => {
     render(
       <ToolCallCard
@@ -150,6 +180,30 @@ describe("Conversation Surface", () => {
 
     expect(screen.getByText(/"chapterNumber": 3/)).toBeTruthy();
     expect(screen.getByText(/"candidateId": "cand-3"/)).toBeTruthy();
+  });
+
+  it("确认门展示 pending permission request 的目标、风险、来源和精确操作", () => {
+    render(
+      <ConfirmationGate
+        confirmation={{
+          id: "confirm-facts",
+          title: "candidate.create_chapter",
+          summary: "将创建第 3 章候选稿",
+          target: "chapters/0003.md",
+          risk: "confirmed-write",
+          permissionSource: "sessionConfig.toolPolicy.ask",
+          operation: "创建候选稿，不覆盖正式章节",
+        } as never}
+        onApprove={vi.fn()}
+        onReject={vi.fn()}
+      />,
+    );
+
+    const gate = screen.getByTestId("confirmation-gate");
+    expect(gate.textContent).toContain("目标：chapters/0003.md");
+    expect(gate.textContent).toContain("风险：confirmed-write");
+    expect(gate.textContent).toContain("来源：sessionConfig.toolPolicy.ask");
+    expect(gate.textContent).toContain("操作：创建候选稿，不覆盖正式章节");
   });
 
   it("确认门触发 approve/reject 回调", () => {
@@ -370,6 +424,29 @@ describe("Conversation Surface", () => {
     expect(screen.getByText("规划会话不允许全部允许")).toBeTruthy();
   });
 
+  it("状态栏展示 context threshold、overflow warning 与 planned runtime panels", () => {
+    render(
+      <ConversationStatusBar
+        status={{
+          state: "connected",
+          label: "已连接",
+          providerId: "sub2api",
+          modelId: "gpt-5.4",
+          permissionMode: "edit",
+          reasoningEffort: "medium",
+          contextUsage: { usedTokens: 6200, maxTokens: 8000, trimThreshold: 6000, compactThreshold: 7200, checkpointNotice: "checkpoint 已保护正式章节" },
+          plannedRuntimePanels: ["Git stage/commit", "container logs"],
+        } as never}
+      />,
+    );
+
+    expect(screen.getByText("上下文：6200 / 8000 tokens")).toBeTruthy();
+    expect(screen.getByText("超过裁剪阈值 6000 tokens")).toBeTruthy();
+    expect(screen.getByText("距离 compact 阈值 1000 tokens")).toBeTruthy();
+    expect(screen.getByText("checkpoint 已保护正式章节")).toBeTruthy();
+    expect(screen.getByText("planned 面板：Git stage/commit、container logs")).toBeTruthy();
+  });
+
   it("状态栏展示 session tool policy 可用/禁用/询问概览", () => {
     render(
       <ConversationStatusBar
@@ -388,6 +465,48 @@ describe("Conversation Surface", () => {
     expect(screen.getByTestId("tool-policy-summary").textContent).toContain("可用：cockpit.*");
     expect(screen.getByTestId("tool-policy-summary").textContent).toContain("禁用：candidate.create_chapter");
     expect(screen.getByTestId("tool-policy-summary").textContent).toContain("询问：guided.exit");
+  });
+
+  it("运行控制只把有真实处理器的动作启用，其余显示 disabled reason", () => {
+    const onAbort = vi.fn();
+    const onCompactSession = vi.fn().mockResolvedValue({ ok: true, summary: "已压缩", compactedMessageCount: 3, budget: { estimatedTokensBefore: 8000, estimatedTokensAfter: 3200 } });
+    const { rerender } = render(
+      <ConversationSurface
+        title="叙述者"
+        status={{ state: "ready", label: "就绪" }}
+        messages={messages}
+        onApproveConfirmation={vi.fn()}
+        onRejectConfirmation={vi.fn()}
+        onSend={vi.fn()}
+        onAbort={onAbort}
+        onCompactSession={onCompactSession}
+      />,
+    );
+
+    const idleControls = screen.getByTestId("conversation-runtime-controls");
+    expect((within(idleControls).getByRole("button", { name: "中断运行" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(idleControls.textContent).toContain("无运行中的会话");
+    expect((within(idleControls).getByRole("button", { name: "Compact" }) as HTMLButtonElement).disabled).toBe(false);
+    expect((within(idleControls).getByRole("button", { name: "重试" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(idleControls.textContent).toContain("重试未接入真实 API");
+    expect((within(idleControls).getByRole("button", { name: "Fork" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((within(idleControls).getByRole("button", { name: "Resume" }) as HTMLButtonElement).disabled).toBe(true);
+
+    rerender(
+      <ConversationSurface
+        title="叙述者"
+        status={{ state: "running", label: "生成中" }}
+        messages={messages}
+        isRunning
+        onApproveConfirmation={vi.fn()}
+        onRejectConfirmation={vi.fn()}
+        onSend={vi.fn()}
+        onAbort={onAbort}
+        onCompactSession={onCompactSession}
+      />,
+    );
+    fireEvent.click(within(screen.getByTestId("conversation-runtime-controls")).getByRole("button", { name: "中断运行" }));
+    expect(onAbort).toHaveBeenCalledOnce();
   });
 
   it("模型池为空时禁用发送并引导到设置页", () => {
