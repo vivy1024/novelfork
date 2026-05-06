@@ -168,7 +168,7 @@ export function createToolsRouter(options: ToolsRouterOptions = {}) {
       const body = await c.req.json<{ toolName?: string; params?: Record<string, unknown>; output?: string }>();
       const target = inferSourcePreviewTarget(body.params ?? {}, body.output);
       const location = extractSourceLocation(body.params ?? {});
-      const request: EditorOpenRequest = { target: target ?? "packages/studio/src/components/ChatWindow.tsx", line: location.line };
+      const request: EditorOpenRequest = { target: target ?? DEFAULT_SOURCE_PREVIEW_TARGET, line: location.line };
       const opened = options.openInEditor
         ? await options.openInEditor(request)
         : await openInEditorWithCode(request);
@@ -222,9 +222,10 @@ interface EditorOpenRequest {
   readonly line?: number;
 }
 
+const DEFAULT_SOURCE_PREVIEW_TARGET = "packages/studio/src/app-next/agent-conversation/surface/ConversationSurface.tsx";
+
 async function buildSourcePreview(target: string | undefined, location: SourceLocation) {
-  const fallbackTarget = "packages/studio/src/components/ChatWindow.tsx";
-  const normalizedTarget = target?.trim() ? normalizeTargetPath(target) : fallbackTarget;
+  const normalizedTarget = target?.trim() ? normalizeTargetPath(target) : DEFAULT_SOURCE_PREVIEW_TARGET;
   const absolutePath = resolve(process.cwd(), normalizedTarget);
 
   try {

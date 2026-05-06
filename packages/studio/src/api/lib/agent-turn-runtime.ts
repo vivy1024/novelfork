@@ -11,6 +11,7 @@ import type {
 } from "../../shared/session-types.js";
 import type { LlmRuntimeFailureCode } from "./llm-runtime-service.js";
 import type { RuntimeToolUse } from "./provider-adapters/index.js";
+import { filterSessionToolsForProvider } from "./session-tool-policy.js";
 
 export type AgentTurnItem =
   | { readonly type: "message"; readonly role: "system" | "user" | "assistant"; readonly content: string; readonly id?: string; readonly metadata?: Record<string, unknown> }
@@ -139,6 +140,16 @@ function isPendingConfirmationResult(result: SessionToolExecutionResult): boolea
 export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentTurnEvent[]> {
   const events: AgentTurnEvent[] = [];
   const messages = buildInitialMessages(input);
+  const filteredTools = filterSessionToolsForProvider(input.tools, input.sessionConfig.toolPolicy);
+  if (input.tools.length > 0 && filteredTools.tools.length === 0) {
+    events.push({
+      type: "turn_failed",
+      reason: "policy-disabled",
+      message: "当前 session 工具策略禁用了所有可发送给模型的工具。",
+      data: { deniedTools: filteredTools.deniedTools },
+    });
+    return events;
+  }
   const maxSteps = Math.max(0, input.maxSteps ?? 6);
   let executedToolSteps = 0;
   const recentToolCalls: string[] = [];
@@ -160,7 +171,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
     const reply = await input.generate({
       sessionConfig: input.sessionConfig,
       messages,
-      tools: input.tools,
+      tools: filteredTools.tools,
       permissionMode: input.permissionMode,
       ...(input.canvasContext ? { canvasContext: input.canvasContext } : {}),
       ...(emitStreamChunk ? { onStreamChunk: emitStreamChunk } : {}),

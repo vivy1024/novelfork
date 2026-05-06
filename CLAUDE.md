@@ -55,7 +55,7 @@
 |------|----|
 | Specs | `studio-ide-layout-v1` 已完成（30/30）+ `web-agent-runtime-v1` 已完成（16/16） |
 | TypeScript | typecheck 通过 |
-| 测试 | 180 文件 / 1118 测试（Studio）+ 12 文件 / 92 测试（CLI） |
+| 测试 | 210 文件 / 1276 测试（Studio 最新回归）+ 13 文件 / 97 测试（CLI） |
 | 编译 | `pnpm --dir packages/studio compile` → `dist/novelfork.exe` / 版本化 release 产物约 117MB |
 | 运行 | `./novelfork.exe` → `http://localhost:4567` |
 

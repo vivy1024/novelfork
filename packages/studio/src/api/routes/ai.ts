@@ -564,33 +564,6 @@ export function createAIRouter(ctx: RouterContext): Hono {
     }
   });
 
-  // --- Agent ---
-
-  app.post("/api/agent", async (c) => {
-    const { instruction } = await c.req.json<{ instruction: string }>();
-    if (!instruction?.trim()) {
-      return c.json({ error: "No instruction provided" }, 400);
-    }
-
-    broadcastStudioEvent("agent:start", { instruction });
-
-    try {
-      const { runAgentLoop } = await import("@vivy1024/novelfork-core");
-
-      const result = await runAgentLoop(
-        await ctx.buildPipelineConfig(await ctx.getSessionLlm(c)),
-        instruction
-      );
-
-      broadcastStudioEvent("agent:complete", { instruction, response: result });
-      return c.json({ response: result });
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      broadcastStudioEvent("agent:error", { instruction, error: msg });
-      return c.json({ response: msg });
-    }
-  });
-
   // --- Selection Transform (lightweight text-in → text-out) ---
 
   const TRANSFORM_MODES = ["polish", "condense", "expand", "audit"] as const;

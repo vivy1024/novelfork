@@ -2,7 +2,7 @@
 
 **版本**: v2.1.0
 **创建日期**: 2026-04-28
-**更新日期**: 2026-05-03
+**更新日期**: 2026-05-06
 **状态**: ✅ 当前有效
 **文档类型**: current
 
@@ -142,9 +142,9 @@
 | 5 种 Agent 角色（Writer/Planner/Auditor/Architect/Explorer） | ✅ |
 | 每种 Agent 专属 system prompt（200+ 行领域知识） | ✅ |
 | session-chat-service 自动注入 agent prompt | ✅ |
-| Explorer Agent（只读探索，ChatWindow 可选） | ✅ |
+| Explorer Agent（只读探索，ConversationSurface 内联展示） | ✅ |
 | 编排函数（Explorer→Planner→Writer→Auditor 串行） | ✅ |
-| WorkspacePage 右侧固定叙述者会话入口 | ✅ |
+| `/next/narrators/:sessionId` live 叙述者会话入口 | ✅ |
 | 13 个 Core Agent 类 | ✅ |
 | 18 个 Core 内置工具（plan/compose/write/audit/revise等） | ✅ |
 | 22 个通用工具（ToolsTab，9 默认开/13 默认关） | ✅ |
@@ -195,10 +195,17 @@
 | **重复工具调用保护** | 真实可用 | 同一 turn 内相同 toolName+input 签名超阈值自动拦截 |
 | **continuation 指令** | 真实可用 | 工具结果回灌时追加"总结已获信息、判断是否足够"指令 |
 | **OpenAI-compatible 工具上下文** | 真实可用 | canonical items 转 assistant tool_calls + tool role message |
-| **会话中心** | 真实可用 | 独立/书籍/章节绑定筛选、归档/恢复、模型/权限状态 |
+| **会话中心** | 真实可用 | 独立/书籍/章节绑定筛选、归档/恢复、模型/权限状态、继续最近会话、Fork 标题/继承说明 |
+| **会话斜杠命令** | 真实可用 | Composer 输入 `/` 展示建议，`/help`、`/status`、`/model`、`/permission`、`/fork`、`/resume`、`/compact` 返回结构化命令结果；非法命令以 status 展示，不发送给模型 |
+| **Session Compact** | 真实可用 | `/compact` 走 `POST /api/sessions/:id/compact` 与 session compact service，写入 `session-compact-summary`、保留 recent messages，并展示 compact summary/context budget |
+| **Session Memory 边界** | 透明过渡 | `GET /api/sessions/:id/memory/status` 显示 writer 未接入时的只读状态；`POST /api/sessions/:id/memory` 通过 session memory boundary service 区分用户偏好、项目事实、临时剧情草稿，偏好/项目事实需要审计来源，临时剧情草稿不自动写长期 memory |
+| **Session Tool Policy** | 真实可用 | `SessionConfig.toolPolicy` 支持 allow/deny/ask；工具执行合并 permissionMode、policy、resource risk 与 dirty canvasContext，返回 policy-denied / permission-required / policy-disabled |
+| **Headless Chat stream-json API** | 真实可用 | `POST /api/sessions/headless-chat` 复用 AgentTurnRuntime/session tools，支持 text 与 stream-json input、NDJSON output、ephemeral/no-session-persistence、permission_request、max turns/budget stop result；result envelope 含 duration、stop_reason、usage、cost unknown 与 permission_denials |
 | **高级工作台模式** | 真实可用 | workbenchMode=false 隐藏 Terminal/Browser/Bash/MCP/Admin 等高级工具 |
-| **Headless Exec 服务** | 真实可用 | `POST /api/exec` 非交互执行，遇确认门停止返回 pending |
-| **`novelfork exec` CLI** | 真实可用 | 通过 HTTP 调用 Studio headless exec，支持 --json/--model/--book/--session |
+| **Headless Exec 服务** | 真实可用 | `POST /api/exec` 非交互执行，遇确认门停止返回 pending；保留兼容入口 |
+| **资源 Checkpoint / Rewind** | 真实可用 | 正式章节、Truth/story 与 narrative apply 写入前保存 `.novelfork/checkpoints/<checkpointId>`，记录 session/message/toolUse、资源 path/hash/snapshotRef；`/rewind/preview` 返回 diff/hash/risk，`/rewind/apply` 必须经确认门并写入 safety checkpoint/audit；候选稿、草稿和提示词预览属于非正式资源边界 |
+| **`novelfork chat` CLI** | 真实可用 | 通过 HTTP 调用 `/api/sessions/headless-chat`，支持 text/json/stream-json、`--session`、`--book`、`--model`、`--no-session-persistence`、max turns/budget 与 pending confirmation exit code=2 |
+| **`novelfork exec` CLI** | 真实可用 | 保留旧 `/api/exec` 默认兼容；stream-json/ephemeral/max-turns/max-budget 模式复用 headless chat common parser 并支持真实 NDJSON 响应 |
 | **真实 Provider/Model 选择** | 强制 | 无虚拟模型、无自动 fallback；未配置返回 model-unavailable |
 | **Anthropic/Responses API adapter** | 未接入 | 预留转换接口，当前返回 unsupported |
 

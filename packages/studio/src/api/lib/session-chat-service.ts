@@ -62,6 +62,7 @@ import { buildAgentContext } from "./agent-context.js";
 import { getAgentSystemPrompt } from "@vivy1024/novelfork-core";
 import { createSessionToolExecutor, type SessionToolExecutorOptions } from "./session-tool-executor.js";
 import { getEnabledSessionTools } from "./session-tool-registry.js";
+import { annotateSessionToolsWithPolicy } from "./session-tool-policy.js";
 import { runAgentTurn, type AgentTurnItem, type AgentGenerateResult } from "./agent-turn-runtime.js";
 import { loadUserConfig } from "./user-config-service.js";
 import { generateSessionTitle } from "./session-auto-title.js";
@@ -107,6 +108,7 @@ export type PendingSessionToolConfirmation = ToolConfirmationRequest & {
 export type SessionToolState = {
   readonly sessionId: string;
   readonly tools: readonly SessionToolDefinition[];
+  readonly policy?: NarratorSessionRecord["sessionConfig"]["toolPolicy"];
   readonly pendingConfirmations: readonly PendingSessionToolConfirmation[];
 };
 
@@ -892,7 +894,8 @@ export async function getSessionToolState(sessionId: string): Promise<SessionToo
 
   return {
     sessionId,
-    tools: getEnabledSessionTools(loaded.session.sessionConfig.permissionMode),
+    tools: annotateSessionToolsWithPolicy(getEnabledSessionTools(loaded.session.sessionConfig.permissionMode), loaded.session.sessionConfig.toolPolicy),
+    policy: loaded.session.sessionConfig.toolPolicy,
     pendingConfirmations: extractPendingToolConfirmations(sessionId, loaded.state.messages),
   };
 }

@@ -11,6 +11,8 @@ import {
   getStorageDatabase,
 } from "@vivy1024/novelfork-core";
 
+import type { ResourceCheckpointResult, CreateResourceCheckpointInput } from "./resource-checkpoint-service.js";
+
 import type {
   ConflictThread,
   ForeshadowThread,
@@ -24,10 +26,15 @@ import type {
   StoryBeat,
 } from "../../shared/agent-native-workspace.js";
 
+export interface NarrativeLineCheckpointService {
+  readonly createCheckpoint: (input: CreateResourceCheckpointInput) => Promise<ResourceCheckpointResult>;
+}
+
 export interface NarrativeLineServiceOptions {
   readonly state: StateManager;
   readonly storage?: StorageDatabase;
   readonly now?: () => Date;
+  readonly checkpoint?: NarrativeLineCheckpointService;
 }
 
 interface ChapterSummaryItem {
@@ -94,6 +101,7 @@ interface NarrativeLineApplyAudit {
   readonly approvedAt: string;
   readonly sessionId?: string;
   readonly confirmationId?: string;
+  readonly checkpointId?: string;
   readonly targetNodeIds: readonly string[];
   readonly targetEdgeIds: readonly string[];
   readonly summary: string;
@@ -112,6 +120,7 @@ export interface NarrativeLineApplyResult {
   readonly preview: NarrativeLineMutationPreview;
   readonly audit?: NarrativeLineApplyAudit;
   readonly snapshot?: NarrativeLineSnapshot;
+  readonly checkpointId?: string;
 }
 
 const FORESHADOW_DUE_GAP = 10;
@@ -125,11 +134,13 @@ export class NarrativeLineService {
   private readonly state: StateManager;
   private readonly storage?: StorageDatabase;
   private readonly now: () => Date;
+  private readonly checkpoint?: NarrativeLineCheckpointService;
 
   constructor(options: NarrativeLineServiceOptions) {
     this.state = options.state;
     this.storage = options.storage;
     this.now = options.now ?? (() => new Date());
+    this.checkpoint = options.checkpoint;
   }
 
   async getSnapshot(input: { readonly bookId: string; readonly includeWarnings?: boolean }): Promise<NarrativeLineSnapshot> {
@@ -212,6 +223,16 @@ export class NarrativeLineService {
     }
 
     const store = await this.loadStore(input.bookId);
+    const checkpoint = this.checkpoint
+      ? await this.checkpoint.createCheckpoint({
+          bookId: input.bookId,
+          sessionId: input.sessionId ?? "workbench",
+          ...(input.confirmationId ? { toolUseId: input.confirmationId } : {}),
+          reason: "narrative-line-apply",
+          resources: [{ kind: "narrative-line", id: `narrative-line:${input.bookId}`, path: "story/narrative_line.json" }],
+        })
+      : null;
+    const checkpointId = checkpoint?.ok ? checkpoint.checkpoint.id : undefined;
     const nodes = mergeNodes(store.nodes, preview.nodes ?? []);
     const edges = mergeEdges(store.edges, preview.edges ?? []);
     const audit: NarrativeLineApplyAudit = {
@@ -219,13 +240,14 @@ export class NarrativeLineService {
       approvedAt: this.now().toISOString(),
       ...(input.sessionId ? { sessionId: input.sessionId } : {}),
       ...(input.confirmationId ? { confirmationId: input.confirmationId } : {}),
+      ...(checkpointId ? { checkpointId } : {}),
       targetNodeIds: (preview.nodes ?? []).map((node) => node.id),
       targetEdgeIds: (preview.edges ?? []).map((edge) => edge.id),
       summary: preview.summary,
     };
     await this.writeStore(input.bookId, { version: 1, nodes, edges, appliedMutations: [...store.appliedMutations, audit] });
     const snapshot = await this.getSnapshot({ bookId: input.bookId });
-    return { applied: true, preview, audit, snapshot };
+    return { applied: true, preview, audit, snapshot, ...(checkpointId ? { checkpointId } : {}) };
   }
 
   private async loadChapters(bookId: string): Promise<readonly ChapterMeta[]> {
@@ -359,6 +381,7 @@ function normalizeAudit(value: unknown): readonly NarrativeLineApplyAudit[] {
     approvedAt: value.approvedAt,
     ...(typeof value.sessionId === "string" ? { sessionId: value.sessionId } : {}),
     ...(typeof value.confirmationId === "string" ? { confirmationId: value.confirmationId } : {}),
+    ...(typeof value.checkpointId === "string" ? { checkpointId: value.checkpointId } : {}),
     targetNodeIds: Array.isArray(value.targetNodeIds) ? value.targetNodeIds.filter((id): id is string => typeof id === "string") : [],
     targetEdgeIds: Array.isArray(value.targetEdgeIds) ? value.targetEdgeIds.filter((id): id is string => typeof id === "string") : [],
     summary: value.summary,

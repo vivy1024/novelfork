@@ -41,11 +41,15 @@ export function buildDefaultWorkbenchWritingActions(descriptors: readonly Writin
 }
 
 function isDisabled(action: WorkbenchWritingAction): boolean {
-  return action.disabled === true || action.capability?.ui.disabled === true;
+  return action.disabled === true || action.capability?.ui.disabled === true || action.capability?.ui.allowsFormalWrite === false;
 }
 
 function getDisabledReason(action: WorkbenchWritingAction): string | null {
-  return action.disabledReason ?? action.capability?.ui.disabledReason ?? null;
+  if (action.disabledReason) return action.disabledReason;
+  if (action.capability?.ui.allowsFormalWrite === false && action.capability.ui.previewOnly) {
+    return "当前能力仅提供 Prompt 预览，需要用户显式复制或应用。";
+  }
+  return action.capability?.ui.disabledReason ?? null;
 }
 
 function normalizeSessionList(data: unknown): NarratorSessionRecord[] {

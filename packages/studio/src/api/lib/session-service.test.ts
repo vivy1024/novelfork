@@ -50,6 +50,28 @@ describe("session-service", () => {
     expect(session.sessionConfig.modelId).toBe("gpt-4-turbo");
   });
 
+  it("persists session tool policy in session config updates", async () => {
+    const { createSession, getSessionById, updateSession } = await loadSessionService();
+    const session = await createSession({ title: "Policy Session", agentId: "writer" });
+
+    await updateSession(session.id, {
+      sessionConfig: {
+        toolPolicy: {
+          allow: ["cockpit.*"],
+          deny: ["candidate.create_chapter"],
+          ask: ["guided.exit"],
+        },
+      },
+    });
+
+    const persisted = await getSessionById(session.id);
+    expect(persisted?.sessionConfig.toolPolicy).toEqual({
+      allow: ["cockpit.*"],
+      deny: ["candidate.create_chapter"],
+      ask: ["guided.exit"],
+    });
+  });
+
   it("persists concurrent session updates through SQLite without sessions.json", async () => {
     const { createSession, getSessionById, updateSession } = await loadSessionService();
     const session = await createSession({

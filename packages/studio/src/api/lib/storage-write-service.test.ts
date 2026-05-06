@@ -51,7 +51,7 @@ describe("storage write service", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  function createService() {
+  function createService(extra: Partial<Parameters<typeof createStorageWriteService>[0]> = {}) {
     const state = {
       bookDir: (bookId: string) => join(root, "books", bookId),
       loadBookConfig: vi.fn(async () => book),
@@ -66,7 +66,7 @@ describe("storage write service", () => {
       }),
       getNextChapterNumber: vi.fn(async () => Math.max(0, ...index.map((chapter) => chapter.number)) + 1),
     };
-    return { state, service: createStorageWriteService({ state: state as StorageWriteServiceState, now: () => "2026-05-05T12:00:00.000Z" }) };
+    return { state, service: createStorageWriteService({ state: state as StorageWriteServiceState, now: () => "2026-05-05T12:00:00.000Z", ...extra }) };
   }
 
   it("updates book config while preserving existing fields", async () => {
@@ -88,6 +88,23 @@ describe("storage write service", () => {
     });
     await expect(readFile(join(root, "books", "book-1", "chapters", "0003_第一章.md"), "utf-8")).resolves.toBe("# 第一章\n\n");
     expect(index.map((chapter) => chapter.number)).toEqual([2, 3]);
+  });
+
+  it("creates a checkpoint before updating an existing chapter file", async () => {
+    const checkpoint = { createCheckpoint: vi.fn(async () => ({ ok: true as const, checkpoint: { id: "checkpoint-1", bookId: "book-1", sessionId: "session-1", createdAt: "2026-05-05T12:00:00.000Z", resources: [] } })) };
+    const { service } = createService({ checkpoint });
+    await writeFile(join(root, "books", "book-1", "chapters", "0001_first.md"), "old", "utf-8");
+
+    await expect(service.updateChapterContent("book-1", 1, "new content", { sessionId: "session-1", messageId: "message-1", toolUseId: "tool-1" })).resolves.toEqual({ ok: true, chapterNumber: 1, checkpointId: "checkpoint-1" });
+    expect(checkpoint.createCheckpoint).toHaveBeenCalledWith(expect.objectContaining({
+      bookId: "book-1",
+      sessionId: "session-1",
+      messageId: "message-1",
+      toolUseId: "tool-1",
+      reason: "chapter-write",
+      resources: [{ kind: "chapter", id: "chapter:1", path: "chapters/0001_first.md", required: true }],
+    }));
+    await expect(readFile(join(root, "books", "book-1", "chapters", "0001_first.md"), "utf-8")).resolves.toBe("new content");
   });
 
   it("updates an existing chapter file and reports missing chapters", async () => {

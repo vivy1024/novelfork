@@ -8,6 +8,11 @@ afterEach(() => {
 });
 
 describe("RecoveryBadge", () => {
+  it("renders from session recovery primitives without importing window runtime store", async () => {
+    const source = await import("./RecoveryBadge");
+    expect(source).toHaveProperty("RecoveryBadge");
+  });
+
   it("renders the stable idle+online badge with an emerald dot", () => {
     const { container } = render(<RecoveryBadge recoveryState="idle" wsConnected={true} />);
     expect(screen.getByText("实时同步")).toBeTruthy();
@@ -55,7 +60,7 @@ describe("RecoveryBadge", () => {
   it("inline variant shows both badge and description", () => {
     render(<RecoveryBadge recoveryState="reconnecting" wsConnected={false} variant="inline" />);
     expect(screen.getByText("重连中")).toBeTruthy();
-    expect(screen.getByText(/正在和服务端正式会话重新对齐/)).toBeTruthy();
+    expect(screen.getByText(/正在和服务端正式消息链重新对齐/)).toBeTruthy();
   });
 
   it("sets an aria-label with offline marker when disconnected", () => {

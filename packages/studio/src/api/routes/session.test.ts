@@ -201,6 +201,248 @@ describe("sessionRouter", () => {
     expect(standaloneSessions.map((session: { id: string }) => session.id)).toEqual([standalone.id]);
   });
 
+  it("serves lifecycle continue, fork, and restore endpoints with real snapshots", async () => {
+    const create = async (body: Record<string, unknown>) => {
+      const response = await sessionRouter.request("http://localhost/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      expect(response.status).toBe(201);
+      return response.json();
+    };
+
+    const bookSession = await create({ title: "主线叙述者", agentId: "writer", projectId: "book-1", sessionMode: "chat" });
+    await create({ title: "其他书", agentId: "writer", projectId: "book-2", sessionMode: "chat" });
+    const archived = await create({ title: "归档叙述者", agentId: "writer", projectId: "book-1", sessionMode: "chat" });
+    await sessionRouter.request(`http://localhost/${archived.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "archived" }),
+    });
+    await sessionRouter.request(`http://localhost/${bookSession.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messageCount: 3 }),
+    });
+    await sessionRouter.request(`http://localhost/${bookSession.id}/chat/state`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages: [{ id: "source-message", role: "user", content: "主线历史", timestamp: 1710000000000 }] }),
+    });
+
+    const latestResponse = await sessionRouter.request("http://localhost/lifecycle/latest?projectId=book-1");
+    expect(latestResponse.status).toBe(200);
+    const latest = await latestResponse.json();
+    expect(latest).toMatchObject({ ok: true, readonly: false, session: { id: bookSession.id }, snapshot: { session: { id: bookSession.id } } });
+
+    const forkResponse = await sessionRouter.request(`http://localhost/${bookSession.id}/fork`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "支线叙述者", inheritanceNote: "保留宗门追杀线" }),
+    });
+    expect(forkResponse.status).toBe(201);
+    const forked = await forkResponse.json();
+    expect(forked.session).toMatchObject({ title: "支线叙述者", projectId: "book-1", status: "active" });
+    expect(forked.session.id).not.toBe(bookSession.id);
+    expect(forked.snapshot.messages).toHaveLength(1);
+    expect(forked.snapshot.messages[0].content).toContain(bookSession.id);
+    expect(forked.snapshot.messages[0].content).toContain("保留宗门追杀线");
+
+    const restoreResponse = await sessionRouter.request(`http://localhost/${archived.id}/restore`, { method: "POST" });
+    expect(restoreResponse.status).toBe(200);
+    const restored = await restoreResponse.json();
+    expect(restored).toMatchObject({ ok: true, readonly: false, session: { id: archived.id, status: "active" } });
+  });
+
+  it("serves session tool policy visibility and persists updates through session config", async () => {
+    const createResponse = await sessionRouter.request("http://localhost/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "Policy 会话",
+        agentId: "writer",
+        sessionMode: "chat",
+        sessionConfig: {
+          providerId: "sub2api",
+          modelId: "gpt-5.4",
+          permissionMode: "edit",
+          reasoningEffort: "medium",
+          toolPolicy: { allow: ["cockpit.*"], deny: ["candidate.create_chapter"], ask: ["guided.exit"] },
+        },
+      }),
+    });
+    const created = await createResponse.json();
+
+    const toolsResponse = await sessionRouter.request(`http://localhost/${created.id}/tools`);
+    expect(toolsResponse.status).toBe(200);
+    const toolsState = await toolsResponse.json();
+    expect(toolsState.policy).toEqual({ allow: ["cockpit.*"], deny: ["candidate.create_chapter"], ask: ["guided.exit"] });
+    expect(toolsState.tools.find((tool: { name: string }) => tool.name === "candidate.create_chapter")).toBeUndefined();
+    expect(toolsState.tools.find((tool: { name: string; policy?: { action?: string } }) => tool.name === "guided.exit")?.policy).toMatchObject({ action: "ask", source: "sessionConfig.toolPolicy.ask" });
+
+    const updateResponse = await sessionRouter.request(`http://localhost/${created.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionConfig: { toolPolicy: { deny: ["guided.*"] } } }),
+    });
+    expect(updateResponse.status).toBe(200);
+    const updated = await updateResponse.json();
+    expect(updated.sessionConfig.toolPolicy).toEqual({ allow: [], deny: ["guided.*"], ask: [] });
+  });
+
+  it("serves headless chat as stream-json and persists the created session", async () => {
+    const response = await sessionRouter.request("http://localhost/headless-chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        prompt: "写下一章",
+        outputFormat: "stream-json",
+        sessionConfig: { providerId: "anthropic", modelId: "claude-sonnet-4-6", permissionMode: "edit", reasoningEffort: "medium" },
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toContain("application/x-ndjson");
+    const lines = (await response.text()).trim().split("\n").map((line) => JSON.parse(line));
+    expect(lines[0]).toMatchObject({ type: "user_message", content: "写下一章", ephemeral: false });
+    expect(lines.some((line: { type: string; content?: string }) => line.type === "assistant_message" && line.content === "运行时真实回复")).toBe(true);
+    expect(lines.at(-1)).toMatchObject({ type: "result", success: true, stop_reason: "completed", exit_code: 0 });
+
+    const sessionId = lines.at(-1).session_id;
+    const sessionResponse = await sessionRouter.request(`http://localhost/${sessionId}`);
+    expect(sessionResponse.status).toBe(200);
+    const session = await sessionResponse.json();
+    expect(session.messageCount).toBeGreaterThanOrEqual(2);
+  });
+
+  it("serves stream-json input and no-session-persistence without creating a stored session", async () => {
+    const response = await sessionRouter.request("http://localhost/headless-chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        inputFormat: "stream-json",
+        outputFormat: "json",
+        noSessionPersistence: true,
+        sessionConfig: { providerId: "anthropic", modelId: "claude-sonnet-4-6", permissionMode: "read", reasoningEffort: "medium" },
+        events: [{ type: "user_message", content: "审校第十二章" }],
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.ephemeral).toBe(true);
+    expect(body.sessionId).toMatch(/^ephemeral:/);
+    expect(body.events[0]).toMatchObject({ type: "user_message", content: "审校第十二章", ephemeral: true });
+    expect(body.events.at(-1)).toMatchObject({ type: "result", success: true, ephemeral: true });
+
+    const sessionResponse = await sessionRouter.request(`http://localhost/${encodeURIComponent(body.sessionId)}`);
+    expect(sessionResponse.status).toBe(404);
+  });
+
+  it("serves session compact endpoint with summary, budget, and preserved history on failure", async () => {
+    const createResponse = await sessionRouter.request("http://localhost/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "Compact 会话",
+        agentId: "writer",
+        sessionMode: "chat",
+        sessionConfig: { providerId: "sub2api", modelId: "gpt-5.4", permissionMode: "edit", reasoningEffort: "medium" },
+      }),
+    });
+    const created = await createResponse.json();
+    await sessionRouter.request(`http://localhost/${created.id}/chat/state`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messages: [
+          { id: "m1", role: "user", content: "旧历史".repeat(80), timestamp: 1710000000001, seq: 1 },
+          { id: "m2", role: "assistant", content: "旧回复".repeat(80), timestamp: 1710000000002, seq: 2 },
+          { id: "m3", role: "user", content: "最近消息", timestamp: 1710000000003, seq: 3 },
+        ],
+      }),
+    });
+
+    const compactResponse = await sessionRouter.request(`http://localhost/${created.id}/compact`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ preserveRecentMessages: 1, instructions: "保留旧历史主线" }),
+    });
+    expect(compactResponse.status).toBe(200);
+    const compacted = await compactResponse.json();
+    expect(compacted).toMatchObject({ ok: true, compactedMessageCount: 2, afterMessageCount: 2, budget: { maxRecentMessages: 1, preservedMessages: 1 } });
+    expect(compacted.summary).toContain("保留旧历史主线");
+    expect(compacted.snapshot.messages[0].metadata.kind).toBe("session-compact-summary");
+    expect(compacted.snapshot.messages[1].id).toBe("m3");
+
+    const tooShortResponse = await sessionRouter.request(`http://localhost/${created.id}/compact`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ preserveRecentMessages: 8 }),
+    });
+    expect(tooShortResponse.status).toBe(400);
+    expect(await tooShortResponse.json()).toEqual({ ok: false, status: 400, code: "not_enough_messages", error: "Not enough messages to compact" });
+    const stateResponse = await sessionRouter.request(`http://localhost/${created.id}/chat/state`);
+    const state = await stateResponse.json();
+    expect(state.messages.map((message: { id: string }) => message.id)).toEqual(compacted.snapshot.messages.map((message: { id: string }) => message.id));
+  });
+
+  it("serves session memory boundary status without pretending missing writers are available", async () => {
+    const createResponse = await sessionRouter.request("http://localhost/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "Memory 会话", agentId: "writer", projectId: "book-1", sessionMode: "chat" }),
+    });
+    const created = await createResponse.json();
+
+    const statusResponse = await sessionRouter.request(`http://localhost/${created.id}/memory/status`);
+    expect(statusResponse.status).toBe(200);
+    expect(await statusResponse.json()).toMatchObject({
+      ok: true,
+      sessionId: created.id,
+      status: "readonly",
+      writable: false,
+      reason: "memory_writer_not_configured",
+      categories: ["user-preference", "project-fact", "temporary-story-draft"],
+    });
+
+    const commitResponse = await sessionRouter.request(`http://localhost/${created.id}/memory`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        classification: "user-preference",
+        content: "以后默认用第三人称有限视角。",
+        source: { kind: "message", messageId: "m1", seq: 1 },
+        confirmation: { mode: "explicit", confirmedBy: "author" },
+        createdBy: "user",
+      }),
+    });
+    expect(commitResponse.status).toBe(503);
+    expect(await commitResponse.json()).toMatchObject({ ok: false, status: 503, code: "memory_writer_not_configured", recoverable: true });
+
+    const missingResponse = await sessionRouter.request("http://localhost/missing-session/memory/status");
+    expect(missingResponse.status).toBe(404);
+    expect(await missingResponse.json()).toEqual({ error: "Session not found" });
+  });
+
+  it("returns lifecycle errors without creating empty fork sessions", async () => {
+    const latestResponse = await sessionRouter.request("http://localhost/lifecycle/latest?projectId=missing-book");
+    expect(latestResponse.status).toBe(404);
+    expect(await latestResponse.json()).toEqual({ ok: false, status: 404, code: "session_not_found", error: "Session not found" });
+
+    const forkResponse = await sessionRouter.request("http://localhost/missing-session/fork", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "不应创建" }),
+    });
+    expect(forkResponse.status).toBe(404);
+    expect(await forkResponse.json()).toEqual({ ok: false, status: 404, code: "source_session_not_found", error: "Source session not found" });
+
+    const listResponse = await sessionRouter.request("http://localhost/");
+    expect(await listResponse.json()).toEqual([]);
+  });
+
   it("archives and restores sessions without deleting chat history", async () => {
     const createResponse = await sessionRouter.request("http://localhost/", {
       method: "POST",

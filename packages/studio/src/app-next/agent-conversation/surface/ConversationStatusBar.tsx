@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import type { SessionPermissionMode, SessionReasoningEffort } from "../../../shared/session-types";
+import type { SessionPermissionMode, SessionReasoningEffort, SessionToolPolicy } from "../../../shared/session-types";
 
 export interface ConversationModelOption {
   providerId: string;
@@ -10,12 +10,24 @@ export interface ConversationModelOption {
   supportsTools?: boolean;
 }
 
-export interface ConversationUsage {
+export interface ConversationUsageBucket {
   input_tokens?: number;
   output_tokens?: number;
   promptTokens?: number;
   completionTokens?: number;
   totalTokens?: number;
+}
+
+export interface ConversationCostSummary {
+  status: "unknown" | "known";
+  amount?: number | null;
+  currency?: string;
+}
+
+export interface ConversationUsage extends ConversationUsageBucket {
+  currentTurn?: ConversationUsageBucket;
+  cumulative?: ConversationUsageBucket;
+  cost?: ConversationCostSummary;
 }
 
 export interface ConversationStatus {
@@ -29,6 +41,7 @@ export interface ConversationStatus {
   reasoningEffort?: SessionReasoningEffort;
   usage?: ConversationUsage;
   modelOptions?: readonly ConversationModelOption[];
+  toolPolicySummary?: SessionToolPolicy;
   unsupportedToolsReason?: string;
 }
 
@@ -66,15 +79,46 @@ function formatModelLabel(status: ConversationStatus) {
   return model ?? provider ?? "未选择模型";
 }
 
+function tokenTotal(usage?: ConversationUsageBucket): number {
+  return usage?.totalTokens ?? ((usage?.promptTokens ?? usage?.input_tokens ?? 0) + (usage?.completionTokens ?? usage?.output_tokens ?? 0));
+}
+
+function formatCost(cost?: ConversationCostSummary): string | null {
+  if (!cost) return null;
+  if (cost.status === "unknown") return "成本 未知";
+  if (typeof cost.amount === "number") return `成本 ${cost.currency ?? "USD"} ${cost.amount}`;
+  return null;
+}
+
 function formatTokens(usage?: ConversationUsage) {
-  const total = usage?.totalTokens ?? ((usage?.promptTokens ?? usage?.input_tokens ?? 0) + (usage?.completionTokens ?? usage?.output_tokens ?? 0));
-  return `Tokens：${total}`;
+  if (!usage) return "Tokens：0";
+  const parts: string[] = [];
+  if (usage.currentTurn) parts.push(`当前 ${tokenTotal(usage.currentTurn)}`);
+  if (usage.cumulative) parts.push(`累计 ${tokenTotal(usage.cumulative)}`);
+  const cost = formatCost(usage.cost);
+  if (cost) parts.push(cost);
+  if (parts.length > 0) return `Tokens：${parts.join(" / ")}`;
+  return `Tokens：${tokenTotal(usage)}`;
+}
+
+function formatPolicyList(label: string, values?: readonly string[]): string | null {
+  return values?.length ? `${label}：${values.join("、")}` : null;
+}
+
+function formatToolPolicySummary(policy?: SessionToolPolicy): string | null {
+  const parts = [
+    formatPolicyList("可用", policy?.allow),
+    formatPolicyList("禁用", policy?.deny),
+    formatPolicyList("询问", policy?.ask),
+  ].filter((part): part is string => Boolean(part));
+  return parts.length ? parts.join("；") : null;
 }
 
 export function ConversationStatusBar({ status, onUpdateSessionConfig = () => undefined }: ConversationStatusBarProps) {
   const [updateError, setUpdateError] = useState<string | null>(null);
   const selectedModel = status.modelOptions?.find((option) => option.providerId === status.providerId && option.modelId === status.modelId);
   const toolsUnsupported = selectedModel?.supportsTools === false || Boolean(status.unsupportedToolsReason);
+  const toolPolicySummary = formatToolPolicySummary(status.toolPolicySummary);
 
   async function updateSessionConfig(patch: ConversationSessionConfigPatch) {
     setUpdateError(null);
@@ -92,6 +136,7 @@ export function ConversationStatusBar({ status, onUpdateSessionConfig = () => un
       {status.permissionMode ? <span>权限：{PERMISSION_LABELS[status.permissionMode]}</span> : null}
       {status.reasoningEffort ? <span>推理：{status.reasoningEffort}</span> : null}
       {status.usage ? <span>{formatTokens(status.usage)}</span> : null}
+      {toolPolicySummary ? <span data-testid="tool-policy-summary">工具策略：{toolPolicySummary}</span> : null}
 
       {status.modelOptions?.length ? (
         <label>

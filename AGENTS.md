@@ -32,13 +32,14 @@
 
 - 新功能必须先写 spec（`requirements.md` → `design.md` → `tasks.md`）再实现
 - 归档目录：`.kiro/specs/archive/`
-- 活跃 spec 在 `.kiro/specs/` 根目录；`backend-contract-v1` 与 `frontend-refoundation-v1` 已完成，当前主线进入 `backend-core-refactor-v1`（9/10 已完成；Task 9 已完成 legacy route 依赖调查与 deprecated 标记）
+- 活跃 spec 在 `.kiro/specs/` 根目录；`backend-contract-v1`、`frontend-refoundation-v1`、`frontend-live-wiring-v1` 与 `legacy-source-retirement-v1` 已完成，`conversation-parity-v1` 已完成（13/13 已完成）
+- 同时保持 `backend-core-refactor-v1`（9/10 已完成）合同整理口径
 - 每个 spec 必须通过 typecheck + test 才能标记完成
 
 ## AI 输出原则
 
 - AI 结果只进候选区/草稿区，用户确认后才影响正式正文
-- Studio 已交付口径是 session-first 工作台；Backend Contract 与 Frontend Refoundation 已完成验收收口（12/12）：`/next` 使用 Agent Shell 路由壳，Conversation runtime、单栏 surface、模型/权限状态栏动作、Tool Result Renderer Registry、Workbench 资源树、canvas/viewer 与写作动作入口已接入，主入口已切断旧三栏 WorkspacePage 默认依赖，失败三栏实验已从 Studio typecheck 构建路径正式退役；所有按钮、资源节点和写作动作必须来自 `packages/studio/src/app-next/backend-contract/` 的真实合同 client / adapter
+- Studio 已交付口径是 session-first 工作台；Backend Contract、Frontend Refoundation、Frontend Live Wiring 与 Legacy Source Retirement 已完成验收收口：`/next` 使用 Agent Shell 路由壳，Conversation runtime、单栏 surface、模型/权限状态栏动作、Tool Result Renderer Registry、session tool 确认门、Workbench 资源树、canvas/viewer/保存、dirty canvasContext、写作动作入口与 search/routines/settings 次级页面均已接入 live route，旧三栏 WorkspacePage、旧 ChatWindow、未挂载 route 残留、轻量 `/api/chat` 与 exact `POST /api/agent` 已退役；所有按钮、资源节点和写作动作必须来自 `packages/studio/src/app-next/backend-contract/` 的真实合同 client / adapter
 - 历史驾驶舱/经纬/写作面板只能作为工具结果卡片或画布组件复用，不再作为右侧主 Tab
 - app-next 组件不得散写未登记 API 字符串；新增后端能力必须先补 Backend Contract 矩阵、共享类型和 contract 测试
 - 不恢复 mock/fake/noop 假成功
@@ -54,6 +55,6 @@
 ## 构建与测试
 
 - `pnpm typecheck` — 类型检查
-- `pnpm --dir packages/studio exec vitest run` — 全量 Studio 测试（156 files / 898 tests）
+- `pnpm --dir packages/studio exec vitest run` — 全量 Studio 测试（最新回归约 210 files / 1276 tests）
 - `pnpm --dir packages/studio compile` — 单文件编译（→ dist/novelfork.exe / dist/novelfork-vX.Y.Z-windows-x64.exe，约 117MB）
 - `bun run docs:verify` — 文档验证

@@ -29,6 +29,8 @@ src/
 │   │   ├── provider-runtime-store.ts # Provider/runtime store 与脱敏视图
 │   │   ├── runtime-model-pool.ts # 真实运行时模型池与 provider 状态
 │   │   ├── session-chat-service.ts # Agent 会话 orchestrator
+│   │   ├── session-compact-service.ts # 会话上下文压缩与 budget
+│   │   ├── session-memory-boundary-service.ts # 会话 memory 分类、审计与只读 fallback
 │   │   ├── session-runtime/       # session WebSocket envelope、payload parse、cursor/recovery helper
 │   │   ├── agent-context.ts       # 上下文注入
 │   │   ├── tool-catalog.ts        # 统一工具目录
@@ -42,7 +44,7 @@ src/
 │   ├── agent-conversation/ # 目标单栏叙述者对话：runtime + surface + composer/status/tool cards
 │   ├── writing-workbench/  # 目标独立写作工作区：资源树、canvas、resource viewers、写作动作
 │   ├── tool-results/       # 目标工具结果 renderer registry
-│   ├── workspace/      # 现有工作台资产，重建期间按合同迁移/退役
+│   ├── search/         # 全局搜索页
 │   ├── settings/       # 设置页
 │   ├── routines/       # 套路页 (工具/命令/技能/子代理)
 │   ├── sessions/       # 叙述者会话 UI 与工具链展示
@@ -54,8 +56,6 @@ src/
 ├── components/         # 共享组件
 │   ├── writing-modes/  # 写作模式 UI
 │   ├── writing-tools/  # 写作工具 UI
-│   ├── ChatWindow.tsx  # Agent 聊天窗口
-│   ├── ChatPanel.tsx   # 轻量聊天面板
 │   ├── Routines/       # 套路管理组件
 │   ├── Model/          # 模型选择
 │   ├── compliance/     # 合规组件
@@ -89,7 +89,7 @@ bun run build
 pnpm --dir packages/studio compile  # → dist/novelfork.exe + dist/novelfork-vX.Y.Z-windows-x64.exe (~117MB)
 
 # 测试
-pnpm --dir packages/studio exec vitest run  # 156 files / 898 tests
+pnpm --dir packages/studio exec vitest run  # 最新回归约 210 files / 1276 tests
 
 # 类型检查
 bun run typecheck
@@ -122,12 +122,12 @@ bun run typecheck
 
 | 路由 | 说明 |
 |------|------|
-| `/next` | 当前入口；Agent Shell 路由壳，主入口已切断旧三栏 WorkspacePage 默认依赖，失败三栏实验已从 Studio typecheck 构建路径正式退役，并已完成前端重建阶段冒烟 |
+| `/next` | 当前入口；Agent Shell 路由壳，主入口已切断旧三栏 WorkspacePage 默认依赖，失败三栏实验与旧 ChatWindow/轻量 `/api/chat` 源码已从 Studio typecheck 构建路径正式退役，并已完成前端重建与旧源码退役阶段验收 |
 | `/next/narrators/:sessionId` | 已挂载单栏 Conversation 壳，接入合同快照、WebSocket `resumeFromSeq`、ack/message/abort runtime，并具备消息流/工具卡/确认门/状态栏/Composer、recovery notice、模型/权限状态栏动作与 Tool Result Renderer Registry |
 | `/next/books/:bookId` | 已挂载独立 Writing Workbench 壳，Workbench 资源树已接入 resource contract adapter 映射，并支持 canvas/viewer、保存、只读禁用、tool-result viewer、dirty canvasContext 与写作动作入口 |
-| `/next/settings` | 设置 |
-| `/next/routines` | 套路 |
-| `/next/search` | 搜索 |
+| `/next/settings` | 已挂载 SettingsLayout、SettingsSectionContent 与 ProviderSettingsPage，provider/model/runtime 配置入口可达 |
+| `/next/routines` | 已挂载 RoutinesNextPage，复用 routines/MCP/tools/skills/subagents 管理能力 |
+| `/next/search` | 已挂载 SearchPage，使用真实搜索 API 或展示真实错误/空状态 |
 
 ---
 
@@ -143,7 +143,7 @@ bun run typecheck
 | 写作工具 | `/api/books/:id/hooks`, `/api/progress` 等 |
 | 经纬 | `/api/books/:id/bible/*`, `/api/books/:id/jingwei/*` |
 | 供应商 | `/api/providers` |
-| 会话 / session tools | `/api/sessions`, `/api/sessions/:id/chat` |
+| 会话 / session tools | `/api/sessions`, `/api/sessions/:id/chat`, `/api/sessions/:id/tools`, `/api/sessions/headless-chat`, `/api/sessions/:id/memory/status`, `/api/sessions/:id/memory` |
 | 导出 | `/api/books/:id/export`（legacy/deprecated，统一导出合同未收敛） |
 | Truth/Story | `/api/books/:id/truth-files`, `/api/books/:id/story-files` |
 | Narrative Line | `/api/books/:id/narrative-line`, `/api/books/:id/narrative-line/propose`, `/api/books/:id/narrative-line/apply` |

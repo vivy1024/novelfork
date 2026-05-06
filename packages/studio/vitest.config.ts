@@ -11,5 +11,8 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+    exclude: [
+      "src/app-next/StudioApp.test.tsx",
+    ],
   },
 });

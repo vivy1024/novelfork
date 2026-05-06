@@ -231,6 +231,48 @@ describe("agent turn runtime", () => {
     }));
   });
 
+  it("filters provider tool schemas through session tool policy before generation", async () => {
+    const generate = vi.fn(async () => ({
+      success: true as const,
+      type: "message" as const,
+      content: "已按可用工具继续。",
+      metadata: { providerId: "sub2api", providerName: "Sub2API", modelId: "gpt-5-codex" },
+    }));
+    const tools = [
+      { name: "cockpit.get_snapshot", description: "读取快照", inputSchema: { type: "object" as const, additionalProperties: false }, risk: "read" as const, renderer: "cockpit.snapshot", enabledForModes: ["read", "plan", "ask", "edit", "allow"] as const, visibility: "author" as const },
+      { name: "candidate.create_chapter", description: "创建候选稿", inputSchema: { type: "object" as const, additionalProperties: false }, risk: "draft-write" as const, renderer: "candidate.created", enabledForModes: ["ask", "edit", "allow"] as const, visibility: "author" as const },
+    ];
+
+    await runAgentTurn(input({
+      generate,
+      tools,
+      sessionConfig: { ...sessionConfig, toolPolicy: { deny: ["candidate.create_chapter"] } },
+    }));
+
+    expect(generate).toHaveBeenCalledWith(expect.objectContaining({
+      tools: [expect.objectContaining({ name: "cockpit.get_snapshot" })],
+    }));
+  });
+
+  it("emits policy-disabled when no tools remain after policy filtering", async () => {
+    const generate = vi.fn();
+    const events = await runAgentTurn(input({
+      generate,
+      tools: [{ name: "candidate.create_chapter", description: "创建候选稿", inputSchema: { type: "object" as const, additionalProperties: false }, risk: "draft-write" as const, renderer: "candidate.created", enabledForModes: ["ask", "edit", "allow"] as const, visibility: "author" as const }],
+      sessionConfig: { ...sessionConfig, toolPolicy: { deny: ["candidate.*"] } },
+    }));
+
+    expect(generate).not.toHaveBeenCalled();
+    expect(events).toEqual([
+      {
+        type: "turn_failed",
+        reason: "policy-disabled",
+        message: "当前 session 工具策略禁用了所有可发送给模型的工具。",
+        data: { deniedTools: ["candidate.create_chapter"] },
+      },
+    ]);
+  });
+
   it("emits turn_failed when model generation fails", async () => {
     const events = await runAgentTurn(input({
       generate: vi.fn(async () => ({

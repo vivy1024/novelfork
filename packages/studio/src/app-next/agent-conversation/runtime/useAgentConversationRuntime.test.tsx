@@ -67,6 +67,29 @@ class FakeRuntimeSocket {
   }
 }
 
+class ConnectingRuntimeSocket {
+  readonly sent: string[] = [];
+  readyState = 0;
+  onmessage: ((event: { data: string }) => void) | null = null;
+  onopen: (() => void) | null = null;
+
+  constructor(readonly url: string) {}
+
+  send(payload: string) {
+    if (this.readyState !== 1) {
+      throw new DOMException("Failed to execute 'send' on 'WebSocket': Still in CONNECTING state.", "InvalidStateError");
+    }
+    this.sent.push(payload);
+  }
+
+  close = vi.fn();
+
+  open() {
+    this.readyState = 1;
+    this.onopen?.();
+  }
+}
+
 describe("useAgentConversationRuntime", () => {
   it("hydrates snapshot, opens WebSocket with resumeFromSeq, and sends acked client envelopes", async () => {
     const sockets: FakeRuntimeSocket[] = [];
@@ -118,6 +141,35 @@ describe("useAgentConversationRuntime", () => {
         canvasContext: { activeTabId: "tab-1", dirty: true },
       },
       { type: "session:abort", sessionId: "session-1" },
+    ]);
+  });
+
+  it("queues ack envelopes until the WebSocket opens", async () => {
+    const sockets: ConnectingRuntimeSocket[] = [];
+    const createWebSocket = vi.fn((url: string) => {
+      const socket = new ConnectingRuntimeSocket(url);
+      sockets.push(socket);
+      return socket;
+    });
+    const getChatState = vi.fn(async () => ok(makeSnapshot()));
+
+    const { result } = renderHook(() =>
+      useAgentConversationRuntime({
+        sessionId: "session-1",
+        client: { getChatState },
+        createWebSocket,
+      }),
+    );
+
+    await waitFor(() => expect(result.current.state.session?.id).toBe("session-1"));
+
+    expect(() => act(() => result.current.ack(7))).not.toThrow();
+    expect(sockets[0]?.sent).toEqual([]);
+
+    act(() => sockets[0]?.open());
+
+    expect(sockets[0]?.sent.map((payload) => JSON.parse(payload))).toEqual([
+      { type: "session:ack", sessionId: "session-1", ack: 7 },
     ]);
   });
 });

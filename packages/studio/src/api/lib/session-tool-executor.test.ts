@@ -228,6 +228,106 @@ describe("session tool executor", () => {
     expect(handler).not.toHaveBeenCalled();
   });
 
+  it("applies session tool policy deny before executing handlers", async () => {
+    const handler = vi.fn();
+    const executor = createSessionToolExecutor({ handlers: { "candidate.create_chapter": handler } });
+
+    const result = await executor.execute(input({
+      toolName: "candidate.create_chapter",
+      permissionMode: "allow",
+      sessionConfig: {
+        providerId: "sub2api",
+        modelId: "gpt-5.4",
+        permissionMode: "allow",
+        reasoningEffort: "medium",
+        toolPolicy: { deny: ["candidate.create_chapter"] },
+      },
+      input: { bookId: "book-1", chapterIntent: "写下一章" },
+    }));
+
+    expect(result).toMatchObject({
+      ok: false,
+      renderer: "candidate.created",
+      error: "policy-denied",
+      data: {
+        status: "policy-denied",
+        source: "sessionConfig.toolPolicy.deny",
+        toolName: "candidate.create_chapter",
+      },
+    });
+    expect(result.summary).toContain("工具策略禁止执行 candidate.create_chapter");
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("applies session tool policy ask as a permission-required confirmation", async () => {
+    const handler = vi.fn();
+    const executor = createSessionToolExecutor({ handlers: { "candidate.create_chapter": handler } });
+
+    const result = await executor.execute(input({
+      toolName: "candidate.create_chapter",
+      permissionMode: "edit",
+      sessionConfig: {
+        providerId: "sub2api",
+        modelId: "gpt-5.4",
+        permissionMode: "edit",
+        reasoningEffort: "medium",
+        toolPolicy: { ask: ["candidate.create_chapter"] },
+      },
+      input: { bookId: "book-1", chapterIntent: "写下一章" },
+    }));
+
+    expect(result).toMatchObject({
+      ok: true,
+      renderer: "candidate.created",
+      data: {
+        status: "pending-confirmation",
+        code: "permission-required",
+        source: "sessionConfig.toolPolicy.ask",
+      },
+      confirmation: {
+        toolName: "candidate.create_chapter",
+        risk: "confirmed-write",
+        target: "book-1",
+      },
+      confirmationAudit: {
+        toolName: "candidate.create_chapter",
+        risk: "draft-write",
+      },
+    });
+    expect(result.summary).toContain("需要确认");
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("lets session tool policy allow reduce ask-mode draft writes while preserving dirty-resource blocking", async () => {
+    const handler = vi.fn(async () => ({ ok: true, renderer: "candidate.created", summary: "候选稿已创建。", data: { candidateId: "candidate-1" } }));
+    const executor = createSessionToolExecutor({ handlers: { "candidate.create_chapter": handler } });
+    const sessionConfig = {
+      providerId: "sub2api",
+      modelId: "gpt-5.4",
+      permissionMode: "ask" as const,
+      reasoningEffort: "medium" as const,
+      toolPolicy: { allow: ["candidate.create_chapter"] },
+    };
+
+    await expect(executor.execute(input({
+      toolName: "candidate.create_chapter",
+      permissionMode: "ask",
+      sessionConfig,
+      input: { bookId: "book-1", chapterIntent: "写下一章" },
+    }))).resolves.toMatchObject({ ok: true, data: { candidateId: "candidate-1" } });
+
+    const dirtyResult = await executor.execute(input({
+      toolName: "candidate.create_chapter",
+      permissionMode: "ask",
+      sessionConfig,
+      input: { bookId: "book-1", chapterIntent: "写下一章" },
+      canvasContext: { activeTabId: "chapter:book-1:2", activeResource: { kind: "chapter", id: "chapter:book-1:2", bookId: "book-1" }, dirty: true },
+    }));
+
+    expect(dirtyResult).toMatchObject({ ok: false, error: "dirty-resource-blocked" });
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
   it("wraps handler exceptions as failed tool results without fake success", async () => {
     const executor = createSessionToolExecutor({
       handlers: {

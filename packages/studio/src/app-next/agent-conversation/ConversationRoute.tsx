@@ -1,9 +1,14 @@
+import type { ReactNode } from "react";
+
 import type { CanvasContext } from "../../shared/agent-native-workspace";
+import type { ToolResultArtifact } from "../tool-results";
 import type { NarratorSessionMode } from "../../shared/session-types";
+import type { SlashCommandCompactResult } from "./slash-command-registry";
 import { buildAbortEnvelope, buildMessageEnvelope } from "./runtime";
 import {
   ConversationSurface,
   type ConversationConfirmation,
+  type ConversationRecoveryNotice,
   type ConversationSessionConfigPatch,
   type ConversationStatus,
   type ConversationSurfaceMessage,
@@ -24,11 +29,19 @@ export interface ConversationRouteProps {
   initialMessages?: readonly ConversationRouteMessage[];
   initialStatus?: ConversationRouteStatus;
   initialConfirmation?: ConversationRouteConfirmation | null;
+  initialRecoveryNotice?: ConversationRecoveryNotice | null;
+  sendDisabledReason?: string;
+  settingsHref?: string;
+  footerActions?: ReactNode;
   createMessageId?: () => string;
   onClientEnvelope?: (envelope: ConversationRouteClientEnvelope) => void;
+  onSendMessage?: (content: string) => void;
+  onAbortSession?: () => void;
   onUpdateSessionConfig?: (patch: ConversationSessionConfigPatch) => Promise<void> | void;
+  onCompactSession?: (instructions?: string) => Promise<SlashCommandCompactResult>;
   onApproveConfirmation?: (id: string) => void;
   onRejectConfirmation?: (id: string) => void;
+  onOpenArtifact?: (artifact: ToolResultArtifact) => void;
 }
 
 const defaultStatus: ConversationRouteStatus = { state: "idle", label: "未连接" };
@@ -50,11 +63,19 @@ export function ConversationRoute({
   initialMessages = [],
   initialStatus = defaultStatus,
   initialConfirmation = null,
+  initialRecoveryNotice = null,
+  sendDisabledReason,
+  settingsHref,
+  footerActions = null,
   createMessageId = createDefaultMessageId,
   onClientEnvelope = () => undefined,
+  onSendMessage,
+  onAbortSession,
   onUpdateSessionConfig = () => undefined,
+  onCompactSession,
   onApproveConfirmation = () => undefined,
   onRejectConfirmation = () => undefined,
+  onOpenArtifact,
 }: ConversationRouteProps) {
   if (!sessionId) {
     return (
@@ -66,6 +87,11 @@ export function ConversationRoute({
   }
 
   const handleSend = (content: string) => {
+    if (onSendMessage) {
+      onSendMessage(content);
+      return;
+    }
+
     onClientEnvelope(
       buildMessageEnvelope({
         sessionId,
@@ -79,6 +105,11 @@ export function ConversationRoute({
   };
 
   const handleAbort = () => {
+    if (onAbortSession) {
+      onAbortSession();
+      return;
+    }
+
     onClientEnvelope(buildAbortEnvelope({ sessionId }));
   };
 
@@ -89,12 +120,18 @@ export function ConversationRoute({
         status={initialStatus}
         messages={initialMessages}
         pendingConfirmation={initialConfirmation}
+        recoveryNotice={initialRecoveryNotice}
         isRunning={initialStatus.state === "running"}
+        sendDisabledReason={sendDisabledReason}
+        settingsHref={settingsHref}
+        footerActions={footerActions}
         onApproveConfirmation={onApproveConfirmation}
         onRejectConfirmation={onRejectConfirmation}
         onSend={handleSend}
         onAbort={handleAbort}
         onUpdateSessionConfig={onUpdateSessionConfig}
+        onCompactSession={onCompactSession}
+        onOpenArtifact={onOpenArtifact}
       />
     </section>
   );

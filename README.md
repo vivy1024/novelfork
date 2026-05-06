@@ -32,7 +32,7 @@ cd packages/studio
 bun run dev          # http://localhost:4567
 
 # 测试
-pnpm --dir packages/studio exec vitest run  # 156 files / 898 tests
+pnpm --dir packages/studio exec vitest run  # 最新回归约 210 files / 1276 tests
 
 # 编译
 pnpm --dir packages/studio compile          # → dist/novelfork.exe + dist/novelfork-vX.Y.Z-windows-x64.exe (~117MB)
@@ -50,7 +50,7 @@ novelfork/
 │   └── cli/           # CLI 工具 (novelfork 命令)
 ├── docs/              # 文档中心 (产品/架构/API/指南)
 ├── .kiro/
-│   ├── specs/         # 开发规格（当前 active：backend-core-refactor-v1）
+│   ├── specs/         # 开发规格（当前 active：conversation-parity-v1 / backend-core-refactor-v1）
 │   └── steering/      # 项目原则与约束
 ├── claude/            # Claude Code 源码参考
 └── scripts/           # 工具脚本
@@ -67,7 +67,7 @@ novelfork/
 ## 核心能力
 
 ### Agent-native 创作工作台
-- 当前重建主线：Backend Contract 与 Frontend Refoundation 已完成验收收口（12/12），`/next` 使用 Agent Shell 路由壳，Conversation runtime、单栏 surface、模型/权限状态栏动作、Tool Result Renderer Registry、Workbench 资源树、canvas/viewer 与写作动作入口已接入，主入口已切断旧三栏 WorkspacePage 默认依赖，失败三栏实验已从 Studio typecheck 构建路径正式退役，且已完成相关 Vitest、TypeScript、docs verify 与浏览器冒烟；后端整理已进入 `backend-core-refactor-v1`，已建立合同守护清单、补齐核心 contract regression tests、完成 Task 3 统一错误与状态 helper，完成 Task 4 storage.ts 只读 service 拆分，完成 Task 5 storage.ts 非破坏写入 service 拆分，完成 Task 6 destructive service 拆分，完成 Task 7 session runtime transport/recovery 内聚拆分，完成 Task 8 Provider/runtime store 边界收敛，并完成 Task 9 legacy route 依赖调查与 deprecated 标记
+- 当前重建主线：Backend Contract、Frontend Refoundation、Frontend Live Wiring 与 Legacy Source Retirement 已完成验收收口：`/next` 使用 Agent Shell 路由壳，Conversation runtime、单栏 surface、模型/权限状态栏动作、Tool Result Renderer Registry、session tool 确认门、Workbench 资源树、canvas/viewer/保存、dirty canvasContext、写作动作跳转以及 search/routines/settings 次级页面均已接入 live route；旧三栏 WorkspacePage、旧 ChatWindow、未挂载 route 残留、轻量 `/api/chat` 与 exact `POST /api/agent` 已退役；`conversation-parity-v1` 已完成验收收口，会话 lifecycle、Resume/Fork UI、Slash Command Registry、`/compact` 产品化、Memory 写入边界、细粒度工具权限策略、Headless stream-json API、CLI 会话命令、checkpoint/rewind 与 usage envelope 均已落地，可在 Composer 中使用 `/help`、`/status`、`/model`、`/permission`、`/fork`、`/resume`、`/compact`，会话中心显示 memory 只读/未接入状态，偏好/项目事实/临时剧情草稿写入边界可审计，`sessionConfig.toolPolicy` 支持 allow/deny/ask 并在工具执行前合并 permissionMode、resource risk 与 dirty canvasContext，`POST /api/sessions/headless-chat` 支持 text/stream-json input、NDJSON output、ephemeral/no-session-persistence、pending permission_request 与 max turns/budget stop result，`novelfork chat`/`novelfork exec` 可从 CLI 调用 headless chat 并映射 success/error/pending exit code，资源 checkpoint service 会在正式章节、Truth/story 与 narrative apply 写入前保存 `.novelfork/checkpoints` 快照，Rewind preview/apply 支持按 checkpoint 返回 diff/hash/risk、确认门恢复与 audit，Headless/API result envelope 输出 duration/stop_reason/usage/cost unknown/permission denials；后端整理已进入 `backend-core-refactor-v1`，已建立合同守护清单、补齐核心 contract regression tests、完成 Task 3 统一错误与状态 helper，完成 Task 4 storage.ts 只读 service 拆分，完成 Task 5 storage.ts 非破坏写入 service 拆分，完成 Task 6 destructive service 拆分，完成 Task 7 session runtime transport/recovery 内聚拆分，完成 Task 8 Provider/runtime store 边界收敛，并完成 Task 9 legacy route 依赖调查与 deprecated 标记
 - 已有后端能力保留：叙述者会话、WebSocket、工具调用、确认门、权限模式、模型池、候选稿/草稿/经纬/叙事线等真实合同
 - 新前端目标：左侧一级导航、单栏 Agent Conversation、独立 Writing Workbench；所有按钮、资源节点和写作动作必须来自 `packages/studio/src/app-next/backend-contract/` 中登记的真实后端合同
 - 「写下一章」最小链路：驾驶舱快照 → PGI 生成前追问 → GuidedGenerationPlan → 用户批准 → 候选稿生成
