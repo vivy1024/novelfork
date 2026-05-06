@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import type { ToolResultArtifact } from "../../tool-results";
 import type { SlashCommandExecutionContext, SlashCommandExecutionResult } from "../slash-command-registry";
@@ -45,6 +45,42 @@ function recoveryTitle(notice: ConversationRecoveryNotice): string {
 function recoveryCursorText(notice: ConversationRecoveryNotice): string | null {
   if (typeof notice.lastSeq !== "number" && typeof notice.ackedSeq !== "number") return null;
   return `最近成功 cursor：${notice.ackedSeq ?? 0} / ${notice.lastSeq ?? 0}`;
+}
+
+function ConversationRuntimeControls({
+  isRunning,
+  onAbort,
+  onCompactSession,
+}: {
+  readonly isRunning: boolean;
+  readonly onAbort: () => void;
+  readonly onCompactSession?: SlashCommandExecutionContext["compactSession"];
+}) {
+  const [status, setStatus] = useState<string | null>(null);
+
+  async function compact() {
+    if (!onCompactSession) return;
+    const result = await onCompactSession();
+    setStatus(`Compact 完成：${result.compactedMessageCount} 条，预算 ${result.budget.estimatedTokensBefore} → ${result.budget.estimatedTokensAfter}`);
+  }
+
+  return (
+    <aside data-testid="conversation-runtime-controls" className="conversation-runtime-controls shrink-0" aria-label="会话运行控制">
+      <button type="button" aria-label="中断运行" disabled={!isRunning} onClick={onAbort}>中断</button>
+      {!isRunning ? <span>无运行中的会话</span> : null}
+      <button type="button" disabled>重试</button>
+      <span>重试未接入真实 API</span>
+      <button type="button" disabled>清空</button>
+      <span>清空未接入真实 API</span>
+      <button type="button" disabled={!onCompactSession} onClick={() => void compact()}>Compact</button>
+      {!onCompactSession ? <span>Compact 未接入真实 API</span> : null}
+      <button type="button" disabled>Fork</button>
+      <span>Fork 请使用 /fork 或会话列表入口</span>
+      <button type="button" disabled>Resume</button>
+      <span>Resume 请使用 /resume 或会话列表入口</span>
+      {status ? <span role="status">{status}</span> : null}
+    </aside>
+  );
 }
 
 export function ConversationSurface({
@@ -94,6 +130,7 @@ export function ConversationSurface({
       ) : null}
       <MessageStream messages={messages} onOpenArtifact={onOpenArtifact} />
       {footerActions}
+      <ConversationRuntimeControls isRunning={isRunning} onAbort={onAbort} onCompactSession={onCompactSession} />
       <Composer
         onSend={onSend}
         onAbort={onAbort}
