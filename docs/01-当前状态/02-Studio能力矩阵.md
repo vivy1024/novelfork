@@ -164,6 +164,7 @@
 | 模型默认值/摘要模型/子代理配置 | ✅ 默认/摘要/Explore/Plan/General/Codex 推理强度均来自 user settings，不用模型池第一项冒充当前值；运行控制保存后回读 `/api/settings/user` |
 | Agent runtime 来源事实 | ✅ 覆盖 default permission、max turns、retry/backoff、WebFetch proxy、上下文/大窗口阈值、debug、allowlist/blocklist、sendMode；first-token timeout 标记 planned |
 | Claude Code parity guard | ✅ Task 11：基于本机 2.1.69、官方 CLI reference 与本地 Claude 源码建立 baseline；Claude TUI/Chrome bridge/tmux/IDE server/plugin 等 non-goal 不进入 UI current claim，权限模式仅标 partial 映射 |
+| Codex CLI parity guard | ✅ Task 12：基于本机 `codex-cli 0.80.0` help、官方 CLI/config/non-interactive/subagents/Windows 文档建立 baseline；TUI 为 non-goal，exec/config/subagents/web search/approval/Windows 边界为 partial，sandbox/MCP/image input/review 为 planned；Codex sandbox 不进入 UI current claim |
 | 设置分组 IA | ✅ 个人设置、实例管理、运行资源与审计、关于与项目；借鉴 NarraFork 分组但字段回到 NovelFork schema |
 | 个人资料 | ✅ |
 | 关于（版本/commit/Bun） | ✅ |

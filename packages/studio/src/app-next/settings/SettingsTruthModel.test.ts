@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import * as SettingsTruthModelModule from "./SettingsTruthModel";
 import { deriveAgentRuntimeSettingsFacts, deriveClaudeParitySettingsFacts, deriveModelSettingsFacts, settingsFactDisplayValue } from "./SettingsTruthModel";
 
 const sampleConfig = {
@@ -136,5 +137,45 @@ describe("SettingsTruthModel", () => {
       status: "partial",
       reason: expect.stringContaining("acceptEdits"),
     });
+  });
+
+  it("derives Codex parity facts from matrix-backed sources without claiming sandbox as current", () => {
+    const deriveCodexParitySettingsFacts = (SettingsTruthModelModule as {
+      deriveCodexParitySettingsFacts?: () => ReturnType<typeof deriveClaudeParitySettingsFacts>;
+    }).deriveCodexParitySettingsFacts;
+    const facts = deriveCodexParitySettingsFacts?.() ?? [];
+
+    expect(facts.map((fact) => fact.id)).toEqual([
+      "parity.codex.tui",
+      "parity.codex.exec",
+      "parity.codex.sandbox",
+      "parity.codex.approval",
+      "parity.codex.mcp",
+      "parity.codex.subagents",
+      "parity.codex.webSearch",
+      "parity.codex.imageInput",
+      "parity.codex.review",
+      "parity.codex.windowsNative",
+    ]);
+    expect(facts.find((fact) => fact.id === "parity.codex.sandbox")).toMatchObject({
+      group: "parity",
+      source: "capability-matrix",
+      status: "planned",
+      writable: false,
+      value: "planned",
+      reason: expect.stringContaining("OS sandbox"),
+    });
+    expect(facts.find((fact) => fact.id === "parity.codex.approval")).toMatchObject({
+      source: "capability-matrix",
+      status: "partial",
+      writable: false,
+      reason: expect.stringContaining("permissionMode/toolPolicy"),
+    });
+    expect(facts.find((fact) => fact.id === "parity.codex.windowsNative")).toMatchObject({
+      status: "partial",
+      reason: expect.stringContaining("Windows 原生"),
+    });
+    expect(facts.every((fact) => fact.source === "capability-matrix" || fact.source === "official-docs" || fact.source === "user-settings")).toBe(true);
+    expect(facts.every((fact) => !(fact.id.includes("sandbox") && fact.status === "current"))).toBe(true);
   });
 });
