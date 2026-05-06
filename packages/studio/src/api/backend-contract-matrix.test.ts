@@ -7,11 +7,18 @@ describe("backend contract capability matrix", () => {
     const required = [
       "books.list",
       "sessions.active",
+      "sessions.lifecycle.continue",
+      "sessions.lifecycle.fork",
+      "sessions.lifecycle.restore",
+      "sessions.memory.status",
+      "sessions.memory.write",
+      "sessions.headless-chat",
       "providers.status",
       "providers.models",
       "sessions.chat.state",
       "sessions.chat.websocket",
       "sessions.tools.confirm",
+      "sessions.tools.policy",
       "chapters.detail",
       "candidates.accept",
       "drafts.crud",
@@ -35,12 +42,21 @@ describe("backend contract capability matrix", () => {
     expect(findBackendContractCapability("books.create-status")).toMatchObject({ status: "process-memory" });
     expect(findBackendContractCapability("ai.complete.chunked-buffer")).toMatchObject({ status: "chunked-buffer" });
     expect(findBackendContractCapability("writing-modes.preview")).toMatchObject({ status: "prompt-preview" });
-    expect(findBackendContractCapability("legacy.book-chat.process-memory")).toMatchObject({ status: "process-memory" });
+    expect(findBackendContractCapability("legacy.book-chat.process-memory")).toBeUndefined();
     expect(findBackendContractCapability("legacy.pipeline-runs.process-memory")).toMatchObject({ status: "process-memory" });
     expect(findBackendContractCapability("legacy.monitor.unsupported")).toMatchObject({ status: "unsupported" });
-    expect(findBackendContractCapability("legacy.ai-agent.deprecated")).toMatchObject({ status: "deprecated" });
+    expect(findBackendContractCapability("legacy.ai-agent.unsupported")).toMatchObject({ status: "unsupported" });
+    expect(findBackendContractCapability("legacy.ai-agent.deprecated")).toBeUndefined();
     expect(findBackendContractCapability("legacy.export.deprecated")).toMatchObject({ status: "deprecated" });
     expect(findBackendContractCapability("legacy.disabled-routers.unsupported")).toMatchObject({ status: "unsupported" });
+    expect(findBackendContractCapability("sessions.memory.status")).toMatchObject({
+      dataSource: expect.stringContaining("readonly fallback"),
+      frontendRule: expect.stringContaining("只读"),
+    });
+    expect(findBackendContractCapability("sessions.tools.policy")).toMatchObject({
+      dataSource: expect.stringContaining("toolPolicy"),
+      failureBoundary: expect.stringContaining("policy-denied"),
+    });
   });
 
   it("keeps ids unique so frontend clients can depend on stable capability keys", () => {

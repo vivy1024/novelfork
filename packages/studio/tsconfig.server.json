@@ -8,9 +8,5 @@
     "skipLibCheck": true
   },
   "include": ["src/api/**/*.ts"],
-  "exclude": [
-    "src/api/**/*.test.ts",
-    "src/api/routes/hooks-countdown.ts",
-    "src/api/routes/poison-detector.ts"
-  ]
+  "exclude": ["src/api/**/*.test.ts"]
 }

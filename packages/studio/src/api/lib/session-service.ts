@@ -17,6 +17,7 @@ import {
 } from "../../shared/session-types.js";
 import { deleteSessionChatHistory, markSessionChatHistoryDeleted } from "./session-history-store.js";
 import { getSessionStorageDatabase } from "./session-storage.js";
+import { normalizeSessionToolPolicy } from "./session-tool-policy.js";
 import { loadUserConfig } from "./user-config-service.js";
 
 export type SessionListBinding = "standalone" | "book" | "chapter";
@@ -73,9 +74,12 @@ function normalizeSessionConfig(value: unknown): SessionConfig {
     ...(typeof value === "object" && value !== null ? value : {}),
   } as SessionConfig;
 
+  const toolPolicy = normalizeSessionToolPolicy((merged as { toolPolicy?: unknown }).toolPolicy);
+  const { toolPolicy: _ignoredToolPolicy, ...rest } = merged as SessionConfig & { toolPolicy?: unknown };
   return {
-    ...merged,
+    ...rest,
     permissionMode: normalizeSessionPermissionMode(merged.permissionMode),
+    ...(toolPolicy ? { toolPolicy } : {}),
   };
 }
 

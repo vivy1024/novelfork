@@ -3,10 +3,10 @@ import {
   getRecoveryPresentation,
   getRecoveryToneBadgeClassName,
   getRecoveryToneBannerClassName,
-} from "./windowRecoveryPresentation";
+} from "./sessionRecoveryPresentation";
 
 describe("getRecoveryPresentation", () => {
-  it("presents the stable idle+online window as a positive success badge without banner", () => {
+  it("presents the stable idle+online session as a positive success badge without banner", () => {
     const presentation = getRecoveryPresentation({ recoveryState: "idle", wsConnected: true });
     expect(presentation).toMatchObject({
       shortLabel: "实时同步",

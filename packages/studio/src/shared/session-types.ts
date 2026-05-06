@@ -108,11 +108,18 @@ export function getRecommendedSessionPermissionMode(input: {
   return "ask";
 }
 
+export interface SessionToolPolicy {
+  allow?: string[];
+  deny?: string[];
+  ask?: string[];
+}
+
 export interface SessionConfig {
   providerId: string;
   modelId: string;
   permissionMode: SessionPermissionMode;
   reasoningEffort: SessionReasoningEffort;
+  toolPolicy?: SessionToolPolicy;
 }
 
 export type NarratorSessionKind = "standalone" | "chapter";

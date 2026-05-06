@@ -2,7 +2,7 @@
  * ChatFlow — 对话流消息列表
  *
  * Claude Code 风格的单栏垂直对话流，工具调用内联展示。
- * 从 ChatWindow 的消息渲染逻辑提取为独立组件。
+ * 旧窗口视觉层退役后，本组件仅作为单栏消息流的历史轻量组件保留。
  */
 
 import { useEffect, useRef, type ReactNode } from "react";

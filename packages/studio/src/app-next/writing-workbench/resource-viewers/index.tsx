@@ -10,6 +10,9 @@ export type ResourceViewerKind =
   | "truth"
   | "bible-entry"
   | "storyline"
+  | "jingwei-section"
+  | "jingwei-entry"
+  | "narrative-line"
   | "tool-result"
   | "generic";
 
@@ -77,9 +80,11 @@ function renderTextFile(node: WorkbenchResourceNode, options: ResourceViewerRend
 }
 
 function renderReadonlySummary(node: WorkbenchResourceNode) {
+  const label = node.kind === "storyline" || node.kind === "narrative-line" ? "叙事线" : "经纬资料";
+  const content = node.content ?? JSON.stringify(node.metadata?.snapshot ?? node.metadata?.section ?? node.metadata?.entry ?? node.metadata ?? {}, null, 2);
   return (
-    <ViewerShell node={node} label={node.kind === "storyline" ? "叙事线" : "经纬资料"}>
-      <textarea aria-label="只读内容" readOnly value={node.content ?? ""} rows={12} onChange={() => undefined} />
+    <ViewerShell node={node} label={label}>
+      <textarea aria-label="只读内容" readOnly value={content} rows={12} onChange={() => undefined} />
     </ViewerShell>
   );
 }
@@ -108,6 +113,9 @@ export const resourceViewerRegistry: Record<ResourceViewerKind, ResourceViewerDe
   truth: { kind: "truth", label: "Truth 文件", render: renderTextFile },
   "bible-entry": { kind: "bible-entry", label: "经纬资料", render: renderReadonlySummary },
   storyline: { kind: "storyline", label: "叙事线", render: renderReadonlySummary },
+  "jingwei-section": { kind: "jingwei-section", label: "经纬分区", render: renderReadonlySummary },
+  "jingwei-entry": { kind: "jingwei-entry", label: "经纬条目", render: renderReadonlySummary },
+  "narrative-line": { kind: "narrative-line", label: "叙事线", render: renderReadonlySummary },
   "tool-result": { kind: "tool-result", label: "工具结果", render: renderToolResult },
   generic: { kind: "generic", label: "通用资源", render: renderGeneric },
 };
@@ -120,6 +128,9 @@ const viewerKinds = new Set<WorkbenchResourceKind | ResourceViewerKind>([
   "truth",
   "bible-entry",
   "storyline",
+  "jingwei-section",
+  "jingwei-entry",
+  "narrative-line",
   "tool-result",
 ]);
 

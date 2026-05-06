@@ -51,6 +51,40 @@ describe("WorkbenchCanvas", () => {
     expect(screen.getByText("选择左侧资源开始写作")).toBeTruthy();
   });
 
+  it("保存失败时保持 dirty 并显示真实错误", async () => {
+    const onSave = vi.fn().mockRejectedValue(new Error("草稿保存失败"));
+    render(<WorkbenchCanvas node={node()} onSave={onSave} />);
+
+    fireEvent.change(screen.getByLabelText("草稿正文"), { target: { value: "保存失败正文" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    expect((await screen.findByRole("alert")).textContent).toContain("保存失败：草稿保存失败");
+    expect(screen.getByText("未保存")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "保存" })).toHaveProperty("disabled", false);
+  });
+
+  it("输出可注入会话的 active resource、open tabs 与 dirty canvasContext", async () => {
+    const onCanvasContextChange = vi.fn();
+    render(<WorkbenchCanvas node={node()} onSave={vi.fn()} onCanvasContextChange={onCanvasContextChange} />);
+
+    await waitFor(() => expect(onCanvasContextChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      activeResourceId: "draft:1",
+      activeResource: expect.objectContaining({ kind: "draft", id: "draft:1", title: "城门片段" }),
+      activeTabId: "draft:1",
+      openTabs: [expect.objectContaining({ id: "draft:1", nodeId: "draft:1", kind: "draft-editor", title: "城门片段", dirty: false, source: "user" })],
+      dirty: false,
+    })));
+
+    fireEvent.change(screen.getByLabelText("草稿正文"), { target: { value: "带上下文正文" } });
+
+    await waitFor(() => expect(onCanvasContextChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      activeResource: expect.objectContaining({ kind: "draft", id: "draft:1", title: "城门片段" }),
+      openTabs: [expect.objectContaining({ id: "draft:1", dirty: true })],
+      dirty: true,
+      contentPreview: "带上下文正文",
+    })));
+  });
+
   it("artifact 打开后可渲染工具结果 viewer 并输出 canvasContext", async () => {
     const onCanvasContextChange = vi.fn();
     render(

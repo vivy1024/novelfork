@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { fetchJson } from "@/hooks/use-api";
+import { createFetchJsonContractClient, createSessionClient, type ContractResult } from "@/app-next/backend-contract";
 import { cn } from "@/lib/utils";
 import {
   getSessionPermissionModeLabel,
@@ -13,10 +13,32 @@ import { Button } from "../ui/button";
 
 export type SessionCenterBindingFilter = "all" | "standalone" | "book" | "chapter";
 
+type SessionCenterClient = Pick<ReturnType<typeof createSessionClient>, "listActiveSessions" | "updateSession" | "continueLatestSession" | "forkSession" | "getMemoryStatus">;
+
+type SessionMemoryBoundaryStatus = {
+  readonly ok: true;
+  readonly sessionId: string;
+  readonly status: "writable" | "readonly";
+  readonly writable: boolean;
+  readonly reason?: "memory_writer_not_configured";
+};
+
+interface SessionLifecyclePayload {
+  readonly ok: true;
+  readonly readonly: boolean;
+  readonly session: NarratorSessionRecord;
+  readonly snapshot?: {
+    readonly session?: NarratorSessionRecord;
+  };
+}
+
 export interface SessionCenterProps {
   readonly className?: string;
   readonly initialBinding?: SessionCenterBindingFilter;
   readonly initialStatus?: NarratorSessionStatus;
+  readonly projectId?: string;
+  readonly chapterId?: string;
+  readonly sessionClient?: SessionCenterClient;
   readonly onOpenSession: (session: NarratorSessionRecord) => void;
 }
 
@@ -51,55 +73,136 @@ function sessionStatusLabel(status: NarratorSessionStatus): string {
   return status === "archived" ? "已归档" : "活跃";
 }
 
-function createSessionListPath(input: {
+function createDefaultSessionClient(): SessionCenterClient {
+  return createSessionClient(createFetchJsonContractClient());
+}
+
+function sessionClientErrorMessage(result: ContractResult<unknown>, fallback: string): string {
+  if (result.ok) return fallback;
+  const error = result.error;
+  if (error && typeof error === "object") {
+    const record = error as Record<string, unknown>;
+    if (typeof record.message === "string") return record.message;
+    if (record.error && typeof record.error === "object") {
+      const nested = record.error as Record<string, unknown>;
+      if (typeof nested.message === "string") return nested.message;
+    }
+  }
+  if (typeof error === "string") return error;
+  return result.code ? `${fallback}：${result.code}` : fallback;
+}
+
+function sessionListQuery(input: {
   readonly binding: SessionCenterBindingFilter;
   readonly status: NarratorSessionStatus;
   readonly search: string;
-}): string {
-  const params = new URLSearchParams();
-  params.set("sort", "recent");
-  params.set("status", input.status);
-  if (input.binding !== "all") params.set("binding", input.binding);
+}): { status: NarratorSessionStatus; binding?: string; search?: string } {
+  const query: { status: NarratorSessionStatus; binding?: string; search?: string } = { status: input.status };
+  if (input.binding !== "all") query.binding = input.binding;
   const search = input.search.trim();
-  if (search) params.set("search", search);
-  return `/api/sessions?${params.toString()}`;
+  if (search) query.search = search;
+  return query;
 }
 
-export function SessionCenter({ className, initialBinding = "all", initialStatus = "active", onOpenSession }: SessionCenterProps) {
+export function SessionCenter({ className, initialBinding = "all", initialStatus = "active", projectId, chapterId, sessionClient: providedSessionClient, onOpenSession }: SessionCenterProps) {
   const [binding, setBinding] = useState<SessionCenterBindingFilter>(initialBinding);
   const [status, setStatus] = useState<NarratorSessionStatus>(initialStatus);
   const [search, setSearch] = useState("");
   const [sessions, setSessions] = useState<NarratorSessionRecord[]>([]);
   const [loading, setLoading] = useState(false);
+  const [lifecycleBusy, setLifecycleBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [memoryStatusBySessionId, setMemoryStatusBySessionId] = useState<Record<string, SessionMemoryBoundaryStatus>>({});
+  const [forkTarget, setForkTarget] = useState<NarratorSessionRecord | null>(null);
+  const [forkTitle, setForkTitle] = useState("");
+  const [inheritanceNote, setInheritanceNote] = useState("");
+  const sessionClient = useMemo(() => providedSessionClient ?? createDefaultSessionClient(), [providedSessionClient]);
 
-  const listPath = useMemo(() => createSessionListPath({ binding, status, search }), [binding, status, search]);
+  const listQuery = useMemo(() => sessionListQuery({ binding, status, search }), [binding, status, search]);
 
   const loadSessions = useCallback(async () => {
     setLoading(true);
     setError(null);
-    try {
-      const response = await fetchJson<NarratorSessionRecord[]>(listPath);
-      setSessions(Array.isArray(response) ? response : []);
-    } catch (loadError) {
-      setSessions([]);
-      setError(loadError instanceof Error ? loadError.message : "会话列表加载失败");
-    } finally {
+    const result = await sessionClient.listActiveSessions<NarratorSessionRecord[]>(listQuery);
+    if (result.ok) {
+      const records = Array.isArray(result.data) ? result.data : [];
+      setSessions(records);
+      const statuses = await Promise.all(records.map(async (session) => {
+        const statusResult = await sessionClient.getMemoryStatus<SessionMemoryBoundaryStatus>(session.id);
+        return statusResult.ok ? [session.id, statusResult.data] as const : null;
+      }));
+      setMemoryStatusBySessionId(Object.fromEntries(statuses.filter((item): item is readonly [string, SessionMemoryBoundaryStatus] => Boolean(item))));
       setLoading(false);
+      return;
     }
-  }, [listPath]);
+    setSessions([]);
+    setMemoryStatusBySessionId({});
+    setError(sessionClientErrorMessage(result, "会话列表加载失败"));
+    setLoading(false);
+  }, [listQuery, sessionClient]);
 
   useEffect(() => {
     void loadSessions();
   }, [loadSessions]);
 
+  const openLifecyclePayload = (payload: SessionLifecyclePayload) => {
+    onOpenSession(payload.snapshot?.session ?? payload.session);
+  };
+
+  const continueLatest = async () => {
+    setLifecycleBusy(true);
+    setError(null);
+    const result = await sessionClient.continueLatestSession<SessionLifecyclePayload>(projectId, chapterId);
+    if (result.ok) {
+      openLifecyclePayload(result.data);
+      setLifecycleBusy(false);
+      return;
+    }
+    setError(sessionClientErrorMessage(result, "继续最近会话失败"));
+    setLifecycleBusy(false);
+  };
+
   const updateSessionStatus = async (session: NarratorSessionRecord, nextStatus: NarratorSessionStatus) => {
-    await fetchJson<NarratorSessionRecord>(`/api/sessions/${session.id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: nextStatus }),
-    });
+    setError(null);
+    const result = await sessionClient.updateSession(session.id, { status: nextStatus });
+    if (!result.ok) {
+      setError(sessionClientErrorMessage(result, nextStatus === "archived" ? "会话归档失败" : "会话恢复失败"));
+      return;
+    }
     await loadSessions();
+  };
+
+  const beginFork = (session: NarratorSessionRecord) => {
+    setError(null);
+    setForkTarget(session);
+    setForkTitle(`${session.title} fork`);
+    setInheritanceNote("");
+  };
+
+  const cancelFork = () => {
+    setForkTarget(null);
+    setForkTitle("");
+    setInheritanceNote("");
+  };
+
+  const createFork = async () => {
+    if (!forkTarget) return;
+    setLifecycleBusy(true);
+    setError(null);
+    const title = forkTitle.trim();
+    const note = inheritanceNote.trim();
+    const result = await sessionClient.forkSession<SessionLifecyclePayload>(forkTarget.id, {
+      ...(title ? { title } : {}),
+      ...(note ? { inheritanceNote: note } : {}),
+    });
+    if (result.ok) {
+      openLifecyclePayload(result.data);
+      cancelFork();
+      setLifecycleBusy(false);
+      return;
+    }
+    setError(sessionClientErrorMessage(result, "Fork 会话失败"));
+    setLifecycleBusy(false);
   };
 
   return (
@@ -109,7 +212,12 @@ export function SessionCenter({ className, initialBinding = "all", initialStatus
           <h2 className="text-lg font-semibold">会话中心</h2>
           <p className="text-sm text-muted-foreground">管理独立、书籍绑定和章节绑定的长期 Agent 会话；归档不会删除历史。</p>
         </div>
-        <div className="text-xs text-muted-foreground">{loading ? "正在刷新…" : `当前 ${sessions.length} 个会话`}</div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="button" size="sm" onClick={() => void continueLatest()} disabled={lifecycleBusy}>
+            继续最近会话
+          </Button>
+          <div className="text-xs text-muted-foreground">{loading ? "正在刷新…" : `当前 ${sessions.length} 个会话`}</div>
+        </div>
       </div>
 
       <div className="space-y-3 rounded-lg border border-border bg-card p-3">
@@ -152,6 +260,7 @@ export function SessionCenter({ className, initialBinding = "all", initialStatus
         {sessions.map((session) => {
           const pendingCount = session.recovery?.pendingToolCallCount ?? 0;
           const lastFailure = session.recovery?.lastFailure;
+          const memoryStatus = memoryStatusBySessionId[session.id];
           return (
             <article key={session.id} data-testid={`session-center-row-${session.id}`} className="rounded-lg border border-border bg-card p-3 shadow-sm">
               <div className="flex flex-wrap items-start justify-between gap-3">
@@ -178,9 +287,16 @@ export function SessionCenter({ className, initialBinding = "all", initialStatus
                   ) : (
                     <p className="text-xs text-muted-foreground">最近失败：无</p>
                   )}
+                  {memoryStatus ? (
+                    <div className="rounded-md border border-border bg-muted/30 px-2 py-1 text-xs text-muted-foreground">
+                      <p>{memoryStatus.writable ? "Memory：可审计写入" : "Memory：只读（未接入写入器）"}</p>
+                      <p>临时剧情草稿不会自动写入长期 memory；偏好/项目事实写入需审计来源。</p>
+                    </div>
+                  ) : null}
                 </div>
                 <div className="flex shrink-0 flex-wrap gap-2">
                   <Button type="button" size="sm" variant="outline" onClick={() => onOpenSession(session)}>打开</Button>
+                  <Button type="button" size="sm" variant="outline" onClick={() => beginFork(session)}>Fork</Button>
                   {session.status === "archived" ? (
                     <Button type="button" size="sm" onClick={() => void updateSessionStatus(session, "active")}>恢复</Button>
                   ) : (
@@ -192,6 +308,40 @@ export function SessionCenter({ className, initialBinding = "all", initialStatus
           );
         })}
       </div>
+
+      {forkTarget ? (
+        <div role="dialog" aria-label="Fork 会话" className="rounded-lg border border-border bg-card p-4 shadow-sm">
+          <div className="space-y-1">
+            <h3 className="text-sm font-semibold">Fork 会话</h3>
+            <p className="text-xs text-muted-foreground">从「{forkTarget.title}」创建新会话，只继承摘要和必要上下文。</p>
+          </div>
+          <div className="mt-3 grid gap-3">
+            <label className="grid gap-1 text-sm">
+              <span className="text-xs font-medium text-muted-foreground">Fork 标题</span>
+              <input
+                aria-label="Fork 标题"
+                className="h-9 rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-primary"
+                onChange={(event) => setForkTitle(event.target.value)}
+                value={forkTitle}
+              />
+            </label>
+            <label className="grid gap-1 text-sm">
+              <span className="text-xs font-medium text-muted-foreground">继承说明</span>
+              <textarea
+                aria-label="继承说明"
+                className="min-h-20 rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+                onChange={(event) => setInheritanceNote(event.target.value)}
+                placeholder="例如：保留伏笔、人物关系或本章目标"
+                value={inheritanceNote}
+              />
+            </label>
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button type="button" size="sm" variant="outline" onClick={cancelFork} disabled={lifecycleBusy}>取消</Button>
+              <Button type="button" size="sm" onClick={() => void createFork()} disabled={lifecycleBusy}>创建 fork</Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

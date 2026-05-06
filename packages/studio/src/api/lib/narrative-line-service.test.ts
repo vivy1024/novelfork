@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -19,7 +19,7 @@ import { createNarrativeLineService } from "./narrative-line-service.js";
 
 const tempDirs: string[] = [];
 
-async function createHarness() {
+async function createHarness(checkpoint?: { createCheckpoint: ReturnType<typeof vi.fn> }) {
   const root = await mkdtemp(join(tmpdir(), "novelfork-narrative-line-"));
   tempDirs.push(root);
   const state = new StateManager(root);
@@ -37,6 +37,7 @@ async function createHarness() {
     state,
     storage,
     now: () => new Date("2026-05-03T00:00:00.000Z"),
+    ...(checkpoint ? { checkpoint } : {}),
   });
   return { root, state, storage, service };
 }
@@ -235,7 +236,8 @@ describe("narrative-line-service", () => {
   });
 
   it("previews narrative changes without writing, rejects without writing, and applies approved changes with audit metadata", async () => {
-    const harness = await createHarness();
+    const checkpoint = { createCheckpoint: vi.fn(async () => ({ ok: true as const, checkpoint: { id: "checkpoint-narrative", bookId: "book-1", sessionId: "session-1", createdAt: "2026-05-03T00:00:00.000Z", resources: [] } })) };
+    const harness = await createHarness(checkpoint);
     try {
       await createBookFiles(harness.root, [{ number: 1, title: "入山" }]);
       const proposedNode = {
@@ -283,19 +285,27 @@ describe("narrative-line-service", () => {
       });
       expect(applied).toMatchObject({
         applied: true,
+        checkpointId: "checkpoint-narrative",
         audit: {
           approvedAt: "2026-05-03T00:00:00.000Z",
           sessionId: "session-1",
           confirmationId: "confirm-1",
+          checkpointId: "checkpoint-narrative",
           targetNodeIds: ["agent-node-1"],
           summary: "补充林月守铃事件",
         },
       });
+      expect(checkpoint.createCheckpoint).toHaveBeenCalledWith(expect.objectContaining({
+        bookId: "book-1",
+        sessionId: "session-1",
+        reason: "narrative-line-apply",
+        resources: [{ kind: "narrative-line", id: "narrative-line:book-1", path: "story/narrative_line.json" }],
+      }));
       await expect(harness.service.getSnapshot({ bookId: "book-1" })).resolves.toMatchObject({
         nodes: expect.arrayContaining([expect.objectContaining({ id: "agent-node-1", title: "林月守铃" })]),
       });
-      const persisted = JSON.parse(await readFile(join(harness.root, "books", "book-1", "story", "narrative_line.json"), "utf-8")) as { appliedMutations: Array<{ sessionId: string }> };
-      expect(persisted.appliedMutations).toEqual([expect.objectContaining({ sessionId: "session-1" })]);
+      const persisted = JSON.parse(await readFile(join(harness.root, "books", "book-1", "story", "narrative_line.json"), "utf-8")) as { appliedMutations: Array<{ sessionId: string; checkpointId: string }> };
+      expect(persisted.appliedMutations).toEqual([expect.objectContaining({ sessionId: "session-1", checkpointId: "checkpoint-narrative" })]);
     } finally {
       harness.storage.close();
     }

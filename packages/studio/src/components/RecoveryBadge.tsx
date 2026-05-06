@@ -1,15 +1,16 @@
 /**
- * RecoveryBadge — unified visual primitive for the five-state recovery machine.
+ * RecoveryBadge — unified visual primitive for the session recovery machine.
  *
  * Replaces inline `getRecoveryPresentation` + `<Badge>` call sites across
- * SessionCenter, ChatWindow, and Admin/SessionsTab. The presentation contract
- * (labels / tone / visibility) still lives in `@/lib/windowRecoveryPresentation.ts` —
- * this component only decides **how** the presentation renders per variant.
+ * SessionCenter, narrator conversation surfaces, and Admin/SessionsTab. The
+ * presentation contract (labels / tone / visibility) lives in
+ * `@/lib/sessionRecoveryPresentation.ts`; this component only decides **how**
+ * the presentation renders per variant.
  *
  * Variants:
  *   - `chip`   — compact colored pill with a leading status dot (lists, tables).
  *   - `inline` — chip + short description beside it (card body).
- *   - `banner` — full-width header banner with title + description (ChatWindow head).
+ *   - `banner` — full-width header banner with title + description.
  *
  * Accessibility:
  *   - Each badge has an aria-label describing the state + optional offline bit,
@@ -22,13 +23,13 @@ import {
   getRecoveryToneBadgeClassName,
   getRecoveryToneBannerClassName,
   type RecoveryPresentationTone,
-} from "@/lib/windowRecoveryPresentation";
-import type { WindowRecoveryState } from "@/stores/windowRuntimeStore";
+} from "@/lib/sessionRecoveryPresentation";
+import type { NarratorSessionRecoveryState } from "@/shared/session-types";
 
 export type RecoveryBadgeVariant = "chip" | "inline" | "banner";
 
 /**
- * Optional trailing action for the `banner` variant (e.g. ChatWindow "立即重连"
+ * Optional trailing action for the `banner` variant (e.g. narrator route "立即重连"
  * button during reconnect). Rendered inside the banner flex row so it never
  * overlaps the description text.
  */
@@ -40,7 +41,7 @@ export interface RecoveryBadgeAction {
 }
 
 export interface RecoveryBadgeProps {
-  recoveryState: WindowRecoveryState;
+  recoveryState: NarratorSessionRecoveryState;
   wsConnected: boolean;
   variant?: RecoveryBadgeVariant;
   /**
@@ -71,7 +72,7 @@ function toneDotClassName(tone: RecoveryPresentationTone): string {
 }
 
 /** Transient states pulse the leading dot to signal activity. */
-function shouldPulse(state: WindowRecoveryState): boolean {
+function shouldPulse(state: NarratorSessionRecoveryState): boolean {
   return state === "recovering" || state === "reconnecting" || state === "replaying" || state === "resetting";
 }
 

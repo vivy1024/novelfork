@@ -1,11 +1,10 @@
 /**
- * First-run hint shown the first time a populated ChatWindow is closed.
+ * First-run hint shown the first time a populated legacy session window was closed.
  *
- * Extracted from `ChatWindow.handleClose` so both the window header's close
- * button and the SessionCenter card's "关闭窗口" ghost button can emit the
- * same "会话仍保留" reassurance toast. Without this shared helper, users who
- * habitually close windows from SessionCenter cards would never see the hint
- * and could think closing a window destroys the session.
+ * Retained only for compatibility with existing windowStore/session-center tests
+ * until `legacy-source-retirement-v1` Task 8 removes the old window store layer.
+ * The current `/next/narrators/:sessionId` surface uses session recovery instead
+ * of closing/reopening visual windows.
  *
  * The hint is gated by a localStorage flag so it fires at most once per
  * browser profile; access is wrapped in try/catch because embedded /

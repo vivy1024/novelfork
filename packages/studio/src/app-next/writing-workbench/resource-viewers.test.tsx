@@ -24,7 +24,7 @@ afterEach(() => cleanup());
 
 describe("resource viewer registry", () => {
   it("注册 writing workbench 支持的最小 viewer", () => {
-    const kinds: ResourceViewerKind[] = ["chapter", "candidate", "draft", "story", "truth", "bible-entry", "storyline", "tool-result", "generic"];
+    const kinds: ResourceViewerKind[] = ["chapter", "candidate", "draft", "story", "truth", "bible-entry", "storyline", "jingwei-section", "jingwei-entry", "narrative-line", "tool-result", "generic"];
 
     for (const kind of kinds) {
       expect(resourceViewerRegistry[kind]).toBeTruthy();
@@ -34,6 +34,8 @@ describe("resource viewer registry", () => {
   it("按资源 kind 选择 viewer，并为未知 kind 回退 generic", () => {
     expect(getResourceViewer(node({ kind: "candidate" })).kind).toBe("candidate");
     expect(getResourceViewer(node({ kind: "truth" })).kind).toBe("truth");
+    expect(getResourceViewer(node({ kind: "jingwei-entry" })).kind).toBe("jingwei-entry");
+    expect(getResourceViewer(node({ kind: "narrative-line" })).kind).toBe("narrative-line");
     expect(getResourceViewer(node({ kind: "tool-result" })).kind).toBe("tool-result");
     expect(getResourceViewer(node({ kind: "unsupported" })).kind).toBe("generic");
     expect(getResourceViewer(node({ kind: "mystery" as WorkbenchResourceNode["kind"] })).kind).toBe("generic");
@@ -100,6 +102,40 @@ describe("ResourceViewer", () => {
 
     expect(screen.getByLabelText("文本文件正文")).toHaveProperty("readOnly", true);
     expect(screen.getByText("只读资源")) .toBeTruthy();
+  });
+
+  it("渲染真实合同中的经纬与叙事线节点为语义只读卡片", () => {
+    render(
+      <ResourceViewer
+        node={node({
+          id: "jingwei-entry:char-1",
+          kind: "jingwei-entry",
+          title: "沈舟",
+          content: "主角，灵潮亲和。",
+          capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: true, apply: false },
+        })}
+      />,
+    );
+
+    expect(screen.getByText("经纬资料")).toBeTruthy();
+    expect(screen.getByLabelText("只读内容")).toHaveProperty("readOnly", true);
+    expect(screen.getByDisplayValue("主角，灵潮亲和。")).toBeTruthy();
+    cleanup();
+
+    render(
+      <ResourceViewer
+        node={node({
+          id: "narrative-line:book-1",
+          kind: "narrative-line",
+          title: "叙事线快照",
+          content: "主线：灵潮复苏。",
+          capabilities: { open: true, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
+        })}
+      />,
+    );
+
+    expect(screen.getByText("叙事线")).toBeTruthy();
+    expect(screen.getByDisplayValue("主线：灵潮复苏。")).toBeTruthy();
   });
 
   it("unsupported 与 unknown/generic fallback 会保留 raw node 数据", () => {

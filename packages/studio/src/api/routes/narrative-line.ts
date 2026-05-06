@@ -1,12 +1,14 @@
 import { Hono } from "hono";
 import type { StateManager, StorageDatabase } from "@vivy1024/novelfork-core";
 
-import { createNarrativeLineService } from "../lib/narrative-line-service.js";
+import { createNarrativeLineService, type NarrativeLineCheckpointService } from "../lib/narrative-line-service.js";
+import { createResourceCheckpointService } from "../lib/resource-checkpoint-service.js";
 
 export interface CreateNarrativeLineRouterOptions {
   readonly state: StateManager;
   readonly storage?: StorageDatabase;
   readonly now?: () => Date;
+  readonly checkpoint?: NarrativeLineCheckpointService;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -15,7 +17,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 export function createNarrativeLineRouter(options: CreateNarrativeLineRouterOptions): Hono {
   const app = new Hono();
-  const service = createNarrativeLineService(options);
+  const checkpoint = options.checkpoint ?? createResourceCheckpointService({ bookDir: options.state.bookDir.bind(options.state) });
+  const service = createNarrativeLineService({ ...options, checkpoint });
 
   app.get("/api/books/:bookId/narrative-line", async (c) => {
     const bookId = c.req.param("bookId");

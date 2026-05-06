@@ -1,6 +1,6 @@
 # @vivy1024/novelfork-cli
 
-NovelFork 命令行工具 — 通过终端使用完整写作管线。**27 个子命令**。
+NovelFork 命令行工具 — 通过终端使用完整写作管线。
 
 ```bash
 novelfork <command>
@@ -38,6 +38,8 @@ novelfork <command>
 | 命令 | 说明 |
 |------|------|
 | `agent` | 启动 Agent 写作管线 |
+| `chat` | 通过 Studio `/api/sessions/headless-chat` 进行 headless 会话；支持 text/json/stream-json、`--session`、`--book`、`--model provider:model`、`--no-session-persistence`、`--max-turns`、`--max-budget-usd` |
+| `exec` | 通过 Studio API 非交互执行 headless agent；默认保留 `/api/exec` 兼容，`--input-format stream-json`、`--output-format stream-json`、`--no-session-persistence`、`--max-turns`、`--max-budget-usd` 走 `/api/sessions/headless-chat` |
 
 ### 配置与状态
 
@@ -83,6 +85,15 @@ novelfork audit --book "仙逆" --chapter 5
 
 # 启动 Web 工作台
 novelfork studio
+
+# Headless 会话（Studio 需运行）
+novelfork chat "审校第十二章" --book my-book --json
+
+# Headless stream-json / ephemeral
+novelfork chat "审校第十二章" --input-format stream-json --output-format stream-json --no-session-persistence
+
+# 兼容旧 headless exec
+novelfork exec "审校第十二章" --book my-book --json
 ```
 
 ---

@@ -181,9 +181,6 @@ function getAllowedHitReason(hit: MockDebtScanHit): string | undefined {
     return "transparent-disabled-legacy-router";
   }
 
-  if (hit.relativePath === "packages/studio/src/api/routes/poison-detector.ts") {
-    return "transparent-disabled-legacy-router";
-  }
 
   if (hit.relativePath === "packages/studio/src/hooks/use-i18n.ts" && hit.lineText.includes("Beta 通道入口已预留")) {
     return "transparent-reserved-ui-copy";

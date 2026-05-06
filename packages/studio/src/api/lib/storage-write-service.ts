@@ -2,6 +2,7 @@ import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { BookConfig, ChapterMeta, StateManager } from "@vivy1024/novelfork-core";
 import { isTruthFileName } from "./story-file-service.js";
+import type { CreateResourceCheckpointInput, ResourceCheckpointResult } from "./resource-checkpoint-service.js";
 
 export type ExportFormat = "markdown" | "txt";
 
@@ -14,9 +15,20 @@ export interface StorageWriteServiceState {
   readonly getNextChapterNumber: Pick<StateManager, "getNextChapterNumber">["getNextChapterNumber"];
 }
 
+export interface StorageWriteCheckpointService {
+  readonly createCheckpoint: (input: CreateResourceCheckpointInput) => Promise<ResourceCheckpointResult>;
+}
+
+export interface StorageWriteCheckpointContext {
+  readonly sessionId?: string;
+  readonly messageId?: string;
+  readonly toolUseId?: string;
+}
+
 export interface StorageWriteServiceOptions {
   readonly state: StorageWriteServiceState;
   readonly now?: () => string;
+  readonly checkpoint?: StorageWriteCheckpointService;
 }
 
 export interface CreateChapterInput {
@@ -109,6 +121,16 @@ function buildExportContent(chapters: ReadonlyArray<ExportChapter>, format: Expo
     .join(format === "markdown" ? "\n\n---\n\n" : "\n\n");
 }
 
+async function createCheckpointIfConfigured(
+  options: StorageWriteServiceOptions,
+  input: Omit<CreateResourceCheckpointInput, "sessionId"> & { readonly sessionId?: string },
+): Promise<{ readonly checkpointId?: string } | { readonly error: string }> {
+  if (!options.checkpoint) return {};
+  const result = await options.checkpoint.createCheckpoint({ ...input, sessionId: input.sessionId ?? "workbench" });
+  if (!result.ok) return { error: result.error };
+  return { checkpointId: result.checkpoint.id };
+}
+
 export function createStorageWriteService(options: StorageWriteServiceOptions) {
   const { state } = options;
 
@@ -175,24 +197,42 @@ export function createStorageWriteService(options: StorageWriteServiceOptions) {
       };
     },
 
-    async updateChapterContent(bookId: string, chapterNumber: number, content: string) {
+    async updateChapterContent(bookId: string, chapterNumber: number, content: string, checkpointContext: StorageWriteCheckpointContext = {}) {
       const chaptersDir = join(state.bookDir(bookId), "chapters");
       const files = await readdir(chaptersDir);
       const paddedNum = String(chapterNumber).padStart(4, "0");
       const match = files.find((file) => file.startsWith(paddedNum) && file.endsWith(".md"));
       if (!match) return { error: "Chapter not found" as const };
+      const checkpoint = await createCheckpointIfConfigured(options, {
+        bookId,
+        sessionId: checkpointContext.sessionId,
+        messageId: checkpointContext.messageId,
+        toolUseId: checkpointContext.toolUseId,
+        reason: "chapter-write",
+        resources: [{ kind: "chapter", id: `chapter:${chapterNumber}`, path: `chapters/${match}`, required: true }],
+      });
+      if ("error" in checkpoint) return { error: checkpoint.error };
       await writeFile(join(chaptersDir, match), content, "utf-8");
-      return { ok: true, chapterNumber };
+      return { ok: true, chapterNumber, ...(checkpoint.checkpointId ? { checkpointId: checkpoint.checkpointId } : {}) };
     },
 
-    async writeTruthFile(bookId: string, file: string, content: string) {
+    async writeTruthFile(bookId: string, file: string, content: string, checkpointContext: StorageWriteCheckpointContext = {}) {
       if (!isTruthFileName(file)) {
         return { error: "Invalid truth file" as const };
       }
       const storyDir = join(state.bookDir(bookId), "story");
       await mkdir(storyDir, { recursive: true });
+      const checkpoint = await createCheckpointIfConfigured(options, {
+        bookId,
+        sessionId: checkpointContext.sessionId,
+        messageId: checkpointContext.messageId,
+        toolUseId: checkpointContext.toolUseId,
+        reason: "truth-write",
+        resources: [{ kind: "truth", id: `truth:${file}`, path: `story/${file}` }],
+      });
+      if ("error" in checkpoint) return { error: checkpoint.error };
       await writeFile(join(storyDir, file), content, "utf-8");
-      return { ok: true };
+      return { ok: true, ...(checkpoint.checkpointId ? { checkpointId: checkpoint.checkpointId } : {}) };
     },
 
     async buildExport(bookId: string, input: BuildExportInput) {

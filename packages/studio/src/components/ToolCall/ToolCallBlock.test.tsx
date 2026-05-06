@@ -9,7 +9,7 @@ function defaultFetchJsonImplementation(url: string, options?: { body?: string }
   if (url === "/api/tools/source-preview") {
     const body = JSON.parse(options?.body ?? "{}");
     const params = body.params ?? {};
-    const target = params.file_path ?? params.path ?? "packages/studio/src/components/ChatWindow.tsx";
+    const target = params.file_path ?? params.path ?? "packages/studio/src/app-next/agent-conversation/surface/ConversationSurface.tsx";
     const locator = typeof params.offset === "number"
       ? `${target}:${params.offset + 1}-${params.offset + Math.max(params.limit ?? 1, 1)}`
       : typeof params.lineno === "number"
@@ -27,14 +27,14 @@ function defaultFetchJsonImplementation(url: string, options?: { body?: string }
       ].filter(Boolean).join("\n\n"),
       snippet: target === "package.json"
         ? '{\n  "name": "@vivy1024/novelfork-studio",\n  "version": "0.0.1"\n}'
-        : "export function ChatWindow() {\n  return null;\n}",
+        : "export function ConversationSurface() {\n  return null;\n}",
     });
   }
 
   if (url === "/api/tools/open-in-editor") {
     const body = JSON.parse(options?.body ?? "{}");
     const params = body.params ?? {};
-    const target = params.file_path ?? params.path ?? "packages/studio/src/components/ChatWindow.tsx";
+    const target = params.file_path ?? params.path ?? "packages/studio/src/app-next/agent-conversation/surface/ConversationSurface.tsx";
     const line = typeof params.offset === "number" ? params.offset + 1 : (params.lineno ?? 1);
     return Promise.resolve({ success: true, command: "code", target, line });
   }
@@ -309,7 +309,7 @@ describe("ToolCallBlock", () => {
           summary: "正在执行 git status",
           command: "git status --short",
           input: { cwd: "packages/studio" },
-          output: " M packages/studio/src/components/ChatWindow.tsx",
+          output: " M packages/studio/src/app-next/agent-conversation/surface/ConversationSurface.tsx",
           duration: 420,
           startedAt: 1710000000000,
         }}
@@ -330,7 +330,7 @@ describe("ToolCallBlock", () => {
 
     expect(screen.getAllByText("git status --short").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("标准输出")).toBeTruthy();
-    expect(screen.getByText(/ChatWindow\.tsx/)).toBeTruthy();
+    expect(screen.getByText(/ConversationSurface\.tsx/)).toBeTruthy();
   });
 
   it("shows file target for read tool calls", () => {
@@ -566,7 +566,7 @@ describe("ToolCallBlock", () => {
           summary: "已完成 git status 检查",
           command: "git status --short",
           input: { cwd: "packages/studio" },
-          output: " M packages/studio/src/components/ChatWindow.tsx",
+          output: " M packages/studio/src/app-next/agent-conversation/surface/ConversationSurface.tsx",
           result: {
             ok: true,
             execution: {
@@ -602,7 +602,7 @@ describe("ToolCallBlock", () => {
     fireEvent.click(screen.getByRole("button", { name: "查看源码" }));
     expect(screen.getByText("工具源码")).toBeTruthy();
     expect(await screen.findByText("定位信息")).toBeTruthy();
-    expect(screen.getByText(/packages\/studio\/src\/components\/ChatWindow\.tsx/)).toBeTruthy();
+    expect(screen.getByText(/packages\/studio\/src\/app-next\/agent-conversation\/surface\/ConversationSurface\.tsx/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "关闭" }));
 
     fireEvent.click(screen.getByRole("button", { name: "全屏查看" }));

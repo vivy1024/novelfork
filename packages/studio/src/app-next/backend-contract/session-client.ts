@@ -17,6 +17,18 @@ import type {
 import type { CanvasContext, ToolConfirmationDecision, ToolConfirmationRequest } from "../../shared/agent-native-workspace";
 import type { ContractClient } from "./contract-client";
 
+export interface SessionMemoryClientPayload {
+  readonly classification: "user-preference" | "project-fact" | "temporary-story-draft";
+  readonly content: string;
+  readonly projectId?: string;
+  readonly source: { readonly kind: "message"; readonly messageId: string; readonly seq?: number } | { readonly kind: "project-resource"; readonly projectId: string; readonly path: string; readonly ref?: string };
+  readonly confirmation?: { readonly mode: "explicit"; readonly confirmedBy: string } | { readonly mode: "implicit-stable"; readonly evidenceCount?: number };
+  readonly createdBy: "user" | "assistant" | "system";
+  readonly tags?: readonly string[];
+}
+
+const SESSION_MEMORY_CAPABILITY_METADATA = { readonlyFallback: true } as const;
+
 export interface ChatWebSocketUrlOptions {
   baseUrl?: string | URL;
   protocol?: "ws:" | "wss:";
@@ -304,6 +316,25 @@ export function createSessionClient(contract: ContractClient) {
     createSession: <T = NarratorSessionRecord>(payload: CreateNarratorSessionInput) => contract.post<T>("/api/sessions", payload, { capability: { id: "sessions.create", status: "current" } }),
     updateSession: <T = NarratorSessionRecord>(sessionId: string, payload: UpdateNarratorSessionInput) =>
       contract.put<T>(`/api/sessions/${encodeURIComponent(sessionId)}`, payload, { capability: { id: "sessions.update", status: "current" } }),
+    continueLatestSession: <T = unknown>(projectId?: string, chapterId?: string) => {
+      const params = new URLSearchParams();
+      if (projectId) params.set("projectId", projectId);
+      if (chapterId) params.set("chapterId", chapterId);
+      const query = params.toString();
+      return contract.get<T>(`/api/sessions/lifecycle/latest${query ? `?${query}` : ""}`, { capability: { id: "sessions.lifecycle.continue", status: "current" } });
+    },
+    forkSession: <T = unknown>(sessionId: string, payload: { title?: string; inheritanceNote?: string }) =>
+      contract.post<T>(`/api/sessions/${encodeURIComponent(sessionId)}/fork`, payload, { capability: { id: "sessions.lifecycle.fork", status: "current" } }),
+    restoreSessionForContinue: <T = unknown>(sessionId: string) =>
+      contract.post<T>(`/api/sessions/${encodeURIComponent(sessionId)}/restore`, undefined, { capability: { id: "sessions.lifecycle.restore", status: "current" } }),
+    compactSession: <T = unknown>(sessionId: string, payload: { preserveRecentMessages?: number; instructions?: string } = {}) =>
+      contract.post<T>(`/api/sessions/${encodeURIComponent(sessionId)}/compact`, payload, { capability: { id: "sessions.compact", status: "current" } }),
+    headlessChat: <T = unknown>(payload: Record<string, unknown>) =>
+      contract.post<T>("/api/sessions/headless-chat", payload, { capability: { id: "sessions.headless-chat", status: "current" } }),
+    getMemoryStatus: <T = unknown>(sessionId: string) =>
+      contract.get<T>(`/api/sessions/${encodeURIComponent(sessionId)}/memory/status`, { capability: { id: "sessions.memory.status", status: "current", metadata: SESSION_MEMORY_CAPABILITY_METADATA } }),
+    commitMemory: <T = unknown>(sessionId: string, payload: SessionMemoryClientPayload) =>
+      contract.post<T>(`/api/sessions/${encodeURIComponent(sessionId)}/memory`, payload, { capability: { id: "sessions.memory.write", status: "current", metadata: SESSION_MEMORY_CAPABILITY_METADATA } }),
     deleteSession: <T = { success: true }>(sessionId: string) =>
       contract.delete<T>(`/api/sessions/${encodeURIComponent(sessionId)}`, { capability: { id: "sessions.delete", status: "current" } }),
     getChatState: <T = NarratorSessionChatSnapshot>(sessionId: string) =>

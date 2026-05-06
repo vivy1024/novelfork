@@ -1,65 +1,26 @@
-# 工具调用可视化功能
+# ToolCall 资产边界
 
-## 已实现文件
+`packages/studio/src/components/ToolCall/` 现在是叙述者会话工具调用的共享渲染资产，而不是旧窗口视觉层专属集成点。
 
-1. **类型定义** (`packages/studio/src/stores/windowStore.ts`)
-   - 扩展 `ChatMessage` 接口，添加 `toolCalls?: ToolCall[]`
-   - 定义 `ToolCall` 接口（toolName, command, duration, output, error, exitCode）
+## 当前用途
 
-2. **ToolIcon 组件** (`packages/studio/src/components/ToolCall/ToolIcon.tsx`)
-   - Bash → Terminal 图标
-   - Read → FileText 图标
-   - Write/Edit → Edit 图标
-   - Grep → Search 图标
-   - 默认 → Code 图标
+- `ToolCallBlock`：会话工具调用的完整透明化卡片，保留图标、状态、耗时、exit code、错误展示、复制、源码预览、全屏详情、原始载荷和长输出折叠能力。
+- `tool-result-renderer-registry`：按 `toolCall.result.renderer` 或工具名选择 cockpit、guided、PGI、candidate、jingwei 等一等公民结果卡片。
+- `ToolIcon`：按工具类型统一展示 Bash/Read/Write/Search/Web/MCP/Agent 图标。
+- `ToolCallCard`：兼容导出，委托给 `ToolCallBlock`。
 
-3. **ToolCallOutput 组件** (`packages/studio/src/components/ToolCall/ToolCallOutput.tsx`)
-   - 自动折叠超过 500 字符的输出
-   - 显示剩余字符数
-   - 支持展开/收起
-   - 错误输出红色高亮
+## Current consumers
 
-4. **ToolCallCard 组件** (`packages/studio/src/components/ToolCall/ToolCallCard.tsx`)
-   - 显示工具名称、图标、耗时
-   - 显示命令（代码块样式）
-   - 集成 ToolCallOutput
-   - 复制命令按钮（带复制成功反馈）
-   - 重新运行按钮（预留接口）
-   - Exit code 错误标记
+- `/next/narrators/:sessionId` 的 `agent-conversation/surface/ToolCallCard`：保留轻量 tool result renderer，同时在存在 `output`、`error`、`exitCode` 等详细执行信息时复用 `ToolCallBlock`。
+- 旧窗口视觉层已在 `legacy-source-retirement-v1` Task 6 删除；本目录继续服务新的 narrator conversation surface。
 
-5. **ChatWindow 集成** (`packages/studio/src/components/ChatWindow.tsx`)
-   - 在消息下方渲染工具调用卡片
-   - 支持多个工具调用
-   - 保持消息流布局
+## 非目标
 
-## 使用示例
+- 不再把工具调用类型定义挂在 `windowStore` 或 `ChatMessage` 上。
+- 不再新增面向旧窗口视觉层的集成说明。
+- 不为旧 UI 增加 shim/noop adapter；旧入口删除后由 Git 历史保留。
 
-```typescript
-// 在 WebSocket 消息中包含工具调用数据
-const message: ChatMessage = {
-  id: "msg-123",
-  role: "assistant",
-  content: "正在检查 Git 状态...",
-  timestamp: Date.now(),
-  toolCalls: [
-    {
-      toolName: "Bash",
-      command: "git status --short",
-      duration: 1200,
-      output: "M packages/studio/src/components/ChatWindow.tsx\n?? packages/studio/src/components/ToolCall/",
-      exitCode: 0
-    }
-  ]
-};
-```
+## 验证
 
-## 功能特性
-
-- ✅ 工具图标可视化
-- ✅ 命令显示（代码块）
-- ✅ 输出自动折叠（>500 字符）
-- ✅ 耗时显示（ms/s 自动格式化）
-- ✅ 复制命令功能
-- ✅ 错误高亮显示
-- ✅ Exit code 标记
-- ✅ 重新运行按钮（接口预留）
+- `components/ToolCall/ToolCallBlock.test.tsx` 覆盖 renderer registry、generic fallback、错误/exit code、源码预览、raw payload 与运行追踪。
+- `app-next/agent-conversation/surface/ConversationSurface.test.tsx` 覆盖新 narrator surface 的 renderer registry、raw data 展开，以及复用 `ToolCallBlock` 的长输出折叠、图标和错误展示。

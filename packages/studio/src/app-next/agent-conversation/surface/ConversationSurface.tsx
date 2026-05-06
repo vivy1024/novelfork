@@ -1,3 +1,7 @@
+import type { ReactNode } from "react";
+
+import type { ToolResultArtifact } from "../../tool-results";
+import type { SlashCommandExecutionContext, SlashCommandExecutionResult } from "../slash-command-registry";
 import { Composer } from "./Composer";
 import { ConfirmationGate, type ConversationConfirmation } from "./ConfirmationGate";
 import { ConversationStatusBar, type ConversationSessionConfigPatch, type ConversationStatus } from "./ConversationStatusBar";
@@ -16,12 +20,16 @@ export interface ConversationSurfaceProps {
   recoveryNotice?: ConversationRecoveryNotice | null;
   sendDisabledReason?: string;
   settingsHref?: string;
+  footerActions?: ReactNode;
   isRunning?: boolean;
   onApproveConfirmation: (id: string) => void;
   onRejectConfirmation: (id: string) => void;
   onSend: (content: string) => void;
   onAbort?: () => void;
   onUpdateSessionConfig?: (patch: ConversationSessionConfigPatch) => Promise<void> | void;
+  onCompactSession?: SlashCommandExecutionContext["compactSession"];
+  onSlashCommandResult?: (result: SlashCommandExecutionResult) => void;
+  onOpenArtifact?: (artifact: ToolResultArtifact) => void;
 }
 
 export function ConversationSurface({
@@ -32,14 +40,25 @@ export function ConversationSurface({
   recoveryNotice = null,
   sendDisabledReason,
   settingsHref,
+  footerActions = null,
   isRunning = false,
   onApproveConfirmation,
   onRejectConfirmation,
   onSend,
   onAbort = () => undefined,
   onUpdateSessionConfig,
+  onCompactSession,
+  onSlashCommandResult,
+  onOpenArtifact,
 }: ConversationSurfaceProps) {
   const showRecoveryNotice = recoveryNotice && recoveryNotice.state !== "idle";
+
+  const handleSlashCommandResult = (result: SlashCommandExecutionResult) => {
+    onSlashCommandResult?.(result);
+    if (result.ok && result.kind === "update-session-config") {
+      void onUpdateSessionConfig?.(result.patch);
+    }
+  };
 
   return (
     <section data-testid="conversation-surface" className="conversation-surface flex h-full flex-col">
@@ -55,8 +74,17 @@ export function ConversationSurface({
       {pendingConfirmation ? (
         <ConfirmationGate confirmation={pendingConfirmation} onApprove={onApproveConfirmation} onReject={onRejectConfirmation} />
       ) : null}
-      <MessageStream messages={messages} />
-      <Composer onSend={onSend} onAbort={onAbort} isRunning={isRunning} disabledReason={sendDisabledReason} settingsHref={settingsHref} />
+      <MessageStream messages={messages} onOpenArtifact={onOpenArtifact} />
+      {footerActions}
+      <Composer
+        onSend={onSend}
+        onAbort={onAbort}
+        onSlashCommandResult={handleSlashCommandResult}
+        slashCommandContext={{ status, compactSession: onCompactSession }}
+        isRunning={isRunning}
+        disabledReason={sendDisabledReason}
+        settingsHref={settingsHref}
+      />
     </section>
   );
 }
