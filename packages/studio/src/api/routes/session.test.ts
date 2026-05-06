@@ -255,6 +255,29 @@ describe("sessionRouter", () => {
     expect(restored).toMatchObject({ ok: true, readonly: false, session: { id: archived.id, status: "active" } });
   });
 
+  it("rejects session config permission modes that are unsupported by the session mode", async () => {
+    const createResponse = await sessionRouter.request("http://localhost/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "规划会话",
+        agentId: "planner",
+        sessionMode: "plan",
+        sessionConfig: { providerId: "sub2api", modelId: "gpt-5.4", permissionMode: "plan", reasoningEffort: "medium" },
+      }),
+    });
+    const created = await createResponse.json();
+
+    const updateResponse = await sessionRouter.request(`http://localhost/${created.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionConfig: { permissionMode: "allow" } }),
+    });
+
+    expect(updateResponse.status).toBe(400);
+    await expect(updateResponse.json()).resolves.toMatchObject({ code: "UNSUPPORTED_PERMISSION_MODE", error: { code: "UNSUPPORTED_PERMISSION_MODE", message: expect.stringContaining("规划会话不允许全部允许") } });
+  });
+
   it("serves session tool policy visibility and persists updates through session config", async () => {
     const createResponse = await sessionRouter.request("http://localhost/", {
       method: "POST",

@@ -126,7 +126,7 @@ bun run typecheck
 | 路由 | 说明 |
 |------|------|
 | `/next` | 当前入口；Agent Shell 路由壳，主入口已切断旧三栏 WorkspacePage 默认依赖，失败三栏实验与旧 ChatWindow/轻量 `/api/chat` 源码已从 Studio typecheck 构建路径正式退役，并已完成前端重建与旧源码退役阶段验收 |
-| `/next/narrators/:sessionId` | 已挂载单栏 Conversation 壳，接入合同快照、WebSocket `resumeFromSeq`、ack/message/abort runtime，并具备消息流/工具卡/确认门/状态栏/Composer、recovery notice、模型/权限状态栏动作与 Tool Result Renderer Registry |
+| `/next/narrators/:sessionId` | 已挂载单栏 Conversation 壳，接入合同快照、WebSocket `resumeFromSeq`、ack/message/abort runtime，并具备消息流/工具卡/确认门/状态栏/Composer、recovery notice、模型/权限/推理状态栏动作、session config 更新后回读 chat state、ShellDataProvider 同步、真实 binding/消息数/工作区/Git unavailable facts 与 Tool Result Renderer Registry |
 | `/next/books/:bookId` | 已挂载独立 Writing Workbench 壳，Workbench 资源树已接入 resource contract adapter 映射，并支持 canvas/viewer、保存、只读禁用、tool-result viewer、dirty canvasContext 与写作动作入口 |
 | `/next/settings` | 已挂载 SettingsLayout、SettingsSectionContent 与 ProviderSettingsPage；设置分组为个人设置、实例管理、运行资源与审计、关于与项目，模型页和 Agent runtime 面板通过 SettingsTruthModel 展示来源/状态/API，provider 页区分平台账号可导入/未配置/不可调用和 API provider 可配置/已配置/已验证/可调用状态，provider/model/runtime 配置入口可达 |
 | `/next/routines` | 已挂载 RoutinesNextPage，复用 routines/MCP/tools/skills/subagents 管理能力 |

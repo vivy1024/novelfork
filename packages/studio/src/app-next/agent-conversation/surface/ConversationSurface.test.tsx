@@ -320,6 +320,56 @@ describe("Conversation Surface", () => {
     expect(onUpdateSessionConfig).toHaveBeenCalledWith({ reasoningEffort: "high" });
   });
 
+  it("对话 header facts 展示绑定、消息数、工作区和 Git unavailable 原因", () => {
+    render(
+      <ConversationStatusBar
+        status={{
+          state: "connected",
+          label: "已连接",
+          providerId: "sub2api",
+          providerLabel: "Sub2API",
+          modelId: "gpt-5.4",
+          modelLabel: "GPT-5.4",
+          permissionMode: "edit",
+          reasoningEffort: "medium",
+          messageCount: 3,
+          binding: { label: "书籍 book-1 / 第 3 章", worktree: "D:/novel-worktree" },
+          workspace: { path: "D:/novel-worktree", git: { status: "unavailable", reason: "未检测到 Git 仓库" } },
+        } as never}
+      />,
+    );
+
+    expect(screen.getByText("绑定：书籍 book-1 / 第 3 章")).toBeTruthy();
+    expect(screen.getByText("消息：3")).toBeTruthy();
+    expect(screen.getByText("工作区：D:/novel-worktree")).toBeTruthy();
+    expect(screen.getByText("Git：不可用（未检测到 Git 仓库）")).toBeTruthy();
+  });
+
+  it("provider 不支持 reasoning 或 plan session 不允许权限模式时禁用控件并显示原因", () => {
+    render(
+      <ConversationStatusBar
+        status={{
+          state: "connected",
+          label: "已连接",
+          providerId: "sub2api",
+          modelId: "chat-only",
+          permissionMode: "plan",
+          reasoningEffort: "medium",
+          sessionConfigLoaded: true,
+          modelOptions: [{ providerId: "sub2api", providerLabel: "Sub2API", modelId: "chat-only", modelLabel: "Chat Only", supportsTools: true, supportsReasoning: false }],
+          permissionModeDisabledReasons: { allow: "规划会话不允许全部允许", edit: "规划会话不允许直接编辑" },
+          reasoningUnsupportedReason: "当前 provider 不支持 reasoning effort 调整",
+        } as never}
+      />,
+    );
+
+    expect((screen.getByLabelText("推理强度") as HTMLSelectElement).disabled).toBe(true);
+    expect(screen.getByText("当前 provider 不支持 reasoning effort 调整")).toBeTruthy();
+    expect((screen.getByRole("option", { name: "允许" }) as HTMLOptionElement).disabled).toBe(true);
+    expect((screen.getByRole("option", { name: "编辑" }) as HTMLOptionElement).disabled).toBe(true);
+    expect(screen.getByText("规划会话不允许全部允许")).toBeTruthy();
+  });
+
   it("状态栏展示 session tool policy 可用/禁用/询问概览", () => {
     render(
       <ConversationStatusBar

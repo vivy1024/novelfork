@@ -129,7 +129,7 @@
 |-----|------|------|
 | 左侧资源栏 | 全局导航 + 当前书籍资源树；章节、候选稿、草稿、经纬、Story/Truth、素材、发布报告 | ✅ |
 | 中间画布 | 多资源 Tab、章节编辑、候选稿、经纬详情、工具产物、dirty 切换拦截；`ui-live-parity-hardening-v1` Task 2-4 已补资源详情 hydrate、保存控制器、dirty guard 与 Playwright 浏览器保存刷新读回 | ✅ 资源 hydrate/保存防覆盖/浏览器读回已验证；更广 E2E 仍随后续任务扩展 |
-| 右侧叙述者会话 | 固定 Writer/Narrator 会话、模型/权限控件、工具调用流、恢复状态 | ✅ |
+| 右侧叙述者会话 | 固定 Writer/Narrator 会话、模型/权限控件、工具调用流、恢复状态；Task 9 已补真实 session binding、消息数、context usage、工作区/Git unavailable facts，并在 session config 更新后回读 chat state 同步 ShellDataProvider | ✅ header facts/配置回读已验证；工具审批/运行控制透明化继续按 Task 10 扩展 |
 | cockpit 工具结果 | `cockpit.get_snapshot` / hooks / candidates 等通过工具卡片和画布组件展示 | ✅ |
 | PGI + GuidedGenerationPlan | 生成前追问、计划卡片、批准/拒绝确认门 | ✅ |
 | Narrative Line | 只读快照、mutation preview、approve 后写入审计 | ✅ |
@@ -145,7 +145,7 @@
 | session-chat-service 自动注入 agent prompt | ✅ |
 | Explorer Agent（只读探索，ConversationSurface 内联展示） | ✅ |
 | 编排函数（Explorer→Planner→Writer→Auditor 串行） | ✅ |
-| `/next/narrators/:sessionId` live 叙述者会话入口 | ✅ |
+| `/next/narrators/:sessionId` live 叙述者会话入口 | ✅ Task 9：header facts 来自真实 session record 与 worktree status API；模型/权限/推理更新后回读 session snapshot |
 | 13 个 Core Agent 类 | ✅ |
 | 18 个 Core 内置工具（plan/compose/write/audit/revise等） | ✅ |
 | 22 个通用工具（ToolsTab，9 默认开/13 默认关） | ✅ |
