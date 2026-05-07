@@ -1,6 +1,6 @@
 import { PROXY_API_PATH, USER_SETTINGS_API_PATH } from "../backend-contract";
 
-export const PARITY_STATUSES = ["current", "partial", "planned", "non-goal", "unknown"] as const;
+export const PARITY_STATUSES = ["current", "partial", "planned", "non-goal", "reference-only", "unknown"] as const;
 
 export type ParityStatus = (typeof PARITY_STATUSES)[number];
 
@@ -43,12 +43,79 @@ export function validateParityMatrix(entries: readonly ParityMatrixEntry[]): Par
         issues.push({ capability: entry.capability, code: "MISSING_DATE", message: `Evidence '${evidence.label}' must use YYYY-MM-DD checkedAt` });
       }
     }
-    if (entry.novelForkStatus === "non-goal" && entry.uiClaimAllowed !== false) {
-      issues.push({ capability: entry.capability, code: "NON_GOAL_UI_CLAIM", message: "non-goal entries must be blocked from UI current claims" });
+    if ((entry.novelForkStatus === "non-goal" || entry.novelForkStatus === "reference-only") && entry.uiClaimAllowed !== false) {
+      issues.push({ capability: entry.capability, code: "NON_GOAL_UI_CLAIM", message: "non-goal/reference-only entries must be blocked from UI current claims" });
     }
   }
   return issues;
 }
+
+export const CLAUDE_CODE_PARITY_MATRIX: readonly ParityMatrixEntry[] = [
+  {
+    capability: "Claude slash command loading",
+    upstreamEvidence: [
+      { source: "local-source", label: "Claude commands registry", reference: "claude/restored-cli-src/src/commands.ts#getCommands loads bundled, skill dir, workflow, plugin, dynamic skills and built-ins", checkedAt: "2026-05-07" },
+      { source: "local-source", label: "Claude command type", reference: "claude/restored-cli-src/src/types/command.ts supports prompt/local/local-jsx commands, aliases, availability, hidden/sensitive/immediate flags", checkedAt: "2026-05-07" },
+      { source: "novelfork-code", label: "NovelFork slash registry", reference: "packages/studio/src/app-next/agent-conversation/slash-command-registry.ts static DEFAULT_COMMANDS", checkedAt: "2026-05-07" },
+    ],
+    novelForkStatus: "partial",
+    uiClaimAllowed: false,
+    surface: "Composer slash command suggestions/execution",
+    verification: "slash-command-registry tests + Task19 source audit",
+    notes: "NovelFork 当前只有 /help、/status、/model、/permission、/fork、/resume、/compact 的静态 registry；未实现 Claude 的 skills/plugins/workflows/MCP 动态命令、availability/isEnabled、aliases 去重、sensitive/immediate、本地 JSX 命令生命周期或 model-invocation 边界，因此只能作为 NovelFork 自身 partial slash 能力。",
+  },
+  {
+    capability: "Claude permission modes and rule pipeline",
+    upstreamEvidence: [
+      { source: "local-source", label: "Claude permission modes", reference: "claude/restored-cli-src/src/types/permissions.ts EXTERNAL_PERMISSION_MODES acceptEdits/bypassPermissions/default/dontAsk/plan plus internal auto/bubble", checkedAt: "2026-05-07" },
+      { source: "local-source", label: "Claude permission pipeline", reference: "claude/restored-cli-src/src/utils/permissions/permissions.ts has rule sources, deny/ask/allow precedence, tool.checkPermissions, hooks, classifier, sandbox and headless fallback", checkedAt: "2026-05-07" },
+      { source: "novelfork-code", label: "NovelFork permission mode/toolPolicy", reference: "packages/studio/src/shared/session-types.ts + packages/studio/src/api/lib/session-tool-policy.ts + session-tool-executor.ts", checkedAt: "2026-05-07" },
+    ],
+    novelForkStatus: "partial",
+    uiClaimAllowed: false,
+    surface: "SessionConfig.permissionMode、sessionConfig.toolPolicy、工具确认门",
+    verification: "session-tool-policy/session-tool-executor tests + Task19 source audit",
+    notes: "NovelFork ask/edit/allow/read/plan 是写作产品语义，不是 Claude default/acceptEdits/bypassPermissions/dontAsk/plan 的 1:1 移植；toolPolicy 只支持简单通配符 allow/deny/ask，缺少 Claude 的多来源规则、ruleContent、MCP server/tool 规则、PermissionRequest hooks、classifier/auto mode、sandbox auto-allow 与 bypass-immune safety checks。",
+  },
+  {
+    capability: "Claude session resume/fork storage",
+    upstreamEvidence: [
+      { source: "local-source", label: "Claude session storage", reference: "claude/restored-cli-src/src/utils/sessionStorage.ts JSONL transcript, parentUuid chain, project dir, sidecar metadata, progress filtering", checkedAt: "2026-05-07" },
+      { source: "local-source", label: "Claude session restore", reference: "claude/restored-cli-src/src/utils/sessionRestore.ts restores file history, attribution, todos, context collapse, agent/worktree state", checkedAt: "2026-05-07" },
+      { source: "novelfork-code", label: "NovelFork session lifecycle", reference: "packages/studio/src/api/lib/session-lifecycle-service.ts", checkedAt: "2026-05-07" },
+    ],
+    novelForkStatus: "partial",
+    uiClaimAllowed: false,
+    surface: "SessionCenter resume/continue/fork, /api/sessions/lifecycle/latest, /:id/fork, /:id/restore",
+    verification: "session-lifecycle-service tests + Task19 source audit",
+    notes: "NovelFork resume/continue/fork 已是自身 session store 的 current 能力，但不是 Claude JSONL transcript/resume 的完整移植；fork 只写入 system summary，不复制 parentUuid 链、file history、attribution、worktree/todo/context-collapse/agent metadata。",
+  },
+  {
+    capability: "Claude headless/result/usage envelope",
+    upstreamEvidence: [
+      { source: "local-source", label: "Claude usage API", reference: "claude/restored-cli-src/src/services/api/usage.ts fetches OAuth utilization/rate limits", checkedAt: "2026-05-07" },
+      { source: "local-source", label: "Claude bootstrap usage state", reference: "claude/restored-cli-src/src/bootstrap/state.ts tracks model usage, cost and token counters", checkedAt: "2026-05-07" },
+      { source: "novelfork-code", label: "NovelFork headless chat", reference: "packages/studio/src/api/lib/session-headless-chat-service.ts NDJSON events + unknown cost + cumulative token envelope", checkedAt: "2026-05-07" },
+    ],
+    novelForkStatus: "partial",
+    uiClaimAllowed: false,
+    surface: "POST /api/sessions/headless-chat、novelfork chat/exec stream-json",
+    verification: "session-headless-chat-service tests + Task19 source audit",
+    notes: "NovelFork 有 text/stream-json input、NDJSON output、permission_request/result、duration/usage/unknown cost 与 max_turns/max_budget stop result；但没有 Claude SDK/print 模式完整事件 taxonomy、OAuth utilization、per-model cost tracker、rate-limit usage UI 或完整 transcript/result 兼容。",
+  },
+  {
+    capability: "Claude terminal TUI / Chrome bridge / remote control / plugin market",
+    upstreamEvidence: [
+      { source: "local-source", label: "Claude command registry feature commands", reference: "claude/restored-cli-src/src/commands.ts includes chrome, bridge, remoteControlServer, plugin, ide, mcp, vim, usage and other terminal commands", checkedAt: "2026-05-07" },
+      { source: "novelfork-code", label: "NovelFork Web workspace", reference: "packages/studio/src/app-next uses Web Agent Shell and does not mount Claude terminal TUI", checkedAt: "2026-05-07" },
+    ],
+    novelForkStatus: "non-goal",
+    uiClaimAllowed: false,
+    surface: "能力矩阵/设置 parity facts",
+    verification: "SettingsTruthModel parity facts + docs guard",
+    notes: "这些能力只作为参考边界；NovelFork v0.1.0 不复制 Claude 终端 TUI、Chrome bridge、remote-control server、IDE/plugin 市场。",
+  },
+] as const;
 
 export const CODEX_CLI_PARITY_MATRIX: readonly ParityMatrixEntry[] = [
   {
@@ -74,6 +141,18 @@ export const CODEX_CLI_PARITY_MATRIX: readonly ParityMatrixEntry[] = [
     surface: "POST /api/sessions/headless-chat、novelfork chat/exec stream-json",
     verification: "conversation-parity-v1 headless stream-json tests；Task 12 matrix guard",
     notes: "NovelFork 已有 headless text/stream-json 会话 envelope，但不是 Codex CLI `codex exec` 的完整 JSONL event taxonomy、schema output 或 API key CI 语义。",
+  },
+  {
+    capability: "Codex exec JSONL event taxonomy",
+    upstreamEvidence: [
+      { source: "local-cli", label: "codex exec --help", reference: "codex-cli 0.80.0 exposes --json but local help is only a reference baseline", checkedAt: "2026-05-07" },
+      { source: "official-docs", label: "Codex non-interactive mode", reference: "https://developers.openai.com/codex/noninteractive", checkedAt: "2026-05-07" },
+    ],
+    novelForkStatus: "reference-only",
+    uiClaimAllowed: false,
+    surface: "parity matrix only；不作为 current UI 能力",
+    verification: "Task19 source audit；NovelFork headless events must not be advertised as Codex-compatible taxonomy",
+    notes: "NovelFork 当前 NDJSON 事件命名为 user_message/assistant_delta/tool_use/tool_result/permission_request/result，未移植 Codex exec 的完整 JSONL event schema、structured output schema、resume event taxonomy 或 CI API key 语义；只能作为参考差距。",
   },
   {
     capability: "Codex config file and profile overrides",

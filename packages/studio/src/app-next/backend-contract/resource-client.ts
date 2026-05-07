@@ -1,6 +1,6 @@
 import type { NarrativeLineSnapshot } from "../../shared/agent-native-workspace";
 import type { BookDetailResponse, BookListResponse, ChapterContentResponse, SaveChapterPayload, SaveChapterResponse } from "../../shared/contracts";
-import { BOOK_CREATE_API_PATH, buildWorktreeStatusApiPath } from "./api-paths";
+import { BOOK_CREATE_API_PATH, BOOKS_API_PATH, appendApiQuery, buildBookApiPath, buildWorktreeStatusApiPath } from "./api-paths";
 import type { ContractClient } from "./contract-client";
 
 export interface SaveDraftPayload {
@@ -40,60 +40,60 @@ export interface WorktreeStatusResponse {
 
 export function createResourceClient(contract: ContractClient) {
   return {
-    listBooks: <T = BookListResponse>() => contract.get<T>("/api/books", { capability: { id: "books.list", status: "current" } }),
+    listBooks: <T = BookListResponse>() => contract.get<T>(BOOKS_API_PATH, { capability: { id: "books.list", status: "current" } }),
     createBook: <T = CreateBookResponse>(payload: CreateBookPayload) => contract.post<T>(BOOK_CREATE_API_PATH, payload, { capability: { id: "books.create", status: "current" } }),
     getWorktreeStatus: <T = WorktreeStatusResponse>(worktreePath: string) => contract.get<T>(buildWorktreeStatusApiPath(worktreePath), { capability: { id: "worktree.status", status: "current" } }),
-    getBook: <T = BookDetailResponse>(bookId: string) => contract.get<T>(`/api/books/${encodeURIComponent(bookId)}`, { capability: { id: "books.detail", status: "current" } }),
+    getBook: <T = BookDetailResponse>(bookId: string) => contract.get<T>(buildBookApiPath(bookId), { capability: { id: "books.detail", status: "current" } }),
     getBookCreateStatus: <T = { status: "creating" | "error" | "ready"; error?: string }>(bookId: string) =>
-      contract.get<T>(`/api/books/${encodeURIComponent(bookId)}/create-status`, { capability: { id: "books.create-status", status: "process-memory" } }),
+      contract.get<T>(buildBookApiPath(bookId, "create-status"), { capability: { id: "books.create-status", status: "process-memory" } }),
     getChapter: <T = ChapterContentResponse>(bookId: string, chapterNumber: number | string) =>
-      contract.get<T>(`/api/books/${encodeURIComponent(bookId)}/chapters/${encodeURIComponent(String(chapterNumber))}`, { capability: { id: "chapters.detail", status: "current" } }),
+      contract.get<T>(buildBookApiPath(bookId, "chapters", chapterNumber), { capability: { id: "chapters.detail", status: "current" } }),
     saveChapter: <T = SaveChapterResponse>(bookId: string, chapterNumber: number | string, payload: SaveChapterPayload) =>
-      contract.put<T>(`/api/books/${encodeURIComponent(bookId)}/chapters/${encodeURIComponent(String(chapterNumber))}`, payload, { capability: { id: "chapters.save", status: "current" } }),
+      contract.put<T>(buildBookApiPath(bookId, "chapters", chapterNumber), payload, { capability: { id: "chapters.save", status: "current" } }),
     previewRewind: <T = unknown>(bookId: string, checkpointId: string) =>
-      contract.get<T>(`/api/books/${encodeURIComponent(bookId)}/checkpoints/${encodeURIComponent(checkpointId)}/rewind/preview`, { capability: { id: "resources.rewind.preview", status: "current" } }),
+      contract.get<T>(buildBookApiPath(bookId, "checkpoints", checkpointId, "rewind", "preview"), { capability: { id: "resources.rewind.preview", status: "current" } }),
     applyRewind: <T = unknown>(bookId: string, checkpointId: string, payload: unknown) =>
-      contract.post<T>(`/api/books/${encodeURIComponent(bookId)}/checkpoints/${encodeURIComponent(checkpointId)}/rewind/apply`, payload, { capability: { id: "resources.rewind.apply", status: "current" } }),
+      contract.post<T>(buildBookApiPath(bookId, "checkpoints", checkpointId, "rewind", "apply"), payload, { capability: { id: "resources.rewind.apply", status: "current" } }),
     listCandidates: <T = unknown>(bookId: string) =>
-      contract.get<T>(`/api/books/${encodeURIComponent(bookId)}/candidates`, { capability: { id: "candidates.list", status: "current" } }),
+      contract.get<T>(buildBookApiPath(bookId, "candidates"), { capability: { id: "candidates.list", status: "current" } }),
     acceptCandidate: <T = unknown>(bookId: string, candidateId: string, payload: unknown) =>
-      contract.post<T>(`/api/books/${encodeURIComponent(bookId)}/candidates/${encodeURIComponent(candidateId)}/accept`, payload, { capability: { id: "candidates.accept", status: "current" } }),
+      contract.post<T>(buildBookApiPath(bookId, "candidates", candidateId, "accept"), payload, { capability: { id: "candidates.accept", status: "current" } }),
     listDrafts: <T = unknown>(bookId: string) =>
-      contract.get<T>(`/api/books/${encodeURIComponent(bookId)}/drafts`, { capability: { id: "drafts.list", status: "current" } }),
+      contract.get<T>(buildBookApiPath(bookId, "drafts"), { capability: { id: "drafts.list", status: "current" } }),
     getDraft: <T = unknown>(bookId: string, draftId: string) =>
-      contract.get<T>(`/api/books/${encodeURIComponent(bookId)}/drafts/${encodeURIComponent(draftId)}`, { capability: { id: "drafts.detail", status: "current" } }),
+      contract.get<T>(buildBookApiPath(bookId, "drafts", draftId), { capability: { id: "drafts.detail", status: "current" } }),
     saveDraft: <T = unknown>(bookId: string, payload: SaveDraftPayload) => {
       const draftId = payload && typeof payload === "object" && "id" in payload ? payload.id : undefined;
       if (typeof draftId === "string" && draftId.length > 0) {
-        return contract.put<T>(`/api/books/${encodeURIComponent(bookId)}/drafts/${encodeURIComponent(draftId)}`, payload, { capability: { id: "drafts.save", status: "current" } });
+        return contract.put<T>(buildBookApiPath(bookId, "drafts", draftId), payload, { capability: { id: "drafts.save", status: "current" } });
       }
-      return contract.post<T>(`/api/books/${encodeURIComponent(bookId)}/drafts`, payload, { capability: { id: "drafts.save", status: "current" } });
+      return contract.post<T>(buildBookApiPath(bookId, "drafts"), payload, { capability: { id: "drafts.save", status: "current" } });
     },
     deleteDraft: <T = unknown>(bookId: string, draftId: string) =>
-      contract.delete<T>(`/api/books/${encodeURIComponent(bookId)}/drafts/${encodeURIComponent(draftId)}`, { capability: { id: "drafts.delete", status: "current" } }),
+      contract.delete<T>(buildBookApiPath(bookId, "drafts", draftId), { capability: { id: "drafts.delete", status: "current" } }),
     listStoryFiles: <T = unknown>(bookId: string) =>
-      contract.get<T>(`/api/books/${encodeURIComponent(bookId)}/story-files`, { capability: { id: "story-files.list", status: "current" } }),
+      contract.get<T>(buildBookApiPath(bookId, "story-files"), { capability: { id: "story-files.list", status: "current" } }),
     getStoryFile: <T = { file: string; content: string | null }>(bookId: string, fileName: string) =>
-      contract.get<T>(`/api/books/${encodeURIComponent(bookId)}/story-files/${encodeURIComponent(fileName)}`, { capability: { id: "story-files.detail", status: "current" } }),
+      contract.get<T>(buildBookApiPath(bookId, "story-files", fileName), { capability: { id: "story-files.detail", status: "current" } }),
     deleteStoryFile: <T = { ok: true; file: string }>(bookId: string, fileName: string) =>
-      contract.delete<T>(`/api/books/${encodeURIComponent(bookId)}/story-files/${encodeURIComponent(fileName)}`, { capability: { id: "story-files.delete", status: "current" } }),
+      contract.delete<T>(buildBookApiPath(bookId, "story-files", fileName), { capability: { id: "story-files.delete", status: "current" } }),
     listTruthFiles: <T = unknown>(bookId: string) =>
-      contract.get<T>(`/api/books/${encodeURIComponent(bookId)}/truth-files`, { capability: { id: "truth-files.list", status: "current" } }),
+      contract.get<T>(buildBookApiPath(bookId, "truth-files"), { capability: { id: "truth-files.list", status: "current" } }),
     getTruthFile: <T = { file: string; content: string | null }>(bookId: string, fileName: string) =>
-      contract.get<T>(`/api/books/${encodeURIComponent(bookId)}/truth-files/${encodeURIComponent(fileName)}`, { capability: { id: "truth-files.detail", status: "current" } }),
+      contract.get<T>(buildBookApiPath(bookId, "truth-files", fileName), { capability: { id: "truth-files.detail", status: "current" } }),
     saveTruthFile: <T = { ok: true }>(bookId: string, fileName: string, payload: { content: string }) =>
-      contract.put<T>(`/api/books/${encodeURIComponent(bookId)}/truth/${encodeURIComponent(fileName)}`, payload, { capability: { id: "truth-files.save", status: "current" } }),
+      contract.put<T>(buildBookApiPath(bookId, "truth", fileName), payload, { capability: { id: "truth-files.save", status: "current" } }),
     deleteTruthFile: <T = { ok: true; file: string }>(bookId: string, fileName: string) =>
-      contract.delete<T>(`/api/books/${encodeURIComponent(bookId)}/truth-files/${encodeURIComponent(fileName)}`, { capability: { id: "truth-files.delete", status: "current" } }),
+      contract.delete<T>(buildBookApiPath(bookId, "truth-files", fileName), { capability: { id: "truth-files.delete", status: "current" } }),
     listJingweiSections: <T = unknown>(bookId: string) =>
-      contract.get<T>(`/api/books/${encodeURIComponent(bookId)}/jingwei/sections`, { capability: { id: "jingwei.sections", status: "current" } }),
+      contract.get<T>(buildBookApiPath(bookId, "jingwei", "sections"), { capability: { id: "jingwei.sections", status: "current" } }),
     listJingweiEntries: <T = unknown>(bookId: string, sectionId?: string) => {
-      const query = sectionId ? `?sectionId=${encodeURIComponent(sectionId)}` : "";
-      return contract.get<T>(`/api/books/${encodeURIComponent(bookId)}/jingwei/entries${query}`, { capability: { id: "jingwei.entries", status: "current" } });
+      const query = sectionId ? `sectionId=${encodeURIComponent(sectionId)}` : "";
+      return contract.get<T>(appendApiQuery(buildBookApiPath(bookId, "jingwei", "entries"), query), { capability: { id: "jingwei.entries", status: "current" } });
     },
     saveJingweiEntry: <T = unknown>(bookId: string, entryId: string, payload: SaveJingweiEntryPayload) =>
-      contract.put<T>(`/api/books/${encodeURIComponent(bookId)}/jingwei/entries/${encodeURIComponent(entryId)}`, payload, { capability: { id: "jingwei.entries.update", status: "current" } }),
+      contract.put<T>(buildBookApiPath(bookId, "jingwei", "entries", entryId), payload, { capability: { id: "jingwei.entries.update", status: "current" } }),
     getNarrativeLine: <T = { snapshot: NarrativeLineSnapshot }>(bookId: string) =>
-      contract.get<T>(`/api/books/${encodeURIComponent(bookId)}/narrative-line`, { capability: { id: "narrative-line.read", status: "current" } }),
+      contract.get<T>(buildBookApiPath(bookId, "narrative-line"), { capability: { id: "narrative-line.read", status: "current" } }),
   };
 }

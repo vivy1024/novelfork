@@ -119,9 +119,12 @@ describe("SettingsTruthModel", () => {
     const facts = deriveClaudeParitySettingsFacts();
 
     expect(facts.map((fact) => fact.id)).toEqual([
+      "parity.claude.slashRegistry",
+      "parity.claude.permissions",
+      "parity.claude.sessionResumeFork",
+      "parity.claude.headlessUsage",
       "parity.claude.terminalTui",
       "parity.claude.chromeBridge",
-      "parity.claude.permissions",
     ]);
     expect(facts.find((fact) => fact.id === "parity.claude.terminalTui")).toMatchObject({
       group: "parity",
@@ -134,9 +137,21 @@ describe("SettingsTruthModel", () => {
       status: "unsupported",
       reason: expect.stringContaining("non-goal"),
     });
+    expect(facts.find((fact) => fact.id === "parity.claude.slashRegistry")).toMatchObject({
+      status: "partial",
+      reason: expect.stringContaining("静态 7 个"),
+    });
     expect(facts.find((fact) => fact.id === "parity.claude.permissions")).toMatchObject({
       status: "partial",
-      reason: expect.stringContaining("acceptEdits"),
+      reason: expect.stringContaining("classifier/auto mode"),
+    });
+    expect(facts.find((fact) => fact.id === "parity.claude.sessionResumeFork")).toMatchObject({
+      status: "partial",
+      reason: expect.stringContaining("parentUuid"),
+    });
+    expect(facts.find((fact) => fact.id === "parity.claude.headlessUsage")).toMatchObject({
+      status: "partial",
+      reason: expect.stringContaining("usage envelope"),
     });
   });
 
@@ -149,6 +164,7 @@ describe("SettingsTruthModel", () => {
     expect(facts.map((fact) => fact.id)).toEqual([
       "parity.codex.tui",
       "parity.codex.exec",
+      "parity.codex.execEventTaxonomy",
       "parity.codex.sandbox",
       "parity.codex.approval",
       "parity.codex.mcp",
@@ -158,6 +174,11 @@ describe("SettingsTruthModel", () => {
       "parity.codex.review",
       "parity.codex.windowsNative",
     ]);
+    expect(facts.find((fact) => fact.id === "parity.codex.execEventTaxonomy")).toMatchObject({
+      status: "reference-only",
+      value: "reference-only",
+      reason: expect.stringContaining("不是 Codex exec 完整 JSONL event schema"),
+    });
     expect(facts.find((fact) => fact.id === "parity.codex.sandbox")).toMatchObject({
       group: "parity",
       source: "capability-matrix",
