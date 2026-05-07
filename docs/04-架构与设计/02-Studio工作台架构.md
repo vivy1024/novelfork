@@ -34,7 +34,7 @@ SQLite (bun:sqlite) + 本地文件系统
 
 | 路由 | 组件 | 说明 |
 |------|------|------|
-| `/next` | `StudioNextApp` + `AgentShell` | 当前入口；Shell 侧栏加载真实 books/sessions/provider 状态，主区域按 route 挂载 live 页面 |
+| `/next` | `StudioNextApp` + `AgentShell` + `HomeRouteLive` | 当前入口；Shell 侧栏加载真实 books/sessions/provider 状态，主区域默认显示作者首页，最近作品/会话/模型健康/主要动作来自 `useShellData`，其他 route 挂载 live 页面 |
 | `/next/narrators/:sessionId` | `ConversationRouteLive` → `ConversationRoute` | 叙述者会话；接入 `useAgentConversationRuntime`、WebSocket `resumeFromSeq`、ack/message/abort、模型/权限/推理配置、工具结果 renderer 与确认门刷新 |
 | `/next/books/:bookId` | `WritingWorkbenchRouteLive` → `WritingWorkbenchRoute` | 写作工作台；通过 resource contract 加载资源树，支持打开/保存/只读/unsupported、dirty canvasContext 与写作动作会话跳转 |
 | `/next/settings` | `SettingsLayout` + `SettingsSectionContent` / `ProviderSettingsPage` | 设置页；模型、provider、runtime 配置入口可达 |
@@ -46,6 +46,7 @@ SQLite (bun:sqlite) + 本地文件系统
 ```text
 ┌──────────────┬──────────────────────────────────────────────┐
 │ Agent Shell  │ RouteMountPoint                              │
+│ ├首页         │ /next              → HomeRouteLive            │
 │ ├叙事线       │ /next/narrators/:id → ConversationRouteLive   │
 │ ├叙述者       │ /next/books/:id     → WritingWorkbenchRoute   │
 │ ├搜索         │ /next/search        → SearchPage              │
