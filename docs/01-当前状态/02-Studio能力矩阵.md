@@ -170,7 +170,7 @@
 | 设置分组 IA | ✅ 个人设置、实例管理、运行资源与审计、关于与项目；借鉴 NarraFork 分组但字段回到 NovelFork schema；2026-05-07 手工对比确认 NovelFork truthfulness 已收敛；v0.1.0 Release Readiness Task 11 已补 E2E Provider 识别/隐藏，正式验收仍使用干净 root |
 | 个人资料 | ✅ |
 | 关于（版本/commit/Bun） | ✅ |
-| 套路页（命令/工具/权限/技能/子代理/MCP/钩子） | ✅ |
+| 套路页（命令/工具/权限/技能/子代理/MCP/钩子） | ✅ v0.1.0 Release Readiness Task 12 已补 `e2e/routines-workflow.spec.ts`，真实打开 `/next/routines` 覆盖十个分区、MCP Server 管理与生命周期钩子入口，无假 current 文案 |
 
 ## 11. 合规与发布
 

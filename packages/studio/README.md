@@ -118,7 +118,7 @@ bun run typecheck
 - 组件内不得散写未登记 API 字符串；新增能力必须先补 Backend Contract 矩阵、共享类型和 contract 测试，再接 UI。
 - contract 返回 `prompt-preview`、`process-memory`、`chunked-buffer`、`unsupported`、gate 或 `unknown/null` 指标时，UI 必须透明展示原始语义，不得 mock/fake/noop 假成功。
 - 设置页必须经 `src/app-next/settings/SettingsTruthModel.ts` 派生可见字段的来源、状态、读写 API、可写性与未配置原因；普通模型页不得展示无 schema 来源的 `Codex 推理强度` 或用模型池第一项冒充当前默认模型；Agent runtime 设置必须登记权限、max turns、retry/backoff、WebFetch proxy、上下文阈值、调试、allow/deny 与 planned 缺口；运行控制保存后必须重新读取 `/api/settings/user` 作为最终事实。
-- UI 可用性不得只凭单元测试宣称：`pnpm exec -- playwright test e2e/workbench-resource-edit.spec.ts` 覆盖章节打开→修改→保存→刷新读回；`pnpm exec -- playwright test e2e/settings-session-conversation.spec.ts` 覆盖设置页 truthfulness、Provider 测试夹具标记/隐藏、工作台动作创建 session、Shell 同步、narrator route header/config 回读、空会话五区布局、model-unavailable 设置入口、工具卡 raw 脱敏/全屏、pending confirmation 拒绝回读和 idle/running 中断控制；`SessionCenter`/`AgentShell` 聚焦回归覆盖 `/next/sessions` 会话中心、Shell 左栏精选与新建叙述者表单；`routing`/`StudioNextApp`/`useShellData` 回归覆盖 `/next` 作者首页、最近作品/会话、模型健康和空态；v0.1.0 Release Readiness Task 9-10 已把作品工作台发布级解释层 RED 转 GREEN，覆盖作品标题/状态、资源 header、结果边界、邻近回归和浏览器章节编辑读回；Task 11 已补 Provider 搜索/异常过滤/测试夹具识别隐藏与 SettingsTruthModel fixture facts。浏览器 E2E 通过真实 Bun API + Vite 前端，不调用真实模型，使用隔离 root 和 provider/settings/session API 准备可重复夹具。
+- UI 可用性不得只凭单元测试宣称：`pnpm exec -- playwright test e2e/workbench-resource-edit.spec.ts` 覆盖章节打开→修改→保存→刷新读回；`pnpm exec -- playwright test e2e/settings-session-conversation.spec.ts` 覆盖设置页 truthfulness、Provider 测试夹具标记/隐藏、工作台动作创建 session、Shell 同步、narrator route header/config 回读、空会话五区布局、model-unavailable 设置入口、工具卡 raw 脱敏/全屏、pending confirmation 拒绝回读和 idle/running 中断控制；`pnpm exec -- playwright test e2e/routines-workflow.spec.ts` 覆盖 `/next/routines` 十个分区、MCP Server 管理、策略来源和钩子入口；`SessionCenter`/`AgentShell` 聚焦回归覆盖 `/next/sessions` 会话中心、Shell 左栏精选与新建叙述者表单；`routing`/`StudioNextApp`/`useShellData` 回归覆盖 `/next` 作者首页、最近作品/会话、模型健康和空态；v0.1.0 Release Readiness Task 9-10 已把作品工作台发布级解释层 RED 转 GREEN，覆盖作品标题/状态、资源 header、结果边界、邻近回归和浏览器章节编辑读回；Task 11 已补 Provider 搜索/异常过滤/测试夹具识别隐藏与 SettingsTruthModel fixture facts；Task 12 已补 Routines 浏览器验活。浏览器 E2E 通过真实 Bun API + Vite 前端，不调用真实模型，使用隔离 root 和 provider/settings/session API 准备可重复夹具。
 
 ---
 
@@ -131,7 +131,7 @@ bun run typecheck
 | `/next/sessions` | 已接入发布级叙述者中心：复用 session domain client 展示搜索、类型/状态筛选、排序、归档/恢复、Fork、继续最近、工作目录、创建/最后消息时间、Memory 边界和新建叙述者表单；Agent Shell 左栏只展示前 5 条活跃叙述者、显示剩余数量并提供“查看全部叙述者”入口 |
 | `/next/books/:bookId` | 已挂载独立 Writing Workbench 壳，Workbench 资源树已接入 resource contract adapter 映射，并支持 canvas/viewer、保存、只读禁用、tool-result viewer、dirty canvasContext 与写作动作入口 |
 | `/next/settings` | 已挂载 SettingsLayout、SettingsSectionContent 与 ProviderSettingsPage；设置分组为个人设置、实例管理、运行资源与审计、关于与项目，模型页和 Agent runtime 面板通过 SettingsTruthModel 展示来源/状态/API，Claude/Codex parity facts 将 TUI/Chrome bridge/sandbox 等 non-goal/planned 显示为 unsupported/planned 而非已接入，provider 页区分平台账号可导入/未配置/不可调用和 API provider 可配置/已配置/已验证/可调用状态，provider/model/runtime 配置入口可达；Task 13 Playwright 已验活默认模型未配置不 fallback、Codex 无账号不可调用、first-token timeout planned 且无“Codex sandbox 已接入”假 current |
-| `/next/routines` | 已挂载 RoutinesNextPage，复用 routines/MCP/tools/skills/subagents 管理能力 |
+| `/next/routines` | 已挂载 RoutinesNextPage，复用 routines/MCP/tools/skills/subagents 管理能力；Task 12 Playwright 已验活命令、工具、权限、技能、子代理、提示词、MCP、钩子分区可达且无假 current 文案 |
 | `/next/search` | 已挂载 SearchPage，使用真实搜索 API 或展示真实错误/空状态 |
 
 ---
