@@ -14,7 +14,7 @@
 |---|---|
 | `.kiro/specs/v0-1-0-release-readiness/requirements.md` | approved；11 个 requirements；v0.1.0 完整功能、真实 UI 体验、干净 root、Release 产物均为发布阻塞门槛。 |
 | `.kiro/specs/v0-1-0-release-readiness/design.md` | approved；要求不照抄 NarraFork，不恢复旧三栏/旧 ChatWindow，复用现有 session runtime、Backend Contract、SettingsTruthModel。 |
-| `.kiro/specs/v0-1-0-release-readiness/tasks.md` | 20 项；当前 0/20，Task 1 正在执行。 |
+| `.kiro/specs/v0-1-0-release-readiness/tasks.md` | 初始 20 项；2026-05-07 用户反馈后扩展为 23 项，当前 18/23，Task 19-21 新增为源码对照、mock/hardcoded 清理与重新验收。 |
 | `.kiro/specs/ui-live-parity-hardening-v1/tasks.md` | 13/14 已完成；Task 14 仍待文档、能力矩阵、CHANGELOG 与最终验收收口。 |
 | `docs/90-参考资料/NarraFork参考/03-NarraFork-UIUX与交互功能调研.md` | 第十五节记录 2026-05-07 4567 NovelFork 与 7778 NarraFork 手工 UI 对比。 |
 | `docs/01-当前状态/02-Studio能力矩阵.md` | 已引入“体验未达标”状态，明确合同/API/E2E 可用不等于 UI 成熟。 |
