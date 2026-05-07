@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { PROVIDER_STATUS_API_PATH } from "./api-paths";
 import { createContractClient } from "./contract-client";
 
 describe("contract client", () => {
@@ -55,7 +56,7 @@ describe("contract client", () => {
       fetch: vi.fn(async () => new Response(JSON.stringify(body), { status: 502, headers: { "content-type": "application/json" } })),
     });
 
-    const result = await client.get("/api/providers/status", { capability: { id: "providers.status", status: "current" } });
+    const result = await client.get(PROVIDER_STATUS_API_PATH, { capability: { id: "providers.status", status: "current" } });
 
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error("expected contract failure");

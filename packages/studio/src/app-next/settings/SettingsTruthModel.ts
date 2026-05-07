@@ -1,3 +1,5 @@
+import { PROXY_API_PATH, USER_SETTINGS_API_PATH } from "../backend-contract";
+
 export type SettingsFactGroup =
   | "profile"
   | "models"
@@ -110,7 +112,7 @@ export interface ProviderFixtureFactsInput {
   }[];
 }
 
-const USER_SETTINGS_API = "/api/settings/user";
+const USER_SETTINGS_API = USER_SETTINGS_API_PATH;
 
 function hasOwn(object: unknown, key: string) {
   return typeof object === "object" && object !== null && Object.prototype.hasOwnProperty.call(object, key);
@@ -265,7 +267,7 @@ export function deriveAgentRuntimeSettingsFacts(config: AgentRuntimeSettingsInpu
       reason: "NovelFork settings schema 尚无 first-token timeout 字段",
       verifiedBy: "unit",
     },
-    agentRuntimeFact({ id: "runtime.proxy.webFetch", label: "WebFetch 代理", value: config?.proxy?.webFetch, readApi: "/api/proxy", writeApi: "/api/proxy" }),
+    agentRuntimeFact({ id: "runtime.proxy.webFetch", label: "WebFetch 代理", value: config?.proxy?.webFetch, readApi: PROXY_API_PATH, writeApi: PROXY_API_PATH }),
     agentRuntimeFact({ id: "runtime.toolAccess.mcpStrategy", label: "MCP 工具策略", value: toolAccess?.mcpStrategy }),
     agentRuntimeFact({ id: "runtime.toolAccess.allowlist", label: "全局目录/命令白名单", value: toolAccess?.allowlist }),
     agentRuntimeFact({ id: "runtime.toolAccess.blocklist", label: "全局目录/命令黑名单", value: toolAccess?.blocklist }),
@@ -446,7 +448,7 @@ export function settingsFactStatusLabel(status: SettingsFactStatus) {
     current: "已配置",
     partial: "部分接入",
     unconfigured: "未配置",
-    unsupported: "未接入",
+    unsupported: "不支持",
     planned: "计划中",
     unknown: "未确认",
   };

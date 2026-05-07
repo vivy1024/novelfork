@@ -1,3 +1,5 @@
+import { PROXY_API_PATH, USER_SETTINGS_API_PATH } from "../backend-contract";
+
 export const PARITY_STATUSES = ["current", "partial", "planned", "non-goal", "unknown"] as const;
 
 export type ParityStatus = (typeof PARITY_STATUSES)[number];
@@ -81,7 +83,7 @@ export const CODEX_CLI_PARITY_MATRIX: readonly ParityMatrixEntry[] = [
       { source: "novelfork-code", label: "NovelFork user settings", reference: "packages/studio/src/app-next/settings/SettingsTruthModel.ts", checkedAt: "2026-05-06" },
     ],
     novelForkStatus: "partial",
-    surface: "/api/settings/user + SettingsTruthModel facts",
+    surface: `${USER_SETTINGS_API_PATH} + SettingsTruthModel facts`,
     verification: "SettingsTruthModel unit tests",
     notes: "NovelFork 使用自身 settings schema 和 session config；没有 `~/.codex/config.toml`、profile layer 或 `-c` TOML override 兼容层。",
   },
@@ -140,7 +142,7 @@ export const CODEX_CLI_PARITY_MATRIX: readonly ParityMatrixEntry[] = [
     upstreamEvidence: [
       { source: "local-cli", label: "codex --help", reference: "--search enables web search", checkedAt: "2026-05-06" },
       { source: "official-docs", label: "Codex CLI features web search", reference: "https://developers.openai.com/codex/cli/features#web-search", checkedAt: "2026-05-06" },
-      { source: "novelfork-code", label: "NovelFork WebFetch proxy setting", reference: "SettingsTruthModel runtime.proxy.webFetch via /api/proxy", checkedAt: "2026-05-06" },
+      { source: "novelfork-code", label: "NovelFork WebFetch proxy setting", reference: `SettingsTruthModel runtime.proxy.webFetch via ${PROXY_API_PATH}`, checkedAt: "2026-05-06" },
     ],
     novelForkStatus: "partial",
     surface: "WebFetch tool/proxy setting；非 Codex native web_search flag",
