@@ -124,6 +124,7 @@
 
 - [ ] 14. 文档、能力矩阵、CHANGELOG 与最终验收收口
   - 更新 `docs/01-当前状态/02-Studio能力矩阵.md`，把资源编辑、设置页、provider、对话窗口、Claude/Codex parity 按 current/partial/planned/non-goal/needs-browser-verification 记录。
+  - 2026-05-07 追加真实 UI 交互体验记录：同机浏览器打开 NovelFork `http://127.0.0.1:4567` 与 NarraFork `http://127.0.0.1:7778`，记录设置页、工作台/项目页、叙述者列表与会话页对比；结论是 NovelFork 真实合同/状态透明已收敛，但会话页视觉布局、composer 空态、侧栏长列表管理与干净验收数据仍是 v0.1.0 前风险，不能把 Task 13 E2E passed 等同于 NarraFork 级 UI 体验成熟。
   - 更新 `docs/01-当前状态/03-当前执行主线.md`、`docs/08-测试与质量/01-当前测试状态.md`、`packages/studio/README.md`、相关 API 文档和 `.kiro/specs/README.md`。
   - CHANGELOG Unreleased 记录每个完成任务的修复/验证，不虚构未跑浏览器路径。
   - 运行验证：`pnpm --dir packages/studio test -- app-next`、`pnpm --dir packages/studio test -- backend-contract`、`pnpm --dir packages/studio typecheck`、`pnpm docs:verify`；涉及 CLI parity 或 headless 行为时追加 `pnpm --dir packages/cli test`；涉及 compiled Studio 冒烟时追加 `pnpm --dir packages/studio compile`。
