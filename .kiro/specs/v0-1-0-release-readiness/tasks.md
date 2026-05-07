@@ -117,13 +117,14 @@
   - 证据：使用 clean root `D:\DESKTOP\novelfork\.novelfork\manual-release-smoke-v0-1-0-20260507-1900`，API 服务器 `http://127.0.0.1:4597`，Vite dev frontend `http://127.0.0.1:4598`，浏览器实际打开 `/api/mode`、`/`、`/next`、首页、作品创建、`/next/books/:bookId`、工作台资源 header、自动写作会话、会话中心、设置、Provider、Routines、关于；手工发现首页缺“新建作品”入口，已按 TDD 补 RED（routing home 测试失败于缺少“新建作品”）并实现最小创建表单，手工创建 `手工验活灵潮录` 后进入工作台。记录写入 `docs/08-测试与质量/01-当前测试状态.md` 与 `docs/90-参考资料/NarraFork参考/03-NarraFork-UIUX与交互功能调研.md`。embedded `bun run main.ts` 当前仍加载旧嵌入资产，显示旧 `Agent Shell` 占位页；本次 Task 14 采用开发服务器验活当前源码，并把重建嵌入资产列为后续编译/release smoke 必验项。
   - 覆盖：Requirement 7、11；Design 4.7、6.3、7、9。
 
-- [ ] 15. 收口 `ui-live-parity-hardening-v1` Task 14 并归档旧 spec 状态
+- [x] 15. 收口 `ui-live-parity-hardening-v1` Task 14 并归档旧 spec 状态
   - 更新 `ui-live-parity-hardening-v1/tasks.md`，完成 Task 14 文档、能力矩阵、CHANGELOG 与最终验收收口。
   - 更新 `.kiro/specs/README.md`、当前执行主线、能力矩阵、测试状态、Studio README、相关 API/运行文档。
   - 将已完成或被 release-readiness 上收的风险标记清楚：current、partial、planned、unsupported、non-goal、experience-not-ready、verified-by-browser、verified-by-release-smoke。
   - 按项目归档规则移动或标记 completed specs，确保 v0.1.0 前没有未收口 active 主线。
   - 验证：docs verify 通过，spec 索引与任务状态一致。
   - 覆盖：Requirement 9、11；Design 7、9。
+  - 证据：`ui-live-parity-hardening-v1/tasks.md` Task 14 已标记完成，并说明剩余体验风险已上收进 `v0-1-0-release-readiness`；`.kiro/specs/README.md` 已把 `ui-live-parity-hardening-v1` 改为 14/14 完成、release-readiness 改为 15/20，当前执行主线、能力矩阵、测试状态、Studio README、CHANGELOG 同步。验证：`node scripts/verify-docs.ts` PASS，`git diff --check` 退出码 0（仅 LF/CRLF 提示）。
 
 - [ ] 16. 全量自动化验证与回归矩阵
   - 运行并记录：`pnpm --dir packages/studio test -- app-next`、`pnpm --dir packages/studio test -- backend-contract`、`pnpm --dir packages/studio typecheck`、`pnpm --dir packages/cli test`、`pnpm docs:verify`、`git diff --check`。

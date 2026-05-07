@@ -122,7 +122,7 @@
   - 覆盖：Requirement 3、4、5、8、9；Design: Browser E2E Gate。
   - 证据：新增 `e2e/settings-session-conversation.spec.ts`，通过真实 Playwright 启动 Bun API + Vite 前端，在隔离 `.novelfork/e2e-workspace-flow-*` 根目录内准备真实 provider/runtime settings 与书籍，不调用真实模型。场景 1 覆盖 `/next/settings` 模型页默认模型未配置不从模型池第一项 fallback、`Codex 推理强度` 来自真实 settings schema、AI 供应商页 Codex 平台无账号显示“可导入 / 未配置账号 / 不可调用”、AI 代理页 first-token timeout 为 planned 且无“已接入/Codex sandbox 已接入”假 current。场景 2 覆盖 `/next/books/:bookId` 点击“生成下一章”创建真实 session、Shell 侧栏出现写作会话、跳转 `/next/narrators/:sessionId`，header 显示真实 binding/model/权限/推理，注入真实 chat state 后工具卡展开 raw 且脱敏 `apiKey/sk-*`，模型/权限/推理控件调用真实 session API 并轮询回读，idle 中断禁用、持久化 running tool call 刷新后中断启用。RED 先暴露 running tool call 刷新后仍禁用中断的问题；修复 `toConversationStatus()` 纳入持久化 running tool call。验证 `pnpm exec -- playwright test e2e/settings-session-conversation.spec.ts` 通过（2 passed）。
 
-- [ ] 14. 文档、能力矩阵、CHANGELOG 与最终验收收口
+- [x] 14. 文档、能力矩阵、CHANGELOG 与最终验收收口
   - 更新 `docs/01-当前状态/02-Studio能力矩阵.md`，把资源编辑、设置页、provider、对话窗口、Claude/Codex parity 按 current/partial/planned/non-goal/needs-browser-verification 记录。
   - 2026-05-07 追加真实 UI 交互体验记录：同机浏览器打开 NovelFork `http://127.0.0.1:4567` 与 NarraFork `http://127.0.0.1:7778`，记录设置页、工作台/项目页、叙述者列表与会话页对比；结论是 NovelFork 真实合同/状态透明已收敛，但会话页视觉布局、composer 空态、侧栏长列表管理与干净验收数据仍是 v0.1.0 前风险，不能把 Task 13 E2E passed 等同于 NarraFork 级 UI 体验成熟。
   - 更新 `docs/01-当前状态/03-当前执行主线.md`、`docs/08-测试与质量/01-当前测试状态.md`、`packages/studio/README.md`、相关 API 文档和 `.kiro/specs/README.md`。
@@ -130,3 +130,4 @@
   - 运行验证：`pnpm --dir packages/studio test -- app-next`、`pnpm --dir packages/studio test -- backend-contract`、`pnpm --dir packages/studio typecheck`、`pnpm docs:verify`；涉及 CLI parity 或 headless 行为时追加 `pnpm --dir packages/cli test`；涉及 compiled Studio 冒烟时追加 `pnpm --dir packages/studio compile`。
   - 最终报告必须列出已运行命令、结果、浏览器 E2E 覆盖路径、未覆盖项和未运行项。
   - 覆盖：Requirement 9、10；Design: Documentation Strategy、Validation Commands。
+  - 证据：本 spec 的资源详情/保存闭环、Shell session/recovery sync、SettingsTruthModel、Provider callable 状态、会话透明化、Claude/Codex parity baseline、设置/会话浏览器 E2E 已在 Task 1-13 完成；2026-05-07 NarraFork UI 对比暴露的剩余发布风险已全部上收进 `v0-1-0-release-readiness`，并在 Task 1-14 继续通过会话页、叙述者中心、产品壳首页、作品工作台、Provider、Routines、clean-root E2E 与手工软件验活收敛。当前收口验证命令来自 release-readiness：`pnpm exec playwright test` 7 passed、routing/StudioNextApp 34 tests passed、client/server TypeScript 通过、`node scripts/verify-docs.ts` PASS。
