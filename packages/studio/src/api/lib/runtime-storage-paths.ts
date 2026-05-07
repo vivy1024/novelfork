@@ -1,10 +1,13 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-const RUNTIME_DIR = join(homedir(), ".novelfork");
+function resolveRuntimeDir(): string {
+  const override = process.env.NOVELFORK_RUNTIME_DIR?.trim();
+  return override || join(homedir(), ".novelfork");
+}
 
 export function resolveRuntimeStoragePath(...segments: string[]): string {
-  return join(RUNTIME_DIR, ...segments);
+  return join(resolveRuntimeDir(), ...segments);
 }
 
 export function resolveRuntimeStorageDir(...segments: string[]): string {
