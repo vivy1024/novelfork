@@ -84,6 +84,7 @@ describe("Studio Next routing", () => {
     expect(within(main).getByRole("heading", { name: "最近作品" })).toBeTruthy();
     expect(within(main).getByRole("heading", { name: "最近会话" })).toBeTruthy();
     expect(within(main).getByRole("heading", { name: "模型健康" })).toBeTruthy();
+    expect(within(main).getByRole("button", { name: "新建作品" })).toBeTruthy();
     expect(within(main).getByRole("button", { name: "新建会话" })).toBeTruthy();
     expect(within(main).getByRole("button", { name: "打开设置" })).toBeTruthy();
   });
@@ -101,7 +102,8 @@ describe("Studio Next routing", () => {
     render(<StudioNextApp initialRoute={{ kind: "home" }} />);
 
     const main = screen.getByTestId("shell-main");
-    expect(within(main).getByText("还没有可用内容，先创建第一本书或新建会话。")).toBeTruthy();
+    expect(within(main).getByText("还没有可用内容，先新建作品或新建会话。")).toBeTruthy();
+    expect(within(main).getByRole("button", { name: "新建作品" })).toBeTruthy();
     expect(within(main).getByRole("heading", { name: "最近作品" })).toBeTruthy();
     expect(within(main).getByRole("heading", { name: "最近会话" })).toBeTruthy();
   });
