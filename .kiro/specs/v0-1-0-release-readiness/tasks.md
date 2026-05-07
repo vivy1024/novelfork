@@ -93,11 +93,12 @@
   - 覆盖：Requirement 5、8；Design 4.5、4.7、5.3、6.1、6.2。
   - 证据：`ProviderSettingsPage` 新增搜索供应商/模型、只看异常项、隐藏测试夹具控件，并在 API key provider 卡片标记 `E2E Provider` / `E2E Model` 为测试夹具开发数据；`SettingsTruthModel` 新增 `deriveProviderFixtureFacts`，将 E2E provider 派生为 providers 组 partial/unsupported 清理事实而非普通 current 数据；`e2e/settings-session-conversation.spec.ts` 在真实浏览器设置页断言 E2E provider 可见为测试夹具且可被隐藏。验证：RED 先失败于缺少过滤控件与 `deriveProviderFixtureFacts`；GREEN 后 `pnpm --dir packages/studio exec vitest run src/app-next/settings/ProviderSettingsPage.test.tsx src/app-next/settings/SettingsTruthModel.test.ts` 通过（2 files / 22 tests passed）；`pnpm --dir packages/studio exec vitest run src/app-next/settings` 通过（6 files / 37 tests passed）；`pnpm exec playwright test e2e/settings-session-conversation.spec.ts` 通过（3 passed）；client/server TypeScript 通过。
 
-- [ ] 12. 验活并补齐 Routines / 工作流配置台发布口径
+- [x] 12. 验活并补齐 Routines / 工作流配置台发布口径
   - 真实打开 `/next/routines`，检查命令、工具、权限、技能、子代理、MCP、钩子等分组入口。
   - 如果发现静态 mock 或假 current，先补 RED 测试并修复为真实列表、readonly/planned/unsupported 或错误状态。
   - 更新文档记录 routines 页 current/readonly/planned/unsupported 项和未覆盖项。
   - 验证：Routines 聚焦回归、必要 Browser/Playwright 验活；未接能力不得宣传为可用。
+  - 证据：现有 `RoutinesNextPage` 已通过 routines API 加载 merged/global/project scope，十个分区均可达（命令、可选工具、工具权限、全局技能、项目技能、自定义子代理、全局提示词、系统提示词、MCP 工具、钩子）；MCP Server 管理通过 `/mcp/registry`、`/mcp/servers/*` 真实 API 展示策略来源、服务器状态与工具权限；生命周期钩子保存仍写回 routines scope。未发现假 current，因此未改生产实现；新增 `e2e/routines-workflow.spec.ts` 作为发布前浏览器验活。验证：`pnpm --dir packages/studio exec vitest run src/app-next/routines/RoutinesNextPage.test.tsx` 通过（1 file / 4 tests passed）；`pnpm exec playwright test e2e/routines-workflow.spec.ts` 通过（1 passed）；client/server TypeScript 通过。
   - 覆盖：Requirement 6、11；Design 4.6、7、9。
 
 - [ ] 13. 建立 v0.1.0 release-readiness 浏览器 E2E 主路径
