@@ -157,17 +157,17 @@
 
 | 功能 | 状态 |
 |------|------|
-| AI 供应商管理（API key 接入） | ✅ Task 8：区分可配置、已配置、已验证、可调用；缺配置或测试失败显示 degraded/error 与恢复动作 |
+| AI 供应商管理（API key 接入） | ✅ Task 8：区分可配置、已配置、已验证、可调用；缺配置或测试失败显示 degraded/error 与恢复动作；v0.1.0 Release Readiness Task 11 新增搜索供应商/模型、只看异常项、隐藏测试夹具，并在 E2E Provider 卡片标记测试夹具开发数据 |
 | 平台集成（Codex/Kiro JSON 账号导入） | ✅ Task 8：无账号显示“可导入 / 未配置账号 / 不可调用”，0 模型显示“未验证 / 0 个模型 / 不可调用”；Task 13 Playwright 已在 `/next/settings` 验活 Codex 无账号不可调用 |
 | 模型池管理（刷新/测试/启用禁用） | ✅ Task 8：运行态总览拆分 provider total、enabled provider、available models、total catalog models、callable models |
 | 真实 Provider/Model 管理（显式选择，无虚拟模型/自动 fallback） | ✅ 模型能力标签只来自真实 inventory（大上下文、多模态、思考链、工具调用）；未知能力显示 unknown |
 | Runtime control panel（权限/上下文/工具策略） | ✅ Task 7：运行策略逐项经 `deriveAgentRuntimeSettingsFacts` 展示来源、状态、读写 API 与 planned 缺口 |
-| 设置 Truth Model（来源/状态/API/未配置原因） | ✅ Task 6-7：模型页与 Agent runtime 可见 setting 通过 `SettingsFact` 展示真实来源、状态、读写 API；无 schema 来源项显示 planned/unsupported 或隐藏，空值显示“未配置”；Task 13 浏览器 E2E 已验活默认模型未配置不 fallback、Codex 推理强度来自真实 schema |
+| 设置 Truth Model（来源/状态/API/未配置原因） | ✅ Task 6-7：模型页与 Agent runtime 可见 setting 通过 `SettingsFact` 展示真实来源、状态、读写 API；无 schema 来源项显示 planned/unsupported 或隐藏，空值显示“未配置”；Task 13 浏览器 E2E 已验活默认模型未配置不 fallback、Codex 推理强度来自真实 schema；v0.1.0 Release Readiness Task 11 新增 provider fixture cleanup facts，将 E2E Provider 识别为开发/清理事实而非普通 current 数据 |
 | 模型默认值/摘要模型/子代理配置 | ✅ 默认/摘要/Explore/Plan/General/Codex 推理强度均来自 user settings，不用模型池第一项冒充当前值；运行控制保存后回读 `/api/settings/user` |
 | Agent runtime 来源事实 | ✅ 覆盖 default permission、max turns、retry/backoff、WebFetch proxy、上下文/大窗口阈值、debug、allowlist/blocklist、sendMode；first-token timeout 标记 planned；Task 13 浏览器 E2E 确认不出现“已接入/Codex sandbox 已接入”假 current |
 | Claude Code parity guard | ✅ Task 11：基于本机 2.1.69、官方 CLI reference 与本地 Claude 源码建立 baseline；Claude TUI/Chrome bridge/tmux/IDE server/plugin 等 non-goal 不进入 UI current claim，权限模式仅标 partial 映射 |
 | Codex CLI parity guard | ✅ Task 12：基于本机 `codex-cli 0.80.0` help、官方 CLI/config/non-interactive/subagents/Windows 文档建立 baseline；TUI 为 non-goal，exec/config/subagents/web search/approval/Windows 边界为 partial，sandbox/MCP/image input/review 为 planned；Codex sandbox 不进入 UI current claim |
-| 设置分组 IA | ✅ 个人设置、实例管理、运行资源与审计、关于与项目；借鉴 NarraFork 分组但字段回到 NovelFork schema；2026-05-07 手工对比确认 NovelFork truthfulness 已收敛，但本机开发数据残留多批 E2E Provider，正式验收需使用干净 root 或清理测试夹具 |
+| 设置分组 IA | ✅ 个人设置、实例管理、运行资源与审计、关于与项目；借鉴 NarraFork 分组但字段回到 NovelFork schema；2026-05-07 手工对比确认 NovelFork truthfulness 已收敛；v0.1.0 Release Readiness Task 11 已补 E2E Provider 识别/隐藏，正式验收仍使用干净 root |
 | 个人资料 | ✅ |
 | 关于（版本/commit/Bun） | ✅ |
 | 套路页（命令/工具/权限/技能/子代理/MCP/钩子） | ✅ |
@@ -232,5 +232,5 @@
 | Agent Shell 会话长列表 | v0.1.0 Release Readiness Task 5-6 已改为左栏精选前 5 条活跃叙述者、显示剩余数量，并提供“查看全部叙述者”进入 `/next/sessions`；会话中心具备搜索、类型/状态筛选、排序、归档/恢复、工作目录/创建/最后消息时间和新建叙述者表单。后续仍需 clean root 手工验活确认实际列表密度与路径可达。 |
 | 产品首页成熟度 | v0.1.0 Release Readiness Task 7-8 已把 `/next` 主区从 `Agent Shell` 占位页换成作者首页，最近作品/会话/模型健康与主要入口来自真实 shell data；后续仍需 clean root 软件验活确认空态、真实 provider 数据和首屏视觉。 |
 | 作品工作台解释层 | v0.1.0 Release Readiness Task 9-10 已完成 RED→GREEN：工作台首屏展示作品标题/当前状态/清晰区域，资源 header 卡片化展示类型/路径/读写能力/保存状态/只读原因；写作动作显示会话、候选稿、草稿、审校、提示词预览、不可用等输出边界说明，并明确预览/不可用边界不是正式写入能力；workbench 邻近回归和 `e2e/workbench-resource-edit.spec.ts` 已通过。 |
-| E2E 夹具污染手工验收 | 本机模型下拉残留多批 `E2E Provider ...`，正式软件实际验活必须使用干净 root 或让 E2E 清理 provider/settings 夹具 |
+| E2E 夹具污染手工验收 | v0.1.0 Release Readiness Task 11 已让 Provider 页识别/隐藏 `E2E Provider ...` 测试夹具，并让 settings/session/conversation Playwright 使用隔离 root 验证该路径；正式软件实际验活仍必须使用干净 root |
 | 能力矩阵文档 | ← 就是这一篇，刚更新 |

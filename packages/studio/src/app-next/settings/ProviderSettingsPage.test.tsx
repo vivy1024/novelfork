@@ -147,6 +147,43 @@ describe("ProviderSettingsPage", () => {
     expect(openaiCard.textContent).toContain("可调用");
   });
 
+  it("RED: provider 列表支持搜索、异常过滤并能隐藏 E2E 测试夹具", async () => {
+    const client = createClient();
+    const e2eProvider = {
+      ...openaiProvider,
+      id: "e2e-provider-task11",
+      name: "E2E Provider Task11",
+      prefix: "e2e-task11",
+      models: [{ ...openaiProvider.models[0], id: "e2e-model-a", name: "E2E Model A", lastTestStatus: "success" as const }],
+    };
+    const brokenProvider = {
+      ...openaiProvider,
+      id: "broken-gateway",
+      name: "Broken Gateway",
+      baseUrl: "",
+      config: {},
+      models: [{ ...openaiProvider.models[0], id: "broken-model", name: "Broken Model", lastTestStatus: "error" as const, lastTestError: "网关 502" }],
+    };
+    (client.listProviders as ReturnType<typeof vi.fn>).mockResolvedValue({ providers: [openaiProvider, e2eProvider, brokenProvider] });
+
+    render(<ProviderSettingsPage client={client} />);
+
+    const fixtureCard = await screen.findByRole("button", { name: "查看 E2E Provider Task11 API key 接入详情" });
+    expect(screen.getByLabelText("搜索供应商或模型")).toBeTruthy();
+    expect(screen.getByLabelText("只看异常项")).toBeTruthy();
+    expect(screen.getByLabelText("隐藏测试夹具")).toBeTruthy();
+    expect(fixtureCard.textContent).toContain("测试夹具");
+    expect(fixtureCard.textContent).toContain("开发数据");
+
+    fireEvent.click(screen.getByLabelText("隐藏测试夹具"));
+    expect(screen.queryByRole("button", { name: "查看 E2E Provider Task11 API key 接入详情" })).toBeNull();
+
+    fireEvent.change(screen.getByLabelText("搜索供应商或模型"), { target: { value: "broken" } });
+    fireEvent.click(screen.getByLabelText("只看异常项"));
+    expect(screen.getByRole("button", { name: "查看 Broken Gateway API key 接入详情" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "查看 OpenAI API key 接入详情" })).toBeNull();
+  });
+
   it("运行态总览拆分 total / available / callable 模型统计口径", async () => {
     const client = createClient();
     client.getProviderSummary = vi.fn(async () => ({

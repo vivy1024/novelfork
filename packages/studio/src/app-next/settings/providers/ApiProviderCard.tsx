@@ -5,11 +5,13 @@ import type { ApiProviderStatusSummary } from "./ApiProvidersSection";
 export function ApiProviderCard({
   provider,
   status,
+  isTestFixture = false,
   onSelect,
   onToggle,
 }: {
   readonly provider: ApiProvider;
   readonly status?: ApiProviderStatusSummary;
+  readonly isTestFixture?: boolean;
   readonly onSelect: (providerId: string) => void;
   readonly onToggle: (providerId: string, enabled: boolean) => void;
 }) {
@@ -59,6 +61,7 @@ export function ApiProviderCard({
                 {providerCompatibilityLabel(provider.compatibility)}
               </span>
             )}
+            {isTestFixture ? <span className="inline-block rounded bg-purple-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-purple-600">测试夹具</span> : null}
           </div>
         </div>
         <button
@@ -87,6 +90,7 @@ export function ApiProviderCard({
         <div className="mt-3 text-xs text-muted-foreground">暂无模型，进入详情后刷新。</div>
       )}
       {reasons.length > 0 && <div className="mt-2 text-xs text-muted-foreground">{reasons.join(" / ")}</div>}
+      {isTestFixture ? <div className="mt-2 text-xs text-muted-foreground">开发数据：测试夹具，请使用隔离 root 或清理该 provider 后再做发布验收。</div> : null}
       <div className="mt-2 text-xs text-muted-foreground">{provider.models.length} 个模型 · {status?.callableModelCount ?? 0} 可调用模型</div>
       <div className="mt-2 text-xs text-muted-foreground">恢复动作：添加密钥 / 刷新模型 / 测试模型 / 启停 provider</div>
     </div>

@@ -31,6 +31,7 @@ function isFormValid(form: ProviderFormState): boolean {
 export function ApiProvidersSection({
   providers,
   providerStatuses,
+  fixtureProviderIds,
   showAddForm,
   form,
   busy,
@@ -42,6 +43,7 @@ export function ApiProvidersSection({
 }: {
   readonly providers: readonly ApiProvider[];
   readonly providerStatuses?: Readonly<Record<string, ApiProviderStatusSummary>>;
+  readonly fixtureProviderIds?: ReadonlySet<string>;
   readonly showAddForm: boolean;
   readonly form: ProviderFormState;
   readonly busy: string | null;
@@ -80,6 +82,7 @@ export function ApiProvidersSection({
               key={provider.id}
               provider={provider}
               status={providerStatuses?.[provider.id]}
+              isTestFixture={fixtureProviderIds?.has(provider.id) ?? false}
               onSelect={onSelectProvider}
               onToggle={onToggleProvider}
             />
