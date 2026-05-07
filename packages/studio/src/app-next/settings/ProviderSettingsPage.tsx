@@ -11,6 +11,7 @@ import { ApiProviderDetail } from "./providers/ApiProviderDetail";
 import { ApiProvidersSection, type ApiProviderStatusSummary, type ProviderFormState } from "./providers/ApiProvidersSection";
 import { PlatformIntegrationDetail } from "./providers/PlatformIntegrationDetail";
 import { PlatformIntegrationsSection } from "./providers/PlatformIntegrationsSection";
+import { deriveProviderFixtureFacts } from "./SettingsTruthModel";
 import type {
   PlatformAccount,
   PlatformId,
@@ -198,6 +199,25 @@ function providerStatus(provider: ManagedProvider): ApiProviderStatusSummary {
   };
 }
 
+function providerMatchesQuery(provider: ManagedProvider, query: string): boolean {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) return true;
+  const haystack = [
+    provider.id,
+    provider.name,
+    provider.prefix,
+    provider.baseUrl,
+    provider.compatibility,
+    provider.apiMode,
+    ...provider.models.flatMap((model) => [model.id, model.name]),
+  ].filter(Boolean).join(" ").toLowerCase();
+  return haystack.includes(normalized);
+}
+
+function providerHasIssue(status: ApiProviderStatusSummary, isFixture: boolean): boolean {
+  return isFixture || status.status !== "callable" || status.reasons.some((reason) => reason !== "可调用");
+}
+
 function RuntimeOverviewSection({ summary, fallback }: { readonly summary: ProviderRuntimeSummary | null; readonly fallback: LocalProviderSummary }) {
   const data = summary ?? {
     providerCount: fallback.providerCount,
@@ -298,6 +318,9 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
   const [contextDrafts, setContextDrafts] = useState<Record<string, string>>({});
   const [providerRuntimeSummary, setProviderRuntimeSummary] = useState<ProviderRuntimeSummary | null>(null);
   const [groupedModels, setGroupedModels] = useState<GroupedModelInventory[]>([]);
+  const [providerQuery, setProviderQuery] = useState("");
+  const [showIssuesOnly, setShowIssuesOnly] = useState(false);
+  const [hideTestFixtures, setHideTestFixtures] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -365,7 +388,17 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
     };
   }, [platformIntegrations, providers]);
 
-  const localCallableModelCount = useMemo(() => providers.reduce((total, provider) => total + providerStatus(provider).callableModelCount, 0), [providers]);
+  const providerStatuses = useMemo(() => Object.fromEntries(providers.map((provider) => [provider.id, providerStatus(provider)])), [providers]);
+  const fixtureFacts = useMemo(() => deriveProviderFixtureFacts({ cleanRoot: false, providers }), [providers]);
+  const fixtureProviderIds = useMemo(() => new Set(fixtureFacts.map((fact) => fact.id.replace("provider-fixture.", ""))), [fixtureFacts]);
+  const filteredProviders = useMemo(() => providers.filter((provider) => {
+    const isFixture = fixtureProviderIds.has(provider.id);
+    if (hideTestFixtures && isFixture) return false;
+    if (!providerMatchesQuery(provider, providerQuery)) return false;
+    if (showIssuesOnly && !providerHasIssue(providerStatuses[provider.id], isFixture)) return false;
+    return true;
+  }), [fixtureProviderIds, hideTestFixtures, providerQuery, providerStatuses, providers, showIssuesOnly]);
+  const localCallableModelCount = useMemo(() => providers.reduce((total, provider) => total + providerStatuses[provider.id].callableModelCount, 0), [providerStatuses, providers]);
   const callableModelCount = providerRuntimeSummary?.callableModelCount ?? localCallableModelCount;
 
   const selectedPlatform = platformIntegrations.find((integration) => integration.id === selectedPlatformId) ?? null;
@@ -539,9 +572,35 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
         onSelect={setSelectedPlatformId}
       />
 
+      <section className="space-y-3 rounded-lg border border-border bg-card p-3" aria-label="Provider 可读性过滤">
+        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-end">
+          <label className="text-sm">
+            搜索供应商或模型
+            <input
+              aria-label="搜索供应商或模型"
+              className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2"
+              value={providerQuery}
+              onChange={(event) => setProviderQuery(event.currentTarget.value)}
+              placeholder="按供应商、模型、prefix 或 endpoint 过滤"
+            />
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={showIssuesOnly} onChange={(event) => setShowIssuesOnly(event.currentTarget.checked)} />
+            只看异常项
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={hideTestFixtures} onChange={(event) => setHideTestFixtures(event.currentTarget.checked)} />
+            隐藏测试夹具
+          </label>
+        </div>
+        <p className="text-xs text-muted-foreground">当前显示 {filteredProviders.length} / {providers.length} 个 API key 供应商；异常过滤包含 degraded/error、未验证、缺配置和测试夹具。</p>
+        {fixtureFacts.length > 0 ? <p className="text-xs text-muted-foreground">检测到 {fixtureFacts.length} 个测试夹具开发数据；正式发布验收请使用 clean root，或隐藏/清理这些 E2E Provider。</p> : null}
+      </section>
+
       <ApiProvidersSection
-        providers={providers}
-        providerStatuses={Object.fromEntries(providers.map((provider) => [provider.id, providerStatus(provider)]))}
+        providers={filteredProviders}
+        providerStatuses={providerStatuses}
+        fixtureProviderIds={fixtureProviderIds}
         showAddForm={showAddForm}
         form={form}
         busy={busy}

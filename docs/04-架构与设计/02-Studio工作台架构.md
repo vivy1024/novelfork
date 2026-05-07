@@ -37,7 +37,7 @@ SQLite (bun:sqlite) + 本地文件系统
 | `/next` | `StudioNextApp` + `AgentShell` + `HomeRouteLive` | 当前入口；Shell 侧栏加载真实 books/sessions/provider 状态，主区域默认显示作者首页，最近作品/会话/模型健康/主要动作来自 `useShellData`，其他 route 挂载 live 页面 |
 | `/next/narrators/:sessionId` | `ConversationRouteLive` → `ConversationRoute` | 叙述者会话；接入 `useAgentConversationRuntime`、WebSocket `resumeFromSeq`、ack/message/abort、模型/权限/推理配置、工具结果 renderer 与确认门刷新 |
 | `/next/books/:bookId` | `WritingWorkbenchRouteLive` → `WritingWorkbenchRoute` | 写作工作台；通过 resource contract 加载资源树，展示作品标题/资源状态、资源 header（类型/路径/读写能力/保存状态/只读原因），支持打开/保存/只读/unsupported、dirty canvasContext 与写作动作会话跳转/结果边界说明 |
-| `/next/settings` | `SettingsLayout` + `SettingsSectionContent` / `ProviderSettingsPage` | 设置页；模型、provider、runtime 配置入口可达 |
+| `/next/settings` | `SettingsLayout` + `SettingsSectionContent` / `ProviderSettingsPage` | 设置页；模型、provider、runtime 配置入口可达；Provider 页区分平台账号/API key provider/模型库存/callable 状态，并支持搜索、异常过滤、隐藏 E2E 测试夹具 |
 | `/next/routines` | `RoutinesNextPage` | 套路页；工具、命令、权限、技能、子代理与 MCP 管理 |
 | `/next/search` | `SearchPage` | 全局搜索；使用搜索 API 或展示真实错误/空状态 |
 
