@@ -38,12 +38,13 @@
   - 覆盖：Requirement 4、11；Design 6.2、7、9。
   - 证据：在 `e2e/settings-session-conversation.spec.ts` 新增空会话发布布局场景，使用隔离 `.novelfork/e2e-workspace-flow-*` root、真实 `/api/providers`、`/api/settings/user`、`/api/sessions` 准备 model-unavailable session，先运行 `pnpm exec playwright test e2e/settings-session-conversation.spec.ts -g "conversation route empty state"` 得到 RED：`conversation-empty-state` 缺少“模型池为空，请先到设置页启用模型”恢复说明；随后让空态同步显示 `sendDisabledReason` 和设置入口，聚焦场景通过。扩展既有工作台→会话 E2E，覆盖工具卡 raw 脱敏 + 全屏详情、pending confirmation lane + 拒绝后 `/api/sessions/:id/tools` 回读清空、模型/权限/推理回读、idle/running 中断控制。验证 `pnpm exec playwright test e2e/settings-session-conversation.spec.ts` 通过（3 tests passed，真实 Bun API + Vite 前端，不调用真实模型）。收尾验证：`pnpm --dir packages/studio exec vitest run src/app-next/agent-conversation/surface/ConversationSurface.test.tsx` 通过（1 file / 26 tests passed）；`pnpm --dir packages/studio exec vitest run src/app-next/agent-conversation/surface/ConversationSurface.test.tsx src/app-next/StudioNextApp.test.tsx src/api/routes/session.test.ts` 通过（3 files / 72 tests passed）；`pnpm --dir packages/studio exec tsc --noEmit` 与 `pnpm --dir packages/studio exec tsc -p tsconfig.server.json --noEmit` 通过；`pnpm docs:verify` 通过（84 markdown files / 22 directories）；`git diff --check` 退出码 0（仅 LF/CRLF 工作区提示）。
 
-- [ ] 5. 为叙述者中心和 Shell 左栏管理补 RED 测试
+- [x] 5. 为叙述者中心和 Shell 左栏管理补 RED 测试
   - 检查并扩展 `SessionCenterPage`、`SessionCenter`、`NarratorList`、`AgentShell` / `StudioNextApp` 相关测试。
   - 先补失败用例：会话中心展示标题、状态、模型、消息数、绑定对象、工作目录、创建/最后消息时间；支持搜索、类型筛选、状态筛选、排序、归档/恢复入口；Shell 左栏只展示最近/高优先级会话并提供“查看全部叙述者”。
   - 新建独立叙述者测试应覆盖标题、工作目录/绑定对象、模型、权限模式、计划模式。
   - 验证：聚焦测试先 RED，失败原因来自缺少 UI/行为。
   - 覆盖：Requirement 3；Design 4.3、5.1、6.1。
+  - 证据：扩展 `SessionCenter.test.tsx`、`NewSessionDialog.test.tsx`、`AgentShell.test.tsx`，新增 3 个 RED 用例，覆盖会话中心工作目录/创建/最后消息时间/排序控件，新建独立叙述者标题 + 工作目录 + 绑定对象 + 模型 + 权限 + 计划模式，以及 Shell 左栏最近会话截断、剩余数量和“查看全部叙述者”入口。运行 `pnpm --dir packages/studio exec vitest run src/components/sessions/SessionCenter.test.tsx src/components/sessions/NewSessionDialog.test.tsx src/app-next/shell/AgentShell.test.tsx` 得到 3 failed / 15 passed：失败点分别为 Shell 左栏仍显示 `历史会话 6`、SessionCenter 行缺 `工作目录：D:\\novels\\free-session`/时间元信息、NewSessionDialog 缺 `工作目录` 字段，均来自 Task 6 待实现的 UI/行为缺口。
 
 - [ ] 6. 完成发布级叙述者中心与 Shell 左栏收敛
   - 复用现有 `SessionCenterPage` 和 session domain client，补搜索、类型/状态筛选、排序、归档/恢复、新建独立叙述者表单和真实错误展示。

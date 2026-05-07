@@ -111,6 +111,46 @@ describe("NewSessionDialog", () => {
     });
   });
 
+  it("RED: captures independent narrator workspace, binding, model, permission and plan mode before creating", async () => {
+    mockRuntimeModels([
+      { modelId: "sub2api:gpt-5-codex", modelName: "GPT-5 Codex", providerName: "Sub2API" },
+      { modelId: "anthropic:claude-sonnet-4-6", modelName: "Claude Sonnet 4.6", providerName: "Anthropic" },
+    ]);
+    const onCreate = vi.fn();
+
+    render(
+      <NewSessionDialog
+        open
+        initialPresetId="planner"
+        onOpenChange={() => {}}
+        onCreate={onCreate}
+      />,
+    );
+
+    await screen.findByText("Sub2API · GPT-5 Codex");
+
+    fireEvent.change(screen.getByLabelText("会话标题"), { target: { value: "世界观规划室" } });
+    fireEvent.change(screen.getByLabelText("工作目录"), { target: { value: "D:\\novels\\lingchao" } });
+    fireEvent.change(screen.getByLabelText("绑定对象"), { target: { value: "standalone" } });
+    fireEvent.change(screen.getByLabelText("运行时模型"), { target: { value: "anthropic:claude-sonnet-4-6" } });
+    fireEvent.click(screen.getByRole("button", { name: "计划模式" }));
+    fireEvent.click(screen.getByRole("button", { name: /只读/ }));
+    fireEvent.click(screen.getByRole("button", { name: "创建会话" }));
+
+    expect(onCreate).toHaveBeenCalledWith({
+      agentId: "planner",
+      title: "世界观规划室",
+      worktree: "D:\\novels\\lingchao",
+      binding: { type: "standalone" },
+      sessionMode: "plan",
+      sessionConfig: {
+        providerId: "anthropic",
+        modelId: "claude-sonnet-4-6",
+        permissionMode: "read",
+      },
+    });
+  });
+
   it("blocks creation when the unified runtime model pool is empty", async () => {
     mockRuntimeModels([]);
     const onCreate = vi.fn();
