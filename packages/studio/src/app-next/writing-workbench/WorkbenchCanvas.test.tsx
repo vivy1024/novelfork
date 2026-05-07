@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { WorkbenchCanvas } from "./WorkbenchCanvas";
@@ -43,6 +43,27 @@ describe("WorkbenchCanvas", () => {
     expect(screen.getByLabelText("文本文件正文")).toHaveProperty("readOnly", true);
     expect(screen.getByRole("button", { name: "保存" })).toHaveProperty("disabled", true);
     expect(screen.getByText("只读资源，当前画布禁用编辑。")) .toBeTruthy();
+  });
+
+  it("RED: 当前资源 header 必须卡片化展示类型、路径、读写能力、保存状态和只读原因", () => {
+    render(
+      <WorkbenchCanvas
+        node={node({
+          kind: "story",
+          title: "story.md",
+          path: "story/story.md",
+          capabilities: { open: true, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
+        })}
+        onSave={vi.fn()}
+      />,
+    );
+
+    const header = screen.getByTestId("workbench-resource-header");
+    expect(within(header).getByText("资源类型：Story")) .toBeTruthy();
+    expect(within(header).getByText("真实路径：story/story.md")).toBeTruthy();
+    expect(within(header).getByText("读写能力：只读")).toBeTruthy();
+    expect(within(header).getByText("保存状态：已保存")).toBeTruthy();
+    expect(screen.getByText("只读原因：当前资源由合同标记为只读，保存入口已禁用。")).toBeTruthy();
   });
 
   it("未选择资源时显示占位状态", () => {
