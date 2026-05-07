@@ -17,7 +17,7 @@
 | `conversation-parity-v1` | 13 | ✅ 已完成（13/13 已完成） |
 | `backend-core-refactor-v1` | 10 | ✅ 已完成（10/10 已完成） |
 | `ui-live-parity-hardening-v1` | 14 | ⏳ 执行中（13/14 已完成；资源主链路、Shell session/recovery sync、SettingsTruthModel、模型/Agent runtime、provider callable、对话透明化、Claude/Codex parity baseline 与设置/会话浏览器 E2E 已闭环；最终文档收口待后续任务） |
-| `v0-1-0-release-readiness` | 20 | ⏳ 执行中（4/20；已完成发布准备基线、会话页成品化 RED 测试、ConversationSurface 五区布局重排、会话页浏览器 E2E 与检查点；下一步叙述者中心与 Shell 左栏管理） |
+| `v0-1-0-release-readiness` | 20 | ⏳ 执行中（5/20；已完成发布准备基线、会话页 Task 2-4、叙述者中心/Shell 左栏 Task 5 RED 测试；下一步 Task 6 实现发布级叙述者中心与左栏收敛） |
 | `novelfork-ui-v1` | 8 | ⏸️ 已被重建主线取代，保留作历史参考 |
 | `studio-ide-layout-v1` | 30 | ❌ 归档（前端布局失败，后端功能保留） |
 | `studio-frontend-integration-v1` | 10 | ❌ 归档（未完成） |

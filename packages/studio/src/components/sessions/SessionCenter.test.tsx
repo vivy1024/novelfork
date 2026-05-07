@@ -14,6 +14,7 @@ const activeStandalone = createSession({
   permissionMode: "plan",
   providerId: "openai",
   modelId: "gpt-5.4-mini",
+  worktree: "D:\\novels\\free-session",
 });
 const activeBook = createSession({
   id: "session-book",
@@ -86,6 +87,18 @@ describe("SessionCenter", () => {
 
     fireEvent.click(within(screen.getByTestId("session-center-row-session-book")).getByRole("button", { name: "打开" }));
     expect(openSession).toHaveBeenCalledWith(expect.objectContaining({ id: "session-book", title: "灵潮纪元 · 叙述者" }));
+  });
+
+  it("RED: exposes release-ready metadata and sorting controls for large narrator lists", async () => {
+    render(<SessionCenter sessionClient={sessionClient as never} onOpenSession={vi.fn()} />);
+
+    const standaloneRow = await screen.findByTestId("session-center-row-session-free");
+    expect(standaloneRow.textContent).toContain("工作目录：D:\\novels\\free-session");
+    expect(standaloneRow.textContent).toContain("创建：2026-05-01");
+    expect(standaloneRow.textContent).toContain("最后消息：2026-05-02");
+
+    fireEvent.change(screen.getByLabelText("排序会话"), { target: { value: "lastModified-desc" } });
+    await waitFor(() => expect(sessionClient.listActiveSessions).toHaveBeenCalledWith({ status: "active", sort: "lastModified-desc" }));
   });
 
   it("archives and restores sessions through the session domain client without deleting history", async () => {
@@ -256,6 +269,7 @@ function createSession(input: {
   readonly permissionMode?: NarratorSessionRecord["sessionConfig"]["permissionMode"];
   readonly pendingToolCallCount?: number;
   readonly lastFailure?: NonNullable<NarratorSessionRecord["recovery"]>["lastFailure"];
+  readonly worktree?: string;
 }): NarratorSessionRecord {
   return {
     id: input.id,
@@ -268,6 +282,7 @@ function createSession(input: {
     lastModified: "2026-05-02T00:00:00.000Z",
     messageCount: 7,
     sortOrder: 0,
+    worktree: input.worktree,
     projectId: input.projectId,
     chapterId: input.chapterId,
     sessionConfig: {

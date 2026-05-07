@@ -43,4 +43,29 @@ describe("AgentShell", () => {
     fireEvent.click(screen.getByRole("button", { name: "搜索" }));
     expect(onNavigate).toHaveBeenCalledWith({ kind: "search" });
   });
+
+  it("RED: keeps the narrator rail focused on recent sessions and links to the full session center", () => {
+    const onNavigate = vi.fn<(route: ShellRoute) => void>();
+    const manySessions = Array.from({ length: 8 }, (_, index) => ({
+      id: `session-${index + 1}`,
+      title: index < 5 ? `最近会话 ${index + 1}` : `历史会话 ${index + 1}`,
+      status: "active" as const,
+      lastModified: `2026-05-0${Math.min(index + 1, 9)}T00:00:00.000Z`,
+    }));
+
+    render(
+      <AgentShell route={{ kind: "home" }} books={books} sessions={manySessions} onNavigate={onNavigate}>
+        <div>占位</div>
+      </AgentShell>,
+    );
+
+    const sidebar = screen.getByTestId("shell-sidebar");
+    expect(sidebar.textContent).toContain("最近会话 1");
+    expect(sidebar.textContent).toContain("最近会话 5");
+    expect(sidebar.textContent).not.toContain("历史会话 6");
+    expect(sidebar.textContent).toContain("还有 3 个会话");
+
+    fireEvent.click(screen.getByRole("button", { name: "查看全部叙述者" }));
+    expect(onNavigate).toHaveBeenCalledWith({ kind: "sessions" });
+  });
 });
