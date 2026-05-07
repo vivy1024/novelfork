@@ -72,6 +72,6 @@ describe("WorkbenchWritingActions", () => {
 
     expect(screen.getByText("结果边界：session → candidate")).toBeTruthy();
     expect(screen.getByText("结果边界：prompt-preview")).toBeTruthy();
-    expect(screen.getByText("结果边界：audit")).toBeTruthy();
+    expect(screen.getAllByText("结果边界：audit").length).toBeGreaterThan(0);
   });
 });

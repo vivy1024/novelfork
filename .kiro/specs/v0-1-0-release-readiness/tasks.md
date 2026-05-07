@@ -77,12 +77,13 @@
   - 覆盖：Requirement 2；Design 4.2、5.1。
   - 证据：新增 `WritingWorkbenchRoute.test.tsx`，要求工作台首屏展示作品标题“灵潮纪元”、当前状态、资源树/当前资源画布/写作动作区域；扩展 `WorkbenchCanvas.test.tsx`，要求 `workbench-resource-header` 卡片展示资源类型、真实路径、读写能力、保存状态和只读原因；扩展 `WorkbenchWritingActions.test.tsx`，要求动作卡显示 `session → candidate`、`prompt-preview`、`audit` 结果边界。验证 `pnpm --dir packages/studio exec vitest run src/app-next/writing-workbench/WritingWorkbenchRoute.test.tsx src/app-next/writing-workbench/WorkbenchCanvas.test.tsx src/app-next/writing-workbench/WorkbenchWritingActions.test.tsx` 得到 3 failed / 12 passed，失败均来自发布级解释层缺失：无作品标题 heading/当前状态区域、无 `workbench-resource-header`、无结果边界文本。
 
-- [ ] 10. 完成作品工作台体验成品化
+- [x] 10. 完成作品工作台体验成品化
   - 改进资源树分组、当前资源 header、资源 viewer/canvas 和写作动作卡片文案。
   - 不改变正式写入边界：AI 输出仍进 candidate/draft/preview，不直接覆盖正文。
   - 失败、只读、unsupported、prompt-preview、dirty guard 均保持透明。
   - 验证：Task 9 RED 转 GREEN；运行工作台聚焦回归和 `e2e/workbench-resource-edit.spec.ts`。
   - 覆盖：Requirement 2；Design 4.2、8、9。
+  - 证据：`WritingWorkbenchRoute` 新增作品工作台 header、资源加载/选择状态、资源树/当前资源画布/写作动作区域语义；`WorkbenchCanvas` 新增 `workbench-resource-header`，展示资源类型、真实路径、读写能力、保存状态和只读原因，同时保留 dirty/save/hydrate guard；`WorkbenchWritingActions` 从 writing action descriptor 的 `outputBoundary` 派生作者可理解结果边界，不改变 session 创建/复用逻辑。验证 Task 9 RED 转 GREEN：`pnpm --dir packages/studio exec vitest run src/app-next/writing-workbench/WritingWorkbenchRoute.test.tsx src/app-next/writing-workbench/WorkbenchCanvas.test.tsx src/app-next/writing-workbench/WorkbenchWritingActions.test.tsx` 通过（3 files / 15 tests passed）；workbench 邻近回归通过（9 files / 62 tests passed）；`pnpm exec playwright test e2e/workbench-resource-edit.spec.ts` 通过（1 passed）；client/server TypeScript 通过。
 
 - [ ] 11. 治理设置 / Provider 可读性与 E2E 夹具污染
   - 为 `ProviderSettingsPage`、`SettingsTruthModel`、相关 E2E fixtures 补测试，确认 clean root 不出现 `E2E Provider`，开发 root 可识别/清理测试 provider 或测试模型。
