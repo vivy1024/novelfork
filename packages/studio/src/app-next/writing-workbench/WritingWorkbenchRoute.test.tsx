@@ -38,7 +38,7 @@ describe("WritingWorkbenchRoute", () => {
         selectedNode={selectedNode}
         onOpen={vi.fn()}
         onSave={vi.fn()}
-        writingActions={<section aria-label="写作动作">写作动作占位</section>}
+        writingActions={<div>写作动作占位</div>}
       />,
     );
 
