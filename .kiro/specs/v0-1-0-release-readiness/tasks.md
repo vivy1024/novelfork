@@ -6,12 +6,13 @@
 
 ## Tasks
 
-- [ ] 1. 固化发布准备基线与可追溯清单
+- [x] 1. 固化发布准备基线与可追溯清单
   - 读取并确认 `requirements.md` / `design.md`、`ui-live-parity-hardening-v1` Task 14、2026-05-07 4567/7778 手工 UI 对比记录、当前能力矩阵和测试状态。
   - 建立本轮发布准备 traceability checklist：Requirement 1-11 → 相关组件/API/E2E/文档/验证命令。
   - 检查当前工作树、最近提交、当前版本号、现有 dist/release 产物和 active spec 状态，避免基于过期事实执行。
   - 验证：记录 `git status --short`、最近提交、spec 状态和待执行清单；不得修改实现。
   - 覆盖：Requirement 9、11；Design 2、7、9。
+  - 证据：新增 `release-readiness-baseline.md`，记录已读取的 approved requirements/design/tasks、`ui-live-parity-hardening-v1` Task 14 状态、4567/7778 手工 UI 对比、能力矩阵、测试状态、执行前干净工作树、最新提交 `cb269472`、当前 0.0.6 版本号、dist 中仅有 v0.0.2-v0.0.6/novelfork.exe 而无 v0.1.0 产物；建立 Requirement 1-11 → Task/子系统/验证方式映射，并列出会话页视觉、叙述者中心、首页、工作台、E2E provider 污染、Routines 验活、clean root、spec 归档、版本/产物等当前发布阻塞项。
 
 - [ ] 2. 为会话页 UI 成品化补 RED 组件测试
   - 在 `ConversationSurface.test.tsx` / 邻近测试中先补失败用例，覆盖发布级 session header、runtime summary cards、empty state、composer dock、running/idle controls、session config 未加载原因、模型不可用设置入口。
