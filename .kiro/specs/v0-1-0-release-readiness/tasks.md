@@ -54,18 +54,20 @@
   - 覆盖：Requirement 3；Design 4.3、5.1、8。
   - 证据：`SessionCenter` 复用 session domain client 增加排序控件、工作目录、创建/最后消息时间、`NewSessionDialog` 入口与真实 `createSession`；`NewSessionDialog` 增加工作目录、绑定对象、运行时模型选择并保留权限/计划模式；`ShellSidebar` 仅展示前 5 条活跃叙述者、显示剩余数量并通过 `/next/sessions` 进入完整会话中心；`shell-route` 与 `StudioNextApp` 接通 `/next/sessions`。验证 `pnpm --dir packages/studio exec vitest run src/components/sessions/SessionCenter.test.tsx src/components/sessions/NewSessionDialog.test.tsx src/app-next/shell/AgentShell.test.tsx` 通过（3 files / 18 tests passed）；邻近回归 `pnpm --dir packages/studio exec vitest run src/components/sessions/SessionCenter.test.tsx src/components/sessions/NewSessionDialog.test.tsx src/app-next/shell/AgentShell.test.tsx src/app-next/shell/shell-route.test.ts src/app-next/sessions/SessionCenterPage.test.tsx src/app-next/sidebar/NarratorList.test.tsx src/app-next/StudioNextApp.test.tsx src/api/routes/session.test.ts src/app-next/backend-contract/domain-clients.test.ts` 通过（9 files / 87 tests passed）；`pnpm --dir packages/studio exec tsc --noEmit` 与 `pnpm --dir packages/studio exec tsc -p tsconfig.server.json --noEmit` 通过。
 
-- [ ] 7. 补产品首页 / 作品入口 RED 测试
+- [x] 7. 补产品首页 / 作品入口 RED 测试
   - 为 `/next` route 或 AgentShell 首页补测试，断言作者向首页展示最近作品、最近会话、provider/model 健康摘要、主要写作动作、设置/套路入口和空态。
   - 首页统计必须来自真实 books/sessions/provider summary 或透明 unavailable/planned 状态，不允许硬编码假数据。
   - 验证：聚焦测试先 RED，确认当前 `/next` 入口仍偏开发态或缺空态。
   - 覆盖：Requirement 1；Design 4.1、5.1。
+  - 证据：扩展 `src/app-next/routing.test.tsx`，新增作者首页 RED 用例：带 shell data mock 时要求 `/next` 主区显示“最近作品”“最近会话”“模型健康”“新建会话”“打开设置”；空数据时要求显示“还没有可用内容，先创建第一本书或新建会话。”。运行 `pnpm --dir packages/studio exec vitest run src/app-next/routing.test.tsx -t "author-facing home sections"` 先失败于主区仍为 `Agent Shell` 占位页且缺少“最近作品”。
 
-- [ ] 8. 实现发布级产品壳首页
+- [x] 8. 实现发布级产品壳首页
   - 在 app-next route 中实现作者首页或可理解的工作台入口，复用 `useShellData`、provider summary/status 和现有导航。
   - 展示最近作品、最近会话、主要写作动作、设置/套路/会话中心入口和空态。
   - 高级调试/管理入口降低层级，不作为作者第一屏主动作。
   - 验证：Task 7 RED 转 GREEN；运行 routing/StudioNextApp/ShellData 相关回归。
   - 覆盖：Requirement 1；Design 4.1、5.1、8。
+  - 证据：`StudioNextApp` 新增 `HomeRouteLive`，`/next` 主区不再显示开发占位 `Agent Shell`，而是从 `useShellData` 读取真实 books/sessions/provider summary/status，展示作者首页、最近作品、最近会话、模型健康、快速动作、provider 透明摘要和空态；保留 route 内导航，不引入假统计。验证 `pnpm --dir packages/studio exec vitest run src/app-next/routing.test.tsx` 通过（1 file / 4 tests passed）；邻近回归 `pnpm --dir packages/studio exec vitest run src/app-next/routing.test.tsx src/app-next/StudioNextApp.test.tsx src/app-next/entry.test.ts src/app-next/shell/useShellData.test.ts src/app-next/shell/AgentShell.test.tsx` 通过（5 files / 39 tests passed）；`pnpm --dir packages/studio exec tsc --noEmit` 与 `pnpm --dir packages/studio exec tsc -p tsconfig.server.json --noEmit` 通过。
 
 - [ ] 9. 为作品工作台发布级体验补 RED 测试
   - 扩展 `WritingWorkbenchRoute`、资源树、资源 viewer/canvas、WorkbenchWritingActions 相关测试。

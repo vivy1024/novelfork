@@ -128,6 +128,7 @@
 
 | 能力 | 内容 | 状态 |
 |-----|------|------|
+| 产品壳首页 | `/next` 主区已从开发占位页升级为作者首页；复用 `useShellData` 的 books/sessions/provider summary/status，展示最近作品、最近会话、模型健康、快速动作（新建/继续会话、设置、套路库）和空态；v0.1.0 Release Readiness Task 7-8 已完成 RED→GREEN 与 routing/StudioNextApp/ShellData 邻近回归 | ✅ 仍需最终 clean root 软件验活确认真实数据观感 |
 | 左侧资源栏 | 全局导航 + 当前书籍资源树；章节、候选稿、草稿、经纬、Story/Truth、素材、发布报告 | ✅ |
 | 中间画布 | 多资源 Tab、章节编辑、候选稿、经纬详情、工具产物、dirty 切换拦截；`ui-live-parity-hardening-v1` Task 2-4 已补资源详情 hydrate、保存控制器、dirty guard 与 Playwright 浏览器保存刷新读回 | ✅ 资源 hydrate/保存防覆盖/浏览器读回已验证；更广 E2E 仍随后续任务扩展 |
 | 右侧叙述者会话 | 固定 Writer/Narrator 会话、模型/权限控件、工具调用流、恢复状态；Task 9 已补真实 session binding、消息数、context usage、工作区/Git unavailable facts，并在 session config 更新后回读 chat state 同步 ShellDataProvider；Task 10 已补工具卡复制/全屏/raw 脱敏、审批目标/风险/来源/操作、context threshold/checkpoint notice 和运行控制 disabled reason；Task 13 浏览器 E2E 覆盖工作台创建 session、Shell 同步、narrator route header、工具卡 raw 脱敏、模型/权限/推理回读、idle/running 中断状态；v0.1.0 Release Readiness Task 2-4 已先补 RED 测试再把 ConversationSurface 重排为 Session Header、Runtime Summary Cards、Recovery/Confirmation Lane、Message Stream、Composer Dock 五区布局，新增作者向空态、model-unavailable 恢复说明和 composer dock；Task 5-6 已补叙述者中心/Shell 左栏 RED→GREEN，`/next/sessions` 显示工作目录/创建/最后消息时间/排序/归档/恢复/新建叙述者，Shell 左栏只保留前 5 条并提供完整中心入口；Playwright 已覆盖空会话、工具卡 raw/全屏、pending confirmation、配置回读与 running abort | ✅ 会话页和叙述者管理合同、组件回归与浏览器 E2E 已验证；发布级视觉仍需后续 clean root 手工软件验活最终确认 |
@@ -229,5 +230,6 @@
 | 引导式创作流程串联 | 已有 session-first 最小链路，完整体验仍需后续验活 |
 | 对话窗口视觉完成度 | v0.1.0 Release Readiness Task 2-4 已完成组件级重排与浏览器 E2E：`/next/narrators/:sessionId` 对话页拆为 session header、runtime summary cards、recovery/confirmation lane、message stream、composer dock，并补作者向空态、模型不可用恢复说明、工具 raw/全屏和 pending confirmation 检查点；仍需最终 clean root 手工软件验活确认发布截图口径 |
 | Agent Shell 会话长列表 | v0.1.0 Release Readiness Task 5-6 已改为左栏精选前 5 条活跃叙述者、显示剩余数量，并提供“查看全部叙述者”进入 `/next/sessions`；会话中心具备搜索、类型/状态筛选、排序、归档/恢复、工作目录/创建/最后消息时间和新建叙述者表单。后续仍需 clean root 手工验活确认实际列表密度与路径可达。 |
+| 产品首页成熟度 | v0.1.0 Release Readiness Task 7-8 已把 `/next` 主区从 `Agent Shell` 占位页换成作者首页，最近作品/会话/模型健康与主要入口来自真实 shell data；后续仍需 clean root 软件验活确认空态、真实 provider 数据和首屏视觉。 |
 | E2E 夹具污染手工验收 | 本机模型下拉残留多批 `E2E Provider ...`，正式软件实际验活必须使用干净 root 或让 E2E 清理 provider/settings 夹具 |
 | 能力矩阵文档 | ← 就是这一篇，刚更新 |

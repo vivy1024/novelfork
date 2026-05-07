@@ -23,9 +23,10 @@ import { SearchPage } from "./search/SearchPage";
 import { RoutinesNextPage } from "./routines/RoutinesNextPage";
 import { SessionCenterPage } from "./sessions/SessionCenterPage";
 import { SettingsLayout, type SettingsSectionItem } from "./components/layouts";
+import { Button } from "../components/ui/button";
 import { ProviderSettingsPage } from "./settings/ProviderSettingsPage";
 import { SettingsSectionContent } from "./settings/SettingsSectionContent";
-import { AgentShell, toShellPath, useShellData, useShellDataStore, type ShellRoute } from "./shell";
+import { AgentShell, toShellPath, useShellData, useShellDataStore, type ShellBookItem, type ShellRoute, type ShellSessionItem, type ShellDataProviderSummary, type ShellDataProviderStatus } from "./shell";
 import {
   applyResourceDetailToNode,
   loadResourceDetailState,
@@ -65,6 +66,158 @@ function ShellPlaceholder({ title, description }: { readonly title: string; read
       <p className="text-xs font-medium text-muted-foreground">NovelFork Next</p>
       <h1 className="mt-2 text-2xl font-semibold">{title}</h1>
       <p className="mt-2 text-sm text-muted-foreground">{description}</p>
+    </section>
+  );
+}
+
+function providerSummaryRecord(providerSummary: ShellDataProviderSummary | null): Record<string, unknown> | null {
+  if (!providerSummary || typeof providerSummary !== "object") return null;
+  const record = providerSummary as Record<string, unknown>;
+  if (record.summary && typeof record.summary === "object") return record.summary as Record<string, unknown>;
+  return record;
+}
+
+function providerRuntimeStatus(providerStatus: ShellDataProviderStatus | null): { readonly hasUsableModel?: boolean; readonly defaultProvider?: string; readonly defaultModel?: string; readonly lastConnectionError?: string } | null {
+  if (!providerStatus || typeof providerStatus !== "object") return null;
+  const record = providerStatus as Record<string, unknown>;
+  if (record.status && typeof record.status === "object") return record.status as { readonly hasUsableModel?: boolean; readonly defaultProvider?: string; readonly defaultModel?: string; readonly lastConnectionError?: string };
+  return record as { readonly hasUsableModel?: boolean; readonly defaultProvider?: string; readonly defaultModel?: string; readonly lastConnectionError?: string };
+}
+
+function HomeRouteAction({ label, onClick, variant = "outline" }: { readonly label: string; readonly onClick: () => void; readonly variant?: "default" | "outline" }) {
+  return <Button type="button" variant={variant} onClick={onClick}>{label}</Button>;
+}
+
+function HomeStatCard({ label, value }: { readonly label: string; readonly value: string }) {
+  return (
+    <div className="rounded-xl border border-border bg-card px-4 py-3 shadow-sm">
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="mt-1 text-lg font-semibold text-foreground">{value}</div>
+    </div>
+  );
+}
+
+interface HomeRouteLiveProps {
+  readonly books: readonly ShellBookItem[];
+  readonly sessions: readonly ShellSessionItem[];
+  readonly providerSummary: ShellDataProviderSummary | null;
+  readonly providerStatus: ShellDataProviderStatus | null;
+  readonly loading: boolean;
+  readonly error: string | null;
+  readonly onNavigate: (route: ShellRoute) => void;
+}
+
+function HomeRouteLive({ books, sessions, providerSummary, providerStatus, loading, error, onNavigate }: HomeRouteLiveProps) {
+  const recentBooks = books.slice(0, 3);
+  const recentSessions = sessions.slice(0, 3);
+  const summary = providerSummaryRecord(providerSummary);
+  const runtimeStatus = providerRuntimeStatus(providerStatus);
+  const providerList = Array.isArray(summary?.providers) ? (summary.providers as readonly unknown[]) : null;
+  const providerCount = providerList?.length;
+  const activeProviderId = typeof summary?.activeProviderId === "string" ? summary.activeProviderId : runtimeStatus?.defaultProvider;
+  const latestSession = sessions[0];
+
+  return (
+    <section className="flex h-full flex-1 flex-col gap-6 p-6" data-testid="agent-shell-route">
+      <header className="space-y-4">
+        <div className="space-y-2">
+          <p className="text-xs font-medium text-muted-foreground">NovelFork Next</p>
+          <h1 className="text-2xl font-semibold">作者首页</h1>
+          <p className="text-sm text-muted-foreground">从最近作品、最近会话和模型健康快速进入写作。</p>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <HomeRouteAction label="新建会话" onClick={() => onNavigate({ kind: "sessions" })} />
+          <HomeRouteAction
+            label="继续最近会话"
+            onClick={() => onNavigate(latestSession ? { kind: "narrator", sessionId: latestSession.id } : { kind: "sessions" })}
+            variant="outline"
+          />
+          <HomeRouteAction label="打开设置" onClick={() => onNavigate({ kind: "settings" })} variant="outline" />
+          <HomeRouteAction label="套路库" onClick={() => onNavigate({ kind: "routines" })} variant="outline" />
+        </div>
+      </header>
+
+      {error ? (
+        <div role="alert" className="rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+          {error}
+        </div>
+      ) : null}
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <HomeStatCard label="最近作品" value={`${books.length} 本`} />
+        <HomeStatCard label="最近会话" value={`${sessions.length} 条`} />
+        <HomeStatCard label="模型健康" value={runtimeStatus?.hasUsableModel ? "有可用模型" : "暂无可用模型"} />
+        <HomeStatCard label="当前提供方" value={activeProviderId ?? "未配置"} />
+      </div>
+
+      {loading ? <p className="text-sm text-muted-foreground">正在加载作者首页数据…</p> : null}
+
+      {!loading && books.length === 0 && sessions.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-border bg-muted/20 px-4 py-5 text-sm text-muted-foreground">
+          还没有可用内容，先创建第一本书或新建会话。
+        </div>
+      ) : null}
+
+      <div className="grid gap-6 xl:grid-cols-3">
+        <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-lg font-semibold">最近作品</h2>
+            <span className="text-xs text-muted-foreground">{books.length} 本</span>
+          </div>
+          {recentBooks.length === 0 ? (
+            <p className="mt-3 text-sm text-muted-foreground">暂无作品，先创建一本书开始写作。</p>
+          ) : (
+            <div className="mt-3 space-y-2">
+              {recentBooks.map((book) => (
+                <Button key={book.id} type="button" variant="outline" className="w-full justify-between" onClick={() => onNavigate({ kind: "book", bookId: book.id })}>
+                  <span className="truncate text-left">{book.title}</span>
+                  <span className="text-xs text-muted-foreground">打开</span>
+                </Button>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-lg font-semibold">最近会话</h2>
+            <span className="text-xs text-muted-foreground">{sessions.length} 条</span>
+          </div>
+          {recentSessions.length === 0 ? (
+            <p className="mt-3 text-sm text-muted-foreground">暂无会话，先新建叙述者或继续最近会话。</p>
+          ) : (
+            <div className="mt-3 space-y-2">
+              {recentSessions.map((session) => (
+                <Button key={session.id} type="button" variant="outline" className="h-auto w-full justify-between py-2" onClick={() => onNavigate({ kind: "narrator", sessionId: session.id })}>
+                  <span className="min-w-0 flex-1 text-left">
+                    <span className="block truncate font-medium text-foreground">{session.title}</span>
+                    <span className="block truncate text-xs text-muted-foreground">
+                      {session.projectName ? `作品：${session.projectName}` : session.agentId ? `Agent：${session.agentId}` : "独立叙述者"}
+                    </span>
+                  </span>
+                  <span className="text-xs text-muted-foreground">打开</span>
+                </Button>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-lg font-semibold">模型健康</h2>
+            <span className="text-xs text-muted-foreground">透明摘要</span>
+          </div>
+          <div className="mt-3 space-y-2 text-sm text-muted-foreground">
+            <p>状态：{runtimeStatus?.hasUsableModel ? "有可用模型" : "暂无可用模型"}</p>
+            <p>默认提供方：{runtimeStatus?.defaultProvider ?? activeProviderId ?? "未配置"}</p>
+            <p>默认模型：{runtimeStatus?.defaultModel ?? "未配置"}</p>
+            {providerCount !== undefined ? <p>摘要中的提供方数量：{providerCount}</p> : null}
+            {runtimeStatus?.lastConnectionError ? <p role="status">最近错误：{runtimeStatus.lastConnectionError}</p> : null}
+            {!summary && !runtimeStatus ? <p>暂无 provider 摘要，先到设置页完成模型配置。</p> : null}
+          </div>
+        </section>
+      </div>
     </section>
   );
 }
@@ -661,7 +814,31 @@ function SettingsRouteLive() {
   );
 }
 
-function RouteMountPoint({ route, canvasContext, onCanvasContextChange, onNavigateToConversation }: { readonly route: ShellRoute; readonly canvasContext?: CanvasContext; readonly onCanvasContextChange: (context: WorkbenchCanvasContext) => void; readonly onNavigateToConversation: (sessionId: string) => void }) {
+function RouteMountPoint({
+  route,
+  canvasContext,
+  onCanvasContextChange,
+  onNavigateToConversation,
+  onNavigate,
+  books,
+  sessions,
+  providerSummary,
+  providerStatus,
+  loading,
+  error,
+}: {
+  readonly route: ShellRoute;
+  readonly canvasContext?: CanvasContext;
+  readonly onCanvasContextChange: (context: WorkbenchCanvasContext) => void;
+  readonly onNavigateToConversation: (sessionId: string) => void;
+  readonly onNavigate: (route: ShellRoute) => void;
+  readonly books: readonly ShellBookItem[];
+  readonly sessions: readonly ShellSessionItem[];
+  readonly providerSummary: ShellDataProviderSummary | null;
+  readonly providerStatus: ShellDataProviderStatus | null;
+  readonly loading: boolean;
+  readonly error: string | null;
+}) {
   switch (route.kind) {
     case "narrator":
       return <ConversationRouteLive sessionId={route.sessionId} canvasContext={canvasContext} />;
@@ -676,6 +853,7 @@ function RouteMountPoint({ route, canvasContext, onCanvasContextChange, onNaviga
     case "settings":
       return <SettingsRouteLive />;
     case "home":
+      return <HomeRouteLive books={books} sessions={sessions} providerSummary={providerSummary} providerStatus={providerStatus} loading={loading} error={error} onNavigate={onNavigate} />;
     default:
       return <ShellPlaceholder title="Agent Shell" description="选择左侧叙事线、叙述者或全局入口开始。" />;
   }
@@ -684,7 +862,7 @@ function RouteMountPoint({ route, canvasContext, onCanvasContextChange, onNaviga
 export function StudioNextApp({ initialRoute }: StudioNextAppProps) {
   const [activeRoute, setActiveRoute] = useState<StudioNextRoute>(() => initialRoute ?? resolveStudioNextRoute());
   const [canvasContext, setCanvasContext] = useState<WorkbenchCanvasContext | null>(null);
-  const { books, sessions } = useShellData();
+  const { books, sessions, providerSummary, providerStatus, loading, error } = useShellData();
 
   const navigate = useCallback((route: ShellRoute) => {
     setActiveRoute(route);
@@ -706,7 +884,19 @@ export function StudioNextApp({ initialRoute }: StudioNextAppProps) {
 
   return (
     <AgentShell route={activeRoute} books={books} sessions={sessions} onNavigate={navigate}>
-      <RouteMountPoint route={activeRoute} canvasContext={canvasContext ?? undefined} onCanvasContextChange={setCanvasContext} onNavigateToConversation={navigateToConversation} />
+      <RouteMountPoint
+        route={activeRoute}
+        canvasContext={canvasContext ?? undefined}
+        onCanvasContextChange={setCanvasContext}
+        onNavigateToConversation={navigateToConversation}
+        onNavigate={navigate}
+        books={books}
+        sessions={sessions}
+        providerSummary={providerSummary}
+        providerStatus={providerStatus}
+        loading={loading}
+        error={error}
+      />
     </AgentShell>
   );
 }
