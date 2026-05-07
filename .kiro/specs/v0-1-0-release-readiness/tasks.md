@@ -46,12 +46,13 @@
   - 覆盖：Requirement 3；Design 4.3、5.1、6.1。
   - 证据：扩展 `SessionCenter.test.tsx`、`NewSessionDialog.test.tsx`、`AgentShell.test.tsx`，新增 3 个 RED 用例，覆盖会话中心工作目录/创建/最后消息时间/排序控件，新建独立叙述者标题 + 工作目录 + 绑定对象 + 模型 + 权限 + 计划模式，以及 Shell 左栏最近会话截断、剩余数量和“查看全部叙述者”入口。运行 `pnpm --dir packages/studio exec vitest run src/components/sessions/SessionCenter.test.tsx src/components/sessions/NewSessionDialog.test.tsx src/app-next/shell/AgentShell.test.tsx` 得到 3 failed / 15 passed：失败点分别为 Shell 左栏仍显示 `历史会话 6`、SessionCenter 行缺 `工作目录：D:\\novels\\free-session`/时间元信息、NewSessionDialog 缺 `工作目录` 字段，均来自 Task 6 待实现的 UI/行为缺口。
 
-- [ ] 6. 完成发布级叙述者中心与 Shell 左栏收敛
+- [x] 6. 完成发布级叙述者中心与 Shell 左栏收敛
   - 复用现有 `SessionCenterPage` 和 session domain client，补搜索、类型/状态筛选、排序、归档/恢复、新建独立叙述者表单和真实错误展示。
   - Shell 左栏改为精选最近 N 条或折叠分组，显示进入会话中心入口，不再默认满屏历史 Planner/写作会话。
   - 保持打开会话跳转 `/next/narrators/:sessionId`，不恢复 windowStore 或旧 shell window。
   - 验证：Task 5 RED 转 GREEN；运行 SessionCenter/NarratorList/StudioNextApp 聚焦回归。
   - 覆盖：Requirement 3；Design 4.3、5.1、8。
+  - 证据：`SessionCenter` 复用 session domain client 增加排序控件、工作目录、创建/最后消息时间、`NewSessionDialog` 入口与真实 `createSession`；`NewSessionDialog` 增加工作目录、绑定对象、运行时模型选择并保留权限/计划模式；`ShellSidebar` 仅展示前 5 条活跃叙述者、显示剩余数量并通过 `/next/sessions` 进入完整会话中心；`shell-route` 与 `StudioNextApp` 接通 `/next/sessions`。验证 `pnpm --dir packages/studio exec vitest run src/components/sessions/SessionCenter.test.tsx src/components/sessions/NewSessionDialog.test.tsx src/app-next/shell/AgentShell.test.tsx` 通过（3 files / 18 tests passed）；邻近回归 `pnpm --dir packages/studio exec vitest run src/components/sessions/SessionCenter.test.tsx src/components/sessions/NewSessionDialog.test.tsx src/app-next/shell/AgentShell.test.tsx src/app-next/shell/shell-route.test.ts src/app-next/sessions/SessionCenterPage.test.tsx src/app-next/sidebar/NarratorList.test.tsx src/app-next/StudioNextApp.test.tsx src/api/routes/session.test.ts src/app-next/backend-contract/domain-clients.test.ts` 通过（9 files / 87 tests passed）；`pnpm --dir packages/studio exec tsc --noEmit` 与 `pnpm --dir packages/studio exec tsc -p tsconfig.server.json --noEmit` 通过。
 
 - [ ] 7. 补产品首页 / 作品入口 RED 测试
   - 为 `/next` route 或 AgentShell 首页补测试，断言作者向首页展示最近作品、最近会话、provider/model 健康摘要、主要写作动作、设置/套路入口和空态。

@@ -21,6 +21,7 @@ import type { NarratorSessionChatMessage, NarratorSessionChatSnapshot, NarratorS
 import { resolveStudioNextRoute, type StudioNextRoute } from "./entry";
 import { SearchPage } from "./search/SearchPage";
 import { RoutinesNextPage } from "./routines/RoutinesNextPage";
+import { SessionCenterPage } from "./sessions/SessionCenterPage";
 import { SettingsLayout, type SettingsSectionItem } from "./components/layouts";
 import { ProviderSettingsPage } from "./settings/ProviderSettingsPage";
 import { SettingsSectionContent } from "./settings/SettingsSectionContent";
@@ -666,6 +667,8 @@ function RouteMountPoint({ route, canvasContext, onCanvasContextChange, onNaviga
       return <ConversationRouteLive sessionId={route.sessionId} canvasContext={canvasContext} />;
     case "book":
       return <WritingWorkbenchRouteLive bookId={route.bookId} onCanvasContextChange={onCanvasContextChange} onNavigateToConversation={onNavigateToConversation} />;
+    case "sessions":
+      return <SessionCenterPage />;
     case "search":
       return <SearchPage />;
     case "routines":
