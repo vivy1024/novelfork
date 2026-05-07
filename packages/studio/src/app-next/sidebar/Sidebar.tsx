@@ -31,22 +31,25 @@ function SidebarSection({ title, icon, defaultOpen = true, actions, children }: 
 
   return (
     <div className="space-y-0.5">
-      <button
-        type="button"
-        className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground"
-        onClick={() => setOpen((v) => !v)}
-      >
-        {open ? <ChevronDown className="h-3 w-3 shrink-0" /> : <ChevronRight className="h-3 w-3 shrink-0" />}
-        <span className="flex items-center gap-1.5">
-          {icon}
-          {title}
-        </span>
-        {actions && (
-          <span className="ml-auto flex items-center gap-0.5" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
-            {actions}
+      <div className="flex items-center gap-1.5 rounded-md text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground">
+        <button
+          type="button"
+          className="flex min-w-0 flex-1 items-center gap-1.5 px-2 py-1 text-left"
+          aria-expanded={open}
+          onClick={() => setOpen((v) => !v)}
+        >
+          {open ? <ChevronDown className="h-3 w-3 shrink-0" /> : <ChevronRight className="h-3 w-3 shrink-0" />}
+          <span className="flex items-center gap-1.5">
+            {icon}
+            {title}
           </span>
+        </button>
+        {actions && (
+          <div className="mr-1 flex items-center gap-0.5">
+            {actions}
+          </div>
         )}
-      </button>
+      </div>
       {open && <div className="pl-2">{children}</div>}
     </div>
   );

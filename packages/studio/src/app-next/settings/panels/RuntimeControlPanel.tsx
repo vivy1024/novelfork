@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { fetchJson, putApi } from "@/hooks/use-api";
-import { createLenientFetchJsonContractClient, createProviderClient } from "@/app-next/backend-contract";
+import { PROXY_API_PATH, USER_SETTINGS_API_PATH, createLenientFetchJsonContractClient, createProviderClient } from "@/app-next/backend-contract";
 import { runtimeModelLabel, usableRuntimeModels, type RuntimeModelOption } from "@/lib/runtime-model-options";
 import { SESSION_PERMISSION_MODE_OPTIONS } from "@/shared/session-types";
 import type { ModelDefaultSettings, ProxySettings, RuntimeControlSettings, UserConfig } from "@/types/settings";
@@ -101,8 +101,8 @@ function RuntimeFactRow({ fact }: { readonly fact: SettingsFact<unknown> }) {
 }
 
 function RuntimeFactsSummary({ facts }: { readonly facts: ReadonlyArray<SettingsFact<unknown>> }) {
-  const userSettingsFact = facts.find((fact) => fact.readApi === "/api/settings/user");
-  const proxyFact = facts.find((fact) => fact.readApi === "/api/proxy");
+  const userSettingsFact = facts.find((fact) => fact.readApi === USER_SETTINGS_API_PATH);
+  const proxyFact = facts.find((fact) => fact.readApi === PROXY_API_PATH);
   return (
     <div className="rounded-md border border-border/60 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
       {userSettingsFact?.readApi && <span>来源：{userSettingsFact.readApi}</span>}
@@ -212,7 +212,7 @@ export function RuntimeControlPanel() {
   }
 
   async function refetchUserConfig() {
-    const data = await fetchJson<Pick<UserConfig, "runtimeControls" | "modelDefaults" | "proxy">>("/settings/user");
+    const data = await fetchJson<Pick<UserConfig, "runtimeControls" | "modelDefaults" | "proxy">>(USER_SETTINGS_API_PATH);
     applyUserConfig(data);
     return data;
   }
@@ -251,8 +251,8 @@ export function RuntimeControlPanel() {
     setSaved(false);
     setError(null);
     try {
-      await putApi<UserConfig>("/settings/user", { runtimeControls: rc, modelDefaults: md });
-      await putApi<ProxySettings>("/api/proxy", proxy);
+      await putApi<UserConfig>(USER_SETTINGS_API_PATH, { runtimeControls: rc, modelDefaults: md });
+      await putApi<ProxySettings>(PROXY_API_PATH, proxy);
       await refetchUserConfig();
       setSaved(true);
     } catch (e) {

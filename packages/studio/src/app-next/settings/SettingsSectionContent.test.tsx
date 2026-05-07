@@ -11,6 +11,7 @@ vi.mock("../../hooks/use-api", () => ({
   putApi: putApiMock,
 }));
 
+import { PROVIDER_MODELS_API_PATH } from "../backend-contract";
 import { SettingsSectionContent } from "./SettingsSectionContent";
 
 const sampleUser = {
@@ -33,7 +34,7 @@ afterEach(() => { cleanup(); vi.clearAllMocks(); });
 beforeEach(() => {
   fetchJsonMock.mockImplementation((path: string) => {
     if (path === "/settings/user") return Promise.resolve(sampleUser);
-    if (path === "/api/providers/models") return Promise.resolve({ models: [] });
+    if (path === PROVIDER_MODELS_API_PATH) return Promise.resolve({ models: [] });
     if (path === "/settings/metrics") return Promise.resolve({ bunVersion: "1.3.0", dbPath: "/data/storage.sqlite" });
     return Promise.resolve({});
   });

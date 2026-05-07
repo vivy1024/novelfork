@@ -6,7 +6,7 @@
 
 ## 版本与发布
 
-- **当前版本**: v0.0.6
+- **当前版本**: v0.1.0
 - **版本管理**: `CLAUDE.md` 标题 → 根/包级 `package.json` → `AGENTS.md` → `CHANGELOG.md` → release commit → `git tag` → GitHub Release
 - **版本变动**: 任何版本号变动必须同步更新 release 资料：`package.json`、`packages/*/package.json`、`CLAUDE.md`、`AGENTS.md`、`CHANGELOG.md`
 - **任务验收**: 用户要求提交、验收完成或明确要求收尾时，视为授权执行相关验证、Git 提交与 `git push origin <branch>`；不得只停留本地提交
@@ -55,6 +55,9 @@
 ## 构建与测试
 
 - `pnpm typecheck` — 类型检查
-- `pnpm --dir packages/studio exec vitest run` — 全量 Studio 测试（最新回归约 210 files / 1276 tests）
+- `pnpm --dir packages/studio exec vitest run src/app-next` — app-next 聚焦回归（Task16：47 files / 271 tests）
+- `pnpm --dir packages/studio exec vitest run src/app-next/backend-contract` — Backend Contract 聚焦回归（Task16：7 files / 38 tests）
+- `pnpm --dir packages/cli test` — CLI 全量测试（Task16：13 files / 97 tests）
+- `pnpm exec playwright test` — 浏览器 E2E（Task16：7 passed）
 - `pnpm --dir packages/studio compile` — 单文件编译（→ dist/novelfork.exe / dist/novelfork-vX.Y.Z-windows-x64.exe，约 117MB）
 - `bun run docs:verify` — 文档验证

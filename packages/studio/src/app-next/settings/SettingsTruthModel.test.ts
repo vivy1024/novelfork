@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { PROXY_API_PATH, USER_SETTINGS_API_PATH } from "../backend-contract";
 import * as SettingsTruthModelModule from "./SettingsTruthModel";
 import { deriveAgentRuntimeSettingsFacts, deriveClaudeParitySettingsFacts, deriveModelSettingsFacts, settingsFactDisplayValue } from "./SettingsTruthModel";
 
@@ -52,8 +53,8 @@ describe("SettingsTruthModel", () => {
         source: "user-settings",
         status: "current",
         writable: true,
-        readApi: "/api/settings/user",
-        writeApi: "/api/settings/user",
+        readApi: USER_SETTINGS_API_PATH,
+        writeApi: USER_SETTINGS_API_PATH,
         verifiedBy: "unit",
       });
       expect(settingsFactDisplayValue(fact)).not.toBe("—");
@@ -101,8 +102,8 @@ describe("SettingsTruthModel", () => {
     });
     expect(facts.find((fact) => fact.id === "runtime.proxy.webFetch")).toMatchObject({
       source: "user-settings",
-      readApi: "/api/proxy",
-      writeApi: "/api/proxy",
+      readApi: PROXY_API_PATH,
+      writeApi: PROXY_API_PATH,
       status: "current",
       writable: true,
     });

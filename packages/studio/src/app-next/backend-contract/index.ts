@@ -8,3 +8,4 @@ export * from "./writing-action-adapter";
 export * from "./writing-action-client";
 export * from "./backend-contract-verification";
 export * from "./fetch-json-contract-client";
+export * from "./api-paths";

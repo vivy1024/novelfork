@@ -1,5 +1,6 @@
 import type { NarrativeLineSnapshot } from "../../shared/agent-native-workspace";
 import type { BookDetailResponse, BookListResponse, ChapterContentResponse, SaveChapterPayload, SaveChapterResponse } from "../../shared/contracts";
+import { BOOK_CREATE_API_PATH, buildWorktreeStatusApiPath } from "./api-paths";
 import type { ContractClient } from "./contract-client";
 
 export interface SaveDraftPayload {
@@ -14,9 +15,34 @@ export interface SaveJingweiEntryPayload {
   readonly [key: string]: unknown;
 }
 
+export interface CreateBookPayload {
+  readonly title: string;
+  readonly genre?: string;
+  readonly language?: string;
+  readonly chapterWordCount?: number;
+  readonly targetChapters?: number;
+  readonly [key: string]: unknown;
+}
+
+export interface CreateBookResponse {
+  readonly bookId: string;
+  readonly [key: string]: unknown;
+}
+
+export interface WorktreeStatusResponse {
+  readonly status: {
+    readonly modified?: readonly unknown[];
+    readonly added?: readonly unknown[];
+    readonly deleted?: readonly unknown[];
+    readonly untracked?: readonly unknown[];
+  };
+}
+
 export function createResourceClient(contract: ContractClient) {
   return {
     listBooks: <T = BookListResponse>() => contract.get<T>("/api/books", { capability: { id: "books.list", status: "current" } }),
+    createBook: <T = CreateBookResponse>(payload: CreateBookPayload) => contract.post<T>(BOOK_CREATE_API_PATH, payload, { capability: { id: "books.create", status: "current" } }),
+    getWorktreeStatus: <T = WorktreeStatusResponse>(worktreePath: string) => contract.get<T>(buildWorktreeStatusApiPath(worktreePath), { capability: { id: "worktree.status", status: "current" } }),
     getBook: <T = BookDetailResponse>(bookId: string) => contract.get<T>(`/api/books/${encodeURIComponent(bookId)}`, { capability: { id: "books.detail", status: "current" } }),
     getBookCreateStatus: <T = { status: "creating" | "error" | "ready"; error?: string }>(bookId: string) =>
       contract.get<T>(`/api/books/${encodeURIComponent(bookId)}/create-status`, { capability: { id: "books.create-status", status: "process-memory" } }),

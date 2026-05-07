@@ -32,10 +32,10 @@ cd packages/studio
 bun run dev          # http://localhost:4567
 
 # 测试
-pnpm --dir packages/studio exec vitest run  # 最新回归约 210 files / 1276 tests
+pnpm --dir packages/studio exec vitest run src/app-next  # Task16 app-next 回归：47 files / 271 tests
 
 # 编译
-pnpm --dir packages/studio compile          # → dist/novelfork.exe + dist/novelfork-vX.Y.Z-windows-x64.exe (~117MB)
+pnpm --dir packages/studio compile          # → dist/novelfork-v0.1.0-windows-x64.exe + SHA256 (~115MB)
 ```
 
 ---
@@ -50,7 +50,7 @@ novelfork/
 │   └── cli/           # CLI 工具 (novelfork 命令)
 ├── docs/              # 文档中心 (产品/架构/API/指南)
 ├── .kiro/
-│   ├── specs/         # 开发规格（当前 active：conversation-parity-v1 / backend-core-refactor-v1）
+│   ├── specs/         # 开发规格（当前 active：v0-1-0-release-readiness）
 │   └── steering/      # 项目原则与约束
 ├── claude/            # Claude Code 源码参考
 └── scripts/           # 工具脚本

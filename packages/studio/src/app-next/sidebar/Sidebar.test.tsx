@@ -72,16 +72,27 @@ describe("Sidebar", () => {
     expect(onSettings).toHaveBeenCalledOnce();
   });
 
-  it("renders storyline and narrator action buttons", () => {
-    render(
-      <Sidebar
-        storylineActions={<button type="button">新建</button>}
-        narratorActions={<button type="button">+</button>}
-      />,
-    );
+  it("renders storyline and narrator action buttons without nested interactive controls", () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
-    expect(screen.getByText("新建")).toBeTruthy();
-    expect(screen.getByText("+")).toBeTruthy();
+    try {
+      render(
+        <Sidebar
+          storylineActions={<button type="button">新建</button>}
+          narratorActions={<button type="button">+</button>}
+        />,
+      );
+
+      const newButton = screen.getByRole("button", { name: "新建" });
+      const addButton = screen.getByRole("button", { name: "+" });
+      expect(newButton).toBeTruthy();
+      expect(addButton).toBeTruthy();
+      expect(newButton.parentElement?.closest("button")).toBeNull();
+      expect(addButton.parentElement?.closest("button")).toBeNull();
+      expect(errorSpy.mock.calls.map((call) => call.join(" ")).join("\n")).not.toContain("cannot be a descendant of <button>");
+    } finally {
+      errorSpy.mockRestore();
+    }
   });
 
   it("displays version number in footer", () => {

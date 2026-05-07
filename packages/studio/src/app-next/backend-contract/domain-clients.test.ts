@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { BOOK_CREATE_API_PATH, PROVIDER_MODELS_API_PATH, PROVIDER_STATUS_API_PATH, buildWorktreeStatusApiPath } from "./api-paths";
 import { createContractClient } from "./contract-client";
 import { createFetchJsonContractClient } from "./fetch-json-contract-client";
 import { createProviderClient } from "./provider-client";
@@ -50,9 +51,9 @@ describe("domain contract clients", () => {
     });
     const contract = createFetchJsonContractClient(fetchJsonMock as unknown as <T>(path: string, init?: RequestInit) => Promise<T>);
 
-    const result = await contract.get("/api/providers/models");
+    const result = await contract.get(PROVIDER_MODELS_API_PATH);
 
-    expect(fetchJsonMock).toHaveBeenCalledWith("/api/providers/models");
+    expect(fetchJsonMock).toHaveBeenCalledWith(PROVIDER_MODELS_API_PATH);
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error("expected contract failure");
     expect(result.httpStatus).toBe(409);
@@ -70,7 +71,7 @@ describe("domain contract clients", () => {
 
     expect(fetchMock).toHaveBeenNthCalledWith(1, "/api/books", expect.objectContaining({ method: "GET" }));
     expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/sessions?sort=recent&status=active", expect.objectContaining({ method: "GET" }));
-    expect(fetchMock).toHaveBeenNthCalledWith(3, "/api/providers/status", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(3, PROVIDER_STATUS_API_PATH, expect.objectContaining({ method: "GET" }));
   });
 
   it("marks create-status as process-memory capability", async () => {
@@ -80,6 +81,17 @@ describe("domain contract clients", () => {
 
     expect(result.capability.status).toBe("process-memory");
     expect(result.capability.ui.recoveryNoteVisible).toBe(true);
+  });
+
+  it("centralizes book creation and worktree status routes in the resource contract", async () => {
+    const fetchMock = vi.fn(async (_path: RequestInfo | URL, init?: RequestInit) => new Response(JSON.stringify({ bookId: "book-1", status: { modified: [], added: [], deleted: [], untracked: [] }, method: init?.method }), { status: 200 }));
+    const resources = createResourceClient(createContractClient({ fetch: fetchMock }));
+
+    await resources.createBook({ title: "新书", genre: "玄幻", language: "zh", chapterWordCount: 2000, targetChapters: 100 });
+    await resources.getWorktreeStatus("D:/novel-worktree");
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, BOOK_CREATE_API_PATH, expect.objectContaining({ method: "POST", body: JSON.stringify({ title: "新书", genre: "玄幻", language: "zh", chapterWordCount: 2000, targetChapters: 100 }) }));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, buildWorktreeStatusApiPath("D:/novel-worktree"), expect.objectContaining({ method: "GET" }));
   });
 
   it("adds session mutation and tool confirmation helpers without hiding backend envelopes", async () => {

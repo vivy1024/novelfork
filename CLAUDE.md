@@ -1,6 +1,6 @@
 # NovelFork Studio
 
-**v0.0.6** | 2026-04-19 | 最后更新 2026-05-04 | 始终使用中文回复
+**v0.1.0** | 2026-04-19 | 最后更新 2026-05-07 | 始终使用中文回复
 
 你是 Claude Code。配置以本文件 + `.kiro/steering/` 为准。
 
@@ -53,11 +53,11 @@
 
 | 指标 | 值 |
 |------|----|
-| Specs | `studio-ide-layout-v1` 已完成（30/30）+ `web-agent-runtime-v1` 已完成（16/16） |
-| TypeScript | typecheck 通过 |
-| 测试 | 210 文件 / 1276 测试（Studio 最新回归）+ 13 文件 / 97 测试（CLI） |
-| 编译 | `pnpm --dir packages/studio compile` → `dist/novelfork.exe` / 版本化 release 产物约 117MB |
-| 运行 | `./novelfork.exe` → `http://localhost:4567` |
+| Specs | `v0-1-0-release-readiness` 执行中（18/20）；历史主线已收口，下一步 Task 19 release commit、tag 与 GitHub Release |
+| TypeScript | Task16 `pnpm --dir packages/studio typecheck` 通过；Task18 compile 通过 |
+| 测试 | Task16 app-next 47 文件 / 271 测试 + Backend Contract 7 文件 / 38 测试 + CLI 13 文件 / 97 测试 + Playwright 7 passed；Task18 compile-smoke helper 2 tests passed |
+| 编译 | Task18 `pnpm --dir packages/studio compile` 生成 `dist/novelfork-v0.1.0-windows-x64.exe` 与 SHA256；尚未上传 GitHub Release |
+| 运行 | Task18 已用编译产物在 clean root + isolated runtime 实际打开 `/next`、创建作品、进入工作台并打开 Routines；下一步发布到 GitHub Release |
 
 ---
 
