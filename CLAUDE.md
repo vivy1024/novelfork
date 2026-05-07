@@ -53,11 +53,11 @@
 
 | 指标 | 值 |
 |------|----|
-| Specs | `v0-1-0-release-readiness` 执行中（18/20）；历史主线已收口，下一步 Task 19 release commit、tag 与 GitHub Release |
-| TypeScript | Task16 `pnpm --dir packages/studio typecheck` 通过；Task18 compile 通过 |
-| 测试 | Task16 app-next 47 文件 / 271 测试 + Backend Contract 7 文件 / 38 测试 + CLI 13 文件 / 97 测试 + Playwright 7 passed；Task18 compile-smoke helper 2 tests passed |
-| 编译 | Task18 `pnpm --dir packages/studio compile` 生成 `dist/novelfork-v0.1.0-windows-x64.exe` 与 SHA256；尚未上传 GitHub Release |
-| 运行 | Task18 已用编译产物在 clean root + isolated runtime 实际打开 `/next`、创建作品、进入工作台并打开 Routines；下一步发布到 GitHub Release |
+| Specs | `v0-1-0-release-readiness` 执行中（18/23）；发布暂停，用户已指出 Claude/Codex parity、mock、hardcoded 与未完成能力口径阻塞 v0.1.0，已新增 Task19-21 重审/清理/重验收门槛 |
+| TypeScript | Task16 `pnpm --dir packages/studio typecheck` 通过；Task18 compile 通过；需补源码对照后的回归 |
+| 测试 | Task16 app-next 47 文件 / 271 测试 + Backend Contract 7 文件 / 38 测试 + CLI 13 文件 / 97 测试 + Playwright 7 passed；这些不等同 Claude Code CLI / Codex CLI 完整对标 |
+| 编译 | Task18 生成过 `dist/novelfork-v0.1.0-windows-x64.exe` 与 SHA256；GitHub Release 未创建，远端 `v0.1.0` tag 已撤回 |
+| 运行 | Task18 已用编译产物完成 clean root smoke；但 release 前必须先重审并修正 Claude/Codex parity、mock 与硬编码问题 |
 
 ---
 

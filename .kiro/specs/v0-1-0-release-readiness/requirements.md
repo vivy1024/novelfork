@@ -9,7 +9,7 @@
 
 ## 1. 背景
 
-NovelFork 当前已经完成多轮 Backend Contract、Conversation Parity、Frontend Live Wiring、Legacy Source Retirement、Backend Core Refactor 与 `ui-live-parity-hardening-v1` 的大部分任务。功能合同、设置 truth model、provider callable、资源编辑读回、对话窗口工具透明化、Claude/Codex parity guard 和设置/会话浏览器 E2E 均已有验证证据。
+NovelFork 当前已经完成多轮 Backend Contract、Conversation Parity、Frontend Live Wiring、Legacy Source Retirement、Backend Core Refactor 与 `ui-live-parity-hardening-v1` 的大部分任务。功能合同、设置 truth model、provider callable、资源编辑读回、对话窗口工具透明化和设置/会话浏览器 E2E 均已有验证证据；但 Claude/Codex parity guard 只能视为参考基线和 UI claim guard，不能宣称完整对标，发布前必须重新审计 mock、hardcoded 与未实现能力。
 
 但是 2026-05-07 真实浏览器手工对比显示：
 
@@ -185,6 +185,19 @@ NovelFork 当前已经完成多轮 Backend Contract、Conversation Parity、Fron
 4. WHEN 某项失败后修复 THEN 系统 SHALL 记录失败现象、根因、修复和最终验证。
 5. WHEN 最终报告输出 THEN 系统 SHALL 区分自动化验证、手工软件验活、未覆盖项和 post-release backlog。
 
+### Requirement 12：Claude/Codex 相关能力必须按源码或官方实现重新审计，不得用 mock / hardcoded / partial facts 冒充对标完成
+
+**User Story:** 作为维护者，我希望 v0.1.0 的 Claude Code CLI / Codex CLI 相关声明只基于真实实现、源码对照和可验活能力，而不是简化硬编码、mock-heavy 单测或 partial/planned 文档矩阵。
+
+#### Acceptance Criteria
+
+1. WHEN 文档或 UI 声明 Claude Code CLI / Codex CLI 相关能力 THEN 系统 SHALL 标明它是 current、partial、planned、non-goal、reference-only 中哪一种，并给出源码/官方文档/真实 API 证据。
+2. WHEN 能力仅来自 `claude/restored-cli-src/`、本机 help 或官方文档对照，而 NovelFork 未实现 THEN 系统 SHALL 标为 reference-only、planned 或 non-goal，不得写成“对标完成”。
+3. WHEN 实现 slash command、permission mode、tool policy、session lifecycle、headless stream-json、usage/result 等 Claude 相关能力 THEN 系统 SHALL 对照本地 Claude restored source 的实际类型、状态流和边界，而不是只写简化 registry 或字符串映射。
+4. WHEN 声明 Codex CLI 相关能力 THEN 系统 SHALL 明确 Codex TUI、sandbox、MCP、image input、review、exec event taxonomy、config/profile 是否真实实现；未实现项不得出现在 current claim。
+5. WHEN 发布验活收集证据 THEN 系统 SHALL 将 mock-heavy 单元测试与真实发布证据分开；发布证据只能来自真实 compiled exe、真实 HTTP/API、真实浏览器操作和必要的非 mock 回归。
+6. WHEN 生产代码中存在 route literal、硬编码 UI 状态文案、测试夹具或 planned/unsupported facts THEN 系统 SHALL 集中登记、移除、改为真实实现或明确降级，不能散写后发布。
+
 ---
 
 ## 4. 成功标准
@@ -192,7 +205,8 @@ NovelFork 当前已经完成多轮 Backend Contract、Conversation Parity、Fron
 v0.1.0 只有在以下条件全部满足时才能发布：
 
 1. 本 spec 所有 in-scope requirement 已满足，或明确经用户批准降级为 post-v0.1.0。
-2. `ui-live-parity-hardening-v1` 完成并归档。
+2. Claude/Codex 相关能力已完成源码/官方实现对照，mock/hardcoded/partial facts 已清理或降级，不再冒充完整对标。
+3. `ui-live-parity-hardening-v1` 完成并归档。
 3. 对话页、会话中心、作品工作台、设置、套路、首页均通过干净 root 手工验活。
 4. 自动化测试、typecheck、docs verify、compile、smoke 均有新鲜证据。
 5. 文档、CHANGELOG、版本号、tag、GitHub Release 产物一致。
@@ -205,3 +219,4 @@ v0.1.0 只有在以下条件全部满足时才能发布：
 - 会话中心和对话页视觉成品化可能触及多处前端组件与 E2E。
 - 干净 root 验活可能暴露首次引导、模型空态、provider 空态等新问题。
 - 发版前版本号同步和 GitHub Release 上传必须严格避免半成品发布。
+- Claude/Codex parity 容易被误写成“对标完成”，必须以源码对照和真实验活约束。

@@ -165,8 +165,8 @@
 | 设置 Truth Model（来源/状态/API/未配置原因） | ✅ Task 6-7：模型页与 Agent runtime 可见 setting 通过 `SettingsFact` 展示真实来源、状态、读写 API；无 schema 来源项显示 planned/unsupported 或隐藏，空值显示“未配置”；Task 13 浏览器 E2E 已验活默认模型未配置不 fallback、Codex 推理强度来自真实 schema；v0.1.0 Release Readiness Task 11 新增 provider fixture cleanup facts，将 E2E Provider 识别为开发/清理事实而非普通 current 数据 |
 | 模型默认值/摘要模型/子代理配置 | ✅ 默认/摘要/Explore/Plan/General/Codex 推理强度均来自 user settings，不用模型池第一项冒充当前值；运行控制保存后回读 `/api/settings/user` |
 | Agent runtime 来源事实 | ✅ 覆盖 default permission、max turns、retry/backoff、WebFetch proxy、上下文/大窗口阈值、debug、allowlist/blocklist、sendMode；first-token timeout 标记 planned；Task 13 浏览器 E2E 确认不出现“已接入/Codex sandbox 已接入”假 current |
-| Claude Code parity guard | ✅ Task 11：基于本机 2.1.69、官方 CLI reference 与本地 Claude 源码建立 baseline；Claude TUI/Chrome bridge/tmux/IDE server/plugin 等 non-goal 不进入 UI current claim，权限模式仅标 partial 映射 |
-| Codex CLI parity guard | ✅ Task 12：基于本机 `codex-cli 0.80.0` help、官方 CLI/config/non-interactive/subagents/Windows 文档建立 baseline；TUI 为 non-goal，exec/config/subagents/web search/approval/Windows 边界为 partial，sandbox/MCP/image input/review 为 planned；Codex sandbox 不进入 UI current claim |
+| Claude Code parity guard | ⚠️ 参考基线，不是完整对标：本机 2.1.69、官方 CLI reference 与本地 Claude 源码只用于禁止 UI 冒充 current；当前 NovelFork slash/permission/session 实现仍是简化映射，需按源码重审后才能作为发布能力声明 |
+| Codex CLI parity guard | ⚠️ 参考基线，不是完整对标：当前只有 `codex-cli 0.80.0` help/官方文档和少量 partial/planned facts；没有真实 Codex CLI TUI、sandbox、MCP、image input、review 或完整 exec event taxonomy；不得作为 v0.1.0 完成功能宣传 |
 | 设置分组 IA | ✅ 个人设置、实例管理、运行资源与审计、关于与项目；借鉴 NarraFork 分组但字段回到 NovelFork schema；2026-05-07 手工对比确认 NovelFork truthfulness 已收敛；v0.1.0 Release Readiness Task 11 已补 E2E Provider 识别/隐藏，正式验收仍使用干净 root |
 | 个人资料 | ✅ |
 | 关于（版本/commit/Bun） | ✅ |
