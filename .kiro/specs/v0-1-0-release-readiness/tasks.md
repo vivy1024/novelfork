@@ -151,21 +151,23 @@
   - 覆盖：Requirement 7、10、11；Design 4.9、6.3。
   - 证据：`pnpm --dir packages/studio compile` 通过，生成 `dist/novelfork.exe` 与 `dist/novelfork-v0.1.0-windows-x64.exe`（约 115M）；`sha256sum -c dist/novelfork-v0.1.0-windows-x64.exe.sha256` 返回 OK，SHA256 为 `d0eb2bf63385ba6c5695485de129c20bacda28dd54c22ad7647f9478292bee7d`。首次 compiled smoke 暴露 startup compile-smoke 仍按 clean root `dist/` 查找 exe，已按 TDD 新增 `src/api/lib/compile-smoke.test.ts` 与 `compile-smoke.ts` 修复为 compiled runtime 使用 `process.execPath`，聚焦测试通过（compile-smoke helper 2 tests passed；server compile-smoke 相关 4 tests passed）。最终使用 `NOVELFORK_RUNTIME_DIR=.novelfork/manual-release-smoke-v0-1-0-compiled-20260507-2210/.runtime ./dist/novelfork-v0.1.0-windows-x64.exe --root=.novelfork/manual-release-smoke-v0-1-0-compiled-20260507-2210 --port=4611` 启动，日志显示 `isCompiledBinary=true`、`assetSource=embedded`、`assetCount=26`、runtime DB 位于 clean root `.runtime`；HTTP 验证 `/api/mode` 返回 `standalone`，`/api/settings/release` 返回 version `0.1.0` / `buildSource=bun-compiled-binary`，`/api/admin/resources` startup `failures=[]`、`compileSmokeStatus=success`、`singleFileReady=true`，`/api/providers` 返回空数组；浏览器实际打开 `http://localhost:4611/next`，显示作者首页和 clean 模型状态，随后通过 UI 创建《v0.1.0 编译验活作品》并自动进入 `/next/books/...` 工作台，资源树、写作动作边界和新书会话可见；`GET /api/books` 回读到该书；浏览器打开 `/next/routines` 显示套路管理分区。smoke 完成后手动停止 compiled exe 进程，bg_bash 退出属于预期清理动作。
 
-- [ ] 19. Claude/Codex 源码对照与能力口径重审
+- [x] 19. Claude/Codex 源码对照与能力口径重审
   - 暂停发布动作：GitHub Release 未创建，2026-05-07 已撤回本地和远端 `v0.1.0` tag。
   - 读取 `claude/restored-cli-src/` 中 slash command、permission mode、tool permission、session storage/resume/fork、headless stream-json、usage/result 相关源码，列出 NovelFork 当前实现的真实差距。
   - Codex 只按本机 help/官方文档与当前代码事实重审，不得把没有源码/没有实现的 TUI、sandbox、MCP、image input、review、exec event taxonomy 写成 current。
   - 更新 parity matrix、SettingsTruthModel、能力矩阵、README、CHANGELOG、当前状态等文档：所有 Claude/Codex 相关项必须明确 current/partial/planned/non-goal/reference-only。
   - 验证：源码对照清单、文档降级和 docs verify 通过；不得修改实现后不测。
   - 覆盖：Requirement 11、12；Design 4.8、6.3、7、9。
+  - 证据：已读取 `claude/restored-cli-src/src/commands.ts`、`types/command.ts`、`types/permissions.ts`、`utils/permissions/permissions.ts`、`utils/sessionStorage.ts`、`utils/sessionRestore.ts`、`services/api/usage.ts`，并对照 `slash-command-registry.ts`、`session-tool-policy.ts`、`session-tool-executor.ts`、`session-lifecycle-service.ts`、`session-headless-chat-service.ts`；新增 `CLAUDE_CODE_PARITY_MATRIX`，扩展 `PARITY_STATUSES` 为含 `reference-only`，将 Codex exec JSONL event taxonomy 标为 `reference-only`，并同步 SettingsTruthModel、能力矩阵、README、CLAUDE、spec 索引、当前状态、测试状态与 baseline 差距清单。验证：`pnpm --dir packages/studio test -- src/app-next/settings/parity-matrix.test.ts src/app-next/settings/SettingsTruthModel.test.ts src/api/routes/tools.test.ts` 实际触发全量 Studio Vitest 并通过 213 files / 1273 tests；首次验证暴露 `tools.test.ts` 版本断言仍固定 `0.0.x`，已按真实 semver 放宽并回归通过；`pnpm --dir packages/studio typecheck` 通过；`node scripts/verify-docs.ts` PASS；`git diff --check` 退出码 0（仅 LF/CRLF 提示）。
 
-- [ ] 20. Mock / hardcoded / route literal 发布阻塞审计与修复
+- [x] 20. Mock / hardcoded / route literal 发布阻塞审计与修复
   - 审计 app-next 生产代码、backend-contract clients、settings facts、routines/provider/session UI 中的 route literal、硬编码状态文案、测试夹具识别、planned/unsupported facts。
   - 将必须保留的 API 路径集中到 Backend Contract 常量/helper 或 domain client，不能在组件里散写未登记 `/api/*`。
   - 删除、替换或降级 mock/fake/noop 假成功；发布证据不得引用 mock-heavy 单测作为“真实可用”。
   - 对无法在 v0.1.0 前完成的能力标记 planned/non-goal/known gap，并从 current UI claim 中移除。
   - 验证：新增/更新审计测试或 grep guard；app-next/backend-contract 聚焦回归、typecheck、docs verify 通过。
   - 覆盖：Requirement 5、6、8、11、12；Design 4.5、4.6、4.8、6.1、6.3。
+  - 证据：新增 `findUncentralizedBackendContractApiStrings()` 和 `keeps backend-contract client API roots centralized in api-path helpers` 守卫，首次 RED 报出 provider/resource/session/writing-action client 中 50 个散写 `/api/*` route literal；随后将 provider model test、books/resource、sessions/headless/chat/memory/tools、writing actions 全部迁移到 `api-paths.ts` 常量/helper（`BOOKS_API_PATH`、`SESSIONS_API_PATH`、`buildBookApiPath()`、`buildSessionApiPath()`、`buildSessionsApiPath()`、`buildProviderModelTestApiPath()`、`appendApiQuery()`），`backend-contract` 生产代码仅 `api-paths.ts` 保留 `/api/*` 字符串。同步审计 settings facts、routines/provider/session UI、mock-debt-scan/ledger：planned/unsupported/fixture 仍以透明降级/测试夹具识别/ledger 登记存在，未发现需改成 current 的假成功；本轮未新增 mock/fake/noop 兼容层。验证：`pnpm --dir packages/studio test -- src/app-next/backend-contract/backend-contract-verification.test.ts src/app-next/backend-contract/domain-clients.test.ts src/app-next/backend-contract/contract-client.test.ts src/app-next/backend-contract/session-websocket.test.ts src/app-next/backend-contract/writing-action-adapter.test.ts src/app-next/backend-contract/resource-tree-adapter.test.ts` 实际触发 Studio Vitest 全量并通过 213 files / 1274 tests；`pnpm --dir packages/studio typecheck` 通过；`node scripts/verify-docs.ts` PASS；`git diff --check` 退出码 0（仅 LF/CRLF 提示）。
 
 - [ ] 21. 重新执行全量验证与真实软件验活
   - 在 Task19-20 修正后重新运行 Studio app-next、Backend Contract、Studio typecheck、CLI、docs verify、diff check 和 Playwright。

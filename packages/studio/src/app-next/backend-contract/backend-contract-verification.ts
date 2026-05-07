@@ -42,6 +42,13 @@ export interface UnregisteredAppNextApiStringFinding {
   readonly column: number;
 }
 
+export interface UncentralizedBackendContractApiStringFinding {
+  readonly path: string;
+  readonly apiString: string;
+  readonly line: number;
+  readonly column: number;
+}
+
 export const BACKEND_CONTRACT_VERIFICATION_COMMANDS: readonly BackendContractVerificationCommand[] = [
   {
     id: "backend-contract-vitest",
@@ -72,6 +79,7 @@ export const BACKEND_CONTRACT_VERIFICATION_COMMANDS: readonly BackendContractVer
 
 const APP_NEXT_API_PATTERN = /["'`]((?:\/api\/)[^"'`\s)]+)/g;
 const BACKEND_CONTRACT_SEGMENT_PATTERN = /(^|[\\/])backend-contract([\\/]|$)/;
+const BACKEND_CONTRACT_API_HELPERS_PATTERN = /(^|[\\/])api-paths\.ts$/;
 
 export function buildBackendContractVerificationReport(
   runs: readonly BackendContractVerificationRun[] = [],
@@ -107,14 +115,35 @@ export function findUnregisteredAppNextApiStrings(
     const normalizedPath = source.path.replaceAll("\\", "/");
     if (BACKEND_CONTRACT_SEGMENT_PATTERN.test(normalizedPath)) continue;
 
-    for (const match of source.content.matchAll(APP_NEXT_API_PATTERN)) {
-      const apiString = match[1];
-      const index = match.index ?? 0;
-      const { line, column } = lineColumnAt(source.content, index + 1);
-      findings.push({ path: normalizedPath, apiString, line, column });
-    }
+    findings.push(...findApiStrings(source, normalizedPath));
   }
 
+  return findings;
+}
+
+export function findUncentralizedBackendContractApiStrings(
+  sources: readonly SourceFileSnapshot[],
+): UncentralizedBackendContractApiStringFinding[] {
+  const findings: UncentralizedBackendContractApiStringFinding[] = [];
+
+  for (const source of sources) {
+    const normalizedPath = source.path.replaceAll("\\", "/");
+    if (BACKEND_CONTRACT_API_HELPERS_PATTERN.test(normalizedPath)) continue;
+
+    findings.push(...findApiStrings(source, normalizedPath));
+  }
+
+  return findings;
+}
+
+function findApiStrings(source: SourceFileSnapshot, normalizedPath: string): UnregisteredAppNextApiStringFinding[] {
+  const findings: UnregisteredAppNextApiStringFinding[] = [];
+  for (const match of source.content.matchAll(APP_NEXT_API_PATTERN)) {
+    const apiString = match[1];
+    const index = match.index ?? 0;
+    const { line, column } = lineColumnAt(source.content, index + 1);
+    findings.push({ path: normalizedPath, apiString, line, column });
+  }
   return findings;
 }
 

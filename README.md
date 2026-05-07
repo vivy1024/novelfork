@@ -17,6 +17,8 @@ NovelFork 是一个专注中文网文创作的本地 AI 工作台。作者可以
 
 **完全本地运行，数据不出本机。** `pnpm --dir packages/studio compile` 生成单可执行文件与版本化 release 产物。
 
+> **v0.1.0 发布状态**：发布已暂停，GitHub Release 未创建，`v0.1.0` tag 已撤回。Task19 已完成 Claude/Codex 源码/官方资料口径重审，Task20 已完成反 mock/hardcoded/route literal 审计与 backend-contract API 路径集中；当前 Claude Code CLI / Codex CLI 相关能力只允许按 `current` / `partial` / `planned` / `non-goal` / `reference-only` 标注。Claude slash/permission/session/headless 仍是 NovelFork 自身 partial 实现，Codex exec JSONL event taxonomy 仅为 reference-only，完成 Task21 重新验收之前不得宣称完整对标或发布完成。
+
 ---
 
 ## 快速开始

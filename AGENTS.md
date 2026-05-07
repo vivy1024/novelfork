@@ -1,6 +1,6 @@
 # NovelFork Agent Rules
 
-本仓库的主规则源是 `CLAUDE.md` 与 `.kiro/steering/`。任何 agent、子代理或自动化工具执行任务前，都必须优先遵守这些项目规则。
+本仓库的主规则源是 `CLAUDE.md`、`.kiro/steering/README.md` 与 `.kiro/steering/project-profile.md`。任何 agent、子代理或自动化工具执行任务前，都必须优先遵守这些项目规则，并按 `using-project-steering` / `novelfork-project-profile` 路由到相关 skill。
 
 ---
 

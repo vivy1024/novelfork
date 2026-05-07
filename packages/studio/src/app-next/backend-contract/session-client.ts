@@ -15,6 +15,7 @@ import type {
   UpdateNarratorSessionInput,
 } from "../../shared/session-types";
 import type { CanvasContext, ToolConfirmationDecision, ToolConfirmationRequest } from "../../shared/agent-native-workspace";
+import { SESSIONS_API_PATH, appendApiQuery, buildSessionApiPath, buildSessionsApiPath } from "./api-paths";
 import type { ContractClient } from "./contract-client";
 
 export interface SessionMemoryClientPayload {
@@ -56,7 +57,7 @@ export interface SessionWebSocketRuntimeState {
 }
 
 function chatPath(sessionId: string): string {
-  return `/api/sessions/${encodeURIComponent(sessionId)}/chat`;
+  return buildSessionApiPath(sessionId, "chat");
 }
 
 function browserLocationBase(): string | undefined {
@@ -311,42 +312,41 @@ export function createSessionClient(contract: ContractClient) {
       const params = new URLSearchParams({ sort: query?.sort ?? "recent", status: query?.status ?? "active" });
       if (query?.binding) params.set("binding", query.binding);
       if (query?.search) params.set("search", query.search);
-      return contract.get<T>(`/api/sessions?${params.toString()}`, { capability: { id: "sessions.active", status: "current" } });
+      return contract.get<T>(appendApiQuery(SESSIONS_API_PATH, params), { capability: { id: "sessions.active", status: "current" } });
     },
-    createSession: <T = NarratorSessionRecord>(payload: CreateNarratorSessionInput) => contract.post<T>("/api/sessions", payload, { capability: { id: "sessions.create", status: "current" } }),
+    createSession: <T = NarratorSessionRecord>(payload: CreateNarratorSessionInput) => contract.post<T>(SESSIONS_API_PATH, payload, { capability: { id: "sessions.create", status: "current" } }),
     updateSession: <T = NarratorSessionRecord>(sessionId: string, payload: UpdateNarratorSessionInput) =>
-      contract.put<T>(`/api/sessions/${encodeURIComponent(sessionId)}`, payload, { capability: { id: "sessions.update", status: "current" } }),
+      contract.put<T>(buildSessionApiPath(sessionId), payload, { capability: { id: "sessions.update", status: "current" } }),
     continueLatestSession: <T = unknown>(projectId?: string, chapterId?: string) => {
       const params = new URLSearchParams();
       if (projectId) params.set("projectId", projectId);
       if (chapterId) params.set("chapterId", chapterId);
-      const query = params.toString();
-      return contract.get<T>(`/api/sessions/lifecycle/latest${query ? `?${query}` : ""}`, { capability: { id: "sessions.lifecycle.continue", status: "current" } });
+      return contract.get<T>(appendApiQuery(buildSessionsApiPath("lifecycle", "latest"), params), { capability: { id: "sessions.lifecycle.continue", status: "current" } });
     },
     forkSession: <T = unknown>(sessionId: string, payload: { title?: string; inheritanceNote?: string }) =>
-      contract.post<T>(`/api/sessions/${encodeURIComponent(sessionId)}/fork`, payload, { capability: { id: "sessions.lifecycle.fork", status: "current" } }),
+      contract.post<T>(buildSessionApiPath(sessionId, "fork"), payload, { capability: { id: "sessions.lifecycle.fork", status: "current" } }),
     restoreSessionForContinue: <T = unknown>(sessionId: string) =>
-      contract.post<T>(`/api/sessions/${encodeURIComponent(sessionId)}/restore`, undefined, { capability: { id: "sessions.lifecycle.restore", status: "current" } }),
+      contract.post<T>(buildSessionApiPath(sessionId, "restore"), undefined, { capability: { id: "sessions.lifecycle.restore", status: "current" } }),
     compactSession: <T = unknown>(sessionId: string, payload: { preserveRecentMessages?: number; instructions?: string } = {}) =>
-      contract.post<T>(`/api/sessions/${encodeURIComponent(sessionId)}/compact`, payload, { capability: { id: "sessions.compact", status: "current" } }),
+      contract.post<T>(buildSessionApiPath(sessionId, "compact"), payload, { capability: { id: "sessions.compact", status: "current" } }),
     headlessChat: <T = unknown>(payload: Record<string, unknown>) =>
-      contract.post<T>("/api/sessions/headless-chat", payload, { capability: { id: "sessions.headless-chat", status: "current" } }),
+      contract.post<T>(buildSessionsApiPath("headless-chat"), payload, { capability: { id: "sessions.headless-chat", status: "current" } }),
     getMemoryStatus: <T = unknown>(sessionId: string) =>
-      contract.get<T>(`/api/sessions/${encodeURIComponent(sessionId)}/memory/status`, { capability: { id: "sessions.memory.status", status: "current", metadata: SESSION_MEMORY_CAPABILITY_METADATA } }),
+      contract.get<T>(buildSessionApiPath(sessionId, "memory", "status"), { capability: { id: "sessions.memory.status", status: "current", metadata: SESSION_MEMORY_CAPABILITY_METADATA } }),
     commitMemory: <T = unknown>(sessionId: string, payload: SessionMemoryClientPayload) =>
-      contract.post<T>(`/api/sessions/${encodeURIComponent(sessionId)}/memory`, payload, { capability: { id: "sessions.memory.write", status: "current", metadata: SESSION_MEMORY_CAPABILITY_METADATA } }),
+      contract.post<T>(buildSessionApiPath(sessionId, "memory"), payload, { capability: { id: "sessions.memory.write", status: "current", metadata: SESSION_MEMORY_CAPABILITY_METADATA } }),
     deleteSession: <T = { success: true }>(sessionId: string) =>
-      contract.delete<T>(`/api/sessions/${encodeURIComponent(sessionId)}`, { capability: { id: "sessions.delete", status: "current" } }),
+      contract.delete<T>(buildSessionApiPath(sessionId), { capability: { id: "sessions.delete", status: "current" } }),
     getChatState: <T = NarratorSessionChatSnapshot>(sessionId: string) =>
-      contract.get<T>(`/api/sessions/${encodeURIComponent(sessionId)}/chat/state`, { capability: { id: "sessions.chat.state", status: "current" } }),
+      contract.get<T>(buildSessionApiPath(sessionId, "chat", "state"), { capability: { id: "sessions.chat.state", status: "current" } }),
     getChatHistory: <T = NarratorSessionChatHistory>(sessionId: string, sinceSeq?: number) => {
-      const query = sinceSeq === undefined ? "" : `?sinceSeq=${encodeURIComponent(String(sinceSeq))}`;
-      return contract.get<T>(`/api/sessions/${encodeURIComponent(sessionId)}/chat/history${query}`, { capability: { id: "sessions.chat.history", status: "current" } });
+      const query = sinceSeq === undefined ? "" : `sinceSeq=${encodeURIComponent(String(sinceSeq))}`;
+      return contract.get<T>(appendApiQuery(buildSessionApiPath(sessionId, "chat", "history"), query), { capability: { id: "sessions.chat.history", status: "current" } });
     },
     listPendingTools: <T = { pending: readonly ToolConfirmationRequest[] }>(sessionId: string) =>
-      contract.get<T>(`/api/sessions/${encodeURIComponent(sessionId)}/tools`, { capability: { id: "sessions.tools.pending", status: "current" } }),
+      contract.get<T>(buildSessionApiPath(sessionId, "tools"), { capability: { id: "sessions.tools.pending", status: "current" } }),
     confirmTool: <T = { ok: true }>(sessionId: string, toolName: string, payload: ToolConfirmationDecision | Record<string, unknown>) =>
-      contract.post<T>(`/api/sessions/${encodeURIComponent(sessionId)}/tools/${encodeURIComponent(toolName)}/confirm`, payload, {
+      contract.post<T>(buildSessionApiPath(sessionId, "tools", toolName, "confirm"), payload, {
         capability: { id: "sessions.tools.confirm", status: "current" },
       }),
   };
