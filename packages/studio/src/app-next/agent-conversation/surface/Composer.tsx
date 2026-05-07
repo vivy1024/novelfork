@@ -49,8 +49,8 @@ export function Composer({ onSend, onAbort, onSlashCommandResult, slashCommandCo
   }
 
   return (
-    <footer className="composer">
-      <textarea aria-label="对话输入框" value={value} onChange={(event) => setValue(event.currentTarget.value)} />
+    <footer data-testid="conversation-composer-dock" className="composer conversation-composer-dock paper-sheet shrink-0 space-y-3 rounded-3xl p-4" aria-label="会话输入区">
+      <textarea className="min-h-24 w-full rounded-2xl border border-border bg-background p-3" aria-label="对话输入框" value={value} onChange={(event) => setValue(event.currentTarget.value)} />
       {showSlashSuggestions ? (
         <div role="listbox" aria-label="斜杠命令建议">
           {slashSuggestions.map((command) => (

@@ -130,7 +130,7 @@
 |-----|------|------|
 | 左侧资源栏 | 全局导航 + 当前书籍资源树；章节、候选稿、草稿、经纬、Story/Truth、素材、发布报告 | ✅ |
 | 中间画布 | 多资源 Tab、章节编辑、候选稿、经纬详情、工具产物、dirty 切换拦截；`ui-live-parity-hardening-v1` Task 2-4 已补资源详情 hydrate、保存控制器、dirty guard 与 Playwright 浏览器保存刷新读回 | ✅ 资源 hydrate/保存防覆盖/浏览器读回已验证；更广 E2E 仍随后续任务扩展 |
-| 右侧叙述者会话 | 固定 Writer/Narrator 会话、模型/权限控件、工具调用流、恢复状态；Task 9 已补真实 session binding、消息数、context usage、工作区/Git unavailable facts，并在 session config 更新后回读 chat state 同步 ShellDataProvider；Task 10 已补工具卡复制/全屏/raw 脱敏、审批目标/风险/来源/操作、context threshold/checkpoint notice 和运行控制 disabled reason；Task 13 浏览器 E2E 覆盖工作台创建 session、Shell 同步、narrator route header、工具卡 raw 脱敏、模型/权限/推理回读、idle/running 中断状态；2026-05-07 手工对比 7778 NarraFork 后确认，当前 NovelFork 会话页视觉布局仍像基础 HTML，标题/状态/控件挤在顶部、composer 贴底且空白区域过大 | ⚠️ 合同与 E2E 已验证；真实 UI 体验未达 NarraFork 成熟度，v0.1.0 前需 polish |
+| 右侧叙述者会话 | 固定 Writer/Narrator 会话、模型/权限控件、工具调用流、恢复状态；Task 9 已补真实 session binding、消息数、context usage、工作区/Git unavailable facts，并在 session config 更新后回读 chat state 同步 ShellDataProvider；Task 10 已补工具卡复制/全屏/raw 脱敏、审批目标/风险/来源/操作、context threshold/checkpoint notice 和运行控制 disabled reason；Task 13 浏览器 E2E 覆盖工作台创建 session、Shell 同步、narrator route header、工具卡 raw 脱敏、模型/权限/推理回读、idle/running 中断状态；v0.1.0 Release Readiness Task 2-3 已先补 RED 测试再把 ConversationSurface 重排为 Session Header、Runtime Summary Cards、Recovery/Confirmation Lane、Message Stream、Composer Dock 五区布局，新增作者向空态和 composer dock | ⚠️ 合同、组件回归与既有 E2E 已验证；仍需 Task 4 浏览器 E2E 与手工验活确认真实 UI 体验达标 |
 | cockpit 工具结果 | `cockpit.get_snapshot` / hooks / candidates 等通过工具卡片和画布组件展示 | ✅ |
 | PGI + GuidedGenerationPlan | 生成前追问、计划卡片、批准/拒绝确认门 | ✅ |
 | Narrative Line | 只读快照、mutation preview、approve 后写入审计 | ✅ |
@@ -227,7 +227,7 @@
 | 旧前端源码完全删除 | 5/9 完成 |
 | 首次引导烟测 | 缺回归测试 |
 | 引导式创作流程串联 | 已有 session-first 最小链路，完整体验仍需后续验活 |
-| 对话窗口视觉完成度 | 2026-05-07 真实浏览器对比 7778 NarraFork 后确认：`/next/narrators/:sessionId` 合同可用但视觉体验未达发布标准，需重排 header facts、模型/权限/推理控件、Token/context、运行控制与 composer 空态 |
+| 对话窗口视觉完成度 | v0.1.0 Release Readiness Task 2-3 已完成组件级重排：`/next/narrators/:sessionId` 对话页拆为 session header、runtime summary cards、recovery/confirmation lane、message stream、composer dock，并补作者向空态；仍需 Task 4 浏览器 E2E 与手工截图确认实际观感不再像基础 HTML |
 | Agent Shell 会话长列表 | 当前左栏堆叠大量 Planner/写作会话，缺 NarraFork `/narrators` 那样的筛选、排序、归档管理体验；v0.1.0 前至少需要折叠或最近 N 条策略 |
 | E2E 夹具污染手工验收 | 本机模型下拉残留多批 `E2E Provider ...`，正式软件实际验活必须使用干净 root 或让 E2E 清理 provider/settings 夹具 |
 | 能力矩阵文档 | ← 就是这一篇，刚更新 |

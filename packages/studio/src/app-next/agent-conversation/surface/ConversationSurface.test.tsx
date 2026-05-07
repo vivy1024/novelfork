@@ -570,4 +570,118 @@ describe("Conversation Surface", () => {
     expect(screen.queryByLabelText("推理强度")).toBeNull();
     expect(screen.getByText(/session config.*未加载|未配置会话模型/)).toBeTruthy();
   });
+
+  it("RED: 会话页把 header facts、runtime summary 和 session config controls 分区展示", () => {
+    render(
+      <ConversationSurface
+        title="第三章写作会话"
+        status={{
+          state: "connected",
+          label: "已连接",
+          providerId: "sub2api",
+          providerLabel: "Sub2API",
+          modelId: "gpt-5.4",
+          modelLabel: "GPT-5.4",
+          permissionMode: "edit",
+          reasoningEffort: "medium",
+          messageCount: 4,
+          binding: { label: "《灵潮纪元》 / 第 3 章", worktree: "D:/novel-worktree" },
+          workspace: { path: "D:/novel-worktree", git: { status: "dirty", summary: "2 个文件变更" } },
+          usage: {
+            currentTurn: { promptTokens: 300, completionTokens: 120, totalTokens: 420 },
+            cumulative: { promptTokens: 2400, completionTokens: 900, totalTokens: 3300 },
+            cost: { status: "unknown" },
+          },
+          contextUsage: { usedTokens: 6200, maxTokens: 8000, trimThreshold: 6000, compactThreshold: 7200, checkpointNotice: "checkpoint 已保护正式章节" },
+          plannedRuntimePanels: ["Git stage/commit"],
+          toolPolicySummary: { allow: ["cockpit.*"], deny: ["candidate.create_chapter"], ask: ["guided.exit"] },
+          modelOptions: [
+            { providerId: "sub2api", providerLabel: "Sub2API", modelId: "gpt-5.4", modelLabel: "GPT-5.4", supportsTools: true },
+          ],
+        }}
+        messages={messages}
+        onApproveConfirmation={vi.fn()}
+        onRejectConfirmation={vi.fn()}
+        onSend={vi.fn()}
+      />,
+    );
+
+    const header = screen.getByTestId("conversation-session-header");
+    expect(header.textContent).toContain("第三章写作会话");
+    expect(header.textContent).toContain("已连接");
+    expect(header.textContent).toContain("《灵潮纪元》 / 第 3 章");
+    expect(header.textContent).toContain("消息：4");
+    expect(header.textContent).toContain("D:/novel-worktree");
+
+    const runtimeSummary = screen.getByTestId("conversation-runtime-summary-cards");
+    expect(runtimeSummary.textContent).toContain("Tokens：当前 420 / 累计 3300 / 成本 未知");
+    expect(runtimeSummary.textContent).toContain("上下文：6200 / 8000 tokens");
+    expect(runtimeSummary.textContent).toContain("工具策略：可用：cockpit.*；禁用：candidate.create_chapter；询问：guided.exit");
+    expect(runtimeSummary.textContent).toContain("planned 面板：Git stage/commit");
+
+    const configControls = screen.getByTestId("conversation-session-config-controls");
+    expect(within(configControls).getByLabelText("模型")).toBeTruthy();
+    expect(within(configControls).getByLabelText("权限")).toBeTruthy();
+    expect(within(configControls).getByLabelText("推理强度")).toBeTruthy();
+  });
+
+  it("RED: 空会话显示作者向空态并把 composer 固定在输入 dock", () => {
+    render(
+      <ConversationSurface
+        title="空白章节会话"
+        status={{
+          state: "ready",
+          label: "就绪",
+          binding: { label: "《灵潮纪元》 / 第 4 章" },
+          sessionConfigLoaded: false,
+        }}
+        messages={[]}
+        sendDisabledReason="模型池为空，请先到设置页启用模型"
+        settingsHref="/next/settings"
+        onApproveConfirmation={vi.fn()}
+        onRejectConfirmation={vi.fn()}
+        onSend={vi.fn()}
+      />,
+    );
+
+    const emptyState = screen.getByTestId("conversation-empty-state");
+    expect(emptyState.textContent).toContain("当前绑定：《灵潮纪元》 / 第 4 章");
+    expect(emptyState.textContent).toContain("可以输入写作目标");
+    expect(emptyState.textContent).toContain("模型状态：session config 未加载");
+
+    const composerDock = screen.getByTestId("conversation-composer-dock");
+    expect(composerDock.textContent).toContain("模型池为空，请先到设置页启用模型");
+    expect(within(composerDock).getByRole("link", { name: "打开设置" }).getAttribute("href")).toBe("/next/settings");
+    expect(within(composerDock).getByLabelText("对话输入框")).toBeTruthy();
+  });
+
+  it("RED: recovery notice 和 permission confirmation 统一收进运行事件 lane", () => {
+    render(
+      <ConversationSurface
+        title="运行中会话"
+        status={{ state: "running", label: "生成中" }}
+        messages={messages}
+        recoveryNotice={{ state: "replaying", reason: "history-gap", lastSeq: 7, ackedSeq: 5 }}
+        pendingConfirmation={{
+          id: "confirm-lane",
+          title: "candidate.create_chapter",
+          summary: "将创建第 5 章候选稿",
+          target: "chapters/0005.md",
+          risk: "confirmed-write",
+          permissionSource: "sessionConfig.toolPolicy.ask",
+        }}
+        isRunning
+        onApproveConfirmation={vi.fn()}
+        onRejectConfirmation={vi.fn()}
+        onSend={vi.fn()}
+      />,
+    );
+
+    const lane = screen.getByTestId("conversation-recovery-confirmation-lane");
+    expect(lane.textContent).toContain("正在恢复会话历史");
+    expect(lane.textContent).toContain("最近成功 cursor：5 / 7");
+    expect(lane.textContent).toContain("candidate.create_chapter");
+    expect(within(lane).getByTestId("confirmation-gate")).toBeTruthy();
+    expect((within(screen.getByTestId("conversation-runtime-controls")).getByRole("button", { name: "中断运行" }) as HTMLButtonElement).disabled).toBe(false);
+  });
 });
