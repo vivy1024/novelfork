@@ -7,6 +7,7 @@ describe("Agent Shell route parsing", () => {
     expect(parseShellRoute("/next")).toEqual({ kind: "home" });
     expect(parseShellRoute("/next/narrators/s-1")).toEqual({ kind: "narrator", sessionId: "s-1" });
     expect(parseShellRoute("/next/books/book-1")).toEqual({ kind: "book", bookId: "book-1" });
+    expect(parseShellRoute("/next/sessions")).toEqual({ kind: "sessions" });
     expect(parseShellRoute("/next/search")).toEqual({ kind: "search" });
     expect(parseShellRoute("/next/routines")).toEqual({ kind: "routines" });
     expect(parseShellRoute("/next/settings")).toEqual({ kind: "settings" });
@@ -26,6 +27,7 @@ describe("Agent Shell route parsing", () => {
     expect(toShellPath({ kind: "home" })).toBe("/next");
     expect(toShellPath({ kind: "narrator", sessionId: "session 1" })).toBe("/next/narrators/session%201");
     expect(toShellPath({ kind: "book", bookId: "book/part" })).toBe("/next/books/book%2Fpart");
+    expect(toShellPath({ kind: "sessions" })).toBe("/next/sessions");
     expect(toShellPath({ kind: "search" })).toBe("/next/search");
     expect(toShellPath({ kind: "routines" })).toBe("/next/routines");
     expect(toShellPath({ kind: "settings" })).toBe("/next/settings");

@@ -28,6 +28,8 @@ export function ShellSidebar({ route, books, sessions, onNavigate }: ShellSideba
   const items = getShellNavItems({ books, sessions });
   const bookItems = items.filter((item) => item.group === "books");
   const narratorItems = items.filter((item) => item.group === "narrators");
+  const visibleNarratorItems = narratorItems.slice(0, 5);
+  const hiddenNarratorCount = Math.max(0, narratorItems.length - visibleNarratorItems.length);
   const globalItems = items.filter((item) => item.group === "global");
 
   return (
@@ -51,7 +53,15 @@ export function ShellSidebar({ route, books, sessions, onNavigate }: ShellSideba
             <MessageSquareText className="h-3.5 w-3.5" />
             叙述者
           </h2>
-          {narratorItems.length > 0 ? narratorItems.map((item) => <NavButton key={item.id} label={item.label} active={isShellNavItemActive(item, route)} onClick={() => onNavigate(item.route)} />) : <p className="px-2 py-1 text-xs text-muted-foreground">暂无活跃会话</p>}
+          {visibleNarratorItems.length > 0 ? visibleNarratorItems.map((item) => <NavButton key={item.id} label={item.label} active={isShellNavItemActive(item, route)} onClick={() => onNavigate(item.route)} />) : <p className="px-2 py-1 text-xs text-muted-foreground">暂无活跃会话</p>}
+          {hiddenNarratorCount > 0 ? <p className="px-2 py-1 text-[11px] text-muted-foreground">还有 {hiddenNarratorCount} 个会话</p> : null}
+          <button
+            type="button"
+            className="mt-1 flex w-full items-center rounded-md px-2 py-1 text-left text-xs font-medium text-primary hover:bg-primary/10"
+            onClick={() => onNavigate({ kind: "sessions" })}
+          >
+            查看全部叙述者
+          </button>
         </section>
       </div>
 

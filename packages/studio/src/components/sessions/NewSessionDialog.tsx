@@ -32,6 +32,8 @@ import { Label } from "../ui/label";
 export interface NewSessionPayload {
   readonly agentId: string;
   readonly title: string;
+  readonly worktree?: string;
+  readonly binding?: { readonly type: "standalone" | "book" | "chapter" };
   readonly sessionMode: NarratorSessionMode;
   readonly sessionConfig: {
     readonly providerId: string;
@@ -119,7 +121,11 @@ export function NewSessionDialog({ open, initialPresetId = "writer", onOpenChang
   );
   const [permissionTouched, setPermissionTouched] = useState(false);
   const [titleTouched, setTitleTouched] = useState(false);
+  const [worktree, setWorktree] = useState("");
+  const [binding, setBinding] = useState<"standalone" | "book" | "chapter">("standalone");
+  const [bindingTouched, setBindingTouched] = useState(false);
   const [runtimeModels, setRuntimeModels] = useState<RuntimeModelOption[]>([]);
+  const [selectedRuntimeModelId, setSelectedRuntimeModelId] = useState("");
   const [modelsLoading, setModelsLoading] = useState(false);
 
   useEffect(() => {
@@ -130,6 +136,9 @@ export function NewSessionDialog({ open, initialPresetId = "writer", onOpenChang
     setTitle(defaultTitleFor(nextPreset.id));
     setSessionMode(nextPreset.defaultSessionMode);
     setPermissionMode(nextPreset.defaultPermissionMode);
+    setWorktree("");
+    setBinding("standalone");
+    setBindingTouched(false);
     setPermissionTouched(false);
     setTitleTouched(false);
   }, [initialPresetId, open]);
@@ -141,12 +150,15 @@ export function NewSessionDialog({ open, initialPresetId = "writer", onOpenChang
     void fetchJson<{ models?: RuntimeModelOption[] }>("/api/providers/models")
       .then((response) => {
         if (!cancelled) {
-          setRuntimeModels(usableRuntimeModels(response.models));
+          const usableModels = usableRuntimeModels(response.models);
+          setRuntimeModels(usableModels);
+          setSelectedRuntimeModelId(usableModels[0]?.modelId ?? "");
         }
       })
       .catch(() => {
         if (!cancelled) {
           setRuntimeModels([]);
+          setSelectedRuntimeModelId("");
         }
       })
       .finally(() => {
@@ -165,7 +177,7 @@ export function NewSessionDialog({ open, initialPresetId = "writer", onOpenChang
     [presetId],
   );
   const selectedPermission = getSessionPermissionModeOption(permissionMode);
-  const selectedRuntimeModel = useMemo(() => runtimeModels[0] ?? null, [runtimeModels]);
+  const selectedRuntimeModel = useMemo(() => runtimeModels.find((model) => model.modelId === selectedRuntimeModelId) ?? runtimeModels[0] ?? null, [runtimeModels, selectedRuntimeModelId]);
   const selectedRuntimeModelRef = selectedRuntimeModel ? splitRuntimeModelRef(selectedRuntimeModel) : null;
   const hasRuntimeModels = runtimeModels.length > 0;
 
@@ -200,9 +212,12 @@ export function NewSessionDialog({ open, initialPresetId = "writer", onOpenChang
     const trimmedTitle = title.trim() || defaultTitleFor(presetId);
     if (!trimmedAgentId || !selectedRuntimeModelRef) return;
 
+    const trimmedWorktree = worktree.trim();
     onCreate({
       agentId: trimmedAgentId,
       title: trimmedTitle,
+      ...(trimmedWorktree ? { worktree: trimmedWorktree } : {}),
+      ...(bindingTouched ? { binding: { type: binding } } : {}),
       sessionMode,
       sessionConfig: {
         providerId: selectedRuntimeModelRef.providerId,
@@ -313,9 +328,16 @@ export function NewSessionDialog({ open, initialPresetId = "writer", onOpenChang
             {modelsLoading ? (
               <p className="text-xs text-muted-foreground">正在读取统一模型池…</p>
             ) : selectedRuntimeModel ? (
-              <div className="rounded-xl border border-border/60 bg-muted/30 px-3 py-3 text-sm text-foreground">
-                {runtimeModelLabel(selectedRuntimeModel)}
-              </div>
+              <select
+                aria-label="运行时模型"
+                className="h-10 w-full rounded-xl border border-border/60 bg-background px-3 text-sm text-foreground outline-none focus:border-primary"
+                onChange={(event) => setSelectedRuntimeModelId(event.target.value)}
+                value={selectedRuntimeModel.modelId}
+              >
+                {runtimeModels.map((model) => (
+                  <option key={model.modelId} value={model.modelId}>{runtimeModelLabel(model)}</option>
+                ))}
+              </select>
             ) : (
               <div className="rounded-xl border border-dashed border-border px-3 py-3 text-sm text-muted-foreground">
                 尚未配置可用模型
@@ -385,6 +407,33 @@ export function NewSessionDialog({ open, initialPresetId = "writer", onOpenChang
                 onChange={(event) => handleAgentIdChange(event.target.value)}
                 placeholder={selectedPreset.id}
               />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="new-session-worktree">工作目录</Label>
+              <Input
+                id="new-session-worktree"
+                aria-label="工作目录"
+                value={worktree}
+                onChange={(event) => setWorktree(event.target.value)}
+                placeholder="例如 D:\\novels\\my-book"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="new-session-binding">绑定对象</Label>
+              <select
+                id="new-session-binding"
+                aria-label="绑定对象"
+                className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-primary"
+                onChange={(event) => {
+                  setBinding(event.target.value as "standalone" | "book" | "chapter");
+                  setBindingTouched(true);
+                }}
+                value={binding}
+              >
+                <option value="standalone">独立叙述者</option>
+                <option value="book">绑定作品</option>
+                <option value="chapter">绑定章节</option>
+              </select>
             </div>
           </div>
         </div>

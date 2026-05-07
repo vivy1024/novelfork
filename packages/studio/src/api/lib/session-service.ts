@@ -21,7 +21,7 @@ import { normalizeSessionToolPolicy } from "./session-tool-policy.js";
 import { loadUserConfig } from "./user-config-service.js";
 
 export type SessionListBinding = "standalone" | "book" | "chapter";
-export type SessionListSort = "manual" | "recent";
+export type SessionListSort = "manual" | "recent" | "lastModified-desc";
 
 export interface ListSessionsOptions {
   readonly kind?: NarratorSessionKind;
@@ -215,7 +215,7 @@ async function loadSessionRecords(): Promise<NarratorSessionRecord[]> {
 
 export async function listSessions(options: ListSessionsOptions = {}): Promise<NarratorSessionRecord[]> {
   const sessions = filterSessions(await loadSessionRecords(), options);
-  return options.sort === "recent" ? sortSessionsByRecentActivity(sessions) : sortSessions(sessions);
+  return options.sort === "recent" || options.sort === "lastModified-desc" ? sortSessionsByRecentActivity(sessions) : sortSessions(sessions);
 }
 
 export async function getSessionById(id: string): Promise<NarratorSessionRecord | null> {

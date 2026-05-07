@@ -59,7 +59,7 @@ function parseSessionBinding(value: string | undefined): SessionListBinding | un
 }
 
 function parseSessionSort(value: string | undefined): SessionListSort | undefined {
-  return value === "recent" || value === "manual" ? value : undefined;
+  return value === "recent" || value === "manual" || value === "lastModified-desc" ? value : undefined;
 }
 
 function parseListSessionsOptions(c: { req: { query: (name: string) => string | undefined } }): ListSessionsOptions {

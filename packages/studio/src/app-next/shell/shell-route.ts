@@ -4,6 +4,7 @@ export type ShellRoute =
   | { readonly kind: "home" }
   | { readonly kind: "narrator"; readonly sessionId: string }
   | { readonly kind: "book"; readonly bookId: string }
+  | { readonly kind: "sessions" }
   | { readonly kind: "search" }
   | { readonly kind: "routines" }
   | { readonly kind: "settings" };
@@ -57,6 +58,7 @@ export function parseShellRoute(pathname = globalThis.location?.pathname ?? STUD
   if (!section) return { kind: "home" };
   if (section === "narrators" && id) return { kind: "narrator", sessionId: decodeSegment(id) };
   if (section === "books" && id) return { kind: "book", bookId: decodeSegment(id) };
+  if (section === "sessions") return { kind: "sessions" };
   if (section === "search") return { kind: "search" };
   if (section === "routines") return { kind: "routines" };
   if (section === "settings") return { kind: "settings" };
@@ -69,6 +71,8 @@ export function toShellPath(route: ShellRoute): string {
       return `${STUDIO_NEXT_BASE_PATH}/narrators/${encodeSegment(route.sessionId)}`;
     case "book":
       return `${STUDIO_NEXT_BASE_PATH}/books/${encodeSegment(route.bookId)}`;
+    case "sessions":
+      return `${STUDIO_NEXT_BASE_PATH}/sessions`;
     case "search":
       return `${STUDIO_NEXT_BASE_PATH}/search`;
     case "routines":
