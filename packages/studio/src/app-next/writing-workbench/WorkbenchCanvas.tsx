@@ -63,6 +63,36 @@ function saveErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+const resourceTypeLabels: Partial<Record<WorkbenchResourceKind, string>> = {
+  chapter: "章节",
+  candidate: "候选稿",
+  draft: "草稿",
+  story: "Story",
+  truth: "Truth",
+  "jingwei-section": "经纬分区",
+  "jingwei-entry": "经纬条目",
+  "bible-entry": "经纬资料",
+  "narrative-line": "叙事线",
+  storyline: "叙事线",
+  "tool-result": "工具结果",
+  unsupported: "不支持资源",
+};
+
+function resourceTypeLabel(kind: WorkbenchResourceKind): string {
+  return resourceTypeLabels[kind] ?? kind;
+}
+
+function capabilityLabel(node: WorkbenchResourceNode, readonly: boolean): string {
+  if (node.capabilities.unsupported) return "不支持";
+  return readonly ? "只读" : "可编辑";
+}
+
+function readonlyReason(node: WorkbenchResourceNode, readonly: boolean): string | null {
+  if (!readonly) return null;
+  if (node.capabilities.unsupported) return "只读原因：当前资源类型暂不支持编辑，保存入口已禁用。";
+  return "只读原因：当前资源由合同标记为只读，保存入口已禁用。";
+}
+
 export interface WorkbenchCanvasProps {
   node: WorkbenchResourceNode | null;
   onSave: (node: WorkbenchResourceNode, content: string) => Promise<void> | void;
@@ -111,13 +141,38 @@ export function WorkbenchCanvas({ node, onSave, onCanvasContextChange = () => un
     }
   }
 
+  const saveStatus = dirty ? "未保存" : "已保存";
+  const currentReadonlyReason = readonlyReason(node, readonly);
+
   return (
     <section className="workbench-canvas">
-      <header>
-        <h2>{node.title}</h2>
-        <span>{dirty ? "未保存" : "已保存"}</span>
+      <header data-testid="workbench-resource-header" className="workbench-canvas__resource-header">
+        <div>
+          <p>当前资源</p>
+          <h2>{node.title}</h2>
+          <span>{saveStatus}</span>
+        </div>
+        <dl>
+          <div>
+            <dt>资源类型</dt>
+            <dd>资源类型：{resourceTypeLabel(node.kind)}</dd>
+          </div>
+          <div>
+            <dt>真实路径</dt>
+            <dd>真实路径：{node.path ?? "未提供路径"}</dd>
+          </div>
+          <div>
+            <dt>读写能力</dt>
+            <dd>读写能力：{capabilityLabel(node, readonly)}</dd>
+          </div>
+          <div>
+            <dt>保存状态</dt>
+            <dd>保存状态：{saveStatus}</dd>
+          </div>
+        </dl>
       </header>
       {readonly ? <p>只读资源，当前画布禁用编辑。</p> : null}
+      {currentReadonlyReason ? <p>{currentReadonlyReason}</p> : null}
       {needsHydration ? <p role="alert">章节详情未加载：正在等待详情 hydrate，禁止从空编辑器保存。</p> : null}
       {hydrateError ? <p role="alert">详情加载失败：{hydrateError}</p> : null}
       {saveError ? <p role="alert">保存失败：{saveError}</p> : null}

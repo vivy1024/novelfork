@@ -9,6 +9,7 @@ export interface WorkbenchWritingAction {
   id: string;
   label: string;
   description?: string;
+  resultBoundary?: string;
   capability?: BackendCapability;
   disabled?: boolean;
   disabledReason?: string;
@@ -38,12 +39,35 @@ const actionLabelOverrides: Record<string, string> = {
 
 const defaultActionIds = Object.keys(actionLabelOverrides);
 
+type WritingActionOutputBoundary = WritingActionDescriptor["outputBoundary"];
+
+function resultBoundaryLabel(actionId: string, outputBoundary: WritingActionOutputBoundary): string {
+  if (actionId === "session-native.write-next") return "session → candidate";
+  if (actionId === "ai.draft.async") return "session → draft";
+  switch (outputBoundary) {
+    case "candidate-artifact":
+      return "candidate";
+    case "draft-artifact":
+      return "draft";
+    case "prompt-preview":
+      return "prompt-preview";
+    case "analysis":
+      return "audit";
+    case "gate":
+      return "session → confirmation";
+    case "async-start":
+      return "session";
+    default:
+      return "unsupported";
+  }
+}
+
 export function buildDefaultWorkbenchWritingActions(descriptors: readonly WritingActionDescriptor[] = listWritingActionDescriptors()): WorkbenchWritingAction[] {
   const byId = new Map(descriptors.map((descriptor) => [descriptor.id, descriptor]));
   return defaultActionIds.flatMap((id) => {
     const descriptor = byId.get(id);
     if (!descriptor) return [];
-    return [{ id, label: actionLabelOverrides[id], description: descriptor.entry, capability: descriptor.capability }];
+    return [{ id, label: actionLabelOverrides[id], description: descriptor.entry, resultBoundary: resultBoundaryLabel(id, descriptor.outputBoundary), capability: descriptor.capability }];
   });
 }
 
@@ -130,6 +154,7 @@ export function WorkbenchWritingActions({ bookId, sessions, actions, blockedReas
               {runningActionId === action.id ? "启动中…" : action.label}
             </button>
             {action.description ? <small>{action.description}</small> : null}
+            {action.resultBoundary ? <p>结果边界：{action.resultBoundary}</p> : null}
             {disabled && disabledReason ? <p>{disabledReason}</p> : null}
           </div>
         );
