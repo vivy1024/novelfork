@@ -66,4 +66,12 @@ describe("WorkbenchWritingActions", () => {
 
     expect(labels).toEqual(expect.arrayContaining(["生成下一章", "续写草稿", "扩写/改写", "连续性审校", "去 AI 味检测"]));
   });
+
+  it("RED: 发布级写作动作卡片必须展示结果边界", () => {
+    render(<WorkbenchWritingActions bookId="book-1" sessions={createSessions() as any} onNavigateToConversation={vi.fn()} />);
+
+    expect(screen.getByText("结果边界：session → candidate")).toBeTruthy();
+    expect(screen.getByText("结果边界：prompt-preview")).toBeTruthy();
+    expect(screen.getByText("结果边界：audit")).toBeTruthy();
+  });
 });

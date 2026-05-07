@@ -69,12 +69,13 @@
   - 覆盖：Requirement 1；Design 4.1、5.1、8。
   - 证据：`StudioNextApp` 新增 `HomeRouteLive`，`/next` 主区不再显示开发占位 `Agent Shell`，而是从 `useShellData` 读取真实 books/sessions/provider summary/status，展示作者首页、最近作品、最近会话、模型健康、快速动作、provider 透明摘要和空态；保留 route 内导航，不引入假统计。验证 `pnpm --dir packages/studio exec vitest run src/app-next/routing.test.tsx` 通过（1 file / 4 tests passed）；邻近回归 `pnpm --dir packages/studio exec vitest run src/app-next/routing.test.tsx src/app-next/StudioNextApp.test.tsx src/app-next/entry.test.ts src/app-next/shell/useShellData.test.ts src/app-next/shell/AgentShell.test.tsx` 通过（5 files / 39 tests passed）；`pnpm --dir packages/studio exec tsc --noEmit` 与 `pnpm --dir packages/studio exec tsc -p tsconfig.server.json --noEmit` 通过。
 
-- [ ] 9. 为作品工作台发布级体验补 RED 测试
+- [x] 9. 为作品工作台发布级体验补 RED 测试
   - 扩展 `WritingWorkbenchRoute`、资源树、资源 viewer/canvas、WorkbenchWritingActions 相关测试。
   - 先补失败用例：作品标题/当前状态清晰、资源类型/路径/读写能力/保存状态卡片化、只读保存解释、dirty 状态、写作动作结果边界（session/candidate/draft/audit/prompt-preview/unsupported）可见。
   - 保留资源 hydrate、保存后回读、dirty guard、写作动作创建 session 的既有断言。
   - 验证：聚焦测试先 RED，失败原因来自体验信息缺失或布局不足。
   - 覆盖：Requirement 2；Design 4.2、5.1。
+  - 证据：新增 `WritingWorkbenchRoute.test.tsx`，要求工作台首屏展示作品标题“灵潮纪元”、当前状态、资源树/当前资源画布/写作动作区域；扩展 `WorkbenchCanvas.test.tsx`，要求 `workbench-resource-header` 卡片展示资源类型、真实路径、读写能力、保存状态和只读原因；扩展 `WorkbenchWritingActions.test.tsx`，要求动作卡显示 `session → candidate`、`prompt-preview`、`audit` 结果边界。验证 `pnpm --dir packages/studio exec vitest run src/app-next/writing-workbench/WritingWorkbenchRoute.test.tsx src/app-next/writing-workbench/WorkbenchCanvas.test.tsx src/app-next/writing-workbench/WorkbenchWritingActions.test.tsx` 得到 3 failed / 12 passed，失败均来自发布级解释层缺失：无作品标题 heading/当前状态区域、无 `workbench-resource-header`、无结果边界文本。
 
 - [ ] 10. 完成作品工作台体验成品化
   - 改进资源树分组、当前资源 header、资源 viewer/canvas 和写作动作卡片文案。
