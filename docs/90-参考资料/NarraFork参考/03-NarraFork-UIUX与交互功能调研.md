@@ -1024,6 +1024,21 @@ Task 4 自动化验证命令：`pnpm exec playwright test e2e/settings-session-c
 
 这些改动仍不替代最终 clean root 手工软件验活：发布前必须用干净数据目录确认真实 provider、真实作品和真实会话下的首屏视觉。
 
+### 15.9 2026-05-07 release-readiness Task 14 clean root 手工软件验活
+
+本次人工验活使用全新 clean root：`D:\DESKTOP\novelfork\.novelfork\manual-release-smoke-v0-1-0-20260507-1900`，`NOVELFORK_RUNTIME_DIR` 与 `NOVELFORK_SESSION_STORE_DIR` 都指向该 root 下的 `.runtime/`，API 服务器端口为 `4597`。为了观察当前源码 UI，浏览器打开的是 Vite dev server `http://127.0.0.1:4598`，同样连接到该 clean root。
+
+| 路径 | 观察结果 | 结论 |
+|------|----------|------|
+| `/api/mode` | 返回 `{ "mode": "standalone" }` | clean root 下模式正确 |
+| `/`、`/next` | 作者首页可见，新建作品/新建会话/打开设置/套路库按钮可用；空态显示“还没有可用内容，先新建作品或新建会话。” | 首页真实可操作 |
+| 新建作品 | 点击“新建作品”后出现表单，输入 `手工验活灵潮录` 并提交后，页面自动进入 `/next/books/手工验活灵潮录` 工作台 | 作品创建链路可用 |
+| 工作台资源 | `workbench-resource-header` 显示当前资源、真实路径、读写能力与保存状态；手工打开 `书籍规则` 后可见 `资源类型：Truth`、`story/book_rules.md`、`可编辑`、`已保存` | 资源 header 真实、无假 current |
+| 会话 | 自动创建的 `新书《手工验活灵潮录》写作会话` 可打开，conversation route 显示会话事实、模型状态、权限、推理、绑定与运行控制 | 会话页可手工验活 |
+| 会话中心 | “查看全部叙述者” 可进入会话中心，显示新书写作会话、归档/打开等操作 | 会话中心可达 |
+| 设置 / Provider / 套路 / 关于 | 设置页显示真实默认模型未配置；AI 供应商页显示 0 provider / 0 model 的 clean root 事实；套路页显示命令/工具/权限/技能/MCP/钩子分区；关于页显示版本 `0.0.6`、commit `169a4cfc` | 主要信息页可达且无污染 |
+| 未覆盖项 | 清洁根本次没有继续走到编译产物 `bun run main.ts` 的 embedded assets，因为该路径仍显示旧 `Agent Shell` 占位页，属于旧嵌入产物，不代表当前源码；正式 release smoke 仍需在 v0.1.0 重建嵌入资产后再验一次 | 已记录为后续编译验证项 |
+
 ---
 
 ## 结论

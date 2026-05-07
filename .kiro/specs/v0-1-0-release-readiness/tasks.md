@@ -109,11 +109,12 @@
   - 验证：Playwright 主路径通过，并输出可用于发布验收的 trace/screenshot 证据。
   - 覆盖：Requirement 1-8、11；Design 6.2、4.7。
 
-- [ ] 14. 执行干净 root 手工软件验活
+- [x] 14. 执行干净 root 手工软件验活
   - 用全新 clean root 启动开发服务器或编译产物，打开真实浏览器，逐项走 `/`、`/api/mode`、`/next`、首页、作品、工作台、会话中心、会话页、设置、Provider、Routines、关于。
   - 记录端口、root、启动命令、浏览器路径、观察结果、失败项、未覆盖项和截图/文字证据。
   - 如果发现阻塞问题，回到对应任务补 RED 测试和修复，不能只写 known issue 发布。
   - 验证：手工记录写入 `docs/08-测试与质量/01-当前测试状态.md` 和 NarraFork/UI 调研或 release readiness 文档。
+  - 证据：使用 clean root `D:\DESKTOP\novelfork\.novelfork\manual-release-smoke-v0-1-0-20260507-1900`，API 服务器 `http://127.0.0.1:4597`，Vite dev frontend `http://127.0.0.1:4598`，浏览器实际打开 `/api/mode`、`/`、`/next`、首页、作品创建、`/next/books/:bookId`、工作台资源 header、自动写作会话、会话中心、设置、Provider、Routines、关于；手工发现首页缺“新建作品”入口，已按 TDD 补 RED（routing home 测试失败于缺少“新建作品”）并实现最小创建表单，手工创建 `手工验活灵潮录` 后进入工作台。记录写入 `docs/08-测试与质量/01-当前测试状态.md` 与 `docs/90-参考资料/NarraFork参考/03-NarraFork-UIUX与交互功能调研.md`。embedded `bun run main.ts` 当前仍加载旧嵌入资产，显示旧 `Agent Shell` 占位页；本次 Task 14 采用开发服务器验活当前源码，并把重建嵌入资产列为后续编译/release smoke 必验项。
   - 覆盖：Requirement 7、11；Design 4.7、6.3、7、9。
 
 - [ ] 15. 收口 `ui-live-parity-hardening-v1` Task 14 并归档旧 spec 状态
