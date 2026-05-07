@@ -217,6 +217,11 @@ test("settings page shows truthful provider/model/runtime facts without current 
   await page.getByRole("button", { name: "AI 供应商", exact: true }).click();
   const codexCard = page.getByRole("button", { name: /Codex/ });
   await expect(codexCard).toContainText("可导入 / 未配置账号 / 不可调用");
+  await expect(page.getByLabel("搜索供应商或模型")).toBeVisible();
+  const e2eProviderCard = page.getByRole("button", { name: /E2E Provider/ });
+  await expect(e2eProviderCard).toContainText("测试夹具");
+  await page.getByLabel("隐藏测试夹具").check();
+  await expect(e2eProviderCard).toHaveCount(0);
 
   await page.getByRole("button", { name: "AI 代理" }).click();
   await expect(page.getByText("运行策略来源")).toBeVisible();

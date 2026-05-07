@@ -100,6 +100,16 @@ export interface AgentRuntimeSettingsInput extends ModelSettingsInput {
   };
 }
 
+export interface ProviderFixtureFactsInput {
+  readonly cleanRoot: boolean;
+  readonly providers: readonly {
+    readonly id: string;
+    readonly name: string;
+    readonly prefix?: string;
+    readonly models?: readonly { readonly id: string; readonly name: string }[];
+  }[];
+}
+
 const USER_SETTINGS_API = "/api/settings/user";
 
 function hasOwn(object: unknown, key: string) {
@@ -167,6 +177,37 @@ function agentRuntimeFact<T>({
     reason: configured ? undefined : (reason ?? "用户设置尚未配置该字段"),
     verifiedBy: "unit",
   };
+}
+
+function normalizedFixtureText(value: string | undefined): string {
+  return (value ?? "").trim().toLowerCase();
+}
+
+function providerLooksLikeE2EFixture(provider: ProviderFixtureFactsInput["providers"][number]): boolean {
+  const providerText = [provider.id, provider.name, provider.prefix].map(normalizedFixtureText).join(" ");
+  if (providerText.includes("e2e-provider") || providerText.includes("e2e provider")) return true;
+  return provider.models?.some((model) => {
+    const modelText = [model.id, model.name].map(normalizedFixtureText).join(" ");
+    return modelText.includes("e2e-model") || modelText.includes("e2e model");
+  }) ?? false;
+}
+
+export function deriveProviderFixtureFacts(input: ProviderFixtureFactsInput): Array<SettingsFact<string>> {
+  return input.providers
+    .filter(providerLooksLikeE2EFixture)
+    .map((provider) => ({
+      id: `provider-fixture.${provider.id}`,
+      label: `${provider.name} 测试夹具`,
+      value: provider.name,
+      group: "providers" as const,
+      source: "provider-summary" as const,
+      status: input.cleanRoot ? "unsupported" as const : "partial" as const,
+      writable: false,
+      reason: input.cleanRoot
+        ? "clean root 不应出现 E2E 测试夹具；请使用隔离 root 或清理 provider 后再发布验收"
+        : "检测到 E2E 测试夹具开发数据；发布验收应隐藏、清理或切换 clean root",
+      verifiedBy: "unit" as const,
+    }));
 }
 
 export function deriveModelSettingsFacts(config: ModelSettingsInput | null | undefined): Array<SettingsFact<string>> {

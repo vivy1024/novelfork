@@ -178,4 +178,28 @@ describe("SettingsTruthModel", () => {
     expect(facts.every((fact) => fact.source === "capability-matrix" || fact.source === "official-docs" || fact.source === "user-settings")).toBe(true);
     expect(facts.every((fact) => !(fact.id.includes("sandbox") && fact.status === "current"))).toBe(true);
   });
+
+  it("RED: derives provider fixture cleanup facts instead of treating E2E providers as normal current data", () => {
+    const deriveProviderFixtureFacts = (SettingsTruthModelModule as {
+      deriveProviderFixtureFacts?: (input: {
+        readonly cleanRoot: boolean;
+        readonly providers: readonly { readonly id: string; readonly name: string; readonly models?: readonly { readonly id: string; readonly name: string }[] }[];
+      }) => Array<{ id: string; group: string; source: string; status: string; writable: boolean; reason?: string }>;
+    }).deriveProviderFixtureFacts;
+
+    expect(deriveProviderFixtureFacts).toBeTypeOf("function");
+    const facts = deriveProviderFixtureFacts?.({
+      cleanRoot: false,
+      providers: [{ id: "e2e-provider-task11", name: "E2E Provider Task11", models: [{ id: "e2e-model-a", name: "E2E Model A" }] }],
+    }) ?? [];
+
+    expect(facts).toContainEqual(expect.objectContaining({
+      id: "provider-fixture.e2e-provider-task11",
+      group: "providers",
+      source: "provider-summary",
+      status: "partial",
+      writable: false,
+      reason: expect.stringContaining("测试夹具"),
+    }));
+  });
 });

@@ -85,12 +85,13 @@
   - 覆盖：Requirement 2；Design 4.2、8、9。
   - 证据：`WritingWorkbenchRoute` 新增作品工作台 header、资源加载/选择状态、资源树/当前资源画布/写作动作区域语义；`WorkbenchCanvas` 新增 `workbench-resource-header`，展示资源类型、真实路径、读写能力、保存状态和只读原因，同时保留 dirty/save/hydrate guard；`WorkbenchWritingActions` 从 writing action descriptor 的 `outputBoundary` 派生作者可理解结果边界，不改变 session 创建/复用逻辑。验证 Task 9 RED 转 GREEN：`pnpm --dir packages/studio exec vitest run src/app-next/writing-workbench/WritingWorkbenchRoute.test.tsx src/app-next/writing-workbench/WorkbenchCanvas.test.tsx src/app-next/writing-workbench/WorkbenchWritingActions.test.tsx` 通过（3 files / 15 tests passed）；workbench 邻近回归通过（9 files / 62 tests passed）；`pnpm exec playwright test e2e/workbench-resource-edit.spec.ts` 通过（1 passed）；client/server TypeScript 通过。
 
-- [ ] 11. 治理设置 / Provider 可读性与 E2E 夹具污染
+- [x] 11. 治理设置 / Provider 可读性与 E2E 夹具污染
   - 为 `ProviderSettingsPage`、`SettingsTruthModel`、相关 E2E fixtures 补测试，确认 clean root 不出现 `E2E Provider`，开发 root 可识别/清理测试 provider 或测试模型。
   - Provider 页增加搜索/分组折叠/异常过滤或等价可读性改进，保留平台账号、API key provider、模型库存、callable 状态分离。
   - E2E fixture 必须使用隔离 root 或可清理数据，不污染发布 smoke root。
   - 验证：Provider/Settings 聚焦回归、相关 Playwright 场景通过；手工检查模型/provider 列表无测试噪声。
   - 覆盖：Requirement 5、8；Design 4.5、4.7、5.3、6.1、6.2。
+  - 证据：`ProviderSettingsPage` 新增搜索供应商/模型、只看异常项、隐藏测试夹具控件，并在 API key provider 卡片标记 `E2E Provider` / `E2E Model` 为测试夹具开发数据；`SettingsTruthModel` 新增 `deriveProviderFixtureFacts`，将 E2E provider 派生为 providers 组 partial/unsupported 清理事实而非普通 current 数据；`e2e/settings-session-conversation.spec.ts` 在真实浏览器设置页断言 E2E provider 可见为测试夹具且可被隐藏。验证：RED 先失败于缺少过滤控件与 `deriveProviderFixtureFacts`；GREEN 后 `pnpm --dir packages/studio exec vitest run src/app-next/settings/ProviderSettingsPage.test.tsx src/app-next/settings/SettingsTruthModel.test.ts` 通过（2 files / 22 tests passed）；`pnpm --dir packages/studio exec vitest run src/app-next/settings` 通过（6 files / 37 tests passed）；`pnpm exec playwright test e2e/settings-session-conversation.spec.ts` 通过（3 passed）；client/server TypeScript 通过。
 
 - [ ] 12. 验活并补齐 Routines / 工作流配置台发布口径
   - 真实打开 `/next/routines`，检查命令、工具、权限、技能、子代理、MCP、钩子等分组入口。
