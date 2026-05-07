@@ -8,11 +8,11 @@
 
 - [x] 1. 固化发布准备基线与可追溯清单
   - 读取并确认 `requirements.md` / `design.md`、`ui-live-parity-hardening-v1` Task 14、2026-05-07 4567/7778 手工 UI 对比记录、当前能力矩阵和测试状态。
-  - 建立本轮发布准备 traceability checklist：Requirement 1-11 → 相关组件/API/E2E/文档/验证命令。
+  - 建立本轮发布准备 traceability checklist：Requirement 1-11 → 相关组件/API/E2E/文档/验证命令（2026-05-07 用户反馈后新增 Requirement 12，由 Task19-21 覆盖）。
   - 检查当前工作树、最近提交、当前版本号、现有 dist/release 产物和 active spec 状态，避免基于过期事实执行。
   - 验证：记录 `git status --short`、最近提交、spec 状态和待执行清单；不得修改实现。
   - 覆盖：Requirement 9、11；Design 2、7、9。
-  - 证据：新增 `release-readiness-baseline.md`，记录已读取的 approved requirements/design/tasks、`ui-live-parity-hardening-v1` Task 14 状态、4567/7778 手工 UI 对比、能力矩阵、测试状态、执行前干净工作树、最新提交 `cb269472`、当前 0.0.6 版本号、dist 中仅有 v0.0.2-v0.0.6/novelfork.exe 而无 v0.1.0 产物；建立 Requirement 1-11 → Task/子系统/验证方式映射，并列出会话页视觉、叙述者中心、首页、工作台、E2E provider 污染、Routines 验活、clean root、spec 归档、版本/产物等当前发布阻塞项。
+  - 证据：新增 `release-readiness-baseline.md`，记录已读取的 approved requirements/design/tasks、`ui-live-parity-hardening-v1` Task 14 状态、4567/7778 手工 UI 对比、能力矩阵、测试状态、执行前干净工作树、最新提交 `cb269472`、当前 0.0.6 版本号、dist 中仅有 v0.0.2-v0.0.6/novelfork.exe 而无 v0.1.0 产物；建立 Requirement 1-11 → Task/子系统/验证方式映射，并列出会话页视觉、叙述者中心、首页、工作台、E2E provider 污染、Routines 验活、clean root、spec 归档、版本/产物等当时发布阻塞项；2026-05-07 用户反馈后新增 Requirement 12 和 Task19-21，专门覆盖 Claude/Codex 源码对照、mock/hardcoded 清理与重新验收。
 
 - [x] 2. 为会话页 UI 成品化补 RED 组件测试
   - 在 `ConversationSurface.test.tsx` / 邻近测试中先补失败用例，覆盖发布级 session header、runtime summary cards、empty state、composer dock、running/idle controls、session config 未加载原因、模型不可用设置入口。
@@ -139,8 +139,8 @@
   - 将 CHANGELOG Unreleased 移入 `v0.1.0 (YYYY-MM-DD)`，日期使用实际发版日期，不虚构条目。
   - 更新能力矩阵、当前状态、当前执行主线、测试状态和 release readiness spec 状态。
   - 验证：全仓搜索旧版本/旧发布口径，确保无遗漏；docs verify 通过。
-  - 覆盖：Requirement 10、11；Design 4.8、7。
-  - 证据：根 `package.json`、`packages/studio/package.json`、`packages/cli/package.json`、`packages/core/package.json` 已更新到 `0.1.0`；`CLAUDE.md`、`AGENTS.md`、README、Studio README、当前状态、当前执行主线、测试状态和 spec 索引同步 v0.1.0 release-readiness 17/20 与 Task18 编译 smoke 下一步；CHANGELOG 已将 Unreleased 内容移入 `v0.1.0 (2026-05-07)` 并保留空 Unreleased。全仓旧版本搜索中，`release-readiness-baseline.md`、历史 changelog、历史 spec 和旧 dist 记录保留为历史事实；当前 package/规则文档版本号已切到 v0.1.0。Task18 仍需生成 `dist/novelfork-v0.1.0-windows-x64.exe`、SHA256 并实际打开编译产物 smoke，Task17 不宣称 release 已发布。
+  - 覆盖：Requirement 10、11；Design 4.9、7。
+  - 证据：根 `package.json`、`packages/studio/package.json`、`packages/cli/package.json`、`packages/core/package.json` 已更新到 `0.1.0`；`CLAUDE.md`、`AGENTS.md`、README、Studio README、当前状态、当前执行主线、测试状态和 spec 索引在 Task17 当时同步 v0.1.0 release-readiness 17/20 与 Task18 编译 smoke 下一步；2026-05-07 用户反馈后当前 spec 已扩展为 23 项，CHANGELOG 已回到 Unreleased 并注明 v0.1.0 尚未发布。全仓旧版本搜索中，`release-readiness-baseline.md`、历史 changelog、历史 spec 和旧 dist 记录保留为历史事实；当前 package/规则文档版本号已切到 v0.1.0。Task18 仍需生成 `dist/novelfork-v0.1.0-windows-x64.exe`、SHA256 并实际打开编译产物 smoke，Task17 不宣称 release 已发布。
 
 - [x] 18. 编译 Windows 发布产物并执行 compiled smoke
   - 运行 `pnpm --dir packages/studio compile`，生成 `dist/novelfork-v0.1.0-windows-x64.exe`。
@@ -148,20 +148,43 @@
   - 使用 clean root 启动编译产物，实际打开软件验证 `/`、`/api/mode`、`/next`、关键页面与主流程。
   - 记录端口、命令、进程状态、HTTP 结果、浏览器手工结果和失败项。
   - 验证：compile/smoke 证据写入测试状态和发布记录。
-  - 覆盖：Requirement 7、10、11；Design 4.8、6.3。
+  - 覆盖：Requirement 7、10、11；Design 4.9、6.3。
   - 证据：`pnpm --dir packages/studio compile` 通过，生成 `dist/novelfork.exe` 与 `dist/novelfork-v0.1.0-windows-x64.exe`（约 115M）；`sha256sum -c dist/novelfork-v0.1.0-windows-x64.exe.sha256` 返回 OK，SHA256 为 `d0eb2bf63385ba6c5695485de129c20bacda28dd54c22ad7647f9478292bee7d`。首次 compiled smoke 暴露 startup compile-smoke 仍按 clean root `dist/` 查找 exe，已按 TDD 新增 `src/api/lib/compile-smoke.test.ts` 与 `compile-smoke.ts` 修复为 compiled runtime 使用 `process.execPath`，聚焦测试通过（compile-smoke helper 2 tests passed；server compile-smoke 相关 4 tests passed）。最终使用 `NOVELFORK_RUNTIME_DIR=.novelfork/manual-release-smoke-v0-1-0-compiled-20260507-2210/.runtime ./dist/novelfork-v0.1.0-windows-x64.exe --root=.novelfork/manual-release-smoke-v0-1-0-compiled-20260507-2210 --port=4611` 启动，日志显示 `isCompiledBinary=true`、`assetSource=embedded`、`assetCount=26`、runtime DB 位于 clean root `.runtime`；HTTP 验证 `/api/mode` 返回 `standalone`，`/api/settings/release` 返回 version `0.1.0` / `buildSource=bun-compiled-binary`，`/api/admin/resources` startup `failures=[]`、`compileSmokeStatus=success`、`singleFileReady=true`，`/api/providers` 返回空数组；浏览器实际打开 `http://localhost:4611/next`，显示作者首页和 clean 模型状态，随后通过 UI 创建《v0.1.0 编译验活作品》并自动进入 `/next/books/...` 工作台，资源树、写作动作边界和新书会话可见；`GET /api/books` 回读到该书；浏览器打开 `/next/routines` 显示套路管理分区。smoke 完成后手动停止 compiled exe 进程，bg_bash 退出属于预期清理动作。
 
-- [ ] 19. Release commit、Git tag 与 GitHub Release
-  - 在所有验证和手工验活通过后创建 release commit。
+- [ ] 19. Claude/Codex 源码对照与能力口径重审
+  - 暂停发布动作：GitHub Release 未创建，2026-05-07 已撤回本地和远端 `v0.1.0` tag。
+  - 读取 `claude/restored-cli-src/` 中 slash command、permission mode、tool permission、session storage/resume/fork、headless stream-json、usage/result 相关源码，列出 NovelFork 当前实现的真实差距。
+  - Codex 只按本机 help/官方文档与当前代码事实重审，不得把没有源码/没有实现的 TUI、sandbox、MCP、image input、review、exec event taxonomy 写成 current。
+  - 更新 parity matrix、SettingsTruthModel、能力矩阵、README、CHANGELOG、当前状态等文档：所有 Claude/Codex 相关项必须明确 current/partial/planned/non-goal/reference-only。
+  - 验证：源码对照清单、文档降级和 docs verify 通过；不得修改实现后不测。
+  - 覆盖：Requirement 11、12；Design 4.8、6.3、7、9。
+
+- [ ] 20. Mock / hardcoded / route literal 发布阻塞审计与修复
+  - 审计 app-next 生产代码、backend-contract clients、settings facts、routines/provider/session UI 中的 route literal、硬编码状态文案、测试夹具识别、planned/unsupported facts。
+  - 将必须保留的 API 路径集中到 Backend Contract 常量/helper 或 domain client，不能在组件里散写未登记 `/api/*`。
+  - 删除、替换或降级 mock/fake/noop 假成功；发布证据不得引用 mock-heavy 单测作为“真实可用”。
+  - 对无法在 v0.1.0 前完成的能力标记 planned/non-goal/known gap，并从 current UI claim 中移除。
+  - 验证：新增/更新审计测试或 grep guard；app-next/backend-contract 聚焦回归、typecheck、docs verify 通过。
+  - 覆盖：Requirement 5、6、8、11、12；Design 4.5、4.6、4.8、6.1、6.3。
+
+- [ ] 21. 重新执行全量验证与真实软件验活
+  - 在 Task19-20 修正后重新运行 Studio app-next、Backend Contract、Studio typecheck、CLI、docs verify、diff check 和 Playwright。
+  - 重新编译 `dist/novelfork-v0.1.0-windows-x64.exe` 与 SHA256。
+  - 使用 clean root + isolated runtime 启动真实 compiled exe，浏览器实际打开并走首页、作品、工作台、写作动作、会话、设置、Provider、Routines、关于。
+  - 手工记录必须区分真实 evidence 与 mock/unit evidence；未覆盖项写明原因。
+  - 覆盖：Requirement 1-12；Design 6、7、9。
+
+- [ ] 22. Release commit、Git tag 与 GitHub Release
+  - 仅在 Task19-21 全部完成且用户未再指出阻塞项后创建 release commit。
   - 创建并推送 `v0.1.0` tag。
   - 创建 GitHub Release，上传 `dist/novelfork-v0.1.0-windows-x64.exe` 与 SHA256。
   - 验证 Release URL、附件名称、校验和和远端 tag 存在。
   - 不得只本地 tag 或只本地构建就宣称 release 完成。
-  - 覆盖：Requirement 10、11；Design 4.8、9。
+  - 覆盖：Requirement 10、11、12；Design 4.9、9。
 
-- [ ] 20. 最终验收报告与目标完成判断
-  - 汇总所有自动化验证、手工软件验活、clean root 证据、未覆盖项、post-v0.1.0 backlog、Release URL、tag、commit。
+- [ ] 23. 最终验收报告与目标完成判断
+  - 汇总所有自动化验证、手工软件验活、clean root 证据、Claude/Codex 源码对照、mock/hardcoded 清理、未覆盖项、post-v0.1.0 backlog、Release URL、tag、commit。
   - 核对 active goal 每一项：剩余 spec 完成、测试验证、实际打开软件验证、文档全量更新、spec 归档、v0.1.0 发布。
   - 运行最终 `git status --short`、必要 diff/log 检查，确认无未提交发布改动。
   - 只有全部证据齐全后，才能声明 active goal 完成并更新目标状态。
-  - 覆盖：Requirement 9、10、11；Design 7、9。
+  - 覆盖：Requirement 9、10、11、12；Design 7、9。
