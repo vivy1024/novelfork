@@ -235,7 +235,8 @@ test("workbench action creates a synced narrator session and conversation route 
   const suffix = `${Date.now()}`;
   const runtime = await prepareRuntimeModel(request, suffix);
   await configureUserDefaults(request, runtime, { defaultModel: true });
-  const { bookId } = await createBookAndOpenWorkbench(page, request, `e2e-session-${suffix}`);
+  const bookTitle = `e2e-session-${suffix}`;
+  const { bookId } = await createBookAndOpenWorkbench(page, request, bookTitle);
 
   await page.getByRole("button", { name: "生成下一章" }).click();
   await expect(page).toHaveURL(/\/next\/narrators\//);
@@ -243,7 +244,7 @@ test("workbench action creates a synced narrator session and conversation route 
   expect(sessionId).toBeTruthy();
 
   const sidebar = page.getByTestId("shell-sidebar");
-  await expect(sidebar.getByRole("button", { name: /写作会话/ })).toBeVisible();
+  await expect(sidebar.getByRole("button", { name: new RegExp(`新书《${bookTitle}`) })).toBeVisible();
   await expect(page.getByTestId("conversation-surface")).toBeVisible();
   await expect(page.getByTestId("conversation-status-bar")).toContainText(`绑定：书籍 ${bookId}`);
   await expect(page.getByTestId("conversation-status-bar")).toContainText("权限：编辑");

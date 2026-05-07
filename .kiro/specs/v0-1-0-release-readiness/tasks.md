@@ -101,10 +101,11 @@
   - 证据：现有 `RoutinesNextPage` 已通过 routines API 加载 merged/global/project scope，十个分区均可达（命令、可选工具、工具权限、全局技能、项目技能、自定义子代理、全局提示词、系统提示词、MCP 工具、钩子）；MCP Server 管理通过 `/mcp/registry`、`/mcp/servers/*` 真实 API 展示策略来源、服务器状态与工具权限；生命周期钩子保存仍写回 routines scope。未发现假 current，因此未改生产实现；新增 `e2e/routines-workflow.spec.ts` 作为发布前浏览器验活。验证：`pnpm --dir packages/studio exec vitest run src/app-next/routines/RoutinesNextPage.test.tsx` 通过（1 file / 4 tests passed）；`pnpm exec playwright test e2e/routines-workflow.spec.ts` 通过（1 passed）；client/server TypeScript 通过。
   - 覆盖：Requirement 6、11；Design 4.6、7、9。
 
-- [ ] 13. 建立 v0.1.0 release-readiness 浏览器 E2E 主路径
+- [x] 13. 建立 v0.1.0 release-readiness 浏览器 E2E 主路径
   - 新增或扩展 Playwright spec，使用 clean/isolated root 覆盖：`/next` 首页、作品创建/打开、工作台资源、写作动作创建 session、会话中心、会话页、设置、Provider、Routines、关于。
   - 不调用真实模型；通过真实 API 或 UI 准备最小可用 provider/settings/book/session。
   - 断言 clean root 无测试 provider、测试书籍、历史 Planner 噪声。
+  - 证据：新增 `e2e/release-readiness-main-path.spec.ts`，先 RED 暴露 Playwright clean project root 仍读到用户级 `~/.novelfork/provider-runtime.json` 中的 E2E Provider；修复 `runtime-storage-paths` 支持 `NOVELFORK_RUNTIME_DIR`，并在 `playwright.config.ts` 将 runtime provider/user state 与 session store 一起隔离到 `.novelfork/e2e-workspace-flow-*/.runtime/`。主路径覆盖 `/api/mode`、`/`、`/next` 作者首页、作品打开、工作台资源 header、生成下一章创建 session、会话页、会话中心、设置模型、Provider、关于与 Routines。同步收敛旧 `workspace-creation-flow` 到当前 Workbench 路径，移除退役 Dashboard 导入/健康/导出 UI 断言。验证：`pnpm --dir packages/studio exec vitest run src/api/lib/runtime-storage-paths.test.ts` 通过（1 file / 3 tests passed）；`pnpm exec playwright test` 通过（7 passed）；client/server TypeScript 通过。
   - 验证：Playwright 主路径通过，并输出可用于发布验收的 trace/screenshot 证据。
   - 覆盖：Requirement 1-8、11；Design 6.2、4.7。
 
