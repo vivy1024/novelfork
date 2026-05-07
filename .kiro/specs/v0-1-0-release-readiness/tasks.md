@@ -30,12 +30,13 @@
   - 覆盖：Requirement 4；Design 4.4、5.2、8。
   - 证据：`ConversationSurface` 增加 session header、recovery/confirmation lane 和作者向空态；`ConversationStatusBar` 拆分 session facts、runtime summary cards、session config controls；`Composer` 增加 dock testid 与 `paper-sheet` 输入容器；`ConversationRuntimeControls` 使用 `glass-panel` 卡片样式。验证 `pnpm --dir packages/studio exec vitest run src/app-next/agent-conversation/surface/ConversationSurface.test.tsx` 通过（1 file / 26 tests passed），`pnpm --dir packages/studio exec vitest run src/app-next/agent-conversation/surface/ConversationSurface.test.tsx src/app-next/StudioNextApp.test.tsx src/api/routes/session.test.ts` 通过（3 files / 72 tests passed），`pnpm --dir packages/studio exec tsc --noEmit` 与 `pnpm --dir packages/studio exec tsc -p tsconfig.server.json --noEmit` 通过。
 
-- [ ] 4. 补会话页浏览器 E2E 与手工体验检查点
+- [x] 4. 补会话页浏览器 E2E 与手工体验检查点
   - 扩展 `e2e/settings-session-conversation.spec.ts` 或新增 release-readiness E2E，覆盖空会话、已有消息、工具卡、pending confirmation、running tool call、模型/权限/推理回读、composer dock、禁用原因和设置入口。
   - E2E 不调用真实模型，继续用真实 API 准备 session/chat state。
   - 在文档中记录会话页手工检查点：标题、状态、绑定、模型/权限/推理、Token/context、运行控制、composer 是否分区清晰。
   - 验证：Playwright 聚焦通过；失败时截图/trace 可定位布局或合同问题。
   - 覆盖：Requirement 4、11；Design 6.2、7、9。
+  - 证据：在 `e2e/settings-session-conversation.spec.ts` 新增空会话发布布局场景，使用隔离 `.novelfork/e2e-workspace-flow-*` root、真实 `/api/providers`、`/api/settings/user`、`/api/sessions` 准备 model-unavailable session，先运行 `pnpm exec playwright test e2e/settings-session-conversation.spec.ts -g "conversation route empty state"` 得到 RED：`conversation-empty-state` 缺少“模型池为空，请先到设置页启用模型”恢复说明；随后让空态同步显示 `sendDisabledReason` 和设置入口，聚焦场景通过。扩展既有工作台→会话 E2E，覆盖工具卡 raw 脱敏 + 全屏详情、pending confirmation lane + 拒绝后 `/api/sessions/:id/tools` 回读清空、模型/权限/推理回读、idle/running 中断控制。验证 `pnpm exec playwright test e2e/settings-session-conversation.spec.ts` 通过（3 tests passed，真实 Bun API + Vite 前端，不调用真实模型）。收尾验证：`pnpm --dir packages/studio exec vitest run src/app-next/agent-conversation/surface/ConversationSurface.test.tsx` 通过（1 file / 26 tests passed）；`pnpm --dir packages/studio exec vitest run src/app-next/agent-conversation/surface/ConversationSurface.test.tsx src/app-next/StudioNextApp.test.tsx src/api/routes/session.test.ts` 通过（3 files / 72 tests passed）；`pnpm --dir packages/studio exec tsc --noEmit` 与 `pnpm --dir packages/studio exec tsc -p tsconfig.server.json --noEmit` 通过；`pnpm docs:verify` 通过（84 markdown files / 22 directories）；`git diff --check` 退出码 0（仅 LF/CRLF 工作区提示）。
 
 - [ ] 5. 为叙述者中心和 Shell 左栏管理补 RED 测试
   - 检查并扩展 `SessionCenterPage`、`SessionCenter`、`NarratorList`、`AgentShell` / `StudioNextApp` 相关测试。

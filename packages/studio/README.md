@@ -118,7 +118,7 @@ bun run typecheck
 - 组件内不得散写未登记 API 字符串；新增能力必须先补 Backend Contract 矩阵、共享类型和 contract 测试，再接 UI。
 - contract 返回 `prompt-preview`、`process-memory`、`chunked-buffer`、`unsupported`、gate 或 `unknown/null` 指标时，UI 必须透明展示原始语义，不得 mock/fake/noop 假成功。
 - 设置页必须经 `src/app-next/settings/SettingsTruthModel.ts` 派生可见字段的来源、状态、读写 API、可写性与未配置原因；普通模型页不得展示无 schema 来源的 `Codex 推理强度` 或用模型池第一项冒充当前默认模型；Agent runtime 设置必须登记权限、max turns、retry/backoff、WebFetch proxy、上下文阈值、调试、allow/deny 与 planned 缺口；运行控制保存后必须重新读取 `/api/settings/user` 作为最终事实。
-- UI 可用性不得只凭单元测试宣称：`pnpm exec -- playwright test e2e/workbench-resource-edit.spec.ts` 覆盖章节打开→修改→保存→刷新读回；`pnpm exec -- playwright test e2e/settings-session-conversation.spec.ts` 覆盖设置页 truthfulness、工作台动作创建 session、Shell 同步、narrator route header/config 回读、工具卡 raw 脱敏和 idle/running 中断控制。浏览器 E2E 通过真实 Bun API + Vite 前端，不调用真实模型，使用 provider/settings/session API 准备可重复夹具。
+- UI 可用性不得只凭单元测试宣称：`pnpm exec -- playwright test e2e/workbench-resource-edit.spec.ts` 覆盖章节打开→修改→保存→刷新读回；`pnpm exec -- playwright test e2e/settings-session-conversation.spec.ts` 覆盖设置页 truthfulness、工作台动作创建 session、Shell 同步、narrator route header/config 回读、空会话五区布局、model-unavailable 设置入口、工具卡 raw 脱敏/全屏、pending confirmation 拒绝回读和 idle/running 中断控制。浏览器 E2E 通过真实 Bun API + Vite 前端，不调用真实模型，使用 provider/settings/session API 准备可重复夹具。
 
 ---
 
@@ -127,7 +127,7 @@ bun run typecheck
 | 路由 | 说明 |
 |------|------|
 | `/next` | 当前入口；Agent Shell 路由壳，主入口已切断旧三栏 WorkspacePage 默认依赖，失败三栏实验与旧 ChatWindow/轻量 `/api/chat` 源码已从 Studio typecheck 构建路径正式退役，并已完成前端重建与旧源码退役阶段验收 |
-| `/next/narrators/:sessionId` | 已挂载单栏 Conversation 壳，接入合同快照、WebSocket `resumeFromSeq`、ack/message/abort runtime，并具备消息流/工具卡/确认门/状态栏/Composer、recovery notice、模型/权限/推理状态栏动作、session config 更新后回读 chat state、ShellDataProvider 同步、真实 binding/消息数/工作区/Git unavailable facts、工具卡复制/全屏/raw 脱敏、审批目标/风险/来源/操作和运行控制 disabled reason，与 Tool Result Renderer Registry；Task 13 Playwright 已验活 header/config 回读、工具卡 raw 脱敏和 idle/running 中断控制；v0.1.0 Release Readiness Task 2-3 已将 ConversationSurface 重排为 Session Header、Runtime Summary Cards、Recovery/Confirmation Lane、Message Stream、Composer Dock 五区布局并补作者向空态，后续 Task 4 继续做浏览器 E2E 与手工检查点 |
+| `/next/narrators/:sessionId` | 已挂载单栏 Conversation 壳，接入合同快照、WebSocket `resumeFromSeq`、ack/message/abort runtime，并具备消息流/工具卡/确认门/状态栏/Composer、recovery notice、模型/权限/推理状态栏动作、session config 更新后回读 chat state、ShellDataProvider 同步、真实 binding/消息数/工作区/Git unavailable facts、工具卡复制/全屏/raw 脱敏、审批目标/风险/来源/操作和运行控制 disabled reason，与 Tool Result Renderer Registry；Task 13 Playwright 已验活 header/config 回读、工具卡 raw 脱敏和 idle/running 中断控制；v0.1.0 Release Readiness Task 2-4 已将 ConversationSurface 重排为 Session Header、Runtime Summary Cards、Recovery/Confirmation Lane、Message Stream、Composer Dock 五区布局并补作者向空态、model-unavailable 恢复说明和浏览器 E2E 检查点 |
 | `/next/books/:bookId` | 已挂载独立 Writing Workbench 壳，Workbench 资源树已接入 resource contract adapter 映射，并支持 canvas/viewer、保存、只读禁用、tool-result viewer、dirty canvasContext 与写作动作入口 |
 | `/next/settings` | 已挂载 SettingsLayout、SettingsSectionContent 与 ProviderSettingsPage；设置分组为个人设置、实例管理、运行资源与审计、关于与项目，模型页和 Agent runtime 面板通过 SettingsTruthModel 展示来源/状态/API，Claude/Codex parity facts 将 TUI/Chrome bridge/sandbox 等 non-goal/planned 显示为 unsupported/planned 而非已接入，provider 页区分平台账号可导入/未配置/不可调用和 API provider 可配置/已配置/已验证/可调用状态，provider/model/runtime 配置入口可达；Task 13 Playwright 已验活默认模型未配置不 fallback、Codex 无账号不可调用、first-token timeout planned 且无“Codex sandbox 已接入”假 current |
 | `/next/routines` | 已挂载 RoutinesNextPage，复用 routines/MCP/tools/skills/subagents 管理能力 |
