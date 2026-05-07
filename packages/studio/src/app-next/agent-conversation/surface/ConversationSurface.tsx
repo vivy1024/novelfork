@@ -116,6 +116,7 @@ export function ConversationSurface({
   onOpenArtifact,
 }: ConversationSurfaceProps) {
   const showRecoveryNotice = recoveryNotice && recoveryNotice.state !== "idle";
+  const showEmptyStateDisabledReason = Boolean(sendDisabledReason) && !footerActions;
 
   const handleSlashCommandResult = (result: SlashCommandExecutionResult) => {
     onSlashCommandResult?.(result);
@@ -151,7 +152,8 @@ export function ConversationSurface({
           <p>当前绑定：{conversationEmptyBinding(status)}</p>
           <p>可以输入写作目标、使用 /status 查看会话状态，或使用 /compact 压缩上下文。</p>
           <p>模型状态：{conversationEmptyModelStatus(status)}</p>
-          {settingsHref ? <a href={settingsHref}>打开设置</a> : null}
+          {showEmptyStateDisabledReason ? <p role="alert">{sendDisabledReason}</p> : null}
+          {showEmptyStateDisabledReason && settingsHref ? <a href={settingsHref}>打开设置</a> : null}
         </article>
       ) : null}
       <MessageStream messages={messages} onOpenArtifact={onOpenArtifact} />
