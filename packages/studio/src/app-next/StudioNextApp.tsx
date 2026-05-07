@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 
 import {
   createFetchJsonContractClient,
@@ -108,6 +108,11 @@ interface HomeRouteLiveProps {
 }
 
 function HomeRouteLive({ books, sessions, providerSummary, providerStatus, loading, error, onNavigate }: HomeRouteLiveProps) {
+  const shellDataStore = useShellDataStore();
+  const [createBookOpen, setCreateBookOpen] = useState(false);
+  const [newBookTitle, setNewBookTitle] = useState("");
+  const [createBookError, setCreateBookError] = useState<string | null>(null);
+  const [creatingBook, setCreatingBook] = useState(false);
   const recentBooks = books.slice(0, 3);
   const recentSessions = sessions.slice(0, 3);
   const summary = providerSummaryRecord(providerSummary);
@@ -116,6 +121,35 @@ function HomeRouteLive({ books, sessions, providerSummary, providerStatus, loadi
   const providerCount = providerList?.length;
   const activeProviderId = typeof summary?.activeProviderId === "string" ? summary.activeProviderId : runtimeStatus?.defaultProvider;
   const latestSession = sessions[0];
+
+  const handleCreateBook = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const title = newBookTitle.trim();
+    if (!title) {
+      setCreateBookError("请输入作品标题");
+      return;
+    }
+    setCreatingBook(true);
+    setCreateBookError(null);
+    try {
+      const response = await fetch("/api/books/create", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ title, genre: "玄幻", language: "zh", chapterWordCount: 2000, targetChapters: 100 }),
+      });
+      if (!response.ok) throw new Error(`创建作品失败：${response.status}`);
+      const payload = await response.json() as { readonly bookId?: string };
+      if (!payload.bookId) throw new Error("创建作品失败：响应缺少 bookId");
+      shellDataStore.invalidate("books");
+      setCreateBookOpen(false);
+      setNewBookTitle("");
+      onNavigate({ kind: "book", bookId: payload.bookId });
+    } catch (caught) {
+      setCreateBookError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setCreatingBook(false);
+    }
+  };
 
   return (
     <section className="flex h-full flex-1 flex-col gap-6 p-6" data-testid="agent-shell-route">
@@ -127,6 +161,7 @@ function HomeRouteLive({ books, sessions, providerSummary, providerStatus, loadi
         </div>
 
         <div className="flex flex-wrap gap-2">
+          <HomeRouteAction label="新建作品" onClick={() => setCreateBookOpen(true)} variant="default" />
           <HomeRouteAction label="新建会话" onClick={() => onNavigate({ kind: "sessions" })} />
           <HomeRouteAction
             label="继续最近会话"
@@ -151,11 +186,31 @@ function HomeRouteLive({ books, sessions, providerSummary, providerStatus, loadi
         <HomeStatCard label="当前提供方" value={activeProviderId ?? "未配置"} />
       </div>
 
+      {createBookOpen ? (
+        <div role="dialog" aria-modal="true" aria-labelledby="create-book-title" className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+          <form className="space-y-3" onSubmit={handleCreateBook}>
+            <div>
+              <h2 id="create-book-title" className="text-lg font-semibold">新建作品</h2>
+              <p className="text-sm text-muted-foreground">创建后会直接进入作品工作台，后续章节和设定在工作台里维护。</p>
+            </div>
+            <label className="block text-sm font-medium">
+              作品标题
+              <input className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2" value={newBookTitle} onChange={(event) => setNewBookTitle(event.currentTarget.value)} />
+            </label>
+            {createBookError ? <p role="alert" className="text-sm text-destructive">{createBookError}</p> : null}
+            <div className="flex gap-2">
+              <Button type="submit" disabled={creatingBook}>{creatingBook ? "创建中…" : "创建作品"}</Button>
+              <Button type="button" variant="outline" onClick={() => setCreateBookOpen(false)} disabled={creatingBook}>取消</Button>
+            </div>
+          </form>
+        </div>
+      ) : null}
+
       {loading ? <p className="text-sm text-muted-foreground">正在加载作者首页数据…</p> : null}
 
       {!loading && books.length === 0 && sessions.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-border bg-muted/20 px-4 py-5 text-sm text-muted-foreground">
-          还没有可用内容，先创建第一本书或新建会话。
+          还没有可用内容，先新建作品或新建会话。
         </div>
       ) : null}
 
