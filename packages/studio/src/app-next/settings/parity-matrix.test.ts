@@ -25,7 +25,7 @@ describe("parity matrix validator", () => {
     ]));
   });
 
-  it("blocks non-goal Claude capabilities from UI current claims", () => {
+  it("blocks non-goal and reference-only capabilities from UI current claims", () => {
     const nonGoal: ParityMatrixEntry = {
       capability: "Chrome bridge",
       upstreamEvidence: [{ ...evidence, label: "main.tsx --chrome", reference: "claude/restored-cli-src/src/main.tsx" }],
@@ -35,9 +35,44 @@ describe("parity matrix validator", () => {
       notes: "NovelFork 不实现 Claude Chrome bridge",
     };
 
+    const referenceOnly: ParityMatrixEntry = {
+      ...nonGoal,
+      capability: "Codex exec event taxonomy",
+      novelForkStatus: "reference-only",
+      notes: "Only upstream docs/help are available; NovelFork has not implemented this taxonomy",
+    };
+
     expect(validateParityMatrix([nonGoal])).toContainEqual(expect.objectContaining({ capability: "Chrome bridge", code: "NON_GOAL_UI_CLAIM" }));
+    expect(validateParityMatrix([referenceOnly])).toContainEqual(expect.objectContaining({ capability: "Codex exec event taxonomy", code: "NON_GOAL_UI_CLAIM" }));
     expect(parityEntryCanBeAdvertisedAsCurrent({ ...nonGoal, uiClaimAllowed: false })).toBe(false);
+    expect(parityEntryCanBeAdvertisedAsCurrent({ ...referenceOnly, uiClaimAllowed: false })).toBe(false);
     expect(parityEntryCanBeAdvertisedAsCurrent({ ...nonGoal, novelForkStatus: "current" })).toBe(true);
+  });
+
+  it("ships a dated Claude Code parity baseline that marks source-mismatched items as partial/non-goal", () => {
+    const entries = (parityMatrixModule as { CLAUDE_CODE_PARITY_MATRIX?: readonly ParityMatrixEntry[] }).CLAUDE_CODE_PARITY_MATRIX ?? [];
+
+    expect(entries.map((entry) => entry.capability)).toEqual([
+      "Claude slash command loading",
+      "Claude permission modes and rule pipeline",
+      "Claude session resume/fork storage",
+      "Claude headless/result/usage envelope",
+      "Claude terminal TUI / Chrome bridge / remote control / plugin market",
+    ]);
+    expect(validateParityMatrix(entries)).toEqual([]);
+
+    const slash = entries.find((entry) => entry.capability === "Claude slash command loading");
+    expect(slash).toMatchObject({ novelForkStatus: "partial", uiClaimAllowed: false });
+    expect(slash?.notes).toContain("静态 registry");
+    expect(slash?.notes).toContain("skills/plugins/workflows/MCP");
+
+    const permission = entries.find((entry) => entry.capability === "Claude permission modes and rule pipeline");
+    expect(permission).toMatchObject({ novelForkStatus: "partial", uiClaimAllowed: false });
+    expect(permission?.notes).toContain("classifier/auto mode");
+    expect(permission?.notes).toContain("sandbox auto-allow");
+
+    const terminal = entries.find((entry) => entry.capability === "Claude terminal TUI / Chrome bridge / remote control / plugin market");
+    expect(terminal).toMatchObject({ novelForkStatus: "non-goal", uiClaimAllowed: false });
   });
 
   it("ships a dated Codex CLI parity baseline that keeps sandbox and approval out of current UI claims", () => {
@@ -46,6 +81,7 @@ describe("parity matrix validator", () => {
     expect(entries.map((entry) => entry.capability)).toEqual([
       "Codex TUI",
       "Codex non-interactive exec",
+      "Codex exec JSONL event taxonomy",
       "Codex config file and profile overrides",
       "Codex sandbox modes",
       "Codex approval policy",
@@ -57,6 +93,10 @@ describe("parity matrix validator", () => {
       "Codex Windows native support boundary",
     ]);
     expect(validateParityMatrix(entries)).toEqual([]);
+
+    const taxonomy = entries.find((entry) => entry.capability === "Codex exec JSONL event taxonomy");
+    expect(taxonomy).toMatchObject({ novelForkStatus: "reference-only", uiClaimAllowed: false });
+    expect(taxonomy?.notes).toContain("未移植 Codex exec");
 
     const sandbox = entries.find((entry) => entry.capability === "Codex sandbox modes");
     expect(sandbox).toMatchObject({ novelForkStatus: "planned", uiClaimAllowed: false });

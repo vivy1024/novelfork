@@ -26,11 +26,12 @@ export type SettingsFactSource =
   | "official-docs"
   | "default";
 
-export type SettingsFactStatus = "current" | "partial" | "unconfigured" | "unsupported" | "planned" | "unknown";
+export type SettingsFactStatus = "current" | "partial" | "reference-only" | "unconfigured" | "unsupported" | "planned" | "unknown";
 
 export type CodexParityFactId =
   | "parity.codex.tui"
   | "parity.codex.exec"
+  | "parity.codex.execEventTaxonomy"
   | "parity.codex.sandbox"
   | "parity.codex.approval"
   | "parity.codex.mcp"
@@ -307,40 +308,67 @@ function codexParityFact({
 }
 
 export function deriveClaudeParitySettingsFacts(): Array<SettingsFact<string>> {
+  const fact = (input: {
+    readonly id: string;
+    readonly label: string;
+    readonly value: string;
+    readonly status: SettingsFactStatus;
+    readonly reason: string;
+  }): SettingsFact<string> => ({
+    id: input.id,
+    label: input.label,
+    value: input.value,
+    group: "parity",
+    source: "claude-source-reference",
+    status: input.status,
+    writable: false,
+    reason: input.reason,
+    verifiedBy: "manual-source",
+  });
+
   return [
-    {
+    fact({
+      id: "parity.claude.slashRegistry",
+      label: "Claude slash 命令注册",
+      value: "partial",
+      status: "partial",
+      reason: "Claude 源码 getCommands 会合并 bundled skills、skills dir、workflow、plugin、dynamic skills 与大量 builtin/local-jsx/prompt 命令；NovelFork 当前只是静态 7 个 Composer slash command，不能宣称完整对标。",
+    }),
+    fact({
+      id: "parity.claude.permissions",
+      label: "Claude permission pipeline",
+      value: "partial",
+      status: "partial",
+      reason: "Claude permission pipeline 包含多来源规则、ruleContent、MCP 规则、hooks、classifier/auto mode、sandbox 与 headless fallback；NovelFork ask/edit/allow/read/plan + toolPolicy 只是写作产品语义的 partial 映射。",
+    }),
+    fact({
+      id: "parity.claude.sessionResumeFork",
+      label: "Claude session resume/fork 存储",
+      value: "partial",
+      status: "partial",
+      reason: "NovelFork 会话 lifecycle 是自身 session store 的 current 能力，但不是 Claude JSONL transcript、parentUuid chain、file history、attribution、todos、worktree/agent metadata 的完整恢复。",
+    }),
+    fact({
+      id: "parity.claude.headlessUsage",
+      label: "Claude headless/result/usage",
+      value: "partial",
+      status: "partial",
+      reason: "NovelFork headless chat 有 NDJSON 与 usage envelope，但没有 Claude SDK/print 完整事件 taxonomy、OAuth utilization、per-model cost tracker 或 rate-limit usage UI。",
+    }),
+    fact({
       id: "parity.claude.terminalTui",
       label: "Claude Code 终端 TUI",
       value: "non-goal",
-      group: "parity",
-      source: "claude-source-reference",
       status: "unsupported",
-      writable: false,
-      reason: "ui-live-parity-hardening-v1 明确不复制完整 Claude Code 终端 TUI；NovelFork 使用 Web 工作台单栏对话实现 partial parity。",
-      verifiedBy: "manual-source",
-    },
-    {
+      reason: "NovelFork v0.1.0 不复制完整 Claude Code 终端 TUI，只保留 Web 工作台会话能力。",
+    }),
+    fact({
       id: "parity.claude.chromeBridge",
-      label: "Claude Chrome bridge",
+      label: "Claude Chrome bridge / remote control / plugin market",
       value: "non-goal",
-      group: "parity",
-      source: "claude-source-reference",
       status: "unsupported",
-      writable: false,
-      reason: "Claude 源码/CLI 暴露 --chrome，但 NovelFork 当前 non-goal，不在设置页显示为已接入。",
-      verifiedBy: "manual-source",
-    },
-    {
-      id: "parity.claude.permissions",
-      label: "Claude permission modes 映射",
-      value: "partial",
-      group: "parity",
-      source: "claude-source-reference",
-      status: "partial",
-      writable: false,
-      reason: "Claude external modes acceptEdits/bypassPermissions/default/dontAsk/plan 映射到 NovelFork ask/edit/allow/read/plan 的产品化语义，非 1:1 sandbox。",
-      verifiedBy: "manual-source",
-    },
+      reason: "Claude 源码包含 chrome/bridge/remote-control/plugin/IDE 等终端生态命令；NovelFork 当前 non-goal，不在设置页显示为已接入。",
+    }),
   ];
 }
 
@@ -359,6 +387,13 @@ export function deriveCodexParitySettingsFacts(): Array<SettingsFact<string>> {
       value: "partial",
       status: "partial",
       reason: "NovelFork 已有 headless chat / stream-json envelope，但不是 Codex `codex exec` 的完整 JSONL event taxonomy、schema output 或 CI API key 语义。",
+    }),
+    codexParityFact({
+      id: "parity.codex.execEventTaxonomy",
+      label: "Codex exec JSONL event taxonomy",
+      value: "reference-only",
+      status: "reference-only",
+      reason: "当前只有本机 help/官方文档作为参考；NovelFork NDJSON 事件不是 Codex exec 完整 JSONL event schema、structured output schema 或 resume event taxonomy，不能作为 current 能力宣传。",
     }),
     codexParityFact({
       id: "parity.codex.sandbox",
@@ -447,6 +482,7 @@ export function settingsFactStatusLabel(status: SettingsFactStatus) {
   const labels: Record<SettingsFactStatus, string> = {
     current: "已配置",
     partial: "部分接入",
+    "reference-only": "仅参考",
     unconfigured: "未配置",
     unsupported: "不支持",
     planned: "计划中",

@@ -2,7 +2,7 @@
 
 **v0.1.0** | 2026-04-19 | 最后更新 2026-05-07 | 始终使用中文回复
 
-你是 Claude Code。配置以本文件 + `.kiro/steering/` 为准。
+你是 Claude Code。配置以本文件 + `.kiro/steering/README.md` + `.kiro/steering/project-profile.md` 为准。
 
 **项目**: NovelFork — 网文小说 AI 辅助创作工作台（TypeScript + Bun + React 19 + Hono + SQLite + AI Agents）
 **开发者**: 薛小川 | GitHub `vivy1024` — ❌ 禁止虚构
@@ -53,11 +53,11 @@
 
 | 指标 | 值 |
 |------|----|
-| Specs | `v0-1-0-release-readiness` 执行中（18/23）；发布暂停，用户已指出 Claude/Codex parity、mock、hardcoded 与未完成能力口径阻塞 v0.1.0，已新增 Task19-21 重审/清理/重验收门槛 |
-| TypeScript | Task16 `pnpm --dir packages/studio typecheck` 通过；Task18 compile 通过；需补源码对照后的回归 |
-| 测试 | Task16 app-next 47 文件 / 271 测试 + Backend Contract 7 文件 / 38 测试 + CLI 13 文件 / 97 测试 + Playwright 7 passed；这些不等同 Claude Code CLI / Codex CLI 完整对标 |
+| Specs | `v0-1-0-release-readiness` 执行中（20/23）；发布暂停，Task19 已完成 Claude/Codex 源码/官方资料口径重审，Task20 已完成反 mock/hardcoded/route literal 审计与 backend-contract 路径集中，Task21 仍需重新验收 |
+| TypeScript | Task19 `pnpm --dir packages/studio typecheck` 通过；Task18 compile 通过；Task21 仍需补修正后的全量回归 |
+| 测试 | Task20 Studio Vitest 全量 213 files / 1274 tests passed；Task20 Studio typecheck 通过；Task16 Backend Contract 7 文件 / 38 测试 + CLI 13 文件 / 97 测试 + Playwright 7 passed；这些不等同 Claude Code CLI / Codex CLI 完整对标 |
 | 编译 | Task18 生成过 `dist/novelfork-v0.1.0-windows-x64.exe` 与 SHA256；GitHub Release 未创建，远端 `v0.1.0` tag 已撤回 |
-| 运行 | Task18 已用编译产物完成 clean root smoke；但 release 前必须先重审并修正 Claude/Codex parity、mock 与硬编码问题 |
+| 运行 | Task18 已用编译产物完成 clean root smoke；Task20 已完成 mock/hardcoded/route literal 审计与清理；release 前仍必须完成 Task21 重新验收 |
 
 ---
 
@@ -145,8 +145,8 @@ Git 检查 → git status --short
 |------|---------|
 | 需求不清、优先级不明 | qiushi `/contradiction-analysis` 矛盾分析 |
 | 排障前置 | qiushi `/investigation-first` 先调查 |
-| 复杂任务规划 | superpowers `/write-plan` → `/execute-plan` |
-| 代码审查 | superpowers `code-reviewer` agent |
+| 复杂任务规划 | `kiro-spec-adapter` + superpowers `writing-plans` / `executing-plans` |
+| 代码审查 | superpowers `requesting-code-review`（通用 Task reviewer prompt） |
 | 系统化调试 | superpowers `systematic-debugging` |
 | 阶段性回顾 | qiushi `/criticism-self-criticism` |
 | 资源聚焦 | qiushi `/concentrate-forces` |
@@ -181,16 +181,13 @@ Git 检查 → git status --short
 
 ## 按需加载参考
 
-| 场景 | 文件 |
+| 场景 | 文件 / Skill |
 |------|------|
-| 项目事实与架构 | `.kiro/steering/project-rules.md` |
-| Git 工作流详细 | `.kiro/steering/git-workflow.md` |
-| Agent 管线设计 | `.kiro/steering/agent-pipeline.md` |
-| 写作流程规范 | `.kiro/steering/writing-workflow.md` |
-| 代码规范 | `.kiro/steering/project-standards.md` |
-| MCP 工具使用 | `.kiro/steering/mcp-tools-reference.md` |
+| 任务路由与 steering 裁剪 | `.kiro/steering/README.md` + `using-project-steering` |
+| 项目事实、完成标准、代码/Git/发布/Agent/写作/MCP 边界 | `.kiro/steering/project-profile.md` + `novelfork-project-profile` |
+| Kiro spec 适配 | `kiro-spec-adapter` |
+| 用户可见功能完成门禁 | `feature-closure-gate` |
 | 存储层扩展与 migration | `docs/04-开发指南/存储层开发指引.md` |
-
 | 动态状态追踪 | git 日志 / 记忆 / 运维文档 |
 
 ---

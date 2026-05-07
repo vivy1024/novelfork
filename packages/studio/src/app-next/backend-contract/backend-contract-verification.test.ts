@@ -7,6 +7,7 @@ import {
   BACKEND_CONTRACT_VERIFICATION_COMMANDS,
   buildBackendContractVerificationReport,
   findUnregisteredAppNextApiStrings,
+  findUncentralizedBackendContractApiStrings,
   listUnverifiedBackendContractItems,
   type SourceFileSnapshot,
 } from "./backend-contract-verification";
@@ -73,6 +74,13 @@ describe("backend contract verification", () => {
     const sources = collectSourceFiles(appNextRoot);
 
     expect(findUnregisteredAppNextApiStrings(sources)).toEqual([]);
+  });
+
+  it("keeps backend-contract client API roots centralized in api-path helpers", () => {
+    const backendContractRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)));
+    const sources = collectSourceFiles(backendContractRoot);
+
+    expect(findUncentralizedBackendContractApiStrings(sources)).toEqual([]);
   });
 });
 

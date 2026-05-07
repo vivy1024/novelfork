@@ -17,7 +17,7 @@
 | `conversation-parity-v1` | 13 | ✅ 已完成（13/13 已完成） |
 | `backend-core-refactor-v1` | 10 | ✅ 已完成（10/10 已完成） |
 | `ui-live-parity-hardening-v1` | 14 | ⚠️ 阶段性收口（14/14 仅代表当时的 UI hardening checklist 完成；Claude/Codex parity 只能视为参考基线与 UI claim guard，不等同完整对标实现；用户已指出该口径阻塞 v0.1.0 发布，需在 `v0-1-0-release-readiness` 中重新审计） |
-| `v0-1-0-release-readiness` | 23 | ⏳ 执行中（18/23；Task 1-18 的自动化/compiled smoke 证据已存在，但 release 已暂停：GitHub Release 未创建，远端 `v0.1.0` tag 已撤回；新增 Task19-21 用于 Claude/Codex 源码对照、mock/hardcoded 清理与重新验收，之后才允许 Task22 release） |
+| `v0-1-0-release-readiness` | 23 | ⏳ 执行中（20/23；Task19 已完成 Claude/Codex 源码/官方资料口径重审，Task20 已完成反 mock/hardcoded/route literal 审计并将 backend-contract `/api/*` 路径集中到 `api-paths.ts`；release 仍暂停：GitHub Release 未创建，远端 `v0.1.0` tag 已撤回；Task21 重新验收后才允许 Task22 release） |
 | `novelfork-ui-v1` | 8 | ⏸️ 已被重建主线取代，保留作历史参考 |
 | `studio-ide-layout-v1` | 30 | ❌ 归档（前端布局失败，后端功能保留） |
 | `studio-frontend-integration-v1` | 10 | ❌ 归档（未完成） |
