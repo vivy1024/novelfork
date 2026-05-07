@@ -154,10 +154,10 @@ describe("StudioNextApp", () => {
     expect(sidebar.textContent).toContain("测试书");
   });
 
-  it("renders shell home placeholder in main content area", () => {
+  it("renders author home in main content area", () => {
     render(<StudioNextApp initialRoute={{ kind: "home" }} />);
 
-    expect(within(screen.getByTestId("shell-main")).getByRole("heading", { name: "Agent Shell" })).toBeTruthy();
+    expect(within(screen.getByTestId("shell-main")).getByRole("heading", { name: "作者首页" })).toBeTruthy();
   });
 
   it("keeps the main /next route free of legacy WorkspacePage, three-column StudioApp and ChatWindow visual layer", () => {

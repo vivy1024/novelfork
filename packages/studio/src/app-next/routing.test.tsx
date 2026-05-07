@@ -52,6 +52,57 @@ describe("Studio Next routing", () => {
 
     const sidebar = screen.getByTestId("shell-sidebar");
     expect(sidebar).toBeTruthy();
-    expect(within(screen.getByTestId("shell-main")).getByRole("heading", { name: "Agent Shell" })).toBeTruthy();
+    expect(within(screen.getByTestId("shell-main")).getByRole("heading", { name: "作者首页" })).toBeTruthy();
+  });
+
+  it("shows author-facing home sections instead of the Agent Shell placeholder", () => {
+    useShellDataMock.mockReturnValue({
+      books: [{ id: "book-1", title: "灵潮纪元", status: "drafting", genre: "xuanhuan", totalChapters: 1, totalWords: 3000, progress: 30 }],
+      sessions: [{
+        id: "session-1",
+        title: "主叙述者",
+        agentId: "writer",
+        kind: "standalone",
+        sessionMode: "chat",
+        status: "active",
+        createdAt: "2026-05-04T00:00:00.000Z",
+        lastModified: "2026-05-04T00:00:00.000Z",
+        messageCount: 0,
+        sortOrder: 0,
+        projectId: "book-1",
+        sessionConfig: { providerId: "sub2api", modelId: "gpt-5.4", permissionMode: "edit", reasoningEffort: "medium" },
+      }],
+      providerSummary: { providers: [{ id: "sub2api", label: "Sub2API" }], activeProviderId: "sub2api" },
+      providerStatus: { configured: true, providerId: "sub2api", modelId: "gpt-5.4" },
+      loading: false,
+      error: null,
+    });
+
+    render(<StudioNextApp initialRoute={{ kind: "home" }} />);
+
+    const main = screen.getByTestId("shell-main");
+    expect(within(main).getByRole("heading", { name: "最近作品" })).toBeTruthy();
+    expect(within(main).getByRole("heading", { name: "最近会话" })).toBeTruthy();
+    expect(within(main).getByRole("heading", { name: "模型健康" })).toBeTruthy();
+    expect(within(main).getByRole("button", { name: "新建会话" })).toBeTruthy();
+    expect(within(main).getByRole("button", { name: "打开设置" })).toBeTruthy();
+  });
+
+  it("shows an empty state when the home shell has no books, sessions, or provider data", () => {
+    useShellDataMock.mockReturnValue({
+      books: [],
+      sessions: [],
+      providerSummary: null,
+      providerStatus: null,
+      loading: false,
+      error: null,
+    });
+
+    render(<StudioNextApp initialRoute={{ kind: "home" }} />);
+
+    const main = screen.getByTestId("shell-main");
+    expect(within(main).getByText("还没有可用内容，先创建第一本书或新建会话。")).toBeTruthy();
+    expect(within(main).getByRole("heading", { name: "最近作品" })).toBeTruthy();
+    expect(within(main).getByRole("heading", { name: "最近会话" })).toBeTruthy();
   });
 });
