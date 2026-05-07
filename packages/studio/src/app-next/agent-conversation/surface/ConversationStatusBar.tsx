@@ -189,68 +189,76 @@ export function ConversationStatusBar({ status, onUpdateSessionConfig = () => un
   }
 
   return (
-    <div className="conversation-status-bar" data-testid="conversation-status-bar">
-      <span>{status.label}</span>
-      <span>{formatModelLabel(status)}</span>
-      {status.permissionMode ? <span>权限：{PERMISSION_LABELS[status.permissionMode]}</span> : null}
-      {status.reasoningEffort ? <span>推理：{status.reasoningEffort}</span> : null}
-      {typeof status.messageCount === "number" ? <span>消息：{status.messageCount}</span> : null}
-      {status.binding?.label ? <span>绑定：{status.binding.label}</span> : null}
-      {status.workspace?.path ? <span>工作区：{status.workspace.path}</span> : null}
-      {gitFact ? <span>{gitFact}</span> : null}
-      {status.usage ? <span>{formatTokens(status.usage)}</span> : null}
-      {contextFact ? <span>{contextFact}</span> : null}
-      {contextWarningList.map((warning) => <span key={warning}>{warning}</span>)}
-      {status.plannedRuntimePanels?.length ? <span>planned 面板：{status.plannedRuntimePanels.join("、")}</span> : null}
-      {toolPolicySummary ? <span data-testid="tool-policy-summary">工具策略：{toolPolicySummary}</span> : null}
-      {!sessionConfigLoaded ? <span>session config 未加载：未配置会话模型</span> : null}
+    <div className="conversation-status-bar grid gap-3" data-testid="conversation-status-bar">
+      <section data-testid="conversation-session-facts" className="conversation-session-facts grid gap-2 rounded-2xl border border-border/70 bg-card/70 p-3 text-sm md:grid-cols-2 xl:grid-cols-4" aria-label="会话事实">
+        <span>{status.label}</span>
+        <span>{formatModelLabel(status)}</span>
+        {status.permissionMode ? <span>权限：{PERMISSION_LABELS[status.permissionMode]}</span> : null}
+        {status.reasoningEffort ? <span>推理：{status.reasoningEffort}</span> : null}
+        {typeof status.messageCount === "number" ? <span>消息：{status.messageCount}</span> : null}
+        {status.binding?.label ? <span>绑定：{status.binding.label}</span> : null}
+        {status.workspace?.path ? <span>工作区：{status.workspace.path}</span> : null}
+        {gitFact ? <span>{gitFact}</span> : null}
+        {!sessionConfigLoaded ? <span>session config 未加载：未配置会话模型</span> : null}
+      </section>
 
-      {sessionConfigLoaded && status.modelOptions?.length ? (
-        <label>
-          模型
-          <select
-            aria-label="模型"
-            value={status.providerId && status.modelId ? `${status.providerId}::${status.modelId}` : ""}
-            onChange={(event) => {
-              const next = status.modelOptions?.find((option) => optionValue(option) === event.currentTarget.value);
-              if (next) void updateSessionConfig({ providerId: next.providerId, modelId: next.modelId });
-            }}
-          >
-            {status.modelOptions.map((option) => (
-              <option key={optionValue(option)} value={optionValue(option)}>
-                {(option.providerLabel ?? option.providerId)} / {(option.modelLabel ?? option.modelId)}
-              </option>
-            ))}
-          </select>
-        </label>
+      <section data-testid="conversation-runtime-summary-cards" className="conversation-runtime-summary-cards grid gap-2 rounded-2xl border border-border/70 bg-muted/30 p-3 text-sm md:grid-cols-2 xl:grid-cols-3" aria-label="运行摘要">
+        {status.usage ? <span>{formatTokens(status.usage)}</span> : null}
+        {contextFact ? <span>{contextFact}</span> : null}
+        {contextWarningList.map((warning) => <span key={warning}>{warning}</span>)}
+        {status.plannedRuntimePanels?.length ? <span>planned 面板：{status.plannedRuntimePanels.join("、")}</span> : null}
+        {toolPolicySummary ? <span data-testid="tool-policy-summary">工具策略：{toolPolicySummary}</span> : null}
+        {toolsUnsupported ? <span data-testid="unsupported-tools-notice">{status.unsupportedToolsReason ?? "当前模型不支持工具调用"}</span> : null}
+        {status.reasoningUnsupportedReason ? <span data-testid="reasoning-unsupported-notice">{status.reasoningUnsupportedReason}</span> : null}
+        {Object.entries(status.permissionModeDisabledReasons ?? {}).map(([mode, reason]) => reason ? <span key={mode}>{reason}</span> : null)}
+        {updateError ? <span data-testid="status-update-error">{updateError}</span> : null}
+      </section>
+
+      {sessionConfigLoaded ? (
+        <section data-testid="conversation-session-config-controls" className="conversation-session-config-controls flex flex-wrap items-center gap-3 rounded-2xl border border-border/70 bg-background/70 p-3 text-sm" aria-label="会话配置控制">
+          {status.modelOptions?.length ? (
+            <label>
+              模型
+              <select
+                aria-label="模型"
+                value={status.providerId && status.modelId ? `${status.providerId}::${status.modelId}` : ""}
+                onChange={(event) => {
+                  const next = status.modelOptions?.find((option) => optionValue(option) === event.currentTarget.value);
+                  if (next) void updateSessionConfig({ providerId: next.providerId, modelId: next.modelId });
+                }}
+              >
+                {status.modelOptions.map((option) => (
+                  <option key={optionValue(option)} value={optionValue(option)}>
+                    {(option.providerLabel ?? option.providerId)} / {(option.modelLabel ?? option.modelId)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+
+          {status.permissionMode ? (
+            <label>
+              权限
+              <select aria-label="权限" value={status.permissionMode} onChange={(event) => void updateSessionConfig({ permissionMode: event.currentTarget.value as SessionPermissionMode })}>
+                {PERMISSION_OPTIONS.map((mode) => (
+                  <option key={mode} value={mode} disabled={Boolean(status.permissionModeDisabledReasons?.[mode])}>{PERMISSION_LABELS[mode]}</option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+
+          {status.reasoningEffort ? (
+            <label>
+              推理强度
+              <select aria-label="推理强度" value={status.reasoningEffort} disabled={reasoningDisabled} onChange={(event) => void updateSessionConfig({ reasoningEffort: event.currentTarget.value as SessionReasoningEffort })}>
+                {REASONING_OPTIONS.map((effort) => (
+                  <option key={effort} value={effort}>{effort}</option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+        </section>
       ) : null}
-
-      {sessionConfigLoaded && status.permissionMode ? (
-        <label>
-          权限
-          <select aria-label="权限" value={status.permissionMode} onChange={(event) => void updateSessionConfig({ permissionMode: event.currentTarget.value as SessionPermissionMode })}>
-            {PERMISSION_OPTIONS.map((mode) => (
-              <option key={mode} value={mode} disabled={Boolean(status.permissionModeDisabledReasons?.[mode])}>{PERMISSION_LABELS[mode]}</option>
-            ))}
-          </select>
-        </label>
-      ) : null}
-
-      {sessionConfigLoaded && status.reasoningEffort ? (
-        <label>
-          推理强度
-          <select aria-label="推理强度" value={status.reasoningEffort} disabled={reasoningDisabled} onChange={(event) => void updateSessionConfig({ reasoningEffort: event.currentTarget.value as SessionReasoningEffort })}>
-            {REASONING_OPTIONS.map((effort) => (
-              <option key={effort} value={effort}>{effort}</option>
-            ))}
-          </select>
-        </label>
-      ) : null}
-
-      {toolsUnsupported ? <span data-testid="unsupported-tools-notice">{status.unsupportedToolsReason ?? "当前模型不支持工具调用"}</span> : null}
-      {status.reasoningUnsupportedReason ? <span data-testid="reasoning-unsupported-notice">{status.reasoningUnsupportedReason}</span> : null}
-      {Object.entries(status.permissionModeDisabledReasons ?? {}).map(([mode, reason]) => reason ? <span key={mode}>{reason}</span> : null)}
-      {updateError ? <span data-testid="status-update-error">{updateError}</span> : null}
     </div>
   );
 }

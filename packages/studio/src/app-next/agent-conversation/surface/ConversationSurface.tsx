@@ -47,6 +47,19 @@ function recoveryCursorText(notice: ConversationRecoveryNotice): string | null {
   return `最近成功 cursor：${notice.ackedSeq ?? 0} / ${notice.lastSeq ?? 0}`;
 }
 
+function conversationEmptyBinding(status: ConversationStatus): string {
+  return status.binding?.label ?? "未绑定作品或章节";
+}
+
+function conversationEmptyModelStatus(status: ConversationStatus): string {
+  const sessionConfigLoaded = status.sessionConfigLoaded ?? Boolean(status.providerId || status.modelId || status.permissionMode || status.reasoningEffort);
+  if (!sessionConfigLoaded) return "session config 未加载";
+  const provider = status.providerLabel ?? status.providerId;
+  const model = status.modelLabel ?? status.modelId;
+  if (provider && model) return `${provider} / ${model}`;
+  return model ?? provider ?? "未选择模型";
+}
+
 function ConversationRuntimeControls({
   isRunning,
   onAbort,
@@ -65,7 +78,7 @@ function ConversationRuntimeControls({
   }
 
   return (
-    <aside data-testid="conversation-runtime-controls" className="conversation-runtime-controls shrink-0" aria-label="会话运行控制">
+    <aside data-testid="conversation-runtime-controls" className="conversation-runtime-controls glass-panel flex shrink-0 flex-wrap items-center gap-2 rounded-2xl p-3 text-sm" aria-label="会话运行控制">
       <button type="button" aria-label="中断运行" disabled={!isRunning} onClick={onAbort}>中断</button>
       {!isRunning ? <span>无运行中的会话</span> : null}
       <button type="button" disabled>重试</button>
@@ -112,21 +125,34 @@ export function ConversationSurface({
   };
 
   return (
-    <section data-testid="conversation-surface" className="conversation-surface flex h-full flex-col">
-      <header className="conversation-surface__header shrink-0">
+    <section data-testid="conversation-surface" className="conversation-surface flex h-full min-h-0 flex-col gap-4 overflow-hidden bg-background/95 p-4">
+      <header data-testid="conversation-session-header" className="conversation-surface__header conversation-session-header paper-sheet shrink-0 space-y-4 rounded-3xl p-4">
         <h2>{title}</h2>
         <ConversationStatusBar status={status} onUpdateSessionConfig={onUpdateSessionConfig} />
       </header>
-      {showRecoveryNotice ? (
-        <aside data-testid="conversation-recovery-notice" className="conversation-recovery-notice shrink-0">
-          <strong>{recoveryTitle(recoveryNotice)}</strong>
-          {recoveryNotice.reason ? <span> / {recoveryNotice.reason}</span> : null}
-          {recoveryCursorText(recoveryNotice) ? <span> / {recoveryCursorText(recoveryNotice)}</span> : null}
-          {recoveryNotice.actionLabel ? <button type="button" onClick={() => undefined}>{recoveryNotice.actionLabel}</button> : null}
-        </aside>
+      {showRecoveryNotice || pendingConfirmation ? (
+        <section data-testid="conversation-recovery-confirmation-lane" className="conversation-recovery-confirmation-lane glass-panel shrink-0 space-y-3 rounded-2xl p-3" aria-label="恢复与权限事件">
+          {showRecoveryNotice ? (
+            <aside data-testid="conversation-recovery-notice" className="conversation-recovery-notice rounded-xl border border-border/70 bg-muted/40 p-3 text-sm">
+              <strong>{recoveryTitle(recoveryNotice)}</strong>
+              {recoveryNotice.reason ? <span> / {recoveryNotice.reason}</span> : null}
+              {recoveryCursorText(recoveryNotice) ? <span> / {recoveryCursorText(recoveryNotice)}</span> : null}
+              {recoveryNotice.actionLabel ? <button type="button" onClick={() => undefined}>{recoveryNotice.actionLabel}</button> : null}
+            </aside>
+          ) : null}
+          {pendingConfirmation ? (
+            <ConfirmationGate confirmation={pendingConfirmation} onApprove={onApproveConfirmation} onReject={onRejectConfirmation} />
+          ) : null}
+        </section>
       ) : null}
-      {pendingConfirmation ? (
-        <ConfirmationGate confirmation={pendingConfirmation} onApprove={onApproveConfirmation} onReject={onRejectConfirmation} />
+      {messages.length === 0 ? (
+        <article data-testid="conversation-empty-state" className="conversation-empty-state paper-sheet mx-auto w-full max-w-2xl rounded-3xl p-6 text-center" aria-label="空会话提示">
+          <h3>还没有消息</h3>
+          <p>当前绑定：{conversationEmptyBinding(status)}</p>
+          <p>可以输入写作目标、使用 /status 查看会话状态，或使用 /compact 压缩上下文。</p>
+          <p>模型状态：{conversationEmptyModelStatus(status)}</p>
+          {settingsHref ? <a href={settingsHref}>打开设置</a> : null}
+        </article>
       ) : null}
       <MessageStream messages={messages} onOpenArtifact={onOpenArtifact} />
       {footerActions}

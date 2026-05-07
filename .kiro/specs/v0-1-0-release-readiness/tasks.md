@@ -14,19 +14,21 @@
   - 覆盖：Requirement 9、11；Design 2、7、9。
   - 证据：新增 `release-readiness-baseline.md`，记录已读取的 approved requirements/design/tasks、`ui-live-parity-hardening-v1` Task 14 状态、4567/7778 手工 UI 对比、能力矩阵、测试状态、执行前干净工作树、最新提交 `cb269472`、当前 0.0.6 版本号、dist 中仅有 v0.0.2-v0.0.6/novelfork.exe 而无 v0.1.0 产物；建立 Requirement 1-11 → Task/子系统/验证方式映射，并列出会话页视觉、叙述者中心、首页、工作台、E2E provider 污染、Routines 验活、clean root、spec 归档、版本/产物等当前发布阻塞项。
 
-- [ ] 2. 为会话页 UI 成品化补 RED 组件测试
+- [x] 2. 为会话页 UI 成品化补 RED 组件测试
   - 在 `ConversationSurface.test.tsx` / 邻近测试中先补失败用例，覆盖发布级 session header、runtime summary cards、empty state、composer dock、running/idle controls、session config 未加载原因、模型不可用设置入口。
   - 测试必须断言信息被分区展示，不能再以一长串文本挤在 `.conversation-status-bar` 内。
   - 测试必须保留既有工具卡 raw 脱敏、确认门、context warning、running abort 行为。
   - 验证：先运行聚焦测试并确认 RED 失败原因来自当前 UI 结构不足，而不是测试选择器错误。
   - 覆盖：Requirement 4；Design 4.4、5.2、6.1。
+  - 证据：在 `ConversationSurface.test.tsx` 新增 3 条 RED 用例，覆盖 `conversation-session-header`、`conversation-runtime-summary-cards`、`conversation-session-config-controls`、`conversation-empty-state`、`conversation-composer-dock` 与 `conversation-recovery-confirmation-lane`。先运行 `pnpm --dir packages/studio exec vitest run src/app-next/agent-conversation/surface/ConversationSurface.test.tsx`，确认 1 file / 26 tests 中 3 failed / 23 passed；失败原因均为缺少成品化结构 testid 或空态，而现有 DOM 仍把状态、模型、权限、推理、Token、上下文、工具策略和控件堆在 `conversation-status-bar` 内。
 
-- [ ] 3. 重构 `/next/narrators/:sessionId` 会话页布局为发布级工作台
+- [x] 3. 重构 `/next/narrators/:sessionId` 会话页布局为发布级工作台
   - 重排 `ConversationSurface`、`ConversationStatusBar`、`Composer`、`ConversationRuntimeControls`，形成 Session Header、Runtime Summary Cards、Recovery/Confirmation Lane、Message Stream、Composer Dock 五区布局。
   - 使用现有 Tailwind token、`paper-sheet` / `glass-panel` / 卡片样式；不引入 Mantine，不恢复旧 ChatWindow。
   - 保持所有 session config 更新、chat state 回读、tool confirmation、compact、abort、slash command 和 raw 脱敏合同不变。
   - 验证：Task 2 RED 测试转 GREEN；运行 `ConversationSurface`、`StudioNextApp` 和 session route 邻近回归。
   - 覆盖：Requirement 4；Design 4.4、5.2、8。
+  - 证据：`ConversationSurface` 增加 session header、recovery/confirmation lane 和作者向空态；`ConversationStatusBar` 拆分 session facts、runtime summary cards、session config controls；`Composer` 增加 dock testid 与 `paper-sheet` 输入容器；`ConversationRuntimeControls` 使用 `glass-panel` 卡片样式。验证 `pnpm --dir packages/studio exec vitest run src/app-next/agent-conversation/surface/ConversationSurface.test.tsx` 通过（1 file / 26 tests passed），`pnpm --dir packages/studio exec vitest run src/app-next/agent-conversation/surface/ConversationSurface.test.tsx src/app-next/StudioNextApp.test.tsx src/api/routes/session.test.ts` 通过（3 files / 72 tests passed），`pnpm --dir packages/studio exec tsc --noEmit` 与 `pnpm --dir packages/studio exec tsc -p tsconfig.server.json --noEmit` 通过。
 
 - [ ] 4. 补会话页浏览器 E2E 与手工体验检查点
   - 扩展 `e2e/settings-session-conversation.spec.ts` 或新增 release-readiness E2E，覆盖空会话、已有消息、工具卡、pending confirmation、running tool call、模型/权限/推理回读、composer dock、禁用原因和设置入口。
