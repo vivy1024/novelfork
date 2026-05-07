@@ -38,6 +38,7 @@ import {
   type StartupOrchestratorSummary,
   type StartupStaticMode,
 } from "./lib/startup-orchestrator.js";
+import { buildCompileSmokeSummary } from "./lib/compile-smoke.js";
 import { detectRuntimeMode } from "./lib/runtime-mode.js";
 import { logStartupEvent } from "./lib/startup-logger.js";
 import { resolveRuntimeStorageDir } from "./lib/runtime-storage-paths.js";
@@ -696,26 +697,13 @@ export async function startStudioServer(
     diagnostics: readonly StartupDiagnostic[] = [],
   ): Promise<StartupOrchestratorOptions> => {
     const indexHtmlReady = staticProvider ? await staticProvider.hasIndexHtml() : false;
-    const artifactCandidates = [join(root, "dist", "novelfork.exe"), join(root, "dist", "novelfork")];
-    const artifactPath = artifactCandidates.find((candidate) => existsSyncInit(candidate));
     const runtimeMode = detectRuntimeMode();
-    const compileSmoke = artifactPath && indexHtmlReady
-      ? {
-          status: "success" as const,
-          reason: "单文件产物与静态入口均可用",
-          note: artifactPath,
-        }
-      : runtimeMode.isProd
-        ? {
-            status: "failed" as const,
-            reason: artifactPath ? "静态资源入口缺失" : "单文件产物缺失",
-            note: artifactPath ?? artifactCandidates.join(" | "),
-          }
-        : {
-            status: "skipped" as const,
-            reason: artifactPath ? "源码启动静态入口缺失" : "源码启动未检查单文件产物",
-            note: artifactPath ?? artifactCandidates.join(" | "),
-          };
+    const compileSmoke = buildCompileSmokeSummary({
+      root,
+      indexHtmlReady,
+      runtimeMode,
+      exists: existsSyncInit,
+    });
 
     return {
       ...(bootstrapSummary ? { projectBootstrap: bootstrapSummary } : {}),

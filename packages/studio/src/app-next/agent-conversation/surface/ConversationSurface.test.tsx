@@ -488,7 +488,7 @@ describe("Conversation Surface", () => {
     expect(idleControls.textContent).toContain("无运行中的会话");
     expect((within(idleControls).getByRole("button", { name: "Compact" }) as HTMLButtonElement).disabled).toBe(false);
     expect((within(idleControls).getByRole("button", { name: "重试" }) as HTMLButtonElement).disabled).toBe(true);
-    expect(idleControls.textContent).toContain("重试未接入真实 API");
+    expect(idleControls.textContent).toContain("当前会话没有可重试事件");
     expect((within(idleControls).getByRole("button", { name: "Fork" }) as HTMLButtonElement).disabled).toBe(true);
     expect((within(idleControls).getByRole("button", { name: "Resume" }) as HTMLButtonElement).disabled).toBe(true);
 

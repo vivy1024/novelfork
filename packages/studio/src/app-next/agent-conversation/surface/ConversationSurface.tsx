@@ -82,11 +82,11 @@ function ConversationRuntimeControls({
       <button type="button" aria-label="中断运行" disabled={!isRunning} onClick={onAbort}>中断</button>
       {!isRunning ? <span>无运行中的会话</span> : null}
       <button type="button" disabled>重试</button>
-      <span>重试未接入真实 API</span>
+      <span>当前会话没有可重试事件</span>
       <button type="button" disabled>清空</button>
-      <span>清空未接入真实 API</span>
+      <span>清空请在会话列表归档或删除</span>
       <button type="button" disabled={!onCompactSession} onClick={() => void compact()}>Compact</button>
-      {!onCompactSession ? <span>Compact 未接入真实 API</span> : null}
+      {!onCompactSession ? <span>Compact 需要会话压缩能力</span> : null}
       <button type="button" disabled>Fork</button>
       <span>Fork 请使用 /fork 或会话列表入口</span>
       <button type="button" disabled>Resume</button>

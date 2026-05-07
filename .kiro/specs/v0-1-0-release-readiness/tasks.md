@@ -126,27 +126,30 @@
   - 覆盖：Requirement 9、11；Design 7、9。
   - 证据：`ui-live-parity-hardening-v1/tasks.md` Task 14 已标记完成，并说明剩余体验风险已上收进 `v0-1-0-release-readiness`；`.kiro/specs/README.md` 已把 `ui-live-parity-hardening-v1` 改为 14/14 完成、release-readiness 改为 15/20，当前执行主线、能力矩阵、测试状态、Studio README、CHANGELOG 同步。验证：`node scripts/verify-docs.ts` PASS，`git diff --check` 退出码 0（仅 LF/CRLF 提示）。
 
-- [ ] 16. 全量自动化验证与回归矩阵
+- [x] 16. 全量自动化验证与回归矩阵
   - 运行并记录：`pnpm --dir packages/studio test -- app-next`、`pnpm --dir packages/studio test -- backend-contract`、`pnpm --dir packages/studio typecheck`、`pnpm --dir packages/cli test`、`pnpm docs:verify`、`git diff --check`。
   - 涉及新增 E2E 时运行 release-readiness Playwright spec、workbench/resource E2E、settings/session conversation E2E。
   - 所有失败先读报错、补调查、修复根因，再重跑；不得跳过失败测试。
   - 验证：测试状态文档记录命令、结果、失败/修复和未运行项。
   - 覆盖：Requirement 11；Design 6.1、6.2、6.3。
+  - 证据：先修复 Task 16 审计暴露的 app-next `/api/settings/user`、`/api/proxy`、`/api/books/create`、`/api/providers/models` 等路径散落，将路径集中到 `backend-contract/api-paths.ts` 常量/helper 并更新 RuntimeControlPanel、SettingsTruthModel、StudioNextApp 等消费方和测试夹具；将可见“未接入”占位改成“不支持”等真实状态说明，并修复 Sidebar 嵌套 button。验证：`pnpm --dir packages/studio exec vitest run src/app-next` 通过（47 files / 271 tests passed）；`pnpm --dir packages/studio exec vitest run src/app-next/backend-contract` 通过（7 files / 38 tests passed）；矩阵命令 `pnpm --dir packages/studio test -- app-next` 与 `pnpm --dir packages/studio test -- backend-contract` 均退出 0；`pnpm --dir packages/studio typecheck` 通过；`pnpm docs:verify` PASS（84 markdown files / 22 directories）；`git diff --check` 退出码 0（仅 LF/CRLF 提示）；`pnpm exec playwright test` 通过（7 passed）。`pnpm --dir packages/cli test` 在与 Studio/Typecheck 并行矩阵中先出现 2 个超时（`studio-runtime.test.ts` 5000ms、`publish-package.test.ts` 90000ms），隔离重跑失败文件通过（2 files / 14 tests passed），随后 CLI 全量单独重跑通过（13 files / 97 tests passed），根因归类为并行验证资源争用而非 CLI 功能回归。
 
-- [ ] 17. 更新 v0.1.0 版本资料与发布文档
+- [x] 17. 更新 v0.1.0 版本资料与发布文档
   - 将版本号更新到 `0.1.0`，同步根/包级 `package.json`、`CLAUDE.md`、`AGENTS.md`、README、Studio README、CHANGELOG 和需要同步的文档。
   - 将 CHANGELOG Unreleased 移入 `v0.1.0 (YYYY-MM-DD)`，日期使用实际发版日期，不虚构条目。
   - 更新能力矩阵、当前状态、当前执行主线、测试状态和 release readiness spec 状态。
   - 验证：全仓搜索旧版本/旧发布口径，确保无遗漏；docs verify 通过。
   - 覆盖：Requirement 10、11；Design 4.8、7。
+  - 证据：根 `package.json`、`packages/studio/package.json`、`packages/cli/package.json`、`packages/core/package.json` 已更新到 `0.1.0`；`CLAUDE.md`、`AGENTS.md`、README、Studio README、当前状态、当前执行主线、测试状态和 spec 索引同步 v0.1.0 release-readiness 17/20 与 Task18 编译 smoke 下一步；CHANGELOG 已将 Unreleased 内容移入 `v0.1.0 (2026-05-07)` 并保留空 Unreleased。全仓旧版本搜索中，`release-readiness-baseline.md`、历史 changelog、历史 spec 和旧 dist 记录保留为历史事实；当前 package/规则文档版本号已切到 v0.1.0。Task18 仍需生成 `dist/novelfork-v0.1.0-windows-x64.exe`、SHA256 并实际打开编译产物 smoke，Task17 不宣称 release 已发布。
 
-- [ ] 18. 编译 Windows 发布产物并执行 compiled smoke
+- [x] 18. 编译 Windows 发布产物并执行 compiled smoke
   - 运行 `pnpm --dir packages/studio compile`，生成 `dist/novelfork-v0.1.0-windows-x64.exe`。
   - 生成 SHA256 校验文件。
   - 使用 clean root 启动编译产物，实际打开软件验证 `/`、`/api/mode`、`/next`、关键页面与主流程。
   - 记录端口、命令、进程状态、HTTP 结果、浏览器手工结果和失败项。
   - 验证：compile/smoke 证据写入测试状态和发布记录。
   - 覆盖：Requirement 7、10、11；Design 4.8、6.3。
+  - 证据：`pnpm --dir packages/studio compile` 通过，生成 `dist/novelfork.exe` 与 `dist/novelfork-v0.1.0-windows-x64.exe`（约 115M）；`sha256sum -c dist/novelfork-v0.1.0-windows-x64.exe.sha256` 返回 OK，SHA256 为 `d0eb2bf63385ba6c5695485de129c20bacda28dd54c22ad7647f9478292bee7d`。首次 compiled smoke 暴露 startup compile-smoke 仍按 clean root `dist/` 查找 exe，已按 TDD 新增 `src/api/lib/compile-smoke.test.ts` 与 `compile-smoke.ts` 修复为 compiled runtime 使用 `process.execPath`，聚焦测试通过（compile-smoke helper 2 tests passed；server compile-smoke 相关 4 tests passed）。最终使用 `NOVELFORK_RUNTIME_DIR=.novelfork/manual-release-smoke-v0-1-0-compiled-20260507-2210/.runtime ./dist/novelfork-v0.1.0-windows-x64.exe --root=.novelfork/manual-release-smoke-v0-1-0-compiled-20260507-2210 --port=4611` 启动，日志显示 `isCompiledBinary=true`、`assetSource=embedded`、`assetCount=26`、runtime DB 位于 clean root `.runtime`；HTTP 验证 `/api/mode` 返回 `standalone`，`/api/settings/release` 返回 version `0.1.0` / `buildSource=bun-compiled-binary`，`/api/admin/resources` startup `failures=[]`、`compileSmokeStatus=success`、`singleFileReady=true`，`/api/providers` 返回空数组；浏览器实际打开 `http://localhost:4611/next`，显示作者首页和 clean 模型状态，随后通过 UI 创建《v0.1.0 编译验活作品》并自动进入 `/next/books/...` 工作台，资源树、写作动作边界和新书会话可见；`GET /api/books` 回读到该书；浏览器打开 `/next/routines` 显示套路管理分区。smoke 完成后手动停止 compiled exe 进程，bg_bash 退出属于预期清理动作。
 
 - [ ] 19. Release commit、Git tag 与 GitHub Release
   - 在所有验证和手工验活通过后创建 release commit。

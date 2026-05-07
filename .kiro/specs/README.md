@@ -17,7 +17,7 @@
 | `conversation-parity-v1` | 13 | ✅ 已完成（13/13 已完成） |
 | `backend-core-refactor-v1` | 10 | ✅ 已完成（10/10 已完成） |
 | `ui-live-parity-hardening-v1` | 14 | ✅ 已完成（14/14；资源主链路、Shell session/recovery sync、SettingsTruthModel、模型/Agent runtime、provider callable、对话透明化、Claude/Codex parity baseline、设置/会话浏览器 E2E 和文档收口均已完成；剩余发版门槛已上收进 `v0-1-0-release-readiness`） |
-| `v0-1-0-release-readiness` | 20 | ⏳ 执行中（15/20；已完成发布准备基线、会话页 Task 2-4、叙述者中心/Shell 左栏 Task 5-6、产品壳首页 Task 7-8、作品工作台 Task 9-10、设置/Provider Task 11、Routines Task 12、clean/isolated root 主路径 E2E Task 13、clean root 手工软件验活 Task 14、旧 spec 状态收口 Task 15；下一步 Task 16 全量自动化验证） |
+| `v0-1-0-release-readiness` | 20 | ⏳ 执行中（18/20；已完成发布准备基线、会话页 Task 2-4、叙述者中心/Shell 左栏 Task 5-6、产品壳首页 Task 7-8、作品工作台 Task 9-10、设置/Provider Task 11、Routines Task 12、clean/isolated root 主路径 E2E Task 13、clean root 手工软件验活 Task 14、旧 spec 状态收口 Task 15、Task 16 全量自动化验证矩阵、Task 17 v0.1.0 版本资料与发布文档同步、Task 18 编译产物与 compiled smoke；下一步 Task 19 release commit、tag 与 GitHub Release） |
 | `novelfork-ui-v1` | 8 | ⏸️ 已被重建主线取代，保留作历史参考 |
 | `studio-ide-layout-v1` | 30 | ❌ 归档（前端布局失败，后端功能保留） |
 | `studio-frontend-integration-v1` | 10 | ❌ 归档（未完成） |

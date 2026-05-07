@@ -71,13 +71,14 @@ vi.mock("./settings/ProviderSettingsPage", () => ({
   ProviderSettingsPage: ProviderSettingsPageMock,
 }));
 
+import { PROVIDER_MODELS_API_PATH, buildWorktreeStatusApiPath } from "./backend-contract";
 import { StudioNextApp } from "./StudioNextApp";
 
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 beforeEach(() => {
   fetchMock.mockImplementation(async (url: string, options?: { method?: string; body?: string }) => {
-    if (url === "/api/providers/models") return { models: [] };
+    if (url === PROVIDER_MODELS_API_PATH) return { models: [] };
     if (url.startsWith("/api/sessions/") && options?.method === "PUT") {
       return {
         id: "session-1",
@@ -359,7 +360,7 @@ describe("StudioNextApp", () => {
     useShellDataStoreMock.mockReturnValue(shellDataStore);
     const applyEnvelopeMock = vi.fn();
     fetchMock.mockImplementation(async (url: string, options?: { method?: string; body?: string }) => {
-      if (url === "/api/providers/models") {
+      if (url === PROVIDER_MODELS_API_PATH) {
         return { models: [
           { modelId: "sub2api:gpt-5.4", modelName: "GPT-5.4", providerId: "sub2api", providerName: "Sub2API", enabled: true, contextWindow: 128000, maxOutputTokens: 8192, source: "detected", lastTestStatus: "success", capabilities: { functionCalling: true, vision: false, streaming: true } },
           { modelId: "sub2api:gpt-5.5", modelName: "GPT-5.5", providerId: "sub2api", providerName: "Sub2API", enabled: true, contextWindow: 200000, maxOutputTokens: 16384, source: "detected", lastTestStatus: "success", capabilities: { functionCalling: true, vision: false, streaming: true } },
@@ -367,7 +368,7 @@ describe("StudioNextApp", () => {
       }
       if (url === "/api/sessions/session-1" && options?.method === "PUT") return updatedSession;
       if (url === "/api/sessions/session-1/chat/state") return { session: updatedSession, messages: [{ id: "m1", role: "assistant", content: "已切换模型", timestamp: 1, seq: 1 }], cursor: { lastSeq: 1, ackedSeq: 1 } };
-      if (url === "/api/worktree/status?path=D%3A%2Fnovel-worktree") return { status: { modified: [], added: [], deleted: [], untracked: [] } };
+      if (url === buildWorktreeStatusApiPath("D:/novel-worktree")) return { status: { modified: [], added: [], deleted: [], untracked: [] } };
       throw new Error(`Unhandled fetch: ${url}`);
     });
     useAgentConversationRuntimeMock.mockReturnValue({
@@ -401,8 +402,8 @@ describe("StudioNextApp", () => {
 
   it("narrator route header facts 来自真实 session binding 与 worktree status API", async () => {
     fetchMock.mockImplementation(async (url: string) => {
-      if (url === "/api/providers/models") return { models: [] };
-      if (url === "/api/worktree/status?path=D%3A%2Fmissing-worktree") throw new Error("not a git repository");
+      if (url === PROVIDER_MODELS_API_PATH) return { models: [] };
+      if (url === buildWorktreeStatusApiPath("D:/missing-worktree")) throw new Error("not a git repository");
       throw new Error(`Unhandled fetch: ${url}`);
     });
     useAgentConversationRuntimeMock.mockReturnValue({
@@ -448,7 +449,7 @@ describe("StudioNextApp", () => {
 
   it("loads model pool into the status bar and updates session config through the session contract", async () => {
     fetchMock.mockImplementation(async (url: string, options?: { method?: string; body?: string }) => {
-      if (url === "/api/providers/models") {
+      if (url === PROVIDER_MODELS_API_PATH) {
         return {
           models: [
             {
@@ -520,7 +521,7 @@ describe("StudioNextApp", () => {
     fireEvent.change(screen.getByLabelText("权限"), { target: { value: "ask" } });
     fireEvent.change(screen.getByLabelText("推理强度"), { target: { value: "high" } });
 
-    expect(fetchMock).toHaveBeenCalledWith("/api/providers/models");
+    expect(fetchMock).toHaveBeenCalledWith(PROVIDER_MODELS_API_PATH);
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/sessions/session-1",
       expect.objectContaining({ method: "PUT", body: JSON.stringify({ sessionConfig: { providerId: "sub2api", modelId: "gpt-5.5" } }) }),
@@ -605,7 +606,7 @@ describe("StudioNextApp", () => {
       }],
     }];
     fetchMock.mockImplementation(async (url: string, options?: { method?: string; body?: string }) => {
-      if (url === "/api/providers/models") return { models: [] };
+      if (url === PROVIDER_MODELS_API_PATH) return { models: [] };
       if (url === "/api/sessions/session-1/tools") {
         return { sessionId: "session-1", tools: [], pendingConfirmations: [messages[0].toolCalls[0].confirmation] };
       }
@@ -663,7 +664,7 @@ describe("StudioNextApp", () => {
       }],
     }];
     fetchMock.mockImplementation(async (url: string, options?: { method?: string; body?: string }) => {
-      if (url === "/api/providers/models") return { models: [] };
+      if (url === PROVIDER_MODELS_API_PATH) return { models: [] };
       if (url === "/api/sessions/session-1/tools") return { sessionId: "session-1", tools: [], pendingConfirmations: [messages[0].toolCalls[0].confirmation] };
       if (url === "/api/sessions/session-1/tools/candidate.create_chapter/confirm" && options?.method === "POST") {
         confirmAttempts += 1;
@@ -797,7 +798,7 @@ describe("StudioNextApp", () => {
       errors: [],
     });
     fetchMock.mockImplementation(async (url: string) => {
-      if (url === "/api/providers/models") return { models: [] };
+      if (url === PROVIDER_MODELS_API_PATH) return { models: [] };
       if (url === "/api/books/b1/chapters/1") return chapterDetail;
       throw new Error(`Unhandled fetch: ${url}`);
     });
@@ -829,7 +830,7 @@ describe("StudioNextApp", () => {
       errors: [],
     });
     fetchMock.mockImplementation(async (url: string, options?: { method?: string; body?: string }) => {
-      if (url === "/api/providers/models") return { models: [] };
+      if (url === PROVIDER_MODELS_API_PATH) return { models: [] };
       if (url === "/api/books/b1/chapters/1" && options?.method === "PUT") return { ok: true };
       if (url === "/api/books/b1/chapters/1") return { chapterNumber: 1, filename: "0001.md", content: "更新章节" };
       if (url === "/api/books/b1/drafts/d1" && options?.method === "PUT") return { ok: true };
@@ -866,7 +867,7 @@ describe("StudioNextApp", () => {
       errors: [],
     });
     fetchMock.mockImplementation(async (url: string, options?: { method?: string }) => {
-      if (url === "/api/providers/models") return { models: [] };
+      if (url === PROVIDER_MODELS_API_PATH) return { models: [] };
       if (url === "/api/books/b1/drafts/d1" && options?.method === "PUT") throw Object.assign(new Error("保存接口失败"), { status: 500 });
       throw new Error(`Unhandled fetch: ${url}`);
     });
@@ -893,7 +894,7 @@ describe("StudioNextApp", () => {
       errors: [],
     });
     fetchMock.mockImplementation(async (url: string) => {
-      if (url === "/api/providers/models") return { models: [] };
+      if (url === PROVIDER_MODELS_API_PATH) return { models: [] };
       throw new Error(`Unhandled fetch: ${url}`);
     });
 
@@ -968,7 +969,7 @@ describe("StudioNextApp", () => {
     loadWorkbenchResourcesFromContractMock.mockResolvedValue({ tree: [], resourceMap: new Map(), openableNodes: [], errors: [] });
     fetchMock.mockImplementation(async (url: string) => {
       if (url === "/api/sessions?sort=recent&status=active&binding=book%3Ab1") return [{ id: "session-existing", title: "已有写作会话", status: "active", projectId: "b1", agentId: "writer" }];
-      if (url === "/api/providers/models") return { models: [] };
+      if (url === PROVIDER_MODELS_API_PATH) return { models: [] };
       if (url === "/api/sessions/session-existing/tools") return { sessionId: "session-existing", tools: [], pendingConfirmations: [] };
       throw new Error(`Unhandled fetch: ${url}`);
     });
@@ -991,7 +992,7 @@ describe("StudioNextApp", () => {
     fetchMock.mockImplementation(async (url: string, options?: { method?: string; body?: string }) => {
       if (url === "/api/sessions?sort=recent&status=active&binding=book%3Ab1") return [];
       if (url === "/api/sessions" && options?.method === "POST") return { id: "session-new", title: "《b1》生成下一章", status: "active", projectId: "b1", agentId: "writer", kind: "standalone", sessionMode: "chat" };
-      if (url === "/api/providers/models") return { models: [] };
+      if (url === PROVIDER_MODELS_API_PATH) return { models: [] };
       if (url === "/api/sessions/session-new/tools") return { sessionId: "session-new", tools: [], pendingConfirmations: [] };
       throw new Error(`Unhandled fetch: ${url}`);
     });
@@ -1036,7 +1037,7 @@ describe("StudioNextApp", () => {
     fetchMock.mockImplementation(async (url: string, options?: { method?: string }) => {
       if (url === "/api/sessions?sort=recent&status=active&binding=book%3Ab1") return [];
       if (url === "/api/sessions" && options?.method === "POST") return session;
-      if (url === "/api/providers/models") return { models: [] };
+      if (url === PROVIDER_MODELS_API_PATH) return { models: [] };
       if (url === "/api/sessions/session-new/tools") return { sessionId: "session-new", tools: [], pendingConfirmations: [] };
       throw new Error(`Unhandled fetch: ${url}`);
     });

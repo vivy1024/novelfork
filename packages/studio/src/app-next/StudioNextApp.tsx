@@ -109,6 +109,7 @@ interface HomeRouteLiveProps {
 
 function HomeRouteLive({ books, sessions, providerSummary, providerStatus, loading, error, onNavigate }: HomeRouteLiveProps) {
   const shellDataStore = useShellDataStore();
+  const resourceClient = useMemo(() => createDefaultResourceClient(), []);
   const [createBookOpen, setCreateBookOpen] = useState(false);
   const [newBookTitle, setNewBookTitle] = useState("");
   const [createBookError, setCreateBookError] = useState<string | null>(null);
@@ -132,18 +133,13 @@ function HomeRouteLive({ books, sessions, providerSummary, providerStatus, loadi
     setCreatingBook(true);
     setCreateBookError(null);
     try {
-      const response = await fetch("/api/books/create", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ title, genre: "玄幻", language: "zh", chapterWordCount: 2000, targetChapters: 100 }),
-      });
-      if (!response.ok) throw new Error(`创建作品失败：${response.status}`);
-      const payload = await response.json() as { readonly bookId?: string };
-      if (!payload.bookId) throw new Error("创建作品失败：响应缺少 bookId");
+      const result = await resourceClient.createBook({ title, genre: "玄幻", language: "zh", chapterWordCount: 2000, targetChapters: 100 });
+      if (!result.ok) throw new Error(contractErrorMessage(result, "创建作品失败"));
+      if (!result.data.bookId) throw new Error("创建作品失败：响应缺少 bookId");
       shellDataStore.invalidate("books");
       setCreateBookOpen(false);
       setNewBookTitle("");
-      onNavigate({ kind: "book", bookId: payload.bookId });
+      onNavigate({ kind: "book", bookId: result.data.bookId });
     } catch (caught) {
       setCreateBookError(caught instanceof Error ? caught.message : String(caught));
     } finally {
@@ -360,6 +356,7 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
   const runtime = useAgentConversationRuntime({ sessionId, canvasContext });
   const contractClient = useMemo(() => createDefaultContractClient(), []);
   const providerClient = useMemo(() => createProviderClient(contractClient), [contractClient]);
+  const resourceClient = useMemo(() => createResourceClient(contractClient), [contractClient]);
   const sessionClient = useMemo(() => createSessionClient(contractClient), [contractClient]);
   const [modelOptions, setModelOptions] = useState<NonNullable<ConversationRouteStatus["modelOptions"]>>([]);
   const [modelPoolLoading, setModelPoolLoading] = useState(true);
@@ -393,7 +390,7 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
     }
     let active = true;
     setWorkspaceFact({ path: worktree, git: { status: "unavailable", reason: "正在读取 Git 状态" } });
-    void contractClient.get<{ status: { modified?: unknown[]; added?: unknown[]; deleted?: unknown[]; untracked?: unknown[] } }>(`/api/worktree/status?path=${encodeURIComponent(worktree)}`, { capability: { id: "worktree.status", status: "current" } }).then((result) => {
+    void resourceClient.getWorktreeStatus(worktree).then((result) => {
       if (!active) return;
       if (!result.ok) {
         setWorkspaceFact({ path: worktree, git: { status: "unavailable", reason: contractErrorMessage(result, "Git 状态不可读") } });
@@ -415,7 +412,7 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
     return () => {
       active = false;
     };
-  }, [contractClient, runtime.state.session?.worktree]);
+  }, [resourceClient, runtime.state.session?.worktree]);
 
   useEffect(() => {
     let active = true;
