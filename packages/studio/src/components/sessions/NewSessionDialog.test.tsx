@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { NewSessionDialog } from "./NewSessionDialog";
@@ -134,7 +134,9 @@ describe("NewSessionDialog", () => {
     fireEvent.change(screen.getByLabelText("绑定对象"), { target: { value: "standalone" } });
     fireEvent.change(screen.getByLabelText("运行时模型"), { target: { value: "anthropic:claude-sonnet-4-6" } });
     fireEvent.click(screen.getByRole("button", { name: "计划模式" }));
-    fireEvent.click(screen.getByRole("button", { name: /只读/ }));
+    const permissionRegion = screen.getByText("权限模式").closest("div")?.parentElement;
+    if (!permissionRegion) throw new Error("权限模式区域缺失");
+    fireEvent.click(within(permissionRegion).getByRole("button", { name: /只读/ }));
     fireEvent.click(screen.getByRole("button", { name: "创建会话" }));
 
     expect(onCreate).toHaveBeenCalledWith({

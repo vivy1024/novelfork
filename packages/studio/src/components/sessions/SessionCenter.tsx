@@ -10,10 +10,12 @@ import {
 
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
+import { NewSessionDialog, type NewSessionPayload } from "./NewSessionDialog";
 
 export type SessionCenterBindingFilter = "all" | "standalone" | "book" | "chapter";
+export type SessionCenterSortMode = "recent" | "lastModified-desc" | "manual";
 
-type SessionCenterClient = Pick<ReturnType<typeof createSessionClient>, "listActiveSessions" | "updateSession" | "continueLatestSession" | "forkSession" | "getMemoryStatus">;
+type SessionCenterClient = Pick<ReturnType<typeof createSessionClient>, "listActiveSessions" | "updateSession" | "continueLatestSession" | "forkSession" | "getMemoryStatus" | "createSession">;
 
 type SessionMemoryBoundaryStatus = {
   readonly ok: true;
@@ -53,6 +55,18 @@ const STATUS_FILTERS: ReadonlyArray<{ value: NarratorSessionStatus; label: strin
   { value: "active", label: "活跃" },
   { value: "archived", label: "已归档" },
 ];
+
+const SORT_MODES: ReadonlyArray<{ value: SessionCenterSortMode; label: string }> = [
+  { value: "recent", label: "最近活动优先" },
+  { value: "lastModified-desc", label: "最后消息优先" },
+  { value: "manual", label: "手动顺序" },
+];
+
+function formatSessionDate(value: string): string {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toISOString().slice(0, 10);
+}
 
 function sessionBindingLabel(session: NarratorSessionRecord): string {
   if (session.chapterId) return "章节绑定";
@@ -96,9 +110,11 @@ function sessionListQuery(input: {
   readonly binding: SessionCenterBindingFilter;
   readonly status: NarratorSessionStatus;
   readonly search: string;
-}): { status: NarratorSessionStatus; binding?: string; search?: string } {
-  const query: { status: NarratorSessionStatus; binding?: string; search?: string } = { status: input.status };
+  readonly sort: SessionCenterSortMode;
+}): { status: NarratorSessionStatus; binding?: string; search?: string; sort?: string } {
+  const query: { status: NarratorSessionStatus; binding?: string; search?: string; sort?: string } = { status: input.status };
   if (input.binding !== "all") query.binding = input.binding;
+  if (input.sort !== "recent") query.sort = input.sort;
   const search = input.search.trim();
   if (search) query.search = search;
   return query;
@@ -108,6 +124,7 @@ export function SessionCenter({ className, initialBinding = "all", initialStatus
   const [binding, setBinding] = useState<SessionCenterBindingFilter>(initialBinding);
   const [status, setStatus] = useState<NarratorSessionStatus>(initialStatus);
   const [search, setSearch] = useState("");
+  const [sort, setSort] = useState<SessionCenterSortMode>("recent");
   const [sessions, setSessions] = useState<NarratorSessionRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [lifecycleBusy, setLifecycleBusy] = useState(false);
@@ -116,9 +133,10 @@ export function SessionCenter({ className, initialBinding = "all", initialStatus
   const [forkTarget, setForkTarget] = useState<NarratorSessionRecord | null>(null);
   const [forkTitle, setForkTitle] = useState("");
   const [inheritanceNote, setInheritanceNote] = useState("");
+  const [newSessionOpen, setNewSessionOpen] = useState(false);
   const sessionClient = useMemo(() => providedSessionClient ?? createDefaultSessionClient(), [providedSessionClient]);
 
-  const listQuery = useMemo(() => sessionListQuery({ binding, status, search }), [binding, status, search]);
+  const listQuery = useMemo(() => sessionListQuery({ binding, status, search, sort }), [binding, status, search, sort]);
 
   const loadSessions = useCallback(async () => {
     setLoading(true);
@@ -205,6 +223,27 @@ export function SessionCenter({ className, initialBinding = "all", initialStatus
     setLifecycleBusy(false);
   };
 
+  const createIndependentSession = async (payload: NewSessionPayload) => {
+    setLifecycleBusy(true);
+    setError(null);
+    const result = await sessionClient.createSession<NarratorSessionRecord>({
+      title: payload.title,
+      agentId: payload.agentId,
+      kind: "standalone",
+      sessionMode: payload.sessionMode,
+      worktree: payload.worktree,
+      sessionConfig: payload.sessionConfig,
+    });
+    if (result.ok) {
+      setNewSessionOpen(false);
+      onOpenSession(result.data);
+      setLifecycleBusy(false);
+      return;
+    }
+    setError(sessionClientErrorMessage(result, "新建叙述者失败"));
+    setLifecycleBusy(false);
+  };
+
   return (
     <section className={cn("space-y-4", className)} aria-label="会话中心">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -213,6 +252,9 @@ export function SessionCenter({ className, initialBinding = "all", initialStatus
           <p className="text-sm text-muted-foreground">管理独立、书籍绑定和章节绑定的长期 Agent 会话；归档不会删除历史。</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <Button type="button" size="sm" variant="outline" onClick={() => setNewSessionOpen(true)} disabled={lifecycleBusy}>
+            新建叙述者
+          </Button>
           <Button type="button" size="sm" onClick={() => void continueLatest()} disabled={lifecycleBusy}>
             继续最近会话
           </Button>
@@ -233,6 +275,17 @@ export function SessionCenter({ className, initialBinding = "all", initialStatus
             />
           </label>
           <div className="flex flex-col gap-2">
+            <label className="grid gap-1 text-sm">
+              <span className="text-xs font-medium text-muted-foreground">排序会话</span>
+              <select
+                aria-label="排序会话"
+                className="h-9 rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-primary"
+                onChange={(event) => setSort(event.target.value as SessionCenterSortMode)}
+                value={sort}
+              >
+                {SORT_MODES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+              </select>
+            </label>
             <div className="flex flex-wrap gap-2" aria-label="会话状态筛选">
               {STATUS_FILTERS.map((item) => (
                 <Button key={item.value} type="button" size="sm" variant={status === item.value ? "default" : "outline"} onClick={() => setStatus(item.value)}>
@@ -277,6 +330,11 @@ export function SessionCenter({ className, initialBinding = "all", initialStatus
                     <span>模式：{session.sessionMode === "plan" ? "计划模式" : "对话模式"}</span>
                     <span>消息：{session.messageCount}</span>
                   </div>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                    <span>工作目录：{session.worktree ?? "未绑定工作目录"}</span>
+                    <span>创建：{formatSessionDate(session.createdAt)}</span>
+                    <span>最后消息：{formatSessionDate(session.lastModified)}</span>
+                  </div>
                   <div className="flex flex-wrap gap-2 text-xs">
                     <Badge variant={pendingCount > 0 ? "destructive" : "outline"}>未处理确认 {pendingCount}</Badge>
                     {session.projectId ? <Badge variant="outline">书籍 {session.projectId}</Badge> : null}
@@ -308,6 +366,8 @@ export function SessionCenter({ className, initialBinding = "all", initialStatus
           );
         })}
       </div>
+
+      <NewSessionDialog open={newSessionOpen} onOpenChange={setNewSessionOpen} onCreate={(payload) => void createIndependentSession(payload)} />
 
       {forkTarget ? (
         <div role="dialog" aria-label="Fork 会话" className="rounded-lg border border-border bg-card p-4 shadow-sm">
