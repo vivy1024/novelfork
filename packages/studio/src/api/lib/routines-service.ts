@@ -25,6 +25,7 @@ function cloneDefaultRoutines(): Routines {
     mcpTools: [...DEFAULT_ROUTINES.mcpTools],
     hooks: [...DEFAULT_ROUTINES.hooks],
     disabledCommands: [...DEFAULT_ROUTINES.disabledCommands],
+    workflowRecipes: [...DEFAULT_ROUTINES.workflowRecipes],
   };
 }
 
@@ -44,6 +45,7 @@ export function normalizeRoutines(input: Partial<Routines> | null | undefined): 
     mcpTools: Array.isArray(source.mcpTools) ? [...source.mcpTools] : fallback.mcpTools,
     hooks: Array.isArray(source.hooks) ? [...source.hooks] : fallback.hooks,
     disabledCommands: Array.isArray(source.disabledCommands) ? [...source.disabledCommands] : fallback.disabledCommands,
+    workflowRecipes: Array.isArray(source.workflowRecipes) ? [...source.workflowRecipes] : fallback.workflowRecipes,
   };
 }
 
@@ -131,6 +133,7 @@ export function mergeRoutines(global: Routines, project: Routines | null): Routi
     mcpTools: mergeByKey(globalRoutines.mcpTools, projectRoutines.mcpTools, (item) => item.id),
     hooks: mergeByKey(globalRoutines.hooks, projectRoutines.hooks, (item) => item.id),
     disabledCommands: [...new Set([...globalRoutines.disabledCommands, ...projectRoutines.disabledCommands])],
+    workflowRecipes: mergeByKey(globalRoutines.workflowRecipes, projectRoutines.workflowRecipes, (item) => item.id),
   };
 }
 
