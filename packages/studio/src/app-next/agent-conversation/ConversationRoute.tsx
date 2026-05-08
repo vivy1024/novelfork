@@ -121,7 +121,8 @@ export function ConversationRoute({
         messages={initialMessages}
         pendingConfirmation={initialConfirmation}
         recoveryNotice={initialRecoveryNotice}
-        isRunning={initialStatus.state === "running"}
+        isRunning={initialStatus.state === "running" || initialStatus.narratorState === "working"}
+        streamingStartedAt={initialStatus.streamingStartedAt}
         sendDisabledReason={sendDisabledReason}
         settingsHref={settingsHref}
         footerActions={footerActions}

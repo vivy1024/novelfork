@@ -94,6 +94,9 @@ export function ConversationSurface({
 
   const modelLabel = status.modelLabel ?? status.modelId ?? "";
   const permissionLabel = status.permissionMode ?? "edit";
+  const isWorking = status.narratorState === "working" || status.state === "running";
+  const isInterrupted = status.substatus === "interrupted";
+  const effectiveStreamingStartedAt = isWorking ? (status.streamingStartedAt ?? streamingStartedAt) : null;
 
   return (
     <section data-testid="conversation-surface" className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
@@ -106,7 +109,10 @@ export function ConversationSurface({
           )}
         </div>
         <div className="flex items-center gap-1">
-          {isRunning && streamingStartedAt && <ThinkingTimer startedAt={streamingStartedAt} />}
+          {isWorking && effectiveStreamingStartedAt && <ThinkingTimer startedAt={effectiveStreamingStartedAt} />}
+          {!isWorking && status.lastTurnDurationMs != null && (
+            <span className="text-xs text-muted-foreground">空闲 · 上轮耗时 {formatDuration(status.lastTurnDurationMs)}</span>
+          )}
           <button type="button" className="rounded-md p-1.5 text-muted-foreground hover:bg-muted" title="搜索">
             <Search className="size-4" />
           </button>
