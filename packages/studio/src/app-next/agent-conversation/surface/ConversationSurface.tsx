@@ -1,31 +1,13 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Settings, Search, Clock } from "lucide-react";
+import { Settings, Search } from "lucide-react";
 
 import type { ToolResultArtifact } from "../../tool-results";
 import type { SlashCommandExecutionContext, SlashCommandExecutionResult } from "../slash-command-registry";
 import { Composer } from "./Composer";
 import { ConfirmationGate, type ConversationConfirmation } from "./ConfirmationGate";
-import type { ConversationSessionConfigPatch, ConversationStatus, NarratorSubstatus } from "./ConversationStatusBar";
+import type { ConversationSessionConfigPatch, ConversationStatus } from "./ConversationStatusBar";
 import { MessageStream, type ConversationSurfaceMessage } from "./MessageStream";
 import { NarratorStatusBar } from "./NarratorStatusBar";
-
-/** 对标 NarraFork i18n narratorSubstatus 文案 */
-const SUBSTATUS_LABELS: Record<NarratorSubstatus, string> = {
-  unread: "已完成",
-  error: "错误",
-  interrupted: "已中断",
-  suspended: "已暂停",
-  manual_override: "手动接管",
-  reasoning: "推理中",
-  compacting: "压缩中",
-  planning: "计划中",
-  retrying: "重试中",
-  queued: "排队中",
-};
-
-function substatusLabel(s: NarratorSubstatus): string {
-  return SUBSTATUS_LABELS[s] ?? s;
-}
 
 export interface ConversationRecoveryNotice {
   state: string;
@@ -199,23 +181,6 @@ export function ConversationSurface({
 
       {/* ── Footer actions (if any) ── */}
       {footerActions}
-
-      {/* ── Bottom status bar ── */}
-      <div className="flex shrink-0 items-center justify-between border-t border-border px-4 py-1 text-[10px] text-muted-foreground">
-        <div className="flex items-center gap-2">
-          <Clock className="size-3" />
-          {status.substatus && (
-            <span className="font-medium">{substatusLabel(status.substatus)}</span>
-          )}
-          <span>{messages.length} 条消息</span>
-          {status.binding?.label && <span>· {status.binding.label}</span>}
-          {status.workspace?.branch && <span>· {status.workspace.branch}</span>}
-          {status.workspace?.changes != null && <span>· ±{status.workspace.changes}</span>}
-        </div>
-        <div className="flex items-center gap-2">
-          {status.providerId && <span>{status.providerLabel ?? status.providerId}</span>}
-        </div>
-      </div>
 
       {/* ── NarratorStatusBar (above Composer) ── */}
       <NarratorStatusBar status={status} />
