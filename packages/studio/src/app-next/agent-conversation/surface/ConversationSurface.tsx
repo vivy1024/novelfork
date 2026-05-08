@@ -7,6 +7,7 @@ import { Composer } from "./Composer";
 import { ConfirmationGate, type ConversationConfirmation } from "./ConfirmationGate";
 import type { ConversationSessionConfigPatch, ConversationStatus, NarratorSubstatus } from "./ConversationStatusBar";
 import { MessageStream, type ConversationSurfaceMessage } from "./MessageStream";
+import { NarratorStatusBar } from "./NarratorStatusBar";
 
 /** 对标 NarraFork i18n narratorSubstatus 文案 */
 const SUBSTATUS_LABELS: Record<NarratorSubstatus, string> = {
@@ -215,6 +216,9 @@ export function ConversationSurface({
           {status.providerId && <span>{status.providerLabel ?? status.providerId}</span>}
         </div>
       </div>
+
+      {/* ── NarratorStatusBar (above Composer) ── */}
+      <NarratorStatusBar status={status} />
 
       {/* ── Composer ── */}
       <Composer

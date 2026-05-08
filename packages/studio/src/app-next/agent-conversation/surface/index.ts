@@ -4,4 +4,5 @@ export * from "./ConversationStatusBar";
 export * from "./ConversationSurface";
 export * from "./MessageItem";
 export * from "./MessageStream";
+export * from "./NarratorStatusBar";
 export * from "./ToolCallCard";
