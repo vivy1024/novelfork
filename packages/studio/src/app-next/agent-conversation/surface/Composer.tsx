@@ -57,6 +57,13 @@ export function Composer({
     if (slash.ok) {
       try {
         const result = await executeSlashCommandInput(content, { ...slashCommandContext, registry });
+        // Novel commands (unhandled_command) → send as regular message to let agent handle
+        if (!result.ok && result.code === "unhandled_command" && content.startsWith("/novel:")) {
+          onSend(content);
+          setValue("");
+          setCommandStatus(null);
+          return;
+        }
         setCommandStatus(result.message);
         onSlashCommandResult?.(result);
         if (result.ok) setValue("");
