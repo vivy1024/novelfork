@@ -226,11 +226,21 @@ WebSocket 消息到达
 
 | 对标对象 | 完成度 | 核心差距 |
 |---------|--------|---------|
-| Claude Code CLI Agent | **~90%** | worktree 隔离 + token 精确计数 |
-| Codex CLI Agent | **~40%** | platform adapter 空壳 + sandbox 未实现 |
-| NarraFork 前端 | **~85%** | 性能优化（memo/shiki）+ 终端嵌入 |
-| NarraFork Agent | **~90%** | 与 Claude Code 对标一致 |
+| Claude Code CLI Agent | **~95%** | ~~worktree 隔离~~ ✅ 已实现 + token 精确计数（估算） |
+| Codex CLI Agent | **~60%** | ~~platform adapter 空壳~~ ✅ 已实现 + sandbox 未实现 |
+| NarraFork 前端 | **~92%** | ~~性能优化~~ ✅ + ~~终端嵌入~~ ✅ + TanStack Router（P2） |
+| NarraFork Agent | **~95%** | 与 Claude Code 对标一致 |
 
-**最大风险**：MessageItem 无 memo + shiki 无实例复用，在 100+ 消息场景下会有明显卡顿。
-**最大功能缺口**：Codex platform adapter 是空壳，无法真实调用 Codex API。
-**最大体验缺口**：无终端嵌入（@xterm/xterm），无法在工作台内执行命令。
+**已修复的风险**：
+- ✅ MessageItem React.memo — 长对话性能
+- ✅ shiki highlighter 实例复用 — 代码高亮性能
+- ✅ 流式 chunk 优化 — 避免全量 .map()
+
+**已修复的功能缺口**：
+- ✅ Codex platform adapter — 完整 listModels/testModel/generate 实现
+- ✅ 终端嵌入 — @xterm/xterm + FitAddon + WebLinksAddon
+- ✅ Git worktree 隔离 — WorktreeManager + SubagentConfig.worktree
+
+**剩余 P2 项（中期）**：
+- TanStack Router 替换手写 pushState（类型安全路由）
+- 历史消息分页 cursor（大量历史消息性能）
