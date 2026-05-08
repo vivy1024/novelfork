@@ -42,6 +42,8 @@ export interface ConversationSurfaceProps {
   onCompactSession?: SlashCommandExecutionContext["compactSession"];
   onSlashCommandResult?: (result: SlashCommandExecutionResult) => void;
   onOpenArtifact?: (artifact: ToolResultArtifact) => void;
+  /** 附件上传回调 */
+  onAttach?: (files: FileList) => void;
   /** 工具栏回调 */
   onEditTitle?: (newTitle: string) => void;
   onGenerateTitle?: () => void;
@@ -88,6 +90,7 @@ export function ConversationSurface({
   onUpdateSessionConfig,
   onCompactSession,
   onSlashCommandResult,
+  onAttach,
   onEditTitle,
   onGenerateTitle,
   onArchive,
@@ -309,6 +312,7 @@ export function ConversationSurface({
       <Composer
         onSend={onSend}
         onAbort={onAbort}
+        onAttach={onAttach}
         onSlashCommandResult={handleSlashCommandResult}
         slashCommandContext={{ status, compactSession: onCompactSession }}
         isRunning={isWorking}

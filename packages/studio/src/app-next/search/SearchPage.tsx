@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { fetchJson } from "../../hooks/use-api";
 import { InlineError } from "../components/feedback";
+import { Input } from "@/components/ui/input";
 import type { SearchResult as ApiSearchResult } from "../../shared/search-types";
 
 interface SearchHit {
@@ -9,6 +10,10 @@ interface SearchHit {
   readonly chapterNumber: number;
   readonly snippet: string;
   readonly contentType?: ApiSearchResult["type"];
+}
+
+interface SearchPageProps {
+  readonly onNavigateToBook?: (bookId: string) => void;
 }
 
 const TYPE_LABELS: Record<string, string> = { chapter: "章节", setting: "设定", message: "消息", file: "文件" };
@@ -44,7 +49,7 @@ function highlightSnippet(snippet: string, query: string) {
   );
 }
 
-export function SearchPage() {
+export function SearchPage({ onNavigateToBook }: SearchPageProps = {}) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<ReadonlyArray<SearchHit>>([]);
   const [loading, setLoading] = useState(false);
@@ -85,12 +90,11 @@ export function SearchPage() {
     <section className="space-y-4">
       <h2 className="text-xl font-semibold">全局搜索</h2>
       <div className="relative">
-        <input
+        <Input
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="搜索章节、真相文件、伏笔、世界观…"
-          className="w-full rounded-lg border border-border bg-background py-2.5 pl-3 pr-10 text-sm"
           autoFocus
         />
         {loading && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">搜索中…</span>}
@@ -105,7 +109,11 @@ export function SearchPage() {
       {results.length > 0 && (
         <div className="space-y-2">
           {results.map((hit, i) => (
-            <div key={i} className="cursor-pointer rounded-lg border border-border p-3 text-sm hover:bg-muted" onClick={() => console.log("navigate to", hit)}>
+            <div
+              key={i}
+              className="cursor-pointer rounded-lg border border-border p-3 text-sm hover:bg-muted transition-colors"
+              onClick={() => onNavigateToBook?.(hit.bookId)}
+            >
               <div className="flex items-center gap-2">
                 <span className="font-medium">{hit.bookTitle}</span>
                 <span className="text-xs text-muted-foreground">第 {hit.chapterNumber} 章</span>
