@@ -2,137 +2,125 @@
 
 ## Overview
 
-本任务清单基于 2026-05-08 前端功能校验结果。当前 NovelFork Studio 的核心问题：
+本任务清单基于 2026-05-08 前端功能校验 + NarraFork 对标结果。
 
-1. **对话页面是 debug 视图**：纯文本堆砌，没有消息气泡、markdown 渲染、工具调用卡片、streaming 动画、slash command 提示
-2. **设置页大部分只读**：ModelsSection 和 RuntimeControlPanel 只有 FactRow 展示，没有编辑控件
-3. **Novel 命令不可执行**：executeNovelCommand handler 从未被提供
-4. **dist 是旧代码**：源码改动未 build 到前端
+**NarraFork 对话界面核心特征（localhost:7778）：**
+- 工具调用：绿色图标 + 工具名 + 耗时 badge（✓ 846ms），一行紧凑卡片
+- AI 回复：markdown 渲染（列表、粗体、代码块）
+- 输入区：附件📎 + 输入框 + 模型选择器（kiro:Opus 4.6）+ 权限模式（🔒全部允许）+ 中断按钮
+- 状态指示：`思考中 4:51` 实时计时
+- 顶部工具栏：搜索、剪刀、书签、图片、文件、时钟、设置
+- 底部状态栏：`novelfork · master` + git 分支 + 操作图标
 
-对标参考：
-- **NarraFork**：精美消息气泡、工具调用折叠卡片、streaming 打字动画、slash command 自动补全、markdown/代码块渲染、确认门交互卡片、token 用量实时显示
-- **Claude Code CLI**：结构化工具输出、permission request 交互、compact 进度、session resume
-- **Codex CLI**：stream-json 事件、approval gate、sandbox 状态
+**NovelFork 当前对话界面：**
+- 纯文本 debug 视图，操作栏是文字链接堆砌，输入框是裸 textarea
 
-核心原则：**每个任务完成后必须在 Browser E2E 中验证可见效果**。
+**核心原则：**
+1. 对标 NarraFork 的对话 UI 质量
+2. 每个任务完成后 Browser E2E 验证
+3. 设置页的小功能（模型选择、权限切换）直接集成到对话输入区（和 NarraFork 一样）
 
 ---
 
 ## Tasks
 
-### Phase 0：对话页面重写（最高优先级）
+### Phase 0：对话页面对标 NarraFork（最高优先级）
 
-- [ ] 1. 消息气泡组件：user/assistant/system 角色区分
-  - user 消息右对齐深色气泡
-  - assistant 消息左对齐浅色气泡
-  - system 消息居中灰色小字
-  - 验证：Browser 中发送消息后看到清晰的角色区分
+- [ ] 1. 输入区重构：对标 NarraFork Composer
+  - 左侧：附件图标
+  - 中间：自动扩展输入框（placeholder "发送消息..."）
+  - 右侧一行：模型选择器下拉 + 权限模式 badge + 中断/发送按钮
+  - Enter 发送 / Shift+Enter 换行
+  - 输入 `/` 弹出 slash command 建议列表
+  - 验证：Browser 中输入区和 NarraFork 视觉一致
 
-- [ ] 2. Markdown 渲染 + 代码高亮
-  - assistant 消息支持 markdown 渲染（标题、列表、粗体、链接）
-  - 代码块有语法高亮和复制按钮
-  - 验证：AI 回复包含代码时正确渲染
+- [ ] 2. 工具调用紧凑卡片
+  - 一行显示：绿色✓图标 + 工具名 + 耗时 badge（如 "✓ 846ms"）
+  - 点击可展开查看输入/输出详情
+  - 失败时红色✗图标
+  - 验证：对话中工具调用显示为紧凑一行
 
-- [ ] 3. 工具调用折叠卡片
-  - tool_use 显示为可折叠卡片（工具名 + 摘要）
-  - 展开后显示输入参数和输出结果
-  - tool_result 成功/失败有不同颜色标识
-  - 验证：对话中工具调用显示为紧凑卡片
+- [ ] 3. AI 回复 Markdown 渲染
+  - 支持标题、列表、粗体、斜体、链接、代码块
+  - 代码块有语法高亮 + 复制按钮
+  - 验证：AI 回复包含 markdown 时正确渲染
 
-- [ ] 4. Streaming 打字动画 + 思考中状态
-  - AI 回复时显示打字光标动画
-  - 思考中显示 "正在思考..." 指示器
-  - 流式文本逐字显示
-  - 验证：发送消息后看到实时打字效果
+- [ ] 4. Streaming + 思考中状态
+  - AI 回复时底部显示 "思考中 X:XX" 实时计时
+  - 流式文本逐步显示
+  - 中断按钮变为红色可点击
+  - 验证：发送消息后看到思考计时和流式输出
 
-- [ ] 5. 输入区重构：Composer 组件
-  - 多行输入框（自动扩展高度）
-  - Enter 发送 / Shift+Enter 换行（可配置）
-  - 发送按钮有 loading 状态
-  - 输入 `/` 时弹出 slash command 建议列表
-  - 显示当前模型名称和 token 估算
-  - 验证：输入 `/` 看到命令建议弹窗
+- [ ] 5. 顶部工具栏
+  - 叙述者名称（可编辑）+ 操作图标
+  - 右侧：搜索、设置等图标按钮
+  - 验证：顶部是紧凑的工具栏
 
 - [ ] 6. 确认门交互卡片
-  - pending-confirmation 显示为独立卡片
-  - 显示工具名、目标资源、风险等级、操作摘要
+  - pending-confirmation 显示为卡片（工具名 + 目标 + 风险）
   - "批准"/"拒绝"按钮
   - 验证：触发确认门时看到交互卡片
 
-- [ ] 7. Session header 紧凑化
-  - 顶部 bar：session 标题（可编辑）+ 模型选择器 + 权限 badge + 状态指示
-  - 不再是表格式纯文本
-  - 验证：header 是一行紧凑的控制栏
+- [ ] 7. 底部状态栏
+  - 显示当前 session 信息 + git 分支（如果有 worktree）
+  - 操作图标：复制、分叉、设置
+  - 验证：底部有状态栏
 
-- [ ] 8. 操作栏重构
-  - 底部操作栏改为图标按钮（中断/重试/compact/fork）
-  - 禁用状态用 disabled 样式而非文字说明
-  - 验证：操作栏是紧凑的图标按钮行
+### Phase A：设置页编辑控件
 
-### Phase A：设置页可编辑化
+- [ ] 8. ModelsSection 添加模型选择器
+  - defaultSessionModel 下拉（从 /api/providers/models 读取）
+  - summaryModel 下拉
+  - 保存按钮
+  - 验证：可以选择模型并保存
 
-- [ ] 9. 设置页 ModelsSection 添加编辑控件
-  - 为 defaultSessionModel 添加 provider:model 下拉选择器
-  - 为 summaryModel 添加同样的选择器
-  - 保存按钮调用 PUT /api/settings/user
-  - 验证：Browser 中可以选择模型并保存
-
-- [ ] 10. 设置页 RuntimeControlPanel 添加编辑控件
-  - permissionMode select（ask/edit/allow/read/plan）
+- [ ] 9. RuntimeControlPanel 添加编辑表单
+  - permissionMode select
   - maxTurnSteps number input
   - reasoningEffort select
   - 保存按钮
-  - 验证：Browser 中可以修改权限模式并保存
+  - 验证：可以修改并保存
 
 ### Phase B：Novel 命令真实执行
 
-- [ ] 11. 在 slash-command-registry 中提供 executeNovelCommand handler
-  - executeNovelCommand 调用 workflow-executor
-  - 验证：/novel:write-next 不再返回 unhandled_command
+- [ ] 10. 接入 executeNovelCommand handler
+  - slash-command-registry 传入 executeNovelCommand
+  - 调用 workflow-executor
+  - 验证：/novel:write-next 不返回 unhandled_command
 
-- [ ] 12. 实现 workflow step executor 真实步骤
-  - context-load → cockpit.get_snapshot + narrative.read_line
+- [ ] 11. Workflow step executor 真实步骤
+  - context-load → cockpit.get_snapshot
   - pgi → pgi.generate_questions
   - guided-plan → approval-pending
-  - writer-generate → LLM 生成候选稿
-  - 验证：/novel:write-next 执行到 approval-pending 暂停
+  - writer-generate → LLM 候选稿
+  - 验证：workflow 执行到 approval-pending 暂停
 
-- [ ] 13. Workflow 结果接入 session chat 消息流
-  - 每步结果作为 assistant message 广播
-  - approval-pending 显示确认门卡片
-  - 验证：叙述者消息流展示 workflow 进度
+- [ ] 12. Workflow 结果接入消息流
+  - 每步结果广播到 WebSocket
+  - 显示为工具调用紧凑卡片
+  - 验证：叙述者看到 workflow 进度
 
-### Phase C：基础设施修复
+### Phase C：基础设施
 
-- [ ] 14. 重新 build 前端 dist
-  - `pnpm --dir packages/studio build:client`
+- [ ] 13. 重新 build 前端 dist
   - 验证：所有源码改动在 Browser 中可见
 
-- [ ] 15. autoCompact 真实摘要
-  - 用 summaryModel 调用 LLM 生成摘要
-  - fallback 保持截断
-  - 验证：长对话 compact 后摘要有意义
+- [ ] 14. autoCompact 真实摘要
+  - 用 summaryModel 调 LLM
+  - 验证：compact 后摘要有意义
 
-- [ ] 16. model reference 用户友好化
-  - 支持 providerName:modelId 格式
-  - parseModelReference 先按 ID 查找再按 name 查找
-  - 验证：`vivy-free:gpt-5.4-mini` 能正确解析
+- [ ] 15. model reference 友好化
+  - 支持 providerName:modelId
+  - 验证：`vivy-free:gpt-5.4-mini` 能解析
 
-### Phase D：端到端验证
+### Phase D：E2E 验证
 
-- [ ] 17. E2E：创建会话 → 发送消息 → 收到 AI 回复
-  - 新建会话 → 发送"你好" → 看到 AI 回复气泡
-  - 验证 streaming 效果
+- [ ] 16. 创建会话 → 发送消息 → AI 回复
+  - 验证 streaming + markdown 渲染
 
-- [ ] 18. E2E：/novel:write-next 完整流程
-  - 创建书籍 → 输入 /novel:write-next → 看到 workflow 步骤 → approval 暂停
-  - 验证确认门卡片可交互
+- [ ] 17. /novel:write-next 完整流程
+  - 验证 workflow 步骤 + approval 暂停
 
----
-
-## 优先级说明
-
-Phase 0（对话页面重写）是最高优先级，因为：
-- 这是用户 90% 时间停留的页面
-- 当前状态与 NarraFork 差距巨大（debug 视图 vs 产品级 UI）
-- 没有可用的对话 UI，其他功能（Novel 命令、设置）都无法被用户感知
+- [ ] 18. 设置修改 → 对话行为变化
+  - 修改模型 → 新会话使用新模型
+  - 修改权限 → 工具确认门变化
