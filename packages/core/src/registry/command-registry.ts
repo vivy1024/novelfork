@@ -26,6 +26,10 @@ export interface RuntimeCommandDefinition {
   readonly runtimeHandler: string;
   readonly status: RuntimeCommandStatus;
   readonly source: RuntimeCommandSource;
+  /** 该命令依赖的 session tools */
+  readonly toolDependencies?: readonly string[];
+  /** 当前缺口说明（status 非 current 时） */
+  readonly gaps?: string;
 }
 
 const NO_ARGS: RuntimeCommandInputSchema = {
@@ -212,6 +216,8 @@ export const RUNTIME_COMMAND_REGISTRY: readonly RuntimeCommandDefinition[] = [
     runtimeHandler: "novel.init",
     status: "planned",
     source: "novel-agent-pack",
+    toolDependencies: ["Bash", "Write"],
+    gaps: "novel-init-handler 独立模块已实现但未接入 command executor",
   },
   {
     id: "/novel:outline",
@@ -225,6 +231,8 @@ export const RUNTIME_COMMAND_REGISTRY: readonly RuntimeCommandDefinition[] = [
     runtimeHandler: "novel.outline",
     status: "planned",
     source: "novel-agent-pack",
+    toolDependencies: ["cockpit.get_snapshot", "narrative.read_line"],
+    gaps: "outline handler 未实现",
   },
   {
     id: "/novel:write-next",
@@ -236,8 +244,10 @@ export const RUNTIME_COMMAND_REGISTRY: readonly RuntimeCommandDefinition[] = [
     inputSchema: TEXT_ARGS,
     permissionImpact: NOVEL_WRITE,
     runtimeHandler: "novel.writeNext",
-    status: "planned",
+    status: "partial",
     source: "novel-agent-pack",
+    toolDependencies: ["cockpit.get_snapshot", "narrative.read_line", "pgi.generate_questions", "pgi.record_answers", "guided.enter", "guided.exit", "candidate.create_chapter"],
+    gaps: "workflow recipe 已定义，novel-write-next-handler 独立模块已实现，但未接入 command executor 的 runtime workflow 执行",
   },
   {
     id: "/novel:audit",
@@ -251,6 +261,8 @@ export const RUNTIME_COMMAND_REGISTRY: readonly RuntimeCommandDefinition[] = [
     runtimeHandler: "novel.audit",
     status: "planned",
     source: "novel-agent-pack",
+    toolDependencies: ["cockpit.get_snapshot", "narrative.read_line"],
+    gaps: "novel-audit-handler 独立模块已实现但未接入 command executor",
   },
   {
     id: "/novel:revise",
@@ -264,6 +276,8 @@ export const RUNTIME_COMMAND_REGISTRY: readonly RuntimeCommandDefinition[] = [
     runtimeHandler: "novel.revise",
     status: "planned",
     source: "novel-agent-pack",
+    toolDependencies: ["candidate.create_chapter"],
+    gaps: "revise handler 未实现",
   },
   {
     id: "/novel:de-ai",
@@ -277,6 +291,8 @@ export const RUNTIME_COMMAND_REGISTRY: readonly RuntimeCommandDefinition[] = [
     runtimeHandler: "novel.deAi",
     status: "planned",
     source: "novel-agent-pack",
+    toolDependencies: ["candidate.create_chapter"],
+    gaps: "de-ai handler 未实现",
   },
   {
     id: "/novel:style-transfer",
@@ -290,6 +306,8 @@ export const RUNTIME_COMMAND_REGISTRY: readonly RuntimeCommandDefinition[] = [
     runtimeHandler: "novel.styleTransfer",
     status: "planned",
     source: "novel-agent-pack",
+    toolDependencies: ["style.extract_profile", "candidate.create_chapter"],
+    gaps: "style-transfer handler 未实现",
   },
   {
     id: "/novel:publish-check",
@@ -303,6 +321,8 @@ export const RUNTIME_COMMAND_REGISTRY: readonly RuntimeCommandDefinition[] = [
     runtimeHandler: "novel.publishCheck",
     status: "planned",
     source: "novel-agent-pack",
+    toolDependencies: ["cockpit.get_snapshot"],
+    gaps: "publish-check handler 未实现",
   },
   {
     id: "/novel:health",
@@ -316,6 +336,8 @@ export const RUNTIME_COMMAND_REGISTRY: readonly RuntimeCommandDefinition[] = [
     runtimeHandler: "novel.health",
     status: "planned",
     source: "novel-agent-pack",
+    toolDependencies: ["cockpit.get_snapshot", "narrative.read_line"],
+    gaps: "health handler 未实现",
   },
   {
     id: "/novel:storyline",
@@ -329,6 +351,8 @@ export const RUNTIME_COMMAND_REGISTRY: readonly RuntimeCommandDefinition[] = [
     runtimeHandler: "novel.storyline",
     status: "planned",
     source: "novel-agent-pack",
+    toolDependencies: ["narrative.read_line", "narrative.propose_change"],
+    gaps: "storyline handler 未实现",
   },
 ] as const;
 
