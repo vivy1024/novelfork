@@ -25,6 +25,10 @@ const EXPECTED_INITIAL_TOOL_NAMES = [
   "candidate.create_chapter",
   "narrative.read_line",
   "narrative.propose_change",
+  "Bash",
+  "Read",
+  "Write",
+  "Edit",
 ];
 
 const WRITE_RISKS = new Set(["draft-write", "confirmed-write", "destructive"]);
@@ -58,11 +62,15 @@ describe("session tool registry", () => {
         "pgi.generate_questions",
         "guided.enter",
         "narrative.read_line",
+        "Read",
       ]));
       expect(visibleTools.map((tool) => tool.name)).not.toContain("candidate.create_chapter");
       expect(visibleTools.map((tool) => tool.name)).not.toContain("questionnaire.submit_response");
       expect(visibleTools.map((tool) => tool.name)).not.toContain("pgi.record_answers");
       expect(visibleTools.map((tool) => tool.name)).not.toContain("guided.exit");
+      expect(visibleTools.map((tool) => tool.name)).not.toContain("Bash");
+      expect(visibleTools.map((tool) => tool.name)).not.toContain("Write");
+      expect(visibleTools.map((tool) => tool.name)).not.toContain("Edit");
     }
 
     expect(getEnabledSessionTools("edit").map((tool) => tool.name)).toEqual(expect.arrayContaining([
@@ -71,6 +79,9 @@ describe("session tool registry", () => {
       "pgi.record_answers",
       "guided.exit",
       "narrative.propose_change",
+      "Bash",
+      "Write",
+      "Edit",
     ]));
   });
 

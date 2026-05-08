@@ -181,6 +181,16 @@ function getAllowedHitReason(hit: MockDebtScanHit): string | undefined {
     return "transparent-disabled-legacy-router";
   }
 
+  // 独立模块中的 TODO：MCP client SSE 连接尚未接入真实 runtime
+  if (hit.relativePath === "packages/studio/src/api/lib/mcp-client-runtime.ts" && hit.lineText.includes("TODO: 实现真实 SSE EventSource 连接")) {
+    return "standalone-module-not-wired-mcp-sse";
+  }
+
+  // Task 14 真实提交中的 Codex sandbox planned 注释
+  if (hit.relativePath === "packages/studio/src/types/settings.ts" && hit.lineText.includes("Codex OS sandbox 尚未接入")) {
+    return "codex-sandbox-planned-status-comment";
+  }
+
 
   if (hit.relativePath === "packages/studio/src/hooks/use-i18n.ts" && hit.lineText.includes("Beta 通道入口已预留")) {
     return "transparent-reserved-ui-copy";

@@ -265,6 +265,54 @@ export const SESSION_TOOL_DEFINITIONS = [
     renderer: "narrative.mutationPreview",
     enabledForModes: WRITE_SESSION_PERMISSION_MODES,
   }),
+  // --- Claude Code / Codex 级开发工具 ---
+  sessionTool({
+    name: "Bash",
+    description: "在工作目录中执行 shell 命令。支持 cwd 追踪和超时控制。",
+    inputSchema: objectSchema({
+      command: stringSchema("要执行的 shell 命令。"),
+      workDir: stringSchema("工作目录路径（可选，默认使用 session workDir）。"),
+      timeoutMs: numberSchema("超时毫秒数（默认 30000）。"),
+    }, ["command"]),
+    risk: "destructive",
+    renderer: "tool.bash",
+    enabledForModes: WRITE_SESSION_PERMISSION_MODES,
+  }),
+  sessionTool({
+    name: "Read",
+    description: "读取工作目录内的文件内容，支持行偏移和行数限制。",
+    inputSchema: objectSchema({
+      path: stringSchema("要读取的文件路径（相对于工作目录）。"),
+      offset: numberSchema("起始行号（0-based）。"),
+      limit: numberSchema("读取行数。"),
+    }, ["path"]),
+    risk: "read",
+    renderer: "tool.fileRead",
+    enabledForModes: ALL_SESSION_PERMISSION_MODES,
+  }),
+  sessionTool({
+    name: "Write",
+    description: "将内容写入工作目录内的文件，自动创建父目录。",
+    inputSchema: objectSchema({
+      path: stringSchema("要写入的文件路径（相对于工作目录）。"),
+      content: stringSchema("要写入的文件内容。"),
+    }, ["path", "content"]),
+    risk: "confirmed-write",
+    renderer: "tool.fileWrite",
+    enabledForModes: WRITE_SESSION_PERMISSION_MODES,
+  }),
+  sessionTool({
+    name: "Edit",
+    description: "在工作目录内的文件中执行精确文本替换。",
+    inputSchema: objectSchema({
+      path: stringSchema("要编辑的文件路径（相对于工作目录）。"),
+      oldText: stringSchema("要替换的原始文本。"),
+      newText: stringSchema("替换后的新文本。"),
+    }, ["path", "oldText", "newText"]),
+    risk: "confirmed-write",
+    renderer: "tool.fileEdit",
+    enabledForModes: WRITE_SESSION_PERMISSION_MODES,
+  }),
 ] as const;
 
 export const SESSION_TOOL_NAMES = SESSION_TOOL_DEFINITIONS.map((tool) => tool.name);

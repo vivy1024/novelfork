@@ -76,4 +76,19 @@ describe("slash-command-registry", () => {
     await expect(executeSlashCommandInput("/permission root", { registry: createDefaultSlashCommandRegistry() })).resolves.toMatchObject({ ok: false, code: "invalid_permission_mode" });
     await expect(executeSlashCommandInput("/resume", { registry: createDefaultSlashCommandRegistry() })).resolves.toMatchObject({ ok: false, code: "missing_session_id" });
   });
+
+  it("blocks disabled commands via commandEnabledRegistry (Task 34)", async () => {
+    const { createCommandEnabledRegistry } = await import("@/api/lib/command-enabled-registry");
+    const commandEnabledRegistry = createCommandEnabledRegistry({ disabled: ["/compact"] });
+    const registry = createDefaultSlashCommandRegistry();
+
+    const result = await executeSlashCommandInput("/compact", { registry, commandEnabledRegistry });
+
+    expect(result.ok).toBe(false);
+    expect(result).toMatchObject({ kind: "error", code: "command_disabled" });
+    expect(result.runtimeEvents).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "command_started", command_id: "/compact" }),
+      expect.objectContaining({ type: "command_error", command_id: "/compact", code: "command_disabled" }),
+    ]));
+  });
 });

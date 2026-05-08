@@ -14,6 +14,8 @@ import type { PGIToolService } from "./pgi-tool-service.js";
 import type { QuestionnaireToolService } from "./questionnaire-tool-service.js";
 import { getSessionToolDefinition } from "./session-tool-registry.js";
 import { resolveSessionToolPolicy, type SessionToolPolicyResolution } from "./session-tool-policy.js";
+import { executeBashTool, executeFileReadTool, executeFileWriteTool, executeFileEditTool } from "./real-tool-handlers.js";
+import { validateToolPermission, classifyBashCommand, isPathWithinWorkDir } from "./permission-pipeline.js";
 
 export type SessionToolHandlerContext = SessionToolExecutionInput & {
   readonly definition: SessionToolDefinition;
@@ -31,6 +33,8 @@ export type SessionToolExecutorOptions = {
   readonly guidedService?: GuidedGenerationToolService;
   readonly candidateService?: CandidateToolService;
   readonly narrativeService?: Partial<Pick<NarrativeLineService, "getSnapshot" | "proposeChange" | "applyChange">>;
+  /** 工作目录，用于 Bash/Read/Write/Edit 工具的路径边界 */
+  readonly workDir?: string;
   readonly now?: () => number;
   readonly createConfirmationId?: (input: SessionToolExecutionInput, definition: SessionToolDefinition) => string;
 };
@@ -335,6 +339,52 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
             resourceRef: { kind: "narrative-line", id: preview.id, bookId: String(input.bookId), title: "叙事线变更草案" },
           },
         };
+      };
+    // --- Claude Code / Codex 级开发工具 ---
+    case "Bash":
+      return async ({ input, permissionMode, definition }) => {
+        const workDir = typeof input.workDir === "string" ? input.workDir : (options.workDir ?? process.cwd());
+        const command = String(input.command);
+        // 对标 Claude Code: 在执行前通过 permission-pipeline 做命令级权限检查
+        const permResult = validateToolPermission({
+          toolName: "Bash",
+          risk: definition.risk,
+          permissionMode,
+          workDir,
+          command,
+          sandboxMode: undefined,
+        });
+        if (!permResult.allowed && !permResult.requiresConfirmation) {
+          return {
+            ok: false,
+            renderer: definition.renderer,
+            error: "permission-pipeline-blocked",
+            summary: permResult.reason ?? "命令被权限管线拦截。",
+            data: { command, classification: permResult.classification },
+          };
+        }
+        const timeoutMs = typeof input.timeoutMs === "number" ? input.timeoutMs : undefined;
+        return executeBashTool({ command, workDir, timeoutMs });
+      };
+    case "Read":
+      return async ({ input }) => {
+        const workDir = options.workDir ?? process.cwd();
+        return executeFileReadTool({
+          path: String(input.path),
+          workDir,
+          ...(typeof input.offset === "number" ? { offset: input.offset } : {}),
+          ...(typeof input.limit === "number" ? { limit: input.limit } : {}),
+        });
+      };
+    case "Write":
+      return async ({ input }) => {
+        const workDir = options.workDir ?? process.cwd();
+        return executeFileWriteTool({ path: String(input.path), content: String(input.content), workDir });
+      };
+    case "Edit":
+      return async ({ input }) => {
+        const workDir = options.workDir ?? process.cwd();
+        return executeFileEditTool({ path: String(input.path), oldText: String(input.oldText), newText: String(input.newText), workDir });
       };
     default:
       return undefined;
