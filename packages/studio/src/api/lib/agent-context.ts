@@ -98,10 +98,20 @@ export function buildAgentContext(params: {
   pendingHooks?: string;
   currentFocus?: string | null;
   auditIssues?: Array<{ chapterNumber: number; count: number }>;
+  /** 叙事线快照：节点、边、警告 */
+  narrativeLine?: {
+    nodes?: Array<{ id: string; label: string; type?: string }>;
+    warnings?: Array<{ message: string; severity?: string }>;
+    openForeshadowing?: Array<{ id: string; description: string }>;
+  };
+  /** 经纬核心设定 */
+  jingwei?: {
+    sections?: Array<{ name: string; entries: Array<{ key: string; value: string }> }>;
+  };
 }): string {
   if (!params.book) return "";
 
-  return buildBookContextBlock({
+  const baseContext = buildBookContextBlock({
     book: {
       id: params.bookId,
       title: params.book.title,
@@ -115,4 +125,48 @@ export function buildAgentContext(params: {
     currentFocus: params.currentFocus ?? null,
     auditIssues: params.auditIssues ?? [],
   }).contextBlock;
+
+  const extraBlocks: string[] = [];
+
+  // 叙事线注入
+  if (params.narrativeLine) {
+    const nl = params.narrativeLine;
+    const nlLines: string[] = ["", "### 叙事线状态"];
+    if (nl.nodes?.length) {
+      nlLines.push(`- 节点数：${nl.nodes.length}`);
+      const keyNodes = nl.nodes.slice(0, 5);
+      for (const node of keyNodes) {
+        nlLines.push(`  - [${node.type ?? "node"}] ${node.label}`);
+      }
+      if (nl.nodes.length > 5) nlLines.push(`  - ...（共 ${nl.nodes.length} 个节点）`);
+    }
+    if (nl.openForeshadowing?.length) {
+      nlLines.push(`- 未回收伏笔：${nl.openForeshadowing.length} 个`);
+      for (const f of nl.openForeshadowing.slice(0, 3)) {
+        nlLines.push(`  - ${f.description}`);
+      }
+    }
+    if (nl.warnings?.length) {
+      nlLines.push(`- 叙事线警告：${nl.warnings.length} 个`);
+      for (const w of nl.warnings.slice(0, 3)) {
+        nlLines.push(`  - [${w.severity ?? "info"}] ${w.message}`);
+      }
+    }
+    extraBlocks.push(nlLines.join("\n"));
+  }
+
+  // 经纬注入
+  if (params.jingwei?.sections?.length) {
+    const jwLines: string[] = ["", "### 经纬核心设定"];
+    for (const section of params.jingwei.sections.slice(0, 5)) {
+      jwLines.push(`- **${section.name}**`);
+      for (const entry of section.entries.slice(0, 5)) {
+        const value = entry.value.length > 80 ? entry.value.slice(0, 80) + "..." : entry.value;
+        jwLines.push(`  - ${entry.key}：${value}`);
+      }
+    }
+    extraBlocks.push(jwLines.join("\n"));
+  }
+
+  return extraBlocks.length > 0 ? `${baseContext}\n${extraBlocks.join("\n")}` : baseContext;
 }

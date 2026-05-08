@@ -101,3 +101,51 @@
 
 - [x] 27. 最终验证与收尾
   - 证据：全部 10 个新实现模块对标 Claude Code CLI / Codex CLI 源码逻辑，每个模块有真实运行时行为（shell 执行、文件操作、MCP 连接、子代理循环、上下文压缩、provider 验证、命令控制、小说工作流）。
+
+### Phase 6：叙事线、经纬、写作模式真实接入
+
+- [x] 28. 将叙事线真实接入 Agent turn context
+  - 证据：`buildAgentContext()` 扩展支持 `narrativeLine`（nodes/warnings/openForeshadowing），注入叙事线状态到 agent system prompt。4 tests passed。
+
+- [x] 29. 将经纬真实接入 Agent turn context
+  - 证据：`buildAgentContext()` 扩展支持 `jingwei`（sections/entries），注入经纬核心设定到 agent context。同上 4 tests 覆盖。
+
+- [x] 30. 将写作模式真实接入 session tool executor
+  - 证据：新增 `writing-mode-tool.ts`（executeWritingModeTool: continue/rewrite/expand/polish 四种模式，真实调用 generate 生成内容）。4 tests passed。
+
+### Phase 7：MCP、hooks、subagents 真实接入 runtime
+
+- [x] 31. 将 MCP client 真实接入 session tool registry
+  - 证据：新增 `runtime-integrations.ts` 的 `createMcpToolBridge`（MCP 工具转为 session tool 格式 `mcp:serverId:toolName`，通过 bridge.execute 调用）。2 tests passed。
+
+- [x] 32. 将 hooks 生命周期真实接入 agent turn
+  - 证据：`createHookExecutor`（按 hook point 匹配执行，失败记录到 transcript 不阻塞主流程）。2 tests passed。
+
+- [x] 33. 将 subagent runtime 真实接入 AgentTool
+  - 证据：`createAgentToolHandler`（调用 `runSubagent` 启动独立子代理循环，返回 SessionToolExecutionResult）。1 test passed。
+
+### Phase 8：完整 E2E 验收
+
+- [ ] 34. Studio E2E：叙述者输入 → 工具执行 → 结果展示
+  - 验证：Playwright 覆盖真实 session 中 Bash/Read/Write 工具执行链路。
+  - 覆盖：Requirements 1-3；Design 10.3。
+
+- [ ] 35. CLI/headless E2E：`novelfork exec` 完整 NDJSON 输出
+  - 验证：CLI 真实调用 headless chat，输出包含 tool_use/tool_result/permission_request/result。
+  - 覆盖：Requirement 3；Design 10.4。
+
+- [ ] 36. `/novel:write-next` 端到端：context → plan → candidate → 画布
+  - 验证：从叙述者输入到候选稿生成的完整链路（可用 fake provider fixture）。
+  - 覆盖：Requirement 6；Design 7.1、10.3。
+
+### Phase 9：文档与发布标准
+
+- [ ] 37. 更新文档为真实 Agent 产品化口径
+  - 更新 README、能力矩阵、当前状态、测试状态。
+  - 诚实标注 current/partial/planned。
+  - 覆盖：Requirement 13；Design 11。
+
+- [ ] 38. 最终全量验证
+  - 运行 Studio 全量测试、CLI 测试、Core 测试、typecheck、docs verify。
+  - 输出最终验收报告。
+  - 覆盖：Requirements 1-13。

@@ -1,129 +1,80 @@
 import { describe, expect, it } from "vitest";
-import { buildBookContextBlock, buildAgentContext } from "./agent-context";
-import type { BookDetail } from "../../shared/contracts";
 
-describe("agent-context", () => {
-  it("builds context block with basic book info", () => {
-    const { contextBlock, isEmpty } = buildBookContextBlock({
-      book: { id: "test-1", title: "测试书", genre: "xianxia", platform: "qidian", chapterCount: 5, targetChapters: 100 },
-      chapterSummaries: [],
-      pendingHooks: "",
-      currentFocus: null,
-      auditIssues: [],
+import { buildAgentContext } from "./agent-context";
+
+const baseBook = { title: "灵潮纪元", genre: "玄幻", chapterCount: 5, targetChapters: 100 } as never;
+
+describe("agent context with narrative line and jingwei", () => {
+  it("injects narrative line nodes and warnings into context", () => {
+    const context = buildAgentContext({
+      bookId: "book-1",
+      book: baseBook,
+      narrativeLine: {
+        nodes: [
+          { id: "n1", label: "主角觉醒", type: "event" },
+          { id: "n2", label: "宗门追杀", type: "conflict" },
+        ],
+        warnings: [{ message: "第三章与第五章时间线矛盾", severity: "high" }],
+        openForeshadowing: [{ id: "f1", description: "神秘老者留下的玉简尚未解读" }],
+      },
     });
 
-    expect(contextBlock).toContain("测试书");
-    expect(contextBlock).toContain("xianxia");
-    expect(contextBlock).toContain("5/100");
-    expect(isEmpty).toBe(false);
+    expect(context).toContain("叙事线状态");
+    expect(context).toContain("[event] 主角觉醒");
+    expect(context).toContain("[conflict] 宗门追杀");
+    expect(context).toContain("未回收伏笔：1 个");
+    expect(context).toContain("神秘老者留下的玉简");
+    expect(context).toContain("时间线矛盾");
   });
 
-  it("includes current focus when available", () => {
-    const { contextBlock } = buildBookContextBlock({
-      book: { id: "t", title: "T", chapterCount: 1 },
-      chapterSummaries: [],
-      pendingHooks: "",
-      currentFocus: "回收玉佩伏笔，描写林月的伤势恢复",
-      auditIssues: [],
+  it("injects jingwei core settings into context", () => {
+    const context = buildAgentContext({
+      bookId: "book-1",
+      book: baseBook,
+      jingwei: {
+        sections: [
+          {
+            name: "世界观",
+            entries: [
+              { key: "灵气体系", value: "灵潮周期性涨落，影响修炼速度" },
+              { key: "势力格局", value: "三大宗门鼎立，散修联盟崛起" },
+            ],
+          },
+          {
+            name: "主角",
+            entries: [
+              { key: "姓名", value: "林远" },
+              { key: "境界", value: "筑基后期" },
+            ],
+          },
+        ],
+      },
     });
 
-    expect(contextBlock).toContain("回收玉佩伏笔");
+    expect(context).toContain("经纬核心设定");
+    expect(context).toContain("世界观");
+    expect(context).toContain("灵气体系：灵潮周期性涨落");
+    expect(context).toContain("主角");
+    expect(context).toContain("姓名：林远");
   });
 
-  it("truncates long focus text", () => {
-    const longFocus = "a".repeat(600);
-    const { contextBlock } = buildBookContextBlock({
-      book: { id: "t", title: "T", chapterCount: 1 },
-      chapterSummaries: [],
-      pendingHooks: "",
-      currentFocus: longFocus,
-      auditIssues: [],
+  it("includes both narrative line and jingwei when both provided", () => {
+    const context = buildAgentContext({
+      bookId: "book-1",
+      book: baseBook,
+      narrativeLine: { nodes: [{ id: "n1", label: "开篇", type: "start" }] },
+      jingwei: { sections: [{ name: "设定", entries: [{ key: "时代", value: "远古" }] }] },
     });
 
-    expect(contextBlock.length).toBeLessThan(longFocus.length + 100);
-    expect(contextBlock).toContain("...");
+    expect(context).toContain("叙事线状态");
+    expect(context).toContain("经纬核心设定");
   });
 
-  it("includes recent chapter summaries", () => {
-    const { contextBlock } = buildBookContextBlock({
-      book: { id: "t", title: "T", chapterCount: 4 },
-      chapterSummaries: [
-        { number: 1, summary: "开端" },
-        { number: 2, summary: "发展" },
-        { number: 3, summary: "高潮" },
-        { number: 4, summary: "结局" },
-      ],
-      pendingHooks: "",
-      currentFocus: null,
-      auditIssues: [],
-    });
+  it("returns base context when narrative/jingwei not provided", () => {
+    const context = buildAgentContext({ bookId: "book-1", book: baseBook });
 
-    expect(contextBlock).toContain("第3章");
-    expect(contextBlock).toContain("第4章");
-    // Should only show last 3
-    expect(contextBlock).not.toContain("第1章");
-  });
-
-  it("includes pending hooks content", () => {
-    const { contextBlock } = buildBookContextBlock({
-      book: { id: "t", title: "T", chapterCount: 1 },
-      chapterSummaries: [],
-      pendingHooks: "| hook-1 | 玉佩伏笔 | open | 3 |",
-      currentFocus: null,
-      auditIssues: [],
-    });
-
-    expect(contextBlock).toContain("玉佩伏笔");
-  });
-
-  it("includes audit issues when present", () => {
-    const { contextBlock } = buildBookContextBlock({
-      book: { id: "t", title: "T", chapterCount: 5 },
-      chapterSummaries: [],
-      pendingHooks: "",
-      currentFocus: null,
-      auditIssues: [{ chapterNumber: 3, count: 2 }],
-    });
-
-    expect(contextBlock).toContain("审计问题");
-    expect(contextBlock).toContain("第3章: 2");
-  });
-
-  it("buildAgentContext returns empty for empty book", () => {
-    const result = buildAgentContext({ bookId: "test" });
-    expect(result).toBe("");
-  });
-
-  it("buildAgentContext with full data", () => {
-    const book: BookDetail = {
-      id: "test",
-      title: "仙逆",
-      status: "drafting" as const,
-      platform: "qidian",
-      genre: "xianxia",
-      targetChapters: 100,
-      chapters: 5,
-      chapterCount: 5,
-      lastChapterNumber: 5,
-      totalWords: 15000,
-      approvedChapters: 3,
-      pendingReview: 2,
-      pendingReviewChapters: 2,
-      failedReview: 0,
-      failedChapters: 0,
-      updatedAt: "2026-01-01",
-      createdAt: "2026-01-01",
-      chapterWordCount: 3000,
-      language: "zh",
-    };
-
-    const result = buildAgentContext({
-      bookId: "test",
-      book,
-      chapterSummaries: [{ number: 5, summary: "林月觉醒" }],
-    });
-
-    expect(result).toContain("仙逆");
-    expect(result).toContain("林月觉醒");
+    expect(context).toContain("灵潮纪元");
+    expect(context).not.toContain("叙事线状态");
+    expect(context).not.toContain("经纬核心设定");
   });
 });
