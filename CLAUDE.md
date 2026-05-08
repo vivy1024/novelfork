@@ -1,8 +1,8 @@
 # NovelFork Studio
 
-**v0.1.0** | 2026-04-19 | 最后更新 2026-05-07 | 始终使用中文回复
+**v0.0.5** | 2026-04-19 | 最后更新 2026-05-03 | 始终使用中文回复
 
-你是 Claude Code。配置以本文件 + `.kiro/steering/README.md` + `.kiro/steering/project-profile.md` 为准。
+你是 Claude Code。配置以本文件 + `.kiro/steering/` 为准。
 
 **项目**: NovelFork — 网文小说 AI 辅助创作工作台（TypeScript + Bun + React 19 + Hono + SQLite + AI Agents）
 **开发者**: 薛小川 | GitHub `vivy1024` — ❌ 禁止虚构
@@ -15,7 +15,7 @@
 | 规则 | 说明 |
 |------|------|
 | 版本号 | `v0.0.1` 起，语义化版本（主.次.修订） |
-| 标记位置 | `CLAUDE.md` 标题、根/包级 `package.json`、`AGENTS.md`、`CHANGELOG.md`、Git tag、GitHub Release |
+| 标记位置 | `CLAUDE.md` 标题、`package.json`、`CHANGELOG.md`、Git tag |
 | 版本变动 | 任何版本号变动必须同步更新 release 资料：`package.json`、`packages/*/package.json`、`CLAUDE.md`、`AGENTS.md`、`CHANGELOG.md` |
 | 任务验收 | 用户要求提交、验收完成或明确要求收尾时，视为授权执行：相关验证 → Git 提交 → `git push origin <branch>`；不得只停留在本地提交 |
 | 提交后 | 每次功能合入后更新 `CHANGELOG.md` Unreleased 段，并随提交一起 push |
@@ -34,7 +34,7 @@
 | `packages/cli/` | CLI 工具（novelfork 命令） | — |
 | `packages/studio/` | Web 工作台（React 19 + Hono + Vite） | — |
 | `packages/core/` | 核心写作引擎 + Agent 管线 | — |
-
+| `packages/desktop/` | 桌面端（Tauri 2，骨架阶段） | — |
 
 ---
 
@@ -53,11 +53,11 @@
 
 | 指标 | 值 |
 |------|----|
-| Specs | `v0-1-0-release-readiness` 执行中（20/23）；发布暂停，Task19 已完成 Claude/Codex 源码/官方资料口径重审，Task20 已完成反 mock/hardcoded/route literal 审计与 backend-contract 路径集中，Task21 仍需重新验收 |
-| TypeScript | Task19 `pnpm --dir packages/studio typecheck` 通过；Task18 compile 通过；Task21 仍需补修正后的全量回归 |
-| 测试 | Task20 Studio Vitest 全量 213 files / 1274 tests passed；Task20 Studio typecheck 通过；Task16 Backend Contract 7 文件 / 38 测试 + CLI 13 文件 / 97 测试 + Playwright 7 passed；这些不等同 Claude Code CLI / Codex CLI 完整对标 |
-| 编译 | Task18 生成过 `dist/novelfork-v0.1.0-windows-x64.exe` 与 SHA256；GitHub Release 未创建，远端 `v0.1.0` tag 已撤回 |
-| 运行 | Task18 已用编译产物完成 clean root smoke；Task20 已完成 mock/hardcoded/route literal 审计与清理；release 前仍必须完成 Task21 重新验收 |
+| Specs | 全部完成并归档（~308 任务） |
+| TypeScript | typecheck 通过 |
+| 测试 | 144 文件 / 819 测试 |
+| 编译 | `pnpm --dir packages/studio compile` → `dist/novelfork.exe` / 版本化 release 产物约 117MB |
+| 运行 | `./novelfork.exe` → `http://localhost:4567` |
 
 ---
 
@@ -145,8 +145,8 @@ Git 检查 → git status --short
 |------|---------|
 | 需求不清、优先级不明 | qiushi `/contradiction-analysis` 矛盾分析 |
 | 排障前置 | qiushi `/investigation-first` 先调查 |
-| 复杂任务规划 | `kiro-spec-adapter` + superpowers `writing-plans` / `executing-plans` |
-| 代码审查 | superpowers `requesting-code-review`（通用 Task reviewer prompt） |
+| 复杂任务规划 | 先写 `.kiro/specs/<feature>/requirements.md` + `design.md`，再由 superpowers `writing-plans` 生成 `tasks.md`，最后用 `executing-plans` 执行 |
+| 代码审查 | superpowers `code-reviewer` agent |
 | 系统化调试 | superpowers `systematic-debugging` |
 | 阶段性回顾 | qiushi `/criticism-self-criticism` |
 | 资源聚焦 | qiushi `/concentrate-forces` |
@@ -181,13 +181,16 @@ Git 检查 → git status --short
 
 ## 按需加载参考
 
-| 场景 | 文件 / Skill |
+| 场景 | 文件 |
 |------|------|
-| 任务路由与 steering 裁剪 | `.kiro/steering/README.md` + `using-project-steering` |
-| 项目事实、完成标准、代码/Git/发布/Agent/写作/MCP 边界 | `.kiro/steering/project-profile.md` + `novelfork-project-profile` |
-| Kiro spec 适配 | `kiro-spec-adapter` |
-| 用户可见功能完成门禁 | `feature-closure-gate` |
+| 项目事实与架构 | `.kiro/steering/project-rules.md` |
+| Git 工作流详细 | `.kiro/steering/git-workflow.md` |
+| Agent 管线设计 | `.kiro/steering/agent-pipeline.md` |
+| 写作流程规范 | `.kiro/steering/writing-workflow.md` |
+| 代码规范 | `.kiro/steering/project-standards.md` |
+| MCP 工具使用 | `.kiro/steering/mcp-tools-reference.md` |
 | 存储层扩展与 migration | `docs/04-开发指南/存储层开发指引.md` |
+
 | 动态状态追踪 | git 日志 / 记忆 / 运维文档 |
 
 ---
