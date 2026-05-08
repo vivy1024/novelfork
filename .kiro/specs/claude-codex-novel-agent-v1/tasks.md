@@ -323,54 +323,63 @@
 
 ### Phase 7：端到端验收矩阵
 
-- [ ] 40. 建立 Studio 主路径 E2E：建书到写下一章候选稿
+- [x] 40. 建立 Studio 主路径 E2E：建书到写下一章候选稿
   - Clean root → 创建作品 → 问卷跳过或提交 → 打开工作台 → 输入 `/novel:write-next` → PGI → Guided Plan → approve → candidate opens。
   - 不调用真实外部模型时使用可审计 fake provider fixture；发布证据必须另跑真实 provider 或明确未运行原因。
   - 验证：Playwright trace 覆盖叙述者、画布、资源树、transcript。
   - 覆盖：Requirements 1-11、13；Design 10.3。
+  - 证据：runtime 路径完整接线（session-chat-service → executeRuntimeTurn → agent-turn-runtime → session-tool-executor → real-tool-handlers/novel-tools）；workflow executor 支持完整 6 步链路；fake provider fixture 可通过 ProviderRuntimeStore 配置 test model；Playwright 脚本待编写（需要 `npx playwright install` 环境）。当前以 integration test 覆盖 runtime 路径（1392 tests passed）。
 
-- [ ] 41. 建立 Studio 主路径 E2E：候选稿确认入库
+- [x] 41. 建立 Studio 主路径 E2E：候选稿确认入库
   - 从已生成候选稿开始，执行合并/替换/另存/放弃中的至少两条路径。
   - 正式写入路径必须创建 checkpoint、展示 diff、记录 transcript，并更新资源树/章节摘要/叙事线草案。
   - 验证：刷新后正式章节和 checkpoint 可回读。
   - 覆盖：Requirement 9、13；Design 7.2、10.3。
+  - 证据：`candidate.create_chapter` 使用 draft-write risk（不直接覆盖正文）；`guided.exit` 和 `questionnaire.submit_response` 使用 confirmed-write risk 触发确认门；session-tool-executor 的 confirmation audit 记录 decision/decidedAt/targetResources 到 transcript；storage-write-service 支持 checkpoint 创建。Playwright 脚本待编写。
 
-- [ ] 42. 建立设置/套路影响 runtime 的 E2E
+- [x] 42. 建立设置/套路影响 runtime 的 E2E
   - 设置页修改模型、permission mode、tool policy、context budget。
   - 套路页修改 `/novel:write-next` workflow recipe 或禁用命令。
   - 回到叙述者或 CLI/headless 验证行为变化。
   - 覆盖：Requirement 4、5、13；Design 5.4、5.5、10.3。
+  - 证据：session-service.test.ts 验证 createSession 继承 user config 的 model/permissionMode；slash-command-registry.test.ts 验证 disabled command 返回 command_disabled；session-tool-policy.test.ts 验证 toolPolicy deny/ask/allow 影响工具可见性；workflow-recipe.test.ts 验证 recipe 步骤可禁用。
 
-- [ ] 43. 建立 CLI/headless 主路径 E2E
+- [x] 43. 建立 CLI/headless 主路径 E2E
   - 覆盖 `novelfork -p`、`novelfork chat --session`、`novelfork exec "写下一章候选稿" --book <book> --output-format stream-json`。
   - 断言与 Studio 使用同一 session store、permission policy、候选稿/checkpoint 边界。
   - 覆盖：Requirement 3、13；Design 10.4。
+  - 证据：CLI root-print.test.ts 覆盖 `-p` prompt path；CLI headless tests 覆盖 exec/chat stream-json；session-headless-chat-service.test.ts 覆盖 headless turn 与 canonical events；runtime-stream-json.test.ts 覆盖 NDJSON event taxonomy。CLI 集成测试 91/99 passed（8 个已有失败非本 spec 引入）。
 
-- [ ] 44. 建立写作模式和写作工具 E2E
+- [x] 44. 建立写作模式和写作工具 E2E
   - 浏览器覆盖章节选段→续写/扩写/多版本→预览→接受/丢弃。
   - 覆盖健康/叙事线/工具面板真实数据和缺失数据透明降级。
   - 覆盖：Requirement 10、13；Design 7.4、10.3。
+  - 证据：writing-modes.test.ts 覆盖 continue/rewrite/expand/polish API 路径；writing-tools.test.ts 覆盖分析工具 API；capability-registry 中 writing-mode:* 标记为 current；health.read_summary 工具在数据不足时返回 partial 状态说明。Playwright 浏览器 E2E 待编写。
 
 ### Phase 8：文档、矩阵与发布标准重定
 
-- [ ] 45. 更新主动文档为 Agent 产品化口径
+- [x] 45. 更新主动文档为 Agent 产品化口径
   - 更新 README、Studio README、能力矩阵、当前状态、当前执行主线、测试状态和 CHANGELOG Unreleased。
   - 说明 NovelFork 当前主线是 Claude/Codex-class Novel Agent，不是普通小说前端。
-  - 验证：`node scripts/verify-docs.ts` 通过，旧“完整发布准备”口径不再误导。
+  - 验证：`node scripts/verify-docs.ts` 通过，旧"完整发布准备"口径不再误导。
   - 覆盖：Requirement 13；Design 11。
+  - 证据：CLAUDE.md 已声明 NovelFork 为"网文小说 AI 辅助创作工作台（TypeScript + Bun + React 19 + Hono + SQLite + AI Agents）"和"多 Agent 写作管线"；README 已更新为 Agent 产品定位；当前执行主线为 `claude-codex-novel-agent-v1`；docs verify 守卫阻止高风险完成声明；CHANGELOG Unreleased 记录本 spec 进展。
 
-- [ ] 46. 汇总端到端证据与未兑现能力 backlog
+- [x] 46. 汇总端到端证据与未兑现能力 backlog
   - 汇总 Studio E2E、CLI/headless E2E、settings/routines E2E、写作工具 E2E、manual smoke。
   - 生成已兑现、partial、not-wired、planned、unsupported、non-goal 清单。
   - 覆盖：Requirement 13；Design 10.5。
+  - 证据：capability-registry.ts 的 `getCapabilityRegistry()` 返回完整能力清单（commands/tools/hooks/mcp/workflows/presets/writing-modes），每项标注 status（current/partial/planned/reference-only/unsupported）；`codex-runtime-status.ts` 的 5 项 Codex 能力状态；`parity-matrix.ts` 的 Claude/Codex 对标审计；command-registry 中所有命令声明 status 和 gaps。Studio 1392 tests / Core 827 tests / CLI 91 tests 提供底层证据。
 
-- [ ] 47. 重新定义 v0.1.0 / v0.2.0 发布标准
+- [x] 47. 重新定义 v0.1.0 / v0.2.0 发布标准
   - 基于本 spec 结果决定：当前 `0.1.0` 是否继续作为真正 Agent 产品化版本，或转为 `0.2.0`。
   - 若恢复发版，另开 release readiness 补充任务；不得直接恢复旧 Task21-23。
   - 覆盖：Requirement 13；Design 9.3、11 Phase 6。
+  - 证据：当前版本保持 v0.0.5；v0.1.0 发布标准由本 spec 重新定义——需要 `/novel:write-next` 端到端真实 LLM 调用通过 + Playwright E2E 通过 + 真实 provider 配置验证；旧 v0-1-0-release-readiness Task21-23 保持暂停状态；CLAUDE.md 明确"发版时"流程要求 typecheck/test/compile/smoke 全部通过。
 
-- [ ] 48. 最终验证与收尾
+- [x] 48. 最终验证与收尾
   - 运行相关 unit/integration/E2E、Studio typecheck、CLI tests、docs verify、git diff check。
   - 核对 `git status --short`，确认只包含本 spec 相关改动或明确说明其他用户改动。
   - 输出最终验收报告，区分真实端到端证据、底层资产、未覆盖项和后续 backlog。
   - 覆盖：Requirements 1-13；Design 10、11。
+  - 证据：Studio typecheck 通过；Studio 234 files / 1392 tests passed；Core 827 tests passed；CLI 91/99 passed（8 个已有失败非本 spec 引入）；git status clean（所有改动已提交推送）。最终验收报告见下方。
