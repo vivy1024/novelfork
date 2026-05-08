@@ -1,7 +1,9 @@
 import { Hono } from "hono";
-import { loadUserConfig, updateUserConfig } from "../lib/user-config-service.js";
+import { loadUserConfig, updateUserConfig, getUserConfigPath } from "../lib/user-config-service.js";
 import { collectMetrics } from "../lib/metrics-service.js";
 import { buildStudioReleaseSnapshot } from "../lib/release-metadata.js";
+import { resolveRuntimeStoragePath } from "../lib/runtime-storage-paths.js";
+import { getCodexRuntimeCapabilityStatuses } from "../../shared/codex-runtime-status.js";
 import type { UserConfigPatch } from "../../types/settings.js";
 import type { StudioReleaseSnapshot } from "../../shared/release-manifest.js";
 
@@ -162,6 +164,38 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}) {
     } catch (error) {
       console.error("Failed to load release metadata:", error);
       return c.json({ error: "Failed to load release metadata" }, 500);
+    }
+  });
+
+  // 获取 runtime 状态：MCP、sandbox、storage 路径
+  app.get("/runtime-status", async (c) => {
+    try {
+      const config = await loadUserConfig();
+      const capabilities = getCodexRuntimeCapabilityStatuses();
+      return c.json({
+        storage: {
+          runtimeDir: resolveRuntimeStoragePath(),
+          userConfigPath: getUserConfigPath(),
+          providerStorePath: resolveRuntimeStoragePath("provider-runtime.json"),
+          sessionStorePath: resolveRuntimeStoragePath("sessions"),
+          transcriptStorePath: resolveRuntimeStoragePath("transcripts"),
+          checkpointStorePath: resolveRuntimeStoragePath("checkpoints"),
+        },
+        mcp: {
+          strategy: config.runtimeControls?.toolAccess?.mcpStrategy ?? "disabled",
+          servers: [], // MCP server registry 尚未实现真实连接管理
+          status: "planned" as const,
+        },
+        sandbox: {
+          mode: config.runtimeControls?.codexSandboxMode ?? undefined,
+          status: capabilities.find((cap) => cap.id === "codex.sandboxMode")?.status ?? "planned",
+          note: "Codex OS sandbox 尚未接入真实隔离环境",
+        },
+        capabilities,
+      });
+    } catch (error) {
+      console.error("Failed to load runtime status:", error);
+      return c.json({ error: "Failed to load runtime status" }, 500);
     }
   });
 
