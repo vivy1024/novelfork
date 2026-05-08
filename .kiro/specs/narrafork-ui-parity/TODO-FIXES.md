@@ -1,5 +1,68 @@
 # 待修复清单（2026-05-08 对比 NarraFork 后）
 
+## 执行顺序（下一轮）
+
+### Step 0：安装依赖（必须先做）
+
+```bash
+# shadcn 组件
+npx shadcn@latest add dropdown-menu context-menu popover command tooltip sheet avatar
+
+# 核心功能依赖
+pnpm --dir packages/studio add broad-infinite-list flowtoken shiki @dnd-kit/core @dnd-kit/sortable @dnd-kit/utilities diff
+```
+
+### Step 1：shadcn 组件替换（45 个文件）
+
+按模块逐个替换，每替换一个 build + 截图：
+
+1. **Composer** → Button（发送/中断/继续）
+2. **NarratorStatusBar** → DropdownMenu（模型/推理/权限菜单）+ Tooltip（按钮提示）
+3. **ConversationSurface 顶部工具栏** → Button variant="ghost" size="icon" + Tooltip
+4. **MessageItem 右键菜单** → ContextMenu
+5. **ConfirmationGate** → Button + Card
+6. **搜索输入框** → Input
+7. **设置页手写 select** → Select（shadcn 已有）
+8. **套路页手写 button** → Button
+9. **会话中心** → Button + Card + Badge
+10. **章节图操作栏** → Button
+
+### Step 2：消息列表虚拟滚动
+
+- MessageStream 替换为 `broad-infinite-list`
+- 支持向上加载更早消息
+- 新消息自动滚动到底部
+
+### Step 3：流式打字机动画
+
+- AI 回复使用 `flowtoken` 渲染流式文本
+- 逐字/逐词出现效果
+
+### Step 4：代码高亮升级
+
+- `react-syntax-highlighter`（Prism）→ `shiki`
+- MarkdownRenderer 的 CodeBlock 组件替换
+
+### Step 5：工具栏按钮接通真实 handler
+
+- 编辑标题 → prompt 输入 + PUT /api/narrators/:id/title
+- 生成标题 → POST /api/narrators/:id/generate-title
+- 文件修改 → Sheet 面板 + GET /api/narrators/:id/file-modifications
+- 归档 → POST /api/narrators/:id/archive
+- 外部链接 → window.open 新标签
+
+### Step 6：拖拽排序
+
+- 套路页钩子列表 → @dnd-kit sortable
+- 章节图节点位置 → react-flow 已支持
+
+### Step 7：路由规范化（可选，大改动）
+
+- 手写 pushState → TanStack Router
+- 路由懒加载 → React.lazy + Suspense
+
+---
+
 ## 已修复
 - [x] 设置页：模型页从调试 FactRow 改为真实 RuntimeControlPanel 表单
 - [x] 套路页：隐藏 planned 命令，去掉调试信息（来源/状态）
@@ -8,6 +71,39 @@
 - [x] MarkdownRenderer：安装 @tailwindcss/typography，prose 类生效
 - [x] 旧底部状态栏：已移除
 - [x] 端口占用闪退：自动递增重试
+- [x] 用户消息气泡：深色 → 浅色边框
+- [x] NarratorStatusBar 按钮：加大尺寸
+- [x] 顶部工具栏：添加完整图标组
+
+## 仍存在的问题
+
+### 对话界面
+- 顶部工具栏按钮无 handler（编辑标题/生成标题/文件修改/信息/归档/外部链接）
+- 消息右键菜单未验证是否真的弹出
+- 工具调用卡片未验证 ToolCallBlock 是否真的渲染
+- 推理折叠未验证（无真实 thinking 数据）
+- 消息列表无虚拟滚动（长对话会卡）
+- AI 回复无流式打字机动画
+
+### 设置页
+- RuntimeControlPanel 缺少字段：计划模式/沉默阈值/危险反思/旧编码/刷新Shell
+- 模型下拉显示原始 ID 而非友好名称
+
+### 套路页
+- 可选工具 tab 内容需验证
+- MCP 工具 tab 连接状态需验证
+- 技能/子代理/提示词/钩子 tab 需验证是否有 mock
+
+### 章节图
+- ChapterNode 内容区是占位文字
+- 对话未嵌入节点
+
+### 全局
+- 45/47 个 app-next 文件不用 shadcn 组件
+- 零虚拟滚动
+- 零懒加载
+- sidebar 不可折叠
+
 
 ## 对话界面差距（对比 NarraFork）
 
