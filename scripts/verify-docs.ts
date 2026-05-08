@@ -210,6 +210,32 @@ function checkForbiddenClaims(markdownFiles: string[]) {
   }
 }
 
+const highRiskCapabilitySubject =
+  /Claude(?:\s+Code)?|ClaudeCodeCLI|Codex(?:\s+CLI)?|CodexCLI|\/novel:|write-next|写下一章|整章生成|headless|stream-json|MCP|sandbox|Agent\s*(?:Runtime|产品|管线|系统)|叙述者|套路页|设置页|经纬|候选稿|PGI|Guided(?:Generation)?Plan/i;
+const highRiskCompletionClaim = /完整对标|完整兼容|完整功能|完整完成|全量对标|全部接入|已完成|真实可用|current/i;
+const explicitStatusOrEvidence =
+  /`?(?:current|partial|not-wired|planned|unsupported|non-goal|reference-only)`?|端到端|E2E|Playwright|Studio\s*E2E|CLI\/headless|headless\s*E2E|证据|验证|测试|降级|不代表|不是完整|不能宣称|不得宣传|只作为|仅作为|守护|基线|缺口/i;
+
+function checkHighRiskCompletionClaims(markdownFiles: string[]) {
+  for (const file of markdownFiles) {
+    const docType = getDocType(file);
+    if (docType !== 'current' && docType !== 'planning') continue;
+    const lines = withoutCodeFences(read(file)).split(/\r?\n/);
+    lines.forEach((line, index) => {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('|---')) return;
+      if (!highRiskCapabilitySubject.test(trimmed)) return;
+      if (!highRiskCompletionClaim.test(trimmed)) return;
+      if (explicitStatusOrEvidence.test(trimmed)) return;
+      add(
+        file,
+        'e2e-evidence-claim',
+        `第 ${index + 1} 行对 Claude/Codex/小说 Agent 能力作完成声明，但缺少 current/partial/not-wired/planned/unsupported/non-goal 状态或 Studio/CLI/headless 端到端证据`,
+      );
+    });
+  }
+}
+
 function main() {
   if (!existsSync(docsRoot)) {
     console.error('[docs:verify] FAIL');
@@ -227,6 +253,7 @@ function main() {
   checkRootCurrentEntries();
   checkUserFacingBible(markdownFiles);
   checkForbiddenClaims(markdownFiles);
+  checkHighRiskCompletionClaims(markdownFiles);
 
   if (problems.length > 0) {
     console.error('[docs:verify] FAIL');

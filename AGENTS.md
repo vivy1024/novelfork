@@ -1,12 +1,12 @@
 # NovelFork Agent Rules
 
-本仓库的主规则源是 `CLAUDE.md`、`.kiro/steering/README.md` 与 `.kiro/steering/project-profile.md`。任何 agent、子代理或自动化工具执行任务前，都必须优先遵守这些项目规则，并按 `using-project-steering` / `novelfork-project-profile` 路由到相关 skill。
+本仓库的主规则源是 `CLAUDE.md` 与 `.kiro/steering/`。任何 agent、子代理或自动化工具执行任务前，都必须优先遵守这些项目规则。
 
 ---
 
 ## 版本与发布
 
-- **当前目标版本**: v0.1.0（尚未发布；GitHub Release 未创建，`v0.1.0` tag 已撤回）
+- **当前版本**: v0.0.5
 - **版本管理**: `CLAUDE.md` 标题 → 根/包级 `package.json` → `AGENTS.md` → `CHANGELOG.md` → release commit → `git tag` → GitHub Release
 - **版本变动**: 任何版本号变动必须同步更新 release 资料：`package.json`、`packages/*/package.json`、`CLAUDE.md`、`AGENTS.md`、`CHANGELOG.md`
 - **任务验收**: 用户要求提交、验收完成或明确要求收尾时，视为授权执行相关验证、Git 提交与 `git push origin <branch>`；不得只停留本地提交
@@ -32,14 +32,13 @@
 
 - 新功能必须先写 spec（`requirements.md` → `design.md` → `tasks.md`）再实现
 - 归档目录：`.kiro/specs/archive/`
-- 活跃 spec 在 `.kiro/specs/` 根目录；`backend-contract-v1`、`frontend-refoundation-v1`、`frontend-live-wiring-v1`、`legacy-source-retirement-v1`、`conversation-parity-v1` 与 `backend-core-refactor-v1` 均已完成
-- 后续继续保持合同优先、route adapter 与领域 service 分离、legacy transparent/deprecated 边界
+- 活跃 spec 在 `.kiro/specs/` 根目录（当前为 `agent-native-workspace-v1`，21/23 已完成）
 - 每个 spec 必须通过 typecheck + test 才能标记完成
 
 ## AI 输出原则
 
 - AI 结果只进候选区/草稿区，用户确认后才影响正式正文
-- Studio 已交付口径是 session-first 工作台；Backend Contract、Frontend Refoundation、Frontend Live Wiring 与 Legacy Source Retirement 已完成验收收口：`/next` 使用 Agent Shell 路由壳，Conversation runtime、单栏 surface、模型/权限状态栏动作、Tool Result Renderer Registry、session tool 确认门、Workbench 资源树、canvas/viewer/保存、dirty canvasContext、写作动作入口与 search/routines/settings 次级页面均已接入 live route，旧三栏 WorkspacePage、旧 ChatWindow、未挂载 route 残留、轻量 `/api/chat` 与 exact `POST /api/agent` 已退役；所有按钮、资源节点和写作动作必须来自 `packages/studio/src/app-next/backend-contract/` 的真实合同 client / adapter
+- Studio 当前口径是 session-first：右侧固定叙述者会话，中间画布承载资源和工具产物，左侧资源栏只负责导航
 - 历史驾驶舱/经纬/写作面板只能作为工具结果卡片或画布组件复用，不再作为右侧主 Tab
 - app-next 组件不得散写未登记 API 字符串；新增后端能力必须先补 Backend Contract 矩阵、共享类型和 contract 测试
 - 不恢复 mock/fake/noop 假成功
@@ -55,9 +54,6 @@
 ## 构建与测试
 
 - `pnpm typecheck` — 类型检查
-- `pnpm --dir packages/studio exec vitest run src/app-next` — app-next 聚焦回归（Task16：47 files / 271 tests）
-- `pnpm --dir packages/studio exec vitest run src/app-next/backend-contract` — Backend Contract 聚焦回归（Task16：7 files / 38 tests）
-- `pnpm --dir packages/cli test` — CLI 全量测试（Task16：13 files / 97 tests）
-- `pnpm exec playwright test` — 浏览器 E2E（Task16：7 passed）
+- `pnpm --dir packages/studio exec vitest run` — 全量 Studio 测试（144 files / 819 tests）
 - `pnpm --dir packages/studio compile` — 单文件编译（→ dist/novelfork.exe / dist/novelfork-vX.Y.Z-windows-x64.exe，约 117MB）
 - `bun run docs:verify` — 文档验证
