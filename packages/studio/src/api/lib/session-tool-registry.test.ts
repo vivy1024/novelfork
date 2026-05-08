@@ -25,6 +25,9 @@ const EXPECTED_INITIAL_TOOL_NAMES = [
   "candidate.create_chapter",
   "narrative.read_line",
   "narrative.propose_change",
+  "chapter.read",
+  "jingwei.read_context",
+  "health.read_summary",
   "Bash",
   "Read",
   "Write",
@@ -63,6 +66,9 @@ describe("session tool registry", () => {
         "guided.enter",
         "narrative.read_line",
         "Read",
+        "chapter.read",
+        "jingwei.read_context",
+        "health.read_summary",
       ]));
       expect(visibleTools.map((tool) => tool.name)).not.toContain("candidate.create_chapter");
       expect(visibleTools.map((tool) => tool.name)).not.toContain("questionnaire.submit_response");

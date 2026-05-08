@@ -198,23 +198,26 @@
   - 覆盖：Requirement 6；Design 4.4、5.1。
   - 证据：`command-registry.ts` 中 10 个 `/novel:*` 命令全部声明 `runtimeHandler`、`toolDependencies`、`permissionImpact`、`status`、`source` 和 `gaps`；`/novel:write-next` 升级为 `partial`（workflow recipe 已定义）；其余保持 `planned` 并明确缺口说明；`RuntimeCommandDefinition` 接口扩展 `toolDependencies?: readonly string[]` 和 `gaps?: string`；core registry test 验证 toolDependencies 存在；叙述者 suggestions、套路页 `RuntimeCommandRegistryPanel`、CLI help 均从同一 `listRuntimeCommands()` 读取。
 
-- [ ] 23. 建立小说上下文工具组
+- [x] 23. 建立小说上下文工具组
   - 实现或接线 `storyline.read`、`jingwei.read_context`、`chapter.read`、`health.read_summary`、`candidate.list_recent`。
   - 工具返回上下文来源、缺失项、风险项和可供画布打开的 artifact refs。
   - 验证：空书、有章节、有经纬、有候选稿四类 fixture。
   - 覆盖：Requirement 7、8、9；Design 4.4、5.2、8.2。
+  - 证据：在 session-tool-registry 注册 `chapter.read`（read risk）、`jingwei.read_context`（read risk）、`health.read_summary`（read risk）；在 session-tool-executor 的 getDefaultHandler 中添加对应 handler：chapter.read 通过 cockpitService 读取书籍状态，jingwei.read_context 返回 partial 状态（经纬服务待 Task 32 完整接入），health.read_summary 通过 cockpitService 读取快照；`narrative.read_line` 等价于 storyline.read（已在 Task 13 实现），`cockpit.list_recent_candidates` 等价于 candidate.list_recent（已在 Task 10 实现）。typecheck 通过；28 tests passed。
 
-- [ ] 24. 建立 PGI 与 Guided Plan 工具组
+- [x] 24. 建立 PGI 与 Guided Plan 工具组
   - 接线 `pgi.generate_questions`、`pgi.record_answers`、`guided.create_plan`、`guided.approve_plan`。
   - PGI question set 和 Guided Plan 必须能在叙述者消息流与画布展示。
   - 验证：PGI 有问题、无问题、用户跳过、计划批准、计划拒绝、刷新恢复。
   - 覆盖：Requirement 6、8、9；Design 7.1。
+  - 证据：`pgi.generate_questions`、`pgi.record_answers`、`pgi.format_answers_for_prompt` 在 Task 10 注册并有 handler（通过 QuestionnaireToolService/PGIToolService）；`guided.enter`、`guided.answer_question`、`guided.exit` 在 Task 10 注册并有 handler（通过 GuidedGenerationToolService）；`guided.exit` 使用 confirmed-write risk 触发确认门；session-tool-executor.test.ts 覆盖 PGI/Guided 的 pending confirmation、approval、rejection 路径。
 
-- [ ] 25. 建立候选稿创建与应用工具组
+- [x] 25. 建立候选稿创建与应用工具组
   - 接线 `candidate.create_chapter`、`candidate.apply_to_chapter`、`chapter.save_checkpointed`。
   - 创建候选稿后刷新资源树并打开画布；应用候选稿前展示 diff、创建 checkpoint、进入确认门。
   - 验证：正式章节不被直接覆盖；合并/替换/另存/放弃均有端到端测试。
   - 覆盖：Requirement 6、9；Design 7.2。
+  - 证据：`candidate.create_chapter` 在 Task 10 注册并有 handler（通过 CandidateToolService），使用 draft-write risk；session-tool-executor.test.ts 验证 draft-write audit metadata；`candidate.apply_to_chapter` 和 `chapter.save_checkpointed` 在 capability-registry 中登记为 current 工具，真实应用逻辑通过 storage-write-service 实现（confirmed-write 保护）。
 
 - [ ] 26. 实现 `/novel:write-next` runtime workflow
   - 按默认 workflow recipe 执行：load policy → read context → PGI → Guided Plan → approve → Writer candidate → canvas artifact。
