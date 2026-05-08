@@ -49,6 +49,8 @@ export interface RuntimeCommandHandlers {
   readonly forkSession?: (title: string | undefined, context: RuntimeCommandHandlerContext) => Promise<{ readonly message?: string; readonly title?: string } | void> | { readonly message?: string; readonly title?: string } | void;
   readonly resumeSession?: (sessionId: string, context: RuntimeCommandHandlerContext) => Promise<{ readonly message?: string; readonly sessionId?: string } | void> | { readonly message?: string; readonly sessionId?: string } | void;
   readonly compactSession?: (instructions: string | undefined, context: RuntimeCommandHandlerContext) => Promise<RuntimeCommandCompactResult> | RuntimeCommandCompactResult;
+  /** Novel command handler: 执行 /novel:* 命令的 workflow */
+  readonly executeNovelCommand?: (handlerId: string, args: string, context: RuntimeCommandHandlerContext) => Promise<RuntimeCommandExecutionResult>;
 }
 
 export interface RuntimeCommandExecutionContext {
@@ -193,8 +195,13 @@ async function runCommand(command: RuntimeCommandDefinition, parsed: RuntimeComm
         compactedMessageCount: compacted.compactedMessageCount,
       };
     }
-    default:
+    default: {
+      // Novel command handlers: novel.init, novel.writeNext, novel.audit, etc.
+      if (command.runtimeHandler.startsWith("novel.") && context.handlers?.executeNovelCommand) {
+        return context.handlers.executeNovelCommand(command.runtimeHandler, parsed.args, handlerContext);
+      }
       return { ok: false, kind: "error", code: "unhandled_command", message: `命令未处理：${command.id}` };
+    }
   }
 }
 
