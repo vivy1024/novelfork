@@ -1,5 +1,11 @@
-import type { SessionToolDefinition } from "../../shared/agent-native-workspace.js";
-import type { SessionToolPolicy } from "../../shared/session-types.js";
+import {
+  getSessionToolRiskDecision,
+  normalizeSessionToolRisk,
+  type CanvasContext,
+  type SessionToolDefinition,
+  type SessionToolRisk,
+} from "../../shared/agent-native-workspace.js";
+import type { SessionPermissionMode, SessionToolPolicy } from "../../shared/session-types.js";
 
 export type SessionToolPolicyAction = "allow" | "deny" | "ask" | "inherit";
 
@@ -12,6 +18,42 @@ export interface SessionToolPolicyDecision {
 export type PolicyAnnotatedSessionToolDefinition = SessionToolDefinition & {
   readonly policy?: SessionToolPolicyDecision;
 };
+
+export type SessionToolPolicyResolutionReason =
+  | "allowed"
+  | "policy-allow"
+  | "policy-ask"
+  | "policy-denied"
+  | "permission-denied"
+  | "dirty-resource-blocked"
+  | "risk-confirmation";
+
+export interface SessionToolPolicyResolutionInput {
+  readonly toolName: string;
+  readonly risk: SessionToolRisk | unknown;
+  readonly permissionMode: SessionPermissionMode;
+  readonly toolPolicy?: SessionToolPolicy;
+  readonly canvasContext?: CanvasContext;
+}
+
+export interface SessionToolPolicyResolution {
+  readonly toolName: string;
+  readonly visibleToModel: boolean;
+  readonly requiresConfirmation: boolean;
+  readonly denied: boolean;
+  readonly risk: SessionToolRisk;
+  readonly reason: SessionToolPolicyResolutionReason;
+  readonly checkpointRequired: boolean;
+  readonly permissionMode: SessionPermissionMode;
+  readonly source?: SessionToolPolicyDecision["source"];
+  readonly pattern?: string;
+  readonly policyDecision: SessionToolPolicyDecision;
+}
+
+export interface SessionToolProviderFilterOptions {
+  readonly permissionMode?: SessionPermissionMode;
+  readonly canvasContext?: CanvasContext;
+}
 
 function normalizePolicyList(values: readonly string[] | undefined): string[] {
   if (!Array.isArray(values)) return [];
@@ -63,6 +105,65 @@ export function getSessionToolPolicyDecision(
   return { action: "inherit" };
 }
 
+function buildResolution(input: SessionToolPolicyResolutionInput & {
+  readonly risk: SessionToolRisk;
+  readonly policyDecision: SessionToolPolicyDecision;
+  readonly visibleToModel: boolean;
+  readonly requiresConfirmation: boolean;
+  readonly denied: boolean;
+  readonly reason: SessionToolPolicyResolutionReason;
+}): SessionToolPolicyResolution {
+  return {
+    toolName: input.toolName,
+    visibleToModel: input.visibleToModel,
+    requiresConfirmation: input.requiresConfirmation,
+    denied: input.denied,
+    risk: input.risk,
+    reason: input.reason,
+    checkpointRequired: !input.denied && (input.risk === "confirmed-write" || input.risk === "destructive"),
+    permissionMode: input.permissionMode,
+    ...(input.policyDecision.source ? { source: input.policyDecision.source } : {}),
+    ...(input.policyDecision.pattern ? { pattern: input.policyDecision.pattern } : {}),
+    policyDecision: input.policyDecision,
+  };
+}
+
+export function resolveSessionToolPolicy(input: SessionToolPolicyResolutionInput): SessionToolPolicyResolution {
+  const risk = normalizeSessionToolRisk(input.risk);
+  const policyDecision = getSessionToolPolicyDecision(input.toolName, input.toolPolicy);
+
+  if (policyDecision.action === "deny") {
+    return buildResolution({ ...input, risk, policyDecision, visibleToModel: false, requiresConfirmation: false, denied: true, reason: "policy-denied" });
+  }
+
+  if (risk !== "read" && (input.permissionMode === "read" || input.permissionMode === "plan")) {
+    return buildResolution({ ...input, risk, policyDecision, visibleToModel: false, requiresConfirmation: false, denied: true, reason: "permission-denied" });
+  }
+
+  if (risk !== "read" && input.canvasContext?.dirty === true) {
+    return buildResolution({ ...input, risk, policyDecision, visibleToModel: false, requiresConfirmation: false, denied: true, reason: "dirty-resource-blocked" });
+  }
+
+  if (policyDecision.action === "ask") {
+    return buildResolution({ ...input, risk, policyDecision, visibleToModel: true, requiresConfirmation: true, denied: false, reason: "policy-ask" });
+  }
+
+  if (policyDecision.action === "allow") {
+    return buildResolution({ ...input, risk, policyDecision, visibleToModel: true, requiresConfirmation: false, denied: false, reason: "policy-allow" });
+  }
+
+  const riskDecision = getSessionToolRiskDecision(input.permissionMode, risk);
+  if (riskDecision === "deny") {
+    return buildResolution({ ...input, risk, policyDecision, visibleToModel: false, requiresConfirmation: false, denied: true, reason: "permission-denied" });
+  }
+
+  if (riskDecision === "confirm") {
+    return buildResolution({ ...input, risk, policyDecision, visibleToModel: true, requiresConfirmation: true, denied: false, reason: "risk-confirmation" });
+  }
+
+  return buildResolution({ ...input, risk, policyDecision, visibleToModel: true, requiresConfirmation: false, denied: false, reason: "allowed" });
+}
+
 export function annotateSessionToolsWithPolicy(
   tools: readonly SessionToolDefinition[],
   policy: SessionToolPolicy | undefined,
@@ -78,13 +179,24 @@ export function annotateSessionToolsWithPolicy(
 export function filterSessionToolsForProvider(
   tools: readonly SessionToolDefinition[],
   policy: SessionToolPolicy | undefined,
-): { readonly tools: readonly SessionToolDefinition[]; readonly deniedTools: readonly string[] } {
+  options: SessionToolProviderFilterOptions = {},
+): { readonly tools: readonly SessionToolDefinition[]; readonly deniedTools: readonly string[]; readonly resolutions: readonly SessionToolPolicyResolution[] } {
   const deniedTools: string[] = [];
+  const resolutions: SessionToolPolicyResolution[] = [];
   const filtered = tools.filter((tool) => {
-    const decision = getSessionToolPolicyDecision(tool.name, policy);
-    if (decision.action !== "deny") return true;
+    const resolution = options.permissionMode
+      ? resolveSessionToolPolicy({
+        toolName: tool.name,
+        risk: tool.risk,
+        permissionMode: options.permissionMode,
+        ...(policy ? { toolPolicy: policy } : {}),
+        ...(options.canvasContext ? { canvasContext: options.canvasContext } : {}),
+      })
+      : resolveSessionToolPolicy({ toolName: tool.name, risk: tool.risk, permissionMode: "allow", ...(policy ? { toolPolicy: policy } : {}) });
+    resolutions.push(resolution);
+    if (resolution.visibleToModel) return true;
     deniedTools.push(tool.name);
     return false;
   });
-  return { tools: filtered, deniedTools };
+  return { tools: filtered, deniedTools, resolutions };
 }

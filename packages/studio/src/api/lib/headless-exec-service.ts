@@ -3,7 +3,7 @@ import type { SessionToolExecutionResult } from "../../shared/agent-native-works
 import type { CreateNarratorSessionInput, NarratorSessionRecord, SessionConfig, SessionPermissionMode } from "../../shared/session-types.js";
 import type { AgentGenerateResult } from "./agent-turn-runtime.js";
 
-import { runAgentTurn } from "./agent-turn-runtime.js";
+import { executeRuntimeTurn } from "./runtime-turn-service.js";
 import { createSession, getSessionById } from "./session-service.js";
 import { generateSessionReply } from "./llm-runtime-service.js";
 import { getAgentSystemPrompt } from "@vivy1024/novelfork-core";
@@ -197,7 +197,7 @@ export async function executeHeadless(input: HeadlessExecInput): Promise<Headles
   const toolExecutor = createSessionToolExecutor();
 
   // 7. Run agent turn
-  const runtimeEvents = await runAgentTurn({
+  const runtimeTurn = await executeRuntimeTurn({
     sessionId: session.id,
     sessionConfig: session.sessionConfig,
     messages: [userMessage],
@@ -217,6 +217,7 @@ export async function executeHeadless(input: HeadlessExecInput): Promise<Headles
     },
     executeTool: (toolInput) => toolExecutor.execute(toolInput),
   });
+  const runtimeEvents = runtimeTurn.agentEvents;
 
   // 8. Collect and return results
   const collected = collectResults(runtimeEvents);

@@ -24,8 +24,8 @@ async function loadSessionCompactService() {
   return import("./session-compact-service");
 }
 
-function message(id: string, role: NarratorSessionChatMessage["role"], content: string, seq: number): NarratorSessionChatMessage {
-  return { id, role, content, seq, timestamp: 1_779_206_400_000 + seq };
+function message(id: string, role: NarratorSessionChatMessage["role"], content: string, seq: number, metadata?: NarratorSessionChatMessage["metadata"]): NarratorSessionChatMessage {
+  return { id, role, content, seq, timestamp: 1_779_206_400_000 + seq, ...(metadata ? { metadata } : {}) };
 }
 
 describe("session-compact-service", () => {
@@ -55,7 +55,16 @@ describe("session-compact-service", () => {
     });
     await replaceSessionChatState(session.id, [
       message("m1", "user", `第一轮：主角发现灵潮异常。${"灵潮异常、宗门追杀、主角隐瞒修为。".repeat(24)}`, 1),
-      message("m2", "assistant", `已记录灵潮异常与宗门追杀伏笔。${"追杀线索进入第三章暗线，长老态度摇摆。".repeat(24)}`, 2),
+      message("m2", "assistant", `已记录灵潮异常与宗门追杀伏笔。${"追杀线索进入第三章暗线，长老态度摇摆。".repeat(24)}`, 2, {
+        runtimeTranscript: {
+          version: 1,
+          source: "runtime-turn",
+          events: [
+            { type: "message", sessionId: session.id, role: "assistant", content: "已记录灵潮异常与宗门追杀伏笔。" },
+            { type: "result", sessionId: session.id, success: true, stopReason: "completed", exitCode: 0 },
+          ],
+        },
+      }),
       message("m3", "user", `第二轮：加入法宝线索。${"法宝残片呼应反派动机，必须保留因果。".repeat(24)}`, 3),
       message("m4", "assistant", "法宝与反派动机已经串联", 4),
       message("m5", "user", "最近：准备继续第三章", 5),
@@ -78,7 +87,13 @@ describe("session-compact-service", () => {
 
     const snapshot = await getSessionChatSnapshot(session.id);
     expect(snapshot?.messages).toHaveLength(3);
-    expect(snapshot?.messages[0]).toMatchObject({ role: "system", metadata: { kind: "session-compact-summary" } });
+    expect(snapshot?.messages[0]).toMatchObject({
+      role: "system",
+      metadata: {
+        kind: "session-compact-summary",
+        runtimeTranscriptSummary: { eventCount: 2, eventTypes: ["message", "result"] },
+      },
+    });
     expect(snapshot?.messages[0]?.content).toContain("上下文压缩摘要");
     expect(snapshot?.messages[0]?.content).toContain("第一轮：主角发现灵潮异常");
     expect(snapshot?.messages[1]?.id).toBe("m4");

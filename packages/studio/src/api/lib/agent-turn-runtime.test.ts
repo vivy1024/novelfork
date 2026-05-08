@@ -87,7 +87,7 @@ describe("agent turn runtime", () => {
     const events = await runAgentTurn(input({ generate, executeTool: vi.fn(async () => result) }));
 
     expect(generate).toHaveBeenCalledTimes(1);
-    expect(events.at(-1)).toEqual({ type: "confirmation_required", id: "confirm-1", toolName: "guided.exit", result });
+    expect(events.at(-1)).toEqual({ type: "confirmation_required", id: "confirm-1", toolName: "guided.exit", result, sourceToolUseId: "tool-confirm" });
   });
 
   it("returns failed tool results to the model before emitting the final response", async () => {

@@ -1,5 +1,6 @@
 import type { NarratorSessionChatMessage, NarratorSessionChatSnapshot, NarratorSessionRecord } from "../../shared/session-types.js";
 import { getSessionChatSnapshot, replaceSessionChatState } from "./session-chat-service.js";
+import { collectRuntimeTranscriptEvents } from "./runtime-transcript.js";
 import { createSession, deleteSession, getSessionById, listSessions, updateSession } from "./session-service.js";
 
 export type SessionLifecycleErrorCode = "session_not_found" | "source_session_not_found";
@@ -87,6 +88,8 @@ export async function restoreSessionForContinue(sessionId: string): Promise<Sess
 function buildForkSummaryMessage(source: NarratorSessionRecord, sourceSnapshot: NarratorSessionChatSnapshot | null, inheritanceNote?: string): NarratorSessionChatMessage {
   const sourceMessages = sourceSnapshot?.messages ?? source.recentMessages ?? [];
   const sourceMessageCount = sourceMessages.length;
+  const runtimeTranscriptEvents = collectRuntimeTranscriptEvents(sourceMessages);
+  const sourceRuntimeEventTypes = [...new Set(runtimeTranscriptEvents.map((event) => event.type))];
   const lastMessages = sourceMessages.slice(-3).map((item) => `${item.role}: ${item.content.trim()}`).filter(Boolean);
   const context = lastMessages.length > 0 ? `\n最近上下文：\n${lastMessages.join("\n")}` : "";
   const note = inheritanceNote?.trim() ? `\n继承说明：${inheritanceNote.trim()}` : "";
@@ -100,6 +103,9 @@ function buildForkSummaryMessage(source: NarratorSessionRecord, sourceSnapshot: 
       sourceSessionId: source.id,
       sourceTitle: source.title,
       sourceMessageCount,
+      sourceRuntimeEventCount: runtimeTranscriptEvents.length,
+      sourceRuntimeEventTypes,
+      ...(source.cumulativeUsage ? { sourceCumulativeUsage: source.cumulativeUsage } : {}),
     },
   };
 }

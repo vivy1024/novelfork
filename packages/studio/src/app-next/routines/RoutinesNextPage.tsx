@@ -1,5 +1,7 @@
 import { useState } from "react";
 
+import { listRuntimeCommands, type RuntimeCommandDefinition, type RuntimeCommandSource, type RuntimeCommandStatus } from "@vivy1024/novelfork-core/registry/command-registry";
+
 import { CommandsTab } from "../../components/Routines/CommandsTab";
 import { MCPToolsTab } from "../../components/Routines/MCPToolsTab";
 import { PermissionsTab } from "../../components/Routines/PermissionsTab";
@@ -237,7 +239,12 @@ function RoutineSectionEditor({
 }) {
   switch (sectionId) {
     case "commands":
-      return <CommandsTab commands={routines.commands} onChange={(commands) => setRoutines({ ...routines, commands })} />;
+      return (
+        <div className="space-y-4">
+          <RuntimeCommandRegistryPanel commands={listRuntimeCommands()} />
+          <CommandsTab commands={routines.commands} onChange={(commands) => setRoutines({ ...routines, commands })} />
+        </div>
+      );
     case "tools":
       return <ToolsTab tools={routines.tools} onChange={(tools) => setRoutines({ ...routines, tools })} />;
     case "permissions":
@@ -282,6 +289,47 @@ function RoutineSectionEditor({
     case "hooks":
       return <HooksTab hooks={routines.hooks} onChange={(hooks) => setRoutines({ ...routines, hooks })} />;
   }
+}
+
+const COMMAND_STATUS_LABELS: Record<RuntimeCommandStatus, string> = {
+  current: "当前可用",
+  partial: "部分接入",
+  planned: "计划中",
+  unsupported: "不支持",
+  "reference-only": "仅参考",
+};
+
+const COMMAND_SOURCE_LABELS: Record<RuntimeCommandSource, string> = {
+  builtin: "内置",
+  "claude-adapter": "Claude Adapter",
+  "codex-adapter": "Codex Adapter",
+  "novel-agent-pack": "Novel Agent Pack",
+};
+
+function RuntimeCommandRegistryPanel({ commands }: { readonly commands: readonly RuntimeCommandDefinition[] }) {
+  return (
+    <section className="rounded-xl border border-border bg-muted/20 p-4" aria-label="统一 Runtime Command Registry">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <h4 className="font-semibold">统一 Runtime Command Registry</h4>
+          <p className="mt-1 text-sm text-muted-foreground">叙述者 slash 建议、套路命令清单、CLI help/headless 将共用这份命令注册表。</p>
+        </div>
+        <span className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">{commands.length} commands</span>
+      </div>
+      <div className="grid gap-2 md:grid-cols-2">
+        {commands.map((command) => (
+          <article key={command.id} className="rounded-lg border border-border bg-background p-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <code className="text-sm font-mono">{command.id}</code>
+              <span className="text-xs text-muted-foreground">状态：{COMMAND_STATUS_LABELS[command.status]}</span>
+              <span className="text-xs text-muted-foreground">来源：{COMMAND_SOURCE_LABELS[command.source]}</span>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">{command.description}</p>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
 }
 
 const HOOK_KIND_LABELS: Record<RoutineHookKind, string> = {
