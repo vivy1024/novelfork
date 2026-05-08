@@ -69,22 +69,83 @@ Group (justify: space-between, border-bottom, bg: gray-0/dark-7, padding-inline:
     └── ActionIcon 组（复制/fork/设置等）
 ```
 
-## 状态指示器（Composer 上方）
+## 状态指示器行（Composer 上方）— 模型/权限/推理切换在这里！
+
+这是设置页配置最终在对话界面展示的地方。
 
 ```
-Group (gap: 0.375rem, flex-shrink: 0)
-├── Dot (border-radius: 50%, bg: gray-filled, 0.5rem × 0.5rem) — 状态圆点
-├── Text(xs, dimmed, truncate): "空闲" — 主状态
-└── Text(xs, dimmed, flex-shrink: 0): "· 上轮耗时 1:05" — 耗时
+Group (justify: space-between, border-top, padding: xs md)
+├── Left Group (flex-shrink: 0):
+│   ├── Dot (0.5rem, 圆形, bg: gray=idle/blue=working/red=error)
+│   ├── Text(xs, dimmed, truncate): "空闲"
+│   └── Text(xs, dimmed): "· 上轮耗时 1:05"
+│
+└── Right Group (flex-shrink: 1):
+    ├── Context Ring (SVG 圆环, aria-haspopup="menu")
+    │   └── 点击弹出: 压缩/上下文管理菜单
+    │
+    ├── Codex 额度 Button (柱状图可视化, aria-haspopup="dialog")
+    │   └── 点击弹出: 额度详情弹窗
+    │
+    ├── 模型按钮 "G" (ActionIcon, aria-haspopup="menu")
+    │   └── 点击弹出 Menu:
+    │       ├── Menu.label: "下次发言使用的模型"
+    │       ├── TextInput (sticky, placeholder: "筛选模型...")
+    │       ├── Divider
+    │       └── 按供应商分组的模型列表（Default/dome/kiro/codex/cline...）
+    │           └── 每项: Menu.item + ✓ check 标记当前选中
+    │
+    ├── 推理强度按钮 "X" (ActionIcon, aria-haspopup="menu")
+    │   └── 点击弹出 Menu: 关闭/低/中/高/超高/自动
+    │   └── 按钮文字是当前强度首字母: N=none, L=low, M=medium, H=high, X=xhigh, A=auto
+    │
+    ├── Fast Mode ⚡ (ActionIcon bolt, toggle)
+    │   └── 点击切换 service_tier: priority
+    │
+    ├── 权限模式 🛡️ (ActionIcon shield-off, aria-haspopup="menu")
+    │   └── 点击弹出 Menu:
+    │       ├── Menu.label: "权限模式"
+    │       ├── 逐项询问 (shield)
+    │       ├── 允许编辑
+    │       ├── 全部允许 ✓
+    │       ├── 只读
+    │       ├── 全部拒绝
+    │       ├── 进入计划模式
+    │       ├── 自动批准计划
+    │       └── 危险反思（全部允许模式下高风险操作的额外安全检查）
+    │
+    └── 添加目录 📁 (ActionIcon folder-plus)
+        └── 点击添加工作目录白名单
 ```
 
-状态圆点颜色：
-- gray: idle（空闲）
-- blue: working（工作中）
-- yellow: waiting（等待中）
-- green: unread（已完成）
-- red: error（错误）
-- orange: interrupted（已中断）
+### 设置 → 对话界面的数据流
+
+```
+设置页 /settings/models:
+  默认模型 → 新建叙述者时继承 → 对话界面 "G" 按钮显示当前模型首字母
+  摘要模型 → compact 时使用
+  子代理模型 → explore/plan 子代理使用
+  推理强度 → 新建叙述者时继承 → 对话界面 "X" 按钮显示当前强度首字母
+
+设置页 /settings/agent:
+  默认权限模式 → 新建叙述者时继承 → 对话界面 🛡️ 按钮显示当前模式图标
+  最大轮次 → agent turn 限制
+  翻译思考 → 推理块翻译
+  展开推理 → 推理块默认展开/折叠
+  宽松规划 → 计划模式下工具是否可用
+  Fast Mode → 对话界面 ⚡ 按钮状态
+
+提供商页面:
+  API 模式 (Completions/Responses/Codex) → 决定请求格式
+  Codex 账号 → 对话界面 "Codex 额度" 柱状图
+  Codex 推理强度 → 覆盖全局默认
+```
+
+### 关键设计：每个叙述者可独立覆盖全局设置
+
+优先级：叙述者设置 > 供应商设置 > 全局默认
+
+对话界面的控件修改的是**当前叙述者**的设置，不影响全局。
 
 ## Composer（输入区）
 
