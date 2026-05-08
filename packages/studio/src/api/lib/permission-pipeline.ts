@@ -40,7 +40,51 @@ export interface ToolPermissionResult {
   readonly classification?: BashCommandClassification;
 }
 
-// --- Dangerous patterns (对标 Claude Code CLI dangerousPatterns.ts) ---
+// --- Multi-source permission rules (对标 Claude Code CLI PermissionRule system) ---
+// Claude 的规则来源: userSettings / projectSettings / localSettings / flagSettings / policySettings / cliArg / command / session
+// 优先级: deny > ask > allow（deny 总是赢）
+
+export type PermissionRuleSource = "user" | "project" | "session" | "cli" | "policy" | "default";
+export type PermissionRuleBehavior = "allow" | "deny" | "ask";
+
+export interface PermissionRule {
+  readonly source: PermissionRuleSource;
+  readonly behavior: PermissionRuleBehavior;
+  readonly toolName?: string;  // 具体工具名，undefined 表示通配
+  readonly pattern?: string;   // shell 命令模式匹配
+  readonly reason?: string;
+}
+
+/**
+ * 对标 Claude: 合并多来源规则，deny > ask > allow
+ */
+export function resolvePermissionRules(rules: readonly PermissionRule[], toolName: string, command?: string): PermissionRuleBehavior {
+  const matchingRules = rules.filter((rule) => {
+    if (rule.toolName && rule.toolName !== toolName && rule.toolName !== "*") return false;
+    if (rule.pattern && command && !commandMatchesPattern(command, rule.pattern)) return false;
+    if (rule.pattern && !command) return false;
+    return true;
+  });
+
+  // deny 总是赢
+  if (matchingRules.some((rule) => rule.behavior === "deny")) return "deny";
+  // ask 优先于 allow
+  if (matchingRules.some((rule) => rule.behavior === "ask")) return "ask";
+  // 有 allow 规则
+  if (matchingRules.some((rule) => rule.behavior === "allow")) return "allow";
+  // 无匹配规则：默认 ask
+  return "ask";
+}
+
+function commandMatchesPattern(command: string, pattern: string): boolean {
+  // 简单前缀匹配 + 通配符支持
+  if (pattern === "*") return true;
+  if (pattern.endsWith("*")) {
+    return command.startsWith(pattern.slice(0, -1));
+  }
+  return command.trim().startsWith(pattern);
+}
+
 
 const DANGEROUS_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
   { pattern: /\brm\s+(-[a-zA-Z]*[rf][a-zA-Z]*\s+){1,2}\//, reason: "recursive delete from root" },

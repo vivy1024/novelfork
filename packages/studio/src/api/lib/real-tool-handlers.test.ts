@@ -23,7 +23,8 @@ describe("real tool handlers", () => {
 
       expect(result.ok).toBe(true);
       expect(result.summary).toContain("hello world");
-      expect(result.data).toMatchObject({ exitCode: 0, stdout: "hello world\n" });
+      expect(result.data).toMatchObject({ exitCode: 0 });
+      expect((result.data as { stdout: string }).stdout).toContain("hello world");
     });
 
     it("returns error for failed commands", async () => {
@@ -38,6 +39,18 @@ describe("real tool handlers", () => {
 
       expect(result.ok).toBe(false);
       expect(result.error).toContain("dangerous");
+    });
+
+    it("tracks cwd changes after cd commands", async () => {
+      const subDir = join(workDir, "subdir");
+      await mkdir(subDir);
+
+      const result = await executeBashTool({ command: `cd subdir`, workDir });
+
+      expect(result.ok).toBe(true);
+      // On Windows with Git Bash, pwd -P returns Unix-style paths
+      expect(result.newWorkDir).toBeTruthy();
+      expect(result.newWorkDir).toContain("subdir");
     });
   });
 

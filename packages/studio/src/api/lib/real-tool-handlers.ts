@@ -6,8 +6,9 @@
  */
 
 import { spawn } from "node:child_process";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile, access } from "node:fs/promises";
 import { dirname, join, resolve, relative } from "node:path";
+import { constants as fsConstants } from "node:fs";
 
 import type { SessionToolExecutionResult } from "../../shared/agent-native-workspace.js";
 
@@ -52,7 +53,20 @@ export interface BashToolInput {
   readonly timeoutMs?: number;
 }
 
-export async function executeBashTool(input: BashToolInput): Promise<SessionToolExecutionResult> {
+export interface BashToolResult extends SessionToolExecutionResult {
+  /** 对标 Claude: 命令执行后的新工作目录（如果 cd 改变了 cwd） */
+  readonly newWorkDir?: string;
+}
+
+/**
+ * 对标 Claude Code CLI Shell.ts:
+ * - spawn('bash', ['-c', command]) 模式
+ * - 环境变量: NOVELFORK=1, GIT_EDITOR=true
+ * - cwd 追踪: 命令末尾追加 `; echo __NF_CWD__; pwd -P` 提取新 cwd
+ * - 超时: SIGKILL 整个进程
+ * - 进程树终止: kill(-pid) 发送到进程组
+ */
+export async function executeBashTool(input: BashToolInput): Promise<BashToolResult> {
   const { command, workDir, timeoutMs = 30000 } = input;
 
   if (isDangerousCommand(command)) {
@@ -64,25 +78,37 @@ export async function executeBashTool(input: BashToolInput): Promise<SessionTool
     };
   }
 
-  // 对标 Claude Code CLI: 使用 spawn 而非 exec，通过 bash -c 执行命令
-  // Claude 使用 spawn(shellBinary, ['-c', command]) 模式，不使用 shell: true
+  // 对标 Claude: 追加 cwd 追踪命令（Claude 用临时文件，我们用 stdout marker）
+  const CWD_MARKER = "__NF_CWD_MARKER__";
+  const trackedCommand = `${command}; echo "${CWD_MARKER}"; pwd -P`;
+
   return new Promise((resolveResult) => {
     const stdout: Buffer[] = [];
     const stderr: Buffer[] = [];
 
-    const child = spawn("bash", ["-c", command], {
+    // 对标 Claude: spawn 而非 exec，detached 用于进程组管理
+    const child = spawn("bash", ["-c", trackedCommand], {
       cwd: workDir,
       env: {
         ...process.env,
-        NOVELFORK: "1",  // 对标 Claude 的 CLAUDECODE: '1'
-        GIT_EDITOR: "true",  // 对标 Claude: 阻止 git 打开编辑器
+        NOVELFORK: "1",
+        GIT_EDITOR: "true",
       },
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
+      detached: process.platform !== "win32", // 对标 Claude: detached for process group kill
     });
 
     const timeout = setTimeout(() => {
-      child.kill("SIGKILL");
+      // 对标 Claude: tree-kill 整个进程组
+      try {
+        if (child.pid && process.platform !== "win32") {
+          process.kill(-child.pid, "SIGKILL"); // Kill process group
+        } else {
+          child.kill("SIGKILL");
+        }
+      } catch { child.kill("SIGKILL"); }
+
       resolveResult({
         ok: false,
         error: "timeout",
@@ -106,9 +132,21 @@ export async function executeBashTool(input: BashToolInput): Promise<SessionTool
 
     child.on("exit", (code, signal) => {
       clearTimeout(timeout);
-      const stdoutStr = Buffer.concat(stdout).toString("utf-8");
+      const rawStdout = Buffer.concat(stdout).toString("utf-8");
       const stderrStr = Buffer.concat(stderr).toString("utf-8");
       const exitCode = code ?? (signal ? 128 : 1);
+
+      // 对标 Claude: 从 stdout 提取新 cwd
+      let stdoutStr = rawStdout;
+      let newWorkDir: string | undefined;
+      const markerIndex = rawStdout.lastIndexOf(CWD_MARKER);
+      if (markerIndex !== -1) {
+        stdoutStr = rawStdout.slice(0, markerIndex).trimEnd();
+        const cwdLine = rawStdout.slice(markerIndex + CWD_MARKER.length).trim();
+        if (cwdLine && cwdLine !== workDir) {
+          newWorkDir = cwdLine;
+        }
+      }
 
       if (exitCode !== 0) {
         resolveResult({
@@ -116,6 +154,7 @@ export async function executeBashTool(input: BashToolInput): Promise<SessionTool
           error: "command-failed",
           summary: stderrStr.trim() || stdoutStr.trim() || `命令退出码 ${exitCode}`,
           data: { exitCode, stdout: stdoutStr, stderr: stderrStr, command },
+          newWorkDir,
         });
         return;
       }
@@ -124,6 +163,7 @@ export async function executeBashTool(input: BashToolInput): Promise<SessionTool
         ok: true,
         summary: stdoutStr.trim().slice(0, 200) || "(无输出)",
         data: { exitCode: 0, stdout: stdoutStr, stderr: stderrStr, command },
+        newWorkDir,
       });
     });
   });
