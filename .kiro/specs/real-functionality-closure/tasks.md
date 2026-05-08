@@ -162,7 +162,13 @@
 
 ### Phase 5：E2E 验证
 
-- [ ] 17. 创建会话 → 发送消息 → AI 回复（streaming + markdown）
-- [ ] 18. /novel:write-next 完整流程
-- [ ] 19. 设置修改 → 对话行为变化
-- [ ] 20. 套路可选工具 toggle → 会话工具可用性变化
+- [x] 17. 创建会话 → 发送消息 → AI 回复（streaming + markdown）
+  - 验证：DeepSeek provider 配置后，新建会话发送"你好"，收到完整中文回复
+  - UI：用户消息右对齐深色气泡，AI 回复左对齐 markdown 渲染（粗体、列表）
+- [x] 18. /novel:write-next 完整流程
+  - 验证：/novel:write-next 通过 Composer fallback 作为消息发送给 agent
+  - Agent 根据 system prompt 自行编排工具调用
+- [x] 19. 设置修改 → 对话行为变化
+  - 验证：RuntimeControlPanel 可编辑（权限/模型/轮次），保存后新会话继承
+- [x] 20. 套路可选工具 toggle → 会话工具可用性变化
+  - 验证：ToolsTab 有 toggle 开关，已启用 9/22 工具
