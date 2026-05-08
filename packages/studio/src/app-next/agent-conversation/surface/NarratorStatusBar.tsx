@@ -182,11 +182,11 @@ export function NarratorStatusBar({ status, onUpdateModel, onUpdateReasoningEffo
         {/* Fast Mode toggle */}
         <button
           type="button"
-          className={`rounded p-1 text-xs ${fastMode ? "text-yellow-500" : "text-muted-foreground"} hover:bg-muted`}
+          className={`rounded-md p-1.5 ${fastMode ? "text-yellow-500 bg-yellow-500/10" : "text-muted-foreground"} hover:bg-muted transition-colors`}
           title={fastMode ? "Fast Mode 开启" : "Fast Mode 关闭"}
           onClick={onToggleFastMode}
         >
-          <Zap className="size-3.5" />
+          <Zap className="size-4" />
         </button>
 
         {/* Permission mode button */}
@@ -240,7 +240,7 @@ function PopoverButton({
     <div className="relative" ref={containerRef}>
       <button
         type="button"
-        className={`rounded px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-muted ${className}`}
+        className={`rounded-md px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors ${className}`}
         title={title}
         onClick={() => setOpen(!open)}
         onBlur={(e) => {
