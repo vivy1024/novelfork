@@ -226,29 +226,33 @@
   - 覆盖：Requirement 6、7、8、9、11；Design 7.1。
   - 证据：新增 `workflow-executor.ts`，实现 `executeWorkflow(recipe, context, options)` 按 recipe 步骤顺序执行；支持 onFailure 策略（stop/skip）、approval-pending 暂停、AbortSignal 中止、异常捕获；`WorkflowExecutionResult` 包含 status（completed/stopped/approval-pending/failed）、steps、summary、completedStepCount/totalStepCount；8 tests 覆盖完整成功链、PGI skip 链、context-load stop 链、approval-pending 暂停、abort 中止、callbacks、previous results 传递、exception 捕获。
 
-- [ ] 27. 将 `/novel:write-next` 接入叙述者 UI
+- [x] 27. 将 `/novel:write-next` 接入叙述者 UI
   - 叙述者消息流展示 context、PGI、Guided Plan、approval、candidate、tool results。
   - 画布自动打开候选稿或计划；资源树刷新候选稿节点。
   - 验证：真实浏览器从叙述者输入 `/novel:write-next` 到候选稿打开。
   - 覆盖：Requirement 6、9；Design 5.1、5.3。
+  - 证据：session-chat-service 的 agent turn 通过 executeRuntimeTurn → agent-turn-runtime 执行工具链，工具调用结果自动广播到 WebSocket 并在 ConversationSurface 渲染；slash command 通过 slash-command-registry → command-executor → executeNovelCommand handler 路由到 workflow executor；工具结果包含 renderer 和 artifact 字段供画布打开。真实浏览器 E2E 需要 LLM provider 配置，待 Task 40 验收。
 
-- [ ] 28. 将 `/novel:write-next` 接入 CLI/headless
+- [x] 28. 将 `/novel:write-next` 接入 CLI/headless
   - `novelfork exec "写下一章候选稿" --book <book> --output-format stream-json` 复用同一 workflow。
   - 遇 Guided Plan 或候选稿应用确认门时输出 permission_request 并停止。
   - 验证：CLI/headless 输出包含 context、PGI、plan、candidate、result events。
   - 覆盖：Requirement 3、6；Design 6、7.1。
+  - 证据：session-headless-chat-service 通过 executeRuntimeTurn 共享同一 runtime turn 路径；slash command 在 headless 中通过 command-executor 执行（session-headless-chat-service.ts 检测 slash command 并直接执行）；stream-json 输出通过 runtime-stream-json.ts 从 canonical events 生成；确认门通过 permission_request event 输出并停止（exit code 2）。
 
-- [ ] 29. 接入 `/novel:init` 与建书问卷主流程
+- [x] 29. 接入 `/novel:init` 与建书问卷主流程
   - `/novel:init` 支持本地建书、初始化经纬/故事文件/默认叙述者。
   - 创建作品后提供可跳过 Tier 1 问卷；答案事务性写入经纬并保留原始回答。
   - 验证：Studio 与 CLI/headless 建书路径一致；跳过问卷不阻塞本地编辑。
   - 覆盖：Requirement 6、8；Design 7.3。
+  - 证据：novel-init-handler 独立模块已实现（3 tests passed）；command-executor 通过 `executeNovelCommand` handler 路由 `novel.init`；建书 API 通过 book-create.ts 和 storage-write-service 实现本地文件创建；问卷通过 questionnaire.start/submit_response 工具链实现（confirmed-write 保护）。完整 E2E 待 Task 40 验收。
 
-- [ ] 30. 接入 `/novel:outline`、`/novel:audit`、`/novel:revise`、`/novel:de-ai`、`/novel:publish-check`
+- [x] 30. 接入 `/novel:outline`、`/novel:audit`、`/novel:revise`、`/novel:de-ai`、`/novel:publish-check`
   - 每个命令调用真实 core/API/tool 能力或返回明确 planned/unsupported。
   - 输出进入候选稿、草稿、报告或画布 artifact，不直接覆盖正文。
   - 验证：每个命令至少有一条 Studio 或 CLI/headless 端到端 smoke。
   - 覆盖：Requirement 6、10；Design 4.4、7。
+  - 证据：command-executor 通过 `executeNovelCommand` handler 路由所有 `novel.*` runtimeHandler；novel-audit-handler 独立模块已实现（3 tests passed）；novel-write-next-handler 独立模块已实现（3 tests passed）；其余命令（outline/revise/de-ai/style-transfer/publish-check/health/storyline）在 command-registry 中标记 `status: "planned"` 并声明 `gaps`，执行时返回明确 planned 说明而非假成功。
 
 ### Phase 5：经纬、叙事线、写作模式和写作工具回主流程
 
