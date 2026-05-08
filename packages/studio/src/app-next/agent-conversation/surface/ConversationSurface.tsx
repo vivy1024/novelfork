@@ -180,12 +180,33 @@ export function ConversationSurface({
               </div>
             </SheetContent>
           </Sheet>
-          <Tooltip>
-            <TooltipTrigger render={<Button variant="ghost" size="icon-sm" />}>
+          <Sheet>
+            <SheetTrigger
+              className="inline-flex shrink-0 items-center justify-center rounded-lg text-sm font-medium transition-all outline-none select-none hover:bg-muted hover:text-foreground size-7"
+              title="会话信息"
+            >
               <Info className="size-4" />
-            </TooltipTrigger>
-            <TooltipContent>会话信息</TooltipContent>
-          </Tooltip>
+            </SheetTrigger>
+            <SheetContent>
+              <SheetHeader>
+                <SheetTitle>会话信息</SheetTitle>
+                <SheetDescription>当前会话的详细信息</SheetDescription>
+              </SheetHeader>
+              <div className="flex-1 overflow-y-auto px-4 space-y-3">
+                <InfoRow label="标题" value={title} />
+                {sessionId && <InfoRow label="会话 ID" value={sessionId} mono />}
+                <InfoRow label="状态" value={status.narratorState ?? status.state ?? "未知"} />
+                {status.modelLabel && <InfoRow label="模型" value={status.modelLabel} />}
+                {status.modelId && !status.modelLabel && <InfoRow label="模型 ID" value={status.modelId} mono />}
+                {status.permissionMode && <InfoRow label="权限模式" value={status.permissionMode} />}
+                {status.reasoningEffort && <InfoRow label="推理强度" value={status.reasoningEffort} />}
+                <InfoRow label="消息数" value={String(messages.length)} />
+                {status.contextUsage && status.contextUsage.maxTokens && (
+                  <InfoRow label="上下文" value={`${status.contextUsage.usedTokens} / ${status.contextUsage.maxTokens} (${Math.round((status.contextUsage.usedTokens / status.contextUsage.maxTokens) * 100)}%)`} />
+                )}
+              </div>
+            </SheetContent>
+          </Sheet>
           <Tooltip>
             <TooltipTrigger render={<Button variant="ghost" size="icon-sm" onClick={() => onArchive?.()} />}>
               <Archive className="size-4" />
@@ -250,6 +271,37 @@ export function ConversationSurface({
       {/* ── Footer actions (if any) ── */}
       {footerActions}
 
+      {/* ── Git status bar (when workspace is available) ── */}
+      {status.workspace && (
+        <div className="flex shrink-0 items-center gap-1.5 border-t border-border bg-muted/30 px-4 py-1 text-[10px] text-muted-foreground">
+          <span className="truncate font-medium">{status.workspace.path?.split(/[/\\]/).pop() ?? "工作区"}</span>
+          {status.workspace.branch && (
+            <>
+              <span>·</span>
+              <span className="truncate font-mono">{status.workspace.branch}</span>
+            </>
+          )}
+          {status.workspace.changes != null && (
+            <>
+              <span>·</span>
+              <span className="rounded bg-blue-500/10 px-1 text-blue-600">{status.workspace.changes} 变更</span>
+            </>
+          )}
+          {status.workspace.git?.status === "clean" && (
+            <>
+              <span>·</span>
+              <span className="text-green-600">✓ 干净</span>
+            </>
+          )}
+          {status.workspace.git?.status === "dirty" && (
+            <>
+              <span>·</span>
+              <span className="text-yellow-600">{status.workspace.git.summary}</span>
+            </>
+          )}
+        </div>
+      )}
+
       {/* ── NarratorStatusBar (above Composer) ── */}
       <NarratorStatusBar status={status} />
 
@@ -270,3 +322,16 @@ export function ConversationSurface({
 }
 
 export type { ConversationSurfaceMessage };
+
+// ---------------------------------------------------------------------------
+// InfoRow — 会话信息面板的键值行
+// ---------------------------------------------------------------------------
+
+function InfoRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="flex items-start justify-between gap-3 py-1.5 border-b border-border/50 last:border-0">
+      <span className="text-xs text-muted-foreground shrink-0">{label}</span>
+      <span className={`text-xs text-right break-all ${mono ? "font-mono" : ""}`}>{value}</span>
+    </div>
+  );
+}

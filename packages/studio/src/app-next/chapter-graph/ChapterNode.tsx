@@ -2,12 +2,13 @@
  * ChapterNode — react-flow 自定义节点
  *
  * 对标 NarraFork：每个章节是图中的可拖拽卡片，内嵌对话窗口。
- * 结构：DragHandle(标题+状态) + 内容区(消息列表+状态栏+Composer)
+ * 结构：DragHandle(标题+状态) + Git状态栏 + 内容区(绑定状态+操作)
  */
 
 import { memo } from "react";
 import { type Node, type NodeProps, NodeResizeControl } from "@xyflow/react";
-import { GripVertical } from "lucide-react";
+import { GripVertical, MessageSquareText, Plus, GitBranch } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 export interface ChapterNodeData {
   [key: string]: unknown;
@@ -17,6 +18,8 @@ export interface ChapterNodeData {
   branch?: string;
   changes?: number;
   narratorId?: string;
+  messageCount?: number;
+  lastActivity?: string;
 }
 
 export type ChapterNodeType = Node<ChapterNodeData, "chapterNode">;
@@ -71,10 +74,11 @@ function ChapterNodeComponent({ data }: NodeProps<ChapterNodeType>) {
         </span>
       </div>
 
-      {/* Content area — will embed ConversationSurface in future */}
+      {/* Content area */}
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Git status bar */}
         <div className="flex shrink-0 items-center gap-1.5 border-b border-border bg-muted/30 px-3 py-1 text-[10px] text-muted-foreground">
+          <GitBranch className="size-3 shrink-0" />
           <span className="truncate font-medium">{data.title}</span>
           {data.branch && (
             <>
@@ -90,12 +94,36 @@ function ChapterNodeComponent({ data }: NodeProps<ChapterNodeType>) {
           )}
         </div>
 
-        {/* Placeholder for embedded conversation */}
-        <div className="flex flex-1 items-center justify-center p-4 text-xs text-muted-foreground">
+        {/* Narrator binding area */}
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 p-4">
           {data.narratorId ? (
-            <p>叙述者会话已绑定</p>
+            <>
+              <div className="flex items-center gap-2 text-sm text-foreground">
+                <MessageSquareText className="size-4 text-primary" />
+                <span className="font-medium">叙述者已绑定</span>
+              </div>
+              {data.messageCount != null && (
+                <p className="text-xs text-muted-foreground">{data.messageCount} 条消息</p>
+              )}
+              {data.lastActivity && (
+                <p className="text-[10px] text-muted-foreground">最近活动：{data.lastActivity}</p>
+              )}
+              <Button variant="outline" size="sm" className="mt-2">
+                <MessageSquareText className="size-3.5" />
+                打开对话
+              </Button>
+            </>
           ) : (
-            <p>点击新建或绑定叙述者</p>
+            <>
+              <div className="rounded-full bg-muted/50 p-3">
+                <MessageSquareText className="size-5 text-muted-foreground" />
+              </div>
+              <p className="text-xs text-muted-foreground text-center">尚未绑定叙述者</p>
+              <Button variant="outline" size="sm">
+                <Plus className="size-3.5" />
+                新建叙述者
+              </Button>
+            </>
           )}
         </div>
       </div>
