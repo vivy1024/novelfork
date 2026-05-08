@@ -79,8 +79,8 @@ export function Composer({
     if (slash.ok) {
       try {
         const result = await executeSlashCommandInput(content, { ...slashCommandContext, registry });
-        // Novel commands (unhandled_command) → send as regular message to let agent handle
-        if (!result.ok && result.code === "unhandled_command" && content.startsWith("/novel:")) {
+        // 后端执行的命令（novel:* 等）：前端 registry 无 handler，发送到后端处理
+        if (!result.ok && result.code === "unhandled_command") {
           onSend(content);
           setValue("");
           setCommandStatus(null);
