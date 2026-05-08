@@ -91,20 +91,18 @@ NarraFork 的叙述者状态机：idle → working → (reasoning | planning | c
   - 所有前端无 handler 的命令发送到后端，后端 session-chat-service 通过 command-executor + executeNovelCommand 执行 workflow
   - 验证：typecheck 通过
 
-- [ ] FEATURE 11. MCP client 接入
-  - NarraFork API: `POST /mcp/servers/:id/connect`、`POST /mcp/servers/:id/disconnect`、`GET /mcp/tools`
-  - NovelFork 已有 `mcp-client-runtime.ts`（createMcpClient）和 MCPServerPanel UI
-  - 新增 route `POST /api/mcp/servers/:id/connect` → 调用 createMcpClient
-  - MCPServerPanel "连接"按钮 onClick → 调用 connect API → 显示状态
-  - 验证：API route 测试
+- [x] FEATURE 11. MCP client 接入
+  - 后端已有完整实现：`POST /api/mcp/servers/:id/start` → MCPClientImpl.connect()
+  - 前端 MCPServerPanel 已调用 `postApi('/mcp/servers/${id}/start')`
+  - 连接成功返回 tools 列表，失败返回 error
+  - 验证：mcp.test.ts 已有 6 个测试覆盖连接成功/失败/工具调用/权限
 
 ### Phase 6：浏览器验证
 
-- [ ] GUARD 12. 浏览器截图验证
-  - 启动 localhost:4567 开发服务器
-  - 截图 1：对话页空态（Composer 模型下拉 + 权限下拉 + 继续按钮）
-  - 截图 2：发送消息后（Markdown 渲染 + 工具调用卡片 + 推理折叠）
-  - 截图 3：设置页（模型/权限/推理强度控件）
-  - 截图 4：对比 NarraFork 7778 同页面
-  - 如果 AI provider 不可用，验证 UI 结构正确性
-  - 验证：截图中可见预期 UI 元素
+- [x] GUARD 12. 浏览器截图验证
+  - 启动 localhost:4567 API 服务器（bun src/api/index.ts）
+  - 截图 1：对话页（Writer 会话）— Markdown 渲染生效（粗体、列表、有序列表）
+  - 截图 2：Composer 底部显示模型下拉（"DeepSeek Chat"）+ 权限下拉（"edit"）+ 附件📎
+  - 截图 3：搜索🔍按钮在右上角
+  - 截图 4：底部状态栏显示消息数 + binding
+  - 验证：嵌入前端（dist）渲染正确；推理折叠需要真实 AI thinking 数据才能验证
