@@ -62,9 +62,16 @@ import { loadUserConfig } from "./user-config-service.js";
 import { generateSessionTitle } from "./session-auto-title.js";
 import { microCompact } from "./compact/micro-compact.js";
 import { translateThinkingBlocks } from "./thinking-translator.js";
+import { shouldTriggerCompaction, autoCompact, estimateTokenCount, type CompactMessage } from "./context-compaction.js";
 
 const MAX_SESSION_MESSAGES = 500;
 const MAX_SESSION_TOOL_LOOP_STEPS = 200;
+/** 对标 Claude: 默认模型上下文窗口 200k tokens */
+const DEFAULT_MODEL_CONTEXT_WINDOW = 200_000;
+/** 对标 Claude: autoCompact 阈值百分比 */
+const AUTOCOMPACT_THRESHOLD_PERCENT = 90;
+/** 对标 Claude: 压缩后保留最近消息数 */
+const AUTOCOMPACT_KEEP_RECENT = 10;
 
 async function resolveMaxTurnSteps(): Promise<number> {
   try {
@@ -74,6 +81,56 @@ async function resolveMaxTurnSteps(): Promise<number> {
   } catch {
     return MAX_SESSION_TOOL_LOOP_STEPS;
   }
+}
+
+/**
+ * 对标 Claude Code CLI autoCompact: 在 agent turn 前检查 token 阈值，超过时自动压缩。
+ * 返回压缩后的 turn items（如果触发了压缩）或原始 items。
+ */
+async function maybeAutoCompact(
+  messages: readonly NarratorSessionChatMessage[],
+  state: SessionChatRuntimeState,
+  sessionId: string,
+): Promise<{ items: AgentTurnItem[]; compacted: boolean }> {
+  const compactMessages: CompactMessage[] = messages.map((m) => ({
+    id: m.id,
+    role: m.role as "system" | "user" | "assistant",
+    content: m.content,
+    ...(m.toolCalls?.length ? { toolCalls: m.toolCalls.filter((tc) => tc.id).map((tc) => ({ id: tc.id!, toolName: tc.toolName })) } : {}),
+  }));
+
+  if (!shouldTriggerCompaction(compactMessages, { maxTokens: DEFAULT_MODEL_CONTEXT_WINDOW, thresholdPercent: AUTOCOMPACT_THRESHOLD_PERCENT })) {
+    return { items: microCompact(sessionMessagesToTurnItems(messages)), compacted: false };
+  }
+
+  try {
+    const result = await autoCompact({
+      messages: compactMessages,
+      maxTokens: DEFAULT_MODEL_CONTEXT_WINDOW,
+      thresholdPercent: AUTOCOMPACT_THRESHOLD_PERCENT,
+      keepRecentCount: AUTOCOMPACT_KEEP_RECENT,
+      summarize: async (text) => {
+        // 简单摘要：截取前 2000 字符作为摘要（真实实现应调用 LLM）
+        const truncated = text.length > 2000 ? text.slice(0, 2000) + "..." : text;
+        return `对话历史摘要（${messages.length} 条消息）：${truncated}`;
+      },
+    });
+
+    if (result.compacted) {
+      // 将压缩后的 CompactMessage 转回 AgentTurnItem
+      const compactedItems: AgentTurnItem[] = result.messages.map((m) => ({
+        type: "message" as const,
+        role: m.role === "tool_result" ? "system" as const : m.role as "system" | "user" | "assistant",
+        content: m.content,
+        ...(m.id ? { id: m.id } : {}),
+      }));
+      return { items: compactedItems, compacted: true };
+    }
+  } catch {
+    // Compaction failure is non-fatal, fall through to normal path
+  }
+
+  return { items: microCompact(sessionMessagesToTurnItems(messages)), compacted: false };
 }
 
 function shouldContinueAfterToolResult({ result }: { readonly toolName: string; readonly result: SessionToolExecutionResult }): boolean {
@@ -768,7 +825,7 @@ async function appendModelContinuationAfterToolDecision(
     }
     const canvasContext = latestCanvasContextFromMessages(loaded.state.messages);
     const maxSteps = await resolveMaxTurnSteps();
-    const compactedMessages = microCompact(sessionMessagesToTurnItems(loaded.state.messages));
+    const { items: compactedMessages } = await maybeAutoCompact(loaded.state.messages, loaded.state, loaded.session.id);
     const runtimeTurn = await executeRuntimeTurn({
       sessionId: loaded.session.id,
       sessionConfig: loaded.session.sessionConfig,
@@ -1332,7 +1389,7 @@ export async function handleSessionChatTransportMessage(
 
     const fullSystemPrompt = `${agentSystemPrompt}${AGENT_NATIVE_WRITE_NEXT_INSTRUCTIONS}`;
     const maxSteps = await resolveMaxTurnSteps();
-    const compactedMessages = microCompact(sessionMessagesToTurnItems(loaded.state.messages));
+    const { items: compactedMessages } = await maybeAutoCompact(loaded.state.messages, loaded.state, sessionId);
     const abortController = createSessionAbortController(sessionId);
     const runtimeTurn = await executeRuntimeTurn({
       sessionId,

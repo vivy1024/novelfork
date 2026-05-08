@@ -3,6 +3,11 @@ import { getRuntimeCommandDefinition, listRuntimeCommands, type RuntimeCommandDe
 
 import type { SessionPermissionMode } from "@/shared/session-types";
 
+/** 对标 CommandEnabledRegistry 接口（内联以避免 browser/server 边界违规） */
+interface CommandEnabledRegistryLike {
+  isEnabled(commandId: string): boolean;
+}
+
 export type SlashCommandName = string;
 
 export interface SlashCommandDefinition extends RuntimeCommandDefinition {
@@ -45,6 +50,8 @@ export interface SlashCommandExecutionContext {
   readonly registry?: SlashCommandRegistry;
   readonly status?: SlashCommandStatusContext;
   readonly compactSession?: (instructions?: string) => Promise<SlashCommandCompactResult>;
+  /** 对标 Claude Code CLI: 运行时命令启用/禁用注册表 */
+  readonly commandEnabledRegistry?: CommandEnabledRegistryLike;
 }
 
 function commandNameFromId(id: string): SlashCommandName {
@@ -98,6 +105,8 @@ export async function executeSlashCommandInput(input: string, context: SlashComm
     handlers: {
       ...(compactSession ? { compactSession: (instructions) => compactSession(instructions) } : {}),
     },
+    // 对标 Claude Code CLI: 接入 command-enabled-registry 做运行时禁用检查
+    ...(context.commandEnabledRegistry ? { isCommandEnabled: (id) => context.commandEnabledRegistry!.isEnabled(id) } : {}),
   });
   return { ...execution.result, runtimeEvents: execution.events } as SlashCommandExecutionResult;
 }

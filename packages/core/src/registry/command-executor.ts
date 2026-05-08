@@ -56,6 +56,8 @@ export interface RuntimeCommandExecutionContext {
   readonly registry?: readonly RuntimeCommandDefinition[];
   readonly status?: RuntimeCommandStatusContext;
   readonly handlers?: RuntimeCommandHandlers;
+  /** 对标 Claude Code CLI isCommandEnabled: 运行时检查命令是否被禁用 */
+  readonly isCommandEnabled?: (commandId: string) => boolean;
 }
 
 export type RuntimeCommandEvent =
@@ -212,6 +214,22 @@ export async function executeRuntimeCommandInput(input: string, context: Runtime
       parsed,
       result,
       events: [withSession(context.sessionId, { type: "command_error", raw: parsed.raw, args: parsed.args, command_name: parsed.name, code: result.code, message: result.message })],
+    };
+  }
+
+  // 对标 Claude Code CLI: isCommandEnabled 运行时禁用检查
+  if (context.isCommandEnabled && !context.isCommandEnabled(command.id)) {
+    const result: RuntimeCommandExecutionResult = { ok: false, kind: "error", code: "command_disabled", message: `命令 ${command.id} 已被禁用。可在套路页重新启用。` };
+    const name = commandName(command);
+    return {
+      ok: false,
+      command,
+      parsed,
+      result,
+      events: [
+        withSession(context.sessionId, { type: "command_started" as const, command_id: command.id, command_name: name, raw: parsed.raw, args: parsed.args }),
+        withSession(context.sessionId, { type: "command_error" as const, command_id: command.id, command_name: name, raw: parsed.raw, args: parsed.args, code: result.code, message: result.message }),
+      ],
     };
   }
 
