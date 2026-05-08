@@ -1,4 +1,8 @@
 import { useState } from "react";
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { GripVertical } from "lucide-react";
 
 import { listRuntimeCommands, type RuntimeCommandDefinition, type RuntimeCommandSource, type RuntimeCommandStatus } from "@vivy1024/novelfork-core/registry/command-registry";
 
@@ -388,6 +392,20 @@ function HooksTab({ hooks, onChange }: { readonly hooks: RoutineHook[]; readonly
   const addHook = () => onChange([...hooks, createHookDraft()]);
   const removeHook = (id: string) => onChange(hooks.filter((hook) => hook.id !== id));
 
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      const oldIndex = hooks.findIndex((h) => h.id === active.id);
+      const newIndex = hooks.findIndex((h) => h.id === over.id);
+      onChange(arrayMove(hooks, oldIndex, newIndex));
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-3 rounded-xl border border-border bg-muted/20 p-4">
@@ -409,44 +427,60 @@ function HooksTab({ hooks, onChange }: { readonly hooks: RoutineHook[]; readonly
       </div>
 
       {hooks.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-border bg-background p-4 text-sm text-muted-foreground">暂无生命周期钩子，点击“创建钩子”添加第一条。</div>
+        <div className="rounded-xl border border-dashed border-border bg-background p-4 text-sm text-muted-foreground">暂无生命周期钩子，点击"创建钩子"添加第一条。</div>
       ) : (
-        <div className="space-y-3">
-          {hooks.map((hook) => (
-            <div key={hook.id} className="grid gap-3 rounded-xl border border-border bg-background p-4 md:grid-cols-[1fr_1fr_1fr_auto]">
-              <label className="text-sm">
-                钩子名称
-                <input className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2" value={hook.name} onChange={(event) => updateHook(hook.id, { name: event.target.value })} />
-              </label>
-              <label className="text-sm">
-                触发节点
-                <input className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2" list="routine-hook-events" value={hook.event} onChange={(event) => updateHook(hook.id, { event: event.target.value })} />
-              </label>
-              <label className="text-sm">
-                执行方式
-                <select className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2" value={hook.kind} onChange={(event) => updateHook(hook.id, { kind: event.target.value as RoutineHookKind })}>
-                  {(Object.keys(HOOK_KIND_LABELS) as RoutineHookKind[]).map((kind) => <option key={kind} value={kind}>{HOOK_KIND_LABELS[kind]}</option>)}
-                </select>
-              </label>
-              <div className="flex items-end gap-2">
-                <button className="rounded-lg border border-border px-3 py-2 text-sm hover:bg-muted" type="button" onClick={() => updateHook(hook.id, { enabled: !hook.enabled })}>
-                  {hook.enabled ? "停用" : "启用"}
-                </button>
-                <button className="rounded-lg border border-destructive/40 px-3 py-2 text-sm text-destructive hover:bg-destructive/10" type="button" onClick={() => removeHook(hook.id)}>
-                  删除
-                </button>
-              </div>
-              <label className="text-sm md:col-span-4">
-                执行目标
-                <input className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2" value={hook.target} onChange={(event) => updateHook(hook.id, { target: event.target.value })} placeholder="命令、Webhook URL 或 LLM 提示词" />
-              </label>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={hooks.map((h) => h.id)} strategy={verticalListSortingStrategy}>
+            <div className="space-y-3">
+              {hooks.map((hook) => (
+                <SortableHookItem key={hook.id} hook={hook} onUpdate={updateHook} onRemove={removeHook} />
+              ))}
             </div>
-          ))}
-        </div>
+          </SortableContext>
+        </DndContext>
       )}
       <datalist id="routine-hook-events">
         {HOOK_EVENT_PRESETS.map((event) => <option key={event} value={event} />)}
       </datalist>
+    </div>
+  );
+}
+
+function SortableHookItem({ hook, onUpdate, onRemove }: { hook: RoutineHook; onUpdate: (id: string, updates: Partial<RoutineHook>) => void; onRemove: (id: string) => void }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: hook.id });
+  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 };
+
+  return (
+    <div ref={setNodeRef} style={style} className="grid gap-3 rounded-xl border border-border bg-background p-4 md:grid-cols-[auto_1fr_1fr_1fr_auto]">
+      <div className="flex items-center cursor-grab active:cursor-grabbing" {...attributes} {...listeners}>
+        <GripVertical className="size-4 text-muted-foreground" />
+      </div>
+      <label className="text-sm">
+        钩子名称
+        <input className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2" value={hook.name} onChange={(event) => onUpdate(hook.id, { name: event.target.value })} />
+      </label>
+      <label className="text-sm">
+        触发节点
+        <input className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2" list="routine-hook-events" value={hook.event} onChange={(event) => onUpdate(hook.id, { event: event.target.value })} />
+      </label>
+      <label className="text-sm">
+        执行方式
+        <select className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2" value={hook.kind} onChange={(event) => onUpdate(hook.id, { kind: event.target.value as RoutineHookKind })}>
+          {(Object.keys(HOOK_KIND_LABELS) as RoutineHookKind[]).map((kind) => <option key={kind} value={kind}>{HOOK_KIND_LABELS[kind]}</option>)}
+        </select>
+      </label>
+      <div className="flex items-end gap-2">
+        <button className="rounded-lg border border-border px-3 py-2 text-sm hover:bg-muted" type="button" onClick={() => onUpdate(hook.id, { enabled: !hook.enabled })}>
+          {hook.enabled ? "停用" : "启用"}
+        </button>
+        <button className="rounded-lg border border-destructive/40 px-3 py-2 text-sm text-destructive hover:bg-destructive/10" type="button" onClick={() => onRemove(hook.id)}>
+          删除
+        </button>
+      </div>
+      <label className="text-sm md:col-span-5">
+        执行目标
+        <input className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2" value={hook.target} onChange={(event) => onUpdate(hook.id, { target: event.target.value })} placeholder="命令、Webhook URL 或 LLM 提示词" />
+      </label>
     </div>
   );
 }
