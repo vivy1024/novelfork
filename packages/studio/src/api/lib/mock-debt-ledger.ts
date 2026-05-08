@@ -274,6 +274,20 @@ export const MOCK_DEBT_ITEMS = [
     ],
   },
   {
+    id: "codex-sandbox-planned-comment",
+    module: "Codex sandbox planned status comment",
+    files: ["packages/studio/src/types/settings.ts"],
+    currentBehavior: "types/settings.ts 的 codexSandboxMode 字段注释包含「尚未接入」，表明 Codex OS sandbox 为 planned 状态，不是假 current。",
+    userRisk: "low",
+    status: "transparent-placeholder",
+    targetBehavior: "保留 planned 状态注释直到真实 OS sandbox 实现；实现后移除注释并升级 status 为 current。",
+    ownerSpec: "claude-codex-novel-agent-v1",
+    verification: [
+      "codex-runtime-status.test.ts 验证 sandbox 保存为 planned",
+      "SettingsTruthModel.test.ts 验证 runtime.codexSandboxMode status=planned",
+    ],
+  },
+  {
     id: "core-missing-file-sentinel",
     module: "Core missing file sentinel",
     files: ["packages/core/src/**"],
