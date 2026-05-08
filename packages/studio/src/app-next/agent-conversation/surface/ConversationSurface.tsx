@@ -22,6 +22,7 @@ export interface ConversationRecoveryNotice {
 
 export interface ConversationSurfaceProps {
   title: string;
+  sessionId?: string;
   status: ConversationStatus;
   messages: readonly ConversationSurfaceMessage[];
   pendingConfirmation?: ConversationConfirmation | null;
@@ -40,6 +41,10 @@ export interface ConversationSurfaceProps {
   onCompactSession?: SlashCommandExecutionContext["compactSession"];
   onSlashCommandResult?: (result: SlashCommandExecutionResult) => void;
   onOpenArtifact?: (artifact: ToolResultArtifact) => void;
+  /** 工具栏回调 */
+  onEditTitle?: (newTitle: string) => void;
+  onGenerateTitle?: () => void;
+  onArchive?: () => void;
 }
 
 function formatDuration(ms: number): string {
@@ -65,6 +70,7 @@ function ThinkingTimer({ startedAt }: { startedAt: number }) {
 
 export function ConversationSurface({
   title,
+  sessionId,
   status,
   messages,
   pendingConfirmation = null,
@@ -81,9 +87,25 @@ export function ConversationSurface({
   onUpdateSessionConfig,
   onCompactSession,
   onSlashCommandResult,
+  onEditTitle,
+  onGenerateTitle,
+  onArchive,
 }: ConversationSurfaceProps) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+
+  const handleEditTitle = () => {
+    const newTitle = prompt("编辑标题", title);
+    if (newTitle && newTitle !== title) {
+      onEditTitle?.(newTitle);
+    }
+  };
+
+  const handleOpenExternal = () => {
+    if (sessionId) {
+      window.open(`/next/narrators/${encodeURIComponent(sessionId)}`, "_blank");
+    }
+  };
 
   const handleSlashCommandResult = (result: SlashCommandExecutionResult) => {
     onSlashCommandResult?.(result);
@@ -110,20 +132,20 @@ export function ConversationSurface({
       <header className="flex shrink-0 items-center justify-between border-b border-border px-4 py-2">
         <div className="flex items-center gap-1.5 min-w-0">
           <Tooltip>
-            <TooltipTrigger render={<Button variant="ghost" size="icon-xs" />}>
+            <TooltipTrigger render={<Button variant="ghost" size="icon-xs" onClick={handleOpenExternal} />}>
               <ExternalLink className="size-3.5" />
             </TooltipTrigger>
             <TooltipContent>在新标签打开</TooltipContent>
           </Tooltip>
           <h2 className="truncate text-sm font-semibold text-foreground">{title}</h2>
           <Tooltip>
-            <TooltipTrigger render={<Button variant="ghost" size="icon-xs" />}>
+            <TooltipTrigger render={<Button variant="ghost" size="icon-xs" onClick={handleEditTitle} />}>
               <Pencil className="size-3" />
             </TooltipTrigger>
             <TooltipContent>编辑标题</TooltipContent>
           </Tooltip>
           <Tooltip>
-            <TooltipTrigger render={<Button variant="ghost" size="icon-xs" />}>
+            <TooltipTrigger render={<Button variant="ghost" size="icon-xs" onClick={() => onGenerateTitle?.()} />}>
               <Sparkles className="size-3" />
             </TooltipTrigger>
             <TooltipContent>生成标题</TooltipContent>
@@ -153,7 +175,7 @@ export function ConversationSurface({
             <TooltipContent>会话信息</TooltipContent>
           </Tooltip>
           <Tooltip>
-            <TooltipTrigger render={<Button variant="ghost" size="icon-sm" />}>
+            <TooltipTrigger render={<Button variant="ghost" size="icon-sm" onClick={() => onArchive?.()} />}>
               <Archive className="size-4" />
             </TooltipTrigger>
             <TooltipContent>归档</TooltipContent>
