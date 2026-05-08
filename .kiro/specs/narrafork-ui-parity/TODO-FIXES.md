@@ -61,3 +61,17 @@
 - 每修一个，build + 截图验证
 - 发现新问题当场修，不开新 spec
 - 不写占位/mock/planned
+
+## ⚠️ shadcn 组件库未使用（根本问题）
+
+对话界面完全没有使用 shadcn/ui 组件，全是手写 className。需要：
+
+1. 安装缺少的 shadcn 组件：`dropdown-menu`、`popover`、`command`、`context-menu`、`tooltip`
+2. NarratorStatusBar 的 PopoverButton → 替换为 shadcn `DropdownMenu`
+3. MessageContextMenu → 替换为 shadcn `ContextMenu`
+4. Composer 按钮 → 替换为 shadcn `Button`
+5. 顶部工具栏按钮 → 替换为 shadcn `Button` variant="ghost" size="icon"
+6. 搜索输入框 → 替换为 shadcn `Input`
+7. 确认门按钮 → 替换为 shadcn `Button`
+
+这是优先级最高的改动——用标准组件库才能保证视觉一致性。
