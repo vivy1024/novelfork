@@ -37,7 +37,7 @@ export function Composer({ onSend, onAbort, onSlashCommandResult, slashCommandCo
         onSlashCommandResult?.(result);
         if (result.ok) setValue("");
       } catch (error) {
-        const result = { ok: false as const, kind: "error" as const, code: "command_failed", message: error instanceof Error ? error.message : "命令执行失败" };
+        const result = { ok: false as const, kind: "error" as const, code: "command_failed", message: error instanceof Error ? error.message : "命令执行失败", runtimeEvents: [] };
         setCommandStatus(result.message);
         onSlashCommandResult?.(result);
       }

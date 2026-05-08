@@ -2,6 +2,7 @@
  * 用户配置类型定义
  */
 
+import { normalizeCodexSandboxMode, type CodexSandboxMode } from "../shared/codex-runtime-status.js";
 import {
   DEFAULT_SESSION_CONFIG,
   type SessionPermissionMode,
@@ -95,6 +96,8 @@ export interface RuntimeControlSettings {
   dumpApiRequests: boolean;
   /** 发送方式：enter 或 ctrl-enter */
   sendMode: "enter" | "ctrl-enter";
+  /** Codex OS sandbox 尚未接入，只允许保存为 planned 状态 */
+  codexSandboxMode: CodexSandboxMode;
 }
 
 export type ModelReferenceValidationStatus = "empty" | "valid" | "invalid";
@@ -265,6 +268,7 @@ export const DEFAULT_USER_CONFIG: UserConfig = {
     scrollAutoLoadHistory: true,
     dumpApiRequests: false,
     sendMode: "enter",
+    codexSandboxMode: normalizeCodexSandboxMode(undefined).mode,
     largeWindowCompressionThresholdPercent: 60,
     largeWindowTruncateTargetPercent: 50,
   },

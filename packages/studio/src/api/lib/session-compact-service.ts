@@ -2,6 +2,7 @@ import type { AgentTurnItem } from "./agent-turn-runtime.js";
 import type { NarratorSessionChatMessage, NarratorSessionChatSnapshot } from "../../shared/session-types.js";
 import { microCompact } from "./compact/micro-compact.js";
 import { getSessionChatSnapshot, replaceSessionChatState } from "./session-chat-service.js";
+import { collectRuntimeTranscriptEvents } from "./runtime-transcript.js";
 
 export type SessionCompactErrorCode = "session_not_found" | "not_enough_messages" | "compact_failed";
 
@@ -95,6 +96,7 @@ function buildSummaryMessage(input: {
   readonly preservedRange: { readonly fromSeq: number; readonly toSeq: number };
   readonly model: { readonly providerId: string; readonly modelId: string };
   readonly budget: SessionCompactBudget;
+  readonly runtimeTranscriptSummary?: { readonly eventCount: number; readonly eventTypes: readonly string[] };
   readonly instructions?: string;
 }): NarratorSessionChatMessage {
   return {
@@ -111,6 +113,7 @@ function buildSummaryMessage(input: {
       preservedRange: input.preservedRange,
       model: input.model,
       budget: input.budget,
+      ...(input.runtimeTranscriptSummary ? { runtimeTranscriptSummary: input.runtimeTranscriptSummary } : {}),
       ...(input.instructions?.trim() ? { instructions: input.instructions.trim() } : {}),
     },
   };
@@ -127,6 +130,11 @@ export async function compactSession(input: CompactSessionInput): Promise<Sessio
   const compactedMessages = sourceMessages.slice(0, sourceMessages.length - preserveRecentMessages);
   const preservedMessages = sourceMessages.slice(-preserveRecentMessages);
   const compactedItems = microCompact(compactedMessages.map(toTurnItem));
+  const runtimeTranscriptEvents = collectRuntimeTranscriptEvents(compactedMessages);
+  const runtimeTranscriptSummary = {
+    eventCount: runtimeTranscriptEvents.length,
+    eventTypes: [...new Set(runtimeTranscriptEvents.map((event) => event.type))],
+  };
   const compactedAt = input.now ?? Date.now();
   const sourceRange = {
     fromSeq: seqOf(compactedMessages[0], 1),
@@ -143,7 +151,7 @@ export async function compactSession(input: CompactSessionInput): Promise<Sessio
   const summary = buildSummary(compactedMessages, compactedItems, input.instructions);
   const budget = {
     estimatedTokensBefore: estimateTokens(sourceMessages),
-    estimatedTokensAfter: estimateTokens([buildSummaryMessage({ sessionId: input.sessionId, summary, compactedAt, compactedMessageCount: compactedMessages.length, sourceRange, preservedRange, model, budget: { estimatedTokensBefore: 1, estimatedTokensAfter: 1, maxRecentMessages: preserveRecentMessages, preservedMessages: preservedMessages.length }, instructions: input.instructions }), ...preservedMessages]),
+    estimatedTokensAfter: estimateTokens([buildSummaryMessage({ sessionId: input.sessionId, summary, compactedAt, compactedMessageCount: compactedMessages.length, sourceRange, preservedRange, model, budget: { estimatedTokensBefore: 1, estimatedTokensAfter: 1, maxRecentMessages: preserveRecentMessages, preservedMessages: preservedMessages.length }, runtimeTranscriptSummary, instructions: input.instructions }), ...preservedMessages]),
     maxRecentMessages: preserveRecentMessages,
     preservedMessages: preservedMessages.length,
   } satisfies SessionCompactBudget;
@@ -156,6 +164,7 @@ export async function compactSession(input: CompactSessionInput): Promise<Sessio
     preservedRange,
     model,
     budget,
+    runtimeTranscriptSummary,
     instructions: input.instructions,
   });
 

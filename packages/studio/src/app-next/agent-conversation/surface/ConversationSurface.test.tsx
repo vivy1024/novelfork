@@ -193,6 +193,14 @@ describe("Conversation Surface", () => {
           risk: "confirmed-write",
           permissionSource: "sessionConfig.toolPolicy.ask",
           operation: "创建候选稿，不覆盖正式章节",
+          targetResources: [{ kind: "chapter", id: "chapter-3", bookId: "book-1", title: "第三章" }],
+          source: { sessionId: "session-1", messageId: "message-1", toolUseId: "tool-1" },
+          checkpoint: { required: true, checkpointId: "checkpoint-1", paths: ["chapters/0003.md"] },
+          diff: { status: "mutation-preview", summary: "替换第三章正文" },
+          operations: [
+            { action: "approve", label: "批准" },
+            { action: "reject", label: "拒绝" },
+          ],
         } as never}
         onApprove={vi.fn()}
         onReject={vi.fn()}
@@ -204,6 +212,14 @@ describe("Conversation Surface", () => {
     expect(gate.textContent).toContain("风险：confirmed-write");
     expect(gate.textContent).toContain("来源：sessionConfig.toolPolicy.ask");
     expect(gate.textContent).toContain("操作：创建候选稿，不覆盖正式章节");
+    expect(gate.textContent).toContain("资源：chapter / chapter-3 / 第三章");
+    expect(gate.textContent).toContain("Session：session-1");
+    expect(gate.textContent).toContain("消息：message-1");
+    expect(gate.textContent).toContain("工具调用：tool-1");
+    expect(gate.textContent).toContain("Checkpoint：checkpoint-1");
+    expect(gate.textContent).toContain("chapters/0003.md");
+    expect(gate.textContent).toContain("Diff：mutation-preview / 替换第三章正文");
+    expect(gate.textContent).toContain("可执行：批准 / 拒绝");
   });
 
   it("确认门触发 approve/reject 回调", () => {

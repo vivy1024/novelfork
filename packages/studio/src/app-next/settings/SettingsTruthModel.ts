@@ -1,3 +1,4 @@
+import { getCodexRuntimeCapabilityStatuses } from "../../shared/codex-runtime-status";
 import { PROXY_API_PATH, USER_SETTINGS_API_PATH } from "../backend-contract";
 
 export type SettingsFactGroup =
@@ -268,6 +269,25 @@ export function deriveAgentRuntimeSettingsFacts(config: AgentRuntimeSettingsInpu
       reason: "NovelFork settings schema 尚无 first-token timeout 字段",
       verifiedBy: "unit",
     },
+    ...getCodexRuntimeCapabilityStatuses()
+      .filter((status) => status.id === "codex.sandboxMode" || status.id === "codex.approvalPolicy" || status.id === "codex.review" || status.id === "codex.imageInput")
+      .map((status) => ({
+        id: status.id === "codex.sandboxMode"
+          ? "runtime.codexSandboxMode"
+          : status.id === "codex.approvalPolicy"
+            ? "runtime.codexApprovalPolicy"
+            : status.id === "codex.review"
+              ? "runtime.codexReview"
+              : "runtime.codexImageInput",
+        label: status.label,
+        value: status.value,
+        group: "agent-runtime" as const,
+        source: "capability-matrix" as const,
+        status: status.status,
+        writable: false,
+        reason: status.status === "partial" ? status.currentBehavior : status.unsupportedReason ?? status.currentBehavior,
+        verifiedBy: "unit" as const,
+      })),
     agentRuntimeFact({ id: "runtime.proxy.webFetch", label: "WebFetch 代理", value: config?.proxy?.webFetch, readApi: PROXY_API_PATH, writeApi: PROXY_API_PATH }),
     agentRuntimeFact({ id: "runtime.toolAccess.mcpStrategy", label: "MCP 工具策略", value: toolAccess?.mcpStrategy }),
     agentRuntimeFact({ id: "runtime.toolAccess.allowlist", label: "全局目录/命令白名单", value: toolAccess?.allowlist }),

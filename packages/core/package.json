@@ -29,6 +29,14 @@
       "types": "./dist/models/status.d.ts",
       "import": "./dist/models/status.js"
     },
+    "./registry/command-registry": {
+      "types": "./dist/registry/command-registry.d.ts",
+      "import": "./dist/registry/command-registry.js"
+    },
+    "./registry/command-executor": {
+      "types": "./dist/registry/command-executor.d.ts",
+      "import": "./dist/registry/command-executor.js"
+    },
     "./runtime/process-adapter": {
       "types": "./dist/runtime/process-adapter.d.ts",
       "import": "./dist/runtime/process-adapter.js"

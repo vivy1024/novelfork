@@ -85,6 +85,10 @@ describe("SettingsTruthModel", () => {
       "runtime.recovery.maxRetryDelayMs",
       "runtime.recovery.backoffMultiplier",
       "runtime.firstTokenTimeoutMs",
+      "runtime.codexApprovalPolicy",
+      "runtime.codexSandboxMode",
+      "runtime.codexReview",
+      "runtime.codexImageInput",
       "runtime.proxy.webFetch",
       "runtime.toolAccess.mcpStrategy",
       "runtime.toolAccess.allowlist",
@@ -100,6 +104,21 @@ describe("SettingsTruthModel", () => {
       source: "capability-matrix",
       reason: "NovelFork settings schema 尚无 first-token timeout 字段",
     });
+    expect(facts.find((fact) => fact.id === "runtime.codexSandboxMode")).toMatchObject({
+      status: "planned",
+      value: "planned",
+      writable: false,
+      source: "capability-matrix",
+      reason: expect.stringContaining("OS sandbox"),
+    });
+    expect(facts.find((fact) => fact.id === "runtime.codexApprovalPolicy")).toMatchObject({
+      status: "partial",
+      value: "permissionMode/toolPolicy",
+      source: "capability-matrix",
+      reason: expect.stringContaining("pending confirmation"),
+    });
+    expect(facts.find((fact) => fact.id === "runtime.codexReview")).toMatchObject({ status: "reference-only", writable: false });
+    expect(facts.find((fact) => fact.id === "runtime.codexImageInput")).toMatchObject({ status: "reference-only", writable: false });
     expect(facts.find((fact) => fact.id === "runtime.proxy.webFetch")).toMatchObject({
       source: "user-settings",
       readApi: PROXY_API_PATH,

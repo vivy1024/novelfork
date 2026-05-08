@@ -10,7 +10,7 @@
 
 ## 1. 文档目的
 
-本文记录 NovelFork Studio 全部已交付能力的事实状态。覆盖已归档 spec、`agent-native-workspace-v1` 已完成任务与 `web-agent-runtime-v1` 已完成任务；当前主产品口径是 session-first 的 Agent-native 创作工作台 + Web Agent Runtime。
+本文记录 NovelFork Studio 历史已交付资产的事实状态。覆盖已归档 spec、`agent-native-workspace-v1` 与 `web-agent-runtime-v1` 的已完成任务；但这些 checkbox 只能作为底层资产证据，不能单独证明当前端到端功能完成。Claude/Codex/小说 Agent 能力的 `current/partial/not-wired/planned/unsupported/non-goal` 重验状态以 [04-产品能力重新验收矩阵](./04-产品能力重新验收矩阵.md) 为准。
 
 状态口径：
 - **真实可用**：有真实 API、持久化或真实 runtime 调用，失败时返回真实错误。
@@ -56,14 +56,14 @@
 | **对话生成** | 真实可用 | 多角色、指定场景和目的 |
 | **多版本对比** | 真实可用 | 2-5 个版本并排 |
 | **大纲分支** | 真实可用 | 2-3 条走向建议 |
-| **整章生成（write-next）** | 真实可用 | 右侧叙述者按 cockpit → PGI → guided plan → approve → candidate 工具链生成候选稿 |
+| **整章生成（write-next）** | partial | 底层 cockpit / PGI / guided plan / candidate 资产存在；当前端到端重验状态以 04 矩阵为准，不能单独宣传为 current |
 | **审校当前章** | 真实可用 | 连续性、人设、文笔审查 |
 | **去 AI 味检测** | 真实可用 | 12 特征规则 + 7 招消味建议 |
 | **连续性检查** | 真实可用 | 人物/设定/伏笔冲突检测 |
 | **章节钩子生成** | 真实可用 | 3-5 个备选方案 |
 | **AI 味过滤** | 真实可用 | 本地 12 规则 + 可选朱雀 API |
 | **文风仿写** | 真实可用 | 从参考文本导入 + style guide 注入 |
-| **生成前追问（PGI）** | 真实可用 | 基于矛盾/伏笔/角色状态 |
+| **生成前追问（PGI）** | partial | PGI 底层资产存在；需在 `/novel:write-next` 主路径中补 Studio/CLI headless 端到端证据后才能升为 current |
 | **核心设定变更（CoreShift）** | 真实可用 | 审计链：propose → accept/reject |
 | **非破坏性写入** | 强制 | AI 结果只进候选区，确认后才影响正文 |
 
@@ -204,16 +204,16 @@
 | **continuation 指令** | 真实可用 | 工具结果回灌时追加"总结已获信息、判断是否足够"指令 |
 | **OpenAI-compatible 工具上下文** | 真实可用 | canonical items 转 assistant tool_calls + tool role message |
 | **会话中心** | 真实可用 | 独立/书籍/章节绑定筛选、归档/恢复、模型/权限状态、继续最近会话、Fork 标题/继承说明 |
-| **会话斜杠命令** | 真实可用 | Composer 输入 `/` 展示建议，`/help`、`/status`、`/model`、`/permission`、`/fork`、`/resume`、`/compact` 返回结构化命令结果；非法命令以 status 展示，不发送给模型 |
-| **Session Compact** | 真实可用 | `/compact` 走 `POST /api/sessions/:id/compact` 与 session compact service，写入 `session-compact-summary`、保留 recent messages，并展示 compact summary/context budget |
+| **会话斜杠命令** | partial | 当前 NovelFork slash 命令已接入 core `command-registry.ts` / `command-executor.ts` 单一事实源，Studio slash palette、Routines、CLI help 与 headless slash prompt 共享 registry/executor，并输出 command_started/completed/error 事件；后续仍需继续接真实 tools/MCP/agents handler 与 `/novel:*` 工作流，重验状态以 04 矩阵为准 |
+| **Session Compact** | partial | `/compact` 走真实 session compact service 并有测试证据；仍需并入统一 transcript/runtime event 后再作为 Agent 产品 current 能力验收 |
 | **Session Memory 边界** | 透明过渡 | `GET /api/sessions/:id/memory/status` 显示 writer 未接入时的只读状态；`POST /api/sessions/:id/memory` 通过 session memory boundary service 区分用户偏好、项目事实、临时剧情草稿，偏好/项目事实需要审计来源，临时剧情草稿不自动写长期 memory |
-| **Session Tool Policy** | 真实可用 | `SessionConfig.toolPolicy` 支持 allow/deny/ask；工具执行合并 permissionMode、policy、resource risk 与 dirty canvasContext，返回 policy-denied / permission-required / policy-disabled |
-| **Headless Chat stream-json API** | 真实可用 | `POST /api/sessions/headless-chat` 复用 AgentTurnRuntime/session tools，支持 text 与 stream-json input、NDJSON output、ephemeral/no-session-persistence、permission_request、max turns/budget stop result；result envelope 含 duration、stop_reason、usage、cost unknown 与 permission_denials |
-| **高级工作台模式** | 真实可用 | workbenchMode=false 隐藏 Terminal/Browser/Bash/MCP/Admin 等高级工具 |
-| **Headless Exec 服务** | 真实可用 | `POST /api/exec` 非交互执行，遇确认门停止返回 pending；保留兼容入口 |
-| **资源 Checkpoint / Rewind** | 真实可用 | 正式章节、Truth/story 与 narrative apply 写入前保存 `.novelfork/checkpoints/<checkpointId>`，记录 session/message/toolUse、资源 path/hash/snapshotRef；`/rewind/preview` 返回 diff/hash/risk，`/rewind/apply` 必须经确认门并写入 safety checkpoint/audit；候选稿、草稿和提示词预览属于非正式资源边界 |
-| **`novelfork chat` CLI** | 真实可用 | 通过 HTTP 调用 `/api/sessions/headless-chat`，支持 text/json/stream-json、`--session`、`--book`、`--model`、`--no-session-persistence`、max turns/budget 与 pending confirmation exit code=2 |
-| **`novelfork exec` CLI** | 真实可用 | 保留旧 `/api/exec` 默认兼容；stream-json/ephemeral/max-turns/max-budget 模式复用 headless chat common parser 并支持真实 NDJSON 响应 |
+| **Session Tool Policy / Confirmation Gate / Codex Status** | partial | `resolveSessionToolPolicy()` 统一输出 visibleToModel / requiresConfirmation / denied / risk / reason / checkpointRequired；`normalizeToolConfirmationRequest()` 统一 pending confirmation 的 targetResources/source/checkpoint/operations；`getCodexRuntimeCapabilityStatuses()` 统一 sandbox planned、approval partial、review/image reference-only 并进入 settings facts 与 headless result runtime_capabilities；provider-visible tool schema、Agent turn、tool executor、transcript audit 与 headless/CLI permission_request 复用同源结构，Studio ConfirmationGate 展示目标资源、来源、checkpoint、diff 和 approve/reject；后续仍需 settings/routines 可视化管理与真实 `/novel:*` 工作流验收 |
+| **Headless Chat stream-json API** | partial | `POST /api/sessions/headless-chat` 已有底层实现和测试证据；CodexCLI-class event taxonomy 与小说 workflow 端到端仍按 04 矩阵重验 |
+| **高级工作台模式** | partial | workbenchMode=false 可隐藏 Terminal/Browser/Bash/MCP/Admin 等高级工具；MCP/工具治理仍需按 04 矩阵接入真实 runtime |
+| **Headless Exec 服务** | partial | `POST /api/exec` 保留非交互兼容入口；`novelfork exec` 与 Studio 同源、stream-json、小说 workflow 的完整重验仍按 04 矩阵推进 |
+| **资源 Checkpoint / Rewind** | partial | 正式章节、Truth/story 与 narrative apply 写入前已有 checkpoint/rewind 底层实现；候选稿应用、Agent workflow 与 CLI/headless 同源证据仍需按 04 矩阵补齐 |
+| **`novelfork chat` CLI** | partial | 通过 HTTP 调用 `/api/sessions/headless-chat` 并有 CLI 测试证据；仍需纳入统一 runtime event/transcript 与小说 workflow 端到端验收 |
+| **`novelfork exec` CLI** | partial | 保留旧 `/api/exec` 默认兼容，stream-json 模式已有底层证据；CodexCLI-class event taxonomy 与 `/novel:write-next` 同源执行仍需补端到端证据 |
 | **真实 Provider/Model 选择** | 强制 | 无虚拟模型、无自动 fallback；未配置返回 model-unavailable |
 | **Anthropic/Responses API adapter** | 未接入 | 预留转换接口，当前返回 unsupported |
 

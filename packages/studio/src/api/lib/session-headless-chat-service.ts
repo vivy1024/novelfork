@@ -1,6 +1,8 @@
 import { getAgentSystemPrompt } from "@vivy1024/novelfork-core";
+import { executeRuntimeCommandInput, type RuntimeCommandEvent } from "@vivy1024/novelfork-core/registry/command-executor";
 
 import type { CanvasContext, SessionToolExecutionResult } from "../../shared/agent-native-workspace.js";
+import { getCodexRuntimeCapabilityStatuses } from "../../shared/codex-runtime-status.js";
 import {
   DEFAULT_SESSION_CONFIG,
   type CreateNarratorSessionInput,
@@ -13,7 +15,11 @@ import {
   type ToolCall,
 } from "../../shared/session-types.js";
 import { buildAgentContext } from "./agent-context.js";
-import { runAgentTurn, type AgentGenerateResult, type AgentTurnEvent, type AgentTurnItem } from "./agent-turn-runtime.js";
+import type { AgentGenerateResult, AgentTurnEvent, AgentTurnItem } from "./agent-turn-runtime.js";
+import { executeRuntimeTurn } from "./runtime-turn-service.js";
+import { createRuntimeResultEvent, type RuntimeEvent } from "./runtime-events.js";
+import { attachRuntimeTranscriptToMessages } from "./runtime-transcript.js";
+import { encodeRuntimeStreamJsonEventsAsNdjson, runtimeEventsToStreamJsonEvents, type RuntimeStreamJsonEvent } from "./runtime-stream-json.js";
 import { generateSessionReply } from "./llm-runtime-service.js";
 import { appendSessionChatHistory, loadSessionChatHistory } from "./session-history-store.js";
 import { createSession, getSessionById, updateSession } from "./session-service.js";
@@ -84,21 +90,14 @@ export interface HeadlessPermissionDenial {
   readonly summary: string;
 }
 
-export type HeadlessChatStreamEvent =
-  | { readonly type: "user_message"; readonly session_id: string; readonly content: string; readonly ephemeral: boolean }
-  | { readonly type: "assistant_delta"; readonly session_id: string; readonly delta: string; readonly ephemeral: boolean }
-  | { readonly type: "assistant_message"; readonly session_id: string; readonly content: string; readonly runtime?: unknown; readonly ephemeral: boolean }
-  | { readonly type: "tool_use"; readonly session_id: string; readonly tool_use_id: string; readonly tool_name: string; readonly input: Record<string, unknown>; readonly runtime?: unknown; readonly ephemeral: boolean }
-  | { readonly type: "tool_result"; readonly session_id: string; readonly tool_use_id: string; readonly tool_name: string; readonly result: SessionToolExecutionResult; readonly runtime?: unknown; readonly ephemeral: boolean }
-  | { readonly type: "permission_request"; readonly session_id: string; readonly confirmation_id: string; readonly tool_name: string; readonly confirmation?: unknown; readonly result: SessionToolExecutionResult; readonly ephemeral: boolean }
-  | { readonly type: "error"; readonly session_id: string; readonly code: string; readonly message: string; readonly data?: unknown; readonly ephemeral: boolean }
-  | { readonly type: "result"; readonly session_id: string; readonly success: boolean; readonly stop_reason: HeadlessChatStopReason; readonly exit_code: number; readonly final_message?: string; readonly error?: string; readonly pending_confirmation?: { readonly toolName: string; readonly id: string }; readonly ephemeral: boolean; readonly duration_ms: number; readonly usage: HeadlessChatUsageEnvelope; readonly cost: HeadlessChatCostEnvelope; readonly permission_denials: readonly HeadlessPermissionDenial[] };
+export type HeadlessChatStreamEvent = RuntimeStreamJsonEvent;
 
 export interface HeadlessChatResult {
   readonly sessionId: string;
   readonly ephemeral: boolean;
   readonly events: readonly HeadlessChatStreamEvent[];
   readonly runtimeEvents: readonly AgentTurnEvent[];
+  readonly canonicalEvents: readonly RuntimeEvent[];
   readonly finalMessage?: string;
   readonly toolResults: ReadonlyArray<{ readonly toolName: string; readonly result: SessionToolExecutionResult }>;
   readonly pendingConfirmation?: { readonly toolName: string; readonly id: string };
@@ -367,70 +366,54 @@ function collectRuntimeSummary(events: readonly AgentTurnEvent[]): {
   };
 }
 
-function runtimeEventToStreamEvent(
-  sessionId: string,
-  ephemeral: boolean,
-  event: AgentTurnEvent,
-): HeadlessChatStreamEvent[] {
-  switch (event.type) {
-    case "streaming_chunk":
-      return [{ type: "assistant_delta", session_id: sessionId, delta: event.content, ephemeral }];
-    case "assistant_message":
-      return [{ type: "assistant_message", session_id: sessionId, content: event.content, runtime: event.runtime, ephemeral }];
-    case "tool_call":
-      return [{ type: "tool_use", session_id: sessionId, tool_use_id: event.id, tool_name: event.toolName, input: event.input, runtime: event.runtime, ephemeral }];
-    case "tool_result":
-      return [{ type: "tool_result", session_id: sessionId, tool_use_id: event.id, tool_name: event.toolName, result: event.result, ...(event.runtime ? { runtime: event.runtime } : {}), ephemeral }];
-    case "confirmation_required":
-      return [{
-        type: "permission_request",
-        session_id: sessionId,
-        confirmation_id: event.result.confirmation?.id ?? event.id,
-        tool_name: event.toolName,
-        ...(event.result.confirmation ? { confirmation: event.result.confirmation } : {}),
-        result: event.result,
-        ephemeral,
-      }];
-    case "turn_failed":
-      return [{ type: "error", session_id: sessionId, code: event.reason, message: event.message, ...(event.data ? { data: event.data } : {}), ephemeral }];
-    case "turn_completed":
-      return [];
-  }
-}
-
 function buildStreamEvents(input: {
   readonly sessionId: string;
   readonly prompt: string;
   readonly ephemeral: boolean;
-  readonly runtimeEvents: readonly AgentTurnEvent[];
+  readonly canonicalEvents: readonly RuntimeEvent[];
   readonly durationMs: number;
   readonly summary: ReturnType<typeof collectRuntimeSummary>;
   readonly usage: HeadlessChatUsageEnvelope;
   readonly cost: HeadlessChatCostEnvelope;
   readonly permissionDenials: readonly HeadlessPermissionDenial[];
 }): HeadlessChatStreamEvent[] {
-  const events: HeadlessChatStreamEvent[] = [
-    { type: "user_message", session_id: input.sessionId, content: input.prompt, ephemeral: input.ephemeral },
-  ];
-  for (const event of input.runtimeEvents) {
-    events.push(...runtimeEventToStreamEvent(input.sessionId, input.ephemeral, event));
-  }
-  events.push({
-    type: "result",
-    session_id: input.sessionId,
-    success: input.summary.success,
-    stop_reason: input.summary.stopReason,
-    exit_code: input.summary.exitCode,
-    ...(input.summary.finalMessage ? { final_message: input.summary.finalMessage } : {}),
-    ...(input.summary.error ? { error: input.summary.error } : {}),
-    ...(input.summary.pendingConfirmation ? { pending_confirmation: input.summary.pendingConfirmation } : {}),
-    ephemeral: input.ephemeral,
-    duration_ms: input.durationMs,
-    usage: input.usage,
-    cost: input.cost,
-    permission_denials: input.permissionDenials,
+  return runtimeEventsToStreamJsonEvents([
+    { type: "message", session_id: input.sessionId, role: "user", content: input.prompt, ephemeral: input.ephemeral },
+    ...input.canonicalEvents.filter((event) => event.type !== "result"),
+    createRuntimeResultEvent({
+      sessionId: input.sessionId,
+      success: input.summary.success,
+      stopReason: input.summary.stopReason,
+      exitCode: input.summary.exitCode,
+      ...(input.summary.finalMessage ? { finalMessage: input.summary.finalMessage } : {}),
+      ...(input.summary.error ? { error: input.summary.error } : {}),
+      ...(input.summary.pendingConfirmation ? { pendingConfirmation: input.summary.pendingConfirmation } : {}),
+      durationMs: input.durationMs,
+      usage: input.usage,
+      cost: input.cost,
+      permissionDenials: input.permissionDenials,
+      runtimeCapabilities: getCodexRuntimeCapabilityStatuses(),
+      ephemeral: input.ephemeral,
+    }),
+  ], { ephemeral: input.ephemeral });
+}
+
+function isSlashCommandPrompt(prompt: string): boolean {
+  return prompt.trim().startsWith("/");
+}
+
+function runtimeEventsFromCommandEvents(events: readonly RuntimeCommandEvent[], sessionId: string, ephemeral: boolean): RuntimeEvent[] {
+  return events.map((event) => {
+    const base = { session_id: sessionId, ephemeral };
+    switch (event.type) {
+      case "command_started":
+        return { type: "command_started", ...base, command_id: event.command_id, command_name: event.command_name, raw: event.raw, args: event.args } satisfies RuntimeEvent;
+      case "command_completed":
+        return { type: "command_completed", ...base, command_id: event.command_id, command_name: event.command_name, raw: event.raw, args: event.args, result: event.result } satisfies RuntimeEvent;
+      case "command_error":
+        return { type: "command_error", ...base, ...(event.command_id ? { command_id: event.command_id } : {}), ...(event.command_name ? { command_name: event.command_name } : {}), raw: event.raw, ...(event.args ? { args: event.args } : {}), code: event.code, message: event.message } satisfies RuntimeEvent;
+    }
   });
-  return events;
 }
 
 async function resolveSession(input: HeadlessChatInput, prompt: string): Promise<{ readonly session: NarratorSessionRecord; readonly ephemeral: false } | { readonly session: NarratorSessionRecord; readonly ephemeral: true }> {
@@ -475,10 +458,13 @@ async function resolveSession(input: HeadlessChatInput, prompt: string): Promise
   return { session: await createSession(createInput), ephemeral: false };
 }
 
-async function persistHeadlessTurn(session: NarratorSessionRecord, prompt: string, runtimeEvents: readonly AgentTurnEvent[], timestamp: number, cumulativeUsage: HeadlessCumulativeUsage): Promise<void> {
+async function persistHeadlessTurn(session: NarratorSessionRecord, prompt: string, runtimeEvents: readonly AgentTurnEvent[], canonicalEvents: readonly RuntimeEvent[], timestamp: number, cumulativeUsage: HeadlessCumulativeUsage): Promise<void> {
   const existingHistory = await loadSessionChatHistory(session.id);
   const startSeq = Math.max(session.messageCount, lastSeq(existingHistory), lastSeq(session.recentMessages ?? []));
-  const messagesToPersist = buildMessagesToPersist({ sessionId: session.id, prompt, runtimeEvents, startSeq, timestamp });
+  const messagesToPersist = attachRuntimeTranscriptToMessages(
+    buildMessagesToPersist({ sessionId: session.id, prompt, runtimeEvents, startSeq, timestamp }),
+    canonicalEvents,
+  );
   if (messagesToPersist.length === 0) return;
   const persisted = await appendSessionChatHistory(session.id, messagesToPersist, existingHistory);
   const nextRecent = persisted.length > 0 ? persisted.slice(-RECENT_MESSAGE_LIMIT) : messagesToPersist.slice(-RECENT_MESSAGE_LIMIT);
@@ -488,6 +474,19 @@ async function persistHeadlessTurn(session: NarratorSessionRecord, prompt: strin
     recentMessages: nextRecent,
     cumulativeUsage,
   });
+}
+
+async function persistHeadlessCommand(session: NarratorSessionRecord, prompt: string, message: string, canonicalEvents: readonly RuntimeEvent[], timestamp: number, cumulativeUsage: HeadlessCumulativeUsage): Promise<void> {
+  const existingHistory = await loadSessionChatHistory(session.id);
+  const startSeq = Math.max(session.messageCount, lastSeq(existingHistory), lastSeq(session.recentMessages ?? []));
+  const messagesToPersist = attachRuntimeTranscriptToMessages([
+    withSeq({ id: `headless-command-user-${timestamp}`, role: "user", content: prompt, timestamp }, startSeq + 1),
+    withSeq({ id: `headless-command-result-${timestamp}`, role: "assistant", content: message, timestamp: timestamp + 1 }, startSeq + 2),
+  ], canonicalEvents);
+  const persisted = await appendSessionChatHistory(session.id, messagesToPersist, existingHistory);
+  const nextRecent = persisted.length > 0 ? persisted.slice(-RECENT_MESSAGE_LIMIT) : messagesToPersist.slice(-RECENT_MESSAGE_LIMIT);
+  const messageCount = Math.max(startSeq, lastSeq(persisted), lastSeq(messagesToPersist));
+  await updateSession(session.id, { messageCount, recentMessages: nextRecent, cumulativeUsage });
 }
 
 function createLimitStoppedResult(
@@ -510,6 +509,7 @@ function createLimitStoppedResult(
     ephemeral,
     events,
     runtimeEvents: [],
+    canonicalEvents: [],
     toolResults: [],
     success: false,
     stopReason,
@@ -548,11 +548,83 @@ function failureResult(sessionId: string, ephemeral: boolean, prompt: string, er
       resultEvent,
     ],
     runtimeEvents: [],
+    canonicalEvents: [],
     toolResults: [],
     success: false,
     stopReason: "failed",
     exitCode: 1,
     error,
+    durationMs,
+    usage,
+    cost: UNKNOWN_COST,
+    permissionDenials,
+  };
+}
+
+async function executeHeadlessRuntimeCommand(input: {
+  readonly session: NarratorSessionRecord;
+  readonly ephemeral: boolean;
+  readonly prompt: string;
+  readonly startedAt: number;
+}): Promise<HeadlessChatResult> {
+  const currentTurnUsage = zeroUsageTokens();
+  const usage = buildUsageEnvelope(input.session, currentTurnUsage);
+  const permissionDenials: readonly HeadlessPermissionDenial[] = [];
+  const commandExecution = await executeRuntimeCommandInput(input.prompt, {
+    sessionId: input.session.id,
+    status: {
+      sessionId: input.session.id,
+      modelLabel: [input.session.sessionConfig.providerId, input.session.sessionConfig.modelId].filter(Boolean).join(":"),
+      permissionMode: input.session.sessionConfig.permissionMode,
+    },
+    handlers: {
+      updateSessionConfig: async (patch) => {
+        if (!input.ephemeral) {
+          await updateSession(input.session.id, { sessionConfig: { ...input.session.sessionConfig, ...patch } });
+        }
+      },
+    },
+  });
+  const canonicalEvents = runtimeEventsFromCommandEvents(commandExecution.events, input.session.id, input.ephemeral);
+  const durationMs = Date.now() - input.startedAt;
+  const success = commandExecution.result.ok;
+  const exitCode = success ? 0 : 1;
+  const stopReason: HeadlessChatStopReason = success ? "completed" : "failed";
+  const error = success ? undefined : commandExecution.result.code;
+  const events = runtimeEventsToStreamJsonEvents([
+    { type: "message", session_id: input.session.id, role: "user", content: input.prompt, ephemeral: input.ephemeral },
+    ...canonicalEvents,
+    createRuntimeResultEvent({
+      sessionId: input.session.id,
+      success,
+      stopReason,
+      exitCode,
+      finalMessage: commandExecution.result.message,
+      ...(error ? { error } : {}),
+      durationMs,
+      usage,
+      cost: UNKNOWN_COST,
+      permissionDenials,
+      ephemeral: input.ephemeral,
+    }),
+  ], { ephemeral: input.ephemeral });
+
+  if (!input.ephemeral) {
+    await persistHeadlessCommand(input.session, input.prompt, commandExecution.result.message, canonicalEvents, input.startedAt, usage.cumulative);
+  }
+
+  return {
+    sessionId: input.session.id,
+    ephemeral: input.ephemeral,
+    events,
+    runtimeEvents: [],
+    canonicalEvents,
+    finalMessage: success ? commandExecution.result.message : undefined,
+    toolResults: [],
+    success,
+    stopReason,
+    exitCode,
+    ...(error ? { error } : {}),
     durationMs,
     usage,
     cost: UNKNOWN_COST,
@@ -583,6 +655,10 @@ export async function executeHeadlessChat(input: HeadlessChatInput): Promise<Hea
     return createLimitStoppedResult(session.id, ephemeral, prompt, "max_budget", "max-budget", startedAt);
   }
 
+  if (isSlashCommandPrompt(prompt)) {
+    return executeHeadlessRuntimeCommand({ session, ephemeral, prompt, startedAt });
+  }
+
   const projectId = input.projectId ?? session.projectId;
   let context = "";
   if (projectId) {
@@ -603,7 +679,7 @@ export async function executeHeadlessChat(input: HeadlessChatInput): Promise<Hea
   };
   const permissionMode: SessionPermissionMode = session.sessionConfig.permissionMode;
   const toolExecutor = createSessionToolExecutor();
-  const runtimeEvents = await runAgentTurn({
+  const runtimeTurn = await executeRuntimeTurn({
     sessionId: session.id,
     sessionConfig: session.sessionConfig,
     messages: [userMessage],
@@ -626,24 +702,27 @@ export async function executeHeadlessChat(input: HeadlessChatInput): Promise<Hea
       return result as AgentGenerateResult;
     },
     executeTool: (toolInput) => toolExecutor.execute(toolInput),
-  });
+  }, { ephemeral });
+  const runtimeEvents = runtimeTurn.agentEvents;
+  const canonicalEvents = runtimeTurn.runtimeEvents;
 
   const currentTurnUsage = collectTurnUsage(runtimeEvents);
   const usage = buildUsageEnvelope(session, currentTurnUsage);
   const permissionDenials = collectPermissionDenials(runtimeEvents);
 
   if (!ephemeral) {
-    await persistHeadlessTurn(session, prompt, runtimeEvents, startedAt, usage.cumulative);
+    await persistHeadlessTurn(session, prompt, runtimeEvents, canonicalEvents, startedAt, usage.cumulative);
   }
 
   const durationMs = Date.now() - startedAt;
   const summary = collectRuntimeSummary(runtimeEvents);
-  const events = buildStreamEvents({ sessionId: session.id, prompt, ephemeral, runtimeEvents, durationMs, summary, usage, cost: UNKNOWN_COST, permissionDenials });
+  const events = buildStreamEvents({ sessionId: session.id, prompt, ephemeral, canonicalEvents, durationMs, summary, usage, cost: UNKNOWN_COST, permissionDenials });
   return {
     sessionId: session.id,
     ephemeral,
     events,
     runtimeEvents,
+    canonicalEvents,
     finalMessage: summary.finalMessage,
     toolResults: summary.toolResults,
     pendingConfirmation: summary.pendingConfirmation,
@@ -659,5 +738,5 @@ export async function executeHeadlessChat(input: HeadlessChatInput): Promise<Hea
 }
 
 export function encodeHeadlessChatEventsAsNdjson(events: readonly HeadlessChatStreamEvent[]): string {
-  return events.map((event) => JSON.stringify(event)).join("\n");
+  return encodeRuntimeStreamJsonEventsAsNdjson(events);
 }

@@ -103,6 +103,24 @@ export type CanvasContext = {
 export type ToolConfirmationRisk = Extract<SessionToolRisk, "confirmed-write" | "destructive">;
 export type ToolConfirmationOption = "approve" | "reject" | "open-in-canvas";
 
+export type ToolConfirmationOperation = {
+  readonly action: ToolConfirmationOption;
+  readonly label: string;
+};
+
+export type ToolConfirmationSource = {
+  readonly sessionId?: string;
+  readonly turnId?: string;
+  readonly messageId?: string;
+  readonly toolUseId?: string;
+};
+
+export type ToolConfirmationCheckpoint = {
+  readonly required: boolean;
+  readonly checkpointId?: string;
+  readonly paths?: readonly string[];
+};
+
 export type ToolConfirmationRequest = {
   readonly id: string;
   readonly toolName: string;
@@ -111,7 +129,11 @@ export type ToolConfirmationRequest = {
   readonly summary: string;
   readonly diff?: unknown;
   readonly options: readonly ToolConfirmationOption[];
+  readonly operations?: readonly ToolConfirmationOperation[];
   readonly targetResource?: WorkspaceResourceRef;
+  readonly targetResources?: readonly WorkspaceResourceRef[];
+  readonly source?: ToolConfirmationSource;
+  readonly checkpoint?: ToolConfirmationCheckpoint;
   readonly sessionId?: string;
   readonly createdAt?: string;
 };
@@ -131,10 +153,76 @@ export type ToolConfirmationAudit = {
   readonly targetResources: readonly WorkspaceResourceRef[];
   readonly summary: string;
   readonly risk: SessionToolRisk;
+  readonly source?: ToolConfirmationSource;
+  readonly checkpoint?: ToolConfirmationCheckpoint;
   readonly decision?: ToolConfirmationDecision["decision"];
   readonly decidedAt?: string;
   readonly reason?: string;
 };
+
+export interface NormalizeToolConfirmationRequestContext {
+  readonly sessionId?: string;
+  readonly turnId?: string;
+  readonly messageId?: string;
+  readonly toolUseId?: string;
+  readonly input?: Record<string, unknown>;
+  readonly checkpoint?: ToolConfirmationCheckpoint;
+}
+
+function toolConfirmationOperationLabel(option: ToolConfirmationOption): string {
+  if (option === "approve") return "批准";
+  if (option === "reject") return "拒绝";
+  return "在画布打开";
+}
+
+function normalizeToolConfirmationSource(
+  confirmation: ToolConfirmationRequest,
+  context: NormalizeToolConfirmationRequestContext,
+): ToolConfirmationSource | undefined {
+  const source: ToolConfirmationSource = {
+    ...(confirmation.source ?? {}),
+    ...(confirmation.sessionId || context.sessionId ? { sessionId: context.sessionId ?? confirmation.sessionId } : {}),
+    ...(context.turnId ? { turnId: context.turnId } : {}),
+    ...(context.messageId ? { messageId: context.messageId } : {}),
+    ...(context.toolUseId ? { toolUseId: context.toolUseId } : {}),
+  };
+  return source.sessionId || source.turnId || source.messageId || source.toolUseId ? source : undefined;
+}
+
+function normalizeToolConfirmationTargetResources(
+  confirmation: ToolConfirmationRequest,
+  context: NormalizeToolConfirmationRequestContext,
+): readonly WorkspaceResourceRef[] {
+  if (confirmation.targetResources?.length) return confirmation.targetResources;
+  if (confirmation.targetResource) return [confirmation.targetResource];
+  const bookId = typeof context.input?.bookId === "string" ? context.input.bookId : undefined;
+  return [{
+    kind: confirmation.toolName,
+    id: confirmation.target,
+    ...(bookId ? { bookId } : {}),
+  }];
+}
+
+export function normalizeToolConfirmationRequest(
+  confirmation: ToolConfirmationRequest,
+  context: NormalizeToolConfirmationRequestContext = {},
+): ToolConfirmationRequest {
+  const source = normalizeToolConfirmationSource(confirmation, context);
+  const targetResources = normalizeToolConfirmationTargetResources(confirmation, context);
+  const checkpoint = context.checkpoint ?? confirmation.checkpoint ?? { required: confirmation.risk === "confirmed-write" || confirmation.risk === "destructive" };
+  const operations = confirmation.operations?.length
+    ? confirmation.operations
+    : confirmation.options.map((option) => ({ action: option, label: toolConfirmationOperationLabel(option) }));
+
+  return {
+    ...confirmation,
+    ...(context.sessionId || confirmation.sessionId ? { sessionId: context.sessionId ?? confirmation.sessionId } : {}),
+    operations,
+    targetResources,
+    ...(source ? { source } : {}),
+    checkpoint,
+  };
+}
 
 export type GuidedGenerationStatus =
   | "planning"

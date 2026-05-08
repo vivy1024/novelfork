@@ -146,7 +146,7 @@ describe("exec command", () => {
     expect(processExitMock).toHaveBeenCalledWith(0);
   });
 
-  it("passes --model, --book, --session and --max-steps to the API", async () => {
+  it("passes --model, --book, --session, --permission-mode, --root and --max-steps to the shared headless API", async () => {
     fetchMock.mockResolvedValue({
       json: async () => ({
         success: true,
@@ -163,14 +163,21 @@ describe("exec command", () => {
       "--model", "openai:gpt-4o",
       "--book", "book-1",
       "--session", "s-existing",
+      "--permission-mode", "edit",
+      "--root", "D:/books/project",
       "--max-steps", "10",
     ]);
 
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:4567/api/sessions/headless-chat",
+      expect.objectContaining({ method: "POST" }),
+    );
     const callBody = JSON.parse(fetchMock.mock.calls[0][1].body as string);
     expect(callBody.prompt).toBe("写一章");
     expect(callBody.projectId).toBe("book-1");
     expect(callBody.sessionId).toBe("s-existing");
-    expect(callBody.sessionConfig).toEqual({ providerId: "openai", modelId: "gpt-4o" });
+    expect(callBody.root).toBe("D:/books/project");
+    expect(callBody.sessionConfig).toEqual({ providerId: "openai", modelId: "gpt-4o", permissionMode: "edit" });
     expect(callBody.maxSteps).toBe(10);
   });
 });

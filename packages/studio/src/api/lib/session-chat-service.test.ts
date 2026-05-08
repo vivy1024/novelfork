@@ -593,6 +593,8 @@ describe("session-chat-service", () => {
       role: "assistant",
       seq: 2,
     });
+    const transcriptEvents = (snapshot?.messages[1]?.metadata?.runtimeTranscript as { events?: Array<{ type: string }> } | undefined)?.events ?? [];
+    expect(transcriptEvents.map((event) => event.type)).toEqual(["message", "result"]);
     expect(snapshot?.cursor.lastSeq).toBe(2);
   });
 
@@ -1178,6 +1180,7 @@ describe("session-chat-service", () => {
       createSession,
       attachSessionChatTransport,
       getSessionChatSnapshot,
+      getSessionToolState,
       handleSessionChatTransportMessage,
     } = await loadSessionServices();
     const session = await createSession({ title: "确认门会话", agentId: "writer", sessionMode: "chat" });
@@ -1200,7 +1203,18 @@ describe("session-chat-service", () => {
           id: "tool-use-confirm",
           toolName: "guided.exit",
           status: "pending",
-          confirmation: expect.objectContaining({ id: "confirm-1", risk: "confirmed-write" }),
+          confirmation: expect.objectContaining({
+            id: "confirm-1",
+            risk: "confirmed-write",
+            source: { sessionId: session.id, messageId: "pending-confirmation-1-tool-result-tool-use-confirm", toolUseId: "tool-use-confirm" },
+            targetResources: [{ kind: "guided.exit", id: "book-1", bookId: "book-1" }],
+            checkpoint: { required: true },
+            operations: [
+              { action: "approve", label: "批准" },
+              { action: "reject", label: "拒绝" },
+              { action: "open-in-canvas", label: "在画布打开" },
+            ],
+          }),
         }),
       ],
       metadata: {
@@ -1211,6 +1225,19 @@ describe("session-chat-service", () => {
     expect(snapshot?.session.recovery).toMatchObject({
       pendingToolCallCount: 1,
       pendingToolCallSummary: ["guided.exit:pending"],
+    });
+    const toolState = await getSessionToolState(session.id);
+    expect(toolState?.pendingConfirmations[0]).toMatchObject({
+      id: "confirm-1",
+      toolName: "guided.exit",
+      source: { sessionId: session.id, messageId: "pending-confirmation-1-tool-result-tool-use-confirm", toolUseId: "tool-use-confirm" },
+      targetResources: [{ kind: "guided.exit", id: "book-1", bookId: "book-1" }],
+      checkpoint: { required: true },
+      operations: [
+        { action: "approve", label: "批准" },
+        { action: "reject", label: "拒绝" },
+        { action: "open-in-canvas", label: "在画布打开" },
+      ],
     });
   });
 
