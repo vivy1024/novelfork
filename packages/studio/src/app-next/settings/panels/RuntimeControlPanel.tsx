@@ -429,6 +429,16 @@ export function RuntimeControlPanel() {
         <FieldRow label="默认宽松规划"><Switch checked={rc.relaxedPlanning ?? true} onChange={(v) => patchRc({ relaxedPlanning: v })} /></FieldRow>
         <FieldRow label="智能检查输出中断"><Switch checked={rc.smartOutputCheck ?? true} onChange={(v) => patchRc({ smartOutputCheck: v })} /></FieldRow>
         <FieldRow label="要求使用您的语言回复"><Switch checked={rc.forceUserLanguage ?? false} onChange={(v) => patchRc({ forceUserLanguage: v })} /></FieldRow>
+        <FieldRow label="跳过只读危险反思确认"><Switch checked={rc.yoloSkipReadonlyConfirmation ?? false} onChange={(v) => patchRc({ yoloSkipReadonlyConfirmation: v })} /></FieldRow>
+        <FieldRow label="显示 Token 用量"><Switch checked={rc.showTokenUsage ?? false} onChange={(v) => patchRc({ showTokenUsage: v })} /></FieldRow>
+        <FieldRow label="显示实时输出速率"><Switch checked={rc.showOutputRate ?? false} onChange={(v) => patchRc({ showOutputRate: v })} /></FieldRow>
+        <FieldRow label="滚动自动加载历史"><Switch checked={rc.scrollAutoLoadHistory ?? true} onChange={(v) => patchRc({ scrollAutoLoadHistory: v })} /></FieldRow>
+        <FieldRow label="发送方式">
+          <select className={selectCls} value={rc.sendMode ?? "enter"} onChange={(e) => patchRc({ sendMode: e.target.value as "enter" | "ctrl-enter" })}>
+            <option value="enter">Enter 发送</option>
+            <option value="ctrl-enter">Ctrl+Enter 发送</option>
+          </select>
+        </FieldRow>
       </Section>
 
       {/* ---- MCP 策略 ---- */}
@@ -537,8 +547,6 @@ export function RuntimeControlPanel() {
 
       {/* ---- 调试 ---- */}
       <Section title="调试">
-        <FieldRow label="显示 Token 用量"><Switch checked={rc.runtimeDebug.tokenDebugEnabled} onChange={(v) => patchDebug({ tokenDebugEnabled: v })} /></FieldRow>
-        <FieldRow label="显示实时输出速率"><Switch checked={rc.runtimeDebug.rateDebugEnabled} onChange={(v) => patchDebug({ rateDebugEnabled: v })} /></FieldRow>
         <FieldRow label="Dump API 请求"><Switch checked={rc.runtimeDebug.dumpEnabled} onChange={(v) => patchDebug({ dumpEnabled: v })} /></FieldRow>
       </Section>
 
