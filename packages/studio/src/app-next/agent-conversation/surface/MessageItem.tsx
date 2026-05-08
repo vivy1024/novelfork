@@ -1,4 +1,6 @@
 import { useCallback, useRef, useState } from "react";
+import { AnimatedMarkdown } from "flowtoken";
+import "flowtoken/dist/styles.css";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { ToolCallBlock } from "@/components/ToolCall/ToolCallBlock";
 import type { ConversationToolCall } from "./ToolCallCard";
@@ -18,6 +20,8 @@ export interface ConversationSurfaceMessage {
   toolCalls?: ConversationToolCall[];
   /** AI 推理/思考内容块 */
   thinking?: ConversationThinkingBlock[];
+  /** 是否正在流式传输中（用于打字机动画） */
+  isStreaming?: boolean;
 }
 
 export interface MessageContextAction {
@@ -109,7 +113,15 @@ export function MessageItem({ message, onContextAction }: MessageItemProps) {
         {message.thinking?.map((block, i) => (
           <ThinkingBlock key={`thinking-${i}`} block={block} />
         ))}
-        {message.content && <MarkdownRenderer content={message.content} />}
+        {message.content && (
+          message.isStreaming ? (
+            <div className="prose prose-sm dark:prose-invert max-w-none">
+              <AnimatedMarkdown content={message.content} sep="word" animationDuration="0.3s" />
+            </div>
+          ) : (
+            <MarkdownRenderer content={message.content} />
+          )
+        )}
         {message.toolCalls?.map((toolCall) => (
           <ToolCallBlock key={toolCall.id} toolCall={adaptConversationToolCall(toolCall)} />
         ))}
