@@ -1,5 +1,7 @@
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
-import { ToolCallCard, type ConversationToolCall } from "./ToolCallCard";
+import { ToolCallBlock } from "@/components/ToolCall/ToolCallBlock";
+import type { ConversationToolCall } from "./ToolCallCard";
+import { adaptConversationToolCall } from "./tool-call-adapter";
 
 export interface ConversationSurfaceMessage {
   id: string;
@@ -32,7 +34,9 @@ export function MessageItem({ message }: { message: ConversationSurfaceMessage; 
     <div className="py-2">
       <div className="max-w-[90%]">
         {message.content && <MarkdownRenderer content={message.content} />}
-        {message.toolCalls?.map((toolCall) => <ToolCallCard key={toolCall.id} toolCall={toolCall} />)}
+        {message.toolCalls?.map((toolCall) => (
+          <ToolCallBlock key={toolCall.id} toolCall={adaptConversationToolCall(toolCall)} />
+        ))}
       </div>
     </div>
   );
