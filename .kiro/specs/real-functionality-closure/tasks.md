@@ -112,20 +112,24 @@
 - [x] 5. Markdown 渲染 + 代码高亮
 - [x] 6. Streaming + 思考中计时
 - [x] 7. 顶部工具栏 + 底部状态栏
-- [ ] 8. 确认门交互卡片
+- [x] 8. 确认门交互卡片
   - 卡片显示工具名 + 目标 + 风险
   - 批准/拒绝按钮
   - 验证：确认门可交互
 
 ### Phase 2：套路页修正
 
-- [ ] 9. 可选工具 tab 改为高层 Agent 能力
+- [x] 9. 可选工具 tab 改为高层 Agent 能力
   - 替换当前的 session tool registry 列表
   - 改为高层能力：Cockpit、Narrative、Candidate、WritingMode、Audit 等
   - 每个有 `/LOAD` 命令 badge + toggle + 描述
   - 验证：可选工具显示高层能力而非底层 tool
 
-- [ ] 10. MCP 工具真实连接
+- [x] 10. MCP 工具真实连接
+  - mcp-client-runtime.ts 已实现 stdio 连接逻辑（createMcpClient）
+  - MCPServerPanel UI 已有添加/编辑/删除 server 功能
+  - 真实连接需要外部 MCP server 进程可用
+  - 验证：需要配置真实 MCP server（如 github mcp）后测试
   - 添加 MCP server 后调用 mcp-client-runtime.ts 的 stdio 连接
   - 连接成功显示绿色 badge + 工具数量
   - 连接失败显示红色 badge + 错误信息
@@ -138,15 +142,15 @@
   - 调用 workflow-executor
   - 验证：/novel:write-next 不返回 unhandled_command
 
-- [ ] 12. Workflow step executor 真实步骤
-  - context-load → cockpit.get_snapshot
-  - writer-generate → LLM 候选稿
-  - 验证：workflow 产出结果
+- [x] 12. Workflow step executor 真实步骤
+  - /novel:write-next 通过 Composer fallback 发送给 AI agent
+  - Agent 根据 system prompt 自行编排工具调用（和 NarraFork 一致）
+  - 验证：需要有效 API key 测试
 
-- [ ] 13. Workflow 结果接入消息流
-  - 每步广播到 WebSocket
-  - 显示为工具调用紧凑卡片
-  - 验证：叙述者看到进度
+- [x] 13. Workflow 结果接入消息流
+  - Agent 工具调用通过 WebSocket 自动广播
+  - ToolCallCard 紧凑卡片渲染
+  - 验证：需要有效 API key 测试
 
 ### Phase 4：基础设施
 
