@@ -320,24 +320,27 @@ function RuntimeCommandRegistryPanel({ commands, disabledCommands, onToggleComma
   readonly disabledCommands: readonly string[];
   readonly onToggleCommand?: (commandId: string) => void;
 }) {
+  // 只显示可用命令（current/partial），隐藏 planned/unsupported
+  const availableCommands = commands.filter((cmd) => cmd.status === "current" || cmd.status === "partial");
+  const plannedCount = commands.length - availableCommands.length;
+
   return (
-    <section className="rounded-xl border border-border bg-muted/20 p-4" aria-label="统一 Runtime Command Registry">
+    <section className="rounded-xl border border-border bg-muted/20 p-4" aria-label="可用命令">
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
-          <h4 className="font-semibold">统一 Runtime Command Registry</h4>
-          <p className="mt-1 text-sm text-muted-foreground">叙述者 slash 建议、套路命令清单、CLI help/headless 将共用这份命令注册表。禁用后命令不可执行。</p>
+          <h4 className="font-semibold">可用命令</h4>
+          <p className="mt-1 text-sm text-muted-foreground">在对话中输入 / 触发。禁用后命令不可执行。</p>
         </div>
-        <span className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">{commands.length} commands</span>
+        <span className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">{availableCommands.length} 个可用{plannedCount > 0 ? ` · ${plannedCount} 个计划中` : ""}</span>
       </div>
       <div className="grid gap-2 md:grid-cols-2">
-        {commands.map((command) => {
+        {availableCommands.map((command) => {
           const isDisabled = disabledCommands.includes(command.id);
           return (
             <article key={command.id} className={`rounded-lg border border-border bg-background p-3 ${isDisabled ? "opacity-50" : ""}`}>
               <div className="flex flex-wrap items-center gap-2">
                 <code className="text-sm font-mono">{command.id}</code>
-                <span className="text-xs text-muted-foreground">状态：{COMMAND_STATUS_LABELS[command.status]}</span>
-                <span className="text-xs text-muted-foreground">来源：{COMMAND_SOURCE_LABELS[command.source]}</span>
+                {command.status === "partial" && <span className="rounded bg-yellow-100 px-1.5 py-0.5 text-[10px] font-medium text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">部分可用</span>}
                 {isDisabled && <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-800 dark:bg-red-900 dark:text-red-200">已禁用</span>}
               </div>
               <p className="mt-1 text-xs text-muted-foreground">{command.description}</p>
