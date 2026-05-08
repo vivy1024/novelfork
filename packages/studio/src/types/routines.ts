@@ -81,6 +81,8 @@ export interface Routines {
   systemPrompts: Prompt[];
   mcpTools: MCPTool[];
   hooks: RoutineHook[];
+  /** 被禁用的 runtime command IDs（如 "/compact"、"/novel:write-next"） */
+  disabledCommands: string[];
 }
 
 export const DEFAULT_ROUTINES: Routines = {
@@ -94,4 +96,5 @@ export const DEFAULT_ROUTINES: Routines = {
   systemPrompts: [],
   mcpTools: [],
   hooks: [],
+  disabledCommands: [],
 };

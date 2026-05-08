@@ -21,6 +21,7 @@ function cloneDefaultRoutines(): Routines {
     systemPrompts: [...DEFAULT_ROUTINES.systemPrompts],
     mcpTools: [...DEFAULT_ROUTINES.mcpTools],
     hooks: [...DEFAULT_ROUTINES.hooks],
+    disabledCommands: [...DEFAULT_ROUTINES.disabledCommands],
   };
 }
 

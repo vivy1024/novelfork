@@ -4,6 +4,7 @@ import { ProfilePanel } from "./panels/ProfilePanel";
 import { AppearancePanel } from "./panels/AppearancePanel";
 import { MonitoringPanel } from "./panels/MonitoringPanel";
 import { DataPanel } from "./panels/DataPanel";
+import { RuntimeStatusPanel } from "./panels/RuntimeStatusPanel";
 import { InlineError } from "../components/feedback";
 import { ProjectConfigSection } from "./ProjectConfigSection";
 import { Row } from "../components/shared";
@@ -35,6 +36,8 @@ export function SettingsSectionContent({ sectionId, onSectionChange }: SettingsS
     case "server":
       return <ServerSection />;
     case "storage":
+      return <RuntimeStatusPanel />;
+    case "data":
       return <DataPanel />;
     case "resources":
       return <MonitoringPanel />;

@@ -48,6 +48,7 @@ const sampleRoutines = {
   systemPrompts: [{ id: "prompt-2", name: "system", content: "system", enabled: true }],
   mcpTools: [{ id: "mcp-1", serverName: "memory", toolName: "recall", enabled: true, approved: true }],
   hooks: [{ id: "hook-1", name: "审稿后通知", event: "after-audit", kind: "webhook", target: "https://hooks.example/audit", enabled: true }],
+  disabledCommands: [],
 } as unknown as RoutinesConfig;
 
 afterEach(() => {
