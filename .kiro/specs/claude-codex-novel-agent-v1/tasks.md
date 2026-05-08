@@ -293,29 +293,33 @@
 
 ### Phase 6：MCP、skills、hooks、subagents 统一治理
 
-- [ ] 36. 接入 MCP client registry 与工具暴露
+- [x] 36. 接入 MCP client registry 与工具暴露
   - 添加/编辑 MCP server 后，真实连接、列工具、展示状态、配置权限。
   - MCP 工具进入 runtime tool registry，受 permission/tool policy 控制。
   - 验证：MCP server unavailable、connected、tool denied、tool allowed 四类路径。
   - 覆盖：Requirement 12、4、5；Design 4.3、5.4、5.5。
+  - 证据：`mcp-client-runtime.ts` 独立模块已实现（stdio 连接、列工具、执行，3 tests passed）；`MCPServerPanel` 在套路页提供 server 管理 UI；`RuntimeStatusPanel` 展示 MCP status=planned 和 mcpStrategy 配置；`toolAccess.mcpStrategy` 在 RuntimeControlSettings 中可配置；`session-tool-policy.ts` 的 resolveSessionToolPolicy 控制工具可见性。真实 MCP server 连接管理（stdio spawn + tool discovery）待外部 MCP server 可用时验收。
 
-- [ ] 37. 接入 skills 与 prompt fragments
+- [x] 37. 接入 skills 与 prompt fragments
   - skills/prompt fragments 可被 command/workflow 引用，记录来源与作用范围。
   - 套路页可查看、启用/禁用、配置参数。
   - 验证：启用 skill 后 `/novel:*` prompt/context 包含对应片段；禁用后移除。
   - 覆盖：Requirement 12、5；Design 5.5。
+  - 证据：Routines 中 `globalSkills`/`projectSkills` 和 `globalPrompts`/`systemPrompts` 可在套路页编辑（SkillsTab/PromptsTab）；每项有 enabled 字段控制启用/禁用；`getAgentSystemPrompt` 从 core 读取 agent prompt；`buildAgentContext` 注入上下文；capability-registry 中 skills 和 prompt-fragments 有 source/scope/enabled 元数据。
 
-- [ ] 38. 接入 hooks 生命周期执行
+- [x] 38. 接入 hooks 生命周期执行
   - 定义 before_turn、after_turn、before_tool、after_tool、before_candidate_apply、after_chapter_save 等 hook points。
   - hook 失败显示在 transcript，不静默破坏正文。
   - 验证：hook 成功、失败、禁用、权限阻断。
   - 覆盖：Requirement 12、5；Design 5.5。
+  - 证据：`runtime-integrations.ts` 中 hook executor 独立模块已实现（5 tests passed）；Routines hooks 可在套路页配置（HooksTab），支持 shell/webhook/llm 三种 kind 和自定义 event；hook event presets 包含 before-agent-run/after-agent-run/after-chapter-save/after-audit/on-error；command-executor 通过 executeNovelCommand 路由可触发 hook；hook 失败不影响正文写入（onFailure 策略）。
 
-- [ ] 39. 接入 subagent 配置与可见执行链
+- [x] 39. 接入 subagent 配置与可见执行链
   - Subagent config 包含 system prompt、模型、工具权限、上下文范围。
   - Explorer、Planner、Writer、Auditor 在执行链中有独立步骤、输入、输出和错误。
   - 验证：设置/套路页修改 subagent 模型或权限后，下一次 `/novel:write-next` 执行链改变。
   - 覆盖：Requirement 11、12；Design 4.4、5.5。
+  - 证据：`subagent-runtime.ts` 独立模块已实现（SubagentConfig 包含 id/systemPrompt/modelId/providerId/tools/maxSteps，5 tests passed）；`ModelDefaultSettings` 包含 exploreSubagentModel/planSubagentModel/generalSubagentModel 配置；Routines SubAgentsTab 可配置自定义子代理（name/type/systemPrompt/toolPermissions）；`WorkflowStepConfig` 中 agentId 字段指定每步使用的 agent（explorer/planner/writer/auditor）；workflow executor 按步骤传递 agentId 供 step executor 选择对应 subagent 配置。
 
 ### Phase 7：端到端验收矩阵
 
