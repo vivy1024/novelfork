@@ -113,45 +113,63 @@ export async function startHttpServer(options: {
   if (typeof bunRuntime?.serve === "function") {
     const webSocketRoutes: BunWebSocketRoute[] = [];
 
-    bunRuntime.serve({
-      port: options.port,
-      fetch(request, server) {
-        const pathname = new URL(request.url).pathname;
-        const route = webSocketRoutes.find((candidate) =>
-          candidate.matchPath ? candidate.matchPath(pathname) : candidate.path === pathname,
-        );
-        if (route && route.upgrade(request, server)) {
-          return undefined;
-        }
-        return options.fetch(request);
-      },
-      websocket: {
-        open(socket) {
-          resolveWebSocketRoute(webSocketRoutes, socket)?.open?.(socket);
-        },
-        close(socket, code, reason) {
-          resolveWebSocketRoute(webSocketRoutes, socket)?.close?.(socket, code, reason);
-        },
-        error(socket, error) {
-          resolveWebSocketRoute(webSocketRoutes, socket)?.error?.(socket, error);
-        },
-        message(socket, message) {
-          resolveWebSocketRoute(webSocketRoutes, socket)?.message?.(socket, message);
-        },
-      },
-    });
+    // 尝试启动，端口被占用时递增重试（最多 10 次）
+    let port = options.port;
+    const maxAttempts = 10;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        bunRuntime.serve({
+          port,
+          fetch(request, server) {
+            const pathname = new URL(request.url).pathname;
+            const route = webSocketRoutes.find((candidate) =>
+              candidate.matchPath ? candidate.matchPath(pathname) : candidate.path === pathname,
+            );
+            if (route && route.upgrade(request, server)) {
+              return undefined;
+            }
+            return options.fetch(request);
+          },
+          websocket: {
+            open(socket) {
+              resolveWebSocketRoute(webSocketRoutes, socket)?.open?.(socket);
+            },
+            close(socket, code, reason) {
+              resolveWebSocketRoute(webSocketRoutes, socket)?.close?.(socket, code, reason);
+            },
+            error(socket, error) {
+              resolveWebSocketRoute(webSocketRoutes, socket)?.error?.(socket, error);
+            },
+            message(socket, message) {
+              resolveWebSocketRoute(webSocketRoutes, socket)?.message?.(socket, message);
+            },
+          },
+        });
 
-    return {
-      runtime: "bun",
-      registerWebSocketRoute(route) {
-        const existingIndex = webSocketRoutes.findIndex((candidate) => candidate.path === route.path);
-        if (existingIndex >= 0) {
-          webSocketRoutes.splice(existingIndex, 1, route);
-          return;
+        if (port !== options.port) {
+          console.log(`Port ${options.port} in use, using port ${port} instead`);
         }
-        webSocketRoutes.push(route);
-      },
-    };
+
+        return {
+          runtime: "bun",
+          registerWebSocketRoute(route) {
+            const existingIndex = webSocketRoutes.findIndex((candidate) => candidate.path === route.path);
+            if (existingIndex >= 0) {
+              webSocketRoutes.splice(existingIndex, 1, route);
+              return;
+            }
+            webSocketRoutes.push(route);
+          },
+        };
+      } catch (error: unknown) {
+        const isAddrInUse = error instanceof Error && ("code" in error && (error as { code?: string }).code === "EADDRINUSE");
+        if (isAddrInUse && attempt < maxAttempts - 1) {
+          port++;
+          continue;
+        }
+        throw error;
+      }
+    }
   }
 
   installNodeServerWarningFilter();
