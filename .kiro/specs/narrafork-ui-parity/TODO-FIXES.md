@@ -64,14 +64,45 @@
 
 ## ⚠️ shadcn 组件库未使用（根本问题）
 
-对话界面完全没有使用 shadcn/ui 组件，全是手写 className。需要：
+**全局筛查结果：app-next/ 下 45 个 tsx 文件不用 shadcn，只有 2 个用了。**
 
-1. 安装缺少的 shadcn 组件：`dropdown-menu`、`popover`、`command`、`context-menu`、`tooltip`
-2. NarratorStatusBar 的 PopoverButton → 替换为 shadcn `DropdownMenu`
-3. MessageContextMenu → 替换为 shadcn `ContextMenu`
-4. Composer 按钮 → 替换为 shadcn `Button`
-5. 顶部工具栏按钮 → 替换为 shadcn `Button` variant="ghost" size="icon"
-6. 搜索输入框 → 替换为 shadcn `Input`
-7. 确认门按钮 → 替换为 shadcn `Button`
+对话界面、设置页、套路页、章节图、搜索页、会话中心——全部手写 className，没有用 shadcn 组件。
 
-这是优先级最高的改动——用标准组件库才能保证视觉一致性。
+需要安装并替换：
+1. `dropdown-menu` — NarratorStatusBar 的模型/推理/权限弹出菜单
+2. `context-menu` — 消息右键菜单
+3. `popover` — 工具栏弹出面板
+4. `command` — 模型搜索过滤（Command + CommandInput + CommandList）
+5. `tooltip` — 所有图标按钮的 hover 提示
+6. `sheet` — 文件修改面板（侧边抽屉）
+7. `avatar` — 用户/AI 头像
+
+替换清单：
+- Composer 按钮 → `<Button>` variant/size
+- 顶部工具栏按钮 → `<Button variant="ghost" size="icon">`
+- NarratorStatusBar PopoverButton → `<DropdownMenu>`
+- MessageContextMenu → `<ContextMenu>`
+- 搜索输入框 → `<Input>`
+- 确认门按钮 → `<Button>`
+- 设置页所有手写 select → shadcn `<Select>`
+- 套路页所有手写 button → `<Button>`
+
+## ⚠️ 布局/自适应/性能问题
+
+**全局筛查结果：**
+
+| 问题 | 现状 | 应该 |
+|------|------|------|
+| 虚拟滚动 | ❌ 零使用（无 react-virtual/react-window/virtuoso） | 消息列表、资源树、模型列表需要虚拟滚动 |
+| 懒加载 | ❌ 零使用（无 React.lazy/Suspense/dynamic import） | 设置页/套路页/章节图应该懒加载 |
+| 自适应布局 | ⚠️ 有 112 处 Tailwind 响应式类，但 sidebar 是固定 250px | sidebar 应该可折叠，移动端隐藏 |
+| ResizeObserver | ❌ 只有 textarea 自动高度 | 章节图节点、面板分割需要 |
+| 消息列表滚动 | 简单 overflow-y-auto + scrollIntoView | 大量消息时性能差，需要虚拟滚动 |
+| 模型列表 | 全量渲染所有模型 | 模型多时（100+）需要虚拟滚动 |
+| 图片/附件 | 无懒加载 | 需要 IntersectionObserver 懒加载 |
+
+优先级：
+1. **消息列表虚拟滚动** — 对话长了会卡（安装 @tanstack/react-virtual）
+2. **路由懒加载** — 减少首屏加载（React.lazy + Suspense）
+3. **sidebar 可折叠** — 移动端/小屏适配
+4. **模型列表虚拟滚动** — 模型多时下拉卡顿
