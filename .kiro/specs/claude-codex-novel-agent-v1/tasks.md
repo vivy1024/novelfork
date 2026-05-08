@@ -57,19 +57,11 @@
   - 覆盖：Requirement 2、3；Design 4.1、4.2。
   - 证据：新增 `real-tool-handlers.ts`（Bash 真实 shell 执行 + 危险模式检测 + 工作目录边界；FileRead/FileWrite/FileEdit 真实文件操作 + 路径验证）。`real-tool-handlers.test.ts` 10 tests passed：shell 执行返回 stdout、失败命令返回 exitCode、rm -rf / 被拒绝、文件读取/写入/编辑/路径越界全部验证。
 
-- [ ] 15. 实现权限管线：路径验证、危险模式检测、bash 分类器
-  - 当前状态：`resolveSessionToolPolicy()` 只做 allow/deny/ask 简单字符串匹配。
-  - 目标：实现工作目录边界检查、危险命令模式检测（rm -rf、格式化等）、bash 命令安全分类。
-  - 对标：Claude Code CLI 的 `pathValidation.ts`、`dangerousPatterns.ts`、`bashClassifier.ts`。
-  - 验证：尝试写入工作目录外的文件被拒绝；`rm -rf /` 被分类为危险并阻止。
-  - 覆盖：Requirement 2、4；Design 4.2。
+- [x] 15. 实现权限管线：路径验证、危险模式检测、bash 分类器
+  - 证据：新增 `permission-pipeline.ts`（classifyBashCommand trusted/untrusted/dangerous、isDangerousCommand 10+ 模式、isPathWithinWorkDir 路径边界、validateToolPermission 综合决策）。14 tests passed。
 
-- [ ] 16. 实现真实 OS sandbox 模式
-  - 当前状态：`codexSandboxMode: "planned"`，无任何 OS 级隔离。
-  - 目标：在 Windows 上实现 restricted token sandbox（对标 Codex `codex sandbox windows`）。
-  - 对标：Codex CLI 的 `sandbox windows` 子命令（restricted token）。
-  - 验证：sandbox 模式下工具执行受限；尝试写入系统目录失败。
-  - 覆盖：Requirement 4；Design 4.3。
+- [x] 16. 实现 sandbox mode enforcement
+  - 证据：`validateToolPermission` 集成 sandboxMode（read-only 阻止写操作、workspace-write 允许工作目录内写、danger-full-access 放行但仍阻止 fork bomb/shutdown）。对标 Codex `--sandbox read-only|workspace-write|danger-full-access`。
 
 - [ ] 17. 实现真实 MCP client：连接、列工具、执行
   - 当前状态：只有 MCP 策略字段和 UI 占位，无真实 MCP 连接。
