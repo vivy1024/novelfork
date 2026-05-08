@@ -11,6 +11,7 @@ import { NarratorStatusBar } from "./NarratorStatusBar";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
+import { Sheet, SheetTrigger, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 
 export interface ConversationRecoveryNotice {
   state: string;
@@ -162,12 +163,23 @@ export function ConversationSurface({
             </TooltipTrigger>
             <TooltipContent>搜索</TooltipContent>
           </Tooltip>
-          <Tooltip>
-            <TooltipTrigger render={<Button variant="ghost" size="icon-sm" />}>
+          <Sheet>
+            <SheetTrigger
+              className="inline-flex shrink-0 items-center justify-center rounded-lg text-sm font-medium transition-all outline-none select-none hover:bg-muted hover:text-foreground size-7"
+              title="文件修改"
+            >
               <FileCode className="size-4" />
-            </TooltipTrigger>
-            <TooltipContent>文件修改</TooltipContent>
-          </Tooltip>
+            </SheetTrigger>
+            <SheetContent>
+              <SheetHeader>
+                <SheetTitle>文件修改</SheetTitle>
+                <SheetDescription>本次会话中修改的文件列表</SheetDescription>
+              </SheetHeader>
+              <div className="flex-1 overflow-y-auto px-4">
+                <p className="text-sm text-muted-foreground py-8 text-center">暂无文件修改记录</p>
+              </div>
+            </SheetContent>
+          </Sheet>
           <Tooltip>
             <TooltipTrigger render={<Button variant="ghost" size="icon-sm" />}>
               <Info className="size-4" />
