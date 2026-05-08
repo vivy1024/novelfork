@@ -102,7 +102,27 @@
 | 图片/附件 | 无懒加载 | 需要 IntersectionObserver 懒加载 |
 
 优先级：
-1. **消息列表虚拟滚动** — 对话长了会卡（安装 @tanstack/react-virtual）
-2. **路由懒加载** — 减少首屏加载（React.lazy + Suspense）
+1. **消息列表虚拟滚动** — 安装 `broad-infinite-list`（NarraFork 用的同一个库）
+2. **路由懒加载** — React.lazy + Suspense
 3. **sidebar 可折叠** — 移动端/小屏适配
 4. **模型列表虚拟滚动** — 模型多时下拉卡顿
+
+## ⚠️ 关键依赖缺失（对比 NarraFork 依赖分析）
+
+NarraFork 架构：Mantine + TanStack Router + TanStack Query + ReactFlow + xterm + broad-infinite-list + shiki + flowtoken + dnd-kit + i18next
+
+| 缺失依赖 | 用途 | 优先级 |
+|----------|------|--------|
+| `broad-infinite-list` | 消息列表虚拟无限滚动 | 🔴 高 |
+| `flowtoken` | AI 回复流式打字机动画 | 🔴 高 |
+| `shiki` + `web-tree-sitter` | 高质量代码高亮（替代 react-syntax-highlighter） | 🟡 中 |
+| `@dnd-kit/core` + `sortable` | 拖拽排序（套路/钩子/章节） | 🟡 中 |
+| `diff` | 文件 diff 展示 | 🟡 中 |
+| `@xterm/xterm` + `bun-pty` | 内嵌终端 | 🟡 中（后续） |
+| `i18next` | 国际化 | ⚪ 低（当前只需中文） |
+| `@tanstack/react-router` | 规范路由（替代手写 pushState） | 🟡 中 |
+| IM 网关（Slack/Discord/Telegram/飞书） | IM 集成 | ⚪ 低 |
+
+NovelFork 当前用 react-syntax-highlighter（Prism），NarraFork 用 shiki + tree-sitter（更准确、更快）。
+NovelFork 当前手写路由（pushState），NarraFork 用 TanStack Router（类型安全、懒加载）。
+NovelFork 当前消息列表全量渲染，NarraFork 用 broad-infinite-list（虚拟滚动 + 无限加载）。
