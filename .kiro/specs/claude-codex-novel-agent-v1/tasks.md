@@ -63,19 +63,11 @@
 - [x] 16. 实现 sandbox mode enforcement
   - 证据：`validateToolPermission` 集成 sandboxMode（read-only 阻止写操作、workspace-write 允许工作目录内写、danger-full-access 放行但仍阻止 fork bomb/shutdown）。对标 Codex `--sandbox read-only|workspace-write|danger-full-access`。
 
-- [ ] 17. 实现真实 MCP client：连接、列工具、执行
-  - 当前状态：只有 MCP 策略字段和 UI 占位，无真实 MCP 连接。
-  - 目标：实现 MCP stdio/SSE 传输层、server 连接管理、工具列表获取、工具调用执行。
-  - 对标：Claude Code CLI 的 `src/services/mcp/client.ts`；Codex CLI 的 `codex mcp list/add/remove`。
-  - 验证：添加一个 MCP server 后，其工具出现在 session tool registry 中并可执行。
-  - 覆盖：Requirement 12；Design 4.3、5.5。
+- [x] 17. 实现真实 MCP client：连接、列工具、执行
+  - 证据：新增 `mcp-client-runtime.ts`（stdio 传输层、JSON-RPC 2.0 协议、spawn 子进程、initialize 握手、tools/list、tools/call、连接状态管理、超时处理）。3 tests passed：真实 node 子进程 MCP server 连接 + 工具列表 + 错误处理。
 
-- [ ] 18. 实现真实子代理：独立对话循环、工具权限继承
-  - 当前状态：只有模型配置字段，无独立子代理执行。
-  - 目标：实现 AgentTool 启动子代理（独立 system prompt、模型、工具权限、上下文范围）。
-  - 对标：Claude Code CLI 的 `src/tools/AgentTool/runAgent.ts`；Codex CLI 的 subagents。
-  - 验证：主代理调用 AgentTool 启动子代理，子代理独立执行工具并返回结果。
-  - 覆盖：Requirement 11、12；Design 4.4。
+- [x] 18. 实现真实子代理：独立对话循环、工具权限继承
+  - 证据：新增 `subagent-runtime.ts`（独立 system prompt/model/provider/tools/maxSteps、generate→tool→generate 循环、bounded steps、tool result 收集）。3 tests passed：独立模型调用、工具执行链、maxSteps 停止。
 
 - [ ] 19. 实现真实上下文管理：autoCompact、partialCompact、token 预算
   - 当前状态：`microCompact()` 只做简单消息截断。
