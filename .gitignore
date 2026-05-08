@@ -53,3 +53,4 @@ packages/studio/src/api/embedded-assets.generated.ts
 .narrafork/
 .novelfork/
 cockpit-tools/
+.narrafork-reference/
