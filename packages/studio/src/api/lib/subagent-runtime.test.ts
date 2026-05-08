@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { runSubagent, type SubagentConfig, type SubagentResult } from "./subagent-runtime";
+import { runSubagent, runSubagentStream, type SubagentConfig, type SubagentResult } from "./subagent-runtime";
 
 describe("subagent runtime", () => {
   it("executes a subagent with independent system prompt and model", async () => {
@@ -29,6 +29,8 @@ describe("subagent runtime", () => {
 
     expect(result.ok).toBe(true);
     expect(result.content).toBe("子代理完成任务。");
+    expect(result.transcript.length).toBeGreaterThan(0);
+    expect(result.transcript[0]).toMatchObject({ type: "generate", agentId: "writer-agent" });
     expect(generate).toHaveBeenCalledWith(expect.objectContaining({
       systemPrompt: "你是一个小说写作代理。",
       modelId: "claude-sonnet-4",
@@ -36,7 +38,7 @@ describe("subagent runtime", () => {
     }));
   });
 
-  it("executes tools within the subagent loop", async () => {
+  it("executes tools within the subagent loop and records transcript", async () => {
     const generate = vi.fn()
       .mockResolvedValueOnce({
         success: true,
@@ -69,6 +71,14 @@ describe("subagent runtime", () => {
     expect(result.content).toBe("已读取第三章。");
     expect(executeTool).toHaveBeenCalledWith("chapter.read", { chapterId: "ch-3" });
     expect(result.toolResults).toHaveLength(1);
+    // Verify sidechain transcript
+    expect(result.transcript).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "generate", agentId: "reader-agent" }),
+      expect.objectContaining({ type: "tool_call", agentId: "reader-agent", toolName: "chapter.read" }),
+      expect.objectContaining({ type: "tool_result", agentId: "reader-agent", toolName: "chapter.read" }),
+      expect.objectContaining({ type: "generate", agentId: "reader-agent" }),
+      expect.objectContaining({ type: "message", agentId: "reader-agent" }),
+    ]));
   });
 
   it("stops at maxSteps and returns partial result", async () => {
@@ -87,5 +97,43 @@ describe("subagent runtime", () => {
     expect(result.ok).toBe(false);
     expect(result.stopReason).toBe("max_steps");
     expect(executeTool).toHaveBeenCalledTimes(2);
+  });
+
+  it("respects abort signal (对标 Claude abortController)", async () => {
+    const controller = new AbortController();
+    const generate = vi.fn().mockImplementation(async () => {
+      controller.abort(); // Abort after first generate
+      return { success: true, type: "tool_use", toolUses: [{ id: "t1", name: "Read", input: {} }] };
+    });
+
+    const config: SubagentConfig = { id: "abort-agent", name: "Abort", systemPrompt: "", modelId: "m", providerId: "p", tools: ["Read"], maxSteps: 10 };
+
+    const result = await runSubagent({ config, prompt: "test", generate, signal: controller.signal });
+
+    expect(result.ok).toBe(false);
+    expect(result.stopReason).toBe("aborted");
+  });
+
+  it("streams events via AsyncGenerator (对标 Claude runAgent generator)", async () => {
+    const generate = vi.fn().mockResolvedValue({
+      success: true,
+      type: "message",
+      content: "done",
+    });
+
+    const config: SubagentConfig = { id: "stream-agent", name: "Stream", systemPrompt: "", modelId: "m", providerId: "p", tools: [], maxSteps: 3 };
+    const events = [];
+
+    const generator = runSubagentStream({ config, prompt: "hi", generate });
+    let result: IteratorResult<unknown, SubagentResult>;
+    do {
+      result = await generator.next();
+      if (!result.done) events.push(result.value);
+    } while (!result.done);
+
+    expect(events).toHaveLength(2); // generate + message
+    expect(events[0]).toMatchObject({ type: "generate" });
+    expect(events[1]).toMatchObject({ type: "message", content: "done" });
+    expect(result.value.ok).toBe(true);
   });
 });
