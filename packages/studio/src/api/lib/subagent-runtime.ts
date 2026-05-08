@@ -19,6 +19,8 @@ export interface SubagentConfig {
   readonly providerId: string;
   readonly tools: readonly string[];
   readonly maxSteps: number;
+  /** Git worktree 路径 — 子代理在独立 worktree 中执行，避免与主工作区冲突 */
+  readonly worktree?: string;
 }
 
 export interface SubagentGenerateInput {
@@ -74,7 +76,7 @@ export interface RunSubagentInput {
   readonly config: SubagentConfig;
   readonly prompt: string;
   readonly generate: (input: SubagentGenerateInput) => Promise<SubagentGenerateResult>;
-  readonly executeTool?: (toolName: string, input: Record<string, unknown>) => Promise<{ ok: boolean; summary: string; data?: unknown }>;
+  readonly executeTool?: (toolName: string, input: Record<string, unknown>, options?: { cwd?: string }) => Promise<{ ok: boolean; summary: string; data?: unknown }>;
   /** 对标 Claude: abortController.signal */
   readonly signal?: AbortSignal;
   /** 对标 Claude: fork context messages (filterIncompleteToolCalls) */
