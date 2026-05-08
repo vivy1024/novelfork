@@ -145,9 +145,9 @@ pnpm --dir packages/studio add broad-infinite-list flowtoken shiki @dnd-kit/core
 - 外部链接按钮 → 需要在新标签打开
 
 ### 应该修
-9. 对话嵌入 react-flow 节点 — ChapterNode 内容区是占位
-10. 搜索结果点击无导航
-11. 附件按钮 onAttach 未接通上层
+9. ~~对话嵌入 react-flow 节点~~ → ChapterNode 已改为绑定状态 UI + 操作按钮
+10. ~~搜索结果点击无导航~~ → 已接通 onNavigateToBook 回调
+11. ~~附件按钮 onAttach 未接通上层~~ → 已通过 prop 链接通
 
 ## 设置页差距
 
