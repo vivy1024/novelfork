@@ -84,12 +84,15 @@ pnpm --dir packages/studio add broad-infinite-list flowtoken shiki @dnd-kit/core
 - [x] 消息右键菜单：手写 backdrop+fixed → shadcn ContextMenu（回退/分叉/压缩/编辑/删除）
 - [x] 设置页行为 section 补全：yoloSkipReadonlyConfirmation/showTokenUsage/showOutputRate/scrollAutoLoadHistory/sendMode
 - [x] 套路页钩子列表：@dnd-kit sortable 拖拽排序 + GripVertical 手柄
+- [x] sidebar 可折叠：展开/折叠切换 + 图标模式 + Tooltip + 平滑动画
+- [x] 路由懒加载：React.lazy + Suspense（SearchPage/RoutinesNextPage/SessionCenterPage）
+- [x] 文件修改按钮：shadcn Sheet 侧边抽屉面板（空状态，待接通真实数据）
 
 ## 仍存在的问题
 
 ### 对话界面
 - ~~顶部工具栏按钮无 handler~~ → 已接通（编辑标题/生成标题/归档/外部链接）
-- 文件修改按钮需要 Sheet 面板 + GET /api/narrators/:id/file-modifications
+- ~~文件修改按钮需要 Sheet 面板~~ → 已用 shadcn Sheet 实现（空状态，待接通 API）
 - 会话信息按钮需要详情面板
 - ~~消息右键菜单未验证是否真的弹出~~ → 已用 shadcn ContextMenu 替换
 - 工具调用卡片未验证 ToolCallBlock 是否真的渲染
@@ -112,10 +115,10 @@ pnpm --dir packages/studio add broad-infinite-list flowtoken shiki @dnd-kit/core
 - 对话未嵌入节点
 
 ### 全局
-- 45/47 个 app-next 文件不用 shadcn 组件
-- 零虚拟滚动
-- 零懒加载
-- sidebar 不可折叠
+- ~~45/47 个 app-next 文件不用 shadcn 组件~~ → 核心对话界面已全面替换
+- ~~零虚拟滚动~~ → 消息列表已用 broad-infinite-list
+- ~~零懒加载~~ → 3 个页面已用 React.lazy + Suspense
+- ~~sidebar 不可折叠~~ → 已实现折叠/展开切换
 
 
 ## 对话界面差距（对比 NarraFork）
