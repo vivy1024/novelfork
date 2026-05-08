@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 
 import {
   createFetchJsonContractClient,
@@ -19,9 +19,9 @@ import type { RuntimeModelPoolEntry } from "../shared/provider-catalog";
 import type { CanvasContext, ToolConfirmationRequest } from "../shared/agent-native-workspace";
 import type { NarratorSessionChatMessage, NarratorSessionChatSnapshot, NarratorSessionRecord, SessionCumulativeUsage, SessionPermissionMode, TokenUsage, UpdateNarratorSessionInput } from "../shared/session-types";
 import { resolveStudioNextRoute, type StudioNextRoute } from "./entry";
-import { SearchPage } from "./search/SearchPage";
-import { RoutinesNextPage } from "./routines/RoutinesNextPage";
-import { SessionCenterPage } from "./sessions/SessionCenterPage";
+const SearchPage = lazy(() => import("./search/SearchPage").then((m) => ({ default: m.SearchPage })));
+const RoutinesNextPage = lazy(() => import("./routines/RoutinesNextPage").then((m) => ({ default: m.RoutinesNextPage })));
+const SessionCenterPage = lazy(() => import("./sessions/SessionCenterPage").then((m) => ({ default: m.SessionCenterPage })));
 import { SettingsLayout, type SettingsSectionItem } from "./components/layouts";
 import { Button } from "../components/ui/button";
 import { ProviderSettingsPage } from "./settings/ProviderSettingsPage";
@@ -67,6 +67,14 @@ function ShellPlaceholder({ title, description }: { readonly title: string; read
       <h1 className="mt-2 text-2xl font-semibold">{title}</h1>
       <p className="mt-2 text-sm text-muted-foreground">{description}</p>
     </section>
+  );
+}
+
+function LazyFallback() {
+  return (
+    <div className="flex h-full flex-1 items-center justify-center">
+      <p className="text-sm text-muted-foreground animate-pulse">加载中…</p>
+    </div>
   );
 }
 
@@ -905,11 +913,11 @@ function RouteMountPoint({
     case "book":
       return <WritingWorkbenchRouteLive bookId={route.bookId} onCanvasContextChange={onCanvasContextChange} onNavigateToConversation={onNavigateToConversation} />;
     case "sessions":
-      return <SessionCenterPage />;
+      return <Suspense fallback={<LazyFallback />}><SessionCenterPage /></Suspense>;
     case "search":
-      return <SearchPage />;
+      return <Suspense fallback={<LazyFallback />}><SearchPage /></Suspense>;
     case "routines":
-      return <RoutinesNextPage />;
+      return <Suspense fallback={<LazyFallback />}><RoutinesNextPage /></Suspense>;
     case "settings":
       return <SettingsRouteLive />;
     case "home":
