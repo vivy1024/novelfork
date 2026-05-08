@@ -52,9 +52,38 @@ export interface ConversationUsage extends ConversationUsageBucket {
   cost?: ConversationCostSummary;
 }
 
+/**
+ * 叙述者主状态（对标 NarraFork status-registry narratorStatus）
+ */
+export type NarratorState = "idle" | "working" | "waiting" | "archived";
+
+/**
+ * 叙述者子状态（对标 NarraFork status-registry narratorSubstatus）
+ * 用于在主状态基础上提供更细粒度的 UI 反馈
+ */
+export type NarratorSubstatus =
+  | "unread"
+  | "error"
+  | "interrupted"
+  | "suspended"
+  | "manual_override"
+  | "reasoning"
+  | "compacting"
+  | "planning"
+  | "retrying"
+  | "queued";
+
 export interface ConversationStatus {
   state: string;
   label: string;
+  /** 对标 NarraFork 叙述者主状态 */
+  narratorState?: NarratorState;
+  /** 对标 NarraFork 叙述者子状态（优先级高于 narratorState 的 UI 展示） */
+  substatus?: NarratorSubstatus;
+  /** Streaming 开始时间戳（用于计时器） */
+  streamingStartedAt?: number;
+  /** 上一轮耗时（毫秒） */
+  lastTurnDurationMs?: number;
   providerId?: string;
   providerLabel?: string;
   modelId?: string;
