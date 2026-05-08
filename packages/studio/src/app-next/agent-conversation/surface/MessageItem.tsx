@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { memo, useCallback, useState } from "react";
 import { AnimatedMarkdown } from "flowtoken";
 import "flowtoken/dist/styles.css";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
@@ -79,7 +79,7 @@ function ThinkingBlock({ block, defaultExpanded = false }: { block: Conversation
   );
 }
 
-export function MessageItem({ message, onContextAction }: MessageItemProps) {
+export const MessageItem = memo(function MessageItem({ message, onContextAction }: MessageItemProps) {
   const handleAction = useCallback((action: MessageContextAction["id"]) => {
     onContextAction?.(message.id, action);
   }, [onContextAction, message.id]);
@@ -130,7 +130,7 @@ export function MessageItem({ message, onContextAction }: MessageItemProps) {
       <MessageContextMenuContent onAction={handleAction} />
     </ContextMenu>
   );
-}
+});
 
 // ---------------------------------------------------------------------------
 // MessageContextMenuContent — shadcn ContextMenu 内容
