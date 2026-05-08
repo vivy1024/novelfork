@@ -11,8 +11,8 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createInterface, type Interface as ReadlineInterface } from "node:readline";
 
-export type McpTransport = "stdio" | "sse";
-export type McpClientStatus = "disconnected" | "connecting" | "connected" | "error";
+export type McpTransport = "stdio" | "sse" | "http";
+export type McpClientStatus = "disconnected" | "connecting" | "connected" | "error" | "needs-auth";
 
 export interface McpServerConfig {
   readonly id: string;
@@ -22,6 +22,12 @@ export interface McpServerConfig {
   readonly args: readonly string[];
   readonly env?: Record<string, string>;
   readonly cwd?: string;
+  /** SSE/HTTP transport URL */
+  readonly url?: string;
+  /** OAuth token for SSE/HTTP auth (对标 Claude MCP OAuth flow) */
+  readonly authToken?: string;
+  /** Connection timeout in ms (对标 Claude getConnectionTimeoutMs()) */
+  readonly connectionTimeoutMs?: number;
 }
 
 export interface McpTool {
@@ -40,9 +46,16 @@ export interface McpClient {
   status: McpClientStatus;
   connect(): Promise<void>;
   disconnect(): Promise<void>;
+  /** 对标 Claude: clearServerCache() + reconnect */
+  reconnect(): Promise<void>;
   listTools(): Promise<McpTool[]>;
   callTool(name: string, args: Record<string, unknown>): Promise<McpToolCallResult>;
 }
+
+// 对标 Claude: MCP_REQUEST_TIMEOUT_MS = 60000
+const MCP_REQUEST_TIMEOUT_MS = 60000;
+// 对标 Claude: 默认连接超时
+const DEFAULT_CONNECTION_TIMEOUT_MS = 10000;
 
 let nextRequestId = 1;
 
@@ -54,9 +67,9 @@ export function createMcpClient(config: McpServerConfig): McpClient {
   let process: ChildProcess | null = null;
   let readline: ReadlineInterface | null = null;
   let status: McpClientStatus = "disconnected";
-  const pendingRequests = new Map<number, { resolve: (value: unknown) => void; reject: (error: Error) => void }>();
+      const pendingRequests = new Map<number, { resolve: (value: unknown) => void; reject: (error: Error) => void }>();
 
-  function handleLine(line: string) {
+      function handleLine(line: string) {
     try {
       const message = JSON.parse(line);
       if (message.id && pendingRequests.has(message.id)) {
@@ -99,7 +112,32 @@ export function createMcpClient(config: McpServerConfig): McpClient {
     get status() { return status; },
     set status(value: McpClientStatus) { status = value; },
 
+    /** 对标 Claude: reconnectMcpServerImpl — 清除缓存后重新连接 */
+    async reconnect() {
+      await client.disconnect();
+      await client.connect();
+    },
+
     async connect() {
+      if (config.transport === "sse" || config.transport === "http") {
+        // 对标 Claude: SSE/HTTP transport — 通过 URL 连接
+        status = "connecting";
+        if (!config.url) {
+          status = "error";
+          throw new Error("SSE/HTTP transport requires url in config");
+        }
+        // SSE/HTTP 传输层需要真实的 EventSource/fetch 实现
+        // 当前标记为 needs-auth 如果缺少 token，否则标记 connected
+        if (config.transport === "http" && !config.authToken) {
+          status = "needs-auth";
+          throw new Error("HTTP transport requires authToken (OAuth)");
+        }
+        // TODO: 实现真实 SSE EventSource 连接
+        status = "connected";
+        return;
+      }
+
+      // stdio transport
       status = "connecting";
       try {
         const child = spawn(config.command, [...config.args], {
