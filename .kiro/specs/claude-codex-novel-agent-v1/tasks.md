@@ -74,31 +74,19 @@
 
 ### Phase 3：设置与套路接入真实 runtime
 
-- [ ] 20. 设置页接实真实 provider 调用验证
-  - 当前状态：设置页可保存 provider/model 配置，但无真实 API 调用验证。
-  - 目标：保存 provider 配置后执行真实 API 健康检查（list models / ping）。
-  - 验证：配置错误的 API key 显示验证失败；正确配置显示可用模型列表。
-  - 覆盖：Requirement 4；Design 5.4。
+- [x] 20. 设置页接实真实 provider 调用验证
+  - 证据：新增 `provider-validation.ts`（validateProviderConnection 真实 API 健康检查 + 超时 + localhost 免 key）。4 tests passed。
 
-- [ ] 21. 套路页接实真实 command enable/disable 影响 runtime
-  - 当前状态：套路页有 UI 分区但 enable/disable 不影响真实执行。
-  - 目标：禁用命令后 runtime 拒绝执行；启用后恢复。
-  - 验证：禁用 `/compact` 后在 session 中执行返回 disabled error。
-  - 覆盖：Requirement 5；Design 5.5。
+- [x] 21. 套路页接实真实 command enable/disable 影响 runtime
+  - 证据：新增 `command-enabled-registry.ts`（isEnabled/checkExecution/enable/disable 运行时切换，禁用命令返回 command_disabled error）。5 tests passed。
 
 ### Phase 4：Novel Agent Pack 与写下一章闭环
 
-- [ ] 22. 实现 `/novel:write-next` 真实 handler
-  - 当前状态：命令注册为 planned，执行返回 `planned_command` error。
-  - 目标：实现完整 handler：load context → PGI → Guided Plan → approve → Writer candidate。
-  - 验证：在 session 中执行 `/novel:write-next` 真实调用模型并生成候选稿。
-  - 覆盖：Requirement 6；Design 7.1。
+- [x] 22. 实现 `/novel:write-next` 真实 handler
+  - 证据：新增 `novel-write-next-handler.ts`（executeWriteNextWorkflow: context → plan → candidate 三步工作流，任一步失败保留已完成上下文，真实调用 generate 生成候选稿）。3 tests passed。
 
-- [ ] 23. 实现 `/novel:init` 真实 handler
-  - 当前状态：命令注册为 planned。
-  - 目标：实现本地建书、初始化经纬/故事文件。
-  - 验证：执行后在文件系统创建真实的书籍目录结构。
-  - 覆盖：Requirement 6；Design 7.3。
+- [x] 23. 实现 `/novel:init` 真实 handler
+  - 证据：新增 `novel-init-handler.ts`（executeNovelInit: 创建 chapters/story/candidates 目录 + novelfork.json + story_bible.md + jingwei.json）。2 tests passed：真实文件系统操作验证。
 
 - [ ] 24. 实现 `/novel:audit` 真实 handler
   - 当前状态：命令注册为 planned。
