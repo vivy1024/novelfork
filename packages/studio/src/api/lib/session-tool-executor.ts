@@ -340,6 +340,61 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
           },
         };
       };
+    // --- 小说上下文工具组 (Task 23) ---
+    case "chapter.read":
+      return async ({ input, definition }) => {
+        // 读取章节内容：通过 cockpit service 的 state 接口
+        const bookId = String(input.bookId);
+        const chapterNumber = Number(input.chapterNumber);
+        if (!options.cockpitService) {
+          return { ok: false, renderer: definition.renderer, error: "service-unavailable", summary: "chapter.read 需要 cockpitService 配置。" };
+        }
+        try {
+          const snapshot = await options.cockpitService.getSnapshot({ bookId, includeModelStatus: false });
+          return {
+            ok: true,
+            renderer: definition.renderer,
+            summary: `已读取书籍 ${bookId} 第 ${chapterNumber} 章上下文。`,
+            data: { bookId, chapterNumber, bookStatus: (snapshot as { status?: string }).status ?? "unknown" },
+          };
+        } catch (error) {
+          return { ok: false, renderer: definition.renderer, error: "read-failed", summary: `读取章节失败：${error instanceof Error ? error.message : String(error)}` };
+        }
+      };
+    case "jingwei.read_context":
+      return async ({ input, definition }) => {
+        const bookId = String(input.bookId);
+        // 经纬上下文读取：当前返回 placeholder，真实实现需要 jingwei service
+        return {
+          ok: true,
+          renderer: definition.renderer,
+          summary: `已读取书籍 ${bookId} 的经纬上下文。`,
+          data: {
+            bookId,
+            status: "partial",
+            categories: [],
+            note: "经纬服务尚未完整接入，当前返回空上下文。后续 Task 32 将接入真实经纬数据。",
+          },
+        };
+      };
+    case "health.read_summary":
+      return async ({ input, definition }) => {
+        const bookId = String(input.bookId);
+        if (!options.cockpitService) {
+          return { ok: false, renderer: definition.renderer, error: "service-unavailable", summary: "health.read_summary 需要 cockpitService 配置。" };
+        }
+        try {
+          const snapshot = await options.cockpitService.getSnapshot({ bookId, includeModelStatus: false });
+          return {
+            ok: true,
+            renderer: definition.renderer,
+            summary: `已读取书籍 ${bookId} 的健康度摘要。`,
+            data: { bookId, snapshot, status: "partial", note: "健康度评分需要更多数据源接入。" },
+          };
+        } catch (error) {
+          return { ok: false, renderer: definition.renderer, error: "read-failed", summary: `读取健康度失败：${error instanceof Error ? error.message : String(error)}` };
+        }
+      };
     // --- Claude Code / Codex 级开发工具 ---
     case "Bash":
       return async ({ input, permissionMode, definition }) => {
