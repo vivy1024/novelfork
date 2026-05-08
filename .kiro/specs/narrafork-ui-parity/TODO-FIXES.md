@@ -74,16 +74,25 @@ pnpm --dir packages/studio add broad-infinite-list flowtoken shiki @dnd-kit/core
 - [x] 用户消息气泡：深色 → 浅色边框
 - [x] NarratorStatusBar 按钮：加大尺寸
 - [x] 顶部工具栏：添加完整图标组
+- [x] NarratorStatusBar：手写 PopoverButton → shadcn DropdownMenu + Tooltip（下拉菜单正常弹出）
+- [x] 顶部工具栏：手写 button → shadcn Button ghost + Tooltip（hover 提示正常）
+- [x] Composer：手写 button → shadcn Button + aria-label 无障碍
+- [x] 消息列表：全量渲染 → broad-infinite-list 虚拟滚动
+- [x] AI 回复：新增 flowtoken AnimatedMarkdown 流式打字机动画（isStreaming 时启用）
+- [x] 代码高亮：react-syntax-highlighter (Prism) → shiki (github-dark)
+- [x] 工具栏按钮接通 handler：编辑标题/生成标题/归档/外部链接
 
 ## 仍存在的问题
 
 ### 对话界面
-- 顶部工具栏按钮无 handler（编辑标题/生成标题/文件修改/信息/归档/外部链接）
+- ~~顶部工具栏按钮无 handler~~ → 已接通（编辑标题/生成标题/归档/外部链接）
+- 文件修改按钮需要 Sheet 面板 + GET /api/narrators/:id/file-modifications
+- 会话信息按钮需要详情面板
 - 消息右键菜单未验证是否真的弹出
 - 工具调用卡片未验证 ToolCallBlock 是否真的渲染
 - 推理折叠未验证（无真实 thinking 数据）
-- 消息列表无虚拟滚动（长对话会卡）
-- AI 回复无流式打字机动画
+- ~~消息列表无虚拟滚动~~ → 已用 broad-infinite-list 替换
+- ~~AI 回复无流式打字机动画~~ → 已集成 flowtoken
 
 ### 设置页
 - RuntimeControlPanel 缺少字段：计划模式/沉默阈值/危险反思/旧编码/刷新Shell
