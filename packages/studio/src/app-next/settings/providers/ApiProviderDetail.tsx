@@ -2,10 +2,11 @@ import { useEffect, useState } from "react";
 
 import { EmptyState } from "../../components/feedback";
 import { modelTestStatusLabel, providerApiModeLabel, providerCompatibilityLabel } from "../../lib/display-labels";
-import type { ManagedProvider, Model, ProviderApiMode, ProviderCompatibility, ProviderType } from "@/shared/provider-catalog";
+import type { ManagedProvider, Model, ProviderApiMode, ProviderCompatibility, ProviderThinkingStrength, ProviderType } from "@/shared/provider-catalog";
 import type { ApiProvider } from "../provider-types";
 
 const API_MODES: ProviderApiMode[] = ["completions", "responses", "codex"];
+const THINKING_STRENGTHS: ProviderThinkingStrength[] = ["low", "medium", "high"];
 
 function providerTypeFromCompatibility(compatibility: ProviderCompatibility): ProviderType {
   return compatibility === "anthropic-compatible" ? "anthropic" : "custom";
@@ -121,6 +122,46 @@ export function ApiProviderDetail({
           保存接入信息
         </button>
       </section>
+
+      {/* Codex 模式专属配置 */}
+      {apiMode === "codex" && (
+        <section className="space-y-3 rounded-lg border border-border p-4">
+          <h3 className="text-base font-semibold">Codex 配置</h3>
+          <p className="text-xs text-muted-foreground">从 Codex 反代出来的供应商支持思考强度、Fast Mode 和 WebSocket。</p>
+          <div className="grid gap-3 md:grid-cols-2">
+            <label className="text-sm">
+              Codex 推理强度
+              <select
+                className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2"
+                value={provider.thinkingStrength ?? "medium"}
+                onChange={(e) => void onUpdateProvider(provider.id, { thinkingStrength: e.target.value as ProviderThinkingStrength })}
+              >
+                {THINKING_STRENGTHS.map((s) => <option key={s} value={s}>{s === "low" ? "低" : s === "medium" ? "中" : "高"}</option>)}
+              </select>
+            </label>
+            <label className="text-sm">
+              ChatGPT Account ID
+              <input
+                className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2"
+                value={provider.accountId ?? ""}
+                placeholder="可选，用于组织订阅"
+                onChange={(e) => void onUpdateProvider(provider.id, { accountId: e.target.value || undefined })}
+              />
+            </label>
+          </div>
+          <div className="flex items-center gap-4">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={provider.useResponsesWebSocket ?? false}
+                onChange={(e) => void onUpdateProvider(provider.id, { useResponsesWebSocket: e.target.checked })}
+              />
+              使用 Responses WebSocket
+            </label>
+          </div>
+          <p className="text-[10px] text-muted-foreground">WebSocket 为实验性功能，不可用时自动回退 HTTP。</p>
+        </section>
+      )}
 
       <div>
         <button
