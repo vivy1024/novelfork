@@ -1,3 +1,5 @@
+import { ShieldAlert, Check, X } from "lucide-react";
+
 export interface ConversationConfirmationResource {
   kind: string;
   id: string;
@@ -40,29 +42,12 @@ export interface ConversationConfirmation {
   busy?: boolean;
 }
 
-function resourceText(resource: ConversationConfirmationResource): string {
-  return [resource.kind, resource.id, resource.title].filter(Boolean).join(" / ");
-}
-
-function sourceItems(source: ConversationConfirmationSource): string[] {
-  return [
-    source.sessionId ? `Session：${source.sessionId}` : null,
-    source.turnId ? `Turn：${source.turnId}` : null,
-    source.messageId ? `消息：${source.messageId}` : null,
-    source.toolUseId ? `工具调用：${source.toolUseId}` : null,
-  ].filter((value): value is string => Boolean(value));
-}
-
-function checkpointText(checkpoint: ConversationConfirmationCheckpoint): string {
-  if (checkpoint.checkpointId) return `Checkpoint：${checkpoint.checkpointId}`;
-  return checkpoint.required ? "Checkpoint：需要创建" : "Checkpoint：不需要";
-}
-
-function diffText(diff: unknown): string {
-  if (!diff || typeof diff !== "object") return `Diff：${String(diff)}`;
-  const record = diff as { status?: unknown; summary?: unknown };
-  return [record.status, record.summary].filter((value): value is string => typeof value === "string" && value.length > 0).join(" / ") || JSON.stringify(diff);
-}
+const RISK_COLORS: Record<string, string> = {
+  read: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
+  "draft-write": "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
+  "confirmed-write": "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
+  destructive: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
+};
 
 export function ConfirmationGate({
   confirmation,
@@ -73,28 +58,74 @@ export function ConfirmationGate({
   onApprove: (id: string) => void;
   onReject: (id: string) => void;
 }) {
+  const riskClass = RISK_COLORS[confirmation.risk ?? ""] ?? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200";
+
   return (
-    <aside data-testid="confirmation-gate" className="confirmation-gate">
-      <h3>{confirmation.title}</h3>
-      {confirmation.summary ? <p>{confirmation.summary}</p> : null}
-      <dl>
-        {confirmation.target ? <><dt>目标</dt><dd>目标：{confirmation.target}</dd></> : null}
-        {confirmation.risk ? <><dt>风险</dt><dd>风险：{confirmation.risk}</dd></> : null}
-        {confirmation.permissionSource ? <><dt>来源</dt><dd>来源：{confirmation.permissionSource}</dd></> : null}
-        {confirmation.operation ? <><dt>操作</dt><dd>操作：{confirmation.operation}</dd></> : null}
-        {confirmation.targetResources?.length ? <><dt>目标资源</dt><dd>{confirmation.targetResources.map((resource) => <span key={`${resource.kind}:${resource.id}`}>资源：{resourceText(resource)}</span>)}</dd></> : null}
-        {confirmation.source ? <><dt>事件来源</dt><dd>{sourceItems(confirmation.source).map((item) => <span key={item}>{item}</span>)}</dd></> : null}
-        {confirmation.checkpoint ? <><dt>Checkpoint</dt><dd>{checkpointText(confirmation.checkpoint)}{confirmation.checkpoint.paths?.map((path) => <span key={path}>{path}</span>)}</dd></> : null}
-        {confirmation.diff ? <><dt>Diff</dt><dd>Diff：{diffText(confirmation.diff)}</dd></> : null}
-        {confirmation.operations?.length ? <><dt>可执行操作</dt><dd>可执行：{confirmation.operations.map((operation) => operation.label).join(" / ")}</dd></> : null}
-      </dl>
-      {confirmation.error ? <p role="alert">确认失败：{confirmation.error}</p> : null}
-      <button type="button" disabled={confirmation.busy} onClick={() => onApprove(confirmation.id)}>
-        批准
-      </button>
-      <button type="button" disabled={confirmation.busy} onClick={() => onReject(confirmation.id)}>
-        拒绝
-      </button>
+    <aside data-testid="confirmation-gate" className="rounded-lg border border-yellow-300 bg-yellow-50 p-4 dark:border-yellow-700 dark:bg-yellow-950/30">
+      {/* Header */}
+      <div className="flex items-start gap-3">
+        <ShieldAlert className="mt-0.5 size-5 shrink-0 text-yellow-600 dark:text-yellow-400" />
+        <div className="flex-1 space-y-2">
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-semibold text-foreground">{confirmation.title}</h3>
+            {confirmation.risk && (
+              <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${riskClass}`}>
+                {confirmation.risk}
+              </span>
+            )}
+          </div>
+
+          {confirmation.summary && (
+            <p className="text-xs text-muted-foreground">{confirmation.summary}</p>
+          )}
+
+          {/* Details */}
+          <div className="space-y-1 text-xs text-muted-foreground">
+            {confirmation.target && (
+              <div><span className="font-medium">目标：</span>{confirmation.target}</div>
+            )}
+            {confirmation.targetResources?.map((r) => (
+              <div key={`${r.kind}:${r.id}`}>
+                <span className="font-medium">资源：</span>
+                <code className="rounded bg-muted px-1">{r.kind}</code> {r.title ?? r.id}
+              </div>
+            ))}
+            {confirmation.checkpoint?.required && (
+              <div><span className="font-medium">Checkpoint：</span>{confirmation.checkpoint.checkpointId ?? "将自动创建"}</div>
+            )}
+          </div>
+
+          {/* Error */}
+          {confirmation.error && (
+            <div className="rounded-md bg-red-100 px-2 py-1 text-xs text-red-700 dark:bg-red-900/30 dark:text-red-300">
+              {confirmation.error}
+            </div>
+          )}
+
+          {/* Actions */}
+          <div className="flex items-center gap-2 pt-1">
+            <button
+              type="button"
+              disabled={confirmation.busy}
+              onClick={() => onApprove(confirmation.id)}
+              className="inline-flex items-center gap-1 rounded-md bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-50"
+            >
+              <Check className="size-3" />
+              批准
+            </button>
+            <button
+              type="button"
+              disabled={confirmation.busy}
+              onClick={() => onReject(confirmation.id)}
+              className="inline-flex items-center gap-1 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted disabled:opacity-50"
+            >
+              <X className="size-3" />
+              拒绝
+            </button>
+            {confirmation.busy && <span className="text-[10px] text-muted-foreground">处理中...</span>}
+          </div>
+        </div>
+      </div>
     </aside>
   );
 }
