@@ -22,20 +22,21 @@ NarraFork 的叙述者状态机：idle → working → (reasoning | planning | c
 
 ### Phase 0：叙述者状态机对标
 
-- [ ] ENABLER 1. 扩展叙述者状态模型
+- [x] ENABLER 1. 扩展叙述者状态模型
   - 当前 ConversationStatus 只有 `state: "idle" | "running" | "active"`
   - 对标 NarraFork status-registry：idle / working / waiting / archived + substatus (error / interrupted / reasoning / compacting / planning / retrying / queued / suspended / unread / manual_override)
-  - 新增 `substatus` 字段到 ConversationStatus
-  - WebSocket envelope reducer 根据 `session:state` 事件更新 substatus
-  - 验证：typecheck 通过
+  - 新增 `narratorState`、`substatus`、`streamingStartedAt`、`lastTurnDurationMs` 字段到 ConversationStatus
+  - ConversationSurface 使用 narratorState/substatus 判断 isWorking/isInterrupted
+  - ConversationRoute 传入 streamingStartedAt 和 narratorState
+  - 验证：typecheck 通过；既有 11 个状态栏/composer 测试仍通过
 
 ### Phase 1：消息渲染对标
 
-- [ ] FEATURE 2. AI 回复使用 MarkdownRenderer
-  - `surface/MessageItem.tsx` 删除 `renderMarkdown()` 和 `inlineMarkdown()`
+- [x] FEATURE 2. AI 回复使用 MarkdownRenderer
+  - `surface/MessageItem.tsx` 删除 `renderMarkdown()` 和 `inlineMarkdown()`（~40行正则替换代码）
   - 导入 `@/components/MarkdownRenderer`，AI 回复改为 `<MarkdownRenderer content={message.content} />`
-  - 确认依赖已安装（react-markdown、remark-gfm、react-syntax-highlighter）
-  - 验证：typecheck + ConversationSurface.test.tsx 通过
+  - 依赖已安装（react-markdown、remark-gfm、react-syntax-highlighter、rehype-katex）
+  - 验证：typecheck 通过
 
 - [ ] FEATURE 3. 工具调用卡片对标 NarraFork
   - NarraFork 工具调用：`✓ toolName · 586ms >`（一行紧凑，点击展开）
