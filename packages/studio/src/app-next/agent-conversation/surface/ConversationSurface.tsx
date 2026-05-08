@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Settings, Search, ExternalLink, Pencil, Sparkles, FileCode, Info, Archive } from "lucide-react";
 
 import type { ToolResultArtifact } from "../../tool-results";
@@ -8,6 +8,9 @@ import { ConfirmationGate, type ConversationConfirmation } from "./ConfirmationG
 import type { ConversationSessionConfigPatch, ConversationStatus } from "./ConversationStatusBar";
 import { MessageStream, type ConversationSurfaceMessage } from "./MessageStream";
 import { NarratorStatusBar } from "./NarratorStatusBar";
+import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
+import { Input } from "@/components/ui/input";
 
 export interface ConversationRecoveryNotice {
   state: string;
@@ -79,14 +82,8 @@ export function ConversationSurface({
   onCompactSession,
   onSlashCommandResult,
 }: ConversationSurfaceProps) {
-  const messagesEndRef = useRef<HTMLDivElement>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-
-  // Auto-scroll to bottom on new messages
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages.length]);
 
   const handleSlashCommandResult = (result: SlashCommandExecutionResult) => {
     onSlashCommandResult?.(result);
@@ -107,50 +104,73 @@ export function ConversationSurface({
     : messages;
 
   return (
+    <TooltipProvider>
     <section data-testid="conversation-surface" className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
       {/* ── Top toolbar ── */}
       <header className="flex shrink-0 items-center justify-between border-b border-border px-4 py-2">
-        <div className="flex items-center gap-2 min-w-0">
-          <button type="button" className="rounded-md p-1 text-muted-foreground hover:bg-muted" title="在新标签打开">
-            <ExternalLink className="size-4" />
-          </button>
+        <div className="flex items-center gap-1.5 min-w-0">
+          <Tooltip>
+            <TooltipTrigger render={<Button variant="ghost" size="icon-xs" />}>
+              <ExternalLink className="size-3.5" />
+            </TooltipTrigger>
+            <TooltipContent>在新标签打开</TooltipContent>
+          </Tooltip>
           <h2 className="truncate text-sm font-semibold text-foreground">{title}</h2>
-          <button type="button" className="rounded-md p-1 text-muted-foreground hover:bg-muted" title="编辑标题">
-            <Pencil className="size-3" />
-          </button>
-          <button type="button" className="rounded-md p-1 text-muted-foreground hover:bg-muted" title="生成标题">
-            <Sparkles className="size-3" />
-          </button>
+          <Tooltip>
+            <TooltipTrigger render={<Button variant="ghost" size="icon-xs" />}>
+              <Pencil className="size-3" />
+            </TooltipTrigger>
+            <TooltipContent>编辑标题</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger render={<Button variant="ghost" size="icon-xs" />}>
+              <Sparkles className="size-3" />
+            </TooltipTrigger>
+            <TooltipContent>生成标题</TooltipContent>
+          </Tooltip>
         </div>
         <div className="flex items-center gap-0.5">
           {isWorking && effectiveStreamingStartedAt && <ThinkingTimer startedAt={effectiveStreamingStartedAt} />}
           {!isWorking && status.lastTurnDurationMs != null && (
             <span className="text-xs text-muted-foreground mr-2">空闲 · 上轮耗时 {formatDuration(status.lastTurnDurationMs)}</span>
           )}
-          <button type="button" className="rounded-md p-1.5 text-muted-foreground hover:bg-muted" title="搜索" onClick={() => setSearchOpen(!searchOpen)}>
-            <Search className="size-4" />
-          </button>
-          <button type="button" className="rounded-md p-1.5 text-muted-foreground hover:bg-muted" title="文件修改">
-            <FileCode className="size-4" />
-          </button>
-          <button type="button" className="rounded-md p-1.5 text-muted-foreground hover:bg-muted" title="会话信息">
-            <Info className="size-4" />
-          </button>
-          <button type="button" className="rounded-md p-1.5 text-muted-foreground hover:bg-muted" title="归档">
-            <Archive className="size-4" />
-          </button>
-          <button type="button" className="rounded-md p-1.5 text-muted-foreground hover:bg-muted" title="设置" onClick={() => settingsHref && (window.location.href = settingsHref)}>
-            <Settings className="size-4" />
-          </button>
+          <Tooltip>
+            <TooltipTrigger render={<Button variant="ghost" size="icon-sm" onClick={() => setSearchOpen(!searchOpen)} />}>
+              <Search className="size-4" />
+            </TooltipTrigger>
+            <TooltipContent>搜索</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger render={<Button variant="ghost" size="icon-sm" />}>
+              <FileCode className="size-4" />
+            </TooltipTrigger>
+            <TooltipContent>文件修改</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger render={<Button variant="ghost" size="icon-sm" />}>
+              <Info className="size-4" />
+            </TooltipTrigger>
+            <TooltipContent>会话信息</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger render={<Button variant="ghost" size="icon-sm" />}>
+              <Archive className="size-4" />
+            </TooltipTrigger>
+            <TooltipContent>归档</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger render={<Button variant="ghost" size="icon-sm" onClick={() => settingsHref && (window.location.href = settingsHref)} />}>
+              <Settings className="size-4" />
+            </TooltipTrigger>
+            <TooltipContent>设置</TooltipContent>
+          </Tooltip>
         </div>
       </header>
 
       {/* ── Search bar ── */}
       {searchOpen && (
         <div className="shrink-0 border-b border-border px-4 py-2">
-          <input
-            type="text"
-            className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm outline-none focus:border-primary"
+          <Input
             placeholder="搜索已加载消息..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
@@ -168,7 +188,7 @@ export function ConversationSurface({
       )}
 
       {/* ── Message stream ── */}
-      <div className="flex-1 overflow-y-auto px-4 py-3">
+      <div className="flex-1 min-h-0 px-4 py-3 overflow-hidden">
         {messages.length === 0 ? (
           <div className="flex h-full items-center justify-center">
             <div className="text-center text-sm text-muted-foreground">
@@ -189,7 +209,6 @@ export function ConversationSurface({
                 <ConfirmationGate confirmation={pendingConfirmation} onApprove={onApproveConfirmation} onReject={onRejectConfirmation} />
               </div>
             )}
-            <div ref={messagesEndRef} />
           </>
         )}
       </div>
@@ -212,6 +231,7 @@ export function ConversationSurface({
         settingsHref={settingsHref}
       />
     </section>
+    </TooltipProvider>
   );
 }
 
