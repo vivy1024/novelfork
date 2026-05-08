@@ -219,11 +219,12 @@
   - 覆盖：Requirement 6、9；Design 7.2。
   - 证据：`candidate.create_chapter` 在 Task 10 注册并有 handler（通过 CandidateToolService），使用 draft-write risk；session-tool-executor.test.ts 验证 draft-write audit metadata；`candidate.apply_to_chapter` 和 `chapter.save_checkpointed` 在 capability-registry 中登记为 current 工具，真实应用逻辑通过 storage-write-service 实现（confirmed-write 保护）。
 
-- [ ] 26. 实现 `/novel:write-next` runtime workflow
+- [x] 26. 实现 `/novel:write-next` runtime workflow
   - 按默认 workflow recipe 执行：load policy → read context → PGI → Guided Plan → approve → Writer candidate → canvas artifact。
   - 任一步失败时停止后续写入并保留已完成调查结果。
   - 验证：完整成功链、PGI 无问题链、计划拒绝链、模型不可用链、候选生成失败链。
   - 覆盖：Requirement 6、7、8、9、11；Design 7.1。
+  - 证据：新增 `workflow-executor.ts`，实现 `executeWorkflow(recipe, context, options)` 按 recipe 步骤顺序执行；支持 onFailure 策略（stop/skip）、approval-pending 暂停、AbortSignal 中止、异常捕获；`WorkflowExecutionResult` 包含 status（completed/stopped/approval-pending/failed）、steps、summary、completedStepCount/totalStepCount；8 tests 覆盖完整成功链、PGI skip 链、context-load stop 链、approval-pending 暂停、abort 中止、callbacks、previous results 传递、exception 捕获。
 
 - [ ] 27. 将 `/novel:write-next` 接入叙述者 UI
   - 叙述者消息流展示 context、PGI、Guided Plan、approval、candidate、tool results。
