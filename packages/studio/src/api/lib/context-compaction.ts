@@ -21,6 +21,24 @@ const POST_COMPACT_TOKEN_BUDGET = 50_000;
 // 对标 Claude: POST_COMPACT_MAX_TOKENS_PER_FILE = 5_000
 const POST_COMPACT_MAX_TOKENS_PER_FILE = 5_000;
 
+let _encoder: { encode: (text: string) => { length: number } } | null = null;
+
+/**
+ * 对标 Claude: tokenCountWithEstimation — 优先使用 tiktoken 精确计数，fallback 到估算
+ */
+function getEncoder(): { encode: (text: string) => { length: number } } | null {
+  if (_encoder !== undefined) return _encoder;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const tiktoken = require("tiktoken");
+    _encoder = tiktoken.encoding_for_model("gpt-4o");
+    return _encoder;
+  } catch {
+    _encoder = null;
+    return null;
+  }
+}
+
 export interface CompactMessage {
   readonly id?: string;
   readonly role: "system" | "user" | "assistant" | "tool_result";
@@ -56,12 +74,25 @@ export interface CompactResult {
 }
 
 /**
- * Estimate token count from text (rough: ~4 chars per token for mixed CJK/English).
+ * 精确 token 计数（tiktoken 可用时）或估算（fallback）。
+ * 对标 Claude: tokenCountWithEstimation()
  */
 export function estimateTokenCount(text: string): number {
-  // CJK characters are roughly 1 token each, English words ~1.3 tokens
-  // Simple heuristic: count chars / 4 for mixed content
-  return Math.ceil(text.length / 4);
+  const encoder = getEncoder();
+  if (encoder) {
+    try {
+      return encoder.encode(text).length;
+    } catch {
+      // fallback
+    }
+  }
+  // Fallback: CJK ~1.5 tokens/char, English ~0.25 tokens/char (4 chars/token)
+  let cjkChars = 0;
+  for (const char of text) {
+    if (char.charCodeAt(0) > 0x2E80) cjkChars++;
+  }
+  const nonCjk = text.length - cjkChars;
+  return Math.ceil(cjkChars * 1.5 + nonCjk / 4);
 }
 
 function totalTokens(messages: readonly CompactMessage[]): number {
