@@ -42,6 +42,9 @@ export interface ConversationRouteProps {
   onApproveConfirmation?: (id: string) => void;
   onRejectConfirmation?: (id: string) => void;
   onOpenArtifact?: (artifact: ToolResultArtifact) => void;
+  /** 历史消息分页 */
+  hasPreviousMessages?: boolean;
+  onLoadPreviousMessages?: () => Promise<ConversationSurfaceMessage[]>;
   /** 工具栏回调 */
   onEditTitle?: (newTitle: string) => void;
   onGenerateTitle?: () => void;
@@ -80,6 +83,8 @@ export function ConversationRoute({
   onApproveConfirmation = () => undefined,
   onRejectConfirmation = () => undefined,
   onOpenArtifact,
+  hasPreviousMessages,
+  onLoadPreviousMessages,
   onEditTitle,
   onGenerateTitle,
   onArchive,
@@ -141,6 +146,8 @@ export function ConversationRoute({
         onUpdateSessionConfig={onUpdateSessionConfig}
         onCompactSession={onCompactSession}
         onOpenArtifact={onOpenArtifact}
+        hasPreviousMessages={hasPreviousMessages}
+        onLoadPreviousMessages={onLoadPreviousMessages}
         onEditTitle={onEditTitle}
         onGenerateTitle={onGenerateTitle}
         onArchive={onArchive}

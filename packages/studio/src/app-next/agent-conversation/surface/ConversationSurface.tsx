@@ -44,6 +44,9 @@ export interface ConversationSurfaceProps {
   onOpenArtifact?: (artifact: ToolResultArtifact) => void;
   /** 附件上传回调 */
   onAttach?: (files: FileList) => void;
+  /** 历史消息分页 */
+  hasPreviousMessages?: boolean;
+  onLoadPreviousMessages?: () => Promise<ConversationSurfaceMessage[]>;
   /** 工具栏回调 */
   onEditTitle?: (newTitle: string) => void;
   onGenerateTitle?: () => void;
@@ -91,6 +94,8 @@ export function ConversationSurface({
   onCompactSession,
   onSlashCommandResult,
   onAttach,
+  hasPreviousMessages = false,
+  onLoadPreviousMessages,
   onEditTitle,
   onGenerateTitle,
   onArchive,
@@ -260,7 +265,7 @@ export function ConversationSurface({
           </div>
         ) : (
           <>
-            <MessageStream messages={filteredMessages} />
+            <MessageStream messages={filteredMessages} hasPrevious={hasPreviousMessages} onLoadPrevious={onLoadPreviousMessages} />
             {/* Confirmation gate inline */}
             {pendingConfirmation && (
               <div className="my-3">

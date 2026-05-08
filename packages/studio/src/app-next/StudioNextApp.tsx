@@ -573,6 +573,14 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
       onEditTitle={(newTitle) => { void sessionClient.updateSession(sessionId, { title: newTitle }); }}
       onGenerateTitle={() => { void sessionClient.updateSession(sessionId, { title: `会话 ${new Date().toLocaleDateString("zh-CN")}` }); }}
       onArchive={() => { void sessionClient.updateSession(sessionId, { status: "archived" }); }}
+      hasPreviousMessages={runtime.state.messages.length > 0 && (runtime.state.messages[0]?.seq ?? 0) > 1}
+      onLoadPreviousMessages={async () => {
+        const earliestSeq = runtime.state.messages[0]?.seq ?? 0;
+        if (earliestSeq <= 1) return [];
+        const result = await sessionClient.getChatHistory(sessionId, Math.max(0, earliestSeq - 50));
+        if (!result.ok || !result.data?.messages) return [];
+        return toConversationMessages(result.data.messages);
+      }}
     />
   );
 }
