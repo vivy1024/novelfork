@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { ToolCallBlock } from "@/components/ToolCall/ToolCallBlock";
 import type { ConversationToolCall } from "./ToolCallCard";
@@ -18,6 +18,26 @@ export interface ConversationSurfaceMessage {
   toolCalls?: ConversationToolCall[];
   /** AI 推理/思考内容块 */
   thinking?: ConversationThinkingBlock[];
+}
+
+export interface MessageContextAction {
+  id: "rollback" | "fork" | "compact-before" | "edit-regenerate" | "delete";
+  label: string;
+  destructive?: boolean;
+}
+
+const MESSAGE_CONTEXT_ACTIONS: MessageContextAction[] = [
+  { id: "rollback", label: "回退到此处" },
+  { id: "fork", label: "从此处分叉" },
+  { id: "compact-before", label: "压缩到此消息前" },
+  { id: "edit-regenerate", label: "编辑并重新生成" },
+  { id: "delete", label: "删除", destructive: true },
+];
+
+export interface MessageItemProps {
+  message: ConversationSurfaceMessage;
+  onOpenArtifact?: unknown;
+  onContextAction?: (messageId: string, action: MessageContextAction["id"]) => void;
 }
 
 /**
@@ -48,7 +68,21 @@ function ThinkingBlock({ block, defaultExpanded = false }: { block: Conversation
   );
 }
 
-export function MessageItem({ message }: { message: ConversationSurfaceMessage; onOpenArtifact?: unknown }) {
+export function MessageItem({ message, onContextAction }: MessageItemProps) {
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    if (!onContextAction || message.role === "system") return;
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY });
+  }, [onContextAction, message.role]);
+
+  const handleAction = useCallback((action: MessageContextAction["id"]) => {
+    setContextMenu(null);
+    onContextAction?.(message.id, action);
+  }, [onContextAction, message.id]);
+
   if (message.role === "system") {
     return (
       <div className="mx-auto max-w-lg py-1 text-center text-xs text-muted-foreground">
@@ -59,17 +93,18 @@ export function MessageItem({ message }: { message: ConversationSurfaceMessage; 
 
   if (message.role === "user") {
     return (
-      <div className="flex justify-end py-2">
+      <div className="flex justify-end py-2" ref={containerRef} onContextMenu={handleContextMenu}>
         <div className="max-w-[80%] rounded-2xl rounded-br-md bg-primary px-4 py-2.5 text-sm text-primary-foreground">
           {message.content}
         </div>
+        {contextMenu && <MessageContextMenu position={contextMenu} onAction={handleAction} onClose={() => setContextMenu(null)} />}
       </div>
     );
   }
 
   // assistant or tool
   return (
-    <div className="py-2">
+    <div className="py-2" ref={containerRef} onContextMenu={handleContextMenu}>
       <div className="max-w-[90%]">
         {message.thinking?.map((block, i) => (
           <ThinkingBlock key={`thinking-${i}`} block={block} />
@@ -79,6 +114,44 @@ export function MessageItem({ message }: { message: ConversationSurfaceMessage; 
           <ToolCallBlock key={toolCall.id} toolCall={adaptConversationToolCall(toolCall)} />
         ))}
       </div>
+      {contextMenu && <MessageContextMenu position={contextMenu} onAction={handleAction} onClose={() => setContextMenu(null)} />}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// MessageContextMenu — 右键上下文菜单
+// ---------------------------------------------------------------------------
+
+function MessageContextMenu({
+  position,
+  onAction,
+  onClose,
+}: {
+  position: { x: number; y: number };
+  onAction: (action: MessageContextAction["id"]) => void;
+  onClose: () => void;
+}) {
+  return (
+    <>
+      {/* Backdrop */}
+      <div className="fixed inset-0 z-50" onClick={onClose} onContextMenu={(e) => { e.preventDefault(); onClose(); }} />
+      {/* Menu */}
+      <div
+        className="fixed z-50 min-w-[160px] rounded-md border border-border bg-popover p-1 shadow-md"
+        style={{ top: position.y, left: position.x }}
+      >
+        {MESSAGE_CONTEXT_ACTIONS.map((action) => (
+          <button
+            key={action.id}
+            type="button"
+            className={`flex w-full items-center rounded px-2 py-1.5 text-xs hover:bg-muted ${action.destructive ? "text-destructive" : ""}`}
+            onClick={() => onAction(action.id)}
+          >
+            {action.label}
+          </button>
+        ))}
+      </div>
+    </>
   );
 }
