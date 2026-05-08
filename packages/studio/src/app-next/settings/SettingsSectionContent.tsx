@@ -26,7 +26,6 @@ export function SettingsSectionContent({ sectionId, onSectionChange }: SettingsS
     case "profile":
       return <ProfilePanel />;
     case "models":
-      return <ModelsSection onSectionChange={onSectionChange} />;
     case "agents":
       return <RuntimeControlPanel />;
     case "notifications":
