@@ -1,10 +1,11 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Settings, Search, Clock } from "lucide-react";
 
 import type { ToolResultArtifact } from "../../tool-results";
 import type { SlashCommandExecutionContext, SlashCommandExecutionResult } from "../slash-command-registry";
 import { Composer } from "./Composer";
 import { ConfirmationGate, type ConversationConfirmation } from "./ConfirmationGate";
-import { ConversationStatusBar, type ConversationSessionConfigPatch, type ConversationStatus } from "./ConversationStatusBar";
+import type { ConversationSessionConfigPatch, ConversationStatus } from "./ConversationStatusBar";
 import { MessageStream, type ConversationSurfaceMessage } from "./MessageStream";
 
 export interface ConversationRecoveryNotice {
@@ -25,6 +26,8 @@ export interface ConversationSurfaceProps {
   settingsHref?: string;
   footerActions?: ReactNode;
   isRunning?: boolean;
+  /** Streaming 开始时间戳（用于计时） */
+  streamingStartedAt?: number | null;
   onApproveConfirmation: (id: string) => void;
   onRejectConfirmation: (id: string) => void;
   onSend: (content: string) => void;
@@ -35,64 +38,24 @@ export interface ConversationSurfaceProps {
   onOpenArtifact?: (artifact: ToolResultArtifact) => void;
 }
 
-function recoveryTitle(notice: ConversationRecoveryNotice): string {
-  if (notice.state === "resetting") return "需要重新加载快照";
-  if (notice.state === "replaying") return "正在恢复会话历史";
-  if (notice.state === "failed") return "会话恢复失败";
-  return "会话恢复状态";
+function formatDuration(ms: number): string {
+  const seconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return minutes > 0 ? `${minutes}:${secs.toString().padStart(2, "0")}` : `0:${secs.toString().padStart(2, "0")}`;
 }
 
-function recoveryCursorText(notice: ConversationRecoveryNotice): string | null {
-  if (typeof notice.lastSeq !== "number" && typeof notice.ackedSeq !== "number") return null;
-  return `最近成功 cursor：${notice.ackedSeq ?? 0} / ${notice.lastSeq ?? 0}`;
-}
-
-function conversationEmptyBinding(status: ConversationStatus): string {
-  return status.binding?.label ?? "未绑定作品或章节";
-}
-
-function conversationEmptyModelStatus(status: ConversationStatus): string {
-  const sessionConfigLoaded = status.sessionConfigLoaded ?? Boolean(status.providerId || status.modelId || status.permissionMode || status.reasoningEffort);
-  if (!sessionConfigLoaded) return "session config 未加载";
-  const provider = status.providerLabel ?? status.providerId;
-  const model = status.modelLabel ?? status.modelId;
-  if (provider && model) return `${provider} / ${model}`;
-  return model ?? provider ?? "未选择模型";
-}
-
-function ConversationRuntimeControls({
-  isRunning,
-  onAbort,
-  onCompactSession,
-}: {
-  readonly isRunning: boolean;
-  readonly onAbort: () => void;
-  readonly onCompactSession?: SlashCommandExecutionContext["compactSession"];
-}) {
-  const [status, setStatus] = useState<string | null>(null);
-
-  async function compact() {
-    if (!onCompactSession) return;
-    const result = await onCompactSession();
-    setStatus(`Compact 完成：${result.compactedMessageCount} 条，预算 ${result.budget.estimatedTokensBefore} → ${result.budget.estimatedTokensAfter}`);
-  }
-
+function ThinkingTimer({ startedAt }: { startedAt: number }) {
+  const [elapsed, setElapsed] = useState(Date.now() - startedAt);
+  useEffect(() => {
+    const interval = setInterval(() => setElapsed(Date.now() - startedAt), 1000);
+    return () => clearInterval(interval);
+  }, [startedAt]);
   return (
-    <aside data-testid="conversation-runtime-controls" className="conversation-runtime-controls glass-panel flex shrink-0 flex-wrap items-center gap-2 rounded-2xl p-3 text-sm" aria-label="会话运行控制">
-      <button type="button" aria-label="中断运行" disabled={!isRunning} onClick={onAbort}>中断</button>
-      {!isRunning ? <span>无运行中的会话</span> : null}
-      <button type="button" disabled>重试</button>
-      <span>当前会话没有可重试事件</span>
-      <button type="button" disabled>清空</button>
-      <span>清空请在会话列表归档或删除</span>
-      <button type="button" disabled={!onCompactSession} onClick={() => void compact()}>Compact</button>
-      {!onCompactSession ? <span>Compact 需要会话压缩能力</span> : null}
-      <button type="button" disabled>Fork</button>
-      <span>Fork 请使用 /fork 或会话列表入口</span>
-      <button type="button" disabled>Resume</button>
-      <span>Resume 请使用 /resume 或会话列表入口</span>
-      {status ? <span role="status">{status}</span> : null}
-    </aside>
+    <span className="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400">
+      <span className="inline-block size-2 animate-pulse rounded-full bg-blue-500" />
+      思考中 {formatDuration(elapsed)}
+    </span>
   );
 }
 
@@ -106,6 +69,7 @@ export function ConversationSurface({
   settingsHref,
   footerActions = null,
   isRunning = false,
+  streamingStartedAt,
   onApproveConfirmation,
   onRejectConfirmation,
   onSend,
@@ -113,10 +77,13 @@ export function ConversationSurface({
   onUpdateSessionConfig,
   onCompactSession,
   onSlashCommandResult,
-  onOpenArtifact,
 }: ConversationSurfaceProps) {
-  const showRecoveryNotice = recoveryNotice && recoveryNotice.state !== "idle";
-  const showEmptyStateDisabledReason = Boolean(sendDisabledReason) && !footerActions;
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll to bottom on new messages
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages.length]);
 
   const handleSlashCommandResult = (result: SlashCommandExecutionResult) => {
     onSlashCommandResult?.(result);
@@ -125,40 +92,76 @@ export function ConversationSurface({
     }
   };
 
+  const modelLabel = status.modelLabel ?? status.modelId ?? "";
+  const permissionLabel = status.permissionMode ?? "edit";
+
   return (
-    <section data-testid="conversation-surface" className="conversation-surface flex h-full min-h-0 flex-col gap-4 overflow-hidden bg-background/95 p-4">
-      <header data-testid="conversation-session-header" className="conversation-surface__header conversation-session-header paper-sheet shrink-0 space-y-4 rounded-3xl p-4">
-        <h2>{title}</h2>
-        <ConversationStatusBar status={status} onUpdateSessionConfig={onUpdateSessionConfig} />
+    <section data-testid="conversation-surface" className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
+      {/* ── Top toolbar ── */}
+      <header className="flex shrink-0 items-center justify-between border-b border-border px-4 py-2">
+        <div className="flex items-center gap-2">
+          <h2 className="text-sm font-semibold text-foreground">{title}</h2>
+          {status.state === "active" && (
+            <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-medium text-green-700 dark:bg-green-900 dark:text-green-300">活跃</span>
+          )}
+        </div>
+        <div className="flex items-center gap-1">
+          {isRunning && streamingStartedAt && <ThinkingTimer startedAt={streamingStartedAt} />}
+          <button type="button" className="rounded-md p-1.5 text-muted-foreground hover:bg-muted" title="搜索">
+            <Search className="size-4" />
+          </button>
+          <button type="button" className="rounded-md p-1.5 text-muted-foreground hover:bg-muted" title="设置" onClick={() => settingsHref && (window.location.href = settingsHref)}>
+            <Settings className="size-4" />
+          </button>
+        </div>
       </header>
-      {showRecoveryNotice || pendingConfirmation ? (
-        <section data-testid="conversation-recovery-confirmation-lane" className="conversation-recovery-confirmation-lane glass-panel shrink-0 space-y-3 rounded-2xl p-3" aria-label="恢复与权限事件">
-          {showRecoveryNotice ? (
-            <aside data-testid="conversation-recovery-notice" className="conversation-recovery-notice rounded-xl border border-border/70 bg-muted/40 p-3 text-sm">
-              <strong>{recoveryTitle(recoveryNotice)}</strong>
-              {recoveryNotice.reason ? <span> / {recoveryNotice.reason}</span> : null}
-              {recoveryCursorText(recoveryNotice) ? <span> / {recoveryCursorText(recoveryNotice)}</span> : null}
-              {recoveryNotice.actionLabel ? <button type="button" onClick={() => undefined}>{recoveryNotice.actionLabel}</button> : null}
-            </aside>
-          ) : null}
-          {pendingConfirmation ? (
-            <ConfirmationGate confirmation={pendingConfirmation} onApprove={onApproveConfirmation} onReject={onRejectConfirmation} />
-          ) : null}
-        </section>
-      ) : null}
-      {messages.length === 0 ? (
-        <article data-testid="conversation-empty-state" className="conversation-empty-state paper-sheet mx-auto w-full max-w-2xl rounded-3xl p-6 text-center" aria-label="空会话提示">
-          <h3>还没有消息</h3>
-          <p>当前绑定：{conversationEmptyBinding(status)}</p>
-          <p>可以输入写作目标、使用 /status 查看会话状态，或使用 /compact 压缩上下文。</p>
-          <p>模型状态：{conversationEmptyModelStatus(status)}</p>
-          {showEmptyStateDisabledReason ? <p role="alert">{sendDisabledReason}</p> : null}
-          {showEmptyStateDisabledReason && settingsHref ? <a href={settingsHref}>打开设置</a> : null}
-        </article>
-      ) : null}
-      <MessageStream messages={messages} onOpenArtifact={onOpenArtifact} />
+
+      {/* ── Recovery notice ── */}
+      {recoveryNotice && recoveryNotice.state !== "idle" && (
+        <div className="shrink-0 border-b border-border bg-yellow-50 px-4 py-2 text-xs text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-200">
+          {recoveryNotice.state === "failed" ? "会话恢复失败" : "正在恢复会话..."} {recoveryNotice.reason && `— ${recoveryNotice.reason}`}
+        </div>
+      )}
+
+      {/* ── Message stream ── */}
+      <div className="flex-1 overflow-y-auto px-4 py-3">
+        {messages.length === 0 ? (
+          <div className="flex h-full items-center justify-center">
+            <div className="text-center text-sm text-muted-foreground">
+              <p className="mb-2">还没有消息</p>
+              <p className="text-xs">输入写作目标，或使用 <code className="rounded bg-muted px-1">/help</code> 查看可用命令</p>
+            </div>
+          </div>
+        ) : (
+          <>
+            <MessageStream messages={messages} />
+            {/* Confirmation gate inline */}
+            {pendingConfirmation && (
+              <div className="my-3">
+                <ConfirmationGate confirmation={pendingConfirmation} onApprove={onApproveConfirmation} onReject={onRejectConfirmation} />
+              </div>
+            )}
+            <div ref={messagesEndRef} />
+          </>
+        )}
+      </div>
+
+      {/* ── Footer actions (if any) ── */}
       {footerActions}
-      <ConversationRuntimeControls isRunning={isRunning} onAbort={onAbort} onCompactSession={onCompactSession} />
+
+      {/* ── Bottom status bar ── */}
+      <div className="flex shrink-0 items-center justify-between border-t border-border px-4 py-1 text-[10px] text-muted-foreground">
+        <div className="flex items-center gap-2">
+          <Clock className="size-3" />
+          <span>{messages.length} 条消息</span>
+          {status.binding?.label && <span>· {status.binding.label}</span>}
+        </div>
+        <div className="flex items-center gap-2">
+          {status.providerId && <span>{status.providerLabel ?? status.providerId}</span>}
+        </div>
+      </div>
+
+      {/* ── Composer ── */}
       <Composer
         onSend={onSend}
         onAbort={onAbort}
@@ -167,6 +170,8 @@ export function ConversationSurface({
         isRunning={isRunning}
         disabledReason={sendDisabledReason}
         settingsHref={settingsHref}
+        modelLabel={modelLabel}
+        permissionMode={permissionLabel}
       />
     </section>
   );
