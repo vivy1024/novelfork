@@ -58,14 +58,17 @@ function parseModelReference(reference: string | undefined): { providerId: strin
   if (!reference) {
     return null;
   }
-  const [providerId, modelId] = reference.split(":");
+  // Support both "providerId:modelId" and "provider name:modelId" formats
+  const colonIndex = reference.indexOf(":");
+  if (colonIndex === -1) {
+    return null;
+  }
+  const providerId = reference.slice(0, colonIndex).trim();
+  const modelId = reference.slice(colonIndex + 1).trim();
   if (!providerId || !modelId) {
     return null;
   }
-  return {
-    providerId,
-    modelId,
-  };
+  return { providerId, modelId };
 }
 
 function normalizeSessionConfig(value: unknown): SessionConfig {
