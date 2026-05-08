@@ -287,13 +287,6 @@ export function RuntimeControlPanel() {
 
   return (
     <div className="space-y-6">
-      <Section title="运行策略来源">
-        <RuntimeFactsSummary facts={runtimeFacts} />
-        <div className="grid gap-2 md:grid-cols-2">
-          {runtimeFacts.map((fact) => <RuntimeFactRow key={fact.id} fact={fact} />)}
-        </div>
-      </Section>
-
       {/* ---- 权限与推理 ---- */}
       <Section title="权限与推理">
         <FieldRow label="默认权限模式">
