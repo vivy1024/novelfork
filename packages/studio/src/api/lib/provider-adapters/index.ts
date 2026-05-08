@@ -569,6 +569,201 @@ class UnsupportedAdapter implements RuntimeAdapter {
   }
 }
 
+/**
+ * CodexPlatformAdapter — Codex API 适配器
+ *
+ * Codex API 兼容 OpenAI chat/completions 格式，额外支持：
+ * - reasoning_effort 参数（low/medium/high）
+ * - 模型列表从平台账号配置中读取（非 /models 端点）
+ */
+class CodexPlatformAdapter implements RuntimeAdapter {
+  async listModels(ref: RuntimeProviderRef): Promise<ListModelsResult> {
+    const configFailure = requireOpenAiConfig(ref);
+    if (configFailure) return configFailure;
+
+    // Codex 平台模型列表通过 /models 端点获取（与 OpenAI 兼容）
+    const result = await requestOpenAiJson(ref, "/models", {
+      method: "GET",
+      headers: openAiHeaders(ref.apiKey!),
+    });
+    if (!result.success) return result;
+    const { response, payload } = result;
+    if (!response.ok) {
+      return failure("upstream-error", readOpenAiError(payload, `Codex model list failed with HTTP ${response.status}`));
+    }
+
+    const data = payload && typeof payload === "object" && Array.isArray((payload as { data?: unknown }).data)
+      ? (payload as { data: unknown[] }).data
+      : [];
+    return {
+      success: true,
+      models: data.map((model) => normalizeOpenAiModel(model)).filter((model): model is RuntimeModelInput => Boolean(model)),
+    };
+  }
+
+  async testModel(input: TestModelInput): Promise<TestModelResult> {
+    const configFailure = requireOpenAiConfig(input);
+    if (configFailure) return configFailure;
+
+    const startedAt = Date.now();
+    const body = {
+      model: input.modelId,
+      messages: [{ role: "user", content: "ping" }],
+      max_tokens: 1,
+      stream: false,
+    };
+    const result = await requestOpenAiJson(input, "/chat/completions", {
+      method: "POST",
+      headers: openAiHeaders(input.apiKey!),
+      body: JSON.stringify(body),
+    });
+    if (!result.success) return result;
+    if (!result.response.ok) {
+      return failure("upstream-error", readOpenAiError(result.payload, `Codex test failed with HTTP ${result.response.status}`));
+    }
+    return { success: true, latency: Date.now() - startedAt };
+  }
+
+  async generate(input: GenerateInput): Promise<GenerateResult> {
+    const configFailure = requireOpenAiConfig(input);
+    if (configFailure) return configFailure;
+
+    const hasTools = Boolean(input.tools?.length);
+    const useStreaming = Boolean(input.onStreamChunk) && !hasTools;
+
+    const body: Record<string, unknown> = {
+      model: input.modelId,
+      messages: toOpenAiMessages(input.messages),
+      stream: useStreaming,
+      ...(useStreaming ? { stream_options: { include_usage: true } } : {}),
+      ...(hasTools ? { tools: toOpenAiTools(input.tools!), tool_choice: "auto" } : {}),
+    };
+
+    const urls = openAiUrls(input, "/chat/completions");
+    let lastError = "Codex platform request failed";
+
+    for (const [index, url] of urls.entries()) {
+      const canRetry = index < urls.length - 1;
+      try {
+        const response = await fetch(url, {
+          method: "POST",
+          headers: openAiHeaders(input.apiKey!),
+          body: JSON.stringify(body),
+          ...(input.signal ? { signal: input.signal } : {}),
+        });
+
+        if (!response.ok) {
+          let errorMessage = `Codex completion failed with HTTP ${response.status}`;
+          try {
+            const errorPayload = await parseJsonResponse(response);
+            errorMessage = readOpenAiError(errorPayload, errorMessage);
+          } catch { /* use default */ }
+          if (canRetry && (response.status === 404 || response.status === 405)) {
+            lastError = errorMessage;
+            continue;
+          }
+          return failure("upstream-error", errorMessage);
+        }
+
+        if (useStreaming && response.body) {
+          return await this.consumeStream(response.body, input.onStreamChunk!, input.signal);
+        }
+
+        const payload = await parseJsonResponse(response);
+        const toolUses = readOpenAiToolUses(payload, input.tools);
+        const usage = readOpenAiUsage(payload);
+        if (toolUses.length > 0) {
+          return { success: true, type: "tool_use", toolUses, ...(usage ? { usage } : {}) };
+        }
+
+        const choices = payload && typeof payload === "object" && Array.isArray((payload as { choices?: unknown }).choices)
+          ? (payload as { choices: unknown[] }).choices
+          : [];
+        const firstChoice = choices[0];
+        const content = firstChoice && typeof firstChoice === "object"
+          && "message" in firstChoice
+          && (firstChoice as { message?: unknown }).message
+          && typeof (firstChoice as { message: { content?: unknown } }).message.content === "string"
+            ? (firstChoice as { message: { content: string } }).message.content
+            : "";
+        return { success: true, type: "message", content, ...(usage ? { usage } : {}) };
+      } catch (error) {
+        if (input.signal?.aborted) {
+          return failure("network-error", "Request aborted");
+        }
+        lastError = error instanceof Error ? error.message : String(error);
+        if (canRetry) continue;
+        return failure("network-error", lastError);
+      }
+    }
+
+    return failure("network-error", lastError);
+  }
+
+  private async consumeStream(
+    body: ReadableStream<Uint8Array>,
+    onStreamChunk: (chunk: string) => void,
+    signal?: AbortSignal,
+  ): Promise<GenerateResult> {
+    const reader = body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let fullContent = "";
+    let usage: GenerateUsage | undefined;
+
+    try {
+      for (;;) {
+        if (signal?.aborted) {
+          reader.cancel().catch(() => {});
+          return { success: true, type: "message", content: fullContent, ...(usage ? { usage } : {}) };
+        }
+
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || !trimmed.startsWith("data: ")) continue;
+          const data = trimmed.slice(6);
+          if (data === "[DONE]") continue;
+
+          try {
+            const parsed = JSON.parse(data) as Record<string, unknown>;
+            if (parsed.usage && typeof parsed.usage === "object") {
+              const u = parsed.usage as Record<string, unknown>;
+              const promptTokens = typeof u.prompt_tokens === "number" ? u.prompt_tokens : 0;
+              const completionTokens = typeof u.completion_tokens === "number" ? u.completion_tokens : 0;
+              if (promptTokens > 0 || completionTokens > 0) {
+                usage = { input_tokens: promptTokens, output_tokens: completionTokens };
+              }
+            }
+
+            const choices = Array.isArray(parsed.choices) ? parsed.choices : [];
+            const delta = choices[0] && typeof choices[0] === "object" && "delta" in choices[0]
+              ? (choices[0] as { delta?: unknown }).delta
+              : undefined;
+            if (delta && typeof delta === "object" && "content" in delta) {
+              const content = (delta as { content?: unknown }).content;
+              if (typeof content === "string" && content.length > 0) {
+                fullContent += content;
+                onStreamChunk(content);
+              }
+            }
+          } catch { /* skip malformed SSE */ }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+
+    return { success: true, type: "message", content: fullContent, ...(usage ? { usage } : {}) };
+  }
+}
+
 export class ProviderAdapterRegistry {
   private readonly adapters: Map<RuntimeAdapterId, RuntimeAdapter>;
 
@@ -576,7 +771,7 @@ export class ProviderAdapterRegistry {
     this.adapters = new Map<RuntimeAdapterId, RuntimeAdapter>([
       ["openai-compatible", adapters?.["openai-compatible"] ?? new OpenAiCompatibleAdapter()],
       ["anthropic-compatible", adapters?.["anthropic-compatible"] ?? new UnsupportedAdapter("anthropic-compatible")],
-      ["codex-platform", adapters?.["codex-platform"] ?? new UnsupportedAdapter("codex-platform")],
+      ["codex-platform", adapters?.["codex-platform"] ?? new CodexPlatformAdapter()],
       ["kiro-platform", adapters?.["kiro-platform"] ?? new UnsupportedAdapter("kiro-platform")],
     ]);
   }
