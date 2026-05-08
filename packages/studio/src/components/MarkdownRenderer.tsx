@@ -2,10 +2,9 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
-import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { useState, useEffect, type ReactNode } from "react";
 import { ChevronDown, ChevronRight, Copy, Check } from "lucide-react";
+import { codeToHtml } from "shiki";
 
 // KaTeX stylesheet is loaded lazily on first render so it does not bloat the
 // initial bundle for users who never receive a math expression.
@@ -26,9 +25,31 @@ interface CodeBlockProps {
 function CodeBlock({ inline, className, children }: CodeBlockProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [highlightedHtml, setHighlightedHtml] = useState<string | null>(null);
   const match = /language-(\w+)/.exec(className || "");
   const lang = match ? match[1] : "";
   const code = String(children).replace(/\n$/, "");
+
+  useEffect(() => {
+    if (inline || collapsed) return;
+    let cancelled = false;
+    codeToHtml(code, {
+      lang: lang || "text",
+      theme: "github-dark",
+    })
+      .then((html) => {
+        if (!cancelled) setHighlightedHtml(html);
+      })
+      .catch(() => {
+        // Fallback: if language is not supported, try plaintext
+        if (!cancelled) {
+          codeToHtml(code, { lang: "text", theme: "github-dark" })
+            .then((html) => { if (!cancelled) setHighlightedHtml(html); })
+            .catch(() => { if (!cancelled) setHighlightedHtml(null); });
+        }
+      });
+    return () => { cancelled = true; };
+  }, [code, lang, inline, collapsed]);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(code);
@@ -59,18 +80,16 @@ function CodeBlock({ inline, className, children }: CodeBlockProps) {
         </button>
       </div>
       {!collapsed && (
-        <SyntaxHighlighter
-          language={lang || "text"}
-          style={oneDark}
-          customStyle={{
-            margin: 0,
-            borderRadius: 0,
-            fontSize: "0.875rem",
-            lineHeight: "1.5",
-          }}
-        >
-          {code}
-        </SyntaxHighlighter>
+        highlightedHtml ? (
+          <div
+            className="shiki-code-block [&_pre]:!m-0 [&_pre]:!rounded-none [&_pre]:!text-sm [&_pre]:!leading-relaxed [&_pre]:!p-4"
+            dangerouslySetInnerHTML={{ __html: highlightedHtml }}
+          />
+        ) : (
+          <pre className="m-0 rounded-none bg-[#24292e] p-4 text-sm leading-relaxed text-gray-200 overflow-x-auto">
+            <code>{code}</code>
+          </pre>
+        )
       )}
     </div>
   );

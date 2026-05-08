@@ -9,6 +9,8 @@ import {
   type SlashCommandExecutionContext,
   type SlashCommandExecutionResult,
 } from "../slash-command-registry";
+import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
 
 export interface ComposerProps {
   onSend: (content: string) => void;
@@ -88,6 +90,7 @@ export function Composer({
   }
 
   return (
+    <TooltipProvider>
     <footer className="shrink-0 border-t border-border bg-background px-4 py-3" aria-label="会话输入区">
       {/* Slash command suggestions */}
       {showSlashSuggestions && (
@@ -122,9 +125,14 @@ export function Composer({
       {/* Input row — NarraFork 模式：📎 + textarea + 单按钮 */}
       <div className="flex items-end gap-2">
         {/* Attachment button */}
-        <button type="button" className="shrink-0 rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground" title="附件" onClick={() => fileInputRef.current?.click()}>
-          <Paperclip className="size-4" />
-        </button>
+        <Tooltip>
+          <TooltipTrigger>
+            <Button variant="ghost" size="icon" onClick={() => fileInputRef.current?.click()} aria-label="附件">
+              <Paperclip className="size-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>附件</TooltipContent>
+        </Tooltip>
         <input
           ref={fileInputRef}
           type="file"
@@ -147,45 +155,39 @@ export function Composer({
 
         {/* Action button: interrupt / send / continue */}
         {isRunning ? (
-          <button
-            type="button"
-            onClick={onAbort}
-            className="shrink-0 rounded-lg bg-destructive p-2 text-destructive-foreground hover:bg-destructive/90"
-            title="中断"
-          >
-            <Square className="size-4" />
-          </button>
+          <Tooltip>
+            <TooltipTrigger>
+              <Button variant="destructive" size="icon" onClick={onAbort} aria-label="中断">
+                <Square className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>中断</TooltipContent>
+          </Tooltip>
         ) : value.trim() ? (
-          <button
-            type="button"
-            onClick={() => void handleSend()}
-            disabled={Boolean(disabledReason)}
-            className="shrink-0 rounded-lg bg-primary p-2 text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-            title="发送"
-          >
-            <Send className="size-4" />
-          </button>
+          <Tooltip>
+            <TooltipTrigger>
+              <Button size="icon" onClick={() => void handleSend()} disabled={Boolean(disabledReason)} aria-label="发送">
+                <Send className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>发送</TooltipContent>
+          </Tooltip>
         ) : (isInterrupted || onContinue) ? (
-          <button
-            type="button"
-            onClick={() => onContinue?.()}
-            className="shrink-0 rounded-lg bg-blue-600 p-2 text-white hover:bg-blue-700"
-            title="继续"
-          >
-            <Play className="size-4" />
-          </button>
+          <Tooltip>
+            <TooltipTrigger>
+              <Button size="icon" className="bg-blue-600 text-white hover:bg-blue-700" onClick={() => onContinue?.()} aria-label="继续">
+                <Play className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>继续</TooltipContent>
+          </Tooltip>
         ) : (
-          <button
-            type="button"
-            onClick={() => void handleSend()}
-            disabled={Boolean(disabledReason) || !value.trim()}
-            className="shrink-0 rounded-lg bg-primary p-2 text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-            title="发送"
-          >
+          <Button size="icon" onClick={() => void handleSend()} disabled={Boolean(disabledReason) || !value.trim()} aria-label="发送">
             <Send className="size-4" />
-          </button>
+          </Button>
         )}
       </div>
     </footer>
+    </TooltipProvider>
   );
 }
