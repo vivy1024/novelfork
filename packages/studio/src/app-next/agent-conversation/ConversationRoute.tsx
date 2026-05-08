@@ -42,6 +42,10 @@ export interface ConversationRouteProps {
   onApproveConfirmation?: (id: string) => void;
   onRejectConfirmation?: (id: string) => void;
   onOpenArtifact?: (artifact: ToolResultArtifact) => void;
+  /** 工具栏回调 */
+  onEditTitle?: (newTitle: string) => void;
+  onGenerateTitle?: () => void;
+  onArchive?: () => void;
 }
 
 const defaultStatus: ConversationRouteStatus = { state: "idle", label: "未连接" };
@@ -76,6 +80,9 @@ export function ConversationRoute({
   onApproveConfirmation = () => undefined,
   onRejectConfirmation = () => undefined,
   onOpenArtifact,
+  onEditTitle,
+  onGenerateTitle,
+  onArchive,
 }: ConversationRouteProps) {
   if (!sessionId) {
     return (
@@ -117,6 +124,7 @@ export function ConversationRoute({
     <section data-testid="conversation-route" className="conversation-route" data-session-id={sessionId}>
       <ConversationSurface
         title={title}
+        sessionId={sessionId}
         status={initialStatus}
         messages={initialMessages}
         pendingConfirmation={initialConfirmation}
@@ -133,6 +141,9 @@ export function ConversationRoute({
         onUpdateSessionConfig={onUpdateSessionConfig}
         onCompactSession={onCompactSession}
         onOpenArtifact={onOpenArtifact}
+        onEditTitle={onEditTitle}
+        onGenerateTitle={onGenerateTitle}
+        onArchive={onArchive}
       />
     </section>
   );
