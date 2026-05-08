@@ -12,14 +12,22 @@
 ## 对话界面差距（对比 NarraFork）
 
 ### 必须修
-1. 用户消息气泡样式太丑 — 当前是深色块，NarraFork 是简洁的文本
-2. NarratorStatusBar 按钮太小看不清 — 需要加大尺寸和间距
-3. 顶部工具栏缺图标 — NarraFork 有：外部链接、编辑标题、生成标题、搜索、代码折叠、图片、文件、信息、归档
-4. 标题栏太简陋 — 缺编辑标题、生成标题功能
+1. ~~用户消息气泡样式太丑~~ → 已改为浅色边框
+2. ~~NarratorStatusBar 按钮太小看不清~~ → 已加大
+3. ~~顶部工具栏缺图标~~ → 已添加（但 handler 未接通，见下）
+4. ~~标题栏太简陋~~ → 已添加编辑/生成标题图标（handler 未接通）
 5. 消息右键菜单 — 代码写了但没验证是否真的弹出并工作
-6. 工具调用卡片 — 需要验证 ToolCallBlock 是否真的渲染（之前 ToolCallCard 的简化版可能还在某些路径被使用）
+6. 工具调用卡片 — 需要验证 ToolCallBlock 是否真的渲染
 7. 推理折叠 — ThinkingBlock 代码写了但没有真实数据验证
 8. 底部 Git 状态栏 — NarraFork 显示 章节名·分支·变更数，NovelFork 没有
+
+### 紧急：工具栏按钮无 handler（又犯了同样的错误）
+- 编辑标题按钮 → 需要接 updateNarratorTitle API
+- 生成标题按钮 → 需要接 generateNarratorTitle API
+- 文件修改按钮 → 需要接 getFileModifications API
+- 信息按钮 → 需要显示会话详情面板
+- 归档按钮 → 需要接 archiveNarrator API
+- 外部链接按钮 → 需要在新标签打开
 
 ### 应该修
 9. 对话嵌入 react-flow 节点 — ChapterNode 内容区是占位
