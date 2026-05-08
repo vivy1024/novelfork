@@ -132,8 +132,8 @@ export async function executeBashTool(input: BashToolInput): Promise<BashToolRes
 
     child.on("exit", (code, signal) => {
       clearTimeout(timeout);
-      const rawStdout = Buffer.concat(stdout).toString("utf-8");
-      const stderrStr = Buffer.concat(stderr).toString("utf-8");
+      const rawStdout = Buffer.concat(stdout as unknown as Uint8Array[]).toString("utf-8");
+      const stderrStr = Buffer.concat(stderr as unknown as Uint8Array[]).toString("utf-8");
       const exitCode = code ?? (signal ? 128 : 1);
 
       // 对标 Claude: 从 stdout 提取新 cwd
