@@ -25,6 +25,7 @@ import { appendSessionChatHistory, loadSessionChatHistory } from "./session-hist
 import { createSession, getSessionById, updateSession } from "./session-service.js";
 import { createSessionToolExecutor } from "./session-tool-executor.js";
 import { getEnabledSessionTools } from "./session-tool-registry.js";
+import { loadUserConfig } from "./user-config-service.js";
 
 const HEADLESS_CHAT_INSTRUCTIONS = `
 
@@ -35,6 +36,16 @@ const HEADLESS_CHAT_INSTRUCTIONS = `
 
 const DEFAULT_MAX_STEPS = 6;
 const RECENT_MESSAGE_LIMIT = 80;
+
+async function resolveHeadlessMaxSteps(): Promise<number> {
+  try {
+    const config = await loadUserConfig();
+    const steps = config.runtimeControls?.maxTurnSteps;
+    return typeof steps === "number" && steps > 0 ? steps : DEFAULT_MAX_STEPS;
+  } catch {
+    return DEFAULT_MAX_STEPS;
+  }
+}
 
 export type HeadlessChatInputFormat = "text" | "stream-json";
 export type HeadlessChatOutputFormat = "json" | "stream-json";
@@ -688,7 +699,7 @@ export async function executeHeadlessChat(input: HeadlessChatInput): Promise<Hea
     tools: getEnabledSessionTools(permissionMode),
     permissionMode,
     ...(input.canvasContext ? { canvasContext: input.canvasContext } : {}),
-    maxSteps: input.maxSteps ?? DEFAULT_MAX_STEPS,
+    maxSteps: input.maxSteps ?? (await resolveHeadlessMaxSteps()),
     shouldContinueAfterToolResult: ({ result }) => result.ok || result.error === "confirmation-rejected",
     onStreamChunk: () => undefined,
     generate: async (generateInput): Promise<AgentGenerateResult> => {

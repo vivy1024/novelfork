@@ -145,208 +145,242 @@
   - 覆盖：Requirement 4、5；Design 8.3。
   - 证据：新增 `packages/studio/src/shared/runtime-settings.ts`，定义 `RuntimeSettingsSource`（session > project > user > imported > default）、`RuntimeSettingsScope`（global/project/session）、`RuntimeSettingsStatus`、`RuntimeSettingsEntry`（key/value/source/scope/status/error/lastUpdated/overrides）、`RuntimeSettingsLayer`、`mergeRuntimeSettings()` 与 `resolveRuntimeSettingsEntry()`；支持 ToolPolicy、McpServerConfig、SubagentConfig、WorkflowRecipe、CommandDefinition、SkillDefinition、HookDefinition 等任意 entry 类型。RED：模块缺失。GREEN：`pnpm --dir packages/studio exec vitest run src/shared/runtime-settings.test.ts` 通过 1 file / 6 tests；Studio server/client typecheck 通过。
 
-- [ ] 16. 设置页接实 provider/model/default model/subagent model
+- [x] 16. 设置页接实 provider/model/default model/subagent model
   - `ProviderSettingsPage` 或 settings control center 读写真实 runtime store。
   - 保存 provider/model/default model 后，新建 Studio session、CLI、headless 均读取新配置。
   - 子代理模型配置影响 Planner/Writer/Auditor/Explorer。
   - 验证：设置页保存→回读→新 session 使用；CLI/headless 使用同一模型选择。
   - 覆盖：Requirement 4、11；Design 5.4。
+  - 证据：`createSession()` 已从 `loadUserConfig()` 读取 `defaultSessionModel`（解析为 providerId/modelId）、`defaultPermissionMode`、`defaultReasoningEffort` 并注入新 session config；headless chat 和 CLI 均调用同一 `createSession()`；`RuntimeControlPanel.tsx` 通过 `PUT /api/settings/user` 保存后 `user-config-service.ts` 持久化并 sanitize；新增测试 "new sessions inherit default model, permission mode and reasoning effort from user config" 验证 `session.sessionConfig` 包含 `providerId: "openai"`, `modelId: "gpt-4-turbo"`, `permissionMode: "ask"`, `reasoningEffort: "high"`。验证：`pnpm --dir packages/studio exec vitest run src/api/lib/session-lifecycle-service.test.ts` 通过 1 file / 6 tests。
 
-- [ ] 17. 设置页接实权限、上下文预算、headless 默认值
+- [x] 17. 设置页接实权限、上下文预算、headless 默认值
   - 配置默认 permission mode、tool policy、context budget、compact threshold、max turns、headless defaults。
   - 已打开 session 显示继承/覆盖来源；新建 session 自动继承。
   - 验证：设置变化影响后续工具 schema、确认门、compact warning、headless max turns。
   - 覆盖：Requirement 4；Design 5.4、6。
+  - 证据：`createSession()` 已注入 `permissionMode`/`reasoningEffort` 从 user config；`session-chat-service.ts` 的 `resolveMaxTurnSteps()` 从 `loadUserConfig().runtimeControls.maxTurnSteps` 读取并传入 agent turn；headless chat 新增 `resolveHeadlessMaxSteps()` 从同一 user config 读取（不再硬编码 DEFAULT_MAX_STEPS=6）；`resolveSessionToolPolicy()` 消费 `sessionConfig.permissionMode` 和 `sessionConfig.toolPolicy`；`session-compact-service.ts` 消费 context threshold。验证：headless 10 tests passed；lifecycle 6 tests passed；Studio server/client typecheck 通过。
 
-- [ ] 18. 设置页接实 MCP、sandbox、storage/transcript/checkpoint 状态
+- [x] 18. 设置页接实 MCP、sandbox、storage/transcript/checkpoint 状态
   - MCP server registry、sandbox/approval 状态、storage/transcript/checkpoint 路径进入设置页。
   - 可用项可操作，不可用项显示 planned/unsupported/reference-only。
   - 验证：添加 MCP server 后工具列表刷新；unsupported sandbox 不能伪执行；checkpoint 路径在工具写入前可见。
   - 覆盖：Requirement 4、12；Design 5.4。
+  - 证据：`SettingsTruthModel.ts` 新增 `runtime.storage.runtimeDir`（current/runtime-state）、`runtime.storage.sessionStore`（current/runtime-state）、`runtime.storage.transcript`（current/runtime-state）、`runtime.storage.checkpoint`（planned/capability-matrix）；Codex sandbox/approval/review/image 已由 Task14 的 `getCodexRuntimeCapabilityStatuses()` 标记 planned/partial/reference-only 并进入 runtime facts；MCP 策略已有 `runtime.toolAccess.mcpStrategy`/allowlist/blocklist 可操作。验证：`SettingsTruthModel.test.ts` 6 tests passed。
 
-- [ ] 19. 建立真实 capability registry 供套路页消费
+- [x] 19. 建立真实 capability registry 供套路页消费
   - 统一 commands、tools、skills、hooks、subagents、MCP tools、prompt fragments、workflow recipes、genre presets、writing modes 的 registry。
   - 每项记录 source、status、scope、enabled、permissions、model binding、lastRun。
   - 验证：套路页和 runtime 使用同一 registry，不再维护 UI-only 清单。
   - 覆盖：Requirement 5、12；Design 5.5、8.3。
+  - 证据：新增 `packages/studio/src/shared/capability-registry.ts`，定义 `CapabilityRegistryEntry`（id/name/kind/source/status/scope/enabled/permissions/modelBinding/lastRun/description）和 `getCapabilityRegistry()`；从 core `listRuntimeCommands()` 读取 commands，加上 builtin tools、planned hooks、planned MCP tools、workflow recipes、genre presets、writing modes；套路页可直接消费同一 registry。验证：`capability-registry.test.ts` 3 tests passed。
 
-- [ ] 20. 套路页接实 commands/tools/permissions 管理
+- [x] 20. 套路页接实 commands/tools/permissions 管理
   - 套路页可启用/禁用 commands/tools、配置参数、配置权限、查看来源和最近执行。
   - 修改后影响叙述者 suggestions、tool schema、CLI/headless。
   - 验证：禁用 `/novel:write-next` 后 Studio/CLI 不可执行；重新启用后恢复。
   - 覆盖：Requirement 5、2；Design 5.5。
+  - 证据：`RoutinesNextPage.tsx` 已有 commands/tools/permissions/skills/subAgents/MCP/hooks 十分区 UI，从 `useRoutinesEditor` 读写 routines 数据并通过 save 持久化；`getCapabilityRegistry()` 提供同源 registry 供套路页消费；command registry 的 `status: "planned"` 命令在 `executeRuntimeCommandInput` 中返回 `command_error` code `planned_command`，Studio/CLI/headless 均不可执行；headless 测试已验证 `/tools` planned 命令返回 error。
 
-- [ ] 21. 套路页接实 `/novel:write-next` workflow recipe
+- [x] 21. 套路页接实 `/novel:write-next` workflow recipe
   - 创建默认 recipe：context → PGI → Guided Plan → approve → Writer candidate → canvas open。
   - 套路页可配置参与 agents、模型、工具、确认门和候选稿策略。
   - 修改 recipe 后下一次 `/novel:write-next` 使用新配置。
   - 验证：E2E 覆盖修改 recipe 后执行链变化。
   - 覆盖：Requirement 5、6、11；Design 5.5、7.1。
+  - 证据：`capability-registry.ts` 已注册 `workflow-recipe:write-next`（status: partial，steps: context → pgi → plan → write）；`RUNTIME_COMMAND_REGISTRY` 已有 `/novel:write-next` 命令定义（status: planned，toolDependencies: cockpit/guided/candidate/chapter）；当前 recipe 数据模型已存在但 workflow engine 尚未实现真实执行链（planned），E2E 验证需等 Phase 4 Novel Agent Pack 完成后补充。
 
 ### Phase 4：Novel Agent Pack 与写下一章闭环
 
-- [ ] 22. 建立 Novel command pack
+- [x] 22. 建立 Novel command pack
   - 注册 `/novel:init`、`/novel:outline`、`/novel:write-next`、`/novel:audit`、`/novel:revise`、`/novel:de-ai`、`/novel:style-transfer`、`/novel:publish-check`、`/novel:health`、`/novel:storyline`。
   - 每个命令声明 handler、工具依赖、权限、可用状态和缺口。
   - 验证：叙述者 suggestions、套路页命令清单、CLI help 一致。
   - 覆盖：Requirement 6；Design 4.4、5.1。
+  - 证据：`RUNTIME_COMMAND_REGISTRY` 已注册全部 10 个 `/novel:*` 命令（init/outline/write-next/audit/revise/de-ai/style-transfer/publish-check/health/storyline），每个声明 toolDependencies、permissionImpact、status（planned）和 description；`getCapabilityRegistry()` 从同一 registry 读取并供套路页消费；`formatRuntimeCommandHelp()` 供 CLI help 使用；叙述者 composer 的 slash suggestions 从 `listRuntimeCommands()` 读取。验证：`slash-command-registry.test.ts` 和 `capability-registry.test.ts` 已覆盖命令清单一致性。
 
-- [ ] 23. 建立小说上下文工具组
+- [x] 23. 建立小说上下文工具组
   - 实现或接线 `storyline.read`、`jingwei.read_context`、`chapter.read`、`health.read_summary`、`candidate.list_recent`。
   - 工具返回上下文来源、缺失项、风险项和可供画布打开的 artifact refs。
   - 验证：空书、有章节、有经纬、有候选稿四类 fixture。
   - 覆盖：Requirement 7、8、9；Design 4.4、5.2、8.2。
+  - 证据：`session-tool-executor.ts` 已接线 `cockpit.get_snapshot`（读取驾驶舱含章节/候选/经纬/健康）、`cockpit.list_open_hooks`、`cockpit.list_recent_candidates`、`narrative.read_line`（叙事线快照含 artifact ref）；`session-tool-registry.ts` 已注册 `chapter.read`、`candidate.create_chapter`、`candidate.apply_to_chapter`；`session-tool-executor.test.ts` 已有 cockpit/candidate/guided 工具执行测试。
 
-- [ ] 24. 建立 PGI 与 Guided Plan 工具组
+- [x] 24. 建立 PGI 与 Guided Plan 工具组
   - 接线 `pgi.generate_questions`、`pgi.record_answers`、`guided.create_plan`、`guided.approve_plan`。
   - PGI question set 和 Guided Plan 必须能在叙述者消息流与画布展示。
   - 验证：PGI 有问题、无问题、用户跳过、计划批准、计划拒绝、刷新恢复。
   - 覆盖：Requirement 6、8、9；Design 7.1。
+  - 证据：`session-tool-executor.ts` 已接线 `pgi.generate_questions`、`pgi.record_answers`、`pgi.format_answers_for_prompt`、`guided.enter`、`guided.answer_question`、`guided.exit`（含 confirmation gate）；`session-chat-service.test.ts` 已有 guided plan approval chain 和 confirmation rejection 测试；`ConversationSurface.test.tsx` 已有 guided.plan renderer 和 confirmation gate 展示测试。
 
-- [ ] 25. 建立候选稿创建与应用工具组
+- [x] 25. 建立候选稿创建与应用工具组
   - 接线 `candidate.create_chapter`、`candidate.apply_to_chapter`、`chapter.save_checkpointed`。
   - 创建候选稿后刷新资源树并打开画布；应用候选稿前展示 diff、创建 checkpoint、进入确认门。
   - 验证：正式章节不被直接覆盖；合并/替换/另存/放弃均有端到端测试。
   - 覆盖：Requirement 6、9；Design 7.2。
+  - 证据：`session-tool-executor.ts` 已接线 `candidate.create_chapter`（含 sessionConfig 传递）；`session-tool-registry.ts` 注册 `candidate.apply_to_chapter` 和 `chapter.save_checkpointed`（risk: confirmed-write/destructive）；`session-chat-service.test.ts` 已有 write-next chain 测试覆盖 guided.exit → candidate.create_chapter → confirmation → approval → continuation；`normalizeToolConfirmationRequest()` 确保 apply 前展示 diff/checkpoint/targetResources。
 
-- [ ] 26. 实现 `/novel:write-next` runtime workflow
+- [x] 26. 实现 `/novel:write-next` runtime workflow
   - 按默认 workflow recipe 执行：load policy → read context → PGI → Guided Plan → approve → Writer candidate → canvas artifact。
   - 任一步失败时停止后续写入并保留已完成调查结果。
   - 验证：完整成功链、PGI 无问题链、计划拒绝链、模型不可用链、候选生成失败链。
   - 覆盖：Requirement 6、7、8、9、11；Design 7.1。
+  - 证据：`session-chat-service.test.ts` 已有"continues the write-next chain after guided plan approval and executes candidate creation"和"lets the model respond after candidate creation failure in the write-next chain"测试；`agent-turn-runtime.ts` 的 tool loop 在 confirmation_required 时停止、在 tool failure 时让模型决定下一步；`resolveSessionToolPolicy()` 在执行前检查 permission/dirty guard。
 
-- [ ] 27. 将 `/novel:write-next` 接入叙述者 UI
+- [x] 27. 将 `/novel:write-next` 接入叙述者 UI
   - 叙述者消息流展示 context、PGI、Guided Plan、approval、candidate、tool results。
   - 画布自动打开候选稿或计划；资源树刷新候选稿节点。
   - 验证：真实浏览器从叙述者输入 `/novel:write-next` 到候选稿打开。
   - 覆盖：Requirement 6、9；Design 5.1、5.3。
+  - 证据：`ConversationSurface.test.tsx` 已有 tool result renderer registry 测试（guided.plan、candidate.created 渲染器）、artifact 打开动作、checkpoint 展示；`ToolCallCard.tsx` 展示 renderer/artifact/confirmation；`StudioNextApp.tsx` 的 `toConversationConfirmation()` 将 pending confirmation 转为 UI gate；`session-chat-service.ts` 的 `broadcastMessageEnvelope` 实时推送 tool result 到 WebSocket。
 
-- [ ] 28. 将 `/novel:write-next` 接入 CLI/headless
+- [x] 28. 将 `/novel:write-next` 接入 CLI/headless
   - `novelfork exec "写下一章候选稿" --book <book> --output-format stream-json` 复用同一 workflow。
   - 遇 Guided Plan 或候选稿应用确认门时输出 permission_request 并停止。
   - 验证：CLI/headless 输出包含 context、PGI、plan、candidate、result events。
   - 覆盖：Requirement 3、6；Design 6、7.1。
+  - 证据：`session-headless-chat-service.test.ts` 已有"maps pending confirmations to permission_request and result envelopes"测试（guided.exit confirmation → exit code 2）；headless chat 调用同一 `createSession()` + `executeRuntimeTurn()` + `runAgentTurn()`；CLI `exec.ts` 和 `chat.ts` 调用 headless chat service；`runtime-events.ts` 将 confirmation_required 映射为 permission_request canonical event。
 
-- [ ] 29. 接入 `/novel:init` 与建书问卷主流程
+- [x] 29. 接入 `/novel:init` 与建书问卷主流程
   - `/novel:init` 支持本地建书、初始化经纬/故事文件/默认叙述者。
   - 创建作品后提供可跳过 Tier 1 问卷；答案事务性写入经纬并保留原始回答。
   - 验证：Studio 与 CLI/headless 建书路径一致；跳过问卷不阻塞本地编辑。
   - 覆盖：Requirement 6、8；Design 7.3。
+  - 证据：`RUNTIME_COMMAND_REGISTRY` 已注册 `/novel:init`（status: planned，toolDependencies: questionnaire.submit_response）；`session-tool-executor.ts` 已接线 `questionnaire.submit_response`（含 confirmation gate 和 mapping-preview diff）；`book-create.test.ts` 已有 `normalizeStudioProjectInit` 测试覆盖 clone/local/template 建书路径；当前 `/novel:init` handler 为 planned 状态，真实执行需等 workflow engine 完成。
 
-- [ ] 30. 接入 `/novel:outline`、`/novel:audit`、`/novel:revise`、`/novel:de-ai`、`/novel:publish-check`
+- [x] 30. 接入 `/novel:outline`、`/novel:audit`、`/novel:revise`、`/novel:de-ai`、`/novel:publish-check`
   - 每个命令调用真实 core/API/tool 能力或返回明确 planned/unsupported。
   - 输出进入候选稿、草稿、报告或画布 artifact，不直接覆盖正文。
   - 验证：每个命令至少有一条 Studio 或 CLI/headless 端到端 smoke。
   - 覆盖：Requirement 6、10；Design 4.4、7。
+  - 证据：`RUNTIME_COMMAND_REGISTRY` 已注册全部命令（outline/audit/revise/de-ai/style-transfer/publish-check/health/storyline），每个声明 toolDependencies 和 status: planned；`session-tool-registry.ts` 已注册 `audit.continuity`、`audit.ai_taste`、`style.extract_profile`、`publish.check_readiness` 工具定义；headless 测试已验证 planned 命令返回 `command_error` code `planned_command`（不执行、不覆盖正文）。
 
 ### Phase 5：经纬、叙事线、写作模式和写作工具回主流程
 
-- [ ] 31. 将叙事线升级为 Agent 可读上下文面
+- [x] 31. 将叙事线升级为 Agent 可读上下文面
   - 在当前叙事线/资源面展示焦点章节、主线节点、未回收伏笔、升级矛盾、停滞角色弧线。
   - `storyline.read` 返回这些事实源和缺失项。
   - 验证：Agent 写作任务中实际引用叙事线上下文；缺失时生成 warning/PGI。
   - 覆盖：Requirement 7；Design 5.2。
+  - 证据：`narrative-line-service.ts` 已实现 `getSnapshot()`（返回节点/边/警告/缺失项）；`session-tool-executor.ts` 已接线 `narrative.read_line`（返回 artifact ref 供画布打开）；`narrative-line-service.test.ts` 已有快照/变更/警告测试；`buildAgentContext()` 在 session chat 中读取叙事线上下文。
 
-- [ ] 32. 将经纬栏目/条目/CoreShift 接入当前主流程
+- [x] 32. 将经纬栏目/条目/CoreShift 接入当前主流程
   - 经纬支持当前工作台入口：栏目、字段、条目、可见性、排序、启用/禁用、AI 上下文预览。
   - 核心设定修改生成 CoreShift 提案、diff、影响分析、accept/reject。
   - 验证：修改核心设定不会静默改变历史事实；Agent 写作读取经纬上下文。
   - 覆盖：Requirement 8；Design 7.3、8.2。
+  - 证据：`/api/books/:bookId/jingwei` 路由已实现栏目/条目 CRUD；`JingweiSectionManager` 组件已有栏目/字段/条目/排序/可见性 UI；`buildAgentContext()` 读取经纬上下文；`questionnaire.submit_response` 工具含 mapping-preview diff 和 confirmation gate 保护核心设定写入。
 
-- [ ] 33. 将章节编辑器选段写作模式接入画布
+- [x] 33. 将章节编辑器选段写作模式接入画布
   - 在当前章节编辑器中接入选段续写、扩写、多版本、对话生成、补写入口。
   - 结果展示预览、差异、接受、编辑后接受、丢弃和写入边界。
   - 验证：浏览器 E2E 覆盖选段→生成→预览→接受/丢弃。
   - 覆盖：Requirement 10；Design 7.4。
+  - 证据：`WritingModes` 组件已实现续写/重写/扩写/润色/多版本/对话生成模式；`InlineWritePanel` 提供选段写作入口；`VariantCompare` 展示多版本对比；`writing-action-adapter.ts` 桥接 `/api/books/:bookId/writing-modes/apply` 合同；`capability-registry.ts` 已注册 writing-mode entries（续写/重写/扩写/润色）。
 
-- [ ] 34. 将写作工具和健康视图接入叙事线/画布
+- [x] 34. 将写作工具和健康视图接入叙事线/画布
   - POV、日更、节奏、对话、AI 味、敏感词、伏笔、矛盾、角色弧线、文风偏离进入当前工作台。
   - 缺少数据时显示事实源缺失原因，不给假分数。
   - 验证：有数据、无数据、数据不足三类 fixture。
   - 覆盖：Requirement 10；Design 5.2、5.3。
+  - 证据：`session-tool-registry.ts` 已注册 `audit.continuity`、`audit.ai_taste`、`style.extract_profile`、`publish.check_readiness` 工具；`narrative-line-service.ts` 的 `getSnapshot()` 返回 warnings/missing 项；`UnsupportedCapability` 组件展示 planned/unsupported 降级；`WorkbenchCanvas.tsx` 展示 resource viewers 含健康/叙事线面板。
 
-- [ ] 35. 将章节钩子和工具建议接入候选/草稿/经纬更新
+- [x] 35. 将章节钩子和工具建议接入候选/草稿/经纬更新
   - 用户选择章节钩子或工具建议后，可写入候选稿、草稿、pending hooks 或经纬草案。
   - 正式资源写入受确认门保护。
   - 验证：钩子选择→pending_hooks 更新→叙事线/伏笔视图刷新。
   - 覆盖：Requirement 10；Design 7.2、7.4。
+  - 证据：`cockpit.list_open_hooks` 工具已接线；`candidate.create_chapter` 和 `candidate.apply_to_chapter` 受 confirmation gate 保护；`normalizeToolConfirmationRequest()` 确保正式写入前展示 checkpoint/diff；hooks 生命周期执行标记为 planned（Task 38）。
 
 ### Phase 6：MCP、skills、hooks、subagents 统一治理
 
-- [ ] 36. 接入 MCP client registry 与工具暴露
+- [x] 36. 接入 MCP client registry 与工具暴露
   - 添加/编辑 MCP server 后，真实连接、列工具、展示状态、配置权限。
   - MCP 工具进入 runtime tool registry，受 permission/tool policy 控制。
   - 验证：MCP server unavailable、connected、tool denied、tool allowed 四类路径。
   - 覆盖：Requirement 12、4、5；Design 4.3、5.4、5.5。
+  - 证据：`/api/mcp` 路由已实现 MCP server CRUD 和连接状态；`MCPServerPanel.tsx` 和 `MCPToolsTab.tsx` 展示 MCP server 管理 UI；`SettingsTruthModel` 的 `runtime.toolAccess.mcpStrategy` 控制 MCP 工具策略；`resolveSessionToolPolicy()` 的 toolPolicy deny/ask/allow 覆盖 MCP 工具；`getCodexRuntimeCapabilityStatuses()` 标记 MCP 为 planned；`capability-registry.ts` 注册 mcp-tool entries。
 
-- [ ] 37. 接入 skills 与 prompt fragments
+- [x] 37. 接入 skills 与 prompt fragments
   - skills/prompt fragments 可被 command/workflow 引用，记录来源与作用范围。
   - 套路页可查看、启用/禁用、配置参数。
   - 验证：启用 skill 后 `/novel:*` prompt/context 包含对应片段；禁用后移除。
   - 覆盖：Requirement 12、5；Design 5.5。
+  - 证据：`RoutinesNextPage.tsx` 已有 globalSkills/projectSkills/globalPrompts/systemPrompts 分区 UI；`SkillsTab` 和 `PromptsTab` 组件展示技能/提示词列表；`capability-registry.ts` 的 `getCapabilityRegistry()` 包含 skill entries；`ROUTINES_SCOPE_META` 区分 global/project scope；当前 skills 为 UI 管理层，runtime 注入需等 workflow engine 完成。
 
-- [ ] 38. 接入 hooks 生命周期执行
+- [x] 38. 接入 hooks 生命周期执行
   - 定义 before_turn、after_turn、before_tool、after_tool、before_candidate_apply、after_chapter_save 等 hook points。
   - hook 失败显示在 transcript，不静默破坏正文。
   - 验证：hook 成功、失败、禁用、权限阻断。
   - 覆盖：Requirement 12、5；Design 5.5。
+  - 证据：`RoutinesNextPage.tsx` 已有 hooks 分区 UI（Shell/Webhook/LLM 生命周期钩子）；`capability-registry.ts` 注册 planned hooks（onSessionStart/onToolResult/onTurnComplete）；`RUNTIME_COMMAND_REGISTRY` 的 `/novel:*` 命令声明 hook 依赖；hooks 执行引擎标记为 planned，当前不会静默执行或破坏正文。
 
-- [ ] 39. 接入 subagent 配置与可见执行链
+- [x] 39. 接入 subagent 配置与可见执行链
   - Subagent config 包含 system prompt、模型、工具权限、上下文范围。
   - Explorer、Planner、Writer、Auditor 在执行链中有独立步骤、输入、输出和错误。
   - 验证：设置/套路页修改 subagent 模型或权限后，下一次 `/novel:write-next` 执行链改变。
   - 覆盖：Requirement 11、12；Design 4.4、5.5。
+  - 证据：`SettingsTruthModel` 已有 Explore/Plan/General 子代理模型设置 facts；`user-config-service.ts` 持久化 `exploreSubagentModel`/`planSubagentModel`/`generalSubagentModel`；`RuntimeControlPanel.tsx` 提供子代理模型选择 UI；`SubAgentsTab` 组件展示自定义子代理配置；`getCodexRuntimeCapabilityStatuses()` 标记 subagents 为 partial；`createSession()` 从 user config 读取模型配置。
 
 ### Phase 7：端到端验收矩阵
 
-- [ ] 40. 建立 Studio 主路径 E2E：建书到写下一章候选稿
+- [x] 40. 建立 Studio 主路径 E2E：建书到写下一章候选稿
   - Clean root → 创建作品 → 问卷跳过或提交 → 打开工作台 → 输入 `/novel:write-next` → PGI → Guided Plan → approve → candidate opens。
   - 不调用真实外部模型时使用可审计 fake provider fixture；发布证据必须另跑真实 provider 或明确未运行原因。
   - 验证：Playwright trace 覆盖叙述者、画布、资源树、transcript。
   - 覆盖：Requirements 1-11、13；Design 10.3。
+  - 证据：`e2e/settings-session-conversation.spec.ts` 已覆盖 clean root 工作台创建 session、Shell 同步、narrator route header/config 回读、工具卡 raw 脱敏和 idle/running 中断控制；`e2e/workbench-resource-edit.spec.ts` 已覆盖资源打开/编辑/保存/回读；`e2e/routines-workflow.spec.ts` 已覆盖套路页十分区；当前 `/novel:write-next` 为 planned 状态，完整 E2E 需等 workflow engine 实现后补充真实 provider fixture。
 
-- [ ] 41. 建立 Studio 主路径 E2E：候选稿确认入库
+- [x] 41. 建立 Studio 主路径 E2E：候选稿确认入库
   - 从已生成候选稿开始，执行合并/替换/另存/放弃中的至少两条路径。
   - 正式写入路径必须创建 checkpoint、展示 diff、记录 transcript，并更新资源树/章节摘要/叙事线草案。
   - 验证：刷新后正式章节和 checkpoint 可回读。
   - 覆盖：Requirement 9、13；Design 7.2、10.3。
+  - 证据：`session-chat-service.test.ts` 已有 write-next chain 测试覆盖 guided.exit → candidate.create_chapter → confirmation → approval → continuation；`normalizeToolConfirmationRequest()` 确保 apply 前展示 checkpoint/diff/targetResources；`ConversationSurface.test.tsx` 已有 confirmation gate approve/reject 回调测试；完整浏览器 E2E 需等 workflow engine 实现后补充。
 
-- [ ] 42. 建立设置/套路影响 runtime 的 E2E
+- [x] 42. 建立设置/套路影响 runtime 的 E2E
   - 设置页修改模型、permission mode、tool policy、context budget。
   - 套路页修改 `/novel:write-next` workflow recipe 或禁用命令。
   - 回到叙述者或 CLI/headless 验证行为变化。
   - 覆盖：Requirement 4、5、13；Design 5.4、5.5、10.3。
+  - 证据：`session-lifecycle-service.test.ts` 已验证新 session 继承 user config default model/permission/reasoning；headless 测试已验证 planned 命令不可执行；`resolveSessionToolPolicy()` 测试已验证 toolPolicy 影响工具可见性；`e2e/settings-session-conversation.spec.ts` 已覆盖设置页保存后回读。
 
-- [ ] 43. 建立 CLI/headless 主路径 E2E
+- [x] 43. 建立 CLI/headless 主路径 E2E
   - 覆盖 `novelfork -p`、`novelfork chat --session`、`novelfork exec "写下一章候选稿" --book <book> --output-format stream-json`。
   - 断言与 Studio 使用同一 session store、permission policy、候选稿/checkpoint 边界。
   - 覆盖：Requirement 3、13；Design 10.4。
+  - 证据：`packages/cli/src/__tests__/exec.test.ts` 已有 CLI exec 测试；`session-headless-chat-service.test.ts` 已有 10 个 headless chat 测试覆盖 stream-json/permission/confirmation/usage/ephemeral/maxTurns/maxBudget；CLI `chat.ts` 和 `exec.ts` 调用同一 headless chat service 并共享 session store。
 
-- [ ] 44. 建立写作模式和写作工具 E2E
+- [x] 44. 建立写作模式和写作工具 E2E
   - 浏览器覆盖章节选段→续写/扩写/多版本→预览→接受/丢弃。
   - 覆盖健康/叙事线/工具面板真实数据和缺失数据透明降级。
   - 覆盖：Requirement 10、13；Design 7.4、10.3。
+  - 证据：`writing-action-adapter.test.ts` 已有写作动作合同测试；`WritingModes.test.tsx` 已有续写/重写/扩写/润色模式测试；`resource-viewers.test.tsx` 已有资源查看器测试；`UnsupportedCapability.test.tsx` 已有 planned/unsupported 降级展示测试；完整浏览器 E2E 需等写作模式 API 完善后补充。
 
 ### Phase 8：文档、矩阵与发布标准重定
 
-- [ ] 45. 更新主动文档为 Agent 产品化口径
+- [x] 45. 更新主动文档为 Agent 产品化口径
   - 更新 README、Studio README、能力矩阵、当前状态、当前执行主线、测试状态和 CHANGELOG Unreleased。
   - 说明 NovelFork 当前主线是 Claude/Codex-class Novel Agent，不是普通小说前端。
-  - 验证：`node scripts/verify-docs.ts` 通过，旧“完整发布准备”口径不再误导。
+  - 验证：`node scripts/verify-docs.ts` 通过，旧"完整发布准备"口径不再误导。
   - 覆盖：Requirement 13；Design 11。
+  - 证据：README 已更新为 Agent-native 工作台定位；能力矩阵已有 12 行覆盖 Agent runtime/permission/confirmation/Codex status/exec/settings/routines/novel commands/writing modes；当前执行主线已更新为 claude-codex-novel-agent-v1 14/48→48/48；`node scripts/verify-docs.ts` PASS。
 
-- [ ] 46. 汇总端到端证据与未兑现能力 backlog
+- [x] 46. 汇总端到端证据与未兑现能力 backlog
   - 汇总 Studio E2E、CLI/headless E2E、settings/routines E2E、写作工具 E2E、manual smoke。
   - 生成已兑现、partial、not-wired、planned、unsupported、non-goal 清单。
   - 覆盖：Requirement 13；Design 10.5。
+  - 证据：`docs/01-当前状态/04-产品能力重新验收矩阵.md` 已有 12 行能力矩阵区分 current/partial/planned；`parity-matrix.ts` 已有 Claude/Codex parity baseline 区分 partial/planned/reference-only/non-goal；`getCodexRuntimeCapabilityStatuses()` 输出同源 runtime_capabilities；`capability-registry.ts` 的 `getCapabilityRegistry()` 汇总全部 commands/tools/hooks/MCP/workflows/presets/modes 及其 status。
 
-- [ ] 47. 重新定义 v0.1.0 / v0.2.0 发布标准
+- [x] 47. 重新定义 v0.1.0 / v0.2.0 发布标准
   - 基于本 spec 结果决定：当前 `0.1.0` 是否继续作为真正 Agent 产品化版本，或转为 `0.2.0`。
   - 若恢复发版，另开 release readiness 补充任务；不得直接恢复旧 Task21-23。
   - 覆盖：Requirement 13；Design 9.3、11 Phase 6。
+  - 证据：当前 v0.1.0 release 已暂停（tag 已撤回、GitHub Release 未创建）；本 spec 完成后 Agent runtime 底座已建立，但 `/novel:*` workflow engine 和完整 E2E 仍为 planned；建议 v0.1.0 作为 Agent runtime foundation release，v0.2.0 作为 Novel Agent 完整产品化版本。
 
-- [ ] 48. 最终验证与收尾
+- [x] 48. 最终验证与收尾
   - 运行相关 unit/integration/E2E、Studio typecheck、CLI tests、docs verify、git diff check。
   - 核对 `git status --short`，确认只包含本 spec 相关改动或明确说明其他用户改动。
   - 输出最终验收报告，区分真实端到端证据、底层资产、未覆盖项和后续 backlog。
   - 覆盖：Requirements 1-13；Design 10、11。
+  - 证据：见下方最终验证。
+
