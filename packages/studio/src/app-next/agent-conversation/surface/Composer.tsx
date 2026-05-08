@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Send, Paperclip, Square } from "lucide-react";
+import { Send, Paperclip, Square, Play } from "lucide-react";
 
 import {
   createDefaultSlashCommandRegistry,
@@ -10,34 +10,56 @@ import {
   type SlashCommandExecutionResult,
 } from "../slash-command-registry";
 
+export interface ComposerModelOption {
+  value: string;
+  label: string;
+}
+
 export interface ComposerProps {
   onSend: (content: string) => void;
   onAbort: () => void;
+  onContinue?: () => void;
   onSlashCommandResult?: (result: SlashCommandExecutionResult) => void;
+  onModelChange?: (modelValue: string) => void;
+  onPermissionChange?: (mode: string) => void;
+  onAttach?: (files: FileList) => void;
   slashCommandContext?: SlashCommandExecutionContext;
   isRunning?: boolean;
+  isInterrupted?: boolean;
   disabledReason?: string;
   settingsHref?: string;
-  /** 当前会话模型标签 */
-  modelLabel?: string;
+  /** 当前会话模型值（provider:model 格式） */
+  modelValue?: string;
+  /** 可选模型列表 */
+  modelOptions?: ComposerModelOption[];
   /** 当前权限模式 */
   permissionMode?: string;
+  /** 权限模式选项 */
+  permissionOptions?: readonly { value: string; label: string }[];
 }
 
 export function Composer({
   onSend,
   onAbort,
+  onContinue,
   onSlashCommandResult,
+  onModelChange,
+  onPermissionChange,
+  onAttach,
   slashCommandContext,
   isRunning = false,
+  isInterrupted = false,
   disabledReason,
   settingsHref,
-  modelLabel,
+  modelValue,
+  modelOptions,
   permissionMode,
+  permissionOptions,
 }: ComposerProps) {
   const [value, setValue] = useState("");
   const [commandStatus, setCommandStatus] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const registry = useMemo(() => slashCommandContext?.registry ?? createDefaultSlashCommandRegistry(), [slashCommandContext?.registry]);
   const slashSuggestions = getSlashCommandSuggestions(value, registry);
   const showSlashSuggestions = parseSlashCommandInput(value).ok && slashSuggestions.length > 0;
@@ -120,10 +142,17 @@ export function Composer({
 
       {/* Input row */}
       <div className="flex items-end gap-2">
-        {/* Attachment button (placeholder) */}
-        <button type="button" className="shrink-0 rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground" title="附件">
+        {/* Attachment button */}
+        <button type="button" className="shrink-0 rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground" title="附件" onClick={() => fileInputRef.current?.click()}>
           <Paperclip className="size-4" />
         </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          className="hidden"
+          onChange={(e) => { if (e.target.files?.length && onAttach) onAttach(e.target.files); e.target.value = ""; }}
+        />
 
         {/* Textarea */}
         <textarea
@@ -137,18 +166,45 @@ export function Composer({
           rows={1}
         />
 
-        {/* Right side: model + permission + send/abort */}
+        {/* Right side: model + permission + action button */}
         <div className="flex shrink-0 items-center gap-1.5">
-          {modelLabel && (
+          {/* Model selector */}
+          {modelOptions && modelOptions.length > 0 ? (
+            <select
+              className="rounded-md bg-muted px-2 py-1 text-[10px] font-medium text-muted-foreground border-none outline-none cursor-pointer"
+              title="当前模型"
+              value={modelValue ?? ""}
+              onChange={(e) => onModelChange?.(e.target.value)}
+            >
+              {modelOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          ) : modelValue ? (
             <span className="rounded-md bg-muted px-2 py-1 text-[10px] font-medium text-muted-foreground" title="当前模型">
-              {modelLabel}
+              {modelValue}
             </span>
-          )}
-          {permissionMode && (
+          ) : null}
+
+          {/* Permission selector */}
+          {permissionOptions && permissionOptions.length > 0 ? (
+            <select
+              className="rounded-md bg-primary/10 px-2 py-1 text-[10px] font-medium text-primary border-none outline-none cursor-pointer"
+              title="权限模式"
+              value={permissionMode ?? ""}
+              onChange={(e) => onPermissionChange?.(e.target.value)}
+            >
+              {permissionOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          ) : permissionMode ? (
             <span className="rounded-md bg-primary/10 px-2 py-1 text-[10px] font-medium text-primary" title="权限模式">
               {permissionMode}
             </span>
-          )}
+          ) : null}
+
+          {/* Action button: interrupt / send / continue */}
           {isRunning ? (
             <button
               type="button"
@@ -157,6 +213,25 @@ export function Composer({
               title="中断"
             >
               <Square className="size-4" />
+            </button>
+          ) : value.trim() ? (
+            <button
+              type="button"
+              onClick={() => void handleSend()}
+              disabled={Boolean(disabledReason)}
+              className="rounded-lg bg-primary p-2 text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+              title="发送"
+            >
+              <Send className="size-4" />
+            </button>
+          ) : (isInterrupted || onContinue) ? (
+            <button
+              type="button"
+              onClick={() => onContinue?.()}
+              className="rounded-lg bg-blue-600 p-2 text-white hover:bg-blue-700"
+              title="继续"
+            >
+              <Play className="size-4" />
             </button>
           ) : (
             <button

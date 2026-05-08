@@ -18,6 +18,10 @@ export interface ConversationBindingFact {
 
 export interface ConversationWorkspaceFact {
   path?: string;
+  /** Git 分支名 */
+  branch?: string;
+  /** 未提交变更数 */
+  changes?: number;
   git?:
     | { status: "clean"; summary?: string }
     | { status: "dirty"; summary: string }

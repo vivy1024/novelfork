@@ -5,8 +5,26 @@ import type { ToolResultArtifact } from "../../tool-results";
 import type { SlashCommandExecutionContext, SlashCommandExecutionResult } from "../slash-command-registry";
 import { Composer } from "./Composer";
 import { ConfirmationGate, type ConversationConfirmation } from "./ConfirmationGate";
-import type { ConversationSessionConfigPatch, ConversationStatus } from "./ConversationStatusBar";
+import type { ConversationSessionConfigPatch, ConversationStatus, NarratorSubstatus } from "./ConversationStatusBar";
 import { MessageStream, type ConversationSurfaceMessage } from "./MessageStream";
+
+/** 对标 NarraFork i18n narratorSubstatus 文案 */
+const SUBSTATUS_LABELS: Record<NarratorSubstatus, string> = {
+  unread: "已完成",
+  error: "错误",
+  interrupted: "已中断",
+  suspended: "已暂停",
+  manual_override: "手动接管",
+  reasoning: "推理中",
+  compacting: "压缩中",
+  planning: "计划中",
+  retrying: "重试中",
+  queued: "排队中",
+};
+
+function substatusLabel(s: NarratorSubstatus): string {
+  return SUBSTATUS_LABELS[s] ?? s;
+}
 
 export interface ConversationRecoveryNotice {
   state: string;
@@ -79,6 +97,8 @@ export function ConversationSurface({
   onSlashCommandResult,
 }: ConversationSurfaceProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
@@ -98,6 +118,11 @@ export function ConversationSurface({
   const isInterrupted = status.substatus === "interrupted";
   const effectiveStreamingStartedAt = isWorking ? (status.streamingStartedAt ?? streamingStartedAt) : null;
 
+  // 搜索过滤（对标 NarraFork messageSearchPlaceholder: "搜索已加载消息..."）
+  const filteredMessages = searchQuery
+    ? messages.filter((m) => m.content.toLowerCase().includes(searchQuery.toLowerCase()))
+    : messages;
+
   return (
     <section data-testid="conversation-surface" className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
       {/* ── Top toolbar ── */}
@@ -113,7 +138,7 @@ export function ConversationSurface({
           {!isWorking && status.lastTurnDurationMs != null && (
             <span className="text-xs text-muted-foreground">空闲 · 上轮耗时 {formatDuration(status.lastTurnDurationMs)}</span>
           )}
-          <button type="button" className="rounded-md p-1.5 text-muted-foreground hover:bg-muted" title="搜索">
+          <button type="button" className="rounded-md p-1.5 text-muted-foreground hover:bg-muted" title="搜索" onClick={() => setSearchOpen(!searchOpen)}>
             <Search className="size-4" />
           </button>
           <button type="button" className="rounded-md p-1.5 text-muted-foreground hover:bg-muted" title="设置" onClick={() => settingsHref && (window.location.href = settingsHref)}>
@@ -121,6 +146,21 @@ export function ConversationSurface({
           </button>
         </div>
       </header>
+
+      {/* ── Search bar ── */}
+      {searchOpen && (
+        <div className="shrink-0 border-b border-border px-4 py-2">
+          <input
+            type="text"
+            className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm outline-none focus:border-primary"
+            placeholder="搜索已加载消息..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Escape") { setSearchOpen(false); setSearchQuery(""); } }}
+            autoFocus
+          />
+        </div>
+      )}
 
       {/* ── Recovery notice ── */}
       {recoveryNotice && recoveryNotice.state !== "idle" && (
@@ -138,9 +178,13 @@ export function ConversationSurface({
               <p className="text-xs">输入写作目标，或使用 <code className="rounded bg-muted px-1">/help</code> 查看可用命令</p>
             </div>
           </div>
+        ) : filteredMessages.length === 0 && searchQuery ? (
+          <div className="flex h-full items-center justify-center">
+            <p className="text-sm text-muted-foreground">无匹配结果</p>
+          </div>
         ) : (
           <>
-            <MessageStream messages={messages} />
+            <MessageStream messages={filteredMessages} />
             {/* Confirmation gate inline */}
             {pendingConfirmation && (
               <div className="my-3">
@@ -159,8 +203,13 @@ export function ConversationSurface({
       <div className="flex shrink-0 items-center justify-between border-t border-border px-4 py-1 text-[10px] text-muted-foreground">
         <div className="flex items-center gap-2">
           <Clock className="size-3" />
+          {status.substatus && (
+            <span className="font-medium">{substatusLabel(status.substatus)}</span>
+          )}
           <span>{messages.length} 条消息</span>
           {status.binding?.label && <span>· {status.binding.label}</span>}
+          {status.workspace?.branch && <span>· {status.workspace.branch}</span>}
+          {status.workspace?.changes != null && <span>· ±{status.workspace.changes}</span>}
         </div>
         <div className="flex items-center gap-2">
           {status.providerId && <span>{status.providerLabel ?? status.providerId}</span>}
@@ -173,10 +222,11 @@ export function ConversationSurface({
         onAbort={onAbort}
         onSlashCommandResult={handleSlashCommandResult}
         slashCommandContext={{ status, compactSession: onCompactSession }}
-        isRunning={isRunning}
+        isRunning={isWorking}
+        isInterrupted={isInterrupted}
         disabledReason={sendDisabledReason}
         settingsHref={settingsHref}
-        modelLabel={modelLabel}
+        modelValue={modelLabel}
         permissionMode={permissionLabel}
       />
     </section>
