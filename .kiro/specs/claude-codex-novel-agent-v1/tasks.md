@@ -191,11 +191,12 @@
 
 ### Phase 4：Novel Agent Pack 与写下一章闭环
 
-- [ ] 22. 建立 Novel command pack
+- [x] 22. 建立 Novel command pack
   - 注册 `/novel:init`、`/novel:outline`、`/novel:write-next`、`/novel:audit`、`/novel:revise`、`/novel:de-ai`、`/novel:style-transfer`、`/novel:publish-check`、`/novel:health`、`/novel:storyline`。
   - 每个命令声明 handler、工具依赖、权限、可用状态和缺口。
   - 验证：叙述者 suggestions、套路页命令清单、CLI help 一致。
   - 覆盖：Requirement 6；Design 4.4、5.1。
+  - 证据：`command-registry.ts` 中 10 个 `/novel:*` 命令全部声明 `runtimeHandler`、`toolDependencies`、`permissionImpact`、`status`、`source` 和 `gaps`；`/novel:write-next` 升级为 `partial`（workflow recipe 已定义）；其余保持 `planned` 并明确缺口说明；`RuntimeCommandDefinition` 接口扩展 `toolDependencies?: readonly string[]` 和 `gaps?: string`；core registry test 验证 toolDependencies 存在；叙述者 suggestions、套路页 `RuntimeCommandRegistryPanel`、CLI help 均从同一 `listRuntimeCommands()` 读取。
 
 - [ ] 23. 建立小说上下文工具组
   - 实现或接线 `storyline.read`、`jingwei.read_context`、`chapter.read`、`health.read_summary`、`candidate.list_recent`。

@@ -37,9 +37,10 @@ describe("runtime command registry", () => {
     expect(ids).toEqual(expect.arrayContaining(REQUIRED_SLASH_COMMANDS));
     expect(commands.find((command) => command.id === "/novel:write-next")).toMatchObject({
       source: "novel-agent-pack",
-      status: "planned",
+      status: "partial",
       scope: "novel",
       runtimeHandler: "novel.writeNext",
+      toolDependencies: expect.arrayContaining(["cockpit.get_snapshot", "candidate.create_chapter"]),
     });
   });
 
