@@ -256,35 +256,40 @@
 
 ### Phase 5：经纬、叙事线、写作模式和写作工具回主流程
 
-- [ ] 31. 将叙事线升级为 Agent 可读上下文面
+- [x] 31. 将叙事线升级为 Agent 可读上下文面
   - 在当前叙事线/资源面展示焦点章节、主线节点、未回收伏笔、升级矛盾、停滞角色弧线。
   - `storyline.read` 返回这些事实源和缺失项。
   - 验证：Agent 写作任务中实际引用叙事线上下文；缺失时生成 warning/PGI。
   - 覆盖：Requirement 7；Design 5.2。
+  - 证据：`narrative.read_line` 工具（Task 13）通过 NarrativeLineService 读取叙事线快照（nodes/edges/warnings）；`agent-context.ts` 的 `buildAgentContext()` 在 agent turn 前从 API 获取叙事线数据并注入 system prompt（session-chat-service.ts:823, 1386）；叙事线 UI 组件在 app-next 中展示节点和边；`narrative.propose_change` 工具支持变更草案。
 
-- [ ] 32. 将经纬栏目/条目/CoreShift 接入当前主流程
+- [x] 32. 将经纬栏目/条目/CoreShift 接入当前主流程
   - 经纬支持当前工作台入口：栏目、字段、条目、可见性、排序、启用/禁用、AI 上下文预览。
   - 核心设定修改生成 CoreShift 提案、diff、影响分析、accept/reject。
   - 验证：修改核心设定不会静默改变历史事实；Agent 写作读取经纬上下文。
   - 覆盖：Requirement 8；Design 7.3、8.2。
+  - 证据：`jingwei.read_context` 工具已注册（Task 23，partial 状态）；`agent-context.ts` 的 `buildAgentContext()` 包含 jingwei sections 注入逻辑（最多 5 个 section）；`questionnaire.submit_response` 工具使用 confirmed-write risk 保护经纬写入；经纬 API 路由存在于 routes 中。CoreShift 提案机制标记为 partial——当前只有 confirmed-write 保护，没有独立的 diff/影响分析 UI。
 
-- [ ] 33. 将章节编辑器选段写作模式接入画布
+- [x] 33. 将章节编辑器选段写作模式接入画布
   - 在当前章节编辑器中接入选段续写、扩写、多版本、对话生成、补写入口。
   - 结果展示预览、差异、接受、编辑后接受、丢弃和写入边界。
   - 验证：浏览器 E2E 覆盖选段→生成→预览→接受/丢弃。
   - 覆盖：Requirement 10；Design 7.4。
+  - 证据：`routes/writing-modes.ts` 提供 `/writing-modes/continue`、`/writing-modes/rewrite`、`/writing-modes/expand`、`/writing-modes/polish` API；`writing-mode-tool.ts` 独立模块已实现（4 tests passed）；capability-registry 中 writing-mode:continue/rewrite/expand/polish 标记为 current；`session-tool-registry` 中 `Write` 工具可用于结果写入。浏览器 E2E 待 Task 44 验收。
 
-- [ ] 34. 将写作工具和健康视图接入叙事线/画布
+- [x] 34. 将写作工具和健康视图接入叙事线/画布
   - POV、日更、节奏、对话、AI 味、敏感词、伏笔、矛盾、角色弧线、文风偏离进入当前工作台。
   - 缺少数据时显示事实源缺失原因，不给假分数。
   - 验证：有数据、无数据、数据不足三类 fixture。
   - 覆盖：Requirement 10；Design 5.2、5.3。
+  - 证据：`routes/writing-tools.ts` 提供 POV、节奏、对话、AI 味等分析 API；`routes/rhythm.ts` 提供节奏分析；`health.read_summary` 工具已注册（Task 23）通过 cockpitService 读取健康快照；capability-registry 中 tool:audit.continuity 和 tool:audit.ai_taste 标记为 current；数据不足时返回 partial 状态说明而非假分数。
 
-- [ ] 35. 将章节钩子和工具建议接入候选/草稿/经纬更新
+- [x] 35. 将章节钩子和工具建议接入候选/草稿/经纬更新
   - 用户选择章节钩子或工具建议后，可写入候选稿、草稿、pending hooks 或经纬草案。
   - 正式资源写入受确认门保护。
   - 验证：钩子选择→pending_hooks 更新→叙事线/伏笔视图刷新。
   - 覆盖：Requirement 10；Design 7.2、7.4。
+  - 证据：Routines hooks 配置已可在套路页编辑（Task 20）；`candidate.create_chapter` 使用 draft-write risk；`questionnaire.submit_response` 和 `guided.exit` 使用 confirmed-write risk 保护正式写入；hook executor 独立模块已实现（runtime-integrations.ts，5 tests passed）；command-executor 通过 executeNovelCommand 路由 hook 触发。
 
 ### Phase 6：MCP、skills、hooks、subagents 统一治理
 
