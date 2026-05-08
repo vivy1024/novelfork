@@ -60,6 +60,7 @@ describe("routines-service", () => {
           { id: "shared-hook", name: "Global Hook", event: "after-agent-run", kind: "shell", target: "global.sh", enabled: true },
         ],
         disabledCommands: ["/compact"],
+        workflowRecipes: [],
       },
       {
         commands: [
@@ -97,6 +98,7 @@ describe("routines-service", () => {
           { id: "shared-hook", name: "Project Hook", event: "after-chapter-save", kind: "webhook", target: "https://hook.example", enabled: false },
         ],
         disabledCommands: ["/novel:write-next"],
+        workflowRecipes: [],
       },
     );
 

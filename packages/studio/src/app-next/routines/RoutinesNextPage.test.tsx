@@ -49,6 +49,7 @@ const sampleRoutines = {
   mcpTools: [{ id: "mcp-1", serverName: "memory", toolName: "recall", enabled: true, approved: true }],
   hooks: [{ id: "hook-1", name: "审稿后通知", event: "after-audit", kind: "webhook", target: "https://hooks.example/audit", enabled: true }],
   disabledCommands: [],
+  workflowRecipes: [],
 } as unknown as RoutinesConfig;
 
 afterEach(() => {
