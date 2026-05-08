@@ -191,6 +191,11 @@ function getAllowedHitReason(hit: MockDebtScanHit): string | undefined {
     return "codex-sandbox-planned-status-comment";
   }
 
+  // Task 18 runtime-status API 中的 sandbox planned 说明
+  if (hit.relativePath === "packages/studio/src/api/routes/settings.ts" && hit.lineText.includes("Codex OS sandbox 尚未接入")) {
+    return "codex-sandbox-runtime-status-note";
+  }
+
 
   if (hit.relativePath === "packages/studio/src/hooks/use-i18n.ts" && hit.lineText.includes("Beta 通道入口已预留")) {
     return "transparent-reserved-ui-copy";
