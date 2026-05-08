@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Settings, Search } from "lucide-react";
+import { Settings, Search, ExternalLink, Pencil, Sparkles, FileCode, Info, Archive } from "lucide-react";
 
 import type { ToolResultArtifact } from "../../tool-results";
 import type { SlashCommandExecutionContext, SlashCommandExecutionResult } from "../slash-command-registry";
@@ -110,19 +110,34 @@ export function ConversationSurface({
     <section data-testid="conversation-surface" className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
       {/* ── Top toolbar ── */}
       <header className="flex shrink-0 items-center justify-between border-b border-border px-4 py-2">
-        <div className="flex items-center gap-2">
-          <h2 className="text-sm font-semibold text-foreground">{title}</h2>
-          {status.state === "active" && (
-            <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-medium text-green-700 dark:bg-green-900 dark:text-green-300">活跃</span>
-          )}
+        <div className="flex items-center gap-2 min-w-0">
+          <button type="button" className="rounded-md p-1 text-muted-foreground hover:bg-muted" title="在新标签打开">
+            <ExternalLink className="size-4" />
+          </button>
+          <h2 className="truncate text-sm font-semibold text-foreground">{title}</h2>
+          <button type="button" className="rounded-md p-1 text-muted-foreground hover:bg-muted" title="编辑标题">
+            <Pencil className="size-3" />
+          </button>
+          <button type="button" className="rounded-md p-1 text-muted-foreground hover:bg-muted" title="生成标题">
+            <Sparkles className="size-3" />
+          </button>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-0.5">
           {isWorking && effectiveStreamingStartedAt && <ThinkingTimer startedAt={effectiveStreamingStartedAt} />}
           {!isWorking && status.lastTurnDurationMs != null && (
-            <span className="text-xs text-muted-foreground">空闲 · 上轮耗时 {formatDuration(status.lastTurnDurationMs)}</span>
+            <span className="text-xs text-muted-foreground mr-2">空闲 · 上轮耗时 {formatDuration(status.lastTurnDurationMs)}</span>
           )}
           <button type="button" className="rounded-md p-1.5 text-muted-foreground hover:bg-muted" title="搜索" onClick={() => setSearchOpen(!searchOpen)}>
             <Search className="size-4" />
+          </button>
+          <button type="button" className="rounded-md p-1.5 text-muted-foreground hover:bg-muted" title="文件修改">
+            <FileCode className="size-4" />
+          </button>
+          <button type="button" className="rounded-md p-1.5 text-muted-foreground hover:bg-muted" title="会话信息">
+            <Info className="size-4" />
+          </button>
+          <button type="button" className="rounded-md p-1.5 text-muted-foreground hover:bg-muted" title="归档">
+            <Archive className="size-4" />
           </button>
           <button type="button" className="rounded-md p-1.5 text-muted-foreground hover:bg-muted" title="设置" onClick={() => settingsHref && (window.location.href = settingsHref)}>
             <Settings className="size-4" />
