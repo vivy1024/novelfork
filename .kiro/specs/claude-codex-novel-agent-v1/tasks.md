@@ -181,12 +181,13 @@
   - 覆盖：Requirement 5、2；Design 5.5。
   - 证据：`Routines` 类型新增 `disabledCommands: string[]` 字段；`RuntimeCommandRegistryPanel` 添加启用/禁用按钮，禁用的命令显示红色 badge 和半透明样式；禁用操作写入 routines 配置并通过 `/routines` API 持久化；`command-executor.ts` 的 `isCommandEnabled` 回调在执行前检查禁用列表；`slash-command-registry.ts` 通过 `commandEnabledRegistry` 接入禁用检查；`slash-command-registry.test.ts` 验证禁用 `/compact` 后返回 `command_disabled` 错误。typecheck 通过；RoutinesNextPage 5 tests passed。
 
-- [ ] 21. 套路页接实 `/novel:write-next` workflow recipe
+- [x] 21. 套路页接实 `/novel:write-next` workflow recipe
   - 创建默认 recipe：context → PGI → Guided Plan → approve → Writer candidate → canvas open。
   - 套路页可配置参与 agents、模型、工具、确认门和候选稿策略。
   - 修改 recipe 后下一次 `/novel:write-next` 使用新配置。
   - 验证：E2E 覆盖修改 recipe 后执行链变化。
   - 覆盖：Requirement 5、6、11；Design 5.5、7.1。
+  - 证据：新增 `packages/studio/src/shared/workflow-recipe.ts`，定义 `WorkflowRecipeConfig`（id/name/commandId/steps/candidateStrategy/requireFinalApproval/maxRetries）和 `WorkflowStepConfig`（id/kind/label/enabled/agentId/modelOverride/tools/requiresApproval/onFailure）；`DEFAULT_WRITE_NEXT_RECIPE` 包含 6 步（context-load→pgi→guided-plan→approval-gate→writer-generate→canvas-open），各步指定 agentId（explorer/planner/writer）和工具依赖；`DEFAULT_AUDIT_RECIPE` 包含 3 步；`Routines` 类型新增 `workflowRecipes: WorkflowRecipeConfig[]`，套路页可持久化修改；`getWorkflowRecipe(commandId)` 供 runtime 执行时查找配置；`getEnabledSteps(recipe)` 过滤禁用步骤。7 tests passed；typecheck 通过。
 
 ### Phase 4：Novel Agent Pack 与写下一章闭环
 

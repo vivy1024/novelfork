@@ -22,6 +22,7 @@ function cloneDefaultRoutines(): Routines {
     mcpTools: [...DEFAULT_ROUTINES.mcpTools],
     hooks: [...DEFAULT_ROUTINES.hooks],
     disabledCommands: [...DEFAULT_ROUTINES.disabledCommands],
+    workflowRecipes: [...DEFAULT_ROUTINES.workflowRecipes],
   };
 }
 
