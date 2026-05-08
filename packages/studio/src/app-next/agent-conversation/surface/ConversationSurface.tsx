@@ -226,8 +226,6 @@ export function ConversationSurface({
         isInterrupted={isInterrupted}
         disabledReason={sendDisabledReason}
         settingsHref={settingsHref}
-        modelValue={modelLabel}
-        permissionMode={permissionLabel}
       />
     </section>
   );
