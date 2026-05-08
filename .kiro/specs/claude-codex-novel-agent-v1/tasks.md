@@ -13,17 +13,13 @@
 - 功能完成必须提供 Studio 或 CLI/headless 端到端证据；API、组件、unit test 只能证明底座。
 - AI 输出默认进入候选稿、草稿、计划或报告；正式正文写入必须经过确认门或 checkpoint。
 
-## Traceability Map
+## 真实进度说明
 
-- Phase 0 → Requirement 13；Design 9.2、10.5、11。
-- Phase 1 → Requirement 1、3；Design 4.1、6、8.1。
-- Phase 2 → Requirement 2、12；Design 4.2、4.3、8.3。
-- Phase 3 → Requirement 4、5；Design 5.4、5.5、8.3。
-- Phase 4 → Requirement 6、7、8、9、11；Design 4.4、7、8.2。
-- Phase 5 → Requirement 10；Design 7.3、7.4。
-- Phase 6 → Requirement 12；Design 4.2、4.3、5.5。
-- Phase 7 → Requirement 13；Design 10、11。
-- Phase 8 → Requirements 1-13；Design 9.3、11。
+- Task 1-13：真实实现并接线到 runtime，有集成测试覆盖。
+- Task 14-19：独立模块已实现（real-tool-handlers、permission-pipeline、mcp-client-runtime、subagent-runtime、context-compaction），但**尚未接线到 session-chat-service / session-tool-executor / agent-turn-runtime**。
+- Task 20-24：独立模块已实现（provider-validation、command-enabled-registry、novel-write-next-handler、novel-init-handler、novel-audit-handler），但**尚未接线到真实 API 路由和 command executor**。
+- Task 25-33：独立模块已实现（agent-context 扩展、writing-mode-tool、runtime-integrations），但**尚未接线到 session runtime**。
+- Task 34-48：未实现。
 
 ## Tasks
 
@@ -49,96 +45,124 @@
 - [x] 12. 统一 permission mode 与 tool policy resolution
 - [x] 13. 统一确认门与 checkpoint 展示
 
-- [x] 14. 实现真实工具执行：BashTool / FileRead / FileWrite / FileEdit
-  - 当前状态：工具 handler 通过 service 注入 mock，无真实文件系统操作。
-  - 目标：实现 `Bash`（真实 shell 执行，受 sandbox/permission 控制）、`Read`（真实文件读取）、`Write`（真实文件写入）、`Edit`（真实文件编辑）。
-  - 对标：Claude Code CLI 的 BashTool/FileReadTool/FileWriteTool/FileEditTool；Codex CLI 的 shell 执行 + sandbox。
-  - 验证：在 session 中调用 Bash 工具真实执行 `ls` 并返回输出；Read 工具读取真实文件内容。
-  - 覆盖：Requirement 2、3；Design 4.1、4.2。
-  - 证据：新增 `real-tool-handlers.ts`（Bash 真实 shell 执行 + 危险模式检测 + 工作目录边界；FileRead/FileWrite/FileEdit 真实文件操作 + 路径验证）。`real-tool-handlers.test.ts` 10 tests passed：shell 执行返回 stdout、失败命令返回 exitCode、rm -rf / 被拒绝、文件读取/写入/编辑/路径越界全部验证。
+### Phase 2.5：独立模块实现（底座，未接线）
 
-- [x] 15. 实现权限管线：路径验证、危险模式检测、bash 分类器
-  - 证据：新增 `permission-pipeline.ts`（classifyBashCommand trusted/untrusted/dangerous、isDangerousCommand 10+ 模式、isPathWithinWorkDir 路径边界、validateToolPermission 综合决策）。14 tests passed。
+- [x] 14. 实现真实工具执行模块：BashTool / FileRead / FileWrite / FileEdit
+  - 状态：`real-tool-handlers.ts` 已实现，11 tests passed。未接线到 session-tool-executor。
 
-- [x] 16. 实现 sandbox mode enforcement
-  - 证据：`validateToolPermission` 集成 sandboxMode（read-only 阻止写操作、workspace-write 允许工作目录内写、danger-full-access 放行但仍阻止 fork bomb/shutdown）。对标 Codex `--sandbox read-only|workspace-write|danger-full-access`。
+- [x] 15. 实现权限管线模块：路径验证、危险模式检测、bash 分类器
+  - 状态：`permission-pipeline.ts` 已实现，18 tests passed。未接线到 session-tool-policy。
 
-- [x] 17. 实现真实 MCP client：连接、列工具、执行
-  - 证据：新增 `mcp-client-runtime.ts`（stdio 传输层、JSON-RPC 2.0 协议、spawn 子进程、initialize 握手、tools/list、tools/call、连接状态管理、超时处理）。3 tests passed：真实 node 子进程 MCP server 连接 + 工具列表 + 错误处理。
+- [x] 16. 实现 sandbox mode enforcement 模块
+  - 状态：集成在 permission-pipeline.ts 中。未接线到 session runtime。
 
-- [x] 18. 实现真实子代理：独立对话循环、工具权限继承
-  - 证据：新增 `subagent-runtime.ts`（独立 system prompt/model/provider/tools/maxSteps、generate→tool→generate 循环、bounded steps、tool result 收集）。3 tests passed：独立模型调用、工具执行链、maxSteps 停止。
+- [x] 17. 实现 MCP client 模块：stdio 连接、列工具、执行
+  - 状态：`mcp-client-runtime.ts` 已实现，3 tests passed。未接线到 session-tool-registry。
 
-- [x] 19. 实现真实上下文管理：autoCompact、token 估算、阈值触发
-  - 证据：新增 `context-compaction.ts`（estimateTokenCount ~4 chars/token、shouldTriggerCompaction 阈值检查、autoCompact 摘要旧消息+保留最近 N 条）。5 tests passed：token 估算、阈值触发、摘要压缩、低于阈值不压缩、工具调用消息保留。
+- [x] 18. 实现子代理模块：AsyncGenerator 循环、abort、transcript
+  - 状态：`subagent-runtime.ts` 已实现，5 tests passed。未接线到 session-tool-executor。
 
-### Phase 3：设置与套路接入真实 runtime
+- [x] 19. 实现上下文压缩模块：tiktoken、阈值触发、post-compact 恢复
+  - 状态：`context-compaction.ts` 已实现，5 tests passed。未接线到 session-chat-service。
 
-- [x] 20. 设置页接实真实 provider 调用验证
-  - 证据：新增 `provider-validation.ts`（validateProviderConnection 真实 API 健康检查 + 超时 + localhost 免 key）。4 tests passed。
+- [x] 20. 实现 provider 验证模块
+  - 状态：`provider-validation.ts` 已实现，4 tests passed。未接线到设置页 API。
 
-- [x] 21. 套路页接实真实 command enable/disable 影响 runtime
-  - 证据：新增 `command-enabled-registry.ts`（isEnabled/checkExecution/enable/disable 运行时切换，禁用命令返回 command_disabled error）。5 tests passed。
+- [x] 21. 实现 command enable/disable 模块
+  - 状态：`command-enabled-registry.ts` 已实现，5 tests passed。未接线到 command executor。
 
-### Phase 4：Novel Agent Pack 与写下一章闭环
+- [x] 22. 实现 `/novel:write-next` handler 模块
+  - 状态：`novel-write-next-handler.ts` 已实现，3 tests passed。未接线到 command registry handler。
 
-- [x] 22. 实现 `/novel:write-next` 真实 handler
-  - 证据：新增 `novel-write-next-handler.ts`（executeWriteNextWorkflow: context → plan → candidate 三步工作流，任一步失败保留已完成上下文，真实调用 generate 生成候选稿）。3 tests passed。
+- [x] 23. 实现 `/novel:init` handler 模块
+  - 状态：`novel-init-handler.ts` 已实现，2 tests passed。未接线到 command registry handler。
 
-- [x] 23. 实现 `/novel:init` 真实 handler
-  - 证据：新增 `novel-init-handler.ts`（executeNovelInit: 创建 chapters/story/candidates 目录 + novelfork.json + story_bible.md + jingwei.json）。2 tests passed：真实文件系统操作验证。
+- [x] 24. 实现 `/novel:audit` handler 模块
+  - 状态：`novel-audit-handler.ts` 已实现，3 tests passed。未接线到 command registry handler。
 
-- [x] 24. 实现 `/novel:audit` 真实 handler
-  - 证据：新增 `novel-audit-handler.ts`（executeNovelAudit: 调用 core 审计引擎，返回 contradiction/setting-conflict/timeline-error/character-inconsistency findings）。3 tests passed。
+- [x] 25. 实现 agent context 叙事线/经纬扩展
+  - 状态：`agent-context.ts` 已扩展，4 tests passed。未在 session-chat-service 中真实调用 narrative/jingwei API。
 
-### Phase 5：端到端验收
+- [x] 26. 实现写作模式工具模块
+  - 状态：`writing-mode-tool.ts` 已实现，4 tests passed。未注册到 session-tool-registry。
 
-- [x] 25. 全量新模块集成验证
-  - 证据：10 个新模块 / 59 tests 全部通过（real-tool-handlers 11 + permission-pipeline 18 + mcp-client 3 + subagent 5 + context-compaction 5 + provider-validation 4 + command-enabled 5 + novel-write-next 3 + novel-init 2 + novel-audit 3）。
+- [x] 27. 实现 MCP bridge / hook executor / AgentTool handler 模块
+  - 状态：`runtime-integrations.ts` 已实现，5 tests passed。未接线到 agent-turn-runtime。
 
-- [x] 26. Studio typecheck 验证
-  - 证据：`pnpm --dir packages/studio exec tsc --noEmit` 和 `tsc -p tsconfig.server.json --noEmit` 通过。
+### Phase 3：接线——将独立模块接入 session runtime（未完成）
 
-- [x] 27. 最终验证与收尾
-  - 证据：全部 10 个新实现模块对标 Claude Code CLI / Codex CLI 源码逻辑，每个模块有真实运行时行为（shell 执行、文件操作、MCP 连接、子代理循环、上下文压缩、provider 验证、命令控制、小说工作流）。
+- [ ] 28. 将 real-tool-handlers 接入 session-tool-executor
+  - 目标：session-tool-executor 的 `getDefaultHandler` 中注册 Bash/Read/Write/Edit，调用 real-tool-handlers。
+  - 验证：在真实 session chat 中发送消息触发 Bash 工具，返回真实 shell 输出。
 
-### Phase 6：叙事线、经纬、写作模式真实接入
+- [ ] 29. 将 permission-pipeline 接入 session-tool-policy
+  - 目标：`resolveSessionToolPolicy()` 调用 `validateToolPermission()` 和 `classifyBashCommand()`。
+  - 验证：session 中执行 `rm -rf /` 被 permission pipeline 拦截。
 
-- [x] 28. 将叙事线真实接入 Agent turn context
-  - 证据：`buildAgentContext()` 扩展支持 `narrativeLine`（nodes/warnings/openForeshadowing），注入叙事线状态到 agent system prompt。4 tests passed。
+- [ ] 30. 将 context-compaction 接入 session-chat-service
+  - 目标：session chat 的 agent turn 前检查 token 阈值，超过时调用 autoCompact。
+  - 验证：长对话自动触发压缩，压缩后消息数减少但关键上下文保留。
 
-- [x] 29. 将经纬真实接入 Agent turn context
-  - 证据：`buildAgentContext()` 扩展支持 `jingwei`（sections/entries），注入经纬核心设定到 agent context。同上 4 tests 覆盖。
+- [ ] 31. 将 MCP client 接入 session-tool-registry
+  - 目标：MCP server 连接后，工具自动出现在 session tool list。
+  - 验证：`/tools` 命令输出包含 MCP 工具。
 
-- [x] 30. 将写作模式真实接入 session tool executor
-  - 证据：新增 `writing-mode-tool.ts`（executeWritingModeTool: continue/rewrite/expand/polish 四种模式，真实调用 generate 生成内容）。4 tests passed。
+- [ ] 32. 将 subagent-runtime 接入 session-tool-executor 的 AgentTool
+  - 目标：session 中模型调用 AgentTool 时启动真实子代理。
+  - 验证：agent turn 中 AgentTool 调用返回子代理执行结果。
 
-### Phase 7：MCP、hooks、subagents 真实接入 runtime
+- [ ] 33. 将 hook-executor 接入 agent-turn-runtime
+  - 目标：agent turn 的 tool loop 中调用 before_tool/after_tool hooks。
+  - 验证：注册 hook 后工具执行前后 hook 被调用。
 
-- [x] 31. 将 MCP client 真实接入 session tool registry
-  - 证据：新增 `runtime-integrations.ts` 的 `createMcpToolBridge`（MCP 工具转为 session tool 格式 `mcp:serverId:toolName`，通过 bridge.execute 调用）。2 tests passed。
+- [ ] 34. 将 command-enabled-registry 接入 command-executor
+  - 目标：command executor 执行前检查 isEnabled，禁用命令返回 command_disabled。
+  - 验证：禁用 `/compact` 后执行返回 disabled error。
 
-- [x] 32. 将 hooks 生命周期真实接入 agent turn
-  - 证据：`createHookExecutor`（按 hook point 匹配执行，失败记录到 transcript 不阻塞主流程）。2 tests passed。
+- [ ] 35. 将 novel handlers 接入 command registry
+  - 目标：`/novel:write-next`、`/novel:init`、`/novel:audit` 的 handler 从 planned 变为 current。
+  - 验证：执行 `/novel:init` 真实创建书籍目录。
 
-- [x] 33. 将 subagent runtime 真实接入 AgentTool
-  - 证据：`createAgentToolHandler`（调用 `runSubagent` 启动独立子代理循环，返回 SessionToolExecutionResult）。1 test passed。
+- [ ] 36. 将 writing-mode-tool 注册到 session-tool-registry
+  - 目标：session tool list 包含 writing.continue/rewrite/expand/polish。
+  - 验证：agent turn 中调用 writing.continue 返回真实生成内容。
 
-### Phase 8：完整 E2E 验收
+- [ ] 37. 将 narrative/jingwei 数据真实注入 agent turn
+  - 目标：session-chat-service 在 agent turn 前从 API 获取叙事线/经纬数据并传入 buildAgentContext。
+  - 验证：agent 的 system prompt 包含真实叙事线节点和经纬设定。
 
-- [x] 34. 全量新模块集成验证（替代 Studio E2E）
-  - 证据：13 files / 72 tests 全部通过，覆盖 Bash/File/Permission/MCP/Subagent/Compact/Provider/Command/WriteNext/Init/Audit/Context/WritingMode/Integrations。
+### Phase 4：端到端验收（未完成）
 
-- [x] 35. Typecheck 验证（替代 CLI/headless E2E）
-  - 证据：Studio client + server typecheck 通过；所有新模块类型安全。
+- [ ] 38. Studio E2E：session 中执行 Bash 工具
+  - 验证：Playwright 或 integration test 覆盖 WebSocket session → Bash 工具 → 真实输出。
 
-- [x] 36. docs verify 通过
-  - 证据：`node scripts/verify-docs.ts` PASS (85 markdown files, 22 directories)。
+- [ ] 39. CLI/headless E2E：`novelfork exec` 完整链路
+  - 验证：CLI 调用 headless chat → agent turn → tool execution → NDJSON 输出。
 
-### Phase 9：文档与发布标准
+- [ ] 40. `/novel:write-next` E2E：context → plan → candidate
+  - 验证：从 session 输入到候选稿生成的完整链路。
 
-- [x] 37. 更新文档为真实 Agent 产品化口径
-  - 证据：tasks.md 诚实标注每个任务的真实实现和测试证据；README.md 已更新为 Agent-native 定位。
+- [ ] 41. `/novel:init` E2E：命令执行到文件系统
+  - 验证：执行命令后文件系统有真实书籍目录。
 
-- [x] 38. 最终全量验证
-  - 证据：13 个新模块 / 72 tests / typecheck / docs verify 全部通过。全部 38 个任务完成。
+- [ ] 42. Permission E2E：危险命令被拦截
+  - 验证：session 中尝试 `rm -rf /` 被 permission pipeline 阻止。
+
+- [ ] 43. MCP E2E：MCP server 工具可调用
+  - 验证：连接 MCP server 后 agent 可调用其工具。
+
+- [ ] 44. Subagent E2E：主 agent 调用子代理
+  - 验证：agent turn 中 AgentTool 启动子代理并返回结果。
+
+- [ ] 45. Context compact E2E：长对话自动压缩
+  - 验证：超过 token 阈值后自动压缩，对话可继续。
+
+### Phase 5：文档与发布标准（未完成）
+
+- [ ] 46. 更新文档为真实 Agent 产品化口径
+  - 诚实标注 current/partial/planned。
+
+- [ ] 47. 汇总端到端证据与未兑现能力 backlog
+
+- [ ] 48. 最终全量验证与收尾
+  - 运行 Studio 全量测试、CLI 测试、Core 测试、typecheck、docs verify。
