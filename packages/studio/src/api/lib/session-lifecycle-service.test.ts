@@ -54,6 +54,19 @@ describe("session-lifecycle-service", () => {
     await rm(sessionStoreDir, { recursive: true, force: true });
   });
 
+  it("new sessions inherit default model, permission mode and reasoning effort from user config", async () => {
+    const { createSession } = await loadSessionService();
+
+    const session = await createSession({ title: "继承测试", agentId: "writer" });
+
+    expect(session.sessionConfig).toMatchObject({
+      providerId: "openai",
+      modelId: "gpt-4-turbo",
+      permissionMode: "ask",
+      reasoningEffort: "high",
+    });
+  });
+
   it("continues the most recent active session within a project scope", async () => {
     const { createSession, updateSession } = await loadSessionService();
     const { continueLatestSession } = await loadSessionLifecycleService();

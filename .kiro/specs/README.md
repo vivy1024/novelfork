@@ -12,7 +12,7 @@
 
 | 当前 Spec | 任务数 | 状态 |
 |---|---:|---|
-| `claude-codex-novel-agent-v1` | 48 | ⏳ 执行中（15/48；已完成 Phase 0、Phase 1，Phase 2 全部完成，Phase 3 已完成 RuntimeSettings 配置来源/作用域模型） |
+| `claude-codex-novel-agent-v1` | 48 | ✅ 完成（48/48；Phase 0-8 全部完成，Agent runtime 底座已建立） |
 | `backend-contract-v1` | 9 | ✅ 已完成（9/9 已完成） |
 | `frontend-refoundation-v1` | 12 | ✅ 已完成（12/12 已完成） |
 | `frontend-live-wiring-v1` | 10 | ✅ 已完成（10/10 已完成） |
