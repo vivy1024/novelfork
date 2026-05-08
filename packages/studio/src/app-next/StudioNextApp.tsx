@@ -562,6 +562,9 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
       onCompactSession={compactSessionForCommand}
       onApproveConfirmation={(confirmationId) => void handleConfirmationDecision(confirmationId, "approve")}
       onRejectConfirmation={(confirmationId) => void handleConfirmationDecision(confirmationId, "reject")}
+      onEditTitle={(newTitle) => { void sessionClient.updateSession(sessionId, { title: newTitle }); }}
+      onGenerateTitle={() => { void sessionClient.updateSession(sessionId, { title: `会话 ${new Date().toLocaleDateString("zh-CN")}` }); }}
+      onArchive={() => { void sessionClient.updateSession(sessionId, { status: "archived" }); }}
     />
   );
 }
