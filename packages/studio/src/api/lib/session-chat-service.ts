@@ -110,7 +110,24 @@ async function maybeAutoCompact(
       thresholdPercent: AUTOCOMPACT_THRESHOLD_PERCENT,
       keepRecentCount: AUTOCOMPACT_KEEP_RECENT,
       summarize: async (text) => {
-        // 简单摘要：截取前 2000 字符作为摘要（真实实现应调用 LLM）
+        // 尝试用 summaryModel 调用 LLM 生成摘要
+        try {
+          const config = await loadUserConfig();
+          const summaryModel = config.modelDefaults?.summaryModel;
+          if (summaryModel) {
+            const summaryResult = await generateSessionReply({
+              sessionConfig: { providerId: summaryModel.split(":")[0] ?? "", modelId: summaryModel.split(":")[1] ?? summaryModel, permissionMode: "read", reasoningEffort: "low" },
+              messages: [
+                { type: "message", role: "system", content: "你是一个对话摘要助手。请用简洁的中文总结以下对话历史的关键信息，保留重要的决策、工具调用结果和上下文。不超过 500 字。" },
+                { type: "message", role: "user", content: text.slice(0, 8000) },
+              ],
+              tools: [],
+            });
+            if (summaryResult.success && summaryResult.type === "message") return summaryResult.content;
+          }
+        } catch {
+          // LLM 摘要失败，fallback 到截断
+        }
         const truncated = text.length > 2000 ? text.slice(0, 2000) + "..." : text;
         return `对话历史摘要（${messages.length} 条消息）：${truncated}`;
       },
