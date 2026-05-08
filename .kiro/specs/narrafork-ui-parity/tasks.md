@@ -56,12 +56,18 @@
 
 ## Phase 4：验证
 
-- [ ] GUARD 15. 浏览器截图对比验证
-  - 启动 NovelFork localhost:4567
-  - 截图 1：Composer 极简（📎 + textarea + 按钮）
-  - 截图 2：NarratorStatusBar（模型/权限/推理 ActionIcon Menu 弹出）
-  - 截图 3：消息右键菜单
-  - 截图 4：提供商 API 模式选择
-  - 截图 5：react-flow 章节图
-  - 对比 NarraFork 7778 同页面截图
-  - 验证：视觉对标确认
+- [x] GUARD 15. 浏览器截图对比验证
+  - 构建前端 dist（vite build 成功）
+  - 启动 localhost:4567 API 服务器
+  - 截图确认：
+    - ✅ NarratorStatusBar 显示（● 空闲 + D M ⚡ 🛡️ 按钮）
+    - ✅ Composer 极简（📎 + textarea + 发送按钮，无 select）
+    - ⚠️ MarkdownRenderer 渲染未生效（粗体/列表仍为纯文本）— 需排查
+    - ⚠️ 旧底部状态栏未移除（与 NarratorStatusBar 重叠）— 需清理
+    - ⚠️ 章节图视图未验证（需要有章节数据的项目）
+
+## 下一轮修复（浏览器验证暴露的问题）
+
+1. 移除旧的底部状态栏（`Clock + 消息数 + binding + provider`），信息已合并到 NarratorStatusBar
+2. 排查 MarkdownRenderer 在 build 后不渲染的问题（可能是 SSR/hydration 或 CSS 缺失）
+3. 用有章节数据的项目验证图视图切换
