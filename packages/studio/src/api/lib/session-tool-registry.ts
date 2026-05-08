@@ -265,6 +265,39 @@ export const SESSION_TOOL_DEFINITIONS = [
     renderer: "narrative.mutationPreview",
     enabledForModes: WRITE_SESSION_PERMISSION_MODES,
   }),
+  // --- 小说上下文工具组 (Task 23) ---
+  sessionTool({
+    name: "chapter.read",
+    description: "读取指定章节的正文内容、元数据和状态。",
+    inputSchema: objectSchema({
+      bookId: stringSchema("书籍 ID。"),
+      chapterNumber: numberSchema("章节序号。"),
+    }, ["bookId", "chapterNumber"]),
+    risk: "read",
+    renderer: "chapter.content",
+    enabledForModes: ALL_SESSION_PERMISSION_MODES,
+  }),
+  sessionTool({
+    name: "jingwei.read_context",
+    description: "读取书籍的故事经纬上下文，包括前提、世界模型、人物弧光和核心矛盾。",
+    inputSchema: objectSchema({
+      bookId: stringSchema("书籍 ID。"),
+      categories: arraySchema("要读取的经纬栏目（可选，默认全部）。"),
+    }, ["bookId"]),
+    risk: "read",
+    renderer: "jingwei.context",
+    enabledForModes: ALL_SESSION_PERMISSION_MODES,
+  }),
+  sessionTool({
+    name: "health.read_summary",
+    description: "读取作品健康度摘要，包括进度、风险、缺口和下一步建议。",
+    inputSchema: objectSchema({
+      bookId: stringSchema("书籍 ID。"),
+    }, ["bookId"]),
+    risk: "read",
+    renderer: "health.summary",
+    enabledForModes: ALL_SESSION_PERMISSION_MODES,
+  }),
   // --- Claude Code / Codex 级开发工具 ---
   sessionTool({
     name: "Bash",
