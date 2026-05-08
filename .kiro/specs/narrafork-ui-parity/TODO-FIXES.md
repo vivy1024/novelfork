@@ -87,16 +87,19 @@ pnpm --dir packages/studio add broad-infinite-list flowtoken shiki @dnd-kit/core
 - [x] sidebar 可折叠：展开/折叠切换 + 图标模式 + Tooltip + 平滑动画
 - [x] 路由懒加载：React.lazy + Suspense（SearchPage/RoutinesNextPage/SessionCenterPage）
 - [x] 文件修改按钮：shadcn Sheet 侧边抽屉面板（空状态，待接通真实数据）
+- [x] 会话信息按钮：shadcn Sheet 面板显示标题/ID/状态/模型/权限/推理/消息数/上下文
+- [x] ChapterNode 内容区：从占位文字改为绑定状态 UI + 操作按钮
+- [x] 底部 Git 状态栏：显示工作区名·分支·变更数·干净/脏状态
 
 ## 仍存在的问题
 
 ### 对话界面
 - ~~顶部工具栏按钮无 handler~~ → 已接通（编辑标题/生成标题/归档/外部链接）
 - ~~文件修改按钮需要 Sheet 面板~~ → 已用 shadcn Sheet 实现（空状态，待接通 API）
-- 会话信息按钮需要详情面板
+- ~~会话信息按钮需要详情面板~~ → 已用 shadcn Sheet 实现
 - ~~消息右键菜单未验证是否真的弹出~~ → 已用 shadcn ContextMenu 替换
-- 工具调用卡片未验证 ToolCallBlock 是否真的渲染
-- 推理折叠未验证（无真实 thinking 数据）
+- 工具调用卡片未验证 ToolCallBlock 是否真的渲染（需要真实后端数据）
+- 推理折叠未验证（需要真实 thinking 数据）
 - ~~消息列表无虚拟滚动~~ → 已用 broad-infinite-list 替换
 - ~~AI 回复无流式打字机动画~~ → 已集成 flowtoken
 
@@ -111,8 +114,8 @@ pnpm --dir packages/studio add broad-infinite-list flowtoken shiki @dnd-kit/core
 - 技能/子代理/提示词/钩子 tab 需验证是否有 mock
 
 ### 章节图
-- ChapterNode 内容区是占位文字
-- 对话未嵌入节点
+- ~~ChapterNode 内容区是占位文字~~ → 已改为绑定状态 UI + 操作按钮
+- 对话未嵌入节点（需要整体架构改动，后续迭代）
 
 ### 全局
 - ~~45/47 个 app-next 文件不用 shadcn 组件~~ → 核心对话界面已全面替换
