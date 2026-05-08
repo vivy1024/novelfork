@@ -241,7 +241,16 @@ function RoutineSectionEditor({
     case "commands":
       return (
         <div className="space-y-4">
-          <RuntimeCommandRegistryPanel commands={listRuntimeCommands()} />
+          <RuntimeCommandRegistryPanel
+            commands={listRuntimeCommands()}
+            disabledCommands={routines.disabledCommands}
+            onToggleCommand={(commandId) => {
+              const disabled = routines.disabledCommands.includes(commandId)
+                ? routines.disabledCommands.filter((id) => id !== commandId)
+                : [...routines.disabledCommands, commandId];
+              setRoutines({ ...routines, disabledCommands: disabled });
+            }}
+          />
           <CommandsTab commands={routines.commands} onChange={(commands) => setRoutines({ ...routines, commands })} />
         </div>
       );
@@ -306,27 +315,44 @@ const COMMAND_SOURCE_LABELS: Record<RuntimeCommandSource, string> = {
   "novel-agent-pack": "Novel Agent Pack",
 };
 
-function RuntimeCommandRegistryPanel({ commands }: { readonly commands: readonly RuntimeCommandDefinition[] }) {
+function RuntimeCommandRegistryPanel({ commands, disabledCommands, onToggleCommand }: {
+  readonly commands: readonly RuntimeCommandDefinition[];
+  readonly disabledCommands: readonly string[];
+  readonly onToggleCommand?: (commandId: string) => void;
+}) {
   return (
     <section className="rounded-xl border border-border bg-muted/20 p-4" aria-label="统一 Runtime Command Registry">
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
           <h4 className="font-semibold">统一 Runtime Command Registry</h4>
-          <p className="mt-1 text-sm text-muted-foreground">叙述者 slash 建议、套路命令清单、CLI help/headless 将共用这份命令注册表。</p>
+          <p className="mt-1 text-sm text-muted-foreground">叙述者 slash 建议、套路命令清单、CLI help/headless 将共用这份命令注册表。禁用后命令不可执行。</p>
         </div>
         <span className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">{commands.length} commands</span>
       </div>
       <div className="grid gap-2 md:grid-cols-2">
-        {commands.map((command) => (
-          <article key={command.id} className="rounded-lg border border-border bg-background p-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <code className="text-sm font-mono">{command.id}</code>
-              <span className="text-xs text-muted-foreground">状态：{COMMAND_STATUS_LABELS[command.status]}</span>
-              <span className="text-xs text-muted-foreground">来源：{COMMAND_SOURCE_LABELS[command.source]}</span>
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">{command.description}</p>
-          </article>
-        ))}
+        {commands.map((command) => {
+          const isDisabled = disabledCommands.includes(command.id);
+          return (
+            <article key={command.id} className={`rounded-lg border border-border bg-background p-3 ${isDisabled ? "opacity-50" : ""}`}>
+              <div className="flex flex-wrap items-center gap-2">
+                <code className="text-sm font-mono">{command.id}</code>
+                <span className="text-xs text-muted-foreground">状态：{COMMAND_STATUS_LABELS[command.status]}</span>
+                <span className="text-xs text-muted-foreground">来源：{COMMAND_SOURCE_LABELS[command.source]}</span>
+                {isDisabled && <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-800 dark:bg-red-900 dark:text-red-200">已禁用</span>}
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">{command.description}</p>
+              {onToggleCommand && (
+                <button
+                  className="mt-2 rounded border border-border px-2 py-1 text-xs hover:bg-muted"
+                  onClick={() => onToggleCommand(command.id)}
+                  type="button"
+                >
+                  {isDisabled ? "启用" : "禁用"}
+                </button>
+              )}
+            </article>
+          );
+        })}
       </div>
     </section>
   );

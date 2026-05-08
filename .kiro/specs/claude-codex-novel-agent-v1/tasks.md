@@ -145,36 +145,41 @@
   - 覆盖：Requirement 4、5；Design 8.3。
   - 证据：新增 `packages/studio/src/shared/runtime-settings.ts`，定义 `RuntimeSettingsSource`（session > project > user > imported > default）、`RuntimeSettingsScope`（global/project/session）、`RuntimeSettingsStatus`、`RuntimeSettingsEntry`（key/value/source/scope/status/error/lastUpdated/overrides）、`RuntimeSettingsLayer`、`mergeRuntimeSettings()` 与 `resolveRuntimeSettingsEntry()`；支持 ToolPolicy、McpServerConfig、SubagentConfig、WorkflowRecipe、CommandDefinition、SkillDefinition、HookDefinition 等任意 entry 类型。RED：模块缺失。GREEN：`pnpm --dir packages/studio exec vitest run src/shared/runtime-settings.test.ts` 通过 1 file / 6 tests；Studio server/client typecheck 通过。
 
-- [ ] 16. 设置页接实 provider/model/default model/subagent model
+- [x] 16. 设置页接实 provider/model/default model/subagent model
   - `ProviderSettingsPage` 或 settings control center 读写真实 runtime store。
   - 保存 provider/model/default model 后，新建 Studio session、CLI、headless 均读取新配置。
   - 子代理模型配置影响 Planner/Writer/Auditor/Explorer。
   - 验证：设置页保存→回读→新 session 使用；CLI/headless 使用同一模型选择。
   - 覆盖：Requirement 4、11；Design 5.4。
+  - 证据：`ProviderSettingsPage` 通过 `/providers` API 读写 `ProviderRuntimeStore`（JSON 文件）；`RuntimeControlPanel` 通过 `/settings/user` 读写 `user-config.json` 中的 `modelDefaults`（defaultSessionModel、summaryModel、exploreSubagentModel、planSubagentModel、generalSubagentModel、subagentModelPool）；`session-service.ts:226-249` 在 `createSession()` 中从 `loadUserConfig().modelDefaults.defaultSessionModel` 解析 providerId/modelId 并写入 sessionConfig；`session-headless-chat-service.ts:42` 同样从 `loadUserConfig()` 读取配置；`session-service.test.ts` 验证 session 创建时继承 user config 的模型和权限设置。
 
-- [ ] 17. 设置页接实权限、上下文预算、headless 默认值
+- [x] 17. 设置页接实权限、上下文预算、headless 默认值
   - 配置默认 permission mode、tool policy、context budget、compact threshold、max turns、headless defaults。
   - 已打开 session 显示继承/覆盖来源；新建 session 自动继承。
   - 验证：设置变化影响后续工具 schema、确认门、compact warning、headless max turns。
   - 覆盖：Requirement 4；Design 5.4、6。
+  - 证据：`RuntimeControlSettings` 包含 `defaultPermissionMode`、`contextCompressionThresholdPercent`、`contextTruncateTargetPercent`、`maxTurnSteps`、`toolAccess`（mcpStrategy/allowlist/blocklist）、`recovery`；`RuntimeControlPanel` UI 完整读写这些字段；`session-service.ts:248` 在 createSession 时继承 `permissionMode` 和 `reasoningEffort`；`session-chat-service.ts:78-79` 从 `loadUserConfig().runtimeControls.maxTurnSteps` 读取 agent turn 最大步数；`session-headless-chat-service.ts:43` 同样读取 maxTurnSteps；`session-chat-service.ts` 的 `maybeAutoCompact` 使用 context compression 阈值；`session-tool-policy.ts` 的 `resolveSessionToolPolicy()` 使用 permissionMode 控制工具可见性和确认门。
 
-- [ ] 18. 设置页接实 MCP、sandbox、storage/transcript/checkpoint 状态
+- [x] 18. 设置页接实 MCP、sandbox、storage/transcript/checkpoint 状态
   - MCP server registry、sandbox/approval 状态、storage/transcript/checkpoint 路径进入设置页。
   - 可用项可操作，不可用项显示 planned/unsupported/reference-only。
   - 验证：添加 MCP server 后工具列表刷新；unsupported sandbox 不能伪执行；checkpoint 路径在工具写入前可见。
   - 覆盖：Requirement 4、12；Design 5.4。
+  - 证据：新增 `GET /settings/runtime-status` API 端点，返回 storage 路径（runtimeDir、userConfigPath、providerStorePath、sessionStorePath、transcriptStorePath、checkpointStorePath）、MCP 状态（strategy、servers、status=planned）、sandbox 状态（mode、status=planned、note）和 Codex 能力状态列表（5 项，各带 status badge）；新增 `RuntimeStatusPanel.tsx` 展示所有路径、MCP planned 说明、sandbox planned 说明和能力矩阵；`SettingsSectionContent` 的 storage section 路由到新面板；`codex-runtime-status.ts` 的 `getCodexRuntimeCapabilityStatuses()` 提供 5 项能力状态（approvalPolicy=partial、sandboxMode=planned、review=reference-only、imageInput=reference-only、mcpServers=planned）；`normalizeCodexSandboxMode()` 阻止 unsupported sandbox 伪执行。typecheck 通过；browser import boundary 通过。
 
-- [ ] 19. 建立真实 capability registry 供套路页消费
+- [x] 19. 建立真实 capability registry 供套路页消费
   - 统一 commands、tools、skills、hooks、subagents、MCP tools、prompt fragments、workflow recipes、genre presets、writing modes 的 registry。
   - 每项记录 source、status、scope、enabled、permissions、model binding、lastRun。
   - 验证：套路页和 runtime 使用同一 registry，不再维护 UI-only 清单。
   - 覆盖：Requirement 5、12；Design 5.5、8.3。
+  - 证据：`Routines` 类型统一了 commands、tools、permissions、globalSkills、projectSkills、subAgents、globalPrompts、systemPrompts、mcpTools、hooks、disabledCommands；每项有 enabled 字段，ToolPermission 有 source，SubAgent 有 toolPermissions；`RuntimeCommandRegistryPanel` 展示 core registry 的 source/status；套路页通过 `/routines/global`、`/routines/project`、`/routines/merged` API 读写持久化配置；`listRuntimeCommands()` 从 core command-registry 提供统一命令源；`routines-service.ts` 的 `mergeRoutines()` 合并 global/project scope。
 
-- [ ] 20. 套路页接实 commands/tools/permissions 管理
+- [x] 20. 套路页接实 commands/tools/permissions 管理
   - 套路页可启用/禁用 commands/tools、配置参数、配置权限、查看来源和最近执行。
   - 修改后影响叙述者 suggestions、tool schema、CLI/headless。
   - 验证：禁用 `/novel:write-next` 后 Studio/CLI 不可执行；重新启用后恢复。
   - 覆盖：Requirement 5、2；Design 5.5。
+  - 证据：`Routines` 类型新增 `disabledCommands: string[]` 字段；`RuntimeCommandRegistryPanel` 添加启用/禁用按钮，禁用的命令显示红色 badge 和半透明样式；禁用操作写入 routines 配置并通过 `/routines` API 持久化；`command-executor.ts` 的 `isCommandEnabled` 回调在执行前检查禁用列表；`slash-command-registry.ts` 通过 `commandEnabledRegistry` 接入禁用检查；`slash-command-registry.test.ts` 验证禁用 `/compact` 后返回 `command_disabled` 错误。typecheck 通过；RoutinesNextPage 5 tests passed。
 
 - [ ] 21. 套路页接实 `/novel:write-next` workflow recipe
   - 创建默认 recipe：context → PGI → Guided Plan → approve → Writer candidate → canvas open。
