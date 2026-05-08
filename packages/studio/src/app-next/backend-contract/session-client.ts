@@ -194,6 +194,14 @@ function appendStreamChunk(
   const streamingMessageId = existing?.id ?? `stream:${sessionId}:${timestamp}`;
 
   if (existing) {
+    // 优化：流式消息总是在数组末尾，直接替换最后一条而非全量 map
+    const lastIndex = messages.length - 1;
+    if (lastIndex >= 0 && messages[lastIndex].id === streamingMessageId) {
+      const updated = [...messages];
+      updated[lastIndex] = { ...messages[lastIndex], content: `${messages[lastIndex].content}${content}` };
+      return { streamingMessageId, messages: updated };
+    }
+    // Fallback: 流式消息不在末尾（不应发生，但安全处理）
     return {
       streamingMessageId,
       messages: messages.map((message) => (message.id === streamingMessageId ? { ...message, content: `${message.content}${content}` } : message)),
