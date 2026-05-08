@@ -97,6 +97,10 @@ describe("SettingsTruthModel", () => {
       "runtime.debug.outputRate",
       "runtime.debug.dumpApiRequests",
       "runtime.sendMode",
+      "runtime.storage.runtimeDir",
+      "runtime.storage.sessionStore",
+      "runtime.storage.transcript",
+      "runtime.storage.checkpoint",
     ]);
     expect(facts.find((fact) => fact.id === "runtime.firstTokenTimeoutMs")).toMatchObject({
       status: "planned",
@@ -126,12 +130,14 @@ describe("SettingsTruthModel", () => {
       status: "current",
       writable: true,
     });
-    for (const fact of facts.filter((fact) => fact.status === "current")) {
+    for (const fact of facts.filter((fact) => fact.status === "current" && fact.writable)) {
       expect(fact.group).toBe("agent-runtime");
       expect(fact.readApi).toBeTruthy();
       expect(fact.writeApi).toBeTruthy();
       expect(settingsFactDisplayValue(fact)).not.toBe("—");
     }
+    expect(facts.find((fact) => fact.id === "runtime.storage.runtimeDir")).toMatchObject({ status: "current", writable: false, source: "runtime-state" });
+    expect(facts.find((fact) => fact.id === "runtime.storage.checkpoint")).toMatchObject({ status: "planned", writable: false });
   });
 
   it("derives Claude parity facts without advertising non-goals as current", () => {
