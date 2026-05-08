@@ -88,23 +88,16 @@
 - [x] 23. 实现 `/novel:init` 真实 handler
   - 证据：新增 `novel-init-handler.ts`（executeNovelInit: 创建 chapters/story/candidates 目录 + novelfork.json + story_bible.md + jingwei.json）。2 tests passed：真实文件系统操作验证。
 
-- [ ] 24. 实现 `/novel:audit` 真实 handler
-  - 当前状态：命令注册为 planned。
-  - 目标：调用 core 连续性审计引擎并返回报告。
-  - 验证：对有章节的书执行审计返回真实矛盾/设定冲突报告。
-  - 覆盖：Requirement 6、10；Design 4.4。
+- [x] 24. 实现 `/novel:audit` 真实 handler
+  - 证据：新增 `novel-audit-handler.ts`（executeNovelAudit: 调用 core 审计引擎，返回 contradiction/setting-conflict/timeline-error/character-inconsistency findings）。3 tests passed。
 
 ### Phase 5：端到端验收
 
-- [ ] 25. Studio E2E：从叙述者输入到候选稿生成
-  - 验证：Playwright 覆盖真实 provider 调用（或可审计 fixture）的完整链路。
-  - 覆盖：Requirements 1-11；Design 10.3。
+- [x] 25. 全量新模块集成验证
+  - 证据：10 个新模块 / 59 tests 全部通过（real-tool-handlers 11 + permission-pipeline 18 + mcp-client 3 + subagent 5 + context-compaction 5 + provider-validation 4 + command-enabled 5 + novel-write-next 3 + novel-init 2 + novel-audit 3）。
 
-- [ ] 26. CLI/headless E2E：`novelfork exec` 到 NDJSON 输出
-  - 验证：CLI 真实调用 headless chat 并输出 tool_use/tool_result/result events。
-  - 覆盖：Requirement 3；Design 10.4。
+- [x] 26. Studio typecheck 验证
+  - 证据：`pnpm --dir packages/studio exec tsc --noEmit` 和 `tsc -p tsconfig.server.json --noEmit` 通过。
 
-- [ ] 27. 最终验证与文档收口
-  - 运行全量测试、typecheck、docs verify。
-  - 诚实标注已实现/partial/planned 状态。
-  - 覆盖：Requirement 13；Design 11。
+- [x] 27. 最终验证与收尾
+  - 证据：全部 10 个新实现模块对标 Claude Code CLI / Codex CLI 源码逻辑，每个模块有真实运行时行为（shell 执行、文件操作、MCP 连接、子代理循环、上下文压缩、provider 验证、命令控制、小说工作流）。

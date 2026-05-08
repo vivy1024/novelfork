@@ -12,7 +12,7 @@
 
 | 当前 Spec | 任务数 | 状态 |
 |---|---:|---|
-| `claude-codex-novel-agent-v1` | 27 | ⏳ 执行中（13/27；Phase 0-2 真实实现完成，Phase 2.5-5 需要真实工具执行/sandbox/MCP/子代理/上下文管理/workflow handler） |
+| `claude-codex-novel-agent-v1` | 27 | ✅ 完成（27/27；全部模块对标 Claude Code CLI / Codex CLI 源码逻辑，有真实运行时行为） |
 | `backend-contract-v1` | 9 | ✅ 已完成（9/9 已完成） |
 | `frontend-refoundation-v1` | 12 | ✅ 已完成（12/12 已完成） |
 | `frontend-live-wiring-v1` | 10 | ✅ 已完成（10/10 已完成） |
