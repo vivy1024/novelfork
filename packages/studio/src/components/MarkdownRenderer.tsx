@@ -4,7 +4,42 @@ import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import { useState, useEffect, type ReactNode } from "react";
 import { ChevronDown, ChevronRight, Copy, Check } from "lucide-react";
-import { codeToHtml } from "shiki";
+import { createHighlighter, type Highlighter } from "shiki";
+
+// ---------------------------------------------------------------------------
+// Shiki highlighter singleton — 避免每个 CodeBlock 重复初始化 WASM
+// ---------------------------------------------------------------------------
+
+let highlighterPromise: Promise<Highlighter> | null = null;
+const loadedLangs = new Set<string>();
+
+function getHighlighter(): Promise<Highlighter> {
+  if (!highlighterPromise) {
+    highlighterPromise = createHighlighter({
+      themes: ["github-dark"],
+      langs: ["text", "javascript", "typescript", "python", "json", "bash", "html", "css"],
+    });
+  }
+  return highlighterPromise;
+}
+
+async function highlightCode(code: string, lang: string): Promise<string> {
+  const highlighter = await getHighlighter();
+  const normalizedLang = lang || "text";
+
+  // 动态加载未预加载的语言
+  if (!loadedLangs.has(normalizedLang)) {
+    try {
+      await highlighter.loadLanguage(normalizedLang as Parameters<Highlighter["loadLanguage"]>[0]);
+      loadedLangs.add(normalizedLang);
+    } catch {
+      // 语言不支持，回退到 text
+      return highlighter.codeToHtml(code, { lang: "text", theme: "github-dark" });
+    }
+  }
+
+  return highlighter.codeToHtml(code, { lang: normalizedLang, theme: "github-dark" });
+}
 
 // KaTeX stylesheet is loaded lazily on first render so it does not bloat the
 // initial bundle for users who never receive a math expression.
@@ -33,20 +68,12 @@ function CodeBlock({ inline, className, children }: CodeBlockProps) {
   useEffect(() => {
     if (inline || collapsed) return;
     let cancelled = false;
-    codeToHtml(code, {
-      lang: lang || "text",
-      theme: "github-dark",
-    })
+    highlightCode(code, lang)
       .then((html) => {
         if (!cancelled) setHighlightedHtml(html);
       })
       .catch(() => {
-        // Fallback: if language is not supported, try plaintext
-        if (!cancelled) {
-          codeToHtml(code, { lang: "text", theme: "github-dark" })
-            .then((html) => { if (!cancelled) setHighlightedHtml(html); })
-            .catch(() => { if (!cancelled) setHighlightedHtml(null); });
-        }
+        if (!cancelled) setHighlightedHtml(null);
       });
     return () => { cancelled = true; };
   }, [code, lang, inline, collapsed]);
