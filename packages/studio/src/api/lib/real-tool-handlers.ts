@@ -5,7 +5,7 @@
  * All operations are bounded to the work directory and subject to dangerous pattern detection.
  */
 
-import { exec } from "node:child_process";
+import { spawn } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve, relative } from "node:path";
 
@@ -64,25 +64,66 @@ export async function executeBashTool(input: BashToolInput): Promise<SessionTool
     };
   }
 
-  return new Promise((resolve) => {
-    exec(command, { cwd: workDir, timeout: timeoutMs, shell: "bash" }, (error, stdout, stderr) => {
-      const exitCode = error?.code ?? (typeof (error as { status?: unknown })?.status === "number" ? (error as { status: number }).status : 0);
-      const numericExitCode = typeof exitCode === "number" ? exitCode : 1;
+  // 对标 Claude Code CLI: 使用 spawn 而非 exec，通过 bash -c 执行命令
+  // Claude 使用 spawn(shellBinary, ['-c', command]) 模式，不使用 shell: true
+  return new Promise((resolveResult) => {
+    const stdout: Buffer[] = [];
+    const stderr: Buffer[] = [];
 
-      if (numericExitCode !== 0) {
-        resolve({
+    const child = spawn("bash", ["-c", command], {
+      cwd: workDir,
+      env: {
+        ...process.env,
+        NOVELFORK: "1",  // 对标 Claude 的 CLAUDECODE: '1'
+        GIT_EDITOR: "true",  // 对标 Claude: 阻止 git 打开编辑器
+      },
+      stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: true,
+    });
+
+    const timeout = setTimeout(() => {
+      child.kill("SIGKILL");
+      resolveResult({
+        ok: false,
+        error: "timeout",
+        summary: `命令超时（${timeoutMs}ms）`,
+        data: { command, timeoutMs },
+      });
+    }, timeoutMs);
+
+    child.stdout?.on("data", (chunk) => stdout.push(chunk));
+    child.stderr?.on("data", (chunk) => stderr.push(chunk));
+
+    child.on("error", (error) => {
+      clearTimeout(timeout);
+      resolveResult({
+        ok: false,
+        error: "spawn-failed",
+        summary: `命令启动失败：${error.message}`,
+        data: { command, error: error.message },
+      });
+    });
+
+    child.on("exit", (code, signal) => {
+      clearTimeout(timeout);
+      const stdoutStr = Buffer.concat(stdout).toString("utf-8");
+      const stderrStr = Buffer.concat(stderr).toString("utf-8");
+      const exitCode = code ?? (signal ? 128 : 1);
+
+      if (exitCode !== 0) {
+        resolveResult({
           ok: false,
           error: "command-failed",
-          summary: stderr.trim() || stdout.trim() || `命令退出码 ${numericExitCode}`,
-          data: { exitCode: numericExitCode, stdout, stderr, command },
+          summary: stderrStr.trim() || stdoutStr.trim() || `命令退出码 ${exitCode}`,
+          data: { exitCode, stdout: stdoutStr, stderr: stderrStr, command },
         });
         return;
       }
 
-      resolve({
+      resolveResult({
         ok: true,
-        summary: stdout.trim().slice(0, 200) || "(无输出)",
-        data: { exitCode: 0, stdout, stderr, command },
+        summary: stdoutStr.trim().slice(0, 200) || "(无输出)",
+        data: { exitCode: 0, stdout: stdoutStr, stderr: stderrStr, command },
       });
     });
   });
