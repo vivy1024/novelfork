@@ -15,18 +15,42 @@ describe("slash-command-registry", () => {
     expect(suggestions.find((command) => command.name === "permission")?.usage).toBe("/permission [ask|edit|allow|read|plan]");
   });
 
+  it("uses the canonical runtime command registry metadata", () => {
+    const registry = createDefaultSlashCommandRegistry();
+    const commandNames = registry.commands.map((command) => command.name);
+
+    expect(commandNames).toEqual(expect.arrayContaining(["help", "tools", "mcp", "agents", "novel:write-next"]));
+    expect(registry.commands.find((command) => command.name === "tools")).toMatchObject({
+      id: "/tools",
+      source: "claude-adapter",
+      status: "planned",
+      scope: "tooling",
+      runtimeHandler: "tools.list",
+    });
+    expect(registry.commands.find((command) => command.name === "novel:write-next")).toMatchObject({
+      id: "/novel:write-next",
+      source: "novel-agent-pack",
+      status: "planned",
+    });
+  });
+
   it("parses command name and arguments without treating normal messages as slash commands", () => {
     expect(parseSlashCommandInput("继续写第三章")).toMatchObject({ ok: false, reason: "not-slash" });
     expect(parseSlashCommandInput("/resume session-123")).toMatchObject({ ok: true, name: "resume", args: "session-123" });
   });
 
-  it("executes help, status, model, permission, fork and resume commands as structured actions", async () => {
+  it("executes help, status, model, permission, fork and resume commands through the runtime command executor", async () => {
     const registry = createDefaultSlashCommandRegistry();
 
     await expect(executeSlashCommandInput("/help", { registry })).resolves.toMatchObject({ ok: true, kind: "status" });
     await expect(executeSlashCommandInput("/status", { registry, status: { sessionId: "s-1", modelLabel: "Sub2API / GPT-5.4", permissionMode: "edit" } })).resolves.toMatchObject({ ok: true, kind: "status" });
     await expect(executeSlashCommandInput("/model sub2api:gpt-5.5", { registry })).resolves.toMatchObject({ ok: true, kind: "update-session-config", patch: { providerId: "sub2api", modelId: "gpt-5.5" } });
-    await expect(executeSlashCommandInput("/permission ask", { registry })).resolves.toMatchObject({ ok: true, kind: "update-session-config", patch: { permissionMode: "ask" } });
+    const permissionResult = await executeSlashCommandInput("/permission ask", { registry, status: { sessionId: "s-1" } });
+    expect(permissionResult).toMatchObject({ ok: true, kind: "update-session-config", patch: { permissionMode: "ask" } });
+    expect(permissionResult.runtimeEvents).toEqual([
+      expect.objectContaining({ type: "command_started", session_id: "s-1", command_id: "/permission" }),
+      expect.objectContaining({ type: "command_completed", session_id: "s-1", command_id: "/permission" }),
+    ]);
     await expect(executeSlashCommandInput("/fork 灵潮支线", { registry })).resolves.toMatchObject({ ok: true, kind: "fork-session", title: "灵潮支线" });
     await expect(executeSlashCommandInput("/resume session-123", { registry })).resolves.toMatchObject({ ok: true, kind: "resume-session", sessionId: "session-123" });
   });

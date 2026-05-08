@@ -6,6 +6,8 @@ export interface HeadlessChatCommonOptions {
   readonly book?: string;
   readonly session?: string;
   readonly model?: string;
+  readonly permissionMode?: string;
+  readonly root?: string;
   readonly json?: boolean;
   readonly stdin?: boolean;
   readonly studioUrl?: string;
@@ -25,10 +27,21 @@ export interface HeadlessChatRunOptions {
   readonly legacyExecEndpoint?: boolean;
 }
 
+const SESSION_PERMISSION_MODES = new Set(["ask", "edit", "allow", "read", "plan"]);
+
 function parseModelReference(model: string): { providerId: string; modelId: string } | null {
-  const [providerId, modelId] = model.split(":");
+  const [providerId, ...modelParts] = model.split(":");
+  const modelId = modelParts.join(":");
   if (!providerId || !modelId) return null;
   return { providerId, modelId };
+}
+
+function parsePermissionMode(permissionMode: string | undefined): string | undefined {
+  if (!permissionMode) return undefined;
+  if (!SESSION_PERMISSION_MODES.has(permissionMode)) {
+    throw new Error("Invalid --permission-mode. Expected one of: ask, edit, allow, read, plan");
+  }
+  return permissionMode;
 }
 
 function parsePositiveInteger(value: string | undefined): number | undefined {
@@ -49,6 +62,24 @@ function parseNonNegativeNumber(value: string | undefined): number | undefined {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
 }
 
+function buildSessionConfig(opts: HeadlessChatCommonOptions): Record<string, unknown> | undefined {
+  const sessionConfig: Record<string, unknown> = {};
+
+  if (opts.model) {
+    const parsed = parseModelReference(opts.model);
+    if (!parsed) {
+      throw new Error("Invalid --model format. Expected provider:model (e.g. openai:gpt-4o)");
+    }
+    sessionConfig.providerId = parsed.providerId;
+    sessionConfig.modelId = parsed.modelId;
+  }
+
+  const permissionMode = parsePermissionMode(opts.permissionMode);
+  if (permissionMode) sessionConfig.permissionMode = permissionMode;
+
+  return Object.keys(sessionConfig).length > 0 ? sessionConfig : undefined;
+}
+
 function buildHeadlessChatBody(prompt: string, opts: HeadlessChatCommonOptions): Record<string, unknown> {
   const inputFormat = opts.inputFormat ?? "text";
   const outputFormat = opts.outputFormat ?? "json";
@@ -58,15 +89,11 @@ function buildHeadlessChatBody(prompt: string, opts: HeadlessChatCommonOptions):
 
   if (opts.book) body.projectId = opts.book;
   if (opts.session) body.sessionId = opts.session;
+  if (opts.root) body.root = opts.root;
   if (opts.sessionPersistence === false) body.noSessionPersistence = true;
 
-  if (opts.model) {
-    const parsed = parseModelReference(opts.model);
-    if (!parsed) {
-      throw new Error("Invalid --model format. Expected provider:model (e.g. openai:gpt-4o)");
-    }
-    body.sessionConfig = { providerId: parsed.providerId, modelId: parsed.modelId };
-  }
+  const sessionConfig = buildSessionConfig(opts);
+  if (sessionConfig) body.sessionConfig = sessionConfig;
 
   const maxSteps = parsePositiveInteger(opts.maxSteps);
   if (maxSteps !== undefined) body.maxSteps = maxSteps;
@@ -85,13 +112,9 @@ function buildLegacyExecBody(prompt: string, opts: HeadlessChatCommonOptions): R
   };
   if (opts.book) body.projectId = opts.book;
   if (opts.session) body.sessionId = opts.session;
-  if (opts.model) {
-    const parsed = parseModelReference(opts.model);
-    if (!parsed) {
-      throw new Error("Invalid --model format. Expected provider:model (e.g. openai:gpt-4o)");
-    }
-    body.sessionConfig = { providerId: parsed.providerId, modelId: parsed.modelId };
-  }
+  if (opts.root) body.root = opts.root;
+  const sessionConfig = buildSessionConfig(opts);
+  if (sessionConfig) body.sessionConfig = sessionConfig;
   const maxSteps = parsePositiveInteger(opts.maxSteps);
   if (maxSteps !== undefined) body.maxSteps = maxSteps;
   return body;
@@ -103,7 +126,9 @@ function shouldUseHeadlessChat(opts: HeadlessChatCommonOptions, legacyExecEndpoi
     || opts.outputFormat === "stream-json"
     || opts.sessionPersistence === false
     || opts.maxTurns !== undefined
-    || opts.maxBudgetUsd !== undefined;
+    || opts.maxBudgetUsd !== undefined
+    || opts.permissionMode !== undefined
+    || opts.root !== undefined;
 }
 
 function extractExitCode(result: { exitCode?: unknown; exit_code?: unknown }): number {

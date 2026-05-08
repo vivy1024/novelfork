@@ -116,7 +116,8 @@ describe("user-config-service", () => {
       runtimeControls: {
         defaultPermissionMode: "ask",
         contextCompressionThresholdPercent: 84,
-      },
+        codexSandboxMode: "danger-full-access",
+      } as never,
       modelDefaults: {
         defaultSessionModel: "openai:gpt-4-turbo",
         summaryModel: "openai:gpt-4-turbo",
@@ -128,6 +129,7 @@ describe("user-config-service", () => {
       ...DEFAULT_USER_CONFIG.runtimeControls,
       defaultPermissionMode: "ask",
       contextCompressionThresholdPercent: 84,
+      codexSandboxMode: "planned",
     });
     expect(updated.modelDefaults.validation).toMatchObject({
       defaultSessionModel: "valid",
@@ -142,6 +144,7 @@ describe("user-config-service", () => {
       defaultReasoningEffort: DEFAULT_USER_CONFIG.runtimeControls.defaultReasoningEffort,
       contextCompressionThresholdPercent: 84,
       contextTruncateTargetPercent: DEFAULT_USER_CONFIG.runtimeControls.contextTruncateTargetPercent,
+      codexSandboxMode: "planned",
     });
   });
 });

@@ -31,8 +31,8 @@ async function loadSessionLifecycleService() {
   return import("./session-lifecycle-service");
 }
 
-function message(id: string, role: NarratorSessionChatMessage["role"], content: string, seq: number): NarratorSessionChatMessage {
-  return { id, role, content, seq, timestamp: 1_779_206_400_000 + seq };
+function message(id: string, role: NarratorSessionChatMessage["role"], content: string, seq: number, metadata?: NarratorSessionChatMessage["metadata"]): NarratorSessionChatMessage {
+  return { id, role, content, seq, timestamp: 1_779_206_400_000 + seq, ...(metadata ? { metadata } : {}) };
 }
 
 async function tick(): Promise<void> {
@@ -114,7 +114,7 @@ describe("session-lifecycle-service", () => {
   });
 
   it("forks a session into a new active session with inherited config and summary context", async () => {
-    const { createSession } = await loadSessionService();
+    const { createSession, updateSession } = await loadSessionService();
     const { getSessionChatSnapshot, replaceSessionChatState } = await loadSessionChatService();
     const { forkSession } = await loadSessionLifecycleService();
     const source = await createSession({
@@ -128,9 +128,20 @@ describe("session-lifecycle-service", () => {
     });
     await replaceSessionChatState(source.id, [
       message("m1", "user", "第三章要铺垫宗门追杀", 1),
-      message("m2", "assistant", "已建立追杀线索", 2),
+      message("m2", "assistant", "已建立追杀线索", 2, {
+        runtimeTranscript: {
+          version: 1,
+          source: "runtime-turn",
+          events: [
+            { type: "message", sessionId: source.id, role: "assistant", content: "已建立追杀线索" },
+            { type: "usage", sessionId: source.id, inputTokens: 11, outputTokens: 7, totalTokens: 18 },
+            { type: "result", sessionId: source.id, success: true, stopReason: "completed", exitCode: 0 },
+          ],
+        },
+      }),
       message("m3", "user", "fork 出支线", 3),
     ]);
+    await updateSession(source.id, { cumulativeUsage: { totalInputTokens: 11, totalOutputTokens: 7, totalCacheCreationInputTokens: 0, totalCacheReadInputTokens: 0, turnCount: 1 } });
 
     const result = await forkSession({ sourceSessionId: source.id, title: "支线会话" });
 
@@ -152,6 +163,11 @@ describe("session-lifecycle-service", () => {
     expect(result.snapshot.messages[0]?.content).toContain(source.id);
     expect(result.snapshot.messages[0]?.content).toContain("主线会话");
     expect(result.snapshot.messages[0]?.content).toContain("3 条历史消息");
+    expect(result.snapshot.messages[0]?.metadata).toMatchObject({
+      sourceRuntimeEventCount: 3,
+      sourceRuntimeEventTypes: ["message", "usage", "result"],
+      sourceCumulativeUsage: { totalInputTokens: 11, totalOutputTokens: 7, turnCount: 1 },
+    });
 
     const sourceSnapshot = await getSessionChatSnapshot(source.id);
     expect(sourceSnapshot?.messages).toHaveLength(3);

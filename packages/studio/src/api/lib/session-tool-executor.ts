@@ -1,6 +1,6 @@
 import type { CockpitService } from "./cockpit-service.js";
 import {
-  getSessionToolRiskDecision,
+  normalizeToolConfirmationRequest,
   type SessionToolDefinition,
   type SessionToolExecutionInput,
   type SessionToolExecutionResult,
@@ -13,7 +13,7 @@ import type { NarrativeLineService } from "./narrative-line-service.js";
 import type { PGIToolService } from "./pgi-tool-service.js";
 import type { QuestionnaireToolService } from "./questionnaire-tool-service.js";
 import { getSessionToolDefinition } from "./session-tool-registry.js";
-import { getSessionToolPolicyDecision } from "./session-tool-policy.js";
+import { resolveSessionToolPolicy, type SessionToolPolicyResolution } from "./session-tool-policy.js";
 
 export type SessionToolHandlerContext = SessionToolExecutionInput & {
   readonly definition: SessionToolDefinition;
@@ -46,19 +46,10 @@ type ValidationIssue = {
 
 const CONFIRMATION_OPTIONS = ["approve", "reject", "open-in-canvas"] as const;
 
-function riskDecisionFromPolicy(
-  input: SessionToolExecutionInput,
-  definition: SessionToolDefinition,
-): { action: "inherit" | "deny" | "ask" | "allow"; source?: string; pattern?: string } {
-  const decision = getSessionToolPolicyDecision(definition.name, input.sessionConfig?.toolPolicy);
-  return decision;
-}
-
 function createPolicyDeniedResult(
   input: SessionToolExecutionInput,
   definition: SessionToolDefinition,
-  source: string | undefined,
-  pattern: string | undefined,
+  resolution: SessionToolPolicyResolution,
 ): SessionToolExecutionResult {
   return {
     ok: false,
@@ -68,10 +59,11 @@ function createPolicyDeniedResult(
     data: {
       status: "policy-denied",
       toolName: definition.name,
-      ...(source ? { source } : {}),
-      ...(pattern ? { pattern } : {}),
+      ...(resolution.source ? { source: resolution.source } : {}),
+      ...(resolution.pattern ? { pattern: resolution.pattern } : {}),
       risk: definition.risk,
       permissionMode: input.permissionMode,
+      policyResolution: resolution,
     },
   };
 }
@@ -79,8 +71,7 @@ function createPolicyDeniedResult(
 function createPolicyAskResult(
   input: SessionToolExecutionInput,
   definition: SessionToolDefinition,
-  source: string | undefined,
-  pattern: string | undefined,
+  resolution: SessionToolPolicyResolution,
   options: SessionToolExecutorOptions,
 ): SessionToolExecutionResult {
   const confirmation = createConfirmationRequest(input, definition, options);
@@ -91,8 +82,9 @@ function createPolicyAskResult(
     data: {
       status: "pending-confirmation",
       code: "permission-required",
-      ...(source ? { source } : {}),
-      ...(pattern ? { pattern } : {}),
+      ...(resolution.source ? { source: resolution.source } : {}),
+      ...(resolution.pattern ? { pattern: resolution.pattern } : {}),
+      policyResolution: resolution,
     },
     confirmation,
   }, input, definition, confirmation);
@@ -130,12 +122,17 @@ export async function executeSessionTool(
     }, startedAt, options);
   }
 
-  const policyDecision = riskDecisionFromPolicy(input, definition);
-  if (policyDecision.action === "deny") {
-    return withDuration(createPolicyDeniedResult(input, definition, policyDecision.source, policyDecision.pattern), startedAt, options);
+  const policyResolution = resolveSessionToolPolicy({
+    toolName: definition.name,
+    risk: definition.risk,
+    permissionMode: input.permissionMode,
+    ...(input.sessionConfig?.toolPolicy ? { toolPolicy: input.sessionConfig.toolPolicy } : {}),
+    ...(input.canvasContext ? { canvasContext: input.canvasContext } : {}),
+  });
+  if (policyResolution.reason === "policy-denied") {
+    return withDuration(createPolicyDeniedResult(input, definition, policyResolution), startedAt, options);
   }
 
-  const riskDecision = policyDecision.action === "allow" ? "allow" : getSessionToolRiskDecision(input.permissionMode, definition.risk);
   if (definition.name === "guided.exit" && input.confirmationDecision?.decision === "rejected") {
     const handler = options.handlers?.[definition.name] ?? getDefaultHandler(definition.name, options);
     if (!handler) {
@@ -153,20 +150,17 @@ export async function executeSessionTool(
     }, input, definition), startedAt, options);
   }
 
-  if (riskDecision === "deny") {
+  if (policyResolution.reason === "permission-denied") {
     return withDuration({
       ok: false,
       renderer: definition.renderer,
       error: "permission-denied",
       summary: `权限模式 ${input.permissionMode} 不允许执行 ${definition.risk} 工具 ${definition.name}`,
+      data: { policyResolution },
     }, startedAt, options);
   }
 
-  if (policyDecision.action === "ask" && input.confirmationDecision?.decision !== "approved") {
-    return withDuration(createPolicyAskResult(input, definition, policyDecision.source, policyDecision.pattern, options), startedAt, options);
-  }
-
-  if (definition.risk !== "read" && input.canvasContext?.dirty === true) {
+  if (policyResolution.reason === "dirty-resource-blocked") {
     return withDuration({
       ok: false,
       renderer: definition.renderer,
@@ -174,19 +168,24 @@ export async function executeSessionTool(
       summary: `当前画布资源存在未保存编辑，请先保存、放弃或另存为候选后再执行 ${definition.name}。`,
       data: {
         status: "dirty-resource-blocked",
-        activeTabId: input.canvasContext.activeTabId,
-        activeResource: input.canvasContext.activeResource,
+        activeTabId: input.canvasContext?.activeTabId,
+        activeResource: input.canvasContext?.activeResource,
+        policyResolution,
       },
     }, startedAt, options);
   }
 
-  if (riskDecision === "confirm" && input.confirmationDecision?.decision !== "approved") {
+  if (policyResolution.reason === "policy-ask" && input.confirmationDecision?.decision !== "approved") {
+    return withDuration(createPolicyAskResult(input, definition, policyResolution, options), startedAt, options);
+  }
+
+  if (policyResolution.requiresConfirmation && input.confirmationDecision?.decision !== "approved") {
     const confirmation = createConfirmationRequest(input, definition, options);
     const result: SessionToolExecutionResult = {
       ok: true,
       renderer: definition.renderer,
       summary: `工具 ${definition.name} 需要确认后执行。`,
-      data: { status: "pending-confirmation" },
+      data: { status: "pending-confirmation", policyResolution },
       confirmation,
     };
     return withDuration(withConfirmationAudit(result, input, definition, confirmation), startedAt, options);
@@ -405,13 +404,18 @@ function createConfirmationAudit(
   confirmation?: ToolConfirmationRequest,
 ): ToolConfirmationAudit {
   const decision = input.confirmationDecision;
+  const normalizedConfirmation = confirmation
+    ? normalizeToolConfirmationRequest(confirmation, { sessionId: input.sessionId, input: input.input })
+    : undefined;
   return {
-    confirmationId: decision?.confirmationId ?? confirmation?.id ?? `confirm:${input.sessionId}:${definition.name}`,
-    sessionId: decision?.sessionId ?? confirmation?.sessionId ?? input.sessionId,
+    confirmationId: decision?.confirmationId ?? normalizedConfirmation?.id ?? `confirm:${input.sessionId}:${definition.name}`,
+    sessionId: decision?.sessionId ?? normalizedConfirmation?.sessionId ?? input.sessionId,
     toolName: definition.name,
-    targetResources: getConfirmationTargetResources(input, definition, confirmation),
+    targetResources: normalizedConfirmation?.targetResources ?? getConfirmationTargetResources(input, definition, confirmation),
     summary: result.summary,
     risk: definition.risk,
+    ...(normalizedConfirmation?.source ? { source: normalizedConfirmation.source } : {}),
+    ...(normalizedConfirmation?.checkpoint ? { checkpoint: normalizedConfirmation.checkpoint } : {}),
     ...(decision ? { decision: decision.decision, decidedAt: decision.decidedAt } : {}),
     ...(decision?.reason ? { reason: decision.reason } : {}),
   };
@@ -440,7 +444,7 @@ function createConfirmationRequest(
   const now = (options.now ?? Date.now)();
   const toolInput = input.input;
   const target = stringifyTarget(toolInput.bookId ?? toolInput.target ?? toolInput.resourceId ?? definition.name);
-  return {
+  return normalizeToolConfirmationRequest({
     id: options.createConfirmationId?.(input, definition) ?? `confirm:${input.sessionId}:${definition.name}:${now}`,
     toolName: definition.name,
     target,
@@ -448,12 +452,14 @@ function createConfirmationRequest(
     summary: `${definition.description}（需要用户确认）`,
     ...(createConfirmationDiff(input, definition) !== undefined ? { diff: createConfirmationDiff(input, definition) } : {}),
     options: CONFIRMATION_OPTIONS,
-    targetResource: typeof toolInput.bookId === "string"
-      ? { kind: definition.name, id: target, bookId: toolInput.bookId }
-      : undefined,
+    ...(typeof toolInput.bookId === "string" ? { targetResource: { kind: definition.name, id: target, bookId: toolInput.bookId } } : {}),
     sessionId: input.sessionId,
     createdAt: new Date(now).toISOString(),
-  };
+  }, {
+    sessionId: input.sessionId,
+    input: input.input,
+    checkpoint: { required: definition.risk === "confirmed-write" || definition.risk === "destructive" },
+  });
 }
 
 function createConfirmationDiff(input: SessionToolExecutionInput, definition: SessionToolDefinition): unknown | undefined {

@@ -179,6 +179,8 @@ export type { MCPTransportType, MCPServerConfig, MCPTool, MCPToolCallRequest, MC
 
 // Registry
 export { ToolRegistry, globalToolRegistry, type ToolParameter, type ToolHandler, type GenericToolHandler, type RegisteredTool } from "./registry/tool-registry.js";
+export { RUNTIME_COMMAND_REGISTRY, formatRuntimeCommandHelp, getRuntimeCommandDefinition, listRuntimeCommands, type RuntimeCommandDefinition, type RuntimeCommandInputSchema, type RuntimeCommandPermissionImpact, type RuntimeCommandScope, type RuntimeCommandSource, type RuntimeCommandStatus } from "./registry/command-registry.js";
+export { executeRuntimeCommandInput, type RuntimeCommandCompactResult, type RuntimeCommandEvent, type RuntimeCommandExecution, type RuntimeCommandExecutionContext, type RuntimeCommandExecutionResult, type RuntimeCommandHandlerContext, type RuntimeCommandHandlers, type RuntimeCommandParsedInput, type RuntimeCommandPatch, type RuntimeCommandPermissionMode, type RuntimeCommandStatusContext } from "./registry/command-executor.js";
 
 // Plugins
 export { NovelForkPlugin, PluginManager } from "./plugins/index.js";

@@ -110,6 +110,19 @@ describe("RoutinesNextPage", () => {
     expect(screen.getByRole("button", { name: "保存" }).hasAttribute("disabled")).toBe(true);
   });
 
+  it("shows canonical runtime commands in the commands workbench", async () => {
+    render(<RoutinesNextPage projectRoot="D:/workspace/novel" />);
+
+    await waitFor(() => expect(fetchRoutinesMock).toHaveBeenCalledWith("merged", "D:/workspace/novel"));
+
+    expect(screen.getByText("统一 Runtime Command Registry")).toBeTruthy();
+    expect(screen.getByText("/help")).toBeTruthy();
+    expect(screen.getByText("/tools")).toBeTruthy();
+    expect(screen.getByText("/novel:write-next")).toBeTruthy();
+    expect(screen.getAllByText("来源：Novel Agent Pack").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("状态：计划中").length).toBeGreaterThan(0);
+  });
+
   it("switches to editable scopes and saves through the old routines API", async () => {
     render(<RoutinesNextPage projectRoot="D:/workspace/novel" />);
 

@@ -146,6 +146,12 @@ describe("session headless chat service", () => {
       usage: result.usage,
       cost: result.cost,
       permission_denials: [],
+      runtime_capabilities: expect.arrayContaining([
+        expect.objectContaining({ id: "codex.sandboxMode", status: "planned" }),
+        expect.objectContaining({ id: "codex.approvalPolicy", status: "partial" }),
+        expect.objectContaining({ id: "codex.review", status: "reference-only" }),
+        expect.objectContaining({ id: "codex.imageInput", status: "reference-only" }),
+      ]),
     });
     expect(updateSessionMock).toHaveBeenCalledWith("session-1", expect.objectContaining({ cumulativeUsage: result.usage.cumulative }));
   });
@@ -162,6 +168,22 @@ describe("session headless chat service", () => {
 
     expect(result.permissionDenials).toEqual([{ toolName: "chapter.overwrite", reason: "policy-denied", summary: "工具被策略禁止。" }]);
     expect(result.events.at(-1)).toMatchObject({ type: "result", permission_denials: result.permissionDenials, stop_reason: "failed" });
+  });
+
+  it("executes slash commands through the runtime command handler without sending them to the model", async () => {
+    const session = makeSession();
+    createSessionMock.mockResolvedValue(session);
+
+    const result = await executeHeadlessChat({ prompt: "/tools", outputFormat: "stream-json" });
+
+    expect(runAgentTurnMock).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ success: false, stopReason: "failed", exitCode: 1, error: "planned_command" });
+    expect(result.events).toEqual([
+      expect.objectContaining({ type: "user_message", session_id: "session-1", content: "/tools" }),
+      expect.objectContaining({ type: "command_started", session_id: "session-1", command_id: "/tools" }),
+      expect.objectContaining({ type: "command_error", session_id: "session-1", command_id: "/tools", code: "planned_command" }),
+      expect.objectContaining({ type: "result", session_id: "session-1", success: false, stop_reason: "failed", exit_code: 1, error: "planned_command" }),
+    ]);
   });
 
   it("extracts the user prompt from stream-json input events", async () => {
@@ -234,9 +256,87 @@ describe("session headless chat service", () => {
     expect(result.events).toEqual(expect.arrayContaining([
       expect.objectContaining({ type: "tool_use", tool_use_id: "tool-1", tool_name: "guided.exit" }),
       expect.objectContaining({ type: "tool_result", tool_use_id: "tool-1", tool_name: "guided.exit" }),
-      expect.objectContaining({ type: "permission_request", confirmation_id: "confirm-1", tool_name: "guided.exit" }),
+      expect.objectContaining({
+        type: "permission_request",
+        confirmation_id: "confirm-1",
+        tool_name: "guided.exit",
+        confirmation: expect.objectContaining({
+          id: "confirm-1",
+          targetResources: [{ kind: "guided.exit", id: "book-1" }],
+          source: { sessionId: "session-1" },
+          checkpoint: { required: true },
+          operations: [
+            { action: "approve", label: "批准" },
+            { action: "reject", label: "拒绝" },
+          ],
+        }),
+      }),
       expect.objectContaining({ type: "result", success: false, stop_reason: "pending_confirmation" }),
     ]));
+  });
+
+  it("persists canonical transcript events for resume and replay", async () => {
+    const session = makeSession();
+    createSessionMock.mockResolvedValue(session);
+    const checkpointCandidateResult: SessionToolExecutionResult = {
+      ok: true,
+      summary: "候选稿已创建并保存 checkpoint。",
+      data: { checkpointId: "checkpoint-1", paths: ["chapters/0001.md"] },
+      artifact: {
+        id: "candidate-1",
+        kind: "candidate",
+        title: "第 1 章候选稿",
+        resourceRef: { kind: "candidate", id: "candidate-1", bookId: "book-1" },
+      },
+    };
+    const confirmationResult: SessionToolExecutionResult = {
+      ok: true,
+      summary: "等待确认。",
+      data: { status: "pending-confirmation" },
+      confirmation: {
+        id: "confirm-1",
+        toolName: "candidate.apply",
+        target: "正式章节",
+        risk: "confirmed-write",
+        summary: "确认写入正式章节",
+        options: ["approve", "reject"],
+      },
+    };
+    runAgentTurnMock.mockResolvedValue([
+      { type: "tool_call", id: "tool-1", toolName: "candidate.create_chapter", input: { bookId: "book-1" }, runtime: { providerId: "p", providerName: "P", modelId: "m" } },
+      { type: "tool_result", id: "tool-1", toolName: "candidate.create_chapter", result: checkpointCandidateResult, runtime: { providerId: "p", providerName: "P", modelId: "m" } },
+      { type: "assistant_message", content: "候选稿已生成。", runtime: { providerId: "p", providerName: "P", modelId: "m", usage: { input_tokens: 3, output_tokens: 5 } } },
+      { type: "confirmation_required", id: "confirm-1", toolName: "candidate.apply", result: confirmationResult },
+      { type: "turn_failed", reason: "pending-confirmation", message: "等待用户确认。" },
+      { type: "turn_completed" },
+    ] satisfies AgentTurnEvent[]);
+
+    const result = await executeHeadlessChat({ prompt: "写下一章", outputFormat: "stream-json" });
+
+    expect(result.canonicalEvents.map((event) => event.type)).toEqual([
+      "tool_use",
+      "tool_result",
+      "checkpoint",
+      "candidate",
+      "message",
+      "usage",
+      "permission_request",
+      "error",
+      "result",
+    ]);
+    const persistedMessages = appendSessionChatHistoryMock.mock.calls[0][1] as Array<{ metadata?: { runtimeTranscript?: { events?: Array<{ type: string }> } } }>;
+    const transcriptEvents = persistedMessages.flatMap((message) => message.metadata?.runtimeTranscript?.events ?? []);
+    expect(transcriptEvents.map((event) => event.type)).toEqual([
+      "tool_use",
+      "tool_result",
+      "checkpoint",
+      "candidate",
+      "message",
+      "usage",
+      "permission_request",
+      "error",
+      "result",
+    ]);
   });
 
   it("honors maxTurns=0 without calling the model", async () => {

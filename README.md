@@ -17,7 +17,7 @@ NovelFork 是一个专注中文网文创作的本地 AI 工作台。作者可以
 
 **完全本地运行，数据不出本机。** `pnpm --dir packages/studio compile` 生成单可执行文件与版本化 release 产物。
 
-> **v0.1.0 发布状态**：发布已暂停，GitHub Release 未创建，`v0.1.0` tag 已撤回。Task19 已完成 Claude/Codex 源码/官方资料口径重审，Task20 已完成反 mock/hardcoded/route literal 审计与 backend-contract API 路径集中；当前 Claude Code CLI / Codex CLI 相关能力只允许按 `current` / `partial` / `planned` / `non-goal` / `reference-only` 标注。Claude slash/permission/session/headless 仍是 NovelFork 自身 partial 实现，Codex exec JSONL event taxonomy 仅为 reference-only，完成 Task21 重新验收之前不得宣称完整对标或发布完成。
+> **当前主线**：`claude-codex-novel-agent-v1` 已取代旧 v0.1.0 release 修补作为 active 主线。v0.1.0 发布继续暂停，GitHub Release 未创建，`v0.1.0` tag 已撤回；`v0-1-0-release-readiness` Task21-23 不再继续推进，必须等待新主线重新定义 Agent 产品化与小说创作端到端完成标准。当前 Claude Code CLI / Codex CLI / 小说 Agent 能力必须按 `current` / `partial` / `not-wired` / `planned` / `unsupported` / `non-goal` / `reference-only` 标注，不能用 archive checkbox、API、组件或 unit test 代替 Studio/CLI/headless 端到端证据。
 
 ---
 
@@ -52,7 +52,7 @@ novelfork/
 │   └── cli/           # CLI 工具 (novelfork 命令)
 ├── docs/              # 文档中心 (产品/架构/API/指南)
 ├── .kiro/
-│   ├── specs/         # 开发规格（当前 active：v0-1-0-release-readiness）
+│   ├── specs/         # 开发规格（当前 active：claude-codex-novel-agent-v1）
 │   └── steering/      # 项目原则与约束
 ├── claude/            # Claude Code 源码参考
 └── scripts/           # 工具脚本
@@ -70,6 +70,7 @@ novelfork/
 
 ### Agent-native 创作工作台
 - 当前重建主线：Backend Contract、Frontend Refoundation、Frontend Live Wiring 与 Legacy Source Retirement 已完成验收收口：`/next` 使用 Agent Shell 路由壳，Conversation runtime、单栏 surface、模型/权限状态栏动作、Tool Result Renderer Registry、session tool 确认门、Workbench 资源树、canvas/viewer/保存、dirty canvasContext、写作动作跳转以及 search/routines/settings 次级页面均已接入 live route；旧三栏 WorkspacePage、旧 ChatWindow、未挂载 route 残留、轻量 `/api/chat` 与 exact `POST /api/agent` 已退役；`conversation-parity-v1` 仅完成 NovelFork 自身会话能力的一阶段收口，不等同 Claude Code CLI / Codex CLI 完整对标；当前已被用户反馈列为 v0.1.0 发布阻塞重审项，已落地内容包括会话 lifecycle、Resume/Fork UI、Slash Command Registry、`/compact`、Memory 写入边界、细粒度工具权限策略、Headless stream-json API、CLI 会话命令、checkpoint/rewind 与 usage envelope，可在 Composer 中使用 `/help`、`/status`、`/model`、`/permission`、`/fork`、`/resume`、`/compact`，会话中心显示 memory 只读/未接入状态，偏好/项目事实/临时剧情草稿写入边界可审计，`sessionConfig.toolPolicy` 支持 allow/deny/ask 并在工具执行前合并 permissionMode、resource risk 与 dirty canvasContext，`POST /api/sessions/headless-chat` 支持 text/stream-json input、NDJSON output、ephemeral/no-session-persistence、pending permission_request 与 max turns/budget stop result，`novelfork chat`/`novelfork exec` 可从 CLI 调用 headless chat 并映射 success/error/pending exit code，资源 checkpoint service 会在正式章节、Truth/story 与 narrative apply 写入前保存 `.novelfork/checkpoints` 快照，Rewind preview/apply 支持按 checkpoint 返回 diff/hash/risk、确认门恢复与 audit，Headless/API result envelope 输出 duration/stop_reason/usage/cost unknown/permission denials；后端整理 `backend-core-refactor-v1` 已完成验收收口，已建立合同守护清单、补齐核心 contract regression tests、完成 Task 3 统一错误与状态 helper，完成 Task 4 storage.ts 只读 service 拆分，完成 Task 5 storage.ts 非破坏写入 service 拆分，完成 Task 6 destructive service 拆分，完成 Task 7 session runtime transport/recovery 内聚拆分，完成 Task 8 Provider/runtime store 边界收敛、Task 9 legacy route 依赖调查与 deprecated 标记，并完成 Task 10 文档与验收收口，`backend-core-refactor-v1` 已 10/10 完成
+- `claude-codex-novel-agent-v1` 已完成统一 command registry、共享 runtime command executor、permission/tool policy resolver、确认门/checkpoint envelope 与 Codex sandbox/approval 状态模型：Studio slash 建议/执行、Routines 命令清单、CLI help 与 headless slash prompt 读取同一 core registry，并通过 command_started / command_completed / command_error 事件进入 runtime/stream-json；provider-visible tool schema、Agent turn、tool executor 与 headless/CLI 路径共享 `resolveSessionToolPolicy()`，pending confirmation 共享 `normalizeToolConfirmationRequest()` 的 targetResources/source/checkpoint/operations；Codex sandbox/approval/review/image 使用 `getCodexRuntimeCapabilityStatuses()` 同源标记 planned/partial/reference-only；仍属于 `partial` Agent runtime 底座，后续继续接真实 tools/MCP/agents handler 与 `/novel:*` 工作流。
 - 已有后端能力保留：叙述者会话、WebSocket、工具调用、确认门、权限模式、模型池、候选稿/草稿/经纬/叙事线等真实合同
 - 新前端目标：左侧一级导航、单栏 Agent Conversation、独立 Writing Workbench；所有按钮、资源节点和写作动作必须来自 `packages/studio/src/app-next/backend-contract/` 中登记的真实后端合同
 - 「写下一章」最小链路：驾驶舱快照 → PGI 生成前追问 → GuidedGenerationPlan → 用户批准 → 候选稿生成

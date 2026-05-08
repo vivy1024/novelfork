@@ -42,7 +42,7 @@ export type AgentTurnEvent =
   | { readonly type: "streaming_chunk"; readonly content: string }
   | { readonly type: "tool_call"; readonly id: string; readonly toolName: string; readonly input: Record<string, unknown>; readonly runtime: NarratorSessionRuntimeMetadata }
   | { readonly type: "tool_result"; readonly id: string; readonly toolName: string; readonly result: SessionToolExecutionResult; readonly runtime?: NarratorSessionRuntimeMetadata }
-  | { readonly type: "confirmation_required"; readonly id: string; readonly toolName: string; readonly result: SessionToolExecutionResult }
+  | { readonly type: "confirmation_required"; readonly id: string; readonly toolName: string; readonly result: SessionToolExecutionResult; readonly sourceToolUseId?: string }
   | { readonly type: "turn_completed" }
   | { readonly type: "turn_failed"; readonly reason: string; readonly message: string; readonly data?: Record<string, unknown> };
 
@@ -140,7 +140,10 @@ function isPendingConfirmationResult(result: SessionToolExecutionResult): boolea
 export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentTurnEvent[]> {
   const events: AgentTurnEvent[] = [];
   const messages = buildInitialMessages(input);
-  const filteredTools = filterSessionToolsForProvider(input.tools, input.sessionConfig.toolPolicy);
+  const filteredTools = filterSessionToolsForProvider(input.tools, input.sessionConfig.toolPolicy, {
+    permissionMode: input.permissionMode,
+    ...(input.canvasContext ? { canvasContext: input.canvasContext } : {}),
+  });
   if (input.tools.length > 0 && filteredTools.tools.length === 0) {
     events.push({
       type: "turn_failed",
@@ -261,6 +264,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
           id: toolResult.confirmation?.id ?? toolUse.id,
           toolName: toolUse.name,
           result: toolResult,
+          sourceToolUseId: toolUse.id,
         });
         return events;
       }

@@ -15,6 +15,7 @@ import type {
   WorkspaceSettings,
 } from "../../types/settings.js";
 import { DEFAULT_USER_CONFIG } from "../../types/settings.js";
+import { normalizeCodexSandboxMode } from "../../shared/codex-runtime-status.js";
 import { isSessionPermissionMode, normalizeSessionPermissionMode } from "../../shared/session-types.js";
 import { ProviderRuntimeStore } from "./provider-runtime-store.js";
 import { buildRuntimeModelPool } from "./runtime-model-pool.js";
@@ -147,6 +148,7 @@ function sanitizeRuntimeControls(runtimeControls?: Partial<RuntimeControlSetting
     scrollAutoLoadHistory: typeof runtimeControls?.scrollAutoLoadHistory === "boolean" ? runtimeControls.scrollAutoLoadHistory : defaults.scrollAutoLoadHistory,
     dumpApiRequests: typeof runtimeControls?.dumpApiRequests === "boolean" ? runtimeControls.dumpApiRequests : defaults.dumpApiRequests,
     sendMode: runtimeControls?.sendMode === "ctrl-enter" ? "ctrl-enter" : defaults.sendMode,
+    codexSandboxMode: normalizeCodexSandboxMode((runtimeControls as { codexSandboxMode?: unknown } | undefined)?.codexSandboxMode).mode,
     largeWindowCompressionThresholdPercent: clampNumber(runtimeControls?.largeWindowCompressionThresholdPercent, defaults.largeWindowCompressionThresholdPercent, 30, 95),
     largeWindowTruncateTargetPercent: clampNumber(runtimeControls?.largeWindowTruncateTargetPercent, defaults.largeWindowTruncateTargetPercent, 20, 90),
   };

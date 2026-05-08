@@ -8,16 +8,7 @@ import type {
   StartedHttpServer,
 } from "../start-http-server.js";
 
-import type {
-  CanvasContext,
-  OpenResourceTab,
-  SessionToolDefinition,
-  SessionToolExecutionResult,
-  ToolConfirmationAudit,
-  ToolConfirmationDecision,
-  ToolConfirmationRequest,
-  WorkspaceResourceRef,
-} from "../../shared/agent-native-workspace.js";
+import { normalizeToolConfirmationRequest, type CanvasContext, type OpenResourceTab, type SessionToolDefinition, type SessionToolExecutionResult, type ToolConfirmationAudit, type ToolConfirmationDecision, type ToolConfirmationRequest, type WorkspaceResourceRef } from "../../shared/agent-native-workspace.js";
 import type {
   NarratorSessionChatErrorEnvelope,
   NarratorSessionChatHistory,
@@ -63,7 +54,10 @@ import { getAgentSystemPrompt } from "@vivy1024/novelfork-core";
 import { createSessionToolExecutor, type SessionToolExecutorOptions } from "./session-tool-executor.js";
 import { getEnabledSessionTools } from "./session-tool-registry.js";
 import { annotateSessionToolsWithPolicy } from "./session-tool-policy.js";
-import { runAgentTurn, type AgentTurnItem, type AgentGenerateResult } from "./agent-turn-runtime.js";
+import type { AgentTurnItem, AgentGenerateResult } from "./agent-turn-runtime.js";
+import { executeRuntimeTurn } from "./runtime-turn-service.js";
+import type { RuntimeEvent } from "./runtime-events.js";
+import { attachRuntimeTranscriptToMessages } from "./runtime-transcript.js";
 import { loadUserConfig } from "./user-config-service.js";
 import { generateSessionTitle } from "./session-auto-title.js";
 import { microCompact } from "./compact/micro-compact.js";
@@ -577,6 +571,17 @@ function buildToolResultMetadata(result: SessionToolExecutionResult): NarratorSe
   };
 }
 
+function normalizeToolResultConfirmation(
+  result: SessionToolExecutionResult,
+  context: { readonly sessionId: string; readonly messageId?: string; readonly toolUseId?: string; readonly input?: Record<string, unknown> },
+): SessionToolExecutionResult {
+  if (!result.confirmation) return result;
+  return {
+    ...result,
+    confirmation: normalizeToolConfirmationRequest(result.confirmation, context),
+  };
+}
+
 function buildToolResultCall(
   toolUse: NormalizedRuntimeToolUse,
   result: SessionToolExecutionResult,
@@ -607,13 +612,18 @@ function extractPendingToolConfirmations(sessionId: string, messages: readonly N
       return [];
     }
 
+    const input = normalizeRuntimeToolInput(toolCall.input);
     return [{
-      ...confirmation,
+      ...normalizeToolConfirmationRequest({ ...confirmation, toolName: confirmation.toolName || toolCall.toolName }, {
+        sessionId,
+        messageId: message.id,
+        ...(toolCall.id ? { toolUseId: toolCall.id } : {}),
+        input,
+      }),
       sessionId,
       messageId: message.id,
-      toolUseId: toolCall.id,
-      toolName: confirmation.toolName || toolCall.toolName,
-      input: normalizeRuntimeToolInput(toolCall.input),
+      ...(toolCall.id ? { toolUseId: toolCall.id } : {}),
+      input,
       status: "pending" as const,
     }];
   }));
@@ -645,16 +655,21 @@ function findPendingToolConfirmation(
         continue;
       }
 
+      const input = normalizeRuntimeToolInput(toolCall.input);
       return {
         message,
         toolCall,
         confirmation: {
-          ...confirmation,
+          ...normalizeToolConfirmationRequest({ ...confirmation, toolName: confirmation.toolName || toolCall.toolName }, {
+            sessionId,
+            messageId: message.id,
+            ...(toolCall.id ? { toolUseId: toolCall.id } : {}),
+            input,
+          }),
           sessionId,
           messageId: message.id,
-          toolUseId: toolCall.id,
-          toolName: confirmation.toolName || toolCall.toolName,
-          input: normalizeRuntimeToolInput(toolCall.input),
+          ...(toolCall.id ? { toolUseId: toolCall.id } : {}),
+          input,
           status: "pending",
         },
       };
@@ -684,9 +699,11 @@ function buildSessionConfirmationAudit(
     confirmationId: confirmation.id,
     sessionId: decision.sessionId,
     toolName: confirmation.toolName,
-    targetResources: confirmation.targetResource ? [confirmation.targetResource] : [{ kind: confirmation.toolName, id: confirmation.target, ...(typeof confirmation.target === "string" ? { bookId: confirmation.target } : {}) }],
+    targetResources: confirmation.targetResources ?? (confirmation.targetResource ? [confirmation.targetResource] : [{ kind: confirmation.toolName, id: confirmation.target, ...(typeof confirmation.target === "string" ? { bookId: confirmation.target } : {}) }]),
     summary,
     risk: confirmation.risk,
+    ...(confirmation.source ? { source: confirmation.source } : {}),
+    ...(confirmation.checkpoint ? { checkpoint: confirmation.checkpoint } : {}),
     decision: decision.decision,
     decidedAt: decision.decidedAt,
     ...(decision.reason ? { reason: decision.reason } : {}),
@@ -752,7 +769,7 @@ async function appendModelContinuationAfterToolDecision(
     const canvasContext = latestCanvasContextFromMessages(loaded.state.messages);
     const maxSteps = await resolveMaxTurnSteps();
     const compactedMessages = microCompact(sessionMessagesToTurnItems(loaded.state.messages));
-    const runtimeEvents = await runAgentTurn({
+    const runtimeTurn = await executeRuntimeTurn({
       sessionId: loaded.session.id,
       sessionConfig: loaded.session.sessionConfig,
       messages: compactedMessages,
@@ -778,6 +795,7 @@ async function appendModelContinuationAfterToolDecision(
       },
       executeTool: (toolInput) => sessionToolExecutor.execute(toolInput),
     });
+    const runtimeEvents = runtimeTurn.agentEvents;
 
     const toolInputsById = new Map<string, Record<string, unknown>>();
     let nextTimestamp = timestamp;
@@ -820,14 +838,21 @@ async function appendModelContinuationAfterToolDecision(
           toolName: event.toolName,
           input: toolInputsById.get(event.id) ?? {},
         };
+        const messageId = `confirmation-tool-result-${event.id}-${nextTimestamp}`;
+        const toolResult = normalizeToolResultConfirmation(event.result, {
+          sessionId: loaded.session.id,
+          messageId,
+          toolUseId: event.id,
+          input: toolUse.input,
+        });
         const toolResultMessage = appendMessageToState(loaded.state, {
-          id: `confirmation-tool-result-${event.id}-${nextTimestamp}`,
+          id: messageId,
           role: "assistant",
-          content: event.result.summary,
+          content: toolResult.summary,
           timestamp: nextTimestamp,
           runtime: event.runtime,
-          toolCalls: [buildToolResultCall(toolUse, event.result)],
-          metadata: buildToolResultMetadata(event.result),
+          toolCalls: [buildToolResultCall(toolUse, toolResult)],
+          metadata: buildToolResultMetadata(toolResult),
         });
         nextTimestamp += 1;
         broadcastMessageEnvelope(loaded.session.id, loaded.state, toolResultMessage);
@@ -937,7 +962,12 @@ export async function confirmSessionToolDecision(
       confirmationDecision: decision,
     })
     : createRejectedToolResult(toolName, match.confirmation, decision);
-  const toolResult = withSessionConfirmationAudit(rawToolResult, match.confirmation, decision);
+  const toolResult = normalizeToolResultConfirmation(withSessionConfirmationAudit(rawToolResult, match.confirmation, decision), {
+    sessionId,
+    messageId: match.message.id,
+    toolUseId: match.confirmation.toolUseId,
+    input: match.confirmation.input,
+  });
 
   resolvePendingToolCall(match, toolResult);
   match.message.metadata = {
@@ -1286,6 +1316,7 @@ export async function handleSessionChatTransportMessage(
 
   const messagesToPersist: NarratorSessionChatMessage[] = [userMessage];
   const sessionTools = getEnabledSessionTools(loaded.session.sessionConfig.permissionMode);
+  let canonicalEvents: readonly RuntimeEvent[] = [];
   let failure: NarratorSessionRecoveryMetadata["lastFailure"] | undefined;
   let errorEnvelope: NarratorSessionChatErrorEnvelope | undefined;
 
@@ -1303,7 +1334,7 @@ export async function handleSessionChatTransportMessage(
     const maxSteps = await resolveMaxTurnSteps();
     const compactedMessages = microCompact(sessionMessagesToTurnItems(loaded.state.messages));
     const abortController = createSessionAbortController(sessionId);
-    const runtimeEvents = await runAgentTurn({
+    const runtimeTurn = await executeRuntimeTurn({
       sessionId,
       sessionConfig: loaded.session.sessionConfig,
       messages: compactedMessages,
@@ -1330,6 +1361,8 @@ export async function handleSessionChatTransportMessage(
       },
       executeTool: (toolInput) => sessionToolExecutor.execute(toolInput),
     });
+    const runtimeEvents = runtimeTurn.agentEvents;
+    canonicalEvents = runtimeTurn.runtimeEvents;
     clearSessionAbortController(sessionId);
 
     const toolInputsById = new Map<string, Record<string, unknown>>();
@@ -1378,14 +1411,21 @@ export async function handleSessionChatTransportMessage(
           toolName: event.toolName,
           input: toolInputsById.get(event.id) ?? {},
         };
+        const messageId = `${userMessage.id}-tool-result-${event.id}`;
+        const toolResult = normalizeToolResultConfirmation(event.result, {
+          sessionId,
+          messageId,
+          toolUseId: event.id,
+          input: toolUse.input,
+        });
         const toolResultMessage = appendMessageToState(loaded.state, {
-          id: `${userMessage.id}-tool-result-${event.id}`,
+          id: messageId,
           role: "assistant",
-          content: event.result.summary,
+          content: toolResult.summary,
           timestamp: timestamp + messagesToPersist.length,
           runtime: event.runtime,
-          toolCalls: [buildToolResultCall(toolUse, event.result)],
-          metadata: buildToolResultMetadata(event.result),
+          toolCalls: [buildToolResultCall(toolUse, toolResult)],
+          metadata: buildToolResultMetadata(toolResult),
         });
         messagesToPersist.push(toolResultMessage);
         broadcastMessageEnvelope(sessionId, loaded.state, toolResultMessage);
@@ -1448,7 +1488,8 @@ export async function handleSessionChatTransportMessage(
     });
   }
 
-  const updatedSession = await persistSessionChatProgress(sessionId, loaded.session, loaded.state, messagesToPersist, failure);
+  const transcriptMessagesToPersist = attachRuntimeTranscriptToMessages(messagesToPersist, canonicalEvents);
+  const updatedSession = await persistSessionChatProgress(sessionId, loaded.session, loaded.state, transcriptMessagesToPersist, failure);
   if (errorEnvelope) {
     sendEnvelope(transport, errorEnvelope);
   }
