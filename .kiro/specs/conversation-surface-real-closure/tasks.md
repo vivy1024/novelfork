@@ -38,14 +38,14 @@ NarraFork 的叙述者状态机：idle → working → (reasoning | planning | c
   - 依赖已安装（react-markdown、remark-gfm、react-syntax-highlighter、rehype-katex）
   - 验证：typecheck 通过
 
-- [ ] FEATURE 3. 工具调用卡片对标 NarraFork
+- [x] FEATURE 3. 工具调用卡片对标 NarraFork
   - NarraFork 工具调用：`✓ toolName · 586ms >`（一行紧凑，点击展开）
   - Bash 类工具展开后：深色终端背景 + `$ command` + 输出（等宽字体）
-  - 复用 `components/ToolCall/ToolCallBlock.tsx`（已有折叠/展开/governance/replay）
-  - 编写适配器 `adaptConversationToolCall()` 将 surface 类型映射到 ToolCall
-  - 对 Bash/Shell 工具的 output 渲染为深色背景终端风格（`<pre>` + dark bg class）
-  - 删除 `surface/ToolCallCard.tsx`
-  - 验证：typecheck + 无 import 报错
+  - 复用 `components/ToolCall/ToolCallBlock.tsx`（已有折叠/展开/governance/replay/renderer registry）
+  - 编写适配器 `tool-call-adapter.ts`：`adaptConversationToolCall()` 映射 ConversationToolCall → ToolCall
+  - MessageItem 改为使用 ToolCallBlock + 适配器
+  - ToolCallCard.tsx 保留（类型仍被 MessageStream 引用），但不再在渲染中使用
+  - 验证：typecheck 通过
 
 - [ ] FEATURE 4. 推理内容折叠渲染
   - NarraFork：`🔮 推理—"摘要预览..."` 可折叠块，默认折叠
