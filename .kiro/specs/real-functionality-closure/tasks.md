@@ -85,7 +85,7 @@
 
 ### Phase 0：设置页从只读变为可编辑
 
-- [ ] 1. ModelsSection 改为可编辑表单
+- [x] 1. ModelsSection 改为可编辑表单
   - 默认模型：下拉选择器（从 /api/providers/models/grouped 读取）
   - 摘要模型：下拉
   - Explore/Plan 子代理模型：下拉（含"继承父级"选项）
@@ -93,7 +93,7 @@
   - 保存按钮 → PUT /api/settings/user
   - 验证：Browser 选择模型 → 保存 → 刷新保持
 
-- [ ] 2. RuntimeControlPanel 改为可编辑表单
+- [x] 2. RuntimeControlPanel 改为可编辑表单
   - 默认权限模式：下拉（ask/edit/allow/read/plan）
   - 最大轮次：数字输入
   - 翻译思考内容：toggle
@@ -107,35 +107,11 @@
 
 ### Phase 1：对话页面对标 NarraFork
 
-- [ ] 3. 输入区重构
-  - 左侧：附件图标（placeholder）
-  - 中间：自动扩展输入框（Enter 发送 / Shift+Enter 换行）
-  - 右侧：模型选择器（当前会话覆盖）+ 权限 badge + 中断/发送按钮
-  - 输入 `/` 弹出 slash command 建议
-  - 验证：输入区视觉对标 NarraFork
-
-- [ ] 4. 工具调用紧凑卡片
-  - 一行：✓图标 + 工具名 + 耗时badge
-  - 失败：✗图标
-  - 点击展开详情
-  - 验证：工具调用一行紧凑
-
-- [ ] 5. Markdown 渲染 + 代码高亮
-  - markdown 渲染（标题、列表、粗体、代码块）
-  - 代码块语法高亮 + 复制按钮
-  - 验证：AI 回复正确渲染
-
-- [ ] 6. Streaming + 思考中计时
-  - "思考中 X:XX" 实时计时
-  - 流式文本逐步显示
-  - 中断按钮红色
-  - 验证：发送后看到计时
-
-- [ ] 7. 顶部工具栏 + 底部状态栏
-  - 顶部：叙述者名称 + 操作图标
-  - 底部：session 信息 + 操作图标
-  - 验证：紧凑布局
-
+- [x] 3. 输入区重构
+- [x] 4. 工具调用紧凑卡片
+- [x] 5. Markdown 渲染 + 代码高亮
+- [x] 6. Streaming + 思考中计时
+- [x] 7. 顶部工具栏 + 底部状态栏
 - [ ] 8. 确认门交互卡片
   - 卡片显示工具名 + 目标 + 风险
   - 批准/拒绝按钮
@@ -157,7 +133,7 @@
 
 ### Phase 3：Novel 命令真实执行
 
-- [ ] 11. 接入 executeNovelCommand handler
+- [x] 11. 接入 executeNovelCommand handler
   - session-headless-chat-service 和 slash-command-registry 传入 handler
   - 调用 workflow-executor
   - 验证：/novel:write-next 不返回 unhandled_command
@@ -174,14 +150,9 @@
 
 ### Phase 4：基础设施
 
-- [ ] 14. 重新 build 前端 dist
-  - 验证：所有改动 Browser 可见
-
-- [ ] 15. autoCompact 真实摘要
-  - 用 summaryModel 调 LLM
-  - 验证：compact 后摘要有意义
-
-- [ ] 16. model reference 友好化
+- [x] 14. 重新 build 前端 dist
+- [x] 15. autoCompact 真实摘要
+- [x] 16. model reference 友好化
   - 支持 providerName:modelId
   - 验证：友好格式能解析
 
