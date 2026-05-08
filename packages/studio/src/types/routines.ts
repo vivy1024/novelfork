@@ -2,7 +2,7 @@
  * 套路系统类型定义
  */
 
-import type { WorkflowRecipeConfig } from "../shared/workflow-recipe";
+import type { WorkflowRecipeConfig } from "../shared/workflow-recipe.js";
 
 export interface Command {
   id: string;
