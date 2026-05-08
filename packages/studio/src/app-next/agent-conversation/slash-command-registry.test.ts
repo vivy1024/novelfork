@@ -30,7 +30,7 @@ describe("slash-command-registry", () => {
     expect(registry.commands.find((command) => command.name === "novel:write-next")).toMatchObject({
       id: "/novel:write-next",
       source: "novel-agent-pack",
-      status: "planned",
+      status: "partial",
     });
   });
 
