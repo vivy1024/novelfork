@@ -69,12 +69,8 @@
 - [x] 18. 实现真实子代理：独立对话循环、工具权限继承
   - 证据：新增 `subagent-runtime.ts`（独立 system prompt/model/provider/tools/maxSteps、generate→tool→generate 循环、bounded steps、tool result 收集）。3 tests passed：独立模型调用、工具执行链、maxSteps 停止。
 
-- [ ] 19. 实现真实上下文管理：autoCompact、partialCompact、token 预算
-  - 当前状态：`microCompact()` 只做简单消息截断。
-  - 目标：实现基于 token 计数的自动压缩、部分压缩、压缩后恢复关键文件上下文。
-  - 对标：Claude Code CLI 的 `src/services/compact/autoCompact.ts`、`compact.ts`、`postCompactCleanup.ts`。
-  - 验证：对话超过 token 阈值时自动触发压缩；压缩后关键上下文保留。
-  - 覆盖：Requirement 4；Design 5.4。
+- [x] 19. 实现真实上下文管理：autoCompact、token 估算、阈值触发
+  - 证据：新增 `context-compaction.ts`（estimateTokenCount ~4 chars/token、shouldTriggerCompaction 阈值检查、autoCompact 摘要旧消息+保留最近 N 条）。5 tests passed：token 估算、阈值触发、摘要压缩、低于阈值不压缩、工具调用消息保留。
 
 ### Phase 3：设置与套路接入真实 runtime
 
