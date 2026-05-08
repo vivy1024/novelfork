@@ -1,10 +1,17 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { AnimatedMarkdown } from "flowtoken";
 import "flowtoken/dist/styles.css";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { ToolCallBlock } from "@/components/ToolCall/ToolCallBlock";
 import type { ConversationToolCall } from "./ToolCallCard";
 import { adaptConversationToolCall } from "./tool-call-adapter";
+import {
+  ContextMenu,
+  ContextMenuTrigger,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+} from "@/components/ui/context-menu";
 
 export interface ConversationThinkingBlock {
   /** 推理内容全文 */
@@ -73,17 +80,7 @@ function ThinkingBlock({ block, defaultExpanded = false }: { block: Conversation
 }
 
 export function MessageItem({ message, onContextAction }: MessageItemProps) {
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  const handleContextMenu = useCallback((e: React.MouseEvent) => {
-    if (!onContextAction || message.role === "system") return;
-    e.preventDefault();
-    setContextMenu({ x: e.clientX, y: e.clientY });
-  }, [onContextAction, message.role]);
-
   const handleAction = useCallback((action: MessageContextAction["id"]) => {
-    setContextMenu(null);
     onContextAction?.(message.id, action);
   }, [onContextAction, message.id]);
 
@@ -97,73 +94,65 @@ export function MessageItem({ message, onContextAction }: MessageItemProps) {
 
   if (message.role === "user") {
     return (
-      <div className="flex justify-end py-2" ref={containerRef} onContextMenu={handleContextMenu}>
-        <div className="max-w-[80%] rounded-lg border border-border bg-muted/50 px-4 py-2.5 text-sm">
-          {message.content}
-        </div>
-        {contextMenu && <MessageContextMenu position={contextMenu} onAction={handleAction} onClose={() => setContextMenu(null)} />}
-      </div>
+      <ContextMenu>
+        <ContextMenuTrigger className="flex justify-end py-2">
+          <div className="max-w-[80%] rounded-lg border border-border bg-muted/50 px-4 py-2.5 text-sm">
+            {message.content}
+          </div>
+        </ContextMenuTrigger>
+        <MessageContextMenuContent onAction={handleAction} />
+      </ContextMenu>
     );
   }
 
   // assistant or tool
   return (
-    <div className="py-2" ref={containerRef} onContextMenu={handleContextMenu}>
-      <div className="max-w-[90%]">
-        {message.thinking?.map((block, i) => (
-          <ThinkingBlock key={`thinking-${i}`} block={block} />
-        ))}
-        {message.content && (
-          message.isStreaming ? (
-            <div className="prose prose-sm dark:prose-invert max-w-none">
-              <AnimatedMarkdown content={message.content} sep="word" animationDuration="0.3s" />
-            </div>
-          ) : (
-            <MarkdownRenderer content={message.content} />
-          )
-        )}
-        {message.toolCalls?.map((toolCall) => (
-          <ToolCallBlock key={toolCall.id} toolCall={adaptConversationToolCall(toolCall)} />
-        ))}
-      </div>
-      {contextMenu && <MessageContextMenu position={contextMenu} onAction={handleAction} onClose={() => setContextMenu(null)} />}
-    </div>
+    <ContextMenu>
+      <ContextMenuTrigger className="py-2 block">
+        <div className="max-w-[90%]">
+          {message.thinking?.map((block, i) => (
+            <ThinkingBlock key={`thinking-${i}`} block={block} />
+          ))}
+          {message.content && (
+            message.isStreaming ? (
+              <div className="prose prose-sm dark:prose-invert max-w-none">
+                <AnimatedMarkdown content={message.content} sep="word" animationDuration="0.3s" />
+              </div>
+            ) : (
+              <MarkdownRenderer content={message.content} />
+            )
+          )}
+          {message.toolCalls?.map((toolCall) => (
+            <ToolCallBlock key={toolCall.id} toolCall={adaptConversationToolCall(toolCall)} />
+          ))}
+        </div>
+      </ContextMenuTrigger>
+      <MessageContextMenuContent onAction={handleAction} />
+    </ContextMenu>
   );
 }
 
 // ---------------------------------------------------------------------------
-// MessageContextMenu — 右键上下文菜单
+// MessageContextMenuContent — shadcn ContextMenu 内容
 // ---------------------------------------------------------------------------
 
-function MessageContextMenu({
-  position,
-  onAction,
-  onClose,
-}: {
-  position: { x: number; y: number };
-  onAction: (action: MessageContextAction["id"]) => void;
-  onClose: () => void;
-}) {
+function MessageContextMenuContent({ onAction }: { onAction: (action: MessageContextAction["id"]) => void }) {
+  const nonDestructive = MESSAGE_CONTEXT_ACTIONS.filter((a) => !a.destructive);
+  const destructive = MESSAGE_CONTEXT_ACTIONS.filter((a) => a.destructive);
+
   return (
-    <>
-      {/* Backdrop */}
-      <div className="fixed inset-0 z-50" onClick={onClose} onContextMenu={(e) => { e.preventDefault(); onClose(); }} />
-      {/* Menu */}
-      <div
-        className="fixed z-50 min-w-[160px] rounded-md border border-border bg-popover p-1 shadow-md"
-        style={{ top: position.y, left: position.x }}
-      >
-        {MESSAGE_CONTEXT_ACTIONS.map((action) => (
-          <button
-            key={action.id}
-            type="button"
-            className={`flex w-full items-center rounded px-2 py-1.5 text-xs hover:bg-muted ${action.destructive ? "text-destructive" : ""}`}
-            onClick={() => onAction(action.id)}
-          >
-            {action.label}
-          </button>
-        ))}
-      </div>
-    </>
+    <ContextMenuContent>
+      {nonDestructive.map((action) => (
+        <ContextMenuItem key={action.id} onClick={() => onAction(action.id)}>
+          {action.label}
+        </ContextMenuItem>
+      ))}
+      {destructive.length > 0 && <ContextMenuSeparator />}
+      {destructive.map((action) => (
+        <ContextMenuItem key={action.id} variant="destructive" onClick={() => onAction(action.id)}>
+          {action.label}
+        </ContextMenuItem>
+      ))}
+    </ContextMenuContent>
   );
 }
