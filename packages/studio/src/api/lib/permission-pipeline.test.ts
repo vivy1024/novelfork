@@ -4,8 +4,10 @@ import {
   classifyBashCommand,
   isDangerousCommand,
   isPathWithinWorkDir,
+  resolvePermissionRules,
   validateToolPermission,
   type BashCommandClassification,
+  type PermissionRule,
   type ToolPermissionResult,
 } from "./permission-pipeline";
 
@@ -88,6 +90,45 @@ describe("permission pipeline", () => {
       const result = validateToolPermission({ toolName: "Bash", risk: "destructive", permissionMode: "allow", workDir: "/project", command: "rm -rf /" });
       expect(result.allowed).toBe(false);
       expect(result.reason).toContain("dangerous");
+    });
+  });
+
+  describe("multi-source permission rules", () => {
+    it("deny always wins over allow and ask", () => {
+      const rules: PermissionRule[] = [
+        { source: "user", behavior: "allow", toolName: "Bash" },
+        { source: "project", behavior: "deny", toolName: "Bash" },
+        { source: "session", behavior: "ask", toolName: "Bash" },
+      ];
+      expect(resolvePermissionRules(rules, "Bash")).toBe("deny");
+    });
+
+    it("ask wins over allow when no deny", () => {
+      const rules: PermissionRule[] = [
+        { source: "user", behavior: "allow", toolName: "Bash" },
+        { source: "project", behavior: "ask", toolName: "Bash" },
+      ];
+      expect(resolvePermissionRules(rules, "Bash")).toBe("ask");
+    });
+
+    it("matches tool-specific rules and ignores non-matching", () => {
+      const rules: PermissionRule[] = [
+        { source: "user", behavior: "deny", toolName: "Write" },
+        { source: "user", behavior: "allow", toolName: "Read" },
+      ];
+      expect(resolvePermissionRules(rules, "Read")).toBe("allow");
+      expect(resolvePermissionRules(rules, "Write")).toBe("deny");
+      expect(resolvePermissionRules(rules, "Bash")).toBe("ask"); // no match → default ask
+    });
+
+    it("supports shell command pattern matching", () => {
+      const rules: PermissionRule[] = [
+        { source: "project", behavior: "allow", toolName: "Bash", pattern: "git *" },
+        { source: "project", behavior: "deny", toolName: "Bash", pattern: "rm *" },
+      ];
+      expect(resolvePermissionRules(rules, "Bash", "git status")).toBe("allow");
+      expect(resolvePermissionRules(rules, "Bash", "rm -rf .")).toBe("deny");
+      expect(resolvePermissionRules(rules, "Bash", "ls")).toBe("ask"); // no pattern match
     });
   });
 
