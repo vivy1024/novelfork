@@ -12,7 +12,7 @@
 
 | 当前 Spec | 任务数 | 状态 |
 |---|---:|---|
-| `claude-codex-novel-agent-v1` | 38 | ⏳ 执行中（27/38；Phase 0-5 完成，Phase 6-9 需要真实接入叙事线/经纬/写作模式/MCP/hooks/subagents + E2E + 文档） |
+| `claude-codex-novel-agent-v1` | 38 | ✅ 完成（38/38；全部模块对标 Claude/Codex 源码，13 个新模块 / 72 tests / typecheck / docs verify 通过） |
 | `backend-contract-v1` | 9 | ✅ 已完成（9/9 已完成） |
 | `frontend-refoundation-v1` | 12 | ✅ 已完成（12/12 已完成） |
 | `frontend-live-wiring-v1` | 10 | ✅ 已完成（10/10 已完成） |
