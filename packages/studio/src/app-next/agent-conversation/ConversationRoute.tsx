@@ -39,7 +39,7 @@ export interface ConversationRouteProps {
   onAbortSession?: () => void;
   onUpdateSessionConfig?: (patch: ConversationSessionConfigPatch) => Promise<void> | void;
   onCompactSession?: (instructions?: string) => Promise<SlashCommandCompactResult>;
-  onApproveConfirmation?: (id: string) => void;
+  onApproveConfirmation?: (id: string, answers?: Record<string, unknown>) => void;
   onRejectConfirmation?: (id: string) => void;
   onOpenArtifact?: (artifact: ToolResultArtifact) => void;
   /** 历史消息分页 */

@@ -6,3 +6,4 @@ export * from "./MessageItem";
 export * from "./MessageStream";
 export * from "./NarratorStatusBar";
 export * from "./ToolCallCard";
+export * from "./UserQuestionGate";
