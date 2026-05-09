@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useApi } from "@/hooks/use-api";
 
@@ -58,8 +59,9 @@ export function ConflictMap({ bookId }: { readonly bookId: string }) {
           const expanded = expandedId === conflict.id;
           return (
             <div key={conflict.id} className="rounded-xl border border-border/60 bg-muted/20">
-              <button
+              <Button
                 type="button"
+                variant="ghost"
                 className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm"
                 onClick={() => setExpandedId(expanded ? null : conflict.id)}
               >
@@ -68,7 +70,7 @@ export function ConflictMap({ bookId }: { readonly bookId: string }) {
                 <Badge variant="secondary" className="shrink-0 text-xs">{NATURE_LABEL[conflict.nature] ?? conflict.nature}</Badge>
                 <Badge variant="outline" className="shrink-0 text-xs">{conflict.status}</Badge>
                 <span className="shrink-0 text-xs text-muted-foreground">{expanded ? "收起" : "展开"}</span>
-              </button>
+              </Button>
               {expanded && (
                 <div className="space-y-2 border-t border-border/40 px-3 py-2.5">
                   {conflict.controllingIdea && (

@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { SimpleSelect } from "@/components/ui/simple-select";
 import { fetchJson } from "../../hooks/use-api";
 
 interface AdminLogEntry {
@@ -144,15 +145,15 @@ export function LogsTab({ runId, onInspectRun, onNavigateSection, onOpenRun }: L
           <p className="text-sm text-muted-foreground">直接读取真实日志文件尾部，不填充任何假数据；支持手动刷新与本地过滤。</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <select
-            value={limit}
-            onChange={(event) => setLimit(Number(event.target.value))}
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground"
-          >
-            <option value={100}>100 条</option>
-            <option value={200}>200 条</option>
-            <option value={500}>500 条</option>
-          </select>
+          <SimpleSelect
+            value={String(limit)}
+            onValueChange={(val) => setLimit(Number(val))}
+            options={[
+              { value: "100", label: "100 条" },
+              { value: "200", label: "200 条" },
+              { value: "500", label: "500 条" },
+            ]}
+          />
           <Button variant="outline" onClick={() => void loadLogs({ silent: true })} disabled={refreshing}>
             <RefreshCw className="size-4" />
             {refreshing ? "刷新中…" : "刷新日志"}

@@ -1,6 +1,7 @@
 import { BookOpen } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import type { JingweiSectionView } from "./types";
@@ -64,13 +65,14 @@ export function JingweiSectionTabs<T extends string>({
       ) : (
         <div>
           {legacyTabs.map((tab) => (
-            <button
+            <Button
               key={tab.id}
+              variant="ghost"
               onClick={() => onSelectLegacyTab(tab.id)}
               className={`mb-1 flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm transition-all ${activeLegacyTab === tab.id ? "bg-primary/10 font-bold text-primary" : "text-foreground hover:bg-muted/60"}`}
             >
               <span className="flex items-center gap-2"><BookOpen size={14} />{tab.label}</span>
-            </button>
+            </Button>
           ))}
         </div>
       )}

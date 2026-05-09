@@ -1,4 +1,5 @@
 import { Input } from "@/components/ui/input";
+import { SimpleSelect } from "@/components/ui/simple-select";
 
 import type { JingweiEntryView, JingweiVisibilityRuleType, JingweiVisibilityRuleView } from "./types";
 
@@ -17,11 +18,16 @@ export function VisibilityRuleEditor({ value, entries, onChange }: VisibilityRul
       <legend className="px-1 text-sm font-semibold">可见性规则</legend>
       <div className="grid gap-3 md:grid-cols-3">
         <label className="space-y-1 text-sm font-medium">可见性类型
-          <select value={value.type} onChange={(event) => setPatch({ type: event.target.value as JingweiVisibilityRuleType })} className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm">
-            <option value="tracked">tracked：命中正文后注入</option>
-            <option value="global">global：章节范围内常驻</option>
-            <option value="nested">nested：被关联时展开</option>
-          </select>
+          <SimpleSelect
+            value={value.type}
+            onValueChange={(val) => setPatch({ type: val as JingweiVisibilityRuleType })}
+            options={[
+              { value: "tracked", label: "tracked：命中正文后注入" },
+              { value: "global", label: "global：章节范围内常驻" },
+              { value: "nested", label: "nested：被关联时展开" },
+            ]}
+            className="w-full"
+          />
         </label>
         <label className="space-y-1 text-sm font-medium">起始章节
           <Input type="number" value={value.visibleAfterChapter ?? ""} placeholder="不限制" onChange={(event) => setPatch({ visibleAfterChapter: readNumber(event.target.value) })} />

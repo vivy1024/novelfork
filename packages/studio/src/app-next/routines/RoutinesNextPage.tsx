@@ -210,16 +210,18 @@ export function RoutinesNextPage({ projectRoot: projectRootProp }: RoutinesNextP
         {ROUTINE_SECTIONS.map((section) => {
           const isSelected = section.id === activeSectionId;
           return (
-            <button
+            <Button
               key={section.id}
               role="tab"
+              variant="ghost"
+              size="sm"
               aria-selected={isSelected}
-              className={`rounded-t-lg px-3 py-1.5 text-sm transition ${isSelected ? "border-b-2 border-primary text-primary font-medium" : "text-muted-foreground hover:text-foreground"}`}
+              className={isSelected ? "border-b-2 border-primary text-primary font-medium" : "text-muted-foreground"}
               onClick={() => setActiveSectionId(section.id)}
               type="button"
             >
               {section.label}
-            </button>
+            </Button>
           );
         })}
       </div>
