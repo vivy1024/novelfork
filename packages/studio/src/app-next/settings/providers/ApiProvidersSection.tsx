@@ -1,5 +1,6 @@
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { SimpleSelect } from "@/components/ui/simple-select";
 import { EmptyState } from "../../components/feedback";
 import type { ProviderApiMode, ProviderCompatibility } from "@/shared/provider-catalog";
 import { providerApiModeLabel, providerCompatibilityLabel } from "../../lib/display-labels";
@@ -130,16 +131,24 @@ function AddProviderForm({
         </label>
         <label className="text-sm">
           API 模式
-          <select className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2" value={form.apiMode} onChange={(event) => setForm({ ...form, apiMode: event.target.value as ProviderApiMode })}>
-            {API_MODES.map((value) => <option key={value} value={value}>{providerApiModeLabel(value)}</option>)}
-          </select>
+          <SimpleSelect
+            className="mt-1"
+            value={form.apiMode}
+            onValueChange={(v) => setForm({ ...form, apiMode: v as ProviderApiMode })}
+            options={API_MODES.map((value) => ({ value, label: providerApiModeLabel(value) }))}
+          />
         </label>
         <label className="text-sm">
           兼容格式
-          <select className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2" value={form.compatibility} onChange={(event) => setForm({ ...form, compatibility: event.target.value as ProviderCompatibility })}>
-            <option value="openai-compatible">{providerCompatibilityLabel("openai-compatible")}</option>
-            <option value="anthropic-compatible">{providerCompatibilityLabel("anthropic-compatible")}</option>
-          </select>
+          <SimpleSelect
+            className="mt-1"
+            value={form.compatibility}
+            onValueChange={(v) => setForm({ ...form, compatibility: v as ProviderCompatibility })}
+            options={[
+              { value: "openai-compatible", label: providerCompatibilityLabel("openai-compatible") },
+              { value: "anthropic-compatible", label: providerCompatibilityLabel("anthropic-compatible") },
+            ]}
+          />
         </label>
       </div>
       <Button variant="default" disabled={!canSave} onClick={onSave}>
