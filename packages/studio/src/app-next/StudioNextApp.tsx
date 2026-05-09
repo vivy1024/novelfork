@@ -401,6 +401,7 @@ interface SessionCompactCommandPayload {
 
 function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionId: string; readonly canvasContext?: CanvasContext }) {
   const runtime = useAgentConversationRuntime({ sessionId, canvasContext });
+  const routerNavigate = useNavigate();
   const contractClient = useMemo(() => createDefaultContractClient(), []);
   const providerClient = useMemo(() => createProviderClient(contractClient), [contractClient]);
   const resourceClient = useMemo(() => createResourceClient(contractClient), [contractClient]);
@@ -605,8 +606,16 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
       onApproveConfirmation={(confirmationId) => void handleConfirmationDecision(confirmationId, "approve")}
       onRejectConfirmation={(confirmationId) => void handleConfirmationDecision(confirmationId, "reject")}
       onEditTitle={(newTitle) => { void sessionClient.updateSession(sessionId, { title: newTitle }); }}
-      onGenerateTitle={() => { void sessionClient.updateSession(sessionId, { title: `会话 ${new Date().toLocaleDateString("zh-CN")}` }); }}
-      onArchive={() => { void sessionClient.updateSession(sessionId, { status: "archived" }); }}
+      onGenerateTitle={() => {
+        // 从当前消息中提取第一条用户消息作为标题（截取前 30 字符）
+        const firstUserMsg = runtime.state.messages.find(m => m.role === "user");
+        const title = firstUserMsg?.content?.slice(0, 30).trim() || `会话 ${new Date().toLocaleDateString("zh-CN")}`;
+        void sessionClient.updateSession(sessionId, { title });
+      }}
+      onArchive={async () => {
+        await sessionClient.updateSession(sessionId, { status: "archived" });
+        routerNavigate({ to: "/next/sessions" });
+      }}
       onAttach={async (files) => {
         for (const file of Array.from(files)) {
           const formData = new FormData();
