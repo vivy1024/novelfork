@@ -47,7 +47,7 @@ function isUnsupported(capability: ContractResourceCapabilities[keyof ContractRe
 function mapCapabilities(kind: WorkbenchResourceKind, capabilities: ContractResourceCapabilities): WorkbenchResourceCapabilities {
   const edit = isCurrent(capabilities.edit);
   const unsupported = kind === "unsupported" || isUnsupported(capabilities.unsupported);
-  const open = kind !== "group" && (isCurrent(capabilities.read) || unsupported);
+  const open = kind !== "group" && kind !== "book" && (isCurrent(capabilities.read) || unsupported);
 
   return {
     open,

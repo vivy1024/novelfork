@@ -157,8 +157,10 @@ export async function loadResourceTreeFromContract(
           ...errors.filter((node) => node.id === "unsupported:candidates.list"),
         ]),
         group("group:drafts", "草稿", drafts?.drafts.map(toDraftNode) ?? []),
-        group("group:story-files", "大纲与设定", storyFiles?.files.map((file) => toStoryFileNode(book.id, file)) ?? []),
-        group("group:truth-files", "真相文件", truthFiles?.files.map((file) => toTruthFileNode(book.id, file)) ?? []),
+        group("group:story-files", "大纲与设定", [
+          ...(storyFiles?.files.map((file) => toStoryFileNode(book.id, file)) ?? []),
+          ...(truthFiles?.files.map((file) => toTruthFileNode(book.id, file)) ?? []),
+        ]),
         group("group:jingwei", "经纬资料", [
           ...(jingweiSections?.sections.map(toJingweiSectionNode) ?? []),
           ...(jingweiEntries?.entries.map(toJingweiEntryNode) ?? []),

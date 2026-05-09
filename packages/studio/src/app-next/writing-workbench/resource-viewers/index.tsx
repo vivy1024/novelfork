@@ -92,8 +92,11 @@ function renderReadonlySummary(node: WorkbenchResourceNode) {
 
 function renderGeneric(node: WorkbenchResourceNode) {
   return (
-    <ViewerShell node={node} label="通用资源">
-      <pre data-testid="raw-resource-node">{JSON.stringify(node, null, 2)}</pre>
+    <ViewerShell node={node} label="资源">
+      <div className="flex flex-col items-center justify-center py-8 text-center">
+        <p className="text-sm text-muted-foreground">此资源类型暂不支持直接编辑</p>
+        <p className="text-xs text-muted-foreground/60 mt-1">类型：{node.kind}</p>
+      </div>
     </ViewerShell>
   );
 }
