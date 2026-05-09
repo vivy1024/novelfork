@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 
 import { AiModelRequiredDialog } from "@/components/ai/AiModelRequiredDialog";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { useAiModelGate } from "@/hooks/use-ai-model-gate";
 import { postApi } from "../../hooks/use-api";
 
@@ -103,22 +105,22 @@ export function QuestionnaireWizard({
         {question.type === "single" && question.options ? (
           <div className="flex flex-wrap gap-2">
             {question.options.map((option) => (
-              <button
+              <Button
                 key={option}
                 type="button"
+                variant={answers[question.id] === option ? "default" : "outline"}
                 onClick={() => updateAnswer(option)}
-                className={`rounded-lg border px-3 py-2 text-sm ${answers[question.id] === option ? "border-primary bg-primary/10 text-primary" : "border-border/60 bg-secondary/40 text-foreground"}`}
               >
                 {option}
-              </button>
+              </Button>
             ))}
           </div>
         ) : (
-          <textarea
+          <Textarea
             id={`question-${question.id}`}
             value={answerToString(answers[question.id])}
             onChange={(event) => updateAnswer(event.target.value)}
-            className="min-h-24 w-full rounded-xl border border-border/50 bg-background px-3 py-2 text-sm text-foreground"
+            className="min-h-24 w-full"
           />
         )}
       </div>
@@ -127,16 +129,16 @@ export function QuestionnaireWizard({
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex gap-2">
-          <button type="button" onClick={() => setStep((value) => Math.max(0, value - 1))} disabled={!canGoBack || loading} className="rounded-lg border border-border/60 px-3 py-2 text-sm disabled:opacity-50">返回</button>
-          <button type="button" onClick={() => void submit("draft")} disabled={loading} className="rounded-lg border border-border/60 px-3 py-2 text-sm disabled:opacity-50">稍后再填</button>
-          <button type="button" onClick={() => void submit("skipped")} disabled={loading} className="rounded-lg border border-border/60 px-3 py-2 text-sm disabled:opacity-50">跳过全部</button>
+          <Button type="button" variant="outline" onClick={() => setStep((value) => Math.max(0, value - 1))} disabled={!canGoBack || loading}>返回</Button>
+          <Button type="button" variant="outline" onClick={() => void submit("draft")} disabled={loading}>稍后再填</Button>
+          <Button type="button" variant="outline" onClick={() => void submit("skipped")} disabled={loading}>跳过全部</Button>
         </div>
         <div className="flex gap-2">
-          <button type="button" onClick={() => void requestSuggestion()} disabled={loading} className="rounded-lg border border-border/60 px-3 py-2 text-sm disabled:opacity-50">AI 建议</button>
+          <Button type="button" variant="outline" onClick={() => void requestSuggestion()} disabled={loading}>AI 建议</Button>
           {isLast ? (
-            <button type="button" onClick={() => void submit("submitted")} disabled={loading} className="rounded-lg bg-primary px-4 py-2 text-sm font-bold text-primary-foreground disabled:opacity-50">提交问卷</button>
+            <Button type="button" onClick={() => void submit("submitted")} disabled={loading}>提交问卷</Button>
           ) : (
-            <button type="button" onClick={() => setStep((value) => Math.min(total - 1, value + 1))} disabled={loading} className="rounded-lg bg-primary px-4 py-2 text-sm font-bold text-primary-foreground disabled:opacity-50">下一题</button>
+            <Button type="button" onClick={() => setStep((value) => Math.min(total - 1, value + 1))} disabled={loading}>下一题</Button>
           )}
         </div>
       </div>

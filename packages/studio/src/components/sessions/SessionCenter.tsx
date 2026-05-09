@@ -10,6 +10,9 @@ import {
 
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
+import { Input } from "../ui/input";
+import { SimpleSelect } from "../ui/simple-select";
+import { Textarea } from "../ui/textarea";
 import { NewSessionDialog, type NewSessionPayload } from "./NewSessionDialog";
 
 export type SessionCenterBindingFilter = "all" | "standalone" | "book" | "chapter";
@@ -266,9 +269,8 @@ export function SessionCenter({ className, initialBinding = "all", initialStatus
         <div className="flex flex-wrap items-start justify-between gap-3">
           <label className="block space-y-1 text-sm">
             <span className="text-xs font-medium text-muted-foreground">搜索会话</span>
-            <input
+            <Input
               aria-label="搜索会话"
-              className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-primary"
               onChange={(event) => setSearch(event.target.value)}
               placeholder="按标题、Agent、模型、书籍或章节搜索"
               value={search}
@@ -277,14 +279,12 @@ export function SessionCenter({ className, initialBinding = "all", initialStatus
           <div className="flex flex-col gap-2">
             <label className="grid gap-1 text-sm">
               <span className="text-xs font-medium text-muted-foreground">排序会话</span>
-              <select
+              <SimpleSelect
                 aria-label="排序会话"
-                className="h-9 rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-primary"
-                onChange={(event) => setSort(event.target.value as SessionCenterSortMode)}
+                onValueChange={(val) => setSort(val as SessionCenterSortMode)}
                 value={sort}
-              >
-                {SORT_MODES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
-              </select>
+                options={SORT_MODES.map((item) => ({ value: item.value, label: item.label }))}
+              />
             </label>
             <div className="flex flex-wrap gap-2" aria-label="会话状态筛选">
               {STATUS_FILTERS.map((item) => (
@@ -378,18 +378,17 @@ export function SessionCenter({ className, initialBinding = "all", initialStatus
           <div className="mt-3 grid gap-3">
             <label className="grid gap-1 text-sm">
               <span className="text-xs font-medium text-muted-foreground">Fork 标题</span>
-              <input
+              <Input
                 aria-label="Fork 标题"
-                className="h-9 rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-primary"
                 onChange={(event) => setForkTitle(event.target.value)}
                 value={forkTitle}
               />
             </label>
             <label className="grid gap-1 text-sm">
               <span className="text-xs font-medium text-muted-foreground">继承说明</span>
-              <textarea
+              <Textarea
                 aria-label="继承说明"
-                className="min-h-20 rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+                className="min-h-20"
                 onChange={(event) => setInheritanceNote(event.target.value)}
                 placeholder="例如：保留伏笔、人物关系或本章目标"
                 value={inheritanceNote}

@@ -1,5 +1,8 @@
 import { useState } from "react";
 import { GitMerge } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+
 import { GitForkDialog } from "./GitForkDialog";
 
 interface GitForkButtonProps {
@@ -11,13 +14,14 @@ export function GitForkButton({ repoPath }: GitForkButtonProps) {
 
   return (
     <>
-      <button
+      <Button
+        variant="ghost"
+        size="icon"
         onClick={() => setIsOpen(true)}
-        className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors"
         title="Git Fork/合并"
       >
         <GitMerge className="w-5 h-5" />
-      </button>
+      </Button>
       {isOpen && <GitForkDialog repoPath={repoPath} onClose={() => setIsOpen(false)} />}
     </>
   );

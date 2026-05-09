@@ -1,5 +1,8 @@
 import { useState, useEffect } from "react";
 import { X, FileText, GitCommit, List } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+
 import { commitGitChanges, fetchGitOverview, stageGitFile } from "../../lib/git-api";
 
 interface GitLogDialogProps {
@@ -71,54 +74,45 @@ export function GitLogDialog({ repoPath, onClose }: GitLogDialogProps) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white dark:bg-gray-900 rounded-lg shadow-xl w-[800px] max-h-[80vh] flex flex-col">
-        <div className="flex items-center justify-between p-4 border-b dark:border-gray-700">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+      <div className="flex max-h-[80vh] w-[800px] flex-col rounded-lg border border-border bg-card shadow-xl">
+        <div className="flex items-center justify-between border-b border-border p-4">
           <h2 className="text-lg font-semibold">Git 日志</h2>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded">
+          <Button variant="ghost" size="icon" onClick={onClose}>
             <X className="w-5 h-5" />
-          </button>
+          </Button>
         </div>
 
-        <div className="flex border-b dark:border-gray-700">
-          <button
+        <div className="flex border-b border-border">
+          <Button
+            variant="ghost"
             onClick={() => setActiveTab("log")}
-            className={`flex items-center gap-2 px-4 py-2 ${
-              activeTab === "log"
-                ? "border-b-2 border-blue-500 text-blue-600 dark:text-blue-400"
-                : "text-gray-600 dark:text-gray-400"
-            }`}
+            className={`rounded-none ${activeTab === "log" ? "border-b-2 border-primary text-primary" : ""}`}
           >
             <GitCommit className="w-4 h-4" />
             Log
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="ghost"
             onClick={() => setActiveTab("diff")}
-            className={`flex items-center gap-2 px-4 py-2 ${
-              activeTab === "diff"
-                ? "border-b-2 border-blue-500 text-blue-600 dark:text-blue-400"
-                : "text-gray-600 dark:text-gray-400"
-            }`}
+            className={`rounded-none ${activeTab === "diff" ? "border-b-2 border-primary text-primary" : ""}`}
           >
             <FileText className="w-4 h-4" />
             Diff
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="ghost"
             onClick={() => setActiveTab("status")}
-            className={`flex items-center gap-2 px-4 py-2 ${
-              activeTab === "status"
-                ? "border-b-2 border-blue-500 text-blue-600 dark:text-blue-400"
-                : "text-gray-600 dark:text-gray-400"
-            }`}
+            className={`rounded-none ${activeTab === "status" ? "border-b-2 border-primary text-primary" : ""}`}
           >
             <List className="w-4 h-4" />
             Status
-          </button>
+          </Button>
         </div>
 
         <div className="flex-1 overflow-auto p-4">
-          {loading && <div className="text-center text-gray-500">加载中...</div>}
-          {error && <div className="text-red-500 text-sm">{error}</div>}
+          {loading && <div className="text-center text-muted-foreground">加载中...</div>}
+          {error && <div className="text-sm text-destructive">{error}</div>}
 
           {!loading && !error && (
             <>
@@ -127,9 +121,9 @@ export function GitLogDialog({ repoPath, onClose }: GitLogDialogProps) {
                   {commits.map((commit) => (
                     <div
                       key={commit.hash}
-                      className="flex items-start gap-3 p-2 hover:bg-gray-50 dark:hover:bg-gray-800 rounded"
+                      className="flex items-start gap-3 rounded p-2 hover:bg-muted"
                     >
-                      <code className="text-xs text-gray-500 font-mono">{commit.hash}</code>
+                      <code className="text-xs font-mono text-muted-foreground">{commit.hash}</code>
                       <span className="text-sm">{commit.message}</span>
                     </div>
                   ))}
@@ -137,7 +131,7 @@ export function GitLogDialog({ repoPath, onClose }: GitLogDialogProps) {
               )}
 
               {activeTab === "diff" && (
-                <pre className="text-xs font-mono whitespace-pre-wrap bg-gray-50 dark:bg-gray-800 p-3 rounded">
+                <pre className="whitespace-pre-wrap rounded bg-muted p-3 text-xs font-mono">
                   {diff}
                 </pre>
               )}
@@ -146,15 +140,17 @@ export function GitLogDialog({ repoPath, onClose }: GitLogDialogProps) {
                 <div className="space-y-2">
                   {status.split("\n").map((line, i) => (
                     <div key={i} className="flex items-center gap-2 text-sm font-mono">
-                      <span className="text-gray-500">{line.substring(0, 2)}</span>
+                      <span className="text-muted-foreground">{line.substring(0, 2)}</span>
                       <span>{line.substring(3)}</span>
                       {line.trim() && (
-                        <button
+                        <Button
+                          variant="link"
+                          size="sm"
                           onClick={() => handleStage(line.substring(3))}
-                          className="ml-auto text-xs text-blue-600 hover:underline"
+                          className="ml-auto"
                         >
                           Stage
-                        </button>
+                        </Button>
                       )}
                     </div>
                   ))}
@@ -164,19 +160,13 @@ export function GitLogDialog({ repoPath, onClose }: GitLogDialogProps) {
           )}
         </div>
 
-        <div className="flex justify-end gap-2 p-4 border-t dark:border-gray-700">
-          <button
-            onClick={handleCommit}
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
-          >
+        <div className="flex justify-end gap-2 border-t border-border p-4">
+          <Button onClick={handleCommit}>
             Commit
-          </button>
-          <button
-            onClick={onClose}
-            className="px-4 py-2 bg-gray-200 dark:bg-gray-700 rounded hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
-          >
+          </Button>
+          <Button variant="outline" onClick={onClose}>
             关闭
-          </button>
+          </Button>
         </div>
       </div>
     </div>

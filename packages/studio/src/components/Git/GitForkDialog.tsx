@@ -1,5 +1,10 @@
 import { useState, useEffect } from "react";
 import { X, GitBranch, GitMerge } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { SimpleSelect } from "@/components/ui/simple-select";
+
 import { createGitWorktree, fetchGitBranches, mergeGitBranch } from "../../lib/git-api";
 
 interface GitForkDialogProps {
@@ -82,49 +87,43 @@ export function GitForkDialog({ repoPath, onClose }: GitForkDialogProps) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white dark:bg-gray-900 rounded-lg shadow-xl w-[500px]">
-        <div className="flex items-center justify-between p-4 border-b dark:border-gray-700">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+      <div className="w-[500px] rounded-lg border border-border bg-card shadow-xl">
+        <div className="flex items-center justify-between border-b border-border p-4">
           <h2 className="text-lg font-semibold">Git Fork/合并</h2>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded">
+          <Button variant="ghost" size="icon" onClick={onClose}>
             <X className="w-5 h-5" />
-          </button>
+          </Button>
         </div>
 
-        <div className="flex border-b dark:border-gray-700">
-          <button
+        <div className="flex border-b border-border">
+          <Button
+            variant="ghost"
             onClick={() => setMode("fork")}
-            className={`flex items-center gap-2 px-4 py-2 flex-1 justify-center ${
-              mode === "fork"
-                ? "border-b-2 border-blue-500 text-blue-600 dark:text-blue-400"
-                : "text-gray-600 dark:text-gray-400"
-            }`}
+            className={`flex-1 rounded-none ${mode === "fork" ? "border-b-2 border-primary text-primary" : ""}`}
           >
             <GitBranch className="w-4 h-4" />
             Fork
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="ghost"
             onClick={() => setMode("merge")}
-            className={`flex items-center gap-2 px-4 py-2 flex-1 justify-center ${
-              mode === "merge"
-                ? "border-b-2 border-blue-500 text-blue-600 dark:text-blue-400"
-                : "text-gray-600 dark:text-gray-400"
-            }`}
+            className={`flex-1 rounded-none ${mode === "merge" ? "border-b-2 border-primary text-primary" : ""}`}
           >
             <GitMerge className="w-4 h-4" />
             Merge
-          </button>
+          </Button>
         </div>
 
-        <div className="p-4 space-y-4">
+        <div className="space-y-4 p-4">
           {error && (
-            <div className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 p-3 rounded text-sm">
+            <div className="rounded border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
               {error}
             </div>
           )}
 
           {success && (
-            <div className="bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 p-3 rounded text-sm">
+            <div className="rounded border border-green-500/30 bg-green-500/10 p-3 text-sm text-green-600">
               {success}
             </div>
           )}
@@ -132,51 +131,41 @@ export function GitForkDialog({ repoPath, onClose }: GitForkDialogProps) {
           {mode === "fork" && (
             <div>
               <label className="block text-sm font-medium mb-2">新分支名</label>
-              <input
+              <Input
                 type="text"
                 value={branchName}
                 onChange={(e) => setBranchName(e.target.value)}
                 placeholder="feature/new-branch"
-                className="w-full px-3 py-2 border dark:border-gray-700 rounded bg-white dark:bg-gray-800"
               />
-              <p className="text-xs text-gray-500 mt-1">将创建新的 Worktree</p>
+              <p className="text-xs text-muted-foreground mt-1">将创建新的 Worktree</p>
             </div>
           )}
 
           {mode === "merge" && (
             <div>
               <label className="block text-sm font-medium mb-2">源分支</label>
-              <select
+              <SimpleSelect
                 value={selectedBranch}
-                onChange={(e) => setSelectedBranch(e.target.value)}
-                className="w-full px-3 py-2 border dark:border-gray-700 rounded bg-white dark:bg-gray-800"
-              >
-                <option value="">选择分支...</option>
-                {branches.map((branch) => (
-                  <option key={branch} value={branch}>
-                    {branch}
-                  </option>
-                ))}
-              </select>
-              <p className="text-xs text-gray-500 mt-1">合并到当前分支</p>
+                onValueChange={setSelectedBranch}
+                options={branches.map((branch) => ({ value: branch, label: branch }))}
+                placeholder="选择分支..."
+                className="w-full"
+              />
+              <p className="text-xs text-muted-foreground mt-1">合并到当前分支</p>
             </div>
           )}
         </div>
 
-        <div className="flex justify-end gap-2 p-4 border-t dark:border-gray-700">
-          <button
+        <div className="flex justify-end gap-2 border-t border-border p-4">
+          <Button
             onClick={mode === "fork" ? handleFork : handleMerge}
             disabled={loading}
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors disabled:opacity-50"
           >
             {loading ? "处理中..." : mode === "fork" ? "创建 Fork" : "合并"}
-          </button>
-          <button
-            onClick={onClose}
-            className="px-4 py-2 bg-gray-200 dark:bg-gray-700 rounded hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
-          >
+          </Button>
+          <Button variant="outline" onClick={onClose}>
             取消
-          </button>
+          </Button>
         </div>
       </div>
     </div>

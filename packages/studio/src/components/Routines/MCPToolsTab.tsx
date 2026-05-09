@@ -4,6 +4,10 @@
 
 import { useState } from "react";
 import { Search, Server, CheckCircle, XCircle } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import type { MCPTool } from "../../types/routines";
 
 interface MCPToolsTabProps {
@@ -63,12 +67,11 @@ export function MCPToolsTab({ mcpTools, onChange }: MCPToolsTabProps) {
         <div className="flex items-center justify-between mb-4">
           <div className="relative flex-1 max-w-md">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <input
-              type="text"
+            <Input
+              className="w-full pl-9"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="搜索 MCP 工具..."
-              className="w-full pl-9 pr-3 py-2 text-sm border rounded-lg bg-background"
             />
           </div>
           <div className="text-sm text-muted-foreground">
@@ -79,7 +82,7 @@ export function MCPToolsTab({ mcpTools, onChange }: MCPToolsTabProps) {
 
       {Object.keys(groupedByServer).length === 0 ? (
         <div className="text-center py-8 text-sm text-muted-foreground">
-          {search ? `未找到匹配“${search}”的 MCP 工具` : "还没有配置 MCP 工具"}
+          {search ? `未找到匹配"${search}"的 MCP 工具` : "还没有配置 MCP 工具"}
         </div>
       ) : (
         <div className="space-y-4">
@@ -116,30 +119,19 @@ export function MCPToolsTab({ mcpTools, onChange }: MCPToolsTabProps) {
                     <div className="flex items-center gap-2">
                       {!tool.approved && (
                         <>
-                          <button
-                            onClick={() => handleApprove(tool.id)}
-                            className="px-2 py-1 text-xs rounded bg-green-600 text-white hover:bg-green-700"
-                          >
+                          <Button size="sm" onClick={() => handleApprove(tool.id)}>
                             通过
-                          </button>
-                          <button
-                            onClick={() => handleDeny(tool.id)}
-                            className="px-2 py-1 text-xs rounded bg-red-600 text-white hover:bg-red-700"
-                          >
+                          </Button>
+                          <Button variant="destructive" size="sm" onClick={() => handleDeny(tool.id)}>
                             拒绝
-                          </button>
+                          </Button>
                         </>
                       )}
                       {tool.approved && (
-                        <label className="relative inline-flex items-center cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={tool.enabled}
-                            onChange={() => handleToggle(tool.id)}
-                            className="sr-only peer"
-                          />
-                          <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-primary rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
-                        </label>
+                        <Switch
+                          checked={tool.enabled}
+                          onCheckedChange={() => handleToggle(tool.id)}
+                        />
                       )}
                     </div>
                   </div>

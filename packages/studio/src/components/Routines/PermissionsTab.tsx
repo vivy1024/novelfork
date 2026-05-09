@@ -5,6 +5,9 @@
 import { useState } from "react";
 import { Plus, Trash2, Shield, AlertTriangle } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { SimpleSelect } from "@/components/ui/simple-select";
 import { ConfirmDialog } from "../ConfirmDialog";
 import type { ToolPermission, PermissionBehavior } from "../../types/routines";
 
@@ -50,6 +53,12 @@ function PermissionSummaryCard({ title, count, description }: { title: string; c
     </div>
   );
 }
+
+const PERMISSION_OPTIONS = [
+  { value: "allow", label: "直接允许" },
+  { value: "ask", label: "需确认" },
+  { value: "deny", label: "拒绝" },
+];
 
 export function PermissionsTab({ permissions, onChange }: PermissionsTabProps) {
   const [newTool, setNewTool] = useState("");
@@ -133,12 +142,11 @@ export function PermissionsTab({ permissions, onChange }: PermissionsTabProps) {
         <div className="grid grid-cols-12 gap-2">
           <div className="col-span-4">
             <label className="text-xs font-medium block mb-1">工具名称</label>
-            <input
-              type="text"
+            <Input
+              className="mt-1 w-full"
               list="common-tools"
               value={newTool}
               onChange={(e) => setNewTool(e.target.value)}
-              className="w-full px-2 py-1 text-sm border rounded bg-background"
               placeholder="Bash, Read, Write..."
             />
             <datalist id="common-tools">
@@ -149,35 +157,27 @@ export function PermissionsTab({ permissions, onChange }: PermissionsTabProps) {
           </div>
           <div className="col-span-3">
             <label className="text-xs font-medium block mb-1">命令匹配（可选）</label>
-            <input
-              type="text"
+            <Input
+              className="mt-1 w-full font-mono"
               value={newPattern}
               onChange={(e) => setNewPattern(e.target.value)}
-              className="w-full px-2 py-1 text-sm border rounded bg-background font-mono"
               placeholder="git *, npm *"
             />
           </div>
           <div className="col-span-3">
             <label className="text-xs font-medium block mb-1">权限策略</label>
-            <select
+            <SimpleSelect
+              className="mt-1 w-full"
               value={newPermission}
-              onChange={(e) => setNewPermission(e.target.value as PermissionBehavior)}
-              className="w-full px-2 py-1 text-sm border rounded bg-background"
-            >
-              <option value="allow">直接允许</option>
-              <option value="ask">需确认</option>
-              <option value="deny">拒绝</option>
-            </select>
+              onValueChange={(val) => setNewPermission(val as PermissionBehavior)}
+              options={PERMISSION_OPTIONS}
+            />
           </div>
           <div className="col-span-2 flex items-end">
-            <button
-              onClick={handleAdd}
-              disabled={!newTool.trim()}
-              className="w-full px-3 py-1 text-sm rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 flex items-center justify-center gap-1"
-            >
+            <Button size="sm" onClick={handleAdd} disabled={!newTool.trim()} className="w-full">
               <Plus size={14} />
               添加
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -209,22 +209,14 @@ export function PermissionsTab({ permissions, onChange }: PermissionsTabProps) {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <select
+              <SimpleSelect
                 value={perm.permission}
-                onChange={(e) => handleUpdate(index, { permission: e.target.value as PermissionBehavior })}
-                className="px-2 py-1 text-xs border rounded bg-background"
-              >
-                <option value="allow">直接允许</option>
-                <option value="ask">需确认</option>
-                <option value="deny">拒绝</option>
-              </select>
-              <button
-                onClick={() => setDeleteTarget(index)}
-                className="p-1 hover:bg-accent rounded text-red-600"
-                aria-label={`删除 ${perm.tool} 的权限规则`}
-              >
+                onValueChange={(val) => handleUpdate(index, { permission: val as PermissionBehavior })}
+                options={PERMISSION_OPTIONS}
+              />
+              <Button variant="destructive" size="sm" onClick={() => setDeleteTarget(index)} aria-label={`删除 ${perm.tool} 的权限规则`}>
                 <Trash2 size={14} />
-              </button>
+              </Button>
             </div>
           </div>
         ))}
