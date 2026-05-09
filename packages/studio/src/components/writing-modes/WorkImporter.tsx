@@ -73,14 +73,16 @@ export function WorkImporter({ onImportComplete }: WorkImporterProps) {
 
       <div className="flex gap-1">
         {(Object.keys(PURPOSE_LABELS) as ImportPurpose[]).map((p) => (
-          <button
+          <Button
             key={p}
-            className={`rounded-lg px-2 py-1 text-xs ${purpose === p ? "bg-primary text-primary-foreground" : "border border-border hover:bg-muted"}`}
+            variant={purpose === p ? "default" : "outline"}
+            size="sm"
+            className="text-xs"
             onClick={() => setPurpose(p)}
             type="button"
           >
             {PURPOSE_LABELS[p]}
-          </button>
+          </Button>
         ))}
       </div>
 

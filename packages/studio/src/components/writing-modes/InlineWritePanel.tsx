@@ -81,19 +81,21 @@ export function InlineWritePanel({ bookId, chapterNumber, selectedText, onAccept
     <div className="space-y-3 rounded-xl border border-border bg-card p-3 text-sm">
       <div className="flex items-center justify-between">
         <span className="font-medium">选段写作</span>
-        <button className="text-xs text-muted-foreground hover:text-foreground" onClick={onDiscard} type="button">关闭</button>
+        <Button variant="ghost" size="sm" className="text-xs text-muted-foreground hover:text-foreground" onClick={onDiscard} type="button">关闭</Button>
       </div>
 
       <div className="flex gap-1">
         {(Object.keys(MODE_LABELS) as InlineWriteMode[]).map((m) => (
-          <button
+          <Button
             key={m}
-            className={`rounded-lg px-2 py-1 text-xs ${mode === m ? "bg-primary text-primary-foreground" : "border border-border hover:bg-muted"}`}
+            variant={mode === m ? "default" : "outline"}
+            size="sm"
+            className="text-xs"
             onClick={() => setMode(m)}
             type="button"
           >
             {MODE_LABELS[m]}
-          </button>
+          </Button>
         ))}
       </div>
 

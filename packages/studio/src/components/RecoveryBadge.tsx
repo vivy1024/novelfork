@@ -18,6 +18,7 @@
  */
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   getRecoveryPresentation,
   getRecoveryToneBadgeClassName,
@@ -121,15 +122,17 @@ export function RecoveryBadge({
           <div className="mt-0.5 leading-5 opacity-90">{presentation.description}</div>
         </div>
         {action && (
-          <button
+          <Button
             type="button"
+            variant="outline"
+            size="sm"
             onClick={action.onClick}
             disabled={action.disabled}
             title={action.title}
-            className="flex-shrink-0 self-center rounded-md border border-border/60 bg-background/70 px-2 py-1 text-[11px] font-medium text-foreground hover:bg-background disabled:cursor-not-allowed disabled:opacity-60"
+            className="flex-shrink-0 self-center text-[11px] font-medium"
           >
             {action.label}
-          </button>
+          </Button>
         )}
       </div>
     );

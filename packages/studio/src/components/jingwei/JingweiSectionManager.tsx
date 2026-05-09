@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { SimpleSelect } from "@/components/ui/simple-select";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
@@ -399,11 +400,16 @@ function SectionForm({ draft, saving, onChange, onAddField, onFieldChange, onCan
         <label className="space-y-1 text-sm font-medium">栏目 key<Input value={draft.key} onChange={(event) => onChange({ key: event.target.value })} disabled={Boolean(draft.id)} /></label>
         <label className="space-y-1 text-sm font-medium">排序<Input type="number" value={draft.order} onChange={(event) => onChange({ order: Number(event.target.value) })} /></label>
         <label className="space-y-1 text-sm font-medium">默认可见性
-          <select value={draft.defaultVisibility} onChange={(event) => onChange({ defaultVisibility: event.target.value as JingweiVisibilityRuleType })} className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm">
-            <option value="tracked">tracked：文本命中后可见</option>
-            <option value="global">global：全局可见</option>
-            <option value="nested">nested：父条目引入</option>
-          </select>
+          <SimpleSelect
+            value={draft.defaultVisibility}
+            onValueChange={(val) => onChange({ defaultVisibility: val as JingweiVisibilityRuleType })}
+            options={[
+              { value: "tracked", label: "tracked：文本命中后可见" },
+              { value: "global", label: "global：全局可见" },
+              { value: "nested", label: "nested：父条目引入" },
+            ]}
+            className="w-full"
+          />
         </label>
         <label className="space-y-1 text-sm font-medium sm:col-span-2">栏目说明<Textarea value={draft.description} onChange={(event) => onChange({ description: event.target.value })} /></label>
       </div>
@@ -422,9 +428,13 @@ function SectionForm({ draft, saving, onChange, onAddField, onFieldChange, onCan
             <label className="space-y-1 text-sm font-medium">字段标签<Input value={field.label} onChange={(event) => onFieldChange(index, { label: event.target.value })} /></label>
             <label className="space-y-1 text-sm font-medium">字段 key<Input value={field.key} onChange={(event) => onFieldChange(index, { key: event.target.value })} /></label>
             <label className="space-y-1 text-sm font-medium">字段类型
-              <select aria-label="字段类型" value={field.type} onChange={(event) => onFieldChange(index, { type: event.target.value as JingweiFieldType })} className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm">
-                {FIELD_TYPES.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
-              </select>
+              <SimpleSelect
+                aria-label="字段类型"
+                value={field.type}
+                onValueChange={(val) => onFieldChange(index, { type: val as JingweiFieldType })}
+                options={FIELD_TYPES}
+                className="w-full"
+              />
             </label>
             <ToggleRow label="字段必填" checked={field.required} onChange={(required) => onFieldChange(index, { required })} />
           </div>
