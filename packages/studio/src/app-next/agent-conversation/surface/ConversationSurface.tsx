@@ -269,7 +269,7 @@ export function ConversationSurface({
       )}
 
       {/* ── Message stream ── */}
-      <div className="flex-1 min-h-0 px-4 py-3 overflow-hidden">
+      <div className="flex flex-col flex-1 min-h-0 px-4 py-3 overflow-hidden">
         {messages.length === 0 ? (
           <div className="flex h-full items-center justify-center">
             <div className="text-center text-sm text-muted-foreground">
