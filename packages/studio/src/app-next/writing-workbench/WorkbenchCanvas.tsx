@@ -6,6 +6,7 @@ import { Save, FileText, AlertCircle, Loader2 } from "lucide-react";
 import { resourceNeedsDetailHydration } from "./ResourceDetailLoader";
 import { ResourceViewer } from "./resource-viewers";
 import { CandidateActionsBar, type CandidateAcceptAction } from "./CandidateActionsBar";
+import { CockpitOverview } from "./CockpitOverview";
 import type { CanvasContext, OpenResourceTab, WorkspaceResourceRef, WorkspaceResourceViewKind } from "../../shared/agent-native-workspace";
 import type { WorkbenchResourceKind, WorkbenchResourceNode } from "./useWorkbenchResources";
 
@@ -95,12 +96,13 @@ export interface CandidateActionHandlers {
 
 export interface WorkbenchCanvasProps {
   node: WorkbenchResourceNode | null;
+  nodes?: readonly WorkbenchResourceNode[];
   onSave: (node: WorkbenchResourceNode, content: string) => Promise<void> | void;
   onCanvasContextChange?: (context: WorkbenchCanvasContext) => void;
   candidateActions?: CandidateActionHandlers;
 }
 
-export function WorkbenchCanvas({ node, onSave, onCanvasContextChange = () => undefined, candidateActions }: WorkbenchCanvasProps) {
+export function WorkbenchCanvas({ node, nodes = [], onSave, onCanvasContextChange = () => undefined, candidateActions }: WorkbenchCanvasProps) {
   const [content, setContent] = useState(node?.content ?? "");
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -126,12 +128,8 @@ export function WorkbenchCanvas({ node, onSave, onCanvasContextChange = () => un
 
   if (!node) {
     return (
-      <div className="flex h-full items-center justify-center p-8">
-        <div className="text-center space-y-3">
-          <FileText className="size-12 text-muted-foreground/30 mx-auto" />
-          <p className="text-sm text-muted-foreground">选择左侧资源开始写作</p>
-          <p className="text-xs text-muted-foreground/60">点击章节、设定或大纲文件进行编辑</p>
-        </div>
+      <div className="h-full min-h-0 overflow-y-auto">
+        <CockpitOverview book={null} nodes={nodes} />
       </div>
     );
   }

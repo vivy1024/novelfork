@@ -1,4 +1,5 @@
 export * from "./CandidateActionsBar";
+export * from "./CockpitOverview";
 export * from "./ResourceDetailLoader";
 export * from "./ResourceSaveController";
 export * from "./WorkbenchCanvas";
