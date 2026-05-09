@@ -313,6 +313,8 @@ function normalizeOpenAiModel(value: unknown): RuntimeModelInput | null {
     enabled: true,
     source: "detected",
     lastTestStatus: "untested",
+    supportsFunctionCalling: true,
+    supportsStreaming: true,
   };
 }
 
