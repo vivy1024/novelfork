@@ -1,5 +1,6 @@
 export * from "./CandidateActionsBar";
 export * from "./CockpitOverview";
+export * from "./JingweiEntryEditor";
 export * from "./ResourceDetailLoader";
 export * from "./ResourceSaveController";
 export * from "./WorkbenchCanvas";
