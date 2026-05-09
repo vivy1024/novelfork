@@ -374,9 +374,11 @@ function toConversationConfirmation(
   options: { readonly busy: boolean; readonly error: string | null },
 ): ConversationConfirmation {
   const details = [confirmation.summary, `目标：${confirmation.target}`, `风险：${confirmation.risk}`].filter((value): value is string => typeof value === "string" && value.length > 0);
+  const questions = extractQuestionsFromConfirmation(confirmation);
   return {
     id: confirmation.id,
     title: confirmation.toolName,
+    toolName: confirmation.toolName,
     summary: details.join(" / "),
     target: confirmation.target,
     targetResources: confirmation.targetResources,
@@ -388,8 +390,23 @@ function toConversationConfirmation(
     operations: confirmation.operations,
     operation: confirmation.summary,
     busy: options.busy,
+    ...(questions.length > 0 ? { questions } : {}),
     ...(options.error ? { error: options.error } : {}),
   };
+}
+
+function extractQuestionsFromConfirmation(confirmation: ToolConfirmationRequest): ConversationConfirmation["questions"] & readonly unknown[] {
+  const diff = confirmation.diff as Record<string, unknown> | undefined;
+  if (!diff || !Array.isArray(diff.questions)) return [];
+  return (diff.questions as readonly Record<string, unknown>[]).map((q, i) => ({
+    id: String(q.id ?? `q-${i}`),
+    prompt: String(q.prompt ?? q.question ?? ""),
+    type: (q.type as "text" | "single" | "multi" | "ranged-number" | "ai-suggest") ?? "text",
+    ...(Array.isArray(q.options) ? { options: q.options.map(String) } : {}),
+    ...(typeof q.reason === "string" ? { reason: q.reason } : {}),
+    ...(typeof q.required === "boolean" ? { required: q.required } : {}),
+    ...(typeof q.aiSuggestion === "string" ? { aiSuggestion: q.aiSuggestion } : {}),
+  }));
 }
 
 interface SessionCompactCommandPayload {
@@ -533,7 +550,7 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
     setConfirmationError(contractErrorMessage(result, "工具确认状态刷新失败"));
   }, [sessionClient, sessionId]);
 
-  const handleConfirmationDecision = useCallback(async (confirmationId: string, decision: "approve" | "reject") => {
+  const handleConfirmationDecision = useCallback(async (confirmationId: string, decision: "approve" | "reject", answers?: Record<string, unknown>) => {
     if (confirmingIdRef.current) return;
     const confirmation = pendingConfirmations.find((candidate) => candidate.id === confirmationId);
     if (!confirmation) {
@@ -549,6 +566,7 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
         decision,
         confirmationId,
         reason: null,
+        ...(answers ? { answers } : {}),
       });
       if (!result.ok) {
         setConfirmationError(contractErrorMessage(result, "工具确认失败"));
@@ -603,7 +621,7 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
       onAbortSession={runtime.abort}
       onUpdateSessionConfig={updateSessionConfig}
       onCompactSession={compactSessionForCommand}
-      onApproveConfirmation={(confirmationId) => void handleConfirmationDecision(confirmationId, "approve")}
+      onApproveConfirmation={(confirmationId, answers) => void handleConfirmationDecision(confirmationId, "approve", answers)}
       onRejectConfirmation={(confirmationId) => void handleConfirmationDecision(confirmationId, "reject")}
       onEditTitle={(newTitle) => { void sessionClient.updateSession(sessionId, { title: newTitle }); }}
       onGenerateTitle={() => {

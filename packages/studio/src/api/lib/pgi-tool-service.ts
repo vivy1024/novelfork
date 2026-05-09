@@ -77,6 +77,15 @@ export function createPGIToolService(options: PGIToolServiceOptions = {}): PGITo
           questions: cards,
           heuristicsTriggered: result.heuristicsTriggered,
         },
+        confirmation: {
+          id: `pgi:${bookId}:${chapterNumber}:${Date.now()}`,
+          toolName: "pgi.generate_questions",
+          target: `book:${bookId}:chapter:${chapterNumber}`,
+          risk: "confirmed-write" as const,
+          summary: `请回答以下 ${cards.length} 个生成前追问，帮助 AI 更好地理解你的创作意图。`,
+          options: ["approve", "reject"] as const,
+          diff: { questions: cards },
+        },
       };
     },
     recordAnswers: async (input) => {
