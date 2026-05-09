@@ -4,12 +4,13 @@ import { ProfilePanel } from "./panels/ProfilePanel";
 import { AppearancePanel } from "./panels/AppearancePanel";
 import { MonitoringPanel } from "./panels/MonitoringPanel";
 import { DataPanel } from "./panels/DataPanel";
-import { RuntimeStatusPanel } from "./panels/RuntimeStatusPanel";
 import { TerminalSettingsPanel } from "./panels/TerminalSettingsPanel";
 import { NotificationSettingsPanel } from "./panels/NotificationSettingsPanel";
 import { UsagePanel } from "./panels/UsagePanel";
 import { RuntimeEnvironmentPanel } from "./panels/RuntimeEnvironmentPanel";
 import { AgentSettingsPanel } from "./panels/AgentSettingsPanel";
+import { StorageDiagnosticsPanel } from "./panels/StorageDiagnosticsPanel";
+import { AboutPanel } from "./panels/AboutPanel";
 import { InlineError } from "../components/feedback";
 import { ProjectConfigSection } from "./ProjectConfigSection";
 import { Row } from "../components/shared";
@@ -44,7 +45,7 @@ export function SettingsSectionContent({ sectionId, onSectionChange }: SettingsS
     case "server":
       return <ServerSection />;
     case "storage":
-      return <RuntimeStatusPanel />;
+      return <StorageDiagnosticsPanel />;
     case "data":
       return <DataPanel />;
     case "usage":
@@ -58,7 +59,7 @@ export function SettingsSectionContent({ sectionId, onSectionChange }: SettingsS
     case "config":
       return <ProjectConfigSection />;
     case "about":
-      return <AboutSection />;
+      return <AboutPanel />;
     default:
       return <ModelsSection onSectionChange={onSectionChange} />;
   }
@@ -177,35 +178,3 @@ function HistorySection() {
   );
 }
 
-/* ── About ── */
-
-interface ReleaseSnapshot {
-  version?: string;
-  commit?: string;
-  platform?: string;
-  builtAt?: string;
-  bunVersion?: string;
-}
-
-function AboutSection() {
-  const { data, loading, error } = useApi<ReleaseSnapshot>("/settings/release");
-  return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold mb-2 text-foreground">关于</h2>
-        <p className="text-sm text-muted-foreground">版本与构建信息。</p>
-      </div>
-      {loading && <p className="text-muted-foreground">加载中...</p>}
-      {error && <InlineError message={error} />}
-      {data && (
-        <div className="space-y-3 rounded-lg border border-border p-4">
-          <Row label="版本" value={data.version} />
-          <Row label="Commit" value={data.commit?.slice(0, 7)} />
-          <Row label="平台" value={data.platform} />
-          <Row label="Bun" value={data.bunVersion} />
-          <Row label="构建时间" value={data.builtAt} />
-        </div>
-      )}
-    </div>
-  );
-}

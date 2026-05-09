@@ -100,8 +100,11 @@ import {
   createTerminalsRouter,
   createRuntimeStatusRouter,
   createUsageRouter,
+  createShareRouter,
+  createUploadRouter,
   setupAdminWebSocket,
   setupMonitorWebSocket,
+  createStorageDiagnosticsRouter,
 } from "./routes/index.js";
 import { registerBuiltinPresets } from "@vivy1024/novelfork-core";
 import type { RouterContext } from "./routes/index.js";
@@ -322,6 +325,9 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     // Settings management
     app.route("/api/settings", createSettingsRouter());
 
+    // Storage diagnostics (size, vacuum, cleanup)
+    app.route("/api/storage", createStorageDiagnosticsRouter());
+
     // First-run onboarding and getting-started state
     app.route("/api/onboarding", createOnboardingRouter(ctx));
 
@@ -427,6 +433,12 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
 
     // Usage aggregation
     app.route("/api/usage", createUsageRouter());
+
+    // File sharing — temporary download links
+    app.route("/api/share", createShareRouter());
+
+    // File upload — attachment uploads
+    app.route("/api/upload", createUploadRouter());
 
     // Monitor visualization
     app.route("", createMonitorRouter(ctx));

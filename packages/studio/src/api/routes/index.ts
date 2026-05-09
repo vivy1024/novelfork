@@ -42,4 +42,7 @@ export { createProxyRouter } from "./proxy.js";
 export { createAggregationsRouter } from "./aggregations.js";
 export { createRuntimeStatusRouter } from "./runtime-status.js";
 export { createUsageRouter } from "./usage.js";
+export { createShareRouter } from "./share.js";
+export { createUploadRouter } from "./upload.js";
+export { createStorageDiagnosticsRouter } from "./storage-diagnostics.js";
 export type { RouterContext } from "./context.js";
