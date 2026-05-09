@@ -12,7 +12,6 @@ import { AgentSettingsPanel } from "./panels/AgentSettingsPanel";
 import { StorageDiagnosticsPanel } from "./panels/StorageDiagnosticsPanel";
 import { AboutPanel } from "./panels/AboutPanel";
 import { InlineError } from "../components/feedback";
-import { ProjectConfigSection } from "./ProjectConfigSection";
 import { Row } from "../components/shared";
 import { Button } from "@/components/ui/button";
 import {
@@ -55,9 +54,8 @@ export function SettingsSectionContent({ sectionId, onSectionChange }: SettingsS
     case "resources":
       return <MonitoringPanel />;
     case "history":
-      return <HistorySection />;
     case "config":
-      return <ProjectConfigSection />;
+      return <ModelsSection onSectionChange={onSectionChange} />;
     case "about":
       return <AboutPanel />;
     default:
@@ -156,25 +154,5 @@ function ServerSection() {
   );
 }
 
-/* ── History ── */
 
-function HistorySection() {
-  const { data, loading, error } = useApi<Record<string, unknown>>("/settings/metrics");
-  return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold mb-2 text-foreground">使用历史</h2>
-        <p className="text-sm text-muted-foreground">AI 请求历史与 token 用量。</p>
-      </div>
-      {loading && <p className="text-muted-foreground">加载中...</p>}
-      {error && <InlineError message={error} />}
-      {data && (
-        <div className="space-y-3 rounded-lg border border-border p-4">
-          <Row label="请求历史" value="已加载" />
-          <Row label="AI 请求观测" value="—" />
-        </div>
-      )}
-    </div>
-  );
-}
 

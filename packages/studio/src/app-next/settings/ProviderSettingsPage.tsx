@@ -286,23 +286,7 @@ function ModelInventorySection({ groups }: { readonly groups: readonly GroupedMo
   );
 }
 
-function RuntimePolicySection({ callableModelCount }: { readonly callableModelCount: number }) {
-  const modelStatus = callableModelCount > 0 ? "current" : "degraded";
-  return (
-    <section className="space-y-3">
-      <div>
-        <h3 className="text-base font-semibold">运行策略</h3>
-        <p className="text-xs text-muted-foreground">当前运行时使用真实模型显式选择、能力校验、权限模式和工具支持状态，不自动切换模型。</p>
-      </div>
-      <div className="grid gap-3 md:grid-cols-4">
-        <ControlCard label="显式模型选择" value={modelStatus} detail={`callable models：${callableModelCount}`} />
-        <ControlCard label="能力校验" value="partial" detail="仅展示真实 inventory 能力；unknown 不补造" />
-        <ControlCard label="权限模式" value="current" detail="read / plan / edit / allow" />
-        <ControlCard label="上下文窗口" value="current" detail="模型库存维护；缺失显示 unknown" />
-      </div>
-    </section>
-  );
-}
+
 
 export function ProviderSettingsPage({ client = defaultClient }: ProviderSettingsPageProps) {
   const [providers, setProviders] = useState<ManagedProvider[]>([]);
@@ -399,8 +383,6 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
     if (showIssuesOnly && !providerHasIssue(providerStatuses[provider.id], isFixture)) return false;
     return true;
   }), [fixtureProviderIds, hideTestFixtures, providerQuery, providerStatuses, providers, showIssuesOnly]);
-  const localCallableModelCount = useMemo(() => providers.reduce((total, provider) => total + providerStatuses[provider.id].callableModelCount, 0), [providerStatuses, providers]);
-  const callableModelCount = providerRuntimeSummary?.callableModelCount ?? localCallableModelCount;
 
   const selectedPlatform = platformIntegrations.find((integration) => integration.id === selectedPlatformId) ?? null;
   const selectedApiProvider = providers.find((provider) => provider.id === selectedApiProviderId) ?? null;
@@ -613,7 +595,6 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
       />
 
       <ModelInventorySection groups={groupedModels} />
-      <RuntimePolicySection callableModelCount={callableModelCount} />
     </section>
   );
 }
