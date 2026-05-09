@@ -1,23 +1,23 @@
 # NovelFork
 
-> AI 辅助中文网文创作工作台 — 本地优先、Agent 驱动、平台合规
+> AI 辅助中文网文创作工作台 — 本地优先、Agent 驱动、引导式生成
 
-**Bun + React 19 + Hono + SQLite + 多 Agent 写作管线**
+**TypeScript + Bun + React 19 + Hono + SQLite**
 
 ---
 
 ## 项目简介
 
 NovelFork 是一个专注中文网文创作的本地 AI 工作台。作者可以：
-- 在浏览器中打开工作台，管理章节和世界设定
-- 使用 AI 辅助续写、扩写、对话生成
-- 让 Agent 自动探索→规划→写作→审校
-- 检测 AI 痕迹、敏感词、设定冲突
-- 导出 Markdown/TXT 发布到起点/晋江等平台
 
-**完全本地运行，数据不出本机。** `pnpm --dir packages/studio compile` 生成单可执行文件与版本化 release 产物。
+- 在浏览器中管理作品、章节和世界设定（故事经纬）
+- 使用 AI 辅助续写、扩写、对话生成、多版本对比
+- 通过引导式生成（PGI 追问 + Guided Plan）让 AI 理解你的创作意图
+- 让 Agent 自动探索→规划→写作→审校，每步可见可控
+- 检测 AI 痕迹、连续性矛盾、文风漂移
+- 导出 Markdown/TXT 发布到起点/番茄等平台
 
-> **当前主线**：`claude-codex-novel-agent-v1` 已取代旧 v0.1.0 release 修补作为 active 主线。v0.1.0 发布继续暂停，GitHub Release 未创建，`v0.1.0` tag 已撤回；`v0-1-0-release-readiness` Task21-23 不再继续推进，必须等待新主线重新定义 Agent 产品化与小说创作端到端完成标准。当前 Claude Code CLI / Codex CLI / 小说 Agent 能力必须按 `current` / `partial` / `not-wired` / `planned` / `unsupported` / `non-goal` / `reference-only` 标注，不能用 archive checkbox、API、组件或 unit test 代替 Studio/CLI/headless 端到端证据。
+**完全本地运行，数据不出本机。**
 
 ---
 
@@ -33,12 +33,76 @@ bun install
 cd packages/studio
 bun run dev          # http://localhost:4567
 
-# 测试
-pnpm --dir packages/studio exec vitest run src/app-next  # Task16 app-next 回归：47 files / 271 tests
-
 # 编译
-pnpm --dir packages/studio compile          # → dist/novelfork-v0.1.0-windows-x64.exe + SHA256 (~115MB)
+pnpm --dir packages/studio compile   # → dist/novelfork-v0.1.0-windows-x64.exe
 ```
+
+首次打开会显示欢迎引导，建议先配置 AI 供应商（设置 → AI 供应商）。未配置模型时仍可创建作品、编辑章节、整理经纬。
+
+---
+
+## 核心功能
+
+### 写作工作台（三栏布局）
+
+```
+┌──────────────┬──────────────────────────┬────────────────┐
+│ 左侧资源树     │ 中间画布                  │ 右侧叙述者会话    │
+│ 章节/候选稿/   │ 编辑器 / 驾驶舱 / 经纬     │ 对话 / 工具链     │
+│ 草稿/经纬/叙事线│                          │ 模型 / 权限       │
+└──────────────┴──────────────────────────┴────────────────┘
+```
+
+### AI 写作
+
+| 功能 | 说明 |
+|------|------|
+| 写作模式 | 续写、扩写、过渡、对话生成、变体对比、大纲分支 |
+| AI 动作 | 写下一章、生成草稿、连续性审校、修订、重写、去 AI 味 |
+| 选区变换 | 选中文本 → 润色/精简/扩写/审查 |
+| 行内续写 | Tab 补全，30-80 字流式续写 |
+| 智能大纲 | 生成/检查/建议下一章方向 |
+
+### 引导式生成（PGI + Guided Plan）
+
+写新章前，AI 会：
+1. 生成 2-5 个追问（"主角这章的情绪基调？""玉佩伏笔要回收吗？"）
+2. 用户回答后生成写作计划
+3. 用户批准计划后才生成候选稿
+4. 候选稿进入候选区，用户确认后才合并到正式章节
+
+### 故事经纬
+
+- 分区管理（人物/地点/势力/物品/伏笔/世界规则）
+- 条目编辑（Markdown + 标签 + 关联章节）
+- 可见性规则（global/nested/tracked）
+- AI 上下文自动注入
+- 经纬模板（空白/基础/增强/按题材推荐）
+
+### Agent 写作管线
+
+- 5 种 Agent 角色：Writer / Planner / Auditor / Architect / Explorer
+- 多 Agent 编排：Explorer → Planner → Writer → Auditor
+- 可见执行链（WorkflowProgressCard）
+- 确认门：写入正式资源前必须用户批准
+
+### 写作工具
+
+章末钩子生成 · 段落节奏分析 · 对话比例分析 · 全书健康仪表盘 · 矛盾地图 · 角色弧线 · 文风检测
+
+### 叙述者对话
+
+- 模型切换（按 provider 分组）、推理强度、权限模式
+- Context Ring（上下文使用率可视化）
+- Slash 命令：`/help` `/model` `/permission` `/compact` `/fork`
+- 消息右键菜单：回退/分叉/压缩/编辑重生成
+- 文件修改追踪、会话恢复
+
+### 设置与套路
+
+- AI 供应商配置（API Key / 平台集成）
+- 套路系统：命令/工具/权限/技能/子代理/提示词/MCP
+- 全局配置 vs 项目配置，新建会话时自动继承
 
 ---
 
@@ -50,81 +114,52 @@ novelfork/
 │   ├── core/          # 核心写作引擎 + Agent 管线
 │   ├── studio/        # Web 工作台 (React 19 + Hono + Vite)
 │   └── cli/           # CLI 工具 (novelfork 命令)
-├── docs/              # 文档中心 (产品/架构/API/指南)
-├── .kiro/
-│   ├── specs/         # 开发规格（当前 active：claude-codex-novel-agent-v1）
-│   └── steering/      # 项目原则与约束
-├── claude/            # Claude Code 源码参考
+├── docs/
+│   ├── 02-用户指南/    # 安装、使用、配置
+│   ├── 03-产品与流程/  # 创作流程、资源模型、候选稿
+│   ├── 04-架构与设计/  # 系统架构、工作台、Agent 管线
+│   └── learning/      # 学习中心（9 篇功能教学）
+├── .kiro/specs/       # 开发规格
 └── scripts/           # 工具脚本
 ```
-
-| Package | 技术栈 | 说明 |
-|---------|--------|------|
-| `core` | TypeScript, 13 Agent 类, 18 内置工具 | 写作引擎，可独立使用 |
-| `studio` | React 19, Hono, Vite, SQLite, PWA | 完整 Web 工作台 |
-| `cli` | TypeScript, Commander | CLI 命令入口 |
-
----
-
-## 核心能力
-
-### Agent-native 创作工作台
-- 当前重建主线：Backend Contract、Frontend Refoundation、Frontend Live Wiring 与 Legacy Source Retirement 已完成验收收口：`/next` 使用 Agent Shell 路由壳，Conversation runtime、单栏 surface、模型/权限状态栏动作、Tool Result Renderer Registry、session tool 确认门、Workbench 资源树、canvas/viewer/保存、dirty canvasContext、写作动作跳转以及 search/routines/settings 次级页面均已接入 live route；旧三栏 WorkspacePage、旧 ChatWindow、未挂载 route 残留、轻量 `/api/chat` 与 exact `POST /api/agent` 已退役；`conversation-parity-v1` 仅完成 NovelFork 自身会话能力的一阶段收口，不等同 Claude Code CLI / Codex CLI 完整对标；当前已被用户反馈列为 v0.1.0 发布阻塞重审项，已落地内容包括会话 lifecycle、Resume/Fork UI、Slash Command Registry、`/compact`、Memory 写入边界、细粒度工具权限策略、Headless stream-json API、CLI 会话命令、checkpoint/rewind 与 usage envelope，可在 Composer 中使用 `/help`、`/status`、`/model`、`/permission`、`/fork`、`/resume`、`/compact`，会话中心显示 memory 只读/未接入状态，偏好/项目事实/临时剧情草稿写入边界可审计，`sessionConfig.toolPolicy` 支持 allow/deny/ask 并在工具执行前合并 permissionMode、resource risk 与 dirty canvasContext，`POST /api/sessions/headless-chat` 支持 text/stream-json input、NDJSON output、ephemeral/no-session-persistence、pending permission_request 与 max turns/budget stop result，`novelfork chat`/`novelfork exec` 可从 CLI 调用 headless chat 并映射 success/error/pending exit code，资源 checkpoint service 会在正式章节、Truth/story 与 narrative apply 写入前保存 `.novelfork/checkpoints` 快照，Rewind preview/apply 支持按 checkpoint 返回 diff/hash/risk、确认门恢复与 audit，Headless/API result envelope 输出 duration/stop_reason/usage/cost unknown/permission denials；后端整理 `backend-core-refactor-v1` 已完成验收收口，已建立合同守护清单、补齐核心 contract regression tests、完成 Task 3 统一错误与状态 helper，完成 Task 4 storage.ts 只读 service 拆分，完成 Task 5 storage.ts 非破坏写入 service 拆分，完成 Task 6 destructive service 拆分，完成 Task 7 session runtime transport/recovery 内聚拆分，完成 Task 8 Provider/runtime store 边界收敛、Task 9 legacy route 依赖调查与 deprecated 标记，并完成 Task 10 文档与验收收口，`backend-core-refactor-v1` 已 10/10 完成
-- `claude-codex-novel-agent-v1` 已完成统一 command registry、共享 runtime command executor、permission/tool policy resolver、确认门/checkpoint envelope 与 Codex sandbox/approval 状态模型：Studio slash 建议/执行、Routines 命令清单、CLI help 与 headless slash prompt 读取同一 core registry，并通过 command_started / command_completed / command_error 事件进入 runtime/stream-json；provider-visible tool schema、Agent turn、tool executor 与 headless/CLI 路径共享 `resolveSessionToolPolicy()`，pending confirmation 共享 `normalizeToolConfirmationRequest()` 的 targetResources/source/checkpoint/operations；Codex sandbox/approval/review/image 使用 `getCodexRuntimeCapabilityStatuses()` 同源标记 planned/partial/reference-only；仍属于 `partial` Agent runtime 底座，后续继续接真实 tools/MCP/agents handler 与 `/novel:*` 工作流。
-- 已有后端能力保留：叙述者会话、WebSocket、工具调用、确认门、权限模式、模型池、候选稿/草稿/经纬/叙事线等真实合同
-- 新前端目标：左侧一级导航、单栏 Agent Conversation、独立 Writing Workbench；所有按钮、资源节点和写作动作必须来自 `packages/studio/src/app-next/backend-contract/` 中登记的真实后端合同
-- 「写下一章」最小链路：驾驶舱快照 → PGI 生成前追问 → GuidedGenerationPlan → 用户批准 → 候选稿生成
-- AI 输出默认进入候选区 / 草稿区；正式正文覆盖必须由用户确认
-
-### 故事经纬（Bible/Jingwei）
-- 人物/事件/设定/章节摘要 CRUD（SQLite 持久化）
-- 三种可见性规则（tracked/global/nested）
-- 时间线纪律（防剧透）
-- 经纬模板应用
-- 问卷系统 + AI 建议
-
-### Agent 系统
-- 5 种 Agent 角色：Writer / Planner / Auditor / Architect / Explorer
-- 编排函数：Explorer → Planner → Writer → Auditor 串行
-- 40 个工具（18 Core 写作 + 22 NarraFork 通用）
-- agentId → 专属 system prompt 自动选择
-- 上下文自动注入
-
-### 工具化驾驶舱与叙事线
-- 驾驶舱已降级为 `cockpit.*` 工具结果卡片和画布组件，不再是右侧主 Tab
-- `cockpit.get_snapshot` 汇总日更进度、当前焦点、最近章节摘要、伏笔、风险和模型状态
-- Narrative Line v1 可读取章节、经纬、伏笔、冲突和人物弧光，并在确认后写入叙事线变更
-- 模型 / provider 不支持工具调用时返回 `unsupported-tools`，降级到只读解释或 prompt-preview，不伪造执行成功
-
-### 合规与预设
-- 敏感词扫描（起点/晋江/番茄/七猫/通用）
-- AI 痕迹检测（12 规则本地 + 朱雀 API）
-- 发布就绪检查
-- 6 流派、5 文风、6 基底、8 逻辑规则预设
 
 ---
 
 ## 文档
 
-| 文档 | 说明 |
+| 入口 | 说明 |
 |------|------|
-| [docs/](docs/) | 文档中心入口 |
-| [docs/01-当前状态/](docs/01-当前状态/) | 项目当前状态与能力矩阵 |
-| [docs/02-用户指南/](docs/02-用户指南/) | 安装、启动、使用指南 |
-| [docs/03-产品与流程/](docs/03-产品与流程/) | 创作流程、资源管理器模型 |
-| [docs/04-架构与设计/](docs/04-架构与设计/) | 系统架构、工作台架构、Agent 管线 |
+| [docs/learning/](docs/learning/) | **学习中心**（推荐新用户从这里开始） |
+| [docs/02-用户指南/](docs/02-用户指南/) | 安装、小说管理、AI 写作、对话、设置 |
+| [docs/03-产品与流程/](docs/03-产品与流程/) | 创作流程、资源管理器、候选稿、经纬 |
+| [docs/04-架构与设计/](docs/04-架构与设计/) | 系统架构、工作台、Agent 管线、驾驶舱 |
 | [docs/06-API与数据契约/](docs/06-API与数据契约/) | API 总览、数据表 |
-| [docs/90-参考资料/](docs/90-参考资料/) | AI 写作工具对比、NarraFork 参考 |
+
+Studio 内可通过 `/next/learn` 页面直接访问学习中心。
 
 ---
 
-## 开发原则
+## 开发
 
-1. 所有新功能必须先写 spec（requirements → design → tasks）
-2. AI 输出只进候选区，用户确认后才影响正文
-3. app-next 访问后端必须走 Backend Contract client / adapter，不在组件内散写未登记 API
-4. 不恢复 mock/fake/noop 假成功
-5. 未接入能力标记 unsupported，不伪造
+```bash
+# 类型检查
+pnpm --dir packages/studio typecheck
+
+# 测试
+cd packages/studio && npx vitest run
+
+# 编译单文件
+pnpm --dir packages/studio compile
+```
+
+### 开发原则
+
+1. AI 输出只进候选区，用户确认后才影响正文
+2. 新功能先写 spec（requirements → design → tasks）
+3. 前端访问后端走 Backend Contract，不散写 API
+4. 未接入能力标记 unsupported，不伪造
+
+---
 
 ## License
 
