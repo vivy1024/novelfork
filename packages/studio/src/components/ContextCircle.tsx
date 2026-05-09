@@ -59,7 +59,8 @@ export function ContextCircle({ bookId, onCompress, onTruncate, onClear }: Conte
 
   return (
     <div className="relative">
-      <button
+      <Button
+        variant="ghost"
         onClick={() => setShowMenu(!showMenu)}
         className="relative flex items-center justify-center w-24 h-24 rounded-full hover:bg-secondary/50 transition-colors"
         title="上下文管理"
@@ -109,7 +110,7 @@ export function ContextCircle({ bookId, onCompress, onTruncate, onClear }: Conte
             <div className="w-4 h-4 border-2 border-primary/20 border-t-primary rounded-full animate-spin" />
           </div>
         )}
-      </button>
+      </Button>
 
       {/* Context menu */}
       {showMenu && (

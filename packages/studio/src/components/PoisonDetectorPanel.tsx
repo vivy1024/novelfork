@@ -195,9 +195,10 @@ export function PoisonDetectorPanel({
                 key={poison.rule}
                 className="border-b border-border/30 hover:bg-secondary/30 transition-colors"
               >
-                <button
+                <Button
+                  variant="ghost"
                   onClick={() => toggleExpanded(poison.rule)}
-                  className="w-full px-4 py-3 flex items-start gap-3 text-left"
+                  className="w-full px-4 py-3 flex items-start gap-3 text-left h-auto"
                 >
                   <PoisonIcon severity={poison.severity} />
 
@@ -219,7 +220,7 @@ export function PoisonDetectorPanel({
                       {poison.description}
                     </p>
                   </div>
-                </button>
+                </Button>
 
                 {/* Suggestion (expanded) */}
                 {isExpanded && (

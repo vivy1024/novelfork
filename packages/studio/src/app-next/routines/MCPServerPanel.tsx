@@ -16,6 +16,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SimpleSelect } from "@/components/ui/simple-select";
+import { Textarea } from "@/components/ui/textarea";
 import { postApi, putApi, useApi } from "../../hooks/use-api";
 import { describeToolAccessReason, type ToolAccessReasonKey } from "../../shared/tool-access-reasons";
 import { runtimePolicySourceLabel } from "../lib/display-labels";
@@ -299,12 +300,12 @@ export function MCPServerPanel() {
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="mcp-import-json">MCP JSON</Label>
-              <textarea
+              <Textarea
                 id="mcp-import-json"
                 aria-label="MCP JSON"
                 value={importJson}
                 onChange={(event) => setImportJson(event.target.value)}
-                className="min-h-40 w-full rounded-lg border border-input bg-background px-3 py-2 font-mono text-sm"
+                className="min-h-40 w-full font-mono text-sm"
                 placeholder='{"mcpServers":[{"name":"memory","transport":"stdio","command":"npx","args":["-y","@modelcontextprotocol/server-memory"]}]}'
               />
             </div>
@@ -364,12 +365,12 @@ export function MCPServerPanel() {
 
             <div className="space-y-2">
               <Label htmlFor="mcp-server-env">环境变量（JSON）</Label>
-              <textarea
+              <Textarea
                 id="mcp-server-env"
                 aria-label="环境变量（JSON）"
                 value={formData.env}
                 onChange={(event) => setFormData((current) => ({ ...current, env: event.target.value }))}
-                className="min-h-28 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                className="min-h-28 w-full text-sm"
                 placeholder='{"API_KEY": "xxx"}'
               />
             </div>

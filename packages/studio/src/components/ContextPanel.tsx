@@ -414,9 +414,10 @@ export function ContextPanel({
                     onCheckedChange={() => toggleDisabled(entry.source)}
                   />
 
-                  <button
+                  <Button
+                    variant="ghost"
                     onClick={() => toggleExpanded(key)}
-                    className="flex-1 flex items-center gap-2 min-w-0 text-left"
+                    className="flex-1 flex items-center gap-2 min-w-0 text-left h-auto p-0"
                   >
                     {isExpanded ? (
                       <ChevronDown size={14} className="shrink-0 text-muted-foreground" />
@@ -435,7 +436,7 @@ export function ContextPanel({
                     ) : null}
 
                     <span className="min-w-0 flex-1 truncate text-xs text-foreground">{entry.label}</span>
-                  </button>
+                  </Button>
 
                   <div className="flex shrink-0 items-center gap-2">
                     <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${isDisabled ? "bg-secondary text-muted-foreground" : "bg-emerald-500/10 text-emerald-600"}`}>

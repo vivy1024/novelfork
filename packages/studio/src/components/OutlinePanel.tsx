@@ -64,9 +64,10 @@ function OutlineNodeItem({ node, expanded, onToggle, onNavigate }: {
 
   return (
     <div className="border-b border-border/30">
-      <button
+      <Button
+        variant="ghost"
         onClick={onToggle}
-        className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-secondary/30 transition-colors"
+        className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-secondary/30 transition-colors h-auto"
       >
         {/* Timeline dot */}
         <div className="flex flex-col items-center shrink-0">
@@ -92,9 +93,7 @@ function OutlineNodeItem({ node, expanded, onToggle, onNavigate }: {
         <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0 ${config.bgColor} ${config.textColor}`}>
           {config.label}
         </span>
-      </button>
-
-      {/* Expanded content */}
+      </Button>
       {expanded && (
         <div className="px-4 pb-3 pl-[4.5rem] space-y-2">
           {node.summary && (

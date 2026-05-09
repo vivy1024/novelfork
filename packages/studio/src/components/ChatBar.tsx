@@ -184,13 +184,15 @@ function QuickChip({ icon, label, onClick }: {
   readonly onClick: () => void;
 }) {
   return (
-    <button
+    <Button
+      variant="ghost"
+      size="sm"
       onClick={onClick}
-      className="shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-lg bg-secondary/50 border border-border/30 text-[10px] font-medium text-muted-foreground hover:text-primary hover:border-primary/30 hover:bg-primary/5 transition-all group"
+      className="shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-lg bg-secondary/50 border border-border/30 text-[10px] font-medium text-muted-foreground hover:text-primary hover:border-primary/30 hover:bg-primary/5 transition-all group h-auto"
     >
       <span className="group-hover:scale-110 transition-transform">{icon}</span>
       {label}
-    </button>
+    </Button>
   );
 }
 
