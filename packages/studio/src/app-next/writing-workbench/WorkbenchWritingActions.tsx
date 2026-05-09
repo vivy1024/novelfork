@@ -144,20 +144,22 @@ export function WorkbenchWritingActions({ bookId, sessions, actions, blockedReas
   }
 
   return (
-    <section className="workbench-writing-actions" aria-label="写作动作入口">
-      {error ? <p role="alert">{error}</p> : null}
+    <section className="flex flex-wrap items-center gap-2" aria-label="写作动作入口">
+      {error ? <p role="alert" className="text-xs text-destructive">{error}</p> : null}
       {resolvedActions.map((action) => {
         const disabled = Boolean(blockedReason) || isDisabled(action);
         const disabledReason = blockedReason ?? getDisabledReason(action);
         return (
-          <div key={action.id} className="workbench-writing-actions__item">
-            <Button variant="default" size="sm" disabled={disabled || runningActionId !== null} onClick={() => void runAction(action)}>
-              {runningActionId === action.id ? "启动中…" : action.label}
-            </Button>
-            {action.description ? <small>{action.description}</small> : null}
-            {action.resultBoundary ? <p>结果边界：{action.resultBoundary}</p> : null}
-            {disabled && disabledReason ? <p>{disabledReason}</p> : null}
-          </div>
+          <Button
+            key={action.id}
+            variant="outline"
+            size="sm"
+            disabled={disabled || runningActionId !== null}
+            onClick={() => void runAction(action)}
+            title={disabledReason ?? undefined}
+          >
+            {runningActionId === action.id ? "启动中…" : action.label}
+          </Button>
         );
       })}
     </section>
