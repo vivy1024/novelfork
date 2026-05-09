@@ -1,6 +1,6 @@
-import { BookOpen, MessageSquareText, Search, Settings, Wrench, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { BookOpen, MessageSquareText, Search, Settings, Wrench, PanelLeftClose, PanelLeftOpen, Pin } from "lucide-react";
 
-import { getShellNavItems, isShellNavItemActive, type ShellBookItem, type ShellRoute, type ShellSessionItem } from "./shell-route";
+import { getShellNavItems, isShellNavItemActive, type ShellBookItem, type ShellNavItem, type ShellRoute, type ShellSessionItem } from "./shell-route";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 
@@ -41,6 +41,46 @@ function NavButton({ label, active, onClick, collapsed }: { readonly label: stri
       onClick={onClick}
     >
       <span className="truncate">{label}</span>
+    </Button>
+  );
+}
+
+function NarratorNavButton({ item, active, onClick, collapsed }: { readonly item: ShellNavItem & { group: "narrators" }; readonly active: boolean; readonly onClick: () => void; readonly collapsed?: boolean }) {
+  const { label, unread, working, pinned } = item;
+
+  if (collapsed) {
+    return (
+      <Tooltip>
+        <TooltipTrigger
+          className={`relative flex w-full items-center justify-center rounded-md p-1.5 text-xs transition ${
+            active ? "bg-primary/10 font-medium text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+          }`}
+          onClick={onClick}
+        >
+          <span className="text-[10px] font-bold">{label.charAt(0).toUpperCase()}</span>
+          {(unread || working) && (
+            <span className={`absolute right-0.5 top-0.5 size-1.5 rounded-full ${working ? "bg-green-500 animate-pulse" : "bg-blue-500"}`} />
+          )}
+        </TooltipTrigger>
+        <TooltipContent side="right">{label}</TooltipContent>
+      </Tooltip>
+    );
+  }
+
+  return (
+    <Button
+      variant="ghost"
+      size="xs"
+      aria-current={active ? "page" : undefined}
+      className={`flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs transition ${
+        active ? "bg-primary/10 font-medium text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+      }`}
+      onClick={onClick}
+    >
+      {pinned && <Pin className="size-3 shrink-0 text-amber-500" />}
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      {working && <span className="size-2 shrink-0 rounded-full bg-green-500 animate-pulse" aria-label="工作中" />}
+      {!working && unread && <span className="size-2 shrink-0 rounded-full bg-blue-500" aria-label="未读" />}
     </Button>
   );
 }
@@ -128,7 +168,7 @@ export function ShellSidebar({ route, books, sessions, onNavigate, collapsed = f
               </Tooltip>
             )}
             {visibleNarratorItems.length > 0
-              ? visibleNarratorItems.map((item) => <NavButton key={item.id} label={item.label} active={isShellNavItemActive(item, route)} onClick={() => onNavigate(item.route)} collapsed={collapsed} />)
+              ? visibleNarratorItems.map((item) => <NarratorNavButton key={item.id} item={item as ShellNavItem & { group: "narrators" }} active={isShellNavItemActive(item, route)} onClick={() => onNavigate(item.route)} collapsed={collapsed} />)
               : !collapsed && <p className="px-2 py-1 text-xs text-muted-foreground">暂无活跃会话</p>
             }
             {!collapsed && hiddenNarratorCount > 0 && <p className="px-2 py-1 text-[11px] text-muted-foreground">还有 {hiddenNarratorCount} 个会话</p>}

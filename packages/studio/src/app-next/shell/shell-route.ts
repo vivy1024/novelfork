@@ -24,11 +24,14 @@ export interface ShellSessionItem {
   readonly projectName?: string;
   readonly agentId?: string;
   readonly lastModified?: string;
+  readonly unread?: boolean;
+  readonly working?: boolean;
+  readonly pinned?: boolean;
 }
 
 export type ShellNavItem =
   | { readonly id: string; readonly label: string; readonly group: "books"; readonly route: Extract<ShellRoute, { kind: "book" }> }
-  | { readonly id: string; readonly label: string; readonly group: "narrators"; readonly route: Extract<ShellRoute, { kind: "narrator" }> }
+  | { readonly id: string; readonly label: string; readonly group: "narrators"; readonly route: Extract<ShellRoute, { kind: "narrator" }>; readonly unread?: boolean; readonly working?: boolean; readonly pinned?: boolean }
   | { readonly id: string; readonly label: string; readonly group: "global"; readonly route: ShellRoute };
 
 function normalizePathname(pathname: string): string {
@@ -96,7 +99,9 @@ export function getShellNavItems({
     ...books.map((book) => ({ id: `book:${book.id}`, label: book.title, group: "books" as const, route: { kind: "book" as const, bookId: book.id } })),
     ...sessions
       .filter((session) => session.status === "active")
-      .map((session) => ({ id: `narrator:${session.id}`, label: session.title, group: "narrators" as const, route: { kind: "narrator" as const, sessionId: session.id } })),
+      .slice()
+      .sort((a, b) => (a.pinned === b.pinned ? 0 : a.pinned ? -1 : 1))
+      .map((session) => ({ id: `narrator:${session.id}`, label: session.title, group: "narrators" as const, route: { kind: "narrator" as const, sessionId: session.id }, unread: session.unread, working: session.working, pinned: session.pinned })),
     { id: "search", label: "搜索", group: "global", route: { kind: "search" } },
     { id: "routines", label: "套路", group: "global", route: { kind: "routines" } },
     { id: "settings", label: "设置", group: "global", route: { kind: "settings" } },
