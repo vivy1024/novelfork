@@ -1028,10 +1028,11 @@ export function StudioNextApp(_props: StudioNextAppProps) {
   const { books, sessions, providerSummary, providerStatus, loading, error } = useShellData();
   const routerNavigate = useNavigate();
 
-  // 首次运行检测
+  // 首次运行检测：没有 localStorage 标记 且 没有已有数据时才显示
   const [showFirstRun, setShowFirstRun] = useState(() => {
     try { return !localStorage.getItem("novelfork:first-run-dismissed"); } catch { return false; }
   });
+  const shouldShowFirstRun = showFirstRun && !loading && books.length === 0 && sessions.length === 0;
 
   const dismissFirstRun = useCallback(() => {
     try { localStorage.setItem("novelfork:first-run-dismissed", "1"); } catch { /* ignore */ }
@@ -1062,7 +1063,7 @@ export function StudioNextApp(_props: StudioNextAppProps) {
         error={error}
       />
       <FirstRunDialog
-        open={showFirstRun}
+        open={shouldShowFirstRun}
         onOpenChange={setShowFirstRun}
         onConfigureModel={() => { dismissFirstRun(); navigate({ kind: "settings" }); }}
         onCreateBook={() => { dismissFirstRun(); navigate({ kind: "sessions" }); }}
