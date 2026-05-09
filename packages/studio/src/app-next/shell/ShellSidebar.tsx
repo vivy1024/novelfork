@@ -154,10 +154,21 @@ export function ShellSidebar({ route, books, sessions, onNavigate, collapsed = f
           {/* Narrators section */}
           <section className="space-y-1" aria-label="叙述者">
             {!collapsed && (
-              <h2 className="flex items-center gap-1.5 px-2 text-xs font-semibold text-muted-foreground">
-                <MessageSquareText className="h-3.5 w-3.5" />
-                叙述者
-              </h2>
+              <div className="flex items-center justify-between px-2">
+                <h2 className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+                  <MessageSquareText className="h-3.5 w-3.5" />
+                  叙述者
+                </h2>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  className="size-5 text-muted-foreground hover:text-primary"
+                  onClick={() => onNavigate({ kind: "sessions" })}
+                  title="新建叙述者"
+                >
+                  <span className="text-sm leading-none">+</span>
+                </Button>
+              </div>
             )}
             {collapsed && (
               <Tooltip>
