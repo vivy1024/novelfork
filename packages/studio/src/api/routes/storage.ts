@@ -761,6 +761,19 @@ export function createStorageRouter(ctx: RouterContext): Hono {
 
   // --- Checkpoint Rewind ---
 
+  app.get("/api/books/:id/checkpoints", async (c) => {
+    const id = c.req.param("id");
+    const bookDir = state.bookDir(id);
+    const indexPath = join(bookDir, ".novelfork", "checkpoints", "index.json");
+    try {
+      const raw = await readFile(indexPath, "utf-8");
+      const checkpoints = JSON.parse(raw) as unknown[];
+      return c.json({ checkpoints: Array.isArray(checkpoints) ? checkpoints : [] });
+    } catch {
+      return c.json({ checkpoints: [] });
+    }
+  });
+
   app.get("/api/books/:id/checkpoints/:checkpointId/rewind/preview", async (c) => {
     const id = c.req.param("id");
     const checkpointId = c.req.param("checkpointId");
