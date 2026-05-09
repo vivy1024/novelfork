@@ -612,7 +612,7 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
       title={runtime.state.session?.title ?? sessionId}
       sessionMode={runtime.state.session?.sessionMode}
       initialAck={runtime.getResumeFromSeq()}
-      initialMessages={toConversationMessages(runtime.state.messages)}
+      initialMessages={toConversationMessages(runtime.state.messages, runtime.state.streamingMessageId)}
       initialStatus={status}
       initialConfirmation={pendingConfirmation}
       initialRecoveryNotice={runtime.state.recovery}
@@ -691,11 +691,12 @@ function toConversationModelOptions(models: readonly RuntimeModelPoolEntry[]): N
     }));
 }
 
-function toConversationMessages(messages: readonly NarratorSessionChatMessage[]): ConversationRouteMessage[] {
+function toConversationMessages(messages: readonly NarratorSessionChatMessage[], streamingMessageId?: string | null): ConversationRouteMessage[] {
   return messages.map((message) => ({
     id: message.id,
     role: message.role,
     content: message.content,
+    isStreaming: message.id === streamingMessageId,
     toolCalls: message.toolCalls?.map((toolCall, index) => ({
       id: toolCall.id ?? `${message.id}:tool:${index}`,
       toolName: toolCall.toolName,
