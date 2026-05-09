@@ -1,4 +1,3 @@
-import { useMemo } from "react";
 import {
   Select,
   SelectContent,
@@ -25,7 +24,7 @@ export interface SimpleSelectProps {
 }
 
 /**
- * A simplified wrapper around the shadcn Select (base-ui) component.
+ * A simplified wrapper around the shadcn Select (Radix) component.
  * Provides a native-select-like API for easy migration.
  */
 export function SimpleSelect({
@@ -37,19 +36,11 @@ export function SimpleSelect({
   className,
   "aria-label": ariaLabel,
 }: SimpleSelectProps) {
-  const items = useMemo(
-    () => Object.fromEntries(options.map((opt) => [opt.value, opt.label])),
-    [options],
-  );
-
   return (
     <Select
-      value={value || null}
-      onValueChange={(val) => {
-        if (val != null) onValueChange(val as string);
-      }}
+      value={value || undefined}
+      onValueChange={onValueChange}
       disabled={disabled}
-      items={items}
     >
       <SelectTrigger className={cn("w-fit", className)} aria-label={ariaLabel}>
         <SelectValue placeholder={placeholder} />
