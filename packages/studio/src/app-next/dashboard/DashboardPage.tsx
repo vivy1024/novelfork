@@ -30,6 +30,9 @@ interface CreateBookForm {
   chapterWordCount: number;
   targetChapters: number;
   language: string;
+  repositorySource: "new" | "existing" | "none";
+  repositoryPath: string;
+  workflowMode: "outline-first" | "draft-first" | "serial-ops";
 }
 
 interface CreateBookResponse {
@@ -58,6 +61,9 @@ const INITIAL_FORM: CreateBookForm = {
   chapterWordCount: 3000,
   targetChapters: 200,
   language: "zh",
+  repositorySource: "none",
+  repositoryPath: "",
+  workflowMode: "outline-first",
 };
 
 interface DashboardPageProps {
@@ -117,6 +123,12 @@ export function DashboardPage({ onOpenBook }: DashboardPageProps) {
     setCreating(true);
     setCreateError(null);
     try {
+      const projectInit = form.repositorySource !== "none" ? {
+        repositorySource: form.repositorySource,
+        workflowMode: form.workflowMode,
+        ...(form.repositorySource === "existing" && form.repositoryPath.trim() ? { repositoryPath: form.repositoryPath.trim() } : {}),
+      } : undefined;
+
       const result = await postApi<CreateBookResponse>("/books/create", {
         title: form.title.trim(),
         genre: form.genre,
@@ -124,6 +136,7 @@ export function DashboardPage({ onOpenBook }: DashboardPageProps) {
         chapterWordCount: form.chapterWordCount,
         targetChapters: form.targetChapters,
         language: form.language,
+        ...(projectInit ? { projectInit } : {}),
       });
       setShowCreateForm(false);
       setForm(INITIAL_FORM);
@@ -233,6 +246,47 @@ export function DashboardPage({ onOpenBook }: DashboardPageProps) {
               />
             </label>
           </div>
+
+          {/* Git 仓库绑定 */}
+          <div className="space-y-2 rounded-md border border-border/50 p-3">
+            <span className="text-xs font-medium text-muted-foreground">项目仓库（可选）</span>
+            <div className="flex gap-2">
+              {(["none", "new", "existing"] as const).map((source) => (
+                <button
+                  key={source}
+                  type="button"
+                  className={`rounded-md px-3 py-1.5 text-xs transition ${form.repositorySource === source ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}
+                  onClick={() => setForm((prev) => ({ ...prev, repositorySource: source }))}
+                >
+                  {source === "none" ? "不绑定" : source === "new" ? "新建仓库" : "已有仓库"}
+                </button>
+              ))}
+            </div>
+            {form.repositorySource === "existing" && (
+              <Input
+                value={form.repositoryPath}
+                onChange={(e) => setForm((prev) => ({ ...prev, repositoryPath: e.target.value }))}
+                placeholder="本地仓库路径，如 D:\novels\my-book"
+                className="text-xs"
+              />
+            )}
+            {form.repositorySource !== "none" && (
+              <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span>写作模式：</span>
+                <SimpleSelect
+                  value={form.workflowMode}
+                  onValueChange={(v) => setForm((prev) => ({ ...prev, workflowMode: v as CreateBookForm["workflowMode"] }))}
+                  options={[
+                    { value: "outline-first", label: "先大纲后写作" },
+                    { value: "draft-first", label: "先写作后整理" },
+                    { value: "serial-ops", label: "连载运营" },
+                  ]}
+                  className="flex-1"
+                />
+              </label>
+            )}
+          </div>
+
           {createError && <InlineError message={createError} />}
           <Button
             type="submit"
