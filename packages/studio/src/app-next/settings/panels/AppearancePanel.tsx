@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { fetchJson, putApi } from "../../../hooks/use-api";
 import { DEFAULT_USER_CONFIG, type UserPreferences } from "../../../types/settings";
 import { Sun, Moon, Monitor, Type } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 function SwitchRow({ label, description, checked, onChange }: {
   label: string;
@@ -89,10 +90,11 @@ export function AppearancePanel() {
           </label>
           <div className="grid grid-cols-3 gap-3">
             {themeOptions.map(({ value, icon: Icon, label }) => (
-              <button
+              <Button
                 key={value}
+                variant="outline"
                 onClick={() => handleThemeChange(value)}
-                className={`flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-colors ${
+                className={`flex flex-col items-center gap-2 p-4 h-auto rounded-lg border-2 transition-colors ${
                   preferences.theme === value
                     ? "border-primary bg-primary/5"
                     : "border-border hover:border-primary/50"
@@ -100,7 +102,7 @@ export function AppearancePanel() {
               >
                 <Icon className="w-6 h-6" />
                 <span className="text-sm font-medium">{label}</span>
-              </button>
+              </Button>
             ))}
           </div>
         </div>

@@ -1,3 +1,4 @@
+import { Button } from "@/components/ui/button";
 import { getToolResultArtifact, type ToolResultRendererContext } from "./types";
 
 export function ArtifactOpenButton({ result, onOpenArtifact }: Pick<ToolResultRendererContext, "result" | "onOpenArtifact">) {
@@ -5,8 +6,8 @@ export function ArtifactOpenButton({ result, onOpenArtifact }: Pick<ToolResultRe
   if (!artifact || !onOpenArtifact) return null;
 
   return (
-    <button type="button" onClick={() => onOpenArtifact(artifact)}>
+    <Button variant="ghost" size="sm" onClick={() => onOpenArtifact(artifact)}>
       在画布打开
-    </button>
+    </Button>
   );
 }

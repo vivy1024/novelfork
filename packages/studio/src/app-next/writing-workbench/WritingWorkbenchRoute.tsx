@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
 
+import { Button } from "@/components/ui/button";
 import { WorkbenchCanvas, type WorkbenchCanvasContext } from "./WorkbenchCanvas";
 import { WorkbenchResourceTree } from "./WorkbenchResourceTree";
 import type { WorkbenchResourceNode } from "./useWorkbenchResources";
@@ -47,22 +48,24 @@ export function WritingWorkbenchRoute({ bookId, nodes, selectedNode, onOpen, onS
           </div>
           {/* 视图切换 */}
           <div className="flex gap-1 rounded-lg border border-border p-0.5">
-            <button
-              type="button"
-              className={`rounded-md px-3 py-1 text-xs font-medium transition ${viewMode === "tree" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
+            <Button
+              variant={viewMode === "tree" ? "default" : "ghost"}
+              size="sm"
+              className="rounded-md px-3 py-1 text-xs font-medium"
               onClick={() => setViewMode("tree")}
             >
               资源树
-            </button>
-            <button
-              type="button"
-              className={`rounded-md px-3 py-1 text-xs font-medium transition ${viewMode === "graph" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
+            </Button>
+            <Button
+              variant={viewMode === "graph" ? "default" : "ghost"}
+              size="sm"
+              className="rounded-md px-3 py-1 text-xs font-medium"
               onClick={() => setViewMode("graph")}
               disabled={!hasGraphData}
               title={hasGraphData ? "章节图视图" : "暂无章节数据"}
             >
               章节图
-            </button>
+            </Button>
           </div>
         </div>
       </header>
