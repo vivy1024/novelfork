@@ -159,21 +159,27 @@ export function ConversationSurface({
       <header className="flex shrink-0 items-center justify-between border-b border-border px-4 py-2">
         <div className="flex items-center gap-1.5 min-w-0">
           <Tooltip>
-            <TooltipTrigger render={<Button variant="ghost" size="icon-xs" onClick={handleOpenExternal} />}>
-              <ExternalLink className="size-3.5" />
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon-xs" onClick={handleOpenExternal}>
+                <ExternalLink className="size-3.5" />
+              </Button>
             </TooltipTrigger>
             <TooltipContent>在新标签打开</TooltipContent>
           </Tooltip>
           <h2 className="truncate text-sm font-semibold text-foreground">{title}</h2>
           <Tooltip>
-            <TooltipTrigger render={<Button variant="ghost" size="icon-xs" onClick={handleEditTitle} />}>
-              <Pencil className="size-3" />
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon-xs" onClick={handleEditTitle}>
+                <Pencil className="size-3" />
+              </Button>
             </TooltipTrigger>
             <TooltipContent>编辑标题</TooltipContent>
           </Tooltip>
           <Tooltip>
-            <TooltipTrigger render={<Button variant="ghost" size="icon-xs" onClick={() => onGenerateTitle?.()} />}>
-              <Sparkles className="size-3" />
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon-xs" onClick={() => onGenerateTitle?.()}>
+                <Sparkles className="size-3" />
+              </Button>
             </TooltipTrigger>
             <TooltipContent>生成标题</TooltipContent>
           </Tooltip>
@@ -184,8 +190,10 @@ export function ConversationSurface({
             <span className="text-xs text-muted-foreground mr-2">空闲 · 上轮耗时 {formatDuration(status.lastTurnDurationMs)}</span>
           )}
           <Tooltip>
-            <TooltipTrigger render={<Button variant="ghost" size="icon-sm" onClick={() => setSearchOpen(!searchOpen)} />}>
-              <Search className="size-4" />
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon-sm" onClick={() => setSearchOpen(!searchOpen)}>
+                <Search className="size-4" />
+              </Button>
             </TooltipTrigger>
             <TooltipContent>搜索</TooltipContent>
           </Tooltip>
@@ -234,14 +242,18 @@ export function ConversationSurface({
             </SheetContent>
           </Sheet>
           <Tooltip>
-            <TooltipTrigger render={<Button variant="ghost" size="icon-sm" onClick={() => onArchive?.()} />}>
-              <Archive className="size-4" />
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon-sm" onClick={() => onArchive?.()}>
+                <Archive className="size-4" />
+              </Button>
             </TooltipTrigger>
             <TooltipContent>归档</TooltipContent>
           </Tooltip>
           <Tooltip>
-            <TooltipTrigger render={<Button variant="ghost" size="icon-sm" onClick={() => settingsHref && void routerNavigate({ to: settingsHref })} />}>
-              <Settings className="size-4" />
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon-sm" onClick={() => settingsHref && void routerNavigate({ to: settingsHref })}>
+                <Settings className="size-4" />
+              </Button>
             </TooltipTrigger>
             <TooltipContent>设置</TooltipContent>
           </Tooltip>
