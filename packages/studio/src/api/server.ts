@@ -98,6 +98,8 @@ import {
   createProxyRouter,
   createAggregationsRouter,
   createTerminalsRouter,
+  createRuntimeStatusRouter,
+  createUsageRouter,
   setupAdminWebSocket,
   setupMonitorWebSocket,
 } from "./routes/index.js";
@@ -419,6 +421,12 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
 
     // Terminal management — agent Terminal 工具创建的终端进程管理
     app.route("/api/terminals", createTerminalsRouter());
+
+    // Runtime environment status checks
+    app.route("/api/runtime", createRuntimeStatusRouter());
+
+    // Usage aggregation
+    app.route("/api/usage", createUsageRouter());
 
     // Monitor visualization
     app.route("", createMonitorRouter(ctx));

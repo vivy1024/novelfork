@@ -5,6 +5,11 @@ import { AppearancePanel } from "./panels/AppearancePanel";
 import { MonitoringPanel } from "./panels/MonitoringPanel";
 import { DataPanel } from "./panels/DataPanel";
 import { RuntimeStatusPanel } from "./panels/RuntimeStatusPanel";
+import { TerminalSettingsPanel } from "./panels/TerminalSettingsPanel";
+import { NotificationSettingsPanel } from "./panels/NotificationSettingsPanel";
+import { UsagePanel } from "./panels/UsagePanel";
+import { RuntimeEnvironmentPanel } from "./panels/RuntimeEnvironmentPanel";
+import { AgentSettingsPanel } from "./panels/AgentSettingsPanel";
 import { InlineError } from "../components/feedback";
 import { ProjectConfigSection } from "./ProjectConfigSection";
 import { Row } from "../components/shared";
@@ -27,18 +32,25 @@ export function SettingsSectionContent({ sectionId, onSectionChange }: SettingsS
     case "profile":
       return <ProfilePanel />;
     case "models":
-    case "agents":
       return <RuntimeControlPanel />;
+    case "agents":
+      return <AgentSettingsPanel />;
     case "notifications":
-      return <NotificationsSection />;
+      return <NotificationSettingsPanel />;
     case "appearance":
       return <AppearancePanel />;
+    case "terminals":
+      return <TerminalSettingsPanel />;
     case "server":
       return <ServerSection />;
     case "storage":
       return <RuntimeStatusPanel />;
     case "data":
       return <DataPanel />;
+    case "usage":
+      return <UsagePanel />;
+    case "runtime":
+      return <RuntimeEnvironmentPanel />;
     case "resources":
       return <MonitoringPanel />;
     case "history":
@@ -116,19 +128,6 @@ function FactRow({ fact }: { readonly fact: SettingsFact<unknown> }) {
         {fact.readApi && <span>读取：{fact.readApi}</span>}
         {fact.writeApi && <span>写入：{fact.writeApi}</span>}
         {fact.reason && <span>原因：{fact.reason}</span>}
-      </div>
-    </div>
-  );
-}
-
-/* ── Notifications: not connected ── */
-
-function NotificationsSection() {
-  return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold mb-2 text-foreground">通知</h2>
-        <p className="text-sm text-muted-foreground">此功能尚未开放。通知配置将在后续版本中提供。</p>
       </div>
     </div>
   );
