@@ -1,4 +1,4 @@
-import { BookOpen, FileText, AlertTriangle, CheckCircle, Target, TrendingUp } from "lucide-react";
+import { BookOpen, FileText, AlertTriangle, CheckCircle, Target, TrendingUp, Bookmark, PenLine } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import type { WorkbenchResourceNode } from "./useWorkbenchResources";
 
@@ -91,8 +91,67 @@ export function CockpitOverview({ book: bookProp, nodes, onOpenChapter }: Cockpi
       <div className="flex h-full items-center justify-center p-8">
         <p className="text-sm text-muted-foreground">暂无作品数据</p>
       </div>
-    );
-  }
+  );
+}
+
+// ---------------------------------------------------------------------------
+// JingweiSummary — 经纬资料摘要
+// ---------------------------------------------------------------------------
+
+function JingweiSummary({ nodes }: { nodes: readonly WorkbenchResourceNode[] }) {
+  const bookNode = nodes.find((n) => n.kind === "book");
+  const jingweiGroup = bookNode?.children?.find((c) => c.id === "group:jingwei");
+  const entries = jingweiGroup?.children ?? [];
+
+  if (entries.length === 0) return null;
+
+  return (
+    <div className="rounded-lg border border-border p-3 space-y-2">
+      <h3 className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+        <Bookmark className="size-3.5" />
+        经纬资料 · {entries.length} 条
+      </h3>
+      <div className="flex flex-wrap gap-1.5">
+        {entries.slice(0, 12).map((entry) => (
+          <span key={entry.id} className="text-[11px] rounded-md bg-muted px-2 py-0.5">{entry.title}</span>
+        ))}
+        {entries.length > 12 && <span className="text-[11px] text-muted-foreground">+{entries.length - 12} 更多</span>}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// CandidateSummary — 候选稿摘要
+// ---------------------------------------------------------------------------
+
+function CandidateSummary({ nodes }: { nodes: readonly WorkbenchResourceNode[] }) {
+  const bookNode = nodes.find((n) => n.kind === "book");
+  const candidateGroup = bookNode?.children?.find((c) => c.id === "group:candidates");
+  const candidates = candidateGroup?.children ?? [];
+
+  if (candidates.length === 0) return null;
+
+  const pending = candidates.filter((c) => c.metadata?.status === "candidate");
+  const accepted = candidates.filter((c) => c.metadata?.status === "accepted");
+
+  return (
+    <div className="rounded-lg border border-border p-3 space-y-2">
+      <h3 className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+        <PenLine className="size-3.5" />
+        候选稿 · {candidates.length} 篇
+      </h3>
+      <div className="flex items-center gap-3 text-xs">
+        {pending.length > 0 && <span className="text-blue-600">{pending.length} 待处理</span>}
+        {accepted.length > 0 && <span className="text-green-600">{accepted.length} 已接受</span>}
+        {candidates.length - pending.length - accepted.length > 0 && (
+          <span className="text-muted-foreground">{candidates.length - pending.length - accepted.length} 其他</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 
   const progress = progressPercent(book.chapterCount, book.targetChapters);
   const hasRisk = book.failedReview > 0 || book.pendingReview > 2;
@@ -186,6 +245,12 @@ export function CockpitOverview({ book: bookProp, nodes, onOpenChapter }: Cockpi
           )}
         </ul>
       </div>
+
+      {/* 经纬资料摘要 */}
+      <JingweiSummary nodes={nodes} />
+
+      {/* 候选稿摘要 */}
+      <CandidateSummary nodes={nodes} />
     </div>
   );
 }

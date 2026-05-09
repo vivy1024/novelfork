@@ -5,6 +5,7 @@ import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Textarea } from "../../components/ui/textarea";
 import { SimpleSelect } from "../../components/ui/simple-select";
+import { QuestionnaireWizard, type QuestionnaireTemplateView } from "../../components/Bible/QuestionnaireWizard";
 
 interface BookItem {
   readonly id: string;
@@ -35,6 +36,20 @@ interface CreateBookResponse {
   readonly status: string;
   readonly bookId: string;
 }
+
+/** Tier 1 建书问卷模板（内置） */
+const TIER1_QUESTIONNAIRE_TEMPLATE: QuestionnaireTemplateView = {
+  id: "tier1-book-setup",
+  tier: 1,
+  targetObject: "book",
+  questions: [
+    { id: "premise", prompt: "这本书的核心前提是什么？（一句话概括故事）", type: "text", mapping: { fieldPath: "premise" }, defaultSkippable: true },
+    { id: "conflict", prompt: "主要矛盾是什么？", type: "text", mapping: { fieldPath: "conflict" }, defaultSkippable: true },
+    { id: "protagonist", prompt: "主角是谁？有什么核心特质？", type: "text", mapping: { fieldPath: "protagonist" }, defaultSkippable: true },
+    { id: "world", prompt: "故事发生在什么样的世界？", type: "text", mapping: { fieldPath: "worldModel" }, defaultSkippable: true },
+    { id: "tone", prompt: "整体基调是什么？", type: "single", options: ["热血爽文", "轻松日常", "沉重黑暗", "悬疑烧脑", "温馨治愈", "其他"], mapping: { fieldPath: "tone" }, defaultSkippable: true },
+  ],
+};
 
 const INITIAL_FORM: CreateBookForm = {
   title: "",
@@ -83,6 +98,7 @@ export function DashboardPage({ onOpenBook }: DashboardPageProps) {
   const [form, setForm] = useState<CreateBookForm>(INITIAL_FORM);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [questionnaireBookId, setQuestionnaireBookId] = useState<string | null>(null);
 
   const books = booksData?.books ?? [];
 
@@ -101,7 +117,7 @@ export function DashboardPage({ onOpenBook }: DashboardPageProps) {
     setCreating(true);
     setCreateError(null);
     try {
-      await postApi<CreateBookResponse>("/books/create", {
+      const result = await postApi<CreateBookResponse>("/books/create", {
         title: form.title.trim(),
         genre: form.genre,
         platform: form.platform,
@@ -111,6 +127,7 @@ export function DashboardPage({ onOpenBook }: DashboardPageProps) {
       });
       setShowCreateForm(false);
       setForm(INITIAL_FORM);
+      setQuestionnaireBookId(result.bookId);
       void refetchBooks();
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : String(err));
@@ -227,6 +244,22 @@ export function DashboardPage({ onOpenBook }: DashboardPageProps) {
       )}
 
       {showImport && <ImportPanel books={books} onDone={() => { setShowImport(false); void refetchBooks(); }} />}
+
+      {/* Tier 1 问卷（建书成功后可选） */}
+      {questionnaireBookId && (
+        <div className="rounded-lg border border-primary/20 bg-primary/5 p-4 space-y-2">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold">快速设定你的故事（可选）</h3>
+            <Button variant="ghost" size="xs" onClick={() => setQuestionnaireBookId(null)}>跳过</Button>
+          </div>
+          <p className="text-xs text-muted-foreground">回答几个简单问题，帮助 AI 更好地理解你的创作意图。答案会写入故事经纬。</p>
+          <QuestionnaireWizard
+            bookId={questionnaireBookId}
+            template={TIER1_QUESTIONNAIRE_TEMPLATE}
+            onDone={() => { setQuestionnaireBookId(null); void refetchBooks(); }}
+          />
+        </div>
+      )}
 
       <div className="grid gap-2 sm:grid-cols-3">
         <div className="rounded-lg border border-border p-3">
