@@ -28,7 +28,7 @@ export interface ProviderFormState {
 const API_MODES: ProviderApiMode[] = ["completions", "responses", "codex"];
 
 function isFormValid(form: ProviderFormState): boolean {
-  return Boolean(form.name.trim() && form.baseUrl.trim() && form.apiKey.trim());
+  return Boolean(form.name.trim());
 }
 
 export function ApiProvidersSection({
@@ -115,31 +115,15 @@ function AddProviderForm({
   return (
     <section className="space-y-3 rounded-lg border border-border bg-background p-4">
       <h3 className="text-base font-semibold">添加 API key 供应商</h3>
-      <div className="grid gap-3 md:grid-cols-2">
+      <p className="text-xs text-muted-foreground">创建后在详情页配置 API Key 和 Base URL</p>
+      <div className="grid gap-3 md:grid-cols-3">
         <label className="text-sm">
-          供应商名称
-          <Input className="mt-1 w-full" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
+          供应商名称 *
+          <Input className="mt-1 w-full" placeholder="如：Sub2API" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
         </label>
         <label className="text-sm">
           供应商前缀
-          <Input className="mt-1 w-full" value={form.prefix} onChange={(event) => setForm({ ...form, prefix: event.target.value })} />
-        </label>
-        <label className="text-sm">
-          API Key
-          <Input type="password" className="mt-1 w-full" value={form.apiKey} onChange={(event) => setForm({ ...form, apiKey: event.target.value })} />
-        </label>
-        <label className="text-sm">
-          Base URL
-          <Input className="mt-1 w-full" value={form.baseUrl} onChange={(event) => setForm({ ...form, baseUrl: event.target.value })} />
-        </label>
-        <label className="text-sm">
-          API 模式
-          <SimpleSelect
-            className="mt-1"
-            value={form.apiMode}
-            onValueChange={(v) => setForm({ ...form, apiMode: v as ProviderApiMode })}
-            options={API_MODES.map((value) => ({ value, label: providerApiModeLabel(value) }))}
-          />
+          <Input className="mt-1 w-full" placeholder="如：sub2api" value={form.prefix} onChange={(event) => setForm({ ...form, prefix: event.target.value })} />
         </label>
         <label className="text-sm">
           兼容格式
@@ -155,7 +139,7 @@ function AddProviderForm({
         </label>
       </div>
       <Button variant="default" disabled={!canSave} onClick={onSave}>
-        保存供应商
+        创建并配置
       </Button>
     </section>
   );
