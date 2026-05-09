@@ -156,6 +156,9 @@ function HomeRouteLive({ books, sessions, providerSummary, providerStatus, loadi
   const resourceClient = useMemo(() => createDefaultResourceClient(), []);
   const [createBookOpen, setCreateBookOpen] = useState(false);
   const [newBookTitle, setNewBookTitle] = useState("");
+  const [newBookGenre, setNewBookGenre] = useState("xuanhuan");
+  const [newBookRepoSource, setNewBookRepoSource] = useState<"none" | "new" | "existing">("none");
+  const [newBookRepoPath, setNewBookRepoPath] = useState("");
   const [createBookError, setCreateBookError] = useState<string | null>(null);
   const [creatingBook, setCreatingBook] = useState(false);
   const recentBooks = books.slice(0, 3);
@@ -177,12 +180,26 @@ function HomeRouteLive({ books, sessions, providerSummary, providerStatus, loadi
     setCreatingBook(true);
     setCreateBookError(null);
     try {
-      const result = await resourceClient.createBook({ title, genre: "玄幻", language: "zh", chapterWordCount: 2000, targetChapters: 100 });
+      const projectInit = newBookRepoSource !== "none" ? {
+        repositorySource: newBookRepoSource,
+        ...(newBookRepoSource === "existing" && newBookRepoPath.trim() ? { repositoryPath: newBookRepoPath.trim() } : {}),
+      } : undefined;
+
+      const result = await resourceClient.createBook({
+        title,
+        genre: newBookGenre,
+        language: "zh",
+        chapterWordCount: 3000,
+        targetChapters: 200,
+        ...(projectInit ? { projectInit } : {}),
+      });
       if (!result.ok) throw new Error(contractErrorMessage(result, "创建作品失败"));
       if (!result.data.bookId) throw new Error("创建作品失败：响应缺少 bookId");
       shellDataStore.invalidate("books");
       setCreateBookOpen(false);
       setNewBookTitle("");
+      setNewBookRepoSource("none");
+      setNewBookRepoPath("");
       onNavigate({ kind: "book", bookId: result.data.bookId });
     } catch (caught) {
       setCreateBookError(caught instanceof Error ? caught.message : String(caught));
@@ -231,12 +248,37 @@ function HomeRouteLive({ books, sessions, providerSummary, providerStatus, loadi
           <form className="space-y-3" onSubmit={handleCreateBook}>
             <div>
               <h2 id="create-book-title" className="text-lg font-semibold">新建作品</h2>
-              <p className="text-sm text-muted-foreground">创建后会直接进入作品工作台，后续章节和设定在工作台里维护。</p>
+              <p className="text-sm text-muted-foreground">创建后会直接进入作品工作台。</p>
             </div>
-            <label className="block text-sm font-medium">
-              作品标题
-              <Input className="mt-1 w-full" value={newBookTitle} onChange={(event) => setNewBookTitle(event.currentTarget.value)} />
-            </label>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block text-sm font-medium">
+                作品标题
+                <Input className="mt-1 w-full" value={newBookTitle} onChange={(event) => setNewBookTitle(event.currentTarget.value)} autoFocus />
+              </label>
+              <label className="block text-sm font-medium">
+                题材
+                <select className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm" value={newBookGenre} onChange={(e) => setNewBookGenre(e.target.value)}>
+                  <option value="xuanhuan">玄幻</option>
+                  <option value="xianxia">仙侠</option>
+                  <option value="dushi">都市</option>
+                  <option value="scifi">科幻</option>
+                  <option value="other">其他</option>
+                </select>
+              </label>
+            </div>
+            <div className="space-y-2">
+              <span className="text-xs font-medium text-muted-foreground">项目仓库</span>
+              <div className="flex gap-2">
+                {(["none", "new", "existing"] as const).map((src) => (
+                  <button key={src} type="button" className={`rounded-md px-3 py-1.5 text-xs transition ${newBookRepoSource === src ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/80"}`} onClick={() => setNewBookRepoSource(src)}>
+                    {src === "none" ? "不绑定" : src === "new" ? "新建 Git 仓库" : "已有仓库"}
+                  </button>
+                ))}
+              </div>
+              {newBookRepoSource === "existing" && (
+                <Input value={newBookRepoPath} onChange={(e) => setNewBookRepoPath(e.target.value)} placeholder="本地仓库路径" className="text-xs" />
+              )}
+            </div>
             {createBookError ? <p role="alert" className="text-sm text-destructive">{createBookError}</p> : null}
             <div className="flex gap-2">
               <Button type="submit" disabled={creatingBook}>{creatingBook ? "创建中…" : "创建作品"}</Button>
