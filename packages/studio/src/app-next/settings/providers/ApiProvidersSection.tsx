@@ -1,3 +1,5 @@
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { EmptyState } from "../../components/feedback";
 import type { ProviderApiMode, ProviderCompatibility } from "@/shared/provider-catalog";
 import { providerApiModeLabel, providerCompatibilityLabel } from "../../lib/display-labels";
@@ -60,13 +62,13 @@ export function ApiProvidersSection({
           <h3 className="text-base font-semibold">密钥接入</h3>
           <p className="text-xs text-muted-foreground">仅管理接口地址、访问密钥、兼容格式和模型列表；不展示平台账号、配额或切号。</p>
         </div>
-        <button
-          type="button"
-          className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted"
+        <Button
+          variant="outline"
+          size="sm"
           onClick={onToggleAddForm}
         >
           + 添加供应商
-        </button>
+        </Button>
       </div>
 
       {showAddForm && (
@@ -112,19 +114,19 @@ function AddProviderForm({
       <div className="grid gap-3 md:grid-cols-2">
         <label className="text-sm">
           供应商名称
-          <input className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
+          <Input className="mt-1 w-full" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
         </label>
         <label className="text-sm">
           供应商前缀
-          <input className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2" value={form.prefix} onChange={(event) => setForm({ ...form, prefix: event.target.value })} />
+          <Input className="mt-1 w-full" value={form.prefix} onChange={(event) => setForm({ ...form, prefix: event.target.value })} />
         </label>
         <label className="text-sm">
           API Key
-          <input type="password" className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2" value={form.apiKey} onChange={(event) => setForm({ ...form, apiKey: event.target.value })} />
+          <Input type="password" className="mt-1 w-full" value={form.apiKey} onChange={(event) => setForm({ ...form, apiKey: event.target.value })} />
         </label>
         <label className="text-sm">
           Base URL
-          <input className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2" value={form.baseUrl} onChange={(event) => setForm({ ...form, baseUrl: event.target.value })} />
+          <Input className="mt-1 w-full" value={form.baseUrl} onChange={(event) => setForm({ ...form, baseUrl: event.target.value })} />
         </label>
         <label className="text-sm">
           API 模式
@@ -140,9 +142,9 @@ function AddProviderForm({
           </select>
         </label>
       </div>
-      <button className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-60" type="button" disabled={!canSave} onClick={onSave}>
+      <Button variant="default" disabled={!canSave} onClick={onSave}>
         保存供应商
-      </button>
+      </Button>
     </section>
   );
 }

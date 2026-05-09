@@ -2,6 +2,7 @@ import { useState } from "react";
 import { fetchJson } from "../../../hooks/use-api";
 import { notify } from "@/lib/notify";
 import { Download, Upload, FileJson } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 export function DataPanel() {
   const [exporting, setExporting] = useState(false);
@@ -82,13 +83,13 @@ export function DataPanel() {
               </p>
             </div>
           </div>
-          <button
+          <Button
+            variant="default"
             onClick={handleExport}
             disabled={exporting}
-            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
           >
             {exporting ? "导出中..." : "导出配置"}
-          </button>
+          </Button>
         </div>
 
         {/* 导入配置 */}
@@ -104,13 +105,13 @@ export function DataPanel() {
               </p>
             </div>
           </div>
-          <button
+          <Button
+            variant="outline"
             onClick={handleImport}
             disabled={importing}
-            className="rounded-lg bg-secondary px-4 py-2 text-sm text-secondary-foreground hover:bg-secondary/80"
           >
             {importing ? "导入中..." : "导入配置"}
-          </button>
+          </Button>
           <p className="text-xs text-muted-foreground mt-2">
             ⚠️ 导入将覆盖当前所有设置，请谨慎操作
           </p>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 
+import { Button } from "@/components/ui/button";
 import type { PlatformAccount, PlatformId, PlatformImportMethod, PlatformIntegrationCatalogItem, PlatformJsonImportPayload } from "../provider-types";
 import { PlatformAccountTable } from "./PlatformAccountTable";
 
@@ -129,9 +130,9 @@ export function PlatformIntegrationDetail({
 
   return (
     <section aria-label={`${integration.name} 平台集成详情`} className="space-y-4">
-      <button type="button" className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground" onClick={onBack}>
+      <Button variant="ghost" size="sm" className="flex items-center gap-1" onClick={onBack}>
         ← 返回供应商列表
-      </button>
+      </Button>
       <div>
         <h2 className="text-lg font-semibold">{integration.name}</h2>
         <p className="text-sm text-muted-foreground">平台账号集成 · {accounts.length} 个账号</p>
@@ -187,15 +188,14 @@ export function PlatformIntegrationDetail({
                 placeholder={'{"account_id":"...","email":"...","refresh_token":"..."}'}
               />
             </label>
-            <button
-              type="button"
-              className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-60"
+            <Button
+              variant="default"
               disabled={!jsonText.trim() || importing}
               title={!jsonText.trim() ? "请先粘贴 JSON 账号数据" : undefined}
               onClick={() => void submitJsonImport()}
             >
               {importing ? "正在导入…" : "导入 JSON 账号"}
-            </button>
+            </Button>
           </div>
         </section>
       )}

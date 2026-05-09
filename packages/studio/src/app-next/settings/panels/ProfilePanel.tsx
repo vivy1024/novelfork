@@ -2,6 +2,8 @@ import { useState, useEffect } from "react";
 import { fetchJson, putApi } from "../../../hooks/use-api";
 import type { UserProfile } from "../../../types/settings";
 import { User, Mail, GitBranch } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 export function ProfilePanel() {
   const [profile, setProfile] = useState<UserProfile>({
@@ -60,11 +62,11 @@ export function ProfilePanel() {
             <User className="w-4 h-4" />
             姓名
           </label>
-          <input
+          <Input
             type="text"
             value={profile.name}
             onChange={(e) => setProfile({ ...profile, name: e.target.value })}
-            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:ring-2 focus:ring-primary/20"
+            className="w-full"
             placeholder="您的姓名"
           />
         </div>
@@ -74,11 +76,11 @@ export function ProfilePanel() {
             <Mail className="w-4 h-4" />
             邮箱
           </label>
-          <input
+          <Input
             type="email"
             value={profile.email}
             onChange={(e) => setProfile({ ...profile, email: e.target.value })}
-            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:ring-2 focus:ring-primary/20"
+            className="w-full"
             placeholder="your@email.com"
           />
         </div>
@@ -93,11 +95,11 @@ export function ProfilePanel() {
               <label className="text-sm font-medium mb-2 block text-foreground">
                 Git 用户名
               </label>
-              <input
+              <Input
                 type="text"
                 value={profile.gitName || ""}
                 onChange={(e) => setProfile({ ...profile, gitName: e.target.value })}
-                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:ring-2 focus:ring-primary/20"
+                className="w-full"
                 placeholder="用于 Git 提交的用户名"
               />
             </div>
@@ -105,11 +107,11 @@ export function ProfilePanel() {
               <label className="text-sm font-medium mb-2 block text-foreground">
                 Git 邮箱
               </label>
-              <input
+              <Input
                 type="email"
                 value={profile.gitEmail || ""}
                 onChange={(e) => setProfile({ ...profile, gitEmail: e.target.value })}
-                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:ring-2 focus:ring-primary/20"
+                className="w-full"
                 placeholder="用于 Git 提交的邮箱"
               />
             </div>
@@ -117,13 +119,13 @@ export function ProfilePanel() {
         </div>
 
         <div className="pt-4">
-          <button
+          <Button
+            variant="default"
             onClick={handleSave}
             disabled={saving}
-            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
           >
             {saving ? "保存中..." : "保存"}
-          </button>
+          </Button>
         </div>
       </div>
     </div>
