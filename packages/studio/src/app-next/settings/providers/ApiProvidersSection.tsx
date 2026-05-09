@@ -43,6 +43,7 @@ export function ApiProvidersSection({
   onSaveProvider,
   onSelectProvider,
   onToggleProvider,
+  onDeleteProvider,
 }: {
   readonly providers: readonly ApiProvider[];
   readonly providerStatuses?: Readonly<Record<string, ApiProviderStatusSummary>>;
@@ -55,6 +56,7 @@ export function ApiProvidersSection({
   readonly onSaveProvider: () => void;
   readonly onSelectProvider: (providerId: string) => void;
   readonly onToggleProvider: (providerId: string, enabled: boolean) => void;
+  readonly onDeleteProvider?: (providerId: string) => void;
 }) {
   return (
     <section className="space-y-3">
@@ -88,6 +90,7 @@ export function ApiProvidersSection({
               isTestFixture={fixtureProviderIds?.has(provider.id) ?? false}
               onSelect={onSelectProvider}
               onToggle={onToggleProvider}
+              onDelete={onDeleteProvider}
             />
           ))}
         </div>
