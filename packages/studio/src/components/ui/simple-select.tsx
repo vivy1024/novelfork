@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import {
   Select,
   SelectContent,
@@ -36,13 +37,19 @@ export function SimpleSelect({
   className,
   "aria-label": ariaLabel,
 }: SimpleSelectProps) {
+  const items = useMemo(
+    () => Object.fromEntries(options.map((opt) => [opt.value, opt.label])),
+    [options],
+  );
+
   return (
     <Select
-      value={value}
+      value={value || null}
       onValueChange={(val) => {
         if (val != null) onValueChange(val as string);
       }}
       disabled={disabled}
+      items={items}
     >
       <SelectTrigger className={cn("w-fit", className)} aria-label={ariaLabel}>
         <SelectValue placeholder={placeholder} />

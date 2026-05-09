@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { Component, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 
 import {
@@ -56,12 +56,10 @@ const SETTINGS_SECTIONS: readonly SettingsSectionItem[] = [
   { id: "providers", label: "AI 供应商", group: "实例管理" },
   { id: "terminals", label: "终端", group: "实例管理" },
   { id: "server", label: "服务器与系统", group: "实例管理" },
-  { id: "config", label: "项目配置", group: "实例管理" },
   { id: "storage", label: "存储空间", group: "运行资源与审计" },
   { id: "resources", label: "运行资源", group: "运行资源与审计" },
   { id: "usage", label: "用量监控", group: "运行资源与审计" },
   { id: "runtime", label: "运行时环境", group: "运行资源与审计" },
-  { id: "history", label: "使用历史", group: "运行资源与审计" },
   { id: "about", label: "关于", group: "关于与项目" },
 ];
 
@@ -81,6 +79,37 @@ function LazyFallback() {
       <p className="text-sm text-muted-foreground animate-pulse">加载中…</p>
     </div>
   );
+}
+
+interface LazyErrorBoundaryState {
+  error: Error | null;
+}
+
+class LazyErrorBoundary extends Component<{ children: ReactNode; fallbackLabel?: string }, LazyErrorBoundaryState> {
+  state: LazyErrorBoundaryState = { error: null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="flex h-full flex-1 flex-col items-center justify-center gap-3 p-6">
+          <p className="text-sm text-destructive">加载{this.props.fallbackLabel ?? "页面"}失败</p>
+          <p className="text-xs text-muted-foreground">{this.state.error.message}</p>
+          <button
+            type="button"
+            className="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted"
+            onClick={() => this.setState({ error: null })}
+          >
+            重试
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
 }
 
 function providerSummaryRecord(providerSummary: ShellDataProviderSummary | null): Record<string, unknown> | null {
@@ -933,11 +962,11 @@ function RouteMountPoint({
     case "book":
       return <WritingWorkbenchRouteLive bookId={route.bookId} onCanvasContextChange={onCanvasContextChange} onNavigateToConversation={onNavigateToConversation} />;
     case "sessions":
-      return <Suspense fallback={<LazyFallback />}><SessionCenterPage /></Suspense>;
+      return <LazyErrorBoundary fallbackLabel="会话中心"><Suspense fallback={<LazyFallback />}><SessionCenterPage /></Suspense></LazyErrorBoundary>;
     case "search":
-      return <Suspense fallback={<LazyFallback />}><SearchPage /></Suspense>;
+      return <LazyErrorBoundary fallbackLabel="搜索"><Suspense fallback={<LazyFallback />}><SearchPage /></Suspense></LazyErrorBoundary>;
     case "routines":
-      return <Suspense fallback={<LazyFallback />}><RoutinesNextPage /></Suspense>;
+      return <LazyErrorBoundary fallbackLabel="套路页"><Suspense fallback={<LazyFallback />}><RoutinesNextPage /></Suspense></LazyErrorBoundary>;
     case "settings":
       return <SettingsRouteLive />;
     case "home":
