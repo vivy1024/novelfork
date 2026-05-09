@@ -185,6 +185,7 @@ export type ConfirmSessionToolDecisionInput = {
   readonly decision?: "approve" | "approved" | "reject" | "rejected";
   readonly action?: "approve" | "reject";
   readonly reason?: string;
+  readonly answers?: Record<string, unknown>;
 };
 
 export type ConfirmSessionToolDecisionResult =

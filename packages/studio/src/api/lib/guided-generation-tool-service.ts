@@ -68,6 +68,15 @@ export function createGuidedGenerationToolService(options: GuidedGenerationToolS
           state,
         },
         artifact,
+        confirmation: {
+          id: `guided:${state.id}:${Date.now()}`,
+          toolName: "guided.enter",
+          target: `guided:${state.id}`,
+          risk: "confirmed-write" as const,
+          summary: `引导式生成：${state.goal}`,
+          options: ["approve", "reject"] as const,
+          diff: { questions: state.questions, goal: state.goal, contextSources: state.contextSources },
+        },
         guided: {
           stateId: state.id,
           status: state.status,

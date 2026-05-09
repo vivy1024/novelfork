@@ -26,9 +26,20 @@ export interface ConversationConfirmationOperation {
   label: string;
 }
 
+export interface ConversationConfirmationQuestion {
+  id: string;
+  prompt: string;
+  type: "text" | "single" | "multi" | "ranged-number" | "ai-suggest";
+  options?: readonly string[];
+  reason?: string;
+  required?: boolean;
+  aiSuggestion?: string;
+}
+
 export interface ConversationConfirmation {
   id: string;
   title: string;
+  toolName?: string;
   summary?: string;
   target?: string;
   targetResources?: readonly ConversationConfirmationResource[];
@@ -41,6 +52,8 @@ export interface ConversationConfirmation {
   operation?: string;
   error?: string;
   busy?: boolean;
+  /** PGI/Guided 问题列表 */
+  questions?: readonly ConversationConfirmationQuestion[];
 }
 
 const RISK_COLORS: Record<string, string> = {

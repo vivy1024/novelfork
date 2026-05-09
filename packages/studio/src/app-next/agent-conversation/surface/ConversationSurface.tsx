@@ -6,6 +6,7 @@ import type { ToolResultArtifact } from "../../tool-results";
 import type { SlashCommandExecutionContext, SlashCommandExecutionResult } from "../slash-command-registry";
 import { Composer } from "./Composer";
 import { ConfirmationGate, type ConversationConfirmation } from "./ConfirmationGate";
+import { UserQuestionGate } from "./UserQuestionGate";
 import type { ConversationSessionConfigPatch, ConversationStatus } from "./ConversationStatusBar";
 import { MessageStream, type ConversationSurfaceMessage } from "./MessageStream";
 import { NarratorStatusBar } from "./NarratorStatusBar";
@@ -35,7 +36,7 @@ export interface ConversationSurfaceProps {
   isRunning?: boolean;
   /** Streaming 开始时间戳（用于计时） */
   streamingStartedAt?: number | null;
-  onApproveConfirmation: (id: string) => void;
+  onApproveConfirmation: (id: string, answers?: Record<string, unknown>) => void;
   onRejectConfirmation: (id: string) => void;
   onSend: (content: string) => void;
   onAbort?: () => void;
@@ -283,10 +284,18 @@ export function ConversationSurface({
         ) : (
           <>
             <MessageStream messages={filteredMessages} hasPrevious={hasPreviousMessages} onLoadPrevious={onLoadPreviousMessages} onContextAction={handleMessageContextAction} />
-            {/* Confirmation gate inline */}
+            {/* Confirmation gate / User question gate inline */}
             {pendingConfirmation && (
               <div className="my-3">
-                <ConfirmationGate confirmation={pendingConfirmation} onApprove={onApproveConfirmation} onReject={onRejectConfirmation} />
+                {isUserQuestionToolName(pendingConfirmation.toolName) ? (
+                  <UserQuestionGate
+                    confirmation={pendingConfirmation}
+                    onSubmitAnswers={(id, answers) => onApproveConfirmation(id, answers)}
+                    onSkip={onRejectConfirmation}
+                  />
+                ) : (
+                  <ConfirmationGate confirmation={pendingConfirmation} onApprove={onApproveConfirmation} onReject={onRejectConfirmation} />
+                )}
               </div>
             )}
           </>
@@ -365,6 +374,21 @@ function InfoRow({ label, value, mono }: { label: string; value: string; mono?: 
       <span className={`text-xs text-right break-all ${mono ? "font-mono" : ""}`}>{value}</span>
     </div>
   );
+}
+
+// ---------------------------------------------------------------------------
+// isUserQuestionToolName — 判断是否为问题类型的 permission
+// ---------------------------------------------------------------------------
+
+const USER_QUESTION_TOOL_NAMES = new Set([
+  "pgi.generate_questions",
+  "guided.enter",
+  "guided.answer_question",
+]);
+
+function isUserQuestionToolName(toolName: string | undefined): boolean {
+  if (!toolName) return false;
+  return USER_QUESTION_TOOL_NAMES.has(toolName);
 }
 
 // ---------------------------------------------------------------------------
