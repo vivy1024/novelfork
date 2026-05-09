@@ -7,6 +7,7 @@ import { useState, useEffect } from "react";
 import { FileText, FilePlus, FileX, FileQuestion } from "lucide-react";
 import { DiffViewer } from "./DiffViewer";
 import { fetchJson } from "../hooks/use-api";
+import { Button } from "./ui/button";
 
 export interface FileModPanelProps {
   worktreePath: string;
@@ -160,10 +161,11 @@ export function FileModPanel({ worktreePath }: FileModPanelProps) {
             const label = FILE_TYPE_LABELS[file.type];
 
             return (
-              <button
+              <Button
                 key={file.path}
+                variant="ghost"
                 onClick={() => setSelectedFile(file.path)}
-                className={`w-full flex items-center gap-2 px-3 py-2 rounded text-sm hover:bg-accent transition-colors text-left ${
+                className={`w-full flex items-center gap-2 px-3 py-2 rounded text-sm h-auto justify-start text-left ${
                   selectedFile === file.path ? "bg-accent" : ""
                 }`}
                 title={file.path}
@@ -177,7 +179,7 @@ export function FileModPanel({ worktreePath }: FileModPanelProps) {
                 >
                   {label}
                 </span>
-              </button>
+              </Button>
             );
           })}
         </div>

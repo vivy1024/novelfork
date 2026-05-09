@@ -13,6 +13,7 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import "@xterm/xterm/css/xterm.css";
+import { Button } from "./ui/button";
 
 export interface EmbeddedTerminalProps {
   /** WebSocket URL for PTY connection */
@@ -158,15 +159,17 @@ export function EmbeddedTerminal({ wsUrl, title = "终端", className = "", onRe
           <span className="text-xs font-medium text-gray-300">{title}</span>
         </div>
         {onClose && (
-          <button
+          <Button
             type="button"
-            className="rounded p-0.5 text-gray-400 hover:bg-gray-700 hover:text-gray-200"
+            variant="ghost"
+            size="icon-xs"
+            className="text-gray-400 hover:bg-gray-700 hover:text-gray-200"
             onClick={onClose}
           >
             <svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M18 6L6 18M6 6l12 12" />
             </svg>
-          </button>
+          </Button>
         )}
       </div>
 

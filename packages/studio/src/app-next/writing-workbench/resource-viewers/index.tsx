@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import { Textarea } from "@/components/ui/textarea";
 import type { WorkbenchResourceKind, WorkbenchResourceNode } from "../useWorkbenchResources";
 
 export type ResourceViewerKind =
@@ -58,7 +59,7 @@ function ViewerShell({ node, label, children }: { node: WorkbenchResourceNode; l
 function TextBody({ node, label, onContentChange }: { node: WorkbenchResourceNode; label: string; onContentChange?: (content: string) => void }) {
   const readonly = node.capabilities.readonly || !node.capabilities.edit || node.capabilities.unsupported;
 
-  return <textarea aria-label={label} readOnly={readonly} value={node.content ?? ""} rows={18} onChange={(event) => onContentChange?.(event.currentTarget.value)} />;
+  return <Textarea aria-label={label} readOnly={readonly} value={node.content ?? ""} rows={18} onChange={(event) => onContentChange?.(event.currentTarget.value)} />;
 }
 
 function renderEditableText(node: WorkbenchResourceNode, options: ResourceViewerRenderOptions = {}) {
@@ -84,7 +85,7 @@ function renderReadonlySummary(node: WorkbenchResourceNode) {
   const content = node.content ?? JSON.stringify(node.metadata?.snapshot ?? node.metadata?.section ?? node.metadata?.entry ?? node.metadata ?? {}, null, 2);
   return (
     <ViewerShell node={node} label={label}>
-      <textarea aria-label="只读内容" readOnly value={content} rows={12} onChange={() => undefined} />
+      <Textarea aria-label="只读内容" readOnly value={content} rows={12} onChange={() => undefined} />
     </ViewerShell>
   );
 }

@@ -2,6 +2,7 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Book, ChevronRight, ChevronDown } from "lucide-react";
 import type { TFunction } from "../../hooks/use-i18n";
+import { Button } from "../ui/button";
 
 interface BookSummary {
   readonly id: string;
@@ -48,15 +49,18 @@ export function SortableProjectCard({
   return (
     <div ref={setNodeRef} style={style}>
       <div className="flex items-center">
-        <button
+        <Button
+          variant="ghost"
+          size="icon-xs"
           onClick={onToggle}
-          className="w-5 h-7 flex items-center justify-center text-muted-foreground hover:text-foreground shrink-0"
+          className="w-5 h-7 text-muted-foreground hover:text-foreground shrink-0"
         >
           {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="ghost"
           onClick={() => nav.toBook(book.id)}
-          className={`flex-1 group flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-all ${
+          className={`flex-1 group flex items-center gap-2 px-2 py-1.5 rounded-md text-sm h-auto justify-start ${
             isActive
               ? "bg-primary/10 text-primary font-semibold"
               : "text-foreground font-medium hover:bg-secondary/50"
@@ -71,7 +75,7 @@ export function SortableProjectCard({
               {book.chaptersWritten}
             </span>
           )}
-        </button>
+        </Button>
       </div>
     </div>
   );
