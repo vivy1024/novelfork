@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Save, FileText, AlertCircle, Loader2 } from "lucide-react";
 import { resourceNeedsDetailHydration } from "./ResourceDetailLoader";
 import { ResourceViewer } from "./resource-viewers";
+import { CandidateActionsBar, type CandidateAcceptAction } from "./CandidateActionsBar";
 import type { CanvasContext, OpenResourceTab, WorkspaceResourceRef, WorkspaceResourceViewKind } from "../../shared/agent-native-workspace";
 import type { WorkbenchResourceKind, WorkbenchResourceNode } from "./useWorkbenchResources";
 
@@ -85,13 +86,21 @@ function resourceTypeLabel(kind: WorkbenchResourceKind): string {
   return resourceTypeLabels[kind] ?? kind;
 }
 
+export interface CandidateActionHandlers {
+  onAccept: (candidateId: string, action: CandidateAcceptAction) => Promise<void>;
+  onReject: (candidateId: string) => Promise<void>;
+  onArchive: (candidateId: string) => Promise<void>;
+  onDelete: (candidateId: string) => Promise<void>;
+}
+
 export interface WorkbenchCanvasProps {
   node: WorkbenchResourceNode | null;
   onSave: (node: WorkbenchResourceNode, content: string) => Promise<void> | void;
   onCanvasContextChange?: (context: WorkbenchCanvasContext) => void;
+  candidateActions?: CandidateActionHandlers;
 }
 
-export function WorkbenchCanvas({ node, onSave, onCanvasContextChange = () => undefined }: WorkbenchCanvasProps) {
+export function WorkbenchCanvas({ node, onSave, onCanvasContextChange = () => undefined, candidateActions }: WorkbenchCanvasProps) {
   const [content, setContent] = useState(node?.content ?? "");
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -180,6 +189,24 @@ export function WorkbenchCanvas({ node, onSave, onCanvasContextChange = () => un
         <div className="shrink-0 flex items-center gap-2 bg-destructive/10 px-4 py-2 text-xs text-destructive">
           <AlertCircle className="size-3.5" />
           加载失败：{hydrateError}
+        </div>
+      )}
+
+      {/* Candidate actions bar */}
+      {node.kind === "candidate" && candidateActions && (
+        <div className="shrink-0 border-b border-border px-4 py-2">
+          <CandidateActionsBar
+            candidateId={String(node.metadata?.candidateId ?? node.id.replace("candidate:", ""))}
+            bookId={String(node.metadata?.bookId ?? "")}
+            status={(node.metadata?.status as "candidate" | "accepted" | "rejected" | "archived") ?? "candidate"}
+            source={typeof node.metadata?.source === "string" ? node.metadata.source : undefined}
+            targetChapterId={typeof node.metadata?.targetChapterId === "string" ? node.metadata.targetChapterId : undefined}
+            createdAt={typeof node.metadata?.createdAt === "string" ? node.metadata.createdAt : undefined}
+            onAccept={candidateActions.onAccept}
+            onReject={candidateActions.onReject}
+            onArchive={candidateActions.onArchive}
+            onDelete={candidateActions.onDelete}
+          />
         </div>
       )}
 
