@@ -6,4 +6,5 @@ export * from "./GuidedPlanCard";
 export * from "./NarrativeLineCard";
 export * from "./PgiCard";
 export * from "./QuestionnaireCard";
+export * from "./WorkflowProgressCard";
 export * from "./registry";
