@@ -24,6 +24,7 @@ const RoutinesNextPage = lazy(() => import("./routines/RoutinesNextPage").then((
 const SessionCenterPage = lazy(() => import("./sessions/SessionCenterPage").then((m) => ({ default: m.SessionCenterPage })));
 import { SettingsLayout, type SettingsSectionItem } from "./components/layouts";
 import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
 import { ProviderSettingsPage } from "./settings/ProviderSettingsPage";
 import { SettingsSectionContent } from "./settings/SettingsSectionContent";
 import { AgentShell, toShellPath, useShellData, useShellDataStore, type ShellBookItem, type ShellRoute, type ShellSessionItem, type ShellDataProviderSummary, type ShellDataProviderStatus } from "./shell";
@@ -199,7 +200,7 @@ function HomeRouteLive({ books, sessions, providerSummary, providerStatus, loadi
             </div>
             <label className="block text-sm font-medium">
               作品标题
-              <input className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2" value={newBookTitle} onChange={(event) => setNewBookTitle(event.currentTarget.value)} />
+              <Input className="mt-1 w-full" value={newBookTitle} onChange={(event) => setNewBookTitle(event.currentTarget.value)} />
             </label>
             {createBookError ? <p role="alert" className="text-sm text-destructive">{createBookError}</p> : null}
             <div className="flex gap-2">
@@ -857,13 +858,13 @@ function WritingWorkbenchRouteLive({ bookId, onCanvasContextChange, onNavigateTo
       {detailError ? (
         <p role="alert">
           {detailError.node.title} 详情加载失败：{detailError.message}
-          <button type="button" onClick={() => handleOpen(detailError.node)}>重试</button>
+          <Button type="button" variant="outline" size="sm" onClick={() => handleOpen(detailError.node)}>重试</Button>
         </p>
       ) : null}
       {switchGuard ? (
         <p role="alert">
           {switchGuard.message}
-          <button type="button" onClick={() => openResourceNode(switchGuard.target)}>放弃并切换</button>
+          <Button type="button" variant="outline" size="sm" onClick={() => openResourceNode(switchGuard.target)}>放弃并切换</Button>
         </p>
       ) : null}
       <WritingWorkbenchRoute

@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import type { PlatformAccount, PlatformId, PlatformImportMethod, PlatformIntegrationCatalogItem, PlatformJsonImportPayload } from "../provider-types";
 import { PlatformAccountTable } from "./PlatformAccountTable";
 
@@ -172,8 +174,8 @@ export function PlatformIntegrationDetail({
           <div className="space-y-3">
             <label className="block text-sm">
               账号显示名（可选）
-              <input
-                className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2"
+              <Input
+                className="mt-1 w-full"
                 value={displayName}
                 onChange={(event) => setDisplayName(event.target.value)}
                 placeholder={`${integration.name} 主账号`}
@@ -181,8 +183,8 @@ export function PlatformIntegrationDetail({
             </label>
             <label className="block text-sm">
               JSON 账号数据
-              <textarea
-                className="mt-1 min-h-32 w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs"
+              <Textarea
+                className="mt-1 min-h-32 w-full font-mono text-xs"
                 value={jsonText}
                 onChange={(event) => setJsonText(event.target.value)}
                 placeholder={'{"account_id":"...","email":"...","refresh_token":"..."}'}

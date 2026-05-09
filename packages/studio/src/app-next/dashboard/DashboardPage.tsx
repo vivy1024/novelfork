@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useApi, postApi, fetchJson } from "../../hooks/use-api";
 import { EmptyState, InlineError } from "../components/feedback";
 import { Button } from "../../components/ui/button";
+import { Input } from "../../components/ui/input";
 
 interface BookItem {
   readonly id: string;
@@ -143,8 +144,7 @@ export function DashboardPage({ onOpenBook }: DashboardPageProps) {
           <div className="grid grid-cols-2 gap-3">
             <label className="col-span-2 space-y-1">
               <span className="text-xs text-muted-foreground">书名</span>
-              <input
-                className="w-full rounded-md border border-border bg-background px-2 py-1 text-sm"
+              <Input
                 value={form.title}
                 onChange={(e) => handleChange("title", e.target.value)}
                 placeholder="输入书名"
@@ -181,9 +181,8 @@ export function DashboardPage({ onOpenBook }: DashboardPageProps) {
             </label>
             <label className="space-y-1">
               <span className="text-xs text-muted-foreground">每章字数</span>
-              <input
+              <Input
                 type="number"
-                className="w-full rounded-md border border-border bg-background px-2 py-1 text-sm"
                 value={form.chapterWordCount}
                 onChange={(e) => handleChange("chapterWordCount", Number(e.target.value))}
                 min={500}
@@ -192,9 +191,8 @@ export function DashboardPage({ onOpenBook }: DashboardPageProps) {
             </label>
             <label className="space-y-1">
               <span className="text-xs text-muted-foreground">目标章节数</span>
-              <input
+              <Input
                 type="number"
-                className="w-full rounded-md border border-border bg-background px-2 py-1 text-sm"
                 value={form.targetChapters}
                 onChange={(e) => handleChange("targetChapters", Number(e.target.value))}
                 min={1}
@@ -350,7 +348,7 @@ function ImportPanel({ books, onDone }: { readonly books: ReadonlyArray<BookItem
 
       <>
         <textarea className="w-full rounded-md border border-border bg-background p-2 text-sm" rows={5} value={text} onChange={(e) => setText(e.target.value)} placeholder="粘贴章节文本，系统会自动按章节标题分割…" />
-        <input className="w-full rounded-md border border-border bg-background px-2 py-1 text-sm" value={splitRegex} onChange={(e) => setSplitRegex(e.target.value)} placeholder="自定义分割正则（可选）" />
+        <Input value={splitRegex} onChange={(e) => setSplitRegex(e.target.value)} placeholder="自定义分割正则（可选）" />
         <Button data-visual-audit="disabledAction" disabled={loading || !text.trim() || !bookId} onClick={() => void handleImportChapters()} type="button">
           {loading ? "导入中…" : "导入章节"}
         </Button>

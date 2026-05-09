@@ -7,6 +7,7 @@ import { GripVertical } from "lucide-react";
 import { listRuntimeCommands, type RuntimeCommandDefinition, type RuntimeCommandSource, type RuntimeCommandStatus } from "@vivy1024/novelfork-core/registry/command-registry";
 
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { SimpleSelect } from "@/components/ui/simple-select";
 import { CommandsTab } from "../../components/Routines/CommandsTab";
 import { MCPToolsTab } from "../../components/Routines/MCPToolsTab";
@@ -465,11 +466,11 @@ function SortableHookItem({ hook, onUpdate, onRemove }: { hook: RoutineHook; onU
       </div>
       <label className="text-sm">
         钩子名称
-        <input className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2" value={hook.name} onChange={(event) => onUpdate(hook.id, { name: event.target.value })} />
+        <Input className="mt-1 w-full" value={hook.name} onChange={(event) => onUpdate(hook.id, { name: event.target.value })} />
       </label>
       <label className="text-sm">
         触发节点
-        <input className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2" list="routine-hook-events" value={hook.event} onChange={(event) => onUpdate(hook.id, { event: event.target.value })} />
+        <Input className="mt-1 w-full" list="routine-hook-events" value={hook.event} onChange={(event) => onUpdate(hook.id, { event: event.target.value })} />
       </label>
       <label className="text-sm">
         执行方式
@@ -490,7 +491,7 @@ function SortableHookItem({ hook, onUpdate, onRemove }: { hook: RoutineHook; onU
       </div>
       <label className="text-sm md:col-span-5">
         执行目标
-        <input className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2" value={hook.target} onChange={(event) => onUpdate(hook.id, { target: event.target.value })} placeholder="命令、Webhook URL 或 LLM 提示词" />
+        <Input className="mt-1 w-full" value={hook.target} onChange={(event) => onUpdate(hook.id, { target: event.target.value })} placeholder="命令、Webhook URL 或 LLM 提示词" />
       </label>
     </div>
   );

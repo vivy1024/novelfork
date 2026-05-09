@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 
+import { Button } from "@/components/ui/button";
 import { resourceNeedsDetailHydration } from "./ResourceDetailLoader";
 import { ResourceViewer } from "./resource-viewers";
 import type { CanvasContext, OpenResourceTab, WorkspaceResourceRef, WorkspaceResourceViewKind } from "../../shared/agent-native-workspace";
@@ -183,9 +184,9 @@ export function WorkbenchCanvas({ node, onSave, onCanvasContextChange = () => un
           setSaveError(null);
         }} />
       )}
-      <button type="button" disabled={readonly || needsHydration || !dirty} onClick={handleSave}>
+      <Button type="button" disabled={readonly || needsHydration || !dirty} onClick={handleSave}>
         保存
-      </button>
+      </Button>
     </section>
   );
 }

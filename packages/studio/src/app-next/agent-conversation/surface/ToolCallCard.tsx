@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Check, X, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 export interface ConversationToolCall {
   id: string;
@@ -30,10 +31,11 @@ export function ToolCallCard({ toolCall }: { toolCall: ConversationToolCall; onO
   return (
     <div className="my-1">
       {/* Compact one-line header */}
-      <button
+      <Button
         type="button"
+        variant="ghost"
         onClick={() => setExpanded(!expanded)}
-        className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm hover:bg-muted/50 transition-colors"
+        className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm h-auto justify-start"
       >
         {/* Status icon */}
         {isSuccess && <Check className="size-3.5 text-green-600 dark:text-green-400" />}
@@ -58,7 +60,7 @@ export function ToolCallCard({ toolCall }: { toolCall: ConversationToolCall; onO
 
         {/* Expand chevron */}
         {expanded ? <ChevronDown className="size-3 text-muted-foreground" /> : <ChevronRight className="size-3 text-muted-foreground" />}
-      </button>
+      </Button>
 
       {/* Expanded details */}
       {expanded && (
