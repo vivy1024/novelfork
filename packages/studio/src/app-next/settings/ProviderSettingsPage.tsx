@@ -61,6 +61,7 @@ export interface ProviderSettingsClient {
   listProviders: () => Promise<{ providers: ManagedProvider[] }>;
   createProvider: (provider: Omit<ManagedProvider, "priority">) => Promise<{ provider: ManagedProvider }>;
   updateProvider: (providerId: string, updates: Partial<ManagedProvider>) => Promise<{ provider: ManagedProvider }>;
+  deleteProvider: (providerId: string) => Promise<{ success: boolean }>;
   refreshModels: (providerId: string) => Promise<{ provider: ManagedProvider; models?: Model[] }>;
   testModel: (providerId: string, modelId: string) => Promise<{ success: boolean; latency?: number; error?: string; model?: Model }>;
   updateModel: (providerId: string, modelId: string, updates: Partial<Model>) => Promise<{ model: Model }>;
@@ -95,6 +96,7 @@ const defaultClient: ProviderSettingsClient = {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(updates),
   }),
+  deleteProvider: (providerId) => fetchJson<{ success: boolean }>(`/providers/${providerId}`, { method: "DELETE" }),
   refreshModels: (providerId) => fetchJson<{ provider: ManagedProvider; models?: Model[] }>(`/providers/${providerId}/models/refresh`, {
     method: "POST",
   }),
@@ -528,6 +530,11 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
         onTestModel={testModel}
         onUpdateModel={updateModel}
         onUpdateProvider={updateProvider}
+        onDelete={async (providerId) => {
+          await client.deleteProvider(providerId);
+          setSelectedApiProviderId(null);
+          setProviders((current) => current.filter((p) => p.id !== providerId));
+        }}
       />
     );
   }
@@ -593,8 +600,6 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
         onSelectProvider={setSelectedApiProviderId}
         onToggleProvider={toggleProvider}
       />
-
-      <ModelInventorySection groups={groupedModels} />
     </section>
   );
 }

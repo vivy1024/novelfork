@@ -562,6 +562,40 @@ class AnthropicCompatibleAdapter implements RuntimeAdapter {
     if (!ref.apiKey?.trim()) {
       return failure("auth-missing", `API key missing for provider ${ref.providerId}`);
     }
+    if (!ref.baseUrl?.trim()) {
+      return failure("config-missing", `Base URL missing for provider ${ref.providerId}`);
+    }
+
+    // 尝试调用 Anthropic /v1/models API 获取模型列表
+    const url = `${trimTrailingSlash(ref.baseUrl!)}/v1/models`;
+    try {
+      const response = await fetch(url, {
+        method: "GET",
+        headers: this.buildHeaders(ref.apiKey!),
+      });
+
+      if (response.ok) {
+        const payload = await response.json() as { data?: Array<{ id: string; display_name?: string; created_at?: string }> };
+        if (Array.isArray(payload.data) && payload.data.length > 0) {
+          return {
+            success: true,
+            models: payload.data.map((m) => ({
+              id: m.id,
+              name: m.display_name ?? m.id,
+              contextWindow: 200000,
+              maxOutputTokens: 16384,
+              enabled: true,
+              source: "detected" as const,
+              lastTestStatus: "untested" as const,
+            })),
+          };
+        }
+      }
+    } catch {
+      // API 不支持 /v1/models，降级到默认列表
+    }
+
+    // 降级：返回常见 Anthropic 模型
     return {
       success: true,
       models: [

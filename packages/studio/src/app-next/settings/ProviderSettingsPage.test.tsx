@@ -76,6 +76,7 @@ function createClient(): ProviderSettingsClient {
     })),
     testModel: vi.fn(async () => ({ success: true, latency: 12, model: { id: "gpt-4o", name: "GPT-4o", enabled: true, contextWindow: 128000, maxOutputTokens: 4096, lastTestStatus: "success" as const, lastTestLatency: 12 } })),
     updateModel: vi.fn(async (_providerId, _modelId, updates) => ({ model: { ...openaiProvider.models[0], ...updates } })),
+    deleteProvider: vi.fn(async () => ({ success: true })),
   };
 }
 
