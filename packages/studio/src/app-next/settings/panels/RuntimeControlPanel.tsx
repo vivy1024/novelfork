@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { SimpleSelect } from "@/components/ui/simple-select";
 import { Switch } from "@/components/ui/switch";
 import { fetchJson, putApi } from "@/hooks/use-api";
@@ -113,7 +114,6 @@ function RuntimeFactsSummary({ facts }: { readonly facts: ReadonlyArray<Settings
   );
 }
 
-const inputCls = "w-32 rounded-lg border border-border bg-background px-3 py-2 text-sm text-right shadow-sm hover:border-primary/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-colors";
 const wideInputCls = "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm shadow-sm hover:border-primary/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-colors";
 
 // ---------------------------------------------------------------------------
@@ -131,8 +131,8 @@ function ListManager({
   return (
     <div className="space-y-1.5">
       <div className="flex gap-2">
-        <input
-          className={`${wideInputCls} flex-1`}
+        <Input
+          className="flex-1"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           placeholder="输入路径或命令"
@@ -155,13 +155,15 @@ function ListManager({
           {items.map((item, i) => (
             <div key={i} className="flex items-center justify-between rounded-md bg-muted px-2 py-1 text-sm">
               <span className="font-mono">{item}</span>
-              <button
+              <Button
+                variant="ghost"
+                size="xs"
                 className="text-xs text-destructive hover:underline"
                 onClick={() => onChange(items.filter((_, j) => j !== i))}
                 type="button"
               >
                 删除
-              </button>
+              </Button>
             </div>
           ))}
         </div>
@@ -291,8 +293,8 @@ export function RuntimeControlPanel() {
           />
         </FieldRow>
         <FieldRow label="每条消息最大轮次">
-          <input
-            className={inputCls}
+          <Input
+            className="w-32 text-right"
             type="number"
             min={1}
             max={1000}
@@ -443,8 +445,8 @@ export function RuntimeControlPanel() {
       {/* ---- 上下文 ---- */}
       <Section title="上下文">
         <FieldRow label="压缩阈值 %">
-          <input
-            className={inputCls}
+          <Input
+            className="w-32 text-right"
             type="number"
             min={50}
             max={95}
@@ -453,8 +455,8 @@ export function RuntimeControlPanel() {
           />
         </FieldRow>
         <FieldRow label="截断目标 %">
-          <input
-            className={inputCls}
+          <Input
+            className="w-32 text-right"
             type="number"
             min={40}
             max={90}
@@ -463,8 +465,8 @@ export function RuntimeControlPanel() {
           />
         </FieldRow>
         <FieldRow label="大窗口压缩起始 %">
-          <input
-            className={inputCls}
+          <Input
+            className="w-32 text-right"
             type="number"
             min={50}
             max={95}
@@ -473,8 +475,8 @@ export function RuntimeControlPanel() {
           />
         </FieldRow>
         <FieldRow label="大窗口截断目标 %">
-          <input
-            className={inputCls}
+          <Input
+            className="w-32 text-right"
             type="number"
             min={40}
             max={90}
@@ -487,9 +489,9 @@ export function RuntimeControlPanel() {
       {/* ---- 代理 ---- */}
       <Section title="代理">
         <FieldRow label="WebFetch 代理 URL">
-          <input
+          <Input
             aria-label="WebFetch 代理"
-            className={wideInputCls}
+            className="w-full"
             value={proxy.webFetch}
             onChange={(e) => patchProxy({ webFetch: e.target.value })}
             placeholder="http://127.0.0.1:7890"
@@ -500,8 +502,8 @@ export function RuntimeControlPanel() {
       {/* ---- 恢复 ---- */}
       <Section title="恢复">
         <FieldRow label="最大重试次数">
-          <input
-            className={inputCls}
+          <Input
+            className="w-32 text-right"
             type="number"
             min={0}
             max={20}
@@ -513,8 +515,8 @@ export function RuntimeControlPanel() {
           />
         </FieldRow>
         <FieldRow label="退避上限 ms">
-          <input
-            className={inputCls}
+          <Input
+            className="w-32 text-right"
             type="number"
             min={1000}
             max={120000}
