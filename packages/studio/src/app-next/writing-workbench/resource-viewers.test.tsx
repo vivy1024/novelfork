@@ -61,7 +61,7 @@ describe("ResourceViewer", () => {
         })}
       />,
     );
-    expect(screen.getByLabelText("候选稿正文")).toHaveProperty("readOnly", false);
+    expect(screen.getByLabelText("候选稿正文")).toHaveProperty("readOnly", true);
     expect(screen.getByText("可应用")).toBeTruthy();
     cleanup();
 

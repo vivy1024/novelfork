@@ -106,9 +106,25 @@ function renderToolResult(node: WorkbenchResourceNode) {
   );
 }
 
+function renderCandidateText(node: WorkbenchResourceNode, options: ResourceViewerRenderOptions = {}) {
+  // 候选稿默认只读展示，操作通过 CandidateActionsBar 完成
+  const readonly = true;
+  return (
+    <ViewerShell node={node} label="候选稿">
+      <Textarea
+        aria-label="候选稿正文"
+        readOnly={readonly}
+        value={node.content ?? ""}
+        rows={18}
+        onChange={(event) => options.onContentChange?.(event.currentTarget.value)}
+      />
+    </ViewerShell>
+  );
+}
+
 export const resourceViewerRegistry: Record<ResourceViewerKind, ResourceViewerDefinition> = {
   chapter: { kind: "chapter", label: "章节", render: renderEditableText },
-  candidate: { kind: "candidate", label: "候选稿", render: renderEditableText },
+  candidate: { kind: "candidate", label: "候选稿", render: renderCandidateText },
   draft: { kind: "draft", label: "草稿", render: renderEditableText },
   story: { kind: "story", label: "Story 文件", render: renderTextFile },
   truth: { kind: "truth", label: "Truth 文件", render: renderTextFile },
