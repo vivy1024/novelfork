@@ -72,7 +72,7 @@ export function FirstRunDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent aria-label="首次欢迎" className="max-w-2xl" showCloseButton>
+      <DialogContent aria-label="首次欢迎" className="max-w-2xl sm:max-w-2xl" showCloseButton>
         <DialogHeader>
           <div className="flex flex-wrap items-center gap-2">
             <DialogTitle className="text-xl">欢迎使用 NovelFork</DialogTitle>

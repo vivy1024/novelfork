@@ -32,6 +32,7 @@ export function ApiProviderDetail({
   onTestModel,
   onUpdateModel,
   onUpdateProvider,
+  onDelete,
 }: {
   readonly provider: ApiProvider;
   readonly busy: string | null;
@@ -44,6 +45,7 @@ export function ApiProviderDetail({
   readonly onTestModel: (providerId: string, modelId: string) => Promise<void>;
   readonly onUpdateModel: (providerId: string, model: Model, updates: Partial<Model>) => Promise<void>;
   readonly onUpdateProvider: (providerId: string, updates: Partial<ManagedProvider>) => Promise<void>;
+  readonly onDelete?: (providerId: string) => Promise<void>;
 }) {
   const [baseUrl, setBaseUrl] = useState(provider.baseUrl ?? provider.config.endpoint ?? "");
   const [apiKey, setApiKey] = useState("");
@@ -71,9 +73,16 @@ export function ApiProviderDetail({
 
   return (
     <section aria-label={`${provider.name} API key 接入详情`} className="space-y-4">
-      <Button variant="ghost" size="sm" className="flex items-center gap-1" onClick={onBack}>
-        ← 返回供应商列表
-      </Button>
+      <div className="flex items-center justify-between">
+        <Button variant="ghost" size="sm" className="flex items-center gap-1" onClick={onBack}>
+          ← 返回供应商列表
+        </Button>
+        {onDelete && (
+          <Button variant="destructive" size="sm" onClick={() => { if (confirm(`确认删除供应商「${provider.name}」？此操作不可撤销。`)) void onDelete(provider.id); }}>
+            删除供应商
+          </Button>
+        )}
+      </div>
 
       <div>
         <h2 className="text-lg font-semibold">{provider.name}</h2>
