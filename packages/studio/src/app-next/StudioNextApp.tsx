@@ -577,6 +577,13 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
       onEditTitle={(newTitle) => { void sessionClient.updateSession(sessionId, { title: newTitle }); }}
       onGenerateTitle={() => { void sessionClient.updateSession(sessionId, { title: `会话 ${new Date().toLocaleDateString("zh-CN")}` }); }}
       onArchive={() => { void sessionClient.updateSession(sessionId, { status: "archived" }); }}
+      onAttach={async (files) => {
+        for (const file of Array.from(files)) {
+          const formData = new FormData();
+          formData.append("file", file);
+          await fetch("/api/upload", { method: "POST", body: formData });
+        }
+      }}
       hasPreviousMessages={runtime.state.messages.length > 0 && (runtime.state.messages[0]?.seq ?? 0) > 1}
       onLoadPreviousMessages={async () => {
         const earliestSeq = runtime.state.messages[0]?.seq ?? 0;

@@ -49,6 +49,8 @@ export interface ConversationRouteProps {
   onEditTitle?: (newTitle: string) => void;
   onGenerateTitle?: () => void;
   onArchive?: () => void;
+  /** 附件上传回调 */
+  onAttach?: (files: FileList) => void;
 }
 
 const defaultStatus: ConversationRouteStatus = { state: "idle", label: "未连接" };
@@ -88,6 +90,7 @@ export function ConversationRoute({
   onEditTitle,
   onGenerateTitle,
   onArchive,
+  onAttach,
 }: ConversationRouteProps) {
   if (!sessionId) {
     return (
@@ -151,6 +154,7 @@ export function ConversationRoute({
         onEditTitle={onEditTitle}
         onGenerateTitle={onGenerateTitle}
         onArchive={onArchive}
+        onAttach={onAttach}
       />
     </section>
   );
