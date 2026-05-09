@@ -131,8 +131,8 @@ export async function loadResourceTreeFromContract(
 
   const candidates = await optional<CandidateListResponse>(errors, "candidates.list", "候选稿加载失败", () => resource.listCandidates<CandidateListResponse>(bookId));
   const drafts = await optional<DraftListResponse>(errors, "drafts.list", "草稿加载失败", () => resource.listDrafts<DraftListResponse>(bookId));
-  const storyFiles = await optional<StoryFileListResponse>(errors, "story-files.list", "Story 文件加载失败", () => resource.listStoryFiles<StoryFileListResponse>(bookId));
-  const truthFiles = await optional<TruthFileListResponse>(errors, "truth-files.list", "Truth 文件加载失败", () => resource.listTruthFiles<TruthFileListResponse>(bookId));
+  const storyFiles = await optional<StoryFileListResponse>(errors, "story-files.list", "大纲与设定文件加载失败", () => resource.listStoryFiles<StoryFileListResponse>(bookId));
+  const truthFiles = await optional<TruthFileListResponse>(errors, "truth-files.list", "真相文件加载失败", () => resource.listTruthFiles<TruthFileListResponse>(bookId));
   const jingweiSections = await optional<JingweiSectionsResponse>(errors, "jingwei.sections", "经纬分区加载失败", () => resource.listJingweiSections<JingweiSectionsResponse>(bookId));
   const jingweiEntries = await optional<JingweiEntriesResponse>(errors, "jingwei.entries", "经纬条目加载失败", () => resource.listJingweiEntries<JingweiEntriesResponse>(bookId));
   const narrative = await optional<NarrativeLineResponse>(errors, "narrative-line.read", "叙事线加载失败", () => resource.getNarrativeLine<NarrativeLineResponse>(bookId));
@@ -157,8 +157,8 @@ export async function loadResourceTreeFromContract(
           ...errors.filter((node) => node.id === "unsupported:candidates.list"),
         ]),
         group("group:drafts", "草稿", drafts?.drafts.map(toDraftNode) ?? []),
-        group("group:story-files", "Story 文件", storyFiles?.files.map((file) => toStoryFileNode(book.id, file)) ?? []),
-        group("group:truth-files", "Truth 文件", truthFiles?.files.map((file) => toTruthFileNode(book.id, file)) ?? []),
+        group("group:story-files", "大纲与设定", storyFiles?.files.map((file) => toStoryFileNode(book.id, file)) ?? []),
+        group("group:truth-files", "真相文件", truthFiles?.files.map((file) => toTruthFileNode(book.id, file)) ?? []),
         group("group:jingwei", "经纬资料", [
           ...(jingweiSections?.sections.map(toJingweiSectionNode) ?? []),
           ...(jingweiEntries?.entries.map(toJingweiEntryNode) ?? []),
