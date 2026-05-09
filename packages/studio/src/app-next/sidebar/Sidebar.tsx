@@ -10,6 +10,7 @@
 import { useState, type ReactNode } from "react";
 import { BookOpen, ChevronDown, ChevronRight, MessageSquareText, Settings, Wrench } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import studioPackageJson from "../../../package.json";
 
 const STUDIO_VERSION = studioPackageJson.version;
@@ -32,8 +33,9 @@ function SidebarSection({ title, icon, defaultOpen = true, actions, children }: 
   return (
     <div className="space-y-0.5">
       <div className="flex items-center gap-1.5 rounded-md text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground">
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="sm"
           className="flex min-w-0 flex-1 items-center gap-1.5 px-2 py-1 text-left"
           aria-expanded={open}
           onClick={() => setOpen((v) => !v)}
@@ -43,7 +45,7 @@ function SidebarSection({ title, icon, defaultOpen = true, actions, children }: 
             {icon}
             {title}
           </span>
-        </button>
+        </Button>
         {actions && (
           <div className="mr-1 flex items-center gap-0.5">
             {actions}
@@ -116,22 +118,24 @@ export function Sidebar({
 
       {/* 底部固定 */}
       <div className="shrink-0 space-y-0.5 border-t border-border px-2 py-2">
-        <button
-          type="button"
-          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-full justify-start gap-2"
           onClick={onRoutinesClick}
         >
           <Wrench className="h-4 w-4 shrink-0" />
           套路
-        </button>
-        <button
-          type="button"
-          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-full justify-start gap-2"
           onClick={onSettingsClick}
         >
           <Settings className="h-4 w-4 shrink-0" />
           设置
-        </button>
+        </Button>
         <div className="px-2 pt-1 text-[10px] text-muted-foreground">
           v{STUDIO_VERSION}
         </div>

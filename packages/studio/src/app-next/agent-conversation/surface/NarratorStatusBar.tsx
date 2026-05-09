@@ -10,6 +10,7 @@
 
 import { useState } from "react";
 import { Shield, ShieldOff, Zap } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import type { NarratorState, NarratorSubstatus, ConversationStatus, ConversationModelOption } from "./ConversationStatusBar";
 import type { SessionPermissionMode, SessionReasoningEffort } from "@/shared/session-types";
 import {
@@ -282,9 +283,8 @@ function ModelDropdown({
           <DropdownMenuLabel>下次发言使用的模型</DropdownMenuLabel>
         </DropdownMenuGroup>
         <div className="px-1.5 py-1">
-          <input
-            type="text"
-            className="w-full rounded border border-border bg-background px-2 py-1 text-xs outline-none focus:border-primary"
+          <Input
+            className="h-7 text-xs"
             placeholder="筛选模型..."
             value={filter}
             onChange={(e) => setFilter(e.target.value)}

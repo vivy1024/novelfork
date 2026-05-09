@@ -67,14 +67,14 @@ export function ShellSidebar({ route, books, sessions, onNavigate, collapsed = f
               <p className="text-[10px] text-muted-foreground">Agent Shell</p>
             </div>
           )}
-          <button
-            type="button"
-            className="shrink-0 rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+          <Button
+            variant="ghost"
+            size="icon-sm"
             onClick={onToggleCollapse}
             title={collapsed ? "展开侧栏" : "折叠侧栏"}
           >
             {collapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
-          </button>
+          </Button>
         </div>
 
         {/* Content */}
@@ -168,16 +168,17 @@ export function ShellSidebar({ route, books, sessions, onNavigate, collapsed = f
             }
 
             return (
-              <button
+              <Button
                 key={item.id}
-                type="button"
+                variant="ghost"
+                size="sm"
                 aria-current={isActive ? "page" : undefined}
-                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground aria-[current=page]:bg-primary/10 aria-[current=page]:text-primary"
+                className="w-full justify-start gap-2 aria-[current=page]:bg-primary/10 aria-[current=page]:text-primary"
                 onClick={() => onNavigate(item.route)}
               >
                 <Icon className="h-4 w-4" />
                 {item.label}
-              </button>
+              </Button>
             );
           })}
         </nav>
