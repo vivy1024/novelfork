@@ -5,6 +5,7 @@
 
 import { useState, useMemo, useCallback } from "react";
 import { BookmarkIcon, Sparkles, CheckIcon, GitBranch } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -222,12 +223,13 @@ function NodeCard({ node, isActive, x, y, onSelect, onBranch }: NodeCardProps) {
       </button>
 
       {hovered && (
-        <button
+        <Button
+          size="xs"
           onClick={(e) => { e.stopPropagation(); onBranch(); }}
-          className="absolute -right-2 top-1/2 -translate-y-1/2 px-2 py-1 rounded-md text-[10px] font-medium bg-purple-600 text-white shadow-lg hover:bg-purple-700 transition-colors whitespace-nowrap z-10"
+          className="absolute -right-2 top-1/2 -translate-y-1/2 bg-purple-600 text-white shadow-lg hover:bg-purple-700 whitespace-nowrap z-10"
         >
           创建分支
-        </button>
+        </Button>
       )}
     </div>
   );

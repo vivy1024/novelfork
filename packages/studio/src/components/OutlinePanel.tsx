@@ -5,6 +5,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { X, Sparkles, ShieldCheck, Lightbulb, ChevronDown, ChevronRight, BookOpen } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { fetchJson } from "../hooks/use-api";
 
 interface OutlineNode {
@@ -41,14 +42,15 @@ function ActionButton({ onClick, loading, icon, label }: {
   readonly label: string;
 }) {
   return (
-    <button
+    <Button
+      variant="outline"
+      size="xs"
       onClick={onClick}
       disabled={loading}
-      className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold bg-secondary text-muted-foreground rounded-lg hover:text-primary hover:bg-primary/10 transition-all border border-border/50 disabled:opacity-50"
     >
       {loading ? <div className="w-3 h-3 border-2 border-primary/20 border-t-primary rounded-full animate-spin" /> : icon}
       {label}
-    </button>
+    </Button>
   );
 }
 
@@ -112,12 +114,14 @@ function OutlineNodeItem({ node, expanded, onToggle, onNavigate }: {
             </p>
           )}
           {onNavigate && (node.status === "done" || node.status === "current") && (
-            <button
+            <Button
+              variant="link"
+              size="xs"
               onClick={onNavigate}
-              className="text-[10px] font-bold text-primary hover:underline"
+              className="p-0 h-auto"
             >
               跳转到章节
-            </button>
+            </Button>
           )}
         </div>
       )}
@@ -202,12 +206,9 @@ export function OutlinePanel({ bookId, visible, onClose, onNavigateToChapter }: 
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border/50">
         <h2 className="text-sm font-bold text-foreground">智能大纲</h2>
-        <button
-          onClick={onClose}
-          className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-all"
-        >
+        <Button variant="ghost" size="icon-sm" onClick={onClose}>
           <X size={16} />
-        </button>
+        </Button>
       </div>
 
       {/* Action Buttons */}

@@ -6,6 +6,7 @@
  */
 
 import { useState } from "react";
+import { Button } from "@/components/ui/button";
 import { ToolUseCard } from "./ToolUseCard";
 import { ToolResultCard } from "./ToolResultCard";
 import { PermissionPrompt } from "./PermissionPrompt";
@@ -189,17 +190,16 @@ export function ToolUsageExample() {
 
       {/* 测试按钮 */}
       <div className="p-4 border-t">
-        <button
+        <Button
           onClick={() => {
             handleToolPermission("Read", {
               file_path: "/path/to/file.txt",
               limit: 100,
             });
           }}
-          className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
         >
           测试工具权限请求
-        </button>
+        </Button>
       </div>
     </div>
   );

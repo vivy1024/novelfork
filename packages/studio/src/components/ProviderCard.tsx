@@ -5,6 +5,7 @@
 
 import { useState } from "react";
 import { Power, Settings, Wifi, WifiOff, ChevronDown, ChevronRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import type { AIProvider } from "../shared/provider-manager-types";
 
 interface ProviderCardProps {
@@ -50,13 +51,14 @@ export function ProviderCard({ provider, onToggle, onConfigure, onTest }: Provid
     <div className={`border rounded-lg p-4 ${provider.enabled ? "bg-card" : "bg-muted/30"}`}>
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-3">
-          <button
+          <Button
+            variant="ghost"
+            size="icon-sm"
             onClick={() => setExpanded(!expanded)}
-            className="p-1 hover:bg-accent rounded transition-colors"
             aria-label={expanded ? "收起供应商详情" : "展开供应商详情"}
           >
             {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-          </button>
+          </Button>
           <div>
             <h3 className="font-medium text-sm">{provider.name}</h3>
             <p className="text-xs text-muted-foreground">{getProviderTypeLabel(provider.type)}</p>
@@ -68,25 +70,28 @@ export function ProviderCard({ provider, onToggle, onConfigure, onTest }: Provid
             {provider.models.length} 个模型
           </span>
 
-          <button
+          <Button
+            variant="ghost"
+            size="icon-sm"
             onClick={() => onToggle(provider.id, !provider.enabled)}
-            className={`p-1.5 rounded transition-colors ${
+            className={
               provider.enabled
                 ? "bg-green-500/20 text-green-600 hover:bg-green-500/30"
                 : "bg-muted text-muted-foreground hover:bg-muted/80"
-            }`}
+            }
             title={provider.enabled ? "停用供应商" : "启用供应商"}
           >
             <Power size={14} />
-          </button>
+          </Button>
 
-          <button
+          <Button
+            variant="ghost"
+            size="icon-sm"
             onClick={() => onConfigure(provider.id)}
-            className="p-1.5 rounded hover:bg-accent transition-colors"
             title="配置供应商"
           >
             <Settings size={14} />
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -107,13 +112,14 @@ export function ProviderCard({ provider, onToggle, onConfigure, onTest }: Provid
           </div>
 
           <div>
-            <button
+            <Button
               onClick={handleTest}
               disabled={testing || !provider.enabled}
-              className="w-full px-3 py-1.5 text-xs rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="w-full"
+              size="sm"
             >
               {testing ? "测试中..." : "测试连接"}
-            </button>
+            </Button>
 
             {testResult && (
               <div className={`mt-2 p-2 rounded text-xs ${

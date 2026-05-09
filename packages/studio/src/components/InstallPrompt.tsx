@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/button";
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -56,9 +57,10 @@ export function InstallPrompt() {
             将应用添加到主屏幕，获得更好的体验
           </p>
         </div>
-        <button
+        <Button
+          variant="ghost"
+          size="icon-sm"
           onClick={handleDismiss}
-          className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
           aria-label="关闭"
         >
           <svg
@@ -74,21 +76,15 @@ export function InstallPrompt() {
               d="M6 18L18 6M6 6l12 12"
             />
           </svg>
-        </button>
+        </Button>
       </div>
       <div className="mt-4 flex gap-2">
-        <button
-          onClick={handleInstall}
-          className="flex-1 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-        >
+        <Button onClick={handleInstall} className="flex-1">
           安装
-        </button>
-        <button
-          onClick={handleDismiss}
-          className="flex-1 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
-        >
+        </Button>
+        <Button variant="outline" onClick={handleDismiss} className="flex-1">
           稍后
-        </button>
+        </Button>
       </div>
     </div>
   );

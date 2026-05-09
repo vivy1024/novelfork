@@ -5,6 +5,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { X, AlertTriangle, AlertCircle, Info, Shield } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { fetchJson } from "../hooks/use-api";
 
 interface Poison {
@@ -129,12 +130,9 @@ export function PoisonDetectorPanel({
           <Shield size={16} className="text-primary" />
           <h2 className="text-sm font-bold text-foreground">毒点检测器</h2>
         </div>
-        <button
-          onClick={onClose}
-          className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-all"
-        >
+        <Button variant="ghost" size="icon-sm" onClick={onClose}>
           <X size={16} />
-        </button>
+        </Button>
       </div>
 
       {/* Score Bar */}

@@ -5,6 +5,7 @@
 
 import { useState, useMemo } from "react";
 import { Anchor, AlertTriangle, Clock, CheckCircle } from "lucide-react";
+import { SimpleSelect } from "@/components/ui/simple-select";
 import { useApi } from "../hooks/use-api";
 
 interface HookEntry {
@@ -147,15 +148,15 @@ export function HookCountdown({ bookId }: HookCountdownProps) {
               </span>
             )}
           </div>
-          <select
+          <SimpleSelect
             value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as any)}
-            className="text-xs px-2 py-1 rounded border border-border bg-background"
-          >
-            <option value="urgency">按紧急度</option>
-            <option value="age">按年龄</option>
-            <option value="priority">按优先级</option>
-          </select>
+            onValueChange={(val) => setSortBy(val as "urgency" | "age" | "priority")}
+            options={[
+              { value: "urgency", label: "按紧急度" },
+              { value: "age", label: "按年龄" },
+              { value: "priority", label: "按优先级" },
+            ]}
+          />
         </div>
       </div>
 

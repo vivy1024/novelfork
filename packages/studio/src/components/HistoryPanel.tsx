@@ -6,6 +6,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { X, BookmarkIcon, Sparkles, CheckIcon, Clock, GitBranch } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { fetchJson, postApi } from "../hooks/use-api";
 import { BranchTree } from "./BranchTree";
 
@@ -84,29 +85,24 @@ interface ViewToggleProps {
 function ViewToggle({ mode, onChange, hasBranches }: ViewToggleProps) {
   return (
     <div className="flex items-center gap-1 p-0.5 rounded-lg bg-secondary/50">
-      <button
+      <Button
+        variant={mode === "timeline" ? "secondary" : "ghost"}
+        size="xs"
         onClick={() => onChange("timeline")}
-        className={`px-3 py-1 rounded-md text-[11px] font-medium transition-colors ${
-          mode === "timeline"
-            ? "bg-background text-foreground shadow-sm"
-            : "text-muted-foreground hover:text-foreground"
-        }`}
       >
         时间线
-      </button>
-      <button
+      </Button>
+      <Button
+        variant={mode === "tree" ? "secondary" : "ghost"}
+        size="xs"
         onClick={() => onChange("tree")}
-        className={`px-3 py-1 rounded-md text-[11px] font-medium transition-colors flex items-center gap-1 ${
-          mode === "tree"
-            ? "bg-background text-foreground shadow-sm"
-            : "text-muted-foreground hover:text-foreground"
-        }`}
+        className="flex items-center gap-1"
       >
         分支树
         {hasBranches && (
           <span className="w-1.5 h-1.5 rounded-full bg-purple-500" />
         )}
-      </button>
+      </Button>
     </div>
   );
 }
@@ -153,12 +149,13 @@ function SnapshotItem({ snapshot, onSelect, onBranch }: SnapshotItemProps) {
       </button>
 
       {hovered && (
-        <button
+        <Button
+          size="xs"
           onClick={(e) => { e.stopPropagation(); onBranch(); }}
-          className="absolute right-3 top-1/2 -translate-y-1/2 px-2 py-1 rounded-md text-[10px] font-medium bg-purple-600 text-white shadow-lg hover:bg-purple-700 transition-colors whitespace-nowrap z-10"
+          className="absolute right-3 top-1/2 -translate-y-1/2 bg-purple-600 text-white shadow-lg hover:bg-purple-700 whitespace-nowrap z-10"
         >
           创建分支
-        </button>
+        </Button>
       )}
     </div>
   );
@@ -249,12 +246,9 @@ export function HistoryPanel({ bookId, chapterNumber, visible, onClose, onSnapsh
         <h2 className="text-sm font-bold text-foreground">历史快照</h2>
         <div className="flex items-center gap-2">
           <ViewToggle mode={viewMode} onChange={setViewMode} hasBranches={hasBranches} />
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-all"
-          >
+          <Button variant="ghost" size="icon-sm" onClick={onClose}>
             <X size={16} />
-          </button>
+          </Button>
         </div>
       </div>
 

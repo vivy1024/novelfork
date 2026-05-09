@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 interface ToolCallOutputProps {
   output: string;
@@ -32,9 +33,11 @@ export function ToolCallOutput({ output, error, theme }: ToolCallOutputProps) {
             {collapsed && "..."}
           </pre>
           {output.length > 500 && (
-            <button
+            <Button
+              variant="ghost"
+              size="xs"
               onClick={() => setCollapsed(!collapsed)}
-              className="flex items-center gap-1 text-xs mt-1 px-2 py-1 rounded hover:opacity-80 transition-opacity"
+              className="mt-1"
               style={{ color: theme.text }}
             >
               {collapsed ? (
@@ -48,7 +51,7 @@ export function ToolCallOutput({ output, error, theme }: ToolCallOutputProps) {
                   收起
                 </>
               )}
-            </button>
+            </Button>
           )}
         </div>
       )}

@@ -1,4 +1,5 @@
 import { Minimize2, Maximize2, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import type { Theme } from "../hooks/use-theme";
 import { useColors } from "../hooks/use-colors";
 
@@ -17,37 +18,41 @@ export function WindowControls({ theme, minimized, onMinimize, onMaximize, onClo
 
   return (
     <div className="flex items-center gap-1">
-      <button
+      <Button
+        variant="ghost"
+        size="icon-xs"
         onClick={(e) => {
           e.stopPropagation();
           onMinimize();
         }}
-        className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
         title={minimized ? "展开工作台 · 会话保持不变" : "最小化工作台 · 会话仍在后台运行"}
       >
         <Minimize2 size={14} style={{ color: c.text }} />
-      </button>
-      <button
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon-xs"
         onClick={(e) => {
           e.stopPropagation();
           onMaximize();
         }}
-        className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
         title="最大化工作台"
       >
         <Maximize2 size={14} style={{ color: c.text }} />
-      </button>
-      <button
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon-xs"
         onClick={(e) => {
           e.stopPropagation();
           onClose();
         }}
-        className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900 transition-colors"
         title={closeTooltip ?? "关闭窗口 · 会话仍保留在会话中心"}
         aria-label="关闭窗口"
+        className="hover:bg-red-100 dark:hover:bg-red-900"
       >
         <X size={14} style={{ color: c.text }} />
-      </button>
+      </Button>
     </div>
   );
 }

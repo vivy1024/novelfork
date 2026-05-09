@@ -11,6 +11,7 @@ import {
   Expand,
   ShieldCheck,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 export interface DiffPanelProps {
   originalText: string;
@@ -49,23 +50,27 @@ export function DiffPanel({ originalText, newText, mode, onAccept, onReject, pos
         </div>
         <div className="flex items-center gap-1.5">
           {!isAudit && (
-            <button
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={onAccept}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-emerald-600 bg-emerald-500/10 rounded-lg hover:bg-emerald-500 hover:text-white transition-all active:scale-95"
+              className="text-emerald-600 hover:bg-emerald-500 hover:text-white"
             >
               <CheckCircle2 size={14} />
               {isRestore ? "恢复" : "采纳"}
               <kbd className="ml-1 text-[10px] opacity-60">⌘↵</kbd>
-            </button>
+            </Button>
           )}
-          <button
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={onReject}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-muted-foreground bg-secondary rounded-lg hover:bg-destructive/10 hover:text-destructive transition-all active:scale-95"
+            className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
           >
             <XCircle size={14} />
             {isAudit ? "关闭" : "拒绝"}
             <kbd className="ml-1 text-[10px] opacity-60">Esc</kbd>
-          </button>
+          </Button>
         </div>
       </div>
 

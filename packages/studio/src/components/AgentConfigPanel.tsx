@@ -5,6 +5,9 @@
 
 import { useState, useEffect } from "react";
 import { Save, RotateCcw, AlertTriangle, CheckCircle } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { fetchJson } from "../hooks/use-api";
 import { notify } from "@/lib/notify";
 import type { AgentConfig, AgentResourceUsage } from "../shared/agent-config-types";
@@ -110,9 +113,9 @@ export function AgentConfigPanel({ onBack }: AgentConfigPanelProps) {
         <div className="flex items-center justify-between">
           <div>
             {onBack && (
-              <button onClick={onBack} className="text-sm text-muted-foreground hover:text-foreground mb-2">
+              <Button variant="ghost" size="sm" onClick={onBack} className="mb-2">
                 ← 返回
-              </button>
+              </Button>
             )}
             <h1 className="text-2xl font-serif">Agent 配置</h1>
             <p className="text-sm text-muted-foreground mt-1">
@@ -120,21 +123,14 @@ export function AgentConfigPanel({ onBack }: AgentConfigPanelProps) {
             </p>
           </div>
           <div className="flex gap-2">
-            <button
-              onClick={handleReset}
-              className="px-3 py-2 text-sm rounded border hover:bg-accent flex items-center gap-2"
-            >
+            <Button variant="outline" size="sm" onClick={handleReset}>
               <RotateCcw size={14} />
               重置
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="px-3 py-2 text-sm rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 flex items-center gap-2"
-            >
+            </Button>
+            <Button size="sm" onClick={handleSave} disabled={saving}>
               {saved ? <CheckCircle size={14} /> : <Save size={14} />}
               {saving ? "保存中..." : saved ? "已保存" : "保存"}
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -191,13 +187,12 @@ export function AgentConfigPanel({ onBack }: AgentConfigPanelProps) {
                 最大活跃工作区数
                 <span className="text-xs text-muted-foreground ml-2">(1-100)</span>
               </label>
-              <input
+              <Input
                 type="number"
                 min={1}
                 max={100}
                 value={config.maxActiveWorkspaces}
                 onChange={(e) => setConfig({ ...config, maxActiveWorkspaces: Number(e.target.value) })}
-                className="w-full px-3 py-2 text-sm border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary"
               />
             </div>
 
@@ -206,14 +201,13 @@ export function AgentConfigPanel({ onBack }: AgentConfigPanelProps) {
                 工作区大小告警阈值 (MB)
                 <span className="text-xs text-muted-foreground ml-2">(10-10000)</span>
               </label>
-              <input
+              <Input
                 type="number"
                 min={10}
                 max={10000}
                 step={10}
                 value={config.workspaceSizeWarning}
                 onChange={(e) => setConfig({ ...config, workspaceSizeWarning: Number(e.target.value) })}
-                className="w-full px-3 py-2 text-sm border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary"
               />
               <p className="text-xs text-muted-foreground mt-1">
                 当工作区大小超过该阈值时显示告警
@@ -229,13 +223,12 @@ export function AgentConfigPanel({ onBack }: AgentConfigPanelProps) {
               最大活跃容器数
               <span className="text-xs text-muted-foreground ml-2">(1-50)</span>
             </label>
-            <input
+            <Input
               type="number"
               min={1}
               max={50}
               value={config.maxActiveContainers}
               onChange={(e) => setConfig({ ...config, maxActiveContainers: Number(e.target.value) })}
-              className="w-full px-3 py-2 text-sm border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary"
             />
           </div>
         </div>
@@ -245,24 +238,22 @@ export function AgentConfigPanel({ onBack }: AgentConfigPanelProps) {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="text-sm font-medium block mb-2">起始端口</label>
-              <input
+              <Input
                 type="number"
                 min={1024}
                 max={65535}
                 value={config.portRangeStart}
                 onChange={(e) => setConfig({ ...config, portRangeStart: Number(e.target.value) })}
-                className="w-full px-3 py-2 text-sm border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary"
               />
             </div>
             <div>
               <label className="text-sm font-medium block mb-2">结束端口</label>
-              <input
+              <Input
                 type="number"
                 min={1024}
                 max={65535}
                 value={config.portRangeEnd}
                 onChange={(e) => setConfig({ ...config, portRangeEnd: Number(e.target.value) })}
-                className="w-full px-3 py-2 text-sm border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary"
               />
             </div>
           </div>
@@ -277,11 +268,9 @@ export function AgentConfigPanel({ onBack }: AgentConfigPanelProps) {
         <div className="border rounded-lg p-4 bg-card">
           <h2 className="text-sm font-medium mb-3">行为设置</h2>
           <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
+            <Switch
               checked={config.autoSaveOnSleep}
-              onChange={(e) => setConfig({ ...config, autoSaveOnSleep: e.target.checked })}
-              className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
+              onCheckedChange={(checked) => setConfig({ ...config, autoSaveOnSleep: checked })}
             />
             <span className="text-sm">休眠时自动保存</span>
           </label>
