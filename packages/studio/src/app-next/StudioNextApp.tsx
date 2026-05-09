@@ -616,6 +616,13 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
         await sessionClient.updateSession(sessionId, { status: "archived" });
         routerNavigate({ to: "/next/sessions" });
       }}
+      onForkSession={async (title) => {
+        const result = await sessionClient.forkSession(sessionId, { title: title || `Fork of ${runtime.state.session?.title ?? sessionId}` });
+        if (result.ok && result.data) {
+          const forkedId = typeof result.data === "object" && "id" in result.data ? (result.data as { id: string }).id : null;
+          if (forkedId) routerNavigate({ to: `/next/narrators/${encodeURIComponent(forkedId)}` });
+        }
+      }}
       onAttach={async (files) => {
         for (const file of Array.from(files)) {
           const formData = new FormData();
