@@ -137,9 +137,10 @@ function EntryListItem({
   onClick: () => void;
 }) {
   return (
-    <button
+    <Button
+      variant="ghost"
       onClick={onClick}
-      className={`w-full text-left px-3 py-2 border-b border-border/20 transition-colors ${
+      className={`w-full text-left px-3 py-2 border-b border-border/20 rounded-none transition-colors h-auto ${
         selected
           ? "bg-primary/10 text-primary"
           : "hover:bg-secondary/50 text-foreground"
@@ -162,7 +163,7 @@ function EntryListItem({
           </span>
         )}
       </div>
-    </button>
+    </Button>
   );
 }
 

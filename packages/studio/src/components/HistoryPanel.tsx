@@ -127,9 +127,10 @@ function SnapshotItem({ snapshot, onSelect, onBranch }: SnapshotItemProps) {
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      <button
+      <Button
+        variant="ghost"
         onClick={onSelect}
-        className="w-full border-b border-border/30 px-4 py-3 hover:bg-secondary/50 transition-colors text-left"
+        className="w-full border-b border-border/30 px-4 py-3 hover:bg-secondary/50 transition-colors text-left h-auto rounded-none"
       >
         <div className="flex items-start gap-3">
           <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-bold shrink-0 ${config.color}`}>
@@ -146,7 +147,7 @@ function SnapshotItem({ snapshot, onSelect, onBranch }: SnapshotItemProps) {
             </p>
           </div>
         </div>
-      </button>
+      </Button>
 
       {hovered && (
         <Button

@@ -101,10 +101,11 @@ export function SkillsTab({
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2 border-b">
-        <button
+        <Button
+          variant="ghost"
           onClick={() => setSelectedTab("global")}
           disabled={lockedTab === "project"}
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 disabled:opacity-50 ${
+          className={`px-4 py-2 text-sm font-medium border-b-2 rounded-none transition-colors flex items-center gap-2 disabled:opacity-50 ${
             activeTab === "global"
               ? "border-primary text-primary"
               : "border-transparent text-muted-foreground hover:text-foreground"
@@ -112,11 +113,12 @@ export function SkillsTab({
         >
           <Globe size={14} />
           全局技能（{globalSkills.length}）
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="ghost"
           onClick={() => setSelectedTab("project")}
           disabled={lockedTab === "global"}
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 disabled:opacity-50 ${
+          className={`px-4 py-2 text-sm font-medium border-b-2 rounded-none transition-colors flex items-center gap-2 disabled:opacity-50 ${
             activeTab === "project"
               ? "border-primary text-primary"
               : "border-transparent text-muted-foreground hover:text-foreground"
@@ -124,7 +126,7 @@ export function SkillsTab({
         >
           <Folder size={14} />
           项目技能（{projectSkills.length}）
-        </button>
+        </Button>
       </div>
 
       {lockedTab && (
