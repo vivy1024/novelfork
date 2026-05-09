@@ -14,6 +14,7 @@ export interface WritingWorkbenchRouteProps {
   onOpen: (node: WorkbenchResourceNode) => void;
   onSave: (node: WorkbenchResourceNode, content: string) => Promise<void> | void;
   onCanvasContextChange?: (context: WorkbenchCanvasContext) => void;
+  onCreateChapter?: () => void;
   writingActions?: ReactNode;
   /** 章节图数据（用于图视图） */
   chapters?: ChapterGraphChapter[];
@@ -33,7 +34,7 @@ function routeStatusLabel(nodes: readonly WorkbenchResourceNode[], selectedNode:
   return "当前状态：资源已加载";
 }
 
-export function WritingWorkbenchRoute({ bookId, nodes, selectedNode, onOpen, onSave, onCanvasContextChange, writingActions, chapters, chapterEdges, onChapterSelect }: WritingWorkbenchRouteProps) {
+export function WritingWorkbenchRoute({ bookId, nodes, selectedNode, onOpen, onSave, onCanvasContextChange, onCreateChapter, writingActions, chapters, chapterEdges, onChapterSelect }: WritingWorkbenchRouteProps) {
   const bookTitle = deriveBookTitle(bookId, nodes);
   const statusLabel = routeStatusLabel(nodes, selectedNode);
   const [viewMode, setViewMode] = useState<"tree" | "graph">("tree");
@@ -72,6 +73,13 @@ export function WritingWorkbenchRoute({ bookId, nodes, selectedNode, onOpen, onS
                 章节图
               </Button>
             </div>
+            {/* 写作动作 + 新建章节 */}
+            {writingActions}
+            {onCreateChapter && (
+              <Button size="xs" variant="outline" onClick={onCreateChapter}>
+                + 新建章节
+              </Button>
+            )}
           </div>
         </div>
       </header>
@@ -89,10 +97,7 @@ export function WritingWorkbenchRoute({ bookId, nodes, selectedNode, onOpen, onS
           </section>
           {/* 右侧编辑区 */}
           <div className="flex flex-1 min-w-0 flex-col">
-            <section aria-label="写作动作" className="shrink-0 border-b border-border px-4 py-2">
-              {writingActions ?? <p className="text-sm text-muted-foreground">暂无可用写作动作。</p>}
-            </section>
-            <section aria-label="当前资源画布" className="flex-1 min-h-0 overflow-y-auto">
+            <section aria-label="当前资源画布" className="flex-1 min-h-0">
               <WorkbenchCanvas node={selectedNode} onSave={onSave} onCanvasContextChange={onCanvasContextChange} />
             </section>
           </div>
