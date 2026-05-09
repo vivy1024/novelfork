@@ -375,16 +375,54 @@ export function isSessionToolEnabledForMode(
   return definition?.enabledForModes.includes(permissionMode) ?? false;
 }
 
-export function getEnabledSessionTools(permissionMode: SessionPermissionMode): SessionToolDefinition[] {
-  return SESSION_TOOL_DEFINITIONS
+// ---------------------------------------------------------------------------
+// Agent 角色专属工具开关（对标 agent-writing-pipeline spec Req1）
+// ---------------------------------------------------------------------------
+
+const AGENT_TOOL_PRESETS: Record<string, { enable: string[]; disable: string[] }> = {
+  writer: {
+    enable: ["Bash", "Read", "Write", "Edit", "Grep", "Glob", "EnterWorktree", "ExitWorktree", "TodoWrite"],
+    disable: ["Terminal", "Browser", "ForkNarrator", "NarraForkAdmin", "Recall", "ShareFile"],
+  },
+  planner: {
+    enable: ["Read", "Grep", "Glob", "WebSearch", "WebFetch", "TodoWrite"],
+    disable: ["Bash", "Write", "Edit", "Terminal"],
+  },
+  auditor: {
+    enable: ["Read", "Grep", "Glob"],
+    disable: ["Write", "Edit", "Bash", "Terminal"],
+  },
+  explorer: {
+    enable: ["Read", "Grep", "Glob", "Recall"],
+    disable: ["Write", "Edit", "Bash", "Terminal", "EnterWorktree", "ExitWorktree"],
+  },
+  architect: {
+    enable: ["Read", "Write", "Grep", "Glob", "WebSearch"],
+    disable: ["Bash", "Terminal"],
+  },
+};
+
+export function getEnabledSessionTools(permissionMode: SessionPermissionMode, agentId?: string): SessionToolDefinition[] {
+  let tools = SESSION_TOOL_DEFINITIONS
     .filter((tool) => tool.enabledForModes.includes(permissionMode))
     .map(cloneDefinition);
+
+  // 按 Agent 角色过滤工具
+  if (agentId) {
+    const preset = AGENT_TOOL_PRESETS[agentId];
+    if (preset) {
+      tools = tools.filter((tool) => !preset.disable.includes(tool.name));
+    }
+  }
+
+  return tools;
 }
 
 export function getProviderSessionToolDefinitions(
   permissionMode: SessionPermissionMode,
+  agentId?: string,
 ): ProviderSessionToolDefinition[] {
-  return getEnabledSessionTools(permissionMode).map((tool) => ({
+  return getEnabledSessionTools(permissionMode, agentId).map((tool) => ({
     type: "function",
     function: {
       name: tool.name,
