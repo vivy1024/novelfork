@@ -6,6 +6,7 @@
  */
 
 import type { ReactNode } from "react";
+import { Button } from "@/components/ui/button";
 
 export interface BookListItem {
   readonly id: string;
@@ -39,11 +40,12 @@ export function StorylineTree({
       ) : (
         <div className="space-y-0.5">
           {books.map((book) => (
-            <button
+            <Button
               key={book.id}
-              type="button"
+              variant="ghost"
+              size="xs"
               aria-current={activeBookId === book.id ? "page" : undefined}
-              className={`flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs transition ${
+              className={`w-full justify-start ${
                 activeBookId === book.id
                   ? "bg-primary/10 text-primary font-medium"
                   : "text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -54,7 +56,7 @@ export function StorylineTree({
               }}
             >
               <span className="truncate">{book.title}</span>
-            </button>
+            </Button>
           ))}
         </div>
       )}
