@@ -1,104 +1,133 @@
 # 浏览器验证问题清单与修复计划
 
 > 日期：2026-05-10
-> 来源：v0.1.0 编译产物实际打开后的用户反馈
+> 来源：v0.1.0 编译产物实际打开后的用户反馈（两轮）
 
 ---
 
-## 已修复（de3a2d79）
+## 已修复
 
-| # | 问题 | 根因 | 修复 |
-|---|------|------|------|
-| 1 | Anthropic 硬编码 3 个模型 | `AnthropicCompatibleAdapter.listModels()` 不调 API | 改为调用 `/v1/models`，失败降级 |
-| 2 | 虚拟滚动不工作 | 消息流容器 div 不是 flex 容器，高度链断裂 | 加 `flex flex-col` |
-| 3 | 欢迎弹窗不显示 | `DialogContent` 的 `sm:max-w-sm` 覆盖 `max-w-2xl` | 传入 `sm:max-w-2xl` |
-| 4 | 供应商无法删除 | 后端有 DELETE API，前端未接入 | 详情页加删除按钮 |
-| 5 | 模型库存无意义 | 与卡片列表重复，只读无操作 | 移除渲染 |
+| # | 问题 | 修复 |
+|---|------|------|
+| 1 | Anthropic 硬编码 3 个模型 | 改为调用 `/v1/models` API |
+| 2 | 虚拟滚动不工作 | 加 `flex flex-col` |
+| 3 | 欢迎弹窗不显示 | CSS 优先级 + 条件判断 |
+| 4 | 供应商无法删除 | 卡片+详情页都加删除按钮 |
+| 5 | 模型库存无意义 | 移除 |
+| 6 | 添加供应商流程 | 简化为名称+格式即可创建 |
+| 7 | 归档无确认 | 加 confirm() |
+| 8 | Dialog 编译失败 | @base-ui → @radix-ui |
+| 9 | MessageItem 用旧组件 | 改用 ToolCallCard |
+| 10 | 欢迎弹窗重复弹出 | 有数据时不弹 |
 
 ---
 
-## 待修复
+## 待修复 — 对话界面系统性改造
 
-### P0 — 供应商体验
+### P0 — 对话核心交互（与 NarraFork 差距最大）
 
-| # | 问题 | 说明 | 修复方向 |
-|---|------|------|---------|
-| 6 | 供应商卡片无删除入口 | 必须进详情才能删除，不方便 | 卡片右上角加 ⋮ 菜单（删除/禁用） |
-| 7 | 添加供应商流程不合理 | 先在列表页填完 apiKey+baseUrl 才能保存 | 改为：点击"添加"直接进入详情页编辑 |
-| 8 | Sub2API Anthropic 格式问题 | Sub2API 的 Anthropic 端点需要 Anthropic 原生请求格式 | 确认 `AnthropicCompatibleAdapter.generate()` 使用 `/v1/messages` + `x-api-key` header（已正确） |
-
-### P1 — 对话渲染改造
-
-| # | 问题 | NarraFork 做法 | 修复方向 |
+| # | 问题 | NarraFork 做法 | 当前状态 |
 |---|------|---------------|---------|
-| 9 | 工具调用渲染简陋 | 工具图标按类型着色 + 描述 + 耗时 + 上下文占用 | ToolCallCard 增强：按工具类型分配图标/颜色 |
-| 10 | Bash 工具无终端风格 | `$ command` 格式 + 输出用 Code 组件 | Bash/Shell 工具特殊渲染 |
-| 11 | 子代理调用无渲染 | 嵌套展示子代理名称 + 工具数 + 耗时 | Agent/Task 工具特殊渲染（嵌套卡片） |
-| 12 | 展开内容原始 JSON | NarraFork 按工具类型格式化展示 | 按 toolName 分类渲染（file path / command / code） |
-| 13 | 无上下文占用显示 | 每个工具调用显示 token 占用 | 从 result metadata 提取 token 信息 |
+| 11 | 无流式显示 | AI 回复逐字/逐块流入，有打字机效果 | 一次性渲染完整回复 |
+| 12 | 工具调用无动态展示 | 工具一个一个滑入，running 状态实时更新 | 全部一次性渲染 |
+| 13 | 无中断按钮 | Composer 按钮在 idle 时显示"继续"，working 时显示"中断" | 只有"发送" |
+| 14 | 旧 ToolCallBlock 仍被渲染 | — | 某些路径仍引用旧组件 |
+| 15 | 工具卡片重复功能 | 只有展开/折叠 | "查看源码/原始载荷/展开结果细节"三个重复按钮 |
 
-### P2 — 对话顶部工具栏
+### P1 — 状态栏条件渲染
 
-| # | 问题 | 说明 | 修复方向 |
-|---|------|------|---------|
-| 14 | 归档无确认 | 点击直接归档，无确认对话框 | 加 confirm() 或 Dialog |
-| 15 | 会话信息面板简陋 | 只有基础字段 | 加 token 用量、创建时间、worktree、recovery 状态 |
-| 16 | 生成标题用日期 | 应调用 LLM 生成 | 调用 `session-auto-title.ts` |
-| 17 | 文件修改面板空 | 需要真实 toolCalls 数据 | 已实现 FileChangesPanel，需验证数据流 |
+| # | 问题 | 正确做法 |
+|---|------|---------|
+| 16 | 推理强度对所有供应商显示 | 只有 Codex apiMode 才显示 |
+| 17 | Fast Mode 对所有供应商显示 | 只有 Codex apiMode 才显示 |
+| 18 | 缺少思考强度 | Anthropic/Anthropic 兼容才显示 thinking budget |
+| 19 | 权限切换无效 | 切换后需 PUT session → 下次 turn 使用新 policy |
 
-### P3 — 供应商高级功能
+### P2 — 叙述者管理
 
-| # | 问题 | 说明 | 修复方向 |
-|---|------|------|---------|
-| 18 | 无模型启用/禁用 | 刷新出的模型全部启用 | 模型列表加 toggle |
-| 19 | 无连接测试反馈 | 测试模型后无明显成功/失败提示 | 加 toast 或 inline 状态 |
-| 20 | 无供应商健康状态 | 卡片上看不出供应商是否可用 | 加健康指示器（绿/黄/红） |
-
----
-
-## 优先级排序
-
-```
-P0（立即）: #6 卡片删除 → #7 添加流程 → #8 Sub2API 验证
-P1（核心）: #9-#13 对话渲染改造（最大用户体验差距）
-P2（完善）: #14-#17 工具栏功能
-P3（增强）: #18-#20 供应商高级功能
-```
+| # | 问题 | NarraFork 做法 |
+|---|------|---------------|
+| 20 | 无叙述者类型选择 | 创建时选择：独立 / 绑定项目 / 绑定章节 |
+| 21 | 无工作目录绑定 | 叙述者可绑定 worktree 路径 |
+| 22 | 无叙事线绑定 | 叙述者可关联叙事线/项目 |
 
 ---
 
-## NarraFork 对话渲染参考
+## 系统性改造方案
 
-### 工具调用块结构
+### 对话流式处理（P0 #11-12）
+
 ```
-Button(unstyled, 可点击展开/折叠)
-├── ThemeIcon — 工具图标（颜色按状态：green=成功, blue=运行中, red=失败）
-├── Text: "Bash" — 工具名
-├── Text: "查看工作树状态" — 描述摘要
-└── Group:
-    ├── Text: "881ms" — 耗时
-    └── span: "/ 2m" — 上下文占用
+当前数据流：
+WebSocket → ws-envelope-reducer → messages state → MessageStream → MessageItem
 
-展开内容:
-├── pre: "$ git status --short" — 命令（终端风格）
-├── Text: "输出"
-└── pre: "M packages/..." — 输出内容
+需要改造：
+1. ws-envelope-reducer 正确处理 assistant_delta 事件 → 逐块追加到当前消息
+2. MessageItem 检测 isStreaming=true 时使用 AnimatedMarkdown（已有 flowtoken 依赖）
+3. 工具调用在 running 状态时显示 Loader 动画
+4. 新工具调用出现时自动滚动到底部
 ```
 
-### 工具类型图标映射
+### 中断按钮（P0 #13）
+
 ```
-Bash/Shell/Execute → 终端图标, 蓝色
-Read/Glob/Find → 搜索图标, 灰色
-Write/Edit → 文件图标, 绿色
-WebSearch → 地球图标, 紫色
-Agent/Task → 机器人图标, 橙色
-AskUserQuestion → 问号图标, 蓝色
+当前 Composer：
+- 只有"发送"按钮
+- onAbort prop 已存在但未在 UI 中暴露
+
+需要改造：
+1. Composer 在 isRunning=true 时显示"中断"按钮（红色）
+2. 点击调用 onAbort → 发送 abort envelope → WebSocket
+3. isRunning=false 时显示"发送"按钮
 ```
 
-### 子代理渲染
+### 旧组件清理（P0 #14-15）
+
 ```
-Agent 工具调用:
-├── 机器人图标 + "explore" + 描述
-├── "17 calls · 1m34s" — 调用数 + 总耗时
-└── 展开后显示子代理的工具调用列表（嵌套）
+需要：
+1. 全局搜索 ToolCallBlock 引用，全部替换为 ToolCallCard
+2. 删除 components/ToolCall/ToolCallBlock.tsx（或标记 deprecated）
+3. 确认没有其他路径渲染旧组件
+```
+
+### NarratorStatusBar 条件渲染（P1 #16-18）
+
+```
+当前：所有控件无条件显示
+需要：根据 status.apiMode 或 status.providerType 决定显示哪些控件
+
+- apiMode === "codex" → 显示推理强度 + Fast Mode
+- providerType === "anthropic" → 显示思考强度
+- 其他 → 只显示模型切换 + 权限模式
+```
+
+---
+
+## NarraFork 对话交互参考
+
+### 流式渲染
+- AI 回复逐 token 流入，使用 CSS transition 平滑显示
+- 工具调用在 pending → running → success 状态间切换，每次状态变化有动画
+- 新消息/工具调用出现时自动滚动到底部
+
+### Composer 状态
+```
+idle: [📎] [textarea: "发送消息..."] [继续]
+working: [📎] [textarea: disabled] [中断(红色)]
+interrupted: [📎] [textarea: "发送消息..."] [继续]
+```
+
+### 工具调用渲染
+```
+running 状态:
+├── Loader 动画 + 工具名 + "运行中..."
+└── 无展开内容
+
+success 状态:
+├── ✓ 绿色 + 工具名 + 摘要 + 耗时
+└── 可展开查看输入/输出
+
+error 状态:
+├── ✗ 红色 + 工具名 + 错误摘要
+└── 可展开查看错误详情
 ```
