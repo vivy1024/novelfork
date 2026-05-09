@@ -29,6 +29,7 @@ import { Input } from "../components/ui/input";
 import { ProviderSettingsPage } from "./settings/ProviderSettingsPage";
 import { SettingsSectionContent } from "./settings/SettingsSectionContent";
 import { AgentShell, toShellPath, parseShellRoute, useShellData, useShellDataStore, type ShellBookItem, type ShellRoute, type ShellSessionItem, type ShellDataProviderSummary, type ShellDataProviderStatus } from "./shell";
+import { FirstRunDialog } from "../components/onboarding/FirstRunDialog";
 import {
   applyResourceDetailToNode,
   loadResourceDetailState,
@@ -1017,6 +1018,16 @@ export function StudioNextApp(_props: StudioNextAppProps) {
   const { books, sessions, providerSummary, providerStatus, loading, error } = useShellData();
   const routerNavigate = useNavigate();
 
+  // 首次运行检测
+  const [showFirstRun, setShowFirstRun] = useState(() => {
+    try { return !localStorage.getItem("novelfork:first-run-dismissed"); } catch { return false; }
+  });
+
+  const dismissFirstRun = useCallback(() => {
+    try { localStorage.setItem("novelfork:first-run-dismissed", "1"); } catch { /* ignore */ }
+    setShowFirstRun(false);
+  }, []);
+
   const navigate = useCallback((route: ShellRoute) => {
     void routerNavigate({ to: toShellPath(route) });
   }, [routerNavigate]);
@@ -1039,6 +1050,14 @@ export function StudioNextApp(_props: StudioNextAppProps) {
         providerStatus={providerStatus}
         loading={loading}
         error={error}
+      />
+      <FirstRunDialog
+        open={showFirstRun}
+        onOpenChange={setShowFirstRun}
+        onConfigureModel={() => { dismissFirstRun(); navigate({ kind: "settings" }); }}
+        onCreateBook={() => { dismissFirstRun(); navigate({ kind: "sessions" }); }}
+        onOpenWorkbenchIntro={() => { dismissFirstRun(); navigate({ kind: "routines" }); }}
+        onDismiss={dismissFirstRun}
       />
     </AgentShell>
   );
