@@ -148,57 +148,58 @@ export function RoutinesNextPage({ projectRoot: projectRootProp }: RoutinesNextP
   }
 
   return (
-    <section aria-label="新套路页" className="space-y-3">
-      {/* 标题行 */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-semibold">套路</h2>
-          <p className="text-sm text-muted-foreground">管理技能、命令和 MCP 工具。</p>
+    <section aria-label="新套路页" className="flex h-full w-full flex-col min-h-0">
+      {/* 标题行 — sticky */}
+      <div className="shrink-0 border-b border-border bg-background px-4 pt-4 pb-3 space-y-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-semibold">套路</h2>
+            <p className="text-sm text-muted-foreground">管理技能、命令和 MCP 工具。</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              className={scopeButtonClass(viewScope === "merged")}
+              disabled={!hasProjectScope}
+              onClick={() => setViewScope("merged")}
+              type="button"
+            >
+              {ROUTINES_SCOPE_META.merged.label}
+            </button>
+            <button className={scopeButtonClass(viewScope === "global")} onClick={() => setViewScope("global")} type="button">
+              {ROUTINES_SCOPE_META.global.label}
+            </button>
+            <button
+              className={scopeButtonClass(viewScope === "project")}
+              disabled={!hasProjectScope}
+              onClick={() => setViewScope("project")}
+              type="button"
+            >
+              {ROUTINES_SCOPE_META.project.label}
+            </button>
+            <span className="mx-1 h-5 w-px bg-border" />
+            <button
+              className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50"
+              disabled={saving || isReadOnly}
+              onClick={handleSave}
+              type="button"
+            >
+              {saving ? "保存中…" : saved ? "已保存" : "保存"}
+            </button>
+            <button
+              className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50"
+              disabled={saving || isReadOnly}
+              onClick={handleReset}
+              type="button"
+            >
+              重置
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            className={scopeButtonClass(viewScope === "merged")}
-            disabled={!hasProjectScope}
-            onClick={() => setViewScope("merged")}
-            type="button"
-          >
-            {ROUTINES_SCOPE_META.merged.label}
-          </button>
-          <button className={scopeButtonClass(viewScope === "global")} onClick={() => setViewScope("global")} type="button">
-            {ROUTINES_SCOPE_META.global.label}
-          </button>
-          <button
-            className={scopeButtonClass(viewScope === "project")}
-            disabled={!hasProjectScope}
-            onClick={() => setViewScope("project")}
-            type="button"
-          >
-            {ROUTINES_SCOPE_META.project.label}
-          </button>
-          <span className="mx-1 h-5 w-px bg-border" />
-          <button
-            className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50"
-            disabled={saving || isReadOnly}
-            onClick={handleSave}
-            type="button"
-          >
-            {saving ? "保存中…" : saved ? "已保存" : "保存"}
-          </button>
-          <button
-            className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50"
-            disabled={saving || isReadOnly}
-            onClick={handleReset}
-            type="button"
-          >
-            重置
-          </button>
-        </div>
-      </div>
 
-      {error && <InlineError message={error} />}
+        {error && <InlineError message={error} />}
 
-      {/* 水平 tab */}
-      <div role="tablist" aria-label="套路分区" className="flex flex-wrap gap-1 border-b border-border">
+        {/* 水平 tab */}
+        <div role="tablist" aria-label="套路分区" className="flex flex-wrap gap-1">
         {ROUTINE_SECTIONS.map((section) => {
           const isSelected = section.id === activeSectionId;
           return (
@@ -215,9 +216,10 @@ export function RoutinesNextPage({ projectRoot: projectRootProp }: RoutinesNextP
           );
         })}
       </div>
+      </div>
 
-      {/* tab 内容 */}
-      <div role="tabpanel">
+      {/* tab 内容 — 可滚动区域 */}
+      <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-4" role="tabpanel">
         <fieldset className={isReadOnly ? "opacity-70" : ""} disabled={isReadOnly}>
           <RoutineSectionEditor
             routines={routines}
@@ -225,9 +227,8 @@ export function RoutinesNextPage({ projectRoot: projectRootProp }: RoutinesNextP
             setRoutines={setRoutines}
           />
         </fieldset>
+        {isReadOnly && <p className="mt-3 text-xs text-muted-foreground">只读视图，切换到全局或项目 scope 后可编辑。</p>}
       </div>
-
-      {isReadOnly && <p className="text-xs text-muted-foreground">只读视图，切换到全局或项目 scope 后可编辑。</p>}
     </section>
   );
 }

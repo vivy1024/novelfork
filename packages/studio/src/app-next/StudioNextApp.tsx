@@ -156,7 +156,7 @@ function HomeRouteLive({ books, sessions, providerSummary, providerStatus, loadi
   };
 
   return (
-    <section className="flex h-full flex-1 flex-col gap-6 p-6" data-testid="agent-shell-route">
+    <section className="flex h-full flex-1 flex-col gap-6 overflow-auto p-6" data-testid="agent-shell-route">
       <header className="space-y-4">
         <div className="space-y-2">
           <p className="text-xs font-medium text-muted-foreground">NovelFork Next</p>

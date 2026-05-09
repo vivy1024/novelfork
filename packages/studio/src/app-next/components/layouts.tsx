@@ -91,7 +91,7 @@ interface SectionLayoutProps {
 
 export function SectionLayout({ title, description, actions, overlay, children }: SectionLayoutProps) {
   return (
-    <section className="relative space-y-3">
+    <section className="relative flex h-full w-full flex-col overflow-auto p-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <h1 className="text-xl font-semibold">{title}</h1>
@@ -99,7 +99,7 @@ export function SectionLayout({ title, description, actions, overlay, children }
         </div>
         {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
       </div>
-      {children}
+      <div className="mt-3 flex-1">{children}</div>
       {overlay && <div className={cn("fixed inset-0 flex items-center justify-center bg-background/60 backdrop-blur-sm", NEXT_OVERLAY_LAYER_CLASS)}>{overlay}</div>}
     </section>
   );
@@ -133,8 +133,8 @@ export function SettingsLayout({ title: _title, sections, activeSectionId, onSec
   }, []);
 
   return (
-    <div className="grid gap-3 lg:grid-cols-[15rem_minmax(0,1fr)]">
-      <nav aria-label="设置分区" className="rounded-lg border border-border bg-card p-2">
+    <div className="flex h-full w-full min-h-0 gap-3 p-4">
+      <nav aria-label="设置分区" className="w-56 shrink-0 overflow-y-auto rounded-lg border border-border bg-card p-2">
         <div className="space-y-2">
           {groupedSections.map(({ group, sections: groupSections }) => (
             <div key={group} className="space-y-0.5">
@@ -158,7 +158,7 @@ export function SettingsLayout({ title: _title, sections, activeSectionId, onSec
           ))}
         </div>
       </nav>
-      <div className="rounded-lg border border-border bg-card p-3">{children}</div>
+      <div className="flex-1 min-w-0 overflow-y-auto rounded-lg border border-border bg-card p-4">{children}</div>
     </div>
   );
 }
