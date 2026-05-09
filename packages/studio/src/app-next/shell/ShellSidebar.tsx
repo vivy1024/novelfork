@@ -97,6 +97,15 @@ export function ShellSidebar({ route, books, sessions, onNavigate, collapsed = f
               ? bookItems.map((item) => <NavButton key={item.id} label={item.label} active={isShellNavItemActive(item, route)} onClick={() => onNavigate(item.route)} collapsed={collapsed} />)
               : !collapsed && <p className="px-2 py-1 text-xs text-muted-foreground">暂无叙事线</p>
             }
+            {!collapsed && (
+              <button
+                type="button"
+                className="mt-1 flex w-full items-center rounded-md px-2 py-1 text-left text-xs font-medium text-primary hover:bg-primary/10"
+                onClick={() => onNavigate({ kind: "home" })}
+              >
+                新建作品
+              </button>
+            )}
           </section>
 
           {/* Narrators section */}
