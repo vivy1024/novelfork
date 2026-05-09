@@ -154,11 +154,14 @@ export function NarratorStatusBar({ status, onUpdateModel, onUpdateReasoningEffo
 
         {/* Right: controls */}
         <div className="flex items-center gap-1">
-          {/* Context usage */}
+          {/* Context usage ring */}
           {status.contextUsage && status.contextUsage.maxTokens && (
             <Tooltip>
-              <TooltipTrigger className="cursor-default rounded px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                {Math.round((status.contextUsage.usedTokens / status.contextUsage.maxTokens) * 100)}%
+              <TooltipTrigger className="cursor-default rounded px-1 py-0.5">
+                <ContextRing
+                  used={status.contextUsage.usedTokens}
+                  max={status.contextUsage.maxTokens}
+                />
               </TooltipTrigger>
               <TooltipContent side="top">
                 上下文：{status.contextUsage.usedTokens} / {status.contextUsage.maxTokens}
@@ -317,5 +320,48 @@ function ModelDropdown({
         ))}
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ContextRing — SVG 圆环显示上下文使用百分比
+// ---------------------------------------------------------------------------
+
+function ContextRing({ used, max }: { used: number; max: number }) {
+  const percent = Math.min(100, Math.round((used / max) * 100));
+  const radius = 8;
+  const stroke = 2;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference - (percent / 100) * circumference;
+
+  const color = percent >= 90 ? "text-red-500" : percent >= 70 ? "text-yellow-500" : "text-blue-500";
+
+  return (
+    <span className="inline-flex items-center gap-1">
+      <svg width="20" height="20" viewBox="0 0 20 20" className={color}>
+        <circle
+          cx="10"
+          cy="10"
+          r={radius}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={stroke}
+          opacity={0.2}
+        />
+        <circle
+          cx="10"
+          cy="10"
+          r={radius}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={stroke}
+          strokeDasharray={circumference}
+          strokeDashoffset={offset}
+          strokeLinecap="round"
+          transform="rotate(-90 10 10)"
+        />
+      </svg>
+      <span className="text-[10px] text-muted-foreground">{percent}%</span>
+    </span>
   );
 }

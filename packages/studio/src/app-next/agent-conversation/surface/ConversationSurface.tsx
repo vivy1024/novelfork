@@ -192,7 +192,7 @@ export function ConversationSurface({
                 <SheetDescription>本次会话中修改的文件列表</SheetDescription>
               </SheetHeader>
               <div className="flex-1 overflow-y-auto px-4">
-                <p className="text-sm text-muted-foreground py-8 text-center">暂无文件修改记录</p>
+                <FileChangesPanel messages={messages} />
               </div>
             </SheetContent>
           </Sheet>
@@ -355,5 +355,74 @@ function InfoRow({ label, value, mono }: { label: string; value: string; mono?: 
       <span className="text-xs text-muted-foreground shrink-0">{label}</span>
       <span className={`text-xs text-right break-all ${mono ? "font-mono" : ""}`}>{value}</span>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// FileChangesPanel — 从 toolCalls 中提取文件修改记录
+// ---------------------------------------------------------------------------
+
+const FILE_TOOL_NAMES = new Set(["Write", "Edit", "Read", "Bash", "write_file", "edit_file", "read_file", "create_file"]);
+
+interface FileChangeEntry {
+  path: string;
+  tool: string;
+  action: "write" | "edit" | "read" | "other";
+}
+
+function extractFileChanges(messages: readonly ConversationSurfaceMessage[]): FileChangeEntry[] {
+  const seen = new Map<string, FileChangeEntry>();
+
+  for (const msg of messages) {
+    if (!msg.toolCalls) continue;
+    for (const tc of msg.toolCalls) {
+      if (!FILE_TOOL_NAMES.has(tc.toolName) && !tc.toolName.toLowerCase().includes("file")) continue;
+      const input = tc.input as Record<string, unknown> | undefined;
+      if (!input) continue;
+
+      const filePath = typeof input.file_path === "string" ? input.file_path
+        : typeof input.path === "string" ? input.path
+        : typeof input.filePath === "string" ? input.filePath
+        : null;
+
+      if (!filePath) continue;
+
+      const action: FileChangeEntry["action"] =
+        tc.toolName === "Write" || tc.toolName === "write_file" || tc.toolName === "create_file" ? "write"
+        : tc.toolName === "Edit" || tc.toolName === "edit_file" ? "edit"
+        : tc.toolName === "Read" || tc.toolName === "read_file" ? "read"
+        : "other";
+
+      // 只保留写入/编辑操作，读取不算修改
+      if (action === "read") continue;
+
+      const key = filePath;
+      if (!seen.has(key)) {
+        seen.set(key, { path: filePath, tool: tc.toolName, action });
+      }
+    }
+  }
+
+  return Array.from(seen.values());
+}
+
+function FileChangesPanel({ messages }: { messages: readonly ConversationSurfaceMessage[] }) {
+  const changes = extractFileChanges(messages);
+
+  if (changes.length === 0) {
+    return <p className="text-sm text-muted-foreground py-8 text-center">暂无文件修改记录</p>;
+  }
+
+  return (
+    <ul className="space-y-1 py-2">
+      {changes.map((entry) => (
+        <li key={entry.path} className="flex items-center gap-2 py-1.5 border-b border-border/50 last:border-0">
+          <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${entry.action === "write" ? "bg-green-500/10 text-green-600" : "bg-blue-500/10 text-blue-600"}`}>
+            {entry.action === "write" ? "新建" : "编辑"}
+          </span>
+          <span className="text-xs font-mono truncate">{entry.path.split(/[/\\]/).slice(-2).join("/")}</span>
+        </li>
+      ))}
+    </ul>
   );
 }
