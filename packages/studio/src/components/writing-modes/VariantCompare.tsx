@@ -102,14 +102,16 @@ export function VariantCompare({ bookId, chapterNumber, selectedText, onAccept, 
         <div className="space-y-2">
           <div className="flex gap-1">
             {variants.map((v, i) => (
-              <button
+              <Button
                 key={i}
-                className={`rounded-lg px-2 py-1 text-xs ${i === activeIdx ? "bg-primary text-primary-foreground" : "border border-border hover:bg-muted"}`}
+                variant={i === activeIdx ? "default" : "outline"}
+                size="sm"
+                className="text-xs"
                 onClick={() => setActiveIdx(i)}
                 type="button"
               >
                 {v.label}
-              </button>
+              </Button>
             ))}
           </div>
 

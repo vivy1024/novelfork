@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { useApi } from "@/hooks/use-api";
@@ -56,8 +57,9 @@ export function CharacterArcDashboard({ bookId }: { readonly bookId: string }) {
 
           return (
             <div key={arc.characterId} className="rounded-xl border border-border/60 bg-muted/20">
-              <button
+              <Button
                 type="button"
+                variant="ghost"
                 className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm"
                 onClick={() => setExpandedId(expanded ? null : arc.characterId)}
               >
@@ -66,7 +68,7 @@ export function CharacterArcDashboard({ bookId }: { readonly bookId: string }) {
                 <div className="w-20 shrink-0"><Progress aria-label={`${arc.characterName} 弧线进度`} value={progress} /></div>
                 {arc.warnings.length > 0 && <Badge variant="destructive" className="shrink-0 text-xs">{arc.warnings.length} 警告</Badge>}
                 <span className="shrink-0 text-xs text-muted-foreground">{expanded ? "收起" : "展开"}</span>
-              </button>
+              </Button>
               {expanded && (
                 <div className="space-y-2 border-t border-border/40 px-3 py-2.5">
                   <div className="flex gap-4 text-xs text-muted-foreground">

@@ -27,7 +27,7 @@ export function JingweiEntryList({ section, entries, loading, onEdit, onDelete, 
         <article key={entry.id} className="rounded-xl border border-border/50 bg-background/70 p-4">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <button type="button" className="text-left font-semibold hover:text-primary" onClick={() => onEdit(entry)}>{entry.title}</button>
+              <Button type="button" variant="ghost" className="text-left font-semibold hover:text-primary" onClick={() => onEdit(entry)}>{entry.title}</Button>
               <div className="mt-1 text-xs text-muted-foreground">{entry.id}</div>
             </div>
             <Button type="button" size="icon-xs" variant="ghost" aria-label={`删除 ${entry.title}`} onClick={() => onDelete(entry)}>

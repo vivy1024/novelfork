@@ -1,4 +1,5 @@
 import { Input } from "@/components/ui/input";
+import { SimpleSelect } from "@/components/ui/simple-select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -41,10 +42,15 @@ function renderField(field: JingweiFieldDefinitionView, value: unknown, onChange
       return <Switch checked={value === true} onCheckedChange={onChange} aria-label={field.label} />;
     case "select":
       return (
-        <select value={typeof value === "string" ? value : ""} onChange={(event) => onChange(event.target.value)} className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm">
-          <option value="">未选择</option>
-          {(field.options ?? []).map((option) => <option key={option} value={option}>{option}</option>)}
-        </select>
+        <SimpleSelect
+          value={typeof value === "string" ? value : ""}
+          onValueChange={(val) => onChange(val)}
+          options={[
+            { value: "", label: "未选择" },
+            ...(field.options ?? []).map((option) => ({ value: option, label: option })),
+          ]}
+          className="w-full"
+        />
       );
     case "multi-select":
     case "tags":

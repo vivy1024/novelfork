@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SimpleSelect } from "@/components/ui/simple-select";
 import { Textarea } from "@/components/ui/textarea";
 import { postApi } from "@/hooks/use-api";
 
@@ -88,14 +89,12 @@ export function DialogueGenerator({ bookId, chapterNumber, onInsert, applyDisabl
       <Textarea placeholder="场景描述" value={scene} onChange={(e) => setScene(e.target.value)} className="min-h-14" aria-label="场景描述" />
 
       <div className="flex flex-wrap items-center gap-2">
-        <select
-          className="rounded-lg border border-border bg-background px-2 py-1 text-xs"
+        <SimpleSelect
           value={purpose}
-          onChange={(e) => setPurpose(e.target.value)}
+          onValueChange={(val) => setPurpose(val)}
+          options={PURPOSE_OPTIONS.map((p) => ({ value: p, label: p }))}
           aria-label="对话目的"
-        >
-          {PURPOSE_OPTIONS.map((p) => <option key={p} value={p}>{p}</option>)}
-        </select>
+        />
         <label className="flex items-center gap-1 text-xs">
           轮数
           <Input type="number" min={1} max={20} value={rounds} onChange={(e) => setRounds(Number(e.target.value))} className="w-16" aria-label="轮数" />

@@ -5,6 +5,8 @@ import { PageEmptyState } from "@/components/layout/PageEmptyState";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { SimpleSelect } from "@/components/ui/simple-select";
 import { useRunDetails, useRunListStream } from "@/hooks/use-run-events";
 import type { StudioRun } from "@/shared/contracts";
 import type { RequestLog, RequestSummary } from "../../shared/request-observability";
@@ -72,7 +74,7 @@ export function RequestsTab({ runId, onInspectRun, onNavigateSection, onOpenRun 
       if (runId) {
         params.set("runId", runId);
       }
-      if (scope) params.set("scope", scope);
+      if (scope && scope !== "__all__") params.set("scope", scope);
       if (providerFilter) params.set("provider", providerFilter);
       if (statusFilter) params.set("status", statusFilter);
       if (bookFilter) params.set("bookId", bookFilter);
@@ -169,16 +171,16 @@ export function RequestsTab({ runId, onInspectRun, onNavigateSection, onOpenRun 
           <p className="text-sm text-muted-foreground">统一观察最近请求、成功率、响应耗时与异常波动。</p>
         </div>
         <div className="flex items-center gap-3">
-          <select
-            value={limit}
-            onChange={(event) => setLimit(Number(event.target.value))}
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground"
-          >
-            <option value={50}>50 条</option>
-            <option value={100}>100 条</option>
-            <option value={200}>200 条</option>
-            <option value={500}>500 条</option>
-          </select>
+          <SimpleSelect
+            value={String(limit)}
+            onValueChange={(val) => setLimit(Number(val))}
+            options={[
+              { value: "50", label: "50 条" },
+              { value: "100", label: "100 条" },
+              { value: "200", label: "200 条" },
+              { value: "500", label: "500 条" },
+            ]}
+          />
           <Button variant="outline" onClick={() => void loadLogs()}>
             <RefreshCw className="size-4" />
             刷新
@@ -228,35 +230,50 @@ export function RequestsTab({ runId, onInspectRun, onNavigateSection, onOpenRun 
         <CardContent className="grid gap-3 md:grid-cols-5">
           <label className="space-y-1 text-sm">
             <span className="text-muted-foreground">范围</span>
-            <select value={scope} onChange={(event) => setScope(event.target.value)} className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground">
-              <option value="ai">仅 AI 请求</option>
-              <option value="admin">仅管理请求</option>
-              <option value="">全部请求</option>
-            </select>
+            <SimpleSelect
+              value={scope}
+              onValueChange={(val) => setScope(val)}
+              options={[
+                { value: "ai", label: "仅 AI 请求" },
+                { value: "admin", label: "仅管理请求" },
+                { value: "__all__", label: "全部请求" },
+              ]}
+              className="w-full"
+            />
           </label>
           <label className="space-y-1 text-sm">
             <span className="text-muted-foreground">供应商</span>
-            <select value={providerFilter} onChange={(event) => setProviderFilter(event.target.value)} className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground">
-              <option value="">全部</option>
-              {providerOptions.map((provider) => <option key={provider} value={provider}>{provider}</option>)}
-            </select>
+            <SimpleSelect
+              value={providerFilter || "__all__"}
+              onValueChange={(val) => setProviderFilter(val === "__all__" ? "" : val)}
+              options={[
+                { value: "__all__", label: "全部" },
+                ...providerOptions.map((provider) => ({ value: provider, label: provider })),
+              ]}
+              className="w-full"
+            />
           </label>
           <label className="space-y-1 text-sm">
             <span className="text-muted-foreground">状态</span>
-            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground">
-              <option value="">全部</option>
-              <option value="success">成功</option>
-              <option value="error">失败</option>
-              <option value="partial">部分成功</option>
-            </select>
+            <SimpleSelect
+              value={statusFilter || "__all__"}
+              onValueChange={(val) => setStatusFilter(val === "__all__" ? "" : val)}
+              options={[
+                { value: "__all__", label: "全部" },
+                { value: "success", label: "成功" },
+                { value: "error", label: "失败" },
+                { value: "partial", label: "部分成功" },
+              ]}
+              className="w-full"
+            />
           </label>
           <label className="space-y-1 text-sm">
             <span className="text-muted-foreground">书籍</span>
-            <input value={bookFilter} onChange={(event) => setBookFilter(event.target.value)} placeholder="bookId" className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground" />
+            <Input value={bookFilter} onChange={(event) => setBookFilter(event.target.value)} placeholder="bookId" />
           </label>
           <label className="space-y-1 text-sm">
             <span className="text-muted-foreground">会话</span>
-            <input value={sessionFilter} onChange={(event) => setSessionFilter(event.target.value)} placeholder="sessionId" className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground" />
+            <Input value={sessionFilter} onChange={(event) => setSessionFilter(event.target.value)} placeholder="sessionId" />
           </label>
         </CardContent>
       </Card>
@@ -281,8 +298,9 @@ export function RequestsTab({ runId, onInspectRun, onNavigateSection, onOpenRun 
                 const isSelected = run.id === selectedRunId;
                 return (
                   <div key={run.id} className={`rounded-lg border p-3 text-sm ${isSelected ? "border-primary/40 bg-primary/5" : "border-border/60 bg-muted/30"}`}>
-                    <button
+                    <Button
                       type="button"
+                      variant="ghost"
                       onClick={() => setSelectedRunId(run.id)}
                       className="w-full text-left"
                     >
@@ -293,7 +311,7 @@ export function RequestsTab({ runId, onInspectRun, onNavigateSection, onOpenRun 
                         <span className="text-muted-foreground">{run.stage}</span>
                       </div>
                       {run.error ? <div className="mt-2 text-xs text-destructive">{run.error}</div> : null}
-                    </button>
+                    </Button>
                     <div className="mt-3 flex flex-wrap gap-2">
                       <Button variant="outline" size="xs" onClick={() => onInspectRun?.(run.id)} aria-label={`定位运行 ${run.id}`}>
                         <Search className="size-3.5" />
