@@ -52,6 +52,8 @@ export interface ConversationSurfaceProps {
   onEditTitle?: (newTitle: string) => void;
   onGenerateTitle?: () => void;
   onArchive?: () => void;
+  /** /fork 命令回调 */
+  onForkSession?: (title?: string) => void;
 }
 
 function formatDuration(ms: number): string {
@@ -100,6 +102,7 @@ export function ConversationSurface({
   onEditTitle,
   onGenerateTitle,
   onArchive,
+  onForkSession,
 }: ConversationSurfaceProps) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -122,6 +125,9 @@ export function ConversationSurface({
     onSlashCommandResult?.(result);
     if (result.ok && result.kind === "update-session-config") {
       void onUpdateSessionConfig?.(result.patch);
+    }
+    if (result.ok && result.kind === "fork-session") {
+      void onForkSession?.((result as { title?: string }).title);
     }
   };
 
