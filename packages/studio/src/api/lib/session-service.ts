@@ -19,6 +19,8 @@ import { deleteSessionChatHistory, markSessionChatHistoryDeleted } from "./sessi
 import { getSessionStorageDatabase } from "./session-storage.js";
 import { normalizeSessionToolPolicy } from "./session-tool-policy.js";
 import { loadUserConfig } from "./user-config-service.js";
+import { loadGlobalRoutines } from "./routines-service.js";
+import type { SessionToolPolicy } from "../../shared/session-types.js";
 
 export type SessionListBinding = "standalone" | "book" | "chapter";
 export type SessionListSort = "manual" | "recent" | "lastModified-desc";
@@ -231,6 +233,25 @@ export async function createSession(input: CreateNarratorSessionInput): Promise<
   const modelDefaults = parseModelReference(userConfig.modelDefaults?.defaultSessionModel);
   const records = await loadSessionRecords();
   const now = new Date().toISOString();
+
+  // 从 routines 继承工具权限配置
+  let inheritedToolPolicy: SessionToolPolicy | undefined;
+  try {
+    const routines = await loadGlobalRoutines();
+    if (routines.permissions.length > 0) {
+      const allow = routines.permissions.filter(p => p.permission === "allow").map(p => p.tool);
+      const deny = routines.permissions.filter(p => p.permission === "deny").map(p => p.tool);
+      const ask = routines.permissions.filter(p => p.permission === "ask").map(p => p.tool);
+      if (allow.length > 0 || deny.length > 0 || ask.length > 0) {
+        inheritedToolPolicy = {
+          ...(allow.length > 0 ? { allow } : {}),
+          ...(deny.length > 0 ? { deny } : {}),
+          ...(ask.length > 0 ? { ask } : {}),
+        };
+      }
+    }
+  } catch { /* routines 加载失败不阻塞会话创建 */ }
+
   const session: NarratorSessionRecord = {
     id: crypto.randomUUID(),
     title: input.title?.trim() || "Untitled Session",
@@ -250,6 +271,7 @@ export async function createSession(input: CreateNarratorSessionInput): Promise<
       ...(modelDefaults ?? {}),
       permissionMode: userConfig.runtimeControls.defaultPermissionMode,
       reasoningEffort: userConfig.runtimeControls.defaultReasoningEffort,
+      ...(inheritedToolPolicy ? { toolPolicy: inheritedToolPolicy } : {}),
       ...input.sessionConfig,
     }),
     recentMessages: [],
