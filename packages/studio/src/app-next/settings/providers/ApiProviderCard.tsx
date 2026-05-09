@@ -2,6 +2,8 @@ import { providerApiModeLabel, providerCompatibilityLabel } from "../../lib/disp
 import type { ApiProvider } from "../provider-types";
 import type { ApiProviderStatusSummary } from "./ApiProvidersSection";
 import { Switch } from "@/components/ui/switch";
+import { Button } from "@/components/ui/button";
+import { Trash2 } from "lucide-react";
 
 export function ApiProviderCard({
   provider,
@@ -9,12 +11,14 @@ export function ApiProviderCard({
   isTestFixture = false,
   onSelect,
   onToggle,
+  onDelete,
 }: {
   readonly provider: ApiProvider;
   readonly status?: ApiProviderStatusSummary;
   readonly isTestFixture?: boolean;
   readonly onSelect: (providerId: string) => void;
   readonly onToggle: (providerId: string, enabled: boolean) => void;
+  readonly onDelete?: (providerId: string) => void;
 }) {
   const enabledModels = provider.models.filter((model) => model.enabled !== false);
   const previewModels = enabledModels.slice(0, 3);
@@ -65,7 +69,18 @@ export function ApiProviderCard({
             {isTestFixture ? <span className="inline-block rounded bg-purple-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-purple-600">测试夹具</span> : null}
           </div>
         </div>
-        <div onClick={(event) => event.stopPropagation()}>
+        <div className="flex items-center gap-1.5" onClick={(event) => event.stopPropagation()}>
+          {onDelete && (
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              className="text-muted-foreground hover:text-destructive"
+              onClick={() => { if (confirm(`确认删除供应商「${provider.name}」？`)) onDelete(provider.id); }}
+              title="删除供应商"
+            >
+              <Trash2 className="size-3.5" />
+            </Button>
+          )}
           <Switch
             checked={provider.enabled}
             onCheckedChange={(checked) => onToggle(provider.id, checked)}
