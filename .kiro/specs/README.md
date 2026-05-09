@@ -14,20 +14,19 @@
 
 ## 功能缺口清单
 
-`functionality-audit/gaps-from-archived-specs.md` 从 37 个归档 spec 中提取了所有未实现功能，按优先级排序：
+`functionality-audit/gaps-from-archived-specs.md` 从 37 个归档 spec 中提取了所有未实现功能。**全部已实现：**
 
-| 优先级 | 功能 | 后端 | 前端 | 理由 |
-|--------|------|------|------|------|
-| **P0** | PGI 用户回答交互 | ✅ 已就绪 | ❌ 缺失 | 引导式生成核心环节 |
-| **P0** | Guided Plan 批准/拒绝 | ✅ 已就绪 | ❌ 缺失 | 写下一章流程关键交互 |
-| **P1** | Tier 1 问卷 UI | ✅ 已就绪 | ❌ 缺失 | 建书引导 |
-| **P1** | 多 Agent 编排可见执行链 | ⚠️ 部分 | ❌ 缺失 | 核心产品差异化 |
-| P2 | 写作工具面板 | 部分 | ❌ | 钩子/节奏/对话比例/健康 |
-| P2 | 驾驶舱增强 Tab | ✅ | ❌ | 伏笔/设定/AI运行 |
-| P3 | Onboarding 教学 | N/A | ⚠️ | 首次欢迎/任务清单/空态 |
-| P3 | CoreShift / checkpoint UI | ❌ | ❌ | 高级功能 |
-
-**核心发现**：引导式 AI 生成（PGI + Guided Plan）的后端服务已完整实现，但前端缺少让用户回答问题和批准计划的交互组件。这是"写下一章"端到端流程的最后一块拼图。
+| 优先级 | 功能 | 状态 |
+|--------|------|------|
+| **P0** | PGI 用户回答交互 | ✅ UserQuestionGate 组件 |
+| **P0** | Guided Plan 批准/拒绝 | ✅ 同上，复用 permission 机制 |
+| **P1** | Tier 1 问卷 UI | ✅ QuestionnaireWizard 集成建书流程 |
+| **P1** | 多 Agent 编排可见执行链 | ✅ WorkflowProgressCard |
+| **P2** | 写作工具面板 | ✅ WritingToolsPanel（7 种工具） |
+| **P2** | 驾驶舱增强 Tab | ✅ 经纬摘要 + 候选稿摘要 |
+| **P3** | Onboarding 教学 | ✅ FirstRunDialog + 空态引导 |
+| **P3** | Checkpoint/Rewind UI | ✅ CheckpointPanel + listCheckpoints API |
+| **P3** | 学习中心 | ✅ 9 篇文档 + /next/learn 页面 |
 
 详见：[gaps-from-archived-specs.md](./functionality-audit/gaps-from-archived-specs.md)
 
