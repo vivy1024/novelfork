@@ -131,6 +131,15 @@ export function ConversationSurface({
     }
   };
 
+  const handleMessageContextAction = (messageId: string, action: string) => {
+    if (action === "compact-before" && onCompactSession) {
+      const msgIndex = messages.findIndex((m) => m.id === messageId);
+      if (msgIndex > 0) {
+        void onCompactSession(`压缩到消息 #${msgIndex} 之前的 ${msgIndex} 条消息`);
+      }
+    }
+  };
+
   const modelLabel = status.modelLabel ?? status.modelId ?? "";
   const permissionLabel = status.permissionMode ?? "edit";
   const isWorking = status.narratorState === "working" || status.state === "running";
@@ -273,7 +282,7 @@ export function ConversationSurface({
           </div>
         ) : (
           <>
-            <MessageStream messages={filteredMessages} hasPrevious={hasPreviousMessages} onLoadPrevious={onLoadPreviousMessages} />
+            <MessageStream messages={filteredMessages} hasPrevious={hasPreviousMessages} onLoadPrevious={onLoadPreviousMessages} onContextAction={handleMessageContextAction} />
             {/* Confirmation gate inline */}
             {pendingConfirmation && (
               <div className="my-3">
