@@ -7,7 +7,8 @@ export type ShellRoute =
   | { readonly kind: "sessions" }
   | { readonly kind: "search" }
   | { readonly kind: "routines" }
-  | { readonly kind: "settings" };
+  | { readonly kind: "settings" }
+  | { readonly kind: "learn" };
 
 export type ShellRouteKind = ShellRoute["kind"];
 
@@ -65,6 +66,7 @@ export function parseShellRoute(pathname = globalThis.location?.pathname ?? STUD
   if (section === "search") return { kind: "search" };
   if (section === "routines") return { kind: "routines" };
   if (section === "settings") return { kind: "settings" };
+  if (section === "learn") return { kind: "learn" };
   return { kind: "home" };
 }
 
@@ -82,6 +84,8 @@ export function toShellPath(route: ShellRoute): string {
       return `${STUDIO_NEXT_BASE_PATH}/routines`;
     case "settings":
       return `${STUDIO_NEXT_BASE_PATH}/settings`;
+    case "learn":
+      return `${STUDIO_NEXT_BASE_PATH}/learn`;
     case "home":
     default:
       return STUDIO_NEXT_BASE_PATH;
@@ -104,6 +108,7 @@ export function getShellNavItems({
       .map((session) => ({ id: `narrator:${session.id}`, label: session.title, group: "narrators" as const, route: { kind: "narrator" as const, sessionId: session.id }, unread: session.unread, working: session.working, pinned: session.pinned })),
     { id: "search", label: "搜索", group: "global", route: { kind: "search" } },
     { id: "routines", label: "套路", group: "global", route: { kind: "routines" } },
+    { id: "learn", label: "学习", group: "global", route: { kind: "learn" } },
     { id: "settings", label: "设置", group: "global", route: { kind: "settings" } },
   ];
 }

@@ -23,6 +23,7 @@ import { type StudioNextRoute } from "./entry";
 const SearchPage = lazy(() => import("./search/SearchPage").then((m) => ({ default: m.SearchPage })));
 const RoutinesNextPage = lazy(() => import("./routines/RoutinesNextPage").then((m) => ({ default: m.RoutinesNextPage })));
 const SessionCenterPage = lazy(() => import("./sessions/SessionCenterPage").then((m) => ({ default: m.SessionCenterPage })));
+const LearnPageLazy = lazy(() => import("./learn/LearnPage").then((m) => ({ default: m.LearnPage })));
 import { SettingsLayout, type SettingsSectionItem } from "./components/layouts";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -1002,6 +1003,8 @@ function RouteMountPoint({
       return <LazyErrorBoundary fallbackLabel="搜索"><Suspense fallback={<LazyFallback />}><SearchPage /></Suspense></LazyErrorBoundary>;
     case "routines":
       return <LazyErrorBoundary fallbackLabel="套路页"><Suspense fallback={<LazyFallback />}><RoutinesNextPage /></Suspense></LazyErrorBoundary>;
+    case "learn":
+      return <LazyErrorBoundary fallbackLabel="学习中心"><Suspense fallback={<LazyFallback />}><LearnPageLazy /></Suspense></LazyErrorBoundary>;
     case "settings":
       return <SettingsRouteLive />;
     case "home":
