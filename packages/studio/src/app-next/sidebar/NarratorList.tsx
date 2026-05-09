@@ -6,6 +6,7 @@
  */
 
 import { Plus, Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 export interface NarratorSession {
   readonly id: string;
@@ -45,11 +46,12 @@ export function NarratorList({
         <p className="px-2 py-1 text-xs text-muted-foreground">暂无活跃会话</p>
       ) : (
         activeSessions.map((session) => (
-          <button
+          <Button
             key={session.id}
-            type="button"
+            variant="ghost"
+            size="sm"
             aria-current={activeSessionId === session.id ? "page" : undefined}
-            className={`flex w-full flex-col gap-0.5 rounded-md px-2 py-1 text-left transition ${
+            className={`flex w-full justify-start flex-col gap-0.5 rounded-md px-2 py-1 text-left h-auto transition ${
               activeSessionId === session.id
                 ? "bg-primary/10 text-primary"
                 : "text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -60,7 +62,7 @@ export function NarratorList({
             {session.projectName && (
               <span className="truncate text-[10px] opacity-60">{session.projectName}</span>
             )}
-          </button>
+          </Button>
         ))
       )}
     </div>
@@ -78,24 +80,26 @@ export function NarratorActions({
   return (
     <>
       {onNewSession && (
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="sm"
           aria-label="新建会话"
           className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
           onClick={onNewSession}
         >
           <Plus className="h-3 w-3" />
-        </button>
+        </Button>
       )}
       {onCleanup && (
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="sm"
           aria-label="清空空闲叙述者"
           className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
           onClick={onCleanup}
         >
           <Trash2 className="h-3 w-3" />
-        </button>
+        </Button>
       )}
     </>
   );

@@ -12,6 +12,7 @@ import {
   ContextMenuItem,
   ContextMenuSeparator,
 } from "@/components/ui/context-menu";
+import { Button } from "@/components/ui/button";
 
 export interface ConversationThinkingBlock {
   /** 推理内容全文 */
@@ -60,16 +61,17 @@ function ThinkingBlock({ block, defaultExpanded = false }: { block: Conversation
 
   return (
     <div className="my-1.5">
-      <button
-        type="button"
+      <Button
+        variant="ghost"
+        size="sm"
         onClick={() => setExpanded(!expanded)}
-        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-muted/50 transition-colors text-muted-foreground"
+        className="flex w-full items-center gap-2 justify-start rounded-md px-2 py-1.5 text-left text-xs hover:bg-muted/50 transition-colors text-muted-foreground"
       >
         <span>🔮</span>
         <span className="font-medium">推理</span>
         <span className="flex-1 truncate italic">—"{preview}"</span>
         <span className="text-[10px]">{expanded ? "▼" : "▶"}</span>
-      </button>
+      </Button>
       {expanded && (
         <div className="ml-6 mt-1 rounded-md border border-border bg-muted/20 p-3 text-xs font-mono whitespace-pre-wrap leading-relaxed text-muted-foreground max-h-80 overflow-y-auto">
           {block.content}

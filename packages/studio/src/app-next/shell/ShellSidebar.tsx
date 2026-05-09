@@ -2,6 +2,7 @@ import { BookOpen, MessageSquareText, Search, Settings, Wrench, PanelLeftClose, 
 
 import { getShellNavItems, isShellNavItemActive, type ShellBookItem, type ShellRoute, type ShellSessionItem } from "./shell-route";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
+import { Button } from "@/components/ui/button";
 
 export interface ShellSidebarProps {
   readonly route: ShellRoute;
@@ -30,8 +31,9 @@ function NavButton({ label, active, onClick, collapsed }: { readonly label: stri
   }
 
   return (
-    <button
-      type="button"
+    <Button
+      variant="ghost"
+      size="xs"
       aria-current={active ? "page" : undefined}
       className={`flex w-full items-center rounded-md px-2 py-1 text-left text-xs transition ${
         active ? "bg-primary/10 font-medium text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -39,7 +41,7 @@ function NavButton({ label, active, onClick, collapsed }: { readonly label: stri
       onClick={onClick}
     >
       <span className="truncate">{label}</span>
-    </button>
+    </Button>
   );
 }
 
@@ -98,13 +100,14 @@ export function ShellSidebar({ route, books, sessions, onNavigate, collapsed = f
               : !collapsed && <p className="px-2 py-1 text-xs text-muted-foreground">暂无叙事线</p>
             }
             {!collapsed && (
-              <button
-                type="button"
+              <Button
+                variant="link"
+                size="xs"
                 className="mt-1 flex w-full items-center rounded-md px-2 py-1 text-left text-xs font-medium text-primary hover:bg-primary/10"
                 onClick={() => onNavigate({ kind: "home" })}
               >
                 新建作品
-              </button>
+              </Button>
             )}
           </section>
 
@@ -130,13 +133,14 @@ export function ShellSidebar({ route, books, sessions, onNavigate, collapsed = f
             }
             {!collapsed && hiddenNarratorCount > 0 && <p className="px-2 py-1 text-[11px] text-muted-foreground">还有 {hiddenNarratorCount} 个会话</p>}
             {!collapsed && (
-              <button
-                type="button"
+              <Button
+                variant="link"
+                size="xs"
                 className="mt-1 flex w-full items-center rounded-md px-2 py-1 text-left text-xs font-medium text-primary hover:bg-primary/10"
                 onClick={() => onNavigate({ kind: "sessions" })}
               >
                 查看全部叙述者
-              </button>
+              </Button>
             )}
           </section>
         </div>
