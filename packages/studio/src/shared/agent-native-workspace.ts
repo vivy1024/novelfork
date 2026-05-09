@@ -497,8 +497,13 @@ export function getSessionToolRiskDecision(
     return "deny";
   }
 
+  // "allow" 模式（全部允许）跳过所有确认
+  if (permissionMode === "allow") {
+    return "allow";
+  }
+
   if (risk === "draft-write") {
-    return permissionMode === "edit" || permissionMode === "allow" ? "allow" : "confirm";
+    return permissionMode === "edit" ? "allow" : "confirm";
   }
 
   return "confirm";
