@@ -5,6 +5,7 @@
 
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { X, ChevronDown, ChevronRight, FileText, Trash2, Scissors, Archive, MessagesSquare } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Switch } from "./ui/switch";
 import { fetchJson } from "../hooks/use-api";
 import { AutoCompressToggle } from "./AutoCompressToggle";
@@ -293,12 +294,9 @@ export function ContextPanel({
             <p className="mt-0.5 text-[10px] text-muted-foreground">第 {chapterNumber} 章 · 当前书籍 {bookId}</p>
           )}
         </div>
-        <button
-          onClick={onClose}
-          className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-all"
-        >
+        <Button variant="ghost" size="icon-sm" onClick={onClose}>
           <X size={16} />
-        </button>
+        </Button>
       </div>
 
       <div className="space-y-3 border-b border-border/30 px-4 py-3">
@@ -336,36 +334,42 @@ export function ContextPanel({
       </div>
 
       <div className="flex items-center gap-2 px-4 py-2 border-b border-border/30">
-        <button
+        <Button
+          variant="secondary"
+          size="xs"
           onClick={() => void handleCompress()}
           disabled={!canCompress}
-          className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-xs rounded-lg bg-secondary hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           title="压缩上下文"
           aria-label="压缩上下文"
           data-testid="compress-context-btn"
+          className="flex-1"
         >
           <Archive size={14} />
           压缩
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="secondary"
+          size="xs"
           onClick={() => void handleTruncate()}
-          className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-xs rounded-lg bg-secondary hover:bg-secondary/80 transition-colors"
           title="裁剪上下文"
           aria-label="裁剪上下文"
+          className="flex-1"
         >
           <Scissors size={14} />
           裁剪
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="destructive"
+          size="xs"
           onClick={() => void handleClear()}
-          className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-xs rounded-lg bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors"
           title="清空上下文"
           aria-label="清空上下文"
           data-testid="clear-context-btn"
+          className="flex-1"
         >
           <Trash2 size={14} />
           清空
-        </button>
+        </Button>
       </div>
 
       {!sessionMode && bookId ? <AutoCompressToggle bookId={bookId} onCompress={handleCompress} /> : null}

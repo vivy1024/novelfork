@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Button } from "@/components/ui/button";
 
 import type { SevenTacticView } from "./types";
 
@@ -11,9 +12,9 @@ export function SevenTacticsDrawer({ suggestions }: { suggestions: SevenTacticVi
       {suggestions.map((suggestion) => (
         <div key={suggestion.tacticId} className="rounded-xl border border-border/40 p-3">
           <div className="font-bold">{suggestion.name}</div>
-          <button type="button" onClick={() => setActiveTemplate(suggestion.template)} className="mt-2 rounded-lg bg-primary px-3 py-1 text-xs font-bold text-primary-foreground">
+          <Button size="xs" onClick={() => setActiveTemplate(suggestion.template)} className="mt-2">
             应用第 {suggestion.tacticId} 招
-          </button>
+          </Button>
         </div>
       ))}
       {activeTemplate && <pre className="whitespace-pre-wrap rounded-xl bg-muted p-3 text-xs">{activeTemplate}</pre>}

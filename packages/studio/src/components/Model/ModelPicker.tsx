@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 
 import { fetchJson } from "@/hooks/use-api";
+import { SimpleSelect } from "@/components/ui/simple-select";
 import {
   findRuntimeModelByRef,
   runtimeModelLabel,
@@ -108,24 +109,21 @@ export const ModelPicker = React.memo(function ModelPicker({
         <label className="mb-2 block text-sm font-medium text-foreground" htmlFor="runtime-model-picker">
           运行时模型
         </label>
-        <select
-          id="runtime-model-picker"
-          aria-label="运行时模型"
+        <SimpleSelect
           value={activeModelRef}
+          onValueChange={handleModelChange}
           disabled={loading || !hasModels}
-          onChange={(event) => handleModelChange(event.target.value)}
-          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-60"
-        >
-          {!hasModels ? <option value="">无可用模型</option> : null}
-          {runtimeModels.map((model) => {
-            const selection = splitRuntimeModelRef(model);
-            return (
-              <option key={selection.modelRef} value={selection.modelRef}>
-                {runtimeModelLabel(model)}
-              </option>
-            );
-          })}
-        </select>
+          options={
+            !hasModels
+              ? [{ value: "", label: "无可用模型" }]
+              : runtimeModels.map((model) => {
+                  const selection = splitRuntimeModelRef(model);
+                  return { value: selection.modelRef, label: runtimeModelLabel(model) };
+                })
+          }
+          aria-label="运行时模型"
+          className="w-full"
+        />
       </div>
 
       {loading ? (

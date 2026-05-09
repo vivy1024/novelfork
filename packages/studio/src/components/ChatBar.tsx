@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import { AiModelRequiredDialog } from "@/components/ai/AiModelRequiredDialog";
 import { useAiModelGate } from "@/hooks/use-ai-model-gate";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import type { TFunction } from "../hooks/use-i18n";
 import type { SSEMessage } from "../hooks/use-sse";
 import { cn } from "../lib/utils";
@@ -384,20 +386,22 @@ export function ChatPanel({ open, onClose, t, sse, activeBookId, onConfigureMode
               </span>
             </div>
             <div className="flex items-center gap-1">
-              <button
+              <Button
+                variant="ghost"
+                size="icon-sm"
                 onClick={() => setMessages([])}
-                className="p-1.5 rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors group"
                 title="清空对话"
               >
                 <Trash2 size={14} className="group-hover:animate-[shake_0.3s_ease-in-out]" />
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-sm"
                 onClick={onClose}
-                className="p-1.5 rounded-md text-muted-foreground hover:bg-secondary transition-colors group"
                 title="关闭面板"
               >
                 <PanelRightClose size={14} className="group-hover:translate-x-0.5 transition-transform" />
-              </button>
+              </Button>
             </div>
           </div>
 
@@ -462,7 +466,7 @@ export function ChatPanel({ open, onClose, t, sse, activeBookId, onConfigureMode
           <div className="shrink-0 p-3 border-t border-border/40">
             <div className="flex items-center gap-2 rounded-xl bg-secondary/30 border border-border/40 px-3 py-1.5 focus-within:border-primary/40 focus-within:ring-2 focus-within:ring-primary/10 transition-all">
               <MessageSquare size={14} className="text-muted-foreground/50 shrink-0" />
-              <input
+              <Input
                 ref={inputRef}
                 type="text"
                 value={input}
@@ -475,14 +479,13 @@ export function ChatPanel({ open, onClose, t, sse, activeBookId, onConfigureMode
                 }}
                 placeholder={t("common.enterCommand")}
                 disabled={loading}
-                className="flex-1 bg-transparent text-sm placeholder:text-muted-foreground/50 outline-none ring-0 shadow-none disabled:opacity-50"
-                style={{ outline: "none", boxShadow: "none" }}
+                className="flex-1 border-0 bg-transparent shadow-none ring-0 focus-visible:ring-0 focus-visible:border-0"
                 data-testid="message-input"
               />
-              <button
+              <Button
+                size="icon-sm"
                 onClick={handleSubmit}
                 disabled={!input.trim() || loading}
-                className="w-7 h-7 rounded-lg bg-primary text-primary-foreground flex items-center justify-center hover:scale-105 active:scale-95 transition-all disabled:opacity-20 disabled:scale-100 shadow-sm shadow-primary/20"
                 data-testid="send-message-btn"
               >
                 {loading ? (
@@ -490,7 +493,7 @@ export function ChatPanel({ open, onClose, t, sse, activeBookId, onConfigureMode
                 ) : (
                   <ArrowUp size={14} strokeWidth={2.5} />
                 )}
-              </button>
+              </Button>
             </div>
 
             {/* Rotating tip */}
