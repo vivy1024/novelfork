@@ -1,6 +1,7 @@
 import { providerApiModeLabel, providerCompatibilityLabel } from "../../lib/display-labels";
 import type { ApiProvider } from "../provider-types";
 import type { ApiProviderStatusSummary } from "./ApiProvidersSection";
+import { Switch } from "@/components/ui/switch";
 
 export function ApiProviderCard({
   provider,
@@ -64,19 +65,13 @@ export function ApiProviderCard({
             {isTestFixture ? <span className="inline-block rounded bg-purple-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-purple-600">测试夹具</span> : null}
           </div>
         </div>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={provider.enabled}
-          aria-label={provider.enabled ? `禁用 ${provider.name} API key 接入` : `启用 ${provider.name} API key 接入`}
-          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors ${provider.enabled ? "bg-primary" : "bg-muted"}`}
-          onClick={(event) => {
-            event.stopPropagation();
-            onToggle(provider.id, !provider.enabled);
-          }}
-        >
-          <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${provider.enabled ? "translate-x-4" : "translate-x-0.5"}`} />
-        </button>
+        <div onClick={(event) => event.stopPropagation()}>
+          <Switch
+            checked={provider.enabled}
+            onCheckedChange={(checked) => onToggle(provider.id, checked)}
+            aria-label={provider.enabled ? `禁用 ${provider.name} API key 接入` : `启用 ${provider.name} API key 接入`}
+          />
+        </div>
       </div>
 
       {previewModels.length > 0 ? (

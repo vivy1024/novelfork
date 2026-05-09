@@ -53,7 +53,7 @@ export function ProfilePanel() {
           </div>
           <div>
             <p className="text-sm font-medium">{profile.name || "未设置姓名"}</p>
-            <button className="mt-1 text-xs text-primary hover:underline" type="button" disabled>上传头像</button>
+            <Button variant="link" size="xs" disabled>上传头像</Button>
           </div>
         </div>
 
