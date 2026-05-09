@@ -93,6 +93,10 @@ export interface ConversationStatus {
   providerLabel?: string;
   modelId?: string;
   modelLabel?: string;
+  /** 当前供应商的 API 模式 */
+  apiMode?: "completions" | "responses" | "codex";
+  /** 当前供应商的兼容格式 */
+  providerCompatibility?: "openai-compatible" | "anthropic-compatible";
   permissionMode?: SessionPermissionMode;
   reasoningEffort?: SessionReasoningEffort;
   usage?: ConversationUsage;

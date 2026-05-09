@@ -139,6 +139,10 @@ export function NarratorStatusBar({ status, onUpdateModel, onUpdateReasoningEffo
   const reasoningInitial = REASONING_INITIALS[status.reasoningEffort ?? "medium"] ?? "M";
   // 权限图标
   const permissionIsOpen = status.permissionMode === "allow";
+  // 条件显示：推理强度仅 Codex/Anthropic/DeepSeek 显示
+  const showReasoningEffort = status.apiMode === "codex" || status.providerCompatibility === "anthropic-compatible" || (status.modelId ?? "").toLowerCase().includes("deepseek");
+  // 条件显示：Fast Mode 仅 Codex 显示
+  const showFastMode = status.apiMode === "codex";
 
   return (
     <TooltipProvider>
@@ -179,7 +183,8 @@ export function NarratorStatusBar({ status, onUpdateModel, onUpdateReasoningEffo
             onSelect={(providerId, modelId) => onUpdateModel?.(providerId, modelId)}
           />
 
-          {/* Reasoning effort dropdown */}
+          {/* Reasoning effort dropdown — 仅 Codex/Anthropic/DeepSeek 显示 */}
+          {showReasoningEffort && (
           <DropdownMenu>
             <DropdownMenuTrigger
               className="inline-flex items-center justify-center rounded-md px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
@@ -201,8 +206,10 @@ export function NarratorStatusBar({ status, onUpdateModel, onUpdateReasoningEffo
               </DropdownMenuRadioGroup>
             </DropdownMenuContent>
           </DropdownMenu>
+          )}
 
-          {/* Fast Mode toggle */}
+          {/* Fast Mode toggle — 仅 Codex 显示 */}
+          {showFastMode && (
           <Tooltip>
             <TooltipTrigger
               className={`rounded-md p-1.5 ${fastMode ? "text-yellow-500 bg-yellow-500/10" : "text-muted-foreground"} hover:bg-muted transition-colors`}
@@ -212,6 +219,7 @@ export function NarratorStatusBar({ status, onUpdateModel, onUpdateReasoningEffo
             </TooltipTrigger>
             <TooltipContent side="top">{fastMode ? "Fast Mode 开启" : "Fast Mode 关闭"}</TooltipContent>
           </Tooltip>
+          )}
 
           {/* Permission mode dropdown */}
           <DropdownMenu>
