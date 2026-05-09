@@ -7,6 +7,7 @@ import { resourceNeedsDetailHydration } from "./ResourceDetailLoader";
 import { ResourceViewer } from "./resource-viewers";
 import { CandidateActionsBar, type CandidateAcceptAction } from "./CandidateActionsBar";
 import { CockpitOverview } from "./CockpitOverview";
+import { JingweiEntryEditor } from "./JingweiEntryEditor";
 import type { CanvasContext, OpenResourceTab, WorkspaceResourceRef, WorkspaceResourceViewKind } from "../../shared/agent-native-workspace";
 import type { WorkbenchResourceKind, WorkbenchResourceNode } from "./useWorkbenchResources";
 
@@ -94,15 +95,21 @@ export interface CandidateActionHandlers {
   onDelete: (candidateId: string) => Promise<void>;
 }
 
+export interface JingweiActionHandlers {
+  onSave: (entryId: string, payload: { title: string; contentMd: string }) => Promise<void>;
+  onDelete?: (entryId: string) => Promise<void>;
+}
+
 export interface WorkbenchCanvasProps {
   node: WorkbenchResourceNode | null;
   nodes?: readonly WorkbenchResourceNode[];
   onSave: (node: WorkbenchResourceNode, content: string) => Promise<void> | void;
   onCanvasContextChange?: (context: WorkbenchCanvasContext) => void;
   candidateActions?: CandidateActionHandlers;
+  jingweiActions?: JingweiActionHandlers;
 }
 
-export function WorkbenchCanvas({ node, nodes = [], onSave, onCanvasContextChange = () => undefined, candidateActions }: WorkbenchCanvasProps) {
+export function WorkbenchCanvas({ node, nodes = [], onSave, onCanvasContextChange = () => undefined, candidateActions, jingweiActions }: WorkbenchCanvasProps) {
   const [content, setContent] = useState(node?.content ?? "");
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -210,7 +217,19 @@ export function WorkbenchCanvas({ node, nodes = [], onSave, onCanvasContextChang
 
       {/* Editor */}
       <div className="flex-1 min-h-0 overflow-y-auto">
-        {needsHydration ? null : (
+        {needsHydration ? null : (node.kind === "jingwei-entry" || node.kind === "bible-entry") && jingweiActions ? (
+          <JingweiEntryEditor
+            entry={{
+              id: String(node.metadata?.entryId ?? node.id.replace("jingwei-entry:", "")),
+              title: node.title,
+              contentMd: content,
+              sectionId: typeof node.metadata?.sectionId === "string" ? node.metadata.sectionId : undefined,
+              updatedAt: typeof node.metadata?.updatedAt === "string" ? node.metadata.updatedAt : undefined,
+            }}
+            onSave={jingweiActions.onSave}
+            onDelete={jingweiActions.onDelete}
+          />
+        ) : (
           <ResourceViewer node={{ ...node, content }} onContentChange={(nextContent) => {
             setContent(nextContent);
             setDirty(true);

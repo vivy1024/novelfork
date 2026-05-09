@@ -99,6 +99,10 @@ export function createResourceClient(contract: ContractClient) {
     },
     saveJingweiEntry: <T = unknown>(bookId: string, entryId: string, payload: SaveJingweiEntryPayload) =>
       contract.put<T>(buildBookApiPath(bookId, "jingwei", "entries", entryId), payload, { capability: { id: "jingwei.entries.update", status: "current" } }),
+    createJingweiEntry: <T = unknown>(bookId: string, payload: SaveJingweiEntryPayload) =>
+      contract.post<T>(buildBookApiPath(bookId, "jingwei", "entries"), payload, { capability: { id: "jingwei.entries.create", status: "current" } }),
+    deleteJingweiEntry: <T = unknown>(bookId: string, entryId: string) =>
+      contract.delete<T>(buildBookApiPath(bookId, "jingwei", "entries", entryId), { capability: { id: "jingwei.entries.delete", status: "current" } }),
     getNarrativeLine: <T = { snapshot: NarrativeLineSnapshot }>(bookId: string) =>
       contract.get<T>(buildBookApiPath(bookId, "narrative-line"), { capability: { id: "narrative-line.read", status: "current" } }),
   };

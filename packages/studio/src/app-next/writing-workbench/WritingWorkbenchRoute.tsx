@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { BookOpen, GitBranch } from "lucide-react";
-import { WorkbenchCanvas, type WorkbenchCanvasContext, type CandidateActionHandlers } from "./WorkbenchCanvas";
+import { WorkbenchCanvas, type WorkbenchCanvasContext, type CandidateActionHandlers, type JingweiActionHandlers } from "./WorkbenchCanvas";
 import { WorkbenchResourceTree } from "./WorkbenchResourceTree";
 import type { WorkbenchResourceNode } from "./useWorkbenchResources";
 import { ChapterGraph, type ChapterGraphChapter, type ChapterGraphEdge } from "../chapter-graph";
@@ -18,6 +18,8 @@ export interface WritingWorkbenchRouteProps {
   writingActions?: ReactNode;
   /** 候选稿操作回调 */
   candidateActions?: CandidateActionHandlers;
+  /** 经纬资料操作回调 */
+  jingweiActions?: JingweiActionHandlers;
   /** 章节图数据（用于图视图） */
   chapters?: ChapterGraphChapter[];
   chapterEdges?: ChapterGraphEdge[];
@@ -36,7 +38,7 @@ function routeStatusLabel(nodes: readonly WorkbenchResourceNode[], selectedNode:
   return "当前状态：资源已加载";
 }
 
-export function WritingWorkbenchRoute({ bookId, nodes, selectedNode, onOpen, onSave, onCanvasContextChange, onCreateChapter, writingActions, candidateActions, chapters, chapterEdges, onChapterSelect }: WritingWorkbenchRouteProps) {
+export function WritingWorkbenchRoute({ bookId, nodes, selectedNode, onOpen, onSave, onCanvasContextChange, onCreateChapter, writingActions, candidateActions, jingweiActions, chapters, chapterEdges, onChapterSelect }: WritingWorkbenchRouteProps) {
   const bookTitle = deriveBookTitle(bookId, nodes);
   const statusLabel = routeStatusLabel(nodes, selectedNode);
   const [viewMode, setViewMode] = useState<"tree" | "graph">("tree");
@@ -104,7 +106,7 @@ export function WritingWorkbenchRoute({ bookId, nodes, selectedNode, onOpen, onS
           {/* 右侧编辑区 */}
           <div className="flex flex-1 min-w-0 flex-col">
             <section aria-label="当前资源画布" className="flex-1 min-h-0">
-              <WorkbenchCanvas node={selectedNode} nodes={nodes} onSave={onSave} onCanvasContextChange={onCanvasContextChange} candidateActions={candidateActions} />
+              <WorkbenchCanvas node={selectedNode} nodes={nodes} onSave={onSave} onCanvasContextChange={onCanvasContextChange} candidateActions={candidateActions} jingweiActions={jingweiActions} />
             </section>
           </div>
         </div>
