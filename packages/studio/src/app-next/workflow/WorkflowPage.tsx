@@ -4,6 +4,7 @@ import { useApi } from "../../hooks/use-api";
 import { InlineError } from "../components/feedback";
 import { SectionLayout } from "../components/layouts";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import { workflowStatusLabel } from "../lib/display-labels";
 
 const TABS = [
@@ -66,7 +67,7 @@ function AgentsTab() {
   return (
     <div className="space-y-2">
       <div className="flex justify-end">
-        <button type="button" className="rounded-md border border-border px-2.5 py-1 text-xs hover:bg-muted" onClick={refetch}>刷新</button>
+        <Button variant="outline" size="sm" onClick={refetch}>刷新</Button>
       </div>
       <div className="rounded-lg border border-border p-4 space-y-3 text-sm">
         {rows.map(([label, value]) => (
@@ -92,7 +93,7 @@ function RunsTab() {
   return (
     <div className="space-y-2">
       <div className="flex justify-end">
-        <button type="button" className="rounded-md border border-border px-2.5 py-1 text-xs hover:bg-muted" onClick={refetch}>刷新</button>
+        <Button variant="outline" size="sm" onClick={refetch}>刷新</Button>
       </div>
       {data.map((run) => (
         <div key={run.id} className="flex items-center justify-between rounded-lg border border-border p-3 text-sm">
@@ -121,7 +122,7 @@ function SchedulerTab() {
   return (
     <div className="space-y-3">
       <div className="flex justify-end">
-        <button type="button" className="rounded-md border border-border px-2.5 py-1 text-xs hover:bg-muted" onClick={refetch}>刷新</button>
+        <Button variant="outline" size="sm" onClick={refetch}>刷新</Button>
       </div>
       <div className="rounded-lg border border-border p-4 space-y-3">
         <div className="flex items-center justify-between py-1.5 text-sm">

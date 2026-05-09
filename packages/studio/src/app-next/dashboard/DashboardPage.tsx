@@ -214,13 +214,12 @@ export function DashboardPage({ onOpenBook }: DashboardPageProps) {
             </label>
           </div>
           {createError && <InlineError message={createError} />}
-          <button
+          <Button
             type="submit"
             disabled={creating || !form.title.trim()}
-            className="rounded-lg bg-primary px-4 py-1.5 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
             {creating ? "创建中…" : "创建"}
-          </button>
+          </Button>
         </form>
       )}
 
@@ -352,9 +351,9 @@ function ImportPanel({ books, onDone }: { readonly books: ReadonlyArray<BookItem
       <>
         <textarea className="w-full rounded-md border border-border bg-background p-2 text-sm" rows={5} value={text} onChange={(e) => setText(e.target.value)} placeholder="粘贴章节文本，系统会自动按章节标题分割…" />
         <input className="w-full rounded-md border border-border bg-background px-2 py-1 text-sm" value={splitRegex} onChange={(e) => setSplitRegex(e.target.value)} placeholder="自定义分割正则（可选）" />
-        <button data-visual-audit="disabledAction" className="rounded-lg bg-primary px-4 py-1.5 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-50" disabled={loading || !text.trim() || !bookId} onClick={() => void handleImportChapters()} type="button">
+        <Button data-visual-audit="disabledAction" disabled={loading || !text.trim() || !bookId} onClick={() => void handleImportChapters()} type="button">
           {loading ? "导入中…" : "导入章节"}
-        </button>
+        </Button>
       </>
 
       {error && <InlineError message={error} />}
