@@ -9,6 +9,7 @@
 > v0.1.0 尚未发布。2026-05-07 已撤回远端 `v0.1.0` tag，GitHub Release 未创建；以下变更仍处于发布前修正与验收阶段，尤其 Claude Code CLI / Codex CLI parity 口径必须重新审计，不能宣称完整对标完成。
 
 ### 改进
+- 功能缺口 P0/P1：实现 AskUserQuestion 机制（与 NarraFork 一致，复用 permission 机制）——新建 UserQuestionGate 组件（text/single/multi/ranged-number/ai-suggest 五种输入类型），PGI 和 Guided Generation 工具产出 confirmation 触发问题表单，confirmTool 支持附带 answers；实现 Agent 编排可见执行链 UI——新建 WorkflowProgressCard 组件（步骤列表+状态图标+进度条+耗时），注册为 workflow renderer。
 - 文档重写：全面重写 `docs/02-用户指南`（小说管理与创作、AI写作功能、叙述者对话、设置与套路）、`docs/03-产品与流程`（创作流程、资源管理器模型、AI输出与候选稿、故事经纬）、`docs/04-架构与设计`（系统架构、Studio工作台、Agent写作管线、驾驶舱），所有内容基于功能审计后的实际代码状态编写。
 - 功能审计 P3-13/14/15/16/17：实现驾驶舱总览（CockpitOverview：进度条/字数/审校/风险/建议）、文件修改追踪（从 toolCalls 提取 Write/Edit 文件路径）、Context Ring（SVG 圆环上下文使用率可视化）、段落压缩 UI（compact-before 右键菜单接通 compactSession）、经纬资料编辑器（JingweiEntryEditor：标题+Markdown 编辑/保存/删除）。
 - 功能审计 P2-11：实现候选稿管理前端——新建 `CandidateActionsBar` 组件（状态展示、接受/拒绝/归档/删除操作），补全 `resource-client` 的 reject/archive/delete API 方法，`WorkbenchCanvas` 集成操作栏，候选稿 viewer 改为只读展示，`WritingWorkbenchRoute` 透传 candidateActions props。
