@@ -1,3 +1,4 @@
+import { Button } from "@/components/ui/button";
 import { EmptyState } from "../../components/feedback";
 import { platformAccountAuthModeLabel, platformAccountStatusLabel } from "../../lib/display-labels";
 import type { PlatformAccount } from "../provider-types";
@@ -84,10 +85,10 @@ export function PlatformAccountTable({
                 <td className="px-3 py-2 text-muted-foreground">{formatDateTime(account.lastUsedAt)}</td>
                 <td className="px-3 py-2">
                   <div className="flex flex-wrap gap-1">
-                    <button type="button" disabled={busy} className="rounded border border-border px-2 py-0.5 text-xs hover:bg-muted disabled:opacity-60" onClick={() => onRefreshQuota(account)}>刷新配额</button>
-                    {!account.current && <button type="button" disabled={busy} className="rounded border border-border px-2 py-0.5 text-xs hover:bg-muted disabled:opacity-60" onClick={() => onSetCurrent(account)}>设为当前</button>}
-                    <button type="button" disabled={busy} className="rounded border border-border px-2 py-0.5 text-xs hover:bg-muted disabled:opacity-60" onClick={() => onToggleStatus(account)}>{account.status === "disabled" ? "启用" : "停用"}</button>
-                    <button type="button" disabled={busy} className="rounded border border-destructive/40 px-2 py-0.5 text-xs text-destructive hover:bg-destructive/10 disabled:opacity-60" onClick={() => onDelete(account)}>删除</button>
+                    <Button variant="outline" size="xs" disabled={busy} onClick={() => onRefreshQuota(account)}>刷新配额</Button>
+                    {!account.current && <Button variant="outline" size="xs" disabled={busy} onClick={() => onSetCurrent(account)}>设为当前</Button>}
+                    <Button variant="outline" size="xs" disabled={busy} onClick={() => onToggleStatus(account)}>{account.status === "disabled" ? "启用" : "停用"}</Button>
+                    <Button variant="destructive" size="xs" disabled={busy} onClick={() => onDelete(account)}>删除</Button>
                   </div>
                 </td>
               </tr>

@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { EmptyState } from "../../components/feedback";
 import { modelTestStatusLabel, providerApiModeLabel, providerCompatibilityLabel } from "../../lib/display-labels";
 import type { ManagedProvider, Model, ProviderApiMode, ProviderCompatibility, ProviderThinkingStrength, ProviderType } from "@/shared/provider-catalog";
@@ -67,9 +69,9 @@ export function ApiProviderDetail({
 
   return (
     <section aria-label={`${provider.name} API key 接入详情`} className="space-y-4">
-      <button type="button" className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground" onClick={onBack}>
+      <Button variant="ghost" size="sm" className="flex items-center gap-1" onClick={onBack}>
         ← 返回供应商列表
-      </button>
+      </Button>
 
       <div>
         <h2 className="text-lg font-semibold">{provider.name}</h2>
@@ -87,13 +89,13 @@ export function ApiProviderDetail({
         <div className="grid gap-3 md:grid-cols-2">
           <label className="text-sm">
             Base URL
-            <input className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2" value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} />
+            <Input className="mt-1 w-full" value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} />
           </label>
           <label className="text-sm">
             API Key
-            <input
+            <Input
               type="password"
-              className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2"
+              className="mt-1 w-full"
               value={apiKey}
               placeholder={hasConfiguredApiKey(provider) ? "已配置，留空不变" : "请输入 API Key"}
               onChange={(event) => setApiKey(event.target.value)}
@@ -113,14 +115,13 @@ export function ApiProviderDetail({
             </select>
           </label>
         </div>
-        <button
-          className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-60"
-          type="button"
+        <Button
+          variant="default"
           disabled={busy === `provider:${provider.id}`}
           onClick={() => void saveConnectionInfo()}
         >
           保存接入信息
-        </button>
+        </Button>
       </section>
 
       {/* Codex 模式专属配置 */}
@@ -141,8 +142,8 @@ export function ApiProviderDetail({
             </label>
             <label className="text-sm">
               ChatGPT Account ID
-              <input
-                className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2"
+              <Input
+                className="mt-1 w-full"
                 value={provider.accountId ?? ""}
                 placeholder="可选，用于组织订阅"
                 onChange={(e) => void onUpdateProvider(provider.id, { accountId: e.target.value || undefined })}
@@ -164,14 +165,14 @@ export function ApiProviderDetail({
       )}
 
       <div>
-        <button
-          className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-60"
-          type="button"
+        <Button
+          variant="outline"
+          size="sm"
           disabled={busy === `refresh:${provider.id}`}
           onClick={() => void onRefreshModels(provider.id)}
         >
           刷新模型
-        </button>
+        </Button>
       </div>
 
       <ModelList
@@ -221,36 +222,36 @@ function ModelList({
               <div className="flex items-center gap-2">
                 <label className="flex items-center gap-1 text-xs text-muted-foreground">
                   上下文:
-                  <input
-                    className="w-20 rounded border border-border bg-background px-1.5 py-0.5 text-xs"
+                  <Input
+                    className="w-20"
                     value={contextDrafts[key] ?? String(model.contextWindow)}
                     onChange={(event) => setContextDrafts((current) => ({ ...current, [key]: event.target.value }))}
                   />
                 </label>
-                <button
-                  type="button"
-                  className="rounded border border-border px-2 py-0.5 text-xs hover:bg-muted disabled:opacity-60"
+                <Button
+                  variant="outline"
+                  size="xs"
                   disabled={isBusy}
                   onClick={() => void onUpdateModel(provider.id, model, { contextWindow: Number(contextDrafts[key] ?? model.contextWindow) })}
                 >
                   保存
-                </button>
-                <button
-                  type="button"
-                  className="rounded border border-border px-2 py-0.5 text-xs hover:bg-muted disabled:opacity-60"
+                </Button>
+                <Button
+                  variant="outline"
+                  size="xs"
                   disabled={isBusy}
                   onClick={() => void onTestModel(provider.id, model.id)}
                 >
                   测试
-                </button>
-                <button
-                  type="button"
-                  className="rounded border border-border px-2 py-0.5 text-xs hover:bg-muted disabled:opacity-60"
+                </Button>
+                <Button
+                  variant="outline"
+                  size="xs"
                   disabled={isBusy}
                   onClick={() => void onUpdateModel(provider.id, model, { enabled: model.enabled === false })}
                 >
                   {model.enabled === false ? "启用" : "禁用"}
-                </button>
+                </Button>
               </div>
             </div>
           );

@@ -3,6 +3,8 @@
  * 覆盖创作工作台、设置页、套路页三个主页面。
  */
 
+import { Button } from "@/components/ui/button";
+
 export interface EmptyStateProps {
   readonly title: string;
   readonly description?: string;
@@ -17,9 +19,9 @@ export function EmptyState({ title, description, actionLabel, onAction }: EmptyS
       <p className="text-sm font-medium">{title}</p>
       {description && <p className="max-w-sm text-xs text-muted-foreground">{description}</p>}
       {actionLabel && onAction && (
-        <button className="rounded-lg border border-border px-3 py-1.5 text-xs hover:bg-muted" onClick={onAction} type="button">
+        <Button variant="outline" size="sm" onClick={onAction}>
           {actionLabel}
-        </button>
+        </Button>
       )}
     </div>
   );
@@ -36,9 +38,9 @@ export function InlineError({ message, onRetry }: InlineErrorProps) {
     <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
       <span>{message}</span>
       {onRetry && (
-        <button className="ml-2 text-xs underline hover:no-underline" onClick={onRetry} type="button">
+        <Button variant="link" size="sm" className="ml-2 text-xs" onClick={onRetry}>
           重试
-        </button>
+        </Button>
       )}
     </div>
   );

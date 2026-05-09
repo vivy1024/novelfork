@@ -1,4 +1,5 @@
 import { ShieldAlert, Check, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 export interface ConversationConfirmationResource {
   kind: string;
@@ -104,24 +105,26 @@ export function ConfirmationGate({
 
           {/* Actions */}
           <div className="flex items-center gap-2 pt-1">
-            <button
-              type="button"
+            <Button
+              variant="default"
+              size="sm"
               disabled={confirmation.busy}
               onClick={() => onApprove(confirmation.id)}
-              className="inline-flex items-center gap-1 rounded-md bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-50"
+              className="inline-flex items-center gap-1 bg-green-600 hover:bg-green-700"
             >
               <Check className="size-3" />
               批准
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
               disabled={confirmation.busy}
               onClick={() => onReject(confirmation.id)}
-              className="inline-flex items-center gap-1 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted disabled:opacity-50"
+              className="inline-flex items-center gap-1"
             >
               <X className="size-3" />
               拒绝
-            </button>
+            </Button>
             {confirmation.busy && <span className="text-[10px] text-muted-foreground">处理中...</span>}
           </div>
         </div>
