@@ -627,12 +627,19 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
       onRejectConfirmation={(confirmationId) => void handleConfirmationDecision(confirmationId, "reject")}
       onEditTitle={(newTitle) => { void sessionClient.updateSession(sessionId, { title: newTitle }); }}
       onGenerateTitle={() => {
-        // 从当前消息中提取第一条用户消息作为标题（截取前 30 字符）
-        const firstUserMsg = runtime.state.messages.find(m => m.role === "user");
-        const title = firstUserMsg?.content?.slice(0, 30).trim() || `会话 ${new Date().toLocaleDateString("zh-CN")}`;
-        void sessionClient.updateSession(sessionId, { title });
+        const userMessages = runtime.state.messages.filter(m => m.role === "user");
+        const firstMsg = userMessages[0]?.content?.trim();
+        if (!firstMsg) {
+          void sessionClient.updateSession(sessionId, { title: `会话 ${new Date().toLocaleDateString("zh-CN")}` });
+          return;
+        }
+        // 提取第一句话作为标题（句号/问号/感叹号截断，最多 40 字）
+        const match = firstMsg.match(/^(.{1,40})[。？！\n]/);
+        const title = match ? match[1] : firstMsg.slice(0, 40);
+        void sessionClient.updateSession(sessionId, { title: title.trim() });
       }}
       onArchive={async () => {
+        if (!confirm("确认归档此会话？归档后可在会话中心恢复。")) return;
         await sessionClient.updateSession(sessionId, { status: "archived" });
         routerNavigate({ to: "/next/sessions" });
       }}
