@@ -5,7 +5,7 @@
  * - 左侧：状态圆点 + 状态文案 + 耗时
  * - 右侧：上下文% + 模型按钮 + 推理按钮 + Fast Mode + 权限按钮
  *
- * 使用 shadcn DropdownMenu + Tooltip 组件（基于 @base-ui/react）
+ * 使用 shadcn DropdownMenu + Tooltip 组件（基于 Radix Primitives）
  */
 
 import { useState } from "react";
