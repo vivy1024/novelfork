@@ -40,4 +40,6 @@ export { createExecRouter } from "./exec.js";
 export { createTerminalsRouter } from "./terminals.js";
 export { createProxyRouter } from "./proxy.js";
 export { createAggregationsRouter } from "./aggregations.js";
+export { createRuntimeStatusRouter } from "./runtime-status.js";
+export { createUsageRouter } from "./usage.js";
 export type { RouterContext } from "./context.js";
