@@ -1,4 +1,5 @@
 export * from "./CandidateActionsBar";
+export * from "./CheckpointPanel";
 export * from "./CockpitOverview";
 export * from "./JingweiEntryEditor";
 export * from "./ResourceDetailLoader";

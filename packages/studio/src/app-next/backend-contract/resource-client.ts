@@ -54,6 +54,8 @@ export function createResourceClient(contract: ContractClient) {
       contract.get<T>(buildBookApiPath(bookId, "checkpoints", checkpointId, "rewind", "preview"), { capability: { id: "resources.rewind.preview", status: "current" } }),
     applyRewind: <T = unknown>(bookId: string, checkpointId: string, payload: unknown) =>
       contract.post<T>(buildBookApiPath(bookId, "checkpoints", checkpointId, "rewind", "apply"), payload, { capability: { id: "resources.rewind.apply", status: "current" } }),
+    listCheckpoints: <T = unknown>(bookId: string) =>
+      contract.get<T>(buildBookApiPath(bookId, "checkpoints"), { capability: { id: "resources.checkpoints.list", status: "current" } }),
     listCandidates: <T = unknown>(bookId: string) =>
       contract.get<T>(buildBookApiPath(bookId, "candidates"), { capability: { id: "candidates.list", status: "current" } }),
     acceptCandidate: <T = unknown>(bookId: string, candidateId: string, payload: unknown) =>
