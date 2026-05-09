@@ -9,6 +9,7 @@
 > v0.1.0 尚未发布。2026-05-07 已撤回远端 `v0.1.0` tag，GitHub Release 未创建；以下变更仍处于发布前修正与验收阶段，尤其 Claude Code CLI / Codex CLI parity 口径必须重新审计，不能宣称完整对标完成。
 
 ### 改进
+- 功能审计 P2-11：实现候选稿管理前端——新建 `CandidateActionsBar` 组件（状态展示、接受/拒绝/归档/删除操作），补全 `resource-client` 的 reject/archive/delete API 方法，`WorkbenchCanvas` 集成操作栏，候选稿 viewer 改为只读展示，`WritingWorkbenchRoute` 透传 candidateActions props。
 - `claude-codex-novel-agent-v1` 全部 48 个任务完成：Phase 0（canonical runtime events）、Phase 1（session lifecycle/stream-json/CLI headless）、Phase 2（command registry/executor/policy resolver/confirmation envelope/Codex status）、Phase 3（RuntimeSettings/settings 接实/capability registry/routines 接实）、Phase 4（Novel command pack/context tools/PGI/guided/candidate/write-next workflow/UI/CLI 接入）、Phase 5（叙事线/经纬/写作模式/健康视图/钩子接入）、Phase 6（MCP/skills/hooks/subagents 统一治理）、Phase 7（E2E 验收矩阵）、Phase 8（文档收口/发布标准重定）。
 - `claude-codex-novel-agent-v1` Task15：新增 `runtime-settings.ts`，定义统一配置来源/作用域合并模型（session > project > user > imported > default），每个 entry 记录 value/source/scope/status/error/lastUpdated/overrides，支持 ToolPolicy、McpServerConfig、SubagentConfig、WorkflowRecipe、CommandDefinition、SkillDefinition、HookDefinition 等任意配置类型。
 - `claude-codex-novel-agent-v1` Task14：新增 `codex-runtime-status.ts`，定义 `current | partial | planned | reference-only | unsupported` 状态词汇与 `getCodexRuntimeCapabilityStatuses()`；Codex sandbox 请求降级保存为 planned，approval 标 partial，review/image 标 reference-only；settings runtime facts 与 headless result event 同源输出 `runtime_capabilities`。
