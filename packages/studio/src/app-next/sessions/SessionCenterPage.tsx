@@ -1,4 +1,5 @@
 import { MessageSquareText } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
 
 import { SectionLayout } from "../components/layouts";
 import { toShellPath } from "../shell";
@@ -6,10 +7,9 @@ import { SessionCenter } from "../../components/sessions/SessionCenter";
 import type { NarratorSessionRecord } from "../../shared/session-types";
 
 export function SessionCenterPage() {
+  const routerNavigate = useNavigate();
   const openSession = (session: NarratorSessionRecord) => {
-    if (typeof window === "undefined" || !window.history?.pushState) return;
-    window.history.pushState(null, "", toShellPath({ kind: "narrator", sessionId: session.id }));
-    window.dispatchEvent(new PopStateEvent("popstate"));
+    void routerNavigate({ to: toShellPath({ kind: "narrator", sessionId: session.id }) });
   };
 
   return (

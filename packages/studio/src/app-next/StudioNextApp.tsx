@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useNavigate, useRouterState } from "@tanstack/react-router";
 
 import {
   createFetchJsonContractClient,
@@ -18,7 +19,7 @@ import type { ConversationConfirmation, ConversationSessionConfigPatch } from ".
 import type { RuntimeModelPoolEntry } from "../shared/provider-catalog";
 import type { CanvasContext, ToolConfirmationRequest } from "../shared/agent-native-workspace";
 import type { NarratorSessionChatMessage, NarratorSessionChatSnapshot, NarratorSessionRecord, SessionCumulativeUsage, SessionPermissionMode, TokenUsage, UpdateNarratorSessionInput } from "../shared/session-types";
-import { resolveStudioNextRoute, type StudioNextRoute } from "./entry";
+import { type StudioNextRoute } from "./entry";
 const SearchPage = lazy(() => import("./search/SearchPage").then((m) => ({ default: m.SearchPage })));
 const RoutinesNextPage = lazy(() => import("./routines/RoutinesNextPage").then((m) => ({ default: m.RoutinesNextPage })));
 const SessionCenterPage = lazy(() => import("./sessions/SessionCenterPage").then((m) => ({ default: m.SessionCenterPage })));
@@ -27,7 +28,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { ProviderSettingsPage } from "./settings/ProviderSettingsPage";
 import { SettingsSectionContent } from "./settings/SettingsSectionContent";
-import { AgentShell, toShellPath, useShellData, useShellDataStore, type ShellBookItem, type ShellRoute, type ShellSessionItem, type ShellDataProviderSummary, type ShellDataProviderStatus } from "./shell";
+import { AgentShell, toShellPath, parseShellRoute, useShellData, useShellDataStore, type ShellBookItem, type ShellRoute, type ShellSessionItem, type ShellDataProviderSummary, type ShellDataProviderStatus } from "./shell";
 import {
   applyResourceDetailToNode,
   loadResourceDetailState,
@@ -43,7 +44,7 @@ import {
 } from "./writing-workbench";
 
 interface StudioNextAppProps {
-  readonly initialRoute?: StudioNextRoute;
+  readonly initialRoute?: StudioNextRoute; // kept for API compat; ignored when router is active
 }
 
 const SETTINGS_SECTIONS: readonly SettingsSectionItem[] = [
@@ -946,28 +947,20 @@ function RouteMountPoint({
   }
 }
 
-export function StudioNextApp({ initialRoute }: StudioNextAppProps) {
-  const [activeRoute, setActiveRoute] = useState<StudioNextRoute>(() => initialRoute ?? resolveStudioNextRoute());
+export function StudioNextApp(_props: StudioNextAppProps) {
+  const routerState = useRouterState();
+  const activeRoute: ShellRoute = parseShellRoute(routerState.location.pathname);
   const [canvasContext, setCanvasContext] = useState<WorkbenchCanvasContext | null>(null);
   const { books, sessions, providerSummary, providerStatus, loading, error } = useShellData();
+  const routerNavigate = useNavigate();
 
   const navigate = useCallback((route: ShellRoute) => {
-    setActiveRoute(route);
-    if (typeof window !== "undefined" && window.history?.pushState) {
-      window.history.pushState(null, "", toShellPath(route));
-    }
-  }, []);
+    void routerNavigate({ to: toShellPath(route) });
+  }, [routerNavigate]);
 
   const navigateToConversation = useCallback((sessionId: string) => {
     navigate({ kind: "narrator", sessionId });
   }, [navigate]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const onPop = () => setActiveRoute(resolveStudioNextRoute());
-    window.addEventListener("popstate", onPop);
-    return () => window.removeEventListener("popstate", onPop);
-  }, []);
 
   return (
     <AgentShell route={activeRoute} books={books} sessions={sessions} onNavigate={navigate}>

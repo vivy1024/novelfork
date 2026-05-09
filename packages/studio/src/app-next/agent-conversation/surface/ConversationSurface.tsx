@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import { Settings, Search, ExternalLink, Pencil, Sparkles, FileCode, Info, Archive } from "lucide-react";
 
 import type { ToolResultArtifact } from "../../tool-results";
@@ -102,6 +103,7 @@ export function ConversationSurface({
 }: ConversationSurfaceProps) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const routerNavigate = useNavigate();
 
   const handleEditTitle = () => {
     const newTitle = prompt("编辑标题", title);
@@ -222,7 +224,7 @@ export function ConversationSurface({
             <TooltipContent>归档</TooltipContent>
           </Tooltip>
           <Tooltip>
-            <TooltipTrigger render={<Button variant="ghost" size="icon-sm" onClick={() => settingsHref && (window.location.href = settingsHref)} />}>
+            <TooltipTrigger render={<Button variant="ghost" size="icon-sm" onClick={() => settingsHref && void routerNavigate({ to: settingsHref })} />}>
               <Settings className="size-4" />
             </TooltipTrigger>
             <TooltipContent>设置</TooltipContent>
