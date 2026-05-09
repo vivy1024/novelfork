@@ -1,3 +1,6 @@
+import { Input } from "@/components/ui/input";
+import { SimpleSelect } from "@/components/ui/simple-select";
+
 import type { VisibilityRuleDraft } from "./types";
 
 export function VisibilityRuleEditor({
@@ -22,33 +25,32 @@ export function VisibilityRuleEditor({
       <div className="grid gap-3 md:grid-cols-3">
         <label className="flex flex-col gap-1 text-xs font-semibold text-muted-foreground">
           Type
-          <select
+          <SimpleSelect
             value={value.type}
-            onChange={(event) => onChange({ ...value, type: event.target.value as VisibilityRuleDraft["type"] })}
-            className="rounded-lg border border-border/50 bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary/50"
-          >
-            <option value="global">global：全局可见</option>
-            <option value="tracked">tracked：文本命中后可见</option>
-            <option value="nested">nested：父条目引入</option>
-          </select>
+            onValueChange={(val) => onChange({ ...value, type: val as VisibilityRuleDraft["type"] })}
+            options={[
+              { value: "global", label: "global：全局可见" },
+              { value: "tracked", label: "tracked：文本命中后可见" },
+              { value: "nested", label: "nested：父条目引入" },
+            ]}
+            className="w-full"
+          />
         </label>
         <label className="flex flex-col gap-1 text-xs font-semibold text-muted-foreground">
           起始章节
-          <input
+          <Input
             type="number"
             value={value.visibleAfterChapter ?? ""}
             onChange={(event) => updateNumber("visibleAfterChapter", event.target.value)}
-            className="rounded-lg border border-border/50 bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary/50"
             placeholder="不限制"
           />
         </label>
         <label className="flex flex-col gap-1 text-xs font-semibold text-muted-foreground">
           结束章节
-          <input
+          <Input
             type="number"
             value={value.visibleUntilChapter ?? ""}
             onChange={(event) => updateNumber("visibleUntilChapter", event.target.value)}
-            className="rounded-lg border border-border/50 bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary/50"
             placeholder="不限制"
           />
         </label>

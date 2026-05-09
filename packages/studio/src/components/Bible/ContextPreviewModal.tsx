@@ -1,3 +1,6 @@
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+
 import type { BibleContextPreview } from "./types";
 
 export function ContextPreviewModal({
@@ -31,31 +34,29 @@ export function ContextPreviewModal({
             <h2 className="font-serif text-2xl font-semibold">预览 AI 上下文</h2>
             <p className="text-sm text-muted-foreground">按当前章节、sceneText 和 token 预算展示将注入写作 prompt 的故事经纬条目。</p>
           </div>
-          <button onClick={onClose} className="rounded-lg px-3 py-1 text-sm text-muted-foreground hover:bg-muted">关闭</button>
+          <Button variant="ghost" onClick={onClose}>关闭</Button>
         </div>
         <div className="space-y-5 overflow-y-auto p-5">
           <div className="grid gap-3 md:grid-cols-[160px_1fr_auto]">
             <label className="flex flex-col gap-1 text-xs font-semibold text-muted-foreground">
               当前章节
-              <input
+              <Input
                 type="number"
                 value={currentChapter}
                 onChange={(event) => onCurrentChapterChange(Number(event.target.value))}
-                className="rounded-lg border border-border/50 bg-background px-3 py-2 text-sm text-foreground"
               />
             </label>
             <label className="flex flex-col gap-1 text-xs font-semibold text-muted-foreground">
               sceneText（用于 tracked 命中）
-              <input
+              <Input
                 value={sceneText}
                 onChange={(event) => onSceneTextChange(event.target.value)}
-                className="rounded-lg border border-border/50 bg-background px-3 py-2 text-sm text-foreground"
                 placeholder="粘贴当前段落或场景关键词"
               />
             </label>
-            <button onClick={onPreview} disabled={loading} className="self-end rounded-xl bg-primary px-4 py-2 text-sm font-bold text-primary-foreground disabled:opacity-50">
+            <Button onClick={onPreview} disabled={loading} className="self-end">
               {loading ? "生成中..." : "刷新预览"}
-            </button>
+            </Button>
           </div>
 
           {preview && (

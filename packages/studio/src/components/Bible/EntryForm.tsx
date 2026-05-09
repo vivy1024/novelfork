@@ -1,5 +1,9 @@
 import { useMemo, useState } from "react";
 
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+
 import { VisibilityRuleEditor } from "./VisibilityRuleEditor";
 import type { BibleEntry, BibleTab, VisibilityRuleDraft } from "./types";
 
@@ -194,17 +198,17 @@ export function EntryForm({
       <div className="grid gap-3 md:grid-cols-2">
         <label className="flex flex-col gap-1 text-xs font-semibold text-muted-foreground">
           ID（可选）
-          <input value={draft.id} onChange={(event) => set("id", event.target.value)} className="rounded-lg border border-border/50 bg-background px-3 py-2 text-sm text-foreground" placeholder="留空自动生成" />
+          <Input value={draft.id} onChange={(event) => set("id", event.target.value)} placeholder="留空自动生成" />
         </label>
         {tab === "chapter-summaries" ? (
           <label className="flex flex-col gap-1 text-xs font-semibold text-muted-foreground">
             标题
-            <input value={draft.title} onChange={(event) => set("title", event.target.value)} className="rounded-lg border border-border/50 bg-background px-3 py-2 text-sm text-foreground" required />
+            <Input value={draft.title} onChange={(event) => set("title", event.target.value)} required />
           </label>
         ) : (
           <label className="flex flex-col gap-1 text-xs font-semibold text-muted-foreground">
             名称
-            <input value={draft.name} onChange={(event) => set("name", event.target.value)} className="rounded-lg border border-border/50 bg-background px-3 py-2 text-sm text-foreground" required />
+            <Input value={draft.name} onChange={(event) => set("name", event.target.value)} required />
           </label>
         )}
       </div>
@@ -286,17 +290,17 @@ export function EntryForm({
 
       <label className="flex flex-col gap-1 text-xs font-semibold text-muted-foreground">
         {tab === "settings" ? "内容" : tab === "premise" ? "差异化钩子" : tab === "character-arcs" ? "终点状态" : "摘要"}
-        <textarea
+        <Textarea
           value={tab === "settings" ? draft.content : tab === "character-arcs" ? draft.summary : draft.summary}
           onChange={(event) => set(tab === "settings" ? "content" : "summary", event.target.value)}
-          className="min-h-24 rounded-xl border border-border/50 bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary/50"
+          className="min-h-24"
           required
         />
       </label>
 
-      <button type="submit" disabled={saving} className="rounded-xl bg-primary px-4 py-2 text-sm font-bold text-primary-foreground disabled:opacity-50">
+      <Button type="submit" disabled={saving}>
         {saving ? "保存中..." : "保存经纬条目"}
-      </button>
+      </Button>
     </form>
   );
 }
@@ -305,7 +309,7 @@ function Field({ label, value, onChange, type = "text" }: { label: string; value
   return (
     <label className="flex flex-col gap-1 text-xs font-semibold text-muted-foreground">
       {label}
-      <input type={type} value={value} onChange={(event) => onChange(event.target.value)} className="rounded-lg border border-border/50 bg-background px-3 py-2 text-sm text-foreground" />
+      <Input type={type} value={value} onChange={(event) => onChange(event.target.value)} />
     </label>
   );
 }
