@@ -1,8 +1,8 @@
 import { createRouter, createRootRoute, createRoute, redirect } from "@tanstack/react-router";
 
 // ---------------------------------------------------------------------------
-// Root route — 阶段一：渲染由 StudioNextApp 内部 switch 处理
-// 阶段二+：逐步迁移为独立 route component
+// Root route — 渲染由 main.tsx defaultComponent (StudioNextApp) 处理
+// StudioNextApp 内部通过 useRouterState/useNavigate 与 router 交互
 // ---------------------------------------------------------------------------
 
 const rootRoute = createRootRoute();

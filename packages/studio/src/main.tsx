@@ -5,10 +5,9 @@ import { RouterProvider } from "@tanstack/react-router";
 import { router } from "./app-next/router";
 import { StudioNextApp } from "./app-next";
 
-// 阶段一：TanStack Router 接管 URL 监听，但渲染仍由 StudioNextApp 内部 switch 处理
-// root route 没有 component，所以 RouterProvider 不渲染任何东西
-// StudioNextApp 仍然用自己的 resolveStudioNextRoute + pushState 管理路由
-// 后续阶段会逐步把 RouteMountPoint 中的路由迁移到 TanStack Router 的 route component
+// TanStack Router 接管 URL 监听与导航。
+// StudioNextApp 作为 defaultComponent 渲染，内部通过 useRouterState/useNavigate 与 router 交互。
+// rootRoute 不设 component 以避免 router.ts ↔ StudioNextApp 循环依赖。
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
