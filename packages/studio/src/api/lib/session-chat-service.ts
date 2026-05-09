@@ -283,13 +283,6 @@ function broadcastToAll(state: SessionChatRuntimeState, payload: string): void {
   }
 }
 
-function createCursor(state: SessionChatRuntimeState, ackedSeq?: number): NarratorSessionChatCursor {
-  return {
-    lastSeq: Math.max(0, ...state.messages.map((m) => m.seq ?? 0)),
-    ackedSeq: ackedSeq ?? state.persistedAckedSeq ?? 0,
-  };
-}
-
 function createRuntimeState(
   initialMessageCount = 0,
   initialMessages: NarratorSessionChatMessage[] = [],
