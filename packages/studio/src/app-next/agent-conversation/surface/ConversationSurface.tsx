@@ -313,7 +313,12 @@ export function ConversationSurface({
       )}
 
       {/* ── NarratorStatusBar (above Composer) ── */}
-      <NarratorStatusBar status={status} />
+      <NarratorStatusBar
+        status={status}
+        onUpdateModel={(providerId, modelId) => { void onUpdateSessionConfig?.({ providerId, modelId }); }}
+        onUpdateReasoningEffort={(effort) => { void onUpdateSessionConfig?.({ reasoningEffort: effort }); }}
+        onUpdatePermissionMode={(mode) => { void onUpdateSessionConfig?.({ permissionMode: mode }); }}
+      />
 
       {/* ── Composer ── */}
       <Composer
