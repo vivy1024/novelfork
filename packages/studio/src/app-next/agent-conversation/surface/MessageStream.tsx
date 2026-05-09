@@ -1,18 +1,19 @@
 import { useCallback, useEffect, useRef } from "react";
 import BidirectionalList, { type BidirectionalListRef } from "broad-infinite-list/react";
 import type { ToolResultArtifact } from "../../tool-results";
-import { MessageItem, type ConversationSurfaceMessage } from "./MessageItem";
+import { MessageItem, type ConversationSurfaceMessage, type MessageContextAction } from "./MessageItem";
 
 export interface MessageStreamProps {
   messages: readonly ConversationSurfaceMessage[];
   onOpenArtifact?: (artifact: ToolResultArtifact) => void;
+  onContextAction?: (messageId: string, action: MessageContextAction["id"]) => void;
   /** 是否有更早的消息可加载 */
   hasPrevious?: boolean;
   /** 加载更早消息的回调 */
   onLoadPrevious?: () => Promise<ConversationSurfaceMessage[]>;
 }
 
-export function MessageStream({ messages, onOpenArtifact, hasPrevious = false, onLoadPrevious }: MessageStreamProps) {
+export function MessageStream({ messages, onOpenArtifact, onContextAction, hasPrevious = false, onLoadPrevious }: MessageStreamProps) {
   const listRef = useRef<BidirectionalListRef<ConversationSurfaceMessage>>(null);
   const prevLengthRef = useRef(messages.length);
 
@@ -40,9 +41,9 @@ export function MessageStream({ messages, onOpenArtifact, hasPrevious = false, o
 
   const renderItem = useCallback(
     (message: ConversationSurfaceMessage) => (
-      <MessageItem message={message} onOpenArtifact={onOpenArtifact} />
+      <MessageItem message={message} onOpenArtifact={onOpenArtifact} onContextAction={onContextAction} />
     ),
-    [onOpenArtifact],
+    [onOpenArtifact, onContextAction],
   );
 
   const itemKey = useCallback((message: ConversationSurfaceMessage) => message.id, []);
