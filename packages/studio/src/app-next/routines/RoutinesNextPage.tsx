@@ -6,6 +6,7 @@ import { GripVertical } from "lucide-react";
 
 import { listRuntimeCommands, type RuntimeCommandDefinition, type RuntimeCommandSource, type RuntimeCommandStatus } from "@vivy1024/novelfork-core/registry/command-registry";
 
+import { Button } from "@/components/ui/button";
 import { CommandsTab } from "../../components/Routines/CommandsTab";
 import { MCPToolsTab } from "../../components/Routines/MCPToolsTab";
 import { PermissionsTab } from "../../components/Routines/PermissionsTab";
@@ -157,42 +158,46 @@ export function RoutinesNextPage({ projectRoot: projectRootProp }: RoutinesNextP
             <p className="text-sm text-muted-foreground">管理技能、命令和 MCP 工具。</p>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              className={scopeButtonClass(viewScope === "merged")}
+            <Button
+              variant={viewScope === "merged" ? "default" : "outline"}
+              size="sm"
               disabled={!hasProjectScope}
               onClick={() => setViewScope("merged")}
-              type="button"
             >
               {ROUTINES_SCOPE_META.merged.label}
-            </button>
-            <button className={scopeButtonClass(viewScope === "global")} onClick={() => setViewScope("global")} type="button">
+            </Button>
+            <Button
+              variant={viewScope === "global" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setViewScope("global")}
+            >
               {ROUTINES_SCOPE_META.global.label}
-            </button>
-            <button
-              className={scopeButtonClass(viewScope === "project")}
+            </Button>
+            <Button
+              variant={viewScope === "project" ? "default" : "outline"}
+              size="sm"
               disabled={!hasProjectScope}
               onClick={() => setViewScope("project")}
-              type="button"
             >
               {ROUTINES_SCOPE_META.project.label}
-            </button>
+            </Button>
             <span className="mx-1 h-5 w-px bg-border" />
-            <button
-              className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50"
+            <Button
+              variant="outline"
+              size="sm"
               disabled={saving || isReadOnly}
               onClick={handleSave}
-              type="button"
             >
               {saving ? "保存中…" : saved ? "已保存" : "保存"}
-            </button>
-            <button
-              className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50"
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
               disabled={saving || isReadOnly}
               onClick={handleReset}
-              type="button"
             >
               重置
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -350,13 +355,14 @@ function RuntimeCommandRegistryPanel({ commands, disabledCommands, onToggleComma
               </div>
               <p className="mt-1 text-xs text-muted-foreground">{command.description}</p>
               {onToggleCommand && (
-                <button
-                  className="mt-2 rounded border border-border px-2 py-1 text-xs hover:bg-muted"
+                <Button
+                  variant="outline"
+                  size="xs"
+                  className="mt-2"
                   onClick={() => onToggleCommand(command.id)}
-                  type="button"
                 >
                   {isDisabled ? "启用" : "禁用"}
-                </button>
+                </Button>
               )}
             </article>
           );
@@ -416,9 +422,9 @@ function HooksTab({ hooks, onChange }: { readonly hooks: RoutineHook[]; readonly
             为 Shell、Webhook 或 LLM 提示词配置真实生命周期触发点，保存后写入当前 Routines 作用域。
           </p>
         </div>
-        <button className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted" onClick={addHook} type="button">
+        <Button variant="outline" size="sm" onClick={addHook}>
           创建钩子
-        </button>
+        </Button>
       </div>
 
       <div className="grid gap-3 md:grid-cols-3">
@@ -471,12 +477,12 @@ function SortableHookItem({ hook, onUpdate, onRemove }: { hook: RoutineHook; onU
         </select>
       </label>
       <div className="flex items-end gap-2">
-        <button className="rounded-lg border border-border px-3 py-2 text-sm hover:bg-muted" type="button" onClick={() => onUpdate(hook.id, { enabled: !hook.enabled })}>
+        <Button variant="outline" size="sm" onClick={() => onUpdate(hook.id, { enabled: !hook.enabled })}>
           {hook.enabled ? "停用" : "启用"}
-        </button>
-        <button className="rounded-lg border border-destructive/40 px-3 py-2 text-sm text-destructive hover:bg-destructive/10" type="button" onClick={() => onRemove(hook.id)}>
+        </Button>
+        <Button variant="destructive" size="sm" onClick={() => onRemove(hook.id)}>
           删除
-        </button>
+        </Button>
       </div>
       <label className="text-sm md:col-span-5">
         执行目标
@@ -495,6 +501,3 @@ function HookTypeCard({ title, description }: { readonly title: string; readonly
   );
 }
 
-function scopeButtonClass(active: boolean, base = "rounded-lg border border-border px-3 py-1.5 text-sm transition") {
-  return `${base} ${active ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`;
-}
