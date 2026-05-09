@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SimpleSelect } from "@/components/ui/simple-select";
 import { EmptyState } from "../../components/feedback";
 import { modelTestStatusLabel, providerApiModeLabel, providerCompatibilityLabel } from "../../lib/display-labels";
 import type { ManagedProvider, Model, ProviderApiMode, ProviderCompatibility, ProviderThinkingStrength, ProviderType } from "@/shared/provider-catalog";
@@ -103,16 +104,24 @@ export function ApiProviderDetail({
           </label>
           <label className="text-sm">
             兼容格式
-            <select className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2" value={compatibility} onChange={(event) => setCompatibility(event.target.value as ProviderCompatibility)}>
-              <option value="openai-compatible">{providerCompatibilityLabel("openai-compatible")}</option>
-              <option value="anthropic-compatible">{providerCompatibilityLabel("anthropic-compatible")}</option>
-            </select>
+            <SimpleSelect
+              className="mt-1"
+              value={compatibility}
+              onValueChange={(v) => setCompatibility(v as ProviderCompatibility)}
+              options={[
+                { value: "openai-compatible", label: providerCompatibilityLabel("openai-compatible") },
+                { value: "anthropic-compatible", label: providerCompatibilityLabel("anthropic-compatible") },
+              ]}
+            />
           </label>
           <label className="text-sm">
             API 模式
-            <select className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2" value={apiMode} onChange={(event) => setApiMode(event.target.value as ProviderApiMode)}>
-              {API_MODES.map((value) => <option key={value} value={value}>{providerApiModeLabel(value)}</option>)}
-            </select>
+            <SimpleSelect
+              className="mt-1"
+              value={apiMode}
+              onValueChange={(v) => setApiMode(v as ProviderApiMode)}
+              options={API_MODES.map((value) => ({ value, label: providerApiModeLabel(value) }))}
+            />
           </label>
         </div>
         <Button
@@ -132,13 +141,12 @@ export function ApiProviderDetail({
           <div className="grid gap-3 md:grid-cols-2">
             <label className="text-sm">
               Codex 推理强度
-              <select
-                className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2"
+              <SimpleSelect
+                className="mt-1"
                 value={provider.thinkingStrength ?? "medium"}
-                onChange={(e) => void onUpdateProvider(provider.id, { thinkingStrength: e.target.value as ProviderThinkingStrength })}
-              >
-                {THINKING_STRENGTHS.map((s) => <option key={s} value={s}>{s === "low" ? "低" : s === "medium" ? "中" : "高"}</option>)}
-              </select>
+                onValueChange={(v) => void onUpdateProvider(provider.id, { thinkingStrength: v as ProviderThinkingStrength })}
+                options={THINKING_STRENGTHS.map((s) => ({ value: s, label: s === "low" ? "低" : s === "medium" ? "中" : "高" }))}
+              />
             </label>
             <label className="text-sm">
               ChatGPT Account ID

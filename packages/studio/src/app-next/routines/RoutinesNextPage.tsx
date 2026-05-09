@@ -7,6 +7,7 @@ import { GripVertical } from "lucide-react";
 import { listRuntimeCommands, type RuntimeCommandDefinition, type RuntimeCommandSource, type RuntimeCommandStatus } from "@vivy1024/novelfork-core/registry/command-registry";
 
 import { Button } from "@/components/ui/button";
+import { SimpleSelect } from "@/components/ui/simple-select";
 import { CommandsTab } from "../../components/Routines/CommandsTab";
 import { MCPToolsTab } from "../../components/Routines/MCPToolsTab";
 import { PermissionsTab } from "../../components/Routines/PermissionsTab";
@@ -472,9 +473,12 @@ function SortableHookItem({ hook, onUpdate, onRemove }: { hook: RoutineHook; onU
       </label>
       <label className="text-sm">
         执行方式
-        <select className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2" value={hook.kind} onChange={(event) => onUpdate(hook.id, { kind: event.target.value as RoutineHookKind })}>
-          {(Object.keys(HOOK_KIND_LABELS) as RoutineHookKind[]).map((kind) => <option key={kind} value={kind}>{HOOK_KIND_LABELS[kind]}</option>)}
-        </select>
+        <SimpleSelect
+          className="mt-1"
+          value={hook.kind}
+          onValueChange={(v) => onUpdate(hook.id, { kind: v as RoutineHookKind })}
+          options={(Object.keys(HOOK_KIND_LABELS) as RoutineHookKind[]).map((kind) => ({ value: kind, label: HOOK_KIND_LABELS[kind] }))}
+        />
       </label>
       <div className="flex items-end gap-2">
         <Button variant="outline" size="sm" onClick={() => onUpdate(hook.id, { enabled: !hook.enabled })}>

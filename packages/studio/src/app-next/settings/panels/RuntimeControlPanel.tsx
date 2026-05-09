@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { SimpleSelect } from "@/components/ui/simple-select";
 import { Switch } from "@/components/ui/switch";
 import { fetchJson, putApi } from "@/hooks/use-api";
 import { PROXY_API_PATH, USER_SETTINGS_API_PATH, createLenientFetchJsonContractClient, createProviderClient } from "@/app-next/backend-contract";
@@ -112,7 +113,6 @@ function RuntimeFactsSummary({ facts }: { readonly facts: ReadonlyArray<Settings
   );
 }
 
-const selectCls = "appearance-none rounded-lg border border-border bg-background px-3 py-2 pr-8 text-sm shadow-sm cursor-pointer hover:border-primary/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-colors bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2216%22%20height%3D%2216%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%236b7280%22%20stroke-width%3D%222%22%3E%3Cpath%20d%3D%22m6%209%206%206%206-6%22%2F%3E%3C%2Fsvg%3E')] bg-[length:16px] bg-[right_8px_center] bg-no-repeat";
 const inputCls = "w-32 rounded-lg border border-border bg-background px-3 py-2 text-sm text-right shadow-sm hover:border-primary/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-colors";
 const wideInputCls = "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm shadow-sm hover:border-primary/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-colors";
 
@@ -275,14 +275,20 @@ export function RuntimeControlPanel() {
       {/* ---- 权限与推理 ---- */}
       <Section title="权限与推理">
         <FieldRow label="默认权限模式">
-          <select className={selectCls} value={rc.defaultPermissionMode} onChange={(e) => patchRc({ defaultPermissionMode: e.target.value as RuntimeControlSettings["defaultPermissionMode"] })}>
-            {PERMISSION_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
+          <SimpleSelect
+            value={rc.defaultPermissionMode}
+            onValueChange={(val) => patchRc({ defaultPermissionMode: val as RuntimeControlSettings["defaultPermissionMode"] })}
+            options={PERMISSION_OPTIONS}
+            aria-label="默认权限模式"
+          />
         </FieldRow>
         <FieldRow label="默认推理强度">
-          <select className={selectCls} value={rc.defaultReasoningEffort} onChange={(e) => patchRc({ defaultReasoningEffort: e.target.value as RuntimeControlSettings["defaultReasoningEffort"] })}>
-            {REASONING_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
+          <SimpleSelect
+            value={rc.defaultReasoningEffort}
+            onValueChange={(val) => patchRc({ defaultReasoningEffort: val as RuntimeControlSettings["defaultReasoningEffort"] })}
+            options={REASONING_OPTIONS}
+            aria-label="默认推理强度"
+          />
         </FieldRow>
         <FieldRow label="每条消息最大轮次">
           <input
@@ -308,84 +314,67 @@ export function RuntimeControlPanel() {
           </p>
         )}
         <FieldRow label="默认会话模型">
-          <select
+          <SimpleSelect
             aria-label="默认会话模型"
-            className={wideInputCls}
+            className="w-full"
             value={md.defaultSessionModel}
             disabled={!hasModelOptions}
-            onChange={(e) => patchMd({ defaultSessionModel: e.target.value })}
-          >
-            <option value="" disabled>请选择模型</option>
-            {modelOptions.map((model) => (
-              <option key={model.modelId} value={model.modelId}>{runtimeModelLabel(model)}（会话）</option>
-            ))}
-          </select>
+            onValueChange={(val) => patchMd({ defaultSessionModel: val })}
+            options={modelOptions.map((model) => ({ value: model.modelId, label: `${runtimeModelLabel(model)}（会话）` }))}
+            placeholder="请选择模型"
+          />
         </FieldRow>
         <FieldRow label="摘要模型">
-          <select
+          <SimpleSelect
             aria-label="摘要模型"
-            className={wideInputCls}
+            className="w-full"
             value={md.summaryModel}
             disabled={!hasModelOptions}
-            onChange={(e) => patchMd({ summaryModel: e.target.value })}
-          >
-            <option value="" disabled>请选择模型</option>
-            {modelOptions.map((model) => (
-              <option key={model.modelId} value={model.modelId}>{runtimeModelLabel(model)}（摘要）</option>
-            ))}
-          </select>
+            onValueChange={(val) => patchMd({ summaryModel: val })}
+            options={modelOptions.map((model) => ({ value: model.modelId, label: `${runtimeModelLabel(model)}（摘要）` }))}
+            placeholder="请选择模型"
+          />
         </FieldRow>
         <FieldRow label="Explore 子代理模型">
-          <select
+          <SimpleSelect
             aria-label="Explore 子代理模型"
-            className={wideInputCls}
+            className="w-full"
             value={md.exploreSubagentModel}
             disabled={!hasModelOptions}
-            onChange={(e) => patchMd({ exploreSubagentModel: e.target.value })}
-          >
-            <option value="" disabled>请选择模型</option>
-            {modelOptions.map((model) => (
-              <option key={model.modelId} value={model.modelId}>{runtimeModelLabel(model)}（Explore）</option>
-            ))}
-          </select>
+            onValueChange={(val) => patchMd({ exploreSubagentModel: val })}
+            options={modelOptions.map((model) => ({ value: model.modelId, label: `${runtimeModelLabel(model)}（Explore）` }))}
+            placeholder="请选择模型"
+          />
         </FieldRow>
         <FieldRow label="Plan 子代理模型">
-          <select
+          <SimpleSelect
             aria-label="Plan 子代理模型"
-            className={wideInputCls}
+            className="w-full"
             value={md.planSubagentModel}
             disabled={!hasModelOptions}
-            onChange={(e) => patchMd({ planSubagentModel: e.target.value })}
-          >
-            <option value="" disabled>请选择模型</option>
-            {modelOptions.map((model) => (
-              <option key={model.modelId} value={model.modelId}>{runtimeModelLabel(model)}（Plan）</option>
-            ))}
-          </select>
+            onValueChange={(val) => patchMd({ planSubagentModel: val })}
+            options={modelOptions.map((model) => ({ value: model.modelId, label: `${runtimeModelLabel(model)}（Plan）` }))}
+            placeholder="请选择模型"
+          />
         </FieldRow>
         <FieldRow label="General 子代理模型">
-          <select
+          <SimpleSelect
             aria-label="General 子代理模型"
-            className={wideInputCls}
+            className="w-full"
             value={md.generalSubagentModel}
             disabled={!hasModelOptions}
-            onChange={(e) => patchMd({ generalSubagentModel: e.target.value })}
-          >
-            <option value="" disabled>请选择模型</option>
-            {modelOptions.map((model) => (
-              <option key={model.modelId} value={model.modelId}>{runtimeModelLabel(model)}（General）</option>
-            ))}
-          </select>
+            onValueChange={(val) => patchMd({ generalSubagentModel: val })}
+            options={modelOptions.map((model) => ({ value: model.modelId, label: `${runtimeModelLabel(model)}（General）` }))}
+            placeholder="请选择模型"
+          />
         </FieldRow>
         <FieldRow label="Codex 推理强度">
-          <select
+          <SimpleSelect
             aria-label="Codex 推理强度"
-            className={selectCls}
             value={md.codexReasoningEffort}
-            onChange={(e) => patchMd({ codexReasoningEffort: e.target.value as ModelDefaultSettings["codexReasoningEffort"] })}
-          >
-            {REASONING_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
+            onValueChange={(val) => patchMd({ codexReasoningEffort: val as ModelDefaultSettings["codexReasoningEffort"] })}
+            options={REASONING_OPTIONS}
+          />
         </FieldRow>
         <FieldRow label="子代理模型池">
           <select
@@ -419,19 +408,27 @@ export function RuntimeControlPanel() {
         <FieldRow label="显示实时输出速率"><Switch checked={rc.showOutputRate ?? false} onCheckedChange={(v) => patchRc({ showOutputRate: v })} /></FieldRow>
         <FieldRow label="滚动自动加载历史"><Switch checked={rc.scrollAutoLoadHistory ?? true} onCheckedChange={(v) => patchRc({ scrollAutoLoadHistory: v })} /></FieldRow>
         <FieldRow label="发送方式">
-          <select className={selectCls} value={rc.sendMode ?? "enter"} onChange={(e) => patchRc({ sendMode: e.target.value as "enter" | "ctrl-enter" })}>
-            <option value="enter">Enter 发送</option>
-            <option value="ctrl-enter">Ctrl+Enter 发送</option>
-          </select>
+          <SimpleSelect
+            value={rc.sendMode ?? "enter"}
+            onValueChange={(val) => patchRc({ sendMode: val as "enter" | "ctrl-enter" })}
+            options={[
+              { value: "enter", label: "Enter 发送" },
+              { value: "ctrl-enter", label: "Ctrl+Enter 发送" },
+            ]}
+            aria-label="发送方式"
+          />
         </FieldRow>
       </Section>
 
       {/* ---- MCP 策略 ---- */}
       <Section title="MCP 策略">
         <FieldRow label="MCP 工具策略">
-          <select className={selectCls} value={rc.toolAccess.mcpStrategy} onChange={(e) => patchToolAccess({ mcpStrategy: e.target.value as RuntimeControlSettings["toolAccess"]["mcpStrategy"] })}>
-            {MCP_POLICY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
+          <SimpleSelect
+            value={rc.toolAccess.mcpStrategy}
+            onValueChange={(val) => patchToolAccess({ mcpStrategy: val as RuntimeControlSettings["toolAccess"]["mcpStrategy"] })}
+            options={MCP_POLICY_OPTIONS}
+            aria-label="MCP 工具策略"
+          />
         </FieldRow>
         <div className="space-y-1">
           <span className="text-sm text-muted-foreground">允许工具列表</span>

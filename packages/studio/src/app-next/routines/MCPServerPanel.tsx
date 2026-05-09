@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SimpleSelect } from "@/components/ui/simple-select";
 import { postApi, putApi, useApi } from "../../hooks/use-api";
 import { describeToolAccessReason, type ToolAccessReasonKey } from "../../shared/tool-access-reasons";
 import { runtimePolicySourceLabel } from "../lib/display-labels";
@@ -331,16 +332,15 @@ export function MCPServerPanel() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="mcp-server-transport">传输方式</Label>
-                <select
-                  id="mcp-server-transport"
-                  aria-label="传输方式"
+                <SimpleSelect
                   value={formData.transport}
-                  onChange={(event) => setFormData((current) => ({ ...current, transport: event.target.value as "stdio" | "sse" }))}
-                  className="flex h-10 w-full rounded-lg border border-input bg-background px-3 text-sm"
-                >
-                  <option value="stdio">stdio（本地进程）</option>
-                  <option value="sse">SSE（远程 HTTP）</option>
-                </select>
+                  onValueChange={(v) => setFormData((current) => ({ ...current, transport: v as "stdio" | "sse" }))}
+                  aria-label="传输方式"
+                  options={[
+                    { value: "stdio", label: "stdio（本地进程）" },
+                    { value: "sse", label: "SSE（远程 HTTP）" },
+                  ]}
+                />
               </div>
             </div>
 
