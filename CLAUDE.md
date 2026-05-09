@@ -53,11 +53,12 @@
 
 | 指标 | 值 |
 |------|----|
-| Specs | `v0-1-0-release-readiness` 执行中（20/23）；发布暂停，Task19 已完成 Claude/Codex 源码/官方资料口径重审，Task20 已完成反 mock/hardcoded/route literal 审计与 backend-contract 路径集中，Task21 仍需重新验收 |
-| TypeScript | Task19 `pnpm --dir packages/studio typecheck` 通过；Task18 compile 通过；Task21 仍需补修正后的全量回归 |
-| 测试 | Task20 Studio Vitest 全量 213 files / 1274 tests passed；Task20 Studio typecheck 通过；Task16 Backend Contract 7 文件 / 38 测试 + CLI 13 文件 / 97 测试 + Playwright 7 passed；这些不等同 Claude Code CLI / Codex CLI 完整对标 |
-| 编译 | Task18 生成过 `dist/novelfork-v0.1.0-windows-x64.exe` 与 SHA256；GitHub Release 未创建，远端 `v0.1.0` tag 已撤回 |
-| 运行 | Task18 已用编译产物完成 clean root smoke；Task20 已完成 mock/hardcoded/route literal 审计与清理；release 前仍必须完成 Task21 重新验收 |
+| Specs | `functionality-audit` P0-P3 全部完成；功能缺口清单全部实现 |
+| TypeScript | typecheck 通过 |
+| 功能 | 引导式生成（PGI+Guided Plan）、Agent 编排可见链、写作工具面板、驾驶舱增强、Checkpoint/Rewind、学习中心、Onboarding 全部已实现 |
+| 文档 | 用户指南/产品流程/架构设计已重写；学习中心 9 篇；根 README 已重写 |
+| 编译 | `dist/novelfork-v0.1.0-windows-x64.exe`；GitHub Release 未创建 |
+| 下一步 | 端到端浏览器验证 → v0.1.0 发布 |
 
 ---
 
