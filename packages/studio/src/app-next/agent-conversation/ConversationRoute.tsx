@@ -91,7 +91,7 @@ export function ConversationRoute({
 }: ConversationRouteProps) {
   if (!sessionId) {
     return (
-      <section data-testid="conversation-route-empty" className="conversation-route conversation-route--empty">
+      <section data-testid="conversation-route-empty" className="flex h-full w-full flex-1 flex-col items-center justify-center p-6">
         <h2>选择或新建叙述者会话</h2>
         <p>请从 shell 会话列表选择一个会话，或创建新会话后开始对话。</p>
       </section>
@@ -126,7 +126,7 @@ export function ConversationRoute({
   };
 
   return (
-    <section data-testid="conversation-route" className="conversation-route" data-session-id={sessionId}>
+    <section data-testid="conversation-route" className="flex h-full w-full min-h-0 min-w-0 flex-1" data-session-id={sessionId}>
       <ConversationSurface
         title={title}
         sessionId={sessionId}

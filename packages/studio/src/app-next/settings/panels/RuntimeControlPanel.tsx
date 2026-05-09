@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { fetchJson, putApi } from "@/hooks/use-api";
 import { PROXY_API_PATH, USER_SETTINGS_API_PATH, createLenientFetchJsonContractClient, createProviderClient } from "@/app-next/backend-contract";
 import { runtimeModelLabel, usableRuntimeModels, type RuntimeModelOption } from "@/lib/runtime-model-options";
@@ -111,25 +112,9 @@ function RuntimeFactsSummary({ facts }: { readonly facts: ReadonlyArray<Settings
   );
 }
 
-function Switch({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors ${checked ? "bg-primary" : "bg-muted"}`}
-      onClick={() => onChange(!checked)}
-    >
-      <span
-        className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${checked ? "translate-x-4" : "translate-x-0.5"}`}
-      />
-    </button>
-  );
-}
-
-const selectCls = "rounded-md border border-border bg-background px-2 py-1 text-sm";
-const inputCls = "w-32 rounded-md border border-border bg-background px-2 py-1 text-sm text-right";
-const wideInputCls = "w-56 rounded-md border border-border bg-background px-2 py-1 text-sm";
+const selectCls = "appearance-none rounded-lg border border-border bg-background px-3 py-2 pr-8 text-sm shadow-sm cursor-pointer hover:border-primary/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-colors bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2216%22%20height%3D%2216%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%236b7280%22%20stroke-width%3D%222%22%3E%3Cpath%20d%3D%22m6%209%206%206%206-6%22%2F%3E%3C%2Fsvg%3E')] bg-[length:16px] bg-[right_8px_center] bg-no-repeat";
+const inputCls = "w-32 rounded-lg border border-border bg-background px-3 py-2 text-sm text-right shadow-sm hover:border-primary/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-colors";
+const wideInputCls = "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm shadow-sm hover:border-primary/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-colors";
 
 // ---------------------------------------------------------------------------
 // ListManager (simplified)
@@ -286,7 +271,7 @@ export function RuntimeControlPanel() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-2xl space-y-6">
       {/* ---- 权限与推理 ---- */}
       <Section title="权限与推理">
         <FieldRow label="默认权限模式">
@@ -424,15 +409,15 @@ export function RuntimeControlPanel() {
 
       {/* ---- 行为 ---- */}
       <Section title="行为">
-        <FieldRow label="翻译思考内容"><Switch checked={rc.translateThinking ?? false} onChange={(v) => patchRc({ translateThinking: v })} /></FieldRow>
-        <FieldRow label="默认展开推理内容"><Switch checked={rc.expandReasoning ?? false} onChange={(v) => patchRc({ expandReasoning: v })} /></FieldRow>
-        <FieldRow label="默认宽松规划"><Switch checked={rc.relaxedPlanning ?? true} onChange={(v) => patchRc({ relaxedPlanning: v })} /></FieldRow>
-        <FieldRow label="智能检查输出中断"><Switch checked={rc.smartOutputCheck ?? true} onChange={(v) => patchRc({ smartOutputCheck: v })} /></FieldRow>
-        <FieldRow label="要求使用您的语言回复"><Switch checked={rc.forceUserLanguage ?? false} onChange={(v) => patchRc({ forceUserLanguage: v })} /></FieldRow>
-        <FieldRow label="跳过只读危险反思确认"><Switch checked={rc.yoloSkipReadonlyConfirmation ?? false} onChange={(v) => patchRc({ yoloSkipReadonlyConfirmation: v })} /></FieldRow>
-        <FieldRow label="显示 Token 用量"><Switch checked={rc.showTokenUsage ?? false} onChange={(v) => patchRc({ showTokenUsage: v })} /></FieldRow>
-        <FieldRow label="显示实时输出速率"><Switch checked={rc.showOutputRate ?? false} onChange={(v) => patchRc({ showOutputRate: v })} /></FieldRow>
-        <FieldRow label="滚动自动加载历史"><Switch checked={rc.scrollAutoLoadHistory ?? true} onChange={(v) => patchRc({ scrollAutoLoadHistory: v })} /></FieldRow>
+        <FieldRow label="翻译思考内容"><Switch checked={rc.translateThinking ?? false} onCheckedChange={(v) => patchRc({ translateThinking: v })} /></FieldRow>
+        <FieldRow label="默认展开推理内容"><Switch checked={rc.expandReasoning ?? false} onCheckedChange={(v) => patchRc({ expandReasoning: v })} /></FieldRow>
+        <FieldRow label="默认宽松规划"><Switch checked={rc.relaxedPlanning ?? true} onCheckedChange={(v) => patchRc({ relaxedPlanning: v })} /></FieldRow>
+        <FieldRow label="智能检查输出中断"><Switch checked={rc.smartOutputCheck ?? true} onCheckedChange={(v) => patchRc({ smartOutputCheck: v })} /></FieldRow>
+        <FieldRow label="要求使用您的语言回复"><Switch checked={rc.forceUserLanguage ?? false} onCheckedChange={(v) => patchRc({ forceUserLanguage: v })} /></FieldRow>
+        <FieldRow label="跳过只读危险反思确认"><Switch checked={rc.yoloSkipReadonlyConfirmation ?? false} onCheckedChange={(v) => patchRc({ yoloSkipReadonlyConfirmation: v })} /></FieldRow>
+        <FieldRow label="显示 Token 用量"><Switch checked={rc.showTokenUsage ?? false} onCheckedChange={(v) => patchRc({ showTokenUsage: v })} /></FieldRow>
+        <FieldRow label="显示实时输出速率"><Switch checked={rc.showOutputRate ?? false} onCheckedChange={(v) => patchRc({ showOutputRate: v })} /></FieldRow>
+        <FieldRow label="滚动自动加载历史"><Switch checked={rc.scrollAutoLoadHistory ?? true} onCheckedChange={(v) => patchRc({ scrollAutoLoadHistory: v })} /></FieldRow>
         <FieldRow label="发送方式">
           <select className={selectCls} value={rc.sendMode ?? "enter"} onChange={(e) => patchRc({ sendMode: e.target.value as "enter" | "ctrl-enter" })}>
             <option value="enter">Enter 发送</option>
@@ -547,7 +532,7 @@ export function RuntimeControlPanel() {
 
       {/* ---- 调试 ---- */}
       <Section title="调试">
-        <FieldRow label="Dump API 请求"><Switch checked={rc.runtimeDebug.dumpEnabled} onChange={(v) => patchDebug({ dumpEnabled: v })} /></FieldRow>
+        <FieldRow label="Dump API 请求"><Switch checked={rc.runtimeDebug.dumpEnabled} onCheckedChange={(v) => patchDebug({ dumpEnabled: v })} /></FieldRow>
       </Section>
 
       {/* ---- 目录规则 ---- */}
