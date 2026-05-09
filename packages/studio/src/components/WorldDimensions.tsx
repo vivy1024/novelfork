@@ -5,6 +5,7 @@
 
 import { Globe, ChevronRight } from "lucide-react";
 import { useApi } from "../hooks/use-api";
+import { Button } from "./ui/button";
 
 interface DimensionData {
   readonly key: string;
@@ -123,44 +124,47 @@ function DimensionCard({
   const isEmpty = dimension.entryCount === 0;
 
   return (
-    <button
+    <Button
+      variant="ghost"
       onClick={handleClick}
       disabled={isEmpty}
-      className={`group relative border rounded-lg p-4 text-left transition-all ${
+      className={`group relative h-auto border rounded-lg p-4 text-left justify-start items-start ${
         isEmpty
           ? "border-border/30 bg-secondary/10 cursor-not-allowed opacity-50"
           : "border-border/40 bg-card hover:border-primary/50 hover:bg-primary/5 hover:shadow-md"
       }`}
     >
       {/* 维度图标和名称 */}
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2">
-          <Globe size={14} className={isEmpty ? "text-muted-foreground/40" : "text-primary"} />
-          <span className={`text-sm font-medium ${isEmpty ? "text-muted-foreground" : "text-foreground"}`}>
-            {dimension.label}
-          </span>
+      <div className="w-full">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <Globe size={14} className={isEmpty ? "text-muted-foreground/40" : "text-primary"} />
+            <span className={`text-sm font-medium ${isEmpty ? "text-muted-foreground" : "text-foreground"}`}>
+              {dimension.label}
+            </span>
+          </div>
+          {!isEmpty && (
+            <ChevronRight
+              size={14}
+              className="text-muted-foreground group-hover:text-primary transition-colors"
+            />
+          )}
         </div>
-        {!isEmpty && (
-          <ChevronRight
-            size={14}
-            className="text-muted-foreground group-hover:text-primary transition-colors"
-          />
+
+        {/* 词条数量 */}
+        <div className={`text-2xl font-mono font-bold mb-1 ${
+          isEmpty ? "text-muted-foreground/40" : "text-foreground"
+        }`}>
+          {dimension.entryCount}
+        </div>
+
+        {/* 描述 */}
+        {dimension.description && (
+          <p className="text-[10px] text-muted-foreground/60 line-clamp-2">
+            {dimension.description}
+          </p>
         )}
       </div>
-
-      {/* 词条数量 */}
-      <div className={`text-2xl font-mono font-bold mb-1 ${
-        isEmpty ? "text-muted-foreground/40" : "text-foreground"
-      }`}>
-        {dimension.entryCount}
-      </div>
-
-      {/* 描述 */}
-      {dimension.description && (
-        <p className="text-[10px] text-muted-foreground/60 line-clamp-2">
-          {dimension.description}
-        </p>
-      )}
 
       {/* 空状态提示 */}
       {isEmpty && (
@@ -168,6 +172,6 @@ function DimensionCard({
           <span className="text-[10px] text-muted-foreground/40 italic">暂无词条</span>
         </div>
       )}
-    </button>
+    </Button>
   );
 }

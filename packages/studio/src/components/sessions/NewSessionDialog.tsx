@@ -271,11 +271,12 @@ export function NewSessionDialog({ open, initialPresetId = "writer", onOpenChang
               const Icon = preset.icon;
               const active = preset.id === presetId;
               return (
-                <button
+                <Button
                   key={preset.id}
                   type="button"
+                  variant="ghost"
                   onClick={() => handlePresetSelect(preset.id)}
-                  className={`rounded-xl border px-4 py-4 text-left transition-all ${
+                  className={`h-auto rounded-xl border px-4 py-4 text-left justify-start items-start ${
                     active
                       ? "border-primary bg-primary/5 shadow-sm"
                       : "border-border bg-card hover:border-primary/40 hover:bg-muted/40"
@@ -293,7 +294,7 @@ export function NewSessionDialog({ open, initialPresetId = "writer", onOpenChang
                       </p>
                     </div>
                   </div>
-                </button>
+                </Button>
               );
             })}
           </div>
@@ -354,28 +355,31 @@ export function NewSessionDialog({ open, initialPresetId = "writer", onOpenChang
               {SESSION_PERMISSION_MODE_OPTIONS.map((option) => {
                 const active = option.value === permissionMode;
                 return (
-                  <button
+                  <Button
                     key={option.value}
                     type="button"
+                    variant="ghost"
                     onClick={() => {
                       setPermissionMode(option.value);
                       setPermissionTouched(true);
                     }}
-                    className={`rounded-xl border px-3 py-3 text-left transition-all ${
+                    className={`h-auto rounded-xl border px-3 py-3 text-left justify-start items-start ${
                       active
                         ? "border-primary bg-primary/5 shadow-sm"
                         : "border-border bg-card hover:border-primary/40 hover:bg-muted/40"
                     }`}
                   >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-sm font-medium text-foreground">{option.label}</span>
-                      <span className="rounded-full border border-border/60 px-2 py-0.5 text-[10px] text-muted-foreground">
-                        {option.shortLabel}
-                      </span>
+                    <div className="w-full">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm font-medium text-foreground">{option.label}</span>
+                        <span className="rounded-full border border-border/60 px-2 py-0.5 text-[10px] text-muted-foreground">
+                          {option.shortLabel}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs leading-5 text-muted-foreground">{option.description}</p>
+                      <p className="mt-1 text-[10px] leading-4 text-muted-foreground">适合：{option.bestFor}</p>
                     </div>
-                    <p className="mt-1 text-xs leading-5 text-muted-foreground">{option.description}</p>
-                    <p className="mt-1 text-[10px] leading-4 text-muted-foreground">适合：{option.bestFor}</p>
-                  </button>
+                  </Button>
                 );
               })}
             </div>

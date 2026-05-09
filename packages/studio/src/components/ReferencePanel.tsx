@@ -7,6 +7,7 @@
 import { useState, useMemo } from "react";
 import { BookOpen, Users, Anchor, Globe, Activity, Clock, TrendingUp } from "lucide-react";
 import { useApi } from "../hooks/use-api";
+import { Button } from "./ui/button";
 import { LorebookPanel } from "./LorebookPanel";
 import { HookCountdown } from "./HookCountdown";
 import { RhythmChart } from "./RhythmChart";
@@ -53,10 +54,12 @@ export function ReferencePanel({ height, bookId, chapterNumber }: ReferencePanel
       {/* Tab header */}
       <div className="px-2 flex items-center gap-0 border-b border-border/40 shrink-0">
         {tabs.map((tab) => (
-          <button
+          <Button
             key={tab.id}
+            variant="ghost"
+            size="xs"
             onClick={() => setActiveTab(tab.id)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium transition-colors ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium rounded-none ${
               activeTab === tab.id
                 ? "text-foreground border-b-2 border-b-primary"
                 : "text-muted-foreground hover:text-foreground"
@@ -64,7 +67,7 @@ export function ReferencePanel({ height, bookId, chapterNumber }: ReferencePanel
           >
             {tab.icon}
             {tab.label}
-          </button>
+          </Button>
         ))}
         {!bookId && (
           <span className="ml-auto text-[10px] text-muted-foreground/50 pr-2">
@@ -119,17 +122,19 @@ function TruthTab({ bookId }: { bookId: string }) {
       {/* File list */}
       <div className="w-40 shrink-0 border-r border-border/30 overflow-y-auto">
         {data.files.map((f) => (
-          <button
+          <Button
             key={f.name}
+            variant="ghost"
+            size="xs"
             onClick={() => setSelected(f.name)}
-            className={`w-full text-left px-3 py-1.5 text-[11px] truncate transition-colors ${
+            className={`w-full justify-start px-3 py-1.5 text-[11px] truncate rounded-none ${
               selected === f.name
                 ? "bg-primary/10 text-primary font-medium"
                 : "text-muted-foreground hover:bg-secondary/50"
             }`}
           >
             {f.name.replace(".md", "")}
-          </button>
+          </Button>
         ))}
       </div>
       {/* Content preview */}
@@ -375,28 +380,32 @@ function LorebookTab({ bookId }: { bookId: string }) {
   return (
     <div className="flex h-full">
       <div className="w-36 shrink-0 border-r border-border/30 overflow-y-auto">
-        <button
+        <Button
+          variant="ghost"
+          size="xs"
           onClick={() => setSelectedDim(null)}
-          className={`w-full text-left px-3 py-1.5 text-[11px] transition-colors ${
+          className={`w-full justify-start px-3 py-1.5 text-[11px] rounded-none ${
             selectedDim === null
               ? "bg-primary/10 text-primary font-medium"
               : "text-muted-foreground hover:bg-secondary/50"
           }`}
         >
           全部 ({total})
-        </button>
+        </Button>
         {dimensions.map((dim) => (
-          <button
+          <Button
             key={dim.key}
+            variant="ghost"
+            size="xs"
             onClick={() => setSelectedDim(dim.key)}
-            className={`w-full text-left px-3 py-1.5 text-[11px] truncate transition-colors ${
+            className={`w-full justify-start px-3 py-1.5 text-[11px] truncate rounded-none ${
               selectedDim === dim.key
                 ? "bg-primary/10 text-primary font-medium"
                 : "text-muted-foreground hover:bg-secondary/50"
             }`}
           >
             {dim.label} ({dim.entryCount})
-          </button>
+          </Button>
         ))}
       </div>
       <div className="flex-1 overflow-y-auto">
