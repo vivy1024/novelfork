@@ -5,6 +5,7 @@ import rehypeKatex from "rehype-katex";
 import { useState, useEffect, type ReactNode } from "react";
 import { ChevronDown, ChevronRight, Copy, Check } from "lucide-react";
 import { createHighlighter, type Highlighter } from "shiki";
+import { Button } from "./ui/button";
 
 // ---------------------------------------------------------------------------
 // Shiki highlighter singleton — 避免每个 CodeBlock 重复初始化 WASM
@@ -91,20 +92,24 @@ function CodeBlock({ inline, className, children }: CodeBlockProps) {
   return (
     <div className="my-3 rounded-lg border border-border overflow-hidden">
       <div className="flex items-center justify-between px-3 py-2 bg-secondary/50 border-b border-border">
-        <button
+        <Button
+          variant="ghost"
+          size="xs"
           onClick={() => setCollapsed(!collapsed)}
-          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
         >
           {collapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
           <span className="font-mono">{lang || "code"}</span>
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="ghost"
+          size="xs"
           onClick={handleCopy}
-          className="flex items-center gap-1 px-2 py-1 text-xs rounded hover:bg-secondary transition-colors"
+          className="flex items-center gap-1 px-2 py-1 text-xs"
         >
           {copied ? <Check size={12} /> : <Copy size={12} />}
           <span>{copied ? "已复制" : "复制"}</span>
-        </button>
+        </Button>
       </div>
       {!collapsed && (
         highlightedHtml ? (

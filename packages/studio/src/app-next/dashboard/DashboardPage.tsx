@@ -3,6 +3,7 @@ import { useApi, postApi, fetchJson } from "../../hooks/use-api";
 import { EmptyState, InlineError } from "../components/feedback";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
+import { Textarea } from "../../components/ui/textarea";
 import { SimpleSelect } from "../../components/ui/simple-select";
 
 interface BookItem {
@@ -352,7 +353,7 @@ function ImportPanel({ books, onDone }: { readonly books: ReadonlyArray<BookItem
       </div>
 
       <>
-        <textarea className="w-full rounded-md border border-border bg-background p-2 text-sm" rows={5} value={text} onChange={(e) => setText(e.target.value)} placeholder="粘贴章节文本，系统会自动按章节标题分割…" />
+        <Textarea className="w-full" rows={5} value={text} onChange={(e) => setText(e.target.value)} placeholder="粘贴章节文本，系统会自动按章节标题分割…" />
         <Input value={splitRegex} onChange={(e) => setSplitRegex(e.target.value)} placeholder="自定义分割正则（可选）" />
         <Button data-visual-audit="disabledAction" disabled={loading || !text.trim() || !bookId} onClick={() => void handleImportChapters()} type="button">
           {loading ? "导入中…" : "导入章节"}

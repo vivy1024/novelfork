@@ -14,6 +14,7 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import { useColors } from "../hooks/use-colors";
+import { Button } from "./ui/button";
 
 // --- 类型定义 ---
 
@@ -255,9 +256,10 @@ export function ChapterMeta({ chapter, theme, t }: ChapterMetaProps) {
   return (
     <div className={`rounded-lg border ${colors.cardStatic} ${colors.surface} overflow-hidden`}>
       {/* 折叠头部 */}
-      <button
+      <Button
+        variant="ghost"
         onClick={() => setOpen((prev) => !prev)}
-        className="w-full flex items-center gap-2 px-4 py-2.5 text-xs font-semibold text-foreground hover:bg-muted/40 transition-colors"
+        className="w-full flex items-center gap-2 px-4 py-2.5 text-xs font-semibold text-foreground h-auto justify-start rounded-none"
       >
         {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         <span>{t?.("chapter.meta") ?? "章节元数据"}</span>
@@ -273,7 +275,7 @@ export function ChapterMeta({ chapter, theme, t }: ChapterMetaProps) {
             {auditIssues && <span className="text-red-500">{auditIssues.length} 问题</span>}
           </span>
         )}
-      </button>
+      </Button>
 
       {/* 展开内容 */}
       {open && (

@@ -1,3 +1,4 @@
+import { Button } from "@/components/ui/button";
 import type { WorkbenchResourceNode } from "./useWorkbenchResources";
 
 export interface WorkbenchResourceTreeProps {
@@ -42,10 +43,10 @@ function ResourceNode({ node, selectedNodeId, onOpen }: WorkbenchResourceTreePro
 
   return (
     <>
-      <button type="button" aria-current={node.id === selectedNodeId ? "true" : undefined} onClick={() => onOpen(node)}>
+      <Button type="button" variant="ghost" aria-current={node.id === selectedNodeId ? "true" : undefined} onClick={() => onOpen(node)}>
         <span>{node.title}</span>
         <CapabilityBadges node={node} />
-      </button>
+      </Button>
       {children}
     </>
   );
