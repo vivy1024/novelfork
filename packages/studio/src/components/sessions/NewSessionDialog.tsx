@@ -28,6 +28,7 @@ import {
 } from "../ui/dialog";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import { SimpleSelect } from "../ui/simple-select";
 
 export interface NewSessionPayload {
   readonly agentId: string;
@@ -328,16 +329,13 @@ export function NewSessionDialog({ open, initialPresetId = "writer", onOpenChang
             {modelsLoading ? (
               <p className="text-xs text-muted-foreground">正在读取统一模型池…</p>
             ) : selectedRuntimeModel ? (
-              <select
+              <SimpleSelect
                 aria-label="运行时模型"
-                className="h-10 w-full rounded-xl border border-border/60 bg-background px-3 text-sm text-foreground outline-none focus:border-primary"
-                onChange={(event) => setSelectedRuntimeModelId(event.target.value)}
+                onValueChange={(val) => setSelectedRuntimeModelId(val)}
                 value={selectedRuntimeModel.modelId}
-              >
-                {runtimeModels.map((model) => (
-                  <option key={model.modelId} value={model.modelId}>{runtimeModelLabel(model)}</option>
-                ))}
-              </select>
+                options={runtimeModels.map((model) => ({ value: model.modelId, label: runtimeModelLabel(model) }))}
+                className="w-full"
+              />
             ) : (
               <div className="rounded-xl border border-dashed border-border px-3 py-3 text-sm text-muted-foreground">
                 尚未配置可用模型
@@ -420,20 +418,20 @@ export function NewSessionDialog({ open, initialPresetId = "writer", onOpenChang
             </div>
             <div className="space-y-2">
               <Label htmlFor="new-session-binding">绑定对象</Label>
-              <select
-                id="new-session-binding"
+              <SimpleSelect
                 aria-label="绑定对象"
-                className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-primary"
-                onChange={(event) => {
-                  setBinding(event.target.value as "standalone" | "book" | "chapter");
+                onValueChange={(val) => {
+                  setBinding(val as "standalone" | "book" | "chapter");
                   setBindingTouched(true);
                 }}
                 value={binding}
-              >
-                <option value="standalone">独立叙述者</option>
-                <option value="book">绑定作品</option>
-                <option value="chapter">绑定章节</option>
-              </select>
+                options={[
+                  { value: "standalone", label: "独立叙述者" },
+                  { value: "book", label: "绑定作品" },
+                  { value: "chapter", label: "绑定章节" },
+                ]}
+                className="w-full"
+              />
             </div>
           </div>
         </div>

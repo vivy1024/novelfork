@@ -1,5 +1,8 @@
 import { useState } from "react";
 import { GitBranch } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+
 import { GitLogDialog } from "./GitLogDialog";
 
 interface GitLogButtonProps {
@@ -11,13 +14,14 @@ export function GitLogButton({ repoPath }: GitLogButtonProps) {
 
   return (
     <>
-      <button
+      <Button
+        variant="ghost"
+        size="icon"
         onClick={() => setIsOpen(true)}
-        className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors"
         title="Git 日志"
       >
         <GitBranch className="w-5 h-5" />
-      </button>
+      </Button>
       {isOpen && <GitLogDialog repoPath={repoPath} onClose={() => setIsOpen(false)} />}
     </>
   );

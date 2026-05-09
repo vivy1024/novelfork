@@ -5,6 +5,10 @@
 import { useState } from "react";
 import { Plus, Trash2, Edit2, Save, X } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { ConfirmDialog } from "../ConfirmDialog";
 import type { Command } from "../../types/routines";
 
@@ -78,13 +82,10 @@ export function CommandsTab({ commands, onChange }: CommandsTabProps) {
         <p className="text-sm text-muted-foreground">
           定义可通过斜杠语法调用的自定义命令
         </p>
-        <button
-          onClick={handleAdd}
-          className="px-3 py-1.5 text-sm rounded border hover:bg-accent flex items-center gap-2"
-        >
+        <Button variant="outline" size="sm" onClick={handleAdd}>
           <Plus size={14} />
           添加命令
-        </button>
+        </Button>
       </div>
 
       <div className="space-y-2">
@@ -97,49 +98,41 @@ export function CommandsTab({ commands, onChange }: CommandsTabProps) {
               <div className="space-y-3">
                 <div>
                   <label className="text-xs font-medium block mb-1">名称</label>
-                  <input
-                    type="text"
+                  <Input
+                    className="mt-1 w-full"
                     value={editForm.name ?? ""}
                     onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                    className="w-full px-2 py-1 text-sm border rounded bg-background"
                     placeholder="命令名称"
                   />
                 </div>
                 <div>
                   <label className="text-xs font-medium block mb-1">描述</label>
-                  <input
-                    type="text"
+                  <Input
+                    className="mt-1 w-full"
                     value={editForm.description ?? ""}
                     onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-                    className="w-full px-2 py-1 text-sm border rounded bg-background"
                     placeholder="这个命令做什么？"
                   />
                 </div>
                 <div>
                   <label className="text-xs font-medium block mb-1">提示词</label>
-                  <textarea
+                  <Textarea
+                    className="mt-1 w-full"
                     value={editForm.prompt ?? ""}
                     onChange={(e) => setEditForm({ ...editForm, prompt: e.target.value })}
-                    className="w-full px-2 py-1 text-sm border rounded bg-background font-mono"
                     rows={4}
                     placeholder="给 AI 的执行说明..."
                   />
                 </div>
                 <div className="flex gap-2">
-                  <button
-                    onClick={handleSave}
-                    className="px-3 py-1 text-sm rounded bg-primary text-primary-foreground hover:bg-primary/90 flex items-center gap-1"
-                  >
+                  <Button size="sm" onClick={handleSave}>
                     <Save size={12} />
                     保存
-                  </button>
-                  <button
-                    onClick={handleCancel}
-                    className="px-3 py-1 text-sm rounded border hover:bg-accent flex items-center gap-1"
-                  >
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={handleCancel}>
                     <X size={12} />
                     取消
-                  </button>
+                  </Button>
                 </div>
               </div>
             ) : (
@@ -156,29 +149,16 @@ export function CommandsTab({ commands, onChange }: CommandsTabProps) {
                   )}
                 </div>
                 <div className="flex items-center gap-1">
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={cmd.enabled}
-                      onChange={() => handleToggle(cmd.id)}
-                      className="sr-only peer"
-                    />
-                    <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-primary rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
-                  </label>
-                  <button
-                    onClick={() => handleEdit(cmd)}
-                    className="p-1 hover:bg-accent rounded"
-                    aria-label={`编辑命令 ${cmd.name}`}
-                  >
+                  <Switch
+                    checked={cmd.enabled}
+                    onCheckedChange={() => handleToggle(cmd.id)}
+                  />
+                  <Button variant="outline" size="sm" onClick={() => handleEdit(cmd)} aria-label={`编辑命令 ${cmd.name}`}>
                     <Edit2 size={14} />
-                  </button>
-                  <button
-                    onClick={() => setDeleteTarget(cmd)}
-                    className="p-1 hover:bg-accent rounded text-red-600"
-                    aria-label={`删除命令 ${cmd.name}`}
-                  >
+                  </Button>
+                  <Button variant="destructive" size="sm" onClick={() => setDeleteTarget(cmd)} aria-label={`删除命令 ${cmd.name}`}>
                     <Trash2 size={14} />
-                  </button>
+                  </Button>
                 </div>
               </div>
             )}
