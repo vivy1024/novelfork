@@ -599,6 +599,10 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
         onSaveProvider={() => void saveProvider()}
         onSelectProvider={setSelectedApiProviderId}
         onToggleProvider={toggleProvider}
+        onDeleteProvider={async (providerId) => {
+          await client.deleteProvider(providerId);
+          setProviders((current) => current.filter((p) => p.id !== providerId));
+        }}
       />
     </section>
   );
