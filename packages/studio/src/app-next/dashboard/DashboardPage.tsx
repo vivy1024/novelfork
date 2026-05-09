@@ -281,11 +281,27 @@ export function DashboardPage({ onOpenBook }: DashboardPageProps) {
       {booksLoading && <p className="text-sm text-muted-foreground">加载中…</p>}
 
       {!booksLoading && !booksError && books.length === 0 && (
-        <EmptyState
-          title="还没有作品，创建第一本书开始写作"
-          actionLabel="创建新书"
-          onAction={handleToggle}
-        />
+        <div className="rounded-lg border border-dashed border-border p-6 space-y-4">
+          <EmptyState
+            title="还没有作品，创建第一本书开始写作"
+            actionLabel="创建新书"
+            onAction={handleToggle}
+          />
+          <div className="grid gap-3 sm:grid-cols-3 pt-2">
+            <div className="rounded-lg bg-muted/30 p-3 space-y-1">
+              <p className="text-xs font-medium">1. 创建作品</p>
+              <p className="text-[10px] text-muted-foreground">选择题材、平台和目标字数，AI 会根据这些信息辅助创作</p>
+            </div>
+            <div className="rounded-lg bg-muted/30 p-3 space-y-1">
+              <p className="text-xs font-medium">2. 回答问卷（可选）</p>
+              <p className="text-[10px] text-muted-foreground">简单描述前提、矛盾和主角，帮助 AI 理解你的故事</p>
+            </div>
+            <div className="rounded-lg bg-muted/30 p-3 space-y-1">
+              <p className="text-xs font-medium">3. 开始写作</p>
+              <p className="text-[10px] text-muted-foreground">手动写作或让 AI 生成候选稿，你来审阅和决定</p>
+            </div>
+          </div>
+        </div>
       )}
 
       {books.length > 0 && (
