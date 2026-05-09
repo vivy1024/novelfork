@@ -96,15 +96,16 @@ export function Composer({
       {showSlashSuggestions && (
         <div className="mb-2 rounded-lg border border-border bg-card p-2 shadow-sm">
           {slashSuggestions.map((command) => (
-            <button
+            <Button
               key={command.name}
-              type="button"
-              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted"
+              variant="ghost"
+              size="sm"
+              className="flex w-full items-center gap-2 justify-start rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted"
               onClick={() => { setValue(`/${command.name} `); textareaRef.current?.focus(); }}
             >
               <code className="text-xs font-mono text-primary">/{command.name}</code>
               <span className="text-muted-foreground">{command.description}</span>
-            </button>
+            </Button>
           ))}
         </div>
       )}

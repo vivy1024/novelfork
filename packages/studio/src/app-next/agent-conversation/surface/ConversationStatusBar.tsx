@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import type { SessionPermissionMode, SessionReasoningEffort, SessionToolPolicy } from "../../../shared/session-types";
+import { SimpleSelect } from "@/components/ui/simple-select";
 
 export interface ConversationModelOption {
   providerId: string;
@@ -252,42 +253,50 @@ export function ConversationStatusBar({ status, onUpdateSessionConfig = () => un
           {status.modelOptions?.length ? (
             <label>
               模型
-              <select
+              <SimpleSelect
                 aria-label="模型"
                 value={status.providerId && status.modelId ? `${status.providerId}::${status.modelId}` : ""}
-                onChange={(event) => {
-                  const next = status.modelOptions?.find((option) => optionValue(option) === event.currentTarget.value);
+                onValueChange={(val) => {
+                  const next = status.modelOptions?.find((option) => optionValue(option) === val);
                   if (next) void updateSessionConfig({ providerId: next.providerId, modelId: next.modelId });
                 }}
-              >
-                {status.modelOptions.map((option) => (
-                  <option key={optionValue(option)} value={optionValue(option)}>
-                    {(option.providerLabel ?? option.providerId)} / {(option.modelLabel ?? option.modelId)}
-                  </option>
-                ))}
-              </select>
+                options={status.modelOptions.map((option) => ({
+                  value: optionValue(option),
+                  label: `${option.providerLabel ?? option.providerId} / ${option.modelLabel ?? option.modelId}`,
+                }))}
+              />
             </label>
           ) : null}
 
           {status.permissionMode ? (
             <label>
               权限
-              <select aria-label="权限" value={status.permissionMode} onChange={(event) => void updateSessionConfig({ permissionMode: event.currentTarget.value as SessionPermissionMode })}>
-                {PERMISSION_OPTIONS.map((mode) => (
-                  <option key={mode} value={mode} disabled={Boolean(status.permissionModeDisabledReasons?.[mode])}>{PERMISSION_LABELS[mode]}</option>
-                ))}
-              </select>
+              <SimpleSelect
+                aria-label="权限"
+                value={status.permissionMode}
+                onValueChange={(val) => void updateSessionConfig({ permissionMode: val as SessionPermissionMode })}
+                options={PERMISSION_OPTIONS.map((mode) => ({
+                  value: mode,
+                  label: PERMISSION_LABELS[mode],
+                  disabled: Boolean(status.permissionModeDisabledReasons?.[mode]),
+                }))}
+              />
             </label>
           ) : null}
 
           {status.reasoningEffort ? (
             <label>
               推理强度
-              <select aria-label="推理强度" value={status.reasoningEffort} disabled={reasoningDisabled} onChange={(event) => void updateSessionConfig({ reasoningEffort: event.currentTarget.value as SessionReasoningEffort })}>
-                {REASONING_OPTIONS.map((effort) => (
-                  <option key={effort} value={effort}>{effort}</option>
-                ))}
-              </select>
+              <SimpleSelect
+                aria-label="推理强度"
+                value={status.reasoningEffort}
+                disabled={reasoningDisabled}
+                onValueChange={(val) => void updateSessionConfig({ reasoningEffort: val as SessionReasoningEffort })}
+                options={REASONING_OPTIONS.map((effort) => ({
+                  value: effort,
+                  label: effort,
+                }))}
+              />
             </label>
           ) : null}
         </section>

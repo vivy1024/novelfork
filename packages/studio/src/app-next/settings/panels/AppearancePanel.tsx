@@ -4,6 +4,7 @@ import { DEFAULT_USER_CONFIG, type UserPreferences } from "../../../types/settin
 import { Sun, Moon, Monitor, Type } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SimpleSelect } from "@/components/ui/simple-select";
+import { Switch } from "@/components/ui/switch";
 
 function SwitchRow({ label, description, checked, onChange }: {
   label: string;
@@ -17,15 +18,7 @@ function SwitchRow({ label, description, checked, onChange }: {
         <span className="text-sm">{label}</span>
         {description && <p className="text-xs text-muted-foreground">{description}</p>}
       </div>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={checked}
-        className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors ${checked ? "bg-primary" : "bg-muted"}`}
-        onClick={() => onChange(!checked)}
-      >
-        <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${checked ? "translate-x-4" : "translate-x-0.5"}`} />
-      </button>
+      <Switch checked={checked} onCheckedChange={onChange} />
     </div>
   );
 }

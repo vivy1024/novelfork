@@ -3,6 +3,7 @@ import { useApi, postApi, fetchJson } from "../../hooks/use-api";
 import { EmptyState, InlineError } from "../components/feedback";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
+import { SimpleSelect } from "../../components/ui/simple-select";
 
 interface BookItem {
   readonly id: string;
@@ -154,30 +155,32 @@ export function DashboardPage({ onOpenBook }: DashboardPageProps) {
             </label>
             <label className="space-y-1">
               <span className="text-xs text-muted-foreground">题材</span>
-              <select
-                className="w-full rounded-md border border-border bg-background px-2 py-1 text-sm"
+              <SimpleSelect
                 value={form.genre}
-                onChange={(e) => handleChange("genre", e.target.value)}
-              >
-                <option value="xuanhuan">玄幻</option>
-                <option value="xianxia">仙侠</option>
-                <option value="dushi">都市</option>
-                <option value="scifi">科幻</option>
-                <option value="other">其他</option>
-              </select>
+                onValueChange={(v) => handleChange("genre", v)}
+                options={[
+                  { value: "xuanhuan", label: "玄幻" },
+                  { value: "xianxia", label: "仙侠" },
+                  { value: "dushi", label: "都市" },
+                  { value: "scifi", label: "科幻" },
+                  { value: "other", label: "其他" },
+                ]}
+                className="w-full"
+              />
             </label>
             <label className="space-y-1">
               <span className="text-xs text-muted-foreground">平台</span>
-              <select
-                className="w-full rounded-md border border-border bg-background px-2 py-1 text-sm"
+              <SimpleSelect
                 value={form.platform}
-                onChange={(e) => handleChange("platform", e.target.value)}
-              >
-                <option value="qidian">起点</option>
-                <option value="tomato">番茄</option>
-                <option value="feilu">飞卢</option>
-                <option value="other">其他</option>
-              </select>
+                onValueChange={(v) => handleChange("platform", v)}
+                options={[
+                  { value: "qidian", label: "起点" },
+                  { value: "tomato", label: "番茄" },
+                  { value: "feilu", label: "飞卢" },
+                  { value: "other", label: "其他" },
+                ]}
+                className="w-full"
+              />
             </label>
             <label className="space-y-1">
               <span className="text-xs text-muted-foreground">每章字数</span>
@@ -201,14 +204,15 @@ export function DashboardPage({ onOpenBook }: DashboardPageProps) {
             </label>
             <label className="space-y-1">
               <span className="text-xs text-muted-foreground">语言</span>
-              <select
-                className="w-full rounded-md border border-border bg-background px-2 py-1 text-sm"
+              <SimpleSelect
                 value={form.language}
-                onChange={(e) => handleChange("language", e.target.value)}
-              >
-                <option value="zh">中文</option>
-                <option value="en">English</option>
-              </select>
+                onValueChange={(v) => handleChange("language", v)}
+                options={[
+                  { value: "zh", label: "中文" },
+                  { value: "en", label: "English" },
+                ]}
+                className="w-full"
+              />
             </label>
           </div>
           {createError && <InlineError message={createError} />}
@@ -271,13 +275,13 @@ function BookCard({ book, onOpen }: { readonly book: BookItem; readonly onOpen?:
   return (
     <div className="rounded-lg border border-border p-3 space-y-2 hover:border-primary/40 hover:bg-muted/30 transition">
       <div className="flex items-center justify-between gap-2">
-        <button
+        <Button
+          variant="ghost"
           className="min-w-0 truncate text-sm font-medium hover:underline text-left"
           onClick={() => onOpen?.(book.id)}
-          type="button"
         >
           {book.title}
-        </button>
+        </Button>
         <span className="flex shrink-0 items-center gap-1">
           <span className={`h-2 w-2 rounded-full ${statusDot}`} />
           <span className="text-[10px] text-muted-foreground">{STATUS_LABEL[book.status ?? ""] ?? "未知"}</span>
@@ -337,10 +341,11 @@ function ImportPanel({ books, onDone }: { readonly books: ReadonlyArray<BookItem
     <div className="rounded-lg border border-border p-4 space-y-3">
       <div className="flex items-center gap-3">
         <span className="text-sm font-medium">导入到</span>
-        <select className="rounded-md border border-border bg-background px-2 py-1 text-sm" value={bookId} onChange={(e) => setBookId(e.target.value)}>
-          {books.map((b) => <option key={b.id} value={b.id}>{b.title}</option>)}
-          {books.length === 0 && <option value="">无可用书籍</option>}
-        </select>
+        <SimpleSelect
+          value={bookId}
+          onValueChange={(v) => setBookId(v)}
+          options={books.length > 0 ? books.map((b) => ({ value: b.id, label: b.title })) : [{ value: "", label: "无可用书籍" }]}
+        />
         <div className="flex gap-1">
           <span data-visual-audit="activeTab" className="rounded-md bg-primary px-2 py-1 text-xs text-primary-foreground">章节文本</span>
         </div>

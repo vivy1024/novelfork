@@ -3,6 +3,7 @@ import type { ReactNode, ComponentType } from "react";
 import { BookOpen, Home, MessageSquareText, Search, Settings, Wrench } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import studioPackageJson from "../../../package.json";
 import type { StudioNextRoute } from "../entry";
 
@@ -35,21 +36,23 @@ export function NextShell({ activeRoute, onRouteChange, children }: NextShellPro
         </div>
 
         {/* 搜索 */}
-        <button
+        <Button
+          variant="ghost"
+          size="sm"
           className="mx-2 mb-1 flex w-[calc(100%-1rem)] items-center gap-2 rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted"
           onClick={() => onRouteChange({ kind: "search" })}
-          type="button"
         >
           <Search className="h-4 w-4" />
           搜索…
-        </button>
+        </Button>
 
         {/* 导航 */}
         <nav aria-label="Studio Next 主导航" className="flex-1 space-y-0.5 px-2">
           {ROUTES.map((item) => (
-            <button
+            <Button
               key={item.key}
-              type="button"
+              variant="ghost"
+              size="sm"
               aria-current={activeRoute.kind === item.route.kind ? "page" : undefined}
               className={cn(
                 "flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-sm transition",
@@ -61,7 +64,7 @@ export function NextShell({ activeRoute, onRouteChange, children }: NextShellPro
             >
               <item.icon className="h-4 w-4 shrink-0" />
               {item.label}
-            </button>
+            </Button>
           ))}
         </nav>
 
@@ -140,9 +143,10 @@ export function SettingsLayout({ title: _title, sections, activeSectionId, onSec
             <div key={group} className="space-y-0.5">
               <div className="px-2 text-[10px] font-semibold text-muted-foreground">{group}</div>
               {groupSections.map((section) => (
-                <button
+                <Button
                   key={section.id}
-                  type="button"
+                  variant="ghost"
+                  size="sm"
                   aria-current={section.id === activeSectionId ? "page" : undefined}
                   className={cn(
                     "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition",
@@ -152,7 +156,7 @@ export function SettingsLayout({ title: _title, sections, activeSectionId, onSec
                 >
                   {section.icon && <section.icon className="h-4 w-4 shrink-0" />}
                   <span>{section.label}</span>
-                </button>
+                </Button>
               ))}
             </div>
           ))}

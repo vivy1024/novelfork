@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { fetchJson } from "@/hooks/use-api";
+import { Input } from "@/components/ui/input";
 import type {
   ManagedProvider,
   Model,
@@ -576,9 +577,9 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
         <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-end">
           <label className="text-sm">
             搜索供应商或模型
-            <input
+            <Input
               aria-label="搜索供应商或模型"
-              className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2"
+              className="mt-1 w-full"
               value={providerQuery}
               onChange={(event) => setProviderQuery(event.currentTarget.value)}
               placeholder="按供应商、模型、prefix 或 endpoint 过滤"
