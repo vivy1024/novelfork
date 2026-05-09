@@ -273,6 +273,23 @@ function broadcastStreamChunk(sessionId: string, state: SessionChatRuntimeState,
   }
 }
 
+function broadcastToAll(state: SessionChatRuntimeState, payload: string): void {
+  for (const transport of state.transports.keys()) {
+    try {
+      transport.send(payload);
+    } catch {
+      state.transports.delete(transport);
+    }
+  }
+}
+
+function createCursor(state: SessionChatRuntimeState, ackedSeq?: number): NarratorSessionChatCursor {
+  return {
+    lastSeq: Math.max(0, ...state.messages.map((m) => m.seq ?? 0)),
+    ackedSeq: ackedSeq ?? state.persistedAckedSeq ?? 0,
+  };
+}
+
 function createRuntimeState(
   initialMessageCount = 0,
   initialMessages: NarratorSessionChatMessage[] = [],
@@ -1395,6 +1412,10 @@ export async function handleSessionChatTransportMessage(
   let failure: NarratorSessionRecoveryMetadata["lastFailure"] | undefined;
   let errorEnvelope: NarratorSessionChatErrorEnvelope | undefined;
 
+  // 推送 working 状态给所有连接的客户端
+  const workingSession = { ...buildServerFirstSession(loaded.session, loaded.state), narratorState: "working" as const, turnStartedAt: new Date().toISOString() };
+  broadcastToAll(loaded.state, serializeEnvelope({ type: "session:state", session: workingSession, cursor: createCursor(loaded.state) }));
+
   try {
     const agentSystemPrompt = getAgentSystemPrompt(loaded.session.agentId);
     const projectId = (loaded.session as { projectId?: string }).projectId;
@@ -1572,6 +1593,10 @@ export async function handleSessionChatTransportMessage(
   if (updatedSession) {
     broadcastStateEnvelope(buildServerFirstSession(updatedSession, loaded.state), loaded.state);
   }
+
+  // 推送 idle 状态（turn 结束）
+  const idleSession = { ...buildServerFirstSession(loaded.session, loaded.state), narratorState: "idle" as const };
+  broadcastToAll(loaded.state, serializeEnvelope({ type: "session:state", session: idleSession, cursor: createCursor(loaded.state) }));
 
   // 翻译思考内容：异步翻译 assistant 消息中的 thinking/reasoning block
   const assistantMessages = messagesToPersist.filter((m) => m.role === "assistant");

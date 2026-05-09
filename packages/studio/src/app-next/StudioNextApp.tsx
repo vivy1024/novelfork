@@ -782,10 +782,13 @@ function toConversationStatus(
   const modelId = sessionConfig?.modelId || undefined;
   const selectedModel = modelOptions?.find((option) => option.providerId === providerId && option.modelId === modelId);
   const runtimeState = state.error ? "error" : state.streamingMessageId || hasRunningToolCall(state.messages) ? "running" : state.session ? "ready" : "loading";
+  const narratorState = (state.session as { narratorState?: string } | null)?.narratorState;
+  const isWorking = runtimeState === "running" || narratorState === "working";
 
   return {
     state: runtimeState,
-    label: state.error?.message ?? (modelPoolError ?? (runtimeState === "running" ? "生成中" : state.session ? "就绪" : `加载会话 ${sessionId}`)),
+    narratorState: isWorking ? "working" : narratorState === "idle" ? "idle" : undefined,
+    label: state.error?.message ?? (modelPoolError ?? (isWorking ? "生成中" : state.session ? "就绪" : `加载会话 ${sessionId}`)),
     providerId,
     providerLabel: selectedModel?.providerLabel ?? providerId,
     modelId,
