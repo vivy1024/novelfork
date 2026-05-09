@@ -2,9 +2,7 @@ import { memo, useCallback, useState } from "react";
 import { AnimatedMarkdown } from "flowtoken";
 import "flowtoken/dist/styles.css";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
-import { ToolCallBlock } from "@/components/ToolCall/ToolCallBlock";
-import type { ConversationToolCall } from "./ToolCallCard";
-import { adaptConversationToolCall } from "./tool-call-adapter";
+import { ToolCallCard, type ConversationToolCall } from "./ToolCallCard";
 import {
   ContextMenu,
   ContextMenuTrigger,
@@ -125,7 +123,7 @@ export const MessageItem = memo(function MessageItem({ message, onContextAction 
             )
           )}
           {message.toolCalls?.map((toolCall) => (
-            <ToolCallBlock key={toolCall.id} toolCall={adaptConversationToolCall(toolCall)} />
+            <ToolCallCard key={toolCall.id} toolCall={toolCall} />
           ))}
         </div>
       </ContextMenuTrigger>
