@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { BookOpen, GitBranch } from "lucide-react";
-import { WorkbenchCanvas, type WorkbenchCanvasContext } from "./WorkbenchCanvas";
+import { WorkbenchCanvas, type WorkbenchCanvasContext, type CandidateActionHandlers } from "./WorkbenchCanvas";
 import { WorkbenchResourceTree } from "./WorkbenchResourceTree";
 import type { WorkbenchResourceNode } from "./useWorkbenchResources";
 import { ChapterGraph, type ChapterGraphChapter, type ChapterGraphEdge } from "../chapter-graph";
@@ -16,6 +16,8 @@ export interface WritingWorkbenchRouteProps {
   onCanvasContextChange?: (context: WorkbenchCanvasContext) => void;
   onCreateChapter?: () => void;
   writingActions?: ReactNode;
+  /** 候选稿操作回调 */
+  candidateActions?: CandidateActionHandlers;
   /** 章节图数据（用于图视图） */
   chapters?: ChapterGraphChapter[];
   chapterEdges?: ChapterGraphEdge[];
@@ -34,7 +36,7 @@ function routeStatusLabel(nodes: readonly WorkbenchResourceNode[], selectedNode:
   return "当前状态：资源已加载";
 }
 
-export function WritingWorkbenchRoute({ bookId, nodes, selectedNode, onOpen, onSave, onCanvasContextChange, onCreateChapter, writingActions, chapters, chapterEdges, onChapterSelect }: WritingWorkbenchRouteProps) {
+export function WritingWorkbenchRoute({ bookId, nodes, selectedNode, onOpen, onSave, onCanvasContextChange, onCreateChapter, writingActions, candidateActions, chapters, chapterEdges, onChapterSelect }: WritingWorkbenchRouteProps) {
   const bookTitle = deriveBookTitle(bookId, nodes);
   const statusLabel = routeStatusLabel(nodes, selectedNode);
   const [viewMode, setViewMode] = useState<"tree" | "graph">("tree");
@@ -74,7 +76,11 @@ export function WritingWorkbenchRoute({ bookId, nodes, selectedNode, onOpen, onS
               </Button>
             </div>
             {/* 写作动作 + 新建章节 */}
-            {writingActions}
+            {writingActions && (
+              <section aria-label="写作动作" className="flex items-center gap-2">
+                {writingActions}
+              </section>
+            )}
             {onCreateChapter && (
               <Button size="xs" variant="outline" onClick={onCreateChapter}>
                 + 新建章节
@@ -98,7 +104,7 @@ export function WritingWorkbenchRoute({ bookId, nodes, selectedNode, onOpen, onS
           {/* 右侧编辑区 */}
           <div className="flex flex-1 min-w-0 flex-col">
             <section aria-label="当前资源画布" className="flex-1 min-h-0">
-              <WorkbenchCanvas node={selectedNode} onSave={onSave} onCanvasContextChange={onCanvasContextChange} />
+              <WorkbenchCanvas node={selectedNode} onSave={onSave} onCanvasContextChange={onCanvasContextChange} candidateActions={candidateActions} />
             </section>
           </div>
         </div>

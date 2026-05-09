@@ -58,6 +58,12 @@ export function createResourceClient(contract: ContractClient) {
       contract.get<T>(buildBookApiPath(bookId, "candidates"), { capability: { id: "candidates.list", status: "current" } }),
     acceptCandidate: <T = unknown>(bookId: string, candidateId: string, payload: unknown) =>
       contract.post<T>(buildBookApiPath(bookId, "candidates", candidateId, "accept"), payload, { capability: { id: "candidates.accept", status: "current" } }),
+    rejectCandidate: <T = unknown>(bookId: string, candidateId: string) =>
+      contract.post<T>(buildBookApiPath(bookId, "candidates", candidateId, "reject"), {}, { capability: { id: "candidates.reject", status: "current" } }),
+    archiveCandidate: <T = unknown>(bookId: string, candidateId: string) =>
+      contract.post<T>(buildBookApiPath(bookId, "candidates", candidateId, "archive"), {}, { capability: { id: "candidates.archive", status: "current" } }),
+    deleteCandidate: <T = unknown>(bookId: string, candidateId: string) =>
+      contract.delete<T>(buildBookApiPath(bookId, "candidates", candidateId), { capability: { id: "candidates.delete", status: "current" } }),
     listDrafts: <T = unknown>(bookId: string) =>
       contract.get<T>(buildBookApiPath(bookId, "drafts"), { capability: { id: "drafts.list", status: "current" } }),
     getDraft: <T = unknown>(bookId: string, draftId: string) =>
