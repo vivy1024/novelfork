@@ -201,7 +201,8 @@ function NodeCard({ node, isActive, x, y, onSelect, onBranch }: NodeCardProps) {
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      <button
+      <Button
+        variant="ghost"
         onClick={onSelect}
         className={`w-full h-full rounded-lg border px-3 py-2 text-left transition-colors ${style.border} ${isActive ? style.bg : "bg-card hover:bg-secondary/50"}`}
       >
@@ -220,7 +221,7 @@ function NodeCard({ node, isActive, x, y, onSelect, onBranch }: NodeCardProps) {
         <p className="text-[10px] text-muted-foreground mt-0.5">
           #{node.id}
         </p>
-      </button>
+      </Button>
 
       {hovered && (
         <Button

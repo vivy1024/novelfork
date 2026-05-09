@@ -130,17 +130,19 @@ export function SearchDialog({ open, onClose, onNavigate }: SearchDialogProps) {
         {/* Filters */}
         <div className="flex gap-2 px-4 py-2 border-b border-border overflow-x-auto">
           {FILTER_OPTIONS.map(option => (
-            <button
+            <Button
               key={option.value}
+              variant={filter === option.value ? "default" : "secondary"}
+              size="sm"
               onClick={() => setFilter(option.value)}
-              className={`px-3 py-1 text-xs rounded-full whitespace-nowrap transition-colors ${
+              className={`px-3 py-1 text-xs rounded-full whitespace-nowrap ${
                 filter === option.value
-                  ? "bg-primary text-primary-foreground"
+                  ? ""
                   : "bg-accent text-accent-foreground hover:bg-accent/80"
               }`}
             >
               {option.label}
-            </button>
+            </Button>
           ))}
         </div>
 

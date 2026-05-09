@@ -100,10 +100,11 @@ export function PromptsTab({
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2 border-b">
-        <button
+        <Button
+          variant="ghost"
           onClick={() => setSelectedTab("global")}
           disabled={lockedTab === "system"}
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 disabled:opacity-50 ${
+          className={`px-4 py-2 text-sm font-medium border-b-2 rounded-none transition-colors flex items-center gap-2 disabled:opacity-50 ${
             activeTab === "global"
               ? "border-primary text-primary"
               : "border-transparent text-muted-foreground hover:text-foreground"
@@ -111,11 +112,12 @@ export function PromptsTab({
         >
           <FileText size={14} />
           全局提示词（{globalPrompts.length}）
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="ghost"
           onClick={() => setSelectedTab("system")}
           disabled={lockedTab === "global"}
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 disabled:opacity-50 ${
+          className={`px-4 py-2 text-sm font-medium border-b-2 rounded-none transition-colors flex items-center gap-2 disabled:opacity-50 ${
             activeTab === "system"
               ? "border-primary text-primary"
               : "border-transparent text-muted-foreground hover:text-foreground"
@@ -123,7 +125,7 @@ export function PromptsTab({
         >
           <Settings size={14} />
           系统提示词（{systemPrompts.length}）
-        </button>
+        </Button>
       </div>
 
       {lockedTab && (
