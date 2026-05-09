@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { SimpleSelect } from "@/components/ui/simple-select";
 import { EmptyState } from "../../components/feedback";
 import { modelTestStatusLabel, providerApiModeLabel, providerCompatibilityLabel } from "../../lib/display-labels";
@@ -160,10 +161,9 @@ export function ApiProviderDetail({
           </div>
           <div className="flex items-center gap-4">
             <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
+              <Switch
                 checked={provider.useResponsesWebSocket ?? false}
-                onChange={(e) => void onUpdateProvider(provider.id, { useResponsesWebSocket: e.target.checked })}
+                onCheckedChange={(v) => void onUpdateProvider(provider.id, { useResponsesWebSocket: v })}
               />
               使用 Responses WebSocket
             </label>

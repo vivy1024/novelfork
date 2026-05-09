@@ -143,20 +143,18 @@ export function WorkflowPage() {
     <SectionLayout title="工作流" description="Agent 配置、管线运行与调度状态。">
       <nav aria-label="工作流 Tab" className="flex gap-1 rounded-lg border border-border bg-card p-0.5 w-fit">
         {TABS.map((tab) => (
-          <button
+          <Button
             key={tab.id}
-            type="button"
+            variant="ghost"
+            size="sm"
             aria-current={activeTab === tab.id ? "page" : undefined}
             className={cn(
-              "rounded-md px-3 py-1 text-sm font-medium transition",
-              activeTab === tab.id
-                ? "bg-primary text-primary-foreground shadow-sm"
-                : "text-muted-foreground hover:bg-muted hover:text-foreground",
+              "aria-[current=page]:bg-primary aria-[current=page]:text-primary-foreground aria-[current=page]:shadow-sm",
             )}
             onClick={() => setActiveTab(tab.id)}
           >
             {tab.label}
-          </button>
+          </Button>
         ))}
       </nav>
 
