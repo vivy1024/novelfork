@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Dialog, DialogContent, DialogTitle } from "../ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { SearchResultCard } from "./SearchResultCard";
 import type { SearchResult, SearchType } from "../../shared/search-types";
 import { XIcon, SearchIcon } from "lucide-react";
@@ -103,25 +105,26 @@ export function SearchDialog({ open, onClose, onNavigate }: SearchDialogProps) {
         {/* Search Input */}
         <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
           <SearchIcon className="w-5 h-5 text-muted-foreground" />
-          <input
+          <Input
             type="text"
             placeholder="搜索章节、设定、消息..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            className="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground"
+            className="flex-1 border-0 bg-transparent shadow-none ring-0 focus-visible:ring-0"
             autoFocus
             data-testid="global-search-input"
           />
           {loading && (
             <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
           )}
-          <button
+          <Button
+            variant="ghost"
+            size="icon-sm"
             onClick={onClose}
-            className="p-1 hover:bg-accent rounded-md transition-colors"
             aria-label="关闭搜索"
           >
             <XIcon className="w-4 h-4" />
-          </button>
+          </Button>
         </div>
 
         {/* Filters */}

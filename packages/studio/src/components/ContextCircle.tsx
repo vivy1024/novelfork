@@ -3,6 +3,7 @@
  */
 
 import { useState, useEffect } from "react";
+import { Button } from "@/components/ui/button";
 import { fetchJson } from "../hooks/use-api";
 
 interface ContextUsage {
@@ -119,36 +120,42 @@ export function ContextCircle({ bookId, onCompress, onTruncate, onClear }: Conte
               {usage.totalTokens.toLocaleString()} / {usage.maxTokens.toLocaleString()} tokens
             </div>
           </div>
-          <button
+          <Button
+            variant="ghost"
             onClick={() => {
               onCompress?.();
               setShowMenu(false);
             }}
             disabled={!usage.canCompress}
-            className="w-full px-4 py-2 text-left text-sm hover:bg-secondary disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full justify-start rounded-none"
+            size="sm"
           >
             压缩上下文
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="ghost"
             onClick={() => {
               onTruncate?.();
               setShowMenu(false);
             }}
-            className="w-full px-4 py-2 text-left text-sm hover:bg-secondary"
+            className="w-full justify-start rounded-none"
+            size="sm"
           >
             裁剪上下文
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="ghost"
             onClick={() => {
               if (confirm("确定要清空所有上下文吗？此操作不可恢复。")) {
                 onClear?.();
                 setShowMenu(false);
               }
             }}
-            className="w-full px-4 py-2 text-left text-sm text-destructive hover:bg-destructive/10"
+            className="w-full justify-start rounded-none text-destructive hover:text-destructive"
+            size="sm"
           >
             清空上下文
-          </button>
+          </Button>
         </div>
       )}
     </div>

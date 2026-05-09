@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { AlertTriangle, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 interface ConfirmDialogProps {
   readonly open: boolean;
@@ -54,12 +55,9 @@ export function ConfirmDialog({
             )}
             <h3 className="text-lg font-semibold">{title}</h3>
           </div>
-          <button
-            onClick={onCancel}
-            className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-          >
+          <Button variant="ghost" size="icon-sm" onClick={onCancel}>
             <X size={16} />
-          </button>
+          </Button>
         </div>
 
         {/* Body */}
@@ -69,22 +67,15 @@ export function ConfirmDialog({
 
         {/* Footer */}
         <div className="flex justify-end gap-3 px-6 pb-6">
-          <button
-            onClick={onCancel}
-            className="px-4 py-2.5 text-sm font-medium rounded-xl bg-secondary text-foreground hover:bg-secondary/80 transition-all border border-border/50"
-          >
+          <Button variant="outline" onClick={onCancel}>
             {cancelLabel}
-          </button>
-          <button
+          </Button>
+          <Button
+            variant={isDanger ? "destructive" : "default"}
             onClick={onConfirm}
-            className={`px-4 py-2.5 text-sm font-bold rounded-xl transition-all hover:scale-105 active:scale-95 shadow-sm ${
-              isDanger
-                ? "bg-destructive text-white hover:shadow-destructive/20"
-                : "bg-primary text-primary-foreground hover:shadow-primary/20"
-            }`}
           >
             {confirmLabel}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

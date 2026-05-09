@@ -5,6 +5,7 @@
 
 import { useState } from "react";
 import { Globe, Edit2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { useApi } from "../hooks/use-api";
 
 interface LorebookEntry {
@@ -188,12 +189,13 @@ function EntryDetail({ entry }: { entry: LorebookEntry }) {
             )}
           </div>
         </div>
-        <button
-          className="p-2 hover:bg-secondary/50 rounded transition-colors"
+        <Button
+          variant="ghost"
+          size="icon-sm"
           title="编辑词条"
         >
           <Edit2 size={14} className="text-muted-foreground" />
-        </button>
+        </Button>
       </div>
 
       {/* 关键词 */}
