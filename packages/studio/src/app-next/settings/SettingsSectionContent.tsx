@@ -8,6 +8,7 @@ import { RuntimeStatusPanel } from "./panels/RuntimeStatusPanel";
 import { InlineError } from "../components/feedback";
 import { ProjectConfigSection } from "./ProjectConfigSection";
 import { Row } from "../components/shared";
+import { Button } from "@/components/ui/button";
 import {
   deriveModelSettingsFacts,
   settingsFactDisplayValue,
@@ -93,9 +94,9 @@ function ModelsSection({ onSectionChange }: { onSectionChange?: (id: string) => 
           {reasoningFacts.map((fact) => <FactRow key={fact.id} fact={fact} />)}
         </div>
         <div className="pt-3">
-          <button className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 transition-opacity" onClick={() => onSectionChange?.("providers")} type="button">
+          <Button onClick={() => onSectionChange?.("providers")} type="button">
             打开 AI 供应商
-          </button>
+          </Button>
         </div>
       </div>
     </div>

@@ -19,6 +19,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
+import { Button } from "@/components/ui/button";
 import { ChapterNode, type ChapterNodeData, type ChapterNodeType } from "./ChapterNode";
 
 export interface ChapterGraphChapter {
@@ -128,14 +129,14 @@ export function ChapterGraph({ chapters, edges: graphEdges, onChapterSelect, onP
       {/* 操作栏 */}
       <div className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-2">
         {onNewChapter && (
-          <button type="button" className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90" onClick={onNewChapter}>
+          <Button size="sm" onClick={onNewChapter}>
             新建章节
-          </button>
+          </Button>
         )}
         {onForkChapter && selectedChapterId && (
-          <button type="button" className="rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-muted" onClick={() => onForkChapter(selectedChapterId)}>
+          <Button variant="outline" size="sm" onClick={() => onForkChapter(selectedChapterId)}>
             分叉
-          </button>
+          </Button>
         )}
         <span className="text-xs text-muted-foreground">{chapters.length} 个章节</span>
       </div>

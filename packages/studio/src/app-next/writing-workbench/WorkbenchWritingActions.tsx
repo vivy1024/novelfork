@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 
+import { Button } from "@/components/ui/button";
 import type { BackendCapability } from "../backend-contract/capability-status";
 import { listWritingActionDescriptors, type SessionDomainClient, type WritingActionDescriptor } from "../backend-contract/writing-action-adapter";
 import type { ContractResult } from "../backend-contract";
@@ -150,9 +151,9 @@ export function WorkbenchWritingActions({ bookId, sessions, actions, blockedReas
         const disabledReason = blockedReason ?? getDisabledReason(action);
         return (
           <div key={action.id} className="workbench-writing-actions__item">
-            <button type="button" disabled={disabled || runningActionId !== null} onClick={() => void runAction(action)}>
+            <Button variant="default" size="sm" disabled={disabled || runningActionId !== null} onClick={() => void runAction(action)}>
               {runningActionId === action.id ? "启动中…" : action.label}
-            </button>
+            </Button>
             {action.description ? <small>{action.description}</small> : null}
             {action.resultBoundary ? <p>结果边界：{action.resultBoundary}</p> : null}
             {disabled && disabledReason ? <p>{disabledReason}</p> : null}
