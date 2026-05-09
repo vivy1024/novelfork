@@ -39,12 +39,10 @@ function CapabilityBadges({ node }: { node: WorkbenchResourceNode }) {
   if (!node.capabilities.open) return null;
 
   return (
-    <span className="ml-auto flex items-center gap-1">
-      {node.capabilities.edit ? <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4">可编辑</Badge> : null}
+    <span className="ml-auto flex items-center gap-1 opacity-0 group-hover/node:opacity-100 transition-opacity">
+      {node.capabilities.edit ? <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4">编辑</Badge> : null}
       {node.capabilities.readonly ? <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4">只读</Badge> : null}
-      {node.capabilities.unsupported ? <Badge variant="destructive" className="text-[9px] px-1 py-0 h-4">不支持</Badge> : null}
-      {node.capabilities.delete ? <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4">可删除</Badge> : null}
-      {node.capabilities.apply ? <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4">可应用</Badge> : null}
+      {node.capabilities.delete ? <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4">删除</Badge> : null}
     </span>
   );
 }
@@ -96,7 +94,7 @@ function TreeNode({ node, depth, selectedNodeId, onOpen }: TreeNodeProps) {
 
   // Openable nodes render as interactive buttons
   return (
-    <div>
+    <div className="group/node">
       <Button
         type="button"
         variant="ghost"
