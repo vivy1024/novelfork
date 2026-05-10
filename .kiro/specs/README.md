@@ -4,10 +4,11 @@
 
 ## 当前状态
 
-**当前 active 主线：** `functionality-audit` — 功能真实性审计与补全。
+**当前 active 主线：** `novel-writing-features` — 小说写作特有功能开发。
 
 | 当前 Spec | 任务数 | 状态 |
 |---|---:|---|
+| `novel-writing-features` | 7 Phases / 60+ tasks | 🟡 Active |
 | `functionality-audit` | 17 (P0-P3) | ✅ 全部完成；缺口清单已生成 |
 | `narrafork-ui-parity` | 15 | ⏸️ 暂停 |
 | `v0-1-0-release-readiness` | 23 | ⏸️ 暂停（20/23） |
