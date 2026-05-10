@@ -25,7 +25,7 @@ export async function persistChapterArtifacts(params: {
   readonly detectionProvider?: string;
   readonly loadChapterIndex: () => Promise<ReadonlyArray<ChapterMeta>>;
   readonly saveChapter: () => Promise<void>;
-  readonly saveTruthFiles: () => Promise<void>;
+  readonly saveJingweiFiles: () => Promise<void>;
   readonly saveChapterIndex: (index: ReadonlyArray<ChapterMeta>) => Promise<void>;
   readonly markBookActiveIfNeeded: () => Promise<void>;
   readonly persistAuditDriftGuidance: (issues: ReadonlyArray<AuditIssue>) => Promise<void>;
@@ -36,7 +36,7 @@ export async function persistChapterArtifacts(params: {
 }): Promise<{ readonly entry: ChapterMeta }> {
   await params.saveChapter();
   if (params.status !== "state-degraded") {
-    await params.saveTruthFiles();
+    await params.saveJingweiFiles();
   }
 
   const existingIndex = await params.loadChapterIndex();

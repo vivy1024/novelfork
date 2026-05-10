@@ -122,7 +122,7 @@ const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
   {
     name: "read_truth_files",
-    description: "读取书籍的所有真相文件（story/*.md）",
+    description: "读取书籍的所有经纬资料（story/*.md）",
     parameters: [
       { name: "bookId", type: "string", description: "书籍ID", required: true },
     ],
@@ -175,7 +175,7 @@ const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
   {
     name: "write_truth_file",
-    description: "写入真相文件（story/*.md）",
+    description: "写入经纬资料（story/*.md）",
     parameters: [
       { name: "bookId", type: "string", description: "书籍ID", required: true },
       { name: "fileName", type: "string", description: "文件名", required: true },
@@ -307,8 +307,8 @@ const updateCurrentFocusHandler: RegisteredTool["handler"] = async (_pipeline, s
   return JSON.stringify({ bookId: args.bookId, file: "story/current_focus.md", written: true });
 };
 
-const readTruthFilesHandler: RegisteredTool["handler"] = async (pipeline, _state, _config, args) => {
-  const result = await pipeline.readTruthFiles(args.bookId as string);
+const readJingweiFilesHandler: RegisteredTool["handler"] = async (pipeline, _state, _config, args) => {
+  const result = await pipeline.readJingweiFiles(args.bookId as string);
   return JSON.stringify(result);
 };
 
@@ -440,7 +440,7 @@ export const BUILTIN_TOOLS: RegisteredTool[] = [
   { definition: TOOL_DEFINITIONS[7]!, handler: getBookStatusHandler },
   { definition: TOOL_DEFINITIONS[8]!, handler: updateAuthorIntentHandler },
   { definition: TOOL_DEFINITIONS[9]!, handler: updateCurrentFocusHandler },
-  { definition: TOOL_DEFINITIONS[10]!, handler: readTruthFilesHandler },
+  { definition: TOOL_DEFINITIONS[10]!, handler: readJingweiFilesHandler },
   { definition: TOOL_DEFINITIONS[11]!, handler: listBooksHandler },
   { definition: TOOL_DEFINITIONS[12]!, handler: writeFullPipelineHandler },
   { definition: TOOL_DEFINITIONS[13]!, handler: webFetchHandler },

@@ -119,7 +119,7 @@ const strings = {
   "book.statusOutlining": { zh: "大纲中", en: "Outlining" },
   "book.statusCompleted": { zh: "已完成", en: "Completed" },
   "book.statusDropped": { zh: "已放弃", en: "Dropped" },
-  "book.truthFiles": { zh: "真相文件", en: "Truth Files" },
+  "book.truthFiles": { zh: "经纬资料", en: "Jingwei Files" },
 
   // Style
   "style.title": { zh: "文风分析", en: "Style Analyzer" },
@@ -213,15 +213,15 @@ const strings = {
   "config.enabled": { zh: "启用", en: "Enabled" },
   "config.disabled": { zh: "禁用", en: "Disabled" },
 
-  // Truth Files extras
-  "truth.title": { zh: "真相文件", en: "Truth Files" },
+  // Jingwei Files extras
+  "truth.title": { zh: "经纬资料", en: "Jingwei Files" },
   "truth.edit": { zh: "编辑", en: "Edit" },
   "truth.chars": { zh: "字", en: "chars" },
   "truth.save": { zh: "保存", en: "Save" },
   "truth.saving": { zh: "保存中...", en: "Saving..." },
   "truth.cancel": { zh: "取消", en: "Cancel" },
-  "truth.empty": { zh: "暂无文件", en: "No truth files" },
-  "truth.noFiles": { zh: "暂无文件", en: "No truth files" },
+  "truth.empty": { zh: "暂无文件", en: "No jingwei files" },
+  "truth.noFiles": { zh: "暂无文件", en: "No jingwei files" },
   "truth.notFound": { zh: "文件未找到", en: "File not found" },
   "truth.selectFile": { zh: "选择文件查看内容", en: "Select a file to view" },
   "truth.selectHint": { zh: "选择文件查看内容", en: "Select a file to view" },

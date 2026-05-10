@@ -199,7 +199,7 @@ export class WriterAgent extends BaseAgent {
           selectedEvidenceBlock: this.joinGovernedEvidenceBlocks(governedMemoryBlocks),
         })
       : (() => {
-          // Smart context filtering: inject only relevant parts of truth files
+          // Smart context filtering: inject only relevant parts of jingwei files
           const filteredHooks = filterHooks(hooks);
           const filteredSummaries = filterSummaries(chapterSummaries, chapterNumber);
           const filteredSubplots = filterSubplots(subplotBoard);
@@ -550,10 +550,10 @@ export class WriterAgent extends BaseAgent {
     );
     const observations = observerResponse.content;
 
-    // Phase 2b: Reflector — merge observations into truth files
+    // Phase 2b: Reflector — merge observations into jingwei files
     this.logInfo(resolvedLang, {
-      zh: "阶段 2b：把观察结果回写到真相文件",
-      en: "Phase 2b: reflecting observations into truth files",
+      zh: "阶段 2b：把观察结果回写到经纬资料",
+      en: "Phase 2b: reflecting observations into jingwei files",
     });
     const settlerSystem = buildSettlerSystemPrompt(
       params.book, params.genreProfile, params.bookRules, resolvedLang,
@@ -585,7 +585,7 @@ export class WriterAgent extends BaseAgent {
       validationFeedback: params.validationFeedback,
     });
 
-    // Settler outputs all truth files — scale with content size
+    // Settler outputs all jingwei files — scale with content size
     const settlerMaxTokens = Math.max(8192, Math.ceil(params.content.length * 0.8));
 
     const response = await this.chat(
@@ -1043,8 +1043,8 @@ ${overrides}\n`;
     }
   }
 
-  /** Save new truth files (summaries, subplots, emotional arcs, character matrix). */
-  async saveNewTruthFiles(
+  /** Save new jingwei files (summaries, subplots, emotional arcs, character matrix). */
+  async saveNewJingweiFiles(
     bookDir: string,
     output: WriteChapterOutput,
     language: "zh" | "en" = "zh",

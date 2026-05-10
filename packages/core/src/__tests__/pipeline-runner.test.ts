@@ -1260,8 +1260,8 @@ describe("PipelineRunner", () => {
         "阶段：撰写章节草稿",
         "阶段：审计草稿",
         "阶段：落盘最终章节",
-        "阶段：生成最终真相文件",
-        "阶段：校验真相文件变更",
+        "阶段：生成最终经纬资料",
+        "阶段：校验经纬资料变更",
         "阶段：同步记忆索引",
         "阶段：更新章节索引与快照",
       ]));
@@ -1897,7 +1897,7 @@ describe("PipelineRunner", () => {
         wordCount: "After second fix.".length,
       }));
     vi.spyOn(WriterAgent.prototype, "saveChapter").mockResolvedValue(undefined);
-    vi.spyOn(WriterAgent.prototype, "saveNewTruthFiles").mockResolvedValue(undefined);
+    vi.spyOn(WriterAgent.prototype, "saveNewJingweiFiles").mockResolvedValue(undefined);
     vi.spyOn(ChapterAnalyzerAgent.prototype, "analyzeChapter").mockResolvedValue(
       createAnalyzedOutput({
         content: "After second fix.",
@@ -2744,7 +2744,7 @@ describe("PipelineRunner", () => {
       }),
     );
     vi.spyOn(WriterAgent.prototype, "saveChapter").mockResolvedValue(undefined);
-    vi.spyOn(WriterAgent.prototype, "saveNewTruthFiles").mockResolvedValue(undefined);
+    vi.spyOn(WriterAgent.prototype, "saveNewJingweiFiles").mockResolvedValue(undefined);
 
     const result = await runner.importChapters({
       bookId,
@@ -2889,7 +2889,7 @@ describe("PipelineRunner", () => {
       }),
     );
     vi.spyOn(WriterAgent.prototype, "saveChapter").mockResolvedValue(undefined);
-    vi.spyOn(WriterAgent.prototype, "saveNewTruthFiles").mockResolvedValue(undefined);
+    vi.spyOn(WriterAgent.prototype, "saveNewJingweiFiles").mockResolvedValue(undefined);
     vi.spyOn(runner, "generateStyleGuide").mockRejectedValue(new Error("style failed"));
 
     try {
@@ -3118,7 +3118,7 @@ describe("PipelineRunner", () => {
       }),
     );
     vi.spyOn(WriterAgent.prototype, "saveChapter").mockResolvedValue(undefined);
-    vi.spyOn(WriterAgent.prototype, "saveNewTruthFiles").mockResolvedValue(undefined);
+    vi.spyOn(WriterAgent.prototype, "saveNewJingweiFiles").mockResolvedValue(undefined);
 
     const result = await runner.importChapters({
       bookId,
@@ -3250,7 +3250,7 @@ describe("PipelineRunner", () => {
       }),
     );
     vi.spyOn(WriterAgent.prototype, "saveChapter").mockResolvedValue(undefined);
-    vi.spyOn(WriterAgent.prototype, "saveNewTruthFiles").mockResolvedValue(undefined);
+    vi.spyOn(WriterAgent.prototype, "saveNewJingweiFiles").mockResolvedValue(undefined);
 
     try {
       await runner.importChapters({
@@ -3305,7 +3305,7 @@ describe("PipelineRunner", () => {
       }),
     );
     vi.spyOn(WriterAgent.prototype, "saveChapter").mockResolvedValue(undefined);
-    vi.spyOn(WriterAgent.prototype, "saveNewTruthFiles").mockResolvedValue(undefined);
+    vi.spyOn(WriterAgent.prototype, "saveNewJingweiFiles").mockResolvedValue(undefined);
 
     try {
       await runner.importChapters({
