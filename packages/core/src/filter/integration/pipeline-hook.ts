@@ -1,5 +1,5 @@
 import type { StorageDatabase } from "../../storage/db.js";
-import { createBibleChapterSummaryRepository } from "../../bible/repositories/chapter-summary-repo.js";
+import { createBibleChapterSummaryRepository } from "../../jingwei/repositories/chapter-summary-repo.js";
 import { runFilter } from "../engine/index.js";
 import { createFilterReportRepository } from "../repositories/filter-report-repo.js";
 import { summarizeHitCounts } from "../engine/index.js";

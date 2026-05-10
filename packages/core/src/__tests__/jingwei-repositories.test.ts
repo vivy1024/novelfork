@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createBookRepository } from "../bible/repositories/book-repo.js";
+import { createBookRepository } from "../jingwei/repositories/book-repo.js";
 import { createStorageDatabase, type StorageDatabase } from "../storage/db.js";
 import { runStorageMigrations } from "../storage/migrations-runner.js";
 import { createStoryJingweiEntryRepository } from "../jingwei/repositories/entry-repo.js";

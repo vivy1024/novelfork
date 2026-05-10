@@ -1,5 +1,5 @@
 import type { AuditIssue } from "../../agents/continuity.js";
-import type { StalledConflictWarning } from "../../bible/context/stalled-detector.js";
+import type { StalledConflictWarning } from "../../jingwei/context/stalled-detector.js";
 import type { HookRecord } from "../../models/runtime-state.js";
 import type { LongSpanFatigueIssue } from "../../utils/long-span-fatigue.js";
 

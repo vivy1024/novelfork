@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { BibleConflictRecord } from "../bible/types.js";
+import type { BibleConflictRecord } from "../jingwei/types.js";
 import { buildConflictMap, detectMainConflictDrift } from "../tools/conflicts/conflict-tracker.js";
 import { detectArcInconsistency, detectStagnantArc } from "../tools/arcs/character-arc-tracker.js";
 import { detectToneDrift, GENRE_TONE_MAP } from "../tools/tone/tone-drift-detector.js";

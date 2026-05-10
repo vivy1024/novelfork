@@ -6,15 +6,15 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { createStorageDatabase, type StorageDatabase } from "../storage/db.js";
 import { runStorageMigrations } from "../storage/migrations-runner.js";
-import { createBibleChapterSummaryRepository } from "../bible/repositories/chapter-summary-repo.js";
-import { createBibleCharacterRepository } from "../bible/repositories/character-repo.js";
-import { createBibleEventRepository } from "../bible/repositories/event-repo.js";
-import { createBibleSettingRepository } from "../bible/repositories/setting-repo.js";
-import { createBookRepository } from "../bible/repositories/book-repo.js";
-import { createBibleCharacterArcRepository } from "../bible/repositories/character-arc-repo.js";
-import { createBibleConflictRepository } from "../bible/repositories/conflict-repo.js";
-import { createBiblePremiseRepository } from "../bible/repositories/premise-repo.js";
-import { createBibleWorldModelRepository } from "../bible/repositories/world-model-repo.js";
+import { createBibleChapterSummaryRepository } from "../jingwei/repositories/chapter-summary-repo.js";
+import { createBibleCharacterRepository } from "../jingwei/repositories/character-repo.js";
+import { createBibleEventRepository } from "../jingwei/repositories/event-repo.js";
+import { createBibleSettingRepository } from "../jingwei/repositories/setting-repo.js";
+import { createBookRepository } from "../jingwei/repositories/book-repo.js";
+import { createBibleCharacterArcRepository } from "../jingwei/repositories/character-arc-repo.js";
+import { createBibleConflictRepository } from "../jingwei/repositories/conflict-repo.js";
+import { createBiblePremiseRepository } from "../jingwei/repositories/premise-repo.js";
+import { createBibleWorldModelRepository } from "../jingwei/repositories/world-model-repo.js";
 
 const tempDirs: string[] = [];
 

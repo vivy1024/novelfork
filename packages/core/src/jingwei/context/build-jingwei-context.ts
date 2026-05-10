@@ -1,4 +1,4 @@
-import { createBookRepository } from "../../bible/repositories/book-repo.js";
+import { createBookRepository } from "../repositories/book-repo.js";
 import { getStorageDatabase, type StorageDatabase } from "../../storage/db.js";
 import { createStoryJingweiEntryRepository } from "../repositories/entry-repo.js";
 import { createStoryJingweiSectionRepository } from "../repositories/section-repo.js";

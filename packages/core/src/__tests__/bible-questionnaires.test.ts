@@ -18,7 +18,7 @@ import {
   submitQuestionnaireResponse,
   suggestQuestionnaireAnswer,
   validateQuestionnaireTemplate,
-} from "../bible/index.js";
+} from "../jingwei/index.js";
 
 const tempDirs: string[] = [];
 
