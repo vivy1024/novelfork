@@ -103,13 +103,15 @@ export interface JingweiActionHandlers {
 export interface WorkbenchCanvasProps {
   node: WorkbenchResourceNode | null;
   nodes?: readonly WorkbenchResourceNode[];
+  bookId?: string;
   onSave: (node: WorkbenchResourceNode, content: string) => Promise<void> | void;
   onCanvasContextChange?: (context: WorkbenchCanvasContext) => void;
+  onGuideComplete?: () => void;
   candidateActions?: CandidateActionHandlers;
   jingweiActions?: JingweiActionHandlers;
 }
 
-export function WorkbenchCanvas({ node, nodes = [], onSave, onCanvasContextChange = () => undefined, candidateActions, jingweiActions }: WorkbenchCanvasProps) {
+export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasContextChange = () => undefined, onGuideComplete, candidateActions, jingweiActions }: WorkbenchCanvasProps) {
   const [content, setContent] = useState(node?.content ?? "");
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -136,7 +138,7 @@ export function WorkbenchCanvas({ node, nodes = [], onSave, onCanvasContextChang
   if (!node) {
     return (
       <div className="h-full min-h-0 overflow-y-auto">
-        <CockpitOverview book={null} nodes={nodes} />
+        <CockpitOverview book={null} bookId={bookId} nodes={nodes} onGuideComplete={onGuideComplete} />
       </div>
     );
   }
