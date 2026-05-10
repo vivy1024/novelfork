@@ -8,7 +8,7 @@
 | 上游 | Fork 自 InkOS；选择性合并通用改进，不自动同步 |
 | 开发者 | 薛小川 / GitHub `vivy1024`，禁止虚构 |
 | 主要入口 | Studio `/next`、作品工作台、叙述者会话、`novelfork` CLI/headless |
-| 当前目标 | 功能审计已完成（P0-P3 全部实现）；下一步：端到端浏览器验证 + v0.1.0 发布 |
+| 当前目标 | 小说写作功能已接入新前端（novel-writing-features Phase 1-7 完成）；下一步：浏览器端到端验证 + v0.1.0 发布 |
 
 ## 技术栈与仓库边界
 
@@ -83,6 +83,17 @@
 - 首次运行欢迎弹窗（FirstRunDialog）
 - 仪表盘空态三步引导
 - 学习中心（9 篇文档 + /next/learn 页面）
+- 新书引导式创作向导（NewBookGuide，11题三模式：预设选择/自定义/跳过随机）
+
+### 小说写作工具面板
+- 写作预设面板（PresetsPanel）：流派/文风/基底/逻辑规则预设管理
+- AI 味检测报告（AiTasteReport）：12 规则本地检测 + 朱雀 API
+- 章节健康度（ChapterHealthCard + BookHealthSummary）：节奏/对话/句长直方图
+- 选段写作（InlineWritePanel）：续写/扩写/补写 + 多版本变体（VariantsPanel）
+- 日更进度追踪（DailyProgressCard）+ 节拍表（BeatProgressBar）
+- 平台合规检查（CompliancePanel）+ 导出（ExportPanel）：TXT/Word/ePub
+- 角色弧线（CharacterArcsPanel）+ 文风漂移检测（StyleDriftPanel）
+- 模板市场（TemplateMarketPanel）
 
 ## Agent 与写作管线事实
 
