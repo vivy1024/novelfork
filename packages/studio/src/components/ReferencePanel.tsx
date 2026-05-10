@@ -1,6 +1,6 @@
 /**
  * ReferencePanel — bottom panel with tabbed reference views.
- * Tabs: 设定文件 (truth files), 角色 (characters), 伏笔 (hooks), Lorebook, 节奏 (cadence)
+ * Tabs: 设定文件 (jingwei files), 角色 (characters), 伏笔 (hooks), Lorebook, 节奏 (cadence)
  * + 新增 4 个 Tab: LorebookPanel, HookCountdown, RhythmChart, WorldDimensions
  */
 
@@ -15,7 +15,7 @@ import { WorldDimensions } from "./WorldDimensions";
 
 // --- Types ---
 
-interface TruthFile {
+interface JingweiFile {
   readonly name: string;
   readonly size: number;
   readonly preview: string;
@@ -103,7 +103,7 @@ export function ReferencePanel({ height, bookId, chapterNumber }: ReferencePanel
 // --- Truth Files Tab ---
 
 function TruthTab({ bookId }: { bookId: string }) {
-  const { data, loading } = useApi<{ files: ReadonlyArray<TruthFile> }>(`/books/${bookId}/truth`);
+  const { data, loading } = useApi<{ files: ReadonlyArray<JingweiFile> }>(`/books/${bookId}/truth`);
   const [selected, setSelected] = useState<string | null>(null);
   const { data: fileData } = useApi<{ file: string; content: string | null }>(
     selected ? `/books/${bookId}/truth/${selected}` : null,

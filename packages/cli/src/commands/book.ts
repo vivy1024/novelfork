@@ -213,7 +213,7 @@ bookCommand
 
 bookCommand
   .command("delete")
-  .description("Delete a book and all its chapters, truth files, and snapshots")
+  .description("Delete a book and all its chapters, jingwei files, and snapshots")
   .argument("<book-id>", "Book ID to delete")
   .option("--force", "Skip confirmation prompt")
   .option("--json", "Output JSON")

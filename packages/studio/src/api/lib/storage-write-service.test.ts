@@ -116,12 +116,12 @@ describe("storage write service", () => {
     await expect(service.updateChapterContent("book-1", 99, "missing")).resolves.toEqual({ error: "Chapter not found" });
   });
 
-  it("writes truth files through the story directory and rejects invalid truth files", async () => {
+  it("writes jingwei files through the story directory and rejects invalid files", async () => {
     const { service } = createService();
 
-    await expect(service.writeTruthFile("book-1", "story_bible.md", "# Bible")).resolves.toEqual({ ok: true });
+    await expect(service.writeJingweiFile("book-1", "story_bible.md", "# Bible")).resolves.toEqual({ ok: true });
     await expect(readFile(join(root, "books", "book-1", "story", "story_bible.md"), "utf-8")).resolves.toBe("# Bible");
-    await expect(service.writeTruthFile("book-1", "evil_file.md", "bad")).resolves.toEqual({ error: "Invalid truth file" });
+    await expect(service.writeJingweiFile("book-1", "evil_file.md", "bad")).resolves.toEqual({ error: "Invalid truth file" });
   });
 
   it("builds export payloads from saved chapter files", async () => {

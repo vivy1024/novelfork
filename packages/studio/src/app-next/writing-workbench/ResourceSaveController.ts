@@ -89,7 +89,7 @@ async function saveChapterAndHydrate(resource: ResourceDomainClient, bookId: str
 async function saveTruthAndHydrate(resource: ResourceDomainClient, bookId: string, node: WorkbenchResourceNode, content: string): Promise<WorkbenchResourceNode> {
   const fileName = fileNameFromNode(node, "jingwei-file:") ?? fileNameFromNode(node, "truth-file:");
   if (!fileName) throw new Error("经纬资料缺少文件名，无法保存");
-  await assertContractSave(await resource.saveTruthFile(bookId, fileName, { content }), "经纬资料保存失败");
+  await assertContractSave(await resource.saveJingweiFile(bookId, fileName, { content }), "经纬资料保存失败");
   return hydrateAfterSave(resource, bookId, node);
 }
 

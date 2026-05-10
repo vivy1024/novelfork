@@ -17,7 +17,7 @@ describe("story file read service", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it("lists truth files with labels, previews and safe filtering", async () => {
+  it("lists jingwei files with labels, previews and safe filtering", async () => {
     const storyDir = join(root, "books", "book-1", "story");
     await writeFile(join(storyDir, "pending_hooks.md"), "# hooks\n\n伏笔正文", "utf-8");
     await writeFile(join(storyDir, "chapter_summaries.md"), "# summaries", "utf-8");
@@ -25,24 +25,24 @@ describe("story file read service", () => {
 
     const service = createStoryFileReadService({ resolveBookDir: (bookId) => join(root, "books", bookId) });
 
-    await expect(service.listTruthFiles("book-1")).resolves.toEqual({
+    await expect(service.listJingweiFiles("book-1")).resolves.toEqual({
       files: expect.arrayContaining([
         expect.objectContaining({ name: "pending_hooks.md", label: "待处理伏笔", size: 13, preview: expect.stringContaining("伏笔正文") }),
         expect.objectContaining({ name: "chapter_summaries.md", label: "章节摘要" }),
       ]),
     });
-    const result = await service.listTruthFiles("book-1");
+    const result = await service.listJingweiFiles("book-1");
     expect(result.files.map((file) => file.name)).not.toContain("style_profile.json");
   });
 
-  it("reads truth files and preserves invalid/missing semantics", async () => {
+  it("reads jingwei files and preserves invalid/missing semantics", async () => {
     const storyDir = join(root, "books", "book-1", "story");
     await writeFile(join(storyDir, "story_bible.md"), "# 故事经纬", "utf-8");
     const service = createStoryFileReadService({ resolveBookDir: (bookId) => join(root, "books", bookId) });
 
-    await expect(service.readTruthFile("book-1", "story_bible.md")).resolves.toEqual({ file: "story_bible.md", content: "# 故事经纬" });
-    await expect(service.readTruthFile("book-1", "evil_file.md")).resolves.toEqual({ error: "Invalid truth file" });
-    await expect(service.readTruthFile("book-1", "book_rules.md")).resolves.toEqual({ file: "book_rules.md", content: null });
+    await expect(service.readJingweiFile("book-1", "story_bible.md")).resolves.toEqual({ file: "story_bible.md", content: "# 故事经纬" });
+    await expect(service.readJingweiFile("book-1", "evil_file.md")).resolves.toEqual({ error: "Invalid truth file" });
+    await expect(service.readJingweiFile("book-1", "book_rules.md")).resolves.toEqual({ file: "book_rules.md", content: null });
     expect(TRUTH_FILES).toContain("story_bible.md");
   });
 

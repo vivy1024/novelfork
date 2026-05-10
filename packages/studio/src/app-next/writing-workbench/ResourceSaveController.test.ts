@@ -43,8 +43,8 @@ describe("ResourceSaveController", () => {
 
   it("RED: Truth、草稿、经纬条目按 kind 调用真实保存合同并回填服务端内容", async () => {
     const resource = {
-      saveTruthFile: vi.fn(async () => ({ ok: true, data: { ok: true } })),
-      getTruthFile: vi.fn(async () => ({ ok: true, data: { file: "truth.md", content: "服务端 Truth" } })),
+      saveJingweiFile: vi.fn(async () => ({ ok: true, data: { ok: true } })),
+      getJingweiFile: vi.fn(async () => ({ ok: true, data: { file: "truth.md", content: "服务端 Truth" } })),
       saveDraft: vi.fn(async () => ({ ok: true, data: { ok: true } })),
       getDraft: vi.fn(async () => ({ ok: true, data: { id: "d1", content: "服务端草稿", updatedAt: "2026-05-06T00:00:00.000Z" } })),
       saveJingweiEntry: vi.fn(async () => ({ ok: true, data: { entry: { id: "char-1", sectionId: "people", title: "沈舟", contentMd: "服务端经纬", updatedAt: "2026-05-06T00:00:00.000Z" } } })),
@@ -54,8 +54,8 @@ describe("ResourceSaveController", () => {
     const draft = await saveResourceAndHydrate(resource as never, "book-1", node({ id: "draft:d1", kind: "draft", title: "草稿", content: "旧草稿", metadata: { draftId: "d1", detailSource: "detail" } }), "新草稿");
     const jingwei = await saveResourceAndHydrate(resource as never, "book-1", node({ id: "jingwei-entry:char-1", kind: "jingwei-entry", title: "沈舟", content: "旧经纬", metadata: { entryId: "char-1", sectionId: "people", detailSource: "detail" } }), "新经纬");
 
-    expect(resource.saveTruthFile).toHaveBeenCalledWith("book-1", "truth.md", { content: "新 Truth" });
-    expect(resource.getTruthFile).toHaveBeenCalledWith("book-1", "truth.md");
+    expect(resource.saveJingweiFile).toHaveBeenCalledWith("book-1", "truth.md", { content: "新 Truth" });
+    expect(resource.getJingweiFile).toHaveBeenCalledWith("book-1", "truth.md");
     expect(truth.content).toBe("服务端 Truth");
     expect(resource.saveDraft).toHaveBeenCalledWith("book-1", { id: "d1", title: "草稿", content: "新草稿" });
     expect(resource.getDraft).toHaveBeenCalledWith("book-1", "d1");

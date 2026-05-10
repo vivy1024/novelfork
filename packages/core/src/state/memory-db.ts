@@ -1,11 +1,11 @@
 /**
- * Temporal memory database for NovelFork truth files.
+ * Temporal memory database for NovelFork jingwei files.
  *
  * Uses Bun native SQLite (bun:sqlite).
  * Stores facts with temporal validity (valid_from/valid_until chapter numbers),
  * enabling precise queries like "what did character X know in chapter 5?"
  *
- * Backward compatible: existing markdown truth files are still the primary
+ * Backward compatible: existing markdown jingwei files are still the primary
  * persistence layer. MemoryDB is an acceleration index built alongside them.
  */
 

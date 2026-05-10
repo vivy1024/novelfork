@@ -1,7 +1,7 @@
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { BookConfig, ChapterMeta, StateManager } from "@vivy1024/novelfork-core";
-import { isTruthFileName } from "./story-file-service.js";
+import { isJingweiFileName } from "./story-file-service.js";
 import type { CreateResourceCheckpointInput, ResourceCheckpointResult } from "./resource-checkpoint-service.js";
 
 export type ExportFormat = "markdown" | "txt";
@@ -216,8 +216,8 @@ export function createStorageWriteService(options: StorageWriteServiceOptions) {
       return { ok: true, chapterNumber, ...(checkpoint.checkpointId ? { checkpointId: checkpoint.checkpointId } : {}) };
     },
 
-    async writeTruthFile(bookId: string, file: string, content: string, checkpointContext: StorageWriteCheckpointContext = {}) {
-      if (!isTruthFileName(file)) {
+    async writeJingweiFile(bookId: string, file: string, content: string, checkpointContext: StorageWriteCheckpointContext = {}) {
+      if (!isJingweiFileName(file)) {
         return { error: "Invalid truth file" as const };
       }
       const storyDir = join(state.bookDir(bookId), "story");

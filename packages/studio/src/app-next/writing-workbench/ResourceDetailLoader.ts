@@ -130,7 +130,7 @@ export async function loadResourceDetailState(
     const bookId = metadataString(node, "bookId") ?? fallbackBookId;
     const fileName = fileNameFromNode(node, "truth-file:");
     if (!fileName) return errorState(node, { code: "missing-file-name" }, "Truth 资源缺少文件名");
-    const result = await resource.getTruthFile(bookId, fileName);
+    const result = await resource.getJingweiFile(bookId, fileName);
     if (!result.ok) return errorState(node, result.error ?? result.raw ?? result.code, messageFromContractResult(result, "Truth 文件详情加载失败"));
     const data = result.data as { readonly content?: unknown; readonly file?: unknown };
     return ready(node, typeof data.content === "string" ? data.content : "", "detail", { detailSource: "detail", fileName: data.file ?? fileName, bookId });
