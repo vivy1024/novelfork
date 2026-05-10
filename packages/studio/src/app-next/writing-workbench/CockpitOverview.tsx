@@ -95,7 +95,10 @@ export function CockpitOverview({ book: bookProp, bookId, nodes, onOpenChapter, 
 
   // 检测是否为新书（无章节、无字数）→ 显示引导式创作向导
   // 注意：建书时会自动创建空经纬栏目，所以不能用 hasJingwei 判断
-  const isNewBook = !book || (book.chapterCount === 0 && book.totalWords === 0);
+  // 引导完成后记录到 localStorage，下次不再显示
+  const guideCompletedKey = bookId ? `novelfork:guide-completed:${bookId}` : null;
+  const guideAlreadyDone = guideCompletedKey ? localStorage.getItem(guideCompletedKey) === "true" : false;
+  const isNewBook = !guideAlreadyDone && (!book || (book.chapterCount === 0 && book.totalWords === 0));
 
   if (isNewBook && bookId) {
     const title = book?.title ?? "未命名作品";
@@ -103,7 +106,10 @@ export function CockpitOverview({ book: bookProp, bookId, nodes, onOpenChapter, 
       <NewBookGuide
         bookId={bookId}
         bookTitle={title}
-        onComplete={() => onGuideComplete?.()}
+        onComplete={() => {
+          if (guideCompletedKey) localStorage.setItem(guideCompletedKey, "true");
+          onGuideComplete?.();
+        }}
       />
     );
   }
