@@ -910,7 +910,7 @@ function toConversationStatus(
     usage: usageFromSessionState(state.session, state.messages),
     contextUsage,
     messageCount: state.session?.messageCount,
-    binding: state.session ? { label: bindingLabel(state.session) ?? "standalone", ...(state.session.worktree ? { worktree: state.session.worktree } : {}) } : undefined,
+    binding: state.session ? { label: bindingLabel(state.session) ?? "standalone", ...(state.session.worktree ? { worktree: state.session.worktree } : {}), ...(state.session.projectId ? { projectId: state.session.projectId } : {}) } : undefined,
     workspace: workspaceFact,
     modelOptions,
     toolPolicySummary: sessionConfig?.toolPolicy,
