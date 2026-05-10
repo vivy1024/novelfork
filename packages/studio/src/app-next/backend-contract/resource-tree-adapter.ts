@@ -167,7 +167,7 @@ export async function loadResourceTreeFromContract(
         group("group:drafts", "草稿", drafts?.drafts.map(toDraftNode) ?? []),
         group("group:story-files", "大纲与设定", nonJingweiStoryFiles.map((file) => toStoryFileNode(book.id, file))),
         group("group:jingwei", "经纬资料", [
-          ...(jingweiFiles?.files.filter((f) => f.size !== 0).map((file) => toJingweiFileNode(book.id, file)) ?? []),
+          ...(jingweiFiles?.files.filter((f) => (f.size ?? 0) > 100).map((file) => toJingweiFileNode(book.id, file)) ?? []),
           ...(jingweiSections?.sections.map(toJingweiSectionNode) ?? []),
           ...(jingweiEntries?.entries.map(toJingweiEntryNode) ?? []),
         ]),
