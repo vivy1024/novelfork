@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Send, Paperclip, Square, Play } from "lucide-react";
+import { Send, Paperclip, Square, Play, ListPlus } from "lucide-react";
 
 import {
   createDefaultSlashCommandRegistry,
@@ -127,7 +127,7 @@ export function Composer({
       <div className="flex items-end gap-2">
         {/* Attachment button */}
         <Tooltip>
-          <TooltipTrigger>
+          <TooltipTrigger asChild>
             <Button variant="ghost" size="icon" onClick={() => fileInputRef.current?.click()} aria-label="附件">
               <Paperclip className="size-4" />
             </Button>
@@ -154,36 +154,50 @@ export function Composer({
           rows={1}
         />
 
-        {/* Action button: interrupt / send / continue */}
-        {isRunning ? (
+        {/* Action button — NarraFork 优先级：
+            1. running + 无输入 → 中断（红色）
+            2. idle + 无输入 + 可继续 → 继续（蓝色）
+            3. running + 有输入 → 队列发送（排队）
+            4. 默认（有输入） → 发送
+        */}
+        {isRunning && !value.trim() ? (
           <Tooltip>
-            <TooltipTrigger>
+            <TooltipTrigger asChild>
               <Button variant="destructive" size="icon" onClick={onAbort} aria-label="中断">
                 <Square className="size-4" />
               </Button>
             </TooltipTrigger>
             <TooltipContent>中断</TooltipContent>
           </Tooltip>
-        ) : value.trim() ? (
+        ) : !isRunning && !value.trim() && (isInterrupted || onContinue) ? (
           <Tooltip>
-            <TooltipTrigger>
-              <Button size="icon" onClick={() => void handleSend()} disabled={Boolean(disabledReason)} aria-label="发送">
-                <Send className="size-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>发送</TooltipContent>
-          </Tooltip>
-        ) : (isInterrupted || onContinue) ? (
-          <Tooltip>
-            <TooltipTrigger>
+            <TooltipTrigger asChild>
               <Button size="icon" className="bg-blue-600 text-white hover:bg-blue-700" onClick={() => onContinue?.()} aria-label="继续">
                 <Play className="size-4" />
               </Button>
             </TooltipTrigger>
             <TooltipContent>继续</TooltipContent>
           </Tooltip>
+        ) : isRunning && value.trim() ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button size="icon" className="bg-amber-600 text-white hover:bg-amber-700" onClick={() => void handleSend()} aria-label="排队发送">
+                <ListPlus className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>排队发送（完成后自动发送）</TooltipContent>
+          </Tooltip>
+        ) : value.trim() ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button size="icon" onClick={() => void handleSend()} disabled={Boolean(disabledReason)} aria-label="发送">
+                <Send className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>发送</TooltipContent>
+          </Tooltip>
         ) : (
-          <Button size="icon" onClick={() => void handleSend()} disabled={Boolean(disabledReason) || !value.trim()} aria-label="发送">
+          <Button size="icon" disabled aria-label="发送">
             <Send className="size-4" />
           </Button>
         )}
