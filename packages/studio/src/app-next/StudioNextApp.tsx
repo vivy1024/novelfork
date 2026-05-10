@@ -1098,7 +1098,12 @@ export function StudioNextApp(_props: StudioNextAppProps) {
   }, [navigate]);
 
   return (
-    <AgentShell route={activeRoute} books={books} sessions={sessions} onNavigate={navigate}>
+    <AgentShell route={activeRoute} books={books} sessions={sessions} onNavigate={navigate} onDeleteBook={async (bookId) => {
+      try {
+        const res = await fetch(`/api/books/${encodeURIComponent(bookId)}`, { method: "DELETE" });
+        if (res.ok) { navigate({ kind: "home" }); window.location.reload(); }
+      } catch { /* ignore */ }
+    }}>
       <RouteMountPoint
         route={activeRoute}
         canvasContext={canvasContext ?? undefined}
