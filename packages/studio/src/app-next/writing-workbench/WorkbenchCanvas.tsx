@@ -37,7 +37,7 @@ function toResourceViewKind(kind: WorkbenchResourceKind): WorkspaceResourceViewK
     case "draft":
       return "draft-editor";
     case "story":
-    case "truth":
+    case "jingwei":
       return "markdown-viewer";
     case "jingwei-section":
       return "bible-category-view";
@@ -74,7 +74,7 @@ const resourceTypeLabels: Partial<Record<WorkbenchResourceKind, string>> = {
   candidate: "候选稿",
   draft: "草稿",
   story: "大纲与设定",
-  truth: "经纬资料",
+  jingwei: "经纬资料",
   "jingwei-section": "经纬分区",
   "jingwei-entry": "经纬条目",
   "bible-entry": "经纬资料",

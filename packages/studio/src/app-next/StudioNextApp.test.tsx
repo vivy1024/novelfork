@@ -738,7 +738,7 @@ describe("StudioNextApp", () => {
       { id: "candidate:c1", kind: "candidate", title: "第二章候选稿", content: "候选正文", capabilities: { open: true, readonly: true, unsupported: false, edit: false, delete: true, apply: true } },
       { id: "draft:d1", kind: "draft", title: "片段草稿", content: "草稿正文", capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: true, apply: false } },
       { id: "story-file:hooks.md", kind: "story", title: "hooks.md", path: "story/hooks.md", content: "伏笔内容", capabilities: { open: true, readonly: true, unsupported: false, edit: false, delete: false, apply: false } },
-      { id: "truth-file:truth.md", kind: "truth", title: "truth.md", path: "story/truth.md", content: "真相内容", capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: false, apply: false } },
+      { id: "truth-file:truth.md", kind: "jingwei", title: "truth.md", path: "story/truth.md", content: "真相内容", capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: false, apply: false } },
       { id: "jingwei-entry:char-1", kind: "jingwei-entry", title: "沈舟", content: "主角，灵潮亲和。", capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: true, apply: false } },
       { id: "narrative-line:b1", kind: "narrative-line", title: "叙事线快照", content: "主线：灵潮复苏。", capabilities: { open: true, readonly: true, unsupported: false, edit: false, delete: false, apply: false } },
       { id: "unsupported:candidates.list", kind: "unsupported", title: "候选稿加载失败", content: "", capabilities: { open: true, readonly: true, unsupported: true, edit: false, delete: false, apply: false } },
@@ -821,7 +821,7 @@ describe("StudioNextApp", () => {
     const nodes = [
       { id: "chapter:b1:1", kind: "chapter", title: "第一章", content: "第一章正文", capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: false, apply: false } },
       { id: "draft:d1", kind: "draft", title: "片段草稿", content: "草稿正文", metadata: { draftId: "d1" }, capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: false, apply: false } },
-      { id: "truth-file:truth.md", kind: "truth", title: "truth.md", content: "真相内容", metadata: { fileName: "truth.md" }, capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: false, apply: false } },
+      { id: "truth-file:truth.md", kind: "jingwei", title: "truth.md", content: "真相内容", metadata: { fileName: "truth.md" }, capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: false, apply: false } },
     ];
     loadWorkbenchResourcesFromContractMock.mockResolvedValue({
       tree: [{ id: "book:b1", kind: "book", title: "测试书", capabilities: { open: false, readonly: true, unsupported: false, edit: false, delete: false, apply: false }, children: nodes }],

@@ -8,7 +8,7 @@ export type ResourceViewerKind =
   | "candidate"
   | "draft"
   | "story"
-  | "truth"
+  | "jingwei"
   | "bible-entry"
   | "storyline"
   | "jingwei-section"
@@ -73,7 +73,7 @@ function renderEditableText(node: WorkbenchResourceNode, options: ResourceViewer
 
 function renderTextFile(node: WorkbenchResourceNode, options: ResourceViewerRenderOptions = {}) {
   return (
-    <ViewerShell node={node} label={node.kind === "truth" ? "Truth 文本文件" : "Story 文本文件"}>
+    <ViewerShell node={node} label={node.kind === "jingwei" ? "经纬资料文件" : "Story 文本文件"}>
       {node.path ? <p className="resource-viewer__path">{node.path}</p> : null}
       <TextBody node={node} label="文本文件正文" onContentChange={options.onContentChange} />
     </ViewerShell>
@@ -130,7 +130,7 @@ export const resourceViewerRegistry: Record<ResourceViewerKind, ResourceViewerDe
   candidate: { kind: "candidate", label: "候选稿", render: renderCandidateText },
   draft: { kind: "draft", label: "草稿", render: renderEditableText },
   story: { kind: "story", label: "Story 文件", render: renderTextFile },
-  truth: { kind: "truth", label: "Truth 文件", render: renderTextFile },
+  jingwei: { kind: "jingwei", label: "经纬资料", render: renderTextFile },
   "bible-entry": { kind: "bible-entry", label: "经纬资料", render: renderReadonlySummary },
   storyline: { kind: "storyline", label: "叙事线", render: renderReadonlySummary },
   "jingwei-section": { kind: "jingwei-section", label: "经纬分区", render: renderReadonlySummary },
@@ -145,7 +145,7 @@ const viewerKinds = new Set<WorkbenchResourceKind | ResourceViewerKind>([
   "candidate",
   "draft",
   "story",
-  "truth",
+  "jingwei",
   "bible-entry",
   "storyline",
   "jingwei-section",
