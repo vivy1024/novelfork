@@ -592,7 +592,35 @@ class AnthropicCompatibleAdapter implements RuntimeAdapter {
         }
       }
     } catch {
-      // API 不支持 /v1/models，降级到默认列表
+      // API 不支持 /v1/models，尝试 OpenAI 格式
+    }
+
+    // 尝试 OpenAI 格式的 /v1/models（很多兼容网关支持）
+    try {
+      const openaiUrl = `${trimTrailingSlash(ref.baseUrl!)}/v1/models`;
+      const openaiResponse = await fetch(openaiUrl, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${ref.apiKey}`, "Content-Type": "application/json" },
+      });
+      if (openaiResponse.ok) {
+        const payload = await openaiResponse.json() as { data?: Array<{ id: string; owned_by?: string }> };
+        if (Array.isArray(payload.data) && payload.data.length > 0) {
+          return {
+            success: true,
+            models: payload.data.map((m) => ({
+              id: m.id,
+              name: m.id,
+              contextWindow: 200000,
+              maxOutputTokens: 16384,
+              enabled: true,
+              source: "detected" as const,
+              lastTestStatus: "untested" as const,
+            })),
+          };
+        }
+      }
+    } catch {
+      // 也不支持，降级到默认列表
     }
 
     // 降级：返回常见 Anthropic 模型
