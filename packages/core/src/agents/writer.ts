@@ -36,6 +36,8 @@ import { analyzeHookHealth } from "../utils/hook-health.js";
 import { buildEnglishVarianceBrief } from "../utils/long-span-fatigue.js";
 import { readFile, writeFile, mkdir, readdir } from "node:fs/promises";
 import { join } from "node:path";
+import { syncCharacterArcs, type ArcTrackingMode } from "../tools/arcs/arc-sync.js";
+import type { StorageDatabase } from "../storage/db.js";
 
 export interface WriteChapterInput {
   readonly book: BookConfig;
@@ -1048,6 +1050,12 @@ ${overrides}\n`;
     bookDir: string,
     output: WriteChapterOutput,
     language: "zh" | "en" = "zh",
+    arcSyncOptions?: {
+      readonly bookId: string;
+      readonly chapterNumber: number;
+      readonly storage: StorageDatabase;
+      readonly arcTrackingMode?: ArcTrackingMode;
+    },
   ): Promise<void> {
     const storyDir = join(bookDir, "story");
     const writes: Array<Promise<void>> = [];
@@ -1079,6 +1087,27 @@ ${overrides}\n`;
     }
 
     await Promise.all(writes);
+
+    // Arc sync (non-blocking — failures only log warnings)
+    if (arcSyncOptions) {
+      const mode = arcSyncOptions.arcTrackingMode ?? "rule";
+      try {
+        const result = await syncCharacterArcs({
+          bookId: arcSyncOptions.bookId,
+          chapterNumber: arcSyncOptions.chapterNumber,
+          chapterContent: output.content,
+          mode,
+          storage: arcSyncOptions.storage,
+        });
+        if (result.warnings.length > 0) {
+          for (const warning of result.warnings) {
+            this.ctx.logger?.warn(`[arc-sync] ${warning}`);
+          }
+        }
+      } catch (err) {
+        this.ctx.logger?.warn(`[arc-sync] Failed to sync character arcs: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
   }
 
   private renderDeltaSummaryRow(delta: RuntimeStateDelta): string {

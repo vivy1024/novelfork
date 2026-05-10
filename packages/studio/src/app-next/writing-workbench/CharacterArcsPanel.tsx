@@ -11,6 +11,7 @@ interface ArcBeat {
   readonly chapter: number;
   readonly event: string;
   readonly emotionDirection: string;
+  readonly source?: "manual" | "auto-rule" | "auto-llm";
 }
 
 interface CharacterArc {
@@ -44,6 +45,7 @@ function parseBeats(json: string): ArcBeat[] {
         chapter: typeof item.chapter === "number" ? item.chapter : 0,
         event: typeof item.event === "string" ? item.event : String(item.event ?? ""),
         emotionDirection: typeof item.emotionDirection === "string" ? item.emotionDirection : "→",
+        source: item.source === "manual" || item.source === "auto-rule" || item.source === "auto-llm" ? item.source : undefined,
       }));
     }
   } catch {
@@ -62,6 +64,29 @@ const ARC_TYPE_LABELS: Record<string, string> = {
 
 function arcTypeLabel(type: string): string {
   return ARC_TYPE_LABELS[type] ?? type;
+}
+
+const SOURCE_BADGE_STYLES: Record<string, string> = {
+  manual: "bg-muted text-muted-foreground",
+  "auto-rule": "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
+  "auto-llm": "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
+};
+
+const SOURCE_LABELS: Record<string, string> = {
+  manual: "手动",
+  "auto-rule": "规则",
+  "auto-llm": "LLM",
+};
+
+function SourceBadge({ source }: { source?: string }) {
+  if (!source) return null;
+  const style = SOURCE_BADGE_STYLES[source] ?? SOURCE_BADGE_STYLES.manual;
+  const label = SOURCE_LABELS[source] ?? source;
+  return (
+    <span className={`inline-flex items-center rounded px-1 py-0.5 text-[8px] font-medium ${style}`}>
+      {label}
+    </span>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -151,6 +176,7 @@ export function CharacterArcsPanel({ bookId, onClose }: CharacterArcsPanelProps)
                         <div key={i} className="flex items-start gap-1.5 text-[10px] pl-2">
                           <Badge variant="secondary" className="text-[8px] h-3.5 shrink-0">Ch.{beat.chapter}</Badge>
                           <span className="flex-1 text-muted-foreground">{beat.event}</span>
+                          <SourceBadge source={beat.source} />
                           <span className="shrink-0 text-primary">{beat.emotionDirection}</span>
                         </div>
                       ))}
