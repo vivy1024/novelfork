@@ -675,7 +675,7 @@ export function createAIRouter(ctx: RouterContext): Hono {
     return Math.ceil(content.length / 2);
   }
 
-  async function loadTruthFile(storyDir: string, filename: string): Promise<string | null> {
+  async function loadJingweiFile(storyDir: string, filename: string): Promise<string | null> {
     try {
       return await readFile(join(storyDir, filename), "utf-8");
     } catch {
@@ -698,7 +698,7 @@ export function createAIRouter(ctx: RouterContext): Hono {
 
       const filenames = Object.keys(TRUTH_LABEL_MAP);
       const rawContents = await Promise.all(
-        filenames.map((f) => loadTruthFile(storyDir, f)),
+        filenames.map((f) => loadJingweiFile(storyDir, f)),
       );
 
       // Build a map of filename → raw content
@@ -825,13 +825,13 @@ export function createAIRouter(ctx: RouterContext): Hono {
       const bookDir = state.bookDir(body.bookId);
       const storyDir = join(bookDir, "story");
 
-      // Load truth files for context
+      // Load jingwei files for context
       const [outline, summaries, bible, currentState, hooks] = await Promise.all([
-        loadTruthFile(storyDir, "volume_outline.md"),
-        loadTruthFile(storyDir, "chapter_summaries.md"),
-        loadTruthFile(storyDir, "story_bible.md"),
-        loadTruthFile(storyDir, "current_state.md"),
-        loadTruthFile(storyDir, "pending_hooks.md"),
+        loadJingweiFile(storyDir, "volume_outline.md"),
+        loadJingweiFile(storyDir, "chapter_summaries.md"),
+        loadJingweiFile(storyDir, "story_bible.md"),
+        loadJingweiFile(storyDir, "current_state.md"),
+        loadJingweiFile(storyDir, "pending_hooks.md"),
       ]);
 
       // Load chapter list for context

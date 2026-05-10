@@ -4,7 +4,7 @@ import type { GenreProfile } from "../models/genre-profile.js";
 /**
  * Observer phase: extract ALL facts from the chapter.
  * Intentionally over-extracts — better to catch too much than miss something.
- * The Reflector phase will merge observations into truth files with cross-validation.
+ * The Reflector phase will merge observations into jingwei files with cross-validation.
  */
 export function buildObserverSystemPrompt(
   book: BookConfig,

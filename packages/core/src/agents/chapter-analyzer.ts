@@ -39,7 +39,7 @@ export class ChapterAnalyzerAgent extends BaseAgent {
       await readGenreProfile(this.ctx.projectRoot, book.genre);
     const resolvedLanguage = book.language ?? genreProfile.language;
 
-    // Read current truth files (same set as writer.ts)
+    // Read current jingwei files (same set as writer.ts)
     const [
       currentState, ledger, hooks,
       subplotBoard, emotionalArcs, characterMatrix,

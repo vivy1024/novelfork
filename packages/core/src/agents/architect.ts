@@ -313,7 +313,7 @@ ${finalRequirementsPrompt}`;
       );
     }
 
-    // Initialize new truth files
+    // Initialize new jingwei files
     writes.push(
       writeFile(
         join(storyDir, "subplot_board.md"),

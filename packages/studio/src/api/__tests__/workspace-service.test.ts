@@ -119,8 +119,8 @@ describe("workspace-service", () => {
       const books = tree.find(e => e.name === "books");
       const book = books?.children?.find(e => e.name === "test-book");
       const story = book?.children?.find(e => e.name === "story");
-      const truthFile = story?.children?.find(e => e.name === "current_state.md");
-      expect(truthFile?.storyRole).toBe("truth");
+      const jingweiFile = story?.children?.find(e => e.name === "current_state.md");
+      expect(jingweiFile?.storyRole).toBe("truth");
     });
   });
 

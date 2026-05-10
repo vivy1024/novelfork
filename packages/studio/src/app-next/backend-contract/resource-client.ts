@@ -85,13 +85,13 @@ export function createResourceClient(contract: ContractClient) {
       contract.get<T>(buildBookApiPath(bookId, "story-files", fileName), { capability: { id: "story-files.detail", status: "current" } }),
     deleteStoryFile: <T = { ok: true; file: string }>(bookId: string, fileName: string) =>
       contract.delete<T>(buildBookApiPath(bookId, "story-files", fileName), { capability: { id: "story-files.delete", status: "current" } }),
-    listTruthFiles: <T = unknown>(bookId: string) =>
+    listJingweiFiles: <T = unknown>(bookId: string) =>
       contract.get<T>(buildBookApiPath(bookId, "truth-files"), { capability: { id: "truth-files.list", status: "current" } }),
-    getTruthFile: <T = { file: string; content: string | null }>(bookId: string, fileName: string) =>
+    getJingweiFile: <T = { file: string; content: string | null }>(bookId: string, fileName: string) =>
       contract.get<T>(buildBookApiPath(bookId, "truth-files", fileName), { capability: { id: "truth-files.detail", status: "current" } }),
-    saveTruthFile: <T = { ok: true }>(bookId: string, fileName: string, payload: { content: string }) =>
+    saveJingweiFile: <T = { ok: true }>(bookId: string, fileName: string, payload: { content: string }) =>
       contract.put<T>(buildBookApiPath(bookId, "truth", fileName), payload, { capability: { id: "truth-files.save", status: "current" } }),
-    deleteTruthFile: <T = { ok: true; file: string }>(bookId: string, fileName: string) =>
+    deleteJingweiFile: <T = { ok: true; file: string }>(bookId: string, fileName: string) =>
       contract.delete<T>(buildBookApiPath(bookId, "truth-files", fileName), { capability: { id: "truth-files.delete", status: "current" } }),
     listJingweiSections: <T = unknown>(bookId: string) =>
       contract.get<T>(buildBookApiPath(bookId, "jingwei", "sections"), { capability: { id: "jingwei.sections", status: "current" } }),

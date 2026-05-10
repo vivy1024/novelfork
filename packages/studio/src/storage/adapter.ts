@@ -49,16 +49,21 @@ export interface ChapterDetail {
   readonly content: string;
 }
 
-export interface TruthFileEntry {
+export interface JingweiFileEntry {
   readonly name: string;
   readonly size: number;
   readonly preview: string;
 }
 
-export interface TruthFileContent {
+export interface JingweiFileContent {
   readonly file: string;
   readonly content: string | null;
 }
+
+/** @deprecated Use JingweiFileEntry */
+export type TruthFileEntry = JingweiFileEntry;
+/** @deprecated Use JingweiFileContent */
+export type TruthFileContent = JingweiFileContent;
 
 export interface CreateBookParams {
   readonly title: string;
@@ -100,9 +105,9 @@ export interface ClientStorageAdapter {
   approveChapter(bookId: string, num: number): Promise<void>;
   rejectChapter(bookId: string, num: number): Promise<void>;
 
-  listTruthFiles(bookId: string): Promise<ReadonlyArray<TruthFileEntry>>;
-  loadTruthFile(bookId: string, file: string): Promise<TruthFileContent>;
-  saveTruthFile(bookId: string, file: string, content: string): Promise<void>;
+  listJingweiFiles(bookId: string): Promise<ReadonlyArray<JingweiFileEntry>>;
+  loadJingweiFile(bookId: string, file: string): Promise<JingweiFileContent>;
+  saveJingweiFile(bookId: string, file: string, content: string): Promise<void>;
 
   loadProject(): Promise<ProjectConfig>;
   updateProject(updates: Record<string, unknown>): Promise<void>;

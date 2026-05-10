@@ -1,11 +1,11 @@
 /**
  * POV-aware context filtering.
  *
- * Filters truth file content based on the current POV character's
+ * Filters jingwei file content based on the current POV character's
  * information boundaries. Characters should only "see" information
  * they've actually witnessed or been told about.
  *
- * Works with markdown-based truth files (no DB dependency).
+ * Works with markdown-based jingwei files (no DB dependency).
  * When MemoryDB is available, can do more precise queries.
  */
 

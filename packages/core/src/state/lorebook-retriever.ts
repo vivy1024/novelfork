@@ -1,7 +1,7 @@
 /**
  * Lorebook Retriever — keyword-triggered context injection for the writing pipeline.
  *
- * Replaces full truth-file injection with precise, entity-matched world entries.
+ * Replaces full jingwei-file injection with precise, entity-matched world entries.
  * Inspired by SillyTavern/NovelCrafter World Info pattern.
  *
  * Flow:

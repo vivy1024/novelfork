@@ -34,8 +34,8 @@ export function createContextManagerRouter(ctx: RouterContext): Hono {
       const bookDir = state.bookDir(bookId);
       const storyDir = join(bookDir, "story");
 
-      // Load all truth files
-      const truthFiles = [
+      // Load all jingwei files
+      const jingweiFiles = [
         "volume_outline.md",
         "chapter_summaries.md",
         "pending_hooks.md",
@@ -49,7 +49,7 @@ export function createContextManagerRouter(ctx: RouterContext): Hono {
       let totalTokens = 0;
       let messageCount = 0;
 
-      for (const filename of truthFiles) {
+      for (const filename of jingweiFiles) {
         try {
           const content = await readFile(join(storyDir, filename), "utf-8");
           if (content.trim()) {

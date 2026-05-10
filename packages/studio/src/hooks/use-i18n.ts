@@ -119,7 +119,7 @@ const strings = {
   "book.statusOutlining": { zh: "大纲中", en: "Outlining" },
   "book.statusCompleted": { zh: "已完成", en: "Completed" },
   "book.statusDropped": { zh: "已放弃", en: "Dropped" },
-  "book.truthFiles": { zh: "经纬资料", en: "Jingwei Files" },
+  "book.jingweiFiles": { zh: "经纬资料", en: "Jingwei Files" },
 
   // Style
   "style.title": { zh: "文风分析", en: "Style Analyzer" },

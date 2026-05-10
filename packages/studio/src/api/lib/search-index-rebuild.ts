@@ -28,7 +28,7 @@ export interface SearchIndexRebuildSummary {
   readonly skippedBooks: number;
 }
 
-const truthFiles = [
+const jingweiFiles = [
   "story_bible.md",
   "volume_outline.md",
   "current_state.md",
@@ -112,7 +112,7 @@ async function indexBookSearchDocuments(state: SearchIndexRebuildState, bookId: 
     indexed += 1;
   }
 
-  for (const fileName of truthFiles) {
+  for (const fileName of jingweiFiles) {
     try {
       const content = await readFile(join(storyDir, fileName), "utf-8");
       globalSearchIndex.index({
@@ -126,7 +126,7 @@ async function indexBookSearchDocuments(state: SearchIndexRebuildState, bookId: 
       });
       indexed += 1;
     } catch {
-      // Skip missing truth files.
+      // Skip missing jingwei files.
     }
   }
 
