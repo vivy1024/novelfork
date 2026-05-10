@@ -23,44 +23,6 @@ const WRITE_TOOLS = new Set(["Write", "Edit", "create_file", "edit_file", "write
 const AGENT_TOOLS = new Set(["Agent", "Task", "Send", "Await", "TeamStatus", "TaskCreate"]);
 const QUESTION_TOOLS = new Set(["AskUserQuestion", "UserQuestionGate"]);
 
-// 工具名称 → 用户友好显示名映射
-const TOOL_DISPLAY_NAMES: Record<string, string> = {
-  // Bash 类
-  Bash: "终端",
-  Shell: "终端",
-  Execute: "执行",
-  Terminal: "终端",
-  // 读取类
-  Read: "读取",
-  Glob: "搜索文件",
-  Grep: "搜索内容",
-  Find: "查找",
-  WebSearch: "网页搜索",
-  WebFetch: "获取网页",
-  // 写入类
-  Write: "写入",
-  Edit: "编辑",
-  create_file: "创建文件",
-  edit_file: "编辑文件",
-  write_file: "写入文件",
-  // Agent 类
-  Agent: "子代理",
-  Task: "任务",
-  Send: "发送",
-  Await: "等待",
-  TeamStatus: "团队状态",
-  TaskCreate: "创建任务",
-  // 问题类
-  AskUserQuestion: "询问用户",
-  UserQuestionGate: "用户确认",
-  // Skill 类
-  Skill: "技能",
-};
-
-function getToolDisplayName(toolName: string): string {
-  return TOOL_DISPLAY_NAMES[toolName] ?? toolName;
-}
-
 type ToolCategory = "bash" | "read" | "write" | "agent" | "question" | "other";
 
 function getToolCategory(toolName: string): ToolCategory {
@@ -154,7 +116,7 @@ export function ToolCallCard({ toolCall }: { toolCall: ConversationToolCall; onO
         {isRunning ? <Loader2 className="size-3.5 animate-spin text-blue-500" /> : isPending ? <div className="size-3.5 rounded-full border-2 border-yellow-400" /> : <ToolIcon category={category} status={toolCall.status} />}
 
         {/* 工具名（友好显示名） */}
-        <span className="text-xs font-medium text-foreground shrink-0">{getToolDisplayName(toolCall.toolName)}</span>
+        <span className="text-xs font-medium text-foreground shrink-0">{toolCall.toolName}</span>
 
         {/* 描述摘要 */}
         {description && (
