@@ -8,6 +8,8 @@ export const sessions = sqliteTable("session", {
   configJson: text("config_json").notNull().default("{}"),
   metadataJson: text("metadata_json").notNull().default("{}"),
   deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
+  parentSessionId: text("parent_session_id"),
+  forkMode: text("fork_mode", { enum: ["full", "compressed"] }),
 });
 
 export const sessionMessages = sqliteTable(

@@ -143,6 +143,8 @@ function toNarratorSessionRecord(record: StoredSessionRecord): NarratorSessionRe
     worktree: metadata.worktree,
     chapterId: metadata.chapterId,
     projectId: metadata.projectId,
+    parentSessionId: metadata.parentSessionId ?? (record.parentSessionId ?? undefined),
+    forkMode: metadata.forkMode ?? (record.forkMode ?? undefined),
     sessionConfig,
     recentMessages: Array.isArray(metadata.recentMessages) ? metadata.recentMessages : [],
     recovery: normalizeRecoveryMetadata(metadata.recovery),
@@ -158,6 +160,8 @@ function toStoredSessionInput(session: NarratorSessionRecord) {
     messageCount: session.messageCount,
     configJson: JSON.stringify(session.sessionConfig),
     metadataJson: JSON.stringify(session),
+    parentSessionId: session.parentSessionId ?? null,
+    forkMode: session.forkMode ?? null,
   };
 }
 
@@ -266,6 +270,8 @@ export async function createSession(input: CreateNarratorSessionInput): Promise<
     worktree: input.worktree,
     chapterId: input.chapterId,
     projectId: input.projectId,
+    parentSessionId: input.parentSessionId,
+    forkMode: input.forkMode,
     sessionConfig: normalizeSessionConfig({
       ...DEFAULT_SESSION_CONFIG,
       ...(modelDefaults ?? {}),

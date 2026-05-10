@@ -179,8 +179,8 @@ app.post("/", async (c) => {
 
 app.post("/:id/fork", async (c) => {
   const id = c.req.param("id");
-  const body: { title?: string; inheritanceNote?: string } = await c.req.json<{ title?: string; inheritanceNote?: string }>().catch(() => ({}));
-  const result = await forkSession({ sourceSessionId: id, title: body.title, inheritanceNote: body.inheritanceNote });
+  const body: { title?: string; inheritanceNote?: string; forkMode?: "full" | "compressed" } = await c.req.json<{ title?: string; inheritanceNote?: string; forkMode?: "full" | "compressed" }>().catch(() => ({}));
+  const result = await forkSession({ sourceSessionId: id, title: body.title, inheritanceNote: body.inheritanceNote, forkMode: body.forkMode });
   if (!result.ok) {
     return c.json(result, result.status);
   }

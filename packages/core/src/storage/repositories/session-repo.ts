@@ -8,6 +8,8 @@ export interface StoredSessionRecord {
   configJson: string;
   metadataJson: string;
   deletedAt: Date | null;
+  parentSessionId: string | null;
+  forkMode: "full" | "compressed" | null;
 }
 
 export interface CreateStoredSessionInput {
@@ -17,6 +19,8 @@ export interface CreateStoredSessionInput {
   messageCount: number;
   configJson: string;
   metadataJson: string;
+  parentSessionId?: string | null;
+  forkMode?: "full" | "compressed" | null;
 }
 
 export interface UpdateStoredSessionInput {
@@ -34,6 +38,8 @@ interface SessionRow {
   config_json: string;
   metadata_json: string;
   deleted_at: number | null;
+  parent_session_id: string | null;
+  fork_mode: string | null;
 }
 
 export class StorageError extends Error {
@@ -55,6 +61,8 @@ function toStoredSession(row: SessionRow): StoredSessionRecord {
     configJson: row.config_json,
     metadataJson: row.metadata_json,
     deletedAt: row.deleted_at === null ? null : new Date(row.deleted_at),
+    parentSessionId: row.parent_session_id,
+    forkMode: row.fork_mode === "full" || row.fork_mode === "compressed" ? row.fork_mode : null,
   };
 }
 
@@ -62,8 +70,8 @@ export function createSessionRepository(storage: StorageDatabase) {
   const createSession = storage.sqlite.transaction((input: CreateStoredSessionInput) => {
     storage.sqlite.prepare(`
       INSERT INTO "session" (
-        "id", "created_at", "updated_at", "message_count", "config_json", "metadata_json", "deleted_at"
-      ) VALUES (?, ?, ?, ?, ?, ?, NULL)
+        "id", "created_at", "updated_at", "message_count", "config_json", "metadata_json", "deleted_at", "parent_session_id", "fork_mode"
+      ) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?)
     `).run(
       input.id,
       input.createdAt.getTime(),
@@ -71,6 +79,8 @@ export function createSessionRepository(storage: StorageDatabase) {
       input.messageCount,
       input.configJson,
       input.metadataJson,
+      input.parentSessionId ?? null,
+      input.forkMode ?? null,
     );
     storage.sqlite.prepare(`
       INSERT OR IGNORE INTO "session_message_cursor" (
@@ -96,7 +106,7 @@ export function createSessionRepository(storage: StorageDatabase) {
     async getById(id: string): Promise<StoredSessionRecord | null> {
       try {
         const row = storage.sqlite.prepare(`
-          SELECT "id", "created_at", "updated_at", "message_count", "config_json", "metadata_json", "deleted_at"
+          SELECT "id", "created_at", "updated_at", "message_count", "config_json", "metadata_json", "deleted_at", "parent_session_id", "fork_mode"
           FROM "session"
           WHERE "id" = ? AND "deleted_at" IS NULL
         `).get(id) as SessionRow | undefined;
@@ -109,7 +119,7 @@ export function createSessionRepository(storage: StorageDatabase) {
     async list(): Promise<StoredSessionRecord[]> {
       try {
         const rows = storage.sqlite.prepare(`
-          SELECT "id", "created_at", "updated_at", "message_count", "config_json", "metadata_json", "deleted_at"
+          SELECT "id", "created_at", "updated_at", "message_count", "config_json", "metadata_json", "deleted_at", "parent_session_id", "fork_mode"
           FROM "session"
           WHERE "deleted_at" IS NULL
           ORDER BY "updated_at" DESC
