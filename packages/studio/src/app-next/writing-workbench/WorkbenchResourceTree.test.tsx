@@ -12,7 +12,7 @@ const nodes: readonly WorkbenchResourceNode[] = [
     capabilities: { open: false, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
     children: [
       { id: "chapter:1", kind: "chapter", title: "第一章", capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: false, apply: false } },
-      { id: "truth:1", kind: "truth", title: "经纬资料", capabilities: { open: true, readonly: true, unsupported: false, edit: false, delete: false, apply: false } },
+      { id: "truth:1", kind: "jingwei", title: "经纬资料", capabilities: { open: true, readonly: true, unsupported: false, edit: false, delete: false, apply: false } },
       { id: "candidate:1", kind: "candidate", title: "候选稿", capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: true, apply: true } },
       { id: "unknown:1", kind: "unsupported", title: "未知资源", capabilities: { open: true, readonly: true, unsupported: true, edit: false, delete: false, apply: false } },
     ],

@@ -38,7 +38,7 @@ describe("WorkbenchCanvas", () => {
 
   it("只读资源禁用编辑和保存", () => {
     const onSave = vi.fn();
-    render(<WorkbenchCanvas node={node({ kind: "truth", title: "经纬资料", capabilities: { open: true, readonly: true, unsupported: false, edit: false, delete: false, apply: false } })} onSave={onSave} />);
+    render(<WorkbenchCanvas node={node({ kind: "jingwei", title: "经纬资料", capabilities: { open: true, readonly: true, unsupported: false, edit: false, delete: false, apply: false } })} onSave={onSave} />);
 
     expect(screen.getByLabelText("文本文件正文")).toHaveProperty("readOnly", true);
     expect(screen.getByRole("button", { name: "保存" })).toHaveProperty("disabled", true);

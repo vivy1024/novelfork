@@ -24,7 +24,7 @@ afterEach(() => cleanup());
 
 describe("resource viewer registry", () => {
   it("注册 writing workbench 支持的最小 viewer", () => {
-    const kinds: ResourceViewerKind[] = ["chapter", "candidate", "draft", "story", "truth", "bible-entry", "storyline", "jingwei-section", "jingwei-entry", "narrative-line", "tool-result", "generic"];
+    const kinds: ResourceViewerKind[] = ["chapter", "candidate", "draft", "story", "jingwei", "bible-entry", "storyline", "jingwei-section", "jingwei-entry", "narrative-line", "tool-result", "generic"];
 
     for (const kind of kinds) {
       expect(resourceViewerRegistry[kind]).toBeTruthy();
@@ -33,7 +33,7 @@ describe("resource viewer registry", () => {
 
   it("按资源 kind 选择 viewer，并为未知 kind 回退 generic", () => {
     expect(getResourceViewer(node({ kind: "candidate" })).kind).toBe("candidate");
-    expect(getResourceViewer(node({ kind: "truth" })).kind).toBe("truth");
+    expect(getResourceViewer(node({ kind: "jingwei" })).kind).toBe("jingwei");
     expect(getResourceViewer(node({ kind: "jingwei-entry" })).kind).toBe("jingwei-entry");
     expect(getResourceViewer(node({ kind: "narrative-line" })).kind).toBe("narrative-line");
     expect(getResourceViewer(node({ kind: "tool-result" })).kind).toBe("tool-result");
@@ -92,7 +92,7 @@ describe("ResourceViewer", () => {
       <ResourceViewer
         node={node({
           id: "truth-file:1",
-          kind: "truth",
+          kind: "jingwei",
           title: "经纬资料.md",
           content: "真相内容",
           capabilities: { open: true, readonly: true, unsupported: false, edit: false, delete: false, apply: false },

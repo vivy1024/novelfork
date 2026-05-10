@@ -23,6 +23,7 @@ export interface WorkbenchWritingActionsSessionClient {
 
 export interface WorkbenchWritingActionsProps {
   bookId: string;
+  bookTitle?: string;
   sessions: WorkbenchWritingActionsSessionClient;
   actions?: readonly WorkbenchWritingAction[];
   blockedReason?: string;
@@ -104,15 +105,16 @@ function extractSessionId(value: unknown): string | null {
   return null;
 }
 
-async function ensureWorkbenchSession(bookId: string, action: WorkbenchWritingAction, sessions: WorkbenchWritingActionsProps["sessions"]): Promise<string> {
+async function ensureWorkbenchSession(bookId: string, bookTitle: string, action: WorkbenchWritingAction, sessions: WorkbenchWritingActionsProps["sessions"]): Promise<string> {
   const existing = await sessions.listActiveSessions({ binding: `book:${bookId}` });
   if (existing.ok) {
     const reusable = normalizeSessionList(existing.data).find((session) => session.status !== "archived");
     if (reusable?.id) return reusable.id;
   }
 
+  const displayTitle = bookTitle || bookId;
   const payload: CreateNarratorSessionInput = {
-    title: `《${bookId}》${action.label}`,
+    title: `新书《${displayTitle}》${action.label}`,
     agentId: "writer",
     kind: "standalone",
     sessionMode: "chat",
@@ -124,7 +126,7 @@ async function ensureWorkbenchSession(bookId: string, action: WorkbenchWritingAc
   return sessionId;
 }
 
-export function WorkbenchWritingActions({ bookId, sessions, actions, blockedReason, onNavigateToConversation }: WorkbenchWritingActionsProps) {
+export function WorkbenchWritingActions({ bookId, bookTitle, sessions, actions, blockedReason, onNavigateToConversation }: WorkbenchWritingActionsProps) {
   const [runningActionId, setRunningActionId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const resolvedActions = useMemo(() => actions ?? buildDefaultWorkbenchWritingActions(), [actions]);
@@ -134,7 +136,7 @@ export function WorkbenchWritingActions({ bookId, sessions, actions, blockedReas
     setRunningActionId(action.id);
     setError(null);
     try {
-      const sessionId = await ensureWorkbenchSession(bookId, action, sessions);
+      const sessionId = await ensureWorkbenchSession(bookId, bookTitle ?? "", action, sessions);
       onNavigateToConversation(sessionId, action);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "写作动作启动失败");
