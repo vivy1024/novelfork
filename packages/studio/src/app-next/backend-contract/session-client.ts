@@ -316,9 +316,10 @@ export function getSessionResumeFromSeq(state: SessionWebSocketRuntimeState): nu
 
 export function createSessionClient(contract: ContractClient) {
   return {
-    listActiveSessions: <T = readonly NarratorSessionRecord[]>(query?: { status?: string; binding?: string; search?: string; sort?: string }) => {
+    listActiveSessions: <T = readonly NarratorSessionRecord[]>(query?: { status?: string; binding?: string; projectId?: string; search?: string; sort?: string }) => {
       const params = new URLSearchParams({ sort: query?.sort ?? "recent", status: query?.status ?? "active" });
       if (query?.binding) params.set("binding", query.binding);
+      if (query?.projectId) params.set("projectId", query.projectId);
       if (query?.search) params.set("search", query.search);
       return contract.get<T>(appendApiQuery(SESSIONS_API_PATH, params), { capability: { id: "sessions.active", status: "current" } });
     },

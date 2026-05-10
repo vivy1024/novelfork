@@ -106,7 +106,8 @@ function extractSessionId(value: unknown): string | null {
 }
 
 async function ensureWorkbenchSession(bookId: string, bookTitle: string, action: WorkbenchWritingAction, sessions: WorkbenchWritingActionsProps["sessions"]): Promise<string> {
-  const existing = await sessions.listActiveSessions({ binding: `book:${bookId}` });
+  // 查找已有的绑定到此书籍的活跃会话（用 projectId 查询）
+  const existing = await sessions.listActiveSessions({ projectId: bookId });
   if (existing.ok) {
     const reusable = normalizeSessionList(existing.data).find((session) => session.status !== "archived");
     if (reusable?.id) return reusable.id;
