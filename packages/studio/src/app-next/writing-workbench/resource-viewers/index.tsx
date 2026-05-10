@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, useCallback, type ReactNode } from "react";
 
 import { Textarea } from "@/components/ui/textarea";
 import type { WorkbenchResourceKind, WorkbenchResourceNode } from "../useWorkbenchResources";
@@ -19,6 +19,7 @@ export type ResourceViewerKind =
 
 export interface ResourceViewerRenderOptions {
   onContentChange?: (content: string) => void;
+  onTabComplete?: (currentContent: string, cursorPosition: number) => Promise<string | null>;
 }
 
 export interface ResourceViewerDefinition {
@@ -56,17 +57,50 @@ function ViewerShell({ node, label, children }: { node: WorkbenchResourceNode; l
   );
 }
 
-function TextBody({ node, label, onContentChange }: { node: WorkbenchResourceNode; label: string; onContentChange?: (content: string) => void }) {
+function TextBody({ node, label, onContentChange, onTabComplete }: { node: WorkbenchResourceNode; label: string; onContentChange?: (content: string) => void; onTabComplete?: ResourceViewerRenderOptions["onTabComplete"] }) {
   const readonly = node.capabilities.readonly || !node.capabilities.edit || node.capabilities.unsupported;
+  const [completing, setCompleting] = useState(false);
 
-  return <Textarea aria-label={label} readOnly={readonly} value={node.content ?? ""} rows={18} onChange={(event) => onContentChange?.(event.currentTarget.value)} />;
+  const handleKeyDown = useCallback(async (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key !== "Tab" || event.shiftKey || !onTabComplete || readonly || completing) return;
+    event.preventDefault();
+    const textarea = event.currentTarget;
+    const cursorPos = textarea.selectionStart;
+    const content = textarea.value;
+
+    setCompleting(true);
+    try {
+      const completion = await onTabComplete(content, cursorPos);
+      if (completion) {
+        const before = content.slice(0, cursorPos);
+        const after = content.slice(cursorPos);
+        const newContent = before + completion + after;
+        onContentChange?.(newContent);
+        // Move cursor to end of completion
+        requestAnimationFrame(() => {
+          textarea.selectionStart = textarea.selectionEnd = cursorPos + completion.length;
+        });
+      }
+    } finally {
+      setCompleting(false);
+    }
+  }, [onTabComplete, readonly, completing, onContentChange]);
+
+  return (
+    <div className="relative">
+      <Textarea aria-label={label} readOnly={readonly} value={node.content ?? ""} rows={18} onChange={(event) => onContentChange?.(event.currentTarget.value)} onKeyDown={(e) => void handleKeyDown(e)} />
+      {completing && (
+        <span className="absolute bottom-2 right-2 text-[10px] text-muted-foreground animate-pulse">续写中…</span>
+      )}
+    </div>
+  );
 }
 
 function renderEditableText(node: WorkbenchResourceNode, options: ResourceViewerRenderOptions = {}) {
   const label = editableLabels[node.kind] ?? "资源正文";
   return (
     <ViewerShell node={node} label={resourceViewerRegistry[node.kind as ResourceViewerKind]?.label ?? "资源"}>
-      <TextBody node={node} label={label} onContentChange={options.onContentChange} />
+      <TextBody node={node} label={label} onContentChange={options.onContentChange} onTabComplete={options.onTabComplete} />
     </ViewerShell>
   );
 }
@@ -75,7 +109,7 @@ function renderTextFile(node: WorkbenchResourceNode, options: ResourceViewerRend
   return (
     <ViewerShell node={node} label={node.kind === "jingwei" ? "经纬资料文件" : "Story 文本文件"}>
       {node.path ? <p className="resource-viewer__path">{node.path}</p> : null}
-      <TextBody node={node} label="文本文件正文" onContentChange={options.onContentChange} />
+      <TextBody node={node} label="文本文件正文" onContentChange={options.onContentChange} onTabComplete={options.onTabComplete} />
     </ViewerShell>
   );
 }
@@ -162,6 +196,6 @@ export function getResourceViewer(node: WorkbenchResourceNode): ResourceViewerDe
   return resourceViewerRegistry[node.kind as ResourceViewerKind] ?? resourceViewerRegistry.generic;
 }
 
-export function ResourceViewer({ node, onContentChange }: { node: WorkbenchResourceNode; onContentChange?: (content: string) => void }) {
-  return <>{getResourceViewer(node).render(node, { onContentChange })}</>;
+export function ResourceViewer({ node, onContentChange, onTabComplete }: { node: WorkbenchResourceNode; onContentChange?: (content: string) => void; onTabComplete?: ResourceViewerRenderOptions["onTabComplete"] }) {
+  return <>{getResourceViewer(node).render(node, { onContentChange, onTabComplete })}</>;
 }
