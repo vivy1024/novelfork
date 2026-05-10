@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { formatBibleContextForPrompt, mergeBibleContextWithExternalContext } from "../bible/context/pipeline-bridge.js";
-import type { BuildBibleContextResult } from "../bible/types.js";
+import { formatBibleContextForPrompt, mergeBibleContextWithExternalContext } from "../jingwei/context/pipeline-bridge.js";
+import type { BuildBibleContextResult } from "../jingwei/types.js";
 
 const context: BuildBibleContextResult = {
   mode: "dynamic",

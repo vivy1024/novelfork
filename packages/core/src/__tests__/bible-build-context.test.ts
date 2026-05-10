@@ -4,16 +4,16 @@ import { tmpdir } from "node:os";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { buildBibleContext } from "../bible/context/build-bible-context.js";
-import { createBookRepository } from "../bible/repositories/book-repo.js";
-import { createBibleCharacterRepository } from "../bible/repositories/character-repo.js";
-import { createBibleCharacterArcRepository } from "../bible/repositories/character-arc-repo.js";
-import { createBibleConflictRepository } from "../bible/repositories/conflict-repo.js";
-import { createBibleEventRepository } from "../bible/repositories/event-repo.js";
-import { createBiblePremiseRepository } from "../bible/repositories/premise-repo.js";
-import { createBibleSettingRepository } from "../bible/repositories/setting-repo.js";
-import { createBibleWorldModelRepository } from "../bible/repositories/world-model-repo.js";
-import { detectStalledConflicts } from "../bible/context/stalled-detector.js";
+import { buildBibleContext } from "../jingwei/context/build-bible-context.js";
+import { createBookRepository } from "../jingwei/repositories/book-repo.js";
+import { createBibleCharacterRepository } from "../jingwei/repositories/character-repo.js";
+import { createBibleCharacterArcRepository } from "../jingwei/repositories/character-arc-repo.js";
+import { createBibleConflictRepository } from "../jingwei/repositories/conflict-repo.js";
+import { createBibleEventRepository } from "../jingwei/repositories/event-repo.js";
+import { createBiblePremiseRepository } from "../jingwei/repositories/premise-repo.js";
+import { createBibleSettingRepository } from "../jingwei/repositories/setting-repo.js";
+import { createBibleWorldModelRepository } from "../jingwei/repositories/world-model-repo.js";
+import { detectStalledConflicts } from "../jingwei/context/stalled-detector.js";
 import { createStorageDatabase, type StorageDatabase } from "../storage/db.js";
 import { runStorageMigrations } from "../storage/migrations-runner.js";
 
