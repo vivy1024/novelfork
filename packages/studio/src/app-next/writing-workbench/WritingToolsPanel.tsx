@@ -222,6 +222,7 @@ export function WritingToolsPanel({ bookId, currentChapter, chapterContent, onRu
             {activeSubPanel === "style-drift" && (
               <StyleDriftPanel
                 bookId={bookId}
+                chapterContent={chapterContent}
                 onClose={() => setActiveSubPanel(null)}
               />
             )}

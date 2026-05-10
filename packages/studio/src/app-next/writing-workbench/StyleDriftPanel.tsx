@@ -22,6 +22,7 @@ interface DriftResponse {
 
 export interface StyleDriftPanelProps {
   readonly bookId: string;
+  readonly chapterContent?: string;
   readonly onClose: () => void;
 }
 
@@ -43,7 +44,7 @@ function formatPercent(value: number): string {
 // Component
 // ---------------------------------------------------------------------------
 
-export function StyleDriftPanel({ bookId, onClose }: StyleDriftPanelProps) {
+export function StyleDriftPanel({ bookId, chapterContent, onClose }: StyleDriftPanelProps) {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<DriftResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -54,13 +55,16 @@ export function StyleDriftPanel({ bookId, onClose }: StyleDriftPanelProps) {
     setResult(null);
 
     try {
-      // Use placeholder profiles — the API requires both current and base StyleProfile.
-      // In a real scenario these would come from the book's stored style profile and
-      // the current chapter's computed profile. Here we send minimal valid profiles
-      // to trigger the drift detection logic on the server.
+      // Compute current chapter's style profile from content
+      const text = chapterContent ?? "";
+      const sentences = text.split(/[。！？.!?]+/).filter((s) => s.trim().length > 0);
+      const avgSentenceLength = sentences.length > 0 ? Math.round(sentences.reduce((sum, s) => sum + s.length, 0) / sentences.length) : 20;
+      const chars = new Set(text.split(""));
+      const vocabularyDiversity = text.length > 0 ? Math.min(1, chars.size / Math.min(text.length, 500)) : 0.5;
+
       const res = await postApi<DriftResponse>(`/books/${bookId}/style/drift-check`, {
-        current: { avgSentenceLength: 18, vocabularyDiversity: 0.6 },
-        base: { avgSentenceLength: 22, vocabularyDiversity: 0.7 },
+        current: { avgSentenceLength, vocabularyDiversity },
+        base: "auto",
       });
       setResult(res.drift);
     } catch (cause) {
