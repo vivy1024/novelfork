@@ -16,6 +16,7 @@ export interface ConversationModelOption {
 export interface ConversationBindingFact {
   label: string;
   worktree?: string;
+  projectId?: string;
 }
 
 export interface ConversationWorkspaceFact {

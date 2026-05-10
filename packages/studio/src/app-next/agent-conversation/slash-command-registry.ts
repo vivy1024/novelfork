@@ -50,6 +50,8 @@ export interface SlashCommandExecutionContext {
   readonly registry?: SlashCommandRegistry;
   readonly status?: SlashCommandStatusContext;
   readonly compactSession?: (instructions?: string) => Promise<SlashCommandCompactResult>;
+  /** Novel command 执行：从 binding 提取 bookId 调用后端 API */
+  readonly bookId?: string;
   /** 对标 Claude Code CLI: 运行时命令启用/禁用注册表 */
   readonly commandEnabledRegistry?: CommandEnabledRegistryLike;
 }
@@ -98,12 +100,35 @@ function findCommand(registry: SlashCommandRegistry, name: string): SlashCommand
 export async function executeSlashCommandInput(input: string, context: SlashCommandExecutionContext = {}): Promise<SlashCommandExecutionResult> {
   const registry = context.registry ?? createDefaultSlashCommandRegistry();
   const compactSession = context.compactSession;
+  const bookId = context.bookId;
+
+  const executeNovelCommand = bookId ? async (handlerId: string, _args: string) => {
+    const NOVEL_API_MAP: Record<string, string> = {
+      "novel.writeNext": `/api/books/${encodeURIComponent(bookId)}/write-next`,
+      "novel.draft": `/api/books/${encodeURIComponent(bookId)}/draft`,
+      "novel.audit": `/api/books/${encodeURIComponent(bookId)}/audit`,
+      "novel.detect": `/api/books/${encodeURIComponent(bookId)}/filter/scan-all`,
+      "novel.hooks": `/api/books/${encodeURIComponent(bookId)}/hooks/generate`,
+    };
+    const endpoint = NOVEL_API_MAP[handlerId];
+    if (!endpoint) return { ok: false as const, kind: "error" as const, code: "unhandled_novel_command", message: `Novel 命令 ${handlerId} 暂未实现。` };
+    try {
+      const res = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
+      if (!res.ok) return { ok: false as const, kind: "error" as const, code: "novel_api_error", message: `API 调用失败：${res.status}` };
+      const data = await res.json();
+      return { ok: true as const, kind: "status" as const, message: data.status === "writing" ? "写作管线已启动，请等待完成通知。" : JSON.stringify(data) };
+    } catch (e) {
+      return { ok: false as const, kind: "error" as const, code: "novel_network_error", message: e instanceof Error ? e.message : "网络错误" };
+    }
+  } : undefined;
+
   const execution = await executeRuntimeCommandInput(input, {
     sessionId: context.status?.sessionId,
     registry: registry.commands,
     status: context.status,
     handlers: {
       ...(compactSession ? { compactSession: (instructions) => compactSession(instructions) } : {}),
+      ...(executeNovelCommand ? { executeNovelCommand } : {}),
     },
     // 对标 Claude Code CLI: 接入 command-enabled-registry 做运行时禁用检查
     ...(context.commandEnabledRegistry ? { isCommandEnabled: (id) => context.commandEnabledRegistry!.isEnabled(id) } : {}),
