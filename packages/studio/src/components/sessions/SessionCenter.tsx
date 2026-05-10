@@ -18,7 +18,7 @@ import { NewSessionDialog, type NewSessionPayload } from "./NewSessionDialog";
 export type SessionCenterBindingFilter = "all" | "standalone" | "book" | "chapter";
 export type SessionCenterSortMode = "recent" | "lastModified-desc" | "manual";
 
-type SessionCenterClient = Pick<ReturnType<typeof createSessionClient>, "listActiveSessions" | "updateSession" | "continueLatestSession" | "forkSession" | "getMemoryStatus" | "createSession">;
+type SessionCenterClient = Pick<ReturnType<typeof createSessionClient>, "listActiveSessions" | "updateSession" | "continueLatestSession" | "forkSession" | "getMemoryStatus" | "createSession" | "deleteSession">;
 
 type SessionMemoryBoundaryStatus = {
   readonly ok: true;
@@ -193,6 +193,17 @@ export function SessionCenter({ className, initialBinding = "all", initialStatus
     await loadSessions();
   };
 
+  const deleteSession = async (session: NarratorSessionRecord) => {
+    if (!confirm(`确认永久删除会话「${session.title}」？此操作不可撤销。`)) return;
+    setError(null);
+    const result = await sessionClient.deleteSession(session.id);
+    if (!result.ok) {
+      setError(sessionClientErrorMessage(result, "删除会话失败"));
+      return;
+    }
+    await loadSessions();
+  };
+
   const beginFork = (session: NarratorSessionRecord) => {
     setError(null);
     setForkTarget(session);
@@ -356,7 +367,10 @@ export function SessionCenter({ className, initialBinding = "all", initialStatus
                   <Button type="button" size="sm" variant="outline" onClick={() => onOpenSession(session)}>打开</Button>
                   <Button type="button" size="sm" variant="outline" onClick={() => beginFork(session)}>Fork</Button>
                   {session.status === "archived" ? (
-                    <Button type="button" size="sm" onClick={() => void updateSessionStatus(session, "active")}>恢复</Button>
+                    <>
+                      <Button type="button" size="sm" onClick={() => void updateSessionStatus(session, "active")}>恢复</Button>
+                      <Button type="button" size="sm" variant="destructive" onClick={() => void deleteSession(session)}>删除</Button>
+                    </>
                   ) : (
                     <Button type="button" size="sm" variant="outline" onClick={() => void updateSessionStatus(session, "archived")}>归档</Button>
                   )}
