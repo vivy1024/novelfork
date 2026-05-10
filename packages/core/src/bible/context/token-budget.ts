@@ -59,7 +59,7 @@ function sortByDropPriority<TItem extends BudgetedBibleContextItem>(items: reado
 
 export function applyTokenBudget<TItem extends BudgetedBibleContextItem>(
   items: readonly TItem[],
-  tokenBudget = 8000,
+  tokenBudget = 30000,
 ): TokenBudgetResult<TItem> {
   const kept = sortByContextPriority(items);
   let totalTokens = kept.reduce((sum, item) => sum + item.estimatedTokens, 0);
