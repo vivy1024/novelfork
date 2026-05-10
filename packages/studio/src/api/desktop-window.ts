@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -101,6 +101,16 @@ export function openStudioWindow(url: string, options: Omit<DesktopWindowLaunchO
 
   if (plan.kind === "app") {
     mkdirSync(plan.userDataDir, { recursive: true });
+    // Clear Service Worker cache to prevent stale frontend after exe upgrade.
+    // The SW cache dir lives inside the user-data-dir under Default/Service Worker/.
+    const swCacheDir = join(plan.userDataDir, "Default", "Service Worker");
+    if (existsSync(swCacheDir)) {
+      try {
+        rmSync(swCacheDir, { recursive: true, force: true });
+      } catch {
+        // Best-effort: if locked by a running browser instance, skip silently.
+      }
+    }
   }
 
   const child = spawn(plan.command, [...plan.args], { detached: true, stdio: "ignore" });
