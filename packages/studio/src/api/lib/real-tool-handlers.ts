@@ -6,11 +6,50 @@
  */
 
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile, access } from "node:fs/promises";
 import { dirname, join, resolve, relative } from "node:path";
 import { constants as fsConstants } from "node:fs";
 
 import type { SessionToolExecutionResult } from "../../shared/agent-native-workspace.js";
+
+// --- Shell path resolution (Windows: Git Bash, not WSL) ---
+
+let _cachedShellPath: string | null = null;
+
+function resolveShellPath(): string {
+  if (_cachedShellPath) return _cachedShellPath;
+
+  if (process.platform !== "win32") {
+    _cachedShellPath = process.env.SHELL || "/bin/bash";
+    return _cachedShellPath;
+  }
+
+  // Windows: 按优先级查找 Git Bash
+  const candidates = [
+    process.env.NOVELFORK_SHELL,
+    // Git for Windows 标准安装路径
+    "C:\\Program Files\\Git\\bin\\bash.exe",
+    "C:\\Program Files (x86)\\Git\\bin\\bash.exe",
+    // 用户级安装
+    process.env.LOCALAPPDATA ? `${process.env.LOCALAPPDATA}\\Programs\\Git\\bin\\bash.exe` : null,
+    // MSYS2
+    "C:\\msys64\\usr\\bin\\bash.exe",
+    // PATH 中的 bash（可能是 Git Bash 或 WSL）
+    "bash",
+  ].filter(Boolean) as string[];
+
+  for (const candidate of candidates) {
+    if (candidate === "bash" || existsSync(candidate)) {
+      _cachedShellPath = candidate;
+      return candidate;
+    }
+  }
+
+  // Fallback: 直接用 bash，让系统 PATH 解析
+  _cachedShellPath = "bash";
+  return "bash";
+}
 
 // --- Dangerous pattern detection (对标 Claude Code CLI dangerousPatterns.ts) ---
 
@@ -82,12 +121,15 @@ export async function executeBashTool(input: BashToolInput): Promise<BashToolRes
   const CWD_MARKER = "__NF_CWD_MARKER__";
   const trackedCommand = `${command}; echo "${CWD_MARKER}"; pwd -P`;
 
+  // Windows: 使用 Git Bash（不依赖 WSL）
+  const shellPath = resolveShellPath();
+
   return new Promise((resolveResult) => {
     const stdout: Buffer[] = [];
     const stderr: Buffer[] = [];
 
     // 对标 Claude: spawn 而非 exec，detached 用于进程组管理
-    const child = spawn("bash", ["-c", trackedCommand], {
+    const child = spawn(shellPath, ["-c", trackedCommand], {
       cwd: workDir,
       env: {
         ...process.env,
