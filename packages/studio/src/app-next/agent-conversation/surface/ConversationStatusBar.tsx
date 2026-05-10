@@ -111,6 +111,8 @@ export interface ConversationStatus {
   reasoningUnsupportedReason?: string;
   permissionModeDisabledReasons?: Partial<Record<SessionPermissionMode, string>>;
   sessionConfigLoaded?: boolean;
+  /** 分叉来源会话 ID */
+  parentSessionId?: string;
 }
 
 export interface ConversationSessionConfigPatch {
