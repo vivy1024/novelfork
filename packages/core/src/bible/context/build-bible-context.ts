@@ -166,7 +166,9 @@ async function loadAllCandidateEntries(storage: StorageDatabase, bookId: string,
   const events = await createBibleEventRepository(storage).listByBook(bookId);
   const settings = await createBibleSettingRepository(storage).listByBook(bookId);
   const summaries = (await createBibleChapterSummaryRepository(storage).listByBook(bookId))
-    .filter((summary) => summary.chapterNumber <= currentChapter);
+    .filter((summary) => summary.chapterNumber <= currentChapter)
+    .sort((a, b) => b.chapterNumber - a.chapterNumber)
+    .slice(0, 15); // 滑动窗口：只注入最近 15 章摘要，更早的靠经纬条目覆盖
 
   return [
     ...characters.map(characterToItem),
