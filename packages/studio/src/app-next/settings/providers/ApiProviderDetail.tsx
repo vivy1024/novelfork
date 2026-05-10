@@ -49,12 +49,14 @@ export function ApiProviderDetail({
 }) {
   const [baseUrl, setBaseUrl] = useState(provider.baseUrl ?? provider.config.endpoint ?? "");
   const [apiKey, setApiKey] = useState("");
+  const [proxy, setProxy] = useState((provider as { proxy?: string }).proxy ?? "");
   const [compatibility, setCompatibility] = useState<ProviderCompatibility>(provider.compatibility ?? "openai-compatible");
   const [apiMode, setApiMode] = useState<ProviderApiMode>(provider.apiMode ?? "completions");
 
   useEffect(() => {
     setBaseUrl(provider.baseUrl ?? provider.config.endpoint ?? "");
     setApiKey("");
+    setProxy((provider as { proxy?: string }).proxy ?? "");
     setCompatibility(provider.compatibility ?? "openai-compatible");
     setApiMode(provider.apiMode ?? "completions");
   }, [provider]);
@@ -66,6 +68,7 @@ export function ApiProviderDetail({
       compatibility,
       apiMode,
       type: providerTypeFromCompatibility(compatibility),
+      ...(proxy.trim() ? { proxy: proxy.trim() } : { proxy: undefined }),
       ...(trimmedApiKey ? { config: { apiKey: trimmedApiKey } } : {}),
     });
     setApiKey("");
@@ -104,7 +107,7 @@ export function ApiProviderDetail({
           </label>
           <label className="text-sm">
             Base URL
-            <Input className="mt-1 w-full" value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} />
+            <Input className="mt-1 w-full" value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} placeholder="https://api.deepseek.com/v1" />
           </label>
           <label className="text-sm">
             API Key
@@ -117,6 +120,10 @@ export function ApiProviderDetail({
             />
           </label>
           <label className="text-sm">
+            HTTPS 代理
+            <Input className="mt-1 w-full" value={proxy} onChange={(event) => setProxy(event.target.value)} placeholder="http://127.0.0.1:7890 或 socks5://proxy:1080" />
+          </label>
+          <label className="text-sm">
             兼容格式
             <SimpleSelect
               className="mt-1"
@@ -127,6 +134,9 @@ export function ApiProviderDetail({
                 { value: "anthropic-compatible", label: providerCompatibilityLabel("anthropic-compatible") },
               ]}
             />
+            <span className="text-[10px] text-muted-foreground">
+              {compatibility === "openai-compatible" ? "适用于 OpenAI、DeepSeek、OpenRouter、Sub2API 等 /v1/chat/completions 接口" : "适用于 Anthropic Claude 官方或兼容 /v1/messages 接口"}
+            </span>
           </label>
           <label className="text-sm">
             API 模式
@@ -136,6 +146,9 @@ export function ApiProviderDetail({
               onValueChange={(v) => setApiMode(v as ProviderApiMode)}
               options={API_MODES.map((value) => ({ value, label: providerApiModeLabel(value) }))}
             />
+            <span className="text-[10px] text-muted-foreground">
+              {apiMode === "completions" ? "标准 Chat Completions（/v1/chat/completions）" : apiMode === "responses" ? "OpenAI Responses API（/v1/responses，支持工具调用）" : "Codex 原生协议（WebSocket + 思考深度）"}
+            </span>
           </label>
         </div>
         <Button
