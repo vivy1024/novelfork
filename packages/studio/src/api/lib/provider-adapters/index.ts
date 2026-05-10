@@ -8,6 +8,7 @@ export interface RuntimeProviderRef {
   readonly providerName: string;
   readonly baseUrl?: string;
   readonly apiKey?: string;
+  readonly apiMode?: string;
 }
 
 export type RuntimeChatMessage =
@@ -350,6 +351,22 @@ class OpenAiCompatibleAdapter implements RuntimeAdapter {
     if (configFailure) return configFailure;
 
     const startedAt = Date.now();
+
+    // 根据 apiMode 选择测试端点
+    if (input.apiMode === "responses") {
+      const result = await requestOpenAiJson(input, "/responses", {
+        method: "POST",
+        headers: { ...openAiHeaders(input.apiKey!), "Content-Type": "application/json" },
+        body: JSON.stringify({ model: input.modelId, input: "ping", max_output_tokens: 1 }),
+      });
+      if (!result.success) return result;
+      if (!result.response.ok) {
+        return failure("upstream-error", readOpenAiError(result.payload, `Test failed: HTTP ${result.response.status}`));
+      }
+      return { success: true, latency: Date.now() - startedAt };
+    }
+
+    // 默认 completions 模式
     const result = await this.sendChatCompletion(input, [{ role: "user", content: "ping" }], 1);
     if (!result.success) {
       return result;
