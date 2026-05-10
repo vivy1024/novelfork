@@ -36,6 +36,15 @@ const REASONING_OPTIONS: Array<{
   { value: "high", label: "高" },
 ];
 
+const ARC_TRACKING_OPTIONS: Array<{
+  value: NonNullable<RuntimeControlSettings["arcTrackingMode"]>;
+  label: string;
+}> = [
+  { value: "off", label: "关闭" },
+  { value: "rule", label: "规则引擎" },
+  { value: "llm", label: "LLM 精炼" },
+];
+
 const MCP_POLICY_OPTIONS: Array<{
   value: RuntimeControlSettings["toolAccess"]["mcpStrategy"];
   label: string;
@@ -400,6 +409,14 @@ export function RuntimeControlPanel() {
 
       {/* ---- 行为 ---- */}
       <Section title="行为">
+        <FieldRow label="角色弧线追踪">
+          <SimpleSelect
+            value={rc.arcTrackingMode ?? "rule"}
+            onValueChange={(val) => patchRc({ arcTrackingMode: val as NonNullable<RuntimeControlSettings["arcTrackingMode"]> })}
+            options={ARC_TRACKING_OPTIONS}
+            aria-label="角色弧线追踪模式"
+          />
+        </FieldRow>
         <FieldRow label="翻译思考内容"><Switch checked={rc.translateThinking ?? false} onCheckedChange={(v) => patchRc({ translateThinking: v })} /></FieldRow>
         <FieldRow label="默认展开推理内容"><Switch checked={rc.expandReasoning ?? false} onCheckedChange={(v) => patchRc({ expandReasoning: v })} /></FieldRow>
         <FieldRow label="默认宽松规划"><Switch checked={rc.relaxedPlanning ?? true} onCheckedChange={(v) => patchRc({ relaxedPlanning: v })} /></FieldRow>

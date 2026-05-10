@@ -20,9 +20,12 @@ export type {
 } from "./conflicts/conflict-types.js";
 export type { ConflictMapEntry, MainConflictDrift } from "./conflicts/conflict-tracker.js";
 export { buildConflictMap, detectMainConflictDrift } from "./conflicts/conflict-tracker.js";
-export type { ArcBeat, ArcBeatDirection, ArcType, CharacterArc } from "./arcs/arc-types.js";
+export type { ArcBeat, ArcBeatDirection, ArcBeatSource, ArcType, CharacterArc } from "./arcs/arc-types.js";
 export type { ArcInconsistency, StagnantArc } from "./arcs/character-arc-tracker.js";
 export { detectArcInconsistency, detectStagnantArc } from "./arcs/character-arc-tracker.js";
+export { extractBeatsFromChapter, type CharacterInput } from "./arcs/rule-engine.js";
+export { refineBeatsWithLlm } from "./arcs/llm-refiner.js";
+export { syncCharacterArcs, type ArcTrackingMode, type SyncCharacterArcsParams, type SyncCharacterArcsResult } from "./arcs/arc-sync.js";
 export type { ToneDriftResult } from "./tone/tone-types.js";
 export { GENRE_TONE_MAP, detectToneDrift } from "./tone/tone-drift-detector.js";
 export type { ParsedChapter, ParseResult } from "./import/file-parser.js";

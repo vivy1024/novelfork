@@ -151,6 +151,12 @@ function sanitizeRuntimeControls(runtimeControls?: Partial<RuntimeControlSetting
     codexSandboxMode: normalizeCodexSandboxMode((runtimeControls as { codexSandboxMode?: unknown } | undefined)?.codexSandboxMode).mode,
     largeWindowCompressionThresholdPercent: clampNumber(runtimeControls?.largeWindowCompressionThresholdPercent, defaults.largeWindowCompressionThresholdPercent, 30, 95),
     largeWindowTruncateTargetPercent: clampNumber(runtimeControls?.largeWindowTruncateTargetPercent, defaults.largeWindowTruncateTargetPercent, 20, 90),
+    arcTrackingMode:
+      runtimeControls?.arcTrackingMode === "off"
+      || runtimeControls?.arcTrackingMode === "rule"
+      || runtimeControls?.arcTrackingMode === "llm"
+        ? runtimeControls.arcTrackingMode
+        : defaults.arcTrackingMode,
   };
 }
 
