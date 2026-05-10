@@ -11,9 +11,11 @@ export interface MessageStreamProps {
   hasPrevious?: boolean;
   /** 加载更早消息的回调 */
   onLoadPrevious?: () => Promise<ConversationSurfaceMessage[]>;
+  /** 折叠代码块 */
+  codeCollapsed?: boolean;
 }
 
-export function MessageStream({ messages, onOpenArtifact, onContextAction, hasPrevious = false, onLoadPrevious }: MessageStreamProps) {
+export function MessageStream({ messages, onOpenArtifact, onContextAction, hasPrevious = false, onLoadPrevious, codeCollapsed = false }: MessageStreamProps) {
   const listRef = useRef<BidirectionalListRef<ConversationSurfaceMessage>>(null);
   const prevLengthRef = useRef(messages.length);
 
@@ -41,9 +43,9 @@ export function MessageStream({ messages, onOpenArtifact, onContextAction, hasPr
 
   const renderItem = useCallback(
     (message: ConversationSurfaceMessage) => (
-      <MessageItem message={message} onOpenArtifact={onOpenArtifact} onContextAction={onContextAction} />
+      <MessageItem message={message} onOpenArtifact={onOpenArtifact} onContextAction={onContextAction} codeCollapsed={codeCollapsed} />
     ),
-    [onOpenArtifact, onContextAction],
+    [onOpenArtifact, onContextAction, codeCollapsed],
   );
 
   const itemKey = useCallback((message: ConversationSurfaceMessage) => message.id, []);
