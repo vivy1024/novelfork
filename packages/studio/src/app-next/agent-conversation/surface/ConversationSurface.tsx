@@ -116,12 +116,58 @@ export function ConversationSurface({
     }
   };
 
+  const [editingMessage, setEditingMessage] = useState<{ id: string; content: string } | null>(null);
+
   const handleMessageContextAction = (messageId: string, action: string) => {
+    const msgIndex = messages.findIndex((m) => m.id === messageId);
+
     if (action === "compact-before" && onCompactSession) {
-      const msgIndex = messages.findIndex((m) => m.id === messageId);
       if (msgIndex > 0) {
         void onCompactSession(`压缩到消息 #${msgIndex} 之前的 ${msgIndex} 条消息`);
       }
+    }
+
+    if (action === "rollback" && onCompactSession) {
+      if (msgIndex >= 0) {
+        void onCompactSession(`回退：丢弃消息 #${msgIndex} 及之后的所有消息`);
+      }
+    }
+
+    if (action === "fork" && onForkSession) {
+      const msg = messages[msgIndex];
+      void onForkSession(`从消息 "${msg?.content?.slice(0, 20) ?? messageId}" 分叉`);
+    }
+
+    if (action === "edit-regenerate") {
+      const msg = messages[msgIndex];
+      if (msg && msg.role === "user") {
+        setEditingMessage({ id: msg.id, content: msg.content });
+      } else if (msg && msg.role === "assistant" && msgIndex > 0) {
+        // 编辑上一条用户消息并重新生成
+        const prevUser = messages.slice(0, msgIndex).reverse().find((m) => m.role === "user");
+        if (prevUser) setEditingMessage({ id: prevUser.id, content: prevUser.content });
+      }
+    }
+
+    if (action === "delete" && onCompactSession) {
+      if (msgIndex >= 0 && confirm("确认删除此消息及之后的所有消息？")) {
+        void onCompactSession(`删除：丢弃消息 #${msgIndex} 及之后的所有内容`);
+      }
+    }
+  };
+
+  const handleEditRegenerate = (newContent: string) => {
+    if (!editingMessage) return;
+    setEditingMessage(null);
+    // Compact to before the edited message, then resend with new content
+    const msgIndex = messages.findIndex((m) => m.id === editingMessage.id);
+    if (msgIndex >= 0 && onCompactSession) {
+      void onCompactSession(`编辑重生成：丢弃消息 #${msgIndex} 及之后`).then(() => {
+        onSend(newContent);
+      });
+    } else {
+      // Fallback: just send as new message
+      onSend(newContent);
     }
   };
 
@@ -316,6 +362,35 @@ export function ConversationSurface({
           </>
         )}
       </div>
+
+      {/* ── Edit & Regenerate dialog ── */}
+      {editingMessage && (
+        <div className="shrink-0 border-t border-border bg-muted/30 px-4 py-3">
+          <div className="flex items-start gap-2">
+            <textarea
+              className="flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm min-h-[60px] resize-y focus:outline-none focus:ring-2 focus:ring-ring"
+              defaultValue={editingMessage.content}
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                  handleEditRegenerate((e.target as HTMLTextAreaElement).value);
+                }
+                if (e.key === "Escape") setEditingMessage(null);
+              }}
+              ref={(el) => el?.select()}
+            />
+            <div className="flex flex-col gap-1">
+              <Button size="sm" onClick={(e) => { const textarea = (e.target as HTMLElement).closest('.flex')?.querySelector('textarea'); if (textarea) handleEditRegenerate(textarea.value); }}>
+                重新生成
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setEditingMessage(null)}>
+                取消
+              </Button>
+            </div>
+          </div>
+          <p className="mt-1 text-[10px] text-muted-foreground">Ctrl+Enter 发送 · Esc 取消</p>
+        </div>
+      )}
 
       {/* ── Footer actions (if any) ── */}
       {footerActions}

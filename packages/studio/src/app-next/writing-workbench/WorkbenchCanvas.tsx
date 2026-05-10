@@ -236,7 +236,19 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasCont
             setContent(nextContent);
             setDirty(true);
             setSaveError(null);
-          }} />
+          }} onTabComplete={bookId && (node.kind === "chapter" || node.kind === "candidate" || node.kind === "draft") ? async (currentContent, cursorPosition) => {
+            const contextBefore = currentContent.slice(Math.max(0, cursorPosition - 500), cursorPosition);
+            try {
+              const res = await fetch(`/api/books/${encodeURIComponent(bookId)}/inline-write`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ mode: "continuation", context: contextBefore, maxTokens: 80 }),
+              });
+              if (!res.ok) return null;
+              const data = await res.json();
+              return data.text ?? data.content ?? null;
+            } catch { return null; }
+          } : undefined} />
         )}
       </div>
     </div>
