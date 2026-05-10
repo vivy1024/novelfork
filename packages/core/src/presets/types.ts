@@ -145,3 +145,22 @@ export interface GenrePresetBundle {
   readonly recommendedAntiAi: ReadonlyArray<string>;
   readonly recommendedLiterary: ReadonlyArray<string>;
 }
+
+// ---------------------------------------------------------------------------
+// Template Bundle — unified type for builtin/user/remote templates
+// ---------------------------------------------------------------------------
+
+export interface TemplateBundle {
+  readonly id: string;
+  readonly name: string;
+  readonly genre: string;
+  readonly description: string;
+  readonly source: "builtin" | "user" | "remote";
+  readonly genrePrompt: string;
+  readonly toneId?: string;
+  readonly beatTemplateId?: string;
+  readonly jingweiTemplate?: string;
+  readonly jingweiSections?: ReadonlyArray<{ key: string; name: string; description?: string }>;
+  readonly sampleOpening?: string;
+  readonly tags?: ReadonlyArray<string>;
+}

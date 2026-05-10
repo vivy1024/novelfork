@@ -425,3 +425,19 @@ export const drizzleMigrations = sqliteTable("drizzle_migrations", {
   name: text("name").notNull().unique(),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 });
+
+export const userTemplates = sqliteTable(
+  "user_template",
+  {
+    id: text("id").primaryKey(),
+    bookId: text("book_id"),
+    name: text("name").notNull(),
+    genre: text("genre"),
+    description: text("description"),
+    bundleJson: text("bundle_json").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+    deletedAt: text("deleted_at"),
+  },
+  (table) => [index("user_template_book_id_idx").on(table.bookId)],
+);
