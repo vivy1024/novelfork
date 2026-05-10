@@ -5,6 +5,7 @@ import { AiTasteScoreBadge } from "./AiTasteReport";
 import type { WorkbenchResourceNode } from "./useWorkbenchResources";
 import { NewBookGuide } from "./NewBookGuide";
 import { BookHealthSummary } from "./BookHealthSummary";
+import { DailyProgressCard } from "./DailyProgressCard";
 
 export interface CockpitBookData {
   id: string;
@@ -262,6 +263,9 @@ function CandidateSummary({ nodes }: { nodes: readonly WorkbenchResourceNode[] }
           sub={hasRisk ? "建议尽快修复" : "状态良好"}
         />
       </div>
+
+      {/* 日更进度 */}
+      <DailyProgressCard />
 
       {/* 书籍健康度 */}
       {book.id && <BookHealthSummary bookId={book.id} />}
