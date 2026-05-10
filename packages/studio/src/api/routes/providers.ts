@@ -47,6 +47,7 @@ function providerRef(provider: RuntimeProviderRecord) {
     providerName: provider.name,
     ...(provider.baseUrl ? { baseUrl: provider.baseUrl } : {}),
     ...(provider.config?.apiKey ? { apiKey: provider.config.apiKey } : {}),
+    ...(provider.apiMode ? { apiMode: provider.apiMode } : {}),
   };
 }
 
