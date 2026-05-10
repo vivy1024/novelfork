@@ -14,6 +14,9 @@ import {
   HeartPulse,
   PenLine,
   GitBranch,
+  Store,
+  Shield,
+  Download,
 } from "lucide-react";
 import { AiTasteReport, type FilterReport } from "./AiTasteReport";
 import { postApi } from "../../hooks/use-api";
@@ -22,6 +25,11 @@ import { PresetsPanel } from "./PresetsPanel";
 import { BeatTemplateList } from "./BeatProgressBar";
 import { InlineWritePanel } from "./InlineWritePanel";
 import { VariantsPanel } from "./VariantsPanel";
+import { CharacterArcsPanel } from "./CharacterArcsPanel";
+import { StyleDriftPanel } from "./StyleDriftPanel";
+import { TemplateMarketPanel } from "./TemplateMarketPanel";
+import { CompliancePanel } from "./CompliancePanel";
+import { ExportPanel } from "./ExportPanel";
 
 export interface WritingToolDefinition {
   id: string;
@@ -141,7 +149,9 @@ export function WritingToolsPanel({ bookId, currentChapter, chapterContent, onRu
     }
   }
   const [showChapterHealth, setShowChapterHealth] = useState(false);
-  const [activeSubPanel, setActiveSubPanel] = useState<"inline-write" | "variants" | null>(null);
+  const [showCompliance, setShowCompliance] = useState(false);
+  const [showExport, setShowExport] = useState(false);
+  const [activeSubPanel, setActiveSubPanel] = useState<"inline-write" | "variants" | "character-arcs" | "style-drift" | "template-market" | null>(null);
 
   async function handleRun(tool: WritingToolDefinition) {
     if (runningTool) return;
@@ -203,6 +213,24 @@ export function WritingToolsPanel({ bookId, currentChapter, chapterContent, onRu
                 onClose={() => setActiveSubPanel(null)}
               />
             )}
+            {activeSubPanel === "character-arcs" && (
+              <CharacterArcsPanel
+                bookId={bookId}
+                onClose={() => setActiveSubPanel(null)}
+              />
+            )}
+            {activeSubPanel === "style-drift" && (
+              <StyleDriftPanel
+                bookId={bookId}
+                onClose={() => setActiveSubPanel(null)}
+              />
+            )}
+            {activeSubPanel === "template-market" && (
+              <TemplateMarketPanel
+                bookId={bookId}
+                onClose={() => setActiveSubPanel(null)}
+              />
+            )}
 
             {/* Main tools grid (hidden when sub-panel is open) */}
             {activeSubPanel === null && (
@@ -229,6 +257,39 @@ export function WritingToolsPanel({ bookId, currentChapter, chapterContent, onRu
                 <div className="min-w-0">
                   <span className="text-xs font-medium">多版本变体</span>
                   <p className="text-[10px] text-muted-foreground mt-0.5 line-clamp-2">生成多个改写版本对比</p>
+                </div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveSubPanel("character-arcs")}
+                className="flex items-start gap-2 rounded-lg border border-primary/30 bg-primary/5 p-2.5 text-left hover:bg-primary/10 transition-colors"
+              >
+                <span className="shrink-0 mt-0.5 text-primary"><TrendingUp className="size-4" /></span>
+                <div className="min-w-0">
+                  <span className="text-xs font-medium">角色弧线</span>
+                  <p className="text-[10px] text-muted-foreground mt-0.5 line-clamp-2">角色成长弧线与节拍</p>
+                </div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveSubPanel("style-drift")}
+                className="flex items-start gap-2 rounded-lg border border-primary/30 bg-primary/5 p-2.5 text-left hover:bg-primary/10 transition-colors"
+              >
+                <span className="shrink-0 mt-0.5 text-primary"><Palette className="size-4" /></span>
+                <div className="min-w-0">
+                  <span className="text-xs font-medium">文风漂移</span>
+                  <p className="text-[10px] text-muted-foreground mt-0.5 line-clamp-2">检测文风偏离基线程度</p>
+                </div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveSubPanel("template-market")}
+                className="flex items-start gap-2 rounded-lg border border-primary/30 bg-primary/5 p-2.5 text-left hover:bg-primary/10 transition-colors col-span-2"
+              >
+                <span className="shrink-0 mt-0.5 text-primary"><Store className="size-4" /></span>
+                <div className="min-w-0">
+                  <span className="text-xs font-medium">模板市场</span>
+                  <p className="text-[10px] text-muted-foreground mt-0.5 line-clamp-2">浏览推荐套装，一键导入预设组合</p>
                 </div>
               </button>
             </div>
@@ -299,6 +360,42 @@ export function WritingToolsPanel({ bookId, currentChapter, chapterContent, onRu
 
             {showChapterHealth && currentChapter && (
               <ChapterHealthCard bookId={bookId} chapterNumber={currentChapter} />
+            )}
+
+            {/* 发布检查 & 导出 */}
+            <div className="border-t border-border pt-3">
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCompliance(!showCompliance)}
+                  className="flex items-start gap-2 rounded-lg border border-border p-2.5 text-left hover:bg-muted/50 transition-colors"
+                >
+                  <span className="shrink-0 mt-0.5 text-muted-foreground"><Shield className="size-4" /></span>
+                  <div className="min-w-0">
+                    <span className="text-xs font-medium">发布检查</span>
+                    <p className="text-[10px] text-muted-foreground mt-0.5 line-clamp-2">合规 + AI 声明</p>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowExport(!showExport)}
+                  className="flex items-start gap-2 rounded-lg border border-border p-2.5 text-left hover:bg-muted/50 transition-colors"
+                >
+                  <span className="shrink-0 mt-0.5 text-muted-foreground"><Download className="size-4" /></span>
+                  <div className="min-w-0">
+                    <span className="text-xs font-medium">导出</span>
+                    <p className="text-[10px] text-muted-foreground mt-0.5 line-clamp-2">TXT / Word / ePub</p>
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            {showCompliance && (
+              <CompliancePanel bookId={bookId} onClose={() => setShowCompliance(false)} />
+            )}
+
+            {showExport && (
+              <ExportPanel bookId={bookId} onClose={() => setShowExport(false)} />
             )}
               </>
             )}
