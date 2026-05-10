@@ -76,6 +76,20 @@ export function ApiProviderDetail({
     setApiKey("");
   };
 
+  const originalBaseUrl = provider.baseUrl ?? provider.config.endpoint ?? "";
+  const originalProxy = (provider as { proxy?: string }).proxy ?? "";
+  const originalCompatibility = provider.compatibility ?? "openai-compatible";
+  const originalApiMode = provider.apiMode ?? "completions";
+  const hasChanges = baseUrl !== originalBaseUrl || apiKey.trim() !== "" || proxy !== originalProxy || compatibility !== originalCompatibility || apiMode !== originalApiMode;
+
+  const resetForm = () => {
+    setBaseUrl(originalBaseUrl);
+    setApiKey("");
+    setProxy(originalProxy);
+    setCompatibility(originalCompatibility);
+    setApiMode(originalApiMode);
+  };
+
   return (
     <section aria-label={`${provider.name} API key 接入详情`} className="space-y-4">
       <div className="flex items-center justify-between">
@@ -153,13 +167,24 @@ export function ApiProviderDetail({
             </span>
           </label>
         </div>
-        <Button
-          variant="default"
-          disabled={busy === `provider:${provider.id}`}
-          onClick={() => void saveConnectionInfo()}
-        >
-          保存接入信息
-        </Button>
+        {hasChanges && (
+          <div className="flex items-center gap-2">
+            <Button
+              variant="default"
+              disabled={busy === `provider:${provider.id}`}
+              onClick={() => void saveConnectionInfo()}
+            >
+              保存变更
+            </Button>
+            <Button
+              variant="ghost"
+              disabled={busy === `provider:${provider.id}`}
+              onClick={resetForm}
+            >
+              取消
+            </Button>
+          </div>
+        )}
       </section>
 
       {/* Codex 模式专属配置 */}
