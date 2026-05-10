@@ -186,6 +186,7 @@ export function NewBookGuide({ bookId, bookTitle, onComplete }: NewBookGuideProp
   };
 
   const handleSubmit = async () => {
+    console.log("[NewBookGuide] handleSubmit called, bookId:", bookId);
     // 确保最后一题有答案
     const finalAnswers = { ...answers };
     if (!finalAnswers[question.id]) {
@@ -201,9 +202,12 @@ export function NewBookGuide({ bookId, bookTitle, onComplete }: NewBookGuideProp
         payload[q.fieldPath] = finalAnswers[q.id] ?? { mode: "random", value: "" };
       }
 
-      await postApi(`/books/${bookId}/guided-setup`, { answers: payload });
+      console.log("[NewBookGuide] posting to guided-setup, payload keys:", Object.keys(payload));
+      await postApi(`/books/${encodeURIComponent(bookId)}/guided-setup`, { answers: payload });
+      console.log("[NewBookGuide] guided-setup success, calling onComplete");
       onComplete();
     } catch (err) {
+      console.error("[NewBookGuide] guided-setup error:", err);
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setSubmitting(false);
