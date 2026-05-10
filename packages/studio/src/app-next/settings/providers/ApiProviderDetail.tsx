@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Play, Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -198,25 +199,32 @@ export function ApiProviderDetail({
         </section>
       )}
 
-      <div>
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={busy === `refresh:${provider.id}`}
-          onClick={() => void onRefreshModels(provider.id)}
-        >
-          刷新模型
-        </Button>
-      </div>
+      <section className="space-y-3 rounded-lg border border-border p-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-base font-semibold">模型列表</h3>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">{provider.models.filter(m => m.enabled !== false).length} 个模型可用</span>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={busy === `refresh:${provider.id}`}
+              onClick={() => void onRefreshModels(provider.id)}
+            >
+              {busy === `refresh:${provider.id}` ? "获取中…" : "获取模型列表"}
+            </Button>
+          </div>
+        </div>
 
-      <ModelList
-        provider={provider}
-        busy={busy}
-        contextDrafts={contextDrafts}
-        setContextDrafts={setContextDrafts}
-        onTestModel={onTestModel}
-        onUpdateModel={onUpdateModel}
-      />
+        <ModelList
+          provider={provider}
+          busy={busy}
+          contextDrafts={contextDrafts}
+          setContextDrafts={setContextDrafts}
+          onTestModel={onTestModel}
+          onUpdateModel={onUpdateModel}
+          onUpdateProvider={onUpdateProvider}
+        />
+      </section>
     </section>
   );
 }
@@ -228,6 +236,7 @@ function ModelList({
   setContextDrafts,
   onTestModel,
   onUpdateModel,
+  onUpdateProvider,
 }: {
   readonly provider: ApiProvider;
   readonly busy: string | null;
@@ -235,62 +244,149 @@ function ModelList({
   readonly setContextDrafts: (updater: (current: Record<string, string>) => Record<string, string>) => void;
   readonly onTestModel: (providerId: string, modelId: string) => Promise<void>;
   readonly onUpdateModel: (providerId: string, model: Model, updates: Partial<Model>) => Promise<void>;
+  readonly onUpdateProvider: (providerId: string, updates: Partial<ManagedProvider>) => Promise<void>;
 }) {
+  const [customModelId, setCustomModelId] = useState("");
+  const [customModelName, setCustomModelName] = useState("");
+
+  const addCustomModel = () => {
+    if (!customModelId.trim()) return;
+    const newModel: Model = {
+      id: customModelId.trim(),
+      name: customModelName.trim() || customModelId.trim(),
+      enabled: true,
+      contextWindow: 128000,
+      maxOutputTokens: 4096,
+      lastTestStatus: "untested",
+    };
+    void onUpdateProvider(provider.id, {
+      models: [...provider.models, newModel],
+    });
+    setCustomModelId("");
+    setCustomModelName("");
+  };
+
   if (!provider.models.length) {
-    return <EmptyState title="暂无模型" description={'点击"刷新模型"获取模型列表。'} />;
+    return (
+      <div className="space-y-3">
+        <EmptyState title="暂无模型" description={'点击"获取模型列表"从 API 拉取，或手动添加。'} />
+        <CustomModelInput
+          modelId={customModelId}
+          modelName={customModelName}
+          onModelIdChange={setCustomModelId}
+          onModelNameChange={setCustomModelName}
+          onAdd={addCustomModel}
+        />
+      </div>
+    );
   }
 
   return (
-    <section className="space-y-1">
-      <h3 className="text-base font-semibold">模型列表</h3>
+    <div className="space-y-3">
       <div className="divide-y divide-border rounded-lg border border-border">
         {provider.models.map((model) => {
           const key = `${provider.id}:${model.id}`;
           const isBusy = busy === `test:${provider.id}:${model.id}` || busy === `model:${provider.id}:${model.id}`;
+          const isEnabled = model.enabled !== false;
+          const testStatus = model.lastTestStatus;
+          const testColor = testStatus === "success" ? "text-green-500" : testStatus === "error" ? "text-red-500" : "text-muted-foreground";
+
           return (
-            <div key={model.id} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2 text-sm">
+            <div key={model.id} className="flex items-center gap-3 px-3 py-2.5">
+              {/* 启用圆点 */}
+              <button
+                type="button"
+                className={`size-3 shrink-0 rounded-full transition ${isEnabled ? "bg-green-500" : "bg-gray-300 dark:bg-gray-600"}`}
+                title={isEnabled ? "已启用，点击禁用" : "已禁用，点击启用"}
+                onClick={() => void onUpdateModel(provider.id, model, { enabled: !isEnabled })}
+              />
+
+              {/* 模型 ID + 名称 */}
               <div className="min-w-0 flex-1">
-                <span className="font-medium">{model.name}</span>
-                <span className="ml-2 text-xs text-muted-foreground">{modelTestStatusLabel(model.lastTestStatus)}{model.lastTestLatency ? ` · ${model.lastTestLatency}ms` : ""}</span>
+                <span className="text-sm font-medium">{model.name || model.id}</span>
+                {model.name && model.name !== model.id && (
+                  <span className="ml-2 text-xs text-muted-foreground">{model.id}</span>
+                )}
+                {testStatus && testStatus !== "untested" && (
+                  <span className={`ml-2 text-xs ${testColor}`}>
+                    {modelTestStatusLabel(testStatus)}{model.lastTestLatency ? ` ${model.lastTestLatency}ms` : ""}
+                  </span>
+                )}
               </div>
-              <div className="flex items-center gap-2">
-                <label className="flex items-center gap-1 text-xs text-muted-foreground">
-                  上下文:
-                  <Input
-                    className="w-20"
-                    value={contextDrafts[key] ?? String(model.contextWindow)}
-                    onChange={(event) => setContextDrafts((current) => ({ ...current, [key]: event.target.value }))}
-                  />
-                </label>
-                <Button
-                  variant="outline"
-                  size="xs"
-                  disabled={isBusy}
-                  onClick={() => void onUpdateModel(provider.id, model, { contextWindow: Number(contextDrafts[key] ?? model.contextWindow) })}
-                >
-                  保存
-                </Button>
-                <Button
-                  variant="outline"
-                  size="xs"
-                  disabled={isBusy}
-                  onClick={() => void onTestModel(provider.id, model.id)}
-                >
-                  测试
-                </Button>
-                <Button
-                  variant="outline"
-                  size="xs"
-                  disabled={isBusy}
-                  onClick={() => void onUpdateModel(provider.id, model, { enabled: model.enabled === false })}
-                >
-                  {model.enabled === false ? "启用" : "禁用"}
-                </Button>
+
+              {/* Context window */}
+              <div className="flex items-center gap-1.5">
+                <Input
+                  className="w-32 text-right text-xs"
+                  value={contextDrafts[key] ?? String(model.contextWindow)}
+                  onChange={(event) => setContextDrafts((current) => ({ ...current, [key]: event.target.value }))}
+                  onBlur={() => {
+                    const val = Number(contextDrafts[key]);
+                    if (val && val !== model.contextWindow) void onUpdateModel(provider.id, model, { contextWindow: val });
+                  }}
+                />
+                <span className="text-[10px] text-muted-foreground whitespace-nowrap">tokens</span>
               </div>
+
+              {/* 测试按钮 */}
+              <button
+                type="button"
+                className={`rounded p-1.5 transition hover:bg-muted disabled:opacity-40 ${testColor}`}
+                disabled={isBusy}
+                title="测试模型连通性"
+                onClick={() => void onTestModel(provider.id, model.id)}
+              >
+                <Play className="size-4" fill="currentColor" />
+              </button>
             </div>
           );
         })}
       </div>
-    </section>
+
+      {/* 自定义模型添加 */}
+      <CustomModelInput
+        modelId={customModelId}
+        modelName={customModelName}
+        onModelIdChange={setCustomModelId}
+        onModelNameChange={setCustomModelName}
+        onAdd={addCustomModel}
+      />
+    </div>
+  );
+}
+
+function CustomModelInput({
+  modelId,
+  modelName,
+  onModelIdChange,
+  onModelNameChange,
+  onAdd,
+}: {
+  modelId: string;
+  modelName: string;
+  onModelIdChange: (v: string) => void;
+  onModelNameChange: (v: string) => void;
+  onAdd: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <Input
+        className="flex-1 text-xs"
+        value={modelId}
+        onChange={(e) => onModelIdChange(e.target.value)}
+        placeholder="模型 ID（如 deepseek-chat）"
+        onKeyDown={(e) => { if (e.key === "Enter") onAdd(); }}
+      />
+      <Input
+        className="w-40 text-xs"
+        value={modelName}
+        onChange={(e) => onModelNameChange(e.target.value)}
+        placeholder="显示名称（可选）"
+        onKeyDown={(e) => { if (e.key === "Enter") onAdd(); }}
+      />
+      <Button variant="outline" size="icon-sm" onClick={onAdd} disabled={!modelId.trim()} title="添加自定义模型">
+        <Plus className="size-4" />
+      </Button>
+    </div>
   );
 }
