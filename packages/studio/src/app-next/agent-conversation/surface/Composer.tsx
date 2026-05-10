@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Send, Paperclip, Square, Play, ListPlus } from "lucide-react";
+import { Send, Paperclip, ListPlus } from "lucide-react";
 
 import {
   createDefaultSlashCommandRegistry,
@@ -155,29 +155,29 @@ export function Composer({
         />
 
         {/* Action button — NarraFork 优先级：
-            1. running + 无输入 → 中断（红色）
-            2. idle + 无输入 + 可继续 → 继续（蓝色）
+            1. running + 无输入 → 中断（红色文字）
+            2. idle + 无输入 + 可继续 → 继续（蓝色文字）
             3. running + 有输入 → 队列发送（排队）
             4. 默认（有输入） → 发送
         */}
         {isRunning && !value.trim() ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="destructive" size="icon" onClick={onAbort} aria-label="中断">
-                <Square className="size-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>中断</TooltipContent>
-          </Tooltip>
+          <Button
+            variant="ghost"
+            className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950 font-medium text-sm px-3 shrink-0"
+            onClick={onAbort}
+            aria-label="中断"
+          >
+            中断
+          </Button>
         ) : !isRunning && !value.trim() && (isInterrupted || onContinue) ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button size="icon" className="bg-blue-600 text-white hover:bg-blue-700" onClick={() => onContinue?.()} aria-label="继续">
-                <Play className="size-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>继续</TooltipContent>
-          </Tooltip>
+          <Button
+            variant="ghost"
+            className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950 font-medium text-sm px-3 shrink-0"
+            onClick={() => onContinue?.()}
+            aria-label="继续"
+          >
+            继续
+          </Button>
         ) : isRunning && value.trim() ? (
           <Tooltip>
             <TooltipTrigger asChild>
