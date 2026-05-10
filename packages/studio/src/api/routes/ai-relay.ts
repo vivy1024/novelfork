@@ -33,7 +33,7 @@ interface RelaySnapshot {
   readonly bookConfig: Record<string, unknown>;
   readonly chapters: ReadonlyArray<SnapshotChapter>;
   readonly chapterIndex: ReadonlyArray<Record<string, unknown>>;
-  readonly truthFiles: Record<string, string>;
+  readonly jingweiFiles: Record<string, string>;
   readonly outline?: string;
   readonly styleProfile?: string;
 }
@@ -91,8 +91,8 @@ async function materializeSnapshot(
     await writeFile(join(chaptersDir, filename), ch.content, "utf-8");
   }
 
-  // Truth files
-  for (const [name, content] of Object.entries(snapshot.truthFiles)) {
+  // Jingwei files
+  for (const [name, content] of Object.entries(snapshot.jingweiFiles)) {
     await writeFile(join(storyDir, name), content, "utf-8");
   }
 

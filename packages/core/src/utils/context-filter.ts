@@ -1,7 +1,7 @@
 /**
  * Smart context filtering for Writer and Auditor prompts.
  *
- * Reduces noise by injecting only relevant parts of truth files.
+ * Reduces noise by injecting only relevant parts of jingwei files.
  * Every filter falls back to the full input if filtering would empty it.
  */
 

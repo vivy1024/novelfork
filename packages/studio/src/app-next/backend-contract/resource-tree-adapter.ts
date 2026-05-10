@@ -53,7 +53,7 @@ export interface ContractResourceTreeLoadResult {
 type CandidateListResponse = { candidates: readonly GeneratedChapterCandidate[] };
 type DraftListResponse = { drafts: readonly DraftResource[] };
 type StoryFileListResponse = { files: readonly StoryListFile[] };
-type TruthFileListResponse = { files: readonly StoryListFile[] };
+type JingweiFileListResponse = { files: readonly StoryListFile[] };
 type JingweiSectionsResponse = { sections: readonly JingweiSectionRecord[] };
 type JingweiEntriesResponse = { entries: readonly JingweiEntryRecord[] };
 type NarrativeLineResponse = { snapshot: NarrativeLineSnapshot };
@@ -132,7 +132,7 @@ export async function loadResourceTreeFromContract(
   const candidates = await optional<CandidateListResponse>(errors, "candidates.list", "候选稿加载失败", () => resource.listCandidates<CandidateListResponse>(bookId));
   const drafts = await optional<DraftListResponse>(errors, "drafts.list", "草稿加载失败", () => resource.listDrafts<DraftListResponse>(bookId));
   const storyFiles = await optional<StoryFileListResponse>(errors, "story-files.list", "大纲与设定文件加载失败", () => resource.listStoryFiles<StoryFileListResponse>(bookId));
-  const jingweiFiles = await optional<TruthFileListResponse>(errors, "truth-files.list", "经纬资料加载失败", () => resource.listTruthFiles<TruthFileListResponse>(bookId));
+  const jingweiFiles = await optional<JingweiFileListResponse>(errors, "truth-files.list", "经纬资料加载失败", () => resource.listJingweiFiles<JingweiFileListResponse>(bookId));
   const jingweiSections = await optional<JingweiSectionsResponse>(errors, "jingwei.sections", "经纬分区加载失败", () => resource.listJingweiSections<JingweiSectionsResponse>(bookId));
   const jingweiEntries = await optional<JingweiEntriesResponse>(errors, "jingwei.entries", "经纬条目加载失败", () => resource.listJingweiEntries<JingweiEntriesResponse>(bookId));
   const narrative = await optional<NarrativeLineResponse>(errors, "narrative-line.read", "叙事线加载失败", () => resource.getNarrativeLine<NarrativeLineResponse>(bookId));

@@ -8,8 +8,8 @@ import type {
   BookSummary,
   BookData,
   ChapterDetail,
-  TruthFileEntry,
-  TruthFileContent,
+  JingweiFileEntry,
+  JingweiFileContent,
   CreateBookParams,
   BookUpdates,
   ProjectConfig,
@@ -54,16 +54,16 @@ export class HttpStorageAdapter implements ClientStorageAdapter {
     await postApi(`/books/${bookId}/chapters/${num}/reject`);
   }
 
-  async listTruthFiles(bookId: string): Promise<ReadonlyArray<TruthFileEntry>> {
-    const res = await fetchJson<{ files: TruthFileEntry[] }>(`/books/${bookId}/truth`);
+  async listJingweiFiles(bookId: string): Promise<ReadonlyArray<JingweiFileEntry>> {
+    const res = await fetchJson<{ files: JingweiFileEntry[] }>(`/books/${bookId}/truth`);
     return res.files;
   }
 
-  async loadTruthFile(bookId: string, file: string): Promise<TruthFileContent> {
-    return fetchJson<TruthFileContent>(`/books/${bookId}/truth/${file}`);
+  async loadJingweiFile(bookId: string, file: string): Promise<JingweiFileContent> {
+    return fetchJson<JingweiFileContent>(`/books/${bookId}/truth/${file}`);
   }
 
-  async saveTruthFile(bookId: string, file: string, content: string): Promise<void> {
+  async saveJingweiFile(bookId: string, file: string, content: string): Promise<void> {
     await putApi(`/books/${bookId}/truth/${file}`, { content });
   }
 

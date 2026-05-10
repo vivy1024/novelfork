@@ -212,7 +212,7 @@ writeCommand
 
 writeCommand
   .command("sync")
-  .description("Rebuild truth files and SQLite indexes from the latest edited chapter body")
+  .description("Rebuild jingwei files and SQLite indexes from the latest edited chapter body")
   .argument("<args...>", "Book ID (optional) and chapter number")
   .option("--brief <text>", "One-off guidance for how to interpret the edited chapter while syncing")
   .option("--json", "Output JSON")
@@ -270,7 +270,7 @@ writeCommand
 
 writeCommand
   .command("repair-state")
-  .description("Rebuild truth files for a persisted state-degraded chapter without rewriting body text")
+  .description("Rebuild jingwei files for a persisted state-degraded chapter without rewriting body text")
   .argument("<args...>", "Book ID (optional) and chapter number")
   .option("--json", "Output JSON")
   .action(async (args: ReadonlyArray<string>, opts) => {

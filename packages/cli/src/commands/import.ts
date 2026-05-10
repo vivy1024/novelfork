@@ -59,7 +59,7 @@ importCommand
 
 importCommand
   .command("chapters")
-  .description("Import existing chapters for continuation writing. Reverse-engineers all truth files.")
+  .description("Import existing chapters for continuation writing. Reverse-engineers all jingwei files.")
   .argument("[book-id]", "Target book ID (auto-detected if only one book)")
   .requiredOption("--from <path>", "Path to a text file (auto-split) or directory of .md/.txt files")
   .option("--split <regex>", "Custom regex for chapter splitting (single-file mode)")

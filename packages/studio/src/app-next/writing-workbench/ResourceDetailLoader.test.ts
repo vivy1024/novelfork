@@ -40,14 +40,14 @@ describe("ResourceDetailLoader", () => {
     const truthNode = node({ id: "truth-file:真相.md", kind: "jingwei", title: "真相.md", content: "预览", metadata: { bookId: "book-1", fileName: "真相.md", source: "preview" }, capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: true, apply: false } });
     const resource = {
       getStoryFile: vi.fn(async () => ({ ok: true, data: { file: "设定.md", content: "完整 Story 内容" } })),
-      getTruthFile: vi.fn(async () => ({ ok: true, data: { file: "真相.md", content: "完整 Truth 内容" } })),
+      getJingweiFile: vi.fn(async () => ({ ok: true, data: { file: "真相.md", content: "完整 Truth 内容" } })),
     };
 
     const storyDetail = await loadResourceDetailState(resource as never, "book-1", storyNode);
     const truthDetail = await loadResourceDetailState(resource as never, "book-1", truthNode);
 
     expect(resource.getStoryFile).toHaveBeenCalledWith("book-1", "设定.md");
-    expect(resource.getTruthFile).toHaveBeenCalledWith("book-1", "真相.md");
+    expect(resource.getJingweiFile).toHaveBeenCalledWith("book-1", "真相.md");
     expect(applyResourceDetailToNode(storyNode, storyDetail).content).toBe("完整 Story 内容");
     expect(applyResourceDetailToNode(truthNode, truthDetail).metadata).toMatchObject({ detailSource: "detail" });
   });

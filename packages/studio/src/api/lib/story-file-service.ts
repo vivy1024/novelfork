@@ -45,9 +45,12 @@ export function isSafeStoryFileName(file: string): boolean {
   return /^[A-Za-z0-9_.-]+$/.test(file) && /\.(md|json|txt)$/i.test(file);
 }
 
-export function isTruthFileName(file: string): boolean {
+export function isJingweiFileName(file: string): boolean {
   return (TRUTH_FILES as readonly string[]).includes(file);
 }
+
+/** @deprecated Use isJingweiFileName */
+export const isTruthFileName = isJingweiFileName;
 
 async function listFiles(storyDir: string, filter?: (file: string) => boolean): Promise<ReadonlyArray<StoryFileSummary>> {
   try {
@@ -77,16 +80,16 @@ export function createStoryFileReadService(options: StoryFileReadServiceOptions)
   const storyDir = (bookId: string) => join(options.resolveBookDir(bookId), "story");
 
   return {
-    async listTruthFiles(bookId: string): Promise<{ readonly files: ReadonlyArray<StoryFileSummary> }> {
-      return { files: await listFiles(storyDir(bookId), isTruthFileName) };
+    async listJingweiFiles(bookId: string): Promise<{ readonly files: ReadonlyArray<StoryFileSummary> }> {
+      return { files: await listFiles(storyDir(bookId), isJingweiFileName) };
     },
 
     async listStoryFiles(bookId: string): Promise<{ readonly files: ReadonlyArray<StoryFileSummary> }> {
       return { files: await listFiles(storyDir(bookId)) };
     },
 
-    async readTruthFile(bookId: string, file: string): Promise<{ readonly file: string; readonly content: string | null } | { readonly error: "Invalid truth file" }> {
-      if (!isTruthFileName(file)) {
+    async readJingweiFile(bookId: string, file: string): Promise<{ readonly file: string; readonly content: string | null } | { readonly error: "Invalid truth file" }> {
+      if (!isJingweiFileName(file)) {
         return { error: "Invalid truth file" };
       }
       return readStoryFileContent(storyDir(bookId), file);

@@ -112,9 +112,9 @@ export interface CreateChapterResponse {
   readonly chapter: ChapterSummary;
 }
 
-// --- Truth Files ---
+// --- Jingwei Files ---
 
-export interface TruthFileSummary {
+export interface JingweiFileSummary {
   readonly name: string;
   readonly label: string;
   readonly exists: boolean;
@@ -123,9 +123,14 @@ export interface TruthFileSummary {
   readonly available: boolean;
 }
 
-export interface TruthFileDetail extends TruthFileSummary {
+export interface JingweiFileDetail extends JingweiFileSummary {
   readonly content: string | null;
 }
+
+/** @deprecated Use JingweiFileSummary */
+export type TruthFileSummary = JingweiFileSummary;
+/** @deprecated Use JingweiFileDetail */
+export type TruthFileDetail = JingweiFileDetail;
 
 // --- Workspace Resource Snapshot ---
 
@@ -218,7 +223,7 @@ export interface WorkspaceResourceSnapshot {
   readonly bibleCounts?: BibleResourceCounts;
   readonly bibleEntries?: readonly BibleEntryResource[];
   readonly storyFiles?: readonly TextFileResource[];
-  readonly truthFiles?: readonly TextFileResource[];
+  readonly jingweiFiles?: readonly TextFileResource[];
   readonly materials?: readonly MaterialResource[];
   readonly publishReports?: readonly PublishReportResource[];
 }

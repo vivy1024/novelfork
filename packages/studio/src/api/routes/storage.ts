@@ -746,12 +746,12 @@ export function createStorageRouter(ctx: RouterContext): Hono {
     }
   });
 
-  // --- Truth files ---
+  // --- Jingwei files ---
 
   app.get("/api/books/:id/truth/:file", async (c) => {
     const id = c.req.param("id");
     const file = c.req.param("file");
-    const result = await storyFileReadService.readTruthFile(id, file);
+    const result = await storyFileReadService.readJingweiFile(id, file);
     if ("error" in result) {
       return c.json({ error: result.error }, 400);
     }
@@ -761,7 +761,7 @@ export function createStorageRouter(ctx: RouterContext): Hono {
   app.get("/api/books/:id/truth-files/:file", async (c) => {
     const id = c.req.param("id");
     const file = c.req.param("file");
-    const result = await storyFileReadService.readTruthFile(id, file);
+    const result = await storyFileReadService.readJingweiFile(id, file);
     if ("error" in result) {
       return c.json({ error: result.error }, 400);
     }
@@ -772,7 +772,7 @@ export function createStorageRouter(ctx: RouterContext): Hono {
     const id = c.req.param("id");
     const file = c.req.param("file");
     const { content, sessionId, messageId, toolUseId } = await c.req.json<{ content: string; sessionId?: string; messageId?: string; toolUseId?: string }>();
-    const result = await storageWriteService.writeTruthFile(id, file, content, { sessionId, messageId, toolUseId });
+    const result = await storageWriteService.writeJingweiFile(id, file, content, { sessionId, messageId, toolUseId });
     if ("error" in result) {
       return c.json({ error: result.error }, 400);
     }
@@ -805,12 +805,12 @@ export function createStorageRouter(ctx: RouterContext): Hono {
 
   app.get("/api/books/:id/truth", async (c) => {
     const id = c.req.param("id");
-    return c.json(await storyFileReadService.listTruthFiles(id));
+    return c.json(await storyFileReadService.listJingweiFiles(id));
   });
 
   app.get("/api/books/:id/truth-files", async (c) => {
     const id = c.req.param("id");
-    return c.json(await storyFileReadService.listTruthFiles(id));
+    return c.json(await storyFileReadService.listJingweiFiles(id));
   });
 
   app.get("/api/books/:id/story-files", async (c) => {
