@@ -255,6 +255,42 @@ books/<id>/jingwei/
 
 ---
 
+## 执行顺序
+
+```
+1. [P0] 管线入口修复（executeNovelCommand handler）
+2. [重命名] bible → jingwei 全量重命名（70+ 文件，目录/函数/类型/SQL 别名）
+3. [重构] 经纬文件夹重构（story/ 平铺 → jingwei/ 按类别分目录）
+4. [P1] 写作工具面板 onRunTool 接通
+5. [P1] Checkpoint 面板接入 UI
+6. [P2] 文风漂移真实数据
+7. [P2] PGI 规则 3/4 补完（人设漂移 + 大纲偏离）
+8. [P2] 摘要滑动窗口（50+ 章长篇适配）
+9. [发布] v0.1.0 release（验证 + tag + GitHub Release）
+```
+
+---
+
+## 待执行：bible → jingwei 全量重命名
+
+### 范围
+
+- `packages/core/src/bible/` 目录 → `packages/core/src/jingwei/`（已有薄适配层，需合并）
+- 70+ 文件中的 `bible` 引用（函数名、类型名、变量名）
+- SQL 表名 `bible_*` → 加 migration 创建别名视图（不改表名，避免数据丢失）
+- `packages/studio/` 中的 API 路由和前端引用
+- 测试文件重命名
+
+### 策略
+
+1. 目录重命名：`bible/` → 合并到 `jingwei/`
+2. 代码内 replace：`Bible` → `Jingwei`、`bible` → `jingwei`
+3. SQL：新 migration 创建视图别名（`CREATE VIEW jingwei_character AS SELECT * FROM bible_character`）
+4. 导出保持向后兼容：`index.ts` 同时导出旧名和新名（deprecated 标记）
+5. 分批提交：目录 → 类型 → 函数 → 路由 → 前端 → 测试
+
+---
+
 ## 已修复项（本轮）
 
 | 问题 | 修复 commit |
