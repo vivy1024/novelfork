@@ -480,8 +480,10 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
   const [confirmationError, setConfirmationError] = useState<string | null>(null);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [workspaceFact, setWorkspaceFact] = useState<ConversationRouteStatus["workspace"] | undefined>(undefined);
+  const [compactThresholdPercent, setCompactThresholdPercent] = useState(80);
+  const [autoCompactEnabled, setAutoCompactEnabled] = useState(true);
   const shellDataStore = useShellDataStore();
-  const status = toConversationStatus(runtime.state, sessionId, modelOptions, modelPoolError, workspaceFact);
+  const status = toConversationStatus(runtime.state, sessionId, modelOptions, modelPoolError, workspaceFact, compactThresholdPercent);
   const ackedSeqRef = useRef<number | null>(null);
   const confirmingIdRef = useRef<string | null>(null);
   const resumeFromSeq = runtime.getResumeFromSeq();
@@ -551,6 +553,20 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
     };
   }, [providerClient]);
 
+  // Load user runtime config for context thresholds and auto-compact
+  useEffect(() => {
+    let active = true;
+    void fetch("/api/settings/user").then((res) => res.ok ? res.json() : null).then((data) => {
+      if (!active || !data) return;
+      const rc = data.runtimeControls;
+      if (rc?.contextCompressionThresholdPercent) setCompactThresholdPercent(rc.contextCompressionThresholdPercent);
+      // autoCompact lives in agent behavior settings (same endpoint)
+      const behavior = data.agentBehavior ?? data.behavior;
+      if (behavior && typeof behavior.autoCompact === "boolean") setAutoCompactEnabled(behavior.autoCompact);
+    }).catch(() => { /* use defaults */ });
+    return () => { active = false; };
+  }, []);
+
   useEffect(() => {
     let active = true;
     if (!runtime.state.session) {
@@ -593,6 +609,24 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
 
     return () => clearTimeout(timer);
   }, [runtime.state.session, sessionId, runtime]);
+
+  // Auto-compact: trigger when context usage exceeds threshold
+  const autoCompactTriggeredRef = useRef(false);
+  useEffect(() => {
+    if (!autoCompactEnabled) return;
+    const cu = status.contextUsage;
+    if (!cu || !cu.maxTokens || !cu.compactThreshold) return;
+
+    if (cu.usedTokens > cu.compactThreshold) {
+      if (!autoCompactTriggeredRef.current) {
+        autoCompactTriggeredRef.current = true;
+        void sessionClient.compactSession(sessionId, { instructions: "自动压缩：上下文使用超过阈值" });
+      }
+    } else {
+      // Reset when usage drops below threshold (after compact completes)
+      autoCompactTriggeredRef.current = false;
+    }
+  }, [autoCompactEnabled, status.contextUsage, sessionClient, sessionId]);
 
   const applyConfirmationSnapshot = useCallback((snapshot: NarratorSessionChatSnapshot) => {
     runtime.applyEnvelope({ type: "session:snapshot", snapshot, recovery: { state: "idle", reason: "confirmation-refresh" } });
@@ -753,6 +787,7 @@ function toConversationModelOptions(models: readonly RuntimeModelPoolEntry[]): N
       modelLabel: model.modelName,
       supportsTools: model.capabilities.functionCalling,
       supportsReasoning: (model.capabilities as { reasoning?: boolean }).reasoning,
+      contextWindow: model.contextWindow,
     }));
 }
 
@@ -841,6 +876,7 @@ function toConversationStatus(
   modelOptions: ConversationRouteStatus["modelOptions"] = [],
   modelPoolError: string | null = null,
   workspaceFact?: ConversationRouteStatus["workspace"],
+  compactThresholdPercent: number = 80,
 ): ConversationRouteStatus {
   const sessionConfig = state.session?.sessionConfig;
   const providerId = sessionConfig?.providerId || undefined;
@@ -849,6 +885,17 @@ function toConversationStatus(
   const runtimeState = state.error ? "error" : state.streamingMessageId || hasRunningToolCall(state.messages) ? "running" : state.session ? "ready" : "loading";
   const narratorState = (state.session as { narratorState?: string } | null)?.narratorState;
   const isWorking = runtimeState === "running" || narratorState === "working";
+
+  // Context usage estimation
+  const cumulativeUsage = state.session?.cumulativeUsage;
+  const maxTokens = selectedModel?.contextWindow;
+  const contextUsage = cumulativeUsage && maxTokens
+    ? {
+        usedTokens: cumulativeUsage.totalInputTokens + cumulativeUsage.totalOutputTokens,
+        maxTokens,
+        compactThreshold: Math.round(maxTokens * (compactThresholdPercent / 100)),
+      }
+    : undefined;
 
   return {
     state: runtimeState,
@@ -861,6 +908,7 @@ function toConversationStatus(
     permissionMode: sessionConfig?.permissionMode,
     reasoningEffort: sessionConfig?.reasoningEffort,
     usage: usageFromSessionState(state.session, state.messages),
+    contextUsage,
     messageCount: state.session?.messageCount,
     binding: state.session ? { label: bindingLabel(state.session) ?? "standalone", ...(state.session.worktree ? { worktree: state.session.worktree } : {}) } : undefined,
     workspace: workspaceFact,
