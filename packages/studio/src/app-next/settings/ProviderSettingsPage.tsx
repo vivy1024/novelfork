@@ -390,16 +390,13 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
   const selectedApiProvider = providers.find((provider) => provider.id === selectedApiProviderId) ?? null;
 
   const saveProvider = async () => {
-    const name = window.prompt("供应商名称（如 DeepSeek、OpenRouter）：");
-    if (!name?.trim()) return;
-
-    const id = normalizeProviderId("", name);
+    const id = `provider-${Date.now()}`;
     setBusy("create-provider");
     setError(null);
     try {
       const result = await client.createProvider({
         id,
-        name: name.trim(),
+        name: "新供应商",
         type: "custom",
         enabled: true,
         apiKeyRequired: true,
@@ -412,7 +409,6 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
       });
       setProviders((current) => applyProvider(current, result.provider));
       setSelectedApiProviderId(result.provider.id);
-      setFeedback("供应商已创建，请填写接入信息。");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {

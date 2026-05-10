@@ -99,6 +99,10 @@ export function ApiProviderDetail({
         <h3 className="text-base font-semibold">API 接入信息</h3>
         <div className="grid gap-3 md:grid-cols-2">
           <label className="text-sm">
+            名称
+            <Input className="mt-1 w-full" defaultValue={provider.name} onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== provider.name) void onUpdateProvider(provider.id, { name: v }); }} />
+          </label>
+          <label className="text-sm">
             Base URL
             <Input className="mt-1 w-full" value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} />
           </label>
