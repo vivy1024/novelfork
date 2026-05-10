@@ -444,7 +444,7 @@ export function ConversationSurface({
         onAbort={onAbort}
         onAttach={onAttach}
         onSlashCommandResult={handleSlashCommandResult}
-        slashCommandContext={{ status, compactSession: onCompactSession }}
+        slashCommandContext={{ status, compactSession: onCompactSession, bookId: status.binding?.projectId }}
         isRunning={isWorking}
         isInterrupted={isInterrupted}
         disabledReason={sendDisabledReason}
