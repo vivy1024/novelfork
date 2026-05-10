@@ -603,11 +603,27 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
     if (!pending) return;
 
     pendingActionSentRef.current = true;
-    const timer = setTimeout(() => {
-      runtime.sendMessage(pending.command);
-    }, 500);
 
-    return () => clearTimeout(timer);
+    // 直接调用后端 API 而不是发送 slash command（slash command 在前端 Composer 解析，WebSocket 不识别）
+    const bookId = runtime.state.session.projectId;
+    if (bookId) {
+      const NOVEL_API_MAP: Record<string, string> = {
+        "/novel:write-next": `/api/books/${encodeURIComponent(bookId)}/write-next`,
+        "/novel:draft": `/api/books/${encodeURIComponent(bookId)}/draft`,
+        "/novel:audit": `/api/books/${encodeURIComponent(bookId)}/audit`,
+        "/novel:detect": `/api/books/${encodeURIComponent(bookId)}/filter/scan-all`,
+        "/novel:hooks": `/api/books/${encodeURIComponent(bookId)}/hooks/generate`,
+      };
+      const endpoint = NOVEL_API_MAP[pending.command];
+      if (endpoint) {
+        void fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
+        // 同时发送一条用户消息让对话里有记录
+        runtime.sendMessage(`正在执行：${pending.command}`);
+      }
+    } else {
+      // 没有 bookId，作为普通消息发送
+      runtime.sendMessage(pending.command);
+    }
   }, [runtime.state.session, sessionId, runtime]);
 
   // Auto-compact: trigger when context usage exceeds threshold
