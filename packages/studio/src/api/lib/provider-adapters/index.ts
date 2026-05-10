@@ -599,8 +599,8 @@ class AnthropicCompatibleAdapter implements RuntimeAdapter {
             models: payload.data.map((m) => ({
               id: m.id,
               name: m.display_name ?? m.id,
-              contextWindow: 200000,
-              maxOutputTokens: 16384,
+              contextWindow: 0,
+              maxOutputTokens: 0,
               enabled: true,
               source: "detected" as const,
               lastTestStatus: "untested" as const,
@@ -622,8 +622,8 @@ class AnthropicCompatibleAdapter implements RuntimeAdapter {
             models: payload.data.map((m) => ({
               id: m.id,
               name: m.id,
-              contextWindow: 200000,
-              maxOutputTokens: 16384,
+              contextWindow: 0,
+              maxOutputTokens: 0,
               enabled: true,
               source: "detected" as const,
               lastTestStatus: "untested" as const,
