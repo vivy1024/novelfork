@@ -4,6 +4,11 @@
  */
 
 import type { BookDetail } from "../../shared/contracts.js";
+import { StateManager } from "@vivy1024/novelfork-core";
+
+function getProjectRoot(): string {
+  return process.env.NOVELFORK_PROJECT_ROOT || process.cwd();
+}
 
 interface ContextInput {
   book: {
@@ -89,9 +94,9 @@ export function buildBookContextBlock(input: ContextInput): BuildContextResult {
 
 /**
  * 从 Studio API 响应构建 Agent 上下文。
- * 各数据由调用方（session-chat-service）从已有 API 获取后传入。
+ * 当只传入 bookId 时，自动从存储加载书籍数据。
  */
-export function buildAgentContext(params: {
+export async function buildAgentContext(params: {
   bookId: string;
   book?: BookDetail;
   chapterSummaries?: Array<{ number: number; summary?: string }>;
@@ -108,17 +113,39 @@ export function buildAgentContext(params: {
   jingwei?: {
     sections?: Array<{ name: string; entries: Array<{ key: string; value: string }> }>;
   };
-}): string {
-  if (!params.book) return "";
+}): Promise<string> {
+  let book = params.book;
+
+  // 自动加载书籍数据
+  if (!book && params.bookId) {
+    try {
+      const projectRoot = getProjectRoot();
+      const state = new StateManager(projectRoot);
+      const config = await state.loadBookConfig(params.bookId);
+      const chapters = await state.loadChapterIndex(params.bookId).catch(() => []);
+      book = {
+        id: params.bookId,
+        title: (config as { title?: string }).title ?? params.bookId,
+        genre: (config as { genre?: string }).genre,
+        platform: (config as { platform?: string }).platform,
+        chapterCount: chapters.length,
+        targetChapters: (config as { targetChapters?: number }).targetChapters,
+      } as BookDetail;
+    } catch {
+      return "";
+    }
+  }
+
+  if (!book) return "";
 
   const baseContext = buildBookContextBlock({
     book: {
       id: params.bookId,
-      title: params.book.title,
-      genre: params.book.genre,
-      platform: params.book.platform,
-      chapterCount: params.book.chapterCount,
-      targetChapters: params.book.targetChapters,
+      title: book.title,
+      genre: book.genre,
+      platform: book.platform,
+      chapterCount: book.chapterCount,
+      targetChapters: book.targetChapters,
     },
     chapterSummaries: params.chapterSummaries ?? [],
     pendingHooks: params.pendingHooks ?? "",
