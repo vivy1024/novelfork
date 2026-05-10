@@ -3,8 +3,8 @@ import type { ArcBeat, CharacterArc } from "./arc-types.js";
 import { extractBeatsFromChapter, type CharacterInput } from "./rule-engine.js";
 import { refineBeatsWithLlm } from "./llm-refiner.js";
 import { detectArcInconsistency, detectStagnantArc } from "./character-arc-tracker.js";
-import { createBibleCharacterRepository } from "../../bible/repositories/character-repo.js";
-import { createBibleCharacterArcRepository } from "../../bible/repositories/character-arc-repo.js";
+import { createBibleCharacterRepository } from "../../jingwei/repositories/character-repo.js";
+import { createBibleCharacterArcRepository } from "../../jingwei/repositories/character-arc-repo.js";
 
 // ---------------------------------------------------------------------------
 // Types

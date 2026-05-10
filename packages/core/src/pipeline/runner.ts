@@ -53,8 +53,8 @@ import { runChapterReviewCycle } from "./chapter-review-cycle.js";
 import { validateChapterTruthPersistence } from "./chapter-truth-validation.js";
 import { loadPersistedPlan, relativeToBookDir } from "./persisted-governed-plan.js";
 import { pipelineEvents } from "./pipeline-events.js";
-import { buildBibleContext } from "../bible/context/build-bible-context.js";
-import { mergeBibleContextWithExternalContext } from "../bible/context/pipeline-bridge.js";
+import { buildBibleContext } from "../jingwei/context/build-bible-context.js";
+import { mergeBibleContextWithExternalContext } from "../jingwei/context/pipeline-bridge.js";
 
 const SEQUENCE_LEVEL_CATEGORIES = new Set([
   "Pacing Monotony", "节奏单调",

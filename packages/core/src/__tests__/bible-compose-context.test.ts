@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { composeBibleContext } from "../bible/context/compose-context.js";
-import { applyTokenBudget, estimateTokens } from "../bible/context/token-budget.js";
-import type { BibleContextItem } from "../bible/types.js";
+import { composeBibleContext } from "../jingwei/context/compose-context.js";
+import { applyTokenBudget, estimateTokens } from "../jingwei/context/token-budget.js";
+import type { BibleContextItem } from "../jingwei/types.js";
 
 describe("Bible token budget", () => {
   it("estimates Chinese token usage with the configured rough ratio", () => {

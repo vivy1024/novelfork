@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { createAliasMatcher, matchTrackedByAliases } from "../bible/context/alias-matcher.js";
-import { resolveNestedRefs } from "../bible/context/nested-resolver.js";
-import { filterEntriesVisibleAtChapter, isVisibleAtChapter, parseVisibilityRule } from "../bible/context/visibility-filter.js";
+import { createAliasMatcher, matchTrackedByAliases } from "../jingwei/context/alias-matcher.js";
+import { resolveNestedRefs } from "../jingwei/context/nested-resolver.js";
+import { filterEntriesVisibleAtChapter, isVisibleAtChapter, parseVisibilityRule } from "../jingwei/context/visibility-filter.js";
 
 interface TestEntry {
   id: string;

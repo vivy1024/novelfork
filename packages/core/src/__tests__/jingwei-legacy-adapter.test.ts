@@ -4,11 +4,11 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createBibleChapterSummaryRepository } from "../bible/repositories/chapter-summary-repo.js";
-import { createBibleCharacterRepository } from "../bible/repositories/character-repo.js";
-import { createBibleEventRepository } from "../bible/repositories/event-repo.js";
-import { createBibleSettingRepository } from "../bible/repositories/setting-repo.js";
-import { createBookRepository } from "../bible/repositories/book-repo.js";
+import { createBibleChapterSummaryRepository } from "../jingwei/repositories/chapter-summary-repo.js";
+import { createBibleCharacterRepository } from "../jingwei/repositories/character-repo.js";
+import { createBibleEventRepository } from "../jingwei/repositories/event-repo.js";
+import { createBibleSettingRepository } from "../jingwei/repositories/setting-repo.js";
+import { createBookRepository } from "../jingwei/repositories/book-repo.js";
 import { createLegacyBibleJingweiAdapter } from "../jingwei/context/section-adapter.js";
 import { createStoryJingweiSectionRepository } from "../jingwei/repositories/section-repo.js";
 import { createStorageDatabase, type StorageDatabase } from "../storage/db.js";
