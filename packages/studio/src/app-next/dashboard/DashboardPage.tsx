@@ -5,7 +5,6 @@ import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Textarea } from "../../components/ui/textarea";
 import { SimpleSelect } from "../../components/ui/simple-select";
-import { QuestionnaireWizard, type QuestionnaireTemplateView } from "../../components/Bible/QuestionnaireWizard";
 
 interface BookItem {
   readonly id: string;
@@ -25,14 +24,8 @@ interface DailyStats {
 
 interface CreateBookForm {
   title: string;
-  genre: string;
-  platform: string;
-  chapterWordCount: number;
-  targetChapters: number;
-  language: string;
   repositorySource: "new" | "existing" | "none";
   repositoryPath: string;
-  workflowMode: "outline-first" | "draft-first" | "serial-ops";
 }
 
 interface CreateBookResponse {
@@ -40,30 +33,10 @@ interface CreateBookResponse {
   readonly bookId: string;
 }
 
-/** Tier 1 建书问卷模板（内置） */
-const TIER1_QUESTIONNAIRE_TEMPLATE: QuestionnaireTemplateView = {
-  id: "tier1-book-setup",
-  tier: 1,
-  targetObject: "book",
-  questions: [
-    { id: "premise", prompt: "这本书的核心前提是什么？（一句话概括故事）", type: "text", mapping: { fieldPath: "premise" }, defaultSkippable: true },
-    { id: "conflict", prompt: "主要矛盾是什么？", type: "text", mapping: { fieldPath: "conflict" }, defaultSkippable: true },
-    { id: "protagonist", prompt: "主角是谁？有什么核心特质？", type: "text", mapping: { fieldPath: "protagonist" }, defaultSkippable: true },
-    { id: "world", prompt: "故事发生在什么样的世界？", type: "text", mapping: { fieldPath: "worldModel" }, defaultSkippable: true },
-    { id: "tone", prompt: "整体基调是什么？", type: "single", options: ["热血爽文", "轻松日常", "沉重黑暗", "悬疑烧脑", "温馨治愈", "其他"], mapping: { fieldPath: "tone" }, defaultSkippable: true },
-  ],
-};
-
 const INITIAL_FORM: CreateBookForm = {
   title: "",
-  genre: "xuanhuan",
-  platform: "qidian",
-  chapterWordCount: 3000,
-  targetChapters: 200,
-  language: "zh",
   repositorySource: "none",
   repositoryPath: "",
-  workflowMode: "outline-first",
 };
 
 interface DashboardPageProps {
@@ -104,7 +77,6 @@ export function DashboardPage({ onOpenBook }: DashboardPageProps) {
   const [form, setForm] = useState<CreateBookForm>(INITIAL_FORM);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
-  const [questionnaireBookId, setQuestionnaireBookId] = useState<string | null>(null);
 
   const books = booksData?.books ?? [];
 
@@ -113,35 +85,26 @@ export function DashboardPage({ onOpenBook }: DashboardPageProps) {
     setCreateError(null);
   };
 
-  const handleChange = (field: keyof CreateBookForm, value: string | number) => {
-    setForm((prev) => ({ ...prev, [field]: value }));
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.title.trim()) return;
     setCreating(true);
     setCreateError(null);
     try {
       const projectInit = form.repositorySource !== "none" ? {
         repositorySource: form.repositorySource,
-        workflowMode: form.workflowMode,
         ...(form.repositorySource === "existing" && form.repositoryPath.trim() ? { repositoryPath: form.repositoryPath.trim() } : {}),
       } : undefined;
 
+      const title = form.title.trim() || "未命名作品";
       const result = await postApi<CreateBookResponse>("/books/create", {
-        title: form.title.trim(),
-        genre: form.genre,
-        platform: form.platform,
-        chapterWordCount: form.chapterWordCount,
-        targetChapters: form.targetChapters,
-        language: form.language,
+        title,
+        language: "zh",
         ...(projectInit ? { projectInit } : {}),
       });
       setShowCreateForm(false);
       setForm(INITIAL_FORM);
-      setQuestionnaireBookId(result.bookId);
       void refetchBooks();
+      if (onOpenBook) onOpenBook(result.bookId);
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -172,84 +135,15 @@ export function DashboardPage({ onOpenBook }: DashboardPageProps) {
       </div>
 
       {showCreateForm && (
-        <form onSubmit={handleSubmit} className="rounded-lg border border-border p-4 space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <label className="col-span-2 space-y-1">
-              <span className="text-xs text-muted-foreground">书名</span>
-              <Input
-                value={form.title}
-                onChange={(e) => handleChange("title", e.target.value)}
-                placeholder="输入书名"
-                required
-                autoFocus
-              />
-            </label>
-            <label className="space-y-1">
-              <span className="text-xs text-muted-foreground">题材</span>
-              <SimpleSelect
-                value={form.genre}
-                onValueChange={(v) => handleChange("genre", v)}
-                options={[
-                  { value: "xuanhuan", label: "玄幻" },
-                  { value: "xianxia", label: "仙侠" },
-                  { value: "dushi", label: "都市" },
-                  { value: "scifi", label: "科幻" },
-                  { value: "other", label: "其他" },
-                ]}
-                className="w-full"
-              />
-            </label>
-            <label className="space-y-1">
-              <span className="text-xs text-muted-foreground">平台</span>
-              <SimpleSelect
-                value={form.platform}
-                onValueChange={(v) => handleChange("platform", v)}
-                options={[
-                  { value: "qidian", label: "起点" },
-                  { value: "tomato", label: "番茄" },
-                  { value: "feilu", label: "飞卢" },
-                  { value: "other", label: "其他" },
-                ]}
-                className="w-full"
-              />
-            </label>
-            <label className="space-y-1">
-              <span className="text-xs text-muted-foreground">每章字数</span>
-              <Input
-                type="number"
-                value={form.chapterWordCount}
-                onChange={(e) => handleChange("chapterWordCount", Number(e.target.value))}
-                min={500}
-                max={10000}
-              />
-            </label>
-            <label className="space-y-1">
-              <span className="text-xs text-muted-foreground">目标章节数</span>
-              <Input
-                type="number"
-                value={form.targetChapters}
-                onChange={(e) => handleChange("targetChapters", Number(e.target.value))}
-                min={1}
-                max={5000}
-              />
-            </label>
-            <label className="space-y-1">
-              <span className="text-xs text-muted-foreground">语言</span>
-              <SimpleSelect
-                value={form.language}
-                onValueChange={(v) => handleChange("language", v)}
-                options={[
-                  { value: "zh", label: "中文" },
-                  { value: "en", label: "English" },
-                ]}
-                className="w-full"
-              />
-            </label>
+        <form onSubmit={handleSubmit} className="rounded-lg border border-border p-4 space-y-4">
+          <div>
+            <h3 className="text-sm font-semibold">新建作品</h3>
+            <p className="text-xs text-muted-foreground">创建后进入工作台，AI 会引导你完成题材、设定和大纲。</p>
           </div>
 
-          {/* Git 仓库绑定 */}
-          <div className="space-y-2 rounded-md border border-border/50 p-3">
-            <span className="text-xs font-medium text-muted-foreground">项目仓库（可选）</span>
+          {/* 仓库绑定（优先） */}
+          <div className="space-y-2">
+            <span className="text-xs font-medium text-muted-foreground">项目仓库</span>
             <div className="flex gap-2">
               {(["none", "new", "existing"] as const).map((source) => (
                 <button
@@ -270,50 +164,26 @@ export function DashboardPage({ onOpenBook }: DashboardPageProps) {
                 className="text-xs"
               />
             )}
-            {form.repositorySource !== "none" && (
-              <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                <span>写作模式：</span>
-                <SimpleSelect
-                  value={form.workflowMode}
-                  onValueChange={(v) => setForm((prev) => ({ ...prev, workflowMode: v as CreateBookForm["workflowMode"] }))}
-                  options={[
-                    { value: "outline-first", label: "先大纲后写作" },
-                    { value: "draft-first", label: "先写作后整理" },
-                    { value: "serial-ops", label: "连载运营" },
-                  ]}
-                  className="flex-1"
-                />
-              </label>
-            )}
           </div>
 
+          {/* 书名（可选） */}
+          <label className="block space-y-1">
+            <span className="text-xs font-medium text-muted-foreground">作品名称 <span className="font-normal">（可选，AI 可帮你生成）</span></span>
+            <Input
+              value={form.title}
+              onChange={(e) => setForm((prev) => ({ ...prev, title: e.target.value }))}
+              placeholder="留空则由 AI 引导生成"
+            />
+          </label>
+
           {createError && <InlineError message={createError} />}
-          <Button
-            type="submit"
-            disabled={creating || !form.title.trim()}
-          >
-            {creating ? "创建中…" : "创建"}
+          <Button type="submit" disabled={creating}>
+            {creating ? "创建中…" : "开始创作"}
           </Button>
         </form>
       )}
 
       {showImport && <ImportPanel books={books} onDone={() => { setShowImport(false); void refetchBooks(); }} />}
-
-      {/* Tier 1 问卷（建书成功后可选） */}
-      {questionnaireBookId && (
-        <div className="rounded-lg border border-primary/20 bg-primary/5 p-4 space-y-2">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold">快速设定你的故事（可选）</h3>
-            <Button variant="ghost" size="xs" onClick={() => setQuestionnaireBookId(null)}>跳过</Button>
-          </div>
-          <p className="text-xs text-muted-foreground">回答几个简单问题，帮助 AI 更好地理解你的创作意图。答案会写入故事经纬。</p>
-          <QuestionnaireWizard
-            bookId={questionnaireBookId}
-            template={TIER1_QUESTIONNAIRE_TEMPLATE}
-            onDone={() => { setQuestionnaireBookId(null); void refetchBooks(); }}
-          />
-        </div>
-      )}
 
       <div className="grid gap-2 sm:grid-cols-3">
         <div className="rounded-lg border border-border p-3">
@@ -344,11 +214,11 @@ export function DashboardPage({ onOpenBook }: DashboardPageProps) {
           <div className="grid gap-3 sm:grid-cols-3 pt-2">
             <div className="rounded-lg bg-muted/30 p-3 space-y-1">
               <p className="text-xs font-medium">1. 创建作品</p>
-              <p className="text-[10px] text-muted-foreground">选择题材、平台和目标字数，AI 会根据这些信息辅助创作</p>
+              <p className="text-[10px] text-muted-foreground">绑定仓库（可选），输入书名或留空让 AI 帮你起名</p>
             </div>
             <div className="rounded-lg bg-muted/30 p-3 space-y-1">
-              <p className="text-xs font-medium">2. 回答问卷（可选）</p>
-              <p className="text-[10px] text-muted-foreground">简单描述前提、矛盾和主角，帮助 AI 理解你的故事</p>
+              <p className="text-xs font-medium">2. AI 引导设定</p>
+              <p className="text-[10px] text-muted-foreground">进入工作台后，AI 会询问你想写什么、选什么题材，生成经纬大纲</p>
             </div>
             <div className="rounded-lg bg-muted/30 p-3 space-y-1">
               <p className="text-xs font-medium">3. 开始写作</p>

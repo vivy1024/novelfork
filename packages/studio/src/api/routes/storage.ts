@@ -550,6 +550,75 @@ export function createStorageRouter(ctx: RouterContext): Hono {
     return c.json(result, result.status === "missing" ? 404 : 200);
   });
 
+  // --- Guided Setup (新书引导式创作设定) ---
+
+  app.post("/api/books/:id/guided-setup", async (c) => {
+    const id = c.req.param("id");
+    const body = await c.req.json<{
+      answers: Record<string, { mode: "preset" | "custom" | "random"; value: string }>;
+    }>();
+
+    try {
+      const book = await state.loadBookConfig(id);
+      const answers = body.answers;
+
+      // 更新 book.json 中的基础字段
+      const updates: Record<string, unknown> = {};
+      if (answers.genre && answers.genre.mode !== "random") {
+        updates.genre = answers.genre.value;
+      }
+      if (answers.platform && answers.platform.mode !== "random") {
+        updates.platform = answers.platform.value;
+      }
+      if (answers.chapterWordCount && answers.chapterWordCount.mode !== "random") {
+        const parsed = parseInt(answers.chapterWordCount.value, 10);
+        if (!isNaN(parsed) && parsed > 0) updates.chapterWordCount = parsed;
+      }
+
+      if (Object.keys(updates).length > 0) {
+        await storageWriteService.updateBook(id, updates as { chapterWordCount?: number; targetChapters?: number; status?: string; language?: string });
+      }
+
+      // 将故事设定写入经纬（story_bible.md）
+      const storyDir = join(state.bookDir(id), "story");
+      const bibleLines: string[] = ["# 故事经纬\n"];
+
+      const fieldLabels: Record<string, string> = {
+        genre: "题材",
+        premise: "核心前提",
+        protagonist: "主角设定",
+        goldenFinger: "金手指",
+        worldModel: "世界观",
+        powerSystem: "力量体系",
+        tone: "基调与文风",
+        writingPhilosophy: "创作方式",
+        platform: "目标平台",
+        aiTasteLevel: "AI 味容忍度",
+      };
+
+      for (const [field, label] of Object.entries(fieldLabels)) {
+        const answer = answers[field];
+        if (answer && answer.mode !== "random" && answer.value.trim()) {
+          bibleLines.push(`## ${label}\n`);
+          bibleLines.push(`${answer.value.trim()}\n`);
+        } else {
+          bibleLines.push(`## ${label}\n`);
+          bibleLines.push(`*（待 AI 生成）*\n`);
+        }
+      }
+
+      await writeFile(join(storyDir, "story_bible.md"), bibleLines.join("\n"), "utf-8");
+
+      broadcast("book:updated", { bookId: id });
+      return c.json({ ok: true, bookId: id });
+    } catch (e) {
+      if (isMissingFileError(e)) {
+        return c.json({ error: `Book "${id}" not found` }, 404);
+      }
+      return c.json({ error: String(e) }, 500);
+    }
+  });
+
   app.put("/api/books/:id", async (c) => {
     const id = c.req.param("id");
     const updates = await c.req.json<{

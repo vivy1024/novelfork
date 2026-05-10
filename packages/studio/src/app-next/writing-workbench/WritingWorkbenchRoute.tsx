@@ -106,7 +106,7 @@ export function WritingWorkbenchRoute({ bookId, nodes, selectedNode, onOpen, onS
           {/* 右侧编辑区 */}
           <div className="flex flex-1 min-w-0 flex-col">
             <section aria-label="当前资源画布" className="flex-1 min-h-0">
-              <WorkbenchCanvas node={selectedNode} nodes={nodes} onSave={onSave} onCanvasContextChange={onCanvasContextChange} candidateActions={candidateActions} jingweiActions={jingweiActions} />
+              <WorkbenchCanvas node={selectedNode} nodes={nodes} bookId={bookId} onSave={onSave} onCanvasContextChange={onCanvasContextChange} candidateActions={candidateActions} jingweiActions={jingweiActions} />
             </section>
           </div>
         </div>

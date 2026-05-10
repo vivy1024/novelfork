@@ -120,11 +120,11 @@ export function ShellSidebar({ route, books, sessions, onNavigate, collapsed = f
         {/* Content */}
         <div className="flex-1 space-y-4 overflow-y-auto px-1.5 py-3">
           {/* Books section */}
-          <section className="space-y-1" aria-label="叙事线">
+          <section className="space-y-1" aria-label="叙事线（书籍）">
             {!collapsed && (
               <h2 className="flex items-center gap-1.5 px-2 text-xs font-semibold text-muted-foreground">
                 <BookOpen className="h-3.5 w-3.5" />
-                叙事线
+                叙事线（书籍）
               </h2>
             )}
             {collapsed && (
@@ -132,12 +132,12 @@ export function ShellSidebar({ route, books, sessions, onNavigate, collapsed = f
                 <TooltipTrigger className="flex w-full items-center justify-center rounded-md p-1.5 text-muted-foreground">
                   <BookOpen className="size-4" />
                 </TooltipTrigger>
-                <TooltipContent side="right">叙事线</TooltipContent>
+                <TooltipContent side="right">叙事线（书籍）</TooltipContent>
               </Tooltip>
             )}
             {bookItems.length > 0
               ? bookItems.map((item) => <NavButton key={item.id} label={item.label} active={isShellNavItemActive(item, route)} onClick={() => onNavigate(item.route)} collapsed={collapsed} />)
-              : !collapsed && <p className="px-2 py-1 text-xs text-muted-foreground">暂无叙事线</p>
+              : !collapsed && <p className="px-2 py-1 text-xs text-muted-foreground">暂无书籍</p>
             }
             {!collapsed && (
               <Button
