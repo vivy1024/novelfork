@@ -390,30 +390,29 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
   const selectedApiProvider = providers.find((provider) => provider.id === selectedApiProviderId) ?? null;
 
   const saveProvider = async () => {
-    if (!form.name.trim() || !form.baseUrl.trim() || !form.apiKey.trim()) return;
+    const name = window.prompt("供应商名称（如 DeepSeek、OpenRouter）：");
+    if (!name?.trim()) return;
 
-    const id = normalizeProviderId(form.prefix, form.name);
+    const id = normalizeProviderId("", name);
     setBusy("create-provider");
     setError(null);
     try {
       const result = await client.createProvider({
         id,
-        name: form.name.trim(),
-        type: providerTypeFromCompatibility(form.compatibility),
+        name: name.trim(),
+        type: "custom",
         enabled: true,
         apiKeyRequired: true,
-        baseUrl: form.baseUrl.trim(),
-        prefix: form.prefix.trim() || id,
-        compatibility: form.compatibility,
-        apiMode: form.apiMode,
-        config: { apiKey: form.apiKey.trim() },
+        baseUrl: "",
+        prefix: id,
+        compatibility: "openai-compatible",
+        apiMode: "responses",
+        config: { apiKey: "" },
         models: [],
       });
       setProviders((current) => applyProvider(current, result.provider));
       setSelectedApiProviderId(result.provider.id);
-      setFeedback("供应商已保存，可继续刷新模型列表。");
-      setForm(INITIAL_FORM);
-      setShowAddForm(false);
+      setFeedback("供应商已创建，请填写接入信息。");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
@@ -591,11 +590,11 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
         providers={filteredProviders}
         providerStatuses={providerStatuses}
         fixtureProviderIds={fixtureProviderIds}
-        showAddForm={showAddForm}
+        showAddForm={false}
         form={form}
         busy={busy}
         setForm={setForm}
-        onToggleAddForm={() => setShowAddForm((current) => !current)}
+        onToggleAddForm={() => void saveProvider()}
         onSaveProvider={() => void saveProvider()}
         onSelectProvider={setSelectedApiProviderId}
         onToggleProvider={toggleProvider}
