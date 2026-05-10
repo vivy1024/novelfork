@@ -60,7 +60,7 @@ async function buildOnboardingStatus(ctx: RouterContext): Promise<OnboardingStat
     ctx.state.listBooks(),
   ]);
   const providerStore = ctx.providerStore ?? new ProviderRuntimeStore();
-  const provider = await buildRuntimeProviderStatus(providerStore);
+  const provider = await buildRuntimeProviderStatus(providerStore, config.modelDefaults.defaultSessionModel || undefined);
   const chapterExists = await hasAnyChapter(ctx, bookIds);
 
   return {

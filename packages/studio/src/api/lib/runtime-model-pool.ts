@@ -13,8 +13,25 @@ function hasApiCredentials(provider: RuntimeProviderRecord): boolean {
   return !provider.apiKeyRequired || Boolean(provider.config.apiKey?.trim());
 }
 
-export async function buildRuntimeProviderStatus(store: ProviderRuntimeStore): Promise<ProviderRuntimeStatus> {
+export async function buildRuntimeProviderStatus(store: ProviderRuntimeStore, userDefaultModel?: string): Promise<ProviderRuntimeStatus> {
   const modelPool = await buildRuntimeModelPool(store);
+
+  // 优先使用用户配置的默认模型
+  if (userDefaultModel) {
+    const parts = userDefaultModel.split(":");
+    const providerId = parts[0] ?? "";
+    const modelId = parts.slice(1).join(":") || userDefaultModel;
+    // 验证该模型在池中可用
+    const found = modelPool.find((m) => m.modelId === userDefaultModel || (m.providerId === providerId && m.modelId === userDefaultModel));
+    if (found || modelPool.length > 0) {
+      return {
+        hasUsableModel: modelPool.length > 0,
+        defaultProvider: providerId || modelPool[0]?.providerId,
+        defaultModel: modelId,
+      };
+    }
+  }
+
   const firstModel = modelPool[0];
 
   if (!firstModel) {
