@@ -387,7 +387,7 @@ function ContextRingMenu({
         <ContextRing used={used} max={max} />
       </DropdownMenuTrigger>
       <DropdownMenuContent side="top" align="end" className="min-w-[200px]">
-        <DropdownMenuLabel>上下文使用：{percent}% ({used}/{max})</DropdownMenuLabel>
+        <DropdownMenuLabel>上下文：{percent}% · {used.toLocaleString()} / {max.toLocaleString()} tokens (估算)</DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={() => onCompact?.()} disabled={!onCompact}>
           压缩到 {targetPercent}%

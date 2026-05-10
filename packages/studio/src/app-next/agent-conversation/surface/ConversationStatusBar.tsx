@@ -10,6 +10,7 @@ export interface ConversationModelOption {
   modelLabel?: string;
   supportsTools?: boolean;
   supportsReasoning?: boolean;
+  contextWindow?: number;
 }
 
 export interface ConversationBindingFact {
