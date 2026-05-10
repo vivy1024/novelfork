@@ -445,13 +445,25 @@ export function createWritingModesRouter(ctx: RouterContext): Hono {
     const bookId = c.req.param("bookId");
 
     const current = body.current as ImportStyleProfile | undefined;
-    const base = body.base as ImportStyleProfile | undefined;
+    let base = body.base as ImportStyleProfile | string | undefined;
 
-    if (!current || !base) {
-      return c.json({ error: "Both current and base StyleProfile are required." }, 400);
+    if (!current) {
+      return c.json({ error: "current StyleProfile is required." }, 400);
     }
 
-    const drift = detectStyleDrift(current, base);
+    // Support base: "auto" — read from stored style_profile.json
+    if (base === "auto" || !base) {
+      try {
+        const profilePath = join(ctx.state.bookDir(bookId), "story", "style_profile.json");
+        const raw = await readFile(profilePath, "utf-8");
+        base = JSON.parse(raw) as ImportStyleProfile;
+      } catch {
+        // No stored profile — use sensible defaults as baseline
+        base = { avgSentenceLength: 20, vocabularyDiversity: 0.65, sentenceLengthStdDev: 8, dialogueRatio: 0.3 };
+      }
+    }
+
+    const drift = detectStyleDrift(current, base as ImportStyleProfile);
     return c.json({ drift, bookId });
   });
 
