@@ -8,7 +8,7 @@
 | 上游 | Fork 自 InkOS；选择性合并通用改进，不自动同步 |
 | 开发者 | 薛小川 / GitHub `vivy1024`，禁止虚构 |
 | 主要入口 | Studio `/next`、作品工作台、叙述者会话、`novelfork` CLI/headless |
-| 当前目标 | 小说写作功能已接入新前端（novel-writing-features Phase 1-7 完成）；下一步：浏览器端到端验证 + v0.1.0 发布 |
+| 当前目标 | 小说写作功能已接入新前端（novel-writing-features Phase 1-7 完成）；Phase 8 浏览器端到端验证进行中；`claude-codex-novel-agent-v1` 执行中（14/48）；下一步：浏览器验证 + v0.1.0 发布 |
 
 ## 技术栈与仓库边界
 
@@ -56,7 +56,7 @@
 ### 引导式生成
 - PGI（Pre-Generation Interview）：后端生成追问 + 前端 UserQuestionGate 回答
 - Guided Plan：后端生成计划 + 前端批准/拒绝
-- Tier 1 问卷：建书时可选问卷（QuestionnaireWizard）
+- Tier 1 问卷：建书时可选问卷（旧 QuestionnaireWizard 仍存在于 components/Bible/，新流程使用 NewBookGuide 11 题三模式）
 - 机制：复用 ToolConfirmationRequest + confirmTool（与 NarraFork AskUserQuestion 一致）
 
 ### 叙述者对话
