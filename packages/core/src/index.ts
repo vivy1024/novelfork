@@ -142,7 +142,7 @@ export { runWritingPipeline, runAuditPipeline, type PipelineResult, type Pipelin
 export { detectChapter, detectAndRewrite, loadDetectionHistory, type DetectChapterResult, type DetectAndRewriteResult } from "./pipeline/detection-runner.js";
 
 // Storage
-export { closeStorageDatabase, createStorageDatabase, getStorageDatabase, initializeStorageDatabase, runStorageMigrations, runJsonImportMigrationIfNeeded, createKvRepository, createSessionMessageRepository, createSessionRepository, StorageError, books, bibleCharacters, bibleEvents, bibleSettings, bibleChapterSummaries, bibleConflicts, bibleWorldModels, biblePremises, bibleCharacterArcs, questionnaireTemplates, questionnaireResponses, coreShifts, filterReports, sessions, sessionMessages, sessionMessageCursors, kvStore, drizzleMigrations, type CreateStorageDatabaseOptions, type StorageDatabase, type JsonImportMigrationResult, type RunJsonImportMigrationOptions, type RunStorageMigrationsOptions, type StorageMigrationResult, type CreateSessionMessageRepositoryOptions, type SessionMessageRepositoryAppendAttemptContext, type SessionMessageRepositoryAppendAttemptControl, type StoredSessionMessage, type StoredSessionMessageCursor, type StoredSessionMessageInput, type StoredSessionMessageRole, type CreateStoredSessionInput, type StoredSessionRecord, type UpdateStoredSessionInput } from "./storage/index.js";
+export { closeStorageDatabase, createStorageDatabase, getStorageDatabase, initializeStorageDatabase, runStorageMigrations, runJsonImportMigrationIfNeeded, createKvRepository, createSessionMessageRepository, createSessionRepository, createUserTemplateRepository, StorageError, books, bibleCharacters, bibleEvents, bibleSettings, bibleChapterSummaries, bibleConflicts, bibleWorldModels, biblePremises, bibleCharacterArcs, questionnaireTemplates, questionnaireResponses, coreShifts, filterReports, sessions, sessionMessages, sessionMessageCursors, kvStore, drizzleMigrations, userTemplates, type CreateStorageDatabaseOptions, type StorageDatabase, type JsonImportMigrationResult, type RunJsonImportMigrationOptions, type RunStorageMigrationsOptions, type StorageMigrationResult, type CreateSessionMessageRepositoryOptions, type SessionMessageRepositoryAppendAttemptContext, type SessionMessageRepositoryAppendAttemptControl, type StoredSessionMessage, type StoredSessionMessageCursor, type StoredSessionMessageInput, type StoredSessionMessageRole, type CreateStoredSessionInput, type StoredSessionRecord, type UpdateStoredSessionInput, type UserTemplateRecord, type CreateUserTemplateInput, type UpdateUserTemplateInput } from "./storage/index.js";
 
 // Filter
 export * from "./filter/index.js";
@@ -206,6 +206,7 @@ export type {
   PresetCategory,
   PresetConfig,
   PresetBundle,
+  TemplateBundle,
   TonePreset,
   SettingBasePreset,
   LogicRiskRule,

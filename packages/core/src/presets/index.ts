@@ -96,5 +96,6 @@ export type {
   PresetCategory,
   PresetConfig,
   SettingBasePreset,
+  TemplateBundle,
   TonePreset,
 } from "./types.js";
