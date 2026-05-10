@@ -142,7 +142,7 @@ const TOOLS: ReadonlyArray<ToolDefinition> = [
     },
   },
   {
-    name: "read_truth_files",
+    name: "read_jingwei_files",
     description: "读取书籍的长期记忆（状态卡、资源账本、伏笔池）+ 世界观和卷纲。",
     parameters: {
       type: "object",
@@ -210,7 +210,7 @@ const TOOLS: ReadonlyArray<ToolDefinition> = [
   },
   {
     name: "import_chapters",
-    description: "【整书重导】导入已有章节。从完整文本中自动分割所有章节，逐章分析并重建全部真相文件。这是整书级操作，不是补某一章的工具。导入后可用 write_draft 续写。",
+    description: "【整书重导】导入已有章节。从完整文本中自动分割所有章节，逐章分析并重建全部经纬文件。这是整书级操作，不是补某一章的工具。导入后可用 write_draft 续写。",
     parameters: {
       type: "object",
       properties: {
@@ -222,8 +222,8 @@ const TOOLS: ReadonlyArray<ToolDefinition> = [
     },
   },
   {
-    name: "write_truth_file",
-    description: "【整文件覆盖】直接替换书的真相文件内容。用于扩展大纲、修改世界观、调整规则。注意：这是整文件覆盖写入，不是追加；不要用来改 current_state.md 的章节进度指针或 hack 章节号；不要用来补空章节。",
+    name: "write_jingwei_file",
+    description: "【整文件覆盖】直接替换书的经纬文件内容。用于扩展大纲、修改世界观、调整规则。注意：这是整文件覆盖写入，不是追加；不要用来改 current_state.md 的章节进度指针或 hack 章节号；不要用来补空章节。",
     parameters: {
       type: "object",
       properties: {

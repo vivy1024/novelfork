@@ -94,7 +94,7 @@ export function SearchPage({ onNavigateToBook }: SearchPageProps = {}) {
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="搜索章节、真相文件、伏笔、世界观…"
+          placeholder="搜索章节、经纬资料、伏笔、世界观…"
           autoFocus
         />
         {loading && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">搜索中…</span>}

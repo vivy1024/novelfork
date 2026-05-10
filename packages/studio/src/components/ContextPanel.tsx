@@ -102,7 +102,7 @@ const GOVERNANCE_SOURCE_LABELS: Record<string, string> = {
 const CONTEXT_SOURCE_LABELS: Record<string, string> = {
   chapter_summaries: "章节摘要",
   story_bible: "故事经纬",
-  truth_files: "真相文件",
+  truth_files: "经纬资料",
   assistant: "AI 回复",
   user: "用户消息",
   system: "系统提示",

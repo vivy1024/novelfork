@@ -31,7 +31,7 @@ function createAuditResult(overrides?: Partial<AuditResult>): AuditResult {
 describe("persistChapterArtifacts", () => {
   it("persists truth files, index, drift guidance, and snapshots for reviewable chapters", async () => {
     const saveChapter = vi.fn().mockResolvedValue(undefined);
-    const saveTruthFiles = vi.fn().mockResolvedValue(undefined);
+    const saveJingweiFiles = vi.fn().mockResolvedValue(undefined);
     const saveChapterIndex = vi.fn().mockResolvedValue(undefined);
     const markBookActiveIfNeeded = vi.fn().mockResolvedValue(undefined);
     const persistAuditDriftGuidance = vi.fn().mockResolvedValue(undefined);
@@ -56,7 +56,7 @@ describe("persistChapterArtifacts", () => {
       tokenUsage: ZERO_USAGE,
       loadChapterIndex: async () => [] satisfies ReadonlyArray<ChapterMeta>,
       saveChapter,
-      saveTruthFiles,
+      saveJingweiFiles,
       saveChapterIndex,
       markBookActiveIfNeeded,
       persistAuditDriftGuidance,
@@ -67,7 +67,7 @@ describe("persistChapterArtifacts", () => {
     });
 
     expect(saveChapter).toHaveBeenCalledTimes(1);
-    expect(saveTruthFiles).toHaveBeenCalledTimes(1);
+    expect(saveJingweiFiles).toHaveBeenCalledTimes(1);
     expect(saveChapterIndex).toHaveBeenCalledWith([
       expect.objectContaining({
         number: 3,
@@ -95,7 +95,7 @@ describe("persistChapterArtifacts", () => {
 
   it("skips truth persistence and snapshots for state-degraded chapters while preserving review note", async () => {
     const saveChapter = vi.fn().mockResolvedValue(undefined);
-    const saveTruthFiles = vi.fn().mockResolvedValue(undefined);
+    const saveJingweiFiles = vi.fn().mockResolvedValue(undefined);
     const saveChapterIndex = vi.fn().mockResolvedValue(undefined);
     const markBookActiveIfNeeded = vi.fn().mockResolvedValue(undefined);
     const persistAuditDriftGuidance = vi.fn().mockResolvedValue(undefined);
@@ -118,7 +118,7 @@ describe("persistChapterArtifacts", () => {
       tokenUsage: ZERO_USAGE,
       loadChapterIndex: async () => [] satisfies ReadonlyArray<ChapterMeta>,
       saveChapter,
-      saveTruthFiles,
+      saveJingweiFiles,
       saveChapterIndex,
       markBookActiveIfNeeded,
       persistAuditDriftGuidance,
@@ -129,7 +129,7 @@ describe("persistChapterArtifacts", () => {
     });
 
     expect(saveChapter).toHaveBeenCalledTimes(1);
-    expect(saveTruthFiles).not.toHaveBeenCalled();
+    expect(saveJingweiFiles).not.toHaveBeenCalled();
     expect(saveChapterIndex).toHaveBeenCalledWith([
       expect.objectContaining({
         number: 4,
