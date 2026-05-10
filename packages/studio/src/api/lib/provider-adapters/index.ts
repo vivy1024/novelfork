@@ -591,14 +591,9 @@ class AnthropicCompatibleAdapter implements RuntimeAdapter {
           };
         }
       }
-    } catch {
-      // API 不支持 /v1/models，尝试 OpenAI 格式
-    }
 
-    // 尝试 OpenAI 格式的 /v1/models（很多兼容网关支持）
-    try {
-      const openaiUrl = `${trimTrailingSlash(ref.baseUrl!)}/v1/models`;
-      const openaiResponse = await fetch(openaiUrl, {
+      // Anthropic 格式失败，尝试 OpenAI 格式（Bearer token）
+      const openaiResponse = await fetch(url, {
         method: "GET",
         headers: { Authorization: `Bearer ${ref.apiKey}`, "Content-Type": "application/json" },
       });
@@ -619,19 +614,13 @@ class AnthropicCompatibleAdapter implements RuntimeAdapter {
           };
         }
       }
-    } catch {
-      // 也不支持，降级到默认列表
-    }
 
-    // 降级：返回常见 Anthropic 模型
-    return {
-      success: true,
-      models: [
-        { id: "claude-sonnet-4-20250514", name: "Claude Sonnet 4", contextWindow: 200000, maxOutputTokens: 16384, enabled: true, source: "detected", lastTestStatus: "untested" },
-        { id: "claude-opus-4-20250514", name: "Claude Opus 4", contextWindow: 200000, maxOutputTokens: 16384, enabled: true, source: "detected", lastTestStatus: "untested" },
-        { id: "claude-haiku-3-5-20241022", name: "Claude Haiku 3.5", contextWindow: 200000, maxOutputTokens: 8192, enabled: true, source: "detected", lastTestStatus: "untested" },
-      ],
-    };
+      // 两种格式都失败，透传错误
+      const errorText = response.ok ? "模型列表为空" : await response.text().catch(() => `HTTP ${response.status}`);
+      return failure("upstream-error", `获取模型列表失败：${errorText}`);
+    } catch (error) {
+      return failure("network-error", error instanceof Error ? error.message : String(error));
+    }
   }
 
   async testModel(input: TestModelInput): Promise<TestModelResult> {
