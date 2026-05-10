@@ -24,6 +24,7 @@ const SearchPage = lazy(() => import("./search/SearchPage").then((m) => ({ defau
 const RoutinesNextPage = lazy(() => import("./routines/RoutinesNextPage").then((m) => ({ default: m.RoutinesNextPage })));
 const SessionCenterPage = lazy(() => import("./sessions/SessionCenterPage").then((m) => ({ default: m.SessionCenterPage })));
 const LearnPageLazy = lazy(() => import("./learn/LearnPage").then((m) => ({ default: m.LearnPage })));
+const BookManagementPageLazy = lazy(() => import("./books/BookManagementPage").then((m) => ({ default: m.BookManagementPage })));
 import { SettingsLayout, type SettingsSectionItem } from "./components/layouts";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -31,6 +32,7 @@ import { ProviderSettingsPage } from "./settings/ProviderSettingsPage";
 import { SettingsSectionContent } from "./settings/SettingsSectionContent";
 import { AgentShell, toShellPath, parseShellRoute, useShellData, useShellDataStore, type ShellBookItem, type ShellRoute, type ShellSessionItem, type ShellDataProviderSummary, type ShellDataProviderStatus } from "./shell";
 import { FirstRunDialog } from "../components/onboarding/FirstRunDialog";
+import { setPendingAction, consumePendingAction } from "./pending-action-store";
 import {
   applyResourceDetailToNode,
   loadResourceDetailState,
@@ -575,6 +577,23 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
     };
   }, [runtime.state.lastSeq, runtime.state.session, sessionClient, sessionId]);
 
+  // FR-3: Auto-send pending writing action command
+  const pendingActionSentRef = useRef(false);
+  useEffect(() => {
+    if (pendingActionSentRef.current) return;
+    if (!runtime.state.session) return;
+
+    const pending = consumePendingAction(sessionId);
+    if (!pending) return;
+
+    pendingActionSentRef.current = true;
+    const timer = setTimeout(() => {
+      runtime.sendMessage(pending.command);
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [runtime.state.session, sessionId, runtime]);
+
   const applyConfirmationSnapshot = useCallback((snapshot: NarratorSessionChatSnapshot) => {
     runtime.applyEnvelope({ type: "session:snapshot", snapshot, recovery: { state: "idle", reason: "confirmation-refresh" } });
   }, [runtime]);
@@ -898,20 +917,16 @@ function WritingWorkbenchRouteLive({ bookId, onCanvasContextChange, onNavigateTo
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let active = true;
+  const reloadResources = useCallback(() => {
     setLoading(true);
     setError(null);
-
     void loadWorkbenchResourcesFromContract(resourceClient, bookId).then(
       (nextResources) => {
-        if (!active) return;
         setResources(nextResources);
         setSelectedNode((current) => (current ? nextResources.resourceMap.get(current.id) ?? null : null));
         setLoading(false);
       },
       (cause: unknown) => {
-        if (!active) return;
         setResources({ tree: [], resourceMap: new Map(), openableNodes: [], errors: [] });
         setSelectedNode(null);
         setPendingDetailNode(null);
@@ -922,11 +937,9 @@ function WritingWorkbenchRouteLive({ bookId, onCanvasContextChange, onNavigateTo
         setLoading(false);
       },
     );
-
-    return () => {
-      active = false;
-    };
   }, [bookId, resourceClient]);
+
+  useEffect(() => { reloadResources(); }, [reloadResources]);
 
   const openResourceNode = useCallback(
     (node: WorkbenchResourceNode) => {
@@ -1007,7 +1020,8 @@ function WritingWorkbenchRouteLive({ bookId, onCanvasContextChange, onNavigateTo
         onOpen={handleOpen}
         onSave={handleSave}
         onCanvasContextChange={handleCanvasContextChange}
-        writingActions={<WorkbenchWritingActions bookId={bookId} bookTitle={resources.tree.find(n => n.kind === "book")?.title} sessions={sessionClient} blockedReason={localCanvasContext?.dirty ? "当前画布有未保存内容，请先保存或放弃后再启动写作动作。" : undefined} onNavigateToConversation={(sessionId) => onNavigateToConversation(sessionId)} />}
+        onGuideComplete={reloadResources}
+        writingActions={<WorkbenchWritingActions bookId={bookId} bookTitle={resources.tree.find(n => n.kind === "book")?.title} sessions={sessionClient} blockedReason={localCanvasContext?.dirty ? "当前画布有未保存内容，请先保存或放弃后再启动写作动作。" : undefined} onNavigateToConversation={(sessionId, action) => { setPendingAction(sessionId, action.id); onNavigateToConversation(sessionId); }} />}
       />
     </>
   );
@@ -1054,6 +1068,8 @@ function RouteMountPoint({
       return <ConversationRouteLive sessionId={route.sessionId} canvasContext={canvasContext} />;
     case "book":
       return <WritingWorkbenchRouteLive bookId={route.bookId} onCanvasContextChange={onCanvasContextChange} onNavigateToConversation={onNavigateToConversation} />;
+    case "books":
+      return <LazyErrorBoundary fallbackLabel="作品管理"><Suspense fallback={<LazyFallback />}><BookManagementPageLazy onNavigateToBook={(bookId) => onNavigate({ kind: "book", bookId })} onCreateBook={() => onNavigate({ kind: "home" })} /></Suspense></LazyErrorBoundary>;
     case "sessions":
       return <LazyErrorBoundary fallbackLabel="会话中心"><Suspense fallback={<LazyFallback />}><SessionCenterPage /></Suspense></LazyErrorBoundary>;
     case "search":

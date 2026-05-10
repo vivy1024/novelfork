@@ -1,8 +1,7 @@
-import { BookOpen, MessageSquareText, Search, Settings, Wrench, PanelLeftClose, PanelLeftOpen, Pin, Trash2 } from "lucide-react";
+import { BookOpen, MessageSquareText, Search, Settings, Wrench, PanelLeftClose, PanelLeftOpen, Pin } from "lucide-react";
 
 import { getShellNavItems, isShellNavItemActive, type ShellBookItem, type ShellNavItem, type ShellRoute, type ShellSessionItem } from "./shell-route";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
-import { ContextMenu, ContextMenuTrigger, ContextMenuContent, ContextMenuItem } from "@/components/ui/context-menu";
 import { Button } from "@/components/ui/button";
 
 export interface ShellSidebarProps {
@@ -124,14 +123,21 @@ export function ShellSidebar({ route, books, sessions, onNavigate, onDeleteBook,
           {/* Books section */}
           <section className="space-y-1" aria-label="叙事线（书籍）">
             {!collapsed && (
-              <h2 className="flex items-center gap-1.5 px-2 text-xs font-semibold text-muted-foreground">
+              <button
+                type="button"
+                className="flex items-center gap-1.5 px-2 text-xs font-semibold text-muted-foreground hover:text-primary transition-colors"
+                onClick={() => onNavigate({ kind: "books" })}
+              >
                 <BookOpen className="h-3.5 w-3.5" />
                 叙事线（书籍）
-              </h2>
+              </button>
             )}
             {collapsed && (
               <Tooltip>
-                <TooltipTrigger className="flex w-full items-center justify-center rounded-md p-1.5 text-muted-foreground">
+                <TooltipTrigger
+                  className="flex w-full items-center justify-center rounded-md p-1.5 text-muted-foreground hover:text-primary transition-colors"
+                  onClick={() => onNavigate({ kind: "books" })}
+                >
                   <BookOpen className="size-4" />
                 </TooltipTrigger>
                 <TooltipContent side="right">叙事线（书籍）</TooltipContent>
@@ -139,17 +145,7 @@ export function ShellSidebar({ route, books, sessions, onNavigate, onDeleteBook,
             )}
             {bookItems.length > 0
               ? bookItems.map((item) => (
-                <ContextMenu key={item.id}>
-                  <ContextMenuTrigger asChild>
-                    <NavButton label={item.label} active={isShellNavItemActive(item, route)} onClick={() => onNavigate(item.route)} collapsed={collapsed} />
-                  </ContextMenuTrigger>
-                  <ContextMenuContent>
-                    <ContextMenuItem className="text-destructive" onClick={() => { if (confirm(`确认删除「${item.label}」？此操作不可撤销。`)) onDeleteBook?.(item.id); }}>
-                      <Trash2 className="mr-2 size-3.5" />
-                      删除作品
-                    </ContextMenuItem>
-                  </ContextMenuContent>
-                </ContextMenu>
+                <NavButton key={item.id} label={item.label} active={isShellNavItemActive(item, route)} onClick={() => onNavigate(item.route)} collapsed={collapsed} />
               ))
               : !collapsed && <p className="px-2 py-1 text-xs text-muted-foreground">暂无书籍</p>
             }

@@ -17,6 +17,8 @@ export interface WritingWorkbenchRouteProps {
   onCanvasContextChange?: (context: WorkbenchCanvasContext) => void;
   onCreateChapter?: () => void;
   writingActions?: ReactNode;
+  /** 引导完成后刷新资源树 */
+  onGuideComplete?: () => void;
   /** 候选稿操作回调 */
   candidateActions?: CandidateActionHandlers;
   /** 经纬资料操作回调 */
@@ -39,7 +41,7 @@ function routeStatusLabel(nodes: readonly WorkbenchResourceNode[], selectedNode:
   return "当前状态：资源已加载";
 }
 
-export function WritingWorkbenchRoute({ bookId, nodes, selectedNode, onOpen, onSave, onCanvasContextChange, onCreateChapter, writingActions, candidateActions, jingweiActions, chapters, chapterEdges, onChapterSelect }: WritingWorkbenchRouteProps) {
+export function WritingWorkbenchRoute({ bookId, nodes, selectedNode, onOpen, onSave, onCanvasContextChange, onCreateChapter, writingActions, onGuideComplete, candidateActions, jingweiActions, chapters, chapterEdges, onChapterSelect }: WritingWorkbenchRouteProps) {
   const bookTitle = deriveBookTitle(bookId, nodes);
   const statusLabel = routeStatusLabel(nodes, selectedNode);
   const [viewMode, setViewMode] = useState<"tree" | "graph">("tree");
@@ -115,7 +117,7 @@ export function WritingWorkbenchRoute({ bookId, nodes, selectedNode, onOpen, onS
           {/* 右侧编辑区 */}
           <div className="flex flex-1 min-w-0 flex-col">
             <section aria-label="当前资源画布" className={`min-h-0 ${showToolsPanel ? "flex-[2]" : "flex-1"}`}>
-              <WorkbenchCanvas node={selectedNode} nodes={nodes} bookId={bookId} onSave={onSave} onCanvasContextChange={onCanvasContextChange} candidateActions={candidateActions} jingweiActions={jingweiActions} />
+              <WorkbenchCanvas node={selectedNode} nodes={nodes} bookId={bookId} onSave={onSave} onCanvasContextChange={onCanvasContextChange} onGuideComplete={onGuideComplete} candidateActions={candidateActions} jingweiActions={jingweiActions} />
             </section>
             {showToolsPanel && bookId && (
               <section aria-label="写作工具面板" className="flex-1 min-h-0 border-t border-border overflow-y-auto p-3">

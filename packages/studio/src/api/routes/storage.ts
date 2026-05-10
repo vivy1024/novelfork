@@ -579,10 +579,14 @@ export function createStorageRouter(ctx: RouterContext): Hono {
         await storageWriteService.updateBook(id, updates as { chapterWordCount?: number; targetChapters?: number; status?: string; language?: string });
       }
 
-      // 将故事设定写入经纬（story_bible.md）
+      // 将故事设定写入经纬文件集
       const storyDir = join(state.bookDir(id), "story");
-      const bibleLines: string[] = ["# 故事经纬\n"];
 
+      // 确保 story 目录存在
+      await mkdir(storyDir, { recursive: true });
+
+      // 1. story_bible.md — 故事经纬
+      const bibleLines: string[] = ["# 故事经纬\n"];
       const fieldLabels: Record<string, string> = {
         genre: "题材",
         premise: "核心前提",
@@ -606,8 +610,77 @@ export function createStorageRouter(ctx: RouterContext): Hono {
           bibleLines.push(`*（待 AI 生成）*\n`);
         }
       }
-
       await writeFile(join(storyDir, "story_bible.md"), bibleLines.join("\n"), "utf-8");
+
+      // 2. book_rules.md — 书籍规则（从题材和文风推导）
+      const rulesLines: string[] = ["# 书籍规则\n"];
+      const genre = answers.genre?.value ?? "通用";
+      const tone = answers.tone?.value ?? "";
+      const platform = answers.platform?.value ?? "";
+      const aiTaste = answers.aiTasteLevel?.value ?? "中等";
+
+      rulesLines.push("## 基本约束\n");
+      rulesLines.push(`- 题材：${genre}\n`);
+      if (tone) rulesLines.push(`- 文风基调：${tone}\n`);
+      if (platform) rulesLines.push(`- 目标平台：${platform}\n`);
+      rulesLines.push(`- AI 味容忍度：${aiTaste}\n`);
+      rulesLines.push("\n## 写作规则\n");
+      rulesLines.push("- 每章字数目标：" + (updates.chapterWordCount ?? 3000) + " 字\n");
+      rulesLines.push("- 禁止连续 3 个 <40 字短段并列连排\n");
+      rulesLines.push("- 伏笔兑现必须有 ≥60 字具体段落（advance/resolve）\n");
+      rulesLines.push("- 对话不超过章节篇幅的 40%\n");
+      rulesLines.push("\n## 连续性规则\n");
+      rulesLines.push("- 角色名称前后一致\n");
+      rulesLines.push("- 时间线不矛盾\n");
+      rulesLines.push("- 已死角色不复活（除非有明确设定支持）\n");
+      await writeFile(join(storyDir, "book_rules.md"), rulesLines.join("\n"), "utf-8");
+
+      // 3. volume_outline.md — 卷大纲骨架（仅"建筑师派"）
+      const writingPhilosophy = answers.writingPhilosophy?.value ?? "";
+      if (writingPhilosophy !== "花园派") {
+        const outlineLines: string[] = ["# 卷大纲\n"];
+        outlineLines.push("## 第一卷\n");
+        outlineLines.push("### 核心冲突\n");
+        if (answers.premise?.value) {
+          outlineLines.push(`${answers.premise.value.trim()}\n`);
+        } else {
+          outlineLines.push("*（待规划）*\n");
+        }
+        outlineLines.push("\n### 章节规划\n");
+        outlineLines.push("- 第 1 章：开篇（引入主角、建立世界观）\n");
+        outlineLines.push("- 第 2 章：日常（展示主角日常、埋下伏笔）\n");
+        outlineLines.push("- 第 3 章：变故（打破日常的事件）\n");
+        outlineLines.push("- 第 4-5 章：应对（主角面对变故的反应）\n");
+        outlineLines.push("- 第 6-8 章：发展（主角成长、获得金手指/机遇）\n");
+        outlineLines.push("- 第 9-10 章：第一卷高潮（首个大冲突解决）\n");
+        outlineLines.push("\n### 主角弧线\n");
+        if (answers.protagonist?.value) {
+          outlineLines.push(`起点：${answers.protagonist.value.trim()}\n`);
+        }
+        outlineLines.push("终点：*（待规划）*\n");
+        await writeFile(join(storyDir, "volume_outline.md"), outlineLines.join("\n"), "utf-8");
+      }
+
+      // 4. current_state.md — 初始状态
+      const stateLines: string[] = ["# 当前状态\n"];
+      stateLines.push("## 进度\n");
+      stateLines.push("- 当前章节：第 0 章（尚未开始）\n");
+      stateLines.push("- 当前卷：第一卷\n");
+      stateLines.push("\n## 世界状态\n");
+      if (answers.worldModel?.value) {
+        stateLines.push(`${answers.worldModel.value.trim()}\n`);
+      } else {
+        stateLines.push("*（待第一章建立）*\n");
+      }
+      stateLines.push("\n## 角色状态\n");
+      if (answers.protagonist?.value) {
+        stateLines.push(`- 主角：${answers.protagonist.value.trim()}\n`);
+      } else {
+        stateLines.push("- 主角：*（待设定）*\n");
+      }
+      stateLines.push("\n## 活跃伏笔\n");
+      stateLines.push("*（暂无）*\n");
+      await writeFile(join(storyDir, "current_state.md"), stateLines.join("\n"), "utf-8");
 
       broadcast("book:updated", { bookId: id });
       return c.json({ ok: true, bookId: id });
