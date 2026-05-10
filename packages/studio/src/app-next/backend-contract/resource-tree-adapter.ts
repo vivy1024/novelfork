@@ -171,7 +171,7 @@ export async function loadResourceTreeFromContract(
           ...(jingweiSections?.sections.map(toJingweiSectionNode) ?? []),
           ...(jingweiEntries?.entries.map(toJingweiEntryNode) ?? []),
         ]),
-        group("group:narrative-line", "叙事线", narrative?.snapshot.nodes.length ? [toNarrativeLineNode(book.id, narrative.snapshot)] : []),
+        group("group:narrative-line", "叙事线", narrative?.snapshot.nodes.length && bookResult.data.chapters.length > 0 ? [toNarrativeLineNode(book.id, narrative.snapshot)] : []),
       ],
     },
   ];
