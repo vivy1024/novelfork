@@ -48,6 +48,7 @@ export interface MessageItemProps {
   message: ConversationSurfaceMessage;
   onOpenArtifact?: unknown;
   onContextAction?: (messageId: string, action: MessageContextAction["id"]) => void;
+  codeCollapsed?: boolean;
 }
 
 /**
@@ -79,7 +80,7 @@ function ThinkingBlock({ block, defaultExpanded = false }: { block: Conversation
   );
 }
 
-export const MessageItem = memo(function MessageItem({ message, onContextAction }: MessageItemProps) {
+export const MessageItem = memo(function MessageItem({ message, onContextAction, codeCollapsed = false }: MessageItemProps) {
   const handleAction = useCallback((action: MessageContextAction["id"]) => {
     onContextAction?.(message.id, action);
   }, [onContextAction, message.id]);
@@ -109,7 +110,7 @@ export const MessageItem = memo(function MessageItem({ message, onContextAction 
   return (
     <ContextMenu>
       <ContextMenuTrigger className="py-2 block">
-        <div className="max-w-[90%]">
+        <div className={`max-w-[90%] ${codeCollapsed ? "[&_pre]:hidden [&_.code-block]:hidden" : ""}`}>
           {message.thinking?.map((block, i) => (
             <ThinkingBlock key={`thinking-${i}`} block={block} />
           ))}

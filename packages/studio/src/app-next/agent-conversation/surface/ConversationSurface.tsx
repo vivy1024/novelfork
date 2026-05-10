@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { Settings, Search, ExternalLink, Pencil, Sparkles, FileCode, Info, Archive, ArrowLeft } from "lucide-react";
+import { Search, ExternalLink, Pencil, Sparkles, FileCode, Info, Archive, ArrowLeft, CodeXml, Pin, Image } from "lucide-react";
 
 import type { ToolResultArtifact } from "../../tool-results";
 import type { SlashCommandExecutionContext, SlashCommandExecutionResult } from "../slash-command-registry";
@@ -53,6 +53,8 @@ export interface ConversationSurfaceProps {
   onEditTitle?: (newTitle: string) => void;
   onGenerateTitle?: () => void;
   onArchive?: () => void;
+  onPin?: () => void;
+  isPinned?: boolean;
   /** /fork 命令回调 */
   onForkSession?: (title?: string) => void;
 }
@@ -82,10 +84,13 @@ export function ConversationSurface({
   onEditTitle,
   onGenerateTitle,
   onArchive,
+  onPin,
+  isPinned = false,
   onForkSession,
 }: ConversationSurfaceProps) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [codeCollapsed, setCodeCollapsed] = useState(false);
   const routerNavigate = useNavigate();
 
   const handleEditTitle = () => {
@@ -178,6 +183,30 @@ export function ConversationSurface({
             </TooltipTrigger>
             <TooltipContent>搜索</TooltipContent>
           </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon-sm" onClick={() => setCodeCollapsed(!codeCollapsed)} className={codeCollapsed ? "text-primary" : ""}>
+                <CodeXml className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{codeCollapsed ? "展开代码块" : "折叠代码块"}</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon-sm" onClick={() => onPin?.()} className={isPinned ? "text-primary" : ""}>
+                <Pin className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{isPinned ? "取消固定" : "固定会话"}</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon-sm" onClick={() => onAttach && document.querySelector<HTMLInputElement>('input[type="file"]')?.click()}>
+                <Image className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>图片附件</TooltipContent>
+          </Tooltip>
           <Sheet>
             <SheetTrigger
               className="inline-flex shrink-0 items-center justify-center rounded-lg text-sm font-medium transition-all outline-none select-none hover:bg-muted hover:text-foreground size-7"
@@ -230,14 +259,6 @@ export function ConversationSurface({
             </TooltipTrigger>
             <TooltipContent>归档</TooltipContent>
           </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon-sm" onClick={() => settingsHref && void routerNavigate({ to: settingsHref })}>
-                <Settings className="size-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>设置</TooltipContent>
-          </Tooltip>
         </div>
       </header>
 
@@ -276,7 +297,7 @@ export function ConversationSurface({
           </div>
         ) : (
           <>
-            <MessageStream messages={filteredMessages} hasPrevious={hasPreviousMessages} onLoadPrevious={onLoadPreviousMessages} onContextAction={handleMessageContextAction} />
+            <MessageStream messages={filteredMessages} hasPrevious={hasPreviousMessages} onLoadPrevious={onLoadPreviousMessages} onContextAction={handleMessageContextAction} codeCollapsed={codeCollapsed} />
             {/* Confirmation gate / User question gate inline */}
             {pendingConfirmation && (
               <div className="my-3">
