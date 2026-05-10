@@ -298,7 +298,7 @@ function ModelDropdown({
   // 按 provider 分组
   const groups = new Map<string, ConversationModelOption[]>();
   for (const opt of filtered) {
-    const key = opt.providerId ?? "unknown";
+    const key = opt.providerLabel ?? opt.providerId ?? "unknown";
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key)!.push(opt);
   }

@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { Search, ExternalLink, Pencil, Sparkles, FileCode, Info, Archive, ArrowLeft, CodeXml, Pin, Image } from "lucide-react";
 
@@ -117,6 +117,8 @@ export function ConversationSurface({
   };
 
   const [editingMessage, setEditingMessage] = useState<{ id: string; content: string } | null>(null);
+  const [localSending, setLocalSending] = useState(false);
+  const prevMessageCount = useRef(messages.length);
 
   const handleMessageContextAction = (messageId: string, action: string) => {
     const msgIndex = messages.findIndex((m) => m.id === messageId);
@@ -171,9 +173,18 @@ export function ConversationSurface({
     }
   };
 
-  const isWorking = status.narratorState === "working" || status.state === "running";
+  const isWorking = localSending || status.narratorState === "working" || status.state === "running";
   const isInterrupted = status.substatus === "interrupted";
   const effectiveStreamingStartedAt = isWorking ? (status.streamingStartedAt ?? streamingStartedAt) : null;
+
+  // 检测回复到达，重置 localSending
+  useEffect(() => {
+    if (messages.length > prevMessageCount.current && localSending) {
+      const lastMsg = messages[messages.length - 1];
+      if (lastMsg?.role === "assistant") setLocalSending(false);
+    }
+    prevMessageCount.current = messages.length;
+  }, [messages.length, localSending, messages]);
 
   // 搜索过滤（对标 NarraFork messageSearchPlaceholder: "搜索已加载消息..."）
   const filteredMessages = searchQuery
@@ -323,7 +334,7 @@ export function ConversationSurface({
       )}
 
       {/* ── Recovery notice ── */}
-      {recoveryNotice && recoveryNotice.state !== "idle" && (
+      {recoveryNotice && recoveryNotice.state !== "idle" && recoveryNotice.state !== "reconnecting" && (
         <div className="shrink-0 border-b border-border bg-yellow-50 px-4 py-2 text-xs text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-200">
           {recoveryNotice.state === "failed" ? "会话恢复失败" : "正在恢复会话..."} {recoveryNotice.reason && `— ${recoveryNotice.reason}`}
         </div>
@@ -440,7 +451,7 @@ export function ConversationSurface({
 
       {/* ── Composer ── */}
       <Composer
-        onSend={onSend}
+        onSend={(content) => { setLocalSending(true); onSend(content); }}
         onAbort={onAbort}
         onAttach={onAttach}
         onSlashCommandResult={handleSlashCommandResult}

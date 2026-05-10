@@ -889,9 +889,9 @@ function toConversationStatus(
   // Context usage estimation
   const cumulativeUsage = state.session?.cumulativeUsage;
   const maxTokens = selectedModel?.contextWindow;
-  const contextUsage = cumulativeUsage && maxTokens
+  const contextUsage = maxTokens && maxTokens > 0
     ? {
-        usedTokens: cumulativeUsage.totalInputTokens + cumulativeUsage.totalOutputTokens,
+        usedTokens: cumulativeUsage ? cumulativeUsage.totalInputTokens + cumulativeUsage.totalOutputTokens : 0,
         maxTokens,
         compactThreshold: Math.round(maxTokens * (compactThresholdPercent / 100)),
       }
