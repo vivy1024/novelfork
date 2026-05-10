@@ -6,6 +6,7 @@ import {
   type RuntimeAdapterId,
 } from "../lib/provider-adapters/index.js";
 import { buildRuntimeModelPool, buildRuntimeProviderStatus } from "../lib/runtime-model-pool.js";
+import { loadUserConfig } from "../lib/user-config-service.js";
 import { buildProviderFailureEnvelope, getProviderFailureHttpStatus } from "../errors.js";
 import {
   ProviderRuntimeStore,
@@ -128,7 +129,9 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}) {
 
   app.get("/status", async (c) => {
     try {
-      return c.json({ status: await buildRuntimeProviderStatus(store) });
+      const config = await loadUserConfig();
+      const userDefaultModel = config.modelDefaults.defaultSessionModel || undefined;
+      return c.json({ status: await buildRuntimeProviderStatus(store, userDefaultModel) });
     } catch (error) {
       console.error("Failed to get provider status:", error);
       return c.json({ error: "Failed to get provider status" }, 500);
