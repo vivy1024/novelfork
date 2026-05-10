@@ -1,7 +1,10 @@
-import { BookOpen, FileText, AlertTriangle, CheckCircle, Target, TrendingUp, Bookmark, PenLine } from "lucide-react";
+import { BookOpen, FileText, AlertTriangle, CheckCircle, Target, TrendingUp, Bookmark, PenLine, ShieldAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { useApi } from "../../hooks/use-api";
+import { AiTasteScoreBadge } from "./AiTasteReport";
 import type { WorkbenchResourceNode } from "./useWorkbenchResources";
 import { NewBookGuide } from "./NewBookGuide";
+import { BookHealthSummary } from "./BookHealthSummary";
 
 export interface CockpitBookData {
   id: string;
@@ -143,6 +146,33 @@ function JingweiSummary({ nodes }: { nodes: readonly WorkbenchResourceNode[] }) 
 }
 
 // ---------------------------------------------------------------------------
+// AiTasteOverview — AI 味均值摘要
+// ---------------------------------------------------------------------------
+
+function AiTasteOverview({ bookId }: { bookId: string }) {
+  const { data } = useApi<{ overall: { avgScore: number; totalChapters: number } }>(
+    `/api/books/${bookId}/filter/report`
+  );
+
+  if (!data || data.overall.totalChapters === 0) return null;
+
+  return (
+    <div className="rounded-lg border border-border p-3 space-y-2">
+      <h3 className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+        <ShieldAlert className="size-3.5" />
+        AI 味检测
+      </h3>
+      <div className="flex items-center gap-3">
+        <AiTasteScoreBadge score={data.overall.avgScore} />
+        <span className="text-xs text-muted-foreground">
+          {data.overall.totalChapters} 章已扫描
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // CandidateSummary — 候选稿摘要
 // ---------------------------------------------------------------------------
 
@@ -233,6 +263,9 @@ function CandidateSummary({ nodes }: { nodes: readonly WorkbenchResourceNode[] }
         />
       </div>
 
+      {/* 书籍健康度 */}
+      {book.id && <BookHealthSummary bookId={book.id} />}
+
       {/* 焦点建议 */}
       <div className="rounded-lg border border-border p-3 space-y-2">
         <h3 className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
@@ -272,6 +305,9 @@ function CandidateSummary({ nodes }: { nodes: readonly WorkbenchResourceNode[] }
 
       {/* 候选稿摘要 */}
       <CandidateSummary nodes={nodes} />
+
+      {/* AI 味检测摘要 */}
+      {book.id && <AiTasteOverview bookId={book.id} />}
     </div>
   );
 }
