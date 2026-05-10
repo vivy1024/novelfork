@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { SimpleSelect } from "@/components/ui/simple-select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { EmptyState } from "../../components/feedback";
 import { modelTestStatusLabel, providerApiModeLabel, providerCompatibilityLabel } from "../../lib/display-labels";
 import type { ManagedProvider, Model, ProviderApiMode, ProviderCompatibility, ProviderThinkingStrength, ProviderType } from "@/shared/provider-catalog";
@@ -248,6 +249,10 @@ function ModelList({
 }) {
   const [customModelId, setCustomModelId] = useState("");
   const [customModelName, setCustomModelName] = useState("");
+  const [testingModel, setTestingModel] = useState<Model | null>(null);
+  const [testPrompt, setTestPrompt] = useState("Please introduce yourself in one sentence. / 请用一句话介绍你自己。");
+  const [testResult, setTestResult] = useState<{ reply?: string; error?: string; latency?: number } | null>(null);
+  const [testRunning, setTestRunning] = useState(false);
 
   const addCustomModel = () => {
     if (!customModelId.trim()) return;
@@ -264,6 +269,39 @@ function ModelList({
     });
     setCustomModelId("");
     setCustomModelName("");
+  };
+
+  const openTestDialog = (model: Model) => {
+    setTestingModel(model);
+    setTestResult(null);
+    setTestRunning(false);
+  };
+
+  const runTest = async () => {
+    if (!testingModel || testRunning) return;
+    setTestRunning(true);
+    setTestResult(null);
+    const start = Date.now();
+    try {
+      const res = await fetch(`/api/providers/${encodeURIComponent(provider.id)}/models/${encodeURIComponent(testingModel.id)}/test`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: testPrompt }),
+      });
+      const data = await res.json();
+      const latency = Date.now() - start;
+      if (data.success || data.reply) {
+        setTestResult({ reply: data.reply ?? data.message ?? "测试成功（无回复内容）", latency: data.latency ?? latency });
+      } else {
+        setTestResult({ error: data.error ?? "测试失败", latency });
+      }
+      // Also trigger the standard test to update model status
+      void onTestModel(provider.id, testingModel.id);
+    } catch (e) {
+      setTestResult({ error: e instanceof Error ? e.message : "网络错误", latency: Date.now() - start });
+    } finally {
+      setTestRunning(false);
+    }
   };
 
   if (!provider.models.length) {
@@ -333,8 +371,8 @@ function ModelList({
                 type="button"
                 className={`rounded p-1.5 transition hover:bg-muted disabled:opacity-40 ${testColor}`}
                 disabled={isBusy}
-                title="测试模型连通性"
-                onClick={() => void onTestModel(provider.id, model.id)}
+                title="测试模型"
+                onClick={() => openTestDialog(model)}
               >
                 <Play className="size-4" fill="currentColor" />
               </button>
@@ -351,6 +389,47 @@ function ModelList({
         onModelNameChange={setCustomModelName}
         onAdd={addCustomModel}
       />
+
+      {/* 测试模型对话框 */}
+      <Dialog open={testingModel !== null} onOpenChange={(open) => { if (!open) setTestingModel(null); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>测试模型</DialogTitle>
+            <DialogDescription>
+              模型：<code className="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">{provider.id}:{testingModel?.id}</code>
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <label className="text-sm font-medium">测试问题</label>
+              <textarea
+                className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm min-h-[80px] resize-y focus:outline-none focus:ring-2 focus:ring-ring"
+                value={testPrompt}
+                onChange={(e) => setTestPrompt(e.target.value)}
+              />
+            </div>
+            <Button
+              className="w-full"
+              disabled={testRunning || !testPrompt.trim()}
+              onClick={() => void runTest()}
+            >
+              {testRunning ? "测试中…" : "发送测试"}
+            </Button>
+            {testResult && (
+              <div className={`rounded-lg border p-3 text-sm ${testResult.error ? "border-destructive/40 bg-destructive/5" : "border-emerald-500/40 bg-emerald-500/5"}`}>
+                {testResult.latency != null && (
+                  <p className="text-xs text-muted-foreground mb-1">延迟：{testResult.latency}ms</p>
+                )}
+                {testResult.error ? (
+                  <p className="text-destructive">{testResult.error}</p>
+                ) : (
+                  <p className="whitespace-pre-wrap">{testResult.reply}</p>
+                )}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
