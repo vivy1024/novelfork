@@ -12,11 +12,16 @@ import {
   Loader2,
   ShieldAlert,
   HeartPulse,
+  PenLine,
+  GitBranch,
 } from "lucide-react";
 import { AiTasteReport, type FilterReport } from "./AiTasteReport";
 import { postApi } from "../../hooks/use-api";
 import { ChapterHealthCard } from "./ChapterHealthCard";
 import { PresetsPanel } from "./PresetsPanel";
+import { BeatTemplateList } from "./BeatProgressBar";
+import { InlineWritePanel } from "./InlineWritePanel";
+import { VariantsPanel } from "./VariantsPanel";
 
 export interface WritingToolDefinition {
   id: string;
@@ -136,6 +141,7 @@ export function WritingToolsPanel({ bookId, currentChapter, chapterContent, onRu
     }
   }
   const [showChapterHealth, setShowChapterHealth] = useState(false);
+  const [activeSubPanel, setActiveSubPanel] = useState<"inline-write" | "variants" | null>(null);
 
   async function handleRun(tool: WritingToolDefinition) {
     if (runningTool) return;
@@ -175,11 +181,58 @@ export function WritingToolsPanel({ bookId, currentChapter, chapterContent, onRu
       <Tabs defaultValue="tools">
         <TabsList className="w-full">
           <TabsTrigger value="tools">工具</TabsTrigger>
+          <TabsTrigger value="beats">节拍表</TabsTrigger>
           <TabsTrigger value="presets">预设</TabsTrigger>
         </TabsList>
 
         <TabsContent value="tools">
           <div className="space-y-3 pt-2">
+            {/* Sub-panels (inline write / variants) */}
+            {activeSubPanel === "inline-write" && (
+              <InlineWritePanel
+                bookId={bookId}
+                currentChapter={currentChapter}
+                selectedText={chapterContent ? undefined : undefined}
+                onClose={() => setActiveSubPanel(null)}
+              />
+            )}
+            {activeSubPanel === "variants" && (
+              <VariantsPanel
+                bookId={bookId}
+                currentChapter={currentChapter}
+                onClose={() => setActiveSubPanel(null)}
+              />
+            )}
+
+            {/* Main tools grid (hidden when sub-panel is open) */}
+            {activeSubPanel === null && (
+              <>
+            {/* Writing mode entry cards */}
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setActiveSubPanel("inline-write")}
+                className="flex items-start gap-2 rounded-lg border border-primary/30 bg-primary/5 p-2.5 text-left hover:bg-primary/10 transition-colors"
+              >
+                <span className="shrink-0 mt-0.5 text-primary"><PenLine className="size-4" /></span>
+                <div className="min-w-0">
+                  <span className="text-xs font-medium">选段写作</span>
+                  <p className="text-[10px] text-muted-foreground mt-0.5 line-clamp-2">续写/扩写/补写</p>
+                </div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveSubPanel("variants")}
+                className="flex items-start gap-2 rounded-lg border border-primary/30 bg-primary/5 p-2.5 text-left hover:bg-primary/10 transition-colors"
+              >
+                <span className="shrink-0 mt-0.5 text-primary"><GitBranch className="size-4" /></span>
+                <div className="min-w-0">
+                  <span className="text-xs font-medium">多版本变体</span>
+                  <p className="text-[10px] text-muted-foreground mt-0.5 line-clamp-2">生成多个改写版本对比</p>
+                </div>
+              </button>
+            </div>
+
             <div className="grid grid-cols-2 gap-2">
               {WRITING_TOOLS.map((tool) => {
                 const disabled = runningTool !== null || (tool.requiresChapter && !currentChapter);
@@ -247,6 +300,16 @@ export function WritingToolsPanel({ bookId, currentChapter, chapterContent, onRu
             {showChapterHealth && currentChapter && (
               <ChapterHealthCard bookId={bookId} chapterNumber={currentChapter} />
             )}
+              </>
+            )}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="beats">
+          <div className="pt-2">
+            <BeatTemplateList
+              currentBeatIndex={currentChapter ? currentChapter - 1 : 0}
+            />
           </div>
         </TabsContent>
 
