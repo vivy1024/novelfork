@@ -1,10 +1,11 @@
-import { useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
-import { BookOpen, GitBranch, Wrench } from "lucide-react";
+import { BookOpen, GitBranch, Wrench, History } from "lucide-react";
 import { WorkbenchCanvas, type WorkbenchCanvasContext, type CandidateActionHandlers, type JingweiActionHandlers } from "./WorkbenchCanvas";
 import { WorkbenchResourceTree } from "./WorkbenchResourceTree";
 import { WritingToolsPanel } from "./WritingToolsPanel";
+import { CheckpointPanel, type CheckpointEntry } from "./CheckpointPanel";
 import type { WorkbenchResourceNode } from "./useWorkbenchResources";
 import { ChapterGraph, type ChapterGraphChapter, type ChapterGraphEdge } from "../chapter-graph";
 
@@ -46,8 +47,27 @@ export function WritingWorkbenchRoute({ bookId, nodes, selectedNode, onOpen, onS
   const statusLabel = routeStatusLabel(nodes, selectedNode);
   const [viewMode, setViewMode] = useState<"tree" | "graph">("tree");
   const [showToolsPanel, setShowToolsPanel] = useState(false);
+  const [showCheckpoints, setShowCheckpoints] = useState(false);
+  const [checkpoints, setCheckpoints] = useState<CheckpointEntry[]>([]);
+  const [checkpointsLoading, setCheckpointsLoading] = useState(false);
   const hasGraphData = chapters && chapters.length > 0;
   const currentChapter = selectedNode?.kind === "chapter" ? (selectedNode.metadata as { chapterNumber?: number })?.chapterNumber : undefined;
+
+  const loadCheckpoints = useCallback(async () => {
+    if (!bookId) return;
+    setCheckpointsLoading(true);
+    try {
+      const res = await fetch(`/api/books/${encodeURIComponent(bookId)}/checkpoints`);
+      if (res.ok) {
+        const data = await res.json();
+        setCheckpoints(Array.isArray(data.checkpoints) ? data.checkpoints : Array.isArray(data) ? data : []);
+      }
+    } finally {
+      setCheckpointsLoading(false);
+    }
+  }, [bookId]);
+
+  useEffect(() => { if (showCheckpoints) void loadCheckpoints(); }, [showCheckpoints, loadCheckpoints]);
 
   return (
     <div className="flex h-full w-full flex-col min-h-0" data-testid="writing-workbench-route" data-book-id={bookId}>
@@ -94,9 +114,15 @@ export function WritingWorkbenchRoute({ bookId, nodes, selectedNode, onOpen, onS
               </Button>
             )}
             {bookId && (
-              <Button size="xs" variant={showToolsPanel ? "default" : "outline"} onClick={() => setShowToolsPanel(!showToolsPanel)}>
+              <Button size="xs" variant={showToolsPanel ? "default" : "outline"} onClick={() => { setShowToolsPanel(!showToolsPanel); if (!showToolsPanel) setShowCheckpoints(false); }}>
                 <Wrench className="size-3 mr-1" />
                 写作工具
+              </Button>
+            )}
+            {bookId && (
+              <Button size="xs" variant={showCheckpoints ? "default" : "outline"} onClick={() => { setShowCheckpoints(!showCheckpoints); if (!showCheckpoints) setShowToolsPanel(false); }}>
+                <History className="size-3 mr-1" />
+                快照
               </Button>
             )}
           </div>
@@ -121,7 +147,29 @@ export function WritingWorkbenchRoute({ bookId, nodes, selectedNode, onOpen, onS
             </section>
             {showToolsPanel && bookId && (
               <section aria-label="写作工具面板" className="flex-1 min-h-0 border-t border-border overflow-y-auto p-3">
-                <WritingToolsPanel bookId={bookId} currentChapter={currentChapter} chapterContent={selectedNode?.content ?? ""} onRunTool={async () => ({})} />
+                <WritingToolsPanel bookId={bookId} currentChapter={currentChapter} chapterContent={selectedNode?.content ?? ""} onRunTool={async (_toolId, endpoint, params) => {
+                  const res = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(params) });
+                  if (!res.ok) throw new Error(`工具执行失败：${res.status}`);
+                  return res.json();
+                }} />
+              </section>
+            )}
+            {showCheckpoints && bookId && (
+              <section aria-label="快照与回滚" className="flex-1 min-h-0 border-t border-border overflow-y-auto p-3">
+                <CheckpointPanel
+                  checkpoints={checkpoints}
+                  loading={checkpointsLoading}
+                  onPreviewRewind={async (id) => {
+                    const res = await fetch(`/api/books/${encodeURIComponent(bookId)}/checkpoints/${encodeURIComponent(id)}/rewind/preview`);
+                    if (!res.ok) throw new Error("预览失败");
+                    return res.json();
+                  }}
+                  onApplyRewind={async (id) => {
+                    const res = await fetch(`/api/books/${encodeURIComponent(bookId)}/checkpoints/${encodeURIComponent(id)}/rewind/apply`, { method: "POST" });
+                    if (!res.ok) throw new Error("回滚失败");
+                  }}
+                  onRefresh={loadCheckpoints}
+                />
               </section>
             )}
           </div>
