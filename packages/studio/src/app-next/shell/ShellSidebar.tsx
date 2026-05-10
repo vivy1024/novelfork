@@ -1,7 +1,8 @@
-import { BookOpen, MessageSquareText, Search, Settings, Wrench, PanelLeftClose, PanelLeftOpen, Pin } from "lucide-react";
+import { BookOpen, MessageSquareText, Search, Settings, Wrench, PanelLeftClose, PanelLeftOpen, Pin, Trash2 } from "lucide-react";
 
 import { getShellNavItems, isShellNavItemActive, type ShellBookItem, type ShellNavItem, type ShellRoute, type ShellSessionItem } from "./shell-route";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
+import { ContextMenu, ContextMenuTrigger, ContextMenuContent, ContextMenuItem } from "@/components/ui/context-menu";
 import { Button } from "@/components/ui/button";
 
 export interface ShellSidebarProps {
@@ -9,6 +10,7 @@ export interface ShellSidebarProps {
   readonly books: readonly ShellBookItem[];
   readonly sessions: readonly ShellSessionItem[];
   readonly onNavigate: (route: ShellRoute) => void;
+  readonly onDeleteBook?: (bookId: string) => void;
   readonly collapsed?: boolean;
   readonly onToggleCollapse?: () => void;
 }
@@ -85,7 +87,7 @@ function NarratorNavButton({ item, active, onClick, collapsed }: { readonly item
   );
 }
 
-export function ShellSidebar({ route, books, sessions, onNavigate, collapsed = false, onToggleCollapse }: ShellSidebarProps) {
+export function ShellSidebar({ route, books, sessions, onNavigate, onDeleteBook, collapsed = false, onToggleCollapse }: ShellSidebarProps) {
   const items = getShellNavItems({ books, sessions });
   const bookItems = items.filter((item) => item.group === "books");
   const narratorItems = items.filter((item) => item.group === "narrators");
@@ -136,7 +138,19 @@ export function ShellSidebar({ route, books, sessions, onNavigate, collapsed = f
               </Tooltip>
             )}
             {bookItems.length > 0
-              ? bookItems.map((item) => <NavButton key={item.id} label={item.label} active={isShellNavItemActive(item, route)} onClick={() => onNavigate(item.route)} collapsed={collapsed} />)
+              ? bookItems.map((item) => (
+                <ContextMenu key={item.id}>
+                  <ContextMenuTrigger asChild>
+                    <NavButton label={item.label} active={isShellNavItemActive(item, route)} onClick={() => onNavigate(item.route)} collapsed={collapsed} />
+                  </ContextMenuTrigger>
+                  <ContextMenuContent>
+                    <ContextMenuItem className="text-destructive" onClick={() => { if (confirm(`确认删除「${item.label}」？此操作不可撤销。`)) onDeleteBook?.(item.id); }}>
+                      <Trash2 className="mr-2 size-3.5" />
+                      删除作品
+                    </ContextMenuItem>
+                  </ContextMenuContent>
+                </ContextMenu>
+              ))
               : !collapsed && <p className="px-2 py-1 text-xs text-muted-foreground">暂无书籍</p>
             }
             {!collapsed && (
