@@ -22,6 +22,7 @@
 - docs: 新增 novel-writing-features spec（requirements + design + tasks）
 
 ### 改进
+- 对话界面底部三行结构对标 NarraFork：模型显示完整名称、权限显示完整文字、实时计时器、中断/继续改为文字按钮、顶部栏添加返回按钮、Git 状态栏加 🏠 前缀
 - 功能缺口 P0/P1/P2/P3：实现 AskUserQuestion 机制（与 NarraFork 一致，复用 permission 机制）——新建 UserQuestionGate 组件（text/single/multi/ranged-number/ai-suggest 五种输入类型），PGI 和 Guided Generation 工具产出 confirmation 触发问题表单，confirmTool 支持附带 answers；实现 Agent 编排可见执行链 UI——新建 WorkflowProgressCard 组件；Tier 1 问卷集成建书流程——创建成功后展示可选问卷向导；写作工具面板——WritingToolsPanel 7 种工具快捷入口；驾驶舱增强——经纬摘要+候选稿摘要；首次运行欢迎弹窗集成；学习中心——9 篇文档 + `/next/learn` 前端页面；仪表盘空态教学增强；Checkpoint/Rewind UI——新增 `GET /api/books/:id/checkpoints` 路由 + CheckpointPanel 组件（列表/预览/回滚）。
 - 文档重写：全面重写 `docs/02-用户指南`（小说管理与创作、AI写作功能、叙述者对话、设置与套路）、`docs/03-产品与流程`（创作流程、资源管理器模型、AI输出与候选稿、故事经纬）、`docs/04-架构与设计`（系统架构、Studio工作台、Agent写作管线、驾驶舱），所有内容基于功能审计后的实际代码状态编写。
 - 功能审计 P3-13/14/15/16/17：实现驾驶舱总览（CockpitOverview：进度条/字数/审校/风险/建议）、文件修改追踪（从 toolCalls 提取 Write/Edit 文件路径）、Context Ring（SVG 圆环上下文使用率可视化）、段落压缩 UI（compact-before 右键菜单接通 compactSession）、经纬资料编辑器（JingweiEntryEditor：标题+Markdown 编辑/保存/删除）。
