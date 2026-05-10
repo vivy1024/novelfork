@@ -139,8 +139,8 @@ export function NarratorStatusBar({ status, onUpdateModel, onUpdateReasoningEffo
   const reasoningInitial = REASONING_INITIALS[status.reasoningEffort ?? "medium"] ?? "M";
   // 权限图标
   const permissionIsOpen = status.permissionMode === "allow";
-  // 条件显示：推理强度仅 Codex/Anthropic/DeepSeek 显示
-  const showReasoningEffort = status.apiMode === "codex" || status.providerCompatibility === "anthropic-compatible" || (status.modelId ?? "").toLowerCase().includes("deepseek");
+  // 条件显示：推理强度和 Fast Mode 仅 Codex API 模式显示
+  const showReasoningEffort = status.apiMode === "codex";
   // 条件显示：Fast Mode 仅 Codex 显示
   const showFastMode = status.apiMode === "codex";
 
