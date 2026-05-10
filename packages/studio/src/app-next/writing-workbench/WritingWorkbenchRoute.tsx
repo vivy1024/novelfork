@@ -100,7 +100,7 @@ export function WritingWorkbenchRoute({ bookId, nodes, selectedNode, onOpen, onS
       ) : (
         <div className="flex flex-1 min-h-0">
           {/* 左侧资源树 */}
-          <section aria-label="资源树" className="w-56 shrink-0 border-r border-border overflow-y-auto p-2">
+          <section aria-label="资源树" className="w-64 shrink-0 border-r border-border overflow-y-auto p-2">
             <WorkbenchResourceTree nodes={nodes} selectedNodeId={selectedNode?.id} onOpen={onOpen} />
           </section>
           {/* 右侧编辑区 */}
