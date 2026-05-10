@@ -5,9 +5,9 @@ type RuntimePlatformAccountAuthMode = "json-account" | "local-auth-json" | "oaut
 type RuntimePlatformAccountStatus = "active" | "disabled" | "expired" | "error";
 
 const PROVIDER_API_MODE_LABELS: Record<ProviderApiMode, string> = {
-  completions: "聊天补全模式",
-  responses: "响应接口模式",
-  codex: "Codex 模式",
+  completions: "Completions",
+  responses: "Responses",
+  codex: "Codex",
 };
 
 const PROVIDER_COMPATIBILITY_LABELS: Record<ProviderCompatibility, string> = {
