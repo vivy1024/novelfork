@@ -145,6 +145,116 @@
 
 ---
 
+## 功能缺口：经纬文件夹重构
+
+### 现状
+
+当前经纬文件平铺在 `books/<id>/story/` 下：
+```
+story/
+├── story_bible.md
+├── book_rules.md
+├── volume_outline.md
+├── current_state.md
+├── pending_hooks.md
+├── particle_ledger.md
+├── subplot_board.md
+├── emotional_arcs.md
+└── character_matrix.md
+```
+
+问题：
+1. 所有设定塞一个 `story_bible.md`，不可维护
+2. 命名用 `bible`（上游 InkOS 遗留），中文作者无语义
+3. 没有按类别分文件夹，无法单独管理角色/势力/设定
+
+### 目标结构
+
+```
+books/<id>/jingwei/
+├── 角色/
+│   ├── 沈舟.md
+│   ├── 林若.md
+│   └── _index.json        ← 元数据（别名、可见性规则、关联章节）
+├── 势力/
+│   ├── 天机阁.md
+│   └── 魔道联盟.md
+├── 设定/
+│   ├── 力量体系.md
+│   ├── 世界地理.md
+│   └── 经济规则.md
+├── 伏笔/
+│   ├── 玉佩来历.md         ← 状态：buried/escalating/resolved
+│   └── 师父失踪.md
+├── 大纲/
+│   ├── 第一卷.md
+│   └── 第二卷.md
+├── 状态/
+│   ├── current_state.md
+│   ├── particle_ledger.md
+│   └── pending_hooks.md
+└── 规则/
+    └── book_rules.md
+```
+
+### 迁移策略
+
+1. 新书直接用新结构
+2. 旧书保持兼容（读取时两种路径都尝试）
+3. 提供一次性迁移命令
+
+### 代码改动范围
+
+- `resource-tree-adapter.ts`：读取新目录结构
+- `ChapterAnalyzerAgent`：读取经纬文件路径更新
+- `WriterAgent`：同上
+- `buildBibleContext()`：同上
+- `guided-setup` API：写入新路径
+- 资源树前端：显示文件夹层级
+
+---
+
+## 经纬上下文注入机制（连贯性保障）
+
+### 当前分层压缩策略
+
+写第 N 章时，AI prompt 包含：
+
+| 层 | 内容 | 来源 | 约 token |
+|---|---|---|---|
+| 经纬条目 | 角色/设定/伏笔（结构化摘要） | SQLite `bible_*` 表 + 经纬文件 | 2000-5000 |
+| 章节摘要 | 每章 100-200 字摘要 × N 章 | `retrieveMemorySelection()` | 1000-3000 |
+| 近章全文 | 最近 2-3 章完整正文 | 文件系统 `.md` | 3000-9000 |
+| 规则+状态 | book_rules + current_state | 文件系统 | 500-1000 |
+| 本章意图 | PGI 回答 + 大纲条目 | `.intent.md` + PGI engine | 300-500 |
+| **总计** | | | **7000-18000** |
+
+### 可见性过滤
+
+- **global**：所有章节都注入（如主角设定、世界规则）
+- **nested**：从某章开始注入（如新角色登场后）
+- **tracked**：只在特定章节范围注入（如临时事件）
+
+### Token 预算裁剪
+
+`token-budget.ts` 按优先级排序经纬条目，超出预算时从低优先级开始裁剪：
+1. 核心记忆（主角/金手指/世界规则）— 最高优先级
+2. 活跃矛盾/伏笔
+3. 配角设定
+4. 历史事件摘要
+
+### 关键依赖
+
+整条连贯性链依赖管线执行（P0）：
+- 章节摘要由 `ChapterAnalyzerAgent` 生成
+- 经纬更新由 `saveJingweiFiles()` 在管线末尾执行
+- 状态更新由 `StateValidatorAgent` 执行
+- 伏笔状态由 `RadarAgent` 更新
+
+**P0 不修，连贯性保障链条不工作。**
+
+---
+
 ## 已修复项（本轮）
 
 | 问题 | 修复 commit |
