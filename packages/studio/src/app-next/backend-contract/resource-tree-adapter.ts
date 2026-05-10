@@ -138,6 +138,12 @@ export async function loadResourceTreeFromContract(
   const narrative = await optional<NarrativeLineResponse>(errors, "narrative-line.read", "叙事线加载失败", () => resource.getNarrativeLine<NarrativeLineResponse>(bookId));
 
   const book = bookResult.data.book;
+
+  // Deduplicate: truth files are a subset of story files (same directory).
+  // Show truth files only in the "经纬资料" group; exclude them from "大纲与设定".
+  const truthFileNames = new Set(truthFiles?.files.map((f) => f.name) ?? []);
+  const nonTruthStoryFiles = storyFiles?.files.filter((f) => !truthFileNames.has(f.name)) ?? [];
+
   const tree: ContractResourceNode[] = [
     {
       id: `book:${book.id}`,
@@ -157,11 +163,9 @@ export async function loadResourceTreeFromContract(
           ...errors.filter((node) => node.id === "unsupported:candidates.list"),
         ]),
         group("group:drafts", "草稿", drafts?.drafts.map(toDraftNode) ?? []),
-        group("group:story-files", "大纲与设定", [
-          ...(storyFiles?.files.map((file) => toStoryFileNode(book.id, file)) ?? []),
-          ...(truthFiles?.files.map((file) => toTruthFileNode(book.id, file)) ?? []),
-        ]),
+        group("group:story-files", "大纲与设定", nonTruthStoryFiles.map((file) => toStoryFileNode(book.id, file))),
         group("group:jingwei", "经纬资料", [
+          ...(truthFiles?.files.map((file) => toTruthFileNode(book.id, file)) ?? []),
           ...(jingweiSections?.sections.map(toJingweiSectionNode) ?? []),
           ...(jingweiEntries?.entries.map(toJingweiEntryNode) ?? []),
         ]),

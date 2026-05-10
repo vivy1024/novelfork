@@ -93,14 +93,11 @@ function StatCard({ icon, label, value, sub }: { icon: React.ReactNode; label: s
 export function CockpitOverview({ book: bookProp, bookId, nodes, onOpenChapter, onGuideComplete }: CockpitOverviewProps) {
   const book = bookProp ?? extractBookData(nodes);
 
-  // 检测是否为新书（无章节、无经纬数据）→ 显示引导式创作向导
+  // 检测是否为新书（无章节、无字数）→ 显示引导式创作向导
+  // 注意：建书时会自动创建空经纬栏目，所以不能用 hasJingwei 判断
   const isNewBook = !book || (book.chapterCount === 0 && book.totalWords === 0);
-  const hasJingwei = nodes.some((n) => {
-    const jingweiGroup = n.kind === "book" ? n.children?.find((c) => c.id === "group:jingwei") : null;
-    return jingweiGroup && jingweiGroup.children && jingweiGroup.children.length > 0;
-  });
 
-  if (isNewBook && !hasJingwei && bookId) {
+  if (isNewBook && bookId) {
     const title = book?.title ?? "未命名作品";
     return (
       <NewBookGuide
