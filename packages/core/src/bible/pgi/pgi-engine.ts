@@ -1,5 +1,6 @@
 import type { StorageDatabase } from "../../storage/db.js";
 import { createBibleConflictRepository } from "../repositories/conflict-repo.js";
+import { createBibleCharacterArcRepository } from "../repositories/character-arc-repo.js";
 
 export interface PGIQuestion {
   id: string;
@@ -12,6 +13,10 @@ export interface PGIQuestion {
 export interface GeneratePGIQuestionsInput {
   bookId: string;
   chapter: number;
+  /** 大纲计划总章数（用于偏离检测） */
+  targetChapters?: number;
+  /** 当前已写章数 */
+  currentChapterCount?: number;
 }
 
 export interface GeneratePGIQuestionsResult {
@@ -31,6 +36,7 @@ export async function generatePGIQuestions(storage: StorageDatabase, input: Gene
   const questions: PGIQuestion[] = [];
   const heuristics = new Set<string>();
 
+  // 规则 1：矛盾 escalating
   const activeConflicts = await createBibleConflictRepository(storage).getActiveConflictsAtChapter(input.bookId, input.chapter);
   for (const conflict of activeConflicts.filter((entry) => entry.resolutionState === "escalating").slice(0, 5)) {
     heuristics.add("conflict-escalating");
@@ -43,6 +49,7 @@ export async function generatePGIQuestions(storage: StorageDatabase, input: Gene
     });
   }
 
+  // 规则 2：伏笔到期
   if (questions.length < 5) {
     const events = storage.sqlite.prepare(`
       SELECT "id", "name", "chapter_start", "chapter_end", "foreshadow_state"
@@ -62,6 +69,45 @@ export async function generatePGIQuestions(storage: StorageDatabase, input: Gene
         context: { eventId: event.id, plannedAt },
       });
       if (questions.length >= 5) break;
+    }
+  }
+
+  // 规则 3：角色弧线停滞（连续 5+ 章无推进）
+  if (questions.length < 5) {
+    const arcRepo = createBibleCharacterArcRepository(storage);
+    const arcs = await arcRepo.listByBook(input.bookId);
+    for (const arc of arcs) {
+      const lastProgressChapter = (arc as { lastProgressChapter?: number }).lastProgressChapter ?? 0;
+      if (input.chapter - lastProgressChapter >= 5) {
+        heuristics.add("character-arc-stalled");
+        questions.push({
+          id: `arc-stalled:${arc.id}`,
+          prompt: `角色弧线「${arc.characterId}」已 ${input.chapter - lastProgressChapter} 章未推进。本章要推动角色成长吗？`,
+          type: "single",
+          options: ["推进弧线", "保持现状（有意为之）", "跳过"],
+          context: { arcId: arc.id, stalledChapters: input.chapter - lastProgressChapter },
+        });
+        if (questions.length >= 5) break;
+      }
+    }
+  }
+
+  // 规则 4：大纲偏离（进度超出计划 20%+）
+  if (questions.length < 5 && input.targetChapters && input.currentChapterCount) {
+    const expectedProgress = input.chapter / input.targetChapters;
+    const actualProgress = input.currentChapterCount / input.targetChapters;
+    if (actualProgress > 1.2 || (expectedProgress > 0.8 && actualProgress < 0.5)) {
+      heuristics.add("outline-deviation");
+      const deviation = actualProgress > 1.2
+        ? `已写 ${input.currentChapterCount} 章，超出计划 ${input.targetChapters} 章的 ${Math.round((actualProgress - 1) * 100)}%`
+        : `进度落后：计划已到 ${Math.round(expectedProgress * 100)}%，实际只完成 ${Math.round(actualProgress * 100)}%`;
+      questions.push({
+        id: "outline-deviation",
+        prompt: `大纲偏离警告：${deviation}。是否需要调整大纲？`,
+        type: "single",
+        options: ["调整大纲（扩展/缩减）", "保持当前节奏", "跳过"],
+        context: { targetChapters: input.targetChapters, currentChapterCount: input.currentChapterCount },
+      });
     }
   }
 
