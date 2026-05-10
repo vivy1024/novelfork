@@ -139,7 +139,7 @@ export interface ReviseResult {
   readonly lengthTelemetry?: LengthTelemetry;
 }
 
-export interface TruthFiles {
+export interface JingweiFiles {
   readonly currentState: string;
   readonly particleLedger: string;
   readonly pendingHooks: string;
@@ -147,6 +147,9 @@ export interface TruthFiles {
   readonly volumeOutline: string;
   readonly bookRules: string;
 }
+
+/** @deprecated Use JingweiFiles instead */
+export type TruthFiles = JingweiFiles;
 
 export interface BookStatusInfo {
   readonly bookId: string;
@@ -594,7 +597,7 @@ export class PipelineRunner {
     await this.state.snapshotState(book.id, 0);
   }
 
-  /** Write a single draft chapter. Saves chapter file + truth files + index + snapshot. */
+  /** Write a single draft chapter. Saves chapter file + jingwei files + index + snapshot. */
   async writeDraft(bookId: string, context?: string, wordCount?: number): Promise<DraftResult> {
     const releaseLock = await this.state.acquireBookLock(bookId);
     try {
@@ -676,10 +679,10 @@ export class PipelineRunner {
         : `# 第${chapterNumber}章 ${draftOutput.title}`;
       await writeFile(filePath, `${heading}\n\n${draftOutput.content}`, "utf-8");
 
-      // Save truth files
-      this.logStage(stageLanguage, { zh: "落盘草稿与真相文件", en: "persisting draft and truth files" });
+      // Save jingwei files
+      this.logStage(stageLanguage, { zh: "落盘草稿与经纬资料", en: "persisting draft and jingwei files" });
       await writer.saveChapter(bookDir, draftOutput, gp.numericalSystem, resolvedLang);
-      await writer.saveNewTruthFiles(bookDir, draftOutput, resolvedLang);
+      await writer.saveNewJingweiFiles(bookDir, draftOutput, resolvedLang);
       await this.syncLegacyStructuredStateFromMarkdown(bookDir, chapterNumber, draftOutput);
       await this.syncNarrativeMemoryIndex(bookId);
 
@@ -959,7 +962,7 @@ export class PipelineRunner {
               chapterIntent: reviseControlInput.plan.intentMarkdown,
               contextPackage: reviseControlInput.composed.contextPackage,
               ruleStack: reviseControlInput.composed.ruleStack,
-              truthFileOverrides: {
+              jingweiFileOverrides: {
                 currentState: reviseOutput.updatedState !== "(状态卡未更新)" ? reviseOutput.updatedState : undefined,
                 ledger: reviseOutput.updatedLedger !== "(账本未更新)" ? reviseOutput.updatedLedger : undefined,
                 hooks: reviseOutput.updatedHooks !== "(伏笔池未更新)" ? reviseOutput.updatedHooks : undefined,
@@ -967,7 +970,7 @@ export class PipelineRunner {
             }
           : {
               temperature: 0,
-              truthFileOverrides: {
+              jingweiFileOverrides: {
                 currentState: reviseOutput.updatedState !== "(状态卡未更新)" ? reviseOutput.updatedState : undefined,
                 ledger: reviseOutput.updatedLedger !== "(账本未更新)" ? reviseOutput.updatedLedger : undefined,
                 hooks: reviseOutput.updatedHooks !== "(伏笔池未更新)" ? reviseOutput.updatedHooks : undefined,
@@ -1038,7 +1041,7 @@ export class PipelineRunner {
         "utf-8",
       );
 
-      // Update truth files
+      // Update jingwei files
       const storyDir = join(bookDir, "story");
       if (reviseOutput.updatedState !== "(状态卡未更新)") {
         await writeFile(join(storyDir, "current_state.md"), reviseOutput.updatedState, "utf-8");
@@ -1106,8 +1109,8 @@ export class PipelineRunner {
     }
   }
 
-  /** Read all truth files for a book. */
-  async readTruthFiles(bookId: string): Promise<TruthFiles> {
+  /** Read all jingwei files for a book. */
+  async readJingweiFiles(bookId: string): Promise<JingweiFiles> {
     const bookDir = this.state.bookDir(bookId);
     const storyDir = join(bookDir, "story");
     const readSafe = async (path: string): Promise<string> => {
@@ -1315,9 +1318,9 @@ export class PipelineRunner {
     const postReviseCount = reviewResult.postReviseCount;
     const normalizeApplied = reviewResult.normalizeApplied;
 
-    // 4. Save the final chapter and truth files from a single persistence source
+    // 4. Save the final chapter and jingwei files from a single persistence source
     this.logStage(stageLanguage, { zh: "落盘最终章节", en: "persisting final chapter" });
-    this.logStage(stageLanguage, { zh: "生成最终真相文件", en: "rebuilding final truth files" });
+    this.logStage(stageLanguage, { zh: "生成最终经纬资料", en: "rebuilding final jingwei files" });
     const chapterIndexBeforePersist = await this.state.loadChapterIndex(bookId);
     const { resolveDuplicateTitle } = await import("../agents/post-write-validator.js");
     const initialTitleResolution = resolveDuplicateTitle(
@@ -1400,7 +1403,7 @@ export class PipelineRunner {
     this.logLengthWarnings(lengthWarnings);
 
     // 4.1 Validate settler output before writing
-    this.logStage(stageLanguage, { zh: "校验真相文件变更", en: "validating truth file updates" });
+    this.logStage(stageLanguage, { zh: "校验经纬资料变更", en: "validating jingwei file updates" });
     const storyDir = join(bookDir, "story");
     const [oldState, oldHooks, oldLedger] = await Promise.all([
       readFile(join(storyDir, "current_state.md"), "utf-8").catch(() => ""),
@@ -1480,8 +1483,8 @@ export class PipelineRunner {
       tokenUsage: totalUsage,
       loadChapterIndex: () => this.state.loadChapterIndex(bookId),
       saveChapter: () => writer.saveChapter(bookDir, persistenceOutput, gp.numericalSystem, pipelineLang),
-      saveTruthFiles: async () => {
-        await writer.saveNewTruthFiles(bookDir, persistenceOutput, pipelineLang);
+      saveJingweiFiles: async () => {
+        await writer.saveNewJingweiFiles(bookDir, persistenceOutput, pipelineLang);
         await this.syncLegacyStructuredStateFromMarkdown(bookDir, chapterNumber, persistenceOutput);
         this.logStage(stageLanguage, { zh: "同步记忆索引", en: "syncing memory indexes" });
         await this.syncNarrativeMemoryIndex(bookId);
@@ -1663,7 +1666,7 @@ export class PipelineRunner {
     }
 
     await writer.saveChapter(bookDir, repairedOutput, gp.numericalSystem, pipelineLang);
-    await writer.saveNewTruthFiles(bookDir, repairedOutput, pipelineLang);
+    await writer.saveNewJingweiFiles(bookDir, repairedOutput, pipelineLang);
     await this.syncLegacyStructuredStateFromMarkdown(bookDir, targetChapter, repairedOutput);
     await this.syncNarrativeMemoryIndex(bookId);
     await this.state.snapshotState(bookId, targetChapter);
@@ -1720,7 +1723,7 @@ export class PipelineRunner {
       throw new Error(`Only the latest persisted chapter can be synced safely (latest is ${latestChapter}).`);
     }
 
-    this.logStage(stageLanguage, { zh: "根据已编辑正文同步真相文件与索引", en: "syncing truth files and indexes from edited chapter body" });
+    this.logStage(stageLanguage, { zh: "根据已编辑正文同步经纬资料与索引", en: "syncing jingwei files and indexes from edited chapter body" });
     const { profile: gp } = await this.loadGenreProfile(book.genre);
     const pipelineLang = book.language ?? gp.language;
     const content = await this.readChapterContent(bookDir, targetChapter);
@@ -1801,7 +1804,7 @@ export class PipelineRunner {
     }
 
     await writer.saveChapter(bookDir, syncedOutput, gp.numericalSystem, pipelineLang);
-    await writer.saveNewTruthFiles(bookDir, syncedOutput, pipelineLang);
+    await writer.saveNewJingweiFiles(bookDir, syncedOutput, pipelineLang);
     await this.syncLegacyStructuredStateFromMarkdown(bookDir, targetChapter, syncedOutput);
     await this.syncNarrativeMemoryIndex(bookId);
     await this.state.snapshotState(bookId, targetChapter);
@@ -1952,7 +1955,7 @@ export class PipelineRunner {
 
   /**
    * Import canon from parent book for spinoff writing.
-   * Reads parent's truth files, uses LLM to generate parent_canon.md in target book.
+   * Reads parent's jingwei files, uses LLM to generate parent_canon.md in target book.
    */
   async importCanon(targetBookId: string, parentBookId: string): Promise<string> {
     // Validate both books exist
@@ -2154,11 +2157,11 @@ ${matrix}`,
   // ---------------------------------------------------------------------------
 
   /**
-   * Import existing chapters into a book. Reverse-engineers all truth files
+   * Import existing chapters into a book. Reverse-engineers all jingwei files
    * via sequential replay so the Writer and Auditor can continue naturally.
    *
    * Step 1: Generate foundation (story_bible, volume_outline, book_rules) from all chapters.
-   * Step 2: Sequentially replay each chapter through ChapterAnalyzer to build truth files.
+   * Step 2: Sequentially replay each chapter through ChapterAnalyzer to build jingwei files.
    */
   async importChapters(input: ImportChaptersInput): Promise<ImportChaptersResult> {
     const releaseLock = await this.state.acquireBookLock(input.bookId);
@@ -2201,7 +2204,7 @@ ${matrix}`,
           gp.numericalSystem,
           resolvedLanguage,
         );
-        await this.resetImportReplayTruthFiles(bookDir, resolvedLanguage);
+        await this.resetImportReplayJingweiFiles(bookDir, resolvedLanguage);
         await this.state.saveChapterIndex(input.bookId, []);
         await this.state.snapshotState(input.bookId, 0);
 
@@ -2241,7 +2244,7 @@ ${matrix}`,
           en: `Analyzing chapter ${chapterNumber}/${input.chapters.length}: ${ch.title}...`,
         }));
 
-        // Analyze chapter to get truth file updates
+        // Analyze chapter to get jingwei file updates
         const output = await analyzer.analyzeChapter({
           book,
           bookDir,
@@ -2253,15 +2256,15 @@ ${matrix}`,
           ruleStack: governedInput.ruleStack,
         });
 
-        // Save chapter file + core truth files (state, ledger, hooks)
+        // Save chapter file + core jingwei files (state, ledger, hooks)
         await writer.saveChapter(bookDir, {
           ...output,
           postWriteErrors: [],
           postWriteWarnings: [],
         }, gp.numericalSystem, resolvedLanguage);
 
-        // Save extended truth files (summaries, subplots, emotional arcs, character matrix)
-        await writer.saveNewTruthFiles(bookDir, {
+        // Save extended jingwei files (summaries, subplots, emotional arcs, character matrix)
+        await writer.saveNewJingweiFiles(bookDir, {
           ...output,
           postWriteErrors: [],
           postWriteWarnings: [],
@@ -2414,7 +2417,7 @@ ${matrix}`,
     };
   }
 
-  private async resetImportReplayTruthFiles(
+  private async resetImportReplayJingweiFiles(
     bookDir: string,
     language: LengthLanguage,
   ): Promise<void> {
@@ -2975,7 +2978,7 @@ ${matrix}`,
       chapterIntent?: string;
       contextPackage?: ContextPackage;
       ruleStack?: RuleStack;
-      truthFileOverrides?: {
+      jingweiFileOverrides?: {
         currentState?: string;
         ledger?: string;
         hooks?: string;

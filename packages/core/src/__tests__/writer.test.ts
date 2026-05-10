@@ -788,7 +788,7 @@ describe("WriterAgent", () => {
         "阶段 1：创作正文（第1章）",
         "阶段 2：状态结算（第1章，18字）",
         "阶段 2a：提取第1章事实",
-        "阶段 2b：把观察结果回写到真相文件",
+        "阶段 2b：把观察结果回写到经纬资料",
       ]));
     } finally {
       await rm(root, { recursive: true, force: true });

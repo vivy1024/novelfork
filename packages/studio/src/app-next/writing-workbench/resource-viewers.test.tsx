@@ -93,7 +93,7 @@ describe("ResourceViewer", () => {
         node={node({
           id: "truth-file:1",
           kind: "truth",
-          title: "真相文件.md",
+          title: "经纬资料.md",
           content: "真相内容",
           capabilities: { open: true, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
         })}

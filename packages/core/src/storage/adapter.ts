@@ -3,7 +3,7 @@ import type { ChapterMeta } from "../models/chapter.js";
 
 export type ChapterStatus = "draft" | "pending_audit" | "approved" | "rejected";
 
-export interface TruthFilesData {
+export interface JingweiFilesData {
   readonly currentState: string;
   readonly particleLedger: string;
   readonly pendingHooks: string;
@@ -11,6 +11,9 @@ export interface TruthFilesData {
   readonly volumeOutline: string;
   readonly bookRules: string;
 }
+
+/** @deprecated Use JingweiFilesData instead */
+export type TruthFilesData = JingweiFilesData;
 
 export interface ControlDocuments {
   readonly authorIntent: string;
@@ -26,7 +29,7 @@ export interface WriteSnapshot {
     readonly summary: string;
     readonly content?: string;
   }>;
-  readonly truthFiles: TruthFilesData;
+  readonly jingweiFiles: JingweiFilesData;
   readonly controlDocs: ControlDocuments;
   readonly outline: string;
   readonly styleProfile?: string;
@@ -69,8 +72,8 @@ export interface StorageAdapter {
     meta: ChapterMeta,
   ): Promise<void>;
 
-  loadTruthFiles(bookId: string): Promise<TruthFilesData>;
-  saveTruthFile(
+  loadJingweiFiles(bookId: string): Promise<JingweiFilesData>;
+  saveJingweiFile(
     bookId: string,
     file: string,
     content: string,

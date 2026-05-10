@@ -6,7 +6,7 @@ import type { BookConfig } from "../models/book.js";
 import type { ChapterMeta } from "../models/chapter.js";
 import type {
   StorageAdapter,
-  TruthFilesData,
+  JingweiFilesData,
   ControlDocuments,
   WriteSnapshot,
   MutationSet,
@@ -14,9 +14,9 @@ import type {
 } from "./adapter.js";
 
 /**
- * Maps truth-file logical names to their on-disk filenames inside `story/`.
+ * Maps jingwei-file logical names to their on-disk filenames inside `story/`.
  */
-const TRUTH_FILE_MAP: Readonly<Record<string, string>> = {
+const JINGWEI_FILE_MAP: Readonly<Record<string, string>> = {
   currentState: "current_state.md",
   particleLedger: "particle_ledger.md",
   pendingHooks: "pending_hooks.md",
@@ -121,10 +121,10 @@ export class FileSystemStorageAdapter implements StorageAdapter {
   }
 
   // ---------------------------------------------------------------------------
-  // Truth files
+  // Jingwei files (经纬资料)
   // ---------------------------------------------------------------------------
 
-  async loadTruthFiles(bookId: string): Promise<TruthFilesData> {
+  async loadJingweiFiles(bookId: string): Promise<JingweiFilesData> {
     const storyDir = join(this.state.bookDir(bookId), "story");
     const readSafe = async (path: string): Promise<string> => {
       try {
@@ -160,15 +160,15 @@ export class FileSystemStorageAdapter implements StorageAdapter {
     };
   }
 
-  async saveTruthFile(
+  async saveJingweiFile(
     bookId: string,
     file: string,
     content: string,
   ): Promise<void> {
-    const fileName = TRUTH_FILE_MAP[file];
+    const fileName = JINGWEI_FILE_MAP[file];
     if (!fileName) {
       throw new Error(
-        `Unknown truth file key "${file}". Valid keys: ${Object.keys(TRUTH_FILE_MAP).join(", ")}`,
+        `Unknown jingwei file key "${file}". Valid keys: ${Object.keys(JINGWEI_FILE_MAP).join(", ")}`,
       );
     }
     const storyDir = join(this.state.bookDir(bookId), "story");
@@ -189,11 +189,11 @@ export class FileSystemStorageAdapter implements StorageAdapter {
   // ---------------------------------------------------------------------------
 
   async prepareWriteSnapshot(bookId: string): Promise<WriteSnapshot> {
-    const [bookConfig, chapterIndex, truthFiles, controlDocs] =
+    const [bookConfig, chapterIndex, jingweiFiles, controlDocs] =
       await Promise.all([
         this.loadBookConfig(bookId),
         this.loadChapterIndex(bookId),
-        this.loadTruthFiles(bookId),
+        this.loadJingweiFiles(bookId),
         this.loadControlDocuments(bookId),
       ]);
 
@@ -216,9 +216,9 @@ export class FileSystemStorageAdapter implements StorageAdapter {
       }),
     );
 
-    // Read outline (volume_outline is already in truthFiles, but the
+    // Read outline (volume_outline is already in jingweiFiles, but the
     // interface exposes it separately for convenience)
-    const outline = truthFiles.volumeOutline;
+    const outline = jingweiFiles.volumeOutline;
 
     // Read style profile if available
     let styleProfile: string | undefined;
@@ -236,7 +236,7 @@ export class FileSystemStorageAdapter implements StorageAdapter {
       bookConfig,
       chapterIndex,
       recentChapters,
-      truthFiles,
+      jingweiFiles,
       controlDocs,
       outline,
       styleProfile,

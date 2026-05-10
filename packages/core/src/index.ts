@@ -134,7 +134,7 @@ export { analyzeHookHealth } from "./utils/hook-health.js";
 export { analyzeChapterCadence, isHighTensionMood, type CadenceSummaryRow, type ChapterCadenceAnalysis, type SceneCadencePressure, type MoodCadencePressure, type TitleCadencePressure } from "./utils/chapter-cadence.js";
 
 // Pipeline
-export { PipelineRunner, type PipelineConfig, type ChapterPipelineResult, type DraftResult, type PlanChapterResult, type ComposeChapterResult, type ReviseResult, type TruthFiles, type BookStatusInfo, type ImportChaptersInput, type ImportChaptersResult, type TokenUsageSummary } from "./pipeline/runner.js";
+export { PipelineRunner, type PipelineConfig, type ChapterPipelineResult, type DraftResult, type PlanChapterResult, type ComposeChapterResult, type ReviseResult, type JingweiFiles, type TruthFiles, type BookStatusInfo, type ImportChaptersInput, type ImportChaptersResult, type TokenUsageSummary } from "./pipeline/runner.js";
 export { Scheduler, type SchedulerConfig } from "./pipeline/scheduler.js";
 export { runAgentLoop, AGENT_TOOLS as AGENT_TOOLS, type AgentLoopOptions } from "./pipeline/agent.js";
 export { getAgentSystemPrompt, AGENT_SYSTEM_PROMPTS } from "./pipeline/agent-prompts.js";

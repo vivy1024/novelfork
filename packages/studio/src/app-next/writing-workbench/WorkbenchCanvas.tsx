@@ -74,7 +74,7 @@ const resourceTypeLabels: Partial<Record<WorkbenchResourceKind, string>> = {
   candidate: "候选稿",
   draft: "草稿",
   story: "大纲与设定",
-  truth: "真相文件",
+  truth: "经纬资料",
   "jingwei-section": "经纬分区",
   "jingwei-entry": "经纬条目",
   "bible-entry": "经纬资料",

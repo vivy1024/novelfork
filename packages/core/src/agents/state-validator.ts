@@ -11,7 +11,7 @@ export interface ValidationResult {
 }
 
 /**
- * Validates Settler output by comparing old and new truth files via LLM.
+ * Validates Settler output by comparing old and new jingwei files via LLM.
  * Catches contradictions, missing state changes, and temporal inconsistencies.
  *
  * Uses a minimal verdict protocol instead of requiring structured JSON:
