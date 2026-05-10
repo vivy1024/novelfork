@@ -1007,7 +1007,7 @@ function WritingWorkbenchRouteLive({ bookId, onCanvasContextChange, onNavigateTo
         onOpen={handleOpen}
         onSave={handleSave}
         onCanvasContextChange={handleCanvasContextChange}
-        writingActions={<WorkbenchWritingActions bookId={bookId} sessions={sessionClient} blockedReason={localCanvasContext?.dirty ? "当前画布有未保存内容，请先保存或放弃后再启动写作动作。" : undefined} onNavigateToConversation={onNavigateToConversation} />}
+        writingActions={<WorkbenchWritingActions bookId={bookId} bookTitle={resources.tree.find(n => n.kind === "book")?.title} sessions={sessionClient} blockedReason={localCanvasContext?.dirty ? "当前画布有未保存内容，请先保存或放弃后再启动写作动作。" : undefined} onNavigateToConversation={(sessionId) => onNavigateToConversation(sessionId)} />}
       />
     </>
   );

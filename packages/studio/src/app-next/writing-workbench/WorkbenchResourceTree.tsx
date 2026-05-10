@@ -17,7 +17,7 @@ function NodeIcon({ kind }: { kind: WorkbenchResourceKind }) {
       return <BookOpen className="size-4 text-primary" />;
     case "chapter":
       return <FileText className="size-4 text-blue-500" />;
-    case "truth":
+    case "jingwei":
       return <Scroll className="size-4 text-amber-500" />;
     case "story":
       return <Globe className="size-4 text-green-500" />;

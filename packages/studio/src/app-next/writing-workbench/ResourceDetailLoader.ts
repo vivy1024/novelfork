@@ -41,7 +41,7 @@ export function resourceNeedsDetailHydration(node: WorkbenchResourceNode): boole
   if (!node.capabilities.open || node.capabilities.unsupported) return false;
   if (metadataString(node, "detailSource") === "detail") return false;
   if (node.kind === "chapter") return isPreviewSource(node) || !node.content;
-  if (node.kind === "story" || node.kind === "truth") return isPreviewSource(node);
+  if (node.kind === "story" || node.kind === "jingwei") return isPreviewSource(node);
   return false;
 }
 
@@ -126,7 +126,7 @@ export async function loadResourceDetailState(
     return ready(node, typeof data.content === "string" ? data.content : "", "detail", { detailSource: "detail", fileName: data.file ?? fileName, bookId });
   }
 
-  if (node.kind === "truth") {
+  if (node.kind === "jingwei") {
     const bookId = metadataString(node, "bookId") ?? fallbackBookId;
     const fileName = fileNameFromNode(node, "truth-file:");
     if (!fileName) return errorState(node, { code: "missing-file-name" }, "Truth 资源缺少文件名");

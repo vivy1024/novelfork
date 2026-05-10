@@ -41,7 +41,7 @@ const contractTree: ContractResourceNode[] = [
         kind: "group",
         title: "Truth 文件",
         capabilities: { read: current("resource.group") },
-        children: [{ id: "truth-file:truth.md", kind: "truth", title: "truth.md", path: "truth/truth.md", capabilities: { read: current("truth-files.detail"), edit: current("truth-files.save") } }],
+        children: [{ id: "truth-file:truth.md", kind: "jingwei", title: "truth.md", path: "truth/truth.md", capabilities: { read: current("truth-files.detail"), edit: current("truth-files.save") } }],
       },
       {
         id: "group:jingwei",
@@ -74,7 +74,7 @@ describe("buildWorkbenchResourceTree", () => {
     expect(flat.get("chapter:book-1:1")).toMatchObject({ kind: "chapter", title: "第一章 灵潮初起", capabilities: expect.objectContaining({ edit: true, readonly: false }) });
     expect(flat.get("candidate:candidate-1")).toMatchObject({ kind: "candidate", capabilities: expect.objectContaining({ apply: true, delete: true, edit: false }) });
     expect(flat.get("story-file:hooks.md")).toMatchObject({ kind: "story", capabilities: expect.objectContaining({ readonly: true, edit: false }) });
-    expect(flat.get("truth-file:truth.md")).toMatchObject({ kind: "truth", capabilities: expect.objectContaining({ readonly: false, edit: true }) });
+    expect(flat.get("truth-file:truth.md")).toMatchObject({ kind: "jingwei", capabilities: expect.objectContaining({ readonly: false, edit: true }) });
     expect(flat.get("jingwei-entry:char-1")).toMatchObject({ kind: "jingwei-entry", title: "沈舟", content: "主角" });
     expect(flat.get("narrative-line:book-1")).toMatchObject({ kind: "narrative-line", title: "叙事线快照" });
     expect(flat.get("unsupported:candidates.list")).toMatchObject({ kind: "unsupported", capabilities: expect.objectContaining({ unsupported: true, readonly: true }) });
