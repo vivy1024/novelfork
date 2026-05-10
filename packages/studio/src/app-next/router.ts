@@ -31,6 +31,11 @@ const bookRoute = createRoute({
   path: "/books/$bookId",
 });
 
+const booksListRoute = createRoute({
+  getParentRoute: () => nextRoute,
+  path: "/books",
+});
+
 const sessionsRoute = createRoute({
   getParentRoute: () => nextRoute,
   path: "/sessions",
@@ -72,6 +77,7 @@ const routeTree = rootRoute.addChildren([
     homeRoute,
     narratorRoute,
     bookRoute,
+    booksListRoute,
     sessionsRoute,
     searchRoute,
     routinesRoute,
@@ -93,4 +99,4 @@ declare module "@tanstack/react-router" {
   }
 }
 
-export { rootRoute, nextRoute, homeRoute, narratorRoute, bookRoute, sessionsRoute, searchRoute, routinesRoute, settingsRoute, learnRoute };
+export { rootRoute, nextRoute, homeRoute, narratorRoute, bookRoute, booksListRoute, sessionsRoute, searchRoute, routinesRoute, settingsRoute, learnRoute };

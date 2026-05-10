@@ -3,6 +3,7 @@ export const STUDIO_NEXT_BASE_PATH = "/next";
 export type ShellRoute =
   | { readonly kind: "home" }
   | { readonly kind: "narrator"; readonly sessionId: string }
+  | { readonly kind: "books" }
   | { readonly kind: "book"; readonly bookId: string }
   | { readonly kind: "sessions" }
   | { readonly kind: "search" }
@@ -61,6 +62,7 @@ export function parseShellRoute(pathname = globalThis.location?.pathname ?? STUD
   const [, section, id] = parts;
   if (!section) return { kind: "home" };
   if (section === "narrators" && id) return { kind: "narrator", sessionId: decodeSegment(id) };
+  if (section === "books" && !id) return { kind: "books" };
   if (section === "books" && id) return { kind: "book", bookId: decodeSegment(id) };
   if (section === "sessions") return { kind: "sessions" };
   if (section === "search") return { kind: "search" };
@@ -74,6 +76,8 @@ export function toShellPath(route: ShellRoute): string {
   switch (route.kind) {
     case "narrator":
       return `${STUDIO_NEXT_BASE_PATH}/narrators/${encodeSegment(route.sessionId)}`;
+    case "books":
+      return `${STUDIO_NEXT_BASE_PATH}/books`;
     case "book":
       return `${STUDIO_NEXT_BASE_PATH}/books/${encodeSegment(route.bookId)}`;
     case "sessions":
