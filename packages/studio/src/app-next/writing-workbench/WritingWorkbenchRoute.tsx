@@ -1,9 +1,10 @@
 import { useState, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
-import { BookOpen, GitBranch } from "lucide-react";
+import { BookOpen, GitBranch, Wrench } from "lucide-react";
 import { WorkbenchCanvas, type WorkbenchCanvasContext, type CandidateActionHandlers, type JingweiActionHandlers } from "./WorkbenchCanvas";
 import { WorkbenchResourceTree } from "./WorkbenchResourceTree";
+import { WritingToolsPanel } from "./WritingToolsPanel";
 import type { WorkbenchResourceNode } from "./useWorkbenchResources";
 import { ChapterGraph, type ChapterGraphChapter, type ChapterGraphEdge } from "../chapter-graph";
 
@@ -42,7 +43,9 @@ export function WritingWorkbenchRoute({ bookId, nodes, selectedNode, onOpen, onS
   const bookTitle = deriveBookTitle(bookId, nodes);
   const statusLabel = routeStatusLabel(nodes, selectedNode);
   const [viewMode, setViewMode] = useState<"tree" | "graph">("tree");
+  const [showToolsPanel, setShowToolsPanel] = useState(false);
   const hasGraphData = chapters && chapters.length > 0;
+  const currentChapter = selectedNode?.kind === "chapter" ? (selectedNode.metadata as { chapterNumber?: number })?.chapterNumber : undefined;
 
   return (
     <div className="flex h-full w-full flex-col min-h-0" data-testid="writing-workbench-route" data-book-id={bookId}>
@@ -88,6 +91,12 @@ export function WritingWorkbenchRoute({ bookId, nodes, selectedNode, onOpen, onS
                 + 新建章节
               </Button>
             )}
+            {bookId && (
+              <Button size="xs" variant={showToolsPanel ? "default" : "outline"} onClick={() => setShowToolsPanel(!showToolsPanel)}>
+                <Wrench className="size-3 mr-1" />
+                写作工具
+              </Button>
+            )}
           </div>
         </div>
       </header>
@@ -105,9 +114,14 @@ export function WritingWorkbenchRoute({ bookId, nodes, selectedNode, onOpen, onS
           </section>
           {/* 右侧编辑区 */}
           <div className="flex flex-1 min-w-0 flex-col">
-            <section aria-label="当前资源画布" className="flex-1 min-h-0">
+            <section aria-label="当前资源画布" className={`min-h-0 ${showToolsPanel ? "flex-[2]" : "flex-1"}`}>
               <WorkbenchCanvas node={selectedNode} nodes={nodes} bookId={bookId} onSave={onSave} onCanvasContextChange={onCanvasContextChange} candidateActions={candidateActions} jingweiActions={jingweiActions} />
             </section>
+            {showToolsPanel && bookId && (
+              <section aria-label="写作工具面板" className="flex-1 min-h-0 border-t border-border overflow-y-auto p-3">
+                <WritingToolsPanel bookId={bookId} currentChapter={currentChapter} chapterContent={selectedNode?.content ?? ""} onRunTool={async () => ({})} />
+              </section>
+            )}
           </div>
         </div>
       )}
