@@ -9,10 +9,11 @@ export interface AgentShellProps {
   readonly books: readonly ShellBookItem[];
   readonly sessions: readonly ShellSessionItem[];
   readonly onNavigate: (route: ShellRoute) => void;
+  readonly onDeleteBook?: (bookId: string) => void;
   readonly children: ReactNode;
 }
 
-export function AgentShell({ route, books, sessions, onNavigate, children }: AgentShellProps) {
+export function AgentShell({ route, books, sessions, onNavigate, onDeleteBook, children }: AgentShellProps) {
   const [collapsed, setCollapsed] = useState(false);
 
   return (
@@ -22,6 +23,7 @@ export function AgentShell({ route, books, sessions, onNavigate, children }: Age
         books={books}
         sessions={sessions}
         onNavigate={onNavigate}
+        onDeleteBook={onDeleteBook}
         collapsed={collapsed}
         onToggleCollapse={() => setCollapsed(!collapsed)}
       />
