@@ -146,7 +146,7 @@ AI 生成候选稿
 
 ## Tier 1 问卷
 
-Tier 1 问卷是建书时的引导式设定，通过 QuestionnaireWizard 组件实现：
+Tier 1 问卷是建书时的引导式设定，当前通过 NewBookGuide 组件实现（11 题三模式：预设选择/自定义/跳过随机）：
 
 ### 触发时机
 

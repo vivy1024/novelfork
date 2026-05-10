@@ -54,8 +54,9 @@
 ### 文档
 - 新增 `agent-native-workspace-v1` spec 与任务文档，明确工作台恢复为右侧叙述者会话主入口、中间画布、左侧资源栏，并将引导式生成定义为 Plan Mode 风格的工具链与确认门；同步 `.kiro/specs/README.md` 当前 active spec 索引。
 - 同步 README、Studio README、测试状态与架构总览中的测试数量、编译命令和 release 产物口径。
-- 将“代码/配置/流程变更必须同步文档与 CHANGELOG、验收前全仓核对旧口径”的文档纪律写入 `CLAUDE.md` 与 `AGENTS.md`。
+- 将"代码/配置/流程变更必须同步文档与 CHANGELOG、验收前全仓核对旧口径"的文档纪律写入 `CLAUDE.md` 与 `AGENTS.md`。
 - 同步 `.kiro/steering/` 中的项目结构、Tauri 退役、构建测试命令与文档发布纪律口径。
+- docs: 全仓文档审计——修复 CLAUDE.md 核心功能列表遗漏（补齐 13 个新组件）、当前状态表过时口径；修复 project-profile.md QuestionnaireWizard→NewBookGuide 口径；修复 01-项目当前状态.md 断链（创作工作台使用指南→小说管理与创作、设置与模型配置→设置与套路）；修复 03-当前执行主线.md 末尾乱码；修复 01-小说创作流程.md title 必填→可选、补新书引导步骤、导出 planned→已接入、文风漂移 planned→已接入、叙事线→叙事线（书籍）；修复 02-资源管理器模型.md 叙事线口径；补齐 03-AI写作功能.md 写作工具面板全部组件文档；修复 04-产品能力重新验收矩阵.md 写作模式/写作工具 not-wired→partial；更新 README.md 导出格式和写作工具列表；更新 learning/03-guided-generation.md QuestionnaireWizard→NewBookGuide。
 
 ### 修复
 - 修复单文件 release 产物入口对 `--root` / `--port` 命名启动参数的解析，保留旧版 positional root fallback，确保 `dist/novelfork-v0.0.5-windows-x64.exe --root=. --port=<port>` 可直接冒烟启动。

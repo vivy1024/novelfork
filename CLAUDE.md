@@ -40,11 +40,21 @@
 
 ## 核心功能
 
-- **多 Agent 写作管线**: 规划 → 编排 → 写作 → 审计 → 修订
+- **多 Agent 写作管线**: 规划 → 编排 → 写作 → 审计 → 修订（WorkflowProgressCard 可见执行链）
 - **NovelFork Studio**: Agent-native 本地 Web 工作台，左资源栏 / 中间画布 / 右侧固定叙述者会话
+- **新书引导向导**: NewBookGuide 11 题三模式（预设选择/自定义/跳过随机），自动生成初始真相文件
+- **写作预设面板**: 流派/文风/基底/逻辑规则预设管理（PresetsPanel）
+- **AI 味检测**: 12 规则本地检测 + 朱雀 API（AiTasteReport）
+- **章节健康度**: 节奏/对话/句长直方图（ChapterHealthCard + BookHealthSummary）
+- **选段写作**: 续写/扩写/补写 + 多版本变体（InlineWritePanel + VariantsPanel）
+- **日更进度追踪**: 日更进度 + 节拍表（DailyProgressCard + BeatProgressBar）
+- **平台合规检查**: 敏感词扫描 + 导出 TXT/Word/ePub（CompliancePanel + ExportPanel）
+- **角色弧线与文风漂移**: 角色弧线追踪 + 文风漂移检测（CharacterArcsPanel + StyleDriftPanel）
+- **模板市场**: 写作模板浏览与应用（TemplateMarketPanel）
 - **连续性审计**: 自动检测剧情矛盾、人物设定冲突
 - **文风仿写**: 基于真相文件（ground truth）的风格迁移
-- **去 AI 味**: 检测并优化 AI 生成痕迹
+- **引导式生成**: PGI 生成前追问 + Guided Plan 计划批准 + UserQuestionGate
+- **Checkpoint/Rewind**: 资源快照与回滚（CheckpointPanel）
 - **题材支持**: 玄幻、仙侠、都市、科幻等
 
 ---
@@ -53,12 +63,12 @@
 
 | 指标 | 值 |
 |------|----|
-| Specs | `functionality-audit` P0-P3 全部完成；功能缺口清单全部实现 |
+| Specs | `functionality-audit` P0-P3 全部完成；`novel-writing-features` Phase 1-7 已完成（Phase 8 浏览器验证进行中）；`claude-codex-novel-agent-v1` 执行中（14/48） |
 | TypeScript | typecheck 通过 |
-| 功能 | 引导式生成（PGI+Guided Plan）、Agent 编排可见链、写作工具面板、驾驶舱增强、Checkpoint/Rewind、学习中心、Onboarding 全部已实现 |
+| 功能 | 新书引导向导、写作预设面板、AI 味检测、章节健康度、选段写作+变体、日更进度+节拍表、平台合规+导出、角色弧线+文风漂移+模板市场、引导式生成（PGI+Guided Plan）、Agent 编排可见链、写作工具面板、驾驶舱增强、Checkpoint/Rewind、学习中心、Onboarding 全部已接入新前端 |
 | 文档 | 用户指南/产品流程/架构设计已重写；学习中心 9 篇；根 README 已重写 |
-| 编译 | `dist/novelfork-v0.1.0-windows-x64.exe`；GitHub Release 未创建 |
-| 下一步 | 端到端浏览器验证 → v0.1.0 发布 |
+| 编译 | `dist/novelfork-v0.1.0-windows-x64.exe`；GitHub Release 未创建；`v0.1.0` tag 已撤回 |
+| 下一步 | Phase 8 浏览器端到端验证 → v0.1.0 发布 |
 
 ---
 
