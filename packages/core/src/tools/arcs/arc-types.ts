@@ -1,11 +1,14 @@
 export type ArcType = "positive-growth" | "fall" | "flat" | "transformation" | "redemption";
 export type ArcBeatDirection = "advance" | "regression" | "neutral";
+export type ArcBeatSource = "manual" | "auto-rule" | "auto-llm";
 
 export interface ArcBeat {
   readonly chapter: number;
   readonly event: string;
   readonly change: string;
   readonly direction: ArcBeatDirection;
+  readonly source?: ArcBeatSource;
+  readonly confidence?: number;
 }
 
 export interface CharacterArc {

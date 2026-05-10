@@ -98,6 +98,8 @@ export interface RuntimeControlSettings {
   sendMode: "enter" | "ctrl-enter";
   /** Codex OS sandbox 尚未接入，只允许保存为 planned 状态 */
   codexSandboxMode: CodexSandboxMode;
+  /** 角色弧线自动追踪模式 */
+  arcTrackingMode?: "off" | "rule" | "llm";
 }
 
 export type ModelReferenceValidationStatus = "empty" | "valid" | "invalid";
@@ -271,6 +273,7 @@ export const DEFAULT_USER_CONFIG: UserConfig = {
     codexSandboxMode: normalizeCodexSandboxMode(undefined).mode,
     largeWindowCompressionThresholdPercent: 60,
     largeWindowTruncateTargetPercent: 50,
+    arcTrackingMode: "rule",
   },
   modelDefaults: {
     defaultSessionModel: "",
