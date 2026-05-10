@@ -120,7 +120,7 @@ const INITIAL_FORM: ProviderFormState = {
   prefix: "",
   apiKey: "",
   baseUrl: "",
-  apiMode: "completions",
+  apiMode: "responses",
   compatibility: "openai-compatible",
 };
 
