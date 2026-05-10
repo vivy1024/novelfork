@@ -1,6 +1,6 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { Settings, Search, ExternalLink, Pencil, Sparkles, FileCode, Info, Archive } from "lucide-react";
+import { Settings, Search, ExternalLink, Pencil, Sparkles, FileCode, Info, Archive, ArrowLeft } from "lucide-react";
 
 import type { ToolResultArtifact } from "../../tool-results";
 import type { SlashCommandExecutionContext, SlashCommandExecutionResult } from "../slash-command-registry";
@@ -55,27 +55,6 @@ export interface ConversationSurfaceProps {
   onArchive?: () => void;
   /** /fork 命令回调 */
   onForkSession?: (title?: string) => void;
-}
-
-function formatDuration(ms: number): string {
-  const seconds = Math.floor(ms / 1000);
-  const minutes = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  return minutes > 0 ? `${minutes}:${secs.toString().padStart(2, "0")}` : `0:${secs.toString().padStart(2, "0")}`;
-}
-
-function ThinkingTimer({ startedAt }: { startedAt: number }) {
-  const [elapsed, setElapsed] = useState(Date.now() - startedAt);
-  useEffect(() => {
-    const interval = setInterval(() => setElapsed(Date.now() - startedAt), 1000);
-    return () => clearInterval(interval);
-  }, [startedAt]);
-  return (
-    <span className="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400">
-      <span className="inline-block size-2 animate-pulse rounded-full bg-blue-500" />
-      思考中 {formatDuration(elapsed)}
-    </span>
-  );
 }
 
 export function ConversationSurface({
@@ -141,8 +120,6 @@ export function ConversationSurface({
     }
   };
 
-  const modelLabel = status.modelLabel ?? status.modelId ?? "";
-  const permissionLabel = status.permissionMode ?? "edit";
   const isWorking = status.narratorState === "working" || status.state === "running";
   const isInterrupted = status.substatus === "interrupted";
   const effectiveStreamingStartedAt = isWorking ? (status.streamingStartedAt ?? streamingStartedAt) : null;
@@ -158,6 +135,14 @@ export function ConversationSurface({
       {/* ── Top toolbar ── */}
       <header className="flex shrink-0 items-center justify-between border-b border-border px-4 py-2">
         <div className="flex items-center gap-1.5 min-w-0">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon-xs" onClick={() => routerNavigate({ to: ".." })}>
+                <ArrowLeft className="size-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>返回</TooltipContent>
+          </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
               <Button variant="ghost" size="icon-xs" onClick={handleOpenExternal}>
@@ -185,10 +170,6 @@ export function ConversationSurface({
           </Tooltip>
         </div>
         <div className="flex items-center gap-0.5">
-          {isWorking && effectiveStreamingStartedAt && <ThinkingTimer startedAt={effectiveStreamingStartedAt} />}
-          {!isWorking && status.lastTurnDurationMs != null && (
-            <span className="text-xs text-muted-foreground mr-2">空闲 · 上轮耗时 {formatDuration(status.lastTurnDurationMs)}</span>
-          )}
           <Tooltip>
             <TooltipTrigger asChild>
               <Button variant="ghost" size="icon-sm" onClick={() => setSearchOpen(!searchOpen)}>
@@ -320,6 +301,7 @@ export function ConversationSurface({
       {/* ── Git status bar (when workspace is available) ── */}
       {status.workspace && (
         <div className="flex shrink-0 items-center gap-1.5 border-t border-border bg-muted/30 px-4 py-1 text-[10px] text-muted-foreground">
+          <span>🏠</span>
           <span className="truncate font-medium">{status.workspace.path?.split(/[/\\]/).pop() ?? "工作区"}</span>
           {status.workspace.branch && (
             <>
@@ -351,6 +333,7 @@ export function ConversationSurface({
       {/* ── NarratorStatusBar (above Composer) ── */}
       <NarratorStatusBar
         status={status}
+        streamingStartedAt={effectiveStreamingStartedAt}
         onUpdateModel={(providerId, modelId) => { void onUpdateSessionConfig?.({ providerId, modelId }); }}
         onUpdateReasoningEffort={(effort) => { void onUpdateSessionConfig?.({ reasoningEffort: effort }); }}
         onUpdatePermissionMode={(mode) => { void onUpdateSessionConfig?.({ permissionMode: mode }); }}
