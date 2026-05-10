@@ -142,7 +142,9 @@ export async function loadResourceTreeFromContract(
   // Deduplicate: truth files are a subset of story files (same directory).
   // Show truth files only in the "经纬资料" group; exclude them from "大纲与设定".
   const truthFileNames = new Set(truthFiles?.files.map((f) => f.name) ?? []);
-  const nonTruthStoryFiles = storyFiles?.files.filter((f) => !truthFileNames.has(f.name)) ?? [];
+  // Also exclude internal data files that should never appear in the resource tree
+  const INTERNAL_FILES = new Set(["jingwei_sections.json", "jingwei_entries.json", "style_profile.json", ".write.lock"]);
+  const nonTruthStoryFiles = storyFiles?.files.filter((f) => !truthFileNames.has(f.name) && !INTERNAL_FILES.has(f.name)) ?? [];
 
   const tree: ContractResourceNode[] = [
     {
