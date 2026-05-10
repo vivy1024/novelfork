@@ -8,8 +8,8 @@
  * 使用 shadcn DropdownMenu + Tooltip 组件（基于 Radix Primitives）
  */
 
-import { useState } from "react";
-import { Shield, ShieldOff, Zap } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Zap } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import type { NarratorState, NarratorSubstatus, ConversationStatus, ConversationModelOption } from "./ConversationStatusBar";
 import type { SessionPermissionMode, SessionReasoningEffort } from "@/shared/session-types";
@@ -33,6 +33,7 @@ import {
 
 export interface NarratorStatusBarProps {
   status: ConversationStatus;
+  streamingStartedAt?: number | null;
   onUpdateModel?: (providerId: string, modelId: string) => void;
   onUpdateReasoningEffort?: (effort: SessionReasoningEffort) => void;
   onUpdatePermissionMode?: (mode: SessionPermissionMode) => void;
@@ -119,9 +120,19 @@ function formatDuration(ms: number): string {
   return minutes > 0 ? `${minutes}:${secs.toString().padStart(2, "0")}` : `0:${secs.toString().padStart(2, "0")}`;
 }
 
-export function NarratorStatusBar({ status, onUpdateModel, onUpdateReasoningEffort, onUpdatePermissionMode, onToggleFastMode, fastMode }: NarratorStatusBarProps) {
+export function NarratorStatusBar({ status, streamingStartedAt, onUpdateModel, onUpdateReasoningEffort, onUpdatePermissionMode, onToggleFastMode, fastMode }: NarratorStatusBarProps) {
   const narratorState: NarratorState = status.narratorState ?? (status.state === "running" ? "working" : "idle");
   const substatus = status.substatus;
+
+  // 实时计时器
+  const isWorking = narratorState === "working";
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    if (!isWorking || !streamingStartedAt) { setElapsed(0); return; }
+    setElapsed(Date.now() - streamingStartedAt);
+    const interval = setInterval(() => setElapsed(Date.now() - streamingStartedAt), 1000);
+    return () => clearInterval(interval);
+  }, [isWorking, streamingStartedAt]);
 
   // 圆点颜色：substatus 优先
   const dotColor = substatus
@@ -133,12 +144,14 @@ export function NarratorStatusBar({ status, onUpdateModel, onUpdateReasoningEffo
     ? SUBSTATUS_LABELS[substatus]
     : STATE_LABELS[narratorState];
 
-  // 模型首字母
+  // 模型完整名称：providerId:modelLabel 格式
+  const modelFullName = status.providerId && (status.modelLabel ?? status.modelId)
+    ? `${status.providerId}:${status.modelLabel ?? status.modelId}`
+    : (status.modelLabel ?? status.modelId ?? "未选择");
+  // 模型首字母（备用）
   const modelInitial = (status.modelLabel ?? status.modelId ?? "?").charAt(0).toUpperCase();
-  // 推理强度首字母
-  const reasoningInitial = REASONING_INITIALS[status.reasoningEffort ?? "medium"] ?? "M";
-  // 权限图标
-  const permissionIsOpen = status.permissionMode === "allow";
+  // 权限完整文字
+  const permissionFullLabel = PERMISSION_LABELS[status.permissionMode ?? "edit"] ?? "允许编辑";
   // 条件显示：推理强度和 Fast Mode 仅 Codex API 模式显示
   const showReasoningEffort = status.apiMode === "codex";
   // 条件显示：Fast Mode 仅 Codex 显示
@@ -147,11 +160,17 @@ export function NarratorStatusBar({ status, onUpdateModel, onUpdateReasoningEffo
   return (
     <TooltipProvider>
       <div className="flex shrink-0 items-center justify-between border-t border-border px-4 py-1.5">
-        {/* Left: status dot + label + duration */}
+        {/* Left: status dot + label + timer */}
         <div className="flex items-center gap-1.5">
           <div className={`size-2 shrink-0 rounded-full ${dotColor}`} />
           <span className="text-xs text-muted-foreground">{stateLabel}</span>
-          {status.lastTurnDurationMs != null && narratorState === "idle" && (
+          {isWorking && streamingStartedAt && elapsed > 0 && (
+            <span className="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400">
+              <span className="inline-block size-1.5 animate-pulse rounded-full bg-blue-500" />
+              思考中 {formatDuration(elapsed)}
+            </span>
+          )}
+          {!isWorking && status.lastTurnDurationMs != null && (
             <span className="text-xs text-muted-foreground">· 上轮耗时 {formatDuration(status.lastTurnDurationMs)}</span>
           )}
         </div>
@@ -173,13 +192,14 @@ export function NarratorStatusBar({ status, onUpdateModel, onUpdateReasoningEffo
             </Tooltip>
           )}
 
-          {/* Model dropdown */}
+          {/* Model dropdown — 显示完整名称 */}
           <ModelDropdown
             options={status.modelOptions}
             currentProviderId={status.providerId}
             currentModelId={status.modelId}
             modelInitial={modelInitial}
             modelLabel={status.modelLabel ?? status.modelId ?? "未选择"}
+            modelFullName={modelFullName}
             onSelect={(providerId, modelId) => onUpdateModel?.(providerId, modelId)}
           />
 
@@ -190,7 +210,7 @@ export function NarratorStatusBar({ status, onUpdateModel, onUpdateReasoningEffo
               className="inline-flex items-center justify-center rounded-md px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
               title={`推理强度：${REASONING_LABELS[status.reasoningEffort ?? "medium"]}`}
             >
-              {reasoningInitial}
+              {REASONING_INITIALS[status.reasoningEffort ?? "medium"] ?? "M"}
             </DropdownMenuTrigger>
             <DropdownMenuContent side="top" align="end" className="min-w-[120px]">
               <DropdownMenuGroup>
@@ -221,13 +241,15 @@ export function NarratorStatusBar({ status, onUpdateModel, onUpdateReasoningEffo
           </Tooltip>
           )}
 
-          {/* Permission mode dropdown */}
+          {/* Permission mode dropdown — 显示完整文字 */}
           <DropdownMenu>
             <DropdownMenuTrigger
-              className="inline-flex items-center justify-center rounded-md px-2 py-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-              title={`权限：${PERMISSION_LABELS[status.permissionMode ?? "edit"]}`}
+              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+              title={`权限：${permissionFullLabel}`}
             >
-              {permissionIsOpen ? <ShieldOff className="size-3.5" /> : <Shield className="size-3.5" />}
+              <span className="text-[10px]">◇</span>
+              <span>{permissionFullLabel}</span>
+              <span className="text-[10px] text-muted-foreground/60">▾</span>
             </DropdownMenuTrigger>
             <DropdownMenuContent side="top" align="end" className="min-w-[120px]">
               <DropdownMenuGroup>
@@ -259,6 +281,7 @@ function ModelDropdown({
   currentModelId,
   modelInitial,
   modelLabel,
+  modelFullName,
   onSelect,
 }: {
   options?: readonly ConversationModelOption[];
@@ -266,6 +289,7 @@ function ModelDropdown({
   currentModelId?: string;
   modelInitial: string;
   modelLabel: string;
+  modelFullName: string;
   onSelect: (providerId: string, modelId: string) => void;
 }) {
   const [filter, setFilter] = useState("");
@@ -284,10 +308,11 @@ function ModelDropdown({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        className="inline-flex items-center justify-center rounded-md px-2 py-1 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+        className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
         title={`模型：${modelLabel}`}
       >
-        {modelInitial}
+        <span className="max-w-[160px] truncate">{modelFullName}</span>
+        <span className="text-[10px] text-muted-foreground/60">▾</span>
       </DropdownMenuTrigger>
       <DropdownMenuContent side="top" align="end" className="min-w-[200px] max-h-[300px]">
         <DropdownMenuGroup>
