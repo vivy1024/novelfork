@@ -38,6 +38,8 @@ export interface NarratorStatusBarProps {
   onUpdateReasoningEffort?: (effort: SessionReasoningEffort) => void;
   onUpdatePermissionMode?: (mode: SessionPermissionMode) => void;
   onToggleFastMode?: () => void;
+  onCompact?: () => void;
+  onReset?: () => void;
   fastMode?: boolean;
 }
 
@@ -120,7 +122,7 @@ function formatDuration(ms: number): string {
   return minutes > 0 ? `${minutes}:${secs.toString().padStart(2, "0")}` : `0:${secs.toString().padStart(2, "0")}`;
 }
 
-export function NarratorStatusBar({ status, streamingStartedAt, onUpdateModel, onUpdateReasoningEffort, onUpdatePermissionMode, onToggleFastMode, fastMode }: NarratorStatusBarProps) {
+export function NarratorStatusBar({ status, streamingStartedAt, onUpdateModel, onUpdateReasoningEffort, onUpdatePermissionMode, onToggleFastMode, onCompact, onReset, fastMode }: NarratorStatusBarProps) {
   const narratorState: NarratorState = status.narratorState ?? (status.state === "running" ? "working" : "idle");
   const substatus = status.substatus;
 
@@ -177,19 +179,15 @@ export function NarratorStatusBar({ status, streamingStartedAt, onUpdateModel, o
 
         {/* Right: controls */}
         <div className="flex items-center gap-1">
-          {/* Context usage ring */}
+          {/* Context usage ring — dropdown menu */}
           {status.contextUsage && status.contextUsage.maxTokens && (
-            <Tooltip>
-              <TooltipTrigger className="cursor-default rounded px-1 py-0.5">
-                <ContextRing
-                  used={status.contextUsage.usedTokens}
-                  max={status.contextUsage.maxTokens}
-                />
-              </TooltipTrigger>
-              <TooltipContent side="top">
-                上下文：{status.contextUsage.usedTokens} / {status.contextUsage.maxTokens}
-              </TooltipContent>
-            </Tooltip>
+            <ContextRingMenu
+              used={status.contextUsage.usedTokens}
+              max={status.contextUsage.maxTokens}
+              compactThreshold={status.contextUsage.compactThreshold}
+              onCompact={onCompact}
+              onReset={onReset}
+            />
           )}
 
           {/* Model dropdown — 显示完整名称 */}
@@ -351,6 +349,56 @@ function ModelDropdown({
             })}
           </DropdownMenuGroup>
         ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ContextRingMenu — DropdownMenu wrapping the ContextRing
+// ---------------------------------------------------------------------------
+
+function ContextRingMenu({
+  used,
+  max,
+  compactThreshold,
+  onCompact,
+  onReset,
+}: {
+  used: number;
+  max: number;
+  compactThreshold?: number;
+  onCompact?: () => void;
+  onReset?: () => void;
+}) {
+  const percent = Math.min(100, Math.round((used / max) * 100));
+  const targetPercent = compactThreshold ? Math.round((compactThreshold / max) * 100) : 50;
+  const autoThresholdPercent = compactThreshold ? Math.round((compactThreshold / max) * 100) : 80;
+
+  const handleReset = () => {
+    if (window.confirm("确定要清空上下文吗？这将重置当前会话的所有上下文记忆。")) {
+      onReset?.();
+    }
+  };
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger className="cursor-default rounded px-1 py-0.5">
+        <ContextRing used={used} max={max} />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent side="top" align="end" className="min-w-[200px]">
+        <DropdownMenuLabel>上下文使用：{percent}% ({used}/{max})</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => onCompact?.()} disabled={!onCompact}>
+          压缩到 {targetPercent}%
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={handleReset} disabled={!onReset}>
+          清空上下文
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <div className="px-2 py-1.5 text-xs text-muted-foreground">
+          自动压缩阈值：{autoThresholdPercent}%
+        </div>
       </DropdownMenuContent>
     </DropdownMenu>
   );

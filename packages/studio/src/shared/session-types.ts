@@ -155,6 +155,8 @@ export interface NarratorSessionRecord {
   worktree?: string;
   chapterId?: string;
   projectId?: string;
+  parentSessionId?: string;
+  forkMode?: "full" | "compressed";
   sessionConfig: SessionConfig;
   recentMessages?: NarratorSessionChatMessage[];
   recovery?: NarratorSessionRecoveryMetadata;
@@ -169,6 +171,8 @@ export interface CreateNarratorSessionInput {
   worktree?: string;
   chapterId?: string;
   projectId?: string;
+  parentSessionId?: string;
+  forkMode?: "full" | "compressed";
   sessionConfig?: Partial<SessionConfig>;
 }
 

@@ -28,6 +28,7 @@ export type ForkSessionInput = {
   readonly sourceSessionId: string;
   readonly title?: string;
   readonly inheritanceNote?: string;
+  readonly forkMode?: "full" | "compressed";
 };
 
 function sessionNotFound(): SessionLifecycleFailure {
@@ -124,6 +125,8 @@ export async function forkSession(input: ForkSessionInput): Promise<SessionLifec
     worktree: source.worktree,
     projectId: source.projectId,
     chapterId: source.chapterId,
+    parentSessionId: input.sourceSessionId,
+    forkMode: input.forkMode ?? "full",
     sessionConfig: source.sessionConfig,
   });
   const sourceSnapshot = await getSessionChatSnapshot(source.id);

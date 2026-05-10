@@ -240,6 +240,7 @@ export function ConversationSurface({
                 <InfoRow label="标题" value={title} />
                 {sessionId && <InfoRow label="会话 ID" value={sessionId} mono />}
                 <InfoRow label="状态" value={status.narratorState ?? status.state ?? "未知"} />
+                {status.parentSessionId && <InfoRow label="分叉自" value={status.parentSessionId} mono />}
                 {status.modelLabel && <InfoRow label="模型" value={status.modelLabel} />}
                 {status.modelId && !status.modelLabel && <InfoRow label="模型 ID" value={status.modelId} mono />}
                 {status.permissionMode && <InfoRow label="权限模式" value={status.permissionMode} />}
@@ -358,6 +359,8 @@ export function ConversationSurface({
         onUpdateModel={(providerId, modelId) => { void onUpdateSessionConfig?.({ providerId, modelId }); }}
         onUpdateReasoningEffort={(effort) => { void onUpdateSessionConfig?.({ reasoningEffort: effort }); }}
         onUpdatePermissionMode={(mode) => { void onUpdateSessionConfig?.({ permissionMode: mode }); }}
+        onCompact={onCompactSession ? () => { void onCompactSession("压缩上下文到目标阈值"); } : undefined}
+        onReset={onCompactSession ? () => { void onCompactSession("reset"); } : undefined}
       />
 
       {/* ── Composer ── */}
