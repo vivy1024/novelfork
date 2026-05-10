@@ -2,6 +2,7 @@ export * from "./CandidateActionsBar";
 export * from "./CheckpointPanel";
 export * from "./CockpitOverview";
 export * from "./JingweiEntryEditor";
+export * from "./NewBookGuide";
 export * from "./ResourceDetailLoader";
 export * from "./ResourceSaveController";
 export * from "./WorkbenchCanvas";

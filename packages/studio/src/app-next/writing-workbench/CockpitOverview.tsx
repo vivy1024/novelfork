@@ -1,6 +1,7 @@
 import { BookOpen, FileText, AlertTriangle, CheckCircle, Target, TrendingUp, Bookmark, PenLine } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import type { WorkbenchResourceNode } from "./useWorkbenchResources";
+import { NewBookGuide } from "./NewBookGuide";
 
 export interface CockpitBookData {
   id: string;
@@ -19,8 +20,10 @@ export interface CockpitBookData {
 
 export interface CockpitOverviewProps {
   book: CockpitBookData | null;
+  bookId?: string;
   nodes: readonly WorkbenchResourceNode[];
   onOpenChapter?: (chapterNumber: number) => void;
+  onGuideComplete?: () => void;
 }
 
 function extractBookData(nodes: readonly WorkbenchResourceNode[]): CockpitBookData | null {
@@ -83,16 +86,34 @@ function StatCard({ icon, label, value, sub }: { icon: React.ReactNode; label: s
   );
 }
 
-export function CockpitOverview({ book: bookProp, nodes, onOpenChapter }: CockpitOverviewProps) {
+export function CockpitOverview({ book: bookProp, bookId, nodes, onOpenChapter, onGuideComplete }: CockpitOverviewProps) {
   const book = bookProp ?? extractBookData(nodes);
+
+  // 检测是否为新书（无章节、无经纬数据）→ 显示引导式创作向导
+  const isNewBook = !book || (book.chapterCount === 0 && book.totalWords === 0);
+  const hasJingwei = nodes.some((n) => {
+    const jingweiGroup = n.kind === "book" ? n.children?.find((c) => c.id === "group:jingwei") : null;
+    return jingweiGroup && jingweiGroup.children && jingweiGroup.children.length > 0;
+  });
+
+  if (isNewBook && !hasJingwei && bookId) {
+    const title = book?.title ?? "未命名作品";
+    return (
+      <NewBookGuide
+        bookId={bookId}
+        bookTitle={title}
+        onComplete={() => onGuideComplete?.()}
+      />
+    );
+  }
 
   if (!book) {
     return (
       <div className="flex h-full items-center justify-center p-8">
         <p className="text-sm text-muted-foreground">暂无作品数据</p>
       </div>
-  );
-}
+    );
+  }
 
 // ---------------------------------------------------------------------------
 // JingweiSummary — 经纬资料摘要
