@@ -378,8 +378,7 @@ class OpenAiCompatibleAdapter implements RuntimeAdapter {
     const configFailure = requireOpenAiConfig(input);
     if (configFailure) return configFailure;
 
-    const hasTools = Boolean(input.tools?.length);
-    const useStreaming = Boolean(input.onStreamChunk) && !hasTools;
+    const useStreaming = Boolean(input.onStreamChunk);
 
     if (useStreaming) {
       return this.sendStreamingChatCompletion(input, input.messages, input.tools, input.onStreamChunk!, input.signal);
@@ -680,7 +679,7 @@ class AnthropicCompatibleAdapter implements RuntimeAdapter {
       return failure("config-missing", `Base URL missing for provider ${input.providerId}`);
     }
 
-    const useStreaming = Boolean(input.onStreamChunk) && !input.tools?.length;
+    const useStreaming = Boolean(input.onStreamChunk);
     const url = `${trimTrailingSlash(input.baseUrl!)}/v1/messages`;
 
     const body: Record<string, unknown> = {
