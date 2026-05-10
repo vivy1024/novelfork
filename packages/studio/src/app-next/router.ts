@@ -51,6 +51,11 @@ const settingsRoute = createRoute({
   path: "/settings",
 });
 
+const learnRoute = createRoute({
+  getParentRoute: () => nextRoute,
+  path: "/learn",
+});
+
 // Catch-all: redirect to /next
 const catchAllRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -71,6 +76,7 @@ const routeTree = rootRoute.addChildren([
     searchRoute,
     routinesRoute,
     settingsRoute,
+    learnRoute,
   ]),
   catchAllRoute,
 ]);
@@ -87,4 +93,4 @@ declare module "@tanstack/react-router" {
   }
 }
 
-export { rootRoute, nextRoute, homeRoute, narratorRoute, bookRoute, sessionsRoute, searchRoute, routinesRoute, settingsRoute };
+export { rootRoute, nextRoute, homeRoute, narratorRoute, bookRoute, sessionsRoute, searchRoute, routinesRoute, settingsRoute, learnRoute };
