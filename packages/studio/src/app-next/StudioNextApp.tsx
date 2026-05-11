@@ -1102,6 +1102,7 @@ function WritingWorkbenchRouteLive({ bookId, onCanvasContextChange, onNavigateTo
         nodes={resources.tree}
         selectedNode={selectedNode}
         onOpen={handleOpen}
+        onDeselectNode={() => setSelectedNode(null)}
         onSave={handleSave}
         onCanvasContextChange={handleCanvasContextChange}
         onGuideComplete={reloadResources}

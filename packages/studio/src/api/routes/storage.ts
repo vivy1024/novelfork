@@ -47,7 +47,7 @@ import { createStorageDestructiveService } from "../lib/storage-destructive-serv
 import { createStorageWriteService } from "../lib/storage-write-service.js";
 import { createStoryFileReadService } from "../lib/story-file-service.js";
 import { configureSessionToolExecutor, getSessionChatSnapshot } from "../lib/session-chat-service.js";
-import { createSession, listSessions } from "../lib/session-service.js";
+import { createSession, listSessions, updateSession } from "../lib/session-service.js";
 import type { RouterContext } from "./context.js";
 
 interface ProjectWorktreeOwnership {
@@ -760,12 +760,24 @@ export function createStorageRouter(ctx: RouterContext): Hono {
     // Find existing agent sessions for this book
     const existingSessions = await listSessions({ projectId: bookId, status: "active" });
     
-    // If already has 5+ sessions, skip (book creation already made them)
-    if (existingSessions.length >= 5) {
-      return c.json({ ok: true, bookId, created: [], existing: existingSessions.length });
+    // Deduplicate: if there are duplicate agentIds, archive extras
+    const seenAgentIds = new Set<string>();
+    for (const session of existingSessions) {
+      if (session.agentId && seenAgentIds.has(session.agentId)) {
+        // Duplicate — archive it
+        await updateSession(session.id, { status: "archived" });
+      } else if (session.agentId) {
+        seenAgentIds.add(session.agentId);
+      }
     }
     
-    const existingAgentIds = new Set(existingSessions.map((s) => s.agentId));
+    // Re-check after dedup
+    const cleanSessions = await listSessions({ projectId: bookId, status: "active" });
+    if (cleanSessions.length >= 5) {
+      return c.json({ ok: true, bookId, created: [], existing: cleanSessions.length, deduped: existingSessions.length - cleanSessions.length });
+    }
+    
+    const existingAgentIds = new Set(cleanSessions.map((s) => s.agentId));
 
     // Create missing agent sessions
     const created: string[] = [];

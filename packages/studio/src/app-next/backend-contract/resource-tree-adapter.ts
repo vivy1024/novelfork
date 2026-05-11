@@ -229,12 +229,14 @@ function buildJingweiGroupedTree(
     children.push(toJingweiFileNode(bookId, file));
   }
 
-  // Add structured sections and entries
-  if (jingweiSections?.sections.length) {
-    children.push(...jingweiSections.sections.map(toJingweiSectionNode));
-  }
-  if (jingweiEntries?.entries.length) {
-    children.push(...jingweiEntries.entries.map(toJingweiEntryNode));
+  // Add structured sections and entries only if no file-based categories exist
+  if (children.length === 0) {
+    if (jingweiSections?.sections.length) {
+      children.push(...jingweiSections.sections.map(toJingweiSectionNode));
+    }
+    if (jingweiEntries?.entries.length) {
+      children.push(...jingweiEntries.entries.map(toJingweiEntryNode));
+    }
   }
 
   return children;
