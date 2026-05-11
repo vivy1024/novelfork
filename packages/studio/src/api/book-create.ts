@@ -144,7 +144,7 @@ function buildStudioProjectInitializationPlan(
     };
   }
 
-  if (projectInit.repositorySource === "existing" && !projectInit.repositoryPath) {
+  if ((projectInit.repositorySource === "existing" || projectInit.repositorySource === "new") && !projectInit.repositoryPath) {
     return {
       phase: "project-create",
       nextStage: "book-create",
