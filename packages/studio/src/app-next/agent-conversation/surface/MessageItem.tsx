@@ -93,6 +93,7 @@ export const MessageItem = memo(function MessageItem({ message, onContextAction,
       const meta = message.metadata as Record<string, unknown>;
       const compactedCount = typeof meta.compactedMessageCount === "number" ? meta.compactedMessageCount : 0;
       const budget = meta.budget as { estimatedTokensBefore?: number; estimatedTokensAfter?: number } | undefined;
+      const sessionId = typeof meta.sessionId === "string" ? meta.sessionId : "";
       return (
         <div className="mx-auto max-w-lg py-2" data-testid="compact-summary-card">
           <details className="rounded-lg border border-orange-200 bg-orange-50 dark:border-orange-800 dark:bg-orange-950/30 px-3 py-2">
@@ -103,6 +104,36 @@ export const MessageItem = memo(function MessageItem({ message, onContextAction,
             <div className="mt-2 text-[11px] text-muted-foreground whitespace-pre-wrap max-h-40 overflow-y-auto">
               {message.content}
             </div>
+            {sessionId && (
+              <div className="mt-2 flex gap-2 border-t border-orange-200 dark:border-orange-800 pt-2">
+                <button
+                  type="button"
+                  className="text-[10px] text-orange-600 hover:text-orange-800 dark:text-orange-400"
+                  onClick={() => {
+                    void fetch(`/api/sessions/${encodeURIComponent(sessionId)}/compact/undo`, { method: "POST" })
+                      .then(() => window.location.reload());
+                  }}
+                >
+                  撤回压缩
+                </button>
+                <button
+                  type="button"
+                  className="text-[10px] text-orange-600 hover:text-orange-800 dark:text-orange-400"
+                  onClick={() => {
+                    const newSummary = prompt("编辑压缩摘要：", message.content);
+                    if (newSummary !== null) {
+                      void fetch(`/api/sessions/${encodeURIComponent(sessionId)}/compact/edit-summary`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ summary: newSummary }),
+                      }).then(() => window.location.reload());
+                    }
+                  }}
+                >
+                  编辑摘要
+                </button>
+              </div>
+            )}
           </details>
         </div>
       );

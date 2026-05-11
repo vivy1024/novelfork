@@ -24,7 +24,7 @@ import {
   type SessionListBinding,
   type SessionListSort,
 } from "../lib/session-service.js";
-import { compactSession } from "../lib/session-compact-service.js";
+import { compactSession, undoCompactSession, editCompactSummary } from "../lib/session-compact-service.js";
 import { executeHeadlessChat, encodeHeadlessChatEventsAsNdjson, type HeadlessChatInput } from "../lib/session-headless-chat-service.js";
 import { continueLatestSession, forkSession, restoreSessionForContinue } from "../lib/session-lifecycle-service.js";
 import { createSessionMemoryBoundaryService, type SessionMemoryCandidate } from "../lib/session-memory-boundary-service.js";
@@ -202,6 +202,28 @@ app.post("/:id/compact", async (c) => {
   const result = await compactSession({ sessionId: id, preserveRecentMessages: body.preserveRecentMessages, instructions: body.instructions });
   if (!result.ok) {
     return c.json(result, result.status);
+  }
+  return c.json(result);
+});
+
+app.post("/:id/compact/undo", async (c) => {
+  const id = c.req.param("id");
+  const result = await undoCompactSession(id);
+  if (!result.ok) {
+    return c.json(result, result.status);
+  }
+  return c.json(result);
+});
+
+app.post("/:id/compact/edit-summary", async (c) => {
+  const id = c.req.param("id");
+  const body: { summary?: string } = await c.req.json<{ summary?: string }>().catch(() => ({}));
+  if (!body.summary?.trim()) {
+    return c.json({ error: "Summary text is required" }, 400);
+  }
+  const result = await editCompactSummary(id, body.summary.trim());
+  if (!result.ok) {
+    return c.json(result, 404);
   }
   return c.json(result);
 });

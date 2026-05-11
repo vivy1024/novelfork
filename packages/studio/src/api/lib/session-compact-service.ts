@@ -4,6 +4,9 @@ import { microCompact } from "./compact/micro-compact.js";
 import { getSessionChatSnapshot, replaceSessionChatState } from "./session-chat-service.js";
 import { collectRuntimeTranscriptEvents } from "./runtime-transcript.js";
 
+// Store last pre-compact snapshot for undo capability
+const preCompactSnapshots = new Map<string, NarratorSessionChatMessage[]>();
+
 export type SessionCompactErrorCode = "session_not_found" | "not_enough_messages" | "compact_failed";
 
 export type SessionCompactFailure = {
@@ -168,6 +171,9 @@ export async function compactSession(input: CompactSessionInput): Promise<Sessio
     instructions: input.instructions,
   });
 
+  // Save pre-compact snapshot for undo
+  preCompactSnapshots.set(input.sessionId, [...sourceMessages]);
+
   const compactedSnapshot = await replaceSessionChatState(input.sessionId, [summaryMessage, ...preservedMessages]);
   if (!compactedSnapshot) return compactFailed();
 
@@ -184,4 +190,38 @@ export async function compactSession(input: CompactSessionInput): Promise<Sessio
     budget,
     snapshot: compactedSnapshot,
   };
+}
+
+export type UndoCompactResult =
+  | { readonly ok: true; readonly restoredMessageCount: number; readonly snapshot: NarratorSessionChatSnapshot }
+  | { readonly ok: false; readonly status: 404; readonly error: string };
+
+export async function undoCompactSession(sessionId: string): Promise<UndoCompactResult> {
+  const preCompactMessages = preCompactSnapshots.get(sessionId);
+  if (!preCompactMessages) {
+    return { ok: false, status: 404, error: "No compact history available to undo." };
+  }
+
+  const restored = await replaceSessionChatState(sessionId, preCompactMessages);
+  if (!restored) {
+    return { ok: false, status: 404, error: "Failed to restore pre-compact state." };
+  }
+
+  preCompactSnapshots.delete(sessionId);
+  return { ok: true, restoredMessageCount: preCompactMessages.length, snapshot: restored };
+}
+
+export async function editCompactSummary(sessionId: string, newSummary: string): Promise<{ ok: boolean; error?: string }> {
+  const snapshot = await getSessionChatSnapshot(sessionId);
+  if (!snapshot) return { ok: false, error: "Session not found" };
+
+  const summaryMessage = snapshot.messages.find((m) => (m.metadata as Record<string, unknown> | undefined)?.kind === "session-compact-summary");
+  if (!summaryMessage) return { ok: false, error: "No compact summary found in session" };
+
+  const updatedMessages = snapshot.messages.map((m) =>
+    m.id === summaryMessage.id ? { ...m, content: newSummary } : m,
+  );
+
+  const result = await replaceSessionChatState(sessionId, updatedMessages);
+  return result ? { ok: true } : { ok: false, error: "Failed to update summary" };
 }
