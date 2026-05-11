@@ -1,6 +1,7 @@
 import { memo, useCallback, useState } from "react";
 import { AnimatedMarkdown } from "flowtoken";
 import "flowtoken/dist/styles.css";
+import { Copy, Pencil, Trash2 } from "lucide-react";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { ToolCallCard, type ConversationToolCall } from "./ToolCallCard";
 import {
@@ -11,6 +12,7 @@ import {
   ContextMenuSeparator,
 } from "@/components/ui/context-menu";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 
 export interface ConversationThinkingBlock {
   /** 推理内容全文 */
@@ -30,6 +32,8 @@ export interface ConversationSurfaceMessage {
   isStreaming?: boolean;
   /** 消息元数据（如压缩摘要信息） */
   metadata?: Record<string, unknown>;
+  /** 消息时间戳（Unix ms） */
+  timestamp?: number;
 }
 
 export interface MessageContextAction {
@@ -53,9 +57,35 @@ export interface MessageItemProps {
   codeCollapsed?: boolean;
 }
 
-/**
- * 推理内容折叠块 — 对标 NarraFork `🔮 推理—"摘要预览..."`
- */
+// ---------------------------------------------------------------------------
+// 时间格式化
+// ---------------------------------------------------------------------------
+
+function formatTimestamp(ts?: number): string | null {
+  if (!ts) return null;
+  const date = new Date(ts);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+
+  if (diffMin < 1) return "刚刚";
+  if (diffMin < 60) return `${diffMin}分钟前`;
+
+  const isToday = date.toDateString() === now.toDateString();
+  const hours = date.getHours().toString().padStart(2, "0");
+  const minutes = date.getMinutes().toString().padStart(2, "0");
+
+  if (isToday) return `${hours}:${minutes}`;
+
+  const month = (date.getMonth() + 1).toString().padStart(2, "0");
+  const day = date.getDate().toString().padStart(2, "0");
+  return `${month}/${day} ${hours}:${minutes}`;
+}
+
+// ---------------------------------------------------------------------------
+// 推理内容折叠块
+// ---------------------------------------------------------------------------
+
 function ThinkingBlock({ block, defaultExpanded = false }: { block: ConversationThinkingBlock; defaultExpanded?: boolean }) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const preview = block.summary || block.content.slice(0, 40).replace(/\n/g, " ");
@@ -82,11 +112,17 @@ function ThinkingBlock({ block, defaultExpanded = false }: { block: Conversation
   );
 }
 
+// ---------------------------------------------------------------------------
+// MessageItem — 对标 NarraFork 消息样式
+// ---------------------------------------------------------------------------
+
 export const MessageItem = memo(function MessageItem({ message, onContextAction, codeCollapsed = false }: MessageItemProps) {
+  const [hovered, setHovered] = useState(false);
   const handleAction = useCallback((action: MessageContextAction["id"]) => {
     onContextAction?.(message.id, action);
   }, [onContextAction, message.id]);
 
+  // ── System message ──
   if (message.role === "system") {
     const isCompactSummary = message.metadata?.kind === "session-compact-summary";
     if (isCompactSummary) {
@@ -145,12 +181,63 @@ export const MessageItem = memo(function MessageItem({ message, onContextAction,
     );
   }
 
+  // ── User message — NarraFork 风格：头像 + 用户名 + 时间 + 悬浮按钮 ──
   if (message.role === "user") {
+    const timeStr = formatTimestamp(message.timestamp);
     return (
       <ContextMenu>
-        <ContextMenuTrigger className="flex justify-end py-2">
-          <div className="max-w-[80%] rounded-lg border border-border bg-muted/50 px-4 py-2.5 text-sm">
-            {message.content}
+        <ContextMenuTrigger asChild>
+          <div
+            className="group relative mt-4 pt-4 border-t border-border/50 select-text"
+            onMouseEnter={() => setHovered(true)}
+            onMouseLeave={() => setHovered(false)}
+          >
+            {/* Header: avatar + name + time */}
+            <div className="flex items-center gap-2 mb-1.5">
+              <span className="inline-flex items-center justify-center size-5 rounded-full bg-rose-500 text-white text-[10px] font-bold shrink-0">
+                U
+              </span>
+              <span className="text-xs font-semibold text-foreground">用户</span>
+              {timeStr && <span className="text-[10px] text-muted-foreground">{timeStr}</span>}
+            </div>
+            {/* Content */}
+            <div className="text-sm pl-7">
+              {message.content}
+            </div>
+            {/* Hover actions */}
+            {hovered && (
+              <div className="absolute top-2 right-0 flex items-center gap-0.5">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-6"
+                      onClick={() => navigator.clipboard.writeText(message.content)}
+                    >
+                      <Copy className="size-3" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>复制</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="ghost" size="icon" className="size-6" onClick={() => handleAction("edit-regenerate")}>
+                      <Pencil className="size-3" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>编辑重生成</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="ghost" size="icon" className="size-6 text-destructive" onClick={() => handleAction("delete")}>
+                      <Trash2 className="size-3" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>删除</TooltipContent>
+                </Tooltip>
+              </div>
+            )}
           </div>
         </ContextMenuTrigger>
         <MessageContextMenuContent onAction={handleAction} />
@@ -158,11 +245,11 @@ export const MessageItem = memo(function MessageItem({ message, onContextAction,
     );
   }
 
-  // assistant or tool
+  // ── Assistant message — NarraFork 风格：无气泡，全宽渲染 ──
   return (
     <ContextMenu>
-      <ContextMenuTrigger className="py-2 block">
-        <div className={`max-w-[90%] ${codeCollapsed ? "[&_pre]:hidden [&_.code-block]:hidden" : ""}`}>
+      <ContextMenuTrigger asChild>
+        <div className={`py-2 select-text ${codeCollapsed ? "[&_pre]:hidden [&_.code-block]:hidden" : ""}`}>
           {message.thinking?.map((block, i) => (
             <ThinkingBlock key={`thinking-${i}`} block={block} />
           ))}
@@ -186,7 +273,7 @@ export const MessageItem = memo(function MessageItem({ message, onContextAction,
 });
 
 // ---------------------------------------------------------------------------
-// MessageContextMenuContent — shadcn ContextMenu 内容
+// MessageContextMenuContent — 右键菜单（高级操作保留在此）
 // ---------------------------------------------------------------------------
 
 function MessageContextMenuContent({ onAction }: { onAction: (action: MessageContextAction["id"]) => void }) {
