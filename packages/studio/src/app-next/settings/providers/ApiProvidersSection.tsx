@@ -62,8 +62,8 @@ export function ApiProvidersSection({
     <section className="space-y-3">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h3 className="text-base font-semibold">密钥接入</h3>
-          <p className="text-xs text-muted-foreground">仅管理接口地址、访问密钥、兼容格式和模型列表；不展示平台账号、配额或切号。</p>
+          <h3 className="text-base font-semibold">API 供应商</h3>
+          <p className="text-xs text-muted-foreground">管理 API 地址、密钥和模型列表。通过 Sub2API 等网关接入各种 AI 模型。</p>
         </div>
         <Button
           variant="outline"
