@@ -255,6 +255,10 @@ function RoutineSectionEditor({
     case "commands":
       return (
         <div className="space-y-4">
+          <div className="rounded-lg border border-border bg-amber-50 dark:bg-amber-950/20 p-4">
+            <p className="text-sm font-medium text-amber-800 dark:text-amber-200">自定义命令功能暂未开放</p>
+            <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">根据用户反馈决定是否开放自定义斜杠命令。如有需求请在 GitHub Issues 中反馈。</p>
+          </div>
           <RuntimeCommandRegistryPanel
             commands={listRuntimeCommands()}
             disabledCommands={routines.disabledCommands}
@@ -276,7 +280,18 @@ function RoutineSectionEditor({
     case "projectSkills": {
       const skillTab = sectionId === "globalSkills" ? "global" : "project";
       return (
-        <SkillsTab
+        <div className="space-y-4">
+          <div className="rounded-lg border border-border bg-blue-50 dark:bg-blue-950/20 p-4">
+            <p className="text-sm font-medium text-blue-800 dark:text-blue-200">
+              {sectionId === "globalSkills" ? "全局写作预设" : "项目写作预设"}
+            </p>
+            <p className="mt-1 text-xs text-blue-600 dark:text-blue-400">
+              {sectionId === "globalSkills"
+                ? "全局技能对应 NovelFork 的写作预设系统（流派/文风/基底/逻辑规则/去AI味/文学技法）。预设在写作工作台中应用，后续将支持在此处自定义编辑。"
+                : "项目技能对应当前书籍的专属写作预设。每本书可以有独立的文风、节奏、角色语言风格等配置。后续将支持在此处自定义编辑。"}
+            </p>
+          </div>
+          <SkillsTab
           globalSkills={routines.globalSkills}
           projectSkills={routines.projectSkills}
           defaultTab={skillTab}
@@ -284,10 +299,19 @@ function RoutineSectionEditor({
           onGlobalChange={(globalSkills) => setRoutines({ ...routines, globalSkills })}
           onProjectChange={(projectSkills) => setRoutines({ ...routines, projectSkills })}
         />
+        </div>
       );
     }
     case "subAgents":
-      return <SubAgentsTab subAgents={routines.subAgents} onChange={(subAgents) => setRoutines({ ...routines, subAgents })} />;
+      return (
+        <div className="space-y-4">
+          <div className="rounded-lg border border-border bg-amber-50 dark:bg-amber-950/20 p-4">
+            <p className="text-sm font-medium text-amber-800 dark:text-amber-200">自定义子代理功能暂未开放</p>
+            <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">NovelFork 的写作管线（规划→编排→写作→审计→修订）使用内置 Agent 类型。如需自定义子代理请在 GitHub Issues 中反馈。</p>
+          </div>
+          <SubAgentsTab subAgents={routines.subAgents} onChange={(subAgents) => setRoutines({ ...routines, subAgents })} />
+        </div>
+      );
     case "globalPrompts":
     case "systemPrompts": {
       const promptTab = sectionId === "globalPrompts" ? "global" : "system";
@@ -305,12 +329,24 @@ function RoutineSectionEditor({
     case "mcpTools":
       return (
         <div className="space-y-4">
+          <div className="rounded-lg border border-border bg-amber-50 dark:bg-amber-950/20 p-4">
+            <p className="text-sm font-medium text-amber-800 dark:text-amber-200">MCP 工具集成暂未开放</p>
+            <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">Model Context Protocol 工具服务器集成功能根据用户反馈决定是否开放。如有需求请在 GitHub Issues 中反馈。</p>
+          </div>
           <MCPToolsTab mcpTools={routines.mcpTools} onChange={(mcpTools) => setRoutines({ ...routines, mcpTools })} />
           <MCPServerPanel />
         </div>
       );
     case "hooks":
-      return <HooksTab hooks={routines.hooks} onChange={(hooks) => setRoutines({ ...routines, hooks })} />;
+      return (
+        <div className="space-y-4">
+          <div className="rounded-lg border border-border bg-amber-50 dark:bg-amber-950/20 p-4">
+            <p className="text-sm font-medium text-amber-800 dark:text-amber-200">生命周期钩子暂未开放</p>
+            <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">Shell / Webhook / LLM 生命周期钩子功能根据用户反馈决定是否开放。如有需求请在 GitHub Issues 中反馈。</p>
+          </div>
+          <HooksTab hooks={routines.hooks} onChange={(hooks) => setRoutines({ ...routines, hooks })} />
+        </div>
+      );
   }
 }
 
