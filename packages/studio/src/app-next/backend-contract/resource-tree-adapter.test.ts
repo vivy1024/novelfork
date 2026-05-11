@@ -63,7 +63,7 @@ function createFetch(overrides: Record<string, () => Response | Promise<Response
       "/api/books/book%2F1/candidates": () => json({ candidates: [candidate] }),
       "/api/books/book%2F1/drafts": () => json({ drafts: [{ id: "draft/1", bookId: "book/1", title: "城门片段", content: "草稿正文", updatedAt: "2026-05-04T02:30:00.000Z", wordCount: 4 }] }),
       "/api/books/book%2F1/story-files": () => json({ files: [{ name: "pending_hooks.md", label: "待处理伏笔", size: 12, preview: "伏笔" }] }),
-      "/api/books/book%2F1/truth-files": () => json({ files: [{ name: "chapter_summaries.md", label: "章节摘要", size: 16, preview: "摘要" }] }),
+      "/api/books/book%2F1/truth-files": () => json({ files: [{ name: "chapter_summaries.md", label: "章节摘要", size: 200, preview: "摘要", category: "状态" }] }),
       "/api/books/book%2F1/jingwei/sections": () => json({ sections: [{ id: "sec-characters", key: "characters", name: "人物", showInSidebar: true, enabled: true }] }),
       "/api/books/book%2F1/jingwei/entries": () => json({ entries: [{ id: "char-1", sectionId: "sec-characters", title: "沈舟", contentMd: "主角", updatedAt: "2026-05-04T02:40:00.000Z" }] }),
       "/api/books/book%2F1/narrative-line": () => json({ snapshot: narrativeSnapshot }),
@@ -117,7 +117,7 @@ describe("resource tree contract adapter", () => {
     });
     expect(flat.get("draft:draft/1")).toMatchObject({ capabilities: { edit: { status: "current" }, delete: { status: "current" } } });
     expect(flat.get("story-file:pending_hooks.md")).toMatchObject({ capabilities: { read: { status: "current" }, edit: { status: "unsupported" }, delete: { status: "current" } } });
-    expect(flat.get("truth-file:chapter_summaries.md")).toMatchObject({ capabilities: { read: { status: "current" }, edit: { status: "current" }, delete: { status: "current" } } });
+    expect(flat.get("jingwei-file:chapter_summaries.md")).toMatchObject({ capabilities: { read: { status: "current" }, edit: { status: "current" }, delete: { status: "current" } } });
     expect(flat.get("jingwei-entry:char-1")).toMatchObject({ capabilities: { read: { status: "current" }, edit: { status: "current" }, delete: { status: "current" } } });
     expect(flat.get("narrative-line:book/1")).toMatchObject({ kind: "narrative-line", capabilities: { read: { status: "current" }, edit: { status: "unsupported" } } });
     expect(result.errors).toEqual([]);

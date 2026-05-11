@@ -78,14 +78,31 @@ export const isTruthFileName = isJingweiFileName;
 
 async function listFiles(storyDir: string, filter?: (file: string) => boolean): Promise<ReadonlyArray<StoryFileSummary>> {
   try {
-    const files = await readdir(storyDir);
-    const allowedFiles = files.filter((file) => isSafeStoryFileName(file) && (!filter || filter(file)));
-    return await Promise.all(
-      allowedFiles.map(async (file) => {
-        const content = await readFile(join(storyDir, file), "utf-8");
-        return { name: file, label: TRUTH_FILE_LABELS[file] ?? file.replace(/\.md$/, ""), size: content.length, preview: content.slice(0, 200) };
-      }),
-    );
+    const results: StoryFileSummary[] = [];
+
+    // Read root-level files
+    const rootFiles = await readdir(storyDir).catch(() => [] as string[]);
+    const allowedRootFiles = rootFiles.filter((file) => isSafeStoryFileName(file) && (!filter || filter(file)));
+    for (const file of allowedRootFiles) {
+      const content = await readFile(join(storyDir, file), "utf-8");
+      const category = JINGWEI_CATEGORY_MAP[file];
+      results.push({ name: file, label: TRUTH_FILE_LABELS[file] ?? file.replace(/\.md$/, ""), size: content.length, preview: content.slice(0, 200), ...(category ? { category } : {}) });
+    }
+
+    // Read subdirectory files (角色/势力/设定/伏笔/大纲/状态/规则)
+    const JINGWEI_SUBDIRS = ["角色", "势力", "设定", "伏笔", "大纲", "状态", "规则"];
+    for (const subdir of JINGWEI_SUBDIRS) {
+      const subdirPath = join(storyDir, subdir);
+      const subFiles = await readdir(subdirPath).catch(() => [] as string[]);
+      const allowedSubFiles = subFiles.filter((file) => isSafeStoryFileName(file));
+      for (const file of allowedSubFiles) {
+        const content = await readFile(join(subdirPath, file), "utf-8");
+        const relativeName = `${subdir}/${file}`;
+        results.push({ name: relativeName, label: TRUTH_FILE_LABELS[file] ?? file.replace(/\.md$/, ""), size: content.length, preview: content.slice(0, 200), category: subdir });
+      }
+    }
+
+    return results;
   } catch {
     return [];
   }

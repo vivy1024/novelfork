@@ -63,6 +63,7 @@ interface StoryListFile {
   readonly label?: string;
   readonly size?: number;
   readonly preview?: string;
+  readonly category?: string;
 }
 
 interface JingweiSectionRecord {
@@ -166,11 +167,7 @@ export async function loadResourceTreeFromContract(
         ]),
         group("group:drafts", "草稿", drafts?.drafts.map(toDraftNode) ?? []),
         group("group:story-files", "大纲与设定", nonJingweiStoryFiles.map((file) => toStoryFileNode(book.id, file))),
-        group("group:jingwei", "经纬资料", [
-          ...(jingweiFiles?.files.filter((f) => (f.size ?? 0) > 100).map((file) => toJingweiFileNode(book.id, file)) ?? []),
-          ...(jingweiSections?.sections.map(toJingweiSectionNode) ?? []),
-          ...(jingweiEntries?.entries.map(toJingweiEntryNode) ?? []),
-        ]),
+        group("group:jingwei", "经纬资料", buildJingweiGroupedTree(book.id, jingweiFiles, jingweiSections, jingweiEntries)),
         group("group:hooks", "伏笔", buildHooksGroup(jingweiFiles)),
         group("group:narrative-line", "叙事线", narrative?.snapshot.nodes.length && bookResult.data.chapters.length > 0 ? [toNarrativeLineNode(book.id, narrative.snapshot)] : []),
       ],
@@ -193,6 +190,54 @@ function toChapterNode(bookId: string, chapter: ChapterSummary): ContractResourc
     },
     metadata: { bookId, chapterNumber: chapter.number, status: chapter.status, fileName: chapter.fileName, source: "list-preview" },
   };
+}
+
+function buildJingweiGroupedTree(
+  bookId: string,
+  jingweiFiles: JingweiFileListResponse | null | undefined,
+  jingweiSections: JingweiSectionsResponse | null | undefined,
+  jingweiEntries: JingweiEntriesResponse | null | undefined,
+): ContractResourceNode[] {
+  const JINGWEI_CATEGORIES = ["角色", "势力", "设定", "伏笔", "大纲", "状态", "规则"];
+  const files = jingweiFiles?.files.filter((f) => (f.size ?? 0) > 100) ?? [];
+
+  // Group files by category
+  const categorized = new Map<string, StoryListFile[]>();
+  const uncategorized: StoryListFile[] = [];
+  for (const file of files) {
+    const category = (file as { category?: string }).category;
+    if (category && JINGWEI_CATEGORIES.includes(category)) {
+      if (!categorized.has(category)) categorized.set(category, []);
+      categorized.get(category)!.push(file);
+    } else {
+      uncategorized.push(file);
+    }
+  }
+
+  const children: ContractResourceNode[] = [];
+
+  // Add category sub-groups
+  for (const category of JINGWEI_CATEGORIES) {
+    const categoryFiles = categorized.get(category) ?? [];
+    if (categoryFiles.length > 0) {
+      children.push(group(`group:jingwei:${category}`, category, categoryFiles.map((file) => toJingweiFileNode(bookId, file))));
+    }
+  }
+
+  // Add uncategorized files at root level
+  for (const file of uncategorized) {
+    children.push(toJingweiFileNode(bookId, file));
+  }
+
+  // Add structured sections and entries
+  if (jingweiSections?.sections.length) {
+    children.push(...jingweiSections.sections.map(toJingweiSectionNode));
+  }
+  if (jingweiEntries?.entries.length) {
+    children.push(...jingweiEntries.entries.map(toJingweiEntryNode));
+  }
+
+  return children;
 }
 
 function buildHooksGroup(jingweiFiles: JingweiFileListResponse | null | undefined): ContractResourceNode[] {
