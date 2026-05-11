@@ -41,22 +41,23 @@
 - **候选稿管理**：接受/拒绝/归档/删除操作栏
 - **学习中心**：9 篇内置文档 + `/next/learn` 页面
 - **Onboarding**：首次运行欢迎弹窗 + 空态教学
+- **桌面窗口**：单 exe 启动，Edge/Chrome app mode
 
 ### Agent 与对话
 
-- 5 种 Agent 角色专属 system prompt（200+ 行领域知识）
+- 5 种 Agent 角色专属 system prompt（领域知识 + 工具使用指南）
 - Agent 自动加载书籍上下文（进度/经纬/伏笔/章节摘要）
-- 工具权限管线：permission mode + tool policy + risk 分级
+- 工具权限管线：permission mode + tool policy allow/deny/ask
 - 确认门机制：高风险操作需用户批准
-- 会话 lifecycle：fork/compact/resume/continue
+- 会话 lifecycle：fork/compact/resume/continue + 累计 usage
 - 流式 tool_use 解析（Anthropic + OpenAI adapter）
 - 对话状态栏：模型/权限/推理强度/实时计时器
+- Slash 命令：/help /model /permission /compact /fork /resume
 
 ### 供应商与模型
 
 - 多供应商支持：OpenAI / Anthropic / DeepSeek / 自定义兼容
 - 模型池动态加载 + contextWindow/maxOutputTokens
-- 供应商详情页：有改动才显示保存按钮
 - 推理强度/Fast Mode 按 API 模式条件显示
 
 ### CLI
@@ -71,17 +72,79 @@
 - Bun + React 19 + Hono + SQLite + Vite
 - 单文件 exe 编译（bun compile + 嵌入前端资源）
 - 213 测试文件 / 1274+ 测试 / typecheck 通过
-- 桌面窗口模式（Edge/Chrome app mode）
 
-### 文档
+### 自 v0.0.5 以来的详细变更
 
-- 用户指南 4 篇（小说管理、AI 写作、叙述者对话、设置与套路）
-- 产品流程 4 篇（创作流程、资源管理器、AI 输出与候选稿、故事经纬）
-- 架构设计 4 篇（系统架构、Studio 工作台、Agent 写作管线、驾驶舱）
-- 开发者指南（存储层、AI 味过滤器）
-- 学习中心 9 篇
+#### 新增系统
+
+- Agent-native 工作台架构（从旧三栏重构为 AgentShell）
+- 每本书自动创建 5 个固定 Agent session（ensure-agents API 支持旧书补创建）
+- Backend Contract 类型安全契约层（领域 client + capability status + 回归测试）
+- 统一 Runtime Turn 执行引擎（工具循环 + 权限门 + 流式输出 + 多步 continue）
+- Session Lifecycle Service（fork/compact/resume/continue + 累计 usage 追踪）
+- Headless Chat API（`POST /api/sessions/headless-chat` + stream-json NDJSON）
+- Canonical Runtime Events（message/tool/permission/checkpoint/usage/error 统一类型）
+- Runtime Settings 统一配置合并模型（session > project > user > default）
+- Session Tool Policy（allow/deny/ask + 套路继承 + dirty canvas guard）
+- Tool Confirmation Envelope（targetResources/source/checkpoint/operations）
+
+#### 新增用户功能
+
+- 新书引导向导（NewBookGuide 11 题三模式）
+- 经纬按类别分组（角色/势力/设定/伏笔/大纲/状态/规则子目录）
+- Context Ring 始终可见 + 点击菜单（压缩/清空/阈值显示）
+- 主题切换实际生效（dark mode class + localStorage 持久化）
+- 使用历史面板（按 provider/model 分组 Token 统计）
+- 压缩 UX 升级（摘要可见/可展开/可撤回 + 压缩卡片）
+- 确认门 UI（ConfirmationGate 组件 + approve/reject）
+- UserQuestionGate（text/single/multi/ranged-number/ai-suggest 五种输入）
+- 工具权限策略 UI（状态栏展示 + 套路页配置）
+- 叙事线快照（节点/边/warnings + 变更草案预览）
+- 候选稿操作栏（接受/拒绝/归档/删除）
+- 驾驶舱总览（CockpitOverview：进度/字数/审校/风险/建议）
+- 学习中心（9 篇文档 + /next/learn 页面）
+- Checkpoint/Rewind UI（列表/diff 预览/回滚）
+- 写作工具面板（7 种即时工具弹窗）
+- 选段浮动工具条（选中文本后出现续写/扩写/改写）
+- 文件修改追踪（从 toolCalls 提取 Write/Edit 文件路径）
+- 经纬资料编辑器（JingweiEntryEditor：标题+Markdown 编辑/保存/删除）
+- 系统文件夹选择器（PowerShell FolderBrowserDialog）
+
+#### 重构与清理
+
+- 旧三栏源码完全退役（StudioApp/workspace/editor/ChatWindow/split-view 删除）
+- Bible → Jingwei 全局类型/函数重命名（22 文件）
+- story/ → jingwei/ 新书目录结构迁移
+- 废弃路径清理（pending-action-store、/novel:* 命令、novel-write-next-handler 删除）
+- Tauri 完全退役（改用 Bun compile + Edge app mode）
+- Legacy route 退役（/api/chat、旧 ChatPanel、createChatRouter 删除）
+- 旧 ChatWindow 视觉层退役（迁移到 ConversationSurface）
+- tsconfig exclude 收紧（guard 检查旧路径不存在）
+- 平台集成移除（Codex/Kiro account import 删除）
+
+#### 修复
+
+- 流式 tool_use 解析：Anthropic/OpenAI adapter 正确解析 tool_use delta
+- 消息排序：回复不再出现在用户消息上面
+- fork 跳转：创建 fork 后正确导航到新会话
+- WebSocket 绑定：切换会话时正确重连
+- 供应商 ID 显示：显示名称而非内部 ID
+- 文风漂移数据：使用真实计算值而非硬编码
+- Agent prompt 工具名：对齐实际注册的工具名
+- 仓库路径解析：绝对路径不再被错误拼接到 studioRoot
+- Anthropic URL 去重 + 空会话隐藏恢复提示
+- streaming 空 tool name 覆盖修复
+- 新会话"正在恢复"提示消除
+- 状态栏乐观更新（发送消息后立即显示"工作中"）
 
 ---
+
+## v0.0.5 (2026-05-03)
+
+### 改进
+- 功能审计全量完成（P0-P3 共 42 个 spec）
+- 文档体系重写（用户指南/产品流程/架构设计）
+- 前端 live wiring 接入真实 runtime
 
 ## v0.0.4 (2026-05-02)
 
@@ -89,22 +152,16 @@
 - Studio 共享 UI 文案统一中文化
 - 强化 release 版本管理规则
 
-### 测试
-- 新增 UI 本地化断言与 completion audit
-
 ## v0.0.3 (2026-05-02)
 
 ### 修复
-- 修复编译链路不一致、搜索/项目模型/工作流契约断链
-- 清理 Tauri 退役残留
+- 编译链路不一致、搜索/项目模型/工作流契约断链
+- Tauri 退役残留清理
 
 ## v0.0.2 (2026-05-01)
 
 ### 桌面应用
 - Edge/Chrome app mode 渲染，无浏览器外壳
-- 窗口启动控制环境变量
-
-### 构建
 - 单文件产物内置 Studio 静态资源
 
 ## v0.0.1 (2026-05-01)
