@@ -206,6 +206,56 @@ app.post("/:id/compact", async (c) => {
   return c.json(result);
 });
 
+app.post("/:id/truncate", async (c) => {
+  const id = c.req.param("id");
+  const body: { messageId?: string; seq?: number } = await c.req.json<{ messageId?: string; seq?: number }>().catch(() => ({}));
+
+  const snapshot = await getSessionChatSnapshot(id);
+  if (!snapshot) {
+    return c.json({ error: "Session not found" }, 404);
+  }
+
+  let cutIndex = -1;
+  if (body.messageId) {
+    cutIndex = snapshot.messages.findIndex((m) => m.id === body.messageId);
+  } else if (typeof body.seq === "number") {
+    cutIndex = snapshot.messages.findIndex((m) => (m.seq ?? 0) >= body.seq!);
+  }
+
+  if (cutIndex < 0) {
+    return c.json({ error: "Message not found" }, 404);
+  }
+
+  // Keep messages before the specified one (exclusive)
+  const kept = snapshot.messages.slice(0, cutIndex);
+  const result = await replaceSessionChatState(id, kept);
+  if (!result) {
+    return c.json({ error: "Failed to truncate" }, 500);
+  }
+  return c.json({ ok: true, remainingMessages: kept.length });
+});
+
+app.delete("/:id/messages/:messageId", async (c) => {
+  const id = c.req.param("id");
+  const messageId = c.req.param("messageId");
+
+  const snapshot = await getSessionChatSnapshot(id);
+  if (!snapshot) {
+    return c.json({ error: "Session not found" }, 404);
+  }
+
+  const filtered = snapshot.messages.filter((m) => m.id !== messageId);
+  if (filtered.length === snapshot.messages.length) {
+    return c.json({ error: "Message not found" }, 404);
+  }
+
+  const result = await replaceSessionChatState(id, filtered);
+  if (!result) {
+    return c.json({ error: "Failed to delete message" }, 500);
+  }
+  return c.json({ ok: true, remainingMessages: filtered.length });
+});
+
 app.get("/:id/memory/status", async (c) => {
   const id = c.req.param("id");
   const session = await getSessionById(id);

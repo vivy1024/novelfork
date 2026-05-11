@@ -42,6 +42,10 @@ export interface ConversationSurfaceProps {
   onAbort?: () => void;
   onUpdateSessionConfig?: (patch: ConversationSessionConfigPatch) => Promise<void> | void;
   onCompactSession?: SlashCommandExecutionContext["compactSession"];
+  /** 截断会话到指定消息（删除该消息及之后的所有消息） */
+  onTruncateToMessage?: (messageId: string) => Promise<void> | void;
+  /** 删除单条消息 */
+  onDeleteMessage?: (messageId: string) => Promise<void> | void;
   onSlashCommandResult?: (result: SlashCommandExecutionResult) => void;
   onOpenArtifact?: (artifact: ToolResultArtifact) => void;
   /** 附件上传回调 */
@@ -77,6 +81,8 @@ export function ConversationSurface({
   onAbort = () => undefined,
   onUpdateSessionConfig,
   onCompactSession,
+  onTruncateToMessage,
+  onDeleteMessage,
   onSlashCommandResult,
   onAttach,
   hasPreviousMessages = false,
@@ -129,9 +135,14 @@ export function ConversationSurface({
       }
     }
 
-    if (action === "rollback" && onCompactSession) {
+    if (action === "rollback") {
       if (msgIndex >= 0) {
-        void onCompactSession(`回退：丢弃消息 #${msgIndex} 及之后的所有消息`);
+        const msg = messages[msgIndex];
+        if (onTruncateToMessage && msg) {
+          void onTruncateToMessage(msg.id);
+        } else if (onCompactSession) {
+          void onCompactSession(`回退：丢弃消息 #${msgIndex} 及之后的所有消息`);
+        }
       }
     }
 
@@ -151,9 +162,14 @@ export function ConversationSurface({
       }
     }
 
-    if (action === "delete" && onCompactSession) {
-      if (msgIndex >= 0 && confirm("确认删除此消息及之后的所有消息？")) {
-        void onCompactSession(`删除：丢弃消息 #${msgIndex} 及之后的所有内容`);
+    if (action === "delete") {
+      const msg = messages[msgIndex];
+      if (msgIndex >= 0 && msg) {
+        if (onDeleteMessage) {
+          void onDeleteMessage(msg.id);
+        } else if (onCompactSession && confirm("确认删除此消息及之后的所有消息？")) {
+          void onCompactSession(`删除：丢弃消息 #${msgIndex} 及之后的所有内容`);
+        }
       }
     }
   };
