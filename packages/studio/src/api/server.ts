@@ -431,6 +431,25 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     // Usage aggregation
     app.route("/api/usage", createUsageRouter());
 
+    // System utilities — directory picker for desktop mode
+    app.post("/api/system/browse-directory", async (c) => {
+      try {
+        const { execFile } = await import("node:child_process");
+        const { promisify } = await import("node:util");
+        const execFileAsync = promisify(execFile);
+        // Use PowerShell folder browser dialog on Windows
+        const script = `Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.FolderBrowserDialog; $f.Description = '选择项目文件夹'; if ($f.ShowDialog() -eq 'OK') { $f.SelectedPath } else { '' }`;
+        const { stdout } = await execFileAsync("powershell", ["-NoProfile", "-Command", script], { timeout: 30000 });
+        const selectedPath = stdout.trim();
+        if (selectedPath) {
+          return c.json({ path: selectedPath });
+        }
+        return c.json({ path: null, cancelled: true });
+      } catch {
+        return c.json({ error: "Directory picker not available" }, 501);
+      }
+    });
+
     // File sharing — temporary download links
     app.route("/api/share", createShareRouter());
 
