@@ -24,7 +24,7 @@ export function ApiProviderCard({
   const previewModels = enabledModels.slice(0, 3);
   const moreCount = enabledModels.length - previewModels.length;
   const state = status?.status ?? "degraded";
-  const stateLabel = state === "error" ? "degraded/error" : state;
+  const stateLabel = state === "error" ? "异常" : state === "callable" ? "正常" : "降级";
   const catalogLabel = status?.catalogEnabled === false ? "未开放" : "可配置";
   const configuredLabel = status?.configured ? "已配置" : "未配置";
   const verifiedLabel = status?.verified ? "已验证" : "未验证";

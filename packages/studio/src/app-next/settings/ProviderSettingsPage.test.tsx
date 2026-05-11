@@ -92,7 +92,7 @@ describe("ProviderSettingsPage", () => {
     expect(screen.getByRole("heading", { name: "运行态总览" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "平台集成" })).toBeTruthy();
     expect(screen.getByText(/平台账号通过 JSON 账号数据导入后使用/)).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "密钥接入" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "API 供应商" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "模型库存" })).toBeTruthy();
     expect(screen.queryByRole("heading", { name: `${"虚拟"}模型` })).toBeNull();
     expect(screen.queryByRole("heading", { name: "写作任务模型" })).toBeNull();
@@ -206,8 +206,8 @@ describe("ProviderSettingsPage", () => {
 
     expect(screen.getByText("1")).toBeTruthy();
     expect(screen.getByText("可调用模型")).toBeTruthy();
-    expect(screen.getByText("available model / total catalog model：4 / 5")).toBeTruthy();
-    expect(screen.getByText("enabled provider / provider total：2 / 3")).toBeTruthy();
+    expect(screen.getByText("可用 4 / 共 5 个模型")).toBeTruthy();
+    expect(screen.getByText("已启用 2 / 共 3 个")).toBeTruthy();
   });
 
   it("API key provider 缺配置或测试失败时显示 degraded/error 与真实恢复动作", async () => {
