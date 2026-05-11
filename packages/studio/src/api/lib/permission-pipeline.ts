@@ -8,7 +8,7 @@
  * - src/hooks/toolPermission/ (permission decision pipeline)
  */
 
-import { resolve, relative } from "node:path";
+import { resolve, relative, sep } from "node:path";
 
 // --- Types ---
 
@@ -179,13 +179,14 @@ export function classifyBashCommand(command: string): BashCommandClassification 
 // --- Path validation ---
 
 export function isPathWithinWorkDir(filePath: string, workDir: string): boolean {
-  // Absolute paths are always rejected (must be relative to workDir)
-  if (filePath.startsWith("/") || /^[A-Za-z]:/.test(filePath)) {
-    return false;
-  }
-  const absolutePath = resolve(workDir, filePath);
-  const relativePath = relative(workDir, absolutePath);
-  return !relativePath.startsWith("..");
+  // 解析为绝对路径（相对路径基于 workDir 解析，绝对路径直接使用）
+  const absolutePath = (filePath.startsWith("/") || /^[A-Za-z]:/.test(filePath))
+    ? resolve(filePath)
+    : resolve(workDir, filePath);
+  const normalizedWorkDir = resolve(workDir);
+  // 检查解析后的绝对路径是否在 workDir 内（或等于 workDir）
+  const relativePath = relative(normalizedWorkDir, absolutePath);
+  return relativePath === "" || (!relativePath.startsWith("..") && !relativePath.startsWith(sep + ".."));
 }
 
 // --- Tool permission validation ---

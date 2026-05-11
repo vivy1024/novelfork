@@ -242,17 +242,19 @@ export async function createSession(input: CreateNarratorSessionInput): Promise<
   let inheritedToolPolicy: SessionToolPolicy | undefined;
   try {
     const routines = await loadGlobalRoutines();
-    if (routines.permissions.length > 0) {
-      const allow = routines.permissions.filter(p => p.permission === "allow").map(p => p.tool);
-      const deny = routines.permissions.filter(p => p.permission === "deny").map(p => p.tool);
-      const ask = routines.permissions.filter(p => p.permission === "ask").map(p => p.tool);
-      if (allow.length > 0 || deny.length > 0 || ask.length > 0) {
-        inheritedToolPolicy = {
-          ...(allow.length > 0 ? { allow } : {}),
-          ...(deny.length > 0 ? { deny } : {}),
-          ...(ask.length > 0 ? { ask } : {}),
-        };
-      }
+    // 从 permissions 继承 allow/deny/ask
+    const allow = routines.permissions.filter(p => p.permission === "allow").map(p => p.tool);
+    const deny = routines.permissions.filter(p => p.permission === "deny").map(p => p.tool);
+    const ask = routines.permissions.filter(p => p.permission === "ask").map(p => p.tool);
+    // 从 tools 继承 enabled: false → deny
+    const disabledTools = routines.tools.filter(t => t.enabled === false).map(t => t.name);
+    const mergedDeny = [...new Set([...deny, ...disabledTools])];
+    if (allow.length > 0 || mergedDeny.length > 0 || ask.length > 0) {
+      inheritedToolPolicy = {
+        ...(allow.length > 0 ? { allow } : {}),
+        ...(mergedDeny.length > 0 ? { deny: mergedDeny } : {}),
+        ...(ask.length > 0 ? { ask } : {}),
+      };
     }
   } catch { /* routines 加载失败不阻塞会话创建 */ }
 
