@@ -176,6 +176,37 @@ export interface WorkspaceSettings {
   hibernateAfterMinutes: number;
 }
 
+export interface WritingSettings {
+  /** 默认文风偏好 */
+  defaultTone: "concise" | "ornate" | "colloquial" | "literary";
+  /** 去AI味强度 (0-100) */
+  antiAiStrength: number;
+  /** 句长控制 */
+  sentenceLength: "short" | "medium" | "long";
+  /** 对话比例目标 (0-100) */
+  dialogueRatio: number;
+  /** 默认人称视角 */
+  defaultPov: "first" | "third-limited" | "third-omniscient" | "second";
+  /** 每日字数目标 */
+  dailyWordTarget: number;
+  /** 章节字数最小值 */
+  chapterMinWords: number;
+  /** 章节字数最大值 */
+  chapterMaxWords: number;
+  /** 更新频率提醒 */
+  reminderEnabled: boolean;
+  /** 提醒时间 (HH:MM) */
+  reminderTime: string;
+  /** 节拍密度偏好 */
+  beatDensity: "compact" | "standard" | "relaxed";
+  /** 目标平台 */
+  targetPlatforms: string[];
+  /** 分级标准 */
+  contentRating: "all-ages" | "teen" | "adult";
+  /** 自定义敏感词 */
+  customSensitiveWords: string;
+}
+
 export interface ProxySettings {
   /** 每个供应商的代理配置，key 是 providerId */
   providers: Record<string, string>;
@@ -195,6 +226,7 @@ export interface UserConfig {
   recentWorkspaces: string[];
   proxy: ProxySettings;
   workspace: WorkspaceSettings;
+  writing: WritingSettings;
 }
 
 export interface UserConfigPatch {
@@ -207,6 +239,7 @@ export interface UserConfigPatch {
   recentWorkspaces?: string[];
   proxy?: Partial<ProxySettings>;
   workspace?: Partial<WorkspaceSettings>;
+  writing?: Partial<WritingSettings>;
 }
 
 export const DEFAULT_USER_CONFIG: UserConfig = {
@@ -313,5 +346,21 @@ export const DEFAULT_USER_CONFIG: UserConfig = {
     sizeWarningMb: 500,
     autoSaveOnHibernate: true,
     hibernateAfterMinutes: 30,
+  },
+  writing: {
+    defaultTone: "concise",
+    antiAiStrength: 70,
+    sentenceLength: "medium",
+    dialogueRatio: 40,
+    defaultPov: "third-limited",
+    dailyWordTarget: 3000,
+    chapterMinWords: 2000,
+    chapterMaxWords: 5000,
+    reminderEnabled: false,
+    reminderTime: "20:00",
+    beatDensity: "standard",
+    targetPlatforms: ["自由"],
+    contentRating: "all-ages",
+    customSensitiveWords: "",
   },
 };

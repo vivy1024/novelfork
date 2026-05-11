@@ -1,10 +1,14 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { SimpleSelect } from "@/components/ui/simple-select";
 import { Switch } from "@/components/ui/switch";
+import { Separator } from "@/components/ui/separator";
+import { fetchJson, putApi } from "@/hooks/use-api";
+import { USER_SETTINGS_API_PATH } from "@/app-next/backend-contract";
+import type { RuntimeControlSettings, UserConfig } from "@/types/settings";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -20,11 +24,29 @@ interface SubagentDefinition {
   enabled: boolean;
 }
 
-interface AgentBehaviorConfig {
+/** Fields persisted via backend runtimeControls */
+interface PersistedFields {
+  relaxedPlanning: boolean;
+  yoloSkipReadonlyConfirmation: boolean;
+  expandReasoning: boolean;
+  maxRetryAttempts: number;
+  maxRetryDelayMs: number;
+  maxTurnSteps: number;
+}
+
+/** Fields that don't have backend support yet */
+interface LocalOnlyFields {
   defaultPlanMode: boolean;
-  autoCompact: boolean;
-  autoTitle: boolean;
-  streamToolOutput: boolean;
+  autoApprovePlan: boolean;
+  dangerReflection: boolean;
+  firstTokenTimeout: number;
+}
+
+interface RetryRule {
+  id: string;
+  enabled: boolean;
+  httpStatus: string;
+  contentKeyword: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -38,12 +60,25 @@ const SUBAGENT_TYPE_OPTIONS = [
   { value: "review", label: "Review（审查）" },
 ];
 
-const DEFAULT_BEHAVIOR: AgentBehaviorConfig = {
-  defaultPlanMode: false,
-  autoCompact: true,
-  autoTitle: true,
-  streamToolOutput: true,
+const DEFAULT_PERSISTED: PersistedFields = {
+  relaxedPlanning: true,
+  yoloSkipReadonlyConfirmation: false,
+  expandReasoning: false,
+  maxRetryAttempts: 10,
+  maxRetryDelayMs: 20000,
+  maxTurnSteps: 200,
 };
+
+const DEFAULT_LOCAL: LocalOnlyFields = {
+  defaultPlanMode: false,
+  autoApprovePlan: false,
+  dangerReflection: true,
+  firstTokenTimeout: 0,
+};
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 function generateId(): string {
   return `agent-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
@@ -61,23 +96,74 @@ function createEmptyAgent(): SubagentDefinition {
   };
 }
 
+function createEmptyRetryRule(): RetryRule {
+  return {
+    id: `rule-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+    enabled: true,
+    httpStatus: "",
+    contentKeyword: "",
+  };
+}
+
+function clampNumber(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function parseNumInput(raw: string, fallback: number, min: number, max: number) {
+  if (raw.trim() === "") return fallback;
+  const n = Number(raw);
+  return Number.isFinite(n) ? clampNumber(n, min, max) : fallback;
+}
+
+/** Extract persisted fields from a UserConfig response */
+function extractPersistedFields(rc: RuntimeControlSettings): PersistedFields {
+  return {
+    relaxedPlanning: rc.relaxedPlanning ?? DEFAULT_PERSISTED.relaxedPlanning,
+    yoloSkipReadonlyConfirmation: rc.yoloSkipReadonlyConfirmation ?? DEFAULT_PERSISTED.yoloSkipReadonlyConfirmation,
+    expandReasoning: rc.expandReasoning ?? DEFAULT_PERSISTED.expandReasoning,
+    maxRetryAttempts: rc.recovery?.maxRetryAttempts ?? DEFAULT_PERSISTED.maxRetryAttempts,
+    maxRetryDelayMs: rc.recovery?.maxRetryDelayMs ?? DEFAULT_PERSISTED.maxRetryDelayMs,
+    maxTurnSteps: rc.maxTurnSteps ?? DEFAULT_PERSISTED.maxTurnSteps,
+  };
+}
+
+/** Compare two PersistedFields objects for equality */
+function isPersistedEqual(a: PersistedFields, b: PersistedFields): boolean {
+  return (
+    a.relaxedPlanning === b.relaxedPlanning &&
+    a.yoloSkipReadonlyConfirmation === b.yoloSkipReadonlyConfirmation &&
+    a.expandReasoning === b.expandReasoning &&
+    a.maxRetryAttempts === b.maxRetryAttempts &&
+    a.maxRetryDelayMs === b.maxRetryDelayMs &&
+    a.maxTurnSteps === b.maxTurnSteps
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Layout primitives
 // ---------------------------------------------------------------------------
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
   return (
     <div className="border-t border-border pt-4">
-      <h3 className="mb-3 text-sm font-semibold">{title}</h3>
+      <h3 className="mb-1 text-sm font-semibold">{title}</h3>
+      {description && <p className="mb-3 text-xs text-muted-foreground">{description}</p>}
+      {!description && <div className="mb-3" />}
       <div className="space-y-3">{children}</div>
     </div>
   );
 }
 
-function FieldRow({ label, children }: { label: string; children: React.ReactNode }) {
+function FieldRow({ label, description, badge, children }: { label: string; description?: string; badge?: string; children: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-4">
-      <span className="text-sm text-muted-foreground">{label}</span>
+      <div className="min-w-0 flex-1">
+        <span className="text-sm text-muted-foreground">
+          {label}
+          {badge && <span className="ml-1.5 text-[10px] text-muted-foreground/60">({badge})</span>}
+        </span>
+        {description && <p className="text-xs text-muted-foreground/70">{description}</p>}
+      </div>
       {children}
     </div>
   );
@@ -181,10 +267,91 @@ function SubagentForm({
 // ---------------------------------------------------------------------------
 
 export function AgentSettingsPanel() {
+  // --- Subagent definitions (local-only) ---
   const [agents, setAgents] = useState<SubagentDefinition[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [behavior, setBehavior] = useState<AgentBehaviorConfig>(DEFAULT_BEHAVIOR);
 
+  // --- Persisted fields (backed by API) ---
+  const [persisted, setPersisted] = useState<PersistedFields>(DEFAULT_PERSISTED);
+  const savedRef = useRef<PersistedFields>(DEFAULT_PERSISTED);
+
+  // --- Local-only fields (no backend yet) ---
+  const [local, setLocal] = useState<LocalOnlyFields>(DEFAULT_LOCAL);
+
+  // --- Retry rules (local-only) ---
+  const [retryRules, setRetryRules] = useState<RetryRule[]>([]);
+
+  // --- Loading / saving state ---
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // --- Dirty detection ---
+  const isDirty = !isPersistedEqual(persisted, savedRef.current);
+
+  // --- Load from backend on mount ---
+  useEffect(() => {
+    let cancelled = false;
+
+    fetchJson<UserConfig>(USER_SETTINGS_API_PATH)
+      .then((data) => {
+        if (cancelled) return;
+        if (data?.runtimeControls) {
+          const fields = extractPersistedFields(data.runtimeControls);
+          setPersisted(fields);
+          savedRef.current = fields;
+        }
+        setError(null);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, []);
+
+  // --- Save handler ---
+  async function handleSave() {
+    setSaving(true);
+    setError(null);
+    try {
+      const patch = {
+        runtimeControls: {
+          relaxedPlanning: persisted.relaxedPlanning,
+          yoloSkipReadonlyConfirmation: persisted.yoloSkipReadonlyConfirmation,
+          expandReasoning: persisted.expandReasoning,
+          maxTurnSteps: persisted.maxTurnSteps,
+          recovery: {
+            maxRetryAttempts: persisted.maxRetryAttempts,
+            maxRetryDelayMs: persisted.maxRetryDelayMs,
+          },
+        },
+      };
+      const updated = await putApi<UserConfig>(USER_SETTINGS_API_PATH, patch);
+      if (updated?.runtimeControls) {
+        const fields = extractPersistedFields(updated.runtimeControls);
+        setPersisted(fields);
+        savedRef.current = fields;
+      } else {
+        // If backend doesn't return full config, just mark current as saved
+        savedRef.current = { ...persisted };
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // --- Reset handler ---
+  function handleReset() {
+    setPersisted(savedRef.current);
+  }
+
+  // --- Subagent handlers ---
   const handleAdd = () => {
     const newAgent = createEmptyAgent();
     setAgents((prev) => [...prev, newAgent]);
@@ -199,6 +366,24 @@ export function AgentSettingsPanel() {
     setAgents((prev) => prev.filter((a) => a.id !== id));
     if (editingId === id) setEditingId(null);
   };
+
+  // --- Retry rule handlers ---
+  const handleAddRetryRule = () => {
+    setRetryRules((prev) => [...prev, createEmptyRetryRule()]);
+  };
+
+  const handleUpdateRetryRule = (id: string, patch: Partial<RetryRule>) => {
+    setRetryRules((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  };
+
+  const handleDeleteRetryRule = (id: string) => {
+    setRetryRules((prev) => prev.filter((r) => r.id !== id));
+  };
+
+  // --- Loading state ---
+  if (loading) {
+    return <p className="py-8 text-center text-sm text-muted-foreground">正在读取 Agent 配置…</p>;
+  }
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
@@ -240,21 +425,160 @@ export function AgentSettingsPanel() {
         </Button>
       </Section>
 
-      {/* ---- Agent 行为配置 ---- */}
-      <Section title="Agent 行为">
-        <FieldRow label="默认进入计划模式">
-          <Switch checked={behavior.defaultPlanMode} onCheckedChange={(v) => setBehavior((b) => ({ ...b, defaultPlanMode: v }))} />
+      <Separator />
+
+      {/* ---- 计划与审批 ---- */}
+      <Section title="计划与审批">
+        <FieldRow label="默认进入计划模式" badge="即将上线" description="新建叙述者默认启用计划模式。">
+          <Switch
+            checked={local.defaultPlanMode}
+            onCheckedChange={(v) => setLocal((c) => ({ ...c, defaultPlanMode: v }))}
+          />
         </FieldRow>
-        <FieldRow label="自动 Compact（上下文压缩）">
-          <Switch checked={behavior.autoCompact} onCheckedChange={(v) => setBehavior((b) => ({ ...b, autoCompact: v }))} />
+        <FieldRow label="默认宽松规划" description="启用后，规划时工具仍然可用，不会被禁用。">
+          <Switch
+            checked={persisted.relaxedPlanning}
+            onCheckedChange={(v) => setPersisted((c) => ({ ...c, relaxedPlanning: v }))}
+          />
         </FieldRow>
-        <FieldRow label="自动生成会话标题">
-          <Switch checked={behavior.autoTitle} onCheckedChange={(v) => setBehavior((b) => ({ ...b, autoTitle: v }))} />
-        </FieldRow>
-        <FieldRow label="流式输出工具结果">
-          <Switch checked={behavior.streamToolOutput} onCheckedChange={(v) => setBehavior((b) => ({ ...b, streamToolOutput: v }))} />
+        <FieldRow label="全局默认自动批准计划" badge="即将上线" description="ExitPlanMode 计划反思确认后跳过人工审批。">
+          <Switch
+            checked={local.autoApprovePlan}
+            onCheckedChange={(v) => setLocal((c) => ({ ...c, autoApprovePlan: v }))}
+          />
         </FieldRow>
       </Section>
+
+      {/* ---- 安全防护 ---- */}
+      <Section title="安全防护">
+        <FieldRow label="全局默认启用危险反思" badge="即将上线" description="全部允许模式下对高风险操作进行二次反思确认。">
+          <Switch
+            checked={local.dangerReflection}
+            onCheckedChange={(v) => setLocal((c) => ({ ...c, dangerReflection: v }))}
+          />
+        </FieldRow>
+        <FieldRow label="跳过只读危险反思确认" description="已确认只读的操作不再触发额外安全暂停。">
+          <Switch
+            checked={persisted.yoloSkipReadonlyConfirmation}
+            onCheckedChange={(v) => setPersisted((c) => ({ ...c, yoloSkipReadonlyConfirmation: v }))}
+          />
+        </FieldRow>
+      </Section>
+
+      {/* ---- 重试与超时 ---- */}
+      <Section title="重试与超时">
+        <FieldRow label="可恢复错误最大重试次数" description="遇到临时性 API 错误时的最大重试次数。">
+          <Input
+            type="number"
+            className="w-20"
+            min={0}
+            max={20}
+            value={persisted.maxRetryAttempts}
+            onChange={(e) => setPersisted((c) => ({ ...c, maxRetryAttempts: parseNumInput(e.target.value, c.maxRetryAttempts, 0, 20) }))}
+          />
+        </FieldRow>
+        <FieldRow label="沉默工具调用阈值" description="连续执行这么多次工具调用但没有输出文本时，要求 AI 说明进度。">
+          <Input
+            type="number"
+            className="w-20"
+            min={1}
+            max={1000}
+            value={persisted.maxTurnSteps}
+            onChange={(e) => setPersisted((c) => ({ ...c, maxTurnSteps: parseNumInput(e.target.value, c.maxTurnSteps, 1, 1000) }))}
+          />
+        </FieldRow>
+        <FieldRow label="重试退避时间上限（秒）" description="指数退避的最大等待时间。">
+          <Input
+            type="number"
+            className="w-20"
+            min={1}
+            max={120}
+            value={Math.round(persisted.maxRetryDelayMs / 1000)}
+            onChange={(e) => setPersisted((c) => ({ ...c, maxRetryDelayMs: parseNumInput(e.target.value, Math.round(c.maxRetryDelayMs / 1000), 1, 120) * 1000 }))}
+          />
+        </FieldRow>
+        <FieldRow label="首 token 超时时间（秒）" badge="即将上线" description="API 请求发起后若在此秒数内没有收到实质事件则中断重试。0 表示禁用。">
+          <Input
+            type="number"
+            className="w-20"
+            min={0}
+            value={local.firstTokenTimeout}
+            onChange={(e) => setLocal((c) => ({ ...c, firstTokenTimeout: Math.max(0, Number(e.target.value) || 0) }))}
+          />
+        </FieldRow>
+      </Section>
+
+      {/* ---- 显示偏好 ---- */}
+      <Section title="显示偏好">
+        <FieldRow label="默认展开推理内容" description="自动展开消息中的推理/思考块，而不是默认折叠。">
+          <Switch
+            checked={persisted.expandReasoning}
+            onCheckedChange={(v) => setPersisted((c) => ({ ...c, expandReasoning: v }))}
+          />
+        </FieldRow>
+      </Section>
+
+      {/* ---- 自定义可重试错误规则 ---- */}
+      <Section
+        title="自定义可重试错误规则"
+        description="定义自定义规则，将特定 API 错误标记为可重试。匹配的错误将自动重试而非直接失败。(即将上线)"
+      >
+        {retryRules.length === 0 && (
+          <p className="text-sm text-muted-foreground">暂无自定义规则。点击下方按钮添加。</p>
+        )}
+        {retryRules.map((rule) => (
+          <div key={rule.id} className="flex items-center gap-2 rounded-md border border-border px-3 py-2">
+            <Switch
+              checked={rule.enabled}
+              onCheckedChange={(v) => handleUpdateRetryRule(rule.id, { enabled: v })}
+              aria-label="启用规则"
+            />
+            <Input
+              type="number"
+              className="w-20"
+              placeholder="状态码"
+              value={rule.httpStatus}
+              onChange={(e) => handleUpdateRetryRule(rule.id, { httpStatus: e.target.value })}
+              aria-label="HTTP 状态码"
+            />
+            <Input
+              className="flex-1"
+              placeholder="内容关键词匹配"
+              value={rule.contentKeyword}
+              onChange={(e) => handleUpdateRetryRule(rule.id, { contentKeyword: e.target.value })}
+              aria-label="内容关键词"
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="text-destructive hover:text-destructive"
+              onClick={() => handleDeleteRetryRule(rule.id)}
+              aria-label="删除规则"
+            >
+              删除
+            </Button>
+          </div>
+        ))}
+        <Button type="button" variant="outline" size="sm" onClick={handleAddRetryRule}>
+          添加规则
+        </Button>
+      </Section>
+
+      {/* ---- Error display ---- */}
+      {error && (
+        <p className="text-sm text-destructive">加载/保存失败：{error}</p>
+      )}
+
+      {/* ---- Sticky dirty bar ---- */}
+      {isDirty && (
+        <div className="sticky bottom-0 flex items-center justify-end gap-2 border-t border-border bg-background px-4 py-3">
+          <Button variant="outline" size="sm" onClick={handleReset}>取消变更</Button>
+          <Button size="sm" onClick={handleSave} disabled={saving}>
+            {saving ? "保存中..." : "保存变更"}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
