@@ -554,7 +554,7 @@ class OpenAiCompatibleAdapter implements RuntimeAdapter {
                 if (typeof tc.id === "string") acc.id = tc.id;
                 const fn = tc.function as Record<string, unknown> | undefined;
                 if (fn) {
-                  if (typeof fn.name === "string") acc.name = fn.name;
+                  if (typeof fn.name === "string" && fn.name) acc.name = fn.name;
                   if (typeof fn.arguments === "string") acc.arguments += fn.arguments;
                 }
               }
@@ -1235,7 +1235,7 @@ class CodexPlatformAdapter implements RuntimeAdapter {
                 if (typeof tc.id === "string") acc.id = tc.id;
                 const fn = tc.function as Record<string, unknown> | undefined;
                 if (fn) {
-                  if (typeof fn.name === "string") acc.name = fn.name;
+                  if (typeof fn.name === "string" && fn.name) acc.name = fn.name;
                   if (typeof fn.arguments === "string") acc.arguments += fn.arguments;
                 }
               }
