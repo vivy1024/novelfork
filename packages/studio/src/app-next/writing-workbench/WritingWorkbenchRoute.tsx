@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { BookOpen, GitBranch, Wrench, History } from "lucide-react";
 import { WorkbenchCanvas, type WorkbenchCanvasContext, type CandidateActionHandlers, type JingweiActionHandlers } from "./WorkbenchCanvas";
 import { WorkbenchResourceTree } from "./WorkbenchResourceTree";
@@ -142,18 +143,9 @@ export function WritingWorkbenchRoute({ bookId, nodes, selectedNode, onOpen, onS
           </section>
           {/* 右侧编辑区 */}
           <div className="flex flex-1 min-w-0 flex-col">
-            <section aria-label="当前资源画布" className={`min-h-0 ${showToolsPanel ? "flex-[2]" : "flex-1"}`}>
+            <section aria-label="当前资源画布" className="min-h-0 flex-1">
               <WorkbenchCanvas node={selectedNode} nodes={nodes} bookId={bookId} onSave={onSave} onCanvasContextChange={onCanvasContextChange} onGuideComplete={onGuideComplete} candidateActions={candidateActions} jingweiActions={jingweiActions} />
             </section>
-            {showToolsPanel && bookId && (
-              <section aria-label="写作工具面板" className="flex-1 min-h-0 border-t border-border overflow-y-auto p-3">
-                <WritingToolsPanel bookId={bookId} currentChapter={currentChapter} chapterContent={selectedNode?.content ?? ""} onRunTool={async (_toolId, endpoint, params) => {
-                  const res = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(params) });
-                  if (!res.ok) throw new Error(`工具执行失败：${res.status}`);
-                  return res.json();
-                }} />
-              </section>
-            )}
             {showCheckpoints && bookId && (
               <section aria-label="快照与回滚" className="flex-1 min-h-0 border-t border-border overflow-y-auto p-3">
                 <CheckpointPanel
@@ -175,6 +167,22 @@ export function WritingWorkbenchRoute({ bookId, nodes, selectedNode, onOpen, onS
           </div>
         </div>
       )}
+
+      {/* Writing Tools Dialog */}
+      <Dialog open={showToolsPanel} onOpenChange={setShowToolsPanel}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>写作工具</DialogTitle>
+          </DialogHeader>
+          {bookId && (
+            <WritingToolsPanel bookId={bookId} currentChapter={currentChapter} chapterContent={selectedNode?.content ?? ""} onRunTool={async (_toolId, endpoint, params) => {
+              const res = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(params) });
+              if (!res.ok) throw new Error(`工具执行失败：${res.status}`);
+              return res.json();
+            }} />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
