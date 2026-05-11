@@ -9,6 +9,7 @@ import { NotificationSettingsPanel } from "./panels/NotificationSettingsPanel";
 import { UsagePanel } from "./panels/UsagePanel";
 import { RuntimeEnvironmentPanel } from "./panels/RuntimeEnvironmentPanel";
 import { AgentSettingsPanel } from "./panels/AgentSettingsPanel";
+import { WritingSettingsPanel } from "./panels/WritingSettingsPanel";
 import { StorageDiagnosticsPanel } from "./panels/StorageDiagnosticsPanel";
 import { AboutPanel } from "./panels/AboutPanel";
 import { InlineError } from "../components/feedback";
@@ -35,6 +36,8 @@ export function SettingsSectionContent({ sectionId, onSectionChange }: SettingsS
       return <RuntimeControlPanel />;
     case "agents":
       return <AgentSettingsPanel />;
+    case "writing":
+      return <WritingSettingsPanel />;
     case "notifications":
       return <NotificationSettingsPanel />;
     case "appearance":
