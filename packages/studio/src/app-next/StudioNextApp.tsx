@@ -32,6 +32,7 @@ import { ProviderSettingsPage } from "./settings/ProviderSettingsPage";
 import { SettingsSectionContent } from "./settings/SettingsSectionContent";
 import { AgentShell, toShellPath, parseShellRoute, useShellData, useShellDataStore, type ShellBookItem, type ShellRoute, type ShellSessionItem, type ShellDataProviderSummary, type ShellDataProviderStatus } from "./shell";
 import { FirstRunDialog } from "../components/onboarding/FirstRunDialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { setPendingAction, consumePendingAction } from "./pending-action-store";
 import {
   applyResourceDetailToNode,
@@ -237,13 +238,13 @@ function HomeRouteLive({ books, sessions, providerSummary, providerStatus, loadi
         <HomeStatCard label="当前提供方" value={activeProviderId ?? "未配置"} />
       </div>
 
-      {createBookOpen ? (
-        <div role="dialog" aria-modal="true" aria-labelledby="create-book-title" className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+      <Dialog open={createBookOpen} onOpenChange={setCreateBookOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>新建作品</DialogTitle>
+            <DialogDescription>创建后进入作品工作台，AI 会引导你完成题材选择、故事设定和大纲生成。</DialogDescription>
+          </DialogHeader>
           <form className="space-y-4" onSubmit={handleCreateBook}>
-            <div>
-              <h2 id="create-book-title" className="text-lg font-semibold">新建作品</h2>
-              <p className="text-sm text-muted-foreground">创建后进入作品工作台，AI 会引导你完成题材选择、故事设定和大纲生成。</p>
-            </div>
 
             {/* 仓库绑定（优先） */}
             <div className="space-y-2">
@@ -286,13 +287,13 @@ function HomeRouteLive({ books, sessions, providerSummary, providerStatus, loadi
             </label>
 
             {createBookError ? <p role="alert" className="text-sm text-destructive">{createBookError}</p> : null}
-            <div className="flex gap-2">
-              <Button type="submit" disabled={creatingBook}>{creatingBook ? "创建中…" : "开始创作"}</Button>
+            <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setCreateBookOpen(false)} disabled={creatingBook}>取消</Button>
-            </div>
+              <Button type="submit" disabled={creatingBook}>{creatingBook ? "创建中…" : "开始创作"}</Button>
+            </DialogFooter>
           </form>
-        </div>
-      ) : null}
+        </DialogContent>
+      </Dialog>
 
       {loading ? <p className="text-sm text-muted-foreground">正在加载作者首页数据…</p> : null}
 
