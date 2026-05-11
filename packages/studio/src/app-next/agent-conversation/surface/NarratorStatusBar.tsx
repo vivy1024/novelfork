@@ -179,16 +179,14 @@ export function NarratorStatusBar({ status, streamingStartedAt, onUpdateModel, o
 
         {/* Right: controls */}
         <div className="flex items-center gap-1">
-          {/* Context usage ring — dropdown menu */}
-          {status.contextUsage && status.contextUsage.maxTokens && (
-            <ContextRingMenu
-              used={status.contextUsage.usedTokens}
-              max={status.contextUsage.maxTokens}
-              compactThreshold={status.contextUsage.compactThreshold}
-              onCompact={onCompact}
-              onReset={onReset}
-            />
-          )}
+          {/* Context usage ring — always visible, dropdown menu */}
+          <ContextRingMenu
+            used={status.contextUsage?.usedTokens ?? 0}
+            max={status.contextUsage?.maxTokens ?? 0}
+            compactThreshold={status.contextUsage?.compactThreshold}
+            onCompact={onCompact}
+            onReset={onReset}
+          />
 
           {/* Model dropdown — 显示完整名称 */}
           <ModelDropdown
@@ -371,9 +369,10 @@ function ContextRingMenu({
   onCompact?: () => void;
   onReset?: () => void;
 }) {
-  const percent = Math.min(100, Math.round((used / max) * 100));
-  const targetPercent = compactThreshold ? Math.round((compactThreshold / max) * 100) : 50;
-  const autoThresholdPercent = compactThreshold ? Math.round((compactThreshold / max) * 100) : 80;
+  const hasMax = max > 0;
+  const percent = hasMax ? Math.min(100, Math.round((used / max) * 100)) : 0;
+  const targetPercent = hasMax && compactThreshold ? Math.round((compactThreshold / max) * 100) : 50;
+  const autoThresholdPercent = hasMax && compactThreshold ? Math.round((compactThreshold / max) * 100) : 80;
 
   const handleReset = () => {
     if (window.confirm("确定要清空上下文吗？这将重置当前会话的所有上下文记忆。")) {
@@ -387,7 +386,11 @@ function ContextRingMenu({
         <ContextRing used={used} max={max} />
       </DropdownMenuTrigger>
       <DropdownMenuContent side="top" align="end" className="min-w-[200px]">
-        <DropdownMenuLabel>上下文：{percent}% · {used.toLocaleString()} / {max.toLocaleString()} tokens (估算)</DropdownMenuLabel>
+        <DropdownMenuLabel>
+          {hasMax
+            ? `上下文：${percent}% · ${used.toLocaleString()} / ${max.toLocaleString()} tokens (估算)`
+            : `上下文：${used.toLocaleString()} tokens（上限未知）`}
+        </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={() => onCompact?.()} disabled={!onCompact}>
           压缩到 {targetPercent}%
@@ -409,13 +412,14 @@ function ContextRingMenu({
 // ---------------------------------------------------------------------------
 
 function ContextRing({ used, max }: { used: number; max: number }) {
-  const percent = Math.min(100, Math.round((used / max) * 100));
+  const hasMax = max > 0;
+  const percent = hasMax ? Math.min(100, Math.round((used / max) * 100)) : 0;
   const radius = 8;
   const stroke = 2;
   const circumference = 2 * Math.PI * radius;
   const offset = circumference - (percent / 100) * circumference;
 
-  const color = percent >= 90 ? "text-red-500" : percent >= 70 ? "text-yellow-500" : "text-blue-500";
+  const color = !hasMax ? "text-gray-400" : percent >= 90 ? "text-red-500" : percent >= 70 ? "text-yellow-500" : "text-blue-500";
 
   return (
     <span className="inline-flex items-center gap-1">
@@ -442,7 +446,7 @@ function ContextRing({ used, max }: { used: number; max: number }) {
           transform="rotate(-90 10 10)"
         />
       </svg>
-      <span className="text-[10px] text-muted-foreground">{percent}%</span>
+      <span className="text-[10px] text-muted-foreground">{hasMax ? `${percent}%` : "—"}</span>
     </span>
   );
 }

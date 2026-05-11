@@ -6,6 +6,7 @@ import type { ShellRoute } from "./shell-route";
 
 const books = [{ id: "b1", title: "第一本书" }];
 const sessions = [{ id: "s1", title: "主叙述者", status: "active" as const, projectId: "b1", projectName: "第一本书" }];
+const standaloneSessions = [{ id: "s2", title: "独立叙述者", status: "active" as const }];
 
 afterEach(() => cleanup());
 
@@ -32,13 +33,18 @@ describe("AgentShell", () => {
   it("routes sidebar clicks through the shell owner", () => {
     const onNavigate = vi.fn<(route: ShellRoute) => void>();
     render(
-      <AgentShell route={{ kind: "home" }} books={books} sessions={sessions} onNavigate={onNavigate}>
+      <AgentShell route={{ kind: "book", bookId: "b1" }} books={books} sessions={[...sessions, ...standaloneSessions]} onNavigate={onNavigate}>
         <div>占位</div>
       </AgentShell>,
     );
 
+    // Book-bound agent appears under the active book
     fireEvent.click(screen.getByRole("button", { name: "主叙述者" }));
     expect(onNavigate).toHaveBeenCalledWith({ kind: "narrator", sessionId: "s1" });
+
+    // Standalone session appears in narrators section
+    fireEvent.click(screen.getByRole("button", { name: "独立叙述者" }));
+    expect(onNavigate).toHaveBeenCalledWith({ kind: "narrator", sessionId: "s2" });
 
     fireEvent.click(screen.getByRole("button", { name: "搜索" }));
     expect(onNavigate).toHaveBeenCalledWith({ kind: "search" });
