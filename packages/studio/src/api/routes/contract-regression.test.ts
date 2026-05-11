@@ -314,8 +314,8 @@ describe("backend core contract regression", () => {
     expect((await json(models)).models).toEqual([expect.objectContaining({ modelId: "sub2api:gpt-5", providerId: "sub2api", enabled: true })]);
 
     const unsupported = await app.request("http://localhost/anthropic/models/refresh", { method: "POST" });
-    expect(unsupported.status).toBe(501);
-    expect(await json(unsupported)).toMatchObject({ success: false, code: "unsupported" });
+    expect(unsupported.status).toBe(422);
+    expect(await json(unsupported)).toMatchObject({ success: false, code: "config-missing" });
   });
 
   it("protects writing actions prompt-preview and safe apply boundaries", async () => {

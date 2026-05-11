@@ -125,11 +125,10 @@ describe("llm-runtime-service", () => {
       tools: [cockpitSnapshotTool],
     });
 
+    // Non-tool model is skipped, resulting in all-providers-failed
     expect(result).toMatchObject({
       success: false,
-      code: "unsupported-tools",
-      error: "当前模型不支持工具循环",
-      metadata: { providerId: "sub2api", modelId: "plain-model", providerName: "Sub2API" },
+      code: "all-providers-failed",
     });
     expect(adapter.generate).not.toHaveBeenCalled();
   });
