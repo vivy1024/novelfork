@@ -836,6 +836,7 @@ function toConversationMessages(messages: readonly NarratorSessionChatMessage[],
     role: message.role,
     content: message.content,
     isStreaming: message.id === streamingMessageId,
+    metadata: message.metadata,
     toolCalls: message.toolCalls?.map((toolCall, index) => ({
       id: toolCall.id ?? `${message.id}:tool:${index}`,
       toolName: toolCall.toolName,
