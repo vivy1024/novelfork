@@ -164,7 +164,8 @@ function HomeRouteLive({ books, sessions, providerSummary, providerStatus, loadi
   const [createBookError, setCreateBookError] = useState<string | null>(null);
   const [creatingBook, setCreatingBook] = useState(false);
   const recentBooks = books.slice(0, 3);
-  const recentSessions = sessions.slice(0, 3);
+  const standaloneSessions = sessions.filter((s) => !s.projectId);
+  const recentSessions = standaloneSessions.slice(0, 3);
   const summary = providerSummaryRecord(providerSummary);
   const runtimeStatus = providerRuntimeStatus(providerStatus);
   const providerList = Array.isArray(summary?.providers) ? (summary.providers as readonly unknown[]) : null;
@@ -235,7 +236,7 @@ function HomeRouteLive({ books, sessions, providerSummary, providerStatus, loadi
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <HomeStatCard label="最近作品" value={`${books.length} 本`} />
-        <HomeStatCard label="最近会话" value={`${sessions.length} 条`} />
+        <HomeStatCard label="最近会话" value={`${standaloneSessions.length} 条`} />
         <HomeStatCard label="模型健康" value={runtimeStatus?.hasUsableModel ? "有可用模型" : "暂无可用模型"} />
         <HomeStatCard label="当前提供方" value={activeProviderId ?? "未配置"} />
       </div>
@@ -336,7 +337,7 @@ function HomeRouteLive({ books, sessions, providerSummary, providerStatus, loadi
         <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-lg font-semibold">最近会话</h2>
-            <span className="text-xs text-muted-foreground">{sessions.length} 条</span>
+            <span className="text-xs text-muted-foreground">{standaloneSessions.length} 条</span>
           </div>
           {recentSessions.length === 0 ? (
             <p className="mt-3 text-sm text-muted-foreground">暂无会话，先新建叙述者或继续最近会话。</p>
