@@ -48,12 +48,12 @@ export async function executeNovelInit(input: NovelInitInput): Promise<NovelInit
 
   try {
     await mkdir(join(bookPath, "chapters"), { recursive: true });
-    await mkdir(join(bookPath, "story"), { recursive: true });
+    await mkdir(join(bookPath, "jingwei"), { recursive: true });
     await mkdir(join(bookPath, "candidates"), { recursive: true });
 
     await writeFile(join(bookPath, "novelfork.json"), DEFAULT_CONFIG(bookName, genre), "utf-8");
-    await writeFile(join(bookPath, "story", "story_bible.md"), DEFAULT_BIBLE(bookName), "utf-8");
-    await writeFile(join(bookPath, "story", "jingwei.json"), DEFAULT_JINGWEI, "utf-8");
+    await writeFile(join(bookPath, "jingwei", "story_bible.md"), DEFAULT_BIBLE(bookName), "utf-8");
+    await writeFile(join(bookPath, "jingwei", "jingwei.json"), DEFAULT_JINGWEI, "utf-8");
 
     return { ok: true, bookPath };
   } catch (error) {
