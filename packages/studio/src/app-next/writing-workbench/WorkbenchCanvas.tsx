@@ -232,7 +232,7 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasCont
             onDelete={jingweiActions.onDelete}
           />
         ) : (
-          <ResourceViewer node={{ ...node, content }} onContentChange={(nextContent) => {
+          <ResourceViewer node={{ ...node, content }} bookId={bookId} onContentChange={(nextContent) => {
             setContent(nextContent);
             setDirty(true);
             setSaveError(null);
