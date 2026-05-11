@@ -64,7 +64,7 @@ interface LegacyChapterSummaryRow {
   updated_at: number;
 }
 
-const LEGACY_SOURCE_TEMPLATE = "legacy-bible";
+const LEGACY_SOURCE_TEMPLATE = "legacy-jingwei";
 
 const LEGACY_SECTION_DEFINITIONS: ReadonlyArray<{
   key: string;
@@ -104,11 +104,11 @@ const LEGACY_SECTION_DEFINITIONS: ReadonlyArray<{
 ];
 
 function legacySectionId(bookId: string, key: string): string {
-  return `legacy-bible:${bookId}:${key}`;
+  return `legacy-jingwei:${bookId}:${key}`;
 }
 
 function legacyEntryId(kind: string, id: string): string {
-  return `legacy-bible:${kind}:${id}`;
+  return `legacy-jingwei:${kind}:${id}`;
 }
 
 function parseJson<T>(value: string, fallback: T): T {
@@ -273,7 +273,7 @@ function chapterSummaryToEntry(row: LegacyChapterSummaryRow): StoryJingweiEntryR
   };
 }
 
-export function createLegacyBibleJingweiAdapter(storage: StorageDatabase) {
+export function createLegacyJingweiAdapter(storage: StorageDatabase) {
   const sections = createStoryJingweiSectionRepository(storage);
 
   return {
@@ -327,3 +327,6 @@ export function createLegacyBibleJingweiAdapter(storage: StorageDatabase) {
     },
   };
 }
+
+/** @deprecated Use createLegacyJingweiAdapter instead */
+export const createLegacyBibleJingweiAdapter = createLegacyJingweiAdapter;

@@ -1,7 +1,7 @@
 import type { StorageDatabase } from "../../storage/db.js";
-import type { BibleConflictRecord, CreateBibleConflictInput, UpdateBibleConflictInput } from "../types.js";
+import type { JingweiConflictRecord, CreateJingweiConflictInput, UpdateJingweiConflictInput } from "../types.js";
 
-interface BibleConflictRow {
+interface JingweiConflictRow {
   id: string;
   book_id: string;
   name: string;
@@ -26,7 +26,7 @@ interface ConflictEvolutionNode {
   chapter?: number;
 }
 
-function toConflict(row: BibleConflictRow): BibleConflictRecord {
+function toConflict(row: JingweiConflictRow): JingweiConflictRecord {
   return {
     id: row.id,
     bookId: row.book_id,
@@ -65,9 +65,9 @@ const selectColumns = `
   "resolution_chapter", "related_conflict_ids_json", "visibility_rule_json", "created_at", "updated_at", "deleted_at"
 `;
 
-export function createBibleConflictRepository(storage: StorageDatabase) {
+export function createJingweiConflictRepository(storage: StorageDatabase) {
   return {
-    async create(input: CreateBibleConflictInput): Promise<BibleConflictRecord> {
+    async create(input: CreateJingweiConflictInput): Promise<JingweiConflictRecord> {
       storage.sqlite.prepare(`
         INSERT INTO "bible_conflict" (
           "id", "book_id", "name", "type", "scope", "priority", "protagonist_side_json",
@@ -94,30 +94,30 @@ export function createBibleConflictRepository(storage: StorageDatabase) {
         input.updatedAt.getTime(),
       );
       const created = await this.getById(input.bookId, input.id);
-      if (!created) throw new Error("Inserted Bible conflict could not be read back.");
+      if (!created) throw new Error("Inserted Jingwei conflict could not be read back.");
       return created;
     },
 
-    async getById(bookId: string, id: string): Promise<BibleConflictRecord | null> {
+    async getById(bookId: string, id: string): Promise<JingweiConflictRecord | null> {
       const row = storage.sqlite.prepare(`
         SELECT ${selectColumns}
         FROM "bible_conflict"
         WHERE "book_id" = ? AND "id" = ? AND "deleted_at" IS NULL
-      `).get(bookId, id) as BibleConflictRow | undefined;
+      `).get(bookId, id) as JingweiConflictRow | undefined;
       return row ? toConflict(row) : null;
     },
 
-    async listByBook(bookId: string): Promise<BibleConflictRecord[]> {
+    async listByBook(bookId: string): Promise<JingweiConflictRecord[]> {
       const rows = storage.sqlite.prepare(`
         SELECT ${selectColumns}
         FROM "bible_conflict"
         WHERE "book_id" = ? AND "deleted_at" IS NULL
         ORDER BY "priority" ASC, "updated_at" DESC, "name" ASC
-      `).all(bookId) as BibleConflictRow[];
+      `).all(bookId) as JingweiConflictRow[];
       return rows.map(toConflict);
     },
 
-    async getActiveConflictsAtChapter(bookId: string, chapter: number): Promise<BibleConflictRecord[]> {
+    async getActiveConflictsAtChapter(bookId: string, chapter: number): Promise<JingweiConflictRecord[]> {
       const rows = storage.sqlite.prepare(`
         SELECT ${selectColumns}
         FROM "bible_conflict"
@@ -125,7 +125,7 @@ export function createBibleConflictRepository(storage: StorageDatabase) {
           AND "deleted_at" IS NULL
           AND "resolution_state" NOT IN ('resolved', 'deferred')
         ORDER BY "priority" ASC, "updated_at" DESC, "name" ASC
-      `).all(bookId) as BibleConflictRow[];
+      `).all(bookId) as JingweiConflictRow[];
 
       return rows
         .map(toConflict)
@@ -138,7 +138,7 @@ export function createBibleConflictRepository(storage: StorageDatabase) {
         .sort((a, b) => a.priority - b.priority || b.updatedAt.getTime() - a.updatedAt.getTime() || a.name.localeCompare(b.name));
     },
 
-    async update(bookId: string, id: string, updates: UpdateBibleConflictInput): Promise<BibleConflictRecord | null> {
+    async update(bookId: string, id: string, updates: UpdateJingweiConflictInput): Promise<JingweiConflictRecord | null> {
       const current = await this.getById(bookId, id);
       if (!current) return null;
 
@@ -180,3 +180,6 @@ export function createBibleConflictRepository(storage: StorageDatabase) {
     },
   };
 }
+
+/** @deprecated Use createJingweiConflictRepository instead */
+export const createBibleConflictRepository = createJingweiConflictRepository;

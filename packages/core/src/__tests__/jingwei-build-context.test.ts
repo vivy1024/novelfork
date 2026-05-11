@@ -23,7 +23,7 @@ async function createStorage(): Promise<StorageDatabase> {
   await createBookRepository(storage).create({
     id: "book-1",
     name: "凡人修仙录",
-    bibleMode: "dynamic",
+    jingweiMode: "dynamic",
     currentChapter: 5,
     createdAt: new Date("2026-04-25T01:00:00.000Z"),
     updatedAt: new Date("2026-04-25T01:00:00.000Z"),

@@ -278,7 +278,7 @@ export function createBibleRouter(options: CreateBibleRouterOptions = {}): Hono 
     const body = await c.req.json<Record<string, unknown>>();
     const { createBookRepository } = await loadCore();
     const book = await createBookRepository(storage).update(bookId, {
-      ...(body.bibleMode === "static" || body.bibleMode === "dynamic" ? { bibleMode: body.bibleMode } : {}),
+      ...(body.jingweiMode === "static" || body.jingweiMode === "dynamic" ? { jingweiMode: body.jingweiMode } : {}),
       ...(typeof body.currentChapter === "number" ? { currentChapter: body.currentChapter } : {}),
       updatedAt: now(),
     });

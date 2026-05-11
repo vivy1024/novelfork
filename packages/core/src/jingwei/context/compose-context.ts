@@ -1,16 +1,16 @@
-import type { BibleContextItem, BibleMode, BuildBibleContextResult } from "../types.js";
-import { applyTokenBudget, sortByContextPriority, type BudgetedBibleContextItem } from "./token-budget.js";
+import type { JingweiLegacyContextItem, JingweiMode, BuildJingweiLegacyContextResult } from "../types.js";
+import { applyTokenBudget, sortByContextPriority, type BudgetedJingweiContextItem } from "./token-budget.js";
 
-export interface ComposeBibleContextOptions {
+export interface ComposeJingweiContextOptions {
   tokenBudget?: number;
-  mode: BibleMode;
+  mode: JingweiMode;
 }
 
-export interface ComposableBibleContextItem extends BudgetedBibleContextItem {
+export interface ComposableJingweiContextItem extends BudgetedJingweiContextItem {
   rawContent?: string;
 }
 
-const typeLabels: Record<BibleContextItem["type"], string> = {
+const typeLabels: Record<JingweiLegacyContextItem["type"], string> = {
   character: "角色",
   event: "事件",
   setting: "设定",
@@ -21,12 +21,12 @@ const typeLabels: Record<BibleContextItem["type"], string> = {
   "character-arc": "弧线",
 };
 
-function formatTypeLabel(item: BibleContextItem): string {
+function formatTypeLabel(item: JingweiLegacyContextItem): string {
   const label = typeLabels[item.type];
   return item.type === "setting" && item.category ? `${label}-${item.category}` : label;
 }
 
-export function formatBibleContextItem<TItem extends ComposableBibleContextItem>(item: TItem): TItem {
+export function formatJingweiContextItem<TItem extends ComposableJingweiContextItem>(item: TItem): TItem {
   const body = item.rawContent ?? item.content;
   return {
     ...item,
@@ -34,11 +34,11 @@ export function formatBibleContextItem<TItem extends ComposableBibleContextItem>
   };
 }
 
-export function composeBibleContext(
-  items: readonly ComposableBibleContextItem[],
-  options: ComposeBibleContextOptions,
-): BuildBibleContextResult {
-  const formatted = sortByContextPriority(items).map(formatBibleContextItem);
+export function composeJingweiContext(
+  items: readonly ComposableJingweiContextItem[],
+  options: ComposeJingweiContextOptions,
+): BuildJingweiLegacyContextResult {
+  const formatted = sortByContextPriority(items).map(formatJingweiContextItem);
   const budgeted = applyTokenBudget(formatted, options.tokenBudget ?? 8000);
 
   return {
@@ -48,3 +48,13 @@ export function composeBibleContext(
     mode: options.mode,
   };
 }
+
+// --- Deprecated aliases ---
+/** @deprecated Use ComposableJingweiContextItem instead */
+export type ComposableBibleContextItem = ComposableJingweiContextItem;
+/** @deprecated Use ComposeJingweiContextOptions instead */
+export type ComposeBibleContextOptions = ComposeJingweiContextOptions;
+/** @deprecated Use formatJingweiContextItem instead */
+export const formatBibleContextItem = formatJingweiContextItem;
+/** @deprecated Use composeJingweiContext instead */
+export const composeBibleContext = composeJingweiContext;

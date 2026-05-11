@@ -1,7 +1,7 @@
 import type { StorageDatabase } from "../../storage/db.js";
-import type { BibleEventRecord, CreateBibleEventInput, UpdateBibleEventInput } from "../types.js";
+import type { JingweiEventRecord, CreateJingweiEventInput, UpdateJingweiEventInput } from "../types.js";
 
-interface BibleEventRow {
+interface JingweiEventRow {
   id: string;
   book_id: string;
   name: string;
@@ -17,7 +17,7 @@ interface BibleEventRow {
   deleted_at: number | null;
 }
 
-function toEvent(row: BibleEventRow): BibleEventRecord {
+function toEvent(row: JingweiEventRow): JingweiEventRecord {
   return {
     id: row.id,
     bookId: row.book_id,
@@ -40,9 +40,9 @@ const selectColumns = `
   "related_character_ids_json", "visibility_rule_json", "foreshadow_state", "created_at", "updated_at", "deleted_at"
 `;
 
-export function createBibleEventRepository(storage: StorageDatabase) {
+export function createJingweiEventRepository(storage: StorageDatabase) {
   return {
-    async create(input: CreateBibleEventInput): Promise<BibleEventRecord> {
+    async create(input: CreateJingweiEventInput): Promise<JingweiEventRecord> {
       storage.sqlite.prepare(`
         INSERT INTO "bible_event" (
           "id", "book_id", "name", "event_type", "chapter_start", "chapter_end", "summary",
@@ -63,30 +63,30 @@ export function createBibleEventRepository(storage: StorageDatabase) {
         input.updatedAt.getTime(),
       );
       const created = await this.getById(input.bookId, input.id);
-      if (!created) throw new Error("Inserted Bible event could not be read back.");
+      if (!created) throw new Error("Inserted Jingwei event could not be read back.");
       return created;
     },
 
-    async getById(bookId: string, id: string): Promise<BibleEventRecord | null> {
+    async getById(bookId: string, id: string): Promise<JingweiEventRecord | null> {
       const row = storage.sqlite.prepare(`
         SELECT ${selectColumns}
         FROM "bible_event"
         WHERE "book_id" = ? AND "id" = ? AND "deleted_at" IS NULL
-      `).get(bookId, id) as BibleEventRow | undefined;
+      `).get(bookId, id) as JingweiEventRow | undefined;
       return row ? toEvent(row) : null;
     },
 
-    async listByBook(bookId: string): Promise<BibleEventRecord[]> {
+    async listByBook(bookId: string): Promise<JingweiEventRecord[]> {
       const rows = storage.sqlite.prepare(`
         SELECT ${selectColumns}
         FROM "bible_event"
         WHERE "book_id" = ? AND "deleted_at" IS NULL
         ORDER BY "updated_at" DESC, "name" ASC
-      `).all(bookId) as BibleEventRow[];
+      `).all(bookId) as JingweiEventRow[];
       return rows.map(toEvent);
     },
 
-    async update(bookId: string, id: string, updates: UpdateBibleEventInput): Promise<BibleEventRecord | null> {
+    async update(bookId: string, id: string, updates: UpdateJingweiEventInput): Promise<JingweiEventRecord | null> {
       const current = await this.getById(bookId, id);
       if (!current) return null;
 
@@ -121,3 +121,6 @@ export function createBibleEventRepository(storage: StorageDatabase) {
     },
   };
 }
+
+/** @deprecated Use createJingweiEventRepository instead */
+export const createBibleEventRepository = createJingweiEventRepository;

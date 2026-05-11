@@ -122,48 +122,48 @@ export interface JingweiContextResult {
   sectionStats: Array<{ sectionId: string; sectionName: string; count: number }>;
 }
 
-// --- Legacy Bible types (moved from bible/types.ts) ---
+// --- Legacy Bible types (renamed to Jingwei*) ---
 
-export type BibleMode = "static" | "dynamic";
+export type JingweiMode = "static" | "dynamic";
 
-export type BibleVisibilitySource = "global" | "tracked" | "nested";
+export type JingweiVisibilitySource = "global" | "tracked" | "nested";
 
 export type VisibilityRule =
   | { type: "global"; visibleAfterChapter?: number; visibleUntilChapter?: number }
   | { type: "tracked"; visibleAfterChapter?: number; visibleUntilChapter?: number }
   | { type: "nested"; parentIds: string[]; visibleAfterChapter?: number; visibleUntilChapter?: number };
 
-export type BibleContextItemType = "character" | "event" | "setting" | "chapter-summary" | "conflict" | "world-model" | "premise" | "character-arc";
+export type JingweiContextItemType = "character" | "event" | "setting" | "chapter-summary" | "conflict" | "world-model" | "premise" | "character-arc";
 
-export interface BibleContextItem {
+export interface JingweiLegacyContextItem {
   id: string;
-  type: BibleContextItemType;
+  type: JingweiContextItemType;
   category?: string;
   name: string;
   content: string;
   priority: number;
-  source: BibleVisibilitySource;
+  source: JingweiVisibilitySource;
   estimatedTokens: number;
 }
 
-export interface BuildBibleContextInput {
+export interface BuildJingweiLegacyContextInput {
   bookId: string;
   currentChapter?: number;
   sceneText?: string;
   tokenBudget?: number;
 }
 
-export interface BuildBibleContextResult {
-  items: BibleContextItem[];
+export interface BuildJingweiLegacyContextResult {
+  items: JingweiLegacyContextItem[];
   totalTokens: number;
   droppedIds: string[];
-  mode: BibleMode;
+  mode: JingweiMode;
 }
 
 export interface BookRecord {
   id: string;
   name: string;
-  bibleMode: BibleMode;
+  jingweiMode: JingweiMode;
   currentChapter: number;
   createdAt: Date;
   updatedAt: Date;
@@ -173,12 +173,12 @@ export interface CreateBookInput extends BookRecord {}
 
 export interface UpdateBookInput {
   name?: string;
-  bibleMode?: BibleMode;
+  jingweiMode?: JingweiMode;
   currentChapter?: number;
   updatedAt?: Date;
 }
 
-export interface BibleCharacterRecord {
+export interface JingweiCharacterRecord {
   id: string;
   bookId: string;
   name: string;
@@ -194,10 +194,10 @@ export interface BibleCharacterRecord {
   deletedAt: Date | null;
 }
 
-export type CreateBibleCharacterInput = Omit<BibleCharacterRecord, "deletedAt">;
-export type UpdateBibleCharacterInput = Partial<Omit<CreateBibleCharacterInput, "id" | "bookId" | "createdAt">>;
+export type CreateJingweiCharacterInput = Omit<JingweiCharacterRecord, "deletedAt">;
+export type UpdateJingweiCharacterInput = Partial<Omit<CreateJingweiCharacterInput, "id" | "bookId" | "createdAt">>;
 
-export interface BibleEventRecord {
+export interface JingweiEventRecord {
   id: string;
   bookId: string;
   name: string;
@@ -213,10 +213,10 @@ export interface BibleEventRecord {
   deletedAt: Date | null;
 }
 
-export type CreateBibleEventInput = Omit<BibleEventRecord, "deletedAt">;
-export type UpdateBibleEventInput = Partial<Omit<CreateBibleEventInput, "id" | "bookId" | "createdAt">>;
+export type CreateJingweiEventInput = Omit<JingweiEventRecord, "deletedAt">;
+export type UpdateJingweiEventInput = Partial<Omit<CreateJingweiEventInput, "id" | "bookId" | "createdAt">>;
 
-export interface BibleSettingRecord {
+export interface JingweiSettingRecord {
   id: string;
   bookId: string;
   category: string;
@@ -229,10 +229,10 @@ export interface BibleSettingRecord {
   deletedAt: Date | null;
 }
 
-export type CreateBibleSettingInput = Omit<BibleSettingRecord, "deletedAt">;
-export type UpdateBibleSettingInput = Partial<Omit<CreateBibleSettingInput, "id" | "bookId" | "createdAt">>;
+export type CreateJingweiSettingInput = Omit<JingweiSettingRecord, "deletedAt">;
+export type UpdateJingweiSettingInput = Partial<Omit<CreateJingweiSettingInput, "id" | "bookId" | "createdAt">>;
 
-export interface BibleChapterSummaryRecord {
+export interface JingweiChapterSummaryRecord {
   id: string;
   bookId: string;
   chapterNumber: number;
@@ -248,10 +248,10 @@ export interface BibleChapterSummaryRecord {
   deletedAt: Date | null;
 }
 
-export type CreateBibleChapterSummaryInput = Omit<BibleChapterSummaryRecord, "deletedAt">;
-export type UpdateBibleChapterSummaryInput = Partial<Omit<CreateBibleChapterSummaryInput, "id" | "bookId" | "chapterNumber" | "createdAt">>;
+export type CreateJingweiChapterSummaryInput = Omit<JingweiChapterSummaryRecord, "deletedAt">;
+export type UpdateJingweiChapterSummaryInput = Partial<Omit<CreateJingweiChapterSummaryInput, "id" | "bookId" | "chapterNumber" | "createdAt">>;
 
-export interface BibleConflictRecord {
+export interface JingweiConflictRecord {
   id: string;
   bookId: string;
   name: string;
@@ -272,10 +272,10 @@ export interface BibleConflictRecord {
   deletedAt: Date | null;
 }
 
-export type CreateBibleConflictInput = Omit<BibleConflictRecord, "deletedAt">;
-export type UpdateBibleConflictInput = Partial<Omit<CreateBibleConflictInput, "id" | "bookId" | "createdAt">>;
+export type CreateJingweiConflictInput = Omit<JingweiConflictRecord, "deletedAt">;
+export type UpdateJingweiConflictInput = Partial<Omit<CreateJingweiConflictInput, "id" | "bookId" | "createdAt">>;
 
-export interface BibleWorldModelRecord {
+export interface JingweiWorldModelRecord {
   id: string;
   bookId: string;
   economyJson: string;
@@ -287,10 +287,10 @@ export interface BibleWorldModelRecord {
   updatedAt: Date;
 }
 
-export type CreateBibleWorldModelInput = BibleWorldModelRecord;
-export type UpdateBibleWorldModelInput = Partial<Omit<CreateBibleWorldModelInput, "id" | "bookId">>;
+export type CreateJingweiWorldModelInput = JingweiWorldModelRecord;
+export type UpdateJingweiWorldModelInput = Partial<Omit<CreateJingweiWorldModelInput, "id" | "bookId">>;
 
-export interface BiblePremiseRecord {
+export interface JingweiPremiseRecord {
   id: string;
   bookId: string;
   logline: string;
@@ -303,10 +303,10 @@ export interface BiblePremiseRecord {
   updatedAt: Date;
 }
 
-export type CreateBiblePremiseInput = BiblePremiseRecord;
-export type UpdateBiblePremiseInput = Partial<Omit<CreateBiblePremiseInput, "id" | "bookId" | "createdAt">>;
+export type CreateJingweiPremiseInput = JingweiPremiseRecord;
+export type UpdateJingweiPremiseInput = Partial<Omit<CreateJingweiPremiseInput, "id" | "bookId" | "createdAt">>;
 
-export interface BibleCharacterArcRecord {
+export interface JingweiCharacterArcRecord {
   id: string;
   bookId: string;
   characterId: string;
@@ -321,8 +321,8 @@ export interface BibleCharacterArcRecord {
   updatedAt: Date;
 }
 
-export type CreateBibleCharacterArcInput = Omit<BibleCharacterArcRecord, "deletedAt">;
-export type UpdateBibleCharacterArcInput = Partial<Omit<CreateBibleCharacterArcInput, "id" | "bookId" | "characterId" | "createdAt">>;
+export type CreateJingweiCharacterArcInput = Omit<JingweiCharacterArcRecord, "deletedAt">;
+export type UpdateJingweiCharacterArcInput = Partial<Omit<CreateJingweiCharacterArcInput, "id" | "bookId" | "characterId" | "createdAt">>;
 
 export type QuestionnaireTier = 1 | 2 | 3;
 export type QuestionnaireTargetObject = "premise" | "conflict" | "world-model" | "character-arc" | "character" | "setting";
@@ -408,3 +408,66 @@ export interface CoreShiftRecord {
 
 export type CreateCoreShiftInput = CoreShiftRecord;
 export type UpdateCoreShiftInput = Partial<Omit<CreateCoreShiftInput, "id" | "bookId" | "targetType" | "targetId" | "createdAt">>;
+
+// --- Deprecated aliases (backward compatibility) ---
+
+/** @deprecated Use JingweiMode instead */
+export type BibleMode = JingweiMode;
+/** @deprecated Use JingweiVisibilitySource instead */
+export type BibleVisibilitySource = JingweiVisibilitySource;
+/** @deprecated Use JingweiContextItemType instead */
+export type BibleContextItemType = JingweiContextItemType;
+/** @deprecated Use JingweiLegacyContextItem instead */
+export type BibleContextItem = JingweiLegacyContextItem;
+/** @deprecated Use BuildJingweiLegacyContextInput instead */
+export type BuildBibleContextInput = BuildJingweiLegacyContextInput;
+/** @deprecated Use BuildJingweiLegacyContextResult instead */
+export type BuildBibleContextResult = BuildJingweiLegacyContextResult;
+/** @deprecated Use JingweiCharacterRecord instead */
+export type BibleCharacterRecord = JingweiCharacterRecord;
+/** @deprecated Use CreateJingweiCharacterInput instead */
+export type CreateBibleCharacterInput = CreateJingweiCharacterInput;
+/** @deprecated Use UpdateJingweiCharacterInput instead */
+export type UpdateBibleCharacterInput = UpdateJingweiCharacterInput;
+/** @deprecated Use JingweiEventRecord instead */
+export type BibleEventRecord = JingweiEventRecord;
+/** @deprecated Use CreateJingweiEventInput instead */
+export type CreateBibleEventInput = CreateJingweiEventInput;
+/** @deprecated Use UpdateJingweiEventInput instead */
+export type UpdateBibleEventInput = UpdateJingweiEventInput;
+/** @deprecated Use JingweiSettingRecord instead */
+export type BibleSettingRecord = JingweiSettingRecord;
+/** @deprecated Use CreateJingweiSettingInput instead */
+export type CreateBibleSettingInput = CreateJingweiSettingInput;
+/** @deprecated Use UpdateJingweiSettingInput instead */
+export type UpdateBibleSettingInput = UpdateJingweiSettingInput;
+/** @deprecated Use JingweiChapterSummaryRecord instead */
+export type BibleChapterSummaryRecord = JingweiChapterSummaryRecord;
+/** @deprecated Use CreateJingweiChapterSummaryInput instead */
+export type CreateBibleChapterSummaryInput = CreateJingweiChapterSummaryInput;
+/** @deprecated Use UpdateJingweiChapterSummaryInput instead */
+export type UpdateBibleChapterSummaryInput = UpdateJingweiChapterSummaryInput;
+/** @deprecated Use JingweiConflictRecord instead */
+export type BibleConflictRecord = JingweiConflictRecord;
+/** @deprecated Use CreateJingweiConflictInput instead */
+export type CreateBibleConflictInput = CreateJingweiConflictInput;
+/** @deprecated Use UpdateJingweiConflictInput instead */
+export type UpdateBibleConflictInput = UpdateJingweiConflictInput;
+/** @deprecated Use JingweiWorldModelRecord instead */
+export type BibleWorldModelRecord = JingweiWorldModelRecord;
+/** @deprecated Use CreateJingweiWorldModelInput instead */
+export type CreateBibleWorldModelInput = CreateJingweiWorldModelInput;
+/** @deprecated Use UpdateJingweiWorldModelInput instead */
+export type UpdateBibleWorldModelInput = UpdateJingweiWorldModelInput;
+/** @deprecated Use JingweiPremiseRecord instead */
+export type BiblePremiseRecord = JingweiPremiseRecord;
+/** @deprecated Use CreateJingweiPremiseInput instead */
+export type CreateBiblePremiseInput = CreateJingweiPremiseInput;
+/** @deprecated Use UpdateJingweiPremiseInput instead */
+export type UpdateBiblePremiseInput = UpdateJingweiPremiseInput;
+/** @deprecated Use JingweiCharacterArcRecord instead */
+export type BibleCharacterArcRecord = JingweiCharacterArcRecord;
+/** @deprecated Use CreateJingweiCharacterArcInput instead */
+export type CreateBibleCharacterArcInput = CreateJingweiCharacterArcInput;
+/** @deprecated Use UpdateJingweiCharacterArcInput instead */
+export type UpdateBibleCharacterArcInput = UpdateJingweiCharacterArcInput;

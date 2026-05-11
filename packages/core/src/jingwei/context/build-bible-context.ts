@@ -1,51 +1,51 @@
 import { getStorageDatabase, type StorageDatabase } from "../../storage/db.js";
 import type {
-  BibleChapterSummaryRecord,
-  BibleCharacterArcRecord,
-  BibleCharacterRecord,
-  BibleConflictRecord,
-  BibleContextItem,
-  BibleEventRecord,
-  BibleMode,
-  BiblePremiseRecord,
-  BibleSettingRecord,
-  BibleWorldModelRecord,
-  BuildBibleContextInput,
-  BuildBibleContextResult,
+  JingweiChapterSummaryRecord,
+  JingweiCharacterArcRecord,
+  JingweiCharacterRecord,
+  JingweiConflictRecord,
+  JingweiLegacyContextItem,
+  JingweiEventRecord,
+  JingweiMode,
+  JingweiPremiseRecord,
+  JingweiSettingRecord,
+  JingweiWorldModelRecord,
+  BuildJingweiLegacyContextInput,
+  BuildJingweiLegacyContextResult,
   VisibilityRule,
 } from "../types.js";
 import { createBookRepository } from "../repositories/book-repo.js";
-import { createBibleCharacterRepository } from "../repositories/character-repo.js";
-import { createBibleChapterSummaryRepository } from "../repositories/chapter-summary-repo.js";
-import { createBibleCharacterArcRepository } from "../repositories/character-arc-repo.js";
-import { createBibleConflictRepository } from "../repositories/conflict-repo.js";
-import { createBibleEventRepository } from "../repositories/event-repo.js";
-import { createBiblePremiseRepository } from "../repositories/premise-repo.js";
-import { createBibleSettingRepository } from "../repositories/setting-repo.js";
-import { createBibleWorldModelRepository } from "../repositories/world-model-repo.js";
+import { createJingweiCharacterRepository } from "../repositories/character-repo.js";
+import { createJingweiChapterSummaryRepository } from "../repositories/chapter-summary-repo.js";
+import { createJingweiCharacterArcRepository } from "../repositories/character-arc-repo.js";
+import { createJingweiConflictRepository } from "../repositories/conflict-repo.js";
+import { createJingweiEventRepository } from "../repositories/event-repo.js";
+import { createJingweiPremiseRepository } from "../repositories/premise-repo.js";
+import { createJingweiSettingRepository } from "../repositories/setting-repo.js";
+import { createJingweiWorldModelRepository } from "../repositories/world-model-repo.js";
 import { matchTrackedByAliases } from "./alias-matcher.js";
-import { composeBibleContext, type ComposableBibleContextItem } from "./compose-context.js";
+import { composeJingweiContext, type ComposableJingweiContextItem } from "./compose-context.js";
 import { resolveNestedRefs } from "./nested-resolver.js";
 import { estimateTokens } from "./token-budget.js";
 import { filterEntriesVisibleAtChapter, getVisibilityRule } from "./visibility-filter.js";
 import { formatDescriptor, hasDescriptorContent, safeParseDescriptor } from "./format-descriptor.js";
 
-export interface BuildBibleContextOptions extends BuildBibleContextInput {
+export interface BuildJingweiLegacyContextOptions extends BuildJingweiLegacyContextInput {
   storage?: StorageDatabase;
 }
 
-interface CandidateBibleContextItem extends ComposableBibleContextItem {
+interface CandidateJingweiContextItem extends ComposableJingweiContextItem {
   aliasesJson?: string;
   nestedRefsJson?: string;
   visibilityRule: VisibilityRule;
   visibilityRuleJson: string;
 }
 
-function sourceFromRule(rule: VisibilityRule): BibleContextItem["source"] {
+function sourceFromRule(rule: VisibilityRule): JingweiLegacyContextItem["source"] {
   return rule.type;
 }
 
-function priorityFromSource(source: BibleContextItem["source"]): number {
+function priorityFromSource(source: JingweiLegacyContextItem["source"]): number {
   if (source === "global") return 30;
   if (source === "nested") return 20;
   return 10;
@@ -53,17 +53,17 @@ function priorityFromSource(source: BibleContextItem["source"]): number {
 
 function makeItem(input: {
   id: string;
-  type: BibleContextItem["type"];
+  type: JingweiLegacyContextItem["type"];
   category?: string;
   name: string;
   rawContent: string;
-  source: BibleContextItem["source"];
+  source: JingweiLegacyContextItem["source"];
   aliasesJson?: string;
   nestedRefsJson?: string;
   visibilityRule: VisibilityRule;
   visibilityRuleJson: string;
   updatedAt: Date;
-}): CandidateBibleContextItem {
+}): CandidateJingweiContextItem {
   return {
     id: input.id,
     type: input.type,
@@ -82,7 +82,7 @@ function makeItem(input: {
   };
 }
 
-function characterToItem(row: BibleCharacterRecord): CandidateBibleContextItem {
+function characterToItem(row: JingweiCharacterRecord): CandidateJingweiContextItem {
   const visibilityRule = getVisibilityRule(row);
   return makeItem({
     id: row.id,
@@ -98,7 +98,7 @@ function characterToItem(row: BibleCharacterRecord): CandidateBibleContextItem {
   });
 }
 
-function eventToItem(row: BibleEventRecord): CandidateBibleContextItem {
+function eventToItem(row: JingweiEventRecord): CandidateJingweiContextItem {
   const visibilityRule = getVisibilityRule(row);
   return makeItem({
     id: row.id,
@@ -114,7 +114,7 @@ function eventToItem(row: BibleEventRecord): CandidateBibleContextItem {
   });
 }
 
-function settingToItem(row: BibleSettingRecord): CandidateBibleContextItem {
+function settingToItem(row: JingweiSettingRecord): CandidateJingweiContextItem {
   const visibilityRule = getVisibilityRule(row);
   return makeItem({
     id: row.id,
@@ -131,7 +131,7 @@ function settingToItem(row: BibleSettingRecord): CandidateBibleContextItem {
   });
 }
 
-function chapterSummaryToItem(row: BibleChapterSummaryRecord): CandidateBibleContextItem {
+function chapterSummaryToItem(row: JingweiChapterSummaryRecord): CandidateJingweiContextItem {
   const visibilityRule: VisibilityRule = { type: "global", visibleAfterChapter: row.chapterNumber };
   return makeItem({
     id: row.id,
@@ -147,8 +147,8 @@ function chapterSummaryToItem(row: BibleChapterSummaryRecord): CandidateBibleCon
   });
 }
 
-function dedupeByBestSource<TItem extends ComposableBibleContextItem>(items: readonly TItem[]): TItem[] {
-  const rank: Record<BibleContextItem["source"], number> = { global: 3, nested: 2, tracked: 1 };
+function dedupeByBestSource<TItem extends ComposableJingweiContextItem>(items: readonly TItem[]): TItem[] {
+  const rank: Record<JingweiLegacyContextItem["source"], number> = { global: 3, nested: 2, tracked: 1 };
   const byId = new Map<string, TItem>();
 
   for (const item of items) {
@@ -161,11 +161,11 @@ function dedupeByBestSource<TItem extends ComposableBibleContextItem>(items: rea
   return Array.from(byId.values());
 }
 
-async function loadAllCandidateEntries(storage: StorageDatabase, bookId: string, currentChapter: number): Promise<CandidateBibleContextItem[]> {
-  const characters = await createBibleCharacterRepository(storage).listByBook(bookId);
-  const events = await createBibleEventRepository(storage).listByBook(bookId);
-  const settings = await createBibleSettingRepository(storage).listByBook(bookId);
-  const summaries = (await createBibleChapterSummaryRepository(storage).listByBook(bookId))
+async function loadAllCandidateEntries(storage: StorageDatabase, bookId: string, currentChapter: number): Promise<CandidateJingweiContextItem[]> {
+  const characters = await createJingweiCharacterRepository(storage).listByBook(bookId);
+  const events = await createJingweiEventRepository(storage).listByBook(bookId);
+  const settings = await createJingweiSettingRepository(storage).listByBook(bookId);
+  const summaries = (await createJingweiChapterSummaryRepository(storage).listByBook(bookId))
     .filter((summary) => summary.chapterNumber <= currentChapter)
     .sort((a, b) => b.chapterNumber - a.chapterNumber)
     .slice(0, 15); // 滑动窗口：只注入最近 15 章摘要，更早的靠经纬条目覆盖
@@ -178,7 +178,7 @@ async function loadAllCandidateEntries(storage: StorageDatabase, bookId: string,
   ];
 }
 
-function markNested(item: CandidateBibleContextItem): CandidateBibleContextItem {
+function markNested(item: CandidateJingweiContextItem): CandidateJingweiContextItem {
   return {
     ...item,
     source: "nested",
@@ -186,7 +186,7 @@ function markNested(item: CandidateBibleContextItem): CandidateBibleContextItem 
   };
 }
 
-function premiseToItem(row: BiblePremiseRecord): ComposableBibleContextItem | null {
+function premiseToItem(row: JingweiPremiseRecord): ComposableJingweiContextItem | null {
   const parts = [
     row.logline,
     row.tone ? `基调 ${row.tone}` : "",
@@ -208,7 +208,7 @@ function premiseToItem(row: BiblePremiseRecord): ComposableBibleContextItem | nu
   };
 }
 
-function worldModelToItems(row: BibleWorldModelRecord): ComposableBibleContextItem[] {
+function worldModelToItems(row: JingweiWorldModelRecord): ComposableJingweiContextItem[] {
   const dimensions: Array<[string, string, string]> = [
     ["economy", "经济", row.economyJson],
     ["society", "社会", row.societyJson],
@@ -233,11 +233,11 @@ function worldModelToItems(row: BibleWorldModelRecord): ComposableBibleContextIt
         source: "global",
         estimatedTokens: estimateTokens(rawContent),
         updatedAt: row.updatedAt,
-      } satisfies ComposableBibleContextItem;
+      } satisfies ComposableJingweiContextItem;
     });
 }
 
-function conflictToItem(row: BibleConflictRecord): ComposableBibleContextItem {
+function conflictToItem(row: JingweiConflictRecord): ComposableJingweiContextItem {
   const rawContent = `【矛盾-${row.type}】${row.name}（${row.resolutionState}）：${row.stakes}`;
   return {
     id: row.id,
@@ -253,7 +253,7 @@ function conflictToItem(row: BibleConflictRecord): ComposableBibleContextItem {
   };
 }
 
-function arcToItem(row: BibleCharacterArcRecord, characterName: string): ComposableBibleContextItem | null {
+function arcToItem(row: JingweiCharacterArcRecord, characterName: string): ComposableJingweiContextItem | null {
   if (!row.currentPosition && !row.startingState && !row.endingState) return null;
   const rawContent = `${characterName} 当前处于 ${row.currentPosition || "未标注"}（${row.arcType}：${row.startingState} → ${row.endingState}）`;
   return {
@@ -269,26 +269,26 @@ function arcToItem(row: BibleCharacterArcRecord, characterName: string): Composa
   };
 }
 
-export async function injectPremise(options: { storage: StorageDatabase; bookId: string }): Promise<ComposableBibleContextItem[]> {
-  const premise = await createBiblePremiseRepository(options.storage).getByBook(options.bookId);
+export async function injectPremise(options: { storage: StorageDatabase; bookId: string }): Promise<ComposableJingweiContextItem[]> {
+  const premise = await createJingweiPremiseRepository(options.storage).getByBook(options.bookId);
   const item = premise ? premiseToItem(premise) : null;
   return item ? [item] : [];
 }
 
-export async function injectWorldModel(options: { storage: StorageDatabase; bookId: string }): Promise<ComposableBibleContextItem[]> {
-  const worldModel = await createBibleWorldModelRepository(options.storage).getByBook(options.bookId);
+export async function injectWorldModel(options: { storage: StorageDatabase; bookId: string }): Promise<ComposableJingweiContextItem[]> {
+  const worldModel = await createJingweiWorldModelRepository(options.storage).getByBook(options.bookId);
   return worldModel ? worldModelToItems(worldModel) : [];
 }
 
-export async function injectConflicts(options: { storage: StorageDatabase; bookId: string; currentChapter: number }): Promise<ComposableBibleContextItem[]> {
-  const conflicts = await createBibleConflictRepository(options.storage).getActiveConflictsAtChapter(options.bookId, options.currentChapter);
+export async function injectConflicts(options: { storage: StorageDatabase; bookId: string; currentChapter: number }): Promise<ComposableJingweiContextItem[]> {
+  const conflicts = await createJingweiConflictRepository(options.storage).getActiveConflictsAtChapter(options.bookId, options.currentChapter);
   return conflicts.map(conflictToItem);
 }
 
-export async function injectCharacterArcs(options: { storage: StorageDatabase; bookId: string; currentChapter: number; characterIds?: readonly string[] }): Promise<ComposableBibleContextItem[]> {
-  const repo = createBibleCharacterArcRepository(options.storage);
+export async function injectCharacterArcs(options: { storage: StorageDatabase; bookId: string; currentChapter: number; characterIds?: readonly string[] }): Promise<ComposableJingweiContextItem[]> {
+  const repo = createJingweiCharacterArcRepository(options.storage);
   const [characters, arcs] = await Promise.all([
-    createBibleCharacterRepository(options.storage).listByBook(options.bookId),
+    createJingweiCharacterRepository(options.storage).listByBook(options.bookId),
     options.characterIds && options.characterIds.length > 0
       ? Promise.all(options.characterIds.map((characterId) => repo.listByCharacter(options.bookId, characterId))).then((groups) => groups.flat())
       : repo.listByBook(options.bookId),
@@ -296,17 +296,17 @@ export async function injectCharacterArcs(options: { storage: StorageDatabase; b
   const characterNames = new Map(characters.map((character) => [character.id, character.name]));
   return filterEntriesVisibleAtChapter(arcs.map((arc) => ({ ...arc, visibilityRuleJson: arc.visibilityRuleJson })), options.currentChapter)
     .map((arc) => arcToItem(arc, characterNames.get(arc.characterId) ?? arc.characterId))
-    .filter((item): item is ComposableBibleContextItem => item !== null);
+    .filter((item): item is ComposableJingweiContextItem => item !== null);
 }
 
-export async function buildBibleContext(input: BuildBibleContextOptions): Promise<BuildBibleContextResult> {
+export async function buildJingweiLegacyContext(input: BuildJingweiLegacyContextOptions): Promise<BuildJingweiLegacyContextResult> {
   const storage = input.storage ?? getStorageDatabase();
   const book = await createBookRepository(storage).getById(input.bookId);
   if (!book) {
     throw new Error(`Book not found: ${input.bookId}`);
   }
 
-  const mode: BibleMode = book.bibleMode;
+  const mode: JingweiMode = book.jingweiMode;
   const currentChapter = input.currentChapter ?? book.currentChapter;
   const allEntries = await loadAllCandidateEntries(storage, input.bookId, currentChapter);
   const timelineFiltered = filterEntriesVisibleAtChapter(allEntries, currentChapter);
@@ -320,7 +320,7 @@ export async function buildBibleContext(input: BuildBibleContextOptions): Promis
     const globals = timelineFiltered.filter((entry) => entry.visibilityRule.type === "global");
     const characterIds = globals.filter((entry) => entry.type === "character").map((entry) => entry.id);
     const arcs = await injectCharacterArcs({ storage, bookId: input.bookId, currentChapter, characterIds });
-    return composeBibleContext([
+    return composeJingweiContext([
       ...phaseBAnchors,
       ...globals,
       ...arcs,
@@ -331,7 +331,7 @@ export async function buildBibleContext(input: BuildBibleContextOptions): Promis
   if (!input.sceneText) {
     const characterIds = globals.filter((entry) => entry.type === "character").map((entry) => entry.id);
     const arcs = await injectCharacterArcs({ storage, bookId: input.bookId, currentChapter, characterIds });
-    return composeBibleContext([...phaseBAnchors, ...globals, ...arcs], { mode, tokenBudget: input.tokenBudget });
+    return composeJingweiContext([...phaseBAnchors, ...globals, ...arcs], { mode, tokenBudget: input.tokenBudget });
   }
 
   const trackedCandidates = timelineFiltered.filter((entry) => entry.visibilityRule.type === "tracked");
@@ -341,5 +341,11 @@ export async function buildBibleContext(input: BuildBibleContextOptions): Promis
   const arcs = await injectCharacterArcs({ storage, bookId: input.bookId, currentChapter, characterIds });
   const merged = dedupeByBestSource([...phaseBAnchors, ...globals, ...tracked, ...arcs, ...nested]);
 
-  return composeBibleContext(merged, { mode, tokenBudget: input.tokenBudget });
+  return composeJingweiContext(merged, { mode, tokenBudget: input.tokenBudget });
 }
+
+// --- Deprecated aliases ---
+/** @deprecated Use BuildJingweiLegacyContextOptions instead */
+export type BuildBibleContextOptions = BuildJingweiLegacyContextOptions;
+/** @deprecated Use buildJingweiLegacyContext instead */
+export const buildBibleContext = buildJingweiLegacyContext;

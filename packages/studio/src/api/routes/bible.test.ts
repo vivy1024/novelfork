@@ -20,7 +20,7 @@ async function createStorage(): Promise<StorageDatabase> {
   await createBookRepository(storage).create({
     id: "book-1",
     name: "凡人修仙录",
-    bibleMode: "dynamic",
+    jingweiMode: "dynamic",
     currentChapter: 5,
     createdAt: new Date("2026-04-25T01:00:00.000Z"),
     updatedAt: new Date("2026-04-25T01:00:00.000Z"),
@@ -361,10 +361,10 @@ describe("Bible API routes", () => {
       const settingsResponse = await router.request("http://localhost/api/books/book-1/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bibleMode: "static", currentChapter: 8 }),
+        body: JSON.stringify({ jingweiMode: "static", currentChapter: 8 }),
       });
       expect(settingsResponse.status).toBe(200);
-      expect(await settingsResponse.json()).toMatchObject({ book: { bibleMode: "static", currentChapter: 8 } });
+      expect(await settingsResponse.json()).toMatchObject({ book: { jingweiMode: "static", currentChapter: 8 } });
     } finally {
       storage.close();
     }

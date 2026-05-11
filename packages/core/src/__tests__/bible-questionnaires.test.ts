@@ -226,7 +226,7 @@ async function seedBook(storage: StorageDatabase) {
   await createBookRepository(storage).create({
     id: "book-1",
     name: "凡人修仙录",
-    bibleMode: "static",
+    jingweiMode: "static",
     currentChapter: 1,
     createdAt: new Date("2026-04-25T01:00:00.000Z"),
     updatedAt: new Date("2026-04-25T01:00:00.000Z"),
