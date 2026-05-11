@@ -163,6 +163,7 @@ export function useAgentConversationRuntime(options: UseAgentConversationRuntime
   const sendMessage = useCallback(
     (content: string) => {
       if (!sessionId) return null;
+      dispatch({ type: "client:message-sent" });
       return sendClientEnvelope(buildMessageEnvelope({
         sessionId,
         messageId: createMessageId(),

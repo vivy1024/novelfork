@@ -898,7 +898,7 @@ function toConversationStatus(
   const providerId = sessionConfig?.providerId || undefined;
   const modelId = sessionConfig?.modelId || undefined;
   const selectedModel = modelOptions?.find((option) => option.providerId === providerId && option.modelId === modelId);
-  const runtimeState = state.error ? "error" : state.streamingMessageId || hasRunningToolCall(state.messages) ? "running" : state.session ? "ready" : "loading";
+  const runtimeState = state.error ? "error" : state.streamingMessageId || hasRunningToolCall(state.messages) || state.waitingForResponse ? "running" : state.session ? "ready" : "loading";
   const narratorState = (state.session as { narratorState?: string } | null)?.narratorState;
   const isWorking = runtimeState === "running" || narratorState === "working";
 
