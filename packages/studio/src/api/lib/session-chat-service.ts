@@ -884,7 +884,13 @@ async function appendModelContinuationAfterToolDecision(
         });
         return result as AgentGenerateResult;
       },
-      executeTool: (toolInput) => sessionToolExecutor.execute(toolInput),
+      executeTool: (toolInput) => {
+        const sessionWorkDir = loaded.session.worktree?.trim() || undefined;
+        if (sessionWorkDir) {
+          return createSessionToolExecutor({ workDir: sessionWorkDir }).execute(toolInput);
+        }
+        return sessionToolExecutor.execute(toolInput);
+      },
     });
     const runtimeEvents = runtimeTurn.agentEvents;
 
@@ -1454,7 +1460,13 @@ export async function handleSessionChatTransportMessage(
         });
         return result as AgentGenerateResult;
       },
-      executeTool: (toolInput) => sessionToolExecutor.execute(toolInput),
+      executeTool: (toolInput) => {
+        const sessionWorkDir = loaded.session.worktree?.trim() || undefined;
+        if (sessionWorkDir) {
+          return createSessionToolExecutor({ workDir: sessionWorkDir }).execute(toolInput);
+        }
+        return sessionToolExecutor.execute(toolInput);
+      },
     });
     const runtimeEvents = runtimeTurn.agentEvents;
     canonicalEvents = runtimeTurn.runtimeEvents;
