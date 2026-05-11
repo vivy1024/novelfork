@@ -761,7 +761,8 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
       onForkSession={async (title) => {
         const result = await sessionClient.forkSession(sessionId, { title: title || `Fork of ${runtime.state.session?.title ?? sessionId}` });
         if (result.ok && result.data) {
-          const forkedId = typeof result.data === "object" && "id" in result.data ? (result.data as { id: string }).id : null;
+          const data = result.data as { session?: { id?: string }; id?: string };
+          const forkedId = data.session?.id ?? data.id ?? null;
           if (forkedId) routerNavigate({ to: `/next/narrators/${encodeURIComponent(forkedId)}` });
         }
       }}
