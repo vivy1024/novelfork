@@ -190,6 +190,8 @@ function HomeRouteLive({ books, sessions, providerSummary, providerStatus, loadi
       });
       if (!result.ok) throw new Error(contractErrorMessage(result, "创建作品失败"));
       if (!result.data.bookId) throw new Error("创建作品失败：响应缺少 bookId");
+      // Clear guide-completed flag so the new book shows the guide
+      try { localStorage.removeItem(`novelfork:guide-completed:${result.data.bookId}`); } catch { /* ignore */ }
       shellDataStore.invalidate("books");
       setCreateBookOpen(false);
       setNewBookTitle("");
@@ -1006,9 +1008,19 @@ function WritingWorkbenchRouteLive({ bookId, onCanvasContextChange, onNavigateTo
   useEffect(() => { reloadResources(); }, [reloadResources]);
 
   // Ensure 5 fixed Agent sessions exist for this book (idempotent)
+  const [repositoryPath, setRepositoryPath] = useState<string | undefined>(undefined);
   useEffect(() => {
     void fetch(`/api/books/${encodeURIComponent(bookId)}/ensure-agents`, { method: "POST" })
       .then((res) => { if (res.ok) shellDataStore.invalidate("sessions"); })
+      .catch(() => { /* non-critical */ });
+    // Load repository path from sessions
+    void fetch(`/api/sessions?status=active&projectId=${encodeURIComponent(bookId)}`)
+      .then(res => res.ok ? res.json() : null)
+      .then((data: unknown) => {
+        const sessions = Array.isArray(data) ? data : [];
+        const withWorktree = sessions.find((s: { worktree?: string }) => s.worktree);
+        if (withWorktree?.worktree) setRepositoryPath(withWorktree.worktree);
+      })
       .catch(() => { /* non-critical */ });
   }, [bookId, shellDataStore]);
 
@@ -1086,6 +1098,7 @@ function WritingWorkbenchRouteLive({ bookId, onCanvasContextChange, onNavigateTo
       ) : null}
       <WritingWorkbenchRoute
         bookId={bookId}
+        repositoryPath={repositoryPath}
         nodes={resources.tree}
         selectedNode={selectedNode}
         onOpen={handleOpen}
