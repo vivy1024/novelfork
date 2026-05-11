@@ -217,7 +217,8 @@ export function resolveStudioProjectRepositoryRoot(
     if (!record.repositoryPath) {
       throw new ApiError(400, "PROJECT_BOOTSTRAP_PATH_REQUIRED", "Existing repository path is required.");
     }
-    return path.resolve(studioRoot, record.repositoryPath);
+    // Use absolute path directly if provided, otherwise resolve relative to studioRoot
+    return path.isAbsolute(record.repositoryPath) ? record.repositoryPath : path.resolve(studioRoot, record.repositoryPath);
   }
 
   if (record.repositorySource === "clone") {
@@ -229,7 +230,7 @@ export function resolveStudioProjectRepositoryRoot(
   }
 
   if (record.repositoryPath) {
-    return path.resolve(studioRoot, record.repositoryPath);
+    return path.isAbsolute(record.repositoryPath) ? record.repositoryPath : path.resolve(studioRoot, record.repositoryPath);
   }
 
   return path.resolve(studioRoot);
