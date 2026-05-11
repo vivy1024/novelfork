@@ -12,9 +12,9 @@ import {
 
 describe("display labels", () => {
   it("renders provider and model runtime enums as Chinese user-facing labels", () => {
-    expect(providerApiModeLabel("completions")).toBe("聊天补全模式");
-    expect(providerApiModeLabel("responses")).toBe("响应接口模式");
-    expect(providerApiModeLabel("codex")).toBe("Codex 模式");
+    expect(providerApiModeLabel("completions")).toBe("Completions");
+    expect(providerApiModeLabel("responses")).toBe("Responses");
+    expect(providerApiModeLabel("codex")).toBe("Codex");
     expect(providerCompatibilityLabel("openai-compatible")).toBe("OpenAI 兼容");
     expect(providerCompatibilityLabel("anthropic-compatible")).toBe("Anthropic 兼容");
     expect(modelTestStatusLabel("untested")).toBe("未测试");
