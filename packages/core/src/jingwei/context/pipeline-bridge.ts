@@ -1,6 +1,6 @@
-import type { BuildBibleContextResult } from "../types.js";
+import type { BuildJingweiLegacyContextResult } from "../types.js";
 
-export function formatBibleContextForPrompt(context: BuildBibleContextResult): string {
+export function formatJingweiContextForPrompt(context: BuildJingweiLegacyContextResult): string {
   if (context.items.length === 0) return "";
 
   return [
@@ -14,14 +14,20 @@ export function formatBibleContextForPrompt(context: BuildBibleContextResult): s
   ].join("\n");
 }
 
-export function mergeBibleContextWithExternalContext(
-  context: BuildBibleContextResult,
+export function mergeJingweiContextWithExternalContext(
+  context: BuildJingweiLegacyContextResult,
   externalContext?: string,
 ): string | undefined {
-  const bibleContext = formatBibleContextForPrompt(context).trim();
+  const jingweiContext = formatJingweiContextForPrompt(context).trim();
   const userContext = externalContext?.trim() ?? "";
 
-  if (!bibleContext) return userContext || undefined;
-  if (!userContext) return bibleContext;
-  return `${bibleContext}\n\n---\n\n${userContext}`;
+  if (!jingweiContext) return userContext || undefined;
+  if (!userContext) return jingweiContext;
+  return `${jingweiContext}\n\n---\n\n${userContext}`;
 }
+
+// --- Deprecated aliases ---
+/** @deprecated Use formatJingweiContextForPrompt instead */
+export const formatBibleContextForPrompt = formatJingweiContextForPrompt;
+/** @deprecated Use mergeJingweiContextWithExternalContext instead */
+export const mergeBibleContextWithExternalContext = mergeJingweiContextWithExternalContext;

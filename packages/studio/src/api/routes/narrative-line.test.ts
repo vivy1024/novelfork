@@ -18,7 +18,7 @@ async function createHarness() {
   await createBookRepository(storage).create({
     id: "book-1",
     name: "天墟试炼",
-    bibleMode: "dynamic",
+    jingweiMode: "dynamic",
     currentChapter: 2,
     createdAt: new Date("2026-05-01T00:00:00.000Z"),
     updatedAt: new Date("2026-05-02T00:00:00.000Z"),

@@ -1,7 +1,7 @@
 import type { StorageDatabase } from "../../storage/db.js";
-import type { BibleCharacterArcRecord, CreateBibleCharacterArcInput, UpdateBibleCharacterArcInput } from "../types.js";
+import type { JingweiCharacterArcRecord, CreateJingweiCharacterArcInput, UpdateJingweiCharacterArcInput } from "../types.js";
 
-interface BibleCharacterArcRow {
+interface JingweiCharacterArcRow {
   id: string;
   book_id: string;
   character_id: string;
@@ -16,7 +16,7 @@ interface BibleCharacterArcRow {
   updated_at: number;
 }
 
-function toCharacterArc(row: BibleCharacterArcRow): BibleCharacterArcRecord {
+function toCharacterArc(row: JingweiCharacterArcRow): JingweiCharacterArcRecord {
   return {
     id: row.id,
     bookId: row.book_id,
@@ -38,9 +38,9 @@ const selectColumns = `
   "key_turning_points_json", "current_position", "visibility_rule_json", "deleted_at", "created_at", "updated_at"
 `;
 
-export function createBibleCharacterArcRepository(storage: StorageDatabase) {
+export function createJingweiCharacterArcRepository(storage: StorageDatabase) {
   return {
-    async create(input: CreateBibleCharacterArcInput): Promise<BibleCharacterArcRecord> {
+    async create(input: CreateJingweiCharacterArcInput): Promise<JingweiCharacterArcRecord> {
       storage.sqlite.prepare(`
         INSERT INTO "bible_character_arc" (
           "id", "book_id", "character_id", "arc_type", "starting_state", "ending_state",
@@ -60,40 +60,40 @@ export function createBibleCharacterArcRepository(storage: StorageDatabase) {
         input.updatedAt.getTime(),
       );
       const created = await this.getById(input.bookId, input.id);
-      if (!created) throw new Error("Inserted Bible character arc could not be read back.");
+      if (!created) throw new Error("Inserted Jingwei character arc could not be read back.");
       return created;
     },
 
-    async getById(bookId: string, id: string): Promise<BibleCharacterArcRecord | null> {
+    async getById(bookId: string, id: string): Promise<JingweiCharacterArcRecord | null> {
       const row = storage.sqlite.prepare(`
         SELECT ${selectColumns}
         FROM "bible_character_arc"
         WHERE "book_id" = ? AND "id" = ? AND "deleted_at" IS NULL
-      `).get(bookId, id) as BibleCharacterArcRow | undefined;
+      `).get(bookId, id) as JingweiCharacterArcRow | undefined;
       return row ? toCharacterArc(row) : null;
     },
 
-    async listByBook(bookId: string): Promise<BibleCharacterArcRecord[]> {
+    async listByBook(bookId: string): Promise<JingweiCharacterArcRecord[]> {
       const rows = storage.sqlite.prepare(`
         SELECT ${selectColumns}
         FROM "bible_character_arc"
         WHERE "book_id" = ? AND "deleted_at" IS NULL
         ORDER BY "updated_at" DESC, "id" ASC
-      `).all(bookId) as BibleCharacterArcRow[];
+      `).all(bookId) as JingweiCharacterArcRow[];
       return rows.map(toCharacterArc);
     },
 
-    async listByCharacter(bookId: string, characterId: string): Promise<BibleCharacterArcRecord[]> {
+    async listByCharacter(bookId: string, characterId: string): Promise<JingweiCharacterArcRecord[]> {
       const rows = storage.sqlite.prepare(`
         SELECT ${selectColumns}
         FROM "bible_character_arc"
         WHERE "book_id" = ? AND "character_id" = ? AND "deleted_at" IS NULL
         ORDER BY "updated_at" DESC, "id" ASC
-      `).all(bookId, characterId) as BibleCharacterArcRow[];
+      `).all(bookId, characterId) as JingweiCharacterArcRow[];
       return rows.map(toCharacterArc);
     },
 
-    async update(bookId: string, id: string, updates: UpdateBibleCharacterArcInput): Promise<BibleCharacterArcRecord | null> {
+    async update(bookId: string, id: string, updates: UpdateJingweiCharacterArcInput): Promise<JingweiCharacterArcRecord | null> {
       const current = await this.getById(bookId, id);
       if (!current) return null;
 
@@ -126,3 +126,6 @@ export function createBibleCharacterArcRepository(storage: StorageDatabase) {
     },
   };
 }
+
+/** @deprecated Use createJingweiCharacterArcRepository instead */
+export const createBibleCharacterArcRepository = createJingweiCharacterArcRepository;

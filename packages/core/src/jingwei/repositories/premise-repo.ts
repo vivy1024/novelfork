@@ -1,7 +1,7 @@
 import type { StorageDatabase } from "../../storage/db.js";
-import type { BiblePremiseRecord, CreateBiblePremiseInput, UpdateBiblePremiseInput } from "../types.js";
+import type { JingweiPremiseRecord, CreateJingweiPremiseInput, UpdateJingweiPremiseInput } from "../types.js";
 
-interface BiblePremiseRow {
+interface JingweiPremiseRow {
   id: string;
   book_id: string;
   logline: string;
@@ -14,7 +14,7 @@ interface BiblePremiseRow {
   updated_at: number;
 }
 
-function toPremise(row: BiblePremiseRow): BiblePremiseRecord {
+function toPremise(row: JingweiPremiseRow): JingweiPremiseRecord {
   return {
     id: row.id,
     bookId: row.book_id,
@@ -34,9 +34,9 @@ const selectColumns = `
   "genre_tags_json", "created_at", "updated_at"
 `;
 
-export function createBiblePremiseRepository(storage: StorageDatabase) {
+export function createJingweiPremiseRepository(storage: StorageDatabase) {
   return {
-    async create(input: CreateBiblePremiseInput): Promise<BiblePremiseRecord> {
+    async create(input: CreateJingweiPremiseInput): Promise<JingweiPremiseRecord> {
       storage.sqlite.prepare(`
         INSERT INTO "bible_premise" (
           "id", "book_id", "logline", "theme_json", "tone", "target_readers", "unique_hook",
@@ -55,11 +55,11 @@ export function createBiblePremiseRepository(storage: StorageDatabase) {
         input.updatedAt.getTime(),
       );
       const created = await this.getByBook(input.bookId);
-      if (!created) throw new Error("Inserted Bible premise could not be read back.");
+      if (!created) throw new Error("Inserted Jingwei premise could not be read back.");
       return created;
     },
 
-    async upsert(input: CreateBiblePremiseInput): Promise<BiblePremiseRecord> {
+    async upsert(input: CreateJingweiPremiseInput): Promise<JingweiPremiseRecord> {
       storage.sqlite.prepare(`
         INSERT INTO "bible_premise" (
           "id", "book_id", "logline", "theme_json", "tone", "target_readers", "unique_hook",
@@ -88,30 +88,30 @@ export function createBiblePremiseRepository(storage: StorageDatabase) {
         input.updatedAt.getTime(),
       );
       const saved = await this.getByBook(input.bookId);
-      if (!saved) throw new Error("Upserted Bible premise could not be read back.");
+      if (!saved) throw new Error("Upserted Jingwei premise could not be read back.");
       return saved;
     },
 
-    async getByBook(bookId: string): Promise<BiblePremiseRecord | null> {
+    async getByBook(bookId: string): Promise<JingweiPremiseRecord | null> {
       const row = storage.sqlite.prepare(`
         SELECT ${selectColumns}
         FROM "bible_premise"
         WHERE "book_id" = ?
-      `).get(bookId) as BiblePremiseRow | undefined;
+      `).get(bookId) as JingweiPremiseRow | undefined;
       return row ? toPremise(row) : null;
     },
 
-    async listByBook(bookId: string): Promise<BiblePremiseRecord[]> {
+    async listByBook(bookId: string): Promise<JingweiPremiseRecord[]> {
       const rows = storage.sqlite.prepare(`
         SELECT ${selectColumns}
         FROM "bible_premise"
         WHERE "book_id" = ?
         ORDER BY "updated_at" DESC
-      `).all(bookId) as BiblePremiseRow[];
+      `).all(bookId) as JingweiPremiseRow[];
       return rows.map(toPremise);
     },
 
-    async update(bookId: string, updates: UpdateBiblePremiseInput): Promise<BiblePremiseRecord | null> {
+    async update(bookId: string, updates: UpdateJingweiPremiseInput): Promise<JingweiPremiseRecord | null> {
       const current = await this.getByBook(bookId);
       if (!current) return null;
 
@@ -134,3 +134,6 @@ export function createBiblePremiseRepository(storage: StorageDatabase) {
     },
   };
 }
+
+/** @deprecated Use createJingweiPremiseRepository instead */
+export const createBiblePremiseRepository = createJingweiPremiseRepository;

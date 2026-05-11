@@ -222,7 +222,7 @@ async function syncLocalBookScaffoldToSqlite(
   if (existingBook) {
     await bookRepo.update(bookConfig.id, {
       name: bookConfig.title,
-      bibleMode: "dynamic",
+      jingweiMode: "dynamic",
       currentChapter: 0,
       updatedAt,
     });
@@ -230,7 +230,7 @@ async function syncLocalBookScaffoldToSqlite(
     await bookRepo.create({
       id: bookConfig.id,
       name: bookConfig.title,
-      bibleMode: "dynamic",
+      jingweiMode: "dynamic",
       currentChapter: 0,
       createdAt: timestamp,
       updatedAt,

@@ -1,7 +1,7 @@
 import type { StorageDatabase } from "../../storage/db.js";
-import type { BibleWorldModelRecord, CreateBibleWorldModelInput, UpdateBibleWorldModelInput } from "../types.js";
+import type { JingweiWorldModelRecord, CreateJingweiWorldModelInput, UpdateJingweiWorldModelInput } from "../types.js";
 
-interface BibleWorldModelRow {
+interface JingweiWorldModelRow {
   id: string;
   book_id: string;
   economy_json: string;
@@ -13,7 +13,7 @@ interface BibleWorldModelRow {
   updated_at: number;
 }
 
-function toWorldModel(row: BibleWorldModelRow): BibleWorldModelRecord {
+function toWorldModel(row: JingweiWorldModelRow): JingweiWorldModelRecord {
   return {
     id: row.id,
     bookId: row.book_id,
@@ -32,9 +32,9 @@ const selectColumns = `
   "power_system_json", "culture_json", "timeline_json", "updated_at"
 `;
 
-export function createBibleWorldModelRepository(storage: StorageDatabase) {
+export function createJingweiWorldModelRepository(storage: StorageDatabase) {
   return {
-    async create(input: CreateBibleWorldModelInput): Promise<BibleWorldModelRecord> {
+    async create(input: CreateJingweiWorldModelInput): Promise<JingweiWorldModelRecord> {
       storage.sqlite.prepare(`
         INSERT INTO "bible_world_model" (
           "id", "book_id", "economy_json", "society_json", "geography_json",
@@ -52,11 +52,11 @@ export function createBibleWorldModelRepository(storage: StorageDatabase) {
         input.updatedAt.getTime(),
       );
       const created = await this.getByBook(input.bookId);
-      if (!created) throw new Error("Inserted Bible world model could not be read back.");
+      if (!created) throw new Error("Inserted Jingwei world model could not be read back.");
       return created;
     },
 
-    async upsert(input: CreateBibleWorldModelInput): Promise<BibleWorldModelRecord> {
+    async upsert(input: CreateJingweiWorldModelInput): Promise<JingweiWorldModelRecord> {
       storage.sqlite.prepare(`
         INSERT INTO "bible_world_model" (
           "id", "book_id", "economy_json", "society_json", "geography_json",
@@ -83,20 +83,20 @@ export function createBibleWorldModelRepository(storage: StorageDatabase) {
         input.updatedAt.getTime(),
       );
       const saved = await this.getByBook(input.bookId);
-      if (!saved) throw new Error("Upserted Bible world model could not be read back.");
+      if (!saved) throw new Error("Upserted Jingwei world model could not be read back.");
       return saved;
     },
 
-    async getByBook(bookId: string): Promise<BibleWorldModelRecord | null> {
+    async getByBook(bookId: string): Promise<JingweiWorldModelRecord | null> {
       const row = storage.sqlite.prepare(`
         SELECT ${selectColumns}
         FROM "bible_world_model"
         WHERE "book_id" = ?
-      `).get(bookId) as BibleWorldModelRow | undefined;
+      `).get(bookId) as JingweiWorldModelRow | undefined;
       return row ? toWorldModel(row) : null;
     },
 
-    async update(bookId: string, updates: UpdateBibleWorldModelInput): Promise<BibleWorldModelRecord | null> {
+    async update(bookId: string, updates: UpdateJingweiWorldModelInput): Promise<JingweiWorldModelRecord | null> {
       const current = await this.getByBook(bookId);
       if (!current) return null;
 
@@ -119,3 +119,6 @@ export function createBibleWorldModelRepository(storage: StorageDatabase) {
     },
   };
 }
+
+/** @deprecated Use createJingweiWorldModelRepository instead */
+export const createBibleWorldModelRepository = createJingweiWorldModelRepository;

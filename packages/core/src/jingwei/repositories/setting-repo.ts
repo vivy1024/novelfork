@@ -1,7 +1,7 @@
 import type { StorageDatabase } from "../../storage/db.js";
-import type { BibleSettingRecord, CreateBibleSettingInput, UpdateBibleSettingInput } from "../types.js";
+import type { JingweiSettingRecord, CreateJingweiSettingInput, UpdateJingweiSettingInput } from "../types.js";
 
-interface BibleSettingRow {
+interface JingweiSettingRow {
   id: string;
   book_id: string;
   category: string;
@@ -14,7 +14,7 @@ interface BibleSettingRow {
   deleted_at: number | null;
 }
 
-function toSetting(row: BibleSettingRow): BibleSettingRecord {
+function toSetting(row: JingweiSettingRow): JingweiSettingRecord {
   return {
     id: row.id,
     bookId: row.book_id,
@@ -34,9 +34,9 @@ const selectColumns = `
   "created_at", "updated_at", "deleted_at"
 `;
 
-export function createBibleSettingRepository(storage: StorageDatabase) {
+export function createJingweiSettingRepository(storage: StorageDatabase) {
   return {
-    async create(input: CreateBibleSettingInput): Promise<BibleSettingRecord> {
+    async create(input: CreateJingweiSettingInput): Promise<JingweiSettingRecord> {
       storage.sqlite.prepare(`
         INSERT INTO "bible_setting" (
           "id", "book_id", "category", "name", "content", "visibility_rule_json", "nested_refs_json",
@@ -54,30 +54,30 @@ export function createBibleSettingRepository(storage: StorageDatabase) {
         input.updatedAt.getTime(),
       );
       const created = await this.getById(input.bookId, input.id);
-      if (!created) throw new Error("Inserted Bible setting could not be read back.");
+      if (!created) throw new Error("Inserted Jingwei setting could not be read back.");
       return created;
     },
 
-    async getById(bookId: string, id: string): Promise<BibleSettingRecord | null> {
+    async getById(bookId: string, id: string): Promise<JingweiSettingRecord | null> {
       const row = storage.sqlite.prepare(`
         SELECT ${selectColumns}
         FROM "bible_setting"
         WHERE "book_id" = ? AND "id" = ? AND "deleted_at" IS NULL
-      `).get(bookId, id) as BibleSettingRow | undefined;
+      `).get(bookId, id) as JingweiSettingRow | undefined;
       return row ? toSetting(row) : null;
     },
 
-    async listByBook(bookId: string): Promise<BibleSettingRecord[]> {
+    async listByBook(bookId: string): Promise<JingweiSettingRecord[]> {
       const rows = storage.sqlite.prepare(`
         SELECT ${selectColumns}
         FROM "bible_setting"
         WHERE "book_id" = ? AND "deleted_at" IS NULL
         ORDER BY "updated_at" DESC, "name" ASC
-      `).all(bookId) as BibleSettingRow[];
+      `).all(bookId) as JingweiSettingRow[];
       return rows.map(toSetting);
     },
 
-    async update(bookId: string, id: string, updates: UpdateBibleSettingInput): Promise<BibleSettingRecord | null> {
+    async update(bookId: string, id: string, updates: UpdateJingweiSettingInput): Promise<JingweiSettingRecord | null> {
       const current = await this.getById(bookId, id);
       if (!current) return null;
 
@@ -108,3 +108,6 @@ export function createBibleSettingRepository(storage: StorageDatabase) {
     },
   };
 }
+
+/** @deprecated Use createJingweiSettingRepository instead */
+export const createBibleSettingRepository = createJingweiSettingRepository;

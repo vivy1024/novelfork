@@ -1,7 +1,7 @@
 import type { StorageDatabase } from "../../storage/db.js";
-import type { BibleChapterSummaryRecord, CreateBibleChapterSummaryInput, UpdateBibleChapterSummaryInput } from "../types.js";
+import type { JingweiChapterSummaryRecord, CreateJingweiChapterSummaryInput, UpdateJingweiChapterSummaryInput } from "../types.js";
 
-interface BibleChapterSummaryRow {
+interface JingweiChapterSummaryRow {
   id: string;
   book_id: string;
   chapter_number: number;
@@ -17,7 +17,7 @@ interface BibleChapterSummaryRow {
   deleted_at: number | null;
 }
 
-function toChapterSummary(row: BibleChapterSummaryRow): BibleChapterSummaryRecord {
+function toChapterSummary(row: JingweiChapterSummaryRow): JingweiChapterSummaryRecord {
   return {
     id: row.id,
     bookId: row.book_id,
@@ -40,9 +40,9 @@ const selectColumns = `
   "appearing_character_ids_json", "pov", "metadata_json", "created_at", "updated_at", "deleted_at"
 `;
 
-export function createBibleChapterSummaryRepository(storage: StorageDatabase) {
+export function createJingweiChapterSummaryRepository(storage: StorageDatabase) {
   return {
-    async create(input: CreateBibleChapterSummaryInput): Promise<BibleChapterSummaryRecord> {
+    async create(input: CreateJingweiChapterSummaryInput): Promise<JingweiChapterSummaryRecord> {
       storage.sqlite.prepare(`
         INSERT INTO "bible_chapter_summary" (
           "id", "book_id", "chapter_number", "title", "summary", "word_count", "key_events_json",
@@ -63,11 +63,11 @@ export function createBibleChapterSummaryRepository(storage: StorageDatabase) {
         input.updatedAt.getTime(),
       );
       const created = await this.getById(input.bookId, input.id);
-      if (!created) throw new Error("Inserted Bible chapter summary could not be read back.");
+      if (!created) throw new Error("Inserted Jingwei chapter summary could not be read back.");
       return created;
     },
 
-    async upsert(input: CreateBibleChapterSummaryInput): Promise<BibleChapterSummaryRecord> {
+    async upsert(input: CreateJingweiChapterSummaryInput): Promise<JingweiChapterSummaryRecord> {
       storage.sqlite.prepare(`
         INSERT INTO "bible_chapter_summary" (
           "id", "book_id", "chapter_number", "title", "summary", "word_count", "key_events_json",
@@ -99,39 +99,39 @@ export function createBibleChapterSummaryRepository(storage: StorageDatabase) {
         input.updatedAt.getTime(),
       );
       const saved = await this.getByChapter(input.bookId, input.chapterNumber);
-      if (!saved) throw new Error("Upserted Bible chapter summary could not be read back.");
+      if (!saved) throw new Error("Upserted Jingwei chapter summary could not be read back.");
       return saved;
     },
 
-    async getById(bookId: string, id: string): Promise<BibleChapterSummaryRecord | null> {
+    async getById(bookId: string, id: string): Promise<JingweiChapterSummaryRecord | null> {
       const row = storage.sqlite.prepare(`
         SELECT ${selectColumns}
         FROM "bible_chapter_summary"
         WHERE "book_id" = ? AND "id" = ? AND "deleted_at" IS NULL
-      `).get(bookId, id) as BibleChapterSummaryRow | undefined;
+      `).get(bookId, id) as JingweiChapterSummaryRow | undefined;
       return row ? toChapterSummary(row) : null;
     },
 
-    async getByChapter(bookId: string, chapterNumber: number): Promise<BibleChapterSummaryRecord | null> {
+    async getByChapter(bookId: string, chapterNumber: number): Promise<JingweiChapterSummaryRecord | null> {
       const row = storage.sqlite.prepare(`
         SELECT ${selectColumns}
         FROM "bible_chapter_summary"
         WHERE "book_id" = ? AND "chapter_number" = ? AND "deleted_at" IS NULL
-      `).get(bookId, chapterNumber) as BibleChapterSummaryRow | undefined;
+      `).get(bookId, chapterNumber) as JingweiChapterSummaryRow | undefined;
       return row ? toChapterSummary(row) : null;
     },
 
-    async listByBook(bookId: string): Promise<BibleChapterSummaryRecord[]> {
+    async listByBook(bookId: string): Promise<JingweiChapterSummaryRecord[]> {
       const rows = storage.sqlite.prepare(`
         SELECT ${selectColumns}
         FROM "bible_chapter_summary"
         WHERE "book_id" = ? AND "deleted_at" IS NULL
         ORDER BY "chapter_number" ASC
-      `).all(bookId) as BibleChapterSummaryRow[];
+      `).all(bookId) as JingweiChapterSummaryRow[];
       return rows.map(toChapterSummary);
     },
 
-    async update(bookId: string, id: string, updates: UpdateBibleChapterSummaryInput): Promise<BibleChapterSummaryRecord | null> {
+    async update(bookId: string, id: string, updates: UpdateJingweiChapterSummaryInput): Promise<JingweiChapterSummaryRecord | null> {
       const current = await this.getById(bookId, id);
       if (!current) return null;
 
@@ -165,3 +165,6 @@ export function createBibleChapterSummaryRepository(storage: StorageDatabase) {
     },
   };
 }
+
+/** @deprecated Use createJingweiChapterSummaryRepository instead */
+export const createBibleChapterSummaryRepository = createJingweiChapterSummaryRepository;

@@ -1,6 +1,6 @@
 import type { StorageDatabase } from "../../storage/db.js";
-import { createBibleConflictRepository } from "../repositories/conflict-repo.js";
-import { createBibleCharacterArcRepository } from "../repositories/character-arc-repo.js";
+import { createJingweiConflictRepository } from "../repositories/conflict-repo.js";
+import { createJingweiCharacterArcRepository } from "../repositories/character-arc-repo.js";
 
 export interface PGIQuestion {
   id: string;
@@ -24,7 +24,7 @@ export interface GeneratePGIQuestionsResult {
   heuristicsTriggered: string[];
 }
 
-interface BibleEventRow {
+interface JingweiEventRow {
   id: string;
   name: string;
   chapter_start: number | null;
@@ -37,7 +37,7 @@ export async function generatePGIQuestions(storage: StorageDatabase, input: Gene
   const heuristics = new Set<string>();
 
   // 规则 1：矛盾 escalating
-  const activeConflicts = await createBibleConflictRepository(storage).getActiveConflictsAtChapter(input.bookId, input.chapter);
+  const activeConflicts = await createJingweiConflictRepository(storage).getActiveConflictsAtChapter(input.bookId, input.chapter);
   for (const conflict of activeConflicts.filter((entry) => entry.resolutionState === "escalating").slice(0, 5)) {
     heuristics.add("conflict-escalating");
     questions.push({
@@ -56,7 +56,7 @@ export async function generatePGIQuestions(storage: StorageDatabase, input: Gene
       FROM "bible_event"
       WHERE "book_id" = ? AND "deleted_at" IS NULL AND "foreshadow_state" = 'buried'
       ORDER BY COALESCE("chapter_end", "chapter_start", 0) ASC
-    `).all(input.bookId) as BibleEventRow[];
+    `).all(input.bookId) as JingweiEventRow[];
     for (const event of events) {
       const plannedAt = event.chapter_end ?? event.chapter_start;
       if (!plannedAt || Math.abs(input.chapter - plannedAt) > 3) continue;
@@ -74,7 +74,7 @@ export async function generatePGIQuestions(storage: StorageDatabase, input: Gene
 
   // 规则 3：角色弧线停滞（连续 5+ 章无推进）
   if (questions.length < 5) {
-    const arcRepo = createBibleCharacterArcRepository(storage);
+    const arcRepo = createJingweiCharacterArcRepository(storage);
     const arcs = await arcRepo.listByBook(input.bookId);
     for (const arc of arcs) {
       const lastProgressChapter = (arc as { lastProgressChapter?: number }).lastProgressChapter ?? 0;
