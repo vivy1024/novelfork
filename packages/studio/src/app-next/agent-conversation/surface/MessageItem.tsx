@@ -28,6 +28,8 @@ export interface ConversationSurfaceMessage {
   thinking?: ConversationThinkingBlock[];
   /** 是否正在流式传输中（用于打字机动画） */
   isStreaming?: boolean;
+  /** 消息元数据（如压缩摘要信息） */
+  metadata?: Record<string, unknown>;
 }
 
 export interface MessageContextAction {
@@ -86,6 +88,25 @@ export const MessageItem = memo(function MessageItem({ message, onContextAction,
   }, [onContextAction, message.id]);
 
   if (message.role === "system") {
+    const isCompactSummary = message.metadata?.kind === "session-compact-summary";
+    if (isCompactSummary) {
+      const meta = message.metadata as Record<string, unknown>;
+      const compactedCount = typeof meta.compactedMessageCount === "number" ? meta.compactedMessageCount : 0;
+      const budget = meta.budget as { estimatedTokensBefore?: number; estimatedTokensAfter?: number } | undefined;
+      return (
+        <div className="mx-auto max-w-lg py-2" data-testid="compact-summary-card">
+          <details className="rounded-lg border border-orange-200 bg-orange-50 dark:border-orange-800 dark:bg-orange-950/30 px-3 py-2">
+            <summary className="cursor-pointer text-xs font-medium text-orange-700 dark:text-orange-300 flex items-center gap-1.5">
+              <span>✦ 上下文已压缩</span>
+              <span className="text-[10px] text-orange-500">（{compactedCount} 条消息{budget?.estimatedTokensBefore ? `，${Math.round((budget.estimatedTokensBefore - (budget.estimatedTokensAfter ?? 0)) / 1000)}k tokens 释放` : ""}）</span>
+            </summary>
+            <div className="mt-2 text-[11px] text-muted-foreground whitespace-pre-wrap max-h-40 overflow-y-auto">
+              {message.content}
+            </div>
+          </details>
+        </div>
+      );
+    }
     return (
       <div className="mx-auto max-w-lg py-1 text-center text-xs text-muted-foreground">
         {message.content}
