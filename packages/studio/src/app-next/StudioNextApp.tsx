@@ -179,7 +179,7 @@ function HomeRouteLive({ books, sessions, providerSummary, providerStatus, loadi
     try {
       const projectInit = newBookRepoSource !== "none" ? {
         repositorySource: newBookRepoSource,
-        ...(newBookRepoSource === "existing" && newBookRepoPath.trim() ? { repositoryPath: newBookRepoPath.trim() } : {}),
+        ...(newBookRepoPath.trim() ? { repositoryPath: newBookRepoPath.trim() } : {}),
       } : undefined;
 
       const title = newBookTitle.trim() || "未命名作品";
@@ -257,9 +257,9 @@ function HomeRouteLive({ books, sessions, providerSummary, providerStatus, loadi
                   </button>
                 ))}
               </div>
-              {newBookRepoSource === "existing" && (
+              {(newBookRepoSource === "existing" || newBookRepoSource === "new") && (
                 <div className="flex gap-1.5">
-                  <Input value={newBookRepoPath} onChange={(e) => setNewBookRepoPath(e.target.value)} placeholder="输入绝对路径，如 D:\novels\my-book" className="flex-1 text-xs" />
+                  <Input value={newBookRepoPath} onChange={(e) => setNewBookRepoPath(e.target.value)} placeholder={newBookRepoSource === "new" ? "选择新仓库存放目录，如 D:\\novels\\my-book" : "输入绝对路径，如 D:\\novels\\my-book"} className="flex-1 text-xs" />
                   <Button
                     type="button"
                     variant="outline"
