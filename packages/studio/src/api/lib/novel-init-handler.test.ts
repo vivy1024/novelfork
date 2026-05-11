@@ -17,20 +17,20 @@ describe("/novel:init handler", () => {
     await rm(workDir, { recursive: true, force: true });
   });
 
-  it("creates book directory structure with chapters, story, and config", async () => {
+  it("creates book directory structure with chapters, jingwei, and config", async () => {
     const result = await executeNovelInit({ bookName: "灵潮纪元", workDir });
 
     expect(result.ok).toBe(true);
     expect(result.bookPath).toContain("灵潮纪元");
     expect(existsSync(join(result.bookPath!, "chapters"))).toBe(true);
-    expect(existsSync(join(result.bookPath!, "story"))).toBe(true);
+    expect(existsSync(join(result.bookPath!, "jingwei"))).toBe(true);
     expect(existsSync(join(result.bookPath!, "novelfork.json"))).toBe(true);
   });
 
   it("creates story bible and jingwei placeholder files", async () => {
     const result = await executeNovelInit({ bookName: "测试书", workDir });
 
-    expect(existsSync(join(result.bookPath!, "story", "story_bible.md"))).toBe(true);
-    expect(existsSync(join(result.bookPath!, "story", "jingwei.json"))).toBe(true);
+    expect(existsSync(join(result.bookPath!, "jingwei", "story_bible.md"))).toBe(true);
+    expect(existsSync(join(result.bookPath!, "jingwei", "jingwei.json"))).toBe(true);
   });
 });
