@@ -927,16 +927,15 @@ function toConversationStatus(
   const narratorState = (state.session as { narratorState?: string } | null)?.narratorState;
   const isWorking = runtimeState === "running" || narratorState === "working";
 
-  // Context usage estimation
+  // Context usage estimation — always provide contextUsage so ContextRing is always visible
   const cumulativeUsage = state.session?.cumulativeUsage;
   const maxTokens = selectedModel?.contextWindow;
-  const contextUsage = maxTokens && maxTokens > 0
-    ? {
-        usedTokens: cumulativeUsage ? cumulativeUsage.totalInputTokens + cumulativeUsage.totalOutputTokens : 0,
-        maxTokens,
-        compactThreshold: Math.round(maxTokens * (compactThresholdPercent / 100)),
-      }
-    : undefined;
+  const usedTokens = cumulativeUsage ? cumulativeUsage.totalInputTokens + cumulativeUsage.totalOutputTokens : 0;
+  const contextUsage = {
+    usedTokens,
+    maxTokens: maxTokens && maxTokens > 0 ? maxTokens : 0,
+    ...(maxTokens && maxTokens > 0 ? { compactThreshold: Math.round(maxTokens * (compactThresholdPercent / 100)) } : {}),
+  };
 
   return {
     state: runtimeState,
@@ -1029,6 +1028,13 @@ function WritingWorkbenchRouteLive({ bookId, onCanvasContextChange, onNavigateTo
   }, [bookId, resourceClient]);
 
   useEffect(() => { reloadResources(); }, [reloadResources]);
+
+  // Ensure 5 fixed Agent sessions exist for this book (idempotent)
+  useEffect(() => {
+    void fetch(`/api/books/${encodeURIComponent(bookId)}/ensure-agents`, { method: "POST" })
+      .then((res) => { if (res.ok) shellDataStore.invalidate("sessions"); })
+      .catch(() => { /* non-critical */ });
+  }, [bookId, shellDataStore]);
 
   const openResourceNode = useCallback(
     (node: WorkbenchResourceNode) => {

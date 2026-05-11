@@ -106,7 +106,7 @@ export function getShellNavItems({
   return [
     ...books.map((book) => ({ id: `book:${book.id}`, label: book.title, group: "books" as const, route: { kind: "book" as const, bookId: book.id } })),
     ...sessions
-      .filter((session) => session.status === "active")
+      .filter((session) => session.status === "active" && !session.projectId)
       .slice()
       .sort((a, b) => (a.pinned === b.pinned ? 0 : a.pinned ? -1 : 1))
       .map((session) => ({ id: `narrator:${session.id}`, label: session.title, group: "narrators" as const, route: { kind: "narrator" as const, sessionId: session.id }, unread: session.unread, working: session.working, pinned: session.pinned })),
