@@ -146,9 +146,9 @@ export function NarratorStatusBar({ status, streamingStartedAt, onUpdateModel, o
     ? SUBSTATUS_LABELS[substatus]
     : STATE_LABELS[narratorState];
 
-  // 模型完整名称：providerId:modelLabel 格式
-  const modelFullName = status.providerId && (status.modelLabel ?? status.modelId)
-    ? `${status.providerId}:${status.modelLabel ?? status.modelId}`
+  // 模型完整名称：providerLabel:modelLabel 格式
+  const modelFullName = (status.providerLabel ?? status.providerId) && (status.modelLabel ?? status.modelId)
+    ? `${status.providerLabel ?? status.providerId}:${status.modelLabel ?? status.modelId}`
     : (status.modelLabel ?? status.modelId ?? "未选择");
   // 模型首字母（备用）
   const modelInitial = (status.modelLabel ?? status.modelId ?? "?").charAt(0).toUpperCase();
