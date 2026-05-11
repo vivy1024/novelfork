@@ -1007,13 +1007,9 @@ function WritingWorkbenchRouteLive({ bookId, onCanvasContextChange, onNavigateTo
 
   useEffect(() => { reloadResources(); }, [reloadResources]);
 
-  // Ensure 5 fixed Agent sessions exist for this book (idempotent)
+  // Load repository path from sessions bound to this book
   const [repositoryPath, setRepositoryPath] = useState<string | undefined>(undefined);
   useEffect(() => {
-    void fetch(`/api/books/${encodeURIComponent(bookId)}/ensure-agents`, { method: "POST" })
-      .then((res) => { if (res.ok) shellDataStore.invalidate("sessions"); })
-      .catch(() => { /* non-critical */ });
-    // Load repository path from sessions
     void fetch(`/api/sessions?status=active&projectId=${encodeURIComponent(bookId)}`)
       .then(res => res.ok ? res.json() : null)
       .then((data: unknown) => {
@@ -1022,7 +1018,7 @@ function WritingWorkbenchRouteLive({ bookId, onCanvasContextChange, onNavigateTo
         if (withWorktree?.worktree) setRepositoryPath(withWorktree.worktree);
       })
       .catch(() => { /* non-critical */ });
-  }, [bookId, shellDataStore]);
+  }, [bookId]);
 
   const openResourceNode = useCallback(
     (node: WorkbenchResourceNode) => {

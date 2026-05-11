@@ -137,6 +137,7 @@ export function SessionCenter({ className, initialBinding = "all", initialStatus
   const [forkTitle, setForkTitle] = useState("");
   const [inheritanceNote, setInheritanceNote] = useState("");
   const [newSessionOpen, setNewSessionOpen] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const sessionClient = useMemo(() => providedSessionClient ?? createDefaultSessionClient(), [providedSessionClient]);
 
   const listQuery = useMemo(() => sessionListQuery({ binding, status, search, sort }), [binding, status, search, sort]);
@@ -201,6 +202,36 @@ export function SessionCenter({ className, initialBinding = "all", initialStatus
       setError(sessionClientErrorMessage(result, "删除会话失败"));
       return;
     }
+    await loadSessions();
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAll = () => {
+    setSelectedIds(new Set(sessions.map((s) => s.id)));
+  };
+
+  const selectNone = () => {
+    setSelectedIds(new Set());
+  };
+
+  const batchDelete = async () => {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`确认永久删除选中的 ${selectedIds.size} 个会话？此操作不可撤销。`)) return;
+    setError(null);
+    let failed = 0;
+    for (const id of selectedIds) {
+      const result = await sessionClient.deleteSession(id);
+      if (!result.ok) failed++;
+    }
+    if (failed > 0) setError(`${failed} 个会话删除失败`);
+    setSelectedIds(new Set());
     await loadSessions();
   };
 
@@ -317,6 +348,23 @@ export function SessionCenter({ className, initialBinding = "all", initialStatus
 
       {error ? <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{error}</div> : null}
 
+      {/* 批量操作栏 */}
+      {sessions.length > 0 && (
+        <div className="flex items-center gap-2 text-xs">
+          <Button type="button" size="sm" variant="ghost" onClick={selectedIds.size === sessions.length ? selectNone : selectAll}>
+            {selectedIds.size === sessions.length ? "取消全选" : "全选"}
+          </Button>
+          {selectedIds.size > 0 && (
+            <>
+              <span className="text-muted-foreground">已选 {selectedIds.size} 项</span>
+              <Button type="button" size="sm" variant="destructive" onClick={() => void batchDelete()}>
+                批量删除
+              </Button>
+            </>
+          )}
+        </div>
+      )}
+
       <div className="space-y-3">
         {sessions.length === 0 && !loading ? (
           <div className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">没有匹配的会话。</div>
@@ -328,7 +376,14 @@ export function SessionCenter({ className, initialBinding = "all", initialStatus
           return (
             <article key={session.id} data-testid={`session-center-row-${session.id}`} className="rounded-lg border border-border bg-card p-3 shadow-sm">
               <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0 space-y-2">
+                <div className="flex items-start gap-2 min-w-0">
+                  <input
+                    type="checkbox"
+                    className="mt-1 size-4 shrink-0"
+                    checked={selectedIds.has(session.id)}
+                    onChange={() => toggleSelect(session.id)}
+                  />
+                  <div className="min-w-0 space-y-2">
                   <div className="flex flex-wrap items-center gap-2">
                     <h3 className="text-sm font-semibold text-foreground">{session.title}</h3>
                     <Badge variant={session.status === "archived" ? "outline" : "secondary"}>{sessionStatusLabel(session.status)}</Badge>
@@ -362,6 +417,7 @@ export function SessionCenter({ className, initialBinding = "all", initialStatus
                       <p>临时剧情草稿不会自动写入长期 memory；偏好/项目事实写入需审计来源。</p>
                     </div>
                   ) : null}
+                </div>
                 </div>
                 <div className="flex shrink-0 flex-wrap gap-2">
                   <Button type="button" size="sm" variant="outline" onClick={() => onOpenSession(session)}>打开</Button>
