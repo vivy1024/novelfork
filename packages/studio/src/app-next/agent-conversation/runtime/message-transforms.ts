@@ -24,7 +24,14 @@ export function mergeSessionMessages(
     }
   }
 
-  return Array.from(byId.values()).sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
+  return Array.from(byId.values()).sort((a, b) => {
+    // Streaming messages (no seq) always sort to the end
+    const aIsStream = a.id.startsWith("stream:");
+    const bIsStream = b.id.startsWith("stream:");
+    if (aIsStream && !bIsStream) return 1;
+    if (!aIsStream && bIsStream) return -1;
+    return (a.seq ?? 0) - (b.seq ?? 0);
+  });
 }
 
 export function appendStreamChunk(
@@ -54,6 +61,7 @@ export function appendStreamChunk(
         role: "assistant",
         content,
         timestamp,
+        seq: messages.reduce((max, m) => Math.max(max, m.seq ?? 0), 0) + 1,
       } as NarratorSessionChatMessage,
     ],
   };
