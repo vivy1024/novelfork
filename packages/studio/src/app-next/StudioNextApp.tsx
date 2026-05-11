@@ -738,6 +738,28 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
       onAbortSession={runtime.abort}
       onUpdateSessionConfig={updateSessionConfig}
       onCompactSession={compactSessionForCommand}
+      onTruncateToMessage={async (messageId) => {
+        await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/truncate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ messageId }),
+        });
+        // Reload chat state after truncation
+        const snapshot = await sessionClient.getChatState(sessionId);
+        if (snapshot.ok && snapshot.data) {
+          runtime.applyEnvelope({ type: "session:snapshot", snapshot: snapshot.data, recovery: { state: "idle" } });
+        }
+      }}
+      onDeleteMessage={async (messageId) => {
+        await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/messages/${encodeURIComponent(messageId)}`, {
+          method: "DELETE",
+        });
+        // Reload chat state after deletion
+        const snapshot = await sessionClient.getChatState(sessionId);
+        if (snapshot.ok && snapshot.data) {
+          runtime.applyEnvelope({ type: "session:snapshot", snapshot: snapshot.data, recovery: { state: "idle" } });
+        }
+      }}
       onApproveConfirmation={(confirmationId, answers) => void handleConfirmationDecision(confirmationId, "approve", answers)}
       onRejectConfirmation={(confirmationId) => void handleConfirmationDecision(confirmationId, "reject")}
       onEditTitle={(newTitle) => { void sessionClient.updateSession(sessionId, { title: newTitle }); }}

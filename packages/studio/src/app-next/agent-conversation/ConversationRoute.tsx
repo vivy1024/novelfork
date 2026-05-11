@@ -39,6 +39,8 @@ export interface ConversationRouteProps {
   onAbortSession?: () => void;
   onUpdateSessionConfig?: (patch: ConversationSessionConfigPatch) => Promise<void> | void;
   onCompactSession?: (instructions?: string) => Promise<SlashCommandCompactResult>;
+  onTruncateToMessage?: (messageId: string) => Promise<void> | void;
+  onDeleteMessage?: (messageId: string) => Promise<void> | void;
   onApproveConfirmation?: (id: string, answers?: Record<string, unknown>) => void;
   onRejectConfirmation?: (id: string) => void;
   onOpenArtifact?: (artifact: ToolResultArtifact) => void;
@@ -83,6 +85,8 @@ export function ConversationRoute({
   onAbortSession,
   onUpdateSessionConfig = () => undefined,
   onCompactSession,
+  onTruncateToMessage,
+  onDeleteMessage,
   onApproveConfirmation = () => undefined,
   onRejectConfirmation = () => undefined,
   onOpenArtifact,
@@ -150,6 +154,8 @@ export function ConversationRoute({
         onAbort={handleAbort}
         onUpdateSessionConfig={onUpdateSessionConfig}
         onCompactSession={onCompactSession}
+        onTruncateToMessage={onTruncateToMessage}
+        onDeleteMessage={onDeleteMessage}
         onOpenArtifact={onOpenArtifact}
         hasPreviousMessages={hasPreviousMessages}
         onLoadPreviousMessages={onLoadPreviousMessages}
