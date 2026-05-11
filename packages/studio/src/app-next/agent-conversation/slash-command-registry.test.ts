@@ -19,18 +19,13 @@ describe("slash-command-registry", () => {
     const registry = createDefaultSlashCommandRegistry();
     const commandNames = registry.commands.map((command) => command.name);
 
-    expect(commandNames).toEqual(expect.arrayContaining(["help", "tools", "mcp", "agents", "novel:write-next"]));
+    expect(commandNames).toEqual(expect.arrayContaining(["help", "tools", "mcp", "agents"]));
     expect(registry.commands.find((command) => command.name === "tools")).toMatchObject({
       id: "/tools",
       source: "claude-adapter",
       status: "planned",
       scope: "tooling",
       runtimeHandler: "tools.list",
-    });
-    expect(registry.commands.find((command) => command.name === "novel:write-next")).toMatchObject({
-      id: "/novel:write-next",
-      source: "novel-agent-pack",
-      status: "partial",
     });
   });
 
