@@ -189,16 +189,18 @@ describe("provider adapter registry", () => {
   it("does not fake success for unimplemented platform and Anthropic adapters", async () => {
     const registry = createProviderAdapterRegistry();
 
+    // Anthropic listModels is implemented but requires baseUrl — returns config-missing
     await expect(registry.get("anthropic-compatible").listModels({
       providerId: "anthropic",
       providerName: "Anthropic",
       apiKey: "sk-ant",
-    })).resolves.toMatchObject({ success: false, code: "unsupported" });
+    })).resolves.toMatchObject({ success: false, code: "config-missing" });
+    // Codex testModel is implemented but requires apiKey — returns auth-missing
     await expect(registry.get("codex-platform").testModel({
       providerId: "codex",
       providerName: "Codex",
       modelId: "gpt-5-codex",
-    })).resolves.toMatchObject({ success: false, code: "unsupported" });
+    })).resolves.toMatchObject({ success: false, code: "auth-missing" });
     await expect(registry.get("kiro-platform").generate({
       providerId: "kiro",
       providerName: "Kiro",

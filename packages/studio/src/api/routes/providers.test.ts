@@ -141,12 +141,13 @@ describe("providers route runtime store", () => {
   });
 
   it("returns non-2xx for unsupported adapters and store write failures", async () => {
+    // Anthropic adapter is implemented but requires baseUrl — returns config-missing (422)
     await store.createProvider({ id: "anthropic", name: "Anthropic", type: "anthropic", enabled: true, priority: 1, apiKeyRequired: true, compatibility: "anthropic-compatible", config: { apiKey: "sk-ant" }, models: [] });
     const app = createProvidersRouter({ store, adapters: createProviderAdapterRegistry() });
     const unsupported = await app.request("http://localhost/anthropic/models/refresh", { method: "POST" });
 
-    expect(unsupported.status).toBe(501);
-    await expect(unsupported.json()).resolves.toMatchObject({ success: false, code: "unsupported" });
+    expect(unsupported.status).toBe(422);
+    await expect(unsupported.json()).resolves.toMatchObject({ success: false, code: "config-missing" });
 
     const failingStore = new ProviderRuntimeStore({ storagePath: join(runtimeDir, "failing.json") });
     vi.spyOn(console, "error").mockImplementation(() => undefined);

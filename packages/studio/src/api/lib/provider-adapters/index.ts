@@ -255,6 +255,27 @@ function readOpenAiUsage(payload: unknown): GenerateUsage | undefined {
   };
 }
 
+/** Finalize accumulated OpenAI streaming tool_calls into RuntimeToolUse[] */
+function finalizeOpenAiStreamToolCalls(
+  accumulators: Map<number, { id: string; name: string; arguments: string }>,
+  tools?: readonly RuntimeToolDefinition[],
+): RuntimeToolUse[] {
+  const result: RuntimeToolUse[] = [];
+  for (const [index, acc] of accumulators) {
+    if (!acc.name) continue;
+    let input: Record<string, unknown> = {};
+    try {
+      if (acc.arguments) input = JSON.parse(acc.arguments) as Record<string, unknown>;
+    } catch { /* malformed arguments */ }
+    result.push({
+      id: acc.id || `tool-call-${index + 1}`,
+      name: toInternalToolName(acc.name, tools ?? []),
+      input,
+    });
+  }
+  return result;
+}
+
 function readOpenAiToolUses(payload: unknown, tools: readonly RuntimeToolDefinition[] = []): RuntimeToolUse[] {
   const choices = payload && typeof payload === "object" && Array.isArray((payload as { choices?: unknown }).choices)
     ? (payload as { choices: unknown[] }).choices
@@ -379,6 +400,7 @@ class OpenAiCompatibleAdapter implements RuntimeAdapter {
     if (configFailure) return configFailure;
 
     const useStreaming = Boolean(input.onStreamChunk);
+    console.log(`[adapter.generate] useStreaming=${useStreaming}, hasOnStreamChunk=${typeof input.onStreamChunk}, model=${input.modelId}`);
 
     if (useStreaming) {
       return this.sendStreamingChatCompletion(input, input.messages, input.tools, input.onStreamChunk!, input.signal);
@@ -433,7 +455,8 @@ class OpenAiCompatibleAdapter implements RuntimeAdapter {
           return failure("upstream-error", "Streaming response has no body");
         }
 
-        return await this.consumeStream(response.body, onStreamChunk, signal);
+        console.log(`[streaming] Connected to ${url}, status=${response.status}, content-type=${response.headers.get("content-type")}`);
+        return await this.consumeStream(response.body, onStreamChunk, signal, tools ?? undefined);
       } catch (error) {
         if (signal?.aborted) {
           return failure("network-error", "Request aborted");
@@ -451,6 +474,7 @@ class OpenAiCompatibleAdapter implements RuntimeAdapter {
     body: ReadableStream<Uint8Array>,
     onStreamChunk: (chunk: string) => void,
     signal?: AbortSignal,
+    tools?: readonly RuntimeToolDefinition[],
   ): Promise<GenerateResult> {
     const reader = body.getReader();
     const decoder = new TextDecoder();
@@ -458,10 +482,17 @@ class OpenAiCompatibleAdapter implements RuntimeAdapter {
     let fullContent = "";
     let usage: GenerateUsage | undefined;
 
+    // Tool calls accumulation (OpenAI streams tool_calls as deltas)
+    const toolCallAccumulators: Map<number, { id: string; name: string; arguments: string }> = new Map();
+
     try {
       for (;;) {
         if (signal?.aborted) {
           reader.cancel().catch(() => {});
+          if (toolCallAccumulators.size > 0) {
+            const toolUses = this.finalizeOpenAiToolCalls(toolCallAccumulators, tools);
+            if (toolUses.length > 0) return { success: true, type: "tool_use", toolUses, ...(usage ? { usage } : {}) };
+          }
           return {
             success: true,
             type: "message",
@@ -497,14 +528,35 @@ class OpenAiCompatibleAdapter implements RuntimeAdapter {
             }
 
             const choices = Array.isArray(parsed.choices) ? parsed.choices : [];
-            const delta = choices[0] && typeof choices[0] === "object" && "delta" in choices[0]
-              ? (choices[0] as { delta?: unknown }).delta
-              : undefined;
-            if (delta && typeof delta === "object" && "content" in delta) {
-              const content = (delta as { content?: unknown }).content;
+            const choice = choices[0] as Record<string, unknown> | undefined;
+            if (!choice) continue;
+
+            const delta = typeof choice.delta === "object" && choice.delta ? choice.delta as Record<string, unknown> : undefined;
+            if (!delta) continue;
+
+            // Text content delta
+            if ("content" in delta) {
+              const content = delta.content;
               if (typeof content === "string" && content.length > 0) {
                 fullContent += content;
                 onStreamChunk(content);
+              }
+            }
+
+            // Tool calls delta
+            if ("tool_calls" in delta && Array.isArray(delta.tool_calls)) {
+              for (const tc of delta.tool_calls as Array<Record<string, unknown>>) {
+                const index = typeof tc.index === "number" ? tc.index : 0;
+                if (!toolCallAccumulators.has(index)) {
+                  toolCallAccumulators.set(index, { id: "", name: "", arguments: "" });
+                }
+                const acc = toolCallAccumulators.get(index)!;
+                if (typeof tc.id === "string") acc.id = tc.id;
+                const fn = tc.function as Record<string, unknown> | undefined;
+                if (fn) {
+                  if (typeof fn.name === "string") acc.name = fn.name;
+                  if (typeof fn.arguments === "string") acc.arguments += fn.arguments;
+                }
               }
             }
           } catch {
@@ -516,12 +568,27 @@ class OpenAiCompatibleAdapter implements RuntimeAdapter {
       reader.releaseLock();
     }
 
+    // If tool calls were accumulated, return as tool_use
+    if (toolCallAccumulators.size > 0) {
+      const toolUses = this.finalizeOpenAiToolCalls(toolCallAccumulators, tools);
+      if (toolUses.length > 0) {
+        return { success: true, type: "tool_use", toolUses, ...(usage ? { usage } : {}) };
+      }
+    }
+
     return {
       success: true,
       type: "message",
       content: fullContent,
       ...(usage ? { usage } : {}),
     };
+  }
+
+  private finalizeOpenAiToolCalls(
+    accumulators: Map<number, { id: string; name: string; arguments: string }>,
+    tools?: readonly RuntimeToolDefinition[],
+  ): RuntimeToolUse[] {
+    return finalizeOpenAiStreamToolCalls(accumulators, tools);
   }
 
   private async sendChatCompletion(
@@ -672,6 +739,7 @@ class AnthropicCompatibleAdapter implements RuntimeAdapter {
   }
 
   async generate(input: GenerateInput): Promise<GenerateResult> {
+    console.log(`[anthropic.generate] hasOnStreamChunk=${typeof input.onStreamChunk}, model=${input.modelId}, baseUrl=${input.baseUrl}`);
     if (!input.apiKey?.trim()) {
       return failure("auth-missing", `API key missing for provider ${input.providerId}`);
     }
@@ -835,10 +903,19 @@ class AnthropicCompatibleAdapter implements RuntimeAdapter {
     let fullContent = "";
     let usage: GenerateUsage | undefined;
 
+    // Tool use accumulation
+    const toolUses: RuntimeToolUse[] = [];
+    let currentToolId = "";
+    let currentToolName = "";
+    let currentToolInputJson = "";
+
     try {
       for (;;) {
         if (signal?.aborted) {
           reader.cancel().catch(() => {});
+          if (toolUses.length > 0) {
+            return { success: true, type: "tool_use", toolUses, ...(usage ? { usage } : {}) };
+          }
           return { success: true, type: "message", content: fullContent, ...(usage ? { usage } : {}) };
         }
 
@@ -857,11 +934,36 @@ class AnthropicCompatibleAdapter implements RuntimeAdapter {
           try {
             const parsed = JSON.parse(data) as Record<string, unknown>;
 
-            if (parsed.type === "content_block_delta") {
+            if (parsed.type === "content_block_start") {
+              const contentBlock = parsed.content_block as Record<string, unknown> | undefined;
+              if (contentBlock && contentBlock.type === "tool_use") {
+                // Start accumulating a new tool use
+                currentToolId = typeof contentBlock.id === "string" ? contentBlock.id : `tool-call-${toolUses.length + 1}`;
+                currentToolName = typeof contentBlock.name === "string" ? contentBlock.name : "";
+                currentToolInputJson = "";
+              }
+            } else if (parsed.type === "content_block_delta") {
               const delta = parsed.delta as Record<string, unknown> | undefined;
               if (delta && delta.type === "text_delta" && typeof delta.text === "string") {
                 fullContent += delta.text;
                 onStreamChunk(delta.text);
+              } else if (delta && delta.type === "input_json_delta" && typeof delta.partial_json === "string") {
+                // Accumulate tool input JSON
+                currentToolInputJson += delta.partial_json;
+              }
+            } else if (parsed.type === "content_block_stop") {
+              // If we were accumulating a tool use, finalize it
+              if (currentToolName) {
+                let input: Record<string, unknown> = {};
+                try {
+                  if (currentToolInputJson) {
+                    input = JSON.parse(currentToolInputJson) as Record<string, unknown>;
+                  }
+                } catch { /* malformed tool input */ }
+                toolUses.push({ id: currentToolId, name: currentToolName, input });
+                currentToolId = "";
+                currentToolName = "";
+                currentToolInputJson = "";
               }
             } else if (parsed.type === "message_delta") {
               const msgUsage = parsed.usage as Record<string, unknown> | undefined;
@@ -888,6 +990,9 @@ class AnthropicCompatibleAdapter implements RuntimeAdapter {
       reader.releaseLock();
     }
 
+    if (toolUses.length > 0) {
+      return { success: true, type: "tool_use", toolUses, ...(usage ? { usage } : {}) };
+    }
     return { success: true, type: "message", content: fullContent, ...(usage ? { usage } : {}) };
   }
 
@@ -1016,7 +1121,7 @@ class CodexPlatformAdapter implements RuntimeAdapter {
         }
 
         if (useStreaming && response.body) {
-          return await this.consumeStream(response.body, input.onStreamChunk!, input.signal);
+          return await this.consumeStream(response.body, input.onStreamChunk!, input.signal, input.tools);
         }
 
         const payload = await parseJsonResponse(response);
@@ -1054,6 +1159,7 @@ class CodexPlatformAdapter implements RuntimeAdapter {
     body: ReadableStream<Uint8Array>,
     onStreamChunk: (chunk: string) => void,
     signal?: AbortSignal,
+    tools?: readonly RuntimeToolDefinition[],
   ): Promise<GenerateResult> {
     const reader = body.getReader();
     const decoder = new TextDecoder();
@@ -1061,10 +1167,17 @@ class CodexPlatformAdapter implements RuntimeAdapter {
     let fullContent = "";
     let usage: GenerateUsage | undefined;
 
+    // Tool calls accumulation
+    const toolCallAccumulators: Map<number, { id: string; name: string; arguments: string }> = new Map();
+
     try {
       for (;;) {
         if (signal?.aborted) {
           reader.cancel().catch(() => {});
+          if (toolCallAccumulators.size > 0) {
+            const toolUses = finalizeOpenAiStreamToolCalls(toolCallAccumulators, tools);
+            if (toolUses.length > 0) return { success: true, type: "tool_use", toolUses, ...(usage ? { usage } : {}) };
+          }
           return { success: true, type: "message", content: fullContent, ...(usage ? { usage } : {}) };
         }
 
@@ -1093,14 +1206,36 @@ class CodexPlatformAdapter implements RuntimeAdapter {
             }
 
             const choices = Array.isArray(parsed.choices) ? parsed.choices : [];
-            const delta = choices[0] && typeof choices[0] === "object" && "delta" in choices[0]
-              ? (choices[0] as { delta?: unknown }).delta
-              : undefined;
-            if (delta && typeof delta === "object" && "content" in delta) {
-              const content = (delta as { content?: unknown }).content;
+            const choice = choices[0] as Record<string, unknown> | undefined;
+            if (!choice) continue;
+
+            const delta = typeof choice.delta === "object" && choice.delta ? choice.delta as Record<string, unknown> : undefined;
+            if (!delta) continue;
+
+            // Text content
+            if ("content" in delta) {
+              const content = delta.content;
               if (typeof content === "string" && content.length > 0) {
                 fullContent += content;
                 onStreamChunk(content);
+                if (fullContent.length === content.length) console.log("[stream] first chunk received, streaming active");
+              }
+            }
+
+            // Tool calls delta
+            if ("tool_calls" in delta && Array.isArray(delta.tool_calls)) {
+              for (const tc of delta.tool_calls as Array<Record<string, unknown>>) {
+                const index = typeof tc.index === "number" ? tc.index : 0;
+                if (!toolCallAccumulators.has(index)) {
+                  toolCallAccumulators.set(index, { id: "", name: "", arguments: "" });
+                }
+                const acc = toolCallAccumulators.get(index)!;
+                if (typeof tc.id === "string") acc.id = tc.id;
+                const fn = tc.function as Record<string, unknown> | undefined;
+                if (fn) {
+                  if (typeof fn.name === "string") acc.name = fn.name;
+                  if (typeof fn.arguments === "string") acc.arguments += fn.arguments;
+                }
               }
             }
           } catch { /* skip malformed SSE */ }
@@ -1110,6 +1245,15 @@ class CodexPlatformAdapter implements RuntimeAdapter {
       reader.releaseLock();
     }
 
+    if (toolCallAccumulators.size > 0) {
+      const toolUses = finalizeOpenAiStreamToolCalls(toolCallAccumulators, tools);
+      if (toolUses.length > 0) {
+        console.log(`[stream] done with ${toolUses.length} tool calls`);
+        return { success: true, type: "tool_use", toolUses, ...(usage ? { usage } : {}) };
+      }
+    }
+
+    console.log(`[stream] done, totalLength=${fullContent.length}`);
     return { success: true, type: "message", content: fullContent, ...(usage ? { usage } : {}) };
   }
 }
