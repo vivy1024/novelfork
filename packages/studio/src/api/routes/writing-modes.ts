@@ -464,7 +464,7 @@ export function createWritingModesRouter(ctx: RouterContext): Hono {
     }
 
     const drift = detectStyleDrift(current, base as ImportStyleProfile);
-    return c.json({ drift, bookId });
+    return c.json({ drift, bookId, base, current });
   });
 
   return app;
