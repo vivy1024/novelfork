@@ -59,6 +59,7 @@ function makeConfig(workspace = DEFAULT_WORKSPACE) {
     recentWorkspaces: [],
     proxy: { providers: {}, webFetch: "", platforms: {} },
     workspace,
+    writing: { defaultTone: "concise" as const, antiAiStrength: 70, sentenceLength: "medium" as const, dialogueRatio: 40, defaultPov: "third-limited" as const, dailyWordTarget: 3000, chapterMinWords: 2000, chapterMaxWords: 5000, reminderEnabled: false, reminderTime: "20:00", beatDensity: "standard" as const, targetPlatforms: ["自由"], contentRating: "all-ages" as const, customSensitiveWords: "" },
   };
 }
 

@@ -701,7 +701,7 @@ const AGENT_TOOL_PRESETS: Record<string, { enable: string[]; disable: string[] }
   },
 };
 
-export function getEnabledSessionTools(permissionMode: SessionPermissionMode, agentId?: string): SessionToolDefinition[] {
+export function getEnabledSessionTools(permissionMode: SessionPermissionMode, agentId?: string, options?: { disabledTools?: readonly string[] }): SessionToolDefinition[] {
   let tools = SESSION_TOOL_DEFINITIONS
     .filter((tool) => tool.enabledForModes.includes(permissionMode))
     .map(cloneDefinition);
@@ -712,6 +712,12 @@ export function getEnabledSessionTools(permissionMode: SessionPermissionMode, ag
     if (preset) {
       tools = tools.filter((tool) => !preset.disable.includes(tool.name));
     }
+  }
+
+  // 过滤用户禁用的工具（来自 routines.tools 或 toolPolicy.deny）
+  if (options?.disabledTools?.length) {
+    const disabled = new Set(options.disabledTools);
+    tools = tools.filter((tool) => !disabled.has(tool.name));
   }
 
   return tools;
