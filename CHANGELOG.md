@@ -6,7 +6,13 @@
 
 ## Unreleased
 
-> v0.1.0 尚未发布。2026-05-07 已撤回远端 `v0.1.0` tag，GitHub Release 未创建；以下变更仍处于发布前修正与验收阶段，尤其 Claude Code CLI / Codex CLI parity 口径必须重新审计，不能宣称完整对标完成。
+（无）
+
+---
+
+## v0.1.0 (2026-05-11)
+
+> 首个正式发布版本。网文小说 AI 辅助创作工作台，包含完整的 Agent 写作管线、引导式生成、经纬资料管理和 48 个 Agent 工具。
 
 ### 新功能（novel-writing-features）
 - feat: 新书引导式创作向导（NewBookGuide 11题三模式：预设选择/自定义/跳过随机）
