@@ -10,6 +10,15 @@
 
 ---
 
+## v0.1.1 (2026-05-11)
+
+### 修复
+- fix: 已有仓库绑定路径解析错误 — 绝对路径不再被拼接到 studioRoot 下
+- feat: 新增系统文件夹选择器（PowerShell FolderBrowserDialog），桌面模式下可原生选择目录
+- fix: 前端文件夹选择器优先调用后端 API，浏览器 showDirectoryPicker 作为降级
+
+---
+
 ## v0.1.0 (2026-05-11)
 
 首个正式发布版本。网文小说 AI 辅助创作工作台。
