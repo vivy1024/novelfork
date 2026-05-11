@@ -1,4 +1,4 @@
-import { readFile, readdir } from "node:fs/promises";
+import { readFile, readdir, access } from "node:fs/promises";
 import { join } from "node:path";
 
 export const TRUTH_FILES = [
@@ -30,11 +30,35 @@ export const TRUTH_FILE_LABELS: Record<string, string> = {
   "web_materials.md": "网络素材",
 };
 
+/** 经纬文件按类别分组到子目录的映射 */
+export const JINGWEI_CATEGORY_MAP: Record<string, string> = {
+  "story_bible.md": "设定",
+  "character_matrix.md": "角色",
+  "emotional_arcs.md": "角色",
+  "volume_outline.md": "大纲",
+  "current_state.md": "状态",
+  "particle_ledger.md": "状态",
+  "pending_hooks.md": "伏笔",
+  "subplot_board.md": "伏笔",
+  "chapter_summaries.md": "状态",
+  "style_guide.md": "设定",
+  "setting_guide.md": "设定",
+  "parent_canon.md": "设定",
+  "fanfic_canon.md": "设定",
+  "book_rules.md": "规则",
+  "author_intent.md": "规则",
+  "current_focus.md": "状态",
+  "market_radar.md": "设定",
+  "web_materials.md": "设定",
+};
+
 export interface StoryFileSummary {
   readonly name: string;
   readonly label: string;
   readonly size: number;
   readonly preview: string;
+  /** 文件所属类别（新结构） */
+  readonly category?: string;
 }
 
 export interface StoryFileReadServiceOptions {
@@ -77,29 +101,47 @@ async function readStoryFileContent(storyDir: string, file: string): Promise<{ r
 }
 
 export function createStoryFileReadService(options: StoryFileReadServiceOptions) {
-  const storyDir = (bookId: string) => join(options.resolveBookDir(bookId), "story");
+  /** Resolve the jingwei directory — try new path first, fall back to legacy */
+  async function resolveStoryDir(bookId: string): Promise<string> {
+    const bookDir = options.resolveBookDir(bookId);
+    const newPath = join(bookDir, "jingwei");
+    try {
+      await access(newPath);
+      return newPath;
+    } catch {
+      // Fall back to legacy story/ path
+      return join(bookDir, "story");
+    }
+  }
 
   return {
     async listJingweiFiles(bookId: string): Promise<{ readonly files: ReadonlyArray<StoryFileSummary> }> {
-      return { files: await listFiles(storyDir(bookId), isJingweiFileName) };
+      const dir = await resolveStoryDir(bookId);
+      return { files: await listFiles(dir, isJingweiFileName) };
     },
 
     async listStoryFiles(bookId: string): Promise<{ readonly files: ReadonlyArray<StoryFileSummary> }> {
-      return { files: await listFiles(storyDir(bookId)) };
+      const dir = await resolveStoryDir(bookId);
+      return { files: await listFiles(dir) };
     },
 
     async readJingweiFile(bookId: string, file: string): Promise<{ readonly file: string; readonly content: string | null } | { readonly error: "Invalid truth file" }> {
       if (!isJingweiFileName(file)) {
         return { error: "Invalid truth file" };
       }
-      return readStoryFileContent(storyDir(bookId), file);
+      const dir = await resolveStoryDir(bookId);
+      return readStoryFileContent(dir, file);
     },
 
     async readStoryFile(bookId: string, file: string): Promise<{ readonly file: string; readonly content: string | null } | { readonly error: "Invalid story file" }> {
       if (!isSafeStoryFileName(file)) {
         return { error: "Invalid story file" };
       }
-      return readStoryFileContent(storyDir(bookId), file);
+      const dir = await resolveStoryDir(bookId);
+      return readStoryFileContent(dir, file);
     },
+
+    /** Get the resolved directory path for a book's jingwei files */
+    resolveStoryDir,
   };
 }
