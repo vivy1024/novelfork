@@ -47,7 +47,7 @@ import { createStorageDestructiveService } from "../lib/storage-destructive-serv
 import { createStorageWriteService } from "../lib/storage-write-service.js";
 import { createStoryFileReadService } from "../lib/story-file-service.js";
 import { configureSessionToolExecutor, getSessionChatSnapshot } from "../lib/session-chat-service.js";
-import { createSession, listSessions, updateSession } from "../lib/session-service.js";
+import { createSession, listSessions } from "../lib/session-service.js";
 import type { RouterContext } from "./context.js";
 
 interface ProjectWorktreeOwnership {
@@ -737,64 +737,6 @@ export function createStorageRouter(ctx: RouterContext): Hono {
     } catch (e) {
       return c.json({ error: String(e) }, 500);
     }
-  });
-
-  // Ensure 5 fixed Agent sessions exist for a book (idempotent — creates missing ones)
-  app.post("/api/books/:id/ensure-agents", async (c) => {
-    const bookId = c.req.param("id");
-    const BOOK_AGENTS = [
-      { agentId: "writer", title: `📝 写书` },
-      { agentId: "hooks", title: `🎣 伏笔` },
-      { agentId: "chapter-hooks", title: `🪝 章末钩子` },
-      { agentId: "auditor", title: `🔍 审校` },
-      { agentId: "outline", title: `📋 大纲与经纬` },
-    ];
-
-    try {
-      // Verify book exists
-      await booksReadService.getBookDetail(bookId);
-    } catch {
-      return c.json({ error: `Book "${bookId}" not found` }, 404);
-    }
-
-    // Find existing agent sessions for this book
-    const existingSessions = await listSessions({ projectId: bookId, status: "active" });
-    
-    // Deduplicate: if there are duplicate agentIds, archive extras
-    const seenAgentIds = new Set<string>();
-    for (const session of existingSessions) {
-      if (session.agentId && seenAgentIds.has(session.agentId)) {
-        // Duplicate — archive it
-        await updateSession(session.id, { status: "archived" });
-      } else if (session.agentId) {
-        seenAgentIds.add(session.agentId);
-      }
-    }
-    
-    // Re-check after dedup
-    const cleanSessions = await listSessions({ projectId: bookId, status: "active" });
-    if (cleanSessions.length >= 5) {
-      return c.json({ ok: true, bookId, created: [], existing: cleanSessions.length, deduped: existingSessions.length - cleanSessions.length });
-    }
-    
-    const existingAgentIds = new Set(cleanSessions.map((s) => s.agentId));
-
-    // Create missing agent sessions
-    const created: string[] = [];
-    for (const agent of BOOK_AGENTS) {
-      if (!existingAgentIds.has(agent.agentId)) {
-        await createSession({
-          title: `${agent.title} — ${bookId}`,
-          agentId: agent.agentId,
-          sessionMode: "chat",
-          projectId: bookId,
-          sessionConfig: { permissionMode: "edit" },
-        });
-        created.push(agent.agentId);
-      }
-    }
-
-    return c.json({ ok: true, bookId, created, existing: existingSessions.length });
   });
 
   // --- Chapters ---
