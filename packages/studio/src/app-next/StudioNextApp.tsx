@@ -1144,7 +1144,7 @@ function RouteMountPoint({
     case "sessions":
       return <LazyErrorBoundary fallbackLabel="会话中心"><Suspense fallback={<LazyFallback />}><SessionCenterPage /></Suspense></LazyErrorBoundary>;
     case "search":
-      return <LazyErrorBoundary fallbackLabel="搜索"><Suspense fallback={<LazyFallback />}><SearchPage /></Suspense></LazyErrorBoundary>;
+      return <LazyErrorBoundary fallbackLabel="搜索"><Suspense fallback={<LazyFallback />}><SearchPage onNavigateToBook={(bookId) => onNavigate({ kind: "book", bookId })} /></Suspense></LazyErrorBoundary>;
     case "routines":
       return <LazyErrorBoundary fallbackLabel="套路页"><Suspense fallback={<LazyFallback />}><RoutinesNextPage /></Suspense></LazyErrorBoundary>;
     case "learn":
@@ -1208,7 +1208,7 @@ export function StudioNextApp(_props: StudioNextAppProps) {
         open={shouldShowFirstRun}
         onOpenChange={setShowFirstRun}
         onConfigureModel={() => { dismissFirstRun(); navigate({ kind: "settings" }); }}
-        onCreateBook={() => { dismissFirstRun(); navigate({ kind: "sessions" }); }}
+        onCreateBook={() => { dismissFirstRun(); navigate({ kind: "home" }); }}
         onOpenWorkbenchIntro={() => { dismissFirstRun(); navigate({ kind: "routines" }); }}
         onDismiss={dismissFirstRun}
       />
