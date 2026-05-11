@@ -461,6 +461,12 @@ export function createStorageRouter(ctx: RouterContext): Hono {
         { agentId: "outline", title: `📋 大纲与经纬 — ${body.title}`, sessionMode: "chat" as const },
       ];
 
+      // Resolve the actual working directory for Agent sessions
+      const sessionWorktree = preparedProjectBootstrap?.bootstrap.worktreePath
+        ?? preparedProjectBootstrap?.bootstrap.repositoryRoot
+        ?? body.projectInit?.repositoryPath
+        ?? undefined;
+
       const createdSessions = await Promise.all(
         BOOK_AGENTS.map((agent) =>
           createSession({
@@ -468,7 +474,7 @@ export function createStorageRouter(ctx: RouterContext): Hono {
             agentId: agent.agentId,
             sessionMode: agent.sessionMode,
             projectId: bookId,
-            worktree: preparedProjectBootstrap?.projectInitRecord.worktreeName ?? body.projectInit?.worktreeName,
+            worktree: sessionWorktree,
             sessionConfig: { permissionMode: "edit" },
           }),
         ),
