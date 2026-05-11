@@ -348,8 +348,8 @@ export function SessionCenter({ className, initialBinding = "all", initialStatus
 
       {error ? <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{error}</div> : null}
 
-      {/* 批量操作栏 */}
-      {sessions.length > 0 && (
+      {/* 批量操作栏 — 仅归档状态下显示 */}
+      {sessions.length > 0 && status === "archived" && (
         <div className="flex items-center gap-2 text-xs">
           <Button type="button" size="sm" variant="ghost" onClick={selectedIds.size === sessions.length ? selectNone : selectAll}>
             {selectedIds.size === sessions.length ? "取消全选" : "全选"}
@@ -377,12 +377,14 @@ export function SessionCenter({ className, initialBinding = "all", initialStatus
             <article key={session.id} data-testid={`session-center-row-${session.id}`} className="rounded-lg border border-border bg-card p-3 shadow-sm">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="flex items-start gap-2 min-w-0">
-                  <input
-                    type="checkbox"
-                    className="mt-1 size-4 shrink-0"
-                    checked={selectedIds.has(session.id)}
-                    onChange={() => toggleSelect(session.id)}
-                  />
+                  {status === "archived" && (
+                    <input
+                      type="checkbox"
+                      className="mt-1 size-4 shrink-0"
+                      checked={selectedIds.has(session.id)}
+                      onChange={() => toggleSelect(session.id)}
+                    />
+                  )}
                   <div className="min-w-0 space-y-2">
                   <div className="flex flex-wrap items-center gap-2">
                     <h3 className="text-sm font-semibold text-foreground">{session.title}</h3>
