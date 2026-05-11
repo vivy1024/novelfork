@@ -18,6 +18,8 @@ interface DriftResult {
 interface DriftResponse {
   readonly drift: DriftResult;
   readonly bookId: string;
+  readonly base?: { avgSentenceLength?: number; vocabularyDiversity?: number };
+  readonly current?: { avgSentenceLength?: number; vocabularyDiversity?: number };
 }
 
 export interface StyleDriftPanelProps {
@@ -47,6 +49,8 @@ function formatPercent(value: number): string {
 export function StyleDriftPanel({ bookId, chapterContent, onClose }: StyleDriftPanelProps) {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<DriftResult | null>(null);
+  const [baseProfile, setBaseProfile] = useState<{ avgSentenceLength?: number; vocabularyDiversity?: number } | null>(null);
+  const [currentProfile, setCurrentProfile] = useState<{ avgSentenceLength?: number; vocabularyDiversity?: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function handleCheck() {
@@ -67,6 +71,8 @@ export function StyleDriftPanel({ bookId, chapterContent, onClose }: StyleDriftP
         base: "auto",
       });
       setResult(res.drift);
+      setBaseProfile(res.base ?? null);
+      setCurrentProfile(res.current ?? { avgSentenceLength, vocabularyDiversity });
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "文风漂移检测失败");
     } finally {
@@ -125,14 +131,14 @@ export function StyleDriftPanel({ bookId, chapterContent, onClose }: StyleDriftP
             <DimensionRow
               name="句长"
               value={result.sentenceLengthDrift}
-              baseline="22 字/句"
-              current="18 字/句"
+              baseline={`${baseProfile?.avgSentenceLength ?? "?"} 字/句`}
+              current={`${currentProfile?.avgSentenceLength ?? "?"} 字/句`}
             />
             <DimensionRow
               name="词汇多样性"
               value={result.vocabularyDrift}
-              baseline="0.70"
-              current="0.60"
+              baseline={baseProfile?.vocabularyDiversity?.toFixed(2) ?? "?"}
+              current={currentProfile?.vocabularyDiversity?.toFixed(2) ?? "?"}
             />
           </div>
 
