@@ -171,6 +171,7 @@ export async function loadResourceTreeFromContract(
           ...(jingweiSections?.sections.map(toJingweiSectionNode) ?? []),
           ...(jingweiEntries?.entries.map(toJingweiEntryNode) ?? []),
         ]),
+        group("group:hooks", "伏笔", buildHooksGroup(jingweiFiles)),
         group("group:narrative-line", "叙事线", narrative?.snapshot.nodes.length && bookResult.data.chapters.length > 0 ? [toNarrativeLineNode(book.id, narrative.snapshot)] : []),
       ],
     },
@@ -192,6 +193,25 @@ function toChapterNode(bookId: string, chapter: ChapterSummary): ContractResourc
     },
     metadata: { bookId, chapterNumber: chapter.number, status: chapter.status, fileName: chapter.fileName, source: "list-preview" },
   };
+}
+
+function buildHooksGroup(jingweiFiles: JingweiFileListResponse | null | undefined): ContractResourceNode[] {
+  // Show pending_hooks.md as a readable node in the hooks group if it exists and has content
+  const hooksFile = jingweiFiles?.files.find((f) => f.name === "pending_hooks.md");
+  if (!hooksFile || (hooksFile.size ?? 0) < 10) return [];
+  return [{
+    id: "hook:pending-hooks",
+    kind: "jingwei",
+    title: "待处理伏笔",
+    path: "pending_hooks.md",
+    capabilities: {
+      read: CURRENT_READ("truth-files.read"),
+      edit: CURRENT_EDIT("truth-files.write"),
+      delete: UNSUPPORTED("truth-files.delete"),
+      apply: UNSUPPORTED("truth-files.apply"),
+    },
+    metadata: { fileName: "pending_hooks.md", size: hooksFile.size, preview: hooksFile.preview },
+  }];
 }
 
 function toCandidateNode(candidate: GeneratedChapterCandidate): ContractResourceNode {
