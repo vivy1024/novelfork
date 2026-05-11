@@ -343,19 +343,30 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
     // --- 小说上下文工具组 (Task 23) ---
     case "chapter.read":
       return async ({ input, definition }) => {
-        // 读取章节内容：通过 cockpit service 的 state 接口
         const bookId = String(input.bookId);
         const chapterNumber = Number(input.chapterNumber);
-        if (!options.cockpitService) {
-          return { ok: false, renderer: definition.renderer, error: "service-unavailable", summary: "chapter.read 需要 cockpitService 配置。" };
-        }
+        const workDir = options.workDir ?? process.cwd();
         try {
-          const snapshot = await options.cockpitService.getSnapshot({ bookId, includeModelStatus: false });
+          const { readFile } = await import("node:fs/promises");
+          const { join } = await import("node:path");
+          const { readdirSync } = await import("node:fs");
+          // Find chapter file by number pattern
+          const chaptersDir = join(workDir, "books", bookId, "chapters");
+          let chapterFile: string | undefined;
+          try {
+            const files = readdirSync(chaptersDir);
+            const padded = String(chapterNumber).padStart(4, "0");
+            chapterFile = files.find(f => f.startsWith(padded) && f.endsWith(".md"));
+          } catch { /* chapters dir may not exist */ }
+          if (!chapterFile) {
+            return { ok: false, renderer: definition.renderer, error: "chapter-not-found", summary: `第 ${chapterNumber} 章文件未找到。` };
+          }
+          const content = await readFile(join(chaptersDir, chapterFile), "utf-8");
           return {
             ok: true,
             renderer: definition.renderer,
-            summary: `已读取书籍 ${bookId} 第 ${chapterNumber} 章上下文。`,
-            data: { bookId, chapterNumber, bookStatus: (snapshot as { status?: string }).status ?? "unknown" },
+            summary: `已读取第 ${chapterNumber} 章（${content.length} 字）。`,
+            data: { bookId, chapterNumber, fileName: chapterFile, content, wordCount: content.length },
           };
         } catch (error) {
           return { ok: false, renderer: definition.renderer, error: "read-failed", summary: `读取章节失败：${error instanceof Error ? error.message : String(error)}` };
@@ -364,18 +375,44 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
     case "jingwei.read_context":
       return async ({ input, definition }) => {
         const bookId = String(input.bookId);
-        // 经纬上下文读取：当前返回 placeholder，真实实现需要 jingwei service
-        return {
-          ok: true,
-          renderer: definition.renderer,
-          summary: `已读取书籍 ${bookId} 的经纬上下文。`,
-          data: {
-            bookId,
-            status: "partial",
-            categories: [],
-            note: "经纬服务尚未完整接入，当前返回空上下文。后续 Task 32 将接入真实经纬数据。",
-          },
-        };
+        const workDir = options.workDir ?? process.cwd();
+        try {
+          const { readdir, readFile } = await import("node:fs/promises");
+          const { join } = await import("node:path");
+          const CATEGORIES = ["角色", "势力", "设定", "伏笔", "大纲", "状态", "规则"];
+          const jingweiDir = join(workDir, "books", bookId, "jingwei");
+          const categories: Array<{ name: string; files: Array<{ name: string; content: string }> }> = [];
+          for (const cat of CATEGORIES) {
+            const catDir = join(jingweiDir, cat);
+            try {
+              const files = await readdir(catDir);
+              const mdFiles = files.filter(f => f.endsWith(".md"));
+              const entries = await Promise.all(mdFiles.map(async (f) => {
+                const content = await readFile(join(catDir, f), "utf-8").catch(() => "");
+                return { name: f, content: content.slice(0, 2000) };
+              }));
+              if (entries.length > 0) categories.push({ name: cat, files: entries });
+            } catch { /* category dir may not exist */ }
+          }
+          // Also try root-level jingwei files
+          try {
+            const rootFiles = await readdir(jingweiDir);
+            const rootMd = rootFiles.filter(f => f.endsWith(".md"));
+            const rootEntries = await Promise.all(rootMd.map(async (f) => {
+              const content = await readFile(join(jingweiDir, f), "utf-8").catch(() => "");
+              return { name: f, content: content.slice(0, 2000) };
+            }));
+            if (rootEntries.length > 0) categories.push({ name: "根目录", files: rootEntries });
+          } catch { /* jingwei dir may not exist */ }
+          return {
+            ok: true,
+            renderer: definition.renderer,
+            summary: `已读取书籍 ${bookId} 的经纬上下文（${categories.length} 个分类）。`,
+            data: { bookId, categories, totalFiles: categories.reduce((sum, c) => sum + c.files.length, 0) },
+          };
+        } catch (error) {
+          return { ok: false, renderer: definition.renderer, error: "read-failed", summary: `读取经纬失败：${error instanceof Error ? error.message : String(error)}` };
+        }
       };
     case "health.read_summary":
       return async ({ input, definition }) => {
@@ -422,24 +459,36 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
         return executeBashTool({ command, workDir, timeoutMs });
       };
     case "Read":
-      return async ({ input }) => {
+      return async ({ input, definition }) => {
         const workDir = options.workDir ?? process.cwd();
+        const filePath = String(input.path);
+        if (!isPathWithinWorkDir(filePath, workDir)) {
+          return { ok: false, renderer: definition.renderer, error: "path-outside-workdir", summary: `路径 "${filePath}" 超出工作目录边界。` };
+        }
         return executeFileReadTool({
-          path: String(input.path),
+          path: filePath,
           workDir,
           ...(typeof input.offset === "number" ? { offset: input.offset } : {}),
           ...(typeof input.limit === "number" ? { limit: input.limit } : {}),
         });
       };
     case "Write":
-      return async ({ input }) => {
+      return async ({ input, definition }) => {
         const workDir = options.workDir ?? process.cwd();
-        return executeFileWriteTool({ path: String(input.path), content: String(input.content), workDir });
+        const filePath = String(input.path);
+        if (!isPathWithinWorkDir(filePath, workDir)) {
+          return { ok: false, renderer: definition.renderer, error: "path-outside-workdir", summary: `路径 "${filePath}" 超出工作目录边界。` };
+        }
+        return executeFileWriteTool({ path: filePath, content: String(input.content), workDir });
       };
     case "Edit":
-      return async ({ input }) => {
+      return async ({ input, definition }) => {
         const workDir = options.workDir ?? process.cwd();
-        return executeFileEditTool({ path: String(input.path), oldText: String(input.oldText), newText: String(input.newText), workDir });
+        const filePath = String(input.path);
+        if (!isPathWithinWorkDir(filePath, workDir)) {
+          return { ok: false, renderer: definition.renderer, error: "path-outside-workdir", summary: `路径 "${filePath}" 超出工作目录边界。` };
+        }
+        return executeFileEditTool({ path: filePath, oldText: String(input.oldText), newText: String(input.newText), workDir });
       };
     // --- Glob/Grep (real handlers) ---
     case "Glob":
@@ -541,10 +590,11 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
     case "AddGoal":
     case "UpdateGoal":
       return async ({ definition }) => ({
-        ok: true,
+        ok: false,
         renderer: definition.renderer,
-        summary: `工具 ${definition.name} 已注册。完整实现将在后续版本接入。`,
-        data: { status: "stub", toolName: definition.name },
+        error: "not-implemented",
+        summary: `工具 ${definition.name} 尚未实现，请使用其他方式完成此操作。`,
+        data: { status: "not-implemented", toolName: definition.name },
       });
     default:
       return undefined;

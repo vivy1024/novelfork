@@ -469,6 +469,7 @@ export function ConversationSurface({
       <Composer
         onSend={(content) => { setLocalSending(true); onSend(content); }}
         onAbort={onAbort}
+        onContinue={() => { setLocalSending(true); onSend(""); }}
         onAttach={onAttach}
         onSlashCommandResult={handleSlashCommandResult}
         slashCommandContext={{ status, compactSession: onCompactSession, bookId: status.binding?.projectId }}
