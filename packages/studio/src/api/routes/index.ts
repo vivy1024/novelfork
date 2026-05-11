@@ -13,7 +13,6 @@ export { createSettingsRouter } from "./settings.js";
 export { createOnboardingRouter } from "./onboarding.js";
 export { createProvidersRouter } from "./providers.js";
 export { createRuntimeCapabilitiesRouter } from "./runtime-capabilities.js";
-export { createPlatformIntegrationsRouter } from "./platform-integrations.js";
 export { createGitRouter } from "./git.js";
 export { createAgentConfigRouter } from "./agent-config.js";
 export { createToolsRouter } from "./tools.js";

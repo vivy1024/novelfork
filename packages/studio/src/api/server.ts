@@ -72,7 +72,6 @@ import {
   createOnboardingRouter,
   createProvidersRouter,
   createRuntimeCapabilitiesRouter,
-  createPlatformIntegrationsRouter,
   createGitRouter,
   createAgentConfigRouter,
   createToolsRouter,
@@ -335,8 +334,6 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     app.route("/api/providers", createProvidersRouter({ store: providerStore }));
     app.route("/api/models/aggregations", createAggregationsRouter());
     app.route("/api/runtime-capabilities", createRuntimeCapabilitiesRouter());
-
-    app.route("/api/platform-integrations", createPlatformIntegrationsRouter({ store: providerStore }));
 
     // Proxy management — per-provider HTTP proxy for accessing overseas APIs
     app.route("/api/proxy", createProxyRouter());
