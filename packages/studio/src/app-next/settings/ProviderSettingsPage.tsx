@@ -10,15 +10,7 @@ import type {
 } from "@/shared/provider-catalog";
 import { ApiProviderDetail } from "./providers/ApiProviderDetail";
 import { ApiProvidersSection, type ApiProviderStatusSummary, type ProviderFormState } from "./providers/ApiProvidersSection";
-import { PlatformIntegrationDetail } from "./providers/PlatformIntegrationDetail";
-import { PlatformIntegrationsSection } from "./providers/PlatformIntegrationsSection";
 import { deriveProviderFixtureFacts } from "./SettingsTruthModel";
-import type {
-  PlatformAccount,
-  PlatformId,
-  PlatformIntegrationCatalogItem,
-  PlatformJsonImportPayload,
-} from "./provider-types";
 
 interface ProviderRuntimeSummary {
   readonly providerCount: number;
@@ -27,8 +19,6 @@ interface ProviderRuntimeSummary {
   readonly availableModelCount?: number;
   readonly totalCatalogModelCount?: number;
   readonly callableModelCount?: number;
-  readonly platformAccountCount?: number;
-  readonly enabledPlatformAccountCount?: number;
   readonly issueCount: number;
 }
 
@@ -41,21 +31,12 @@ interface GroupedModelInventory {
 }
 
 interface LocalProviderSummary {
-  readonly platformCount: number;
-  readonly enabledPlatformCount: number;
   readonly providerCount: number;
   readonly enabledProviderCount: number;
   readonly modelCount: number;
 }
 
 export interface ProviderSettingsClient {
-  listPlatformIntegrations: () => Promise<{ integrations: PlatformIntegrationCatalogItem[] }>;
-  listPlatformAccounts: (platformId: PlatformId) => Promise<{ accounts: PlatformAccount[] }>;
-  importPlatformAccountJson: (platformId: PlatformId, payload: PlatformJsonImportPayload) => Promise<{ account: PlatformAccount }>;
-  refreshPlatformAccountQuota: (platformId: PlatformId, accountId: string) => Promise<{ account: PlatformAccount }>;
-  setCurrentPlatformAccount: (platformId: PlatformId, accountId: string) => Promise<{ account: PlatformAccount }>;
-  updatePlatformAccountStatus: (platformId: PlatformId, accountId: string, status: PlatformAccount["status"]) => Promise<{ account: PlatformAccount }>;
-  deletePlatformAccount: (platformId: PlatformId, accountId: string) => Promise<{ success: boolean }>;
   getProviderSummary?: () => Promise<{ summary: ProviderRuntimeSummary }>;
   listGroupedModels?: () => Promise<{ groups: GroupedModelInventory[] }>;
   listProviders: () => Promise<{ providers: ManagedProvider[] }>;
@@ -68,21 +49,6 @@ export interface ProviderSettingsClient {
 }
 
 const defaultClient: ProviderSettingsClient = {
-  listPlatformIntegrations: () => fetchJson<{ integrations: PlatformIntegrationCatalogItem[] }>("/platform-integrations"),
-  listPlatformAccounts: (platformId) => fetchJson<{ accounts: PlatformAccount[] }>(`/platform-integrations/${platformId}/accounts`),
-  importPlatformAccountJson: (platformId, payload) => fetchJson<{ account: PlatformAccount }>(`/platform-integrations/${platformId}/accounts/import-json`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  }),
-  refreshPlatformAccountQuota: (platformId, accountId) => fetchJson<{ account: PlatformAccount }>(`/platform-integrations/${platformId}/accounts/${accountId}/refresh-quota`, { method: "POST" }),
-  setCurrentPlatformAccount: (platformId, accountId) => fetchJson<{ account: PlatformAccount }>(`/platform-integrations/${platformId}/accounts/${accountId}/set-current`, { method: "POST" }),
-  updatePlatformAccountStatus: (platformId, accountId, status) => fetchJson<{ account: PlatformAccount }>(`/platform-integrations/${platformId}/accounts/${accountId}/status`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ status }),
-  }),
-  deletePlatformAccount: (platformId, accountId) => fetchJson<{ success: boolean }>(`/platform-integrations/${platformId}/accounts/${accountId}`, { method: "DELETE" }),
   getProviderSummary: () => fetchJson<{ summary: ProviderRuntimeSummary }>("/providers/summary"),
   listGroupedModels: () => fetchJson<{ groups: GroupedModelInventory[] }>("/providers/models/grouped"),
   listProviders: () => fetchJson<{ providers: ManagedProvider[] }>("/providers"),
@@ -122,12 +88,6 @@ const INITIAL_FORM: ProviderFormState = {
   baseUrl: "",
   apiMode: "responses",
   compatibility: "openai-compatible",
-};
-
-const EMPTY_ACCOUNT_COUNTS: Record<PlatformId, number> = {
-  codex: 0,
-  kiro: 0,
-  cline: 0,
 };
 
 function providerTypeFromCompatibility(compatibility: ProviderCompatibility): ProviderType {
@@ -229,8 +189,6 @@ function RuntimeOverviewSection({ summary, fallback }: { readonly summary: Provi
     availableModelCount: fallback.modelCount,
     totalCatalogModelCount: fallback.modelCount,
     callableModelCount: 0,
-    platformAccountCount: fallback.platformCount,
-    enabledPlatformAccountCount: fallback.enabledPlatformCount,
     issueCount: 0,
   };
   const availableModelCount = data.availableModelCount ?? data.physicalModelCount;
@@ -240,14 +198,13 @@ function RuntimeOverviewSection({ summary, fallback }: { readonly summary: Provi
     <section className="space-y-3">
       <div>
         <h3 className="text-base font-semibold">运行态总览</h3>
-        <p className="text-xs text-muted-foreground">当前 AI 供应商、模型和平台账号的运行状态。</p>
+        <p className="text-xs text-muted-foreground">当前 AI 供应商和模型的运行状态。</p>
       </div>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <ControlCard label="供应商" value={`${data.enabledProviderCount}/${data.providerCount}`} detail={`已启用 ${data.enabledProviderCount} / 共 ${data.providerCount} 个`} />
         <ControlCard label="可调用模型" value={callableModelCount} detail={`可用 ${availableModelCount} / 共 ${totalCatalogModelCount} 个模型`} />
         <ControlCard label="物理模型" value={data.physicalModelCount} detail="运行时模型池中的物理模型数" />
-        <ControlCard label="平台账号" value={data.platformAccountCount ?? fallback.platformCount} detail={`${data.enabledPlatformAccountCount ?? fallback.enabledPlatformCount} 个平台可用`} />
-        <ControlCard label="异常项" value={data.issueCount} detail="异常/降级供应商 + 不活跃账号" />
+        <ControlCard label="异常项" value={data.issueCount} detail="异常/降级供应商" />
       </div>
     </section>
   );
@@ -292,9 +249,6 @@ function ModelInventorySection({ groups }: { readonly groups: readonly GroupedMo
 
 export function ProviderSettingsPage({ client = defaultClient }: ProviderSettingsPageProps) {
   const [providers, setProviders] = useState<ManagedProvider[]>([]);
-  const [platformIntegrations, setPlatformIntegrations] = useState<PlatformIntegrationCatalogItem[]>([]);
-  const [platformAccountCounts, setPlatformAccountCounts] = useState<Record<PlatformId, number>>(EMPTY_ACCOUNT_COUNTS);
-  const [selectedPlatformId, setSelectedPlatformId] = useState<PlatformId | null>(null);
   const [selectedApiProviderId, setSelectedApiProviderId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
@@ -316,29 +270,16 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
 
     async function load() {
       const [
-        { integrations },
         { providers: nextProviders },
         runtimeSummaryResult,
         groupedModelsResult,
       ] = await Promise.all([
-        client.listPlatformIntegrations(),
         client.listProviders(),
         client.getProviderSummary?.().catch(() => null) ?? Promise.resolve(null),
         client.listGroupedModels?.().catch(() => null) ?? Promise.resolve(null),
       ]);
 
-      const accountResults = await Promise.all(integrations.map(async (integration) => {
-        try {
-          const result = await client.listPlatformAccounts(integration.id);
-          return [integration.id, result.accounts.length] as const;
-        } catch {
-          return [integration.id, 0] as const;
-        }
-      }));
-
       if (!mounted) return;
-      setPlatformIntegrations(integrations);
-      setPlatformAccountCounts({ ...EMPTY_ACCOUNT_COUNTS, ...Object.fromEntries(accountResults) });
       setProviders(nextProviders);
       setContextDrafts(buildContextDrafts(nextProviders));
       setProviderRuntimeSummary(runtimeSummaryResult?.summary ?? null);
@@ -367,13 +308,11 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
 
   const summary = useMemo(() => {
     return {
-      platformCount: platformIntegrations.length,
-      enabledPlatformCount: platformIntegrations.filter((integration) => integration.enabled).length,
       providerCount: providers.length,
       enabledProviderCount: providers.filter((provider) => provider.enabled).length,
       modelCount: providers.reduce((total, provider) => total + provider.models.filter((model) => model.enabled !== false).length, 0),
     };
-  }, [platformIntegrations, providers]);
+  }, [providers]);
 
   const providerStatuses = useMemo(() => Object.fromEntries(providers.map((provider) => [provider.id, providerStatus(provider)])), [providers]);
   const fixtureFacts = useMemo(() => deriveProviderFixtureFacts({ cleanRoot: false, providers }), [providers]);
@@ -386,7 +325,6 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
     return true;
   }), [fixtureProviderIds, hideTestFixtures, providerQuery, providerStatuses, providers, showIssuesOnly]);
 
-  const selectedPlatform = platformIntegrations.find((integration) => integration.id === selectedPlatformId) ?? null;
   const selectedApiProvider = providers.find((provider) => provider.id === selectedApiProviderId) ?? null;
 
   const saveProvider = async () => {
@@ -487,28 +425,8 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
     }
   };
 
-  const handlePlatformAccountImported = (platformId: PlatformId) => {
-    setPlatformAccountCounts((current) => ({ ...current, [platformId]: (current[platformId] ?? 0) + 1 }));
-  };
-
   if (loading) {
     return <div className="rounded-lg border border-border p-4 text-sm text-muted-foreground">正在加载 AI 供应商…</div>;
-  }
-
-  if (selectedPlatform) {
-    return (
-      <PlatformIntegrationDetail
-        integration={selectedPlatform}
-        onBack={() => setSelectedPlatformId(null)}
-        listAccounts={client.listPlatformAccounts}
-        importJsonAccount={client.importPlatformAccountJson}
-        refreshAccountQuota={client.refreshPlatformAccountQuota}
-        setCurrentAccount={client.setCurrentPlatformAccount}
-        updateAccountStatus={client.updatePlatformAccountStatus}
-        deleteAccount={client.deletePlatformAccount}
-        onAccountImported={handlePlatformAccountImported}
-      />
-    );
   }
 
   if (selectedApiProvider) {
@@ -539,7 +457,7 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
       <div>
         <h2 className="text-lg font-semibold">AI 供应商</h2>
         <p className="text-sm text-muted-foreground">
-          {summary.platformCount} 个平台（{summary.enabledPlatformCount} 可配置） · {summary.providerCount} 个供应商（{summary.enabledProviderCount} 已启用） · {summary.modelCount} 个模型
+          {summary.providerCount} 个供应商（{summary.enabledProviderCount} 已启用） · {summary.modelCount} 个模型
         </p>
       </div>
 
@@ -550,12 +468,6 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
       )}
 
       <RuntimeOverviewSection summary={providerRuntimeSummary} fallback={summary} />
-
-      <PlatformIntegrationsSection
-        integrations={platformIntegrations}
-        accountCounts={platformAccountCounts}
-        onSelect={setSelectedPlatformId}
-      />
 
       <section className="space-y-3 rounded-lg border border-border bg-card p-3" aria-label="Provider 可读性过滤">
         <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-end">

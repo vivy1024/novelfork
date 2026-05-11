@@ -18,7 +18,6 @@ export type SettingsFactSource =
   | "user-settings"
   | "provider-summary"
   | "model-inventory"
-  | "platform-accounts"
   | "session-config"
   | "runtime-state"
   | "capability-matrix"
@@ -530,7 +529,6 @@ export function settingsFactSourceLabel(source: SettingsFactSource) {
     "user-settings": "用户设置",
     "provider-summary": "供应商总览",
     "model-inventory": "模型清单",
-    "platform-accounts": "平台账号",
     "session-config": "会话配置",
     "runtime-state": "运行状态",
     "capability-matrix": "能力矩阵",
