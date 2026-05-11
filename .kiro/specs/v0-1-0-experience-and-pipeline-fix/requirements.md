@@ -249,28 +249,37 @@ books/<id>/jingwei/
 ## 执行顺序
 
 ```
-Phase 1 — Agent 能力修复（P0）
-  1. 流式 tool_use 解析修复（Anthropic + OpenAI adapter）
-  2. 写作管线入口接通（executeNovelCommand handler）
-  3. 验证：工具调用卡片可见 + 写作按钮触发管线
+Phase 1 — Agent 能力修复（P0）✅ 全部完成
+  1. ✅ 流式 tool_use 解析修复（Anthropic + OpenAI adapter）— f52efdae
+  2. ✅ 写作管线入口接通 — REST API 路径已通，前端按钮直接调 /api/books/:id/write-next
+  3. ✅ 验证：工具调用卡片可见 + 写作按钮触发管线
 
-Phase 2 — 对话体验修复（P1）
-  4. 消息排序修复（B-1）
-  5. fork 跳转（B-2）
-  6. 精确消息删除/截断 API（B-3）
-  7. WebSocket session 绑定修复（B-4）
-  8. 新会话恢复提示（QF-4）
-  9. 状态栏乐观更新（QF-5）
-  10. 写作工具面板 onRunTool 接通
-  11. Checkpoint 面板入口
+Phase 2 — 对话体验修复（P1）✅ 全部完成
+  4. ✅ 消息排序修复（B-1）— 71fce4cc
+  5. ✅ fork 跳转（B-2）— 504fb541
+  6. ✅ 精确消息删除/截断 API（B-3）— 6db1a9d2
+  7. ✅ WebSocket session 绑定修复（B-4）— sessionId 变化时 useEffect 自动重连
+  8. ✅ 新会话恢复提示（QF-4）— 已正确过滤 idle/reconnecting
+  9. ✅ 状态栏乐观更新（QF-5）— 71fce4cc
+  10. ✅ 写作工具面板 onRunTool 接通 — 已实现 fetch(endpoint)
+  11. ✅ Checkpoint 面板入口 — 已有按钮
 
-Phase 3 — 供应商与设置体验（P2）
-  12. 供应商 ID/名称显示
-  13. 供应商详情页保存交互
-  14. 模型列表获取（不硬编码）
-  15. Context Ring 数据刷新
-  16. 文风漂移真实数据
-  17. 压缩 UX 升级
+Phase 3 — 供应商与设置体验（P2）✅ 核心完成，2 项延后
+  12. ✅ 供应商 ID/名称显示 — 3211e3e8
+  13. ✅ 供应商详情页保存交互 — hasChanges 条件已实现
+  14. ✅ 模型列表获取（不硬编码）— normalizeOpenAiModel 返回 0
+  15. ✅ Context Ring 数据刷新 — 组件重挂载时自动加载
+  16. ⏳ 文风漂移真实数据 — 延后到 v0.2.0（需要 NLP 分析）
+  17. ⏳ 压缩 UX 升级 — 延后到 v0.2.0（需要摘要模型 + 前端卡片）
+
+Phase 4 — 工作台交互重构（P3）⏳ 全部延后到 v0.2.0
+  18. ⏳ 5 Agent 窗口架构
+  19. ⏳ 即时工具弹窗
+  20. ⏳ 选段浮动工具条
+  21. ⏳ 经纬类型统一
+  22. ⏳ 经纬文件夹重构
+  23. ⏳ 大纲/状态/伏笔功能缺口
+```
 
 Phase 4 — 工作台交互重构（P3）
   18. 5 Agent 窗口架构

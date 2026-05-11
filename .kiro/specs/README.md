@@ -9,7 +9,7 @@
 | Spec | 任务数 | 状态 | 说明 |
 |------|-----:|------|------|
 | `v0-1-0-release-readiness` | 23 | ⏸️ 暂停（20/23） | 发布前验收 |
-| `v0-1-0-experience-and-pipeline-fix` | 23 | 📋 规划完成 | 整合 P0-P3 全部体验阻塞+管线修复 |
+| `v0-1-0-experience-and-pipeline-fix` | 23 | ✅ P0-P2 核心完成（15/23），P3 延后 | 流式工具调用+对话体验+供应商修复 |
 | `character-arc-auto-tracking` | 10 | ✅ 实现完成，待浏览器验证 | Hook+规则引擎+LLM可选 |
 | `template-market-v2` | 14 | ✅ 实现完成，待浏览器验证 | 26流派+用户自建+远程市场 |
 | `session-memory-enhancement` | 8 | ✅ 实现完成，待浏览器验证 | fork追溯+Context Ring菜单 |
