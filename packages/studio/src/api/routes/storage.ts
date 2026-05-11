@@ -452,16 +452,28 @@ export function createStorageRouter(ctx: RouterContext): Hono {
         await persistStudioProjectInitRecord(bookDir, preparedProjectBootstrap.projectInitRecord);
       }
 
-      const defaultSession = await createSession({
-        title: buildDefaultBookSessionTitle(body.title, body.language),
-        agentId: "writer",
-        sessionMode: "chat",
-        projectId: bookId,
-        worktree: preparedProjectBootstrap?.projectInitRecord.worktreeName ?? body.projectInit?.worktreeName,
-        sessionConfig: {
-          permissionMode: "edit",
-        },
-      });
+      // Create 5 fixed Agent sessions bound to this book
+      const BOOK_AGENTS = [
+        { agentId: "writer", title: `📝 写书 — ${body.title}`, sessionMode: "chat" as const },
+        { agentId: "hooks", title: `🎣 伏笔 — ${body.title}`, sessionMode: "chat" as const },
+        { agentId: "chapter-hooks", title: `🪝 章末钩子 — ${body.title}`, sessionMode: "chat" as const },
+        { agentId: "auditor", title: `🔍 审校 — ${body.title}`, sessionMode: "chat" as const },
+        { agentId: "outline", title: `📋 大纲与经纬 — ${body.title}`, sessionMode: "chat" as const },
+      ];
+
+      const createdSessions = await Promise.all(
+        BOOK_AGENTS.map((agent) =>
+          createSession({
+            title: agent.title,
+            agentId: agent.agentId,
+            sessionMode: agent.sessionMode,
+            projectId: bookId,
+            worktree: preparedProjectBootstrap?.projectInitRecord.worktreeName ?? body.projectInit?.worktreeName,
+            sessionConfig: { permissionMode: "edit" },
+          }),
+        ),
+      );
+      const defaultSession = createdSessions[0]; // writer session is the default
       const defaultSessionSnapshot = await getSessionChatSnapshot(defaultSession.id);
       if (!defaultSessionSnapshot) {
         throw new ApiError(500, "BOOK_CREATE_DEFAULT_SESSION_SNAPSHOT_FAILED", "Default writing session snapshot was not ready.");
