@@ -48,12 +48,22 @@ export async function executeNovelInit(input: NovelInitInput): Promise<NovelInit
 
   try {
     await mkdir(join(bookPath, "chapters"), { recursive: true });
-    await mkdir(join(bookPath, "jingwei"), { recursive: true });
     await mkdir(join(bookPath, "candidates"), { recursive: true });
 
+    // Create jingwei directory with category subdirectories
+    const jingweiDir = join(bookPath, "jingwei");
+    await mkdir(jingweiDir, { recursive: true });
+    await mkdir(join(jingweiDir, "角色"), { recursive: true });
+    await mkdir(join(jingweiDir, "势力"), { recursive: true });
+    await mkdir(join(jingweiDir, "设定"), { recursive: true });
+    await mkdir(join(jingweiDir, "伏笔"), { recursive: true });
+    await mkdir(join(jingweiDir, "大纲"), { recursive: true });
+    await mkdir(join(jingweiDir, "状态"), { recursive: true });
+    await mkdir(join(jingweiDir, "规则"), { recursive: true });
+
     await writeFile(join(bookPath, "novelfork.json"), DEFAULT_CONFIG(bookName, genre), "utf-8");
-    await writeFile(join(bookPath, "jingwei", "story_bible.md"), DEFAULT_BIBLE(bookName), "utf-8");
-    await writeFile(join(bookPath, "jingwei", "jingwei.json"), DEFAULT_JINGWEI, "utf-8");
+    await writeFile(join(jingweiDir, "设定", "story_bible.md"), DEFAULT_BIBLE(bookName), "utf-8");
+    await writeFile(join(jingweiDir, "jingwei.json"), DEFAULT_JINGWEI, "utf-8");
 
     return { ok: true, bookPath };
   } catch (error) {

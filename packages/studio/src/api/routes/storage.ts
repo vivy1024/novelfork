@@ -462,10 +462,13 @@ export function createStorageRouter(ctx: RouterContext): Hono {
       ];
 
       // Resolve the actual working directory for Agent sessions
-      const sessionWorktree = preparedProjectBootstrap?.bootstrap.worktreePath
-        ?? preparedProjectBootstrap?.bootstrap.repositoryRoot
-        ?? body.projectInit?.repositoryPath
-        ?? undefined;
+      // For "existing" repos, prefer the repository root (user's actual project dir)
+      // For "new"/"clone", use the worktree path created by bootstrap
+      const sessionWorktree = body.projectInit?.repositorySource === "existing" && body.projectInit?.repositoryPath
+        ? body.projectInit.repositoryPath
+        : preparedProjectBootstrap?.bootstrap.worktreePath
+          ?? preparedProjectBootstrap?.bootstrap.repositoryRoot
+          ?? undefined;
 
       const createdSessions = await Promise.all(
         BOOK_AGENTS.map((agent) =>
