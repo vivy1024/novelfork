@@ -78,7 +78,11 @@ export function reduceSessionEnvelope(
       };
     }
     case "session:message": {
-      const nextMessages = mergeSessionMessages(state.messages, [envelope.message]);
+      // Remove streaming message before merging (it's replaced by the final message)
+      const baseMessages = state.streamingMessageId
+        ? state.messages.filter((m) => m.id !== state.streamingMessageId)
+        : state.messages;
+      const nextMessages = mergeSessionMessages(baseMessages, [envelope.message]);
       const cursor = envelope.cursor ?? state.cursor;
       return {
         ...state,
