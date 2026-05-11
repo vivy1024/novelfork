@@ -240,14 +240,14 @@ function RuntimeOverviewSection({ summary, fallback }: { readonly summary: Provi
     <section className="space-y-3">
       <div>
         <h3 className="text-base font-semibold">运行态总览</h3>
-        <p className="text-xs text-muted-foreground">按真实供应商、真实模型、平台账号和运行策略观察当前 Agent Runtime。</p>
+        <p className="text-xs text-muted-foreground">当前 AI 供应商、模型和平台账号的运行状态。</p>
       </div>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <ControlCard label="供应商" value={`${data.enabledProviderCount}/${data.providerCount}`} detail={`enabled provider / provider total：${data.enabledProviderCount} / ${data.providerCount}`} />
-        <ControlCard label="可调用模型" value={callableModelCount} detail={`available model / total catalog model：${availableModelCount} / ${totalCatalogModelCount}`} />
-        <ControlCard label="物理模型" value={data.physicalModelCount} detail="provider runtime store physical models" />
+        <ControlCard label="供应商" value={`${data.enabledProviderCount}/${data.providerCount}`} detail={`已启用 ${data.enabledProviderCount} / 共 ${data.providerCount} 个`} />
+        <ControlCard label="可调用模型" value={callableModelCount} detail={`可用 ${availableModelCount} / 共 ${totalCatalogModelCount} 个模型`} />
+        <ControlCard label="物理模型" value={data.physicalModelCount} detail="运行时模型池中的物理模型数" />
         <ControlCard label="平台账号" value={data.platformAccountCount ?? fallback.platformCount} detail={`${data.enabledPlatformAccountCount ?? fallback.enabledPlatformCount} 个平台可用`} />
-        <ControlCard label="异常项" value={data.issueCount} detail="degraded/error provider + inactive account" />
+        <ControlCard label="异常项" value={data.issueCount} detail="异常/降级供应商 + 不活跃账号" />
       </div>
     </section>
   );
@@ -539,7 +539,7 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
       <div>
         <h2 className="text-lg font-semibold">AI 供应商</h2>
         <p className="text-sm text-muted-foreground">
-          {summary.platformCount} 平台集成（{summary.enabledPlatformCount} 可配置） · {summary.providerCount} API key 供应商（{summary.enabledProviderCount} enabled provider） · {summary.modelCount} available model
+          {summary.platformCount} 个平台（{summary.enabledPlatformCount} 可配置） · {summary.providerCount} 个供应商（{summary.enabledProviderCount} 已启用） · {summary.modelCount} 个模型
         </p>
       </div>
 
@@ -578,7 +578,7 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
             隐藏测试夹具
           </label>
         </div>
-        <p className="text-xs text-muted-foreground">当前显示 {filteredProviders.length} / {providers.length} 个 API key 供应商；异常过滤包含 degraded/error、未验证、缺配置和测试夹具。</p>
+        <p className="text-xs text-muted-foreground">当前显示 {filteredProviders.length} / {providers.length} 个供应商；异常过滤包含降级、错误、未验证、缺配置项。</p>
         {fixtureFacts.length > 0 ? <p className="text-xs text-muted-foreground">检测到 {fixtureFacts.length} 个测试夹具开发数据；正式发布验收请使用 clean root，或隐藏/清理这些 E2E Provider。</p> : null}
       </section>
 
