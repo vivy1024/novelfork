@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { fetchJson, putApi } from "../../../hooks/use-api";
+import { useTheme, type Theme } from "../../../hooks/use-theme";
 import { DEFAULT_USER_CONFIG, type UserPreferences } from "../../../types/settings";
 import { Sun, Moon, Monitor, Type } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -27,15 +28,19 @@ export function AppearancePanel() {
   const [preferences, setPreferences] = useState<UserPreferences>(DEFAULT_USER_CONFIG.preferences);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const { setTheme } = useTheme();
 
   useEffect(() => {
     fetchJson<{ preferences: UserPreferences }>("/settings/user")
       .then((data) => {
-        setPreferences({ ...DEFAULT_USER_CONFIG.preferences, ...data.preferences });
+        const merged = { ...DEFAULT_USER_CONFIG.preferences, ...data.preferences };
+        setPreferences(merged);
+        // Apply stored theme on load
+        if (merged.theme) setTheme(merged.theme as Theme);
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  }, []);
+  }, [setTheme]);
 
   const save = async (patch: Partial<UserPreferences>) => {
     setPreferences((prev) => ({ ...prev, ...patch }));
@@ -49,6 +54,7 @@ export function AppearancePanel() {
 
   async function handleThemeChange(newTheme: "light" | "dark" | "auto") {
     setPreferences((prev) => ({ ...prev, theme: newTheme }));
+    setTheme(newTheme); // Apply immediately to DOM
     setSaving(true);
     try {
       await putApi("/settings/theme", { theme: newTheme });
