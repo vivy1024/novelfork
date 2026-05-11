@@ -759,6 +759,12 @@ export function createStorageRouter(ctx: RouterContext): Hono {
 
     // Find existing agent sessions for this book
     const existingSessions = await listSessions({ projectId: bookId, status: "active" });
+    
+    // If already has 5+ sessions, skip (book creation already made them)
+    if (existingSessions.length >= 5) {
+      return c.json({ ok: true, bookId, created: [], existing: existingSessions.length });
+    }
+    
     const existingAgentIds = new Set(existingSessions.map((s) => s.agentId));
 
     // Create missing agent sessions
