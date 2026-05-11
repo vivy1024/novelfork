@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { BookOpen, GitBranch, Wrench, History } from "lucide-react";
+import { BookOpen, GitBranch, Wrench, History, Home } from "lucide-react";
 import { WorkbenchCanvas, type WorkbenchCanvasContext, type CandidateActionHandlers, type JingweiActionHandlers } from "./WorkbenchCanvas";
 import { WorkbenchResourceTree } from "./WorkbenchResourceTree";
 import { WritingToolsPanel } from "./WritingToolsPanel";
@@ -16,6 +16,7 @@ export interface WritingWorkbenchRouteProps {
   nodes: readonly WorkbenchResourceNode[];
   selectedNode: WorkbenchResourceNode | null;
   onOpen: (node: WorkbenchResourceNode) => void;
+  onDeselectNode?: () => void;
   onSave: (node: WorkbenchResourceNode, content: string) => Promise<void> | void;
   onCanvasContextChange?: (context: WorkbenchCanvasContext) => void;
   onCreateChapter?: () => void;
@@ -44,7 +45,7 @@ function routeStatusLabel(nodes: readonly WorkbenchResourceNode[], selectedNode:
   return "当前状态：资源已加载";
 }
 
-export function WritingWorkbenchRoute({ bookId, repositoryPath, nodes, selectedNode, onOpen, onSave, onCanvasContextChange, onCreateChapter, writingActions, onGuideComplete, candidateActions, jingweiActions, chapters, chapterEdges, onChapterSelect }: WritingWorkbenchRouteProps) {
+export function WritingWorkbenchRoute({ bookId, repositoryPath, nodes, selectedNode, onOpen, onDeselectNode, onSave, onCanvasContextChange, onCreateChapter, writingActions, onGuideComplete, candidateActions, jingweiActions, chapters, chapterEdges, onChapterSelect }: WritingWorkbenchRouteProps) {
   const bookTitle = deriveBookTitle(bookId, nodes);
   const statusLabel = routeStatusLabel(nodes, selectedNode);
   const [viewMode, setViewMode] = useState<"tree" | "graph">("tree");
@@ -84,6 +85,13 @@ export function WritingWorkbenchRoute({ bookId, repositoryPath, nodes, selectedN
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {/* 返回总览 */}
+            {selectedNode && onDeselectNode && (
+              <Button size="xs" variant="ghost" onClick={onDeselectNode} title="返回总览/引导">
+                <Home className="size-3 mr-1" />
+                总览
+              </Button>
+            )}
             {/* 视图切换 */}
             <div className="flex gap-0.5 rounded-lg border border-border p-0.5">
               <Button
