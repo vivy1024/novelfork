@@ -866,7 +866,7 @@ async function appendModelContinuationAfterToolDecision(
       messages: compactedMessages,
       systemPrompt: `${agentSystemPrompt}${AGENT_NATIVE_WRITE_NEXT_INSTRUCTIONS}`,
       context: createRuntimeContext(bookContext, canvasContext),
-      tools: getEnabledSessionTools(loaded.session.sessionConfig.permissionMode, loaded.session.agentId),
+      tools: getEnabledSessionTools(loaded.session.sessionConfig.permissionMode, loaded.session.agentId, { disabledTools: loaded.session.sessionConfig.toolPolicy?.deny }),
       permissionMode: loaded.session.sessionConfig.permissionMode,
       ...(canvasContext ? { canvasContext } : {}),
       maxSteps,
@@ -1016,7 +1016,7 @@ export async function getSessionToolState(sessionId: string): Promise<SessionToo
 
   return {
     sessionId,
-    tools: annotateSessionToolsWithPolicy(getEnabledSessionTools(loaded.session.sessionConfig.permissionMode, loaded.session.agentId), loaded.session.sessionConfig.toolPolicy),
+    tools: annotateSessionToolsWithPolicy(getEnabledSessionTools(loaded.session.sessionConfig.permissionMode, loaded.session.agentId, { disabledTools: loaded.session.sessionConfig.toolPolicy?.deny }), loaded.session.sessionConfig.toolPolicy),
     policy: loaded.session.sessionConfig.toolPolicy,
     pendingConfirmations: extractPendingToolConfirmations(sessionId, loaded.state.messages),
   };
@@ -1412,7 +1412,7 @@ export async function handleSessionChatTransportMessage(
   broadcastMessageEnvelope(sessionId, loaded.state, userMessage);
 
   const messagesToPersist: NarratorSessionChatMessage[] = [userMessage];
-  const sessionTools = getEnabledSessionTools(loaded.session.sessionConfig.permissionMode, loaded.session.agentId);
+  const sessionTools = getEnabledSessionTools(loaded.session.sessionConfig.permissionMode, loaded.session.agentId, { disabledTools: loaded.session.sessionConfig.toolPolicy?.deny });
   let canonicalEvents: readonly RuntimeEvent[] = [];
   let failure: NarratorSessionRecoveryMetadata["lastFailure"] | undefined;
   let errorEnvelope: NarratorSessionChatErrorEnvelope | undefined;

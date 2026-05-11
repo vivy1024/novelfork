@@ -462,12 +462,12 @@ export function createStorageRouter(ctx: RouterContext): Hono {
       ];
 
       // Resolve the actual working directory for Agent sessions
-      // For "existing" repos, prefer the repository root (user's actual project dir)
-      // For "new"/"clone", use the worktree path created by bootstrap
+      // 始终使用仓库根目录作为工作目录，让 AI 能访问整个项目
+      // worktree 子目录仅用于子代理隔离场景（由 EnterWorktree 工具管理）
       const sessionWorktree = body.projectInit?.repositorySource === "existing" && body.projectInit?.repositoryPath
         ? body.projectInit.repositoryPath
-        : preparedProjectBootstrap?.bootstrap.worktreePath
-          ?? preparedProjectBootstrap?.bootstrap.repositoryRoot
+        : preparedProjectBootstrap?.bootstrap.repositoryRoot
+          ?? preparedProjectBootstrap?.bootstrap.worktreePath
           ?? undefined;
 
       const createdSessions = await Promise.all(
