@@ -10,6 +10,7 @@
 |------|-----:|------|------|
 | `v0-1-0-release-readiness` | 23 | ⏸️ 暂停（20/23） | 发布前验收 |
 | `v0-1-0-experience-and-pipeline-fix` | 23 | ✅ 全部完成（23/23） | 流式工具调用+对话体验+供应商+工作台重构 |
+| `v0-1-1-real-usability-fixes` | 6 | 📋 新建 | 侧边栏Agent可见+ContextRing+经纬分组+使用历史 |
 | `character-arc-auto-tracking` | 10 | ✅ 实现完成，待浏览器验证 | Hook+规则引擎+LLM可选 |
 | `template-market-v2` | 14 | ✅ 实现完成，待浏览器验证 | 26流派+用户自建+远程市场 |
 | `session-memory-enhancement` | 8 | ✅ 实现完成，待浏览器验证 | fork追溯+Context Ring菜单 |
