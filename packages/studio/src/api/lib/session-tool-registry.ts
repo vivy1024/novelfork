@@ -400,6 +400,18 @@ const AGENT_TOOL_PRESETS: Record<string, { enable: string[]; disable: string[] }
     enable: ["Read", "Write", "Grep", "Glob", "WebSearch"],
     disable: ["Bash", "Terminal"],
   },
+  hooks: {
+    enable: ["Read", "Write", "Grep", "Glob"],
+    disable: ["Bash", "Terminal", "Browser", "ForkNarrator"],
+  },
+  "chapter-hooks": {
+    enable: ["Read", "Grep", "Glob"],
+    disable: ["Write", "Edit", "Bash", "Terminal", "Browser"],
+  },
+  outline: {
+    enable: ["Read", "Write", "Edit", "Grep", "Glob"],
+    disable: ["Bash", "Terminal", "Browser", "ForkNarrator"],
+  },
 };
 
 export function getEnabledSessionTools(permissionMode: SessionPermissionMode, agentId?: string): SessionToolDefinition[] {
