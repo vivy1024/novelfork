@@ -10,6 +10,28 @@
 
 ---
 
+## v0.1.2 (2026-05-11)
+
+### 修复
+
+- fix: `chapter.read` 工具真正读取章节正文内容（之前只返回书籍状态）
+- fix: `jingwei.read_context` 工具真正读取经纬目录文件（之前返回空数据）
+- fix: Planner/Architect/Explorer Agent 提示词对齐实际工具名（消除 unknown-tool 错误）
+- fix: Read/Write/Edit 工具添加路径边界验证（防止 Agent 读写工作目录外的文件）
+- fix: SearchPage 搜索结果可点击导航到对应书籍
+- fix: "继续"按钮接入 onContinue 回调（之前点击无效果）
+- fix: FirstRunDialog "创建第一本书"正确导航到首页
+- fix: Stub 工具返回 `ok:false` + "未实现"错误（之前返回假成功误导 Agent）
+- fix: 新建 Git 仓库必须选择目录路径（之前会在 studioRoot 下 git init）
+- fix: "新建 Git 仓库"和"已有仓库"都显示路径输入框 + 文件夹选择器
+- fix: 新增 PowerShell 系统文件夹选择器（桌面模式原生目录选择对话框）
+- fix: 工作台顶部栏显示绑定的仓库路径
+- fix: 创建书籍后清除引导向导 localStorage 标记（确保新书显示 11 步引导）
+- fix: ensure-agents 防止重复创建（已有 5+ session 时跳过）
+- fix: 经纬资源树分组节点显示文件夹图标（FolderOpen）
+
+---
+
 ## v0.1.1 (2026-05-11)
 
 ### 修复
