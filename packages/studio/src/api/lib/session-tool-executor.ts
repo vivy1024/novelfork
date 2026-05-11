@@ -441,6 +441,111 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
         const workDir = options.workDir ?? process.cwd();
         return executeFileEditTool({ path: String(input.path), oldText: String(input.oldText), newText: String(input.newText), workDir });
       };
+    // --- Glob/Grep (real handlers) ---
+    case "Glob":
+      return async ({ input, definition }) => {
+        const workDir = options.workDir ?? process.cwd();
+        const pattern = String(input.pattern);
+        const searchPath = typeof input.path === "string" ? input.path : ".";
+        try {
+          const { glob } = await import("glob");
+          const cwd = searchPath === "." ? workDir : (await import("node:path")).resolve(workDir, searchPath);
+          const matches = await glob(pattern, { cwd, nodir: false });
+          return { ok: true, renderer: definition.renderer, summary: `匹配到 ${matches.length} 个文件。`, data: { matches, pattern, cwd } };
+        } catch (error) {
+          return { ok: false, renderer: definition.renderer, error: "glob-failed", summary: `Glob 执行失败：${error instanceof Error ? error.message : String(error)}` };
+        }
+      };
+    case "Grep":
+      return async ({ input, definition }) => {
+        const workDir = options.workDir ?? process.cwd();
+        const pattern = String(input.pattern);
+        const searchPath = typeof input.path === "string" ? input.path : ".";
+        const fileGlob = typeof input.glob === "string" ? input.glob : undefined;
+        const outputMode = typeof input.output_mode === "string" ? input.output_mode : "files_with_matches";
+        try {
+          const { execFile } = await import("node:child_process");
+          const { promisify } = await import("node:util");
+          const execFileAsync = promisify(execFile);
+          const cwd = searchPath === "." ? workDir : (await import("node:path")).resolve(workDir, searchPath);
+          const args = ["--no-heading", "--color=never"];
+          if (outputMode === "files_with_matches") args.push("-l");
+          else if (outputMode === "count") args.push("-c");
+          if (fileGlob) args.push("--glob", fileGlob);
+          args.push(pattern);
+          const { stdout } = await execFileAsync("rg", args, { cwd, maxBuffer: 1024 * 1024 }).catch(() => ({ stdout: "" }));
+          const lines = stdout.trim().split("\n").filter(Boolean);
+          return { ok: true, renderer: definition.renderer, summary: `搜索完成，${lines.length} 条结果。`, data: { results: lines.slice(0, 200), pattern, outputMode, totalResults: lines.length } };
+        } catch (error) {
+          return { ok: false, renderer: definition.renderer, error: "grep-failed", summary: `Grep 执行失败：${error instanceof Error ? error.message : String(error)}` };
+        }
+      };
+    // --- EnterWorktree / ExitWorktree (real handlers using git) ---
+    case "EnterWorktree":
+      return async ({ input, definition }) => {
+        const workDir = options.workDir ?? process.cwd();
+        const name = typeof input.name === "string" ? input.name : undefined;
+        const path = typeof input.path === "string" ? input.path : undefined;
+        const branch = typeof input.branch === "string" ? input.branch : undefined;
+        try {
+          const { execFile } = await import("node:child_process");
+          const { promisify } = await import("node:util");
+          const { resolve, join } = await import("node:path");
+          const execFileAsync = promisify(execFile);
+          if (path) {
+            // Enter existing worktree
+            return { ok: true, renderer: definition.renderer, summary: `已进入 worktree: ${path}`, data: { worktreePath: resolve(workDir, path) } };
+          }
+          if (name) {
+            const worktreePath = join(workDir, ".worktrees", name);
+            const branchArgs = branch ? ["-b", name, branch] : ["-b", name];
+            await execFileAsync("git", ["worktree", "add", worktreePath, ...branchArgs], { cwd: workDir });
+            return { ok: true, renderer: definition.renderer, summary: `已创建并进入 worktree: ${name}`, data: { worktreePath, name, branch } };
+          }
+          return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "必须提供 name 或 path 参数。" };
+        } catch (error) {
+          return { ok: false, renderer: definition.renderer, error: "worktree-failed", summary: `Worktree 操作失败：${error instanceof Error ? error.message : String(error)}` };
+        }
+      };
+    case "ExitWorktree":
+      return async ({ input, definition }) => {
+        const action = String(input.action);
+        if (action === "keep") {
+          return { ok: true, renderer: definition.renderer, summary: "已退出 worktree（保留）。", data: { action } };
+        }
+        if (action === "remove") {
+          return { ok: true, renderer: definition.renderer, summary: "已退出 worktree（标记删除）。", data: { action, note: "实际删除需要在主仓库执行 git worktree remove。" } };
+        }
+        return { ok: false, renderer: definition.renderer, error: "invalid-action", summary: `无效的 action: ${action}，应为 keep 或 remove。` };
+      };
+    // --- Stub handlers for Phase 2-5 tools ---
+    case "AskUserQuestion":
+    case "EnterPlanMode":
+    case "ExitPlanMode":
+    case "TaskCreate":
+    case "WebSearch":
+    case "WebFetch":
+    case "Browser":
+    case "Agent":
+    case "Await":
+    case "Send":
+    case "ForkNarrator":
+    case "Terminal":
+    case "ShareFile":
+    case "Recall":
+    case "StartPipeline":
+    case "EndPipeline":
+    case "LearningGuide":
+    case "Skill":
+    case "GetGoals":
+    case "AddGoal":
+    case "UpdateGoal":
+      return async ({ definition }) => ({
+        ok: true,
+        renderer: definition.renderer,
+        summary: `工具 ${definition.name} 已注册。完整实现将在后续版本接入。`,
+        data: { status: "stub", toolName: definition.name },
+      });
     default:
       return undefined;
   }

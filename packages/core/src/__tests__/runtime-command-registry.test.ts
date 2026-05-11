@@ -17,30 +17,19 @@ const REQUIRED_SLASH_COMMANDS = [
   "/compact",
   "/resume",
   "/fork",
-  "/novel:init",
-  "/novel:outline",
-  "/novel:write-next",
-  "/novel:audit",
-  "/novel:revise",
-  "/novel:de-ai",
-  "/novel:style-transfer",
-  "/novel:publish-check",
-  "/novel:health",
-  "/novel:storyline",
 ];
 
 describe("runtime command registry", () => {
-  it("defines the canonical Claude/Codex and novel slash command set", () => {
+  it("defines the canonical Claude/Codex slash command set", () => {
     const commands = listRuntimeCommands();
     const ids = commands.map((command) => command.id);
 
     expect(ids).toEqual(expect.arrayContaining(REQUIRED_SLASH_COMMANDS));
-    expect(commands.find((command) => command.id === "/novel:write-next")).toMatchObject({
-      source: "novel-agent-pack",
-      status: "partial",
-      scope: "novel",
-      runtimeHandler: "novel.writeNext",
-      toolDependencies: expect.arrayContaining(["cockpit.get_snapshot", "candidate.create_chapter"]),
+    expect(commands.find((command) => command.id === "/help")).toMatchObject({
+      source: "builtin",
+      status: "current",
+      scope: "session",
+      runtimeHandler: "command.help",
     });
   });
 
@@ -50,12 +39,12 @@ describe("runtime command registry", () => {
       expect(command.aliases).toEqual(expect.any(Array));
       expect(command.usage).toContain(command.id);
       expect(command.description.length).toBeGreaterThan(0);
-      expect(command.scope).toMatch(/^(session|runtime|tooling|extension|novel)$/);
+      expect(command.scope).toMatch(/^(session|runtime|tooling|extension)$/);
       expect(command.inputSchema).toEqual(expect.objectContaining({ type: "object" }));
       expect(command.permissionImpact).toEqual(expect.objectContaining({ mode: expect.any(String) }));
       expect(command.runtimeHandler).toEqual(expect.any(String));
       expect(command.status).toMatch(/^(current|partial|planned|unsupported|reference-only)$/);
-      expect(command.source).toMatch(/^(builtin|claude-adapter|codex-adapter|novel-agent-pack)$/);
+      expect(command.source).toMatch(/^(builtin|claude-adapter|codex-adapter)$/);
     }
   });
 
@@ -66,7 +55,6 @@ describe("runtime command registry", () => {
     const help = formatRuntimeCommandHelp();
     expect(help).toContain("/help");
     expect(help).toContain("/tools");
-    expect(help).toContain("/novel:write-next");
     expect(help).toContain("planned");
   });
 });

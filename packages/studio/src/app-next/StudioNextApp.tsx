@@ -33,7 +33,7 @@ import { SettingsSectionContent } from "./settings/SettingsSectionContent";
 import { AgentShell, toShellPath, parseShellRoute, useShellData, useShellDataStore, type ShellBookItem, type ShellRoute, type ShellSessionItem, type ShellDataProviderSummary, type ShellDataProviderStatus } from "./shell";
 import { FirstRunDialog } from "../components/onboarding/FirstRunDialog";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { setPendingAction, consumePendingAction } from "./pending-action-store";
+
 import {
   applyResourceDetailToNode,
   loadResourceDetailState,
@@ -594,38 +594,6 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
     };
   }, [runtime.state.lastSeq, runtime.state.session, sessionClient, sessionId]);
 
-  // FR-3: Auto-send pending writing action command
-  const pendingActionSentRef = useRef(false);
-  useEffect(() => {
-    if (pendingActionSentRef.current) return;
-    if (!runtime.state.session) return;
-
-    const pending = consumePendingAction(sessionId);
-    if (!pending) return;
-
-    pendingActionSentRef.current = true;
-
-    // 直接调用后端 API 而不是发送 slash command（slash command 在前端 Composer 解析，WebSocket 不识别）
-    const bookId = runtime.state.session.projectId;
-    if (bookId) {
-      const NOVEL_API_MAP: Record<string, string> = {
-        "/novel:write-next": `/api/books/${encodeURIComponent(bookId)}/write-next`,
-        "/novel:draft": `/api/books/${encodeURIComponent(bookId)}/draft`,
-        "/novel:audit": `/api/books/${encodeURIComponent(bookId)}/audit`,
-        "/novel:detect": `/api/books/${encodeURIComponent(bookId)}/filter/scan-all`,
-        "/novel:hooks": `/api/books/${encodeURIComponent(bookId)}/hooks/generate`,
-      };
-      const endpoint = NOVEL_API_MAP[pending.command];
-      if (endpoint) {
-        void fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
-        // 同时发送一条用户消息让对话里有记录
-        runtime.sendMessage(`正在执行：${pending.command}`);
-      }
-    } else {
-      // 没有 bookId，作为普通消息发送
-      runtime.sendMessage(pending.command);
-    }
-  }, [runtime.state.session, sessionId, runtime]);
 
   // Auto-compact: trigger when context usage exceeds threshold
   const autoCompactTriggeredRef = useRef(false);
@@ -1116,7 +1084,7 @@ function WritingWorkbenchRouteLive({ bookId, onCanvasContextChange, onNavigateTo
         onSave={handleSave}
         onCanvasContextChange={handleCanvasContextChange}
         onGuideComplete={reloadResources}
-        writingActions={<WorkbenchWritingActions bookId={bookId} bookTitle={resources.tree.find(n => n.kind === "book")?.title} sessions={sessionClient} blockedReason={localCanvasContext?.dirty ? "当前画布有未保存内容，请先保存或放弃后再启动写作动作。" : undefined} onNavigateToConversation={(sessionId, action) => { setPendingAction(sessionId, action.id); onNavigateToConversation(sessionId); }} />}
+        writingActions={<WorkbenchWritingActions bookId={bookId} bookTitle={resources.tree.find(n => n.kind === "book")?.title} sessions={sessionClient} blockedReason={localCanvasContext?.dirty ? "当前画布有未保存内容，请先保存或放弃后再启动写作动作。" : undefined} onNavigateToConversation={(sessionId) => { onNavigateToConversation(sessionId); }} />}
       />
     </>
   );
