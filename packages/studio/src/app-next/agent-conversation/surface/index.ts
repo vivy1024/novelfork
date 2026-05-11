@@ -5,5 +5,6 @@ export * from "./ConversationSurface";
 export * from "./MessageItem";
 export * from "./MessageStream";
 export * from "./NarratorStatusBar";
+export * from "./SessionDetailPanel";
 export * from "./ToolCallCard";
 export * from "./UserQuestionGate";

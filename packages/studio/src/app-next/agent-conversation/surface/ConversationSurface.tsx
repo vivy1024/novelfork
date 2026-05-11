@@ -10,6 +10,7 @@ import { UserQuestionGate } from "./UserQuestionGate";
 import type { ConversationSessionConfigPatch, ConversationStatus } from "./ConversationStatusBar";
 import { MessageStream, type ConversationSurfaceMessage } from "./MessageStream";
 import { NarratorStatusBar } from "./NarratorStatusBar";
+import { SessionDetailPanel, type SessionDetailData } from "./SessionDetailPanel";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
@@ -61,6 +62,10 @@ export interface ConversationSurfaceProps {
   isPinned?: boolean;
   /** /fork 命令回调 */
   onForkSession?: (title?: string) => void;
+  /** 会话详情数据 */
+  sessionDetail?: SessionDetailData;
+  /** 更新工作目录 */
+  onUpdateWorkDir?: (path: string) => Promise<void> | void;
 }
 
 export function ConversationSurface({
@@ -93,6 +98,8 @@ export function ConversationSurface({
   onPin,
   isPinned = false,
   onForkSession,
+  sessionDetail,
+  onUpdateWorkDir,
 }: ConversationSurfaceProps) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -304,24 +311,21 @@ export function ConversationSurface({
             >
               <Info className="size-4" />
             </SheetTrigger>
-            <SheetContent>
+            <SheetContent className="overflow-y-auto">
               <SheetHeader>
-                <SheetTitle>会话信息</SheetTitle>
-                <SheetDescription>当前会话的详细信息</SheetDescription>
+                <SheetTitle>会话详情</SheetTitle>
+                <SheetDescription>当前会话的完整信息与配置</SheetDescription>
               </SheetHeader>
-              <div className="flex-1 overflow-y-auto px-4 space-y-3">
-                <InfoRow label="标题" value={title} />
-                {sessionId && <InfoRow label="会话 ID" value={sessionId} mono />}
-                <InfoRow label="状态" value={status.narratorState ?? status.state ?? "未知"} />
-                {status.parentSessionId && <InfoRow label="分叉自" value={status.parentSessionId} mono />}
-                {status.modelLabel && <InfoRow label="模型" value={status.modelLabel} />}
-                {status.modelId && !status.modelLabel && <InfoRow label="模型 ID" value={status.modelId} mono />}
-                {status.permissionMode && <InfoRow label="权限模式" value={status.permissionMode} />}
-                {status.reasoningEffort && <InfoRow label="推理强度" value={status.reasoningEffort} />}
-                <InfoRow label="消息数" value={String(messages.length)} />
-                {status.contextUsage && status.contextUsage.maxTokens && (
-                  <InfoRow label="上下文" value={`${status.contextUsage.usedTokens} / ${status.contextUsage.maxTokens} (${Math.round((status.contextUsage.usedTokens / status.contextUsage.maxTokens) * 100)}%)`} />
-                )}
+              <div className="px-4 pb-4">
+                <SessionDetailPanel
+                  status={status}
+                  messages={messages}
+                  detail={sessionDetail ?? {
+                    sessionId: sessionId ?? "",
+                    workDir: status.workspace?.path,
+                  }}
+                  onUpdateWorkDir={onUpdateWorkDir}
+                />
               </div>
             </SheetContent>
           </Sheet>
@@ -482,19 +486,6 @@ export function ConversationSurface({
 }
 
 export type { ConversationSurfaceMessage };
-
-// ---------------------------------------------------------------------------
-// InfoRow — 会话信息面板的键值行
-// ---------------------------------------------------------------------------
-
-function InfoRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
-  return (
-    <div className="flex items-start justify-between gap-3 py-1.5 border-b border-border/50 last:border-0">
-      <span className="text-xs text-muted-foreground shrink-0">{label}</span>
-      <span className={`text-xs text-right break-all ${mono ? "font-mono" : ""}`}>{value}</span>
-    </div>
-  );
-}
 
 // ---------------------------------------------------------------------------
 // isUserQuestionToolName — 判断是否为问题类型的 permission
