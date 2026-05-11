@@ -715,7 +715,8 @@ class AnthropicCompatibleAdapter implements RuntimeAdapter {
     }
 
     const startedAt = Date.now();
-    const url = `${trimTrailingSlash(input.baseUrl!)}/v1/messages`;
+    const base = trimTrailingSlash(input.baseUrl!);
+    const url = base.endsWith("/v1") ? `${base}/messages` : `${base}/v1/messages`;
     try {
       const response = await fetch(url, {
         method: "POST",
@@ -748,7 +749,8 @@ class AnthropicCompatibleAdapter implements RuntimeAdapter {
     }
 
     const useStreaming = Boolean(input.onStreamChunk);
-    const url = `${trimTrailingSlash(input.baseUrl!)}/v1/messages`;
+    const base = trimTrailingSlash(input.baseUrl!);
+    const url = base.endsWith("/v1") ? `${base}/messages` : `${base}/v1/messages`;
 
     const body: Record<string, unknown> = {
       model: input.modelId,

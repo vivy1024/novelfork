@@ -350,7 +350,7 @@ export function ConversationSurface({
       )}
 
       {/* ── Recovery notice ── */}
-      {recoveryNotice && recoveryNotice.state !== "idle" && recoveryNotice.state !== "reconnecting" && (
+      {recoveryNotice && recoveryNotice.state !== "idle" && recoveryNotice.state !== "reconnecting" && messages.length > 0 && (
         <div className="shrink-0 border-b border-border bg-yellow-50 px-4 py-2 text-xs text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-200">
           {recoveryNotice.state === "failed" ? "会话恢复失败" : "正在恢复会话..."} {recoveryNotice.reason && `— ${recoveryNotice.reason}`}
         </div>
