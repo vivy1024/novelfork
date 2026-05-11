@@ -144,9 +144,37 @@ export function ShellSidebar({ route, books, sessions, onNavigate, onDeleteBook,
               </Tooltip>
             )}
             {bookItems.length > 0
-              ? bookItems.map((item) => (
-                <NavButton key={item.id} label={item.label} active={isShellNavItemActive(item, route)} onClick={() => onNavigate(item.route)} collapsed={collapsed} />
-              ))
+              ? bookItems.map((item) => {
+                const isActive = isShellNavItemActive(item, route);
+                const bookId = item.route.bookId;
+                // Show bound Agent sessions when book is active
+                const bookAgents = isActive
+                  ? sessions.filter((s) => s.projectId === bookId && s.status === "active")
+                  : [];
+                return (
+                  <div key={item.id}>
+                    <NavButton label={item.label} active={isActive} onClick={() => onNavigate(item.route)} collapsed={collapsed} />
+                    {!collapsed && bookAgents.length > 0 && (
+                      <div className="ml-3 space-y-0.5 border-l border-border pl-2">
+                        {bookAgents.map((agent) => (
+                          <button
+                            key={agent.id}
+                            type="button"
+                            className={`w-full truncate rounded px-2 py-0.5 text-left text-[11px] ${
+                              route.kind === "narrator" && route.sessionId === agent.id
+                                ? "bg-primary/10 text-primary font-medium"
+                                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                            }`}
+                            onClick={() => onNavigate({ kind: "narrator", sessionId: agent.id })}
+                          >
+                            {agent.title}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
               : !collapsed && <p className="px-2 py-1 text-xs text-muted-foreground">暂无书籍</p>
             }
             {!collapsed && (
