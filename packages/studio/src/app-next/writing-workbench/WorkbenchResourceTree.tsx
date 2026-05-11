@@ -2,7 +2,7 @@ import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ChevronRight, ChevronDown, FileText, BookOpen, Scroll, Globe, Sparkles, Layers, PenLine, BookMarked, Route } from "lucide-react";
+import { ChevronRight, ChevronDown, FileText, BookOpen, Scroll, Globe, Sparkles, Layers, PenLine, BookMarked, Route, FolderOpen } from "lucide-react";
 import type { WorkbenchResourceNode, WorkbenchResourceKind } from "./useWorkbenchResources";
 
 export interface WorkbenchResourceTreeProps {
@@ -15,6 +15,8 @@ function NodeIcon({ kind }: { kind: WorkbenchResourceKind }) {
   switch (kind) {
     case "book":
       return <BookOpen className="size-4 text-primary" />;
+    case "group":
+      return <FolderOpen className="size-4 text-muted-foreground" />;
     case "chapter":
       return <FileText className="size-4 text-blue-500" />;
     case "jingwei":
