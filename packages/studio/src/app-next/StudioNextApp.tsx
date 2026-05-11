@@ -259,7 +259,7 @@ function HomeRouteLive({ books, sessions, providerSummary, providerStatus, loadi
               </div>
               {newBookRepoSource === "existing" && (
                 <div className="flex gap-1.5">
-                  <Input value={newBookRepoPath} onChange={(e) => setNewBookRepoPath(e.target.value)} placeholder="本地仓库路径，如 D:\novels\my-book" className="flex-1 text-xs" />
+                  <Input value={newBookRepoPath} onChange={(e) => setNewBookRepoPath(e.target.value)} placeholder="输入绝对路径，如 D:\novels\my-book" className="flex-1 text-xs" />
                   <Button
                     type="button"
                     variant="outline"
@@ -267,8 +267,16 @@ function HomeRouteLive({ books, sessions, providerSummary, providerStatus, loadi
                     title="选择文件夹"
                     onClick={async () => {
                       try {
+                        // Try backend directory picker first (works in desktop mode)
+                        const res = await fetch("/api/system/browse-directory", { method: "POST" });
+                        if (res.ok) {
+                          const data = await res.json() as { path?: string };
+                          if (data.path) { setNewBookRepoPath(data.path); return; }
+                        }
+                        // Fallback: browser showDirectoryPicker (limited — only gets folder name)
                         if ("showDirectoryPicker" in window) {
                           const handle = await (window as unknown as { showDirectoryPicker: () => Promise<{ name: string }> }).showDirectoryPicker();
+                          // Note: browser API only returns folder name, not full path
                           setNewBookRepoPath(handle.name);
                         }
                       } catch { /* user cancelled */ }
