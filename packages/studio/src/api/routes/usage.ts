@@ -1,8 +1,10 @@
 import { Hono } from "hono";
 import { listSessions } from "../lib/session-service.js";
+import { ProviderRuntimeStore } from "../lib/provider-runtime-store.js";
 
 interface UsageEntry {
   providerId: string;
+  providerName: string;
   modelId: string;
   inputTokens: number;
   outputTokens: number;
@@ -17,6 +19,16 @@ export function createUsageRouter() {
 
   app.get("/summary", async (c) => {
     const sessions = await listSessions();
+
+    // Build provider name map
+    const providerNameMap = new Map<string, string>();
+    try {
+      const store = new ProviderRuntimeStore();
+      const providers = await store.listProviders();
+      for (const p of providers) {
+        providerNameMap.set(p.id, p.name || p.id);
+      }
+    } catch { /* non-critical */ }
 
     const buckets = new Map<string, UsageEntry>();
     let totalInputTokens = 0;
@@ -43,6 +55,7 @@ export function createUsageRouter() {
       } else {
         buckets.set(key, {
           providerId,
+          providerName: providerNameMap.get(providerId) || providerId,
           modelId,
           inputTokens: usage.totalInputTokens,
           outputTokens: usage.totalOutputTokens,

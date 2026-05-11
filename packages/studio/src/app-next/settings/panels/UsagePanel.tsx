@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 
 interface UsageEntry {
   providerId: string;
+  providerName?: string;
   modelId: string;
   inputTokens: number;
   outputTokens: number;
@@ -42,7 +43,7 @@ export function UsagePanel() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold mb-2 text-foreground">用量监控</h2>
+          <h2 className="text-lg font-semibold mb-2 text-foreground">使用历史</h2>
           <p className="text-sm text-muted-foreground">
             按提供商和模型分组的 Token 使用统计，数据来自所有会话的累计用量。
           </p>
@@ -99,7 +100,7 @@ export function UsagePanel() {
                 <tbody>
                   {data.entries.map((entry) => (
                     <tr key={`${entry.providerId}::${entry.modelId}`} className="border-b border-border last:border-0 hover:bg-muted/30">
-                      <td className="px-4 py-2 text-foreground">{entry.providerId || "—"}</td>
+                      <td className="px-4 py-2 text-foreground">{entry.providerName || entry.providerId || "—"}</td>
                       <td className="px-4 py-2 font-mono text-foreground">{entry.modelId || "—"}</td>
                       <td className="px-4 py-2 text-right font-mono text-foreground">{formatTokenCount(entry.inputTokens)}</td>
                       <td className="px-4 py-2 text-right font-mono text-foreground">{formatTokenCount(entry.outputTokens)}</td>
