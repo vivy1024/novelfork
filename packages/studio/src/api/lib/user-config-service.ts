@@ -13,6 +13,7 @@ import type {
   UserConfig,
   UserConfigPatch,
   WorkspaceSettings,
+  WritingSettings,
 } from "../../types/settings.js";
 import { DEFAULT_USER_CONFIG } from "../../types/settings.js";
 import { normalizeCodexSandboxMode } from "../../shared/codex-runtime-status.js";
@@ -267,6 +268,31 @@ function sanitizeWorkspace(workspace?: Partial<WorkspaceSettings> | null): Works
   };
 }
 
+function sanitizeWriting(writing?: Partial<WritingSettings> | null): WritingSettings {
+  const defaults = DEFAULT_USER_CONFIG.writing;
+  const tone = writing?.defaultTone;
+  const sl = writing?.sentenceLength;
+  const pov = writing?.defaultPov;
+  const bd = writing?.beatDensity;
+  const cr = writing?.contentRating;
+  return {
+    defaultTone: tone === "concise" || tone === "ornate" || tone === "colloquial" || tone === "literary" ? tone : defaults.defaultTone,
+    antiAiStrength: clampNumber(writing?.antiAiStrength, defaults.antiAiStrength, 0, 100),
+    sentenceLength: sl === "short" || sl === "medium" || sl === "long" ? sl : defaults.sentenceLength,
+    dialogueRatio: clampNumber(writing?.dialogueRatio, defaults.dialogueRatio, 0, 100),
+    defaultPov: pov === "first" || pov === "third-limited" || pov === "third-omniscient" || pov === "second" ? pov : defaults.defaultPov,
+    dailyWordTarget: clampNumber(writing?.dailyWordTarget, defaults.dailyWordTarget, 0, 100000),
+    chapterMinWords: clampNumber(writing?.chapterMinWords, defaults.chapterMinWords, 0, 100000),
+    chapterMaxWords: clampNumber(writing?.chapterMaxWords, defaults.chapterMaxWords, 0, 500000),
+    reminderEnabled: typeof writing?.reminderEnabled === "boolean" ? writing.reminderEnabled : defaults.reminderEnabled,
+    reminderTime: typeof writing?.reminderTime === "string" && /^\d{2}:\d{2}$/.test(writing.reminderTime) ? writing.reminderTime : defaults.reminderTime,
+    beatDensity: bd === "compact" || bd === "standard" || bd === "relaxed" ? bd : defaults.beatDensity,
+    targetPlatforms: sanitizeStringList(writing?.targetPlatforms, defaults.targetPlatforms),
+    contentRating: cr === "all-ages" || cr === "teen" || cr === "adult" ? cr : defaults.contentRating,
+    customSensitiveWords: typeof writing?.customSensitiveWords === "string" ? writing.customSensitiveWords : defaults.customSensitiveWords,
+  };
+}
+
 /**
  * 加载用户配置
  */
@@ -298,6 +324,7 @@ export async function loadUserConfig(): Promise<UserConfig> {
       onboarding: sanitizeOnboarding(config.onboarding),
       proxy: sanitizeProxy(config.proxy),
       workspace: sanitizeWorkspace(config.workspace),
+      writing: sanitizeWriting(config.writing),
     };
   } catch (error) {
     console.error("Failed to load user config, using default:", error);
@@ -379,6 +406,10 @@ export async function updateUserConfig(partial: UserConfigPatch): Promise<UserCo
     workspace: sanitizeWorkspace({
       ...current.workspace,
       ...(partial.workspace ?? {}),
+    }),
+    writing: sanitizeWriting({
+      ...current.writing,
+      ...(partial.writing ?? {}),
     }),
   };
   await saveUserConfig(updated);

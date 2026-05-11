@@ -56,6 +56,7 @@ const SETTINGS_SECTIONS: readonly SettingsSectionItem[] = [
   { id: "profile", label: "个人资料", group: "个人设置" },
   { id: "models", label: "模型", group: "个人设置" },
   { id: "agents", label: "AI 代理", group: "个人设置" },
+  { id: "writing", label: "写作", group: "个人设置" },
   { id: "notifications", label: "通知", group: "个人设置" },
   { id: "appearance", label: "外观与界面", group: "个人设置" },
   { id: "providers", label: "AI 供应商", group: "实例管理" },
