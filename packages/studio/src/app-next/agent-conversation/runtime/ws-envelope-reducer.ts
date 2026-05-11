@@ -17,6 +17,8 @@ export interface AgentConversationRuntimeState {
   error: { message: string; code?: string; runtime?: unknown } | null;
   recovery: { state: string; reason?: string };
   resetRequired: boolean;
+  /** Set to true when user sends a message, cleared on first server response */
+  waitingForResponse: boolean;
 }
 
 export type SessionServerEnvelope =
@@ -24,7 +26,8 @@ export type SessionServerEnvelope =
   | { type: "session:state"; session: NarratorSessionRecord; cursor?: NarratorSessionChatCursor; recovery?: AgentConversationRuntimeState["recovery"] }
   | { type: "session:message"; sessionId: string; message: NarratorSessionChatMessage; cursor?: NarratorSessionChatCursor }
   | { type: "session:stream"; sessionId: string; content: string; timestamp?: number }
-  | { type: "session:error"; sessionId?: string; error: string; code?: string; runtime?: unknown };
+  | { type: "session:error"; sessionId?: string; error: string; code?: string; runtime?: unknown }
+  | { type: "client:message-sent" };
 
 export function createInitialAgentConversationRuntimeState(): AgentConversationRuntimeState {
   return {
@@ -36,6 +39,7 @@ export function createInitialAgentConversationRuntimeState(): AgentConversationR
     error: null,
     recovery: { state: "idle" },
     resetRequired: false,
+    waitingForResponse: false,
   };
 }
 
@@ -83,6 +87,7 @@ export function reduceSessionEnvelope(
         cursor,
         lastSeq: lastSeqFrom(cursor, nextMessages, state.lastSeq),
         streamingMessageId: null,
+        waitingForResponse: false,
       };
     }
     case "session:stream": {
@@ -91,6 +96,7 @@ export function reduceSessionEnvelope(
         ...state,
         messages: streamed.messages,
         streamingMessageId: streamed.streamingMessageId,
+        waitingForResponse: false,
       };
     }
     case "session:error":
@@ -98,6 +104,12 @@ export function reduceSessionEnvelope(
         ...state,
         error: { message: envelope.error, code: envelope.code, runtime: envelope.runtime },
         recovery: { state: "failed", reason: "websocket-error" },
+        waitingForResponse: false,
+      };
+    case "client:message-sent":
+      return {
+        ...state,
+        waitingForResponse: true,
       };
   }
 }
