@@ -60,10 +60,11 @@ function adapterIdForProvider(provider: RuntimeProviderRecord): RuntimeAdapterId
 }
 
 function providerRef(provider: RuntimeProviderRecord) {
+  const baseUrl = provider.baseUrl || (provider.config as Record<string, unknown> | undefined)?.baseUrl as string | undefined;
   return {
     providerId: provider.id,
     providerName: provider.name,
-    ...(provider.baseUrl ? { baseUrl: provider.baseUrl } : {}),
+    ...(baseUrl ? { baseUrl } : {}),
     ...(provider.config?.apiKey ? { apiKey: provider.config.apiKey } : {}),
   };
 }
