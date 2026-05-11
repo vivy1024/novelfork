@@ -9,7 +9,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { Zap } from "lucide-react";
+import { Loader2, Zap } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import type { NarratorState, NarratorSubstatus, ConversationStatus, ConversationModelOption } from "./ConversationStatusBar";
 import type { SessionPermissionMode, SessionReasoningEffort } from "@/shared/session-types";
@@ -159,21 +159,46 @@ export function NarratorStatusBar({ status, streamingStartedAt, onUpdateModel, o
   // 条件显示：Fast Mode 仅 Codex 显示
   const showFastMode = status.apiMode === "codex";
 
+  const isWaiting = narratorState === "waiting";
+
   return (
     <TooltipProvider>
-      <div className="flex shrink-0 items-center justify-between border-t border-border px-4 py-1.5">
-        {/* Left: status dot + label + timer */}
+      <div className="relative flex shrink-0 items-center justify-between border-t border-border/50 px-4 py-1">
+        {/* Progress bar — 工作中/等待中时显示底部进度线 */}
+        {(isWorking || isWaiting) && (
+          <div className="absolute inset-x-0 bottom-0 h-[2px] overflow-hidden">
+            <div
+              className={`h-full w-1/3 rounded-full ${isWaiting ? "bg-yellow-500/60" : "bg-blue-500/60"}`}
+              style={{ animation: "shimmer 1.5s ease-in-out infinite" }}
+            />
+            <style>{`@keyframes shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(400%); } }`}</style>
+          </div>
+        )}
+
+        {/* Left: status icon + label + timer */}
         <div className="flex items-center gap-1.5">
-          <div className={`size-2 shrink-0 rounded-full ${dotColor}`} />
-          <span className="text-xs text-muted-foreground">{stateLabel}</span>
-          {isWorking && streamingStartedAt && elapsed > 0 && (
-            <span className="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400">
-              <span className="inline-block size-1.5 animate-pulse rounded-full bg-blue-500" />
+          {isWorking ? (
+            <Loader2 className="size-3.5 animate-spin text-blue-500 shrink-0" />
+          ) : isWaiting ? (
+            <Loader2 className="size-3.5 animate-spin text-yellow-500 shrink-0" />
+          ) : (
+            <div className={`size-2 shrink-0 rounded-full ${dotColor}`} />
+          )}
+          {isWorking && streamingStartedAt && elapsed > 0 ? (
+            <span className="text-xs font-medium text-blue-600 dark:text-blue-400">
               思考中 {formatDuration(elapsed)}
             </span>
-          )}
-          {!isWorking && status.lastTurnDurationMs != null && (
-            <span className="text-xs text-muted-foreground">· 上轮耗时 {formatDuration(status.lastTurnDurationMs)}</span>
+          ) : isWaiting ? (
+            <span className="text-xs font-medium text-yellow-600 dark:text-yellow-400">
+              等待中{streamingStartedAt && elapsed > 0 ? ` ${formatDuration(elapsed)}` : ""}
+            </span>
+          ) : (
+            <>
+              <span className="text-xs text-muted-foreground">{stateLabel}</span>
+              {!isWorking && status.lastTurnDurationMs != null && (
+                <span className="text-xs text-muted-foreground">· 上轮耗时 {formatDuration(status.lastTurnDurationMs)}</span>
+              )}
+            </>
           )}
         </div>
 
@@ -240,7 +265,7 @@ export function NarratorStatusBar({ status, streamingStartedAt, onUpdateModel, o
           {/* Permission mode dropdown — 显示完整文字 */}
           <DropdownMenu>
             <DropdownMenuTrigger
-              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+              className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-foreground hover:bg-muted transition-colors"
               title={`权限：${permissionFullLabel}`}
             >
               <span className="text-[10px]">◇</span>
@@ -304,7 +329,7 @@ function ModelDropdown({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+        className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-foreground hover:bg-muted transition-colors"
         title={`模型：${modelLabel}`}
       >
         <span className="max-w-[160px] truncate">{modelFullName}</span>

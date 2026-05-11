@@ -91,7 +91,7 @@ export function Composer({
 
   return (
     <TooltipProvider>
-    <footer className="shrink-0 border-t border-border bg-background px-4 py-3" aria-label="会话输入区">
+    <footer className="shrink-0 bg-background px-4 py-2" aria-label="会话输入区">
       {/* Slash command suggestions */}
       {showSlashSuggestions && (
         <div className="mb-2 rounded-lg border border-border bg-card p-2 shadow-sm">
@@ -162,8 +162,9 @@ export function Composer({
         */}
         {isRunning && !value.trim() ? (
           <Button
-            variant="ghost"
-            className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950 font-medium text-sm px-3 shrink-0"
+            variant="destructive"
+            size="sm"
+            className="font-medium text-sm px-4 shrink-0"
             onClick={onAbort}
             aria-label="中断"
           >
@@ -171,8 +172,8 @@ export function Composer({
           </Button>
         ) : !isRunning && !value.trim() && (isInterrupted || onContinue) ? (
           <Button
-            variant="ghost"
-            className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950 font-medium text-sm px-3 shrink-0"
+            size="sm"
+            className="bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm px-4 shrink-0"
             onClick={() => onContinue?.()}
             aria-label="继续"
           >

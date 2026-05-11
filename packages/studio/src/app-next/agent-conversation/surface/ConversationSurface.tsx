@@ -349,15 +349,15 @@ export function ConversationSurface({
         </div>
       )}
 
-      {/* ── Recovery notice ── */}
-      {recoveryNotice && recoveryNotice.state !== "idle" && recoveryNotice.state !== "reconnecting" && messages.length > 0 && (
+      {/* ── Recovery notice — only show "failed" state, hide transient recovery states ── */}
+      {recoveryNotice && recoveryNotice.state === "failed" && messages.length > 0 && (
         <div className="shrink-0 border-b border-border bg-yellow-50 px-4 py-2 text-xs text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-200">
-          {recoveryNotice.state === "failed" ? "会话恢复失败" : "正在恢复会话..."} {recoveryNotice.reason && `— ${recoveryNotice.reason}`}
+          会话恢复失败 {recoveryNotice.reason && `— ${recoveryNotice.reason}`}
         </div>
       )}
 
       {/* ── Message stream ── */}
-      <div className="flex flex-col flex-1 min-h-0 px-4 py-3 overflow-hidden">
+      <div className="flex flex-col flex-1 min-h-0 min-w-0 px-4 py-2 overflow-y-auto overflow-x-hidden">
         {messages.length === 0 ? (
           <div className="flex h-full items-center justify-center">
             <div className="text-center text-sm text-muted-foreground">
@@ -422,34 +422,31 @@ export function ConversationSurface({
       {/* ── Footer actions (if any) ── */}
       {footerActions}
 
-      {/* ── Git status bar (when workspace is available) ── */}
+      {/* ── Bottom area: Git + Status + Composer — 统一容器，单一 border-t ── */}
+      <div className="shrink-0 border-t border-border">
+      {/* ── Git status bar — NarraFork 风格 ── */}
       {status.workspace && (
-        <div className="flex shrink-0 items-center gap-1.5 border-t border-border bg-muted/30 px-4 py-1 text-[10px] text-muted-foreground">
-          <span>🏠</span>
-          <span className="truncate font-medium">{status.workspace.path?.split(/[/\\]/).pop() ?? "工作区"}</span>
-          {status.workspace.branch && (
+        <div className="flex items-center gap-1.5 bg-muted/30 px-4 py-1 text-[11px]">
+          <span className={status.workspace.git?.status === "dirty" ? "text-orange-500" : "text-green-500"}>🏠</span>
+          <span className="truncate font-medium text-blue-600 dark:text-blue-400">
+            {status.binding?.label?.split(/[/·]/)[0]?.trim() || status.workspace.path?.split(/[/\\]/).pop() || "工作区"}
+          </span>
+          {(status.workspace.branch || status.workspace.path) && (
             <>
-              <span>·</span>
-              <span className="truncate font-mono">{status.workspace.branch}</span>
+              <span className="text-muted-foreground">·</span>
+              <span className="truncate font-mono text-muted-foreground">
+                {status.workspace.branch || status.workspace.path?.split(/[/\\]/).pop() || ""}
+              </span>
             </>
           )}
-          {status.workspace.changes != null && (
-            <>
-              <span>·</span>
-              <span className="rounded bg-blue-500/10 px-1 text-blue-600">{status.workspace.changes} 变更</span>
-            </>
+          {status.workspace.git?.status === "dirty" && status.workspace.git.summary && (
+            <span className="inline-flex items-center gap-0.5 rounded px-1 py-0.5 bg-muted text-[10px] font-mono">
+              <span className="text-green-600">+{status.workspace.git.summary.match(/(\d+)/)?.[1] ?? "?"}</span>
+              <span className="text-red-500">-{status.workspace.git.summary.match(/\d+.*?(\d+)/)?.[1] ?? "?"}</span>
+            </span>
           )}
           {status.workspace.git?.status === "clean" && (
-            <>
-              <span>·</span>
-              <span className="text-green-600">✓ 干净</span>
-            </>
-          )}
-          {status.workspace.git?.status === "dirty" && (
-            <>
-              <span>·</span>
-              <span className="text-yellow-600">{status.workspace.git.summary}</span>
-            </>
+            <span className="text-[10px] text-green-600">✓</span>
           )}
         </div>
       )}
@@ -478,6 +475,7 @@ export function ConversationSurface({
         disabledReason={sendDisabledReason}
         settingsHref={settingsHref}
       />
+      </div>
     </section>
     </TooltipProvider>
   );
