@@ -1,22 +1,22 @@
-import type { BibleContextItem } from "../types.js";
+import type { JingweiLegacyContextItem } from "../types.js";
 
-export interface TokenBudgetResult<TItem extends BibleContextItem = BibleContextItem> {
+export interface TokenBudgetResult<TItem extends JingweiLegacyContextItem = JingweiLegacyContextItem> {
   items: TItem[];
   totalTokens: number;
   droppedIds: string[];
 }
 
-export interface BudgetedBibleContextItem extends BibleContextItem {
+export interface BudgetedJingweiContextItem extends JingweiLegacyContextItem {
   updatedAt?: Date;
 }
 
-const sourceRank: Record<BibleContextItem["source"], number> = {
+const sourceRank: Record<JingweiLegacyContextItem["source"], number> = {
   global: 3,
   nested: 2,
   tracked: 1,
 };
 
-function phaseOrder(item: BibleContextItem): number {
+function phaseOrder(item: JingweiLegacyContextItem): number {
   if (item.source === "nested") return 40;
   if (item.type === "premise") return 100;
   if (item.type === "world-model") return 90;
@@ -33,11 +33,11 @@ export function estimateTokens(text: string): number {
   return Math.ceil(text.length * 0.6);
 }
 
-function updatedAtMs(item: BudgetedBibleContextItem): number {
+function updatedAtMs(item: BudgetedJingweiContextItem): number {
   return item.updatedAt?.getTime() ?? 0;
 }
 
-export function sortByContextPriority<TItem extends BudgetedBibleContextItem>(items: readonly TItem[]): TItem[] {
+export function sortByContextPriority<TItem extends BudgetedJingweiContextItem>(items: readonly TItem[]): TItem[] {
   return [...items].sort((a, b) => (
     phaseOrder(b) - phaseOrder(a)
     || sourceRank[b.source] - sourceRank[a.source]
@@ -47,7 +47,7 @@ export function sortByContextPriority<TItem extends BudgetedBibleContextItem>(it
   ));
 }
 
-function sortByDropPriority<TItem extends BudgetedBibleContextItem>(items: readonly TItem[]): TItem[] {
+function sortByDropPriority<TItem extends BudgetedJingweiContextItem>(items: readonly TItem[]): TItem[] {
   return [...items].sort((a, b) => (
     sourceRank[a.source] - sourceRank[b.source]
     || a.priority - b.priority
@@ -57,7 +57,7 @@ function sortByDropPriority<TItem extends BudgetedBibleContextItem>(items: reado
   ));
 }
 
-export function applyTokenBudget<TItem extends BudgetedBibleContextItem>(
+export function applyTokenBudget<TItem extends BudgetedJingweiContextItem>(
   items: readonly TItem[],
   tokenBudget = 30000,
 ): TokenBudgetResult<TItem> {
@@ -82,3 +82,6 @@ export function applyTokenBudget<TItem extends BudgetedBibleContextItem>(
     droppedIds,
   };
 }
+
+/** @deprecated Use BudgetedJingweiContextItem instead */
+export type BudgetedBibleContextItem = BudgetedJingweiContextItem;

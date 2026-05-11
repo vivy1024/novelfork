@@ -64,14 +64,14 @@ describe("Novel Bible Phase A repositories", () => {
       await books.create({
         id: "book-1",
         name: "凡人修仙录",
-        bibleMode: "static",
+        jingweiMode: "static",
         currentChapter: 3,
         createdAt: new Date("2026-04-25T01:00:00.000Z"),
         updatedAt: new Date("2026-04-25T01:00:00.000Z"),
       });
 
       const updated = await books.update("book-1", {
-        bibleMode: "dynamic",
+        jingweiMode: "dynamic",
         currentChapter: 5,
         updatedAt: new Date("2026-04-25T02:00:00.000Z"),
       });
@@ -79,7 +79,7 @@ describe("Novel Bible Phase A repositories", () => {
       expect(updated).toMatchObject({
         id: "book-1",
         name: "凡人修仙录",
-        bibleMode: "dynamic",
+        jingweiMode: "dynamic",
         currentChapter: 5,
       });
       expect(updated?.updatedAt.toISOString()).toBe("2026-04-25T02:00:00.000Z");
@@ -412,7 +412,7 @@ async function seedBooks(books: ReturnType<typeof createBookRepository>) {
   await books.create({
     id: "book-1",
     name: "凡人修仙录",
-    bibleMode: "static",
+    jingweiMode: "static",
     currentChapter: 1,
     createdAt: new Date("2026-04-25T01:00:00.000Z"),
     updatedAt: new Date("2026-04-25T01:00:00.000Z"),
@@ -420,7 +420,7 @@ async function seedBooks(books: ReturnType<typeof createBookRepository>) {
   await books.create({
     id: "book-2",
     name: "隔壁书",
-    bibleMode: "dynamic",
+    jingweiMode: "dynamic",
     currentChapter: 1,
     createdAt: new Date("2026-04-25T01:00:00.000Z"),
     updatedAt: new Date("2026-04-25T01:00:00.000Z"),

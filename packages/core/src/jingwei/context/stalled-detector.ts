@@ -1,5 +1,5 @@
-import type { BibleConflictRecord } from "../types.js";
-import { createBibleConflictRepository } from "../repositories/conflict-repo.js";
+import type { JingweiConflictRecord } from "../types.js";
+import { createJingweiConflictRepository } from "../repositories/conflict-repo.js";
 import type { StorageDatabase } from "../../storage/db.js";
 
 export interface StalledConflictWarning {
@@ -26,7 +26,7 @@ function parseEvolutionPath(raw: string): ConflictEvolutionNode[] {
   }
 }
 
-export function detectStalledConflict(conflict: BibleConflictRecord, currentChapter: number, threshold = 10): StalledConflictWarning | null {
+export function detectStalledConflict(conflict: JingweiConflictRecord, currentChapter: number, threshold = 10): StalledConflictWarning | null {
   if (conflict.resolutionState !== "escalating") return null;
   const path = parseEvolutionPath(conflict.evolutionPathJson);
   const lastAdvancedChapter = path
@@ -46,13 +46,13 @@ export function detectStalledConflict(conflict: BibleConflictRecord, currentChap
   };
 }
 
-export function detectStalledConflicts(conflicts: readonly BibleConflictRecord[], currentChapter: number, threshold = 10): StalledConflictWarning[] {
+export function detectStalledConflicts(conflicts: readonly JingweiConflictRecord[], currentChapter: number, threshold = 10): StalledConflictWarning[] {
   return conflicts
     .map((conflict) => detectStalledConflict(conflict, currentChapter, threshold))
     .filter((warning): warning is StalledConflictWarning => warning !== null);
 }
 
 export async function getStalledConflicts(storage: StorageDatabase, bookId: string, currentChapter: number, threshold = 10): Promise<StalledConflictWarning[]> {
-  const conflicts = await createBibleConflictRepository(storage).listByBook(bookId);
+  const conflicts = await createJingweiConflictRepository(storage).listByBook(bookId);
   return detectStalledConflicts(conflicts, currentChapter, threshold);
 }

@@ -1,10 +1,10 @@
 import type { StorageDatabase } from "../../storage/db.js";
-import type { BookRecord, BibleMode, CreateBookInput, UpdateBookInput } from "../types.js";
+import type { BookRecord, JingweiMode, CreateBookInput, UpdateBookInput } from "../types.js";
 
 interface BookRow {
   id: string;
   name: string;
-  bible_mode: BibleMode;
+  bible_mode: JingweiMode;
   current_chapter: number;
   created_at: number;
   updated_at: number;
@@ -14,7 +14,7 @@ function toBook(row: BookRow): BookRecord {
   return {
     id: row.id,
     name: row.name,
-    bibleMode: row.bible_mode,
+    jingweiMode: row.bible_mode,
     currentChapter: row.current_chapter,
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
@@ -31,7 +31,7 @@ export function createBookRepository(storage: StorageDatabase) {
       `).run(
         input.id,
         input.name,
-        input.bibleMode,
+        input.jingweiMode,
         input.currentChapter,
         input.createdAt.getTime(),
         input.updatedAt.getTime(),
@@ -69,7 +69,7 @@ export function createBookRepository(storage: StorageDatabase) {
         WHERE "id" = ?
       `).run(
         updates.name ?? current.name,
-        updates.bibleMode ?? current.bibleMode,
+        updates.jingweiMode ?? current.jingweiMode,
         updates.currentChapter ?? current.currentChapter,
         (updates.updatedAt ?? current.updatedAt).getTime(),
         id,

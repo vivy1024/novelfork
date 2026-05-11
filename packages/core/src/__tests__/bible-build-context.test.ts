@@ -207,15 +207,15 @@ describe("buildBibleContext", () => {
   });
 });
 
-async function seedBook(storage: StorageDatabase, bibleMode: "static" | "dynamic") {
+async function seedBook(storage: StorageDatabase, jingweiMode: "static" | "dynamic") {
   const books = createBookRepository(storage);
   const characters = createBibleCharacterRepository(storage);
   const events = createBibleEventRepository(storage);
   const settings = createBibleSettingRepository(storage);
   const now = new Date("2026-04-25T01:00:00.000Z");
 
-  await books.create({ id: "book-1", name: "凡人修仙录", bibleMode, currentChapter: 5, createdAt: now, updatedAt: now });
-  await books.create({ id: "book-2", name: "隔壁书", bibleMode: "dynamic", currentChapter: 5, createdAt: now, updatedAt: now });
+  await books.create({ id: "book-1", name: "凡人修仙录", jingweiMode, currentChapter: 5, createdAt: now, updatedAt: now });
+  await books.create({ id: "book-2", name: "隔壁书", jingweiMode: "dynamic", currentChapter: 5, createdAt: now, updatedAt: now });
   await characters.create({
     id: "character-hanli",
     bookId: "book-1",

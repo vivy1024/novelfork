@@ -258,6 +258,12 @@ function clearSessionAbortController(sessionId: string): void {
 }
 
 function broadcastStreamChunk(sessionId: string, state: SessionChatRuntimeState, content: string): void {
+  const transportCount = state.transports.size;
+  if (transportCount === 0) {
+    if (content.length <= 10) console.log(`[stream-broadcast] NO TRANSPORTS for session ${sessionId}, chunk lost`);
+    return;
+  }
+  if (content.length <= 5) console.log(`[stream-broadcast] sending to ${transportCount} transports, session=${sessionId}`);
   const envelope: NarratorSessionChatServerEnvelope = {
     type: "session:stream",
     sessionId,

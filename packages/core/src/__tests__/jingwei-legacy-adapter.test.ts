@@ -35,7 +35,7 @@ async function seedBook(storage: StorageDatabase): Promise<void> {
   await books.create({
     id: "book-1",
     name: "凡人修仙录",
-    bibleMode: "dynamic",
+    jingweiMode: "dynamic",
     currentChapter: 3,
     createdAt,
     updatedAt: createdAt,

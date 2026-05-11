@@ -1,7 +1,7 @@
 import type { StorageDatabase } from "../../storage/db.js";
-import type { BibleCharacterRecord, CreateBibleCharacterInput, UpdateBibleCharacterInput } from "../types.js";
+import type { JingweiCharacterRecord, CreateJingweiCharacterInput, UpdateJingweiCharacterInput } from "../types.js";
 
-interface BibleCharacterRow {
+interface JingweiCharacterRow {
   id: string;
   book_id: string;
   name: string;
@@ -17,7 +17,7 @@ interface BibleCharacterRow {
   deleted_at: number | null;
 }
 
-function toCharacter(row: BibleCharacterRow): BibleCharacterRecord {
+function toCharacter(row: JingweiCharacterRow): JingweiCharacterRecord {
   return {
     id: row.id,
     bookId: row.book_id,
@@ -40,9 +40,9 @@ const selectColumns = `
   "visibility_rule_json", "first_chapter", "last_chapter", "created_at", "updated_at", "deleted_at"
 `;
 
-export function createBibleCharacterRepository(storage: StorageDatabase) {
+export function createJingweiCharacterRepository(storage: StorageDatabase) {
   return {
-    async create(input: CreateBibleCharacterInput): Promise<BibleCharacterRecord> {
+    async create(input: CreateJingweiCharacterInput): Promise<JingweiCharacterRecord> {
       storage.sqlite.prepare(`
         INSERT INTO "bible_character" (
           "id", "book_id", "name", "aliases_json", "role_type", "summary", "traits_json",
@@ -63,30 +63,30 @@ export function createBibleCharacterRepository(storage: StorageDatabase) {
         input.updatedAt.getTime(),
       );
       const created = await this.getById(input.bookId, input.id);
-      if (!created) throw new Error("Inserted Bible character could not be read back.");
+      if (!created) throw new Error("Inserted Jingwei character could not be read back.");
       return created;
     },
 
-    async getById(bookId: string, id: string): Promise<BibleCharacterRecord | null> {
+    async getById(bookId: string, id: string): Promise<JingweiCharacterRecord | null> {
       const row = storage.sqlite.prepare(`
         SELECT ${selectColumns}
         FROM "bible_character"
         WHERE "book_id" = ? AND "id" = ? AND "deleted_at" IS NULL
-      `).get(bookId, id) as BibleCharacterRow | undefined;
+      `).get(bookId, id) as JingweiCharacterRow | undefined;
       return row ? toCharacter(row) : null;
     },
 
-    async listByBook(bookId: string): Promise<BibleCharacterRecord[]> {
+    async listByBook(bookId: string): Promise<JingweiCharacterRecord[]> {
       const rows = storage.sqlite.prepare(`
         SELECT ${selectColumns}
         FROM "bible_character"
         WHERE "book_id" = ? AND "deleted_at" IS NULL
         ORDER BY "updated_at" DESC, "name" ASC
-      `).all(bookId) as BibleCharacterRow[];
+      `).all(bookId) as JingweiCharacterRow[];
       return rows.map(toCharacter);
     },
 
-    async update(bookId: string, id: string, updates: UpdateBibleCharacterInput): Promise<BibleCharacterRecord | null> {
+    async update(bookId: string, id: string, updates: UpdateJingweiCharacterInput): Promise<JingweiCharacterRecord | null> {
       const current = await this.getById(bookId, id);
       if (!current) return null;
 
@@ -121,3 +121,6 @@ export function createBibleCharacterRepository(storage: StorageDatabase) {
     },
   };
 }
+
+/** @deprecated Use createJingweiCharacterRepository instead */
+export const createBibleCharacterRepository = createJingweiCharacterRepository;
