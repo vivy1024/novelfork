@@ -8,10 +8,21 @@
 
 | Spec | 任务数 | 状态 | 说明 |
 |------|-----:|------|------|
+| `v0-1-0-release-readiness` | 23 | ⏸️ 暂停（20/23） | 发布前验收 |
+| `v0-1-0-experience-and-pipeline-fix` | 23 | 📋 规划完成 | 整合 P0-P3 全部体验阻塞+管线修复 |
 | `character-arc-auto-tracking` | 10 | ✅ 实现完成，待浏览器验证 | Hook+规则引擎+LLM可选 |
 | `template-market-v2` | 14 | ✅ 实现完成，待浏览器验证 | 26流派+用户自建+远程市场 |
 | `session-memory-enhancement` | 8 | ✅ 实现完成，待浏览器验证 | fork追溯+Context Ring菜单 |
-| `v0-1-0-release-readiness` | 23 | ⏸️ 暂停（20/23） | 发布前验收 |
+
+### 已整合进 `v0-1-0-experience-and-pipeline-fix` 并删除的旧 Spec
+
+| 旧 Spec | 说明 |
+|------|------|
+| `book-management-and-writing-flow-v2` | P0-P2 断裂点审计 + 功能缺口 |
+| `workbench-interaction-redesign-v1` | 5 Agent 窗口 + 即时工具弹窗 |
+| `jingwei-type-unification-v1` | Bible → Jingwei 类型统一 |
+| `experience-blockers.md` | QF-1~5, DP-1~4 |
+| `experience-blockers-round2.md` | B-1~4, 流式/右键/压缩 |
 
 ---
 

@@ -201,20 +201,19 @@ describe("OpenAI-compatible streaming adapter", () => {
     vi.unstubAllGlobals();
   });
 
-  it("falls back to non-streaming for tool_use requests even with onStreamChunk", async () => {
-    const fetchMock = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({
-      choices: [{
-        message: {
-          tool_calls: [{
-            id: "call-1",
-            type: "function",
-            function: { name: "test_tool", arguments: "{}" },
-          }],
-        },
-      }],
-    }), {
+  it("parses tool_use from streaming SSE deltas when tools are provided with onStreamChunk", async () => {
+    const ssePayload = [
+      'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call-1","function":{"name":"test_tool","arguments":""}}]}}]}',
+      'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\\"key\\""}}]}}]}',
+      'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":": \\"value\\"}"}}]}}]}',
+      'data: {"choices":[{"delta":{}}],"usage":{"prompt_tokens":10,"completion_tokens":5}}',
+      "data: [DONE]",
+      "",
+    ].join("\n");
+
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(ssePayload, {
       status: 200,
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "text/event-stream" },
     }));
     vi.stubGlobal("fetch", fetchMock);
 
@@ -231,17 +230,23 @@ describe("OpenAI-compatible streaming adapter", () => {
       onStreamChunk: (chunk) => chunks.push(chunk),
     });
 
-    // No streaming chunks for tool_use
+    // No text streaming chunks for tool_use response
     expect(chunks).toHaveLength(0);
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.type).toBe("tool_use");
+      if (result.type === "tool_use") {
+        expect(result.toolUses).toHaveLength(1);
+        expect(result.toolUses[0].id).toBe("call-1");
+        expect(result.toolUses[0].name).toBe("test_tool");
+        expect(result.toolUses[0].input).toEqual({ key: "value" });
+      }
     }
 
-    // Verify stream: false was sent (non-streaming path for tools)
+    // Verify stream: true was sent (streaming supports tools now)
     const requestInit = fetchMock.mock.calls[0]?.[1] as RequestInit;
     const body = JSON.parse(String(requestInit.body));
-    expect(body.stream).toBe(false);
+    expect(body.stream).toBe(true);
 
     vi.unstubAllGlobals();
   });
