@@ -103,11 +103,14 @@ function TextBody({ node, label, onContentChange, onTabComplete, bookId }: { nod
   const handleInlineWrite = useCallback(async (mode: "continue" | "expand" | "rewrite" | "variants") => {
     if (!selection || !bookId) return;
     setInlineWriting(true);
+    // Map frontend mode names to backend API mode names
+    const API_MODE_MAP: Record<string, string> = { continue: "continuation", expand: "expansion", rewrite: "expansion", variants: "bridge" };
+    const apiMode = API_MODE_MAP[mode] ?? "continuation";
     try {
       const res = await fetch(`/api/books/${encodeURIComponent(bookId)}/inline-write`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode, selectedText: selection.text, context: node.content ?? "", position: selection.start }),
+        body: JSON.stringify({ mode: apiMode, selectedText: selection.text, context: node.content ?? "", position: selection.start }),
       });
       if (!res.ok) return;
       const data = await res.json() as { result?: string };
