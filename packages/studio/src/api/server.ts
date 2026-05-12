@@ -442,7 +442,17 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
         const { promisify } = await import("node:util");
         const execFileAsync = promisify(execFile);
         // Use PowerShell folder browser dialog on Windows
-        const script = `Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.FolderBrowserDialog; $f.Description = '选择项目文件夹'; if ($f.ShowDialog() -eq 'OK') { $f.SelectedPath } else { '' }`;
+        // TopMost owner form ensures the dialog appears in foreground
+        const script = [
+          "Add-Type -AssemblyName System.Windows.Forms",
+          "$owner = New-Object System.Windows.Forms.Form",
+          "$owner.TopMost = $true",
+          "$f = New-Object System.Windows.Forms.FolderBrowserDialog",
+          "$f.Description = '选择项目文件夹'",
+          "$f.RootFolder = [System.Environment+SpecialFolder]::MyComputer",
+          "if ($f.ShowDialog($owner) -eq 'OK') { $f.SelectedPath } else { '' }",
+          "$owner.Dispose()",
+        ].join("; ");
         const { stdout } = await execFileAsync("powershell", ["-NoProfile", "-Command", script], { timeout: 30000 });
         const selectedPath = stdout.trim();
         if (selectedPath) {
