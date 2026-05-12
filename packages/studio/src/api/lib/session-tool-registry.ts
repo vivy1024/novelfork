@@ -3,11 +3,12 @@ import type {
   JsonObjectSchema,
   SessionToolDefinition,
   SessionToolRisk,
+  SessionToolScope,
 } from "../../shared/agent-native-workspace.js";
 import type { SessionPermissionMode } from "../../shared/session-types.js";
 
 export { SESSION_TOOL_RISKS };
-export type { JsonObjectSchema, SessionToolDefinition, SessionToolRisk };
+export type { JsonObjectSchema, SessionToolDefinition, SessionToolRisk, SessionToolScope };
 
 export type ProviderSessionToolDefinition = {
   readonly type: "function";
@@ -66,6 +67,7 @@ export const SESSION_TOOL_DEFINITIONS = [
     risk: "read",
     renderer: "cockpit.snapshot",
     enabledForModes: ALL_SESSION_PERMISSION_MODES,
+    scope: "novel",
   }),
   sessionTool({
     name: "cockpit.list_open_hooks",
@@ -77,6 +79,7 @@ export const SESSION_TOOL_DEFINITIONS = [
     risk: "read",
     renderer: "cockpit.openHooks",
     enabledForModes: ALL_SESSION_PERMISSION_MODES,
+    scope: "novel",
   }),
   sessionTool({
     name: "cockpit.list_recent_candidates",
@@ -88,6 +91,7 @@ export const SESSION_TOOL_DEFINITIONS = [
     risk: "read",
     renderer: "cockpit.recentCandidates",
     enabledForModes: ALL_SESSION_PERMISSION_MODES,
+    scope: "novel",
   }),
   sessionTool({
     name: "questionnaire.list_templates",
@@ -99,6 +103,7 @@ export const SESSION_TOOL_DEFINITIONS = [
     risk: "read",
     renderer: "questionnaire.templates",
     enabledForModes: ALL_SESSION_PERMISSION_MODES,
+    scope: "novel",
   }),
   sessionTool({
     name: "questionnaire.start",
@@ -111,6 +116,7 @@ export const SESSION_TOOL_DEFINITIONS = [
     risk: "read",
     renderer: "questionnaire.questions",
     enabledForModes: ALL_SESSION_PERMISSION_MODES,
+    scope: "novel",
   }),
   sessionTool({
     name: "questionnaire.suggest_answer",
@@ -127,6 +133,7 @@ export const SESSION_TOOL_DEFINITIONS = [
     risk: "read",
     renderer: "questionnaire.suggestion",
     enabledForModes: ALL_SESSION_PERMISSION_MODES,
+    scope: "novel",
   }),
   sessionTool({
     name: "questionnaire.submit_response",
@@ -140,6 +147,7 @@ export const SESSION_TOOL_DEFINITIONS = [
     risk: "confirmed-write",
     renderer: "jingwei.mutationPreview",
     enabledForModes: WRITE_SESSION_PERMISSION_MODES,
+    scope: "novel",
   }),
   sessionTool({
     name: "pgi.generate_questions",
@@ -153,6 +161,7 @@ export const SESSION_TOOL_DEFINITIONS = [
     risk: "read",
     renderer: "pgi.questions",
     enabledForModes: ALL_SESSION_PERMISSION_MODES,
+    scope: "novel",
   }),
   sessionTool({
     name: "pgi.record_answers",
@@ -168,6 +177,7 @@ export const SESSION_TOOL_DEFINITIONS = [
     risk: "draft-write",
     renderer: "pgi.answers",
     enabledForModes: WRITE_SESSION_PERMISSION_MODES,
+    scope: "novel",
   }),
   sessionTool({
     name: "pgi.format_answers_for_prompt",
@@ -180,6 +190,7 @@ export const SESSION_TOOL_DEFINITIONS = [
     risk: "read",
     renderer: "pgi.promptInstructions",
     enabledForModes: ALL_SESSION_PERMISSION_MODES,
+    scope: "novel",
   }),
   sessionTool({
     name: "guided.enter",
@@ -197,6 +208,7 @@ export const SESSION_TOOL_DEFINITIONS = [
     risk: "read",
     renderer: "guided.questions",
     enabledForModes: ALL_SESSION_PERMISSION_MODES,
+    scope: "novel",
   }),
   sessionTool({
     name: "guided.answer_question",
@@ -211,6 +223,7 @@ export const SESSION_TOOL_DEFINITIONS = [
     risk: "read",
     renderer: "guided.questions",
     enabledForModes: ALL_SESSION_PERMISSION_MODES,
+    scope: "novel",
   }),
   sessionTool({
     name: "guided.exit",
@@ -224,6 +237,7 @@ export const SESSION_TOOL_DEFINITIONS = [
     risk: "confirmed-write",
     renderer: "guided.plan",
     enabledForModes: WRITE_SESSION_PERMISSION_MODES,
+    scope: "novel",
   }),
   sessionTool({
     name: "candidate.create_chapter",
@@ -239,6 +253,7 @@ export const SESSION_TOOL_DEFINITIONS = [
     risk: "draft-write",
     renderer: "candidate.created",
     enabledForModes: WRITE_SESSION_PERMISSION_MODES,
+    scope: "novel",
   }),
   sessionTool({
     name: "narrative.read_line",
@@ -250,6 +265,7 @@ export const SESSION_TOOL_DEFINITIONS = [
     risk: "read",
     renderer: "narrative.line",
     enabledForModes: ALL_SESSION_PERMISSION_MODES,
+    scope: "novel",
   }),
   sessionTool({
     name: "narrative.propose_change",
@@ -264,6 +280,7 @@ export const SESSION_TOOL_DEFINITIONS = [
     risk: "draft-write",
     renderer: "narrative.mutationPreview",
     enabledForModes: WRITE_SESSION_PERMISSION_MODES,
+    scope: "novel",
   }),
   // --- 小说上下文工具组 (Task 23) ---
   sessionTool({
@@ -276,6 +293,7 @@ export const SESSION_TOOL_DEFINITIONS = [
     risk: "read",
     renderer: "chapter.content",
     enabledForModes: ALL_SESSION_PERMISSION_MODES,
+    scope: "novel",
   }),
   sessionTool({
     name: "jingwei.read_context",
@@ -287,6 +305,7 @@ export const SESSION_TOOL_DEFINITIONS = [
     risk: "read",
     renderer: "jingwei.context",
     enabledForModes: ALL_SESSION_PERMISSION_MODES,
+    scope: "novel",
   }),
   sessionTool({
     name: "health.read_summary",
@@ -297,6 +316,7 @@ export const SESSION_TOOL_DEFINITIONS = [
     risk: "read",
     renderer: "health.summary",
     enabledForModes: ALL_SESSION_PERMISSION_MODES,
+    scope: "novel",
   }),
   // --- Claude Code / Codex 级开发工具 ---
   sessionTool({
@@ -710,13 +730,19 @@ const UNAVAILABLE_SERVICE_TOOLS = new Set([
   "health.read_summary",
 ]);
 
-export function getEnabledSessionTools(permissionMode: SessionPermissionMode, agentId?: string, options?: { disabledTools?: readonly string[] }): SessionToolDefinition[] {
+export function getEnabledSessionTools(permissionMode: SessionPermissionMode, agentId?: string, options?: { disabledTools?: readonly string[]; projectType?: string }): SessionToolDefinition[] {
   let tools = SESSION_TOOL_DEFINITIONS
     .filter((tool) => tool.enabledForModes.includes(permissionMode))
     // Do not expose service-backed tools until their services are wired into the session executor.
     // Exposing them causes the model to repeatedly call tools that can only return configuration errors.
     .filter((tool) => !UNAVAILABLE_SERVICE_TOOLS.has(tool.name))
     .map(cloneDefinition);
+
+  // 按 projectType 过滤 scope（向后兼容：不传或 "novel" 时返回所有工具）
+  const projectType = options?.projectType;
+  if (projectType && projectType !== "novel") {
+    tools = tools.filter((tool) => tool.scope !== "novel");
+  }
 
   // 按 Agent 角色过滤工具
   if (agentId) {
