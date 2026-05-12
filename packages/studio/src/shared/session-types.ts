@@ -141,6 +141,13 @@ export interface NarratorSessionRecoveryMetadata {
   updatedAt: string;
 }
 
+export interface SessionGoal {
+  id: string;
+  objective: string;
+  status: "active" | "pending" | "paused" | "complete";
+  createdAt: string;
+}
+
 export interface NarratorSessionRecord {
   id: string;
   title: string;
@@ -161,6 +168,7 @@ export interface NarratorSessionRecord {
   recentMessages?: NarratorSessionChatMessage[];
   recovery?: NarratorSessionRecoveryMetadata;
   cumulativeUsage?: SessionCumulativeUsage;
+  goals?: SessionGoal[];
 }
 
 export interface CreateNarratorSessionInput {
@@ -191,6 +199,7 @@ export interface UpdateNarratorSessionInput {
   recentMessages?: NarratorSessionChatMessage[];
   recovery?: NarratorSessionRecoveryMetadata;
   cumulativeUsage?: SessionCumulativeUsage;
+  goals?: SessionGoal[];
 }
 
 export const DEFAULT_SESSION_CONFIG: SessionConfig = {

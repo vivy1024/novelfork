@@ -567,6 +567,7 @@ const USER_QUESTION_TOOL_NAMES = new Set([
   "pgi.generate_questions",
   "guided.enter",
   "guided.answer_question",
+  "AskUserQuestion",
 ]);
 
 function isUserQuestionToolName(toolName: string | undefined): boolean {

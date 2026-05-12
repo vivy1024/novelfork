@@ -17,8 +17,7 @@ import { resolveSessionToolPolicy, type SessionToolPolicyResolution } from "./se
 import { executeBashTool, executeFileReadTool, executeFileWriteTool, executeFileEditTool } from "./real-tool-handlers.js";
 import { validateToolPermission, classifyBashCommand, isPathWithinWorkDir } from "./permission-pipeline.js";
 
-// --- Session-level in-memory state for Goals and Pipelines ---
-const sessionGoals = new Map<string, Array<{ id: string; objective: string; status: string; createdAt: string }>>();
+// --- Session-level in-memory state for Pipelines ---
 const sessionPipelines = new Map<string, { label: string; captures: Map<string, string>; counter: number }>();
 
 export type SessionToolHandlerContext = SessionToolExecutionInput & {
@@ -211,6 +210,13 @@ export async function executeSessionTool(
 
   try {
     const result = await handler({ ...input, definition });
+    // Pipeline 拦截：如果当前 session 有活跃 pipeline，捕获成功结果
+    const pipeline = sessionPipelines.get(input.sessionId);
+    if (pipeline && result.ok && definition.name !== "StartPipeline" && definition.name !== "EndPipeline") {
+      pipeline.counter += 1;
+      const alias = `p${pipeline.counter}`;
+      pipeline.captures.set(alias, result.summary ?? JSON.stringify(result.data).slice(0, 100));
+    }
     return withDuration(withConfirmationAudit({
       ...result,
       renderer: result.renderer ?? definition.renderer,
@@ -574,50 +580,64 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
     // --- Implemented Phase 2 tools ---
     case "AskUserQuestion":
       return async ({ input, definition }) => {
-        const questions = Array.isArray(input.questions) ? input.questions : [];
-        if (questions.length === 0) {
+        const rawQuestions = Array.isArray(input.questions) ? input.questions : [];
+        if (rawQuestions.length === 0) {
           return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "questions 数组为空。" };
         }
-        const questionText = (questions[0] as { question?: string })?.question ?? "请回答以下问题";
+        // 转换为 ConversationConfirmationQuestion 格式
+        const questions = rawQuestions.map((q: any, idx: number) => ({
+          id: q.id ?? `q-${idx}`,
+          prompt: typeof q.question === "string" ? q.question : (typeof q.prompt === "string" ? q.prompt : `问题 ${idx + 1}`),
+          type: q.multiSelect ? "multi" as const : (Array.isArray(q.options) && q.options.length > 0 ? "single" as const : "text" as const),
+          options: Array.isArray(q.options) ? q.options.map((o: any) => typeof o === "string" ? o : (o?.label ?? String(o))) : undefined,
+          required: true,
+        }));
+        const confirmationId = crypto.randomUUID();
         return {
           ok: true,
           renderer: "tool.ask-user-question",
           summary: `向用户提出 ${questions.length} 个问题，等待回答。`,
           data: { status: "pending-confirmation", questions },
           confirmation: {
-            id: crypto.randomUUID(),
+            id: confirmationId,
             toolName: "AskUserQuestion",
-            target: questionText,
-            summary: `Agent 提问：${questionText}`,
-            risk: "confirmed-write",
+            target: questions[0]?.prompt ?? "请回答以下问题",
+            summary: `Agent 提问：${questions[0]?.prompt ?? "请回答以下问题"}`,
+            risk: "confirmed-write" as const,
             options: CONFIRMATION_OPTIONS,
           },
         };
       };
     case "EnterPlanMode":
-      return async ({ definition }) => ({
-        ok: true,
-        renderer: definition.renderer,
-        summary: "已进入计划模式。在此模式下只做调查和规划，不执行写入操作。",
-        data: { status: "plan-mode-entered", mode: "plan" },
-      });
+      return async ({ sessionId, definition }) => {
+        const { updateSession } = await import("./session-service.js");
+        await updateSession(sessionId, { sessionMode: "plan" });
+        return {
+          ok: true,
+          renderer: definition.renderer,
+          summary: "已进入计划模式。在此模式下只做调查和规划，不执行写入操作。",
+          data: { status: "plan-mode-entered", mode: "plan" },
+        };
+      };
     case "ExitPlanMode":
-      return async ({ input, definition }) => {
-        const plan = typeof input.plan === "string" ? (input.plan as string).trim() : "";
+      return async ({ input, sessionId, definition }) => {
+        const plan = typeof input.plan === "string" ? input.plan.trim() : "";
         if (!plan) {
           return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "plan 内容为空。" };
         }
+        const { updateSession } = await import("./session-service.js");
+        await updateSession(sessionId, { sessionMode: "chat" });
         return {
           ok: true,
           renderer: "tool.plan-approval",
-          summary: `计划已提交，等待用户批准。`,
-          data: { status: "pending-confirmation", plan },
+          summary: `计划已提交，已退出计划模式。`,
+          data: { status: "plan-submitted", plan },
           confirmation: {
             id: crypto.randomUUID(),
             toolName: "ExitPlanMode",
             target: "计划审批",
             summary: plan.slice(0, 200),
-            risk: "confirmed-write",
+            risk: "confirmed-write" as const,
             options: CONFIRMATION_OPTIONS,
           },
         };
@@ -680,10 +700,12 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
 
         return { ok: false, renderer: definition.renderer, error: "invalid-action", summary: `不支持的 action: ${action}` };
       };
-    // --- Goals (session-level in-memory) ---
+    // --- Goals (session-level persistent) ---
     case "GetGoals":
       return async ({ sessionId, definition }) => {
-        const goals = sessionGoals.get(sessionId) ?? [];
+        const { getSessionById } = await import("./session-service.js");
+        const session = await getSessionById(sessionId);
+        const goals = session?.goals ?? [];
         return {
           ok: true,
           renderer: definition.renderer,
@@ -697,10 +719,15 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
         if (!objective) {
           return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "objective 不能为空。" };
         }
-        const goals = sessionGoals.get(sessionId) ?? [];
-        const newGoal = { id: crypto.randomUUID(), objective, status: "active", createdAt: new Date().toISOString() };
-        goals.push(newGoal);
-        sessionGoals.set(sessionId, goals);
+        const { getSessionById, updateSession } = await import("./session-service.js");
+        const session = await getSessionById(sessionId);
+        if (!session) {
+          return { ok: false, renderer: definition.renderer, error: "session-not-found", summary: "会话不存在。" };
+        }
+        const existingGoals = session.goals ?? [];
+        const newGoal = { id: crypto.randomUUID(), objective, status: "active" as const, createdAt: new Date().toISOString() };
+        const goals = [...existingGoals, newGoal];
+        await updateSession(sessionId, { goals });
         return {
           ok: true,
           renderer: definition.renderer,
@@ -714,12 +741,18 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
         if (status !== "complete") {
           return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "status 必须为 'complete'。" };
         }
-        const goals = sessionGoals.get(sessionId) ?? [];
+        const { getSessionById, updateSession } = await import("./session-service.js");
+        const session = await getSessionById(sessionId);
+        if (!session) {
+          return { ok: false, renderer: definition.renderer, error: "session-not-found", summary: "会话不存在。" };
+        }
+        const goals = [...(session.goals ?? [])];
         const activeGoal = goals.find(g => g.status === "active");
         if (!activeGoal) {
           return { ok: false, renderer: definition.renderer, error: "no-active-goal", summary: "没有活跃目标可以标记完成。" };
         }
         activeGoal.status = "complete";
+        await updateSession(sessionId, { goals });
         return {
           ok: true,
           renderer: definition.renderer,
@@ -842,26 +875,33 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
     // --- ShareFile: 生成文件分享信息 ---
     case "ShareFile":
       return async ({ input, definition }) => {
-        const filePath = typeof input.path === "string" ? (input.path as string).trim() : "";
+        const filePath = typeof input.path === "string" ? input.path.trim() : "";
         if (!filePath) {
           return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "path 不能为空。" };
         }
 
         const { stat } = await import("node:fs/promises");
-        const { join, basename } = await import("node:path");
+        const { join, basename, extname } = await import("node:path");
         const workDir = options.workDir ?? process.cwd();
         const resolvedPath = join(workDir, filePath);
 
         try {
           const stats = await stat(resolvedPath);
+          if (stats.isDirectory()) {
+            return { ok: false, renderer: definition.renderer, error: "is-directory", summary: `${filePath} 是目录，不支持直接分享。` };
+          }
           const fileName = basename(resolvedPath);
           const sizeKb = Math.round(stats.size / 1024);
-          const shareId = crypto.randomUUID().slice(0, 8);
+          const ext = extname(fileName).toLowerCase();
+          const isPreviewable = [".png", ".jpg", ".jpeg", ".gif", ".svg", ".pdf", ".html"].includes(ext);
+
+          // 生成分享 token（base64url 编码路径）
+          const token = Buffer.from(resolvedPath).toString("base64url");
           return {
             ok: true,
             renderer: definition.renderer,
-            summary: `文件 ${fileName}（${sizeKb}KB）已准备分享。`,
-            data: { shareId, fileName, path: filePath, sizeBytes: stats.size, isDirectory: stats.isDirectory() },
+            summary: `文件 ${fileName}（${sizeKb}KB）已准备分享。下载链接：/api/share/${token}`,
+            data: { token, fileName, path: filePath, sizeBytes: stats.size, previewable: isPreviewable, downloadUrl: `/api/share/${token}` },
           };
         } catch {
           return { ok: false, renderer: definition.renderer, error: "file-not-found", summary: `文件不存在：${filePath}` };
