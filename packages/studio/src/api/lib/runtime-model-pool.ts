@@ -15,6 +15,8 @@ function hasApiCredentials(provider: RuntimeProviderRecord): boolean {
 
 export async function buildRuntimeProviderStatus(store: ProviderRuntimeStore, userDefaultModel?: string): Promise<ProviderRuntimeStatus> {
   const modelPool = await buildRuntimeModelPool(store);
+  const providers = await store.listProviders();
+  const providerNameMap = new Map(providers.map((p) => [p.id, p.name || p.id]));
 
   // 优先使用用户配置的默认模型
   if (userDefaultModel) {
@@ -24,9 +26,10 @@ export async function buildRuntimeProviderStatus(store: ProviderRuntimeStore, us
     // 验证该模型在池中可用
     const found = modelPool.find((m) => m.modelId === userDefaultModel || (m.providerId === providerId && m.modelId === userDefaultModel));
     if (found || modelPool.length > 0) {
+      const resolvedProviderId = providerId || modelPool[0]?.providerId || "";
       return {
         hasUsableModel: modelPool.length > 0,
-        defaultProvider: providerId || modelPool[0]?.providerId,
+        defaultProvider: providerNameMap.get(resolvedProviderId) ?? resolvedProviderId,
         defaultModel: modelId,
       };
     }
@@ -40,7 +43,7 @@ export async function buildRuntimeProviderStatus(store: ProviderRuntimeStore, us
 
   return {
     hasUsableModel: true,
-    defaultProvider: firstModel.providerId,
+    defaultProvider: providerNameMap.get(firstModel.providerId) ?? firstModel.providerId,
     defaultModel: firstModel.modelId.slice(`${firstModel.providerId}:`.length),
   };
 }
