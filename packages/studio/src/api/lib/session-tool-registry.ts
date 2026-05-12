@@ -701,9 +701,21 @@ const AGENT_TOOL_PRESETS: Record<string, { enable: string[]; disable: string[] }
   },
 };
 
+const UNAVAILABLE_SERVICE_TOOLS = new Set([
+  "cockpit.get_snapshot",
+  "cockpit.list_open_hooks",
+  "cockpit.list_recent_candidates",
+  "narrative.read_line",
+  "narrative.propose_change",
+  "health.read_summary",
+]);
+
 export function getEnabledSessionTools(permissionMode: SessionPermissionMode, agentId?: string, options?: { disabledTools?: readonly string[] }): SessionToolDefinition[] {
   let tools = SESSION_TOOL_DEFINITIONS
     .filter((tool) => tool.enabledForModes.includes(permissionMode))
+    // Do not expose service-backed tools until their services are wired into the session executor.
+    // Exposing them causes the model to repeatedly call tools that can only return configuration errors.
+    .filter((tool) => !UNAVAILABLE_SERVICE_TOOLS.has(tool.name))
     .map(cloneDefinition);
 
   // 按 Agent 角色过滤工具
