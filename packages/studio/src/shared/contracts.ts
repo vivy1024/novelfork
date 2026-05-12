@@ -127,11 +127,6 @@ export interface JingweiFileDetail extends JingweiFileSummary {
   readonly content: string | null;
 }
 
-/** @deprecated Use JingweiFileSummary */
-export type TruthFileSummary = JingweiFileSummary;
-/** @deprecated Use JingweiFileDetail */
-export type TruthFileDetail = JingweiFileDetail;
-
 // --- Workspace Resource Snapshot ---
 
 export interface AiResultMetadata {

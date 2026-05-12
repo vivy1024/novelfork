@@ -1,7 +1,7 @@
 import { readFile, readdir, access } from "node:fs/promises";
 import { join } from "node:path";
 
-export const TRUTH_FILES = [
+export const JINGWEI_FILES = [
   "story_bible.md", "volume_outline.md", "current_state.md",
   "particle_ledger.md", "pending_hooks.md", "chapter_summaries.md",
   "subplot_board.md", "emotional_arcs.md", "character_matrix.md",
@@ -9,7 +9,10 @@ export const TRUTH_FILES = [
   "author_intent.md", "current_focus.md", "market_radar.md", "web_materials.md",
 ] as const;
 
-export const TRUTH_FILE_LABELS: Record<string, string> = {
+/** @deprecated Use JINGWEI_FILES */
+export const TRUTH_FILES = JINGWEI_FILES;
+
+export const JINGWEI_FILE_LABELS: Record<string, string> = {
   "story_bible.md": "故事经纬",
   "volume_outline.md": "卷大纲",
   "current_state.md": "当前状态",
@@ -29,6 +32,9 @@ export const TRUTH_FILE_LABELS: Record<string, string> = {
   "market_radar.md": "市场雷达",
   "web_materials.md": "网络素材",
 };
+
+/** @deprecated Use JINGWEI_FILE_LABELS */
+export const TRUTH_FILE_LABELS = JINGWEI_FILE_LABELS;
 
 /** 经纬文件按类别分组到子目录的映射 */
 export const JINGWEI_CATEGORY_MAP: Record<string, string> = {
@@ -70,7 +76,7 @@ export function isSafeStoryFileName(file: string): boolean {
 }
 
 export function isJingweiFileName(file: string): boolean {
-  return (TRUTH_FILES as readonly string[]).includes(file);
+  return (JINGWEI_FILES as readonly string[]).includes(file);
 }
 
 /** @deprecated Use isJingweiFileName */
@@ -86,7 +92,7 @@ async function listFiles(storyDir: string, filter?: (file: string) => boolean): 
     for (const file of allowedRootFiles) {
       const content = await readFile(join(storyDir, file), "utf-8");
       const category = JINGWEI_CATEGORY_MAP[file];
-      results.push({ name: file, label: TRUTH_FILE_LABELS[file] ?? file.replace(/\.md$/, ""), size: content.length, preview: content.slice(0, 200), ...(category ? { category } : {}) });
+      results.push({ name: file, label: JINGWEI_FILE_LABELS[file] ?? file.replace(/\.md$/, ""), size: content.length, preview: content.slice(0, 200), ...(category ? { category } : {}) });
     }
 
     // Read subdirectory files (角色/势力/设定/伏笔/大纲/状态/规则)
@@ -98,7 +104,7 @@ async function listFiles(storyDir: string, filter?: (file: string) => boolean): 
       for (const file of allowedSubFiles) {
         const content = await readFile(join(subdirPath, file), "utf-8");
         const relativeName = `${subdir}/${file}`;
-        results.push({ name: relativeName, label: TRUTH_FILE_LABELS[file] ?? file.replace(/\.md$/, ""), size: content.length, preview: content.slice(0, 200), category: subdir });
+        results.push({ name: relativeName, label: JINGWEI_FILE_LABELS[file] ?? file.replace(/\.md$/, ""), size: content.length, preview: content.slice(0, 200), category: subdir });
       }
     }
 

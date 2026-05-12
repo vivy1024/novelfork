@@ -194,12 +194,12 @@ describe("agent pipeline tools", () => {
     expect(writeNextChapter).not.toHaveBeenCalled();
   });
 
-  it("blocks write_truth_file from hacking chapter progress inside current_state.md", async () => {
+  it("blocks write_jingwei_file from hacking chapter progress inside current_state.md", async () => {
     const result = JSON.parse(await executeAgentTool(
       pipeline,
       state,
       config,
-      "write_truth_file",
+      "write_jingwei_file",
       {
         bookId,
         fileName: "current_state.md",
