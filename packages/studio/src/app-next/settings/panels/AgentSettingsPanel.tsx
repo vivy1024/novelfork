@@ -2,141 +2,26 @@ import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { SimpleSelect } from "@/components/ui/simple-select";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { fetchJson, putApi } from "@/hooks/use-api";
 import { USER_SETTINGS_API_PATH } from "@/app-next/backend-contract";
-import type { RuntimeControlSettings, UserConfig } from "@/types/settings";
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-interface SubagentDefinition {
-  id: string;
-  name: string;
-  type: "explore" | "plan" | "general" | "review";
-  modelId: string;
-  systemPrompt: string;
-  maxSteps: number;
-  enabled: boolean;
-}
-
-/** Fields persisted via backend runtimeControls */
-interface PersistedFields {
-  relaxedPlanning: boolean;
-  yoloSkipReadonlyConfirmation: boolean;
-  expandReasoning: boolean;
-  maxRetryAttempts: number;
-  maxRetryDelayMs: number;
-  maxTurnSteps: number;
-}
-
-/** Fields that don't have backend support yet */
-interface LocalOnlyFields {
-  defaultPlanMode: boolean;
-  autoApprovePlan: boolean;
-  dangerReflection: boolean;
-  firstTokenTimeout: number;
-}
-
-interface RetryRule {
-  id: string;
-  enabled: boolean;
-  httpStatus: string;
-  contentKeyword: string;
-}
-
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-const SUBAGENT_TYPE_OPTIONS = [
-  { value: "explore", label: "Explore（探索）" },
-  { value: "plan", label: "Plan（规划）" },
-  { value: "general", label: "General（通用）" },
-  { value: "review", label: "Review（审查）" },
-];
-
-const DEFAULT_PERSISTED: PersistedFields = {
-  relaxedPlanning: true,
-  yoloSkipReadonlyConfirmation: false,
-  expandReasoning: false,
-  maxRetryAttempts: 10,
-  maxRetryDelayMs: 20000,
-  maxTurnSteps: 200,
-};
-
-const DEFAULT_LOCAL: LocalOnlyFields = {
-  defaultPlanMode: false,
-  autoApprovePlan: false,
-  dangerReflection: true,
-  firstTokenTimeout: 0,
-};
+import type { CommandBlockRule, RetryRule, RuntimeControlSettings, ToolAccessSettings, UserConfig } from "@/types/settings";
+import { Plus, Trash2, X } from "lucide-react";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function generateId(): string {
-  return `agent-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
-}
-
-function createEmptyAgent(): SubagentDefinition {
-  return {
-    id: generateId(),
-    name: "",
-    type: "general",
-    modelId: "",
-    systemPrompt: "",
-    maxSteps: 25,
-    enabled: true,
-  };
-}
-
-function createEmptyRetryRule(): RetryRule {
-  return {
-    id: `rule-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
-    enabled: true,
-    httpStatus: "",
-    contentKeyword: "",
-  };
-}
-
-function clampNumber(value: number, min: number, max: number) {
+function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
-function parseNumInput(raw: string, fallback: number, min: number, max: number) {
+function parseNum(raw: string, fallback: number, min: number, max: number) {
   if (raw.trim() === "") return fallback;
   const n = Number(raw);
-  return Number.isFinite(n) ? clampNumber(n, min, max) : fallback;
-}
-
-/** Extract persisted fields from a UserConfig response */
-function extractPersistedFields(rc: RuntimeControlSettings): PersistedFields {
-  return {
-    relaxedPlanning: rc.relaxedPlanning ?? DEFAULT_PERSISTED.relaxedPlanning,
-    yoloSkipReadonlyConfirmation: rc.yoloSkipReadonlyConfirmation ?? DEFAULT_PERSISTED.yoloSkipReadonlyConfirmation,
-    expandReasoning: rc.expandReasoning ?? DEFAULT_PERSISTED.expandReasoning,
-    maxRetryAttempts: rc.recovery?.maxRetryAttempts ?? DEFAULT_PERSISTED.maxRetryAttempts,
-    maxRetryDelayMs: rc.recovery?.maxRetryDelayMs ?? DEFAULT_PERSISTED.maxRetryDelayMs,
-    maxTurnSteps: rc.maxTurnSteps ?? DEFAULT_PERSISTED.maxTurnSteps,
-  };
-}
-
-/** Compare two PersistedFields objects for equality */
-function isPersistedEqual(a: PersistedFields, b: PersistedFields): boolean {
-  return (
-    a.relaxedPlanning === b.relaxedPlanning &&
-    a.yoloSkipReadonlyConfirmation === b.yoloSkipReadonlyConfirmation &&
-    a.expandReasoning === b.expandReasoning &&
-    a.maxRetryAttempts === b.maxRetryAttempts &&
-    a.maxRetryDelayMs === b.maxRetryDelayMs &&
-    a.maxTurnSteps === b.maxTurnSteps
-  );
+  return Number.isFinite(n) ? clamp(n, min, max) : fallback;
 }
 
 // ---------------------------------------------------------------------------
@@ -145,118 +30,77 @@ function isPersistedEqual(a: PersistedFields, b: PersistedFields): boolean {
 
 function Section({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
   return (
-    <div className="border-t border-border pt-4">
-      <h3 className="mb-1 text-sm font-semibold">{title}</h3>
-      {description && <p className="mb-3 text-xs text-muted-foreground">{description}</p>}
-      {!description && <div className="mb-3" />}
-      <div className="space-y-3">{children}</div>
+    <div className="space-y-3">
+      <div>
+        <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+        {description && <p className="text-xs text-muted-foreground mt-0.5">{description}</p>}
+      </div>
+      <div className="space-y-3 rounded-lg border border-border p-4">{children}</div>
     </div>
   );
 }
 
-function FieldRow({ label, description, badge, children }: { label: string; description?: string; badge?: string; children: React.ReactNode }) {
+function FieldRow({ label, description, children }: { label: string; description?: string; children: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-4">
       <div className="min-w-0 flex-1">
-        <span className="text-sm text-muted-foreground">
-          {label}
-          {badge && <span className="ml-1.5 text-[10px] text-muted-foreground/60">({badge})</span>}
-        </span>
-        {description && <p className="text-xs text-muted-foreground/70">{description}</p>}
+        <span className="text-sm">{label}</span>
+        {description && <p className="text-xs text-muted-foreground">{description}</p>}
       </div>
-      {children}
+      <div className="shrink-0">{children}</div>
     </div>
   );
 }
 
-// ---------------------------------------------------------------------------
-// SubagentForm
-// ---------------------------------------------------------------------------
-
-function SubagentForm({
-  agent,
-  onChange,
-  onDelete,
-  onCancel,
-}: {
-  agent: SubagentDefinition;
-  onChange: (agent: SubagentDefinition) => void;
-  onDelete?: () => void;
-  onCancel?: () => void;
+function ListSection({ title, description, items, onAdd, onRemove, placeholder }: {
+  title: string;
+  description: string;
+  items: string[];
+  onAdd: (value: string) => void;
+  onRemove: (index: number) => void;
+  placeholder: string;
 }) {
+  const [draft, setDraft] = useState("");
   return (
-    <div className="space-y-3 rounded-lg border border-border bg-muted/10 p-4">
-      <div className="grid gap-3 sm:grid-cols-2">
-        <label className="block text-sm">
-          <span className="text-muted-foreground">名称</span>
-          <Input
-            className="mt-1"
-            value={agent.name}
-            onChange={(e) => onChange({ ...agent, name: e.target.value })}
-            placeholder="例如：大纲规划师"
-          />
-        </label>
-        <label className="block text-sm">
-          <span className="text-muted-foreground">类型</span>
-          <div className="mt-1">
-            <SimpleSelect
-              value={agent.type}
-              onValueChange={(val) => onChange({ ...agent, type: val as SubagentDefinition["type"] })}
-              options={SUBAGENT_TYPE_OPTIONS}
-              className="w-full"
-              aria-label="子代理类型"
-            />
-          </div>
-        </label>
+    <div className="space-y-2">
+      <div>
+        <span className="text-sm">{title}</span>
+        <p className="text-xs text-muted-foreground">{description}</p>
       </div>
-      <label className="block text-sm">
-        <span className="text-muted-foreground">模型 ID</span>
-        <Input
-          className="mt-1"
-          value={agent.modelId}
-          onChange={(e) => onChange({ ...agent, modelId: e.target.value })}
-          placeholder="例如：claude-sonnet-4-20250514"
-        />
-      </label>
-      <label className="block text-sm">
-        <span className="text-muted-foreground">系统提示词</span>
-        <Textarea
-          className="mt-1"
-          rows={4}
-          value={agent.systemPrompt}
-          onChange={(e) => onChange({ ...agent, systemPrompt: e.target.value })}
-          placeholder="为该子代理定义角色和行为..."
-        />
-      </label>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <label className="block text-sm">
-          <span className="text-muted-foreground">最大步数</span>
-          <Input
-            className="mt-1"
-            type="number"
-            min={1}
-            max={200}
-            value={agent.maxSteps}
-            onChange={(e) => onChange({ ...agent, maxSteps: Math.max(1, Math.min(200, Number(e.target.value) || 25)) })}
-          />
-        </label>
-        <div className="flex items-end">
-          <FieldRow label="启用">
-            <Switch checked={agent.enabled} onCheckedChange={(v) => onChange({ ...agent, enabled: v })} />
-          </FieldRow>
+      {items.length > 0 && (
+        <div className="space-y-1">
+          {items.map((item, i) => (
+            <div key={`${item}-${i}`} className="flex items-center gap-2 rounded border border-border px-2 py-1 text-xs font-mono">
+              <span className="flex-1 truncate">{item}</span>
+              <button type="button" onClick={() => onRemove(i)} className="text-muted-foreground hover:text-destructive">
+                <X className="size-3" />
+              </button>
+            </div>
+          ))}
         </div>
-      </div>
-      <div className="flex gap-2 pt-1">
-        {onCancel && (
-          <Button type="button" variant="outline" size="sm" onClick={onCancel}>
-            取消
-          </Button>
-        )}
-        {onDelete && (
-          <Button type="button" variant="outline" size="sm" className="text-destructive hover:text-destructive" onClick={onDelete}>
-            删除
-          </Button>
-        )}
+      )}
+      <div className="flex gap-2">
+        <Input
+          className="flex-1 text-xs"
+          placeholder={placeholder}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && draft.trim()) {
+              onAdd(draft.trim());
+              setDraft("");
+            }
+          }}
+        />
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={!draft.trim()}
+          onClick={() => { onAdd(draft.trim()); setDraft(""); }}
+        >
+          <Plus className="size-3" />
+        </Button>
       </div>
     </div>
   );
@@ -267,77 +111,38 @@ function SubagentForm({
 // ---------------------------------------------------------------------------
 
 export function AgentSettingsPanel() {
-  // --- Subagent definitions (local-only) ---
-  const [agents, setAgents] = useState<SubagentDefinition[]>([]);
-  const [editingId, setEditingId] = useState<string | null>(null);
-
-  // --- Persisted fields (backed by API) ---
-  const [persisted, setPersisted] = useState<PersistedFields>(DEFAULT_PERSISTED);
-  const savedRef = useRef<PersistedFields>(DEFAULT_PERSISTED);
-
-  // --- Local-only fields (no backend yet) ---
-  const [local, setLocal] = useState<LocalOnlyFields>(DEFAULT_LOCAL);
-
-  // --- Retry rules (local-only) ---
-  const [retryRules, setRetryRules] = useState<RetryRule[]>([]);
-
-  // --- Loading / saving state ---
+  const [config, setConfig] = useState<RuntimeControlSettings | null>(null);
+  const savedRef = useRef<RuntimeControlSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // --- Dirty detection ---
-  const isDirty = !isPersistedEqual(persisted, savedRef.current);
-
-  // --- Load from backend on mount ---
   useEffect(() => {
     let cancelled = false;
-
     fetchJson<UserConfig>(USER_SETTINGS_API_PATH)
       .then((data) => {
         if (cancelled) return;
-        if (data?.runtimeControls) {
-          const fields = extractPersistedFields(data.runtimeControls);
-          setPersisted(fields);
-          savedRef.current = fields;
-        }
-        setError(null);
+        setConfig(data.runtimeControls);
+        savedRef.current = data.runtimeControls;
       })
-      .catch((e) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
+      .catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : String(e)); })
+      .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, []);
 
-  // --- Save handler ---
+  const isDirty = config && savedRef.current && JSON.stringify(config) !== JSON.stringify(savedRef.current);
+
   async function handleSave() {
+    if (!config) return;
     setSaving(true);
     setError(null);
     try {
-      const patch = {
-        runtimeControls: {
-          relaxedPlanning: persisted.relaxedPlanning,
-          yoloSkipReadonlyConfirmation: persisted.yoloSkipReadonlyConfirmation,
-          expandReasoning: persisted.expandReasoning,
-          maxTurnSteps: persisted.maxTurnSteps,
-          recovery: {
-            maxRetryAttempts: persisted.maxRetryAttempts,
-            maxRetryDelayMs: persisted.maxRetryDelayMs,
-          },
-        },
-      };
-      const updated = await putApi<UserConfig>(USER_SETTINGS_API_PATH, patch);
+      const updated = await putApi<UserConfig>(USER_SETTINGS_API_PATH, { runtimeControls: config });
       if (updated?.runtimeControls) {
-        const fields = extractPersistedFields(updated.runtimeControls);
-        setPersisted(fields);
-        savedRef.current = fields;
+        setConfig(updated.runtimeControls);
+        savedRef.current = updated.runtimeControls;
       } else {
-        // If backend doesn't return full config, just mark current as saved
-        savedRef.current = { ...persisted };
+        savedRef.current = { ...config };
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -346,234 +151,372 @@ export function AgentSettingsPanel() {
     }
   }
 
-  // --- Reset handler ---
-  function handleReset() {
-    setPersisted(savedRef.current);
+  function patch(partial: Partial<RuntimeControlSettings>) {
+    setConfig((c) => c ? { ...c, ...partial } : c);
   }
 
-  // --- Subagent handlers ---
-  const handleAdd = () => {
-    const newAgent = createEmptyAgent();
-    setAgents((prev) => [...prev, newAgent]);
-    setEditingId(newAgent.id);
-  };
-
-  const handleUpdate = (updated: SubagentDefinition) => {
-    setAgents((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
-  };
-
-  const handleDelete = (id: string) => {
-    setAgents((prev) => prev.filter((a) => a.id !== id));
-    if (editingId === id) setEditingId(null);
-  };
-
-  // --- Retry rule handlers ---
-  const handleAddRetryRule = () => {
-    setRetryRules((prev) => [...prev, createEmptyRetryRule()]);
-  };
-
-  const handleUpdateRetryRule = (id: string, patch: Partial<RetryRule>) => {
-    setRetryRules((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
-  };
-
-  const handleDeleteRetryRule = (id: string) => {
-    setRetryRules((prev) => prev.filter((r) => r.id !== id));
-  };
-
-  // --- Loading state ---
-  if (loading) {
-    return <p className="py-8 text-center text-sm text-muted-foreground">正在读取 Agent 配置…</p>;
+  function patchToolAccess(partial: Partial<ToolAccessSettings>) {
+    setConfig((c) => c ? { ...c, toolAccess: { ...c.toolAccess, ...partial } } : c);
   }
+
+  if (loading) return <p className="py-8 text-center text-sm text-muted-foreground">正在读取 Agent 配置…</p>;
+  if (!config) return <p className="py-8 text-center text-sm text-destructive">加载失败：{error}</p>;
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
-      {/* ---- 子代理定义 ---- */}
-      <Section title="子代理定义">
-        {agents.length === 0 && !editingId && (
-          <p className="text-sm text-muted-foreground">暂无自定义子代理。点击下方按钮添加。</p>
-        )}
-        {agents.map((agent) =>
-          editingId === agent.id ? (
-            <SubagentForm
-              key={agent.id}
-              agent={agent}
-              onChange={handleUpdate}
-              onDelete={() => handleDelete(agent.id)}
-              onCancel={() => setEditingId(null)}
-            />
-          ) : (
-            <div
-              key={agent.id}
-              className="flex items-center justify-between rounded-md border border-border px-3 py-2"
-            >
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium truncate">{agent.name || "未命名"}</span>
-                  <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">{agent.type}</span>
-                  {!agent.enabled && <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">已禁用</span>}
-                </div>
-                {agent.modelId && <p className="mt-0.5 text-xs text-muted-foreground font-mono truncate">{agent.modelId}</p>}
-              </div>
-              <Button type="button" variant="ghost" size="xs" onClick={() => setEditingId(agent.id)}>
-                编辑
-              </Button>
-            </div>
-          ),
-        )}
-        <Button type="button" variant="outline" size="sm" onClick={handleAdd}>
-          添加子代理
-        </Button>
-      </Section>
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-lg font-semibold mb-1 text-foreground">AI 代理</h2>
+        <p className="text-sm text-muted-foreground">Agent 运行时行为、权限、上下文管理和安全策略。</p>
+      </div>
 
-      <Separator />
-
-      {/* ---- 计划与审批 ---- */}
-      <Section title="计划与审批">
-        <FieldRow label="默认进入计划模式" badge="即将上线" description="新建叙述者默认启用计划模式。">
-          <Switch
-            checked={local.defaultPlanMode}
-            onCheckedChange={(v) => setLocal((c) => ({ ...c, defaultPlanMode: v }))}
+      {/* ── 基础设置 ── */}
+      <Section title="基础设置">
+        <FieldRow label="默认权限模式">
+          <SimpleSelect
+            value={config.defaultPermissionMode}
+            onValueChange={(v) => patch({ defaultPermissionMode: v as RuntimeControlSettings["defaultPermissionMode"] })}
+            options={[
+              { value: "allow-all", label: "全部允许" },
+              { value: "ask-always", label: "需要审批" },
+              { value: "deny-all", label: "只读" },
+            ]}
+            className="w-32"
+            aria-label="默认权限模式"
           />
         </FieldRow>
-        <FieldRow label="默认宽松规划" description="启用后，规划时工具仍然可用，不会被禁用。">
-          <Switch
-            checked={persisted.relaxedPlanning}
-            onCheckedChange={(v) => setPersisted((c) => ({ ...c, relaxedPlanning: v }))}
-          />
-        </FieldRow>
-        <FieldRow label="全局默认自动批准计划" badge="即将上线" description="ExitPlanMode 计划反思确认后跳过人工审批。">
-          <Switch
-            checked={local.autoApprovePlan}
-            onCheckedChange={(v) => setLocal((c) => ({ ...c, autoApprovePlan: v }))}
-          />
-        </FieldRow>
-      </Section>
-
-      {/* ---- 安全防护 ---- */}
-      <Section title="安全防护">
-        <FieldRow label="全局默认启用危险反思" badge="即将上线" description="全部允许模式下对高风险操作进行二次反思确认。">
-          <Switch
-            checked={local.dangerReflection}
-            onCheckedChange={(v) => setLocal((c) => ({ ...c, dangerReflection: v }))}
-          />
-        </FieldRow>
-        <FieldRow label="跳过只读危险反思确认" description="已确认只读的操作不再触发额外安全暂停。">
-          <Switch
-            checked={persisted.yoloSkipReadonlyConfirmation}
-            onCheckedChange={(v) => setPersisted((c) => ({ ...c, yoloSkipReadonlyConfirmation: v }))}
-          />
-        </FieldRow>
-      </Section>
-
-      {/* ---- 重试与超时 ---- */}
-      <Section title="重试与超时">
-        <FieldRow label="可恢复错误最大重试次数" description="遇到临时性 API 错误时的最大重试次数。">
-          <Input
-            type="number"
-            className="w-20"
-            min={0}
-            max={20}
-            value={persisted.maxRetryAttempts}
-            onChange={(e) => setPersisted((c) => ({ ...c, maxRetryAttempts: parseNumInput(e.target.value, c.maxRetryAttempts, 0, 20) }))}
-          />
-        </FieldRow>
-        <FieldRow label="沉默工具调用阈值" description="连续执行这么多次工具调用但没有输出文本时，要求 AI 说明进度。">
+        <FieldRow label="每条消息最大轮次" description="每条用户消息的 Agent 循环最大轮次数">
           <Input
             type="number"
             className="w-20"
             min={1}
             max={1000}
-            value={persisted.maxTurnSteps}
-            onChange={(e) => setPersisted((c) => ({ ...c, maxTurnSteps: parseNumInput(e.target.value, c.maxTurnSteps, 1, 1000) }))}
+            value={config.maxTurnSteps}
+            onChange={(e) => patch({ maxTurnSteps: parseNum(e.target.value, 200, 1, 1000) })}
           />
         </FieldRow>
-        <FieldRow label="重试退避时间上限（秒）" description="指数退避的最大等待时间。">
+        <FieldRow label="旧编码支持" description="自动检测并保留非 UTF-8 文件编码（如 GBK、Shift_JIS）">
+          <Switch checked={config.legacyEncoding} onCheckedChange={(v) => patch({ legacyEncoding: v })} />
+        </FieldRow>
+        <FieldRow label="刷新 Shell 环境" description="每次执行 Bash 工具时通过 login shell 加载最新的环境变量">
+          <Switch checked={config.refreshShellEnv} onCheckedChange={(v) => patch({ refreshShellEnv: v })} />
+        </FieldRow>
+        <FieldRow label="翻译思考内容" description="推理块完成后通过摘要模型翻译为用户语言">
+          <Switch checked={config.translateThinking} onCheckedChange={(v) => patch({ translateThinking: v })} />
+        </FieldRow>
+        <FieldRow label="Dump 每条 API 请求" description="持久化原始请求与响应数据到请求历史">
+          <Switch checked={config.dumpApiRequests} onCheckedChange={(v) => patch({ dumpApiRequests: v })} />
+        </FieldRow>
+        <FieldRow label="仅保留报错请求 dump" description="只有报错请求保存到请求历史，成功请求不落库">
+          <Switch checked={config.dumpOnlyErrors} onCheckedChange={(v) => patch({ dumpOnlyErrors: v })} />
+        </FieldRow>
+        <FieldRow label="默认展开推理内容" description="自动展开消息中的推理/思考块">
+          <Switch checked={config.expandReasoning} onCheckedChange={(v) => patch({ expandReasoning: v })} />
+        </FieldRow>
+      </Section>
+
+      {/* ── 计划与审批 ── */}
+      <Section title="计划与审批">
+        <FieldRow label="新叙述者默认进入计划模式" description="为新建叙述者默认启用计划模式">
+          <Switch checked={config.defaultPlanMode} onCheckedChange={(v) => patch({ defaultPlanMode: v })} />
+        </FieldRow>
+        <FieldRow label="默认宽松规划" description="规划时工具仍然可用，不会被禁用">
+          <Switch checked={config.relaxedPlanning} onCheckedChange={(v) => patch({ relaxedPlanning: v })} />
+        </FieldRow>
+        <FieldRow label="全局默认自动批准计划" description="ExitPlanMode 计划反思确认后跳过人工审批">
+          <Switch checked={config.autoApprovePlan} onCheckedChange={(v) => patch({ autoApprovePlan: v })} />
+        </FieldRow>
+      </Section>
+
+      {/* ── 安全防护 ── */}
+      <Section title="安全防护">
+        <FieldRow label="全局默认启用危险反思" description="全部允许模式下对高风险操作进行二次反思确认">
+          <Switch checked={config.dangerReflection} onCheckedChange={(v) => patch({ dangerReflection: v })} />
+        </FieldRow>
+        <FieldRow label="跳过只读危险反思确认" description="已确认只读的操作不再触发额外安全暂停">
+          <Switch checked={config.yoloSkipReadonlyConfirmation} onCheckedChange={(v) => patch({ yoloSkipReadonlyConfirmation: v })} />
+        </FieldRow>
+      </Section>
+
+      {/* ── 重试与超时 ── */}
+      <Section title="重试与超时">
+        <FieldRow label="可恢复错误最大重试次数" description="遇到临时性 API 错误时的最大重试次数。-1=无限重试">
+          <Input
+            type="number"
+            className="w-20"
+            min={-1}
+            max={50}
+            value={config.recovery.maxRetryAttempts}
+            onChange={(e) => patch({ recovery: { ...config.recovery, maxRetryAttempts: parseNum(e.target.value, 5, -1, 50) } })}
+          />
+        </FieldRow>
+        <FieldRow label="沉默工具调用阈值" description="连续多少次无文本输出后要求 AI 说明进度。-1=关闭">
+          <Input
+            type="number"
+            className="w-20"
+            min={-1}
+            max={200}
+            value={config.silentToolCallThreshold}
+            onChange={(e) => patch({ silentToolCallThreshold: parseNum(e.target.value, 25, -1, 200) })}
+          />
+        </FieldRow>
+        <FieldRow label="重试退避时间上限（秒）" description="指数退避的最大等待时间">
           <Input
             type="number"
             className="w-20"
             min={1}
             max={120}
-            value={Math.round(persisted.maxRetryDelayMs / 1000)}
-            onChange={(e) => setPersisted((c) => ({ ...c, maxRetryDelayMs: parseNumInput(e.target.value, Math.round(c.maxRetryDelayMs / 1000), 1, 120) * 1000 }))}
+            value={Math.round(config.recovery.maxRetryDelayMs / 1000)}
+            onChange={(e) => patch({ recovery: { ...config.recovery, maxRetryDelayMs: parseNum(e.target.value, 30, 1, 120) * 1000 } })}
           />
         </FieldRow>
-        <FieldRow label="首 token 超时时间（秒）" badge="即将上线" description="API 请求发起后若在此秒数内没有收到实质事件则中断重试。0 表示禁用。">
+        <FieldRow label="首 token 超时时间（秒）" description="API 请求发起后若在此秒数内没有收到实质事件则中断重试。0=禁用">
           <Input
             type="number"
             className="w-20"
             min={0}
-            value={local.firstTokenTimeout}
-            onChange={(e) => setLocal((c) => ({ ...c, firstTokenTimeout: Math.max(0, Number(e.target.value) || 0) }))}
+            max={300}
+            value={config.firstTokenTimeout}
+            onChange={(e) => patch({ firstTokenTimeout: parseNum(e.target.value, 0, 0, 300) })}
           />
         </FieldRow>
       </Section>
 
-      {/* ---- 显示偏好 ---- */}
-      <Section title="显示偏好">
-        <FieldRow label="默认展开推理内容" description="自动展开消息中的推理/思考块，而不是默认折叠。">
-          <Switch
-            checked={persisted.expandReasoning}
-            onCheckedChange={(v) => setPersisted((c) => ({ ...c, expandReasoning: v }))}
-          />
-        </FieldRow>
-      </Section>
-
-      {/* ---- 自定义可重试错误规则 ---- */}
-      <Section
-        title="自定义可重试错误规则"
-        description="定义自定义规则，将特定 API 错误标记为可重试。匹配的错误将自动重试而非直接失败。(即将上线)"
-      >
-        {retryRules.length === 0 && (
-          <p className="text-sm text-muted-foreground">暂无自定义规则。点击下方按钮添加。</p>
-        )}
-        {retryRules.map((rule) => (
-          <div key={rule.id} className="flex items-center gap-2 rounded-md border border-border px-3 py-2">
+      {/* ── 自定义可重试错误规则 ── */}
+      <Section title="自定义可重试错误规则" description="将特定 API 错误标记为可重试，匹配的错误将自动重试而非直接失败。">
+        {config.retryRules.map((rule, idx) => (
+          <div key={rule.id} className="flex items-center gap-2 rounded border border-border px-3 py-2">
             <Switch
               checked={rule.enabled}
-              onCheckedChange={(v) => handleUpdateRetryRule(rule.id, { enabled: v })}
+              onCheckedChange={(v) => {
+                const rules = [...config.retryRules];
+                rules[idx] = { ...rule, enabled: v };
+                patch({ retryRules: rules });
+              }}
               aria-label="启用规则"
             />
             <Input
-              type="number"
-              className="w-20"
+              type="text"
+              className="w-20 text-xs"
               placeholder="状态码"
               value={rule.httpStatus}
-              onChange={(e) => handleUpdateRetryRule(rule.id, { httpStatus: e.target.value })}
-              aria-label="HTTP 状态码"
+              onChange={(e) => {
+                const rules = [...config.retryRules];
+                rules[idx] = { ...rule, httpStatus: e.target.value };
+                patch({ retryRules: rules });
+              }}
             />
             <Input
-              className="flex-1"
+              className="flex-1 text-xs"
               placeholder="内容关键词匹配"
               value={rule.contentKeyword}
-              onChange={(e) => handleUpdateRetryRule(rule.id, { contentKeyword: e.target.value })}
-              aria-label="内容关键词"
+              onChange={(e) => {
+                const rules = [...config.retryRules];
+                rules[idx] = { ...rule, contentKeyword: e.target.value };
+                patch({ retryRules: rules });
+              }}
             />
-            <Button
+            <button
               type="button"
-              variant="ghost"
-              size="sm"
-              className="text-destructive hover:text-destructive"
-              onClick={() => handleDeleteRetryRule(rule.id)}
-              aria-label="删除规则"
+              className="text-muted-foreground hover:text-destructive"
+              onClick={() => patch({ retryRules: config.retryRules.filter((_, i) => i !== idx) })}
             >
-              删除
-            </Button>
+              <Trash2 className="size-3.5" />
+            </button>
           </div>
         ))}
-        <Button type="button" variant="outline" size="sm" onClick={handleAddRetryRule}>
-          添加规则
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => patch({ retryRules: [...config.retryRules, { id: `rule-${Date.now().toString(36)}`, enabled: true, httpStatus: "", contentKeyword: "" }] })}
+        >
+          <Plus className="size-3 mr-1" /> 添加规则
         </Button>
       </Section>
 
-      {/* ---- Error display ---- */}
-      {error && (
-        <p className="text-sm text-destructive">加载/保存失败：{error}</p>
-      )}
+      {/* ── 上下文窗口阈值 ── */}
+      <Section title="上下文窗口阈值" description="配置裁剪和压缩的触发时机，按模型上下文窗口大小分两档。">
+        <FieldRow label="自动压缩保留轮数" description="压缩后保留的最近 user/assistant 对话轮数">
+          <Input
+            type="number"
+            className="w-20"
+            min={1}
+            max={20}
+            value={config.compressionKeepTurns}
+            onChange={(e) => patch({ compressionKeepTurns: parseNum(e.target.value, 4, 1, 20) })}
+          />
+        </FieldRow>
+        <FieldRow label="最大裁剪比例 (%)" description="已裁剪消息比例达到此值时强制启动压缩">
+          <Input
+            type="number"
+            className="w-20"
+            min={20}
+            max={95}
+            value={config.maxTruncateRatio}
+            onChange={(e) => patch({ maxTruncateRatio: parseNum(e.target.value, 80, 20, 95) })}
+          />
+        </FieldRow>
+        <Separator />
+        <p className="text-xs font-medium text-muted-foreground">标准窗口 (≤600k)</p>
+        <FieldRow label="开始裁剪 (%)" description="上下文占用达到此值时开始渐进式裁剪">
+          <Input
+            type="number"
+            className="w-20"
+            min={50}
+            max={95}
+            value={config.contextTruncateTargetPercent}
+            onChange={(e) => patch({ contextTruncateTargetPercent: parseNum(e.target.value, 70, 50, 95) })}
+          />
+        </FieldRow>
+        <FieldRow label="开始压缩 (%)" description="上下文占用达到此值时触发压缩">
+          <Input
+            type="number"
+            className="w-20"
+            min={50}
+            max={95}
+            value={config.contextCompressionThresholdPercent}
+            onChange={(e) => patch({ contextCompressionThresholdPercent: parseNum(e.target.value, 80, 50, 95) })}
+          />
+        </FieldRow>
+        <Separator />
+        <p className="text-xs font-medium text-muted-foreground">大窗口 (&gt;600k)</p>
+        <FieldRow label="开始裁剪 (%)" description="大窗口模型的裁剪起始阈值">
+          <Input
+            type="number"
+            className="w-20"
+            min={20}
+            max={95}
+            value={config.largeWindowTruncateTargetPercent}
+            onChange={(e) => patch({ largeWindowTruncateTargetPercent: parseNum(e.target.value, 50, 20, 95) })}
+          />
+        </FieldRow>
+        <FieldRow label="开始压缩 (%)" description="大窗口模型的压缩起始阈值">
+          <Input
+            type="number"
+            className="w-20"
+            min={30}
+            max={95}
+            value={config.largeWindowCompressionThresholdPercent}
+            onChange={(e) => patch({ largeWindowCompressionThresholdPercent: parseNum(e.target.value, 60, 30, 95) })}
+          />
+        </FieldRow>
+      </Section>
 
-      {/* ---- Sticky dirty bar ---- */}
+      {/* ── 会话行为 ── */}
+      <Section title="会话行为">
+        <FieldRow label="会话滚动时自动加载更早消息" description="滚动到顶部时自动加载历史消息">
+          <Switch checked={config.scrollAutoLoadHistory} onCheckedChange={(v) => patch({ scrollAutoLoadHistory: v })} />
+        </FieldRow>
+        <FieldRow label="要求使用用户语言回复" description="指示 AI 使用与界面相同的语言进行回复">
+          <Switch checked={config.forceUserLanguage} onCheckedChange={(v) => patch({ forceUserLanguage: v })} />
+        </FieldRow>
+        <FieldRow label="发送方式" description="聊天输入框中发送消息的方式">
+          <SimpleSelect
+            value={config.sendMode}
+            onValueChange={(v) => patch({ sendMode: v as "enter" | "ctrl-enter" })}
+            options={[
+              { value: "enter", label: "Enter 发送" },
+              { value: "ctrl-enter", label: "Ctrl+Enter 发送" },
+            ]}
+            className="w-40"
+            aria-label="发送方式"
+          />
+        </FieldRow>
+      </Section>
+
+      {/* ── 调试 ── */}
+      <Section title="调试">
+        <FieldRow label="显示每轮对话的 Token 用量" description="每轮对话结束后显示输入/输出 Token 数量">
+          <Switch checked={config.showTokenUsage} onCheckedChange={(v) => patch({ showTokenUsage: v })} />
+        </FieldRow>
+        <FieldRow label="显示实时 AI 输出速率" description="在标题栏显示实时字符/秒指示器">
+          <Switch checked={config.showOutputRate} onCheckedChange={(v) => patch({ showOutputRate: v })} />
+        </FieldRow>
+      </Section>
+
+      {/* ── 全局白/黑名单 ── */}
+      <Section title="全局白/黑名单" description="控制所有会话的目录和命令访问权限。">
+        <ListSection
+          title="全局白名单目录"
+          description="对所有叙述者自动放行的目录"
+          items={config.toolAccess.directoryAllowlist}
+          onAdd={(v) => patchToolAccess({ directoryAllowlist: [...config.toolAccess.directoryAllowlist, v] })}
+          onRemove={(i) => patchToolAccess({ directoryAllowlist: config.toolAccess.directoryAllowlist.filter((_, idx) => idx !== i) })}
+          placeholder="输入绝对路径，回车添加"
+        />
+        <Separator />
+        <ListSection
+          title="全局黑名单目录"
+          description="对所有叙述者禁止访问的目录，优先级高于白名单"
+          items={config.toolAccess.directoryBlocklist}
+          onAdd={(v) => patchToolAccess({ directoryBlocklist: [...config.toolAccess.directoryBlocklist, v] })}
+          onRemove={(i) => patchToolAccess({ directoryBlocklist: config.toolAccess.directoryBlocklist.filter((_, idx) => idx !== i) })}
+          placeholder="输入绝对路径，回车添加"
+        />
+        <Separator />
+        <ListSection
+          title="全局命令白名单"
+          description="所有叙述者自动放行的命令，支持通配符（如 npm*、docker*）"
+          items={config.toolAccess.commandAllowlist}
+          onAdd={(v) => patchToolAccess({ commandAllowlist: [...config.toolAccess.commandAllowlist, v] })}
+          onRemove={(i) => patchToolAccess({ commandAllowlist: config.toolAccess.commandAllowlist.filter((_, idx) => idx !== i) })}
+          placeholder="输入命令模式，回车添加"
+        />
+        <Separator />
+        <div className="space-y-2">
+          <div>
+            <span className="text-sm">全局命令黑名单</span>
+            <p className="text-xs text-muted-foreground">所有叙述者自动拒绝的命令，优先于白名单。支持可选的拒绝提示词。</p>
+          </div>
+          {config.toolAccess.commandBlocklist.map((rule, i) => (
+            <div key={`cmd-block-${i}`} className="flex items-center gap-2 rounded border border-border px-2 py-1">
+              <Input
+                className="flex-1 text-xs"
+                placeholder="命令模式"
+                value={rule.pattern}
+                onChange={(e) => {
+                  const list = [...config.toolAccess.commandBlocklist];
+                  list[i] = { ...rule, pattern: e.target.value };
+                  patchToolAccess({ commandBlocklist: list });
+                }}
+              />
+              <Input
+                className="flex-1 text-xs"
+                placeholder="拒绝提示词（可选）"
+                value={rule.rejectHint ?? ""}
+                onChange={(e) => {
+                  const list = [...config.toolAccess.commandBlocklist];
+                  list[i] = { ...rule, rejectHint: e.target.value || undefined };
+                  patchToolAccess({ commandBlocklist: list });
+                }}
+              />
+              <button
+                type="button"
+                className="text-muted-foreground hover:text-destructive"
+                onClick={() => patchToolAccess({ commandBlocklist: config.toolAccess.commandBlocklist.filter((_, idx) => idx !== i) })}
+              >
+                <X className="size-3" />
+              </button>
+            </div>
+          ))}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => patchToolAccess({ commandBlocklist: [...config.toolAccess.commandBlocklist, { pattern: "" }] })}
+          >
+            <Plus className="size-3 mr-1" /> 添加
+          </Button>
+        </div>
+      </Section>
+
+      {/* ── Error ── */}
+      {error && <p className="text-sm text-destructive">错误：{error}</p>}
+
+      {/* ── Dirty bar ── */}
       {isDirty && (
-        <div className="sticky bottom-0 flex items-center justify-end gap-2 border-t border-border bg-background px-4 py-3">
-          <Button variant="outline" size="sm" onClick={handleReset}>取消变更</Button>
+        <div className="sticky bottom-0 flex items-center justify-end gap-2 border-t border-border bg-background px-4 py-3 -mx-4">
+          <Button variant="outline" size="sm" onClick={() => { setConfig(savedRef.current); }}>取消变更</Button>
           <Button size="sm" onClick={handleSave} disabled={saving}>
             {saving ? "保存中..." : "保存变更"}
           </Button>

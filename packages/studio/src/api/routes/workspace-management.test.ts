@@ -51,7 +51,7 @@ const DEFAULT_WORKSPACE = {
 function makeConfig(workspace = DEFAULT_WORKSPACE) {
   return {
     profile: { name: "", email: "" },
-    preferences: { theme: "auto" as const, fontSize: 14, fontFamily: "", editorLineHeight: 1.6, editorTabSize: 2, autoSave: true, autoSaveDelay: 2000, dailyWordTarget: 6000, workbenchMode: false, advancedAnimations: true, wrapMarkdown: true, wrapCode: true, wrapDiff: true, language: "zh" },
+    preferences: { theme: "auto" as const, fontSize: 14, fontFamily: "", editorLineHeight: 1.6, editorTabSize: 2, autoSave: true, autoSaveDelay: 2000, dailyWordTarget: 6000, workbenchMode: false, advancedAnimations: true, wrapMarkdown: true, wrapCode: true, wrapDiff: true, language: "zh", oledBlack: false, terminalFontSize: 14, terminalTheme: "auto" as const },
     runtimeControls: {} as any,
     modelDefaults: {} as any,
     onboarding: {} as any,

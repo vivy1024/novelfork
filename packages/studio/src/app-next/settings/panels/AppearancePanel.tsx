@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { fetchJson, putApi } from "../../../hooks/use-api";
 import { useTheme, type Theme } from "../../../hooks/use-theme";
 import { DEFAULT_USER_CONFIG, type UserPreferences } from "../../../types/settings";
-import { Sun, Moon, Monitor, Type } from "lucide-react";
+import { Sun, Moon, Monitor, Type, Terminal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SimpleSelect } from "@/components/ui/simple-select";
 import { Switch } from "@/components/ui/switch";
@@ -154,6 +154,12 @@ export function AppearancePanel() {
           <h3 className="text-sm font-semibold mb-3">显示</h3>
           <div className="space-y-3">
             <SwitchRow
+              label="OLED 纯黑"
+              description="深色模式下使用纯黑背景，适配 AMOLED 屏幕"
+              checked={preferences.oledBlack}
+              onChange={(v) => save({ oledBlack: v })}
+            />
+            <SwitchRow
               label="高级动画"
               description="为消息和卡片启用 blur-in 动画"
               checked={preferences.advancedAnimations}
@@ -196,6 +202,46 @@ export function AppearancePanel() {
               { value: "en", label: "English" },
             ]}
           />
+        </div>
+
+        {/* 终端 */}
+        <div className="border-t border-border pt-4">
+          <h3 className="flex items-center gap-2 text-sm font-semibold mb-3">
+            <Terminal className="w-4 h-4" />
+            终端
+          </h3>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm text-muted-foreground mb-2 block">终端主题</label>
+              <SimpleSelect
+                value={preferences.terminalTheme}
+                onValueChange={(v) => save({ terminalTheme: v as UserPreferences["terminalTheme"] })}
+                aria-label="终端主题"
+                options={[
+                  { value: "auto", label: "自动（跟随系统）" },
+                  { value: "dark", label: "深色" },
+                  { value: "light", label: "浅色" },
+                ]}
+              />
+            </div>
+            <div>
+              <label className="text-sm text-muted-foreground mb-2 block">
+                字体大小 ({preferences.terminalFontSize}px)
+              </label>
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-muted-foreground">8</span>
+                <input
+                  type="range"
+                  min="8"
+                  max="32"
+                  value={preferences.terminalFontSize}
+                  onChange={(e) => save({ terminalFontSize: Number(e.target.value) })}
+                  className="flex-1"
+                />
+                <span className="text-xs text-muted-foreground">32</span>
+              </div>
+            </div>
+          </div>
         </div>
 
         {saving && (

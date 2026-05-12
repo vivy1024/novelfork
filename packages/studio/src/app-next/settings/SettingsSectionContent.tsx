@@ -11,6 +11,7 @@ import { RuntimeEnvironmentPanel } from "./panels/RuntimeEnvironmentPanel";
 import { AgentSettingsPanel } from "./panels/AgentSettingsPanel";
 import { WritingSettingsPanel } from "./panels/WritingSettingsPanel";
 import { StorageDiagnosticsPanel } from "./panels/StorageDiagnosticsPanel";
+import { ProxySettingsPanel } from "./panels/ProxySettingsPanel";
 import { AboutPanel } from "./panels/AboutPanel";
 import { InlineError } from "../components/feedback";
 import { Row } from "../components/shared";
@@ -42,6 +43,8 @@ export function SettingsSectionContent({ sectionId, onSectionChange }: SettingsS
       return <NotificationSettingsPanel />;
     case "appearance":
       return <AppearancePanel />;
+    case "proxy":
+      return <ProxySettingsPanel />;
     case "terminals":
       return <TerminalSettingsPanel />;
     case "server":
@@ -142,19 +145,70 @@ function ServerSection() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold mb-2 text-foreground">服务器与系统</h2>
-        <p className="text-sm text-muted-foreground">运行时信息与启动诊断。</p>
+        <h2 className="text-lg font-semibold mb-1 text-foreground">服务器与系统</h2>
+        <p className="text-sm text-muted-foreground">运行时信息、系统依赖与服务器配置。</p>
       </div>
       {loading && <p className="text-muted-foreground">加载中...</p>}
       {error && <InlineError message={error} />}
+
       {data && (
-        <div className="space-y-3 rounded-lg border border-border p-4">
-          {typeof data.bunVersion === "string" && <Row label="Bun 版本" value={data.bunVersion} />}
-          {typeof data.dbPath === "string" && <Row label="数据库路径" value={data.dbPath} />}
-        </div>
+        <>
+          {/* 服务器信息 */}
+          <div className="space-y-3 rounded-lg border border-border p-4">
+            <h3 className="text-sm font-semibold">服务器</h3>
+            {typeof data.bunVersion === "string" && <Row label="Bun 版本" value={data.bunVersion} />}
+            {typeof data.port === "number" && <Row label="服务器端口" value={String(data.port)} />}
+            {typeof data.host === "string" && <Row label="监听地址" value={data.host} />}
+            {typeof data.dbPath === "string" && <Row label="数据库路径" value={data.dbPath} />}
+            {typeof data.platform === "string" && <Row label="平台" value={data.platform} />}
+            {typeof data.uptime === "number" && <Row label="运行时间" value={formatUptime(data.uptime as number)} />}
+          </div>
+
+          {/* 系统依赖 */}
+          <div className="space-y-3 rounded-lg border border-border p-4">
+            <h3 className="text-sm font-semibold">系统依赖</h3>
+            <SystemDependencyRow name="git" description="版本控制（核心功能）" required version={typeof data.gitVersion === "string" ? data.gitVersion : undefined} />
+            <SystemDependencyRow name="rg" description="AI 工具快速代码搜索" version={typeof data.rgVersion === "string" ? data.rgVersion : undefined} />
+            <SystemDependencyRow name="node" description="Node.js 运行时" version={typeof data.nodeVersion === "string" ? data.nodeVersion : undefined} />
+          </div>
+        </>
       )}
     </div>
   );
+}
+
+function SystemDependencyRow({ name, description, required, version }: {
+  name: string;
+  description: string;
+  required?: boolean;
+  version?: string;
+}) {
+  const installed = Boolean(version);
+  return (
+    <div className="flex items-center justify-between py-1">
+      <div className="flex items-center gap-2">
+        <span className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px] ${installed ? "bg-emerald-500/20 text-emerald-600" : "bg-destructive/20 text-destructive"}`}>
+          {installed ? "✓" : "×"}
+        </span>
+        <div>
+          <span className="text-sm font-mono">{name}</span>
+          {version && <span className="text-xs text-muted-foreground ml-2">{version}</span>}
+          <p className="text-xs text-muted-foreground">{description}</p>
+        </div>
+      </div>
+      <span className={`text-[10px] rounded px-1.5 py-0.5 ${required ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>
+        {required ? "必需" : "可选"}
+      </span>
+    </div>
+  );
+}
+
+function formatUptime(seconds: number): string {
+  if (seconds < 60) return `${seconds}秒`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}分钟`;
+  const hours = Math.floor(seconds / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+  return `${hours}小时${mins}分钟`;
 }
 
 

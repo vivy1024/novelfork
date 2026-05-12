@@ -2,10 +2,12 @@ import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { existsSync } from "node:fs";
 import type {
+  CommandBlockRule,
   ModelAggregation,
   ModelDefaultSettings,
   OnboardingSettings,
   ProxySettings,
+  RetryRule,
   RuntimeControlSettings,
   ToolAccessSettings,
   RuntimeDebugSettings,
@@ -90,6 +92,12 @@ function sanitizeToolAccess(toolAccess?: Partial<ToolAccessSettings> | null): To
     mcpStrategy: mcpStrategy === "inherit" || mcpStrategy === "allow" || mcpStrategy === "ask" || mcpStrategy === "deny"
       ? mcpStrategy
       : defaults.mcpStrategy,
+    directoryAllowlist: sanitizeStringList(toolAccess?.directoryAllowlist, defaults.directoryAllowlist),
+    directoryBlocklist: sanitizeStringList(toolAccess?.directoryBlocklist, defaults.directoryBlocklist),
+    commandAllowlist: sanitizeStringList(toolAccess?.commandAllowlist, defaults.commandAllowlist),
+    commandBlocklist: Array.isArray(toolAccess?.commandBlocklist)
+      ? toolAccess.commandBlocklist.filter((r): r is CommandBlockRule => r != null && typeof r === "object" && typeof r.pattern === "string")
+      : defaults.commandBlocklist,
   };
 }
 
@@ -158,6 +166,19 @@ function sanitizeRuntimeControls(runtimeControls?: Partial<RuntimeControlSetting
       || runtimeControls?.arcTrackingMode === "llm"
         ? runtimeControls.arcTrackingMode
         : defaults.arcTrackingMode,
+    compressionKeepTurns: clampNumber(runtimeControls?.compressionKeepTurns, defaults.compressionKeepTurns, 1, 20),
+    maxTruncateRatio: clampNumber(runtimeControls?.maxTruncateRatio, defaults.maxTruncateRatio, 20, 95),
+    dumpOnlyErrors: typeof runtimeControls?.dumpOnlyErrors === "boolean" ? runtimeControls.dumpOnlyErrors : defaults.dumpOnlyErrors,
+    legacyEncoding: typeof runtimeControls?.legacyEncoding === "boolean" ? runtimeControls.legacyEncoding : defaults.legacyEncoding,
+    refreshShellEnv: typeof runtimeControls?.refreshShellEnv === "boolean" ? runtimeControls.refreshShellEnv : defaults.refreshShellEnv,
+    defaultPlanMode: typeof runtimeControls?.defaultPlanMode === "boolean" ? runtimeControls.defaultPlanMode : defaults.defaultPlanMode,
+    autoApprovePlan: typeof runtimeControls?.autoApprovePlan === "boolean" ? runtimeControls.autoApprovePlan : defaults.autoApprovePlan,
+    dangerReflection: typeof runtimeControls?.dangerReflection === "boolean" ? runtimeControls.dangerReflection : defaults.dangerReflection,
+    firstTokenTimeout: clampNumber(runtimeControls?.firstTokenTimeout, defaults.firstTokenTimeout, 0, 300),
+    silentToolCallThreshold: clampNumber(runtimeControls?.silentToolCallThreshold, defaults.silentToolCallThreshold, -1, 200),
+    retryRules: Array.isArray(runtimeControls?.retryRules)
+      ? runtimeControls.retryRules.filter((r): r is RetryRule => r != null && typeof r === "object" && typeof r.id === "string")
+      : defaults.retryRules,
   };
 }
 
