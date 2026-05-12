@@ -68,33 +68,21 @@ const FALLBACK_CATEGORIES: CategoryGroup[] = [
 // ── Main Component ──
 
 export function LearnPage() {
-  const [categories, setCategories] = useState<CategoryGroup[]>([]);
+  const [categories, setCategories] = useState<CategoryGroup[]>(FALLBACK_CATEGORIES);
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
   const [docContent, setDocContent] = useState<DocContent | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<LearningDocEntry[] | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [docLoading, setDocLoading] = useState(false);
 
-  // Load catalog
+  // Load catalog from API (enhance with server data if available)
   useEffect(() => {
-    const timeout = setTimeout(() => {
-      setCategories(FALLBACK_CATEGORIES);
-      setLoading(false);
-    }, 3000);
-
     fetchJson<{ categories: CategoryGroup[] }>("/learn/docs")
       .then((data) => {
-        clearTimeout(timeout);
-        setCategories(data.categories);
+        if (data.categories?.length) setCategories(data.categories);
       })
-      .catch(() => {
-        clearTimeout(timeout);
-        setCategories(FALLBACK_CATEGORIES);
-      })
-      .finally(() => setLoading(false));
-
-    return () => clearTimeout(timeout);
+      .catch(() => { /* keep fallback */ });
   }, []);
 
   // Load doc content when selected

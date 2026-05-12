@@ -27,7 +27,7 @@ export function AgentShell({ route, books, sessions, onNavigate, onDeleteBook, c
         collapsed={collapsed}
         onToggleCollapse={() => setCollapsed(!collapsed)}
       />
-      <main className="flex min-w-0 flex-1 overflow-hidden" data-testid="shell-main">
+      <main className="flex h-full min-w-0 flex-1 overflow-hidden" data-testid="shell-main">
         {children}
       </main>
     </div>
