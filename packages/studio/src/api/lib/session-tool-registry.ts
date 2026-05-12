@@ -6,10 +6,10 @@ import type {
   SessionToolScope,
 } from "../../shared/agent-native-workspace.js";
 import type { SessionPermissionMode } from "../../shared/session-types.js";
-import { NOVEL_SESSION_TOOL_DEFINITIONS, NOVEL_TOOL_NAMES } from "./session-tool-registry-novel.js";
+import { NOVEL_SESSION_TOOL_DEFINITIONS, NOVEL_TOOL_NAMES, NOVEL_AGENT_PRESETS } from "./session-tool-registry-novel.js";
 
 export { SESSION_TOOL_RISKS };
-export { NOVEL_SESSION_TOOL_DEFINITIONS, NOVEL_TOOL_NAMES };
+export { NOVEL_SESSION_TOOL_DEFINITIONS, NOVEL_TOOL_NAMES, NOVEL_AGENT_PRESETS };
 export type { JsonObjectSchema, SessionToolDefinition, SessionToolRisk, SessionToolScope };
 
 export type ProviderSessionToolDefinition = {
@@ -430,10 +430,7 @@ export function isSessionToolEnabledForMode(
 // ---------------------------------------------------------------------------
 
 const AGENT_TOOL_PRESETS: Record<string, { enable: string[]; disable: string[] }> = {
-  writer: {
-    enable: ["Bash", "Read", "Write", "Edit", "Grep", "Glob", "EnterWorktree", "ExitWorktree", "TodoWrite"],
-    disable: ["Terminal", "Browser", "ForkNarrator", "NarraForkAdmin", "Recall", "ShareFile"],
-  },
+  // 通用角色预设
   planner: {
     enable: ["Read", "Grep", "Glob", "WebSearch", "WebFetch", "TodoWrite"],
     disable: ["Bash", "Write", "Edit", "Terminal"],
@@ -450,18 +447,12 @@ const AGENT_TOOL_PRESETS: Record<string, { enable: string[]; disable: string[] }
     enable: ["Read", "Write", "Grep", "Glob", "WebSearch"],
     disable: ["Bash", "Terminal"],
   },
-  hooks: {
-    enable: ["Read", "Write", "Grep", "Glob"],
-    disable: ["Bash", "Terminal", "Browser", "ForkNarrator"],
+  subagent: {
+    enable: ["Bash", "Read", "Write", "Edit", "Grep", "Glob"],
+    disable: ["Terminal", "Browser", "ForkNarrator"],
   },
-  "chapter-hooks": {
-    enable: ["Read", "Grep", "Glob"],
-    disable: ["Write", "Edit", "Bash", "Terminal", "Browser"],
-  },
-  outline: {
-    enable: ["Read", "Write", "Edit", "Grep", "Glob"],
-    disable: ["Bash", "Terminal", "Browser", "ForkNarrator"],
-  },
+  // 小说角色预设（来自 novel-plugin）
+  ...NOVEL_AGENT_PRESETS,
 };
 
 const UNAVAILABLE_SERVICE_TOOLS = new Set([

@@ -317,3 +317,25 @@ export const NOVEL_SESSION_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = 
  * 小说工具名列表 — 供 novel-plugin manifest 引用
  */
 export const NOVEL_TOOL_NAMES: readonly string[] = NOVEL_SESSION_TOOL_DEFINITIONS.map((t) => t.name);
+
+/**
+ * 小说 Agent 角色预设 — writer/hooks/chapter-hooks/outline
+ */
+export const NOVEL_AGENT_PRESETS: Record<string, { enable: string[]; disable: string[] }> = {
+  writer: {
+    enable: ["Bash", "Read", "Write", "Edit", "Grep", "Glob", "EnterWorktree", "ExitWorktree", "TaskCreate"],
+    disable: ["Terminal", "Browser", "ForkNarrator", "Recall", "ShareFile"],
+  },
+  hooks: {
+    enable: ["Read", "Write", "Grep", "Glob"],
+    disable: ["Bash", "Terminal", "Browser", "ForkNarrator"],
+  },
+  "chapter-hooks": {
+    enable: ["Read", "Grep", "Glob"],
+    disable: ["Write", "Edit", "Bash", "Terminal", "Browser"],
+  },
+  outline: {
+    enable: ["Read", "Write", "Edit", "Grep", "Glob"],
+    disable: ["Bash", "Terminal", "Browser", "ForkNarrator"],
+  },
+};
