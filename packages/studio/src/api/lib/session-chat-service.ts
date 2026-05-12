@@ -880,7 +880,7 @@ async function appendModelContinuationAfterToolDecision(
       sessionId: loaded.session.id,
       sessionConfig: loaded.session.sessionConfig,
       messages: compactedMessages,
-      systemPrompt: `${agentSystemPrompt}${AGENT_NATIVE_WRITE_NEXT_INSTRUCTIONS}`,
+      systemPrompt: `${agentSystemPrompt}${AGENT_NATIVE_WRITE_NEXT_INSTRUCTIONS}${buildGoalsPromptSection(loaded.session.goals)}`,
       context: createRuntimeContext(bookContext, canvasContext, loaded.session.worktree),
       tools: getEnabledSessionTools(loaded.session.sessionConfig.permissionMode, loaded.session.agentId, { disabledTools: loaded.session.sessionConfig.toolPolicy?.deny }),
       permissionMode: loaded.session.sessionConfig.permissionMode,
@@ -1090,6 +1090,11 @@ export async function confirmSessionToolDecision(
     confirmationDecision: decision,
     ...(toolResult.confirmationAudit ? { confirmationAudit: toolResult.confirmationAudit } : {}),
   };
+
+  // ExitPlanMode 批准后切换 sessionMode
+  if (normalizedDecision === "approved" && toolName === "ExitPlanMode") {
+    await updateSession(sessionId, { sessionMode: "chat" });
+  }
 
   const timestamp = Date.now();
   const resultMessage = appendMessageToState(loaded.state, {
@@ -1454,7 +1459,7 @@ export async function handleSessionChatTransportMessage(
       } catch { /* context build failure is non-fatal */ }
     }
 
-    const fullSystemPrompt = `${agentSystemPrompt}${AGENT_NATIVE_WRITE_NEXT_INSTRUCTIONS}`;
+    const fullSystemPrompt = `${agentSystemPrompt}${AGENT_NATIVE_WRITE_NEXT_INSTRUCTIONS}${buildGoalsPromptSection(loaded.session.goals)}`;
     const maxSteps = await resolveMaxTurnSteps();
     const { items: compactedMessages } = await maybeAutoCompact(loaded.state.messages, loaded.state, sessionId);
     const abortController = createSessionAbortController(sessionId);
@@ -1685,6 +1690,12 @@ export async function handleSessionChatTransportMessage(
       }
     }).catch(() => { /* auto-title failure is non-fatal */ });
   }
+}
+
+function buildGoalsPromptSection(goals?: Array<{ id: string; objective: string; status: string }>): string {
+  const activeGoals = goals?.filter(g => g.status === "active") ?? [];
+  if (activeGoals.length === 0) return "";
+  return `\n\n## 当前目标\n\n${activeGoals.map((g, i) => `${i + 1}. ${g.objective}`).join("\n")}\n\n请优先推进以上目标。`;
 }
 
 const AGENT_NATIVE_WRITE_NEXT_INSTRUCTIONS = `
