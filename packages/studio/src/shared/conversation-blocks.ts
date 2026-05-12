@@ -1,169 +1,235 @@
-/**
- * conversation-blocks.ts — 块级对话历史模型
- *
- * 替代扁平的 RuntimeChatMessage，支持保存 provider 原始 block：
- * - DeepSeek reasoning_content
- * - Claude thinking / redacted_thinking
- * - OpenAI Responses reasoning item
- * - tool_use / tool_result
- *
- * 向后兼容：upgradeMessage / downgradeItem 实现新旧格式互转。
- */
+import type { NarratorSessionChatMessage, NarratorSessionChatRole, ToolCall, ToolCallStatus } from "./session-types";
 
 // ---------------------------------------------------------------------------
 // Block types
 // ---------------------------------------------------------------------------
 
+export interface TextBlock {
+  readonly type: "text";
+  readonly content: string;
+}
+
+export interface ToolUseBlock {
+  readonly type: "tool_use";
+  readonly id: string;
+  readonly toolName: string;
+  readonly input: unknown;
+}
+
+export interface ToolResultBlock {
+  readonly type: "tool_result";
+  readonly id: string;
+  readonly toolName: string;
+  readonly status: ToolCallStatus;
+  readonly summary?: string;
+  readonly input?: unknown;
+  readonly output?: string;
+  readonly duration?: number;
+  readonly result?: unknown;
+  readonly renderer?: string;
+  readonly artifact?: unknown;
+  readonly confirmation?: unknown;
+  readonly error?: string;
+}
+
+export interface ReasoningBlock {
+  readonly type: "reasoning";
+  readonly content: string;
+}
+
+export interface ThinkingBlock {
+  readonly type: "thinking";
+  readonly content: string;
+}
+
+export interface RedactedThinkingBlock {
+  readonly type: "redacted_thinking";
+}
+
+export interface SummaryBlock {
+  readonly type: "summary";
+  readonly content: string;
+  readonly originalMessageCount?: number;
+}
+
 export type ConversationBlock =
-  | { type: "text"; text: string }
-  | { type: "tool_use"; id: string; name: string; input: Record<string, unknown> }
-  | { type: "tool_result"; toolUseId: string; content: string; isError?: boolean }
-  | { type: "reasoning"; content: string; provider: "deepseek" | "openai" }
-  | { type: "thinking"; thinking: string; signature?: string }
-  | { type: "redacted_thinking"; data: string }
-  | { type: "summary"; text: string };
+  | TextBlock
+  | ToolUseBlock
+  | ToolResultBlock
+  | ReasoningBlock
+  | ThinkingBlock
+  | RedactedThinkingBlock
+  | SummaryBlock;
 
 // ---------------------------------------------------------------------------
-// ConversationItem
+// ConversationItem — block-based message
 // ---------------------------------------------------------------------------
 
 export interface ConversationItem {
-  id: string;
-  role: "system" | "user" | "assistant" | "tool";
-  blocks: ConversationBlock[];
+  readonly id: string;
+  readonly role: NarratorSessionChatRole;
+  readonly blocks: readonly ConversationBlock[];
+  readonly timestamp: number;
+  readonly seq?: number;
+  readonly runtime?: unknown;
+  readonly metadata?: Record<string, unknown>;
 }
 
 // ---------------------------------------------------------------------------
-// Accessors (extract from blocks)
+// Upgrade: NarratorSessionChatMessage → ConversationItem
 // ---------------------------------------------------------------------------
 
-/** Extract concatenated text content from blocks */
-export function extractTextContent(item: ConversationItem): string {
-  return item.blocks
-    .filter((b): b is Extract<ConversationBlock, { type: "text" }> => b.type === "text")
-    .map((b) => b.text)
-    .join("");
-}
-
-/** Extract tool calls from blocks */
-export function extractToolCalls(item: ConversationItem): Array<{ id: string; name: string; input: Record<string, unknown> }> {
-  return item.blocks
-    .filter((b): b is Extract<ConversationBlock, { type: "tool_use" }> => b.type === "tool_use")
-    .map((b) => ({ id: b.id, name: b.name, input: b.input }));
-}
-
-/** Extract reasoning content (DeepSeek/OpenAI) */
-export function extractReasoningContent(item: ConversationItem): string | undefined {
-  const block = item.blocks.find((b): b is Extract<ConversationBlock, { type: "reasoning" }> => b.type === "reasoning");
-  return block?.content;
-}
-
-/** Extract thinking blocks (Claude) */
-export function extractThinkingBlocks(item: ConversationItem): Array<Extract<ConversationBlock, { type: "thinking" | "redacted_thinking" }>> {
-  return item.blocks.filter(
-    (b): b is Extract<ConversationBlock, { type: "thinking" }> | Extract<ConversationBlock, { type: "redacted_thinking" }> =>
-      b.type === "thinking" || b.type === "redacted_thinking",
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Upgrade: RuntimeChatMessage → ConversationItem
-// ---------------------------------------------------------------------------
-
-interface LegacyToolUse {
-  id: string;
-  name: string;
-  input: Record<string, unknown>;
-}
-
-interface LegacyMessage {
-  role: "system" | "user" | "assistant";
-  content: string;
-  toolCalls?: readonly LegacyToolUse[];
-  /** DeepSeek reasoning_content (if previously saved) */
-  reasoning_content?: string;
-}
-
-interface LegacyToolMessage {
-  role: "tool";
-  toolCallId: string;
-  name?: string;
-  content: string;
-}
-
-export type LegacyRuntimeChatMessage = LegacyMessage | LegacyToolMessage;
-
-let idCounter = 0;
-function generateBlockId(): string {
-  if (typeof globalThis.crypto !== "undefined" && "randomUUID" in globalThis.crypto) {
-    return `blk_${(globalThis.crypto as { randomUUID(): string }).randomUUID().slice(0, 12)}`;
-  }
-  return `blk_${Date.now().toString(36)}_${(idCounter++).toString(36)}`;
-}
-
-export function upgradeMessage(msg: LegacyRuntimeChatMessage): ConversationItem {
-  if (msg.role === "tool") {
-    return {
-      id: generateBlockId(),
-      role: "tool",
-      blocks: [{ type: "tool_result", toolUseId: msg.toolCallId, content: msg.content }],
-    };
-  }
-
+export function upgradeMessage(message: NarratorSessionChatMessage): ConversationItem {
   const blocks: ConversationBlock[] = [];
 
-  // Reasoning content (DeepSeek or OpenAI o-series)
-  if ("reasoning_content" in msg && msg.reasoning_content) {
-    blocks.push({ type: "reasoning", content: msg.reasoning_content, provider: "openai" });
+  // 1. Reasoning/thinking content → ReasoningBlock
+  if (message.reasoning_content) {
+    blocks.push({ type: "reasoning", content: message.reasoning_content });
   }
 
-  // Text content
-  if (msg.content) {
-    blocks.push({ type: "text", text: msg.content });
-  }
-
-  // Tool calls
-  if (msg.toolCalls?.length) {
-    for (const tc of msg.toolCalls) {
-      blocks.push({ type: "tool_use", id: tc.id, name: tc.name, input: tc.input });
+  // 2. Tool calls → ToolUseBlock or ToolResultBlock
+  if (message.toolCalls?.length) {
+    for (const toolCall of message.toolCalls) {
+      if (toolCall.status === "success" || toolCall.status === "error" || toolCall.result) {
+        // This is a tool result (has been executed)
+        blocks.push({
+          type: "tool_result",
+          id: toolCall.id ?? "",
+          toolName: toolCall.toolName,
+          status: toolCall.status ?? "success",
+          summary: toolCall.summary,
+          input: toolCall.input,
+          output: toolCall.output,
+          duration: toolCall.duration,
+          result: toolCall.result,
+          renderer: toolCall.renderer,
+          artifact: toolCall.artifact,
+          confirmation: toolCall.confirmation,
+          error: toolCall.error,
+        });
+      } else {
+        // This is a pending/running tool use
+        blocks.push({
+          type: "tool_use",
+          id: toolCall.id ?? "",
+          toolName: toolCall.toolName,
+          input: toolCall.input,
+        });
+      }
     }
   }
 
-  return { id: generateBlockId(), role: msg.role, blocks };
-}
-
-// ---------------------------------------------------------------------------
-// Downgrade: ConversationItem → RuntimeChatMessage (for consumers that need old format)
-// ---------------------------------------------------------------------------
-
-export function downgradeItem(item: ConversationItem): LegacyRuntimeChatMessage {
-  if (item.role === "tool") {
-    const result = item.blocks.find((b): b is Extract<ConversationBlock, { type: "tool_result" }> => b.type === "tool_result");
-    return { role: "tool", toolCallId: result?.toolUseId ?? "", content: result?.content ?? "" };
+  // 3. Text content → TextBlock (only if non-empty and not a tool-call-only message)
+  const textContent = message.content.trim();
+  if (textContent && !message.toolCalls?.length) {
+    blocks.push({ type: "text", content: textContent });
   }
 
-  const content = extractTextContent(item);
-  const toolCalls = extractToolCalls(item);
-  const reasoning = extractReasoningContent(item);
-  // Also check thinking blocks (Claude) as reasoning_content fallback
-  const thinking = !reasoning ? item.blocks.find((b): b is Extract<ConversationBlock, { type: "thinking" }> => b.type === "thinking") : undefined;
-  const reasoningValue = reasoning ?? thinking?.thinking;
+  // 4. If no blocks at all, create an empty text block to preserve the message
+  if (blocks.length === 0 && message.content) {
+    blocks.push({ type: "text", content: message.content });
+  }
 
-  const msg: LegacyMessage = { role: item.role as "system" | "user" | "assistant", content };
-  if (toolCalls.length) (msg as LegacyMessage & { toolCalls: LegacyToolUse[] }).toolCalls = toolCalls;
-  if (reasoningValue) msg.reasoning_content = reasoningValue;
-
-  return msg;
+  return {
+    id: message.id,
+    role: message.role,
+    blocks,
+    timestamp: message.timestamp,
+    seq: message.seq,
+    runtime: message.runtime,
+    metadata: message.metadata,
+  };
 }
 
 // ---------------------------------------------------------------------------
-// Batch upgrade/downgrade
+// Downgrade: ConversationItem → NarratorSessionChatMessage
 // ---------------------------------------------------------------------------
 
-export function upgradeMessages(messages: readonly LegacyRuntimeChatMessage[]): ConversationItem[] {
-  return messages.map(upgradeMessage);
+export function downgradeItem(item: ConversationItem): NarratorSessionChatMessage {
+  let content = "";
+  let reasoning_content: string | undefined;
+  const toolCalls: ToolCall[] = [];
+
+  for (const block of item.blocks) {
+    switch (block.type) {
+      case "text":
+        content = content ? `${content}\n${block.content}` : block.content;
+        break;
+      case "reasoning":
+      case "thinking":
+        reasoning_content = reasoning_content ? `${reasoning_content}\n${block.content}` : block.content;
+        break;
+      case "tool_use":
+        toolCalls.push({
+          id: block.id,
+          toolName: block.toolName,
+          input: block.input,
+          status: "pending",
+        });
+        break;
+      case "tool_result":
+        toolCalls.push({
+          id: block.id,
+          toolName: block.toolName,
+          status: block.status,
+          summary: block.summary,
+          input: block.input,
+          output: block.output,
+          duration: block.duration,
+          result: block.result as ToolCall["result"],
+          renderer: block.renderer,
+          artifact: block.artifact as ToolCall["artifact"],
+          confirmation: block.confirmation as ToolCall["confirmation"],
+          error: block.error,
+        });
+        break;
+      case "summary":
+        content = content ? `${content}\n${block.content}` : block.content;
+        break;
+      case "redacted_thinking":
+        // No content to preserve
+        break;
+    }
+  }
+
+  return {
+    id: item.id,
+    role: item.role,
+    content,
+    ...(reasoning_content ? { reasoning_content } : {}),
+    timestamp: item.timestamp,
+    ...(item.seq !== undefined ? { seq: item.seq } : {}),
+    ...(toolCalls.length > 0 ? { toolCalls } : {}),
+    ...(item.runtime ? { runtime: item.runtime as NarratorSessionChatMessage["runtime"] } : {}),
+    ...(item.metadata ? { metadata: item.metadata as NarratorSessionChatMessage["metadata"] } : {}),
+  };
 }
 
-export function downgradeItems(items: readonly ConversationItem[]): LegacyRuntimeChatMessage[] {
-  return items.map(downgradeItem);
+// ---------------------------------------------------------------------------
+// Utility extractors
+// ---------------------------------------------------------------------------
+
+export function extractTextContent(item: ConversationItem): string {
+  return item.blocks
+    .filter((block): block is TextBlock | SummaryBlock => block.type === "text" || block.type === "summary")
+    .map((block) => block.content)
+    .join("\n");
+}
+
+export function extractToolCalls(item: ConversationItem): readonly (ToolUseBlock | ToolResultBlock)[] {
+  return item.blocks.filter(
+    (block): block is ToolUseBlock | ToolResultBlock => block.type === "tool_use" || block.type === "tool_result",
+  );
+}
+
+export function extractReasoningContent(item: ConversationItem): string | undefined {
+  const reasoning = item.blocks
+    .filter((block): block is ReasoningBlock | ThinkingBlock => block.type === "reasoning" || block.type === "thinking")
+    .map((block) => block.content)
+    .join("\n");
+  return reasoning || undefined;
+}
+
+export function hasToolBlocks(item: ConversationItem): boolean {
+  return item.blocks.some((block) => block.type === "tool_use" || block.type === "tool_result");
 }

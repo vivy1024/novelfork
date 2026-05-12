@@ -9,6 +9,7 @@ import type {
   SessionConfig,
   SessionPermissionMode,
 } from "../../shared/session-types.js";
+import type { ProviderReasoningPolicy } from "../../shared/provider-catalog.js";
 import type { LlmRuntimeFailureCode } from "./llm-runtime-service.js";
 import type { RuntimeToolUse } from "./provider-adapters/index.js";
 import { filterSessionToolsForProvider } from "./session-tool-policy.js";
@@ -62,6 +63,7 @@ export interface AgentTurnRuntimeInput {
   readonly maxSteps?: number;
   readonly onStreamChunk?: (chunk: string) => void;
   readonly onEvent?: (event: AgentTurnEvent) => void;
+  readonly reasoningPolicy?: ProviderReasoningPolicy;
   readonly signal?: AbortSignal;
 }
 
@@ -210,8 +212,9 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
     }
 
     // Insert assistant message with reasoning_content before tool calls
-    // This ensures DeepSeek/Claude thinking content is passed back in the next request
-    if (reply.reasoningContent) {
+    // Controlled by reasoningPolicy: strip (never), passback-on-tool-loop (default, tool loops only), always-passback (always)
+    const policy = input.reasoningPolicy ?? "passback-on-tool-loop";
+    if (reply.reasoningContent && policy !== "strip") {
       messages.push({ type: "message", role: "assistant", content: "", reasoning_content: reply.reasoningContent });
     }
 
