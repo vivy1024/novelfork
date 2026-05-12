@@ -2,10 +2,11 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { SimpleSelect } from "@/components/ui/simple-select";
 import { EmptyState } from "../../components/feedback";
-import type { ProviderApiMode, ProviderCompatibility } from "@/shared/provider-catalog";
-import { providerApiModeLabel, providerCompatibilityLabel } from "../../lib/display-labels";
+import type { ProviderApiMode, ProviderCompatibility, ProviderProtocol } from "@/shared/provider-catalog";
+import { providerApiModeLabel, providerCompatibilityLabel, providerProtocolLabel } from "../../lib/display-labels";
 import type { ApiProvider } from "../provider-types";
 import { ApiProviderCard } from "./ApiProviderCard";
+import { ProtocolSelectModal } from "./ProtocolSelectModal";
 
 export interface ApiProviderStatusSummary {
   readonly status: "callable" | "degraded" | "error";
@@ -23,6 +24,7 @@ export interface ProviderFormState {
   readonly baseUrl: string;
   readonly apiMode: ProviderApiMode;
   readonly compatibility: ProviderCompatibility;
+  readonly protocol: ProviderProtocol;
 }
 
 const API_MODES: ProviderApiMode[] = ["completions", "responses", "codex"];
@@ -36,10 +38,14 @@ export function ApiProvidersSection({
   providerStatuses,
   fixtureProviderIds,
   showAddForm,
+  showProtocolModal,
   form,
   busy,
   setForm,
   onToggleAddForm,
+  onOpenProtocolModal,
+  onCloseProtocolModal,
+  onSelectProtocol,
   onSaveProvider,
   onSelectProvider,
   onToggleProvider,
@@ -49,10 +55,14 @@ export function ApiProvidersSection({
   readonly providerStatuses?: Readonly<Record<string, ApiProviderStatusSummary>>;
   readonly fixtureProviderIds?: ReadonlySet<string>;
   readonly showAddForm: boolean;
+  readonly showProtocolModal?: boolean;
   readonly form: ProviderFormState;
   readonly busy: string | null;
   readonly setForm: (form: ProviderFormState) => void;
   readonly onToggleAddForm: () => void;
+  readonly onOpenProtocolModal?: () => void;
+  readonly onCloseProtocolModal?: () => void;
+  readonly onSelectProtocol?: (protocol: ProviderProtocol) => void;
   readonly onSaveProvider: () => void;
   readonly onSelectProvider: (providerId: string) => void;
   readonly onToggleProvider: (providerId: string, enabled: boolean) => void;
@@ -68,18 +78,26 @@ export function ApiProvidersSection({
         <Button
           variant="outline"
           size="sm"
-          onClick={onToggleAddForm}
+          onClick={onOpenProtocolModal ?? onToggleAddForm}
         >
           + 添加供应商
         </Button>
       </div>
+
+      {showProtocolModal && onCloseProtocolModal && onSelectProtocol && (
+        <ProtocolSelectModal
+          open={showProtocolModal}
+          onClose={onCloseProtocolModal}
+          onSelect={onSelectProtocol}
+        />
+      )}
 
       {showAddForm && (
         <AddProviderForm form={form} setForm={setForm} onSave={onSaveProvider} busy={busy === "create-provider"} />
       )}
 
       {providers.length === 0 ? (
-        <EmptyState title="暂无密钥供应商" description="点击“添加供应商”接入 OpenAI 或 Anthropic 兼容接口。" />
+        <EmptyState title="暂无密钥供应商" description={'点击"添加供应商"接入 OpenAI 或 Anthropic 兼容接口。'} />
       ) : (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {providers.map((provider) => (
@@ -115,8 +133,10 @@ function AddProviderForm({
   return (
     <section className="space-y-3 rounded-lg border border-border bg-background p-4">
       <h3 className="text-base font-semibold">添加 API key 供应商</h3>
-      <p className="text-xs text-muted-foreground">创建后在详情页配置 API Key 和 Base URL</p>
-      <div className="grid gap-3 md:grid-cols-3">
+      <p className="text-xs text-muted-foreground">
+        协议：<span className="font-medium">{providerProtocolLabel(form.protocol)}</span> — 创建后在详情页配置 API Key 和 Base URL
+      </p>
+      <div className="grid gap-3 md:grid-cols-2">
         <label className="text-sm">
           供应商名称 *
           <Input className="mt-1 w-full" placeholder="如：Sub2API" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
@@ -124,18 +144,6 @@ function AddProviderForm({
         <label className="text-sm">
           供应商前缀
           <Input className="mt-1 w-full" placeholder="如：sub2api" value={form.prefix} onChange={(event) => setForm({ ...form, prefix: event.target.value })} />
-        </label>
-        <label className="text-sm">
-          兼容格式
-          <SimpleSelect
-            className="mt-1"
-            value={form.compatibility}
-            onValueChange={(v) => setForm({ ...form, compatibility: v as ProviderCompatibility })}
-            options={[
-              { value: "openai-compatible", label: providerCompatibilityLabel("openai-compatible") },
-              { value: "anthropic-compatible", label: providerCompatibilityLabel("anthropic-compatible") },
-            ]}
-          />
         </label>
       </div>
       <Button variant="default" disabled={!canSave} onClick={onSave}>
