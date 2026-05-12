@@ -114,6 +114,8 @@ function stripBranchRef(branch: string): string {
 async function initRepository(repoRoot: string, initialBranch: string): Promise<void> {
   await mkdir(repoRoot, { recursive: true });
   await execGit(["init", `--initial-branch=${initialBranch}`], repoRoot);
+  // 创建初始 commit，否则 git worktree add 会失败（需要至少一个 commit）
+  await execGit(["commit", "--allow-empty", "-m", "初始化 NovelFork 项目仓库"], repoRoot);
 }
 
 async function cloneRepository(cloneUrl: string, repoRoot: string, studioRoot: string): Promise<void> {
