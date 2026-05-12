@@ -175,7 +175,7 @@ export function NarratorStatusBar({ status, streamingStartedAt, onUpdateModel, o
           </div>
         )}
 
-        {/* Left: status icon + label + timer + context ring */}
+        {/* Left: status icon + label + timer */}
         <div className="flex items-center gap-1.5">
           {isWorking ? (
             <Loader2 className="size-3.5 animate-spin text-blue-500 shrink-0" />
@@ -200,19 +200,19 @@ export function NarratorStatusBar({ status, streamingStartedAt, onUpdateModel, o
               )}
             </>
           )}
+        </div>
 
-          {/* Context usage ring — 紧跟状态文字 */}
+        {/* Right: context ring + model + reasoning + fast + permission */}
+        <div className="flex items-center gap-1.5">
+          {/* Context usage ring — 在模型下拉左边 */}
           <ContextRingMenu
             used={status.contextUsage?.usedTokens ?? 0}
             max={status.contextUsage?.maxTokens ?? 0}
             compactThreshold={status.contextUsage?.compactThreshold}
+            trimThreshold={status.contextUsage?.trimThreshold}
             onCompact={onCompact}
             onReset={onReset}
           />
-        </div>
-
-        {/* Right: controls — 确保垂直居中 */}
-        <div className="flex items-center gap-1.5">
           {/* Model dropdown — 显示完整名称 */}
           <ModelDropdown
             options={status.modelOptions}
@@ -385,19 +385,21 @@ function ContextRingMenu({
   used,
   max,
   compactThreshold,
+  trimThreshold,
   onCompact,
   onReset,
 }: {
   used: number;
   max: number;
   compactThreshold?: number;
+  trimThreshold?: number;
   onCompact?: () => void;
   onReset?: () => void;
 }) {
   const hasMax = max > 0;
-  const percent = hasMax ? Math.min(100, Math.round((used / max) * 100)) : 0;
-  const targetPercent = hasMax && compactThreshold ? Math.round((compactThreshold / max) * 100) : 50;
-  const autoThresholdPercent = hasMax && compactThreshold ? Math.round((compactThreshold / max) * 100) : 80;
+  const percent = hasMax ? Math.min(100, (used / max) * 100) : 0;
+  const trimPercent = hasMax && trimThreshold ? Math.round((trimThreshold / max) * 100) : 80;
+  const compactPercent = hasMax && compactThreshold ? Math.round((compactThreshold / max) * 100) : 95;
 
   const handleReset = () => {
     if (window.confirm("确定要清空上下文吗？这将重置当前会话的所有上下文记忆。")) {
@@ -410,23 +412,45 @@ function ContextRingMenu({
       <DropdownMenuTrigger className="cursor-default rounded px-1 py-0.5 h-7 inline-flex items-center">
         <ContextRing used={used} max={max} />
       </DropdownMenuTrigger>
-      <DropdownMenuContent side="top" align="end" className="min-w-[200px]">
-        <DropdownMenuLabel>
-          {hasMax
-            ? `上下文：${percent}% · ${used.toLocaleString()} / ${max.toLocaleString()} tokens (估算)`
-            : `上下文：${used.toLocaleString()} tokens（上限未知）`}
-        </DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => onCompact?.()} disabled={!onCompact}>
-          压缩到 {targetPercent}%
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={handleReset} disabled={!onReset}>
-          清空上下文
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <div className="px-2 py-1.5 text-xs text-muted-foreground">
-          自动压缩阈值：{autoThresholdPercent}%
+      <DropdownMenuContent side="top" align="end" className="min-w-[240px] p-0">
+        {/* 顶部阈值信息 */}
+        <div className="px-3 py-2 text-[10px] text-muted-foreground border-b border-border">
+          开始裁剪 {trimPercent}% · 开始压缩 {compactPercent}%
         </div>
+
+        <div className="px-3 py-2 space-y-2">
+          {/* 上下文百分比 */}
+          <div className="text-sm font-medium">
+            上下文: {percent.toFixed(1)}%
+          </div>
+
+          {/* Token 计数 */}
+          <div className="text-xs text-muted-foreground">
+            {used.toLocaleString()} / {hasMax ? max.toLocaleString() : "?"} tokens {hasMax ? "(估算)" : ""}
+          </div>
+
+          {/* 进度条 */}
+          {hasMax && (
+            <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all ${percent >= 90 ? "bg-red-500" : percent >= 70 ? "bg-yellow-500" : "bg-blue-500"}`}
+                style={{ width: `${Math.min(100, percent)}%` }}
+              />
+            </div>
+          )}
+        </div>
+
+        <DropdownMenuSeparator />
+
+        {/* 操作按钮 */}
+        <DropdownMenuItem onClick={() => onCompact?.()} disabled={!onCompact} className="gap-2">
+          <span className="text-xs">※</span>
+          <span>立即压缩</span>
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={handleReset} disabled={!onReset} className="gap-2">
+          <span className="text-xs">◇</span>
+          <span>清空上下文</span>
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );
