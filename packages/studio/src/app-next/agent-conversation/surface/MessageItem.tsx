@@ -253,7 +253,7 @@ export const MessageItem = memo(function MessageItem({ message, onContextAction,
           {message.thinking?.map((block, i) => (
             <ThinkingBlock key={`thinking-${i}`} block={block} />
           ))}
-          {message.content && (
+          {message.content && !message.toolCalls?.length && (
             message.isStreaming ? (
               <div className="prose prose-sm dark:prose-invert max-w-none">
                 <AnimatedMarkdown content={message.content} sep="word" animationDuration="0.3s" />

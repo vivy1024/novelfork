@@ -684,6 +684,7 @@ function buildToolResultCall(
     status,
     summary: result.summary,
     input: toolUse.input,
+    output: typeof result.data === "string" ? result.data : undefined,
     duration: result.durationMs,
     result,
     ...(result.renderer ? { renderer: result.renderer } : {}),

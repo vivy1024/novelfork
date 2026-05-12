@@ -24,6 +24,26 @@ export function mergeSessionMessages(
     }
   }
 
+  // Merge tool-result messages into their corresponding tool-use messages
+  const toolResultIds: string[] = [];
+  for (const [id, message] of byId) {
+    if (id.includes("-tool-result-")) {
+      const toolUseId = id.replace("-tool-result-", "-tool-use-");
+      const toolUseMessage = byId.get(toolUseId);
+      if (toolUseMessage) {
+        // Merge tool-result's toolCalls into tool-use message (result has complete data)
+        byId.set(toolUseId, {
+          ...toolUseMessage,
+          toolCalls: message.toolCalls ?? toolUseMessage.toolCalls,
+        });
+        toolResultIds.push(id);
+      }
+    }
+  }
+  for (const id of toolResultIds) {
+    byId.delete(id);
+  }
+
   return Array.from(byId.values()).sort((a, b) => {
     // Streaming messages (no seq) always sort to the end
     const aIsStream = a.id.startsWith("stream:");
