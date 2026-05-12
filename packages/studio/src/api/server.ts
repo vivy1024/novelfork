@@ -104,6 +104,7 @@ import {
   setupAdminWebSocket,
   setupMonitorWebSocket,
   createStorageDiagnosticsRouter,
+  createLearningRouter,
 } from "./routes/index.js";
 import { registerBuiltinPresets } from "@vivy1024/novelfork-core";
 import type { RouterContext } from "./routes/index.js";
@@ -430,6 +431,9 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
 
     // Usage aggregation
     app.route("/api/usage", createUsageRouter());
+
+    // Learning center
+    app.route("/api/learn", createLearningRouter());
 
     // System utilities — directory picker for desktop mode
     app.post("/api/system/browse-directory", async (c) => {

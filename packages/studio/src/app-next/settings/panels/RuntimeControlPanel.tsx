@@ -388,22 +388,46 @@ export function RuntimeControlPanel() {
           />
         </FieldRow>
         <FieldRow label="子代理模型池">
-          <select
-            aria-label="子代理模型池"
-            className={`${wideInputCls} min-h-20`}
-            multiple
-            value={md.subagentModelPool}
-            disabled={!hasModelOptions}
-            onChange={(e) =>
-              patchMd({
-                subagentModelPool: Array.from(e.currentTarget.selectedOptions, (option) => option.value),
-              })
-            }
-          >
-            {modelOptions.map((model) => (
-              <option key={model.modelId} value={model.modelId}>{runtimeModelLabel(model)}（子代理）</option>
-            ))}
-          </select>
+          <div className="space-y-2 w-full max-w-xs">
+            {md.subagentModelPool.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {md.subagentModelPool.map((modelId) => {
+                  const model = modelOptions.find((m) => m.modelId === modelId);
+                  return (
+                    <span key={modelId} className="inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-0.5 text-xs">
+                      {model ? runtimeModelLabel(model) : modelId}
+                      <button
+                        type="button"
+                        className="text-muted-foreground hover:text-destructive"
+                        onClick={() => patchMd({ subagentModelPool: md.subagentModelPool.filter((id) => id !== modelId) })}
+                        aria-label={`移除 ${modelId}`}
+                      >
+                        ×
+                      </button>
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+            {hasModelOptions && (
+              <SimpleSelect
+                value=""
+                onValueChange={(val) => {
+                  if (val && !md.subagentModelPool.includes(val)) {
+                    patchMd({ subagentModelPool: [...md.subagentModelPool, val] });
+                  }
+                }}
+                options={modelOptions
+                  .filter((m) => !md.subagentModelPool.includes(m.modelId))
+                  .map((model) => ({ value: model.modelId, label: runtimeModelLabel(model) }))}
+                aria-label="添加模型到子代理池"
+                className="w-full"
+              />
+            )}
+            {!hasModelOptions && (
+              <p className="text-xs text-muted-foreground">无可用模型，请先配置供应商。</p>
+            )}
+          </div>
         </FieldRow>
       </Section>
 
