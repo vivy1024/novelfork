@@ -123,6 +123,22 @@ function normalizeRecoveryMetadata(value: unknown): NarratorSessionRecoveryMetad
   };
 }
 
+/**
+ * 修正旧会话的 worktree 路径：如果包含 .novelfork-worktrees 子目录，
+ * 截取到该标记之前的路径作为仓库根目录。
+ * 这是对 v0.1.2 之前创建的会话的向后兼容修复。
+ */
+function normalizeWorktreePath(worktree: string | undefined): string | undefined {
+  if (!worktree) return worktree;
+  const marker = ".novelfork-worktrees";
+  const idx = worktree.indexOf(marker);
+  if (idx > 0) {
+    // 截取到 marker 之前，去掉尾部分隔符
+    return worktree.slice(0, idx).replace(/[\\/]+$/, "");
+  }
+  return worktree;
+}
+
 function toNarratorSessionRecord(record: StoredSessionRecord): NarratorSessionRecord {
   const metadata = safeParseJson<Partial<NarratorSessionRecord>>(record.metadataJson, {});
   const sessionConfig = normalizeSessionConfig(safeParseJson<Partial<SessionConfig>>(record.configJson, metadata.sessionConfig ?? {}));
@@ -140,7 +156,7 @@ function toNarratorSessionRecord(record: StoredSessionRecord): NarratorSessionRe
     lastModified,
     messageCount: record.messageCount,
     sortOrder: typeof metadata.sortOrder === "number" ? metadata.sortOrder : 0,
-    worktree: metadata.worktree,
+    worktree: normalizeWorktreePath(metadata.worktree),
     chapterId: metadata.chapterId,
     projectId: metadata.projectId,
     parentSessionId: metadata.parentSessionId ?? (record.parentSessionId ?? undefined),
