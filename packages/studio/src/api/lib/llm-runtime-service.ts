@@ -10,8 +10,10 @@ import {
   type RuntimeChatMessage,
   type RuntimeToolUse,
 } from "./provider-adapters/index.js";
+import { getAdapterForProtocol } from "./provider-adapters/registry.js";
 import { buildRuntimeModelPool } from "./runtime-model-pool.js";
 import { ProviderRuntimeStore, type RuntimeProviderRecord } from "./provider-runtime-store.js";
+import { inferProtocol } from "../../shared/provider-catalog.js";
 
 export type LlmRuntimeFailureCode = RuntimeAdapterFailureCode | "model-unavailable" | "provider-unavailable" | "empty-response" | "unsupported-tools" | "all-providers-failed";
 
@@ -53,10 +55,20 @@ function globalModelId(providerId: string, modelId: string): string {
 }
 
 function adapterIdForProvider(provider: RuntimeProviderRecord): RuntimeAdapterId {
+  // Legacy routing — kept for backward compatibility
   if (provider.id === "codex") return "codex-platform";
   if (provider.id === "kiro") return "kiro-platform";
   if (provider.compatibility === "anthropic-compatible") return "anthropic-compatible";
   return "openai-compatible";
+}
+
+/** 获取 provider 对应的 adapter（优先使用 protocol 路由） */
+function getAdapter(provider: RuntimeProviderRecord, legacyAdapters?: ProviderAdapterRegistry) {
+  if (legacyAdapters) {
+    return legacyAdapters.get(adapterIdForProvider(provider));
+  }
+  const protocol = inferProtocol(provider);
+  return getAdapterForProtocol(protocol);
 }
 
 function providerRef(provider: RuntimeProviderRecord) {
@@ -195,7 +207,7 @@ export class LlmRuntimeService {
         continue;
       }
 
-      const adapter = this.adapters.get(adapterIdForProvider(provider));
+      const adapter = getAdapter(provider, this.adapters);
       const result = await adapter.generate({
         ...providerRef(provider),
         modelId: candidate.rawModelId,

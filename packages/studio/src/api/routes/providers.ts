@@ -5,6 +5,7 @@ import {
   type ProviderAdapterRegistry,
   type RuntimeAdapterId,
 } from "../lib/provider-adapters/index.js";
+import { getAdapterForProtocol } from "../lib/provider-adapters/registry.js";
 import { buildRuntimeModelPool, buildRuntimeProviderStatus } from "../lib/runtime-model-pool.js";
 import { loadUserConfig } from "../lib/user-config-service.js";
 import { buildProviderFailureEnvelope, getProviderFailureHttpStatus } from "../errors.js";
@@ -15,6 +16,7 @@ import {
   type RuntimeProviderRecord,
   type RuntimeProviderUpdates,
 } from "../lib/provider-runtime-store.js";
+import { inferProtocol } from "../../shared/provider-catalog.js";
 
 export interface ProvidersRouterOptions {
   readonly store?: ProviderRuntimeStore;
@@ -35,10 +37,21 @@ function sanitizeProvider(provider: RuntimeProviderRecord) {
 }
 
 function adapterIdForProvider(provider: RuntimeProviderRecord): RuntimeAdapterId {
+  // Legacy routing — kept for backward compatibility with ProviderAdapterRegistry
   if (provider.id === "codex") return "codex-platform";
   if (provider.id === "kiro") return "kiro-platform";
   if (provider.compatibility === "anthropic-compatible") return "anthropic-compatible";
   return "openai-compatible";
+}
+
+/** 获取 provider 对应的 adapter（优先使用 protocol 路由） */
+function getAdapter(provider: RuntimeProviderRecord, legacyAdapters?: ProviderAdapterRegistry) {
+  // 如果提供了 legacy adapters（测试注入），使用旧路由
+  if (legacyAdapters) {
+    return legacyAdapters.get(adapterIdForProvider(provider));
+  }
+  const protocol = inferProtocol(provider);
+  return getAdapterForProtocol(protocol);
 }
 
 function providerRef(provider: RuntimeProviderRecord) {
@@ -214,7 +227,7 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}) {
       const id = c.req.param("id");
       const provider = await store.getProvider(id);
       if (!provider) return c.json({ error: "Provider not found" }, 404);
-      const result = await adapters.get(adapterIdForProvider(provider)).listModels(providerRef(provider));
+      const result = await getAdapter(provider, adapters).listModels(providerRef(provider));
       if (!result.success) return c.json(buildProviderFailureEnvelope(result), getProviderFailureHttpStatus(result));
       const models = await store.upsertModels(id, withRefreshMetadata(result.models));
       const updated = await store.getProvider(id);
@@ -244,7 +257,7 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}) {
       if (!provider) return c.json({ error: "Provider not found" }, 404);
       const model = provider.models.find((candidate) => candidate.id === modelId);
       if (!model) return c.json({ error: "Model not found" }, 404);
-      const result = await adapters.get(adapterIdForProvider(provider)).testModel({ ...providerRef(provider), modelId });
+      const result = await getAdapter(provider, adapters).testModel({ ...providerRef(provider), modelId });
       const patched = await store.patchModel(id, modelId, result.success
         ? { lastTestStatus: "success", lastTestLatency: result.latency, lastTestError: undefined }
         : { lastTestStatus: result.code === "unsupported" ? "unsupported" : "error", lastTestError: result.error });
@@ -295,7 +308,7 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}) {
       if (!provider) return c.json({ error: "Provider not found" }, 404);
       const model = firstEnabledModel(provider);
       if (!model) return c.json({ health: { status: "error", message: "没有启用模型" } }, 400);
-      const result = await adapters.get(adapterIdForProvider(provider)).testModel({ ...providerRef(provider), modelId: model.id });
+      const result = await getAdapter(provider, adapters).testModel({ ...providerRef(provider), modelId: model.id });
       return c.json(result.success
         ? { health: { status: "success", latency: result.latency, checkedAt: new Date().toISOString() } }
         : { health: { status: "error", message: result.error, checkedAt: new Date().toISOString() } });
@@ -323,7 +336,7 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}) {
       if (!provider) return c.json({ error: "Provider not found" }, 404);
       const model = firstEnabledModel(provider);
       if (!model) return c.json({ success: false, error: "No enabled model" }, 400);
-      const result = await adapters.get(adapterIdForProvider(provider)).testModel({ ...providerRef(provider), modelId: model.id });
+      const result = await getAdapter(provider, adapters).testModel({ ...providerRef(provider), modelId: model.id });
       await store.patchModel(provider.id, model.id, result.success
         ? { lastTestStatus: "success", lastTestLatency: result.latency, lastTestError: undefined }
         : { lastTestStatus: result.code === "unsupported" ? "unsupported" : "error", lastTestError: result.error });

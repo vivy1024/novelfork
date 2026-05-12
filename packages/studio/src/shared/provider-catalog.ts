@@ -2,6 +2,17 @@ export type ProviderType = "anthropic" | "openai" | "deepseek" | "custom";
 export type ProviderCompatibility = "openai-compatible" | "anthropic-compatible";
 export type ProviderApiMode = "completions" | "responses" | "codex";
 export type ProviderThinkingStrength = "low" | "medium" | "high";
+
+/**
+ * Provider 协议类型 — 替代 compatibility + apiMode 的统一字段。
+ * 每种协议对应一个独立的 adapter，负责 URL 拼接、认证、请求格式。
+ */
+export type ProviderProtocol =
+  | "completions"      // OpenAI Chat Completions（DeepSeek、国产模型、Ollama）
+  | "responses"        // OpenAI Responses API（GPT-4o+、GPT-5）
+  | "anthropic"        // Anthropic Messages（Claude 官方/兼容网关）
+  | "codex"            // Codex（Completions + reasoning_effort + service_tier）
+  | "claude-code";     // Claude Code（Anthropic + beta + caching）
 export type ModelTestStatus = "untested" | "success" | "error";
 export type RuntimeModelTestStatus = ModelTestStatus | "unsupported";
 export type RuntimeModelSource = "detected" | "builtin-platform" | "manual" | "seed";
@@ -41,7 +52,11 @@ export interface Provider {
   apiKeyRequired: boolean;
   baseUrl?: string;
   prefix?: string;
+  /** 新字段：替代 compatibility + apiMode 的统一协议标识 */
+  protocol?: ProviderProtocol;
+  /** @deprecated 使用 protocol 字段代替 */
   compatibility?: ProviderCompatibility;
+  /** @deprecated 使用 protocol 字段代替 */
   apiMode?: ProviderApiMode;
   accountId?: string;
   useResponsesWebSocket?: boolean;
@@ -153,6 +168,7 @@ export const PROVIDERS: Provider[] = [
     apiKeyRequired: true,
     baseUrl: "https://api.anthropic.com",
     prefix: "anthropic",
+    protocol: "anthropic",
     compatibility: "anthropic-compatible",
     apiMode: "completions",
     models: [
@@ -197,6 +213,7 @@ export const PROVIDERS: Provider[] = [
     apiKeyRequired: true,
     baseUrl: "https://api.openai.com/v1",
     prefix: "openai",
+    protocol: "responses",
     compatibility: "openai-compatible",
     apiMode: "responses",
     models: [
@@ -240,6 +257,7 @@ export const PROVIDERS: Provider[] = [
     apiKeyRequired: true,
     baseUrl: "https://api.deepseek.com",
     prefix: "deepseek",
+    protocol: "completions",
     compatibility: "openai-compatible",
     apiMode: "completions",
     models: [
@@ -270,6 +288,7 @@ export const PROVIDERS: Provider[] = [
     type: "custom",
     apiKeyRequired: false,
     prefix: "custom",
+    protocol: "completions",
     compatibility: "openai-compatible",
     apiMode: "completions",
     models: [],
@@ -295,6 +314,18 @@ function inferApiMode(provider: Pick<Provider, "type" | "apiMode">): ProviderApi
   return provider.type === "openai" ? "responses" : "completions";
 }
 
+/**
+ * 从旧的 compatibility + apiMode 字段推断 protocol。
+ * 用于向后兼容：读取旧数据时自动迁移。
+ */
+export function inferProtocol(provider: Pick<Provider, "protocol" | "compatibility" | "apiMode">): ProviderProtocol {
+  if (provider.protocol) return provider.protocol;
+  if (provider.compatibility === "anthropic-compatible") return "anthropic";
+  if (provider.apiMode === "responses") return "responses";
+  if (provider.apiMode === "codex") return "codex";
+  return "completions";
+}
+
 export function normalizeModelForSettings(model: Model, lastRefreshedAt?: string): Model {
   return {
     ...model,
@@ -308,6 +339,7 @@ export function normalizeProviderForSettings<T extends Provider>(provider: T): T
   return {
     ...provider,
     prefix: provider.prefix ?? provider.id,
+    protocol: inferProtocol(provider),
     compatibility: inferCompatibility(provider),
     apiMode: inferApiMode(provider),
     models: provider.models.map((model) => normalizeModelForSettings(model)),

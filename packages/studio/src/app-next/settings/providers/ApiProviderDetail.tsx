@@ -7,15 +7,26 @@ import { Switch } from "@/components/ui/switch";
 import { SimpleSelect } from "@/components/ui/simple-select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { EmptyState } from "../../components/feedback";
-import { modelTestStatusLabel, providerApiModeLabel, providerCompatibilityLabel } from "../../lib/display-labels";
-import type { ManagedProvider, Model, ProviderApiMode, ProviderCompatibility, ProviderThinkingStrength, ProviderType } from "@/shared/provider-catalog";
+import { modelTestStatusLabel, providerApiModeLabel, providerCompatibilityLabel, providerProtocolLabel, providerProtocolDescription } from "../../lib/display-labels";
+import type { ManagedProvider, Model, ProviderApiMode, ProviderCompatibility, ProviderProtocol, ProviderThinkingStrength, ProviderType } from "@/shared/provider-catalog";
+import { inferProtocol } from "@/shared/provider-catalog";
 import type { ApiProvider } from "../provider-types";
 
-const API_MODES: ProviderApiMode[] = ["completions", "responses", "codex"];
+const PROTOCOLS: ProviderProtocol[] = ["completions", "responses", "anthropic", "codex", "claude-code"];
 const THINKING_STRENGTHS: ProviderThinkingStrength[] = ["low", "medium", "high"];
 
 function providerTypeFromCompatibility(compatibility: ProviderCompatibility): ProviderType {
   return compatibility === "anthropic-compatible" ? "anthropic" : "custom";
+}
+
+function protocolToCompatibility(protocol: ProviderProtocol): ProviderCompatibility {
+  return protocol === "anthropic" || protocol === "claude-code" ? "anthropic-compatible" : "openai-compatible";
+}
+
+function protocolToApiMode(protocol: ProviderProtocol): ProviderApiMode {
+  if (protocol === "responses") return "responses";
+  if (protocol === "codex") return "codex";
+  return "completions";
 }
 
 function hasConfiguredApiKey(provider: ApiProvider): boolean {
@@ -52,21 +63,22 @@ export function ApiProviderDetail({
   const [baseUrl, setBaseUrl] = useState(provider.baseUrl ?? provider.config.endpoint ?? "");
   const [apiKey, setApiKey] = useState("");
   const [proxy, setProxy] = useState((provider as { proxy?: string }).proxy ?? "");
-  const [compatibility, setCompatibility] = useState<ProviderCompatibility>(provider.compatibility ?? "openai-compatible");
-  const [apiMode, setApiMode] = useState<ProviderApiMode>(provider.apiMode ?? "completions");
+  const [protocol, setProtocol] = useState<ProviderProtocol>(inferProtocol(provider));
 
   useEffect(() => {
     setBaseUrl(provider.baseUrl ?? provider.config.endpoint ?? "");
     setApiKey("");
     setProxy((provider as { proxy?: string }).proxy ?? "");
-    setCompatibility(provider.compatibility ?? "openai-compatible");
-    setApiMode(provider.apiMode ?? "completions");
+    setProtocol(inferProtocol(provider));
   }, [provider]);
 
   const saveConnectionInfo = async () => {
     const trimmedApiKey = apiKey.trim();
+    const compatibility = protocolToCompatibility(protocol);
+    const apiMode = protocolToApiMode(protocol);
     await onUpdateProvider(provider.id, {
       baseUrl: baseUrl.trim() || undefined,
+      protocol,
       compatibility,
       apiMode,
       type: providerTypeFromCompatibility(compatibility),
@@ -78,16 +90,14 @@ export function ApiProviderDetail({
 
   const originalBaseUrl = provider.baseUrl ?? provider.config.endpoint ?? "";
   const originalProxy = (provider as { proxy?: string }).proxy ?? "";
-  const originalCompatibility = provider.compatibility ?? "openai-compatible";
-  const originalApiMode = provider.apiMode ?? "completions";
-  const hasChanges = baseUrl !== originalBaseUrl || apiKey.trim() !== "" || proxy !== originalProxy || compatibility !== originalCompatibility || apiMode !== originalApiMode;
+  const originalProtocol = inferProtocol(provider);
+  const hasChanges = baseUrl !== originalBaseUrl || apiKey.trim() !== "" || proxy !== originalProxy || protocol !== originalProtocol;
 
   const resetForm = () => {
     setBaseUrl(originalBaseUrl);
     setApiKey("");
     setProxy(originalProxy);
-    setCompatibility(originalCompatibility);
-    setApiMode(originalApiMode);
+    setProtocol(originalProtocol);
   };
 
   return (
@@ -140,30 +150,15 @@ export function ApiProviderDetail({
             <Input className="mt-1 w-full" value={proxy} onChange={(event) => setProxy(event.target.value)} placeholder="http://127.0.0.1:7890 或 socks5://proxy:1080" />
           </label>
           <label className="text-sm">
-            兼容格式
+            协议类型
             <SimpleSelect
               className="mt-1"
-              value={compatibility}
-              onValueChange={(v) => setCompatibility(v as ProviderCompatibility)}
-              options={[
-                { value: "openai-compatible", label: providerCompatibilityLabel("openai-compatible") },
-                { value: "anthropic-compatible", label: providerCompatibilityLabel("anthropic-compatible") },
-              ]}
+              value={protocol}
+              onValueChange={(v) => setProtocol(v as ProviderProtocol)}
+              options={PROTOCOLS.map((value) => ({ value, label: providerProtocolLabel(value) }))}
             />
             <span className="text-[10px] text-muted-foreground">
-              {compatibility === "openai-compatible" ? "适用于 OpenAI、DeepSeek、OpenRouter、Sub2API 等 /v1/chat/completions 接口" : "适用于 Anthropic Claude 官方或兼容 /v1/messages 接口"}
-            </span>
-          </label>
-          <label className="text-sm">
-            API 模式
-            <SimpleSelect
-              className="mt-1"
-              value={apiMode}
-              onValueChange={(v) => setApiMode(v as ProviderApiMode)}
-              options={API_MODES.map((value) => ({ value, label: providerApiModeLabel(value) }))}
-            />
-            <span className="text-[10px] text-muted-foreground">
-              {apiMode === "completions" ? "标准 Chat Completions（/v1/chat/completions）" : apiMode === "responses" ? "OpenAI Responses API（/v1/responses，支持工具调用）" : "Codex 原生协议（WebSocket + 思考深度）"}
+              {providerProtocolDescription(protocol)}
             </span>
           </label>
         </div>
@@ -188,7 +183,7 @@ export function ApiProviderDetail({
       </section>
 
       {/* Codex 模式专属配置 */}
-      {apiMode === "codex" && (
+      {protocol === "codex" && (
         <section className="space-y-3 rounded-lg border border-border p-4">
           <h3 className="text-base font-semibold">Codex 配置</h3>
           <p className="text-xs text-muted-foreground">从 Codex 反代出来的供应商支持思考强度、Fast Mode 和 WebSocket。</p>
