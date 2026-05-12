@@ -255,6 +255,7 @@ const abortControllerBySessionId = new Map<string, AbortController>();
 function abortSession(sessionId: string): void {
   const controller = abortControllerBySessionId.get(sessionId);
   if (controller) {
+    console.log(JSON.stringify({ component: "session-chat", event: "abort", sessionId }));
     controller.abort();
     abortControllerBySessionId.delete(sessionId);
   }
@@ -1417,6 +1418,9 @@ export async function handleSessionChatTransportMessage(
 
   const content = ("content" in payload ? payload.content : "").trim();
   const effectiveContent = content || "继续";
+  if (!content) {
+    console.log(JSON.stringify({ component: "session-chat", event: "continue", sessionId }));
+  }
 
   const timestamp = Date.now();
   const userMessage = appendMessageToState(loaded.state, {
