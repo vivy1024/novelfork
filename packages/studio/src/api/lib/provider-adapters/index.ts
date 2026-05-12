@@ -56,8 +56,8 @@ export interface GenerateUsage {
 }
 
 export type GenerateResult =
-  | { readonly success: true; readonly type: "message"; readonly content: string; readonly usage?: GenerateUsage }
-  | { readonly success: true; readonly type: "tool_use"; readonly toolUses: readonly RuntimeToolUse[]; readonly usage?: GenerateUsage }
+  | { readonly success: true; readonly type: "message"; readonly content: string; readonly reasoningContent?: string; readonly usage?: GenerateUsage }
+  | { readonly success: true; readonly type: "tool_use"; readonly toolUses: readonly RuntimeToolUse[]; readonly reasoningContent?: string; readonly usage?: GenerateUsage }
   | RuntimeAdapterFailure;
 
 export interface RuntimeAdapter {
@@ -202,7 +202,7 @@ function toOpenAiMessages(messages: readonly RuntimeChatMessage[]): Array<Record
     }
 
     if (message.role === "assistant" && message.toolCalls?.length) {
-      return {
+      const msg: Record<string, unknown> = {
         role: "assistant",
         content: message.content,
         tool_calls: message.toolCalls.map((toolCall) => ({
@@ -214,9 +214,19 @@ function toOpenAiMessages(messages: readonly RuntimeChatMessage[]): Array<Record
           },
         })),
       };
+      // Pass back reasoning_content for DeepSeek thinking mode tool loops
+      if ("reasoning_content" in message && typeof (message as { reasoning_content?: unknown }).reasoning_content === "string") {
+        msg.reasoning_content = (message as { reasoning_content: string }).reasoning_content;
+      }
+      return msg;
     }
 
-    return { role: message.role, content: message.content };
+    const msg: Record<string, unknown> = { role: message.role, content: message.content };
+    // Pass back reasoning_content for DeepSeek thinking mode
+    if (message.role === "assistant" && "reasoning_content" in message && typeof (message as { reasoning_content?: unknown }).reasoning_content === "string") {
+      msg.reasoning_content = (message as { reasoning_content: string }).reasoning_content;
+    }
+    return msg;
   });
 }
 
@@ -480,6 +490,7 @@ class OpenAiCompatibleAdapter implements RuntimeAdapter {
     const decoder = new TextDecoder();
     let buffer = "";
     let fullContent = "";
+    let reasoningContent = "";
     let usage: GenerateUsage | undefined;
 
     // Tool calls accumulation (OpenAI streams tool_calls as deltas)
@@ -491,12 +502,13 @@ class OpenAiCompatibleAdapter implements RuntimeAdapter {
           reader.cancel().catch(() => {});
           if (toolCallAccumulators.size > 0) {
             const toolUses = this.finalizeOpenAiToolCalls(toolCallAccumulators, tools);
-            if (toolUses.length > 0) return { success: true, type: "tool_use", toolUses, ...(usage ? { usage } : {}) };
+            if (toolUses.length > 0) return { success: true, type: "tool_use", toolUses, ...(reasoningContent ? { reasoningContent } : {}), ...(usage ? { usage } : {}) };
           }
           return {
             success: true,
             type: "message",
             content: fullContent,
+            ...(reasoningContent ? { reasoningContent } : {}),
             ...(usage ? { usage } : {}),
           };
         }
@@ -533,6 +545,14 @@ class OpenAiCompatibleAdapter implements RuntimeAdapter {
 
             const delta = typeof choice.delta === "object" && choice.delta ? choice.delta as Record<string, unknown> : undefined;
             if (!delta) continue;
+
+            // Reasoning content delta (DeepSeek thinking mode)
+            if ("reasoning_content" in delta) {
+              const rc = delta.reasoning_content;
+              if (typeof rc === "string" && rc.length > 0) {
+                reasoningContent += rc;
+              }
+            }
 
             // Text content delta
             if ("content" in delta) {
@@ -572,7 +592,7 @@ class OpenAiCompatibleAdapter implements RuntimeAdapter {
     if (toolCallAccumulators.size > 0) {
       const toolUses = this.finalizeOpenAiToolCalls(toolCallAccumulators, tools);
       if (toolUses.length > 0) {
-        return { success: true, type: "tool_use", toolUses, ...(usage ? { usage } : {}) };
+        return { success: true, type: "tool_use", toolUses, ...(reasoningContent ? { reasoningContent } : {}), ...(usage ? { usage } : {}) };
       }
     }
 
@@ -580,6 +600,7 @@ class OpenAiCompatibleAdapter implements RuntimeAdapter {
       success: true,
       type: "message",
       content: fullContent,
+      ...(reasoningContent ? { reasoningContent } : {}),
       ...(usage ? { usage } : {}),
     };
   }
@@ -634,7 +655,14 @@ class OpenAiCompatibleAdapter implements RuntimeAdapter {
       && typeof (firstChoice as { message: { content?: unknown } }).message.content === "string"
         ? (firstChoice as { message: { content: string } }).message.content
         : "";
-    return { success: true, type: "message", content, ...(usage ? { usage } : {}) };
+    // DeepSeek reasoning_content
+    const reasoningContent = firstChoice && typeof firstChoice === "object"
+      && "message" in firstChoice
+      && (firstChoice as { message?: unknown }).message
+      && typeof (firstChoice as { message: { reasoning_content?: unknown } }).message.reasoning_content === "string"
+        ? (firstChoice as { message: { reasoning_content: string } }).message.reasoning_content
+        : undefined;
+    return { success: true, type: "message", content, ...(reasoningContent ? { reasoningContent } : {}), ...(usage ? { usage } : {}) };
   }
 }
 
@@ -857,10 +885,13 @@ class AnthropicCompatibleAdapter implements RuntimeAdapter {
 
     const toolUses: RuntimeToolUse[] = [];
     let textContent = "";
+    let thinkingContent = "";
 
     for (const block of content) {
       if (block.type === "text" && typeof block.text === "string") {
         textContent += block.text;
+      } else if (block.type === "thinking" && typeof block.thinking === "string") {
+        thinkingContent += block.thinking;
       } else if (block.type === "tool_use") {
         const providerName = typeof block.name === "string" ? block.name : "";
         const internalName = tools ? toInternalToolName(providerName, tools) : providerName;
@@ -873,10 +904,10 @@ class AnthropicCompatibleAdapter implements RuntimeAdapter {
     }
 
     if (toolUses.length > 0) {
-      return { success: true, type: "tool_use", toolUses, ...(usage ? { usage } : {}) };
+      return { success: true, type: "tool_use", toolUses, ...(thinkingContent ? { reasoningContent: thinkingContent } : {}), ...(usage ? { usage } : {}) };
     }
 
-    return { success: true, type: "message", content: textContent, ...(usage ? { usage } : {}) };
+    return { success: true, type: "message", content: textContent, ...(thinkingContent ? { reasoningContent: thinkingContent } : {}), ...(usage ? { usage } : {}) };
   }
 
   private readAnthropicUsage(payload: Record<string, unknown>): GenerateUsage | undefined {
