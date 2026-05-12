@@ -58,6 +58,8 @@ import type { AgentTurnItem, AgentGenerateResult } from "./agent-turn-runtime.js
 import { executeRuntimeTurn } from "./runtime-turn-service.js";
 import type { RuntimeEvent } from "./runtime-events.js";
 import { attachRuntimeTranscriptToMessages } from "./runtime-transcript.js";
+import { ProviderRuntimeStore } from "./provider-runtime-store.js";
+import type { ProviderReasoningPolicy } from "../../shared/provider-catalog.js";
 import { loadUserConfig } from "./user-config-service.js";
 import { generateSessionTitle } from "./session-auto-title.js";
 import { microCompact } from "./compact/micro-compact.js";
@@ -148,6 +150,18 @@ async function maybeAutoCompact(
   }
 
   return { items: microCompact(sessionMessagesToTurnItems(messages)), compacted: false };
+}
+
+const providerRuntimeStore = new ProviderRuntimeStore();
+
+async function resolveReasoningPolicy(providerId?: string): Promise<ProviderReasoningPolicy | undefined> {
+  if (!providerId) return undefined;
+  try {
+    const provider = await providerRuntimeStore.getProvider(providerId);
+    return provider?.reasoningPolicy;
+  } catch {
+    return undefined;
+  }
 }
 
 function shouldContinueAfterToolResult({ result }: { readonly toolName: string; readonly result: SessionToolExecutionResult }): boolean {
@@ -1440,6 +1454,7 @@ export async function handleSessionChatTransportMessage(
     const maxSteps = await resolveMaxTurnSteps();
     const { items: compactedMessages } = await maybeAutoCompact(loaded.state.messages, loaded.state, sessionId);
     const abortController = createSessionAbortController(sessionId);
+    const reasoningPolicy = await resolveReasoningPolicy(loaded.session.sessionConfig.providerId);
     const runtimeTurn = await executeRuntimeTurn({
       sessionId,
       sessionConfig: loaded.session.sessionConfig,
@@ -1451,6 +1466,7 @@ export async function handleSessionChatTransportMessage(
       ...(canvasContext ? { canvasContext } : {}),
       maxSteps,
       shouldContinueAfterToolResult,
+      reasoningPolicy,
       onStreamChunk: (chunk: string) => {
         broadcastStreamChunk(sessionId, loaded.state, chunk);
       },
