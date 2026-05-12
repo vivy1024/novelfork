@@ -100,6 +100,7 @@ export interface RuntimeModelPoolEntry {
   readonly maxOutputTokens: number;
   readonly source: RuntimeModelSource;
   readonly lastTestStatus: RuntimeModelTestStatus;
+  readonly protocol?: ProviderProtocol;
   readonly capabilities: {
     readonly functionCalling: boolean;
     readonly vision: boolean;

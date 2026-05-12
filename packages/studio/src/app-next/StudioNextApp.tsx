@@ -814,6 +814,7 @@ function toConversationModelOptions(models: readonly RuntimeModelPoolEntry[]): N
       supportsTools: model.capabilities.functionCalling,
       supportsReasoning: (model.capabilities as { reasoning?: boolean }).reasoning,
       contextWindow: model.contextWindow,
+      protocol: model.protocol,
     }));
 }
 
@@ -942,6 +943,7 @@ function toConversationStatus(
     modelLabel: selectedModel?.modelLabel ?? modelId,
     permissionMode: sessionConfig?.permissionMode,
     reasoningEffort: sessionConfig?.reasoningEffort,
+    apiMode: selectedModel?.protocol === "codex" ? "codex" : selectedModel?.protocol === "responses" ? "responses" : undefined,
     usage: usageFromSessionState(state.session, state.messages),
     contextUsage,
     messageCount: state.session?.messageCount,
