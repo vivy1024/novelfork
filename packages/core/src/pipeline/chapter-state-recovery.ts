@@ -113,8 +113,8 @@ export function buildStateValidationFeedback(
 ): string {
   if (warnings.length === 0) {
     return language === "en"
-      ? "The previous settlement contradicted the chapter text. Reconcile truth files strictly to the body."
-      : "上一次状态结算与正文矛盾。请严格以正文为准修正 truth files。";
+      ? "The previous settlement contradicted the chapter text. Reconcile jingwei files strictly to the body."
+      : "上一次状态结算与正文矛盾。请严格以正文为准修正经纬资料。";
   }
 
   if (language === "en") {

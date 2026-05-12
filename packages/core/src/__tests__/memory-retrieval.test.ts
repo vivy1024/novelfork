@@ -369,7 +369,7 @@ describe("retrieveMemorySelection", () => {
     expect(result.summaries.at(-1)?.chapter).toBe(50);
   });
 
-  sqliteIt("uses existing sqlite summaries and hooks without requiring markdown truth files", async () => {
+  sqliteIt("uses existing sqlite summaries and hooks without requiring markdown jingwei files", async () => {
     root = await mkdtemp(join(tmpdir(), "novelfork-memory-retrieval-db-test-"));
     const bookDir = join(root, "book");
     const storyDir = join(bookDir, "story");
@@ -424,7 +424,7 @@ describe("retrieveMemorySelection", () => {
     expect(result.hooks.map((hook) => hook.hookId)).toContain("mentor-debt");
   });
 
-  sqliteIt("backfills sqlite memory from structured state instead of stale markdown truth files", async () => {
+  sqliteIt("backfills sqlite memory from structured state instead of stale markdown jingwei files", async () => {
     root = await mkdtemp(join(tmpdir(), "novelfork-memory-retrieval-db-structured-test-"));
     const bookDir = join(root, "book");
     const storyDir = join(bookDir, "story");
@@ -549,7 +549,7 @@ describe("retrieveMemorySelection", () => {
     expect(result.summaries.map((summary) => summary.title)).toContain("Structured Summary");
   });
 
-  it("bootstraps structured runtime state from legacy markdown truth files during retrieval", async () => {
+  it("bootstraps structured runtime state from legacy markdown jingwei files during retrieval", async () => {
     root = await mkdtemp(join(tmpdir(), "novelfork-memory-retrieval-bootstrap-test-"));
     const bookDir = join(root, "book");
     const storyDir = join(bookDir, "story");
@@ -609,7 +609,7 @@ describe("retrieveMemorySelection", () => {
     expect(result.hooks.map((hook) => hook.hookId)).toContain("mentor-debt");
   });
 
-  it("prefers structured state files over legacy markdown truth files when both exist", async () => {
+  it("prefers structured state files over legacy markdown jingwei files when both exist", async () => {
     root = await mkdtemp(join(tmpdir(), "novelfork-memory-retrieval-structured-preferred-test-"));
     const bookDir = join(root, "book");
     const storyDir = join(bookDir, "story");

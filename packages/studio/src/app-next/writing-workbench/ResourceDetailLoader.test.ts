@@ -35,9 +35,9 @@ describe("ResourceDetailLoader", () => {
     expect(resourceNeedsDetailHydration(hydrated)).toBe(false);
   });
 
-  it("RED: Story/Truth 列表预览必须二次读取完整详情并标记 detail", async () => {
+  it("RED: Story/Jingwei 列表预览必须二次读取完整详情并标记 detail", async () => {
     const storyNode = node({ id: "story-file:设定.md", kind: "story", title: "设定.md", content: "预览", metadata: { bookId: "book-1", fileName: "设定.md", source: "preview" }, capabilities: { open: true, readonly: true, unsupported: false, edit: false, delete: true, apply: false } });
-    const truthNode = node({ id: "truth-file:真相.md", kind: "jingwei", title: "真相.md", content: "预览", metadata: { bookId: "book-1", fileName: "真相.md", source: "preview" }, capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: true, apply: false } });
+    const truthNode = node({ id: "jingwei-file:真相.md", kind: "jingwei", title: "真相.md", content: "预览", metadata: { bookId: "book-1", fileName: "真相.md", source: "preview" }, capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: true, apply: false } });
     const resource = {
       getStoryFile: vi.fn(async () => ({ ok: true, data: { file: "设定.md", content: "完整 Story 内容" } })),
       getJingweiFile: vi.fn(async () => ({ ok: true, data: { file: "真相.md", content: "完整 Truth 内容" } })),

@@ -50,7 +50,7 @@ describe("ResourceSaveController", () => {
       saveJingweiEntry: vi.fn(async () => ({ ok: true, data: { entry: { id: "char-1", sectionId: "people", title: "沈舟", contentMd: "服务端经纬", updatedAt: "2026-05-06T00:00:00.000Z" } } })),
     };
 
-    const truth = await saveResourceAndHydrate(resource as never, "book-1", node({ id: "truth-file:truth.md", kind: "jingwei", title: "truth.md", content: "旧 Truth", metadata: { fileName: "truth.md", detailSource: "detail" } }), "新 Truth");
+    const truth = await saveResourceAndHydrate(resource as never, "book-1", node({ id: "jingwei-file:truth.md", kind: "jingwei", title: "truth.md", content: "旧 Truth", metadata: { fileName: "truth.md", detailSource: "detail" } }), "新 Truth");
     const draft = await saveResourceAndHydrate(resource as never, "book-1", node({ id: "draft:d1", kind: "draft", title: "草稿", content: "旧草稿", metadata: { draftId: "d1", detailSource: "detail" } }), "新草稿");
     const jingwei = await saveResourceAndHydrate(resource as never, "book-1", node({ id: "jingwei-entry:char-1", kind: "jingwei-entry", title: "沈舟", content: "旧经纬", metadata: { entryId: "char-1", sectionId: "people", detailSource: "detail" } }), "新经纬");
 

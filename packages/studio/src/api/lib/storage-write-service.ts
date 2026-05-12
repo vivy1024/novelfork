@@ -218,7 +218,7 @@ export function createStorageWriteService(options: StorageWriteServiceOptions) {
 
     async writeJingweiFile(bookId: string, file: string, content: string, checkpointContext: StorageWriteCheckpointContext = {}) {
       if (!isJingweiFileName(file)) {
-        return { error: "Invalid truth file" as const };
+        return { error: "Invalid jingwei file" as const };
       }
       const storyDir = join(state.bookDir(bookId), "story");
       await mkdir(storyDir, { recursive: true });
