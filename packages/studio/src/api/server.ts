@@ -495,11 +495,53 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
         const { access } = await import("node:fs/promises");
 
         const homedir = os.homedir();
+        // Windows 特殊文件夹：优先用环境变量（支持用户自定义桌面位置）
+        const desktopPath = process.env.USERPROFILE
+          ? path.win32.join(process.env.USERPROFILE, "Desktop")
+          : path.win32.join(homedir, "Desktop");
+
+        // 尝试通过注册表获取真实桌面路径（用户可能移到了 D 盘）
+        let realDesktop = desktopPath;
+        let realDocuments = path.win32.join(homedir, "Documents");
+        let realDownloads = path.win32.join(homedir, "Downloads");
+        try {
+          const { execFile } = await import("node:child_process");
+          const { promisify } = await import("node:util");
+          const execFileAsync = promisify(execFile);
+          const { stdout } = await execFileAsync("reg", [
+            "query",
+            "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\User Shell Folders",
+            "/v", "Desktop",
+          ], { timeout: 3000 });
+          const match = stdout.match(/Desktop\s+REG_(?:EXPAND_)?SZ\s+(.+)/i);
+          if (match?.[1]) {
+            realDesktop = match[1].trim().replace(/%USERPROFILE%/gi, homedir);
+          }
+          const { stdout: docOut } = await execFileAsync("reg", [
+            "query",
+            "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\User Shell Folders",
+            "/v", "Personal",
+          ], { timeout: 3000 });
+          const docMatch = docOut.match(/Personal\s+REG_(?:EXPAND_)?SZ\s+(.+)/i);
+          if (docMatch?.[1]) {
+            realDocuments = docMatch[1].trim().replace(/%USERPROFILE%/gi, homedir);
+          }
+          const { stdout: dlOut } = await execFileAsync("reg", [
+            "query",
+            "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\User Shell Folders",
+            "/v", "{374DE290-123F-4565-9164-39C4925E467B}",
+          ], { timeout: 3000 });
+          const dlMatch = dlOut.match(/\{374DE290.*?\}\s+REG_(?:EXPAND_)?SZ\s+(.+)/i);
+          if (dlMatch?.[1]) {
+            realDownloads = dlMatch[1].trim().replace(/%USERPROFILE%/gi, homedir);
+          }
+        } catch { /* fallback to defaults */ }
+
         const shortcuts: { name: string; path: string; icon: string }[] = [
           { name: "主目录", path: homedir, icon: "home" },
-          { name: "桌面", path: path.win32.join(homedir, "Desktop"), icon: "monitor" },
-          { name: "文档", path: path.win32.join(homedir, "Documents"), icon: "file-text" },
-          { name: "下载", path: path.win32.join(homedir, "Downloads"), icon: "download" },
+          { name: "桌面", path: realDesktop, icon: "monitor" },
+          { name: "文档", path: realDocuments, icon: "file-text" },
+          { name: "下载", path: realDownloads, icon: "download" },
         ];
 
         // Add available drive letters

@@ -166,16 +166,24 @@ export async function createWorktree(
 
   // 创建 worktree
   const args = ["worktree", "add"];
+  const targetBranch = branch || `worktree/${name}`;
 
-  if (branch) {
-    args.push("-b", branch, gitPath);
+  // 检查分支是否已存在（之前创建失败残留的分支）
+  let branchExists = false;
+  try {
+    await execGit(["show-ref", "--verify", `refs/heads/${targetBranch}`], root);
+    branchExists = true;
+  } catch { /* branch does not exist */ }
+
+  if (branchExists) {
+    // 分支已存在，直接用它创建 worktree（不加 -b）
+    args.push(gitPath, targetBranch);
   } else {
-    const newBranch = `worktree/${name}`;
-    args.push("-b", newBranch, gitPath);
-  }
-
-  if (startPoint) {
-    args.push(startPoint);
+    // 创建新分支
+    args.push("-b", targetBranch, gitPath);
+    if (startPoint) {
+      args.push(startPoint);
+    }
   }
 
   await execGit(args, root);
