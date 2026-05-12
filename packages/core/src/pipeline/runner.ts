@@ -50,7 +50,7 @@ import {
 } from "./chapter-state-recovery.js";
 import { persistChapterArtifacts } from "./chapter-persistence.js";
 import { runChapterReviewCycle } from "./chapter-review-cycle.js";
-import { validateChapterTruthPersistence } from "./chapter-jingwei-validation.js";
+import { validateChapterJingweiPersistence } from "./chapter-jingwei-validation.js";
 import { loadPersistedPlan, relativeToBookDir } from "./persisted-governed-plan.js";
 import { pipelineEvents } from "./pipeline-events.js";
 import { buildBibleContext } from "../jingwei/context/build-bible-context.js";
@@ -1411,7 +1411,7 @@ export class PipelineRunner {
       readFile(join(storyDir, "particle_ledger.md"), "utf-8").catch(() => ""),
     ]);
     const validator = new StateValidatorAgent(this.agentCtxFor("state-validator", bookId));
-    const truthValidation = await validateChapterTruthPersistence({
+    const truthValidation = await validateChapterJingweiPersistence({
       writer,
       validator,
       book,

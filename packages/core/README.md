@@ -62,7 +62,7 @@ src/
 18 个内置工具注册到 `globalToolRegistry`：
 - 创作：`plan_chapter`, `compose_chapter`, `write_draft`, `write_full_pipeline`
 - 审校：`audit_chapter`, `revise_chapter`
-- 知识：`read_truth_files`, `write_truth_file`, `update_author_intent`, `update_current_focus`
+- 知识：`read_jingwei_files`, `write_jingwei_file`, `update_author_intent`, `update_current_focus`
 - 管理：`create_book`, `get_book_status`, `list_books`, `import_chapters`
 - 辅助：`scan_market`, `web_fetch`, `import_style`, `import_canon`
 

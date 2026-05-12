@@ -3,7 +3,7 @@ import type { AuditIssue, AuditResult } from "../agents/continuity.js";
 import type { ValidationResult } from "../agents/state-validator.js";
 import type { WriteChapterOutput } from "../agents/writer.js";
 import type { BookConfig } from "../models/book.js";
-import { validateChapterTruthPersistence } from "../pipeline/chapter-jingwei-validation.js";
+import { validateChapterJingweiPersistence } from "../pipeline/chapter-jingwei-validation.js";
 
 const ZERO_USAGE = {
   promptTokens: 0,
@@ -63,7 +63,7 @@ const BOOK: BookConfig = {
   updatedAt: "2026-04-01T00:00:00.000Z",
 };
 
-describe("validateChapterTruthPersistence", () => {
+describe("validateChapterJingweiPersistence", () => {
   it("uses recovered settlement output when retry succeeds", async () => {
     const validator = {
       validate: vi.fn()
@@ -88,7 +88,7 @@ describe("validateChapterTruthPersistence", () => {
     const logWarn = vi.fn();
     const logger = { warn: vi.fn() };
 
-    const result = await validateChapterTruthPersistence({
+    const result = await validateChapterJingweiPersistence({
       writer,
       validator,
       book: BOOK,
@@ -159,7 +159,7 @@ describe("validateChapterTruthPersistence", () => {
       suggestion: "check title",
     };
 
-    const result = await validateChapterTruthPersistence({
+    const result = await validateChapterJingweiPersistence({
       writer,
       validator,
       book: BOOK,
