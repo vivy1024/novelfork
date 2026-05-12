@@ -2,14 +2,15 @@
 
 ## 步骤 1：新建 ConversationBlock 类型
 
-- [ ] 1.1 创建 `packages/studio/src/shared/conversation-blocks.ts`
+- [x] 1.1 创建 `packages/studio/src/shared/conversation-blocks.ts`
   - ConversationBlock union type（text/tool_use/tool_result/reasoning/thinking/redacted_thinking/summary）
   - ConversationItem interface（id/role/blocks + content/toolCalls getter）
   - upgradeMessage()：RuntimeChatMessage → ConversationItem
   - downgradeItem()：ConversationItem → RuntimeChatMessage
   - extractTextContent()：从 blocks 提取纯文本
   - extractToolCalls()：从 blocks 提取 tool calls
-- [ ] 1.2 单元测试：upgrade/downgrade 往返一致性
+- [x] 1.2 单元测试：upgrade/downgrade 往返一致性
+  - 11 tests passed：plain text、reasoning、tool result、pending tool、round-trip、extractors
 
 ## 步骤 2：改 session-chat-service（已部分完成）
 
@@ -52,4 +53,9 @@
   - toConversationModelOptions 传递 protocol
   - toConversationStatus 从 selectedModel.protocol 派生 apiMode
   - NarratorStatusBar 用 apiMode === "codex" 控制推理强度/Fast Mode 显示
-- [ ] 5.4 runtime 按 reasoningPolicy 决定是否回传 reasoning
+- [x] 5.4 runtime 按 reasoningPolicy 决定是否回传 reasoning
+  - agent-turn-runtime 根据 reasoningPolicy 控制 reasoning_content 传回：
+    - "strip" → 不传回
+    - "passback-on-tool-loop"（默认）→ 工具循环中传回
+    - "always-passback" → 总是传回
+  - session-chat-service 从 provider store 读取 reasoningPolicy 并传入
