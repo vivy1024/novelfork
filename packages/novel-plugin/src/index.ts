@@ -1,5 +1,9 @@
 import type { PluginManifest, PluginAgentPreset } from "@vivy1024/novelfork-core";
 
+// Re-export handlers for use by studio and other consumers
+export { handleChapterRead, handleJingweiReadContext } from "./handlers/index.js";
+export type { ChapterReadInput, ChapterReadResult, JingweiReadContextInput, JingweiReadContextResult } from "./handlers/index.js";
+
 /**
  * 小说工具名列表 — 声明本插件提供的 19 个小说领域工具。
  * 完整定义（含 inputSchema）位于 studio 的 session-tool-registry-novel.ts，
