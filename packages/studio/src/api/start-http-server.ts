@@ -79,6 +79,7 @@ function getBunRuntime():
       serve?: (options: {
         fetch: BunFetchHandler;
         port: number;
+        idleTimeout?: number;
         websocket?: {
           open?(socket: BunWebSocketConnection): void;
           close?(socket: BunWebSocketConnection, code: number, reason: string): void;
@@ -93,6 +94,7 @@ function getBunRuntime():
       serve?: (options: {
         fetch: BunFetchHandler;
         port: number;
+        idleTimeout?: number;
         websocket?: {
           open?(socket: BunWebSocketConnection): void;
           close?(socket: BunWebSocketConnection, code: number, reason: string): void;
@@ -120,6 +122,7 @@ export async function startHttpServer(options: {
       try {
         bunRuntime.serve({
           port,
+          idleTimeout: 60, // 60 秒，确保文件夹选择器等长时间操作不被断开
           fetch(request, server) {
             const pathname = new URL(request.url).pathname;
             const route = webSocketRoutes.find((candidate) =>
