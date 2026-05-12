@@ -6,10 +6,8 @@ import type {
   SessionToolScope,
 } from "../../shared/agent-native-workspace.js";
 import type { SessionPermissionMode } from "../../shared/session-types.js";
-import { NOVEL_SESSION_TOOL_DEFINITIONS, NOVEL_TOOL_NAMES, NOVEL_AGENT_PRESETS } from "./session-tool-registry-novel.js";
 
 export { SESSION_TOOL_RISKS };
-export { NOVEL_SESSION_TOOL_DEFINITIONS, NOVEL_TOOL_NAMES, NOVEL_AGENT_PRESETS };
 export type { JsonObjectSchema, SessionToolDefinition, SessionToolRisk, SessionToolScope };
 
 export type ProviderSessionToolDefinition = {
@@ -58,10 +56,34 @@ function sessionTool(
   return { visibility: "author", ...definition };
 }
 
-export const SESSION_TOOL_DEFINITIONS = [
-  // --- 小说领域工具（从 session-tool-registry-novel.ts 导入） ---
-  ...NOVEL_SESSION_TOOL_DEFINITIONS,
-  // --- Claude Code / Codex 级开发工具 ---
+// ---------------------------------------------------------------------------
+// Plugin registration — 动态插件工具注册
+// ---------------------------------------------------------------------------
+
+let pluginToolDefinitions: SessionToolDefinition[] = [];
+let pluginAgentPresets: Record<string, { enable: string[]; disable: string[] }> = {};
+
+/** 动态注册插件工具定义（如小说工具） */
+export function registerPluginTools(tools: readonly SessionToolDefinition[]): void {
+  pluginToolDefinitions = [...pluginToolDefinitions, ...tools];
+}
+
+/** 动态注册插件 Agent 角色预设 */
+export function registerPluginAgentPresets(presets: Record<string, { enable: string[]; disable: string[] }>): void {
+  pluginAgentPresets = { ...pluginAgentPresets, ...presets };
+}
+
+/** 清除所有插件注册（主要用于测试） */
+export function clearPluginRegistrations(): void {
+  pluginToolDefinitions = [];
+  pluginAgentPresets = {};
+}
+
+// ---------------------------------------------------------------------------
+// Builtin tool definitions — 通用工具（不依赖任何插件）
+// ---------------------------------------------------------------------------
+
+const BUILTIN_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = [
   sessionTool({
     name: "Bash",
     description: "在工作目录中执行 shell 命令。支持 cwd 追踪和超时控制。",
@@ -398,7 +420,26 @@ export const SESSION_TOOL_DEFINITIONS = [
   }),
 ] as const;
 
-export const SESSION_TOOL_NAMES = SESSION_TOOL_DEFINITIONS.map((tool) => tool.name);
+// ---------------------------------------------------------------------------
+// Merged definitions — 合并内置 + 插件工具
+// ---------------------------------------------------------------------------
+
+/** 获取合并后的完整工具定义列表（插件工具在前，内置工具在后） */
+function getSessionToolDefinitions(): readonly SessionToolDefinition[] {
+  if (pluginToolDefinitions.length === 0) return BUILTIN_TOOL_DEFINITIONS;
+  return [...pluginToolDefinitions, ...BUILTIN_TOOL_DEFINITIONS];
+}
+
+/** 向后兼容：合并后的工具名列表 */
+export function getSessionToolNames(): string[] {
+  return getSessionToolDefinitions().map((tool) => tool.name);
+}
+
+/**
+ * @deprecated 使用 getSessionToolNames() 代替。保留仅为兼容现有引用。
+ * 注意：此值仅包含内置工具名，不含动态注册的插件工具。
+ */
+export const SESSION_TOOL_NAMES = BUILTIN_TOOL_DEFINITIONS.map((tool) => tool.name);
 
 function cloneDefinition(definition: SessionToolDefinition): SessionToolDefinition {
   return {
@@ -409,11 +450,11 @@ function cloneDefinition(definition: SessionToolDefinition): SessionToolDefiniti
 }
 
 export function getAllSessionToolDefinitions(): SessionToolDefinition[] {
-  return SESSION_TOOL_DEFINITIONS.map(cloneDefinition);
+  return getSessionToolDefinitions().map(cloneDefinition);
 }
 
 export function getSessionToolDefinition(name: string): SessionToolDefinition | undefined {
-  const definition = SESSION_TOOL_DEFINITIONS.find((tool) => tool.name === name);
+  const definition = getSessionToolDefinitions().find((tool) => tool.name === name);
   return definition ? cloneDefinition(definition) : undefined;
 }
 
@@ -421,7 +462,7 @@ export function isSessionToolEnabledForMode(
   toolName: string,
   permissionMode: SessionPermissionMode,
 ): boolean {
-  const definition = SESSION_TOOL_DEFINITIONS.find((tool) => tool.name === toolName);
+  const definition = getSessionToolDefinitions().find((tool) => tool.name === toolName);
   return definition?.enabledForModes.includes(permissionMode) ?? false;
 }
 
@@ -429,8 +470,7 @@ export function isSessionToolEnabledForMode(
 // Agent 角色专属工具开关（对标 agent-writing-pipeline spec Req1）
 // ---------------------------------------------------------------------------
 
-const AGENT_TOOL_PRESETS: Record<string, { enable: string[]; disable: string[] }> = {
-  // 通用角色预设
+const BUILTIN_AGENT_PRESETS: Record<string, { enable: string[]; disable: string[] }> = {
   planner: {
     enable: ["Read", "Grep", "Glob", "WebSearch", "WebFetch", "TodoWrite"],
     disable: ["Bash", "Write", "Edit", "Terminal"],
@@ -451,8 +491,6 @@ const AGENT_TOOL_PRESETS: Record<string, { enable: string[]; disable: string[] }
     enable: ["Bash", "Read", "Write", "Edit", "Grep", "Glob"],
     disable: ["Terminal", "Browser", "ForkNarrator"],
   },
-  // 小说角色预设（来自 novel-plugin）
-  ...NOVEL_AGENT_PRESETS,
 };
 
 const UNAVAILABLE_SERVICE_TOOLS = new Set([
@@ -465,7 +503,7 @@ const UNAVAILABLE_SERVICE_TOOLS = new Set([
 ]);
 
 export function getEnabledSessionTools(permissionMode: SessionPermissionMode, agentId?: string, options?: { disabledTools?: readonly string[]; projectType?: string }): SessionToolDefinition[] {
-  let tools = SESSION_TOOL_DEFINITIONS
+  let tools = getSessionToolDefinitions()
     .filter((tool) => tool.enabledForModes.includes(permissionMode))
     // Do not expose service-backed tools until their services are wired into the session executor.
     // Exposing them causes the model to repeatedly call tools that can only return configuration errors.
@@ -478,9 +516,10 @@ export function getEnabledSessionTools(permissionMode: SessionPermissionMode, ag
     tools = tools.filter((tool) => tool.scope !== "novel");
   }
 
-  // 按 Agent 角色过滤工具
+  // 按 Agent 角色过滤工具（合并内置 + 插件预设）
   if (agentId) {
-    const preset = AGENT_TOOL_PRESETS[agentId];
+    const mergedPresets = { ...BUILTIN_AGENT_PRESETS, ...pluginAgentPresets };
+    const preset = mergedPresets[agentId];
     if (preset) {
       tools = tools.filter((tool) => !preset.disable.includes(tool.name));
     }

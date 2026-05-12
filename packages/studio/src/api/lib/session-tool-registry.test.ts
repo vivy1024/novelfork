@@ -1,33 +1,19 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   SESSION_TOOL_NAMES,
+  clearPluginRegistrations,
   getAllSessionToolDefinitions,
   getEnabledSessionTools,
   getProviderSessionToolDefinitions,
   getSessionToolDefinition,
+  getSessionToolNames,
   isSessionToolEnabledForMode,
+  registerPluginAgentPresets,
+  registerPluginTools,
 } from "./session-tool-registry.js";
+import { NOVEL_SESSION_TOOL_DEFINITIONS, NOVEL_AGENT_PRESETS } from "./session-tool-registry-novel.js";
 
-const EXPECTED_INITIAL_TOOL_NAMES = [
-  "cockpit.get_snapshot",
-  "cockpit.list_open_hooks",
-  "cockpit.list_recent_candidates",
-  "questionnaire.list_templates",
-  "questionnaire.start",
-  "questionnaire.suggest_answer",
-  "questionnaire.submit_response",
-  "pgi.generate_questions",
-  "pgi.record_answers",
-  "pgi.format_answers_for_prompt",
-  "guided.enter",
-  "guided.answer_question",
-  "guided.exit",
-  "candidate.create_chapter",
-  "narrative.read_line",
-  "narrative.propose_change",
-  "chapter.read",
-  "jingwei.read_context",
-  "health.read_summary",
+const EXPECTED_BUILTIN_TOOL_NAMES = [
   "Bash",
   "Read",
   "Write",
@@ -62,11 +48,17 @@ const EXPECTED_INITIAL_TOOL_NAMES = [
 const WRITE_RISKS = new Set(["draft-write", "confirmed-write", "destructive"]);
 
 describe("session tool registry", () => {
-  it("registers the initial studio-facing tools as serializable definitions", () => {
-    expect(SESSION_TOOL_NAMES).toEqual(EXPECTED_INITIAL_TOOL_NAMES);
+  afterEach(() => {
+    clearPluginRegistrations();
+  });
 
+  it("SESSION_TOOL_NAMES contains only builtin tools (no plugin tools)", () => {
+    expect(SESSION_TOOL_NAMES).toEqual(EXPECTED_BUILTIN_TOOL_NAMES);
+  });
+
+  it("registers builtin tools as serializable definitions without plugins", () => {
     const tools = getAllSessionToolDefinitions();
-    expect(tools.map((tool) => tool.name)).toEqual(EXPECTED_INITIAL_TOOL_NAMES);
+    expect(tools.map((tool) => tool.name)).toEqual(EXPECTED_BUILTIN_TOOL_NAMES);
 
     for (const tool of tools) {
       expect(tool.description.length).toBeGreaterThan(0);
@@ -80,20 +72,44 @@ describe("session tool registry", () => {
     }
   });
 
+  it("dynamically registers plugin tools and merges them into the full list", () => {
+    registerPluginTools(NOVEL_SESSION_TOOL_DEFINITIONS);
+
+    const allNames = getSessionToolNames();
+    // Novel tools come first, then builtin
+    expect(allNames).toEqual([
+      ...NOVEL_SESSION_TOOL_DEFINITIONS.map((t) => t.name),
+      ...EXPECTED_BUILTIN_TOOL_NAMES,
+    ]);
+
+    // getAllSessionToolDefinitions also reflects the merge
+    const tools = getAllSessionToolDefinitions();
+    expect(tools.length).toBe(NOVEL_SESSION_TOOL_DEFINITIONS.length + EXPECTED_BUILTIN_TOOL_NAMES.length);
+    expect(tools[0].name).toBe("cockpit.get_snapshot");
+  });
+
+  it("clearPluginRegistrations removes all plugin tools", () => {
+    registerPluginTools(NOVEL_SESSION_TOOL_DEFINITIONS);
+    expect(getSessionToolNames().length).toBeGreaterThan(EXPECTED_BUILTIN_TOOL_NAMES.length);
+
+    clearPluginRegistrations();
+    expect(getSessionToolNames()).toEqual(EXPECTED_BUILTIN_TOOL_NAMES);
+  });
+
   it("filters tools by permission mode and hides write-risk tools in read and plan modes", () => {
+    registerPluginTools(NOVEL_SESSION_TOOL_DEFINITIONS);
+
     for (const mode of ["read", "plan"] as const) {
       const visibleTools = getEnabledSessionTools(mode);
       expect(visibleTools.length).toBeGreaterThan(0);
       expect(visibleTools.every((tool) => !WRITE_RISKS.has(tool.risk))).toBe(true);
+      // These read-risk novel tools should be visible (not in UNAVAILABLE_SERVICE_TOOLS)
       expect(visibleTools.map((tool) => tool.name)).toEqual(expect.arrayContaining([
-        "cockpit.get_snapshot",
         "pgi.generate_questions",
         "guided.enter",
-        "narrative.read_line",
         "Read",
         "chapter.read",
         "jingwei.read_context",
-        "health.read_summary",
       ]));
       expect(visibleTools.map((tool) => tool.name)).not.toContain("candidate.create_chapter");
       expect(visibleTools.map((tool) => tool.name)).not.toContain("questionnaire.submit_response");
@@ -109,7 +125,6 @@ describe("session tool registry", () => {
       "questionnaire.submit_response",
       "pgi.record_answers",
       "guided.exit",
-      "narrative.propose_change",
       "Bash",
       "Write",
       "Edit",
@@ -117,6 +132,8 @@ describe("session tool registry", () => {
   });
 
   it("looks up definitions and exposes provider-compatible schemas without studio-only fields", () => {
+    registerPluginTools(NOVEL_SESSION_TOOL_DEFINITIONS);
+
     expect(getSessionToolDefinition("cockpit.get_snapshot")).toMatchObject({
       name: "cockpit.get_snapshot",
       risk: "read",
@@ -127,11 +144,12 @@ describe("session tool registry", () => {
     expect(isSessionToolEnabledForMode("candidate.create_chapter", "edit")).toBe(true);
 
     const providerTools = getProviderSessionToolDefinitions("read");
+    // cockpit.get_snapshot is in UNAVAILABLE_SERVICE_TOOLS, so use a different novel tool
     expect(providerTools).toEqual(expect.arrayContaining([
       {
         type: "function",
         function: expect.objectContaining({
-          name: "cockpit.get_snapshot",
+          name: "pgi.generate_questions",
           description: expect.any(String),
           parameters: expect.objectContaining({ type: "object" }),
         }),
@@ -141,5 +159,24 @@ describe("session tool registry", () => {
     expect(providerTools.every((tool) => !("renderer" in tool.function))).toBe(true);
     expect(providerTools.every((tool) => !("risk" in tool.function))).toBe(true);
     expect(providerTools.every((tool) => !("visibility" in tool.function))).toBe(true);
+  });
+
+  it("dynamically registers plugin agent presets and uses them in getEnabledSessionTools", () => {
+    registerPluginTools(NOVEL_SESSION_TOOL_DEFINITIONS);
+    registerPluginAgentPresets(NOVEL_AGENT_PRESETS);
+
+    // "writer" preset disables Terminal, Browser, ForkNarrator, Recall, ShareFile
+    const writerTools = getEnabledSessionTools("edit", "writer");
+    expect(writerTools.map((t) => t.name)).not.toContain("Terminal");
+    expect(writerTools.map((t) => t.name)).not.toContain("Browser");
+    expect(writerTools.map((t) => t.name)).not.toContain("ForkNarrator");
+  });
+
+  it("without plugin registration, novel tools are not visible", () => {
+    const tools = getEnabledSessionTools("edit");
+    const novelToolNames = NOVEL_SESSION_TOOL_DEFINITIONS.map((t) => t.name);
+    for (const name of novelToolNames) {
+      expect(tools.map((t) => t.name)).not.toContain(name);
+    }
   });
 });
