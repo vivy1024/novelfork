@@ -184,7 +184,7 @@ export { executeRuntimeCommandInput, type RuntimeCommandCompactResult, type Runt
 
 // Plugins
 export { NovelForkPlugin, PluginManager } from "./plugins/index.js";
-export type { PluginManifest, PluginState, PluginTool, PluginHook, PluginContext, PluginMetadata, PluginManagerConfig } from "./plugins/index.js";
+export type { PluginManifest, PluginState, PluginTool, PluginHook, PluginContext, PluginMetadata, PluginManagerConfig, PluginToolDefinition, PluginAgentPreset, PluginRouteDefinition, PluginPromptExtension } from "./plugins/index.js";
 
 // Presets
 export {

@@ -1,7 +1,7 @@
 /**
  * /novel:audit Handler — run continuity audit against book chapters.
  *
- * 对标 core 的连续性审计引擎 (continuity.ts, chapter-truth-validation.ts)
+ * 对标 core 的连续性审计引擎 (continuity.ts, chapter-jingwei-validation.ts)
  */
 
 export interface AuditFinding {

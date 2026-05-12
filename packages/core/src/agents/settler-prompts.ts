@@ -149,7 +149,7 @@ function buildSettlerOutputFormat(gp: GenreProfile): string {
 \`\`\`
 
 规则：
-1. 只输出增量，不要重写完整 truth files
+1. 只输出增量，不要重写完整经纬资料
 2. 所有章节号字段都必须是整数，不能写自然语言
 3. hookOps.upsert 里只能写“当前伏笔池里已经存在”的 hookId，不允许发明新的 hookId
 4. brand-new unresolved thread 一律写进 newHookCandidates，不要自造 hookId
@@ -207,7 +207,7 @@ export function buildSettlerUserPrompt(params: {
     ? `\n## 卷纲\n${params.volumeOutline}\n`
     : "";
   const validationFeedbackBlock = params.validationFeedback
-    ? `\n## 状态校验反馈\n${params.validationFeedback}\n\n请严格纠正这些矛盾，只修正 truth files，不要改写正文，不要引入正文中不存在的新事实。\n`
+    ? `\n## 状态校验反馈\n${params.validationFeedback}\n\n请严格纠正这些矛盾，只修正经纬资料，不要改写正文，不要引入正文中不存在的新事实。\n`
     : "";
 
   return `请分析第${params.chapterNumber}章「${params.title}」的正文，更新所有追踪文件。

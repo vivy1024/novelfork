@@ -121,7 +121,7 @@ const TOOL_DEFINITIONS: ToolDefinition[] = [
     ],
   },
   {
-    name: "read_truth_files",
+    name: "read_jingwei_files",
     description: "读取书籍的所有经纬资料（story/*.md）",
     parameters: [
       { name: "bookId", type: "string", description: "书籍ID", required: true },
@@ -174,7 +174,7 @@ const TOOL_DEFINITIONS: ToolDefinition[] = [
     ],
   },
   {
-    name: "write_truth_file",
+    name: "write_jingwei_file",
     description: "写入经纬资料（story/*.md）",
     parameters: [
       { name: "bookId", type: "string", description: "书籍ID", required: true },
@@ -409,7 +409,7 @@ const writeTruthFileHandler: RegisteredTool["handler"] = async (_pipeline, _stat
   }
 
   if (fileName === "current_state.md" && containsProgressManipulation(content)) {
-    return JSON.stringify({ error: "不允许通过 write_truth_file 修改 current_state.md 中的章节进度。章节进度由系统自动管理。" });
+    return JSON.stringify({ error: "不允许通过 write_jingwei_file 修改 current_state.md 中的章节进度。章节进度由系统自动管理。" });
   }
 
   const { writeFile, mkdir } = await import("node:fs/promises");
