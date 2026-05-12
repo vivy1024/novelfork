@@ -9,6 +9,14 @@ export type RuntimePlatformId = "codex" | "kiro" | "cline";
 export type RuntimePlatformAccountAuthMode = "json-account" | "local-auth-json" | "oauth" | "device-code";
 export type RuntimePlatformAccountStatus = "active" | "disabled" | "expired" | "error";
 
+/**
+ * Controls how reasoning/thinking content is handled in multi-turn conversations.
+ * - "strip": Never pass back reasoning (default for most providers)
+ * - "passback-on-tool-loop": Pass back reasoning_content only when tool calls are involved (DeepSeek thinking mode)
+ * - "always-passback": Always pass back thinking/reasoning blocks (Claude extended thinking)
+ */
+export type ProviderReasoningPolicy = "strip" | "passback-on-tool-loop" | "always-passback";
+
 export interface Model {
   id: string;
   name: string;
@@ -38,6 +46,8 @@ export interface Provider {
   accountId?: string;
   useResponsesWebSocket?: boolean;
   thinkingStrength?: ProviderThinkingStrength;
+  /** Controls reasoning/thinking passback behavior in tool loops */
+  reasoningPolicy?: ProviderReasoningPolicy;
   models: Model[];
 }
 
