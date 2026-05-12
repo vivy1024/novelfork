@@ -770,6 +770,12 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
           if (forkedId) routerNavigate({ to: `/next/narrators/${encodeURIComponent(forkedId)}` });
         }
       }}
+      onUpdateWorkDir={async (path) => {
+        const result = await sessionClient.updateSession<NarratorSessionRecord>(sessionId, { worktree: path });
+        if (!result.ok) throw new Error("工作目录更新失败");
+        shellDataStore.upsertSession(result.data);
+        await refreshSnapshot();
+      }}
       onAttach={async (files) => {
         for (const file of Array.from(files)) {
           const formData = new FormData();

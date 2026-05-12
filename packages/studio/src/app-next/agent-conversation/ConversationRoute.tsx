@@ -52,6 +52,8 @@ export interface ConversationRouteProps {
   onGenerateTitle?: () => void;
   onArchive?: () => void;
   onForkSession?: (title?: string) => void;
+  /** 更新工作目录 */
+  onUpdateWorkDir?: (path: string) => Promise<void> | void;
   /** 附件上传回调 */
   onAttach?: (files: FileList) => void;
 }
@@ -96,6 +98,7 @@ export function ConversationRoute({
   onGenerateTitle,
   onArchive,
   onForkSession,
+  onUpdateWorkDir,
   onAttach,
 }: ConversationRouteProps) {
   if (!sessionId) {
@@ -163,6 +166,7 @@ export function ConversationRoute({
         onGenerateTitle={onGenerateTitle}
         onArchive={onArchive}
         onForkSession={onForkSession}
+        onUpdateWorkDir={onUpdateWorkDir}
       />
     </section>
   );
