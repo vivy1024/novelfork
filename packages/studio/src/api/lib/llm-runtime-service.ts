@@ -73,8 +73,9 @@ function toRuntimeMessages(messages: readonly LlmRuntimeInputMessage[]): Runtime
   return messages.flatMap((message): RuntimeChatMessage[] => {
     if ("type" in message) {
       if (message.type === "message") {
-        if (message.content.trim().length === 0) return [];
         const reasoningContent = "reasoning_content" in message && typeof message.reasoning_content === "string" ? message.reasoning_content : undefined;
+        // Keep message if it has content OR reasoning_content (DeepSeek thinking passback)
+        if (message.content.trim().length === 0 && !reasoningContent) return [];
         return [{ role: message.role, content: message.content, ...(reasoningContent ? { reasoning_content: reasoningContent } : {}) }];
       }
       if (message.type === "tool_call") {
