@@ -1,9 +1,10 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { SimpleSelect } from "@/components/ui/simple-select";
 import { Play } from "lucide-react";
+import { fetchJson, putApi } from "@/hooks/use-api";
 
 interface NotificationConfig {
   browserNotifications: boolean;
@@ -76,6 +77,29 @@ export function NotificationSettingsPanel() {
   const [config, setConfig] = useState<NotificationConfig>(DEFAULT_CONFIG);
   const [permissionStatus, setPermissionStatus] = useState<NotificationPermission | "unsupported">(getPermissionStatus);
   const [testSent, setTestSent] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  // Load from backend
+  useEffect(() => {
+    fetchJson<{ preferences?: { notifications?: Partial<NotificationConfig> } }>("/settings/user")
+      .then((data) => {
+        if (data.preferences?.notifications) {
+          setConfig((prev) => ({ ...prev, ...data.preferences!.notifications }));
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Save helper
+  const save = useCallback(async (patch: Partial<NotificationConfig>) => {
+    const updated = { ...config, ...patch };
+    setConfig(updated);
+    setSaving(true);
+    try {
+      await putApi("/settings/user", { preferences: { notifications: updated } });
+    } catch { /* non-critical */ }
+    finally { setSaving(false); }
+  }, [config]);
 
   const handleRequestPermission = useCallback(async () => {
     if (typeof window === "undefined" || !("Notification" in window)) return;
