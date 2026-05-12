@@ -8,13 +8,8 @@
 
 | Spec | 任务数 | 状态 | 说明 |
 |------|-----:|------|------|
-| `v0-1-0-release-readiness` | 23 | ⏸️ 暂停（20/23） | 发布前验收 |
-| `v0-1-0-experience-and-pipeline-fix` | 23 | ✅ 全部完成（23/23） | 流式工具调用+对话体验+供应商+工作台重构 |
-| `session-runtime-status` | 4 步 | 🔧 进行中（3/4 步完成） | 实时状态栏+中断继续+耗时 |
-| `v0-1-1-real-usability-fixes` | 6 | 📋 新建 | 侧边栏Agent可见+ContextRing+经纬分组+使用历史 |
-| `character-arc-auto-tracking` | 10 | ✅ 实现完成，待浏览器验证 | Hook+规则引擎+LLM可选 |
-| `template-market-v2` | 14 | ✅ 实现完成，待浏览器验证 | 26流派+用户自建+远程市场 |
-| `session-memory-enhancement` | 8 | ✅ 实现完成，待浏览器验证 | fork追溯+Context Ring菜单 |
+| `agent-tool-parity` | — | 📋 仅 requirements | Agent 工具全量对齐（5 Phase） |
+| `provider-block-history` | 20 | 🔧 进行中（18/20） | 剩余 2.4-2.5 存储格式升级（非阻塞） |
 
 ### 已整合进 `v0-1-0-experience-and-pipeline-fix` 并删除的旧 Spec
 
@@ -28,7 +23,7 @@
 
 ---
 
-## 归档 Specs（41 个）
+## 归档 Specs（50+ 个）
 
 `archive/` 下已完成或已废弃的 spec：
 

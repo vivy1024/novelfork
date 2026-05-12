@@ -567,11 +567,116 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
         }
         return { ok: false, renderer: definition.renderer, error: "invalid-action", summary: `无效的 action: ${action}，应为 keep 或 remove。` };
       };
-    // --- Stub handlers for Phase 2-5 tools ---
+    // --- Implemented Phase 2 tools ---
     case "AskUserQuestion":
+      return async ({ input, definition }) => {
+        const questions = Array.isArray(input.questions) ? input.questions : [];
+        if (questions.length === 0) {
+          return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "questions 数组为空。" };
+        }
+        const questionText = (questions[0] as { question?: string })?.question ?? "请回答以下问题";
+        return {
+          ok: true,
+          renderer: "tool.ask-user-question",
+          summary: `向用户提出 ${questions.length} 个问题，等待回答。`,
+          data: { status: "pending-confirmation", questions },
+          confirmation: {
+            id: crypto.randomUUID(),
+            toolName: "AskUserQuestion",
+            target: questionText,
+            summary: `Agent 提问：${questionText}`,
+            risk: "confirmed-write",
+            options: CONFIRMATION_OPTIONS,
+          },
+        };
+      };
     case "EnterPlanMode":
+      return async ({ definition }) => ({
+        ok: true,
+        renderer: definition.renderer,
+        summary: "已进入计划模式。在此模式下只做调查和规划，不执行写入操作。",
+        data: { status: "plan-mode-entered", mode: "plan" },
+      });
     case "ExitPlanMode":
+      return async ({ input, definition }) => {
+        const plan = typeof input.plan === "string" ? (input.plan as string).trim() : "";
+        if (!plan) {
+          return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "plan 内容为空。" };
+        }
+        return {
+          ok: true,
+          renderer: "tool.plan-approval",
+          summary: `计划已提交，等待用户批准。`,
+          data: { status: "pending-confirmation", plan },
+          confirmation: {
+            id: crypto.randomUUID(),
+            toolName: "ExitPlanMode",
+            target: "计划审批",
+            summary: plan.slice(0, 200),
+            risk: "confirmed-write",
+            options: CONFIRMATION_OPTIONS,
+          },
+        };
+      };
     case "TaskCreate":
+      return async ({ input, definition }) => {
+        const todos = Array.isArray(input.todos) ? input.todos : [];
+        if (todos.length === 0) {
+          return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "todos 数组为空。" };
+        }
+        return {
+          ok: true,
+          renderer: "tool.task-list",
+          summary: `已创建 ${todos.length} 个任务。`,
+          data: {
+            status: "created",
+            todos,
+            totalCount: todos.length,
+            completedCount: todos.filter((t: Record<string, unknown>) => t.status === "completed").length,
+          },
+        };
+      };
+    case "Recall":
+      return async ({ input, definition, sessionId }) => {
+        const action = typeof input.action === "string" ? input.action : "search";
+        const query = typeof input.query === "string" ? (input.query as string).trim() : "";
+
+        if (action === "search" && !query) {
+          return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "search action 需要 query 参数。" };
+        }
+
+        const { loadSessionChatHistory } = await import("./session-history-store.js");
+        const history = await loadSessionChatHistory(sessionId);
+
+        if (action === "search") {
+          const lowerQuery = query.toLowerCase();
+          const limit = typeof input.limit === "number" ? input.limit : 10;
+          const matches = history
+            .filter(msg => msg.content.toLowerCase().includes(lowerQuery))
+            .slice(0, limit)
+            .map(msg => ({ id: msg.id, role: msg.role, content: msg.content.slice(0, 500), timestamp: msg.timestamp }));
+          return {
+            ok: true,
+            renderer: definition.renderer,
+            summary: `搜索到 ${matches.length} 条匹配消息。`,
+            data: { action: "search", query, matches, totalMatches: matches.length },
+          };
+        }
+
+        if (action === "read_conversation") {
+          const limit = typeof input.limit === "number" ? input.limit : 20;
+          const messages = history.slice(-limit).map(msg => ({ id: msg.id, role: msg.role, content: msg.content.slice(0, 1000), timestamp: msg.timestamp }));
+          return {
+            ok: true,
+            renderer: definition.renderer,
+            summary: `读取了最近 ${messages.length} 条消息。`,
+            data: { action: "read_conversation", messages },
+          };
+        }
+
+        return { ok: false, renderer: definition.renderer, error: "invalid-action", summary: `不支持的 action: ${action}` };
+      };
+    // --- Stub handlers for remaining Phase 3-5 tools ---
     case "WebSearch":
     case "WebFetch":
     case "Browser":
@@ -581,7 +686,6 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
     case "ForkNarrator":
     case "Terminal":
     case "ShareFile":
-    case "Recall":
     case "StartPipeline":
     case "EndPipeline":
     case "LearningGuide":
