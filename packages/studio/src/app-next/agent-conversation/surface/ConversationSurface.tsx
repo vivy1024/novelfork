@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { Search, ExternalLink, Pencil, Sparkles, FileCode, Info, Archive, ArrowLeft, CodeXml, Pin, Image } from "lucide-react";
 
+import { GitPanel } from "./GitPanel";
 import type { ToolResultArtifact } from "../../tool-results";
 import type { SlashCommandExecutionContext, SlashCommandExecutionResult } from "../slash-command-registry";
 import { Composer } from "./Composer";
@@ -104,6 +105,7 @@ export function ConversationSurface({
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [codeCollapsed, setCodeCollapsed] = useState(false);
+  const [gitPanelOpen, setGitPanelOpen] = useState(false);
   const routerNavigate = useNavigate();
 
   const handleEditTitle = () => {
@@ -431,7 +433,7 @@ export function ConversationSurface({
       {/* ── Git status bar — NarraFork 风格 ── */}
       {status.workspace && (
         <div className="flex items-center justify-between gap-1.5 bg-muted/30 px-4 py-1 text-[11px]">
-          <div className="flex items-center gap-1.5 min-w-0 flex-1">
+          <button type="button" onClick={() => setGitPanelOpen(!gitPanelOpen)} className="flex items-center gap-1.5 min-w-0 flex-1 hover:bg-muted/50 rounded px-1 -mx-1 py-0.5 transition-colors">
             <span className={status.workspace.git?.status === "dirty" ? "text-orange-500" : "text-green-500"}>🏠</span>
             <span className="truncate font-medium text-blue-600 dark:text-blue-400">
               {status.binding?.label?.split(/[/·]/)[0]?.trim() || status.workspace.path?.split(/[/\\]/).pop() || "工作区"}
@@ -453,13 +455,13 @@ export function ConversationSurface({
             {status.workspace.git?.status === "clean" && (
               <span className="text-[10px] text-green-600">✓</span>
             )}
-          </div>
+          </button>
           {/* Right: Git action buttons */}
           <div className="flex items-center gap-0.5 shrink-0">
-            <button type="button" className="rounded p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors" title="复制路径">
+            <button type="button" onClick={() => { navigator.clipboard.writeText(status.workspace?.path ?? ""); }} className="rounded p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors" title="复制路径">
               <svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
             </button>
-            <button type="button" className="rounded p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors" title="Git 提交">
+            <button type="button" onClick={() => setGitPanelOpen(!gitPanelOpen)} className="rounded p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors" title="Git 管理">
               <svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><line x1="3" y1="12" x2="9" y2="12"/><line x1="15" y1="12" x2="21" y2="12"/></svg>
             </button>
             <button type="button" className="rounded p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors" title="Git 分支">
@@ -470,6 +472,11 @@ export function ConversationSurface({
             </button>
           </div>
         </div>
+      )}
+
+      {/* ── Git Panel (展开时显示) ── */}
+      {gitPanelOpen && status.workspace?.path && (
+        <GitPanel workDir={status.workspace.path} onClose={() => setGitPanelOpen(false)} />
       )}
 
       {/* ── NarratorStatusBar (above Composer) ── */}
