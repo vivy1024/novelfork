@@ -1,6 +1,6 @@
 /**
  * Storage routes — mounted only in standalone mode.
- * ~30 endpoints: books CRUD, chapters, truth files, genres, project config,
+ * ~30 endpoints: books CRUD, chapters, jingwei files, genres, project config,
  * exports, analytics, logs, doctor, fanfic read.
  */
 
@@ -873,7 +873,7 @@ export function createStorageRouter(ctx: RouterContext): Hono {
     return c.json(result);
   });
 
-  app.get("/api/books/:id/truth-files/:file", async (c) => {
+  app.get("/api/books/:id/jingwei-files/:file", async (c) => {
     const id = c.req.param("id");
     const file = c.req.param("file");
     const result = await storyFileReadService.readJingweiFile(id, file);
@@ -894,7 +894,7 @@ export function createStorageRouter(ctx: RouterContext): Hono {
     return c.json(result);
   });
 
-  app.delete("/api/books/:id/truth-files/:file", async (c) => {
+  app.delete("/api/books/:id/jingwei-files/:file", async (c) => {
     const id = c.req.param("id");
     const file = c.req.param("file");
     try {
@@ -923,7 +923,7 @@ export function createStorageRouter(ctx: RouterContext): Hono {
     return c.json(await storyFileReadService.listJingweiFiles(id));
   });
 
-  app.get("/api/books/:id/truth-files", async (c) => {
+  app.get("/api/books/:id/jingwei-files", async (c) => {
     const id = c.req.param("id");
     return c.json(await storyFileReadService.listJingweiFiles(id));
   });

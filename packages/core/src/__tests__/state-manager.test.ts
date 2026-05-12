@@ -548,7 +548,7 @@ describe("StateManager", () => {
       expect(next).toBe(2);
     });
 
-    it("rewrite restore drops poisoned live structured state when the snapshot only has markdown truth files", async () => {
+    it("rewrite restore drops poisoned live structured state when the snapshot only has markdown jingwei files", async () => {
       const rwBookId = "rewrite-book-markdown-only";
       const chapDir = join(manager.bookDir(rwBookId), "chapters");
       const storyDir = join(manager.bookDir(rwBookId), "story");
@@ -786,7 +786,7 @@ describe("StateManager", () => {
       expect(currentFocus).not.toContain("# Current Focus");
     });
 
-    it("bootstraps structured runtime state from legacy markdown truth files", async () => {
+    it("bootstraps structured runtime state from legacy markdown jingwei files", async () => {
       const bookId = "runtime-state-book";
       const storyDir = join(manager.bookDir(bookId), "story");
       await mkdir(storyDir, { recursive: true });

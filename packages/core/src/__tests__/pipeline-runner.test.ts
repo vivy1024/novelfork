@@ -1315,8 +1315,8 @@ describe("PipelineRunner", () => {
         "Stage: writing chapter draft",
         "Stage: auditing draft",
         "Stage: persisting final chapter",
-        "Stage: rebuilding final truth files",
-        "Stage: validating truth file updates",
+        "Stage: rebuilding final jingwei files",
+        "Stage: validating jingwei file updates",
         "Stage: syncing memory indexes",
         "Stage: updating chapter index and snapshots",
       ]));
@@ -1463,7 +1463,7 @@ describe("PipelineRunner", () => {
     }
   });
 
-  it("passes governed control inputs into final truth rebuild in v2 mode", async () => {
+  it("passes governed control inputs into final jingwei rebuild in v2 mode", async () => {
     const { root, runner, state, bookId } = await createRunnerFixture({
       inputGovernanceMode: "v2",
     });
@@ -1913,7 +1913,7 @@ describe("PipelineRunner", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it("persists truth files derived from the final revised chapter", async () => {
+  it("persists jingwei files derived from the final revised chapter", async () => {
     const { root, runner, state, bookId } = await createRunnerFixture();
 
     vi.spyOn(WriterAgent.prototype, "writeChapter").mockResolvedValue(
@@ -2320,7 +2320,7 @@ describe("PipelineRunner", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it("persists a state-degraded chapter without advancing truth files when settlement retry still contradicts the body", async () => {
+  it("persists a state-degraded chapter without advancing jingwei files when settlement retry still contradicts the body", async () => {
     const { root, runner, state, bookId } = await createRunnerFixture({
       inputGovernanceMode: "legacy",
     });
@@ -2502,7 +2502,7 @@ describe("PipelineRunner", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it("syncs the latest edited chapter body back into truth files without requiring state-degraded status", async () => {
+  it("syncs the latest edited chapter body back into jingwei files without requiring state-degraded status", async () => {
     const { root, runner, state, bookId } = await createRunnerFixture({
       inputGovernanceMode: "v2",
       externalContext: "把注意力收回师债主线。",
@@ -2654,7 +2654,7 @@ describe("PipelineRunner", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it("preserves the revised chapter content when final truth rebuild omits CHAPTER_CONTENT", async () => {
+  it("preserves the revised chapter content when final jingwei rebuild omits CHAPTER_CONTENT", async () => {
     const { root, runner, state, bookId } = await createRunnerFixture({
       inputGovernanceMode: "legacy",
     });
@@ -4317,7 +4317,7 @@ describe("PipelineRunner", () => {
     }
   });
 
-  it("re-audits revisions against updated state overrides instead of stale on-disk truth files", async () => {
+  it("re-audits revisions against updated state overrides instead of stale on-disk jingwei files", async () => {
     const { root, runner, state, bookId } = await createRunnerFixture();
     const storyDir = join(state.bookDir(bookId), "story");
     const chaptersDir = join(state.bookDir(bookId), "chapters");
@@ -4381,8 +4381,8 @@ describe("PipelineRunner", () => {
         }),
       )
       .mockImplementationOnce(async (_bookDir, _chapterContent, chapterNumber, _genre, options) => {
-        const overrideState = (options as { truthFileOverrides?: { currentState?: string } } | undefined)
-          ?.truthFileOverrides?.currentState;
+        const overrideState = (options as { jingweiFileOverrides?: { currentState?: string } } | undefined)
+          ?.jingweiFileOverrides?.currentState;
         if (chapterNumber === 2 && overrideState?.includes("| Current Chapter | 2 |")) {
           return createAuditResult({
             passed: true,

@@ -717,7 +717,7 @@ export function createAIRouter(ctx: RouterContext): Hono {
       // Determine POV character
       const pov = body.povCharacter ?? extractPOVFromOutline(outline, body.chapterNumber);
 
-      // Apply filters to each truth file
+      // Apply filters to each jingwei file
       const entries: Array<{
         source: string;
         label: string;

@@ -148,9 +148,9 @@ export function createStoryFileReadService(options: StoryFileReadServiceOptions)
       return { files: await listFiles(dir) };
     },
 
-    async readJingweiFile(bookId: string, file: string): Promise<{ readonly file: string; readonly content: string | null } | { readonly error: "Invalid truth file" }> {
+    async readJingweiFile(bookId: string, file: string): Promise<{ readonly file: string; readonly content: string | null } | { readonly error: "Invalid jingwei file" }> {
       if (!isJingweiFileName(file)) {
-        return { error: "Invalid truth file" };
+        return { error: "Invalid jingwei file" };
       }
       const dir = await resolveStoryDir(bookId);
       return readStoryFileContent(dir, file);

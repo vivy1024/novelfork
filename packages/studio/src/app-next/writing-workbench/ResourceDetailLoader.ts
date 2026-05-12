@@ -128,10 +128,10 @@ export async function loadResourceDetailState(
 
   if (node.kind === "jingwei") {
     const bookId = metadataString(node, "bookId") ?? fallbackBookId;
-    const fileName = fileNameFromNode(node, "truth-file:");
-    if (!fileName) return errorState(node, { code: "missing-file-name" }, "Truth 资源缺少文件名");
+    const fileName = fileNameFromNode(node, "jingwei-file:") ?? fileNameFromNode(node, "truth-file:");
+    if (!fileName) return errorState(node, { code: "missing-file-name" }, "经纬资源缺少文件名");
     const result = await resource.getJingweiFile(bookId, fileName);
-    if (!result.ok) return errorState(node, result.error ?? result.raw ?? result.code, messageFromContractResult(result, "Truth 文件详情加载失败"));
+    if (!result.ok) return errorState(node, result.error ?? result.raw ?? result.code, messageFromContractResult(result, "经纬文件详情加载失败"));
     const data = result.data as { readonly content?: unknown; readonly file?: unknown };
     return ready(node, typeof data.content === "string" ? data.content : "", "detail", { detailSource: "detail", fileName: data.file ?? fileName, bookId });
   }

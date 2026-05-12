@@ -325,7 +325,7 @@ export class ContinuityAuditor extends BaseAgent {
       chapterIntent?: string;
       contextPackage?: ContextPackage;
       ruleStack?: RuleStack;
-      truthFileOverrides?: {
+      jingweiFileOverrides?: {
         currentState?: string;
         ledger?: string;
         hooks?: string;
@@ -346,9 +346,9 @@ export class ContinuityAuditor extends BaseAgent {
         this.readFileSafe(join(bookDir, "story/fanfic_canon.md")),
         this.readFileSafe(join(bookDir, "story/volume_outline.md")),
       ]);
-    const currentState = options?.truthFileOverrides?.currentState ?? diskCurrentState;
-    const ledger = options?.truthFileOverrides?.ledger ?? diskLedger;
-    const hooks = options?.truthFileOverrides?.hooks ?? diskHooks;
+    const currentState = options?.jingweiFileOverrides?.currentState ?? diskCurrentState;
+    const ledger = options?.jingweiFileOverrides?.ledger ?? diskLedger;
+    const hooks = options?.jingweiFileOverrides?.hooks ?? diskHooks;
 
     const hasParentCanon = parentCanon !== "(文件不存在)";
     const hasFanficCanon = fanficCanon !== "(文件不存在)";
