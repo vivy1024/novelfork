@@ -5,6 +5,7 @@ import type {
   ManagedProvider,
   Model,
   ProviderConfig,
+  ProviderProtocol,
   ProviderType,
   ProviderCompatibility,
   ProviderApiMode,
@@ -17,6 +18,7 @@ import type {
   RuntimePlatformId,
   RuntimeProviderView,
 } from "../../shared/provider-catalog.js";
+import { inferProtocol } from "../../shared/provider-catalog.js";
 import { resolveRuntimeStoragePath } from "./runtime-storage-paths.js";
 
 export type {
@@ -37,6 +39,7 @@ export interface RuntimeModelRecord extends Model {
 
 export interface RuntimeProviderRecord extends Omit<ManagedProvider, "models"> {
   type: ProviderType;
+  protocol?: ProviderProtocol;
   compatibility?: ProviderCompatibility;
   apiMode?: ProviderApiMode;
   thinkingStrength?: ProviderThinkingStrength;
@@ -119,6 +122,7 @@ function normalizeProvider(provider: CreateRuntimeProviderInput | RuntimeProvide
     ...provider,
     enabled: provider.enabled ?? true,
     priority: provider.priority ?? 1,
+    protocol: inferProtocol(provider),
     config: { ...(provider.config ?? {}) },
     models: (provider.models ?? []).map((model) => normalizeModel(model)),
   };

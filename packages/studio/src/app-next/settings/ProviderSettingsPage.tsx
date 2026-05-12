@@ -6,8 +6,10 @@ import type {
   ManagedProvider,
   Model,
   ProviderCompatibility,
+  ProviderProtocol,
   ProviderType,
 } from "@/shared/provider-catalog";
+import { inferProtocol } from "@/shared/provider-catalog";
 import { ApiProviderDetail } from "./providers/ApiProviderDetail";
 import { ApiProvidersSection, type ApiProviderStatusSummary, type ProviderFormState } from "./providers/ApiProvidersSection";
 import { deriveProviderFixtureFacts } from "./SettingsTruthModel";
@@ -88,10 +90,15 @@ const INITIAL_FORM: ProviderFormState = {
   baseUrl: "",
   apiMode: "responses",
   compatibility: "openai-compatible",
+  protocol: "completions",
 };
 
 function providerTypeFromCompatibility(compatibility: ProviderCompatibility): ProviderType {
   return compatibility === "anthropic-compatible" ? "anthropic" : "custom";
+}
+
+function protocolToCompatibility(protocol: ProviderProtocol): ProviderCompatibility {
+  return protocol === "anthropic" || protocol === "claude-code" ? "anthropic-compatible" : "openai-compatible";
 }
 
 function normalizeProviderId(prefix: string, name: string): string {
@@ -256,6 +263,7 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState<ProviderFormState>(INITIAL_FORM);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [showProtocolModal, setShowProtocolModal] = useState(false);
   const [contextDrafts, setContextDrafts] = useState<Record<string, string>>({});
   const [providerRuntimeSummary, setProviderRuntimeSummary] = useState<ProviderRuntimeSummary | null>(null);
   const [groupedModels, setGroupedModels] = useState<GroupedModelInventory[]>([]);
@@ -327,26 +335,32 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
 
   const selectedApiProvider = providers.find((provider) => provider.id === selectedApiProviderId) ?? null;
 
-  const saveProvider = async () => {
+  const saveProvider = async (selectedProtocol?: ProviderProtocol) => {
+    const protocol = selectedProtocol ?? form.protocol;
+    const compatibility = protocolToCompatibility(protocol);
     const id = `provider-${Date.now()}`;
     setBusy("create-provider");
     setError(null);
     try {
       const result = await client.createProvider({
         id,
-        name: "新供应商",
-        type: "custom",
+        name: form.name.trim() || "新供应商",
+        type: providerTypeFromCompatibility(compatibility),
         enabled: true,
         apiKeyRequired: true,
         baseUrl: "",
-        prefix: id,
-        compatibility: "openai-compatible",
-        apiMode: "responses",
+        prefix: form.prefix.trim() || id,
+        protocol,
+        compatibility,
+        apiMode: protocol === "responses" ? "responses" : protocol === "codex" ? "codex" : "completions",
         config: { apiKey: "" },
         models: [],
       });
       setProviders((current) => applyProvider(current, result.provider));
       setSelectedApiProviderId(result.provider.id);
+      setShowAddForm(false);
+      setShowProtocolModal(false);
+      setForm(INITIAL_FORM);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
@@ -498,11 +512,19 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
         providers={filteredProviders}
         providerStatuses={providerStatuses}
         fixtureProviderIds={fixtureProviderIds}
-        showAddForm={false}
+        showAddForm={showAddForm}
+        showProtocolModal={showProtocolModal}
         form={form}
         busy={busy}
         setForm={setForm}
-        onToggleAddForm={() => void saveProvider()}
+        onToggleAddForm={() => setShowProtocolModal(true)}
+        onOpenProtocolModal={() => setShowProtocolModal(true)}
+        onCloseProtocolModal={() => setShowProtocolModal(false)}
+        onSelectProtocol={(protocol) => {
+          setShowProtocolModal(false);
+          setForm({ ...INITIAL_FORM, protocol });
+          setShowAddForm(true);
+        }}
         onSaveProvider={() => void saveProvider()}
         onSelectProvider={setSelectedApiProviderId}
         onToggleProvider={toggleProvider}

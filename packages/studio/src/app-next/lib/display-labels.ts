@@ -1,8 +1,32 @@
-import type { ProviderApiMode, ProviderCompatibility } from "@/shared/provider-catalog";
+import type { ProviderApiMode, ProviderCompatibility, ProviderProtocol } from "@/shared/provider-catalog";
 
 type RuntimeModelTestStatus = "untested" | "success" | "error" | "unsupported";
 type RuntimePlatformAccountAuthMode = "json-account" | "local-auth-json" | "oauth" | "device-code";
 type RuntimePlatformAccountStatus = "active" | "disabled" | "expired" | "error";
+
+const PROVIDER_PROTOCOL_LABELS: Record<ProviderProtocol, string> = {
+  completions: "Completions 兼容",
+  responses: "Responses 兼容",
+  anthropic: "Anthropic 兼容",
+  codex: "Codex 中转",
+  "claude-code": "Claude Code",
+};
+
+const PROVIDER_PROTOCOL_DESCRIPTIONS: Record<ProviderProtocol, string> = {
+  completions: "DeepSeek、国产模型、本地模型（Ollama）",
+  responses: "GPT-4o 及更新模型",
+  anthropic: "Claude 官方/兼容网关，工具调用更稳定",
+  codex: "GPT-5.x 系列，支持思维强度",
+  "claude-code": "Claude 官方 API 完整特性（prompt caching）",
+};
+
+const PROVIDER_PROTOCOL_BADGE_COLORS: Record<ProviderProtocol, string> = {
+  completions: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
+  responses: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
+  anthropic: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300",
+  codex: "bg-gray-100 text-gray-800 dark:bg-gray-800/50 dark:text-gray-300",
+  "claude-code": "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
+};
 
 const PROVIDER_API_MODE_LABELS: Record<ProviderApiMode, string> = {
   completions: "Completions",
@@ -72,6 +96,18 @@ export function providerApiModeLabel(value: ProviderApiMode | string | undefined
 
 export function providerCompatibilityLabel(value: ProviderCompatibility | string | undefined): string {
   return value && value in PROVIDER_COMPATIBILITY_LABELS ? PROVIDER_COMPATIBILITY_LABELS[value as ProviderCompatibility] : "未知兼容协议";
+}
+
+export function providerProtocolLabel(value: ProviderProtocol | string | undefined): string {
+  return value && value in PROVIDER_PROTOCOL_LABELS ? PROVIDER_PROTOCOL_LABELS[value as ProviderProtocol] : "未知协议";
+}
+
+export function providerProtocolDescription(value: ProviderProtocol | string | undefined): string {
+  return value && value in PROVIDER_PROTOCOL_DESCRIPTIONS ? PROVIDER_PROTOCOL_DESCRIPTIONS[value as ProviderProtocol] : "";
+}
+
+export function providerProtocolBadgeColor(value: ProviderProtocol | string | undefined): string {
+  return value && value in PROVIDER_PROTOCOL_BADGE_COLORS ? PROVIDER_PROTOCOL_BADGE_COLORS[value as ProviderProtocol] : "bg-gray-100 text-gray-800";
 }
 
 export function modelTestStatusLabel(value: RuntimeModelTestStatus | string | undefined): string {
