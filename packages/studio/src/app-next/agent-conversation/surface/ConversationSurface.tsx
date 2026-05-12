@@ -430,28 +430,45 @@ export function ConversationSurface({
       <div className="shrink-0 border-t border-border">
       {/* ── Git status bar — NarraFork 风格 ── */}
       {status.workspace && (
-        <div className="flex items-center gap-1.5 bg-muted/30 px-4 py-1 text-[11px]">
-          <span className={status.workspace.git?.status === "dirty" ? "text-orange-500" : "text-green-500"}>🏠</span>
-          <span className="truncate font-medium text-blue-600 dark:text-blue-400">
-            {status.binding?.label?.split(/[/·]/)[0]?.trim() || status.workspace.path?.split(/[/\\]/).pop() || "工作区"}
-          </span>
-          {(status.workspace.branch || status.workspace.path) && (
-            <>
-              <span className="text-muted-foreground">·</span>
-              <span className="truncate font-mono text-muted-foreground">
-                {status.workspace.branch || status.workspace.path?.split(/[/\\]/).pop() || ""}
-              </span>
-            </>
-          )}
-          {status.workspace.git?.status === "dirty" && status.workspace.git.summary && (
-            <span className="inline-flex items-center gap-0.5 rounded px-1 py-0.5 bg-muted text-[10px] font-mono">
-              <span className="text-green-600">+{status.workspace.git.summary.match(/(\d+)/)?.[1] ?? "?"}</span>
-              <span className="text-red-500">-{status.workspace.git.summary.match(/\d+.*?(\d+)/)?.[1] ?? "?"}</span>
+        <div className="flex items-center justify-between gap-1.5 bg-muted/30 px-4 py-1 text-[11px]">
+          <div className="flex items-center gap-1.5 min-w-0 flex-1">
+            <span className={status.workspace.git?.status === "dirty" ? "text-orange-500" : "text-green-500"}>🏠</span>
+            <span className="truncate font-medium text-blue-600 dark:text-blue-400">
+              {status.binding?.label?.split(/[/·]/)[0]?.trim() || status.workspace.path?.split(/[/\\]/).pop() || "工作区"}
             </span>
-          )}
-          {status.workspace.git?.status === "clean" && (
-            <span className="text-[10px] text-green-600">✓</span>
-          )}
+            {(status.workspace.branch || status.workspace.path) && (
+              <>
+                <span className="text-muted-foreground">·</span>
+                <span className="truncate font-mono text-muted-foreground">
+                  {status.workspace.branch || status.workspace.path?.split(/[/\\]/).pop() || ""}
+                </span>
+              </>
+            )}
+            {status.workspace.git?.status === "dirty" && status.workspace.git.summary && (
+              <span className="inline-flex items-center gap-0.5 rounded px-1 py-0.5 bg-muted text-[10px] font-mono">
+                <span className="text-green-600">+{status.workspace.git.summary.match(/(\d+)/)?.[1] ?? "?"}</span>
+                <span className="text-red-500">-{status.workspace.git.summary.match(/\d+.*?(\d+)/)?.[1] ?? "?"}</span>
+              </span>
+            )}
+            {status.workspace.git?.status === "clean" && (
+              <span className="text-[10px] text-green-600">✓</span>
+            )}
+          </div>
+          {/* Right: Git action buttons */}
+          <div className="flex items-center gap-0.5 shrink-0">
+            <button type="button" className="rounded p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors" title="复制路径">
+              <svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+            </button>
+            <button type="button" className="rounded p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors" title="Git 提交">
+              <svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><line x1="3" y1="12" x2="9" y2="12"/><line x1="15" y1="12" x2="21" y2="12"/></svg>
+            </button>
+            <button type="button" className="rounded p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors" title="Git 分支">
+              <svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 01-9 9"/></svg>
+            </button>
+            <button type="button" className="rounded p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors" title="会话设置">
+              <svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+            </button>
+          </div>
         </div>
       )}
 
