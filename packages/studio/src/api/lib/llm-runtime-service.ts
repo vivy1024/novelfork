@@ -70,29 +70,52 @@ function providerRef(provider: RuntimeProviderRecord) {
 }
 
 function toRuntimeMessages(messages: readonly LlmRuntimeInputMessage[]): RuntimeChatMessage[] {
-  return messages.flatMap((message): RuntimeChatMessage[] => {
+  const result: RuntimeChatMessage[] = [];
+  let pendingReasoning: string | undefined;
+
+  for (const message of messages) {
     if ("type" in message) {
       if (message.type === "message") {
         const reasoningContent = "reasoning_content" in message && typeof message.reasoning_content === "string" ? message.reasoning_content : undefined;
-        // Keep message if it has content OR reasoning_content (DeepSeek thinking passback)
-        if (message.content.trim().length === 0 && !reasoningContent) return [];
-        return [{ role: message.role, content: message.content, ...(reasoningContent ? { reasoning_content: reasoningContent } : {}) }];
+        // If this is an empty assistant message with only reasoning_content,
+        // hold it as pending — it will be merged into the next tool_call message
+        if (message.role === "assistant" && message.content.trim().length === 0 && reasoningContent) {
+          pendingReasoning = reasoningContent;
+          continue;
+        }
+        if (message.content.trim().length === 0 && !reasoningContent) continue;
+        result.push({ role: message.role, content: message.content, ...(reasoningContent ? { reasoning_content: reasoningContent } : {}) });
+        continue;
       }
       if (message.type === "tool_call") {
-        return [{ role: "assistant", content: "", toolCalls: [{ id: message.id, name: message.name, input: message.input }] }];
+        // Merge pending reasoning_content into the tool_call assistant message
+        result.push({ role: "assistant", content: "", toolCalls: [{ id: message.id, name: message.name, input: message.input }], ...(pendingReasoning ? { reasoning_content: pendingReasoning } : {}) });
+        pendingReasoning = undefined;
+        continue;
       }
-      return [{ role: "tool", toolCallId: message.toolCallId, name: message.name, content: message.content }];
+      if (message.type === "tool_result") {
+        result.push({ role: "tool", toolCallId: message.toolCallId, name: message.name, content: message.content });
+        continue;
+      }
+      continue;
     }
 
     if (message.role !== "user" && message.role !== "assistant" && message.role !== "system") {
-      return [];
+      continue;
     }
     if (message.content.trim().length === 0) {
-      return [];
+      continue;
     }
     const reasoningContent = "reasoning_content" in message && typeof message.reasoning_content === "string" ? message.reasoning_content : undefined;
-    return [{ role: message.role, content: message.content, ...(reasoningContent ? { reasoning_content: reasoningContent } : {}) }];
-  });
+    result.push({ role: message.role, content: message.content, ...(reasoningContent ? { reasoning_content: reasoningContent } : {}) });
+  }
+
+  // If there's leftover pending reasoning (no tool_call followed), emit it
+  if (pendingReasoning) {
+    result.push({ role: "assistant", content: "", reasoning_content: pendingReasoning });
+  }
+
+  return result;
 }
 
 export class LlmRuntimeService {
