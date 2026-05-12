@@ -442,18 +442,22 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
         const { promisify } = await import("node:util");
         const execFileAsync = promisify(execFile);
         // Use PowerShell folder browser dialog on Windows
-        // TopMost owner form ensures the dialog appears in foreground
+        // SetForegroundWindow + TopMost 确保对话框在最前面弹出
         const script = [
           "Add-Type -AssemblyName System.Windows.Forms",
-          "$owner = New-Object System.Windows.Forms.Form",
-          "$owner.TopMost = $true",
+          "Add-Type @'\nusing System;\nusing System.Runtime.InteropServices;\npublic class Win32 {\n  [DllImport(\"user32.dll\")] public static extern bool SetForegroundWindow(IntPtr hWnd);\n  [DllImport(\"kernel32.dll\")] public static extern IntPtr GetConsoleWindow();\n}\n'@",
           "$f = New-Object System.Windows.Forms.FolderBrowserDialog",
           "$f.Description = '选择项目文件夹'",
           "$f.RootFolder = [System.Environment+SpecialFolder]::MyComputer",
+          "$f.ShowNewFolderButton = $true",
+          "$owner = New-Object System.Windows.Forms.Form",
+          "$owner.TopMost = $true",
+          "$owner.StartPosition = 'CenterScreen'",
+          "[Win32]::SetForegroundWindow($owner.Handle) | Out-Null",
           "if ($f.ShowDialog($owner) -eq 'OK') { $f.SelectedPath } else { '' }",
           "$owner.Dispose()",
         ].join("; ");
-        const { stdout } = await execFileAsync("powershell", ["-NoProfile", "-Command", script], { timeout: 30000 });
+        const { stdout } = await execFileAsync("powershell", ["-NoProfile", "-Command", script], { timeout: 60000 });
         const selectedPath = stdout.trim();
         if (selectedPath) {
           return c.json({ path: selectedPath });
