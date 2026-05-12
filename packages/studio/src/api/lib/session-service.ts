@@ -13,6 +13,7 @@ import {
   type NarratorSessionRecord,
   type NarratorSessionStatus,
   type SessionConfig,
+  type SessionGoal,
   type UpdateNarratorSessionInput,
 } from "../../shared/session-types.js";
 import { deleteSessionChatHistory, markSessionChatHistoryDeleted } from "./session-history-store.js";
@@ -165,6 +166,7 @@ function toNarratorSessionRecord(record: StoredSessionRecord): NarratorSessionRe
     recentMessages: Array.isArray(metadata.recentMessages) ? metadata.recentMessages : [],
     recovery: normalizeRecoveryMetadata(metadata.recovery),
     ...(metadata.cumulativeUsage ? { cumulativeUsage: metadata.cumulativeUsage } : {}),
+    goals: Array.isArray(metadata.goals) ? metadata.goals : undefined,
   };
 }
 
