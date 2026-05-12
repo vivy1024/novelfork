@@ -29,8 +29,8 @@ export interface AgentGenerateInput {
 }
 
 export type AgentGenerateResult =
-  | { readonly success: true; readonly type?: "message"; readonly content: string; readonly metadata: NarratorSessionRuntimeMetadata }
-  | { readonly success: true; readonly type: "tool_use"; readonly toolUses: readonly RuntimeToolUse[]; readonly metadata: NarratorSessionRuntimeMetadata }
+  | { readonly success: true; readonly type?: "message"; readonly content: string; readonly reasoningContent?: string; readonly metadata: NarratorSessionRuntimeMetadata }
+  | { readonly success: true; readonly type: "tool_use"; readonly toolUses: readonly RuntimeToolUse[]; readonly reasoningContent?: string; readonly metadata: NarratorSessionRuntimeMetadata }
   | { readonly success: false; readonly code: LlmRuntimeFailureCode | string; readonly error: string; readonly metadata?: Partial<NarratorSessionRuntimeMetadata> };
 
 export type AgentToolExecutionInput = Omit<SessionToolExecutionInput, "sessionConfig"> & {
@@ -38,7 +38,7 @@ export type AgentToolExecutionInput = Omit<SessionToolExecutionInput, "sessionCo
 };
 
 export type AgentTurnEvent =
-  | { readonly type: "assistant_message"; readonly content: string; readonly runtime: NarratorSessionRuntimeMetadata }
+  | { readonly type: "assistant_message"; readonly content: string; readonly reasoningContent?: string; readonly runtime: NarratorSessionRuntimeMetadata }
   | { readonly type: "streaming_chunk"; readonly content: string }
   | { readonly type: "tool_call"; readonly id: string; readonly toolName: string; readonly input: Record<string, unknown>; readonly runtime: NarratorSessionRuntimeMetadata }
   | { readonly type: "tool_result"; readonly id: string; readonly toolName: string; readonly result: SessionToolExecutionResult; readonly runtime?: NarratorSessionRuntimeMetadata }
@@ -193,7 +193,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
         return events;
       }
       events.push(
-        { type: "assistant_message", content, runtime: reply.metadata },
+        { type: "assistant_message", content, reasoningContent: reply.reasoningContent, runtime: reply.metadata },
         { type: "turn_completed" },
       );
       return events;
