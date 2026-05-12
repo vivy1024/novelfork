@@ -33,6 +33,7 @@ import { SettingsSectionContent } from "./settings/SettingsSectionContent";
 import { AgentShell, toShellPath, parseShellRoute, useShellData, useShellDataStore, type ShellBookItem, type ShellRoute, type ShellSessionItem, type ShellDataProviderSummary, type ShellDataProviderStatus } from "./shell";
 import { FirstRunDialog } from "../components/onboarding/FirstRunDialog";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DirectoryPickerDialog } from "./components/DirectoryPickerDialog";
 
 import {
   applyResourceDetailToNode,
@@ -165,6 +166,7 @@ function HomeRouteLive({ books, sessions, providerSummary, providerStatus, loadi
   const [newBookRepoPath, setNewBookRepoPath] = useState("");
   const [createBookError, setCreateBookError] = useState<string | null>(null);
   const [creatingBook, setCreatingBook] = useState(false);
+  const [showDirPicker, setShowDirPicker] = useState(false);
   const recentBooks = books.slice(0, 3);
   const standaloneSessions = sessions.filter((s) => !s.projectId);
   const recentSessions = standaloneSessions.slice(0, 3);
@@ -275,17 +277,7 @@ function HomeRouteLive({ books, sessions, providerSummary, providerStatus, loadi
                     variant="outline"
                     size="icon"
                     title="选择文件夹"
-                    onClick={async () => {
-                      // Backend PowerShell picker — 返回完整绝对路径，用 SetForegroundWindow 确保前台
-                      try {
-                        const res = await fetch("/api/system/browse-directory", { method: "POST", signal: AbortSignal.timeout(60000) });
-                        if (res.ok) {
-                          const data = await res.json() as { path?: string; cancelled?: boolean };
-                          if (data.path) { setNewBookRepoPath(data.path); return; }
-                          if (data.cancelled) return;
-                        }
-                      } catch { /* timeout or unavailable */ }
-                    }}
+                    onClick={() => setShowDirPicker(true)}
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="size-4"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></svg>
                   </Button>
@@ -307,6 +299,13 @@ function HomeRouteLive({ books, sessions, providerSummary, providerStatus, loadi
           </form>
         </DialogContent>
       </Dialog>
+
+      <DirectoryPickerDialog
+        open={showDirPicker}
+        onClose={() => setShowDirPicker(false)}
+        onSelect={(path) => { setNewBookRepoPath(path); setShowDirPicker(false); }}
+        initialPath={newBookRepoPath || undefined}
+      />
 
       {loading ? <p className="text-sm text-muted-foreground">正在加载作者首页数据…</p> : null}
 
