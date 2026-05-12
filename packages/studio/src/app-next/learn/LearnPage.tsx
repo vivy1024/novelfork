@@ -27,6 +27,44 @@ interface DocContent {
   content: string;
 }
 
+// ── Fallback catalog (used when API unavailable) ──
+
+const FALLBACK_CATEGORIES: CategoryGroup[] = [
+  {
+    category: "从这里开始",
+    docs: [
+      { id: "00-overview", title: "一页理解 NovelFork", summary: "核心心智模型、三栏布局、推荐使用流程", tags: ["入门", "概览"] },
+      { id: "01-book-management", title: "作品与章节管理", summary: "创建作品、资源树、章节 CRUD、驾驶舱、导入导出", tags: ["作品", "章节"] },
+    ],
+  },
+  {
+    category: "AI 写作",
+    docs: [
+      { id: "02-ai-writing", title: "AI 写作功能", summary: "写作模式、AI 动作、选区变换、候选稿流程", tags: ["AI", "写作"] },
+      { id: "03-guided-generation", title: "引导式生成", summary: "PGI 追问、Guided Plan、问卷引导", tags: ["PGI", "引导"] },
+      { id: "04-narrator-conversation", title: "叙述者对话", summary: "会话界面、模型切换、权限、Slash 命令", tags: ["对话", "叙述者"] },
+      { id: "08-agent-pipeline", title: "Agent 写作管线", summary: "PipelineRunner、Agent 角色、工具链、编排", tags: ["Agent", "管线"] },
+    ],
+  },
+  {
+    category: "工具与分析",
+    docs: [
+      { id: "05-story-jingwei", title: "故事经纬", summary: "分区/条目、可见性规则、模板、AI 上下文参与", tags: ["经纬", "设定"] },
+      { id: "07-writing-tools", title: "写作工具", summary: "钩子、节奏、对话比例、健康、矛盾、弧线、文风", tags: ["工具", "分析"] },
+    ],
+  },
+  {
+    category: "设置与配置",
+    docs: [
+      { id: "06-settings-and-routines", title: "设置与套路", summary: "供应商配置、套路系统、继承机制", tags: ["设置", "套路"] },
+      { id: "09-agent-settings", title: "AI 代理配置", summary: "权限模式、上下文窗口管理、重试策略、白黑名单", tags: ["AI代理", "权限"] },
+      { id: "10-proxy-settings", title: "代理管理与网络配置", summary: "HTTP/SOCKS 代理配置、按供应商独立代理", tags: ["代理", "网络"] },
+      { id: "11-usage-history", title: "使用历史与成本监控", summary: "请求趋势图、筛选器、Token 用量分析", tags: ["使用历史", "Token"] },
+      { id: "12-appearance", title: "外观与个性化", summary: "主题模式、OLED纯黑、终端配置、字体", tags: ["外观", "主题"] },
+    ],
+  },
+];
+
 // ── Main Component ──
 
 export function LearnPage() {
@@ -40,10 +78,23 @@ export function LearnPage() {
 
   // Load catalog
   useEffect(() => {
+    const timeout = setTimeout(() => {
+      setCategories(FALLBACK_CATEGORIES);
+      setLoading(false);
+    }, 3000);
+
     fetchJson<{ categories: CategoryGroup[] }>("/learn/docs")
-      .then((data) => setCategories(data.categories))
-      .catch(() => {})
+      .then((data) => {
+        clearTimeout(timeout);
+        setCategories(data.categories);
+      })
+      .catch(() => {
+        clearTimeout(timeout);
+        setCategories(FALLBACK_CATEGORIES);
+      })
       .finally(() => setLoading(false));
+
+    return () => clearTimeout(timeout);
   }, []);
 
   // Load doc content when selected
