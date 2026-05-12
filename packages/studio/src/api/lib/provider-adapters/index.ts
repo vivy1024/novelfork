@@ -876,7 +876,13 @@ class AnthropicCompatibleAdapter implements RuntimeAdapter {
     }
 
     // 尝试调用 Anthropic /v1/models API 获取模型列表
-    const url = `${trimTrailingSlash(ref.baseUrl!)}/v1/models`;
+    // Smart URL construction: if baseUrl already ends with /v1, use /models directly
+    const base = trimTrailingSlash(ref.baseUrl!);
+    const modelsUrls = base.endsWith("/v1")
+      ? [`${base}/models`]
+      : [`${base}/v1/models`, `${base}/models`];
+
+    for (const url of modelsUrls) {
     try {
       const response = await fetch(url, {
         method: "GET",
@@ -923,13 +929,14 @@ class AnthropicCompatibleAdapter implements RuntimeAdapter {
           };
         }
       }
-
-      // 两种格式都失败，透传错误
-      const errorText = response.ok ? "模型列表为空" : await response.text().catch(() => `HTTP ${response.status}`);
-      return failure("upstream-error", `获取模型列表失败：${errorText}`);
-    } catch (error) {
-      return failure("network-error", error instanceof Error ? error.message : String(error));
+    } catch {
+      // Try next URL
+      continue;
     }
+    }
+
+    // All URLs failed
+    return failure("upstream-error", `获取模型列表失败：所有端点均无响应`);
   }
 
   async testModel(input: TestModelInput): Promise<TestModelResult> {
