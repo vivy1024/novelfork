@@ -435,39 +435,86 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     // Learning center
     app.route("/api/learn", createLearningRouter());
 
-    // System utilities — directory picker for desktop mode
-    app.post("/api/system/browse-directory", async (c) => {
+    // Filesystem browsing — in-app directory picker
+    app.get("/api/fs/browse", async (c) => {
       try {
-        const { execFile } = await import("node:child_process");
-        const { promisify } = await import("node:util");
-        const { writeFile, unlink } = await import("node:fs/promises");
-        const { join } = await import("node:path");
-        const { tmpdir } = await import("node:os");
-        const execFileAsync = promisify(execFile);
+        const { readdir, stat, access } = await import("node:fs/promises");
+        const path = await import("node:path");
+        const requestedPath = c.req.query("path") || "";
+        const showHidden = c.req.query("showHidden") === "true";
 
-        // 使用 VBScript Shell.BrowseForFolder — 这是 Windows 上唯一能可靠前台弹出的方式
-        const vbsPath = join(tmpdir(), `novelfork-browse-${Date.now()}.vbs`);
-        const vbsContent = [
-          'Set shell = CreateObject("Shell.Application")',
-          'Set folder = shell.BrowseForFolder(0, "选择项目文件夹", &H0040, "::{20D04FE0-3AEA-1069-A2D8-08002B30309D}")',
-          'If Not folder Is Nothing Then',
-          '  WScript.Echo folder.Self.Path',
-          'End If',
-        ].join("\r\n");
-        await writeFile(vbsPath, vbsContent, "utf-8");
-
-        try {
-          const { stdout } = await execFileAsync("cscript", ["//Nologo", vbsPath], { timeout: 60000 });
-          const selectedPath = stdout.trim();
-          if (selectedPath) {
-            return c.json({ path: selectedPath });
+        // If no path provided, list Windows drive letters
+        if (!requestedPath) {
+          const entries: { name: string; path: string; isDirectory: boolean }[] = [];
+          for (let code = 65; code <= 90; code++) {
+            const letter = String.fromCharCode(code);
+            const drivePath = `${letter}:\\`;
+            try {
+              await access(drivePath);
+              entries.push({ name: `${letter}:`, path: drivePath, isDirectory: true });
+            } catch { /* drive not available */ }
           }
-          return c.json({ path: null, cancelled: true });
-        } finally {
-          unlink(vbsPath).catch(() => {});
+          return c.json({ path: "", parent: null, entries });
         }
+
+        // Normalize path
+        const normalizedPath = path.win32.resolve(requestedPath);
+        const parent = path.win32.dirname(normalizedPath);
+
+        const dirEntries = await readdir(normalizedPath, { withFileTypes: true });
+        const entries: { name: string; path: string; isDirectory: boolean }[] = [];
+
+        for (const entry of dirEntries) {
+          if (!showHidden && entry.name.startsWith(".")) continue;
+          try {
+            const fullPath = path.win32.join(normalizedPath, entry.name);
+            const isDir = entry.isDirectory() || (entry.isSymbolicLink() && (await stat(fullPath)).isDirectory());
+            if (isDir) {
+              entries.push({ name: entry.name, path: fullPath, isDirectory: true });
+            }
+          } catch { /* skip inaccessible entries */ }
+        }
+
+        entries.sort((a, b) => a.name.localeCompare(b.name, "zh-CN"));
+
+        return c.json({
+          path: normalizedPath,
+          parent: parent === normalizedPath ? null : parent,
+          entries,
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Failed to browse directory";
+        return c.json({ error: message }, 400);
+      }
+    });
+
+    app.get("/api/fs/shortcuts", async (c) => {
+      try {
+        const os = await import("node:os");
+        const path = await import("node:path");
+        const { access } = await import("node:fs/promises");
+
+        const homedir = os.homedir();
+        const shortcuts: { name: string; path: string; icon: string }[] = [
+          { name: "主目录", path: homedir, icon: "home" },
+          { name: "桌面", path: path.win32.join(homedir, "Desktop"), icon: "monitor" },
+          { name: "文档", path: path.win32.join(homedir, "Documents"), icon: "file-text" },
+          { name: "下载", path: path.win32.join(homedir, "Downloads"), icon: "download" },
+        ];
+
+        // Add available drive letters
+        for (let code = 65; code <= 90; code++) {
+          const letter = String.fromCharCode(code);
+          const drivePath = `${letter}:\\`;
+          try {
+            await access(drivePath);
+            shortcuts.push({ name: `${letter}: 盘`, path: drivePath, icon: "hard-drive" });
+          } catch { /* drive not available */ }
+        }
+
+        return c.json({ shortcuts });
       } catch {
-        return c.json({ error: "Directory picker not available" }, 501);
+        return c.json({ error: "Failed to get shortcuts" }, 500);
       }
     });
 
