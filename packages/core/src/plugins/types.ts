@@ -24,12 +24,79 @@ export interface PluginManifest {
   readonly author?: string;
   /** Plugin homepage or repository URL */
   readonly homepage?: string;
-  /** Tools provided by this plugin */
-  readonly tools?: ReadonlyArray<string>;
+  /** Target project type (e.g. "novel", "health") — used for scope filtering */
+  readonly projectType?: string;
+  /** Tools provided by this plugin (legacy: string names) */
+  readonly tools?: ReadonlyArray<string> | ReadonlyArray<PluginToolDefinition>;
   /** Hooks provided by this plugin */
   readonly hooks?: ReadonlyArray<PipelineStage>;
+  /** Agent presets provided by this plugin */
+  readonly agentPresets?: ReadonlyArray<PluginAgentPreset>;
+  /** HTTP routes provided by this plugin */
+  readonly routes?: ReadonlyArray<PluginRouteDefinition>;
+  /** System prompt extensions provided by this plugin */
+  readonly systemPromptExtensions?: ReadonlyArray<PluginPromptExtension>;
   /** Plugin configuration schema */
   readonly configSchema?: Record<string, unknown>;
+}
+
+/**
+ * Plugin tool definition — declarative tool metadata for plugin manifest
+ */
+export interface PluginToolDefinition {
+  /** Tool name (dot-separated namespace, e.g. "cockpit.get_snapshot") */
+  readonly name: string;
+  /** Human-readable description */
+  readonly description: string;
+  /** JSON Schema for tool input */
+  readonly inputSchema: Record<string, unknown>;
+  /** Scope: "universal" tools are always available; domain-specific scopes are filtered */
+  readonly scope?: "universal" | string;
+  /** Risk level */
+  readonly risk?: string;
+  /** Permission modes where this tool is enabled */
+  readonly enabledForModes?: readonly string[];
+}
+
+/**
+ * Plugin agent preset — pre-configured agent role with tool set
+ */
+export interface PluginAgentPreset {
+  /** Agent role identifier */
+  readonly agentId: string;
+  /** Display name */
+  readonly name: string;
+  /** Tools enabled for this agent */
+  readonly tools: readonly string[];
+  /** Additional system prompt content */
+  readonly systemPromptSuffix?: string;
+}
+
+/**
+ * Plugin route definition — HTTP endpoint provided by the plugin
+ */
+export interface PluginRouteDefinition {
+  /** Route path (e.g. "/api/novel/cockpit") */
+  readonly path: string;
+  /** HTTP method */
+  readonly method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
+  /** Route description */
+  readonly description?: string;
+}
+
+/**
+ * Plugin system prompt extension — injected into agent prompts
+ */
+export interface PluginPromptExtension {
+  /** Where to inject relative to the base prompt */
+  readonly position: "before" | "after";
+  /** Prompt content to inject */
+  readonly content: string;
+  /** Conditions for when this extension applies */
+  readonly condition?: {
+    readonly projectType?: string;
+    readonly agentId?: string;
+  };
 }
 
 /**

@@ -11,5 +11,9 @@ export type {
   PluginHook,
   PluginContext,
   PluginMetadata,
+  PluginToolDefinition,
+  PluginAgentPreset,
+  PluginRouteDefinition,
+  PluginPromptExtension,
 } from "./types.js";
 export type { PluginManagerConfig } from "./plugin-manager.js";
