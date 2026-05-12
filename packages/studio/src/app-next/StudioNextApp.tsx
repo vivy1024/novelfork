@@ -276,17 +276,19 @@ function HomeRouteLive({ books, sessions, providerSummary, providerStatus, loadi
                     size="icon"
                     title="选择文件夹"
                     onClick={async () => {
+                      // Try backend directory picker first (works in desktop mode)
                       try {
-                        // Try backend directory picker first (works in desktop mode)
-                        const res = await fetch("/api/system/browse-directory", { method: "POST" });
+                        const res = await fetch("/api/system/browse-directory", { method: "POST", signal: AbortSignal.timeout(35000) });
                         if (res.ok) {
-                          const data = await res.json() as { path?: string };
+                          const data = await res.json() as { path?: string; cancelled?: boolean };
                           if (data.path) { setNewBookRepoPath(data.path); return; }
+                          if (data.cancelled) return; // 用户取消了对话框
                         }
-                        // Fallback: browser showDirectoryPicker (limited — only gets folder name)
+                      } catch { /* backend unavailable or timeout, fall through to browser API */ }
+                      // Fallback: browser showDirectoryPicker
+                      try {
                         if ("showDirectoryPicker" in window) {
                           const handle = await (window as unknown as { showDirectoryPicker: () => Promise<{ name: string }> }).showDirectoryPicker();
-                          // Note: browser API only returns folder name, not full path
                           setNewBookRepoPath(handle.name);
                         }
                       } catch { /* user cancelled */ }
