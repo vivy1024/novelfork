@@ -63,12 +63,14 @@ function sessionTool(
 let pluginToolDefinitions: SessionToolDefinition[] = [];
 let pluginAgentPresets: Record<string, { enable: string[]; disable: string[] }> = {};
 
-/** 动态注册插件工具定义（如小说工具） */
+/** 动态注册插件工具定义（如小说工具）。按 name 去重，重复注册安全。 */
 export function registerPluginTools(tools: readonly SessionToolDefinition[]): void {
-  pluginToolDefinitions = [...pluginToolDefinitions, ...tools];
+  const existingNames = new Set(pluginToolDefinitions.map(t => t.name));
+  const newTools = tools.filter(t => !existingNames.has(t.name));
+  pluginToolDefinitions = [...pluginToolDefinitions, ...newTools];
 }
 
-/** 动态注册插件 Agent 角色预设 */
+/** 动态注册插件 Agent 角色预设。同名预设覆盖。 */
 export function registerPluginAgentPresets(presets: Record<string, { enable: string[]; disable: string[] }>): void {
   pluginAgentPresets = { ...pluginAgentPresets, ...presets };
 }
