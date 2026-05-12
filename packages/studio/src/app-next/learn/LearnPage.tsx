@@ -91,9 +91,25 @@ export function LearnPage() {
     setDocLoading(true);
     fetchJson<DocContent>(`/learn/doc/${selectedDocId}`)
       .then(setDocContent)
-      .catch(() => setDocContent(null))
+      .catch(() => {
+        // Fallback: build content from catalog metadata
+        const allDocs = categories.flatMap((g) => g.docs);
+        const meta = allDocs.find((d) => d.id === selectedDocId);
+        if (meta) {
+          setDocContent({
+            id: meta.id,
+            title: meta.title,
+            summary: meta.summary,
+            tags: meta.tags,
+            category: categories.find((g) => g.docs.some((d) => d.id === meta.id))?.category ?? "",
+            content: `# ${meta.title}\n\n${meta.summary}\n\n> 完整文档位于 docs/learning/${meta.id}.md`,
+          });
+        } else {
+          setDocContent(null);
+        }
+      })
       .finally(() => setDocLoading(false));
-  }, [selectedDocId]);
+  }, [selectedDocId, categories]);
 
   // Search
   useEffect(() => {
@@ -111,7 +127,7 @@ export function LearnPage() {
   }
 
   return (
-    <div className="h-full flex min-h-0">
+    <div className="flex flex-1 h-full w-full min-h-0 overflow-hidden">
       {/* 左侧文档树 */}
       <aside className="w-64 shrink-0 border-r border-border overflow-y-auto p-3 space-y-4">
         <div className="flex items-center gap-2 mb-3">
