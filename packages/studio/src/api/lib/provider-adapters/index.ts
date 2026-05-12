@@ -431,6 +431,7 @@ class OpenAiCompatibleAdapter implements RuntimeAdapter {
 
   private async sendResponsesRequest(input: GenerateInput): Promise<GenerateResult> {
     const hasTools = Boolean(input.tools?.length);
+    const useStreaming = Boolean(input.onStreamChunk);
     // Extract system message as instructions
     const systemMessage = input.messages.find((m) => m.role === "system");
     const instructions = systemMessage && "content" in systemMessage ? systemMessage.content : "";
@@ -438,7 +439,7 @@ class OpenAiCompatibleAdapter implements RuntimeAdapter {
     const body: Record<string, unknown> = {
       model: input.modelId,
       input: this.toResponsesInput(input.messages),
-      stream: false,
+      stream: useStreaming,
       ...(instructions ? { instructions } : {}),
       ...(hasTools ? { tools: input.tools!.map((t) => ({ type: "function", name: toProviderSafeToolName(t.name), description: t.description, parameters: t.inputSchema })) } : {}),
     };
@@ -467,6 +468,11 @@ class OpenAiCompatibleAdapter implements RuntimeAdapter {
             continue;
           }
           return failure("upstream-error", errorMessage);
+        }
+
+        // Streaming mode: consume SSE events
+        if (useStreaming && response.body && input.onStreamChunk) {
+          return await this.consumeResponsesStream(response.body, input.onStreamChunk, input.signal, input.tools);
         }
 
         const payload = await parseJsonResponse(response) as Record<string, unknown>;
@@ -541,6 +547,74 @@ class OpenAiCompatibleAdapter implements RuntimeAdapter {
       return { success: true, type: "tool_use", toolUses, ...(reasoningContent ? { reasoningContent } : {}), ...(usage ? { usage } : {}) };
     }
     return { success: true, type: "message", content: textContent, ...(reasoningContent ? { reasoningContent } : {}), ...(usage ? { usage } : {}) };
+  }
+
+  private async consumeResponsesStream(
+    body: ReadableStream<Uint8Array>,
+    onStreamChunk: (chunk: string) => void,
+    signal?: AbortSignal,
+    tools?: readonly RuntimeToolDefinition[],
+  ): Promise<GenerateResult> {
+    const reader = body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let fullContent = "";
+    let reasoningContent = "";
+    let usage: GenerateUsage | undefined;
+    const toolUses: RuntimeToolUse[] = [];
+
+    try {
+      for (;;) {
+        if (signal?.aborted) { reader.cancel().catch(() => {}); break; }
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || !trimmed.startsWith("data: ")) continue;
+          const data = trimmed.slice(6);
+          if (data === "[DONE]") continue;
+
+          try {
+            const parsed = JSON.parse(data) as Record<string, unknown>;
+            const eventType = typeof parsed.type === "string" ? parsed.type : "";
+
+            if (eventType === "response.output_text.delta") {
+              const delta = typeof parsed.delta === "string" ? parsed.delta : "";
+              if (delta) { fullContent += delta; onStreamChunk(delta); }
+            } else if (eventType === "response.reasoning_text.delta" || eventType === "response.reasoning_summary_text.delta") {
+              const delta = typeof parsed.delta === "string" ? parsed.delta : "";
+              if (delta) reasoningContent += delta;
+            } else if (eventType === "response.output_item.done") {
+              const item = parsed.item as Record<string, unknown> | undefined;
+              if (item?.type === "function_call") {
+                const providerName = typeof item.name === "string" ? item.name : "";
+                const internalName = tools ? toInternalToolName(providerName, tools) : providerName;
+                toolUses.push({
+                  id: typeof item.call_id === "string" ? item.call_id : `call-${toolUses.length + 1}`,
+                  name: internalName,
+                  input: typeof item.arguments === "string" ? safeJsonParse(item.arguments) : {},
+                });
+              }
+            } else if (eventType === "response.completed") {
+              const resp = parsed.response as Record<string, unknown> | undefined;
+              if (resp) usage = readOpenAiUsage(resp);
+            }
+          } catch { /* skip malformed SSE */ }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+
+    if (toolUses.length > 0) {
+      return { success: true, type: "tool_use", toolUses, ...(reasoningContent ? { reasoningContent } : {}), ...(usage ? { usage } : {}) };
+    }
+    return { success: true, type: "message", content: fullContent, ...(reasoningContent ? { reasoningContent } : {}), ...(usage ? { usage } : {}) };
   }
 
   private async sendStreamingChatCompletion(
@@ -974,6 +1048,10 @@ class AnthropicCompatibleAdapter implements RuntimeAdapter {
 
       if (message.role === "assistant" && message.toolCalls?.length) {
         const content: Array<Record<string, unknown>> = [];
+        // Pass back thinking block if present (Claude extended thinking + tools)
+        if (message.reasoning_content) {
+          content.push({ type: "thinking", thinking: message.reasoning_content, signature: "" });
+        }
         if (message.content.trim()) {
           content.push({ type: "text", text: message.content });
         }
@@ -985,6 +1063,16 @@ class AnthropicCompatibleAdapter implements RuntimeAdapter {
             input: toolCall.input,
           });
         }
+        result.push({ role: "assistant", content });
+        continue;
+      }
+
+      // Plain assistant message — may have thinking content
+      if (message.role === "assistant" && message.reasoning_content) {
+        const content: Array<Record<string, unknown>> = [
+          { type: "thinking", thinking: message.reasoning_content, signature: "" },
+          ...(message.content.trim() ? [{ type: "text", text: message.content }] : []),
+        ];
         result.push({ role: "assistant", content });
         continue;
       }
