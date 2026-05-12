@@ -865,7 +865,7 @@ async function appendModelContinuationAfterToolDecision(
       sessionConfig: loaded.session.sessionConfig,
       messages: compactedMessages,
       systemPrompt: `${agentSystemPrompt}${AGENT_NATIVE_WRITE_NEXT_INSTRUCTIONS}`,
-      context: createRuntimeContext(bookContext, canvasContext),
+      context: createRuntimeContext(bookContext, canvasContext, loaded.session.worktree),
       tools: getEnabledSessionTools(loaded.session.sessionConfig.permissionMode, loaded.session.agentId, { disabledTools: loaded.session.sessionConfig.toolPolicy?.deny }),
       permissionMode: loaded.session.sessionConfig.permissionMode,
       ...(canvasContext ? { canvasContext } : {}),
@@ -1346,8 +1346,12 @@ function sessionMessagesToTurnItems(messages: readonly NarratorSessionChatMessag
   });
 }
 
-function createRuntimeContext(bookContext: string, canvasContext?: CanvasContext): string {
-  const parts = [bookContext.trim(), canvasContext ? formatCanvasContextForPrompt(canvasContext) : ""].filter(Boolean);
+function createRuntimeContext(bookContext: string, canvasContext?: CanvasContext, workDir?: string): string {
+  const parts = [
+    workDir ? `## 当前工作目录\n\n${workDir}\n\n所有文件操作（Read/Write/Edit/Glob/Grep）的根目录。` : "",
+    bookContext.trim(),
+    canvasContext ? formatCanvasContextForPrompt(canvasContext) : "",
+  ].filter(Boolean);
   return parts.join("\n\n");
 }
 
@@ -1440,7 +1444,7 @@ export async function handleSessionChatTransportMessage(
       sessionConfig: loaded.session.sessionConfig,
       messages: compactedMessages,
       systemPrompt: fullSystemPrompt,
-      context: createRuntimeContext(bookContext, canvasContext),
+      context: createRuntimeContext(bookContext, canvasContext, loaded.session.worktree),
       tools: sessionTools,
       permissionMode: loaded.session.sessionConfig.permissionMode,
       ...(canvasContext ? { canvasContext } : {}),
