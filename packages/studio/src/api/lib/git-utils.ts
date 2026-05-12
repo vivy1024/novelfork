@@ -157,12 +157,23 @@ export async function createWorktree(
   const worktreePath = path.join(root, ".novelfork-worktrees", name);
   const gitPath = toGitPath(worktreePath);
 
-  // 检查是否已存在
+  // 检查是否已在 git worktree 列表中
   const normalizedWorktreePath = toGitPath(worktreePath);
   const existing = await listWorktrees(root);
   if (existing.some((w) => toGitPath(w.path) === normalizedWorktreePath)) {
-    throw new Error(`Worktree already exists: ${name}`);
+    // 已注册的 worktree，直接返回路径（视为已创建）
+    return worktreePath;
   }
+
+  // 如果目录已存在但 git 不知道（之前创建失败残留），先清理
+  const { access: fsAccess, rm } = await import("node:fs/promises");
+  try {
+    await fsAccess(worktreePath);
+    // 目录存在但不在 git worktree 列表中 — 清理残留
+    await rm(worktreePath, { recursive: true, force: true });
+    // 同时清理 git 的 worktree 记录（如果有残留的 .git/worktrees 条目）
+    try { await execGit(["worktree", "prune"], root); } catch { /* ignore */ }
+  } catch { /* directory does not exist, good */ }
 
   // 创建 worktree
   const args = ["worktree", "add"];
