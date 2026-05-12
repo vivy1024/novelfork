@@ -17,6 +17,15 @@ import { resolveSessionToolPolicy, type SessionToolPolicyResolution } from "./se
 import { executeBashTool, executeFileReadTool, executeFileWriteTool, executeFileEditTool } from "./real-tool-handlers.js";
 import { validateToolPermission, classifyBashCommand, isPathWithinWorkDir } from "./permission-pipeline.js";
 
+// --- Browser session management ---
+interface BrowserSession {
+  id: string;
+  browser: unknown; // playwright Browser instance
+  page: unknown; // playwright Page instance
+  createdAt: number;
+}
+const browserSessions = new Map<string, BrowserSession>();
+
 // --- Session-level in-memory state for Pipelines ---
 const sessionPipelines = new Map<string, { label: string; captures: Map<string, string>; counter: number }>();
 
@@ -996,15 +1005,194 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
           return { ok: false, renderer: definition.renderer, error: "search-failed", summary: `搜索失败：${msg}` };
         }
       };
-    // --- Stub handler for Browser (requires Playwright) ---
+    // --- Browser: Playwright-based browser automation ---
     case "Browser":
-      return async ({ definition }) => ({
-        ok: false,
-        renderer: definition.renderer,
-        error: "not-implemented",
-        summary: `工具 Browser 需要 Playwright 依赖，当前未安装。请使用 WebFetch 获取页面内容。`,
-        data: { status: "not-implemented", toolName: "Browser" },
-      });
+      return async ({ input, definition }) => {
+        const action = typeof input.action === "string" ? input.action : "";
+
+        if (action === "launch") {
+          const url = typeof input.url === "string" ? input.url : "";
+          if (!url) return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "launch 需要 url。" };
+
+          try {
+            let pw: { chromium: { launch: (opts?: Record<string, unknown>) => Promise<unknown> } };
+            try {
+              // @ts-ignore — dynamic import, may not have type declarations
+              pw = await import("playwright-core");
+            } catch {
+              try {
+                // @ts-ignore — dynamic import fallback
+                pw = await import("playwright");
+              } catch {
+                return { ok: false, renderer: definition.renderer, error: "missing-dependency", summary: "需要安装 playwright-core 或 playwright 依赖。" };
+              }
+            }
+            const headless = input.headless !== false;
+            const browser = await pw.chromium.launch({ headless, channel: "chrome" }) as { newPage: () => Promise<unknown>; close: () => Promise<void> };
+            const page = await browser.newPage() as {
+              goto: (url: string, opts?: Record<string, unknown>) => Promise<unknown>;
+              title: () => Promise<string>;
+              url: () => string;
+              click: (sel: string, opts?: Record<string, unknown>) => Promise<void>;
+              fill: (sel: string, val: string, opts?: Record<string, unknown>) => Promise<void>;
+              hover: (sel: string, opts?: Record<string, unknown>) => Promise<void>;
+              screenshot: (opts?: Record<string, unknown>) => Promise<Buffer>;
+              evaluate: (expr: string | ((...args: unknown[]) => unknown), ...args: unknown[]) => Promise<unknown>;
+              goBack: () => Promise<unknown>;
+              goForward: () => Promise<unknown>;
+              waitForSelector: (sel: string, opts?: Record<string, unknown>) => Promise<unknown>;
+              locator: (sel: string) => { first: () => { textContent: (opts?: Record<string, unknown>) => Promise<string | null>; innerHTML: (opts?: Record<string, unknown>) => Promise<string> } };
+              keyboard: { press: (key: string) => Promise<void>; type: (text: string) => Promise<void> };
+            };
+            await page.goto(url, { timeout: 30000 });
+            const sessionId = crypto.randomUUID().slice(0, 8);
+            browserSessions.set(sessionId, { id: sessionId, browser, page, createdAt: Date.now() });
+            const title = await page.title();
+            return {
+              ok: true,
+              renderer: definition.renderer,
+              summary: `浏览器已打开：${title} (${url})`,
+              data: { session_id: sessionId, title, url },
+            };
+          } catch (error) {
+            return { ok: false, renderer: definition.renderer, error: "launch-failed", summary: `浏览器启动失败：${error instanceof Error ? error.message : String(error)}` };
+          }
+        }
+
+        if (action === "list_sessions") {
+          const sessions = [...browserSessions.entries()].map(([id, s]) => ({
+            id,
+            createdAt: s.createdAt,
+          }));
+          return { ok: true, renderer: definition.renderer, summary: `${sessions.length} 个浏览器会话`, data: { sessions } };
+        }
+
+        // All other actions require session_id
+        const sessionId = typeof input.session_id === "string" ? input.session_id : "";
+        if (!sessionId) return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "需要 session_id。" };
+        const session = browserSessions.get(sessionId);
+        if (!session) return { ok: false, renderer: definition.renderer, error: "session-not-found", summary: `浏览器会话 ${sessionId} 不存在。` };
+        const page = session.page as {
+          goto: (url: string, opts?: Record<string, unknown>) => Promise<unknown>;
+          title: () => Promise<string>;
+          url: () => string;
+          click: (sel: string, opts?: Record<string, unknown>) => Promise<void>;
+          fill: (sel: string, val: string, opts?: Record<string, unknown>) => Promise<void>;
+          hover: (sel: string, opts?: Record<string, unknown>) => Promise<void>;
+          screenshot: (opts?: Record<string, unknown>) => Promise<Buffer>;
+          evaluate: (expr: string | ((...args: unknown[]) => unknown), ...args: unknown[]) => Promise<unknown>;
+          goBack: () => Promise<unknown>;
+          goForward: () => Promise<unknown>;
+          waitForSelector: (sel: string, opts?: Record<string, unknown>) => Promise<unknown>;
+          locator: (sel: string) => { first: () => { textContent: (opts?: Record<string, unknown>) => Promise<string | null>; innerHTML: (opts?: Record<string, unknown>) => Promise<string> } };
+          keyboard: { press: (key: string) => Promise<void>; type: (text: string) => Promise<void> };
+          selectOption: (sel: string, val: string | string[], opts?: Record<string, unknown>) => Promise<string[]>;
+        };
+        const browser = session.browser as { close: () => Promise<void> };
+
+        try {
+          switch (action) {
+            case "navigate": {
+              const url = typeof input.url === "string" ? input.url : "";
+              if (input.direction === "back") { await page.goBack(); }
+              else if (input.direction === "forward") { await page.goForward(); }
+              else if (url) { await page.goto(url, { timeout: 30000 }); }
+              else { return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "navigate 需要 url 或 direction。" }; }
+              return { ok: true, renderer: definition.renderer, summary: `已导航到 ${page.url()}`, data: { url: page.url(), title: await page.title() } };
+            }
+            case "click": {
+              const selector = typeof input.selector === "string" ? input.selector : "";
+              if (!selector) return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "click 需要 selector。" };
+              await page.click(selector, { timeout: 10000 });
+              return { ok: true, renderer: definition.renderer, summary: `已点击 ${selector}`, data: { selector } };
+            }
+            case "fill": {
+              const selector = typeof input.selector === "string" ? input.selector : "";
+              const value = typeof input.value === "string" ? input.value : "";
+              if (!selector) return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "fill 需要 selector。" };
+              await page.fill(selector, value, { timeout: 10000 });
+              return { ok: true, renderer: definition.renderer, summary: `已填入 ${selector}`, data: { selector, value } };
+            }
+            case "type": {
+              const value = typeof input.value === "string" ? input.value : "";
+              const key = typeof input.key === "string" ? input.key : "";
+              if (key) { await page.keyboard.press(key); return { ok: true, renderer: definition.renderer, summary: `已按键 ${key}`, data: { key } }; }
+              if (value) { await page.keyboard.type(value); return { ok: true, renderer: definition.renderer, summary: `已输入文本`, data: { length: value.length } }; }
+              return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "type 需要 value 或 key。" };
+            }
+            case "screenshot": {
+              const fullPage = input.fullPage === true;
+              const buffer = await page.screenshot({ type: "png", fullPage });
+              const base64 = buffer.toString("base64");
+              return { ok: true, renderer: definition.renderer, summary: `截图已捕获（${Math.round(buffer.length / 1024)}KB）`, data: { base64, mimeType: "image/png", sizeBytes: buffer.length } };
+            }
+            case "evaluate": {
+              const expression = typeof input.value === "string" ? input.value : (typeof input.expression === "string" ? input.expression : "");
+              if (!expression) return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "evaluate 需要 value 或 expression（JS 表达式）。" };
+              const result = await page.evaluate(expression);
+              return { ok: true, renderer: definition.renderer, summary: `JS 执行完成`, data: { result: JSON.stringify(result).slice(0, 5000) } };
+            }
+            case "get_text": {
+              const selector = typeof input.selector === "string" ? input.selector : "body";
+              const text = await page.locator(selector).first().textContent({ timeout: 10000 });
+              const maxLength = typeof input.max_length === "number" ? input.max_length : 20000;
+              const truncated = text && text.length > maxLength ? text.slice(0, maxLength) + "..." : text;
+              return { ok: true, renderer: definition.renderer, summary: `文本内容（${text?.length ?? 0} 字符）`, data: { text: truncated } };
+            }
+            case "dom": {
+              const selector = typeof input.selector === "string" ? input.selector : "body";
+              const html = await page.locator(selector).first().innerHTML({ timeout: 10000 });
+              const maxLength = typeof input.max_length === "number" ? input.max_length : 20000;
+              const truncated = html.length > maxLength ? html.slice(0, maxLength) + "..." : html;
+              return { ok: true, renderer: definition.renderer, summary: `DOM 内容（${html.length} 字符）`, data: { html: truncated } };
+            }
+            case "scroll": {
+              const direction = input.direction === "up" ? -1 : 1;
+              const amount = typeof input.amount === "number" ? input.amount : 500;
+              await page.evaluate(`window.scrollBy(0, ${direction * amount})`);
+              return { ok: true, renderer: definition.renderer, summary: `已滚动 ${input.direction ?? "down"} ${amount}px`, data: { direction: input.direction, amount } };
+            }
+            case "wait": {
+              const selector = typeof input.selector === "string" ? input.selector : "";
+              if (!selector) return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "wait 需要 selector。" };
+              const timeout = typeof input.timeout === "number" ? input.timeout : 10000;
+              await page.waitForSelector(selector, { timeout });
+              return { ok: true, renderer: definition.renderer, summary: `元素 ${selector} 已出现`, data: { selector } };
+            }
+            case "hover": {
+              const selector = typeof input.selector === "string" ? input.selector : "";
+              if (!selector) return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "hover 需要 selector。" };
+              await page.hover(selector, { timeout: 10000 });
+              return { ok: true, renderer: definition.renderer, summary: `已悬停 ${selector}`, data: { selector } };
+            }
+            case "select": {
+              const selector = typeof input.selector === "string" ? input.selector : "";
+              const value = typeof input.value === "string" ? input.value : "";
+              if (!selector) return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "select 需要 selector。" };
+              const selected = await page.selectOption(selector, value, { timeout: 10000 });
+              return { ok: true, renderer: definition.renderer, summary: `已选择 ${selector} → ${selected.join(", ")}`, data: { selector, selected } };
+            }
+            case "get_attribute": {
+              const selector = typeof input.selector === "string" ? input.selector : "";
+              const attribute = typeof input.attribute === "string" ? input.attribute : "";
+              if (!selector || !attribute) return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "get_attribute 需要 selector 和 attribute。" };
+              const escapedSel = selector.replace(/'/g, "\\'");
+              const escapedAttr = attribute.replace(/'/g, "\\'");
+              const attrValue = await page.evaluate(`(() => { const el = document.querySelector('${escapedSel}'); return el ? el.getAttribute('${escapedAttr}') : null; })()`);
+              return { ok: true, renderer: definition.renderer, summary: `${selector}[${attribute}] = ${attrValue}`, data: { selector, attribute, value: attrValue } };
+            }
+            case "close": {
+              await browser.close();
+              browserSessions.delete(sessionId);
+              return { ok: true, renderer: definition.renderer, summary: `浏览器会话 ${sessionId} 已关闭`, data: { session_id: sessionId } };
+            }
+            default:
+              return { ok: false, renderer: definition.renderer, error: "invalid-action", summary: `不支持的 Browser action: ${action}。支持: launch, navigate, click, fill, type, screenshot, evaluate, get_text, dom, scroll, wait, hover, select, get_attribute, close, list_sessions` };
+          }
+        } catch (error) {
+          return { ok: false, renderer: definition.renderer, error: "browser-error", summary: `浏览器操作失败：${error instanceof Error ? error.message : String(error)}` };
+        }
+      };
     // --- Terminal: 进程管理 ---
     case "Terminal":
       return async ({ input, definition }) => {
