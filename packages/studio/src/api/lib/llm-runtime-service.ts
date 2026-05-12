@@ -73,7 +73,13 @@ function toRuntimeMessages(messages: readonly LlmRuntimeInputMessage[]): Runtime
   return messages.flatMap((message): RuntimeChatMessage[] => {
     if ("type" in message) {
       if (message.type === "message") {
-        return message.content.trim().length > 0 ? [{ role: message.role, content: message.content }] : [];
+        if (message.content.trim().length === 0) return [];
+        const msg: RuntimeChatMessage = { role: message.role, content: message.content };
+        // Preserve reasoning_content for DeepSeek/Claude thinking passback
+        if (message.role === "assistant" && "reasoning_content" in message && typeof (message as { reasoning_content?: unknown }).reasoning_content === "string") {
+          (msg as RuntimeChatMessage & { reasoning_content?: string }).reasoning_content = (message as { reasoning_content: string }).reasoning_content;
+        }
+        return [msg];
       }
       if (message.type === "tool_call") {
         return [{ role: "assistant", content: "", toolCalls: [{ id: message.id, name: message.name, input: message.input }] }];
@@ -87,7 +93,12 @@ function toRuntimeMessages(messages: readonly LlmRuntimeInputMessage[]): Runtime
     if (message.content.trim().length === 0) {
       return [];
     }
-    return [{ role: message.role, content: message.content }];
+    const msg: RuntimeChatMessage = { role: message.role, content: message.content };
+    // Preserve reasoning_content
+    if (message.role === "assistant" && "reasoning_content" in message && typeof (message as { reasoning_content?: unknown }).reasoning_content === "string") {
+      (msg as RuntimeChatMessage & { reasoning_content?: string }).reasoning_content = (message as { reasoning_content: string }).reasoning_content;
+    }
+    return [msg];
   });
 }
 
