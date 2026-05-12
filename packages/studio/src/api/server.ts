@@ -440,51 +440,32 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
       try {
         const { execFile } = await import("node:child_process");
         const { promisify } = await import("node:util");
+        const { writeFile, unlink } = await import("node:fs/promises");
+        const { join } = await import("node:path");
+        const { tmpdir } = await import("node:os");
         const execFileAsync = promisify(execFile);
-        // 使用 Windows Shell COM 的现代文件夹选择器（Vista+ 样式，有快速访问和常用目录）
-        const script = `
-Add-Type -AssemblyName System.Windows.Forms
-[System.Windows.Forms.Application]::EnableVisualStyles()
-$source = @'
-using System;
-using System.Runtime.InteropServices;
-using System.Windows.Forms;
 
-public class FolderPicker {
-    [DllImport("user32.dll")]
-    private static extern bool SetForegroundWindow(IntPtr hWnd);
-    [DllImport("user32.dll")]
-    private static extern IntPtr GetForegroundWindow();
+        // 使用 VBScript Shell.BrowseForFolder — 这是 Windows 上唯一能可靠前台弹出的方式
+        const vbsPath = join(tmpdir(), `novelfork-browse-${Date.now()}.vbs`);
+        const vbsContent = [
+          'Set shell = CreateObject("Shell.Application")',
+          'Set folder = shell.BrowseForFolder(0, "选择项目文件夹", &H0040, "::{20D04FE0-3AEA-1069-A2D8-08002B30309D}")',
+          'If Not folder Is Nothing Then',
+          '  WScript.Echo folder.Self.Path',
+          'End If',
+        ].join("\r\n");
+        await writeFile(vbsPath, vbsContent, "utf-8");
 
-    public static string Show() {
-        var dlg = new OpenFileDialog();
-        dlg.CheckFileExists = false;
-        dlg.CheckPathExists = true;
-        dlg.DereferenceLinks = true;
-        dlg.Multiselect = false;
-        dlg.Title = "选择项目文件夹";
-        dlg.FileName = "选择此文件夹";
-        dlg.Filter = "文件夹|*.folder-select";
-        dlg.InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
-        // Trick: ValidateNames=false + FileName allows folder selection with modern dialog
-        dlg.ValidateNames = false;
-        dlg.CheckFileExists = false;
-        if (dlg.ShowDialog() == DialogResult.OK) {
-            return System.IO.Path.GetDirectoryName(dlg.FileName);
+        try {
+          const { stdout } = await execFileAsync("cscript", ["//Nologo", vbsPath], { timeout: 60000 });
+          const selectedPath = stdout.trim();
+          if (selectedPath) {
+            return c.json({ path: selectedPath });
+          }
+          return c.json({ path: null, cancelled: true });
+        } finally {
+          unlink(vbsPath).catch(() => {});
         }
-        return "";
-    }
-}
-'@
-Add-Type -TypeDefinition $source -ReferencedAssemblies System.Windows.Forms
-[FolderPicker]::Show()
-`.trim();
-        const { stdout } = await execFileAsync("powershell", ["-NoProfile", "-STA", "-Command", script], { timeout: 60000 });
-        const selectedPath = stdout.trim();
-        if (selectedPath) {
-          return c.json({ path: selectedPath });
-        }
-        return c.json({ path: null, cancelled: true });
       } catch {
         return c.json({ error: "Directory picker not available" }, 501);
       }
