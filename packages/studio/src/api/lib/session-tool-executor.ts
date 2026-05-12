@@ -433,6 +433,331 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
           return { ok: false, renderer: definition.renderer, error: "read-failed", summary: `读取健康度失败：${error instanceof Error ? error.message : String(error)}` };
         }
       };
+    // --- 新增小说工具组 (5 tools) ---
+    case "chapter.audit":
+      return async ({ input, definition }) => {
+        const bookId = String(input.bookId ?? "");
+        const chapterNumber = Number(input.chapterNumber ?? 0);
+        if (!bookId || !chapterNumber) return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "需要 bookId 和 chapterNumber。" };
+
+        const { handleChapterRead } = await import("@vivy1024/novelfork-novel-plugin");
+        const { join } = await import("node:path");
+        const booksDir = join(options.workDir ?? process.cwd(), "books");
+        const chapter = await handleChapterRead({ bookId, chapterNumber }, booksDir);
+        if (!chapter.ok || !chapter.data) return { ok: false, renderer: definition.renderer, error: "chapter-not-found", summary: `章节 ${chapterNumber} 不存在。` };
+
+        const content = chapter.data.content;
+        const checks = Array.isArray(input.checks) ? input.checks as string[] : ["rhythm", "ai_taste", "hooks", "continuity"];
+        const results: Record<string, unknown> = {};
+
+        if (checks.includes("rhythm")) {
+          const lines = content.split("\n").filter((l: string) => l.trim());
+          const dialogue = lines.filter((l: string) => l.includes("\u201c") || l.includes("\u201d") || l.includes("\u300c")).length;
+          const total = lines.length;
+          results.rhythm = { totalLines: total, dialogueLines: dialogue, dialogueRatio: total > 0 ? Math.round(dialogue / total * 100) : 0 };
+        }
+
+        if (checks.includes("ai_taste")) {
+          const AI_MARKERS = ["\u503c\u5f97\u6ce8\u610f\u7684\u662f", "\u9700\u8981\u6307\u51fa", "\u603b\u800c\u8a00\u4e4b", "\u4e0d\u7981", "\u7f13\u7f13", "\u5fae\u5fae", "\u6de1\u6de1", "\u5634\u89d2\u5fae\u626c", "\u773c\u4e2d\u95ea\u8fc7", "\u5fc3\u4e2d\u6697\u9053", "\u6df1\u5438\u4e00\u53e3\u6c14", "\u4e0d\u7531\u5f97"];
+          const found = AI_MARKERS.filter(marker => content.includes(marker));
+          results.ai_taste = { markersFound: found, count: found.length, severity: found.length > 5 ? "high" : found.length > 2 ? "medium" : "low" };
+        }
+
+        if (checks.includes("hooks")) {
+          const { join: joinPath } = await import("node:path");
+          const hooksPath = joinPath(booksDir, bookId, "story", "pending_hooks.md");
+          try {
+            const { readFile } = await import("node:fs/promises");
+            const hooksContent = await readFile(hooksPath, "utf-8");
+            const dueHooks = hooksContent.split("\n")
+              .filter((line: string) => line.match(/- \[ \]/) && (line.includes(`\u7b2c${chapterNumber}\u7ae0`) || line.includes(`ch${chapterNumber}`)))
+              .map((line: string) => line.replace(/^- \[ \]\s*/, "").trim());
+            results.hooks = { dueHooks, count: dueHooks.length };
+          } catch {
+            results.hooks = { dueHooks: [], count: 0, note: "pending_hooks.md \u4e0d\u5b58\u5728" };
+          }
+        }
+
+        if (checks.includes("continuity") || checks.includes("character")) {
+          const { handleJingweiReadContext } = await import("@vivy1024/novelfork-novel-plugin");
+          const jingwei = await handleJingweiReadContext({ bookId }, booksDir);
+          if (jingwei.ok && jingwei.data) {
+            const characterNames: string[] = [];
+            const categories = (jingwei.data as { categories?: { name: string; files?: { name: string }[] }[] }).categories ?? [];
+            for (const cat of categories) {
+              if (cat.name === "\u89d2\u8272" && Array.isArray(cat.files)) {
+                for (const f of cat.files) characterNames.push(f.name.replace(".md", ""));
+              }
+            }
+            const namePattern = /[\u4e00-\u9fff]{2,4}/g;
+            const mentionedNames = [...new Set(content.match(namePattern) ?? [])];
+            results.continuity = { knownCharacters: characterNames.length, mentionedNames: mentionedNames.length, note: "\u7b80\u5316\u68c0\u67e5\uff0c\u5efa\u8bae\u914d\u5408 LLM \u6df1\u5ea6\u5ba1\u8ba1" };
+          }
+        }
+
+        return {
+          ok: true,
+          renderer: definition.renderer,
+          summary: `\u7ae0\u8282 ${chapterNumber} \u5ba1\u8ba1\u5b8c\u6210\uff1a${checks.join("/")}`,
+          data: { chapterNumber, checks, results },
+        };
+      };
+    case "rewrite.segment":
+      return async ({ input, definition }) => {
+        const bookId = String(input.bookId ?? "");
+        const chapterNumber = Number(input.chapterNumber ?? 0);
+        const mode = String(input.mode ?? "");
+        const selection = input.selection as { start?: number; end?: number } | undefined;
+        if (!bookId || !chapterNumber || !mode || !selection?.start || !selection?.end) {
+          return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "\u9700\u8981 bookId, chapterNumber, mode, selection.start, selection.end" };
+        }
+
+        const { handleChapterRead } = await import("@vivy1024/novelfork-novel-plugin");
+        const { join } = await import("node:path");
+        const booksDir = join(options.workDir ?? process.cwd(), "books");
+        const chapter = await handleChapterRead({ bookId, chapterNumber }, booksDir);
+        if (!chapter.ok || !chapter.data) return { ok: false, renderer: definition.renderer, error: "chapter-not-found", summary: `\u7ae0\u8282 ${chapterNumber} \u4e0d\u5b58\u5728\u3002` };
+
+        const lines = chapter.data.content.split("\n");
+        const selectedLines = lines.slice(selection.start - 1, selection.end);
+        const selectedText = selectedLines.join("\n");
+
+        if (!selectedText.trim()) return { ok: false, renderer: definition.renderer, error: "empty-selection", summary: "\u9009\u4e2d\u5185\u5bb9\u4e3a\u7a7a\u3002" };
+
+        const modePrompts: Record<string, string> = {
+          continue: "\u8bf7\u7eed\u5199\u4ee5\u4e0b\u6bb5\u843d\uff0c\u4fdd\u6301\u98ce\u683c\u4e00\u81f4\uff0c\u81ea\u7136\u884d\u63a5\uff1a",
+          expand: "\u8bf7\u6269\u5199\u4ee5\u4e0b\u6bb5\u843d\uff0c\u589e\u52a0\u7ec6\u8282\u548c\u63cf\u5199\uff0c\u4fdd\u6301\u539f\u610f\uff1a",
+          reduce_ai: "\u8bf7\u6539\u5199\u4ee5\u4e0b\u6bb5\u843d\uff0c\u53bb\u9664 AI \u5473\uff08\u907f\u514d\uff1a\u503c\u5f97\u6ce8\u610f\u7684\u662f\u3001\u4e0d\u7981\u3001\u7f13\u7f13\u3001\u5fae\u5fae\u3001\u6de1\u6de1\u7b49\uff09\uff0c\u4fdd\u6301\u539f\u610f\u4f46\u66f4\u81ea\u7136\uff1a",
+          restyle: `\u8bf7\u6309\u4ee5\u4e0b\u98ce\u683c\u6539\u5199\u6bb5\u843d\uff1a${input.styleHint ?? "\u66f4\u751f\u52a8"}\u3002\u539f\u6587\uff1a`,
+        };
+
+        const prompt = `${modePrompts[mode] ?? modePrompts.continue}\n\n${selectedText}\n\n\u53ea\u8f93\u51fa\u6539\u5199\u540e\u7684\u6587\u672c\uff0c\u4e0d\u8981\u89e3\u91ca\u3002`;
+
+        try {
+          const { generateSessionReply } = await import("./llm-runtime-service.js");
+          const { getSessionById } = await import("./session-service.js");
+          const session = await getSessionById(String(input.sessionId ?? ""));
+          if (!session) return { ok: false, renderer: definition.renderer, error: "no-session", summary: "\u65e0\u6cd5\u83b7\u53d6\u5f53\u524d\u4f1a\u8bdd\u914d\u7f6e\u3002" };
+
+          const result = await generateSessionReply({
+            sessionConfig: session.sessionConfig,
+            messages: [{ type: "message" as const, role: "user" as const, content: prompt }],
+            tools: [],
+          });
+
+          if (!result.success) return { ok: false, renderer: definition.renderer, error: "llm-failed", summary: `LLM \u8c03\u7528\u5931\u8d25\uff1a${result.error}` };
+
+          const rewrittenText = result.type === "message" ? result.content : "";
+          return {
+            ok: true,
+            renderer: "tool.rewrite-segment",
+            summary: `\u5df2${mode === "continue" ? "\u7eed\u5199" : mode === "expand" ? "\u6269\u5199" : mode === "reduce_ai" ? "\u53bbAI\u5473\u6539\u5199" : "\u98ce\u683c\u6539\u5199"}\u9009\u6bb5\uff08${selectedLines.length} \u884c\uff09`,
+            data: { mode, originalText: selectedText, rewrittenText, lineRange: { start: selection.start, end: selection.end } },
+          };
+        } catch (error) {
+          return { ok: false, renderer: definition.renderer, error: "rewrite-failed", summary: `\u6539\u5199\u5931\u8d25\uff1a${error instanceof Error ? error.message : String(error)}` };
+        }
+      };
+    case "outline.suggest_next":
+      return async ({ input, definition }) => {
+        const bookId = String(input.bookId ?? "");
+        if (!bookId) return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "\u9700\u8981 bookId" };
+
+        const { handleJingweiReadContext } = await import("@vivy1024/novelfork-novel-plugin");
+        const { join } = await import("node:path");
+        const { readdir, readFile } = await import("node:fs/promises");
+        const booksDir = join(options.workDir ?? process.cwd(), "books");
+        const jingwei = await handleJingweiReadContext({ bookId }, booksDir);
+
+        // 读取最近章节
+        const chaptersDir = join(booksDir, bookId, "chapters");
+        let recentChapters = "";
+        try {
+          const files = (await readdir(chaptersDir)).filter((f: string) => f.endsWith(".md")).sort().slice(-2);
+          for (const f of files) {
+            const content = await readFile(join(chaptersDir, f), "utf-8");
+            recentChapters += `\n--- ${f} ---\n${content.slice(0, 2000)}\n`;
+          }
+        } catch { /* no chapters yet */ }
+
+        // 读取伏笔
+        let hooks = "";
+        try {
+          hooks = await readFile(join(booksDir, bookId, "story", "pending_hooks.md"), "utf-8");
+        } catch { /* no hooks */ }
+
+        const outlineContext = jingwei.ok ? JSON.stringify(jingwei.data).slice(0, 3000) : "\u65e0\u5927\u7eb2\u6570\u636e";
+
+        const prompt = `\u57fa\u4e8e\u4ee5\u4e0b\u4fe1\u606f\uff0c\u63a8\u8350\u4e0b\u4e00\u7ae0\u7684 2-3 \u4e2a\u5199\u4f5c\u65b9\u5411\u3002\u6bcf\u4e2a\u65b9\u5411\u5305\u542b\uff1a\u6807\u9898\u5efa\u8bae\u3001\u5185\u5bb9\u6458\u8981\uff0850\u5b57\u5185\uff09\u3001\u63a8\u8fdb\u54ea\u4e9b\u4f0f\u7b14\u3002
+
+## \u5927\u7eb2
+${outlineContext}
+
+## \u6700\u8fd1\u7ae0\u8282
+${recentChapters || "\u6682\u65e0\u5df2\u5199\u7ae0\u8282"}
+
+## \u5f85\u5151\u73b0\u4f0f\u7b14
+${hooks || "\u6682\u65e0\u4f0f\u7b14"}
+
+\u8bf7\u4ee5 JSON \u6570\u7ec4\u683c\u5f0f\u8f93\u51fa\uff1a[{ "title": "...", "summary": "...", "hooks": ["..."] }]`;
+
+        try {
+          const { generateSessionReply } = await import("./llm-runtime-service.js");
+          const { getSessionById } = await import("./session-service.js");
+          const session = await getSessionById(String(input.sessionId ?? ""));
+          if (!session) return { ok: false, renderer: definition.renderer, error: "no-session", summary: "\u65e0\u6cd5\u83b7\u53d6\u5f53\u524d\u4f1a\u8bdd\u914d\u7f6e\u3002" };
+
+          const result = await generateSessionReply({
+            sessionConfig: session.sessionConfig,
+            messages: [{ type: "message" as const, role: "user" as const, content: prompt }],
+            tools: [],
+          });
+
+          if (!result.success) return { ok: false, renderer: definition.renderer, error: "llm-failed", summary: `LLM \u8c03\u7528\u5931\u8d25\uff1a${result.error}` };
+
+          const resultContent = result.type === "message" ? result.content : "";
+          let suggestions: unknown[];
+          try { suggestions = JSON.parse(resultContent); } catch { suggestions = [{ title: "\u5efa\u8bae", summary: resultContent }]; }
+
+          return {
+            ok: true,
+            renderer: definition.renderer,
+            summary: `\u63a8\u8350 ${Array.isArray(suggestions) ? suggestions.length : 1} \u4e2a\u4e0b\u4e00\u7ae0\u65b9\u5411\u3002`,
+            data: { suggestions },
+          };
+        } catch (error) {
+          return { ok: false, renderer: definition.renderer, error: "suggest-failed", summary: `\u63a8\u8350\u5931\u8d25\uff1a${error instanceof Error ? error.message : String(error)}` };
+        }
+      };
+    case "character.check_consistency":
+      return async ({ input, definition }) => {
+        const bookId = String(input.bookId ?? "");
+        if (!bookId) return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "\u9700\u8981 bookId" };
+
+        const { readdir, readFile } = await import("node:fs/promises");
+        const { join } = await import("node:path");
+        const booksDir = join(options.workDir ?? process.cwd(), "books");
+        const characterDir = join(booksDir, bookId, "jingwei", "\u89d2\u8272");
+
+        // 读取角色列表
+        let characters: { name: string; profile: string }[] = [];
+        try {
+          const files = (await readdir(characterDir)).filter((f: string) => f.endsWith(".md"));
+          const targetName = typeof input.characterName === "string" ? input.characterName : "";
+          const targetFiles = targetName ? files.filter((f: string) => f.includes(targetName)) : files;
+          for (const f of targetFiles) {
+            const content = await readFile(join(characterDir, f), "utf-8");
+            characters.push({ name: f.replace(".md", ""), profile: content.slice(0, 500) });
+          }
+        } catch {
+          return { ok: true, renderer: definition.renderer, summary: "\u89d2\u8272\u76ee\u5f55\u4e0d\u5b58\u5728\uff0c\u8df3\u8fc7\u68c0\u67e5\u3002", data: { characters: [], mentions: [] } };
+        }
+
+        if (characters.length === 0) return { ok: true, renderer: definition.renderer, summary: "\u672a\u627e\u5230\u5339\u914d\u89d2\u8272\u3002", data: { characters: [], mentions: [] } };
+
+        // 读取章节
+        const chaptersDir = join(booksDir, bookId, "chapters");
+        const range = input.chapterRange as { from?: number; to?: number } | undefined;
+        let chapterFiles: string[] = [];
+        try {
+          chapterFiles = (await readdir(chaptersDir)).filter((f: string) => f.endsWith(".md")).sort();
+          if (range?.from || range?.to) {
+            const from = (range.from ?? 1) - 1;
+            const to = range.to ?? chapterFiles.length;
+            chapterFiles = chapterFiles.slice(from, to);
+          } else {
+            chapterFiles = chapterFiles.slice(-5);
+          }
+        } catch { /* no chapters */ }
+
+        // 搜索角色出现
+        const mentions: { character: string; chapter: string; count: number; excerpts: string[] }[] = [];
+        for (const f of chapterFiles) {
+          const content = await readFile(join(chaptersDir, f), "utf-8");
+          for (const char of characters) {
+            const regex = new RegExp(char.name, "g");
+            const matches = content.match(regex);
+            if (matches && matches.length > 0) {
+              const excerpts: string[] = [];
+              let idx = content.indexOf(char.name);
+              while (idx !== -1 && excerpts.length < 3) {
+                excerpts.push(content.slice(Math.max(0, idx - 30), idx + char.name.length + 30).replace(/\n/g, " "));
+                idx = content.indexOf(char.name, idx + 1);
+              }
+              mentions.push({ character: char.name, chapter: f, count: matches.length, excerpts });
+            }
+          }
+        }
+
+        return {
+          ok: true,
+          renderer: definition.renderer,
+          summary: `\u68c0\u67e5\u4e86 ${characters.length} \u4e2a\u89d2\u8272\u5728 ${chapterFiles.length} \u7ae0\u4e2d\u7684\u51fa\u73b0\u60c5\u51b5\uff0c\u5171 ${mentions.length} \u6761\u8bb0\u5f55\u3002`,
+          data: { characters: characters.map(c => c.name), chaptersChecked: chapterFiles.length, mentions },
+        };
+      };
+    case "hooks.manage":
+      return async ({ input, definition }) => {
+        const bookId = String(input.bookId ?? "");
+        const action = String(input.action ?? "");
+        if (!bookId || !action) return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "\u9700\u8981 bookId \u548c action" };
+
+        const { readFile, writeFile, mkdir } = await import("node:fs/promises");
+        const { join } = await import("node:path");
+        const booksDir = join(options.workDir ?? process.cwd(), "books");
+        const hooksPath = join(booksDir, bookId, "story", "pending_hooks.md");
+
+        let content = "";
+        try { content = await readFile(hooksPath, "utf-8"); } catch { /* file doesn't exist yet */ }
+
+        const lines = content.split("\n");
+
+        switch (action) {
+          case "list": {
+            const hooks = lines.filter((l: string) => l.startsWith("- [")).map((l: string, i: number) => ({
+              id: `hook-${i}`,
+              done: l.startsWith("- [x]"),
+              text: l.replace(/^- \[[ x]\]\s*/, "").trim(),
+            }));
+            return { ok: true, renderer: definition.renderer, summary: `\u5171 ${hooks.length} \u4e2a\u4f0f\u7b14\uff08${hooks.filter(h => !h.done).length} \u4e2a\u5f85\u5151\u73b0\uff09\u3002`, data: { hooks } };
+          }
+          case "plant": {
+            const description = String(input.description ?? "");
+            const chapterNumber = Number(input.chapterNumber ?? 0);
+            if (!description) return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "plant \u9700\u8981 description" };
+            const newLine = `- [ ] ${description}${chapterNumber ? ` (\u57cb\u8bbe\u4e8e\u7b2c${chapterNumber}\u7ae0)` : ""}`;
+            const newContent = content.trim() ? `${content.trim()}\n${newLine}\n` : `# \u4f0f\u7b14\u8ffd\u8e2a\n\n${newLine}\n`;
+            await mkdir(join(booksDir, bookId, "story"), { recursive: true });
+            await writeFile(hooksPath, newContent, "utf-8");
+            return { ok: true, renderer: definition.renderer, summary: `\u5df2\u57cb\u8bbe\u4f0f\u7b14\uff1a${description}`, data: { action: "plant", description, chapterNumber } };
+          }
+          case "payoff": {
+            const hookId = String(input.hookId ?? "");
+            const chapterNumber = Number(input.chapterNumber ?? 0);
+            const idx = hookId.startsWith("hook-") ? parseInt(hookId.slice(5), 10) : -1;
+            const hookLines = lines.filter((l: string) => l.startsWith("- ["));
+            if (idx < 0 || idx >= hookLines.length) return { ok: false, renderer: definition.renderer, error: "hook-not-found", summary: `\u4f0f\u7b14 ${hookId} \u4e0d\u5b58\u5728\u3002` };
+            const targetLine = hookLines[idx]!;
+            const newLine = targetLine.replace("- [ ]", "- [x]") + (chapterNumber ? ` (\u5151\u73b0\u4e8e\u7b2c${chapterNumber}\u7ae0)` : " (\u5df2\u5151\u73b0)");
+            const newContent = content.replace(targetLine, newLine);
+            await writeFile(hooksPath, newContent, "utf-8");
+            return { ok: true, renderer: definition.renderer, summary: `\u4f0f\u7b14\u5df2\u5151\u73b0\uff1a${targetLine.replace(/^- \[ \]\s*/, "")}`, data: { action: "payoff", hookId } };
+          }
+          case "check_due": {
+            const chapterNumber = Number(input.chapterNumber ?? 0);
+            const openHooks = lines.filter((l: string) => l.startsWith("- [ ]"));
+            const dueHooks = chapterNumber > 0
+              ? openHooks.filter((l: string) => {
+                  const match = l.match(/\u7b2c(\d+)\u7ae0/);
+                  return match && chapterNumber - parseInt(match[1]!, 10) >= 10;
+                })
+              : openHooks;
+            return { ok: true, renderer: definition.renderer, summary: `${dueHooks.length} \u4e2a\u4f0f\u7b14\u5230\u671f\u3002`, data: { action: "check_due", chapterNumber, dueHooks: dueHooks.map((l: string) => l.replace(/^- \[ \]\s*/, "").trim()) } };
+          }
+          default:
+            return { ok: false, renderer: definition.renderer, error: "invalid-action", summary: `\u4e0d\u652f\u6301\u7684 action: ${action}` };
+        }
+      };
     default:
       return undefined;
   }
