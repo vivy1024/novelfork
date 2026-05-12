@@ -86,7 +86,7 @@ async function saveChapterAndHydrate(resource: ResourceDomainClient, bookId: str
   return hydrateAfterSave(resource, bookId, node);
 }
 
-async function saveTruthAndHydrate(resource: ResourceDomainClient, bookId: string, node: WorkbenchResourceNode, content: string): Promise<WorkbenchResourceNode> {
+async function saveJingweiAndHydrate(resource: ResourceDomainClient, bookId: string, node: WorkbenchResourceNode, content: string): Promise<WorkbenchResourceNode> {
   const fileName = fileNameFromNode(node, "jingwei-file:") ?? fileNameFromNode(node, "truth-file:");
   if (!fileName) throw new Error("经纬资料缺少文件名，无法保存");
   await assertContractSave(await resource.saveJingweiFile(bookId, fileName, { content }), "经纬资料保存失败");
@@ -149,7 +149,7 @@ export async function saveResourceAndHydrate(
 
   if (node.kind === "chapter") return saveChapterAndHydrate(resource, bookId, node, content);
   if (node.kind === "draft") return saveDraftAndHydrate(resource, bookId, node, content);
-  if (node.kind === "jingwei") return saveTruthAndHydrate(resource, bookId, node, content);
+  if (node.kind === "jingwei") return saveJingweiAndHydrate(resource, bookId, node, content);
   if (node.kind === "jingwei-entry") return saveJingweiEntryAndHydrate(resource, bookId, node, content);
 
   throw new Error(`${node.title} 暂不支持从工作台保存`);

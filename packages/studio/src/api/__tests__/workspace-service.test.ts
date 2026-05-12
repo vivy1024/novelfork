@@ -114,7 +114,7 @@ describe("workspace-service", () => {
       expect(chapterFile?.storyRole).toBe("chapter");
     });
 
-    it("identifies truth files", async () => {
+    it("identifies jingwei files", async () => {
       const tree = await buildProjectTree(root, "", 5);
       const books = tree.find(e => e.name === "books");
       const book = books?.children?.find(e => e.name === "test-book");

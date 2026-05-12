@@ -46,13 +46,13 @@ export class StateValidatorAgent extends BaseAgent {
 
     const systemPrompt = `You are a continuity validator for a novel writing system. ${langInstruction}
 
-Given the chapter text and the CHANGES made to truth files (state card + hooks pool), check for contradictions:
+Given the chapter text and the CHANGES made to jingwei files (state card + hooks pool), check for contradictions:
 
-1. State change without narrative support — truth file says something changed but the chapter text doesn't describe it
-2. Missing state change — chapter text describes something happening but the truth file didn't capture it
+1. State change without narrative support — jingwei file says something changed but the chapter text doesn't describe it
+2. Missing state change — chapter text describes something happening but the jingwei file didn't capture it
 3. Temporal impossibility — character moves locations without transition, injury heals without time passing
 4. Hook anomaly — a hook disappeared without being marked resolved, or a new hook has no basis in the chapter
-5. Retroactive edit — truth file change implies something happened in a PREVIOUS chapter, not the current one
+5. Retroactive edit — jingwei file change implies something happened in a PREVIOUS chapter, not the current one
 
 Output format (simple, NOT JSON):
 - First line: exactly PASS or FAIL (nothing else on this line)

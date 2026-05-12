@@ -243,7 +243,7 @@ describe("writing tools routes", () => {
     expect(pendingHooks).toContain("chapter: 1");
   });
 
-  it("returns POV dashboard from story truth files", async () => {
+  it("returns POV dashboard from story jingwei files", async () => {
     const { app } = await createRoute();
 
     const response = await app.request("http://localhost/api/books/book-1/pov?currentChapter=2&gapWarningThreshold=3");

@@ -133,7 +133,7 @@ export async function loadResourceTreeFromContract(
   const candidates = await optional<CandidateListResponse>(errors, "candidates.list", "候选稿加载失败", () => resource.listCandidates<CandidateListResponse>(bookId));
   const drafts = await optional<DraftListResponse>(errors, "drafts.list", "草稿加载失败", () => resource.listDrafts<DraftListResponse>(bookId));
   const storyFiles = await optional<StoryFileListResponse>(errors, "story-files.list", "大纲与设定文件加载失败", () => resource.listStoryFiles<StoryFileListResponse>(bookId));
-  const jingweiFiles = await optional<JingweiFileListResponse>(errors, "truth-files.list", "经纬资料加载失败", () => resource.listJingweiFiles<JingweiFileListResponse>(bookId));
+  const jingweiFiles = await optional<JingweiFileListResponse>(errors, "jingwei-files.list", "经纬资料加载失败", () => resource.listJingweiFiles<JingweiFileListResponse>(bookId));
   const jingweiSections = await optional<JingweiSectionsResponse>(errors, "jingwei.sections", "经纬分区加载失败", () => resource.listJingweiSections<JingweiSectionsResponse>(bookId));
   const jingweiEntries = await optional<JingweiEntriesResponse>(errors, "jingwei.entries", "经纬条目加载失败", () => resource.listJingweiEntries<JingweiEntriesResponse>(bookId));
   const narrative = await optional<NarrativeLineResponse>(errors, "narrative-line.read", "叙事线加载失败", () => resource.getNarrativeLine<NarrativeLineResponse>(bookId));
@@ -252,10 +252,10 @@ function buildHooksGroup(jingweiFiles: JingweiFileListResponse | null | undefine
     title: "待处理伏笔",
     path: "pending_hooks.md",
     capabilities: {
-      read: CURRENT_READ("truth-files.read"),
-      edit: CURRENT_EDIT("truth-files.write"),
-      delete: UNSUPPORTED("truth-files.delete"),
-      apply: UNSUPPORTED("truth-files.apply"),
+      read: CURRENT_READ("jingwei-files.read"),
+      edit: CURRENT_EDIT("jingwei-files.write"),
+      delete: UNSUPPORTED("jingwei-files.delete"),
+      apply: UNSUPPORTED("jingwei-files.apply"),
     },
     metadata: { fileName: "pending_hooks.md", size: hooksFile.size, preview: hooksFile.preview },
   }];
@@ -318,10 +318,10 @@ function toJingweiFileNode(bookId: string, file: StoryListFile): ContractResourc
     path: `story/${file.name}`,
     content: file.preview,
     capabilities: {
-      read: CURRENT_READ("truth-files.detail"),
-      edit: CURRENT_EDIT("truth-files.save"),
-      delete: CURRENT_DELETE("truth-files.delete"),
-      apply: UNSUPPORTED("truth-files.apply"),
+      read: CURRENT_READ("jingwei-files.detail"),
+      edit: CURRENT_EDIT("jingwei-files.save"),
+      delete: CURRENT_DELETE("jingwei-files.delete"),
+      apply: UNSUPPORTED("jingwei-files.apply"),
     },
     metadata: { bookId, fileName: file.name, size: file.size, source: "preview" },
   };

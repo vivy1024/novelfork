@@ -392,7 +392,7 @@ const importChaptersHandler: RegisteredTool["handler"] = async (pipeline, _state
   return JSON.stringify(result);
 };
 
-const writeTruthFileHandler: RegisteredTool["handler"] = async (_pipeline, _state, config, args) => {
+const writeJingweiFileHandler: RegisteredTool["handler"] = async (_pipeline, _state, config, args) => {
   const bookId = args.bookId as string;
   const fileName = args.fileName as string;
   const content = args.content as string;
@@ -447,6 +447,6 @@ export const BUILTIN_TOOLS: RegisteredTool[] = [
   { definition: TOOL_DEFINITIONS[14]!, handler: importStyleHandler },
   { definition: TOOL_DEFINITIONS[15]!, handler: importCanonHandler },
   { definition: TOOL_DEFINITIONS[16]!, handler: importChaptersHandler },
-  { definition: TOOL_DEFINITIONS[17]!, handler: writeTruthFileHandler },
+  { definition: TOOL_DEFINITIONS[17]!, handler: writeJingweiFileHandler },
 ];
 

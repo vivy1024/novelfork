@@ -397,7 +397,7 @@ describe("ChapterAnalyzerAgent", () => {
     }
   });
 
-  it("uses governed control inputs instead of old broad truth-file blocks when provided", async () => {
+  it("uses governed control inputs instead of old broad jingwei-file blocks when provided", async () => {
     const bookDir = await mkdtemp(join(tmpdir(), "novelfork-chapter-analyzer-governed-"));
     const storyDir = join(bookDir, "story");
     await mkdir(storyDir, { recursive: true });

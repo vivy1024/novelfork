@@ -86,13 +86,13 @@ export function createResourceClient(contract: ContractClient) {
     deleteStoryFile: <T = { ok: true; file: string }>(bookId: string, fileName: string) =>
       contract.delete<T>(buildBookApiPath(bookId, "story-files", fileName), { capability: { id: "story-files.delete", status: "current" } }),
     listJingweiFiles: <T = unknown>(bookId: string) =>
-      contract.get<T>(buildBookApiPath(bookId, "truth-files"), { capability: { id: "truth-files.list", status: "current" } }),
+      contract.get<T>(buildBookApiPath(bookId, "jingwei-files"), { capability: { id: "jingwei-files.list", status: "current" } }),
     getJingweiFile: <T = { file: string; content: string | null }>(bookId: string, fileName: string) =>
-      contract.get<T>(buildBookApiPath(bookId, "truth-files", fileName), { capability: { id: "truth-files.detail", status: "current" } }),
+      contract.get<T>(buildBookApiPath(bookId, "jingwei-files", fileName), { capability: { id: "jingwei-files.detail", status: "current" } }),
     saveJingweiFile: <T = { ok: true }>(bookId: string, fileName: string, payload: { content: string }) =>
-      contract.put<T>(buildBookApiPath(bookId, "truth", fileName), payload, { capability: { id: "truth-files.save", status: "current" } }),
+      contract.put<T>(buildBookApiPath(bookId, "truth", fileName), payload, { capability: { id: "jingwei-files.save", status: "current" } }),
     deleteJingweiFile: <T = { ok: true; file: string }>(bookId: string, fileName: string) =>
-      contract.delete<T>(buildBookApiPath(bookId, "truth-files", fileName), { capability: { id: "truth-files.delete", status: "current" } }),
+      contract.delete<T>(buildBookApiPath(bookId, "jingwei-files", fileName), { capability: { id: "jingwei-files.delete", status: "current" } }),
     listJingweiSections: <T = unknown>(bookId: string) =>
       contract.get<T>(buildBookApiPath(bookId, "jingwei", "sections"), { capability: { id: "jingwei.sections", status: "current" } }),
     listJingweiEntries: <T = unknown>(bookId: string, sectionId?: string) => {

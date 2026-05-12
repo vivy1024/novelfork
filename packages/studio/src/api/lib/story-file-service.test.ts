@@ -41,7 +41,7 @@ describe("story file read service", () => {
     const service = createStoryFileReadService({ resolveBookDir: (bookId) => join(root, "books", bookId) });
 
     await expect(service.readJingweiFile("book-1", "story_bible.md")).resolves.toEqual({ file: "story_bible.md", content: "# 故事经纬" });
-    await expect(service.readJingweiFile("book-1", "evil_file.md")).resolves.toEqual({ error: "Invalid truth file" });
+    await expect(service.readJingweiFile("book-1", "evil_file.md")).resolves.toEqual({ error: "Invalid jingwei file" });
     await expect(service.readJingweiFile("book-1", "book_rules.md")).resolves.toEqual({ file: "book_rules.md", content: null });
     expect(TRUTH_FILES).toContain("story_bible.md");
   });

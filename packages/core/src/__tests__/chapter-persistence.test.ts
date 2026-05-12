@@ -29,7 +29,7 @@ function createAuditResult(overrides?: Partial<AuditResult>): AuditResult {
 }
 
 describe("persistChapterArtifacts", () => {
-  it("persists truth files, index, drift guidance, and snapshots for reviewable chapters", async () => {
+  it("persists jingwei files, index, drift guidance, and snapshots for reviewable chapters", async () => {
     const saveChapter = vi.fn().mockResolvedValue(undefined);
     const saveJingweiFiles = vi.fn().mockResolvedValue(undefined);
     const saveChapterIndex = vi.fn().mockResolvedValue(undefined);
@@ -93,7 +93,7 @@ describe("persistChapterArtifacts", () => {
     expect(syncCurrentStateFactHistory).toHaveBeenCalledTimes(1);
   });
 
-  it("skips truth persistence and snapshots for state-degraded chapters while preserving review note", async () => {
+  it("skips jingwei persistence and snapshots for state-degraded chapters while preserving review note", async () => {
     const saveChapter = vi.fn().mockResolvedValue(undefined);
     const saveJingweiFiles = vi.fn().mockResolvedValue(undefined);
     const saveChapterIndex = vi.fn().mockResolvedValue(undefined);

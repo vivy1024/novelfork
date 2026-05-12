@@ -121,7 +121,7 @@ describe("storage write service", () => {
 
     await expect(service.writeJingweiFile("book-1", "story_bible.md", "# Bible")).resolves.toEqual({ ok: true });
     await expect(readFile(join(root, "books", "book-1", "story", "story_bible.md"), "utf-8")).resolves.toBe("# Bible");
-    await expect(service.writeJingweiFile("book-1", "evil_file.md", "bad")).resolves.toEqual({ error: "Invalid truth file" });
+    await expect(service.writeJingweiFile("book-1", "evil_file.md", "bad")).resolves.toEqual({ error: "Invalid jingwei file" });
   });
 
   it("builds export payloads from saved chapter files", async () => {

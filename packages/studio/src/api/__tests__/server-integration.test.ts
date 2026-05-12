@@ -773,11 +773,11 @@ describe("server integration — core 20 endpoints", () => {
   });
 
   // ================================================================
-  // 8. GET /api/books/:id/truth/:file — truth file read
+  // 8. GET /api/books/:id/truth/:file — jingwei file read
   // ================================================================
 
   describe("GET /api/books/:id/truth/:file", () => {
-    it("returns truth file content when it exists", async () => {
+    it("returns jingwei file content when it exists", async () => {
       const storyDir = join(root, "books", "test-book", "story");
       await mkdir(storyDir, { recursive: true });
       await writeFile(
@@ -794,25 +794,25 @@ describe("server integration — core 20 endpoints", () => {
       expect(data.content).toContain("Core setting.");
     });
 
-    it("lists truth files through the dedicated truth-files route", async () => {
+    it("lists jingwei files through the dedicated jingwei-files route", async () => {
       const storyDir = join(root, "books", "test-book", "story");
       await mkdir(storyDir, { recursive: true });
       await writeFile(join(storyDir, "pending_hooks.md"), "# hooks", "utf-8");
       await writeFile(join(storyDir, "chapter_summaries.md"), "# summaries", "utf-8");
 
-      const res = await req("/api/books/test-book/truth-files");
+      const res = await req("/api/books/test-book/jingwei-files");
 
       expect(res.status).toBe(200);
       const data = await res.json() as { files: Array<{ name: string }> };
       expect(data.files.map((file) => file.name)).toEqual(expect.arrayContaining(["pending_hooks.md", "chapter_summaries.md"]));
     });
 
-    it("reads truth files through the dedicated truth-files route", async () => {
+    it("reads jingwei files through the dedicated jingwei-files route", async () => {
       const storyDir = join(root, "books", "test-book", "story");
       await mkdir(storyDir, { recursive: true });
       await writeFile(join(storyDir, "pending_hooks.md"), "# hooks\n\n待处理伏笔", "utf-8");
 
-      const res = await req("/api/books/test-book/truth-files/pending_hooks.md");
+      const res = await req("/api/books/test-book/jingwei-files/pending_hooks.md");
 
       expect(res.status).toBe(200);
       const data = await res.json() as { file: string; content: string | null };
@@ -865,7 +865,7 @@ describe("server integration — core 20 endpoints", () => {
       expect(data.error).toBe("Invalid story file");
     });
 
-    it("returns null content when truth file does not exist", async () => {
+    it("returns null content when jingwei file does not exist", async () => {
       await mkdir(join(root, "books", "test-book", "story"), {
         recursive: true,
       });
@@ -878,21 +878,21 @@ describe("server integration — core 20 endpoints", () => {
       expect(data.content).toBeNull();
     });
 
-    it("rejects invalid truth file names with 400", async () => {
+    it("rejects invalid jingwei file names with 400", async () => {
       const res = await req("/api/books/test-book/truth/evil_file.md");
 
       expect(res.status).toBe(400);
       const data = await res.json();
-      expect(data.error).toBe("Invalid truth file");
+      expect(data.error).toBe("Invalid jingwei file");
     });
   });
 
   // ================================================================
-  // 9. PUT /api/books/:id/truth/:file — update truth file
+  // 9. PUT /api/books/:id/truth/:file — update jingwei file
   // ================================================================
 
   describe("PUT /api/books/:id/truth/:file", () => {
-    it("writes truth file content to the story directory", async () => {
+    it("writes jingwei file content to the story directory", async () => {
       const res = await jsonReq(
         "/api/books/test-book/truth/story_bible.md",
         "PUT",
@@ -926,7 +926,7 @@ describe("server integration — core 20 endpoints", () => {
       expect(written).toBe("# Current State");
     });
 
-    it("rejects invalid truth file names with 400", async () => {
+    it("rejects invalid jingwei file names with 400", async () => {
       const res = await jsonReq(
         "/api/books/test-book/truth/../../etc/passwd",
         "PUT",
