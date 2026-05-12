@@ -271,7 +271,11 @@ export async function executeSessionTool(
   }
 }
 
-function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions): SessionToolHandler | undefined {
+/**
+ * 小说领域工具 handler — 依赖注入的 service 实例
+ * 只在 configureSessionToolExecutor 注入了对应 service 时才返回 handler
+ */
+function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOptions): SessionToolHandler | undefined {
   switch (toolName) {
     case "cockpit.get_snapshot":
       if (!options.cockpitService) return undefined;
@@ -429,6 +433,17 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
           return { ok: false, renderer: definition.renderer, error: "read-failed", summary: `读取健康度失败：${error instanceof Error ? error.message : String(error)}` };
         }
       };
+    default:
+      return undefined;
+  }
+}
+
+function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions): SessionToolHandler | undefined {
+  // 先尝试小说领域 handler
+  const novelHandler = getNovelServiceHandler(toolName, options);
+  if (novelHandler) return novelHandler;
+
+  switch (toolName) {
     // --- Claude Code / Codex 级开发工具 ---
     case "Bash":
       return async ({ input, permissionMode, definition }) => {
