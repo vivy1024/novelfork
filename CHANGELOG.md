@@ -8,6 +8,41 @@
 
 （无）
 
+## v0.2.0 — 2026-05-12
+
+### 新功能
+
+- **设置页面全面对齐 NarraFork**：AI 代理（18 项设置）、外观（OLED 纯黑/终端）、通知（音效/钉钉/飞书）、使用历史（趋势图/筛选/明细）、代理管理（HTTP proxy）、学习中心（双栏+检索 API）
+- **Provider Block History**：块级对话历史模型，支持 DeepSeek reasoning_content / Claude thinking / OpenAI Responses
+- **Git 面板**：变更/提交/暂存三标签页，Git 分支菜单（分叉/合并）
+- **学习中心**：13 篇文档，4 分类，后端检索 API + Agent 可调用
+- **Responses adapter**：apiMode=responses 走 /responses 端点（含 streaming）
+- **模型批量禁用/启用**：供应商详情页一键操作
+- **头像上传**：压缩为 128x128 JPEG
+- **子代理池 UI**：shadcn badge + SimpleSelect 替代原生 select
+
+### 修复
+
+- **DeepSeek thinking + tools**：reasoning_content 保存/合并/回传完整管线
+- **Claude thinking blocks**：保存并回传 thinking/redacted_thinking
+- **Provider 名称显示**：首页不再显示 ID（provider-xxx）
+- **Worktree 路径**：注入正确 workDir 到 AI 上下文 + 会话详情可编辑保存
+- **学习中心加载**：即时渲染 fallback + API 增强
+- **代码块样式**：对齐 NarraFork（11px/10px padding/pre-wrap）
+- **Context Ring**：移到右侧 + 增强 popover
+- **工具暴露**：隐藏未接线的 cockpit/narrative/health 工具
+- **Anthropic 模型列表**：智能 URL 拼接（/v1/models 或 /models）
+- **旧配置兼容**：AgentSettingsPanel 不再因缺失字段崩溃
+
+### 架构
+
+- `shared/conversation-blocks.ts`：ConversationBlock / ConversationItem 类型
+- `RuntimeChatMessage` 加 `reasoning_content` 字段
+- `GenerateResult` 加 `reasoningContent` 字段
+- `AgentTurnEvent` 加 `reasoning_chunk` 事件
+- `ProviderReasoningPolicy` 类型（strip/passback-on-tool-loop/always-passback）
+- `NarratorSessionChatMessage` 加 `reasoning_content` 持久化
+
 ---
 
 ## v0.1.3 (2026-05-12)

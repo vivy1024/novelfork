@@ -6,7 +6,7 @@
 
 ## 版本与发布
 
-- **当前目标版本**: v0.1.3
+- **当前目标版本**: v0.2.0
 - **版本管理**: `CLAUDE.md` 标题 → 根/包级 `package.json` → `AGENTS.md` → `CHANGELOG.md` → release commit → `git tag` → GitHub Release
 - **版本变动**: 任何版本号变动必须同步更新 release 资料
 - **任务验收**: 用户要求提交、验收完成或明确要求收尾时，视为授权执行验证、Git 提交与 push
