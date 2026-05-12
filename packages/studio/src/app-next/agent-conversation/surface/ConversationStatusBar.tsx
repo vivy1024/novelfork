@@ -11,6 +11,7 @@ export interface ConversationModelOption {
   supportsTools?: boolean;
   supportsReasoning?: boolean;
   contextWindow?: number;
+  protocol?: string;
 }
 
 export interface ConversationBindingFact {
