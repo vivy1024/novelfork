@@ -122,8 +122,17 @@ export function AgentSettingsPanel() {
     fetchJson<UserConfig>(USER_SETTINGS_API_PATH)
       .then((data) => {
         if (cancelled) return;
-        setConfig(data.runtimeControls);
-        savedRef.current = data.runtimeControls;
+        // Normalize: ensure arrays exist (old configs may lack new fields)
+        const rc = data.runtimeControls as RuntimeControlSettings & Record<string, unknown>;
+        if (!rc.retryRules) rc.retryRules = [];
+        if (!rc.toolAccess) rc.toolAccess = { allowlist: [], blocklist: [], mcpStrategy: "inherit", directoryAllowlist: [], directoryBlocklist: [], commandAllowlist: [], commandBlocklist: [] } as ToolAccessSettings;
+        const ta = rc.toolAccess as ToolAccessSettings & Record<string, unknown>;
+        if (!ta.directoryAllowlist) ta.directoryAllowlist = [];
+        if (!ta.directoryBlocklist) ta.directoryBlocklist = [];
+        if (!ta.commandAllowlist) ta.commandAllowlist = [];
+        if (!ta.commandBlocklist) ta.commandBlocklist = [];
+        setConfig(rc as RuntimeControlSettings);
+        savedRef.current = rc;
       })
       .catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : String(e)); })
       .finally(() => { if (!cancelled) setLoading(false); });
@@ -283,7 +292,7 @@ export function AgentSettingsPanel() {
 
       {/* ── 自定义可重试错误规则 ── */}
       <Section title="自定义可重试错误规则" description="将特定 API 错误标记为可重试，匹配的错误将自动重试而非直接失败。">
-        {config.retryRules.map((rule, idx) => (
+        {(config.retryRules ?? []).map((rule, idx) => (
           <div key={rule.id} className="flex items-center gap-2 rounded border border-border px-3 py-2">
             <Switch
               checked={rule.enabled}
@@ -468,7 +477,7 @@ export function AgentSettingsPanel() {
             <span className="text-sm">全局命令黑名单</span>
             <p className="text-xs text-muted-foreground">所有叙述者自动拒绝的命令，优先于白名单。支持可选的拒绝提示词。</p>
           </div>
-          {config.toolAccess.commandBlocklist.map((rule, i) => (
+          {(config.toolAccess.commandBlocklist ?? []).map((rule, i) => (
             <div key={`cmd-block-${i}`} className="flex items-center gap-2 rounded border border-border px-2 py-1">
               <Input
                 className="flex-1 text-xs"
