@@ -50,7 +50,7 @@ import {
 } from "./chapter-state-recovery.js";
 import { persistChapterArtifacts } from "./chapter-persistence.js";
 import { runChapterReviewCycle } from "./chapter-review-cycle.js";
-import { validateChapterTruthPersistence } from "./chapter-truth-validation.js";
+import { validateChapterTruthPersistence } from "./chapter-jingwei-validation.js";
 import { loadPersistedPlan, relativeToBookDir } from "./persisted-governed-plan.js";
 import { pipelineEvents } from "./pipeline-events.js";
 import { buildBibleContext } from "../jingwei/context/build-bible-context.js";

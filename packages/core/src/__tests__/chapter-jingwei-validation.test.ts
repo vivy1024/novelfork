@@ -3,7 +3,7 @@ import type { AuditIssue, AuditResult } from "../agents/continuity.js";
 import type { ValidationResult } from "../agents/state-validator.js";
 import type { WriteChapterOutput } from "../agents/writer.js";
 import type { BookConfig } from "../models/book.js";
-import { validateChapterTruthPersistence } from "../pipeline/chapter-truth-validation.js";
+import { validateChapterTruthPersistence } from "../pipeline/chapter-jingwei-validation.js";
 
 const ZERO_USAGE = {
   promptTokens: 0,

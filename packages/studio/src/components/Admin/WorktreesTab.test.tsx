@@ -93,8 +93,8 @@ describe("WorktreesTab", () => {
           status: { modified: 0, added: 0, deleted: 0, untracked: 0 },
         },
         {
-          path: "D:/DESKTOP/sub2api/.test-workspace/.inkos-worktrees/feature-test",
-          relativePath: "../sub2api/.test-workspace/.inkos-worktrees/feature-test",
+          path: "D:/DESKTOP/sub2api/.test-workspace/.novelfork-worktrees/feature-test",
+          relativePath: "../sub2api/.test-workspace/.novelfork-worktrees/feature-test",
           branch: "feature-test",
           head: "abcdef1234567890",
           shortHead: "abcdef12",

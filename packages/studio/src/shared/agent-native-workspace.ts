@@ -14,6 +14,8 @@ export type JsonObjectSchema = {
   readonly additionalProperties?: boolean;
 };
 
+export type SessionToolScope = "universal" | "novel";
+
 export type SessionToolDefinition = {
   readonly name: string;
   readonly description: string;
@@ -22,6 +24,7 @@ export type SessionToolDefinition = {
   readonly renderer: string;
   readonly enabledForModes: readonly SessionPermissionMode[];
   readonly visibility: SessionToolVisibility;
+  readonly scope?: SessionToolScope;
 };
 
 export type WorkspaceResourceViewKind =
@@ -47,7 +50,6 @@ export type WorkspaceArtifactKind =
   | "outline"
   | "jingwei"
   | "story-file"
-  | "truth-file"
   | "material"
   | "publish-report"
   | "guided-plan"
