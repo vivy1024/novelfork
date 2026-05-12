@@ -794,17 +794,20 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
           return { ok: false, renderer: definition.renderer, error: "session-not-found", summary: "会话不存在。" };
         }
         const goals = [...(session.goals ?? [])];
-        const activeGoal = goals.find(g => g.status === "active");
-        if (!activeGoal) {
-          return { ok: false, renderer: definition.renderer, error: "no-active-goal", summary: "没有活跃目标可以标记完成。" };
+        const goalId = typeof input.goalId === "string" ? input.goalId : undefined;
+        const targetGoal = goalId
+          ? goals.find(g => g.id === goalId)
+          : goals.find(g => g.status === "active");
+        if (!targetGoal) {
+          return { ok: false, renderer: definition.renderer, error: "no-active-goal", summary: goalId ? `目标 ${goalId} 不存在。` : "没有活跃目标可以标记完成。" };
         }
-        activeGoal.status = "complete";
+        targetGoal.status = "complete";
         await updateSession(sessionId, { goals });
         return {
           ok: true,
           renderer: definition.renderer,
-          summary: `目标已完成：${activeGoal.objective}`,
-          data: { goal: activeGoal },
+          summary: `目标已完成：${targetGoal.objective}`,
+          data: { goal: targetGoal },
         };
       };
     // --- LearningGuide (reads docs/learning/) ---
@@ -1291,59 +1294,57 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
         const runInBackground = input.run_in_background === true;
         const agentId = crypto.randomUUID().slice(0, 8);
 
-        const { runSubagent } = await import("./subagent-runtime.js");
-        const { createLLMClient, chatCompletion, loadProjectConfig } = await import("@vivy1024/novelfork-core");
+        const { executeRuntimeTurn } = await import("./runtime-turn-service.js");
+        const { generateSessionReply } = await import("./llm-runtime-service.js");
         const { getEnabledSessionTools } = await import("./session-tool-registry.js");
+        const { createSession, getSessionById } = await import("./session-service.js");
 
         const executeSubagent = async (): Promise<string> => {
-          const workDir = options.workDir ?? process.cwd();
-          const config = await loadProjectConfig(workDir);
-          const client = createLLMClient(config.llm);
-          const modelId = config.llm.model;
+          const parentSession = await getSessionById(sessionId);
+          const subSession = await createSession({
+            title: description || `子代理: ${(prompt || description).slice(0, 30)}`,
+            agentId: "subagent",
+            sessionMode: "chat",
+            projectId: parentSession?.projectId,
+            worktree: parentSession?.worktree,
+            parentSessionId: sessionId,
+            sessionConfig: { permissionMode: parentSession?.sessionConfig.permissionMode ?? "edit" },
+          });
 
           // 子代理获得通用工具集（排除 Agent/ForkNarrator/Send/Await 避免无限递归）
           const subTools = getEnabledSessionTools(
-            "edit",
+            subSession.sessionConfig.permissionMode,
             "subagent",
             { disabledTools: ["Agent", "ForkNarrator", "Send", "Await"] },
           );
-          const subToolNames = subTools.map(t => t.name);
 
-          const result = await runSubagent({
-            config: {
-              id: agentId,
-              name: description || `subagent-${agentId}`,
-              systemPrompt: "你是一个子代理，负责完成分配给你的具体任务。你可以使用工具来读写文件、搜索代码、执行命令。完成后给出简洁的结果摘要。",
-              modelId,
-              providerId: config.llm.provider ?? "openai",
-              tools: subToolNames,
-              maxSteps: 6,
-            },
-            prompt: prompt || description,
+          const turn = await executeRuntimeTurn({
+            sessionId: subSession.id,
+            sessionConfig: subSession.sessionConfig,
+            messages: [{ type: "message" as const, role: "user" as const, content: prompt || description }],
+            systemPrompt: "你是一个子代理，负责完成分配给你的具体任务。你可以使用工具来读写文件、搜索代码、执行命令。完成后给出简洁的结果摘要。",
+            tools: subTools,
+            permissionMode: subSession.sessionConfig.permissionMode,
+            maxSteps: 6,
             generate: async (generateInput) => {
-              try {
-                const messages = generateInput.messages.map(m => ({
-                  role: (m.role === "tool_result" ? "user" : m.role) as "user" | "assistant",
-                  content: m.content,
-                }));
-                const response = await chatCompletion(client, modelId, messages);
-                return { success: true, type: "message" as const, content: response.content };
-              } catch (error) {
-                return { success: false, type: "message" as const, content: error instanceof Error ? error.message : String(error) };
-              }
-            },
-            executeTool: async (toolName, toolInput) => {
-              const executor = createSessionToolExecutor({ workDir });
-              const toolResult = await executor.execute({
-                sessionId,
-                toolName,
-                input: toolInput,
-                permissionMode: "edit",
+              const result = await generateSessionReply({
+                sessionConfig: subSession.sessionConfig,
+                messages: generateInput.messages,
+                tools: generateInput.tools,
+                onStreamChunk: generateInput.onStreamChunk,
+                signal: generateInput.signal,
               });
-              return { ok: toolResult.ok, summary: toolResult.summary ?? "", data: toolResult.data };
+              return result as any;
+            },
+            executeTool: async (toolInput) => {
+              const workDir = subSession.worktree?.trim() || options.workDir || process.cwd();
+              const executor = createSessionToolExecutor({ workDir });
+              return executor.execute(toolInput);
             },
           });
-          return result.content ?? result.error ?? "子代理未返回结果。";
+
+          const assistantMessage = turn.agentEvents.find(e => e.type === "assistant_message");
+          return assistantMessage?.type === "assistant_message" ? assistantMessage.content : "子代理未返回文本结果。";
         };
 
         if (runInBackground) {
