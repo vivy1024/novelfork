@@ -2,7 +2,6 @@ import { useState, useMemo } from "react";
 import { Check, X, ChevronDown, ChevronRight, Loader2, Terminal, Eye, Search, Globe, Bot, HelpCircle, Pencil, FileText } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 
 export interface ConversationToolCall {
   id: string;
@@ -44,7 +43,7 @@ function getToolCategory(toolName: string): ToolCategory {
   return "other";
 }
 
-/** NarraFork 风格颜色映射 */
+/** NarraFork 风格颜色映射 — 对标实测 */
 const CATEGORY_COLORS: Record<ToolCategory, { bg: string; text: string }> = {
   bash:     { bg: "bg-orange-500/15", text: "text-orange-600 dark:text-orange-400" },
   read:     { bg: "bg-lime-500/15",   text: "text-lime-600 dark:text-lime-400" },
@@ -209,12 +208,12 @@ export function ToolCallCard({ toolCall }: { toolCall: ConversationToolCall; onO
   const description = getDescription(toolCall, category);
 
   return (
-    <div className="overflow-hidden">
-      {/* Header — NarraFork 风格：纯扁平，无包裹，极紧凑 */}
+    <div className="my-1 rounded-lg border border-border overflow-hidden">
+      {/* Header — NarraFork 风格：带边框卡片，紧凑行 */}
       <button
         type="button"
         onClick={() => setExpanded(!expanded)}
-        className="flex w-full items-center gap-[5px] py-px text-left cursor-pointer hover:bg-muted/30 transition-colors overflow-hidden"
+        className="flex w-full items-center gap-1.5 px-3 py-1.5 text-left cursor-pointer hover:bg-muted/30 transition-colors overflow-hidden"
       >
         {/* 工具图标（彩色圆形背景） */}
         {isRunning ? (
@@ -265,14 +264,8 @@ export function ToolCallCard({ toolCall }: { toolCall: ConversationToolCall; onO
 
       {/* 展开内容 */}
       {expanded && (
-        <>
-          <Separator className="ml-5" />
-          <ToolCallExpanded toolCall={toolCall} category={category} />
-        </>
+        <ToolCallExpanded toolCall={toolCall} category={category} />
       )}
-
-      {/* 底部分隔线（NarraFork 风格：工具调用之间用细线分隔） */}
-      <Separator />
     </div>
   );
 }
