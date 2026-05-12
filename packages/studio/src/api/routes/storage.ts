@@ -453,6 +453,7 @@ export function createStorageRouter(ctx: RouterContext): Hono {
       }
 
       // Create 5 fixed Agent sessions bound to this book
+      // 先检查是否已有该 bookId 的 sessions（防止重复创建导致重复 agent 会话）
       const BOOK_AGENTS = [
         { agentId: "writer", title: `📝 写书 — ${body.title}`, sessionMode: "chat" as const },
         { agentId: "hooks", title: `🎣 伏笔 — ${body.title}`, sessionMode: "chat" as const },
@@ -470,19 +471,33 @@ export function createStorageRouter(ctx: RouterContext): Hono {
           ?? preparedProjectBootstrap?.bootstrap.worktreePath
           ?? undefined;
 
-      const createdSessions = await Promise.all(
-        BOOK_AGENTS.map((agent) =>
-          createSession({
-            title: agent.title,
-            agentId: agent.agentId,
-            sessionMode: agent.sessionMode,
-            projectId: bookId,
-            worktree: sessionWorktree,
-            sessionConfig: { permissionMode: "edit" },
-          }),
-        ),
-      );
-      const defaultSession = createdSessions[0]; // writer session is the default
+      // 检查是否已有该 book 的 agent sessions（防止重复创建时产生重复会话）
+      const existingSessions = await listSessions({ projectId: bookId });
+      const existingAgentIds = new Set(existingSessions.map((s) => s.agentId).filter(Boolean));
+
+      const agentsToCreate = BOOK_AGENTS.filter((agent) => !existingAgentIds.has(agent.agentId));
+
+      const createdSessions = agentsToCreate.length > 0
+        ? await Promise.all(
+            agentsToCreate.map((agent) =>
+              createSession({
+                title: agent.title,
+                agentId: agent.agentId,
+                sessionMode: agent.sessionMode,
+                projectId: bookId,
+                worktree: sessionWorktree,
+                sessionConfig: { permissionMode: "edit" },
+              }),
+            ),
+          )
+        : [];
+      const defaultSession = createdSessions.find((s) => s.agentId === "writer")
+        ?? existingSessions.find((s) => s.agentId === "writer")
+        ?? createdSessions[0]
+        ?? existingSessions[0];
+      if (!defaultSession) {
+        throw new ApiError(500, "BOOK_CREATE_NO_DEFAULT_SESSION", "No writer session available for book.");
+      }
       const defaultSessionSnapshot = await getSessionChatSnapshot(defaultSession.id);
       if (!defaultSessionSnapshot) {
         throw new ApiError(500, "BOOK_CREATE_DEFAULT_SESSION_SNAPSHOT_FAILED", "Default writing session snapshot was not ready.");
