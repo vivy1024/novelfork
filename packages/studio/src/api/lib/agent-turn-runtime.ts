@@ -172,10 +172,12 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
 
   for (;;) {
     if (input.signal?.aborted) {
+      console.log(JSON.stringify({ component: "agent-turn-runtime", event: "aborted", sessionId: input.sessionId, executedToolSteps }));
       emit({ type: "turn_completed" });
       return events;
     }
 
+    const generateStartedAt = Date.now();
     const reply = await input.generate({
       sessionConfig: input.sessionConfig,
       messages,
@@ -185,11 +187,16 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
       ...(emitStreamChunk ? { onStreamChunk: emitStreamChunk } : {}),
       ...(input.signal ? { signal: input.signal } : {}),
     });
+    const generateDurationMs = Date.now() - generateStartedAt;
 
     if (!reply.success) {
+      console.log(JSON.stringify({ component: "agent-turn-runtime", event: "generate-failed", sessionId: input.sessionId, code: reply.code, durationMs: generateDurationMs }));
       emit(buildFailureEvent(reply));
       return events;
     }
+
+    const usage = reply.metadata?.usage;
+    console.log(JSON.stringify({ component: "agent-turn-runtime", event: "generate-ok", sessionId: input.sessionId, type: reply.type ?? "message", durationMs: generateDurationMs, ...(usage ? { inputTokens: usage.input_tokens, outputTokens: usage.output_tokens } : {}) }));
 
     if (reply.type !== "tool_use") {
       const content = reply.content.trim();
@@ -240,6 +247,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
       messages.push({ type: "tool_call", id: toolUse.id, name: toolUse.name, input: toolUse.input });
       recentToolCalls.push(toolUse.name);
 
+      const toolStartedAt = Date.now();
       const signature = toolSignature(toolUse.name, toolUse.input);
       const duplicateResult = toolResultsBySignature.get(signature);
       const toolResult = duplicateResult
@@ -252,7 +260,9 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
           sessionConfig: input.sessionConfig,
           ...(input.canvasContext ? { canvasContext: input.canvasContext } : {}),
         });
+      const toolDurationMs = Date.now() - toolStartedAt;
       executedToolSteps += 1;
+      console.log(JSON.stringify({ component: "agent-turn-runtime", event: "tool-executed", sessionId: input.sessionId, toolName: toolUse.name, ok: toolResult.ok, durationMs: toolDurationMs, duplicate: Boolean(duplicateResult), step: executedToolSteps }));
       if (!duplicateResult) {
         toolResultsBySignature.set(signature, toolResult);
       }
