@@ -1,4 +1,4 @@
-import type { PluginManifest } from "@vivy1024/novelfork-core";
+import type { PluginManifest, PluginAgentPreset } from "@vivy1024/novelfork-core";
 
 /**
  * 小说工具名列表 — 声明本插件提供的 19 个小说领域工具。
@@ -27,6 +27,16 @@ export const NOVEL_TOOL_NAMES: readonly string[] = [
   "health.read_summary",
 ];
 
+/**
+ * 小说 Agent 角色预设
+ */
+export const NOVEL_AGENT_PRESET_LIST: PluginAgentPreset[] = [
+  { agentId: "writer", name: "📝 写书", tools: ["Bash", "Read", "Write", "Edit", "Grep", "Glob", "EnterWorktree", "ExitWorktree", "TaskCreate"] },
+  { agentId: "hooks", name: "🎣 伏笔", tools: ["Read", "Write", "Grep", "Glob"] },
+  { agentId: "chapter-hooks", name: "🪝 章末钩子", tools: ["Read", "Grep", "Glob"] },
+  { agentId: "outline", name: "📋 大纲与经纬", tools: ["Read", "Write", "Edit", "Grep", "Glob"] },
+];
+
 export const NOVEL_PLUGIN_MANIFEST: PluginManifest = {
   name: "novelfork-novel",
   displayName: "NovelFork 小说写作插件",
@@ -34,8 +44,8 @@ export const NOVEL_PLUGIN_MANIFEST: PluginManifest = {
   description: "小说写作核心插件，提供章节管理、经纬、驾驶舱、PGI、引导式生成等工具",
   projectType: "novel",
   tools: NOVEL_TOOL_NAMES,
-  agentPresets: [], // Phase 3 后续步骤填充
-  routes: [],      // Phase 3 后续步骤填充
+  agentPresets: NOVEL_AGENT_PRESET_LIST,
+  routes: [],
   systemPromptExtensions: [],
 };
 
