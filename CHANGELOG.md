@@ -10,7 +10,25 @@
 
 ---
 
-## v0.1.2 (2026-05-11)
+## v0.1.3 (2026-05-12)
+
+### 新功能
+
+- feat: 对话 UI 全面对齐 NarraFork 参考实现（ToolCallCard 颜色编码、用户消息头像+时间、AI 消息全宽、底部分层堆叠、中断/继续按钮样式、NarratorStatusBar 旋转加载+进度条+上轮耗时）
+- feat: 会话详情面板完整实现（统计卡片网格、工作目录编辑、会话配置编辑含三段选择器、自定义 Traits、Subagent 模型限制、工具限制、关联关系、运行状态、访问规则）
+- feat: 设置持久化 — AgentSettingsPanel 接入 API 保存 + dirty 状态追踪 + sticky 底栏；新增 WritingSettingsPanel（14 字段写作配置）
+
+### 修复
+
+- fix: 工具权限管线 — isPathWithinWorkDir 允许绝对路径、getEnabledSessionTools 过滤 disabledTools、创建会话时合并 routines.tools deny
+- fix: 会话工作目录使用仓库根目录（不再被困在 worktree 子目录）
+- fix: 首页排除书籍绑定会话、批量删除仅在归档页可用
+- fix: 去重 Agent、隐藏废弃 sections、"总览"返回按钮
+- fix: 移除 ensure-agents 自动创建、新增批量删除、修复引导向导返回
+
+### 重构
+
+- refactor: 套路页命令/子代理/MCP/钩子改为占位卡片"暂未开放"；全局/项目技能改为写作预设说明
 
 ### 修复
 
