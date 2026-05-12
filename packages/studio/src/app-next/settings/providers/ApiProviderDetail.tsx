@@ -240,6 +240,33 @@ export function ApiProviderDetail({
             </Button>
           </div>
         </div>
+        {/* 批量操作 */}
+        {provider.models.length > 0 && (
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="xs"
+              onClick={() => {
+                for (const model of provider.models) {
+                  if (model.enabled !== false) void onUpdateModel(provider.id, model, { enabled: false });
+                }
+              }}
+            >
+              全部禁用
+            </Button>
+            <Button
+              variant="outline"
+              size="xs"
+              onClick={() => {
+                for (const model of provider.models) {
+                  if (model.enabled === false) void onUpdateModel(provider.id, model, { enabled: true });
+                }
+              }}
+            >
+              全部启用
+            </Button>
+          </div>
+        )}
 
         <ModelList
           provider={provider}
