@@ -95,6 +95,9 @@ export type LegacyRuntimeChatMessage = LegacyMessage | LegacyToolMessage;
 
 let idCounter = 0;
 function generateBlockId(): string {
+  if (typeof globalThis.crypto !== "undefined" && "randomUUID" in globalThis.crypto) {
+    return `blk_${(globalThis.crypto as { randomUUID(): string }).randomUUID().slice(0, 12)}`;
+  }
   return `blk_${Date.now().toString(36)}_${(idCounter++).toString(36)}`;
 }
 
@@ -109,9 +112,9 @@ export function upgradeMessage(msg: LegacyRuntimeChatMessage): ConversationItem 
 
   const blocks: ConversationBlock[] = [];
 
-  // Reasoning content (DeepSeek)
+  // Reasoning content (DeepSeek or OpenAI o-series)
   if ("reasoning_content" in msg && msg.reasoning_content) {
-    blocks.push({ type: "reasoning", content: msg.reasoning_content, provider: "deepseek" });
+    blocks.push({ type: "reasoning", content: msg.reasoning_content, provider: "openai" });
   }
 
   // Text content
@@ -142,10 +145,13 @@ export function downgradeItem(item: ConversationItem): LegacyRuntimeChatMessage 
   const content = extractTextContent(item);
   const toolCalls = extractToolCalls(item);
   const reasoning = extractReasoningContent(item);
+  // Also check thinking blocks (Claude) as reasoning_content fallback
+  const thinking = !reasoning ? item.blocks.find((b): b is Extract<ConversationBlock, { type: "thinking" }> => b.type === "thinking") : undefined;
+  const reasoningValue = reasoning ?? thinking?.thinking;
 
   const msg: LegacyMessage = { role: item.role as "system" | "user" | "assistant", content };
   if (toolCalls.length) (msg as LegacyMessage & { toolCalls: LegacyToolUse[] }).toolCalls = toolCalls;
-  if (reasoning) msg.reasoning_content = reasoning;
+  if (reasoningValue) msg.reasoning_content = reasoningValue;
 
   return msg;
 }
