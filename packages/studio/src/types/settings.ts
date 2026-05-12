@@ -19,6 +19,8 @@ export interface UserProfile {
 
 export interface UserPreferences {
   theme: "light" | "dark" | "auto";
+  /** OLED 纯黑模式：深色模式下使用纯黑背景 */
+  oledBlack: boolean;
   fontSize: number;
   fontFamily: string;
   editorLineHeight: number;
@@ -32,6 +34,10 @@ export interface UserPreferences {
   wrapCode: boolean;
   wrapDiff: boolean;
   language: string;
+  /** 终端字体大小 (8-32) */
+  terminalFontSize: number;
+  /** 终端主题 */
+  terminalTheme: "auto" | "dark" | "light";
 }
 
 export interface RuntimeRecoverySettings {
@@ -50,6 +56,20 @@ export interface ToolAccessSettings {
   allowlist: string[];
   blocklist: string[];
   mcpStrategy: McpPolicyMode;
+  /** 全局白名单目录（对所有会话自动放行） */
+  directoryAllowlist: string[];
+  /** 全局黑名单目录（对所有会话禁止访问，优先于白名单） */
+  directoryBlocklist: string[];
+  /** 全局命令白名单（支持通配符如 npm*） */
+  commandAllowlist: string[];
+  /** 全局命令黑名单（优先于白名单，支持可选拒绝提示词） */
+  commandBlocklist: CommandBlockRule[];
+}
+
+export interface CommandBlockRule {
+  pattern: string;
+  /** 可选的拒绝提示词，告诉 AI 为什么不能用这个命令 */
+  rejectHint?: string;
 }
 
 export interface RuntimeDebugSettings {
@@ -69,6 +89,10 @@ export interface RuntimeControlSettings {
   largeWindowCompressionThresholdPercent: number;
   /** 大窗口（>600k）压缩起始 % */
   largeWindowTruncateTargetPercent: number;
+  /** 自动压缩后保留的最近对话轮数 */
+  compressionKeepTurns: number;
+  /** 已裁剪消息比例达到此值时强制压缩 */
+  maxTruncateRatio: number;
   recovery: RuntimeRecoverySettings;
   toolAccess: ToolAccessSettings;
   runtimeDebug: RuntimeDebugSettings;
@@ -94,12 +118,39 @@ export interface RuntimeControlSettings {
   scrollAutoLoadHistory: boolean;
   /** Dump 每条 API 请求 */
   dumpApiRequests: boolean;
+  /** 仅保留报错请求 dump */
+  dumpOnlyErrors: boolean;
   /** 发送方式：enter 或 ctrl-enter */
   sendMode: "enter" | "ctrl-enter";
   /** Codex OS sandbox 尚未接入，只允许保存为 planned 状态 */
   codexSandboxMode: CodexSandboxMode;
   /** 角色弧线自动追踪模式 */
   arcTrackingMode?: "off" | "rule" | "llm";
+  /** 旧编码支持：自动检测并保留非 UTF-8 文件编码（GBK、Shift_JIS 等） */
+  legacyEncoding: boolean;
+  /** 刷新 Shell 环境：每次 Bash 执行时通过 login shell 加载最新环境变量 */
+  refreshShellEnv: boolean;
+  /** 新叙述者默认进入计划模式 */
+  defaultPlanMode: boolean;
+  /** 全局默认自动批准计划 */
+  autoApprovePlan: boolean;
+  /** 全局默认启用危险反思 */
+  dangerReflection: boolean;
+  /** 首 token 超时时间（秒），0=禁用 */
+  firstTokenTimeout: number;
+  /** 沉默工具调用阈值：连续多少次无文本输出后要求说明 */
+  silentToolCallThreshold: number;
+  /** 自定义可重试错误规则 */
+  retryRules: RetryRule[];
+}
+
+export interface RetryRule {
+  id: string;
+  enabled: boolean;
+  /** HTTP 状态码匹配（空=不匹配状态码） */
+  httpStatus: string;
+  /** 内容关键词匹配（空=不匹配内容） */
+  contentKeyword: string;
 }
 
 export type ModelReferenceValidationStatus = "empty" | "valid" | "invalid";
@@ -251,6 +302,7 @@ export const DEFAULT_USER_CONFIG: UserConfig = {
   },
   preferences: {
     theme: "auto",
+    oledBlack: false,
     fontSize: 14,
     fontFamily: "system-ui, -apple-system, sans-serif",
     editorLineHeight: 1.6,
@@ -264,12 +316,16 @@ export const DEFAULT_USER_CONFIG: UserConfig = {
     wrapCode: true,
     wrapDiff: true,
     language: "zh",
+    terminalFontSize: 14,
+    terminalTheme: "auto",
   },
   runtimeControls: {
     defaultPermissionMode: DEFAULT_SESSION_CONFIG.permissionMode,
     defaultReasoningEffort: DEFAULT_SESSION_CONFIG.reasoningEffort,
     contextCompressionThresholdPercent: 80,
     contextTruncateTargetPercent: 70,
+    compressionKeepTurns: 4,
+    maxTruncateRatio: 80,
     recovery: {
       resumeOnStartup: true,
       maxRecoveryAttempts: 3,
@@ -283,6 +339,10 @@ export const DEFAULT_USER_CONFIG: UserConfig = {
       allowlist: [],
       blocklist: [],
       mcpStrategy: "inherit",
+      directoryAllowlist: [],
+      directoryBlocklist: [],
+      commandAllowlist: [],
+      commandBlocklist: [],
     },
     runtimeDebug: {
       tokenDebugEnabled: false,
@@ -302,11 +362,20 @@ export const DEFAULT_USER_CONFIG: UserConfig = {
     showOutputRate: false,
     scrollAutoLoadHistory: true,
     dumpApiRequests: false,
+    dumpOnlyErrors: false,
     sendMode: "enter",
     codexSandboxMode: normalizeCodexSandboxMode(undefined).mode,
     largeWindowCompressionThresholdPercent: 60,
     largeWindowTruncateTargetPercent: 50,
     arcTrackingMode: "rule",
+    legacyEncoding: false,
+    refreshShellEnv: false,
+    defaultPlanMode: false,
+    autoApprovePlan: true,
+    dangerReflection: true,
+    firstTokenTimeout: 0,
+    silentToolCallThreshold: 25,
+    retryRules: [],
   },
   modelDefaults: {
     defaultSessionModel: "",

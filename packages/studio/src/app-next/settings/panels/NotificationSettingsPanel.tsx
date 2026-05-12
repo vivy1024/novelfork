@@ -1,10 +1,15 @@
 import { useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
+import { SimpleSelect } from "@/components/ui/simple-select";
+import { Play } from "lucide-react";
 
 interface NotificationConfig {
   browserNotifications: boolean;
   soundEnabled: boolean;
+  soundSource: "builtin" | "custom";
+  soundPreset: string;
   events: {
     permissionRequest: boolean;
     taskComplete: boolean;
@@ -12,11 +17,21 @@ interface NotificationConfig {
     backgroundComplete: boolean;
   };
   soundVolume: number;
+  dingtalk: {
+    enabled: boolean;
+    webhookUrl: string;
+  };
+  feishu: {
+    enabled: boolean;
+    webhookUrl: string;
+  };
 }
 
 const DEFAULT_CONFIG: NotificationConfig = {
   browserNotifications: false,
   soundEnabled: false,
+  soundSource: "builtin",
+  soundPreset: "gentle",
   events: {
     permissionRequest: true,
     taskComplete: true,
@@ -24,6 +39,14 @@ const DEFAULT_CONFIG: NotificationConfig = {
     backgroundComplete: true,
   },
   soundVolume: 70,
+  dingtalk: {
+    enabled: false,
+    webhookUrl: "",
+  },
+  feishu: {
+    enabled: false,
+    webhookUrl: "",
+  },
 };
 
 function SwitchRow({ label, description, checked, onChange, disabled }: {
@@ -140,17 +163,49 @@ export function NotificationSettingsPanel() {
         />
 
         {config.soundEnabled && (
-          <label className="block space-y-1">
-            <span className="text-xs text-muted-foreground">音量 ({config.soundVolume}%)</span>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              value={config.soundVolume}
-              onChange={(e) => setConfig((prev) => ({ ...prev, soundVolume: Number(e.currentTarget.value) }))}
-              className="w-full accent-primary"
-            />
-          </label>
+          <div className="space-y-3 pl-4 border-l-2 border-border">
+            <div className="flex items-center gap-3">
+              <SimpleSelect
+                value={config.soundSource}
+                onValueChange={(v) => setConfig((prev) => ({ ...prev, soundSource: v as "builtin" | "custom" }))}
+                options={[
+                  { value: "builtin", label: "内置音效" },
+                  { value: "custom", label: "自选文件" },
+                ]}
+                className="w-32"
+                aria-label="音效来源"
+              />
+              {config.soundSource === "builtin" && (
+                <SimpleSelect
+                  value={config.soundPreset}
+                  onValueChange={(v) => setConfig((prev) => ({ ...prev, soundPreset: v }))}
+                  options={[
+                    { value: "gentle", label: "柔和" },
+                    { value: "chime", label: "清脆" },
+                    { value: "bell", label: "铃声" },
+                    { value: "pop", label: "气泡" },
+                  ]}
+                  className="w-24"
+                  aria-label="音效预设"
+                />
+              )}
+              <Button type="button" variant="outline" size="sm" className="gap-1">
+                <Play className="size-3" />
+                试听
+              </Button>
+            </div>
+            <label className="block space-y-1">
+              <span className="text-xs text-muted-foreground">音量 ({config.soundVolume}%)</span>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={config.soundVolume}
+                onChange={(e) => setConfig((prev) => ({ ...prev, soundVolume: Number(e.currentTarget.value) }))}
+                className="w-full accent-primary"
+              />
+            </label>
+          </div>
         )}
       </div>
 
@@ -186,6 +241,45 @@ export function NotificationSettingsPanel() {
           checked={config.events.backgroundComplete}
           onChange={(value) => updateEvent("backgroundComplete", value)}
         />
+      </div>
+
+      {/* 钉钉/飞书 */}
+      <div className="space-y-4 rounded-lg border border-border p-4">
+        <h3 className="text-sm font-semibold text-foreground">IM 通知</h3>
+
+        <SwitchRow
+          label="钉钉通知"
+          description="通过 Webhook 发送通知到钉钉群"
+          checked={config.dingtalk.enabled}
+          onChange={(value) => setConfig((prev) => ({ ...prev, dingtalk: { ...prev.dingtalk, enabled: value } }))}
+        />
+        {config.dingtalk.enabled && (
+          <div className="pl-4 border-l-2 border-border">
+            <Input
+              placeholder="钉钉 Webhook URL"
+              value={config.dingtalk.webhookUrl}
+              onChange={(e) => setConfig((prev) => ({ ...prev, dingtalk: { ...prev.dingtalk, webhookUrl: e.target.value } }))}
+              className="text-xs"
+            />
+          </div>
+        )}
+
+        <SwitchRow
+          label="飞书通知"
+          description="通过 Webhook 发送通知到飞书群"
+          checked={config.feishu.enabled}
+          onChange={(value) => setConfig((prev) => ({ ...prev, feishu: { ...prev.feishu, enabled: value } }))}
+        />
+        {config.feishu.enabled && (
+          <div className="pl-4 border-l-2 border-border">
+            <Input
+              placeholder="飞书 Webhook URL"
+              value={config.feishu.webhookUrl}
+              onChange={(e) => setConfig((prev) => ({ ...prev, feishu: { ...prev.feishu, webhookUrl: e.target.value } }))}
+              className="text-xs"
+            />
+          </div>
+        )}
       </div>
 
       {/* 测试按钮 */}

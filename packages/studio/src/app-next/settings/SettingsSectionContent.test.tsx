@@ -86,17 +86,17 @@ describe("SettingsSectionContent", () => {
     expect(screen.queryByText("—")).toBeNull();
   });
 
-  it("mounts RuntimeControlPanel for agents section", async () => {
+  it("mounts AgentSettingsPanel for agents section", async () => {
     render(<SettingsSectionContent sectionId="agents" />);
-    expect(await screen.findByText("权限与推理")).toBeTruthy();
+    // AgentSettingsPanel shows loading state when API is not mocked
+    expect(await screen.findByText("正在读取 Agent 配置…")).toBeTruthy();
   });
 
-  it("shows non-provider settings sections with explicit reuse or not-connected status", async () => {
+  it("shows non-provider settings sections with expected content", async () => {
     const sections = [
-      ["notifications", "通知", "此功能尚未开放"],
+      ["notifications", "通知"],
       ["appearance", "外观"],
       ["server", "服务器与系统"],
-      ["history", "使用历史"],
       ["about", "关于"],
     ] as const;
 

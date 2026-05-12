@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { fetchJson, putApi } from "../../../hooks/use-api";
 import type { UserProfile } from "../../../types/settings";
-import { User, Mail, GitBranch } from "lucide-react";
+import { User, Mail, GitBranch, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -14,11 +14,14 @@ export function ProfilePanel() {
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     fetchJson<{ profile: UserProfile }>("/settings/user")
       .then((data) => {
         setProfile(data.profile);
+        if (data.profile.avatar) setAvatarPreview(data.profile.avatar);
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -33,6 +36,22 @@ export function ProfilePanel() {
     }
   }
 
+  function handleAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      alert("头像文件不能超过 2MB");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      setAvatarPreview(dataUrl);
+      setProfile((p) => ({ ...p, avatar: dataUrl }));
+    };
+    reader.readAsDataURL(file);
+  }
+
   if (loading) {
     return <div className="text-muted-foreground">加载中...</div>;
   }
@@ -40,20 +59,46 @@ export function ProfilePanel() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold mb-2 text-foreground">个人资料</h2>
+        <h2 className="text-lg font-semibold mb-1 text-foreground">个人资料</h2>
         <p className="text-sm text-muted-foreground">
           配置您的个人信息和 Git 提交信息
         </p>
       </div>
 
       <div className="rounded-lg border border-border p-4 space-y-4">
+        {/* 头像 */}
         <div className="flex items-center gap-4 pb-4 border-b border-border">
-          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted text-xl font-semibold text-muted-foreground">
-            {profile.name ? profile.name.charAt(0).toUpperCase() : "U"}
+          <div className="relative">
+            {avatarPreview ? (
+              <img
+                src={avatarPreview}
+                alt="头像"
+                className="h-16 w-16 rounded-full object-cover border border-border"
+              />
+            ) : (
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted text-xl font-semibold text-muted-foreground">
+                {profile.name ? profile.name.charAt(0).toUpperCase() : "U"}
+              </div>
+            )}
           </div>
           <div>
             <p className="text-sm font-medium">{profile.name || "未设置姓名"}</p>
-            <Button variant="link" size="xs" disabled>上传头像</Button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleAvatarChange}
+            />
+            <Button
+              variant="outline"
+              size="xs"
+              className="mt-1 gap-1"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <Upload className="size-3" />
+              上传头像
+            </Button>
           </div>
         </div>
 
