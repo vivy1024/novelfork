@@ -17,6 +17,10 @@ import { resolveSessionToolPolicy, type SessionToolPolicyResolution } from "./se
 import { executeBashTool, executeFileReadTool, executeFileWriteTool, executeFileEditTool } from "./real-tool-handlers.js";
 import { validateToolPermission, classifyBashCommand, isPathWithinWorkDir } from "./permission-pipeline.js";
 
+// --- Session-level in-memory state for Goals and Pipelines ---
+const sessionGoals = new Map<string, Array<{ id: string; objective: string; status: string; createdAt: string }>>();
+const sessionPipelines = new Map<string, { label: string; captures: Map<string, string>; counter: number }>();
+
 export type SessionToolHandlerContext = SessionToolExecutionInput & {
   readonly definition: SessionToolDefinition;
 };
@@ -676,6 +680,133 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
 
         return { ok: false, renderer: definition.renderer, error: "invalid-action", summary: `不支持的 action: ${action}` };
       };
+    // --- Goals (session-level in-memory) ---
+    case "GetGoals":
+      return async ({ sessionId, definition }) => {
+        const goals = sessionGoals.get(sessionId) ?? [];
+        return {
+          ok: true,
+          renderer: definition.renderer,
+          summary: goals.length > 0 ? `当前有 ${goals.length} 个目标。` : "当前没有活跃目标。",
+          data: { goals },
+        };
+      };
+    case "AddGoal":
+      return async ({ input, sessionId, definition }) => {
+        const objective = typeof input.objective === "string" ? input.objective.trim() : "";
+        if (!objective) {
+          return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "objective 不能为空。" };
+        }
+        const goals = sessionGoals.get(sessionId) ?? [];
+        const newGoal = { id: crypto.randomUUID(), objective, status: "active", createdAt: new Date().toISOString() };
+        goals.push(newGoal);
+        sessionGoals.set(sessionId, goals);
+        return {
+          ok: true,
+          renderer: definition.renderer,
+          summary: `已添加目标：${objective}`,
+          data: { goal: newGoal, totalGoals: goals.length },
+        };
+      };
+    case "UpdateGoal":
+      return async ({ input, sessionId, definition }) => {
+        const status = typeof input.status === "string" ? input.status : "";
+        if (status !== "complete") {
+          return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "status 必须为 'complete'。" };
+        }
+        const goals = sessionGoals.get(sessionId) ?? [];
+        const activeGoal = goals.find(g => g.status === "active");
+        if (!activeGoal) {
+          return { ok: false, renderer: definition.renderer, error: "no-active-goal", summary: "没有活跃目标可以标记完成。" };
+        }
+        activeGoal.status = "complete";
+        return {
+          ok: true,
+          renderer: definition.renderer,
+          summary: `目标已完成：${activeGoal.objective}`,
+          data: { goal: activeGoal },
+        };
+      };
+    // --- LearningGuide (reads docs/learning/) ---
+    case "LearningGuide":
+      return async ({ input, definition }) => {
+        const mode = typeof input.mode === "string" ? input.mode : "list";
+        const { readdir, readFile } = await import("node:fs/promises");
+        const { join } = await import("node:path");
+
+        const learningDir = join(options.workDir ?? process.cwd(), "docs", "learning");
+
+        if (mode === "list") {
+          try {
+            const files = await readdir(learningDir);
+            const docs = files.filter(f => f.endsWith(".md")).map(f => ({ id: f.replace(".md", ""), title: f.replace(".md", "").replace(/-/g, " ") }));
+            return { ok: true, renderer: definition.renderer, summary: `学习中心有 ${docs.length} 篇文档。`, data: { docs } };
+          } catch {
+            return { ok: true, renderer: definition.renderer, summary: "学习中心目录不存在或为空。", data: { docs: [] } };
+          }
+        }
+
+        if (mode === "search") {
+          const query = typeof input.query === "string" ? input.query.toLowerCase() : "";
+          if (!query) return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "search 模式需要 query。" };
+          try {
+            const files = await readdir(learningDir);
+            const results: Array<{ id: string; title: string; snippet: string }> = [];
+            for (const file of files.filter(f => f.endsWith(".md"))) {
+              const content = await readFile(join(learningDir, file), "utf-8");
+              if (content.toLowerCase().includes(query)) {
+                const idx = content.toLowerCase().indexOf(query);
+                results.push({ id: file.replace(".md", ""), title: file.replace(".md", ""), snippet: content.slice(Math.max(0, idx - 50), idx + 150) });
+              }
+            }
+            return { ok: true, renderer: definition.renderer, summary: `搜索到 ${results.length} 篇相关文档。`, data: { results } };
+          } catch {
+            return { ok: true, renderer: definition.renderer, summary: "搜索失败，学习中心目录不可用。", data: { results: [] } };
+          }
+        }
+
+        if (mode === "get") {
+          const id = typeof input.id === "string" ? input.id : "";
+          if (!id) return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "get 模式需要 id。" };
+          try {
+            const content = await readFile(join(learningDir, `${id}.md`), "utf-8");
+            return { ok: true, renderer: definition.renderer, summary: `已读取文档：${id}`, data: { id, content } };
+          } catch {
+            return { ok: false, renderer: definition.renderer, error: "not-found", summary: `文档 ${id} 不存在。` };
+          }
+        }
+
+        return { ok: false, renderer: definition.renderer, error: "invalid-mode", summary: `不支持的 mode: ${mode}` };
+      };
+    // --- Pipeline (session-level in-memory) ---
+    case "StartPipeline":
+      return async ({ input, sessionId, definition }) => {
+        const label = typeof input.label === "string" ? input.label : "pipeline";
+        sessionPipelines.set(sessionId, { label, captures: new Map(), counter: 0 });
+        return {
+          ok: true,
+          renderer: definition.renderer,
+          summary: `管道模式已开启：${label}`,
+          data: { status: "pipeline-started", label },
+        };
+      };
+    case "EndPipeline":
+      return async ({ input, sessionId, definition }) => {
+        const pipeline = sessionPipelines.get(sessionId);
+        if (!pipeline) {
+          return { ok: false, renderer: definition.renderer, error: "no-pipeline", summary: "当前没有活跃的管道会话。" };
+        }
+        const rule = typeof input.rule === "string" ? input.rule : "";
+        const captures = Object.fromEntries(pipeline.captures);
+        sessionPipelines.delete(sessionId);
+        const allContent = [...pipeline.captures.values()].join("\n");
+        return {
+          ok: true,
+          renderer: definition.renderer,
+          summary: `管道结束，共 ${pipeline.captures.size} 个捕获。`,
+          data: { rule, captures, result: allContent },
+        };
+      };
     // --- Stub handlers for remaining Phase 3-5 tools ---
     case "WebSearch":
     case "WebFetch":
@@ -686,13 +817,7 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
     case "ForkNarrator":
     case "Terminal":
     case "ShareFile":
-    case "StartPipeline":
-    case "EndPipeline":
-    case "LearningGuide":
     case "Skill":
-    case "GetGoals":
-    case "AddGoal":
-    case "UpdateGoal":
       return async ({ definition }) => ({
         ok: false,
         renderer: definition.renderer,
