@@ -40,8 +40,11 @@
 
 ## 步骤 4：后台日志增强
 
-- [ ] 4.1 agent-turn-runtime 在关键节点输出结构化日志
-  - 工具调用开始/结束 + 耗时
-  - generate 请求开始/结束 + token 用量
-  - 错误和重试
-- [ ] 4.2 中断/继续操作记录日志
+- [x] 4.1 agent-turn-runtime 在关键节点输出结构化日志
+  - generate 请求开始/结束 + durationMs + token 用量（input_tokens/output_tokens）
+  - generate 失败 + code + durationMs
+  - 工具调用执行完成 + toolName + ok + durationMs + duplicate + step
+  - abort 检测 + executedToolSteps
+- [x] 4.2 中断/继续操作记录日志
+  - abortSession → `{ component: "session-chat", event: "abort", sessionId }`
+  - 空消息继续 → `{ component: "session-chat", event: "continue", sessionId }`
