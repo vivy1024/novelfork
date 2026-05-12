@@ -256,7 +256,7 @@ export const BACKEND_CONTRACT_CAPABILITIES: readonly BackendContractCapability[]
     dataSource: "session tools + candidate service",
     failureBoundary: "模型不可用或工具失败时返回 tool_result 失败，不写正式章节。",
     frontendRule: "首选链路；成功只进入候选区。",
-    source: { kind: "session-tool", file: "packages/studio/src/api/lib/session-tool-registry.ts", exportName: "SESSION_TOOL_DEFINITIONS" },
+    source: { kind: "session-tool", file: "packages/studio/src/api/lib/session-tool-registry.ts", exportName: "getAllSessionToolDefinitions" },
   },
   {
     id: "writing-modes.preview",
