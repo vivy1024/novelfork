@@ -882,9 +882,48 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
           data: { skill: skillName, args, status: "partial", note: "技能执行需要通过会话消息路由，当前工具入口仅做识别。" },
         };
       };
-    // --- Stub handlers for remaining Phase 3-5 tools ---
-    case "WebSearch":
+    // --- Web tools ---
     case "WebFetch":
+      return async ({ input, definition }) => {
+        const url = typeof input.url === "string" ? input.url.trim() : "";
+        if (!url) {
+          return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "url 不能为空。" };
+        }
+        const maxLength = typeof input.max_length === "number" ? input.max_length : 20000;
+        try {
+          const response = await fetch(url, { headers: { "User-Agent": "NovelFork/0.2.0" }, signal: AbortSignal.timeout(15000) });
+          if (!response.ok) {
+            return { ok: false, renderer: definition.renderer, error: "fetch-failed", summary: `HTTP ${response.status}: ${response.statusText}` };
+          }
+          const contentType = response.headers.get("content-type") ?? "";
+          const text = await response.text();
+          const truncated = text.length > maxLength ? text.slice(0, maxLength) + "\n...(truncated)" : text;
+          return {
+            ok: true,
+            renderer: definition.renderer,
+            summary: `已获取 ${url}（${text.length} 字符）`,
+            data: { url, contentType, content: truncated, originalLength: text.length, truncated: text.length > maxLength },
+          };
+        } catch (error) {
+          return { ok: false, renderer: definition.renderer, error: "fetch-error", summary: `获取失败：${error instanceof Error ? error.message : String(error)}` };
+        }
+      };
+    case "WebSearch":
+      return async ({ input, definition }) => {
+        const query = typeof input.query === "string" ? input.query.trim() : "";
+        if (!query) {
+          return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "query 不能为空。" };
+        }
+        // WebSearch 需要外部搜索 API（如 SerpAPI、Tavily 等），当前返回提示
+        return {
+          ok: false,
+          renderer: definition.renderer,
+          error: "no-search-api",
+          summary: `网络搜索需要配置搜索 API。请在设置中配置搜索服务，或使用 WebFetch 直接获取已知 URL 的内容。`,
+          data: { query, status: "no-search-api-configured" },
+        };
+      };
+    // --- Stub handlers for remaining complex tools ---
     case "Browser":
     case "Agent":
     case "Await":
