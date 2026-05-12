@@ -441,23 +441,45 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
         const { execFile } = await import("node:child_process");
         const { promisify } = await import("node:util");
         const execFileAsync = promisify(execFile);
-        // Use PowerShell folder browser dialog on Windows
-        // SetForegroundWindow + TopMost 确保对话框在最前面弹出
-        const script = [
-          "Add-Type -AssemblyName System.Windows.Forms",
-          "Add-Type @'\nusing System;\nusing System.Runtime.InteropServices;\npublic class Win32 {\n  [DllImport(\"user32.dll\")] public static extern bool SetForegroundWindow(IntPtr hWnd);\n  [DllImport(\"kernel32.dll\")] public static extern IntPtr GetConsoleWindow();\n}\n'@",
-          "$f = New-Object System.Windows.Forms.FolderBrowserDialog",
-          "$f.Description = '选择项目文件夹'",
-          "$f.RootFolder = [System.Environment+SpecialFolder]::MyComputer",
-          "$f.ShowNewFolderButton = $true",
-          "$owner = New-Object System.Windows.Forms.Form",
-          "$owner.TopMost = $true",
-          "$owner.StartPosition = 'CenterScreen'",
-          "[Win32]::SetForegroundWindow($owner.Handle) | Out-Null",
-          "if ($f.ShowDialog($owner) -eq 'OK') { $f.SelectedPath } else { '' }",
-          "$owner.Dispose()",
-        ].join("; ");
-        const { stdout } = await execFileAsync("powershell", ["-NoProfile", "-Command", script], { timeout: 60000 });
+        // 使用 Windows Shell COM 的现代文件夹选择器（Vista+ 样式，有快速访问和常用目录）
+        const script = `
+Add-Type -AssemblyName System.Windows.Forms
+[System.Windows.Forms.Application]::EnableVisualStyles()
+$source = @'
+using System;
+using System.Runtime.InteropServices;
+using System.Windows.Forms;
+
+public class FolderPicker {
+    [DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    public static string Show() {
+        var dlg = new OpenFileDialog();
+        dlg.CheckFileExists = false;
+        dlg.CheckPathExists = true;
+        dlg.DereferenceLinks = true;
+        dlg.Multiselect = false;
+        dlg.Title = "选择项目文件夹";
+        dlg.FileName = "选择此文件夹";
+        dlg.Filter = "文件夹|*.folder-select";
+        dlg.InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+        // Trick: ValidateNames=false + FileName allows folder selection with modern dialog
+        dlg.ValidateNames = false;
+        dlg.CheckFileExists = false;
+        if (dlg.ShowDialog() == DialogResult.OK) {
+            return System.IO.Path.GetDirectoryName(dlg.FileName);
+        }
+        return "";
+    }
+}
+'@
+Add-Type -TypeDefinition $source -ReferencedAssemblies System.Windows.Forms
+[FolderPicker]::Show()
+`.trim();
+        const { stdout } = await execFileAsync("powershell", ["-NoProfile", "-STA", "-Command", script], { timeout: 60000 });
         const selectedPath = stdout.trim();
         if (selectedPath) {
           return c.json({ path: selectedPath });
